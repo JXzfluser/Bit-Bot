@@ -2633,25 +2633,49 @@ function createHostFfi(repoRoot) {
         pollutes_profile: false,
         at,
       };
-      const pathWritten = appendJournalEvent(entry);
-      appendHostDeliveryJournal({ kind, command, path: pathWritten, at });
-      return {
-        kind,
-        ok: true,
-        command,
-        stdout: JSON.stringify(
-          {
-            stored: true,
-            path: pathWritten,
-            date,
-            event_id,
-            pollutes_profile: false,
-          },
-          null,
-          2,
-        ),
-        stderr: "",
+      const eventsPath = appendJournalEvent(entry);
+      const appendDir = path.join(REPO_ROOT, "data", "journal", "appends");
+      fs.mkdirSync(appendDir, { recursive: true });
+      const appendPath = path.join(
+        appendDir,
+        `append-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        stored: true,
+        date,
+        event_id,
+        body,
+        pollutes_profile: false,
+        events_path: eventsPath,
+        mode: "host_journal_append",
+        pretend_stored: false,
+        at,
       };
+      fs.writeFileSync(appendPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(appendDir, "appends.jsonl"), {
+        ...artifact,
+        path: appendPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: appendPath,
+        label: "journal_append",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        path: appendPath,
+        events_path: eventsPath,
+        at,
+      });
+      return okJson(kind, command, {
+        ...artifact,
+        path: appendPath,
+        send_to_user: delivery,
+        ok: true,
+      });
     }
     if (kind === "journal_query") {
       const parts = String(command || "").split("|");
@@ -2713,31 +2737,51 @@ function createHostFfi(repoRoot) {
       if (!store[scope] || typeof store[scope] !== "object") store[scope] = {};
       store[scope][key] = { value, at };
       saveSharedMemory(store);
+      const memDir = path.join(REPO_ROOT, "data", "memory");
+      fs.mkdirSync(memDir, { recursive: true });
+      const putPath = path.join(
+        memDir,
+        `shared-put-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        stored: true,
+        scope,
+        key,
+        value,
+        isolation: "scope-bound",
+        store_path: SHARED_MEMORY_PATH,
+        mode: "host_shared_memory_put",
+        pretend_stored: false,
+        pretend_cross_scope: false,
+        at,
+      };
+      fs.writeFileSync(putPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(memDir, "shared-puts.jsonl"), {
+        ...artifact,
+        path: putPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: putPath,
+        label: "shared_memory_put",
+        source_kind: kind,
+        at,
+      });
       appendHostDeliveryJournal({
         kind,
         command,
         scope,
         key,
-        path: SHARED_MEMORY_PATH,
+        path: putPath,
+        store_path: SHARED_MEMORY_PATH,
         at,
       });
-      return {
-        kind,
+      return okJson(kind, command, {
+        ...artifact,
+        path: putPath,
+        send_to_user: delivery,
         ok: true,
-        command,
-        stdout: JSON.stringify(
-          {
-            stored: true,
-            scope,
-            key,
-            path: SHARED_MEMORY_PATH,
-            isolation: "scope-bound",
-          },
-          null,
-          2,
-        ),
-        stderr: "",
-      };
+      });
     }
     if (kind === "shared_memory_read") {
       const parts = String(command || "").split("|");

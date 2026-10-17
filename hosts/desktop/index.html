@@ -774,7 +774,18 @@
                   label = h.kind.replace("shared_memory_", "mem:") + ":" + (p.scope || "?");
                   types.push("attachment");
                 } else if (h.kind === "journal_append") {
-                  label = "journal";
+                  label =
+                    "journal:" +
+                    (p.event_id || "note") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "shared_memory_put") {
+                  label =
+                    "mem:put:" +
+                    (p.scope || "?") +
+                    "/" +
+                    (p.key || "?") +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "voice_relay" && p.reply_media_path) {
                   label = "voice_relay:" + String(p.reply_media_path).split("/").slice(-1)[0];

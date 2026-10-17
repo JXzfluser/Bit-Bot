@@ -81,11 +81,11 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-mem-get.json'));assert 
 
 # 9b) Shared scope memory + journal durable Host stores
 "${RUN[@]}" "shared memory put scope=parity key=marker value=$MARKER" >/tmp/parity-shared-put.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-shared-put.json'));h=next(x for x in d['host_results'] if x.get('kind')=='shared_memory_put');p=json.loads(h['stdout']);assert p.get('stored') is True;assert p.get('isolation')=='scope-bound';assert os.path.isfile(p.get('path') or 'data/memory/shared-scopes.json');print('parity shared_memory put ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-shared-put.json'));h=next(x for x in d['host_results'] if x.get('kind')=='shared_memory_put');p=json.loads(h['stdout']);assert p.get('stored') is True;assert p.get('isolation')=='scope-bound';assert p.get('pretend_stored') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('store_path') and os.path.isfile(p['store_path']);assert '$MARKER' in open(p['path']).read();print('parity shared_memory put ok', p.get('path'))"
 "${RUN[@]}" "shared memory read scope=parity key=marker" >/tmp/parity-shared-get.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-shared-get.json'));h=next(x for x in d['host_results'] if x.get('kind')=='shared_memory_read');p=json.loads(h['stdout']);assert p.get('found') is True;assert p.get('value')=='$MARKER';assert p.get('pretend_cross_scope') is False;assert p.get('path') and os.path.isfile(p['path']);print('parity shared_memory read ok', p.get('path'))"
 "${RUN[@]}" "journal note parity $MARKER" >/tmp/parity-journal.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-journal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='journal_append');p=json.loads(h['stdout']);assert p.get('ok') is True or h.get('ok');path=p.get('path') or 'data/journal/events.jsonl';assert os.path.isfile(path);assert '$MARKER' in open(path).read();print('parity journal_append ok', path)"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-journal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='journal_append');p=json.loads(h['stdout']);assert p.get('ok') is True or h.get('ok');assert p.get('pretend_stored') is False;assert p.get('pollutes_profile') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('events_path') and os.path.isfile(p['events_path']);assert '$MARKER' in open(p['path']).read();assert '$MARKER' in open(p['events_path']).read();print('parity journal_append ok', p.get('path'))"
 
 # 9c) Credential fill → vault metadata → list (never secret echo)
 "${RUN[@]}" "fill credential domain=parity.example.test" >/tmp/parity-cred-fill.json
