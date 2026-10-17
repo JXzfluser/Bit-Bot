@@ -5526,9 +5526,21 @@ function createHostFfi(repoRoot) {
       };
       fs.writeFileSync(statusPath, JSON.stringify(payload, null, 2));
       appendJsonl(path.join(scDir, "status.jsonl"), payload);
+      const opsDir = path.join(scDir, "ops");
+      fs.mkdirSync(opsDir, { recursive: true });
+      const opPath = path.join(
+        opsDir,
+        `op-${sanitizeSkillName(action) || "status"}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        ...payload,
+        status_path: statusPath,
+        mode_note: "host_source_control",
+      };
+      fs.writeFileSync(opPath, JSON.stringify(artifact, null, 2));
       const delivery = recordSendToUser({
         type: "attachment",
-        path: statusPath,
+        path: opPath,
         label: "source_control_status",
         source_kind: kind,
         at,
@@ -5536,14 +5548,16 @@ function createHostFfi(repoRoot) {
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: statusPath,
+        path: opPath,
+        status_path: statusPath,
         branch,
         at,
       });
       return okJson(kind, cmd, {
-        ...payload,
-        path: statusPath,
+        ...artifact,
+        path: opPath,
         send_to_user: delivery,
+        ok: true,
       });
     }
 

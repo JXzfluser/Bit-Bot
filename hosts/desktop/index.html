@@ -920,7 +920,7 @@
                     p.remote_pr_residual === true
                       ? "/gated"
                       : "";
-                  label = "sc:" + mode + gated;
+                  label = "sc:" + mode + gated + (p.path ? "/snap" : "");
                   types.push("attachment");
                   const scMeta = document.getElementById("source-control-meta");
                   if (scMeta) {

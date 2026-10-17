@@ -47,7 +47,7 @@ python3 -c "import json;d=json.load(open('/tmp/parity-creds.json'));assert d.get
 
 # 7) Source-control plan artifact (real create gated)
 "${RUN[@]}" "source control create_pr" >/tmp/parity-sc.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-sc.json'));h=next(x for x in d['host_results'] if x.get('kind')=='source_control');p=json.loads(h['stdout']);assert p.get('pretend_remote_pr') is False;rp=p.get('remote_pr') or {};assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;assert plan.get('real_create_gated') is True or rp.get('real_create_gated') is True or p.get('remote_pr_residual') is True;print('parity source_control plan ok', rp.get('mode'), rp.get('plan_path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sc.json'));h=next(x for x in d['host_results'] if x.get('kind')=='source_control');p=json.loads(h['stdout']);assert p.get('pretend_remote_pr') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('status_path') and os.path.isfile(p['status_path']);rp=p.get('remote_pr') or {};assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;assert plan.get('real_create_gated') is True or rp.get('real_create_gated') is True or p.get('remote_pr_residual') is True;print('parity source_control plan ok', rp.get('mode'), rp.get('plan_path'), p.get('path'))"
 
 # 7b) Gated PR create path via injectable gh mock (dry-run then BITBOT_GH_PR_CREATE=1)
 rm -rf /tmp/parity-gh-mock-dry /tmp/parity-gh-mock-real
