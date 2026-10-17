@@ -1,0 +1,18 @@
+{
+  "CM": "CM-2163",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-2163",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-2163-mcp-file-expand",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "mcp_transport": "stdio-jsonrpc-subprocess"
+  },
+  "file_ref": "$file:/workspace/h4-mcp-big-body.txt",
+  "injected_bytes": 278,
+  "chat_has_payload_marker": false,
+  "plain_refused": true,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Host FS read $file: path; real stdio MCP received inject; chat only ref; plain refused; audit span",
+  "reasons": []
+}

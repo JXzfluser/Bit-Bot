@@ -1,0 +1,2 @@
+ok=False
+msg=REFUSED:send:draft_only_sandbox

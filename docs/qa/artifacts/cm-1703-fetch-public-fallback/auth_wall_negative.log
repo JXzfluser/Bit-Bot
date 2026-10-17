@@ -1,0 +1,4 @@
+auth_wall_http_status=401
+auth_wall_curl_rc=0
+credential_bypass=false
+note=public fallback must not bypass basic-auth with empty cookies/credentials

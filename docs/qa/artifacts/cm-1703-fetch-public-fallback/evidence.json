@@ -1,0 +1,19 @@
+{
+  "CM": "CM-1703",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-1703",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-1703-fetch-public-fallback",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "network": true
+  },
+  "primary_status": 403,
+  "fallback_kind": "curl",
+  "fallback_status": 200,
+  "auth_wall_status": 401,
+  "credential_bypass": false,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "primary 403 \u2192 curl public fallback 200; auth-wall no credential bypass; i_claimed=false",
+  "reasons": []
+}

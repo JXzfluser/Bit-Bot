@@ -1,0 +1,10 @@
+cm=CM-2157
+run_h5_probe_intent=Cm2157StructuredChart
+evidence_cmd=bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-2157
+shared_cdp_9223=untouched
+chrome_profile=untouched
+shared_profile_dir=/home/box/chrome-profile=untouched
+i_claimed=false
+USER_IANA=Asia/Shanghai
+stamp_utc=20261017T085929Z
+status=READY_FOR_I_REVIEW

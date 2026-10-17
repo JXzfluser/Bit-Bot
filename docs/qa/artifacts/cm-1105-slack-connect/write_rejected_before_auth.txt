@@ -1,0 +1,4 @@
+op=post_message
+ok=False
+msg=REFUSED:post_message:needsAuth
+namespace=NeedsAuth

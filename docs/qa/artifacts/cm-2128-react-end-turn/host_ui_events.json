@@ -1,0 +1,23 @@
+{
+  "events": [
+    {
+      "id": "9ac981b5-41a7-472b-b6af-a0ab113a205e",
+      "ts": 1792227583.4504247,
+      "kind": "ReactPillChanged",
+      "message_id": "msg-h5-1",
+      "emoji": "\ud83c\udf89",
+      "visible": true,
+      "reactions": {
+        "\ud83c\udf89": 1
+      }
+    },
+    {
+      "id": "bddbf992-57c4-4f68-9cc0-e3b868e0106d",
+      "ts": 1792227583.541048,
+      "kind": "EndTurn",
+      "leave_pill": true,
+      "pill_visible": true,
+      "emoji": "\ud83c\udf89"
+    }
+  ]
+}

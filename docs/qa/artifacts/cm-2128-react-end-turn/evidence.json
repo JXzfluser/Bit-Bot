@@ -1,0 +1,11 @@
+{
+  "CM": "CM-2128",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-2128",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-2128-react-end-turn",
+  "end_turn_left_pill": true,
+  "pill_visible": true,
+  "frame_ok": true,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "end_turn leaves emoji pill visible; LiveDisplay pixel frame; C\u2032"
+}

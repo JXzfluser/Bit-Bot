@@ -1,0 +1,12 @@
+{
+  "events": [
+    {
+      "id": "b4b0f57d-3a5d-41de-8aef-eb20de44c60b",
+      "ts": 1792227572.54297,
+      "kind": "CursorAgentCardShown",
+      "agent_id": "h5-throwaway-agent",
+      "url": "https://cursor.com/agents/h5-throwaway-agent",
+      "shown": true
+    }
+  ]
+}

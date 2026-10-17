@@ -1,0 +1,13 @@
+{
+  "CM": "CM-2131",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-2131",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-2131-cursor-agent-card",
+  "cursor_agent_url": "https://cursor.com/agents/h5-throwaway-agent",
+  "card_shown": true,
+  "opened_isolated": true,
+  "frame_ok": true,
+  "shared_cdp_9223": "untouched",
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Host UI cursor-agent card + isolated chrome open https://cursor.com/agents/<id>; never shared 9223"
+}

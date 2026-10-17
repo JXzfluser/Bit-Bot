@@ -910,3 +910,43 @@ Smoke: `moon check` ✅ · `moon test` **296** passed / 0 failed（目标 290+6�
 - U acceptance (`ui_protocol/acceptance_cm1901_1902_1907_test.mbt`) **untouched**.
 - Matrix PASS / GAP rows **not** edited. Parent may point Bit验证 when artifacts ready for I review.
 - **§3.0 C′ vs B 自检对齐**：UI via Live HostUiShell (`host_ui_shell_live.py`→`/api/host/*`); smoke entry `run_h2_probe`/H2Intent; audit spans; HostUiEvent 回注; artifacts embed C′ checklist. **B rejected**: no CDP page-JS drive, no fixture-only/.
+
+
+## HostAbi Live H4 smoke (MoonBit核 · 2026-10-17 Asia/Shanghai)
+
+**H4 smoke landed; I not claimed (`i_claimed=false`). Matrix I-status unchanged — Bit验证 decides.**
+
+- Smoke: `scripts/host_h4_smoke.sh` (+ `host_h4_mcp_stdio.py` / `host_h4_mcp_client.py`) → `docs/qa/artifacts/cm-XXXX-*/`.
+- Targets: `cm-2163|cm-2164|cm-1105|cm-2109|cm-2120|cm-2146|cm-1703|batch1|all`.
+- Batch1 READY paths: CM-2163 (Host FS `$file:` → real stdio MCP inject; chat ref only) + CM-2164 (`write_to_file` → `/workspace/agent-tools/`; path not body).
+- OAuth (1105/2109/2120): honest **NOT_READY** when `SLACK_OAUTH_SANDBOX` / `FINANCE_OAUTH_SANDBOX` / `OUTLOOK_OAUTH_SANDBOX` unset — no stub Connected/Ready, no invented refresh tokens.
+- CM-2146: isolated throwaway Chrome profiles + private Xvfb/CDP (never 9223 / `/home/box/chrome-profile`); CM-1703: real 403 → curl public fallback; auth-wall `credential_bypass=false`.
+- Kernel skeleton already in `box_host/h4_probes.mbt` (`H4IoEvidence` / `run_h4_probe`; `i_claimed=false`). U acceptance tests **untouched**. Do **not** flip matrix I-PASS here.
+
+### H4/H5 Bit验证升裁（2026-10-17 17:07 Asia/Shanghai）
+
+**Bit验证 promoted H4/H5 READY → I-PASS.** I-PASS **24→37**；open GAP **17→4**（当时 **0806 / 1105 / 2109 / 2120**）。U=234 不动。详见 `docs/qa/gaps.md`「升裁 H4·批1」「升裁 H5·批1」与 `host-integration-gaps.md`。
+
+- **H4 I-PASS**: CM-2163 / 2164 / 2146 / 1703（左列 READY 全过）。
+- **H5 I-PASS**: CM-1601 / 1602 / 1603 / 2157 / 1807 / 2131 / 2101 / 2128 / 2103。
+- **当时拒升**: CM-1105 / 2109 / 2120（NOT_READY OAuth）；CM-0806（NOT_READY residual）— **后于 09:14 升裁**（见下）。
+
+### H4·OAuth + CM-0806 Bit验证升裁（2026-10-17 09:14 Asia/Shanghai）
+
+**Bit验证 promoted final four READY → I-PASS.** I-PASS **37→41**；open GAP **4→0**（41 行库存）。U=234 不动。详见 `docs/qa/gaps.md`「升裁 H4·OAuth + CM-0806」。
+
+- **OAuth I-PASS**（local sandbox IdP，非生产）：CM-1105 / 2109 / 2120；§4 真 callback；`stub_authenticate=false`。
+- **CM-0806 I-PASS**：隔离 throwaway jar + HostUiShell Update Computer completed；shared CDP **9223 untouched**；无 Cookie 副本入 artifacts。
+- **Residual（非 open 库存行）**：CM-0705 真手机 OS 权限卡仍 GAP/todo。
+
+## HostAbi Live H5 smoke (MoonBit核 · 2026-10-17 Asia/Shanghai)
+
+**H5 smoke landed; Bit验证升裁见上。 Do not demote U=234.**
+
+- Smoke: `scripts/host_h5_smoke.sh` (+ `host_h5_media.py`) → `docs/qa/artifacts/cm-XXXX-*/`.
+- Targets: `cm-1601|cm-1602|cm-1603|cm-2157|cm-1807|cm-2131|cm-2101|cm-2128|cm-2103|media|ui|all` + `cm-0806`.
+- Media READY paths: Pillow PNG (1601/2157), ffmpeg mp4+frame (1602/1603), python-pptx PK zip (1807) under `/workspace/agent-tools/`.
+- UI C′ paths: HostUiShell `/api/host/*` pills (2101/2128), math/mermaid SVG (2103), cursor-agent card + isolated chrome open (2131); never CDP 9223 / chrome-profile.
+- CM-0806: isolated throwaway profile jar + Update Computer lifecycle → **I-PASS**（09:14）。CM-0705 platform_subset reinforced；phone residual 另记。
+- Kernel: `box_host/h5_probes.mbt` (`H5MediaEvidence` / `run_h5_probe`; `i_claimed=false`). Mock MediaHost U tests **untouched**.
+- **Bit验证**: 九 READY（17:07）+ 0806（09:14）均已升 I-PASS。

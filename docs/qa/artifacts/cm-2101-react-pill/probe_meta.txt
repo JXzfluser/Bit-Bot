@@ -1,0 +1,17 @@
+cm=CM-2101
+run_h5_probe_intent=Cm2101ReactToMessage
+evidence_cmd=bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-2101
+shared_cdp_9223=untouched
+chrome_profile=untouched
+shared_profile_dir=/home/box/chrome-profile=untouched
+i_claimed=false
+USER_IANA=Asia/Shanghai
+stamp_utc=20261017T085929Z
+iso_cdp_port=9400
+iso_http_port=8760
+iso_display=:80
+iso_profile=/tmp/h5-iso-profile.CAHlS3
+shared_cdp_port_untouched=9223
+ui_drive=HostUiShell_/api/host/*
+rejected_B_cdp_page_js=true
+status=READY_FOR_I_REVIEW

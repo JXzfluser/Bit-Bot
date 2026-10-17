@@ -1,0 +1,21 @@
+{
+  "CM": "CM-2120",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-2120",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-2120-outlook-oauth",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "H4_OAUTH_SANDBOX": true,
+    "OUTLOOK_OAUTH_SANDBOX": true
+  },
+  "oauth_provider": "outlook",
+  "namespace_before": "NeedsAuth",
+  "namespace_after": "Ready",
+  "oauth_callback_observed": true,
+  "stub_authenticate": false,
+  "http_redirect_observed": true,
+  "refresh_token_in_artifacts": false,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "NeedsAuth\u2192real HTTP authorize/confirm/callback/token\u2192Ready; write refused pre-auth; post-auth harmless op; no refresh token; i_claimed=false"
+}

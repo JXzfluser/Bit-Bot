@@ -1,11 +1,11 @@
 # Bit Bot 缺口报告（gaps.md）
 
-- **时间**: 2026-10-17 15:37 Asia/Shanghai
+- **时间**: 2026-10-17 09:14 Asia/Shanghai
 - **作者**: Bit验证
 - **合同主键**: **CM-***
 - **矩阵计数**: **234** / P0=**117**
 - **矩阵自标状态**: {'in_progress': 50, 'todo': 184}
-- **冒烟实测**: check_ok=True · test_ok=True · **H3·批1**: Total tests: **339**, passed: 339；`host_h3_smoke.sh all` exit0 → CM-2158/2174/0705/0411 **I-PASS×4**（0705=平台子集）；I-PASS 20→24；GAP 21→17；H0/H1/H2 I-PASS 维持；0806 仍 GAP；U=234 不动；0705 residual：真手机 OS 权限卡仍 GAP
+- **冒烟实测**: check_ok=True · test_ok=True · **升裁 H4·OAuth + CM-0806**：sandbox OAuth READY×3（1105/2109/2120）+ 隔离 Update Computer READY×1（0806）→ **I-PASS×4**；I-PASS **37→41**；open GAP **4→0**（41 行库存）；U=234 不动；H0–H5 前序 I-PASS 维持；0705 residual 真手机 OS 卡仍 GAP（非 open 库存行）
 - **裁决口径**: GAP=无实现/无测；FAIL=有源+测但未达验收；PASS=C/U/I/B 且贴验收原文
 - **本轮**: A/B/C 按**新**测名重读源文件重裁。A 批证据列只用新测名（禁止旧「仅禁附同发」打回）。
 
@@ -39,7 +39,7 @@
 
 ## H4 升 I 口径（Bit架构 · 2026-10-17 15:37 Asia/Shanghai）
 
-> 来源：[`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§4.0 / §4.3**。本轮**不升任何 CM**、**不改 U**、**不倒裁 U**；未升 GAP 保留（含 **0806**）。等 `host_h4_smoke` artifacts 齐后再裁。
+> 来源：[`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§4.0 / §4.3**。口径表仍有效。**H4·批1（17:07）已升裁** → 2163/2164/2146/1703 **I-PASS**；**H4·OAuth（09:14）已升裁** → 1105/2109/2120 **I-PASS**（详见下「升裁 H4·OAuth + CM-0806」）；**不改 U**。
 
 | CM | 可升（左列） | 拒升（右列） |
 |----|--------------|--------------|
@@ -48,7 +48,210 @@
 | **2146** | 真切用户浏览器会话（可观测 profile/cookie/CDP） | 仅枚举 `SwitchToSignedInBrowser` 意图；未切会话 |
 | **1703** | 真出网 fallback（403/封锁 → browser 或 curl 公共成功） | mock WebHost；凭据/登录 cookie 旁路冒充「公共回退」 |
 
-对齐：interface-gaps §4.0 左列勾选、§4.3 证据字段（`evidence_cmd`=`host_h4_smoke.sh`、`artifact`、`assert`、`env`）；旁注同步见 `qa/host-integration-gaps.md`。**H4 待审**（I 仍 open）。
+对齐：interface-gaps §4.0 左列勾选、§4.3 证据字段（`evidence_cmd`=`host_h4_smoke.sh`、`artifact`、`assert`、`env`）；旁注同步见 `qa/host-integration-gaps.md`。
+
+## H5 升 I 口径（Bit架构 · 2026-10-17 Asia/Shanghai）
+
+> 来源：[`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§6.0 / §6.3**。口径表仍有效。**H5·批1（17:07）已升裁** → 1601/1602/1603/2157/1807/2131/2101/2128/2103 **I-PASS**；**CM-0806（09:14）已升裁** → **I-PASS**（隔离 throwaway jar；详见「升裁 H4·OAuth + CM-0806」）；**不改 U**；0705 residual 真手机 OS 卡另记。
+
+| CM | 可升（左列） | 拒升（右列） |
+|----|--------------|--------------|
+| **1601 / 2157** | 真 PNG 落盘（magic `89504e47`）于 agent-tools | mock magic-only / 假路径 |
+| **1602 / 1603** | 真 mp4 编码 + 真抽帧 PNG | 空文件 / 预置无关图 |
+| **1807** | 真 `.pptx`（PK zip）under `/workspace` | 假扩展名 |
+| **2131** | Host UI 卡 + 隔离打开云代理页 | 共享 CDP 9223 / 拷 chrome-profile |
+| **2101 / 2128** | C′ pill 可见/toggle；end_turn 后 pill 像素 | CDP 页面 JS（B） |
+| **2103** | math + mermaid 真渲染帧 | 纯文本冒充 |
+
+对齐：interface-gaps §6.0/§6.3；旁注见 `qa/host-integration-gaps.md`。
+
+---
+
+## 升裁 H4·OAuth + CM-0806 · host-integration I（Bit验证 · 2026-10-17 09:14 Asia/Shanghai）
+
+> Wave residual：**CM-1105 / CM-2109 / CM-2120 / CM-0806**。对照 interface-gaps **§4.0 左列**（OAuth）与 **H1/H5 0806** 左列（隔离 throwaway jar + 真 Update Computer）；gaps「H4/H5 升 I 口径」。  
+> **U/kernel-contract PASS=234 不动**；已 I-PASS 37 条不动；禁倒裁 U；禁 stub OAuth；禁碰共享 CDP **9223** / `/home/box/chrome-profile`；禁 Cookie DB 副本入 artifacts。  
+> OAuth IdP = **local sandbox**（`H4_OAUTH_SANDBOX=1` + per-provider `*_OAUTH_SANDBOX`）；非生产 IdP。
+
+### Q-SMOKE 实测
+
+| 命令 | exit | 摘要 |
+|------|------|------|
+| `bash scripts/host_h4_smoke.sh cm-1105` | 0 | `READY_FOR_I_REVIEW`；NeedsAuth→Connected；`oauth_callback_observed=true`；`stub_authenticate=false` |
+| `bash scripts/host_h4_smoke.sh cm-2109` | 0 | `READY_FOR_I_REVIEW`；NeedsAuth→Ready；callback 观测；无 refresh token |
+| `bash scripts/host_h4_smoke.sh cm-2120` | 0 | `READY_FOR_I_REVIEW`；NeedsAuth 拒 draft；OAuth 后 draft ok；callback 观测 |
+| `bash scripts/host_h5_smoke.sh cm-0806` | 0 | `READY_FOR_I_REVIEW`；iso profile jar；Update `prompted→awaiting-second-confirm→completed`；digest 稳定；9223 untouched |
+
+### §4.0 / 0806 左列勾选
+
+| CM | 左列（可升） | 勾选 | 右列命中？ |
+|----|--------------|------|------------|
+| 1105 | 真 OAuth/Details → Connected | ✓ sandbox authorize→302 code+state→callback 200；`namespace_after=Connected`；Details Connected；`stub_authenticate=false`；无 refresh token | 否 |
+| 2109 | 真 OAuth NeedsAuth→Ready | ✓ 同流；`namespace_after=Ready`；auth 前拒写；callback `has_code`+`state_matches` | 否 |
+| 2120 | 真 OAuth 后 draft；NeedsAuth 拒 | ✓ auth 前 `REFUSED:draft:needsAuth`；callback 后 `create_draft` ok；sandbox send=`draft_only` 拒（非 stub Ready） | 否 |
+| 0806 | 真 Update 后 jar 仍在（隔离） | ✓ throwaway `/tmp/h5-0806-profile.*/…/Cookies`；sha seed=before=after；`jar_intact_across_update=true`；`cookies_copied_to_artifacts=false`；`shared_cdp_9223=untouched` | 否（非共享会话拷 cookies） |
+
+共享会话：四项均 `shared_cdp_9223=untouched`；0806 `chrome_profile=untouched`；OAuth 未碰 9223。
+
+### 逐条核验
+
+- **CM-1105**：local sandbox Slack OAuth HTTP code flow；callback 真观测；Connected；未 stub。**I-PASS**。
+- **CM-2109**：local sandbox Finance OAuth；NeedsAuth→Ready；callback 真观测。**I-PASS**。
+- **CM-2120**：local sandbox Outlook OAuth；NeedsAuth 拒 draft；认证后 draft；callback 真观测。**I-PASS**。
+- **CM-0806**：隔离 throwaway jar + HostUiShell 两步 Update Computer completed；in-place digest 稳定；未碰 9223 / 共享 profile。**I-PASS**。
+
+### 裁决（U 仍 PASS；host-integration **READY→I-PASS**）
+
+| ID | U | host-integration | exit | 关键 assert | 裁决 |
+|----|---|------------------|------|--------------|------|
+| CM-1105 | **PASS** | **READY→I-PASS** | 0 | sandbox OAuth→Connected；callback observed；无 refresh | **I-PASS** |
+| CM-2109 | **PASS** | **READY→I-PASS** | 0 | sandbox OAuth→Ready；callback observed | **I-PASS** |
+| CM-2120 | **PASS** | **READY→I-PASS** | 0 | sandbox OAuth→Ready；draft after auth；NeedsAuth 拒 | **I-PASS** |
+| CM-0806 | **PASS** | **READY→I-PASS** | 0 | iso throwaway jar；Update completed；digest stable；≠9223 | **I-PASS** |
+
+### 证据指针
+
+| CM | evidence_cmd | artifact |
+|----|--------------|----------|
+| CM-1105 | `bash scripts/host_h4_smoke.sh cm-1105` | `docs/qa/artifacts/cm-1105-slack-connect/` |
+| CM-2109 | `bash scripts/host_h4_smoke.sh cm-2109` | `docs/qa/artifacts/cm-2109-finance-oauth/` |
+| CM-2120 | `bash scripts/host_h4_smoke.sh cm-2120` | `docs/qa/artifacts/cm-2120-outlook-oauth/` |
+| CM-0806 | `bash scripts/host_h5_smoke.sh cm-0806` | `docs/qa/artifacts/cm-0806-session-jar/` |
+
+**禁止项核对**：未倒裁 U；未动既有 37 条 I-PASS；未以 stub OAuth 冒充 Connected/Ready；共享 9223/chrome-profile/Cookie 副本 **未碰**；OAuth 明文仅用 redacted token 摘要。  
+**计数**：I-PASS **37→41**（+1105/2109/2120/0806）；open GAP **4→0**（41 行库存）；U=234 不动；**0705 residual** 真手机 OS 卡仍 GAP/todo（非 open 库存行）。
+
+---
+
+## 升裁 H4·批1 · host-integration I（Bit验证 · 2026-10-17 17:07 Asia/Shanghai）
+
+> Wave H4 batch-1：**CM-2163 / CM-2164 / CM-2146 / CM-1703**。对照 [`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§4.0 左列**、§4.3 证据字段、gaps「H4 升 I 口径」。  
+> **U/kernel-contract PASS=234 不动**；已 I-PASS 24 条（H0×3 / H1×3 / H2×14 / H3×4）不动；**不升 CM-1105 / 2109 / 2120**（NOT_READY OAuth）；**不升 CM-0806**；禁倒裁 U；禁 9223/chrome-profile/Cookie 副本。
+
+### Q-SMOKE 实测
+
+| 命令 | exit | 摘要 |
+|------|------|------|
+| `bash scripts/host_h4_smoke.sh`（artifacts 已落） | 0（先跑） | READY：2163/2164/2146/1703；NOT_READY：1105/2109/2120；`i_claimed=false` |
+
+### §4.0 左列勾选
+
+| CM | 左列（可升） | 勾选 | 右列命中？ |
+|----|--------------|------|------------|
+| 2163 | 真 Host FS `$file:` 读盘注入 | ✓ stdio MCP 子进程；`injected_bytes=278`；`chat_has_payload_marker=false`；`plain_refused=true`；9223 untouched | 否（非 in-process fake FS） |
+| 2164 | 真 `write_to_file` → `/workspace/agent-tools/` | ✓ `result_path=…/h4-loopback-echo.txt`；path+sha256；chat 无 PAYLOAD；audit | 否 |
+| 2146 | 真切用户浏览器会话 | ✓ `browser_session_switched=true`；app/user 异 profile + CDP 9500/9501（≠9223） | 否 |
+| 1703 | 真出网 fallback | ✓ primary 403 → curl fallback 200；`credential_bypass=false`；auth-wall 401 | 否（非 mock WebHost / 非凭据旁路） |
+| 1105/2109/2120 | 真 OAuth → Connected/Ready | ✗ `NOT_READY`；无 sandbox env；`stub_authenticate=false` | —（诚实拒升，未 stub） |
+
+共享会话：`shared_cdp_9223=untouched`；2146 隔离 profile=`/tmp/h4-*-profile.*`；未碰 `/home/box/chrome-profile`；无 Cookie 副本。
+
+### 逐条核验
+
+- **CM-2163**：`host_h4_smoke.sh cm-2163`；Host FS `$file:` → 真 stdio MCP inject；chat 仅 ref；plain 拒。**I-PASS**。
+- **CM-2164**：写盘 `/workspace/agent-tools/h4-loopback-echo.txt`；返回路径+sha256；chat 无 PAYLOAD。**I-PASS**。
+- **CM-2146**：App vs User 双 throwaway Chrome + 私有 CDP；会话切换可观测；未碰 9223。**I-PASS**。
+- **CM-1703**：403→curl 公共 200；auth-wall 无 credential bypass。**I-PASS**。
+- **CM-1105 / 2109 / 2120**：**拒升**。artifacts `NOT_READY`（缺 `*_OAUTH_SANDBOX`）；未 stub Connected/Ready。GAP **保留**。
+
+### 裁决（U 仍 PASS；host-integration **READY→I-PASS**）
+
+| ID | U | host-integration | exit | 关键 assert | 裁决 |
+|----|---|------------------|------|--------------|------|
+| CM-2163 | **PASS** | **READY→I-PASS** | 0 | Host FS `$file:` stdio MCP inject；chat 仅 ref；plain 拒 | **I-PASS** |
+| CM-2164 | **PASS** | **READY→I-PASS** | 0 | `write_to_file`→agent-tools；path+sha；无 PAYLOAD | **I-PASS** |
+| CM-2146 | **PASS** | **READY→I-PASS** | 0 | App/User 异 profile+CDP；会话切换；≠9223 | **I-PASS** |
+| CM-1703 | **PASS** | **READY→I-PASS** | 0 | 403→curl 200；`credential_bypass=false` | **I-PASS** |
+| CM-1105 | **PASS** | **NOT_READY** | — | 无 Slack OAuth sandbox；未 stub | **仍 GAP** |
+| CM-2109 | **PASS** | **NOT_READY** | — | 无 Finance OAuth sandbox；未 stub | **仍 GAP** |
+| CM-2120 | **PASS** | **NOT_READY** | — | 无 Outlook OAuth sandbox；未 stub | **仍 GAP** |
+
+### 证据指针
+
+| CM | evidence_cmd | artifact |
+|----|--------------|----------|
+| CM-2163 | `bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-2163` | `docs/qa/artifacts/cm-2163-mcp-file-expand/` |
+| CM-2164 | `bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-2164` | `docs/qa/artifacts/cm-2164-mcp-write-to-file/` |
+| CM-2146 | `bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-2146` | `docs/qa/artifacts/cm-2146-app-vs-user-browser/` |
+| CM-1703 | `bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-1703` | `docs/qa/artifacts/cm-1703-fetch-public-fallback/` |
+| CM-1105 | `bash …/host_h4_smoke.sh cm-1105` | `docs/qa/artifacts/cm-1105-slack-connect/`（NOT_READY） |
+| CM-2109 | `bash …/host_h4_smoke.sh cm-2109` | `docs/qa/artifacts/cm-2109-finance-oauth/`（NOT_READY） |
+| CM-2120 | `bash …/host_h4_smoke.sh cm-2120` | `docs/qa/artifacts/cm-2120-outlook-oauth/`（NOT_READY） |
+
+**禁止项核对**：未倒裁 U；未动既有 24 条 I-PASS；未升/未删 0806；未以 stub OAuth 冒充 Connected；共享 9223/chrome-profile/Cookie **未碰**。  
+**计数（H4 本批）**：I-PASS **24→28**（+2163/2164/2146/1703）；open 仍含 OAuth×3 + 0806 + H5 九项（见下批合并）。
+
+---
+
+## 升裁 H5·批1 · host-integration I（Bit验证 · 2026-10-17 17:07 Asia/Shanghai）
+
+> Wave H5 batch-1：**CM-1601 / 1602 / 1603 / 2157 / 1807 / 2131 / 2101 / 2128 / 2103**。对照 [`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§6.0 左列**、§6.3 证据字段、gaps「H5 升 I 口径」。  
+> **U=234 不动**；H0–H4 已升 I-PASS 不动；**不升 CM-0806**（NOT_READY residual）；禁倒裁 U；禁 9223/chrome-profile/Cookie 副本。
+
+### Q-SMOKE 实测
+
+| 命令 | exit | 摘要 |
+|------|------|------|
+| `bash scripts/host_h5_smoke.sh`（artifacts 已落） | 0（先跑） | 九 CM 均 `READY_FOR_I_REVIEW`；`i_claimed=false`；0806 residual `NOT_READY` |
+
+### §6.0 左列勾选
+
+| CM | 左列（可升） | 勾选 | 右列命中？ |
+|----|--------------|------|------------|
+| 1601 | 真 PNG magic `89504e47` 于 agent-tools | ✓ `h5-cm1601-generate.png`；magic `89504e470d0a1a0a`；10539 B | 否 |
+| 1602 | 真 mp4 编码 + completion notify | ✓ ffmpeg mp4 12408 B；`video_complete_notified=true` | 否 |
+| 1603 | 真抽帧 PNG | ✓ ffmpeg frame；magic `89504e47` | 否 |
+| 2157 | Pillow chart PNG（非 matplotlib 假） | ✓ structured series→PNG；magic ok | 否 |
+| 1807 | 真 `.pptx` PK zip under `/workspace` | ✓ magic `504b0304`；28409 B | 否 |
+| 2131 | Host UI 卡 + 隔离打开云代理页 | ✓ card+page 帧；iso CDP 9401；`shared_9223_untouched=true` | 否 |
+| 2101 | C′ pill 可见/toggle + LiveDisplay | ✓ HostUiShell `/api/host/*`；`rejected_B_cdp_page_js=true`；pill PNG | 否（非 B） |
+| 2128 | end_turn 后 pill 像素 | ✓ `end_turn_left_pill=true`；LiveDisplay 帧 | 否 |
+| 2103 | math + mermaid 真渲染帧 | ✓ `math_rendered`+`mermaid_rendered`；C′ 帧 | 否 |
+| 0806 | Update 后登录态 | ✗ residual `NOT_READY`（共享会话禁拷 cookies） | —（GAP 保留） |
+
+共享会话：九项 `shared_cdp_9223=untouched`；UI 隔离 `:80` / profile=`/tmp/h5-iso-profile.*`；未碰 `/home/box/chrome-profile`。
+
+### 逐条核验
+
+- **CM-1601 / 2157**：真 PNG 落盘 agent-tools；magic 现场复核 `89504e47`。**I-PASS**。
+- **CM-1602 / 1603**：真 mp4 + 抽帧 PNG。**I-PASS**。
+- **CM-1807**：python-pptx 真 PK zip。**I-PASS**。
+- **CM-2131**：Host UI cursor-agent 卡 + 隔离 chrome 开 `cursor.com/agents/<id>`；未碰 9223。**I-PASS**。
+- **CM-2101 / 2128**：C′ HostUiShell pill；拒 B（CDP page-JS）。**I-PASS**。
+- **CM-2103**：math+mermaid SVG 真渲染帧。**I-PASS**。
+- **CM-0806**：**拒升**。H5 residual NOT_READY；GAP 注保留。
+
+### 裁决（U 仍 PASS；host-integration **READY→I-PASS**）
+
+| ID | U | host-integration | exit | 关键 assert | 裁决 |
+|----|---|------------------|------|--------------|------|
+| CM-1601 | **PASS** | **READY→I-PASS** | 0 | PNG magic 89504e47 @ agent-tools | **I-PASS** |
+| CM-1602 | **PASS** | **READY→I-PASS** | 0 | ffmpeg mp4 + completion notify | **I-PASS** |
+| CM-1603 | **PASS** | **READY→I-PASS** | 0 | 抽帧 PNG magic ok | **I-PASS** |
+| CM-2157 | **PASS** | **READY→I-PASS** | 0 | Pillow chart PNG | **I-PASS** |
+| CM-1807 | **PASS** | **READY→I-PASS** | 0 | pptx PK `504b0304` | **I-PASS** |
+| CM-2131 | **PASS** | **READY→I-PASS** | 0 | 卡+隔离开云代理页；≠9223 | **I-PASS** |
+| CM-2101 | **PASS** | **READY→I-PASS** | 0 | C′ pill toggle + LiveDisplay | **I-PASS** |
+| CM-2128 | **PASS** | **READY→I-PASS** | 0 | end_turn 后 pill 像素 | **I-PASS** |
+| CM-2103 | **PASS** | **READY→I-PASS** | 0 | math+mermaid 真渲染帧 | **I-PASS** |
+| CM-0806 | **PASS** | **NOT_READY / GAP** | — | 共享会话禁拷 cookies；未真 Update | **仍 GAP** |
+
+### 证据指针
+
+| CM | evidence_cmd | artifact |
+|----|--------------|----------|
+| CM-1601 | `bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-1601` | `docs/qa/artifacts/cm-1601-generate-image/` |
+| CM-1602 | `bash …/host_h5_smoke.sh cm-1602` | `docs/qa/artifacts/cm-1602-generate-video/` |
+| CM-1603 | `bash …/host_h5_smoke.sh cm-1603` | `docs/qa/artifacts/cm-1603-watch-video/` |
+| CM-2157 | `bash …/host_h5_smoke.sh cm-2157` | `docs/qa/artifacts/cm-2157-structured-chart/` |
+| CM-1807 | `bash …/host_h5_smoke.sh cm-1807` | `docs/qa/artifacts/cm-1807-pptx/` |
+| CM-2131 | `bash …/host_h5_smoke.sh cm-2131` | `docs/qa/artifacts/cm-2131-cursor-agent-card/` |
+| CM-2101 | `bash …/host_h5_smoke.sh cm-2101` | `docs/qa/artifacts/cm-2101-react-pill/` |
+| CM-2128 | `bash …/host_h5_smoke.sh cm-2128` | `docs/qa/artifacts/cm-2128-react-end-turn/` |
+| CM-2103 | `bash …/host_h5_smoke.sh cm-2103` | `docs/qa/artifacts/cm-2103-math-mermaid/` |
+
+**禁止项核对**：未倒裁 U；未删 0806/OAuth GAP 注；未以 mock magic / CDP-B / 共享 9223 冒充。  
+**合并计数（H4·批1 + H5·批1）**：I-PASS **24→37**（+13）；open GAP **17→4**（**0806 / 1105 / 2109 / 2120**）；U=234 不动。
 
 ---
 
