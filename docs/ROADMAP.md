@@ -133,6 +133,8 @@
 - [x] Host schedule_meeting materializes real `.ics` (VCALENDAR/VEVENT) under `data/calendar/` + SendToUser attachment
 - [x] Host purchase receipt HTML under `data/commerce/receipts/` + SendToUser attachment
 - [x] Host mail_send durable `.eml` draft (sandbox / live-fail fallback; never pretend sent)
+- [x] Host routine_tick wake log (`wakes.jsonl` + `last-tick.json`; daemon=false honest residual)
+- [x] Host finance_call sandbox/live artifact JSON under `data/connectors/finance/`
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN

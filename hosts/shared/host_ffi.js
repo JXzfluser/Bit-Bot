@@ -1389,12 +1389,35 @@ function createHostFfi(repoRoot) {
           });
         }
       }
+      const tickAt = new Date().toISOString();
+      const wakesPath = path.join(REPO_ROOT, "data", "routines", "wakes.jsonl");
+      const wakeEntry = {
+        due_count: due.length,
+        fired_count: fired.length,
+        fired_ids: fired.map((f) => f.id),
+        at: tickAt,
+        daemon: false,
+        note: "on-demand Host tick (cron daemon residual)",
+      };
+      appendJsonl(wakesPath, wakeEntry);
+      const lastTickPath = path.join(
+        REPO_ROOT,
+        "data",
+        "routines",
+        "last-tick.json",
+      );
+      fs.mkdirSync(path.dirname(lastTickPath), { recursive: true });
+      fs.writeFileSync(
+        lastTickPath,
+        JSON.stringify({ ...wakeEntry, wakes: wakesPath }, null, 2),
+      );
       appendHostDeliveryJournal({
         kind: "routine_tick",
         command,
         due_count: due.length,
         fired_count: fired.length,
-        at: new Date().toISOString(),
+        wakes: wakesPath,
+        at: tickAt,
       });
       return {
         kind: "routine_tick",
@@ -1406,6 +1429,9 @@ function createHostFfi(repoRoot) {
             fired_count: fired.length,
             fired,
             wakes: true,
+            wakes_path: wakesPath,
+            last_tick_path: lastTickPath,
+            daemon: false,
           },
           null,
           2,
@@ -4089,21 +4115,54 @@ function createHostFfi(repoRoot) {
 
     if (kind === "finance_call") {
       const parts = cmd.split("|");
+      const tool = parts[0] || "";
+      const output = parts.slice(1).join("|") || "";
       const finState = loadConnectorState("finance");
       const connected = Boolean(
         finState.connected ||
           (finState.oauth && finState.oauth.access_token) ||
           finState.access_token,
       );
-      const entry = {
-        tool: parts[0] || "",
-        output: parts.slice(1).join("|") || "",
+      const artifactDir = path.join(REPO_ROOT, "data", "connectors", "finance");
+      fs.mkdirSync(artifactDir, { recursive: true });
+      const artifactPath = path.join(
+        artifactDir,
+        `call-${sanitizeSkillName(tool) || "tool"}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        tool,
+        output,
         mode: connected ? "live_token_present" : "sandbox",
+        pretend_live: false,
+        balance_sandbox:
+          /balance|get_balance/i.test(tool) || /balance/i.test(output)
+            ? { currency: "USD", amount: 0, note: "sandbox zero — not live bank" }
+            : null,
+        at,
+      };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      const entry = {
+        tool,
+        output,
+        mode: artifact.mode,
+        artifact_path: artifactPath,
+        artifact_ok: fs.existsSync(artifactPath),
         at,
       };
       const pathWritten = appendJsonl(FINANCE_CALLS_PATH, entry);
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten, ok: true });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: pathWritten,
+        artifact: artifactPath,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: pathWritten,
+        ok: true,
+        balance_sandbox: artifact.balance_sandbox,
+      });
     }
 
     if (kind === "credential_fill") {
