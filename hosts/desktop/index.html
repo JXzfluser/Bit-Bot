@@ -906,11 +906,24 @@
                     (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "section_add") {
-                  label = "section:+" + ((p.section && p.section.id) || "?");
+                  label =
+                    "section:+" +
+                    ((p.section && p.section.id) || "?") +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "section_post") {
-                  label = "section:" + (p.section_id || "?") + "/post";
+                  label =
+                    "section:" +
+                    (p.section_id || "?") +
+                    "/post" +
+                    (p.path ? "/snap" : "");
                   types.push("text");
+                } else if (h.kind === "credential_fill") {
+                  label =
+                    "cred_fill:" +
+                    (p.domain || p.vault_id || "vault") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
                 } else if (h.kind === "channel_send" && p.live_post) {
                   label =
                     "live:" +

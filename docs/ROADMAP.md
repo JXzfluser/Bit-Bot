@@ -251,6 +251,8 @@
 - [x] Parity: multi-agent path honesty (pretend_private_dm / pretend_delivered / pretend_completed)
 - [x] Host channel_send per-send snapshots (Slack/Teams/email/meeting) under `data/channels/sends/`
 - [x] Parity: channel_send path + pretend_live honesty across draft/live paths
+- [x] Host section_add/post + credential_fill per-op snapshots (group/vault ledgers retained)
+- [x] Parity: section/credential path + pretend_shared / pretend_secret_view honesty
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

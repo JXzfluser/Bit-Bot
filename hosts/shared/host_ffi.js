@@ -6517,6 +6517,8 @@ function createHostFfi(repoRoot) {
       if (!Array.isArray(group.sections)) group.sections = [];
       if (!Array.isArray(group.messages)) group.messages = [];
       const existing = group.sections.find((s) => s && s.id === sectionId);
+      const snapDir = path.join(SECTIONS_DIR, "adds");
+      fs.mkdirSync(snapDir, { recursive: true });
       if (existing) {
         // Idempotent add — return existing partition (never invent a second section).
         if (title && existing.title !== title) {
@@ -6524,9 +6526,24 @@ function createHostFfi(repoRoot) {
           group.updated_at = at;
           fs.writeFileSync(groupPath, JSON.stringify(group, null, 2));
         }
+        const addPath = path.join(
+          snapDir,
+          `add-${sanitizeSkillName(sectionId) || "sec"}-existing-${Date.now().toString(36)}.json`,
+        );
+        const artifact = {
+          group_id: groupId,
+          section: existing,
+          group_path: groupPath,
+          section_count: group.sections.length,
+          existing: true,
+          pretend_shared: false,
+          mode: "host_section_add",
+          at,
+        };
+        fs.writeFileSync(addPath, JSON.stringify(artifact, null, 2));
         const delivery = recordSendToUser({
           type: "attachment",
-          path: groupPath,
+          path: addPath,
           label: "section_add_existing",
           source_kind: kind,
           at,
@@ -6534,18 +6551,15 @@ function createHostFfi(repoRoot) {
         appendHostDeliveryJournal({
           kind,
           command: cmd,
-          path: groupPath,
+          path: addPath,
+          group_path: groupPath,
           section_id: sectionId,
           existing: true,
           at,
         });
         return okJson(kind, cmd, {
-          group_id: groupId,
-          section: existing,
-          path: groupPath,
-          section_count: group.sections.length,
-          existing: true,
-          pretend_shared: false,
+          ...artifact,
+          path: addPath,
           send_to_user: delivery,
           ok: true,
         });
@@ -6559,9 +6573,24 @@ function createHostFfi(repoRoot) {
         ...sec,
         at,
       });
+      const addPath = path.join(
+        snapDir,
+        `add-${sanitizeSkillName(sectionId) || "sec"}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        group_id: groupId,
+        section: sec,
+        group_path: groupPath,
+        section_count: group.sections.length,
+        existing: false,
+        pretend_shared: false,
+        mode: "host_section_add",
+        at,
+      };
+      fs.writeFileSync(addPath, JSON.stringify(artifact, null, 2));
       const delivery = recordSendToUser({
         type: "attachment",
-        path: groupPath,
+        path: addPath,
         label: "section_add",
         source_kind: kind,
         at,
@@ -6569,17 +6598,14 @@ function createHostFfi(repoRoot) {
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: groupPath,
+        path: addPath,
+        group_path: groupPath,
         section_id: sectionId,
         at,
       });
       return okJson(kind, cmd, {
-        group_id: groupId,
-        section: sec,
-        path: groupPath,
-        section_count: group.sections.length,
-        existing: false,
-        pretend_shared: false,
+        ...artifact,
+        path: addPath,
         send_to_user: delivery,
         ok: true,
       });
@@ -6644,29 +6670,44 @@ function createHostFfi(repoRoot) {
         group_id: groupId,
         at,
       });
+      const postDir = path.join(SECTIONS_DIR, "posts");
+      fs.mkdirSync(postDir, { recursive: true });
+      const postPath = path.join(
+        postDir,
+        `post-${sanitizeSkillName(sectionId) || "sec"}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        group_id: groupId,
+        section_id: sectionId,
+        from_agent: fromAgent,
+        body,
+        group_path: groupPath,
+        messages_in_section: inSection.length,
+        isolation_ok: true,
+        pretend_cross_section: false,
+        mode: "host_section_post",
+        at,
+      };
+      fs.writeFileSync(postPath, JSON.stringify(artifact, null, 2));
       const delivery = recordSendToUser({
         type: "text",
         channel: `section:${groupId}/${sectionId}`,
         body_prefix: String(body).slice(0, 120),
+        path: postPath,
         source_kind: kind,
         at,
       });
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: groupPath,
+        path: postPath,
+        group_path: groupPath,
         section_id: sectionId,
         at,
       });
       return okJson(kind, cmd, {
-        group_id: groupId,
-        section_id: sectionId,
-        from_agent: fromAgent,
-        body,
-        path: groupPath,
-        messages_in_section: inSection.length,
-        isolation_ok: true,
-        pretend_cross_section: false,
+        ...artifact,
+        path: postPath,
         send_to_user: delivery,
         ok: true,
       });
@@ -7307,20 +7348,35 @@ function createHostFfi(repoRoot) {
       if (existing >= 0) vault.entries[existing] = { ...vault.entries[existing], ...meta };
       else vault.entries.push(meta);
       fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2));
+      const fillDir = path.join(REPO_ROOT, "data", "credentials", "fills");
+      fs.mkdirSync(fillDir, { recursive: true });
+      const fillPath = path.join(
+        fillDir,
+        `fill-${sanitizeSkillName(id) || "cred"}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        ...entry,
+        vault_path: vaultPath,
+        vault_id: id,
+        ledger_path: pathWritten,
+        pretend_secret_view: false,
+        mode: "host_credential_fill",
+        note: "secret stays in Host vault — never assistant_view; metadata upserted for list credentials",
+        at,
+      };
+      fs.writeFileSync(fillPath, JSON.stringify(artifact, null, 2));
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: pathWritten,
+        path: fillPath,
         vault_path: vaultPath,
+        ledger_path: pathWritten,
         at,
       });
       return okJson(kind, cmd, {
-        ...entry,
-        path: pathWritten,
-        vault_path: vaultPath,
-        vault_id: id,
-        pretend_secret_view: false,
-        note: "secret stays in Host vault — never assistant_view; metadata upserted for list credentials",
+        ...artifact,
+        path: fillPath,
+        ok: true,
       });
     }
 
