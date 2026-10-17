@@ -130,7 +130,7 @@ python3 -c "import json;d=json.load(open('/tmp/parity-mail-read.json'));h=next(x
 python3 -c "import json;d=json.load(open('/tmp/parity-mail-send.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_gmail';assert p.get('sent') is True;assert p.get('pretend_sent') is False;print('parity mail_send live ok', p.get('message_id'))"
 
 "${RUN[@]}" "add section group=parity id=sec-p title=Parity" >/tmp/parity-sec-add.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-sec-add.json'));h=next(x for x in d['host_results'] if x.get('kind')=='section_add');p=json.loads(h['stdout']);assert p.get('ok') is True or h.get('ok');print('parity section_add ok', (p.get('section') or {}).get('id') or p.get('section_id'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sec-add.json'));h=next(x for x in d['host_results'] if x.get('kind')=='section_add');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('ok') is True;assert (p.get('section') or {}).get('id')=='sec-p';assert p.get('pretend_shared') is False;print('parity section_add ok', p.get('section').get('id'), 'existing', p.get('existing'))"
 "${RUN[@]}" "section post group=parity section=sec-p from=user body=parity $MARKER" >/tmp/parity-sec-post.json
 python3 -c "import json;d=json.load(open('/tmp/parity-sec-post.json'));h=next(x for x in d['host_results'] if x.get('kind')=='section_post');p=json.loads(h['stdout']);assert p.get('isolation_ok') is True;assert p.get('pretend_cross_section') is False;assert (p.get('send_to_user') or {}).get('type')=='text';print('parity section_post ok', p.get('messages_in_section'))"
 

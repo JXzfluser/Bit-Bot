@@ -5541,15 +5541,39 @@ function createHostFfi(repoRoot) {
       }
       if (!Array.isArray(group.sections)) group.sections = [];
       if (!Array.isArray(group.messages)) group.messages = [];
-      if (group.sections.some((s) => s && s.id === sectionId)) {
-        return {
+      const existing = group.sections.find((s) => s && s.id === sectionId);
+      if (existing) {
+        // Idempotent add — return existing partition (never invent a second section).
+        if (title && existing.title !== title) {
+          existing.title = title;
+          group.updated_at = at;
+          fs.writeFileSync(groupPath, JSON.stringify(group, null, 2));
+        }
+        const delivery = recordSendToUser({
+          type: "attachment",
+          path: groupPath,
+          label: "section_add_existing",
+          source_kind: kind,
+          at,
+        });
+        appendHostDeliveryJournal({
           kind,
-          ok: false,
           command: cmd,
-          error: `section already exists: ${sectionId}`,
-          stdout: JSON.stringify({ path: groupPath }, null, 2),
-          stderr: "",
-        };
+          path: groupPath,
+          section_id: sectionId,
+          existing: true,
+          at,
+        });
+        return okJson(kind, cmd, {
+          group_id: groupId,
+          section: existing,
+          path: groupPath,
+          section_count: group.sections.length,
+          existing: true,
+          pretend_shared: false,
+          send_to_user: delivery,
+          ok: true,
+        });
       }
       const sec = { id: sectionId, title, group_id: groupId };
       group.sections.push(sec);
@@ -5579,6 +5603,7 @@ function createHostFfi(repoRoot) {
         section: sec,
         path: groupPath,
         section_count: group.sections.length,
+        existing: false,
         pretend_shared: false,
         send_to_user: delivery,
         ok: true,
