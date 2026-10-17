@@ -209,6 +209,7 @@
 - [x] Mobile SendToUser surface broadened (more Host kinds + machine_kind banner)
 - [x] Parity: Gmail live search/read/send, sections, slides, purchase sandbox+live, install plugin, learn_from_demo
 - [x] section_add idempotent when section id already exists (return existing partition; never invent duplicate)
+- [x] Parity live mocks: X search, job catalog, calendar events, finance tools + author_skill
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

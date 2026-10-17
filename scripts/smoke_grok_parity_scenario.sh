@@ -152,6 +152,33 @@ python3 -c "import json;d=json.load(open('/tmp/parity-purchase-live.json'));h=ne
 python3 -c "import json;d=json.load(open('/tmp/parity-plugin.json'));assert d.get('ok');assert d.get('intent')=='install_plugin';print('parity install_plugin ok')"
 "${RUN[@]}" "learn from demo title=ParityCheckout steps=click:Cart|type:email" >/tmp/parity-lfd.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-lfd.json'));h=next(x for x in d['host_results'] if x.get('kind')=='skill_write');p=json.loads(h['stdout']);assert p.get('path') and os.path.isfile(p['path']);body=open(p['path']).read();assert 'click:Cart' in body or 'Steps' in body;print('parity learn_from_demo ok')"
+"${RUN[@]}" "author skill name=parity-skill description=demo body=Do the parity thing $MARKER" >/tmp/parity-author.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-author.json'));h=next(x for x in d['host_results'] if x.get('kind')=='skill_write');p=json.loads(h['stdout']);assert p.get('persisted') is True;assert p.get('path') and os.path.isfile(p['path']);print('parity author_skill ok', p.get('name'))"
+
+# 9g) X / job / calendar / finance live mocks
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18772 --mode x --token smoke-x >/tmp/parity-x-mock.log 2>&1 &
+X_PID=$!
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18771 --mode job --token smoke-job >/tmp/parity-job-mock.log 2>&1 &
+JOB_PID=$!
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18776 --mode calendar --token smoke-cal >/tmp/parity-cal-mock.log 2>&1 &
+CAL_PID=$!
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18768 --mode finance --token smoke-fin >/tmp/parity-fin-mock.log 2>&1 &
+FIN_PID=$!
+sleep 0.4
+BITBOT_X_API_BASE=http://127.0.0.1:18772 BITBOT_X_BEARER=smoke-x \
+  "${RUN[@]}" "x search parity $MARKER" >/tmp/parity-x.json || true
+BITBOT_JOB_API_URL=http://127.0.0.1:18771 BITBOT_JOB_TOKEN=smoke-job \
+  "${RUN[@]}" "job search engineer" >/tmp/parity-job.json || true
+BITBOT_CALENDAR_API_URL=http://127.0.0.1:18776 BITBOT_CALENDAR_TOKEN=smoke-cal \
+  "${RUN[@]}" "schedule meeting title=ParityLive when=tomorrow" >/tmp/parity-cal.json || true
+BITBOT_FINANCE_API_URL=http://127.0.0.1:18768 BITBOT_FINANCE_TOKEN=smoke-fin \
+  "${RUN[@]}" "finance get_balance" >/tmp/parity-fin.json || true
+kill "$X_PID" "$JOB_PID" "$CAL_PID" "$FIN_PID" >/dev/null 2>&1 || true
+wait "$X_PID" "$JOB_PID" "$CAL_PID" "$FIN_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/parity-x.json'));h=next(x for x in d['host_results'] if x.get('kind')=='x_search');p=json.loads(h['stdout']);assert p.get('mode')=='x_live';assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;print('parity x_search live ok', p.get('hit_count'))"
+python3 -c "import json;d=json.load(open('/tmp/parity-job.json'));h=next(x for x in d['host_results'] if x.get('kind')=='job_search');p=json.loads(h['stdout']);assert p.get('mode')=='job_live';assert p.get('live_job_residual') is False;assert p.get('pretend_applied') is False;assert p.get('hit_count')>=1;print('parity job_search live ok', p.get('hit_count'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('mode')=='calendar_live';assert p.get('live_calendar_residual') is False;assert p.get('ics_ok') is True and os.path.isfile(p['ics_path']);print('parity calendar live ok')"
+python3 -c "import json;d=json.load(open('/tmp/parity-fin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='finance_call');p=json.loads(h['stdout']);assert p.get('mode')=='finance_live';assert p.get('live_finance_residual') is False;assert p.get('pretend_live') is False;print('parity finance_call live ok')"
 
 # 10) Multi-end mobile Host strip + ListMachines host-present honesty
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
