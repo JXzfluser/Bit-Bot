@@ -1175,18 +1175,58 @@ function createHostFfi(repoRoot) {
           error: `routine not fireable (paused): ${id}`,
         };
       }
+      const firedAt = new Date().toISOString();
+      const cron = (hit && hit.cron) || "@daily";
+      let nextDueMs = Date.now() + 24 * 3600 * 1000;
+      if (cron === "@hourly" || /hourly/i.test(cron)) {
+        nextDueMs = Date.now() + 3600 * 1000;
+      } else if (cron === "@weekly" || /weekly/i.test(cron)) {
+        nextDueMs = Date.now() + 7 * 24 * 3600 * 1000;
+      }
+      const nextDue = new Date(nextDueMs).toISOString();
+      if (hit) {
+        hit.last_fired_at = firedAt;
+        hit.next_due = nextDue;
+        saveRoutines(rows);
+      }
+      const firesPath = path.join(
+        REPO_ROOT,
+        "data",
+        "routines",
+        "fires.jsonl",
+      );
+      const fireEntry = {
+        id,
+        cron,
+        prompt: (hit && hit.prompt) || "",
+        fired: true,
+        at: firedAt,
+        next_due: nextDue,
+      };
+      appendJsonl(firesPath, fireEntry);
       appendHostDeliveryJournal({
         kind,
         command,
         fired: true,
-        prompt: (hit && hit.prompt) || "",
-        at: new Date().toISOString(),
+        prompt: fireEntry.prompt,
+        next_due: nextDue,
+        at: firedAt,
       });
       return {
         kind,
         ok: true,
         command,
-        stdout: `fired ${id} prompt=${(hit && hit.prompt) || "(none)"}`,
+        stdout: JSON.stringify(
+          {
+            fired: true,
+            id,
+            prompt: fireEntry.prompt,
+            next_due: nextDue,
+            fires: firesPath,
+          },
+          null,
+          2,
+        ),
         stderr: "",
       };
     }
@@ -1574,6 +1614,67 @@ function createHostFfi(repoRoot) {
       m === "open_browser" ||
       m === "browser_open"
     );
+  }
+
+  async function waitOauthCallback({
+    artifactDir,
+    waitMs,
+    redirectUri,
+    tokenUrl,
+    clientId,
+    clientSecret,
+    serveAutoAuthorize,
+    seedCode,
+  }) {
+    const args = [
+      path.join(REPO_ROOT, "scripts", "host_oauth_callback_wait.py"),
+      "--artifact-dir",
+      artifactDir,
+      "--wait-ms",
+      String(waitMs || 5000),
+    ];
+    if (redirectUri) args.push("--redirect-uri", redirectUri);
+    if (tokenUrl) args.push("--token-url", tokenUrl);
+    if (clientId) args.push("--client-id", clientId);
+    if (clientSecret) args.push("--client-secret", clientSecret);
+    if (serveAutoAuthorize) args.push("--serve-auto-authorize");
+    if (seedCode) args.push("--seed-code", seedCode);
+    const { stdout, stderr } = await execFileAsync(
+      process.env.PYTHON || "python3",
+      args,
+      { cwd: REPO_ROOT, timeout: Math.max(15000, (waitMs || 5000) + 10000) },
+    );
+    let summary = {};
+    const p = path.join(artifactDir, "callback_wait.json");
+    if (fs.existsSync(p)) {
+      summary = JSON.parse(fs.readFileSync(p, "utf8"));
+    } else {
+      const line = String(stdout || "")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .pop();
+      if (line && line.startsWith("{")) summary = JSON.parse(line);
+    }
+    // Prefer access_token from stdout JSON when evidence redacted it.
+    try {
+      const line = String(stdout || "")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .pop();
+      if (line && line.startsWith("{")) {
+        const full = JSON.parse(line);
+        if (full.access_token) summary.access_token = full.access_token;
+        if (full.authorize_auto_url)
+          summary.authorize_auto_url = full.authorize_auto_url;
+        if (full.redirect_uri) summary.redirect_uri = full.redirect_uri;
+        if (full.token_url) summary.token_url = full.token_url;
+      }
+    } catch {
+      /* ignore */
+    }
+    return { summary, stdout, stderr, ok: Boolean(summary.ok) };
   }
 
   async function openAuthorizeBrowser(authorizeUrl, artifactDir) {
@@ -2063,8 +2164,228 @@ function createHostFfi(repoRoot) {
     }
 
     // Remote authorize/token URLs present but no token yet → honest NeedsAuth with URLs.
-    // Optionally open authorize URL in a headed browser (still NeedsAuth until code/token).
+    // Optionally open authorize URL; optionally wait for callback→token (remote_callback).
     if (authorizeUrlEnv && tokenUrlEnv && !live) {
+      const waitMs = Number(process.env.BITBOT_OAUTH_CALLBACK_WAIT_MS || 0);
+      const wantCallback =
+        waitMs > 0 ||
+        exchangeMode === "remote_callback" ||
+        exchangeMode === "callback";
+
+      if (wantCallback) {
+        const waitMsEffective = waitMs > 0 ? waitMs : 8000;
+        const useAuto =
+          process.env.BITBOT_OAUTH_USE_AUTO_AUTHORIZE === "1" ||
+          exchangeMode === "remote_callback" ||
+          exchangeMode === "callback";
+        const { spawn } = require("child_process");
+        // When rehearsing with authorize-auto, omit remote token URL so the
+        // callback script exchanges against its local /token endpoint.
+        const useLocalToken =
+          useAuto ||
+          process.env.BITBOT_OAUTH_USE_LOCAL_TOKEN === "1" ||
+          /example\.invalid|placeholder/.test(tokenUrlEnv);
+        const pyArgs = [
+          path.join(REPO_ROOT, "scripts", "host_oauth_callback_wait.py"),
+          "--artifact-dir",
+          artifactDir,
+          "--wait-ms",
+          String(waitMsEffective),
+          "--client-id",
+          clientId || "bitbot",
+        ];
+        if (!useLocalToken && tokenUrlEnv) {
+          pyArgs.push("--token-url", tokenUrlEnv);
+        }
+        if (String(process.env.BITBOT_OAUTH_CLIENT_SECRET || "").trim()) {
+          pyArgs.push(
+            "--client-secret",
+            String(process.env.BITBOT_OAUTH_CLIENT_SECRET || "").trim(),
+          );
+        }
+        if (process.env.BITBOT_OAUTH_REDIRECT_URI) {
+          pyArgs.push(
+            "--redirect-uri",
+            String(process.env.BITBOT_OAUTH_REDIRECT_URI).trim(),
+          );
+        }
+        if (useAuto) pyArgs.push("--serve-auto-authorize");
+        const child = spawn(process.env.PYTHON || "python3", pyArgs, {
+          cwd: REPO_ROOT,
+          env: process.env,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stdoutBuf = "";
+        let stderrBuf = "";
+        child.stdout.on("data", (c) => {
+          stdoutBuf += String(c);
+        });
+        child.stderr.on("data", (c) => {
+          stderrBuf += String(c);
+        });
+        // Wait for listener.json so we know authorize-auto / redirect URLs.
+        const listenerPath = path.join(artifactDir, "listener.json");
+        let listener = null;
+        const listenDeadline = Date.now() + 5000;
+        while (Date.now() < listenDeadline && !listener) {
+          if (fs.existsSync(listenerPath)) {
+            try {
+              listener = JSON.parse(fs.readFileSync(listenerPath, "utf8"));
+            } catch {
+              /* retry */
+            }
+          } else {
+            await new Promise((r) => setTimeout(r, 50));
+          }
+        }
+        let openUrl = authorizeUrlEnv;
+        if (useAuto && listener && listener.authorize_auto_url) {
+          openUrl = listener.authorize_auto_url;
+        }
+        const browser = await openAuthorizeBrowser(openUrl, artifactDir);
+        const childResult = await new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            try {
+              child.kill("SIGTERM");
+            } catch {
+              /* ignore */
+            }
+            resolve({ code: -1, timedOut: true });
+          }, waitMsEffective + 5000);
+          child.on("close", (code) => {
+            clearTimeout(timer);
+            resolve({ code, timedOut: false });
+          });
+        });
+        let summary = {};
+        const cbPath = path.join(artifactDir, "callback_wait.json");
+        if (fs.existsSync(cbPath)) {
+          summary = JSON.parse(fs.readFileSync(cbPath, "utf8"));
+        } else {
+          const line = stdoutBuf
+            .trim()
+            .split("\n")
+            .filter(Boolean)
+            .pop();
+          if (line && line.startsWith("{")) summary = JSON.parse(line);
+        }
+        try {
+          const line = stdoutBuf
+            .trim()
+            .split("\n")
+            .filter(Boolean)
+            .pop();
+          if (line && line.startsWith("{")) {
+            const full = JSON.parse(line);
+            if (full.access_token) summary.access_token = full.access_token;
+          }
+        } catch {
+          /* ignore */
+        }
+        if (summary.access_token) {
+          const access = String(summary.access_token);
+          const state = {
+            connected: true,
+            status: statusDesired,
+            mode: "live_remote_callback",
+            provider,
+            detail: `live remote OAuth callback→token → ${statusDesired}`,
+            oauth: {
+              access_token: access,
+              token_type: "Bearer",
+              sandbox: false,
+              remote_callback: true,
+            },
+            access_token: access,
+            browser_opened: Boolean(browser.opened),
+            artifact_dir: artifactDir,
+            at: new Date().toISOString(),
+          };
+          saveConnectorState(connectorName, state);
+          appendHostDeliveryJournal({
+            kind: "oauth",
+            command,
+            connector: connectorName,
+            ok: true,
+            status: state.status,
+            mode: "live_remote_callback",
+            browser_opened: Boolean(browser.opened),
+            at: state.at,
+          });
+          return {
+            kind: "oauth",
+            ok: true,
+            command,
+            stdout: JSON.stringify(
+              {
+                connector: connectorName,
+                status: state.status,
+                connected: true,
+                mode: "live_remote_callback",
+                browser_opened: Boolean(browser.opened),
+                callback_received: true,
+                child_exit: childResult.code,
+                summary_ok: true,
+              },
+              null,
+              2,
+            ),
+            stderr: "",
+            error: "",
+          };
+        }
+        const mode = browser.opened
+          ? "live_remote_browser_open"
+          : "live_remote_callback_pending";
+        const state = {
+          connected: false,
+          status: "NeedsAuth",
+          mode,
+          provider,
+          detail: summary.callback_received
+            ? "live remote callback received but token exchange failed — NeedsAuth"
+            : "live remote OAuth awaiting callback / auth code — NeedsAuth",
+          authorize_url: openUrl,
+          token_url: tokenUrlEnv,
+          browser_opened: Boolean(browser.opened),
+          callback_received: Boolean(summary.callback_received),
+          artifact_dir: artifactDir,
+          at: new Date().toISOString(),
+        };
+        saveConnectorState(connectorName, state);
+        appendHostDeliveryJournal({
+          kind: "oauth",
+          command,
+          connector: connectorName,
+          ok: false,
+          status: "NeedsAuth",
+          mode,
+          at: state.at,
+        });
+        return {
+          kind: "oauth",
+          ok: false,
+          command,
+          stdout: JSON.stringify(
+            {
+              connector: connectorName,
+              status: "NeedsAuth",
+              connected: false,
+              mode,
+              authorize_url: openUrl,
+              token_url: tokenUrlEnv,
+              browser_opened: Boolean(browser.opened),
+              callback_received: Boolean(summary.callback_received),
+              summary_ok: false,
+            },
+            null,
+            2,
+          ),
+          stderr: String(stderrBuf || "").slice(0, 2000),
+          error: "oauth live remote callback pending / NeedsAuth",
+        };
+      }
+
       let browser = { opened: false };
       let mode = "live_remote_needs_auth";
       if (shouldOpenOauthBrowser(exchangeMode)) {
@@ -2566,11 +2887,59 @@ function createHostFfi(repoRoot) {
       const action = parts[0] || "start";
       const address = parts.slice(1).join("|") || "voice:unknown";
       const rows = readJsonArray(VOICE_SESSIONS_PATH);
+      const mediaDir = path.join(REPO_ROOT, "data", "voice", "media");
+      fs.mkdirSync(mediaDir, { recursive: true });
+      const slug = String(address)
+        .replace(/[^a-zA-Z0-9._-]+/g, "_")
+        .slice(0, 64);
+      const mediaPath = path.join(mediaDir, `${slug || "voice"}.wav`);
+      let media = { ok: false, path: mediaPath, tool: null, bytes: 0 };
+      if (action === "start") {
+        // Real Host media surface (not journal-only): short sine WAV via ffmpeg.
+        try {
+          const { execFileSync } = require("child_process");
+          const ffmpeg = process.env.FFMPEG || "ffmpeg";
+          execFileSync(
+            ffmpeg,
+            [
+              "-y",
+              "-f",
+              "lavfi",
+              "-i",
+              "sine=frequency=440:duration=0.4",
+              "-ar",
+              "16000",
+              "-ac",
+              "1",
+              mediaPath,
+            ],
+            { stdio: "ignore", timeout: 15000 },
+          );
+          if (fs.existsSync(mediaPath) && fs.statSync(mediaPath).size > 44) {
+            media = {
+              ok: true,
+              path: mediaPath,
+              tool: "ffmpeg-sine",
+              bytes: fs.statSync(mediaPath).size,
+            };
+          }
+        } catch (err) {
+          media = {
+            ok: false,
+            path: mediaPath,
+            tool: "ffmpeg",
+            error: err.message || String(err),
+            bytes: 0,
+          };
+        }
+      }
       const row = {
         action,
         voice_address: address,
         live: action === "start",
         relay_log: [],
+        media_path: media.path,
+        media_ok: Boolean(media.ok),
         at,
       };
       const idx = rows.findIndex((r) => r && r.voice_address === address);
@@ -2581,6 +2950,7 @@ function createHostFfi(repoRoot) {
         kind,
         command: cmd,
         path: VOICE_SESSIONS_PATH,
+        media_ok: media.ok,
         at,
       });
       return okJson(kind, cmd, {
@@ -2588,6 +2958,9 @@ function createHostFfi(repoRoot) {
         path: VOICE_SESSIONS_PATH,
         voice_address: address,
         live: row.live,
+        media_ok: Boolean(media.ok),
+        media_path: media.path,
+        media_bytes: media.bytes || 0,
       });
     }
 
@@ -2604,6 +2977,16 @@ function createHostFfi(repoRoot) {
       row.relay_log = Array.isArray(row.relay_log) ? row.relay_log : [];
       row.relay_log.push({ role: "user", text, at });
       row.at = at;
+      // Append relay transcript beside media (SendToUser voice surface).
+      if (row.media_path) {
+        const transcript = path.join(
+          path.dirname(row.media_path),
+          path.basename(row.media_path, path.extname(row.media_path)) +
+            ".transcript.jsonl",
+        );
+        appendJsonl(transcript, { role: "user", text, at });
+        row.transcript_path = transcript;
+      }
       writeJsonArray(VOICE_SESSIONS_PATH, rows);
       appendHostDeliveryJournal({
         kind,
@@ -2616,6 +2999,8 @@ function createHostFfi(repoRoot) {
         voice_address: address,
         turns: row.relay_log.length,
         path: VOICE_SESSIONS_PATH,
+        media_path: row.media_path || null,
+        transcript_path: row.transcript_path || null,
       });
     }
 
@@ -2648,11 +3033,15 @@ function createHostFfi(repoRoot) {
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, summary + "\n");
       const rows = readJsonArray(VOICE_SESSIONS_PATH);
+      let mediaPath = null;
+      let mediaOk = false;
       for (const r of rows) {
         if (r && r.live) {
           r.live = false;
           r.ended_at = at;
           r.summary_path = outPath;
+          mediaPath = r.media_path || null;
+          mediaOk = Boolean(r.media_ok);
         }
       }
       writeJsonArray(VOICE_SESSIONS_PATH, rows);
@@ -2660,12 +3049,15 @@ function createHostFfi(repoRoot) {
         kind,
         command: cmd,
         path: outPath,
+        media_ok: mediaOk,
         at,
       });
       return okJson(kind, cmd, {
         path: outPath,
         bytes: Buffer.byteLength(summary + "\n"),
         summary_prefix: summary.slice(0, 120),
+        media_path: mediaPath,
+        media_ok: mediaOk,
       });
     }
 

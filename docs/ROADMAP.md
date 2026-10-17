@@ -119,7 +119,10 @@
 - [x] Host computer_use vision planner: DOM observe + PIL screenshot hotspots → second-pass act (no OCR; sign-in stop honest)
 - [x] Host computer_use vision DOM bounding-box targets (search/cart/primary) preferred over PIL hotspots when present
 - [x] Host OAuth remote authorize browser open (`BITBOT_OAUTH_OPEN_BROWSER=1` / `EXCHANGE=remote_open`) → `live_remote_browser_open` NeedsAuth (never pretend Connected)
-- [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs still residual)
+- [x] Host OAuth remote callback→token rehearsal (`EXCHANGE=remote_callback` / `BITBOT_OAUTH_CALLBACK_WAIT_MS`): browser→local callback→token (`live_remote_callback`); real production IdP credentials deferred
+- [x] Host voice media: `voice_session` materializes real WAV (`data/voice/media/*.wav`) + relay transcript jsonl (not journal-only)
+- [x] Host routine fire durable: `fires.jsonl` + `last_fired_at` / `next_due` (wake scheduler residual beyond on-demand fire)
+- [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN
 - [x] Channel deepen: Slack thread_ts replies + optional `BITBOT_SLACK_CLAIM` inbound.jsonl; Teams chat message POST when chat id present

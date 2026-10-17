@@ -28,17 +28,17 @@ Smoke: `bash scripts/smoke_real_chat.sh` (Shell, ListDir, memory set/get, WebFet
 
 ## Residual (honest gaps)
 
+Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 0005). Below are deferred product residuals (not matrix I blockers):
+
 | Item | Status |
 |------|--------|
-| Phone OS permission card (CM-0705 true device) | Still needs real phone OS; Host card is gate UI only |
-| Production Gmail/Outlook OAuth without tokens on disk | Sandbox IdP path; Connected state stored locally; no browser OAuth dance in this runtime |
-| Slack post without `BITBOT_SLACK_POST=1` | Draft-first only |
-| Screenshot | Only when `DISPLAY` set and import/scrot available |
-| Large model quality | LocalBrain is tool-faithful + extractive summary, not a frontier LLM |
-| Routine *execution* | Disk list/create only; no cron / wake scheduler yet |
-| Write path policy | Prefer `/workspace/data` and `/workspace/agent-tools`; other workspace paths still allowed by sandbox |
-| API/Ollama tool JSON | Optional ```json tool blocks; primary tool path is LocalBrain intent parse |
-| Multi-user auth | Host UI is local demo surface; no account login |
+| Phone OS permission card (CM-0705 true device) | **Deferred** — Host card + native scaffolds exist; true OS dialog needs device |
+| Production Slack/Gmail IdP credentials | **Deferred** — sandbox / local_exchange / interactive_local / remote_callback rehearsals green without production secrets |
+| Store signing certs (Desktop/iOS/Android) | **Deferred** — signing scaffolds + unsigned pack evidence present |
+| Slack post without `BITBOT_SLACK_POST=1` | Draft-first only (live gated) |
+| Screenshot | Only when `DISPLAY` set and ffmpeg/import/scrot available |
+| Routine wake scheduler | On-demand `routine_fire` durable (`fires.jsonl` + next_due); cron daemon residual |
+| Legacy LocalBrain Host UI | Demoted — not product brain |
 
 ## Env vars
 
