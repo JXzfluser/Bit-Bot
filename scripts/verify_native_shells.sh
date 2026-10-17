@@ -15,10 +15,25 @@ need() {
 
 need hosts/ios/BitBotHost/Sources/BitBotHost/TurnBridge.swift
 need hosts/ios/BitBotHost/Sources/BitBotHost/BitBotApp.swift
+need hosts/ios/BitBotHost/Sources/BitBotHost/DevicePermissionHost.swift
 need hosts/ios/BitBotHost/project.yml
 need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/TurnBridge.kt
 need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivity.kt
+need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/DevicePermissionHost.kt
 need hosts/android/BitBotHost/app/build.gradle.kts
+need hosts/android/BitBotHost/app/src/main/AndroidManifest.xml
+
+# CM-0705: Android Host declares camera/mic; never pretend-granted in source.
+python3 - <<'PY'
+from pathlib import Path
+man = Path("hosts/android/BitBotHost/app/src/main/AndroidManifest.xml").read_text()
+assert "android.permission.CAMERA" in man
+kt = Path("hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/DevicePermissionHost.kt").read_text()
+assert "pretendGranted" in kt and "false" in kt
+swift = Path("hosts/ios/BitBotHost/Sources/BitBotHost/DevicePermissionHost.swift").read_text()
+assert "pretendGranted" in swift
+print("native device_permission Host scaffolds ok")
+PY
 
 echo "==> iOS machine_kind via mobile_host (BitBotHost bridge target)"
 node hosts/mobile_host/run.js --machine-kind ios --session-id ios-native-shell "ListMachines" \

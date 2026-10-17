@@ -3,6 +3,7 @@ package com.bitbot.host
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -27,8 +28,12 @@ import kotlinx.coroutines.withContext
 /**
  * Android Host shell — MoonBit (`cmd/desktop_turn`) is the product brain.
  * This activity only bridges user text → Host FFI via [TurnBridge].
+ * CM-0705: device_permission raises a real OS permission request (never pretend-granted).
  */
 class MainActivity : ComponentActivity() {
+  private val permissionLauncher =
+    registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* Host only; no auto-ok */ }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
@@ -63,10 +68,20 @@ class MainActivity : ComponentActivity() {
                 val result = withContext(Dispatchers.IO) {
                   runCatching { TurnBridge.runTurn(text, machineKind = "android") }
                 }
-                transcript += "\n> $text\n" + result.fold(
+                val body = result.fold(
                   onSuccess = { it },
                   onFailure = { "! ${it.message}" },
-                ) + "\n"
+                )
+                // CM-0705: Host raises OS permission dialogs for device_permission cards.
+                val cards = DevicePermissionHost.cardsFromTurnJson(this@MainActivity, body)
+                val need = cards.mapNotNull { it.androidPermission }.distinct().toTypedArray()
+                if (need.isNotEmpty()) {
+                  permissionLauncher.launch(need)
+                }
+                val cardNote = if (cards.isEmpty()) "" else
+                  "\n[host permission cards pretend_granted=false] " +
+                    cards.joinToString { "${it.tool}:${it.status}" }
+                transcript += "\n> $text\n$body$cardNote\n"
                 busy = false
               }
             },

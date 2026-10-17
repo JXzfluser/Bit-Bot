@@ -132,7 +132,39 @@ def capture_screenshot(artifact_dir: Path) -> Dict[str, Any]:
     display = os.environ.get("DISPLAY") or ""
     if not display:
         return {"ok": False, "error": "no DISPLAY", "path": None}
-    # Prefer import (ImageMagick) then gnome-screenshot / scrot.
+    # Prefer ffmpeg x11grab (available in Host env), then import/gnome-screenshot/scrot.
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        try:
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-f",
+                    "x11grab",
+                    "-video_size",
+                    "1100x800",
+                    "-i",
+                    f"{display}+0,0",
+                    "-frames:v",
+                    "1",
+                    str(out),
+                ],
+                check=False,
+                timeout=12,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if out.exists() and out.stat().st_size > 0:
+                return {
+                    "ok": True,
+                    "path": str(out),
+                    "bytes": out.stat().st_size,
+                    "tool": "ffmpeg-x11grab",
+                    "display": display,
+                }
+        except Exception as e:  # noqa: BLE001
+            pass
     for cmd in (
         ["import", "-window", "root", str(out)],
         ["gnome-screenshot", "-f", str(out)],
@@ -370,12 +402,53 @@ def main() -> int:
         )
         gui["box_chrome_process"] = bool(gui.get("started"))
 
+    # CM-1202-shaped structured outcome for parent (no raw click stream).
+    title = None
+    if isinstance(gui.get("actions"), dict):
+        title = gui["actions"].get("title")
+    steps_ok = True
+    if isinstance(gui.get("actions"), dict) and "ok" in gui["actions"]:
+        steps_ok = bool(gui["actions"].get("ok"))
+    outcome = {
+        "agent_id": f"cu-host-{artifact_dir.name}",
+        "summary": "structured outcome only",
+        "final_url": navigate.get("url"),
+        "blocked_on_signin": False,
+        "navigate_reachable": bool(navigate.get("navigate_reachable")),
+        "os_window": bool(gui.get("os_window")),
+        "actions_ok": steps_ok,
+        "screenshot_ok": bool((gui.get("screenshot") or {}).get("ok")),
+        "page_title": title,
+        "shared_cdp_untouched": gui.get("shared_cdp_untouched", True),
+    }
+    # Agent loop record: observe → act → re-observe (Host-side, not LocalBrain).
+    agent_loop = {
+        "observe": {
+            "http_status": navigate.get("http_status"),
+            "navigate_reachable": navigate.get("navigate_reachable"),
+        },
+        "act": {
+            "gui_mode": gui.get("gui_mode"),
+            "actions": (gui.get("actions") or {}).get("actions"),
+        },
+        "reobserve": {
+            "title": title,
+            "screenshot": gui.get("screenshot"),
+        },
+        "outcome": outcome,
+    }
+    (artifact_dir / "agent_loop.json").write_text(
+        json.dumps(agent_loop, indent=2) + "\n", encoding="utf-8"
+    )
+
     summary = {
         "ok": True,
         "command": args.command,
         "navigate": navigate,
         "http": http_meta,
         "gui": gui,
+        "outcome": outcome,
+        "agent_loop": agent_loop,
         "artifact_dir": str(artifact_dir),
         "i_claimed": False,
         "mode": "host_box_chrome_cu",

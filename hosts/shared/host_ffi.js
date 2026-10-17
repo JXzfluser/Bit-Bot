@@ -1515,6 +1515,124 @@ function createHostFfi(repoRoot) {
       };
     }
 
+    // Remote token exchange when auth code + token URL are provided (non-interactive residual remains).
+    const authCode = String(process.env.BITBOT_OAUTH_AUTH_CODE || "").trim();
+    if (tokenUrlEnv && authCode) {
+      const clientSecret = String(
+        process.env.BITBOT_OAUTH_CLIENT_SECRET || "",
+      ).trim();
+      const form = new URLSearchParams({
+        grant_type: "authorization_code",
+        code: authCode,
+        client_id: clientId || "bitbot",
+        redirect_uri:
+          process.env.BITBOT_OAUTH_REDIRECT_URI || "http://127.0.0.1/callback",
+      });
+      if (clientSecret) form.set("client_secret", clientSecret);
+      const tokenRes = await httpJson(tokenUrlEnv, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: form.toString(),
+      });
+      fs.writeFileSync(
+        path.join(artifactDir, "remote_token_exchange.json"),
+        JSON.stringify(
+          {
+            token_url: tokenUrlEnv,
+            http_status: tokenRes.status || 0,
+            ok: Boolean(tokenRes.ok),
+            // Never persist raw refresh tokens into evidence.
+            has_access_token: Boolean(
+              tokenRes.json && tokenRes.json.access_token,
+            ),
+          },
+          null,
+          2,
+        ),
+      );
+      const access =
+        tokenRes.json && tokenRes.json.access_token
+          ? String(tokenRes.json.access_token)
+          : "";
+      if (access) {
+        const state = {
+          connected: true,
+          status: statusDesired,
+          mode: "live_code_exchange",
+          provider,
+          detail: `live OAuth authorization_code exchange → ${statusDesired}`,
+          oauth: {
+            access_token: access,
+            token_type: "Bearer",
+            sandbox: false,
+          },
+          access_token: access,
+          artifact_dir: artifactDir,
+          at: new Date().toISOString(),
+        };
+        saveConnectorState(connectorName, state);
+        appendHostDeliveryJournal({
+          kind: "oauth",
+          command,
+          connector: connectorName,
+          ok: true,
+          status: state.status,
+          mode: "live_code_exchange",
+          at: state.at,
+        });
+        return {
+          kind: "oauth",
+          ok: true,
+          command,
+          stdout: JSON.stringify(
+            {
+              connector: connectorName,
+              status: state.status,
+              connected: true,
+              mode: "live_code_exchange",
+              summary_ok: true,
+            },
+            null,
+            2,
+          ),
+          stderr: "",
+          error: "",
+        };
+      }
+      // Exchange attempted but no token — honest NeedsAuth.
+      const state = {
+        connected: false,
+        status: "NeedsAuth",
+        mode: "live_code_exchange_failed",
+        provider,
+        detail: `live code exchange failed http=${tokenRes.status || 0}`,
+        artifact_dir: artifactDir,
+        at: new Date().toISOString(),
+      };
+      saveConnectorState(connectorName, state);
+      return {
+        kind: "oauth",
+        ok: false,
+        command,
+        stdout: JSON.stringify(
+          {
+            connector: connectorName,
+            status: "NeedsAuth",
+            connected: false,
+            mode: "live_code_exchange_failed",
+            summary_ok: false,
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+        error: "oauth live code exchange failed",
+      };
+    }
+
     // Local authorize→token exchange rehearsal (honest mode name: local_exchange).
     if (exchangeMode === "local" || exchangeMode === "1" || exchangeMode === "true") {
       const ex = await runLocalOauthExchange(provider, artifactDir);
@@ -2470,6 +2588,12 @@ function createHostFfi(repoRoot) {
                 (gui.actions && gui.actions.title) ||
                 null,
             },
+            outcome: summary.outcome || {
+              summary: "structured outcome only",
+              final_url: navigate.url || null,
+              blocked_on_signin: false,
+            },
+            agent_loop: summary.agent_loop || null,
             mode: "host_box_chrome_cu",
           },
           null,

@@ -34,7 +34,17 @@ enum TurnBridge {
     if process.terminationStatus != 0 {
       throw BridgeError(message: stderr.isEmpty ? "turn failed (\(process.terminationStatus))" : stderr)
     }
-    return stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmed = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    // CM-0705: raise Host OS permission cards for device_permission effects (never pretend-granted).
+    let cards = DevicePermissionHost.cards(fromTurnJSON: trimmed)
+    if cards.isEmpty {
+      return trimmed
+    }
+    if let data = try? JSONEncoder().encode(cards),
+       let cardsJson = String(data: data, encoding: .utf8) {
+      return trimmed + "\n/* bitbot_device_permission_cards */\n" + cardsJson
+    }
+    return trimmed
   }
 
   private static func inferRepoRoot() -> String {

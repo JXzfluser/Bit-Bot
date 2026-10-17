@@ -109,6 +109,9 @@
 - [x] Host `computer_use` navigate: real HTTP public-page fetch + evidence under `data/journal/computer-use/`
 - [x] Host `computer_use` box-chrome child process (`scripts/host_box_chrome_cu.py`): private CDP only, shared 9223/profile untouched; GUI residual remains true OS window automation
 - [x] Host computer_use OS-window mode (DISPLAY) + CDP click/type/scroll (`host_cdp_actions.mjs`) + screenshot evidence when tools available
+- [x] Host computer_use agent loop (observe→act→reobserve) emits CM-1202-shaped `outcome` + `agent_loop` (no raw click stream to parent)
+- [x] Native iOS/Android `DevicePermissionHost` scaffolds + Android Manifest dangerous perms / Activity permission launcher (true dialog needs device; never pretend-granted)
+- [x] Host OAuth live authorization_code exchange when `BITBOT_OAUTH_TOKEN_URL` + `BITBOT_OAUTH_AUTH_CODE` set (`live_code_exchange`)
 - [x] Host OAuth modes: default sandbox IdP; `BITBOT_OAUTH_MODE=live` applies real token or honest NeedsAuth (never pretend Connected)
 - [x] Host OAuth `BITBOT_OAUTH_EXCHANGE=local` authorize→callback→token rehearsal (`local_exchange`); remote production IdP interactive consent still residual
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN
