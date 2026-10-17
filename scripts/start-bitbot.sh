@@ -5,6 +5,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="${HOME}/.moon/bin:${PATH}"
+# Prefer local Ollama when serving (deployed on this machine).
+if curl -fsS --max-time 1 "${BITBOT_OLLAMA_URL:-http://127.0.0.1:11434}/api/tags" >/dev/null 2>&1; then
+  export BITBOT_OLLAMA_URL="${BITBOT_OLLAMA_URL:-http://127.0.0.1:11434}"
+  export BITBOT_OLLAMA_MODEL="${BITBOT_OLLAMA_MODEL:-llama3.2:1b}"
+fi
+
 HOST_UI_PORT="${HOST_UI_PORT:-8765}"
 HOST_SERVER="${ROOT}/scripts/host_ui_surface/host_server.py"
 PID_FILE="${BITBOT_HOST_PID_FILE:-/tmp/bitbot-host-ui.pid}"
