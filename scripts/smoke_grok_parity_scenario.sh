@@ -74,6 +74,14 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-mem-set.json'));assert 
 "${RUN[@]}" --session-id "$SESS" "recall" >/tmp/parity-mem-get.json
 python3 -c "import json;d=json.load(open('/tmp/parity-mem-get.json'));assert d.get('ok');assert d.get('intent')=='memory_recall';blob=json.dumps(d.get('memory') or [])+ (d.get('assistant') or '')+json.dumps(d);assert '$MARKER' in blob;print('parity memory recall reinject ok')"
 
+# 9b) Shared scope memory + journal durable Host stores
+"${RUN[@]}" "shared memory put scope=parity key=marker value=$MARKER" >/tmp/parity-shared-put.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-shared-put.json'));h=next(x for x in d['host_results'] if x.get('kind')=='shared_memory_put');p=json.loads(h['stdout']);assert p.get('stored') is True;assert p.get('isolation')=='scope-bound';assert os.path.isfile(p.get('path') or 'data/memory/shared-scopes.json');print('parity shared_memory put ok')"
+"${RUN[@]}" "shared memory read scope=parity key=marker" >/tmp/parity-shared-get.json
+python3 -c "import json;d=json.load(open('/tmp/parity-shared-get.json'));h=next(x for x in d['host_results'] if x.get('kind')=='shared_memory_read');p=json.loads(h['stdout']);assert p.get('found') is True;assert p.get('value')=='$MARKER';print('parity shared_memory read ok')"
+"${RUN[@]}" "journal note parity $MARKER" >/tmp/parity-journal.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-journal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='journal_append');p=json.loads(h['stdout']);assert p.get('ok') is True or h.get('ok');path=p.get('path') or 'data/journal/events.jsonl';assert os.path.isfile(path);assert '$MARKER' in open(path).read();print('parity journal_append ok', path)"
+
 # 10) Multi-end mobile Host strip
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
 python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"

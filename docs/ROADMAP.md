@@ -198,6 +198,7 @@
 - [x] Slack live claim + live thread via local mock (`conversations.history` / `chat.postMessage` + `auth.test` on `host_local_http_mock --mode slack`)
 - [x] Parity scenario session memory remember→recall Host reinject (`data/memory/desktop-host.json`)
 - [x] Desktop Memory panel (Host session seed meta + Recall action)
+- [x] Parity scenario shared_memory put/read + journal_append durable Host evidence
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)
