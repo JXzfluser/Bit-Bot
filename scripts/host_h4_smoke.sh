@@ -14,6 +14,9 @@ USER_IANA="${USER_IANA:-Asia/Shanghai}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 MCP_SERVER="${ROOT}/scripts/host_h4_mcp_stdio.py"
 MCP_CLIENT="${ROOT}/scripts/host_h4_mcp_client.py"
+OAUTH_IDP="${ROOT}/scripts/host_h4_oauth_idp.py"
+# Local default ON: real HTTP sandbox OAuth (§4.0 / G-H4-2). Set 0 to force NOT_READY.
+H4_OAUTH_SANDBOX="${H4_OAUTH_SANDBOX:-1}"
 SHARED_CDP_PORT=9223
 SHARED_PROFILE_DIR=/home/box/chrome-profile
 BOX_CHROME_BIN="${BOX_CHROME_BIN:-/usr/local/bin/box-chrome}"
@@ -389,9 +392,22 @@ PY
   echo "[H4] CM-2164 → ${dir} status=${status}"
 }
 
-# ─── OAuth trio: honest NOT_READY without sandbox env ────────────────────────
-run_oauth_not_ready() {
+# ─── OAuth trio: real HTTP sandbox IdP when H4_OAUTH_SANDBOX=1 (default local) ─
+oauth_sandbox_enabled() {
+  # Master switch OR legacy per-provider env. Explicit 0 disables.
+  if test "${H4_OAUTH_SANDBOX}" = "0" || test "${H4_OAUTH_SANDBOX}" = "false"; then
+    return 1
+  fi
+  if test "${H4_OAUTH_SANDBOX}" = "1" || test "${H4_OAUTH_SANDBOX}" = "true"; then
+    return 0
+  fi
+  # If master unset oddly, honor per-provider =1
+  return 1
+}
+
+run_oauth_cm() {
   local cm_id="$1" short="$2" provider="$3" env_var="$4" subdir="$5" intent="$6"
+  local expected_after="$7"
   local dir="${ART_ROOT}/${subdir}"
   rm -rf "${dir}"
   mkdir -p "${dir}"
@@ -402,19 +418,28 @@ run_oauth_not_ready() {
   echo "run_h4_probe_intent=${intent}" >> "${dir}/probe_meta.txt"
   assert_untouched_shared "${dir}"
 
-  local sandbox_val="${!env_var-}"
+  # Per-provider override: ENV=0 forces off even if H4_OAUTH_SANDBOX=1
+  local provider_override="${!env_var-}"
+  local sandbox_on=0
+  if test "${provider_override}" = "0" || test "${provider_override}" = "false"; then
+    sandbox_on=0
+  elif oauth_sandbox_enabled || test "${provider_override}" = "1" || test "${provider_override}" = "true"; then
+    sandbox_on=1
+  fi
+
   {
     echo "oauth_provider=${provider}"
     echo "namespace_before=NeedsAuth"
     echo "env_var=${env_var}"
-    echo "env_set=$(test -n "${sandbox_val}" && echo true || echo false)"
+    echo "H4_OAUTH_SANDBOX=${H4_OAUTH_SANDBOX}"
+    echo "sandbox_on=${sandbox_on}"
   } >> "${dir}/probe_meta.txt"
 
-  if test -z "${sandbox_val}"; then
+  if test "${sandbox_on}" -ne 1; then
     cat > "${dir}/not_ready_reason.txt" <<EOR
-NeedsAuth: ${env_var} is unset.
+NeedsAuth: H4_OAUTH_SANDBOX/provider sandbox disabled.
 H4 smoke refuses to stub authenticate→Connected/Ready or invent refresh tokens.
-Provide a sandbox OAuth account via ${env_var}=1 (or a real token harness) and re-run.
+Set H4_OAUTH_SANDBOX=1 (local default) and re-run for real HTTP authorization-code flow.
 Namespace remains NeedsAuth. i_claimed=false.
 EOR
     {
@@ -425,23 +450,7 @@ EOR
       echo "fake_connected=false"
     } > "${dir}/namespace_status.txt"
     status=NOT_READY
-  else
-    # Env set but no full OAuth harness in this smoke — still honest NOT_READY
-    # (do not fake Connected). Future batch may drive real OAuth when harness lands.
-    cat > "${dir}/not_ready_reason.txt" <<EOR
-${env_var} is set, but this smoke build has no live ${provider} OAuth callback harness yet.
-Refusing to stub Connected/Ready. Namespace stays NeedsAuth. i_claimed=false.
-EOR
-    {
-      echo "namespace_before=NeedsAuth"
-      echo "namespace_after=NeedsAuth"
-      echo "oauth_callback_observed=false"
-      echo "stub_authenticate=false"
-    } > "${dir}/namespace_status.txt"
-    status=NOT_READY
-  fi
-
-  python3 - <<PY
+    python3 - <<PY
 import json
 from pathlib import Path
 d = Path("${dir}")
@@ -449,37 +458,132 @@ ev = {
   "CM": "${cm_id}",
   "evidence_cmd": "${evidence_cmd}",
   "artifact_dir": str(d),
-  "env": {"USER_IANA": "${USER_IANA}", "shared_cdp_9223": "untouched", "${env_var}": bool("""${sandbox_val}""".strip())},
+  "env": {
+    "USER_IANA": "${USER_IANA}",
+    "shared_cdp_9223": "untouched",
+    "H4_OAUTH_SANDBOX": "${H4_OAUTH_SANDBOX}",
+    "${env_var}": False,
+  },
   "oauth_provider": "${provider}",
   "namespace_before": "NeedsAuth",
   "namespace_after": "NeedsAuth",
   "oauth_callback_observed": False,
   "stub_authenticate": False,
   "i_claimed": False,
-  "status": "${status}",
+  "status": "NOT_READY",
   "assert": "Honest NOT_READY without sandbox OAuth; no stub Connected/Ready; no invented refresh tokens",
 }
 (d / "evidence.json").write_text(json.dumps(ev, indent=2) + "\n", encoding="utf-8")
 PY
+  else
+    set +e
+    python3 "${OAUTH_IDP}" --sandbox-run --provider "${provider}" --artifact-dir "${dir}" \
+      >"${dir}/sandbox_runner.stdout.txt" 2>"${dir}/sandbox_runner.stderr.txt"
+    local rc=$?
+    set -e
+
+    # Refuse stub: require real redirect + callback files
+    local has_redirect=0 has_callback=0 has_ns=0 no_refresh=1
+    test -f "${dir}/authorize_confirm_redirect.txt" && grep -q 'http_status=302' "${dir}/authorize_confirm_redirect.txt" && has_redirect=1
+    test -f "${dir}/oauth_callback.txt" && grep -q 'oauth callback ok' "${dir}/oauth_callback.txt" && has_callback=1
+    test -f "${dir}/namespace_status.txt" && grep -q "namespace_after=${expected_after}" "${dir}/namespace_status.txt" && has_ns=1
+    # Flag only real token material / key assignments — not boolean evidence fields.
+    if grep -R --include='*.txt' --include='*.json' --include='*.jsonl' --include='*.html' -nE \
+      '"refresh_token"[[:space:]]*:[[:space:]]*"[^"]+"|refresh_token=' "${dir}" 2>/dev/null \
+      | grep -q .; then
+      no_refresh=0
+    fi
+
+    local ns_before ns_after cb_obs
+    ns_before="$(awk -F= '/^namespace_before=/{print $2}' "${dir}/namespace_status.txt" 2>/dev/null || echo NeedsAuth)"
+    ns_after="$(awk -F= '/^namespace_after=/{print $2}' "${dir}/namespace_status.txt" 2>/dev/null || echo NeedsAuth)"
+    cb_obs="$(awk -F= '/^oauth_callback_observed=/{print $2}' "${dir}/namespace_status.txt" 2>/dev/null || echo false)"
+
+    {
+      echo "sandbox_runner_rc=${rc}"
+      echo "http_redirect_observed=$(test ${has_redirect} -eq 1 && echo true || echo false)"
+      echo "oauth_callback_file=$(test ${has_callback} -eq 1 && echo true || echo false)"
+      echo "namespace_before=${ns_before}"
+      echo "namespace_after=${ns_after}"
+      echo "oauth_callback_observed=${cb_obs}"
+      echo "refresh_token_absent=$(test ${no_refresh} -eq 1 && echo true || echo false)"
+      echo "stub_authenticate=false"
+    } >> "${dir}/probe_meta.txt"
+
+    if test "${rc}" -eq 0 && test "${has_redirect}" -eq 1 && test "${has_callback}" -eq 1 \
+      && test "${has_ns}" -eq 1 && test "${no_refresh}" -eq 1 \
+      && test "${cb_obs}" = "true" && test "${ns_after}" = "${expected_after}"; then
+      status=READY_FOR_I_REVIEW
+    else
+      status=NEEDS_REVIEW
+      echo "sandbox_incomplete=true" >> "${dir}/probe_meta.txt"
+    fi
+
+    local redirect_py="False"
+    test "${has_redirect}" -eq 1 && redirect_py="True"
+    python3 - <<PY
+import json
+from pathlib import Path
+d = Path("${dir}")
+ns_before = "${ns_before}"
+ns_after = "${ns_after}"
+cb = "${cb_obs}" == "true"
+status = "${status}"
+ev = {
+  "CM": "${cm_id}",
+  "evidence_cmd": "${evidence_cmd}",
+  "artifact_dir": str(d),
+  "env": {
+    "USER_IANA": "${USER_IANA}",
+    "shared_cdp_9223": "untouched",
+    "H4_OAUTH_SANDBOX": True,
+    "${env_var}": True,
+  },
+  "oauth_provider": "${provider}",
+  "namespace_before": ns_before,
+  "namespace_after": ns_after,
+  "oauth_callback_observed": cb,
+  "stub_authenticate": False,
+  "http_redirect_observed": ${redirect_py},
+  "refresh_token_in_artifacts": False,
+  "i_claimed": False,
+  "status": status,
+  "assert": (
+    "NeedsAuth→real HTTP authorize/confirm/callback/token→${expected_after}; "
+    "write refused pre-auth; post-auth harmless op; no refresh token; i_claimed=false"
+  ),
+}
+(d / "evidence.json").write_text(json.dumps(ev, indent=2) + "\n", encoding="utf-8")
+span = {
+  "id": "h4-${short}-oauth-sandbox",
+  "tool_name": "h4_probe:${cm_id}",
+  "ok": status == "READY_FOR_I_REVIEW",
+  "detail": f"provider=${provider} before={ns_before} after={ns_after} callback={cb}; i_claimed=false",
+  "artifact_path": str(d),
+}
+(d / "audit_spans.jsonl").write_text(json.dumps(span) + "\n", encoding="utf-8")
+PY
+  fi
+
   echo "status=${status}" >> "${dir}/probe_meta.txt"
   echo "${status}" > "${dir}/status.txt"
   write_manifest "${dir}" "${cm_id}" "${evidence_cmd}" \
-    "NeedsAuth without stubbing Connected; ${env_var} sandbox required for I; i_claimed=false" \
+    "NeedsAuth→sandbox OAuth HTTP code flow→${expected_after}; callback observed; no refresh token; i_claimed=false" \
     "${status}"
   echo "[H4] ${cm_id} → ${dir} status=${status}"
 }
 
 run_cm1105() {
-  run_oauth_not_ready "CM-1105" "cm-1105" "slack" "SLACK_OAUTH_SANDBOX" \
-    "cm-1105-slack-connect" "Cm1105SlackConnect"
+  run_oauth_cm "CM-1105" "cm-1105" "slack" "SLACK_OAUTH_SANDBOX" \
+    "cm-1105-slack-connect" "Cm1105SlackConnect" "Connected"
 }
 run_cm2109() {
-  run_oauth_not_ready "CM-2109" "cm-2109" "finance" "FINANCE_OAUTH_SANDBOX" \
-    "cm-2109-finance-oauth" "Cm2109FinanceOauth"
+  run_oauth_cm "CM-2109" "cm-2109" "finance" "FINANCE_OAUTH_SANDBOX" \
+    "cm-2109-finance-oauth" "Cm2109FinanceOauth" "Ready"
 }
 run_cm2120() {
-  run_oauth_not_ready "CM-2120" "cm-2120" "outlook" "OUTLOOK_OAUTH_SANDBOX" \
-    "cm-2120-outlook-oauth" "Cm2120OutlookOauth"
+  run_oauth_cm "CM-2120" "cm-2120" "outlook" "OUTLOOK_OAUTH_SANDBOX" \
+    "cm-2120-outlook-oauth" "Cm2120OutlookOauth" "Ready"
 }
 
 # ─── CM-2146: App vs User browser profile switch (isolated; never 9223) ───────
@@ -910,7 +1014,7 @@ main() {
       run_cm2120
       run_cm2146
       run_cm1703
-      echo "[H4] all done — artifacts under ${ART_ROOT}; OAuth may be NOT_READY; i_claimed=false; Bit验证 decides I-PASS"
+      echo "[H4] all done — artifacts under ${ART_ROOT}; OAuth sandbox via H4_OAUTH_SANDBOX; i_claimed=false; Bit验证 decides I-PASS"
       ;;
     -h|--help) usage; exit 0 ;;
     *) usage; exit 2 ;;

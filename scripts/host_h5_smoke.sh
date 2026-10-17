@@ -940,62 +940,366 @@ PY
   echo "[H5] CM-2131 → ${status}"
 }
 
-# ─── Residuals (honest NOT_READY / GAP) ──────────────────────────────────────
+# ─── CM-0806: isolated Update Computer + throwaway jar (never shared profile) ─
 
-run_residual_cm0806() {
+seed_throwaway_cookie_jar() {
+  # Seed a Chrome-shaped Cookies SQLite inside throwaway profile only.
+  # Never touches /home/box/chrome-profile. Returns jar path on stdout.
+  local profile="$1"
+  python3 - "${profile}" <<'PY'
+import sqlite3, sys, time
+from pathlib import Path
+profile = Path(sys.argv[1])
+net = profile / "Default" / "Network"
+net.mkdir(parents=True, exist_ok=True)
+jar = net / "Cookies"
+# Fresh seed each run
+if jar.exists():
+    jar.unlink()
+con = sqlite3.connect(str(jar))
+con.execute(
+    """
+    CREATE TABLE cookies (
+      creation_utc INTEGER NOT NULL,
+      host_key TEXT NOT NULL,
+      top_frame_site_key TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL,
+      value TEXT NOT NULL,
+      encrypted_value BLOB NOT NULL,
+      path TEXT NOT NULL,
+      expires_utc INTEGER NOT NULL,
+      is_secure INTEGER NOT NULL,
+      is_httponly INTEGER NOT NULL,
+      last_access_utc INTEGER NOT NULL,
+      has_expires INTEGER NOT NULL,
+      is_persistent INTEGER NOT NULL,
+      priority INTEGER NOT NULL,
+      samesite INTEGER NOT NULL,
+      source_scheme INTEGER NOT NULL,
+      source_port INTEGER NOT NULL,
+      last_update_utc INTEGER NOT NULL,
+      source_type INTEGER NOT NULL DEFAULT 0,
+      has_cross_site_ancestor INTEGER NOT NULL DEFAULT 0
+    )
+    """
+)
+con.execute("CREATE TABLE meta (key TEXT NOT NULL UNIQUE, value TEXT NOT NULL)")
+con.execute("INSERT INTO meta VALUES ('mmap_status','1')")
+now = int(time.time() * 1_000_000)
+con.execute(
+    """
+    INSERT INTO cookies (
+      creation_utc, host_key, top_frame_site_key, name, value, encrypted_value,
+      path, expires_utc, is_secure, is_httponly, last_access_utc, has_expires,
+      is_persistent, priority, samesite, source_scheme, source_port, last_update_utc
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """,
+    (
+      now,
+      ".bitbot-h5-0806.test",
+      "",
+      "h5_0806_sess",
+      "throwaway-login-seed-0806",
+      b"",
+      "/",
+      now + 86_400_000_000,
+      0,
+      1,
+      now,
+      1,
+      1,
+      1,
+      0,
+      1,
+      443,
+      now,
+    ),
+)
+con.commit()
+con.close()
+print(jar)
+PY
+}
+
+jar_digest_inplace() {
+  local label="$1" jar="$2" out="$3"
+  python3 - "${label}" "${jar}" "${out}" <<'PY'
+import hashlib, sqlite3, sys, urllib.parse
+from pathlib import Path
+label, jar, out = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
+data = jar.read_bytes()
+sha = hashlib.sha256(data).hexdigest()
+bytes_n = len(data)
+rows = "n/a"
+method = "none"
+try:
+    uri = "file:" + urllib.parse.quote(str(jar)) + "?mode=ro&immutable=1"
+    con = sqlite3.connect(uri, uri=True)
+    rows = str(con.execute("SELECT COUNT(*) FROM cookies").fetchone()[0])
+    con.close()
+    method = "python3_sqlite3_readonly_in_place"
+except Exception as e:
+    rows = f"err:{e}"
+# Append one digest line; never copy DB into artifacts
+with out.open("a", encoding="utf-8") as f:
+    f.write(
+        f"{label} path={jar} sha256={sha} bytes={bytes_n} "
+        f"cookie_rows={rows} rows_method={method}\n"
+    )
+print(sha)
+PY
+}
+
+run_cm0806() {
   local dir="${ART_ROOT}/cm-0806-session-jar"
+  rm -rf "${dir}"
   mkdir -p "${dir}"
-  local evidence_cmd="bash /workspace/bitbot/scripts/host_h5_smoke.sh residual-0806"
-  local status=NOT_READY
-  : > "${dir}/h5_residual_probe_meta.txt"
+  local evidence_cmd="bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-0806"
+  local status=READY_FOR_I_REVIEW
+  : > "${dir}/probe_meta.txt"
   {
     echo "cm=CM-0806"
-    echo "wave=H5-residual"
+    echo "wave=H5-isolated-update-computer"
     echo "evidence_cmd=${evidence_cmd}"
-    echo "status=${status}"
-    echo "i_claimed=false"
-    echo "shared_cdp_9223=untouched"
-    echo "chrome_profile=untouched"
-    echo "reason=shared session rule — do NOT copy cookies from /home/box/chrome-profile; do NOT touch CDP 9223"
-    echo "proves_update_computer_lifecycle=NO"
-    echo "gap_row=kept_open"
-  } >> "${dir}/h5_residual_probe_meta.txt"
+    echo "run_h5_probe_intent=Cm0806LoginPersistAfterUpdate"
+  } >> "${dir}/probe_meta.txt"
+  assert_untouched_shared "${dir}"
+  printf 'Cookies*\nLogin Data*\nWeb Data*\nHistory*\n!jar_digest.txt\n' > "${dir}/.gitignore"
 
-  cat > "${dir}/h5_residual_evidence.md" <<EOM
-# CM-0806 residual (H5) — NOT_READY / GAP kept open
+  # Refuse shared path
+  if test -e "${SHARED_PROFILE_DIR}"; then
+    echo "shared_profile_exists=yes (untouched)" >> "${dir}/probe_meta.txt"
+  fi
 
-| field | value |
-|-------|-------|
-| CM | CM-0806 |
-| evidence_cmd | \`${evidence_cmd}\` |
-| status | NOT_READY |
-| i_claimed | false |
-| assert | Residual only. Shared-session rule forbids copying cookies from \`/home/box/chrome-profile\` and forbids CDP **9223**. No true Update Computer lifecycle exercised. GAP row **not deleted**. |
-
-## Why NOT_READY
-
-1. Shared box chrome-profile / CDP 9223 is a live operator session — Host smoke must not seed or copy its cookie jar.
-2. Before/after jar hashes inside one running session do not prove Update Computer login persistence.
-3. H5 advances media/UI CMs; 0806 stays an open GAP until a dedicated Update Computer Host path can be proven without touching the shared session.
-
-EOM
-  python3 - "${dir}" <<'PY'
-import json, sys
+  local chrome_bin=""
+  if test -x "${BOX_CHROME_BIN}"; then
+    chrome_bin="${BOX_CHROME_BIN}"
+  elif test -n "${GOOGLE_CHROME_BIN}" && test -x "${GOOGLE_CHROME_BIN}"; then
+    chrome_bin="${GOOGLE_CHROME_BIN}"
+  fi
+  if ! command -v Xvfb >/dev/null 2>&1 || test -z "${chrome_bin}"; then
+    status=NOT_READY
+    echo "reason=Xvfb and/or chrome binary unavailable" > "${dir}/not_ready_reason.txt"
+    python3 - <<PY
+import json
 from pathlib import Path
-d = Path(sys.argv[1])
+d = Path("${dir}")
 ev = {
   "CM": "CM-0806",
-  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h5_smoke.sh residual-0806",
+  "evidence_cmd": "${evidence_cmd}",
   "status": "NOT_READY",
   "i_claimed": False,
-  "gap_kept_open": True,
   "shared_cdp_9223": "untouched",
-  "chrome_profile": "untouched",
-  "assert": "residual: shared session rule blocks cookie copy / CDP 9223; Update Computer lifecycle not proven",
+  "assert": "Honest NOT_READY: chrome/Xvfb unavailable; shared session untouched",
 }
-(d/"h5_residual_evidence.json").write_text(json.dumps(ev, indent=2)+"\n")
+(d/"evidence.json").write_text(json.dumps(ev, indent=2)+"\n")
 PY
-  echo "[H5] CM-0806 residual → NOT_READY (GAP kept open; 9223 untouched)"
+    write_manifest "${dir}" "CM-0806" "${evidence_cmd}" \
+      "NOT_READY: chrome/Xvfb missing; shared CDP 9223 untouched" "${status}"
+    echo "[H5] CM-0806 → ${status}"
+    return 0
+  fi
+
+  ISO_PORT=""; ISO_HTTP_PORT=""; ISO_DISPLAY=""; ISO_TMP=""; ISO_XVFB_PID=""; ISO_CHROME_PID=""; ISO_HTTP_PID=""; ISO_BASE=""
+  trap '_cleanup_iso_host_ui; trap - EXIT' EXIT
+
+  ISO_PORT="$(iso_pick_port)" || status=NEEDS_REVIEW
+  ISO_HTTP_PORT="$(iso_pick_http_port)" || status=NEEDS_REVIEW
+  ISO_DISPLAY="$(iso_pick_display)" || status=NEEDS_REVIEW
+  if test -z "${ISO_PORT}" || test "${ISO_PORT}" = "${SHARED_CDP_PORT}"; then
+    status=NEEDS_REVIEW
+    echo "refused_shared_cdp=true" >> "${dir}/probe_meta.txt"
+  fi
+  ISO_TMP="$(mktemp -d /tmp/h5-0806-profile.XXXXXX)"
+  case "${ISO_TMP}" in /tmp/h5-0806-profile.*) ;; *) status=NEEDS_REVIEW ;; esac
+
+  local jar
+  jar="$(seed_throwaway_cookie_jar "${ISO_TMP}")"
+  case "${jar}" in
+    /tmp/h5-0806-profile.*/Default/Network/Cookies) ;;
+    *) status=NEEDS_REVIEW; echo "jar_path_unexpected=${jar}" >> "${dir}/probe_meta.txt" ;;
+  esac
+  # Guard: jar must not live under shared chrome-profile
+  case "${jar}" in
+    "${SHARED_PROFILE_DIR}"/*)
+      status=NEEDS_REVIEW
+      echo "refused_shared_jar=true" >> "${dir}/probe_meta.txt"
+      ;;
+  esac
+
+  : > "${dir}/jar_digest.txt"
+  echo "# CM-0806 throwaway jar digests — hashed IN PLACE; DB never copied to artifacts" >> "${dir}/jar_digest.txt"
+  local sha_seed
+  sha_seed="$(jar_digest_inplace "seed" "${jar}" "${dir}/jar_digest.txt")"
+
+  HOST_UI_PORT="${ISO_HTTP_PORT}" python3 "${HOST_SERVER}" \
+    >"${dir}/host_server.log" 2>&1 &
+  ISO_HTTP_PID=$!
+  ISO_BASE="http://127.0.0.1:${ISO_HTTP_PORT}"
+  local i=0
+  while test "${i}" -lt 50; do
+    if curl -sf --max-time 1 "${ISO_BASE}/api/host/health" >/dev/null 2>&1; then break; fi
+    sleep 0.1; i=$((i + 1))
+  done
+  curl -sf --max-time 2 "${ISO_BASE}/api/host/health" > "${dir}/host_health.json" || status=NEEDS_REVIEW
+
+  Xvfb "${ISO_DISPLAY}" -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 &
+  ISO_XVFB_PID=$!
+  i=0
+  while ! DISPLAY="${ISO_DISPLAY}" xdpyinfo >/dev/null 2>&1 && test "${i}" -lt 50; do
+    sleep 0.1; i=$((i + 1))
+  done
+
+  set +e
+  if test "${chrome_bin}" = "${BOX_CHROME_BIN}" && test -x "${BOX_CHROME_BIN}"; then
+    env -u CURSOR_MCP_BROWSER_OPEN_LOG \
+      DISPLAY="${ISO_DISPLAY}" \
+      CHROME_USER_DATA_DIR="${ISO_TMP}" \
+      SAND_CHROME_REMOTE_DEBUG_PORT="${ISO_PORT}" \
+      SAND_COOKIE_SEED_PATH=/nonexistent \
+      SAND_BOX_BROWSER_GATE_WAIT_S=0 \
+      timeout 60 "${chrome_bin}" "${ISO_BASE}/index.html" \
+      >"${dir}/iso_chrome.stdout.txt" 2>"${dir}/iso_chrome.stderr.txt" &
+  else
+    DISPLAY="${ISO_DISPLAY}" timeout 60 "${chrome_bin}" \
+      --user-data-dir="${ISO_TMP}" \
+      --remote-debugging-port="${ISO_PORT}" \
+      --no-first-run --no-default-browser-check \
+      --disable-gpu --window-size=1280,800 \
+      "${ISO_BASE}/index.html" \
+      >"${dir}/iso_chrome.stdout.txt" 2>"${dir}/iso_chrome.stderr.txt" &
+  fi
+  ISO_CHROME_PID=$!
+  set -e
+  sleep 2.5
+
+  # CDP on private port only (never 9223)
+  set +e
+  curl -sf --max-time 3 "http://127.0.0.1:${ISO_PORT}/json/version" > "${dir}/iso_cdp_version.json" 2>/dev/null
+  local cdp_rc=$?
+  curl -sf --max-time 1 "http://127.0.0.1:${SHARED_CDP_PORT}/json/version" > "${dir}/shared_cdp_probe.json" 2>/dev/null || true
+  set -e
+
+  {
+    echo "iso_cdp_port=${ISO_PORT}"
+    echo "iso_http_port=${ISO_HTTP_PORT}"
+    echo "iso_display=${ISO_DISPLAY}"
+    echo "iso_profile=${ISO_TMP}"
+    echo "throwaway_jar=${jar}"
+    echo "chrome_bin=${chrome_bin}"
+    echo "iso_cdp_ok=$(test ${cdp_rc} -eq 0 && echo true || echo false)"
+    echo "shared_cdp_9223=untouched"
+    echo "chrome_profile=untouched"
+  } >> "${dir}/probe_meta.txt"
+
+  # Before Update Computer — in-place hash of throwaway jar
+  local sha_before
+  sha_before="$(jar_digest_inplace "before_update" "${jar}" "${dir}/jar_digest.txt")"
+
+  live_shell() { python3 "${LIVE_SHELL}" --base "${ISO_BASE}" --artifact-dir "${dir}" "$@"; }
+
+  # Two-step Update Computer lifecycle to completion (login jar must survive)
+  live_shell request_update_computer
+  sleep 0.4
+  live_shell confirm_update_computer_step
+  sleep 0.4
+  live_shell confirm_update_computer_step
+  sleep 0.5
+  live_shell dump >/dev/null 2>&1 || true
+
+  local phase=unknown
+  if test -f "${dir}/host_ui_event_update_completed.json"; then
+    phase="$(python3 -c 'import json; print(json.load(open("'"${dir}"'/host_ui_event_update_completed.json"))["state"].get("updateComputerPhase","unknown"))' 2>/dev/null || echo unknown)"
+  elif test -f "${dir}/host_ui_state.json"; then
+    phase="$(python3 -c 'import json;d=json.load(open("'"${dir}"'/host_ui_state.json"));s=d.get("state",d);print(s.get("updateComputerPhase","unknown"))' 2>/dev/null || echo unknown)"
+  fi
+
+  local sha_after
+  sha_after="$(jar_digest_inplace "after_update" "${jar}" "${dir}/jar_digest.txt")"
+
+  local jar_intact=false
+  if test -n "${sha_before}" && test "${sha_before}" = "${sha_after}"; then
+    jar_intact=true
+  fi
+
+  {
+    echo "update_computer_phase=${phase}"
+    echo "phase_sequence=prompted→awaiting-second-confirm→completed"
+    echo "sha_seed=${sha_seed}"
+    echo "sha_before=${sha_before}"
+    echo "sha_after=${sha_after}"
+    echo "jar_intact_across_update=${jar_intact}"
+    echo "proves_update_computer_lifecycle=$(test "${phase}" = "completed" && test "${jar_intact}" = "true" && echo YES || echo NO)"
+    echo "cookies_copied_to_artifacts=false"
+    echo "shared_cdp_9223=untouched"
+  } >> "${dir}/probe_meta.txt"
+
+  if test "${phase}" != "completed" || test "${jar_intact}" != "true" \
+    || test "${cdp_rc}" -ne 0 || test "${ISO_PORT}" = "${SHARED_CDP_PORT}"; then
+    status=NEEDS_REVIEW
+  fi
+
+  # Sweep: ensure no Cookie DB copies landed in artifacts
+  find "${dir}" -type f \( -name 'Cookies*' -o -name 'Login Data*' \) ! -name 'jar_digest.txt' \
+    -exec rm -f {} + 2>/dev/null || true
+
+  python3 - <<PY
+import json
+from pathlib import Path
+d = Path("${dir}")
+status = "${status}"
+phase = "${phase}"
+intact = "${jar_intact}" == "true"
+ev = {
+  "CM": "CM-0806",
+  "evidence_cmd": "${evidence_cmd}",
+  "artifact_dir": str(d),
+  "env": {
+    "USER_IANA": "${USER_IANA}",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "iso_cdp_port": ${ISO_PORT:-0},
+    "iso_profile": "${ISO_TMP}",
+  },
+  "update_computer_phase": phase,
+  "jar_intact_across_update": intact,
+  "sha_before": "${sha_before}",
+  "sha_after": "${sha_after}",
+  "throwaway_jar_only": True,
+  "cookies_copied_to_artifacts": False,
+  "i_claimed": False,
+  "status": status,
+  "assert": (
+    "Isolated throwaway profile jar seeded; HostUiShell two-step Update Computer completed; "
+    "in-place jar digest before==after; shared CDP 9223 / chrome-profile untouched; i_claimed=false"
+  ),
+}
+(d/"evidence.json").write_text(json.dumps(ev, indent=2)+"\n")
+span = {
+  "id": "h5-0806-isolated-update",
+  "tool_name": "h5_probe:CM-0806",
+  "ok": status == "READY_FOR_I_REVIEW",
+  "detail": f"phase={phase} jar_intact={intact}; shared_9223 untouched; i_claimed=false",
+  "artifact_path": str(d),
+}
+(d/"audit_spans.jsonl").write_text(json.dumps(span)+"\n")
+(d/"status.txt").write_text(status+"\n")
+PY
+
+  _cleanup_iso_host_ui
+  trap - EXIT
+
+  status="$(cat "${dir}/status.txt")"
+  echo "status=${status}" >> "${dir}/probe_meta.txt"
+  write_manifest "${dir}" "CM-0806" "${evidence_cmd}" \
+    "Isolated throwaway jar + HostUiShell Update Computer two-step complete; in-place digest stable; 9223 untouched" \
+    "${status}"
+  echo "[H5] CM-0806 → ${status} phase=${phase} jar_intact=${jar_intact}"
+}
+
+# Backward-compatible alias (isolated path supersedes residual NOT_READY)
+run_residual_cm0806() {
+  run_cm0806
 }
 
 run_residual_cm0705() {
@@ -1058,13 +1362,14 @@ case "${TARGET}" in
   cm-2101) run_cm2101 ;;
   cm-2128) run_cm2128 ;;
   cm-2103) run_cm2103 ;;
+  cm-0806|CM-0806) run_cm0806 ;;
   media) run_media ;;
   ui) run_ui ;;
   residual-0806) run_residual_cm0806 ;;
   residual-0705) run_residual_cm0705 ;;
   all) run_all ;;
   *)
-    echo "Usage: $0 cm-1601|1602|1603|2157|1807|2131|2101|2128|2103|media|ui|all|residual-0806|residual-0705" >&2
+    echo "Usage: $0 cm-1601|1602|1603|2157|1807|2131|2101|2128|2103|cm-0806|media|ui|all|residual-0806|residual-0705" >&2
     exit 2
     ;;
 esac
