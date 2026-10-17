@@ -10,6 +10,7 @@ Usage:
   python3 scripts/host_local_http_mock.py --port 18771 --mode job
   python3 scripts/host_local_http_mock.py --port 18772 --mode x
   python3 scripts/host_local_http_mock.py --port 18773 --mode gmail
+  python3 scripts/host_local_http_mock.py --port 18774 --mode cloud
 
 Endpoints:
   purchase: POST /charge
@@ -23,6 +24,7 @@ Endpoints:
             GET  /users/me/messages
             GET  /users/me/threads/<id>
             (BITBOT_GMAIL_API_BASE=http://host:port)
+  cloud:    POST /agents  (BITBOT_CLOUD_API_URL=http://host:port)
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ def main() -> int:
             "job",
             "x",
             "gmail",
+            "cloud",
         ),
         required=True,
     )
@@ -88,6 +91,7 @@ def main() -> int:
                 )
                 or (mode == "job" and path == "/jobs/search")
                 or (mode == "gmail" and path.endswith("/users/me/messages/send"))
+                or (mode == "cloud" and path == "/agents")
             )
             if not ok_path:
                 self._json(404, {"ok": False, "error": "not_found"})
@@ -167,6 +171,16 @@ def main() -> int:
                         "id": "msg-mock-gmail-1",
                         "threadId": "t-invoice-1",
                         "labelIds": ["SENT"],
+                    },
+                )
+            elif mode == "cloud":
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "bc_id": payload.get("bc_id") or "bc-mock-cloud-1",
+                        "status": "launched",
+                        "url": "https://cursor.com/agents/bc-mock-cloud-1",
                     },
                 )
             else:  # teams

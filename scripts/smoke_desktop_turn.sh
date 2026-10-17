@@ -265,6 +265,14 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud.json'));assert d.
 # Honest remote fail → local_worker fallback (never pretend remote success)
 BITBOT_CLOUD_API_URL=http://127.0.0.1:9 BITBOT_CURSOR_CLOUD_TOKEN=test-token node hosts/cli_host/run_turn.js "launch cloud agent remote probe fail" >/tmp/bitbot-cloud-remote.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-cloud-remote.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_agent_launch');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_remote_cloud') is False;assert p.get('remote_api_attempted') is True;assert p.get('remote_cloud_residual') is True;assert p.get('mode')=='local_worker_after_remote_fail';assert p.get('status') in ('completed','failed');print('cloud_agent_launch remote fail→local ok', p.get('mode'), 'probe', (p.get('remote_probe') or {}).get('error') or (p.get('remote_probe') or {}).get('http_status'))"
+# Live remote cloud launch against local mock
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18774 --mode cloud --token smoke-cloud >/tmp/bitbot-cloud-mock.log 2>&1 &
+CLOUD_MOCK_PID=$!
+sleep 0.4
+BITBOT_CLOUD_API_URL=http://127.0.0.1:18774 BITBOT_CURSOR_CLOUD_TOKEN=smoke-cloud node hosts/cli_host/run_turn.js "launch cloud agent live mock" >/tmp/bitbot-cloud-live.json || true
+kill "$CLOUD_MOCK_PID" >/dev/null 2>&1 || true
+wait "$CLOUD_MOCK_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-cloud-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_agent_launch');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='remote_cloud_api';assert p.get('remote_cloud_residual') is False;assert p.get('pretend_remote_cloud') is False;assert p.get('remote_api_attempted') is True;assert p.get('status')=='launched_remote';assert (p.get('remote_probe') or {}).get('ok') is True;print('cloud_agent_launch remote live mock ok', p.get('bc_id'), p.get('status'))"
 BC_ID="$(cat /tmp/bitbot-cloud-bc.txt)"
 node hosts/cli_host/run_turn.js "deliver cloud artifact artifact=${BC_ID} dest=smoke-report.md" >/tmp/bitbot-cloud-art.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud-art.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_artifact_deliver');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('delivered') is True;assert p.get('from_session') is True;assert p.get('path') and os.path.isfile(p['path']);assert os.path.getsize(p['path'])>20;print('cloud_artifact_deliver from_session ok', p.get('path'), 'bytes', p.get('bytes'))"

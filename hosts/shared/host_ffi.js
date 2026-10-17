@@ -3902,11 +3902,12 @@ function createHostFfi(repoRoot) {
       let remoteAttempted = false;
 
       // Honest remote Cursor Cloud path: probe when URL+token set; never pretend remote success.
+      // Local mock: BITBOT_CLOUD_API_URL=http://127.0.0.1:18774 (host_local_http_mock --mode cloud).
       if (wantRemote && cloudApiUrl && cloudToken) {
         remoteAttempted = true;
         try {
           const probeUrl = cloudApiUrl.replace(/\/$/, "") + "/agents";
-          const resp = await fetch(probeUrl, {
+          const resp = await httpJson(probeUrl, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${cloudToken}`,
@@ -3919,17 +3920,18 @@ function createHostFfi(repoRoot) {
               source: "bitbot-host",
             }),
           });
-          const text = await resp.text();
-          let body = null;
-          try {
-            body = JSON.parse(text);
-          } catch (_) {
-            body = { raw: String(text || "").slice(0, 400) };
-          }
+          const body = resp.json || {
+            raw: String(resp.body || "").slice(0, 400),
+          };
           remoteProbe = {
-            ok: resp.ok,
-            http_status: resp.status,
-            body_keys: body && typeof body === "object" ? Object.keys(body).slice(0, 12) : [],
+            ok: Boolean(resp.ok),
+            http_status: resp.status || 0,
+            error: resp.error || null,
+            body_keys:
+              body && typeof body === "object"
+                ? Object.keys(body).slice(0, 12)
+                : [],
+            remote_bc_id: (body && (body.bc_id || body.id)) || null,
           };
           if (resp.ok) {
             mode = "remote_cloud_api";

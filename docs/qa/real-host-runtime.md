@@ -43,7 +43,7 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Routine wake scheduler | On-demand `routine_fire` + daemon `--long-lived` / `--interval-ms`; `--install-user-unit` installs user systemd unit |
 | CU paid checkout | `payment_wall` / `live_paid_residual` when pay form seen; local fixture via `BITBOT_CU_ALLOW_LOCAL=1`; never pretend_purchased without `BITBOT_CU_LIVE_PAID` |
 | Purchase charge | Sandbox HTML receipt by default; live `/charge` when `BITBOT_PURCHASE_LIVE=1` + token + `BITBOT_PURCHASE_API_URL` |
-| Remote Cursor Cloud | Default `local_worker`; remote probe when `BITBOT_CLOUD_API_URL`+token; fail→local, never pretend remote |
+| Remote Cursor Cloud | Default `local_worker`; remote probe when `BITBOT_CLOUD_API_URL`+token; live mock → `remote_cloud_api`; fail→local, never pretend remote |
 | Meeting live transport | DirectSend transcript; live POST when `BITBOT_MEETING_API_URL`+token |
 | OS-window CU input | Windowed Chrome+CDP primary; `BITBOT_CU_NATIVE_ACT=1` drives native click/type |
 | Vision OCR | PIL hotspots; `BITBOT_CU_OCR=1` → tesseract closes `ocr_residual` |

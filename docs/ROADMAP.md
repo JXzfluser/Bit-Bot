@@ -152,6 +152,7 @@
 - [x] Host CU `payment_wall` / `has_payment` / `live_paid_residual` (never auto-charge; `BITBOT_CU_LIVE_PAID` gated)
 - [x] Host purchase sandbox receipt honesty (`paid=false`, `live_paid_residual`; live needs `BITBOT_PURCHASE_LIVE`+token)
 - [x] Host cloud remote probe (`BITBOT_CLOUD_API_URL`+token → remote or honest local_worker_after_remote_fail; never pretend remote)
+- [x] Host cloud remote live mock (`host_local_http_mock --mode cloud` → `remote_cloud_api` / `launched_remote`; never pretend remote)
 - [x] Host meeting_chat live transport probe (`BITBOT_MEETING_*`; else `live_meeting_residual=true`)
 - [x] Host routine daemon `--long-lived` + systemd unit scaffold (`bitbot-routine-daemon.service.example`; install still residual)
 - [x] Host CU native OS input probe (`xdotool`/`wmctrl`) + `os_window_automation_residual` / `ocr_residual` honesty
