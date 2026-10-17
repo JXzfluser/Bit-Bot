@@ -1716,22 +1716,52 @@ function createHostFfi(repoRoot) {
 
   async function executeConnectorsProbe() {
     const report = await connectorsStatusReport();
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "connectors");
+    fs.mkdirSync(dir, { recursive: true });
+    const probePath = path.join(
+      dir,
+      `probe-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      ...report,
+      mode: "host_connectors_probe",
+      pretend_all_connected: false,
+      at,
+    };
+    fs.writeFileSync(probePath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "probes.jsonl"), {
+      path: probePath,
+      summary: {
+        slack: report.connectors.slack.mode,
+        gmail: report.connectors.gmail.mode,
+        outlook: report.connectors.outlook.mode,
+      },
+      at,
+    });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: probePath,
+      label: "connectors_probe",
+      source_kind: "connectors_probe",
+      at,
+    });
     appendHostDeliveryJournal({
       kind: "connectors_probe",
-      at: new Date().toISOString(),
+      path: probePath,
+      at,
       summary: {
         slack: report.connectors.slack.mode,
         gmail: report.connectors.gmail.mode,
         outlook: report.connectors.outlook.mode,
       },
     });
-    return {
-      kind: "connectors_probe",
+    return okJson("connectors_probe", "connectors_probe", {
+      ...artifact,
+      path: probePath,
+      send_to_user: delivery,
       ok: true,
-      command: "connectors_probe",
-      stdout: JSON.stringify(report, null, 2),
-      stderr: "",
-    };
+    });
   }
 
   function loadRoutines() {
@@ -5534,6 +5564,65 @@ function createHostFfi(repoRoot) {
   async function executeProductDeliveryEffect(kind, command) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
+
+    if (kind === "machines_list") {
+      // command: host_kind|host_id|id:kind:status,...
+      const parts = cmd.split("|");
+      const hostKind = parts[0] || "";
+      const hostId = parts[1] || "";
+      const rowsRaw = parts.slice(2).join("|") || "";
+      const machines = rowsRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((row) => {
+          const bits = row.split(":");
+          return {
+            id: bits[0] || "",
+            kind: bits[1] || "",
+            status: bits[2] || "disconnected",
+          };
+        });
+      const dir = path.join(REPO_ROOT, "data", "machines");
+      fs.mkdirSync(dir, { recursive: true });
+      const listPath = path.join(
+        dir,
+        `list-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        host_kind: hostKind,
+        host_id: hostId,
+        machines,
+        count: machines.length,
+        mode: "host_machines_list",
+        pretend_all_connected: false,
+        at,
+      };
+      fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "lists.jsonl"), {
+        ...artifact,
+        path: listPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: listPath,
+        label: "machines_list",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: listPath,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...artifact,
+        path: listPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
 
     if (kind === "skill_load") {
       // command: task|loaded_count

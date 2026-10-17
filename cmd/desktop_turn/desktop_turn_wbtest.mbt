@@ -42,9 +42,12 @@ test "desktop_turn_list_machines_kinds" {
   assert_true(json.contains("\"kind\":\"desktop\""))
   assert_true(json.contains("\"kind\":\"ios\""))
   assert_true(json.contains("\"kind\":\"android\""))
-  // Default desktop Host context marks desk-1 Connected; android seed stays disconnected.
+  // Default desktop Host marks only desk-1 Connected; ios/android stay disconnected.
+  assert_true(r.needs_host_ffi)
+  assert_eq(r.effects[0].kind, "machines_list")
   let mut desk_ok = false
   let mut android_disc = false
+  let mut ios_disc = false
   for m in r.machines {
     if m.kind == "desktop" && m.status == "connected" {
       desk_ok = true
@@ -52,9 +55,13 @@ test "desktop_turn_list_machines_kinds" {
     if m.kind == "android" && m.status == "disconnected" {
       android_disc = true
     }
+    if m.kind == "ios" && m.status == "disconnected" {
+      ios_disc = true
+    }
   }
   assert_true(desk_ok)
   assert_true(android_disc)
+  assert_true(ios_disc)
 }
 
 ///|

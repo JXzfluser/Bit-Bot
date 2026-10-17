@@ -82,19 +82,21 @@ pub fn MachineRegistry::empty() -> MachineRegistry {
 
 ///|
 /// Seed a representative full set: desktop + ios + android.
+/// All start Disconnected; Host `mark_host_present` marks the active shell
+/// Connected (honest — never pretend remote phone OS is online).
 pub fn MachineRegistry::seed() -> MachineRegistry {
   let reg = MachineRegistry::empty()
   reg.machines.push({
     id: "desk-1",
     label: "Work Desktop",
     kind: Desktop,
-    status: Connected,
+    status: Disconnected,
   })
   reg.machines.push({
     id: "phone-ios",
     label: "iPhone",
     kind: Ios,
-    status: Connected,
+    status: Disconnected,
   })
   reg.machines.push({
     id: "phone-android",

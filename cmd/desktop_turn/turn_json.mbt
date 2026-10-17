@@ -1210,8 +1210,41 @@ pub fn run_desktop_turn(
         ctx.machine_kind +
         " id=" +
         ctx.machine_id +
-        "."
-      deliver_ok(trimmed, turn_id, reply, intent, ctx~, machines=rows)
+        ". Host journals registry snapshot."
+      // command: host_kind|host_id|id:kind:status,...
+      let buf = StringBuilder()
+      buf.write_string(ctx.machine_kind)
+      buf.write_string("|")
+      buf.write_string(ctx.machine_id)
+      buf.write_string("|")
+      let mut i = 0
+      while i < rows.length() {
+        if i > 0 {
+          buf.write_string(",")
+        }
+        let m = rows[i]
+        buf.write_string(m.id)
+        buf.write_string(":")
+        buf.write_string(m.kind)
+        buf.write_string(":")
+        buf.write_string(m.status)
+        i = i + 1
+      }
+      let effect : DesktopEffect = {
+        kind: "machines_list",
+        command: buf.to_string(),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        reply,
+        intent,
+        ctx~,
+        machines=rows,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     MemoryUpdate(key~, value~) => {
       let store = @memory.InMemoryStore::new()

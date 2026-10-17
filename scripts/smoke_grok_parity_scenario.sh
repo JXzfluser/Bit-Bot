@@ -106,7 +106,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-vr.json'));h=next(x for
 
 # 9e) Connectors probe + teammate send + routine tick (Host durable)
 "${RUN[@]}" "list connectors" >/tmp/parity-conn.json
-python3 -c "import json;d=json.load(open('/tmp/parity-conn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='connectors_probe');p=json.loads(h['stdout']);assert p.get('ok') is True;assert isinstance(p.get('connectors'),dict) and p['connectors'];print('parity connectors_probe ok', sorted(p['connectors'].keys()))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-conn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='connectors_probe');p=json.loads(h['stdout']);assert p.get('ok') is True;assert p.get('pretend_all_connected') is False;assert isinstance(p.get('connectors'),dict) and p['connectors'];assert p.get('path') and os.path.isfile(p['path']);print('parity connectors_probe ok', sorted(p['connectors'].keys()), p.get('path'))"
 "${RUN[@]}" "create teammate id=asst-parity name=Parity role=executor" >/tmp/parity-tm.json
 python3 -c "import json;d=json.load(open('/tmp/parity-tm.json'));h=next(x for x in d['host_results'] if x.get('kind')=='teammate_create');assert h.get('ok');print('parity teammate_create ok')"
 "${RUN[@]}" "send to agent asst-parity :: review parity $MARKER" >/tmp/parity-sta.json
@@ -393,7 +393,7 @@ python3 -c "t=open('/tmp/parity-ios-slides.txt').read();assert 'SendToUser' in t
 "${RUN[@]}" --machine-kind android --machine-id phone-android "ListMachines" >/tmp/parity-lm-android.json
 python3 -c "import json;d=json.load(open('/tmp/parity-lm-android.json'));ms=d.get('machines')or[];a=next(m for m in ms if m.get('kind')=='android');assert a.get('status')=='connected';assert a.get('id')=='phone-android';print('parity android host-present ListMachines ok', a.get('status'))"
 "${RUN[@]}" --machine-kind desktop "ListMachines" >/tmp/parity-lm-desk.json
-python3 -c "import json;d=json.load(open('/tmp/parity-lm-desk.json'));ms=d.get('machines')or[];a=next(m for m in ms if m.get('kind')=='android');assert a.get('status')=='disconnected';print('parity desktop ListMachines android residual disconnected ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-lm-desk.json'));ms=d.get('machines')or[];a=next(m for m in ms if m.get('kind')=='android');assert a.get('status')=='disconnected';ios=next(m for m in ms if m.get('kind')=='ios');assert ios.get('status')=='disconnected';desk=next(m for m in ms if m.get('kind')=='desktop');assert desk.get('status')=='connected';h=next(x for x in d['host_results'] if x.get('kind')=='machines_list');p=json.loads(h['stdout']);assert p.get('pretend_all_connected') is False;assert p.get('host_kind')=='desktop';assert os.path.isfile(p['path']);print('parity desktop ListMachines honesty ok', 'android', a.get('status'), 'ios', ios.get('status'), p.get('path'))"
 
 # 11) Delivery ledger must cover CHARTER SendToUser types after marker
 python3 -c "
