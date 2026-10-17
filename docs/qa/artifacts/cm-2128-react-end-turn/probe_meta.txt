@@ -6,11 +6,11 @@ chrome_profile=untouched
 shared_profile_dir=/home/box/chrome-profile=untouched
 i_claimed=false
 USER_IANA=Asia/Shanghai
-stamp_utc=20261017T085755Z
+stamp_utc=20261017T085929Z
 iso_cdp_port=9400
 iso_http_port=8760
 iso_display=:80
-iso_profile=/tmp/h5-iso-profile.z2GFGo
+iso_profile=/tmp/h5-iso-profile.jmKxxj
 shared_cdp_port_untouched=9223
 ui_drive=HostUiShell_/api/host/*
 rejected_B_cdp_page_js=true

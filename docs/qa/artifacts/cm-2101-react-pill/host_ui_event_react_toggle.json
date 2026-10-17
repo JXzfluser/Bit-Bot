@@ -105,13 +105,13 @@
       "reactions": {}
     },
     "audit": {
-      "id": "81123061-b925-4d14-a8fc-e7fb15404b7d",
+      "id": "10a4b960-b694-472e-b544-677c831959ad",
       "tool_name": "host_ui:react_to_message",
-      "duration_ms": 1,
+      "duration_ms": 0,
       "ok": true,
       "detail": "pill message=msg-h5-1 emoji=None visible=False",
       "artifact_path": "/workspace/docs/qa/artifacts/cm-2101-react-pill",
-      "ts": 1792227486.1675708,
+      "ts": 1792227579.6916502,
       "method": "react_to_message"
     }
   },
@@ -210,8 +210,8 @@
   "events": {
     "events": [
       {
-        "id": "4afa7f4e-59ee-48ee-88a2-0c11bcf8aa99",
-        "ts": 1792227485.4335127,
+        "id": "ff51d677-7d6a-457c-b22f-a11927224827",
+        "ts": 1792227578.9582157,
         "kind": "ReactPillChanged",
         "message_id": "msg-h5-1",
         "emoji": "\ud83d\udc4d",
@@ -221,8 +221,8 @@
         }
       },
       {
-        "id": "4b6cc85c-01fc-436d-b050-1ac3a7090ac1",
-        "ts": 1792227486.167556,
+        "id": "5720a452-3470-4a35-b629-f578afa7acfc",
+        "ts": 1792227579.6916409,
         "kind": "ReactPillChanged",
         "message_id": "msg-h5-1",
         "emoji": null,

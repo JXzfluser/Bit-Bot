@@ -4,6 +4,6 @@
   "ffmpeg_rc": 0,
   "video_complete_notified": true,
   "ftyp_present": true,
-  "stderr_tail": ":100.0%\n[libx264 @ 0x560c7394a300] 8x8 transform intra:0.0%\n[libx264 @ 0x560c7394a300] coded y,uvDC,uvAC intra: 0.0% 0.3% 0.0% inter: 0.0% 0.0% 0.0%\n[libx264 @ 0x560c7394a300] i16 v,h,dc,p: 93%  0%  7%  0%\n[libx264 @ 0x560c7394a300] i8c dc,h,v,p: 100%  0%  0%  0%\n[libx264 @ 0x560c7394a300] Weighted P-Frames: Y:0.0% UV:0.0%\n[libx264 @ 0x560c7394a300] kb/s:3.67\n[aac @ 0x560c7394d680] Qavg: 1557.141\n",
+  "stderr_tail": ":100.0%\n[libx264 @ 0x55c783dde300] 8x8 transform intra:0.0%\n[libx264 @ 0x55c783dde300] coded y,uvDC,uvAC intra: 0.0% 0.3% 0.0% inter: 0.0% 0.0% 0.0%\n[libx264 @ 0x55c783dde300] i16 v,h,dc,p: 93%  0%  7%  0%\n[libx264 @ 0x55c783dde300] i8c dc,h,v,p: 100%  0%  0%  0%\n[libx264 @ 0x55c783dde300] Weighted P-Frames: Y:0.0% UV:0.0%\n[libx264 @ 0x55c783dde300] kb/s:3.67\n[aac @ 0x55c783de1680] Qavg: 1557.141\n",
   "i_claimed": false
 }

@@ -110,13 +110,13 @@
       }
     },
     "audit": {
-      "id": "862cb89c-3bc1-4ee4-a585-c8ce35ce10dc",
+      "id": "0e16a323-8114-4f56-b6f5-c5fbb1f44e7d",
       "tool_name": "host_ui:end_turn",
-      "duration_ms": 1,
+      "duration_ms": 0,
       "ok": true,
       "detail": "end_turn leave_pill=True pill_visible=True",
       "artifact_path": "/workspace/docs/qa/artifacts/cm-2128-react-end-turn",
-      "ts": 1792227490.1704419,
+      "ts": 1792227583.5410583,
       "method": "end_turn"
     }
   },
@@ -219,8 +219,8 @@
   "events": {
     "events": [
       {
-        "id": "a11b0b6a-eb0b-4ace-af0f-51b2bf4f2d93",
-        "ts": 1792227490.0423188,
+        "id": "9ac981b5-41a7-472b-b6af-a0ab113a205e",
+        "ts": 1792227583.4504247,
         "kind": "ReactPillChanged",
         "message_id": "msg-h5-1",
         "emoji": "\ud83c\udf89",
@@ -230,8 +230,8 @@
         }
       },
       {
-        "id": "8a6d0171-2a10-455f-a99f-722325cf854c",
-        "ts": 1792227490.1704314,
+        "id": "bddbf992-57c4-4f68-9cc0-e3b868e0106d",
+        "ts": 1792227583.541048,
         "kind": "EndTurn",
         "leave_pill": true,
         "pill_visible": true,

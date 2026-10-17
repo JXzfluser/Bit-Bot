@@ -111,13 +111,13 @@
       }
     },
     "audit": {
-      "id": "3140ca1c-7fc8-408d-8a89-9f9673ae5bac",
+      "id": "7a99777f-ec9b-401f-86a5-ca9ee424a676",
       "tool_name": "host_ui:react_to_message",
       "duration_ms": 0,
       "ok": true,
       "detail": "pill message=msg-h5-1 emoji=\ud83c\udf89 visible=True",
       "artifact_path": "/workspace/docs/qa/artifacts/cm-2128-react-end-turn",
-      "ts": 1792227490.042332,
+      "ts": 1792227583.4504383,
       "method": "react_to_message"
     }
   },
@@ -220,8 +220,8 @@
   "events": {
     "events": [
       {
-        "id": "a11b0b6a-eb0b-4ace-af0f-51b2bf4f2d93",
-        "ts": 1792227490.0423188,
+        "id": "9ac981b5-41a7-472b-b6af-a0ab113a205e",
+        "ts": 1792227583.4504247,
         "kind": "ReactPillChanged",
         "message_id": "msg-h5-1",
         "emoji": "\ud83c\udf89",
