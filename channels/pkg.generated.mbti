@@ -1,0 +1,274 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/channels"
+
+import {
+  "bitbot/bitbot/ui_protocol",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn assert_not_external(String?) -> Result[Unit, String]
+
+pub fn assert_not_third_person_about_user(ChannelSpeakAsUser, String) -> Result[Unit, String]
+
+pub fn classify_slack_target(String, String?) -> SlackTargetKind
+
+pub fn degrade_for_channel(Array[@ui_protocol.MessageKind]) -> Array[@ui_protocol.MessageKind]
+
+pub fn deliver_for_channel(@ui_protocol.SendEnvelope, ChannelAddress) -> @ui_protocol.SendEnvelope
+
+pub fn destination_kind_for_hint(String?) -> ChannelKind
+
+pub fn handle_inbound_reaction(InboundReaction) -> ReactionWakeDisposition
+
+pub fn has_bare_widget(Array[@ui_protocol.MessageKind]) -> Bool
+
+pub fn has_inbound_reaction_cue(String) -> Bool
+
+pub fn is_external_hint(String?) -> Bool
+
+pub fn is_third_person_about_user(String, ChannelSpeakAsUser) -> Bool
+
+pub fn parse_channel_address(String) -> ChannelAddress
+
+pub fn parse_slack_address(String) -> Result[ChannelAddress, String]
+
+pub fn parse_teams_scope(String) -> Result[TeamsScope, String]
+
+pub fn plan_channel_reply(inbound_address~ : String?, outbound_channel~ : String?, body~ : String) -> Result[ChannelDelivery, String]
+
+pub fn plan_channel_speak_as_user(ChannelSpeakAsUser, body~ : String) -> ChannelIdentitySpeech
+
+pub fn plan_reaction_outbound(InboundReaction) -> ReactionOutboundPlan
+
+pub fn plan_teams_outbound(TeamsInbound, TeamsScope, body~ : String) -> TeamsOutboundPlan
+
+pub fn reject_naked_widget_on_channel(Array[@ui_protocol.MessageKind], channel_target~ : Bool) -> Result[Unit, String]
+
+pub fn require_external_channel(outbound_channel~ : String?) -> Result[String, String]
+
+// Errors
+
+// Types and methods
+pub(all) struct ChannelAddress {
+  kind : ChannelKind
+  channel_id : String
+  thread_ts : String?
+} derive(Eq, @debug.Debug)
+pub fn ChannelAddress::equal(Self, Self) -> Bool
+pub fn ChannelAddress::is_dm(Self) -> Bool
+pub fn ChannelAddress::is_thread(Self) -> Bool
+pub fn ChannelAddress::is_threaded(Self) -> Bool
+pub fn ChannelAddress::is_toplevel(Self) -> Bool
+pub fn ChannelAddress::not_equal(Self, Self) -> Bool
+pub fn ChannelAddress::reply_hint(Self) -> String
+pub fn ChannelAddress::slack_target(Self) -> SlackTargetKind?
+pub fn ChannelAddress::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ChannelDelivery {
+  External(channel~ : String)
+  InAppOnly
+} derive(Eq, @debug.Debug)
+pub fn ChannelDelivery::equal(Self, Self) -> Bool
+pub fn ChannelDelivery::is_external(Self) -> Bool
+pub fn ChannelDelivery::not_equal(Self, Self) -> Bool
+pub fn ChannelDelivery::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ChannelId {
+  kind : ChannelKind
+  id : String
+} derive(Eq, @debug.Debug)
+pub fn ChannelId::equal(Self, Self) -> Bool
+pub fn ChannelId::not_equal(Self, Self) -> Bool
+pub fn ChannelId::render(Self) -> String
+pub fn ChannelId::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ChannelIdentitySpeech {
+  SpeakAsUser(body~ : String)
+  RejectThirdPerson(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn ChannelIdentitySpeech::equal(Self, Self) -> Bool
+pub fn ChannelIdentitySpeech::is_speak_as_user(Self) -> Bool
+pub fn ChannelIdentitySpeech::not_equal(Self, Self) -> Bool
+pub fn ChannelIdentitySpeech::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ChannelKind {
+  Chat
+  Email
+  Slack
+  Sms
+  Webhook
+  Internal
+  Voice
+  Teams
+} derive(Eq, @debug.Debug)
+pub fn ChannelKind::equal(Self, Self) -> Bool
+pub fn ChannelKind::not_equal(Self, Self) -> Bool
+pub fn ChannelKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ChannelSpeakAsUser {
+  user_handle : String
+  display_name : String?
+} derive(Eq, @debug.Debug)
+pub fn ChannelSpeakAsUser::equal(Self, Self) -> Bool
+pub fn ChannelSpeakAsUser::new(String, display_name? : String?) -> Self
+pub fn ChannelSpeakAsUser::not_equal(Self, Self) -> Bool
+pub fn ChannelSpeakAsUser::to_repr(Self) -> @debug.Repr
+
+pub(all) struct InboundMessage {
+  channel : ChannelId
+  message_id : String
+  sender : String
+  body : String
+  received_at_ms : Int64
+  thread_id : String?
+} derive(Eq, @debug.Debug)
+pub fn InboundMessage::equal(Self, Self) -> Bool
+pub fn InboundMessage::not_equal(Self, Self) -> Bool
+pub fn InboundMessage::to_repr(Self) -> @debug.Repr
+
+pub(all) struct InboundReaction {
+  emoji : String
+  target_message_id : String
+  channel_hint : String?
+  useful : Bool
+} derive(Eq, @debug.Debug)
+pub fn InboundReaction::equal(Self, Self) -> Bool
+pub fn InboundReaction::new(emoji~ : String, target_message_id~ : String, useful? : Bool, channel_hint? : String?) -> Self
+pub fn InboundReaction::not_equal(Self, Self) -> Bool
+pub fn InboundReaction::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PersonalSlackBot {
+  owner_user_id : String
+}
+pub fn PersonalSlackBot::new(owner_user_id~ : String) -> Self
+pub fn PersonalSlackBot::owner_dm_address(Self) -> String
+pub fn PersonalSlackBot::share_hint(Self) -> String
+pub fn PersonalSlackBot::try_send(Self, ChannelAddress, text~ : String) -> PersonalSlackSendResult
+
+pub(all) enum PersonalSlackSendResult {
+  SentDm(owner_id~ : String, text~ : String)
+  RefusedSharedChannel(hint~ : String)
+} derive(Eq, @debug.Debug)
+pub fn PersonalSlackSendResult::equal(Self, Self) -> Bool
+pub fn PersonalSlackSendResult::is_polite_refuse(Self) -> Bool
+pub fn PersonalSlackSendResult::is_sent(Self) -> Bool
+pub fn PersonalSlackSendResult::not_equal(Self, Self) -> Bool
+pub fn PersonalSlackSendResult::refuse_hint(Self) -> String?
+pub fn PersonalSlackSendResult::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ReactionOutboundPlan {
+  disposition : ReactionWakeDisposition
+  reply_forced : Bool
+  outbound_count : Int
+} derive(Eq, @debug.Debug)
+pub fn ReactionOutboundPlan::equal(Self, Self) -> Bool
+pub fn ReactionOutboundPlan::not_equal(Self, Self) -> Bool
+pub fn ReactionOutboundPlan::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ReactionWakeDisposition {
+  WakeNoReply
+  ActWhenUseful(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn ReactionWakeDisposition::acts(Self) -> Bool
+pub fn ReactionWakeDisposition::equal(Self, Self) -> Bool
+pub fn ReactionWakeDisposition::is_wake_only(Self) -> Bool
+pub fn ReactionWakeDisposition::not_equal(Self, Self) -> Bool
+pub fn ReactionWakeDisposition::should_reply(Self) -> Bool
+pub fn ReactionWakeDisposition::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SetUpSlackAction {
+  ConnectTool
+  GuideDetails
+} derive(Eq, @debug.Debug)
+pub fn SetUpSlackAction::equal(Self, Self) -> Bool
+pub fn SetUpSlackAction::not_equal(Self, Self) -> Bool
+pub fn SetUpSlackAction::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SetUpSlackSession {
+  mut status : SlackConnectStatus
+  mut used_action : SetUpSlackAction?
+  mut details_opened : Bool
+}
+pub fn SetUpSlackSession::complete_from_details(Self) -> Result[SlackConnectStatus, String]
+pub fn SetUpSlackSession::connect_tool(Self) -> Result[SlackConnectStatus, String]
+pub fn SetUpSlackSession::flow_completable(Self) -> Bool
+pub fn SetUpSlackSession::guide_details(Self) -> Result[String, String]
+pub fn SetUpSlackSession::is_connected(Self) -> Bool
+pub fn SetUpSlackSession::new() -> Self
+pub fn SetUpSlackSession::status(Self) -> SlackConnectStatus
+
+pub(all) enum SlackConnectStatus {
+  Disconnected
+  Connecting
+  Connected
+  NeedsDetails
+} derive(Eq, @debug.Debug)
+pub fn SlackConnectStatus::equal(Self, Self) -> Bool
+pub fn SlackConnectStatus::label(Self) -> String
+pub fn SlackConnectStatus::not_equal(Self, Self) -> Bool
+pub fn SlackConnectStatus::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SlackTargetKind {
+  Thread
+  Dm
+  TopLevel
+} derive(Eq, @debug.Debug)
+pub fn SlackTargetKind::equal(Self, Self) -> Bool
+pub fn SlackTargetKind::not_equal(Self, Self) -> Bool
+pub fn SlackTargetKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TeamsChannelSession {
+  scope : TeamsScope
+  mut connected : Bool
+  inbound_log : Array[TeamsInbound]
+  outbound_log : Array[String]
+}
+pub fn TeamsChannelSession::connect(TeamsScope) -> Self
+pub fn TeamsChannelSession::receive(Self, TeamsInbound) -> Result[Unit, String]
+pub fn TeamsChannelSession::send(Self, TeamsScope, body~ : String) -> Result[String, String]
+
+pub(all) struct TeamsInbound {
+  scope : TeamsScope
+  message_id : String
+  sender : String
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn TeamsInbound::equal(Self, Self) -> Bool
+pub fn TeamsInbound::not_equal(Self, Self) -> Bool
+pub fn TeamsInbound::to_repr(Self) -> @debug.Repr
+
+pub(all) enum TeamsOutboundPlan {
+  Deliver(scope~ : TeamsScope, body~ : String)
+  Rejected(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn TeamsOutboundPlan::equal(Self, Self) -> Bool
+pub fn TeamsOutboundPlan::not_equal(Self, Self) -> Bool
+pub fn TeamsOutboundPlan::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TeamsRoutineTrigger {
+  scope : TeamsScope
+  event_kind : String
+} derive(Eq, @debug.Debug)
+pub fn TeamsRoutineTrigger::equal(Self, Self) -> Bool
+pub fn TeamsRoutineTrigger::matches_inbound(Self, TeamsInbound, String) -> Bool
+pub fn TeamsRoutineTrigger::new(TeamsScope, String) -> Result[Self, String]
+pub fn TeamsRoutineTrigger::not_equal(Self, Self) -> Bool
+pub fn TeamsRoutineTrigger::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TeamsScope {
+  tenant_id : String
+  team_id : String
+  channel_id : String?
+} derive(Eq, @debug.Debug)
+pub fn TeamsScope::equal(Self, Self) -> Bool
+pub fn TeamsScope::matches(Self, Self) -> Bool
+pub fn TeamsScope::not_equal(Self, Self) -> Bool
+pub fn TeamsScope::of(tenant_id~ : String, team_id~ : String, channel_id? : String?) -> Self
+pub fn TeamsScope::same_tenant_team(Self, Self) -> Bool
+pub fn TeamsScope::to_address(Self) -> String
+pub fn TeamsScope::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

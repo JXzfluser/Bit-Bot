@@ -1,0 +1,2 @@
+    PID    PPID COMMAND
+ 109805      54 /opt/google/chrome/chrome --no-sandbox --disable-dev-shm-usage --password-store=basic --no-first-run --no-default-browser-check --hide-crash-restore-bubble --start-maximized --class=box-chrome --user-data-dir=/tmp/h1-iso-profile.evbJEp --enable-unsafe-swiftshader --remote-debugging-port=9333 --remote-debugging-address=127.0.0.1 --disable-blink-features=AutomationControlled --proxy-server=http://127.0.0.1:8791 --proxy-bypass-list=localhost;127.0.0.1;[::1] --sand-box-chrome-launcher=4 --no-startup-window

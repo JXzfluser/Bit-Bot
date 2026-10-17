@@ -1,0 +1,145 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/agents/computer_use"
+
+import {
+  "bitbot/bitbot/agents/task",
+  "bitbot/bitbot/box_host",
+  "bitbot/bitbot/skills",
+  "bitbot/bitbot/ui_protocol",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn computer_use_browser_launch_path() -> String
+
+pub fn computer_use_launch_browser(@box_host.HostAbi) -> Result[ComputerUseBrowserLaunch, String]
+
+pub fn computer_use_navigate_public(agent_id~ : String, url~ : String) -> Result[NavigateResult, String]
+
+pub fn computer_use_request_box_help(reason~ : String) -> Result[@ui_protocol.BoxHelpHandoff, String]
+
+pub fn dispatch_computer_use(String, String, ComputerUseSpec) -> Result[(@task.SubagentHandle, ComputerUseOutcome), String]
+
+pub fn dispatch_site_playbook_snippet(agent_id~ : String, parent_turn_id~ : String, @skills.PlaybookDispatchSnippet) -> Result[PlaybookChildTask, String]
+
+pub fn evaluate_gui_automation(String, GuiAutomationPath) -> Result[Unit, String]
+
+pub fn navigate_public(String) -> Result[NavigateResult, String]
+
+pub fn public_page_fallback(url~ : String, kind? : CuPublicFallbackKind, use_cookies_or_tokens? : Bool) -> Result[CuPublicFallbackResult, String]
+
+pub fn record_signin_attempt(SignInChannel, String, Array[String]) -> Result[SignInAttemptRecord, String]
+
+pub fn run_computer_use_task(task_id~ : String, parent_turn_id~ : String, ComputerUseSpec) -> Result[TaskComputerUseReport, String]
+
+pub fn transcript_contains_plaintext_password(Array[String], String) -> Bool
+
+// Errors
+
+// Types and methods
+pub(all) struct ComputerUseBrowserLaunch {
+  via_box_chrome : Bool
+  launch_path : String
+  lockfile_diagnosable : Bool
+  rejected_bare : Bool
+} derive(Eq, @debug.Debug)
+pub fn ComputerUseBrowserLaunch::equal(Self, Self) -> Bool
+pub fn ComputerUseBrowserLaunch::not_equal(Self, Self) -> Bool
+pub fn ComputerUseBrowserLaunch::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ComputerUseOutcome {
+  agent_id : String
+  summary : String
+  final_url : String?
+  blocked_on_signin : Bool
+} derive(Eq, @debug.Debug)
+pub fn ComputerUseOutcome::equal(Self, Self) -> Bool
+pub fn ComputerUseOutcome::not_equal(Self, Self) -> Bool
+pub fn ComputerUseOutcome::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ComputerUseSpec {
+  task : String
+  allow_shell_escape : Bool
+}
+pub fn ComputerUseSpec::validate(Self) -> Result[Unit, String]
+
+pub(all) enum CuPublicFallbackKind {
+  BrowserNavigate
+  CurlEgress
+} derive(Eq, @debug.Debug)
+pub fn CuPublicFallbackKind::equal(Self, Self) -> Bool
+pub fn CuPublicFallbackKind::not_equal(Self, Self) -> Bool
+pub fn CuPublicFallbackKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CuPublicFallbackResult {
+  url : String
+  kind : CuPublicFallbackKind
+  navigate_reachable : Bool
+  body : String
+  used_credentials : Bool
+} derive(Eq, @debug.Debug)
+pub fn CuPublicFallbackResult::equal(Self, Self) -> Bool
+pub fn CuPublicFallbackResult::not_equal(Self, Self) -> Bool
+pub fn CuPublicFallbackResult::to_repr(Self) -> @debug.Repr
+
+pub(all) enum GuiAutomationPath {
+  ViaComputerUse
+  ViaShell
+} derive(Eq, @debug.Debug)
+pub fn GuiAutomationPath::equal(Self, Self) -> Bool
+pub fn GuiAutomationPath::not_equal(Self, Self) -> Bool
+pub fn GuiAutomationPath::to_repr(Self) -> @debug.Repr
+
+pub(all) struct NavigateResult {
+  url : String
+  navigate_reachable : Bool
+  public_page : Bool
+  blocked : Bool
+  evidence : String
+} derive(Eq, @debug.Debug)
+pub fn NavigateResult::equal(Self, Self) -> Bool
+pub fn NavigateResult::not_equal(Self, Self) -> Bool
+pub fn NavigateResult::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PlaybookChildTask {
+  agent_id : String
+  playbook_name : String
+  snippet : String
+  read_first : Bool
+  child_task_prompt : String
+  handle : @task.SubagentHandle
+} derive(Eq, @debug.Debug)
+pub fn PlaybookChildTask::equal(Self, Self) -> Bool
+pub fn PlaybookChildTask::not_equal(Self, Self) -> Bool
+pub fn PlaybookChildTask::snippet_in_child_task(Self) -> Bool
+pub fn PlaybookChildTask::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SignInAttemptRecord {
+  channel : SignInChannel
+  transcript_lines : Array[String]
+} derive(Eq, @debug.Debug)
+pub fn SignInAttemptRecord::equal(Self, Self) -> Bool
+pub fn SignInAttemptRecord::not_equal(Self, Self) -> Bool
+pub fn SignInAttemptRecord::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SignInChannel {
+  SecretRequest
+  UserForm
+  ChatPlain
+} derive(Eq, @debug.Debug)
+pub fn SignInChannel::equal(Self, Self) -> Bool
+pub fn SignInChannel::not_equal(Self, Self) -> Bool
+pub fn SignInChannel::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TaskComputerUseReport {
+  task_id : String
+  outcome : ComputerUseOutcome
+} derive(Eq, @debug.Debug)
+pub fn TaskComputerUseReport::equal(Self, Self) -> Bool
+pub fn TaskComputerUseReport::not_equal(Self, Self) -> Bool
+pub fn TaskComputerUseReport::parent_view(Self) -> ComputerUseOutcome
+pub fn TaskComputerUseReport::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

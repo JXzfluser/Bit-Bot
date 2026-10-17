@@ -1,0 +1,2 @@
+doctor_bin=/usr/local/bin/box-doctor
+h0_log=/tmp/box-doctor-h0.log

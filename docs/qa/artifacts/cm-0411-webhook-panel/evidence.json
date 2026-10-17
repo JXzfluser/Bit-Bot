@@ -1,0 +1,18 @@
+{
+  "CM": "CM-0411",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h3_smoke.sh cm-0411",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-0411-webhook-panel",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "surface": "bit-bot-host-ui",
+    "ui_drive": "HostUiShell_Live"
+  },
+  "panel_copy_url_ok": true,
+  "panel_copy_key_ok": true,
+  "tool_read_key_rejected": true,
+  "wake_has_webhook_event": true,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Host panel copy URL/key receipts; assistant tool-read key rejected; wake has <webhook_event> without key"
+}

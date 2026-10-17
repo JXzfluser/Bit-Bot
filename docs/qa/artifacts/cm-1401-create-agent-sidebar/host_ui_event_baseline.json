@@ -1,0 +1,129 @@
+{
+  "method": "address_agent",
+  "body": {
+    "agent_id": "h2-throwaway-agent"
+  },
+  "result": {
+    "state": {
+      "settingsOpen": false,
+      "entry": null,
+      "anchor": null,
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "General",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": "h2-throwaway-agent",
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "rev": 1
+    },
+    "hidden": false,
+    "in_sidebar": true,
+    "audit": {
+      "id": "b80405be-34da-4a4e-93c6-aaca812fe73e",
+      "tool_name": "host_ui:address_agent",
+      "duration_ms": 1,
+      "ok": true,
+      "detail": "addressed agent=h2-throwaway-agent hidden=False in_sidebar=True",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-1401-create-agent-sidebar",
+      "ts": 1792220980.208643,
+      "method": "address_agent"
+    }
+  },
+  "state": {
+    "settingsOpen": false,
+    "entry": null,
+    "anchor": null,
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "General",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": "h2-throwaway-agent",
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "rev": 1
+  },
+  "events": {
+    "events": [
+      {
+        "id": "ab5faf43-5167-4c7f-a897-7b28e6b3dfd6",
+        "ts": 1792220980.2086265,
+        "kind": "AgentAddressed",
+        "agent_id": "h2-throwaway-agent",
+        "hidden": false
+      }
+    ]
+  }
+}

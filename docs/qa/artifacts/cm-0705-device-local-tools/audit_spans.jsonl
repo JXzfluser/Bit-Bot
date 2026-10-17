@@ -1,0 +1,1 @@
+{"id": "c07efa03-a732-4449-b72b-75c59085d163", "tool_name": "h3_probe:CM-0705", "ok": true, "detail": "platform_subset=desktop_no_device_local_tools; desktop tools empty; phone OS dialog N/A; i_claimed=false", "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-0705-device-local-tools", "ts": 1792221619.625134}

@@ -1,0 +1,14 @@
+.DS_Store
+_build/
+target/
+target
+.mooncakes/
+.moonagent/
+# Python bytecode (build cache)
+__pycache__/
+*.pyc
+# Never commit browser profile DBs captured by Host smoke
+docs/qa/artifacts/**/Cookies*
+docs/qa/artifacts/**/Login Data*
+docs/qa/artifacts/**/Web Data*
+docs/qa/artifacts/**/History*

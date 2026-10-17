@@ -1,0 +1,66 @@
+[ {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@5869fe313571d75152b77813cf0a4ee26a4e6df0/inspector.html?ws=127.0.0.1:9333/devtools/page/25935BC572E6887D25769EC54A5A223F",
+   "id": "25935BC572E6887D25769EC54A5A223F",
+   "title": "Example Domain",
+   "type": "page",
+   "url": "https://example.com/",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/25935BC572E6887D25769EC54A5A223F"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@5869fe313571d75152b77813cf0a4ee26a4e6df0/inspector.html?ws=127.0.0.1:9333/devtools/page/23755DB99FC1AC3B350E9FB80C430DB0",
+   "id": "23755DB99FC1AC3B350E9FB80C430DB0",
+   "title": "New Tab",
+   "type": "page",
+   "url": "chrome://newtab/",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/23755DB99FC1AC3B350E9FB80C430DB0"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@5869fe313571d75152b77813cf0a4ee26a4e6df0/inspector.html?ws=127.0.0.1:9333/devtools/page/7A316C64E1FE098A9A9B1FE1CDC9FF2B",
+   "id": "7A316C64E1FE098A9A9B1FE1CDC9FF2B",
+   "parentId": "23755DB99FC1AC3B350E9FB80C430DB0",
+   "title": "chrome-untrusted://new-tab-page/one-google-bar?paramsencoded=",
+   "type": "iframe",
+   "url": "chrome-untrusted://new-tab-page/one-google-bar?paramsencoded=",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/7A316C64E1FE098A9A9B1FE1CDC9FF2B"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@5869fe313571d75152b77813cf0a4ee26a4e6df0/inspector.html?ws=127.0.0.1:9333/devtools/page/C3E5CF1FB6E7764A8CEEECC078870A3E",
+   "id": "C3E5CF1FB6E7764A8CEEECC078870A3E",
+   "title": "Omnibox Popup",
+   "type": "browser_ui",
+   "url": "chrome://omnibox-popup.top-chrome/",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/C3E5CF1FB6E7764A8CEEECC078870A3E"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@5869fe313571d75152b77813cf0a4ee26a4e6df0/inspector.html?ws=127.0.0.1:9333/devtools/page/555778A7C07119F996011D4BA51D4759",
+   "id": "555778A7C07119F996011D4BA51D4759",
+   "title": "Omnibox Popup",
+   "type": "browser_ui",
+   "url": "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/555778A7C07119F996011D4BA51D4759"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@5869fe313571d75152b77813cf0a4ee26a4e6df0/inspector.html?ws=127.0.0.1:9333/devtools/page/B805BAD2AF3FC4FF0CE103BF2335B947",
+   "id": "B805BAD2AF3FC4FF0CE103BF2335B947",
+   "title": "Google Hangouts",
+   "type": "background_page",
+   "url": "chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/B805BAD2AF3FC4FF0CE103BF2335B947"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@5869fe313571d75152b77813cf0a4ee26a4e6df0/worker_app.html?ws=127.0.0.1:9333/devtools/page/105E60C4E44CF6A7649479DEDD46E20E",
+   "id": "105E60C4E44CF6A7649479DEDD46E20E",
+   "title": "Service Worker chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js",
+   "type": "service_worker",
+   "url": "chrome-extension://fignfifoniblkonapihmkfakmlgkbkcf/service_worker.js",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/105E60C4E44CF6A7649479DEDD46E20E"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@5869fe313571d75152b77813cf0a4ee26a4e6df0/worker_app.html?ws=127.0.0.1:9333/devtools/page/4D35E53786BFE4672D71847B6FD10179",
+   "id": "4D35E53786BFE4672D71847B6FD10179",
+   "title": "Service Worker chrome-extension://cdcgnpojdoaaglnkfdclmpobplbnobol/background.js",
+   "type": "service_worker",
+   "url": "chrome-extension://cdcgnpojdoaaglnkfdclmpobplbnobol/background.js",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/4D35E53786BFE4672D71847B6FD10179"
+} ]

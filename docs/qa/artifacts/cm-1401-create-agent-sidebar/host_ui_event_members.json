@@ -1,0 +1,201 @@
+{
+  "method": "open_members_panel",
+  "body": {
+    "group_id": "h2-group",
+    "member_ids": [
+      "h2-throwaway-agent",
+      "h2-created-agent"
+    ]
+  },
+  "result": {
+    "state": {
+      "settingsOpen": false,
+      "entry": null,
+      "anchor": null,
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "General",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        },
+        {
+          "id": "h2-created-agent",
+          "name": "H2 Created Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": "h2-group",
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": true,
+        "agentId": "h2-group",
+        "view": "panel",
+        "sections": [
+          "desktop-preview",
+          "routines",
+          "channels",
+          "members",
+          "gear-settings"
+        ],
+        "members": [
+          "h2-throwaway-agent",
+          "h2-created-agent"
+        ],
+        "group": true
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "rev": 3
+    },
+    "audit": {
+      "id": "72731bae-c611-42f4-b1d8-eb8e9b56d752",
+      "tool_name": "host_ui:open_info_panel",
+      "duration_ms": 1,
+      "ok": true,
+      "detail": "agent=h2-group view=panel members=['h2-throwaway-agent', 'h2-created-agent'] settingsOpen=False",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-1401-create-agent-sidebar",
+      "ts": 1792220981.7015698,
+      "method": "open_members_panel"
+    }
+  },
+  "state": {
+    "settingsOpen": false,
+    "entry": null,
+    "anchor": null,
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "General",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      },
+      {
+        "id": "h2-created-agent",
+        "name": "H2 Created Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": "h2-group",
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": true,
+      "agentId": "h2-group",
+      "view": "panel",
+      "sections": [
+        "desktop-preview",
+        "routines",
+        "channels",
+        "members",
+        "gear-settings"
+      ],
+      "members": [
+        "h2-throwaway-agent",
+        "h2-created-agent"
+      ],
+      "group": true
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "rev": 3
+  },
+  "events": {
+    "events": [
+      {
+        "id": "ab5faf43-5167-4c7f-a897-7b28e6b3dfd6",
+        "ts": 1792220980.2086265,
+        "kind": "AgentAddressed",
+        "agent_id": "h2-throwaway-agent",
+        "hidden": false
+      },
+      {
+        "id": "02f2aac5-afd7-49c1-b5bf-2d11f028f87e",
+        "ts": 1792220980.9538023,
+        "kind": "AgentCreated",
+        "agent_id": "h2-created-agent"
+      },
+      {
+        "id": "bc77afdd-2dfb-4658-8f43-cdcb5f3d6f29",
+        "ts": 1792220980.953811,
+        "kind": "SidebarListChanged",
+        "visible_ids": [
+          "h2-throwaway-agent",
+          "demo-agent",
+          "h2-created-agent"
+        ]
+      },
+      {
+        "id": "82b76c54-f14d-459b-8243-6d84599431ed",
+        "ts": 1792220981.7015562,
+        "kind": "InfoPanelOpened",
+        "agent_id": "h2-group",
+        "sections": [
+          "desktop-preview",
+          "routines",
+          "channels",
+          "members",
+          "gear-settings"
+        ],
+        "view": "panel"
+      },
+      {
+        "id": "2c35636f-eaa2-44cf-b3a7-00d9e9471aec",
+        "ts": 1792220981.701562,
+        "kind": "MembersPanelVisible",
+        "group_id": "h2-group",
+        "member_ids": [
+          "h2-throwaway-agent",
+          "h2-created-agent"
+        ]
+      }
+    ]
+  }
+}

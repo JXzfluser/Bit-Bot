@@ -1,0 +1,13 @@
+cm=CM-2174
+run_h3_probe_intent=Cm2174SharedBoxFs
+shared_cdp_9223=untouched
+chrome_profile=untouched
+i_claimed=false
+USER_IANA=Asia/Shanghai
+stamp_utc=20261017T072018Z
+agent_a=h3-agent-a
+agent_b=h3-agent-b
+desktop_a=:40
+desktop_b=:41
+shared_path=/workspace/h3-cross-agent-shared.txt
+status=READY_FOR_I_REVIEW

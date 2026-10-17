@@ -1,0 +1,85 @@
+{
+  "CM": "CM-1907",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-1907",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-1907-delete-agent",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "awaiting_confirm.png",
+    "cancelled.png",
+    "context_menu.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "context_menu.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "53088",
+      "sha256": "3a42304e41672a71c970053167a1e95955fa7782ad8b39e5e4ef15bdea63a115",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "awaiting_confirm.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "57575",
+      "sha256": "b3b20cdecb2fc1e523e7e28576c08d8291b6707f40b29c5f8ba07d8178164b47",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "cancelled.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "49931",
+      "sha256": "fdd8444e7fe3e1efd8fd8d7ce6a69aa5bc38a70a377065059bfb06ac838b98e6",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "8806ad82-0e5d-4a74-9743-a4c99ec9ab5e",
+    "3a1c14cc-fb1e-49cc-8b94-c018362eedf1",
+    "c9c95158-e82a-4b57-b250-a773a28566d2"
+  ],
+  "audit_span_count": 3,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "sidebar context_menu \u2192 AwaitingConfirm \u2192 Cancel only; independent LiveDisplay frames; completed=false",
+  "phase_sequence": "sidebar_context_menu\u2192requested\u2192awaiting-confirm\u2192cancelled",
+  "final_phase": "cancelled",
+  "completed": false,
+  "delete_agent": "h2-throwaway-agent",
+  "frames_required": [
+    "context_menu.png",
+    "awaiting_confirm.png",
+    "cancelled.png"
+  ],
+  "context_menu_md5": "9f842337d14d1aaa4a6b34ab2eef53ac",
+  "awaiting_confirm_md5": "b28389093fa27c680386411e64c22b43",
+  "context_menu_independent": true
+}

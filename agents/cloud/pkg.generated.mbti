@@ -1,0 +1,204 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/agents/cloud"
+
+import {
+  "bitbot/bitbot/security",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const CLOUD_AGENT_ARTIFACTS_ROOT : String = "/workspace/cloud-agent-artifacts"
+
+pub const OPT_CURSOR_ARTIFACTS_PREFIX : String = "/opt/cursor/artifacts"
+
+pub fn cloud_artifact_workspace_copy_path(String, String) -> String
+
+pub fn cursor_origin_mcp_pr_checks_tools() -> Array[String]
+
+pub fn deliver_cloud_artifact(String, String, official_url? : String?) -> Result[CloudArtifactDelivery, String]
+
+pub fn is_forbidden_opt_cursor_artifacts(String) -> Bool
+
+pub fn origin_cloud_aligns_cursor_origin_mcp(OriginMcpSurface) -> Result[Unit, String]
+
+pub fn origin_cloud_namespace() -> String
+
+pub fn reject_direct_opt_cursor_attach(String) -> Result[Unit, String]
+
+// Errors
+
+// Types and methods
+pub(all) struct CloudAgentAction {
+  bc_id : String
+  action : String
+  risk_summary : String
+} derive(Eq, @debug.Debug)
+pub fn CloudAgentAction::equal(Self, Self) -> Bool
+pub fn CloudAgentAction::not_equal(Self, Self) -> Bool
+pub fn CloudAgentAction::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CloudAgentAutoReviewSession {
+  gate : @security.AutoReviewGate
+  mut last_block_reason : String?
+  mut last_action : String?
+  mut approval_card_raised : Bool
+}
+pub fn CloudAgentAutoReviewSession::has_approval_card(Self) -> Bool
+pub fn CloudAgentAutoReviewSession::intercept(Self, CloudAgentAction, @security.RiskLevel) -> @security.AutoReviewVerdict
+pub fn CloudAgentAutoReviewSession::new() -> Self
+pub fn CloudAgentAutoReviewSession::retry_same_action_card(Self, retry_action~ : String) -> Result[@security.SmartModeRetryOutcome, String]
+
+pub(all) struct CloudAgentJob {
+  id : String
+  prompt : String
+  status : CloudJobStatus
+  created_at_ms : Int64
+  result_uri : String?
+} derive(Eq, @debug.Debug)
+pub fn CloudAgentJob::equal(Self, Self) -> Bool
+pub fn CloudAgentJob::is_terminal(Self) -> Bool
+pub fn CloudAgentJob::not_equal(Self, Self) -> Bool
+pub fn CloudAgentJob::queued(String, String) -> Self
+pub fn CloudAgentJob::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CloudAgentLaunch {
+  bc_id : String
+  url : String
+} derive(Eq, @debug.Debug)
+pub fn CloudAgentLaunch::equal(Self, Self) -> Bool
+pub fn CloudAgentLaunch::make(String) -> Self
+pub fn CloudAgentLaunch::not_equal(Self, Self) -> Bool
+pub fn CloudAgentLaunch::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CloudAgentService {
+  mut seq : Int
+  jobs : Array[CloudAgentJob]
+}
+pub fn CloudAgentService::get(Self, String) -> CloudAgentJob?
+pub fn CloudAgentService::launch(Self, String) -> CloudAgentLaunch
+pub fn CloudAgentService::mark_failed(Self, String, message~ : String) -> Result[CloudAgentJob, String]
+pub fn CloudAgentService::mark_succeeded(Self, String) -> Result[CloudAgentJob, String]
+pub fn CloudAgentService::new() -> Self
+
+pub(all) enum CloudArtifactDelivery {
+  WorkspaceCopy(path~ : String)
+  OfficialUrl(url~ : String)
+} derive(Eq, @debug.Debug)
+pub fn CloudArtifactDelivery::equal(Self, Self) -> Bool
+pub fn CloudArtifactDelivery::is_workspace_copy(Self) -> Bool
+pub fn CloudArtifactDelivery::not_equal(Self, Self) -> Bool
+pub fn CloudArtifactDelivery::path_or_url(Self) -> String
+pub fn CloudArtifactDelivery::to_repr(Self) -> @debug.Repr
+
+pub(all) enum CloudJobStatus {
+  Queued
+  Running
+  Succeeded
+  Failed(message~ : String)
+  Cancelled
+} derive(Eq, @debug.Debug)
+pub fn CloudJobStatus::equal(Self, Self) -> Bool
+pub fn CloudJobStatus::is_completed(Self) -> Bool
+pub fn CloudJobStatus::is_failed(Self) -> Bool
+pub fn CloudJobStatus::is_succeeded(Self) -> Bool
+pub fn CloudJobStatus::not_equal(Self, Self) -> Bool
+pub fn CloudJobStatus::to_repr(Self) -> @debug.Repr
+
+pub(all) struct GithubMcpSurface {
+  github : MockGithub
+  prs : Array[MockPullRequest]
+}
+pub fn GithubMcpSurface::create_pr_comment(Self, number_~ : Int, body~ : String) -> Result[MockPrComment, String]
+pub fn GithubMcpSurface::get_pull_request(Self, number_~ : Int) -> Result[MockPullRequest, String]
+pub fn GithubMcpSurface::list_pr_comments(Self, number_~ : Int) -> Array[MockPrComment]
+pub fn GithubMcpSurface::list_pull_requests(Self) -> Array[MockPullRequest]
+pub fn GithubMcpSurface::new() -> Self
+pub fn GithubMcpSurface::seed_pr(Self, number_~ : Int, title~ : String, state? : String, body? : String) -> Unit
+
+pub(all) struct MockGithub {
+  comments : Array[MockPrComment]
+  diffs : Array[MockPrDiff]
+}
+pub fn MockGithub::comment_count(Self) -> Int
+pub fn MockGithub::create_comment(Self, pr_number~ : Int, body~ : String) -> Result[MockPrComment, String]
+pub fn MockGithub::create_pr_comment(Self, String, String) -> Result[MockPrComment, String]
+pub fn MockGithub::new() -> Self
+pub fn MockGithub::read_diff(Self, pr_number~ : Int) -> Result[String, String]
+pub fn MockGithub::read_pr_diff(Self, String) -> Result[String, String]
+pub fn MockGithub::seed_diff(Self, String, String) -> Unit
+
+pub(all) struct MockPrComment {
+  pr : String
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn MockPrComment::equal(Self, Self) -> Bool
+pub fn MockPrComment::not_equal(Self, Self) -> Bool
+pub fn MockPrComment::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MockPrDiff {
+  pr : String
+  diff : String
+} derive(Eq, @debug.Debug)
+pub fn MockPrDiff::equal(Self, Self) -> Bool
+pub fn MockPrDiff::not_equal(Self, Self) -> Bool
+pub fn MockPrDiff::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MockPullRequest {
+  number_ : Int
+  title : String
+  state : String
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn MockPullRequest::equal(Self, Self) -> Bool
+pub fn MockPullRequest::not_equal(Self, Self) -> Bool
+pub fn MockPullRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) struct OriginCheck {
+  name : String
+  status : String
+  pr_number : Int
+} derive(Eq, @debug.Debug)
+pub fn OriginCheck::equal(Self, Self) -> Bool
+pub fn OriginCheck::not_equal(Self, Self) -> Bool
+pub fn OriginCheck::to_repr(Self) -> @debug.Repr
+
+pub(all) struct OriginMcpSurface {
+  repos : Array[OriginRepo]
+  prs : Array[OriginPullRequest]
+  checks : Array[OriginCheck]
+}
+pub fn OriginMcpSurface::checks_read(Self, pr_number~ : Int) -> Array[OriginCheck]
+pub fn OriginMcpSurface::get_pull_request(Self, number_~ : Int) -> Result[OriginPullRequest, String]
+pub fn OriginMcpSurface::github_mirror_namespace_id() -> String
+pub fn OriginMcpSurface::is_distinct_from_github_mirror() -> Bool
+pub fn OriginMcpSurface::list_pull_requests(Self) -> Array[OriginPullRequest]
+pub fn OriginMcpSurface::list_repos(Self) -> Array[OriginRepo]
+pub fn OriginMcpSurface::namespace_id() -> String
+pub fn OriginMcpSurface::new() -> Self
+pub fn OriginMcpSurface::seed_check(Self, name~ : String, status~ : String, pr_number~ : Int) -> Unit
+pub fn OriginMcpSurface::seed_mirror_repo(Self, id~ : String, name~ : String) -> Result[Unit, String]
+pub fn OriginMcpSurface::seed_native_repo(Self, id~ : String, name~ : String) -> Unit
+pub fn OriginMcpSurface::seed_pr(Self, number_~ : Int, title~ : String, state? : String, repo_id~ : String) -> Result[Unit, String]
+
+pub(all) struct OriginPullRequest {
+  number_ : Int
+  title : String
+  state : String
+  repo_id : String
+} derive(Eq, @debug.Debug)
+pub fn OriginPullRequest::equal(Self, Self) -> Bool
+pub fn OriginPullRequest::not_equal(Self, Self) -> Bool
+pub fn OriginPullRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) struct OriginRepo {
+  id : String
+  name : String
+  native : Bool
+} derive(Eq, @debug.Debug)
+pub fn OriginRepo::equal(Self, Self) -> Bool
+pub fn OriginRepo::not_equal(Self, Self) -> Bool
+pub fn OriginRepo::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

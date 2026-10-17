@@ -1,0 +1,50 @@
+{
+  "CM": "CM-1904",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-1904",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-1904-reset-computer",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "reset_computer.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "reset_computer.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "81475",
+      "sha256": "9b21e45afe6469a5389c998d9eb07e2aec710e6594bbae9f101d10499176b0a7",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "6e9d86c8-9589-47bf-917b-e77751e29297"
+  ],
+  "audit_span_count": 1,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Reset Computer real UI reachable; guidance prefers update-computer",
+  "anchor": "reset-computer",
+  "reset_ui_reachable": true,
+  "assistant_preferred": "update-computer",
+  "reset_preferred": false,
+  "frames_required": [
+    "reset_computer.png"
+  ]
+}

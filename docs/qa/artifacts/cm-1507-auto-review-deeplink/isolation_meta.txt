@@ -1,0 +1,15 @@
+section_3_0=C_prime
+surface=bit-bot-host-ui
+host_api=http://127.0.0.1:8765/api/host/*
+ui_drive=HostUiShell_Live_adapter
+ui_drive_not=cdp_page_js
+smoke_entry=run_h2_probe_aligned_H2Intent
+temp_profile_dir=/tmp/h2-iso-profile.ESl7d7
+cdp_port=9333 (viewer only; not used to mutate UI)
+http_port=8765
+private_display=:99
+chrome_pid=196420
+launcher_rc=0
+shared_cdp_port_untouched=9223
+shared_profile_untouched=/home/box/chrome-profile
+i_claimed=false

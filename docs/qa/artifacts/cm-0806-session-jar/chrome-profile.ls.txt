@@ -1,0 +1,52 @@
+total 268
+drwx------ 38 box box  4096 Oct 17 14:26 .
+drwx------ 12 box box  4096 Oct 17 14:26 ..
+-rw-r--r--  1 box box    39 Oct 17 14:17 .sand-launch-count
+-rw-r--r--  1 box box     0 Oct 17 14:20 .sand-launch.lock
+drwx------  3 box box  4096 Oct 17 14:18 ActorSafetyLists
+drwx------  3 box box  4096 Oct 17 14:19 AmountExtractionHeuristicRegexes
+drwx------  2 box box  4096 Oct 17 14:20 BrowserMetrics
+drwx------  3 box box  4096 Oct 17 14:19 CaptchaProviders
+drwx------  3 box box  4096 Oct 17 14:18 CertificateRevocation
+drwx------  3 box box  4096 Oct 17 14:18 Crowd Deny
+drwx------ 37 box box  4096 Oct 17 14:25 Default
+drwx------  2 box box  4096 Oct 17 14:20 DeferredBrowserMetrics
+drwx------  2 box box  4096 Oct 17 14:17 Dictionaries
+drwx------  3 box box  4096 Oct 17 14:18 FileTypePolicies
+drwx------  3 box box  4096 Oct 17 14:19 FirstPartySetsPreloaded
+drwxr-xr-x 29 box box  4096 Oct 17 13:02 Fork-10
+drwx------ 33 box box  4096 Oct 17 14:18 Fork-18
+drwxr-xr-x 29 box box  4096 Oct 17 13:02 Fork-2
+drwx------  3 box box  4096 Oct 17 14:17 GPUPersistentCache
+-rw-r--r--  1 box box    13 Oct 17 14:17 Last Version
+-rw-------  1 box box  9084 Oct 17 14:26 Local State
+drwx------  3 box box  4096 Oct 17 14:18 MEIPreload
+drwx------  2 box box  4096 Oct 17 14:17 NativeMessagingHosts
+drwx------  3 box box  4096 Oct 17 14:18 OnDeviceHeadSuggestModel
+drwx------  3 box box  4096 Oct 17 14:17 OptimizationGuideModelsManifest
+drwx------  3 box box  4096 Oct 17 14:18 OptimizationHints
+drwx------  2 box box  4096 Oct 17 14:17 OriginTrials
+drwx------  3 box box  4096 Oct 17 14:18 PKIMetadata
+drwx------  2 box box  4096 Oct 17 14:17 PrivacySandboxAttestationsPreloaded
+drwx------  3 box box  4096 Oct 17 14:19 SSLErrorAssistant
+drwx------  2 box box  4096 Oct 17 14:20 Safe Browsing
+drwx------  3 box box  4096 Oct 17 14:18 SafetyTips
+lrwxrwxrwx  1 box box    20 Oct 17 14:17 SingletonCookie -> 16414655711680051865
+lrwxrwxrwx  1 box box    25 Oct 17 14:17 SingletonLock -> grok-bot-vm-2186801-86471
+lrwxrwxrwx  1 box box    45 Oct 17 14:17 SingletonSocket -> /tmp/com.google.Chrome.vE8kgO/SingletonSocket
+drwx------  4 box box  4096 Oct 17 14:18 Subresource Filter
+drwx------  3 box box  4096 Oct 17 14:18 TrustTokenKeyCommitments
+-rw-r--r--  1 box box    86 Oct 17 14:17 Variations
+-rw-------  1 box box    11 Oct 17 14:17 VariationsSafeSeedV2
+-rw-------  1 box box 36846 Oct 17 14:17 VariationsSeedV2
+drwx------  3 box box  4096 Oct 17 14:19 WasmTtsEngine
+drwx------  2 box box  4096 Oct 17 14:17 WidevineCdm
+drwx------  3 box box  4096 Oct 17 14:19 ZxcvbnData
+drwx------  2 box box  4096 Oct 17 14:19 component_crx_cache
+drwx------  2 box box  4096 Oct 17 14:18 extensions_crx_cache
+-rw-------  1 box box 49152 Oct 17 14:17 first_party_sets.db
+-rw-------  1 box box     0 Oct 17 14:17 first_party_sets.db-journal
+drwx------  3 box box  4096 Oct 17 14:18 hyphen-data
+-rw-r--r--  1 box box    33 Oct 17 13:02 machine-id
+drwx------ 11 box box  4096 Oct 17 14:18 optimization_guide_model_store
+drwx------  2 box box  4096 Oct 17 14:17 segmentation_platform

@@ -1,0 +1,21 @@
+{
+  "CM": "CM-2174",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h3_smoke.sh cm-2174",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-2174-shared-box-fs",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched"
+  },
+  "agent_a_id": "h3-agent-a",
+  "agent_b_id": "h3-agent-b",
+  "desktop_a_display": ":40",
+  "desktop_b_display": ":41",
+  "shared_path": "/workspace/h3-cross-agent-shared.txt",
+  "shared_fs": true,
+  "distinct_desktops": true,
+  "agent_a_sees_agent_b_write": true,
+  "not_single_mock_self_rw": true,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "agent A read == agent B write on shared path; desktop_a != desktop_b; not single mock self-rw"
+}

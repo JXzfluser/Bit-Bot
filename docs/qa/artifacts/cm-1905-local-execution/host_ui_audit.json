@@ -1,0 +1,22 @@
+{
+  "spans": [
+    {
+      "id": "6410e2f6-cffb-411f-b61d-3ebb8d9ba18d",
+      "tool_name": "host_ui:set_local_execution",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "local-execution=off",
+      "artifact_path": null,
+      "ts": 1792220958.3078494
+    },
+    {
+      "id": "22331743-3154-4522-8cab-2e7e8708523c",
+      "tool_name": "host_ui:try_machine_call",
+      "duration_ms": 0,
+      "ok": false,
+      "detail": "rejected_local_off machine=desk-1",
+      "artifact_path": null,
+      "ts": 1792220959.0565124
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "CM": "CM-1903",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-1903",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-1903-update-computer",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "awaiting_second_confirm.png",
+    "update_cancelled.png",
+    "update_prompted.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "update_prompted.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "81568",
+      "sha256": "4a092c532e6874f1ff01de633ad7dc2c62962a522ffe7e7c9cc2b6b3b9e804c6",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "awaiting_second_confirm.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "83377",
+      "sha256": "824a5b77504a0fcaf38fe1a25363e33e9bb5029a65265d1cc33ac652f73b1c83",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "update_cancelled.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "82005",
+      "sha256": "1ccdac3689ba00b50b233b8f7b57a28c85c8e6492cd6c0cac9ce7ba06cfb57f5",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "f100ecdb-d64e-4d43-a39e-e8b16493cad8",
+    "574cf8ba-93cf-4714-b3e4-f845c5d201f9",
+    "60b5a66f-1ba2-4bfe-addd-6c5e03c3fa51"
+  ],
+  "audit_span_count": 3,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "two-step Update Computer confirm UI (prompted \u2192 Click Again to Confirm \u2192 cancel); not Reset; LiveDisplay",
+  "phase_sequence": "prompted\u2192awaiting-second-confirm\u2192cancelled",
+  "final_phase": "cancelled",
+  "completed": false,
+  "not_reset": true,
+  "anchor": "update-computer",
+  "frames_required": [
+    "update_prompted.png",
+    "awaiting_second_confirm.png",
+    "update_cancelled.png"
+  ],
+  "update_prompted_md5": "94758d9ba8c17599a921ac6ffbea6d61",
+  "awaiting_second_confirm_md5": "ff982c93d7969849d4bbf85e23532054",
+  "two_step_frames_independent": true
+}

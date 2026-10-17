@@ -1,0 +1,148 @@
+{
+  "result": {
+    "state": {
+      "settingsOpen": true,
+      "entry": "command-palette",
+      "anchor": "update-computer",
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "Computer",
+      "updateComputerPhase": "awaiting-second-confirm",
+      "updateComputerPrompt": "Click Again to Confirm",
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": null,
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "rev": 2
+    },
+    "event_tail": [
+      {
+        "id": "25ad2727-e93a-407b-9135-78301c8cfb15",
+        "ts": 1792220951.8913057,
+        "kind": "UpdateComputerPhaseChanged",
+        "phase": "awaiting-second-confirm"
+      }
+    ],
+    "audit": {
+      "id": "574cf8ba-93cf-4714-b3e4-f845c5d201f9",
+      "tool_name": "host_ui:confirm_update_computer_step",
+      "duration_ms": 1,
+      "ok": true,
+      "detail": "awaiting-second-confirm (Click Again to Confirm)",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-1903-update-computer",
+      "ts": 1792220951.8913162
+    }
+  },
+  "state": {
+    "settingsOpen": true,
+    "entry": "command-palette",
+    "anchor": "update-computer",
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "Computer",
+    "updateComputerPhase": "awaiting-second-confirm",
+    "updateComputerPrompt": "Click Again to Confirm",
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "rev": 2
+  },
+  "events": {
+    "events": [
+      {
+        "id": "fb14cbd2-a6e5-4017-9c3e-f77ef8f62e9a",
+        "ts": 1792220951.0444357,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "35c2e3aa-36ae-4f4f-8107-423da3a9d0a1",
+        "ts": 1792220951.0444474,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "6b421de4-564d-4af9-9945-aacc5fb9c982",
+        "ts": 1792220951.0444543,
+        "kind": "UpdateComputerPhaseChanged",
+        "phase": "prompted"
+      },
+      {
+        "id": "25ad2727-e93a-407b-9135-78301c8cfb15",
+        "ts": 1792220951.8913057,
+        "kind": "UpdateComputerPhaseChanged",
+        "phase": "awaiting-second-confirm"
+      }
+    ]
+  }
+}

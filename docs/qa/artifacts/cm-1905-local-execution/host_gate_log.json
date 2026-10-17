@@ -1,0 +1,20 @@
+{
+  "gateLog": [
+    {
+      "ts": 1792220958.307844,
+      "event": "gate_changed",
+      "enabled": false
+    },
+    {
+      "ts": 1792220959.0564835,
+      "event": "rejected_local_off",
+      "machine_id": "desk-1",
+      "detail": "local-execution disabled: machine-targeted call rejected"
+    }
+  ],
+  "lastMachineCall": {
+    "machine_id": "desk-1",
+    "allowed": false,
+    "reason": "local-execution-off"
+  }
+}

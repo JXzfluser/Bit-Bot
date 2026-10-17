@@ -1,0 +1,183 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/agents/teammates"
+
+import {
+  "bitbot/bitbot/ui_protocol",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn apply_group_chat_discipline(cue_and_body~ : String, speaker_id~ : String) -> Result[(GroupChatDiscipline, RoomTurn), String]
+
+pub fn group_chat_turns_skill_name() -> String
+
+pub fn has_room_cue(String) -> Bool
+
+pub fn leaks_private_dm_assumption(String) -> Bool
+
+pub fn members_panel_app_ui_anchor() -> String
+
+pub fn open_room_turn(room_name~ : String, speaker_id~ : String, body~ : String) -> Result[RoomTurn, String]
+
+pub fn open_room_turn_from_cue(cue_and_body~ : String, speaker_id~ : String) -> Result[RoomTurn, String]
+
+pub fn parse_room_cue(String) -> Result[String, String]
+
+pub fn plan_send_to_agent_fanout(Array[String], user_explicitly_asked_fanout~ : Bool) -> FanoutPlan
+
+pub fn private_dm_assumption_phrases() -> Array[String]
+
+pub fn room_cue_tag(String) -> String
+
+pub fn trigger_group_chat_discipline(cue_and_body~ : String) -> Result[GroupChatDiscipline, String]
+
+// Errors
+
+// Types and methods
+pub(all) struct AgentMessage {
+  from_id : String
+  to_id : String
+  body : String
+  user_visible : Bool
+} derive(Eq, @debug.Debug)
+pub fn AgentMessage::equal(Self, Self) -> Bool
+pub fn AgentMessage::not_equal(Self, Self) -> Bool
+pub fn AgentMessage::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AgentRoleBoundary {
+  role : String
+  can_send_to_user : Bool
+  can_use_shell : Bool
+} derive(Eq, @debug.Debug)
+pub fn AgentRoleBoundary::equal(Self, Self) -> Bool
+pub fn AgentRoleBoundary::not_equal(Self, Self) -> Bool
+pub fn AgentRoleBoundary::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CreatedAgent {
+  id : String
+  name : String
+  boundary : AgentRoleBoundary
+} derive(Eq, @debug.Debug)
+pub fn CreatedAgent::equal(Self, Self) -> Bool
+pub fn CreatedAgent::not_equal(Self, Self) -> Bool
+pub fn CreatedAgent::to_repr(Self) -> @debug.Repr
+
+pub(all) enum FanoutPlan {
+  Single(to_id~ : String)
+  ExplicitFanout(to_ids~ : Array[String])
+  MustAskUserFirst(to_ids~ : Array[String], reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn FanoutPlan::equal(Self, Self) -> Bool
+pub fn FanoutPlan::not_equal(Self, Self) -> Bool
+pub fn FanoutPlan::requires_ask_first(Self) -> Bool
+pub fn FanoutPlan::to_repr(Self) -> @debug.Repr
+
+pub(all) struct GroupChatDiscipline {
+  room_name : String
+  cue_triggered : Bool
+  forbids_private_assumptions : Bool
+  collective_address : Bool
+  treat_as_private_dm : Bool
+} derive(Eq, @debug.Debug)
+pub fn GroupChatDiscipline::equal(Self, Self) -> Bool
+pub fn GroupChatDiscipline::is_active(Self) -> Bool
+pub fn GroupChatDiscipline::not_equal(Self, Self) -> Bool
+pub fn GroupChatDiscipline::to_repr(Self) -> @debug.Repr
+
+pub(all) struct GroupSection {
+  id : String
+  title : String
+  group_id : String
+} derive(Eq, @debug.Debug)
+pub fn GroupSection::equal(Self, Self) -> Bool
+pub fn GroupSection::new(id~ : String, title~ : String, group_id~ : String) -> Result[Self, String]
+pub fn GroupSection::not_equal(Self, Self) -> Bool
+pub fn GroupSection::to_repr(Self) -> @debug.Repr
+
+pub(all) struct GroupSections {
+  group_id : String
+  sections : Array[GroupSection]
+  messages : Array[SectionMessage]
+}
+pub fn GroupSections::add_section(Self, id~ : String, title~ : String) -> Result[GroupSection, String]
+pub fn GroupSections::assert_isolation(Self, String, String) -> Result[Unit, String]
+pub fn GroupSections::has_section(Self, String) -> Bool
+pub fn GroupSections::messages_in(Self, String) -> Array[SectionMessage]
+pub fn GroupSections::new(String) -> Self
+pub fn GroupSections::post(Self, section_id~ : String, from_agent~ : String, body~ : String) -> Result[SectionMessage, String]
+pub fn GroupSections::section_ids(Self) -> Array[String]
+
+pub(all) struct HostMembersPanelMock {
+  mut last : MembersPanel?
+}
+pub fn HostMembersPanelMock::last_ids(Self) -> Array[String]
+pub fn HostMembersPanelMock::new() -> Self
+pub fn HostMembersPanelMock::open(Self, MembersPanel, @ui_protocol.PerAgentInfoPanel) -> Result[Unit, String]
+
+pub(all) struct MembersPanel {
+  section_anchor : String
+  group_id : String
+  rows : Array[MembersPanelRow]
+} derive(Eq, @debug.Debug)
+pub fn MembersPanel::contains(Self, String) -> Bool
+pub fn MembersPanel::equal(Self, Self) -> Bool
+pub fn MembersPanel::from_directory(TeammateDirectory, group_id~ : String) -> Self
+pub fn MembersPanel::matches_app_ui(Self) -> Bool
+pub fn MembersPanel::member_ids(Self) -> Array[String]
+pub fn MembersPanel::not_equal(Self, Self) -> Bool
+pub fn MembersPanel::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MembersPanelRow {
+  agent_id : String
+  display_name : String
+  role : String
+} derive(Eq, @debug.Debug)
+pub fn MembersPanelRow::equal(Self, Self) -> Bool
+pub fn MembersPanelRow::not_equal(Self, Self) -> Bool
+pub fn MembersPanelRow::to_repr(Self) -> @debug.Repr
+
+pub(all) struct RoomTurn {
+  room_name : String
+  speaker_id : String
+  body : String
+  is_room : Bool
+} derive(Eq, @debug.Debug)
+pub fn RoomTurn::equal(Self, Self) -> Bool
+pub fn RoomTurn::is_private_dm(Self) -> Bool
+pub fn RoomTurn::not_equal(Self, Self) -> Bool
+pub fn RoomTurn::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SectionMessage {
+  section_id : String
+  from_agent : String
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn SectionMessage::equal(Self, Self) -> Bool
+pub fn SectionMessage::not_equal(Self, Self) -> Bool
+pub fn SectionMessage::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SendToAgentBus {
+  inbox : Array[AgentMessage]
+  path_edges : Array[String]
+  mut loop_detected : Bool
+}
+pub fn SendToAgentBus::delivered_to(Self, String) -> Array[AgentMessage]
+pub fn SendToAgentBus::end_turn(Self) -> Unit
+pub fn SendToAgentBus::fanout(Self, from_id~ : String, to_ids~ : Array[String], body~ : String, user_explicitly_asked_fanout~ : Bool) -> Result[Array[AgentMessage], String]
+pub fn SendToAgentBus::has_loop(Self) -> Bool
+pub fn SendToAgentBus::new() -> Self
+pub fn SendToAgentBus::send(Self, from_id~ : String, to_id~ : String, body~ : String, user_visible? : Bool) -> Result[AgentMessage, String]
+
+pub(all) struct TeammateDirectory {
+  members : Array[CreatedAgent]
+  sidebar : @ui_protocol.AgentDirectory
+}
+pub fn TeammateDirectory::create_agent(Self, id~ : String, name~ : String, role~ : String, can_send_to_user? : Bool, can_use_shell? : Bool) -> Result[CreatedAgent, String]
+pub fn TeammateDirectory::in_members(Self, String) -> Bool
+pub fn TeammateDirectory::in_sidebar(Self, String) -> Bool
+pub fn TeammateDirectory::member_ids(Self) -> Array[String]
+pub fn TeammateDirectory::new() -> Self
+
+// Type aliases
+
+// Traits

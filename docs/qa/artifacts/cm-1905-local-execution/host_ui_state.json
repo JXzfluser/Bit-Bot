@@ -1,0 +1,65 @@
+{
+  "settingsOpen": true,
+  "entry": "command-palette",
+  "anchor": "local-execution",
+  "deletePhase": null,
+  "deleteAgent": null,
+  "contextMenuOpen": false,
+  "contextMenuAgent": null,
+  "activeTab": "Computer",
+  "updateComputerPhase": "idle",
+  "updateComputerPrompt": null,
+  "localExecutionEnabled": false,
+  "lastMachineCall": {
+    "machine_id": "desk-1",
+    "allowed": false,
+    "reason": "local-execution-off"
+  },
+  "gateLog": [
+    {
+      "ts": 1792220958.307844,
+      "event": "gate_changed",
+      "enabled": false
+    },
+    {
+      "ts": 1792220959.0564835,
+      "event": "rejected_local_off",
+      "machine_id": "desk-1",
+      "detail": "local-execution disabled: machine-targeted call rejected"
+    }
+  ],
+  "agents": [
+    {
+      "id": "h2-throwaway-agent",
+      "name": "H2 Throwaway Agent",
+      "hidden": false
+    },
+    {
+      "id": "demo-agent",
+      "name": "Demo Agent",
+      "hidden": false
+    }
+  ],
+  "activeChat": null,
+  "activeChatHidden": false,
+  "infoPanel": {
+    "open": false,
+    "agentId": null,
+    "view": null,
+    "sections": [],
+    "members": []
+  },
+  "notify": {},
+  "permissionGuide": {
+    "open": false,
+    "kind": null,
+    "namespace": null,
+    "anchor": null,
+    "connected": false,
+    "status": null,
+    "followed": false
+  },
+  "surface": "bit-bot-host-ui",
+  "i_claimed": false,
+  "rev": 2
+}

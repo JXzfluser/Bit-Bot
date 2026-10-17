@@ -1,0 +1,18 @@
+{
+  "CM": "CM-2158",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h3_smoke.sh cm-2158",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-2158-package-install",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "sandbox": true
+  },
+  "package_manager": "npm",
+  "shell_pid": 202362,
+  "shell_exit": 0,
+  "via_shell": true,
+  "non_shell_refused": true,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Live Shell npm install in throwaway sandbox; pid/exit/stdout captured; non-Shell path refused; audit span present"
+}

@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Bit Bot Host UI</title>
+<style>
+  :root { --bg:#0f1115; --panel:#1a1d24; --border:#2a2f3a; --text:#e8eaed; --muted:#9aa0a6; --accent:#7aa2ff; --danger:#e57373; --ok:#81c784; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--text); display:flex; height:100vh; }
+  #sidebar { width:240px; background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; }
+  #sidebar h1 { font-size:14px; margin:16px; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; }
+  .agent-row { padding:10px 16px; cursor:context-menu; border-left:3px solid transparent; }
+  .agent-row:hover, .agent-row.active { background:#222733; border-left-color:var(--accent); }
+  #account-btn { margin-top:auto; padding:12px 16px; border-top:1px solid var(--border); cursor:pointer; display:flex; gap:10px; align-items:center; }
+  #account-btn:hover { background:#222733; }
+  .avatar { width:28px; height:28px; border-radius:50%; background:var(--accent); color:#0f1115; display:flex; align-items:center; justify-content:center; font-weight:700; }
+  #main { flex:1; display:flex; flex-direction:column; }
+  #toolbar { padding:8px 16px; border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center; }
+  #toolbar button, .btn { background:#2a3140; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 10px; cursor:pointer; }
+  #toolbar button:hover, .btn:hover { border-color:var(--accent); }
+  #palette { display:none; position:absolute; top:48px; left:50%; transform:translateX(-50%); width:420px; background:var(--panel); border:1px solid var(--border); border-radius:8px; z-index:20; box-shadow:0 8px 32px #0008; }
+  #palette.open { display:block; }
+  #palette input { width:100%; padding:12px; background:transparent; border:0; border-bottom:1px solid var(--border); color:var(--text); outline:none; }
+  #palette .item { padding:10px 12px; cursor:pointer; }
+  #palette .item:hover { background:#222733; }
+  #content { flex:1; padding:24px; overflow:auto; position:relative; }
+  #settings { display:none; max-width:720px; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0 0 24px; }
+  #settings.open { display:block; }
+  #settings header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .tabs { display:flex; gap:4px; padding:12px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .tab { padding:6px 12px; border-radius:6px; cursor:pointer; color:var(--muted); }
+  .tab.active { background:#2a3140; color:var(--text); }
+  .section { padding:16px 20px; border-bottom:1px solid var(--border); scroll-margin-top:12px; }
+  .section h3 { margin:0 0 6px; font-size:15px; }
+  .section p { margin:0; color:var(--muted); }
+  #ctx-menu { display:none; position:fixed; z-index:30; background:var(--panel); border:1px solid var(--border); border-radius:8px; min-width:160px; box-shadow:0 8px 24px #000a; }
+  #ctx-menu.open { display:block; }
+  #ctx-menu div { padding:8px 14px; cursor:pointer; }
+  #ctx-menu div:hover { background:#222733; }
+  #ctx-menu .danger { color:var(--danger); }
+  #confirm { display:none; position:fixed; inset:0; background:#0008; z-index:40; align-items:center; justify-content:center; }
+  #confirm.open { display:flex; }
+  #confirm .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px; width:360px; }
+  #confirm .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+  #status { position:fixed; right:12px; bottom:12px; background:#1118; border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:12px; color:var(--muted); max-width:360px; }
+  #status .ok { color:var(--ok); }
+  .uc-panel { margin-top:12px; padding:12px; border:1px dashed var(--accent); border-radius:8px; background:#141820; }
+  .uc-panel.reset { border-color:#e57373; }
+  .uc-panel.updates { border-color:#81c784; }
+  .uc-panel h4 { margin:0 0 8px; }
+  .uc-btn { background:#2a3140; color:var(--text); border:1px solid var(--accent); border-radius:6px; padding:8px 14px; cursor:pointer; font-weight:600; }
+  .uc-btn.warn { border-color:#ffb74d; color:#ffb74d; }
+  .uc-btn.danger { border-color:var(--danger); color:var(--danger); }
+  .toggle { display:inline-flex; align-items:center; gap:8px; margin-top:8px; }
+  .toggle .knob { width:40px; height:22px; border-radius:11px; background:#444; position:relative; }
+  .toggle .knob.on { background:var(--ok); }
+  .toggle .knob::after { content:''; position:absolute; width:16px; height:16px; border-radius:50%; background:#fff; top:3px; left:3px; transition:left .15s; }
+  .toggle .knob.on::after { left:21px; }
+  .gate-log { margin-top:8px; font-family:ui-monospace,monospace; font-size:11px; color:#ffb74d; white-space:pre-wrap; }
+  #chat-header { padding:10px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+  #chat-name { font-weight:700; cursor:pointer; text-decoration:underline dotted; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid var(--border); color:var(--muted); }
+  .badge.hidden { border-color:#ffb74d; color:#ffb74d; }
+  #info-pane { display:none; position:fixed; top:0; right:0; bottom:0; width:360px; background:var(--panel); border-left:1px solid var(--border); z-index:15; overflow:auto; }
+  #info-pane.open { display:block; }
+  #info-pane header { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border); }
+  .ip-sec { padding:12px 14px; border-bottom:1px solid var(--border); }
+  .ip-sec h4 { margin:0 0 6px; font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .preview { height:90px; border-radius:6px; background:linear-gradient(135deg,#243049,#1b4332); display:flex; align-items:center; justify-content:center; color:#cfd8dc; font-size:12px; }
+  .member { padding:4px 0; }
+  .nrow { display:flex; justify-content:space-between; align-items:center; padding:6px 0; }
+  #perm-guide { display:none; margin-top:16px; max-width:560px; background:#1f1a12; border:1px solid #ffb74d; border-radius:10px; padding:14px 16px; }
+  #perm-guide.open { display:block; }
+  .conn-status { display:inline-block; margin-left:8px; padding:2px 8px; border-radius:10px; border:1px solid #e57373; color:#e57373; font-size:11px; }
+  .section.highlight { outline:2px solid var(--accent); outline-offset:2px; background:#1c2433; }
+  .anchor-marker { display:none; margin-top:6px; font:11px/1.2 ui-monospace,monospace; color:var(--accent); }
+  .section.highlight .anchor-marker { display:inline-block; }
+  #settings-scroll-spacer { height:0; pointer-events:none; }
+</style>
+</head>
+<body>
+<aside id="sidebar">
+  <h1>Bit Bot Host</h1>
+  <div id="agent-list"></div>
+  <div id="account-btn" data-entry="sidebar-account-button" title="Open settings">
+    <div class="avatar">B</div>
+    <div>
+      <div>Bit Bot Account</div>
+      <div style="color:var(--muted);font-size:12px">Open settings</div>
+    </div>
+  </div>
+</aside>
+<div id="main">
+  <div id="chat-header"><span style="color:var(--muted)">Chat:</span> <span id="chat-name">—</span> <span id="chat-badge"></span>
+    <span style="color:var(--muted);font-size:12px;margin-left:auto">click name or ⌘⇧I → per-agent info pane</span></div>
+  <div id="toolbar">
+    <button id="btn-shortcut" data-entry="keyboard-shortcut" title="Cmd+,">Settings (⌘,)</button>
+    <button id="btn-palette" data-entry="command-palette">Command palette</button>
+    <span style="color:var(--muted);margin-left:8px">Bit Bot Host UI surface · C′ · not Grok client</span>
+  </div>
+  <div id="content">
+    <p id="home-hint">Use sidebar account, ⌘,, or command palette to open Settings. Right-click an agent for Delete (confirm Cancel only in smoke).</p>
+    <div id="webhook-panel" role="region" aria-label="Webhook trigger panel">
+      <strong>Webhook trigger</strong>
+      <p style="color:var(--muted);margin:6px 0 10px">User may copy URL/key from this panel. Assistant tools cannot read the key.</p>
+      <div class="row"><span style="width:40px;color:var(--muted)">URL</span><code id="wh-url">—</code>
+        <button class="btn" id="wh-copy-url">Copy URL</button></div>
+      <div class="row"><span style="width:40px;color:var(--muted)">Key</span><code id="wh-key">—</code>
+        <button class="btn" id="wh-copy-key">Copy key</button></div>
+      <div id="wh-receipt" style="margin-top:8px;font-family:ui-monospace,monospace;font-size:11px;color:var(--ok)"></div>
+    </div>
+    <div id="device-perm-card" role="alertdialog" aria-label="Device permission approval card">
+      <div class="card">
+        <h3 style="margin-top:0;color:#ffb74d">Allow device tool?</h3>
+        <p id="dpc-text" style="color:var(--muted)">needs_permission</p>
+        <div class="actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+          <button class="btn" id="dpc-deny">Deny</button>
+          <button class="btn" id="dpc-allow" style="border-color:var(--ok);color:var(--ok)">Allow</button>
+        </div>
+      </div>
+    </div>
+    <div id="perm-guide" role="note" aria-label="Missing permission guide">
+      <strong>Permission missing</strong> <span class="conn-status" id="pg-status">Not connected</span>
+      <p id="pg-text" style="margin:8px 0;color:var(--muted)"></p>
+      <a id="pg-link" href="#" style="color:var(--accent)">Open Settings</a>
+    </div>
+    <section id="settings" aria-label="Settings">
+      <header>
+        <strong>Settings</strong>
+        <button class="btn" id="settings-close">Close</button>
+      </header>
+      <div class="tabs" id="tabs"></div>
+      <div id="sections"></div>
+    </section>
+  </div>
+</div>
+<aside id="info-pane" aria-label="Agent info pane">
+  <header><strong id="ip-title">Agent</strong>
+    <span><button class="btn" id="ip-gear" title="Agent settings">⚙</button> <button class="btn" id="ip-close">X</button></span></header>
+  <div id="ip-body"></div>
+</aside>
+<div id="palette" role="dialog" aria-label="Command palette">
+  <input id="palette-input" placeholder="Type a command…" autocomplete="off"/>
+  <div class="item" data-cmd="open-settings">Open settings</div>
+</div>
+<div id="ctx-menu" role="menu">
+  <div data-act="rename">Rename</div>
+  <div class="danger" data-act="delete">Delete</div>
+</div>
+<div id="confirm" role="alertdialog" aria-label="Confirm delete">
+  <div class="card">
+    <h3 style="margin-top:0">Delete agent?</h3>
+    <p id="confirm-text" style="color:var(--muted)">This permanently deletes the agent and transcript.</p>
+    <div class="actions">
+      <button class="btn" id="confirm-cancel">Cancel</button>
+      <button class="btn" id="confirm-ok" style="border-color:var(--danger);color:var(--danger)">Delete</button>
+    </div>
+  </div>
+</div>
+<div id="status"><span class="ok">ready</span> · entry=none · anchor=none · delete=none</div>
+<script>
+const ANCHORS = [
+  // General
+  {id:'account', tab:'General', title:'Account', body:'Account profile and identity.'},
+  {id:'theme', tab:'General', title:'Theme', body:'Follow System / Light / Dark.'},
+  {id:'accent', tab:'General', title:'Accent', body:'Accent color.'},
+  {id:'language', tab:'General', title:'Language', body:'UI language.'},
+  {id:'spell-check', tab:'General', title:'Spell check', body:'Spell check toggle.'},
+  {id:'microphone', tab:'General', title:'Microphone', body:'Microphone access.'},
+  {id:'hardware-acceleration', tab:'General', title:'Hardware acceleration', body:'GPU acceleration.'},
+  {id:'hardware-acceleration-restart', tab:'General', title:'Hardware acceleration restart', body:'Restart to apply.'},
+  {id:'network-debugger', tab:'General', title:'Network debugger', body:'Network diagnostics.'},
+  {id:'notification-sound-enabled', tab:'General', title:'Notification sound enabled', body:'Enable sounds.'},
+  {id:'notification-sound', tab:'General', title:'Notification sound', body:'Sound picker.'},
+  {id:'timezone', tab:'General', title:'Timezone', body:'User IANA timezone.'},
+  {id:'auto-review', tab:'General', title:'Auto-review', body:'Auto-review gate.'},
+  {id:'auto-review-rules', tab:'General', title:'Auto-review rules', body:'Rules editor.'},
+  {id:'security-keys', tab:'General', title:'Security keys', body:'Security keys.'},
+  // Computer
+  {id:'local-execution', tab:'Computer', title:'Local execution', body:'Machine-local execution gate.'},
+  {id:'computers', tab:'Computer', title:'Computers', body:'Registered computers.'},
+  {id:'update-computer', tab:'Computer', title:'Update Computer', body:'Replace box instance; two-step confirm. Preserve files/logins.'},
+  {id:'reset-computer', tab:'Computer', title:'Reset Computer', body:'Snapshot restore; not preferred vs Update.'},
+  // Usage
+  {id:'usage', tab:'Usage & Billing', title:'Usage', body:'Usage meters.'},
+  {id:'plan', tab:'Usage & Billing', title:'Plan', body:'Plan details.'},
+  {id:'cancel-trial', tab:'Usage & Billing', title:'Cancel trial', body:'Cancel trial.'},
+  {id:'on-demand', tab:'Usage & Billing', title:'On demand', body:'On-demand spend.'},
+  {id:'billing', tab:'Usage & Billing', title:'Billing', body:'Billing details.'},
+  // Updates
+  {id:'update-status', tab:'Updates', title:'Update status', body:'App update status.'},
+  {id:'update-channel', tab:'Updates', title:'Update channel', body:'Stable/Nightly — not Update Computer.'},
+  {id:'automatic-updates', tab:'Updates', title:'Automatic updates', body:'Auto-update toggle.'},
+];
+const TABS = ['General','Computer','Usage & Billing','Updates'];
+const state = { entry:null, anchor:null, deletePhase:null, deleteAgent:null, settingsOpen:false };
+const agents = [
+  {id:'h2-throwaway-agent', name:'H2 Throwaway Agent'},
+  {id:'demo-agent', name:'Demo Agent'},
+];
+
+function setStatus() {
+  const el = document.getElementById('status');
+  const uc = (window.__bitbotHostUi && window.__bitbotHostUi.updateComputerPhase) || 'idle';
+  el.innerHTML = `<span class="ok">ready</span> · entry=${state.entry||'none'} · anchor=${state.anchor||'none'} · delete=${state.deletePhase||'none'} · uc=${uc}` +
+    (state.deleteAgent ? ` · agent=${state.deleteAgent}` : '');
+  document.title = `Bit Bot Host UI|entry=${state.entry||''}|anchor=${state.anchor||''}|delete=${state.deletePhase||''}|uc=${uc}`;
+  window.__bitbotHostUi = {...(window.__bitbotHostUi||{}), ...state, surface:'bit-bot-host-ui', i_claimed:false};
+}
+
+/** H3 CM-0411 / CM-0705: render webhook panel + device permission card from Host state. */
+function applyH3HostOverlays(s) {
+  const wh = document.getElementById('webhook-panel');
+  const wp = (s && s.webhookPanel) || {};
+  if (wh) {
+    if (wp.open) {
+      document.getElementById('wh-url').textContent = wp.url || '—';
+      document.getElementById('wh-key').textContent = wp.key_masked || '••••';
+      const rc = document.getElementById('wh-receipt');
+      if (wp.last_copy && wp.last_copy.receipt) {
+        rc.textContent = 'Copied ✓ ' + wp.last_copy.receipt;
+      } else { rc.textContent = ''; }
+      wh.classList.add('open');
+      document.getElementById('home-hint').style.display = 'none';
+    } else { wh.classList.remove('open'); }
+  }
+  const dpc = document.getElementById('device-perm-card');
+  const dc = (s && s.devicePermissionCard) || {};
+  if (dpc) {
+    if (dc.open && dc.shown) {
+      document.getElementById('dpc-text').textContent =
+        `${dc.tool_name} on ${dc.machine_id} · ${dc.permission_label} — OS permission required`;
+      dpc.classList.add('open');
+    } else { dpc.classList.remove('open'); }
+  }
+}
+
+function renderAgents() {
+  const list = document.getElementById('agent-list');
+  list.innerHTML = '';
+  agents.filter(a => !a.hidden).forEach(a => {
+    const d = document.createElement('div');
+    d.className = 'agent-row';
+    d.dataset.agentId = a.id;
+    d.textContent = a.name;
+    d.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const m = document.getElementById('ctx-menu');
+      m.style.left = e.clientX + 'px';
+      m.style.top = e.clientY + 'px';
+      m.dataset.agentId = a.id;
+      m.classList.add('open');
+    });
+    list.appendChild(d);
+  });
+}
+
+function renderSettings() {
+  const tabs = document.getElementById('tabs');
+  const sections = document.getElementById('sections');
+  tabs.innerHTML = '';
+  sections.innerHTML = '';
+  TABS.forEach(t => {
+    const el = document.createElement('div');
+    el.className = 'tab' + (t === 'General' ? ' active' : '');
+    el.textContent = t;
+    el.dataset.tab = t;
+    el.onclick = () => showTab(t);
+    tabs.appendChild(el);
+  });
+  ANCHORS.forEach(a => {
+    const s = document.createElement('div');
+    s.className = 'section';
+    s.id = a.id;
+    s.dataset.tab = a.tab;
+    let extra = '';
+    if (a.id === 'update-computer') {
+      extra = `<div class="uc-panel" id="uc-panel">
+        <h4>Update Bot's Computer</h4>
+        <p style="color:var(--muted);margin:0 0 8px">Replace box instance; preserve files &amp; logins. <strong>Not Reset.</strong></p>
+        <button class="uc-btn" id="uc-btn" type="button">Update</button>
+        <div id="uc-hint" style="margin-top:8px;color:var(--muted);font-size:12px">Two-step confirmation required.</div>
+      </div>`;
+    } else if (a.id === 'reset-computer') {
+      extra = `<div class="uc-panel reset" id="reset-panel">
+        <h4>Reset Bot's Computer</h4>
+        <p style="color:var(--muted);margin:0 0 8px">Snapshot restore — may lose unsynced work. <strong>Not preferred</strong>; prefer Update Computer.</p>
+        <button class="uc-btn danger" id="reset-btn" type="button">Reset Computer</button>
+        <div style="margin-top:8px;color:#e57373;font-size:12px">Guidance: steer to update-computer first.</div>
+      </div>`;
+    } else if (a.id === 'local-execution') {
+      extra = `<div class="uc-panel" id="le-panel">
+        <h4>Local execution</h4>
+        <p style="color:var(--muted);margin:0 0 8px">When off, Host refuses machineId-targeted Shell/Read.</p>
+        <div class="toggle" id="le-toggle"><div class="knob on" id="le-knob"></div><span id="le-label">On</span></div>
+        <div class="gate-log" id="gate-log"></div>
+      </div>`;
+    } else if (a.id === 'update-channel') {
+      extra = `<div class="uc-panel updates" id="updates-panel">
+        <h4>App Updates · Update channel</h4>
+        <p style="color:var(--muted);margin:0 0 8px">Stable / Nightly — <strong>application</strong> channel (≠ Update Computer box).</p>
+        <div style="display:flex;gap:8px"><span class="btn" style="border-color:var(--ok)">Stable</span><span class="btn">Nightly</span></div>
+      </div>`;
+    }
+    s.innerHTML = `<h3>${a.title}</h3><p>${a.body}</p>` + extra +
+      `<div class="anchor-marker" data-anchor-marker="${a.id}">⚓ ${a.id}</div>`;
+    sections.appendChild(s);
+  });
+  // CM-1507: spacer so bottom General anchors (auto-review*) can scrollIntoView without clamp-to-same-scrollTop
+  const spacer = document.createElement('div');
+  spacer.id = 'settings-scroll-spacer';
+  spacer.style.height = '520px';
+  spacer.setAttribute('aria-hidden', 'true');
+  sections.appendChild(spacer);
+}
+
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.section').forEach(s => {
+    s.style.display = s.dataset.tab === tab ? 'block' : 'none';
+  });
+}
+
+function openSettings(entry, anchor) {
+  state.entry = entry;
+  state.settingsOpen = true;
+  document.getElementById('settings').classList.add('open');
+  document.getElementById('home-hint').style.display = 'none';
+  if (anchor) {
+    scrollToAnchor(anchor);
+  } else {
+    state.anchor = null;
+    showTab('General');
+  }
+  setStatus();
+}
+
+function scrollToAnchor(id) {
+  const el = document.getElementById(id);
+  if (!el) { state.anchor = null; setStatus(); return false; }
+  showTab(el.dataset.tab);
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('highlight'));
+  el.classList.add('highlight');
+  el.scrollIntoView({behavior:'instant', block:'start'});
+  state.anchor = id;
+  setStatus();
+  // Force a fresh page→Host receipt for this navigation (Host cleared anchorViewport)
+  _lastViewportReportKey = '';
+  // defer report until layout/scroll settle (page→Host DOM receipt; not CDP)
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => reportAnchorViewport(id));
+  });
+  return true;
+}
+
+/** CM-1507: after render, POST {anchor_id, scrollTop, boundingRect, highlighted} to Host. */
+let _lastViewportReportKey = '';
+function reportAnchorViewport(id) {
+  const el = document.getElementById(id);
+  const content = document.getElementById('content');
+  if (!el || !content) return;
+  const er = el.getBoundingClientRect();
+  const cr = content.getBoundingClientRect();
+  const highlighted = el.classList.contains('highlight');
+  // Intersection with the scrollable content pane = "in viewport"
+  const inViewport = er.bottom > cr.top && er.top < cr.bottom && er.right > cr.left && er.left < cr.right
+    && highlighted;
+  const key = id + '|' + content.scrollTop + '|' + Math.round(er.top) + '|' + highlighted;
+  if (key === _lastViewportReportKey) return;
+  _lastViewportReportKey = key;
+  const payload = {
+    anchor_id: id,
+    scrollTop: content.scrollTop,
+    boundingRect: {
+      x: er.x, y: er.y, width: er.width, height: er.height,
+      top: er.top, left: er.left, bottom: er.bottom, right: er.right
+    },
+    highlighted: highlighted,
+    viewport: { top: cr.top, left: cr.left, bottom: cr.bottom, right: cr.right,
+                width: cr.width, height: cr.height, scrollHeight: content.scrollHeight,
+                clientHeight: content.clientHeight },
+    inViewport: inViewport
+  };
+  hostPost('/api/host/report_anchor_viewport', payload).catch(() => {});
+}
+
+function closeSettings() {
+  document.getElementById('settings').classList.remove('open');
+  document.getElementById('home-hint').style.display = 'block';
+  state.settingsOpen = false;
+  setStatus();
+}
+
+function parseDeepLink() {
+  const q = new URLSearchParams(location.search);
+  const id = q.get('id');
+  if (location.pathname.endsWith('settings') || q.has('id') || location.hash.startsWith('#settings')) {
+    openSettings('deep-link', id || null);
+  }
+  // Support grokbot-style via hash: #grokbot://app/v1/settings?id=theme
+  const h = location.hash.replace(/^#/, '');
+  const m = h.match(/settings\?id=([a-z0-9-]+)/i);
+  if (m) openSettings('deep-link', m[1]);
+}
+
+document.getElementById('account-btn').onclick = () => openSettings('sidebar-account-button');
+document.getElementById('btn-shortcut').onclick = () => openSettings('keyboard-shortcut');
+document.getElementById('settings-close').onclick = closeSettings;
+document.getElementById('btn-palette').onclick = () => {
+  document.getElementById('palette').classList.add('open');
+  document.getElementById('palette-input').focus();
+};
+document.querySelector('#palette .item').onclick = () => {
+  document.getElementById('palette').classList.remove('open');
+  openSettings('command-palette');
+};
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+    e.preventDefault();
+    openSettings('keyboard-shortcut');
+  }
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'i') {
+    e.preventDefault();
+    const n = window.__bitbotHostUi && window.__bitbotHostUi.activeChat;
+    hostPost('/api/host/open_info_panel', {agent_id: n || 'h2-throwaway-agent'});
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    document.getElementById('palette').classList.add('open');
+  }
+  if (e.key === 'Escape') {
+    document.getElementById('palette').classList.remove('open');
+    document.getElementById('ctx-menu').classList.remove('open');
+  }
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#ctx-menu')) document.getElementById('ctx-menu').classList.remove('open');
+  if (!e.target.closest('#palette') && !e.target.closest('#btn-palette'))
+    document.getElementById('palette').classList.remove('open');
+});
+document.getElementById('ctx-menu').addEventListener('click', (e) => {
+  const act = e.target.dataset.act;
+  const agentId = e.currentTarget.dataset.agentId;
+  document.getElementById('ctx-menu').classList.remove('open');
+  if (act === 'delete') {
+    hostPost('/api/host/request_delete_agent', {agent_id: agentId});
+  }
+});
+document.getElementById('confirm-cancel').onclick = () => {
+  state.deletePhase = 'cancelled';
+  document.getElementById('confirm').classList.remove('open');
+  setStatus();
+};
+document.getElementById('confirm-ok').onclick = () => {
+  // Available for product completeness; smoke must use Cancel only.
+  state.deletePhase = 'completed';
+  agents.splice(agents.findIndex(a => a.id === state.deleteAgent), 1);
+  renderAgents();
+  document.getElementById('confirm').classList.remove('open');
+  setStatus();
+};
+
+// C′: UI advances from HostUiShell Live API (/api/host/*), not smoke CDP JS.
+async function hostPost(path, body) {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  return r.json();
+}
+
+function applyHostState(s) {
+  if (!s) return;
+  if (s.settingsOpen) {
+    const entry = s.entry || state.entry || 'sidebar-account-button';
+    // openSettings scrolls+reports when anchor set; avoid a second scrollToAnchor
+    openSettings(entry, s.anchor || null);
+    if (s.activeTab && !s.anchor) showTab(s.activeTab);
+  } else if (state.settingsOpen && s.settingsOpen === false) {
+    closeSettings();
+  }
+  const menu = document.getElementById('ctx-menu');
+  if (s.contextMenuOpen) {
+    // Position over throwaway agent row for a distinct LiveDisplay frame
+    const row = document.querySelector(`[data-agent-id="${s.contextMenuAgent || 'h2-throwaway-agent'}"]`)
+      || document.querySelector('.agent-row');
+    const rect = row ? row.getBoundingClientRect() : {left: 24, bottom: 120, width: 200};
+    menu.style.left = Math.max(8, rect.left + 40) + 'px';
+    menu.style.top = Math.max(8, (rect.bottom || 120) - 4) + 'px';
+    menu.dataset.agentId = s.contextMenuAgent || 'h2-throwaway-agent';
+    menu.classList.add('open');
+    // Ensure confirm is closed while menu is shown
+    document.getElementById('confirm').classList.remove('open');
+    state.deleteAgent = s.contextMenuAgent || state.deleteAgent;
+    state.deletePhase = null;
+    setStatus();
+  } else {
+    menu.classList.remove('open');
+  }
+  if (s.deletePhase === 'awaiting-confirm') {
+    menu.classList.remove('open');
+    state.deleteAgent = s.deleteAgent;
+    state.deletePhase = 'awaiting-confirm';
+    document.getElementById('confirm-text').textContent =
+      `Permanently delete “${state.deleteAgent}” and its transcript?`;
+    document.getElementById('confirm').classList.add('open');
+    setStatus();
+  } else if (s.deletePhase === 'cancelled') {
+    state.deletePhase = 'cancelled';
+    document.getElementById('confirm').classList.remove('open');
+    menu.classList.remove('open');
+    setStatus();
+  }
+  // Batch-3: agents (sidebar excludes hidden), chat header, info pane, guide
+  if (Array.isArray(s.agents)) {
+    agents.splice(0, agents.length, ...s.agents.map(a => ({id:a.id, name:a.name, hidden:!!a.hidden})));
+    renderAgents();
+  }
+  const cn = document.getElementById('chat-name');
+  const cb = document.getElementById('chat-badge');
+  if (s.activeChat) {
+    const a = agents.find(x => x.id === s.activeChat);
+    cn.textContent = a ? a.name : s.activeChat;
+    cb.innerHTML = s.activeChatHidden ? '<span class="badge hidden">hidden · not in sidebar · addressable</span>'
+                 : (a ? '<span class="badge">in sidebar</span>' : '<span class="badge">group chat</span>');
+  } else { cn.textContent = '—'; cb.innerHTML = ''; }
+  const ip = document.getElementById('info-pane');
+  const info = s.infoPanel || {};
+  if (info.open) {
+    const a = agents.find(x => x.id === info.agentId);
+    document.getElementById('ip-title').textContent = info.group ? `Group ${info.agentId}` : (a ? a.name : info.agentId);
+    const body = document.getElementById('ip-body');
+    if (info.view === 'gear') {
+      const n = info.notify || {};
+      const row = (k, label) => `<div class="nrow"><span>${label}</span><span class="toggle"><span class="knob ${n[k] ? 'on' : ''}"></span><span>${n[k] ? 'On' : 'Off'}</span></span></div>`;
+      body.innerHTML = `<div class="ip-sec"><h4>Agent settings · ${info.agentId}</h4>
+        <div class="avatar" style="width:40px;height:40px">${(a ? a.name : '?')[0]}</div>
+        <p>Name: ${a ? a.name : info.agentId}</p><p>Title: Throwaway</p><p>Description: H2 smoke agent</p></div>
+        <div class="ip-sec"><h4>Notifications (this assistant only)</h4>
+        ${row('notify.desktop','Desktop')}${row('notify.sound','Sound')}${row('notify.mentions-only','Mentions only')}${row('notify.routines','Routines')}${row('notify.channels','Channels')}</div>`;
+    } else {
+      const labels = {'desktop-preview':'Computer preview','routines':'Routines','channels':'Channels','members':'Members','gear-settings':'Agent settings (⚙)'};
+      body.innerHTML = (info.sections || []).map(sec => {
+        let inner = '';
+        if (sec === 'desktop-preview') inner = '<div class="preview">live preview of agent computer (click → full screen)</div>';
+        else if (sec === 'routines') inner = '<div style="color:var(--muted)">No routines yet</div>';
+        else if (sec === 'channels') inner = '<div style="color:var(--muted)">Connect a channel</div>';
+        else if (sec === 'members') inner = (info.members && info.members.length)
+          ? info.members.map(m => { const x = agents.find(y => y.id === m); return `<div class="member" data-member="${m}">• ${x ? x.name : m} <span style="color:var(--muted)">(${m})</span></div>`; }).join('')
+          : '<div style="color:var(--muted)">Members appear in group chats</div>';
+        else inner = '<div style="color:var(--muted)">⚙ beside X → per-agent settings subpage</div>';
+        return `<div class="ip-sec" id="ip-${sec}" data-section="${sec}"><h4>${labels[sec]}</h4>${inner}</div>`;
+      }).join('');
+    }
+    ip.classList.add('open');
+  } else { ip.classList.remove('open'); }
+  const pg = document.getElementById('perm-guide');
+  const g = s.permissionGuide || {};
+  if (g.open) {
+    document.getElementById('pg-text').textContent =
+      `${g.namespace} needs authorization (${g.kind}). Open Settings → ${g.anchor} to connect. Not connected yet.`;
+    document.getElementById('pg-link').textContent = g.link || 'Open Settings';
+    document.getElementById('pg-status').textContent = 'Not connected';
+    pg.classList.add('open');
+    document.getElementById('home-hint').style.display = 'none';
+  } else { pg.classList.remove('open'); }
+  if (g.followed && s.settingsOpen) {
+    const acc = document.getElementById(g.anchor);
+    if (acc && !acc.querySelector('.conn-status')) {
+      acc.insertAdjacentHTML('beforeend', `<div style="margin-top:8px">${g.namespace} <span class="conn-status">Not connected · Needs auth</span></div>`);
+    }
+  }
+  // CM-1903 Update Computer two-step
+  const ucBtn = document.getElementById('uc-btn');
+  const ucHint = document.getElementById('uc-hint');
+  if (ucBtn) {
+    const ph = s.updateComputerPhase || 'idle';
+    const prompt = s.updateComputerPrompt;
+    if (ph === 'prompted') {
+      ucBtn.textContent = prompt || 'Update';
+      ucBtn.className = 'uc-btn';
+      if (ucHint) ucHint.textContent = 'Step 1: click Update, then confirm again.';
+    } else if (ph === 'awaiting-second-confirm') {
+      ucBtn.textContent = prompt || 'Click Again to Confirm';
+      ucBtn.className = 'uc-btn warn';
+      if (ucHint) ucHint.textContent = 'Step 2 of 2 — Click Again to Confirm (not Reset).';
+    } else if (ph === 'cancelled') {
+      ucBtn.textContent = 'Update';
+      ucBtn.className = 'uc-btn';
+      if (ucHint) ucHint.textContent = 'Cancelled — Update not completed.';
+    } else {
+      ucBtn.textContent = 'Update';
+      ucBtn.className = 'uc-btn';
+    }
+  }
+  // CM-1905 local-execution toggle + gate log
+  const knob = document.getElementById('le-knob');
+  const leLabel = document.getElementById('le-label');
+  const gateLog = document.getElementById('gate-log');
+  if (knob) {
+    const on = s.localExecutionEnabled !== false;
+    knob.classList.toggle('on', on);
+    if (leLabel) leLabel.textContent = on ? 'On' : 'Off — machineId calls refused';
+  }
+  if (gateLog && Array.isArray(s.gateLog)) {
+    const last = s.gateLog.slice(-4).map(e => {
+      if (e.event === 'rejected_local_off') return `REJECT machineId=${e.machine_id}: ${e.detail}`;
+      if (e.event === 'gate_changed') return `gate → ${e.enabled ? 'on' : 'off'}`;
+      return `${e.event} ${e.machine_id || ''}`;
+    }).join('\n');
+    gateLog.textContent = last;
+  }
+  applyH3HostOverlays(s);
+  window.__bitbotHostUi = {...state, surface:'bit-bot-host-ui', i_claimed:false, driven_by:'HostUiShell',
+    contextMenuOpen: !!s.contextMenuOpen,
+    updateComputerPhase: s.updateComputerPhase || 'idle',
+    localExecutionEnabled: s.localExecutionEnabled !== false,
+    activeTab: s.activeTab || null,
+    activeChat: s.activeChat || null,
+    infoAgent: (s.infoPanel || {}).agentId || null,
+    anchor: s.anchor || state.anchor};
+}
+
+let lastRev = -1;
+async function pollHost() {
+  try {
+    const r = await fetch('/api/host/state', {cache:'no-store'});
+    const s = await r.json();
+    if (typeof s.rev === 'number' && s.rev !== lastRev) {
+      lastRev = s.rev;
+      applyHostState(s);
+    }
+  } catch (_) {}
+}
+
+// User clicks also go through Host API (same Live HostUiShell surface).
+document.getElementById('account-btn').onclick = () => hostPost('/api/host/open_settings', {entry:'sidebar-account-button'});
+document.getElementById('btn-shortcut').onclick = () => hostPost('/api/host/open_settings', {entry:'keyboard-shortcut'});
+document.querySelector('#palette .item').onclick = () => {
+  document.getElementById('palette').classList.remove('open');
+  hostPost('/api/host/open_settings', {entry:'command-palette'});
+};
+document.getElementById('confirm-cancel').onclick = () =>
+  hostPost('/api/host/cancel_delete_agent', {agent_id: state.deleteAgent || 'h2-throwaway-agent'});
+
+document.getElementById('chat-name').onclick = () => {
+  const n = window.__bitbotHostUi && window.__bitbotHostUi.activeChat;
+  hostPost('/api/host/open_info_panel', {agent_id: n || 'h2-throwaway-agent'});
+};
+document.getElementById('ip-close').onclick = () => document.getElementById('info-pane').classList.remove('open');
+document.getElementById('ip-gear').onclick = () => {
+  const s = window.__bitbotHostUi || {};
+  hostPost('/api/host/open_agent_settings', {agent_id: s.infoAgent || 'h2-throwaway-agent'});
+};
+
+document.getElementById('wh-copy-url').onclick = () => hostPost('/api/host/user_copy_webhook', {what:'url'});
+document.getElementById('wh-copy-key').onclick = () => hostPost('/api/host/user_copy_webhook', {what:'key'});
+renderAgents();
+renderSettings();
+showTab('General');
+parseDeepLink();
+setStatus();
+setInterval(pollHost, 150);
+pollHost();
+</script>
+</body>
+</html>

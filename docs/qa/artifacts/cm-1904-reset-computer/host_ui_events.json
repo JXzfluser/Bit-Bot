@@ -1,0 +1,17 @@
+{
+  "events": [
+    {
+      "id": "0243e454-ff52-474d-8beb-b3c9c613480a",
+      "ts": 1792220955.483318,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": "reset-computer"
+    },
+    {
+      "id": "93a14042-5cca-438b-aebc-aa8f6c496622",
+      "ts": 1792220955.4833305,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "reset-computer"
+    }
+  ]
+}

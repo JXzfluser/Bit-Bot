@@ -1,0 +1,31 @@
+{
+  "spans": [
+    {
+      "id": "b80405be-34da-4a4e-93c6-aaca812fe73e",
+      "tool_name": "host_ui:address_agent",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "addressed agent=h2-throwaway-agent hidden=False in_sidebar=True",
+      "artifact_path": null,
+      "ts": 1792220980.208643
+    },
+    {
+      "id": "81b00a84-ada0-45d6-86ce-e2134882eba7",
+      "tool_name": "host_ui:create_agent",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "created h2-created-agent; sidebar=['h2-throwaway-agent', 'demo-agent', 'h2-created-agent']",
+      "artifact_path": null,
+      "ts": 1792220980.9538212
+    },
+    {
+      "id": "72731bae-c611-42f4-b1d8-eb8e9b56d752",
+      "tool_name": "host_ui:open_info_panel",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "agent=h2-group view=panel members=['h2-throwaway-agent', 'h2-created-agent'] settingsOpen=False",
+      "artifact_path": null,
+      "ts": 1792220981.7015698
+    }
+  ]
+}

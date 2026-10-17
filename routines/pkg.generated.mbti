@@ -1,0 +1,492 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/routines"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn allowed_origin_trigger_events() -> Array[String]
+
+pub fn assert_min_interval_5m(String) -> Result[Unit, String]
+
+pub fn break_silence_when_notable(RoutineRunOutcome) -> Result[RoutineDeliveryDecision, String]
+
+pub fn decide_routine_delivery(SilencePolicy, RoutineRunOutcome) -> RoutineDeliveryDecision
+
+pub fn is_break_silence_notable(RoutineRunOutcome) -> Bool
+
+pub fn is_canonical_origin_trigger_event(String) -> Bool
+
+pub fn mail_inbox_wake(MailInboxListener, MailWakeHeaders) -> Result[MailWakeHeaders, String]
+
+pub fn mail_wake_payload(MailWakeHeaders) -> String
+
+pub fn mail_wake_payload_leaks_body(String, String) -> Bool
+
+pub fn parse_cron_tz_prefix(String) -> (String?, String)
+
+pub fn parse_destination_line(String) -> Result[DestinationLine, String]
+
+pub fn plan_batch_delivery(String, Array[String]) -> Result[Array[String], String]
+
+pub fn plan_daily_at_hour(hour~ : Int, timezone? : String, flexible? : Bool) -> Result[CronPlan, String]
+
+pub fn plan_flexible_with_window(expr~ : String, timezone? : String, early_minutes~ : Int, late_minutes~ : Int) -> Result[CronPlan, String]
+
+pub fn plan_loose_daily(timezone? : String, kind? : LooseDailyKind, explicit_exception? : Bool) -> Result[CronPlan, String]
+
+pub fn plan_loose_daily_with_exception(timezone? : String, want_weekends? : Bool, want_overnights? : Bool, explicit_exception? : Bool) -> Result[CronPlan, String]
+
+pub fn pr_babysit_default_package(routine_id~ : String, pr_ref~ : String) -> RoutineSpec
+
+pub fn prepare_external_listener(ExternalListenerShape) -> ExternalListenerPrep
+
+pub fn prepare_slack_listener(SlackListenerShape) -> Result[String?, String]
+
+pub fn register_origin_trigger_event(repo~ : String, event~ : String) -> Result[OriginTriggerEvent, String]
+
+pub fn reject_blind_step(String) -> Result[Unit, String]
+
+pub fn routine_write_fingerprint(RoutineSpec) -> String
+
+pub fn silent_ok_no_send_when_quiet(RoutineRunOutcome) -> Result[Unit, String]
+
+pub fn slack_invite_prompt(SlackListenerShape) -> String?
+
+pub fn validate_cron(String) -> Result[Unit, String]
+
+pub fn validate_external_listener(ExternalListenerShape) -> Result[Unit, String]
+
+pub fn validate_github_listener(GithubListenerShape) -> Result[Unit, String]
+
+pub fn validate_origin_listener(OriginListenerShape) -> Result[Unit, String]
+
+pub fn validate_origin_trigger_event(String) -> Result[Unit, String]
+
+pub fn validate_slack_channel_selector(String) -> Result[Unit, String]
+
+pub fn validate_slack_listener(SlackListenerShape) -> Result[Unit, String]
+
+pub fn webhook_wake_has_event_tag(String) -> Bool
+
+pub fn webhook_wake_payload(event_id~ : String, summary~ : String) -> String
+
+// Errors
+
+// Types and methods
+pub(all) enum ConfirmCardDecision {
+  Approve
+  Deny
+} derive(Eq, @debug.Debug)
+pub fn ConfirmCardDecision::equal(Self, Self) -> Bool
+pub fn ConfirmCardDecision::not_equal(Self, Self) -> Bool
+pub fn ConfirmCardDecision::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ConfirmCardGate {
+  denied_fingerprints : Array[String]
+}
+pub fn ConfirmCardGate::new() -> Self
+
+pub(all) struct CronContext {
+  user_tz : String
+  expr : String
+} derive(Eq, @debug.Debug)
+pub fn CronContext::cron_body(Self) -> String
+pub fn CronContext::equal(Self, Self) -> Bool
+pub fn CronContext::new(user_tz~ : String, expr~ : String) -> Self
+pub fn CronContext::not_equal(Self, Self) -> Bool
+pub fn CronContext::resolved_tz(Self) -> String
+pub fn CronContext::to_repr(Self) -> @debug.Repr
+pub fn CronContext::validate(Self) -> Result[Unit, String]
+
+pub(all) struct CronPlan {
+  expr : String
+  timezone : String
+  summary : String
+  early_minutes : Int
+  late_minutes : Int
+} derive(Eq, @debug.Debug)
+pub fn CronPlan::equal(Self, Self) -> Bool
+pub fn CronPlan::not_equal(Self, Self) -> Bool
+pub fn CronPlan::start_falls_in_window(Self, offset_minutes~ : Int) -> Bool
+pub fn CronPlan::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DestinationLine {
+  raw : String
+  recipients : Array[String]
+  on_empty : String
+} derive(Eq, @debug.Debug)
+pub fn DestinationLine::allows_only(Self, Array[String]) -> Bool
+pub fn DestinationLine::equal(Self, Self) -> Bool
+pub fn DestinationLine::not_equal(Self, Self) -> Bool
+pub fn DestinationLine::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ExternalEventConnector {
+  Teams
+  Linear
+  Sentry
+  PagerDuty
+} derive(Eq, @debug.Debug)
+pub fn ExternalEventConnector::equal(Self, Self) -> Bool
+pub fn ExternalEventConnector::label(Self) -> String
+pub fn ExternalEventConnector::namespace_hint(Self) -> String
+pub fn ExternalEventConnector::not_equal(Self, Self) -> Bool
+pub fn ExternalEventConnector::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ExternalListenerPrep {
+  Ready(shape~ : ExternalListenerShape)
+  ShowAutoCard(card~ : MissingConnectorAutoCard)
+  Invalid(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn ExternalListenerPrep::equal(Self, Self) -> Bool
+pub fn ExternalListenerPrep::is_auto_card(Self) -> Bool
+pub fn ExternalListenerPrep::not_equal(Self, Self) -> Bool
+pub fn ExternalListenerPrep::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ExternalListenerShape {
+  connector : ExternalEventConnector
+  event_kind : String
+  filter_id : String?
+  connector_connected : Bool
+} derive(Eq, @debug.Debug)
+pub fn ExternalListenerShape::equal(Self, Self) -> Bool
+pub fn ExternalListenerShape::not_equal(Self, Self) -> Bool
+pub fn ExternalListenerShape::to_repr(Self) -> @debug.Repr
+
+pub(all) enum GithubEventKind {
+  Pr
+  Ci
+  Review
+} derive(Eq, @debug.Debug)
+pub fn GithubEventKind::equal(Self, Self) -> Bool
+pub fn GithubEventKind::label(Self) -> String
+pub fn GithubEventKind::not_equal(Self, Self) -> Bool
+pub fn GithubEventKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct GithubListenerShape {
+  event : GithubEventKind
+  pr_scope : String?
+  user_allowlist : Array[String]
+} derive(Eq, @debug.Debug)
+pub fn GithubListenerShape::equal(Self, Self) -> Bool
+pub fn GithubListenerShape::not_equal(Self, Self) -> Bool
+pub fn GithubListenerShape::to_repr(Self) -> @debug.Repr
+
+pub(all) struct GroupListener {
+  prompt : String
+  paths : Array[GroupListenerPath]
+} derive(Eq, @debug.Debug)
+pub fn GroupListener::allows_cron(Self) -> Bool
+pub fn GroupListener::equal(Self, Self) -> Bool
+pub fn GroupListener::new(prompt~ : String, paths~ : Array[GroupListenerPath]) -> Self
+pub fn GroupListener::not_equal(Self, Self) -> Bool
+pub fn GroupListener::to_repr(Self) -> @debug.Repr
+pub fn GroupListener::wake_on(Self, GroupListenerPath) -> String?
+
+pub(all) enum GroupListenerPath {
+  Slack(selector~ : String)
+  Github(pr_ref~ : String)
+  Origin(repo~ : String)
+  Cron(expr~ : String)
+  Event(name~ : String)
+  Mail(tag~ : String)
+  Webhook
+} derive(Eq, @debug.Debug)
+pub fn GroupListenerPath::equal(Self, Self) -> Bool
+pub fn GroupListenerPath::not_equal(Self, Self) -> Bool
+pub fn GroupListenerPath::to_repr(Self) -> @debug.Repr
+
+pub(all) struct Lifecycle {
+  mut state : LifecycleState
+  last_run_ms : Int64?
+  run_count : Int
+} derive(Eq, @debug.Debug)
+pub fn Lifecycle::activate(Self) -> Unit
+pub fn Lifecycle::equal(Self, Self) -> Bool
+pub fn Lifecycle::new() -> Self
+pub fn Lifecycle::not_equal(Self, Self) -> Bool
+pub fn Lifecycle::to_repr(Self) -> @debug.Repr
+
+pub(all) enum LifecycleState {
+  Draft
+  Active
+  Paused
+  Retired
+} derive(Eq, @debug.Debug)
+pub fn LifecycleState::equal(Self, Self) -> Bool
+pub fn LifecycleState::not_equal(Self, Self) -> Bool
+pub fn LifecycleState::to_repr(Self) -> @debug.Repr
+
+pub(all) enum LooseDailyKind {
+  WeekdaysDaytime
+  IncludeWeekend
+  Overnight
+} derive(Eq, @debug.Debug)
+pub fn LooseDailyKind::equal(Self, Self) -> Bool
+pub fn LooseDailyKind::not_equal(Self, Self) -> Bool
+pub fn LooseDailyKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MailInboxListener {
+  tag_filter : String?
+} derive(Eq, @debug.Debug)
+pub fn MailInboxListener::equal(Self, Self) -> Bool
+pub fn MailInboxListener::not_equal(Self, Self) -> Bool
+pub fn MailInboxListener::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MailWakeHeaders {
+  message_id : String
+  thread_id : String
+  from_address : String
+  to_address : String
+  subject : String
+  tags : Array[String]
+} derive(Eq, @debug.Debug)
+pub fn MailWakeHeaders::equal(Self, Self) -> Bool
+pub fn MailWakeHeaders::not_equal(Self, Self) -> Bool
+pub fn MailWakeHeaders::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MissingConnectorAutoCard {
+  connector : ExternalEventConnector
+  namespace_hint : String
+  reason : String
+  shown : Bool
+} derive(Eq, @debug.Debug)
+pub fn MissingConnectorAutoCard::equal(Self, Self) -> Bool
+pub fn MissingConnectorAutoCard::is_auto_card(Self) -> Bool
+pub fn MissingConnectorAutoCard::not_equal(Self, Self) -> Bool
+pub fn MissingConnectorAutoCard::to_repr(Self) -> @debug.Repr
+
+pub(all) enum OriginEventKind {
+  Pr
+  Ci
+  Review
+} derive(Eq, @debug.Debug)
+pub fn OriginEventKind::equal(Self, Self) -> Bool
+pub fn OriginEventKind::label(Self) -> String
+pub fn OriginEventKind::not_equal(Self, Self) -> Bool
+pub fn OriginEventKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct OriginListenerShape {
+  event : OriginEventKind
+  repo : String
+  repo_kind : OriginRepoKind
+  pr_scope : String?
+} derive(Eq, @debug.Debug)
+pub fn OriginListenerShape::equal(Self, Self) -> Bool
+pub fn OriginListenerShape::not_equal(Self, Self) -> Bool
+pub fn OriginListenerShape::to_repr(Self) -> @debug.Repr
+
+pub(all) enum OriginRepoKind {
+  Native
+  Mirror
+} derive(Eq, @debug.Debug)
+pub fn OriginRepoKind::equal(Self, Self) -> Bool
+pub fn OriginRepoKind::not_equal(Self, Self) -> Bool
+pub fn OriginRepoKind::to_repr(Self) -> @debug.Repr
+
+pub(all) enum OriginTriggerEvent {
+  PrOpened
+  Pushed
+  Merged
+  Comment
+} derive(Eq, @debug.Debug)
+pub fn OriginTriggerEvent::equal(Self, Self) -> Bool
+pub fn OriginTriggerEvent::from_label(String) -> Result[Self, String]
+pub fn OriginTriggerEvent::label(Self) -> String
+pub fn OriginTriggerEvent::not_equal(Self, Self) -> Bool
+pub fn OriginTriggerEvent::to_repr(Self) -> @debug.Repr
+
+pub(all) enum PrTerminalState {
+  Merged
+  Closed
+  Open
+} derive(Eq, @debug.Debug)
+pub fn PrTerminalState::equal(Self, Self) -> Bool
+pub fn PrTerminalState::is_terminal(Self) -> Bool
+pub fn PrTerminalState::not_equal(Self, Self) -> Bool
+pub fn PrTerminalState::to_repr(Self) -> @debug.Repr
+
+pub(all) struct Routine {
+  id : String
+  title : String
+  schedule : Schedule
+  lifecycle : Lifecycle
+  skill_ref : String?
+} derive(Eq, @debug.Debug)
+pub fn Routine::equal(Self, Self) -> Bool
+pub fn Routine::is_runnable(Self) -> Bool
+pub fn Routine::not_equal(Self, Self) -> Bool
+pub fn Routine::to_repr(Self) -> @debug.Repr
+
+pub(all) enum RoutineDeliveryDecision {
+  StaySilent(store_note~ : String)
+  SendToUser(reason~ : String, body~ : String)
+} derive(Eq, @debug.Debug)
+pub fn RoutineDeliveryDecision::equal(Self, Self) -> Bool
+pub fn RoutineDeliveryDecision::not_equal(Self, Self) -> Bool
+pub fn RoutineDeliveryDecision::sends_to_user(Self) -> Bool
+pub fn RoutineDeliveryDecision::to_repr(Self) -> @debug.Repr
+
+pub(all) struct RoutinePatch {
+  name : String?
+  prompt : String?
+  trigger : Trigger?
+  timing : Timing?
+  enabled : Bool?
+  early_minutes : Int?
+  late_minutes : Int?
+} derive(Eq, @debug.Debug)
+pub fn RoutinePatch::empty() -> Self
+pub fn RoutinePatch::equal(Self, Self) -> Bool
+pub fn RoutinePatch::not_equal(Self, Self) -> Bool
+pub fn RoutinePatch::to_repr(Self) -> @debug.Repr
+
+pub(all) struct RoutineRunOutcome {
+  notable : Bool
+  failure : Bool
+  needs_approval : Bool
+  needs_user_decision : Bool
+  store_note : String
+} derive(Eq, @debug.Debug)
+pub fn RoutineRunOutcome::equal(Self, Self) -> Bool
+pub fn RoutineRunOutcome::not_equal(Self, Self) -> Bool
+pub fn RoutineRunOutcome::quiet_success(store_note~ : String) -> Self
+pub fn RoutineRunOutcome::to_repr(Self) -> @debug.Repr
+pub fn RoutineRunOutcome::with_failure(message~ : String) -> Self
+
+pub(all) struct RoutineSpec {
+  id : String
+  name : String
+  prompt : String
+  trigger : Trigger
+  timing : Timing
+  enabled : Bool
+  early_minutes : Int
+  late_minutes : Int
+} derive(Eq, @debug.Debug)
+pub fn RoutineSpec::equal(Self, Self) -> Bool
+pub fn RoutineSpec::not_equal(Self, Self) -> Bool
+pub fn RoutineSpec::to_repr(Self) -> @debug.Repr
+
+pub(all) struct RoutineStore {
+  specs : Array[RoutineSpec]
+  lifecycles : Array[Lifecycle]
+}
+pub fn RoutineStore::apply_timed_watch_end(Self, TimedWatch, Int64) -> Result[Bool, String]
+pub fn RoutineStore::create(Self, RoutineSpec) -> Result[Unit, String]
+pub fn RoutineStore::create_with_confirm(Self, ConfirmCardGate, RoutineSpec, ConfirmCardDecision) -> RoutineWriteToolResult
+pub fn RoutineStore::delete_routine(Self, String) -> Result[Unit, String]
+pub fn RoutineStore::empty() -> Self
+pub fn RoutineStore::get(Self, String) -> RoutineSpec?
+pub fn RoutineStore::handle_pr_terminal(Self, String, PrTerminalState) -> Result[Bool, String]
+pub fn RoutineStore::is_fireable(Self, String) -> Bool
+pub fn RoutineStore::lifecycle_of(Self, String) -> LifecycleState?
+pub fn RoutineStore::on_pr_terminal_wake(Self, String, PrTerminalState) -> Result[Bool, String]
+pub fn RoutineStore::on_terminal_wake(Self, String, TerminalWakeReason) -> Result[Unit, String]
+pub fn RoutineStore::pause(Self, String) -> Result[Unit, String]
+pub fn RoutineStore::resume_routine(Self, String) -> Result[Unit, String]
+pub fn RoutineStore::update(Self, String, RoutinePatch) -> Result[Unit, String]
+pub fn RoutineStore::update_with_confirm(Self, ConfirmCardGate, String, RoutinePatch, ConfirmCardDecision) -> RoutineWriteToolResult
+
+pub(all) struct RoutineWriteToolResult {
+  ok : Bool
+  message : String
+  denied : Bool
+  fingerprint : String
+} derive(Eq, @debug.Debug)
+pub fn RoutineWriteToolResult::equal(Self, Self) -> Bool
+pub fn RoutineWriteToolResult::not_equal(Self, Self) -> Bool
+pub fn RoutineWriteToolResult::to_repr(Self) -> @debug.Repr
+
+pub(all) struct Schedule {
+  trigger : Trigger
+  timezone : String
+  enabled : Bool
+} derive(Eq, @debug.Debug)
+pub fn Schedule::equal(Self, Self) -> Bool
+pub fn Schedule::not_equal(Self, Self) -> Bool
+pub fn Schedule::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SilencePolicy {
+  silent_ok : Bool
+} derive(Eq, @debug.Debug)
+pub fn SilencePolicy::always_notify() -> Self
+pub fn SilencePolicy::equal(Self, Self) -> Bool
+pub fn SilencePolicy::not_equal(Self, Self) -> Bool
+pub fn SilencePolicy::silent_ok() -> Self
+pub fn SilencePolicy::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SlackEventKind {
+  Mention
+  Keyword
+  Message
+  Reaction
+} derive(Eq, @debug.Debug)
+pub fn SlackEventKind::equal(Self, Self) -> Bool
+pub fn SlackEventKind::label(Self) -> String
+pub fn SlackEventKind::not_equal(Self, Self) -> Bool
+pub fn SlackEventKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SlackListenerShape {
+  event : SlackEventKind
+  channel_selector : String
+  invited : Bool
+  keyword : String?
+} derive(Eq, @debug.Debug)
+pub fn SlackListenerShape::equal(Self, Self) -> Bool
+pub fn SlackListenerShape::not_equal(Self, Self) -> Bool
+pub fn SlackListenerShape::to_repr(Self) -> @debug.Repr
+
+pub(all) enum TerminalWakeReason {
+  PrMerged
+  PrClosed
+  TimedWatchEnded
+} derive(Eq, @debug.Debug)
+pub fn TerminalWakeReason::equal(Self, Self) -> Bool
+pub fn TerminalWakeReason::is_terminal(Self) -> Bool
+pub fn TerminalWakeReason::not_equal(Self, Self) -> Bool
+pub fn TerminalWakeReason::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TimedWatch {
+  routine_id : String
+  expires_at_ms : Int64
+} derive(Eq, @debug.Debug)
+pub fn TimedWatch::equal(Self, Self) -> Bool
+pub fn TimedWatch::is_expired(Self, Int64) -> Bool
+pub fn TimedWatch::not_equal(Self, Self) -> Bool
+pub fn TimedWatch::to_repr(Self) -> @debug.Repr
+
+pub(all) enum Timing {
+  Exact
+  Flexible
+} derive(Eq, @debug.Debug)
+pub fn Timing::equal(Self, Self) -> Bool
+pub fn Timing::not_equal(Self, Self) -> Bool
+pub fn Timing::to_repr(Self) -> @debug.Repr
+
+pub(all) enum Trigger {
+  Cron(expr~ : String)
+  Event(name~ : String)
+  Manual
+  Interval(seconds~ : Int)
+} derive(Eq, @debug.Debug)
+pub fn Trigger::equal(Self, Self) -> Bool
+pub fn Trigger::not_equal(Self, Self) -> Bool
+pub fn Trigger::to_repr(Self) -> @debug.Repr
+
+pub(all) struct WebhookPanelSecrets {
+  url : String
+  key : String
+} derive(Eq, @debug.Debug)
+pub fn WebhookPanelSecrets::assistant_tool_read_key(Self) -> Result[String, String]
+pub fn WebhookPanelSecrets::equal(Self, Self) -> Bool
+pub fn WebhookPanelSecrets::new(url~ : String, key~ : String) -> Self
+pub fn WebhookPanelSecrets::not_equal(Self, Self) -> Bool
+pub fn WebhookPanelSecrets::to_repr(Self) -> @debug.Repr
+pub fn WebhookPanelSecrets::user_copy_key(Self) -> String
+pub fn WebhookPanelSecrets::user_copy_url(Self) -> String
+
+// Type aliases
+
+// Traits

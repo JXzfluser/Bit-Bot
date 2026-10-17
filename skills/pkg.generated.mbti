@@ -1,0 +1,499 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/skills"
+
+import {
+  "bitbot/bitbot/connectors",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn allows_origin_trigger(ScRepoKind) -> Bool
+
+pub fn assert_pack_has_no_secrets(BotTemplatePack, Array[String]) -> Result[Unit, String]
+
+pub fn code_changes_skill_name() -> String
+
+pub fn export_as_team_copy(BotExportSource) -> Result[BotTemplatePack, String]
+
+pub fn export_bot_template(BotExportSource) -> Result[BotTemplatePack, String]
+
+pub fn export_bot_template_skill_name() -> String
+
+pub fn is_voice_calls_json_path(String) -> Bool
+
+pub fn no_connector_fallback_skill_name() -> String
+
+pub fn office_pptx_skill_name() -> String
+
+pub fn plan_code_changes(repo_kind~ : ScRepoKind, scope~ : CodeChangeScope, paths~ : Array[String], explicit_machine_ask? : Bool) -> Result[CodeChangePlan, String]
+
+pub fn plan_without_connector(skill~ : String, target_url? : String) -> Result[(ConnectorFallbackPath, String), String]
+
+pub fn register_origin_trigger(ScRepoKind, repo~ : String, event~ : String) -> Result[String, String]
+
+pub fn resolve_no_connector_fallback(connector_usable~ : Bool, prefer_browser? : Bool) -> ConnectorFallbackPath
+
+pub fn route_source_control(ScRepoKind) -> ScBackend
+
+pub fn run_scheduling(SchedulingRequest, calendar_connector~ : @connectors.ConnectorStatus) -> SchedulingOutcome
+
+pub fn scheduling_skill_name() -> String
+
+pub fn site_playbook_catalog_family() -> Array[SitePlaybookId]
+
+pub fn skill_authoring_name() -> String
+
+pub fn skill_priority_rule() -> String
+
+pub fn skill_ref_path(SkillSource, String, plugin_id? : String?) -> String
+
+pub fn slides_skill_name() -> String
+
+pub fn source_control_skill_name() -> String
+
+pub fn user_private_workflows_not_kernel_must_deliver() -> Bool
+
+pub fn user_workflows_are_non_goal_ng003() -> Bool
+
+pub fn validate_skill_md(String) -> Result[Unit, String]
+
+pub fn voice_skill_name() -> String
+
+// Errors
+
+// Types and methods
+pub(all) enum BotExportKind {
+  ShareableTemplate
+  TeamCopy
+} derive(Eq, @debug.Debug)
+pub fn BotExportKind::equal(Self, Self) -> Bool
+pub fn BotExportKind::label(Self) -> String
+pub fn BotExportKind::not_equal(Self, Self) -> Bool
+pub fn BotExportKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct BotExportSource {
+  bot_id : String
+  name : String
+  title : String
+  description : String
+  skill_names : Array[String]
+  secrets : Array[String]
+} derive(Eq, @debug.Debug)
+pub fn BotExportSource::equal(Self, Self) -> Bool
+pub fn BotExportSource::not_equal(Self, Self) -> Bool
+pub fn BotExportSource::to_repr(Self) -> @debug.Repr
+
+pub(all) struct BotTemplatePack {
+  kind : BotExportKind
+  bot_id : String
+  name : String
+  title : String
+  description : String
+  skill_names : Array[String]
+  manifest : String
+} derive(Eq, @debug.Debug)
+pub fn BotTemplatePack::equal(Self, Self) -> Bool
+pub fn BotTemplatePack::is_shareable_not_team_copy(Self) -> Bool
+pub fn BotTemplatePack::not_equal(Self, Self) -> Bool
+pub fn BotTemplatePack::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CodeChangePlan {
+  scope : CodeChangeScope
+  sc_backend : ScBackend
+  repo_kind : ScRepoKind
+  paths : Array[String]
+  may_register_origin_trigger : Bool
+} derive(Eq, @debug.Debug)
+pub fn CodeChangePlan::equal(Self, Self) -> Bool
+pub fn CodeChangePlan::not_equal(Self, Self) -> Bool
+pub fn CodeChangePlan::to_repr(Self) -> @debug.Repr
+pub fn CodeChangePlan::try_origin_trigger(Self, repo~ : String, event~ : String) -> Result[String, String]
+
+pub(all) enum CodeChangeScope {
+  BoxWorkspace
+  MachineCheckout
+} derive(Eq, @debug.Debug)
+pub fn CodeChangeScope::equal(Self, Self) -> Bool
+pub fn CodeChangeScope::not_equal(Self, Self) -> Bool
+pub fn CodeChangeScope::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ConnectorFallbackPath {
+  UseConnector
+  BrowserDegrade
+  CurlDegrade
+  HardFail
+} derive(Eq, @debug.Debug)
+pub fn ConnectorFallbackPath::equal(Self, Self) -> Bool
+pub fn ConnectorFallbackPath::is_degrade(Self) -> Bool
+pub fn ConnectorFallbackPath::is_hard_fail(Self) -> Bool
+pub fn ConnectorFallbackPath::label(Self) -> String
+pub fn ConnectorFallbackPath::not_equal(Self, Self) -> Bool
+pub fn ConnectorFallbackPath::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ManagedCatalog {
+  skills : Array[ManagedSkill]
+}
+pub fn ManagedCatalog::empty() -> Self
+pub fn ManagedCatalog::find(Self, String) -> ManagedSkill?
+pub fn ManagedCatalog::len(Self) -> Int
+pub fn ManagedCatalog::list_names(Self) -> Array[String]
+pub fn ManagedCatalog::read_skill_md(Self, String) -> Result[String, String]
+pub fn ManagedCatalog::seed() -> Self
+
+pub(all) struct ManagedSkill {
+  name : String
+  description : String
+  skill_md : String
+} derive(Eq, @debug.Debug)
+pub fn ManagedSkill::equal(Self, Self) -> Bool
+pub fn ManagedSkill::not_equal(Self, Self) -> Bool
+pub fn ManagedSkill::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MatrixMustDeliverContract {
+  cm_ids : Array[String]
+  product_skill_names : Array[String]
+}
+pub fn MatrixMustDeliverContract::contains_any_user_workflow(Self, UserWorkflowRuntime) -> Bool
+pub fn MatrixMustDeliverContract::includes_cm(Self, String) -> Bool
+pub fn MatrixMustDeliverContract::includes_skill(Self, String) -> Bool
+pub fn MatrixMustDeliverContract::product_seed() -> Self
+
+pub(all) struct NativeMustDeliverP0 {
+  cm_ids : Array[String]
+  native_capability_names : Array[String]
+}
+pub fn NativeMustDeliverP0::contains_any_user_workflow(Self, UserWorkflowRuntime) -> Bool
+pub fn NativeMustDeliverP0::includes_native(Self, String) -> Bool
+pub fn NativeMustDeliverP0::product_seed() -> Self
+pub fn NativeMustDeliverP0::try_write_user_workflow_as_native(Self, UserWorkflowRuntime, String) -> Result[Unit, String]
+
+pub(all) struct PlaybookDispatchSnippet {
+  playbook_name : String
+  snippet : String
+  read_first : Bool
+  child_task_prompt : String
+} derive(Eq, @debug.Debug)
+pub fn PlaybookDispatchSnippet::equal(Self, Self) -> Bool
+pub fn PlaybookDispatchSnippet::not_equal(Self, Self) -> Bool
+pub fn PlaybookDispatchSnippet::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PluginSkill {
+  plugin_id : String
+  name : String
+  description : String
+  skill_md : String
+} derive(Eq, @debug.Debug)
+pub fn PluginSkill::equal(Self, Self) -> Bool
+pub fn PluginSkill::not_equal(Self, Self) -> Bool
+pub fn PluginSkill::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PptxArtifact {
+  path : String
+  title : String
+  openable : Bool
+  magic_prefix : String
+} derive(Eq, @debug.Debug)
+pub fn PptxArtifact::equal(Self, Self) -> Bool
+pub fn PptxArtifact::not_equal(Self, Self) -> Bool
+pub fn PptxArtifact::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ResolvedSkill {
+  name : String
+  source : SkillSource
+  skill_md : String
+} derive(Eq, @debug.Debug)
+pub fn ResolvedSkill::equal(Self, Self) -> Bool
+pub fn ResolvedSkill::not_equal(Self, Self) -> Bool
+pub fn ResolvedSkill::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ScBackend {
+  Origin
+  Github
+} derive(Eq, @debug.Debug)
+pub fn ScBackend::equal(Self, Self) -> Bool
+pub fn ScBackend::mcp_namespace(Self) -> String
+pub fn ScBackend::not_equal(Self, Self) -> Bool
+pub fn ScBackend::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ScRepoKind {
+  NativeOrigin
+  GithubMirror
+  GithubNative
+} derive(Eq, @debug.Debug)
+pub fn ScRepoKind::equal(Self, Self) -> Bool
+pub fn ScRepoKind::not_equal(Self, Self) -> Bool
+pub fn ScRepoKind::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SchedulingOutcome {
+  ConnectorOk(event_id~ : String)
+  Fallback(path~ : ConnectorFallbackPath, hint~ : String)
+  Invalid(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn SchedulingOutcome::equal(Self, Self) -> Bool
+pub fn SchedulingOutcome::is_hard_fail_missing_connector(Self) -> Bool
+pub fn SchedulingOutcome::not_equal(Self, Self) -> Bool
+pub fn SchedulingOutcome::to_repr(Self) -> @debug.Repr
+pub fn SchedulingOutcome::used_fallback(Self) -> Bool
+
+pub(all) struct SchedulingRequest {
+  title : String
+  timezone : String
+  when_desc : String
+} derive(Eq, @debug.Debug)
+pub fn SchedulingRequest::equal(Self, Self) -> Bool
+pub fn SchedulingRequest::not_equal(Self, Self) -> Bool
+pub fn SchedulingRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SendOnBehalfToneSession {
+  recent : Array[ToneSample]
+  mut phase : ToneOfferPhase
+  mut first_proxy_write_done : Bool
+}
+pub fn SendOnBehalfToneSession::begin_first_proxy_write(Self) -> Result[Array[ToneSample], String]
+pub fn SendOnBehalfToneSession::draft_matching_register(Self, body~ : String) -> Result[String, String]
+pub fn SendOnBehalfToneSession::matched_register(Self) -> String?
+pub fn SendOnBehalfToneSession::new(Array[ToneSample]) -> Self
+pub fn SendOnBehalfToneSession::offered_samples(Self) -> Bool
+pub fn SendOnBehalfToneSession::pick_sample(Self, sample_id~ : String) -> Result[String, String]
+
+pub(all) struct SitePlaybook {
+  name : String
+  site_host : String
+  skill_md : String
+  snippet : String
+  stop_rules : String
+} derive(Eq, @debug.Debug)
+pub fn SitePlaybook::equal(Self, Self) -> Bool
+pub fn SitePlaybook::not_equal(Self, Self) -> Bool
+pub fn SitePlaybook::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SitePlaybookCatalog {
+  playbooks : Array[SitePlaybook]
+  read_log : Array[String]
+}
+pub fn SitePlaybookCatalog::empty() -> Self
+pub fn SitePlaybookCatalog::enum_matches_loader(Self) -> Bool
+pub fn SitePlaybookCatalog::list_skill_names(Self) -> Array[String]
+pub fn SitePlaybookCatalog::map_site(Self, SitePlaybookId) -> Result[SitePlaybook, String]
+pub fn SitePlaybookCatalog::match_site(Self, String) -> SitePlaybook?
+pub fn SitePlaybookCatalog::prepare_dispatch(Self, String) -> Result[PlaybookDispatchSnippet, String]
+pub fn SitePlaybookCatalog::read_playbook(Self, String) -> Result[String, String]
+pub fn SitePlaybookCatalog::seed_demo() -> Self
+pub fn SitePlaybookCatalog::seed_full_catalog() -> Self
+pub fn SitePlaybookCatalog::was_read(Self, String) -> Bool
+
+pub(all) enum SitePlaybookId {
+  Airbnb
+  Bestbuy
+  Costco
+  Craigslist
+  Doordash
+  Ebay
+  Etsy
+  Expedia
+  FacebookMarketplace
+  Fedex
+  GoogleFlights
+  Instacart
+  Linkedin
+  Luma
+  Opentable
+  Realtor
+  Resy
+  Southwest
+  Target
+  United
+  Ups
+  Usps
+} derive(Eq, @debug.Debug)
+pub fn SitePlaybookId::equal(Self, Self) -> Bool
+pub fn SitePlaybookId::not_equal(Self, Self) -> Bool
+pub fn SitePlaybookId::site_host(Self) -> String
+pub fn SitePlaybookId::skill_name(Self) -> String
+pub fn SitePlaybookId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SkillAuthoring {
+  meta_skill_md : String
+}
+pub fn SkillAuthoring::meta_body(Self) -> String
+pub fn SkillAuthoring::produce_skill_md(Self, String, String, String) -> Result[String, String]
+pub fn SkillAuthoring::seed() -> Self
+
+pub(all) struct SkillCatalog {
+  skills : Array[SkillMeta]
+} derive(Eq, @debug.Debug)
+pub fn SkillCatalog::empty() -> Self
+pub fn SkillCatalog::equal(Self, Self) -> Bool
+pub fn SkillCatalog::find(Self, SkillId) -> SkillMeta?
+pub fn SkillCatalog::len(Self) -> Int
+pub fn SkillCatalog::not_equal(Self, Self) -> Bool
+pub fn SkillCatalog::register(Self, SkillMeta) -> Unit
+pub fn SkillCatalog::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SkillContext {
+  loaded_names : Array[String]
+  bodies : Map[String, String]
+}
+pub fn SkillContext::contains(Self, String) -> Bool
+pub fn SkillContext::empty() -> Self
+pub fn SkillContext::loaded_count(Self) -> Int
+
+pub(all) struct SkillId {
+  ns : String
+  name : String
+} derive(Eq, @debug.Debug)
+pub fn SkillId::equal(Self, Self) -> Bool
+pub fn SkillId::not_equal(Self, Self) -> Bool
+pub fn SkillId::qualified(Self) -> String
+pub fn SkillId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SkillMdDraft {
+  name : String
+  description : String
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn SkillMdDraft::equal(Self, Self) -> Bool
+pub fn SkillMdDraft::not_equal(Self, Self) -> Bool
+pub fn SkillMdDraft::to_repr(Self) -> @debug.Repr
+pub fn SkillMdDraft::to_skill_md(Self) -> String
+
+pub(all) struct SkillMeta {
+  id : SkillId
+  description : String
+  enabled : Bool
+} derive(Eq, @debug.Debug)
+pub fn SkillMeta::equal(Self, Self) -> Bool
+pub fn SkillMeta::not_equal(Self, Self) -> Bool
+pub fn SkillMeta::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SkillRef {
+  id : SkillId
+  source : SkillSource
+  path : String
+  description : String
+} derive(Eq, @debug.Debug)
+pub fn SkillRef::equal(Self, Self) -> Bool
+pub fn SkillRef::from_resolved(ResolvedSkill, plugin_id? : String?, description? : String) -> Self
+pub fn SkillRef::is_stable(Self) -> Bool
+pub fn SkillRef::new(SkillId, SkillSource, String, description? : String) -> Self
+pub fn SkillRef::not_equal(Self, Self) -> Bool
+pub fn SkillRef::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SkillRunner {
+  catalog : ManagedCatalog
+}
+pub fn SkillRunner::load_for_task(Self, String) -> SkillContext
+pub fn SkillRunner::new(ManagedCatalog) -> Self
+
+pub(all) enum SkillSource {
+  Managed
+  User
+  Plugin
+} derive(Eq, @debug.Debug)
+pub fn SkillSource::beats(Self, Self) -> Bool
+pub fn SkillSource::equal(Self, Self) -> Bool
+pub fn SkillSource::not_equal(Self, Self) -> Bool
+pub fn SkillSource::priority_rank(Self) -> Int
+pub fn SkillSource::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SlidesHost {
+  files : Map[String, String]
+}
+pub fn SlidesHost::exists(Self, String) -> Bool
+pub fn SlidesHost::generate_pptx(Self, title~ : String, slides? : Array[String], filename? : String) -> Result[PptxArtifact, String]
+pub fn SlidesHost::mock() -> Self
+
+pub(all) enum ToneOfferPhase {
+  OfferSamples
+  Matched(register_~ : String)
+  Drafted(body~ : String, register_~ : String)
+} derive(Eq, @debug.Debug)
+pub fn ToneOfferPhase::equal(Self, Self) -> Bool
+pub fn ToneOfferPhase::not_equal(Self, Self) -> Bool
+pub fn ToneOfferPhase::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ToneSample {
+  id : String
+  preview : String
+  register_ : String
+} derive(Eq, @debug.Debug)
+pub fn ToneSample::equal(Self, Self) -> Bool
+pub fn ToneSample::not_equal(Self, Self) -> Bool
+pub fn ToneSample::to_repr(Self) -> @debug.Repr
+
+pub(all) struct UnifiedCatalog {
+  managed : ManagedCatalog
+  user_skills : Array[UserSkill]
+  plugin_skills : Array[PluginSkill]
+  installed_plugins : Array[String]
+}
+pub fn UnifiedCatalog::add_user_skill(Self, UserSkill) -> Unit
+pub fn UnifiedCatalog::empty() -> Self
+pub fn UnifiedCatalog::has_plugin_skill(Self, String) -> Bool
+pub fn UnifiedCatalog::install_plugin(Self, plugin_id~ : String, skills~ : Array[PluginSkill]) -> Unit
+pub fn UnifiedCatalog::is_plugin_installed(Self, String) -> Bool
+pub fn UnifiedCatalog::list_plugin_skill_names(Self) -> Array[String]
+pub fn UnifiedCatalog::list_user_names(Self) -> Array[String]
+pub fn UnifiedCatalog::next_trigger_body(Self, String) -> Result[String, String]
+pub fn UnifiedCatalog::read_user_skill_md(Self, String) -> Result[String, String]
+pub fn UnifiedCatalog::resolve(Self, String) -> ResolvedSkill?
+pub fn UnifiedCatalog::skill_ref(Self, String) -> Result[SkillRef, String]
+pub fn UnifiedCatalog::update_skill(Self, String, String) -> Result[Unit, String]
+pub fn UnifiedCatalog::with_managed(ManagedCatalog) -> Self
+
+pub(all) struct UserPrivateWorkflow {
+  name : String
+  description : String
+  skill_md : String
+} derive(Eq, @debug.Debug)
+pub fn UserPrivateWorkflow::equal(Self, Self) -> Bool
+pub fn UserPrivateWorkflow::not_equal(Self, Self) -> Bool
+pub fn UserPrivateWorkflow::to_repr(Self) -> @debug.Repr
+
+pub(all) struct UserSkill {
+  name : String
+  description : String
+  skill_md : String
+} derive(Eq, @debug.Debug)
+pub fn UserSkill::equal(Self, Self) -> Bool
+pub fn UserSkill::not_equal(Self, Self) -> Bool
+pub fn UserSkill::to_repr(Self) -> @debug.Repr
+
+pub(all) struct UserWorkflowRuntime {
+  workflows : Array[UserPrivateWorkflow]
+}
+pub fn UserWorkflowRuntime::empty() -> Self
+pub fn UserWorkflowRuntime::is_user_private(Self, String) -> Bool
+pub fn UserWorkflowRuntime::is_visible(Self, String) -> Bool
+pub fn UserWorkflowRuntime::list_visible(Self) -> Array[String]
+pub fn UserWorkflowRuntime::read_skill_md(Self, String) -> Result[String, String]
+pub fn UserWorkflowRuntime::seed_private_examples() -> Self
+pub fn UserWorkflowRuntime::seed_wechat_and_private() -> Self
+
+pub(all) struct VoiceCallSession {
+  call_id : String
+  voice_address : String
+  second_assistant_id : String
+  mut live : Bool
+  relay_log : Array[VoiceRelayTurn]
+  mut ended_json_path : String?
+  mut app_summary : String?
+}
+pub fn VoiceCallSession::assert_reply_voice_only(Self, outbound_channel~ : String?) -> Result[Unit, String]
+pub fn VoiceCallSession::build_end_json(Self) -> String
+pub fn VoiceCallSession::end_and_summarize(Self) -> Result[(String, String), String]
+pub fn VoiceCallSession::is_live(Self) -> Bool
+pub fn VoiceCallSession::relay_text(Self, from_role~ : String, text~ : String) -> Result[Unit, String]
+pub fn VoiceCallSession::start(call_id~ : String, second_assistant_id? : String) -> Result[Self, String]
+
+pub(all) struct VoiceRelayTurn {
+  from_role : String
+  text : String
+} derive(Eq, @debug.Debug)
+pub fn VoiceRelayTurn::equal(Self, Self) -> Bool
+pub fn VoiceRelayTurn::not_equal(Self, Self) -> Bool
+pub fn VoiceRelayTurn::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

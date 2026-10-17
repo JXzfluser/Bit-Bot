@@ -1,0 +1,11 @@
+{
+  "agent_a_id": "h3-agent-a",
+  "agent_b_id": "h3-agent-b",
+  "desktop_a_display": ":40",
+  "desktop_b_display": ":41",
+  "shared_path": "/workspace/h3-cross-agent-shared.txt",
+  "shared_fs": true,
+  "distinct_desktops": true,
+  "agent_a_sees_agent_b_write": true,
+  "not_single_mock_self_rw": true
+}

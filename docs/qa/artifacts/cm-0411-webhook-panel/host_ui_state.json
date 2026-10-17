@@ -1,0 +1,69 @@
+{
+  "settingsOpen": false,
+  "entry": null,
+  "anchor": null,
+  "deletePhase": null,
+  "deleteAgent": null,
+  "contextMenuOpen": false,
+  "contextMenuAgent": null,
+  "activeTab": "General",
+  "updateComputerPhase": "idle",
+  "updateComputerPrompt": null,
+  "localExecutionEnabled": true,
+  "lastMachineCall": null,
+  "gateLog": [],
+  "agents": [
+    {
+      "id": "h2-throwaway-agent",
+      "name": "H2 Throwaway Agent",
+      "hidden": false
+    },
+    {
+      "id": "demo-agent",
+      "name": "Demo Agent",
+      "hidden": false
+    }
+  ],
+  "activeChat": null,
+  "activeChatHidden": false,
+  "infoPanel": {
+    "open": false,
+    "agentId": null,
+    "view": null,
+    "sections": [],
+    "members": []
+  },
+  "notify": {},
+  "permissionGuide": {
+    "open": false,
+    "kind": null,
+    "namespace": null,
+    "anchor": null,
+    "connected": false,
+    "status": null,
+    "followed": false
+  },
+  "webhookPanel": {
+    "open": true,
+    "url": "https://hooks.bitbot.local/v1/wh-h3-demo",
+    "key_present": true,
+    "key_masked": "whsec_\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+    "last_copy": {
+      "what": "key",
+      "ts": 1792221622.5439641,
+      "receipt": "copied_key:len=32",
+      "ok": true
+    }
+  },
+  "devicePermissionCard": {
+    "open": false,
+    "machine_id": null,
+    "tool_name": null,
+    "permission_label": null,
+    "shown": false
+  },
+  "surface": "bit-bot-host-ui",
+  "i_claimed": false,
+  "anchorViewport": null,
+  "rev": 3
+}

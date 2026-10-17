@@ -1,0 +1,91 @@
+{
+  "CM": "CM-2178",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-2178",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-2178-permission-guide-settings",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "guide_card.png",
+    "settings_opened.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "guide_card.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "54730",
+      "sha256": "23c09c916769b886c0f96acb017a0c0e0fe2a099b4a64b4997ebb3938424921f",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "settings_opened.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "64316",
+      "sha256": "7994d1feed5ced6f717a067afb222f016c2ad4ce73e601ce11c83b0e6552cc3d",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "a44e92bf-3280-45b7-bf1f-36094580fd0c",
+    "de387b8b-d7b3-4aa1-9753-789b553b8bfa"
+  ],
+  "audit_span_count": 2,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Missing-permission guide really opens Settings; does not pretend connected",
+  "frames_required": [
+    "guide_card.png",
+    "settings_opened.png"
+  ],
+  "frames_md5": {
+    "guide_card.png": "b69e2288746175d0bf8a069383a88dc7",
+    "settings_opened.png": "bd2562663a7b9def7d7d7b6d58c4a724"
+  },
+  "frames_distinct": true,
+  "checks": {
+    "guide_not_connected": "False (want False)",
+    "settings_open": "True (want True)",
+    "settings_anchor": "account (want account)",
+    "still_not_connected": "False (want False)",
+    "no_pretend_event": "True (want True)",
+    "opened_via_guide": "True (want True)"
+  },
+  "checks_failed": [],
+  "reference": "/home/box/reference/app-ui.md (read-only) + docs/host-ui-contract.md",
+  "spans": [
+    {
+      "span_id": "a44e92bf-3280-45b7-bf1f-36094580fd0c",
+      "tool": "host_ui:show_permission_guide",
+      "ok": true,
+      "detail": "guide kind=connector-needs-auth ns=user-Gmail anchor=account connected=False"
+    },
+    {
+      "span_id": "de387b8b-d7b3-4aa1-9753-789b553b8bfa",
+      "tool": "host_ui:follow_permission_guide",
+      "ok": true,
+      "detail": "Settings opened at account via guide; connector still not connected"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+url=https://example.com
+put_json_new_rc=0
+nav_method=cdp_put_json_new
+target_id=25935BC572E6887D25769EC54A5A223F

@@ -1,0 +1,6 @@
+pid=109805
+lockfile=/tmp/box-chrome.lock (snapshots: box-chrome.lock.running / .stopped)
+launcher_flock_present=yes (box-chrome's own <profile>/.sand-launch.lock)
+lineage=ok
+bare_refusal=bare_refusal.txt (5/5 refused, none started)
+shared_session=not touched (no CDP to 9223, no kill/restart)

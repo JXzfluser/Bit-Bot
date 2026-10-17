@@ -1,0 +1,11 @@
+isolated=true
+launcher=/usr/local/bin/box-chrome (env CHROME_USER_DATA_DIR / SAND_CHROME_REMOTE_DEBUG_PORT honored by launcher)
+launcher_rc=0
+temp_profile_dir=/tmp/h1-iso-profile.evbJEp
+cdp_port=9333
+shared_cdp_port_untouched=9223
+shared_profile_untouched=/home/box/chrome-profile
+private_display=:99
+private_xvfb_pid=109744
+chrome_pid=109805
+cookie_seed_injection=disabled (SAND_COOKIE_SEED_PATH=/nonexistent)

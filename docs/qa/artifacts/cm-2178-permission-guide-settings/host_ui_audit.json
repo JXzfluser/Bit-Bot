@@ -1,0 +1,22 @@
+{
+  "spans": [
+    {
+      "id": "a44e92bf-3280-45b7-bf1f-36094580fd0c",
+      "tool_name": "host_ui:show_permission_guide",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "guide kind=connector-needs-auth ns=user-Gmail anchor=account connected=False",
+      "artifact_path": null,
+      "ts": 1792220994.4057393
+    },
+    {
+      "id": "de387b8b-d7b3-4aa1-9753-789b553b8bfa",
+      "tool_name": "host_ui:follow_permission_guide",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "Settings opened at account via guide; connector still not connected",
+      "artifact_path": null,
+      "ts": 1792220995.1491551
+    }
+  ]
+}

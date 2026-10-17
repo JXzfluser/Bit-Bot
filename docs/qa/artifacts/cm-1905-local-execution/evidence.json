@@ -1,0 +1,86 @@
+{
+  "CM": "CM-1905",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-1905",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-1905-local-execution",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "local_execution_off.png",
+    "machine_call_refused.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "local_execution_off.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "78971",
+      "sha256": "6082a97c7d8173af44bd5a9a79bc57da80cb611733003426c84a0c76500614b9",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "machine_call_refused.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "79641",
+      "sha256": "b393ac97f3da8f28030732492f23049bb5b0008f45cd79229248b5a6a9cfbd57",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "6410e2f6-cffb-411f-b61d-3ebb8d9ba18d",
+    "22331743-3154-4522-8cab-2e7e8708523c"
+  ],
+  "audit_span_count": 2,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "local-execution off \u2192 Host refuses machineId; gate log + LiveDisplay",
+  "local_execution": "off",
+  "machine_id": "desk-1",
+  "machine_call_rejected": true,
+  "reject_reason": "local-execution disabled: machine-targeted call rejected",
+  "frames_required": [
+    "local_execution_off.png",
+    "machine_call_refused.png"
+  ],
+  "gate_log": {
+    "gateLog": [
+      {
+        "ts": 1792220958.307844,
+        "event": "gate_changed",
+        "enabled": false
+      },
+      {
+        "ts": 1792220959.0564835,
+        "event": "rejected_local_off",
+        "machine_id": "desk-1",
+        "detail": "local-execution disabled: machine-targeted call rejected"
+      }
+    ],
+    "lastMachineCall": {
+      "machine_id": "desk-1",
+      "allowed": false,
+      "reason": "local-execution-off"
+    }
+  }
+}

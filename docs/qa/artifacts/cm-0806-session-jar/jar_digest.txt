@@ -1,0 +1,3 @@
+# CM-0806 cookie jar digest — hashed/counted IN PLACE; DB never copied; no cookie names/values read
+t0 path=/home/box/chrome-profile/Default/Cookies sha256=56b7c5927b575c6e7507054c89b7a651bdd349b0fa72d68675694eb01dcb25f0 bytes=32768 cookie_rows=37 rows_method=python3_sqlite3_readonly_in_place
+t1 path=/home/box/chrome-profile/Default/Cookies sha256=56b7c5927b575c6e7507054c89b7a651bdd349b0fa72d68675694eb01dcb25f0 bytes=32768 cookie_rows=37 rows_method=python3_sqlite3_readonly_in_place

@@ -1,0 +1,458 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/security"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn assert_teammate_no_unauthorized_outbound(ApprovalGate, TeammateOutboundRequest) -> Result[Unit, String]
+
+pub fn bubble_need_approval_to_parent(ParentApprovalView, NeedApprovalReport) -> ApprovalCard
+
+pub fn classify_adaptation(original_action~ : String, adapted_action~ : String, lowers_privilege~ : Bool, uses_sanctioned_tool? : Bool) -> AdaptationKind
+
+pub fn evaluate_copyright_policy(String) -> CopyrightPolicyResult
+
+pub fn evaluate_permission_claim(PermissionClaimSource, action_summary~ : String) -> PermissionClaimVerdict
+
+pub fn evaluate_policy(String) -> PolicyVerdict
+
+pub fn executor_report_draft_to_parent(AgentInboxDraft) -> ExecutorParentDraftMessage
+
+pub fn is_legitimate_safer_path(original_action~ : String, adapted_action~ : String, lowers_privilege~ : Bool, uses_sanctioned_tool? : Bool) -> Bool
+
+pub fn is_short_refuse_no_poc(PolicyVerdict) -> Bool
+
+pub fn parse_fenced_output(String, String) -> Array[ContentSlice]
+
+pub fn plan_irreversible_from_claim(PermissionClaimSource, ApprovalClass, summary~ : String, draft_body~ : String) -> ConsequentialOutcome
+
+pub fn plan_teammate_outbound(ApprovalGate, TeammateOutboundRequest) -> TeammateOutboundVerdict
+
+pub fn reject_paste_token_in_chat(String) -> Result[Unit, String]
+
+pub fn retry_send_via_channel(SendTerminalState, new_channel~ : String, has_new_authorization~ : Bool) -> Result[Unit, String]
+
+pub fn smart_mode_retry(original_action~ : String, original_reason~ : String, retry_action~ : String, retry_reason~ : String) -> SmartModeRetryOutcome
+
+pub fn teammate_try_outbound_bypass(TeammateOutboundRequest) -> TeammateOutboundVerdict
+
+pub fn try_external_send_with_memory_cue(String, to~ : String, body~ : String) -> Result[PlannedEffect, String]
+
+// Errors
+
+// Types and methods
+pub(all) enum AdaptationKind {
+  SaferLowerPrivilege(note~ : String)
+  BypassRewrite(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn AdaptationKind::equal(Self, Self) -> Bool
+pub fn AdaptationKind::is_bypass(Self) -> Bool
+pub fn AdaptationKind::is_safer_path(Self) -> Bool
+pub fn AdaptationKind::not_equal(Self, Self) -> Bool
+pub fn AdaptationKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AgentInboxDraft {
+  to_ : String
+  subject : String
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn AgentInboxDraft::equal(Self, Self) -> Bool
+pub fn AgentInboxDraft::not_equal(Self, Self) -> Bool
+pub fn AgentInboxDraft::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AgentInboxGuard {
+  may_send_from_inbox : Bool
+  mut unauthorized_send_attempts : Int
+  mut last_report : AgentInboxDraft?
+}
+pub fn AgentInboxGuard::executor() -> Self
+pub fn AgentInboxGuard::last_draft_for_parent(Self) -> AgentInboxDraft?
+pub fn AgentInboxGuard::try_send(Self, AgentInboxDraft) -> AgentInboxSendOutcome
+
+pub(all) enum AgentInboxSendOutcome {
+  ReportDraftToParent(draft~ : AgentInboxDraft, reason~ : String)
+  Sent(receipt~ : String)
+} derive(Eq, @debug.Debug)
+pub fn AgentInboxSendOutcome::equal(Self, Self) -> Bool
+pub fn AgentInboxSendOutcome::not_equal(Self, Self) -> Bool
+pub fn AgentInboxSendOutcome::reported_draft_only(Self) -> Bool
+pub fn AgentInboxSendOutcome::sent_unauthorized(Self) -> Bool
+pub fn AgentInboxSendOutcome::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ApprovalCard {
+  id : String
+  child_id : String
+  summary : String
+  visible_to_parent : Bool
+} derive(Eq, @debug.Debug)
+pub fn ApprovalCard::equal(Self, Self) -> Bool
+pub fn ApprovalCard::is_visible_to_parent(Self) -> Bool
+pub fn ApprovalCard::not_equal(Self, Self) -> Bool
+pub fn ApprovalCard::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ApprovalClass {
+  Shell
+  LocalMachine
+  McpMutation
+  CloudAgent
+  ExternalSend
+  Purchase
+  Destructive
+} derive(Eq, @debug.Debug)
+pub fn ApprovalClass::equal(Self, Self) -> Bool
+pub fn ApprovalClass::label(Self) -> String
+pub fn ApprovalClass::not_equal(Self, Self) -> Bool
+pub fn ApprovalClass::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ApprovalDecision {
+  Allow
+  Deny(reason~ : String)
+  NeedUser(reason~ : String)
+  Escalate
+} derive(Eq, @debug.Debug)
+pub fn ApprovalDecision::equal(Self, Self) -> Bool
+pub fn ApprovalDecision::not_equal(Self, Self) -> Bool
+pub fn ApprovalDecision::to_repr(Self) -> @debug.Repr
+pub fn ApprovalDecision::to_send_terminal(Self) -> SendTerminalState
+
+pub(all) struct ApprovalGate {
+  allow_shell : Bool
+  allow_external_send : Bool
+  auto_allow_reversible : Bool
+} derive(Eq, @debug.Debug)
+pub fn ApprovalGate::default() -> Self
+pub fn ApprovalGate::equal(Self, Self) -> Bool
+pub fn ApprovalGate::evaluate(Self, ApprovalRequest) -> ApprovalDecision
+pub fn ApprovalGate::not_equal(Self, Self) -> Bool
+pub fn ApprovalGate::plan_consequential(Self, ApprovalRequest, explicit_user_request~ : Bool, draft_body~ : String) -> ConsequentialOutcome
+pub fn ApprovalGate::review(Self, ApprovalRequest) -> ApprovalDecision
+pub fn ApprovalGate::strict() -> Self
+pub fn ApprovalGate::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ApprovalRequest {
+  id : String
+  class_ : ApprovalClass
+  summary : String
+  payload_json : String
+  irreversible : Bool
+} derive(Eq, @debug.Debug)
+pub fn ApprovalRequest::equal(Self, Self) -> Bool
+pub fn ApprovalRequest::not_equal(Self, Self) -> Bool
+pub fn ApprovalRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AutoReviewGate {
+  block_high_risk : Bool
+} derive(Eq, @debug.Debug)
+pub fn AutoReviewGate::block(Self, RiskLevel, summary? : String) -> AutoReviewVerdict
+pub fn AutoReviewGate::default() -> Self
+pub fn AutoReviewGate::equal(Self, Self) -> Bool
+pub fn AutoReviewGate::not_equal(Self, Self) -> Bool
+pub fn AutoReviewGate::permissive() -> Self
+pub fn AutoReviewGate::to_repr(Self) -> @debug.Repr
+
+pub(all) enum AutoReviewVerdict {
+  Pass
+  Block(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn AutoReviewVerdict::equal(Self, Self) -> Bool
+pub fn AutoReviewVerdict::is_block(Self) -> Bool
+pub fn AutoReviewVerdict::not_equal(Self, Self) -> Bool
+pub fn AutoReviewVerdict::reason(Self) -> String?
+pub fn AutoReviewVerdict::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ConsequentialOutcome {
+  DraftOnly(draft~ : DraftOutbound)
+  Escalate
+  NeedUser(reason~ : String)
+  Allow
+} derive(Eq, @debug.Debug)
+pub fn ConsequentialOutcome::equal(Self, Self) -> Bool
+pub fn ConsequentialOutcome::is_allow(Self) -> Bool
+pub fn ConsequentialOutcome::is_draft_only(Self) -> Bool
+pub fn ConsequentialOutcome::not_equal(Self, Self) -> Bool
+pub fn ConsequentialOutcome::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ContentSlice {
+  Trusted(text~ : String)
+  Fenced(fence~ : UntrustedFence)
+} derive(Eq, @debug.Debug)
+pub fn ContentSlice::equal(Self, Self) -> Bool
+pub fn ContentSlice::must_not_execute(Self) -> Bool
+pub fn ContentSlice::not_equal(Self, Self) -> Bool
+pub fn ContentSlice::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CopyrightPolicyResult {
+  refuse_verbatim : Bool
+  summary_substitute : String
+  is_chapter_request : Bool
+  category : PolicyCategory
+} derive(Eq, @debug.Debug)
+pub fn CopyrightPolicyResult::equal(Self, Self) -> Bool
+pub fn CopyrightPolicyResult::not_equal(Self, Self) -> Bool
+pub fn CopyrightPolicyResult::to_repr(Self) -> @debug.Repr
+pub fn CopyrightPolicyResult::uses_summary_not_verbatim(Self) -> Bool
+
+pub(all) struct CredentialFillResult {
+  credential_id : String
+  domain : String
+  filled : Bool
+  fill_handle : String
+  assistant_view : String
+} derive(Eq, @debug.Debug)
+pub fn CredentialFillResult::equal(Self, Self) -> Bool
+pub fn CredentialFillResult::not_equal(Self, Self) -> Bool
+pub fn CredentialFillResult::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CredentialMeta {
+  id : String
+  label : String
+  domain : String
+  username_hint : String
+  has_secret : Bool
+} derive(Eq, @debug.Debug)
+pub fn CredentialMeta::equal(Self, Self) -> Bool
+pub fn CredentialMeta::not_equal(Self, Self) -> Bool
+pub fn CredentialMeta::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CredentialRecord {
+  id : String
+  label : String
+  domain : String
+  username : String
+  secret : String
+} derive(Eq, @debug.Debug)
+pub fn CredentialRecord::equal(Self, Self) -> Bool
+pub fn CredentialRecord::not_equal(Self, Self) -> Bool
+pub fn CredentialRecord::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CredentialStore {
+  records : Array[CredentialRecord]
+}
+pub fn CredentialStore::fill_credential_request(Self, domain~ : String) -> Result[CredentialFillResult, String]
+pub fn CredentialStore::fill_leaks_secret_to_assistant(Self, CredentialFillResult) -> Bool
+pub fn CredentialStore::list_credentials(Self) -> Array[CredentialMeta]
+pub fn CredentialStore::list_credentials_json(Self) -> String
+pub fn CredentialStore::list_leaks_secret(Self) -> Bool
+pub fn CredentialStore::new() -> Self
+pub fn CredentialStore::save(Self, id~ : String, label~ : String, domain~ : String, username~ : String, secret~ : String) -> Unit
+
+pub(all) enum DirectSendAttempt {
+  AllowedStanding(grant_id~ : String)
+  NeedReconfirm(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn DirectSendAttempt::equal(Self, Self) -> Bool
+pub fn DirectSendAttempt::needs_reconfirm(Self) -> Bool
+pub fn DirectSendAttempt::not_equal(Self, Self) -> Bool
+pub fn DirectSendAttempt::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DraftOutbound {
+  class_ : ApprovalClass
+  summary : String
+  body : String
+  payload_json : String
+} derive(Eq, @debug.Debug)
+pub fn DraftOutbound::equal(Self, Self) -> Bool
+pub fn DraftOutbound::not_equal(Self, Self) -> Bool
+pub fn DraftOutbound::to_repr(Self) -> @debug.Repr
+
+pub(all) struct EffectPlanner {
+  _tag : Int
+}
+pub fn EffectPlanner::new() -> Self
+pub fn EffectPlanner::plan_from_slice(Self, ContentSlice) -> Array[PlannedEffect]
+pub fn EffectPlanner::propose_external_send(Self, ContentSlice, to~ : String, body~ : String) -> Result[PlannedEffect, String]
+
+pub(all) struct ExecutorParentDraftMessage {
+  text : String
+  draft : AgentInboxDraft
+  sent : Bool
+  stopped_at_draft : Bool
+} derive(Eq, @debug.Debug)
+pub fn ExecutorParentDraftMessage::contains_full_draft(Self) -> Bool
+pub fn ExecutorParentDraftMessage::equal(Self, Self) -> Bool
+pub fn ExecutorParentDraftMessage::not_equal(Self, Self) -> Bool
+pub fn ExecutorParentDraftMessage::to_repr(Self) -> @debug.Repr
+
+pub(all) struct NeedApprovalReport {
+  child_id : String
+  request_id : String
+  summary : String
+  class_label : String
+} derive(Eq, @debug.Debug)
+pub fn NeedApprovalReport::equal(Self, Self) -> Bool
+pub fn NeedApprovalReport::make(child_id~ : String, request_id~ : String, summary~ : String, class_label? : String) -> Self
+pub fn NeedApprovalReport::not_equal(Self, Self) -> Bool
+pub fn NeedApprovalReport::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ParentApprovalView {
+  mut cards : Array[ApprovalCard]
+}
+pub fn ParentApprovalView::has_visible_for_child(Self, String) -> Bool
+pub fn ParentApprovalView::new() -> Self
+pub fn ParentApprovalView::observe_child_need_approval(Self, NeedApprovalReport) -> ApprovalCard
+pub fn ParentApprovalView::visible_cards(Self) -> Array[ApprovalCard]
+
+pub(all) enum PermissionClaimSource {
+  ExplicitUserAsk
+  TaskDescription
+  MemoryRecall
+  TaskDecomposition
+} derive(Eq, @debug.Debug)
+pub fn PermissionClaimSource::equal(Self, Self) -> Bool
+pub fn PermissionClaimSource::is_valid_approval_source(Self) -> Bool
+pub fn PermissionClaimSource::label(Self) -> String
+pub fn PermissionClaimSource::not_equal(Self, Self) -> Bool
+pub fn PermissionClaimSource::to_repr(Self) -> @debug.Repr
+
+pub(all) enum PermissionClaimVerdict {
+  MaySeekApproval
+  NotPermission(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn PermissionClaimVerdict::equal(Self, Self) -> Bool
+pub fn PermissionClaimVerdict::grants_permission(Self) -> Bool
+pub fn PermissionClaimVerdict::not_equal(Self, Self) -> Bool
+pub fn PermissionClaimVerdict::to_repr(Self) -> @debug.Repr
+
+pub(all) enum PlannedEffect {
+  ExternalSend(to~ : String, body~ : String)
+  Deliver(body~ : String)
+  DraftOutbound(draft~ : DraftOutbound)
+} derive(Eq, @debug.Debug)
+pub fn PlannedEffect::equal(Self, Self) -> Bool
+pub fn PlannedEffect::is_external_send(Self) -> Bool
+pub fn PlannedEffect::not_equal(Self, Self) -> Bool
+pub fn PlannedEffect::to_repr(Self) -> @debug.Repr
+
+pub(all) enum PolicyCategory {
+  ChildSex
+  WeaponsDualUseBio
+  CrimeAssistance
+  SelfHarm
+  OffensiveCyber
+  Copyright
+  Allowed
+  OtherDisallowed
+} derive(Eq, @debug.Debug)
+pub fn PolicyCategory::equal(Self, Self) -> Bool
+pub fn PolicyCategory::not_equal(Self, Self) -> Bool
+pub fn PolicyCategory::to_repr(Self) -> @debug.Repr
+
+pub(all) enum PolicyVerdict {
+  Refuse(message~ : String, category~ : PolicyCategory)
+  Allow
+} derive(Eq, @debug.Debug)
+pub fn PolicyVerdict::category(Self) -> PolicyCategory
+pub fn PolicyVerdict::equal(Self, Self) -> Bool
+pub fn PolicyVerdict::is_refuse(Self) -> Bool
+pub fn PolicyVerdict::is_terminal_stop(Self) -> Bool
+pub fn PolicyVerdict::message(Self) -> String
+pub fn PolicyVerdict::not_equal(Self, Self) -> Bool
+pub fn PolicyVerdict::to_repr(Self) -> @debug.Repr
+
+pub(all) enum RiskLevel {
+  Low
+  Medium
+  HighRisk
+} derive(Eq, @debug.Debug)
+pub fn RiskLevel::equal(Self, Self) -> Bool
+pub fn RiskLevel::not_equal(Self, Self) -> Bool
+pub fn RiskLevel::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SecretRequestCard {
+  id : String
+  prompt : String
+  mut vault_value : String?
+  mut submitted : Bool
+} derive(Eq, @debug.Debug)
+pub fn SecretRequestCard::assistant_api_view(Self) -> String
+pub fn SecretRequestCard::assistant_sees_plaintext(Self, plaintext~ : String) -> Bool
+pub fn SecretRequestCard::equal(Self, Self) -> Bool
+pub fn SecretRequestCard::new(id~ : String, prompt~ : String) -> Self
+pub fn SecretRequestCard::not_equal(Self, Self) -> Bool
+pub fn SecretRequestCard::submit_to_vault(Self, value~ : String) -> Result[Unit, String]
+pub fn SecretRequestCard::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SendTerminalState {
+  Refused(reason~ : String)
+  Expired(reason~ : String)
+  Authorized
+} derive(Eq, @debug.Debug)
+pub fn SendTerminalState::equal(Self, Self) -> Bool
+pub fn SendTerminalState::is_terminal_block(Self) -> Bool
+pub fn SendTerminalState::not_equal(Self, Self) -> Bool
+pub fn SendTerminalState::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SmartModeRetryOutcome {
+  RaiseApprovalCard(reason~ : String)
+  RejectBypass(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn SmartModeRetryOutcome::equal(Self, Self) -> Bool
+pub fn SmartModeRetryOutcome::not_equal(Self, Self) -> Bool
+pub fn SmartModeRetryOutcome::raises_card(Self) -> Bool
+pub fn SmartModeRetryOutcome::to_repr(Self) -> @debug.Repr
+
+pub(all) struct StandingGrant {
+  id : String
+  kind : StandingPermissionKind
+  channel : String
+  mut active : Bool
+} derive(Eq, @debug.Debug)
+pub fn StandingGrant::equal(Self, Self) -> Bool
+pub fn StandingGrant::not_equal(Self, Self) -> Bool
+pub fn StandingGrant::to_repr(Self) -> @debug.Repr
+
+pub(all) enum StandingPermissionKind {
+  DirectSend
+  ExternalPost
+} derive(Eq, @debug.Debug)
+pub fn StandingPermissionKind::equal(Self, Self) -> Bool
+pub fn StandingPermissionKind::label(Self) -> String
+pub fn StandingPermissionKind::not_equal(Self, Self) -> Bool
+pub fn StandingPermissionKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct StandingPermissionTable {
+  grants : Array[StandingGrant]
+}
+pub fn StandingPermissionTable::attempt_direct_send(Self, grant_id~ : String, channel~ : String) -> DirectSendAttempt
+pub fn StandingPermissionTable::grant_direct_send(Self, id~ : String, channel~ : String) -> StandingGrant
+pub fn StandingPermissionTable::is_active(Self, String) -> Bool
+pub fn StandingPermissionTable::new() -> Self
+pub fn StandingPermissionTable::revoke(Self, String) -> Result[Unit, String]
+
+pub(all) struct TeammateOutboundRequest {
+  teammate_id : String
+  channel : String
+  summary : String
+  draft_body : String
+  explicit_user_authorization : Bool
+} derive(Eq, @debug.Debug)
+pub fn TeammateOutboundRequest::equal(Self, Self) -> Bool
+pub fn TeammateOutboundRequest::not_equal(Self, Self) -> Bool
+pub fn TeammateOutboundRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) enum TeammateOutboundVerdict {
+  Gated(outcome~ : ConsequentialOutcome)
+  UnauthorizedBypass(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn TeammateOutboundVerdict::equal(Self, Self) -> Bool
+pub fn TeammateOutboundVerdict::not_equal(Self, Self) -> Bool
+pub fn TeammateOutboundVerdict::reused_approval_gate(Self) -> Bool
+pub fn TeammateOutboundVerdict::sent_unauthorized(Self) -> Bool
+pub fn TeammateOutboundVerdict::to_repr(Self) -> @debug.Repr
+
+pub(all) struct UntrustedFence {
+  source : String
+  body : String
+  marker_id : String
+} derive(Eq, @debug.Debug)
+pub fn UntrustedFence::equal(Self, Self) -> Bool
+pub fn UntrustedFence::is_instructional(Self) -> Bool
+pub fn UntrustedFence::not_equal(Self, Self) -> Bool
+pub fn UntrustedFence::to_repr(Self) -> @debug.Repr
+pub fn UntrustedFence::wrap(String, String) -> Self
+
+// Type aliases
+
+// Traits

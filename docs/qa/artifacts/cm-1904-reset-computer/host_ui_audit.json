@@ -1,0 +1,13 @@
+{
+  "spans": [
+    {
+      "id": "6e9d86c8-9589-47bf-917b-e77751e29297",
+      "tool_name": "host_ui:open_reset_computer",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "Reset Computer visible; not preferred vs update-computer",
+      "artifact_path": null,
+      "ts": 1792220955.4833384
+    }
+  ]
+}

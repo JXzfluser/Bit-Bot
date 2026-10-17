@@ -1,0 +1,3 @@
+PASS box-doctor-bin
+PASS overall
+SUMMARY overall=PASS rc=0

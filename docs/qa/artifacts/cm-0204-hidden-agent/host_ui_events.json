@@ -1,0 +1,29 @@
+{
+  "events": [
+    {
+      "id": "6bd532d0-3d13-466d-b734-9bd2284c11bd",
+      "ts": 1792221513.8175368,
+      "kind": "SidebarListChanged",
+      "visible_ids": [
+        "h2-throwaway-agent",
+        "demo-agent",
+        "h2-hidden-agent"
+      ]
+    },
+    {
+      "id": "bb8bfe37-6f8e-43f3-ad54-376a41ad6eb2",
+      "ts": 1792221514.574413,
+      "kind": "SidebarListChanged",
+      "visible_ids": [
+        "h2-throwaway-agent",
+        "demo-agent"
+      ]
+    },
+    {
+      "id": "0f6ae3a1-8770-4d58-a7fe-3175546b0f1f",
+      "ts": 1792221515.3283887,
+      "kind": "SidebarHiddenAgentAddressable",
+      "agent_id": "h2-hidden-agent"
+    }
+  ]
+}

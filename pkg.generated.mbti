@@ -1,0 +1,19 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot"
+
+// Values
+pub fn boot_banner() -> String
+
+pub fn module_count() -> Int
+
+pub fn registered_modules() -> Array[String]
+
+pub fn scaffold_ping() -> Int
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

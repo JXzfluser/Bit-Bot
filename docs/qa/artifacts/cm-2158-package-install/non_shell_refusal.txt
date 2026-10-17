@@ -1,0 +1,3 @@
+via=direct-apt-api
+result=REFUSED
+reason=box package install must go through Shell

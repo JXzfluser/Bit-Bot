@@ -1,0 +1,31 @@
+{
+  "spans": [
+    {
+      "id": "5aaf99e7-863a-4186-aa78-0e21964dd9d4",
+      "tool_name": "host_ui:set_agent_hidden",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "agent=h2-hidden-agent hidden=False sidebar=['h2-throwaway-agent', 'demo-agent', 'h2-hidden-agent']",
+      "artifact_path": null,
+      "ts": 1792221513.8175545
+    },
+    {
+      "id": "6da8c767-1470-4e81-9cc8-889881d9698d",
+      "tool_name": "host_ui:set_agent_hidden",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "agent=h2-hidden-agent hidden=True sidebar=['h2-throwaway-agent', 'demo-agent']",
+      "artifact_path": null,
+      "ts": 1792221514.5744355
+    },
+    {
+      "id": "8257beb5-ea29-48b3-a805-59b99167b52f",
+      "tool_name": "host_ui:address_agent",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "addressed agent=h2-hidden-agent hidden=True in_sidebar=False; event=SidebarHiddenAgentAddressable",
+      "artifact_path": null,
+      "ts": 1792221515.3284032
+    }
+  ]
+}

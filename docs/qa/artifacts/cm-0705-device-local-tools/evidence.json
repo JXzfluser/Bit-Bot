@@ -1,0 +1,17 @@
+{
+  "CM": "CM-0705",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h3_smoke.sh cm-0705",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-0705-device-local-tools",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "phone_hardware": false
+  },
+  "platform_subset": "desktop_no_device_local_tools",
+  "permission_card_shown": false,
+  "desktop_tools_empty": true,
+  "residual_gap": "true iOS/Android OS permission dialog",
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "platform_subset.md declares desktop_no_device_local_tools; desktop list empty; no fake OS dialog as I"
+}

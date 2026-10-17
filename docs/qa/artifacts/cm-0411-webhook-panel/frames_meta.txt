@@ -1,0 +1,8 @@
+frame=webhook_panel.png
+frame_origin=LiveDisplay
+display=:51
+bytes=60454
+sha256=07083c1876c81813f938d69050745a0c1eabb64b4d734a367aa54fd8d9c2c408
+driven_by=HostUiShell_Live
+not_cdp_page_js=true
+not_fixture_only=true

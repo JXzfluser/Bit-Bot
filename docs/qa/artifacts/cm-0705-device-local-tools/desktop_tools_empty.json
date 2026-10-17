@@ -1,0 +1,11 @@
+{
+  "desktop_machine_id": "desk-1",
+  "desktop_tools": [],
+  "desktop_tools_empty": true,
+  "phone_fixture_ios_tools_count": 2,
+  "platform_subset": "desktop_no_device_local_tools",
+  "phone_hardware_present": false,
+  "os_permission_dialog_proven": false,
+  "permission_card_shown": false,
+  "note": "Path \u4e59: subset declaration; phone OS dialog residual GAP"
+}

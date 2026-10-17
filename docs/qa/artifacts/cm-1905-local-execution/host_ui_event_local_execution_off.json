@@ -1,0 +1,167 @@
+{
+  "result": {
+    "state": {
+      "settingsOpen": true,
+      "entry": "command-palette",
+      "anchor": "local-execution",
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "Computer",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": false,
+      "lastMachineCall": null,
+      "gateLog": [
+        {
+          "ts": 1792220958.307844,
+          "event": "gate_changed",
+          "enabled": false
+        }
+      ],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": null,
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "rev": 1
+    },
+    "event_tail": [
+      {
+        "id": "9eb09ec1-0c2e-4443-bf50-85db494f2914",
+        "ts": 1792220958.3078256,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "local-execution"
+      },
+      {
+        "id": "d63d0f70-1915-4f45-8f09-de859d2da81a",
+        "ts": 1792220958.3078365,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "local-execution"
+      },
+      {
+        "id": "5d11ff6f-66e5-44af-b42b-39c86d3bd01c",
+        "ts": 1792220958.3078427,
+        "kind": "LocalExecutionGateChanged",
+        "enabled": false
+      }
+    ],
+    "audit": {
+      "id": "6410e2f6-cffb-411f-b61d-3ebb8d9ba18d",
+      "tool_name": "host_ui:set_local_execution",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "local-execution=off",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-1905-local-execution",
+      "ts": 1792220958.3078494
+    }
+  },
+  "state": {
+    "settingsOpen": true,
+    "entry": "command-palette",
+    "anchor": "local-execution",
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "Computer",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": false,
+    "lastMachineCall": null,
+    "gateLog": [
+      {
+        "ts": 1792220958.307844,
+        "event": "gate_changed",
+        "enabled": false
+      }
+    ],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "rev": 1
+  },
+  "events": {
+    "events": [
+      {
+        "id": "9eb09ec1-0c2e-4443-bf50-85db494f2914",
+        "ts": 1792220958.3078256,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "local-execution"
+      },
+      {
+        "id": "d63d0f70-1915-4f45-8f09-de859d2da81a",
+        "ts": 1792220958.3078365,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "local-execution"
+      },
+      {
+        "id": "5d11ff6f-66e5-44af-b42b-39c86d3bd01c",
+        "ts": 1792220958.3078427,
+        "kind": "LocalExecutionGateChanged",
+        "enabled": false
+      }
+    ]
+  }
+}

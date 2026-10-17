@@ -1,0 +1,118 @@
+{
+  "events": [
+    {
+      "id": "d67a71f7-71a1-45f1-ac47-d1bf03db462a",
+      "ts": 1792221505.9740806,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": "auto-review"
+    },
+    {
+      "id": "6d7dda4b-94e1-4762-839e-aa94c77f4fa1",
+      "ts": 1792221505.9740908,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "auto-review"
+    },
+    {
+      "id": "b07810ce-9862-4724-9ead-9873b0c65645",
+      "ts": 1792221505.9748833,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "auto-review"
+    },
+    {
+      "id": "ab70ced0-bfa2-445f-a4ad-aceca19a91dd",
+      "ts": 1792221506.057268,
+      "kind": "SettingsAnchorViewportReported",
+      "anchor_id": "auto-review",
+      "scrollTop": 1333,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.15625,
+        "width": 718,
+        "height": 102.34375,
+        "top": 99.15625,
+        "left": 265,
+        "bottom": 201.5,
+        "right": 983
+      },
+      "highlighted": true,
+      "inViewport": true
+    },
+    {
+      "id": "350533b9-5923-426c-aa92-c2942e86fb68",
+      "ts": 1792221507.0678642,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": "auto-review-rules"
+    },
+    {
+      "id": "a848711c-4566-4e4c-8d8a-d46a728fd298",
+      "ts": 1792221507.0678725,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "auto-review-rules"
+    },
+    {
+      "id": "089614b1-51de-46c6-bd2f-ab90071da178",
+      "ts": 1792221507.0689974,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "auto-review-rules"
+    },
+    {
+      "id": "2d1ee094-5294-49f9-9af9-d4fc86d4ddac",
+      "ts": 1792221507.0965416,
+      "kind": "SettingsAnchorViewportReported",
+      "anchor_id": "auto-review-rules",
+      "scrollTop": 1414,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.203125,
+        "width": 718,
+        "height": 102.34375,
+        "top": 99.203125,
+        "left": 265,
+        "bottom": 201.546875,
+        "right": 983
+      },
+      "highlighted": true,
+      "inViewport": true
+    },
+    {
+      "id": "287508eb-7333-4bea-85f8-11cab2c89d7a",
+      "ts": 1792221508.1584914,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": "security-keys"
+    },
+    {
+      "id": "c861948f-2d0f-4604-aa0f-c6eaca7c4161",
+      "ts": 1792221508.158498,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "security-keys"
+    },
+    {
+      "id": "73e6bafe-a9f5-4226-818a-34dfd1637c9a",
+      "ts": 1792221508.1591573,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "security-keys"
+    },
+    {
+      "id": "2fce6307-2f35-4314-bbcd-602ae0b14e29",
+      "ts": 1792221508.297035,
+      "kind": "SettingsAnchorViewportReported",
+      "anchor_id": "security-keys",
+      "scrollTop": 1495,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.25,
+        "width": 718,
+        "height": 102.34375,
+        "top": 99.25,
+        "left": 265,
+        "bottom": 201.59375,
+        "right": 983
+      },
+      "highlighted": true,
+      "inViewport": true
+    }
+  ]
+}

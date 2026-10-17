@@ -1,0 +1,112 @@
+{
+  "state": {
+    "settingsOpen": true,
+    "entry": "command-palette",
+    "anchor": "update-computer",
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "Computer",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "rev": 6
+  },
+  "events": {
+    "events": [
+      {
+        "id": "f5a470e0-9c1f-4a83-a504-33333c943692",
+        "ts": 1792220942.212617,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "theme"
+      },
+      {
+        "id": "f5fad8ed-5a1e-46f1-9d6d-1469240f0a37",
+        "ts": 1792220942.2126324,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "theme"
+      },
+      {
+        "id": "a1db0c98-6530-4943-9eee-78c0a1c5b784",
+        "ts": 1792220942.213512,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "theme"
+      },
+      {
+        "id": "cc213a8d-4063-48c5-bde1-5cab1cb420cd",
+        "ts": 1792220942.9790375,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "timezone"
+      },
+      {
+        "id": "cbb83470-61aa-4642-8366-48dee0e9c980",
+        "ts": 1792220942.9790487,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "timezone"
+      },
+      {
+        "id": "6382a4d3-6e1e-4860-92b9-a30faadafc23",
+        "ts": 1792220942.9801762,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "timezone"
+      },
+      {
+        "id": "6e326914-382e-4d39-9c85-46a8ef700ba2",
+        "ts": 1792220943.7871153,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "8945e478-82dd-431c-b800-ccd8fdd15682",
+        "ts": 1792220943.7871242,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "1e94c321-021f-4b6a-9025-926d97d813e7",
+        "ts": 1792220943.7879884,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "update-computer"
+      }
+    ]
+  }
+}

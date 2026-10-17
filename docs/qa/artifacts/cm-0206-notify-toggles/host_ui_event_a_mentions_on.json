@@ -1,0 +1,206 @@
+{
+  "method": "set_agent_notify",
+  "body": {
+    "agent_id": "h2-throwaway-agent",
+    "toggle": "notify.mentions-only",
+    "value": true
+  },
+  "result": {
+    "state": {
+      "settingsOpen": false,
+      "entry": null,
+      "anchor": null,
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "General",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": "h2-throwaway-agent",
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": true,
+        "agentId": "h2-throwaway-agent",
+        "view": "gear",
+        "sections": [
+          "desktop-preview",
+          "routines",
+          "channels",
+          "members",
+          "gear-settings"
+        ],
+        "members": [],
+        "group": false,
+        "notify": {
+          "notify.desktop": true,
+          "notify.sound": false,
+          "notify.mentions-only": true,
+          "notify.routines": true,
+          "notify.channels": true
+        }
+      },
+      "notify": {
+        "h2-throwaway-agent": {
+          "notify.sound": false,
+          "notify.mentions-only": true
+        }
+      },
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "rev": 3
+    },
+    "notify": {
+      "h2-throwaway-agent": {
+        "notify.desktop": true,
+        "notify.sound": false,
+        "notify.mentions-only": true,
+        "notify.routines": true,
+        "notify.channels": true
+      },
+      "demo-agent": {
+        "notify.desktop": true,
+        "notify.sound": true,
+        "notify.mentions-only": false,
+        "notify.routines": true,
+        "notify.channels": true
+      }
+    },
+    "audit": {
+      "id": "0d33382a-1755-4429-92ad-d82720dbcff4",
+      "tool_name": "host_ui:set_agent_notify",
+      "duration_ms": 1,
+      "ok": true,
+      "detail": "agent=h2-throwaway-agent notify.mentions-only=True",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-0206-notify-toggles",
+      "ts": 1792220976.0955427,
+      "method": "set_agent_notify"
+    }
+  },
+  "state": {
+    "settingsOpen": false,
+    "entry": null,
+    "anchor": null,
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "General",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": "h2-throwaway-agent",
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": true,
+      "agentId": "h2-throwaway-agent",
+      "view": "gear",
+      "sections": [
+        "desktop-preview",
+        "routines",
+        "channels",
+        "members",
+        "gear-settings"
+      ],
+      "members": [],
+      "group": false,
+      "notify": {
+        "notify.desktop": true,
+        "notify.sound": false,
+        "notify.mentions-only": true,
+        "notify.routines": true,
+        "notify.channels": true
+      }
+    },
+    "notify": {
+      "h2-throwaway-agent": {
+        "notify.sound": false,
+        "notify.mentions-only": true
+      }
+    },
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "rev": 3
+  },
+  "events": {
+    "events": [
+      {
+        "id": "b3cd7429-d2a9-493b-9be1-dd3a7e9e9b1e",
+        "ts": 1792220975.2638576,
+        "kind": "InfoPanelOpened",
+        "agent_id": "h2-throwaway-agent",
+        "sections": [
+          "desktop-preview",
+          "routines",
+          "channels",
+          "members",
+          "gear-settings"
+        ],
+        "view": "gear"
+      },
+      {
+        "id": "24a43bef-a6df-4b3a-a09a-2d61cc50a8a9",
+        "ts": 1792220976.017911,
+        "kind": "AgentNotifyToggleChanged",
+        "agent_id": "h2-throwaway-agent",
+        "toggle": "notify.sound",
+        "value": false
+      },
+      {
+        "id": "23903aca-7684-4dcb-94ef-47a444a65128",
+        "ts": 1792220976.0955327,
+        "kind": "AgentNotifyToggleChanged",
+        "agent_id": "h2-throwaway-agent",
+        "toggle": "notify.mentions-only",
+        "value": true
+      }
+    ]
+  }
+}

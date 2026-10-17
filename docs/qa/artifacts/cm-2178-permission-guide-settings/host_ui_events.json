@@ -1,0 +1,27 @@
+{
+  "events": [
+    {
+      "id": "f326e9a8-407d-4cec-803a-1bf47d85d3e3",
+      "ts": 1792220994.4057276,
+      "kind": "PermissionGuideShown",
+      "perm_kind": "connector-needs-auth",
+      "namespace": "user-Gmail",
+      "anchor": "account",
+      "pretends_connected": false
+    },
+    {
+      "id": "81cb40b6-5fc3-4b67-8a3d-de5ce06068da",
+      "ts": 1792220995.1491346,
+      "kind": "SettingsOpened",
+      "entry": "sidebar-account-button",
+      "anchor": "account",
+      "via": "permission-guide"
+    },
+    {
+      "id": "0a68b611-89a6-4bc4-acdd-1ce2b854ac84",
+      "ts": 1792220995.149147,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "account"
+    }
+  ]
+}

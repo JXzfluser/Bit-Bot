@@ -1,0 +1,16 @@
+# CM-0802 bare-chrome refusal (scripts/host_h1_smoke.sh h1_launch_guard)
+stamp_utc=20261017T062925Z
+marker_profile=/tmp/h1-bare-marker.rMzTB2 (would be --user-data-dir if a bare launch slipped through)
+REFUSED argv0=google-chrome-stable resolved=/opt/google/chrome/google-chrome reason=bare chrome forbidden; must launch via /usr/local/bin/box-chrome
+REFUSED argv0=/opt/google/chrome/chrome resolved=/opt/google/chrome/chrome reason=bare chrome forbidden; must launch via /usr/local/bin/box-chrome
+REFUSED argv0=chrome resolved=unresolved(not on PATH) reason=bare chrome forbidden; must launch via /usr/local/bin/box-chrome
+REFUSED argv0=chromium resolved=unresolved(not on PATH) reason=bare chrome forbidden; must launch via /usr/local/bin/box-chrome
+REFUSED argv0=google-chrome resolved=/opt/google/chrome/google-chrome reason=bare chrome forbidden; must launch via /usr/local/bin/box-chrome
+ALLOWED argv0=/usr/local/bin/box-chrome resolved=/usr/local/bin/box-chrome reason=box-chrome launcher
+bare_candidates_refused=5/5
+bare_candidates_allowed=0
+bare_processes_started=0
+marker_profile_untouched=yes
+box_chrome_guard_rc=0 (0=allowed; guard check only, not executed)
+# running main chrome processes without --class=box-chrome (flag only; nothing killed)
+end_flag_scan

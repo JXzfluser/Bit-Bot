@@ -1,0 +1,4 @@
+user_iana=Asia/Shanghai
+date_raw=Sat Oct 17 14:13:44 CST 2026
+date_rfc3339ish=2026-10-17T14:13:44+08:00
+evidence_cmd_expanded=TZ=Asia/Shanghai date
