@@ -399,11 +399,15 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     return ConnectorsStatus
   }
   // Grok Host tools: ListDir / Read / WebFetch → Host FFI effects
-  if low.has_prefix("listdir ") || low.has_prefix("list dir ") {
+  if low.has_prefix("listdir ") ||
+      low.has_prefix("list dir ") ||
+      low.has_prefix("fs list ") {
     let p = if low.has_prefix("listdir ") {
       trimmed[8:].trim().to_owned()
-    } else {
+    } else if low.has_prefix("list dir ") {
       trimmed[9:].trim().to_owned()
+    } else {
+      trimmed[8:].trim().to_owned()
     }
     if p != "" {
       return FsList(path=p)
@@ -438,9 +442,13 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       return ReadMailThread(thread_id~)
     }
   }
-  if low.has_prefix("read ") || low.has_prefix("read file ") {
+  if low.has_prefix("read ") ||
+      low.has_prefix("read file ") ||
+      low.has_prefix("fs read ") {
     let p = if low.has_prefix("read file ") {
       trimmed[10:].trim().to_owned()
+    } else if low.has_prefix("fs read ") {
+      trimmed[8:].trim().to_owned()
     } else {
       trimmed[5:].trim().to_owned()
     }

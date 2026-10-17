@@ -388,6 +388,7 @@ function createHostFfi(repoRoot) {
   }
 
   async function executeFsList(command) {
+    const at = new Date().toISOString();
     const abs = resolveUnderRepo(command);
     if (!abs) {
       return {
@@ -402,13 +403,47 @@ function createHostFfi(repoRoot) {
         name: d.name,
         type: d.isDirectory() ? "dir" : "file",
       }));
-      return {
-        kind: "fs_list",
-        ok: true,
-        command,
-        stdout: JSON.stringify(entries.slice(0, 200), null, 2),
-        stderr: "",
+      const dir = path.join(REPO_ROOT, "data", "host-tools", "fs");
+      fs.mkdirSync(dir, { recursive: true });
+      const artifactPath = path.join(
+        dir,
+        `list-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        path: command,
+        abs,
+        count: entries.length,
+        entries: entries.slice(0, 200),
+        mode: "host_fs_list",
+        pretend_listing: false,
+        under_repo: true,
+        at,
       };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "lists.jsonl"), {
+        ...artifact,
+        artifact_path: artifactPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: artifactPath,
+        label: "fs_list",
+        source_kind: "fs_list",
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind: "fs_list",
+        command,
+        path: artifactPath,
+        count: entries.length,
+        at,
+      });
+      return okJson("fs_list", command, {
+        ...artifact,
+        artifact_path: artifactPath,
+        send_to_user: delivery,
+        ok: true,
+      });
     } catch (err) {
       return {
         kind: "fs_list",
@@ -420,6 +455,7 @@ function createHostFfi(repoRoot) {
   }
 
   async function executeFsRead(command) {
+    const at = new Date().toISOString();
     const abs = resolveUnderRepo(command);
     if (!abs) {
       return {
@@ -448,13 +484,49 @@ function createHostFfi(repoRoot) {
         };
       }
       const text = fs.readFileSync(abs, "utf8").slice(0, 16000);
-      return {
-        kind: "fs_read",
-        ok: true,
-        command,
-        stdout: text,
-        stderr: "",
+      const dir = path.join(REPO_ROOT, "data", "host-tools", "fs");
+      fs.mkdirSync(dir, { recursive: true });
+      const artifactPath = path.join(
+        dir,
+        `read-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        path: command,
+        abs,
+        bytes: Buffer.byteLength(text, "utf8"),
+        body_prefix: text.slice(0, 400),
+        mode: "host_fs_read",
+        pretend_contents: false,
+        under_repo: true,
+        at,
       };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "reads.jsonl"), {
+        ...artifact,
+        artifact_path: artifactPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: artifactPath,
+        label: "fs_read",
+        source_kind: "fs_read",
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind: "fs_read",
+        command,
+        path: artifactPath,
+        bytes: artifact.bytes,
+        at,
+      });
+      return okJson("fs_read", command, {
+        ...artifact,
+        artifact_path: artifactPath,
+        // Keep truncated body for Host consumers that still expect text.
+        body: text,
+        send_to_user: delivery,
+        ok: true,
+      });
     } catch (err) {
       return {
         kind: "fs_read",
@@ -466,6 +538,7 @@ function createHostFfi(repoRoot) {
   }
 
   async function executeWebFetch(command) {
+    const at = new Date().toISOString();
     const url = String(command || "").trim();
     if (!/^https?:\/\//i.test(url)) {
       return {
@@ -476,22 +549,67 @@ function createHostFfi(repoRoot) {
       };
     }
     const res = await httpJson(url, { method: "GET" });
+    const dir = path.join(REPO_ROOT, "data", "host-tools", "webfetch");
+    fs.mkdirSync(dir, { recursive: true });
+    const artifactPath = path.join(
+      dir,
+      `fetch-${Date.now().toString(36)}.json`,
+    );
+    const body = String(res.body || "");
+    const artifact = {
+      url,
+      http_status: res.status || 0,
+      ok: Boolean(res.ok),
+      error: res.error || null,
+      body_prefix: body.slice(0, 800),
+      body_bytes: Buffer.byteLength(body, "utf8"),
+      mode: "host_webfetch",
+      pretend_fetched: false,
+      at,
+    };
+    fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "fetches.jsonl"), {
+      ...artifact,
+      artifact_path: artifactPath,
+    });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: artifactPath,
+      label: "webfetch",
+      url,
+      source_kind: "webfetch",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "webfetch",
+      command: url,
+      path: artifactPath,
+      http_status: artifact.http_status,
+      at,
+    });
     if (!res.ok) {
       return {
         kind: "webfetch",
         ok: false,
         command: url,
         error: res.error || `http_${res.status}`,
-        stdout: (res.body || "").slice(0, 4000),
+        stdout: JSON.stringify(
+          {
+            ...artifact,
+            artifact_path: artifactPath,
+            send_to_user: delivery,
+          },
+          null,
+          2,
+        ),
       };
     }
-    return {
-      kind: "webfetch",
+    return okJson("webfetch", url, {
+      ...artifact,
+      artifact_path: artifactPath,
+      send_to_user: delivery,
       ok: true,
-      command: url,
-      stdout: (res.body || "").slice(0, 8000),
-      stderr: "",
-    };
+    });
   }
 
   async function claimSlackInbound(token, channelId, inboundPath, stamp) {

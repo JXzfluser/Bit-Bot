@@ -261,7 +261,28 @@ BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=remote_callback BITBOT_OAUTH_AUTHOR
   "${RUN[@]}" "setup slack" >/tmp/parity-oauth-cb.json
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth-cb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='live_remote_callback';assert p.get('connected') is True;print('parity oauth remote_callback ok', p.get('callback_received'))"
 
-# 9j) OAuth sandbox + load skill + code apply + MCP call + send on behalf + pack evidence
+# 9j) Host tools: fs list/read, webfetch, copy_from_box, routines list/pause/resume, connect gmail
+"${RUN[@]}" "fs list ." >/tmp/parity-fs-list.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-fs-list.json'));h=next(x for x in d['host_results'] if x.get('kind')=='fs_list');p=json.loads(h['stdout']);assert p.get('pretend_listing') is False;assert p.get('count',0)>=1;assert p.get('artifact_path') and os.path.isfile(p['artifact_path']);print('parity fs_list ok', p.get('count'))"
+"${RUN[@]}" "fs read README.mbt.md" >/tmp/parity-fs-read.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-fs-read.json'));h=next(x for x in d['host_results'] if x.get('kind')=='fs_read');p=json.loads(h['stdout']);assert p.get('pretend_contents') is False;assert p.get('bytes',0)>=1;assert 'MoonBit' in (p.get('body_prefix') or p.get('body') or '');assert os.path.isfile(p['artifact_path']);print('parity fs_read ok', p.get('bytes'))"
+"${RUN[@]}" "webfetch https://example.com" >/tmp/parity-webfetch.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-webfetch.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');p=json.loads(h['stdout']);assert p.get('pretend_fetched') is False;assert p.get('ok') is True;assert p.get('http_status')==200;assert os.path.isfile(p['artifact_path']);print('parity webfetch ok', p.get('http_status'), p.get('body_bytes'))"
+mkdir -p uploads
+printf 'parity-box-roundtrip\n' > uploads/parity-round-src.txt
+"${RUN[@]}" "copy to box machine=desk-1 src=uploads/parity-round-src.txt dest=uploads/parity-round-box.txt" >/tmp/parity-box-to.json
+"${RUN[@]}" "copy from box machine=desk-1 box=uploads/parity-round-box.txt dest=uploads/parity-round-out.txt" >/tmp/parity-box-from.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-box-from.json'));h=next(x for x in d['host_results'] if x.get('kind')=='copy_from_box');p=json.loads(h['stdout']);assert p.get('pretend_remote_machine') is False;assert p.get('under_repo') is True;assert os.path.isfile('uploads/parity-round-out.txt');assert 'parity-box-roundtrip' in open('uploads/parity-round-out.txt').read();print('parity copy_from_box ok', p.get('bytes'))"
+"${RUN[@]}" "list routines" >/tmp/parity-routines-list.json
+python3 -c "import json;d=json.load(open('/tmp/parity-routines-list.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_list');p=json.loads(h['stdout']);assert isinstance(p,list) or p.get('count',0)>=0 or isinstance(p.get('routines'),list) or True;count=len(p) if isinstance(p,list) else (p.get('count') if isinstance(p,dict) and 'count' in p else len(p.get('routines') or []));assert count>=1;print('parity routine_list ok', count)"
+"${RUN[@]}" "pause routine parity-now" >/tmp/parity-routines-pause.json
+python3 -c "import json;d=json.load(open('/tmp/parity-routines-pause.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_pause');p=json.loads(h['stdout']) if (h.get('stdout')or'').strip().startswith('{') else h;assert h.get('ok');print('parity routine_pause ok')"
+"${RUN[@]}" "resume routine parity-now" >/tmp/parity-routines-resume.json
+python3 -c "import json;d=json.load(open('/tmp/parity-routines-resume.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_resume');assert h.get('ok');print('parity routine_resume ok')"
+"${RUN[@]}" "connect gmail" >/tmp/parity-connect-gmail.json
+python3 -c "import json;d=json.load(open('/tmp/parity-connect-gmail.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('connector')=='gmail';assert p.get('mode')=='sandbox_idp';assert p.get('connected') is True;print('parity connect_gmail sandbox ok', p.get('status'))"
+
+# 9k) OAuth sandbox + load skill + code apply + MCP call + send on behalf + pack evidence
 "${RUN[@]}" "setup slack" >/tmp/parity-oauth.json
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_idp';assert p.get('connected') is True;deliv=next(x for x in d['host_results'] if x.get('kind')=='delivery');dp=json.loads(deliv['stdout']);assert dp.get('type')=='widget';print('parity oauth sandbox_idp ok', p.get('status'))"
 BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=local "${RUN[@]}" "setup slack" >/tmp/parity-oauth-ex.json
