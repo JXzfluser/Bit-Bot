@@ -577,6 +577,12 @@
             "copy_from_box",
             "purchase",
             "schedule_meeting",
+            "mcp_call",
+            "mail_send",
+            "code_changes",
+            "teammate_create",
+            "section_add",
+            "section_post",
           ];
           const attaches = r.host_results.filter(
             (h) => h && h.ok && attachKinds.includes(h.kind),
@@ -669,8 +675,34 @@
                   label = "purchase:" + (p.mode || "receipt");
                   types.push("attachment");
                 } else if (h.kind === "schedule_meeting") {
-                  label = "ics:" + String(p.ics_path || p.path || "").split("/").slice(-1)[0];
+                  label = "ics:" + (p.mode || "calendar") + "/" + String(p.ics_path || p.path || "").split("/").slice(-1)[0];
                   types.push("attachment");
+                } else if (h.kind === "mcp_call") {
+                  const wtf = p.write_to_file || {};
+                  const fe = p.file_expand || {};
+                  if (wtf.path) {
+                    label = "mcp_write:" + String(wtf.path).split("/").slice(-1)[0];
+                  } else if (fe.expanded_count) {
+                    label = "mcp_file×" + fe.expanded_count;
+                  } else {
+                    label = "mcp_call";
+                  }
+                  types.push("attachment");
+                } else if (h.kind === "mail_send") {
+                  label = "mail:" + (p.mode || p.provider || "draft");
+                  types.push("attachment");
+                } else if (h.kind === "code_changes") {
+                  label = "code:" + (p.applied ? "applied" : "plan");
+                  types.push("attachment");
+                } else if (h.kind === "teammate_create") {
+                  label = "teammate:" + ((p.teammate && p.teammate.id) || "?");
+                  types.push("text");
+                } else if (h.kind === "section_add") {
+                  label = "section:+" + ((p.section && p.section.id) || "?");
+                  types.push("attachment");
+                } else if (h.kind === "section_post") {
+                  label = "section:" + (p.section_id || "?") + "/post";
+                  types.push("text");
                 } else if (h.kind === "channel_send" && p.live_post) {
                   label = "live:" + (p.scheme || "channel") + "/" + (p.mode || "post");
                   types.push("text");

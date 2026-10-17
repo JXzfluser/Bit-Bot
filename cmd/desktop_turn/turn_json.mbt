@@ -89,6 +89,13 @@ pub(all) enum TurnIntent {
   VoiceRelay(call_id~ : String, text~ : String)
   VoiceEnd(call_id~ : String)
   CreateTeammate(id~ : String, name~ : String, role~ : String)
+  AddSection(group_id~ : String, section_id~ : String, title~ : String)
+  SectionPost(
+    group_id~ : String,
+    section_id~ : String,
+    from_agent~ : String,
+    body~ : String,
+  )
   RoomTurn(room~ : String, body~ : String)
   SendToAgent(to_id~ : String, body~ : String)
   LaunchCloudAgent(prompt~ : String)
@@ -163,6 +170,8 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     VoiceRelay(_) => "voice_relay"
     VoiceEnd(_) => "voice_end"
     CreateTeammate(_) => "create_teammate"
+    AddSection(_) => "add_section"
+    SectionPost(_) => "section_post"
     RoomTurn(_) => "room_turn"
     SendToAgent(_) => "send_to_agent"
     LaunchCloudAgent(_) => "launch_cloud_agent"
@@ -698,6 +707,9 @@ fn extract_kv(rest : String, key : String) -> String? {
         " scope=",
         " key=",
         " value=",
+        " group=",
+        " section=",
+        " provider=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -1894,11 +1906,17 @@ pub fn run_desktop_turn(
     McpCall(namespace_~, name~, args_json~) => {
       let cat = @tools.DynamicCatalog::seed_example()
       let _ = cat.discover(ns=Some(namespace_))
+      // CM-2164: write_result / write_to_file must request Host FS write_to_file.
+      let want_write =
+        name == "write_result" ||
+        name == "write_to_file" ||
+        args_json.to_lower().contains("\"write_to_file\":true") ||
+        args_json.to_lower().contains("\"write_to_file\": true")
       let call : @tools.DynamicCall = {
         namespace_,
         name,
         arguments_json: args_json,
-        write_to_file: false,
+        write_to_file: want_write,
       }
       let tr = cat.call(call)
       match tr {
@@ -2217,6 +2235,61 @@ pub fn run_desktop_turn(
           )
         }
       }
+    }
+    AddSection(group_id~, section_id~, title~) => {
+      let group = @teammates.GroupSections::new(group_id)
+      match group.add_section(id=section_id, title~) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(sec) => {
+          let effect : DesktopEffect = {
+            kind: "section_add",
+            command: group_id + "|" + sec.id + "|" + sec.title,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Section «" +
+            sec.title +
+            "» (" +
+            sec.id +
+            ") added to group " +
+            group_id +
+            " (CM-1403). Host persists partition.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    SectionPost(group_id~, section_id~, from_agent~, body~) => {
+      // Kernel validates isolation shape; Host loads durable group + posts.
+      let effect : DesktopEffect = {
+        kind: "section_post",
+        command: group_id +
+        "|" +
+        section_id +
+        "|" +
+        from_agent +
+        "|" +
+        body,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Section post planned for " +
+        section_id +
+        " in group " +
+        group_id +
+        " (CM-1403 isolation). Host FFI executes.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     RoomTurn(room~, body~) => {
       match @teammates.open_room_turn(

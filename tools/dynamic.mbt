@@ -51,6 +51,16 @@ pub fn DynamicCatalog::seed_example() -> DynamicCatalog {
     },
     full_description="Create a Gmail draft with to/subject/body.",
   )
+  cat.register(
+    {
+      namespace_: "user-Gmail",
+      name: "write_result",
+      description: "Write large MCP result to Host agent-tools (CM-2164)",
+      input_schema_json: "{\"type\":\"object\",\"required\":[\"body\"]}",
+      truncated: false,
+    },
+    full_description="Write large tool result under /workspace/agent-tools/; returns path+sha256, never embeds PAYLOAD in chat. Args: body, filename, write_to_file.",
+  )
   cat
 }
 
@@ -231,9 +241,12 @@ pub fn Registry::register_dynamic(
 ///|
 /// Minimal required-key check against input_schema_json `"required":["a","b"]`.
 pub fn schema_required_keys(schema_json : String) -> Array[String] {
-  // Fast path for seed create_draft schema (exact fragment).
+  // Fast path for seed schemas (exact fragment).
   if schema_json.contains("\"required\":[\"to\",\"subject\"]") {
     return ["to", "subject"]
+  }
+  if schema_json.contains("\"required\":[\"body\"]") {
+    return ["body"]
   }
   let marker = "\"required\":["
   let mut at = -1

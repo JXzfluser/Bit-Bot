@@ -176,6 +176,9 @@
 - [x] Host Outlook live mock (`BITBOT_OUTLOOK_GRAPH_URL` + token + `BITBOT_MAIL_SEND=1` → `live_outlook`; `draft outlook mail` product path)
 - [x] Host calendar live mock (`BITBOT_CALENDAR_API_URL`+token → `calendar_live`; ICS always; never pretend_live)
 - [x] Host MCP `$file:` expand in product FFI path (CM-2163; refuse missing/out-of-repo; never pretend_inject)
+- [x] Host MCP `write_result` / write_to_file product path (CM-2164 → `/workspace/agent-tools/`; path not body; never pretend_inline_payload)
+- [x] Host teammate sections durable partitions (CM-1403 `section_add`/`section_post`; isolation + unknown refuse)
+- [x] Desktop chips for mcp_call / mail_send / code_changes / teammate / sections
 - [x] Host email channel live (`reply via email:` → mail_send; `live_email_gmail` when gated)
 - [x] Host code_changes gated apply (`BITBOT_CODE_APPLY=1` → durable `.bitbot-applied.json` sidecar; never pretend_committed)
 - [x] Host copy_to_box / copy_from_box durable JSON (`data/box-copy/` + SendToUser attachment; never pretend_remote_machine)

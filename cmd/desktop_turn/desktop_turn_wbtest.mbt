@@ -267,6 +267,28 @@ test "desktop_turn_claim_inbox_and_draft_mail" {
 
 ///|
 test "desktop_turn_parity_routines_mcp_subagent_device" {
+  let sec = run_desktop_turn(
+    "add section group=g1 id=sec-a title=Alpha",
+    turn_id="sec-1",
+  )
+  assert_true(sec.ok)
+  assert_eq(sec.intent, "add_section")
+  assert_eq(sec.effects[0].kind, "section_add")
+  let sp = run_desktop_turn(
+    "section post group=g1 section=sec-a from=asst-1 body=hello",
+    turn_id="sec-2",
+  )
+  assert_true(sp.ok)
+  assert_eq(sp.intent, "section_post")
+  assert_eq(sp.effects[0].kind, "section_post")
+  let wr = run_desktop_turn(
+    "mcp call user-Gmail.write_result {\"body\":\"x\",\"filename\":\"t.txt\",\"write_to_file\":true}",
+    turn_id="mcp-w",
+  )
+  assert_true(wr.ok)
+  assert_eq(wr.intent, "mcp_call")
+  assert_eq(wr.effects[0].kind, "mcp_call")
+  assert_true(wr.effects[0].command.contains("write_result"))
   let cr = run_desktop_turn(
     "create routine id=r1 cron=@daily prompt=standup notes",
     turn_id="rt-1",

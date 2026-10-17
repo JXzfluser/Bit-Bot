@@ -738,6 +738,63 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(CreateTeammate(id~, name~, role~))
   }
+  // CM-1403 sections collaboration partitions
+  if low.has_prefix("add section ") || low.has_prefix("create section ") {
+    let rest = if low.has_prefix("add section ") {
+      trimmed[12:].to_owned()
+    } else {
+      trimmed[15:].to_owned()
+    }
+    let group_id = match extract_kv(rest, "group") {
+      Some(v) => v
+      None => "group-1"
+    }
+    let section_id = match extract_kv(rest, "id") {
+      Some(v) => v
+      None =>
+        match extract_kv(rest, "section") {
+          Some(v) => v
+          None => ""
+        }
+    }
+    let title = match extract_kv(rest, "title") {
+      Some(v) => v
+      None => section_id
+    }
+    if section_id != "" {
+      return Some(AddSection(group_id~, section_id~, title~))
+    }
+  }
+  if low.has_prefix("section post ") || low.has_prefix("post section ") {
+    let rest = if low.has_prefix("section post ") {
+      trimmed[13:].to_owned()
+    } else {
+      trimmed[13:].to_owned()
+    }
+    let group_id = match extract_kv(rest, "group") {
+      Some(v) => v
+      None => "group-1"
+    }
+    let section_id = match extract_kv(rest, "section") {
+      Some(v) => v
+      None =>
+        match extract_kv(rest, "id") {
+          Some(v) => v
+          None => ""
+        }
+    }
+    let from_agent = match extract_kv(rest, "from") {
+      Some(v) => v
+      None => "user"
+    }
+    let body = match extract_kv(rest, "body") {
+      Some(v) => v
+      None => ""
+    }
+    if section_id != "" && body != "" {
+      return Some(SectionPost(group_id~, section_id~, from_agent~, body~))
+    }
+  }
   if low.has_prefix("room ") || @teammates.has_room_cue(trimmed) {
     if @teammates.has_room_cue(trimmed) {
       match @teammates.open_room_turn_from_cue(

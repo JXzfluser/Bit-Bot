@@ -53,6 +53,8 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Email channel | `email:`/`gmail:` → mail_send; live_email_gmail when SEND gated |
 | Calendar | ICS always; live POST `/events` when `BITBOT_CALENDAR_API_URL`+token |
 | MCP `$file:` | Host FFI expands `$file:` under repo before stdio MCP (CM-2163) |
+| MCP write_to_file | `write_result` → `/workspace/agent-tools/`; returns path+sha; never inline PAYLOAD |
+| Teammate sections | Durable `data/agents/sections/`; post isolation; unknown section refused |
 | Code changes | Plan artifact always; `BITBOT_CODE_APPLY=1` writes `.bitbot-applied.json` sidecar; never auto-commit |
 | Workflow list | Host `data/workflows/catalog.json` (CM-2118) |
 | X public search | Durable `data/connectors/x/`; live when `BITBOT_X_BEARER` (+ optional `BITBOT_X_API_BASE` mock); else sandbox_public |

@@ -66,6 +66,7 @@ function createHostFfi(repoRoot) {
     "agents",
     "teammates.json",
   );
+  const SECTIONS_DIR = path.join(REPO_ROOT, "data", "agents", "sections");
   const SUBAGENTS_PATH = path.join(
     REPO_ROOT,
     "data",
@@ -1566,16 +1567,24 @@ function createHostFfi(repoRoot) {
       const toolName = left.includes(".")
         ? left.split(".").slice(1).join(".") || "echo_body"
         : left || "echo_body";
-      // Map product Gmail/X names onto Host stdio loopback tools when no live MCP.
-      const mapped =
-        toolName === "search_threads" || toolName === "echo_body"
-          ? "echo_body"
-          : toolName === "write_result" || toolName === "write_to_file"
-            ? "write_result"
-            : "echo_body";
       // Expand $file: refs before MCP call (CM-2163 product Host path).
       fileExpandMeta = { expanded: [], errors: [], refused: false };
       args = expandMcpFileArgs(args, fileExpandMeta);
+      // Map product Gmail/X names onto Host stdio loopback tools when no live MCP.
+      // CM-2164: write_to_file args or write_result tool → write_result.
+      const wantWrite =
+        toolName === "write_result" ||
+        toolName === "write_to_file" ||
+        args.write_to_file === true ||
+        args.write_to_file === "true";
+      const mapped = wantWrite
+        ? "write_result"
+        : toolName === "search_threads" || toolName === "echo_body"
+          ? "echo_body"
+          : "echo_body";
+      if (wantWrite && args.write_to_file == null) {
+        args.write_to_file = true;
+      }
       if (fileExpandMeta.refused) {
         appendHostDeliveryJournal({
           kind,
@@ -1648,26 +1657,61 @@ function createHostFfi(repoRoot) {
         at: new Date().toISOString(),
       });
       let outText = String(payload || "").slice(0, 12000);
-      if (fileExpandMeta && fileExpandMeta.expanded.length > 0) {
-        // Annotate Host result with expand meta; do not re-embed large body in chat.
-        try {
-          const parsed = JSON.parse(outText);
-          const annotated = {
-            ...parsed,
-            file_expand: {
-              expanded_count: fileExpandMeta.expanded.length,
-              refs: fileExpandMeta.expanded.map((e) => ({
-                ref: e.ref,
-                path: e.path,
-                bytes: e.bytes,
-              })),
-              pretend_inject: false,
-            },
-          };
-          outText = JSON.stringify(annotated, null, 2).slice(0, 12000);
-        } catch (_) {
-          /* keep raw MCP payload */
+      let writeMeta = null;
+      try {
+        const parsed = JSON.parse(outText);
+        // CM-2164: extract write_result path from MCP tool content (never re-embed body).
+        const toolText =
+          parsed &&
+          parsed["1"] &&
+          parsed["1"].result &&
+          Array.isArray(parsed["1"].result.content) &&
+          parsed["1"].result.content[0]
+            ? parsed["1"].result.content[0].text
+            : null;
+        if (toolText) {
+          try {
+            const meta = JSON.parse(toolText);
+            if (meta && meta.path && meta.ok) {
+              writeMeta = {
+                path: meta.path,
+                bytes: meta.bytes || 0,
+                sha256: meta.sha256 || null,
+                write_to_file: true,
+                pretend_inline_payload: false,
+              };
+              if (fs.existsSync(meta.path)) {
+                recordSendToUser({
+                  type: "attachment",
+                  path: meta.path,
+                  label: "mcp_write_to_file",
+                  source_kind: kind,
+                  at: new Date().toISOString(),
+                });
+              }
+            }
+          } catch (_) {
+            /* not a write_result payload */
+          }
         }
+        const annotated = { ...parsed };
+        if (fileExpandMeta && fileExpandMeta.expanded.length > 0) {
+          annotated.file_expand = {
+            expanded_count: fileExpandMeta.expanded.length,
+            refs: fileExpandMeta.expanded.map((e) => ({
+              ref: e.ref,
+              path: e.path,
+              bytes: e.bytes,
+            })),
+            pretend_inject: false,
+          };
+        }
+        if (writeMeta) {
+          annotated.write_to_file = writeMeta;
+        }
+        outText = JSON.stringify(annotated, null, 2).slice(0, 12000);
+      } catch (_) {
+        /* keep raw MCP payload */
       }
       return {
         kind,
@@ -5227,6 +5271,166 @@ function createHostFfi(repoRoot) {
         summary_prefix: summary.slice(0, 120),
         media_path: mediaPath,
         media_ok: mediaOk,
+      });
+    }
+
+    if (kind === "section_add") {
+      // command: group_id|section_id|title
+      const parts = cmd.split("|");
+      const groupId = parts[0] || "group-1";
+      const sectionId = parts[1] || "";
+      const title = parts.slice(2).join("|") || sectionId;
+      if (!sectionId) {
+        return {
+          kind,
+          ok: false,
+          command: cmd,
+          error: "section_add requires section id",
+        };
+      }
+      fs.mkdirSync(SECTIONS_DIR, { recursive: true });
+      const groupPath = path.join(
+        SECTIONS_DIR,
+        `${sanitizeSkillName(groupId)}.json`,
+      );
+      let group = { group_id: groupId, sections: [], messages: [] };
+      try {
+        if (fs.existsSync(groupPath)) {
+          group = JSON.parse(fs.readFileSync(groupPath, "utf8")) || group;
+        }
+      } catch (_) {
+        /* fresh */
+      }
+      if (!Array.isArray(group.sections)) group.sections = [];
+      if (!Array.isArray(group.messages)) group.messages = [];
+      if (group.sections.some((s) => s && s.id === sectionId)) {
+        return {
+          kind,
+          ok: false,
+          command: cmd,
+          error: `section already exists: ${sectionId}`,
+          stdout: JSON.stringify({ path: groupPath }, null, 2),
+          stderr: "",
+        };
+      }
+      const sec = { id: sectionId, title, group_id: groupId };
+      group.sections.push(sec);
+      group.updated_at = at;
+      fs.writeFileSync(groupPath, JSON.stringify(group, null, 2));
+      appendJsonl(path.join(SECTIONS_DIR, "events.jsonl"), {
+        kind: "section_add",
+        ...sec,
+        at,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: groupPath,
+        label: "section_add",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: groupPath,
+        section_id: sectionId,
+        at,
+      });
+      return okJson(kind, cmd, {
+        group_id: groupId,
+        section: sec,
+        path: groupPath,
+        section_count: group.sections.length,
+        pretend_shared: false,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    if (kind === "section_post") {
+      // command: group_id|section_id|from_agent|body
+      const parts = cmd.split("|");
+      const groupId = parts[0] || "group-1";
+      const sectionId = parts[1] || "";
+      const fromAgent = parts[2] || "user";
+      const body = parts.slice(3).join("|") || "";
+      fs.mkdirSync(SECTIONS_DIR, { recursive: true });
+      const groupPath = path.join(
+        SECTIONS_DIR,
+        `${sanitizeSkillName(groupId)}.json`,
+      );
+      let group = { group_id: groupId, sections: [], messages: [] };
+      try {
+        if (fs.existsSync(groupPath)) {
+          group = JSON.parse(fs.readFileSync(groupPath, "utf8")) || group;
+        }
+      } catch (_) {
+        /* fresh */
+      }
+      if (!Array.isArray(group.sections)) group.sections = [];
+      if (!Array.isArray(group.messages)) group.messages = [];
+      if (!group.sections.some((s) => s && s.id === sectionId)) {
+        return {
+          kind,
+          ok: false,
+          command: cmd,
+          error: `unknown section: ${sectionId}`,
+          stdout: JSON.stringify(
+            {
+              group_id: groupId,
+              path: groupPath,
+              isolation_ok: true,
+              pretend_cross_section: false,
+            },
+            null,
+            2,
+          ),
+          stderr: "",
+        };
+      }
+      const msg = {
+        section_id: sectionId,
+        from_agent: fromAgent,
+        body,
+        at,
+      };
+      group.messages.push(msg);
+      group.updated_at = at;
+      fs.writeFileSync(groupPath, JSON.stringify(group, null, 2));
+      const inSection = group.messages.filter(
+        (m) => m && m.section_id === sectionId,
+      );
+      appendJsonl(path.join(SECTIONS_DIR, "events.jsonl"), {
+        kind: "section_post",
+        ...msg,
+        group_id: groupId,
+        at,
+      });
+      const delivery = recordSendToUser({
+        type: "text",
+        channel: `section:${groupId}/${sectionId}`,
+        body_prefix: String(body).slice(0, 120),
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: groupPath,
+        section_id: sectionId,
+        at,
+      });
+      return okJson(kind, cmd, {
+        group_id: groupId,
+        section_id: sectionId,
+        from_agent: fromAgent,
+        body,
+        path: groupPath,
+        messages_in_section: inSection.length,
+        isolation_ok: true,
+        pretend_cross_section: false,
+        send_to_user: delivery,
+        ok: true,
       });
     }
 
