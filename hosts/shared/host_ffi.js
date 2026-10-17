@@ -5003,17 +5003,37 @@ function createHostFfi(repoRoot) {
         copied = true;
       } else {
         const session = bcId ? readCloudSession(bcId) : null;
-        const body =
-          (session && session.assistant) ||
-          `# Cloud artifact\n\nsource: ${srcOrUrl}\nbc_id: ${bcId || "(none)"}\nstatus: ${
-            (session && session.status) || "no_session"
-          }\n\n${
-            session
-              ? "Materialized from Host local cloud worker session."
-              : "No local session — placeholder report (not remote cloud fetch)."
-          }\n`;
+        fromSession = Boolean(session);
+        let body;
+        if (session) {
+          // Always wrap session state into a durable markdown report — never
+          // use a short assistant stub (e.g. remote body_keys join) as the file.
+          const assistantBody = String(session.assistant || "").trim();
+          body = [
+            `# Cloud artifact`,
+            ``,
+            `bc_id: ${session.bc_id || bcId || "(none)"}`,
+            `status: ${session.status || "unknown"}`,
+            `mode: ${session.mode || ""}`,
+            `url: ${session.url || ""}`,
+            `source: ${srcOrUrl || "(session)"}`,
+            `from_session: true`,
+            `pretend_remote_fetch: false`,
+            `at: ${session.completed_at || session.at || at}`,
+            ``,
+            `## Session note`,
+            String(session.note || "Materialized from Host cloud session.").trim(),
+            ``,
+            `## Assistant`,
+            assistantBody || "(no assistant body — launch accepted / worker pending)",
+            ``,
+          ].join("\n");
+        } else {
+          body = `# Cloud artifact\n\nsource: ${srcOrUrl}\nbc_id: ${
+            bcId || "(none)"
+          }\nstatus: no_session\n\nNo local session — placeholder report (not remote cloud fetch).\n`;
+        }
         fs.writeFileSync(destPath, body.endsWith("\n") ? body : body + "\n");
-        fromSession = Boolean(session && session.assistant);
       }
 
       const delivDir = path.join(REPO_ROOT, "data", "cloud", "deliveries");
