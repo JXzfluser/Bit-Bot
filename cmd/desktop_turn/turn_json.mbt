@@ -379,13 +379,47 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       return FsList(path=p)
     }
   }
+  // Mail search/read before generic Host Read (CM-0906/1004).
+  if low.has_prefix("search mail ") ||
+      low.has_prefix("search inbox ") ||
+      low.has_prefix("search email ") {
+    let query = if low.has_prefix("search mail ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("search inbox ") {
+      trimmed[13:].trim().to_owned()
+    } else {
+      trimmed[13:].trim().to_owned()
+    }
+    if query != "" {
+      return SearchMail(query~)
+    }
+  }
+  if low.has_prefix("read mail ") ||
+      low.has_prefix("read thread ") ||
+      low.has_prefix("open mail ") {
+    let thread_id = if low.has_prefix("read mail ") {
+      trimmed[10:].trim().to_owned()
+    } else if low.has_prefix("read thread ") {
+      trimmed[12:].trim().to_owned()
+    } else {
+      trimmed[10:].trim().to_owned()
+    }
+    if thread_id != "" {
+      return ReadMailThread(thread_id~)
+    }
+  }
   if low.has_prefix("read ") || low.has_prefix("read file ") {
     let p = if low.has_prefix("read file ") {
       trimmed[10:].trim().to_owned()
     } else {
       trimmed[5:].trim().to_owned()
     }
-    if p != "" && !p.has_prefix("http://") && !p.has_prefix("https://") {
+    // Do not steal mail/thread utterances into fs_read.
+    if p != "" &&
+        !p.has_prefix("http://") &&
+        !p.has_prefix("https://") &&
+        !p.has_prefix("mail ") &&
+        !p.has_prefix("thread ") {
       return FsRead(path=p)
     }
   }
