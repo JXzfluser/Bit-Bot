@@ -184,7 +184,7 @@
 - [x] Desktop delivery chip for `source_control` (mode + gated flag)
 - [x] Desktop Source control panel (git status / Create PR plan buttons + meta)
 - [x] Mobile Host SendToUser delivery strip (`hosts/shared/send_to_user_surface.js` via mobile_host)
-- [x] Grok parity scenario smoke (`scripts/smoke_grok_parity_scenario.sh` multi-turn SendToUser proof)
+- [x] Grok parity scenario smoke (`scripts/smoke_grok_parity_scenario.sh` multi-turn SendToUser proof; CHARTER types text/widget/attachment/voice/reaction/thread/cursor-agent)
 - [x] Desktop chips for mcp_call / mail_send / code_changes / teammate / sections
 - [x] Host email channel live (`reply via email:` → mail_send; `live_email_gmail` when gated)
 - [x] Host code_changes gated apply (`BITBOT_CODE_APPLY=1` → durable `.bitbot-applied.json` sidecar; never pretend_committed)

@@ -52,13 +52,26 @@ BITBOT_GH_BIN="$ROOT/scripts/host_gh_mock.sh" BITBOT_GH_MOCK_LOG_DIR=/tmp/parity
   "${RUN[@]}" "source control create_pr" >/tmp/parity-sc-real.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-sc-real.json'));h=next(x for x in d['host_results'] if x.get('kind')=='source_control');p=json.loads(h['stdout']);rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create';assert rp.get('dry_run') is False;assert rp.get('real_create_gated') is False;assert os.path.isfile('/tmp/parity-gh-mock-real/last-create.json');assert p.get('pretend_remote_pr') is False;print('parity sc gated real create ok', rp.get('plan_path'))"
 
-# 8) Multi-end mobile Host strip
+# 8) Thread (room fanout) + cursor-agent card (CHARTER Delivery completeness)
+"${RUN[@]}" "room eng :: parity thread $MARKER" >/tmp/parity-room.json
+python3 -c "import json;d=json.load(open('/tmp/parity-room.json'));h=next(x for x in d['host_results'] if x.get('kind')=='room_turn');p=json.loads(h['stdout']);stu=p.get('send_to_user') or {};assert p.get('room')=='eng';assert stu.get('type')=='thread';print('parity room/thread ok', p.get('room'), stu.get('type'))"
+# Prefer delivery ledger type=thread from recordSendToUser
+python3 -c "
+import json
+rows=open('data/delivery/send-to-user.jsonl').read().splitlines()[-20:]
+assert any((json.loads(l).get('type')=='thread') for l in rows if l.strip()), 'missing thread SendToUser'
+print('parity thread ledger ok')
+"
+"${RUN[@]}" "launch cloud agent parity refactor $MARKER" >/tmp/parity-cloud.json
+python3 -c "import json;d=json.load(open('/tmp/parity-cloud.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_agent_launch');p=json.loads(h['stdout']);card=p.get('cursor_agent_card') or {};assert card.get('type')=='cursor-agent' or (p.get('delivery') or {}).get('type')=='cursor-agent' or card.get('bc_id');print('parity cursor-agent ok', card.get('bc_id') or (p.get('delivery') or {}).get('bc_id'))"
+
+# 9) Multi-end mobile Host strip
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
 python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"
 "${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
 python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;print('parity android turn ok')"
 
-# 9) Delivery ledger must have grown with SendToUser rows after marker
+# 10) Delivery ledger must cover CHARTER SendToUser types after marker
 python3 -c "
 import json
 rows=open('data/delivery/send-to-user.jsonl').read().splitlines()
@@ -72,6 +85,9 @@ for line in rows:
   if o.get('type'): types.add(o['type'])
 assert seen
 assert types, 'no SendToUser rows after marker'
+need={'text','attachment','widget','reaction','voice','thread','cursor-agent'}
+missing=sorted(need-types)
+assert not missing, 'missing SendToUser types: %s (have %s)' % (missing, sorted(types))
 print('parity SendToUser ledger types', sorted(types))
 "
 
