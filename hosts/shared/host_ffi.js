@@ -872,6 +872,48 @@ function createHostFfi(repoRoot) {
       };
     }
 
+    // CM-2153 meeting chat DirectSend (command: meeting_chat :: body)
+    if (addr === "meeting_chat" || scheme === "meeting_chat") {
+      const meetingDir = path.join(REPO_ROOT, "data", "meetings");
+      fs.mkdirSync(meetingDir, { recursive: true });
+      const transcriptPath = path.join(meetingDir, "live-chat.jsonl");
+      const entry = {
+        scheme: "meeting_chat",
+        address: "meeting_chat",
+        body,
+        mode: "meeting_chat_direct",
+        direct_send: true,
+        draft_card: false,
+        ok: true,
+        live_post: false,
+        note: "CM-2153 DirectSend durable transcript (live meeting transport residual)",
+        at: stamp,
+      };
+      appendJsonl(outboundPath, entry);
+      appendJsonl(transcriptPath, entry);
+      const journalPath = appendHostDeliveryJournal({
+        kind: "channel_send",
+        ...entry,
+        transcript: transcriptPath,
+      });
+      return {
+        kind: "channel_send",
+        ok: true,
+        command: raw,
+        stdout: JSON.stringify(
+          {
+            ...entry,
+            journal: journalPath,
+            outbound: outboundPath,
+            transcript: transcriptPath,
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    }
+
     const entry = {
       scheme,
       address: addr,
@@ -1790,17 +1832,22 @@ function createHostFfi(repoRoot) {
       parsed = {};
     }
     if (kind === "channel_send") {
+      const isMeeting = parsed.mode === "meeting_chat_direct" || parsed.direct_send;
       return recordSendToUser({
-        type: parsed.personal_dm
+        type: isMeeting
           ? "text"
-          : parsed.thread_ts
-            ? "thread"
-            : "text",
+          : parsed.personal_dm
+            ? "text"
+            : parsed.thread_ts
+              ? "thread"
+              : "text",
         channel: parsed.address || "",
         body_prefix: String(parsed.body || "").slice(0, 120),
         mode: parsed.mode || "",
         personal_dm: Boolean(parsed.personal_dm),
         widget_degraded: Boolean(parsed.widget_degraded),
+        meeting_chat: Boolean(isMeeting),
+        transcript: parsed.transcript || null,
         source_kind: kind,
         at,
       });
@@ -4339,11 +4386,24 @@ function createHostFfi(repoRoot) {
     }
 
     if (kind === "mail_draft") {
-      // command often: to|subject|body  (Host-parsed from MoonBit)
-      const parts = cmd.split("|");
-      const to = parts[0] || "";
-      const subject = parts[1] || "(no subject)";
-      const body = parts.slice(2).join("|") || "";
+      // command often: to|subject|body — or meeting_chat :: body (CM-2153 DraftCard)
+      let to = "";
+      let subject = "(no subject)";
+      let body = "";
+      let meetingDraft = false;
+      if (cmd.startsWith("meeting_chat :: ") || cmd.startsWith("meeting_chat:")) {
+        meetingDraft = true;
+        to = "meeting-chat@bitbot.local";
+        subject = "Meeting chat draft";
+        body = cmd.includes(" :: ")
+          ? cmd.slice(cmd.indexOf(" :: ") + 4)
+          : cmd.replace(/^meeting_chat:?\s*/, "");
+      } else {
+        const parts = cmd.split("|");
+        to = parts[0] || "";
+        subject = parts[1] || "(no subject)";
+        body = parts.slice(2).join("|") || "";
+      }
       const draftDir = path.join(REPO_ROOT, "data", "mail", "draft-files");
       fs.mkdirSync(draftDir, { recursive: true });
       const draftId = `draft-${Date.now().toString(36)}`;
@@ -4356,16 +4416,28 @@ function createHostFfi(repoRoot) {
         `Date: ${at}`,
         `Message-ID: <${draftId}@bitbot.local>`,
         "X-BitBot-Status: draft",
+        meetingDraft ? "X-BitBot-Meeting-Chat: 1" : "X-BitBot-Meeting-Chat: 0",
         "",
         body,
         "",
       ].join("\r\n");
       fs.writeFileSync(emlPath, eml);
+      if (meetingDraft) {
+        const meetingDir = path.join(REPO_ROOT, "data", "meetings");
+        fs.mkdirSync(meetingDir, { recursive: true });
+        appendJsonl(path.join(meetingDir, "draft-cards.jsonl"), {
+          body,
+          eml_path: emlPath,
+          mode: "meeting_chat_draft_card",
+          at,
+        });
+      }
       const entry = {
         command: cmd,
         to,
         subject,
         status: "draft",
+        meeting_chat: meetingDraft,
         eml_path: emlPath,
         eml_ok:
           fs.existsSync(emlPath) &&
@@ -4374,9 +4446,10 @@ function createHostFfi(repoRoot) {
       };
       const pathWritten = appendJsonl(MAIL_DRAFTS_PATH, entry);
       const delivery = recordSendToUser({
-        type: "attachment",
+        type: meetingDraft ? "widget" : "attachment",
         path: emlPath,
-        label: "mail_draft.eml",
+        label: meetingDraft ? "meeting_chat_draft" : "mail_draft.eml",
+        widget: meetingDraft ? "meeting_draft_card" : undefined,
         to,
         subject,
         source_kind: kind,
@@ -4387,6 +4460,7 @@ function createHostFfi(repoRoot) {
         ...entry,
         path: pathWritten,
         drafted: true,
+        mode: meetingDraft ? "meeting_chat_draft_card" : "mail_draft",
         send_to_user: delivery,
       });
     }
