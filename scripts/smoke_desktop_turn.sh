@@ -243,11 +243,11 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-draft.json'));h
 
 echo "==> Host skill_write / slides_pptx / export_pack (real artifacts)"
 node hosts/cli_host/run_turn.js "author skill name=smoke-skill description=demo body=Do the thing." >/tmp/bitbot-skill-write.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-skill-write.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='skill_write');assert h.get('ok');assert 'SKILL.md' in (h.get('stdout') or '');assert os.path.isfile('agent-tools/skills/smoke-skill/SKILL.md');print('skill_write host ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-skill-write.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='skill_write');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('path') and os.path.isfile(p['path']);assert 'SKILL.md' in p['path'];assert p.get('meta_path') and os.path.isfile(p['meta_path']);assert p.get('persisted') is True;assert p.get('pretend_shared') is False;print('skill_write host ok', p.get('meta_path'))"
 node hosts/cli_host/run_turn.js "make slides Smoke Deck" >/tmp/bitbot-slides.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slides.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='slides_pptx');assert h.get('ok');assert 'pptx_pk_magic_ok' in (h.get('stdout') or '');p=json.loads(h['stdout'])['path'];assert open(p,'rb').read(2)==b'PK';print('slides_pptx host ok', p)"
 node hosts/cli_host/run_turn.js "export bot template id=bot-smoke name=SmokeBot" >/tmp/bitbot-export.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-export.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='export_pack');assert h.get('ok');assert 'secrets_stripped' in (h.get('stdout') or '');assert os.path.isfile('agent-tools/exports/bot-smoke-shareable-template.json');print('export_pack host ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-export.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='export_pack');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('secrets_stripped') is True;assert p.get('pretend_secrets_included') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('meta_path') and os.path.isfile(p['meta_path']);print('export_pack host ok', p.get('meta_path'))"
 
 echo "==> Host mail_search/read + workflow_list + x_search (durable artifacts)"
 node hosts/cli_host/run_turn.js "search mail Invoice" >/tmp/bitbot-mail-search.json

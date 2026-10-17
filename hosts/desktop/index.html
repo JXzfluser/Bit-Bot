@@ -837,14 +837,20 @@
                 } else if (h.kind === "code_changes") {
                   label = "code:" + (p.applied ? "applied" : "plan");
                   types.push("attachment");
-                } else if (h.kind === "credential_fill") {
-                  label = "cred_fill:" + (p.domain || p.vault_id || "vault");
-                  types.push("attachment");
                 } else if (h.kind === "credential_list") {
                   label = "creds:" + (p.count || 0);
                   types.push("attachment");
                 } else if (h.kind === "export_pack") {
-                  label = "export:" + String(p.path || "").split("/").slice(-1)[0];
+                  label =
+                    "export:" +
+                    String(p.path || "").split("/").slice(-1)[0] +
+                    (p.meta_path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "skill_write") {
+                  label =
+                    "skill:" +
+                    (p.name || String(p.path || "").split("/").slice(-2)[0] || "?") +
+                    (p.meta_path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "mcp_discover") {
                   label =

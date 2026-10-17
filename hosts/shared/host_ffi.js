@@ -4420,12 +4420,31 @@ function createHostFfi(repoRoot) {
             "",
           ].join("\n");
     fs.writeFileSync(skillPath, md);
+    const at = new Date().toISOString();
+    const writeDir = path.join(REPO_ROOT, "data", "skills", "writes");
+    fs.mkdirSync(writeDir, { recursive: true });
+    const metaPath = path.join(
+      writeDir,
+      `write-${name}-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      skill_path: skillPath,
+      name,
+      description,
+      bytes: Buffer.byteLength(md),
+      persisted: true,
+      pretend_shared: false,
+      mode: "host_skill_write",
+      at,
+    };
+    fs.writeFileSync(metaPath, JSON.stringify(artifact, null, 2));
     appendHostDeliveryJournal({
       kind: "skill_write",
       command,
-      path: skillPath,
+      path: metaPath,
+      skill_path: skillPath,
       bytes: Buffer.byteLength(md),
-      at: new Date().toISOString(),
+      at,
     });
     return {
       kind: "skill_write",
@@ -4433,10 +4452,9 @@ function createHostFfi(repoRoot) {
       command,
       stdout: JSON.stringify(
         {
+          ...artifact,
           path: skillPath,
-          name,
-          bytes: Buffer.byteLength(md),
-          persisted: true,
+          meta_path: metaPath,
         },
         null,
         2,
@@ -4551,11 +4569,29 @@ function createHostFfi(repoRoot) {
       note: "Host export pack — secrets never written (CM-1406)",
     };
     fs.writeFileSync(exportPath, JSON.stringify(pack, null, 2));
+    const at = pack.exported_at;
+    const packDir = path.join(REPO_ROOT, "data", "exports", "packs");
+    fs.mkdirSync(packDir, { recursive: true });
+    const metaPath = path.join(
+      packDir,
+      `pack-${botId}-${sanitizeSkillName(kind)}-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      export_path: exportPath,
+      bot_id: botId,
+      kind,
+      secrets_stripped: true,
+      pretend_secrets_included: false,
+      mode: "host_export_pack",
+      at,
+    };
+    fs.writeFileSync(metaPath, JSON.stringify(artifact, null, 2));
     appendHostDeliveryJournal({
       kind: "export_pack",
       command,
-      path: exportPath,
-      at: new Date().toISOString(),
+      path: metaPath,
+      export_path: exportPath,
+      at,
     });
     return {
       kind: "export_pack",
@@ -4563,10 +4599,9 @@ function createHostFfi(repoRoot) {
       command,
       stdout: JSON.stringify(
         {
+          ...artifact,
           path: exportPath,
-          bot_id: botId,
-          kind,
-          secrets_stripped: true,
+          meta_path: metaPath,
         },
         null,
         2,

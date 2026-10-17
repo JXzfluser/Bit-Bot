@@ -158,7 +158,7 @@ python3 -c "import json;d=json.load(open('/tmp/parity-plugin.json'));assert d.ge
 "${RUN[@]}" "learn from demo title=ParityCheckout steps=click:Cart|type:email" >/tmp/parity-lfd.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-lfd.json'));h=next(x for x in d['host_results'] if x.get('kind')=='skill_write');p=json.loads(h['stdout']);assert p.get('path') and os.path.isfile(p['path']);body=open(p['path']).read();assert 'click:Cart' in body or 'Steps' in body;print('parity learn_from_demo ok')"
 "${RUN[@]}" "author skill name=parity-skill description=demo body=Do the parity thing $MARKER" >/tmp/parity-author.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-author.json'));h=next(x for x in d['host_results'] if x.get('kind')=='skill_write');p=json.loads(h['stdout']);assert p.get('persisted') is True;assert p.get('path') and os.path.isfile(p['path']);print('parity author_skill ok', p.get('name'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-author.json'));h=next(x for x in d['host_results'] if x.get('kind')=='skill_write');p=json.loads(h['stdout']);assert p.get('persisted') is True;assert p.get('path') and os.path.isfile(p['path']);assert p.get('meta_path') and os.path.isfile(p['meta_path']);assert p.get('pretend_shared') is False;print('parity author_skill ok', p.get('name'), p.get('meta_path'))"
 
 # 9g) X / job / calendar / finance live mocks
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18772 --mode x --token smoke-x >/tmp/parity-x-mock.log 2>&1 &
