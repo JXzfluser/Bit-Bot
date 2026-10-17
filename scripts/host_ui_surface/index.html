@@ -99,7 +99,13 @@
   #tool-audit-strip { margin-top:8px; font:11px/1.35 ui-monospace,monospace; color:var(--muted); min-height:1.2em; white-space:pre-wrap; }
   #tool-audit-strip .ok { color:var(--ok); }
   #tool-audit-strip .bad { color:var(--danger); }
-  #llm-mode-badge { font-size:11px; color:var(--muted); margin-left:auto; }
+  #llm-mode-badge { font-size:11px; margin-left:auto; padding:2px 8px; border-radius:6px; border:1px solid var(--border); color:var(--muted); background:#141820; text-transform:lowercase; letter-spacing:.03em; }
+  #llm-mode-badge.mode-localbrain { border-color:#81c784; color:#81c784; }
+  #llm-mode-badge.mode-api { border-color:var(--accent); color:var(--accent); }
+  #llm-mode-badge.mode-ollama { border-color:#ffb74d; color:#ffb74d; }
+  #memory-panel { display:none; margin:0 0 10px; padding:8px 12px; background:#141820; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--muted); }
+  #memory-panel.open { display:block; }
+  #memory-panel strong { color:var(--text); font-weight:600; }
   #h5-math-mermaid { display:none; margin-top:16px; max-width:720px; }
   #h5-math-mermaid.open { display:block; }
   .math-block { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:12px; }
@@ -124,6 +130,7 @@
 </aside>
 <div id="main">
   <div id="chat-header"><span style="color:var(--muted)">Chat:</span> <span id="chat-name">—</span> <span id="chat-badge"></span>
+    <span id="hdr-llm-mode" class="badge" style="margin-left:8px"></span>
     <span style="color:var(--muted);font-size:12px;margin-left:auto">click name or ⌘⇧I → per-agent info pane</span></div>
   <div id="toolbar">
     <button id="btn-shortcut" data-entry="keyboard-shortcut" title="Cmd+,">Settings (⌘,)</button>
@@ -157,18 +164,19 @@
       <a id="pg-link" href="#" style="color:var(--accent)">Open Settings</a>
     </div>
     <div id="h5-chat" class="product-open" role="log" aria-label="Host chat">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <strong>Chat</strong>
         <span style="color:var(--muted);font-size:12px">Host runtime · real tools</span>
-        <span id="llm-mode-badge"></span>
+        <span id="llm-mode-badge" title="LLM provider chain"></span>
       </div>
+      <div id="memory-panel" aria-label="Memory snippet"></div>
       <div id="h5-msg-list"></div>
       <div id="tool-audit-strip" aria-live="polite"></div>
       <div id="chat-composer">
-        <textarea id="chat-input" placeholder="Ask Bit Bot — e.g. 用 Shell 执行 echo bitbot-live 并告诉我结果" rows="3"></textarea>
+        <textarea id="chat-input" placeholder="Ask Bit Bot — e.g. 用 Shell 执行 echo bitbot-live 并告诉我结果 · 记住我叫Ada · fetch https://example.com and summarize" rows="3"></textarea>
         <div class="row">
           <button type="button" id="chat-send">Send</button>
-          <span style="color:var(--muted);font-size:12px">Enter to send · Shift+Enter newline</span>
+          <span style="color:var(--muted);font-size:12px">Enter to send · Shift+Enter newline · memory / shell / webfetch live</span>
         </div>
       </div>
     </div>
@@ -309,7 +317,26 @@ function applyH5HostOverlays(s) {
   const msgs = (s && s.chatMessages) || [];
   const pill = (s && s.reactPill) || {};
   const badge = document.getElementById('llm-mode-badge');
-  if (badge) badge.textContent = s && s.llmMode ? ('llm=' + s.llmMode) : '';
+  const mode = (s && s.llmMode) || '';
+  if (badge) {
+    badge.textContent = mode ? ('llm=' + mode) : '';
+    badge.className = mode ? ('mode-' + mode) : '';
+  }
+  const hdr = document.getElementById('hdr-llm-mode');
+  if (hdr) hdr.textContent = mode ? ('llm=' + mode) : '';
+  const memEl = document.getElementById('memory-panel');
+  if (memEl) {
+    const sn = s && s.memorySnippet;
+    const prof = sn && sn.profile;
+    if (prof && Object.keys(prof).length) {
+      const bits = Object.entries(prof).slice(0, 6).map(([k,v]) => `${k}=${v}`).join(' · ');
+      memEl.innerHTML = `<strong>Memory</strong> ${bits}`;
+      memEl.classList.add('open');
+    } else {
+      memEl.textContent = '';
+      memEl.classList.remove('open');
+    }
+  }
   const strip = document.getElementById('tool-audit-strip');
   if (strip) {
     const tools = (s && s.lastToolStrip) || [];

@@ -22,6 +22,7 @@ if str(SCRIPTS) not in sys.path:
 
 from bitbot_runtime import detect_llm_mode, run_turn  # noqa: E402
 from bitbot_runtime import persist as bitbot_persist  # noqa: E402
+from bitbot_runtime import connectors_live as bitbot_connectors  # noqa: E402
 
 LOCK = threading.Lock()
 STATE = {
@@ -99,6 +100,7 @@ STATE = {
     "llmMode": None,
     "lastTurnAudit": [],
     "lastToolStrip": [],
+    "memorySnippet": None,
     "rev": 0,
 }
 EVENTS: list[dict] = []
@@ -109,6 +111,18 @@ H5_SAMPLE_MESSAGE = {
     "text": "H5 sample message for ReactToMessage pill.",
     "reactions": {},
 }
+
+
+def _memory_snippet(agent_id: str) -> dict | None:
+    mem = bitbot_persist.load_memory(agent_id)
+    profile = mem.get("profile") if isinstance(mem, dict) else None
+    if not profile:
+        return None
+    return {
+        "agent_id": agent_id,
+        "profile": dict(profile),
+        "updated_at": mem.get("updated_at"),
+    }
 
 
 def _bootstrap_persistence():
@@ -127,6 +141,7 @@ def _bootstrap_persistence():
         # Preserve H5 smoke fixture message when nothing persisted yet
         STATE["chatMessages"] = [dict(H5_SAMPLE_MESSAGE)]
     STATE["activeChat"] = aid
+    STATE["memorySnippet"] = _memory_snippet(aid)
 
 
 _bootstrap_persistence()
@@ -1019,6 +1034,7 @@ def apply_host_chat(agent_id: str, text: str):
                 msgs.append(am)
         STATE["chatMessages"] = msgs
         STATE["llmMode"] = result.get("llm_mode") or STATE.get("llmMode")
+        STATE["memorySnippet"] = _memory_snippet(aid)
         STATE["lastTurnAudit"] = list(result.get("audit_spans") or [])
         STATE["lastToolStrip"] = [
             {
@@ -1085,17 +1101,42 @@ def apply_chat_history(agent_id: str | None):
 def apply_memory_recall(agent_id: str | None):
     aid = (agent_id or STATE.get("activeChat") or "demo-agent").strip() or "demo-agent"
     mem = bitbot_persist.load_memory(aid)
+    journal = bitbot_persist.load_journal(aid)
+    with LOCK:
+        STATE["memorySnippet"] = _memory_snippet(aid)
+        STATE["rev"] += 1
     span = _audit("host_ui:memory_recall", True, f"recall agent={aid}")
-    return {"agent_id": aid, "memory": mem, "audit": span}
+    return {
+        "agent_id": aid,
+        "memory": mem,
+        "journal": journal,
+        "audit": span,
+        "state": dict(STATE),
+    }
 
 
 def apply_memory_update(agent_id: str | None, patch: dict | None):
     aid = (agent_id or STATE.get("activeChat") or "demo-agent").strip() or "demo-agent"
     mem = bitbot_persist.update_memory(aid, patch or {})
+    bitbot_persist.append_journal_entry(
+        aid, {"kind": "memory_api_update", "patch": patch or {}}
+    )
     with LOCK:
+        STATE["memorySnippet"] = _memory_snippet(aid)
         STATE["rev"] += 1
         span = _audit("host_ui:memory_update", True, f"update agent={aid}")
         return {"agent_id": aid, "memory": mem, "audit": span, "state": dict(STATE)}
+
+
+def apply_connectors_status():
+    report = bitbot_connectors.connectors_status_report()
+    span = _audit(
+        "host_ui:connectors_status",
+        True,
+        "connectors status live vs sandbox",
+    )
+    report["audit"] = span
+    return report
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -1277,6 +1318,8 @@ class Handler(SimpleHTTPRequestHandler):
                 k: v for k, v in data.items() if k not in ("agent_id",)
             }
             return self._json(200, apply_memory_update(data.get("agent_id"), patch))
+        if path == "/api/host/connectors/status":
+            return self._json(200, apply_connectors_status())
         self._json(404, {"error": "unknown HostUiShell route", "path": path})
 
 

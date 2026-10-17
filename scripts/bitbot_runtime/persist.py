@@ -198,13 +198,17 @@ def update_memory(
         return payload
 
 
-def load_journal(agent_id: str, root: Path | None = None) -> list:
-    with _LOCK:
-        data = read_json(journal_path(agent_id, root), default={"entries": []})
+def _load_journal_unlocked(agent_id: str, root: Path | None = None) -> list:
+    data = read_json(journal_path(agent_id, root), default={"entries": []})
     if isinstance(data, list):
         return list(data)
     entries = data.get("entries") if isinstance(data, dict) else None
     return list(entries) if isinstance(entries, list) else []
+
+
+def load_journal(agent_id: str, root: Path | None = None) -> list:
+    with _LOCK:
+        return _load_journal_unlocked(agent_id, root)
 
 
 def save_journal(agent_id: str, entries: list, root: Path | None = None) -> None:
@@ -213,6 +217,34 @@ def save_journal(agent_id: str, entries: list, root: Path | None = None) -> None
             journal_path(agent_id, root),
             {"agent_id": agent_id, "updated_at": time.time(), "entries": list(entries)},
         )
+
+
+def append_journal_entry(
+    agent_id: str, entry: dict, root: Path | None = None
+) -> list:
+    """Append one journal entry; used by chat memory round-trip."""
+    with _LOCK:
+        entries = _load_journal_unlocked(agent_id, root)
+        item = dict(entry) if isinstance(entry, dict) else {"text": str(entry)}
+        if "ts" not in item:
+            item["ts"] = time.time()
+        entries.append(item)
+        atomic_write_json(
+            journal_path(agent_id, root),
+            {
+                "agent_id": agent_id,
+                "updated_at": time.time(),
+                "entries": entries,
+            },
+        )
+        return entries
+
+
+def memory_profile(agent_id: str, root: Path | None = None) -> dict:
+    """Profile dict only — chat/LocalBrain recall surface."""
+    mem = load_memory(agent_id, root)
+    profile = mem.get("profile") if isinstance(mem, dict) else {}
+    return dict(profile) if isinstance(profile, dict) else {}
 
 
 def load_routines(agent_id: str, root: Path | None = None) -> list:

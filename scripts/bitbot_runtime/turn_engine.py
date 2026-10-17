@@ -11,6 +11,35 @@ from . import llm, persist, tools_host
 MAX_TOOL_LOOPS = int(os.environ.get("BITBOT_MAX_TOOL_LOOPS", "4"))
 
 
+def _execute_intent(
+    spec: dict,
+    *,
+    agent_id: str,
+    run_tool=None,
+) -> dict[str, Any]:
+    """Run one LocalBrain intent spec (tool | memory | routine | summarize)."""
+    runner = run_tool or tools_host.dispatch
+    kind = spec.get("kind") or ("tool" if spec.get("tool") else "")
+    if kind == "memory":
+        return llm._run_memory_op(agent_id, spec)
+    if kind == "routine":
+        return llm._run_routine_op(agent_id, spec)
+    if kind == "summarize":
+        # Standalone summarize without prior fetch in this helper path
+        return {
+            "id": str(uuid.uuid4()),
+            "tool": "Summarize",
+            "ok": False,
+            "output": "no fetch content in this loop",
+            "detail": "summarize needs prior WebFetch",
+            "args": {},
+            "refused": False,
+            "ts": time.time(),
+        }
+    tool = spec.get("tool") or ""
+    return runner(tool, spec.get("args") or {})
+
+
 def run_turn(user_text: str, agent_id: str = "demo-agent") -> dict[str, Any]:
     """Public entry: run one user turn to completion. Never pretends tools ran."""
     persist.ensure_data_dirs()
@@ -51,10 +80,13 @@ def run_turn(user_text: str, agent_id: str = "demo-agent") -> dict[str, Any]:
     mode = llm.detect_llm_mode()
     assistant_text = ""
     history = persist.load_chat(aid)
+    profile = persist.memory_profile(aid)
 
     try:
         if mode == "localbrain":
-            lb = llm.localbrain_turn(text, run_tool=tools_host.dispatch)
+            lb = llm.localbrain_turn(
+                text, run_tool=tools_host.dispatch, agent_id=aid
+            )
             assistant_text = lb.get("text") or ""
             for tr in lb.get("tool_results") or []:
                 tool_calls.append(tr)
@@ -67,15 +99,37 @@ def run_turn(user_text: str, agent_id: str = "demo-agent") -> dict[str, Any]:
                     output_excerpt=(tr.get("output") or "")[:500],
                 )
         else:
-            # API / Ollama: may ask LocalBrain-style tools first when user clearly wants tools
             intents = llm.parse_localbrain_intents(text)
             tool_notes: list[str] = []
             loops = 0
+            # Multi-step fetch→summarize: prefer LocalBrain for the whole chain
+            kinds = {s.get("kind") or "tool" for s in intents}
+            if intents and (
+                kinds & {"memory", "routine", "summarize"} or len(intents) > 1
+            ):
+                lb = llm.localbrain_turn(
+                    text, run_tool=tools_host.dispatch, agent_id=aid
+                )
+                for tr in lb.get("tool_results") or []:
+                    tool_calls.append(tr)
+                    emit(
+                        f"tool:{tr.get('tool')}",
+                        bool(tr.get("ok")),
+                        tr.get("detail") or "",
+                        refused=bool(tr.get("refused")),
+                        output_excerpt=(tr.get("output") or "")[:500],
+                    )
+                    tool_notes.append(
+                        f"{tr.get('tool')} ok={tr.get('ok')}: {(tr.get('output') or '')[:2000]}"
+                    )
+                intents = []
             while intents and loops < MAX_TOOL_LOOPS:
                 loops += 1
                 next_intents: list[dict] = []
                 for spec in intents:
-                    tr = tools_host.dispatch(spec["tool"], spec.get("args") or {})
+                    tr = _execute_intent(
+                        spec, agent_id=aid, run_tool=tools_host.dispatch
+                    )
                     tool_calls.append(tr)
                     emit(
                         f"tool:{tr.get('tool')}",
@@ -100,8 +154,15 @@ def run_turn(user_text: str, agent_id: str = "demo-agent") -> dict[str, Any]:
                 "If tool results are provided below, base your answer on them. "
                 "Never invent tool output."
             )
+            if profile:
+                system += (
+                    "\n\nKnown user memory profile: "
+                    + str(profile)
+                )
             if tool_notes:
-                system += "\n\nTool results from this turn:\n" + "\n---\n".join(tool_notes)
+                system += "\n\nTool results from this turn:\n" + "\n---\n".join(
+                    tool_notes
+                )
             messages.insert(0, {"role": "system", "content": system})
             messages.append({"role": "user", "content": text})
             try:
@@ -109,9 +170,10 @@ def run_turn(user_text: str, agent_id: str = "demo-agent") -> dict[str, Any]:
                 assistant_text = (comp.get("text") or "").strip()
                 mode = comp.get("mode") or mode
             except Exception as e:
-                # Fall back to LocalBrain so tools still surface
                 emit("llm:error", False, str(e))
-                lb = llm.localbrain_turn(text, run_tool=tools_host.dispatch)
+                lb = llm.localbrain_turn(
+                    text, run_tool=tools_host.dispatch, agent_id=aid
+                )
                 assistant_text = lb.get("text") or f"LLM error: {e}"
                 mode = "localbrain"
                 for tr in lb.get("tool_results") or []:
@@ -125,7 +187,6 @@ def run_turn(user_text: str, agent_id: str = "demo-agent") -> dict[str, Any]:
                             output_excerpt=(tr.get("output") or "")[:500],
                         )
 
-            # If LLM returned empty but we have tool results, narrate them
             if not assistant_text and tool_notes:
                 assistant_text = "\n\n".join(tool_notes)
 
@@ -135,6 +196,22 @@ def run_turn(user_text: str, agent_id: str = "demo-agent") -> dict[str, Any]:
 
     if not assistant_text:
         assistant_text = "(no reply)"
+
+    # Journal the turn for memory round-trip visibility
+    try:
+        persist.append_journal_entry(
+            aid,
+            {
+                "kind": "chat_turn",
+                "turn_id": turn_id,
+                "user": text[:500],
+                "assistant_excerpt": assistant_text[:300],
+                "llm_mode": mode,
+                "tools": [t.get("tool") for t in tool_calls],
+            },
+        )
+    except Exception as e:
+        emit("journal:error", False, str(e))
 
     assistant_msg = {
         "id": f"msg-{uuid.uuid4().hex[:12]}",
@@ -168,4 +245,5 @@ def run_turn(user_text: str, agent_id: str = "demo-agent") -> dict[str, Any]:
         "tool_calls": tool_calls,
         "audit_spans": audit_spans,
         "duration_ms": duration_ms,
+        "memory_profile": profile,
     }

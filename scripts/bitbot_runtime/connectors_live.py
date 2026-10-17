@@ -1,4 +1,12 @@
-"""Production-shaped connector adapters (Slack / Gmail / Outlook / sandbox IdP)."""
+"""Production-shaped connector adapters (Slack / Gmail / Outlook / sandbox IdP).
+
+Env tokens (absent → sandbox IdP path, not live):
+  SLACK_BOT_TOKEN       — Slack Web API; without it mode=sandbox_idp
+  BITBOT_SLACK_POST=1   — allow chat.postMessage (draft-first otherwise)
+  SLACK_DEFAULT_CHANNEL — channel for optional posts
+  data/connectors/gmail.json | outlook.json — OAuth access_token for email;
+    without those files mode=sandbox_idp and Connected is disk-only
+"""
 from __future__ import annotations
 
 import json
@@ -10,6 +18,25 @@ from typing import Any
 
 from . import persist
 
+# Documented env / disk credentials. Absent → sandbox, never invent live.
+CONNECTOR_ENV_DOCS = {
+    "slack": {
+        "env": ["SLACK_BOT_TOKEN", "BITBOT_SLACK_POST", "SLACK_DEFAULT_CHANNEL"],
+        "required_for_live": ["SLACK_BOT_TOKEN"],
+        "disk": "data/connectors/slack.json",
+    },
+    "gmail": {
+        "env": [],
+        "required_for_live": [],
+        "disk": "data/connectors/gmail.json (access_token or oauth.access_token)",
+    },
+    "outlook": {
+        "env": [],
+        "required_for_live": [],
+        "disk": "data/connectors/outlook.json (access_token or oauth.access_token)",
+    },
+}
+
 
 def connector_status(name: str) -> dict[str, Any]:
     name = (name or "").strip().lower()
@@ -18,6 +45,53 @@ def connector_status(name: str) -> dict[str, Any]:
     if name in ("gmail", "outlook"):
         return email_status(name)
     return sandbox_idp_status(name or "sandbox")
+
+
+def connectors_status_report() -> dict[str, Any]:
+    """Live vs sandbox snapshot for POST /api/host/connectors/status."""
+    names = ("slack", "gmail", "outlook")
+    connectors = {}
+    for n in names:
+        st = connector_status(n)
+        connectors[n] = {
+            "connector": n,
+            "mode": st.get("mode"),
+            "connected": bool(st.get("connected")),
+            "live": st.get("mode") in ("live", "oauth_token_file"),
+            "sandbox": st.get("mode") == "sandbox_idp",
+            "detail": st.get("detail"),
+            "docs": CONNECTOR_ENV_DOCS.get(n),
+        }
+    env_present = {
+        "SLACK_BOT_TOKEN": bool((os.environ.get("SLACK_BOT_TOKEN") or "").strip()),
+        "BITBOT_SLACK_POST": os.environ.get("BITBOT_SLACK_POST") == "1",
+        "SLACK_DEFAULT_CHANNEL": bool(
+            (os.environ.get("SLACK_DEFAULT_CHANNEL") or "").strip()
+        ),
+        "gmail_token_file": bool(
+            persist.load_connector_state("gmail").get("access_token")
+            or persist.load_connector_state("gmail").get("token")
+            or (persist.load_connector_state("gmail").get("oauth") or {}).get(
+                "access_token"
+            )
+        ),
+        "outlook_token_file": bool(
+            persist.load_connector_state("outlook").get("access_token")
+            or persist.load_connector_state("outlook").get("token")
+            or (persist.load_connector_state("outlook").get("oauth") or {}).get(
+                "access_token"
+            )
+        ),
+    }
+    return {
+        "ok": True,
+        "connectors": connectors,
+        "env": env_present,
+        "note": (
+            "Absent SLACK_BOT_TOKEN / Gmail-Outlook OAuth JSON → sandbox_idp; "
+            "Connected may still be true from prior disk mark."
+        ),
+    }
 
 
 def slack_status(*, draft_text: str | None = None, channel: str | None = None) -> dict[str, Any]:
