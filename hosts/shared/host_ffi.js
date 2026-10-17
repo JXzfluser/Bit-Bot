@@ -1633,6 +1633,116 @@ function createHostFfi(repoRoot) {
       };
     }
 
+    // Interactive headed-browser consent against local IdP (honest: interactive_local).
+    if (
+      exchangeMode === "interactive" ||
+      exchangeMode === "interactive_local" ||
+      exchangeMode === "browser"
+    ) {
+      try {
+        const { stdout, stderr } = await execFileAsync(
+          process.env.PYTHON || "python3",
+          [
+            path.join(REPO_ROOT, "scripts", "host_oauth_interactive.py"),
+            "--provider",
+            provider,
+            "--artifact-dir",
+            artifactDir,
+          ],
+          { cwd: REPO_ROOT, timeout: 120000, maxBuffer: 2 * 1024 * 1024 },
+        );
+        let summary = {};
+        const summaryPath = path.join(artifactDir, "interactive_run.json");
+        if (fs.existsSync(summaryPath)) {
+          summary = JSON.parse(fs.readFileSync(summaryPath, "utf8"));
+        } else {
+          const line = String(stdout || "")
+            .trim()
+            .split("\n")
+            .filter(Boolean)
+            .pop();
+          if (line && line.startsWith("{")) summary = JSON.parse(line);
+        }
+        const ok = Boolean(summary.ok);
+        const token = `interactive:${provider}:${Date.now().toString(36)}`;
+        const state = {
+          connected: ok,
+          status: ok ? statusDesired : "NeedsAuth",
+          mode: "interactive_local",
+          provider,
+          detail: ok
+            ? `interactive browser OAuth consent completed → ${statusDesired}`
+            : `interactive OAuth failed: ${(stderr || stdout || "").slice(0, 200)}`,
+          oauth: {
+            access_token: token,
+            token_type: "Bearer",
+            sandbox: false,
+            interactive: true,
+          },
+          access_token: token,
+          artifact_dir: artifactDir,
+          at: new Date().toISOString(),
+        };
+        if (ok) {
+          saveConnectorState(connectorName, state);
+          if (connectorName === "gmail") {
+            fs.writeFileSync(
+              path.join(CONNECTORS_DIR, "gmail_token.json"),
+              JSON.stringify(
+                {
+                  access_token: token,
+                  token_type: "Bearer",
+                  sandbox: false,
+                  interactive: true,
+                },
+                null,
+                2,
+              ),
+            );
+          }
+        }
+        appendHostDeliveryJournal({
+          kind: "oauth",
+          command,
+          connector: connectorName,
+          ok,
+          status: state.status,
+          mode: "interactive_local",
+          interactive_cdp_click: Boolean(summary.interactive_cdp_click),
+          at: state.at,
+        });
+        return {
+          kind: "oauth",
+          ok,
+          command,
+          stdout: JSON.stringify(
+            {
+              connector: connectorName,
+              status: state.status,
+              connected: state.connected,
+              mode: "interactive_local",
+              interactive_browser: true,
+              interactive_cdp_click: Boolean(summary.interactive_cdp_click),
+              summary_ok: ok,
+            },
+            null,
+            2,
+          ),
+          stderr: ok ? "" : String(stderr || "").slice(0, 2000),
+          error: ok ? "" : "oauth interactive_local failed",
+        };
+      } catch (err) {
+        return {
+          kind: "oauth",
+          ok: false,
+          command,
+          error: err.message || String(err),
+          stdout: err.stdout ? String(err.stdout).slice(0, 4000) : "",
+          stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
+        };
+      }
+    }
+
     // Local authorize→token exchange rehearsal (honest mode name: local_exchange).
     if (exchangeMode === "local" || exchangeMode === "1" || exchangeMode === "true") {
       const ex = await runLocalOauthExchange(provider, artifactDir);

@@ -114,6 +114,9 @@
 - [x] Host OAuth live authorization_code exchange when `BITBOT_OAUTH_TOKEN_URL` + `BITBOT_OAUTH_AUTH_CODE` set (`live_code_exchange`)
 - [x] Host OAuth modes: default sandbox IdP; `BITBOT_OAUTH_MODE=live` applies real token or honest NeedsAuth (never pretend Connected)
 - [x] Host OAuth `BITBOT_OAUTH_EXCHANGE=local` authorize→callback→token rehearsal (`local_exchange`); remote production IdP interactive consent still residual
+- [x] Host OAuth `BITBOT_OAUTH_EXCHANGE=interactive` headed-browser consent (`interactive_local` via CDP); remote production IdP credentials still residual
+- [x] Host computer_use multi-step planner heuristics for shop/travel/food/job playbooks (observe→act steps)
+- [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

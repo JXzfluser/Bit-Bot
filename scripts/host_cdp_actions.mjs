@@ -117,7 +117,9 @@ async function main() {
     .filter(Boolean);
 
   for (const step of steps) {
-    const [kind, rest = ""] = step.split(":");
+    const colon = step.indexOf(":");
+    const kind = colon >= 0 ? step.slice(0, colon) : step;
+    const rest = colon >= 0 ? step.slice(colon + 1) : "";
     const k = String(kind || "").toLowerCase();
     try {
       if (k === "click") {

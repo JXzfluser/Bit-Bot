@@ -388,6 +388,32 @@
             }
             permPanel.style.display = "block";
           }
+          // Delivery attachments from Host materialize / CU evidence (SendToUser-like chips).
+          const attachKinds = ["skill_write", "slides_pptx", "export_pack", "computer_use"];
+          const attaches = r.host_results.filter(
+            (h) => h && h.ok && attachKinds.includes(h.kind),
+          );
+          if (attaches.length) {
+            const el = document.createElement("div");
+            el.className = "msg assistant";
+            el.innerHTML = '<div class="role">attachments</div><div class="body"></div>';
+            const body = el.querySelector(".body");
+            for (const h of attaches) {
+              const chip = document.createElement("span");
+              chip.className = "effect-chip";
+              let label = h.kind;
+              try {
+                const p = JSON.parse(h.stdout || "{}");
+                if (p.path) label = h.kind + ": " + String(p.path).split("/").slice(-2).join("/");
+                else if (p.evidence) label = h.kind + ": " + String(p.evidence).split("/").slice(-2).join("/");
+                else if (p.outcome && p.outcome.summary) label = h.kind + ": " + p.outcome.summary;
+              } catch (_) { /* ignore */ }
+              chip.textContent = label;
+              body.appendChild(chip);
+            }
+            log.appendChild(el);
+            log.scrollTop = log.scrollHeight;
+          }
         }
       } catch (e) {
         const msg = String(e && e.message ? e.message : e);

@@ -112,10 +112,28 @@ def parse_actions(command: str) -> str:
         flags=re.I,
     ):
         steps.append(f"{m.group(1).lower()}:{m.group(2)}")
-    # Default evaluate title so every GUI session records an action outcome.
+    # Multi-step planner for playbook / open tasks when no explicit actions given.
     if not steps:
-        steps.append("evaluate:document.title")
+        steps = plan_actions(command or "")
     return "|".join(steps)
+
+
+def plan_actions(command: str) -> List[str]:
+    """Host-side GUI planner (observe heuristics → act steps). Not LocalBrain."""
+    low = (command or "").lower()
+    steps: List[str] = ["evaluate:document.title"]
+    if "shop" in low or "retail" in low or "cart" in low:
+        steps.extend(["scroll:0,400", "click:520,360", "evaluate:document.title"])
+    elif "travel" in low or "flight" in low or "hotel" in low:
+        steps.extend(["scroll:0,300", "click:480,300", "evaluate:document.title"])
+    elif "food" in low or "order" in low or "restaurant" in low:
+        steps.extend(["scroll:0,350", "click:500,320", "evaluate:document.title"])
+    elif "job" in low or "linkedin" in low:
+        steps.extend(["scroll:0,500", "evaluate:document.body.innerText.slice(0,80)"])
+    else:
+        # Generic open/navigate planner: scroll then re-observe.
+        steps.extend(["scroll:0,200", "evaluate:document.title"])
+    return steps
 
 
 def choose_gui_mode(explicit: str = "") -> str:
@@ -345,6 +363,17 @@ def main() -> int:
 
         m = re.search(r"https?://[^\s|\"']+", args.command or "")
         url = m.group(0) if m else ""
+    if not url:
+        import re
+
+        # Playbook commands often embed bare hosts (target.com / amazon.com).
+        m = re.search(
+            r"\b((?:[a-z0-9-]+\.)+(?:com|net|org|io|co|shop|store))\b",
+            args.command or "",
+            flags=re.I,
+        )
+        if m:
+            url = "https://" + m.group(1)
 
     blocked = bool(url) and any(b in url for b in PK_BLOCKED)
     navigate: Dict[str, Any] = {
