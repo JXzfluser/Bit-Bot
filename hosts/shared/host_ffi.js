@@ -569,6 +569,22 @@ function createHostFfi(repoRoot) {
       const slackParts = addr.slice("slack:".length).split(":").filter(Boolean);
       const channelId = slackParts[0] || "";
       const threadTs = slackParts[1] || "";
+      // CM-1103: personal Slack DM = owner user id (U…); shared channels (C…) are not DM.
+      const isPersonalDm = /^U[A-Z0-9]+$/i.test(channelId);
+      const isSharedChannel = /^C[A-Z0-9]+$/i.test(channelId);
+      // CM-1104: channel degrade — strip naked widget payloads to text/link.
+      let outboundBody = body;
+      let widgetDegraded = false;
+      if (/\[widget:|type=widget|decision_card/i.test(body)) {
+        outboundBody = body
+          .replace(/\[widget:[^\]]*\]/gi, "")
+          .replace(/type=widget\S*/gi, "")
+          .trim();
+        if (!outboundBody) {
+          outboundBody = "(widget degraded to text — open Desktop chat for choices)";
+        }
+        widgetDegraded = true;
+      }
       // Optional inbound claim before / instead of post.
       let claim = null;
       if (
@@ -578,18 +594,25 @@ function createHostFfi(repoRoot) {
       ) {
         claim = await claimSlackInbound(token, channelId, inboundPath, stamp);
       }
-      if (token && process.env.BITBOT_SLACK_POST === "1" && channelId && body) {
+      if (token && process.env.BITBOT_SLACK_POST === "1" && channelId && outboundBody) {
         const payload = {
           channel: channelId,
-          text: body,
+          text: outboundBody,
         };
         if (threadTs) payload.thread_ts = threadTs;
         const post = await slackApi("chat.postMessage", token, payload);
         const entry = {
           scheme,
           address: addr,
-          body,
-          mode: threadTs ? "live_slack_thread" : "live_slack",
+          body: outboundBody,
+          mode: isPersonalDm
+            ? "live_personal_slack_dm"
+            : threadTs
+              ? "live_slack_thread"
+              : "live_slack",
+          personal_dm: isPersonalDm,
+          shared_channel: isSharedChannel,
+          widget_degraded: widgetDegraded,
           ok: Boolean(post.ok),
           ts: post.ts || "",
           thread_ts: threadTs || "",
@@ -692,18 +715,28 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
+      const draftMode = isPersonalDm
+        ? "personal_slack_dm_draft"
+        : connectorReady
+          ? "connector_draft"
+          : "sandbox_draft";
       const entry = {
         scheme,
         address: addr,
-        body,
-        mode: connectorReady ? "connector_draft" : "sandbox_draft",
+        body: outboundBody,
+        mode: draftMode,
         ok: true,
         live_post: false,
+        personal_dm: isPersonalDm,
+        shared_channel: isSharedChannel,
+        widget_degraded: widgetDegraded,
         thread_ts: threadTs || "",
         connector_ready: connectorReady,
         connector_status: connectorHint.status || "unknown",
         at: stamp,
-        note: "live post needs SLACK_BOT_TOKEN + BITBOT_SLACK_POST=1; claim needs BITBOT_SLACK_CLAIM=1",
+        note: isPersonalDm
+          ? "CM-1103 personal Slack DM draft (owner U… only; live needs xox* + BITBOT_SLACK_POST=1)"
+          : "live post needs SLACK_BOT_TOKEN + BITBOT_SLACK_POST=1; claim needs BITBOT_SLACK_CLAIM=1",
       };
       appendJsonl(outboundPath, entry);
       const journalPath = appendHostDeliveryJournal({
@@ -1627,13 +1660,22 @@ function createHostFfi(repoRoot) {
     }
     if (kind === "channel_send") {
       return recordSendToUser({
-        type: parsed.thread_ts ? "thread" : "text",
+        type: parsed.personal_dm
+          ? "text"
+          : parsed.thread_ts
+            ? "thread"
+            : "text",
         channel: parsed.address || "",
         body_prefix: String(parsed.body || "").slice(0, 120),
         mode: parsed.mode || "",
+        personal_dm: Boolean(parsed.personal_dm),
+        widget_degraded: Boolean(parsed.widget_degraded),
         source_kind: kind,
         at,
       });
+    }
+    if (kind === "cloud_agent_launch") {
+      return null; // cursor-agent card already recorded in effect handler
     }
     if (kind === "voice_session" || kind === "voice_relay" || kind === "voice_end_write") {
       return recordSendToUser({
@@ -1662,6 +1704,8 @@ function createHostFfi(repoRoot) {
         type: "widget",
         widget: "approval_card",
         command: result.command || "",
+        options: parsed.widget && parsed.widget.options,
+        widget_id: parsed.widget && parsed.widget.widget_id,
         source_kind: kind,
         at,
       });
@@ -3311,10 +3355,23 @@ function createHostFfi(repoRoot) {
     }
 
     if (kind === "approval_card") {
+      // CM-0105-shaped decision widget for Desktop (Approve / Dismiss).
+      const widget = {
+        widget_id: `approval-${Date.now().toString(36)}`,
+        title: "Approval required",
+        prompt: String(cmd || "").slice(0, 240),
+        options: [
+          { id: "approve", label: "Approve & re-run", style: "Primary" },
+          { id: "dismiss", label: "Dismiss", style: "Default" },
+        ],
+        multi_select: false,
+        dismiss_on_move_on: true,
+      };
       const entry = {
         command: cmd,
         status: "pending",
         pretend_approved: false,
+        widget,
         at,
       };
       const pathWritten = appendJsonl(APPROVALS_PATH, entry);
@@ -3323,21 +3380,42 @@ function createHostFfi(repoRoot) {
         ...entry,
         path: pathWritten,
         ui: "ApprovalGate",
+        type: "widget",
       });
     }
 
     if (kind === "cloud_agent_launch") {
       const parts = cmd.split("|");
+      const bcId = parts[0] || `bc-sandbox-${Date.now().toString(36)}`;
+      const url =
+        parts[1] ||
+        (bcId ? `https://cursor.com/agents/${bcId}` : "");
       const entry = {
-        bc_id: parts[0] || "",
-        url: parts[1] || "",
+        bc_id: bcId,
+        url,
         prompt: parts.slice(2).join("|") || "",
         mode: "sandbox_record",
         at,
       };
       const pathWritten = appendJsonl(CLOUD_LAUNCHES_PATH, entry);
+      // CM-2131 cursor-agent SendToUser card
+      const card = recordSendToUser({
+        type: "cursor-agent",
+        bc_id: bcId,
+        open_url: url,
+        can_open_cloud: Boolean(bcId),
+        prompt_prefix: String(entry.prompt || "").slice(0, 80),
+        source_kind: kind,
+        at,
+      });
       appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten, launched: true });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: pathWritten,
+        launched: true,
+        cursor_agent_card: card,
+        send_to_user: SEND_TO_USER_PATH,
+      });
     }
 
     if (kind === "cloud_artifact_deliver") {

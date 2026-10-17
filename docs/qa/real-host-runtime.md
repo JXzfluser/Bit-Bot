@@ -32,9 +32,9 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 
 | Item | Status |
 |------|--------|
-| Phone OS permission card (CM-0705 true device) | **Deferred** — Host card + native scaffolds exist; true OS dialog needs device |
-| Production Slack/Gmail IdP credentials | **Deferred** — sandbox / local_exchange / interactive_local / remote_callback rehearsals green without production secrets |
-| Store signing certs (Desktop/iOS/Android) | **Deferred** — signing scaffolds + unsigned pack evidence present |
+| Phone OS permission card (CM-0705 true device) | **Deferred** (user) — Host card + native scaffolds exist; physical-device OS popup skipped |
+| Production Slack/Gmail IdP credentials | **Deferred** (user) — sandbox / local_exchange / interactive_local / remote_callback rehearsals green; full production IdP consent skipped |
+| Store signing certs (Desktop/iOS/Android) | **Deferred** (user) — signing scaffolds + unsigned pack evidence present; store certs skipped |
 | Slack post without `BITBOT_SLACK_POST=1` | Draft-first only (live gated) |
 | Screenshot | Only when `DISPLAY` set and ffmpeg/import/scrot available |
 | Routine wake scheduler | On-demand `routine_fire` durable (`fires.jsonl` + next_due); cron daemon residual |

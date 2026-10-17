@@ -125,6 +125,9 @@
 - [x] Host routine wake tick (`tick routines` → `routine_tick`) fires due routines by `next_due`
 - [x] Host SendToUser delivery receipts (`data/delivery/send-to-user.jsonl`) for text/thread/voice/widget/attachment; outbound reaction pills (`outbound-reactions.jsonl`)
 - [x] Desktop Delivery panel + expanded SendToUser chips (oauth/voice/reaction/delivery)
+- [x] Host personal Slack DM mode (`personal_slack_dm_draft` / `live_personal_slack_dm`) + CM-1104 channel widget degrade on outbound
+- [x] Host approval_card CM-0105-shaped widget options + Desktop interactive Approve/Dismiss card
+- [x] Host cloud_agent_launch CM-2131 cursor-agent SendToUser card (`type=cursor-agent` + open_url) + Desktop render
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN
