@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Product start path: MoonBit boot + Host UI runtime on 8765.
+# DEMOTED — MoonBit boot banner + Python Host UI on :8765 (not product Desktop).
+# Product path: bash scripts/start-desktop.sh
 # Usage: bash scripts/start-bitbot.sh
 set -euo pipefail
+echo "NOTE: start-bitbot Host UI path is demoted. Prefer scripts/start-desktop.sh." >&2
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="${HOME}/.moon/bin:${PATH}"

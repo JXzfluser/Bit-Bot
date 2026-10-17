@@ -1,5 +1,7 @@
 import {
   "bitbot/bitbot",
+  "bitbot/bitbot/box_host",
+  "bitbot/bitbot/memory",
   "bitbot/bitbot/runtime",
   "bitbot/bitbot/ui_protocol",
   "moonbitlang/core/env" @env,

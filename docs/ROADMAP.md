@@ -5,7 +5,7 @@
 - [x] `moon new` 仓库
 - [x] 团队就位
 - [x] 完整能力矩阵（234 原子项）
-- [x] 可编译多包骨架 + boot（`scripts/start-bitbot.sh`）
+- [x] 可编译多包骨架 + boot（`scripts/start-bitbot.sh` 现为次级；产品启动见 Desktop）
 - [x] 架构/接口文档
 
 ## M1 — Kernel + Delivery
@@ -18,13 +18,16 @@
 - [x] Routines（cron + event triggers + lifecycle）
 - [x] Skills catalog（managed / user / plugin）
 
-## M3 — Hosts
+## M3 — Hosts（产品基线：Desktop + multi-end）
 
 > Host-integration（真屏/FFI/真 MCP）波次见 `docs/host-integration-roadmap.md`；不重开已 U-PASS。
+> **产品基线**：`hosts/desktop` + `hosts/ios` + `hosts/android` 注册 `MachineKind`；MoonBit 编排 turn。
 
 - [x] Box：Read/Shell/Screenshot/desktop session 协议
 - [x] User machines：ListMachines、CopyTo/FromBox、machineId 路由
 - [x] computerUse 任务协议
+- [x] **Desktop Electron host** — `hosts/desktop/` + `cmd/desktop_turn`（JSON `v:1`）
+- [x] **Multi-end layout** — `hosts/{desktop,ios,android}` + `scripts/host_mobile_stub.sh`
 
 ### Host I 波次（smoke + I-PASS · 2026-10-17 Asia/Shanghai）
 
@@ -49,10 +52,13 @@
 - [x] Teammates SendToAgent / CreateAgent / sections
 - [x] CloudAgent + Origin/GitHub 面
 
-## M6 — Vertical + App UI parity
+## M6 — Vertical + App UI parity（产品基线续）
 - [x] 垂直 skills（scheduling/shopping/meetings/…）
 - [x] Settings anchors / update-computer 引导语义
 - [x] 首启、语言、时区、voice memo
+- [x] Grok-like Desktop chrome（agents sidebar + machines panel + MoonBit transcript）
+- [ ] Packaged installer / deeper Desktop Host FFI（Shell/FS/network execute loop）
+- [ ] iOS / Android beyond stub（真机 HostAbi）
 
 ## M7 — Hardening
 - [x] 全矩阵验收清零 P0 gaps（U=234；I=234）
@@ -60,18 +66,17 @@
 - [x] Host I：41 行库存 open=0；全矩阵 I-PASS=234
 - [ ] phone residual 仍待真机（非矩阵 I 阻塞）
 
-## Product Host runtime (post-matrix)
+## Non-goal — Python product deploy（demoted）
 
-- [x] **Product Host runtime deployed on box** — `scripts/bitbot_runtime/` + Host UI chat/memory on `:8765`; persist under `/workspace/data/`; LLM chain api→ollama→LocalBrain; `bash scripts/deploy_local.sh` (see `docs/qa/real-host-runtime.md`)
-  - Status after ADR 0005: this Python path is **optional Host FFI / secondary**, not the product brain.
+- [x] **Demoted**: `scripts/bitbot_runtime/` + `deploy_local.sh` + `:8765` Host UI are **not** the product brain.
+  - Optional Host FFI / secondary only (ADR 0005).
+  - Do not expand Python LocalBrain. Prefer deleting or narrowing entrypoints that advertise Python chat as Bit Bot.
+  - Product path: `bash scripts/start-desktop.sh` → MoonBit turns.
 
-## Desktop host + MoonBit brain (ADR 0005 · in progress)
-
-Course-correct: product main path is a **Desktop window** + **MoonBit** turn orchestration (not Python LocalBrain, not Host UI smoke as the product).
+## Desktop host + MoonBit brain (ADR 0005)
 
 - [x] ADR 0005 accepted — `docs/adr/0005-course-correct-moonbit-desktop.md`
-- [x] `cmd/desktop_turn` — MoonBit CLI: `open_turn` → `deliver_text` → JSON stdout (`--target native`)
-- [x] `desktop/` Electron app — window title Bit Bot Desktop; `bitbot.boot()` / `bitbot.turn(text)` → MoonBit
-- [x] `scripts/start-desktop.sh` — ensure `moon` on PATH, `npm install`, `electron .`
-- [ ] Packaged installer / deeper Host FFI (Shell/FS/network) from Desktop
-- [ ] Retire or narrow Python `bitbot_runtime` as product entrypoints in docs/scripts
+- [x] `cmd/desktop_turn` — intents: chat / ListMachines / memory / host_effect (`v:1` JSON)
+- [x] `hosts/desktop/` Electron — agents + machines + turn transcript from MoonBit
+- [x] `hosts/ios/` + `hosts/android/` stubs + `scripts/host_mobile_stub.sh`
+- [x] `scripts/start-desktop.sh` — moon on PATH, npm, Electron under `hosts/desktop`

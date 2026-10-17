@@ -23,6 +23,18 @@
 
 ## 后果
 
-- 新增 `desktop/`（Electron 或等价）作为 Desktop 宿主工程。  
-- `cmd` / MoonBit 侧提供可被宿主调用的 boot + turn JSON 边界（逐步收紧）。  
+- 新增 `hosts/desktop/`（Electron 或等价）作为 Desktop 宿主工程。  
+- `cmd` / MoonBit 侧提供可被宿主调用的 boot + turn JSON 边界（`v:1`；逐步收紧）。  
 - 文档与 ROADMAP 显式区分：矩阵 I 库存 ≠ Desktop 产品里程碑。
+
+## Addendum — multi-end is basic（2026-10-17）
+
+Multi-end is a **basic deliverable**, not a later stretch goal.
+
+| End | Path | MachineKind | Notes |
+|-----|------|-------------|-------|
+| Desktop | `hosts/desktop/` | `Desktop` | Product window; Host FFI for shell/FS/network |
+| iOS | `hosts/ios/` | `Ios` | Stub/simulator attach; same turn JSON |
+| Android | `hosts/android/` | `Android` | Stub/simulator attach; same turn JSON |
+
+`MachineRegistry::seed/list` and `cmd/desktop_turn` `ListMachines` must surface all three kinds. Python LocalBrain remains demoted; do not expand it as the product path.

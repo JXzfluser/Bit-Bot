@@ -1,8 +1,10 @@
 # Real Host runtime — what is live vs residual
 
-Product Host runtime package: `scripts/bitbot_runtime/`.
+**Demoted / non-product.** Prefer Desktop + MoonBit: `bash scripts/start-desktop.sh` and ADR 0005.
+
+Legacy Host FFI package: `scripts/bitbot_runtime/`.
 Surface: Host UI on `http://127.0.0.1:8765/` (`scripts/host_ui_surface/`).
-Deploy: `bash scripts/deploy_local.sh`.
+Optional deploy: `bash scripts/deploy_local.sh` (not the product brain).
 Smoke: `bash scripts/smoke_real_chat.sh` (Shell, ListDir, memory set/get, WebFetch+summarize, connectors/status).
 
 ## Real on this box

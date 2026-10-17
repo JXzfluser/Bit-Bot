@@ -1,15 +1,15 @@
 # bitbot/bitbot
 
-**Product = MoonBit kernel + Desktop host** (ADR 0005). Capability matrix: **234** CMs · **U-PASS=234** · **I-PASS=234** (Wave H6; CM-0705 platform-subset wording retained).
+**Product = MoonBit kernel + multi-end hosts** (ADR 0005). Desktop is the shipping Host window; iOS/Android register the same `MachineKind` surface. Capability matrix: **234** CMs · **U-PASS=234** · **I-PASS=234** (Wave H6; CM-0705 platform-subset wording retained).
 
-See [docs/scaffold-status.md](docs/scaffold-status.md), [docs/capability-matrix.md](docs/capability-matrix.md), [docs/adr/0005-course-correct-moonbit-desktop.md](docs/adr/0005-course-correct-moonbit-desktop.md).
+See [docs/scaffold-status.md](docs/scaffold-status.md), [docs/capability-matrix.md](docs/capability-matrix.md), [docs/adr/0005-course-correct-moonbit-desktop.md](docs/adr/0005-course-correct-moonbit-desktop.md), [hosts/README.md](hosts/README.md).
 
 ## Start Desktop (primary)
 
 ```bash
 export PATH="$HOME/.moon/bin:$PATH"
 bash scripts/start-desktop.sh
-# Window title: Bit Bot Desktop
+# Window: hosts/desktop (Bit Bot Desktop)
 # Boot → moon run cmd/main --target native
 # Chat → moon run cmd/desktop_turn --target native -- "<text>"
 ```
@@ -17,10 +17,17 @@ bash scripts/start-desktop.sh
 One MoonBit turn without the window:
 
 ```bash
-moon run cmd/desktop_turn --target native -- "hello from desktop"
+moon run cmd/desktop_turn --target native -- "ListMachines"
+# JSON v:1 includes machines kind desktop + ios + android
 ```
 
-Default target is **native**. Wasm alternative: `BITBOT_MOON_TARGET=wasm` (or `moon run … --target wasm`).
+Multi-end machine list (no UI):
+
+```bash
+bash scripts/host_mobile_stub.sh
+```
+
+Default target is **native**. Wasm alternative: `BITBOT_MOON_TARGET=wasm`.
 
 Kernel boot only:
 
@@ -33,29 +40,16 @@ moon run cmd/main --target native
 ```bash
 export PATH="$HOME/.moon/bin:$PATH"
 moon check
-moon test   # expect 347+ passed
+moon test
 ```
 
-## Python Host (optional / secondary)
+## Python Host (non-goal / demoted)
 
-`scripts/bitbot_runtime/` + `:8765` Host UI remain available for Host FFI / local deploy experiments. They are **not** the product brain; Desktop + MoonBit is. Prefer `bash scripts/start-desktop.sh` for the product path.
+`scripts/bitbot_runtime/` + `:8765` Host UI and `deploy_local.sh` are **not** the product path. They are optional Host FFI experiments only. Do not advertise Python chat as Bit Bot.
 
-```bash
-bash scripts/deploy_local.sh   # optional: http://127.0.0.1:8765/
-bash scripts/start-bitbot.sh   # optional: same stack without smoke curl
-```
+Prefer `bash scripts/start-desktop.sh`.
 
-Docs: [docs/qa/real-host-runtime.md](docs/qa/real-host-runtime.md).
-
-### LLM mode (Host FFI only; Host owns the model)
-
-| Priority | Condition | Mode |
-|----------|-----------|------|
-| 1 | `BITBOT_LLM_BASE_URL` + `BITBOT_LLM_API_KEY` (+ optional `BITBOT_LLM_MODEL`) | `api` (OpenAI-compatible) |
-| 2 | Ollama at `BITBOT_OLLAMA_URL` (default `http://127.0.0.1:11434`) | `ollama` |
-| 3 | else | `localbrain` (heuristic; deprecated as product brain) |
-
-Other useful env for that stack: `BITBOT_DATA_ROOT` (default `/workspace/data`), `HOST_UI_PORT` (default `8765`).
+Docs: [docs/qa/real-host-runtime.md](docs/qa/real-host-runtime.md) (legacy Host UI notes).
 
 ## Host smokes / H6 matrix I sweep
 

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Deploy Bit Bot Host product runtime on this machine: kill old → start → health → smoke chat.
+# OPTIONAL / DEMOTED — Python Host UI on :8765 (not the product brain).
+# Product path: bash scripts/start-desktop.sh (MoonBit + hosts/desktop).
+# This script: kill old → start Host UI → health → smoke chat (Host FFI experiments only).
 set -euo pipefail
+echo "NOTE: deploy_local is demoted. Prefer scripts/start-desktop.sh for Bit Bot product." >&2
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="${HOME}/.moon/bin:${PATH}"

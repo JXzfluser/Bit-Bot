@@ -24,10 +24,13 @@ agent-tools/
 /tmp/bitbot-sandbox/
 
 # Desktop (Electron)
+/hosts/desktop/node_modules/
+/hosts/desktop/dist/
+/hosts/desktop/out/
 /desktop/node_modules/
 /desktop/dist/
 /desktop/out/
-# Accidental root npm init (Desktop lives under desktop/)
+# Accidental root npm init (Desktop lives under hosts/desktop/)
 /package.json
 /package-lock.json
 /node_modules/

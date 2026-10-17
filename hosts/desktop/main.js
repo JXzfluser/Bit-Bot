@@ -4,7 +4,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 
-const REPO_ROOT = path.resolve(__dirname, "..");
+const REPO_ROOT = path.resolve(__dirname, "../..");
 const MOON_BIN = process.env.MOON_BIN || "moon";
 const MOON_TARGET = process.env.BITBOT_MOON_TARGET || "native";
 

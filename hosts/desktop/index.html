@@ -13,6 +13,7 @@
     --line: #2a3d34;
     --accent: #3dba7e;
     --warn: #d4a017;
+    --side: #0e1612;
   }
   * { box-sizing: border-box; }
   body {
@@ -24,11 +25,18 @@
       radial-gradient(1200px 600px at 10% -10%, #1a3a2c 0%, transparent 55%),
       radial-gradient(900px 500px at 100% 0%, #1e2a22 0%, transparent 50%),
       linear-gradient(165deg, var(--bg0), var(--bg1));
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 220px 1fr 240px;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "header header header"
+      "agents main machines"
+      "agents composer machines";
+    min-height: 100vh;
   }
   header {
-    padding: 20px 24px 12px;
+    grid-area: header;
+    padding: 16px 20px 12px;
     border-bottom: 1px solid var(--line);
   }
   header .brand {
@@ -40,16 +48,68 @@
     color: var(--muted);
     font-size: 13px;
   }
+  #agents {
+    grid-area: agents;
+    border-right: 1px solid var(--line);
+    background: var(--side);
+    padding: 14px 12px;
+    overflow: auto;
+  }
+  #machines {
+    grid-area: machines;
+    border-left: 1px solid var(--line);
+    background: var(--side);
+    padding: 14px 12px;
+    overflow: auto;
+  }
+  .panel-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .agent-item, .machine-item {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #101a15;
+  }
+  .agent-item.active { border-color: #2f6b4c; }
+  .agent-item .name, .machine-item .name {
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .agent-item .meta, .machine-item .meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .kind-pill {
+    display: inline-block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #b7e0c8;
+    margin-right: 4px;
+  }
+  #main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
   #banner {
-    margin: 12px 24px 0;
-    padding: 12px 14px;
+    margin: 12px 16px 0;
+    padding: 10px 12px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: #0f1814cc;
     font: 12px/1.4 ui-monospace, "IBM Plex Mono", monospace;
     white-space: pre-wrap;
     color: var(--muted);
-    max-height: 140px;
+    max-height: 100px;
     overflow: auto;
   }
   #banner.ok { border-color: #2f6b4c; color: #b7e0c8; }
@@ -57,13 +117,13 @@
   #log {
     flex: 1;
     overflow: auto;
-    padding: 16px 24px 8px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
   .msg {
-    max-width: 720px;
+    max-width: 100%;
     padding: 10px 12px;
     border-radius: 8px;
     border: 1px solid var(--line);
@@ -78,8 +138,14 @@
   }
   .msg .body { margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
   #composer {
-    padding: 12px 24px 20px;
+    grid-area: composer;
+    padding: 12px 16px 16px;
     border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #composer .row {
     display: flex;
     gap: 10px;
   }
@@ -104,29 +170,61 @@
   }
   #composer button:disabled { opacity: 0.5; cursor: wait; }
   #json-out {
-    margin: 0 24px 16px;
-    padding: 10px 12px;
+    padding: 8px 10px;
     border: 1px dashed var(--line);
     border-radius: 8px;
     font: 11px/1.35 ui-monospace, monospace;
     color: var(--warn);
     white-space: pre-wrap;
-    max-height: 160px;
+    max-height: 120px;
     overflow: auto;
+  }
+  @media (max-width: 900px) {
+    body {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "header"
+        "agents"
+        "machines"
+        "main"
+        "composer";
+    }
+    #agents, #machines { max-height: 140px; border: 0; border-bottom: 1px solid var(--line); }
   }
 </style>
 </head>
 <body>
   <header>
     <div class="brand">Bit Bot</div>
-    <div class="sub">Desktop host · product brain = MoonBit (<code>cmd/desktop_turn</code>)</div>
+    <div class="sub">Desktop host · MoonBit brain · multi-end MachineKind (desktop / ios / android)</div>
   </header>
-  <pre id="banner">booting MoonBit…</pre>
-  <div id="log"></div>
-  <pre id="json-out">turn JSON will appear here</pre>
+  <aside id="agents">
+    <div class="panel-title">Agents</div>
+    <div class="agent-item active">
+      <div class="name">Bit Bot</div>
+      <div class="meta">MoonBit · cmd/desktop_turn</div>
+    </div>
+    <div class="agent-item">
+      <div class="name">Teammates</div>
+      <div class="meta">matrix agents (via Host)</div>
+    </div>
+  </aside>
+  <div id="main">
+    <pre id="banner">booting MoonBit…</pre>
+    <div id="log"></div>
+  </div>
+  <aside id="machines">
+    <div class="panel-title">Machines</div>
+    <div id="machine-list">
+      <div class="machine-item"><div class="meta">Ask ListMachines to refresh</div></div>
+    </div>
+  </aside>
   <form id="composer">
-    <input id="text" type="text" placeholder="发消息给 MoonBit…" autocomplete="off" />
-    <button id="send" type="submit">发送</button>
+    <pre id="json-out">turn JSON (v:1) will appear here</pre>
+    <div class="row">
+      <input id="text" type="text" placeholder="ListMachines · remember k=v · recall · shell …" autocomplete="off" />
+      <button id="send" type="submit">发送</button>
+    </div>
   </form>
   <script>
     const banner = document.getElementById("banner");
@@ -135,6 +233,7 @@
     const form = document.getElementById("composer");
     const input = document.getElementById("text");
     const sendBtn = document.getElementById("send");
+    const machineList = document.getElementById("machine-list");
 
     function addMsg(role, text) {
       const el = document.createElement("div");
@@ -146,12 +245,31 @@
       log.scrollTop = log.scrollHeight;
     }
 
+    function renderMachines(machines) {
+      if (!Array.isArray(machines) || machines.length === 0) return;
+      machineList.innerHTML = "";
+      for (const m of machines) {
+        const el = document.createElement("div");
+        el.className = "machine-item";
+        el.innerHTML =
+          '<div class="name"></div><div class="meta"></div>';
+        el.querySelector(".name").textContent = m.label || m.id || "?";
+        el.querySelector(".meta").innerHTML =
+          '<span class="kind-pill"></span><span class="st"></span>';
+        el.querySelector(".kind-pill").textContent = m.kind || "?";
+        el.querySelector(".st").textContent = m.status || "";
+        machineList.appendChild(el);
+      }
+    }
+
     async function boot() {
       try {
         const r = await window.bitbot.boot();
         banner.className = r.ok ? "ok" : "err";
         banner.textContent = (r.banner || JSON.stringify(r, null, 2)) +
           "\n\n[host] target=" + (r.target || "?") + " · " + (r.note || "");
+        const lm = await window.bitbot.turn("ListMachines");
+        if (lm && lm.machines) renderMachines(lm.machines);
       } catch (e) {
         banner.className = "err";
         banner.textContent = String(e && e.message ? e.message : e);
@@ -168,6 +286,7 @@
       try {
         const r = await window.bitbot.turn(text);
         jsonOut.textContent = JSON.stringify(r, null, 2);
+        if (r && Array.isArray(r.machines)) renderMachines(r.machines);
         if (r && Array.isArray(r.messages)) {
           for (const m of r.messages) {
             if (m.role === "user") continue;
@@ -175,6 +294,9 @@
           }
         } else if (r && r.error) {
           addMsg("assistant", "error: " + r.error);
+        }
+        if (r && r.needs_host_ffi) {
+          addMsg("assistant", "[host] needs_host_ffi — Desktop executes effects via Host FFI");
         }
       } catch (e) {
         const msg = String(e && e.message ? e.message : e);
