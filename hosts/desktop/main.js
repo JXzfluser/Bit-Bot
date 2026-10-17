@@ -34,8 +34,13 @@ async function executeHostEffects(effects) {
   const results = [];
   for (const e of effects || []) {
     const kind = (e && e.kind) || "";
-    // Channel / mail plans: Host acknowledges; live Slack/SMTP is Host-live later.
-    if (kind === "channel_send" || kind === "mail_draft") {
+    // Channel / mail / MCP / OAuth plans: Host acknowledges; live APIs later.
+    if (
+      kind === "channel_send" ||
+      kind === "mail_draft" ||
+      kind === "mcp_namespace" ||
+      kind === "oauth"
+    ) {
       results.push({
         kind,
         ok: true,

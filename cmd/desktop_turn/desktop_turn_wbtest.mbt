@@ -194,6 +194,24 @@ test "classify_intent_table" {
     ClaimInbox(local_part~) => assert_eq(local_part, "zoe")
     _ => fail("expected ClaimInbox")
   }
+  match classify_intent("install plugin plugin-slides") {
+    InstallPlugin(plugin_id~) => assert_eq(plugin_id, "plugin-slides")
+    _ => fail("expected InstallPlugin")
+  }
+  assert_eq(classify_intent("setup slack"), SetupSlack)
+}
+
+///|
+test "desktop_turn_install_plugin_and_setup_slack" {
+  let p = run_desktop_turn("install plugin plugin-slides", turn_id="plug-1")
+  assert_true(p.ok)
+  assert_eq(p.intent, "install_plugin")
+  assert_true(p.needs_host_ffi)
+  assert_eq(p.effects[0].kind, "mcp_namespace")
+  let s = run_desktop_turn("setup slack", turn_id="slack-1")
+  assert_true(s.ok)
+  assert_eq(s.intent, "setup_slack")
+  assert_eq(s.effects[0].kind, "oauth")
 }
 
 ///|

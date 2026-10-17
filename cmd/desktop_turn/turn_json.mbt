@@ -57,6 +57,8 @@ pub(all) enum TurnIntent {
   ConnectorsStatus
   ClaimInbox(local_part~ : String)
   DraftMail(to_~ : String, subject~ : String, body~ : String)
+  InstallPlugin(plugin_id~ : String)
+  SetupSlack
   HostContinue
 } derive(Eq, Debug)
 
@@ -72,6 +74,8 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     ConnectorsStatus => "connectors_status"
     ClaimInbox(_) => "claim_inbox"
     DraftMail(_) => "draft_mail"
+    InstallPlugin(_) => "install_plugin"
+    SetupSlack => "setup_slack"
     HostContinue => "host_continue"
   }
 }
@@ -198,6 +202,22 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       low == "connectors status" ||
       low == "connector status" {
     return ConnectorsStatus
+  }
+  if low.has_prefix("install plugin ") || low.has_prefix("add connector ") {
+    let id = if low.has_prefix("install plugin ") {
+      trimmed[15:].trim().to_owned()
+    } else {
+      trimmed[14:].trim().to_owned()
+    }
+    if id != "" {
+      return InstallPlugin(plugin_id=id)
+    }
+  }
+  if low == "setup slack" ||
+      low == "set up slack" ||
+      low == "connect slack" ||
+      low == "setupslack" {
+    return SetupSlack
   }
   if low.has_prefix("claim inbox ") {
     let part = trimmed[12:].trim().to_owned()
@@ -827,6 +847,99 @@ pub fn run_desktop_turn(
       }
       buf.write_string(". Product path uses @connectors (not Python).")
       deliver_ok(trimmed, turn_id, buf.to_string(), intent)
+    }
+    InstallPlugin(plugin_id~) => {
+      let reg = @connectors.PluginRegistry::seed_demo()
+      match reg.install(plugin_id) {
+        Err(e) => {
+          {
+            v: DESKTOP_TURN_JSON_V,
+            ok: false,
+            turn_id,
+            intent: intent.name(),
+            messages: [
+              { role: "user", text: trimmed },
+              { role: "assistant", text: "Install plugin failed: " + e },
+            ],
+            modules: mods,
+            machines: [],
+            memory: [],
+            effects: [],
+            needs_host_ffi: false,
+            host_continued: false,
+            channel_delivery: "",
+            error: Some(e),
+          }
+        }
+        Ok(skills) => {
+          let ready = reg.ready_namespaces()
+          let reply =
+            "Installed plugin " +
+            plugin_id +
+            " (" +
+            skills.length().to_string() +
+            " skill(s)); ready namespaces: " +
+            ready.join(", ") +
+            ". MCP Live calls still need Host FFI."
+          let effect : DesktopEffect = {
+            kind: "mcp_namespace",
+            command: plugin_id,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            reply,
+            intent,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    SetupSlack => {
+      let session = @channels.SetUpSlackSession::new()
+      match session.connect_tool() {
+        Err(e) => {
+          {
+            v: DESKTOP_TURN_JSON_V,
+            ok: false,
+            turn_id,
+            intent: intent.name(),
+            messages: [
+              { role: "user", text: trimmed },
+              { role: "assistant", text: "SetUpSlack failed: " + e },
+            ],
+            modules: mods,
+            machines: [],
+            memory: [],
+            effects: [],
+            needs_host_ffi: false,
+            host_continued: false,
+            channel_delivery: "",
+            error: Some(e),
+          }
+        }
+        Ok(status) => {
+          let reply =
+            "SetUpSlack: " +
+            status.label() +
+            " via @channels.SetUpSlackSession (Grok Slack connect path). Live OAuth is Host FFI."
+          let effect : DesktopEffect = {
+            kind: "oauth",
+            command: "slack",
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            reply,
+            intent,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
     }
     ClaimInbox(local_part~) => {
       let svc = @mail.MailService::new()
