@@ -234,9 +234,9 @@
       <div class="name">Bit Bot</div>
       <div class="meta">MoonBit · cmd/desktop_turn</div>
     </div>
-    <div class="agent-item">
+    <div class="agent-item" id="teammates-panel">
       <div class="name">Teammates</div>
-      <div class="meta">matrix agents (via Host)</div>
+      <div class="meta" id="teammates-meta">Host durable store</div>
     </div>
   </aside>
   <div id="main">
@@ -352,6 +352,17 @@
         else hideApproval();
         if (r && r.host_continued) {
           addMsg("assistant", "[host] ADR 0002 continue applied (MoonBit absorbed Host results)");
+        }
+        if (r && Array.isArray(r.host_results)) {
+          const tm = r.host_results.find((h) => h && h.kind === "teammate_create" && h.ok);
+          if (tm) {
+            try {
+              const payload = JSON.parse(tm.stdout || "{}");
+              const name = (payload.teammate && payload.teammate.name) || "teammate";
+              document.getElementById("teammates-meta").textContent =
+                "Members: " + name + " (Host durable)";
+            } catch (_) { /* ignore */ }
+          }
         }
       } catch (e) {
         const msg = String(e && e.message ? e.message : e);

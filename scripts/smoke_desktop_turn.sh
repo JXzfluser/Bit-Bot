@@ -119,6 +119,22 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slides.json'));assert d
 node hosts/cli_host/run_turn.js "export bot template id=bot-smoke name=SmokeBot" >/tmp/bitbot-export.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-export.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='export_pack');assert h.get('ok');assert 'secrets_stripped' in (h.get('stdout') or '');assert os.path.isfile('agent-tools/exports/bot-smoke-shareable-template.json');print('export_pack host ok')"
 
+echo "==> Host durable product delivery (voice/teammates/device/subagent/cloud/commerce)"
+node hosts/cli_host/run_turn.js "voice start smoke1" >/tmp/bitbot-voice.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='voice_session');assert h.get('ok') and 'sessions.json' in (h.get('stdout') or '');assert os.path.isfile('data/voice/sessions.json');print('voice_session durable ok')"
+node hosts/cli_host/run_turn.js "create teammate id=asst-smoke name=Smoke role=executor" >/tmp/bitbot-teammate.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teammate.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='teammate_create');assert h.get('ok') and 'teammates.json' in (h.get('stdout') or '');assert os.path.isfile('data/agents/teammates.json');print('teammate_create durable ok')"
+node hosts/cli_host/run_turn.js --machine-kind ios "device tool camera" >/tmp/bitbot-device-perm.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-device-perm.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind') in ('device_permission','device_tool'));assert h.get('ok');assert 'pretend_granted' not in (h.get('stdout') or '') or 'false' in (h.get('stdout') or '');print('device_permission/tool durable ok', h.get('kind'))"
+node hosts/cli_host/run_turn.js "spawn subagent triage mail" >/tmp/bitbot-subagent.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-subagent.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='subagent_run');assert h.get('ok') and 'subagents.json' in (h.get('stdout') or '');assert os.path.isfile('data/agents/subagents.json');print('subagent_run durable ok')"
+node hosts/cli_host/run_turn.js "launch cloud agent triage CI failures" >/tmp/bitbot-cloud.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_agent_launch');assert h.get('ok') and 'launches.jsonl' in (h.get('stdout') or '');print('cloud_agent_launch durable ok')"
+node hosts/cli_host/run_turn.js --approved "purchase item=BlueYeti cents=12900" >/tmp/bitbot-purchase.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-purchase.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind') in ('purchase','approval_card') and h.get('ok') for h in hrs);print('purchase/approval durable ok', [(h.get('kind'),h.get('ok')) for h in hrs])"
+node hosts/cli_host/run_turn.js "fill credential example.com" >/tmp/bitbot-cred.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-cred.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='credential_fill');assert h.get('ok');assert 'secret_echoed' in (h.get('stdout') or '') and 'false' in (h.get('stdout') or '');print('credential_fill vault-only ok')"
+
 echo "==> journal / shared memory / inbound reaction (durable Host stores)"
 node hosts/cli_host/run_turn.js "journal date=2026-10-17 id=smoke body=smoke-event" >/tmp/bitbot-journal-append.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-journal-append.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='journal_append');assert h.get('ok') and 'events.jsonl' in (h.get('stdout') or '');print('journal_append durable ok')"

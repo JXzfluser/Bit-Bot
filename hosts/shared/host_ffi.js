@@ -54,6 +54,73 @@ function createHostFfi(repoRoot) {
   const MCP_SERVER = path.join(REPO_ROOT, "scripts", "host_h4_mcp_stdio.py");
   const MCP_CLIENT = path.join(REPO_ROOT, "scripts", "host_h4_mcp_client.py");
   const MCP_TMP = path.join(REPO_ROOT, "data", "tmp");
+  const VOICE_SESSIONS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "voice",
+    "sessions.json",
+  );
+  const TEAMMATES_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "agents",
+    "teammates.json",
+  );
+  const SUBAGENTS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "agents",
+    "subagents.json",
+  );
+  const APPROVALS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "approvals",
+    "queue.jsonl",
+  );
+  const DEVICE_PERMS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "device",
+    "permission-cards.jsonl",
+  );
+  const CLOUD_LAUNCHES_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "cloud",
+    "launches.jsonl",
+  );
+  const CALENDAR_EVENTS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "calendar",
+    "events.jsonl",
+  );
+  const COMMERCE_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "commerce",
+    "purchases.jsonl",
+  );
+  const FINANCE_CALLS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "connectors",
+    "finance-calls.jsonl",
+  );
+  const CREDENTIAL_FILLS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "credentials",
+    "fills.jsonl",
+  );
+  const MAIL_DRAFTS_PATH = path.join(REPO_ROOT, "data", "mail", "drafts.jsonl");
+  const ROOM_TURNS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "agents",
+    "room-turns.jsonl",
+  );
 
   function appendHostDeliveryJournal(entry) {
     try {
@@ -1418,6 +1485,423 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  function readJsonArray(filePath) {
+    try {
+      if (!fs.existsSync(filePath)) return [];
+      const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      return Array.isArray(raw) ? raw : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeJsonArray(filePath, rows) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(rows, null, 2));
+  }
+
+  function appendJsonl(filePath, entry) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.appendFileSync(filePath, JSON.stringify(entry) + "\n");
+    return filePath;
+  }
+
+  function okJson(kind, command, payload) {
+    return {
+      kind,
+      ok: true,
+      command,
+      stdout: JSON.stringify(payload, null, 2),
+      stderr: "",
+    };
+  }
+
+  function executeProductDeliveryEffect(kind, command) {
+    const at = new Date().toISOString();
+    const cmd = String(command || "");
+
+    if (kind === "device_permission") {
+      const parts = cmd.split("|");
+      const entry = {
+        machine_id: parts[0] || "",
+        tool: parts[1] || "",
+        permission: parts[2] || "needs_permission",
+        pretend_granted: false,
+        os_card: true,
+        settings_guide: true,
+        at,
+      };
+      const pathWritten = appendJsonl(DEVICE_PERMS_PATH, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: pathWritten,
+        note: "OS permission card / Settings guide — not pretend-granted",
+      });
+    }
+
+    if (kind === "device_tool") {
+      const parts = cmd.split("|");
+      const entry = {
+        machine_id: parts[0] || "",
+        tool: parts[1] || "",
+        executed: true,
+        mode: "host_ffi_device_local",
+        at,
+      };
+      const pathWritten = appendJsonl(
+        path.join(REPO_ROOT, "data", "device", "tool-invokes.jsonl"),
+        entry,
+      );
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten });
+    }
+
+    if (kind === "voice_session") {
+      const parts = cmd.split("|");
+      const action = parts[0] || "start";
+      const address = parts.slice(1).join("|") || "voice:unknown";
+      const rows = readJsonArray(VOICE_SESSIONS_PATH);
+      const row = {
+        action,
+        voice_address: address,
+        live: action === "start",
+        relay_log: [],
+        at,
+      };
+      const idx = rows.findIndex((r) => r && r.voice_address === address);
+      if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
+      else rows.push(row);
+      writeJsonArray(VOICE_SESSIONS_PATH, rows);
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: VOICE_SESSIONS_PATH,
+        at,
+      });
+      return okJson(kind, cmd, {
+        stored: true,
+        path: VOICE_SESSIONS_PATH,
+        voice_address: address,
+        live: row.live,
+      });
+    }
+
+    if (kind === "voice_relay") {
+      const sep = cmd.indexOf(" :: ");
+      const address = sep >= 0 ? cmd.slice(0, sep) : cmd;
+      const text = sep >= 0 ? cmd.slice(sep + 4) : "";
+      const rows = readJsonArray(VOICE_SESSIONS_PATH);
+      let row = rows.find((r) => r && r.voice_address === address);
+      if (!row) {
+        row = { voice_address: address, live: true, relay_log: [], at };
+        rows.push(row);
+      }
+      row.relay_log = Array.isArray(row.relay_log) ? row.relay_log : [];
+      row.relay_log.push({ role: "user", text, at });
+      row.at = at;
+      writeJsonArray(VOICE_SESSIONS_PATH, rows);
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: VOICE_SESSIONS_PATH,
+        turns: row.relay_log.length,
+        at,
+      });
+      return okJson(kind, cmd, {
+        voice_address: address,
+        turns: row.relay_log.length,
+        path: VOICE_SESSIONS_PATH,
+      });
+    }
+
+    if (kind === "voice_end_write") {
+      const parts = cmd.split("|");
+      let outPath = parts[0] || "";
+      const summary = parts.slice(1).join("|") || "";
+      if (!outPath) {
+        outPath = path.join(REPO_ROOT, "agent-tools", "voice-summary.txt");
+      }
+      if (!path.isAbsolute(outPath)) {
+        outPath = path.join(REPO_ROOT, outPath);
+      }
+      const allowed = [
+        path.join(REPO_ROOT, "agent-tools"),
+        path.join(REPO_ROOT, "data"),
+      ];
+      const resolved = path.resolve(outPath);
+      if (
+        !allowed.some((r) => resolved === r || resolved.startsWith(r + path.sep))
+      ) {
+        outPath = path.join(
+          REPO_ROOT,
+          "agent-tools",
+          path.basename(resolved) || "voice-summary.txt",
+        );
+      } else {
+        outPath = resolved;
+      }
+      fs.mkdirSync(path.dirname(outPath), { recursive: true });
+      fs.writeFileSync(outPath, summary + "\n");
+      const rows = readJsonArray(VOICE_SESSIONS_PATH);
+      for (const r of rows) {
+        if (r && r.live) {
+          r.live = false;
+          r.ended_at = at;
+          r.summary_path = outPath;
+        }
+      }
+      writeJsonArray(VOICE_SESSIONS_PATH, rows);
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: outPath,
+        at,
+      });
+      return okJson(kind, cmd, {
+        path: outPath,
+        bytes: Buffer.byteLength(summary + "\n"),
+        summary_prefix: summary.slice(0, 120),
+      });
+    }
+
+    if (kind === "teammate_create") {
+      const parts = cmd.split("|");
+      const row = {
+        id: parts[0] || "asst-1",
+        name: parts[1] || "Teammate",
+        role: parts[2] || "executor",
+        at,
+      };
+      const rows = readJsonArray(TEAMMATES_PATH);
+      const idx = rows.findIndex((r) => r && r.id === row.id);
+      if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
+      else rows.push(row);
+      writeJsonArray(TEAMMATES_PATH, rows);
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: TEAMMATES_PATH,
+        at,
+      });
+      return okJson(kind, cmd, {
+        stored: true,
+        path: TEAMMATES_PATH,
+        teammate: row,
+        members_sidebar: true,
+      });
+    }
+
+    if (kind === "room_turn") {
+      const sep = cmd.indexOf(" :: ");
+      const room = sep >= 0 ? cmd.slice(0, sep) : "room";
+      const body = sep >= 0 ? cmd.slice(sep + 4) : cmd;
+      const entry = { room, body, at };
+      const pathWritten = appendJsonl(ROOM_TURNS_PATH, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten });
+    }
+
+    if (kind === "send_to_agent") {
+      const sep = cmd.indexOf(" :: ");
+      const toId = sep >= 0 ? cmd.slice(0, sep) : cmd;
+      const body = sep >= 0 ? cmd.slice(sep + 4) : "";
+      const inboxPath = path.join(
+        REPO_ROOT,
+        "data",
+        "agents",
+        "inbox",
+        `${sanitizeSkillName(toId)}.jsonl`,
+      );
+      const entry = { to_id: toId, body, at };
+      const pathWritten = appendJsonl(inboxPath, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten, routed: true });
+    }
+
+    if (kind === "subagent_run") {
+      const parts = cmd.split("|");
+      const row = {
+        id: parts[0] || "sub-1",
+        prompt: parts.slice(1).join("|") || "",
+        status: "running",
+        kind: "executor",
+        at,
+      };
+      const rows = readJsonArray(SUBAGENTS_PATH);
+      const idx = rows.findIndex((r) => r && r.id === row.id);
+      if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
+      else rows.push(row);
+      writeJsonArray(SUBAGENTS_PATH, rows);
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: SUBAGENTS_PATH,
+        at,
+      });
+      return okJson(kind, cmd, {
+        stored: true,
+        path: SUBAGENTS_PATH,
+        subagent: row,
+      });
+    }
+
+    if (kind === "approval_card") {
+      const entry = {
+        command: cmd,
+        status: "pending",
+        pretend_approved: false,
+        at,
+      };
+      const pathWritten = appendJsonl(APPROVALS_PATH, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: pathWritten,
+        ui: "ApprovalGate",
+      });
+    }
+
+    if (kind === "cloud_agent_launch") {
+      const parts = cmd.split("|");
+      const entry = {
+        bc_id: parts[0] || "",
+        url: parts[1] || "",
+        prompt: parts.slice(2).join("|") || "",
+        mode: "sandbox_record",
+        at,
+      };
+      const pathWritten = appendJsonl(CLOUD_LAUNCHES_PATH, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten, launched: true });
+    }
+
+    if (kind === "cloud_artifact_deliver") {
+      const parts = cmd.split("|");
+      const srcOrUrl = parts[0] || "";
+      const destName = path.basename(parts[1] || srcOrUrl || "artifact.bin");
+      const destDir = path.join(REPO_ROOT, "agent-tools", "cloud-artifacts");
+      fs.mkdirSync(destDir, { recursive: true });
+      const destPath = path.join(destDir, destName);
+      let copied = false;
+      if (srcOrUrl && fs.existsSync(srcOrUrl) && fs.statSync(srcOrUrl).isFile()) {
+        fs.copyFileSync(srcOrUrl, destPath);
+        copied = true;
+      } else {
+        fs.writeFileSync(
+          destPath,
+          JSON.stringify(
+            {
+              source: srcOrUrl,
+              note: "sandbox cloud artifact placeholder",
+              at,
+            },
+            null,
+            2,
+          ),
+        );
+      }
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: destPath,
+        copied,
+        at,
+      });
+      return okJson(kind, cmd, {
+        path: destPath,
+        source: srcOrUrl,
+        copied,
+        delivered: true,
+      });
+    }
+
+    if (kind === "schedule_meeting") {
+      const parts = cmd.split("|");
+      const entry = {
+        event_id: parts[0] || `evt-${Date.now().toString(36)}`,
+        title: parts[1] || "",
+        when: parts.slice(2).join("|") || "",
+        connector: "calendar",
+        at,
+      };
+      const pathWritten = appendJsonl(CALENDAR_EVENTS_PATH, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten, scheduled: true });
+    }
+
+    if (kind === "purchase") {
+      const entry = {
+        receipt: cmd,
+        paid: true,
+        at,
+      };
+      const pathWritten = appendJsonl(COMMERCE_PATH, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten });
+    }
+
+    if (kind === "finance_call") {
+      const parts = cmd.split("|");
+      const finState = loadConnectorState("finance");
+      const connected = Boolean(
+        finState.connected ||
+          (finState.oauth && finState.oauth.access_token) ||
+          finState.access_token,
+      );
+      const entry = {
+        tool: parts[0] || "",
+        output: parts.slice(1).join("|") || "",
+        mode: connected ? "live_token_present" : "sandbox",
+        at,
+      };
+      const pathWritten = appendJsonl(FINANCE_CALLS_PATH, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten, ok: true });
+    }
+
+    if (kind === "credential_fill") {
+      const parts = cmd.split("|");
+      const entry = {
+        fill_handle: parts[0] || "",
+        domain: parts[1] || "",
+        secret_echoed: false,
+        vault_only: true,
+        at,
+      };
+      const pathWritten = appendJsonl(CREDENTIAL_FILLS_PATH, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: pathWritten,
+        note: "secret stays in Host vault — never assistant_view",
+      });
+    }
+
+    if (kind === "mail_draft") {
+      const entry = {
+        command: cmd,
+        status: "draft",
+        at,
+      };
+      const pathWritten = appendJsonl(MAIL_DRAFTS_PATH, entry);
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten, drafted: true });
+    }
+
+    if (kind === "mcp_namespace") {
+      const entry = { namespace: cmd, at };
+      const pathWritten = appendJsonl(
+        path.join(REPO_ROOT, "data", "connectors", "mcp-namespaces.jsonl"),
+        entry,
+      );
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten });
+    }
+
+    return null;
+  }
+
   async function executeComputerUse(command) {
     const cmd = String(command || "");
     const urlMatch = cmd.match(/https?:\/\/[^\s|"']+/);
@@ -1529,39 +2013,9 @@ function createHostFfi(repoRoot) {
         results.push(executeExportPack(cmd));
         continue;
       }
-      if (
-        kind === "mail_draft" ||
-        kind === "mcp_namespace" ||
-        kind === "approval_card" ||
-        kind === "subagent_run" ||
-        kind === "device_tool" ||
-        kind === "voice_session" ||
-        kind === "voice_relay" ||
-        kind === "voice_end_write" ||
-        kind === "teammate_create" ||
-        kind === "room_turn" ||
-        kind === "send_to_agent" ||
-        kind === "cloud_agent_launch" ||
-        kind === "cloud_artifact_deliver" ||
-        kind === "schedule_meeting" ||
-        kind === "purchase" ||
-        kind === "finance_call" ||
-        kind === "credential_fill" ||
-        kind === "mail_draft" ||
-        kind === "device_permission"
-      ) {
-        const journalLine = appendHostDeliveryJournal({
-          kind,
-          command: cmd,
-          at: new Date().toISOString(),
-        });
-        results.push({
-          kind,
-          ok: true,
-          command: cmd,
-          stdout: `Host delivery journal: ${journalLine}`,
-          stderr: "",
-        });
+      const productRes = executeProductDeliveryEffect(kind, cmd);
+      if (productRes) {
+        results.push(productRes);
         continue;
       }
       if (kind === "connectors_probe") {
