@@ -70,7 +70,7 @@ assert any((json.loads(l).get('type')=='thread') for l in rows if l.strip()), 'm
 print('parity thread ledger ok')
 "
 "${RUN[@]}" "launch cloud agent parity refactor $MARKER" >/tmp/parity-cloud.json
-python3 -c "import json;d=json.load(open('/tmp/parity-cloud.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_agent_launch');p=json.loads(h['stdout']);card=p.get('cursor_agent_card') or {};assert card.get('type')=='cursor-agent' or (p.get('delivery') or {}).get('type')=='cursor-agent' or card.get('bc_id');print('parity cursor-agent ok', card.get('bc_id') or (p.get('delivery') or {}).get('bc_id'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cloud.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_agent_launch');p=json.loads(h['stdout']);card=p.get('cursor_agent_card') or {};assert card.get('type')=='cursor-agent' or (p.get('delivery') or {}).get('type')=='cursor-agent' or card.get('bc_id');assert p.get('pretend_remote_cloud') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('session_path') and os.path.isfile(p['session_path']);print('parity cursor-agent ok', card.get('bc_id') or (p.get('delivery') or {}).get('bc_id'), p.get('path'))"
 
 # 9) Session memory multi-turn (Host seed reinject — not LocalBrain)
 SESS="parity-mem-$MARKER"
@@ -266,7 +266,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-slack-claim-live.json')
 python3 -c "import json;d=json.load(open('/tmp/parity-teams-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_teams_claim';assert p.get('claimed_count',0)>=1;assert p.get('pretend_live') is False;print('parity live_teams_claim ok', p.get('claimed_count'))"
 python3 -c "import json;d=json.load(open('/tmp/parity-teams-claim-sandbox.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_teams_claim';assert p.get('pretend_live') is False;print('parity sandbox_teams_claim ok')"
 "${RUN[@]}" "deliver cloud artifact bc-1" >/tmp/parity-cloud-art.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-cloud-art.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_artifact_deliver');p=json.loads(h['stdout']);assert p.get('delivered') is True;assert p.get('bc_id')=='bc-1';assert p.get('path') and os.path.isfile(p['path']);print('parity cloud_artifact_deliver ok', p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cloud-art.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_artifact_deliver');p=json.loads(h['stdout']);assert p.get('delivered') is True;assert p.get('bc_id')=='bc-1';assert p.get('pretend_remote_fetch') is False;assert p.get('pretend_delivered') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('meta_path') and os.path.isfile(p['meta_path']);print('parity cloud_artifact_deliver ok', p.get('path'), p.get('meta_path'))"
 bash "$ROOT/scripts/host_routine_daemon.sh" --sweeps 2 --interval-ms 50 --write-systemd-unit >/tmp/parity-daemon.log 2>&1
 python3 -c "import json,os;assert os.path.isfile('data/routines/daemon-sweep-1.json');assert os.path.isfile('data/routines/daemon-sweep-2.json');st=json.load(open('data/routines/daemon-status.json'));assert st.get('sweeps',0)>=2;assert os.path.isfile('data/routines/bitbot-routine-daemon.service');print('parity routine daemon sweeps ok', st.get('sweeps'), 'systemd_unit', st.get('systemd_unit'))"
 BITBOT_OAUTH_MODE=live "${RUN[@]}" "setup slack" >/tmp/parity-oauth-needsauth.json || true
@@ -386,6 +386,8 @@ python3 -c "import json,glob,os;meta=json.load(open('hosts/dist/mobile/meta/stor
 # 10) Multi-end mobile Host strip + ListMachines host-present honesty
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
 python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'machine_kind=ios' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"
+"${MOBILE[@]}" --machine-kind ios --session-id parity-ios-perm --approved "device tool camera" >/tmp/parity-ios-perm.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-ios-perm.txt').read();assert 'device_permission' in t or 'HostAbi device_permission' in t;assert 'pretend_granted=false' in t or 'pretend_granted\": false' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-mirrors/os-card-*.json'));assert mirrors;m=json.load(open(mirrors[-1]));assert m.get('pretend_granted') is False;assert m.get('card_path') and os.path.isfile(m['card_path']);print('parity ios mobile permission mirror ok', m.get('card_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
 python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;assert 'machine_kind=android' in t;print('parity android turn ok')"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-slides "make slides title=MobileParity" >/tmp/parity-ios-slides.txt

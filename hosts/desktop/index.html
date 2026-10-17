@@ -752,8 +752,17 @@
                   label = "widget:" + (p.widget.title || "approval");
                   types.push("widget");
                 } else if (h.kind === "cloud_agent_launch" && p.cursor_agent_card) {
-                  label = "cursor-agent:" + (p.cursor_agent_card.bc_id || p.bc_id || "?");
+                  label =
+                    "cursor-agent:" +
+                    (p.cursor_agent_card.bc_id || p.bc_id || "?") +
+                    (p.path ? "/snap" : "");
                   types.push("cursor-agent");
+                } else if (h.kind === "cloud_artifact_deliver") {
+                  label =
+                    "cloud-art:" +
+                    String(p.path || "").split("/").slice(-1)[0] +
+                    (p.meta_path ? "/meta" : "");
+                  types.push("attachment");
                 } else if (h.kind === "channel_send" && p.personal_dm) {
                   label = "personal-dm:" + (p.mode || "draft");
                   types.push("text");

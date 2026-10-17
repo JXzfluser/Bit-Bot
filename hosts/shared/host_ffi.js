@@ -4965,6 +4965,12 @@ function createHostFfi(repoRoot) {
       }
       writeCloudSession(bcId, session);
 
+      const launchDir = path.join(REPO_ROOT, "data", "cloud", "launches");
+      fs.mkdirSync(launchDir, { recursive: true });
+      const launchPath = path.join(
+        launchDir,
+        `launch-${sanitizeSkillName(bcId) || "bc"}-${Date.now().toString(36)}.json`,
+      );
       const entry = {
         bc_id: bcId,
         url,
@@ -4976,9 +4982,14 @@ function createHostFfi(repoRoot) {
         remote_cloud_residual: remoteResidual,
         remote_api_attempted: remoteAttempted,
         remote_probe: remoteProbe,
+        mode_note: session.note || "",
         at,
       };
-      const pathWritten = appendJsonl(CLOUD_LAUNCHES_PATH, entry);
+      fs.writeFileSync(launchPath, JSON.stringify(entry, null, 2));
+      const pathWritten = appendJsonl(CLOUD_LAUNCHES_PATH, {
+        ...entry,
+        path: launchPath,
+      });
       const card = recordSendToUser({
         type: "cursor-agent",
         bc_id: bcId,
@@ -4986,27 +4997,31 @@ function createHostFfi(repoRoot) {
         can_open_cloud: Boolean(bcId),
         prompt_prefix: String(prompt || "").slice(0, 80),
         status: session.status,
+        path: launchPath,
         source_kind: kind,
         at,
       });
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: pathWritten,
+        path: launchPath,
+        ledger_path: pathWritten,
         session: sessionPath,
         status: session.status,
         at,
       });
       return okJson(kind, cmd, {
         ...entry,
-        path: pathWritten,
+        path: launchPath,
+        ledger_path: pathWritten,
         launched: true,
         ran: depth < 1 || mode === "remote_cloud_api",
         worker_ok: Boolean(worker.ok),
         nested_skipped: Boolean(worker.nested_skipped),
         assistant_prefix: String(session.assistant || "").slice(0, 160),
         cursor_agent_card: card,
-        send_to_user: SEND_TO_USER_PATH,
+        send_to_user: card,
+        ok: true,
       });
     }
 
@@ -5044,9 +5059,38 @@ function createHostFfi(repoRoot) {
         fromSession = Boolean(session && session.assistant);
       }
 
+      const delivDir = path.join(REPO_ROOT, "data", "cloud", "deliveries");
+      fs.mkdirSync(delivDir, { recursive: true });
+      const metaPath = path.join(
+        delivDir,
+        `deliver-${sanitizeSkillName(bcId || destName) || "art"}-${Date.now().toString(36)}.json`,
+      );
+      const meta = {
+        artifact_path: destPath,
+        source: srcOrUrl,
+        bc_id: bcId || "",
+        copied,
+        from_session: fromSession,
+        delivered: true,
+        bytes: fs.statSync(destPath).size,
+        pretend_remote_fetch: false,
+        pretend_delivered: false,
+        mode: fromSession
+          ? "host_cloud_artifact_from_session"
+          : copied
+            ? "host_cloud_artifact_copy"
+            : "host_cloud_artifact_placeholder",
+        at,
+      };
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+      appendJsonl(path.join(delivDir, "deliveries.jsonl"), {
+        ...meta,
+        path: metaPath,
+      });
       const delivery = recordSendToUser({
         type: "attachment",
         path: destPath,
+        meta_path: metaPath,
         label: "cloud_artifact",
         bc_id: bcId || "",
         source_kind: kind,
@@ -5056,19 +5100,17 @@ function createHostFfi(repoRoot) {
         kind,
         command: cmd,
         path: destPath,
+        meta_path: metaPath,
         copied,
         from_session: fromSession,
         at,
       });
       return okJson(kind, cmd, {
+        ...meta,
         path: destPath,
-        source: srcOrUrl,
-        bc_id: bcId || "",
-        copied,
-        from_session: fromSession,
-        delivered: true,
-        bytes: fs.statSync(destPath).size,
+        meta_path: metaPath,
         send_to_user: delivery,
+        ok: true,
       });
     }
 

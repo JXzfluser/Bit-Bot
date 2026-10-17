@@ -47,11 +47,16 @@ if (r.stdout) {
 if (r.stderr) process.stderr.write(r.stderr);
 
 // CM-0705: device_permission is executed by shared Host FFI into
-// data/device/permission-cards.jsonl (pretend_granted=false). Mirror a
-// mobile-specific OS-card note when the Host result is present.
+// data/device/permission-cards/*.json (pretend_granted=false). Mirror a
+// mobile-specific OS-card note that references the Host card path.
 try {
   const out = String(r.stdout || "");
-  const line = out.trim().split("\n").filter(Boolean).pop() || "";
+  // Prefer first-line JSON (mobile_host trailer may follow).
+  const line =
+    out
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.startsWith("{")) || "";
   if (line.startsWith("{")) {
     const turn = JSON.parse(line);
     const hrs = Array.isArray(turn.host_results) ? turn.host_results : [];
@@ -61,19 +66,49 @@ try {
         ? turn.effects.find((e) => e && e.kind === "device_permission")
         : null);
     if (perm) {
+      let cardPath = null;
+      let pretendGranted = false;
+      let residual = true;
+      try {
+        const payload = JSON.parse(perm.stdout || "{}");
+        cardPath = payload.path || null;
+        pretendGranted = Boolean(payload.pretend_granted);
+        residual = payload.true_device_os_dialog_residual !== false;
+      } catch {
+        /* ignore */
+      }
+      const mirrorDir = path.join(root, "data", "device", "mobile-mirrors");
+      fs.mkdirSync(mirrorDir, { recursive: true });
+      const mirrorPath = path.join(
+        mirrorDir,
+        `os-card-${Date.now().toString(36)}.json`,
+      );
+      const mirror = {
+        kind: "device_permission_os_card",
+        machine_kind: turn.machine_kind || "ios",
+        command: perm.command,
+        card_path: cardPath,
+        pretend_granted: pretendGranted,
+        true_device_os_dialog_residual: residual,
+        host_ok: perm.ok !== false,
+        at: new Date().toISOString(),
+        note: "Host raises OS permission dialog / Settings guide; not pretend-connected",
+      };
+      fs.writeFileSync(mirrorPath, JSON.stringify(mirror, null, 2));
       const journal = path.join(root, "data/journal/host-delivery.jsonl");
       fs.mkdirSync(path.dirname(journal), { recursive: true });
       fs.appendFileSync(
         journal,
-        JSON.stringify({
-          kind: "device_permission_os_card",
-          machine_kind: turn.machine_kind || "ios",
-          command: perm.command,
-          pretend_granted: false,
-          host_ok: perm.ok !== false,
-          at: new Date().toISOString(),
-          note: "Host raises OS permission dialog / Settings guide; not pretend-connected",
-        }) + "\n",
+        JSON.stringify({ ...mirror, path: mirrorPath }) + "\n",
+      );
+      process.stdout.write(
+        "[HostAbi device_permission card=" +
+          (cardPath || "(pending)") +
+          " pretend_granted=" +
+          String(pretendGranted) +
+          " mirror=" +
+          mirrorPath +
+          "]\n",
       );
     }
   }
