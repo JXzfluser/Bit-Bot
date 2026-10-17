@@ -584,6 +584,7 @@
             "section_add",
             "section_post",
             "credential_list",
+            "source_control",
           ];
           const attaches = r.host_results.filter(
             (h) => h && h.ok && attachKinds.includes(h.kind),
@@ -694,6 +695,20 @@
                   types.push("attachment");
                 } else if (h.kind === "code_changes") {
                   label = "code:" + (p.applied ? "applied" : "plan");
+                  types.push("attachment");
+                } else if (h.kind === "source_control") {
+                  const rp = p.remote_pr || {};
+                  const mode =
+                    rp.mode ||
+                    (String(p.mode || "").includes("gh_pr")
+                      ? String(p.mode).split("+").slice(-1)[0]
+                      : "git_status");
+                  const gated =
+                    rp.real_create_gated === true ||
+                    p.remote_pr_residual === true
+                      ? "/gated"
+                      : "";
+                  label = "sc:" + mode + gated;
                   types.push("attachment");
                 } else if (h.kind === "teammate_create") {
                   label = "teammate:" + ((p.teammate && p.teammate.id) || "?");

@@ -42,6 +42,16 @@ python3 -c "import json;d=json.load(open('/tmp/parity-creds.json'));assert d.get
 "${RUN[@]}" "source control create_pr" >/tmp/parity-sc.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-sc.json'));h=next(x for x in d['host_results'] if x.get('kind')=='source_control');p=json.loads(h['stdout']);assert p.get('pretend_remote_pr') is False;rp=p.get('remote_pr') or {};assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;assert plan.get('real_create_gated') is True or rp.get('real_create_gated') is True or p.get('remote_pr_residual') is True;print('parity source_control plan ok', rp.get('mode'), rp.get('plan_path'))"
 
+# 7b) Gated PR create path via injectable gh mock (dry-run then BITBOT_GH_PR_CREATE=1)
+rm -rf /tmp/parity-gh-mock-dry /tmp/parity-gh-mock-real
+mkdir -p /tmp/parity-gh-mock-dry /tmp/parity-gh-mock-real
+BITBOT_GH_BIN="$ROOT/scripts/host_gh_mock.sh" BITBOT_GH_MOCK_LOG_DIR=/tmp/parity-gh-mock-dry BITBOT_GH_CREATE_PR=1 \
+  "${RUN[@]}" "source control create_pr" >/tmp/parity-sc-dry.json
+python3 -c "import json;d=json.load(open('/tmp/parity-sc-dry.json'));h=next(x for x in d['host_results'] if x.get('kind')=='source_control');p=json.loads(h['stdout']);rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create_dry_run';assert rp.get('real_create_gated') is True;assert p.get('pretend_remote_pr') is False;print('parity sc dry-run create ok')"
+BITBOT_GH_BIN="$ROOT/scripts/host_gh_mock.sh" BITBOT_GH_MOCK_LOG_DIR=/tmp/parity-gh-mock-real BITBOT_GH_CREATE_PR=1 BITBOT_GH_PR_CREATE=1 \
+  "${RUN[@]}" "source control create_pr" >/tmp/parity-sc-real.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sc-real.json'));h=next(x for x in d['host_results'] if x.get('kind')=='source_control');p=json.loads(h['stdout']);rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create';assert rp.get('dry_run') is False;assert rp.get('real_create_gated') is False;assert os.path.isfile('/tmp/parity-gh-mock-real/last-create.json');assert p.get('pretend_remote_pr') is False;print('parity sc gated real create ok', rp.get('plan_path'))"
+
 # 8) Multi-end mobile Host strip
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
 python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"

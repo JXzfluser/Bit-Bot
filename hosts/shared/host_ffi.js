@@ -4525,7 +4525,16 @@ function createHostFfi(repoRoot) {
       let remotePrResidual = true;
       let mode = "host_git_status";
       if (wantPr) {
+        // BITBOT_GH_BIN overrides real gh for Host fidelity smoke (mock create/view).
         const ghBin = (() => {
+          const override = String(process.env.BITBOT_GH_BIN || "").trim();
+          if (override) {
+            try {
+              if (fs.existsSync(override)) return override;
+            } catch {
+              /* fall through */
+            }
+          }
           try {
             return require("child_process")
               .execSync("command -v gh", { encoding: "utf8" })

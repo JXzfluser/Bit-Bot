@@ -180,6 +180,8 @@
 - [x] Host teammate sections durable partitions (CM-1403 `section_add`/`section_post`; isolation + unknown refuse)
 - [x] Host credential_list metadata vault (CM-2130; never secret_echoed / pretend_secret_view)
 - [x] Host source_control always writes `pr-create-plan.json` with `real_create_gated` honesty
+- [x] Host source_control gated create evidence (`BITBOT_GH_BIN` + `host_gh_mock.sh`; dry-run vs `BITBOT_GH_PR_CREATE=1` real-create path; never invent GitHub PR)
+- [x] Desktop delivery chip for `source_control` (mode + gated flag)
 - [x] Mobile Host SendToUser delivery strip (`hosts/shared/send_to_user_surface.js` via mobile_host)
 - [x] Grok parity scenario smoke (`scripts/smoke_grok_parity_scenario.sh` multi-turn SendToUser proof)
 - [x] Desktop chips for mcp_call / mail_send / code_changes / teammate / sections

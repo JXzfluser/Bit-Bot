@@ -47,7 +47,7 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Meeting live transport | DirectSend transcript; live POST when `BITBOT_MEETING_API_URL`+token |
 | OS-window CU input | Windowed Chrome+CDP primary; `BITBOT_CU_NATIVE_ACT=1` drives native click/type |
 | Vision OCR | PIL hotspots; `BITBOT_CU_OCR=1` → tesseract closes `ocr_residual` |
-| Source-control remote PR | `git status` always; `BITBOT_GH_CREATE_PR=1` → view or `gh pr create --dry-run`; real create needs `BITBOT_GH_PR_CREATE=1` |
+| Source-control remote PR | `git status` always; `BITBOT_GH_CREATE_PR=1` → view or `gh pr create --dry-run`; real create needs `BITBOT_GH_PR_CREATE=1`; `BITBOT_GH_BIN` injects mock gh for Host fidelity smoke |
 | Mail search/read | Durable `data/mail/search|threads` artifacts; live Gmail when token (+ optional `BITBOT_GMAIL_API_BASE`); never pretend_live |
 | Mail send | Sandbox `.eml` draft by default; live Gmail/Outlook when token+`BITBOT_MAIL_SEND=1` (+ optional API base); never pretend_sent |
 | Email channel | `email:`/`gmail:` → mail_send; live_email_gmail when SEND gated |
