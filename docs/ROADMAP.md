@@ -266,6 +266,8 @@
 - [x] Parity: source_control path + status_path + pretend_remote_pr honesty
 - [x] Host mail_send finalize snaps under `data/mail/sends/` (cold/onbehalf/gmail/outlook; eml retained)
 - [x] Parity: mail_send path + pretend_sent honesty; multi-end SendToUser kinds expanded
+- [x] Host oauth per-op snaps under `data/connectors/oauth/` (never echo tokens; pretend_connected=false)
+- [x] Parity: oauth path honesty; mobile delivery mirrors include oauth/section/credential/purchase
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

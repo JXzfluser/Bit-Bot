@@ -974,7 +974,12 @@
                     (p.path ? "/snap" : "");
                   types.push(p.thread_ts ? "thread" : "text");
                 } else if (h.kind === "oauth") {
-                  label = "oauth:" + (p.status || "?") + "/" + (p.mode || "");
+                  label =
+                    "oauth:" +
+                    (p.status || "?") +
+                    "/" +
+                    (p.mode || "") +
+                    (p.path ? "/snap" : "");
                   const meta = document.getElementById("connectors-meta");
                   if (meta) {
                     meta.textContent =

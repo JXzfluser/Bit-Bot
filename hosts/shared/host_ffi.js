@@ -3314,6 +3314,78 @@ function createHostFfi(repoRoot) {
     return { raw, provider, connectorName };
   }
 
+  function finalizeOauthHostResult(command, result) {
+    // Per-op Host oauth snapshot — never echo tokens; honesty flags preserved.
+    const at = new Date().toISOString();
+    let payload = {};
+    try {
+      payload = JSON.parse((result && result.stdout) || "{}") || {};
+    } catch (_) {
+      payload = {};
+    }
+    const connector =
+      sanitizeSkillName(payload.connector || "oauth") || "oauth";
+    const modeSlug =
+      sanitizeSkillName(payload.mode || (result && result.ok ? "ok" : "needsauth")) ||
+      "oauth";
+    const oauthDir = path.join(REPO_ROOT, "data", "connectors", "oauth");
+    fs.mkdirSync(oauthDir, { recursive: true });
+    const snapPath = path.join(
+      oauthDir,
+      `oauth-${connector}-${modeSlug}-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      connector: payload.connector || connector,
+      status: payload.status || (result && result.ok ? "ok" : "NeedsAuth"),
+      connected: Boolean(payload.connected),
+      mode: payload.mode || null,
+      summary_ok: payload.summary_ok,
+      browser_opened: Boolean(payload.browser_opened),
+      browser_tool: payload.browser_tool || null,
+      authorize_url: payload.authorize_url || null,
+      callback_received: payload.callback_received,
+      interactive_browser: payload.interactive_browser,
+      interactive_cdp_click: payload.interactive_cdp_click,
+      session_path: payload.session_path || null,
+      artifact_dir: payload.artifact_dir || null,
+      switched: payload.switched,
+      pretend_connected: false,
+      pretend_connected_slack:
+        payload.pretend_connected_slack === true ? true : false,
+      mode_note: "host_oauth",
+      host_ok: Boolean(result && result.ok),
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(oauthDir, "events.jsonl"), {
+      ...artifact,
+      path: snapPath,
+    });
+    appendHostDeliveryJournal({
+      kind: "oauth",
+      command,
+      path: snapPath,
+      connector: artifact.connector,
+      mode: artifact.mode,
+      ok: Boolean(result && result.ok),
+      at,
+    });
+    return {
+      ...(result || {}),
+      kind: "oauth",
+      command,
+      stdout: JSON.stringify(
+        {
+          ...payload,
+          ...artifact,
+          path: snapPath,
+        },
+        null,
+        2,
+      ),
+    };
+  }
+
   function readLiveOauthToken(connectorName) {
     const envKey = `BITBOT_OAUTH_TOKEN_${String(connectorName || "")
       .toUpperCase()
@@ -8158,7 +8230,7 @@ function createHostFfi(repoRoot) {
         continue;
       }
       if (kind === "oauth") {
-        results.push(await executeOauth(cmd));
+        results.push(finalizeOauthHostResult(cmd, await executeOauth(cmd)));
         continue;
       }
       if (kind === "computer_use") {

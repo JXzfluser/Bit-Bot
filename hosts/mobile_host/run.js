@@ -121,7 +121,16 @@ try {
       "device",
       "mobile-delivery-mirrors",
     );
-    for (const kind of ["channel_send", "mail_send", "mail_draft"]) {
+    for (const kind of [
+      "channel_send",
+      "mail_send",
+      "mail_draft",
+      "section_add",
+      "section_post",
+      "credential_fill",
+      "purchase",
+      "oauth",
+    ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;
       let payload = {};
