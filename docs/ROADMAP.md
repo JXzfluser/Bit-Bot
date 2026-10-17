@@ -138,6 +138,8 @@
 - [x] Host cloud_agent_launch local MoonBit worker session (`mode=local_worker`, not pretend remote cloud) + cursor-agent card
 - [x] Host cloud_artifact_deliver materializes report from local cloud session (`from_session`)
 - [x] Host routine daemon one-shot sweeps (`scripts/host_routine_daemon.sh`; `long_lived=false` — not systemd cron)
+- [x] Host meeting_chat CM-2153: DirectSend → `data/meetings/live-chat.jsonl`; DraftCard → meeting eml
+- [x] Host Teams sandbox drafts + CM-1104 widget degrade + `data/channels/teams/outbound-drafts.jsonl`
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN

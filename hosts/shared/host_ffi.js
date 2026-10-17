@@ -814,6 +814,9 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
+      const teamsDir = path.join(REPO_ROOT, "data", "channels", "teams");
+      fs.mkdirSync(teamsDir, { recursive: true });
+      const teamsTranscript = path.join(teamsDir, "outbound-drafts.jsonl");
       const entry = {
         scheme: "teams",
         address: addr,
@@ -822,20 +825,34 @@ function createHostFfi(repoRoot) {
         ok: true,
         live_post: false,
         connector_ready: connectorReady,
+        widget_degraded: /\[widget:|type=widget/i.test(body),
         at: stamp,
         note: "Teams live Graph post needs BITBOT_TEAMS_TOKEN + BITBOT_TEAMS_POST=1",
       };
+      if (entry.widget_degraded) {
+        entry.body = body
+          .replace(/\[widget:[^\]]*\]/gi, "")
+          .replace(/type=widget\S*/gi, "")
+          .trim() || "(widget degraded to text)";
+      }
       appendJsonl(outboundPath, entry);
+      appendJsonl(teamsTranscript, entry);
       const journalPath = appendHostDeliveryJournal({
         kind: "channel_send",
         ...entry,
+        teams_transcript: teamsTranscript,
       });
       return {
         kind: "channel_send",
         ok: true,
         command: raw,
         stdout: JSON.stringify(
-          { ...entry, journal: journalPath, outbound: outboundPath },
+          {
+            ...entry,
+            journal: journalPath,
+            outbound: outboundPath,
+            teams_transcript: teamsTranscript,
+          },
           null,
           2,
         ),
