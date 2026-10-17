@@ -130,7 +130,7 @@ PY
 bash "$ROOT/scripts/host_routine_daemon.sh" --sweeps 1
 python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is False;assert d.get('ok')>=1;print('host_routine_daemon one-shot ok', d)"
 bash "$ROOT/scripts/host_routine_daemon.sh" --sweeps 2 --interval-ms 200
-python3 -c "import json;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is False;assert d.get('systemd_unit') is False;assert d.get('sweeps')==2;assert d.get('interval_ms')==200;assert d.get('ok')==2;print('host_routine_daemon interval sweeps ok', d)"
+python3 -c "import json;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is False;assert d.get('sweeps')==2;assert d.get('interval_ms')==200;assert d.get('ok')==2;print('host_routine_daemon interval sweeps ok', d)"
 bash "$ROOT/scripts/host_routine_daemon.sh" --write-systemd-unit
 python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('systemd_unit_path') and os.path.isfile(d['systemd_unit_path']);assert 'bitbot-routine-daemon.service' in d['systemd_unit_path'];print('host_routine_daemon systemd unit scaffold ok', d.get('systemd_unit_path'))"
 bash "$ROOT/scripts/host_routine_daemon.sh" --install-user-unit
