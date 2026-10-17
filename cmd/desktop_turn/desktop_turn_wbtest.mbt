@@ -301,6 +301,21 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(ve.ok)
   assert_eq(ve.intent, "voice_end")
   assert_eq(ve.effects[0].kind, "voice_end_write")
+  let tm = run_desktop_turn(
+    "create teammate id=asst-alpha name=Alpha role=researcher",
+    turn_id="tm-1",
+  )
+  assert_true(tm.ok)
+  assert_eq(tm.intent, "create_teammate")
+  let rm = run_desktop_turn("room eng :: ship the build", turn_id="rm-1")
+  assert_true(rm.ok)
+  assert_eq(rm.intent, "room_turn")
+  let sa2 = run_desktop_turn(
+    "send to agent asst-alpha :: please review",
+    turn_id="sta-1",
+  )
+  assert_true(sa2.ok)
+  assert_eq(sa2.intent, "send_to_agent")
 }
 
 ///|

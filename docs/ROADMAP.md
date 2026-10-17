@@ -89,7 +89,8 @@
 - [x] CopyToBox / CopyFromBox product turns + Host real FS copy under repo
 - [x] `mail_send` Host effect (Gmail API when OAuth token present; else journal sandbox)
 - [x] ApprovalGate on shell / external send / mail (Host `--approved` after NeedUser)
-- [x] Product turns: create_routine / mcp_discover / mcp_call / spawn_subagent / computer_use / teams_send / device_tools
+- [x] Product turns: create_routine / mcp_discover / mcp_call / spawn_subagent / computer_use / teams_send / device_tools / load_skill / voice_start|relay|end
 - [x] `hosts/mobile_host` — multi-end phone Host process (deviceLocalTools); App Store/Play still open
 - [ ] Native App Store / Play packaged shells
+- [x] Teammates: create_teammate / room_turn / send_to_agent on product path
 - [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit

@@ -155,6 +155,67 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(VoiceEnd(call_id=id))
     }
   }
+  if low.has_prefix("create teammate ") || low.has_prefix("create agent ") {
+    let rest = if low.has_prefix("create teammate ") {
+      trimmed[16:].to_owned()
+    } else {
+      trimmed[13:].to_owned()
+    }
+    let id = match extract_kv(rest, "id") {
+      Some(v) => v
+      None => "asst-1"
+    }
+    let name = match extract_kv(rest, "name") {
+      Some(v) => v
+      None => id
+    }
+    let role = match extract_kv(rest, "role") {
+      Some(v) => v
+      None => "executor"
+    }
+    return Some(CreateTeammate(id~, name~, role~))
+  }
+  if low.has_prefix("room ") || @teammates.has_room_cue(trimmed) {
+    if @teammates.has_room_cue(trimmed) {
+      match @teammates.open_room_turn_from_cue(
+        cue_and_body=trimmed,
+        speaker_id="user",
+      ) {
+        Ok(rt) => return Some(RoomTurn(room=rt.room_name, body=rt.body))
+        Err(_) => ()
+      }
+    }
+    if low.has_prefix("room ") {
+      let rest = trimmed[5:].to_owned()
+      match split_once(rest, " :: ") {
+        Some((room, body)) => {
+          let r = room.trim().to_owned()
+          let b = body.trim().to_owned()
+          if r != "" && b != "" {
+            return Some(RoomTurn(room=r, body=b))
+          }
+        }
+        None => ()
+      }
+    }
+  }
+  if low.has_prefix("send to agent ") || low.has_prefix("message agent ") {
+    let rest = if low.has_prefix("send to agent ") {
+      trimmed[14:].to_owned()
+    } else {
+      trimmed[14:].to_owned()
+    }
+    match split_once(rest, " :: ") {
+      Some((to_id, body)) => {
+        let t = to_id.trim().to_owned()
+        let b = body.trim().to_owned()
+        if t != "" && b != "" {
+          return Some(SendToAgent(to_id=t, body=b))
+        }
+      }
+      None => ()
+    }
+  }
   None
 }
 

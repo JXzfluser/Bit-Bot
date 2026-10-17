@@ -598,7 +598,10 @@ function createHostFfi(repoRoot) {
         kind === "device_tool" ||
         kind === "voice_session" ||
         kind === "voice_relay" ||
-        kind === "voice_end_write"
+        kind === "voice_end_write" ||
+        kind === "teammate_create" ||
+        kind === "room_turn" ||
+        kind === "send_to_agent"
       ) {
         const journalLine = appendHostDeliveryJournal({
           kind,

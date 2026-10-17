@@ -77,6 +77,9 @@ pub(all) enum TurnIntent {
   VoiceStart(call_id~ : String)
   VoiceRelay(call_id~ : String, text~ : String)
   VoiceEnd(call_id~ : String)
+  CreateTeammate(id~ : String, name~ : String, role~ : String)
+  RoomTurn(room~ : String, body~ : String)
+  SendToAgent(to_id~ : String, body~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -112,6 +115,9 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     VoiceStart(_) => "voice_start"
     VoiceRelay(_) => "voice_relay"
     VoiceEnd(_) => "voice_end"
+    CreateTeammate(_) => "create_teammate"
+    RoomTurn(_) => "room_turn"
+    SendToAgent(_) => "send_to_agent"
     HostContinue => "host_continue"
   }
 }
@@ -516,6 +522,8 @@ fn extract_kv(rest : String, key : String) -> String? {
         " id=",
         " cron=",
         " prompt=",
+        " name=",
+        " role=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -1789,6 +1797,96 @@ pub fn run_desktop_turn(
               )
             }
           }
+        }
+      }
+    }
+    CreateTeammate(id~, name~, role~) => {
+      let dir = @teammates.TeammateDirectory::new()
+      match dir.create_agent(id~, name~, role~) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(agent) => {
+          let effect : DesktopEffect = {
+            kind: "teammate_create",
+            command: agent.id + "|" + agent.name + "|" + agent.boundary.role,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Teammate created " +
+            agent.name +
+            " (" +
+            agent.id +
+            ") role=" +
+            agent.boundary.role +
+            ". Appears in Members/sidebar (CM-1401).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    RoomTurn(room~, body~) => {
+      match @teammates.open_room_turn(
+        room_name=room,
+        speaker_id="user",
+        body~,
+      ) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(rt) => {
+          let effect : DesktopEffect = {
+            kind: "room_turn",
+            command: rt.room_name + " :: " + body,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Room turn in «" +
+            rt.room_name +
+            "» from " +
+            rt.speaker_id +
+            ". Host delivers group-chat UI.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    SendToAgent(to_id~, body~) => {
+      match @teammates.plan_send_to_agent_fanout([to_id], user_explicitly_asked_fanout=false) {
+        @teammates.MustAskUserFirst(reason~, ..) =>
+          fail_turn(trimmed, turn_id, intent, reason, ctx, assistant=reason)
+        @teammates.ExplicitFanout(..) =>
+          fail_turn(
+            trimmed,
+            turn_id,
+            intent,
+            "unexpected fanout",
+            ctx,
+            assistant="unexpected fanout",
+          )
+        @teammates.Single(to_id~) => {
+          let effect : DesktopEffect = {
+            kind: "send_to_agent",
+            command: to_id + " :: " + body,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "SendToAgent planned → " +
+            to_id +
+            ". Host routes teammate inbox (CM-1402).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
         }
       }
     }
