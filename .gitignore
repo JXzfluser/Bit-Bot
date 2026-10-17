@@ -21,6 +21,7 @@ agent-tools/
 /data/**/*.json
 /data/**/*.jsonl
 !/data/**/.gitkeep
+/data/journal/computer-use/
 /tmp/bitbot-sandbox/
 
 # Desktop (Electron)
