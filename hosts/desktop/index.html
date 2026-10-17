@@ -266,12 +266,17 @@
     <div class="panel-title" style="margin-top:16px">Connectors</div>
     <div class="machine-item">
       <div class="name">Slack / Gmail</div>
-      <div class="meta">Host sandbox IdP OAuth</div>
+      <div class="meta" id="connectors-meta">Host sandbox IdP OAuth</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="connect-slack" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Connect Slack</button>
-        <button type="button" id="connect-gmail" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Connect Gmail</button>
+        <button type="button" id="connect-gmail" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
         <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
       </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Delivery</div>
+    <div class="machine-item">
+      <div class="name">SendToUser</div>
+      <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread</div>
     </div>
   </aside>
   <form id="composer">
@@ -388,28 +393,83 @@
             }
             permPanel.style.display = "block";
           }
-          // Delivery attachments from Host materialize / CU evidence (SendToUser-like chips).
-          const attachKinds = ["skill_write", "slides_pptx", "export_pack", "computer_use"];
+          // CHARTER Delivery: SendToUser surface (text/widget/attachment/voice/reaction/thread).
+          const attachKinds = [
+            "skill_write",
+            "slides_pptx",
+            "export_pack",
+            "computer_use",
+            "voice_session",
+            "voice_relay",
+            "channel_send",
+            "delivery",
+            "inbound_reaction",
+            "oauth",
+          ];
           const attaches = r.host_results.filter(
             (h) => h && h.ok && attachKinds.includes(h.kind),
           );
           if (attaches.length) {
             const el = document.createElement("div");
             el.className = "msg assistant";
-            el.innerHTML = '<div class="role">attachments</div><div class="body"></div>';
+            el.innerHTML = '<div class="role">delivery</div><div class="body"></div>';
             const body = el.querySelector(".body");
+            const types = [];
             for (const h of attaches) {
               const chip = document.createElement("span");
               chip.className = "effect-chip";
               let label = h.kind;
               try {
                 const p = JSON.parse(h.stdout || "{}");
-                if (p.path) label = h.kind + ": " + String(p.path).split("/").slice(-2).join("/");
-                else if (p.evidence) label = h.kind + ": " + String(p.evidence).split("/").slice(-2).join("/");
-                else if (p.outcome && p.outcome.summary) label = h.kind + ": " + p.outcome.summary;
+                if (h.kind === "delivery" && p.type) {
+                  label = "SendToUser:" + p.type;
+                  types.push(p.type);
+                  if (p.type === "reaction" || p.visible_pill) {
+                    chip.textContent = (p.emoji || "👍") + " reaction";
+                    body.appendChild(chip);
+                    continue;
+                  }
+                  if (p.type === "widget") {
+                    label = "widget:" + (p.widget || p.status || "card");
+                  }
+                  if (p.type === "voice" && p.media_path) {
+                    label = "voice:" + String(p.media_path).split("/").slice(-1)[0];
+                  }
+                  if (p.type === "thread" && p.channel) {
+                    label = "thread:" + p.channel;
+                  }
+                } else if (h.kind === "inbound_reaction" && p.visible_pill) {
+                  chip.textContent = (p.emoji || "👍") + " pill";
+                  body.appendChild(chip);
+                  types.push("reaction");
+                  continue;
+                } else if (h.kind === "oauth") {
+                  label = "oauth:" + (p.status || "?") + "/" + (p.mode || "");
+                  const meta = document.getElementById("connectors-meta");
+                  if (meta) {
+                    meta.textContent =
+                      (p.connector || "connector") +
+                      " · " +
+                      (p.status || "?") +
+                      " · " +
+                      (p.mode || "");
+                  }
+                } else if (p.media_path) {
+                  label = h.kind + ": " + String(p.media_path).split("/").slice(-1)[0];
+                } else if (p.path) {
+                  label = h.kind + ": " + String(p.path).split("/").slice(-2).join("/");
+                } else if (p.evidence) {
+                  label = h.kind + ": " + String(p.evidence).split("/").slice(-2).join("/");
+                } else if (p.outcome && p.outcome.summary) {
+                  label = h.kind + ": " + p.outcome.summary;
+                }
               } catch (_) { /* ignore */ }
               chip.textContent = label;
               body.appendChild(chip);
+            }
+            const dmeta = document.getElementById("delivery-meta");
+            if (dmeta && types.length) {
+              dmeta.textContent = "last: " + [...new Set(types)].join(" · ");
             }
             log.appendChild(el);
             log.scrollTop = log.scrollHeight;

@@ -44,6 +44,12 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(ResumeRoutine(id~))
     }
   }
+  if low == "tick routines" ||
+      low == "wake routines" ||
+      low == "routine tick" ||
+      low == "routines wake" {
+    return Some(TickRoutines)
+  }
   if low.has_prefix("fire routine ") || low.has_prefix("run routine ") {
     let id = if low.has_prefix("fire routine ") {
       trimmed[13:].trim().to_owned()

@@ -20,6 +20,7 @@ agent-tools/
 # Product Host runtime durable state (dirs created by start/deploy)
 /data/**/*.json
 /data/**/*.jsonl
+/data/voice/media/
 !/data/**/.gitkeep
 /data/journal/computer-use/
 /tmp/bitbot-sandbox/

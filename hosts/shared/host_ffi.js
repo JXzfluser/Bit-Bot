@@ -115,6 +115,18 @@ function createHostFfi(repoRoot) {
     "fills.jsonl",
   );
   const MAIL_DRAFTS_PATH = path.join(REPO_ROOT, "data", "mail", "drafts.jsonl");
+  const SEND_TO_USER_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "delivery",
+    "send-to-user.jsonl",
+  );
+  const OUTBOUND_REACTIONS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "delivery",
+    "outbound-reactions.jsonl",
+  );
   const ROOM_TURNS_PATH = path.join(
     REPO_ROOT,
     "data",
@@ -1235,6 +1247,57 @@ function createHostFfi(repoRoot) {
         stderr: "",
       };
     }
+    if (kind === "routine_tick" || kind === "routine_wake") {
+      // Wake due routines (Host-side scheduler tick; not LocalBrain).
+      const rows = loadRoutines();
+      const now = Date.now();
+      const due = rows.filter((r) => {
+        if (!r || r.enabled === false) return false;
+        if (!r.next_due && !r.last_fired_at) return true;
+        if (!r.next_due) return true;
+        return Date.parse(r.next_due) <= now;
+      });
+      const fired = [];
+      for (const r of due) {
+        const sub = executeRoutineEffect("routine_fire", r.id);
+        if (sub && sub.ok) {
+          let payload = {};
+          try {
+            payload = JSON.parse(sub.stdout || "{}");
+          } catch {
+            payload = {};
+          }
+          fired.push({
+            id: r.id,
+            prompt: r.prompt || "",
+            next_due: payload.next_due || null,
+          });
+        }
+      }
+      appendHostDeliveryJournal({
+        kind: "routine_tick",
+        command,
+        due_count: due.length,
+        fired_count: fired.length,
+        at: new Date().toISOString(),
+      });
+      return {
+        kind: "routine_tick",
+        ok: true,
+        command,
+        stdout: JSON.stringify(
+          {
+            due_count: due.length,
+            fired_count: fired.length,
+            fired,
+            wakes: true,
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    }
     return null;
   }
 
@@ -1499,10 +1562,23 @@ function createHostFfi(repoRoot) {
       };
       fs.mkdirSync(path.dirname(INBOUND_REACTIONS_PATH), { recursive: true });
       fs.appendFileSync(INBOUND_REACTIONS_PATH, JSON.stringify(entry) + "\n");
+      // CM-2128-shaped outbound reaction pill delivery (SendToUser reaction).
+      const outbound = {
+        type: "reaction",
+        emoji,
+        visible_pill: true,
+        body_omitted: true,
+        useful,
+        disposition,
+        at,
+      };
+      appendJsonl(OUTBOUND_REACTIONS_PATH, outbound);
+      appendJsonl(SEND_TO_USER_PATH, outbound);
       appendHostDeliveryJournal({
         kind,
         command,
         path: INBOUND_REACTIONS_PATH,
+        outbound: OUTBOUND_REACTIONS_PATH,
         disposition,
         at,
       });
@@ -1517,12 +1593,99 @@ function createHostFfi(repoRoot) {
             disposition,
             forced_reply: false,
             path: INBOUND_REACTIONS_PATH,
+            outbound_reaction: outbound,
+            send_to_user: SEND_TO_USER_PATH,
+            visible_pill: true,
           },
           null,
           2,
         ),
         stderr: "",
       };
+    }
+    return null;
+  }
+
+  function recordSendToUser(entry) {
+    const row = {
+      ...entry,
+      at: entry.at || new Date().toISOString(),
+    };
+    appendJsonl(SEND_TO_USER_PATH, row);
+    return row;
+  }
+
+  function deliveryFromHostResult(result) {
+    if (!result || !result.ok) return null;
+    const kind = result.kind || "";
+    const at = new Date().toISOString();
+    let parsed = {};
+    try {
+      parsed = JSON.parse(result.stdout || "{}");
+    } catch {
+      parsed = {};
+    }
+    if (kind === "channel_send") {
+      return recordSendToUser({
+        type: parsed.thread_ts ? "thread" : "text",
+        channel: parsed.address || "",
+        body_prefix: String(parsed.body || "").slice(0, 120),
+        mode: parsed.mode || "",
+        source_kind: kind,
+        at,
+      });
+    }
+    if (kind === "voice_session" || kind === "voice_relay" || kind === "voice_end_write") {
+      return recordSendToUser({
+        type: "voice",
+        voice_address: parsed.voice_address || "",
+        media_path: parsed.media_path || null,
+        media_ok: Boolean(parsed.media_ok),
+        source_kind: kind,
+        at,
+      });
+    }
+    if (kind === "oauth") {
+      return recordSendToUser({
+        type: "widget",
+        widget: "connector_oauth",
+        status: parsed.status || "",
+        mode: parsed.mode || "",
+        connected: Boolean(parsed.connected),
+        browser_opened: Boolean(parsed.browser_opened),
+        source_kind: kind,
+        at,
+      });
+    }
+    if (kind === "approval_card") {
+      return recordSendToUser({
+        type: "widget",
+        widget: "approval_card",
+        command: result.command || "",
+        source_kind: kind,
+        at,
+      });
+    }
+    if (kind === "computer_use") {
+      return recordSendToUser({
+        type: "attachment",
+        label: "computer_use",
+        vision_ok: Boolean(parsed.gui && parsed.gui.vision_ok),
+        outcome: (parsed.outcome && parsed.outcome.summary) || "",
+        source_kind: kind,
+        at,
+      });
+    }
+    if (kind === "slides_pptx" || kind === "skill_write" || kind === "export_pack") {
+      return recordSendToUser({
+        type: "attachment",
+        path: parsed.path || "",
+        source_kind: kind,
+        at,
+      });
+    }
+    if (kind === "inbound_reaction") {
+      return null; // already recorded above
     }
     return null;
   }
@@ -3595,7 +3758,30 @@ function createHostFfi(repoRoot) {
         });
       }
     }
-    return results;
+    // CHARTER Delivery: materialize SendToUser receipts beside Host effects.
+    const withDelivery = [];
+    for (const res of results) {
+      withDelivery.push(res);
+      const del = deliveryFromHostResult(res);
+      if (del) {
+        withDelivery.push({
+          kind: "delivery",
+          ok: true,
+          command: res.kind || "",
+          stdout: JSON.stringify(
+            {
+              ...del,
+              path: SEND_TO_USER_PATH,
+              send_to_user: true,
+            },
+            null,
+            2,
+          ),
+          stderr: "",
+        });
+      }
+    }
+    return withDelivery;
   }
 
   return {

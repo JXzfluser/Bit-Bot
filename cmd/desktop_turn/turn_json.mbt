@@ -69,6 +69,7 @@ pub(all) enum TurnIntent {
   PauseRoutine(id~ : String)
   ResumeRoutine(id~ : String)
   FireRoutine(id~ : String)
+  TickRoutines
   SearchMail(query~ : String)
   ReadMailThread(thread_id~ : String)
   SpawnSubagent(prompt~ : String)
@@ -142,6 +143,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     PauseRoutine(_) => "pause_routine"
     ResumeRoutine(_) => "resume_routine"
     FireRoutine(_) => "fire_routine"
+    TickRoutines => "tick_routines"
     SearchMail(_) => "search_mail"
     ReadMailThread(_) => "read_mail_thread"
     SpawnSubagent(_) => "spawn_subagent"
@@ -1681,6 +1683,22 @@ pub fn run_desktop_turn(
           )
         }
       }
+    }
+    TickRoutines => {
+      let effect : DesktopEffect = {
+        kind: "routine_tick",
+        command: "wake-due",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Routine wake tick planned — Host fires due routines (next_due).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     FireRoutine(id~) => {
       let store = @routines.RoutineStore::empty()
