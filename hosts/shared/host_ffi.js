@@ -6128,12 +6128,38 @@ function createHostFfi(repoRoot) {
         at,
       };
       const pathWritten = appendJsonl(APPROVALS_PATH, entry);
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      const cardDir = path.join(REPO_ROOT, "data", "approvals", "cards");
+      fs.mkdirSync(cardDir, { recursive: true });
+      const cardPath = path.join(cardDir, `${widget.widget_id}.json`);
+      fs.writeFileSync(
+        cardPath,
+        JSON.stringify({ ...entry, queue_path: pathWritten }, null, 2),
+      );
+      const delivery = recordSendToUser({
+        type: "widget",
+        widget: "approval_card",
+        widget_id: widget.widget_id,
+        path: cardPath,
+        options: widget.options.map((o) => o.id),
+        pretend_approved: false,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: cardPath,
+        queue_path: pathWritten,
+        at,
+      });
       return okJson(kind, cmd, {
         ...entry,
-        path: pathWritten,
+        path: cardPath,
+        queue_path: pathWritten,
+        send_to_user: delivery,
         ui: "ApprovalGate",
         type: "widget",
+        ok: true,
       });
     }
 

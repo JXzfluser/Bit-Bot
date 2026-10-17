@@ -29,9 +29,9 @@ python3 -c "import json;d=json.load(open('/tmp/parity-channel-thread.json'));hrs
 "${RUN[@]}" "schedule meeting title=Parity when=tomorrow" >/tmp/parity-ics.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-ics.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('ics_ok') and os.path.isfile(p['ics_path']);print('parity attachment ics ok')"
 
-# 3) Widget (approval)
+# 3) Widget (approval CM-0105 Approve/Dismiss)
 "${RUN[@]}" "shell echo parity-approve" >/tmp/parity-widget.json
-python3 -c "import json;d=json.load(open('/tmp/parity-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='approval_card');p=json.loads(h['stdout']);assert (p.get('widget') or {}).get('widget_id');print('parity widget ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='approval_card');p=json.loads(h['stdout']);w=p.get('widget')or{};assert w.get('widget_id');opts=w.get('options')or[];assert any(o.get('id')=='approve' for o in opts);assert any(o.get('id')=='dismiss' for o in opts);assert p.get('pretend_approved') is False;assert p.get('path') and os.path.isfile(p['path']);deliv=next(x for x in d['host_results'] if x.get('kind')=='delivery');dp=json.loads(deliv['stdout']);assert dp.get('type')=='widget';print('parity approval_card CM-0105 ok', w.get('widget_id'), 'options', [o.get('id') for o in opts])"
 
 # 4) Reaction pill
 "${RUN[@]}" "[inbound] reaction :+1:" >/tmp/parity-reaction.json
@@ -269,9 +269,16 @@ python3 -c "import json;d=json.load(open('/tmp/parity-teams-claim-sandbox.json')
 python3 -c "import json,os;d=json.load(open('/tmp/parity-cloud-art.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_artifact_deliver');p=json.loads(h['stdout']);assert p.get('delivered') is True;assert p.get('bc_id')=='bc-1';assert p.get('path') and os.path.isfile(p['path']);print('parity cloud_artifact_deliver ok', p.get('path'))"
 bash "$ROOT/scripts/host_routine_daemon.sh" --sweeps 2 --interval-ms 50 --write-systemd-unit >/tmp/parity-daemon.log 2>&1
 python3 -c "import json,os;assert os.path.isfile('data/routines/daemon-sweep-1.json');assert os.path.isfile('data/routines/daemon-sweep-2.json');st=json.load(open('data/routines/daemon-status.json'));assert st.get('sweeps',0)>=2;assert os.path.isfile('data/routines/bitbot-routine-daemon.service');print('parity routine daemon sweeps ok', st.get('sweeps'), 'systemd_unit', st.get('systemd_unit'))"
+BITBOT_OAUTH_MODE=live "${RUN[@]}" "setup slack" >/tmp/parity-oauth-needsauth.json || true
+python3 -c "import json;d=json.load(open('/tmp/parity-oauth-needsauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('mode')=='live_needs_auth';assert p.get('connected') is False;print('parity oauth live NeedsAuth ok')"
+BITBOT_OAUTH_MODE=live BITBOT_OAUTH_OPEN_BROWSER=1 BITBOT_OAUTH_CLIENT_ID=smoke-client \
+  "${RUN[@]}" "setup slack" >/tmp/parity-oauth-browser.json || true
+python3 -c "import json;d=json.load(open('/tmp/parity-oauth-browser.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('mode')=='live_remote_browser_open';assert p.get('browser_opened') is True;assert p.get('connected') is False;print('parity oauth live_remote_browser_open ok', p.get('browser_tool'))"
 BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=remote_callback BITBOT_OAUTH_AUTHORIZE_URL=https://oauth.example.invalid/authorize BITBOT_OAUTH_TOKEN_URL=https://oauth.example.invalid/token BITBOT_OAUTH_CLIENT_ID=smoke-client BITBOT_OAUTH_CALLBACK_WAIT_MS=4000 \
   "${RUN[@]}" "setup slack" >/tmp/parity-oauth-cb.json
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth-cb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='live_remote_callback';assert p.get('connected') is True;print('parity oauth remote_callback ok', p.get('callback_received'))"
+BITBOT_ROUTINE_MAX_SWEEPS=2 bash "$ROOT/scripts/host_routine_daemon.sh" --long-lived --interval-ms 50 --install-user-unit >/tmp/parity-daemon-long.log 2>&1
+python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is True;assert d.get('sweeps')==2;assert d.get('ok')==2;assert d.get('systemd_unit_installed') is True;assert d.get('systemd_scope') in ('user','system');assert d.get('systemd_user_unit_path') and os.path.isfile(d['systemd_user_unit_path']);print('parity routine daemon long-lived+user unit ok', d.get('sweeps'), d.get('systemd_scope'))"
 
 # 9j) Host tools: fs list/read, webfetch, copy_from_box, routines list/pause/resume, connect gmail
 "${RUN[@]}" "fs list ." >/tmp/parity-fs-list.json

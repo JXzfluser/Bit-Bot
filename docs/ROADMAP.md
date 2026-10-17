@@ -229,6 +229,8 @@
 - [x] Parity: meeting_chat DraftCard + live transport, shell host_continued
 - [x] routine_list/pause/resume durable Host artifacts
 - [x] Parity: MCP file expand + write_to_file, live email channel, live Slack thread, android fs_list
+- [x] approval_card per-card JSON + CM-0105 Approve/Dismiss options
+- [x] Parity: OAuth live NeedsAuth + browser_open, routine daemon long-lived + user unit
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)
