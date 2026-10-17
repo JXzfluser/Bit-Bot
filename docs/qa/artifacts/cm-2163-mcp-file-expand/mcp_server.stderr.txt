@@ -1,4 +1,4 @@
-{"id": "1f29c038-f735-4508-b04a-3f998a5e7ffe", "ts": 1792226369.8294463, "server": "bitbot-h4-mcp-stdio", "method": "boot", "ok": true, "detail": "stdio MCP server started", "pid": 19803, "agent_tools_dir": "/workspace/agent-tools"}
-{"id": "48d95fa9-0aca-49ea-9bcf-1b1b7094efa0", "ts": 1792226369.829523, "server": "bitbot-h4-mcp-stdio", "method": "initialize", "ok": true, "detail": "MCP initialize"}
-{"id": "5125f063-4212-41e7-8a24-249c81bf8762", "ts": 1792226369.829586, "server": "bitbot-h4-mcp-stdio", "method": "tools/list", "ok": true, "detail": "n=2"}
-{"id": "3f9e7993-cc35-46a5-be73-6a097ab6f571", "ts": 1792226369.8296304, "server": "bitbot-h4-mcp-stdio", "method": "tools/call", "ok": true, "detail": "echo_body accepted inject", "tool": "echo_body", "injected_bytes": 278, "has_large_payload_marker": true, "source_ref": "$file:/workspace/h4-mcp-big-body.txt"}
+{"id": "6c094ed9-32ff-40f1-bdf9-fac45406c5fa", "ts": 1792226401.7891216, "server": "bitbot-h4-mcp-stdio", "method": "boot", "ok": true, "detail": "stdio MCP server started", "pid": 20821, "agent_tools_dir": "/workspace/agent-tools"}
+{"id": "f50a508b-8611-4933-bf1b-e0ba0d383c6e", "ts": 1792226401.7892332, "server": "bitbot-h4-mcp-stdio", "method": "initialize", "ok": true, "detail": "MCP initialize"}
+{"id": "604971fb-0e9b-448b-bb47-c79c9e0f9def", "ts": 1792226401.7892919, "server": "bitbot-h4-mcp-stdio", "method": "tools/list", "ok": true, "detail": "n=2"}
+{"id": "911df4e5-7702-4f93-89b1-107214dca200", "ts": 1792226401.7893417, "server": "bitbot-h4-mcp-stdio", "method": "tools/call", "ok": true, "detail": "echo_body accepted inject", "tool": "echo_body", "injected_bytes": 278, "has_large_payload_marker": true, "source_ref": "$file:/workspace/h4-mcp-big-body.txt"}
