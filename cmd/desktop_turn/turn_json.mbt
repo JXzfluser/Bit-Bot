@@ -73,6 +73,10 @@ pub(all) enum TurnIntent {
   TeamsSend(scope~ : String, body~ : String)
   DeviceTools
   DeviceToolInvoke(tool~ : String)
+  LoadSkill(task~ : String)
+  VoiceStart(call_id~ : String)
+  VoiceRelay(call_id~ : String, text~ : String)
+  VoiceEnd(call_id~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -104,6 +108,10 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     TeamsSend(_) => "teams_send"
     DeviceTools => "device_tools"
     DeviceToolInvoke(_) => "device_tool_invoke"
+    LoadSkill(_) => "load_skill"
+    VoiceStart(_) => "voice_start"
+    VoiceRelay(_) => "voice_relay"
+    VoiceEnd(_) => "voice_end"
     HostContinue => "host_continue"
   }
 }
@@ -1683,6 +1691,104 @@ pub fn run_desktop_turn(
             effects=[effect],
             needs_host_ffi=true,
           )
+        }
+      }
+    }
+    LoadSkill(task~) => {
+      let cat = @skills.ManagedCatalog::seed()
+      let runner = @skills.SkillRunner::new(cat)
+      let sk = runner.load_for_task(task)
+      let reply =
+        "Skill load for task «" +
+        task +
+        "»: " +
+        sk.loaded_count().to_string() +
+        " skill(s) in context (CM-0504 on-demand)."
+      deliver_ok(trimmed, turn_id, reply, intent, ctx~)
+    }
+    VoiceStart(call_id~) => {
+      match @skills.VoiceCallSession::start(call_id~) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(session) => {
+          let effect : DesktopEffect = {
+            kind: "voice_session",
+            command: "start|" + session.voice_address,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Voice call started at " +
+            session.voice_address +
+            " (second assistant " +
+            session.second_assistant_id +
+            "). Reply only to voice address while live.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+            channel_delivery="external:" + session.voice_address,
+          )
+        }
+      }
+    }
+    VoiceRelay(call_id~, text~) => {
+      match @skills.VoiceCallSession::start(call_id~) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(session) =>
+          match session.relay_text(from_role="user", text~) {
+            Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+            Ok(_) => {
+              let effect : DesktopEffect = {
+                kind: "voice_relay",
+                command: session.voice_address + " :: " + text,
+                needs_host_ffi: true,
+              }
+              deliver_ok(
+                trimmed,
+                turn_id,
+                "Voice relay on " +
+                session.voice_address +
+                " (" +
+                session.relay_log.length().to_string() +
+                " turn(s)).",
+                intent,
+                ctx~,
+                effects=[effect],
+                needs_host_ffi=true,
+                channel_delivery="external:" + session.voice_address,
+              )
+            }
+          }
+      }
+    }
+    VoiceEnd(call_id~) => {
+      match @skills.VoiceCallSession::start(call_id~) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(session) => {
+          let _ = session.relay_text(from_role="user", text="(closing)")
+          match session.end_and_summarize() {
+            Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+            Ok((path, summary)) => {
+              let effect : DesktopEffect = {
+                kind: "voice_end_write",
+                command: path + "|" + summary,
+                needs_host_ffi: true,
+              }
+              deliver_ok(
+                trimmed,
+                turn_id,
+                "Voice ended; wrote " +
+                path +
+                ". App summary: " +
+                summary,
+                intent,
+                ctx~,
+                effects=[effect],
+                needs_host_ffi=true,
+              )
+            }
+          }
         }
       }
     }

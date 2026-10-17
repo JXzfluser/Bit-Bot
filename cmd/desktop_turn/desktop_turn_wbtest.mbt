@@ -290,6 +290,17 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(dt.ok)
   assert_eq(dt.intent, "device_tools")
   assert_true(dt.messages[dt.messages.length() - 1].text.contains("camera"))
+  let ls = run_desktop_turn("load skill slides presentation", turn_id="sk-1")
+  assert_true(ls.ok)
+  assert_eq(ls.intent, "load_skill")
+  let vs = run_desktop_turn("voice start call42", turn_id="v-1")
+  assert_true(vs.ok)
+  assert_eq(vs.intent, "voice_start")
+  assert_true(vs.channel_delivery.contains("voice:call42"))
+  let ve = run_desktop_turn("voice end call42", turn_id="v-e")
+  assert_true(ve.ok)
+  assert_eq(ve.intent, "voice_end")
+  assert_eq(ve.effects[0].kind, "voice_end_write")
 }
 
 ///|

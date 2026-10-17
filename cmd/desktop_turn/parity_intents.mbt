@@ -112,6 +112,49 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(DeviceToolInvoke(tool~))
     }
   }
+  if low.has_prefix("load skill ") || low.has_prefix("use skill ") {
+    let task = if low.has_prefix("load skill ") {
+      trimmed[11:].trim().to_owned()
+    } else {
+      trimmed[10:].trim().to_owned()
+    }
+    if task != "" {
+      return Some(LoadSkill(task~))
+    }
+  }
+  if low.has_prefix("voice start ") || low.has_prefix("start voice ") {
+    let id = if low.has_prefix("voice start ") {
+      trimmed[12:].trim().to_owned()
+    } else {
+      trimmed[12:].trim().to_owned()
+    }
+    if id != "" {
+      return Some(VoiceStart(call_id=id))
+    }
+  }
+  if low.has_prefix("voice relay ") {
+    let rest = trimmed[12:].trim().to_owned()
+    match split_once(rest, " :: ") {
+      Some((cid, text)) => {
+        let c = cid.trim().to_owned()
+        let t = text.trim().to_owned()
+        if c != "" && t != "" {
+          return Some(VoiceRelay(call_id=c, text=t))
+        }
+      }
+      None => ()
+    }
+  }
+  if low.has_prefix("voice end ") || low.has_prefix("end voice ") {
+    let id = if low.has_prefix("voice end ") {
+      trimmed[10:].trim().to_owned()
+    } else {
+      trimmed[10:].trim().to_owned()
+    }
+    if id != "" {
+      return Some(VoiceEnd(call_id=id))
+    }
+  }
   None
 }
 

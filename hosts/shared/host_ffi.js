@@ -595,7 +595,10 @@ function createHostFfi(repoRoot) {
         kind === "subagent_run" ||
         kind === "computer_use" ||
         kind === "routine_schedule" ||
-        kind === "device_tool"
+        kind === "device_tool" ||
+        kind === "voice_session" ||
+        kind === "voice_relay" ||
+        kind === "voice_end_write"
       ) {
         const journalLine = appendHostDeliveryJournal({
           kind,

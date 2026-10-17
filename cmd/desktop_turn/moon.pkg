@@ -10,6 +10,7 @@ import {
   "bitbot/bitbot/routines",
   "bitbot/bitbot/runtime",
   "bitbot/bitbot/security",
+  "bitbot/bitbot/skills",
   "bitbot/bitbot/tools",
   "bitbot/bitbot/ui_protocol",
   "moonbitlang/core/env" @env,
