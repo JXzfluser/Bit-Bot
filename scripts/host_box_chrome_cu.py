@@ -229,6 +229,9 @@ def analyze_screenshot(path: Optional[str]) -> Dict[str, Any]:
             "dark": mean < 40,
             "hotspots": hotspots,
             "tool": "pil-edge-hotspots",
+            "ocr": False,
+            "ocr_residual": True,
+            "note": "PIL edge hotspots only — OCR residual (no tesseract)",
         }
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)}
@@ -338,6 +341,71 @@ def choose_gui_mode(explicit: str = "") -> str:
     if os.environ.get("DISPLAY"):
         return "window"
     return "headless"
+
+
+def probe_native_os_input() -> Dict[str, Any]:
+    """Probe true OS-window input tools (xdotool/wmctrl) — never invent clicks."""
+    display = os.environ.get("DISPLAY") or ""
+    tools = {
+        "xdotool": bool(shutil.which("xdotool")),
+        "wmctrl": bool(shutil.which("wmctrl")),
+        "xwininfo": bool(shutil.which("xwininfo")),
+    }
+    probe: Dict[str, Any] = {
+        "display": display or None,
+        "tools": tools,
+        "mouse": None,
+        "windows": None,
+        "ok": False,
+    }
+    if not display:
+        probe["error"] = "no DISPLAY"
+        probe["os_window_automation_residual"] = True
+        return probe
+    if tools["xdotool"]:
+        try:
+            proc = subprocess.run(
+                ["xdotool", "getmouselocation", "--shell"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env={**os.environ, "DISPLAY": display},
+            )
+            mouse: Dict[str, str] = {}
+            for line in (proc.stdout or "").splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    mouse[k.strip()] = v.strip()
+            if mouse:
+                probe["mouse"] = mouse
+                probe["ok"] = True
+        except Exception as e:  # noqa: BLE001
+            probe["xdotool_error"] = str(e)[:200]
+    if tools["wmctrl"]:
+        try:
+            proc = subprocess.run(
+                ["wmctrl", "-l"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env={**os.environ, "DISPLAY": display},
+            )
+            lines = [ln for ln in (proc.stdout or "").splitlines() if ln.strip()]
+            probe["windows"] = {"count": len(lines), "sample": lines[:5]}
+            if lines:
+                probe["ok"] = True
+        except Exception as e:  # noqa: BLE001
+            probe["wmctrl_error"] = str(e)[:200]
+    # Residual until both mouse-location and window-list tools are usable for act.
+    probe["os_window_automation_residual"] = not (
+        bool(probe.get("mouse")) and bool((probe.get("windows") or {}).get("count"))
+    )
+    probe["note"] = (
+        "native OS input probe (xdotool/wmctrl) — CDP remains primary act path"
+        if probe["ok"]
+        else "OS-window automation residual — install xdotool+wmctrl for native input"
+    )
+    return probe
 
 
 def capture_screenshot(artifact_dir: Path) -> Dict[str, Any]:
@@ -560,6 +628,15 @@ def run_chrome_session(
                 screenshot.get("path") if screenshot else None
             )
 
+    native_os = probe_native_os_input() if gui_mode == "window" else {
+        "ok": False,
+        "os_window_automation_residual": True,
+        "note": "headless — no native OS window input",
+    }
+    if gui_mode == "window":
+        (artifact_dir / "native_os_input.json").write_text(
+            json.dumps(native_os, indent=2) + "\n", encoding="utf-8"
+        )
     result = {
         "started": True,
         "pid": proc.pid,
@@ -578,6 +655,10 @@ def run_chrome_session(
         "vision_plan": vision_plan,
         "vision_actions": vision_actions,
         "screenshot": screenshot,
+        "native_os_input": native_os,
+        "os_window_automation_residual": bool(
+            native_os.get("os_window_automation_residual", True)
+        ),
         "display": os.environ.get("DISPLAY") or None,
     }
     # Best-effort terminate throwaway session.
@@ -752,9 +833,14 @@ def main() -> int:
         "live_paid_residual": live_paid_residual,
         "navigate_reachable": bool(navigate.get("navigate_reachable")),
         "os_window": bool(gui.get("os_window")),
+        "os_window_automation_residual": bool(
+            gui.get("os_window_automation_residual", True)
+        ),
         "actions_ok": steps_ok,
         "screenshot_ok": bool((gui.get("screenshot") or {}).get("ok")),
         "vision_ok": vision_ok,
+        "ocr": False,
+        "ocr_residual": True,
         "page_title": title,
         "shared_cdp_untouched": gui.get("shared_cdp_untouched", True),
         "pretend_purchased": False,

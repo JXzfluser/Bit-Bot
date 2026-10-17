@@ -42,6 +42,9 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Purchase charge | Sandbox HTML receipt (`live_paid_residual`); live charge needs `BITBOT_PURCHASE_LIVE=1` + `BITBOT_PURCHASE_TOKEN` |
 | Remote Cursor Cloud | Default `local_worker`; remote probe when `BITBOT_CLOUD_API_URL`+token; fail→local, never pretend remote |
 | Meeting live transport | DirectSend transcript; live POST when `BITBOT_MEETING_API_URL`+token, else `live_meeting_residual` |
+| OS-window CU input | Windowed Chrome+CDP primary; `xdotool`/`wmctrl` probe recorded; `os_window_automation_residual` until both usable |
+| Vision OCR | PIL edge hotspots only; `ocr_residual=true` (no tesseract) |
+| Source-control remote PR | `git status` always; remote PR only with `BITBOT_GH_CREATE_PR=1`+`gh`; else `remote_pr_residual` |
 | Legacy LocalBrain Host UI | Demoted — not product brain |
 
 ## Env vars

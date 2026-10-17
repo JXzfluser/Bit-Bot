@@ -3941,16 +3941,17 @@ function createHostFfi(repoRoot) {
     }
 
     if (kind === "source_control") {
-      // command: mcp_namespace|status
+      // command: mcp_namespace|status|create_pr
       const sep = cmd.indexOf("|");
       const ns = sep >= 0 ? cmd.slice(0, sep) : "user-github";
-      const action = sep >= 0 ? cmd.slice(sep + 1) : "status";
+      const action = (sep >= 0 ? cmd.slice(sep + 1) : "status") || "status";
       const scDir = path.join(REPO_ROOT, "data", "source-control");
       fs.mkdirSync(scDir, { recursive: true });
       const statusPath = path.join(scDir, "status.json");
       let branch = "";
       let porcelain = "";
       let head = "";
+      let remoteUrl = "";
       let ok = true;
       let err = "";
       try {
@@ -3971,19 +3972,99 @@ function createHostFfi(repoRoot) {
           { cwd: REPO_ROOT, timeout: 15000 },
         );
         porcelain = String(st.stdout || "");
+        try {
+          const ru = await execFileAsync(
+            "git",
+            ["config", "--get", "remote.origin.url"],
+            { cwd: REPO_ROOT, timeout: 5000 },
+          );
+          remoteUrl = String(ru.stdout || "").trim();
+        } catch {
+          remoteUrl = "";
+        }
       } catch (e) {
         ok = false;
         err = e.message || String(e);
       }
+
+      // Remote PR: only when BITBOT_GH_CREATE_PR=1 and gh is available; never pretend.
+      const wantPr =
+        /create_pr|pull_request|open_pr/i.test(action) ||
+        String(process.env.BITBOT_GH_CREATE_PR || "").trim() === "1";
+      let remotePr = null;
+      let remotePrResidual = true;
+      let mode = "host_git_status";
+      if (wantPr) {
+        const ghBin = (() => {
+          try {
+            return require("child_process")
+              .execSync("command -v gh", { encoding: "utf8" })
+              .trim();
+          } catch {
+            return "";
+          }
+        })();
+        if (ghBin && String(process.env.BITBOT_GH_CREATE_PR || "").trim() === "1") {
+          try {
+            const pr = await execFileAsync(
+              ghBin,
+              [
+                "pr",
+                "view",
+                "--json",
+                "url,number,state,title",
+                "--jq",
+                ".",
+              ],
+              { cwd: REPO_ROOT, timeout: 20000 },
+            );
+            let body = null;
+            try {
+              body = JSON.parse(String(pr.stdout || "{}"));
+            } catch {
+              body = { raw: String(pr.stdout || "").slice(0, 400) };
+            }
+            remotePr = {
+              ok: true,
+              mode: "gh_pr_view",
+              pr: body,
+            };
+            remotePrResidual = false;
+            mode = "host_git_status+gh_pr_view";
+          } catch (e) {
+            remotePr = {
+              ok: false,
+              mode: "gh_pr_view_failed",
+              error: String((e && e.message) || e).slice(0, 300),
+            };
+            remotePrResidual = true;
+            mode = "host_git_status+gh_pr_residual";
+          }
+        } else {
+          remotePr = {
+            ok: false,
+            mode: "remote_pr_residual",
+            error: ghBin
+              ? "BITBOT_GH_CREATE_PR!=1 — refuse create/view pretend"
+              : "gh CLI not found — remote PR residual",
+          };
+          remotePrResidual = true;
+          mode = "host_git_status+remote_pr_residual";
+        }
+      }
+
       const payload = {
         namespace: ns,
         action,
         branch,
         head,
+        remote_url: remoteUrl || null,
         dirty: Boolean(porcelain.trim()),
         porcelain: porcelain.slice(0, 4000),
-        mode: "host_git_status",
+        mode,
         pretend_remote_pr: false,
+        remote_pr_residual: remotePrResidual,
+        remote_pr: remotePr,
         ok,
         error: err || null,
         at,
@@ -4993,6 +5074,15 @@ function createHostFfi(repoRoot) {
                 (summary.outcome && summary.outcome.vision_ok) ||
                   (gui.vision_plan && gui.vision_plan.ok),
               ),
+              native_os_input: gui.native_os_input || null,
+              os_window_automation_residual:
+                gui.os_window_automation_residual !== undefined
+                  ? Boolean(gui.os_window_automation_residual)
+                  : Boolean(
+                      (summary.outcome &&
+                        summary.outcome.os_window_automation_residual) ||
+                        true,
+                    ),
               vision_plan: gui.vision_plan
                 ? {
                     ok: Boolean(gui.vision_plan.ok),
@@ -5011,6 +5101,11 @@ function createHostFfi(repoRoot) {
                     has_cart: Boolean(
                       gui.vision_plan.dom && gui.vision_plan.dom.has_cart,
                     ),
+                    has_payment: Boolean(
+                      gui.vision_plan.dom && gui.vision_plan.dom.has_payment,
+                    ),
+                    ocr: false,
+                    ocr_residual: true,
                   }
                 : null,
               checkout_summary: gui.checkout_summary || null,

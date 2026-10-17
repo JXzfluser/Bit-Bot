@@ -2805,18 +2805,29 @@ pub fn run_desktop_turn(
       }
     }
     SourceControl(repo_kind~) => {
-      let kind = if repo_kind.to_lower().contains("origin") &&
-        !repo_kind.to_lower().contains("mirror") {
+      let low_kind = repo_kind.to_lower()
+      let kind = if low_kind.contains("origin") &&
+        !low_kind.contains("mirror") {
         @skills.NativeOrigin
-      } else if repo_kind.to_lower().contains("mirror") {
+      } else if low_kind.contains("mirror") {
         @skills.GithubMirror
       } else {
         @skills.GithubNative
       }
       let backend = @skills.route_source_control(kind)
+      // CM-1305: status by default; create_pr/open_pr → Host remote-PR residual path
+      // (never pretend; Host needs BITBOT_GH_CREATE_PR=1 + gh to view).
+      let sc_action = if low_kind.contains("create_pr") ||
+        low_kind.contains("open_pr") ||
+        low_kind.contains("pull_request") ||
+        low_kind == "pr" {
+        "create_pr"
+      } else {
+        "status"
+      }
       let effect : DesktopEffect = {
         kind: "source_control",
-        command: backend.mcp_namespace() + "|status",
+        command: backend.mcp_namespace() + "|" + sc_action,
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -2824,7 +2835,15 @@ pub fn run_desktop_turn(
         turn_id,
         "Source-control routed to " +
         backend.mcp_namespace() +
-        " (CM-1305). Host runs git status artifact.",
+        " action=" +
+        sc_action +
+        " (CM-1305). Host runs git status" +
+        (if sc_action == "create_pr" {
+          " + remote PR residual probe"
+        } else {
+          " artifact"
+        }) +
+        ".",
         intent,
         ctx~,
         effects=[effect],
