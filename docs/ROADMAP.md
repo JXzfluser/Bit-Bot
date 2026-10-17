@@ -82,7 +82,10 @@
 - [x] `hosts/desktop/` Electron — agents + machines + turn transcript from MoonBit
 - [x] `hosts/ios/` + `hosts/android/` stubs + `scripts/host_mobile_stub.sh`
 - [x] `scripts/start-desktop.sh` — moon on PATH, npm, Electron under `hosts/desktop`
-- [ ] Live Slack/SMTP/MCP Host FFI (beyond stub channel_send / mail_draft)
-- [ ] Real iOS/Android hosts beyond ListMachines kinds + stub scripts
+- [x] Shared Host FFI (`hosts/shared`) — shell / fs_list / fs_read / webfetch / channel_send (live Slack when token+BITBOT_SLACK_POST) / connectors_probe
+- [x] Multi-end CLI Host (`hosts/cli_host/run_turn.js`) — same brain as Desktop with `--machine-kind ios|android|desktop`
+- [x] TurnContext flags: `--session-id` `--machine-id` `--machine-kind` `--channel` on product JSON
+- [x] Desktop pack script: `bash scripts/pack-desktop.sh` (electron-builder --dir)
+- [ ] Live SMTP send when Gmail/Outlook OAuth tokens present (beyond draft/journal)
+- [ ] Native iOS/Android app shells (beyond CLI Host attach)
 - [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit
-- [ ] Stronger session TurnContext (thread/channel/machine_id across turns)

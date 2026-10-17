@@ -59,6 +59,9 @@ pub(all) enum TurnIntent {
   DraftMail(to_~ : String, subject~ : String, body~ : String)
   InstallPlugin(plugin_id~ : String)
   SetupSlack
+  FsList(path~ : String)
+  FsRead(path~ : String)
+  WebFetch(url~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -76,7 +79,29 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     DraftMail(_) => "draft_mail"
     InstallPlugin(_) => "install_plugin"
     SetupSlack => "setup_slack"
+    FsList(_) => "fs_list"
+    FsRead(_) => "fs_read"
+    WebFetch(_) => "webfetch"
     HostContinue => "host_continue"
+  }
+}
+
+///|
+/// Multi-end TurnContext fields (Grok machine/channel session).
+pub(all) struct DesktopTurnContext {
+  session_id : String
+  machine_id : String
+  machine_kind : String
+  channel : String
+} derive(Eq, Debug)
+
+///|
+pub fn DesktopTurnContext::default() -> DesktopTurnContext {
+  {
+    session_id: "desktop-session",
+    machine_id: "desk-1",
+    machine_kind: "desktop",
+    channel: "",
   }
 }
 
@@ -97,6 +122,10 @@ pub(all) struct DesktopTurnResult {
   host_continued : Bool
   /// Channel delivery plan: "in_app" | "external:<addr>" | "".
   channel_delivery : String
+  session_id : String
+  machine_id : String
+  machine_kind : String
+  channel : String
   error : String?
 } derive(Eq, Debug)
 
@@ -202,6 +231,41 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       low == "connectors status" ||
       low == "connector status" {
     return ConnectorsStatus
+  }
+  // Grok Host tools: ListDir / Read / WebFetch → Host FFI effects
+  if low.has_prefix("listdir ") || low.has_prefix("list dir ") {
+    let p = if low.has_prefix("listdir ") {
+      trimmed[8:].trim().to_owned()
+    } else {
+      trimmed[9:].trim().to_owned()
+    }
+    if p != "" {
+      return FsList(path=p)
+    }
+  }
+  if low.has_prefix("read ") || low.has_prefix("read file ") {
+    let p = if low.has_prefix("read file ") {
+      trimmed[10:].trim().to_owned()
+    } else {
+      trimmed[5:].trim().to_owned()
+    }
+    if p != "" && !p.has_prefix("http://") && !p.has_prefix("https://") {
+      return FsRead(path=p)
+    }
+  }
+  if low.has_prefix("webfetch ") ||
+      low.has_prefix("fetch ") ||
+      low.has_prefix("web fetch ") {
+    let u = if low.has_prefix("webfetch ") {
+      trimmed[9:].trim().to_owned()
+    } else if low.has_prefix("web fetch ") {
+      trimmed[10:].trim().to_owned()
+    } else {
+      trimmed[6:].trim().to_owned()
+    }
+    if u.has_prefix("http://") || u.has_prefix("https://") {
+      return WebFetch(url=u)
+    }
   }
   if low.has_prefix("install plugin ") || low.has_prefix("add connector ") {
     let id = if low.has_prefix("install plugin ") {
@@ -459,11 +523,47 @@ fn memory_rows(entries : Array[@memory.MemoryEntry]) -> Array[DesktopMemoryRow] 
 }
 
 ///|
+fn fail_turn(
+  user_text : String,
+  turn_id : String,
+  intent : TurnIntent,
+  err : String,
+  ctx : DesktopTurnContext,
+  assistant~ : String = "",
+) -> DesktopTurnResult {
+  let mods = @bitbot.registered_modules()
+  let msg = if assistant == "" { err } else { assistant }
+  {
+    v: DESKTOP_TURN_JSON_V,
+    ok: false,
+    turn_id,
+    intent: intent.name(),
+    messages: [
+      { role: "user", text: user_text },
+      { role: "assistant", text: msg },
+    ],
+    modules: mods,
+    machines: [],
+    memory: [],
+    effects: [],
+    needs_host_ffi: false,
+    host_continued: false,
+    channel_delivery: "",
+    session_id: ctx.session_id,
+    machine_id: ctx.machine_id,
+    machine_kind: ctx.machine_kind,
+    channel: ctx.channel,
+    error: Some(err),
+  }
+}
+
+///|
 fn deliver_ok(
   user_text : String,
   turn_id : String,
   reply : String,
   intent : TurnIntent,
+  ctx~ : DesktopTurnContext = DesktopTurnContext::default(),
   machines~ : Array[DesktopMachineRow] = [],
   memory~ : Array[DesktopMemoryRow] = [],
   effects~ : Array[DesktopEffect] = [],
@@ -475,26 +575,8 @@ fn deliver_ok(
   let opened = @runtime.open_turn(turn_id~, text=user_text)
   let acked = opened.acknowledge(body="收到，正在用 MoonBit 内核处理。")
   match acked.deliver_text(body=reply) {
-    Err(e) => {
-      {
-        v: DESKTOP_TURN_JSON_V,
-        ok: false,
-        turn_id,
-        intent: intent.name(),
-        messages: [
-          { role: "user", text: user_text },
-          { role: "assistant", text: "收到，正在用 MoonBit 内核处理。" },
-        ],
-        modules: mods,
-        machines,
-        memory,
-        effects,
-        needs_host_ffi,
-        host_continued,
-        channel_delivery,
-        error: Some(e),
-      }
-    }
+    Err(e) =>
+      fail_turn(user_text, turn_id, intent, e, ctx)
     Ok(working) => {
       let ended = working.end_turn()
       let msgs : Array[DesktopMessage] = [{ role: "user", text: user_text }]
@@ -519,6 +601,10 @@ fn deliver_ok(
         needs_host_ffi,
         host_continued,
         channel_delivery,
+        session_id: ctx.session_id,
+        machine_id: ctx.machine_id,
+        machine_kind: ctx.machine_kind,
+        channel: ctx.channel,
         error: None,
       }
     }
@@ -540,6 +626,7 @@ pub fn continue_after_host_ffi(
   turn_id~ : String,
   prior_user_text~ : String,
   results : Array[DesktopHostResult],
+  ctx~ : DesktopTurnContext = DesktopTurnContext::default(),
 ) -> DesktopTurnResult {
   let buf = StringBuilder()
   buf.write_string("Host FFI results applied (MoonBit kernel / ADR 0002):\n")
@@ -595,6 +682,7 @@ pub fn continue_after_host_ffi(
     turn_id,
     reply,
     HostContinue,
+    ctx~,
     host_continued=true,
   )
 }
@@ -658,7 +746,12 @@ pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
       i = i + 1
       continue
     }
-    if a == "--seed-memory" {
+    if a == "--seed-memory" ||
+        a == "--session-id" ||
+        a == "--machine-id" ||
+        a == "--machine-kind" ||
+        a == "--channel" ||
+        a == "--turn-id" {
       i = i + 2
       continue
     }
@@ -678,6 +771,83 @@ pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
 }
 
 ///|
+/// Parse TurnContext flags from Host argv.
+pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
+  let mut ctx = DesktopTurnContext::default()
+  let mut i = 0
+  while i < args.length() {
+    let a = args[i]
+    if a == "--session-id" && i + 1 < args.length() {
+      ctx = {
+        session_id: args[i + 1],
+        machine_id: ctx.machine_id,
+        machine_kind: ctx.machine_kind,
+        channel: ctx.channel,
+      }
+      i = i + 2
+      continue
+    }
+    if a == "--machine-id" && i + 1 < args.length() {
+      ctx = {
+        session_id: ctx.session_id,
+        machine_id: args[i + 1],
+        machine_kind: ctx.machine_kind,
+        channel: ctx.channel,
+      }
+      i = i + 2
+      continue
+    }
+    if a == "--machine-kind" && i + 1 < args.length() {
+      let kind = args[i + 1].to_lower()
+      let mid = if ctx.machine_id == "desk-1" || ctx.machine_id == "" {
+        if kind == "ios" {
+          "phone-ios"
+        } else if kind == "android" {
+          "phone-android"
+        } else {
+          "desk-1"
+        }
+      } else {
+        ctx.machine_id
+      }
+      ctx = {
+        session_id: ctx.session_id,
+        machine_id: mid,
+        machine_kind: kind,
+        channel: ctx.channel,
+      }
+      i = i + 2
+      continue
+    }
+    if a == "--channel" && i + 1 < args.length() {
+      ctx = {
+        session_id: ctx.session_id,
+        machine_id: ctx.machine_id,
+        machine_kind: ctx.machine_kind,
+        channel: args[i + 1],
+      }
+      i = i + 2
+      continue
+    }
+    i = i + 1
+  }
+  ctx
+}
+
+///|
+/// Optional `--turn-id` override from Host.
+pub fn parse_turn_id_flag(args : Array[String], default~ : String) -> String {
+  let mut i = 0
+  while i < args.length() {
+    if args[i] == "--turn-id" && i + 1 < args.length() {
+      return args[i + 1]
+    }
+    i = i + 1
+  }
+  default
+}
+
+///|
 /// Run open_turn → policy (intent) → deliver; Host effects stay plans until Host
 /// executes and calls continue_after_host_ffi (ADR 0002).
 /// `memory_seeds`: Host-persisted profile rows reinjected each process.
@@ -685,25 +855,17 @@ pub fn run_desktop_turn(
   user_text : String,
   turn_id~ : String = "desktop-1",
   memory_seeds~ : Array[(String, String)] = [],
+  ctx~ : DesktopTurnContext = DesktopTurnContext::default(),
 ) -> DesktopTurnResult {
-  let mods = @bitbot.registered_modules()
   let trimmed = user_text.trim().to_owned()
   guard trimmed != "" else {
-    return {
-      v: DESKTOP_TURN_JSON_V,
-      ok: false,
+    return fail_turn(
+      trimmed,
       turn_id,
-      intent: "chat",
-      messages: [],
-      modules: mods,
-      machines: [],
-      memory: [],
-      effects: [],
-      needs_host_ffi: false,
-      host_continued: false,
-      channel_delivery: "",
-      error: Some("empty user text"),
-    }
+      Chat,
+      "empty user text",
+      ctx,
+    )
   }
   let intent = classify_intent(trimmed)
   match intent {
@@ -713,8 +875,12 @@ pub fn run_desktop_turn(
       let reply =
         "ListMachines: " +
         rows.length().to_string() +
-        " registered (desktop + ios + android). Host kinds via @box_host."
-      deliver_ok(trimmed, turn_id, reply, intent, machines=rows)
+        " registered (desktop + ios + android). Host kinds via @box_host. Active machine_kind=" +
+        ctx.machine_kind +
+        " id=" +
+        ctx.machine_id +
+        "."
+      deliver_ok(trimmed, turn_id, reply, intent, ctx~, machines=rows)
     }
     MemoryUpdate(key~, value~) => {
       let store = @memory.InMemoryStore::new()
@@ -731,7 +897,7 @@ pub fn run_desktop_turn(
       })
       let rows = memory_rows(entries)
       let reply = "Memory updated (profile): " + key + " = " + value
-      deliver_ok(trimmed, turn_id, reply, intent, memory=rows)
+      deliver_ok(trimmed, turn_id, reply, intent, ctx~, memory=rows)
     }
     MemoryRecall(prefix~) => {
       let store = @memory.InMemoryStore::new()
@@ -753,7 +919,7 @@ pub fn run_desktop_turn(
       let rows = memory_rows(entries)
       let reply =
         "Memory recall (profile): " + rows.length().to_string() + " entr(y/ies)."
-      deliver_ok(trimmed, turn_id, reply, intent, memory=rows)
+      deliver_ok(trimmed, turn_id, reply, intent, ctx~, memory=rows)
     }
     HostEffect(command~) => {
       let effect : DesktopEffect = {
@@ -767,7 +933,7 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         reply,
-        intent,
+        intent, ctx~,
         effects=[effect],
         needs_host_ffi=true,
       )
@@ -778,26 +944,15 @@ pub fn run_desktop_turn(
         outbound_channel=outbound,
         body~,
       ) {
-        Err(e) => {
-          {
-            v: DESKTOP_TURN_JSON_V,
-            ok: false,
+        Err(e) =>
+          fail_turn(
+            trimmed,
             turn_id,
-            intent: intent.name(),
-            messages: [
-              { role: "user", text: trimmed },
-              { role: "assistant", text: "Channel delivery refused: " + e },
-            ],
-            modules: mods,
-            machines: [],
-            memory: [],
-            effects: [],
-            needs_host_ffi: false,
-            host_continued: false,
-            channel_delivery: "",
-            error: Some(e),
-          }
-        }
+            intent,
+            e,
+            ctx,
+            assistant="Channel delivery refused: " + e,
+          )
         Ok(plan) => {
           let label = channel_delivery_label(plan)
           let reply = match plan {
@@ -826,7 +981,7 @@ pub fn run_desktop_turn(
             trimmed,
             turn_id,
             reply,
-            intent,
+            intent, ctx~,
             effects~,
             needs_host_ffi=needs,
             channel_delivery=label,
@@ -845,32 +1000,84 @@ pub fn run_desktop_turn(
         buf.write_string(" — ")
         buf.write_string(ready.join(", "))
       }
-      buf.write_string(". Product path uses @connectors (not Python).")
-      deliver_ok(trimmed, turn_id, buf.to_string(), intent)
+      buf.write_string(
+        ". Host will probe Slack/Gmail/Outlook via connectors_probe FFI.",
+      )
+      let effect : DesktopEffect = {
+        kind: "connectors_probe",
+        command: "slack,gmail,outlook",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        buf.to_string(),
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    FsList(path~) => {
+      let effect : DesktopEffect = {
+        kind: "fs_list",
+        command: path,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Host effect planned (fs_list). Desktop/CLI must ListDir via Host FFI.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    FsRead(path~) => {
+      let effect : DesktopEffect = {
+        kind: "fs_read",
+        command: path,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Host effect planned (fs_read). Desktop/CLI must Read via Host FFI.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    WebFetch(url~) => {
+      let effect : DesktopEffect = {
+        kind: "webfetch",
+        command: url,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Host effect planned (webfetch). Desktop/CLI must WebFetch via Host FFI.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     InstallPlugin(plugin_id~) => {
       let reg = @connectors.PluginRegistry::seed_demo()
       match reg.install(plugin_id) {
-        Err(e) => {
-          {
-            v: DESKTOP_TURN_JSON_V,
-            ok: false,
+        Err(e) =>
+          fail_turn(
+            trimmed,
             turn_id,
-            intent: intent.name(),
-            messages: [
-              { role: "user", text: trimmed },
-              { role: "assistant", text: "Install plugin failed: " + e },
-            ],
-            modules: mods,
-            machines: [],
-            memory: [],
-            effects: [],
-            needs_host_ffi: false,
-            host_continued: false,
-            channel_delivery: "",
-            error: Some(e),
-          }
-        }
+            intent,
+            e,
+            ctx,
+            assistant="Install plugin failed: " + e,
+          )
         Ok(skills) => {
           let ready = reg.ready_namespaces()
           let reply =
@@ -890,7 +1097,7 @@ pub fn run_desktop_turn(
             trimmed,
             turn_id,
             reply,
-            intent,
+            intent, ctx~,
             effects=[effect],
             needs_host_ffi=true,
           )
@@ -900,26 +1107,15 @@ pub fn run_desktop_turn(
     SetupSlack => {
       let session = @channels.SetUpSlackSession::new()
       match session.connect_tool() {
-        Err(e) => {
-          {
-            v: DESKTOP_TURN_JSON_V,
-            ok: false,
+        Err(e) =>
+          fail_turn(
+            trimmed,
             turn_id,
-            intent: intent.name(),
-            messages: [
-              { role: "user", text: trimmed },
-              { role: "assistant", text: "SetUpSlack failed: " + e },
-            ],
-            modules: mods,
-            machines: [],
-            memory: [],
-            effects: [],
-            needs_host_ffi: false,
-            host_continued: false,
-            channel_delivery: "",
-            error: Some(e),
-          }
-        }
+            intent,
+            e,
+            ctx,
+            assistant="SetUpSlack failed: " + e,
+          )
         Ok(status) => {
           let reply =
             "SetUpSlack: " +
@@ -934,7 +1130,7 @@ pub fn run_desktop_turn(
             trimmed,
             turn_id,
             reply,
-            intent,
+            intent, ctx~,
             effects=[effect],
             needs_host_ffi=true,
           )
@@ -944,32 +1140,21 @@ pub fn run_desktop_turn(
     ClaimInbox(local_part~) => {
       let svc = @mail.MailService::new()
       match svc.claim_inbox(local_part~, user_confirmed=true) {
-        Err(e) => {
-          {
-            v: DESKTOP_TURN_JSON_V,
-            ok: false,
+        Err(e) =>
+          fail_turn(
+            trimmed,
             turn_id,
-            intent: intent.name(),
-            messages: [
-              { role: "user", text: trimmed },
-              { role: "assistant", text: "Claim inbox failed: " + e },
-            ],
-            modules: mods,
-            machines: [],
-            memory: [],
-            effects: [],
-            needs_host_ffi: false,
-            host_continued: false,
-            channel_delivery: "",
-            error: Some(e),
-          }
-        }
+            intent,
+            e,
+            ctx,
+            assistant="Claim inbox failed: " + e,
+          )
         Ok(inbox) => {
           let reply =
             "Claimed agent inbox " +
             inbox.address() +
             " via @mail.MailService (Grok mail claim path)."
-          deliver_ok(trimmed, turn_id, reply, intent)
+          deliver_ok(trimmed, turn_id, reply, intent, ctx~)
         }
       }
     }
@@ -987,7 +1172,7 @@ pub fn run_desktop_turn(
         command: "to=" + to_ + " subject=" + subject,
         needs_host_ffi: false,
       }
-      deliver_ok(trimmed, turn_id, reply, intent, effects=[effect])
+      deliver_ok(trimmed, turn_id, reply, intent, ctx~, effects=[effect])
     }
     HostContinue => {
       // Should be invoked via continue_after_host_ffi, not plain chat.
@@ -995,7 +1180,7 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Host continue requires --apply-host-results (ADR 0002).",
-        intent,
+        intent, ctx~,
       )
     }
     Chat => {
@@ -1003,7 +1188,7 @@ pub fn run_desktop_turn(
         "Bit Bot (MoonBit): 已收到「" +
         trimmed +
         "」。本回合由 cmd/desktop_turn 编排，不经 Python LocalBrain。"
-      deliver_ok(trimmed, turn_id, reply, intent)
+      deliver_ok(trimmed, turn_id, reply, intent, ctx~)
     }
   }
 }
@@ -1136,6 +1321,14 @@ pub fn DesktopTurnResult::to_json_line(self : DesktopTurnResult) -> String {
   buf.write_string(if self.host_continued { "true" } else { "false" })
   buf.write_string(",\"channel_delivery\":\"")
   buf.write_string(escape_json_string(self.channel_delivery))
+  buf.write_string("\",\"session_id\":\"")
+  buf.write_string(escape_json_string(self.session_id))
+  buf.write_string("\",\"machine_id\":\"")
+  buf.write_string(escape_json_string(self.machine_id))
+  buf.write_string("\",\"machine_kind\":\"")
+  buf.write_string(escape_json_string(self.machine_kind))
+  buf.write_string("\",\"channel\":\"")
+  buf.write_string(escape_json_string(self.channel))
   buf.write_string("\"")
   match self.error {
     Some(e) => {

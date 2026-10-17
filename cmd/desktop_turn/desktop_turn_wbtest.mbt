@@ -154,7 +154,47 @@ test "desktop_turn_connectors_status" {
   let r = run_desktop_turn("list connectors", turn_id="conn-1")
   assert_true(r.ok)
   assert_eq(r.intent, "connectors_status")
+  assert_true(r.needs_host_ffi)
+  assert_eq(r.effects[0].kind, "connectors_probe")
   assert_true(r.messages[r.messages.length() - 1].text.contains("Connectors status"))
+}
+
+///|
+test "desktop_turn_fs_webfetch_and_context" {
+  let ctx : DesktopTurnContext = {
+    session_id: "s-ios",
+    machine_id: "phone-ios",
+    machine_kind: "ios",
+    channel: "slack:C1",
+  }
+  let r = run_desktop_turn("listdir docs", turn_id="fs-1", ctx~)
+  assert_true(r.ok)
+  assert_eq(r.intent, "fs_list")
+  assert_eq(r.machine_kind, "ios")
+  assert_eq(r.channel, "slack:C1")
+  assert_eq(r.effects[0].kind, "fs_list")
+  let w = run_desktop_turn(
+    "webfetch https://example.com",
+    turn_id="wf-1",
+    ctx~,
+  )
+  assert_true(w.ok)
+  assert_eq(w.intent, "webfetch")
+  assert_eq(w.effects[0].command, "https://example.com")
+  let args = [
+    "exe",
+    "--machine-kind",
+    "android",
+    "--session-id",
+    "s2",
+    "--channel",
+    "email:a@b",
+    "hi",
+  ]
+  let parsed = parse_turn_context(args)
+  assert_eq(parsed.machine_kind, "android")
+  assert_eq(parsed.machine_id, "phone-android")
+  assert_eq(parsed.channel, "email:a@b")
 }
 
 ///|

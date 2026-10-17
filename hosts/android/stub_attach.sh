@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Android HostAbi attach stub — documents registration; lists MachineKinds via MoonBit.
+# Android HostAbi attach — same MoonBit brain + Host FFI (machine_kind=android).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 export PATH="${HOME}/.moon/bin:${PATH}"
 
-echo "[hosts/android] MachineKind::Android attach checklist"
-echo "  1. Embed or invoke MoonBit turn CLI / future JNI lib"
-echo "  2. Register machine id with kind=android in MachineRegistry"
-echo "  3. Forward user text → cmd/desktop_turn JSON v:1"
-echo "  4. Execute effects when needs_host_ffi=true (device FFI)"
+echo "[hosts/android] MachineKind::Android attach"
+echo "  Host runner: hosts/cli_host/run_turn.js --machine-kind android"
 echo
 
-exec bash "$ROOT/scripts/host_mobile_stub.sh" android
+bash "$ROOT/scripts/host_mobile_stub.sh" android
+
+echo
+echo "[hosts/android] product turn via shared Host FFI:"
+node "$ROOT/hosts/cli_host/run_turn.js" --machine-kind android --session-id android-stub "ListMachines"

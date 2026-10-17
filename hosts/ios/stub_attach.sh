@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# iOS HostAbi attach stub — documents registration; lists MachineKinds via MoonBit.
+# iOS HostAbi attach — same MoonBit brain + Host FFI as Desktop (machine_kind=ios).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 export PATH="${HOME}/.moon/bin:${PATH}"
 
-echo "[hosts/ios] MachineKind::Ios attach checklist"
-echo "  1. Embed or invoke MoonBit turn CLI / future dylib"
-echo "  2. Register machine id with kind=ios in MachineRegistry"
-echo "  3. Forward user text → cmd/desktop_turn JSON v:1"
-echo "  4. Execute effects when needs_host_ffi=true (device FFI)"
+echo "[hosts/ios] MachineKind::Ios attach"
+echo "  Host runner: hosts/cli_host/run_turn.js --machine-kind ios"
 echo
 
-exec bash "$ROOT/scripts/host_mobile_stub.sh" ios
+bash "$ROOT/scripts/host_mobile_stub.sh" ios
+
+echo
+echo "[hosts/ios] product turn via shared Host FFI:"
+node "$ROOT/hosts/cli_host/run_turn.js" --machine-kind ios --session-id ios-stub "ListMachines"

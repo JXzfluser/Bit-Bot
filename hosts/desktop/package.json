@@ -6,9 +6,43 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "pack": "echo \"Packaging: use electron-builder or electron-packager when ready; for now npm start runs the unpackaged app.\""
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.bitbot.desktop",
+    "productName": "Bit Bot",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "../shared/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../../cmd",
+        "to": "cmd",
+        "filter": ["**/*"]
+      }
+    ],
+    "linux": {
+      "target": ["dir"],
+      "category": "Utility"
+    },
+    "mac": {
+      "target": ["dir"]
+    },
+    "win": {
+      "target": ["dir"]
+    }
   },
   "dependencies": {
     "electron": "^33.2.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^25.1.8"
   }
 }
