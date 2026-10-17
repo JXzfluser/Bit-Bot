@@ -7252,12 +7252,52 @@ function createHostFfi(repoRoot) {
             env: process.env,
           },
         );
+        const outText = String(stdout || "").slice(0, 8000);
+        const errText = String(stderr || "").slice(0, 2000);
+        const shellDir = path.join(REPO_ROOT, "data", "host-tools", "shell");
+        fs.mkdirSync(shellDir, { recursive: true });
+        const shellAt = new Date().toISOString();
+        const shellPath = path.join(
+          shellDir,
+          `run-${Date.now().toString(36)}.json`,
+        );
+        const shellArtifact = {
+          command: shellCmd,
+          ok: true,
+          stdout_prefix: outText.slice(0, 400),
+          stderr_prefix: errText.slice(0, 200),
+          mode: "host_shell_exec",
+          pretend_ok: false,
+          at: shellAt,
+        };
+        fs.writeFileSync(shellPath, JSON.stringify(shellArtifact, null, 2));
+        appendJsonl(path.join(shellDir, "runs.jsonl"), {
+          ...shellArtifact,
+          path: shellPath,
+        });
+        recordSendToUser({
+          type: "attachment",
+          path: shellPath,
+          label: "shell",
+          source_kind: "shell",
+          at: shellAt,
+        });
+        appendHostDeliveryJournal({
+          kind: "shell",
+          command: shellCmd,
+          path: shellPath,
+          ok: true,
+          at: shellAt,
+        });
         results.push({
           kind: "shell",
           ok: true,
           command: shellCmd,
-          stdout: String(stdout || "").slice(0, 8000),
-          stderr: String(stderr || "").slice(0, 2000),
+          // Keep raw stdout for ADR 0002 --apply-host-results reinjection.
+          stdout: outText,
+          stderr: errText,
+          artifact_path: shellPath,
+          pretend_ok: false,
         });
       } catch (err) {
         results.push({

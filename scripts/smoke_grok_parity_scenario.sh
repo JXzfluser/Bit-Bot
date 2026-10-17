@@ -205,6 +205,18 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-box.json'));h=next(x fo
 python3 -c "import json,os;d=json.load(open('/tmp/parity-cold.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('provider')=='cold';assert p.get('pretend_sent') is False;assert 'List-Unsubscribe:' in open(p['eml_path']).read();print('parity cold_mail ok')"
 "${RUN[@]}" "meeting chat body=parity standup $MARKER direct=1" >/tmp/parity-meet.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-meet.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_direct';assert p.get('live_meeting_residual') is True;assert p.get('transcript') and os.path.isfile(p['transcript']);print('parity meeting_chat DirectSend ok')"
+"${RUN[@]}" "meeting chat body=parity draft card" >/tmp/parity-meet-draft.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-meet-draft.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_draft');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_draft_card';assert p.get('meeting_chat') is True;assert p.get('eml_ok') is True;assert os.path.isfile(p.get('eml_path') or '');print('parity meeting_chat DraftCard ok', p.get('eml_path'))"
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18766 --mode meeting --token smoke-meeting >/tmp/parity-meet-live-mock.log 2>&1 &
+MEET_LIVE_PID=$!
+sleep 0.4
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting \
+  "${RUN[@]}" --approved "meeting chat body=parity live standup direct=1" >/tmp/parity-meet-live.json || true
+kill "$MEET_LIVE_PID" >/dev/null 2>&1 || true
+wait "$MEET_LIVE_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/parity-meet-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_live';assert p.get('live_post') is True;assert p.get('live_meeting_residual') is False;assert p.get('direct_send') is True;assert p.get('transcript') and os.path.isfile(p['transcript']);print('parity meeting_chat live ok', (p.get('live_probe') or {}).get('http_status'))"
+"${RUN[@]}" --approved "shell echo parity-shell-$MARKER" >/tmp/parity-shell.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-shell.json'));assert d.get('host_continued') is True;h=next(x for x in d['host_results'] if x.get('kind')=='shell');assert h.get('ok');assert 'parity-shell-' in (h.get('stdout') or '');assert h.get('artifact_path') and os.path.isfile(h['artifact_path']);assert h.get('pretend_ok') is False;print('parity shell Host artifact ok', h.get('artifact_path'))"
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18775 --mode outlook --token smoke-out >/tmp/parity-outlook-mock.log 2>&1 &
 OUT_PID=$!
 sleep 0.35
