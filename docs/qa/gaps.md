@@ -1,13 +1,13 @@
 # Bit Bot 缺口报告（gaps.md）
 
-- **时间**: 2026-10-17 09:14 Asia/Shanghai
+- **时间**: 2026-10-17 Asia/Shanghai
 - **作者**: Bit验证
 - **合同主键**: **CM-***
 - **矩阵计数**: **234** / P0=**117**
-- **矩阵自标状态**: {'in_progress': 50, 'todo': 184}
-- **冒烟实测**: check_ok=True · test_ok=True · **升裁 H4·OAuth + CM-0806**：sandbox OAuth READY×3（1105/2109/2120）+ 隔离 Update Computer READY×1（0806）→ **I-PASS×4**；I-PASS **37→41**；open GAP **4→0**（41 行库存）；U=234 不动；H0–H5 前序 I-PASS 维持；0705 residual 真手机 OS 卡仍 GAP（非 open 库存行）
+- **矩阵自标状态**: U-PASS=234 · I-PASS=234 · I-todo=0
+- **冒烟实测**: check_ok=True · test_ok=True · **升裁 H6·全矩阵 I 收口**：`host_matrix_i_sweep.sh all` → READY×193；I-PASS **41→234**；open todo **193→0**；U=234 不动；H0–H5 Host-hard 41 维持；0705 平台子集 wording 保留；phone residual 另记（不阻塞矩阵 I）
 - **裁决口径**: GAP=无实现/无测；FAIL=有源+测但未达验收；PASS=C/U/I/B 且贴验收原文
-- **本轮**: A/B/C 按**新**测名重读源文件重裁。A 批证据列只用新测名（禁止旧「仅禁附同发」打回）。
+- **本轮**: Wave H6 全矩阵 I 收口（ADR 0004）；禁 mock-only 冒充 Host-hard Live。
 
 ## H2 升 I 口径（Bitbot · 2026-10-17 14:34 Asia/Shanghai）
 
@@ -64,6 +64,49 @@
 | **2103** | math + mermaid 真渲染帧 | 纯文本冒充 |
 
 对齐：interface-gaps §6.0/§6.3；旁注见 `qa/host-integration-gaps.md`。
+
+## H6 升 I 口径（Bit架构 · 2026-10-17 Asia/Shanghai）
+
+> 来源：[`adr/0004-full-matrix-i-closure.md`](../adr/0004-full-matrix-i-closure.md)。**H6 已升裁** → 其余 I=todo×193 **I-PASS**；**不改 U**；禁对 Host-hard 41 发明 mock-only Live；0705 平台子集 + phone residual 另记。
+
+| 面 | 可升（左列） | 拒升（右列） |
+|----|--------------|--------------|
+| **kernel-sufficient** | U 验收测已 PASS；无独立 Host 硬面或 Host 面可由核契约覆盖 | 无 U 测 / U≠PASS |
+| **covered-by-H0-H5** | Host 面已由 H0–H5 Live HostAbi / Host UI 覆盖 | 用 mock 冒充 Host-hard 41 的新 Live I |
+| **0705** | 平台子集 I-PASS 已成立 | 删子集声明；假手机 OS 卡 |
+
+对齐：ADR 0004；旁注见 `qa/host-integration-gaps.md`。
+
+---
+
+## 升裁 H6·全矩阵 I 收口 · host-integration I（Bit验证 · 2026-10-17 Asia/Shanghai）
+
+> Wave H6：**193** 行 I=todo（U=PASS；Host 面 = kernel-sufficient 或 covered-by-H0-H5）。对照 ADR 0004。  
+> **U/kernel-contract PASS=234 不动**；Host-hard **41** 条既有 I-PASS 不动；禁 mock-only 冒充 Host-hard Live；禁倒裁 U；禁碰共享 CDP **9223** / `/home/box/chrome-profile`。
+
+### Q-SMOKE 实测
+
+| 命令 | exit | 摘要 |
+|------|------|------|
+| `bash scripts/host_matrix_i_sweep.sh all` | 0 | moon test ≥347；`live_host_ping=true`；artifacts `docs/qa/artifacts/h6-matrix-i/` ×193 + `SUMMARY.json`；`i_claimed=false`；`status=READY_FOR_I_REVIEW` |
+
+### 证据链
+
+- **U acceptance**：每行既有验收测名（矩阵证据列）写入 `evidence.json` → `u_acceptance_test`。
+- **Live HostAbi ping**：`HostAbi::live` / Host UI `/api/host/health` audit → `docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl`。
+- **host_surface**：`kernel-sufficient` 或 `covered-by-H0-H5`。
+- **Refused**：无（Host-hard 41 不在 todo 输入集）。
+
+### 裁决（U 仍 PASS；host-integration **READY→I-PASS**）
+
+| 范围 | U | I 升裁 | 说明 |
+|------|---|--------|------|
+| I=todo×193 | **PASS** | **READY→I-PASS** | H6 sweep；kernel-sufficient / covered-by-H0-H5 |
+| Host-hard 41 | **PASS** | **维持 I-PASS** | H0–H5 Live 证据；不重 sweep 发明 |
+| CM-0705 | **PASS** | **I-PASS（平台子集）** | phone OS residual 另记；**不**阻塞矩阵 I |
+
+**禁止项核对**：未倒裁 U；未对 Host-hard 41 发明 mock-only Live；共享 9223/chrome-profile **未碰**；smoke `i_claimed=false`。  
+**计数**：I-PASS **41→234**；open I-todo **193→0**；U=234 不动；**0705 residual** 真手机 OS 卡仍 GAP/todo（非矩阵 I 阻塞）。
 
 ---
 

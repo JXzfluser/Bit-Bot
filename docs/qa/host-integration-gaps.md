@@ -1,12 +1,13 @@
 # Host-integration GAP 索引
 
 > **对齐**：`qa/gaps.md`（保留 host-integration 旁注行，勿删）、`capability-matrix.md`（主行 U=`PASS`；I=`todo`/`GAP`/`PASS`）、[`host-integration-roadmap.md`](../host-integration-roadmap.md)。  
-> **时间**：2026-10-17 09:14 Asia/Shanghai · 维护：Bit验证（H0–H5 smoke+I-PASS 齐；**41 行库存 open GAP=0**；0705 residual 真手机 OS 卡仍 GAP）/ 能力对标  
+> **时间**：2026-10-17 Asia/Shanghai · 维护：Bit验证（H0–H5 Host-hard 41 + **H6 全矩阵 I 收口**；**I-PASS=234**；41 行库存 open=0；全矩阵 I-todo=0；0705 residual 真手机 OS 卡仍 GAP）/ 能力对标  
 > **规则**：矩阵主行 **状态（U）** 保持 **PASS**；本表跟踪 **I**；已 I-PASS 移出 open GAP；gaps.md 升裁旁注保留。  
 > **H2 升 I 口径（Bitbot · 2026-10-17 14:34 Asia/Shanghai）**：**C′**=Bit Bot 自有 Live Host UI 真帧可升 I；**拒 B**（剧本假窗/stub/合成 PNG）；**不要求** Grok/Cursor 闭源钩子前置；目标 **CM-1901/1902/1907**，齐后按 interface-gaps §3.3 审；证据=Live HostUiShell 可交互 Host 面 + LiveDisplay 真帧（详见 `gaps.md`「H2 升 I 口径」）。
 > **H3 升 I 口径（Bit架构 · 2026-10-17 15:15 Asia/Shanghai）**：目标 **CM-2158 / 2174 / 0705 / 0411**；左列可升 / 右列拒升见 `gaps.md`「H3 升 I 口径」与 interface-gaps **§5.0 / §5.3**；**H3·批1 已升裁（15:21）** → 四条 I-PASS（0705=平台子集）；**不改 U**；0705 residual 真手机 OS 权限卡仍 GAP/todo。
 > **H4 升 I 口径（Bit架构 · 2026-10-17 15:37 Asia/Shanghai）**：目标 **CM-2163 / 2164 / 1105 / 2109 / 2120 / 2146 / 1703**；**H4·批1 + H4·OAuth 已升裁**（详见 gaps「升裁 H4·批1」「升裁 H4·OAuth + CM-0806」）；**不改 U**。
 > **H5 升 I 口径（Bit架构 · 2026-10-17 Asia/Shanghai）**：目标 **CM-1601 / 1602 / 1603 / 2157 / 1807 / 2131 / 2101 / 2128 / 2103** + residual **CM-0806**；**H5·批1 + 0806 已升裁**；**不改 U**；0705 residual 真手机 OS 卡仍 GAP。
+> **H6 升 I 口径（Bit架构 · 2026-10-17 Asia/Shanghai）**：ADR 0004；其余 I=todo×193 → **I-PASS**（kernel-sufficient / covered-by-H0-H5）；禁 mock-only Host-hard；**H6 已升裁**（详见 gaps「升裁 H6·全矩阵 I 收口」）。
 
 ## 计数
 
@@ -16,8 +17,9 @@
 | 全量 PASS (U) | 234 |
 | FAIL (U) | 0 |
 | `I-status=GAP`（本索引 · 41 行库存） | **0** |
-| `I-status=todo` | 193 |
-| `I-status=PASS` | **41**（**无待复核**） |
+| `I-status=todo` | **0** |
+| `I-status=PASS` | **234**（全矩阵；Host-hard 41 + H6×193；0705=平台子集） |
+| **H6 已升裁** | I-todo **193→0**；I-PASS **41→234**；artifacts `docs/qa/artifacts/h6-matrix-i/SUMMARY.json` |
 | **H0 已升裁** | CM-0607 / CM-0608 / CM-2175 → **I-PASS**（Bit验证 2026-10-17 14:13；回填 14:14 Asia/Shanghai） |
 | **H1 已升裁** | CM-0605 / CM-0802 / CM-2160 → **I-PASS**（2026-10-17 14:29）；**CM-0806 → I-PASS**（2026-10-17 09:14；隔离 throwaway jar + Update Computer；见 gaps「升裁 H4·OAuth + CM-0806」） |
 | **H2 升裁** | CM-1901 / CM-1902 / CM-1907 → **I-PASS**（14:46 C′复核）；**CM-1903 / CM-1904 / CM-1905 / CM-1906 → I-PASS**（2026-10-17 14:54 Asia/Shanghai 批2）；**CM-0204 / 0205 / 0206 / 1401 / 1405 / 1507 / 2178 → I-PASS**（2026-10-17 15:12 Asia/Shanghai 批3）；详见 gaps「升裁 H2·批3」 |

@@ -58,3 +58,35 @@ jobs:
             exit 0
           fi
           bash scripts/host_h5_smoke.sh media
+
+      # H6 full matrix I sweep (fast: skip moon test already run above).
+      - name: Optional host_matrix_i_sweep all
+        continue-on-error: true
+        run: |
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "skip: python3 missing"
+            exit 0
+          fi
+          if [[ ! -x scripts/host_matrix_i_sweep.sh ]]; then
+            echo "skip: scripts/host_matrix_i_sweep.sh missing"
+            exit 0
+          fi
+          # Prefer regenerating todo list from matrix if /tmp/matrix_todo.json absent.
+          if [[ ! -f /tmp/matrix_todo.json ]]; then
+            python3 - <<'PY'
+import json, re
+from pathlib import Path
+text = Path("docs/capability-matrix.md").read_text(encoding="utf-8")
+# H6 CI: if matrix already I-PASS, still emit empty todo (sweep no-ops ok)
+rows = re.findall(
+    r"^\| (CM-\d+) \|.*?\| ([^|]+) \| ([^|]+) \|\s*$", text, re.M
+)
+todo = []
+for cm, i_st, u_st in rows:
+    if i_st.strip() == "todo" and u_st.strip().startswith("PASS"):
+        todo.append({"cm": cm, "i": "todo", "u": "PASS", "evidence": "", "test": "", "file": ""})
+Path("/tmp/matrix_todo.json").write_text(json.dumps({"todo": todo}, indent=2) + "\n")
+print("wrote /tmp/matrix_todo.json count=", len(todo))
+PY
+          fi
+          H6_FAST=1 bash scripts/host_matrix_i_sweep.sh all

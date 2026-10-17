@@ -42,6 +42,33 @@ pub fn scaffold_ping() -> Int32 {
 }
 
 ///|
+/// Matrix inventory constants (Wave H6 full I closure).
+pub fn matrix_cm_count() -> Int32 {
+  234
+}
+
+///|
+pub fn matrix_i_pass_count() -> Int32 {
+  234
+}
+
+///|
 pub fn boot_banner() -> String {
-  "Bit Bot runtime boot — modules=" + module_count().to_string()
+  let mods = registered_modules()
+  let mut lines : Array[String] = []
+  lines.push("Bit Bot runtime boot")
+  lines.push("registered modules: " + module_count().to_string())
+  var i = 0
+  while i < mods.length() {
+    lines.push("  - " + mods[i])
+    i = i + 1
+  }
+  lines.push(
+    "capability matrix: CM="
+    + matrix_cm_count().to_string()
+    + " I-PASS="
+    + matrix_i_pass_count().to_string()
+    + " (H6; 0705 platform-subset)",
+  )
+  lines.join("\n")
 }

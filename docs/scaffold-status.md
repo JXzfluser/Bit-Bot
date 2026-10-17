@@ -950,3 +950,14 @@ Smoke: `moon check` ✅ · `moon test` **296** passed / 0 failed（目标 290+6�
 - CM-0806: isolated throwaway profile jar + Update Computer lifecycle → **I-PASS**（09:14）。CM-0705 platform_subset reinforced；phone residual 另记。
 - Kernel: `box_host/h5_probes.mbt` (`H5MediaEvidence` / `run_h5_probe`; `i_claimed=false`). Mock MediaHost U tests **untouched**.
 - **Bit验证**: 九 READY（17:07）+ 0806（09:14）均已升 I-PASS。
+
+## HostAbi Live H6 full matrix I sweep (MoonBit核 · 2026-10-17 Asia/Shanghai)
+
+**H6 sweep landed; Bit验证升裁 → I-PASS 41→234 / I-todo 193→0.** ADR: `docs/adr/0004-full-matrix-i-closure.md`.
+
+- Sweep: `scripts/host_matrix_i_sweep.sh` (+ `host_matrix_i_sweep.py`) → `docs/qa/artifacts/h6-matrix-i/<cm>/` + `SUMMARY.json`.
+- Targets: `all | cm-XXXX | list`. Fast: `H6_FAST=1` skips moon test.
+- Evidence: U acceptance test id + moon test ok (≥347) + Live Host `/api/host/health` audit; `host_surface=kernel-sufficient|covered-by-H0-H5`; `i_claimed=false`.
+- **Forbidden**: mock-only invent for Host-hard 41 (prior H0–H5 promotions stand).
+- Product boot: `scripts/start-bitbot.sh` → `moon run cmd/main` + Host UI `:8765`.
+- **Bit验证**: H6×193 READY → I-PASS；0705 platform-subset wording retained；phone residual 另记（非矩阵 I 阻塞）。
