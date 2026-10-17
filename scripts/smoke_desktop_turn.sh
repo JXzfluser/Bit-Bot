@@ -111,6 +111,14 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-oauth-gmail.json'));assert
 node hosts/cli_host/run_turn.js "computer use open https://example.com" >/tmp/bitbot-cu.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-cu.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');assert h.get('ok');assert 'navigate_reachable' in (h.get('stdout') or '');print('computer_use navigate host ok')"
 
+echo "==> Host skill_write / slides_pptx / export_pack (real artifacts)"
+node hosts/cli_host/run_turn.js "author skill name=smoke-skill description=demo body=Do the thing." >/tmp/bitbot-skill-write.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-skill-write.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='skill_write');assert h.get('ok');assert 'SKILL.md' in (h.get('stdout') or '');assert os.path.isfile('agent-tools/skills/smoke-skill/SKILL.md');print('skill_write host ok')"
+node hosts/cli_host/run_turn.js "make slides Smoke Deck" >/tmp/bitbot-slides.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slides.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='slides_pptx');assert h.get('ok');assert 'pptx_pk_magic_ok' in (h.get('stdout') or '');p=json.loads(h['stdout'])['path'];assert open(p,'rb').read(2)==b'PK';print('slides_pptx host ok', p)"
+node hosts/cli_host/run_turn.js "export bot template id=bot-smoke name=SmokeBot" >/tmp/bitbot-export.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-export.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='export_pack');assert h.get('ok');assert 'secrets_stripped' in (h.get('stdout') or '');assert os.path.isfile('agent-tools/exports/bot-smoke-shareable-template.json');print('export_pack host ok')"
+
 echo "==> journal / shared memory / inbound reaction (durable Host stores)"
 node hosts/cli_host/run_turn.js "journal date=2026-10-17 id=smoke body=smoke-event" >/tmp/bitbot-journal-append.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-journal-append.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='journal_append');assert h.get('ok') and 'events.jsonl' in (h.get('stdout') or '');print('journal_append durable ok')"

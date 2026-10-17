@@ -108,4 +108,5 @@
 - [x] Host sandbox OAuth: `oauth` effect runs real IdP authorize→token for Slack/Gmail/Finance; Desktop Connectors panel
 - [x] Host `computer_use` navigate: real HTTP public-page fetch + evidence under `data/journal/computer-use/`
 - [x] Journal / shared memory / inbound reaction product turns + durable Host stores (`events.jsonl` / `shared-scopes.json` / `inbound-reactions.jsonl`; CM-0302 / 0303 / 0110)
+- [x] Host `skill_write` / `slides_pptx` / `export_pack` materialize real artifacts under `agent-tools/` (python-pptx PK zip; secrets stripped)
 - [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit

@@ -2930,7 +2930,7 @@ pub fn run_desktop_turn(
         Ok(md) => {
           let effect : DesktopEffect = {
             kind: "skill_write",
-            command: name + "|" + md.length().to_string(),
+            command: name + "|" + description + "|" + md,
             needs_host_ffi: true,
           }
           deliver_ok(

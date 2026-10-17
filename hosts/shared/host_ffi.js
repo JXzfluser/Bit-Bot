@@ -1233,6 +1233,191 @@ function createHostFfi(repoRoot) {
     }
   }
 
+  function sanitizeSkillName(name) {
+    return String(name || "skill")
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "skill";
+  }
+
+  function executeSkillWrite(command) {
+    const raw = String(command || "");
+    const parts = raw.split("|");
+    const name = sanitizeSkillName(parts[0] || "skill");
+    const description = parts[1] || "";
+    const body = parts.length > 2 ? parts.slice(2).join("|") : "";
+    const skillDir = path.join(REPO_ROOT, "agent-tools", "skills", name);
+    fs.mkdirSync(skillDir, { recursive: true });
+    const skillPath = path.join(skillDir, "SKILL.md");
+    const md =
+      body && body.includes("---")
+        ? body
+        : [
+            "---",
+            `name: ${name}`,
+            `description: ${description || name}`,
+            "---",
+            "",
+            body || description || `Skill ${name}`,
+            "",
+          ].join("\n");
+    fs.writeFileSync(skillPath, md);
+    appendHostDeliveryJournal({
+      kind: "skill_write",
+      command,
+      path: skillPath,
+      bytes: Buffer.byteLength(md),
+      at: new Date().toISOString(),
+    });
+    return {
+      kind: "skill_write",
+      ok: true,
+      command,
+      stdout: JSON.stringify(
+        {
+          path: skillPath,
+          name,
+          bytes: Buffer.byteLength(md),
+          persisted: true,
+        },
+        null,
+        2,
+      ),
+      stderr: "",
+    };
+  }
+
+  async function executeSlidesPptx(command) {
+    const parts = String(command || "").split("|");
+    let outPath = parts[0] || "";
+    const title = parts.slice(1).join("|") || "Bit Bot deck";
+    if (!outPath) {
+      outPath = path.join(REPO_ROOT, "agent-tools", "deck.pptx");
+    }
+    if (!path.isAbsolute(outPath)) {
+      outPath = path.join(REPO_ROOT, outPath);
+    }
+    // Keep writes under repo agent-tools / data for sandbox policy.
+    const allowedRoots = [
+      path.join(REPO_ROOT, "agent-tools"),
+      path.join(REPO_ROOT, "data"),
+    ];
+    const resolved = path.resolve(outPath);
+    if (!allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))) {
+      outPath = path.join(REPO_ROOT, "agent-tools", path.basename(resolved) || "deck.pptx");
+    } else {
+      outPath = resolved;
+    }
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        process.env.PYTHON || "python3",
+        [
+          path.join(REPO_ROOT, "scripts", "host_h5_media.py"),
+          "pptx",
+          "--out",
+          outPath,
+          "--title",
+          title,
+        ],
+        { cwd: REPO_ROOT, timeout: 60000, maxBuffer: 2 * 1024 * 1024 },
+      );
+      let meta = {};
+      try {
+        meta = JSON.parse(String(stdout || "").trim() || "{}");
+      } catch {
+        meta = { path: outPath, title };
+      }
+      const exists = fs.existsSync(outPath);
+      const magic = exists
+        ? fs.readFileSync(outPath).subarray(0, 2).toString("utf8")
+        : "";
+      const ok = exists && magic === "PK";
+      appendHostDeliveryJournal({
+        kind: "slides_pptx",
+        command,
+        path: outPath,
+        ok,
+        at: new Date().toISOString(),
+      });
+      return {
+        kind: "slides_pptx",
+        ok,
+        command,
+        stdout: JSON.stringify(
+          {
+            path: outPath,
+            title,
+            pptx_pk_magic_ok: ok,
+            bytes: exists ? fs.statSync(outPath).size : 0,
+            meta,
+          },
+          null,
+          2,
+        ),
+        stderr: ok ? "" : String(stderr || "").slice(0, 2000),
+        error: ok ? "" : "pptx materialize failed",
+      };
+    } catch (err) {
+      appendHostDeliveryJournal({
+        kind: "slides_pptx",
+        command,
+        ok: false,
+        error: err.message || String(err),
+        at: new Date().toISOString(),
+      });
+      return {
+        kind: "slides_pptx",
+        ok: false,
+        command,
+        error: err.message || String(err),
+        stdout: err.stdout ? String(err.stdout).slice(0, 4000) : "",
+        stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
+      };
+    }
+  }
+
+  function executeExportPack(command) {
+    const parts = String(command || "").split("|");
+    const botId = sanitizeSkillName(parts[0] || "bot");
+    const kind = parts[1] || "shareable-template";
+    const exportDir = path.join(REPO_ROOT, "agent-tools", "exports");
+    fs.mkdirSync(exportDir, { recursive: true });
+    const exportPath = path.join(exportDir, `${botId}-${kind}.json`);
+    const pack = {
+      bot_id: botId,
+      kind,
+      secrets_stripped: true,
+      exported_at: new Date().toISOString(),
+      skills: [],
+      note: "Host export pack — secrets never written (CM-1406)",
+    };
+    fs.writeFileSync(exportPath, JSON.stringify(pack, null, 2));
+    appendHostDeliveryJournal({
+      kind: "export_pack",
+      command,
+      path: exportPath,
+      at: new Date().toISOString(),
+    });
+    return {
+      kind: "export_pack",
+      ok: true,
+      command,
+      stdout: JSON.stringify(
+        {
+          path: exportPath,
+          bot_id: botId,
+          kind,
+          secrets_stripped: true,
+        },
+        null,
+        2,
+      ),
+      stderr: "",
+    };
+  }
+
   async function executeComputerUse(command) {
     const cmd = String(command || "");
     const urlMatch = cmd.match(/https?:\/\/[^\s|"']+/);
@@ -1332,6 +1517,18 @@ function createHostFfi(repoRoot) {
         results.push(memRes);
         continue;
       }
+      if (kind === "skill_write") {
+        results.push(executeSkillWrite(cmd));
+        continue;
+      }
+      if (kind === "slides_pptx") {
+        results.push(await executeSlidesPptx(cmd));
+        continue;
+      }
+      if (kind === "export_pack") {
+        results.push(executeExportPack(cmd));
+        continue;
+      }
       if (
         kind === "mail_draft" ||
         kind === "mcp_namespace" ||
@@ -1351,10 +1548,7 @@ function createHostFfi(repoRoot) {
         kind === "finance_call" ||
         kind === "credential_fill" ||
         kind === "mail_draft" ||
-        kind === "device_permission" ||
-        kind === "skill_write" ||
-        kind === "slides_pptx" ||
-        kind === "export_pack"
+        kind === "device_permission"
       ) {
         const journalLine = appendHostDeliveryJournal({
           kind,
