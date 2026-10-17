@@ -813,7 +813,12 @@
                   label = "purchase:" + (p.mode || "receipt");
                   types.push("attachment");
                 } else if (h.kind === "schedule_meeting") {
-                  label = "ics:" + (p.mode || "calendar") + "/" + String(p.ics_path || p.path || "").split("/").slice(-1)[0];
+                  label =
+                    "ics:" +
+                    (p.mode || "calendar") +
+                    "/" +
+                    String(p.ics_path || "").split("/").slice(-1)[0] +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "mcp_call") {
                   const wtf = p.write_to_file || {};

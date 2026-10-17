@@ -27,7 +27,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-channel-thread.json'));
 
 # 2) Attachment (schedule ICS)
 "${RUN[@]}" "schedule meeting title=Parity when=tomorrow" >/tmp/parity-ics.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-ics.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('ics_ok') and os.path.isfile(p['ics_path']);print('parity attachment ics ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-ics.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('ics_ok') and os.path.isfile(p['ics_path']);assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_live') is False;print('parity attachment ics ok', p.get('path'))"
 
 # 3) Widget (approval CM-0105 Approve/Dismiss)
 "${RUN[@]}" "shell echo parity-approve" >/tmp/parity-widget.json
@@ -182,7 +182,7 @@ kill "$X_PID" "$JOB_PID" "$CAL_PID" "$FIN_PID" >/dev/null 2>&1 || true
 wait "$X_PID" "$JOB_PID" "$CAL_PID" "$FIN_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-x.json'));h=next(x for x in d['host_results'] if x.get('kind')=='x_search');p=json.loads(h['stdout']);assert p.get('mode')=='x_live';assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;print('parity x_search live ok', p.get('hit_count'))"
 python3 -c "import json;d=json.load(open('/tmp/parity-job.json'));h=next(x for x in d['host_results'] if x.get('kind')=='job_search');p=json.loads(h['stdout']);assert p.get('mode')=='job_live';assert p.get('live_job_residual') is False;assert p.get('pretend_applied') is False;assert p.get('hit_count')>=1;print('parity job_search live ok', p.get('hit_count'))"
-python3 -c "import json,os;d=json.load(open('/tmp/parity-cal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('mode')=='calendar_live';assert p.get('live_calendar_residual') is False;assert p.get('ics_ok') is True and os.path.isfile(p['ics_path']);print('parity calendar live ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('mode')=='calendar_live';assert p.get('live_calendar_residual') is False;assert p.get('ics_ok') is True and os.path.isfile(p['ics_path']);assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_live') is False;print('parity calendar live ok', p.get('path'))"
 python3 -c "import json;d=json.load(open('/tmp/parity-fin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='finance_call');p=json.loads(h['stdout']);assert p.get('mode')=='finance_live';assert p.get('live_finance_residual') is False;assert p.get('pretend_live') is False;print('parity finance_call live ok')"
 
 # 9h) CU OCR/native + device tools + identity + workflows + box copy + cold mail + meeting + Outlook

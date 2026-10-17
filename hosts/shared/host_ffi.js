@@ -6930,9 +6930,22 @@ function createHostFfi(repoRoot) {
         at,
       };
       const pathWritten = appendJsonl(CALENDAR_EVENTS_PATH, entry);
+      const schedDir = path.join(calDir, "schedules");
+      fs.mkdirSync(schedDir, { recursive: true });
+      const schedPath = path.join(
+        schedDir,
+        `schedule-${sanitizeSkillName(eventId) || "evt"}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        ...entry,
+        ledger_path: pathWritten,
+        mode_note: "host_schedule_meeting",
+      };
+      fs.writeFileSync(schedPath, JSON.stringify(artifact, null, 2));
       const delivery = recordSendToUser({
         type: "attachment",
         path: icsPath,
+        meta_path: schedPath,
         label: "calendar.ics",
         event_id: eventId,
         source_kind: kind,
@@ -6941,16 +6954,18 @@ function createHostFfi(repoRoot) {
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: pathWritten,
+        path: schedPath,
         ics: icsPath,
+        ledger_path: pathWritten,
         mode,
         at,
       });
       return okJson(kind, cmd, {
-        ...entry,
-        path: pathWritten,
+        ...artifact,
+        path: schedPath,
         scheduled: true,
         send_to_user: delivery,
+        ok: true,
       });
     }
 
