@@ -2052,38 +2052,103 @@ function createHostFfi(repoRoot) {
     }
     if (kind === "routine_list") {
       const rows = loadRoutines();
+      const at = new Date().toISOString();
+      const dir = path.join(REPO_ROOT, "data", "routines");
+      fs.mkdirSync(dir, { recursive: true });
+      const listPath = path.join(dir, `list-${Date.now().toString(36)}.json`);
+      const artifact = {
+        count: rows.length,
+        routines: rows,
+        mode: "host_routine_list",
+        pretend_empty: false,
+        at,
+      };
+      fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "lists.jsonl"), {
+        ...artifact,
+        path: listPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: listPath,
+        label: "routine_list",
+        source_kind: kind,
+        at,
+      });
       appendHostDeliveryJournal({
         kind,
         count: rows.length,
-        at: new Date().toISOString(),
+        path: listPath,
+        at,
       });
-      return {
-        kind,
+      return okJson(kind, command, {
+        ...artifact,
+        path: listPath,
+        send_to_user: delivery,
         ok: true,
-        command,
-        stdout: JSON.stringify(rows, null, 2),
-        stderr: "",
-      };
+      });
     }
     if (kind === "routine_pause") {
       const row = upsertRoutine({ id, enabled: false, lifecycle: "paused" });
-      return {
-        kind,
-        ok: true,
-        command,
-        stdout: `paused ${row.id}`,
-        stderr: "",
+      const at = new Date().toISOString();
+      const dir = path.join(REPO_ROOT, "data", "routines");
+      fs.mkdirSync(dir, { recursive: true });
+      const pausePath = path.join(
+        dir,
+        `pause-${row.id}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        id: row.id,
+        lifecycle: "paused",
+        enabled: false,
+        mode: "host_routine_pause",
+        pretend_paused: false,
+        at,
       };
+      fs.writeFileSync(pausePath, JSON.stringify(artifact, null, 2));
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        path: pausePath,
+        at,
+      });
+      return okJson(kind, command, {
+        ...artifact,
+        path: pausePath,
+        summary: `paused ${row.id}`,
+        ok: true,
+      });
     }
     if (kind === "routine_resume") {
       const row = upsertRoutine({ id, enabled: true, lifecycle: "active" });
-      return {
-        kind,
-        ok: true,
-        command,
-        stdout: `resumed ${row.id}`,
-        stderr: "",
+      const at = new Date().toISOString();
+      const dir = path.join(REPO_ROOT, "data", "routines");
+      fs.mkdirSync(dir, { recursive: true });
+      const resumePath = path.join(
+        dir,
+        `resume-${row.id}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        id: row.id,
+        lifecycle: "active",
+        enabled: true,
+        mode: "host_routine_resume",
+        pretend_resumed: false,
+        at,
       };
+      fs.writeFileSync(resumePath, JSON.stringify(artifact, null, 2));
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        path: resumePath,
+        at,
+      });
+      return okJson(kind, command, {
+        ...artifact,
+        path: resumePath,
+        summary: `resumed ${row.id}`,
+        ok: true,
+      });
     }
     if (kind === "routine_fire") {
       const rows = loadRoutines();
