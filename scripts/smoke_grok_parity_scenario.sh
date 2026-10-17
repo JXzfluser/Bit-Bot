@@ -113,11 +113,53 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-tick.json'));h=next(x f
 "${RUN[@]}" "fire routine parity-now" >/tmp/parity-fire.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-fire.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_fire');p=json.loads(h['stdout']);assert p.get('fired') is True;assert p.get('id')=='parity-now';assert p.get('fires') and os.path.isfile(p['fires']);print('parity routine_fire ok', p.get('next_due'))"
 
+# 9f) Mail live (Gmail mock) + sections + slides + purchase + install plugin
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18773 --mode gmail --token smoke-gmail >/tmp/parity-gmail-mock.log 2>&1 &
+GMAIL_PID=$!
+sleep 0.35
+BITBOT_GMAIL_API_BASE=http://127.0.0.1:18773 BITBOT_GMAIL_TOKEN=smoke-gmail \
+  "${RUN[@]}" "search mail Invoice" >/tmp/parity-mail-search.json || true
+BITBOT_GMAIL_API_BASE=http://127.0.0.1:18773 BITBOT_GMAIL_TOKEN=smoke-gmail \
+  "${RUN[@]}" "read mail t-invoice-1" >/tmp/parity-mail-read.json || true
+BITBOT_GMAIL_API_BASE=http://127.0.0.1:18773 BITBOT_GMAIL_TOKEN=smoke-gmail BITBOT_MAIL_SEND=1 \
+  "${RUN[@]}" --approved "draft mail to=parity@example.com subject=Parity body=$MARKER" >/tmp/parity-mail-send.json || true
+kill "$GMAIL_PID" >/dev/null 2>&1 || true
+wait "$GMAIL_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/parity-mail-search.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_search');p=json.loads(h['stdout']);assert p.get('mode')=='gmail_live';assert p.get('live_mail_residual') is False;assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;print('parity mail_search live ok', p.get('hit_count'))"
+python3 -c "import json;d=json.load(open('/tmp/parity-mail-read.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_read');p=json.loads(h['stdout']);assert p.get('mode')=='gmail_live';assert p.get('live_mail_residual') is False;print('parity mail_read live ok', p.get('thread_id'))"
+python3 -c "import json;d=json.load(open('/tmp/parity-mail-send.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_gmail';assert p.get('sent') is True;assert p.get('pretend_sent') is False;print('parity mail_send live ok', p.get('message_id'))"
+
+"${RUN[@]}" "add section group=parity id=sec-p title=Parity" >/tmp/parity-sec-add.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sec-add.json'));h=next(x for x in d['host_results'] if x.get('kind')=='section_add');p=json.loads(h['stdout']);assert p.get('ok') is True or h.get('ok');print('parity section_add ok', (p.get('section') or {}).get('id') or p.get('section_id'))"
+"${RUN[@]}" "section post group=parity section=sec-p from=user body=parity $MARKER" >/tmp/parity-sec-post.json
+python3 -c "import json;d=json.load(open('/tmp/parity-sec-post.json'));h=next(x for x in d['host_results'] if x.get('kind')=='section_post');p=json.loads(h['stdout']);assert p.get('isolation_ok') is True;assert p.get('pretend_cross_section') is False;assert (p.get('send_to_user') or {}).get('type')=='text';print('parity section_post ok', p.get('messages_in_section'))"
+
+"${RUN[@]}" "make slides title=Parity $MARKER" >/tmp/parity-slides.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-slides.json'));h=next(x for x in d['host_results'] if x.get('kind')=='slides_pptx');p=json.loads(h['stdout']);assert p.get('pptx_pk_magic_ok') is True;assert p.get('path') and os.path.isfile(p['path']);print('parity slides_pptx ok', p.get('bytes'))"
+
+"${RUN[@]}" --approved "purchase item=ParityWidget cents=500" >/tmp/parity-purchase.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-purchase.json'));h=next(x for x in d['host_results'] if x.get('kind')=='purchase');p=json.loads(h['stdout']);assert p.get('receipt_ok') is True;assert p.get('pretend_paid') is False;assert p.get('paid') is False;assert p.get('live_paid_residual') is True;assert os.path.isfile(p['receipt_path']);print('parity purchase sandbox ok', p.get('mode'))"
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18765 --mode purchase --token smoke-pay >/tmp/parity-pay-mock.log 2>&1 &
+PAY_PID=$!
+sleep 0.35
+BITBOT_PURCHASE_LIVE=1 BITBOT_PURCHASE_TOKEN=smoke-pay BITBOT_PURCHASE_API_URL=http://127.0.0.1:18765 \
+  "${RUN[@]}" --approved "purchase item=LiveParity cents=999" >/tmp/parity-purchase-live.json || true
+kill "$PAY_PID" >/dev/null 2>&1 || true
+wait "$PAY_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/parity-purchase-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='purchase');p=json.loads(h['stdout']);assert p.get('mode')=='live_charge';assert p.get('paid') is True;assert p.get('live_paid_residual') is False;assert p.get('pretend_paid') is False;print('parity purchase live ok', (p.get('charge_probe') or {}).get('ok'))"
+
+"${RUN[@]}" "install plugin plugin-slides" >/tmp/parity-plugin.json
+python3 -c "import json;d=json.load(open('/tmp/parity-plugin.json'));assert d.get('ok');assert d.get('intent')=='install_plugin';print('parity install_plugin ok')"
+"${RUN[@]}" "learn from demo title=ParityCheckout steps=click:Cart|type:email" >/tmp/parity-lfd.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-lfd.json'));h=next(x for x in d['host_results'] if x.get('kind')=='skill_write');p=json.loads(h['stdout']);assert p.get('path') and os.path.isfile(p['path']);body=open(p['path']).read();assert 'click:Cart' in body or 'Steps' in body;print('parity learn_from_demo ok')"
+
 # 10) Multi-end mobile Host strip + ListMachines host-present honesty
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
-python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"
+python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'machine_kind=ios' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"
 "${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
-python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;print('parity android turn ok')"
+python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;assert 'machine_kind=android' in t;print('parity android turn ok')"
+"${MOBILE[@]}" --machine-kind ios --session-id parity-ios-slides "make slides title=MobileParity" >/tmp/parity-ios-slides.txt
+python3 -c "t=open('/tmp/parity-ios-slides.txt').read();assert 'SendToUser' in t;assert 'attachment' in t or 'slides_pptx' in t;assert 'machine_kind=ios' in t;print('parity ios slides SendToUser strip ok')"
 "${RUN[@]}" --machine-kind android --machine-id phone-android "ListMachines" >/tmp/parity-lm-android.json
 python3 -c "import json;d=json.load(open('/tmp/parity-lm-android.json'));ms=d.get('machines')or[];a=next(m for m in ms if m.get('kind')=='android');assert a.get('status')=='connected';assert a.get('id')=='phone-android';print('parity android host-present ListMachines ok', a.get('status'))"
 "${RUN[@]}" --machine-kind desktop "ListMachines" >/tmp/parity-lm-desk.json

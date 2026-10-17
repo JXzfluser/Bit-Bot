@@ -31,8 +31,18 @@ const r = spawnSync(
 if (r.stdout) {
   process.stdout.write(r.stdout);
   // CHARTER Delivery: append SendToUser strip for mobile Host shells.
-  const strip = formatDeliveryStrip(extractDeliveryTypes(r.stdout));
+  const summary = extractDeliveryTypes(r.stdout);
+  const strip = formatDeliveryStrip(summary);
   if (strip) process.stdout.write(strip + "\n");
+  // Multi-end honesty: echo active machine_kind when Host results present.
+  if (summary && summary.machine_kind) {
+    process.stdout.write(
+      "[HostAbi machine_kind=" +
+        summary.machine_kind +
+        (summary.ok ? " ok" : " err") +
+        "]\n",
+    );
+  }
 }
 if (r.stderr) process.stderr.write(r.stderr);
 

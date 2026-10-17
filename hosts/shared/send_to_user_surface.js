@@ -37,21 +37,46 @@ function extractDeliveryTypes(turnJsonText) {
         types.push("reaction");
         labels.push("reaction:" + (p.emoji || "👍"));
       } else if (h.kind === "channel_send") {
-        types.push(p.live_post ? "text" : "thread");
+        const t = p.thread_ts ? "thread" : "text";
+        types.push(t);
         labels.push("channel:" + (p.mode || p.scheme || "draft"));
+      } else if (h.kind === "section_post" || h.kind === "send_to_agent" || h.kind === "subagent_run" || h.kind === "room_turn") {
+        const t =
+          h.kind === "room_turn"
+            ? "thread"
+            : (p.send_to_user && p.send_to_user.type) || "text";
+        types.push(t);
+        labels.push(h.kind);
+      } else if (h.kind === "cloud_agent_launch") {
+        types.push("cursor-agent");
+        labels.push("cursor-agent");
       } else if (
         [
           "mail_send",
           "mail_search",
+          "mail_read",
           "slides_pptx",
           "skill_write",
           "export_pack",
           "schedule_meeting",
           "purchase",
           "mcp_call",
+          "mcp_discover",
           "credential_list",
+          "credential_fill",
           "code_changes",
           "section_add",
+          "source_control",
+          "workflow_list",
+          "x_search",
+          "job_search",
+          "finance_call",
+          "copy_to_box",
+          "copy_from_box",
+          "shared_memory_put",
+          "shared_memory_read",
+          "journal_append",
+          "connectors_probe",
         ].includes(h.kind)
       ) {
         types.push("attachment");
@@ -62,6 +87,9 @@ function extractDeliveryTypes(turnJsonText) {
       } else if (h.kind === "approval_card") {
         types.push("widget");
         labels.push("widget:approval");
+      } else if (h.kind === "oauth") {
+        types.push("widget");
+        labels.push("oauth:" + (p.mode || p.status || "card"));
       }
     }
     return {
