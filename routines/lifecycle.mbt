@@ -276,9 +276,10 @@ fn cron_field_count(expr : String) -> Int32 {
 }
 
 ///|
-/// CM-0402: 5-field cron or @hourly/@daily/@weekly/@every Nm;
+/// CM-0402: 5-field cron or @hourly/@daily/@weekly/@now/@once/@every Nm;
 /// reject denser than 5 minutes for @every.
 /// Accepts optional `CRON_TZ=<iana> ` prefix (stripped before validation).
+/// `@now` / `@once` = Host due-immediately (routine_tick can fire same session).
 pub fn validate_cron(expr : String) -> Result[Unit, String] {
   let (_, body) = parse_cron_tz_prefix(expr)
   validate_cron_body(body)
@@ -289,7 +290,11 @@ fn validate_cron_body(expr : String) -> Result[Unit, String] {
   if expr.length() == 0 {
     return Err("cron expression must not be empty")
   }
-  if expr == "@hourly" || expr == "@daily" || expr == "@weekly" {
+  if expr == "@hourly" ||
+      expr == "@daily" ||
+      expr == "@weekly" ||
+      expr == "@now" ||
+      expr == "@once" {
     return Ok(())
   }
   if expr.has_prefix("@every ") {

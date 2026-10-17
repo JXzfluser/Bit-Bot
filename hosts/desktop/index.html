@@ -619,6 +619,11 @@
             "journal_append",
             "export_pack",
             "mcp_discover",
+            "connectors_probe",
+            "teammate_create",
+            "routine_schedule",
+            "routine_tick",
+            "routine_fire",
           ];
           const attaches = r.host_results.filter(
             (h) => h && h.ok && attachKinds.includes(h.kind),
@@ -797,6 +802,34 @@
                       " · " +
                       (p.mode || "");
                   }
+                } else if (h.kind === "connectors_probe") {
+                  const cons = p.connectors || {};
+                  const bits = Object.keys(cons)
+                    .slice(0, 4)
+                    .map((k) => {
+                      const c = cons[k] || {};
+                      return (
+                        k +
+                        ":" +
+                        (c.connected ? "on" : "off") +
+                        "/" +
+                        (c.mode || "?")
+                      );
+                    });
+                  label = "connectors×" + bits.length;
+                  types.push("attachment");
+                  const meta = document.getElementById("connectors-meta");
+                  if (meta) {
+                    meta.textContent = bits.length
+                      ? bits.join(" · ")
+                      : "no connectors";
+                  }
+                } else if (h.kind === "routine_schedule" || h.kind === "routine_tick" || h.kind === "routine_fire") {
+                  label =
+                    h.kind.replace("routine_", "rt:") +
+                    ":" +
+                    (p.id || (p.fired && p.fired[0] && p.fired[0].id) || p.fired_count || "");
+                  types.push("attachment");
                 } else if (p.media_path) {
                   label = h.kind + ": " + String(p.media_path).split("/").slice(-1)[0];
                 } else if (p.path) {

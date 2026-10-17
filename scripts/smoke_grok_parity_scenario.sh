@@ -84,7 +84,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-journal.json'));h=next(
 
 # 9c) Credential fill → vault metadata → list (never secret echo)
 "${RUN[@]}" "fill credential domain=parity.example.test" >/tmp/parity-cred-fill.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-cred-fill.json'));h=next(x for x in d['host_results'] if x.get('kind')=='credential_fill');p=json.loads(h['stdout']);assert p.get('secret_echoed') is False;assert p.get('vault_only') is True;assert p.get('pretend_secret_view') is False;assert os.path.isfile(p.get('vault_path') or 'data/credentials/vault.json');vault=json.load(open(p['vault_path']));assert any(e.get('domain')=='parity.example.test' for e in vault.get('entries')or[]);blob=json.dumps(p)+json.dumps(vault);assert 'vault:secret' not in blob.lower() and 'password' not in blob.lower() or 'has_secret' in blob;assert 'secret-ref' not in blob;print('parity credential_fill vault meta ok', p.get('vault_id'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cred-fill.json'));h=next(x for x in d['host_results'] if x.get('kind')=='credential_fill');p=json.loads(h['stdout']);assert p.get('secret_echoed') is False;assert p.get('vault_only') is True;assert p.get('pretend_secret_view') is False;assert os.path.isfile(p.get('vault_path') or 'data/credentials/vault.json');vault=json.load(open(p['vault_path']));ents=vault.get('entries')or[];assert any(e.get('domain')=='parity.example.test' for e in ents);assert all(('password' not in e and 'token' not in e and 'secret' not in e) for e in ents);assert 'secret-ref' not in json.dumps(p)+json.dumps(vault);print('parity credential_fill vault meta ok', p.get('vault_id'))"
 "${RUN[@]}" "list credentials" >/tmp/parity-cred-list2.json
 python3 -c "import json;d=json.load(open('/tmp/parity-cred-list2.json'));h=next(x for x in d['host_results'] if x.get('kind')=='credential_list');p=json.loads(h['stdout']);assert p.get('secret_echoed') is False;assert any(c.get('domain')=='parity.example.test' for c in p.get('credentials')or[]);print('parity credential_list sees fill ok', p.get('count'))"
 
@@ -98,6 +98,20 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-sub.json'));h=next(x fo
 "${RUN[@]}" "voice start parity-vr" >/tmp/parity-vr-start.json
 "${RUN[@]}" "voice relay parity-vr :: hello parity $MARKER" >/tmp/parity-vr.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-vr.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_relay');p=json.loads(h['stdout']);assert p.get('reply_media_ok') is True;assert p.get('reply_media_path') and os.path.isfile(p['reply_media_path']);assert open(p['reply_media_path'],'rb').read(4)==b'RIFF';print('parity voice_relay ok', p.get('turns'))"
+
+# 9e) Connectors probe + teammate send + routine tick (Host durable)
+"${RUN[@]}" "list connectors" >/tmp/parity-conn.json
+python3 -c "import json;d=json.load(open('/tmp/parity-conn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='connectors_probe');p=json.loads(h['stdout']);assert p.get('ok') is True;assert isinstance(p.get('connectors'),dict) and p['connectors'];print('parity connectors_probe ok', sorted(p['connectors'].keys()))"
+"${RUN[@]}" "create teammate id=asst-parity name=Parity role=executor" >/tmp/parity-tm.json
+python3 -c "import json;d=json.load(open('/tmp/parity-tm.json'));h=next(x for x in d['host_results'] if x.get('kind')=='teammate_create');assert h.get('ok');print('parity teammate_create ok')"
+"${RUN[@]}" "send to agent asst-parity :: review parity $MARKER" >/tmp/parity-sta.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sta.json'));h=next(x for x in d['host_results'] if x.get('kind')=='send_to_agent');p=json.loads(h['stdout']);assert p.get('to_id')=='asst-parity';assert (p.get('send_to_user') or {}).get('type')=='text';assert p.get('path') and os.path.isfile(p['path']);print('parity send_to_agent ok', p.get('status'))"
+"${RUN[@]}" "create routine id=parity-now cron=@now prompt=ping $MARKER" >/tmp/parity-rt.json
+python3 -c "import json;d=json.load(open('/tmp/parity-rt.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);assert p.get('stored') is True;assert p.get('due_now') is True;assert p.get('id')=='parity-now';print('parity routine_schedule @now ok', p.get('next_due'))"
+"${RUN[@]}" "tick routines" >/tmp/parity-tick.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-tick.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_tick');p=json.loads(h['stdout']);assert p.get('fired_count',0)>=1;assert any((f.get('id')=='parity-now') for f in (p.get('fired')or[]));assert os.path.isfile(p.get('wakes_path') or 'data/routines/wakes.jsonl') or p.get('wakes');print('parity routine_tick ok', 'fired', p.get('fired_count'), 'due', p.get('due_count'))"
+"${RUN[@]}" "fire routine parity-now" >/tmp/parity-fire.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-fire.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_fire');p=json.loads(h['stdout']);assert p.get('fired') is True;assert p.get('id')=='parity-now';assert p.get('fires') and os.path.isfile(p['fires']);print('parity routine_fire ok', p.get('next_due'))"
 
 # 10) Multi-end mobile Host strip + ListMachines host-present honesty
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt

@@ -56,6 +56,8 @@ test "acceptance_cm0401_create_get_update" {
 test "acceptance_cm0402_validate_cron" {
   assert_true(@routines.validate_cron("0 9 * * 1-5") is Ok(_))
   assert_true(@routines.validate_cron("@hourly") is Ok(_))
+  assert_true(@routines.validate_cron("@now") is Ok(_))
+  assert_true(@routines.validate_cron("@once") is Ok(_))
   assert_true(@routines.validate_cron("@daily") is Ok(_))
   assert_true(@routines.validate_cron("@weekly") is Ok(_))
   assert_true(@routines.validate_cron("@every 5m") is Ok(_))

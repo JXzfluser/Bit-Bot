@@ -1643,6 +1643,10 @@ function createHostFfi(repoRoot) {
       lifecycle: String(partial.lifecycle || "active"),
       updated_at: new Date().toISOString(),
     };
+    if (partial.next_due != null) next.next_due = String(partial.next_due);
+    if (partial.last_fired_at != null) {
+      next.last_fired_at = String(partial.last_fired_at);
+    }
     if (idx >= 0) rows[idx] = { ...rows[idx], ...next };
     else rows.push(next);
     saveRoutines(rows);
@@ -1884,12 +1888,25 @@ function createHostFfi(repoRoot) {
     const id = String(command || "").split("|")[0];
     if (kind === "routine_schedule") {
       const parts = String(command || "").split("|");
+      const cron = parts[1] || "@daily";
+      // @now / @once → due immediately so routine_tick can fire in the same session.
+      let nextDue = null;
+      if (cron === "@now" || cron === "@once" || /@now|@once/i.test(cron)) {
+        nextDue = new Date().toISOString();
+      } else if (cron === "@hourly" || /hourly/i.test(cron)) {
+        nextDue = new Date(Date.now() + 3600 * 1000).toISOString();
+      } else if (cron === "@weekly" || /weekly/i.test(cron)) {
+        nextDue = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+      } else {
+        nextDue = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+      }
       const row = upsertRoutine({
         id: parts[0] || "routine-1",
-        cron: parts[1] || "@daily",
+        cron,
         prompt: parts.slice(2).join("|") || "",
         enabled: true,
         lifecycle: "active",
+        next_due: nextDue,
       });
       appendHostDeliveryJournal({
         kind,
@@ -1901,7 +1918,17 @@ function createHostFfi(repoRoot) {
         kind,
         ok: true,
         command,
-        stdout: `routine stored ${row.id} cron=${row.cron}`,
+        stdout: JSON.stringify(
+          {
+            stored: true,
+            id: row.id,
+            cron: row.cron,
+            next_due: row.next_due || nextDue,
+            due_now: cron === "@now" || cron === "@once",
+          },
+          null,
+          2,
+        ),
         stderr: "",
       };
     }
