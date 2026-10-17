@@ -59,3 +59,7 @@
 - [x] 回归套件与文档同步（moon CI + H6 sweep soft）
 - [x] Host I：41 行库存 open=0；全矩阵 I-PASS=234
 - [ ] phone residual 仍待真机（非矩阵 I 阻塞）
+
+## Product Host runtime (post-matrix)
+
+- [x] **Product Host runtime deployed on box** — `scripts/bitbot_runtime/` + Host UI chat/memory on `:8765`; persist under `/workspace/data/`; LLM chain api→ollama→LocalBrain; `bash scripts/deploy_local.sh` (see `docs/qa/real-host-runtime.md`)

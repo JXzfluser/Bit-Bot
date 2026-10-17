@@ -81,13 +81,25 @@
   #webhook-panel.open, #device-perm-card.open { display:block; }
   #device-perm-card.open { position:fixed; inset:0; background:#0008; z-index:35; display:flex; align-items:center; justify-content:center; max-width:none; margin:0; }
   #device-perm-card .card { background:var(--panel); border:1px solid #ffb74d; border-radius:10px; padding:20px; width:360px; }
-  #h5-chat { display:none; margin-top:16px; max-width:640px; }
-  #h5-chat.open { display:block; }
+  #h5-chat { display:none; margin-top:16px; max-width:720px; }
+  #h5-chat.open, #h5-chat.product-open { display:block; }
   .h5-msg { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; }
+  .h5-msg.user { border-color:#3a4558; }
   .h5-msg .role { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .h5-msg .body { white-space:pre-wrap; word-break:break-word; margin-top:6px; }
   .react-pill { display:inline-flex; align-items:center; gap:4px; margin-top:10px; padding:4px 10px; border:1px solid var(--border); border-radius:14px; background:#222733; font-size:14px; }
   .react-pill.hidden { display:none; }
   .react-pill.on { border-color:var(--accent); background:#1c2433; }
+  #chat-composer { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+  #chat-composer textarea { width:100%; min-height:72px; resize:vertical; background:#141820; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px 12px; font:inherit; }
+  #chat-composer textarea:focus { outline:none; border-color:var(--accent); }
+  #chat-composer .row { display:flex; gap:8px; align-items:center; }
+  #chat-send { background:#2a3140; color:var(--text); border:1px solid var(--accent); border-radius:6px; padding:8px 16px; cursor:pointer; font-weight:600; }
+  #chat-send:disabled { opacity:.5; cursor:wait; }
+  #tool-audit-strip { margin-top:8px; font:11px/1.35 ui-monospace,monospace; color:var(--muted); min-height:1.2em; white-space:pre-wrap; }
+  #tool-audit-strip .ok { color:var(--ok); }
+  #tool-audit-strip .bad { color:var(--danger); }
+  #llm-mode-badge { font-size:11px; color:var(--muted); margin-left:auto; }
   #h5-math-mermaid { display:none; margin-top:16px; max-width:720px; }
   #h5-math-mermaid.open { display:block; }
   .math-block { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:12px; }
@@ -144,9 +156,21 @@
       <p id="pg-text" style="margin:8px 0;color:var(--muted)"></p>
       <a id="pg-link" href="#" style="color:var(--accent)">Open Settings</a>
     </div>
-    <div id="h5-chat" role="log" aria-label="H5 chat with reaction pills">
-      <strong>Chat · ReactToMessage</strong>
+    <div id="h5-chat" class="product-open" role="log" aria-label="Host chat">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <strong>Chat</strong>
+        <span style="color:var(--muted);font-size:12px">Host runtime · real tools</span>
+        <span id="llm-mode-badge"></span>
+      </div>
       <div id="h5-msg-list"></div>
+      <div id="tool-audit-strip" aria-live="polite"></div>
+      <div id="chat-composer">
+        <textarea id="chat-input" placeholder="Ask Bit Bot — e.g. 用 Shell 执行 echo bitbot-live 并告诉我结果" rows="3"></textarea>
+        <div class="row">
+          <button type="button" id="chat-send">Send</button>
+          <span style="color:var(--muted);font-size:12px">Enter to send · Shift+Enter newline</span>
+        </div>
+      </div>
     </div>
     <div id="h5-math-mermaid" role="region" aria-label="Math and mermaid render">
       <strong>Math / Mermaid</strong>
@@ -278,29 +302,45 @@ function applyH3HostOverlays(s) {
   }
 }
 
-/** H5: reaction pills, math/mermaid, cursor-agent card (driven by /api/host/*). */
+/** H5 + product chat: messages, reaction pills, tool/audit strip. */
 function applyH5HostOverlays(s) {
   const chat = document.getElementById('h5-chat');
   const list = document.getElementById('h5-msg-list');
   const msgs = (s && s.chatMessages) || [];
   const pill = (s && s.reactPill) || {};
-  const showChat = pill.visible || (s && s.endTurnLeftPill) ||
-    msgs.some(m => m.reactions && Object.keys(m.reactions).length);
+  const badge = document.getElementById('llm-mode-badge');
+  if (badge) badge.textContent = s && s.llmMode ? ('llm=' + s.llmMode) : '';
+  const strip = document.getElementById('tool-audit-strip');
+  if (strip) {
+    const tools = (s && s.lastToolStrip) || [];
+    const audits = (s && s.lastTurnAudit) || [];
+    const parts = [];
+    if (tools.length) {
+      parts.push(tools.map(t => {
+        const cls = t.refused ? 'bad' : (t.ok ? 'ok' : 'bad');
+        return `<span class="${cls}">${t.tool}${t.refused ? ' REFUSED' : ''}: ${(t.excerpt || t.detail || '').replace(/</g,'&lt;')}</span>`;
+      }).join(' · '));
+    } else if (audits.length) {
+      parts.push(audits.slice(-3).map(a => `${a.tool_name || a.tool}: ${a.detail || ''}`).join(' · '));
+    }
+    strip.innerHTML = parts.join('\n') || '';
+  }
+  // Product chat always visible; H5 reaction path still works on same list
   if (chat && list) {
-    if (showChat) {
-      list.innerHTML = msgs.map(m => {
-        const rx = m.reactions || {};
-        const keys = Object.keys(rx);
-        const pillHtml = keys.length
-          ? keys.map(e => `<span class="react-pill on" data-emoji="${e}" data-msg="${m.id}">${e} ${rx[e]}</span>`).join(' ')
-          : (pill.visible && pill.message_id === m.id
-              ? `<span class="react-pill on" data-emoji="${pill.emoji}">${pill.emoji}</span>` : '');
-        return `<div class="h5-msg" data-msg-id="${m.id}"><div class="role">${m.role || 'assistant'}</div>
-          <div>${m.text || ''}</div>${pillHtml}</div>`;
-      }).join('');
-      chat.classList.add('open');
-      document.getElementById('home-hint').style.display = 'none';
-    } else { chat.classList.remove('open'); }
+    list.innerHTML = msgs.map(m => {
+      const rx = m.reactions || {};
+      const keys = Object.keys(rx);
+      const pillHtml = keys.length
+        ? keys.map(e => `<span class="react-pill on" data-emoji="${e}" data-msg="${m.id}">${e} ${rx[e]}</span>`).join(' ')
+        : (pill.visible && pill.message_id === m.id
+            ? `<span class="react-pill on" data-emoji="${pill.emoji}">${pill.emoji}</span>` : '');
+      const role = m.role || 'assistant';
+      const esc = (m.text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      return `<div class="h5-msg ${role}" data-msg-id="${m.id}"><div class="role">${role}</div>
+        <div class="body">${esc}</div>${pillHtml}</div>`;
+    }).join('');
+    chat.classList.add('product-open');
+    if (msgs.length) document.getElementById('home-hint').style.display = 'none';
   }
   const mm = document.getElementById('h5-math-mermaid');
   const mmState = (s && s.mathMermaid) || {};
@@ -771,6 +811,45 @@ document.getElementById('ip-gear').onclick = () => {
 
 document.getElementById('wh-copy-url').onclick = () => hostPost('/api/host/user_copy_webhook', {what:'url'});
 document.getElementById('wh-copy-key').onclick = () => hostPost('/api/host/user_copy_webhook', {what:'key'});
+
+async function sendHostChat() {
+  const ta = document.getElementById('chat-input');
+  const btn = document.getElementById('chat-send');
+  const text = (ta && ta.value || '').trim();
+  if (!text) return;
+  const agentId = (window.__bitbotHostUi && window.__bitbotHostUi.activeChat) || 'demo-agent';
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/host/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({agent_id: agentId, text}),
+    });
+    const data = await r.json();
+    if (ta) ta.value = '';
+    if (data && data.state) applyHostState(data.state);
+    else if (data && data.messages) {
+      applyHostState({...(window.__bitbotHostUi || {}), chatMessages: data.messages,
+        llmMode: data.llm_mode, lastToolStrip: (data.tool_calls || []).map(t => ({
+          tool: t.tool, ok: t.ok, refused: t.refused, detail: t.detail,
+          excerpt: (t.output || '').slice(0, 160),
+        })), lastTurnAudit: data.audit_spans || [], rev: Date.now()});
+    }
+  } catch (e) {
+    const strip = document.getElementById('tool-audit-strip');
+    if (strip) strip.textContent = 'chat error: ' + e;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+document.getElementById('chat-send').onclick = () => sendHostChat();
+document.getElementById('chat-input').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter' && !ev.shiftKey) {
+    ev.preventDefault();
+    sendHostChat();
+  }
+});
+
 renderAgents();
 renderSettings();
 showTab('General');
