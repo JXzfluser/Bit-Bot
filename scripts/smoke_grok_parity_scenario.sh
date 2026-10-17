@@ -67,13 +67,20 @@ print('parity thread ledger ok')
 "${RUN[@]}" "launch cloud agent parity refactor $MARKER" >/tmp/parity-cloud.json
 python3 -c "import json;d=json.load(open('/tmp/parity-cloud.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_agent_launch');p=json.loads(h['stdout']);card=p.get('cursor_agent_card') or {};assert card.get('type')=='cursor-agent' or (p.get('delivery') or {}).get('type')=='cursor-agent' or card.get('bc_id');print('parity cursor-agent ok', card.get('bc_id') or (p.get('delivery') or {}).get('bc_id'))"
 
-# 9) Multi-end mobile Host strip
+# 9) Session memory multi-turn (Host seed reinject — not LocalBrain)
+SESS="parity-mem-$MARKER"
+"${RUN[@]}" --session-id "$SESS" "remember parity_marker=$MARKER" >/tmp/parity-mem-set.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-mem-set.json'));assert d.get('ok');assert d.get('intent')=='memory_update';assert any(m.get('key')=='parity_marker' for m in (d.get('memory') or []));assert os.path.isfile('data/memory/desktop-host.json');print('parity memory update ok')"
+"${RUN[@]}" --session-id "$SESS" "recall" >/tmp/parity-mem-get.json
+python3 -c "import json;d=json.load(open('/tmp/parity-mem-get.json'));assert d.get('ok');assert d.get('intent')=='memory_recall';blob=json.dumps(d.get('memory') or [])+ (d.get('assistant') or '')+json.dumps(d);assert '$MARKER' in blob;print('parity memory recall reinject ok')"
+
+# 10) Multi-end mobile Host strip
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
 python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"
 "${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
 python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;print('parity android turn ok')"
 
-# 10) Delivery ledger must cover CHARTER SendToUser types after marker
+# 11) Delivery ledger must cover CHARTER SendToUser types after marker
 python3 -c "
 import json
 rows=open('data/delivery/send-to-user.jsonl').read().splitlines()

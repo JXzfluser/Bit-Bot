@@ -18,7 +18,10 @@ Endpoints:
   purchase: POST /charge
   meeting:  POST /messages
   finance:  POST /tools/<name>
-  slack:    POST /chat.postMessage  (BITBOT_SLACK_API_BASE=http://host:port)
+  slack:    POST /chat.postMessage
+            POST /conversations.history
+            POST /auth.test
+            (BITBOT_SLACK_API_BASE=http://host:port)
   teams:    POST /chats/<id>/messages  (BITBOT_TEAMS_GRAPH_URL=http://host:port)
   job:      POST /jobs/search  (BITBOT_JOB_API_URL=http://host:port)
   x:        GET  /tweets/search/recent  (BITBOT_X_API_BASE=http://host:port)
@@ -89,8 +92,17 @@ def main() -> int:
                 (mode == "purchase" and path == "/charge")
                 or (mode == "meeting" and path == "/messages")
                 or (mode == "finance" and path.startswith("/tools/"))
-                or (mode == "slack" and path.endswith("/chat.postMessage"))
-                or (mode == "slack" and path == "/chat.postMessage")
+                or (
+                    mode == "slack"
+                    and (
+                        path.endswith("/chat.postMessage")
+                        or path == "/chat.postMessage"
+                        or path.endswith("/conversations.history")
+                        or path == "/conversations.history"
+                        or path.endswith("/auth.test")
+                        or path == "/auth.test"
+                    )
+                )
                 or (
                     mode == "teams"
                     and ("/chats/" in path and path.endswith("/messages"))
@@ -143,15 +155,58 @@ def main() -> int:
                     },
                 )
             elif mode == "slack":
-                self._json(
-                    200,
-                    {
-                        "ok": True,
-                        "channel": payload.get("channel") or "Csmoke",
-                        "ts": "1710000000.000200",
-                        "message": {"text": payload.get("text") or ""},
-                    },
-                )
+                if path.endswith("/auth.test") or path == "/auth.test":
+                    self._json(
+                        200,
+                        {
+                            "ok": True,
+                            "url": "https://example.test/",
+                            "team": "MockTeam",
+                            "user": "bitbot_mock",
+                            "team_id": "Tsmoke",
+                            "user_id": "Usmoke",
+                        },
+                    )
+                elif (
+                    path.endswith("/conversations.history")
+                    or path == "/conversations.history"
+                ):
+                    ch = payload.get("channel") or "Csmoke"
+                    self._json(
+                        200,
+                        {
+                            "ok": True,
+                            "messages": [
+                                {
+                                    "type": "message",
+                                    "user": "U_INBOUND",
+                                    "text": f"live mock inbound for {ch}",
+                                    "ts": "1710000000.000050",
+                                },
+                                {
+                                    "type": "message",
+                                    "user": "U_INBOUND",
+                                    "text": "thread parent",
+                                    "ts": "1710000000.000060",
+                                    "thread_ts": "1710000000.000060",
+                                },
+                            ],
+                            "has_more": False,
+                        },
+                    )
+                else:
+                    self._json(
+                        200,
+                        {
+                            "ok": True,
+                            "channel": payload.get("channel") or "Csmoke",
+                            "ts": "1710000000.000200",
+                            "message": {
+                                "text": payload.get("text") or "",
+                                "thread_ts": payload.get("thread_ts") or "",
+                            },
+                        },
+                    )
             elif mode == "job":
                 q = str(payload.get("query") or "role")
                 self._json(
