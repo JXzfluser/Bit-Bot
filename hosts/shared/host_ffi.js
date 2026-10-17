@@ -608,7 +608,11 @@ function createHostFfi(repoRoot) {
         kind === "purchase" ||
         kind === "finance_call" ||
         kind === "credential_fill" ||
-        kind === "mail_draft"
+        kind === "mail_draft" ||
+        kind === "device_permission" ||
+        kind === "skill_write" ||
+        kind === "slides_pptx" ||
+        kind === "export_pack"
       ) {
         const journalLine = appendHostDeliveryJournal({
           kind,

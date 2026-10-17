@@ -400,6 +400,62 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let js = run_desktop_turn("job search engineer", turn_id="js-1")
   assert_true(js.ok)
   assert_eq(js.intent, "job_search")
+  let lfd = run_desktop_turn(
+    "learn from demo title=Checkout steps=click:Cart|type:email",
+    turn_id="lfd-1",
+  )
+  assert_true(lfd.ok)
+  assert_eq(lfd.intent, "learn_from_demo")
+  let slides = run_desktop_turn("make slides Q3 Review", turn_id="sl-1")
+  assert_true(slides.ok)
+  assert_eq(slides.intent, "make_slides")
+  let cc = run_desktop_turn("code changes README.mbt.md", turn_id="cc-1")
+  assert_true(cc.ok)
+  assert_eq(cc.intent, "code_changes")
+  let sc = run_desktop_turn("source control github", turn_id="sc-1")
+  assert_true(sc.ok)
+  assert_eq(sc.intent, "source_control")
+  let sob = run_desktop_turn(
+    "send on behalf to=a@example.com subject=Hi body=Hello",
+    turn_id="sob-1",
+  )
+  assert_true(sob.ok)
+  assert_eq(sob.intent, "send_on_behalf")
+  let lw = run_desktop_turn("list workflows", turn_id="lw-1")
+  assert_true(lw.ok)
+  assert_eq(lw.intent, "list_workflows")
+  let ib = run_desktop_turn("identity browser", turn_id="ib-1")
+  assert_true(ib.ok)
+  assert_eq(ib.intent, "identity_browser")
+  let xs = run_desktop_turn("x search moonbit", turn_id="xs-1")
+  assert_true(xs.ok)
+  assert_eq(xs.intent, "x_search")
+  let as_ = run_desktop_turn(
+    "author skill name=demo-skill description=demo body=Do the thing.",
+    turn_id="as-1",
+  )
+  assert_true(as_.ok)
+  assert_eq(as_.intent, "author_skill")
+  let ex = run_desktop_turn(
+    "export bot template id=bot-smoke name=SmokeBot",
+    turn_id="ex-1",
+  )
+  assert_true(ex.ok)
+  assert_eq(ex.intent, "export_bot_template")
+  let cam = run_desktop_turn(
+    "device tool camera",
+    turn_id="cam-1",
+    ctx={
+      session_id: "s",
+      machine_id: "desk-1",
+      machine_kind: "ios",
+      channel: "",
+      approved: false,
+    },
+  )
+  assert_true(cam.ok)
+  assert_eq(cam.intent, "device_tool_invoke")
+  assert_eq(cam.effects[0].kind, "device_permission")
 }
 
 ///|

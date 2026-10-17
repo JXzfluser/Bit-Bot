@@ -99,4 +99,6 @@
 - [x] Teammates: create_teammate / room_turn / send_to_agent on product path
 - [x] Cloud / commerce / vertical: launch_cloud_agent / deliver_cloud_artifact / schedule_meeting / shop_retail / purchase_item
 - [x] Vertical+connectors batch: travel_book / order_food / meeting_chat / finance_connect|call / fill_credential / cold_mail / personal_slack_dm / job_search
+- [x] Skills+identity batch: learn_from_demo / make_slides / code_changes / source_control / send_on_behalf / list_workflows / identity_browser / x_search / author_skill / export_bot_template
+- [x] CM-0705 product path: `device_permission` Host effect + phone machine_id resolve; mobile_host journals OS permission card (true-device dialog still residual)
 - [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit

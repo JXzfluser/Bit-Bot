@@ -94,6 +94,16 @@ pub(all) enum TurnIntent {
   ColdMail(to_~ : String, subject~ : String, body~ : String, unsubscribe~ : String)
   PersonalSlackDm(owner_id~ : String, text~ : String)
   JobSearch(query~ : String)
+  LearnFromDemo(title~ : String, steps_csv~ : String)
+  MakeSlides(title~ : String)
+  CodeChanges(path~ : String)
+  SourceControl(repo_kind~ : String)
+  SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
+  ListWorkflows
+  IdentityBrowser
+  XSearch(query~ : String)
+  AuthorSkill(name~ : String, description~ : String, body~ : String)
+  ExportBotTemplate(bot_id~ : String, name~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -146,8 +156,57 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     ColdMail(_) => "cold_mail"
     PersonalSlackDm(_) => "personal_slack_dm"
     JobSearch(_) => "job_search"
+    LearnFromDemo(_) => "learn_from_demo"
+    MakeSlides(_) => "make_slides"
+    CodeChanges(_) => "code_changes"
+    SourceControl(_) => "source_control"
+    SendOnBehalf(_) => "send_on_behalf"
+    ListWorkflows => "list_workflows"
+    IdentityBrowser => "identity_browser"
+    XSearch(_) => "x_search"
+    AuthorSkill(_) => "author_skill"
+    ExportBotTemplate(_) => "export_bot_template"
     HostContinue => "host_continue"
   }
+}
+
+///|
+/// CM-0705: map Host TurnContext to seeded phone machine ids for deviceLocalTools.
+fn resolve_device_machine_id(ctx : DesktopTurnContext) -> String {
+  if ctx.machine_kind == "ios" {
+    if ctx.machine_id == "" || ctx.machine_id == "desk-1" {
+      "phone-ios"
+    } else {
+      ctx.machine_id
+    }
+  } else if ctx.machine_kind == "android" {
+    if ctx.machine_id == "" || ctx.machine_id == "desk-1" {
+      "phone-android"
+    } else {
+      ctx.machine_id
+    }
+  } else {
+    ctx.machine_id
+  }
+}
+
+///|
+/// Parse `kind:detail|kind:detail` demo steps for CM-1808.
+fn parse_demo_steps(csv : String) -> Array[@skills.DemoStep] {
+  let out : Array[@skills.DemoStep] = []
+  let mut rest = csv.trim().to_owned()
+  while rest.length() > 0 {
+    let (part, more) = match split_once(rest, "|") {
+      Some((p, m)) => (p, m)
+      None => (rest, "")
+    }
+    match split_once(part, ":") {
+      Some((k, d)) => out.push({ kind: k.trim().to_owned(), detail: d.trim().to_owned() })
+      None => out.push({ kind: "step", detail: part.trim().to_owned() })
+    }
+    rest = more
+  }
+  out
 }
 
 ///|
@@ -562,6 +621,8 @@ fn extract_kv(rest : String, key : String) -> String? {
         " owner=",
         " text=",
         " direct=",
+        " steps=",
+        " description=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -1677,12 +1738,13 @@ pub fn run_desktop_turn(
       } else {
         @box_host.Desktop
       }
-      let tools = reg.list_for(ctx.machine_id, kind)
+      let mid = resolve_device_machine_id(ctx)
+      let tools = reg.list_for(mid, kind)
       let buf = StringBuilder()
       buf.write_string("deviceLocalTools on ")
       buf.write_string(ctx.machine_kind)
       buf.write_string("/")
-      buf.write_string(ctx.machine_id)
+      buf.write_string(mid)
       buf.write_string(": ")
       buf.write_string(tools.length().to_string())
       let mut i = 0
@@ -1697,11 +1759,12 @@ pub fn run_desktop_turn(
     }
     DeviceToolInvoke(tool~) => {
       let reg = @box_host.DeviceLocalToolsRegistry::seed_phones()
-      match reg.invoke(ctx.machine_id, tool) {
+      let mid = resolve_device_machine_id(ctx)
+      match reg.invoke(mid, tool) {
         Ok(msg) => {
           let effect : DesktopEffect = {
             kind: "device_tool",
-            command: ctx.machine_id + "|" + tool,
+            command: mid + "|" + tool,
             needs_host_ffi: true,
           }
           deliver_ok(
@@ -1715,12 +1778,14 @@ pub fn run_desktop_turn(
           )
         }
         Err(card) => {
+          // CM-0705: Host shows OS permission card / Settings guide (not pretend-granted).
           let effect : DesktopEffect = {
-            kind: "approval_card",
-            command: "device:" +
-              card.tool_name +
-              " :: " +
-              card.permission_label,
+            kind: "device_permission",
+            command: card.machine_id +
+            "|" +
+            card.tool_name +
+            "|" +
+            card.permission_label,
             needs_host_ffi: true,
           }
           deliver_ok(
@@ -1731,7 +1796,8 @@ pub fn run_desktop_turn(
             " (" +
             card.permission_label +
             ") on " +
-            card.machine_id,
+            card.machine_id +
+            ". Host must raise OS permission card / Settings guide.",
             intent,
             ctx~,
             effects=[effect],
@@ -2370,6 +2436,293 @@ pub fn run_desktop_turn(
             "»: " +
             res.hit_count.to_string() +
             " hit(s) (CM-1806).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    LearnFromDemo(title~, steps_csv~) => {
+      let steps = parse_demo_steps(steps_csv)
+      let demo = @skills.Demonstration::of(title~, steps~)
+      match @skills.crystallize_demonstration_to_skill_draft(demo) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(draft) => {
+          let effect : DesktopEffect = {
+            kind: "skill_write",
+            command: draft.name + "|" + draft.description,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Learned skill draft «" +
+            draft.name +
+            "» from demonstration (CM-1808). Host writes SKILL.md.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    MakeSlides(title~) => {
+      let host = @skills.SlidesHost::mock()
+      match host.generate_pptx(title~, slides=["Title", "Agenda", "Thanks"]) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(art) => {
+          let effect : DesktopEffect = {
+            kind: "slides_pptx",
+            command: art.path + "|" + art.title,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Slides pptx planned at " +
+            art.path +
+            " (CM-1807). Host materializes openable file.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    CodeChanges(path~) => {
+      let p = if path.has_prefix("/workspace/") {
+        path
+      } else {
+        "/workspace/" + path
+      }
+      match @skills.plan_code_changes(
+        repo_kind=@skills.GithubNative,
+        scope=@skills.BoxWorkspace,
+        paths=[p],
+      ) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(plan) => {
+          let effect : DesktopEffect = {
+            kind: "shell",
+            command: "code-changes:" +
+            plan.sc_backend.mcp_namespace() +
+            " :: " +
+            p,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Code-changes planned on box via " +
+            plan.sc_backend.mcp_namespace() +
+            " (CM-1810).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    SourceControl(repo_kind~) => {
+      let kind = if repo_kind.to_lower().contains("origin") &&
+        !repo_kind.to_lower().contains("mirror") {
+        @skills.NativeOrigin
+      } else if repo_kind.to_lower().contains("mirror") {
+        @skills.GithubMirror
+      } else {
+        @skills.GithubNative
+      }
+      let backend = @skills.route_source_control(kind)
+      let effect : DesktopEffect = {
+        kind: "mcp_call",
+        command: backend.mcp_namespace() + ".status|{}",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Source-control routed to " +
+        backend.mcp_namespace() +
+        " (CM-1305).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    SendOnBehalf(to_~, subject~, body~) => {
+      let tone = @skills.SendOnBehalfToneSession::new(
+        [
+          { id: "s1", preview: "Hey — quick note.", register_: "casual" },
+          { id: "s2", preview: "Hello, following up.", register_: "formal" },
+        ],
+      )
+      match tone.begin_first_proxy_write() {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(samples) => {
+          let _ = tone.pick_sample(sample_id="s1")
+          let sob = @mail.SendOnBehalf::new(
+            [{ id: "acct-1", address: "me@example.com" }],
+          )
+          match gate_consequential(
+            trimmed,
+            turn_id,
+            intent,
+            ctx,
+            @security.ExternalSend,
+            "send on behalf to " + to_,
+          ) {
+            Some(gated) => gated
+            None =>
+              match sob.send(
+                account_id=Some("acct-1"),
+                to_~,
+                subject~,
+                body~,
+              ) {
+                Err(e) =>
+                  fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+                Ok(msg) => {
+                  let effect : DesktopEffect = {
+                    kind: "mail_send",
+                    command: "onbehalf|" + to_ + "|" + subject + "|" + body,
+                    needs_host_ffi: true,
+                  }
+                  deliver_ok(
+                    trimmed,
+                    turn_id,
+                    msg +
+                    " after tone samples (" +
+                    samples.length().to_string() +
+                    ") (CM-1006/1010).",
+                    intent,
+                    ctx~,
+                    effects=[effect],
+                    needs_host_ffi=true,
+                  )
+                }
+              }
+          }
+        }
+      }
+    }
+    ListWorkflows => {
+      let rt = @skills.UserWorkflowRuntime::seed_private_examples()
+      let names = rt.list_visible()
+      let buf = StringBuilder()
+      buf.write_string("User workflows visible: ")
+      let mut i = 0
+      while i < names.length() {
+        if i > 0 {
+          buf.write_string(", ")
+        }
+        buf.write_string(names[i])
+        i = i + 1
+      }
+      deliver_ok(trimmed, turn_id, buf.to_string() + " (CM-2118).", intent, ctx~)
+    }
+    IdentityBrowser => {
+      let session = @connectors.ConnectorIdentitySession::new(
+        @connectors.AppIdentity,
+      )
+      let res = session.ensure(@connectors.UserIdentityRequired)
+      let reply = match res {
+        @connectors.Proceed(identity~) =>
+          "Identity proceed as " + identity.label()
+        @connectors.SwitchToSignedInBrowser(reason~) =>
+          "Switched to signed-in browser: " + reason
+      }
+      let effect : DesktopEffect = {
+        kind: "oauth",
+        command: "identity-browser|user-browser",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        reply + " (CM-2146).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    XSearch(query~) => {
+      let ns = @connectors.XPublicSearchNamespace::new()
+      ns.seed_readonly_tools()
+      ns.seed_post(id="t1", text="moonbit grok parity " + query)
+      let hits = ns.search_posts(query)
+      let effect : DesktopEffect = {
+        kind: "mcp_call",
+        command: "x-public.search_posts|{\"q\":\"" + query + "\"}",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "X public search: " +
+        hits.length().to_string() +
+        " hit(s) (CM-0910; no user auth).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    AuthorSkill(name~, description~, body~) => {
+      let author = @skills.SkillAuthoring::seed()
+      match author.produce_skill_md(name, description, body) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(md) => {
+          let effect : DesktopEffect = {
+            kind: "skill_write",
+            command: name + "|" + md.length().to_string(),
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Authored SKILL.md for «" +
+            name +
+            "» (CM-0506). Host persists skill file.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    ExportBotTemplate(bot_id~, name~) => {
+      let source : @skills.BotExportSource = {
+        bot_id: bot_id,
+        name: name,
+        title: name,
+        description: "shareable bot template",
+        skill_names: ["scheduling", "shopping"],
+        secrets: ["api_key_SHOULD_STRIP"],
+      }
+      match @skills.export_bot_template(source) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(pack) => {
+          let effect : DesktopEffect = {
+            kind: "export_pack",
+            command: pack.bot_id + "|" + pack.kind.label(),
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Exported " +
+            pack.kind.label() +
+            " for " +
+            pack.name +
+            " (CM-1406; secrets stripped).",
             intent,
             ctx~,
             effects=[effect],

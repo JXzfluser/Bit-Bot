@@ -285,6 +285,135 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(JobSearch(query~))
     }
   }
+  if low.has_prefix("learn from demo ") ||
+      low.has_prefix("learn from demonstration ") {
+    let rest = if low.has_prefix("learn from demo ") {
+      trimmed[16:].to_owned()
+    } else {
+      trimmed[26:].to_owned()
+    }
+    let title = match extract_kv(rest, "title") {
+      Some(v) => v
+      None => "demo"
+    }
+    let steps_csv = match extract_kv(rest, "steps") {
+      Some(v) => v
+      None => "click:Start"
+    }
+    return Some(LearnFromDemo(title~, steps_csv~))
+  }
+  if low.has_prefix("make slides ") ||
+      low.has_prefix("generate pptx ") ||
+      low.has_prefix("generate slides ") {
+    let title = if low.has_prefix("make slides ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("generate pptx ") {
+      trimmed[14:].trim().to_owned()
+    } else {
+      trimmed[16:].trim().to_owned()
+    }
+    if title != "" {
+      return Some(MakeSlides(title~))
+    }
+  }
+  if low.has_prefix("code changes ") || low.has_prefix("edit code ") {
+    let path = if low.has_prefix("code changes ") {
+      trimmed[13:].trim().to_owned()
+    } else {
+      trimmed[10:].trim().to_owned()
+    }
+    if path != "" {
+      return Some(CodeChanges(path~))
+    }
+  }
+  if low.has_prefix("source control ") || low.has_prefix("route sc ") {
+    let kind = if low.has_prefix("source control ") {
+      trimmed[15:].trim().to_owned()
+    } else {
+      trimmed[9:].trim().to_owned()
+    }
+    if kind != "" {
+      return Some(SourceControl(repo_kind=kind))
+    }
+  }
+  if low.has_prefix("send on behalf ") || low.has_prefix("proxy send ") {
+    let rest = if low.has_prefix("send on behalf ") {
+      trimmed[15:].to_owned()
+    } else {
+      trimmed[11:].to_owned()
+    }
+    let to_ = match extract_kv(rest, "to") {
+      Some(v) => v
+      None => ""
+    }
+    let subject = match extract_kv(rest, "subject") {
+      Some(v) => v
+      None => "proxy"
+    }
+    let body = match extract_kv(rest, "body") {
+      Some(v) => v
+      None => "hello"
+    }
+    if to_ != "" {
+      return Some(SendOnBehalf(to_~, subject~, body~))
+    }
+  }
+  if low == "list workflows" ||
+      low == "user workflows" ||
+      low == "show workflows" {
+    return Some(ListWorkflows)
+  }
+  if low == "use user browser" ||
+      low == "identity browser" ||
+      low == "switch to browser identity" {
+    return Some(IdentityBrowser)
+  }
+  if low.has_prefix("x search ") ||
+      low.has_prefix("search x ") ||
+      low.has_prefix("twitter search ") {
+    let query = if low.has_prefix("x search ") {
+      trimmed[9:].trim().to_owned()
+    } else if low.has_prefix("search x ") {
+      trimmed[9:].trim().to_owned()
+    } else {
+      trimmed[15:].trim().to_owned()
+    }
+    if query != "" {
+      return Some(XSearch(query~))
+    }
+  }
+  if low.has_prefix("author skill ") {
+    let rest = trimmed[13:].to_owned()
+    let name = match extract_kv(rest, "name") {
+      Some(v) => v
+      None => "custom-skill"
+    }
+    let description = match extract_kv(rest, "description") {
+      Some(v) => v
+      None => "user authored skill"
+    }
+    let body = match extract_kv(rest, "body") {
+      Some(v) => v
+      None => "Follow steps carefully."
+    }
+    return Some(AuthorSkill(name~, description~, body~))
+  }
+  if low.has_prefix("export bot template ") || low.has_prefix("export bot ") {
+    let rest = if low.has_prefix("export bot template ") {
+      trimmed[20:].to_owned()
+    } else {
+      trimmed[11:].to_owned()
+    }
+    let bot_id = match extract_kv(rest, "id") {
+      Some(v) => v
+      None => "bot-1"
+    }
+    let name = match extract_kv(rest, "name") {
+      Some(v) => v
+      None => bot_id
+    }
+    return Some(ExportBotTemplate(bot_id~, name~))
+  }
   if low.has_prefix("create routine ") || low.has_prefix("schedule routine ") {
     let rest = if low.has_prefix("create routine ") {
       trimmed[15:].to_owned()
