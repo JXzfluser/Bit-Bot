@@ -922,3 +922,14 @@ Smoke: `moon check` ✅ · `moon test` **296** passed / 0 failed（目标 290+6�
 - OAuth (1105/2109/2120): honest **NOT_READY** when `SLACK_OAUTH_SANDBOX` / `FINANCE_OAUTH_SANDBOX` / `OUTLOOK_OAUTH_SANDBOX` unset — no stub Connected/Ready, no invented refresh tokens.
 - CM-2146: isolated throwaway Chrome profiles + private Xvfb/CDP (never 9223 / `/home/box/chrome-profile`); CM-1703: real 403 → curl public fallback; auth-wall `credential_bypass=false`.
 - Kernel skeleton already in `box_host/h4_probes.mbt` (`H4IoEvidence` / `run_h4_probe`; `i_claimed=false`). U acceptance tests **untouched**. Do **not** flip matrix I-PASS here.
+
+## HostAbi Live H5 smoke (MoonBit核 · 2026-10-17 Asia/Shanghai)
+
+**H5 smoke landed; I not claimed (`i_claimed=false`). Matrix I-status unchanged — Bit验证 decides. Do not demote U=234. Do not delete open GAP rows (esp CM-0806).**
+
+- Smoke: `scripts/host_h5_smoke.sh` (+ `host_h5_media.py`) → `docs/qa/artifacts/cm-XXXX-*/`.
+- Targets: `cm-1601|cm-1602|cm-1603|cm-2157|cm-1807|cm-2131|cm-2101|cm-2128|cm-2103|media|ui|all`.
+- Media READY paths: Pillow PNG (1601/2157), ffmpeg mp4+frame (1602/1603), python-pptx PK zip (1807) under `/workspace/agent-tools/`.
+- UI C′ paths: HostUiShell `/api/host/*` pills (2101/2128), math/mermaid SVG (2103), cursor-agent card + isolated chrome open (2131); never CDP 9223 / chrome-profile.
+- Residuals: CM-0806 **NOT_READY** (shared session rule — no cookie copy); CM-0705 platform_subset reinforced only.
+- Kernel: `box_host/h5_probes.mbt` (`H5MediaEvidence` / `run_h5_probe`; `i_claimed=false`). Mock MediaHost U tests **untouched**.

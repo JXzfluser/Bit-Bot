@@ -5,7 +5,7 @@
 - **合同主键**: **CM-***
 - **矩阵计数**: **234** / P0=**117**
 - **矩阵自标状态**: {'in_progress': 50, 'todo': 184}
-- **冒烟实测**: check_ok=True · test_ok=True · **H3·批1**: Total tests: **339**, passed: 339；`host_h3_smoke.sh all` exit0 → CM-2158/2174/0705/0411 **I-PASS×4**（0705=平台子集）；I-PASS 20→24；GAP 21→17；H0/H1/H2 I-PASS 维持；0806 仍 GAP；U=234 不动；0705 residual：真手机 OS 权限卡仍 GAP
+- **冒烟实测**: check_ok=True · test_ok=True · **H3·批1**: Total tests: **339**, passed: 339；`host_h3_smoke.sh all` exit0 → CM-2158/2174/0705/0411 **I-PASS×4**（0705=平台子集）；I-PASS 20→24；GAP 21→17；H0/H1/H2 I-PASS 维持；0806 仍 GAP；U=234 不动；0705 residual：真手机 OS 权限卡仍 GAP · **H5 smoke**（待审）：`host_h5_smoke.sh` media/ui/all · Total tests 现 **347**；九 CM artifacts `i_claimed=false`；**未升裁 I-PASS**；0806 residual NOT_READY 保留
 - **裁决口径**: GAP=无实现/无测；FAIL=有源+测但未达验收；PASS=C/U/I/B 且贴验收原文
 - **本轮**: A/B/C 按**新**测名重读源文件重裁。A 批证据列只用新测名（禁止旧「仅禁附同发」打回）。
 
@@ -49,6 +49,21 @@
 | **1703** | 真出网 fallback（403/封锁 → browser 或 curl 公共成功） | mock WebHost；凭据/登录 cookie 旁路冒充「公共回退」 |
 
 对齐：interface-gaps §4.0 左列勾选、§4.3 证据字段（`evidence_cmd`=`host_h4_smoke.sh`、`artifact`、`assert`、`env`）；旁注同步见 `qa/host-integration-gaps.md`。**H4 待审**（I 仍 open）。
+
+## H5 升 I 口径（Bit架构 · 2026-10-17 Asia/Shanghai）
+
+> 来源：[`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§6.0 / §6.3**。本轮**不升任何 CM**、**不改 U**、**不倒裁 U**；未升 GAP 保留（含 **0806**）。等 `host_h5_smoke` artifacts 齐后再由 Bit验证裁。
+
+| CM | 可升（左列） | 拒升（右列） |
+|----|--------------|--------------|
+| **1601 / 2157** | 真 PNG 落盘（magic `89504e47`）于 agent-tools | mock magic-only / 假路径 |
+| **1602 / 1603** | 真 mp4 编码 + 真抽帧 PNG | 空文件 / 预置无关图 |
+| **1807** | 真 `.pptx`（PK zip）under `/workspace` | 假扩展名 |
+| **2131** | Host UI 卡 + 隔离打开云代理页 | 共享 CDP 9223 / 拷 chrome-profile |
+| **2101 / 2128** | C′ pill 可见/toggle；end_turn 后 pill 像素 | CDP 页面 JS（B） |
+| **2103** | math + mermaid 真渲染帧 | 纯文本冒充 |
+
+对齐：interface-gaps §6.0/§6.3；旁注见 `qa/host-integration-gaps.md`。**H5 待审**（I 仍 open；`i_claimed=false`）。
 
 ---
 

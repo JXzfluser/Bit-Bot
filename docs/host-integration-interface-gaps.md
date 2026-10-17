@@ -5,7 +5,8 @@
 > 2026-10-17 Asia/Shanghai · Bit架构  
 > **H2 证据面（项目负责人最终口径）**：**I = C′ Bit Bot 自有 Host 进程**；**B 拒**；**A 非升 I 前置**（仅可选对照）。详见 §3.0。  
 > **H3 Host FFI**：**I-PASS×4**（2158/2174/0705/0411 · 批1 15:21；0705=平台子集）；契约见 **§5**。  
-> **H4 真 MCP / OAuth / 出网（本波）**：CM-2163 / 2164 / 1105 / 2109 / 2120 / 2146 / 1703 — 升 I 证据格式见 **§4**；对齐 H0–H3 证据形；禁降 U；禁删未升 GAP（含 **0806**）。
+> **H4 真 MCP / OAuth / 出网**：CM-2163 / 2164 / 1105 / 2109 / 2120 / 2146 / 1703 — 升 I 证据格式见 **§4**；禁降 U；禁删未升 GAP（含 **0806**）。  
+> **H5 媒体 / 卡 / 像素（本波）**：CM-1601 / 1602 / 1603 / 2157 / 1807 / 2131 / 2101 / 2128 / 2103 — 升 I 证据格式见 **§6**；`i_claimed=false`；禁翻矩阵 I-PASS；**0806 仍 GAP**；0705 residual 真手机 OS 卡仍 GAP。
 
 ## 0. 现状摘要
 
@@ -16,6 +17,7 @@
 | Settings / Delete UI（H2） | U：枚举与深链已 PASS；**CM-1901/1902/1907 = I-PASS（C′复核 14:46）**；**CM-1903–1906 = I-PASS（批2 14:54）**；**CM-0204/0205/0206/1401/1405/1507/2178 = I-PASS（批3 15:12）** | H2 14 项全 I-PASS；残余 note：1507 锚点 DOM 回执（scrollTop/boundingRect）、G-UI-0205a 条件区、0204 事件名；B 拒；A 非前置 |
 | MCP / OAuth / 出网（H4） | U：in-process / stub；$file:/write_to_file / Slack·Finance·Outlook·2146·1703 均 U-PASS | **§4 H4**：2163/2164 真 Host FS；1105/2109/2120 真 OAuth；2146 真切用户浏览器；1703 真出网禁凭据绕过 |
 | Shell/FS / 设备 / Webhook 面板 | H0 **I-PASS×3**；**H3 I-PASS×4**（0705=平台子集） | §5 已兑现；0705 residual 真手机 OS 卡仍 GAP；**0806 仍 GAP**（H1） |
+| 媒体 / 卡 / 像素（H5） | U：GenerateImage/Video/chart/pptx/React/math 等 kernel-contract PASS | **§6 H5**：真 PNG/MP4/PPTX；C′ pill/math/cursor-agent LiveDisplay；禁 mock MediaHost 冒充 I |
 
 ## 1. HostAbi：Mock vs Live（必须分叉，禁止覆盖）
 
@@ -530,7 +532,107 @@ enum H3Intent {
 4. 点 Bit验证升 I：**仅** artifacts 齐且 assert 过的 CM；其余 GAP 保留（**0806 不删**）。  
 5. **禁止**：mock stdout 冒充真 apt；单 mock 自写自读冒充 2174；假权限卡；无面板复制回执申报 0411；禁止改矩阵 U-PASS。
 
-## 6. computerUse / 浏览器（H1）
+## 6. 媒体 / 卡 / 像素渲染（Wave H5）— 接口缺口与升 I 证据格式
+
+> **波次**：roadmap Wave H5（9）：**CM-1601 / CM-1602 / CM-1603 / CM-2157 / CM-1807 / CM-2131 / CM-2101 / CM-2128 / CM-2103**。  
+> **硬性**：禁降 U；禁删未升 GAP（**含 CM-0806**）；`HostAbi::mock()` / mock MediaHost / 假 magic-only 字符串 **永不得**升 I；I 证据必须真文件 / 真 Host UI 帧。  
+> **证据形**：与 H0–H4 一致 — `CM` / `evidence_cmd` / `artifact` / `assert` / `env`；脚本 `scripts/host_h5_smoke.sh`；`H5MediaEvidence` / `HostAbi::run_h5_probe`；`i_claimed=false` 直至 Bit验证升裁。  
+> **残差**：CM-0806 保持 GAP / NOT_READY（共享会话规则：禁拷 `chrome-profile` cookies、禁碰 CDP 9223）；CM-0705 仅强化 `platform_subset=desktop_no_device_local_tools`（真手机 OS 卡仍 GAP）。
+
+### 6.0 口径（可证伪左列 / 拒升右列）
+
+| 面 | **可升 I** | **拒升 I** |
+|----|------------|------------|
+| GenerateImage（1601） | Pillow（或等价）真写 PNG 于 `/workspace/agent-tools/`；magic `89504e47`；可打开 | mock magic-only 字符串；无落盘；假路径 |
+| GenerateVideo（1602） | ffmpeg 真编码短 mp4；completion 通知 meta | 空文件 / 仅字符串「done」 |
+| watchVideo（1603） | 真解码抽帧 PNG（magic 同上） | 预置无关 PNG 冒充抽帧 |
+| StructuredChart（2157） | 结构化数据 → 真 chart PNG（可 Pillow；禁假矩阵） | 无数据合成装饰图冒充 chart |
+| PPTX（1807） | python-pptx 真 `.pptx`（PK zip）；路径在 `/workspace` | 假扩展名 / 非 zip |
+| cursor-agent 卡（2131） | Host UI 卡 + 隔离 chrome 打开 `https://cursor.com/agents/<id>` 抛型 | 共享 CDP **9223**；拷共享 profile |
+| ReactToMessage（2101） | Host UI pill 可见/toggle；`/api/host/*`；LiveDisplay | CDP 页面 JS 突变（B） |
+| 出站 React end_turn（2128） | end_turn 后 pill 仍在 LiveDisplay 帧 | 仅内存事件无像素 |
+| math / mermaid（2103） | Host UI 真渲染公式 + 图（KaTeX/SVG + mermaid/SVG）；LiveDisplay | 纯文本冒充渲染 |
+
+Bit验证：申报升 I 时逐行勾选左列；命中右列任一条 → **拒升**，GAP 保留。禁降 U。  
+**禁止**宣称本波 `i_claimed=true` / 翻矩阵 I-PASS。
+
+### 6.1 现状（相对 U）
+
+| 层 | 已有（U） | 升 I 仍缺 |
+|----|-----------|-----------|
+| CM-1601 | GenerateImage kernel-contract / mock MediaHost | 真 PNG 落盘可打开 |
+| CM-1602 / 1603 | 视频编解码契约 | 真 mp4 + 真抽帧 |
+| CM-2157 | StructuredChart 契约 | 真 chart 渲染 PNG |
+| CM-1807 | PPTX 契约 | 真 host-openable pptx |
+| CM-2131 | cursor-agent 卡契约 | 真打开云代理页（隔离） |
+| CM-2101 / 2128 | ReactToMessage / end_turn 契约 | Host UI pill 像素 |
+| CM-2103 | math/mermaid 契约 | Host UI 真渲染帧 |
+
+### 6.2 Live 契约增量
+
+```moonbit
+struct H5MediaEvidence {
+  cm_id : String
+  image_path : String?          // 1601 / 2157
+  png_magic_ok : Bool?
+  video_path : String?          // 1602
+  video_complete_notified : Bool?
+  frame_path : String?          // 1603
+  pptx_path : String?           // 1807
+  pptx_pk_magic_ok : Bool?
+  cursor_agent_url : String?    // 2131
+  cursor_agent_opened : Bool?
+  react_emoji : String?         // 2101 / 2128
+  pill_visible : Bool?
+  end_turn_left_pill : Bool?
+  math_rendered : Bool?         // 2103
+  mermaid_rendered : Bool?
+  artifact_dir : String
+  evidence_cmd_hint : String
+  audit_span_id : String
+  i_claimed : Bool              // 骨架恒 false
+}
+
+enum H5Intent {
+  Cm1601GenerateImage
+  Cm1602GenerateVideo
+  Cm1603WatchVideo
+  Cm2157StructuredChart
+  Cm1807Pptx
+  Cm2131CursorAgentCard
+  Cm2101ReactToMessage
+  Cm2128OutboundReactEndTurn
+  Cm2103MathMermaid
+}
+```
+
+**缺口 G-H5-1**：`HostAbi::run_h5_probe` / `run_h5_wave`；`scripts/host_h5_smoke.sh` + `host_h5_media.py`；产物 `docs/qa/artifacts/cm-XXXX-*/`。  
+**缺口 G-H5-2**：UI 三项（2101/2128/2103）+ 2131 走 C′ `HostUiShell` → `/api/host/*`；禁 CDP page-JS。  
+**缺口 G-H5-3**：残差 0806 / 0705 诚实 NOT_READY / platform_subset；禁删 GAP。
+
+### 6.3 九项：升 I 证据格式（Bit验证可机读）
+
+| CM | evidence_cmd | artifact | assert |
+|----|--------------|----------|--------|
+| CM-1601 | `bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-1601` | `docs/qa/artifacts/cm-1601-generate-image/` | PNG magic `89504e47`；path under agent-tools |
+| CM-1602 | `… cm-1602` | `cm-1602-generate-video/` | mp4 真编码 + completion notify |
+| CM-1603 | `… cm-1603` | `cm-1603-watch-video/` | 抽帧 PNG magic |
+| CM-2157 | `… cm-2157` | `cm-2157-structured-chart/` | chart PNG from structured series |
+| CM-1807 | `… cm-1807` | `cm-1807-pptx/` | PK zip `.pptx` under `/workspace` |
+| CM-2131 | `… cm-2131` | `cm-2131-cursor-agent-card/` | card + isolated open；9223 untouched |
+| CM-2101 | `… cm-2101` | `cm-2101-react-pill/` | pill visible/toggle；LiveDisplay |
+| CM-2128 | `… cm-2128` | `cm-2128-react-end-turn/` | end_turn 后 pill 像素 |
+| CM-2103 | `… cm-2103` | `cm-2103-math-mermaid/` | math+mermaid 可见帧 |
+
+### 6.4 MoonBit核落地清单（host_h5，不改 U）
+
+1. `box_host/h5_probes.mbt`：`H5Intent` / `H5MediaEvidence` / `HostAbi::run_h5_probe`（`i_claimed=false`）。  
+2. `box_host/host_h5_test.mbt`：骨架测；禁宣称 I-PASS。  
+3. `scripts/host_h5_smoke.sh`：`cm-1601|…|media|ui|all`；残差 `residual-0806|residual-0705`。  
+4. 扩展 `scripts/host_ui_surface/`：pill / math-mermaid / cursor-agent card（C′）。  
+5. **禁止**：翻 capability-matrix I-PASS；删 0806 GAP；碰 9223 / chrome-profile；stub OAuth Connected。
+
+## 7. computerUse / 浏览器（H1）
 
 | 缺口 | 说明 |
 |------|------|
@@ -538,18 +640,19 @@ enum H3Intent {
 | G-CU-2 | 导航与截帧流水线复用 G-SCR-*（CM-2160） |
 | G-CU-3 | 禁止 Shell 旁路 xdotool/CDP（U 已拒；I 需确认真环境无旁路成功） |
 
-## 7. 与 `interfaces.md` 的修订建议（增量，不破 U）
+## 8. 与 `interfaces.md` 的修订建议（增量，不破 U）
 
 1. §9 `HostAbi` 增加 `backend : HostBackend` 与 Live 专用证据字段（§2）— **G-ABI 已由 MoonBit核落地，文档回填即可**。  
 2. 新增 §9.1 `McpTransport` + `H4IoEvidence` + `scripts/host_h4_smoke.sh`（本节 §4；**H4 立即需要**）。  
 3. 新增 §9.2 `HostUiEvent` + `H2UiEvidence`（本节 §3；H2 已用）。  
 4. 标明：`HostAbi::mock()` **仅**用于 U；CI 的 I job 必须 `Live`。  
 5. §9.3 引用 `scripts/host_h2_smoke.sh` 与 artifacts 约定（对齐 H0/H1）。  
-6. §9.4 `H3Intent` + `H3FfiEvidence` + `scripts/host_h3_smoke.sh`（本节 §5；H3 已兑现）。
+6. §9.4 `H3Intent` + `H3FfiEvidence` + `scripts/host_h3_smoke.sh`（本节 §5；H3 已兑现）。  
+7. §9.5 `H5Intent` + `H5MediaEvidence` + `scripts/host_h5_smoke.sh`（本节 §6；H5 本波）。
 
 具体 `.mbt` 落地由 MoonBit核执行；本文只定契约缺口，避免实现方用 mock 填 I。
 
-## 8. 跟踪
+## 9. 跟踪
 
 | 文档 | 用途 |
 |------|------|
@@ -560,4 +663,4 @@ enum H3Intent {
 | `architecture.md` §2.1 | 分层总原则 |
 
 **已挂 GAP 不因本文删除**（含 **CM-0806**）；升 I 时由 Bit验证改 gaps 行。  
-**波次状态（2026-10-17 Asia/Shanghai）**：H0 I-PASS×3；H1 I-PASS×3（**0806 仍 GAP**）；**H2 I-PASS×14**；**H3 I-PASS×4**（0705=平台子集）；**H4 契约已挂 §4**（2163/2164/1105/2109/2120/2146/1703 · I 仍 open，待 `host_h4_smoke` + Bit验证）。
+**波次状态（2026-10-17 Asia/Shanghai）**：H0 I-PASS×3；H1 I-PASS×3（**0806 仍 GAP**）；**H2 I-PASS×14**；**H3 I-PASS×4**（0705=平台子集）；**H4 待审**（§4）；**H5 契约+smoke 已挂 §6**（9 CM · I 仍 open，`i_claimed=false`，待 Bit验证）。

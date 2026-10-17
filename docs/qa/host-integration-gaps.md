@@ -6,6 +6,7 @@
 > **H2 升 I 口径（Bitbot · 2026-10-17 14:34 Asia/Shanghai）**：**C′**=Bit Bot 自有 Live Host UI 真帧可升 I；**拒 B**（剧本假窗/stub/合成 PNG）；**不要求** Grok/Cursor 闭源钩子前置；目标 **CM-1901/1902/1907**，齐后按 interface-gaps §3.3 审；证据=Live HostUiShell 可交互 Host 面 + LiveDisplay 真帧（详见 `gaps.md`「H2 升 I 口径」）。
 > **H3 升 I 口径（Bit架构 · 2026-10-17 15:15 Asia/Shanghai）**：目标 **CM-2158 / 2174 / 0705 / 0411**；左列可升 / 右列拒升见 `gaps.md`「H3 升 I 口径」与 interface-gaps **§5.0 / §5.3**；**H3·批1 已升裁（15:21）** → 四条 I-PASS（0705=平台子集）；**不改 U**；未升 GAP 保留（含 **0806**）；0705 residual 真手机 OS 权限卡仍 GAP/todo。
 > **H4 升 I 口径（Bit架构 · 2026-10-17 15:37 Asia/Shanghai）**：目标 **CM-2163 / 2164 / 1105 / 2109 / 2120 / 2146 / 1703**；左列可升 / 右列拒升见 `gaps.md`「H4 升 I 口径」与 interface-gaps **§4.0 / §4.3**；**H4 待审**（等 `host_h4_smoke` artifacts 再裁）；**不改 U**；未升 GAP 保留（含 **0806**）。
+> **H5 升 I 口径（Bit架构 · 2026-10-17 Asia/Shanghai）**：目标 **CM-1601 / 1602 / 1603 / 2157 / 1807 / 2131 / 2101 / 2128 / 2103**；左列可升 / 右列拒升见 interface-gaps **§6.0 / §6.3**；**H5 待审**（`host_h5_smoke` artifacts · `i_claimed=false`）；**不改 U**；**不升裁 I-PASS**；未升 GAP 保留（含 **0806**）；0705 residual 真手机 OS 卡仍 GAP。
 
 ## 计数
 
@@ -22,6 +23,7 @@
 | **H2 升裁** | CM-1901 / CM-1902 / CM-1907 → **I-PASS**（14:46 C′复核）；**CM-1903 / CM-1904 / CM-1905 / CM-1906 → I-PASS**（2026-10-17 14:54 Asia/Shanghai 批2）；**CM-0204 / 0205 / 0206 / 1401 / 1405 / 1507 / 2178 → I-PASS**（2026-10-17 15:12 Asia/Shanghai 批3）；详见 gaps「升裁 H2·批3」 |
 | **H3 升裁** | **CM-2158 / CM-2174 / CM-0705 / CM-0411 → I-PASS**（2026-10-17 15:21 Asia/Shanghai 批1）：Live Shell npm 沙箱；双会话同盘异桌面 `:40`/`:41`；0705 **I-PASS（平台子集）** `desktop_no_device_local_tools`（**residual**：真手机 OS 权限卡仍 GAP/todo）；0411 Host 面板复制回执+tool-read 拒+wake 不泄 key；详见 gaps「升裁 H3·批1」 |
 | **H4 待审** | CM-2163 / 2164 / 1105 / 2109 / 2120 / 2146 / 1703 — 口径已挂（gaps「H4 升 I 口径」· interface-gaps §4.0/§4.3）；**未升裁**；等 `host_h4_smoke` artifacts |
+| **H5 待审** | CM-1601 / 1602 / 1603 / 2157 / 1807 / 2131 / 2101 / 2128 / 2103 — 口径已挂（interface-gaps §6.0/§6.3）；**未升裁**；`host_h5_smoke` artifacts · `i_claimed=false`；**0806 仍 GAP** |
 
 ## H0 探针绿线（roadmap Wave H0）
 
@@ -88,6 +90,24 @@
 | CM-1703 | 1703 | Fetch 公共回退 | **open / 待审** | smoke `READY_FOR_I_REVIEW` / network-dependent；`credential_bypass=false`；仍 open 直至 Bit验证 |
 
 > **H4 待审**：`scripts/host_h4_smoke.sh` 已落；artifacts 为 `READY_FOR_I_REVIEW` 或诚实 `NOT_READY`（`i_claimed=false`）。**不升裁 I-PASS**；点 Bit验证。U=234 不动；**0806 仍 GAP**。详见 `gaps.md`「H4 升 I 口径」与 interface-gaps §4.0/§4.3。
+
+## H5 媒体 / 卡 / 像素（roadmap Wave H5 · **待审**）
+
+| CM | 短号 | 主题 | I-status | 摘要 |
+|----|------|------|----------|------|
+| CM-1601 | 1601 | GenerateImage | **open / 待审** | smoke `READY_FOR_I_REVIEW` 真 PNG（magic 89504e47）于 agent-tools；仍 open 直至 Bit验证 |
+| CM-1602 | 1602 | GenerateVideo | **open / 待审** | smoke ffmpeg mp4 + completion notify；仍 open |
+| CM-1603 | 1603 | watchVideo | **open / 待审** | smoke 抽帧 PNG；仍 open |
+| CM-2157 | 2157 | StructuredChart | **open / 待审** | smoke Pillow chart PNG；仍 open |
+| CM-1807 | 1807 | PPTX | **open / 待审** | smoke python-pptx PK zip；仍 open |
+| CM-2131 | 2131 | cursor-agent 卡 | **open / 待审** | smoke Host UI 卡 + 隔离打开云代理页；9223 untouched；仍 open |
+| CM-2101 | 2101 | ReactToMessage pill | **open / 待审** | smoke C′ pill 可见/toggle + LiveDisplay；仍 open |
+| CM-2128 | 2128 | 出站 React end_turn | **open / 待审** | smoke end_turn 后 pill 像素；仍 open |
+| CM-2103 | 2103 | math / mermaid | **open / 待审** | smoke math+mermaid SVG 帧；仍 open |
+| CM-0806 | 0806 | Update 后登录态 | **GAP / NOT_READY** | H5 residual：共享会话规则禁拷 cookies / 禁碰 9223；GAP **保留** |
+| CM-0705 | 0705 | deviceLocalTools residual | **I-PASS（平台子集）+ residual GAP** | H5 仅强化 `desktop_no_device_local_tools`；真手机 OS 卡仍 GAP |
+
+> **H5 待审**：`scripts/host_h5_smoke.sh` 已落；九项 artifacts `READY_FOR_I_REVIEW` 或残差 `NOT_READY`（`i_claimed=false`）。**不升裁 I-PASS**；点 Bit验证。U=234 不动；**0806 仍 GAP**。详见 interface-gaps §6.0/§6.3。
 
 ## 已 I-PASS（H0）
 
