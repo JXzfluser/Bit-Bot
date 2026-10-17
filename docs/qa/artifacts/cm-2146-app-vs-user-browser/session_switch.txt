@@ -1,6 +1,6 @@
 identity_mode=UserRequired
-app_profile_dir=/tmp/h4-app-profile.9vBArh
-user_profile_dir=/tmp/h4-user-profile.sYTSS1
+app_profile_dir=/tmp/h4-app-profile.AONOrQ
+user_profile_dir=/tmp/h4-user-profile.c00Yqi
 app_cdp_port=9500
 user_cdp_port=9501
 app_display=:70

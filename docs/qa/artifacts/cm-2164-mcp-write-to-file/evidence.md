@@ -5,7 +5,7 @@
 | CM | CM-2164 |
 | evidence_cmd | `bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-2164` |
 | artifact_dir | `/workspace/docs/qa/artifacts/cm-2164-mcp-write-to-file` |
-| env | box Live Host; USER_IANA=Asia/Shanghai; stamp_utc=20261017T084001Z; shared_cdp_9223=untouched |
+| env | box Live Host; USER_IANA=Asia/Shanghai; stamp_utc=20261017T084026Z; shared_cdp_9223=untouched |
 | assert | MCP write_to_file → /workspace/agent-tools/; path+sha256; chat no PAYLOAD; i_claimed=false |
 | status | READY_FOR_I_REVIEW |
 | i_claimed | false |
