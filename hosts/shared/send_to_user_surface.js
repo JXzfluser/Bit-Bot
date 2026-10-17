@@ -91,20 +91,29 @@ function extractDeliveryTypes(turnJsonText) {
         ].includes(h.kind)
       ) {
         types.push("attachment");
-        labels.push(h.kind);
+        labels.push(
+          h.kind + (p.path || p.artifact_path || h.path ? "/snap" : ""),
+        );
       } else if (
         h.kind === "voice_session" ||
         h.kind === "voice_relay" ||
         h.kind === "voice_end_write"
       ) {
         types.push("voice");
-        labels.push(h.kind + (p.path || p.end_artifact_path ? "/snap" : ""));
+        labels.push(
+          h.kind +
+            (p.path || p.end_artifact_path || p.reply_media_path ? "/snap" : ""),
+        );
       } else if (h.kind === "approval_card") {
         types.push("widget");
-        labels.push("widget:approval");
+        labels.push("widget:approval" + (p.path ? "/snap" : ""));
       } else if (h.kind === "oauth") {
         types.push("widget");
-        labels.push("oauth:" + (p.mode || p.status || "card"));
+        labels.push(
+          "oauth:" +
+            (p.mode || p.status || "card") +
+            (p.path ? "/snap" : ""),
+        );
       }
     }
     return {
