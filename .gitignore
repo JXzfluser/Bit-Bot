@@ -35,3 +35,4 @@ agent-tools/
 /package-lock.json
 /node_modules/
 
+/uploads/
