@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1404",
+  "wave": "H6",
+  "title": "rooms \u7fa4\u804a\u56de\u5408",
+  "pri": "P1",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1404_room_turn_no_private_assumptions",
+  "u_acceptance_file": "agents/teammates/acceptance_cm1404_test.mbt",
+  "u_evidence": "`agents/teammates/acceptance_cm1404_test.mbt`::acceptance_CM-1404_room_turn_no_private_assumptions \u2014 \u623f\u95f4\u56de\u5408\u4e0d\u6cc4\u6f0f\u79c1\u804a\u5047\u8bbe",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1404",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1404",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1404_room_turn_no_private_assumptions` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

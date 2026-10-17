@@ -71,22 +71,8 @@ jobs:
             echo "skip: scripts/host_matrix_i_sweep.sh missing"
             exit 0
           fi
-          # Prefer regenerating todo list from matrix if /tmp/matrix_todo.json absent.
-          if [[ ! -f /tmp/matrix_todo.json ]]; then
-            python3 - <<'PY'
-import json, re
-from pathlib import Path
-text = Path("docs/capability-matrix.md").read_text(encoding="utf-8")
-# H6 CI: if matrix already I-PASS, still emit empty todo (sweep no-ops ok)
-rows = re.findall(
-    r"^\| (CM-\d+) \|.*?\| ([^|]+) \| ([^|]+) \|\s*$", text, re.M
-)
-todo = []
-for cm, i_st, u_st in rows:
-    if i_st.strip() == "todo" and u_st.strip().startswith("PASS"):
-        todo.append({"cm": cm, "i": "todo", "u": "PASS", "evidence": "", "test": "", "file": ""})
-Path("/tmp/matrix_todo.json").write_text(json.dumps({"todo": todo}, indent=2) + "\n")
-print("wrote /tmp/matrix_todo.json count=", len(todo))
-PY
+          # Prefer committed H6 TODO_INPUT (matrix may already be I-PASS).
+          if [[ -f docs/qa/artifacts/h6-matrix-i/TODO_INPUT.json && ! -f /tmp/matrix_todo.json ]]; then
+            cp docs/qa/artifacts/h6-matrix-i/TODO_INPUT.json /tmp/matrix_todo.json
           fi
           H6_FAST=1 bash scripts/host_matrix_i_sweep.sh all

@@ -1,0 +1,26 @@
+{
+  "CM": "CM-0402",
+  "wave": "H6",
+  "title": "Cron \u8c03\u5ea6\uff08\u7528\u6237\u65f6\u533a\uff09",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-0402_iana_timezone_and_CRON_TZ_override",
+  "u_acceptance_file": "routines/acceptance_cron_tz_test.mbt",
+  "u_evidence": "`routines/acceptance_cron_tz_test.mbt`::acceptance_CM-0402_iana_timezone_and_CRON_TZ_override \u2014 \u7528\u6237 IANA \u65f6\u533a\u89e3\u91ca\uff1bCRON_TZ \u524d\u7f00\u8986\u76d6",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-0402",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-0402",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-0402_iana_timezone_and_CRON_TZ_override` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

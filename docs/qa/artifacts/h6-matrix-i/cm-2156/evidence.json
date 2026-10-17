@@ -1,0 +1,26 @@
+{
+  "CM": "CM-2156",
+  "wave": "H6",
+  "title": "\u77ed\u53e5\u5177\u4f53\u98ce\u683c",
+  "pri": "P1",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-2156_short_concrete_style_guide_sampleable",
+  "u_acceptance_file": "runtime/acceptance_cm2156_test.mbt",
+  "u_evidence": "`runtime/acceptance_cm2156_test.mbt`::acceptance_CM-2156_short_concrete_style_guide_sampleable \u2014 sample_style_guide_check \u53ef\u6d4b\uff1bempty/fluff/vague/too_long \u62d2\uff1bdocs/style-guide-short-concrete.md",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-2156",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-2156",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-2156_short_concrete_style_guide_sampleable` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

@@ -1,0 +1,26 @@
+{
+  "CM": "CM-2008",
+  "wave": "H6",
+  "title": "\u8eab\u4efd\u81ea\u79f0 Grok Bot\u2192Bit Bot",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-2008_identity_product_name_only",
+  "u_acceptance_file": "runtime/acceptance_cm2001_2007_2008_test.mbt",
+  "u_evidence": "`runtime/acceptance_cm2001_2007_2008_test.mbt`::acceptance_CM-2008_identity_product_name_only \u2014 \u8be2\u95ee\u6a21\u578b\u65f6\u53ea\u7b54\u4ea7\u54c1\u540d",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-2008",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-2008",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-2008_identity_product_name_only` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

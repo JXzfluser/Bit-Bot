@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1505",
+  "wave": "H6",
+  "title": "Auto-review \u5757\u901a\u77e5\u4f8b\u5916",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1505_autoreview_block_notice_exception",
+  "u_acceptance_file": "runtime/acceptance_cm1505_1506_test.mbt",
+  "u_evidence": "`runtime/acceptance_cm1505_1506_test.mbt`::acceptance_CM-1505_autoreview_block_notice_exception \u2014 \u4e0e\u5916\u90e8\u4f2a\u9020\u6307\u4ee4\u533a\u5206",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1505",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1505",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1505_autoreview_block_notice_exception` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

@@ -1,0 +1,26 @@
+{
+  "CM": "CM-0109",
+  "wave": "H6",
+  "title": "\u7ebf\u7a0b thread \u6295\u9012",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-0109_thread_reply_stays_in_thread",
+  "u_acceptance_file": "runtime/acceptance_cm0109_test.mbt",
+  "u_evidence": "`runtime/acceptance_cm0109_test.mbt`::acceptance_CM-0109_thread_reply_stays_in_thread \u2014 inbound \u7ebf\u7a0b\u5730\u5740\u89e3\u6790\u6b63\u786e\uff1b\u56de\u590d\u8fdb\u540c\u7ebf\u7a0b",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-0109",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-0109",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-0109_thread_reply_stays_in_thread` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

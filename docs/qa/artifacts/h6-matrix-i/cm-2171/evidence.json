@@ -1,0 +1,26 @@
+{
+  "CM": "CM-2171",
+  "wave": "H6",
+  "title": "\u51ed\u8bc1\u5f55\u5165",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-2171_credential_entry_secure_form_no_log",
+  "u_acceptance_file": "connectors/commerce/acceptance_cm2171_test.mbt",
+  "u_evidence": "`connectors/commerce/acceptance_cm2171_test.mbt`::acceptance_CM-2171_credential_entry_secure_form_no_log \u2014 Given \u5bc6\u7801/\u5361\u53f7\u7ecf\u5b89\u5168\u8868\u5355 When \u9a8c\u6536 Then \u4e0d\u660e\u6587\u843d\u65e5\u5fd7",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-2171",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-2171",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-2171_credential_entry_secure_form_no_log` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

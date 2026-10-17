@@ -1,0 +1,26 @@
+{
+  "CM": "CM-0102",
+  "wave": "H6",
+  "title": "\u9996\u6761\u786e\u8ba4\u8bed\u4e49",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-0102_user_ack_hidden_agent_no_ack",
+  "u_acceptance_file": "runtime/acceptance_turn_test.mbt",
+  "u_evidence": "`runtime/acceptance_turn_test.mbt`::acceptance_CM-0102_user_ack_hidden_agent_no_ack \u2014 \u591a\u6b65\u4efb\u52a1\u9996\u6761\u975e\u6700\u7ec8\u7b54\u6848\uff1b\u542b\u8fdb\u5ea6\u786e\u8ba4",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-0102",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-0102",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-0102_user_ack_hidden_agent_no_ack` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

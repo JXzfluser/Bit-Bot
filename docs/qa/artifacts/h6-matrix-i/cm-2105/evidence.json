@@ -1,0 +1,26 @@
+{
+  "CM": "CM-2105",
+  "wave": "H6",
+  "title": "earlyMinutes/lateMinutes",
+  "pri": "P1",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-2105_flexible_cron_early_late_window",
+  "u_acceptance_file": "routines/acceptance_cm2105_test.mbt",
+  "u_evidence": "`routines/acceptance_cm2105_test.mbt`::acceptance_CM-2105_flexible_cron_early_late_window \u2014 early/late \u7a97\u53e3\u8fb9\u754c\uff1b\u8d8a\u754c\u62d2",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-2105",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-2105",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-2105_flexible_cron_early_late_window` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

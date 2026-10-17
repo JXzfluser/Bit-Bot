@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1207",
+  "wave": "H6",
+  "title": "Stop \u5b50\u4ee3\u7406",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1207_stop_no_side_effects",
+  "u_acceptance_file": "agents/task/acceptance_task_test.mbt",
+  "u_evidence": "`agents/task/acceptance_task_test.mbt`::acceptance_CM-1207_stop_no_side_effects \u2014 \u505c\u6b62\u540e\u4e0d\u518d\u526f\u4f5c\u7528",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1207",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1207",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093407Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1207_stop_no_side_effects` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

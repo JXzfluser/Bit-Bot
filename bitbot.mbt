@@ -55,20 +55,15 @@ pub fn matrix_i_pass_count() -> Int32 {
 ///|
 pub fn boot_banner() -> String {
   let mods = registered_modules()
-  let mut lines : Array[String] = []
+  let lines : Array[String] = []
   lines.push("Bit Bot runtime boot")
   lines.push("registered modules: " + module_count().to_string())
-  var i = 0
+  let mut i = 0
   while i < mods.length() {
     lines.push("  - " + mods[i])
     i = i + 1
   }
-  lines.push(
-    "capability matrix: CM="
-    + matrix_cm_count().to_string()
-    + " I-PASS="
-    + matrix_i_pass_count().to_string()
-    + " (H6; 0705 platform-subset)",
-  )
+  let inv = "capability matrix: CM=" + matrix_cm_count().to_string() + " I-PASS=" + matrix_i_pass_count().to_string() + " (H6; 0705 platform-subset)"
+  lines.push(inv)
   lines.join("\n")
 }

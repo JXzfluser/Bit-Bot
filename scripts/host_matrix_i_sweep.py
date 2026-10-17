@@ -114,7 +114,7 @@ def parse_matrix_todo() -> list[dict]:
             continue
         ev = evidence.strip()
         test = ""
-        m = re.search(r"::([A-Za-z0-9_]+)", ev)
+        m = re.search(r"::([A-Za-z0-9_-]+)", ev)
         if m:
             test = m.group(1)
         file_m = re.search(r"`([^`]+?\.mbt)`", ev)
@@ -137,7 +137,7 @@ def parse_matrix_todo() -> list[dict]:
 def normalize_item(item: dict) -> dict:
     """Prefer ::acceptance_* name from evidence over coarse JSON test field."""
     ev = str(item.get("evidence") or "")
-    m = re.search(r"::([A-Za-z0-9_]+)", ev)
+    m = re.search(r"::([A-Za-z0-9_-]+)", ev)
     if m:
         item = dict(item)
         item["test"] = m.group(1)
@@ -179,7 +179,7 @@ def run_moon_test(skip: bool) -> dict:
     )
     out = (proc.stdout or "") + (proc.stderr or "")
     passed = None
-    m = re.search(r"(\d+)\s+passed", out)
+    m = re.search(r"passed:\s*(\d+)", out) or re.search(r"(\d+)\s+passed", out)
     if m:
         passed = int(m.group(1))
     ok = proc.returncode == 0 and (passed is None or passed >= 347)
