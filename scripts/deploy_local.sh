@@ -30,14 +30,20 @@ if [[ -f "${PID_FILE}" ]]; then
   fi
   rm -f "${PID_FILE}"
 fi
-# Also clear stray listener on the port (same product surface only)
-if command -v ss >/dev/null 2>&1; then
-  pid_on_port="$(ss -ltnp "sport = :${HOST_UI_PORT}" 2>/dev/null | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1 || true)"
-  if [[ -n "${pid_on_port}" ]]; then
-    kill "${pid_on_port}" 2>/dev/null || true
+# Clear any listener on the product port (pid file may be stale)
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k "${HOST_UI_PORT}/tcp" 2>/dev/null || true
+  sleep 0.3
+elif command -v lsof >/dev/null 2>&1; then
+  for p in $(lsof -t -iTCP:"${HOST_UI_PORT}" -sTCP:LISTEN 2>/dev/null || true); do
+    kill "${p}" 2>/dev/null || true
     sleep 0.2
-  fi
+    kill -9 "${p}" 2>/dev/null || true
+  done
 fi
+# Fallback: pkill host_server on this workspace only
+pkill -f "/workspace/scripts/host_ui_surface/host_server.py" 2>/dev/null || true
+sleep 0.3
 
 echo "== deploy_local: start =="
 bash "${ROOT}/scripts/start-bitbot.sh"
