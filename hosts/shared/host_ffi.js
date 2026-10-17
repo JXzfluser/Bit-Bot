@@ -1391,13 +1391,17 @@ function createHostFfi(repoRoot) {
       }
       const tickAt = new Date().toISOString();
       const wakesPath = path.join(REPO_ROOT, "data", "routines", "wakes.jsonl");
+      const daemonSweep = process.env.BITBOT_ROUTINE_DAEMON === "1";
       const wakeEntry = {
         due_count: due.length,
         fired_count: fired.length,
         fired_ids: fired.map((f) => f.id),
         at: tickAt,
-        daemon: false,
-        note: "on-demand Host tick (cron daemon residual)",
+        daemon: daemonSweep,
+        long_lived: false,
+        note: daemonSweep
+          ? "Host daemon one-shot sweep (scripts/host_routine_daemon.sh)"
+          : "on-demand Host tick (long-lived cron residual)",
       };
       appendJsonl(wakesPath, wakeEntry);
       const lastTickPath = path.join(
@@ -1411,12 +1415,30 @@ function createHostFfi(repoRoot) {
         lastTickPath,
         JSON.stringify({ ...wakeEntry, wakes: wakesPath }, null, 2),
       );
+      if (daemonSweep) {
+        fs.writeFileSync(
+          path.join(REPO_ROOT, "data", "routines", "daemon-status.json"),
+          JSON.stringify(
+            {
+              daemon: true,
+              long_lived: false,
+              last_sweep_at: tickAt,
+              fired_count: fired.length,
+              due_count: due.length,
+              note: "one-shot sweep — not systemd cron",
+            },
+            null,
+            2,
+          ),
+        );
+      }
       appendHostDeliveryJournal({
         kind: "routine_tick",
         command,
         due_count: due.length,
         fired_count: fired.length,
         wakes: wakesPath,
+        daemon: daemonSweep,
         at: tickAt,
       });
       return {
@@ -1431,7 +1453,8 @@ function createHostFfi(repoRoot) {
             wakes: true,
             wakes_path: wakesPath,
             last_tick_path: lastTickPath,
-            daemon: false,
+            daemon: daemonSweep,
+            long_lived: false,
           },
           null,
           2,
@@ -1782,8 +1805,8 @@ function createHostFfi(repoRoot) {
         at,
       });
     }
-    if (kind === "cloud_agent_launch") {
-      return null; // cursor-agent card already recorded in effect handler
+    if (kind === "cloud_agent_launch" || kind === "cloud_artifact_deliver") {
+      return null; // SendToUser already recorded in cloud handlers
     }
     if (kind === "room_turn" || kind === "send_to_agent" || kind === "subagent_run") {
       return null; // SendToUser already recorded in multi-agent handlers
@@ -1834,8 +1857,11 @@ function createHostFfi(repoRoot) {
       return recordSendToUser({
         type: "attachment",
         label: "computer_use",
+        path: parsed.evidence || "",
         vision_ok: Boolean(parsed.gui && parsed.gui.vision_ok),
         outcome: (parsed.outcome && parsed.outcome.summary) || "",
+        gui_mode: (parsed.gui && parsed.gui.gui_mode) || "",
+        os_window: Boolean(parsed.gui && parsed.gui.os_window),
         source_kind: kind,
         at,
       });
@@ -3307,6 +3333,207 @@ function createHostFfi(repoRoot) {
     return { ok: false, path: outPath, bytes: 0 };
   }
 
+  function cloudSessionPath(bcId) {
+    return path.join(
+      REPO_ROOT,
+      "data",
+      "cloud",
+      "sessions",
+      `${sanitizeSkillName(bcId) || "bc"}.json`,
+    );
+  }
+
+  function readCloudSession(bcId) {
+    const p = cloudSessionPath(bcId);
+    try {
+      if (!fs.existsSync(p)) return null;
+      return JSON.parse(fs.readFileSync(p, "utf8"));
+    } catch {
+      return null;
+    }
+  }
+
+  function writeCloudSession(bcId, session) {
+    const p = cloudSessionPath(bcId);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(session, null, 2));
+    return p;
+  }
+
+  async function executeCloudEffect(kind, command) {
+    const at = new Date().toISOString();
+    const cmd = String(command || "");
+
+    if (kind === "cloud_agent_launch") {
+      const parts = cmd.split("|");
+      const bcId = parts[0] || `bc-local-${Date.now().toString(36)}`;
+      const url =
+        parts[1] ||
+        (bcId ? `https://cursor.com/agents/${bcId}` : "");
+      const prompt = parts.slice(2).join("|") || "";
+      const depth = nestDepth();
+
+      let session = {
+        bc_id: bcId,
+        url,
+        prompt,
+        status: "launching",
+        mode: "local_worker",
+        pretend_remote_cloud: false,
+        note: "Host local MoonBit worker — not Cursor Cloud API (no production cloud credentials)",
+        at,
+      };
+      const sessionPath = writeCloudSession(bcId, session);
+
+      let worker = {
+        ok: true,
+        nested_skipped: depth >= 1,
+        assistant: "",
+        intent: "",
+      };
+      if (depth >= 1) {
+        session = {
+          ...session,
+          status: "completed_nest_skipped",
+          completed_at: at,
+          assistant: "(cloud worker nest skipped)",
+        };
+      } else {
+        session.status = "running";
+        writeCloudSession(bcId, session);
+        worker = await runWorkerMoonTurn({
+          prompt: prompt || "cloud agent ping",
+          sessionId: `cloud-${sanitizeSkillName(bcId)}`,
+        });
+        if (worker.needs_host_ffi && worker.effects && worker.effects.length) {
+          const prev = process.env.BITBOT_NEST_DEPTH;
+          process.env.BITBOT_NEST_DEPTH = "1";
+          try {
+            worker.host_results = await executeHostEffects(worker.effects);
+          } finally {
+            if (prev === undefined) delete process.env.BITBOT_NEST_DEPTH;
+            else process.env.BITBOT_NEST_DEPTH = prev;
+          }
+        }
+        session = {
+          ...session,
+          status: worker.ok ? "completed" : "failed",
+          completed_at: new Date().toISOString(),
+          assistant: String(worker.assistant || "").slice(0, 4000),
+          worker_intent: worker.intent || "",
+          worker_ok: Boolean(worker.ok),
+          nested_skipped: Boolean(worker.nested_skipped),
+        };
+      }
+      writeCloudSession(bcId, session);
+
+      const entry = {
+        bc_id: bcId,
+        url,
+        prompt,
+        mode: session.mode,
+        status: session.status,
+        session_path: sessionPath,
+        pretend_remote_cloud: false,
+        at,
+      };
+      const pathWritten = appendJsonl(CLOUD_LAUNCHES_PATH, entry);
+      const card = recordSendToUser({
+        type: "cursor-agent",
+        bc_id: bcId,
+        open_url: url,
+        can_open_cloud: Boolean(bcId),
+        prompt_prefix: String(prompt || "").slice(0, 80),
+        status: session.status,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: pathWritten,
+        session: sessionPath,
+        status: session.status,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: pathWritten,
+        launched: true,
+        ran: depth < 1,
+        worker_ok: Boolean(worker.ok),
+        nested_skipped: Boolean(worker.nested_skipped),
+        assistant_prefix: String(session.assistant || "").slice(0, 160),
+        cursor_agent_card: card,
+        send_to_user: SEND_TO_USER_PATH,
+      });
+    }
+
+    if (kind === "cloud_artifact_deliver") {
+      const parts = cmd.split("|");
+      const srcOrUrl = parts[0] || "";
+      const destRaw = parts[1] || "report.md";
+      const destName = path.basename(destRaw || "report.md") || "report.md";
+      const destDir = path.join(REPO_ROOT, "agent-tools", "cloud-artifacts");
+      fs.mkdirSync(destDir, { recursive: true });
+      const destPath = path.join(destDir, destName);
+
+      let copied = false;
+      let fromSession = false;
+      let bcId = "";
+      const bcMatch = String(srcOrUrl).match(/bc-[A-Za-z0-9_-]+/);
+      if (bcMatch) bcId = bcMatch[0];
+      else if (/^bc-/i.test(srcOrUrl)) bcId = srcOrUrl;
+
+      if (srcOrUrl && fs.existsSync(srcOrUrl) && fs.statSync(srcOrUrl).isFile()) {
+        fs.copyFileSync(srcOrUrl, destPath);
+        copied = true;
+      } else {
+        const session = bcId ? readCloudSession(bcId) : null;
+        const body =
+          (session && session.assistant) ||
+          `# Cloud artifact\n\nsource: ${srcOrUrl}\nbc_id: ${bcId || "(none)"}\nstatus: ${
+            (session && session.status) || "no_session"
+          }\n\n${
+            session
+              ? "Materialized from Host local cloud worker session."
+              : "No local session — placeholder report (not remote cloud fetch)."
+          }\n`;
+        fs.writeFileSync(destPath, body.endsWith("\n") ? body : body + "\n");
+        fromSession = Boolean(session && session.assistant);
+      }
+
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: destPath,
+        label: "cloud_artifact",
+        bc_id: bcId || "",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: destPath,
+        copied,
+        from_session: fromSession,
+        at,
+      });
+      return okJson(kind, cmd, {
+        path: destPath,
+        source: srcOrUrl,
+        bc_id: bcId || "",
+        copied,
+        from_session: fromSession,
+        delivered: true,
+        bytes: fs.statSync(destPath).size,
+        send_to_user: delivery,
+      });
+    }
+
+    return null;
+  }
+
   async function executeVoiceRelay(command) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
@@ -3947,79 +4174,7 @@ function createHostFfi(repoRoot) {
       });
     }
 
-    if (kind === "cloud_agent_launch") {
-      const parts = cmd.split("|");
-      const bcId = parts[0] || `bc-sandbox-${Date.now().toString(36)}`;
-      const url =
-        parts[1] ||
-        (bcId ? `https://cursor.com/agents/${bcId}` : "");
-      const entry = {
-        bc_id: bcId,
-        url,
-        prompt: parts.slice(2).join("|") || "",
-        mode: "sandbox_record",
-        at,
-      };
-      const pathWritten = appendJsonl(CLOUD_LAUNCHES_PATH, entry);
-      // CM-2131 cursor-agent SendToUser card
-      const card = recordSendToUser({
-        type: "cursor-agent",
-        bc_id: bcId,
-        open_url: url,
-        can_open_cloud: Boolean(bcId),
-        prompt_prefix: String(entry.prompt || "").slice(0, 80),
-        source_kind: kind,
-        at,
-      });
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, {
-        ...entry,
-        path: pathWritten,
-        launched: true,
-        cursor_agent_card: card,
-        send_to_user: SEND_TO_USER_PATH,
-      });
-    }
-
-    if (kind === "cloud_artifact_deliver") {
-      const parts = cmd.split("|");
-      const srcOrUrl = parts[0] || "";
-      const destName = path.basename(parts[1] || srcOrUrl || "artifact.bin");
-      const destDir = path.join(REPO_ROOT, "agent-tools", "cloud-artifacts");
-      fs.mkdirSync(destDir, { recursive: true });
-      const destPath = path.join(destDir, destName);
-      let copied = false;
-      if (srcOrUrl && fs.existsSync(srcOrUrl) && fs.statSync(srcOrUrl).isFile()) {
-        fs.copyFileSync(srcOrUrl, destPath);
-        copied = true;
-      } else {
-        fs.writeFileSync(
-          destPath,
-          JSON.stringify(
-            {
-              source: srcOrUrl,
-              note: "sandbox cloud artifact placeholder",
-              at,
-            },
-            null,
-            2,
-          ),
-        );
-      }
-      appendHostDeliveryJournal({
-        kind,
-        command: cmd,
-        path: destPath,
-        copied,
-        at,
-      });
-      return okJson(kind, cmd, {
-        path: destPath,
-        source: srcOrUrl,
-        copied,
-        delivered: true,
-      });
-    }
+    // cloud_agent_launch / cloud_artifact_deliver → executeCloudEffect (async)
 
     if (kind === "schedule_meeting") {
       const parts = cmd.split("|");
@@ -4465,6 +4620,10 @@ function createHostFfi(repoRoot) {
         results.push(await executeVoiceRelay(cmd));
         continue;
       }
+      if (kind === "cloud_agent_launch" || kind === "cloud_artifact_deliver") {
+        results.push(await executeCloudEffect(kind, cmd));
+        continue;
+      }
       if (
         kind === "room_turn" ||
         kind === "send_to_agent" ||
@@ -4566,7 +4725,10 @@ function createHostFfi(repoRoot) {
           stdout: JSON.stringify(
             {
               ...del,
-              path: SEND_TO_USER_PATH,
+              // Preserve attachment/evidence path from the effect; ledger lives beside it.
+              attachment_path: del.path || null,
+              send_to_user_path: SEND_TO_USER_PATH,
+              path: del.path || SEND_TO_USER_PATH,
               send_to_user: true,
             },
             null,

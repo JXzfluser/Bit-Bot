@@ -445,6 +445,30 @@
             try {
               const p = JSON.parse(cloudHost.stdout || "{}");
               if (p.cursor_agent_card) renderCursorAgentCard(p.cursor_agent_card);
+              if (p.status) {
+                addMsg(
+                  "assistant",
+                  "Cloud worker " +
+                    (p.bc_id || "?") +
+                    " → " +
+                    p.status +
+                    (p.assistant_prefix ? ": " + p.assistant_prefix : ""),
+                );
+              }
+            } catch (_) { /* ignore */ }
+          }
+          const artHost = r.host_results.find(
+            (h) => h && h.kind === "cloud_artifact_deliver" && h.ok,
+          );
+          if (artHost) {
+            try {
+              const p = JSON.parse(artHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Cloud artifact → " +
+                  (p.path || "?").split("/").slice(-2).join("/") +
+                  (p.from_session ? " (from session)" : ""),
+              );
             } catch (_) { /* ignore */ }
           }
           const tm = r.host_results.find((h) => h && h.kind === "teammate_create" && h.ok);

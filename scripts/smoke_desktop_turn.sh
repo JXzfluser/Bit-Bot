@@ -115,7 +115,20 @@ p.write_text(json.dumps(rows, indent=2))
 print('forced host-r due')
 PY
 node hosts/cli_host/run_turn.js "tick routines" >/tmp/bitbot-routine-tick.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-routine-tick.json'));assert d.get('intent')=='tick_routines';hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='routine_tick');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('wakes') is True;assert p.get('fired_count')>=1;assert p.get('daemon') is False;assert p.get('wakes_path') and os.path.isfile(p['wakes_path']);assert p.get('last_tick_path') and os.path.isfile(p['last_tick_path']);print('routine_tick wake log ok', 'fired', p.get('fired_count'), 'due', p.get('due_count'), 'wakes', p.get('wakes_path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-routine-tick.json'));assert d.get('intent')=='tick_routines';hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='routine_tick');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('wakes') is True;assert p.get('fired_count')>=1;assert p.get('daemon') is False;assert p.get('long_lived') is False;assert p.get('wakes_path') and os.path.isfile(p['wakes_path']);assert p.get('last_tick_path') and os.path.isfile(p['last_tick_path']);print('routine_tick wake log ok', 'fired', p.get('fired_count'), 'due', p.get('due_count'), 'wakes', p.get('wakes_path'))"
+python3 - <<'PY'
+import json, pathlib
+p=pathlib.Path('data/routines/host-routines.json')
+rows=json.loads(p.read_text()) if p.exists() else []
+for r in rows:
+  if r.get('id')=='host-r':
+    r['next_due']='2020-01-01T00:00:00.000Z'
+    r['enabled']=True
+p.write_text(json.dumps(rows, indent=2))
+print('forced host-r due for daemon')
+PY
+bash "$ROOT/scripts/host_routine_daemon.sh" --sweeps 1
+python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is False;assert d.get('ok')>=1;print('host_routine_daemon one-shot ok', d)"
 
 echo "==> Host sandbox OAuth (Slack + Gmail) + computer_use navigate"
 node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-slack.json
@@ -175,7 +188,10 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-subagent.json'));assert
 BITBOT_NEST_DEPTH=1 node hosts/cli_host/run_turn.js "spawn subagent nested guard" >/tmp/bitbot-subagent-nest.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-subagent-nest.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='subagent_run');p=json.loads(h.get('stdout') or '{}');assert p.get('nested_skipped') is True;assert (p.get('subagent') or {}).get('status')=='completed_nest_skipped';print('subagent_run CM-2133 nest guard ok')"
 node hosts/cli_host/run_turn.js "launch cloud agent triage CI failures" >/tmp/bitbot-cloud.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_agent_launch');assert h.get('ok') and 'launches.jsonl' in (h.get('stdout') or '');p=json.loads(h.get('stdout') or '{}');card=p.get('cursor_agent_card') or {};assert card.get('type')=='cursor-agent';assert card.get('can_open_cloud') is True;assert card.get('bc_id');assert 'agents/' in (card.get('open_url') or '');assert os.path.isfile('data/delivery/send-to-user.jsonl');print('cloud_agent_launch cursor-agent card ok', card.get('bc_id'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_agent_launch');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');card=p.get('cursor_agent_card') or {};assert card.get('type')=='cursor-agent';assert card.get('can_open_cloud') is True;assert card.get('bc_id');assert 'agents/' in (card.get('open_url') or '');assert p.get('mode')=='local_worker';assert p.get('pretend_remote_cloud') is False;assert p.get('status') in ('completed','failed');assert p.get('session_path') and os.path.isfile(p['session_path']);assert p.get('ran') is True;assert os.path.isfile('data/delivery/send-to-user.jsonl');print('cloud_agent_launch local_worker ok', p.get('bc_id'), p.get('status'));open('/tmp/bitbot-cloud-bc.txt','w').write(p.get('bc_id') or '')"
+BC_ID="$(cat /tmp/bitbot-cloud-bc.txt)"
+node hosts/cli_host/run_turn.js "deliver cloud artifact artifact=${BC_ID} dest=smoke-report.md" >/tmp/bitbot-cloud-art.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud-art.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_artifact_deliver');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('delivered') is True;assert p.get('from_session') is True;assert p.get('path') and os.path.isfile(p['path']);assert os.path.getsize(p['path'])>20;print('cloud_artifact_deliver from_session ok', p.get('path'), 'bytes', p.get('bytes'))"
 node hosts/cli_host/run_turn.js --approved "purchase item=BlueYeti cents=12900" >/tmp/bitbot-purchase.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-purchase.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind') in ('purchase','approval_card') and x.get('ok'));assert h; 
 if h.get('kind')=='purchase':
