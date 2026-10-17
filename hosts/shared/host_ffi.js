@@ -633,6 +633,48 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
+      // Sandbox inbound claim rehearsal when CLAIM=1 but no live token (honest: not live).
+      if (process.env.BITBOT_SLACK_CLAIM === "1" && channelId && !token) {
+        const sandboxRows = [
+          {
+            scheme: "slack",
+            channel: channelId,
+            ts: `${Date.now() / 1000}.000001`,
+            thread_ts: threadTs || "",
+            user: "U_SANDBOX",
+            text_len: 24,
+            text_prefix: "[sandbox] inbound claim",
+            mode: "sandbox_slack_claim",
+            at: stamp,
+          },
+        ];
+        for (const row of sandboxRows) appendJsonl(inboundPath, row);
+        const entry = {
+          scheme,
+          address: addr,
+          body,
+          mode: "sandbox_slack_claim",
+          ok: true,
+          live_post: false,
+          claimed_count: sandboxRows.length,
+          connector_ready: connectorReady,
+          at: stamp,
+          inbound: inboundPath,
+          note: "sandbox claim — set SLACK_BOT_TOKEN for live conversations.history",
+        };
+        appendJsonl(outboundPath, entry);
+        return {
+          kind: "channel_send",
+          ok: true,
+          command: raw,
+          stdout: JSON.stringify(
+            { ...entry, outbound: outboundPath },
+            null,
+            2,
+          ),
+          stderr: "",
+        };
+      }
       const entry = {
         scheme,
         address: addr,
@@ -2930,8 +2972,27 @@ function createHostFfi(repoRoot) {
               chrome_bin: gui.chrome_bin || null,
               actions_ok: Boolean(gui.actions && gui.actions.ok),
               screenshot_ok: Boolean(gui.screenshot && gui.screenshot.ok),
+              vision_ok: Boolean(
+                (summary.outcome && summary.outcome.vision_ok) ||
+                  (gui.vision_plan && gui.vision_plan.ok),
+              ),
+              vision_plan: gui.vision_plan
+                ? {
+                    ok: Boolean(gui.vision_plan.ok),
+                    steps: gui.vision_plan.steps || [],
+                    blocked_on_signin: Boolean(
+                      gui.vision_plan.blocked_on_signin,
+                    ),
+                    has_dom_targets: Boolean(
+                      gui.vision_plan.dom &&
+                        gui.vision_plan.dom.targets &&
+                        Object.values(gui.vision_plan.dom.targets).some(Boolean),
+                    ),
+                  }
+                : null,
               title:
                 (gui.actions && gui.actions.title) ||
+                (gui.vision_actions && gui.vision_actions.title) ||
                 null,
             },
             outcome: summary.outcome || {
