@@ -53,6 +53,7 @@ function extractDeliveryTypes(turnJsonText) {
       } else if (
         [
           "mail_send",
+          "mail_draft",
           "mail_search",
           "mail_read",
           "slides_pptx",
@@ -62,10 +63,12 @@ function extractDeliveryTypes(turnJsonText) {
           "purchase",
           "mcp_call",
           "mcp_discover",
+          "mcp_namespace",
           "credential_list",
           "credential_fill",
           "code_changes",
           "section_add",
+          "section_post",
           "source_control",
           "workflow_list",
           "x_search",
@@ -83,6 +86,7 @@ function extractDeliveryTypes(turnJsonText) {
           "skill_load",
           "mail_claim_inbox",
           "cloud_artifact_deliver",
+          "teammate_create",
         ].includes(h.kind)
       ) {
         types.push("attachment");

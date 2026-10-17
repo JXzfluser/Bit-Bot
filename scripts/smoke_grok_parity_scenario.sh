@@ -132,7 +132,7 @@ kill "$GMAIL_PID" >/dev/null 2>&1 || true
 wait "$GMAIL_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-mail-search.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_search');p=json.loads(h['stdout']);assert p.get('mode')=='gmail_live';assert p.get('live_mail_residual') is False;assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;print('parity mail_search live ok', p.get('hit_count'))"
 python3 -c "import json;d=json.load(open('/tmp/parity-mail-read.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_read');p=json.loads(h['stdout']);assert p.get('mode')=='gmail_live';assert p.get('live_mail_residual') is False;print('parity mail_read live ok', p.get('thread_id'))"
-python3 -c "import json;d=json.load(open('/tmp/parity-mail-send.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_gmail';assert p.get('sent') is True;assert p.get('pretend_sent') is False;print('parity mail_send live ok', p.get('message_id'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-mail-send.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_gmail';assert p.get('sent') is True;assert p.get('pretend_sent') is False;assert p.get('path') and os.path.isfile(p['path']);print('parity mail_send live ok', p.get('message_id'), p.get('path'))"
 
 "${RUN[@]}" "add section group=parity id=sec-p title=Parity" >/tmp/parity-sec-add.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-sec-add.json'));h=next(x for x in d['host_results'] if x.get('kind')=='section_add');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('ok') is True;assert (p.get('section') or {}).get('id')=='sec-p';assert p.get('pretend_shared') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('group_path') and os.path.isfile(p['group_path']);print('parity section_add ok', p.get('section').get('id'), 'existing', p.get('existing'), p.get('path'))"
@@ -202,7 +202,7 @@ echo "parity-box-$MARKER" > uploads/parity-box-src.txt
 "${RUN[@]}" "copy to box machine=desk-1 src=uploads/parity-box-src.txt dest=uploads/parity-box-dest.txt" >/tmp/parity-box.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-box.json'));h=next(x for x in d['host_results'] if x.get('kind')=='copy_to_box');p=json.loads(h['stdout']);assert p.get('under_repo') is True;assert p.get('pretend_remote_machine') is False;assert os.path.isfile('uploads/parity-box-dest.txt');print('parity copy_to_box ok')"
 "${RUN[@]}" --approved "cold mail to=parity@example.com subject=Hi body=Hello $MARKER" >/tmp/parity-cold.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-cold.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('provider')=='cold';assert p.get('pretend_sent') is False;assert 'List-Unsubscribe:' in open(p['eml_path']).read();print('parity cold_mail ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cold.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('provider')=='cold';assert p.get('pretend_sent') is False;assert 'List-Unsubscribe:' in open(p['eml_path']).read();assert p.get('path') and os.path.isfile(p['path']);print('parity cold_mail ok', p.get('path'))"
 "${RUN[@]}" "meeting chat body=parity standup $MARKER direct=1" >/tmp/parity-meet.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-meet.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_direct';assert p.get('live_meeting_residual') is True;assert p.get('transcript') and os.path.isfile(p['transcript']);print('parity meeting_chat DirectSend ok')"
 "${RUN[@]}" "meeting chat body=parity draft card" >/tmp/parity-meet-draft.json
@@ -224,7 +224,7 @@ BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-out B
   "${RUN[@]}" --approved "draft outlook mail to=parity@example.com subject=Parity body=$MARKER" >/tmp/parity-outlook.json || true
 kill "$OUT_PID" >/dev/null 2>&1 || true
 wait "$OUT_PID" 2>/dev/null || true
-python3 -c "import json;d=json.load(open('/tmp/parity-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;print('parity outlook live ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;assert p.get('path') and os.path.isfile(p['path']);print('parity outlook live ok', p.get('path'))"
 
 # 9h) Site-playbook verticals (shopping / travel / food) + CU payment_wall honesty
 "${RUN[@]}" "shop https://www.target.com/ headphones" >/tmp/parity-shop.json
@@ -376,7 +376,7 @@ python3 -c "import json;d=json.load(open('/tmp/parity-slack-live-thread.json'));
 "${MOBILE[@]}" --machine-kind android --session-id parity-and-fs "fs list ." >/tmp/parity-android-fs.raw
 python3 -c "import json;raw=open('/tmp/parity-android-fs.raw').read().splitlines();d=json.loads(next(l for l in raw if l.startswith('{')));assert d.get('ok');assert d.get('machine_kind')=='android';assert d.get('host_continued') is True;assert d.get('intent')=='fs_list';h=next(x for x in d['host_results'] if x.get('kind')=='fs_list');p=json.loads(h['stdout']);assert p.get('pretend_listing') is False;assert p.get('count',0)>=1;print('parity android fs_list ok', p.get('count'), 'host_continued', d.get('host_continued'))"
 "${RUN[@]}" --approved "send on behalf to=parity@example.com subject=Hi body=Hello $MARKER" >/tmp/parity-sob.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-sob.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('provider')=='onbehalf';assert p.get('pretend_sent') is False;assert 'X-BitBot-Send-On-Behalf: 1' in open(p['eml_path']).read();print('parity send_on_behalf ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sob.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('provider')=='onbehalf';assert p.get('pretend_sent') is False;assert 'X-BitBot-Send-On-Behalf: 1' in open(p['eml_path']).read();assert p.get('path') and os.path.isfile(p['path']);print('parity send_on_behalf ok', p.get('path'))"
 # Pack evidence (unsigned — store certs deferred)
 test -f data/tmp/desktop-pack-evidence.json || bash "$ROOT/scripts/pack-desktop.sh" >/tmp/parity-pack-desktop.log 2>&1
 python3 -c "import json;d=json.load(open('data/tmp/desktop-pack-evidence.json'));assert d.get('ok') is True;assert d.get('signed') is False;assert d.get('entry_count',0)>=1;print('parity desktop pack evidence ok', d.get('entry_count'), 'signed', d.get('signed'))"

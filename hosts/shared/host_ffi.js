@@ -1338,6 +1338,51 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  function finalizeMailSend(command, entry, extras = {}) {
+    // Per-send Host snapshot — eml + jsonl ledgers retained by caller.
+    const sendDir = path.join(REPO_ROOT, "data", "mail", "sends");
+    fs.mkdirSync(sendDir, { recursive: true });
+    const provider = sanitizeSkillName(entry.provider || "mail") || "mail";
+    const sendPath = path.join(
+      sendDir,
+      `send-${provider}-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      ...entry,
+      pretend_sent: entry && entry.pretend_sent === true ? true : false,
+      mode: (entry && entry.mode) || "mail_send",
+      mode_note: "host_mail_send",
+    };
+    const snapshot = {
+      ...artifact,
+      ledger_path: extras.ledger || artifact.ledger || undefined,
+      journal: extras.journal || artifact.journal || undefined,
+    };
+    fs.writeFileSync(sendPath, JSON.stringify(snapshot, null, 2));
+    appendJsonl(path.join(sendDir, "sends.jsonl"), {
+      ...snapshot,
+      path: sendPath,
+    });
+    const journalPath =
+      extras.journal ||
+      appendHostDeliveryJournal({
+        kind: "mail_send",
+        command,
+        path: sendPath,
+        eml: artifact.eml_path,
+        provider: artifact.provider,
+        mode: artifact.mode,
+        at: artifact.at,
+      });
+    return okJson("mail_send", command, {
+      ...snapshot,
+      path: sendPath,
+      journal: journalPath,
+      send_to_user: extras.delivery || artifact.send_to_user,
+      ok: true,
+    });
+  }
+
   async function executeMailSend(command) {
     // command: provider|to|subject|body  (provider=gmail|outlook|cold)
     // cold: cold|to|subject|body|unsubscribe (CM-1009)
@@ -1408,31 +1453,27 @@ function createHostFfi(repoRoot) {
         source_kind: "mail_send",
         at,
       });
-      appendHostDeliveryJournal({
-        kind: "mail_send",
-        provider,
-        to,
-        subject,
-        eml: emlPath,
-        at,
-      });
-      return okJson("mail_send", command, {
-        provider,
-        to,
-        subject,
-        unsubscribe: unsubscribe || null,
-        mode:
-          provider === "cold" ? "cold_sandbox_eml" : "onbehalf_sandbox_eml",
-        sent: false,
-        pretend_sent: false,
-        eml_path: emlPath,
-        eml_ok:
-          fs.existsSync(emlPath) &&
-          fs.readFileSync(emlPath, "utf8").includes("X-BitBot-Status: draft"),
-        ledger,
-        drafted: true,
-        send_to_user: delivery,
-      });
+      return finalizeMailSend(
+        command,
+        {
+          provider,
+          to,
+          subject,
+          unsubscribe: unsubscribe || null,
+          mode:
+            provider === "cold" ? "cold_sandbox_eml" : "onbehalf_sandbox_eml",
+          sent: false,
+          pretend_sent: false,
+          eml_path: emlPath,
+          eml_ok:
+            fs.existsSync(emlPath) &&
+            fs.readFileSync(emlPath, "utf8").includes("X-BitBot-Status: draft"),
+          ledger,
+          drafted: true,
+          at,
+        },
+        { delivery, ledger },
+      );
     }
 
     const to = (parts[1] || "").trim();
@@ -1491,20 +1532,24 @@ function createHostFfi(repoRoot) {
         source_kind: "mail_send",
         at,
       });
-      return okJson("mail_send", command, {
-        provider,
-        to,
-        subject,
-        mode,
-        sent: false,
-        pretend_sent: false,
-        live_mail_residual: true,
-        reason,
-        journal,
-        ...eml,
-        drafted: true,
-        send_to_user: delivery,
-      });
+      return finalizeMailSend(
+        command,
+        {
+          provider,
+          to,
+          subject,
+          mode,
+          sent: false,
+          pretend_sent: false,
+          live_mail_residual: true,
+          reason,
+          journal,
+          ...eml,
+          drafted: true,
+          at,
+        },
+        { delivery, journal },
+      );
     };
 
     if (!token) {
@@ -1573,19 +1618,23 @@ function createHostFfi(repoRoot) {
         source_kind: "mail_send",
         at,
       });
-      return okJson("mail_send", command, {
-        provider,
-        to,
-        subject,
-        mode: "live_gmail",
-        sent: true,
-        pretend_sent: false,
-        live_mail_residual: false,
-        message_id: res.json.id,
-        journal,
-        ...eml,
-        send_to_user: delivery,
-      });
+      return finalizeMailSend(
+        command,
+        {
+          provider,
+          to,
+          subject,
+          mode: "live_gmail",
+          sent: true,
+          pretend_sent: false,
+          live_mail_residual: false,
+          message_id: res.json.id,
+          journal,
+          ...eml,
+          at,
+        },
+        { delivery, journal },
+      );
     }
     if (provider === "outlook") {
       // Prefer env token for local mock / CI over connector rehearsal tokens.
@@ -1649,22 +1698,26 @@ function createHostFfi(repoRoot) {
         source_kind: "mail_send",
         at,
       });
-      return okJson("mail_send", command, {
-        provider,
-        to,
-        subject,
-        mode: "live_outlook",
-        sent: true,
-        pretend_sent: false,
-        live_mail_residual: false,
-        message_id:
-          (res.json && (res.json.id || res.json.message_id)) ||
-          `outlook-${Date.now().toString(36)}`,
-        http_status: res.status || 0,
-        journal,
-        ...eml,
-        send_to_user: delivery,
-      });
+      return finalizeMailSend(
+        command,
+        {
+          provider,
+          to,
+          subject,
+          mode: "live_outlook",
+          sent: true,
+          pretend_sent: false,
+          live_mail_residual: false,
+          message_id:
+            (res.json && (res.json.id || res.json.message_id)) ||
+            `outlook-${Date.now().toString(36)}`,
+          http_status: res.status || 0,
+          journal,
+          ...eml,
+          at,
+        },
+        { delivery, journal },
+      );
     }
     return finishSandbox(
       `mail token present for ${provider}; no live adapter — sandbox eml draft`,

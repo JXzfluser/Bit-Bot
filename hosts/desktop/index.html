@@ -847,7 +847,10 @@
                   }
                   types.push("attachment");
                 } else if (h.kind === "mail_send") {
-                  label = "mail:" + (p.mode || p.provider || "draft");
+                  label =
+                    "mail:" +
+                    (p.mode || p.provider || "draft") +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "code_changes") {
                   label = "code:" + (p.applied ? "applied" : "plan");

@@ -46,9 +46,8 @@ if (r.stdout) {
 }
 if (r.stderr) process.stderr.write(r.stderr);
 
-// CM-0705: device_permission is executed by shared Host FFI into
-// data/device/permission-cards/*.json (pretend_granted=false). Mirror a
-// mobile-specific OS-card note that references the Host card path.
+// Multi-end Host mirrors: CM-0705 device_permission OS-card + delivery path
+// echoes for channel_send / mail_send (shared FFI snaps; never invent live).
 try {
   const out = String(r.stdout || "");
   // Prefer first-line JSON (mobile_host trailer may follow).
@@ -60,6 +59,10 @@ try {
   if (line.startsWith("{")) {
     const turn = JSON.parse(line);
     const hrs = Array.isArray(turn.host_results) ? turn.host_results : [];
+    const machineKind = turn.machine_kind || "ios";
+    const journal = path.join(root, "data/journal/host-delivery.jsonl");
+    fs.mkdirSync(path.dirname(journal), { recursive: true });
+
     const perm =
       hrs.find((h) => h && h.kind === "device_permission") ||
       (Array.isArray(turn.effects)
@@ -85,7 +88,7 @@ try {
       );
       const mirror = {
         kind: "device_permission_os_card",
-        machine_kind: turn.machine_kind || "ios",
+        machine_kind: machineKind,
         command: perm.command,
         card_path: cardPath,
         pretend_granted: pretendGranted,
@@ -95,8 +98,6 @@ try {
         note: "Host raises OS permission dialog / Settings guide; not pretend-connected",
       };
       fs.writeFileSync(mirrorPath, JSON.stringify(mirror, null, 2));
-      const journal = path.join(root, "data/journal/host-delivery.jsonl");
-      fs.mkdirSync(path.dirname(journal), { recursive: true });
       fs.appendFileSync(
         journal,
         JSON.stringify({ ...mirror, path: mirrorPath }) + "\n",
@@ -106,6 +107,58 @@ try {
           (cardPath || "(pending)") +
           " pretend_granted=" +
           String(pretendGranted) +
+          " mirror=" +
+          mirrorPath +
+          "]\n",
+      );
+    }
+
+    // Echo Host delivery snap paths for channel/mail so iOS/Android shells
+    // share the same evidence trail as Desktop (CHARTER multi-end delivery).
+    const deliveryMirrorDir = path.join(
+      root,
+      "data",
+      "device",
+      "mobile-delivery-mirrors",
+    );
+    for (const kind of ["channel_send", "mail_send", "mail_draft"]) {
+      const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
+      if (!hit) continue;
+      let payload = {};
+      try {
+        payload = JSON.parse(hit.stdout || "{}");
+      } catch {
+        payload = {};
+      }
+      if (!payload.path) continue;
+      fs.mkdirSync(deliveryMirrorDir, { recursive: true });
+      const mirrorPath = path.join(
+        deliveryMirrorDir,
+        `${kind}-${Date.now().toString(36)}.json`,
+      );
+      const mirror = {
+        kind: kind + "_mobile_mirror",
+        machine_kind: machineKind,
+        host_kind: kind,
+        host_path: payload.path,
+        eml_path: payload.eml_path || null,
+        mode: payload.mode || null,
+        pretend_live: payload.pretend_live === true,
+        pretend_sent: payload.pretend_sent === true,
+        host_ok: hit.ok !== false,
+        at: new Date().toISOString(),
+        note: "Mobile Host mirrors Desktop Host delivery snap path — no invent",
+      };
+      fs.writeFileSync(mirrorPath, JSON.stringify(mirror, null, 2));
+      fs.appendFileSync(
+        journal,
+        JSON.stringify({ ...mirror, path: mirrorPath }) + "\n",
+      );
+      process.stdout.write(
+        "[HostAbi " +
+          kind +
+          " path=" +
+          payload.path +
           " mirror=" +
           mirrorPath +
           "]\n",
