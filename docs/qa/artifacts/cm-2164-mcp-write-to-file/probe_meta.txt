@@ -1,0 +1,11 @@
+cm=CM-2164
+run_h4_probe_intent=Cm2164McpWriteToFile
+shared_cdp_9223=untouched
+chrome_profile=untouched
+i_claimed=false
+USER_IANA=Asia/Shanghai
+stamp_utc=20261017T083929Z
+result_path=/workspace/agent-tools/h4-loopback-echo.txt
+path_sha256=37a5f02058deed3f6b751d4458065f799f15776d9a3637730bd402a3d6f41a83
+bytes=219
+status=READY_FOR_I_REVIEW

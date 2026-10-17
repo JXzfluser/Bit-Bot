@@ -1,0 +1,1 @@
+{"id": "h4-2146-app-vs-user", "tool_name": "h4_probe:CM-2146", "ok": true, "detail": "app_port=9500 user_port=9501 switched=True; shared_9223 untouched; i_claimed=false", "artifact_path": "/workspace/docs/qa/artifacts/cm-2146-app-vs-user-browser"}

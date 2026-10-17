@@ -1,0 +1,5 @@
+namespace_before=NeedsAuth
+namespace_after=NeedsAuth
+oauth_callback_observed=false
+stub_authenticate=false
+fake_connected=false

@@ -462,6 +462,7 @@ ev = {
 (d / "evidence.json").write_text(json.dumps(ev, indent=2) + "\n", encoding="utf-8")
 PY
   echo "status=${status}" >> "${dir}/probe_meta.txt"
+  echo "${status}" > "${dir}/status.txt"
   write_manifest "${dir}" "${cm_id}" "${evidence_cmd}" \
     "NeedsAuth without stubbing Connected; ${env_var} sandbox required for I; i_claimed=false" \
     "${status}"
@@ -482,10 +483,17 @@ run_cm2120() {
 }
 
 # ─── CM-2146: App vs User browser profile switch (isolated; never 9223) ───────
+# Optional excludes: iso_pick_port 9500 9501 … / iso_pick_display :70 :71 …
 iso_pick_port() {
-  local p
+  local p skip
   for p in $(seq 9500 9599); do
-    if test "${p}" != "${SHARED_CDP_PORT}" && test -z "$(ss -ltnH "sport = :${p}" 2>/dev/null)"; then
+    if test "${p}" = "${SHARED_CDP_PORT}"; then continue; fi
+    skip=0
+    for ex in "$@"; do
+      if test "${p}" = "${ex}"; then skip=1; break; fi
+    done
+    if test "${skip}" -eq 1; then continue; fi
+    if test -z "$(ss -ltnH "sport = :${p}" 2>/dev/null)"; then
       printf '%s' "${p}"
       return 0
     fi
@@ -493,10 +501,16 @@ iso_pick_port() {
   return 1
 }
 iso_pick_display() {
-  local n
+  local n skip cand
   for n in $(seq 70 99); do
+    cand=":${n}"
+    skip=0
+    for ex in "$@"; do
+      if test "${cand}" = "${ex}"; then skip=1; break; fi
+    done
+    if test "${skip}" -eq 1; then continue; fi
     if ! test -e "/tmp/.X11-unix/X${n}" && ! test -e "/tmp/.X${n}-lock"; then
-      printf ':%s' "${n}"
+      printf '%s' "${cand}"
       return 0
     fi
   done
@@ -559,8 +573,12 @@ PY
     test -n "${APP_PROFILE:-}" && pkill -f "--user-data-dir=${APP_PROFILE}" 2>/dev/null || true
     test -n "${USER_PROFILE:-}" && pkill -f "--user-data-dir=${USER_PROFILE}" 2>/dev/null || true
     kill "${APP_XVFB:-}" "${USER_XVFB:-}" 2>/dev/null || true
-    test -n "${APP_PROFILE:-}" && rm -rf "${APP_PROFILE}" || true
-    test -n "${USER_PROFILE:-}" && rm -rf "${USER_PROFILE}" || true
+    sleep 0.5
+    test -n "${APP_PROFILE:-}" && pkill -9 -f "--user-data-dir=${APP_PROFILE}" 2>/dev/null || true
+    test -n "${USER_PROFILE:-}" && pkill -9 -f "--user-data-dir=${USER_PROFILE}" 2>/dev/null || true
+    sleep 0.3
+    test -n "${APP_PROFILE:-}" && rm -rf "${APP_PROFILE}" 2>/dev/null || true
+    test -n "${USER_PROFILE:-}" && rm -rf "${USER_PROFILE}" 2>/dev/null || true
   }
   trap cleanup_2146 EXIT
 
@@ -570,13 +588,20 @@ PY
   case "${USER_PROFILE}" in /tmp/h4-user-profile.*) ;; *) status=NEEDS_REVIEW ;; esac
 
   APP_PORT="$(iso_pick_port)" || status=NEEDS_REVIEW
-  USER_PORT="$(iso_pick_port)" || status=NEEDS_REVIEW
-  if test "${APP_PORT}" = "${SHARED_CDP_PORT}" || test "${USER_PORT}" = "${SHARED_CDP_PORT}"; then
+  USER_PORT="$(iso_pick_port "${APP_PORT}")" || status=NEEDS_REVIEW
+  if test -z "${APP_PORT}" || test -z "${USER_PORT}" \
+    || test "${APP_PORT}" = "${USER_PORT}" \
+    || test "${APP_PORT}" = "${SHARED_CDP_PORT}" \
+    || test "${USER_PORT}" = "${SHARED_CDP_PORT}"; then
     status=NEEDS_REVIEW
-    echo "refused_shared_cdp=true" >> "${dir}/probe_meta.txt"
+    echo "refused_shared_or_duplicate_cdp=true" >> "${dir}/probe_meta.txt"
   fi
   APP_DISP="$(iso_pick_display)" || status=NEEDS_REVIEW
-  USER_DISP="$(iso_pick_display)" || status=NEEDS_REVIEW
+  USER_DISP="$(iso_pick_display "${APP_DISP}")" || status=NEEDS_REVIEW
+  if test -z "${APP_DISP}" || test -z "${USER_DISP}" || test "${APP_DISP}" = "${USER_DISP}"; then
+    status=NEEDS_REVIEW
+    echo "duplicate_display=true" >> "${dir}/probe_meta.txt"
+  fi
 
   # Marker files prove distinct profile dirs (AppSufficient vs UserRequired sessions)
   echo "identity=AppSufficient" > "${APP_PROFILE}/h4_identity_marker.txt"

@@ -1,0 +1,12 @@
+identity_mode=UserRequired
+app_profile_dir=/tmp/h4-app-profile.oy9U8w
+user_profile_dir=/tmp/h4-user-profile.rlp6bE
+app_cdp_port=9500
+user_cdp_port=9501
+app_display=:70
+user_display=:71
+chrome_bin=/usr/local/bin/google-chrome
+app_cdp_ok=true
+user_cdp_ok=true
+shared_cdp_9223=untouched
+shared_profile=/home/box/chrome-profile=untouched

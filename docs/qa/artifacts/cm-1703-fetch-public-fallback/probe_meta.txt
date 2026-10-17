@@ -1,0 +1,15 @@
+cm=CM-1703
+run_h4_probe_intent=Cm1703FetchPublicFallback
+shared_cdp_9223=untouched
+chrome_profile=untouched
+i_claimed=false
+USER_IANA=Asia/Shanghai
+stamp_utc=20261017T083929Z
+primary_http_status=403
+primary_curl_rc=0
+fallback_kind=curl
+fallback_http_status=200
+fallback_curl_rc=0
+credential_bypass=false
+credential_bypass=false
+status=READY_FOR_I_REVIEW

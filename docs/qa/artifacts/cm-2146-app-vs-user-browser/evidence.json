@@ -1,0 +1,19 @@
+{
+  "CM": "CM-2146",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-2146",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-2146-app-vs-user-browser",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_bin": "/usr/local/bin/google-chrome"
+  },
+  "identity_mode": "UserRequired",
+  "browser_session_switched": true,
+  "app_profile_dir": "/tmp/h4-app-profile.oy9U8w",
+  "user_profile_dir": "/tmp/h4-user-profile.rlp6bE",
+  "app_cdp_port": 9500,
+  "user_cdp_port": 9501,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "UserRequired \u2192 distinct throwaway profiles + CDP ports (not 9223); App vs User switch observable; i_claimed=false"
+}
