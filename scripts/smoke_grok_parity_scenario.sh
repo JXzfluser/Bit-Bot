@@ -111,6 +111,8 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-gen-video.json'));asser
 PVID=$(python3 -c "import json;d=json.load(open('/tmp/parity-gen-video.json'));h=next(x for x in d['host_results'] if x.get('kind')=='generate_video');print(json.loads(h['stdout']).get('media_path'))")
 "${RUN[@]}" --approved "watch video $PVID" >/tmp/parity-watch-video.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-watch-video.json'));assert d.get('intent')=='watch_video';h=next(x for x in d['host_results'] if x.get('kind')=='watch_video');p=json.loads(h['stdout']);assert h.get('ok');assert p.get('pretend_media') is False;assert p.get('png_magic_ok') is True;assert p.get('frame_path') and os.path.isfile(p['frame_path']);assert open(p['frame_path'],'rb').read(8)==b'\\x89PNG\\r\\n\\x1a\\n';assert p.get('path') and os.path.isfile(p['path']);print('parity watch_video ok', p.get('frame_path'), p.get('path'))"
+"${RUN[@]}" --approved 'structured chart {"wau":10,"mau":42,"dau":7}' >/tmp/parity-chart.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-chart.json'));assert d.get('intent')=='structured_chart';h=next(x for x in d['host_results'] if x.get('kind')=='structured_chart');p=json.loads(h['stdout']);assert h.get('ok');assert p.get('pretend_media') is False;assert p.get('png_magic_ok') is True;assert p.get('media_path') and os.path.isfile(p['media_path']);assert open(p['media_path'],'rb').read(8)==b'\\x89PNG\\r\\n\\x1a\\n';assert p.get('series',{}).get('mau')==42;assert p.get('path') and os.path.isfile(p['path']);print('parity structured_chart ok', p.get('media_path'), p.get('path'))"
 
 # 9e) Connectors probe + teammate send + routine tick (Host durable)
 "${RUN[@]}" "list connectors" >/tmp/parity-conn.json

@@ -3471,7 +3471,8 @@ function createHostFfi(repoRoot) {
       kind === "export_pack" ||
       kind === "generate_image" ||
       kind === "generate_video" ||
-      kind === "watch_video"
+      kind === "watch_video" ||
+      kind === "structured_chart"
     ) {
       return null; // SendToUser already recorded in effect handlers
     }
@@ -4886,6 +4887,27 @@ function createHostFfi(repoRoot) {
     }
   }
 
+  function normalizeChartSeries(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return JSON.stringify({ A: 3, B: 7, C: 5 });
+    try {
+      const parsed = JSON.parse(s);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return JSON.stringify(parsed);
+      }
+    } catch (_) {
+      /* kv form: A=1 B=2 or A:1,B:2 */
+    }
+    const out = {};
+    const parts = s.split(/[\s,]+/).filter(Boolean);
+    for (const part of parts) {
+      const m = part.match(/^([A-Za-z0-9._-]+)[=:](-?\d+(?:\.\d+)?)$/);
+      if (m) out[m[1]] = Number(m[2]);
+    }
+    if (Object.keys(out).length) return JSON.stringify(out);
+    return JSON.stringify({ A: 3, B: 7, C: 5, note: s.slice(0, 40) });
+  }
+
   function resolveAgentToolsPath(raw, fallbackName) {
     let outPath = String(raw || "").trim();
     if (!outPath) {
@@ -4913,7 +4935,7 @@ function createHostFfi(repoRoot) {
   }
 
   async function executeMediaProductEffect(kind, command) {
-    // CM-1601/1602/1603 product Host path — real PNG/MP4/frame via host_h5_media.py.
+    // CM-1601/1602/1603/2157 product Host path — real PNG/MP4/frame/chart via host_h5_media.py.
     const raw = String(command || "");
     const pipe = raw.indexOf("|");
     const left = pipe >= 0 ? raw.slice(0, pipe).trim() : raw.trim();
@@ -4928,6 +4950,7 @@ function createHostFfi(repoRoot) {
       let framePath = null;
       let videoPath = null;
       let prompt = "";
+      let seriesJson = null;
       if (kind === "generate_image") {
         outPath = resolveAgentToolsPath(left, `gen-image-${Date.now().toString(36)}.png`);
         prompt = right || "bitbot generate image";
@@ -4946,6 +4969,14 @@ function createHostFfi(repoRoot) {
         );
         fs.mkdirSync(path.dirname(framePath), { recursive: true });
         args = ["watch-video", "--video", videoPath, "--frame-out", framePath];
+      } else if (kind === "structured_chart") {
+        outPath = resolveAgentToolsPath(
+          left,
+          `chart-${Date.now().toString(36)}.png`,
+        );
+        seriesJson = normalizeChartSeries(right);
+        fs.mkdirSync(path.dirname(outPath), { recursive: true });
+        args = ["structured-chart", "--out", outPath, "--series", seriesJson];
       } else {
         return {
           kind,
@@ -4971,7 +5002,7 @@ function createHostFfi(repoRoot) {
       );
       let ok = false;
       let artifactPath = outPath || framePath || null;
-      if (kind === "generate_image") {
+      if (kind === "generate_image" || kind === "structured_chart") {
         ok = Boolean(
           meta.png_magic_ok ||
             (outPath &&
@@ -5002,6 +5033,15 @@ function createHostFfi(repoRoot) {
         kind,
         mode: `host_${kind}`,
         prompt: prompt || null,
+        series: seriesJson
+          ? (() => {
+              try {
+                return JSON.parse(seriesJson);
+              } catch (_) {
+                return seriesJson;
+              }
+            })()
+          : meta.series || null,
         media_path: artifactPath,
         video_path: videoPath || meta.video_path || null,
         frame_path: kind === "watch_video" ? artifactPath : null,
@@ -8667,7 +8707,8 @@ function createHostFfi(repoRoot) {
       if (
         kind === "generate_image" ||
         kind === "generate_video" ||
-        kind === "watch_video"
+        kind === "watch_video" ||
+        kind === "structured_chart"
       ) {
         results.push(await executeMediaProductEffect(kind, cmd));
         continue;

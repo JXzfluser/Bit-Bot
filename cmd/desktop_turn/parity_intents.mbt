@@ -420,6 +420,24 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(WatchVideo(video_path~))
     }
   }
+  // CM-2157 product Host structured chart (Pillow PNG via Host FFI).
+  if low.has_prefix("structured chart ") ||
+      low.has_prefix("make chart ") ||
+      low.has_prefix("chart series ") ||
+      low.has_prefix("generate chart ") {
+    let series_json = if low.has_prefix("structured chart ") {
+      trimmed[17:].trim().to_owned()
+    } else if low.has_prefix("make chart ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("chart series ") {
+      trimmed[13:].trim().to_owned()
+    } else {
+      trimmed[15:].trim().to_owned()
+    }
+    if series_json != "" {
+      return Some(StructuredChart(series_json~))
+    }
+  }
   if low.has_prefix("code changes ") || low.has_prefix("edit code ") {
     let path = if low.has_prefix("code changes ") {
       trimmed[13:].trim().to_owned()

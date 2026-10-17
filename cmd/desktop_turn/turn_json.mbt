@@ -118,6 +118,7 @@ pub(all) enum TurnIntent {
   GenerateImage(prompt~ : String)
   GenerateVideo(prompt~ : String)
   WatchVideo(video_path~ : String)
+  StructuredChart(series_json~ : String)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -198,6 +199,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     GenerateImage(_) => "generate_image"
     GenerateVideo(_) => "generate_video"
     WatchVideo(_) => "watch_video"
+    StructuredChart(_) => "structured_chart"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -3159,6 +3161,25 @@ pub fn run_desktop_turn(
         "watchVideo planned for " +
         vp +
         " (CM-1603). Host extracts frame PNG for grounded answer.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    StructuredChart(series_json~) => {
+      let out = "/workspace/agent-tools/chart-" + turn_id + ".png"
+      let effect : DesktopEffect = {
+        kind: "structured_chart",
+        command: out + "|" + series_json,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "StructuredChart planned at " +
+        out +
+        " (CM-2157). Host renders PNG from series.",
         intent,
         ctx~,
         effects=[effect],

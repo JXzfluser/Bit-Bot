@@ -142,6 +142,7 @@ try {
       "generate_image",
       "generate_video",
       "watch_video",
+      "structured_chart",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

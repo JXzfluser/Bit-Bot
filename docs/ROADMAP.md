@@ -277,6 +277,8 @@
 - [x] Mobile delivery mirrors expanded: voice_session / voice_end_write / credential_list / x_search / approval_card / connectors_probe
 - [x] Product Host media turns: `generate_image` / `generate_video` / `watch_video` (CM-1601/1602/1603 via `host_h5_media.py`; snaps under `data/media/ops/`)
 - [x] Parity: media path honesty + PNG/MP4/frame magic; MoonBit intents + multi-end SendToUser kinds
+- [x] Product Host `structured_chart` (CM-2157) Pillow PNG from series JSON/kv; snaps under `data/media/ops/`
+- [x] Parity: structured_chart path + png_magic + series honesty
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

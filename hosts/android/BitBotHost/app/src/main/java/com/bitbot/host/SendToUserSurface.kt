@@ -27,7 +27,7 @@ object SendToUserSurface {
     "connectors_probe", "device_tools_list", "device_tool", "device_permission",
     "skill_load", "mail_claim_inbox", "cloud_artifact_deliver", "teammate_create",
     "shell", "computer_use",
-    "generate_image", "generate_video", "watch_video",
+    "generate_image", "generate_video", "watch_video", "structured_chart",
   )
 
   fun extract(fromTurnJson: String): Summary {

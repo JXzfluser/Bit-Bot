@@ -540,6 +540,14 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(wv.ok)
   assert_eq(wv.intent, "watch_video")
   assert_eq(wv.effects[0].kind, "watch_video")
+  let sc_chart = run_desktop_turn(
+    "structured chart {\"alpha\":4,\"beta\":9,\"gamma\":6}",
+    turn_id="sc2157-1",
+  )
+  assert_true(sc_chart.ok)
+  assert_eq(sc_chart.intent, "structured_chart")
+  assert_true(sc_chart.needs_host_ffi)
+  assert_eq(sc_chart.effects[0].kind, "structured_chart")
   let cc = run_desktop_turn("code changes README.mbt.md", turn_id="cc-1")
   assert_true(cc.ok)
   assert_eq(cc.intent, "code_changes")
