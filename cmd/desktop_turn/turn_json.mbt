@@ -132,19 +132,29 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     let prefix = extract_recall_prefix(trimmed)
     return MemoryRecall(prefix~)
   }
+  // Host FFI shell plans (Grok-like: shell / Shell: / ! / run / 执行)
   if low.has_prefix("!") ||
       low.has_prefix("shell ") ||
+      low.has_prefix("shell:") ||
       low.has_prefix("run ") ||
       low.has_prefix("$ ") ||
-      low.has_prefix("exec ") {
+      low.has_prefix("exec ") ||
+      low.has_prefix("执行 ") ||
+      low.has_prefix("运行 ") {
     let cmd = if low.has_prefix("!") {
       trimmed[1:].trim().to_owned()
     } else if low.has_prefix("$ ") {
       trimmed[2:].trim().to_owned()
+    } else if low.has_prefix("shell:") {
+      trimmed[6:].trim().to_owned()
     } else if low.has_prefix("shell ") {
       trimmed[6:].trim().to_owned()
     } else if low.has_prefix("exec ") {
       trimmed[5:].trim().to_owned()
+    } else if low.has_prefix("执行 ") {
+      trimmed[3:].trim().to_owned()
+    } else if low.has_prefix("运行 ") {
+      trimmed[3:].trim().to_owned()
     } else {
       // "run …"
       trimmed[4:].trim().to_owned()
