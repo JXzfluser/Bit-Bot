@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Tiny local HTTP mock for Host live residual smoke (purchase / meeting).
+"""Tiny local HTTP mock for Host live residual smoke.
 
 Usage:
   python3 scripts/host_local_http_mock.py --port 18765 --mode purchase
   python3 scripts/host_local_http_mock.py --port 18766 --mode meeting
+  python3 scripts/host_local_http_mock.py --port 18768 --mode finance
+  python3 scripts/host_local_http_mock.py --port 18769 --mode slack
+  python3 scripts/host_local_http_mock.py --port 18770 --mode teams
 
 Endpoints:
-  purchase: POST /charge  Authorization: Bearer <token>
-  meeting:  POST /messages Authorization: Bearer <token>
+  purchase: POST /charge
+  meeting:  POST /messages
+  finance:  POST /tools/<name>
+  slack:    POST /chat.postMessage  (BITBOT_SLACK_API_BASE=http://host:port)
+  teams:    POST /chats/<id>/messages  (BITBOT_TEAMS_GRAPH_URL=http://host:port)
 """
 
 from __future__ import annotations
@@ -22,7 +28,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, required=True)
     ap.add_argument(
-        "--mode", choices=("purchase", "meeting", "finance"), required=True
+        "--mode",
+        choices=("purchase", "meeting", "finance", "slack", "teams"),
+        required=True,
     )
     ap.add_argument("--token", default="smoke-token")
     args = ap.parse_args()
@@ -37,6 +45,14 @@ def main() -> int:
             auth = self.headers.get("Authorization") or ""
             return auth.strip() == f"Bearer {expect}"
 
+        def _json(self, code: int, obj: dict) -> None:
+            data = json.dumps(obj).encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_POST(self) -> None:  # noqa: N802
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
@@ -45,39 +61,82 @@ def main() -> int:
                 (mode == "purchase" and path == "/charge")
                 or (mode == "meeting" and path == "/messages")
                 or (mode == "finance" and path.startswith("/tools/"))
+                or (mode == "slack" and path.endswith("/chat.postMessage"))
+                or (mode == "slack" and path == "/chat.postMessage")
+                or (
+                    mode == "teams"
+                    and ("/chats/" in path and path.endswith("/messages"))
+                )
             )
             if not ok_path:
-                self.send_response(404)
-                self.end_headers()
-                self.wfile.write(b'{"ok":false,"error":"not_found"}')
+                self._json(404, {"ok": False, "error": "not_found"})
                 return
             if not self._auth_ok():
-                self.send_response(401)
-                self.end_headers()
-                self.wfile.write(b'{"ok":false,"error":"unauthorized"}')
+                self._json(401, {"ok": False, "error": "unauthorized"})
                 return
             try:
                 payload = json.loads(body.decode("utf-8") or "{}")
             except json.JSONDecodeError:
                 payload = {"raw": body.decode("utf-8", errors="replace")[:200]}
-            resp = {
-                "ok": True,
-                "mode": mode,
-                "received": payload,
-            }
             if mode == "purchase":
-                resp["charge_id"] = "mock-purchase-1"
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "mode": mode,
+                        "received": payload,
+                        "charge_id": "mock-purchase-1",
+                    },
+                )
             elif mode == "meeting":
-                resp["message_id"] = "mock-meeting-1"
-            else:
-                resp["balance"] = {"currency": "USD", "amount": 42.0}
-                resp["call_id"] = "mock-finance-1"
-            data = json.dumps(resp).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "mode": mode,
+                        "received": payload,
+                        "message_id": "mock-meeting-1",
+                    },
+                )
+            elif mode == "finance":
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "mode": mode,
+                        "received": payload,
+                        "balance": {"currency": "USD", "amount": 42.0},
+                        "call_id": "mock-finance-1",
+                    },
+                )
+            elif mode == "slack":
+                # Slack API shape: { ok: true, ts: "..." }
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "channel": payload.get("channel") or "Csmoke",
+                        "ts": "1710000000.000200",
+                        "message": {"text": payload.get("text") or ""},
+                    },
+                )
+            else:  # teams
+                self._json(
+                    200,
+                    {
+                        "id": "mock-teams-msg-1",
+                        "body": {"content": payload.get("body", {}).get("content", "")},
+                    },
+                )
+
+        def do_GET(self) -> None:  # noqa: N802
+            if mode == "teams" and self.path.split("?", 1)[0].endswith("/me/chats"):
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                self._json(200, {"value": [{"id": "Tsmoke", "topic": "smoke"}]})
+                return
+            self._json(404, {"ok": False, "error": "not_found"})
 
     httpd = HTTPServer(("127.0.0.1", args.port), Handler)
     print(json.dumps({"ok": True, "port": args.port, "mode": mode}), flush=True)

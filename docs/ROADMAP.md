@@ -167,8 +167,12 @@
 - [x] Host x_search durable results (`data/connectors/x/`; live when `BITBOT_X_BEARER`; never pretend_live)
 - [x] Host job_search durable catalog (`data/jobs/`; CU playbook + Host artifact; never pretend_applied)
 - [x] Host finance_call live API (`BITBOT_FINANCE_API_URL`+token → `/tools/*`; else sandbox residual)
+- [x] Host Slack live mock (`BITBOT_SLACK_API_BASE` + token + `BITBOT_SLACK_POST=1` → `live_slack`; honest `live_slack_residual` / `pretend_live=false`)
+- [x] Host Teams live mock (`BITBOT_TEAMS_GRAPH_URL` + token + `BITBOT_TEAMS_POST=1` → `live_teams_chat_message`; honest residual flags)
+- [x] Host copy_to_box / copy_from_box durable JSON (`data/box-copy/` + SendToUser attachment; never pretend_remote_machine)
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
+- [x] Desktop chips expanded: mail/workflow/x/job/finance/copy_box/purchase/schedule + live channel_send
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN
 - [x] Channel deepen: Slack thread_ts replies + optional `BITBOT_SLACK_CLAIM` inbound.jsonl; Teams chat message POST when chat id present
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)

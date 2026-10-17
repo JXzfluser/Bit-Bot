@@ -291,7 +291,11 @@ function createHostFfi(repoRoot) {
       "Content-Type": "application/json; charset=utf-8",
     };
     if (body) headers["Content-Length"] = Buffer.byteLength(body);
-    const res = await httpJson(`https://slack.com/api/${method}`, {
+    // BITBOT_SLACK_API_BASE allows local mock (e.g. http://127.0.0.1:18769) for Host deepen.
+    const base = String(process.env.BITBOT_SLACK_API_BASE || "https://slack.com/api")
+      .trim()
+      .replace(/\/$/, "");
+    const res = await httpJson(`${base}/${method}`, {
       method: "POST",
       headers,
       body,
@@ -566,9 +570,13 @@ function createHostFfi(repoRoot) {
     if (addr.startsWith("slack:")) {
       const envToken = String(process.env.SLACK_BOT_TOKEN || "").trim();
       const connectorToken = extractAccessToken(connectorHint);
-      // Only real Slack bot tokens are live — rehearsal tokens (sandbox:/remote_cb:/…) stay draft.
+      // Real Slack bot tokens (xox*) OR local mock token when BITBOT_SLACK_API_BASE is set.
+      const slackApiBase = String(process.env.BITBOT_SLACK_API_BASE || "").trim();
       const looksLiveSlack = (t) =>
-        /^(xox[baprs]-)/i.test(String(t || "").trim());
+        /^(xox[baprs]-)/i.test(String(t || "").trim()) ||
+        (Boolean(slackApiBase) &&
+          String(t || "").trim().length > 0 &&
+          !/^(sandbox:|remote_cb:)/i.test(String(t || "").trim()));
       const token = looksLiveSlack(envToken)
         ? envToken
         : looksLiveSlack(connectorToken)
@@ -613,15 +621,20 @@ function createHostFfi(repoRoot) {
           scheme,
           address: addr,
           body: outboundBody,
-          mode: isPersonalDm
-            ? "live_personal_slack_dm"
-            : threadTs
-              ? "live_slack_thread"
-              : "live_slack",
+          mode: post.ok
+            ? isPersonalDm
+              ? "live_personal_slack_dm"
+              : threadTs
+                ? "live_slack_thread"
+                : "live_slack"
+            : "live_slack_failed",
           personal_dm: isPersonalDm,
           shared_channel: isSharedChannel,
           widget_degraded: widgetDegraded,
           ok: Boolean(post.ok),
+          live_post: Boolean(post.ok),
+          live_slack_residual: !Boolean(post.ok),
+          pretend_live: false,
           ts: post.ts || "",
           thread_ts: threadTs || "",
           connector_ready: connectorReady,
@@ -793,13 +806,17 @@ function createHostFfi(repoRoot) {
             headers: { Authorization: `Bearer ${teamsToken}` },
           });
         }
+        const ok =
+          Boolean(post.ok) || (post.status >= 200 && post.status < 300);
         const entry = {
           scheme: "teams",
           address: addr,
           body,
-          mode,
-          ok: Boolean(post.ok) || (post.status > 0 && post.status < 500),
-          live_post: true,
+          mode: ok ? mode : "live_teams_failed",
+          ok,
+          live_post: ok,
+          live_teams_residual: !ok,
+          pretend_live: false,
           http_status: post.status || 0,
           chat_id: chatId || null,
           at: stamp,
@@ -993,6 +1010,7 @@ function createHostFfi(repoRoot) {
     const dest = (parts[2] || "").trim();
     const srcAbs = resolveUnderRepo(src);
     const destAbs = resolveUnderRepo(dest);
+    const at = new Date().toISOString();
     if (!srcAbs || !destAbs) {
       return {
         kind,
@@ -1004,20 +1022,47 @@ function createHostFfi(repoRoot) {
     try {
       fs.mkdirSync(path.dirname(destAbs), { recursive: true });
       fs.copyFileSync(srcAbs, destAbs);
+      const copyDir = path.join(REPO_ROOT, "data", "box-copy");
+      fs.mkdirSync(copyDir, { recursive: true });
+      const artifactPath = path.join(
+        copyDir,
+        `${kind}-${Date.now().toString(36)}.json`,
+      );
+      const bytes = fs.existsSync(destAbs) ? fs.statSync(destAbs).size : 0;
+      const artifact = {
+        kind,
+        machine_id: machineId,
+        src: srcAbs,
+        dest: destAbs,
+        bytes,
+        under_repo: true,
+        pretend_remote_machine: false,
+        note: "Host FS copy under repo — machine_id is routing metadata",
+        at,
+      };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
       const journal = appendHostDeliveryJournal({
         kind,
         machine_id: machineId,
         src: srcAbs,
         dest: destAbs,
-        at: new Date().toISOString(),
+        path: artifactPath,
+        at,
       });
-      return {
-        kind,
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: artifactPath,
+        label: kind,
+        source_kind: kind,
+        at,
+      });
+      return okJson(kind, command, {
+        ...artifact,
+        path: artifactPath,
+        journal,
+        send_to_user: delivery,
         ok: true,
-        command,
-        stdout: `copied ${srcAbs} → ${destAbs} (machine=${machineId}) journal=${journal}`,
-        stderr: "",
-      };
+      });
     } catch (err) {
       return {
         kind,

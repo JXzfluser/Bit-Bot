@@ -181,6 +181,29 @@ node hosts/cli_host/run_turn.js "shop target.com headphones" >/tmp/bitbot-cu-vis
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cu-vision-gui.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');g=p.get('gui') or {};assert g.get('vision_ok') is True;assert isinstance(g.get('vision_plan'),dict);assert p.get('evidence') and os.path.isfile(p['evidence']);deliv=next(x for x in hrs if x.get('kind')=='delivery');dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('attachment_path')==p.get('evidence') or dp.get('path')==p.get('evidence');print('computer_use gui.vision_plan+evidence attachment ok', g.get('vision_plan'))"
 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: teams body [widget:decision_card]" >/tmp/bitbot-teams.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('scheme')=='teams';assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('teams_transcript') and os.path.isfile(p['teams_transcript']);print('channel_send teams outbound+degrade ok', p.get('mode'))"
+# Live Slack post against local mock (BITBOT_SLACK_API_BASE)
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18769 --mode slack --token smoke-slack >/tmp/bitbot-slack-mock.log 2>&1 &
+SLACK_MOCK_PID=$!
+sleep 0.4
+BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_POST=1 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: live mock body" >/tmp/bitbot-slack-live.json || true
+kill "$SLACK_MOCK_PID" >/dev/null 2>&1 || true
+wait "$SLACK_MOCK_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-slack-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('live_slack_residual') is False;assert p.get('pretend_live') is False;assert p.get('mode')=='live_slack';assert p.get('ts');print('channel_send slack live mock ok', p.get('mode'), 'ts', p.get('ts'))"
+# Live Teams Graph post against local mock
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18770 --mode teams --token smoke-teams >/tmp/bitbot-teams-mock.log 2>&1 &
+TEAMS_MOCK_PID=$!
+sleep 0.4
+BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_POST=1 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: live teams mock" >/tmp/bitbot-teams-live.json || true
+kill "$TEAMS_MOCK_PID" >/dev/null 2>&1 || true
+wait "$TEAMS_MOCK_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('scheme')=='teams';assert p.get('live_post') is True;assert p.get('live_teams_residual') is False;assert p.get('pretend_live') is False;assert p.get('mode')=='live_teams_chat_message';print('channel_send teams live mock ok', p.get('mode'), 'status', p.get('http_status'))"
+# copy_to_box / copy_from_box durable JSON under data/box-copy/
+mkdir -p uploads
+echo 'box-copy-smoke' > uploads/box-src.txt
+node hosts/cli_host/run_turn.js "copy to box machine=desk-1 src=uploads/box-src.txt dest=uploads/box-dest.txt" >/tmp/bitbot-copy-to-box.json
+python3 -c "import json,os,glob;d=json.load(open('/tmp/bitbot-copy-to-box.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='copy_to_box');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('under_repo') is True;assert p.get('pretend_remote_machine') is False;assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('uploads/box-dest.txt');assert glob.glob('data/box-copy/copy_to_box-*.json');print('copy_to_box artifact ok', p.get('path'), 'bytes', p.get('bytes'))"
+node hosts/cli_host/run_turn.js "copy from box machine=desk-1 box=uploads/box-dest.txt dest=uploads/box-out.txt" >/tmp/bitbot-copy-from-box.json
+python3 -c "import json,os,glob;d=json.load(open('/tmp/bitbot-copy-from-box.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='copy_from_box');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('uploads/box-out.txt');assert glob.glob('data/box-copy/copy_from_box-*.json');print('copy_from_box artifact ok', p.get('path'), 'bytes', p.get('bytes'))"
 node hosts/cli_host/run_turn.js "meeting chat body=standup note direct=1" >/tmp/bitbot-meeting-direct.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-direct.json'));assert d.get('ok');assert d.get('intent')=='meeting_chat';hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='meeting_chat_direct';assert p.get('direct_send') is True;assert p.get('live_post') is False;assert p.get('live_meeting_residual') is True;assert p.get('transcript') and os.path.isfile(p['transcript']);print('meeting_chat DirectSend ok', p.get('transcript'), 'live_residual', p.get('live_meeting_residual'))"
 # Live meeting transport against local mock (closes residual when API+token ok)

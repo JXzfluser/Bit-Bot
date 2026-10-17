@@ -23,8 +23,10 @@ Smoke: `bash scripts/smoke_real_chat.sh` (Shell, ListDir, memory set/get, WebFet
 | LLM chain | `BITBOT_LLM_*` API → Ollama → **LocalBrain** (heuristic + real tools) |
 | LLM badge | Host UI shows `llm=` mode on chat header + chat strip |
 | Connectors status | `POST /api/host/connectors/status` → live vs sandbox per Slack/Gmail/Outlook |
-| Slack | If `SLACK_BOT_TOKEN` set: live `auth.test` (+ draft-first post) |
+| Slack | If `SLACK_BOT_TOKEN` set: live `auth.test` (+ draft-first post); live `chat.postMessage` when `BITBOT_SLACK_POST=1`; local mock via `BITBOT_SLACK_API_BASE` |
+| Teams | Draft transcript by default; live Graph when `BITBOT_TEAMS_TOKEN`+`BITBOT_TEAMS_POST=1`; local mock via `BITBOT_TEAMS_GRAPH_URL` |
 | Email connectors | If OAuth JSON in `data/connectors/gmail.json` or `outlook.json`: Connected |
+| Box copy | `copy_to_box` / `copy_from_box` → FS under repo + durable `data/box-copy/*.json` + SendToUser attachment |
 
 ## Residual (honest gaps)
 
@@ -35,7 +37,8 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Phone OS permission card (CM-0705 true device) | **Deferred** (user) — Host card + native scaffolds exist; physical-device OS popup skipped |
 | Production Slack/Gmail IdP credentials | **Deferred** (user) — sandbox / local_exchange / interactive_local / remote_callback rehearsals green; full production IdP consent skipped |
 | Store signing certs (Desktop/iOS/Android) | **Deferred** (user) — signing scaffolds + unsigned pack evidence present; store certs skipped |
-| Slack post without `BITBOT_SLACK_POST=1` | Draft-first only (live gated) |
+| Slack post without `BITBOT_SLACK_POST=1` | Draft-first only (live gated); live mock closes residual when API base + token + POST=1 |
+| Teams without `BITBOT_TEAMS_POST=1` | Draft transcript only; live Graph mock when token + POST + optional `BITBOT_TEAMS_GRAPH_URL` |
 | Screenshot | Only when `DISPLAY` set and ffmpeg/import/scrot available |
 | Routine wake scheduler | On-demand `routine_fire` + daemon `--long-lived` / `--interval-ms`; `--install-user-unit` installs user systemd unit |
 | CU paid checkout | `payment_wall` / `live_paid_residual` when pay form seen; local fixture via `BITBOT_CU_ALLOW_LOCAL=1`; never pretend_purchased without `BITBOT_CU_LIVE_PAID` |
@@ -61,6 +64,10 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | `HOST_UI_PORT` | Default `8765` |
 | `SLACK_BOT_TOKEN` | Live Slack adapter; **absent → sandbox_idp** |
 | `BITBOT_SLACK_POST` | Set `1` to allow `chat.postMessage` |
+| `BITBOT_SLACK_API_BASE` | Override Slack API root (local mock e.g. `http://127.0.0.1:18769`) |
+| `BITBOT_TEAMS_TOKEN` | Bearer for Teams Graph live post |
+| `BITBOT_TEAMS_POST` | Set `1` to allow Teams Graph post |
+| `BITBOT_TEAMS_GRAPH_URL` | Override Graph root (local mock e.g. `http://127.0.0.1:18770`) |
 | `SLACK_DEFAULT_CHANNEL` | Channel for optional Slack posts |
 
 Absent Slack/Gmail/Outlook credentials are documented in `connectors_live.CONNECTOR_ENV_DOCS` and echoed by `/api/host/connectors/status`.

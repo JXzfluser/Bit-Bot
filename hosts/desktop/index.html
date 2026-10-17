@@ -567,6 +567,16 @@
             "room_turn",
             "send_to_agent",
             "subagent_run",
+            "mail_search",
+            "mail_read",
+            "workflow_list",
+            "x_search",
+            "job_search",
+            "finance_call",
+            "copy_to_box",
+            "copy_from_box",
+            "purchase",
+            "schedule_meeting",
           ];
           const attaches = r.host_results.filter(
             (h) => h && h.ok && attachKinds.includes(h.kind),
@@ -633,6 +643,36 @@
                   label =
                     "subagent:" +
                     ((p.subagent && p.subagent.status) || p.status || "run");
+                  types.push("text");
+                } else if (h.kind === "mail_search") {
+                  label = "mail_search:" + (p.hit_count || 0) + "×" + (p.mode || "");
+                  types.push("attachment");
+                } else if (h.kind === "mail_read") {
+                  label = "mail_read:" + (p.thread_id || "?");
+                  types.push("attachment");
+                } else if (h.kind === "workflow_list") {
+                  label = "workflows:" + (p.count || 0);
+                  types.push("attachment");
+                } else if (h.kind === "x_search") {
+                  label = "x_search:" + (p.hit_count || 0) + "×" + (p.mode || "");
+                  types.push("attachment");
+                } else if (h.kind === "job_search") {
+                  label = "jobs:" + (p.hit_count || 0);
+                  types.push("attachment");
+                } else if (h.kind === "finance_call") {
+                  label = "finance:" + (p.mode || p.tool || "call");
+                  types.push("attachment");
+                } else if (h.kind === "copy_to_box" || h.kind === "copy_from_box") {
+                  label = h.kind + ":" + String(p.dest || p.path || "").split("/").slice(-1)[0];
+                  types.push("attachment");
+                } else if (h.kind === "purchase") {
+                  label = "purchase:" + (p.mode || "receipt");
+                  types.push("attachment");
+                } else if (h.kind === "schedule_meeting") {
+                  label = "ics:" + String(p.ics_path || p.path || "").split("/").slice(-1)[0];
+                  types.push("attachment");
+                } else if (h.kind === "channel_send" && p.live_post) {
+                  label = "live:" + (p.scheme || "channel") + "/" + (p.mode || "post");
                   types.push("text");
                 } else if (h.kind === "oauth") {
                   label = "oauth:" + (p.status || "?") + "/" + (p.mode || "");
