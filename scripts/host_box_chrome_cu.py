@@ -137,19 +137,28 @@ def plan_actions(command: str) -> List[str]:
 
 
 # DOM observe expression — no "|" (host_cdp_actions splits steps on "|").
+# Includes bounding-box targets for vision click planning (Host FFI, not LocalBrain).
 _DOM_OBSERVE_JS = (
     "evaluate:(function(){try{"
+    "function box(el){if(!el)return null;var r=el.getBoundingClientRect();"
+    "if(r.width<2||r.height<2)return null;"
+    "return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),"
+    "w:Math.round(r.width),h:Math.round(r.height)};}"
     "var t=(document.title||'').slice(0,120);"
     "var txt=((document.body&&document.body.innerText)||'').slice(0,600).toLowerCase();"
+    "var searchEl=document.querySelector('input[type=search],input[name*=search i],input[placeholder*=search i],input[aria-label*=search i]');"
+    "var cartEl=document.querySelector('a[href*=cart i],button[aria-label*=cart i],[data-test*=cart i]');"
+    "var primaryBtn=document.querySelector('button[type=submit],button.primary,a.button,[role=button]');"
     "var inputs=document.querySelectorAll('input,textarea,[contenteditable]').length;"
     "var buttons=document.querySelectorAll('button,a,[role=button]').length;"
     "var links=document.querySelectorAll('a[href]').length;"
     "return JSON.stringify({"
     "title:t,text_len:txt.length,inputs:inputs,buttons:buttons,links:links,"
-    "has_search:/search|query|find/.test(txt)||!!document.querySelector('input[type=search],[name*=search i],[placeholder*=search i]'),"
+    "has_search:!!searchEl||/search|query|find/.test(txt),"
     "has_signin:/sign in|log in|login|sso/.test(txt),"
-    "has_cart:/cart|bag|checkout|add to/.test(txt),"
-    "has_results:/results|showing|items|products/.test(txt)"
+    "has_cart:!!cartEl||/cart|bag|checkout|add to/.test(txt),"
+    "has_results:/results|showing|items|products/.test(txt),"
+    "targets:{search:box(searchEl),cart:box(cartEl),primary:box(primaryBtn)}"
     "});}catch(e){return JSON.stringify({error:String(e)});}})()"
 )
 
@@ -234,33 +243,59 @@ def parse_dom_observe(action_result: Dict[str, Any]) -> Dict[str, Any]:
 def plan_vision_actions(
     command: str, dom: Dict[str, Any], vision: Dict[str, Any]
 ) -> List[str]:
-    """Second-pass planner: DOM keywords + screenshot hotspots → act steps."""
+    """Second-pass planner: DOM bbox targets + screenshot hotspots → act steps."""
     low = (command or "").lower()
     steps: List[str] = []
     blocked_signin = bool(dom.get("has_signin")) and not dom.get("has_results")
+    targets = dom.get("targets") if isinstance(dom.get("targets"), dict) else {}
     hotspot = None
     if vision.get("ok") and vision.get("hotspots"):
         hotspot = vision["hotspots"][0]
-    # Prefer search field when shopping/travel/food and page exposes search.
-    if dom.get("has_search") and any(
+    # Prefer real DOM bounding-box targets over heuristic coordinates.
+    if (
+        targets.get("search")
+        and any(
+            k in low
+            for k in ("shop", "retail", "travel", "flight", "hotel", "food", "job", "search")
+        )
+    ):
+        sx, sy = int(targets["search"]["x"]), int(targets["search"]["y"])
+        query = "headphones"
+        for tok in (
+            "headphones",
+            "laptop",
+            "shoes",
+            "flights",
+            "hotel",
+            "pizza",
+            "engineer",
+        ):
+            if tok in low:
+                query = tok
+                break
+        steps.extend(
+            [f"click:{sx},{sy}", f"type:{query}", "evaluate:document.title"]
+        )
+    elif dom.get("has_search") and any(
         k in low for k in ("shop", "retail", "travel", "flight", "hotel", "food", "job")
     ):
-        # Click near typical search bar, then type a short query token.
         query = "headphones"
         for tok in ("headphones", "laptop", "shoes", "flights", "hotel", "pizza", "engineer"):
             if tok in low:
                 query = tok
                 break
         steps.extend(
-            [
-                "click:550,120",
-                f"type:{query}",
-                "evaluate:document.title",
-            ]
+            ["click:550,120", f"type:{query}", "evaluate:document.title"]
         )
     elif blocked_signin:
         # Honest stop: do not attempt credential entry; re-observe only.
         steps.append("evaluate:document.title")
+    elif targets.get("cart") and ("shop" in low or "cart" in low or dom.get("has_cart")):
+        cx, cy = int(targets["cart"]["x"]), int(targets["cart"]["y"])
+        steps.extend([f"click:{cx},{cy}", "evaluate:document.title"])
+    elif targets.get("primary") and not vision.get("sparse"):
+        px, py = int(targets["primary"]["x"]), int(targets["primary"]["y"])
+        steps.extend([f"click:{px},{py}", "scroll:0,200", "evaluate:document.title"])
     elif hotspot and not vision.get("sparse"):
         steps.extend(
             [
@@ -657,6 +692,7 @@ def main() -> int:
             "ok": vision_ok,
             "steps": vision_plan.get("steps") if vision_plan else [],
             "hotspots": ((vision_plan.get("vision") or {}).get("hotspots") if vision_plan else None),
+            "dom_targets": (vision_plan.get("dom") or {}).get("targets") if vision_plan else None,
             "vision_actions": (gui.get("vision_actions") or {}).get("actions"),
             "blocked_on_signin": blocked_signin,
         },

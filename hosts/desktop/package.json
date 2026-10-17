@@ -32,10 +32,15 @@
       "category": "Utility"
     },
     "mac": {
-      "target": ["dir"]
+      "target": ["dir"],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "win": {
-      "target": ["dir"]
+      "target": ["dir"],
+      "signAndEditExecutable": false
     }
   },
   "devDependencies": {

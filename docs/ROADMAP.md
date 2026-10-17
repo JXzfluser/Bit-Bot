@@ -117,7 +117,9 @@
 - [x] Host OAuth `BITBOT_OAUTH_EXCHANGE=interactive` headed-browser consent (`interactive_local` via CDP); remote production IdP credentials still residual
 - [x] Host computer_use multi-step planner heuristics for shop/travel/food/job playbooks (observe→act steps)
 - [x] Host computer_use vision planner: DOM observe + PIL screenshot hotspots → second-pass act (no OCR; sign-in stop honest)
+- [x] Host computer_use vision DOM bounding-box targets (search/cart/primary) preferred over PIL hotspots when present
 - [x] Host OAuth remote authorize browser open (`BITBOT_OAUTH_OPEN_BROWSER=1` / `EXCHANGE=remote_open`) → `live_remote_browser_open` NeedsAuth (never pretend Connected)
+- [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs still residual)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN
 - [x] Channel deepen: Slack thread_ts replies + optional `BITBOT_SLACK_CLAIM` inbound.jsonl; Teams chat message POST when chat id present
