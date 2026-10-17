@@ -271,6 +271,8 @@
 - [x] Host mcp_call per-op snaps under `data/connectors/mcp-calls/` (tmp mcp-out retained; pretend_ok=false)
 - [x] Parity: mcp_call path honesty + shell Host `path`/`artifact_path` (stdout stays raw for ADR reinjection)
 - [x] Mobile delivery mirrors include mcp_call / mcp_discover snap paths
+- [x] Host voice_relay per-op snaps under `data/voice/relays/` (sessions ledger + reply WAV retained; pretend_silent=false)
+- [x] Parity: voice_relay path honesty; mobile delivery mirrors include voice_relay; mail_search/read path asserts
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

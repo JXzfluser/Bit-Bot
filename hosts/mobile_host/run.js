@@ -132,6 +132,7 @@ try {
       "oauth",
       "mcp_call",
       "mcp_discover",
+      "voice_relay",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

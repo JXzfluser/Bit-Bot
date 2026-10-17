@@ -5945,6 +5945,36 @@ function createHostFfi(repoRoot) {
     row.reply_media_ok = Boolean(replyMedia.ok);
     writeJsonArray(VOICE_SESSIONS_PATH, rows);
 
+    // Per-op Host voice_relay snap (sessions ledger retained).
+    const relayDir = path.join(REPO_ROOT, "data", "voice", "relays");
+    fs.mkdirSync(relayDir, { recursive: true });
+    const relaySnapPath = path.join(
+      relayDir,
+      `relay-${Date.now().toString(36)}.json`,
+    );
+    const relayArtifact = {
+      voice_address: address,
+      turns: row.relay_log.length,
+      sessions_path: VOICE_SESSIONS_PATH,
+      media_path: row.media_path || null,
+      transcript_path: transcript,
+      reply_media_path: replyMedia.path,
+      reply_media_ok: Boolean(replyMedia.ok),
+      reply_media_bytes: replyMedia.bytes || 0,
+      reply_prefix: replyText.slice(0, 120),
+      worker_ok: Boolean(worker.ok),
+      nested_skipped: Boolean(worker.nested_skipped),
+      mode: "host_voice_relay",
+      pretend_silent: false,
+      pretend_ok: false,
+      at,
+    };
+    fs.writeFileSync(relaySnapPath, JSON.stringify(relayArtifact, null, 2));
+    appendJsonl(path.join(relayDir, "relays.jsonl"), {
+      ...relayArtifact,
+      path: relaySnapPath,
+    });
+
     const delivery = recordSendToUser({
       type: "voice",
       voice_address: address,
@@ -5952,30 +5982,26 @@ function createHostFfi(repoRoot) {
       media_ok: Boolean(replyMedia.ok),
       reply_prefix: replyText.slice(0, 120),
       turns: row.relay_log.length,
+      path: relaySnapPath,
       source_kind: "voice_relay",
       at,
     });
     appendHostDeliveryJournal({
       kind: "voice_relay",
       command: cmd,
-      path: VOICE_SESSIONS_PATH,
+      path: relaySnapPath,
+      sessions_path: VOICE_SESSIONS_PATH,
       turns: row.relay_log.length,
       reply_media_ok: Boolean(replyMedia.ok),
       at,
     });
     return okJson("voice_relay", cmd, {
-      voice_address: address,
-      turns: row.relay_log.length,
-      path: VOICE_SESSIONS_PATH,
-      media_path: row.media_path || null,
-      transcript_path: transcript,
+      ...relayArtifact,
+      path: relaySnapPath,
+      sessions_path: VOICE_SESSIONS_PATH,
       reply: replyText.slice(0, 2000),
-      reply_media_path: replyMedia.path,
-      reply_media_ok: Boolean(replyMedia.ok),
-      reply_media_bytes: replyMedia.bytes || 0,
-      worker_ok: Boolean(worker.ok),
-      nested_skipped: Boolean(worker.nested_skipped),
       send_to_user: delivery,
+      ok: true,
     });
   }
 

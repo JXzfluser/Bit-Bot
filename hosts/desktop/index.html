@@ -925,7 +925,10 @@
                     (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "voice_relay" && p.reply_media_path) {
-                  label = "voice_relay:" + String(p.reply_media_path).split("/").slice(-1)[0];
+                  label =
+                    "voice_relay:" +
+                    String(p.reply_media_path).split("/").slice(-1)[0] +
+                    (p.path ? "/snap" : "");
                   types.push("voice");
                 } else if (h.kind === "source_control") {
                   const rp = p.remote_pr || {};
