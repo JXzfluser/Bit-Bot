@@ -35,7 +35,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-widget.json'));h=next(x
 
 # 4) Reaction pill
 "${RUN[@]}" "[inbound] reaction :+1:" >/tmp/parity-reaction.json
-python3 -c "import json;d=json.load(open('/tmp/parity-reaction.json'));h=next(x for x in d['host_results'] if x.get('kind')=='inbound_reaction');p=json.loads(h['stdout']);assert p.get('visible_pill') is True;print('parity reaction ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-reaction.json'));h=next(x for x in d['host_results'] if x.get('kind')=='inbound_reaction');p=json.loads(h['stdout']);assert p.get('visible_pill') is True;assert p.get('forced_reply') is False;assert p.get('pretend_forced_reply') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('send_to_user_type')=='reaction' or (p.get('outbound_reaction') or {}).get('type')=='reaction';print('parity reaction ok', p.get('emoji'), p.get('path'))"
 
 # 5) Voice
 "${RUN[@]}" "voice start parity1" >/tmp/parity-voice.json

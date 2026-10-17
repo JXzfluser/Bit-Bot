@@ -209,6 +209,47 @@
     font: 10px/1.4 ui-monospace, monospace;
     color: #b7e0c8;
   }
+  .reaction-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid #3d6b52;
+    background: linear-gradient(180deg, #1a2e24, #122018);
+    font: 14px/1 "IBM Plex Sans", sans-serif;
+    color: var(--ink);
+    animation: reaction-pop 280ms ease-out;
+  }
+  .reaction-pill .emoji { font-size: 18px; line-height: 1; }
+  .reaction-pill .tag {
+    font: 10px/1 ui-monospace, monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  @keyframes reaction-pop {
+    from { transform: scale(0.85); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  #reaction-tray {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    min-height: 28px;
+  }
+  #reaction-tray .tray-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: #101a15;
+    font-size: 13px;
+  }
   @media (max-width: 900px) {
     body {
       grid-template-columns: 1fr;
@@ -277,6 +318,7 @@
     <div class="machine-item">
       <div class="name">SendToUser</div>
       <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent</div>
+      <div id="reaction-tray" aria-label="Reaction pills"></div>
     </div>
     <div class="panel-title" style="margin-top:16px">Memory</div>
     <div class="machine-item">
@@ -690,8 +732,20 @@
                     label += " (degraded)";
                   }
                 } else if (h.kind === "inbound_reaction" && p.visible_pill) {
-                  chip.textContent = (p.emoji || "👍") + " pill";
-                  body.appendChild(chip);
+                  const pill = document.createElement("div");
+                  pill.className = "reaction-pill";
+                  pill.innerHTML =
+                    '<span class="emoji"></span><span class="tag">reaction</span>';
+                  pill.querySelector(".emoji").textContent = p.emoji || "👍";
+                  body.appendChild(pill);
+                  const tray = document.getElementById("reaction-tray");
+                  if (tray) {
+                    const tp = document.createElement("span");
+                    tp.className = "tray-pill";
+                    tp.textContent = (p.emoji || "👍") + " · no forced reply";
+                    tray.prepend(tp);
+                    while (tray.children.length > 6) tray.removeChild(tray.lastChild);
+                  }
                   types.push("reaction");
                   continue;
                 } else if (h.kind === "approval_card" && p.widget) {

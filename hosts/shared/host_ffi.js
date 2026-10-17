@@ -3091,10 +3091,18 @@ function createHostFfi(repoRoot) {
         useful,
         disposition,
         forced_reply: false,
+        mode: "host_inbound_reaction",
+        pretend_forced_reply: false,
         at,
       };
       fs.mkdirSync(path.dirname(INBOUND_REACTIONS_PATH), { recursive: true });
       fs.appendFileSync(INBOUND_REACTIONS_PATH, JSON.stringify(entry) + "\n");
+      const reactDir = path.join(REPO_ROOT, "data", "delivery", "reactions");
+      fs.mkdirSync(reactDir, { recursive: true });
+      const reactPath = path.join(
+        reactDir,
+        `reaction-${Date.now().toString(36)}.json`,
+      );
       // CM-2128-shaped outbound reaction pill delivery (SendToUser reaction).
       const outbound = {
         type: "reaction",
@@ -3103,38 +3111,44 @@ function createHostFfi(repoRoot) {
         body_omitted: true,
         useful,
         disposition,
+        path: reactPath,
         at,
       };
+      const artifact = {
+        ...entry,
+        inbound_ledger: INBOUND_REACTIONS_PATH,
+        outbound_ledger: OUTBOUND_REACTIONS_PATH,
+        outbound_reaction: outbound,
+        visible_pill: true,
+        send_to_user_type: "reaction",
+      };
+      fs.writeFileSync(reactPath, JSON.stringify(artifact, null, 2));
       appendJsonl(OUTBOUND_REACTIONS_PATH, outbound);
       appendJsonl(SEND_TO_USER_PATH, outbound);
+      const delivery = {
+        type: "reaction",
+        emoji,
+        visible_pill: true,
+        path: reactPath,
+        disposition,
+        source_kind: kind,
+        at,
+      };
       appendHostDeliveryJournal({
         kind,
         command,
-        path: INBOUND_REACTIONS_PATH,
+        path: reactPath,
+        inbound_ledger: INBOUND_REACTIONS_PATH,
         outbound: OUTBOUND_REACTIONS_PATH,
         disposition,
         at,
       });
-      return {
-        kind,
+      return okJson(kind, command, {
+        ...artifact,
+        path: reactPath,
+        send_to_user: delivery,
         ok: true,
-        command,
-        stdout: JSON.stringify(
-          {
-            emoji,
-            useful,
-            disposition,
-            forced_reply: false,
-            path: INBOUND_REACTIONS_PATH,
-            outbound_reaction: outbound,
-            send_to_user: SEND_TO_USER_PATH,
-            visible_pill: true,
-          },
-          null,
-          2,
-        ),
-        stderr: "",
-      };
+      });
     }
     return null;
   }
