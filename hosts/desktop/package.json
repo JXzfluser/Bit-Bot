@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Bit Bot Desktop host — MoonBit product brain via Electron",
+  "author": "Bit Bot",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -19,15 +20,13 @@
       "main.js",
       "preload.js",
       "index.html",
-      "../shared/**/*"
-    ],
-    "extraResources": [
       {
-        "from": "../../cmd",
-        "to": "cmd",
+        "from": "../shared",
+        "to": "shared",
         "filter": ["**/*"]
       }
     ],
+    "asar": true,
     "linux": {
       "target": ["dir"],
       "category": "Utility"
@@ -39,10 +38,8 @@
       "target": ["dir"]
     }
   },
-  "dependencies": {
-    "electron": "^33.2.0"
-  },
   "devDependencies": {
+    "electron": "^33.2.0",
     "electron-builder": "^25.1.8"
   }
 }

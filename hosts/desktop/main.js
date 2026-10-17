@@ -2,9 +2,18 @@
 
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
-const { createTurnRunner } = require("../shared/run_moon_turn");
 
-const REPO_ROOT = path.resolve(__dirname, "../..");
+// Dev: hosts/shared; packaged: hosts/desktop/shared (copied by electron-builder).
+let createTurnRunner;
+try {
+  createTurnRunner = require("./shared/run_moon_turn").createTurnRunner;
+} catch (_e) {
+  createTurnRunner = require("../shared/run_moon_turn").createTurnRunner;
+}
+
+const REPO_ROOT = process.env.BITBOT_REPO_ROOT
+  ? path.resolve(process.env.BITBOT_REPO_ROOT)
+  : path.resolve(__dirname, "../..");
 const runner = createTurnRunner(REPO_ROOT);
 
 function createWindow() {
