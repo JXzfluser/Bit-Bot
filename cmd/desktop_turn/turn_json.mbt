@@ -1189,6 +1189,11 @@ pub fn run_desktop_turn(
   match intent {
     ListMachines => {
       let reg = @box_host.MachineRegistry::seed()
+      // Active Host shell (Desktop/cli/mobile_host) is Connected for its kind/id.
+      reg.mark_host_present(
+        machine_id=ctx.machine_id,
+        machine_kind=ctx.machine_kind,
+      )
       let rows = machine_rows(reg)
       let reply =
         "ListMachines: " +

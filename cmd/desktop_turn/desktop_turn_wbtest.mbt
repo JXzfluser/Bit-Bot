@@ -42,6 +42,40 @@ test "desktop_turn_list_machines_kinds" {
   assert_true(json.contains("\"kind\":\"desktop\""))
   assert_true(json.contains("\"kind\":\"ios\""))
   assert_true(json.contains("\"kind\":\"android\""))
+  // Default desktop Host context marks desk-1 Connected; android seed stays disconnected.
+  let mut desk_ok = false
+  let mut android_disc = false
+  for m in r.machines {
+    if m.kind == "desktop" && m.status == "connected" {
+      desk_ok = true
+    }
+    if m.kind == "android" && m.status == "disconnected" {
+      android_disc = true
+    }
+  }
+  assert_true(desk_ok)
+  assert_true(android_disc)
+}
+
+///|
+test "desktop_turn_list_machines_android_host_present" {
+  let ctx : DesktopTurnContext = {
+    session_id: "s-android",
+    machine_id: "phone-android",
+    machine_kind: "android",
+    channel: "",
+    approved: false,
+  }
+  let r = run_desktop_turn("ListMachines", turn_id="lm-android", ctx~)
+  assert_true(r.ok)
+  assert_eq(r.intent, "list_machines")
+  let mut android_ok = false
+  for m in r.machines {
+    if m.kind == "android" && m.id == "phone-android" && m.status == "connected" {
+      android_ok = true
+    }
+  }
+  assert_true(android_ok)
 }
 
 ///|

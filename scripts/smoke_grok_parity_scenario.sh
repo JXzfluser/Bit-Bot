@@ -82,11 +82,15 @@ python3 -c "import json;d=json.load(open('/tmp/parity-shared-get.json'));h=next(
 "${RUN[@]}" "journal note parity $MARKER" >/tmp/parity-journal.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-journal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='journal_append');p=json.loads(h['stdout']);assert p.get('ok') is True or h.get('ok');path=p.get('path') or 'data/journal/events.jsonl';assert os.path.isfile(path);assert '$MARKER' in open(path).read();print('parity journal_append ok', path)"
 
-# 10) Multi-end mobile Host strip
+# 10) Multi-end mobile Host strip + ListMachines host-present honesty
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
 python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"
 "${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
 python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;print('parity android turn ok')"
+"${RUN[@]}" --machine-kind android --machine-id phone-android "ListMachines" >/tmp/parity-lm-android.json
+python3 -c "import json;d=json.load(open('/tmp/parity-lm-android.json'));ms=d.get('machines')or[];a=next(m for m in ms if m.get('kind')=='android');assert a.get('status')=='connected';assert a.get('id')=='phone-android';print('parity android host-present ListMachines ok', a.get('status'))"
+"${RUN[@]}" --machine-kind desktop "ListMachines" >/tmp/parity-lm-desk.json
+python3 -c "import json;d=json.load(open('/tmp/parity-lm-desk.json'));ms=d.get('machines')or[];a=next(m for m in ms if m.get('kind')=='android');assert a.get('status')=='disconnected';print('parity desktop ListMachines android residual disconnected ok')"
 
 # 11) Delivery ledger must cover CHARTER SendToUser types after marker
 python3 -c "

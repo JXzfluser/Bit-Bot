@@ -116,6 +116,33 @@ pub fn MachineRegistry::list(self : MachineRegistry) -> Array[MachineInfo] {
 }
 
 ///|
+/// Mark the Host-present machine Connected when a multi-end Host shell
+/// is actively running as that kind/id (honest: not pretend remote phone OS).
+pub fn MachineRegistry::mark_host_present(
+  self : MachineRegistry,
+  machine_id~ : String,
+  machine_kind~ : String,
+) -> Unit {
+  let mid = machine_id.trim().to_owned()
+  let mk = machine_kind.trim().to_lower().to_owned()
+  let mut i = 0
+  while i < self.machines.length() {
+    let m = self.machines[i]
+    let kind_match = m.kind.name() == mk
+    let id_match = mid != "" && m.id == mid
+    if kind_match || id_match {
+      self.machines[i] = {
+        id: m.id,
+        label: m.label,
+        kind: m.kind,
+        status: Connected,
+      }
+    }
+    i = i + 1
+  }
+}
+
+///|
 pub fn MachineRegistry::find(
   self : MachineRegistry,
   id : String,
