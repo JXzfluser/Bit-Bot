@@ -585,7 +585,18 @@ function createHostFfi(repoRoot) {
         results.push(await executeChannelSend(cmd));
         continue;
       }
-      if (kind === "mail_draft" || kind === "mcp_namespace" || kind === "oauth") {
+      if (
+        kind === "mail_draft" ||
+        kind === "mcp_namespace" ||
+        kind === "oauth" ||
+        kind === "approval_card" ||
+        kind === "mcp_discover" ||
+        kind === "mcp_call" ||
+        kind === "subagent_run" ||
+        kind === "computer_use" ||
+        kind === "routine_schedule" ||
+        kind === "device_tool"
+      ) {
         const journalLine = appendHostDeliveryJournal({
           kind,
           command: cmd,

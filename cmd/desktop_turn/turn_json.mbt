@@ -64,6 +64,15 @@ pub(all) enum TurnIntent {
   WebFetch(url~ : String)
   CopyToBox(machine_id~ : String, src~ : String, dest~ : String)
   CopyFromBox(machine_id~ : String, box_path~ : String, dest~ : String)
+  CreateRoutine(id~ : String, cron~ : String, prompt~ : String)
+  ListRoutines
+  SpawnSubagent(prompt~ : String)
+  McpDiscover(namespace_~ : String)
+  McpCall(namespace_~ : String, name~ : String, args_json~ : String)
+  ComputerUse(task~ : String)
+  TeamsSend(scope~ : String, body~ : String)
+  DeviceTools
+  DeviceToolInvoke(tool~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -86,6 +95,15 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     WebFetch(_) => "webfetch"
     CopyToBox(_) => "copy_to_box"
     CopyFromBox(_) => "copy_from_box"
+    CreateRoutine(_) => "create_routine"
+    ListRoutines => "list_routines"
+    SpawnSubagent(_) => "spawn_subagent"
+    McpDiscover(_) => "mcp_discover"
+    McpCall(_) => "mcp_call"
+    ComputerUse(_) => "computer_use"
+    TeamsSend(_) => "teams_send"
+    DeviceTools => "device_tools"
+    DeviceToolInvoke(_) => "device_tool_invoke"
     HostContinue => "host_continue"
   }
 }
@@ -97,6 +115,8 @@ pub(all) struct DesktopTurnContext {
   machine_id : String
   machine_kind : String
   channel : String
+  /// Host passed `--approved` after user confirmed an ApprovalGate NeedUser.
+  approved : Bool
 } derive(Eq, Debug)
 
 ///|
@@ -106,6 +126,7 @@ pub fn DesktopTurnContext::default() -> DesktopTurnContext {
     machine_id: "desk-1",
     machine_kind: "desktop",
     channel: "",
+    approved: false,
   }
 }
 
@@ -353,6 +374,10 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       None => ()
     }
   }
+  match classify_parity_intent(trimmed, low) {
+    Some(pi) => return pi
+    None => ()
+  }
   // Host FFI shell plans (Grok-like: shell / Shell: / ! / run / 执行)
   if low.has_prefix("!") ||
       low.has_prefix("shell ") ||
@@ -480,6 +505,9 @@ fn extract_kv(rest : String, key : String) -> String? {
         " src=",
         " dest=",
         " box=",
+        " id=",
+        " cron=",
+        " prompt=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -809,6 +837,10 @@ pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
       i = i + 1
       continue
     }
+    if a == "--approved" {
+      i = i + 1
+      continue
+    }
     if a == "--seed-memory" ||
         a == "--session-id" ||
         a == "--machine-id" ||
@@ -840,12 +872,24 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
   let mut i = 0
   while i < args.length() {
     let a = args[i]
+    if a == "--approved" {
+      ctx = {
+        session_id: ctx.session_id,
+        machine_id: ctx.machine_id,
+        machine_kind: ctx.machine_kind,
+        channel: ctx.channel,
+        approved: true,
+      }
+      i = i + 1
+      continue
+    }
     if a == "--session-id" && i + 1 < args.length() {
       ctx = {
         session_id: args[i + 1],
         machine_id: ctx.machine_id,
         machine_kind: ctx.machine_kind,
         channel: ctx.channel,
+        approved: ctx.approved,
       }
       i = i + 2
       continue
@@ -856,6 +900,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         machine_id: args[i + 1],
         machine_kind: ctx.machine_kind,
         channel: ctx.channel,
+        approved: ctx.approved,
       }
       i = i + 2
       continue
@@ -878,6 +923,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         machine_id: mid,
         machine_kind: kind,
         channel: ctx.channel,
+        approved: ctx.approved,
       }
       i = i + 2
       continue
@@ -888,6 +934,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         machine_id: ctx.machine_id,
         machine_kind: ctx.machine_kind,
         channel: args[i + 1],
+        approved: ctx.approved,
       }
       i = i + 2
       continue
@@ -985,21 +1032,35 @@ pub fn run_desktop_turn(
       deliver_ok(trimmed, turn_id, reply, intent, ctx~, memory=rows)
     }
     HostEffect(command~) => {
-      let effect : DesktopEffect = {
-        kind: "shell",
-        command: command,
-        needs_host_ffi: true,
-      }
-      let reply =
-        "Host effect planned (shell). Desktop must execute via Host FFI then call continue_after_host_ffi (ADR 0002). Not LocalBrain."
-      deliver_ok(
+      match gate_consequential(
         trimmed,
         turn_id,
-        reply,
-        intent, ctx~,
-        effects=[effect],
-        needs_host_ffi=true,
-      )
+        intent,
+        ctx,
+        @security.Shell,
+        "shell: " + command,
+        irreversible=false,
+      ) {
+        Some(blocked) => blocked
+        None => {
+          let effect : DesktopEffect = {
+            kind: "shell",
+            command: command,
+            needs_host_ffi: true,
+          }
+          let reply =
+            "Host effect planned (shell). Desktop must execute via Host FFI then call continue_after_host_ffi (ADR 0002). Not LocalBrain."
+          deliver_ok(
+            trimmed,
+            turn_id,
+            reply,
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
     }
     ChannelDelivery(inbound~, outbound~, body~) => {
       match @channels.plan_channel_reply(
@@ -1040,15 +1101,39 @@ pub fn run_desktop_turn(
             ]
           }
           let needs = effects.length() > 0
-          deliver_ok(
-            trimmed,
-            turn_id,
-            reply,
-            intent, ctx~,
-            effects~,
-            needs_host_ffi=needs,
-            channel_delivery=label,
-          )
+          if needs {
+            match gate_consequential(
+              trimmed,
+              turn_id,
+              intent,
+              ctx,
+              @security.ExternalSend,
+              "channel_send: " + label,
+              irreversible=true,
+            ) {
+              Some(blocked) => blocked
+              None =>
+                deliver_ok(
+                  trimmed,
+                  turn_id,
+                  reply,
+                  intent,
+                  ctx~,
+                  effects~,
+                  needs_host_ffi=true,
+                  channel_delivery=label,
+                )
+            }
+          } else {
+            deliver_ok(
+              trimmed,
+              turn_id,
+              reply,
+              intent,
+              ctx~,
+              channel_delivery=label,
+            )
+          }
         }
       }
     }
@@ -1272,27 +1357,334 @@ pub fn run_desktop_turn(
     }
     DraftMail(to_~, subject~, body~) => {
       let card = @mail.DraftEmailCard::new(to_~, subject~, body~)
-      // Draft card + Host mail_send effect (CM-1005: Host/UI press-send; live if OAuth).
-      let reply =
-        "Draft mail card ready. to=" +
-        card.to_ +
-        " subject=" +
-        card.subject +
-        ". Host FFI mail_send executes on confirm (sandbox journal without token)."
+      match gate_consequential(
+        trimmed,
+        turn_id,
+        intent,
+        ctx,
+        @security.ExternalSend,
+        "mail_send to=" + to_,
+        irreversible=true,
+      ) {
+        Some(blocked) => blocked
+        None => {
+          let reply =
+            "Draft mail card ready. to=" +
+            card.to_ +
+            " subject=" +
+            card.subject +
+            ". Host FFI mail_send executes (sandbox journal without token)."
+          let effect : DesktopEffect = {
+            kind: "mail_send",
+            command: "gmail|" + to_ + "|" + subject + "|" + body,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            reply,
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    CreateRoutine(id~, cron~, prompt~) => {
+      let store = @routines.RoutineStore::empty()
+      let spec : @routines.RoutineSpec = {
+        id,
+        name: id,
+        prompt,
+        trigger: @routines.Cron(expr=cron),
+        timing: @routines.Exact,
+        enabled: true,
+        early_minutes: 0,
+        late_minutes: 0,
+      }
+      match store.create(spec) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(_) => {
+          let effect : DesktopEffect = {
+            kind: "routine_schedule",
+            command: id + "|" + cron + "|" + prompt,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Routine created: " + id + " cron=" + cron + ". Host registers schedule.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    ListRoutines => {
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Routines: use create routine id=… cron=… prompt=… (product path @routines; Host holds cron clock).",
+        intent,
+        ctx~,
+      )
+    }
+    SpawnSubagent(prompt~) => {
+      let h = @task.SubagentHandle::dispatch_executor(
+        "sub-" + turn_id,
+        turn_id,
+        prompt,
+      )
+      h.mark_running()
       let effect : DesktopEffect = {
-        kind: "mail_send",
-        command: "gmail|" + to_ + "|" + subject + "|" + body,
+        kind: "subagent_run",
+        command: h.id + "|" + prompt,
         needs_host_ffi: true,
       }
       deliver_ok(
         trimmed,
         turn_id,
-        reply,
+        "Subagent dispatched id=" +
+        h.id +
+        " kind=executor. Host runs worker; MoonBit keeps handle.",
         intent,
         ctx~,
         effects=[effect],
         needs_host_ffi=true,
       )
+    }
+    McpDiscover(namespace_~) => {
+      let cat = @tools.DynamicCatalog::seed_example()
+      let found = if namespace_ == "" {
+        cat.discover()
+      } else {
+        cat.discover(ns=Some(namespace_))
+      }
+      let buf = StringBuilder()
+      buf.write_string("MCP discover: ")
+      buf.write_string(found.length().to_string())
+      buf.write_string(" tool(s)")
+      let mut i = 0
+      while i < found.length() && i < 8 {
+        buf.write_string(" | ")
+        buf.write_string(found[i].namespace_)
+        buf.write_string(".")
+        buf.write_string(found[i].name)
+        i = i + 1
+      }
+      let effect : DesktopEffect = {
+        kind: "mcp_discover",
+        command: if namespace_ == "" { "*" } else { namespace_ },
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        buf.to_string(),
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    McpCall(namespace_~, name~, args_json~) => {
+      let cat = @tools.DynamicCatalog::seed_example()
+      let _ = cat.discover(ns=Some(namespace_))
+      let call : @tools.DynamicCall = {
+        namespace_,
+        name,
+        arguments_json: args_json,
+        write_to_file: false,
+      }
+      let tr = cat.call(call)
+      match tr {
+        Err(message~) =>
+          fail_turn(trimmed, turn_id, intent, message, ctx, assistant=message)
+        Blocked(reason~) =>
+          fail_turn(trimmed, turn_id, intent, reason, ctx, assistant=reason)
+        PendingApproval(request_id~) =>
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "MCP call pending approval: " + request_id,
+            intent,
+            ctx~,
+            effects=[
+              {
+                kind: "approval_card",
+                command: "mcp :: " + request_id,
+                needs_host_ffi: true,
+              },
+            ],
+            needs_host_ffi=true,
+          )
+        Ok(output~) => {
+          let effect : DesktopEffect = {
+            kind: "mcp_call",
+            command: namespace_ + "." + name + "|" + args_json,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "MCP call planned/mock: " + output + ". Host executes live MCP.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    ComputerUse(task~) => {
+      let spec : @computer_use.ComputerUseSpec = {
+        task,
+        allow_shell_escape: false,
+      }
+      match @computer_use.dispatch_computer_use("cu-" + turn_id, turn_id, spec) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok((_h, outcome)) => {
+          let effect : DesktopEffect = {
+            kind: "computer_use",
+            command: task,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "computerUse outcome: " +
+            outcome.summary +
+            " agent=" +
+            outcome.agent_id +
+            ". Host owns GUI automation.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    TeamsSend(scope~, body~) => {
+      match @channels.parse_teams_scope(scope) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(ts) =>
+          match @channels.plan_teams_outbound(
+            { scope: ts, message_id: turn_id, sender: "user", body: "" },
+            ts,
+            body~,
+          ) {
+            @channels.Rejected(reason~) =>
+              fail_turn(trimmed, turn_id, intent, reason, ctx, assistant=reason)
+            @channels.Deliver(scope~, body~) => {
+              match gate_consequential(
+                trimmed,
+                turn_id,
+                intent,
+                ctx,
+                @security.ExternalSend,
+                "teams_send " + scope.to_address(),
+                irreversible=true,
+              ) {
+                Some(blocked) => blocked
+                None => {
+                  let effect : DesktopEffect = {
+                    kind: "channel_send",
+                    command: scope.to_address() + " :: " + body,
+                    needs_host_ffi: true,
+                  }
+                  deliver_ok(
+                    trimmed,
+                    turn_id,
+                    "Teams outbound planned to " +
+                    scope.to_address() +
+                    ". Host channel FFI delivers.",
+                    intent,
+                    ctx~,
+                    effects=[effect],
+                    needs_host_ffi=true,
+                    channel_delivery="external:" + scope.to_address(),
+                  )
+                }
+              }
+            }
+          }
+      }
+    }
+    DeviceTools => {
+      let reg = @box_host.DeviceLocalToolsRegistry::seed_phones()
+      let kind = if ctx.machine_kind == "ios" {
+        @box_host.Ios
+      } else if ctx.machine_kind == "android" {
+        @box_host.Android
+      } else {
+        @box_host.Desktop
+      }
+      let tools = reg.list_for(ctx.machine_id, kind)
+      let buf = StringBuilder()
+      buf.write_string("deviceLocalTools on ")
+      buf.write_string(ctx.machine_kind)
+      buf.write_string("/")
+      buf.write_string(ctx.machine_id)
+      buf.write_string(": ")
+      buf.write_string(tools.length().to_string())
+      let mut i = 0
+      while i < tools.length() {
+        buf.write_string(" | ")
+        buf.write_string(tools[i].name)
+        buf.write_string("=")
+        buf.write_string(tools[i].permission.label())
+        i = i + 1
+      }
+      deliver_ok(trimmed, turn_id, buf.to_string(), intent, ctx~)
+    }
+    DeviceToolInvoke(tool~) => {
+      let reg = @box_host.DeviceLocalToolsRegistry::seed_phones()
+      match reg.invoke(ctx.machine_id, tool) {
+        Ok(msg) => {
+          let effect : DesktopEffect = {
+            kind: "device_tool",
+            command: ctx.machine_id + "|" + tool,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            msg + ". Host executes deviceLocalTools FFI.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+        Err(card) => {
+          let effect : DesktopEffect = {
+            kind: "approval_card",
+            command: "device:" +
+              card.tool_name +
+              " :: " +
+              card.permission_label,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Device tool needs permission: " +
+            card.tool_name +
+            " (" +
+            card.permission_label +
+            ") on " +
+            card.machine_id,
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
     }
     HostContinue => {
       // Should be invoked via continue_after_host_ffi, not plain chat.

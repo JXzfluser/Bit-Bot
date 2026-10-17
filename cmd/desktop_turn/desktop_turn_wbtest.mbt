@@ -85,7 +85,19 @@ test "desktop_turn_session_memory_seeds" {
 
 ///|
 test "desktop_turn_host_effect_needs_ffi" {
-  let r = run_desktop_turn("shell echo hi", turn_id="fx-1")
+  let gated = run_desktop_turn("shell echo hi", turn_id="fx-gate")
+  assert_true(gated.ok)
+  assert_eq(gated.intent, "host_effect")
+  assert_true(gated.needs_host_ffi)
+  assert_eq(gated.effects[0].kind, "approval_card")
+  let ctx : DesktopTurnContext = {
+    session_id: "s",
+    machine_id: "desk-1",
+    machine_kind: "desktop",
+    channel: "",
+    approved: true,
+  }
+  let r = run_desktop_turn("shell echo hi", turn_id="fx-1", ctx~)
   assert_true(r.ok)
   assert_eq(r.intent, "host_effect")
   assert_true(r.needs_host_ffi)
@@ -125,9 +137,23 @@ test "desktop_turn_host_ffi_continue_adr0002" {
 
 ///|
 test "desktop_turn_channel_delivery_external" {
+  let gated = run_desktop_turn(
+    "reply via slack:C123 :: thanks from desktop",
+    turn_id="ch-gate",
+  )
+  assert_true(gated.ok)
+  assert_eq(gated.effects[0].kind, "approval_card")
+  let ctx : DesktopTurnContext = {
+    session_id: "s",
+    machine_id: "desk-1",
+    machine_kind: "desktop",
+    channel: "",
+    approved: true,
+  }
   let r = run_desktop_turn(
     "reply via slack:C123 :: thanks from desktop",
     turn_id="ch-1",
+    ctx~,
   )
   assert_true(r.ok)
   assert_eq(r.intent, "channel_delivery")
@@ -166,6 +192,7 @@ test "desktop_turn_fs_webfetch_and_context" {
     machine_id: "phone-ios",
     machine_kind: "ios",
     channel: "slack:C1",
+    approved: false,
   }
   let r = run_desktop_turn("listdir docs", turn_id="fs-1", ctx~)
   assert_true(r.ok)
@@ -203,15 +230,66 @@ test "desktop_turn_claim_inbox_and_draft_mail" {
   assert_true(c.ok)
   assert_eq(c.intent, "claim_inbox")
   assert_true(c.messages[c.messages.length() - 1].text.contains("alpha@"))
+  let gated = run_desktop_turn(
+    "draft mail to=bob@example.com subject=Hi body=Hello Bob",
+    turn_id="mail-gate",
+  )
+  assert_true(gated.ok)
+  assert_eq(gated.effects[0].kind, "approval_card")
+  let actx : DesktopTurnContext = {
+    session_id: "s",
+    machine_id: "desk-1",
+    machine_kind: "desktop",
+    channel: "",
+    approved: true,
+  }
   let d = run_desktop_turn(
     "draft mail to=bob@example.com subject=Hi body=Hello Bob",
     turn_id="mail-d",
+    ctx=actx,
   )
   assert_true(d.ok)
   assert_eq(d.intent, "draft_mail")
   assert_eq(d.effects.length(), 1)
   assert_eq(d.effects[0].kind, "mail_send")
   assert_true(d.needs_host_ffi)
+}
+
+///|
+test "desktop_turn_parity_routines_mcp_subagent_device" {
+  let cr = run_desktop_turn(
+    "create routine id=r1 cron=@daily prompt=standup notes",
+    turn_id="rt-1",
+  )
+  assert_true(cr.ok)
+  assert_eq(cr.intent, "create_routine")
+  assert_eq(cr.effects[0].kind, "routine_schedule")
+  let md = run_desktop_turn("mcp discover user-Gmail", turn_id="mcp-d")
+  assert_true(md.ok)
+  assert_eq(md.intent, "mcp_discover")
+  let mc = run_desktop_turn(
+    "mcp call user-Gmail.search_threads {}",
+    turn_id="mcp-c",
+  )
+  assert_true(mc.ok)
+  assert_eq(mc.intent, "mcp_call")
+  let sa = run_desktop_turn("spawn subagent summarize inbox", turn_id="sa-1")
+  assert_true(sa.ok)
+  assert_eq(sa.intent, "spawn_subagent")
+  let cu = run_desktop_turn("computer use open docs site", turn_id="cu-1")
+  assert_true(cu.ok)
+  assert_eq(cu.intent, "computer_use")
+  let ictx : DesktopTurnContext = {
+    session_id: "s",
+    machine_id: "phone-ios",
+    machine_kind: "ios",
+    channel: "",
+    approved: false,
+  }
+  let dt = run_desktop_turn("device tools", turn_id="dt-1", ctx=ictx)
+  assert_true(dt.ok)
+  assert_eq(dt.intent, "device_tools")
+  assert_true(dt.messages[dt.messages.length() - 1].text.contains("camera"))
 }
 
 ///|

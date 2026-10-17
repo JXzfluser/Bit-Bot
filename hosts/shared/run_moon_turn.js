@@ -76,6 +76,7 @@ function createTurnRunner(repoRoot, opts = {}) {
    *   machineKind?: string,
    *   channel?: string,
    *   turnId?: string,
+   *   approved?: boolean,
    * }} ctx
    */
   async function runTurn(userText, ctx = {}) {
@@ -105,6 +106,9 @@ function createTurnRunner(repoRoot, opts = {}) {
     }
     if (ctx.turnId) {
       moonArgs.push("--turn-id", String(ctx.turnId));
+    }
+    if (ctx.approved) {
+      moonArgs.push("--approved");
     }
     moonArgs.push(text);
 

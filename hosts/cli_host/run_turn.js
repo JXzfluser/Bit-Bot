@@ -20,6 +20,7 @@ async function main() {
   let sessionId = process.env.BITBOT_SESSION_ID || "cli-session";
   let channel = process.env.BITBOT_CHANNEL || "";
   let turnId = "";
+  let approved = process.env.BITBOT_APPROVED === "1";
   const textParts = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -42,6 +43,10 @@ async function main() {
     }
     if (a === "--turn-id" && i + 1 < argv.length) {
       turnId = argv[++i];
+      continue;
+    }
+    if (a === "--approved") {
+      approved = true;
       continue;
     }
     if (a === "--") continue;
@@ -68,6 +73,7 @@ async function main() {
     machineKind,
     channel,
     turnId: turnId || undefined,
+    approved,
   });
   console.log(JSON.stringify(result));
   if (!result.ok) process.exit(1);
