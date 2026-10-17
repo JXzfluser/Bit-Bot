@@ -161,6 +161,7 @@
 - [x] Host meeting live transport (`BITBOT_MEETING_*` → `/messages`; else DirectSend residual)
 - [x] Host source_control remote PR (`BITBOT_GH_CREATE_PR=1` → `gh pr view` or `gh pr create --dry-run`; real create needs `BITBOT_GH_PR_CREATE=1`)
 - [x] Host routine daemon `--install-user-unit` (user systemd; closes `systemd_unit_installed`)
+- [x] Host CU payment_wall fixture (`host_cu_checkout_fixture.py` + `BITBOT_CU_ALLOW_LOCAL=1`; never pretend_purchased)
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN

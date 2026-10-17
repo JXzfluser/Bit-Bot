@@ -38,7 +38,7 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Slack post without `BITBOT_SLACK_POST=1` | Draft-first only (live gated) |
 | Screenshot | Only when `DISPLAY` set and ffmpeg/import/scrot available |
 | Routine wake scheduler | On-demand `routine_fire` + daemon `--long-lived` / `--interval-ms`; `--install-user-unit` installs user systemd unit |
-| CU paid checkout | `payment_wall` / `live_paid_residual` when pay form seen; never pretend_purchased without `BITBOT_CU_LIVE_PAID` |
+| CU paid checkout | `payment_wall` / `live_paid_residual` when pay form seen; local fixture via `BITBOT_CU_ALLOW_LOCAL=1`; never pretend_purchased without `BITBOT_CU_LIVE_PAID` |
 | Purchase charge | Sandbox HTML receipt by default; live `/charge` when `BITBOT_PURCHASE_LIVE=1` + token + `BITBOT_PURCHASE_API_URL` |
 | Remote Cursor Cloud | Default `local_worker`; remote probe when `BITBOT_CLOUD_API_URL`+token; fail→local, never pretend remote |
 | Meeting live transport | DirectSend transcript; live POST when `BITBOT_MEETING_API_URL`+token |
