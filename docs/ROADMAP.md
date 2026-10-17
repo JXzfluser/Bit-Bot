@@ -258,6 +258,8 @@
 - [x] Parity: schedule_meeting path + pretend_live honesty
 - [x] Host skill_write / export_pack per-op meta snapshots (`data/skills/writes/`, `data/exports/packs/`)
 - [x] Parity: skill_write meta_path + pretend_shared honesty
+- [x] Host slides_pptx per-op meta snapshots under `data/slides/renders/`
+- [x] Parity: slides_pptx meta_path + pretend_rendered honesty
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

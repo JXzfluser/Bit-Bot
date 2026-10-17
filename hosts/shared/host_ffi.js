@@ -4509,12 +4509,32 @@ function createHostFfi(repoRoot) {
         ? fs.readFileSync(outPath).subarray(0, 2).toString("utf8")
         : "";
       const ok = exists && magic === "PK";
+      const at = new Date().toISOString();
+      const bytes = exists ? fs.statSync(outPath).size : 0;
+      const slidesDir = path.join(REPO_ROOT, "data", "slides", "renders");
+      fs.mkdirSync(slidesDir, { recursive: true });
+      const metaPath = path.join(
+        slidesDir,
+        `render-${sanitizeSkillName(path.basename(outPath, ".pptx")) || "deck"}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        pptx_path: outPath,
+        title,
+        pptx_pk_magic_ok: ok,
+        bytes,
+        pretend_rendered: false,
+        mode: "host_slides_pptx",
+        meta,
+        at,
+      };
+      fs.writeFileSync(metaPath, JSON.stringify(artifact, null, 2));
       appendHostDeliveryJournal({
         kind: "slides_pptx",
         command,
-        path: outPath,
+        path: metaPath,
+        pptx_path: outPath,
         ok,
-        at: new Date().toISOString(),
+        at,
       });
       return {
         kind: "slides_pptx",
@@ -4522,11 +4542,9 @@ function createHostFfi(repoRoot) {
         command,
         stdout: JSON.stringify(
           {
+            ...artifact,
             path: outPath,
-            title,
-            pptx_pk_magic_ok: ok,
-            bytes: exists ? fs.statSync(outPath).size : 0,
-            meta,
+            meta_path: metaPath,
           },
           null,
           2,

@@ -852,6 +852,12 @@
                     (p.name || String(p.path || "").split("/").slice(-2)[0] || "?") +
                     (p.meta_path ? "/snap" : "");
                   types.push("attachment");
+                } else if (h.kind === "slides_pptx") {
+                  label =
+                    "slides:" +
+                    String(p.path || "").split("/").slice(-1)[0] +
+                    (p.meta_path ? "/snap" : "");
+                  types.push("attachment");
                 } else if (h.kind === "mcp_discover") {
                   label =
                     "mcp_discover×" +
