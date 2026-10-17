@@ -132,7 +132,7 @@ node hosts/cli_host/run_turn.js "launch cloud agent triage CI failures" >/tmp/bi
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_agent_launch');assert h.get('ok') and 'launches.jsonl' in (h.get('stdout') or '');print('cloud_agent_launch durable ok')"
 node hosts/cli_host/run_turn.js --approved "purchase item=BlueYeti cents=12900" >/tmp/bitbot-purchase.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-purchase.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind') in ('purchase','approval_card') and h.get('ok') for h in hrs);print('purchase/approval durable ok', [(h.get('kind'),h.get('ok')) for h in hrs])"
-node hosts/cli_host/run_turn.js "fill credential example.com" >/tmp/bitbot-cred.json
+node hosts/cli_host/run_turn.js "fill credential domain=login.example.test" >/tmp/bitbot-cred.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-cred.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='credential_fill');assert h.get('ok');assert 'secret_echoed' in (h.get('stdout') or '') and 'false' in (h.get('stdout') or '');print('credential_fill vault-only ok')"
 
 echo "==> journal / shared memory / inbound reaction (durable Host stores)"
