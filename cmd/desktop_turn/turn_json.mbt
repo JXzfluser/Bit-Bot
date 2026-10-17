@@ -115,6 +115,9 @@ pub(all) enum TurnIntent {
   JobSearch(query~ : String)
   LearnFromDemo(title~ : String, steps_csv~ : String)
   MakeSlides(title~ : String)
+  GenerateImage(prompt~ : String)
+  GenerateVideo(prompt~ : String)
+  WatchVideo(video_path~ : String)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -192,6 +195,9 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     JobSearch(_) => "job_search"
     LearnFromDemo(_) => "learn_from_demo"
     MakeSlides(_) => "make_slides"
+    GenerateImage(_) => "generate_image"
+    GenerateVideo(_) => "generate_video"
+    WatchVideo(_) => "watch_video"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -3094,6 +3100,70 @@ pub fn run_desktop_turn(
           )
         }
       }
+    }
+    GenerateImage(prompt~) => {
+      let out = "/workspace/agent-tools/gen-image-" + turn_id + ".png"
+      let effect : DesktopEffect = {
+        kind: "generate_image",
+        command: out + "|" + prompt,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "GenerateImage planned at " +
+        out +
+        " (CM-1601). Host materializes PNG attachment.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    GenerateVideo(prompt~) => {
+      let out = "/workspace/agent-tools/gen-video-" + turn_id + ".mp4"
+      let effect : DesktopEffect = {
+        kind: "generate_video",
+        command: out + "|" + prompt,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "GenerateVideo planned at " +
+        out +
+        " (CM-1602). Host encodes short mp4 + notify.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    WatchVideo(video_path~) => {
+      let vp = if video_path.has_prefix("/workspace/") ||
+        video_path.has_prefix("agent-tools/") ||
+        video_path.has_prefix("uploads/") {
+        video_path
+      } else {
+        "/workspace/" + video_path
+      }
+      let frame = "/workspace/agent-tools/watch-frame-" + turn_id + ".png"
+      let effect : DesktopEffect = {
+        kind: "watch_video",
+        command: vp + "|" + frame,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "watchVideo planned for " +
+        vp +
+        " (CM-1603). Host extracts frame PNG for grounded answer.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     CodeChanges(path~) => {
       let p = if path.has_prefix("/workspace/") {

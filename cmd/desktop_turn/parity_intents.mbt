@@ -377,6 +377,49 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(MakeSlides(title~))
     }
   }
+  // CM-1601 / 1602 / 1603 product Host media (not H5 matrix-only).
+  if low.has_prefix("generate image ") ||
+      low.has_prefix("make image ") ||
+      low.has_prefix("draw image ") {
+    let prompt = if low.has_prefix("generate image ") {
+      trimmed[15:].trim().to_owned()
+    } else if low.has_prefix("make image ") {
+      trimmed[11:].trim().to_owned()
+    } else {
+      trimmed[11:].trim().to_owned()
+    }
+    if prompt != "" {
+      return Some(GenerateImage(prompt~))
+    }
+  }
+  if low.has_prefix("generate video ") ||
+      low.has_prefix("make video ") ||
+      low.has_prefix("render video ") {
+    let prompt = if low.has_prefix("generate video ") {
+      trimmed[15:].trim().to_owned()
+    } else if low.has_prefix("make video ") {
+      trimmed[11:].trim().to_owned()
+    } else {
+      trimmed[13:].trim().to_owned()
+    }
+    if prompt != "" {
+      return Some(GenerateVideo(prompt~))
+    }
+  }
+  if low.has_prefix("watch video ") ||
+      low.has_prefix("analyze video ") ||
+      low.has_prefix("understand video ") {
+    let video_path = if low.has_prefix("watch video ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("analyze video ") {
+      trimmed[14:].trim().to_owned()
+    } else {
+      trimmed[17:].trim().to_owned()
+    }
+    if video_path != "" {
+      return Some(WatchVideo(video_path~))
+    }
+  }
   if low.has_prefix("code changes ") || low.has_prefix("edit code ") {
     let path = if low.has_prefix("code changes ") {
       trimmed[13:].trim().to_owned()

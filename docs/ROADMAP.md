@@ -275,6 +275,8 @@
 - [x] Parity: voice_relay path honesty; mobile delivery mirrors include voice_relay; mail_search/read path asserts
 - [x] Native iOS/Android SendToUser delivery surface (`SendToUserSurface.swift` / `.kt`) chips + strip (mirrors shared JS; no invent)
 - [x] Mobile delivery mirrors expanded: voice_session / voice_end_write / credential_list / x_search / approval_card / connectors_probe
+- [x] Product Host media turns: `generate_image` / `generate_video` / `watch_video` (CM-1601/1602/1603 via `host_h5_media.py`; snaps under `data/media/ops/`)
+- [x] Parity: media path honesty + PNG/MP4/frame magic; MoonBit intents + multi-end SendToUser kinds
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

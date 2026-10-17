@@ -624,6 +624,9 @@
           const attachKinds = [
             "skill_write",
             "slides_pptx",
+            "generate_image",
+            "generate_video",
+            "watch_video",
             "export_pack",
             "computer_use",
             "voice_session",
@@ -891,6 +894,19 @@
                     "slides:" +
                     String(p.path || "").split("/").slice(-1)[0] +
                     (p.meta_path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (
+                  h.kind === "generate_image" ||
+                  h.kind === "generate_video" ||
+                  h.kind === "watch_video"
+                ) {
+                  label =
+                    h.kind +
+                    ":" +
+                    String(p.media_path || p.frame_path || p.path || "")
+                      .split("/")
+                      .slice(-1)[0] +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "mcp_discover") {
                   label =

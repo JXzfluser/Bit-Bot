@@ -139,6 +139,9 @@ try {
       "x_search",
       "approval_card",
       "connectors_probe",
+      "generate_image",
+      "generate_video",
+      "watch_video",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

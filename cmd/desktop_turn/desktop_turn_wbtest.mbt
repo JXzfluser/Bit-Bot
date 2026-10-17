@@ -524,6 +524,22 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let slides = run_desktop_turn("make slides Q3 Review", turn_id="sl-1")
   assert_true(slides.ok)
   assert_eq(slides.intent, "make_slides")
+  let gi = run_desktop_turn("generate image parity aurora", turn_id="gi-1")
+  assert_true(gi.ok)
+  assert_eq(gi.intent, "generate_image")
+  assert_true(gi.needs_host_ffi)
+  assert_eq(gi.effects[0].kind, "generate_image")
+  let gv = run_desktop_turn("generate video parity clip", turn_id="gv-1")
+  assert_true(gv.ok)
+  assert_eq(gv.intent, "generate_video")
+  assert_eq(gv.effects[0].kind, "generate_video")
+  let wv = run_desktop_turn(
+    "watch video agent-tools/gen-video-gv-1.mp4",
+    turn_id="wv-1",
+  )
+  assert_true(wv.ok)
+  assert_eq(wv.intent, "watch_video")
+  assert_eq(wv.effects[0].kind, "watch_video")
   let cc = run_desktop_turn("code changes README.mbt.md", turn_id="cc-1")
   assert_true(cc.ok)
   assert_eq(cc.intent, "code_changes")

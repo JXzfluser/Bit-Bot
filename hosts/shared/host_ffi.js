@@ -3465,13 +3465,15 @@ function createHostFfi(repoRoot) {
         at,
       });
     }
-    if (kind === "slides_pptx" || kind === "skill_write" || kind === "export_pack") {
-      return recordSendToUser({
-        type: "attachment",
-        path: parsed.path || "",
-        source_kind: kind,
-        at,
-      });
+    if (
+      kind === "slides_pptx" ||
+      kind === "skill_write" ||
+      kind === "export_pack" ||
+      kind === "generate_image" ||
+      kind === "generate_video" ||
+      kind === "watch_video"
+    ) {
+      return null; // SendToUser already recorded in effect handlers
     }
     if (kind === "inbound_reaction") {
       return null; // already recorded above
@@ -4879,6 +4881,195 @@ function createHostFfi(repoRoot) {
         command,
         error: err.message || String(err),
         stdout: err.stdout ? String(err.stdout).slice(0, 4000) : "",
+        stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
+      };
+    }
+  }
+
+  function resolveAgentToolsPath(raw, fallbackName) {
+    let outPath = String(raw || "").trim();
+    if (!outPath) {
+      outPath = path.join(REPO_ROOT, "agent-tools", fallbackName);
+    }
+    if (!path.isAbsolute(outPath)) {
+      outPath = path.join(REPO_ROOT, outPath);
+    }
+    const allowedRoots = [
+      path.join(REPO_ROOT, "agent-tools"),
+      path.join(REPO_ROOT, "data"),
+      path.join(REPO_ROOT, "uploads"),
+    ];
+    const resolved = path.resolve(outPath);
+    if (
+      !allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))
+    ) {
+      return path.join(
+        REPO_ROOT,
+        "agent-tools",
+        path.basename(resolved) || fallbackName,
+      );
+    }
+    return resolved;
+  }
+
+  async function executeMediaProductEffect(kind, command) {
+    // CM-1601/1602/1603 product Host path — real PNG/MP4/frame via host_h5_media.py.
+    const raw = String(command || "");
+    const pipe = raw.indexOf("|");
+    const left = pipe >= 0 ? raw.slice(0, pipe).trim() : raw.trim();
+    const right = pipe >= 0 ? raw.slice(pipe + 1).trim() : "";
+    const at = new Date().toISOString();
+    const mediaDir = path.join(REPO_ROOT, "data", "media", "ops");
+    fs.mkdirSync(mediaDir, { recursive: true });
+    const mediaPy = path.join(REPO_ROOT, "scripts", "host_h5_media.py");
+    try {
+      let args = [];
+      let outPath = null;
+      let framePath = null;
+      let videoPath = null;
+      let prompt = "";
+      if (kind === "generate_image") {
+        outPath = resolveAgentToolsPath(left, `gen-image-${Date.now().toString(36)}.png`);
+        prompt = right || "bitbot generate image";
+        fs.mkdirSync(path.dirname(outPath), { recursive: true });
+        args = ["generate-image", "--out", outPath, "--prompt", prompt];
+      } else if (kind === "generate_video") {
+        outPath = resolveAgentToolsPath(left, `gen-video-${Date.now().toString(36)}.mp4`);
+        prompt = right || "bitbot generate video";
+        fs.mkdirSync(path.dirname(outPath), { recursive: true });
+        args = ["generate-video", "--out", outPath, "--seconds", "1.0"];
+      } else if (kind === "watch_video") {
+        videoPath = resolveAgentToolsPath(left, "watch-input.mp4");
+        framePath = resolveAgentToolsPath(
+          right || "",
+          `watch-frame-${Date.now().toString(36)}.png`,
+        );
+        fs.mkdirSync(path.dirname(framePath), { recursive: true });
+        args = ["watch-video", "--video", videoPath, "--frame-out", framePath];
+      } else {
+        return {
+          kind,
+          ok: false,
+          command,
+          error: `unsupported media kind: ${kind}`,
+        };
+      }
+      const { stdout, stderr } = await execFileAsync(
+        process.env.PYTHON || "python3",
+        [mediaPy, ...args],
+        { cwd: REPO_ROOT, timeout: 90000, maxBuffer: 4 * 1024 * 1024 },
+      );
+      let meta = {};
+      try {
+        meta = JSON.parse(String(stdout || "").trim() || "{}");
+      } catch {
+        meta = {};
+      }
+      const snapPath = path.join(
+        mediaDir,
+        `${kind.replace(/_/g, "-")}-${Date.now().toString(36)}.json`,
+      );
+      let ok = false;
+      let artifactPath = outPath || framePath || null;
+      if (kind === "generate_image") {
+        ok = Boolean(
+          meta.png_magic_ok ||
+            (outPath &&
+              fs.existsSync(outPath) &&
+              fs.readFileSync(outPath).subarray(0, 8).equals(
+                Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+              )),
+        );
+        artifactPath = meta.path || outPath;
+      } else if (kind === "generate_video") {
+        ok = Boolean(
+          meta.video_complete_notified ||
+            (outPath && fs.existsSync(outPath) && fs.statSync(outPath).size > 32),
+        );
+        artifactPath = meta.path || outPath;
+      } else if (kind === "watch_video") {
+        ok = Boolean(
+          meta.png_magic_ok ||
+            (framePath &&
+              fs.existsSync(framePath) &&
+              fs.readFileSync(framePath).subarray(0, 8).equals(
+                Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+              )),
+        );
+        artifactPath = meta.frame_path || framePath;
+      }
+      const artifact = {
+        kind,
+        mode: `host_${kind}`,
+        prompt: prompt || null,
+        media_path: artifactPath,
+        video_path: videoPath || meta.video_path || null,
+        frame_path: kind === "watch_video" ? artifactPath : null,
+        bytes: artifactPath && fs.existsSync(artifactPath)
+          ? fs.statSync(artifactPath).size
+          : meta.bytes || 0,
+        png_magic_ok: Boolean(meta.png_magic_ok),
+        video_complete_notified: Boolean(meta.video_complete_notified),
+        pretend_media: false,
+        pretend_ok: false,
+        i_claimed: false,
+        host_ok: ok,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify({ ...artifact, meta }, null, 2));
+      appendJsonl(path.join(mediaDir, "ops.jsonl"), {
+        ...artifact,
+        path: snapPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: artifactPath || snapPath,
+        snap_path: snapPath,
+        label: kind,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        path: snapPath,
+        media_path: artifactPath,
+        ok,
+        at,
+      });
+      return okJson(kind, command, {
+        ...artifact,
+        path: snapPath,
+        send_to_user: delivery,
+        ok,
+      });
+    } catch (err) {
+      const failPath = path.join(
+        mediaDir,
+        `${kind.replace(/_/g, "-")}-fail-${Date.now().toString(36)}.json`,
+      );
+      const failArt = {
+        kind,
+        ok: false,
+        pretend_media: false,
+        error: err.message || String(err),
+        at,
+      };
+      fs.writeFileSync(failPath, JSON.stringify(failArt, null, 2));
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        path: failPath,
+        ok: false,
+        error: failArt.error,
+        at,
+      });
+      return {
+        kind,
+        ok: false,
+        command,
+        error: failArt.error,
+        stdout: JSON.stringify({ ...failArt, path: failPath }, null, 2),
         stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
       };
     }
@@ -8471,6 +8662,14 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "slides_pptx") {
         results.push(await executeSlidesPptx(cmd));
+        continue;
+      }
+      if (
+        kind === "generate_image" ||
+        kind === "generate_video" ||
+        kind === "watch_video"
+      ) {
+        results.push(await executeMediaProductEffect(kind, cmd));
         continue;
       }
       if (kind === "export_pack") {

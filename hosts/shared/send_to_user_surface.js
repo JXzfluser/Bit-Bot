@@ -88,6 +88,9 @@ function extractDeliveryTypes(turnJsonText) {
           "cloud_artifact_deliver",
           "teammate_create",
           "shell",
+          "generate_image",
+          "generate_video",
+          "watch_video",
         ].includes(h.kind)
       ) {
         types.push("attachment");
