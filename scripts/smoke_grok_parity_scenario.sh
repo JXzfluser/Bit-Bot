@@ -296,7 +296,7 @@ BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18783 BITBOT_TEAMS_TOKEN=smoke-teams BIT
   "${RUN[@]}" --approved "teams send teams:Tsmoke :: live teams post $MARKER" >/tmp/parity-teams-live-post.json || true
 kill "$TEAMS_POST_PID" >/dev/null 2>&1 || true
 wait "$TEAMS_POST_PID" 2>/dev/null || true
-python3 -c "import json;d=json.load(open('/tmp/parity-teams-live-post.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode') in ('live_teams_chat_message','live_teams','live_teams_post') or 'live' in str(p.get('mode') or '');assert p.get('pretend_live') is False;print('parity teams live post ok', p.get('mode'))"
+python3 -c "import json;d=json.load(open('/tmp/parity-teams-live-post.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_teams_chat_message';assert p.get('pretend_live') is False;assert p.get('live_post') is True;print('parity teams live post ok', p.get('mode'))"
 
 # 9k) OAuth sandbox + load skill + code apply + MCP call + send on behalf + pack evidence
 "${RUN[@]}" "setup slack" >/tmp/parity-oauth.json
