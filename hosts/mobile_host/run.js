@@ -133,6 +133,12 @@ try {
       "mcp_call",
       "mcp_discover",
       "voice_relay",
+      "voice_session",
+      "voice_end_write",
+      "credential_list",
+      "x_search",
+      "approval_card",
+      "connectors_probe",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

@@ -394,6 +394,18 @@ python3 -c "import json,os,glob,re;t=open('/tmp/parity-ios-mail.txt').read();ass
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-mcp.txt').read();assert 'mcp_call' in t;assert 'machine_kind=ios' in t;assert 'HostAbi mcp_call path=' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/mcp_call-*.json'));assert mirrors;m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='mcp_call';assert m.get('host_path') and os.path.isfile(m['host_path']);snap=json.load(open(m['host_path']));assert snap.get('pretend_ok') is False;print('parity ios mobile mcp_call delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-vr --approved "voice relay parity-ios-vr :: hello mobile" >/tmp/parity-ios-vr.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-vr.txt').read();assert 'voice_relay' in t;assert 'machine_kind=ios' in t;assert 'HostAbi voice_relay path=' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/voice_relay-*.json'));assert mirrors;m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='voice_relay';assert m.get('host_path') and os.path.isfile(m['host_path']);snap=json.load(open(m['host_path']));assert snap.get('pretend_silent') is False;assert snap.get('mode')=='host_voice_relay';print('parity ios mobile voice_relay delivery mirror ok', m.get('host_path'), mirrors[-1])"
+# Native Host SendToUser surface sources (iOS/Android) must stay wired for multi-end delivery chips.
+python3 -c "
+from pathlib import Path
+ios=Path('hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift').read_text()
+kt=Path('hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt').read_text()
+cv=Path('hosts/ios/BitBotHost/Sources/BitBotHost/ContentView.swift').read_text()
+main=Path('hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivity.kt').read_text()
+assert 'formatStrip' in ios and 'SendToUserChipRow' in ios
+assert 'formatStrip' in kt and 'SendToUser' in kt
+assert 'SendToUserSurface' in cv and 'SendToUserSurface' in main
+print('parity native SendToUser surface wired ok')
+"
 "${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
 python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;assert 'machine_kind=android' in t;print('parity android turn ok')"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-slides "make slides title=MobileParity" >/tmp/parity-ios-slides.txt

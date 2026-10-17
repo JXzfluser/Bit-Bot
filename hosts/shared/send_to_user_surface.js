@@ -92,9 +92,13 @@ function extractDeliveryTypes(turnJsonText) {
       ) {
         types.push("attachment");
         labels.push(h.kind);
-      } else if (h.kind === "voice_session" || h.kind === "voice_relay") {
+      } else if (
+        h.kind === "voice_session" ||
+        h.kind === "voice_relay" ||
+        h.kind === "voice_end_write"
+      ) {
         types.push("voice");
-        labels.push(h.kind);
+        labels.push(h.kind + (p.path || p.end_artifact_path ? "/snap" : ""));
       } else if (h.kind === "approval_card") {
         types.push("widget");
         labels.push("widget:approval");

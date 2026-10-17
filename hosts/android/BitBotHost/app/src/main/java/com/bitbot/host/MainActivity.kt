@@ -4,7 +4,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -12,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +32,7 @@ import kotlinx.coroutines.withContext
  * Android Host shell — MoonBit (`cmd/desktop_turn`) is the product brain.
  * This activity only bridges user text → Host FFI via [TurnBridge].
  * CM-0705: device_permission raises a real OS permission request (never pretend-granted).
+ * CHARTER Delivery: [SendToUserSurface] chips mirror Desktop without inventing live posts.
  */
 class MainActivity : ComponentActivity() {
   private val permissionLauncher =
@@ -43,6 +47,7 @@ class MainActivity : ComponentActivity() {
           mutableStateOf("Bit Bot Android Host\nMachineKind=android\nMoonBit brain via TurnBridge.\n")
         }
         var busy by remember { mutableStateOf(false) }
+        var delivery by remember { mutableStateOf(SendToUserSurface.Summary()) }
         val scope = rememberCoroutineScope()
         Column(
           Modifier
@@ -52,6 +57,28 @@ class MainActivity : ComponentActivity() {
         ) {
           Text("Bit Bot", style = MaterialTheme.typography.headlineLarge)
           Text("Android Host · MoonBit turn v:1", style = MaterialTheme.typography.bodyMedium)
+          if (delivery.labels.isNotEmpty()) {
+            Row(
+              Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(vertical = 6.dp),
+            ) {
+              delivery.labels.take(12).forEach { label ->
+                Surface(
+                  tonalElevation = 2.dp,
+                  shape = MaterialTheme.shapes.small,
+                  modifier = Modifier.padding(end = 6.dp),
+                ) {
+                  Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                  )
+                }
+              }
+            }
+          }
           Text(transcript, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 12.dp))
           OutlinedTextField(
             value = input,
@@ -78,13 +105,16 @@ class MainActivity : ComponentActivity() {
                 if (need.isNotEmpty()) {
                   permissionLauncher.launch(need)
                 }
+                val summary = SendToUserSurface.extract(body)
+                delivery = summary
+                val strip = SendToUserSurface.formatStrip(summary)
                 val cardNote = if (cards.isEmpty()) "" else
                   "\n[host permission cards pretend_granted=false] " +
                     cards.joinToString {
                       "${it.tool}:${it.status}" +
                         (it.cardPath?.let { p -> " card=$p" } ?: "")
                     }
-                transcript += "\n> $text\n$body$cardNote\n"
+                transcript += "\n> $text\n$body$strip$cardNote\n"
                 busy = false
               }
             },

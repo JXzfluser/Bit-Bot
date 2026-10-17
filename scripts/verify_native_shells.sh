@@ -16,14 +16,18 @@ need() {
 need hosts/ios/BitBotHost/Sources/BitBotHost/TurnBridge.swift
 need hosts/ios/BitBotHost/Sources/BitBotHost/BitBotApp.swift
 need hosts/ios/BitBotHost/Sources/BitBotHost/DevicePermissionHost.swift
+need hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift
+need hosts/ios/BitBotHost/Sources/BitBotHost/ContentView.swift
 need hosts/ios/BitBotHost/project.yml
 need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/TurnBridge.kt
 need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivity.kt
 need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/DevicePermissionHost.kt
+need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt
 need hosts/android/BitBotHost/app/build.gradle.kts
 need hosts/android/BitBotHost/app/src/main/AndroidManifest.xml
 
 # CM-0705: Android Host declares camera/mic; never pretend-granted in source.
+# CHARTER Delivery: native SendToUser surfaces mirror shared JS helper kinds.
 python3 - <<'PY'
 from pathlib import Path
 man = Path("hosts/android/BitBotHost/app/src/main/AndroidManifest.xml").read_text()
@@ -32,7 +36,15 @@ kt = Path("hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/DevicePerm
 assert "pretendGranted" in kt and "false" in kt
 swift = Path("hosts/ios/BitBotHost/Sources/BitBotHost/DevicePermissionHost.swift").read_text()
 assert "pretendGranted" in swift
-print("native device_permission Host scaffolds ok")
+ios_stu = Path("hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift").read_text()
+and_stu = Path("hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt").read_text()
+ios_cv = Path("hosts/ios/BitBotHost/Sources/BitBotHost/ContentView.swift").read_text()
+and_main = Path("hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivity.kt").read_text()
+assert "SendToUser" in ios_stu and "mcp_call" in ios_stu and "voice_relay" in ios_stu
+assert "SendToUser" in and_stu and "mcp_call" in and_stu and "voice_relay" in and_stu
+assert "SendToUserSurface" in ios_cv and "SendToUserChipRow" in ios_cv
+assert "SendToUserSurface" in and_main
+print("native device_permission + SendToUser Host scaffolds ok")
 PY
 
 # mobile_host may append SendToUser / HostAbi trailer lines after turn JSON.

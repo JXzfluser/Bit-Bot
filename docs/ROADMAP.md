@@ -273,6 +273,8 @@
 - [x] Mobile delivery mirrors include mcp_call / mcp_discover snap paths
 - [x] Host voice_relay per-op snaps under `data/voice/relays/` (sessions ledger + reply WAV retained; pretend_silent=false)
 - [x] Parity: voice_relay path honesty; mobile delivery mirrors include voice_relay; mail_search/read path asserts
+- [x] Native iOS/Android SendToUser delivery surface (`SendToUserSurface.swift` / `.kt`) chips + strip (mirrors shared JS; no invent)
+- [x] Mobile delivery mirrors expanded: voice_session / voice_end_write / credential_list / x_search / approval_card / connectors_probe
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)
