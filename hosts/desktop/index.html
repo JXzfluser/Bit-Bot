@@ -770,21 +770,24 @@
                 } else if (h.kind === "mcp_discover") {
                   label = "mcp_discover";
                   types.push("attachment");
-                } else if (h.kind === "shared_memory_put" || h.kind === "shared_memory_read") {
-                  label = h.kind.replace("shared_memory_", "mem:") + ":" + (p.scope || "?");
-                  types.push("attachment");
-                } else if (h.kind === "journal_append") {
-                  label =
-                    "journal:" +
-                    (p.event_id || "note") +
-                    (p.path ? "/snap" : "");
-                  types.push("attachment");
                 } else if (h.kind === "shared_memory_put") {
                   label =
                     "mem:put:" +
                     (p.scope || "?") +
                     "/" +
                     (p.key || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "shared_memory_read") {
+                  label =
+                    "mem:read:" +
+                    (p.scope || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "journal_append") {
+                  label =
+                    "journal:" +
+                    (p.event_id || "note") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "voice_relay" && p.reply_media_path) {
