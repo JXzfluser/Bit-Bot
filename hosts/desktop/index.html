@@ -768,7 +768,16 @@
                   label = "export:" + String(p.path || "").split("/").slice(-1)[0];
                   types.push("attachment");
                 } else if (h.kind === "mcp_discover") {
-                  label = "mcp_discover";
+                  label =
+                    "mcp_discover×" +
+                    (p.tool_count != null ? p.tool_count : "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "mcp_namespace") {
+                  label =
+                    "mcp_ns:" +
+                    (p.namespace || "?") +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "shared_memory_put") {
                   label =

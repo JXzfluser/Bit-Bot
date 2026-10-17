@@ -239,6 +239,8 @@
 - [x] Parity: routine_schedule/fire path + teammate_create path honesty
 - [x] Host shared_memory_put + journal_append per-op snapshots (store/events ledger retained)
 - [x] Parity: shared_memory_put/journal_append path + pretend_stored honesty
+- [x] Host mcp_discover durable tools catalog + mcp_namespace register snapshot
+- [x] Parity: mcp_discover tool_count/path honesty (not tmp-only)
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

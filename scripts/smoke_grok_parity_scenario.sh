@@ -95,7 +95,7 @@ python3 -c "import json;d=json.load(open('/tmp/parity-cred-list2.json'));h=next(
 
 # 9d) MCP discover + export pack + subagent + voice relay
 "${RUN[@]}" "mcp discover user-Gmail" >/tmp/parity-mcp.json
-python3 -c "import json;d=json.load(open('/tmp/parity-mcp.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mcp_discover');assert h.get('ok');print('parity mcp_discover ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-mcp.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mcp_discover');p=json.loads(h['stdout']);assert h.get('ok');assert p.get('pretend_empty') is False;assert p.get('pretend_discovered') is False;assert p.get('tool_count',0)>=1;assert p.get('path') and os.path.isfile(p['path']);cat=json.load(open(p['path']));assert cat.get('tool_count')>=1;print('parity mcp_discover ok', p.get('tool_count'), p.get('path'))"
 "${RUN[@]}" "export bot template name=parity-$MARKER" >/tmp/parity-export.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-export.json'));h=next(x for x in d['host_results'] if x.get('kind')=='export_pack');p=json.loads(h['stdout']);assert p.get('secrets_stripped') is True;assert p.get('path') and os.path.isfile(p['path']);print('parity export_pack ok', p.get('path'))"
 "${RUN[@]}" "spawn subagent triage parity-$MARKER" >/tmp/parity-sub.json

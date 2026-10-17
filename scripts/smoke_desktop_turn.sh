@@ -94,7 +94,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-ios-tools.json'));asser
 
 echo "==> Host MCP stdio (real subprocess, not journal-only)"
 node hosts/cli_host/run_turn.js --approved "mcp discover user-Gmail" >/tmp/bitbot-mcp-discover.json
-python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-discover.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='mcp_discover' and h.get('ok') for h in hrs);print('mcp_discover host ok', 'host_continued', d.get('host_continued'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-discover.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mcp_discover' and x.get('ok'));p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_empty') is False;assert p.get('tool_count',0)>=1;assert p.get('path') and os.path.isfile(p['path']);print('mcp_discover host ok', p.get('tool_count'), p.get('path'), 'host_continued', d.get('host_continued'))"
 node hosts/cli_host/run_turn.js --approved "mcp call user-Gmail.search_threads {}" >/tmp/bitbot-mcp-call.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-call.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='mcp_call' and h.get('ok') for h in hrs);print('mcp_call host ok')"
 # CM-2163 product path: Host FFI expands $file: before stdio MCP (search_threads→echo_body)
