@@ -278,6 +278,15 @@
       <div class="name">SendToUser</div>
       <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent</div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Source control</div>
+    <div class="machine-item">
+      <div class="name">git / PR plan</div>
+      <div class="meta" id="source-control-meta">status · plan gated (BITBOT_GH_PR_CREATE)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="sc-status" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Git status</button>
+        <button type="button" id="sc-create-pr" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create PR plan</button>
+      </div>
+    </div>
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) will appear here</pre>
@@ -710,6 +719,15 @@
                       : "";
                   label = "sc:" + mode + gated;
                   types.push("attachment");
+                  const scMeta = document.getElementById("source-control-meta");
+                  if (scMeta) {
+                    scMeta.textContent =
+                      (p.branch || "?") +
+                      " · " +
+                      mode +
+                      (gated ? " · real create gated" : " · create path open") +
+                      (p.pretend_remote_pr ? " · pretend!" : "");
+                  }
                 } else if (h.kind === "teammate_create") {
                   label = "teammate:" + ((p.teammate && p.teammate.id) || "?");
                   types.push("text");
@@ -826,6 +844,12 @@
     });
     document.getElementById("probe-connectors").addEventListener("click", () => {
       runUserTurn("list connectors", {});
+    });
+    document.getElementById("sc-status").addEventListener("click", () => {
+      runUserTurn("source control github", {});
+    });
+    document.getElementById("sc-create-pr").addEventListener("click", () => {
+      runUserTurn("source control create_pr", {});
     });
 
     boot();
