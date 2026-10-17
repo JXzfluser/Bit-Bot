@@ -27,6 +27,8 @@ agent-tools/
 /hosts/desktop/node_modules/
 /hosts/desktop/dist/
 /hosts/desktop/out/
+# Mobile pack staging (scripts/pack-mobile.sh)
+/hosts/dist/
 /desktop/node_modules/
 /desktop/dist/
 /desktop/out/
