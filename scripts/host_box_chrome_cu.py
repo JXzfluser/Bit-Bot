@@ -136,30 +136,33 @@ def plan_actions(command: str) -> List[str]:
     return steps
 
 
-# DOM observe expression — no "|" (host_cdp_actions splits steps on "|").
-# Includes bounding-box targets for vision click planning (Host FFI, not LocalBrain).
+# DOM observe expression — MUST NOT contain "|" (host_cdp_actions splits on "|",
+# including "||"). Use ternaries / ifs only. Host FFI vision, not LocalBrain.
 _DOM_OBSERVE_JS = (
     "evaluate:(function(){try{"
     "function box(el){if(!el)return null;var r=el.getBoundingClientRect();"
-    "if(r.width<2||r.height<2)return null;"
+    "if(r.width<2)return null;if(r.height<2)return null;"
     "return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),"
     "w:Math.round(r.width),h:Math.round(r.height)};}"
-    "var t=(document.title||'').slice(0,120);"
-    "var txt=((document.body&&document.body.innerText)||'').slice(0,600).toLowerCase();"
-    "var searchEl=document.querySelector('input[type=search],input[name*=search i],input[placeholder*=search i],input[aria-label*=search i]');"
-    "var cartEl=document.querySelector('a[href*=cart i],button[aria-label*=cart i],[data-test*=cart i]');"
-    "var primaryBtn=document.querySelector('button[type=submit],button.primary,a.button,[role=button]');"
+    "function pick(sels){for(var i=0;i<sels.length;i++){var el=document.querySelector(sels[i]);if(el)return el;}return null;}"
+    "var t=(document.title?document.title:'').slice(0,120);"
+    "var bodyTxt=document.body?document.body.innerText:'';"
+    "var txt=(bodyTxt?bodyTxt:'').slice(0,600).toLowerCase();"
+    "var searchEl=pick(['input[type=search]','input[name*=search]','input[placeholder*=search]','input[aria-label*=search]','#search','[data-test=searchInput]']);"
+    "var cartEl=pick(['a[href*=cart]','button[aria-label*=cart]','[data-test*=cart]','a[href*=bag]']);"
+    "var primaryBtn=pick(['button[type=submit]','button.primary','a.button','[role=button]','button']);"
     "var inputs=document.querySelectorAll('input,textarea,[contenteditable]').length;"
     "var buttons=document.querySelectorAll('button,a,[role=button]').length;"
     "var links=document.querySelectorAll('a[href]').length;"
-    "return JSON.stringify({"
-    "title:t,text_len:txt.length,inputs:inputs,buttons:buttons,links:links,"
-    "has_search:!!searchEl||/search|query|find/.test(txt),"
-    "has_signin:/sign in|log in|login|sso/.test(txt),"
-    "has_cart:!!cartEl||/cart|bag|checkout|add to/.test(txt),"
-    "has_results:/results|showing|items|products/.test(txt),"
-    "targets:{search:box(searchEl),cart:box(cartEl),primary:box(primaryBtn)}"
-    "});}catch(e){return JSON.stringify({error:String(e)});}})()"
+    "var searchBox=box(searchEl);var cartBox=box(cartEl);var primaryBox=box(primaryBtn);"
+    "var hasSearch=searchEl?true:/search/.test(txt);"
+    "var hasSignin=/sign in/.test(txt);if(!hasSignin)hasSignin=/log in/.test(txt);if(!hasSignin)hasSignin=/login/.test(txt);"
+    "var hasCart=cartEl?true:/cart/.test(txt);if(!hasCart)hasCart=/checkout/.test(txt);"
+    "var hasResults=/results/.test(txt);if(!hasResults)hasResults=/products/.test(txt);"
+    "return JSON.stringify({title:t,text_len:txt.length,inputs:inputs,buttons:buttons,links:links,"
+    "has_search:hasSearch,has_signin:hasSignin,has_cart:hasCart,has_results:hasResults,"
+    "targets:{search:searchBox,cart:cartBox,primary:primaryBox}});"
+    "}catch(e){return JSON.stringify({error:String(e)});}})()"
 )
 
 
@@ -491,6 +494,8 @@ def run_chrome_session(
     command_hint = os.environ.get("BITBOT_CU_COMMAND") or ""
 
     if version:
+        # Let the page settle before DOM observe (SPAs often blank for ~1s).
+        time.sleep(1.0)
         # Observe: DOM structure / keywords (Host FFI, not LocalBrain).
         obs = run_cdp_actions(port, _DOM_OBSERVE_JS, repo_root)
         observe_dom = parse_dom_observe(obs)
@@ -499,6 +504,17 @@ def run_chrome_session(
         # Act: playbook / explicit steps.
         if actions:
             action_result = run_cdp_actions(port, actions, repo_root)
+        # Re-observe DOM after playbook act (targets often appear post-hydration).
+        obs2 = run_cdp_actions(port, _DOM_OBSERVE_JS, repo_root)
+        dom2 = parse_dom_observe(obs2)
+        if dom2 and (
+            not observe_dom.get("targets")
+            or not any((observe_dom.get("targets") or {}).values())
+        ):
+            if any((dom2.get("targets") or {}).values()) or dom2.get("text_len", 0) > (
+                observe_dom.get("text_len") or 0
+            ):
+                observe_dom = dom2
         # Vision: screenshot + PIL hotspots (window mode preferred; headless skip).
         if gui_mode == "window":
             time.sleep(0.5)
