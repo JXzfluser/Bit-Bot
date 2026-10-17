@@ -1,6 +1,7 @@
 ///|
 /// Desktop host CLI: one MoonBit turn → JSON on stdout.
 /// ADR 0002 Host FFI 回注: `--apply-host-results` absorbs Host execution results.
+/// Session memory: `--seed-memory key=value` (repeatable) from Host disk.
 fn main {
   let args = @env.args()
   if args_want_host_continue(args) {
@@ -12,8 +13,9 @@ fn main {
     )
     println(result.to_json_line())
   } else {
-    let text = user_text_from_args(args)
-    let result = run_desktop_turn(text)
+    let seeds = parse_memory_seeds(args)
+    let text = user_text_from_args_skipping_flags(args)
+    let result = run_desktop_turn(text, memory_seeds=seeds)
     println(result.to_json_line())
   }
 }

@@ -83,4 +83,5 @@
 - [x] `scripts/start-desktop.sh` — moon on PATH, npm, Electron under `hosts/desktop`
 - [ ] Live Slack/SMTP/MCP Host FFI (beyond stub channel_send / mail_draft)
 - [ ] Real iOS/Android hosts beyond ListMachines kinds + stub scripts
-- [ ] Session-scoped persistent memory across moon processes
+- [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit
+- [ ] Stronger session TurnContext (thread/channel/machine_id across turns)

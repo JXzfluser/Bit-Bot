@@ -580,9 +580,92 @@ pub fn continue_after_host_ffi(
 }
 
 ///|
+/// Seed profile rows into a fresh InMemoryStore (Host session persistence).
+pub fn seed_memory_store(
+  store : @memory.InMemoryStore,
+  seeds : Array[(String, String)],
+) -> Unit {
+  for pair in seeds {
+    let (k, v) = pair
+    if k != "" {
+      store.update(@memory.UpdateOp::{
+        scope: @memory.Profile,
+        key: k,
+        value: v,
+      })
+    }
+  }
+}
+
+///|
+/// Parse repeated `--seed-memory key=value` from argv.
+pub fn parse_memory_seeds(args : Array[String]) -> Array[(String, String)] {
+  let out : Array[(String, String)] = []
+  let mut i = 0
+  while i < args.length() {
+    if args[i] == "--seed-memory" && i + 1 < args.length() {
+      match parse_memory_kv(unescape_host_arg(args[i + 1])) {
+        Some(pair) => out.push(pair)
+        None => ()
+      }
+      i = i + 2
+      continue
+    }
+    i = i + 1
+  }
+  out
+}
+
+///|
+/// Strip Host session flags from argv before joining user text.
+pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
+  if args.length() == 0 {
+    return ""
+  }
+  let mut start = 1
+  if args.length() >= 2 &&
+      (args[0].contains("moon") ||
+      args[0].contains("node") ||
+      args[0].has_suffix(".exe") ||
+      args[0].contains("desktop_turn")) {
+    start = 1
+  }
+  let parts : Array[String] = []
+  let mut i = start
+  while i < args.length() {
+    let a = args[i]
+    if a == "--" {
+      i = i + 1
+      continue
+    }
+    if a == "--seed-memory" {
+      i = i + 2
+      continue
+    }
+    if a.has_prefix("--") {
+      // Unknown flag: skip flag and optional value if next looks like a value.
+      if i + 1 < args.length() && !args[i + 1].has_prefix("--") {
+        i = i + 2
+      } else {
+        i = i + 1
+      }
+      continue
+    }
+    parts.push(a)
+    i = i + 1
+  }
+  parts.join(" ")
+}
+
+///|
 /// Run open_turn → policy (intent) → deliver; Host effects stay plans until Host
 /// executes and calls continue_after_host_ffi (ADR 0002).
-pub fn run_desktop_turn(user_text : String, turn_id~ : String = "desktop-1") -> DesktopTurnResult {
+/// `memory_seeds`: Host-persisted profile rows reinjected each process.
+pub fn run_desktop_turn(
+  user_text : String,
+  turn_id~ : String = "desktop-1",
+  memory_seeds~ : Array[(String, String)] = [],
+) -> DesktopTurnResult {
   let mods = @bitbot.registered_modules()
   let trimmed = user_text.trim().to_owned()
   guard trimmed != "" else {
@@ -615,6 +698,7 @@ pub fn run_desktop_turn(user_text : String, turn_id~ : String = "desktop-1") -> 
     }
     MemoryUpdate(key~, value~) => {
       let store = @memory.InMemoryStore::new()
+      seed_memory_store(store, memory_seeds)
       store.update(@memory.UpdateOp::{
         scope: @memory.Profile,
         key: key,
@@ -622,8 +706,8 @@ pub fn run_desktop_turn(user_text : String, turn_id~ : String = "desktop-1") -> 
       })
       let entries = store.recall(@memory.RecallQuery::{
         scope: @memory.Profile,
-        key_prefix: Some(key),
-        limit: 8,
+        key_prefix: None,
+        limit: 64,
       })
       let rows = memory_rows(entries)
       let reply = "Memory updated (profile): " + key + " = " + value
@@ -631,17 +715,20 @@ pub fn run_desktop_turn(user_text : String, turn_id~ : String = "desktop-1") -> 
     }
     MemoryRecall(prefix~) => {
       let store = @memory.InMemoryStore::new()
-      // Seed a demo profile row so recall shows @memory wiring in a fresh process.
-      store.update(@memory.UpdateOp::{
-        scope: @memory.Profile,
-        key: "demo.user",
-        value: "Bit Bot desktop host",
-      })
+      seed_memory_store(store, memory_seeds)
+      // Demo row only when Host has no session seeds yet.
+      if memory_seeds.length() == 0 {
+        store.update(@memory.UpdateOp::{
+          scope: @memory.Profile,
+          key: "demo.user",
+          value: "Bit Bot desktop host",
+        })
+      }
       let pref = if prefix == "" { None } else { Some(prefix) }
       let entries = store.recall(@memory.RecallQuery::{
         scope: @memory.Profile,
         key_prefix: pref,
-        limit: 16,
+        limit: 64,
       })
       let rows = memory_rows(entries)
       let reply =

@@ -59,6 +59,31 @@ test "desktop_turn_memory_update_and_recall" {
 }
 
 ///|
+test "desktop_turn_session_memory_seeds" {
+  let seeds : Array[(String, String)] = [("favorite_color", "blue"), ("city", "SF")]
+  let r = run_desktop_turn(
+    "recall favorite",
+    turn_id="mem-seed",
+    memory_seeds=seeds,
+  )
+  assert_true(r.ok)
+  assert_eq(r.intent, "memory_recall")
+  assert_true(r.memory.length() >= 1)
+  assert_eq(r.memory[0].key, "favorite_color")
+  let u = run_desktop_turn(
+    "remember city=NYC",
+    turn_id="mem-seed-u",
+    memory_seeds=seeds,
+  )
+  assert_true(u.ok)
+  assert_true(u.memory.length() >= 2)
+  let args = ["exe", "--seed-memory", "a=1", "--seed-memory", "b=2", "recall", "a"]
+  let parsed = parse_memory_seeds(args)
+  assert_eq(parsed.length(), 2)
+  assert_eq(user_text_from_args_skipping_flags(args), "recall a")
+}
+
+///|
 test "desktop_turn_host_effect_needs_ffi" {
   let r = run_desktop_turn("shell echo hi", turn_id="fx-1")
   assert_true(r.ok)

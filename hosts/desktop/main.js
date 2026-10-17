@@ -10,6 +10,13 @@ const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const MOON_BIN = process.env.MOON_BIN || "moon";
 const MOON_TARGET = process.env.BITBOT_MOON_TARGET || "native";
+const fs = require("fs");
+const SESSION_MEMORY_PATH = path.join(
+  REPO_ROOT,
+  "data",
+  "memory",
+  "desktop-host.json",
+);
 
 /** Dangerous patterns — Host FFI refuse (Grok-like irreversible gate). */
 const SHELL_DENY =
@@ -188,6 +195,7 @@ ipcMain.handle("bitbot:turn", async (_event, text) => {
     "--target",
     MOON_TARGET,
     "--",
+    ...memorySeedArgs(),
     userText,
   ]);
   const raw = lastJsonLine(stdout || stderr);
@@ -201,6 +209,10 @@ ipcMain.handle("bitbot:turn", async (_event, text) => {
       raw,
       stderr: stderr.trim(),
     };
+  }
+  // Persist MoonBit memory snapshot for next turn (Host disk; kernel stays pure).
+  if (parsed && parsed.ok && Array.isArray(parsed.memory) && parsed.memory.length) {
+    saveSessionMemory(parsed.memory);
   }
   // Host FFI: MoonBit plans effects; Desktop executes; results re-injected
   // into MoonBit via --apply-host-results (ADR 0002 TurnEvent 回注).
@@ -298,6 +310,45 @@ function encodeHostArg(s) {
     .replace(/\\/g, "\\\\")
     .replace(/\n/g, "\\n")
     .replace(/\t/g, "\\t");
+}
+
+/** Host-persisted profile memory for MoonBit --seed-memory (session scope). */
+function loadSessionMemory() {
+  try {
+    if (!fs.existsSync(SESSION_MEMORY_PATH)) return [];
+    const raw = JSON.parse(fs.readFileSync(SESSION_MEMORY_PATH, "utf8"));
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((e) => e && e.key != null && e.value != null)
+      .map((e) => ({ key: String(e.key), value: String(e.value) }));
+  } catch {
+    return [];
+  }
+}
+
+function saveSessionMemory(rows) {
+  try {
+    fs.mkdirSync(path.dirname(SESSION_MEMORY_PATH), { recursive: true });
+    const cleaned = (Array.isArray(rows) ? rows : [])
+      .filter((e) => e && e.key != null)
+      .map((e) => ({
+        key: String(e.key),
+        value: String(e.value ?? ""),
+        scope: String(e.scope || "profile"),
+      }));
+    fs.writeFileSync(SESSION_MEMORY_PATH, JSON.stringify(cleaned, null, 2));
+  } catch (err) {
+    console.error("saveSessionMemory failed", err);
+  }
+}
+
+function memorySeedArgs() {
+  const seeds = loadSessionMemory();
+  const args = [];
+  for (const s of seeds) {
+    args.push("--seed-memory", encodeHostArg(`${s.key}=${s.value}`));
+  }
+  return args;
 }
 
 app.whenReady().then(() => {
