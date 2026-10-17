@@ -1,7 +1,7 @@
 {
   "provider": "finance",
-  "idp_base": "http://127.0.0.1:46131",
-  "callback_base": "http://127.0.0.1:52393",
+  "idp_base": "http://127.0.0.1:41809",
+  "callback_base": "http://127.0.0.1:47671",
   "namespace_before": "NeedsAuth",
   "namespace_after": "Ready",
   "oauth_callback_observed": true,

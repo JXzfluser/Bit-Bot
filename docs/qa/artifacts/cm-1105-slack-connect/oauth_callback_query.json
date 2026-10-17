@@ -1,9 +1,9 @@
 {
   "observed": true,
-  "raw_path": "/callback?code=HDkGfp6wwPsqem-gXpKgG0f30sepIjvi&state=7Cf0oAabXWqjp222",
+  "raw_path": "/callback?code=vuWdXFDOkMkel3YO_oV1P3wz4p1RS_mp&state=kOuIcN3Y8QGlfBkZ",
   "has_code": true,
   "state_matches": true,
-  "state": "7Cf0oAabXWqjp222",
+  "state": "kOuIcN3Y8QGlfBkZ",
   "error": null,
-  "code_prefix": "HDkGfp6w"
+  "code_prefix": "vuWdXFDO"
 }

@@ -1,1 +1,1 @@
-http://127.0.0.1:40255/authorize?response_type=code&client_id=bitbot-h4-sandbox&redirect_uri=http%3A%2F%2F127.0.0.1%3A43563%2Fcallback&state=lqwxs0OOofpgOavd&provider=outlook&scope=outlook.sandbox
+http://127.0.0.1:56817/authorize?response_type=code&client_id=bitbot-h4-sandbox&redirect_uri=http%3A%2F%2F127.0.0.1%3A42597%2Fcallback&state=Q2QOfPTRvMA8UT-c&provider=outlook&scope=outlook.sandbox

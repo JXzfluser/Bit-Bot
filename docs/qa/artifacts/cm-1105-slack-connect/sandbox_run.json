@@ -1,7 +1,7 @@
 {
   "provider": "slack",
-  "idp_base": "http://127.0.0.1:46707",
-  "callback_base": "http://127.0.0.1:53447",
+  "idp_base": "http://127.0.0.1:33887",
+  "callback_base": "http://127.0.0.1:55845",
   "namespace_before": "NeedsAuth",
   "namespace_after": "Connected",
   "oauth_callback_observed": true,

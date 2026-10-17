@@ -1,7 +1,7 @@
 {
   "http_status": 200,
-  "access_token_sha256_8": "56d48521",
-  "access_token_prefix": "atk_om\u2026",
+  "access_token_sha256_8": "c1d90d22",
+  "access_token_prefix": "atk_m1\u2026",
   "token_type": "Bearer",
   "expires_in": 3600,
   "provider": "slack",

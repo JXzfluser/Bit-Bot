@@ -1,4 +1,4 @@
 # CM-0806 throwaway jar digests — hashed IN PLACE; DB never copied to artifacts
-seed path=/tmp/h5-0806-profile.hVaVYn/Default/Network/Cookies sha256=e74787d2b6017ac8f3a0e6fb4656db324674a17574b0814c80958c0b5a6b0e49 bytes=16384 cookie_rows=1 rows_method=python3_sqlite3_readonly_in_place
-before_update path=/tmp/h5-0806-profile.hVaVYn/Default/Network/Cookies sha256=e74787d2b6017ac8f3a0e6fb4656db324674a17574b0814c80958c0b5a6b0e49 bytes=16384 cookie_rows=1 rows_method=python3_sqlite3_readonly_in_place
-after_update path=/tmp/h5-0806-profile.hVaVYn/Default/Network/Cookies sha256=e74787d2b6017ac8f3a0e6fb4656db324674a17574b0814c80958c0b5a6b0e49 bytes=16384 cookie_rows=1 rows_method=python3_sqlite3_readonly_in_place
+seed path=/tmp/h5-0806-profile.IpuEnj/Default/Network/Cookies sha256=bcb1f540475a02b1041ed755607973b6dc463ef2bc21fcc7361af224f499b149 bytes=16384 cookie_rows=1 rows_method=python3_sqlite3_readonly_in_place
+before_update path=/tmp/h5-0806-profile.IpuEnj/Default/Network/Cookies sha256=bcb1f540475a02b1041ed755607973b6dc463ef2bc21fcc7361af224f499b149 bytes=16384 cookie_rows=1 rows_method=python3_sqlite3_readonly_in_place
+after_update path=/tmp/h5-0806-profile.IpuEnj/Default/Network/Cookies sha256=bcb1f540475a02b1041ed755607973b6dc463ef2bc21fcc7361af224f499b149 bytes=16384 cookie_rows=1 rows_method=python3_sqlite3_readonly_in_place

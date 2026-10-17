@@ -57,6 +57,8 @@
 
 **出口**：Host 侧集成入口跑通 H0；产物落 `docs/qa/artifacts/`。与 MoonBit核 **Live 骨架**并行。
 
+> **状态（2026-10-17）**：**smoke + I-PASS 完成**（Bit验证）。
+
 ### Wave H1 — 真屏与 Desktop（`:1`）· 4
 
 | ID | 主题 | I 成功信号 |
@@ -67,6 +69,8 @@
 | CM-0806 | Update 后登录态 | 真 Update Computer 后 cookie/jar 仍在 |
 
 **出口**：CM-0605 host-integration GAP → **I PASS**（矩阵 U-PASS 不变）。
+
+> **状态（2026-10-17）**：**smoke + I-PASS 完成**（含 CM-0806 隔离 throwaway jar；共享 9223 untouched）。
 
 ### Wave H2 — Host UI（真控件）· 14
 
@@ -91,6 +95,7 @@
 
 > **QA 注脚（Bitbot · 2026-10-17 14:34 Asia/Shanghai）**：H2 升 I **以 C′ 为准**（Bit Bot 自有 Live Host UI 真帧）；**拒 B**；**A（Grok/Cursor 闭源钩子）非升 I 前置**——若他文曾写「A=唯一 I」语义，以本注脚与 [`qa/gaps.md`](qa/gaps.md)「H2 升 I 口径」、[`host-integration-interface-gaps.md`](host-integration-interface-gaps.md) §3.0 覆盖。不改本路线正文大段。
 
+> **状态（2026-10-17）**：**smoke + I-PASS 完成**（×14）。
 
 ### Wave H3 — Host FFI（Shell/FS/机器/面板）· 4
 
@@ -100,6 +105,8 @@
 | CM-2174 | 跨代理共享 box FS | 两助手真同盘异桌面 |
 | CM-0705 | 设备本地工具权限卡 | 真 OS 权限路径（或平台子集声明） |
 | CM-0411 | Webhook key 不透明 | 真面板复制；工具读 key → 拒 |
+
+> **状态（2026-10-17）**：**smoke + I-PASS 完成**（0705=平台子集；真手机 OS 卡 residual 仍 GAP）。
 
 ### Wave H4 — 真 MCP / OAuth / 出网（库存内）· 7
 
@@ -115,6 +122,8 @@
 
 > **库存外延（不计入 41，勿抢占 H0–H1）**：若后续将 CM-0901–0903/0905/0906/0908 等列入 host-integration-gaps，再并入本波；当前以 41 行表为准。
 
+> **状态（2026-10-17）**：**smoke + I-PASS 完成**（OAuth 三项用 **local sandbox IdP**，非生产）。
+
 ### Wave H5 — 媒体 / 卡 / 像素渲染 · 9
 
 | ID | 主题 | I 成功信号 |
@@ -128,6 +137,8 @@
 | CM-2101 | ReactToMessage pill | 真消息 pill 可见/toggle |
 | CM-2128 | 出站 React end_turn | 真 pill 像素 |
 | CM-2103 | math / mermaid | 真公式/图画渲染 |
+
+> **状态（2026-10-17）**：**smoke + I-PASS 完成**（×9）。41 行库存 **open GAP=0**；phone residual 另记。
 
 ## 5. 与 ROADMAP 映射
 

@@ -1,0 +1,60 @@
+name: Moon CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  moon:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: moon check
+        run: |
+          moon version --all
+          moon check
+
+      - name: moon test
+        run: moon test
+
+      # Best-effort only: Live Host / Chrome / display may be absent on ubuntu-latest.
+      - name: Optional host_h4_smoke batch1
+        continue-on-error: true
+        run: |
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "skip: python3 missing"
+            exit 0
+          fi
+          if [[ ! -x scripts/host_h4_smoke.sh ]]; then
+            echo "skip: scripts/host_h4_smoke.sh missing"
+            exit 0
+          fi
+          bash scripts/host_h4_smoke.sh batch1
+
+      - name: Optional host_h5_smoke media
+        continue-on-error: true
+        run: |
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "skip: python3 missing"
+            exit 0
+          fi
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            echo "skip: ffmpeg missing"
+            exit 0
+          fi
+          if [[ ! -x scripts/host_h5_smoke.sh ]]; then
+            echo "skip: scripts/host_h5_smoke.sh missing"
+            exit 0
+          fi
+          bash scripts/host_h5_smoke.sh media

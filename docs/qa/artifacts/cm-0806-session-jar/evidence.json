@@ -7,12 +7,12 @@
     "shared_cdp_9223": "untouched",
     "chrome_profile": "untouched",
     "iso_cdp_port": 9400,
-    "iso_profile": "/tmp/h5-0806-profile.hVaVYn"
+    "iso_profile": "/tmp/h5-0806-profile.IpuEnj"
   },
   "update_computer_phase": "completed",
   "jar_intact_across_update": true,
-  "sha_before": "e74787d2b6017ac8f3a0e6fb4656db324674a17574b0814c80958c0b5a6b0e49",
-  "sha_after": "e74787d2b6017ac8f3a0e6fb4656db324674a17574b0814c80958c0b5a6b0e49",
+  "sha_before": "bcb1f540475a02b1041ed755607973b6dc463ef2bc21fcc7361af224f499b149",
+  "sha_after": "bcb1f540475a02b1041ed755607973b6dc463ef2bc21fcc7361af224f499b149",
   "throwaway_jar_only": true,
   "cookies_copied_to_artifacts": false,
   "i_claimed": false,

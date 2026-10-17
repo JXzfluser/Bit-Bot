@@ -925,20 +925,28 @@ Smoke: `moon check` ✅ · `moon test` **296** passed / 0 failed（目标 290+6�
 
 ### H4/H5 Bit验证升裁（2026-10-17 17:07 Asia/Shanghai）
 
-**Bit验证 promoted H4/H5 READY → I-PASS.** I-PASS **24→37**；open GAP **17→4**（**0806 / 1105 / 2109 / 2120**）。U=234 不动。详见 `docs/qa/gaps.md`「升裁 H4·批1」「升裁 H5·批1」与 `host-integration-gaps.md`。
+**Bit验证 promoted H4/H5 READY → I-PASS.** I-PASS **24→37**；open GAP **17→4**（当时 **0806 / 1105 / 2109 / 2120**）。U=234 不动。详见 `docs/qa/gaps.md`「升裁 H4·批1」「升裁 H5·批1」与 `host-integration-gaps.md`。
 
 - **H4 I-PASS**: CM-2163 / 2164 / 2146 / 1703（左列 READY 全过）。
 - **H5 I-PASS**: CM-1601 / 1602 / 1603 / 2157 / 1807 / 2131 / 2101 / 2128 / 2103。
-- **拒升（GAP 保留）**: CM-1105 / 2109 / 2120（NOT_READY OAuth）；CM-0806（仍 GAP / NOT_READY residual）。
+- **当时拒升**: CM-1105 / 2109 / 2120（NOT_READY OAuth）；CM-0806（NOT_READY residual）— **后于 09:14 升裁**（见下）。
+
+### H4·OAuth + CM-0806 Bit验证升裁（2026-10-17 09:14 Asia/Shanghai）
+
+**Bit验证 promoted final four READY → I-PASS.** I-PASS **37→41**；open GAP **4→0**（41 行库存）。U=234 不动。详见 `docs/qa/gaps.md`「升裁 H4·OAuth + CM-0806」。
+
+- **OAuth I-PASS**（local sandbox IdP，非生产）：CM-1105 / 2109 / 2120；§4 真 callback；`stub_authenticate=false`。
+- **CM-0806 I-PASS**：隔离 throwaway jar + HostUiShell Update Computer completed；shared CDP **9223 untouched**；无 Cookie 副本入 artifacts。
+- **Residual（非 open 库存行）**：CM-0705 真手机 OS 权限卡仍 GAP/todo。
 
 ## HostAbi Live H5 smoke (MoonBit核 · 2026-10-17 Asia/Shanghai)
 
-**H5 smoke landed; I not claimed (`i_claimed=false`). Matrix I-status unchanged — Bit验证 decides. Do not demote U=234. Do not delete open GAP rows (esp CM-0806).**
+**H5 smoke landed; Bit验证升裁见上。 Do not demote U=234.**
 
 - Smoke: `scripts/host_h5_smoke.sh` (+ `host_h5_media.py`) → `docs/qa/artifacts/cm-XXXX-*/`.
-- Targets: `cm-1601|cm-1602|cm-1603|cm-2157|cm-1807|cm-2131|cm-2101|cm-2128|cm-2103|media|ui|all`.
+- Targets: `cm-1601|cm-1602|cm-1603|cm-2157|cm-1807|cm-2131|cm-2101|cm-2128|cm-2103|media|ui|all` + `cm-0806`.
 - Media READY paths: Pillow PNG (1601/2157), ffmpeg mp4+frame (1602/1603), python-pptx PK zip (1807) under `/workspace/agent-tools/`.
 - UI C′ paths: HostUiShell `/api/host/*` pills (2101/2128), math/mermaid SVG (2103), cursor-agent card + isolated chrome open (2131); never CDP 9223 / chrome-profile.
-- Residuals: CM-0806 **NOT_READY** (shared session rule — no cookie copy); CM-0705 platform_subset reinforced only.
+- CM-0806: isolated throwaway profile jar + Update Computer lifecycle → **I-PASS**（09:14）。CM-0705 platform_subset reinforced；phone residual 另记。
 - Kernel: `box_host/h5_probes.mbt` (`H5MediaEvidence` / `run_h5_probe`; `i_claimed=false`). Mock MediaHost U tests **untouched**.
-- **Bit验证（17:07）**: 上列九 READY 已升 I-PASS；0806 GAP 保留（见上「H4/H5 Bit验证升裁」）。
+- **Bit验证**: 九 READY（17:07）+ 0806（09:14）均已升 I-PASS。

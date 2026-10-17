@@ -1,1 +1,1 @@
-http://127.0.0.1:46131/authorize?response_type=code&client_id=bitbot-h4-sandbox&redirect_uri=http%3A%2F%2F127.0.0.1%3A52393%2Fcallback&state=UPIWH7wgeYlygvWS&provider=finance&scope=finance.sandbox
+http://127.0.0.1:41809/authorize?response_type=code&client_id=bitbot-h4-sandbox&redirect_uri=http%3A%2F%2F127.0.0.1%3A47671%2Fcallback&state=Z-5Ry5_w_wA4CTAB&provider=finance&scope=finance.sandbox

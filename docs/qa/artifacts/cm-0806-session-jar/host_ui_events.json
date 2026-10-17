@@ -1,27 +1,27 @@
 {
   "events": [
     {
-      "id": "ab340f72-cc31-49d1-932b-8e4644920fe1",
-      "ts": 1792228197.9655101,
+      "id": "b4e4fa95-8511-4ce9-acae-8eedeb9c79f6",
+      "ts": 1792228441.0024567,
       "kind": "SettingsOpened",
       "entry": "command-palette",
       "anchor": "update-computer"
     },
     {
-      "id": "c74884a9-51c2-4369-abc6-0de9dd76b04c",
-      "ts": 1792228197.9655182,
+      "id": "b7bb5e57-15be-4e94-9587-d26c9a0d9e9a",
+      "ts": 1792228441.002465,
       "kind": "SettingsAnchorVisible",
       "anchor": "update-computer"
     },
     {
-      "id": "0a22ffd0-3a33-4ed5-a2f8-09da5ec72406",
-      "ts": 1792228197.965523,
+      "id": "9feb5695-7b23-4e36-aad1-6af35f981d05",
+      "ts": 1792228441.0024695,
       "kind": "UpdateComputerPhaseChanged",
       "phase": "prompted"
     },
     {
-      "id": "8a29f0e1-0cb2-49bf-aea0-bae01388dd9f",
-      "ts": 1792228197.9864802,
+      "id": "4f2067cc-78fb-43b1-8480-4aaaa4bf4af0",
+      "ts": 1792228441.0568862,
       "kind": "SettingsAnchorViewportReported",
       "anchor_id": "update-computer",
       "scrollTop": 432,
@@ -39,14 +39,14 @@
       "inViewport": true
     },
     {
-      "id": "bde22854-dcf0-421a-b8dc-7a67e674905b",
-      "ts": 1792228198.4419086,
+      "id": "76a25146-efb0-493d-b853-eb2acfd3350c",
+      "ts": 1792228441.4715898,
       "kind": "UpdateComputerPhaseChanged",
       "phase": "awaiting-second-confirm"
     },
     {
-      "id": "3cdf0817-b518-4518-bade-b269e2e1fe26",
-      "ts": 1792228198.5833046,
+      "id": "44d30dc2-15a7-458e-aa10-1f303b62cbf7",
+      "ts": 1792228441.5074549,
       "kind": "SettingsAnchorViewportReported",
       "anchor_id": "update-computer",
       "scrollTop": 432,
@@ -64,14 +64,14 @@
       "inViewport": true
     },
     {
-      "id": "66c49f3d-5ed8-444b-b67d-d6abc5d3f06c",
-      "ts": 1792228198.922287,
+      "id": "911902db-9123-4401-8d0a-961e7cb75ccd",
+      "ts": 1792228441.9413528,
       "kind": "UpdateComputerPhaseChanged",
       "phase": "completed"
     },
     {
-      "id": "89d7f65e-16e6-4a42-bc0a-d73425db5eda",
-      "ts": 1792228199.0341783,
+      "id": "d12166d3-a552-42cb-ab7e-5e582288462b",
+      "ts": 1792228441.957279,
       "kind": "SettingsAnchorViewportReported",
       "anchor_id": "update-computer",
       "scrollTop": 432,

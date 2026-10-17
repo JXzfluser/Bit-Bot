@@ -93,33 +93,33 @@
     },
     "event_tail": [
       {
-        "id": "ab340f72-cc31-49d1-932b-8e4644920fe1",
-        "ts": 1792228197.9655101,
+        "id": "b4e4fa95-8511-4ce9-acae-8eedeb9c79f6",
+        "ts": 1792228441.0024567,
         "kind": "SettingsOpened",
         "entry": "command-palette",
         "anchor": "update-computer"
       },
       {
-        "id": "c74884a9-51c2-4369-abc6-0de9dd76b04c",
-        "ts": 1792228197.9655182,
+        "id": "b7bb5e57-15be-4e94-9587-d26c9a0d9e9a",
+        "ts": 1792228441.002465,
         "kind": "SettingsAnchorVisible",
         "anchor": "update-computer"
       },
       {
-        "id": "0a22ffd0-3a33-4ed5-a2f8-09da5ec72406",
-        "ts": 1792228197.965523,
+        "id": "9feb5695-7b23-4e36-aad1-6af35f981d05",
+        "ts": 1792228441.0024695,
         "kind": "UpdateComputerPhaseChanged",
         "phase": "prompted"
       }
     ],
     "audit": {
-      "id": "a46c5433-42c4-4ded-875d-96e8eb6592db",
+      "id": "8e7ef141-79e1-4123-a440-8d536effcaf0",
       "tool_name": "host_ui:request_update_computer",
       "duration_ms": 0,
       "ok": true,
       "detail": "Update Computer prompted (not Reset); two-step required",
       "artifact_path": "/workspace/docs/qa/artifacts/cm-0806-session-jar",
-      "ts": 1792228197.9655268
+      "ts": 1792228441.0024745
     }
   },
   "state": {
@@ -216,21 +216,21 @@
   "events": {
     "events": [
       {
-        "id": "ab340f72-cc31-49d1-932b-8e4644920fe1",
-        "ts": 1792228197.9655101,
+        "id": "b4e4fa95-8511-4ce9-acae-8eedeb9c79f6",
+        "ts": 1792228441.0024567,
         "kind": "SettingsOpened",
         "entry": "command-palette",
         "anchor": "update-computer"
       },
       {
-        "id": "c74884a9-51c2-4369-abc6-0de9dd76b04c",
-        "ts": 1792228197.9655182,
+        "id": "b7bb5e57-15be-4e94-9587-d26c9a0d9e9a",
+        "ts": 1792228441.002465,
         "kind": "SettingsAnchorVisible",
         "anchor": "update-computer"
       },
       {
-        "id": "0a22ffd0-3a33-4ed5-a2f8-09da5ec72406",
-        "ts": 1792228197.965523,
+        "id": "9feb5695-7b23-4e36-aad1-6af35f981d05",
+        "ts": 1792228441.0024695,
         "kind": "UpdateComputerPhaseChanged",
         "phase": "prompted"
       }

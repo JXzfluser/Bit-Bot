@@ -1,3 +1,3 @@
-{"ts": 1792228190.4223132, "kind": "authorize_shown", "auth_req": "vkYmf1c4jB_zc8qFatZe4A", "provider": "finance", "redirect_uri": "http://127.0.0.1:52393/callback"}
-{"ts": 1792228190.439977, "kind": "authorize_allowed", "provider": "finance", "code_prefix": "9WDA6Hvi"}
-{"ts": 1792228190.4423687, "kind": "token_issued", "provider": "finance", "access_prefix": "atk_stZK-6"}
+{"ts": 1792228435.9307837, "kind": "authorize_shown", "auth_req": "Wn8XPUW-hm1uuu85VDmXIw", "provider": "finance", "redirect_uri": "http://127.0.0.1:47671/callback"}
+{"ts": 1792228435.9453535, "kind": "authorize_allowed", "provider": "finance", "code_prefix": "rb2PXSC6"}
+{"ts": 1792228435.9470053, "kind": "token_issued", "provider": "finance", "access_prefix": "atk_FHXZUX"}

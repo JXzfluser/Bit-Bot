@@ -39,7 +39,7 @@
 | CM-19xx | 设置与恢复 UI |
 | CM-20xx | 首启/隐藏 cue、语言、时区、voice |
 
-**原子条目数**: 234  ·  **全量 PASS (U)**: **234**  ·  **FAIL**: **0**  ·  **收口完成**  ·  **P0**: 117  ·  **P1**: 91  ·  **P2**: 26  ·  **I-PASS**: **37**  ·  **I-GAP**: **4**  ·  **I-todo**: **193**  ·  审定：2026-10-17 17:07 Asia/Shanghai · H4/H5 批1 I 升裁（+13 READY）；open 0806/1105/2109/2120；前序 H0–H3
+**原子条目数**: 234  ·  **全量 PASS (U)**: **234**  ·  **FAIL**: **0**  ·  **收口完成**  ·  **P0**: 117  ·  **P1**: 91  ·  **P2**: 26  ·  **I-PASS**: **41**  ·  **I-GAP**: **0**  ·  **I-todo**: **193**  ·  审定：2026-10-17 09:14 Asia/Shanghai · H4·OAuth + CM-0806 升裁（+4）；41 行库存 open=0；0705 phone residual 另记；前序 H0–H5
 
 
 ## P0 全集
@@ -152,7 +152,7 @@
 | CM-0803 | DESK-04/DESK-05 · D-DESK | sign-in 技能流 | 安全表单→交棒屏幕；密码不进聊天明文 | `skills + connectors/commerce + security` | P0 | `agents/computer_use/acceptance_cm0803_test.mbt`::acceptance_CM-0803_signin_secret_no_plaintext — SecretRequest/UserForm 无明文密码；ChatPlain 拒 | todo | PASS |
 | CM-0804 | COMM-04/BUY-01 · D-COMM/D-BUY | RequestUserForm / in-chat-forms | 登录/卡号/OTP 等安全填充 | `ui_protocol + skills` | P0 | `ui_protocol/acceptance_cm0804_test.mbt`::acceptance_CM-0804_user_form_snapshot_no_blind_retry — 表单目标由 snapshot；失败不盲重试同表 | todo | PASS |
 | CM-0805 | D-DESK | request_box_help | 无法表单表达时交用户操作桌面 | `agents/computer_use + ui_protocol` | P1 | `agents/computer_use/acceptance_cm0805_test.mbt`::acceptance_CM-0805_request_box_help_handoff_is_ask — 不预问「要交棒吗」；handoff 即询问 | todo | PASS |
-| CM-0806 | D-DESK | 登录态持久 | box Update 后保留 logins；软件需重装 | `Host + tools/box` | P0 | `box_host/acceptance_cm0806_1903_1905_test.mbt`::acceptance_CM-0806_login_persist_after_update — **kernel-contract PASS**；host-integration GAP 另跟踪 | GAP | PASS |
+| CM-0806 | D-DESK | 登录态持久 | box Update 后保留 logins；软件需重装 | `Host + tools/box` | P0 | `box_host/acceptance_cm0806_1903_1905_test.mbt`::acceptance_CM-0806_login_persist_after_update — **kernel-contract PASS**；host-integration **I-PASS**（iso throwaway jar + Update；gaps「升裁 H4·OAuth + CM-0806」） | PASS | PASS |
 | CM-0901 | MCP-01 · D-MCP | GetDynamicTools | 发现命名空间/工具 schema | `connectors/mcp + tools/dynamic` | P0 | `tools/acceptance_mcp_test.mbt`::acceptance_CM-0901_discover_then_full_description — 调用前必须发现；截断描述可再取全文 | todo | PASS |
 | CM-0902 | FILE-07/MCP-02 · D-FILE/D-MCP | CallDynamicTool | 调用 MCP 工具；可选 write_to_file；$file: 注入 | `tools/dynamic` | P0 | `tools/acceptance_cm0902_schema_test.mbt`::acceptance_CM-0902_schema_required_and_write_to_file — schema 正向/缺必填；write_to_file 落盘 | todo | PASS |
 | CM-0903 | MCP-03 · D-MCP | Authenticate / needsAuth | 未授权命名空间出连接卡；助手不可代填 token | `connectors/mcp + security` | P0 | `tools/acceptance_mcp_test.mbt`::acceptance_CM-0905_namespace_status_blocks_unusable — needsAuth 不重试调用；出卡 | todo | PASS |
@@ -177,7 +177,7 @@
 | CM-1102 | CHAN-02 · D-CHAN | Slack 地址模型 | slack:C:ts / slack:U / slack:D 解析与投递 | `channels/slack` | P0 | `channels/acceptance_cm110x_test.mbt`::acceptance_CM-1102_slack_thread_dm_toplevel — 线程/DM/顶层语义正确 | todo | PASS |
 | CM-1103 | D-CHAN | Personal Slack 限制 | 个人 bot 仅向 owner DM 发送 | `channels/slack` | P1 | `channels/acceptance_cm1103_test.mbt`::acceptance_CM-1103_personal_slack_owner_dm_only — 共享频道请求被礼貌拒绝并提示分享 | todo | PASS |
 | CM-1104 | D-CHAN | 渠道降级（无 widget） | 渠道仅文本+附件；widget/云卡降级为文本/链接 | `channels + ui_protocol` | P0 | `channels/acceptance_cm110x_test.mbt`::acceptance_CM-1104_channel_degrades_no_bare_widget — 渠道消息无未降级 widget | todo | PASS |
-| CM-1105 | D-CHAN | SetUpSlack | 连接/状态工具或导向 Details | `channels/slack` | P1 | `channels/acceptance_cm1105_test.mbt`::acceptance_CM-1105_setup_slack_connect_flow — **kernel-contract PASS**；host-integration GAP 另跟踪 | GAP | PASS |
+| CM-1105 | D-CHAN | SetUpSlack | 连接/状态工具或导向 Details | `channels/slack` | P1 | `channels/acceptance_cm1105_test.mbt`::acceptance_CM-1105_setup_slack_connect_flow — **kernel-contract PASS**；host-integration **I-PASS**（local sandbox OAuth→Connected；gaps「升裁 H4·OAuth + CM-0806」） | PASS | PASS |
 | CM-1106 | D-CHAN | secret-request 凭证收集 | SendToUser type=secret-request；值进保险库 | `ui_protocol + security` | P0 | `ui_protocol/acceptance_cm1106_test.mbt`::acceptance_CM-1106_secret_request_no_plaintext — 助手永不看到明文；禁止粘贴 token | todo | PASS |
 | CM-1107 | D-CHAN | Microsoft Teams 渠道 | 入站/出站与 routine 触发 | `channels` | P2 | `channels/acceptance_cm1107_test.mbt`::acceptance_CM-1107_microsoft_teams_channel_scope — tenant/team 作用域；跨租户出站拒；routine trigger 匹配 | todo | PASS |
 | CM-1201 | AGENT-01 · D-AGENT | Task executor 子代理 | 通用执行子代理；可并行 | `agents/task` | P0 | `agents/task/acceptance_task_test.mbt`::acceptance_CM-1201_executor_dispatch_no_user_send — 派发→报告→父代综合；禁替父代乱发用户消息 | todo | PASS |
@@ -257,7 +257,7 @@
 | CM-2106 | D-补遗 | trigger:microsoftTeams | Teams 事件触发例程 | `routines` | P2 | `routines/acceptance_cm2106_test.mbt`::acceptance_CM-2106_trigger_microsoft_teams_wakes_routine — 匹配 Teams 事件唤醒例程；跨租户/kind 不醒；registry deliver | todo | PASS |
 | CM-2107 | D-补遗 | UninstallPlugin | 卸载插件并使命名空间消失 | `connectors/plugins` | P1 | `connectors/acceptance_cm2107_test.mbt`::acceptance_CM-2107_uninstall_plugin_namespace_gone — uninstall→Unavailable；discover 无该 ns | todo | PASS |
 | CM-2108 | D-补遗 | GetPlugin | 查询插件元数据与技能 | `connectors/plugins` | P1 | `connectors/acceptance_cm2108_test.mbt`::acceptance_CM-2108_get_plugin_metadata_and_skills — get_plugin 返回 id+skills（≥1）；未知插件 Err(unknown) | todo | PASS |
-| CM-2109 | D-补遗 | user-Finance 连接器面 | needsAuth 财务命名空间 | `connectors` | P2 | `connectors/acceptance_cm2109_test.mbt`::acceptance_CM-2109_user_finance_connector_needs_auth — NeedsAuth 不可调；authenticate→Ready 可用；stub 工具 — **kernel-contract PASS**；host-integration GAP 另跟踪 | GAP | PASS |
+| CM-2109 | D-补遗 | user-Finance 连接器面 | needsAuth 财务命名空间 | `connectors` | P2 | `connectors/acceptance_cm2109_test.mbt`::acceptance_CM-2109_user_finance_connector_needs_auth — NeedsAuth 不可调；authenticate→Ready 可用；stub 工具 — **kernel-contract PASS**；host-integration **I-PASS**（local sandbox OAuth→Ready；gaps「升裁 H4·OAuth + CM-0806」） | PASS | PASS |
 | CM-2110 | D-补遗 | slides-executor skill | 与 slides 分工的执行器技能 | `skills` | P2 | `skills/acceptance_cm2110_test.mbt`::acceptance_CM-2110_slides_executor_skill_distinct_from_slides — slides-executor≠slides（名/路径/SKILL 体）；任务前须 Read SKILL；未读拒跑 | todo | PASS |
 | CM-2111 | D-补遗 | site-playbooks 站点清单 | airbnb/expedia/doordash/… 等目录族 | `skills/site-playbooks` | P1 | `skills/acceptance_cm2111_test.mbt`::acceptance_CM-2111_site_playbooks_catalog_loader_map — family=22；enum_matches_loader；Airbnb/Expedia/Doordash 单站可映射 | todo | PASS |
 | CM-2112 | D-补遗 | 策略引擎：offensive_cyber | CTF/exploit/未授权访问拒绝 | `security/policy` | P0 | `security/acceptance_cm2112_2130_test.mbt`::acceptance_CM-2112_offensive_cyber_short_refuse — 短拒无步骤/无 PoC | todo | PASS |
@@ -268,7 +268,7 @@
 | CM-2117 | D-补遗 | 商品推荐行格式 | 多商品一行一条带链与价格 | `ui_protocol` | P2 | `ui_protocol/acceptance_cm2117_test.mbt`::acceptance_CM-2117_product_recommend_line_format_with_link_price — 固定 `- [name](url) — price`；多商品一行一条；空表/坏链拒 | todo | PASS |
 | CM-2118 | D-补遗 | 用户私有 workflows 非内核 | 公众号等用户技能不对标产品必交 | `skills/user` + non-goals | P1 | `skills/acceptance_cm2118_test.mbt`::acceptance_CM-2118_user_workflows_visible_not_matrix_contract — 运行时可见 aihot-scout 等；MatrixMustDeliverContract 不含用户私有 workflows；NG003 | todo | PASS |
 | CM-2119 | STORE-01/STORE-03 · D-STORE | 持久 store 授权挂载 | `/cursor/stores/<id>` 未授权不存在 | `stores` | P1 | `stores/acceptance_cm2119_test.mbt`::acceptance_CM-2119_store_authorized_mount_unauthorized_absent — 未授权 path absent；authorize 后 `/cursor/stores/<id>` 可读 | todo | PASS |
-| CM-2120 | MAIL-04 · D-MAIL | Outlook 连接器 | user-Outlook needsAuth→CRUD | `connectors/mail` | P1 | `connectors/mail/acceptance_cm2120_test.mbt`::acceptance_CM-2120_outlook_connector_auth_then_draft_send — NeedsAuth 拒 draft/send；mock authenticate→Ready 后 draft+send — **kernel-contract PASS**；host-integration GAP 另跟踪 | GAP | PASS |
+| CM-2120 | MAIL-04 · D-MAIL | Outlook 连接器 | user-Outlook needsAuth→CRUD | `connectors/mail` | P1 | `connectors/mail/acceptance_cm2120_test.mbt`::acceptance_CM-2120_outlook_connector_auth_then_draft_send — NeedsAuth 拒 draft/send；mock authenticate→Ready 后 draft+send — **kernel-contract PASS**；host-integration **I-PASS**（local sandbox OAuth→Ready；gaps「升裁 H4·OAuth + CM-0806」） | PASS | PASS |
 
 | CM-2121 | D-补遗 | 策略：offensive_cyber 拒 | CTF/exploit/未授权访问短拒无步骤 | `security/policy` | P0 | `security/acceptance_cm2113_2126_test.mbt`::acceptance_CM-2121_offensive_cyber_refuse_no_detail — Given 要 exploit PoC When 判定 Then 短拒无利用细节 | todo | PASS |
 | CM-2122 | D-补遗 | 策略：child_sex 拒 | 涉未成年人色情立即拒 | `security/policy` | P0 | `security/acceptance_cm2113_2126_test.mbt`::acceptance_CM-2122_child_sex_refuse_illegal_stop — Given 越界请求 When 判定 Then illegal 并停止 | todo | PASS |

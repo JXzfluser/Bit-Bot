@@ -1,58 +1,58 @@
 {
   "spans": [
     {
-      "id": "a46c5433-42c4-4ded-875d-96e8eb6592db",
+      "id": "8e7ef141-79e1-4123-a440-8d536effcaf0",
       "tool_name": "host_ui:request_update_computer",
       "duration_ms": 0,
       "ok": true,
       "detail": "Update Computer prompted (not Reset); two-step required",
       "artifact_path": null,
-      "ts": 1792228197.9655268
+      "ts": 1792228441.0024745
     },
     {
-      "id": "42379c32-6b23-494a-ad17-2291de050663",
+      "id": "21a65c73-5b9e-49a0-a650-16cddb8247d0",
       "tool_name": "host_ui:report_anchor_viewport",
       "duration_ms": 0,
       "ok": true,
       "detail": "anchor=update-computer scrollTop=432 highlighted=True inViewport=True rect={'x': 265, 'y': 99.578125, 'width': 718, 'height': 255.328125, 'top': 99.578125, 'left': 265, 'bottom': 354.90625, 'right': 983}",
       "artifact_path": null,
-      "ts": 1792228197.9864979
+      "ts": 1792228441.0569057
     },
     {
-      "id": "ce58f1ec-18fa-4190-8941-be0d722855f2",
+      "id": "b536bb87-0f4a-4d6e-9a38-da7d068483ed",
       "tool_name": "host_ui:confirm_update_computer_step",
       "duration_ms": 0,
       "ok": true,
       "detail": "awaiting-second-confirm (Click Again to Confirm)",
       "artifact_path": null,
-      "ts": 1792228198.441915
+      "ts": 1792228441.4715953
     },
     {
-      "id": "28da34ab-dcdb-4306-99eb-633f26c1fd84",
+      "id": "1f05ffb4-9bbb-4a22-84b5-56aaaa29331d",
       "tool_name": "host_ui:report_anchor_viewport",
       "duration_ms": 0,
       "ok": true,
       "detail": "anchor=update-computer scrollTop=432 highlighted=True inViewport=True rect={'x': 265, 'y': 99.578125, 'width': 718, 'height': 255.328125, 'top': 99.578125, 'left': 265, 'bottom': 354.90625, 'right': 983}",
       "artifact_path": null,
-      "ts": 1792228198.583321
+      "ts": 1792228441.5074673
     },
     {
-      "id": "7dfc7ed7-4700-44fb-ab26-aa0dedb14111",
+      "id": "7ebc9a47-cf9f-4178-b806-648b675c0264",
       "tool_name": "host_ui:confirm_update_computer_step",
       "duration_ms": 0,
       "ok": true,
       "detail": "completed (smoke should prefer cancel)",
       "artifact_path": null,
-      "ts": 1792228198.9222934
+      "ts": 1792228441.941359
     },
     {
-      "id": "1965dbb6-1a37-4c02-b02e-cf149f13c115",
+      "id": "309eee24-4c8b-4d8d-9715-8800baa0133a",
       "tool_name": "host_ui:report_anchor_viewport",
       "duration_ms": 0,
       "ok": true,
       "detail": "anchor=update-computer scrollTop=432 highlighted=True inViewport=True rect={'x': 265, 'y': 99.578125, 'width': 718, 'height': 255.328125, 'top': 99.578125, 'left': 265, 'bottom': 354.90625, 'right': 983}",
       "artifact_path": null,
-      "ts": 1792228199.0341935
+      "ts": 1792228441.957292
     }
   ]
 }

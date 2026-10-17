@@ -1,11 +1,11 @@
 # Bit Bot 缺口报告（gaps.md）
 
-- **时间**: 2026-10-17 17:07 Asia/Shanghai
+- **时间**: 2026-10-17 09:14 Asia/Shanghai
 - **作者**: Bit验证
 - **合同主键**: **CM-***
 - **矩阵计数**: **234** / P0=**117**
 - **矩阵自标状态**: {'in_progress': 50, 'todo': 184}
-- **冒烟实测**: check_ok=True · test_ok=True · **H4·批1 + H5·批1 升裁**：`host_h4_smoke` READY×4（2163/2164/2146/1703）+ `host_h5_smoke` READY×9 → **I-PASS×13**；I-PASS **24→37**；open GAP **17→4**（0806/1105/2109/2120）；OAuth 三件 NOT_READY 拒升；U=234 不动；H0–H3 I-PASS 维持；0705 residual 真手机 OS 卡仍 GAP
+- **冒烟实测**: check_ok=True · test_ok=True · **升裁 H4·OAuth + CM-0806**：sandbox OAuth READY×3（1105/2109/2120）+ 隔离 Update Computer READY×1（0806）→ **I-PASS×4**；I-PASS **37→41**；open GAP **4→0**（41 行库存）；U=234 不动；H0–H5 前序 I-PASS 维持；0705 residual 真手机 OS 卡仍 GAP（非 open 库存行）
 - **裁决口径**: GAP=无实现/无测；FAIL=有源+测但未达验收；PASS=C/U/I/B 且贴验收原文
 - **本轮**: A/B/C 按**新**测名重读源文件重裁。A 批证据列只用新测名（禁止旧「仅禁附同发」打回）。
 
@@ -39,7 +39,7 @@
 
 ## H4 升 I 口径（Bit架构 · 2026-10-17 15:37 Asia/Shanghai）
 
-> 来源：[`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§4.0 / §4.3**。口径表仍有效。**H4·批1（17:07）已升裁** → 2163/2164/2146/1703 **I-PASS**（详见下「升裁 H4·批1」）；**1105/2109/2120 NOT_READY 拒升**；**不改 U**；未升 GAP 保留（含 **0806**）。
+> 来源：[`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§4.0 / §4.3**。口径表仍有效。**H4·批1（17:07）已升裁** → 2163/2164/2146/1703 **I-PASS**；**H4·OAuth（09:14）已升裁** → 1105/2109/2120 **I-PASS**（详见下「升裁 H4·OAuth + CM-0806」）；**不改 U**。
 
 | CM | 可升（左列） | 拒升（右列） |
 |----|--------------|--------------|
@@ -52,7 +52,7 @@
 
 ## H5 升 I 口径（Bit架构 · 2026-10-17 Asia/Shanghai）
 
-> 来源：[`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§6.0 / §6.3**。口径表仍有效。**H5·批1（17:07）已升裁** → 1601/1602/1603/2157/1807/2131/2101/2128/2103 **I-PASS**（详见下「升裁 H5·批1」）；**不改 U**；未升 GAP 保留（含 **0806**）；0705 residual 真手机 OS 卡另记。
+> 来源：[`host-integration-interface-gaps.md`](../host-integration-interface-gaps.md) **§6.0 / §6.3**。口径表仍有效。**H5·批1（17:07）已升裁** → 1601/1602/1603/2157/1807/2131/2101/2128/2103 **I-PASS**；**CM-0806（09:14）已升裁** → **I-PASS**（隔离 throwaway jar；详见「升裁 H4·OAuth + CM-0806」）；**不改 U**；0705 residual 真手机 OS 卡另记。
 
 | CM | 可升（左列） | 拒升（右列） |
 |----|--------------|--------------|
@@ -64,6 +64,62 @@
 | **2103** | math + mermaid 真渲染帧 | 纯文本冒充 |
 
 对齐：interface-gaps §6.0/§6.3；旁注见 `qa/host-integration-gaps.md`。
+
+---
+
+## 升裁 H4·OAuth + CM-0806 · host-integration I（Bit验证 · 2026-10-17 09:14 Asia/Shanghai）
+
+> Wave residual：**CM-1105 / CM-2109 / CM-2120 / CM-0806**。对照 interface-gaps **§4.0 左列**（OAuth）与 **H1/H5 0806** 左列（隔离 throwaway jar + 真 Update Computer）；gaps「H4/H5 升 I 口径」。  
+> **U/kernel-contract PASS=234 不动**；已 I-PASS 37 条不动；禁倒裁 U；禁 stub OAuth；禁碰共享 CDP **9223** / `/home/box/chrome-profile`；禁 Cookie DB 副本入 artifacts。  
+> OAuth IdP = **local sandbox**（`H4_OAUTH_SANDBOX=1` + per-provider `*_OAUTH_SANDBOX`）；非生产 IdP。
+
+### Q-SMOKE 实测
+
+| 命令 | exit | 摘要 |
+|------|------|------|
+| `bash scripts/host_h4_smoke.sh cm-1105` | 0 | `READY_FOR_I_REVIEW`；NeedsAuth→Connected；`oauth_callback_observed=true`；`stub_authenticate=false` |
+| `bash scripts/host_h4_smoke.sh cm-2109` | 0 | `READY_FOR_I_REVIEW`；NeedsAuth→Ready；callback 观测；无 refresh token |
+| `bash scripts/host_h4_smoke.sh cm-2120` | 0 | `READY_FOR_I_REVIEW`；NeedsAuth 拒 draft；OAuth 后 draft ok；callback 观测 |
+| `bash scripts/host_h5_smoke.sh cm-0806` | 0 | `READY_FOR_I_REVIEW`；iso profile jar；Update `prompted→awaiting-second-confirm→completed`；digest 稳定；9223 untouched |
+
+### §4.0 / 0806 左列勾选
+
+| CM | 左列（可升） | 勾选 | 右列命中？ |
+|----|--------------|------|------------|
+| 1105 | 真 OAuth/Details → Connected | ✓ sandbox authorize→302 code+state→callback 200；`namespace_after=Connected`；Details Connected；`stub_authenticate=false`；无 refresh token | 否 |
+| 2109 | 真 OAuth NeedsAuth→Ready | ✓ 同流；`namespace_after=Ready`；auth 前拒写；callback `has_code`+`state_matches` | 否 |
+| 2120 | 真 OAuth 后 draft；NeedsAuth 拒 | ✓ auth 前 `REFUSED:draft:needsAuth`；callback 后 `create_draft` ok；sandbox send=`draft_only` 拒（非 stub Ready） | 否 |
+| 0806 | 真 Update 后 jar 仍在（隔离） | ✓ throwaway `/tmp/h5-0806-profile.*/…/Cookies`；sha seed=before=after；`jar_intact_across_update=true`；`cookies_copied_to_artifacts=false`；`shared_cdp_9223=untouched` | 否（非共享会话拷 cookies） |
+
+共享会话：四项均 `shared_cdp_9223=untouched`；0806 `chrome_profile=untouched`；OAuth 未碰 9223。
+
+### 逐条核验
+
+- **CM-1105**：local sandbox Slack OAuth HTTP code flow；callback 真观测；Connected；未 stub。**I-PASS**。
+- **CM-2109**：local sandbox Finance OAuth；NeedsAuth→Ready；callback 真观测。**I-PASS**。
+- **CM-2120**：local sandbox Outlook OAuth；NeedsAuth 拒 draft；认证后 draft；callback 真观测。**I-PASS**。
+- **CM-0806**：隔离 throwaway jar + HostUiShell 两步 Update Computer completed；in-place digest 稳定；未碰 9223 / 共享 profile。**I-PASS**。
+
+### 裁决（U 仍 PASS；host-integration **READY→I-PASS**）
+
+| ID | U | host-integration | exit | 关键 assert | 裁决 |
+|----|---|------------------|------|--------------|------|
+| CM-1105 | **PASS** | **READY→I-PASS** | 0 | sandbox OAuth→Connected；callback observed；无 refresh | **I-PASS** |
+| CM-2109 | **PASS** | **READY→I-PASS** | 0 | sandbox OAuth→Ready；callback observed | **I-PASS** |
+| CM-2120 | **PASS** | **READY→I-PASS** | 0 | sandbox OAuth→Ready；draft after auth；NeedsAuth 拒 | **I-PASS** |
+| CM-0806 | **PASS** | **READY→I-PASS** | 0 | iso throwaway jar；Update completed；digest stable；≠9223 | **I-PASS** |
+
+### 证据指针
+
+| CM | evidence_cmd | artifact |
+|----|--------------|----------|
+| CM-1105 | `bash scripts/host_h4_smoke.sh cm-1105` | `docs/qa/artifacts/cm-1105-slack-connect/` |
+| CM-2109 | `bash scripts/host_h4_smoke.sh cm-2109` | `docs/qa/artifacts/cm-2109-finance-oauth/` |
+| CM-2120 | `bash scripts/host_h4_smoke.sh cm-2120` | `docs/qa/artifacts/cm-2120-outlook-oauth/` |
+| CM-0806 | `bash scripts/host_h5_smoke.sh cm-0806` | `docs/qa/artifacts/cm-0806-session-jar/` |
+
+**禁止项核对**：未倒裁 U；未动既有 37 条 I-PASS；未以 stub OAuth 冒充 Connected/Ready；共享 9223/chrome-profile/Cookie 副本 **未碰**；OAuth 明文仅用 redacted token 摘要。  
+**计数**：I-PASS **37→41**（+1105/2109/2120/0806）；open GAP **4→0**（41 行库存）；U=234 不动；**0705 residual** 真手机 OS 卡仍 GAP/todo（非 open 库存行）。
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "provider": "outlook",
-  "idp_base": "http://127.0.0.1:40255",
-  "callback_base": "http://127.0.0.1:43563",
+  "idp_base": "http://127.0.0.1:56817",
+  "callback_base": "http://127.0.0.1:42597",
   "namespace_before": "NeedsAuth",
   "namespace_after": "Ready",
   "oauth_callback_observed": true,

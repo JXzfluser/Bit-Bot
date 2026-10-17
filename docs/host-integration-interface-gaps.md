@@ -662,5 +662,5 @@ enum H5Intent {
 | [`host-ui-contract.md`](host-ui-contract.md) | CM-19xx Kernel 契约 |
 | `architecture.md` §2.1 | 分层总原则 |
 
-**已挂 GAP 不因本文删除**（含 **CM-0806**）；升 I 时由 Bit验证改 gaps 行。  
-**波次状态（2026-10-17 Asia/Shanghai）**：H0 I-PASS×3；H1 I-PASS×3（**0806 仍 GAP**）；**H2 I-PASS×14**；**H3 I-PASS×4**（0705=平台子集）；**H4 待审**（§4）；**H5 契约+smoke 已挂 §6**（9 CM · I 仍 open，`i_claimed=false`，待 Bit验证）。
+**已挂 GAP 不因本文删除**（升 I 后由 Bit验证改 gaps 行）。  
+**波次状态（2026-10-17 09:14 Asia/Shanghai）**：H0–H5 **smoke + I-PASS** 齐（41 行库存 **open=0**）；H1 含 CM-0806；H4 OAuth 用 local sandbox IdP；0705 residual 真手机 OS 卡仍 GAP（非 open 库存行）。详见 `qa/gaps.md`「升裁 H4·OAuth + CM-0806」。
