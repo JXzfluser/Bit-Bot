@@ -22,3 +22,13 @@ agent-tools/
 /data/**/*.jsonl
 !/data/**/.gitkeep
 /tmp/bitbot-sandbox/
+
+# Desktop (Electron)
+/desktop/node_modules/
+/desktop/dist/
+/desktop/out/
+# Accidental root npm init (Desktop lives under desktop/)
+/package.json
+/package-lock.json
+/node_modules/
+

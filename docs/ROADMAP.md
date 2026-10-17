@@ -63,3 +63,15 @@
 ## Product Host runtime (post-matrix)
 
 - [x] **Product Host runtime deployed on box** — `scripts/bitbot_runtime/` + Host UI chat/memory on `:8765`; persist under `/workspace/data/`; LLM chain api→ollama→LocalBrain; `bash scripts/deploy_local.sh` (see `docs/qa/real-host-runtime.md`)
+  - Status after ADR 0005: this Python path is **optional Host FFI / secondary**, not the product brain.
+
+## Desktop host + MoonBit brain (ADR 0005 · in progress)
+
+Course-correct: product main path is a **Desktop window** + **MoonBit** turn orchestration (not Python LocalBrain, not Host UI smoke as the product).
+
+- [x] ADR 0005 accepted — `docs/adr/0005-course-correct-moonbit-desktop.md`
+- [x] `cmd/desktop_turn` — MoonBit CLI: `open_turn` → `deliver_text` → JSON stdout (`--target native`)
+- [x] `desktop/` Electron app — window title Bit Bot Desktop; `bitbot.boot()` / `bitbot.turn(text)` → MoonBit
+- [x] `scripts/start-desktop.sh` — ensure `moon` on PATH, `npm install`, `electron .`
+- [ ] Packaged installer / deeper Host FFI (Shell/FS/network) from Desktop
+- [ ] Retire or narrow Python `bitbot_runtime` as product entrypoints in docs/scripts

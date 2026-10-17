@@ -1,0 +1,8 @@
+import {
+  "bitbot/bitbot",
+  "bitbot/bitbot/runtime",
+  "bitbot/bitbot/ui_protocol",
+  "moonbitlang/core/env" @env,
+}
+
+pkgtype(kind: "executable")
