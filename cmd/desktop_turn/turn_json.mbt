@@ -2786,11 +2786,8 @@ pub fn run_desktop_turn(
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(plan) => {
           let effect : DesktopEffect = {
-            kind: "shell",
-            command: "code-changes:" +
-            plan.sc_backend.mcp_namespace() +
-            " :: " +
-            p,
+            kind: "code_changes",
+            command: plan.sc_backend.mcp_namespace() + "|" + p,
             needs_host_ffi: true,
           }
           deliver_ok(
@@ -2798,7 +2795,7 @@ pub fn run_desktop_turn(
             turn_id,
             "Code-changes planned on box via " +
             plan.sc_backend.mcp_namespace() +
-            " (CM-1810).",
+            " (CM-1810). Host applies scoped edit.",
             intent,
             ctx~,
             effects=[effect],
@@ -2818,8 +2815,8 @@ pub fn run_desktop_turn(
       }
       let backend = @skills.route_source_control(kind)
       let effect : DesktopEffect = {
-        kind: "mcp_call",
-        command: backend.mcp_namespace() + ".status|{}",
+        kind: "source_control",
+        command: backend.mcp_namespace() + "|status",
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -2827,7 +2824,7 @@ pub fn run_desktop_turn(
         turn_id,
         "Source-control routed to " +
         backend.mcp_namespace() +
-        " (CM-1305).",
+        " (CM-1305). Host runs git status artifact.",
         intent,
         ctx~,
         effects=[effect],

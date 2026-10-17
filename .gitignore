@@ -23,6 +23,7 @@ agent-tools/
 /data/**/*.ics
 /data/**/*.eml
 /data/**/*.html
+*.bitbot-plan.md
 /data/voice/media/
 !/data/**/.gitkeep
 /data/journal/computer-use/

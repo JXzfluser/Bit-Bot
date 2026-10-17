@@ -698,27 +698,44 @@ def main() -> int:
     dom_obs = vision_plan.get("dom") if isinstance(vision_plan.get("dom"), dict) else {}
     cmd_low = (args.command or "").lower()
     is_shop = any(k in cmd_low for k in ("shop", "retail", "cart", "checkout", "buy"))
-    # Honest checkout stage machine for shopping playbooks (CM-1803 / CU deepen).
+    is_travel = any(k in cmd_low for k in ("travel", "flight", "hotel", "rideshare"))
+    is_food = any(k in cmd_low for k in ("food", "order", "restaurant", "doordash", "ubereats"))
+    # Honest stage machine for shopping / travel / food playbooks.
     if blocked_signin:
-        checkout_stage = "blocked_on_signin"
-    elif dom_obs.get("has_checkout"):
-        checkout_stage = "checkout"
-    elif dom_obs.get("has_cart"):
-        checkout_stage = "cart"
-    elif dom_obs.get("has_results") or dom_obs.get("has_search"):
-        checkout_stage = "browse"
-    elif is_shop and navigate.get("navigate_reachable"):
-        checkout_stage = "landed"
-    elif is_shop:
-        checkout_stage = "unreachable"
+        vertical_stage = "blocked_on_signin"
+    elif is_shop and dom_obs.get("has_checkout"):
+        vertical_stage = "checkout"
+    elif is_shop and dom_obs.get("has_cart"):
+        vertical_stage = "cart"
+    elif (is_shop or is_travel or is_food) and (
+        dom_obs.get("has_results") or dom_obs.get("has_search")
+    ):
+        vertical_stage = "browse"
+    elif (is_shop or is_travel or is_food) and navigate.get("navigate_reachable"):
+        vertical_stage = "landed"
+    elif is_shop or is_travel or is_food:
+        vertical_stage = "unreachable"
     else:
-        checkout_stage = "n/a"
+        vertical_stage = "n/a"
+    if is_travel:
+        playbook = "travel"
+    elif is_food:
+        playbook = "food"
+    elif is_shop:
+        playbook = "shopping"
+    else:
+        playbook = "generic"
+    checkout_stage = vertical_stage if is_shop else (
+        "n/a" if playbook == "generic" else vertical_stage
+    )
     outcome = {
         "agent_id": f"cu-host-{artifact_dir.name}",
         "summary": "structured outcome only",
         "final_url": navigate.get("url"),
         "blocked_on_signin": blocked_signin,
         "checkout_stage": checkout_stage,
+        "vertical_stage": vertical_stage,
+        "playbook": playbook,
         "has_cart": bool(dom_obs.get("has_cart")),
         "has_checkout": bool(dom_obs.get("has_checkout")),
         "navigate_reachable": bool(navigate.get("navigate_reachable")),
@@ -729,20 +746,26 @@ def main() -> int:
         "page_title": title,
         "shared_cdp_untouched": gui.get("shared_cdp_untouched", True),
         "pretend_purchased": False,
+        "pretend_booked": False,
+        "pretend_ordered": False,
     }
     checkout_summary = {
         "checkout_stage": checkout_stage,
+        "vertical_stage": vertical_stage,
         "blocked_on_signin": blocked_signin,
         "has_cart": bool(dom_obs.get("has_cart")),
         "has_checkout": bool(dom_obs.get("has_checkout")),
-        "playbook": "shopping" if is_shop else "generic",
+        "playbook": playbook,
         "pretend_purchased": False,
-        "note": "Host CU checkout deepen — never pretends paid without purchase effect",
+        "pretend_booked": False,
+        "pretend_ordered": False,
+        "note": "Host CU vertical deepen — never pretends paid/booked/ordered",
     }
     (artifact_dir / "checkout_summary.json").write_text(
         json.dumps(checkout_summary, indent=2) + "\n", encoding="utf-8"
     )
     gui["checkout_summary"] = checkout_summary
+    gui["vertical_summary"] = checkout_summary
     # Agent loop: observe → act → vision → act → reobserve (Host-side, not LocalBrain).
     agent_loop = {
         "observe": {

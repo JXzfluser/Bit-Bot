@@ -1035,53 +1035,64 @@ function createHostFfi(repoRoot) {
     const provider = (parts[0] || "gmail").trim().toLowerCase();
     const at = new Date().toISOString();
 
-    if (provider === "cold") {
+    if (provider === "cold" || provider === "onbehalf") {
       const to = (parts[1] || "").trim();
       const subject = (parts[2] || "").trim();
       const body = (parts[3] || "").trim();
-      const unsubscribe = (parts[4] || "mailto:unsub@example.com").trim();
+      const unsubscribe =
+        provider === "cold"
+          ? (parts[4] || "mailto:unsub@example.com").trim()
+          : "";
       const draftDir = path.join(REPO_ROOT, "data", "mail", "draft-files");
       fs.mkdirSync(draftDir, { recursive: true });
-      const draftId = `cold-${Date.now().toString(36)}`;
+      const draftId = `${provider}-${Date.now().toString(36)}`;
       const emlPath = path.join(draftDir, `${draftId}.eml`);
-      const eml = [
+      const headers = [
         `To: ${to}`,
         `Subject: ${subject}`,
         "MIME-Version: 1.0",
         "Content-Type: text/plain; charset=utf-8",
         `Date: ${at}`,
         `Message-ID: <${draftId}@bitbot.local>`,
-        `List-Unsubscribe: <${unsubscribe}>`,
         "X-BitBot-Status: draft",
-        "X-BitBot-Cold-Mail: 1",
-        "",
-        body,
-        "",
-      ].join("\r\n");
+      ];
+      if (provider === "cold") {
+        headers.push(`List-Unsubscribe: <${unsubscribe}>`);
+        headers.push("X-BitBot-Cold-Mail: 1");
+      } else {
+        headers.push("From: me@example.com");
+        headers.push("X-BitBot-Send-On-Behalf: 1");
+        headers.push("X-BitBot-Proxy-Account: acct-1");
+      }
+      const eml = [...headers, "", body, ""].join("\r\n");
       fs.writeFileSync(emlPath, eml);
-      const coldPath = path.join(REPO_ROOT, "data", "mail", "cold-outbound.jsonl");
-      appendJsonl(coldPath, {
+      const ledger =
+        provider === "cold"
+          ? path.join(REPO_ROOT, "data", "mail", "cold-outbound.jsonl")
+          : path.join(REPO_ROOT, "data", "mail", "onbehalf-outbound.jsonl");
+      appendJsonl(ledger, {
+        provider,
         to,
         subject,
-        unsubscribe,
+        unsubscribe: unsubscribe || null,
         eml_path: emlPath,
         sent: false,
         pretend_sent: false,
         at,
       });
       appendJsonl(MAIL_DRAFTS_PATH, {
-        provider: "cold",
+        provider,
         to,
         subject,
         status: "draft",
-        unsubscribe,
+        unsubscribe: unsubscribe || null,
         eml_path: emlPath,
         at,
       });
       const delivery = recordSendToUser({
         type: "attachment",
         path: emlPath,
-        label: "cold_mail.eml",
+        label: provider === "cold" ? "cold_mail.eml" : "send_on_behalf.eml",
         to,
         subject,
         source_kind: "mail_send",
@@ -1089,25 +1100,26 @@ function createHostFfi(repoRoot) {
       });
       appendHostDeliveryJournal({
         kind: "mail_send",
-        provider: "cold",
+        provider,
         to,
         subject,
         eml: emlPath,
         at,
       });
       return okJson("mail_send", command, {
-        provider: "cold",
+        provider,
         to,
         subject,
-        unsubscribe,
-        mode: "cold_sandbox_eml",
+        unsubscribe: unsubscribe || null,
+        mode:
+          provider === "cold" ? "cold_sandbox_eml" : "onbehalf_sandbox_eml",
         sent: false,
         pretend_sent: false,
         eml_path: emlPath,
         eml_ok:
           fs.existsSync(emlPath) &&
-          fs.readFileSync(emlPath, "utf8").includes("List-Unsubscribe:"),
-        cold_outbound: coldPath,
+          fs.readFileSync(emlPath, "utf8").includes("X-BitBot-Status: draft"),
+        ledger,
         drafted: true,
         send_to_user: delivery,
       });
@@ -1970,7 +1982,9 @@ function createHostFfi(repoRoot) {
       kind === "schedule_meeting" ||
       kind === "purchase" ||
       kind === "mail_draft" ||
-      kind === "mail_send"
+      kind === "mail_send" ||
+      kind === "code_changes" ||
+      kind === "source_control"
     ) {
       return null; // SendToUser already recorded in effect handlers
     }
@@ -3735,6 +3749,154 @@ function createHostFfi(repoRoot) {
     return null;
   }
 
+  async function executeDevtoolsEffect(kind, command) {
+    const at = new Date().toISOString();
+    const cmd = String(command || "");
+
+    if (kind === "code_changes") {
+      // command: mcp_namespace|/workspace/path
+      const sep = cmd.indexOf("|");
+      const ns = sep >= 0 ? cmd.slice(0, sep) : "user-github";
+      const target = sep >= 0 ? cmd.slice(sep + 1) : cmd;
+      const abs = path.isAbsolute(target)
+        ? target
+        : path.join(REPO_ROOT, target.replace(/^\/workspace\//, ""));
+      const underRepo =
+        abs === REPO_ROOT || abs.startsWith(REPO_ROOT + path.sep);
+      const exists = underRepo && fs.existsSync(abs);
+      const planDir = path.join(REPO_ROOT, "data", "code-changes");
+      fs.mkdirSync(planDir, { recursive: true });
+      const planId = `edit-${Date.now().toString(36)}`;
+      const planPath = path.join(planDir, `${planId}.json`);
+      let gitDiffStat = "";
+      try {
+        const { stdout } = await execFileAsync(
+          "git",
+          ["diff", "--stat", "--", exists ? path.relative(REPO_ROOT, abs) : "."],
+          { cwd: REPO_ROOT, timeout: 15000 },
+        );
+        gitDiffStat = String(stdout || "").slice(0, 2000);
+      } catch {
+        gitDiffStat = "";
+      }
+      const plan = {
+        id: planId,
+        namespace: ns,
+        target: abs,
+        exists,
+        under_repo: underRepo,
+        applied: false,
+        pretend_committed: false,
+        git_diff_stat: gitDiffStat,
+        note: "Host code-changes plan — scoped edit not auto-committed (CM-1810)",
+        at,
+      };
+      fs.writeFileSync(planPath, JSON.stringify(plan, null, 2));
+      // Sidecar plan next to target when file exists under repo.
+      let sidecar = null;
+      if (exists && fs.statSync(abs).isFile()) {
+        sidecar = abs + ".bitbot-plan.md";
+        fs.writeFileSync(
+          sidecar,
+          `# Bit Bot code-changes plan\n\n- target: \`${abs}\`\n- namespace: \`${ns}\`\n- applied: false\n- pretend_committed: false\n\nHost recorded a scoped edit plan; MoonBit owns intent (CM-1810).\n`,
+        );
+      }
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: planPath,
+        label: "code_changes_plan",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: planPath,
+        sidecar,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...plan,
+        path: planPath,
+        sidecar,
+        send_to_user: delivery,
+      });
+    }
+
+    if (kind === "source_control") {
+      // command: mcp_namespace|status
+      const sep = cmd.indexOf("|");
+      const ns = sep >= 0 ? cmd.slice(0, sep) : "user-github";
+      const action = sep >= 0 ? cmd.slice(sep + 1) : "status";
+      const scDir = path.join(REPO_ROOT, "data", "source-control");
+      fs.mkdirSync(scDir, { recursive: true });
+      const statusPath = path.join(scDir, "status.json");
+      let branch = "";
+      let porcelain = "";
+      let head = "";
+      let ok = true;
+      let err = "";
+      try {
+        const br = await execFileAsync(
+          "git",
+          ["rev-parse", "--abbrev-ref", "HEAD"],
+          { cwd: REPO_ROOT, timeout: 10000 },
+        );
+        branch = String(br.stdout || "").trim();
+        const hd = await execFileAsync("git", ["rev-parse", "HEAD"], {
+          cwd: REPO_ROOT,
+          timeout: 10000,
+        });
+        head = String(hd.stdout || "").trim().slice(0, 40);
+        const st = await execFileAsync(
+          "git",
+          ["status", "--porcelain=v1"],
+          { cwd: REPO_ROOT, timeout: 15000 },
+        );
+        porcelain = String(st.stdout || "");
+      } catch (e) {
+        ok = false;
+        err = e.message || String(e);
+      }
+      const payload = {
+        namespace: ns,
+        action,
+        branch,
+        head,
+        dirty: Boolean(porcelain.trim()),
+        porcelain: porcelain.slice(0, 4000),
+        mode: "host_git_status",
+        pretend_remote_pr: false,
+        ok,
+        error: err || null,
+        at,
+      };
+      fs.writeFileSync(statusPath, JSON.stringify(payload, null, 2));
+      appendJsonl(path.join(scDir, "status.jsonl"), payload);
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: statusPath,
+        label: "source_control_status",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: statusPath,
+        branch,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...payload,
+        path: statusPath,
+        send_to_user: delivery,
+      });
+    }
+
+    return null;
+  }
+
   async function executeVoiceRelay(command) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
@@ -4723,6 +4885,7 @@ function createHostFfi(repoRoot) {
                   }
                 : null,
               checkout_summary: gui.checkout_summary || null,
+              vertical_summary: gui.vertical_summary || gui.checkout_summary || null,
               title:
                 (gui.actions && gui.actions.title) ||
                 (gui.vision_actions && gui.vision_actions.title) ||
@@ -4859,6 +5022,10 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "cloud_agent_launch" || kind === "cloud_artifact_deliver") {
         results.push(await executeCloudEffect(kind, cmd));
+        continue;
+      }
+      if (kind === "code_changes" || kind === "source_control") {
+        results.push(await executeDevtoolsEffect(kind, cmd));
         continue;
       }
       if (

@@ -144,6 +144,11 @@
 - [x] Host identity_browser switch session (`identity_browser_switch`; never pretend Slack Connected)
 - [x] Host cold_mail sandbox `.eml` with `List-Unsubscribe` (CM-1009; pretend_sent=false)
 - [x] Host learn_from_demo skill_write includes crystallized steps in SKILL.md body
+- [x] Host `code_changes` plan artifact + optional `.bitbot-plan.md` sidecar (not auto-committed)
+- [x] Host `source_control` real `git status` artifact (`pretend_remote_pr=false`)
+- [x] Host send_on_behalf sandbox `.eml` with proxy headers (`pretend_sent=false`)
+- [x] Host CU travel/food `vertical_stage` alongside shopping checkout stages
+- [x] Host routine daemon `--interval-ms` multi-sweep (still `long_lived=false` / not systemd)
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN
