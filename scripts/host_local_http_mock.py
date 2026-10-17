@@ -9,6 +9,7 @@ Usage:
   python3 scripts/host_local_http_mock.py --port 18770 --mode teams
   python3 scripts/host_local_http_mock.py --port 18771 --mode job
   python3 scripts/host_local_http_mock.py --port 18772 --mode x
+  python3 scripts/host_local_http_mock.py --port 18773 --mode gmail
 
 Endpoints:
   purchase: POST /charge
@@ -18,6 +19,10 @@ Endpoints:
   teams:    POST /chats/<id>/messages  (BITBOT_TEAMS_GRAPH_URL=http://host:port)
   job:      POST /jobs/search  (BITBOT_JOB_API_URL=http://host:port)
   x:        GET  /tweets/search/recent  (BITBOT_X_API_BASE=http://host:port)
+  gmail:    POST /users/me/messages/send
+            GET  /users/me/messages
+            GET  /users/me/threads/<id>
+            (BITBOT_GMAIL_API_BASE=http://host:port)
 """
 
 from __future__ import annotations
@@ -34,7 +39,16 @@ def main() -> int:
     ap.add_argument("--port", type=int, required=True)
     ap.add_argument(
         "--mode",
-        choices=("purchase", "meeting", "finance", "slack", "teams", "job", "x"),
+        choices=(
+            "purchase",
+            "meeting",
+            "finance",
+            "slack",
+            "teams",
+            "job",
+            "x",
+            "gmail",
+        ),
         required=True,
     )
     ap.add_argument("--token", default="smoke-token")
@@ -73,6 +87,7 @@ def main() -> int:
                     and ("/chats/" in path and path.endswith("/messages"))
                 )
                 or (mode == "job" and path == "/jobs/search")
+                or (mode == "gmail" and path.endswith("/users/me/messages/send"))
             )
             if not ok_path:
                 self._json(404, {"ok": False, "error": "not_found"})
@@ -145,6 +160,15 @@ def main() -> int:
                         ],
                     },
                 )
+            elif mode == "gmail":
+                self._json(
+                    200,
+                    {
+                        "id": "msg-mock-gmail-1",
+                        "threadId": "t-invoice-1",
+                        "labelIds": ["SENT"],
+                    },
+                )
             else:  # teams
                 self._json(
                     200,
@@ -179,6 +203,45 @@ def main() -> int:
                             {"id": "x-live-2", "text": f"second hit {q}"},
                         ],
                         "meta": {"result_count": 2},
+                    },
+                )
+                return
+            if mode == "gmail" and path.endswith("/users/me/messages"):
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                qs = parse_qs(parsed.query)
+                q = (qs.get("q") or ["mail"])[0]
+                self._json(
+                    200,
+                    {
+                        "messages": [
+                            {
+                                "id": "m-live-1",
+                                "threadId": "t-invoice-1",
+                            },
+                            {
+                                "id": "m-live-2",
+                                "threadId": "t-live-2",
+                            },
+                        ],
+                        "resultSizeEstimate": 2,
+                        "query": q,
+                    },
+                )
+                return
+            if mode == "gmail" and "/users/me/threads/" in path:
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                tid = path.rstrip("/").split("/")[-1]
+                self._json(
+                    200,
+                    {
+                        "id": tid,
+                        "snippet": f"Live mock thread {tid}",
+                        "historyId": "1",
+                        "messages": [{"id": "m-live-1", "threadId": tid}],
                     },
                 )
                 return

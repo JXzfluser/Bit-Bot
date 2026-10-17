@@ -48,7 +48,10 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | OS-window CU input | Windowed Chrome+CDP primary; `BITBOT_CU_NATIVE_ACT=1` drives native click/type |
 | Vision OCR | PIL hotspots; `BITBOT_CU_OCR=1` → tesseract closes `ocr_residual` |
 | Source-control remote PR | `git status` always; `BITBOT_GH_CREATE_PR=1` → view or `gh pr create --dry-run`; real create needs `BITBOT_GH_PR_CREATE=1` |
-| Mail search/read | Durable `data/mail/search|threads` artifacts; live Gmail when token; never pretend_live |
+| Mail search/read | Durable `data/mail/search|threads` artifacts; live Gmail when token (+ optional `BITBOT_GMAIL_API_BASE`); never pretend_live |
+| Mail send | Sandbox `.eml` draft by default; live when `BITBOT_GMAIL_TOKEN`+`BITBOT_MAIL_SEND=1` (+ optional API base); never pretend_sent |
+| Email channel | `email:`/`gmail:` → mail_send; live_email_gmail when SEND gated |
+| Code changes | Plan artifact always; `BITBOT_CODE_APPLY=1` writes `.bitbot-applied.json` sidecar; never auto-commit |
 | Workflow list | Host `data/workflows/catalog.json` (CM-2118) |
 | X public search | Durable `data/connectors/x/`; live when `BITBOT_X_BEARER` (+ optional `BITBOT_X_API_BASE` mock); else sandbox_public |
 | Job search | Durable `data/jobs/`; live catalog when `BITBOT_JOB_API_URL`+token; never pretend_applied |
@@ -72,6 +75,10 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | `BITBOT_JOB_API_URL` + `BITBOT_JOB_TOKEN` | Live job catalog POST `/jobs/search` |
 | `BITBOT_X_BEARER` | Live X recent search bearer |
 | `BITBOT_X_API_BASE` | Override X API root (local mock e.g. `http://127.0.0.1:18772`) |
+| `BITBOT_GMAIL_TOKEN` | Bearer for Gmail live search/read/send |
+| `BITBOT_GMAIL_API_BASE` | Override Gmail API root (local mock e.g. `http://127.0.0.1:18773`) |
+| `BITBOT_MAIL_SEND` | Set `1` to allow live Gmail `messages.send` |
+| `BITBOT_CODE_APPLY` | Set `1` to write code-changes applied sidecar (still never auto-commits) |
 | `SLACK_DEFAULT_CHANNEL` | Channel for optional Slack posts |
 
 Absent Slack/Gmail/Outlook credentials are documented in `connectors_live.CONNECTOR_ENV_DOCS` and echoed by `/api/host/connectors/status`.

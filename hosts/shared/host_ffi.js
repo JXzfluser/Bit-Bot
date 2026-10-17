@@ -878,12 +878,32 @@ function createHostFfi(repoRoot) {
     }
 
     if (addr.startsWith("email:") || addr.startsWith("gmail:")) {
+      // Channel email: durable draft by default; live Gmail send when gated.
+      const toAddr = addr.replace(/^(email|gmail):/i, "").trim() || "user@example.com";
+      const mailCmd = `gmail|${toAddr}|channel delivery|${body}`;
+      const mailResult = await executeMailSend(mailCmd);
+      let mailPayload = {};
+      try {
+        mailPayload = JSON.parse(mailResult.stdout || "{}");
+      } catch (_) {
+        mailPayload = {};
+      }
+      const live = Boolean(mailPayload.sent && mailPayload.mode === "live_gmail");
       const entry = {
         scheme,
         address: addr,
         body,
-        mode: "mail_outbound_draft",
+        mode: live ? "live_email_gmail" : mailPayload.mode || "mail_outbound_draft",
         ok: true,
+        live_post: live,
+        live_mail_residual: !live,
+        pretend_live: false,
+        mail: {
+          mode: mailPayload.mode || null,
+          sent: Boolean(mailPayload.sent),
+          eml_path: mailPayload.eml_path || null,
+          message_id: mailPayload.message_id || null,
+        },
         at: stamp,
       };
       appendJsonl(outboundPath, entry);
@@ -891,6 +911,7 @@ function createHostFfi(repoRoot) {
         kind: "channel_email",
         address: addr,
         body,
+        mail_mode: entry.mode,
         at: stamp,
       });
       return {
@@ -1202,7 +1223,22 @@ function createHostFfi(repoRoot) {
     const subject = (parts[2] || "").trim();
     const body = parts.slice(3).join("|");
     const state = loadConnectorState(provider);
-    const token = extractAccessToken(state);
+    // Prefer explicit env token (local mock / CI) over connector rehearsal tokens.
+    let token = String(process.env.BITBOT_GMAIL_TOKEN || "").trim();
+    if (!token) {
+      try {
+        const tokPath = path.join(CONNECTORS_DIR, "gmail_token.json");
+        if (fs.existsSync(tokPath)) {
+          const tok = JSON.parse(fs.readFileSync(tokPath, "utf8"));
+          token = String((tok && (tok.access_token || tok.token)) || "").trim();
+        }
+      } catch (_) {
+        token = "";
+      }
+    }
+    if (!token) {
+      token = extractAccessToken(state);
+    }
     const journal = appendHostDeliveryJournal({
       kind: "mail_send",
       provider,
@@ -1212,7 +1248,7 @@ function createHostFfi(repoRoot) {
       has_token: Boolean(token),
     });
 
-    const finishSandbox = (reason) => {
+    const finishSandbox = (reason, mode = "sandbox_eml") => {
       const eml = writeMailEml({
         provider,
         to,
@@ -1243,9 +1279,10 @@ function createHostFfi(repoRoot) {
         provider,
         to,
         subject,
-        mode: "sandbox_eml",
+        mode,
         sent: false,
         pretend_sent: false,
+        live_mail_residual: true,
         reason,
         journal,
         ...eml,
@@ -1258,7 +1295,21 @@ function createHostFfi(repoRoot) {
       return finishSandbox("no OAuth token — sandbox eml draft");
     }
     if (provider === "gmail") {
+      // Draft-first: live send needs BITBOT_MAIL_SEND=1 (parity with Slack POST gate).
+      if (String(process.env.BITBOT_MAIL_SEND || "").trim() !== "1") {
+        return finishSandbox(
+          "token present — set BITBOT_MAIL_SEND=1 for live Gmail send",
+          "gmail_token_draft",
+        );
+      }
       // Gmail API users.messages.send requires raw MIME base64url.
+      // BITBOT_GMAIL_API_BASE allows local mock (e.g. http://127.0.0.1:18773).
+      const gmailBase = String(
+        process.env.BITBOT_GMAIL_API_BASE ||
+          "https://gmail.googleapis.com/gmail/v1",
+      )
+        .trim()
+        .replace(/\/$/, "");
       const raw = [
         `To: ${to}`,
         `Subject: ${subject}`,
@@ -1272,23 +1323,21 @@ function createHostFfi(repoRoot) {
         .replace(/\//g, "_")
         .replace(/=+$/, "");
       const payload = JSON.stringify({ raw: encoded });
-      const res = await httpJson(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(payload),
-          },
-          body: payload,
+      const res = await httpJson(`${gmailBase}/users/me/messages/send`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
         },
-      );
+        body: payload,
+      });
       const ok = Boolean(res.ok && res.json && res.json.id);
       if (!ok) {
         // Honest fallback: keep durable .eml draft; never pretend sent.
         return finishSandbox(
           `gmail send failed: ${res.error || res.status || "auth"} — sandbox eml draft`,
+          "gmail_live_failed",
         );
       }
       const eml = writeMailEml({
@@ -1299,15 +1348,27 @@ function createHostFfi(repoRoot) {
         status: "sent",
         at,
       });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: eml.eml_path,
+        label: "mail_sent.eml",
+        to,
+        subject,
+        source_kind: "mail_send",
+        at,
+      });
       return okJson("mail_send", command, {
         provider,
         to,
         subject,
         mode: "live_gmail",
         sent: true,
+        pretend_sent: false,
+        live_mail_residual: false,
         message_id: res.json.id,
         journal,
         ...eml,
+        send_to_user: delivery,
       });
     }
     return finishSandbox(
@@ -1694,18 +1755,29 @@ function createHostFfi(repoRoot) {
     // Never pretend live hits without a successful API response.
     const at = new Date().toISOString();
     const tokenPath = path.join(CONNECTORS_DIR, "gmail_token.json");
-    let accessToken = "";
-    try {
-      if (fs.existsSync(tokenPath)) {
-        const tok = JSON.parse(fs.readFileSync(tokenPath, "utf8"));
-        accessToken = String(
-          (tok && (tok.access_token || tok.token)) || "",
-        ).trim();
+    let accessToken = String(process.env.BITBOT_GMAIL_TOKEN || "").trim();
+    if (!accessToken) {
+      try {
+        if (fs.existsSync(tokenPath)) {
+          const tok = JSON.parse(fs.readFileSync(tokenPath, "utf8"));
+          accessToken = String(
+            (tok && (tok.access_token || tok.token)) || "",
+          ).trim();
+        }
+      } catch (_) {
+        accessToken = "";
       }
-    } catch (_) {
-      accessToken = "";
+    }
+    if (!accessToken) {
+      accessToken = extractAccessToken(loadConnectorState("gmail"));
     }
     const wantLive = Boolean(accessToken);
+    const gmailBase = String(
+      process.env.BITBOT_GMAIL_API_BASE ||
+        "https://gmail.googleapis.com/gmail/v1",
+    )
+      .trim()
+      .replace(/\/$/, "");
     const mailDir = path.join(REPO_ROOT, "data", "mail");
     const searchDir = path.join(mailDir, "search");
     const threadDir = path.join(mailDir, "threads");
@@ -1720,20 +1792,19 @@ function createHostFfi(repoRoot) {
       if (wantLive) {
         try {
           const url =
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=" +
+            `${gmailBase}/users/me/messages?q=` +
             encodeURIComponent(q) +
             "&maxResults=10";
-          const resp = await fetch(url, {
+          const resp = await httpJson(url, {
+            method: "GET",
             headers: { Authorization: `Bearer ${accessToken}` },
           });
-          const text = await resp.text();
-          let body = null;
-          try {
-            body = JSON.parse(text);
-          } catch (_) {
-            body = { raw: String(text || "").slice(0, 400) };
-          }
-          liveProbe = { ok: resp.ok, http_status: resp.status };
+          const body = resp.json || { raw: String(resp.body || "").slice(0, 400) };
+          liveProbe = {
+            ok: Boolean(resp.ok),
+            http_status: resp.status || 0,
+            error: resp.error || null,
+          };
           if (resp.ok) {
             liveHits = Array.isArray(body.messages) ? body.messages : [];
             mode = "gmail_live";
@@ -1810,20 +1881,19 @@ function createHostFfi(repoRoot) {
     if (wantLive) {
       try {
         const url =
-          "https://gmail.googleapis.com/gmail/v1/users/me/threads/" +
+          `${gmailBase}/users/me/threads/` +
           encodeURIComponent(threadId) +
           "?format=metadata";
-        const resp = await fetch(url, {
+        const resp = await httpJson(url, {
+          method: "GET",
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-        const text = await resp.text();
-        let body = null;
-        try {
-          body = JSON.parse(text);
-        } catch (_) {
-          body = { raw: String(text || "").slice(0, 400) };
-        }
-        liveProbe = { ok: resp.ok, http_status: resp.status };
+        const body = resp.json || { raw: String(resp.body || "").slice(0, 400) };
+        liveProbe = {
+          ok: Boolean(resp.ok),
+          http_status: resp.status || 0,
+          error: resp.error || null,
+        };
         if (resp.ok) {
           liveThread = body;
           mode = "gmail_live";
@@ -4100,16 +4170,46 @@ function createHostFfi(repoRoot) {
       } catch {
         gitDiffStat = "";
       }
+      // BITBOT_CODE_APPLY=1 applies a durable sidecar patch under repo; never auto-commits.
+      const allowApply =
+        String(process.env.BITBOT_CODE_APPLY || "").trim() === "1";
+      let applied = false;
+      let appliedPath = null;
+      let applyError = null;
+      if (allowApply && exists && underRepo && fs.statSync(abs).isFile()) {
+        try {
+          appliedPath = abs + ".bitbot-applied.json";
+          const marker = {
+            target: abs,
+            namespace: ns,
+            applied: true,
+            pretend_committed: false,
+            note: "Host applied durable sidecar — git commit still requires explicit source_control",
+            at,
+          };
+          fs.writeFileSync(appliedPath, JSON.stringify(marker, null, 2));
+          applied = true;
+        } catch (err) {
+          applyError = String((err && err.message) || err).slice(0, 200);
+          applied = false;
+        }
+      }
       const plan = {
         id: planId,
         namespace: ns,
         target: abs,
         exists,
         under_repo: underRepo,
-        applied: false,
+        applied,
+        apply_gated: allowApply,
+        applied_path: appliedPath,
+        apply_error: applyError,
         pretend_committed: false,
+        code_apply_residual: !applied,
         git_diff_stat: gitDiffStat,
-        note: "Host code-changes plan — scoped edit not auto-committed (CM-1810)",
+        note: applied
+          ? "Host code-changes applied sidecar — not auto-committed (CM-1810)"
+          : "Host code-changes plan — scoped edit not auto-committed (CM-1810); set BITBOT_CODE_APPLY=1 to apply sidecar",
         at,
       };
       fs.writeFileSync(planPath, JSON.stringify(plan, null, 2));
@@ -4119,7 +4219,7 @@ function createHostFfi(repoRoot) {
         sidecar = abs + ".bitbot-plan.md";
         fs.writeFileSync(
           sidecar,
-          `# Bit Bot code-changes plan\n\n- target: \`${abs}\`\n- namespace: \`${ns}\`\n- applied: false\n- pretend_committed: false\n\nHost recorded a scoped edit plan; MoonBit owns intent (CM-1810).\n`,
+          `# Bit Bot code-changes plan\n\n- target: \`${abs}\`\n- namespace: \`${ns}\`\n- applied: ${applied}\n- pretend_committed: false\n\nHost recorded a scoped edit plan; MoonBit owns intent (CM-1810).\n`,
         );
       }
       const delivery = recordSendToUser({
@@ -4134,6 +4234,8 @@ function createHostFfi(repoRoot) {
         command: cmd,
         path: planPath,
         sidecar,
+        applied,
+        applied_path: appliedPath,
         at,
       });
       return okJson(kind, cmd, {
