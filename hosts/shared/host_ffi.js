@@ -3987,10 +3987,13 @@ function createHostFfi(repoRoot) {
         err = e.message || String(e);
       }
 
-      // Remote PR: only when BITBOT_GH_CREATE_PR=1 and gh is available; never pretend.
+      // Remote PR: BITBOT_GH_CREATE_PR=1 enables view/dry-run; never pretend create.
+      // BITBOT_GH_PR_CREATE=1 would allow real create — default is dry-run only.
       const wantPr =
         /create_pr|pull_request|open_pr/i.test(action) ||
         String(process.env.BITBOT_GH_CREATE_PR || "").trim() === "1";
+      const allowRealCreate =
+        String(process.env.BITBOT_GH_PR_CREATE || "").trim() === "1";
       let remotePr = null;
       let remotePrResidual = true;
       let mode = "host_git_status";
@@ -4004,18 +4007,14 @@ function createHostFfi(repoRoot) {
             return "";
           }
         })();
-        if (ghBin && String(process.env.BITBOT_GH_CREATE_PR || "").trim() === "1") {
+        const gateOn =
+          String(process.env.BITBOT_GH_CREATE_PR || "").trim() === "1";
+        if (ghBin && gateOn) {
+          // Prefer existing PR view; then dry-run create plan (or real create if gated).
           try {
             const pr = await execFileAsync(
               ghBin,
-              [
-                "pr",
-                "view",
-                "--json",
-                "url,number,state,title",
-                "--jq",
-                ".",
-              ],
+              ["pr", "view", "--json", "url,number,state,title"],
               { cwd: REPO_ROOT, timeout: 20000 },
             );
             let body = null;
@@ -4028,17 +4027,89 @@ function createHostFfi(repoRoot) {
               ok: true,
               mode: "gh_pr_view",
               pr: body,
+              create_attempted: false,
+              dry_run: false,
             };
             remotePrResidual = false;
             mode = "host_git_status+gh_pr_view";
-          } catch (e) {
-            remotePr = {
-              ok: false,
-              mode: "gh_pr_view_failed",
-              error: String((e && e.message) || e).slice(0, 300),
-            };
-            remotePrResidual = true;
-            mode = "host_git_status+gh_pr_residual";
+          } catch (viewErr) {
+            // No existing PR — attempt dry-run create (default) or real create if gated.
+            const createArgs = allowRealCreate
+              ? [
+                  "pr",
+                  "create",
+                  "--title",
+                  `Bit Bot Host source_control ${branch || "branch"}`,
+                  "--body",
+                  "Created by Bit Bot Host source_control (BITBOT_GH_PR_CREATE=1).",
+                  "--draft",
+                ]
+              : [
+                  "pr",
+                  "create",
+                  "--dry-run",
+                  "--title",
+                  `Bit Bot Host source_control ${branch || "branch"}`,
+                  "--body",
+                  "Dry-run PR plan from Bit Bot Host (BITBOT_GH_CREATE_PR=1).",
+                ];
+            try {
+              const created = await execFileAsync(ghBin, createArgs, {
+                cwd: REPO_ROOT,
+                timeout: 45000,
+              });
+              const out = String(created.stdout || created.stderr || "").slice(
+                0,
+                800,
+              );
+              remotePr = {
+                ok: true,
+                mode: allowRealCreate ? "gh_pr_create" : "gh_pr_create_dry_run",
+                dry_run: !allowRealCreate,
+                create_attempted: true,
+                output_prefix: out,
+              };
+              // Dry-run closes create residual for Host fidelity without inventing a PR URL.
+              remotePrResidual = false;
+              mode = allowRealCreate
+                ? "host_git_status+gh_pr_create"
+                : "host_git_status+gh_pr_create_dry_run";
+              // Persist dry-run plan artifact.
+              const planPath = path.join(scDir, "pr-create-plan.json");
+              fs.writeFileSync(
+                planPath,
+                JSON.stringify(
+                  {
+                    branch,
+                    head,
+                    dry_run: !allowRealCreate,
+                    allow_real_create: allowRealCreate,
+                    args: createArgs,
+                    output_prefix: out,
+                    pretend_remote_pr: false,
+                    at,
+                  },
+                  null,
+                  2,
+                ),
+              );
+              remotePr.plan_path = planPath;
+            } catch (createErr) {
+              remotePr = {
+                ok: false,
+                mode: "gh_pr_create_failed",
+                dry_run: !allowRealCreate,
+                create_attempted: true,
+                view_error: String(
+                  (viewErr && viewErr.message) || viewErr,
+                ).slice(0, 200),
+                error: String(
+                  (createErr && createErr.message) || createErr,
+                ).slice(0, 300),
+              };
+              remotePrResidual = true;
+              mode = "host_git_status+gh_pr_create_residual";
+            }
           }
         } else {
           remotePr = {
@@ -4494,7 +4565,7 @@ function createHostFfi(repoRoot) {
     return null;
   }
 
-  function executeProductDeliveryEffect(kind, command) {
+  async function executeProductDeliveryEffect(kind, command) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
 
@@ -4799,12 +4870,63 @@ function createHostFfi(repoRoot) {
       const receiptId = `rcpt-${Date.now().toString(36)}`;
       const receiptPath = path.join(receiptDir, `${receiptId}.html`);
       const safeCmd = String(cmd || "").replace(/[<>&]/g, "");
-      // Sandbox receipt HTML only unless BITBOT_PURCHASE_LIVE=1 + processor token.
-      const livePurchase =
-        String(process.env.BITBOT_PURCHASE_LIVE || "").trim() === "1" &&
-        Boolean(String(process.env.BITBOT_PURCHASE_TOKEN || "").trim());
-      const mode = livePurchase ? "live_charge" : "sandbox_receipt";
-      const charged = livePurchase; // never claim live charge without processor token
+      // Live charge only when LIVE=1 + token + API URL and processor returns 2xx.
+      // Never claim paid without a successful processor response.
+      const wantLive =
+        String(process.env.BITBOT_PURCHASE_LIVE || "").trim() === "1";
+      const purchaseToken = String(process.env.BITBOT_PURCHASE_TOKEN || "").trim();
+      const purchaseApi = String(process.env.BITBOT_PURCHASE_API_URL || "").trim();
+      let chargeProbe = null;
+      let charged = false;
+      let mode = "sandbox_receipt";
+      if (wantLive && purchaseToken && purchaseApi) {
+        try {
+          const resp = await fetch(purchaseApi.replace(/\/$/, "") + "/charge", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${purchaseToken}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              receipt_id: receiptId,
+              command: cmd,
+              source: "bitbot-host",
+            }),
+          });
+          const text = await resp.text();
+          let body = null;
+          try {
+            body = JSON.parse(text);
+          } catch (_) {
+            body = { raw: String(text || "").slice(0, 300) };
+          }
+          chargeProbe = {
+            ok: resp.ok,
+            http_status: resp.status,
+            charge_id: body && body.charge_id,
+          };
+          if (resp.ok) {
+            charged = true;
+            mode = "live_charge";
+          } else {
+            mode = "live_charge_failed";
+          }
+        } catch (err) {
+          chargeProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+          mode = "live_charge_failed";
+        }
+      } else if (wantLive) {
+        chargeProbe = {
+          ok: false,
+          error:
+            "BITBOT_PURCHASE_LIVE=1 requires BITBOT_PURCHASE_TOKEN and BITBOT_PURCHASE_API_URL",
+        };
+        mode = "live_charge_residual";
+      }
       fs.writeFileSync(
         receiptPath,
         `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt ${receiptId}</title></head>` +
@@ -4824,6 +4946,7 @@ function createHostFfi(repoRoot) {
         sandbox_receipt: !charged,
         live_paid_residual: !charged,
         pretend_paid: false,
+        charge_probe: chargeProbe,
         at,
       };
       const pathWritten = appendJsonl(COMMERCE_PATH, entry);
@@ -5105,8 +5228,18 @@ function createHostFfi(repoRoot) {
                     has_payment: Boolean(
                       gui.vision_plan.dom && gui.vision_plan.dom.has_payment,
                     ),
-                    ocr: false,
-                    ocr_residual: true,
+                    ocr: Boolean(
+                      gui.vision_plan.vision && gui.vision_plan.vision.ocr,
+                    ),
+                    ocr_residual:
+                      gui.vision_plan.vision &&
+                      gui.vision_plan.vision.ocr_residual !== undefined
+                        ? Boolean(gui.vision_plan.vision.ocr_residual)
+                        : true,
+                    ocr_text_prefix:
+                      (gui.vision_plan.vision &&
+                        gui.vision_plan.vision.ocr_text_prefix) ||
+                      "",
                   }
                 : null,
               checkout_summary: gui.checkout_summary || null,
@@ -5261,7 +5394,7 @@ function createHostFfi(repoRoot) {
         results.push(await executeMultiAgentEffect(kind, cmd));
         continue;
       }
-      const productRes = executeProductDeliveryEffect(kind, cmd);
+      const productRes = await executeProductDeliveryEffect(kind, cmd);
       if (productRes) {
         results.push(productRes);
         continue;

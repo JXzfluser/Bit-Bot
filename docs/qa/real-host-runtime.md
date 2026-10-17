@@ -37,14 +37,14 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Store signing certs (Desktop/iOS/Android) | **Deferred** (user) — signing scaffolds + unsigned pack evidence present; store certs skipped |
 | Slack post without `BITBOT_SLACK_POST=1` | Draft-first only (live gated) |
 | Screenshot | Only when `DISPLAY` set and ffmpeg/import/scrot available |
-| Routine wake scheduler | On-demand `routine_fire` + daemon `--long-lived` / `--interval-ms`; systemd unit scaffold under `data/routines/` — install to `/etc/systemd/system` still residual |
+| Routine wake scheduler | On-demand `routine_fire` + daemon `--long-lived` / `--interval-ms`; `--install-user-unit` installs user systemd unit |
 | CU paid checkout | `payment_wall` / `live_paid_residual` when pay form seen; never pretend_purchased without `BITBOT_CU_LIVE_PAID` |
-| Purchase charge | Sandbox HTML receipt (`live_paid_residual`); live charge needs `BITBOT_PURCHASE_LIVE=1` + `BITBOT_PURCHASE_TOKEN` |
+| Purchase charge | Sandbox HTML receipt by default; live `/charge` when `BITBOT_PURCHASE_LIVE=1` + token + `BITBOT_PURCHASE_API_URL` |
 | Remote Cursor Cloud | Default `local_worker`; remote probe when `BITBOT_CLOUD_API_URL`+token; fail→local, never pretend remote |
-| Meeting live transport | DirectSend transcript; live POST when `BITBOT_MEETING_API_URL`+token, else `live_meeting_residual` |
-| OS-window CU input | Windowed Chrome+CDP primary; `xdotool`/`wmctrl` probe; `BITBOT_CU_NATIVE_ACT=1` drives native click/type and can close `os_window_automation_residual` |
-| Vision OCR | PIL edge hotspots only; `ocr_residual=true` (no tesseract) |
-| Source-control remote PR | `git status` always; remote PR only with `BITBOT_GH_CREATE_PR=1`+`gh`; else `remote_pr_residual` |
+| Meeting live transport | DirectSend transcript; live POST when `BITBOT_MEETING_API_URL`+token |
+| OS-window CU input | Windowed Chrome+CDP primary; `BITBOT_CU_NATIVE_ACT=1` drives native click/type |
+| Vision OCR | PIL hotspots; `BITBOT_CU_OCR=1` → tesseract closes `ocr_residual` |
+| Source-control remote PR | `git status` always; `BITBOT_GH_CREATE_PR=1` → view or `gh pr create --dry-run`; real create needs `BITBOT_GH_PR_CREATE=1` |
 | Legacy LocalBrain Host UI | Demoted — not product brain |
 
 ## Env vars

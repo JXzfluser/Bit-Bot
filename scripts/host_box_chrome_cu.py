@@ -179,8 +179,56 @@ _DOM_OBSERVE_JS = (
 )
 
 
+def run_tesseract_ocr(path: str) -> Dict[str, Any]:
+    """Optional OCR via tesseract CLI (BITBOT_CU_OCR=1). Never invent text."""
+    enabled = os.environ.get("BITBOT_CU_OCR", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    out: Dict[str, Any] = {
+        "enabled": enabled,
+        "ok": False,
+        "text": "",
+        "tool": None,
+        "ocr_residual": True,
+    }
+    if not enabled:
+        out["note"] = "OCR disabled — set BITBOT_CU_OCR=1 to run tesseract"
+        return out
+    tess = shutil.which("tesseract")
+    if not tess:
+        out["error"] = "tesseract not found"
+        out["note"] = "OCR residual — install tesseract-ocr"
+        return out
+    try:
+        proc = subprocess.run(
+            [tess, path, "stdout", "-l", "eng", "--psm", "6"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        text = (proc.stdout or "").strip()
+        out["ok"] = proc.returncode == 0 and bool(text)
+        out["text"] = text[:2000]
+        out["tool"] = "tesseract"
+        out["ocr_residual"] = not out["ok"]
+        out["note"] = (
+            "tesseract OCR ok"
+            if out["ok"]
+            else f"tesseract failed rc={proc.returncode}"
+        )
+        if proc.stderr:
+            out["stderr_prefix"] = (proc.stderr or "")[:200]
+        return out
+    except Exception as e:  # noqa: BLE001
+        out["error"] = str(e)[:200]
+        out["note"] = "OCR residual — tesseract exception"
+        return out
+
+
 def analyze_screenshot(path: Optional[str]) -> Dict[str, Any]:
-    """PIL vision heuristics (no OCR/tesseract). Host-side observe only."""
+    """PIL vision heuristics + optional tesseract OCR. Host-side observe only."""
     if not path or not Path(path).exists():
         return {"ok": False, "error": "no screenshot"}
     try:
@@ -220,6 +268,7 @@ def analyze_screenshot(path: Optional[str]) -> Dict[str, Any]:
         # Unique-ish color estimate via quantized palette.
         q = img.resize((160, 120)).quantize(colors=64)
         unique = len(q.getcolors() or [])
+        ocr = run_tesseract_ocr(path)
         return {
             "ok": True,
             "width": w,
@@ -229,10 +278,19 @@ def analyze_screenshot(path: Optional[str]) -> Dict[str, Any]:
             "sparse": unique < 12 and mean > 200,
             "dark": mean < 40,
             "hotspots": hotspots,
-            "tool": "pil-edge-hotspots",
-            "ocr": False,
-            "ocr_residual": True,
-            "note": "PIL edge hotspots only — OCR residual (no tesseract)",
+            "tool": "pil-edge-hotspots"
+            + ("+tesseract" if ocr.get("ok") else ""),
+            "ocr": bool(ocr.get("ok")),
+            "ocr_residual": bool(ocr.get("ocr_residual", True)),
+            "ocr_text_prefix": (ocr.get("text") or "")[:160],
+            "ocr_detail": {
+                "enabled": bool(ocr.get("enabled")),
+                "tool": ocr.get("tool"),
+                "ok": bool(ocr.get("ok")),
+                "note": ocr.get("note"),
+            },
+            "note": ocr.get("note")
+            or "PIL edge hotspots only — OCR residual (BITBOT_CU_OCR unset)",
         }
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)}
@@ -970,8 +1028,13 @@ def main() -> int:
         "actions_ok": steps_ok,
         "screenshot_ok": bool((gui.get("screenshot") or {}).get("ok")),
         "vision_ok": vision_ok,
-        "ocr": False,
-        "ocr_residual": True,
+        "ocr": bool((vision_plan.get("vision") or {}).get("ocr")),
+        "ocr_residual": bool(
+            (vision_plan.get("vision") or {}).get("ocr_residual", True)
+        ),
+        "ocr_text_prefix": ((vision_plan.get("vision") or {}).get("ocr_text_prefix") or "")[
+            :160
+        ],
         "page_title": title,
         "shared_cdp_untouched": gui.get("shared_cdp_untouched", True),
         "pretend_purchased": False,
