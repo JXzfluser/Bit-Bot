@@ -6245,10 +6245,11 @@ function createHostFfi(repoRoot) {
       const tool = parts[0] || "";
       const output = parts.slice(1).join("|") || "";
       const finState = loadConnectorState("finance");
+      // Explicit env token wins for live mock/API gates (sandbox oauth must not mask it).
       const accessToken = String(
-        (finState.oauth && finState.oauth.access_token) ||
+        process.env.BITBOT_FINANCE_TOKEN ||
+          (finState.oauth && finState.oauth.access_token) ||
           finState.access_token ||
-          process.env.BITBOT_FINANCE_TOKEN ||
           "",
       ).trim();
       const financeApi = String(process.env.BITBOT_FINANCE_API_URL || "").trim();
