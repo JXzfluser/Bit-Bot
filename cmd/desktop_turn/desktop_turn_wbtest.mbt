@@ -316,6 +316,51 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   )
   assert_true(sa2.ok)
   assert_eq(sa2.intent, "send_to_agent")
+  let ca = run_desktop_turn(
+    "launch cloud agent refactor auth module",
+    turn_id="ca-1",
+  )
+  assert_true(ca.ok)
+  assert_eq(ca.intent, "launch_cloud_agent")
+  assert_eq(ca.effects[0].kind, "cloud_agent_launch")
+  let art = run_desktop_turn(
+    "deliver cloud artifact artifact=bc-smoke dest=report.md",
+    turn_id="art-1",
+  )
+  assert_true(art.ok)
+  assert_eq(art.intent, "deliver_cloud_artifact")
+  let sm = run_desktop_turn(
+    "schedule meeting title=Sprint when=tomorrow-3pm",
+    turn_id="sm-1",
+  )
+  assert_true(sm.ok)
+  assert_eq(sm.intent, "schedule_meeting")
+  assert_true(sm.needs_host_ffi)
+  let shop = run_desktop_turn("shop target.com headphones", turn_id="shop-1")
+  assert_true(shop.ok)
+  assert_eq(shop.intent, "shop_retail")
+  assert_eq(shop.effects[0].kind, "computer_use")
+  let buy = run_desktop_turn(
+    "purchase item=BlueYeti cents=12900",
+    turn_id="buy-1",
+  )
+  assert_true(buy.ok)
+  assert_eq(buy.intent, "purchase_item")
+  assert_true(buy.needs_host_ffi)
+  let buy_ok = run_desktop_turn(
+    "purchase item=BlueYeti cents=12900",
+    turn_id="buy-2",
+    ctx={
+      session_id: "s",
+      machine_id: "desk-1",
+      machine_kind: "desktop",
+      channel: "",
+      approved: true,
+    },
+  )
+  assert_true(buy_ok.ok)
+  assert_eq(buy_ok.intent, "purchase_item")
+  assert_eq(buy_ok.effects[0].kind, "purchase")
 }
 
 ///|

@@ -1,11 +1,13 @@
 import {
   "bitbot/bitbot",
+  "bitbot/bitbot/agents/cloud",
   "bitbot/bitbot/agents/computer_use",
   "bitbot/bitbot/agents/task" @task,
   "bitbot/bitbot/agents/teammates",
   "bitbot/bitbot/box_host",
   "bitbot/bitbot/channels",
   "bitbot/bitbot/connectors",
+  "bitbot/bitbot/connectors/commerce",
   "bitbot/bitbot/connectors/mail",
   "bitbot/bitbot/memory",
   "bitbot/bitbot/routines",

@@ -80,6 +80,11 @@ pub(all) enum TurnIntent {
   CreateTeammate(id~ : String, name~ : String, role~ : String)
   RoomTurn(room~ : String, body~ : String)
   SendToAgent(to_id~ : String, body~ : String)
+  LaunchCloudAgent(prompt~ : String)
+  DeliverCloudArtifact(artifact~ : String, dest~ : String)
+  ScheduleMeeting(title~ : String, when_desc~ : String)
+  ShopRetail(url_or_host~ : String)
+  PurchaseItem(item~ : String, amount_cents~ : Int32)
   HostContinue
 } derive(Eq, Debug)
 
@@ -118,6 +123,11 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     CreateTeammate(_) => "create_teammate"
     RoomTurn(_) => "room_turn"
     SendToAgent(_) => "send_to_agent"
+    LaunchCloudAgent(_) => "launch_cloud_agent"
+    DeliverCloudArtifact(_) => "deliver_cloud_artifact"
+    ScheduleMeeting(_) => "schedule_meeting"
+    ShopRetail(_) => "shop_retail"
+    PurchaseItem(_) => "purchase_item"
     HostContinue => "host_continue"
   }
 }
@@ -524,6 +534,11 @@ fn extract_kv(rest : String, key : String) -> String? {
         " prompt=",
         " name=",
         " role=",
+        " item=",
+        " cents=",
+        " title=",
+        " when=",
+        " artifact=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -1887,6 +1902,194 @@ pub fn run_desktop_turn(
             effects=[effect],
             needs_host_ffi=true,
           )
+        }
+      }
+    }
+    LaunchCloudAgent(prompt~) => {
+      let svc = @cloud.CloudAgentService::new()
+      let launch = svc.launch(prompt)
+      let effect : DesktopEffect = {
+        kind: "cloud_agent_launch",
+        command: launch.bc_id + "|" + launch.url + "|" + prompt,
+        needs_host_ffi: true,
+      }
+      // CM-0111: markdown-link the agent URL in user-visible text.
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Cloud agent launched " +
+        launch.bc_id +
+        " → [" +
+        launch.bc_id +
+        "](" +
+        launch.url +
+        ") (CM-0908 product path).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    DeliverCloudArtifact(artifact~, dest~) => {
+      // artifact = bc_id; dest = source filename or path under workspace policy.
+      match @cloud.deliver_cloud_artifact(artifact, dest) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(d) => {
+          let effect : DesktopEffect = {
+            kind: "cloud_artifact_deliver",
+            command: d.path_or_url() + "|" + dest,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Cloud artifact delivered: " + d.path_or_url(),
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    ScheduleMeeting(title~, when_desc~) => {
+      let req : @skills.SchedulingRequest = {
+        title: title,
+        timezone: "Asia/Shanghai",
+        when_desc: when_desc,
+      }
+      // Product path: calendar connector typically NeedsAuth until Host OAuth.
+      let outcome = @skills.run_scheduling(
+        req,
+        calendar_connector=@connectors.NeedsAuth,
+      )
+      match outcome {
+        @skills.Invalid(reason~) =>
+          fail_turn(trimmed, turn_id, intent, reason, ctx, assistant=reason)
+        @skills.ConnectorOk(event_id~) => {
+          let effect : DesktopEffect = {
+            kind: "schedule_meeting",
+            command: event_id + "|" + title + "|" + when_desc,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Scheduled via calendar connector: " + event_id,
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+        @skills.Fallback(path~, hint~) => {
+          let effect : DesktopEffect = {
+            kind: "computer_use",
+            command: "scheduling-fallback:" + path.label() + " :: " + hint,
+            needs_host_ffi: true,
+          }
+          // CM-0111: user-visible text must not contain bare http(s) URLs.
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Scheduling fallback (" +
+            path.label() +
+            "): calendar connector NeedsAuth — Host opens browser fallback (CM-1801). Hint kept in effect command.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    ShopRetail(url_or_host~) => {
+      match @skills.dispatch_shopping_playbook(url_or_host) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(snip) => {
+          let effect : DesktopEffect = {
+            kind: "computer_use",
+            command: "shopping:" +
+            snip.playbook_name +
+            " :: " +
+            snip.child_task_prompt,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Shopping playbook «" +
+            snip.playbook_name +
+            "» dispatched (CM-1803). Host runs computerUse child.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    PurchaseItem(item~, amount_cents~) => {
+      match gate_consequential(
+        trimmed,
+        turn_id,
+        intent,
+        ctx,
+        @security.Purchase,
+        "purchase " + item + " (" + amount_cents.to_string() + " cents)",
+        irreversible=true,
+      ) {
+        Some(gated) => gated
+        None => {
+          let gate = @commerce.PurchaseGate::new()
+          let req : @commerce.PurchaseRequest = {
+            item: item,
+            amount_cents: amount_cents,
+            payment_credential: "vault:card-token",
+          }
+          let outcome = gate.attempt_purchase(
+            req,
+            explicit_user_ask=true,
+            user_present=ctx.approved,
+          )
+          match outcome {
+            @commerce.DraftOnly(summary~) =>
+              deliver_ok(trimmed, turn_id, summary, intent, ctx~)
+            @commerce.NeedUserPresent(reason~) => {
+              let effect : DesktopEffect = {
+                kind: "approval_card",
+                command: "Purchase :: present :: " + reason,
+                needs_host_ffi: true,
+              }
+              deliver_ok(
+                trimmed,
+                turn_id,
+                reason + ". Re-run with Host --approved while present.",
+                intent,
+                ctx~,
+                effects=[effect],
+                needs_host_ffi=true,
+              )
+            }
+            @commerce.Blocked(reason~) =>
+              fail_turn(trimmed, turn_id, intent, reason, ctx, assistant=reason)
+            @commerce.Paid(receipt~) => {
+              let effect : DesktopEffect = {
+                kind: "purchase",
+                command: receipt,
+                needs_host_ffi: true,
+              }
+              deliver_ok(
+                trimmed,
+                turn_id,
+                "Purchase paid: " + receipt + " (CM-1802).",
+                intent,
+                ctx~,
+                effects=[effect],
+                needs_host_ffi=true,
+              )
+            }
+          }
         }
       }
     }

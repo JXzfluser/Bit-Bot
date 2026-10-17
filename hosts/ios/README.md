@@ -1,6 +1,10 @@
-# iOS host stub
+# iOS host
 
 Registers `MachineKind::Ios` against the shared MoonBit HostAbi surface.
+
+## Native shell
+
+`BitBotHost/` — SwiftUI app that bridges turns to `hosts/mobile_host` (same MoonBit brain as Desktop). See `BitBotHost/README.md`.
 
 ## Attach model
 
@@ -9,17 +13,14 @@ Registers `MachineKind::Ios` against the shared MoonBit HostAbi surface.
 3. User turns call the same open_turn → policy → deliver path as Desktop.
 4. Host FFI on device owns permissions (Photos, Files, network). MoonBit emits `effects` + `needs_host_ffi`; the iOS host executes them.
 
-## Stub today
+## Verify
 
 ```bash
-# From repo root — proves Ios appears in ListMachines seed set
-bash scripts/host_mobile_stub.sh ios
+bash hosts/ios/stub_attach.sh
+bash scripts/verify_native_shells.sh
 ```
 
-`stub_attach.sh` prints the HostAbi attach checklist and the MachineKind list from MoonBit.
+## Still open
 
-## Not in scope here
-
-- App Store packaging
-- Python LocalBrain
-- Desktop-only freelancing APIs that skip `MachineKind`
+- App Store / TestFlight signing & packaging
+- Python LocalBrain (demoted — not used)

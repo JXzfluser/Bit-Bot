@@ -1,0 +1,17 @@
+name: BitBotHost
+options:
+  bundleIdPrefix: com.bitbot
+settings:
+  BASE_SDK: iphoneos
+targets:
+  BitBotHost:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - Sources/BitBotHost
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.bitbot.host
+      INFOPLIST_KEY_CFBundleDisplayName: Bit Bot
+      INFOPLIST_KEY_UILaunchScreen_Generation: YES
+      SWIFT_VERSION: "5.0"

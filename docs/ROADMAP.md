@@ -57,8 +57,9 @@
 - [x] Settings anchors / update-computer 引导语义
 - [x] 首启、语言、时区、voice memo
 - [x] Grok-like Desktop chrome（agents sidebar + machines panel + MoonBit transcript）
-- [ ] Packaged installer / deeper Desktop Host FFI（Shell/FS/network execute loop）
-- [ ] iOS / Android beyond stub（真机 HostAbi）
+- [x] Packaged installer / deeper Desktop Host FFI（Shell/FS/network execute loop）— `pack-desktop.sh` + shared Host FFI execute loop
+- [x] iOS / Android beyond stub — `hosts/{ios,android}/BitBotHost` native shells + `mobile_host` HostAbi
+- [ ] App Store / Play Store signed packaging (signing still open)
 
 ## M7 — Hardening
 - [x] 全矩阵验收清零 P0 gaps（U=234；I=234）
@@ -80,7 +81,7 @@
 - [x] `scripts/smoke_desktop_turn.sh` — product-path smoke (not LocalBrain)
 - [x] ADR 0002 Host FFI 回注 — Desktop executes effects then `--apply-host-results` → `continue_after_host_ffi` (MoonBit kernel absorbs TurnEvent)
 - [x] `hosts/desktop/` Electron — agents + machines + turn transcript from MoonBit
-- [x] `hosts/ios/` + `hosts/android/` stubs + `scripts/host_mobile_stub.sh`
+- [x] `hosts/ios/` + `hosts/android/` native `BitBotHost` shells + `scripts/host_mobile_stub.sh`
 - [x] `scripts/start-desktop.sh` — moon on PATH, npm, Electron under `hosts/desktop`
 - [x] Shared Host FFI (`hosts/shared`) — shell / fs_list / fs_read / webfetch / channel_send (live Slack when token+BITBOT_SLACK_POST) / connectors_probe
 - [x] Multi-end CLI Host (`hosts/cli_host/run_turn.js`) — same brain as Desktop with `--machine-kind ios|android|desktop`
@@ -90,7 +91,9 @@
 - [x] `mail_send` Host effect (Gmail API when OAuth token present; else journal sandbox)
 - [x] ApprovalGate on shell / external send / mail (Host `--approved` after NeedUser)
 - [x] Product turns: create_routine / mcp_discover / mcp_call / spawn_subagent / computer_use / teams_send / device_tools / load_skill / voice_start|relay|end
-- [x] `hosts/mobile_host` — multi-end phone Host process (deviceLocalTools); App Store/Play still open
-- [ ] Native App Store / Play packaged shells
+- [x] `hosts/mobile_host` — multi-end phone Host process (deviceLocalTools)
+- [x] Native Host project trees: `hosts/ios/BitBotHost` (SwiftUI) + `hosts/android/BitBotHost` (Compose) sharing MoonBit brain
+- [ ] App Store / Play Store signed packaging (signing / store submit still open)
 - [x] Teammates: create_teammate / room_turn / send_to_agent on product path
+- [x] Cloud / commerce / vertical: launch_cloud_agent / deliver_cloud_artifact / schedule_meeting / shop_retail / purchase_item
 - [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit

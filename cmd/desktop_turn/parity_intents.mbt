@@ -1,14 +1,141 @@
 ///|
+/// Parse decimal digits into a non-negative Int32 (cents / amounts).
+fn parse_nonneg_i32(s : String) -> Int32 {
+  let mut n : Int32 = 0
+  let mut i = 0
+  while i < s.length() {
+    let c = s[i]
+    if c >= '0' && c <= '9' {
+      let digit : Int32 = match c {
+        '0' => 0
+        '1' => 1
+        '2' => 2
+        '3' => 3
+        '4' => 4
+        '5' => 5
+        '6' => 6
+        '7' => 7
+        '8' => 8
+        '9' => 9
+        _ => 0
+      }
+      n = n * 10 + digit
+    }
+    i = i + 1
+  }
+  n
+}
+
+///|
 /// Extra Grok-parity intent classification (routines/agents/MCP/Teams/device).
 pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "list routines" || low == "routines" || low == "show routines" {
     return Some(ListRoutines)
   }
-  if low.has_prefix("create routine ") || low.has_prefix("schedule ") {
+  // CM-1801 scheduling skill (before routine `schedule routine`).
+  if low.has_prefix("schedule meeting ") ||
+      low.has_prefix("calendar event ") ||
+      low.has_prefix("schedule event ") {
+    let rest = if low.has_prefix("schedule meeting ") {
+      trimmed[17:].to_owned()
+    } else if low.has_prefix("calendar event ") {
+      trimmed[15:].to_owned()
+    } else {
+      trimmed[15:].to_owned()
+    }
+    let title = match extract_kv(rest, "title") {
+      Some(v) => v
+      None => rest.trim().to_owned()
+    }
+    let when_desc = match extract_kv(rest, "when") {
+      Some(v) => v
+      None => "unspecified"
+    }
+    if title != "" {
+      return Some(ScheduleMeeting(title~, when_desc~))
+    }
+  }
+  if low.has_prefix("launch cloud agent ") ||
+      low.has_prefix("cloud agent ") ||
+      low.has_prefix("launch cloud ") {
+    let prompt = if low.has_prefix("launch cloud agent ") {
+      trimmed[19:].trim().to_owned()
+    } else if low.has_prefix("cloud agent ") {
+      trimmed[12:].trim().to_owned()
+    } else {
+      trimmed[13:].trim().to_owned()
+    }
+    if prompt != "" {
+      return Some(LaunchCloudAgent(prompt~))
+    }
+  }
+  if low.has_prefix("deliver cloud artifact ") ||
+      low.has_prefix("deliver artifact ") {
+    let rest = if low.has_prefix("deliver cloud artifact ") {
+      trimmed[23:].to_owned()
+    } else {
+      trimmed[17:].to_owned()
+    }
+    let artifact = match extract_kv(rest, "artifact") {
+      Some(v) => v
+      None =>
+        match split_once(rest.trim().to_owned(), " ") {
+          Some((a, _)) => a
+          None => rest.trim().to_owned()
+        }
+    }
+    let dest = match extract_kv(rest, "dest") {
+      Some(v) => v
+      None => "workspace"
+    }
+    if artifact != "" {
+      return Some(DeliverCloudArtifact(artifact~, dest~))
+    }
+  }
+  if low.has_prefix("shop ") ||
+      low.has_prefix("shopping ") ||
+      (low.has_prefix("buy ") &&
+      (low.contains("target.com") ||
+        low.contains("bestbuy") ||
+        low.contains("costco") ||
+        low.contains("ebay") ||
+        low.contains("etsy") ||
+        low.contains("instacart") ||
+        low.contains("facebook"))) {
+    let host = if low.has_prefix("shop ") {
+      trimmed[5:].trim().to_owned()
+    } else if low.has_prefix("shopping ") {
+      trimmed[9:].trim().to_owned()
+    } else {
+      trimmed[4:].trim().to_owned()
+    }
+    if host != "" {
+      return Some(ShopRetail(url_or_host=host))
+    }
+  }
+  if low.has_prefix("purchase ") || low.has_prefix("buy confirm ") {
+    let rest = if low.has_prefix("purchase ") {
+      trimmed[9:].to_owned()
+    } else {
+      trimmed[12:].to_owned()
+    }
+    let item = match extract_kv(rest, "item") {
+      Some(v) => v
+      None => rest.trim().to_owned()
+    }
+    let amount_cents = match extract_kv(rest, "cents") {
+      Some(v) => parse_nonneg_i32(v)
+      None => 0
+    }
+    if item != "" {
+      return Some(PurchaseItem(item~, amount_cents~))
+    }
+  }
+  if low.has_prefix("create routine ") || low.has_prefix("schedule routine ") {
     let rest = if low.has_prefix("create routine ") {
       trimmed[15:].to_owned()
     } else {
-      trimmed[9:].to_owned()
+      trimmed[17:].to_owned()
     }
     let id = match extract_kv(rest, "id") {
       Some(v) => v

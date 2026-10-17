@@ -601,7 +601,11 @@ function createHostFfi(repoRoot) {
         kind === "voice_end_write" ||
         kind === "teammate_create" ||
         kind === "room_turn" ||
-        kind === "send_to_agent"
+        kind === "send_to_agent" ||
+        kind === "cloud_agent_launch" ||
+        kind === "cloud_artifact_deliver" ||
+        kind === "schedule_meeting" ||
+        kind === "purchase"
       ) {
         const journalLine = appendHostDeliveryJournal({
           kind,
