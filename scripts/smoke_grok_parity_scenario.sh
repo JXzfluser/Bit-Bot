@@ -218,7 +218,11 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-travel.json'));assert d
 python3 -c "import json,os;d=json.load(open('/tmp/parity-food.json'));assert d.get('ok') and d.get('intent')=='order_food';h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h['stdout']);oc=p.get('outcome')or{};assert oc.get('pretend_purchased') is False;assert oc.get('vertical_family')=='food';assert 'doordash' in (oc.get('playbook_name') or '');assert oc.get('playbook_journal') and os.path.isfile(oc['playbook_journal']);print('parity food playbook ok', oc.get('playbook_name'))"
 python3 "$ROOT/scripts/host_cu_checkout_fixture.py" --port 18769 >/tmp/parity-cu-fixture.log 2>&1 &
 CU_PID=$!
-sleep 0.5
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -sf "http://127.0.0.1:18769/" >/dev/null; then break; fi
+  sleep 0.2
+done
+curl -sf "http://127.0.0.1:18769/" >/dev/null
 BITBOT_CU_ALLOW_LOCAL=1 "${RUN[@]}" "computer use open http://127.0.0.1:18769/ shop cart checkout buy" >/tmp/parity-cu-paywall.json || true
 kill "$CU_PID" 2>/dev/null || true
 wait "$CU_PID" 2>/dev/null || true
