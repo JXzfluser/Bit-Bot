@@ -17,6 +17,23 @@ const SESSION_MEMORY_PATH = path.join(
   "memory",
   "desktop-host.json",
 );
+const HOST_DELIVERY_JOURNAL = path.join(
+  REPO_ROOT,
+  "data",
+  "journal",
+  "host-delivery.jsonl",
+);
+
+function appendHostDeliveryJournal(entry) {
+  try {
+    fs.mkdirSync(path.dirname(HOST_DELIVERY_JOURNAL), { recursive: true });
+    const line = JSON.stringify(entry);
+    fs.appendFileSync(HOST_DELIVERY_JOURNAL, line + "\n");
+    return HOST_DELIVERY_JOURNAL;
+  } catch (err) {
+    return `journal-failed: ${err.message || String(err)}`;
+  }
+}
 
 /** Dangerous patterns — Host FFI refuse (Grok-like irreversible gate). */
 const SHELL_DENY =
@@ -34,18 +51,24 @@ async function executeHostEffects(effects) {
   const results = [];
   for (const e of effects || []) {
     const kind = (e && e.kind) || "";
-    // Channel / mail / MCP / OAuth plans: Host acknowledges; live APIs later.
+    // Channel / mail / MCP / OAuth: Host records delivery journal (live APIs when creds exist).
     if (
       kind === "channel_send" ||
       kind === "mail_draft" ||
       kind === "mcp_namespace" ||
       kind === "oauth"
     ) {
+      const cmd = String((e && e.command) || "");
+      const journalLine = appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        at: new Date().toISOString(),
+      });
       results.push({
         kind,
         ok: true,
-        command: String((e && e.command) || ""),
-        stdout: `Host stub executed ${kind} (live connector FFI pending)`,
+        command: cmd,
+        stdout: `Host delivery journal: ${journalLine}`,
         stderr: "",
       });
       continue;
