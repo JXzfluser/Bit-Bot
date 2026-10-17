@@ -133,6 +133,14 @@ function createHostFfi(repoRoot) {
     "agents",
     "room-turns.jsonl",
   );
+  const AGENT_OUTBOX_DIR = path.join(REPO_ROOT, "data", "agents", "outbox");
+  const AGENT_INBOX_DIR = path.join(REPO_ROOT, "data", "agents", "inbox");
+  const SUBAGENT_RESULTS_DIR = path.join(
+    REPO_ROOT,
+    "data",
+    "agents",
+    "subagent-results",
+  );
 
   function appendHostDeliveryJournal(entry) {
     try {
@@ -1677,6 +1685,9 @@ function createHostFfi(repoRoot) {
     if (kind === "cloud_agent_launch") {
       return null; // cursor-agent card already recorded in effect handler
     }
+    if (kind === "room_turn" || kind === "send_to_agent" || kind === "subagent_run") {
+      return null; // SendToUser already recorded in multi-agent handlers
+    }
     if (kind === "voice_session" || kind === "voice_relay" || kind === "voice_end_write") {
       return recordSendToUser({
         type: "voice",
@@ -3053,6 +3064,397 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  function nestDepth() {
+    const n = Number(process.env.BITBOT_NEST_DEPTH || "0");
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  function parseLastJsonObject(text) {
+    const lines = String(text || "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (line.startsWith("{") && line.endsWith("}")) {
+        try {
+          return JSON.parse(line);
+        } catch {
+          /* continue */
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Bounded MoonBit worker turn for teammate/subagent wakes (Host FFI only).
+   * Does not re-enter Host effects — caller decides whether to apply effects.
+   * BITBOT_NEST_DEPTH>=1 skips spawning to prevent busy-loop nesting (CM-2133).
+   */
+  async function runWorkerMoonTurn({ prompt, sessionId, timeoutMs = 90000 }) {
+    const depth = nestDepth();
+    if (depth >= 1) {
+      return {
+        ok: true,
+        nested_skipped: true,
+        assistant: `(worker nest skipped at depth ${depth})`,
+        intent: "chat",
+        effects: [],
+      };
+    }
+    const moonBin = process.env.MOON_BIN || "moon";
+    const moonTarget = process.env.BITBOT_MOON_TARGET || "native";
+    const args = [
+      "run",
+      "cmd/desktop_turn",
+      "--target",
+      moonTarget,
+      "--",
+      "--session-id",
+      String(sessionId || "worker"),
+      ...memorySeedArgs(),
+      String(prompt || "").slice(0, 800),
+    ];
+    try {
+      const { stdout, stderr } = await execFileAsync(moonBin, args, {
+        cwd: REPO_ROOT,
+        timeout: timeoutMs,
+        maxBuffer: 2 * 1024 * 1024,
+        env: {
+          ...process.env,
+          BITBOT_NEST_DEPTH: String(depth + 1),
+          PATH: `${process.env.HOME || ""}/.moon/bin:${process.env.PATH || ""}`,
+        },
+      });
+      const parsed = parseLastJsonObject(stdout || stderr) || {};
+      let assistant = String(parsed.assistant || parsed.summary || "").trim();
+      if (!assistant && Array.isArray(parsed.messages)) {
+        const parts = [];
+        for (const m of parsed.messages) {
+          if (m && m.role === "assistant" && m.text) parts.push(String(m.text));
+        }
+        assistant = parts.join("\n").trim();
+      }
+      return {
+        ok: Boolean(parsed.ok !== false),
+        nested_skipped: false,
+        assistant: assistant.slice(0, 2000),
+        intent: parsed.intent || "",
+        turn_id: parsed.turn_id || "",
+        effects: Array.isArray(parsed.effects) ? parsed.effects : [],
+        needs_host_ffi: Boolean(parsed.needs_host_ffi),
+        raw_ok: Boolean(parsed.ok),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        nested_skipped: false,
+        error: err.message || String(err),
+        assistant: "",
+        intent: "",
+        effects: [],
+      };
+    }
+  }
+
+  async function executeMultiAgentEffect(kind, command) {
+    const at = new Date().toISOString();
+    const cmd = String(command || "");
+    const depth = nestDepth();
+
+    if (kind === "room_turn") {
+      const sep = cmd.indexOf(" :: ");
+      const room = sep >= 0 ? cmd.slice(0, sep) : "room";
+      const body = sep >= 0 ? cmd.slice(sep + 4) : cmd;
+      const members = readJsonArray(TEAMMATES_PATH)
+        .filter((r) => r && r.id)
+        .map((r) => ({ id: r.id, name: r.name || r.id, role: r.role || "" }));
+      const delivered_to = [];
+      for (const m of members) {
+        const inboxPath = path.join(
+          AGENT_INBOX_DIR,
+          `${sanitizeSkillName(m.id)}.jsonl`,
+        );
+        appendJsonl(inboxPath, {
+          room,
+          from: "user",
+          to_id: m.id,
+          body,
+          is_room: true,
+          forbids_private_assumptions: true,
+          at,
+        });
+        delivered_to.push(m.id);
+      }
+      const entry = {
+        room,
+        body,
+        speaker_id: "user",
+        is_room: true,
+        is_private_dm: false,
+        forbids_private_assumptions: true,
+        members,
+        delivered_to,
+        member_count: members.length,
+        at,
+      };
+      const pathWritten = appendJsonl(ROOM_TURNS_PATH, entry);
+      const delivery = recordSendToUser({
+        type: "thread",
+        channel: `room:${room}`,
+        body_prefix: String(body || "").slice(0, 120),
+        room,
+        member_count: members.length,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: pathWritten,
+        delivered_to,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: pathWritten,
+        send_to_user: delivery,
+        mode: "room_fanout",
+      });
+    }
+
+    if (kind === "send_to_agent") {
+      const sep = cmd.indexOf(" :: ");
+      const toId = sep >= 0 ? cmd.slice(0, sep) : cmd;
+      const body = sep >= 0 ? cmd.slice(sep + 4) : "";
+      if (!toId || toId === "user" || toId === "self") {
+        return {
+          kind,
+          ok: false,
+          command: cmd,
+          error: "send_to_agent refused: invalid to_id / self-loop",
+          stdout: "",
+          stderr: "",
+        };
+      }
+      const teammates = readJsonArray(TEAMMATES_PATH);
+      const known = teammates.find((r) => r && r.id === toId) || null;
+      const inboxPath = path.join(
+        AGENT_INBOX_DIR,
+        `${sanitizeSkillName(toId)}.jsonl`,
+      );
+      const inboxEntry = {
+        to_id: toId,
+        body,
+        status: "queued",
+        teammate_known: Boolean(known),
+        at,
+      };
+      appendJsonl(inboxPath, inboxEntry);
+      let worker = {
+        ok: true,
+        nested_skipped: depth >= 1,
+        assistant: "",
+        intent: "",
+      };
+      let reply = "";
+      let status = "delivered";
+      if (depth >= 1) {
+        status = "delivered_nest_skipped";
+        reply = `(nest skipped — inbox only for ${toId})`;
+      } else {
+        worker = await runWorkerMoonTurn({
+          prompt: body || "ping",
+          sessionId: `agent-${sanitizeSkillName(toId)}`,
+        });
+        reply = worker.assistant || `(acked by ${toId})`;
+        // Apply non-nesting host effects from worker if any (nest depth already elevated in child env;
+        // this process stays at depth 0 but child spawn was nest-guarded).
+        if (worker.needs_host_ffi && worker.effects && worker.effects.length) {
+          const prev = process.env.BITBOT_NEST_DEPTH;
+          process.env.BITBOT_NEST_DEPTH = "1";
+          try {
+            await executeHostEffects(worker.effects);
+          } finally {
+            if (prev === undefined) delete process.env.BITBOT_NEST_DEPTH;
+            else process.env.BITBOT_NEST_DEPTH = prev;
+          }
+        }
+        status = worker.ok ? "delivered_replied" : "delivered_worker_error";
+      }
+      const outboxPath = path.join(
+        AGENT_OUTBOX_DIR,
+        `${sanitizeSkillName(toId)}.jsonl`,
+      );
+      const outboxEntry = {
+        to_id: toId,
+        body,
+        reply: String(reply).slice(0, 2000),
+        status,
+        teammate_known: Boolean(known),
+        worker_intent: worker.intent || "",
+        nested_skipped: Boolean(worker.nested_skipped),
+        at,
+      };
+      appendJsonl(outboxPath, outboxEntry);
+      appendJsonl(inboxPath, {
+        to_id: toId,
+        body,
+        status,
+        reply_prefix: String(reply).slice(0, 120),
+        at,
+      });
+      const delivery = recordSendToUser({
+        type: "text",
+        channel: `agent:${toId}`,
+        body_prefix: String(reply).slice(0, 120),
+        to_id: toId,
+        status,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: inboxPath,
+        outbox: outboxPath,
+        status,
+        at,
+      });
+      return okJson(kind, cmd, {
+        to_id: toId,
+        body,
+        path: inboxPath,
+        outbox: outboxPath,
+        routed: true,
+        delivered: true,
+        status,
+        teammate_known: Boolean(known),
+        teammate: known,
+        reply: String(reply).slice(0, 2000),
+        nested_skipped: Boolean(worker.nested_skipped),
+        worker_ok: Boolean(worker.ok),
+        send_to_user: delivery,
+      });
+    }
+
+    if (kind === "subagent_run") {
+      const parts = cmd.split("|");
+      const id = parts[0] || "sub-1";
+      const prompt = parts.slice(1).join("|") || "";
+      const rows = readJsonArray(SUBAGENTS_PATH);
+      let row = {
+        id,
+        prompt,
+        status: "running",
+        kind: "executor",
+        at,
+      };
+      const idx = rows.findIndex((r) => r && r.id === id);
+      if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
+      else rows.push(row);
+      writeJsonArray(SUBAGENTS_PATH, rows);
+
+      let worker = {
+        ok: true,
+        nested_skipped: depth >= 1,
+        assistant: "",
+        intent: "",
+        error: "",
+      };
+      let resultPath = "";
+      if (depth >= 1) {
+        row = {
+          ...row,
+          status: "completed_nest_skipped",
+          completed_at: at,
+          note: "CM-2133 nest guard — no busy-loop subagent spawn",
+        };
+      } else {
+        worker = await runWorkerMoonTurn({
+          prompt: prompt || "summarize",
+          sessionId: `subagent-${sanitizeSkillName(id)}`,
+        });
+        if (worker.needs_host_ffi && worker.effects && worker.effects.length) {
+          const prev = process.env.BITBOT_NEST_DEPTH;
+          process.env.BITBOT_NEST_DEPTH = "1";
+          try {
+            worker.host_results = await executeHostEffects(worker.effects);
+          } finally {
+            if (prev === undefined) delete process.env.BITBOT_NEST_DEPTH;
+            else process.env.BITBOT_NEST_DEPTH = prev;
+          }
+        }
+        fs.mkdirSync(SUBAGENT_RESULTS_DIR, { recursive: true });
+        resultPath = path.join(
+          SUBAGENT_RESULTS_DIR,
+          `${sanitizeSkillName(id)}.json`,
+        );
+        fs.writeFileSync(
+          resultPath,
+          JSON.stringify(
+            {
+              id,
+              prompt,
+              assistant: worker.assistant || "",
+              intent: worker.intent || "",
+              ok: Boolean(worker.ok),
+              error: worker.error || "",
+              at,
+            },
+            null,
+            2,
+          ),
+        );
+        row = {
+          ...row,
+          status: worker.ok ? "completed" : "failed",
+          completed_at: new Date().toISOString(),
+          result_path: resultPath,
+          assistant_prefix: String(worker.assistant || "").slice(0, 160),
+          worker_intent: worker.intent || "",
+        };
+      }
+      const next = readJsonArray(SUBAGENTS_PATH);
+      const i2 = next.findIndex((r) => r && r.id === id);
+      if (i2 >= 0) next[i2] = { ...next[i2], ...row };
+      else next.push(row);
+      writeJsonArray(SUBAGENTS_PATH, next);
+      const delivery = recordSendToUser({
+        type: "text",
+        channel: `subagent:${id}`,
+        body_prefix: String(row.assistant_prefix || row.status || "").slice(
+          0,
+          120,
+        ),
+        status: row.status,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: SUBAGENTS_PATH,
+        result_path: resultPath || null,
+        status: row.status,
+        at,
+      });
+      return okJson(kind, cmd, {
+        stored: true,
+        path: SUBAGENTS_PATH,
+        subagent: row,
+        result_path: resultPath || null,
+        worker_ok: Boolean(worker.ok),
+        nested_skipped: Boolean(worker.nested_skipped),
+        send_to_user: delivery,
+        ran: depth < 1,
+      });
+    }
+
+    return null;
+  }
+
   function executeProductDeliveryEffect(kind, command) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
@@ -3300,59 +3702,7 @@ function createHostFfi(repoRoot) {
       });
     }
 
-    if (kind === "room_turn") {
-      const sep = cmd.indexOf(" :: ");
-      const room = sep >= 0 ? cmd.slice(0, sep) : "room";
-      const body = sep >= 0 ? cmd.slice(sep + 4) : cmd;
-      const entry = { room, body, at };
-      const pathWritten = appendJsonl(ROOM_TURNS_PATH, entry);
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten });
-    }
-
-    if (kind === "send_to_agent") {
-      const sep = cmd.indexOf(" :: ");
-      const toId = sep >= 0 ? cmd.slice(0, sep) : cmd;
-      const body = sep >= 0 ? cmd.slice(sep + 4) : "";
-      const inboxPath = path.join(
-        REPO_ROOT,
-        "data",
-        "agents",
-        "inbox",
-        `${sanitizeSkillName(toId)}.jsonl`,
-      );
-      const entry = { to_id: toId, body, at };
-      const pathWritten = appendJsonl(inboxPath, entry);
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten, routed: true });
-    }
-
-    if (kind === "subagent_run") {
-      const parts = cmd.split("|");
-      const row = {
-        id: parts[0] || "sub-1",
-        prompt: parts.slice(1).join("|") || "",
-        status: "running",
-        kind: "executor",
-        at,
-      };
-      const rows = readJsonArray(SUBAGENTS_PATH);
-      const idx = rows.findIndex((r) => r && r.id === row.id);
-      if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
-      else rows.push(row);
-      writeJsonArray(SUBAGENTS_PATH, rows);
-      appendHostDeliveryJournal({
-        kind,
-        command: cmd,
-        path: SUBAGENTS_PATH,
-        at,
-      });
-      return okJson(kind, cmd, {
-        stored: true,
-        path: SUBAGENTS_PATH,
-        subagent: row,
-      });
-    }
+    // room_turn / send_to_agent / subagent_run → executeMultiAgentEffect (async)
 
     if (kind === "approval_card") {
       // CM-0105-shaped decision widget for Desktop (Approve / Dismiss).
@@ -3754,6 +4104,14 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "export_pack") {
         results.push(executeExportPack(cmd));
+        continue;
+      }
+      if (
+        kind === "room_turn" ||
+        kind === "send_to_agent" ||
+        kind === "subagent_run"
+      ) {
+        results.push(await executeMultiAgentEffect(kind, cmd));
         continue;
       }
       const productRes = executeProductDeliveryEffect(kind, cmd);

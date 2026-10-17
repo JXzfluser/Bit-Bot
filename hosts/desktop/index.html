@@ -456,6 +456,58 @@
                 "Members: " + name + " (Host durable)";
             } catch (_) { /* ignore */ }
           }
+          const roomHost = r.host_results.find((h) => h && h.kind === "room_turn" && h.ok);
+          if (roomHost) {
+            try {
+              const p = JSON.parse(roomHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Room «" +
+                  (p.room || "?") +
+                  "» fanout → " +
+                  (p.member_count || 0) +
+                  " member(s); private assumptions forbidden",
+              );
+              const meta = document.getElementById("teammates-meta");
+              if (meta) {
+                meta.textContent =
+                  "Room " +
+                  (p.room || "") +
+                  " · members " +
+                  (p.member_count || 0);
+              }
+            } catch (_) { /* ignore */ }
+          }
+          const staHost = r.host_results.find((h) => h && h.kind === "send_to_agent" && h.ok);
+          if (staHost) {
+            try {
+              const p = JSON.parse(staHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "SendToAgent → " +
+                  (p.to_id || "?") +
+                  " [" +
+                  (p.status || "routed") +
+                  "]" +
+                  (p.reply ? ": " + String(p.reply).slice(0, 160) : ""),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const subHost = r.host_results.find((h) => h && h.kind === "subagent_run" && h.ok);
+          if (subHost) {
+            try {
+              const p = JSON.parse(subHost.stdout || "{}");
+              const s = p.subagent || {};
+              addMsg(
+                "assistant",
+                "Subagent " +
+                  (s.id || "?") +
+                  " → " +
+                  (s.status || "?") +
+                  (s.assistant_prefix ? ": " + s.assistant_prefix : ""),
+              );
+            } catch (_) { /* ignore */ }
+          }
           const perm = r.host_results.find((h) => h && h.kind === "device_permission");
           const permPanel = document.getElementById("permission");
           const permDetail = document.getElementById("permission-detail");
@@ -488,6 +540,9 @@
             "oauth",
             "approval_card",
             "cloud_agent_launch",
+            "room_turn",
+            "send_to_agent",
+            "subagent_run",
           ];
           const attaches = r.host_results.filter(
             (h) => h && h.ok && attachKinds.includes(h.kind),
@@ -543,6 +598,17 @@
                   types.push("cursor-agent");
                 } else if (h.kind === "channel_send" && p.personal_dm) {
                   label = "personal-dm:" + (p.mode || "draft");
+                  types.push("text");
+                } else if (h.kind === "room_turn") {
+                  label = "room:" + (p.room || "?") + "×" + (p.member_count || 0);
+                  types.push("thread");
+                } else if (h.kind === "send_to_agent") {
+                  label = "agent:" + (p.to_id || "?") + "/" + (p.status || "routed");
+                  types.push("text");
+                } else if (h.kind === "subagent_run") {
+                  label =
+                    "subagent:" +
+                    ((p.subagent && p.subagent.status) || p.status || "run");
                   types.push("text");
                 } else if (h.kind === "oauth") {
                   label = "oauth:" + (p.status || "?") + "/" + (p.mode || "");
