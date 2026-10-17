@@ -9,6 +9,11 @@ MOBILE=(node hosts/mobile_host/run.js)
 
 echo "==> Grok parity scenario: multi-turn SendToUser + multi-end"
 
+# Drop stale local mocks/fixtures from prior smokes (fixed ports).
+pkill -f 'scripts/host_local_http_mock.py' >/dev/null 2>&1 || true
+pkill -f 'scripts/host_cu_checkout_fixture.py' >/dev/null 2>&1 || true
+sleep 0.2
+
 # Fresh delivery ledger snapshot marker
 MARKER="parity-scenario-$(date +%s)"
 mkdir -p data/delivery
@@ -216,14 +221,14 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-shop.json'));assert d.g
 python3 -c "import json,os;d=json.load(open('/tmp/parity-travel.json'));assert d.get('ok') and d.get('intent')=='travel_book';h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h['stdout']);oc=p.get('outcome')or{};assert oc.get('pretend_purchased') is False;assert oc.get('vertical_family')=='travel';assert 'expedia' in (oc.get('playbook_name') or '');assert oc.get('playbook_journal') and os.path.isfile(oc['playbook_journal']);print('parity travel playbook ok', oc.get('playbook_name'))"
 "${RUN[@]}" "order food https://www.doordash.com/" >/tmp/parity-food.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-food.json'));assert d.get('ok') and d.get('intent')=='order_food';h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h['stdout']);oc=p.get('outcome')or{};assert oc.get('pretend_purchased') is False;assert oc.get('vertical_family')=='food';assert 'doordash' in (oc.get('playbook_name') or '');assert oc.get('playbook_journal') and os.path.isfile(oc['playbook_journal']);print('parity food playbook ok', oc.get('playbook_name'))"
-python3 "$ROOT/scripts/host_cu_checkout_fixture.py" --port 18769 >/tmp/parity-cu-fixture.log 2>&1 &
+python3 "$ROOT/scripts/host_cu_checkout_fixture.py" --port 18780 >/tmp/parity-cu-fixture.log 2>&1 &
 CU_PID=$!
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if curl -sf "http://127.0.0.1:18769/" >/dev/null; then break; fi
+  if curl -sf "http://127.0.0.1:18780/" >/dev/null; then break; fi
   sleep 0.2
 done
-curl -sf "http://127.0.0.1:18769/" >/dev/null
-BITBOT_CU_ALLOW_LOCAL=1 "${RUN[@]}" "computer use open http://127.0.0.1:18769/ shop cart checkout buy" >/tmp/parity-cu-paywall.json || true
+curl -sf "http://127.0.0.1:18780/" >/dev/null
+BITBOT_CU_ALLOW_LOCAL=1 "${RUN[@]}" "computer use open http://127.0.0.1:18780/ shop cart checkout buy" >/tmp/parity-cu-paywall.json || true
 kill "$CU_PID" 2>/dev/null || true
 wait "$CU_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-cu-paywall.json'));h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('has_payment') is True;assert oc.get('checkout_stage')=='payment_wall' or oc.get('vertical_stage')=='payment_wall';assert oc.get('pretend_purchased') is False;assert oc.get('paid_checkout_attempted') is False;assert oc.get('live_paid_residual') is True;print('parity CU payment_wall ok', oc.get('checkout_stage'))"
