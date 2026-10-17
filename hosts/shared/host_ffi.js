@@ -1941,17 +1941,12 @@ function createHostFfi(repoRoot) {
       const payload = fs.existsSync(outPath)
         ? fs.readFileSync(outPath, "utf8")
         : stdout;
-      appendHostDeliveryJournal({
-        kind,
-        command,
-        mode: "stdio-mcp",
-        file_expand: fileExpandMeta,
-        at: new Date().toISOString(),
-      });
+      const mcpAt = new Date().toISOString();
       let outText = String(payload || "").slice(0, 12000);
       let writeMeta = null;
+      let parsed = null;
       try {
-        const parsed = JSON.parse(outText);
+        parsed = JSON.parse(outText);
         // CM-2164: extract write_result path from MCP tool content (never re-embed body).
         const toolText =
           parsed &&
@@ -1978,7 +1973,7 @@ function createHostFfi(repoRoot) {
                   path: meta.path,
                   label: "mcp_write_to_file",
                   source_kind: kind,
-                  at: new Date().toISOString(),
+                  at: mcpAt,
                 });
               }
             }
@@ -2001,10 +1996,105 @@ function createHostFfi(repoRoot) {
         if (writeMeta) {
           annotated.write_to_file = writeMeta;
         }
+        // mcp_discover: durable tools catalog (not tmp-only).
+        if (kind === "mcp_discover") {
+          const responses = Array.isArray(parsed)
+            ? parsed
+            : parsed && typeof parsed === "object"
+              ? Object.keys(parsed)
+                  .filter((k) => /^\d+$/.test(k))
+                  .sort((a, b) => Number(a) - Number(b))
+                  .map((k) => parsed[k])
+              : [];
+          let tools = [];
+          for (const resp of responses) {
+            const listed =
+              resp &&
+              resp.result &&
+              Array.isArray(resp.result.tools) &&
+              resp.result.tools;
+            if (listed && listed.length) {
+              tools = listed;
+              break;
+            }
+          }
+          if (
+            !tools.length &&
+            parsed &&
+            parsed.result &&
+            Array.isArray(parsed.result.tools)
+          ) {
+            tools = parsed.result.tools;
+          }
+          const discDir = path.join(
+            REPO_ROOT,
+            "data",
+            "connectors",
+            "mcp-discovers",
+          );
+          fs.mkdirSync(discDir, { recursive: true });
+          const catalogPath = path.join(
+            discDir,
+            `discover-${Date.now().toString(36)}.json`,
+          );
+          const catalog = {
+            mode: "stdio-mcp",
+            tool_count: tools.length,
+            tools: tools.map((t) => ({
+              name: t && t.name,
+              description: t && t.description,
+            })),
+            out_json: outPath,
+            pretend_empty: false,
+            pretend_discovered: false,
+            at: mcpAt,
+          };
+          fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
+          appendJsonl(path.join(discDir, "discovers.jsonl"), {
+            ...catalog,
+            path: catalogPath,
+          });
+          annotated.discover = {
+            path: catalogPath,
+            tool_count: tools.length,
+            pretend_empty: false,
+            pretend_discovered: false,
+          };
+          const delivery = recordSendToUser({
+            type: "attachment",
+            path: catalogPath,
+            label: "mcp_discover",
+            source_kind: kind,
+            at: mcpAt,
+          });
+          annotated.send_to_user = delivery;
+          annotated.path = catalogPath;
+          annotated.tool_count = tools.length;
+          annotated.pretend_empty = false;
+          annotated.pretend_discovered = false;
+          annotated.ok = true;
+          appendHostDeliveryJournal({
+            kind,
+            command,
+            mode: "stdio-mcp",
+            path: catalogPath,
+            tool_count: tools.length,
+            file_expand: fileExpandMeta,
+            at: mcpAt,
+          });
+          return okJson(kind, command, annotated);
+        }
         outText = JSON.stringify(annotated, null, 2).slice(0, 12000);
       } catch (_) {
         /* keep raw MCP payload */
       }
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        mode: "stdio-mcp",
+        file_expand: fileExpandMeta,
+        at: mcpAt,
+      });
       return {
         kind,
         ok: true,
@@ -7243,13 +7333,50 @@ function createHostFfi(repoRoot) {
     }
 
     if (kind === "mcp_namespace") {
-      const entry = { namespace: cmd, at };
-      const pathWritten = appendJsonl(
-        path.join(REPO_ROOT, "data", "connectors", "mcp-namespaces.jsonl"),
-        entry,
+      const nsDir = path.join(REPO_ROOT, "data", "connectors", "mcp-namespaces");
+      fs.mkdirSync(nsDir, { recursive: true });
+      const ledgerPath = path.join(
+        REPO_ROOT,
+        "data",
+        "connectors",
+        "mcp-namespaces.jsonl",
       );
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten });
+      const snapPath = path.join(
+        nsDir,
+        `ns-${Date.now().toString(36)}.json`,
+      );
+      const entry = {
+        namespace: cmd,
+        mode: "host_mcp_namespace",
+        pretend_registered: false,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
+      const pathWritten = appendJsonl(ledgerPath, {
+        ...entry,
+        path: snapPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: snapPath,
+        label: "mcp_namespace",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: snapPath,
+        ledger_path: pathWritten,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: snapPath,
+        ledger_path: pathWritten,
+        send_to_user: delivery,
+        ok: true,
+      });
     }
 
     return null;
