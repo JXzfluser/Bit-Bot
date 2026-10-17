@@ -260,6 +260,8 @@
 - [x] Parity: skill_write meta_path + pretend_shared honesty
 - [x] Host slides_pptx per-op meta snapshots under `data/slides/renders/`
 - [x] Parity: slides_pptx meta_path + pretend_rendered honesty
+- [x] Host mail_draft / purchase / finance_call / workflow_list per-op snaps (eml/receipt/artifact/catalog retained)
+- [x] Parity: mail_draft/purchase/finance/workflow path + pretend_* honesty
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

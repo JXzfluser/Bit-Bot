@@ -7108,9 +7108,22 @@ function createHostFfi(repoRoot) {
         at,
       };
       const pathWritten = appendJsonl(COMMERCE_PATH, entry);
+      const purchaseDir = path.join(REPO_ROOT, "data", "commerce", "purchases");
+      fs.mkdirSync(purchaseDir, { recursive: true });
+      const purchasePath = path.join(
+        purchaseDir,
+        `purchase-${receiptId}.json`,
+      );
+      const artifact = {
+        ...entry,
+        ledger_path: pathWritten,
+        mode_note: "host_purchase",
+      };
+      fs.writeFileSync(purchasePath, JSON.stringify(artifact, null, 2));
       const delivery = recordSendToUser({
         type: "attachment",
         path: receiptPath,
+        meta_path: purchasePath,
         label: "purchase_receipt",
         receipt_id: receiptId,
         mode,
@@ -7118,8 +7131,20 @@ function createHostFfi(repoRoot) {
         source_kind: kind,
         at,
       });
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, receipt: receiptPath, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten, send_to_user: delivery });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: purchasePath,
+        receipt: receiptPath,
+        ledger_path: pathWritten,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...artifact,
+        path: purchasePath,
+        send_to_user: delivery,
+        ok: true,
+      });
     }
 
     if (kind === "finance_call") {
@@ -7214,16 +7239,17 @@ function createHostFfi(repoRoot) {
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: pathWritten,
+        path: artifactPath,
+        ledger_path: pathWritten,
         artifact: artifactPath,
         at,
       });
       return okJson(kind, cmd, {
         ...entry,
-        path: pathWritten,
+        ...artifact,
+        path: artifactPath,
+        ledger_path: pathWritten,
         ok: true,
-        balance_sandbox: artifact.balance_sandbox,
-        live_probe: liveProbe,
       });
     }
 
@@ -7488,9 +7514,21 @@ function createHostFfi(repoRoot) {
       };
       fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
       appendJsonl(path.join(wfDir, "list.jsonl"), catalog);
+      const listDir = path.join(wfDir, "lists");
+      fs.mkdirSync(listDir, { recursive: true });
+      const listPath = path.join(
+        listDir,
+        `list-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        ...catalog,
+        catalog_path: catalogPath,
+        pretend_shared: false,
+      };
+      fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
       const delivery = recordSendToUser({
         type: "attachment",
-        path: catalogPath,
+        path: listPath,
         label: "workflow_catalog",
         source_kind: kind,
         at,
@@ -7498,12 +7536,13 @@ function createHostFfi(repoRoot) {
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: catalogPath,
+        path: listPath,
+        catalog_path: catalogPath,
         at,
       });
       return okJson(kind, cmd, {
-        ...catalog,
-        path: catalogPath,
+        ...artifact,
+        path: listPath,
         send_to_user: delivery,
         ok: true,
       });
@@ -7662,9 +7701,20 @@ function createHostFfi(repoRoot) {
         at,
       };
       const pathWritten = appendJsonl(MAIL_DRAFTS_PATH, entry);
+      const draftMetaDir = path.join(REPO_ROOT, "data", "mail", "drafts");
+      fs.mkdirSync(draftMetaDir, { recursive: true });
+      const draftMetaPath = path.join(draftMetaDir, `${draftId}.json`);
+      const artifact = {
+        ...entry,
+        ledger_path: pathWritten,
+        pretend_sent: false,
+        mode_note: "host_mail_draft",
+      };
+      fs.writeFileSync(draftMetaPath, JSON.stringify(artifact, null, 2));
       const delivery = recordSendToUser({
         type: meetingDraft ? "widget" : "attachment",
         path: emlPath,
+        meta_path: draftMetaPath,
         label: meetingDraft ? "meeting_chat_draft" : "mail_draft.eml",
         widget: meetingDraft ? "meeting_draft_card" : undefined,
         to,
@@ -7672,13 +7722,21 @@ function createHostFfi(repoRoot) {
         source_kind: kind,
         at,
       });
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, eml: emlPath, at });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: draftMetaPath,
+        eml: emlPath,
+        ledger_path: pathWritten,
+        at,
+      });
       return okJson(kind, cmd, {
-        ...entry,
-        path: pathWritten,
+        ...artifact,
+        path: draftMetaPath,
         drafted: true,
         mode: meetingDraft ? "meeting_chat_draft_card" : "mail_draft",
         send_to_user: delivery,
+        ok: true,
       });
     }
 

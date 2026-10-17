@@ -143,7 +143,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-sec-post.json'));h=next
 python3 -c "import json,os;d=json.load(open('/tmp/parity-slides.json'));h=next(x for x in d['host_results'] if x.get('kind')=='slides_pptx');p=json.loads(h['stdout']);assert p.get('pptx_pk_magic_ok') is True;assert p.get('path') and os.path.isfile(p['path']);assert p.get('meta_path') and os.path.isfile(p['meta_path']);assert p.get('pretend_rendered') is False;print('parity slides_pptx ok', p.get('bytes'), p.get('meta_path'))"
 
 "${RUN[@]}" --approved "purchase item=ParityWidget cents=500" >/tmp/parity-purchase.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-purchase.json'));h=next(x for x in d['host_results'] if x.get('kind')=='purchase');p=json.loads(h['stdout']);assert p.get('receipt_ok') is True;assert p.get('pretend_paid') is False;assert p.get('paid') is False;assert p.get('live_paid_residual') is True;assert os.path.isfile(p['receipt_path']);print('parity purchase sandbox ok', p.get('mode'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-purchase.json'));h=next(x for x in d['host_results'] if x.get('kind')=='purchase');p=json.loads(h['stdout']);assert p.get('receipt_ok') is True;assert p.get('pretend_paid') is False;assert p.get('paid') is False;assert p.get('live_paid_residual') is True;assert os.path.isfile(p['receipt_path']);assert p.get('path') and os.path.isfile(p['path']);print('parity purchase sandbox ok', p.get('mode'), p.get('path'))"
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18765 --mode purchase --token smoke-pay >/tmp/parity-pay-mock.log 2>&1 &
 PAY_PID=$!
 sleep 0.35
@@ -183,7 +183,7 @@ wait "$X_PID" "$JOB_PID" "$CAL_PID" "$FIN_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-x.json'));h=next(x for x in d['host_results'] if x.get('kind')=='x_search');p=json.loads(h['stdout']);assert p.get('mode')=='x_live';assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;print('parity x_search live ok', p.get('hit_count'))"
 python3 -c "import json;d=json.load(open('/tmp/parity-job.json'));h=next(x for x in d['host_results'] if x.get('kind')=='job_search');p=json.loads(h['stdout']);assert p.get('mode')=='job_live';assert p.get('live_job_residual') is False;assert p.get('pretend_applied') is False;assert p.get('hit_count')>=1;print('parity job_search live ok', p.get('hit_count'))"
 python3 -c "import json,os;d=json.load(open('/tmp/parity-cal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('mode')=='calendar_live';assert p.get('live_calendar_residual') is False;assert p.get('ics_ok') is True and os.path.isfile(p['ics_path']);assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_live') is False;print('parity calendar live ok', p.get('path'))"
-python3 -c "import json;d=json.load(open('/tmp/parity-fin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='finance_call');p=json.loads(h['stdout']);assert p.get('mode')=='finance_live';assert p.get('live_finance_residual') is False;assert p.get('pretend_live') is False;print('parity finance_call live ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-fin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='finance_call');p=json.loads(h['stdout']);assert p.get('mode')=='finance_live';assert p.get('live_finance_residual') is False;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('parity finance_call live ok', p.get('path'))"
 
 # 9h) CU OCR/native + device tools + identity + workflows + box copy + cold mail + meeting + Outlook
 BITBOT_CU_OCR=1 BITBOT_CU_NATIVE_ACT=1 \
@@ -196,7 +196,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-dti.json'));hrs=d.get('
 "${RUN[@]}" "identity browser" >/tmp/parity-id.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-id.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='identity_browser_switch';assert p.get('pretend_connected_slack') is False;assert p.get('connected') is False;assert p.get('session_path') and os.path.isfile(p['session_path']);print('parity identity_browser ok')"
 "${RUN[@]}" "list workflows" >/tmp/parity-wf.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-wf.json'));h=next(x for x in d['host_results'] if x.get('kind')=='workflow_list');p=json.loads(h['stdout']);assert p.get('count')>=1;assert p.get('path') and os.path.isfile(p['path']);assert all(w.get('pretend_shared') is False for w in p.get('workflows')or[]);print('parity workflow_list ok', p.get('count'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-wf.json'));h=next(x for x in d['host_results'] if x.get('kind')=='workflow_list');p=json.loads(h['stdout']);assert p.get('count')>=1;assert p.get('path') and os.path.isfile(p['path']);assert p.get('catalog_path') and os.path.isfile(p['catalog_path']);assert p.get('pretend_shared') is False;assert all(w.get('pretend_shared') is False for w in p.get('workflows')or[]);print('parity workflow_list ok', p.get('count'), p.get('path'))"
 mkdir -p uploads
 echo "parity-box-$MARKER" > uploads/parity-box-src.txt
 "${RUN[@]}" "copy to box machine=desk-1 src=uploads/parity-box-src.txt dest=uploads/parity-box-dest.txt" >/tmp/parity-box.json
@@ -206,7 +206,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-cold.json'));h=next(x f
 "${RUN[@]}" "meeting chat body=parity standup $MARKER direct=1" >/tmp/parity-meet.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-meet.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_direct';assert p.get('live_meeting_residual') is True;assert p.get('transcript') and os.path.isfile(p['transcript']);print('parity meeting_chat DirectSend ok')"
 "${RUN[@]}" "meeting chat body=parity draft card" >/tmp/parity-meet-draft.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-meet-draft.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_draft');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_draft_card';assert p.get('meeting_chat') is True;assert p.get('eml_ok') is True;assert os.path.isfile(p.get('eml_path') or '');print('parity meeting_chat DraftCard ok', p.get('eml_path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-meet-draft.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_draft');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_draft_card';assert p.get('meeting_chat') is True;assert p.get('eml_ok') is True;assert os.path.isfile(p.get('eml_path') or '');assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_sent') is False;print('parity meeting_chat DraftCard ok', p.get('eml_path'), p.get('path'))"
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18766 --mode meeting --token smoke-meeting >/tmp/parity-meet-live-mock.log 2>&1 &
 MEET_LIVE_PID=$!
 sleep 0.4

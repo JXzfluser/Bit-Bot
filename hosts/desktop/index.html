@@ -795,7 +795,10 @@
                   label = "mail_read:" + (p.thread_id || "?");
                   types.push("attachment");
                 } else if (h.kind === "workflow_list") {
-                  label = "workflows:" + (p.count || 0);
+                  label =
+                    "workflows:" +
+                    (p.count || 0) +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "x_search") {
                   label = "x_search:" + (p.hit_count || 0) + "×" + (p.mode || "");
@@ -804,13 +807,25 @@
                   label = "jobs:" + (p.hit_count || 0);
                   types.push("attachment");
                 } else if (h.kind === "finance_call") {
-                  label = "finance:" + (p.mode || p.tool || "call");
+                  label =
+                    "finance:" +
+                    (p.mode || p.tool || "call") +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
+                } else if (h.kind === "mail_draft") {
+                  label =
+                    "draft:" +
+                    (p.mode || "mail") +
+                    (p.path ? "/snap" : "");
+                  types.push(p.meeting_chat ? "widget" : "attachment");
                 } else if (h.kind === "copy_to_box" || h.kind === "copy_from_box") {
                   label = h.kind + ":" + String(p.dest || p.path || "").split("/").slice(-1)[0];
                   types.push("attachment");
                 } else if (h.kind === "purchase") {
-                  label = "purchase:" + (p.mode || "receipt");
+                  label =
+                    "purchase:" +
+                    (p.mode || "receipt") +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "schedule_meeting") {
                   label =
