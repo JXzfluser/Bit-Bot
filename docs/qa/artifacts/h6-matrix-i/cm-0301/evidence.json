@@ -1,0 +1,26 @@
+{
+  "CM": "CM-0301",
+  "wave": "H6",
+  "title": "Memory profile \u5c42",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-0301_profile_update_recall_across_sessions",
+  "u_acceptance_file": "memory/acceptance_cm0301_test.mbt",
+  "u_evidence": "`memory/acceptance_cm0301_test.mbt`::acceptance_CM-0301_profile_update_recall_across_sessions \u2014 Update \u540e\u8de8\u4f1a\u8bdd Recall \u53ef\u5f97",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-0301",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-0301",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-0301_profile_update_recall_across_sessions` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

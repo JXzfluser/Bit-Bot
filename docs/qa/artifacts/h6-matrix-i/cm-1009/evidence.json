@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1009",
+  "wave": "H6",
+  "title": "unsolicited \u9000\u8ba2",
+  "pri": "P2",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1009_unsolicited_mail_unsubscribe_reject_multi",
+  "u_acceptance_file": "connectors/mail/acceptance_cm1009_test.mbt",
+  "u_evidence": "`connectors/mail/acceptance_cm1009_test.mbt`::acceptance_CM-1009_unsolicited_mail_unsubscribe_reject_multi \u2014 \u51b7\u90ae\u5355\u6536\u4ef6\u4eba+\u9000\u8ba2 Allowed\uff1b\u591a\u6536\u4ef6\u4eba/\u7f3a\u9000\u8ba2 Rejected\uff1b\u5361\u53d1\u9001\u62d2\u51b7\u89e6\u8fbe",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1009",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1009",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1009_unsolicited_mail_unsubscribe_reject_multi` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

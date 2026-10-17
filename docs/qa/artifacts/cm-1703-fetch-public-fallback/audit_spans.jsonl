@@ -1,0 +1,1 @@
+{"id": "h4-1703-fetch-fallback", "tool_name": "h4_probe:CM-1703", "ok": true, "detail": "primary=403 fallback=200 auth_wall=401 credential_bypass=False; i_claimed=false", "artifact_path": "/workspace/docs/qa/artifacts/cm-1703-fetch-public-fallback"}

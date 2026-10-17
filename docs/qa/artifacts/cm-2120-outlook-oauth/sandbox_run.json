@@ -1,0 +1,24 @@
+{
+  "provider": "outlook",
+  "idp_base": "http://127.0.0.1:56817",
+  "callback_base": "http://127.0.0.1:42597",
+  "namespace_before": "NeedsAuth",
+  "namespace_after": "Ready",
+  "oauth_callback_observed": true,
+  "pre_auth_write_refused": true,
+  "post_auth_op": {
+    "op": "create_draft",
+    "ok": true,
+    "draft": {
+      "id": "outlook-sandbox-draft-1",
+      "to": "sandbox@example.test",
+      "subject": "H4 sandbox draft (no send)",
+      "body": "draft-only after OAuth",
+      "sent": false
+    },
+    "msg": "OK:draft"
+  },
+  "http_redirect_observed": true,
+  "refresh_token_in_artifacts": false,
+  "ok": true
+}

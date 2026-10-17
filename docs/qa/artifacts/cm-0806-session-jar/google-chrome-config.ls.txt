@@ -1,5 +1,0 @@
-total 16
-drwxr-xr-x 4 box box 4096 Oct 17 14:15 .
-drwxr-xr-x 6 box box 4096 Oct 17 13:02 ..
-drwxr-xr-x 6 box box 4096 Oct 17 14:15 Crash Reports
-drwx------ 2 box box 4096 Oct 17 14:15 WebAuthenticationProxyRemoteSessionStateChange

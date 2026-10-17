@@ -1,0 +1,13 @@
+{
+  "events": [
+    {
+      "id": "0a0fb104-805d-49b6-b258-e0381ffaf705",
+      "ts": 1792227586.7976873,
+      "kind": "MathMermaidShown",
+      "math_tex": "E = mc^2",
+      "mermaid_src": "flowchart LR; A-->B-->C",
+      "math_rendered": true,
+      "mermaid_rendered": true
+    }
+  ]
+}

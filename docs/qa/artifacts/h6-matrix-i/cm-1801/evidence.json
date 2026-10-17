@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1801",
+  "wave": "H6",
+  "title": "scheduling \u65e5\u7a0b/\u4f1a\u8bae",
+  "pri": "P1",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1801_scheduling_no_connector_fallback",
+  "u_acceptance_file": "skills/acceptance_cm1801_test.mbt",
+  "u_evidence": "`skills/acceptance_cm1801_test.mbt`::acceptance_CM-1801_scheduling_no_connector_fallback \u2014 \u65e0\u8fde\u63a5\u5668\u65f6\u8d70 no-connector-fallback/\u6d4f\u89c8\u5668",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1801",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1801",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1801_scheduling_no_connector_fallback` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

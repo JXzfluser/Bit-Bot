@@ -1,0 +1,9 @@
+{
+  "http_status": 200,
+  "access_token_sha256_8": "44e030ed",
+  "access_token_prefix": "atk_FH\u2026",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "provider": "finance",
+  "refresh_token_present_in_idp_response": false
+}

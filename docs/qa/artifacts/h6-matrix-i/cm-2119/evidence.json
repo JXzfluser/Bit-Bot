@@ -1,0 +1,26 @@
+{
+  "CM": "CM-2119",
+  "wave": "H6",
+  "title": "\u6301\u4e45 store \u6388\u6743\u6302\u8f7d",
+  "pri": "P1",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-2119_store_authorized_mount_unauthorized_absent",
+  "u_acceptance_file": "stores/acceptance_cm2119_test.mbt",
+  "u_evidence": "`stores/acceptance_cm2119_test.mbt`::acceptance_CM-2119_store_authorized_mount_unauthorized_absent \u2014 \u672a\u6388\u6743 path absent\uff1bauthorize \u540e `/cursor/stores/<id>` \u53ef\u8bfb",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-2119",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-2119",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-2119_store_authorized_mount_unauthorized_absent` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

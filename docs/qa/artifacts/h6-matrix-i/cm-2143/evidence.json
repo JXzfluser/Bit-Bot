@@ -1,0 +1,26 @@
+{
+  "CM": "CM-2143",
+  "wave": "H6",
+  "title": "\u62d2\u53d1\u7ec8\u6001\u4e0d\u53ef\u65c1\u8def",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-2143_refused_send_no_channel_bypass",
+  "u_acceptance_file": "security/acceptance_cm2129_2143_test.mbt",
+  "u_evidence": "`security/acceptance_cm2129_2143_test.mbt`::acceptance_CM-2143_refused_send_no_channel_bypass \u2014 Given \u53d1\u9001\u88ab\u62d2 When \u65e0\u65b0\u6388\u6743 Then \u4e0d\u6539\u8d70\u5176\u4ed6\u901a\u9053",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-2143",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-2143",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-2143_refused_send_no_channel_bypass` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

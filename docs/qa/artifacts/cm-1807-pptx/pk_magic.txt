@@ -1,0 +1,2 @@
+magic_hex=504b0304
+pptx_pk_magic_ok=True

@@ -1,0 +1,26 @@
+{
+  "CM": "CM-0302",
+  "wave": "H6",
+  "title": "Memory journal \u5c42",
+  "pri": "P1",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-0302_journal_range_query_no_profile_pollute",
+  "u_acceptance_file": "memory/acceptance_cm0302_test.mbt",
+  "u_evidence": "`memory/acceptance_cm0302_test.mbt`::acceptance_CM-0302_journal_range_query_no_profile_pollute \u2014 \u53ef\u6309\u65e5\u671f\u8303\u56f4\u68c0\u7d22\uff1b\u4e0d\u6c61\u67d3 profile",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-0302",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-0302",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-0302_journal_range_query_no_profile_pollute` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

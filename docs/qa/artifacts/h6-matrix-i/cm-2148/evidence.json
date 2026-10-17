@@ -1,0 +1,26 @@
+{
+  "CM": "CM-2148",
+  "wave": "H6",
+  "title": "\u4e91\u4ea7\u7269\u8def\u5f84\u7ea6\u675f",
+  "pri": "P1",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-2148_cloud_artifact_path_no_opt_cursor_direct",
+  "u_acceptance_file": "agents/cloud/acceptance_cm2148_test.mbt",
+  "u_evidence": "`agents/cloud/acceptance_cm2148_test.mbt`::acceptance_CM-2148_cloud_artifact_path_no_opt_cursor_direct \u2014 \u7981 /opt/cursor/artifacts \u76f4\u9644\uff1b\u65e0 URL\u2192Err\uff1b\u5b98\u65b9 URL \u6216 workspace `/workspace/cloud-agent-artifacts/<bc>/\u2026` \u6295\u9012",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-2148",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-2148",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-2148_cloud_artifact_path_no_opt_cursor_direct` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

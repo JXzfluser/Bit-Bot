@@ -1,0 +1,11 @@
+{
+  "CM": "CM-1603",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-1603",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-1603-watch-video",
+  "frame_path": "/workspace/agent-tools/h5-cm1603-frame.png",
+  "png_magic_ok": true,
+  "magic_hex": "89504e470d0a1a0a",
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "ffmpeg extracted PNG frame from mp4; magic 89504e47"
+}

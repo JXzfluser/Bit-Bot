@@ -1,0 +1,234 @@
+{
+  "method": "react_to_message",
+  "body": {
+    "message_id": "msg-h5-1",
+    "emoji": "\ud83d\udc4d",
+    "toggle": true
+  },
+  "result": {
+    "state": {
+      "settingsOpen": false,
+      "entry": null,
+      "anchor": null,
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "General",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": null,
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "webhookPanel": {
+        "open": false,
+        "url": null,
+        "key_present": false,
+        "key_masked": null,
+        "last_copy": null
+      },
+      "devicePermissionCard": {
+        "open": false,
+        "machine_id": null,
+        "tool_name": null,
+        "permission_label": null,
+        "shown": false
+      },
+      "chatMessages": [
+        {
+          "id": "msg-h5-1",
+          "role": "assistant",
+          "text": "H5 sample message for ReactToMessage pill.",
+          "reactions": {}
+        }
+      ],
+      "reactPill": {
+        "message_id": "msg-h5-1",
+        "emoji": null,
+        "visible": false,
+        "reactions": {}
+      },
+      "endTurnLeftPill": false,
+      "mathMermaid": {
+        "open": false,
+        "math_tex": null,
+        "math_rendered": false,
+        "mermaid_src": null,
+        "mermaid_rendered": false
+      },
+      "cursorAgentCard": {
+        "open": false,
+        "agent_id": null,
+        "url": null,
+        "shown": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "anchorViewport": null,
+      "rev": 2
+    },
+    "pill": {
+      "message_id": "msg-h5-1",
+      "emoji": null,
+      "visible": false,
+      "reactions": {}
+    },
+    "audit": {
+      "id": "10a4b960-b694-472e-b544-677c831959ad",
+      "tool_name": "host_ui:react_to_message",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "pill message=msg-h5-1 emoji=None visible=False",
+      "artifact_path": "/workspace/docs/qa/artifacts/cm-2101-react-pill",
+      "ts": 1792227579.6916502,
+      "method": "react_to_message"
+    }
+  },
+  "state": {
+    "settingsOpen": false,
+    "entry": null,
+    "anchor": null,
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "General",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "webhookPanel": {
+      "open": false,
+      "url": null,
+      "key_present": false,
+      "key_masked": null,
+      "last_copy": null
+    },
+    "devicePermissionCard": {
+      "open": false,
+      "machine_id": null,
+      "tool_name": null,
+      "permission_label": null,
+      "shown": false
+    },
+    "chatMessages": [
+      {
+        "id": "msg-h5-1",
+        "role": "assistant",
+        "text": "H5 sample message for ReactToMessage pill.",
+        "reactions": {}
+      }
+    ],
+    "reactPill": {
+      "message_id": "msg-h5-1",
+      "emoji": null,
+      "visible": false,
+      "reactions": {}
+    },
+    "endTurnLeftPill": false,
+    "mathMermaid": {
+      "open": false,
+      "math_tex": null,
+      "math_rendered": false,
+      "mermaid_src": null,
+      "mermaid_rendered": false
+    },
+    "cursorAgentCard": {
+      "open": false,
+      "agent_id": null,
+      "url": null,
+      "shown": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "anchorViewport": null,
+    "rev": 2
+  },
+  "events": {
+    "events": [
+      {
+        "id": "ff51d677-7d6a-457c-b22f-a11927224827",
+        "ts": 1792227578.9582157,
+        "kind": "ReactPillChanged",
+        "message_id": "msg-h5-1",
+        "emoji": "\ud83d\udc4d",
+        "visible": true,
+        "reactions": {
+          "\ud83d\udc4d": 1
+        }
+      },
+      {
+        "id": "5720a452-3470-4a35-b629-f578afa7acfc",
+        "ts": 1792227579.6916409,
+        "kind": "ReactPillChanged",
+        "message_id": "msg-h5-1",
+        "emoji": null,
+        "visible": false,
+        "reactions": {}
+      }
+    ]
+  }
+}

@@ -162,7 +162,7 @@ pub fn HostAbi::run_h4_probe(
     Mock => ()
   }
   let mut file_ref : String? = None
-  let mut injected_bytes : Int32? = None
+  let injected_bytes : Int32? = None
   let mut result_path : String? = None
   let path_sha256 : String? = None
   let mut chat_has_payload_marker : Bool? = None

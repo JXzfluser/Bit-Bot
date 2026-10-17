@@ -1,0 +1,13 @@
+{
+  "spans": [
+    {
+      "id": "6419ecc3-5f86-4dec-872d-b8c265b169af",
+      "tool_name": "host_ui:show_cursor_agent_card",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "card agent=h5-throwaway-agent url=https://cursor.com/agents/h5-throwaway-agent",
+      "artifact_path": null,
+      "ts": 1792227572.5429776
+    }
+  ]
+}

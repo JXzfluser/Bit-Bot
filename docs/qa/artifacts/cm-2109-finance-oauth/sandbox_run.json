@@ -1,0 +1,21 @@
+{
+  "provider": "finance",
+  "idp_base": "http://127.0.0.1:41809",
+  "callback_base": "http://127.0.0.1:47671",
+  "namespace_before": "NeedsAuth",
+  "namespace_after": "Ready",
+  "oauth_callback_observed": true,
+  "pre_auth_write_refused": true,
+  "post_auth_op": {
+    "op": "list_tools",
+    "ok": true,
+    "tools": [
+      "list_accounts",
+      "get_balance",
+      "list_transactions"
+    ]
+  },
+  "http_redirect_observed": true,
+  "refresh_token_in_artifacts": false,
+  "ok": true
+}

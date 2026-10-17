@@ -1,0 +1,80 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {
+        "tools": {}
+      },
+      "serverInfo": {
+        "name": "bitbot-h4-mcp-stdio",
+        "version": "0.1.0"
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "tools": [
+        {
+          "name": "echo_body",
+          "description": "Echo/ack an injected body (CM-2163 Host FS $file: inject).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string",
+                "description": "Injected payload from Host FS"
+              },
+              "source_ref": {
+                "type": "string",
+                "description": "Original $file: ref"
+              }
+            },
+            "required": [
+              "body"
+            ]
+          }
+        },
+        {
+          "name": "write_result",
+          "description": "Write large result to agent-tools and return path (CM-2164).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "filename": {
+                "type": "string",
+                "description": "Basename under agent-tools (default h4-loopback-echo.txt)"
+              },
+              "write_to_file": {
+                "type": "boolean",
+                "default": true
+              }
+            },
+            "required": [
+              "body"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"ok\": true, \"injected_bytes\": 278, \"has_large_payload_marker\": true, \"source_ref\": \"$file:/workspace/h4-mcp-big-body.txt\", \"preview_head\": \"LARGE_PAYLOAD_BEGIN_xxxxxxxxxxxx\", \"preview_tail\": \"zzzzzzzzzzzzzz_LARGE_PAYLOAD_END\"}"
+        }
+      ],
+      "isError": false
+    }
+  }
+]

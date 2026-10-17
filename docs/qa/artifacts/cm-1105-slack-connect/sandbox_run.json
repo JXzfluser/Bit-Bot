@@ -1,0 +1,17 @@
+{
+  "provider": "slack",
+  "idp_base": "http://127.0.0.1:33887",
+  "callback_base": "http://127.0.0.1:55845",
+  "namespace_before": "NeedsAuth",
+  "namespace_after": "Connected",
+  "oauth_callback_observed": true,
+  "pre_auth_write_refused": true,
+  "post_auth_op": {
+    "op": "details_connected",
+    "ok": true,
+    "details_state": "Connected"
+  },
+  "http_redirect_observed": true,
+  "refresh_token_in_artifacts": false,
+  "ok": true
+}

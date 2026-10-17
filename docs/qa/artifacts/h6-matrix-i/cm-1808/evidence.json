@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1808",
+  "wave": "H6",
+  "title": "learn-from-demonstration",
+  "pri": "P2",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1808_learn_from_demonstration_skill_draft",
+  "u_acceptance_file": "skills/acceptance_cm1808_test.mbt",
+  "u_evidence": "`skills/acceptance_cm1808_test.mbt`::acceptance_CM-1808_learn_from_demonstration_skill_draft \u2014 \u6f14\u793a\u6c89\u6dc0\u4e3a SKILL.md \u8349\u7a3f\uff1b\u7a7a steps \u62d2\uff1bvalidate_skill_md \u8fc7",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1808",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1808",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1808_learn_from_demonstration_skill_draft` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

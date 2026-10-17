@@ -1,0 +1,9 @@
+{
+  "op": "list_tools",
+  "ok": true,
+  "tools": [
+    "list_accounts",
+    "get_balance",
+    "list_transactions"
+  ]
+}
