@@ -14,9 +14,11 @@ MARKER="parity-scenario-$(date +%s)"
 mkdir -p data/delivery
 echo "{\"marker\":\"$MARKER\"}" >> data/delivery/send-to-user.jsonl
 
-# 1) Text / channel thread delivery
+# 1) Text channel delivery + Slack thread_ts form (SendToUser type=thread)
 "${RUN[@]}" --approved "reply via slack:Csmoke :: parity channel $MARKER" >/tmp/parity-channel.json
-python3 -c "import json;d=json.load(open('/tmp/parity-channel.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='channel_send' and h.get('ok') for h in hrs);assert any(h.get('kind')=='delivery' and h.get('ok') for h in hrs);print('parity channel+delivery ok')"
+python3 -c "import json;d=json.load(open('/tmp/parity-channel.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='channel_send' and h.get('ok') for h in hrs);deliv=next(x for x in hrs if x.get('kind')=='delivery');dp=json.loads(deliv['stdout']);assert dp.get('type')=='text';print('parity channel+text delivery ok', dp.get('type'))"
+"${RUN[@]}" --approved "reply via slack:Csmoke thread_ts=1700000000.000100 :: parity thread $MARKER" >/tmp/parity-channel-thread.json
+python3 -c "import json;d=json.load(open('/tmp/parity-channel-thread.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('thread_ts')=='1700000000.000100';assert 'thread' in str(p.get('mode') or '');deliv=next(x for x in hrs if x.get('kind')=='delivery');dp=json.loads(deliv['stdout']);assert dp.get('type')=='thread';print('parity slack thread_ts delivery ok', p.get('mode'), dp.get('type'))"
 
 # 2) Attachment (schedule ICS)
 "${RUN[@]}" "schedule meeting title=Parity when=tomorrow" >/tmp/parity-ics.json

@@ -583,9 +583,24 @@ function createHostFfi(repoRoot) {
         : looksLiveSlack(connectorToken)
           ? connectorToken
           : "";
-      const slackParts = addr.slice("slack:".length).split(":").filter(Boolean);
-      const channelId = slackParts[0] || "";
-      const threadTs = slackParts[1] || "";
+      // Address forms: slack:Cxxx | slack:Cxxx:THREAD_TS | slack:Cxxx thread_ts=TS | slack:Cxxx thread=TS
+      const slackRest = addr.slice("slack:".length).trim();
+      const threadKv = slackRest.match(
+        /(?:^|[\s:;])(?:thread_ts|thread)=([0-9]+(?:\.[0-9]+)?)/i,
+      );
+      const colonParts = slackRest.split(":").map((s) => s.trim()).filter(Boolean);
+      let channelId = (colonParts[0] || "").split(/\s+/)[0] || "";
+      // Strip trailing kv from channel token if glued (rare).
+      channelId = channelId.replace(
+        /(?:thread_ts|thread)=[0-9]+(?:\.[0-9]+)?$/i,
+        "",
+      );
+      let threadTs = "";
+      if (threadKv) {
+        threadTs = threadKv[1];
+      } else if (colonParts.length >= 2 && /^[0-9]+(?:\.[0-9]+)?$/.test(colonParts[1])) {
+        threadTs = colonParts[1];
+      }
       // CM-1103: personal Slack DM = owner user id (U…); shared channels (C…) are not DM.
       const isPersonalDm = /^U[A-Z0-9]+$/i.test(channelId);
       const isSharedChannel = /^C[A-Z0-9]+$/i.test(channelId);
@@ -739,9 +754,13 @@ function createHostFfi(repoRoot) {
       }
       const draftMode = isPersonalDm
         ? "personal_slack_dm_draft"
-        : connectorReady
-          ? "connector_draft"
-          : "sandbox_draft";
+        : threadTs
+          ? connectorReady
+            ? "connector_thread_draft"
+            : "sandbox_thread_draft"
+          : connectorReady
+            ? "connector_draft"
+            : "sandbox_draft";
       const entry = {
         scheme,
         address: addr,
@@ -758,7 +777,9 @@ function createHostFfi(repoRoot) {
         at: stamp,
         note: isPersonalDm
           ? "CM-1103 personal Slack DM draft (owner U… only; live needs xox* + BITBOT_SLACK_POST=1)"
-          : "live post needs SLACK_BOT_TOKEN + BITBOT_SLACK_POST=1; claim needs BITBOT_SLACK_CLAIM=1",
+          : threadTs
+            ? "Slack thread draft (thread_ts parsed); live needs token + BITBOT_SLACK_POST=1"
+            : "live post needs SLACK_BOT_TOKEN + BITBOT_SLACK_POST=1; claim needs BITBOT_SLACK_CLAIM=1",
       };
       appendJsonl(outboundPath, entry);
       const journalPath = appendHostDeliveryJournal({
