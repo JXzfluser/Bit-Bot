@@ -839,12 +839,28 @@
                   const wtf = p.write_to_file || {};
                   const fe = p.file_expand || {};
                   if (wtf.path) {
-                    label = "mcp_write:" + String(wtf.path).split("/").slice(-1)[0];
+                    label =
+                      "mcp_write:" +
+                      String(wtf.path).split("/").slice(-1)[0] +
+                      (p.path ? "/snap" : "");
                   } else if (fe.expanded_count) {
-                    label = "mcp_file×" + fe.expanded_count;
+                    label =
+                      "mcp_file×" +
+                      fe.expanded_count +
+                      (p.path ? "/snap" : "");
                   } else {
-                    label = "mcp_call";
+                    label = "mcp_call" + (p.path ? "/snap" : "");
                   }
+                  types.push("attachment");
+                } else if (h.kind === "shell") {
+                  label =
+                    "shell" +
+                    (h.path || h.artifact_path
+                      ? ":" +
+                        String(h.path || h.artifact_path)
+                          .split("/")
+                          .slice(-1)[0]
+                      : "");
                   types.push("attachment");
                 } else if (h.kind === "mail_send") {
                   label =

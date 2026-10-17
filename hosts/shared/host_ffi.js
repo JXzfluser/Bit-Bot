@@ -1846,6 +1846,49 @@ function createHostFfi(repoRoot) {
     return value;
   }
 
+  function writeMcpCallSnap(command, meta = {}) {
+    // Per-op Host mcp_call snapshot — durable beside tmp mcp-out (parity with mcp_discover).
+    const at = meta.at || new Date().toISOString();
+    const callDir = path.join(REPO_ROOT, "data", "connectors", "mcp-calls");
+    fs.mkdirSync(callDir, { recursive: true });
+    const toolSlug =
+      sanitizeSkillName(meta.tool || meta.mapped || "mcp_call") || "mcp_call";
+    const snapPath = path.join(
+      callDir,
+      `call-${toolSlug}-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: meta.mode || "stdio-mcp",
+      tool: meta.tool || null,
+      mapped: meta.mapped || null,
+      source_ref: meta.source_ref || null,
+      out_json: meta.out_json || null,
+      req_json: meta.req_json || null,
+      file_expand: meta.file_expand || null,
+      write_to_file: meta.write_to_file
+        ? {
+            path: meta.write_to_file.path || null,
+            bytes: meta.write_to_file.bytes || 0,
+            write_to_file: true,
+            pretend_inline_payload: false,
+          }
+        : null,
+      ok: meta.ok !== false,
+      pretend_ok: false,
+      pretend_inject: false,
+      pretend_inline_payload: false,
+      error: meta.error || null,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(callDir, "calls.jsonl"), {
+      ...artifact,
+      path: snapPath,
+      command: String(command || "").slice(0, 240),
+    });
+    return { snapPath, artifact };
+  }
+
   async function executeMcp(kind, command) {
     fs.mkdirSync(MCP_TMP, { recursive: true });
     const stamp = Date.now();
@@ -1853,6 +1896,8 @@ function createHostFfi(repoRoot) {
     const outPath = path.join(MCP_TMP, `mcp-out-${stamp}.json`);
     let requests;
     let fileExpandMeta = null;
+    let mcpToolName = null;
+    let mcpMapped = null;
     if (kind === "mcp_discover") {
       requests = [{ jsonrpc: "2.0", method: "tools/list", params: {} }];
     } else {
@@ -1869,6 +1914,7 @@ function createHostFfi(repoRoot) {
       const toolName = left.includes(".")
         ? left.split(".").slice(1).join(".") || "echo_body"
         : left || "echo_body";
+      mcpToolName = toolName;
       // Expand $file: refs before MCP call (CM-2163 product Host path).
       fileExpandMeta = { expanded: [], errors: [], refused: false };
       args = expandMcpFileArgs(args, fileExpandMeta);
@@ -1884,25 +1930,42 @@ function createHostFfi(repoRoot) {
         : toolName === "search_threads" || toolName === "echo_body"
           ? "echo_body"
           : "echo_body";
+      mcpMapped = mapped;
       if (wantWrite && args.write_to_file == null) {
         args.write_to_file = true;
       }
       if (fileExpandMeta.refused) {
+        const refusedAt = new Date().toISOString();
+        const { snapPath, artifact } = writeMcpCallSnap(command, {
+          tool: toolName,
+          mapped,
+          mode: "file_expand_refused",
+          file_expand: {
+            expanded_count: 0,
+            errors: fileExpandMeta.errors || [],
+            pretend_inject: false,
+          },
+          ok: false,
+          error: fileExpandMeta.errors.join("; ") || "$file: expand refused",
+          at: refusedAt,
+        });
         appendHostDeliveryJournal({
           kind,
           command,
           ok: false,
+          path: snapPath,
           file_expand: fileExpandMeta,
-          at: new Date().toISOString(),
+          at: refusedAt,
         });
         return {
           kind,
           ok: false,
           command,
-          error: fileExpandMeta.errors.join("; ") || "$file: expand refused",
+          error: artifact.error,
           stdout: JSON.stringify(
             {
-              mode: "file_expand_refused",
+              ...artifact,
+              path: snapPath,
               pretend_inject: false,
               file_expand: fileExpandMeta,
             },
@@ -2094,9 +2157,102 @@ function createHostFfi(repoRoot) {
           });
           return okJson(kind, command, annotated);
         }
-        outText = JSON.stringify(annotated, null, 2).slice(0, 12000);
+        // mcp_call: durable per-op snap (not tmp-only out_json).
+        const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+          tool: mcpToolName,
+          mapped: mcpMapped,
+          source_ref: (parsed && parsed.source_ref) || null,
+          out_json: outPath,
+          req_json: reqPath,
+          file_expand:
+            fileExpandMeta && fileExpandMeta.expanded.length > 0
+              ? {
+                  expanded_count: fileExpandMeta.expanded.length,
+                  pretend_inject: false,
+                }
+              : fileExpandMeta
+                ? { expanded_count: 0, pretend_inject: false }
+                : null,
+          write_to_file: writeMeta,
+          ok: true,
+          at: mcpAt,
+        });
+        annotated.path = snapPath;
+        annotated.mode = callArtifact.mode;
+        annotated.tool = mcpToolName;
+        annotated.mapped = mcpMapped;
+        annotated.pretend_ok = false;
+        annotated.ok = true;
+        const callDelivery = recordSendToUser({
+          type: "attachment",
+          path: snapPath,
+          label: "mcp_call",
+          source_kind: kind,
+          at: mcpAt,
+        });
+        annotated.send_to_user = callDelivery;
+        appendHostDeliveryJournal({
+          kind,
+          command,
+          mode: "stdio-mcp",
+          path: snapPath,
+          tool: mcpToolName,
+          mapped: mcpMapped,
+          file_expand: fileExpandMeta,
+          write_to_file: writeMeta,
+          at: mcpAt,
+        });
+        return okJson(kind, command, annotated);
       } catch (_) {
-        /* keep raw MCP payload */
+        /* keep raw MCP payload — still snap path for evidence */
+      }
+      if (kind === "mcp_call") {
+        const { snapPath } = writeMcpCallSnap(command, {
+          tool: mcpToolName,
+          mapped: mcpMapped,
+          out_json: outPath,
+          req_json: reqPath,
+          file_expand: fileExpandMeta
+            ? {
+                expanded_count: (fileExpandMeta.expanded || []).length,
+                pretend_inject: false,
+              }
+            : null,
+          ok: true,
+          at: mcpAt,
+        });
+        let rawPayload = {};
+        try {
+          rawPayload = JSON.parse(outText);
+        } catch (_) {
+          rawPayload = { raw_prefix: String(outText || "").slice(0, 400) };
+        }
+        appendHostDeliveryJournal({
+          kind,
+          command,
+          mode: "stdio-mcp",
+          path: snapPath,
+          tool: mcpToolName,
+          mapped: mcpMapped,
+          file_expand: fileExpandMeta,
+          at: mcpAt,
+        });
+        recordSendToUser({
+          type: "attachment",
+          path: snapPath,
+          label: "mcp_call",
+          source_kind: kind,
+          at: mcpAt,
+        });
+        return okJson(kind, command, {
+          ...rawPayload,
+          path: snapPath,
+          mode: "stdio-mcp",
+          tool: mcpToolName,
+          mapped: mcpMapped,
+          pretend_ok: false,
+          ok: true,
+        });
       }
       appendHostDeliveryJournal({
         kind,
@@ -2113,20 +2269,52 @@ function createHostFfi(repoRoot) {
         stderr: String(stderr || "").slice(0, 2000),
       };
     } catch (err) {
+      const errAt = new Date().toISOString();
+      let errSnap = null;
+      if (kind === "mcp_call") {
+        errSnap = writeMcpCallSnap(command, {
+          tool: mcpToolName,
+          mapped: mcpMapped,
+          out_json: outPath,
+          req_json: reqPath,
+          file_expand: fileExpandMeta
+            ? {
+                expanded_count: (fileExpandMeta.expanded || []).length,
+                pretend_inject: false,
+              }
+            : null,
+          ok: false,
+          error: err.message || String(err),
+          at: errAt,
+        });
+      }
       appendHostDeliveryJournal({
         kind,
         command,
         ok: false,
+        path: errSnap ? errSnap.snapPath : undefined,
         error: err.message || String(err),
         file_expand: fileExpandMeta,
-        at: new Date().toISOString(),
+        at: errAt,
       });
       return {
         kind,
         ok: false,
         command,
         error: err.message || String(err),
-        stdout: err.stdout ? String(err.stdout).slice(0, 4000) : "",
+        stdout: errSnap
+          ? JSON.stringify(
+              {
+                ...errSnap.artifact,
+                path: errSnap.snapPath,
+                pretend_ok: false,
+              },
+              null,
+              2,
+            )
+          : err.stdout
+            ? String(err.stdout).slice(0, 4000)
+            : "",
         stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
       };
     }
@@ -8389,17 +8577,56 @@ function createHostFfi(repoRoot) {
           // Keep raw stdout for ADR 0002 --apply-host-results reinjection.
           stdout: outText,
           stderr: errText,
+          // path + artifact_path: durable Host snap (stdout stays raw text).
+          path: shellPath,
           artifact_path: shellPath,
           pretend_ok: false,
         });
       } catch (err) {
+        const failAt = new Date().toISOString();
+        const shellDir = path.join(REPO_ROOT, "data", "host-tools", "shell");
+        fs.mkdirSync(shellDir, { recursive: true });
+        const failPath = path.join(
+          shellDir,
+          `run-fail-${Date.now().toString(36)}.json`,
+        );
+        const failArtifact = {
+          command: shellCmd,
+          ok: false,
+          error: err.message || String(err),
+          stdout_prefix: err.stdout
+            ? String(err.stdout).slice(0, 400)
+            : "",
+          stderr_prefix: err.stderr
+            ? String(err.stderr).slice(0, 200)
+            : "",
+          mode: "host_shell_exec",
+          pretend_ok: false,
+          at: failAt,
+        };
+        fs.writeFileSync(failPath, JSON.stringify(failArtifact, null, 2));
+        appendJsonl(path.join(shellDir, "runs.jsonl"), {
+          ...failArtifact,
+          path: failPath,
+        });
+        appendHostDeliveryJournal({
+          kind: "shell",
+          command: shellCmd,
+          path: failPath,
+          ok: false,
+          at: failAt,
+        });
         results.push({
           kind: "shell",
           ok: false,
           command: shellCmd,
           error: err.message || String(err),
+          // Keep raw stdout/stderr for ADR reinjection; path is snap-only.
           stdout: err.stdout ? String(err.stdout).slice(0, 4000) : "",
           stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
+          path: failPath,
+          artifact_path: failPath,
+          pretend_ok: false,
         });
       }
     }

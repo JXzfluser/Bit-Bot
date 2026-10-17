@@ -130,6 +130,8 @@ try {
       "credential_fill",
       "purchase",
       "oauth",
+      "mcp_call",
+      "mcp_discover",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

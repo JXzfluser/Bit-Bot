@@ -87,6 +87,7 @@ function extractDeliveryTypes(turnJsonText) {
           "mail_claim_inbox",
           "cloud_artifact_deliver",
           "teammate_create",
+          "shell",
         ].includes(h.kind)
       ) {
         types.push("attachment");

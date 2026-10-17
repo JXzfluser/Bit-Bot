@@ -268,6 +268,9 @@
 - [x] Parity: mail_send path + pretend_sent honesty; multi-end SendToUser kinds expanded
 - [x] Host oauth per-op snaps under `data/connectors/oauth/` (never echo tokens; pretend_connected=false)
 - [x] Parity: oauth path honesty; mobile delivery mirrors include oauth/section/credential/purchase
+- [x] Host mcp_call per-op snaps under `data/connectors/mcp-calls/` (tmp mcp-out retained; pretend_ok=false)
+- [x] Parity: mcp_call path honesty + shell Host `path`/`artifact_path` (stdout stays raw for ADR reinjection)
+- [x] Mobile delivery mirrors include mcp_call / mcp_discover snap paths
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)
