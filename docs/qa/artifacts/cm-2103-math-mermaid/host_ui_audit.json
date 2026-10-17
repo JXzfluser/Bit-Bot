@@ -1,0 +1,13 @@
+{
+  "spans": [
+    {
+      "id": "314bb253-db6a-4283-b56c-f34f90cfdb4a",
+      "tool_name": "host_ui:show_math_mermaid",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "math+mermaid open tex='E = mc^2'",
+      "artifact_path": null,
+      "ts": 1792227493.4762032
+    }
+  ]
+}

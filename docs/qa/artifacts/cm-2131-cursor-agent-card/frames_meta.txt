@@ -1,0 +1,16 @@
+frame=cursor_agent_card.png
+frame_origin=LiveDisplay
+display=:80
+bytes=44274
+sha256=5bd06e7b0729f3128dbf460e7906d243f0a30ebbd50ccfaa6c400f4f1227bab2
+driven_by=HostUiShell_Live
+not_cdp_page_js=true
+not_fixture_only=true
+frame=cursor_agent_page.png
+frame_origin=LiveDisplay
+display=:80
+bytes=40398
+sha256=5c16c051a641b266c63b8079a98fe1c075107bd1bcc837b0c58c3ba2cd231574
+driven_by=HostUiShell_Live
+not_cdp_page_js=true
+not_fixture_only=true

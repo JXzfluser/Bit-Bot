@@ -1,0 +1,13 @@
+{
+  "CM": "CM-1601",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-1601",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-1601-generate-image",
+  "image_path": "/workspace/agent-tools/h5-cm1601-generate.png",
+  "png_magic_ok": true,
+  "magic_hex": "89504e470d0a1a0a",
+  "bytes": 10539,
+  "prompt": "Bit Bot H5 prompt\u2192png host evidence",
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "real PNG on disk under /workspace/agent-tools/; magic 89504e47; openable"
+}

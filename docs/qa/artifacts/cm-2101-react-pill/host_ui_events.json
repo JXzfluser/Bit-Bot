@@ -1,0 +1,35 @@
+{
+  "events": [
+    {
+      "id": "4afa7f4e-59ee-48ee-88a2-0c11bcf8aa99",
+      "ts": 1792227485.4335127,
+      "kind": "ReactPillChanged",
+      "message_id": "msg-h5-1",
+      "emoji": "\ud83d\udc4d",
+      "visible": true,
+      "reactions": {
+        "\ud83d\udc4d": 1
+      }
+    },
+    {
+      "id": "4b6cc85c-01fc-436d-b050-1ac3a7090ac1",
+      "ts": 1792227486.167556,
+      "kind": "ReactPillChanged",
+      "message_id": "msg-h5-1",
+      "emoji": null,
+      "visible": false,
+      "reactions": {}
+    },
+    {
+      "id": "737018ee-6750-4af8-aeb2-9f6096dc8183",
+      "ts": 1792227486.8006968,
+      "kind": "ReactPillChanged",
+      "message_id": "msg-h5-1",
+      "emoji": "\ud83d\udc4d",
+      "visible": true,
+      "reactions": {
+        "\ud83d\udc4d": 1
+      }
+    }
+  ]
+}

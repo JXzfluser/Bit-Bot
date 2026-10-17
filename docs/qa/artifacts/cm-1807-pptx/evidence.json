@@ -1,0 +1,13 @@
+{
+  "CM": "CM-1807",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-1807",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-1807-pptx",
+  "pptx_path": "/workspace/agent-tools/h5-cm1807-deck.pptx",
+  "pptx_pk_magic_ok": true,
+  "magic_hex": "504b0304",
+  "bytes": 28409,
+  "under_workspace": true,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "python-pptx real .pptx; PK zip magic; path under /workspace"
+}

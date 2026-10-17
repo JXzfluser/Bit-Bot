@@ -1,0 +1,8 @@
+frame=math_mermaid.png
+frame_origin=LiveDisplay
+display=:80
+bytes=46679
+sha256=1dab9a2cc65b7c77869f62cdefbb25d99fca2f57f1a184974afc980e2a207f98
+driven_by=HostUiShell_Live
+not_cdp_page_js=true
+not_fixture_only=true

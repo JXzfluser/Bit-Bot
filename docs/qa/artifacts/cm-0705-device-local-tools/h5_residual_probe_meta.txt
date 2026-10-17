@@ -1,0 +1,6 @@
+cm=CM-0705
+wave=H5-residual
+platform_subset=desktop_no_device_local_tools
+phone_os_card=NOT_READY
+i_claimed=false
+evidence_cmd=bash /workspace/bitbot/scripts/host_h5_smoke.sh residual-0705

@@ -1,0 +1,31 @@
+{
+  "spans": [
+    {
+      "id": "df7776f2-d7aa-4631-85e4-7dacf7175f3c",
+      "tool_name": "host_ui:react_to_message",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "pill message=msg-h5-1 emoji=\ud83d\udc4d visible=True",
+      "artifact_path": null,
+      "ts": 1792227485.4335268
+    },
+    {
+      "id": "81123061-b925-4d14-a8fc-e7fb15404b7d",
+      "tool_name": "host_ui:react_to_message",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "pill message=msg-h5-1 emoji=None visible=False",
+      "artifact_path": null,
+      "ts": 1792227486.1675708
+    },
+    {
+      "id": "cdc53b51-d085-4d78-965a-e850d02f86d9",
+      "tool_name": "host_ui:react_to_message",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "pill message=msg-h5-1 emoji=\ud83d\udc4d visible=True",
+      "artifact_path": null,
+      "ts": 1792227486.800706
+    }
+  ]
+}

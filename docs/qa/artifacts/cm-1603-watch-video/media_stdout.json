@@ -1,0 +1,9 @@
+{
+  "video_path": "/workspace/agent-tools/h5-cm1602-generate.mp4",
+  "frame_path": "/workspace/agent-tools/h5-cm1603-frame.png",
+  "bytes": 802,
+  "ffmpeg_rc": 0,
+  "png_magic_ok": true,
+  "magic_hex": "89504e470d0a1a0a",
+  "i_claimed": false
+}
