@@ -1,0 +1,85 @@
+{
+  "spans": [
+    {
+      "id": "9c1fc677-f626-4708-a674-910b3c6f21ef",
+      "tool_name": "host_ui:open_settings",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "SettingsOpened entry=command-palette anchor=auto-review",
+      "artifact_path": null,
+      "ts": 1792221505.974098
+    },
+    {
+      "id": "0490cc40-4809-48ab-93e7-a068daee65d7",
+      "tool_name": "host_ui:settings_anchor_visible",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "SettingsAnchorVisible anchor=auto-review",
+      "artifact_path": null,
+      "ts": 1792221505.9748924
+    },
+    {
+      "id": "5c5f3ea1-826e-4baf-8a20-4177ea2aae03",
+      "tool_name": "host_ui:report_anchor_viewport",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "anchor=auto-review scrollTop=1333 highlighted=True inViewport=True rect={'x': 265, 'y': 99.15625, 'width': 718, 'height': 102.34375, 'top': 99.15625, 'left': 265, 'bottom': 201.5, 'right': 983}",
+      "artifact_path": null,
+      "ts": 1792221506.0572968
+    },
+    {
+      "id": "e1bf38de-e243-4af0-b53d-2aaf83583954",
+      "tool_name": "host_ui:open_settings",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "SettingsOpened entry=command-palette anchor=auto-review-rules",
+      "artifact_path": null,
+      "ts": 1792221507.067879
+    },
+    {
+      "id": "439599b6-90a5-4823-b098-9a40671c6c92",
+      "tool_name": "host_ui:settings_anchor_visible",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "SettingsAnchorVisible anchor=auto-review-rules",
+      "artifact_path": null,
+      "ts": 1792221507.0690053
+    },
+    {
+      "id": "badd40a4-1fca-4bb4-bdb3-0a91e969e4dc",
+      "tool_name": "host_ui:report_anchor_viewport",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "anchor=auto-review-rules scrollTop=1414 highlighted=True inViewport=True rect={'x': 265, 'y': 99.203125, 'width': 718, 'height': 102.34375, 'top': 99.203125, 'left': 265, 'bottom': 201.546875, 'right': 983}",
+      "artifact_path": null,
+      "ts": 1792221507.0965576
+    },
+    {
+      "id": "00e32899-1c3b-41cf-ab3d-e59cea9a96be",
+      "tool_name": "host_ui:open_settings",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "SettingsOpened entry=command-palette anchor=security-keys",
+      "artifact_path": null,
+      "ts": 1792221508.1585038
+    },
+    {
+      "id": "09c2a9d5-990f-47c9-b067-cb5853534448",
+      "tool_name": "host_ui:settings_anchor_visible",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "SettingsAnchorVisible anchor=security-keys",
+      "artifact_path": null,
+      "ts": 1792221508.1591642
+    },
+    {
+      "id": "c6bbe79e-5c64-4f3c-8c10-c07700e3b8bb",
+      "tool_name": "host_ui:report_anchor_viewport",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "anchor=security-keys scrollTop=1495 highlighted=True inViewport=True rect={'x': 265, 'y': 99.25, 'width': 718, 'height': 102.34375, 'top': 99.25, 'left': 265, 'bottom': 201.59375, 'right': 983}",
+      "artifact_path": null,
+      "ts": 1792221508.2970545
+    }
+  ]
+}

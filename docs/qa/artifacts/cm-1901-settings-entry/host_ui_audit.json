@@ -1,0 +1,31 @@
+{
+  "spans": [
+    {
+      "id": "fd2bca77-01c6-46a3-b584-644a1f03a615",
+      "tool_name": "host_ui:open_settings",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "SettingsOpened entry=sidebar-account-button anchor=none",
+      "artifact_path": null,
+      "ts": 1792220937.8764634
+    },
+    {
+      "id": "00a5dcad-9e0f-4ba1-b25c-5721247f1cad",
+      "tool_name": "host_ui:open_settings",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "SettingsOpened entry=keyboard-shortcut anchor=none",
+      "artifact_path": null,
+      "ts": 1792220938.6665754
+    },
+    {
+      "id": "edb9b62a-5ece-4e74-aed9-27a3757f7239",
+      "tool_name": "host_ui:open_settings",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "SettingsOpened entry=command-palette anchor=none",
+      "artifact_path": null,
+      "ts": 1792220939.4148421
+    }
+  ]
+}

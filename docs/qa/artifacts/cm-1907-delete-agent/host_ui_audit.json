@@ -1,0 +1,31 @@
+{
+  "spans": [
+    {
+      "id": "8806ad82-0e5d-4a74-9743-a4c99ec9ab5e",
+      "tool_name": "host_ui:open_sidebar_context_menu",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "context menu visible for agent=h2-throwaway-agent",
+      "artifact_path": null,
+      "ts": 1792220946.6116788
+    },
+    {
+      "id": "3a1c14cc-fb1e-49cc-8b94-c018362eedf1",
+      "tool_name": "host_ui:request_delete_agent",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "AwaitingConfirm agent=h2-throwaway-agent",
+      "artifact_path": null,
+      "ts": 1792220947.4701297
+    },
+    {
+      "id": "c9c95158-e82a-4b57-b250-a773a28566d2",
+      "tool_name": "host_ui:cancel_delete_agent",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "Cancelled agent=h2-throwaway-agent (never Completed)",
+      "artifact_path": null,
+      "ts": 1792220948.3224514
+    }
+  ]
+}

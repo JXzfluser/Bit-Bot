@@ -1,0 +1,8 @@
+pid=109805
+path=/usr/local/bin/box-chrome
+status=running
+profile=/tmp/h1-iso-profile.evbJEp
+cdp_port=9333
+display=:99
+stamp_utc=20261017T062925Z
+isolated=true

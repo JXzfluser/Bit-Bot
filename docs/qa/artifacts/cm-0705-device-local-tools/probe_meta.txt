@@ -1,0 +1,11 @@
+cm=CM-0705
+run_h3_probe_intent=Cm0705DeviceLocalTools
+shared_cdp_9223=untouched
+chrome_profile=untouched
+i_claimed=false
+USER_IANA=Asia/Shanghai
+stamp_utc=20261017T072018Z
+platform_subset=desktop_no_device_local_tools
+permission_card_shown=false
+path=乙
+status=READY_FOR_I_REVIEW

@@ -1,0 +1,1 @@
+could not overwrite root-owned /tmp/box-doctor.log; wrote /tmp/box-doctor-h0.log + artifacts (readable copy of system log if present)

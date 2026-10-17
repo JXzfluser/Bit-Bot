@@ -1,0 +1,199 @@
+{
+  "state": {
+    "settingsOpen": true,
+    "entry": "command-palette",
+    "anchor": "auto-review-rules",
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "General",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "webhookPanel": {
+      "open": false,
+      "url": null,
+      "key_present": false,
+      "key_masked": null,
+      "last_copy": null
+    },
+    "devicePermissionCard": {
+      "open": false,
+      "machine_id": null,
+      "tool_name": null,
+      "permission_label": null,
+      "shown": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "anchorViewport": {
+      "anchor_id": "auto-review-rules",
+      "scrollTop": 1414,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.203125,
+        "width": 718,
+        "height": 102.34375,
+        "top": 99.203125,
+        "left": 265,
+        "bottom": 201.546875,
+        "right": 983
+      },
+      "highlighted": true,
+      "viewport": {
+        "top": 87.296875,
+        "left": 240,
+        "bottom": 693,
+        "right": 1050,
+        "width": 810,
+        "height": 605.703125,
+        "scrollHeight": 2178,
+        "clientHeight": 606
+      },
+      "inViewport": true,
+      "ts": 1792221507.0965178
+    },
+    "rev": 4
+  },
+  "events": {
+    "events": [
+      {
+        "id": "d67a71f7-71a1-45f1-ac47-d1bf03db462a",
+        "ts": 1792221505.9740806,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "auto-review"
+      },
+      {
+        "id": "6d7dda4b-94e1-4762-839e-aa94c77f4fa1",
+        "ts": 1792221505.9740908,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "auto-review"
+      },
+      {
+        "id": "b07810ce-9862-4724-9ead-9873b0c65645",
+        "ts": 1792221505.9748833,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "auto-review"
+      },
+      {
+        "id": "ab70ced0-bfa2-445f-a4ad-aceca19a91dd",
+        "ts": 1792221506.057268,
+        "kind": "SettingsAnchorViewportReported",
+        "anchor_id": "auto-review",
+        "scrollTop": 1333,
+        "boundingRect": {
+          "x": 265,
+          "y": 99.15625,
+          "width": 718,
+          "height": 102.34375,
+          "top": 99.15625,
+          "left": 265,
+          "bottom": 201.5,
+          "right": 983
+        },
+        "highlighted": true,
+        "inViewport": true
+      },
+      {
+        "id": "350533b9-5923-426c-aa92-c2942e86fb68",
+        "ts": 1792221507.0678642,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "auto-review-rules"
+      },
+      {
+        "id": "a848711c-4566-4e4c-8d8a-d46a728fd298",
+        "ts": 1792221507.0678725,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "auto-review-rules"
+      },
+      {
+        "id": "089614b1-51de-46c6-bd2f-ab90071da178",
+        "ts": 1792221507.0689974,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "auto-review-rules"
+      },
+      {
+        "id": "2d1ee094-5294-49f9-9af9-d4fc86d4ddac",
+        "ts": 1792221507.0965416,
+        "kind": "SettingsAnchorViewportReported",
+        "anchor_id": "auto-review-rules",
+        "scrollTop": 1414,
+        "boundingRect": {
+          "x": 265,
+          "y": 99.203125,
+          "width": 718,
+          "height": 102.34375,
+          "top": 99.203125,
+          "left": 265,
+          "bottom": 201.546875,
+          "right": 983
+        },
+        "highlighted": true,
+        "inViewport": true
+      }
+    ]
+  },
+  "anchorViewport": {
+    "anchor_id": "auto-review-rules",
+    "scrollTop": 1414,
+    "boundingRect": {
+      "x": 265,
+      "y": 99.203125,
+      "width": 718,
+      "height": 102.34375,
+      "top": 99.203125,
+      "left": 265,
+      "bottom": 201.546875,
+      "right": 983
+    },
+    "highlighted": true,
+    "viewport": {
+      "top": 87.296875,
+      "left": 240,
+      "bottom": 693,
+      "right": 1050,
+      "width": 810,
+      "height": 605.703125,
+      "scrollHeight": 2178,
+      "clientHeight": 606
+    },
+    "inViewport": true,
+    "ts": 1792221507.0965178
+  }
+}

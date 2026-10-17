@@ -1,0 +1,1 @@
+npm warn deprecated left-pad@1.3.0: use String.prototype.padStart()

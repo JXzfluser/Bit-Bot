@@ -1,0 +1,6 @@
+dockerenv_path=/.dockerenv
+dockerenv_present=equiv
+equiv_probe=/proc/1/cgroup(container-or-pod)
+hosted=yes
+runtime=hosted-anyrun
+summary=runtime=hosted-anyrun dockerenv=equiv hosted=yes equiv=/proc/1/cgroup(container-or-pod)

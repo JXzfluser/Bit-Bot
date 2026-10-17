@@ -1,0 +1,23 @@
+{
+  "events": [
+    {
+      "id": "9eb09ec1-0c2e-4443-bf50-85db494f2914",
+      "ts": 1792220958.3078256,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": "local-execution"
+    },
+    {
+      "id": "d63d0f70-1915-4f45-8f09-de859d2da81a",
+      "ts": 1792220958.3078365,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "local-execution"
+    },
+    {
+      "id": "5d11ff6f-66e5-44af-b42b-39c86d3bd01c",
+      "ts": 1792220958.3078427,
+      "kind": "LocalExecutionGateChanged",
+      "enabled": false
+    }
+  ]
+}

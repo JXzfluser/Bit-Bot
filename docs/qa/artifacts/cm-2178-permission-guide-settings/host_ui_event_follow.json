@@ -1,0 +1,143 @@
+{
+  "method": "follow_permission_guide",
+  "body": {},
+  "result": {
+    "state": {
+      "settingsOpen": true,
+      "entry": "sidebar-account-button",
+      "anchor": "account",
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "General",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": null,
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": "connector-needs-auth",
+        "namespace": "user-Gmail",
+        "anchor": "account",
+        "connected": false,
+        "status": "Needs auth",
+        "followed": true,
+        "link": "grokbot://app/v1/settings?id=account"
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "rev": 2
+    },
+    "audit": {
+      "id": "de387b8b-d7b3-4aa1-9753-789b553b8bfa",
+      "tool_name": "host_ui:follow_permission_guide",
+      "duration_ms": 1,
+      "ok": true,
+      "detail": "Settings opened at account via guide; connector still not connected",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-2178-permission-guide-settings",
+      "ts": 1792220995.1491551,
+      "method": "follow_permission_guide"
+    }
+  },
+  "state": {
+    "settingsOpen": true,
+    "entry": "sidebar-account-button",
+    "anchor": "account",
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "General",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": "connector-needs-auth",
+      "namespace": "user-Gmail",
+      "anchor": "account",
+      "connected": false,
+      "status": "Needs auth",
+      "followed": true,
+      "link": "grokbot://app/v1/settings?id=account"
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "rev": 2
+  },
+  "events": {
+    "events": [
+      {
+        "id": "f326e9a8-407d-4cec-803a-1bf47d85d3e3",
+        "ts": 1792220994.4057276,
+        "kind": "PermissionGuideShown",
+        "perm_kind": "connector-needs-auth",
+        "namespace": "user-Gmail",
+        "anchor": "account",
+        "pretends_connected": false
+      },
+      {
+        "id": "81cb40b6-5fc3-4b67-8a3d-de5ce06068da",
+        "ts": 1792220995.1491346,
+        "kind": "SettingsOpened",
+        "entry": "sidebar-account-button",
+        "anchor": "account",
+        "via": "permission-guide"
+      },
+      {
+        "id": "0a68b611-89a6-4bc4-acdd-1ce2b854ac84",
+        "ts": 1792220995.149147,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "account"
+      }
+    ]
+  }
+}

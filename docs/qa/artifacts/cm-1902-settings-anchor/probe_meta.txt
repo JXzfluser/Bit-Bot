@@ -1,0 +1,17 @@
+section_3_0=C_prime
+cm=CM-1902
+ui_drive=HostUiShell_Live
+smoke_entry=HostAbi_run_h2_probe_aligned
+moon_path=box_host/h2_probes.mbt HostAbi::run_h2_probe
+host_adapter=scripts/host_ui_shell_live.py
+host_api=/api/host/*
+rejected_B_cdp_page_js=true
+rejected_B_fixture_only=true
+rejected_B_memory_only_events=true
+frame_origin=LiveDisplay
+display=:99
+i_claimed=false
+run_h2_probe_intent=Cm1902SettingsAnchor
+anchors_ok=3/3
+anchors=theme,timezone,update-computer
+deeplink_form=grokbot://app/v1/settings?id=<anchor>

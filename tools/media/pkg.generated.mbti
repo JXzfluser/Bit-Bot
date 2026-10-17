@@ -1,0 +1,48 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/tools/media"
+
+import {
+  "bitbot/bitbot/ui_protocol",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn answer_from_frames(question~ : String, Array[VideoFrame]) -> Result[String, String]
+
+pub fn deliver_generated_image(MediaHost, GeneratedImageArtifact) -> Result[@ui_protocol.AttachmentRef, String]
+
+pub fn extract_video_frames(video_path~ : String, max_frames? : Int) -> Result[Array[VideoFrame], String]
+
+// Errors
+
+// Types and methods
+pub(all) struct GeneratedImageArtifact {
+  path : String
+  prompt : String
+  mime : String
+  on_disk : Bool
+} derive(Eq, @debug.Debug)
+pub fn GeneratedImageArtifact::equal(Self, Self) -> Bool
+pub fn GeneratedImageArtifact::not_equal(Self, Self) -> Bool
+pub fn GeneratedImageArtifact::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MediaHost {
+  artifacts : Array[String]
+  files : Map[String, String]
+}
+pub fn MediaHost::exists(Self, String) -> Bool
+pub fn MediaHost::generate_image(Self, prompt~ : String, name? : String) -> Result[GeneratedImageArtifact, String]
+pub fn MediaHost::mock() -> Self
+
+pub(all) struct VideoFrame {
+  index : Int
+  caption : String
+  timestamp_ms : Int
+} derive(Eq, @debug.Debug)
+pub fn VideoFrame::equal(Self, Self) -> Bool
+pub fn VideoFrame::not_equal(Self, Self) -> Bool
+pub fn VideoFrame::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

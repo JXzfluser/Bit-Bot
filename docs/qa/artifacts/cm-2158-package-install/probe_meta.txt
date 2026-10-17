@@ -1,0 +1,14 @@
+cm=CM-2158
+run_h3_probe_intent=Cm2158PackageInstall
+shared_cdp_9223=untouched
+chrome_profile=untouched
+i_claimed=false
+USER_IANA=Asia/Shanghai
+stamp_utc=20261017T072018Z
+non_shell_refused=true
+package_manager=npm
+shell_pid=202362
+shell_exit=0
+via_shell=true
+non_shell_refused=true
+status=READY_FOR_I_REVIEW

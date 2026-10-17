@@ -1,0 +1,197 @@
+{
+  "CM": "CM-1507",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-1507",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-1507-auto-review-deeplink",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "auto-review-rules.png",
+    "auto-review.png",
+    "security-keys.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "auto-review.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "51253",
+      "sha256": "01914be20aec3f4f47c6987e0cf6779b81ddd3fe4a7970af21160dc452bcdc39",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "auto-review-rules.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "48730",
+      "sha256": "8d95232406088abdf6b16946a06e66160347237d6450491a638124e18f5e8310",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "security-keys.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "45878",
+      "sha256": "fb1936bb5710008b58069f97bada7e6c4b3268b92b05fb1130b9a3d38b4e033d",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "9c1fc677-f626-4708-a674-910b3c6f21ef",
+    "0490cc40-4809-48ab-93e7-a068daee65d7",
+    "e1bf38de-e243-4af0-b53d-2aaf83583954",
+    "439599b6-90a5-4823-b098-9a40671c6c92",
+    "00e32899-1c3b-41cf-ab3d-e59cea9a96be",
+    "09c2a9d5-990f-47c9-b067-cb5853534448"
+  ],
+  "audit_span_count": 6,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "auto-review / auto-review-rules / security-keys deep links; page\u2192Host {anchor_id,scrollTop,boundingRect,highlighted}; inViewport",
+  "frames_required": [
+    "auto-review.png",
+    "auto-review-rules.png",
+    "security-keys.png"
+  ],
+  "frames_md5": {
+    "auto-review.png": "31fcb5bdda52e6fc6b24ed43f85019fd",
+    "auto-review-rules.png": "f4019542b62f2e3461de35cc562e5b54",
+    "security-keys.png": "0d3dfdf2831755465251cdfcd4666b18"
+  },
+  "frames_distinct": true,
+  "checks": {
+    "anchor_auto-review": "auto-review@General (want auto-review@General)",
+    "vp_id_auto-review": "auto-review (want auto-review)",
+    "vp_highlighted_auto-review": "true (want true)",
+    "vp_in_viewport_auto-review": "true (want true)",
+    "vp_scrollTop_auto-review": "true (want true)",
+    "vp_rect_auto-review": "true (want true)",
+    "anchor_auto-review-rules": "auto-review-rules@General (want auto-review-rules@General)",
+    "vp_id_auto-review-rules": "auto-review-rules (want auto-review-rules)",
+    "vp_highlighted_auto-review-rules": "true (want true)",
+    "vp_in_viewport_auto-review-rules": "true (want true)",
+    "vp_scrollTop_auto-review-rules": "true (want true)",
+    "vp_rect_auto-review-rules": "true (want true)",
+    "anchor_security-keys": "security-keys@General (want security-keys@General)",
+    "vp_id_security-keys": "security-keys (want security-keys)",
+    "vp_highlighted_security-keys": "true (want true)",
+    "vp_in_viewport_security-keys": "true (want true)",
+    "vp_scrollTop_security-keys": "true (want true)",
+    "vp_rect_security-keys": "true (want true)"
+  },
+  "checks_failed": [],
+  "reference": "/home/box/reference/app-ui.md (read-only) + docs/host-ui-contract.md",
+  "spans": [
+    {
+      "span_id": "9c1fc677-f626-4708-a674-910b3c6f21ef",
+      "tool": "host_ui:open_settings",
+      "ok": true,
+      "detail": "SettingsOpened entry=command-palette anchor=auto-review"
+    },
+    {
+      "span_id": "0490cc40-4809-48ab-93e7-a068daee65d7",
+      "tool": "host_ui:settings_anchor_visible",
+      "ok": true,
+      "detail": "SettingsAnchorVisible anchor=auto-review"
+    },
+    {
+      "span_id": "e1bf38de-e243-4af0-b53d-2aaf83583954",
+      "tool": "host_ui:open_settings",
+      "ok": true,
+      "detail": "SettingsOpened entry=command-palette anchor=auto-review-rules"
+    },
+    {
+      "span_id": "439599b6-90a5-4823-b098-9a40671c6c92",
+      "tool": "host_ui:settings_anchor_visible",
+      "ok": true,
+      "detail": "SettingsAnchorVisible anchor=auto-review-rules"
+    },
+    {
+      "span_id": "00e32899-1c3b-41cf-ab3d-e59cea9a96be",
+      "tool": "host_ui:open_settings",
+      "ok": true,
+      "detail": "SettingsOpened entry=command-palette anchor=security-keys"
+    },
+    {
+      "span_id": "09c2a9d5-990f-47c9-b067-cb5853534448",
+      "tool": "host_ui:settings_anchor_visible",
+      "ok": true,
+      "detail": "SettingsAnchorVisible anchor=security-keys"
+    }
+  ],
+  "anchor_viewports": {
+    "auto-review": {
+      "anchor_id": "auto-review",
+      "scrollTop": 1333,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.15625,
+        "width": 718,
+        "height": 102.34375,
+        "top": 99.15625,
+        "left": 265,
+        "bottom": 201.5,
+        "right": 983
+      },
+      "highlighted": true,
+      "inViewport": true
+    },
+    "auto-review-rules": {
+      "anchor_id": "auto-review-rules",
+      "scrollTop": 1414,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.203125,
+        "width": 718,
+        "height": 102.34375,
+        "top": 99.203125,
+        "left": 265,
+        "bottom": 201.546875,
+        "right": 983
+      },
+      "highlighted": true,
+      "inViewport": true
+    },
+    "security-keys": {
+      "anchor_id": "security-keys",
+      "scrollTop": 1495,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.25,
+        "width": 718,
+        "height": 102.34375,
+        "top": 99.25,
+        "left": 265,
+        "bottom": 201.59375,
+        "right": 983
+      },
+      "highlighted": true,
+      "inViewport": true
+    }
+  }
+}

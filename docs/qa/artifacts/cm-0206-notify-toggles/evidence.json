@@ -1,0 +1,120 @@
+{
+  "CM": "CM-0206",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-0206",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-0206-notify-toggles",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "agent_a_defaults.png",
+    "agent_a_toggled.png",
+    "agent_b_defaults.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "agent_a_defaults.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "68000",
+      "sha256": "7831d984368623787b728f65cdfa588aeafc530922fec125ec7e72cfc0f51951",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "agent_a_toggled.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "68039",
+      "sha256": "d3dad92603ad87e5f66f86d5c8ebdfb4bd3422da193220e2d909eaa7d213bf51",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "agent_b_defaults.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "65599",
+      "sha256": "e704dfc5a4a51532bb92558000dfe597625844da6f6da3b75f2a7115432f520a",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "8598bdd9-6578-444a-b90f-856e5341f2e9",
+    "454b8880-4657-477a-b422-6c372efc3a66",
+    "0d33382a-1755-4429-92ad-d82720dbcff4",
+    "d4184e9f-1ab0-4331-9288-b183a70ba29c"
+  ],
+  "audit_span_count": 4,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Per-agent notification toggles real UI, isolated per agent",
+  "frames_required": [
+    "agent_a_defaults.png",
+    "agent_a_toggled.png",
+    "agent_b_defaults.png"
+  ],
+  "frames_md5": {
+    "agent_a_defaults.png": "77548b97ca2e014c97f99c1202a15f84",
+    "agent_a_toggled.png": "89372786716c39502d8ab85daa3b990f",
+    "agent_b_defaults.png": "cf7062f178a6bfd305a3e213d09d8c47"
+  },
+  "frames_distinct": true,
+  "checks": {
+    "a_sound": "False (want False)",
+    "a_mentions_only": "True (want True)",
+    "b_sound_isolated": "True (want True)",
+    "b_mentions_isolated": "False (want False)",
+    "not_global_settings": "False (want False)"
+  },
+  "checks_failed": [],
+  "reference": "/home/box/reference/app-ui.md (read-only) + docs/host-ui-contract.md",
+  "spans": [
+    {
+      "span_id": "8598bdd9-6578-444a-b90f-856e5341f2e9",
+      "tool": "host_ui:open_agent_settings",
+      "ok": true,
+      "detail": "agent=h2-throwaway-agent view=gear members=[] settingsOpen=False"
+    },
+    {
+      "span_id": "454b8880-4657-477a-b422-6c372efc3a66",
+      "tool": "host_ui:set_agent_notify",
+      "ok": true,
+      "detail": "agent=h2-throwaway-agent notify.sound=False"
+    },
+    {
+      "span_id": "0d33382a-1755-4429-92ad-d82720dbcff4",
+      "tool": "host_ui:set_agent_notify",
+      "ok": true,
+      "detail": "agent=h2-throwaway-agent notify.mentions-only=True"
+    },
+    {
+      "span_id": "d4184e9f-1ab0-4331-9288-b183a70ba29c",
+      "tool": "host_ui:open_agent_settings",
+      "ok": true,
+      "detail": "agent=demo-agent view=gear members=[] settingsOpen=False"
+    }
+  ]
+}

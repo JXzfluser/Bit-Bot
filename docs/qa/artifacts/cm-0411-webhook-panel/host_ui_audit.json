@@ -1,0 +1,49 @@
+{
+  "spans": [
+    {
+      "id": "aff2f5ef-8c77-4cb0-b8a1-2bb8b32a2ad0",
+      "tool_name": "host_ui:open_webhook_panel",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "panel open url=https://hooks.bitbot.local/v1/wh-h3-demo; key opaque to tools",
+      "artifact_path": null,
+      "ts": 1792221621.973139
+    },
+    {
+      "id": "caa387d7-186a-41a2-8b43-570ab79b978a",
+      "tool_name": "host_ui:user_copy_webhook",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "copied_url:https://hooks.bitbot.local/v1/wh-h3-demo",
+      "artifact_path": null,
+      "ts": 1792221622.4619195
+    },
+    {
+      "id": "544af16e-7d3b-40d9-8c81-c34d968b73fb",
+      "tool_name": "host_ui:user_copy_webhook",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "copied_key:len=32",
+      "artifact_path": null,
+      "ts": 1792221622.5440094
+    },
+    {
+      "id": "634b3022-9af5-46bc-83da-5ac01eca1026",
+      "tool_name": "host_ui:assistant_tool_read_webhook_key",
+      "duration_ms": 0,
+      "ok": false,
+      "detail": "webhook key is opaque; assistant cannot tool-read key",
+      "artifact_path": null,
+      "ts": 1792221622.6410563
+    },
+    {
+      "id": "a59ecd29-3255-4735-b215-9e326e37d300",
+      "tool_name": "host_ui:webhook_wake",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "wake payload; has_event_tag=True; leaks_key=False",
+      "artifact_path": null,
+      "ts": 1792221622.719047
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/stores"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn agent_store_mount_path(String) -> String
+
+// Errors
+
+// Types and methods
+pub(all) enum OrdinaryFileTool {
+  Read
+  Write
+  Shell
+} derive(Eq, @debug.Debug)
+pub fn OrdinaryFileTool::equal(Self, Self) -> Bool
+pub fn OrdinaryFileTool::is_ordinary_file_tool(Self) -> Bool
+pub fn OrdinaryFileTool::name(Self) -> String
+pub fn OrdinaryFileTool::not_equal(Self, Self) -> Bool
+pub fn OrdinaryFileTool::to_repr(Self) -> @debug.Repr
+
+pub(all) enum OrdinaryStoreIo {
+  ReadOk(path~ : String, content~ : String, tool~ : OrdinaryFileTool)
+  WriteOk(path~ : String, tool~ : OrdinaryFileTool)
+  Rejected(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn OrdinaryStoreIo::equal(Self, Self) -> Bool
+pub fn OrdinaryStoreIo::not_equal(Self, Self) -> Bool
+pub fn OrdinaryStoreIo::to_repr(Self) -> @debug.Repr
+pub fn OrdinaryStoreIo::used_ordinary_tool(Self) -> Bool
+
+pub(all) struct StoreKey {
+  path : String
+} derive(Eq, @debug.Debug)
+pub fn StoreKey::equal(Self, Self) -> Bool
+pub fn StoreKey::new(String) -> Self
+pub fn StoreKey::not_equal(Self, Self) -> Bool
+pub fn StoreKey::to_repr(Self) -> @debug.Repr
+
+pub(all) struct StoreMountTable {
+  authorized_ids : Array[String]
+  files : Map[String, String]
+}
+pub fn StoreMountTable::authorize(Self, String) -> String
+pub fn StoreMountTable::empty() -> Self
+pub fn StoreMountTable::mount_path_if_authorized(Self, String) -> String?
+pub fn StoreMountTable::path_exists(Self, String) -> Bool
+pub fn StoreMountTable::put_file(Self, String, String, String) -> Result[Unit, String]
+pub fn StoreMountTable::read(Self, String, String) -> Result[String, String]
+pub fn StoreMountTable::read_via_ordinary_tool(Self, OrdinaryFileTool, String) -> OrdinaryStoreIo
+pub fn StoreMountTable::validate_ordinary_tool_path(Self, String) -> Result[String, String]
+pub fn StoreMountTable::write_via_ordinary_tool(Self, OrdinaryFileTool, String, String) -> OrdinaryStoreIo
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,8 @@
+jar_present=yes
+jar_path=/home/box/chrome-profile/Default/Cookies
+same_session_hash_stable=yes
+lifecycle_step=none — t0/t1 hashes are taken within ONE running session
+proves_update_computer_lifecycle=NO
+update_computer_ui=not_automated (by design; Bitbot: do not automate)
+shared_browser=not restarted, not killed, no CDP
+reason_status=NEEDS_REVIEW — before/after hashes from a single running session do not prove the jar survives Update Computer; GAP stays open for Bit验证

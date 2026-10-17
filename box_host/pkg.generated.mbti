@@ -1,0 +1,439 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/box_host"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn assert_box_clock_matches_user_tz(BoxDateOutput, String) -> Result[Unit, String]
+
+pub fn box_chrome_launch_path() -> String
+
+pub fn box_chrome_lockfile_path() -> String
+
+pub fn box_doctor_log_path() -> String
+
+pub fn charter_distinct_desktops() -> Bool
+
+pub fn charter_shared_box_fs() -> Bool
+
+pub fn default_user_iana_timezone() -> String
+
+pub fn detect_box_runtime(EnvProbe) -> BoxRuntimeKind
+
+pub fn diagnose_box_env(EnvProbe) -> EnvDiagnostic
+
+pub fn documented_box_chrome_path() -> String
+
+pub fn install_box_package_via_shell(HostAbi, PackageManager, Array[String]) -> Result[ShellResult, String]
+
+pub fn package_install_shell_command(PackageManager, Array[String]) -> Result[String, String]
+
+pub fn parse_doctor_line(String) -> DoctorLine
+
+pub fn plan_box_package_install(PackageManager, Array[String]) -> Result[ShellRequest, String]
+
+pub fn reject_non_shell_package_install(String) -> Result[Unit, String]
+
+// Errors
+
+// Types and methods
+pub(all) struct AwaitResult {
+  job_id : String
+  matched : Bool
+  completed : Bool
+  stdout : String
+  killed : Bool
+} derive(Eq, @debug.Debug)
+pub fn AwaitResult::equal(Self, Self) -> Bool
+pub fn AwaitResult::not_equal(Self, Self) -> Bool
+pub fn AwaitResult::to_repr(Self) -> @debug.Repr
+
+pub(all) struct BoxDateOutput {
+  raw : String
+  user_iana : String
+  zone_label : String
+} derive(Eq, @debug.Debug)
+pub fn BoxDateOutput::aligns_with_user_tz(Self) -> Bool
+pub fn BoxDateOutput::equal(Self, Self) -> Bool
+pub fn BoxDateOutput::not_equal(Self, Self) -> Bool
+pub fn BoxDateOutput::to_repr(Self) -> @debug.Repr
+
+pub(all) struct BoxDoctorCheck {
+  name : String
+  pass : Bool
+} derive(Eq, @debug.Debug)
+pub fn BoxDoctorCheck::equal(Self, Self) -> Bool
+pub fn BoxDoctorCheck::not_equal(Self, Self) -> Bool
+pub fn BoxDoctorCheck::to_repr(Self) -> @debug.Repr
+
+pub(all) struct BoxDoctorReport {
+  log_path : String
+  lines : Array[DoctorLine]
+  raw_log : String
+  overall_pass : Bool
+} derive(Eq, @debug.Debug)
+pub fn BoxDoctorReport::equal(Self, Self) -> Bool
+pub fn BoxDoctorReport::failure_names(Self) -> Array[String]
+pub fn BoxDoctorReport::failures_reportable(Self) -> Bool
+pub fn BoxDoctorReport::not_equal(Self, Self) -> Bool
+pub fn BoxDoctorReport::to_repr(Self) -> @debug.Repr
+
+pub(all) struct BoxFs {
+  root : String
+  workspace : String
+} derive(Eq, @debug.Debug)
+pub fn BoxFs::default() -> Self
+pub fn BoxFs::equal(Self, Self) -> Bool
+pub fn BoxFs::not_equal(Self, Self) -> Bool
+pub fn BoxFs::resolve(Self, String) -> String
+pub fn BoxFs::to_repr(Self) -> @debug.Repr
+
+pub(all) enum BoxRuntimeKind {
+  LocalDocker
+  HostedAnyrun
+  Unknown
+} derive(Eq, @debug.Debug)
+pub fn BoxRuntimeKind::equal(Self, Self) -> Bool
+pub fn BoxRuntimeKind::label(Self) -> String
+pub fn BoxRuntimeKind::not_equal(Self, Self) -> Bool
+pub fn BoxRuntimeKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct BrowserLaunchResult {
+  launcher : BrowserLauncher
+  launch_path : String
+  lockfile : String
+  lockfile_diagnosable : Bool
+  started : Bool
+} derive(Eq, @debug.Debug)
+pub fn BrowserLaunchResult::equal(Self, Self) -> Bool
+pub fn BrowserLaunchResult::not_equal(Self, Self) -> Bool
+pub fn BrowserLaunchResult::to_repr(Self) -> @debug.Repr
+
+pub(all) enum BrowserLauncher {
+  BoxChrome
+  BareChrome
+} derive(Eq, @debug.Debug)
+pub fn BrowserLauncher::documented_path(Self) -> String
+pub fn BrowserLauncher::equal(Self, Self) -> Bool
+pub fn BrowserLauncher::not_equal(Self, Self) -> Bool
+pub fn BrowserLauncher::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ComputerLifecyclePrefer {
+  GuideUpdate
+  Reset
+} derive(Eq, @debug.Debug)
+pub fn ComputerLifecyclePrefer::equal(Self, Self) -> Bool
+pub fn ComputerLifecyclePrefer::not_equal(Self, Self) -> Bool
+pub fn ComputerLifecyclePrefer::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DesktopSession {
+  agent_id : String
+  display : String
+  browser_attached : Bool
+} derive(Eq, @debug.Debug)
+pub fn DesktopSession::equal(Self, Self) -> Bool
+pub fn DesktopSession::not_equal(Self, Self) -> Bool
+pub fn DesktopSession::placeholder(String) -> Self
+pub fn DesktopSession::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DeviceLocalTool {
+  name : String
+  permission : DeviceToolPermission
+} derive(Eq, @debug.Debug)
+pub fn DeviceLocalTool::equal(Self, Self) -> Bool
+pub fn DeviceLocalTool::not_equal(Self, Self) -> Bool
+pub fn DeviceLocalTool::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DeviceLocalToolsRegistry {
+  by_machine : Map[String, Array[DeviceLocalTool]]
+  cards : Array[DevicePermissionCard]
+}
+pub fn DeviceLocalToolsRegistry::empty() -> Self
+pub fn DeviceLocalToolsRegistry::invoke(Self, String, String) -> Result[String, DevicePermissionCard]
+pub fn DeviceLocalToolsRegistry::last_card(Self) -> DevicePermissionCard?
+pub fn DeviceLocalToolsRegistry::list_for(Self, String, MachineKind) -> Array[DeviceLocalTool]
+pub fn DeviceLocalToolsRegistry::seed_phones() -> Self
+
+pub(all) struct DevicePermissionCard {
+  machine_id : String
+  tool_name : String
+  permission_label : String
+  shown : Bool
+} derive(Eq, @debug.Debug)
+pub fn DevicePermissionCard::equal(Self, Self) -> Bool
+pub fn DevicePermissionCard::is_approval_card(Self) -> Bool
+pub fn DevicePermissionCard::not_equal(Self, Self) -> Bool
+pub fn DevicePermissionCard::to_repr(Self) -> @debug.Repr
+
+pub(all) enum DeviceToolPermission {
+  Ready
+  NeedsPermission
+  Denied
+  Unavailable
+} derive(Eq, @debug.Debug)
+pub fn DeviceToolPermission::equal(Self, Self) -> Bool
+pub fn DeviceToolPermission::label(Self) -> String
+pub fn DeviceToolPermission::not_equal(Self, Self) -> Bool
+pub fn DeviceToolPermission::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DoctorLine {
+  raw : String
+  kind : DoctorLineKind
+  check_name : String
+} derive(Eq, @debug.Debug)
+pub fn DoctorLine::equal(Self, Self) -> Bool
+pub fn DoctorLine::not_equal(Self, Self) -> Bool
+pub fn DoctorLine::to_repr(Self) -> @debug.Repr
+
+pub(all) enum DoctorLineKind {
+  Pass
+  Fail
+  Summary
+  Other
+} derive(Eq, @debug.Debug)
+pub fn DoctorLineKind::equal(Self, Self) -> Bool
+pub fn DoctorLineKind::not_equal(Self, Self) -> Bool
+pub fn DoctorLineKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct EnvDiagnostic {
+  runtime : BoxRuntimeKind
+  dockerenv_path : String
+  summary : String
+} derive(Eq, @debug.Debug)
+pub fn EnvDiagnostic::equal(Self, Self) -> Bool
+pub fn EnvDiagnostic::is_correct(Self) -> Bool
+pub fn EnvDiagnostic::not_equal(Self, Self) -> Bool
+pub fn EnvDiagnostic::to_repr(Self) -> @debug.Repr
+
+pub(all) struct EnvProbe {
+  dockerenv_present : Bool
+  hosted_anyrun_markers : Bool
+} derive(Eq, @debug.Debug)
+pub fn EnvProbe::bare() -> Self
+pub fn EnvProbe::equal(Self, Self) -> Bool
+pub fn EnvProbe::hosted_anyrun() -> Self
+pub fn EnvProbe::local_docker() -> Self
+pub fn EnvProbe::not_equal(Self, Self) -> Bool
+pub fn EnvProbe::to_repr(Self) -> @debug.Repr
+
+pub(all) struct HostAbi {
+  fs : Map[String, String]
+  jobs : Map[String, ShellJob]
+  desktops : Map[String, DesktopSession]
+  box_fs : BoxFs
+  mut next_job : Int
+  effects : Array[String]
+  session_jar : Map[String, String]
+  mut software_installed : Bool
+}
+pub fn HostAbi::await_shell(Self, String, pattern? : String?, block_until_ms? : Int) -> Result[AwaitResult, String]
+pub fn HostAbi::check_cross_agent_shared_box_charter(Self) -> SharedBoxCharterCheck
+pub fn HostAbi::date_aligned_with_user_tz(Self, user_iana? : String, mock_stamp? : String) -> BoxDateOutput
+pub fn HostAbi::desktop_for(Self, String) -> DesktopSession
+pub fn HostAbi::diagnose_box_chrome_lockfile(Self) -> Result[String, String]
+pub fn HostAbi::diagnose_runtime(Self, EnvProbe) -> EnvDiagnostic
+pub fn HostAbi::fs_shared(Self) -> BoxFs
+pub fn HostAbi::has_session_login(Self, domain~ : String) -> Bool
+pub fn HostAbi::job_cwd(Self, String) -> String?
+pub fn HostAbi::launch_browser(Self, BrowserLauncher) -> Result[BrowserLaunchResult, String]
+pub fn HostAbi::mark_software_installed(Self) -> Unit
+pub fn HostAbi::mock() -> Self
+pub fn HostAbi::read(Self, String, offset? : Int?, limit? : Int?) -> Result[ReadResult, String]
+pub fn HostAbi::read_box_doctor_log(Self) -> Result[String, String]
+pub fn HostAbi::read_image(Self, String) -> Result[ImageContent, String]
+pub fn HostAbi::run_box_doctor(Self, checks~ : Array[BoxDoctorCheck]) -> BoxDoctorReport
+pub fn HostAbi::screenshot(Self, String) -> ScreenshotResult
+pub fn HostAbi::seed_session_login(Self, domain~ : String, cookie~ : String) -> Unit
+pub fn HostAbi::session_jar_intact(Self, domain~ : String, expected_cookie~ : String) -> Bool
+pub fn HostAbi::shell(Self, ShellRequest) -> ShellResult
+pub fn HostAbi::update_computer(Self, flow~ : UpdateComputerFlow?) -> Result[UpdateComputerResult, String]
+pub fn HostAbi::write(Self, String, String) -> Unit
+
+pub(all) struct ImageContent {
+  path : String
+  mime : String
+  visible : Bool
+  byte_len : Int
+  description : String
+} derive(Eq, @debug.Debug)
+pub fn ImageContent::equal(Self, Self) -> Bool
+pub fn ImageContent::is_describable(Self) -> Bool
+pub fn ImageContent::not_equal(Self, Self) -> Bool
+pub fn ImageContent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MachineInfo {
+  id : String
+  label : String
+  kind : MachineKind
+  status : MachineStatus
+} derive(Eq, @debug.Debug)
+pub fn MachineInfo::equal(Self, Self) -> Bool
+pub fn MachineInfo::not_equal(Self, Self) -> Bool
+pub fn MachineInfo::to_repr(Self) -> @debug.Repr
+
+pub(all) enum MachineKind {
+  Desktop
+  Ios
+  Android
+} derive(Eq, @debug.Debug)
+pub fn MachineKind::equal(Self, Self) -> Bool
+pub fn MachineKind::name(Self) -> String
+pub fn MachineKind::not_equal(Self, Self) -> Bool
+pub fn MachineKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MachineRegistry {
+  machines : Array[MachineInfo]
+  box_bytes : Map[String, String]
+  machine_bytes : Map[String, String]
+  effects : Array[String]
+  mut local_execution_enabled : Bool
+}
+pub fn MachineRegistry::copy_from_box(Self, String, String, String, overwrite~ : OverwritePolicy) -> Result[String, String]
+pub fn MachineRegistry::copy_to_box(Self, String, String, dest_path? : String?) -> Result[String, String]
+pub fn MachineRegistry::device_local_tools_for(Self, DeviceLocalToolsRegistry, String) -> Array[DeviceLocalTool]
+pub fn MachineRegistry::empty() -> Self
+pub fn MachineRegistry::find(Self, String) -> MachineInfo?
+pub fn MachineRegistry::get_box_bytes(Self, String) -> String?
+pub fn MachineRegistry::get_machine_bytes(Self, String, String) -> String?
+pub fn MachineRegistry::list(Self) -> Array[MachineInfo]
+pub fn MachineRegistry::local_execution_on(Self) -> Bool
+pub fn MachineRegistry::put_box_file(Self, String, String) -> Unit
+pub fn MachineRegistry::put_machine_file(Self, String, String, String) -> Unit
+pub fn MachineRegistry::read_on_machine(Self, String, String, approved~ : Bool) -> Result[String, String]
+pub fn MachineRegistry::run_on_machine(Self, String, String, approved~ : Bool) -> Result[String, String]
+pub fn MachineRegistry::seed() -> Self
+pub fn MachineRegistry::set_local_execution(Self, enabled~ : Bool) -> Unit
+pub fn MachineRegistry::was_executed(Self, String) -> Bool
+
+pub(all) enum MachineStatus {
+  Connected
+  Disconnected
+} derive(Eq, @debug.Debug)
+pub fn MachineStatus::equal(Self, Self) -> Bool
+pub fn MachineStatus::name(Self) -> String
+pub fn MachineStatus::not_equal(Self, Self) -> Bool
+pub fn MachineStatus::to_repr(Self) -> @debug.Repr
+
+pub(all) enum OverwritePolicy {
+  Allow
+  Refuse
+} derive(Eq, @debug.Debug)
+pub fn OverwritePolicy::equal(Self, Self) -> Bool
+pub fn OverwritePolicy::not_equal(Self, Self) -> Bool
+pub fn OverwritePolicy::to_repr(Self) -> @debug.Repr
+
+pub(all) enum PackageManager {
+  Apt
+  Npm
+  Pip
+  Cargo
+} derive(Eq, @debug.Debug)
+pub fn PackageManager::equal(Self, Self) -> Bool
+pub fn PackageManager::label(Self) -> String
+pub fn PackageManager::not_equal(Self, Self) -> Bool
+pub fn PackageManager::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ReadResult {
+  path : String
+  text : String
+  line_count : Int
+} derive(Eq, @debug.Debug)
+pub fn ReadResult::equal(Self, Self) -> Bool
+pub fn ReadResult::not_equal(Self, Self) -> Bool
+pub fn ReadResult::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ScreenshotResult {
+  agent_id : String
+  path : String
+  read_only : Bool
+  clicked : Bool
+  has_frame : Bool
+  frame_bytes_len : Int
+} derive(Eq, @debug.Debug)
+pub fn ScreenshotResult::equal(Self, Self) -> Bool
+pub fn ScreenshotResult::not_equal(Self, Self) -> Bool
+pub fn ScreenshotResult::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SharedBoxCharterCheck {
+  shared_fs : Bool
+  distinct_desktops : Bool
+  agent_a_sees_agent_b_write : Bool
+  desktop_a_display : String
+  desktop_b_display : String
+} derive(Eq, @debug.Debug)
+pub fn SharedBoxCharterCheck::equal(Self, Self) -> Bool
+pub fn SharedBoxCharterCheck::is_charter_consistent(Self) -> Bool
+pub fn SharedBoxCharterCheck::not_equal(Self, Self) -> Bool
+pub fn SharedBoxCharterCheck::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ShellJob {
+  id : String
+  command : String
+  cwd : String
+  target : ShellTarget
+  stdout : String
+  completed : Bool
+  fire_and_forget : Bool
+} derive(Eq, @debug.Debug)
+pub fn ShellJob::equal(Self, Self) -> Bool
+pub fn ShellJob::not_equal(Self, Self) -> Bool
+pub fn ShellJob::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ShellRequest {
+  command : String
+  working_directory : String?
+  block_until_ms : Int
+  machine_id : String?
+} derive(Eq, @debug.Debug)
+pub fn ShellRequest::effective_cwd(Self, box_workspace? : String) -> String
+pub fn ShellRequest::equal(Self, Self) -> Bool
+pub fn ShellRequest::not_equal(Self, Self) -> Bool
+pub fn ShellRequest::on_box(String) -> Self
+pub fn ShellRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ShellResult {
+  job_id : String
+  stdout : String
+  target : ShellTarget
+  completed : Bool
+  cwd : String
+} derive(Eq, @debug.Debug)
+pub fn ShellResult::equal(Self, Self) -> Bool
+pub fn ShellResult::not_equal(Self, Self) -> Bool
+pub fn ShellResult::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ShellTarget {
+  Box
+  UserMachine(machine_id~ : String)
+} derive(Eq, @debug.Debug)
+pub fn ShellTarget::equal(Self, Self) -> Bool
+pub fn ShellTarget::not_equal(Self, Self) -> Bool
+pub fn ShellTarget::to_repr(Self) -> @debug.Repr
+
+pub(all) struct UpdateComputerFlow {
+  mut confirm_steps : Int
+  prefer : ComputerLifecyclePrefer
+  mut completed : Bool
+}
+pub fn UpdateComputerFlow::confirm_step(Self) -> Int
+pub fn UpdateComputerFlow::guide_before_reset(Self) -> Bool
+pub fn UpdateComputerFlow::prefer_guide() -> Self
+pub fn UpdateComputerFlow::prefer_reset() -> Self
+pub fn UpdateComputerFlow::two_step_ready(Self) -> Bool
+
+pub(all) struct UpdateComputerResult {
+  session_jar_intact : Bool
+  software_needs_reinstall : Bool
+  two_step_confirmed : Bool
+  guide_before_reset : Bool
+  files_preserved : Bool
+} derive(Eq, @debug.Debug)
+pub fn UpdateComputerResult::equal(Self, Self) -> Bool
+pub fn UpdateComputerResult::not_equal(Self, Self) -> Bool
+pub fn UpdateComputerResult::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,1 @@
+uninstall=rm -rf node_modules (sandbox cleaned)

@@ -1,0 +1,4 @@
+agent_id=h3-agent-a
+display=:40
+pid=202426
+DISPLAY=:40

@@ -1,0 +1,4 @@
+isolation_display=:51
+isolation_http=8801
+isolation_cdp=9400
+shared_cdp_9223=untouched

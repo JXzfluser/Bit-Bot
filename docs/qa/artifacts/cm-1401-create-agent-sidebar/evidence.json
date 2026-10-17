@@ -1,0 +1,112 @@
+{
+  "CM": "CM-1401",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-1401",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-1401-create-agent-sidebar",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "after_create_members.png",
+    "after_create_sidebar.png",
+    "before_create.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "before_create.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "50664",
+      "sha256": "54a9b0b5d19d1b20fb7965fd351922e555a0e8e538a92d366cf8161c67da9f74",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "after_create_sidebar.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "52552",
+      "sha256": "a6c8a2b50744b8f27a0a08831022e6ec0770421e08d5f0869049a3211a29c123",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "after_create_members.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "74422",
+      "sha256": "b61deb8fc398258379a202e7d8d97c1dde5c08259009e4d41ace05fa2d27fab0",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "b80405be-34da-4a4e-93c6-aaca812fe73e",
+    "81b00a84-ada0-45d6-86ce-e2134882eba7",
+    "72731bae-c611-42f4-b1d8-eb8e9b56d752"
+  ],
+  "audit_span_count": 3,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "After CreateAgent: real sidebar row and Members visible",
+  "frames_required": [
+    "before_create.png",
+    "after_create_sidebar.png",
+    "after_create_members.png"
+  ],
+  "frames_md5": {
+    "before_create.png": "d3cdb5648d2806cae97d3baa51a92f0d",
+    "after_create_sidebar.png": "e3ca8c9d5e1a129b2c10350383a6f8b5",
+    "after_create_members.png": "224f314f1ce0341ad75c32b541b0037b"
+  },
+  "frames_distinct": true,
+  "checks": {
+    "absent_before": "False (want False)",
+    "in_sidebar_after": "True (want True)",
+    "in_members": "True (want True)",
+    "members_event": "True (want True)"
+  },
+  "checks_failed": [],
+  "reference": "/home/box/reference/app-ui.md (read-only) + docs/host-ui-contract.md",
+  "spans": [
+    {
+      "span_id": "b80405be-34da-4a4e-93c6-aaca812fe73e",
+      "tool": "host_ui:address_agent",
+      "ok": true,
+      "detail": "addressed agent=h2-throwaway-agent hidden=False in_sidebar=True"
+    },
+    {
+      "span_id": "81b00a84-ada0-45d6-86ce-e2134882eba7",
+      "tool": "host_ui:create_agent",
+      "ok": true,
+      "detail": "created h2-created-agent; sidebar=['h2-throwaway-agent', 'demo-agent', 'h2-created-agent']"
+    },
+    {
+      "span_id": "72731bae-c611-42f4-b1d8-eb8e9b56d752",
+      "tool": "host_ui:open_info_panel",
+      "ok": true,
+      "detail": "agent=h2-group view=panel members=['h2-throwaway-agent', 'h2-created-agent'] settingsOpen=False"
+    }
+  ]
+}

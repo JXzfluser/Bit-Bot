@@ -1,0 +1,143 @@
+{
+  "result": {
+    "state": {
+      "settingsOpen": true,
+      "entry": "command-palette",
+      "anchor": "reset-computer",
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "Computer",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": null,
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "rev": 1
+    },
+    "event_tail": [
+      {
+        "id": "0243e454-ff52-474d-8beb-b3c9c613480a",
+        "ts": 1792220955.483318,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "reset-computer"
+      },
+      {
+        "id": "93a14042-5cca-438b-aebc-aa8f6c496622",
+        "ts": 1792220955.4833305,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "reset-computer"
+      }
+    ],
+    "audit": {
+      "id": "6e9d86c8-9589-47bf-917b-e77751e29297",
+      "tool_name": "host_ui:open_reset_computer",
+      "duration_ms": 1,
+      "ok": true,
+      "detail": "Reset Computer visible; not preferred vs update-computer",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-1904-reset-computer",
+      "ts": 1792220955.4833384
+    }
+  },
+  "state": {
+    "settingsOpen": true,
+    "entry": "command-palette",
+    "anchor": "reset-computer",
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "Computer",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "rev": 1
+  },
+  "events": {
+    "events": [
+      {
+        "id": "0243e454-ff52-474d-8beb-b3c9c613480a",
+        "ts": 1792220955.483318,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "reset-computer"
+      },
+      {
+        "id": "93a14042-5cca-438b-aebc-aa8f6c496622",
+        "ts": 1792220955.4833305,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "reset-computer"
+      }
+    ]
+  }
+}

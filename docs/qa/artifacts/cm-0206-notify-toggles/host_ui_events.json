@@ -1,0 +1,48 @@
+{
+  "events": [
+    {
+      "id": "b3cd7429-d2a9-493b-9be1-dd3a7e9e9b1e",
+      "ts": 1792220975.2638576,
+      "kind": "InfoPanelOpened",
+      "agent_id": "h2-throwaway-agent",
+      "sections": [
+        "desktop-preview",
+        "routines",
+        "channels",
+        "members",
+        "gear-settings"
+      ],
+      "view": "gear"
+    },
+    {
+      "id": "24a43bef-a6df-4b3a-a09a-2d61cc50a8a9",
+      "ts": 1792220976.017911,
+      "kind": "AgentNotifyToggleChanged",
+      "agent_id": "h2-throwaway-agent",
+      "toggle": "notify.sound",
+      "value": false
+    },
+    {
+      "id": "23903aca-7684-4dcb-94ef-47a444a65128",
+      "ts": 1792220976.0955327,
+      "kind": "AgentNotifyToggleChanged",
+      "agent_id": "h2-throwaway-agent",
+      "toggle": "notify.mentions-only",
+      "value": true
+    },
+    {
+      "id": "660e19dd-7a46-4d2c-8937-58afc80b3f86",
+      "ts": 1792220976.8581624,
+      "kind": "InfoPanelOpened",
+      "agent_id": "demo-agent",
+      "sections": [
+        "desktop-preview",
+        "routines",
+        "channels",
+        "members",
+        "gear-settings"
+      ],
+      "view": "gear"
+    }
+  ]
+}

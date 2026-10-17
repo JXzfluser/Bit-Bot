@@ -1,0 +1,83 @@
+{
+  "CM": "CM-1902",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-1902",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-1902-settings-anchor",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "theme.png",
+    "timezone.png",
+    "update-computer.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "theme.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "62686",
+      "sha256": "f98c12ef29410dead86e2b15c368c3e600e9064dfd9548e5397cfe8ba68d82bb",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "timezone.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "63181",
+      "sha256": "98c2a5e532bd0ec7a969f73e235e5b9892e257662872ef01f052a0e04450a7ca",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "update-computer.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "81309",
+      "sha256": "ed9a5dd56d87bca9ecd3d670a34e52b9739b54a94c439023ac270a1766786627",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "9b671318-868e-4ea1-a8e5-5eb39cd2744a",
+    "814da822-9b63-40fb-9f54-8c21892505ad",
+    "65b1bdbf-7bc5-4450-a5ec-881713f0fd63",
+    "25a9b8e4-5a69-4f12-acdc-cc41f13be74a",
+    "9fbfe383-8dc1-45a6-8321-2c7f7804fba5",
+    "a39db6be-5f01-4874-894f-99bba8b25bff"
+  ],
+  "audit_span_count": 6,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "artifact_dir_note": "dir name is cm-1902-settings-anchor (singular); docs \u00a73.3 also cite cm-1902-settings-anchors/",
+  "assert": "deep-link anchors theme/timezone/update-computer via HostUiShell; SettingsAnchorVisible; LiveDisplay",
+  "anchors": [
+    "theme",
+    "timezone",
+    "update-computer"
+  ],
+  "deeplink_form": "grokbot://app/v1/settings?id=<anchor>"
+}

@@ -1,0 +1,25 @@
+{
+  "events": [
+    {
+      "id": "fcfea25b-4f9e-46f6-b96e-cfec1b537f92",
+      "ts": 1792220937.8764508,
+      "kind": "SettingsOpened",
+      "entry": "sidebar-account-button",
+      "anchor": null
+    },
+    {
+      "id": "6dc99aa2-8da7-4a90-b6b3-ca1e57fefab7",
+      "ts": 1792220938.6665645,
+      "kind": "SettingsOpened",
+      "entry": "keyboard-shortcut",
+      "anchor": null
+    },
+    {
+      "id": "1bf2637e-f206-4bbc-bf26-fd2c7a6117bb",
+      "ts": 1792220939.4148335,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": null
+    }
+  ]
+}

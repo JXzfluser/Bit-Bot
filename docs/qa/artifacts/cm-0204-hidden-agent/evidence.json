@@ -1,0 +1,114 @@
+{
+  "CM": "CM-0204",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-0204",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-0204-hidden-agent",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "addressed_hidden.png",
+    "sidebar_before.png",
+    "sidebar_hidden.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "sidebar_before.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "63656",
+      "sha256": "908f3e65a2a4e8549f0272cbd8f820a923d800ff9849bae2cffc6a24c74ce936",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "sidebar_hidden.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "62275",
+      "sha256": "f80b5d8da1f615c66d5f4d99efbce80ee8215385213f48bd7da45af67ffff91f",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "addressed_hidden.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "65733",
+      "sha256": "4cdbefccc79d614bdaa9e225efb4703783a408a5db49f889a7578008c764f46d",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "5aaf99e7-863a-4186-aa78-0e21964dd9d4",
+    "6da8c767-1470-4e81-9cc8-889881d9698d",
+    "8257beb5-ea29-48b3-a805-59b99167b52f"
+  ],
+  "audit_span_count": 3,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Hidden agent not in main sidebar list but still addressable (SidebarHiddenAgentAddressable; real sidebar frame)",
+  "frames_required": [
+    "sidebar_before.png",
+    "sidebar_hidden.png",
+    "addressed_hidden.png"
+  ],
+  "frames_md5": {
+    "sidebar_before.png": "fdfd31007f828e4c2fea3581486efd6c",
+    "sidebar_hidden.png": "1cfc2c227a21e7718c8aa6df2383320b",
+    "addressed_hidden.png": "017e5ac043741752e256e26873adafb3"
+  },
+  "frames_distinct": true,
+  "checks": {
+    "visible_before": "True (want True)",
+    "in_sidebar_after_hide": "False (want False)",
+    "addressable_hidden": "True (want True)",
+    "addressed_in_sidebar": "False (want False)",
+    "event_sidebar_hidden_addressable": "True (want True)"
+  },
+  "checks_failed": [],
+  "reference": "/home/box/reference/app-ui.md (read-only) + docs/host-ui-contract.md",
+  "spans": [
+    {
+      "span_id": "5aaf99e7-863a-4186-aa78-0e21964dd9d4",
+      "tool": "host_ui:set_agent_hidden",
+      "ok": true,
+      "detail": "agent=h2-hidden-agent hidden=False sidebar=['h2-throwaway-agent', 'demo-agent', 'h2-hidden-agent']"
+    },
+    {
+      "span_id": "6da8c767-1470-4e81-9cc8-889881d9698d",
+      "tool": "host_ui:set_agent_hidden",
+      "ok": true,
+      "detail": "agent=h2-hidden-agent hidden=True sidebar=['h2-throwaway-agent', 'demo-agent']"
+    },
+    {
+      "span_id": "8257beb5-ea29-48b3-a805-59b99167b52f",
+      "tool": "host_ui:address_agent",
+      "ok": true,
+      "detail": "addressed agent=h2-hidden-agent hidden=True in_sidebar=False; event=SidebarHiddenAgentAddressable"
+    }
+  ],
+  "host_ui_event": "SidebarHiddenAgentAddressable"
+}

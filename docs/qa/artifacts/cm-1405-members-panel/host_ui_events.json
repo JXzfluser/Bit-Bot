@@ -1,0 +1,42 @@
+{
+  "events": [
+    {
+      "id": "f41ac507-123a-4bcc-9b66-7ad57014cdf4",
+      "ts": 1792220985.1331332,
+      "kind": "InfoPanelOpened",
+      "agent_id": "h2-throwaway-agent",
+      "sections": [
+        "desktop-preview",
+        "routines",
+        "channels",
+        "members",
+        "gear-settings"
+      ],
+      "view": "panel"
+    },
+    {
+      "id": "488a94aa-936a-40d2-a71a-02671b312ddf",
+      "ts": 1792220985.884382,
+      "kind": "InfoPanelOpened",
+      "agent_id": "h2-group",
+      "sections": [
+        "desktop-preview",
+        "routines",
+        "channels",
+        "members",
+        "gear-settings"
+      ],
+      "view": "panel"
+    },
+    {
+      "id": "5a2d82db-c705-4501-902a-759e6c30dfaa",
+      "ts": 1792220985.8843904,
+      "kind": "MembersPanelVisible",
+      "group_id": "h2-group",
+      "member_ids": [
+        "h2-throwaway-agent",
+        "demo-agent"
+      ]
+    }
+  ]
+}

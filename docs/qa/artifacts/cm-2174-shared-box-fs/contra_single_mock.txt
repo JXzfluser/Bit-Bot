@@ -1,0 +1,3 @@
+assert: dual Live sessions (agent_a DISPLAY=:40, agent_b DISPLAY=:41)
+NOT: single HostAbi::mock() self-write-self-read
+shared_path=/workspace/h3-cross-agent-shared.txt

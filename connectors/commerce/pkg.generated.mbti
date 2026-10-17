@@ -1,0 +1,67 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/connectors/commerce"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) struct PurchaseGate {
+  transcript_log : Array[String]
+}
+pub fn PurchaseGate::attempt_purchase(Self, PurchaseRequest, explicit_user_ask~ : Bool, user_present~ : Bool) -> PurchaseOutcome
+pub fn PurchaseGate::new() -> Self
+pub fn PurchaseGate::transcript_contains_credential(Self, String) -> Bool
+
+pub(all) enum PurchaseOutcome {
+  DraftOnly(summary~ : String)
+  NeedUserPresent(reason~ : String)
+  Paid(receipt~ : String)
+  Blocked(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn PurchaseOutcome::equal(Self, Self) -> Bool
+pub fn PurchaseOutcome::is_paid(Self) -> Bool
+pub fn PurchaseOutcome::not_equal(Self, Self) -> Bool
+pub fn PurchaseOutcome::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PurchaseRequest {
+  item : String
+  amount_cents : Int
+  payment_credential : String
+} derive(Eq, @debug.Debug)
+pub fn PurchaseRequest::equal(Self, Self) -> Bool
+pub fn PurchaseRequest::not_equal(Self, Self) -> Bool
+pub fn PurchaseRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SecureCredentialEntry {
+  kind : SecureFormKind
+  vault_handle : String
+  filled : Bool
+} derive(Eq, @debug.Debug)
+pub fn SecureCredentialEntry::equal(Self, Self) -> Bool
+pub fn SecureCredentialEntry::not_equal(Self, Self) -> Bool
+pub fn SecureCredentialEntry::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SecureCredentialForm {
+  audit_log : Array[String]
+  mut last_entry : SecureCredentialEntry?
+}
+pub fn SecureCredentialForm::enter(Self, SecureFormKind, plaintext~ : String) -> Result[SecureCredentialEntry, String]
+pub fn SecureCredentialForm::log_contains_plaintext(Self, plaintext~ : String) -> Bool
+pub fn SecureCredentialForm::new() -> Self
+
+pub(all) enum SecureFormKind {
+  Password
+  CardNumber
+} derive(Eq, @debug.Debug)
+pub fn SecureFormKind::equal(Self, Self) -> Bool
+pub fn SecureFormKind::not_equal(Self, Self) -> Bool
+pub fn SecureFormKind::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

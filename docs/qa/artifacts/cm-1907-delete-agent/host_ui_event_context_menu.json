@@ -1,0 +1,131 @@
+{
+  "result": {
+    "state": {
+      "settingsOpen": false,
+      "entry": null,
+      "anchor": null,
+      "deletePhase": null,
+      "deleteAgent": "h2-throwaway-agent",
+      "contextMenuOpen": true,
+      "contextMenuAgent": "h2-throwaway-agent",
+      "activeTab": "General",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": null,
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "rev": 1
+    },
+    "event_tail": [
+      {
+        "id": "5e0c933e-6300-4631-8fff-ba358dce76b9",
+        "ts": 1792220946.6116672,
+        "kind": "SidebarContextMenuOpened",
+        "agent_id": "h2-throwaway-agent",
+        "path": "sidebar-context-menu"
+      }
+    ],
+    "audit": {
+      "id": "8806ad82-0e5d-4a74-9743-a4c99ec9ab5e",
+      "tool_name": "host_ui:open_sidebar_context_menu",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "context menu visible for agent=h2-throwaway-agent",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-1907-delete-agent",
+      "ts": 1792220946.6116788
+    }
+  },
+  "state": {
+    "settingsOpen": false,
+    "entry": null,
+    "anchor": null,
+    "deletePhase": null,
+    "deleteAgent": "h2-throwaway-agent",
+    "contextMenuOpen": true,
+    "contextMenuAgent": "h2-throwaway-agent",
+    "activeTab": "General",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "rev": 1
+  },
+  "events": {
+    "events": [
+      {
+        "id": "5e0c933e-6300-4631-8fff-ba358dce76b9",
+        "ts": 1792220946.6116672,
+        "kind": "SidebarContextMenuOpened",
+        "agent_id": "h2-throwaway-agent",
+        "path": "sidebar-context-menu"
+      }
+    ]
+  }
+}

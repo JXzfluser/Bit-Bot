@@ -1,0 +1,1 @@
+{"id": "h3-2174-dual-session", "tool_name": "h3_probe:CM-2174", "ok": true, "detail": "dual Live sessions shared FS + distinct displays; i_claimed=false", "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-2174-shared-box-fs"}

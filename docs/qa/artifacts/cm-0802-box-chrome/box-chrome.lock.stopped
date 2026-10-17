@@ -1,0 +1,5 @@
+pid=109805
+path=/usr/local/bin/box-chrome
+status=stopped
+stopped_by=host_h1_smoke cleanup (isolated throwaway only)
+stamp_utc=20261017T062927Z

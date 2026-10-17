@@ -1,0 +1,70 @@
+{
+  "CM": "CM-1906",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-1906",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-1906-updates-vs-update-computer",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "update_computer.png",
+    "updates_tab.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "updates_tab.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "69342",
+      "sha256": "54c9cce130af3825107fc84ec18b7f34c8f2ffada9ed0d7c9bb220075ee5335b",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "update_computer.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "81324",
+      "sha256": "7848b18c2fbb850a760346cd8064819ff7356e634920488d673fdd19a7b0153b",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "75e1430a-d957-485a-809a-99d194484f3b",
+    "177cbf7f-9e96-46b5-8852-5c5f6c707735",
+    "fda3e5ee-ea7c-46e3-92c5-ed56398da0b5",
+    "340d1de1-c18c-4eb0-9532-60c25c2efc94"
+  ],
+  "audit_span_count": 4,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Updates tab (update-channel) vs update-computer distinguishable LiveDisplay",
+  "updates_anchor": "update-channel",
+  "computer_anchor": "update-computer",
+  "update_channel_ne_update_computer": true,
+  "frames_required": [
+    "updates_tab.png",
+    "update_computer.png"
+  ],
+  "updates_tab_md5": "1546d558409868c33311f8a5c6e97c1e",
+  "update_computer_md5": "4c89293a8dc015f973d9393fc2bee7a7",
+  "frames_distinguishable": true
+}

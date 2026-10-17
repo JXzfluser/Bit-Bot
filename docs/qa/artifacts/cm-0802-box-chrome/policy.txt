@@ -1,0 +1,4 @@
+policy=refuse bare chrome; must launch via /usr/local/bin/box-chrome
+box_chrome_bin=/usr/local/bin/box-chrome
+box_chrome_present=yes
+isolation=throwaway profile + own CDP port + private Xvfb; shared :1/9223//home/box/chrome-profile never driven

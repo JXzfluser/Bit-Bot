@@ -1,0 +1,471 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/runtime"
+
+import {
+  "bitbot/bitbot/core",
+  "bitbot/bitbot/security",
+  "bitbot/bitbot/tools",
+  "bitbot/bitbot/ui_protocol",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const STYLE_GUIDE_MAX_ACK_CHARS : Int = 120
+
+pub fn answer_missing_data(available~ : String?, question~ : String, real_path~ : String) -> HonestyAnswer
+
+pub fn answer_model_question(String) -> String
+
+pub fn assert_markdown_links(String) -> Bool
+
+pub fn assert_style_guide_ok(String) -> Result[Unit, String]
+
+pub fn audit_bypass_attempt(String) -> @tools.ToolResult
+
+pub fn build_routines_status_reminder(Array[RoutineStatusEntry]) -> String
+
+pub fn capture_need_user(@security.ApprovalGate, @security.ApprovalRequest) -> SmartModePending?
+
+pub fn classify_tool_mutability(String) -> ToolMutability
+
+pub fn classify_tool_output(String, String) -> InstructionPolicy
+
+pub fn decide_autonomy(AutonomyAction, in_delegated_scope~ : Bool) -> AutonomyDecision
+
+pub fn demo_ack_envelope(String, String) -> @ui_protocol.SendEnvelope
+
+pub fn demo_review_send() -> @security.ApprovalDecision
+
+pub fn demo_zone_label() -> String
+
+pub fn detect_ask_language(String) -> AskLanguage
+
+pub fn emit_two_readonly_same_turn(a_name~ : String, a_args~ : String, b_name~ : String, b_args~ : String) -> Result[ParallelToolPlan, String]
+
+pub fn envelope_text_body(@ui_protocol.SendEnvelope) -> String?
+
+pub fn follow_language_answer(String, zh_answer~ : String, en_answer~ : String) -> String
+
+pub fn guard_tool_args(String) -> @tools.ToolResult
+
+pub fn handle_inbound(kind~ : InboundKind, text~ : String) -> InboundHandleResult
+
+pub fn has_agent_cue(String) -> Bool
+
+pub fn has_bare_url(String) -> Bool
+
+pub fn has_hidden_cue(String) -> Bool
+
+pub fn identity_reply(String) -> String
+
+pub fn is_confirm_or_clarify(String) -> Bool
+
+pub fn is_fluff_phrase(String) -> Bool
+
+pub fn is_parroted_z(String) -> Bool
+
+pub fn is_short_ack(String) -> Bool
+
+pub fn is_short_enough(String) -> Bool
+
+pub fn is_spoken_sentence_style(String) -> Bool
+
+pub fn language_follow_ok(String, String) -> Bool
+
+pub fn looks_concrete(String) -> Bool
+
+pub fn looks_like_secret(String) -> Bool
+
+pub fn open_turn(turn_id~ : String, text~ : String, kind? : InboundKind) -> TurnContext
+
+pub fn open_turn_from_inbound(turn_id~ : String, text~ : String, kind? : InboundKind) -> (TurnContext, InboundHandleResult)
+
+pub fn open_turn_stripping_cue(turn_id~ : String, text~ : String, kind? : InboundKind) -> (TurnContext, String)
+
+pub fn plan_first_turn(description~ : String) -> FirstTurnPlan
+
+pub fn plan_multi_delivery_step(turn_id~ : String, Array[String]) -> StepEffectBatch
+
+pub fn plan_multi_delivery_step_ge2(turn_id~ : String, Array[String]) -> Result[StepEffectBatch, String]
+
+pub fn plan_parallel_readonly_emits(Array[PlannedToolEmit]) -> ParallelToolPlan
+
+pub fn policy_for_slice(@security.ContentSlice) -> InstructionPolicy
+
+pub fn product_name() -> String
+
+pub fn read_transcript_for_audit(TranscriptStore, TranscriptScope, agent_id~ : String) -> Result[Array[TranscriptEntry], String]
+
+pub fn refuses_provider_name(String) -> Bool
+
+pub fn reject_fabricated_answer(String) -> Result[Unit, String]
+
+pub fn reminder_contains_prompt_body(String, String) -> Bool
+
+pub fn report_time(String, zone? : @core.TimeZone) -> String
+
+pub fn sample_style_guide_check(String) -> StyleGuideSample
+
+pub fn should_start_work_immediately(description~ : String) -> Bool
+
+pub fn smart_mode_resume(SmartModePending, String, String, Bool) -> @security.ApprovalDecision
+
+pub fn strip_agent_cue(String) -> String
+
+pub fn strip_cue(String) -> String
+
+pub fn style_guide_rule_labels() -> Array[String]
+
+pub fn transcript_includes_tool_calls(Array[TranscriptEntry]) -> Bool
+
+pub fn user_timezone() -> @core.TimeZone
+
+// Errors
+
+// Types and methods
+pub(all) struct AgentLoop {
+  registry : ToolRegistry
+  max_steps : Int
+}
+pub fn AgentLoop::boot(Self, TurnContext) -> String
+pub fn AgentLoop::new(ToolRegistry) -> Self
+
+pub(all) enum AskLanguage {
+  Zh
+  En
+  Other
+} derive(Eq, @debug.Debug)
+pub fn AskLanguage::equal(Self, Self) -> Bool
+pub fn AskLanguage::name(Self) -> String
+pub fn AskLanguage::not_equal(Self, Self) -> Bool
+pub fn AskLanguage::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AutomationStatus {
+  routine_id : String
+  phase : RoutinePhase
+  timestamp : String
+  summary : String
+} derive(Eq, @debug.Debug)
+pub fn AutomationStatus::equal(Self, Self) -> Bool
+pub fn AutomationStatus::new(routine_id~ : String, phase~ : RoutinePhase, timestamp~ : String, summary~ : String) -> Self
+pub fn AutomationStatus::not_equal(Self, Self) -> Bool
+pub fn AutomationStatus::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AutomationStatusTracker {
+  mut current : AutomationStatus?
+  history : Array[String]
+}
+pub fn AutomationStatusTracker::latest_timestamp(Self) -> String?
+pub fn AutomationStatusTracker::new() -> Self
+pub fn AutomationStatusTracker::reminder_text(Self) -> String
+pub fn AutomationStatusTracker::reminder_uses_timestamp(Self, String) -> Bool
+pub fn AutomationStatusTracker::routines_reminder(Self, Array[RoutineStatusEntry]) -> String
+pub fn AutomationStatusTracker::update(Self, routine_id~ : String, phase~ : RoutinePhase, timestamp~ : String, summary~ : String) -> Unit
+
+pub(all) struct AutonomyAction {
+  kind : AutonomyActionKind
+  summary : String
+} derive(Eq, @debug.Debug)
+pub fn AutonomyAction::equal(Self, Self) -> Bool
+pub fn AutonomyAction::not_equal(Self, Self) -> Bool
+pub fn AutonomyAction::to_repr(Self) -> @debug.Repr
+
+pub(all) enum AutonomyActionKind {
+  ReversibleTidy
+  IrreversibleExternal
+  OutOfScope
+} derive(Eq, @debug.Debug)
+pub fn AutonomyActionKind::equal(Self, Self) -> Bool
+pub fn AutonomyActionKind::not_equal(Self, Self) -> Bool
+pub fn AutonomyActionKind::to_repr(Self) -> @debug.Repr
+
+pub(all) enum AutonomyDecision {
+  ProceedNoAsk
+  AskUser(reason~ : String)
+  Refuse(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn AutonomyDecision::equal(Self, Self) -> Bool
+pub fn AutonomyDecision::not_equal(Self, Self) -> Bool
+pub fn AutonomyDecision::proceeds_without_ask(Self) -> Bool
+pub fn AutonomyDecision::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DeliveredMessage {
+  turn_id : String
+  text : String
+  channel_hint : String?
+} derive(Eq, @debug.Debug)
+pub fn DeliveredMessage::equal(Self, Self) -> Bool
+pub fn DeliveredMessage::not_equal(Self, Self) -> Bool
+pub fn DeliveredMessage::to_repr(Self) -> @debug.Repr
+
+pub(all) enum FirstTurnPlan {
+  StartWork(announce~ : String)
+  ShowGettingStarted
+} derive(Eq, @debug.Debug)
+pub fn FirstTurnPlan::announce_text(Self) -> String?
+pub fn FirstTurnPlan::equal(Self, Self) -> Bool
+pub fn FirstTurnPlan::not_equal(Self, Self) -> Bool
+pub fn FirstTurnPlan::skips_getting_started(Self) -> Bool
+pub fn FirstTurnPlan::to_repr(Self) -> @debug.Repr
+
+pub(all) struct HonestyAnswer {
+  text : String
+  admits_gap : Bool
+  real_path : String?
+  fabricated : Bool
+} derive(Eq, @debug.Debug)
+pub fn HonestyAnswer::equal(Self, Self) -> Bool
+pub fn HonestyAnswer::not_equal(Self, Self) -> Bool
+pub fn HonestyAnswer::to_repr(Self) -> @debug.Repr
+
+pub(all) enum InboundHandleResult {
+  AnswerAsUser(text~ : String)
+  DivertAgent(payload~ : String)
+  DivertNonUser(kind~ : InboundKind, payload~ : String)
+} derive(Eq, @debug.Debug)
+pub fn InboundHandleResult::answered_as_user(Self) -> Bool
+pub fn InboundHandleResult::equal(Self, Self) -> Bool
+pub fn InboundHandleResult::is_user_question(Self) -> Bool
+pub fn InboundHandleResult::not_equal(Self, Self) -> Bool
+pub fn InboundHandleResult::to_repr(Self) -> @debug.Repr
+
+pub(all) enum InboundKind {
+  User
+  Hidden
+  Agent
+  Routine
+} derive(Eq, @debug.Debug)
+pub fn InboundKind::equal(Self, Self) -> Bool
+pub fn InboundKind::not_equal(Self, Self) -> Bool
+pub fn InboundKind::should_user_ack(Self) -> Bool
+pub fn InboundKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct InboundMachineNote {
+  sent_from_machine : String?
+  text : String
+} derive(Eq, @debug.Debug)
+pub fn InboundMachineNote::equal(Self, Self) -> Bool
+pub fn InboundMachineNote::not_equal(Self, Self) -> Bool
+pub fn InboundMachineNote::to_repr(Self) -> @debug.Repr
+pub fn InboundMachineNote::unspecified(text? : String) -> Self
+pub fn InboundMachineNote::with_machine(String, text? : String) -> Self
+
+pub(all) enum InstructionPolicy {
+  FollowHostRetry
+  IgnoreAsData
+} derive(Eq, @debug.Debug)
+pub fn InstructionPolicy::equal(Self, Self) -> Bool
+pub fn InstructionPolicy::not_equal(Self, Self) -> Bool
+pub fn InstructionPolicy::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MachineDefaultSession {
+  mut last_message_machine : String?
+}
+pub fn MachineDefaultSession::default_machine(Self) -> String?
+pub fn MachineDefaultSession::ingest(Self, InboundMachineNote) -> String?
+pub fn MachineDefaultSession::new() -> Self
+pub fn MachineDefaultSession::resolve_machine_id(Self, String?) -> String?
+
+pub(all) struct ParallelToolPlan {
+  parallel_batches : Array[Array[PlannedToolEmit]]
+  sequential : Array[PlannedToolEmit]
+} derive(Eq, @debug.Debug)
+pub fn ParallelToolPlan::can_emit_parallel(Self) -> Bool
+pub fn ParallelToolPlan::equal(Self, Self) -> Bool
+pub fn ParallelToolPlan::not_equal(Self, Self) -> Bool
+pub fn ParallelToolPlan::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PlannedToolEmit {
+  name : String
+  args_json : String
+  mutability : ToolMutability
+} derive(Eq, @debug.Debug)
+pub fn PlannedToolEmit::equal(Self, Self) -> Bool
+pub fn PlannedToolEmit::not_equal(Self, Self) -> Bool
+pub fn PlannedToolEmit::to_repr(Self) -> @debug.Repr
+
+pub(all) enum RoutinePhase {
+  Idle
+  Scheduled
+  Running
+  Completed
+  Failed
+} derive(Eq, @debug.Debug)
+pub fn RoutinePhase::equal(Self, Self) -> Bool
+pub fn RoutinePhase::label(Self) -> String
+pub fn RoutinePhase::not_equal(Self, Self) -> Bool
+pub fn RoutinePhase::to_repr(Self) -> @debug.Repr
+
+pub(all) struct RoutineStatusEntry {
+  routine_id : String
+  folder_id : String
+} derive(Eq, @debug.Debug)
+pub fn RoutineStatusEntry::equal(Self, Self) -> Bool
+pub fn RoutineStatusEntry::new(routine_id~ : String, folder_id~ : String) -> Self
+pub fn RoutineStatusEntry::not_equal(Self, Self) -> Bool
+pub fn RoutineStatusEntry::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SmartModePending {
+  request_id : String
+  class_ : @security.ApprovalClass
+  payload_json : String
+  block_reason : String
+} derive(Eq, @debug.Debug)
+pub fn SmartModePending::equal(Self, Self) -> Bool
+pub fn SmartModePending::fingerprint(Self) -> String
+pub fn SmartModePending::not_equal(Self, Self) -> Bool
+pub fn SmartModePending::to_repr(Self) -> @debug.Repr
+
+pub(all) struct StepEffectBatch {
+  effects : Array[@tools.Effect]
+} derive(Eq, @debug.Debug)
+pub fn StepEffectBatch::equal(Self, Self) -> Bool
+pub fn StepEffectBatch::len(Self) -> Int
+pub fn StepEffectBatch::not_equal(Self, Self) -> Bool
+pub fn StepEffectBatch::to_repr(Self) -> @debug.Repr
+
+pub(all) struct StyleGuideSample {
+  text : String
+  passes : Bool
+  reason : String
+} derive(Eq, @debug.Debug)
+pub fn StyleGuideSample::equal(Self, Self) -> Bool
+pub fn StyleGuideSample::not_equal(Self, Self) -> Bool
+pub fn StyleGuideSample::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TodoItem {
+  id : String
+  content : String
+  status : String
+} derive(Eq, @debug.Debug)
+pub fn TodoItem::equal(Self, Self) -> Bool
+pub fn TodoItem::is_done(Self) -> Bool
+pub fn TodoItem::is_pending(Self) -> Bool
+pub fn TodoItem::not_equal(Self, Self) -> Bool
+pub fn TodoItem::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ToolCallTrace {
+  tool_name : String
+  args_json : String
+  result_snippet : String
+} derive(Eq, @debug.Debug)
+pub fn ToolCallTrace::equal(Self, Self) -> Bool
+pub fn ToolCallTrace::not_equal(Self, Self) -> Bool
+pub fn ToolCallTrace::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ToolMutability {
+  ReadOnly
+  Mutating
+} derive(Eq, @debug.Debug)
+pub fn ToolMutability::equal(Self, Self) -> Bool
+pub fn ToolMutability::not_equal(Self, Self) -> Bool
+pub fn ToolMutability::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ToolRegistry {
+  specs : Array[@tools.ToolSpec]
+}
+pub fn ToolRegistry::empty() -> Self
+pub fn ToolRegistry::len(Self) -> Int
+pub fn ToolRegistry::register(Self, @tools.ToolSpec) -> Unit
+pub fn ToolRegistry::seed_builtins() -> Self
+
+pub(all) struct TranscriptEntry {
+  scope : TranscriptScope
+  agent_id : String
+  kind : TranscriptEntryKind
+  tool_call : ToolCallTrace?
+  text : String
+} derive(Eq, @debug.Debug)
+pub fn TranscriptEntry::equal(Self, Self) -> Bool
+pub fn TranscriptEntry::is_tool_call(Self) -> Bool
+pub fn TranscriptEntry::not_equal(Self, Self) -> Bool
+pub fn TranscriptEntry::to_repr(Self) -> @debug.Repr
+
+pub(all) enum TranscriptEntryKind {
+  AssistantText
+  ToolCall
+  SystemNote
+} derive(Eq, @debug.Debug)
+pub fn TranscriptEntryKind::equal(Self, Self) -> Bool
+pub fn TranscriptEntryKind::not_equal(Self, Self) -> Bool
+pub fn TranscriptEntryKind::to_repr(Self) -> @debug.Repr
+
+pub(all) enum TranscriptScope {
+  Own
+  Child
+  OtherAssistant
+} derive(Eq, @debug.Debug)
+pub fn TranscriptScope::equal(Self, Self) -> Bool
+pub fn TranscriptScope::label(Self) -> String
+pub fn TranscriptScope::not_equal(Self, Self) -> Bool
+pub fn TranscriptScope::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TranscriptStore {
+  entries : Array[TranscriptEntry]
+}
+pub fn TranscriptStore::new() -> Self
+pub fn TranscriptStore::read_transcript(Self, TranscriptScope, agent_id? : String?) -> Array[TranscriptEntry]
+pub fn TranscriptStore::record_text(Self, TranscriptScope, agent_id~ : String, text~ : String) -> Unit
+pub fn TranscriptStore::record_tool_call(Self, TranscriptScope, agent_id~ : String, tool_name~ : String, args_json~ : String, result_snippet~ : String) -> Unit
+
+pub(all) struct TurnContext {
+  turn_id : @core.TurnId
+  session_id : @core.SessionId
+  user_id : @core.UserId
+  phase : TurnPhase
+  timezone : @core.TimeZone
+  inbound_kind : InboundKind
+  inbound_text : String
+  todos : Array[TodoItem]
+  outbound : Array[@ui_protocol.SendEnvelope]
+} derive(Eq, @debug.Debug)
+pub fn TurnContext::acknowledge(Self, body~ : String) -> Self
+pub fn TurnContext::allows_tools(Self) -> Bool
+pub fn TurnContext::deliver_attachment(Self, name~ : String, mime~ : String, path~ : String) -> Result[Self, String]
+pub fn TurnContext::deliver_confirm_then(Self, confirm~ : String, follow_up~ : String) -> Result[Self, String]
+pub fn TurnContext::deliver_text(Self, body~ : String, channel_hint? : String?) -> Result[Self, String]
+pub fn TurnContext::deliver_text_to_inbound(Self, body~ : String, inbound_address~ : String) -> Result[Self, String]
+pub fn TurnContext::deliver_voice_memo(Self, spoken_text~ : String, audio_path? : String) -> Result[(Self, VoiceMemoDelivery), String]
+pub fn TurnContext::deliver_widget(Self, widget_id~ : String, spec~ : @ui_protocol.WidgetSpec) -> Result[Self, String]
+pub fn TurnContext::done_todo_count(Self) -> Int
+pub fn TurnContext::end_turn(Self) -> Self
+pub fn TurnContext::equal(Self, Self) -> Bool
+pub fn TurnContext::finalize_text(Self, body~ : String) -> Result[Self, String]
+pub fn TurnContext::first_delivered(Self) -> DeliveredMessage?
+pub fn TurnContext::ingest_tool_result(Self, tool_id~ : String, body~ : String) -> Self
+pub fn TurnContext::is_silent_before_voice_memo(Self) -> Bool
+pub fn TurnContext::mark_todo_done(Self, id~ : String) -> Result[Self, String]
+pub fn TurnContext::milestone(Self, body~ : String) -> Result[Self, String]
+pub fn TurnContext::new(String, String) -> Self
+pub fn TurnContext::not_equal(Self, Self) -> Bool
+pub fn TurnContext::reply_to_channel_target(Self, body~ : String, inbound_address~ : String?) -> Result[Self, String]
+pub fn TurnContext::should_ack_user(Self) -> Bool
+pub fn TurnContext::to_repr(Self) -> @debug.Repr
+pub fn TurnContext::todo_write(Self, Array[TodoItem]) -> Result[Self, String]
+pub fn TurnContext::visible_todos(Self) -> Array[TodoItem]
+pub fn TurnContext::voice_memo_count(Self) -> Int
+
+pub(all) enum TurnPhase {
+  Opened
+  Acknowledged
+  Working
+  Milestone
+  Finalizing
+  Ended
+} derive(Eq, @debug.Debug)
+pub fn TurnPhase::equal(Self, Self) -> Bool
+pub fn TurnPhase::not_equal(Self, Self) -> Bool
+pub fn TurnPhase::to_repr(Self) -> @debug.Repr
+
+pub(all) struct VoiceMemoDelivery {
+  turn_id : String
+  spoken_text : String
+  voice_memo : Bool
+} derive(Eq, @debug.Debug)
+pub fn VoiceMemoDelivery::equal(Self, Self) -> Bool
+pub fn VoiceMemoDelivery::not_equal(Self, Self) -> Bool
+pub fn VoiceMemoDelivery::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

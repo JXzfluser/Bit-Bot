@@ -1,0 +1,51 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/agents"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) enum SubagentType {
+  Executor
+  Browser
+  ComputerUse
+  Research
+  KnowledgeWork
+  WatchVideo
+  Custom(name~ : String)
+} derive(Eq, @debug.Debug)
+pub fn SubagentType::equal(Self, Self) -> Bool
+pub fn SubagentType::label(Self) -> String
+pub fn SubagentType::not_equal(Self, Self) -> Bool
+pub fn SubagentType::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TaskRequest {
+  id : String
+  prompt : String
+  subagent : SubagentType
+  parent_turn_id : String?
+  deadline_ms : Int64?
+} derive(Eq, @debug.Debug)
+pub fn TaskRequest::equal(Self, Self) -> Bool
+pub fn TaskRequest::not_equal(Self, Self) -> Bool
+pub fn TaskRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) struct Teammate {
+  id : String
+  role : String
+  subagent : SubagentType
+  active : Bool
+} derive(Eq, @debug.Debug)
+pub fn Teammate::can_accept(Self, TaskRequest) -> Bool
+pub fn Teammate::equal(Self, Self) -> Bool
+pub fn Teammate::not_equal(Self, Self) -> Bool
+pub fn Teammate::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

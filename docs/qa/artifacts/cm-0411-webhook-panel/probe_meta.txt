@@ -1,0 +1,13 @@
+cm=CM-0411
+run_h3_probe_intent=Cm0411WebhookKeyOpaque
+shared_cdp_9223=untouched
+chrome_profile=untouched
+i_claimed=false
+USER_IANA=Asia/Shanghai
+stamp_utc=20261017T072018Z
+panel_copy_url_ok=True
+panel_copy_key_ok=True
+tool_read_key_rejected=True
+wake_has_webhook_event=True
+display=:51
+status=READY_FOR_I_REVIEW

@@ -1,0 +1,177 @@
+{
+  "method": "user_copy_webhook",
+  "body": {
+    "what": "url"
+  },
+  "result": {
+    "state": {
+      "settingsOpen": false,
+      "entry": null,
+      "anchor": null,
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "General",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": null,
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "webhookPanel": {
+        "open": true,
+        "url": "https://hooks.bitbot.local/v1/wh-h3-demo",
+        "key_present": true,
+        "key_masked": "whsec_\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+        "last_copy": {
+          "what": "url",
+          "ts": 1792221622.4618866,
+          "receipt": "copied_url:https://hooks.bitbot.local/v1/wh-h3-demo",
+          "ok": true
+        }
+      },
+      "devicePermissionCard": {
+        "open": false,
+        "machine_id": null,
+        "tool_name": null,
+        "permission_label": null,
+        "shown": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "anchorViewport": null,
+      "rev": 2
+    },
+    "copied": "url",
+    "value": "https://hooks.bitbot.local/v1/wh-h3-demo",
+    "receipt": "copied_url:https://hooks.bitbot.local/v1/wh-h3-demo",
+    "audit": {
+      "id": "caa387d7-186a-41a2-8b43-570ab79b978a",
+      "tool_name": "host_ui:user_copy_webhook",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "copied_url:https://hooks.bitbot.local/v1/wh-h3-demo",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-0411-webhook-panel",
+      "ts": 1792221622.4619195,
+      "method": "user_copy_webhook"
+    }
+  },
+  "state": {
+    "settingsOpen": false,
+    "entry": null,
+    "anchor": null,
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "General",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "webhookPanel": {
+      "open": true,
+      "url": "https://hooks.bitbot.local/v1/wh-h3-demo",
+      "key_present": true,
+      "key_masked": "whsec_\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+      "last_copy": {
+        "what": "url",
+        "ts": 1792221622.4618866,
+        "receipt": "copied_url:https://hooks.bitbot.local/v1/wh-h3-demo",
+        "ok": true
+      }
+    },
+    "devicePermissionCard": {
+      "open": false,
+      "machine_id": null,
+      "tool_name": null,
+      "permission_label": null,
+      "shown": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "anchorViewport": null,
+    "rev": 2
+  },
+  "events": {
+    "events": [
+      {
+        "id": "4c35886c-2d63-465a-8dc2-5214c4fe8e6c",
+        "ts": 1792221621.9731257,
+        "kind": "WebhookPanelOpened",
+        "url": "https://hooks.bitbot.local/v1/wh-h3-demo",
+        "key_opaque": true
+      },
+      {
+        "id": "3271d0f1-eb13-4ca4-b904-33abad833b1c",
+        "ts": 1792221622.4619124,
+        "kind": "WebhookPanelCopy",
+        "what": "url",
+        "receipt": "copied_url:https://hooks.bitbot.local/v1/wh-h3-demo"
+      }
+    ]
+  }
+}

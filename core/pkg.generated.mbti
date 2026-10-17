@@ -1,0 +1,97 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/core"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn display_instant(String, TimeZone) -> String
+
+// Errors
+
+// Types and methods
+pub(all) enum BitError {
+  InvalidArgument(message~ : String)
+  NotFound(message~ : String)
+  Denied(message~ : String)
+  HostFailure(message~ : String)
+  Internal(message~ : String)
+} derive(Eq, @debug.Debug)
+pub fn BitError::equal(Self, Self) -> Bool
+pub fn BitError::message(Self) -> String
+pub fn BitError::not_equal(Self, Self) -> Bool
+pub fn BitError::to_repr(Self) -> @debug.Repr
+
+pub(all) struct Instant {
+  rfc3339 : String
+} derive(Eq, @debug.Debug)
+pub fn Instant::display_in(Self, TimeZone) -> String
+pub fn Instant::equal(Self, Self) -> Bool
+pub fn Instant::format_with_zone(Self, TimeZone) -> String
+pub fn Instant::not_equal(Self, Self) -> Bool
+pub fn Instant::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MachineId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn MachineId::equal(Self, Self) -> Bool
+pub fn MachineId::not_equal(Self, Self) -> Bool
+pub fn MachineId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct RoutineId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn RoutineId::equal(Self, Self) -> Bool
+pub fn RoutineId::not_equal(Self, Self) -> Bool
+pub fn RoutineId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SessionId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn SessionId::equal(Self, Self) -> Bool
+pub fn SessionId::new(String) -> Self
+pub fn SessionId::not_equal(Self, Self) -> Bool
+pub fn SessionId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SkillId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn SkillId::equal(Self, Self) -> Bool
+pub fn SkillId::not_equal(Self, Self) -> Bool
+pub fn SkillId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SubagentId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn SubagentId::equal(Self, Self) -> Bool
+pub fn SubagentId::not_equal(Self, Self) -> Bool
+pub fn SubagentId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TimeZone {
+  label : String
+} derive(Eq, @debug.Debug)
+pub fn TimeZone::asia_shanghai() -> Self
+pub fn TimeZone::equal(Self, Self) -> Bool
+pub fn TimeZone::not_equal(Self, Self) -> Bool
+pub fn TimeZone::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TurnId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn TurnId::equal(Self, Self) -> Bool
+pub fn TurnId::new(String) -> Self
+pub fn TurnId::not_equal(Self, Self) -> Bool
+pub fn TurnId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct UserId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn UserId::equal(Self, Self) -> Bool
+pub fn UserId::new(String) -> Self
+pub fn UserId::not_equal(Self, Self) -> Bool
+pub fn UserId::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

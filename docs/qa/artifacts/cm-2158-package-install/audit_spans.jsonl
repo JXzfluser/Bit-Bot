@@ -1,0 +1,1 @@
+{"id": "6d02c396-5ab5-4858-bc62-f49ad4a6bd29", "tool_name": "h3_probe:CM-2158", "duration_ms": 0, "ok": true, "detail": "Live Shell npm install in sandbox; non-Shell refused; i_claimed=false", "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-2158-package-install", "ts": 1792221618.8822722, "shell_pid": 202362, "shell_exit": 0, "package_manager": "npm"}

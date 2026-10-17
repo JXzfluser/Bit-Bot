@@ -1,0 +1,8 @@
+cmd=npm install --no-save --no-package-lock left-pad@1.3.0
+cwd=/tmp/h3-npm-sandbox.kH7Tl0
+via=LiveHostShell
+package_manager=npm
+whitelist=left-pad@1.3.0 (throwaway sandbox; not -g)
+pid=202362
+exit=0
+completed=true

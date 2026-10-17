@@ -1,0 +1,298 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/tools"
+
+import {
+  "bitbot/bitbot/connectors",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn extract_file_placeholder_path(String) -> String?
+
+pub fn gate_before_dynamic_call(String, @connectors.ConnectorStatus) -> AuthGateOutcome
+
+pub fn guide_connect(String, @connectors.ConnectorStatus, proposed_url? : String?) -> ConnectGuideOutcome
+
+pub fn is_credential_bypass_fallback(String, Bool) -> Bool
+
+pub fn is_homemade_connect_url(String) -> Bool
+
+pub fn is_time_sensitive_query(String) -> Bool
+
+pub fn may_call_namespace(@connectors.ConnectorStatus) -> Bool
+
+pub fn normalize_search_query(String, year? : Int) -> String
+
+pub fn schema_required_keys(String) -> Array[String]
+
+pub fn validate_args_against_schema(String, String) -> Result[Unit, String]
+
+// Errors
+
+// Types and methods
+pub(all) enum AuthGateOutcome {
+  Proceed
+  ShowConnectCard(namespace_~ : String, reason~ : String)
+  Refuse(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn AuthGateOutcome::equal(Self, Self) -> Bool
+pub fn AuthGateOutcome::not_equal(Self, Self) -> Bool
+pub fn AuthGateOutcome::to_repr(Self) -> @debug.Repr
+
+pub(all) enum BuiltinTool {
+  Shell
+  Read
+  AwaitShell
+  CopyToBox
+  CopyFromBox
+  UploadFile
+  DownloadFile
+  WebSearch
+  WebFetch
+  ListMachines
+  GetDynamicTools
+  CallDynamicTool
+  ClaimEmailInbox
+  ListEmailInboxes
+  CheckEmailInboxAvailability
+  SearchEmailThreads
+  ReadEmailThread
+  ReadEmailAttachment
+  DraftExternalMessage
+  SendToUser
+  WakeParent
+} derive(Eq, @debug.Debug)
+pub fn BuiltinTool::all() -> Array[Self]
+pub fn BuiltinTool::equal(Self, Self) -> Bool
+pub fn BuiltinTool::name(Self) -> String
+pub fn BuiltinTool::not_equal(Self, Self) -> Bool
+pub fn BuiltinTool::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ConnectGuideOutcome {
+  OfficialCard(card~ : OfficialConnectCard)
+  RefuseHomemadeUrl(url~ : String, reason~ : String)
+  ReadyNoGuide
+} derive(Eq, @debug.Debug)
+pub fn ConnectGuideOutcome::equal(Self, Self) -> Bool
+pub fn ConnectGuideOutcome::has_homemade_url(Self) -> Bool
+pub fn ConnectGuideOutcome::is_official_only(Self) -> Bool
+pub fn ConnectGuideOutcome::not_equal(Self, Self) -> Bool
+pub fn ConnectGuideOutcome::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DynamicCall {
+  namespace_ : String
+  name : String
+  arguments_json : String
+  write_to_file : Bool
+} derive(Eq, @debug.Debug)
+pub fn DynamicCall::equal(Self, Self) -> Bool
+pub fn DynamicCall::not_equal(Self, Self) -> Bool
+pub fn DynamicCall::requests_file_injection(Self) -> Bool
+pub fn DynamicCall::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DynamicCatalog {
+  tools : Array[DynamicToolDesc]
+  full_descriptions : Map[String, String]
+  discovered : Map[String, Bool]
+}
+pub fn DynamicCatalog::call(Self, DynamicCall) -> ToolResult
+pub fn DynamicCatalog::call_gated(Self, DynamicCall, @connectors.ConnectorStatus) -> ToolResult
+pub fn DynamicCatalog::call_with_schema(Self, DynamicCall) -> ToolResult
+pub fn DynamicCatalog::discover(Self, ns? : String?) -> Array[DynamicToolDesc]
+pub fn DynamicCatalog::empty() -> Self
+pub fn DynamicCatalog::get_full(Self, String, String) -> Result[DynamicToolDesc, String]
+pub fn DynamicCatalog::has_namespace(Self, String) -> Bool
+pub fn DynamicCatalog::is_discovered(Self, String, String) -> Bool
+pub fn DynamicCatalog::list_namespaces(Self) -> Array[String]
+pub fn DynamicCatalog::register(Self, DynamicToolDesc, full_description~ : String) -> Unit
+pub fn DynamicCatalog::remove_namespace(Self, String) -> Int
+pub fn DynamicCatalog::seed_example() -> Self
+pub fn DynamicCatalog::validate_args(Self, String, String, String) -> Result[Unit, String]
+
+pub(all) struct DynamicToolDesc {
+  namespace_ : String
+  name : String
+  description : String
+  input_schema_json : String
+  truncated : Bool
+} derive(Eq, @debug.Debug)
+pub fn DynamicToolDesc::equal(Self, Self) -> Bool
+pub fn DynamicToolDesc::not_equal(Self, Self) -> Bool
+pub fn DynamicToolDesc::to_repr(Self) -> @debug.Repr
+
+pub(all) enum Effect {
+  ExecTool(call~ : ToolCall)
+  Deliver(turn_id~ : String, body~ : String)
+  RequestApproval(request_id~ : String, summary~ : String)
+} derive(Eq, @debug.Debug)
+pub fn Effect::equal(Self, Self) -> Bool
+pub fn Effect::not_equal(Self, Self) -> Bool
+pub fn Effect::to_repr(Self) -> @debug.Repr
+
+pub(all) struct FetchFallbackResult {
+  url : String
+  body : String
+  used_fallback : Bool
+  fallback : PublicFetchFallback?
+  credential_bypass : Bool
+} derive(Eq, @debug.Debug)
+pub fn FetchFallbackResult::equal(Self, Self) -> Bool
+pub fn FetchFallbackResult::not_equal(Self, Self) -> Bool
+pub fn FetchFallbackResult::to_repr(Self) -> @debug.Repr
+
+pub(all) struct FileArgExpandResult {
+  injected : String
+  source_path : String
+  injected_len : Int
+  chat_ref : String
+} derive(Eq, @debug.Debug)
+pub fn FileArgExpandResult::equal(Self, Self) -> Bool
+pub fn FileArgExpandResult::no_chat_bloat(Self, McpHostFs) -> Bool
+pub fn FileArgExpandResult::not_equal(Self, Self) -> Bool
+pub fn FileArgExpandResult::to_repr(Self) -> @debug.Repr
+
+pub(all) enum GrantFlowStep {
+  RefusedNeedsGrant(namespace_~ : String, reason~ : String)
+  GrantCardPending(namespace_~ : String)
+  GrantedReady(namespace_~ : String)
+} derive(Eq, @debug.Debug)
+pub fn GrantFlowStep::equal(Self, Self) -> Bool
+pub fn GrantFlowStep::not_equal(Self, Self) -> Bool
+pub fn GrantFlowStep::to_repr(Self) -> @debug.Repr
+
+pub(all) struct GrantSession {
+  namespace_ : String
+  mut status : @connectors.ConnectorStatus
+  mut grant_card_shown : Bool
+  mut refused_before_grant : Bool
+}
+pub fn GrantSession::call(Self, DynamicCatalog, DynamicCall) -> ToolResult
+pub fn GrantSession::current_step(Self) -> GrantFlowStep
+pub fn GrantSession::new(namespace_~ : String, status~ : @connectors.ConnectorStatus) -> Self
+pub fn GrantSession::user_grants(Self) -> GrantFlowStep
+
+pub(all) struct McpHostFs {
+  files : Map[String, String]
+  chat_lines : Array[String]
+}
+pub fn McpHostFs::append_chat(Self, String) -> Unit
+pub fn McpHostFs::chat_contains(Self, String) -> Bool
+pub fn McpHostFs::chat_total_chars(Self) -> Int
+pub fn McpHostFs::empty() -> Self
+pub fn McpHostFs::expand_file_arg(Self, String) -> Result[FileArgExpandResult, String]
+pub fn McpHostFs::get(Self, String) -> String?
+pub fn McpHostFs::put(Self, String, String) -> Unit
+pub fn McpHostFs::write_to_file_result(Self, String, String, String) -> WriteToFileResult
+
+pub(all) enum OfficialConnectCard {
+  Install(namespace_~ : String)
+  Authenticate(namespace_~ : String)
+} derive(Eq, @debug.Debug)
+pub fn OfficialConnectCard::equal(Self, Self) -> Bool
+pub fn OfficialConnectCard::kind_label(Self) -> String
+pub fn OfficialConnectCard::namespace_(Self) -> String
+pub fn OfficialConnectCard::not_equal(Self, Self) -> Bool
+pub fn OfficialConnectCard::to_repr(Self) -> @debug.Repr
+
+pub(all) enum PublicFetchFallback {
+  Browser
+  Curl
+} derive(Eq, @debug.Debug)
+pub fn PublicFetchFallback::equal(Self, Self) -> Bool
+pub fn PublicFetchFallback::label(Self) -> String
+pub fn PublicFetchFallback::not_equal(Self, Self) -> Bool
+pub fn PublicFetchFallback::to_repr(Self) -> @debug.Repr
+
+pub(all) struct Registry {
+  specs : Array[ToolSpec]
+}
+pub fn Registry::empty() -> Self
+pub fn Registry::get(Self, String) -> ToolSpec?
+pub fn Registry::invoke(Self, String, String) -> ToolResult
+pub fn Registry::len(Self) -> Int
+pub fn Registry::register(Self, ToolSpec) -> Unit
+pub fn Registry::register_dynamic(Self, DynamicToolDesc) -> Unit
+pub fn Registry::with_echo() -> Self
+
+pub(all) struct ToolCall {
+  id : String
+  name : String
+  arguments_json : String
+  machine_id : String?
+} derive(Eq, @debug.Debug)
+pub fn ToolCall::echo(String, String) -> Self
+pub fn ToolCall::equal(Self, Self) -> Bool
+pub fn ToolCall::not_equal(Self, Self) -> Bool
+pub fn ToolCall::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ToolResult {
+  Ok(output~ : String)
+  Err(message~ : String)
+  PendingApproval(request_id~ : String)
+  Blocked(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn ToolResult::equal(Self, Self) -> Bool
+pub fn ToolResult::is_ok(Self) -> Bool
+pub fn ToolResult::not_equal(Self, Self) -> Bool
+pub fn ToolResult::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ToolSpec {
+  id : String
+  description : String
+  builtin : BuiltinTool?
+  input_schema_json : String
+  requires_approval : Bool
+} derive(Eq, @debug.Debug)
+pub fn ToolSpec::equal(Self, Self) -> Bool
+pub fn ToolSpec::not_equal(Self, Self) -> Bool
+pub fn ToolSpec::to_repr(Self) -> @debug.Repr
+
+pub(all) struct WebFetchRequest {
+  url : String
+  max_bytes : Int
+} derive(Eq, @debug.Debug)
+pub fn WebFetchRequest::equal(Self, Self) -> Bool
+pub fn WebFetchRequest::not_equal(Self, Self) -> Bool
+pub fn WebFetchRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) struct WebHost {
+  search_index : Array[WebSearchHit]
+  pages : Map[String, String]
+  pages_status : Map[String, Int]
+}
+pub fn WebHost::fetch(Self, WebFetchRequest) -> Result[String, String]
+pub fn WebHost::fetch_with_public_fallback(Self, WebFetchRequest, prefer? : PublicFetchFallback) -> Result[FetchFallbackResult, String]
+pub fn WebHost::mock() -> Self
+pub fn WebHost::search(Self, WebSearchRequest, current_year? : Int) -> Result[Array[WebSearchHit], String]
+pub fn WebHost::seed_blocked_public(Self, String, String) -> Unit
+
+pub(all) struct WebSearchHit {
+  title : String
+  url : String
+  snippet : String
+} derive(Eq, @debug.Debug)
+pub fn WebSearchHit::equal(Self, Self) -> Bool
+pub fn WebSearchHit::not_equal(Self, Self) -> Bool
+pub fn WebSearchHit::to_repr(Self) -> @debug.Repr
+
+pub(all) struct WebSearchRequest {
+  query : String
+  limit : Int
+} derive(Eq, @debug.Debug)
+pub fn WebSearchRequest::equal(Self, Self) -> Bool
+pub fn WebSearchRequest::not_equal(Self, Self) -> Bool
+pub fn WebSearchRequest::to_repr(Self) -> @debug.Repr
+
+pub(all) struct WriteToFileResult {
+  path : String
+  bytes_written : Int
+  returned_to_caller : String
+} derive(Eq, @debug.Debug)
+pub fn WriteToFileResult::equal(Self, Self) -> Bool
+pub fn WriteToFileResult::not_equal(Self, Self) -> Bool
+pub fn WriteToFileResult::returns_path_not_body(Self) -> Bool
+pub fn WriteToFileResult::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

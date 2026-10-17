@@ -1,0 +1,188 @@
+{
+  "method": "address_agent",
+  "body": {
+    "agent_id": "h2-hidden-agent"
+  },
+  "result": {
+    "state": {
+      "settingsOpen": false,
+      "entry": null,
+      "anchor": null,
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "General",
+      "updateComputerPhase": "idle",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        },
+        {
+          "id": "h2-hidden-agent",
+          "name": "H2 Hidden Agent",
+          "hidden": true
+        }
+      ],
+      "activeChat": "h2-hidden-agent",
+      "activeChatHidden": true,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "webhookPanel": {
+        "open": false,
+        "url": null,
+        "key_present": false,
+        "key_masked": null,
+        "last_copy": null
+      },
+      "devicePermissionCard": {
+        "open": false,
+        "machine_id": null,
+        "tool_name": null,
+        "permission_label": null,
+        "shown": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "anchorViewport": null,
+      "rev": 3
+    },
+    "hidden": true,
+    "in_sidebar": false,
+    "audit": {
+      "id": "8257beb5-ea29-48b3-a805-59b99167b52f",
+      "tool_name": "host_ui:address_agent",
+      "duration_ms": 1,
+      "ok": true,
+      "detail": "addressed agent=h2-hidden-agent hidden=True in_sidebar=False; event=SidebarHiddenAgentAddressable",
+      "artifact_path": "/workspace/bitbot/docs/qa/artifacts/cm-0204-hidden-agent",
+      "ts": 1792221515.3284032,
+      "method": "address_agent"
+    },
+    "event": "SidebarHiddenAgentAddressable"
+  },
+  "state": {
+    "settingsOpen": false,
+    "entry": null,
+    "anchor": null,
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "General",
+    "updateComputerPhase": "idle",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      },
+      {
+        "id": "h2-hidden-agent",
+        "name": "H2 Hidden Agent",
+        "hidden": true
+      }
+    ],
+    "activeChat": "h2-hidden-agent",
+    "activeChatHidden": true,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "webhookPanel": {
+      "open": false,
+      "url": null,
+      "key_present": false,
+      "key_masked": null,
+      "last_copy": null
+    },
+    "devicePermissionCard": {
+      "open": false,
+      "machine_id": null,
+      "tool_name": null,
+      "permission_label": null,
+      "shown": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "anchorViewport": null,
+    "rev": 3
+  },
+  "events": {
+    "events": [
+      {
+        "id": "6bd532d0-3d13-466d-b734-9bd2284c11bd",
+        "ts": 1792221513.8175368,
+        "kind": "SidebarListChanged",
+        "visible_ids": [
+          "h2-throwaway-agent",
+          "demo-agent",
+          "h2-hidden-agent"
+        ]
+      },
+      {
+        "id": "bb8bfe37-6f8e-43f3-ad54-376a41ad6eb2",
+        "ts": 1792221514.574413,
+        "kind": "SidebarListChanged",
+        "visible_ids": [
+          "h2-throwaway-agent",
+          "demo-agent"
+        ]
+      },
+      {
+        "id": "0f6ae3a1-8770-4d58-a7fe-3175546b0f1f",
+        "ts": 1792221515.3283887,
+        "kind": "SidebarHiddenAgentAddressable",
+        "agent_id": "h2-hidden-agent"
+      }
+    ]
+  }
+}

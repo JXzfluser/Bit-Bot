@@ -1,0 +1,239 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/connectors"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const USER_X_NAMESPACE : String = "user-X"
+
+pub const X_PUBLIC_NAMESPACE : String = "x"
+
+pub const X_RATE_LIMIT_PER_DAY : Int = 1000
+
+pub const X_RATE_LIMIT_PER_MINUTE : Int = 30
+
+pub fn resolve_connector_identity(ConnectorIdentityKind, IdentityRequirement) -> IdentityResolution
+
+// Errors
+
+// Types and methods
+pub(all) struct ConnectorHandle {
+  mcp : McpNamespace
+  status : ConnectorStatus
+} derive(Eq, @debug.Debug)
+pub fn ConnectorHandle::equal(Self, Self) -> Bool
+pub fn ConnectorHandle::not_equal(Self, Self) -> Bool
+pub fn ConnectorHandle::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ConnectorIdentityKind {
+  AppIdentity
+  UserBrowserSession
+} derive(Eq, @debug.Debug)
+pub fn ConnectorIdentityKind::equal(Self, Self) -> Bool
+pub fn ConnectorIdentityKind::label(Self) -> String
+pub fn ConnectorIdentityKind::not_equal(Self, Self) -> Bool
+pub fn ConnectorIdentityKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ConnectorIdentitySession {
+  mut identity : ConnectorIdentityKind
+  mut switched : Bool
+}
+pub fn ConnectorIdentitySession::ensure(Self, IdentityRequirement) -> IdentityResolution
+pub fn ConnectorIdentitySession::is_user_browser(Self) -> Bool
+pub fn ConnectorIdentitySession::new(ConnectorIdentityKind) -> Self
+
+pub(all) enum ConnectorStatus {
+  Ready
+  Loading
+  NeedsAuth
+  NeedsGrant
+  Error(message~ : String)
+  Unavailable
+} derive(Eq, @debug.Debug)
+pub fn ConnectorStatus::equal(Self, Self) -> Bool
+pub fn ConnectorStatus::is_usable(Self) -> Bool
+pub fn ConnectorStatus::not_equal(Self, Self) -> Bool
+pub fn ConnectorStatus::to_repr(Self) -> @debug.Repr
+
+pub(all) enum IdentityRequirement {
+  AppSufficient
+  UserIdentityRequired
+} derive(Eq, @debug.Debug)
+pub fn IdentityRequirement::equal(Self, Self) -> Bool
+pub fn IdentityRequirement::not_equal(Self, Self) -> Bool
+pub fn IdentityRequirement::to_repr(Self) -> @debug.Repr
+
+pub(all) enum IdentityResolution {
+  Proceed(identity~ : ConnectorIdentityKind)
+  SwitchToSignedInBrowser(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn IdentityResolution::equal(Self, Self) -> Bool
+pub fn IdentityResolution::not_equal(Self, Self) -> Bool
+pub fn IdentityResolution::switched_to_browser(Self) -> Bool
+pub fn IdentityResolution::to_repr(Self) -> @debug.Repr
+
+pub(all) struct McpNamespace {
+  id : String
+  display_name : String
+  tool_count : Int
+} derive(Eq, @debug.Debug)
+pub fn McpNamespace::equal(Self, Self) -> Bool
+pub fn McpNamespace::not_equal(Self, Self) -> Bool
+pub fn McpNamespace::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PluginBundle {
+  id : String
+  display_name : String
+  skills : Array[PluginSkillSpec]
+  mcp_namespace : String
+} derive(Eq, @debug.Debug)
+pub fn PluginBundle::equal(Self, Self) -> Bool
+pub fn PluginBundle::not_equal(Self, Self) -> Bool
+pub fn PluginBundle::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PluginMetadata {
+  id : String
+  display_name : String
+  skills : Array[PluginSkillSpec]
+  mcp_namespace : String
+} derive(Eq, @debug.Debug)
+pub fn PluginMetadata::equal(Self, Self) -> Bool
+pub fn PluginMetadata::not_equal(Self, Self) -> Bool
+pub fn PluginMetadata::skill_names(Self) -> Array[String]
+pub fn PluginMetadata::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PluginRegistry {
+  available : Array[PluginBundle]
+  installed_ids : Array[String]
+  namespace_ready : Map[String, ConnectorStatus]
+}
+pub fn PluginRegistry::add_connector(Self, String) -> Result[Array[PluginSkillSpec], String]
+pub fn PluginRegistry::empty() -> Self
+pub fn PluginRegistry::get_plugin(Self, String) -> Result[PluginMetadata, String]
+pub fn PluginRegistry::install(Self, String) -> Result[Array[PluginSkillSpec], String]
+pub fn PluginRegistry::is_installed(Self, String) -> Bool
+pub fn PluginRegistry::mcp_namespace_for(Self, String) -> String?
+pub fn PluginRegistry::namespace_status(Self, String) -> ConnectorStatus
+pub fn PluginRegistry::namespace_usable(Self, String) -> Bool
+pub fn PluginRegistry::ready_namespaces(Self) -> Array[String]
+pub fn PluginRegistry::seed_demo() -> Self
+pub fn PluginRegistry::uninstall(Self, String) -> Result[String, String]
+
+pub(all) struct PluginSkillSpec {
+  name : String
+  description : String
+  skill_md : String
+} derive(Eq, @debug.Debug)
+pub fn PluginSkillSpec::equal(Self, Self) -> Bool
+pub fn PluginSkillSpec::not_equal(Self, Self) -> Bool
+pub fn PluginSkillSpec::to_repr(Self) -> @debug.Repr
+
+pub(all) struct UtcRateWindow {
+  minute_key : String
+  day_key : String
+} derive(Eq, @debug.Debug)
+pub fn UtcRateWindow::equal(Self, Self) -> Bool
+pub fn UtcRateWindow::not_equal(Self, Self) -> Bool
+pub fn UtcRateWindow::of(minute_key~ : String, day_key~ : String) -> Self
+pub fn UtcRateWindow::to_repr(Self) -> @debug.Repr
+
+pub(all) enum XMcpToolKind {
+  Posts
+  Bookmarks
+  Chat
+} derive(Eq, @debug.Debug)
+pub fn XMcpToolKind::equal(Self, Self) -> Bool
+pub fn XMcpToolKind::label(Self) -> String
+pub fn XMcpToolKind::not_equal(Self, Self) -> Bool
+pub fn XMcpToolKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct XMcpToolSpec {
+  name : String
+  kind : XMcpToolKind
+  description : String
+  readonly_ : Bool
+} derive(Eq, @debug.Debug)
+pub fn XMcpToolSpec::equal(Self, Self) -> Bool
+pub fn XMcpToolSpec::not_equal(Self, Self) -> Bool
+pub fn XMcpToolSpec::to_repr(Self) -> @debug.Repr
+
+pub(all) struct XPublicRateLimiter {
+  mut minute_key : String
+  mut day_key : String
+  mut minute_count : Int
+  mut day_count : Int
+  namespace_ : String
+}
+pub fn XPublicRateLimiter::call(Self, window~ : UtcRateWindow) -> XRateLimitOutcome
+pub fn XPublicRateLimiter::namespace_id(Self) -> String
+pub fn XPublicRateLimiter::new() -> Self
+pub fn XPublicRateLimiter::remaining(Self) -> XRateRemaining
+pub fn XPublicRateLimiter::set_counts(Self, minute~ : Int, day~ : Int, window~ : UtcRateWindow) -> Unit
+
+pub(all) struct XPublicSearchNamespace {
+  namespace_ : String
+  tools : Array[XPublicSearchTool]
+  index : Array[(String, String)]
+}
+pub fn XPublicSearchNamespace::all_tools_readonly(Self) -> Bool
+pub fn XPublicSearchNamespace::has_tool(Self, String) -> Bool
+pub fn XPublicSearchNamespace::list_tool_names(Self) -> Array[String]
+pub fn XPublicSearchNamespace::new() -> Self
+pub fn XPublicSearchNamespace::reject_write_tool(Self, String) -> Result[Unit, String]
+pub fn XPublicSearchNamespace::requires_user_auth(Self) -> Bool
+pub fn XPublicSearchNamespace::search_posts(Self, String) -> Array[(String, String)]
+pub fn XPublicSearchNamespace::seed_post(Self, id~ : String, text~ : String) -> Unit
+pub fn XPublicSearchNamespace::seed_readonly_tools(Self) -> Unit
+
+pub(all) struct XPublicSearchTool {
+  name : String
+  description : String
+} derive(Eq, @debug.Debug)
+pub fn XPublicSearchTool::equal(Self, Self) -> Bool
+pub fn XPublicSearchTool::not_equal(Self, Self) -> Bool
+pub fn XPublicSearchTool::to_repr(Self) -> @debug.Repr
+
+pub(all) enum XRateLimitOutcome {
+  Allowed(remaining~ : XRateRemaining)
+  Refused(reason~ : String, remaining~ : XRateRemaining)
+} derive(Eq, @debug.Debug)
+pub fn XRateLimitOutcome::equal(Self, Self) -> Bool
+pub fn XRateLimitOutcome::is_refused(Self) -> Bool
+pub fn XRateLimitOutcome::not_equal(Self, Self) -> Bool
+pub fn XRateLimitOutcome::to_repr(Self) -> @debug.Repr
+
+pub(all) struct XRateRemaining {
+  per_minute : Int
+  per_day : Int
+} derive(Eq, @debug.Debug)
+pub fn XRateRemaining::equal(Self, Self) -> Bool
+pub fn XRateRemaining::not_equal(Self, Self) -> Bool
+pub fn XRateRemaining::to_repr(Self) -> @debug.Repr
+
+pub(all) struct XTwitterMcpSurface {
+  namespace_ : String
+  tools : Array[XMcpToolSpec]
+  posts : Array[(String, String)]
+  bookmarks : Array[String]
+  chat_threads : Array[String]
+  mut authenticated : Bool
+}
+pub fn XTwitterMcpSurface::authenticate(Self) -> Unit
+pub fn XTwitterMcpSurface::covers_posts_bookmarks_chat(Self) -> Bool
+pub fn XTwitterMcpSurface::has_tool(Self, String) -> Bool
+pub fn XTwitterMcpSurface::is_authenticated(Self) -> Bool
+pub fn XTwitterMcpSurface::list_tool_names(Self) -> Array[String]
+pub fn XTwitterMcpSurface::new() -> Self
+pub fn XTwitterMcpSurface::read_bookmarks(Self) -> Result[Array[String], String]
+pub fn XTwitterMcpSurface::read_chat_conversations(Self) -> Result[Array[String], String]
+pub fn XTwitterMcpSurface::read_post(Self, String) -> Result[String, String]
+pub fn XTwitterMcpSurface::seed_bookmark(Self, String) -> Unit
+pub fn XTwitterMcpSurface::seed_chat_thread(Self, String) -> Unit
+pub fn XTwitterMcpSurface::seed_dynamic_tools(Self) -> Unit
+pub fn XTwitterMcpSurface::seed_post(Self, id~ : String, text~ : String) -> Unit
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,156 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/agents/task"
+
+import {
+  "bitbot/bitbot/agents",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn assert_parallel_multi_running(Array[SubagentHandle]) -> Result[Unit, String]
+
+pub fn count_running_handles(Array[SubagentHandle]) -> Int
+
+pub fn run_knowledge_work_task(task_id~ : String, parent_turn_id~ : String, material_prompt~ : String) -> Result[(SubagentHandle, KnowledgeWorkReport), String]
+
+pub fn run_watch_video_answer_from_frames(task_id~ : String, parent_turn_id~ : String, video_path~ : String, question~ : String, max_frames? : Int) -> Result[(SubagentHandle, WatchVideoFrameAnswer), String]
+
+pub fn run_watch_video_task(task_id~ : String, parent_turn_id~ : String, video_path~ : String, question? : String) -> Result[(SubagentHandle, WatchVideoConclusion), String]
+
+pub fn spawn_parallel_executors(parent_turn_id~ : String, Array[String]) -> Result[Array[SubagentHandle], String]
+
+// Errors
+
+// Types and methods
+pub(all) struct KnowledgeWorkReport {
+  task_id : String
+  summary : String
+} derive(Eq, @debug.Debug)
+pub fn KnowledgeWorkReport::equal(Self, Self) -> Bool
+pub fn KnowledgeWorkReport::not_equal(Self, Self) -> Bool
+pub fn KnowledgeWorkReport::to_repr(Self) -> @debug.Repr
+
+pub(all) struct NeedApprovalReport {
+  child_id : String
+  request_id : String
+  summary : String
+} derive(Eq, @debug.Debug)
+pub fn NeedApprovalReport::equal(Self, Self) -> Bool
+pub fn NeedApprovalReport::is_need_approval(Self) -> Bool
+pub fn NeedApprovalReport::not_equal(Self, Self) -> Bool
+pub fn NeedApprovalReport::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ParentWaitMode {
+  BusyLoopCheck
+  CompletionWake
+  YieldUntilWake
+} derive(Eq, @debug.Debug)
+pub fn ParentWaitMode::equal(Self, Self) -> Bool
+pub fn ParentWaitMode::is_busy_loop(Self) -> Bool
+pub fn ParentWaitMode::not_equal(Self, Self) -> Bool
+pub fn ParentWaitMode::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ParentWaitSession {
+  mut check_count : Int
+  mut mode : ParentWaitMode
+  mut woke : Bool
+}
+pub fn ParentWaitSession::await_completion_wake(Self, SubagentHandle, summary~ : String) -> SubagentStatus
+pub fn ParentWaitSession::check_once(Self, SubagentHandle) -> Result[SubagentStatus, String]
+pub fn ParentWaitSession::new() -> Self
+pub fn ParentWaitSession::plan_wait(Self, SubagentHandle) -> ParentWaitMode
+pub fn ParentWaitSession::used_busy_loop(Self) -> Bool
+
+pub(all) struct SubagentHandle {
+  id : String
+  kind : @agents.SubagentType
+  parent_turn_id : String
+  mut status : SubagentStatus
+  mut may_send_to_user : Bool
+  mut wake_parent : Bool
+  mut result_summary : String?
+  mut inbox : Array[String]
+} derive(Eq, @debug.Debug)
+pub fn SubagentHandle::can_emit_side_effect(Self) -> Bool
+pub fn SubagentHandle::check(Self) -> SubagentStatus
+pub fn SubagentHandle::complete(Self, summary~ : String) -> Unit
+pub fn SubagentHandle::dispatch_executor(String, String, String) -> Self
+pub fn SubagentHandle::dispatch_knowledge_work(String, String, String) -> Self
+pub fn SubagentHandle::dispatch_watch_video(String, String, String) -> Result[Self, String]
+pub fn SubagentHandle::equal(Self, Self) -> Bool
+pub fn SubagentHandle::inbox_snapshot(Self) -> Array[String]
+pub fn SubagentHandle::mark_running(Self) -> Unit
+pub fn SubagentHandle::message(Self, body~ : String) -> Result[Unit, String]
+pub fn SubagentHandle::message_arrived(Self, body~ : String) -> Bool
+pub fn SubagentHandle::not_equal(Self, Self) -> Bool
+pub fn SubagentHandle::parent_should_wake(Self) -> Bool
+pub fn SubagentHandle::query_status(Self) -> SubagentStatus
+pub fn SubagentHandle::report_need_approval(Self, summary~ : String, request_id? : String) -> NeedApprovalReport
+pub fn SubagentHandle::stop(Self) -> Unit
+pub fn SubagentHandle::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SubagentMessage {
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn SubagentMessage::equal(Self, Self) -> Bool
+pub fn SubagentMessage::not_equal(Self, Self) -> Bool
+pub fn SubagentMessage::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SubagentStatus {
+  Starting
+  Running
+  Blocked(reason~ : String)
+  Completed(summary~ : String)
+  Failed(message~ : String)
+  Stopped
+} derive(Eq, @debug.Debug)
+pub fn SubagentStatus::equal(Self, Self) -> Bool
+pub fn SubagentStatus::is_terminal(Self) -> Bool
+pub fn SubagentStatus::not_equal(Self, Self) -> Bool
+pub fn SubagentStatus::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TaskResumeContext {
+  task_id : String
+  parent_turn_id : String
+  prompt : String
+  prior_summary : String
+  inbox : Array[String]
+  kind : @agents.SubagentType
+} derive(Eq, @debug.Debug)
+pub fn TaskResumeContext::equal(Self, Self) -> Bool
+pub fn TaskResumeContext::is_preserved(Self, prompt~ : String, prior_summary~ : String) -> Bool
+pub fn TaskResumeContext::not_equal(Self, Self) -> Bool
+pub fn TaskResumeContext::to_repr(Self) -> @debug.Repr
+
+pub(all) struct TaskResumeRegistry {
+  contexts : Array[TaskResumeContext]
+  live : Array[SubagentHandle]
+}
+pub fn TaskResumeRegistry::new() -> Self
+pub fn TaskResumeRegistry::record_finished(Self, SubagentHandle, prompt~ : String) -> Result[Unit, String]
+pub fn TaskResumeRegistry::resume_by_id(Self, String) -> Result[(SubagentHandle, TaskResumeContext), String]
+
+pub(all) struct WatchVideoConclusion {
+  task_id : String
+  video_path : String
+  conclusion : String
+} derive(Eq, @debug.Debug)
+pub fn WatchVideoConclusion::equal(Self, Self) -> Bool
+pub fn WatchVideoConclusion::not_equal(Self, Self) -> Bool
+pub fn WatchVideoConclusion::to_repr(Self) -> @debug.Repr
+
+pub(all) struct WatchVideoFrameAnswer {
+  task_id : String
+  video_path : String
+  question : String
+  frame_captions : Array[String]
+  answer : String
+} derive(Eq, @debug.Debug)
+pub fn WatchVideoFrameAnswer::equal(Self, Self) -> Bool
+pub fn WatchVideoFrameAnswer::is_grounded_in_frames(Self) -> Bool
+pub fn WatchVideoFrameAnswer::not_equal(Self, Self) -> Bool
+pub fn WatchVideoFrameAnswer::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,159 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/memory"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn accept_profile_write_source(ProfileWriteSource) -> Result[Unit, String]
+
+pub fn box_ordinary_file_is_profile_authority(String) -> Bool
+
+pub fn classify_scope(String) -> Result[MemoryScope, String]
+
+pub fn memory_grants_send(MemoryEntry) -> Bool
+
+// Errors
+
+// Types and methods
+pub(all) struct AuthoritativeProfileWrite {
+  key : String
+  value : String
+  source : ProfileWriteSource
+} derive(Eq, @debug.Debug)
+pub fn AuthoritativeProfileWrite::equal(Self, Self) -> Bool
+pub fn AuthoritativeProfileWrite::not_equal(Self, Self) -> Bool
+pub fn AuthoritativeProfileWrite::to_repr(Self) -> @debug.Repr
+
+pub(all) struct InMemoryStore {
+  entries : Array[MemoryEntry]
+}
+pub fn InMemoryStore::forget_by_key(Self, MemoryScope, String) -> Bool
+pub fn InMemoryStore::new() -> Self
+pub fn InMemoryStore::recall(Self, RecallQuery) -> Array[MemoryEntry]
+pub fn InMemoryStore::scopes(Self) -> Array[MemoryScope]
+pub fn InMemoryStore::update(Self, UpdateOp) -> Unit
+pub impl MemoryStore for InMemoryStore
+
+pub(all) struct JournalEvent {
+  date : String
+  event_id : String
+  body : String
+  at_ms : Int64
+} derive(Eq, @debug.Debug)
+pub fn JournalEvent::equal(Self, Self) -> Bool
+pub fn JournalEvent::not_equal(Self, Self) -> Bool
+pub fn JournalEvent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct JournalStore {
+  events : Array[JournalEvent]
+  backing : InMemoryStore
+}
+pub fn JournalStore::append(Self, date~ : String, event_id~ : String, body~ : String, at_ms? : Int64) -> Unit
+pub fn JournalStore::journal_pollutes_profile(Self) -> Bool
+pub fn JournalStore::new() -> Self
+pub fn JournalStore::profile_keys(Self) -> Array[String]
+pub fn JournalStore::query_range(Self, from_date~ : String, to_date~ : String) -> Array[JournalEvent]
+pub fn JournalStore::update_profile(Self, key~ : String, value~ : String) -> Unit
+
+pub(all) struct MemoryEntry {
+  key : String
+  value : String
+  scope : MemoryScope
+  updated_at_ms : Int64
+} derive(Eq, @debug.Debug)
+pub fn MemoryEntry::equal(Self, Self) -> Bool
+pub fn MemoryEntry::not_equal(Self, Self) -> Bool
+pub fn MemoryEntry::to_repr(Self) -> @debug.Repr
+
+pub(all) enum MemoryScope {
+  Profile
+  Journal
+  Shared
+} derive(Eq, @debug.Debug)
+pub fn MemoryScope::equal(Self, Self) -> Bool
+pub fn MemoryScope::label(Self) -> String
+pub fn MemoryScope::not_equal(Self, Self) -> Bool
+pub fn MemoryScope::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ProfileMemoryStore {
+  store : InMemoryStore
+  mut current_session : SessionId?
+}
+pub fn ProfileMemoryStore::new() -> Self
+pub fn ProfileMemoryStore::open_session(Self, SessionId) -> Unit
+pub fn ProfileMemoryStore::recall_profile(Self, key_prefix? : String?, limit? : Int) -> Array[MemoryEntry]
+pub fn ProfileMemoryStore::session_id(Self) -> SessionId?
+pub fn ProfileMemoryStore::update_profile(Self, key~ : String, value~ : String) -> Unit
+pub fn ProfileMemoryStore::write_profile_authoritative(Self, ProfileWriteSource, key~ : String, value~ : String) -> Result[AuthoritativeProfileWrite, String]
+
+pub(all) enum ProfileWriteSource {
+  MemoryApi
+  BoxOrdinaryFile(path~ : String)
+} derive(Eq, @debug.Debug)
+pub fn ProfileWriteSource::equal(Self, Self) -> Bool
+pub fn ProfileWriteSource::is_authoritative(Self) -> Bool
+pub fn ProfileWriteSource::not_equal(Self, Self) -> Bool
+pub fn ProfileWriteSource::to_repr(Self) -> @debug.Repr
+
+pub(all) struct RecallQuery {
+  scope : MemoryScope
+  key_prefix : String?
+  limit : Int
+} derive(Eq, @debug.Debug)
+pub fn RecallQuery::equal(Self, Self) -> Bool
+pub fn RecallQuery::not_equal(Self, Self) -> Bool
+pub fn RecallQuery::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SessionId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn SessionId::equal(Self, Self) -> Bool
+pub fn SessionId::not_equal(Self, Self) -> Bool
+pub fn SessionId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SharedMemoryEntry {
+  scope : SharedScopeId
+  key : String
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn SharedMemoryEntry::equal(Self, Self) -> Bool
+pub fn SharedMemoryEntry::not_equal(Self, Self) -> Bool
+pub fn SharedMemoryEntry::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SharedMemoryStore {
+  entries : Array[SharedMemoryEntry]
+}
+pub fn SharedMemoryStore::cross_scope_read(Self, from_scope~ : SharedScopeId, key~ : String) -> Result[String, String]
+pub fn SharedMemoryStore::keys_in_scope(Self, scope~ : SharedScopeId) -> Array[String]
+pub fn SharedMemoryStore::new() -> Self
+pub fn SharedMemoryStore::put(Self, scope~ : SharedScopeId, key~ : String, value~ : String) -> Unit
+pub fn SharedMemoryStore::read(Self, scope~ : SharedScopeId, key~ : String) -> Result[String, String]
+pub fn SharedMemoryStore::scopes_isolated(Self, scope_a~ : SharedScopeId, scope_b~ : SharedScopeId) -> Bool
+
+pub(all) struct SharedScopeId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn SharedScopeId::equal(Self, Self) -> Bool
+pub fn SharedScopeId::new(String) -> Self
+pub fn SharedScopeId::not_equal(Self, Self) -> Bool
+pub fn SharedScopeId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct UpdateOp {
+  scope : MemoryScope
+  key : String
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn UpdateOp::equal(Self, Self) -> Bool
+pub fn UpdateOp::not_equal(Self, Self) -> Bool
+pub fn UpdateOp::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits
+pub trait MemoryStore {
+  fn recall(Self, RecallQuery) -> Array[MemoryEntry]
+  fn update(Self, UpdateOp) -> Unit
+  fn scopes(Self) -> Array[MemoryScope]
+}

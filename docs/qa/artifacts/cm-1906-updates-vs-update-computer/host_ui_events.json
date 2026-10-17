@@ -1,0 +1,42 @@
+{
+  "events": [
+    {
+      "id": "9e959d20-88b1-4f5a-befb-fb6c06472f97",
+      "ts": 1792220961.699049,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": "update-channel"
+    },
+    {
+      "id": "a90866f6-a50a-4ae7-9608-b8da920e03da",
+      "ts": 1792220961.6990585,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "update-channel"
+    },
+    {
+      "id": "75863882-cd23-4c41-9d2a-1ccb7295372e",
+      "ts": 1792220961.7000213,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "update-channel"
+    },
+    {
+      "id": "aa260103-c921-4b07-82ab-458c4fac4e26",
+      "ts": 1792220962.5509362,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": "update-computer"
+    },
+    {
+      "id": "588e60ee-73af-4ebe-9969-1f7f8449fcbe",
+      "ts": 1792220962.5509415,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "update-computer"
+    },
+    {
+      "id": "39d07fb5-744b-4f38-a985-e9054c2944b9",
+      "ts": 1792220962.5518005,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "update-computer"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "events": [
+    {
+      "id": "4c35886c-2d63-465a-8dc2-5214c4fe8e6c",
+      "ts": 1792221621.9731257,
+      "kind": "WebhookPanelOpened",
+      "url": "https://hooks.bitbot.local/v1/wh-h3-demo",
+      "key_opaque": true
+    },
+    {
+      "id": "3271d0f1-eb13-4ca4-b904-33abad833b1c",
+      "ts": 1792221622.4619124,
+      "kind": "WebhookPanelCopy",
+      "what": "url",
+      "receipt": "copied_url:https://hooks.bitbot.local/v1/wh-h3-demo"
+    },
+    {
+      "id": "bca99759-2e9f-4a55-8678-0858d2e8ce75",
+      "ts": 1792221622.5439997,
+      "kind": "WebhookPanelCopy",
+      "what": "key",
+      "receipt": "copied_key:len=32"
+    },
+    {
+      "id": "8901c33a-27bd-47e0-8f91-3c81b1a66f76",
+      "ts": 1792221622.6410644,
+      "kind": "WebhookToolReadKeyRejected",
+      "reason": "opaque"
+    },
+    {
+      "id": "767920c9-3639-4abc-b58c-912e6bf94905",
+      "ts": 1792221622.7190568,
+      "kind": "WebhookWake",
+      "event_id": "evt-h3",
+      "leaks_key": false
+    }
+  ]
+}

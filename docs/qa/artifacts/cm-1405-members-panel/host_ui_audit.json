@@ -1,0 +1,22 @@
+{
+  "spans": [
+    {
+      "id": "8355094b-b340-4574-8ccd-a01a84f3e158",
+      "tool_name": "host_ui:open_info_panel",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "agent=h2-throwaway-agent view=panel members=[] settingsOpen=False",
+      "artifact_path": null,
+      "ts": 1792220985.1331468
+    },
+    {
+      "id": "26182771-2dff-48c5-bf1a-10c7601502e9",
+      "tool_name": "host_ui:open_info_panel",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "agent=h2-group view=panel members=['h2-throwaway-agent', 'demo-agent'] settingsOpen=False",
+      "artifact_path": null,
+      "ts": 1792220985.8844001
+    }
+  ]
+}

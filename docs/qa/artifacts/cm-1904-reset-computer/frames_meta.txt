@@ -1,0 +1,11 @@
+frame=reset_computer.png
+frame_origin=LiveDisplay
+display=:99
+bytes=81475
+sha256=9b21e45afe6469a5389c998d9eb07e2aec710e6594bbae9f101d10499176b0a7
+png_magic=ok
+driven_by=HostUiShell_Live
+not_cdp_page_js=true
+not_fixture_only=true
+section_3_0=C_prime
+surface=bit-bot-host-ui

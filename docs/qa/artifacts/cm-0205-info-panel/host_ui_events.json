@@ -1,0 +1,25 @@
+{
+  "events": [
+    {
+      "id": "b37906dd-b6c9-4169-9f80-f4862fa0e04b",
+      "ts": 1792220970.8608341,
+      "kind": "InfoPanelOpened",
+      "agent_id": "h2-throwaway-agent",
+      "sections": [
+        "desktop-preview",
+        "routines",
+        "channels",
+        "members",
+        "gear-settings"
+      ],
+      "view": "panel"
+    },
+    {
+      "id": "3991434b-2f7e-4302-96c8-2ad7c12e04b1",
+      "ts": 1792220971.7147899,
+      "kind": "SettingsOpened",
+      "entry": "sidebar-account-button",
+      "anchor": null
+    }
+  ]
+}

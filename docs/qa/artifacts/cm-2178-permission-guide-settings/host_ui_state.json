@@ -1,0 +1,50 @@
+{
+  "settingsOpen": true,
+  "entry": "sidebar-account-button",
+  "anchor": "account",
+  "deletePhase": null,
+  "deleteAgent": null,
+  "contextMenuOpen": false,
+  "contextMenuAgent": null,
+  "activeTab": "General",
+  "updateComputerPhase": "idle",
+  "updateComputerPrompt": null,
+  "localExecutionEnabled": true,
+  "lastMachineCall": null,
+  "gateLog": [],
+  "agents": [
+    {
+      "id": "h2-throwaway-agent",
+      "name": "H2 Throwaway Agent",
+      "hidden": false
+    },
+    {
+      "id": "demo-agent",
+      "name": "Demo Agent",
+      "hidden": false
+    }
+  ],
+  "activeChat": null,
+  "activeChatHidden": false,
+  "infoPanel": {
+    "open": false,
+    "agentId": null,
+    "view": null,
+    "sections": [],
+    "members": []
+  },
+  "notify": {},
+  "permissionGuide": {
+    "open": false,
+    "kind": "connector-needs-auth",
+    "namespace": "user-Gmail",
+    "anchor": "account",
+    "connected": false,
+    "status": "Needs auth",
+    "followed": true,
+    "link": "grokbot://app/v1/settings?id=account"
+  },
+  "surface": "bit-bot-host-ui",
+  "i_claimed": false,
+  "rev": 2
+}

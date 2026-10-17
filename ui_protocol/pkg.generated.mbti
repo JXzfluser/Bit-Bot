@@ -1,0 +1,674 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/ui_protocol"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn archive_or_hide_is_not_delete(DeleteAgentPath) -> Bool
+
+pub fn collect_inbound_attachments(MockFS, Array[(String, String, String)]) -> Result[InboundAttachmentBag, String]
+
+pub fn deliverable_attachment(MockFS, String, String, String) -> Result[AttachmentRef, String]
+
+pub fn ensure_markdown_links(String) -> Result[Unit, String]
+
+pub fn guide_missing_permission_to_settings(MissingPermissionKind, entry? : SettingsEntry) -> MissingPermissionGuide
+
+pub fn info_panel_section_anchors() -> Array[InfoPanelSection]
+
+pub fn is_assistant_preferred_computer_recovery(SettingsAnchor) -> Bool
+
+pub fn is_forbidden_pre_ask_handoff(String) -> Bool
+
+pub fn is_forbidden_settings_entry_guidance(String) -> Bool
+
+pub fn is_pretend_connected_guidance(String) -> Bool
+
+pub fn is_thank_you_message(String) -> Bool
+
+pub fn issue_cursor_agent_card(String) -> Result[CursorAgentCard, String]
+
+pub fn parse_markdown_math_and_mermaid(String) -> Result[MarkdownRichParse, String]
+
+pub fn parse_settings_anchor(String) -> Result[SettingsAnchor, String]
+
+pub fn parse_settings_deep_link(String) -> Result[SettingsAnchor, String]
+
+pub fn paste_token_into_chat(String) -> Result[String, String]
+
+pub fn plan_thank_you_react_end_turn(ReactToMessageHost, turn_id~ : String, user_message_id~ : String, user_text~ : String) -> Result[ReactOutboundTurn, String]
+
+pub fn prefer_update_over_reset(SettingsAnchor) -> Result[SettingsAnchor, String]
+
+pub fn redact_secrets(String) -> String
+
+pub fn request_box_help(reason~ : String) -> Result[BoxHelpHandoff, String]
+
+pub fn request_user_form_from_snapshot(UserFormSnapshot) -> Result[Array[FormFieldTarget], String]
+
+pub fn send_to_user_cursor_agent(turn_id~ : String, bc_id~ : String) -> Result[SendToUserCursorAgent, String]
+
+pub fn settings_anchors_closed_set() -> Array[SettingsAnchor]
+
+pub fn settings_deep_link(SettingsAnchor) -> String
+
+pub fn update_avatar(agent_id~ : String, path~ : String, fs~ : MockFS) -> Result[AvatarPreview, String]
+
+pub fn update_channel_ne_update_computer() -> Bool
+
+pub fn validate_avatar_path(String) -> Result[Unit, String]
+
+pub fn validate_deeplink_or_reject(String) -> Result[Unit, String]
+
+pub fn validate_delete_agent_guidance(String) -> Result[Unit, String]
+
+pub fn validate_envelope_no_widget_attachment(SendEnvelope) -> Result[Unit, String]
+
+pub fn validate_missing_permission_guidance(MissingPermissionGuide, assistant_text~ : String) -> Result[Unit, String]
+
+pub fn validate_outbound_links(String) -> Result[Unit, String]
+
+pub fn validate_path(String) -> Result[Unit, String]
+
+pub fn validate_settings_entry_guidance(String) -> Result[Unit, String]
+
+// Errors
+
+// Types and methods
+pub(all) struct AgentDirectory {
+  agents : Array[AgentRecord]
+}
+pub fn AgentDirectory::get(Self, String) -> Result[AgentRecord, String]
+pub fn AgentDirectory::in_main_sidebar(Self, String) -> Bool
+pub fn AgentDirectory::is_addressable(Self, String) -> Bool
+pub fn AgentDirectory::main_sidebar_ids(Self) -> Array[String]
+pub fn AgentDirectory::new() -> Self
+pub fn AgentDirectory::register(Self, AgentRecord) -> Unit
+pub fn AgentDirectory::set_hidden(Self, String, hidden~ : Bool) -> Result[Unit, String]
+
+pub(all) struct AgentProfile {
+  id : String
+  name : String
+  title : String
+  description : String
+} derive(Eq, @debug.Debug)
+pub fn AgentProfile::equal(Self, Self) -> Bool
+pub fn AgentProfile::new(id~ : String, name~ : String, title~ : String, description~ : String) -> Self
+pub fn AgentProfile::not_equal(Self, Self) -> Bool
+pub fn AgentProfile::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AgentRecord {
+  id : String
+  name : String
+  title : String
+  hidden : Bool
+} derive(Eq, @debug.Debug)
+pub fn AgentRecord::equal(Self, Self) -> Bool
+pub fn AgentRecord::new(id~ : String, name~ : String, title? : String, hidden? : Bool) -> Self
+pub fn AgentRecord::not_equal(Self, Self) -> Bool
+pub fn AgentRecord::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AssistantNotifySettings {
+  assistant_id : String
+  desktop : Bool
+  sound : Bool
+  mentions_only : Bool
+  routines : Bool
+  channels : Bool
+} derive(Eq, @debug.Debug)
+pub fn AssistantNotifySettings::defaults(String) -> Self
+pub fn AssistantNotifySettings::equal(Self, Self) -> Bool
+pub fn AssistantNotifySettings::get(Self, AssistantNotifyToggle) -> Bool
+pub fn AssistantNotifySettings::not_equal(Self, Self) -> Bool
+pub fn AssistantNotifySettings::to_profile_entries(Self) -> Array[(String, String)]
+pub fn AssistantNotifySettings::to_repr(Self) -> @debug.Repr
+pub fn AssistantNotifySettings::with_toggle(Self, AssistantNotifyToggle, Bool) -> Self
+
+pub(all) enum AssistantNotifyToggle {
+  Desktop
+  Sound
+  MentionsOnly
+  Routines
+  Channels
+} derive(Eq, @debug.Debug)
+pub fn AssistantNotifyToggle::equal(Self, Self) -> Bool
+pub fn AssistantNotifyToggle::key(Self) -> String
+pub fn AssistantNotifyToggle::not_equal(Self, Self) -> Bool
+pub fn AssistantNotifyToggle::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AttachmentRef {
+  name : String
+  mime : String
+  path : String
+} derive(Eq, @debug.Debug)
+pub fn AttachmentRef::equal(Self, Self) -> Bool
+pub fn AttachmentRef::not_equal(Self, Self) -> Bool
+pub fn AttachmentRef::to_repr(Self) -> @debug.Repr
+pub fn AttachmentRef::validate(Self) -> Result[Unit, String]
+
+pub(all) struct AvatarPreview {
+  agent_id : String
+  path : String
+  previewable : Bool
+  mime : String
+} derive(Eq, @debug.Debug)
+pub fn AvatarPreview::equal(Self, Self) -> Bool
+pub fn AvatarPreview::is_previewable(Self) -> Bool
+pub fn AvatarPreview::not_equal(Self, Self) -> Bool
+pub fn AvatarPreview::to_repr(Self) -> @debug.Repr
+
+pub(all) struct BoxHelpHandoff {
+  reason : String
+  handoff_message : String
+  is_ask : Bool
+  pre_asked : Bool
+} derive(Eq, @debug.Debug)
+pub fn BoxHelpHandoff::equal(Self, Self) -> Bool
+pub fn BoxHelpHandoff::is_handoff_ask(Self) -> Bool
+pub fn BoxHelpHandoff::not_equal(Self, Self) -> Bool
+pub fn BoxHelpHandoff::to_repr(Self) -> @debug.Repr
+
+pub(all) struct CursorAgentCard {
+  bc_id : String
+  url : String
+  type_label : String
+  mut opened : Bool
+} derive(Eq, @debug.Debug)
+pub fn CursorAgentCard::can_open_cloud(Self) -> Bool
+pub fn CursorAgentCard::equal(Self, Self) -> Bool
+pub fn CursorAgentCard::is_cursor_agent_type(Self) -> Bool
+pub fn CursorAgentCard::not_equal(Self, Self) -> Bool
+pub fn CursorAgentCard::open_cloud_agent(Self) -> Result[String, String]
+pub fn CursorAgentCard::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DeleteAgentIntent {
+  agent_id : HostAgentId
+  phase : DeleteAgentPhase
+} derive(Eq, @debug.Debug)
+pub fn DeleteAgentIntent::equal(Self, Self) -> Bool
+pub fn DeleteAgentIntent::not_equal(Self, Self) -> Bool
+pub fn DeleteAgentIntent::to_repr(Self) -> @debug.Repr
+
+pub(all) enum DeleteAgentPath {
+  SidebarContextMenu
+  SettingsPanel
+  ArchiveOrHide
+} derive(Eq, @debug.Debug)
+pub fn DeleteAgentPath::equal(Self, Self) -> Bool
+pub fn DeleteAgentPath::is_legal_delete_path(Self) -> Bool
+pub fn DeleteAgentPath::not_equal(Self, Self) -> Bool
+pub fn DeleteAgentPath::to_repr(Self) -> @debug.Repr
+
+pub(all) enum DeleteAgentPhase {
+  Requested
+  AwaitingConfirm
+  Confirmed
+  Cancelled
+  Completed
+} derive(Eq, @debug.Debug)
+pub fn DeleteAgentPhase::equal(Self, Self) -> Bool
+pub fn DeleteAgentPhase::label(Self) -> String
+pub fn DeleteAgentPhase::not_equal(Self, Self) -> Bool
+pub fn DeleteAgentPhase::to_repr(Self) -> @debug.Repr
+
+pub(all) struct EndTurn {
+  turn_id : String
+  reason : EndTurnReason
+} derive(Eq, @debug.Debug)
+pub fn EndTurn::equal(Self, Self) -> Bool
+pub fn EndTurn::not_equal(Self, Self) -> Bool
+pub fn EndTurn::to_repr(Self) -> @debug.Repr
+
+pub(all) enum EndTurnReason {
+  Completed
+  Cancelled
+  Error(message~ : String)
+  AwaitingApproval
+} derive(Eq, @debug.Debug)
+pub fn EndTurnReason::equal(Self, Self) -> Bool
+pub fn EndTurnReason::not_equal(Self, Self) -> Bool
+pub fn EndTurnReason::to_repr(Self) -> @debug.Repr
+
+pub(all) struct FormFieldTarget {
+  field_id : String
+  snapshot_node_id : String
+  label : String
+} derive(Eq, @debug.Debug)
+pub fn FormFieldTarget::equal(Self, Self) -> Bool
+pub fn FormFieldTarget::not_equal(Self, Self) -> Bool
+pub fn FormFieldTarget::to_repr(Self) -> @debug.Repr
+
+pub(all) enum FormSubmitOutcome {
+  Submitted
+  Failed(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn FormSubmitOutcome::equal(Self, Self) -> Bool
+pub fn FormSubmitOutcome::not_equal(Self, Self) -> Bool
+pub fn FormSubmitOutcome::to_repr(Self) -> @debug.Repr
+
+pub(all) struct HostAgentId {
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn HostAgentId::equal(Self, Self) -> Bool
+pub fn HostAgentId::new(String) -> Self
+pub fn HostAgentId::not_equal(Self, Self) -> Bool
+pub fn HostAgentId::to_repr(Self) -> @debug.Repr
+
+pub(all) struct HostAgentLifecycleUiMock {
+  mut intent : DeleteAgentIntent?
+  mut path : DeleteAgentPath?
+  mut transcript_removed : Bool
+  mut agent_removed : Bool
+  effects : Array[String]
+}
+pub fn HostAgentLifecycleUiMock::cancel_delete_agent(Self, DeleteAgentIntent) -> Result[DeleteAgentIntent, String]
+pub fn HostAgentLifecycleUiMock::confirm_delete_agent(Self, DeleteAgentIntent) -> Result[DeleteAgentIntent, String]
+pub fn HostAgentLifecycleUiMock::force_complete_without_confirm(Self) -> Result[DeleteAgentIntent, String]
+pub fn HostAgentLifecycleUiMock::new() -> Self
+pub fn HostAgentLifecycleUiMock::request_delete_agent(Self, HostAgentId, path? : DeleteAgentPath) -> Result[DeleteAgentIntent, String]
+
+pub(all) struct HostInfoPanelMock {
+  mut last_opened : PerAgentInfoPanel?
+}
+pub fn HostInfoPanelMock::last_agent_id(Self) -> String?
+pub fn HostInfoPanelMock::new() -> Self
+pub fn HostInfoPanelMock::open(Self, PerAgentInfoPanel) -> Result[Unit, String]
+
+pub(all) struct HostSettingsUiMock {
+  mut last_intent : OpenSettingsIntent?
+  effects : Array[String]
+}
+pub fn HostSettingsUiMock::new() -> Self
+pub fn HostSettingsUiMock::open_settings(Self, OpenSettingsIntent) -> Result[Unit, String]
+
+pub(all) struct InboundAttachmentBag {
+  refs : Array[AttachmentRef]
+} derive(Eq, @debug.Debug)
+pub fn InboundAttachmentBag::all_readable(Self, MockFS) -> Bool
+pub fn InboundAttachmentBag::empty() -> Self
+pub fn InboundAttachmentBag::equal(Self, Self) -> Bool
+pub fn InboundAttachmentBag::first_ref(Self) -> AttachmentRef?
+pub fn InboundAttachmentBag::not_equal(Self, Self) -> Bool
+pub fn InboundAttachmentBag::to_repr(Self) -> @debug.Repr
+
+pub(all) enum InfoPanelOpenTrigger {
+  ClickAgentName
+  KeyboardShortcut
+} derive(Eq, @debug.Debug)
+pub fn InfoPanelOpenTrigger::equal(Self, Self) -> Bool
+pub fn InfoPanelOpenTrigger::not_equal(Self, Self) -> Bool
+pub fn InfoPanelOpenTrigger::to_repr(Self) -> @debug.Repr
+
+pub(all) enum InfoPanelSection {
+  DesktopPreview
+  Routines
+  Channels
+  Members
+  GearSettings
+} derive(Eq, @debug.Debug)
+pub fn InfoPanelSection::equal(Self, Self) -> Bool
+pub fn InfoPanelSection::label(Self) -> String
+pub fn InfoPanelSection::not_equal(Self, Self) -> Bool
+pub fn InfoPanelSection::to_repr(Self) -> @debug.Repr
+
+pub(all) struct InfoPanelSnapshot {
+  agent_id : String
+  name : String
+  title : String
+  description : String
+} derive(Eq, @debug.Debug)
+pub fn InfoPanelSnapshot::equal(Self, Self) -> Bool
+pub fn InfoPanelSnapshot::not_equal(Self, Self) -> Bool
+pub fn InfoPanelSnapshot::to_repr(Self) -> @debug.Repr
+
+pub(all) enum MarkdownMathKind {
+  InlineParen
+  DisplayDollar
+} derive(Eq, @debug.Debug)
+pub fn MarkdownMathKind::equal(Self, Self) -> Bool
+pub fn MarkdownMathKind::not_equal(Self, Self) -> Bool
+pub fn MarkdownMathKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MarkdownRichParse {
+  math_spans : Array[ParsedMathSpan]
+  mermaid_fences : Array[ParsedMermaidFence]
+} derive(Eq, @debug.Debug)
+pub fn MarkdownRichParse::equal(Self, Self) -> Bool
+pub fn MarkdownRichParse::has_display_math(Self) -> Bool
+pub fn MarkdownRichParse::has_inline_math(Self) -> Bool
+pub fn MarkdownRichParse::has_mermaid(Self) -> Bool
+pub fn MarkdownRichParse::not_equal(Self, Self) -> Bool
+pub fn MarkdownRichParse::to_repr(Self) -> @debug.Repr
+
+pub(all) enum MessageKind {
+  Text(body~ : String)
+  Widget(widget_id~ : String, payload_json~ : String)
+  Attachment(name~ : String, mime~ : String, path~ : String)
+  Voice(audio_path~ : String, transcript~ : String?)
+  Reaction(emoji~ : String, target_message_id~ : String)
+} derive(Eq, @debug.Debug)
+pub fn MessageKind::equal(Self, Self) -> Bool
+pub fn MessageKind::label(Self) -> String
+pub fn MessageKind::not_equal(Self, Self) -> Bool
+pub fn MessageKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MessageReactionPill {
+  message_id : String
+  emoji : String
+  visible : Bool
+  active : Bool
+} derive(Eq, @debug.Debug)
+pub fn MessageReactionPill::equal(Self, Self) -> Bool
+pub fn MessageReactionPill::is_visible_pill(Self) -> Bool
+pub fn MessageReactionPill::not_equal(Self, Self) -> Bool
+pub fn MessageReactionPill::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MissingPermissionGuide {
+  kind : MissingPermissionKind
+  open_settings : OpenSettingsIntent
+  pretends_connected : Bool
+  guidance : String
+} derive(Eq, @debug.Debug)
+pub fn MissingPermissionGuide::equal(Self, Self) -> Bool
+pub fn MissingPermissionGuide::guides_to_settings(Self) -> Bool
+pub fn MissingPermissionGuide::not_equal(Self, Self) -> Bool
+pub fn MissingPermissionGuide::to_repr(Self) -> @debug.Repr
+
+pub(all) enum MissingPermissionKind {
+  ConnectorNeedsAuth(namespace_~ : String)
+  ConnectorNeedsGrant(namespace_~ : String)
+  LocalExecutionDisabled
+  DeviceToolPermission(tool~ : String)
+} derive(Eq, @debug.Debug)
+pub fn MissingPermissionKind::equal(Self, Self) -> Bool
+pub fn MissingPermissionKind::label(Self) -> String
+pub fn MissingPermissionKind::not_equal(Self, Self) -> Bool
+pub fn MissingPermissionKind::settings_anchor(Self) -> SettingsAnchor
+pub fn MissingPermissionKind::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MockFS {
+  existing : Array[String]
+}
+pub fn MockFS::exists(Self, String) -> Bool
+pub fn MockFS::new(Array[String]) -> Self
+
+pub(all) struct OpenSettingsIntent {
+  entry : SettingsEntry
+  anchor : SettingsAnchor?
+} derive(Eq, @debug.Debug)
+pub fn OpenSettingsIntent::equal(Self, Self) -> Bool
+pub fn OpenSettingsIntent::not_equal(Self, Self) -> Bool
+pub fn OpenSettingsIntent::open(SettingsEntry, anchor? : SettingsAnchor?) -> Self
+pub fn OpenSettingsIntent::to_repr(Self) -> @debug.Repr
+pub fn OpenSettingsIntent::validate(Self) -> Result[Unit, String]
+
+pub(all) enum OptionStyle {
+  Default
+  Primary
+  Danger
+} derive(Eq, @debug.Debug)
+pub fn OptionStyle::equal(Self, Self) -> Bool
+pub fn OptionStyle::label(Self) -> String
+pub fn OptionStyle::not_equal(Self, Self) -> Bool
+pub fn OptionStyle::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ParsedMathSpan {
+  kind : MarkdownMathKind
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn ParsedMathSpan::equal(Self, Self) -> Bool
+pub fn ParsedMathSpan::not_equal(Self, Self) -> Bool
+pub fn ParsedMathSpan::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ParsedMermaidFence {
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn ParsedMermaidFence::equal(Self, Self) -> Bool
+pub fn ParsedMermaidFence::not_equal(Self, Self) -> Bool
+pub fn ParsedMermaidFence::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PerAgentInfoPanel {
+  agent_id : String
+  has_desktop_preview : Bool
+  has_routines : Bool
+  has_channels : Bool
+  has_members : Bool
+  has_gear_settings : Bool
+  open_trigger : InfoPanelOpenTrigger
+} derive(Eq, @debug.Debug)
+pub fn PerAgentInfoPanel::equal(Self, Self) -> Bool
+pub fn PerAgentInfoPanel::fields_align_with_app_ui(Self) -> Bool
+pub fn PerAgentInfoPanel::full(agent_id~ : String, open_trigger? : InfoPanelOpenTrigger) -> Self
+pub fn PerAgentInfoPanel::gear_is_per_agent_not_global(Self) -> Bool
+pub fn PerAgentInfoPanel::not_equal(Self, Self) -> Bool
+pub fn PerAgentInfoPanel::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PerAssistantNotifyStore {
+  by_assistant : Map[String, AssistantNotifySettings]
+}
+pub fn PerAssistantNotifyStore::get_or_defaults(Self, String) -> AssistantNotifySettings
+pub fn PerAssistantNotifyStore::is_assistant_scoped(Self, String) -> Bool
+pub fn PerAssistantNotifyStore::new() -> Self
+pub fn PerAssistantNotifyStore::set_toggle(Self, String, AssistantNotifyToggle, Bool) -> AssistantNotifySettings
+
+pub(all) struct ReactOutboundTurn {
+  pill : MessageReactionPill
+  body_omitted : Bool
+  body : String
+  end_turn : Bool
+  envelope : SendEnvelope
+} derive(Eq, @debug.Debug)
+pub fn ReactOutboundTurn::equal(Self, Self) -> Bool
+pub fn ReactOutboundTurn::may_omit_body(Self) -> Bool
+pub fn ReactOutboundTurn::not_equal(Self, Self) -> Bool
+pub fn ReactOutboundTurn::shows_pill(Self) -> Bool
+pub fn ReactOutboundTurn::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ReactToMessageHost {
+  pills : Map[String, MessageReactionPill]
+}
+pub fn ReactToMessageHost::get_pill(Self, message_id~ : String) -> MessageReactionPill?
+pub fn ReactToMessageHost::new() -> Self
+pub fn ReactToMessageHost::react_outbound_end_turn(Self, turn_id~ : String, message_id~ : String, emoji~ : String, omit_body~ : Bool) -> Result[ReactOutboundTurn, String]
+pub fn ReactToMessageHost::react_to_message(Self, message_id~ : String, emoji~ : String) -> Result[MessageReactionPill, String]
+
+pub(all) struct SecretHandle {
+  id : String
+  name : String
+} derive(Eq, @debug.Debug)
+pub fn SecretHandle::equal(Self, Self) -> Bool
+pub fn SecretHandle::not_equal(Self, Self) -> Bool
+pub fn SecretHandle::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SecretRequestCard {
+  name : String
+  label : String
+} derive(Eq, @debug.Debug)
+pub fn SecretRequestCard::equal(Self, Self) -> Bool
+pub fn SecretRequestCard::not_equal(Self, Self) -> Bool
+pub fn SecretRequestCard::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SecretVault {
+  mut seq : Int
+  entries : Array[SecretVaultEntry]
+  transcript : Array[String]
+}
+pub fn SecretVault::has_handle(Self, SecretHandle) -> Bool
+pub fn SecretVault::new() -> Self
+pub fn SecretVault::submit_secret(Self, SecretRequestCard, String) -> Result[SecretHandle, String]
+pub fn SecretVault::transcript_log(Self) -> Array[String]
+
+pub(all) struct SecretVaultEntry {
+  handle : SecretHandle
+  plaintext : String
+}
+
+pub(all) struct SendEnvelope {
+  turn_id : String
+  parts : Array[MessageKind]
+  channel_hint : String?
+} derive(Eq, @debug.Debug)
+pub fn SendEnvelope::equal(Self, Self) -> Bool
+pub fn SendEnvelope::not_equal(Self, Self) -> Bool
+pub fn SendEnvelope::part_count(Self) -> Int
+pub fn SendEnvelope::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SendToUserCursorAgent {
+  turn_id : String
+  send_type : SendToUserType
+  card : CursorAgentCard
+} derive(Eq, @debug.Debug)
+pub fn SendToUserCursorAgent::equal(Self, Self) -> Bool
+pub fn SendToUserCursorAgent::not_equal(Self, Self) -> Bool
+pub fn SendToUserCursorAgent::open_cloud(Self) -> Result[String, String]
+pub fn SendToUserCursorAgent::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SendToUserType {
+  Markdown
+  Widget
+  CursorAgent
+} derive(Eq, @debug.Debug)
+pub fn SendToUserType::equal(Self, Self) -> Bool
+pub fn SendToUserType::label(Self) -> String
+pub fn SendToUserType::not_equal(Self, Self) -> Bool
+pub fn SendToUserType::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SettingsAnchor {
+  Account
+  Theme
+  Accent
+  Language
+  SpellCheck
+  Microphone
+  HardwareAcceleration
+  HardwareAccelerationRestart
+  NetworkDebugger
+  NotificationSoundEnabled
+  NotificationSound
+  Timezone
+  AutoReview
+  AutoReviewRules
+  SecurityKeys
+  LocalExecution
+  Computers
+  UpdateComputer
+  ResetComputer
+  Usage
+  Plan
+  CancelTrial
+  OnDemand
+  Billing
+  UpdateStatus
+  UpdateChannel
+  AutomaticUpdates
+} derive(Eq, @debug.Debug)
+pub fn SettingsAnchor::equal(Self, Self) -> Bool
+pub fn SettingsAnchor::id(Self) -> String
+pub fn SettingsAnchor::not_equal(Self, Self) -> Bool
+pub fn SettingsAnchor::tab(Self) -> SettingsTab
+pub fn SettingsAnchor::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SettingsEntry {
+  SidebarAccountButton
+  KeyboardShortcut
+  CommandPalette
+} derive(Eq, @debug.Debug)
+pub fn SettingsEntry::equal(Self, Self) -> Bool
+pub fn SettingsEntry::label(Self) -> String
+pub fn SettingsEntry::not_equal(Self, Self) -> Bool
+pub fn SettingsEntry::to_repr(Self) -> @debug.Repr
+
+pub(all) enum SettingsTab {
+  General
+  Computer
+  Vault
+  UsageBilling
+  Updates
+} derive(Eq, @debug.Debug)
+pub fn SettingsTab::equal(Self, Self) -> Bool
+pub fn SettingsTab::label(Self) -> String
+pub fn SettingsTab::not_equal(Self, Self) -> Bool
+pub fn SettingsTab::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SidebarEntry {
+  agent_id : String
+  display_name : String
+  title : String
+} derive(Eq, @debug.Debug)
+pub fn SidebarEntry::equal(Self, Self) -> Bool
+pub fn SidebarEntry::not_equal(Self, Self) -> Bool
+pub fn SidebarEntry::to_repr(Self) -> @debug.Repr
+
+pub(all) struct SidebarModel {
+  entries : Array[SidebarEntry]
+  mut active_agent_id : String?
+  mut info_panel : InfoPanelSnapshot?
+  mut transcript_cleared_for : String?
+  mut pending_delete_id : String?
+}
+pub fn SidebarModel::add_agent(Self, AgentProfile) -> Unit
+pub fn SidebarModel::confirm_delete(Self, String, confirmed~ : Bool) -> Result[Unit, String]
+pub fn SidebarModel::contains(Self, String) -> Bool
+pub fn SidebarModel::new() -> Self
+pub fn SidebarModel::request_delete(Self, String) -> Result[Unit, String]
+pub fn SidebarModel::snapshot_for(Self, String) -> Result[(SidebarEntry, InfoPanelSnapshot), String]
+pub fn SidebarModel::transcript_was_cleared(Self, String) -> Bool
+pub fn SidebarModel::update_agent_profile(Self, AgentProfile) -> Result[Unit, String]
+
+pub(all) struct UserFormGate {
+  failed_fingerprints : Array[String]
+}
+pub fn UserFormGate::new() -> Self
+pub fn UserFormGate::submit(Self, UserFormSnapshot, FormSubmitOutcome) -> Result[Unit, String]
+
+pub(all) struct UserFormSnapshot {
+  form_id : String
+  page_url : String
+  snapshot_rev : String
+  targets : Array[FormFieldTarget]
+} derive(Eq, @debug.Debug)
+pub fn UserFormSnapshot::equal(Self, Self) -> Bool
+pub fn UserFormSnapshot::fingerprint(Self) -> String
+pub fn UserFormSnapshot::not_equal(Self, Self) -> Bool
+pub fn UserFormSnapshot::to_repr(Self) -> @debug.Repr
+
+pub(all) struct WidgetChoice {
+  widget_id : String
+  selected_values : Array[String]
+  custom_text : String?
+} derive(Eq, @debug.Debug)
+pub fn WidgetChoice::as_multiselect_lines(Self) -> String
+pub fn WidgetChoice::as_user_message_payload(Self) -> String
+pub fn WidgetChoice::equal(Self, Self) -> Bool
+pub fn WidgetChoice::not_equal(Self, Self) -> Bool
+pub fn WidgetChoice::to_repr(Self) -> @debug.Repr
+
+pub(all) struct WidgetOption {
+  label : String
+  value : String
+  style : OptionStyle
+} derive(Eq, @debug.Debug)
+pub fn WidgetOption::equal(Self, Self) -> Bool
+pub fn WidgetOption::not_equal(Self, Self) -> Bool
+pub fn WidgetOption::to_repr(Self) -> @debug.Repr
+
+pub(all) struct WidgetSpec {
+  prompt : String
+  options : Array[WidgetOption]
+  multi_select : Bool
+  allow_custom : Bool
+  dismiss_on_move_on : Bool
+} derive(Eq, @debug.Debug)
+pub fn WidgetSpec::decision_card_advanced(prompt~ : String, options~ : Array[WidgetOption], multi_select? : Bool, allow_custom? : Bool, dismiss_on_move_on? : Bool) -> Result[Self, String]
+pub fn WidgetSpec::equal(Self, Self) -> Bool
+pub fn WidgetSpec::has_danger_option(Self) -> Bool
+pub fn WidgetSpec::not_equal(Self, Self) -> Bool
+pub fn WidgetSpec::should_dismiss_on_move_on(Self) -> Bool
+pub fn WidgetSpec::to_repr(Self) -> @debug.Repr
+pub fn WidgetSpec::validate(Self) -> Result[Unit, String]
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,12 @@
+url=https://example.com
+nav_method=cdp_put_json_new
+page_url_in_isolated_cdp=https://example.com/
+page_title=Example_Domain
+frame_path=/workspace/bitbot/docs/qa/artifacts/cm-2160-navigate/post_navigate_frame.png
+frame_bytes=76507
+frame_sha256=a7018046bf0ef941d6ef8f84c103888163b548a85e3ba497e762e6d901e0032c
+png_magic=ok
+frame_display=:99 (private Xvfb; user's :1 not used)
+temp_profile_dir=/tmp/h1-iso-profile.wP3A0l
+cdp_port=9333
+chrome_pid=110386

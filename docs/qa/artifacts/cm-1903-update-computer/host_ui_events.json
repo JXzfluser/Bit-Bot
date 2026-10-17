@@ -1,0 +1,35 @@
+{
+  "events": [
+    {
+      "id": "fb14cbd2-a6e5-4017-9c3e-f77ef8f62e9a",
+      "ts": 1792220951.0444357,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": "update-computer"
+    },
+    {
+      "id": "35c2e3aa-36ae-4f4f-8107-423da3a9d0a1",
+      "ts": 1792220951.0444474,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "update-computer"
+    },
+    {
+      "id": "6b421de4-564d-4af9-9945-aacc5fb9c982",
+      "ts": 1792220951.0444543,
+      "kind": "UpdateComputerPhaseChanged",
+      "phase": "prompted"
+    },
+    {
+      "id": "25ad2727-e93a-407b-9135-78301c8cfb15",
+      "ts": 1792220951.8913057,
+      "kind": "UpdateComputerPhaseChanged",
+      "phase": "awaiting-second-confirm"
+    },
+    {
+      "id": "35b378dc-b42f-4e8f-adb7-e32795a619d0",
+      "ts": 1792220952.741198,
+      "kind": "UpdateComputerPhaseChanged",
+      "phase": "cancelled"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+import {
+  "bitbot/bitbot/connectors",
+  "bitbot/bitbot/channels",
+}

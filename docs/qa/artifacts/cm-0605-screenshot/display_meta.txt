@@ -1,0 +1,6 @@
+display=:1
+x11_sock=/tmp/.X11-unix/X1
+x11_sock_present=yes
+xdpyinfo=ok
+name of display:    :1
+  dimensions:    1920x1200 pixels (488x305 millimeters)

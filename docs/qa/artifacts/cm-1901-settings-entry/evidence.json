@@ -1,0 +1,78 @@
+{
+  "CM": "CM-1901",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h2_smoke.sh cm-1901",
+  "artifact_dir": "/workspace/bitbot/docs/qa/artifacts/cm-1901-settings-entry",
+  "env": {
+    "surface": "bit-bot-host-ui",
+    "section_3_0": "C_prime",
+    "display": ":99",
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "chrome_profile": "untouched",
+    "ui_drive": "HostUiShell_Live",
+    "host_api": "http://127.0.0.1:8765/api/host/*",
+    "smoke_entry": "HostAbi_run_h2_probe_aligned"
+  },
+  "frame_origin": "LiveDisplay",
+  "frames": [
+    "entry_palette.png",
+    "entry_shortcut.png",
+    "entry_sidebar.png"
+  ],
+  "frames_meta": [
+    {
+      "frame": "entry_sidebar.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "63184",
+      "sha256": "975c793fa1777245afa12d67fa1609d8874b8723d3c9c8c62b045c597df2f969",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "entry_shortcut.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "63116",
+      "sha256": "54e4da858d54dd62520e2fa9b74cab36df971eca9805c48c722bcebc55679195",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    },
+    {
+      "frame": "entry_palette.png",
+      "frame_origin": "LiveDisplay",
+      "display": ":99",
+      "bytes": "62843",
+      "sha256": "2b4e0ce14601956ccef5a4f2532c99007f6d2b41189ab40b0248638b7a746f4a",
+      "png_magic": "ok",
+      "driven_by": "HostUiShell_Live",
+      "not_cdp_page_js": "true",
+      "not_fixture_only": "true",
+      "section_3_0": "C_prime",
+      "surface": "bit-bot-host-ui"
+    }
+  ],
+  "span_ids": [
+    "fd2bca77-01c6-46a3-b584-644a1f03a615",
+    "00a5dcad-9e0f-4ba1-b25c-5721247f1cad",
+    "edb9b62a-5ece-4e74-aed9-27a3757f7239"
+  ],
+  "audit_span_count": 3,
+  "i_claimed": false,
+  "section_3_0": "C_prime",
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "three Settings entries via Live HostUiShell.open_settings; LiveDisplay entry_sidebar/shortcut/palette; no gear/Preferences",
+  "entries": [
+    "SidebarAccountButton",
+    "KeyboardShortcut",
+    "CommandPalette"
+  ]
+}

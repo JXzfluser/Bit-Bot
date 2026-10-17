@@ -1,0 +1,32 @@
+{
+  "events": [
+    {
+      "id": "5e0c933e-6300-4631-8fff-ba358dce76b9",
+      "ts": 1792220946.6116672,
+      "kind": "SidebarContextMenuOpened",
+      "agent_id": "h2-throwaway-agent",
+      "path": "sidebar-context-menu"
+    },
+    {
+      "id": "32cc9142-620c-4593-87de-6b2d98ee465d",
+      "ts": 1792220947.4701173,
+      "kind": "DeleteAgentPhaseChanged",
+      "agent_id": "h2-throwaway-agent",
+      "phase": "requested"
+    },
+    {
+      "id": "7ca9d55d-8890-4527-9d7d-5fc5d492831c",
+      "ts": 1792220947.470124,
+      "kind": "DeleteAgentPhaseChanged",
+      "agent_id": "h2-throwaway-agent",
+      "phase": "awaiting-confirm"
+    },
+    {
+      "id": "3d6a32fc-4cf5-49e9-806c-6bd54dfd5bcf",
+      "ts": 1792220948.3224444,
+      "kind": "DeleteAgentPhaseChanged",
+      "agent_id": "h2-throwaway-agent",
+      "phase": "cancelled"
+    }
+  ]
+}
