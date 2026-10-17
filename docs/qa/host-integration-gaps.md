@@ -166,29 +166,43 @@
 | CM-0705 | 0705 | MACH-06 · D-MACH | PASS (kernel-contract) | **I-PASS（平台子集）**；residual 真手机 OS 卡仍 GAP | gaps.md 升裁 H3·批1 | **I-PASS（平台子集）** H3 |
 | CM-0411 | 0411 | D-RTN | PASS (kernel-contract) | **I-PASS**（Host 面板复制+opaque；见 gaps 升裁 H3·批1） | gaps.md 升裁 H3·批1 | **I-PASS** H3 |
 
-## 全量索引（open GAP；与矩阵 `I-status=GAP` 集合相等）
+## 已 I-PASS（H4）
 
-当前 open = **17**（H3·批1 移出 2158/2174/0705/0411；矩阵 I-status 列待能力对标同步）。**0806 仍 open**。0705 主行已 I-PASS（平台子集）；residual 真手机 OS 卡见「已 I-PASS（H3）」注。
+> **H4·批1（Bit验证 · 2026-10-17 17:07 Asia/Shanghai）**：§4.0 左列全过 → 2163/2164/2146/1703 **I-PASS**。**1105/2109/2120 NOT_READY 拒升**。U=234 / H0–H3 / 0806 不动。
 
 | CM | 短号 | 架构短号 | kernel-contract 主行 | host-integration GAP 摘要 | 来源 | 状态 |
 |----|------|----------|----------------------|---------------------------|------|------|
-| CM-0806 | 0806 | D-DESK | PASS (kernel-contract) | 真 Host UI/实例属 I；H1 Cookies 副本证据按共享会话规则不收（未真 Update Computer） | gaps.md:L553 | open |
-| CM-1105 | 1105 | D-CHAN | PASS (kernel-contract) | 真 Slack OAuth/Details 面板属 Host/I | gaps.md:L249 | open |
-| CM-1601 | 1601 | FILE-05 · D-FILE | PASS (kernel-contract) | 真扩散/Host 出图属 Host/I | gaps.md:L214 | open |
-| CM-1602 | 1602 | FILE-06 · D-FILE | PASS (kernel-contract) | 真文生视频/编码属 Host/I | gaps.md:L97 | open |
-| CM-1603 | 1603 | D-FILE | PASS (kernel-contract) | 真视频解码属 Host/I | gaps.md:L215 | open |
-| CM-1703 | 1703 | D-FILE(tools/web) | PASS (kernel-contract) | 真浏览器/curl 出网属 Host/I | gaps.md:L216 | open |
-| CM-1807 | 1807 | D-SKILL/D-BUY | PASS (kernel-contract) | 真 PPTX 打开属 Host/I | gaps.md:L218 | open |
-| CM-2101 | 2101 | TURN-07 · D-TURN | PASS (kernel-contract) | 真消息 pill 像素属 Host/I | gaps.md:L201 | open |
-| CM-2103 | 2103 | COMM-01 · D-COMM | PASS (kernel-contract) | 真公式/图画渲染属 Host/I | gaps.md:L203 | open |
-| CM-2109 | 2109 | D-补遗 | PASS (kernel-contract) | 真 OAuth 属 Host/I；工具全集 TBD | gaps.md:L104 | open |
-| CM-2120 | 2120 | MAIL-04 · D-MAIL | PASS (kernel-contract) | 真 OAuth 属 Host/I | gaps.md:L189 | open |
-| CM-2128 | 2128 | TURN-07 · D-TURN | PASS (kernel-contract) | 真 pill 像素属 Host/I | gaps.md:L191 | open |
-| CM-2131 | 2131 | D-补遗 | PASS (kernel-contract) | 真卡打开属 Host/I | gaps.md:L169 | open |
-| CM-2146 | 2146 | D-补遗 | PASS (kernel-contract) | 真浏览器会话属 Host/I | gaps.md:L176 | open |
-| CM-2157 | 2157 | FILE-04 · D-FILE | PASS (kernel-contract) | 真图渲染/编码属 Host/I | gaps.md:L89 | open |
-| CM-2163 | 2163 | MCP-06 · D-MCP | PASS (kernel-contract) | 真 Host FFI/MCP 属 I | gaps.md:L127 | open |
-| CM-2164 | 2164 | MCP-07 · D-MCP | PASS (kernel-contract) | 真写盘/MCP 属 I | gaps.md:L128 | open |
+| CM-2163 | 2163 | MCP-06 · D-MCP | PASS (kernel-contract) | **I-PASS**（Host FS `$file:` stdio MCP inject；见 gaps 升裁 H4·批1） | gaps.md 升裁 H4·批1 | **I-PASS** H4 |
+| CM-2164 | 2164 | MCP-07 · D-MCP | PASS (kernel-contract) | **I-PASS**（write_to_file→agent-tools；见 gaps 升裁 H4·批1） | gaps.md 升裁 H4·批1 | **I-PASS** H4 |
+| CM-2146 | 2146 | D-补遗 | PASS (kernel-contract) | **I-PASS**（App/User 异 profile+CDP；见 gaps 升裁 H4·批1） | gaps.md 升裁 H4·批1 | **I-PASS** H4 |
+| CM-1703 | 1703 | D-FILE(tools/web) | PASS (kernel-contract) | **I-PASS**（403→curl 200；无 credential bypass；见 gaps 升裁 H4·批1） | gaps.md 升裁 H4·批1 | **I-PASS** H4 |
+
+## 已 I-PASS（H5）
+
+> **H5·批1（Bit验证 · 2026-10-17 17:07 Asia/Shanghai）**：§6.0 左列全过 → 1601/1602/1603/2157/1807/2131/2101/2128/2103 **I-PASS**。**0806 仍 GAP**。U=234 / H0–H4 不动。
+
+| CM | 短号 | 架构短号 | kernel-contract 主行 | host-integration GAP 摘要 | 来源 | 状态 |
+|----|------|----------|----------------------|---------------------------|------|------|
+| CM-1601 | 1601 | FILE-05 · D-FILE | PASS (kernel-contract) | **I-PASS**（真 PNG magic 89504e47；见 gaps 升裁 H5·批1） | gaps.md 升裁 H5·批1 | **I-PASS** H5 |
+| CM-1602 | 1602 | FILE-06 · D-FILE | PASS (kernel-contract) | **I-PASS**（ffmpeg mp4 + notify；见 gaps 升裁 H5·批1） | gaps.md 升裁 H5·批1 | **I-PASS** H5 |
+| CM-1603 | 1603 | D-FILE | PASS (kernel-contract) | **I-PASS**（抽帧 PNG；见 gaps 升裁 H5·批1） | gaps.md 升裁 H5·批1 | **I-PASS** H5 |
+| CM-2157 | 2157 | FILE-04 · D-FILE | PASS (kernel-contract) | **I-PASS**（Pillow chart PNG；见 gaps 升裁 H5·批1） | gaps.md 升裁 H5·批1 | **I-PASS** H5 |
+| CM-1807 | 1807 | D-SKILL/D-BUY | PASS (kernel-contract) | **I-PASS**（pptx PK zip；见 gaps 升裁 H5·批1） | gaps.md 升裁 H5·批1 | **I-PASS** H5 |
+| CM-2131 | 2131 | D-补遗 | PASS (kernel-contract) | **I-PASS**（卡+隔离开云代理页；见 gaps 升裁 H5·批1） | gaps.md 升裁 H5·批1 | **I-PASS** H5 |
+| CM-2101 | 2101 | TURN-07 · D-TURN | PASS (kernel-contract) | **I-PASS**（C′ pill toggle；见 gaps 升裁 H5·批1） | gaps.md 升裁 H5·批1 | **I-PASS** H5 |
+| CM-2128 | 2128 | TURN-07 · D-TURN | PASS (kernel-contract) | **I-PASS**（end_turn 后 pill；见 gaps 升裁 H5·批1） | gaps.md 升裁 H5·批1 | **I-PASS** H5 |
+| CM-2103 | 2103 | COMM-01 · D-COMM | PASS (kernel-contract) | **I-PASS**（math+mermaid 真帧；见 gaps 升裁 H5·批1） | gaps.md 升裁 H5·批1 | **I-PASS** H5 |
+
+## 全量索引（open GAP；与矩阵 `I-status=GAP` 集合相等）
+
+当前 open = **4**（H4·批1 + H5·批1 移出 13 READY；**0806 / 1105 / 2109 / 2120** 仍 open）。0705 主行已 I-PASS（平台子集）；residual 真手机 OS 卡见「已 I-PASS（H3）」注。
+
+| CM | 短号 | 架构短号 | kernel-contract 主行 | host-integration GAP 摘要 | 来源 | 状态 |
+|----|------|----------|----------------------|---------------------------|------|------|
+| CM-0806 | 0806 | D-DESK | PASS (kernel-contract) | 真 Host UI/实例属 I；H1/H5 Cookies 副本证据按共享会话规则不收（未真 Update Computer）；GAP 注保留 | gaps.md 升裁 H5·批1 | open |
+| CM-1105 | 1105 | D-CHAN | PASS (kernel-contract) | 真 Slack OAuth/Details 面板属 Host/I；smoke NOT_READY（无 sandbox；未 stub） | gaps.md 升裁 H4·批1 | open |
+| CM-2109 | 2109 | D-补遗 | PASS (kernel-contract) | 真 Finance OAuth 属 Host/I；smoke NOT_READY（未 stub） | gaps.md 升裁 H4·批1 | open |
+| CM-2120 | 2120 | MAIL-04 · D-MAIL | PASS (kernel-contract) | 真 Outlook OAuth 属 Host/I；smoke NOT_READY（未 stub） | gaps.md 升裁 H4·批1 | open |
 
 ## 波次对照（roadmap §4；仅索引，不改裁决）
 
@@ -206,8 +220,9 @@
 
 - 主裁决表 gaps **GAP=0**（host-integration 为旁注跟踪，不计入主 GAP 计数）。
 - BB 批 **CM-2157** 已 U-PASS（kernel-contract）；I 仍 open（真图渲染/编码属 Host/I）。
-- 本文件 **open GAP** 与矩阵 `I-status=GAP` **集合必须相等**（当前 17）；已 I-PASS（H0 三行 + H1 三行 + H2 十四行 + H3 四行）单独成节。MoonBit核若已写同路径，合并时保留双方条目、以 gaps 全量扫描为准补缺。
+- 本文件 **open GAP** 与矩阵 `I-status=GAP` **集合必须相等**（当前 **4**）；已 I-PASS（H0 三行 + H1 三行 + H2 十四行 + H3 四行 + H4 四行 + H5 九行 = **37**）单独成节。MoonBit核若已写同路径，合并时保留双方条目、以 gaps 全量扫描为准补缺。
 - **0705 residual**：真手机 OS 权限卡仍 GAP/todo（平台子集 I-PASS 不覆盖路径甲）。
+- **OAuth residual**：CM-1105 / 2109 / 2120 需 sandbox OAuth 后再裁；禁 stub Connected/Ready。
 
 ---
 
@@ -247,15 +262,15 @@
 | CM-0705 | deviceLocalTools：iOS needs_permission→审批卡 | 真手机 OS 权限 / 平台子集 | `box_host/acceptance_cm0705_test.mbt`::acceptance_CM-0705_device_local_tools_needs_permission_card · **I-PASS（平台子集）** `cm-0705-device-local-tools/`（升裁 H3·批1；residual 真手机 OS 卡仍 GAP） |
 | CM-0802 | box-chrome 启动器；拒裸 chrome | 真浏览器进程 | `agents/computer_use/acceptance_cm0802_test.mbt`::acceptance_CM-0802_box_chrome_launcher_not_bare |
 | CM-0806 | Update 后 cookie/登录态仍在 | 真 Host UI / 实例 | `box_host/acceptance_cm0806_1903_1905_test.mbt`::acceptance_CM-0806_login_persist_after_update |
-| CM-1105 | SetUpSlack：connect→Connected；Details 完成流 | 真 Slack OAuth / Details 面板 | `channels/acceptance_cm1105_test.mbt`::acceptance_CM-1105_setup_slack_connect_flow |
+| CM-1105 | SetUpSlack：connect→Connected；Details 完成流 | 真 Slack OAuth / Details 面板 | `channels/acceptance_cm1105_test.mbt`::acceptance_CM-1105_setup_slack_connect_flow · **仍 GAP**（NOT_READY；未 stub） |
 | CM-1401 | CreateAgent 出现在 Members∧侧栏 | 真侧栏 / Members 面板 | `agents/teammates/acceptance_cm1401_test.mbt`::acceptance_CM-1401_create_agent_appears_in_members · **I-PASS** `cm-1401-create-agent-sidebar/`（升裁 H2·批3） |
 | CM-1405 | Members 面板与 app-ui 锚点对齐 | Members 面板 / 真 Host UI | `agents/teammates/acceptance_cm1405_test.mbt`::acceptance_CM-1405_members_panel_matches_app_ui · **I-PASS** `cm-1405-members-panel/`（升裁 H2·批3） |
 | CM-1507 | auto-review / rules / security-keys 深链双射 | Settings UI / 真屏锚点滚动 | `ui_protocol/acceptance_cm1507_test.mbt`::acceptance_CM-1507_auto_review_settings_deeplink_anchors · **I-PASS** `cm-1507-auto-review-deeplink/`（升裁 H2·批3） |
-| CM-1601 | GenerateImage→/workspace 落盘+可投递 | GenerateImage / 真扩散出图 | `tools/media/acceptance_cm1601_test.mbt`::acceptance_CM-1601_generate_image_artifact_deliverable |
-| CM-1602 | GenerateVideo 队列→完成+可通知 | GenerateVideo / 真文生视频编码 | `tools/media/acceptance_cm1602_test.mbt`::acceptance_CM-1602_generate_video_queue_and_notify |
-| CM-1603 | watchVideo：帧抽取→答案 grounded | 真视频解码 | `agents/task/acceptance_cm1603_test.mbt`::acceptance_CM-1603_watch_video_answer_from_frames |
-| CM-1703 | Fetch 403→browser/curl 公共回退；禁凭证旁路 | 真浏览器 / curl 出网 | `tools/acceptance_cm1703_test.mbt`::acceptance_CM-1703_fetch_fail_public_fallback_no_cred_bypass |
-| CM-1807 | slides 生成 pptx（PK magic）可打开 | 真 PPTX 打开 | `skills/acceptance_cm1807_test.mbt`::acceptance_CM-1807_slides_pptx_openable |
+| CM-1601 | GenerateImage→/workspace 落盘+可投递 | GenerateImage / 真扩散出图 | `tools/media/acceptance_cm1601_test.mbt`::acceptance_CM-1601_generate_image_artifact_deliverable · **I-PASS** `cm-1601-generate-image/`（升裁 H5·批1） |
+| CM-1602 | GenerateVideo 队列→完成+可通知 | GenerateVideo / 真文生视频编码 | `tools/media/acceptance_cm1602_test.mbt`::acceptance_CM-1602_generate_video_queue_and_notify · **I-PASS** `cm-1602-generate-video/`（升裁 H5·批1） |
+| CM-1603 | watchVideo：帧抽取→答案 grounded | 真视频解码 | `agents/task/acceptance_cm1603_test.mbt`::acceptance_CM-1603_watch_video_answer_from_frames · **I-PASS** `cm-1603-watch-video/`（升裁 H5·批1） |
+| CM-1703 | Fetch 403→browser/curl 公共回退；禁凭证旁路 | 真浏览器 / curl 出网 | `tools/acceptance_cm1703_test.mbt`::acceptance_CM-1703_fetch_fail_public_fallback_no_cred_bypass · **I-PASS** `cm-1703-fetch-public-fallback/`（升裁 H4·批1） |
+| CM-1807 | slides 生成 pptx（PK magic）可打开 | 真 PPTX 打开 | `skills/acceptance_cm1807_test.mbt`::acceptance_CM-1807_slides_pptx_openable · **I-PASS** `cm-1807-pptx/`（升裁 H5·批1） |
 | CM-1901 | Settings 仅三入口；禁齿轮假路径 | Settings UI | `ui_protocol/acceptance_cm1901_1902_1907_test.mbt`::acceptance_CM-1901_settings_entry_closed_set |
 | CM-1902 | Settings tabs/锚点与深链双射 | Settings UI | `ui_protocol/acceptance_cm1901_1902_1907_test.mbt`::acceptance_CM-1902_settings_anchor_deeplink_bijection |
 | CM-1903 | Update Bot's Computer 两步确认；指引优先于 Reset | Settings UI / 真 Host 实例 | `box_host/acceptance_cm0806_1903_1905_test.mbt`::acceptance_CM-1903_update_computer_two_step_prefer_guide · **I-PASS** `cm-1903-update-computer/`（升裁 H2·批2） |
@@ -263,18 +278,18 @@
 | CM-1905 | local-execution 关闭后拒 machine 调用 | Settings UI / 本机执行闸门 | `box_host/acceptance_cm0806_1903_1905_test.mbt`::acceptance_CM-1905_local_execution_off_rejects_machine · **I-PASS** `cm-1905-local-execution/`（升裁 H2·批2） |
 | CM-1906 | 应用 Updates ≠ Update Computer | Settings UI | `ui_protocol/acceptance_cm1904_1906_test.mbt`::acceptance_CM-1906_update_channel_ne_update_computer · **I-PASS** `cm-1906-updates-vs-update-computer/`（升裁 H2·批2） |
 | CM-1907 | 侧栏右键删除助手+确认；非 Settings | Settings UI / 真侧栏 | `ui_protocol/acceptance_cm1901_1902_1907_test.mbt`::acceptance_CM-1907_delete_agent_confirm_not_settings |
-| CM-2101 | ReactToMessage：pill 可见/toggle | 真消息 pill React | `ui_protocol/acceptance_cm2101_test.mbt`::acceptance_CM-2101_react_to_message_pill_toggle |
-| CM-2103 | Markdown 数学 \( \)/$$ 与 mermaid 解析 | 真公式/图画渲染 | `ui_protocol/acceptance_cm2103_test.mbt`::acceptance_CM-2103_markdown_math_and_mermaid |
-| CM-2109 | user-Finance：NeedsAuth→authenticate→Ready | Finance auth / 真 OAuth | `connectors/acceptance_cm2109_test.mbt`::acceptance_CM-2109_user_finance_connector_needs_auth |
-| CM-2120 | Outlook：NeedsAuth 拒 draft/send；认证后可用 | 真 OAuth | `connectors/mail/acceptance_cm2120_test.mbt`::acceptance_CM-2120_outlook_connector_auth_then_draft_send |
-| CM-2128 | 出站 React end_turn；pill 可见、body 可省略 | 真 pill React 像素 | `ui_protocol/acceptance_cm2128_test.mbt`::acceptance_CM-2128_react_outbound_end_turn_pill_no_body |
-| CM-2131 | cursor-agent 卡：open_cloud→cursor.com/agents/\<bcId\> | 真卡打开 | `ui_protocol/acceptance_cm2131_test.mbt`::acceptance_CM-2131_cursor_agent_card_opens_cloud |
-| CM-2146 | 连接器 App vs 用户身份：须切已登录浏览器 | 真浏览器会话 | `connectors/acceptance_cm2146_test.mbt`::acceptance_CM-2146_connector_app_vs_user_identity_browser |
-| CM-2157 | StructuredChart→/workspace 落盘+可投递 | 真图渲染/编码 | `tools/media/acceptance_cm2157_test.mbt`::acceptance_CM-2157_structured_chart_file_deliverable |
+| CM-2101 | ReactToMessage：pill 可见/toggle | 真消息 pill React | `ui_protocol/acceptance_cm2101_test.mbt`::acceptance_CM-2101_react_to_message_pill_toggle · **I-PASS** `cm-2101-react-pill/`（升裁 H5·批1） |
+| CM-2103 | Markdown 数学 \( \)/$$ 与 mermaid 解析 | 真公式/图画渲染 | `ui_protocol/acceptance_cm2103_test.mbt`::acceptance_CM-2103_markdown_math_and_mermaid · **I-PASS** `cm-2103-math-mermaid/`（升裁 H5·批1） |
+| CM-2109 | user-Finance：NeedsAuth→authenticate→Ready | Finance auth / 真 OAuth | `connectors/acceptance_cm2109_test.mbt`::acceptance_CM-2109_user_finance_connector_needs_auth · **仍 GAP**（NOT_READY；未 stub） |
+| CM-2120 | Outlook：NeedsAuth 拒 draft/send；认证后可用 | 真 OAuth | `connectors/mail/acceptance_cm2120_test.mbt`::acceptance_CM-2120_outlook_connector_auth_then_draft_send · **仍 GAP**（NOT_READY；未 stub） |
+| CM-2128 | 出站 React end_turn；pill 可见、body 可省略 | 真 pill React 像素 | `ui_protocol/acceptance_cm2128_test.mbt`::acceptance_CM-2128_react_outbound_end_turn_pill_no_body · **I-PASS** `cm-2128-react-end-turn/`（升裁 H5·批1） |
+| CM-2131 | cursor-agent 卡：open_cloud→cursor.com/agents/\<bcId\> | 真卡打开 | `ui_protocol/acceptance_cm2131_test.mbt`::acceptance_CM-2131_cursor_agent_card_opens_cloud · **I-PASS** `cm-2131-cursor-agent-card/`（升裁 H5·批1） |
+| CM-2146 | 连接器 App vs 用户身份：须切已登录浏览器 | 真浏览器会话 | `connectors/acceptance_cm2146_test.mbt`::acceptance_CM-2146_connector_app_vs_user_identity_browser · **I-PASS** `cm-2146-app-vs-user-browser/`（升裁 H4·批1） |
+| CM-2157 | StructuredChart→/workspace 落盘+可投递 | 真图渲染/编码 | `tools/media/acceptance_cm2157_test.mbt`::acceptance_CM-2157_structured_chart_file_deliverable · **I-PASS** `cm-2157-structured-chart/`（升裁 H5·批1） |
 | CM-2158 | apt/npm 经 Shell；拒 non-Shell | apt/npm Shell | `box_host/acceptance_cm2158_test.mbt`::acceptance_CM-2158_box_package_install_via_shell · **I-PASS** `cm-2158-package-install/`（升裁 H3·批1） |
 | CM-2160 | 浏览器导航：公开页可达 | browser Navigate | `agents/computer_use/acceptance_cm2160_test.mbt`::acceptance_CM-2160_browser_navigate_public_reachable |
-| CM-2163 | MCP `$file:` 从 Host FS 注入；chat 仅 ref | MCP `$file` / Host FS | `tools/acceptance_cm2163_2164_test.mbt`::acceptance_CM-2163_mcp_file_arg_expand_no_chat_bloat |
-| CM-2164 | MCP write_to_file→`/workspace/agent-tools/`；返回路径 | MCP write_to_file / 真写盘 | `tools/acceptance_cm2163_2164_test.mbt`::acceptance_CM-2164_mcp_write_to_file_returns_path |
+| CM-2163 | MCP `$file:` 从 Host FS 注入；chat 仅 ref | MCP `$file` / Host FS | `tools/acceptance_cm2163_2164_test.mbt`::acceptance_CM-2163_mcp_file_arg_expand_no_chat_bloat · **I-PASS** `cm-2163-mcp-file-expand/`（升裁 H4·批1） |
+| CM-2164 | MCP write_to_file→`/workspace/agent-tools/`；返回路径 | MCP write_to_file / 真写盘 | `tools/acceptance_cm2163_2164_test.mbt`::acceptance_CM-2164_mcp_write_to_file_returns_path · **I-PASS** `cm-2164-mcp-write-to-file/`（升裁 H4·批1） |
 | CM-2174 | 跨代理共享 box FS + 独立桌面 | Shared FS | `box_host/acceptance_cm2174_test.mbt`::acceptance_CM-2174_cross_agent_shared_box_fs_charter · **I-PASS** `cm-2174-shared-box-fs/`（升裁 H3·批1） |
 | CM-2175 | box 时钟对齐用户时区（Asia/Shanghai） | box clock | `box_host/acceptance_cm2175_test.mbt`::acceptance_CM-2175_box_clock_aligns_user_timezone · **I-PASS H0** |
 | CM-2178 | 缺权限导引 Settings；禁止假装已连接 | Settings UI | `ui_protocol/acceptance_cm2178_test.mbt`::acceptance_CM-2178_missing_permission_guide_settings_not_pretend · **I-PASS** `cm-2178-permission-guide-settings/`（升裁 H2·批3） |
@@ -293,11 +308,11 @@
 | **Settings / HostUiShell** | `open_settings`、锚点滚动、侧栏右键 Delete、local-execution 闸门、Update/Reset Computer 真实例流 | CM-1901–1907, CM-0206, CM-1507, CM-2178 |
 | **侧栏 / Members / Info 面板** | 真像素：hidden 不占主列表、CreateAgent 入侧栏、Members 与 app-ui 对齐、五锚点面板 | CM-0204, CM-0205, CM-1401, CM-1405 |
 | **真 OAuth / 连接面板** | Slack Details、Outlook、user-Finance 真鉴权窗；非 stub authenticate | CM-1105, CM-2120, CM-2109 |
-| **浏览器 / Navigate** | box-chrome 真进程、公开页导航、已登录用户浏览器会话、Fetch 失败公共回退出网 | CM-0802, CM-2160, CM-2146, CM-1703 |
-| **媒体编解码** | 真扩散出图、文生视频、视频解码、图表渲染/编码、PPTX 宿主打开 | CM-1601, CM-1602, CM-1603, CM-2157, CM-1807 |
+| **浏览器 / Navigate** | box-chrome 真进程、公开页导航、已登录用户浏览器会话、Fetch 失败公共回退出网 | **CM-0802 / 2160 = I-PASS H1**；**CM-2146 / 1703 = I-PASS H4** |
+| **媒体编解码** | 真扩散出图、文生视频、视频解码、图表渲染/编码、PPTX 宿主打开 | **CM-1601 / 1602 / 1603 / 2157 / 1807 = I-PASS H5** |
 | **Shell / 包 / 时钟 / FS** | 真 apt/npm、`date` 对齐用户区、跨代理 Shared FS、`/.dockerenv` / box-doctor 真探针 | **CM-2158 / CM-2174 = I-PASS H3**；**CM-2175 / CM-0608 / CM-0607 = I-PASS H0** |
-| **MCP Host FFI** | `$file:` 真 Host FS 注入；`write_to_file` 真写盘返回路径 | CM-2163, CM-2164 |
-| **UI 像素（pill / 卡 / 数学）** | 真消息 React pill、cursor-agent 卡打开、math/mermaid 渲染 | CM-2101, CM-2128, CM-2131, CM-2103 |
+| **MCP Host FFI** | `$file:` 真 Host FS 注入；`write_to_file` 真写盘返回路径 | **CM-2163 / 2164 = I-PASS H4** |
+| **UI 像素（pill / 卡 / 数学）** | 真消息 React pill、cursor-agent 卡打开、math/mermaid 渲染 | **CM-2101 / 2128 / 2131 / 2103 = I-PASS H5** |
 | **设备 / 登录持久** | 真手机 OS 权限卡；Update 后真 cookie/登录保留 | **CM-0705 = I-PASS（平台子集）H3**（residual 真手机 OS 卡仍 GAP）；CM-0806 仍 open |
 | **Webhook 面板** | 真面板复制 URL/key（助手仍不可见 key） | **CM-0411 = I-PASS H3** |
 

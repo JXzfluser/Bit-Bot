@@ -923,6 +923,14 @@ Smoke: `moon check` ✅ · `moon test` **296** passed / 0 failed（目标 290+6�
 - CM-2146: isolated throwaway Chrome profiles + private Xvfb/CDP (never 9223 / `/home/box/chrome-profile`); CM-1703: real 403 → curl public fallback; auth-wall `credential_bypass=false`.
 - Kernel skeleton already in `box_host/h4_probes.mbt` (`H4IoEvidence` / `run_h4_probe`; `i_claimed=false`). U acceptance tests **untouched**. Do **not** flip matrix I-PASS here.
 
+### H4/H5 Bit验证升裁（2026-10-17 17:07 Asia/Shanghai）
+
+**Bit验证 promoted H4/H5 READY → I-PASS.** I-PASS **24→37**；open GAP **17→4**（**0806 / 1105 / 2109 / 2120**）。U=234 不动。详见 `docs/qa/gaps.md`「升裁 H4·批1」「升裁 H5·批1」与 `host-integration-gaps.md`。
+
+- **H4 I-PASS**: CM-2163 / 2164 / 2146 / 1703（左列 READY 全过）。
+- **H5 I-PASS**: CM-1601 / 1602 / 1603 / 2157 / 1807 / 2131 / 2101 / 2128 / 2103。
+- **拒升（GAP 保留）**: CM-1105 / 2109 / 2120（NOT_READY OAuth）；CM-0806（仍 GAP / NOT_READY residual）。
+
 ## HostAbi Live H5 smoke (MoonBit核 · 2026-10-17 Asia/Shanghai)
 
 **H5 smoke landed; I not claimed (`i_claimed=false`). Matrix I-status unchanged — Bit验证 decides. Do not demote U=234. Do not delete open GAP rows (esp CM-0806).**
@@ -933,3 +941,4 @@ Smoke: `moon check` ✅ · `moon test` **296** passed / 0 failed（目标 290+6�
 - UI C′ paths: HostUiShell `/api/host/*` pills (2101/2128), math/mermaid SVG (2103), cursor-agent card + isolated chrome open (2131); never CDP 9223 / chrome-profile.
 - Residuals: CM-0806 **NOT_READY** (shared session rule — no cookie copy); CM-0705 platform_subset reinforced only.
 - Kernel: `box_host/h5_probes.mbt` (`H5MediaEvidence` / `run_h5_probe`; `i_claimed=false`). Mock MediaHost U tests **untouched**.
+- **Bit验证（17:07）**: 上列九 READY 已升 I-PASS；0806 GAP 保留（见上「H4/H5 Bit验证升裁」）。
