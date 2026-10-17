@@ -2339,7 +2339,13 @@ pub fn run_desktop_turn(
           )
         }
         @skills.Fallback(path~, hint~) => {
-          let effect : DesktopEffect = {
+          // Local ICS still materializes on Host; browser fallback is separate (CM-1801).
+          let ics_effect : DesktopEffect = {
+            kind: "schedule_meeting",
+            command: "evt-local|" + title + "|" + when_desc,
+            needs_host_ffi: true,
+          }
+          let cu_effect : DesktopEffect = {
             kind: "computer_use",
             command: "scheduling-fallback:" + path.label() + " :: " + hint,
             needs_host_ffi: true,
@@ -2350,10 +2356,10 @@ pub fn run_desktop_turn(
             turn_id,
             "Scheduling fallback (" +
             path.label() +
-            "): calendar connector NeedsAuth — Host opens browser fallback (CM-1801). Hint kept in effect command.",
+            "): calendar connector NeedsAuth — Host writes local ICS + browser fallback (CM-1801). Hint kept in effect command.",
             intent,
             ctx~,
-            effects=[effect],
+            effects=[ics_effect, cu_effect],
             needs_host_ffi=true,
           )
         }

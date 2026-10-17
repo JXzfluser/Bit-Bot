@@ -129,6 +129,8 @@
 - [x] Host approval_card CM-0105-shaped widget options + Desktop interactive Approve/Dismiss card
 - [x] Host cloud_agent_launch CM-2131 cursor-agent SendToUser card (`type=cursor-agent` + open_url) + Desktop render
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
+- [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn
+- [x] Host schedule_meeting materializes real `.ics` (VCALENDAR/VEVENT) under `data/calendar/` + SendToUser attachment
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN

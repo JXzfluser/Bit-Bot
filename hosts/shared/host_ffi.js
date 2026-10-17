@@ -1688,7 +1688,7 @@ function createHostFfi(repoRoot) {
     if (kind === "room_turn" || kind === "send_to_agent" || kind === "subagent_run") {
       return null; // SendToUser already recorded in multi-agent handlers
     }
-    if (kind === "voice_session" || kind === "voice_relay" || kind === "voice_end_write") {
+    if (kind === "voice_session" || kind === "voice_end_write") {
       return recordSendToUser({
         type: "voice",
         voice_address: parsed.voice_address || "",
@@ -1697,6 +1697,9 @@ function createHostFfi(repoRoot) {
         source_kind: kind,
         at,
       });
+    }
+    if (kind === "voice_relay" || kind === "schedule_meeting") {
+      return null; // SendToUser already recorded in effect handlers
     }
     if (kind === "oauth") {
       return recordSendToUser({
@@ -3158,6 +3161,148 @@ function createHostFfi(repoRoot) {
     }
   }
 
+  function synthesizeVoiceWav(outPath, { frequency = 440, duration = 0.35 } = {}) {
+    try {
+      const { execFileSync } = require("child_process");
+      const ffmpeg = process.env.FFMPEG || "ffmpeg";
+      fs.mkdirSync(path.dirname(outPath), { recursive: true });
+      execFileSync(
+        ffmpeg,
+        [
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          `sine=frequency=${frequency}:duration=${duration}`,
+          "-ar",
+          "16000",
+          "-ac",
+          "1",
+          outPath,
+        ],
+        { stdio: "ignore", timeout: 15000 },
+      );
+      if (fs.existsSync(outPath) && fs.statSync(outPath).size > 44) {
+        return {
+          ok: true,
+          path: outPath,
+          bytes: fs.statSync(outPath).size,
+          tool: "ffmpeg-sine",
+        };
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        path: outPath,
+        bytes: 0,
+        error: err.message || String(err),
+      };
+    }
+    return { ok: false, path: outPath, bytes: 0 };
+  }
+
+  async function executeVoiceRelay(command) {
+    const at = new Date().toISOString();
+    const cmd = String(command || "");
+    const sep = cmd.indexOf(" :: ");
+    const address = sep >= 0 ? cmd.slice(0, sep) : cmd;
+    const text = sep >= 0 ? cmd.slice(sep + 4) : "";
+    const rows = readJsonArray(VOICE_SESSIONS_PATH);
+    let row = rows.find((r) => r && r.voice_address === address);
+    if (!row) {
+      row = { voice_address: address, live: true, relay_log: [], at };
+      rows.push(row);
+    }
+    row.relay_log = Array.isArray(row.relay_log) ? row.relay_log : [];
+    row.relay_log.push({ role: "user", text, at });
+    row.at = at;
+
+    const mediaDir = path.join(REPO_ROOT, "data", "voice", "media");
+    fs.mkdirSync(mediaDir, { recursive: true });
+    const slug = String(address)
+      .replace(/[^a-zA-Z0-9._-]+/g, "_")
+      .slice(0, 64);
+    if (!row.media_path) {
+      row.media_path = path.join(mediaDir, `${slug || "voice"}.wav`);
+    }
+    const transcript = path.join(
+      path.dirname(row.media_path),
+      path.basename(row.media_path, path.extname(row.media_path)) +
+        ".transcript.jsonl",
+    );
+    appendJsonl(transcript, { role: "user", text, at });
+    row.transcript_path = transcript;
+
+    // Host voice reply: MoonBit worker text + reply WAV (CHARTER SendToUser voice).
+    const worker = await runWorkerMoonTurn({
+      prompt: text || "voice ping",
+      sessionId: `voice-${slug || "session"}`,
+    });
+    const replyText =
+      worker.assistant ||
+      (worker.nested_skipped
+        ? "(voice nest skipped)"
+        : "Bit Bot voice ack.");
+    const replyWav = path.join(
+      mediaDir,
+      `${slug || "voice"}-reply-${row.relay_log.length}.wav`,
+    );
+    const replyMedia = synthesizeVoiceWav(replyWav, {
+      frequency: 660,
+      duration: 0.3,
+    });
+    row.relay_log.push({
+      role: "assistant",
+      text: replyText.slice(0, 2000),
+      media_path: replyMedia.path,
+      media_ok: Boolean(replyMedia.ok),
+      at: new Date().toISOString(),
+    });
+    appendJsonl(transcript, {
+      role: "assistant",
+      text: replyText.slice(0, 2000),
+      media_path: replyMedia.path,
+      media_ok: Boolean(replyMedia.ok),
+      at: new Date().toISOString(),
+    });
+    row.reply_media_path = replyMedia.path;
+    row.reply_media_ok = Boolean(replyMedia.ok);
+    writeJsonArray(VOICE_SESSIONS_PATH, rows);
+
+    const delivery = recordSendToUser({
+      type: "voice",
+      voice_address: address,
+      media_path: replyMedia.path,
+      media_ok: Boolean(replyMedia.ok),
+      reply_prefix: replyText.slice(0, 120),
+      turns: row.relay_log.length,
+      source_kind: "voice_relay",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "voice_relay",
+      command: cmd,
+      path: VOICE_SESSIONS_PATH,
+      turns: row.relay_log.length,
+      reply_media_ok: Boolean(replyMedia.ok),
+      at,
+    });
+    return okJson("voice_relay", cmd, {
+      voice_address: address,
+      turns: row.relay_log.length,
+      path: VOICE_SESSIONS_PATH,
+      media_path: row.media_path || null,
+      transcript_path: transcript,
+      reply: replyText.slice(0, 2000),
+      reply_media_path: replyMedia.path,
+      reply_media_ok: Boolean(replyMedia.ok),
+      reply_media_bytes: replyMedia.bytes || 0,
+      worker_ok: Boolean(worker.ok),
+      nested_skipped: Boolean(worker.nested_skipped),
+      send_to_user: delivery,
+    });
+  }
+
   async function executeMultiAgentEffect(kind, command) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
@@ -3578,45 +3723,7 @@ function createHostFfi(repoRoot) {
       });
     }
 
-    if (kind === "voice_relay") {
-      const sep = cmd.indexOf(" :: ");
-      const address = sep >= 0 ? cmd.slice(0, sep) : cmd;
-      const text = sep >= 0 ? cmd.slice(sep + 4) : "";
-      const rows = readJsonArray(VOICE_SESSIONS_PATH);
-      let row = rows.find((r) => r && r.voice_address === address);
-      if (!row) {
-        row = { voice_address: address, live: true, relay_log: [], at };
-        rows.push(row);
-      }
-      row.relay_log = Array.isArray(row.relay_log) ? row.relay_log : [];
-      row.relay_log.push({ role: "user", text, at });
-      row.at = at;
-      // Append relay transcript beside media (SendToUser voice surface).
-      if (row.media_path) {
-        const transcript = path.join(
-          path.dirname(row.media_path),
-          path.basename(row.media_path, path.extname(row.media_path)) +
-            ".transcript.jsonl",
-        );
-        appendJsonl(transcript, { role: "user", text, at });
-        row.transcript_path = transcript;
-      }
-      writeJsonArray(VOICE_SESSIONS_PATH, rows);
-      appendHostDeliveryJournal({
-        kind,
-        command: cmd,
-        path: VOICE_SESSIONS_PATH,
-        turns: row.relay_log.length,
-        at,
-      });
-      return okJson(kind, cmd, {
-        voice_address: address,
-        turns: row.relay_log.length,
-        path: VOICE_SESSIONS_PATH,
-        media_path: row.media_path || null,
-        transcript_path: row.transcript_path || null,
-      });
-    }
+    // voice_relay → executeVoiceRelay (async: worker reply + reply WAV)
 
     if (kind === "voice_end_write") {
       const parts = cmd.split("|");
@@ -3810,16 +3917,58 @@ function createHostFfi(repoRoot) {
 
     if (kind === "schedule_meeting") {
       const parts = cmd.split("|");
+      const eventId = parts[0] || `evt-${Date.now().toString(36)}`;
+      const title = parts[1] || "Meeting";
+      const when = parts.slice(2).join("|") || "unspecified";
+      const calDir = path.join(REPO_ROOT, "data", "calendar");
+      fs.mkdirSync(calDir, { recursive: true });
+      const icsPath = path.join(
+        calDir,
+        `${sanitizeSkillName(eventId) || "event"}.ics`,
+      );
+      const stamp = at.replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+      const ics = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Bit Bot//Host Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        `UID:${eventId}@bitbot.local`,
+        `DTSTAMP:${stamp}`,
+        `SUMMARY:${String(title).replace(/\r?\n/g, " ")}`,
+        `DESCRIPTION:Scheduled via Host FFI when=${String(when).replace(/\r?\n/g, " ")}`,
+        `STATUS:CONFIRMED`,
+        "END:VEVENT",
+        "END:VCALENDAR",
+        "",
+      ].join("\r\n");
+      fs.writeFileSync(icsPath, ics);
       const entry = {
-        event_id: parts[0] || `evt-${Date.now().toString(36)}`,
-        title: parts[1] || "",
-        when: parts.slice(2).join("|") || "",
+        event_id: eventId,
+        title,
+        when,
         connector: "calendar",
+        ics_path: icsPath,
+        ics_ok: fs.existsSync(icsPath) && fs.readFileSync(icsPath, "utf8").includes("BEGIN:VEVENT"),
         at,
       };
       const pathWritten = appendJsonl(CALENDAR_EVENTS_PATH, entry);
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten, scheduled: true });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: icsPath,
+        label: "calendar.ics",
+        event_id: eventId,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, ics: icsPath, at });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: pathWritten,
+        scheduled: true,
+        send_to_user: delivery,
+      });
     }
 
     if (kind === "purchase") {
@@ -4104,6 +4253,10 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "export_pack") {
         results.push(executeExportPack(cmd));
+        continue;
+      }
+      if (kind === "voice_relay") {
+        results.push(await executeVoiceRelay(cmd));
         continue;
       }
       if (
