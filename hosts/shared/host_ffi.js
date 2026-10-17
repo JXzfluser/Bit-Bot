@@ -546,9 +546,14 @@ function createHostFfi(repoRoot) {
     if (addr.startsWith("slack:")) {
       const envToken = String(process.env.SLACK_BOT_TOKEN || "").trim();
       const connectorToken = extractAccessToken(connectorHint);
-      const token = envToken || (connectorToken && !String(connectorToken).startsWith("sandbox:")
-        ? connectorToken
-        : envToken);
+      // Only real Slack bot tokens are live — rehearsal tokens (sandbox:/remote_cb:/…) stay draft.
+      const looksLiveSlack = (t) =>
+        /^(xox[baprs]-)/i.test(String(t || "").trim());
+      const token = looksLiveSlack(envToken)
+        ? envToken
+        : looksLiveSlack(connectorToken)
+          ? connectorToken
+          : "";
       const slackParts = addr.slice("slack:".length).split(":").filter(Boolean);
       const channelId = slackParts[0] || "";
       const threadTs = slackParts[1] || "";
