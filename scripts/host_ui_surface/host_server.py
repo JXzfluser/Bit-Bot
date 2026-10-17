@@ -57,6 +57,32 @@ STATE = {
         "permission_label": None,
         "shown": False,
     },
+    # H5 CM-2101 / 2128 — chat message + emoji reaction pill
+    "chatMessages": [
+        {
+            "id": "msg-h5-1",
+            "role": "assistant",
+            "text": "H5 sample message for ReactToMessage pill.",
+            "reactions": {},
+        }
+    ],
+    "reactPill": {"message_id": None, "emoji": None, "visible": False},
+    "endTurnLeftPill": False,
+    # H5 CM-2103 math / mermaid render surface
+    "mathMermaid": {
+        "open": False,
+        "math_tex": None,
+        "math_rendered": False,
+        "mermaid_src": None,
+        "mermaid_rendered": False,
+    },
+    # H5 CM-2131 cursor-agent card
+    "cursorAgentCard": {
+        "open": False,
+        "agent_id": None,
+        "url": None,
+        "shown": False,
+    },
     "surface": "bit-bot-host-ui",
     "i_claimed": False,
     # CM-1507: page→Host DOM viewport receipt after render (scrollTop/boundingRect)
@@ -751,6 +777,178 @@ def apply_show_device_permission_card(machine_id, tool_name, permission_label="n
         return {"state": dict(STATE), "card": dict(STATE["devicePermissionCard"]), "audit": span}
 
 
+def _find_message(message_id: str):
+    for m in STATE["chatMessages"]:
+        if m["id"] == message_id:
+            return m
+    return None
+
+
+def apply_react_to_message(message_id: str, emoji: str, toggle: bool = True):
+    """H5 CM-2101: show/toggle emoji reaction pill on a message via Host API."""
+    with LOCK:
+        mid = message_id or "msg-h5-1"
+        emo = emoji or "👍"
+        msg = _find_message(mid)
+        if msg is None:
+            msg = {
+                "id": mid,
+                "role": "assistant",
+                "text": "H5 message",
+                "reactions": {},
+            }
+            STATE["chatMessages"].append(msg)
+        reactions = dict(msg.get("reactions") or {})
+        if toggle and emo in reactions:
+            del reactions[emo]
+            visible = len(reactions) > 0
+            active = next(iter(reactions), None)
+        else:
+            reactions[emo] = reactions.get(emo, 0) + 1
+            visible = True
+            active = emo
+        msg["reactions"] = reactions
+        STATE["reactPill"] = {
+            "message_id": mid,
+            "emoji": active,
+            "visible": visible,
+            "reactions": dict(reactions),
+        }
+        STATE["settingsOpen"] = False
+        STATE["infoPanel"] = dict(STATE["infoPanel"], open=False)
+        STATE["rev"] += 1
+        _push_event(
+            "ReactPillChanged",
+            message_id=mid,
+            emoji=active,
+            visible=visible,
+            reactions=dict(reactions),
+        )
+        span = _audit(
+            "host_ui:react_to_message",
+            True,
+            f"pill message={mid} emoji={active} visible={visible}",
+        )
+        return {
+            "state": dict(STATE),
+            "pill": dict(STATE["reactPill"]),
+            "audit": span,
+        }
+
+
+def apply_end_turn(leave_pill: bool = True):
+    """H5 CM-2128: end_turn leaves reaction pill visible for LiveDisplay frame."""
+    with LOCK:
+        leave = bool(leave_pill)
+        pill = STATE.get("reactPill") or {}
+        if leave and not pill.get("visible"):
+            mid = pill.get("message_id") or "msg-h5-1"
+            emo = pill.get("emoji") or "🎉"
+            msg = _find_message(mid)
+            if msg is None:
+                msg = {
+                    "id": mid,
+                    "role": "assistant",
+                    "text": "H5 outbound react end_turn",
+                    "reactions": {},
+                }
+                STATE["chatMessages"].append(msg)
+            reactions = dict(msg.get("reactions") or {})
+            reactions[emo] = reactions.get(emo, 0) + 1
+            msg["reactions"] = reactions
+            STATE["reactPill"] = {
+                "message_id": mid,
+                "emoji": emo,
+                "visible": True,
+                "reactions": dict(reactions),
+            }
+        STATE["endTurnLeftPill"] = leave and bool(
+            (STATE.get("reactPill") or {}).get("visible")
+        )
+        STATE["rev"] += 1
+        _push_event(
+            "EndTurn",
+            leave_pill=leave,
+            pill_visible=bool((STATE.get("reactPill") or {}).get("visible")),
+            emoji=(STATE.get("reactPill") or {}).get("emoji"),
+        )
+        span = _audit(
+            "host_ui:end_turn",
+            True,
+            f"end_turn leave_pill={leave} pill_visible={STATE['endTurnLeftPill']}",
+        )
+        return {
+            "state": dict(STATE),
+            "end_turn_left_pill": STATE["endTurnLeftPill"],
+            "pill": dict(STATE.get("reactPill") or {}),
+            "audit": span,
+        }
+
+
+def apply_show_math_mermaid(math_tex: str | None = None, mermaid_src: str | None = None):
+    """H5 CM-2103: Host surfaces math + mermaid (SVG fallback on page)."""
+    with LOCK:
+        math_tex = math_tex or r"E = mc^2"
+        mermaid_src = mermaid_src or "flowchart LR; A-->B-->C"
+        STATE["mathMermaid"] = {
+            "open": True,
+            "math_tex": math_tex,
+            "math_rendered": True,
+            "mermaid_src": mermaid_src,
+            "mermaid_rendered": True,
+        }
+        STATE["settingsOpen"] = False
+        STATE["rev"] += 1
+        _push_event(
+            "MathMermaidShown",
+            math_tex=math_tex,
+            mermaid_src=mermaid_src,
+            math_rendered=True,
+            mermaid_rendered=True,
+        )
+        span = _audit(
+            "host_ui:show_math_mermaid",
+            True,
+            f"math+mermaid open tex={math_tex!r}",
+        )
+        return {
+            "state": dict(STATE),
+            "mathMermaid": dict(STATE["mathMermaid"]),
+            "audit": span,
+        }
+
+
+def apply_show_cursor_agent_card(agent_id: str | None = None, url: str | None = None):
+    """H5 CM-2131: show cursor-agent card with cloud agent URL (throwaway id)."""
+    with LOCK:
+        aid = agent_id or "h5-throwaway-agent"
+        open_url = url or f"https://cursor.com/agents/{aid}"
+        STATE["cursorAgentCard"] = {
+            "open": True,
+            "agent_id": aid,
+            "url": open_url,
+            "shown": True,
+        }
+        STATE["settingsOpen"] = False
+        STATE["rev"] += 1
+        _push_event(
+            "CursorAgentCardShown",
+            agent_id=aid,
+            url=open_url,
+            shown=True,
+        )
+        span = _audit(
+            "host_ui:show_cursor_agent_card",
+            True,
+            f"card agent={aid} url={open_url}",
+        )
+        return {
+            "state": dict(STATE),
+            "card": dict(STATE["cursorAgentCard"]),
+            "audit": span,
+        }
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -888,6 +1086,23 @@ class Handler(SimpleHTTPRequestHandler):
                 data.get("machine_id") or "phone-ios",
                 data.get("tool_name") or "camera",
                 data.get("permission_label") or "needs_permission"))
+        if path == "/api/host/react_to_message":
+            return self._json(200, apply_react_to_message(
+                data.get("message_id") or "msg-h5-1",
+                data.get("emoji") or "👍",
+                bool(data.get("toggle", True)) if "toggle" in data else True,
+            ))
+        if path == "/api/host/end_turn":
+            leave = data.get("leave_pill")
+            if leave is None:
+                leave = True
+            return self._json(200, apply_end_turn(bool(leave)))
+        if path == "/api/host/show_math_mermaid":
+            return self._json(200, apply_show_math_mermaid(
+                data.get("math_tex"), data.get("mermaid_src")))
+        if path == "/api/host/show_cursor_agent_card":
+            return self._json(200, apply_show_cursor_agent_card(
+                data.get("agent_id"), data.get("url")))
         self._json(404, {"error": "unknown HostUiShell route", "path": path})
 
 

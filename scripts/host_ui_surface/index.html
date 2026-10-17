@@ -77,6 +77,25 @@
   .anchor-marker { display:none; margin-top:6px; font:11px/1.2 ui-monospace,monospace; color:var(--accent); }
   .section.highlight .anchor-marker { display:inline-block; }
   #settings-scroll-spacer { height:0; pointer-events:none; }
+  #webhook-panel, #device-perm-card { display:none; margin-top:16px; max-width:560px; }
+  #webhook-panel.open, #device-perm-card.open { display:block; }
+  #device-perm-card.open { position:fixed; inset:0; background:#0008; z-index:35; display:flex; align-items:center; justify-content:center; max-width:none; margin:0; }
+  #device-perm-card .card { background:var(--panel); border:1px solid #ffb74d; border-radius:10px; padding:20px; width:360px; }
+  #h5-chat { display:none; margin-top:16px; max-width:640px; }
+  #h5-chat.open { display:block; }
+  .h5-msg { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; }
+  .h5-msg .role { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .react-pill { display:inline-flex; align-items:center; gap:4px; margin-top:10px; padding:4px 10px; border:1px solid var(--border); border-radius:14px; background:#222733; font-size:14px; }
+  .react-pill.hidden { display:none; }
+  .react-pill.on { border-color:var(--accent); background:#1c2433; }
+  #h5-math-mermaid { display:none; margin-top:16px; max-width:720px; }
+  #h5-math-mermaid.open { display:block; }
+  .math-block { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:12px; }
+  .math-svg { font-family:"Times New Roman",Times,serif; font-size:28px; color:var(--text); }
+  .mermaid-svg { background:#141820; border:1px solid var(--border); border-radius:8px; padding:12px; }
+  #h5-cursor-card { display:none; margin-top:16px; max-width:560px; background:#121820; border:1px solid var(--accent); border-radius:10px; padding:16px; }
+  #h5-cursor-card.open { display:block; }
+  #h5-cursor-card a { color:var(--accent); word-break:break-all; }
 </style>
 </head>
 <body>
@@ -124,6 +143,29 @@
       <strong>Permission missing</strong> <span class="conn-status" id="pg-status">Not connected</span>
       <p id="pg-text" style="margin:8px 0;color:var(--muted)"></p>
       <a id="pg-link" href="#" style="color:var(--accent)">Open Settings</a>
+    </div>
+    <div id="h5-chat" role="log" aria-label="H5 chat with reaction pills">
+      <strong>Chat · ReactToMessage</strong>
+      <div id="h5-msg-list"></div>
+    </div>
+    <div id="h5-math-mermaid" role="region" aria-label="Math and mermaid render">
+      <strong>Math / Mermaid</strong>
+      <div class="math-block">
+        <div style="color:var(--muted);font-size:12px;margin-bottom:8px">KaTeX-class formula (SVG fallback)</div>
+        <div id="h5-math" class="math-svg" aria-label="rendered math"></div>
+        <code id="h5-math-src" style="display:block;margin-top:8px;color:var(--muted);font-size:11px"></code>
+      </div>
+      <div class="math-block">
+        <div style="color:var(--muted);font-size:12px;margin-bottom:8px">Mermaid flowchart (SVG)</div>
+        <div id="h5-mermaid" class="mermaid-svg" aria-label="rendered mermaid"></div>
+        <code id="h5-mermaid-src" style="display:block;margin-top:8px;color:var(--muted);font-size:11px"></code>
+      </div>
+    </div>
+    <div id="h5-cursor-card" role="region" aria-label="Cursor agent card">
+      <strong>Cursor Agent</strong>
+      <p id="h5-cursor-id" style="color:var(--muted);margin:8px 0"></p>
+      <a id="h5-cursor-url" href="#" target="_blank" rel="noopener">Open cloud agent</a>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">Throwaway card · never shared CDP 9223</div>
     </div>
     <section id="settings" aria-label="Settings">
       <header>
@@ -233,6 +275,74 @@ function applyH3HostOverlays(s) {
         `${dc.tool_name} on ${dc.machine_id} · ${dc.permission_label} — OS permission required`;
       dpc.classList.add('open');
     } else { dpc.classList.remove('open'); }
+  }
+}
+
+/** H5: reaction pills, math/mermaid, cursor-agent card (driven by /api/host/*). */
+function applyH5HostOverlays(s) {
+  const chat = document.getElementById('h5-chat');
+  const list = document.getElementById('h5-msg-list');
+  const msgs = (s && s.chatMessages) || [];
+  const pill = (s && s.reactPill) || {};
+  const showChat = pill.visible || (s && s.endTurnLeftPill) ||
+    msgs.some(m => m.reactions && Object.keys(m.reactions).length);
+  if (chat && list) {
+    if (showChat) {
+      list.innerHTML = msgs.map(m => {
+        const rx = m.reactions || {};
+        const keys = Object.keys(rx);
+        const pillHtml = keys.length
+          ? keys.map(e => `<span class="react-pill on" data-emoji="${e}" data-msg="${m.id}">${e} ${rx[e]}</span>`).join(' ')
+          : (pill.visible && pill.message_id === m.id
+              ? `<span class="react-pill on" data-emoji="${pill.emoji}">${pill.emoji}</span>` : '');
+        return `<div class="h5-msg" data-msg-id="${m.id}"><div class="role">${m.role || 'assistant'}</div>
+          <div>${m.text || ''}</div>${pillHtml}</div>`;
+      }).join('');
+      chat.classList.add('open');
+      document.getElementById('home-hint').style.display = 'none';
+    } else { chat.classList.remove('open'); }
+  }
+  const mm = document.getElementById('h5-math-mermaid');
+  const mmState = (s && s.mathMermaid) || {};
+  if (mm) {
+    if (mmState.open) {
+      const tex = mmState.math_tex || 'E = mc^2';
+      document.getElementById('h5-math-src').textContent = tex;
+      // Visible math SVG fallback (KaTeX-class presentation without CDN)
+      document.getElementById('h5-math').innerHTML =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="48" role="img" aria-label="${tex}">
+          <text x="8" y="34" fill="#e8eaed" font-family="Times New Roman, serif" font-size="28">${tex.replace(/</g,'&lt;')}</text>
+        </svg>`;
+      const src = mmState.mermaid_src || 'flowchart LR; A-->B-->C';
+      document.getElementById('h5-mermaid-src').textContent = src;
+      document.getElementById('h5-mermaid').innerHTML =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="100" role="img" aria-label="mermaid ${src}">
+          <rect x="10" y="30" width="70" height="36" rx="6" fill="#2a3140" stroke="#7aa2ff"/>
+          <text x="28" y="54" fill="#e8eaed" font-size="14">A</text>
+          <line x1="80" y1="48" x2="140" y2="48" stroke="#7aa2ff" stroke-width="2" marker-end="url(#arr)"/>
+          <rect x="140" y="30" width="70" height="36" rx="6" fill="#2a3140" stroke="#81c784"/>
+          <text x="158" y="54" fill="#e8eaed" font-size="14">B</text>
+          <line x1="210" y1="48" x2="270" y2="48" stroke="#7aa2ff" stroke-width="2"/>
+          <rect x="270" y="30" width="70" height="36" rx="6" fill="#2a3140" stroke="#ffb74d"/>
+          <text x="288" y="54" fill="#e8eaed" font-size="14">C</text>
+          <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#7aa2ff"/></marker></defs>
+        </svg>`;
+      mm.classList.add('open');
+      document.getElementById('home-hint').style.display = 'none';
+    } else { mm.classList.remove('open'); }
+  }
+  const card = document.getElementById('h5-cursor-card');
+  const cc = (s && s.cursorAgentCard) || {};
+  if (card) {
+    if (cc.open && cc.shown) {
+      document.getElementById('h5-cursor-id').textContent = 'agent_id=' + (cc.agent_id || '');
+      const a = document.getElementById('h5-cursor-url');
+      a.href = cc.url || '#';
+      a.textContent = cc.url || '';
+      card.classList.add('open');
+      document.getElementById('home-hint').style.display = 'none';
+    } else { card.classList.remove('open'); }
   }
 }
 
@@ -613,6 +723,7 @@ function applyHostState(s) {
     gateLog.textContent = last;
   }
   applyH3HostOverlays(s);
+  applyH5HostOverlays(s);
   window.__bitbotHostUi = {...state, surface:'bit-bot-host-ui', i_claimed:false, driven_by:'HostUiShell',
     contextMenuOpen: !!s.contextMenuOpen,
     updateComputerPhase: s.updateComputerPhase || 'idle',
@@ -620,7 +731,10 @@ function applyHostState(s) {
     activeTab: s.activeTab || null,
     activeChat: s.activeChat || null,
     infoAgent: (s.infoPanel || {}).agentId || null,
-    anchor: s.anchor || state.anchor};
+    anchor: s.anchor || state.anchor,
+    reactPill: s.reactPill || null,
+    mathMermaid: s.mathMermaid || null,
+    cursorAgentCard: s.cursorAgentCard || null};
 }
 
 let lastRev = -1;
