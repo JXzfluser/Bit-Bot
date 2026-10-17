@@ -912,8 +912,19 @@
                   label = "section:" + (p.section_id || "?") + "/post";
                   types.push("text");
                 } else if (h.kind === "channel_send" && p.live_post) {
-                  label = "live:" + (p.scheme || "channel") + "/" + (p.mode || "post");
+                  label =
+                    "live:" +
+                    (p.scheme || "channel") +
+                    "/" +
+                    (p.mode || "post") +
+                    (p.path ? "/snap" : "");
                   types.push("text");
+                } else if (h.kind === "channel_send") {
+                  label =
+                    "ch:" +
+                    (p.mode || p.scheme || "send") +
+                    (p.path ? "/snap" : "");
+                  types.push(p.thread_ts ? "thread" : "text");
                 } else if (h.kind === "oauth") {
                   label = "oauth:" + (p.status || "?") + "/" + (p.mode || "");
                   const meta = document.getElementById("connectors-meta");

@@ -645,6 +645,62 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  function finalizeChannelSend(raw, entry, extras = {}) {
+    // Per-send Host snapshot (ledger jsonl retained by caller).
+    const outboundPath =
+      extras.outboundPath ||
+      path.join(REPO_ROOT, "data", "channels", "outbound.jsonl");
+    const sendDir = path.join(REPO_ROOT, "data", "channels", "sends");
+    fs.mkdirSync(sendDir, { recursive: true });
+    const sendPath = path.join(
+      sendDir,
+      `send-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      ...entry,
+      pretend_live:
+        entry && entry.pretend_live === true ? true : false,
+      mode: (entry && entry.mode) || "channel_send",
+    };
+    const snapshot = {
+      ...artifact,
+      path: sendPath,
+      outbound: outboundPath,
+      inbound: extras.inbound || artifact.inbound || undefined,
+      transcript: extras.transcript || artifact.transcript || undefined,
+      teams_transcript:
+        extras.teams_transcript || artifact.teams_transcript || undefined,
+      mail: extras.mail || artifact.mail || undefined,
+      claim: extras.claim || artifact.claim || undefined,
+    };
+    fs.writeFileSync(sendPath, JSON.stringify(snapshot, null, 2));
+    appendJsonl(path.join(sendDir, "sends.jsonl"), snapshot);
+    const journalPath =
+      extras.journal ||
+      appendHostDeliveryJournal({
+        kind: "channel_send",
+        path: sendPath,
+        ...artifact,
+      });
+    const ok = extras.ok != null ? Boolean(extras.ok) : artifact.ok !== false;
+    return {
+      kind: "channel_send",
+      ok,
+      command: raw,
+      stdout: JSON.stringify(
+        {
+          ...snapshot,
+          journal: journalPath,
+          send_to_user_type: extras.send_to_user_type || undefined,
+        },
+        null,
+        2,
+      ),
+      error: ok ? "" : String(extras.error || "channel_send failed"),
+      stderr: "",
+    };
+  }
+
   async function executeChannelSend(command) {
     // command format: "<addr> :: <body>" from MoonBit
     // slack addr may be slack:CHANNEL or slack:CHANNEL:THREAD_TS
@@ -778,27 +834,15 @@ function createHostFfi(repoRoot) {
           at: stamp,
         };
         appendJsonl(outboundPath, entry);
-        const journalPath = appendHostDeliveryJournal({
-          kind: "channel_send",
-          ...entry,
-        });
-        return {
-          kind: "channel_send",
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: claim ? inboundPath : undefined,
+          claim: claim
+            ? { ok: claim.ok, claimed_count: claim.claimed_count }
+            : undefined,
           ok: Boolean(post.ok),
-          command: raw,
-          stdout: JSON.stringify(
-            {
-              ...entry,
-              journal: journalPath,
-              outbound: outboundPath,
-              inbound: claim ? inboundPath : undefined,
-            },
-            null,
-            2,
-          ),
           error: post.ok ? "" : `slack post failed: ${post.error || "unknown"}`,
-          stderr: "",
-        };
+        });
       }
       // Claim-only path (no live post): still durable outbound draft + inbound evidence.
       if (claim) {
@@ -809,24 +853,20 @@ function createHostFfi(repoRoot) {
           mode: "live_slack_claim",
           ok: Boolean(claim.ok),
           live_post: false,
+          pretend_live: false,
           claimed_count: claim.claimed_count,
           connector_ready: connectorReady,
           at: stamp,
           inbound: inboundPath,
         };
         appendJsonl(outboundPath, entry);
-        return {
-          kind: "channel_send",
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+          claim,
           ok: Boolean(claim.ok),
-          command: raw,
-          stdout: JSON.stringify(
-            { ...entry, outbound: outboundPath, claim },
-            null,
-            2,
-          ),
           error: claim.ok ? "" : claim.error,
-          stderr: "",
-        };
+        });
       }
       // Sandbox inbound claim rehearsal when CLAIM=1 but no live token (honest: not live).
       if (process.env.BITBOT_SLACK_CLAIM === "1" && channelId && !token) {
@@ -851,6 +891,7 @@ function createHostFfi(repoRoot) {
           mode: "sandbox_slack_claim",
           ok: true,
           live_post: false,
+          pretend_live: false,
           claimed_count: sandboxRows.length,
           connector_ready: connectorReady,
           at: stamp,
@@ -858,17 +899,10 @@ function createHostFfi(repoRoot) {
           note: "sandbox claim — set SLACK_BOT_TOKEN for live conversations.history",
         };
         appendJsonl(outboundPath, entry);
-        return {
-          kind: "channel_send",
-          ok: true,
-          command: raw,
-          stdout: JSON.stringify(
-            { ...entry, outbound: outboundPath },
-            null,
-            2,
-          ),
-          stderr: "",
-        };
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+        });
       }
       const draftMode = isPersonalDm
         ? "personal_slack_dm_draft"
@@ -886,6 +920,7 @@ function createHostFfi(repoRoot) {
         mode: draftMode,
         ok: true,
         live_post: false,
+        pretend_live: false,
         personal_dm: isPersonalDm,
         shared_channel: isSharedChannel,
         widget_degraded: widgetDegraded,
@@ -900,21 +935,7 @@ function createHostFfi(repoRoot) {
             : "live post needs SLACK_BOT_TOKEN + BITBOT_SLACK_POST=1; claim needs BITBOT_SLACK_CLAIM=1",
       };
       appendJsonl(outboundPath, entry);
-      const journalPath = appendHostDeliveryJournal({
-        kind: "channel_send",
-        ...entry,
-      });
-      return {
-        kind: "channel_send",
-        ok: true,
-        command: raw,
-        stdout: JSON.stringify(
-          { ...entry, journal: journalPath, outbound: outboundPath },
-          null,
-          2,
-        ),
-        stderr: "",
-      };
+      return finalizeChannelSend(raw, entry, { outboundPath });
     }
 
     if (addr.startsWith("teams:")) {
@@ -1013,22 +1034,15 @@ function createHostFfi(repoRoot) {
           at: stamp,
         };
         appendJsonl(outboundPath, entry);
-        return {
-          kind: "channel_send",
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: teamsClaim ? inboundPath : undefined,
+          claim: teamsClaim || undefined,
           ok: entry.ok,
-          command: raw,
-          stdout: JSON.stringify(
-            {
-              ...entry,
-              outbound: outboundPath,
-              inbound: teamsClaim ? inboundPath : undefined,
-            },
-            null,
-            2,
-          ),
-          error: entry.ok ? "" : `teams graph failed: ${post.error || post.status}`,
-          stderr: "",
-        };
+          error: entry.ok
+            ? ""
+            : `teams graph failed: ${post.error || post.status}`,
+        });
       }
       // Claim-only Teams path (no live post).
       if (teamsClaim) {
@@ -1047,14 +1061,13 @@ function createHostFfi(repoRoot) {
           inbound: inboundPath,
         };
         appendJsonl(outboundPath, entry);
-        return {
-          kind: "channel_send",
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+          claim: teamsClaim,
           ok: entry.ok,
-          command: raw,
-          stdout: JSON.stringify({ ...entry, outbound: outboundPath }, null, 2),
           error: entry.ok ? "" : teamsClaim.error,
-          stderr: "",
-        };
+        });
       }
       // Sandbox Teams claim rehearsal when CLAIM=1 but no token.
       if (process.env.BITBOT_TEAMS_CLAIM === "1" && chatId && !teamsToken) {
@@ -1082,13 +1095,10 @@ function createHostFfi(repoRoot) {
           note: "sandbox claim — set BITBOT_TEAMS_TOKEN for live Graph messages",
         };
         appendJsonl(outboundPath, entry);
-        return {
-          kind: "channel_send",
-          ok: true,
-          command: raw,
-          stdout: JSON.stringify({ ...entry, outbound: outboundPath }, null, 2),
-          stderr: "",
-        };
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+        });
       }
       const teamsDir = path.join(REPO_ROOT, "data", "channels", "teams");
       fs.mkdirSync(teamsDir, { recursive: true });
@@ -1100,6 +1110,7 @@ function createHostFfi(repoRoot) {
         mode: connectorReady ? "connector_draft" : "sandbox_draft",
         ok: true,
         live_post: false,
+        pretend_live: false,
         connector_ready: connectorReady,
         widget_degraded: /\[widget:|type=widget/i.test(body),
         at: stamp,
@@ -1113,27 +1124,10 @@ function createHostFfi(repoRoot) {
       }
       appendJsonl(outboundPath, entry);
       appendJsonl(teamsTranscript, entry);
-      const journalPath = appendHostDeliveryJournal({
-        kind: "channel_send",
-        ...entry,
+      return finalizeChannelSend(raw, entry, {
+        outboundPath,
         teams_transcript: teamsTranscript,
       });
-      return {
-        kind: "channel_send",
-        ok: true,
-        command: raw,
-        stdout: JSON.stringify(
-          {
-            ...entry,
-            journal: journalPath,
-            outbound: outboundPath,
-            teams_transcript: teamsTranscript,
-          },
-          null,
-          2,
-        ),
-        stderr: "",
-      };
     }
 
     if (addr.startsWith("email:") || addr.startsWith("gmail:")) {
@@ -1173,17 +1167,10 @@ function createHostFfi(repoRoot) {
         mail_mode: entry.mode,
         at: stamp,
       });
-      return {
-        kind: "channel_send",
-        ok: true,
-        command: raw,
-        stdout: JSON.stringify(
-          { ...entry, outbound: outboundPath, drafts: MAIL_DRAFTS_PATH },
-          null,
-          2,
-        ),
-        stderr: "",
-      };
+      return finalizeChannelSend(raw, entry, {
+        outboundPath,
+        mail: entry.mail,
+      });
     }
 
     // CM-2153 meeting chat DirectSend (command: meeting_chat :: body)
@@ -1233,27 +1220,10 @@ function createHostFfi(repoRoot) {
       };
       appendJsonl(outboundPath, entry);
       appendJsonl(transcriptPath, entry);
-      const journalPath = appendHostDeliveryJournal({
-        kind: "channel_send",
-        ...entry,
+      return finalizeChannelSend(raw, entry, {
+        outboundPath,
         transcript: transcriptPath,
       });
-      return {
-        kind: "channel_send",
-        ok: true,
-        command: raw,
-        stdout: JSON.stringify(
-          {
-            ...entry,
-            journal: journalPath,
-            outbound: outboundPath,
-            transcript: transcriptPath,
-          },
-          null,
-          2,
-        ),
-        stderr: "",
-      };
     }
 
     const entry = {
@@ -1262,24 +1232,11 @@ function createHostFfi(repoRoot) {
       body,
       mode: "durable_outbound",
       ok: true,
+      pretend_live: false,
       at: stamp,
     };
     appendJsonl(outboundPath, entry);
-    const journalPath = appendHostDeliveryJournal({
-      kind: "channel_send",
-      ...entry,
-    });
-    return {
-      kind: "channel_send",
-      ok: true,
-      command: raw,
-      stdout: JSON.stringify(
-        { ...entry, journal: journalPath, outbound: outboundPath },
-        null,
-        2,
-      ),
-      stderr: "",
-    };
+    return finalizeChannelSend(raw, entry, { outboundPath });
   }
 
   async function executeCopyBox(kind, command) {
