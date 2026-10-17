@@ -1260,8 +1260,27 @@ pub fn run_desktop_turn(
         limit: 64,
       })
       let rows = memory_rows(entries)
-      let reply = "Memory updated (profile): " + key + " = " + value
-      deliver_ok(trimmed, turn_id, reply, intent, ctx~, memory=rows)
+      let reply =
+        "Memory updated (profile): " +
+        key +
+        " = " +
+        value +
+        ". Host journals profile vault."
+      let effect : DesktopEffect = {
+        kind: "memory_update",
+        command: key + "|" + value,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        reply,
+        intent,
+        ctx~,
+        memory=rows,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     MemoryRecall(prefix~) => {
       let store = @memory.InMemoryStore::new()
@@ -1282,8 +1301,24 @@ pub fn run_desktop_turn(
       })
       let rows = memory_rows(entries)
       let reply =
-        "Memory recall (profile): " + rows.length().to_string() + " entr(y/ies)."
-      deliver_ok(trimmed, turn_id, reply, intent, ctx~, memory=rows)
+        "Memory recall (profile): " +
+        rows.length().to_string() +
+        " entr(y/ies). Host materializes recall snapshot."
+      let effect : DesktopEffect = {
+        kind: "memory_recall",
+        command: prefix,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        reply,
+        intent,
+        ctx~,
+        memory=rows,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     HostEffect(command~) => {
       match gate_consequential(

@@ -233,6 +233,8 @@
 - [x] Parity: OAuth live NeedsAuth + browser_open, routine daemon long-lived + user unit
 - [x] MachineRegistry seed all Disconnected; Host `machines_list` journal; connectors_probe durable
 - [x] Parity: ListMachines only marks active Host Connected (ios residual on desktop)
+- [x] Host profile memory_update/recall vault + shared_memory_read durable reads
+- [x] Parity: memory Host vault/snapshot + shared_memory_read path
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

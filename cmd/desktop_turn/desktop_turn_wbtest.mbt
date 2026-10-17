@@ -89,6 +89,8 @@ test "desktop_turn_list_machines_android_host_present" {
 test "desktop_turn_memory_update_and_recall" {
   let u = run_desktop_turn("remember favorite_color=blue", turn_id="mem-u")
   assert_true(u.ok)
+  assert_true(u.needs_host_ffi)
+  assert_eq(u.effects[0].kind, "memory_update")
   assert_eq(u.intent, "memory_update")
   assert_true(u.memory.length() >= 1)
   assert_eq(u.memory[0].key, "favorite_color")

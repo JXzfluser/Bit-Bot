@@ -2753,32 +2753,168 @@ function createHostFfi(repoRoot) {
       }
       const cell = scoped[key];
       const value = cell && typeof cell === "object" ? cell.value : cell;
+      const dir = path.join(REPO_ROOT, "data", "memory", "shared-reads");
+      fs.mkdirSync(dir, { recursive: true });
+      const readPath = path.join(
+        dir,
+        `read-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        scope,
+        key,
+        found: true,
+        value,
+        value_len: String(value ?? "").length,
+        isolation: "scope-bound",
+        pretend_cross_scope: false,
+        mode: "host_shared_memory_read",
+        at,
+      };
+      fs.writeFileSync(readPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "reads.jsonl"), {
+        ...artifact,
+        path: readPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: readPath,
+        label: "shared_memory_read",
+        source_kind: kind,
+        at,
+      });
       appendHostDeliveryJournal({
         kind,
         command,
         scope,
         key,
+        path: readPath,
         ok: true,
         at,
       });
-      return {
-        kind,
+      return okJson(kind, command, {
+        ...artifact,
+        path: readPath,
+        send_to_user: delivery,
         ok: true,
-        command,
-        stdout: JSON.stringify(
-          {
-            scope,
-            key,
-            found: true,
-            value,
-            value_len: String(value ?? "").length,
-            isolation: "scope-bound",
-          },
-          null,
-          2,
-        ),
-        stderr: "",
+      });
+    }
+    if (kind === "memory_update") {
+      // command: key|value — durable Host profile vault (not LocalBrain).
+      const parts = String(command || "").split("|");
+      const key = parts[0] || "";
+      const value = parts.slice(1).join("|");
+      const memDir = path.join(REPO_ROOT, "data", "memory");
+      fs.mkdirSync(memDir, { recursive: true });
+      const vaultPath = path.join(memDir, "profile-vault.json");
+      let vault = { scope: "profile", entries: {} };
+      try {
+        if (fs.existsSync(vaultPath)) {
+          vault = JSON.parse(fs.readFileSync(vaultPath, "utf8")) || vault;
+        }
+      } catch (_) {
+        vault = { scope: "profile", entries: {} };
+      }
+      if (!vault.entries || typeof vault.entries !== "object") vault.entries = {};
+      vault.entries[key] = { value, updated_at: at };
+      vault.updated_at = at;
+      fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2));
+      const updatePath = path.join(
+        memDir,
+        `update-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        key,
+        value,
+        scope: "profile",
+        vault_path: vaultPath,
+        mode: "host_memory_update",
+        pretend_persisted: false,
+        at,
       };
+      fs.writeFileSync(updatePath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(memDir, "updates.jsonl"), {
+        ...artifact,
+        path: updatePath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: updatePath,
+        label: "memory_update",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        path: updatePath,
+        vault_path: vaultPath,
+        at,
+      });
+      return okJson(kind, command, {
+        ...artifact,
+        path: updatePath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+    if (kind === "memory_recall") {
+      const prefix = String(command || "").trim();
+      const memDir = path.join(REPO_ROOT, "data", "memory");
+      fs.mkdirSync(memDir, { recursive: true });
+      const vaultPath = path.join(memDir, "profile-vault.json");
+      let vault = { scope: "profile", entries: {} };
+      try {
+        if (fs.existsSync(vaultPath)) {
+          vault = JSON.parse(fs.readFileSync(vaultPath, "utf8")) || vault;
+        }
+      } catch (_) {
+        vault = { scope: "profile", entries: {} };
+      }
+      const entries = Object.entries(vault.entries || {})
+        .filter(([k]) => !prefix || String(k).startsWith(prefix))
+        .map(([k, cell]) => ({
+          key: k,
+          value: cell && typeof cell === "object" ? cell.value : cell,
+          scope: "profile",
+        }));
+      const recallPath = path.join(
+        memDir,
+        `recall-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        prefix,
+        count: entries.length,
+        entries,
+        vault_path: vaultPath,
+        mode: "host_memory_recall",
+        pretend_empty: false,
+        at,
+      };
+      fs.writeFileSync(recallPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(memDir, "recalls.jsonl"), {
+        ...artifact,
+        path: recallPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: recallPath,
+        label: "memory_recall",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        path: recallPath,
+        count: entries.length,
+        at,
+      });
+      return okJson(kind, command, {
+        ...artifact,
+        path: recallPath,
+        send_to_user: delivery,
+        ok: true,
+      });
     }
     if (kind === "inbound_reaction") {
       const parts = String(command || "").split("|");
