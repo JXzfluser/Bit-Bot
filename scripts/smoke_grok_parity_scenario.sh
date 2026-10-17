@@ -209,6 +209,27 @@ kill "$OUT_PID" >/dev/null 2>&1 || true
 wait "$OUT_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;print('parity outlook live ok')"
 
+# 9i) OAuth sandbox + load skill + code apply + MCP call + send on behalf + pack evidence
+"${RUN[@]}" "setup slack" >/tmp/parity-oauth.json
+python3 -c "import json;d=json.load(open('/tmp/parity-oauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_idp';assert p.get('connected') is True;deliv=next(x for x in d['host_results'] if x.get('kind')=='delivery');dp=json.loads(deliv['stdout']);assert dp.get('type')=='widget';print('parity oauth sandbox_idp ok', p.get('status'))"
+BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=local "${RUN[@]}" "setup slack" >/tmp/parity-oauth-ex.json
+python3 -c "import json;d=json.load(open('/tmp/parity-oauth-ex.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert 'local_exchange' in (h.get('stdout') or '');print('parity oauth local_exchange ok')"
+"${RUN[@]}" "load skill slides presentation" >/tmp/parity-load.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-load.json'));h=next(x for x in d['host_results'] if x.get('kind')=='skill_load');p=json.loads(h['stdout']);assert p.get('pretend_loaded') is False;assert os.path.isfile(p['path']);print('parity skill_load ok', p.get('task'), p.get('loaded_count'))"
+"${RUN[@]}" "code changes README.mbt.md" >/tmp/parity-code.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-code.json'));h=next(x for x in d['host_results'] if x.get('kind')=='code_changes');p=json.loads(h['stdout']);assert p.get('applied') is False;assert p.get('pretend_committed') is False;assert p.get('code_apply_residual') is True;assert os.path.isfile(p['path']);print('parity code_changes plan ok')"
+BITBOT_CODE_APPLY=1 "${RUN[@]}" "code changes README.mbt.md" >/tmp/parity-code-apply.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-code-apply.json'));h=next(x for x in d['host_results'] if x.get('kind')=='code_changes');p=json.loads(h['stdout']);assert p.get('applied') is True;assert p.get('code_apply_residual') is False;assert p.get('pretend_committed') is False;assert os.path.isfile(p['applied_path']);print('parity code_changes apply ok')"
+"${RUN[@]}" --approved 'mcp call user-Gmail.search_threads {"q":"parity"}' >/tmp/parity-mcp-call.json
+python3 -c "import json;d=json.load(open('/tmp/parity-mcp-call.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mcp_call');assert h.get('ok');print('parity mcp_call ok')"
+"${RUN[@]}" --approved "send on behalf to=parity@example.com subject=Hi body=Hello $MARKER" >/tmp/parity-sob.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sob.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('provider')=='onbehalf';assert p.get('pretend_sent') is False;assert 'X-BitBot-Send-On-Behalf: 1' in open(p['eml_path']).read();print('parity send_on_behalf ok')"
+# Pack evidence (unsigned — store certs deferred)
+test -f data/tmp/desktop-pack-evidence.json || bash "$ROOT/scripts/pack-desktop.sh" >/tmp/parity-pack-desktop.log 2>&1
+python3 -c "import json;d=json.load(open('data/tmp/desktop-pack-evidence.json'));assert d.get('ok') is True;assert d.get('signed') is False;assert d.get('entry_count',0)>=1;print('parity desktop pack evidence ok', d.get('entry_count'), 'signed', d.get('signed'))"
+bash "$ROOT/scripts/pack-mobile.sh" >/tmp/parity-pack-mobile.log 2>&1
+python3 -c "import json,glob,os;meta=json.load(open('hosts/dist/mobile/meta/store-packaging.json'));assert meta.get('brain')=='cmd/desktop_turn';assert 'ios' in meta and 'android' in meta;u=json.load(open('hosts/dist/mobile/meta/unsigned-release.json'));assert u.get('signed') is False;assert glob.glob('hosts/dist/mobile/archives/*.tar.gz');print('parity mobile pack unsigned ok', u.get('kind'))"
+
 # 10) Multi-end mobile Host strip + ListMachines host-present honesty
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
 python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'machine_kind=ios' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"

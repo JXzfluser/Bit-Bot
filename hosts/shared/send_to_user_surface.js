@@ -80,6 +80,7 @@ function extractDeliveryTypes(turnJsonText) {
           "device_tools_list",
           "device_tool",
           "device_permission",
+          "skill_load",
         ].includes(h.kind)
       ) {
         types.push("attachment");

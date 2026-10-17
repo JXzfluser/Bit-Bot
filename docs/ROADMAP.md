@@ -212,6 +212,9 @@
 - [x] Parity live mocks: X search, job catalog, calendar events, finance tools + author_skill
 - [x] DeviceTools Host FFI catalog (`device_tools_list` durable JSON; pretend_granted=false)
 - [x] Parity: CU OCR+native act, device tools/invoke, identity browser, workflows, box copy, cold mail, meeting DirectSend, Outlook live
+- [x] LoadSkill Host FFI journal (`skill_load` durable; pretend_loaded=false)
+- [x] verify_native_shells parses mobile_host JSON ahead of SendToUser trailer
+- [x] Parity: OAuth sandbox+local_exchange, skill_load, code apply, mcp_call, send_on_behalf, desktop/mobile pack evidence
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

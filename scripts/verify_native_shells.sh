@@ -35,14 +35,32 @@ assert "pretendGranted" in swift
 print("native device_permission Host scaffolds ok")
 PY
 
+# mobile_host may append SendToUser / HostAbi trailer lines after turn JSON.
+parse_turn_json() {
+  local src="$1"
+  python3 -c "
+import json,sys
+raw=open(sys.argv[1]).read().splitlines()
+line=next((l for l in raw if l.strip().startswith('{')), '')
+assert line, 'missing turn JSON'
+d=json.loads(line)
+print(json.dumps(d))
+" "$src"
+}
+
 echo "==> iOS machine_kind via mobile_host (BitBotHost bridge target)"
 node hosts/mobile_host/run.js --machine-kind ios --session-id ios-native-shell "ListMachines" \
-  >/tmp/bitbot-ios-native.json
+  >/tmp/bitbot-ios-native.raw
+parse_turn_json /tmp/bitbot-ios-native.raw >/tmp/bitbot-ios-native.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-ios-native.json'));assert d.get('ok');assert d.get('machine_kind')=='ios';print('ios shell path ok')"
+# CHARTER Delivery trailer should still be present on raw mobile_host output.
+python3 -c "t=open('/tmp/bitbot-ios-native.raw').read();assert 'machine_kind=ios' in t;print('ios HostAbi trailer ok')"
 
 echo "==> Android machine_kind via mobile_host (BitBotHost bridge target)"
 node hosts/mobile_host/run.js --machine-kind android --session-id android-native-shell "device tools" \
-  >/tmp/bitbot-android-native.json
-python3 -c "import json;d=json.load(open('/tmp/bitbot-android-native.json'));assert d.get('ok');assert d.get('machine_kind')=='android';assert d.get('intent')=='device_tools';print('android shell path ok')"
+  >/tmp/bitbot-android-native.raw
+parse_turn_json /tmp/bitbot-android-native.raw >/tmp/bitbot-android-native.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-android-native.json'));assert d.get('ok');assert d.get('machine_kind')=='android';assert d.get('intent')=='device_tools';h=next(x for x in d.get('host_results')or[] if x.get('kind')=='device_tools_list');p=__import__('json').loads(h['stdout']);assert p.get('pretend_granted') is False;assert os.path.isfile(p['path']);print('android shell path ok', 'tools', p.get('count'))"
+python3 -c "t=open('/tmp/bitbot-android-native.raw').read();assert 'machine_kind=android' in t;assert 'SendToUser' in t or 'device_tools_list' in t;print('android HostAbi trailer ok')"
 
 echo "OK: verify_native_shells.sh"

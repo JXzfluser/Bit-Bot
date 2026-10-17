@@ -2151,8 +2151,21 @@ pub fn run_desktop_turn(
         task +
         "»: " +
         sk.loaded_count().to_string() +
-        " skill(s) in context (CM-0504 on-demand)."
-      deliver_ok(trimmed, turn_id, reply, intent, ctx~)
+        " skill(s) in context (CM-0504 on-demand). Host materializes load journal."
+      let effect : DesktopEffect = {
+        kind: "skill_load",
+        command: task + "|" + sk.loaded_count().to_string(),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        reply,
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     VoiceStart(call_id~) => {
       match @skills.VoiceCallSession::start(call_id~) {

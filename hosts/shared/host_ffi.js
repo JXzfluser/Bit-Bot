@@ -5334,6 +5334,47 @@ function createHostFfi(repoRoot) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
 
+    if (kind === "skill_load") {
+      // command: task|loaded_count
+      const parts = cmd.split("|");
+      const task = parts[0] || "";
+      const loadedCount = Number(parts[1] || "0") || 0;
+      const dir = path.join(REPO_ROOT, "data", "skills");
+      fs.mkdirSync(dir, { recursive: true });
+      const loadPath = path.join(
+        dir,
+        `load-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        task,
+        loaded_count: loadedCount,
+        mode: "host_skill_load",
+        pretend_loaded: false,
+        at,
+      };
+      fs.writeFileSync(loadPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "loads.jsonl"), artifact);
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: loadPath,
+        label: "skill_load",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: loadPath,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...artifact,
+        path: loadPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
     if (kind === "device_permission") {
       const parts = cmd.split("|");
       const entry = {
