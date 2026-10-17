@@ -5375,6 +5375,50 @@ function createHostFfi(repoRoot) {
       });
     }
 
+    if (kind === "mail_claim_inbox") {
+      // command: local_part|address
+      const parts = cmd.split("|");
+      const localPart = parts[0] || "";
+      const address = parts[1] || `${localPart}@bitbot.local`;
+      const dir = path.join(REPO_ROOT, "data", "mail", "claims");
+      fs.mkdirSync(dir, { recursive: true });
+      const claimPath = path.join(
+        dir,
+        `claim-${localPart || "inbox"}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        local_part: localPart,
+        address,
+        mode: "host_mail_claim_inbox",
+        pretend_claimed: false,
+        user_confirmed: true,
+        at,
+      };
+      fs.writeFileSync(claimPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "claims.jsonl"), artifact);
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: claimPath,
+        label: "mail_claim_inbox",
+        address,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: claimPath,
+        address,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...artifact,
+        path: claimPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
     if (kind === "device_permission") {
       const parts = cmd.split("|");
       const entry = {

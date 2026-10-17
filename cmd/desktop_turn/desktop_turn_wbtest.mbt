@@ -263,6 +263,9 @@ test "desktop_turn_claim_inbox_and_draft_mail" {
   let c = run_desktop_turn("claim inbox alpha", turn_id="mail-c")
   assert_true(c.ok)
   assert_eq(c.intent, "claim_inbox")
+  assert_true(c.needs_host_ffi)
+  assert_eq(c.effects[0].kind, "mail_claim_inbox")
+  assert_true(c.effects[0].command.contains("alpha"))
   assert_true(c.messages[c.messages.length() - 1].text.contains("alpha@"))
   let gated = run_desktop_turn(
     "draft mail to=bob@example.com subject=Hi body=Hello Bob",

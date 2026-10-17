@@ -233,7 +233,35 @@ kill "$CU_PID" 2>/dev/null || true
 wait "$CU_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-cu-paywall.json'));h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('has_payment') is True;assert oc.get('checkout_stage')=='payment_wall' or oc.get('vertical_stage')=='payment_wall';assert oc.get('pretend_purchased') is False;assert oc.get('paid_checkout_attempted') is False;assert oc.get('live_paid_residual') is True;print('parity CU payment_wall ok', oc.get('checkout_stage'))"
 
-# 9i) OAuth sandbox + load skill + code apply + MCP call + send on behalf + pack evidence
+# 9i) Mail claim inbox + Slack/Teams channel claim + cloud artifact + OAuth callback + daemon
+"${RUN[@]}" "claim inbox bravo" >/tmp/parity-mail-claim.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-mail-claim.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_claim_inbox');p=json.loads(h['stdout']);assert p.get('pretend_claimed') is False;assert 'bravo@' in (p.get('address') or '');assert os.path.isfile(p['path']);print('parity mail_claim_inbox ok', p.get('address'))"
+BITBOT_SLACK_CLAIM=1 "${RUN[@]}" --approved "reply via slack:Csmoke :: claim rehearsal $MARKER" >/tmp/parity-slack-claim.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-slack-claim.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_slack_claim';assert p.get('pretend_live') is not True;assert os.path.isfile('data/channels/inbound.jsonl');print('parity sandbox_slack_claim ok', p.get('claimed_count'))"
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18781 --mode slack --token smoke-slack >/tmp/parity-slack-claim-mock.log 2>&1 &
+SLACK_CLAIM_PID=$!
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18782 --mode teams --token smoke-teams >/tmp/parity-teams-claim-mock.log 2>&1 &
+TEAMS_CLAIM_PID=$!
+sleep 0.4
+BITBOT_SLACK_API_BASE=http://127.0.0.1:18781 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_CLAIM=1 \
+  "${RUN[@]}" --approved "reply via slack:Csmoke :: claim live $MARKER" >/tmp/parity-slack-claim-live.json || true
+BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18782 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_CLAIM=1 \
+  "${RUN[@]}" --approved "reply via teams:Tsmoke :: claim teams $MARKER" >/tmp/parity-teams-claim-live.json || true
+BITBOT_TEAMS_CLAIM=1 "${RUN[@]}" --approved "reply via teams:Tsmoke :: sandbox claim $MARKER" >/tmp/parity-teams-claim-sandbox.json
+kill "$SLACK_CLAIM_PID" "$TEAMS_CLAIM_PID" >/dev/null 2>&1 || true
+wait "$SLACK_CLAIM_PID" "$TEAMS_CLAIM_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/parity-slack-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_slack_claim';assert p.get('claimed_count',0)>=1;assert 'live_slack_claim' in open('data/channels/inbound.jsonl').read();print('parity live_slack_claim ok', p.get('claimed_count'))"
+python3 -c "import json;d=json.load(open('/tmp/parity-teams-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_teams_claim';assert p.get('claimed_count',0)>=1;assert p.get('pretend_live') is False;print('parity live_teams_claim ok', p.get('claimed_count'))"
+python3 -c "import json;d=json.load(open('/tmp/parity-teams-claim-sandbox.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_teams_claim';assert p.get('pretend_live') is False;print('parity sandbox_teams_claim ok')"
+"${RUN[@]}" "deliver cloud artifact bc-1" >/tmp/parity-cloud-art.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cloud-art.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_artifact_deliver');p=json.loads(h['stdout']);assert p.get('delivered') is True;assert p.get('bc_id')=='bc-1';assert p.get('path') and os.path.isfile(p['path']);print('parity cloud_artifact_deliver ok', p.get('path'))"
+bash "$ROOT/scripts/host_routine_daemon.sh" --sweeps 2 --interval-ms 50 --write-systemd-unit >/tmp/parity-daemon.log 2>&1
+python3 -c "import json,os;assert os.path.isfile('data/routines/daemon-sweep-1.json');assert os.path.isfile('data/routines/daemon-sweep-2.json');st=json.load(open('data/routines/daemon-status.json'));assert st.get('sweeps',0)>=2;assert os.path.isfile('data/routines/bitbot-routine-daemon.service');print('parity routine daemon sweeps ok', st.get('sweeps'), 'systemd_unit', st.get('systemd_unit'))"
+BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=remote_callback BITBOT_OAUTH_AUTHORIZE_URL=https://oauth.example.invalid/authorize BITBOT_OAUTH_TOKEN_URL=https://oauth.example.invalid/token BITBOT_OAUTH_CLIENT_ID=smoke-client BITBOT_OAUTH_CALLBACK_WAIT_MS=4000 \
+  "${RUN[@]}" "setup slack" >/tmp/parity-oauth-cb.json
+python3 -c "import json;d=json.load(open('/tmp/parity-oauth-cb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='live_remote_callback';assert p.get('connected') is True;print('parity oauth remote_callback ok', p.get('callback_received'))"
+
+# 9j) OAuth sandbox + load skill + code apply + MCP call + send on behalf + pack evidence
 "${RUN[@]}" "setup slack" >/tmp/parity-oauth.json
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_idp';assert p.get('connected') is True;deliv=next(x for x in d['host_results'] if x.get('kind')=='delivery');dp=json.loads(deliv['stdout']);assert dp.get('type')=='widget';print('parity oauth sandbox_idp ok', p.get('status'))"
 BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=local "${RUN[@]}" "setup slack" >/tmp/parity-oauth-ex.json

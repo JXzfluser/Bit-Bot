@@ -1560,11 +1560,25 @@ pub fn run_desktop_turn(
             assistant="Claim inbox failed: " + e,
           )
         Ok(inbox) => {
+          let addr = inbox.address()
           let reply =
             "Claimed agent inbox " +
-            inbox.address() +
-            " via @mail.MailService (Grok mail claim path)."
-          deliver_ok(trimmed, turn_id, reply, intent, ctx~)
+            addr +
+            " via @mail.MailService (Grok mail claim path). Host journals claim."
+          let effect : DesktopEffect = {
+            kind: "mail_claim_inbox",
+            command: local_part + "|" + addr,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            reply,
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
         }
       }
     }

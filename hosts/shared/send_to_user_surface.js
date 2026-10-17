@@ -81,6 +81,8 @@ function extractDeliveryTypes(turnJsonText) {
           "device_tool",
           "device_permission",
           "skill_load",
+          "mail_claim_inbox",
+          "cloud_artifact_deliver",
         ].includes(h.kind)
       ) {
         types.push("attachment");

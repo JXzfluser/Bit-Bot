@@ -217,6 +217,8 @@
 - [x] Parity: OAuth sandbox+local_exchange, skill_load, code apply, mcp_call, send_on_behalf, desktop/mobile pack evidence
 - [x] Host CU site-playbook journals for shopping/travel/food (`pretend_purchased=false`)
 - [x] Parity: shop/travel/food playbooks + CU payment_wall fixture + OAuth interactive
+- [x] `mail_claim_inbox` Host FFI journal (`pretend_claimed=false`)
+- [x] Parity: Slack/Teams live+sandbox claim, cloud artifact deliver, OAuth remote_callback, routine daemon sweeps
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)
