@@ -12,3 +12,7 @@ docs/qa/artifacts/**/Cookies*
 docs/qa/artifacts/**/Login Data*
 docs/qa/artifacts/**/Web Data*
 docs/qa/artifacts/**/History*
+
+# H4 smoke live Host FS paths (evidence copies live under docs/qa/artifacts/)
+h4-mcp-big-body.txt
+agent-tools/

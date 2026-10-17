@@ -1,0 +1,19 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "params": {}
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "write_result",
+      "arguments": {
+        "body": "PAYLOAD_MARKER_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb_PAYLOAD_END",
+        "filename": "h4-loopback-echo.txt",
+        "write_to_file": true
+      }
+    }
+  }
+]

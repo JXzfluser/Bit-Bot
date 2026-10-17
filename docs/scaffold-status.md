@@ -910,3 +910,15 @@ Smoke: `moon check` ✅ · `moon test` **296** passed / 0 failed（目标 290+6�
 - U acceptance (`ui_protocol/acceptance_cm1901_1902_1907_test.mbt`) **untouched**.
 - Matrix PASS / GAP rows **not** edited. Parent may point Bit验证 when artifacts ready for I review.
 - **§3.0 C′ vs B 自检对齐**：UI via Live HostUiShell (`host_ui_shell_live.py`→`/api/host/*`); smoke entry `run_h2_probe`/H2Intent; audit spans; HostUiEvent 回注; artifacts embed C′ checklist. **B rejected**: no CDP page-JS drive, no fixture-only/.
+
+
+## HostAbi Live H4 smoke (MoonBit核 · 2026-10-17 Asia/Shanghai)
+
+**H4 smoke landed; I not claimed (`i_claimed=false`). Matrix I-status unchanged — Bit验证 decides.**
+
+- Smoke: `scripts/host_h4_smoke.sh` (+ `host_h4_mcp_stdio.py` / `host_h4_mcp_client.py`) → `docs/qa/artifacts/cm-XXXX-*/`.
+- Targets: `cm-2163|cm-2164|cm-1105|cm-2109|cm-2120|cm-2146|cm-1703|batch1|all`.
+- Batch1 READY paths: CM-2163 (Host FS `$file:` → real stdio MCP inject; chat ref only) + CM-2164 (`write_to_file` → `/workspace/agent-tools/`; path not body).
+- OAuth (1105/2109/2120): honest **NOT_READY** when `SLACK_OAUTH_SANDBOX` / `FINANCE_OAUTH_SANDBOX` / `OUTLOOK_OAUTH_SANDBOX` unset — no stub Connected/Ready, no invented refresh tokens.
+- CM-2146: isolated throwaway Chrome profiles + private Xvfb/CDP (never 9223 / `/home/box/chrome-profile`); CM-1703: real 403 → curl public fallback; auth-wall `credential_bypass=false`.
+- Kernel skeleton already in `box_host/h4_probes.mbt` (`H4IoEvidence` / `run_h4_probe`; `i_claimed=false`). U acceptance tests **untouched**. Do **not** flip matrix I-PASS here.

@@ -1,0 +1,18 @@
+{
+  "CM": "CM-2109",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-2109",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-2109-finance-oauth",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "FINANCE_OAUTH_SANDBOX": false
+  },
+  "oauth_provider": "finance",
+  "namespace_before": "NeedsAuth",
+  "namespace_after": "NeedsAuth",
+  "oauth_callback_observed": false,
+  "stub_authenticate": false,
+  "i_claimed": false,
+  "status": "NOT_READY",
+  "assert": "Honest NOT_READY without sandbox OAuth; no stub Connected/Ready; no invented refresh tokens"
+}

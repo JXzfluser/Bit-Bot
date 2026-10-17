@@ -79,15 +79,15 @@
 
 | CM | 短号 | 主题 | I-status | 摘要 |
 |----|------|------|----------|------|
-| CM-2163 | 2163 | MCP `$file:` 注入 | **open / 待审** | 升 I 须真 Host FS；拒 in-process fake / chat 内嵌 payload · gaps「H4 升 I 口径」 |
-| CM-2164 | 2164 | MCP `write_to_file` | **open / 待审** | 升 I 须真写 `/workspace/agent-tools/`；拒假路径 / chat 含 PAYLOAD |
-| CM-1105 | 1105 | Slack connect | **open / 待审** | 升 I 须真 OAuth→Connected；拒 stub authenticate |
-| CM-2109 | 2109 | user-Finance OAuth | **open / 待审** | 升 I 须真 OAuth NeedsAuth→Ready；拒 stub |
-| CM-2120 | 2120 | Outlook OAuth | **open / 待审** | 升 I 须真 OAuth 后 draft/send；拒 mock |
-| CM-2146 | 2146 | App vs User 浏览器 | **open / 待审** | 升 I 须真切用户浏览器会话；拒仅意图枚举 |
-| CM-1703 | 1703 | Fetch 公共回退 | **open / 待审** | 升 I 须真出网 fallback；拒凭据旁路 |
+| CM-2163 | 2163 | MCP `$file:` 注入 | **open / 待审** | smoke artifacts `READY_FOR_I_REVIEW`（`cm-2163-mcp-file-expand/`）；仍 open 直至 Bit验证 |
+| CM-2164 | 2164 | MCP `write_to_file` | **open / 待审** | smoke artifacts `READY_FOR_I_REVIEW`（`cm-2164-mcp-write-to-file/`）；仍 open 直至 Bit验证 |
+| CM-1105 | 1105 | Slack connect | **open / 待审** | smoke `NOT_READY`（无 `SLACK_OAUTH_SANDBOX`；未 stub Connected） |
+| CM-2109 | 2109 | user-Finance OAuth | **open / 待审** | smoke `NOT_READY`（无 `FINANCE_OAUTH_SANDBOX`；未 stub Ready） |
+| CM-2120 | 2120 | Outlook OAuth | **open / 待审** | smoke `NOT_READY`（无 `OUTLOOK_OAUTH_SANDBOX`；未 stub） |
+| CM-2146 | 2146 | App vs User 浏览器 | **open / 待审** | smoke isolated profiles/CDP（非 9223）；status 见 artifacts；仍 open 直至 Bit验证 |
+| CM-1703 | 1703 | Fetch 公共回退 | **open / 待审** | smoke `READY_FOR_I_REVIEW` / network-dependent；`credential_bypass=false`；仍 open 直至 Bit验证 |
 
-> **H4 待审**：不升裁；等 `scripts/host_h4_smoke.sh` artifacts 齐且 §4.0 左列过后再点 Bit验证。U=234 不动；**0806 仍 GAP**。详见 `gaps.md`「H4 升 I 口径」。
+> **H4 待审**：`scripts/host_h4_smoke.sh` 已落；artifacts 为 `READY_FOR_I_REVIEW` 或诚实 `NOT_READY`（`i_claimed=false`）。**不升裁 I-PASS**；点 Bit验证。U=234 不动；**0806 仍 GAP**。详见 `gaps.md`「H4 升 I 口径」与 interface-gaps §4.0/§4.3。
 
 ## 已 I-PASS（H0）
 
