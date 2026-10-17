@@ -261,6 +261,11 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(FinanceCall(tool~))
     }
   }
+  if low == "list credentials" ||
+      low == "list logins" ||
+      low == "show credentials" {
+    return Some(ListCredentials)
+  }
   if low.has_prefix("fill credential ") || low.has_prefix("autofill login ") {
     let rest = if low.has_prefix("fill credential ") {
       trimmed[16:].to_owned()

@@ -12,6 +12,10 @@
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const {
+  extractDeliveryTypes,
+  formatDeliveryStrip,
+} = require("../shared/send_to_user_surface");
 
 const root = path.resolve(__dirname, "../..");
 const args = process.argv.slice(2);
@@ -24,7 +28,12 @@ const r = spawnSync(
   [path.join(root, "hosts/cli_host/run_turn.js"), ...args],
   { cwd: root, encoding: "utf8", env: process.env },
 );
-if (r.stdout) process.stdout.write(r.stdout);
+if (r.stdout) {
+  process.stdout.write(r.stdout);
+  // CHARTER Delivery: append SendToUser strip for mobile Host shells.
+  const strip = formatDeliveryStrip(extractDeliveryTypes(r.stdout));
+  if (strip) process.stdout.write(strip + "\n");
+}
 if (r.stderr) process.stderr.write(r.stderr);
 
 // CM-0705: device_permission is executed by shared Host FFI into

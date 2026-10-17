@@ -178,6 +178,10 @@
 - [x] Host MCP `$file:` expand in product FFI path (CM-2163; refuse missing/out-of-repo; never pretend_inject)
 - [x] Host MCP `write_result` / write_to_file product path (CM-2164 → `/workspace/agent-tools/`; path not body; never pretend_inline_payload)
 - [x] Host teammate sections durable partitions (CM-1403 `section_add`/`section_post`; isolation + unknown refuse)
+- [x] Host credential_list metadata vault (CM-2130; never secret_echoed / pretend_secret_view)
+- [x] Host source_control always writes `pr-create-plan.json` with `real_create_gated` honesty
+- [x] Mobile Host SendToUser delivery strip (`hosts/shared/send_to_user_surface.js` via mobile_host)
+- [x] Grok parity scenario smoke (`scripts/smoke_grok_parity_scenario.sh` multi-turn SendToUser proof)
 - [x] Desktop chips for mcp_call / mail_send / code_changes / teammate / sections
 - [x] Host email channel live (`reply via email:` → mail_send; `live_email_gmail` when gated)
 - [x] Host code_changes gated apply (`BITBOT_CODE_APPLY=1` → durable `.bitbot-applied.json` sidecar; never pretend_committed)

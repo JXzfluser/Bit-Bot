@@ -289,6 +289,10 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_eq(wr.intent, "mcp_call")
   assert_eq(wr.effects[0].kind, "mcp_call")
   assert_true(wr.effects[0].command.contains("write_result"))
+  let lc = run_desktop_turn("list credentials", turn_id="cred-list")
+  assert_true(lc.ok)
+  assert_eq(lc.intent, "list_credentials")
+  assert_eq(lc.effects[0].kind, "credential_list")
   let cr = run_desktop_turn(
     "create routine id=r1 cron=@daily prompt=standup notes",
     turn_id="rt-1",

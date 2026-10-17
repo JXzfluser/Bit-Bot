@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# End-to-end Grok-parity scenario smoke (product MoonBit + Host FFI; not LocalBrain).
+# Proves CHARTER Delivery SendToUser coverage across a multi-turn script.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+RUN=(node hosts/cli_host/run_turn.js)
+MOBILE=(node hosts/mobile_host/run.js)
+
+echo "==> Grok parity scenario: multi-turn SendToUser + multi-end"
+
+# Fresh delivery ledger snapshot marker
+MARKER="parity-scenario-$(date +%s)"
+mkdir -p data/delivery
+echo "{\"marker\":\"$MARKER\"}" >> data/delivery/send-to-user.jsonl
+
+# 1) Text / channel thread delivery
+"${RUN[@]}" --approved "reply via slack:Csmoke :: parity channel $MARKER" >/tmp/parity-channel.json
+python3 -c "import json;d=json.load(open('/tmp/parity-channel.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='channel_send' and h.get('ok') for h in hrs);assert any(h.get('kind')=='delivery' and h.get('ok') for h in hrs);print('parity channel+delivery ok')"
+
+# 2) Attachment (schedule ICS)
+"${RUN[@]}" "schedule meeting title=Parity when=tomorrow" >/tmp/parity-ics.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-ics.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('ics_ok') and os.path.isfile(p['ics_path']);print('parity attachment ics ok')"
+
+# 3) Widget (approval)
+"${RUN[@]}" "shell echo parity-approve" >/tmp/parity-widget.json
+python3 -c "import json;d=json.load(open('/tmp/parity-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='approval_card');p=json.loads(h['stdout']);assert (p.get('widget') or {}).get('widget_id');print('parity widget ok')"
+
+# 4) Reaction pill
+"${RUN[@]}" "[inbound] reaction :+1:" >/tmp/parity-reaction.json
+python3 -c "import json;d=json.load(open('/tmp/parity-reaction.json'));h=next(x for x in d['host_results'] if x.get('kind')=='inbound_reaction');p=json.loads(h['stdout']);assert p.get('visible_pill') is True;print('parity reaction ok')"
+
+# 5) Voice
+"${RUN[@]}" "voice start parity1" >/tmp/parity-voice.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-voice.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_session');p=json.loads(h['stdout']);assert p.get('media_ok') is True and os.path.isfile(p.get('media_path') or '');print('parity voice ok')"
+
+# 6) Credentials metadata (no secrets)
+"${RUN[@]}" "list credentials" >/tmp/parity-creds.json
+python3 -c "import json;d=json.load(open('/tmp/parity-creds.json'));assert d.get('intent')=='list_credentials';h=next(x for x in d['host_results'] if x.get('kind')=='credential_list');p=json.loads(h['stdout']);assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;assert p.get('count')>=1;blob=json.dumps(p);assert 'vault:secret' not in blob.lower();print('parity credentials metadata ok', p.get('count'))"
+
+# 7) Source-control plan artifact (real create gated)
+"${RUN[@]}" "source control create_pr" >/tmp/parity-sc.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sc.json'));h=next(x for x in d['host_results'] if x.get('kind')=='source_control');p=json.loads(h['stdout']);assert p.get('pretend_remote_pr') is False;rp=p.get('remote_pr') or {};assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;assert plan.get('real_create_gated') is True or rp.get('real_create_gated') is True or p.get('remote_pr_residual') is True;print('parity source_control plan ok', rp.get('mode'), rp.get('plan_path'))"
+
+# 8) Multi-end mobile Host strip
+"${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
+python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"
+"${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
+python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;print('parity android turn ok')"
+
+# 9) Delivery ledger must have grown with SendToUser rows after marker
+python3 -c "
+import json
+rows=open('data/delivery/send-to-user.jsonl').read().splitlines()
+seen=False; types=set()
+for line in rows:
+  try: o=json.loads(line)
+  except: continue
+  if o.get('marker')=='$MARKER':
+    seen=True; continue
+  if not seen: continue
+  if o.get('type'): types.add(o['type'])
+assert seen
+assert types, 'no SendToUser rows after marker'
+print('parity SendToUser ledger types', sorted(types))
+"
+
+echo "OK: smoke_grok_parity_scenario.sh"

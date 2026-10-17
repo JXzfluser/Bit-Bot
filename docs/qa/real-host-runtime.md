@@ -55,6 +55,9 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | MCP `$file:` | Host FFI expands `$file:` under repo before stdio MCP (CM-2163) |
 | MCP write_to_file | `write_result` → `/workspace/agent-tools/`; returns path+sha; never inline PAYLOAD |
 | Teammate sections | Durable `data/agents/sections/`; post isolation; unknown section refused |
+| Credentials list | `list credentials` → metadata only under `data/credentials/`; never secret plaintext |
+| Source-control PR plan | Always `data/source-control/pr-create-plan.json`; `real_create_gated` unless `BITBOT_GH_PR_CREATE=1` |
+| Mobile SendToUser | `mobile_host` appends delivery strip from Host results (CHARTER Delivery) |
 | Code changes | Plan artifact always; `BITBOT_CODE_APPLY=1` writes `.bitbot-applied.json` sidecar; never auto-commit |
 | Workflow list | Host `data/workflows/catalog.json` (CM-2118) |
 | X public search | Durable `data/connectors/x/`; live when `BITBOT_X_BEARER` (+ optional `BITBOT_X_API_BASE` mock); else sandbox_public |

@@ -109,6 +109,7 @@ pub(all) enum TurnIntent {
   FinanceConnect
   FinanceCall(tool~ : String)
   FillCredential(domain~ : String)
+  ListCredentials
   ColdMail(to_~ : String, subject~ : String, body~ : String, unsubscribe~ : String)
   PersonalSlackDm(owner_id~ : String, text~ : String)
   JobSearch(query~ : String)
@@ -185,6 +186,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     FinanceConnect => "finance_connect"
     FinanceCall(_) => "finance_call"
     FillCredential(_) => "fill_credential"
+    ListCredentials => "list_credentials"
     ColdMail(_) => "cold_mail"
     PersonalSlackDm(_) => "personal_slack_dm"
     JobSearch(_) => "job_search"
@@ -2679,6 +2681,47 @@ pub fn run_desktop_turn(
             needs_host_ffi=true,
           )
         }
+      }
+    }
+    ListCredentials => {
+      let store = @security.CredentialStore::new()
+      let _ = store.save(
+        id="cred-desktop",
+        label="saved login",
+        domain="login.example.test",
+        username="user",
+        secret="vault:secret-ref",
+      )
+      let metas = store.list_credentials()
+      let json = store.list_credentials_json()
+      // Refuse if secret plaintext leaked into list JSON.
+      if json.to_lower().contains("vault:secret-ref") ||
+          json.to_lower().contains("password") {
+        fail_turn(
+          trimmed,
+          turn_id,
+          intent,
+          "list_credentials leaked secret plaintext",
+          ctx,
+          assistant="ListCredentials refused: secret must stay vault-only (CM-2130).",
+        )
+      } else {
+        let effect : DesktopEffect = {
+          kind: "credential_list",
+          command: "list|" + metas.length().to_string(),
+          needs_host_ffi: true,
+        }
+        deliver_ok(
+          trimmed,
+          turn_id,
+          "Listed " +
+          metas.length().to_string() +
+          " credential(s) — metadata only, no secrets (CM-2130). Host materializes vault list.",
+          intent,
+          ctx~,
+          effects=[effect],
+          needs_host_ffi=true,
+        )
       }
     }
     FillCredential(domain~) => {

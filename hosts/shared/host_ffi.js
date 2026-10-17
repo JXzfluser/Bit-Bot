@@ -4550,12 +4550,34 @@ function createHostFfi(repoRoot) {
             } catch {
               body = { raw: String(pr.stdout || "").slice(0, 400) };
             }
+            const planPath = path.join(scDir, "pr-create-plan.json");
+            fs.writeFileSync(
+              planPath,
+              JSON.stringify(
+                {
+                  branch,
+                  head,
+                  mode: "gh_pr_view",
+                  dry_run: true,
+                  allow_real_create: allowRealCreate,
+                  real_create_gated: !allowRealCreate,
+                  existing_pr: body,
+                  pretend_remote_pr: false,
+                  note: "Existing PR viewed — real create still gated on BITBOT_GH_PR_CREATE=1",
+                  at,
+                },
+                null,
+                2,
+              ),
+            );
             remotePr = {
               ok: true,
               mode: "gh_pr_view",
               pr: body,
               create_attempted: false,
               dry_run: false,
+              plan_path: planPath,
+              real_create_gated: !allowRealCreate,
             };
             remotePrResidual = false;
             mode = "host_git_status+gh_pr_view";
@@ -4589,19 +4611,6 @@ function createHostFfi(repoRoot) {
                 0,
                 800,
               );
-              remotePr = {
-                ok: true,
-                mode: allowRealCreate ? "gh_pr_create" : "gh_pr_create_dry_run",
-                dry_run: !allowRealCreate,
-                create_attempted: true,
-                output_prefix: out,
-              };
-              // Dry-run closes create residual for Host fidelity without inventing a PR URL.
-              remotePrResidual = false;
-              mode = allowRealCreate
-                ? "host_git_status+gh_pr_create"
-                : "host_git_status+gh_pr_create_dry_run";
-              // Persist dry-run plan artifact.
               const planPath = path.join(scDir, "pr-create-plan.json");
               fs.writeFileSync(
                 planPath,
@@ -4611,6 +4620,7 @@ function createHostFfi(repoRoot) {
                     head,
                     dry_run: !allowRealCreate,
                     allow_real_create: allowRealCreate,
+                    real_create_gated: !allowRealCreate,
                     args: createArgs,
                     output_prefix: out,
                     pretend_remote_pr: false,
@@ -4620,28 +4630,80 @@ function createHostFfi(repoRoot) {
                   2,
                 ),
               );
-              remotePr.plan_path = planPath;
-            } catch (createErr) {
               remotePr = {
-                ok: false,
-                mode: "gh_pr_create_failed",
+                ok: true,
+                mode: allowRealCreate ? "gh_pr_create" : "gh_pr_create_dry_run",
                 dry_run: !allowRealCreate,
                 create_attempted: true,
+                output_prefix: out,
+                plan_path: planPath,
+                real_create_gated: !allowRealCreate,
+              };
+              // Dry-run closes create residual for Host fidelity without inventing a PR URL.
+              remotePrResidual = false;
+              mode = allowRealCreate
+                ? "host_git_status+gh_pr_create"
+                : "host_git_status+gh_pr_create_dry_run";
+            } catch (createErr) {
+              const planPath = path.join(scDir, "pr-create-plan.json");
+              const failPayload = {
+                branch,
+                head,
+                dry_run: !allowRealCreate,
+                allow_real_create: allowRealCreate,
+                real_create_gated: !allowRealCreate,
+                args: createArgs,
+                pretend_remote_pr: false,
                 view_error: String(
                   (viewErr && viewErr.message) || viewErr,
                 ).slice(0, 200),
                 error: String(
                   (createErr && createErr.message) || createErr,
                 ).slice(0, 300),
+                at,
+              };
+              fs.writeFileSync(planPath, JSON.stringify(failPayload, null, 2));
+              remotePr = {
+                ok: false,
+                mode: "gh_pr_create_failed",
+                dry_run: !allowRealCreate,
+                create_attempted: true,
+                plan_path: planPath,
+                real_create_gated: !allowRealCreate,
+                view_error: failPayload.view_error,
+                error: failPayload.error,
               };
               remotePrResidual = true;
               mode = "host_git_status+gh_pr_create_residual";
             }
           }
         } else {
+          const planPath = path.join(scDir, "pr-create-plan.json");
+          fs.writeFileSync(
+            planPath,
+            JSON.stringify(
+              {
+                branch,
+                head,
+                mode: "remote_pr_residual",
+                dry_run: true,
+                allow_real_create: false,
+                real_create_gated: true,
+                pretend_remote_pr: false,
+                error: ghBin
+                  ? "BITBOT_GH_CREATE_PR!=1 — refuse create/view pretend"
+                  : "gh CLI not found — remote PR residual",
+                at,
+              },
+              null,
+              2,
+            ),
+          );
           remotePr = {
             ok: false,
             mode: "remote_pr_residual",
+            plan_path: planPath,
+            real_create_gated: true,
             error: ghBin
               ? "BITBOT_GH_CREATE_PR!=1 — refuse create/view pretend"
               : "gh CLI not found — remote PR residual",
@@ -5890,6 +5952,76 @@ function createHostFfi(repoRoot) {
       return okJson(kind, cmd, {
         ...artifact,
         path: artifactPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    if (kind === "credential_list") {
+      // CM-2130: metadata only — never secret/password/token plaintext.
+      const vaultPath = path.join(REPO_ROOT, "data", "credentials", "vault.json");
+      fs.mkdirSync(path.dirname(vaultPath), { recursive: true });
+      let vault = { entries: [] };
+      try {
+        if (fs.existsSync(vaultPath)) {
+          vault = JSON.parse(fs.readFileSync(vaultPath, "utf8")) || vault;
+        }
+      } catch (_) {
+        vault = { entries: [] };
+      }
+      if (!Array.isArray(vault.entries) || vault.entries.length === 0) {
+        // Seed sandbox metadata rows (no secrets) for Host list surface.
+        vault.entries = [
+          {
+            id: "cred-sandbox-1",
+            domain: "login.example.test",
+            username: "demo@example.test",
+            label: "Demo login",
+          },
+        ];
+        fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2));
+      }
+      const metas = (vault.entries || []).map((e) => ({
+        id: e.id || "",
+        domain: e.domain || "",
+        username: e.username || "",
+        label: e.label || e.domain || "",
+        has_secret: Boolean(e.secret || e.password || e.token),
+        // Never echo secret fields into Host result / chat.
+      }));
+      const listPath = path.join(
+        REPO_ROOT,
+        "data",
+        "credentials",
+        `list-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        count: metas.length,
+        credentials: metas,
+        secret_echoed: false,
+        pretend_secret_view: false,
+        mode: "host_vault_metadata",
+        at,
+      };
+      fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: listPath,
+        label: "credentials_metadata",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: listPath,
+        count: metas.length,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...artifact,
+        path: listPath,
+        vault_path: vaultPath,
         send_to_user: delivery,
         ok: true,
       });
