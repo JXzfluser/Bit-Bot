@@ -2919,7 +2919,21 @@ pub fn run_desktop_turn(
         buf.write_string(names[i])
         i = i + 1
       }
-      deliver_ok(trimmed, turn_id, buf.to_string() + " (CM-2118).", intent, ctx~)
+      // Host materializes durable workflow catalog (CM-2118) — not kernel-only.
+      let effect : DesktopEffect = {
+        kind: "workflow_list",
+        command: names.join(","),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        buf.to_string() + " (CM-2118). Host persists workflow catalog.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     IdentityBrowser => {
       let session = @connectors.ConnectorIdentitySession::new(
@@ -2952,9 +2966,10 @@ pub fn run_desktop_turn(
       ns.seed_readonly_tools()
       ns.seed_post(id="t1", text="moonbit grok parity " + query)
       let hits = ns.search_posts(query)
+      // Host x_search materializes durable results; live X only when BITBOT_X_BEARER set.
       let effect : DesktopEffect = {
-        kind: "mcp_call",
-        command: "x-public.search_posts|{\"q\":\"" + query + "\"}",
+        kind: "x_search",
+        command: query,
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -2962,7 +2977,7 @@ pub fn run_desktop_turn(
         turn_id,
         "X public search: " +
         hits.length().to_string() +
-        " hit(s) (CM-0910; no user auth).",
+        " hit(s) (CM-0910; Host persists results).",
         intent,
         ctx~,
         effects=[effect],

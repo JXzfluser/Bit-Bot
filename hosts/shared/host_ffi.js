@@ -1644,36 +1644,195 @@ function createHostFfi(repoRoot) {
     return null;
   }
 
-  function executeMailReadSearch(kind, command) {
-    // Live Gmail uses same token path as mail_send when present; else sandbox.
+  async function executeMailReadSearch(kind, command) {
+    // Durable sandbox artifacts always; live Gmail when token + API reachable.
+    // Never pretend live hits without a successful API response.
+    const at = new Date().toISOString();
     const tokenPath = path.join(CONNECTORS_DIR, "gmail_token.json");
-    const hasToken = fs.existsSync(tokenPath);
+    let accessToken = "";
+    try {
+      if (fs.existsSync(tokenPath)) {
+        const tok = JSON.parse(fs.readFileSync(tokenPath, "utf8"));
+        accessToken = String(
+          (tok && (tok.access_token || tok.token)) || "",
+        ).trim();
+      }
+    } catch (_) {
+      accessToken = "";
+    }
+    const wantLive = Boolean(accessToken);
+    const mailDir = path.join(REPO_ROOT, "data", "mail");
+    const searchDir = path.join(mailDir, "search");
+    const threadDir = path.join(mailDir, "threads");
+    fs.mkdirSync(searchDir, { recursive: true });
+    fs.mkdirSync(threadDir, { recursive: true });
+
+    if (kind === "mail_search") {
+      const q = String(command || "").trim() || "(all)";
+      let liveHits = null;
+      let liveProbe = null;
+      let mode = "sandbox";
+      if (wantLive) {
+        try {
+          const url =
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=" +
+            encodeURIComponent(q) +
+            "&maxResults=10";
+          const resp = await fetch(url, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          const text = await resp.text();
+          let body = null;
+          try {
+            body = JSON.parse(text);
+          } catch (_) {
+            body = { raw: String(text || "").slice(0, 400) };
+          }
+          liveProbe = { ok: resp.ok, http_status: resp.status };
+          if (resp.ok) {
+            liveHits = Array.isArray(body.messages) ? body.messages : [];
+            mode = "gmail_live";
+          } else {
+            mode = "gmail_live_failed";
+          }
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+          mode = "gmail_live_failed";
+        }
+      }
+      const sandboxHits = [
+        {
+          id: "t-sandbox-1",
+          threadId: "t-sandbox-1",
+          subject: `Sandbox hit for ${q}`,
+          snippet: "Host sandbox mail index — not live Gmail",
+        },
+      ];
+      const hits = liveHits
+        ? liveHits.map((m) => ({
+            id: m.id || "",
+            threadId: m.threadId || m.id || "",
+            subject: "(live)",
+            snippet: "",
+          }))
+        : sandboxHits;
+      const artifactPath = path.join(
+        searchDir,
+        `search-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        kind: "mail_search",
+        query: q,
+        mode,
+        live_mail_residual: mode !== "gmail_live",
+        pretend_live: false,
+        hit_count: hits.length,
+        hits,
+        live_probe: liveProbe,
+        at,
+      };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        path: artifactPath,
+        mode,
+        at,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: artifactPath,
+        label: "mail_search",
+        source_kind: kind,
+        at,
+      });
+      return okJson(kind, command, {
+        ...artifact,
+        path: artifactPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    // mail_read
+    const threadId = String(command || "").trim() || "t-unknown";
+    let liveThread = null;
+    let liveProbe = null;
+    let mode = "sandbox";
+    if (wantLive) {
+      try {
+        const url =
+          "https://gmail.googleapis.com/gmail/v1/users/me/threads/" +
+          encodeURIComponent(threadId) +
+          "?format=metadata";
+        const resp = await fetch(url, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const text = await resp.text();
+        let body = null;
+        try {
+          body = JSON.parse(text);
+        } catch (_) {
+          body = { raw: String(text || "").slice(0, 400) };
+        }
+        liveProbe = { ok: resp.ok, http_status: resp.status };
+        if (resp.ok) {
+          liveThread = body;
+          mode = "gmail_live";
+        } else {
+          mode = "gmail_live_failed";
+        }
+      } catch (err) {
+        liveProbe = {
+          ok: false,
+          error: String((err && err.message) || err).slice(0, 200),
+        };
+        mode = "gmail_live_failed";
+      }
+    }
+    const artifactPath = path.join(
+      threadDir,
+      `thread-${sanitizeSkillName(threadId)}.json`,
+    );
+    const artifact = {
+      kind: "mail_read",
+      thread_id: threadId,
+      mode,
+      live_mail_residual: mode !== "gmail_live",
+      pretend_live: false,
+      subject:
+        (liveThread && liveThread.snippet) ||
+        `Sandbox thread ${threadId}`,
+      snippet:
+        (liveThread && liveThread.snippet) ||
+        "Host sandbox mail body — not live Gmail",
+      live_probe: liveProbe,
+      at,
+    };
+    fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
     appendHostDeliveryJournal({
       kind,
       command,
-      mode: hasToken ? "gmail-live-pending" : "sandbox",
-      at: new Date().toISOString(),
+      path: artifactPath,
+      mode,
+      at,
     });
-    if (kind === "mail_search") {
-      return {
-        kind,
-        ok: true,
-        command,
-        stdout: hasToken
-          ? `gmail live search queued q=${command}`
-          : `sandbox search q=${command} (set connectors/gmail_token.json for live)`,
-        stderr: "",
-      };
-    }
-    return {
-      kind,
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: artifactPath,
+      label: "mail_read",
+      source_kind: kind,
+      at,
+    });
+    return okJson(kind, command, {
+      ...artifact,
+      path: artifactPath,
+      send_to_user: delivery,
       ok: true,
-      command,
-      stdout: hasToken
-        ? `gmail live read queued thread=${command}`
-        : `sandbox read thread=${command}`,
-      stderr: "",
-    };
+    });
   }
 
   function loadJournalEvents() {
@@ -5034,6 +5193,138 @@ function createHostFfi(repoRoot) {
       });
     }
 
+    if (kind === "workflow_list") {
+      const names = String(cmd || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const wfDir = path.join(REPO_ROOT, "data", "workflows");
+      fs.mkdirSync(wfDir, { recursive: true });
+      const catalogPath = path.join(wfDir, "catalog.json");
+      const catalog = {
+        workflows: names.map((n) => ({
+          name: n,
+          visibility: "private_example",
+          pretend_shared: false,
+        })),
+        count: names.length,
+        mode: "host_workflow_catalog",
+        at,
+      };
+      fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
+      appendJsonl(path.join(wfDir, "list.jsonl"), catalog);
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: catalogPath,
+        label: "workflow_catalog",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: catalogPath,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...catalog,
+        path: catalogPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    if (kind === "x_search") {
+      const q = String(cmd || "").trim() || "(empty)";
+      const xDir = path.join(REPO_ROOT, "data", "connectors", "x");
+      fs.mkdirSync(xDir, { recursive: true });
+      const bearer = String(process.env.BITBOT_X_BEARER || "").trim();
+      let mode = "sandbox_public";
+      let liveHits = null;
+      let liveProbe = null;
+      if (bearer) {
+        try {
+          const url =
+            "https://api.x.com/2/tweets/search/recent?query=" +
+            encodeURIComponent(q) +
+            "&max_results=10";
+          const resp = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${bearer}`,
+              Accept: "application/json",
+            },
+          });
+          const text = await resp.text();
+          let body = null;
+          try {
+            body = JSON.parse(text);
+          } catch (_) {
+            body = { raw: String(text || "").slice(0, 400) };
+          }
+          liveProbe = { ok: resp.ok, http_status: resp.status };
+          if (resp.ok && Array.isArray(body.data)) {
+            liveHits = body.data;
+            mode = "x_live";
+          } else {
+            mode = "x_live_failed";
+          }
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+          mode = "x_live_failed";
+        }
+      }
+      const hits = liveHits
+        ? liveHits.map((t) => ({
+            id: t.id || "",
+            text: String(t.text || "").slice(0, 280),
+          }))
+        : [
+            {
+              id: "t-sandbox-1",
+              text: `moonbit grok parity ${q}`.slice(0, 280),
+            },
+          ];
+      const artifactPath = path.join(
+        xDir,
+        `search-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        query: q,
+        mode,
+        live_x_residual: mode !== "x_live",
+        pretend_live: false,
+        hit_count: hits.length,
+        hits,
+        live_probe: liveProbe,
+        at,
+      };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(xDir, "searches.jsonl"), artifact);
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: artifactPath,
+        label: "x_search",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: artifactPath,
+        mode,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...artifact,
+        path: artifactPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
     if (kind === "mail_draft") {
       // command often: to|subject|body — or meeting_chat :: body (CM-2153 DraftCard)
       let to = "";
@@ -5354,7 +5645,7 @@ function createHostFfi(repoRoot) {
         continue;
       }
       if (kind === "mail_search" || kind === "mail_read") {
-        results.push(executeMailReadSearch(kind, cmd));
+        results.push(await executeMailReadSearch(kind, cmd));
         continue;
       }
       const memRes = executeJournalSharedInbound(kind, cmd);

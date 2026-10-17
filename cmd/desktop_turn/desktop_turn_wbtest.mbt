@@ -424,12 +424,16 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let lw = run_desktop_turn("list workflows", turn_id="lw-1")
   assert_true(lw.ok)
   assert_eq(lw.intent, "list_workflows")
+  assert_true(lw.needs_host_ffi)
+  assert_eq(lw.effects[0].kind, "workflow_list")
   let ib = run_desktop_turn("identity browser", turn_id="ib-1")
   assert_true(ib.ok)
   assert_eq(ib.intent, "identity_browser")
   let xs = run_desktop_turn("x search moonbit", turn_id="xs-1")
   assert_true(xs.ok)
   assert_eq(xs.intent, "x_search")
+  assert_true(xs.needs_host_ffi)
+  assert_eq(xs.effects[0].kind, "x_search")
   let as_ = run_desktop_turn(
     "author skill name=demo-skill description=demo body=Do the thing.",
     turn_id="as-1",
