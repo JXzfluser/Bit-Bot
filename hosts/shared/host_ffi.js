@@ -5075,6 +5075,7 @@ function createHostFfi(repoRoot) {
                   (gui.vision_plan && gui.vision_plan.ok),
               ),
               native_os_input: gui.native_os_input || null,
+              native_os_act: gui.native_os_act || null,
               os_window_automation_residual:
                 gui.os_window_automation_residual !== undefined
                   ? Boolean(gui.os_window_automation_residual)

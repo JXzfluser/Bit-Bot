@@ -155,6 +155,7 @@
 - [x] Host meeting_chat live transport probe (`BITBOT_MEETING_*`; else `live_meeting_residual=true`)
 - [x] Host routine daemon `--long-lived` + systemd unit scaffold (`bitbot-routine-daemon.service.example`; install still residual)
 - [x] Host CU native OS input probe (`xdotool`/`wmctrl`) + `os_window_automation_residual` / `ocr_residual` honesty
+- [x] Host CU native OS act (`BITBOT_CU_NATIVE_ACT=1` → xdotool click/type; residual closes when probe_ready+act ok)
 - [x] Host source_control remote PR residual (`remote_pr_residual`; `BITBOT_GH_CREATE_PR=1` → `gh pr view`, never pretend create)
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)

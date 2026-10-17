@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -391,21 +392,130 @@ def probe_native_os_input() -> Dict[str, Any]:
                 env={**os.environ, "DISPLAY": display},
             )
             lines = [ln for ln in (proc.stdout or "").splitlines() if ln.strip()]
-            probe["windows"] = {"count": len(lines), "sample": lines[:5]}
+            probe["windows"] = {"count": len(lines), "sample": lines[:5], "tool": "wmctrl"}
             if lines:
                 probe["ok"] = True
         except Exception as e:  # noqa: BLE001
             probe["wmctrl_error"] = str(e)[:200]
-    # Residual until both mouse-location and window-list tools are usable for act.
-    probe["os_window_automation_residual"] = not (
-        bool(probe.get("mouse")) and bool((probe.get("windows") or {}).get("count"))
+    elif tools["xdotool"]:
+        # Fallback window list via xdotool when wmctrl absent.
+        try:
+            proc = subprocess.run(
+                ["xdotool", "search", "--name", "."],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env={**os.environ, "DISPLAY": display},
+            )
+            ids = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
+            probe["windows"] = {
+                "count": len(ids),
+                "sample": ids[:5],
+                "tool": "xdotool-search",
+            }
+            if ids:
+                probe["ok"] = True
+        except Exception as e:  # noqa: BLE001
+            probe["xdotool_search_error"] = str(e)[:200]
+    # Probe residual: need mouse location + some window inventory for native act readiness.
+    probe_ready = bool(probe.get("mouse")) and bool(
+        (probe.get("windows") or {}).get("count")
     )
+    probe["probe_ready"] = probe_ready
+    # Act residual closed only after successful native act (see run_native_os_actions).
+    probe["os_window_automation_residual"] = True
     probe["note"] = (
-        "native OS input probe (xdotool/wmctrl) — CDP remains primary act path"
-        if probe["ok"]
-        else "OS-window automation residual — install xdotool+wmctrl for native input"
+        "native OS input probe ready — set BITBOT_CU_NATIVE_ACT=1 to drive xdotool act"
+        if probe_ready
+        else "OS-window automation residual — need xdotool mouse + window inventory"
     )
     return probe
+
+
+def run_native_os_actions(command: str, probe: Dict[str, Any]) -> Dict[str, Any]:
+    """Optional true OS-window act via xdotool (BITBOT_CU_NATIVE_ACT=1). CDP stays primary."""
+    enabled = os.environ.get("BITBOT_CU_NATIVE_ACT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    result: Dict[str, Any] = {
+        "enabled": enabled,
+        "ok": False,
+        "actions": [],
+        "os_window_automation_residual": True,
+    }
+    if not enabled:
+        result["note"] = "native act disabled — CDP primary (BITBOT_CU_NATIVE_ACT unset)"
+        return result
+    if not shutil.which("xdotool"):
+        result["error"] = "xdotool missing"
+        result["note"] = "native act residual — install xdotool"
+        return result
+    display = os.environ.get("DISPLAY") or ""
+    if not display:
+        result["error"] = "no DISPLAY"
+        return result
+    env = {**os.environ, "DISPLAY": display}
+    # Parse click:x,y and type:text tokens from the CU command string.
+    steps: List[Tuple[str, ...]] = []
+    for tok in re.findall(r"click:(\d+),(\d+)", command or "", flags=re.I):
+        steps.append(("click", tok[0], tok[1]))
+    for tok in re.findall(r"type:([^\s|]+)", command or "", flags=re.I):
+        steps.append(("type", tok))
+    if not steps:
+        # Harmless readiness act: read mouse location again (no synthetic UI damage).
+        steps.append(("probe",))
+    ok_any = False
+    for step in steps[:6]:
+        try:
+            if step[0] == "click":
+                subprocess.run(
+                    ["xdotool", "mousemove", step[1], step[2], "click", "1"],
+                    check=False,
+                    timeout=5,
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                result["actions"].append({"kind": "click", "x": int(step[1]), "y": int(step[2])})
+                ok_any = True
+            elif step[0] == "type":
+                subprocess.run(
+                    ["xdotool", "type", "--clearmodifiers", step[1][:80]],
+                    check=False,
+                    timeout=8,
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                result["actions"].append({"kind": "type", "len": len(step[1][:80])})
+                ok_any = True
+            else:
+                proc = subprocess.run(
+                    ["xdotool", "getmouselocation", "--shell"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    env=env,
+                )
+                result["actions"].append(
+                    {"kind": "probe", "ok": proc.returncode == 0, "out": (proc.stdout or "")[:120]}
+                )
+                ok_any = proc.returncode == 0
+        except Exception as e:  # noqa: BLE001
+            result["actions"].append({"kind": step[0], "error": str(e)[:160]})
+    result["ok"] = ok_any
+    # Close residual when probe was ready and at least one native act succeeded.
+    result["os_window_automation_residual"] = not (
+        ok_any and bool(probe.get("probe_ready"))
+    )
+    result["note"] = (
+        "native OS act via xdotool (BITBOT_CU_NATIVE_ACT=1)"
+        if ok_any
+        else "native act attempted but no successful step"
+    )
+    return result
 
 
 def capture_screenshot(artifact_dir: Path) -> Dict[str, Any]:
@@ -630,12 +740,34 @@ def run_chrome_session(
 
     native_os = probe_native_os_input() if gui_mode == "window" else {
         "ok": False,
+        "probe_ready": False,
         "os_window_automation_residual": True,
         "note": "headless — no native OS window input",
     }
+    native_cmd = command_hint or actions or os.environ.get("BITBOT_CU_COMMAND") or ""
+    native_act = (
+        run_native_os_actions(native_cmd, native_os)
+        if gui_mode == "window"
+        else {
+            "enabled": False,
+            "ok": False,
+            "actions": [],
+            "os_window_automation_residual": True,
+            "note": "headless — native act skipped",
+        }
+    )
+    # Residual closes only when native act succeeded after a ready probe.
+    os_auto_residual = bool(
+        native_act.get("os_window_automation_residual", True)
+    )
+    native_os["native_act"] = native_act
+    native_os["os_window_automation_residual"] = os_auto_residual
     if gui_mode == "window":
         (artifact_dir / "native_os_input.json").write_text(
             json.dumps(native_os, indent=2) + "\n", encoding="utf-8"
+        )
+        (artifact_dir / "native_os_act.json").write_text(
+            json.dumps(native_act, indent=2) + "\n", encoding="utf-8"
         )
     result = {
         "started": True,
@@ -656,9 +788,8 @@ def run_chrome_session(
         "vision_actions": vision_actions,
         "screenshot": screenshot,
         "native_os_input": native_os,
-        "os_window_automation_residual": bool(
-            native_os.get("os_window_automation_residual", True)
-        ),
+        "native_os_act": native_act,
+        "os_window_automation_residual": os_auto_residual,
         "display": os.environ.get("DISPLAY") or None,
     }
     # Best-effort terminate throwaway session.
