@@ -45,6 +45,9 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | OS-window CU input | Windowed Chrome+CDP primary; `BITBOT_CU_NATIVE_ACT=1` drives native click/type |
 | Vision OCR | PIL hotspots; `BITBOT_CU_OCR=1` → tesseract closes `ocr_residual` |
 | Source-control remote PR | `git status` always; `BITBOT_GH_CREATE_PR=1` → view or `gh pr create --dry-run`; real create needs `BITBOT_GH_PR_CREATE=1` |
+| Mail search/read | Durable `data/mail/search|threads` artifacts; live Gmail when token; never pretend_live |
+| Workflow list | Host `data/workflows/catalog.json` (CM-2118) |
+| X public search | Durable `data/connectors/x/`; live when `BITBOT_X_BEARER`; else sandbox_public |
 | Legacy LocalBrain Host UI | Demoted — not product brain |
 
 ## Env vars
