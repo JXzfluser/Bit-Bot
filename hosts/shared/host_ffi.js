@@ -5283,22 +5283,61 @@ function createHostFfi(repoRoot) {
         jobDir,
         `search-${Date.now().toString(36)}.json`,
       );
-      const hits = Array.from({ length: Math.max(hitCount, 1) }, (_, i) => ({
+      const jobApi = String(process.env.BITBOT_JOB_API_URL || "").trim();
+      const jobToken = String(process.env.BITBOT_JOB_TOKEN || "").trim();
+      let mode = "sandbox_readonly";
+      let liveProbe = null;
+      let hits = Array.from({ length: Math.max(hitCount, 1) }, (_, i) => ({
         id: `job-sandbox-${i + 1}`,
         title: `${query || "role"} (sandbox ${i + 1})`,
         company: "BitBot Sandbox Co",
         readonly: true,
         pretend_applied: false,
       }));
+      if (jobApi && jobToken) {
+        const base = jobApi.replace(/\/$/, "");
+        const probe = await httpJson(`${base}/jobs/search`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${jobToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ query, playbook, limit: Math.max(hitCount, 3) }),
+        });
+        liveProbe = {
+          ok: Boolean(probe.ok),
+          http_status: probe.status || 0,
+          error: probe.error || null,
+        };
+        const rows =
+          (probe.json && (probe.json.jobs || probe.json.hits || probe.json.results)) ||
+          null;
+        if (probe.ok && Array.isArray(rows) && rows.length > 0) {
+          hits = rows.slice(0, 20).map((r, i) => ({
+            id: String((r && (r.id || r.job_id)) || `job-live-${i + 1}`),
+            title: String((r && (r.title || r.name)) || `${query} live ${i + 1}`),
+            company: String((r && r.company) || "Live Catalog"),
+            readonly: true,
+            pretend_applied: false,
+          }));
+          mode = "job_live";
+        } else {
+          mode = "job_live_failed";
+        }
+      }
       const artifact = {
         query,
         playbook,
-        mode: "sandbox_readonly",
-        live_job_residual: true,
+        mode,
+        live_job_residual: mode !== "job_live",
         pretend_applied: false,
         hit_count: hits.length,
         hits,
-        note: "Host job search catalog — CU playbook separate; never auto-applies",
+        live_probe: liveProbe,
+        note:
+          mode === "job_live"
+            ? "Host job search live catalog — never auto-applies"
+            : "Host job search catalog — CU playbook separate; never auto-applies",
         at,
       };
       fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
@@ -5314,6 +5353,7 @@ function createHostFfi(repoRoot) {
         kind,
         command: cmd,
         path: artifactPath,
+        mode,
         at,
       });
       return okJson(kind, cmd, {
@@ -5388,29 +5428,31 @@ function createHostFfi(repoRoot) {
       const xDir = path.join(REPO_ROOT, "data", "connectors", "x");
       fs.mkdirSync(xDir, { recursive: true });
       const bearer = String(process.env.BITBOT_X_BEARER || "").trim();
+      const xApiBase = String(process.env.BITBOT_X_API_BASE || "").trim();
       let mode = "sandbox_public";
       let liveHits = null;
       let liveProbe = null;
       if (bearer) {
         try {
+          const root = (xApiBase || "https://api.x.com/2").replace(/\/$/, "");
           const url =
-            "https://api.x.com/2/tweets/search/recent?query=" +
+            `${root}/tweets/search/recent?query=` +
             encodeURIComponent(q) +
             "&max_results=10";
-          const resp = await fetch(url, {
+          // Prefer httpJson so local BITBOT_X_API_BASE mocks work without fetch quirks.
+          const resp = await httpJson(url, {
+            method: "GET",
             headers: {
               Authorization: `Bearer ${bearer}`,
               Accept: "application/json",
             },
           });
-          const text = await resp.text();
-          let body = null;
-          try {
-            body = JSON.parse(text);
-          } catch (_) {
-            body = { raw: String(text || "").slice(0, 400) };
-          }
-          liveProbe = { ok: resp.ok, http_status: resp.status };
+          const body = resp.json || { raw: String(resp.body || "").slice(0, 400) };
+          liveProbe = {
+            ok: Boolean(resp.ok),
+            http_status: resp.status || 0,
+            error: resp.error || null,
+          };
           if (resp.ok && Array.isArray(body.data)) {
             liveHits = body.data;
             mode = "x_live";

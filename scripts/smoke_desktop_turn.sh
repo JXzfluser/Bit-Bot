@@ -234,6 +234,14 @@ node hosts/cli_host/run_turn.js "list workflows" >/tmp/bitbot-workflows.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-workflows.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='workflow_list');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('count')>=1;assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/workflows/catalog.json');print('workflow_list catalog ok', p.get('count'), p.get('path'))"
 node hosts/cli_host/run_turn.js "x search moonbit" >/tmp/bitbot-x-search.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-x-search.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='x_search');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='sandbox_public';assert p.get('live_x_residual') is True;assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;assert p.get('path') and os.path.isfile(p['path']);print('x_search sandbox artifact ok', p.get('path'), 'hits', p.get('hit_count'))"
+# Live X search against local mock (BITBOT_X_API_BASE)
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18772 --mode x --token smoke-x >/tmp/bitbot-x-mock.log 2>&1 &
+X_MOCK_PID=$!
+sleep 0.4
+BITBOT_X_API_BASE=http://127.0.0.1:18772 BITBOT_X_BEARER=smoke-x node hosts/cli_host/run_turn.js "x search moonbit" >/tmp/bitbot-x-live.json || true
+kill "$X_MOCK_PID" >/dev/null 2>&1 || true
+wait "$X_MOCK_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-x-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='x_search');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='x_live';assert p.get('live_x_residual') is False;assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;print('x_search live mock ok', p.get('path'), 'hits', p.get('hit_count'))"
 
 echo "==> Host durable product delivery (voice/teammates/device/subagent/cloud/commerce)"
 node hosts/cli_host/run_turn.js "voice start smoke1" >/tmp/bitbot-voice.json
@@ -311,7 +319,15 @@ kill "$FINANCE_MOCK_PID" >/dev/null 2>&1 || true
 wait "$FINANCE_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-finance-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='finance_call');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='finance_live';assert p.get('live_finance_residual') is False;assert p.get('pretend_live') is False;assert (p.get('live_probe') or {}).get('ok') is True;print('finance_call live ok', p.get('artifact_path'), p.get('live_probe'))"
 node hosts/cli_host/run_turn.js "job search engineer" >/tmp/bitbot-jobs.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-jobs.json'));hrs=d.get('host_results') or [];kinds=[h.get('kind') for h in hrs];assert 'computer_use' in kinds;h=next(x for x in hrs if x.get('kind')=='job_search');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_applied') is False;assert p.get('live_job_residual') is True;assert p.get('path') and os.path.isfile(p['path']);assert p.get('hit_count')>=1;print('job_search durable ok', p.get('path'), 'hits', p.get('hit_count'), 'playbook', p.get('playbook'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-jobs.json'));hrs=d.get('host_results') or [];kinds=[h.get('kind') for h in hrs];assert 'computer_use' in kinds;h=next(x for x in hrs if x.get('kind')=='job_search');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_applied') is False;assert p.get('live_job_residual') is True;assert p.get('mode')=='sandbox_readonly';assert p.get('path') and os.path.isfile(p['path']);assert p.get('hit_count')>=1;print('job_search durable ok', p.get('path'), 'hits', p.get('hit_count'), 'playbook', p.get('playbook'))"
+# Live job catalog against local mock
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18771 --mode job --token smoke-job >/tmp/bitbot-job-mock.log 2>&1 &
+JOB_MOCK_PID=$!
+sleep 0.4
+BITBOT_JOB_API_URL=http://127.0.0.1:18771 BITBOT_JOB_TOKEN=smoke-job node hosts/cli_host/run_turn.js "job search engineer" >/tmp/bitbot-jobs-live.json || true
+kill "$JOB_MOCK_PID" >/dev/null 2>&1 || true
+wait "$JOB_MOCK_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-jobs-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='job_search');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='job_live';assert p.get('live_job_residual') is False;assert p.get('pretend_applied') is False;assert p.get('hit_count')>=1;assert (p.get('live_probe') or {}).get('ok') is True;print('job_search live mock ok', p.get('path'), 'hits', p.get('hit_count'))"
 node hosts/cli_host/run_turn.js "schedule meeting title=Sprint when=tomorrow-3pm" >/tmp/bitbot-schedule.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-schedule.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='schedule_meeting');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('scheduled') is True;assert p.get('ics_ok') is True;assert p.get('ics_path') and os.path.isfile(p['ics_path']);assert b'BEGIN:VEVENT' in open(p['ics_path'],'rb').read();print('schedule_meeting ICS ok', p.get('ics_path'))"
 

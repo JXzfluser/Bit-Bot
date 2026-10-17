@@ -50,7 +50,8 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Source-control remote PR | `git status` always; `BITBOT_GH_CREATE_PR=1` → view or `gh pr create --dry-run`; real create needs `BITBOT_GH_PR_CREATE=1` |
 | Mail search/read | Durable `data/mail/search|threads` artifacts; live Gmail when token; never pretend_live |
 | Workflow list | Host `data/workflows/catalog.json` (CM-2118) |
-| X public search | Durable `data/connectors/x/`; live when `BITBOT_X_BEARER`; else sandbox_public |
+| X public search | Durable `data/connectors/x/`; live when `BITBOT_X_BEARER` (+ optional `BITBOT_X_API_BASE` mock); else sandbox_public |
+| Job search | Durable `data/jobs/`; live catalog when `BITBOT_JOB_API_URL`+token; never pretend_applied |
 | Legacy LocalBrain Host UI | Demoted — not product brain |
 
 ## Env vars
@@ -68,6 +69,9 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | `BITBOT_TEAMS_TOKEN` | Bearer for Teams Graph live post |
 | `BITBOT_TEAMS_POST` | Set `1` to allow Teams Graph post |
 | `BITBOT_TEAMS_GRAPH_URL` | Override Graph root (local mock e.g. `http://127.0.0.1:18770`) |
+| `BITBOT_JOB_API_URL` + `BITBOT_JOB_TOKEN` | Live job catalog POST `/jobs/search` |
+| `BITBOT_X_BEARER` | Live X recent search bearer |
+| `BITBOT_X_API_BASE` | Override X API root (local mock e.g. `http://127.0.0.1:18772`) |
 | `SLACK_DEFAULT_CHANNEL` | Channel for optional Slack posts |
 
 Absent Slack/Gmail/Outlook credentials are documented in `connectors_live.CONNECTOR_ENV_DOCS` and echoed by `/api/host/connectors/status`.

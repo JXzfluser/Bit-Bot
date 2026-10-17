@@ -7,6 +7,8 @@ Usage:
   python3 scripts/host_local_http_mock.py --port 18768 --mode finance
   python3 scripts/host_local_http_mock.py --port 18769 --mode slack
   python3 scripts/host_local_http_mock.py --port 18770 --mode teams
+  python3 scripts/host_local_http_mock.py --port 18771 --mode job
+  python3 scripts/host_local_http_mock.py --port 18772 --mode x
 
 Endpoints:
   purchase: POST /charge
@@ -14,6 +16,8 @@ Endpoints:
   finance:  POST /tools/<name>
   slack:    POST /chat.postMessage  (BITBOT_SLACK_API_BASE=http://host:port)
   teams:    POST /chats/<id>/messages  (BITBOT_TEAMS_GRAPH_URL=http://host:port)
+  job:      POST /jobs/search  (BITBOT_JOB_API_URL=http://host:port)
+  x:        GET  /tweets/search/recent  (BITBOT_X_API_BASE=http://host:port)
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import argparse
 import json
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
 
 
 def main() -> int:
@@ -29,7 +34,7 @@ def main() -> int:
     ap.add_argument("--port", type=int, required=True)
     ap.add_argument(
         "--mode",
-        choices=("purchase", "meeting", "finance", "slack", "teams"),
+        choices=("purchase", "meeting", "finance", "slack", "teams", "job", "x"),
         required=True,
     )
     ap.add_argument("--token", default="smoke-token")
@@ -67,6 +72,7 @@ def main() -> int:
                     mode == "teams"
                     and ("/chats/" in path and path.endswith("/messages"))
                 )
+                or (mode == "job" and path == "/jobs/search")
             )
             if not ok_path:
                 self._json(404, {"ok": False, "error": "not_found"})
@@ -110,7 +116,6 @@ def main() -> int:
                     },
                 )
             elif mode == "slack":
-                # Slack API shape: { ok: true, ts: "..." }
                 self._json(
                     200,
                     {
@@ -120,21 +125,62 @@ def main() -> int:
                         "message": {"text": payload.get("text") or ""},
                     },
                 )
+            elif mode == "job":
+                q = str(payload.get("query") or "role")
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "jobs": [
+                            {
+                                "id": "job-live-1",
+                                "title": f"{q} (live mock)",
+                                "company": "Mock Employer",
+                            },
+                            {
+                                "id": "job-live-2",
+                                "title": f"{q} senior (live mock)",
+                                "company": "Mock Employer",
+                            },
+                        ],
+                    },
+                )
             else:  # teams
                 self._json(
                     200,
                     {
                         "id": "mock-teams-msg-1",
-                        "body": {"content": payload.get("body", {}).get("content", "")},
+                        "body": {
+                            "content": payload.get("body", {}).get("content", "")
+                        },
                     },
                 )
 
         def do_GET(self) -> None:  # noqa: N802
-            if mode == "teams" and self.path.split("?", 1)[0].endswith("/me/chats"):
+            parsed = urlparse(self.path)
+            path = parsed.path
+            if mode == "teams" and path.endswith("/me/chats"):
                 if not self._auth_ok():
                     self._json(401, {"ok": False, "error": "unauthorized"})
                     return
                 self._json(200, {"value": [{"id": "Tsmoke", "topic": "smoke"}]})
+                return
+            if mode == "x" and path.endswith("/tweets/search/recent"):
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                qs = parse_qs(parsed.query)
+                q = (qs.get("query") or ["x"])[0]
+                self._json(
+                    200,
+                    {
+                        "data": [
+                            {"id": "x-live-1", "text": f"live mock hit for {q}"},
+                            {"id": "x-live-2", "text": f"second hit {q}"},
+                        ],
+                        "meta": {"result_count": 2},
+                    },
+                )
                 return
             self._json(404, {"ok": False, "error": "not_found"})
 
