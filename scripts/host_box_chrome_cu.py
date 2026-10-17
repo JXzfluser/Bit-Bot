@@ -159,19 +159,21 @@ _DOM_OBSERVE_JS = (
     "var searchEl=pick(['input[type=search]','input[name*=search]','input[placeholder*=search]','input[aria-label*=search]','#search','[data-test=searchInput]']);"
     "var cartEl=pick(['a[href*=cart]','button[aria-label*=cart]','[data-test*=cart]','a[href*=bag]']);"
     "var checkoutEl=pick(['a[href*=checkout]','button[name*=checkout]','button[aria-label*=checkout]','[data-test*=checkout]','input[value*=checkout]']);"
+    "var payEl=pick(['input[name*=card]','input[autocomplete=cc-number]','input[name*=cvv]','iframe[src*=stripe]','iframe[src*=paypal]','button[aria-label*=pay]','[data-test*=payment]','form[action*=pay]']);"
     "var primaryBtn=pick(['button[type=submit]','button.primary','a.button','[role=button]','button']);"
     "var inputs=document.querySelectorAll('input,textarea,[contenteditable]').length;"
     "var buttons=document.querySelectorAll('button,a,[role=button]').length;"
     "var links=document.querySelectorAll('a[href]').length;"
-    "var searchBox=box(searchEl);var cartBox=box(cartEl);var checkoutBox=box(checkoutEl);var primaryBox=box(primaryBtn);"
+    "var searchBox=box(searchEl);var cartBox=box(cartEl);var checkoutBox=box(checkoutEl);var payBox=box(payEl);var primaryBox=box(primaryBtn);"
     "var hasSearch=searchEl?true:/search/.test(txt);"
     "var hasSignin=/sign in/.test(txt);if(!hasSignin)hasSignin=/log in/.test(txt);if(!hasSignin)hasSignin=/login/.test(txt);"
     "var hasCart=cartEl?true:/cart/.test(txt);"
     "var hasCheckout=checkoutEl?true:/checkout/.test(txt);if(!hasCheckout)hasCheckout=/place order/.test(txt);"
+    "var hasPayment=payEl?true:false;if(!hasPayment)hasPayment=/payment/.test(txt);if(!hasPayment)hasPayment=/credit card/.test(txt);if(!hasPayment)hasPayment=/card number/.test(txt);if(!hasPayment)hasPayment=/pay now/.test(txt);if(!hasPayment)hasPayment=/billing/.test(txt);"
     "var hasResults=/results/.test(txt);if(!hasResults)hasResults=/products/.test(txt);"
     "return JSON.stringify({title:t,text_len:txt.length,inputs:inputs,buttons:buttons,links:links,"
-    "has_search:hasSearch,has_signin:hasSignin,has_cart:hasCart,has_checkout:hasCheckout,has_results:hasResults,"
-    "targets:{search:searchBox,cart:cartBox,checkout:checkoutBox,primary:primaryBox}});"
+    "has_search:hasSearch,has_signin:hasSignin,has_cart:hasCart,has_checkout:hasCheckout,has_payment:hasPayment,has_results:hasResults,"
+    "targets:{search:searchBox,cart:cartBox,checkout:checkoutBox,payment:payBox,primary:primaryBox}});"
     "}catch(e){return JSON.stringify({error:String(e)});}})()"
 )
 
@@ -701,8 +703,13 @@ def main() -> int:
     is_travel = any(k in cmd_low for k in ("travel", "flight", "hotel", "rideshare"))
     is_food = any(k in cmd_low for k in ("food", "order", "restaurant", "doordash", "ubereats"))
     # Honest stage machine for shopping / travel / food playbooks.
+    # payment_wall = checkout reached a pay form; never auto-charge.
+    has_payment = bool(dom_obs.get("has_payment"))
+    live_paid = os.environ.get("BITBOT_CU_LIVE_PAID", "").strip() in ("1", "true", "yes")
     if blocked_signin:
         vertical_stage = "blocked_on_signin"
+    elif is_shop and has_payment:
+        vertical_stage = "payment_wall"
     elif is_shop and dom_obs.get("has_checkout"):
         vertical_stage = "checkout"
     elif is_shop and dom_obs.get("has_cart"):
@@ -717,6 +724,8 @@ def main() -> int:
         vertical_stage = "unreachable"
     else:
         vertical_stage = "n/a"
+    paid_checkout_attempted = False
+    live_paid_residual = bool(is_shop and vertical_stage == "payment_wall" and not live_paid)
     if is_travel:
         playbook = "travel"
     elif is_food:
@@ -738,6 +747,9 @@ def main() -> int:
         "playbook": playbook,
         "has_cart": bool(dom_obs.get("has_cart")),
         "has_checkout": bool(dom_obs.get("has_checkout")),
+        "has_payment": has_payment,
+        "paid_checkout_attempted": paid_checkout_attempted,
+        "live_paid_residual": live_paid_residual,
         "navigate_reachable": bool(navigate.get("navigate_reachable")),
         "os_window": bool(gui.get("os_window")),
         "actions_ok": steps_ok,
@@ -755,11 +767,18 @@ def main() -> int:
         "blocked_on_signin": blocked_signin,
         "has_cart": bool(dom_obs.get("has_cart")),
         "has_checkout": bool(dom_obs.get("has_checkout")),
+        "has_payment": has_payment,
+        "paid_checkout_attempted": paid_checkout_attempted,
+        "live_paid_residual": live_paid_residual,
         "playbook": playbook,
         "pretend_purchased": False,
         "pretend_booked": False,
         "pretend_ordered": False,
-        "note": "Host CU vertical deepen — never pretends paid/booked/ordered",
+        "note": (
+            "payment_wall reached — live paid checkout residual (BITBOT_CU_LIVE_PAID unset)"
+            if live_paid_residual
+            else "Host CU vertical deepen — never pretends paid/booked/ordered"
+        ),
     }
     (artifact_dir / "checkout_summary.json").write_text(
         json.dumps(checkout_summary, indent=2) + "\n", encoding="utf-8"

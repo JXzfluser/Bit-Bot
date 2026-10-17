@@ -37,7 +37,11 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Store signing certs (Desktop/iOS/Android) | **Deferred** (user) — signing scaffolds + unsigned pack evidence present; store certs skipped |
 | Slack post without `BITBOT_SLACK_POST=1` | Draft-first only (live gated) |
 | Screenshot | Only when `DISPLAY` set and ffmpeg/import/scrot available |
-| Routine wake scheduler | On-demand `routine_fire` durable (`fires.jsonl` + next_due); cron daemon residual |
+| Routine wake scheduler | On-demand `routine_fire` + daemon `--long-lived` / `--interval-ms`; systemd unit scaffold under `data/routines/` — install to `/etc/systemd/system` still residual |
+| CU paid checkout | `payment_wall` / `live_paid_residual` when pay form seen; never pretend_purchased without `BITBOT_CU_LIVE_PAID` |
+| Purchase charge | Sandbox HTML receipt (`live_paid_residual`); live charge needs `BITBOT_PURCHASE_LIVE=1` + `BITBOT_PURCHASE_TOKEN` |
+| Remote Cursor Cloud | Default `local_worker`; remote probe when `BITBOT_CLOUD_API_URL`+token; fail→local, never pretend remote |
+| Meeting live transport | DirectSend transcript; live POST when `BITBOT_MEETING_API_URL`+token, else `live_meeting_residual` |
 | Legacy LocalBrain Host UI | Demoted — not product brain |
 
 ## Env vars

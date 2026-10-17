@@ -149,6 +149,11 @@
 - [x] Host send_on_behalf sandbox `.eml` with proxy headers (`pretend_sent=false`)
 - [x] Host CU travel/food `vertical_stage` alongside shopping checkout stages
 - [x] Host routine daemon `--interval-ms` multi-sweep (still `long_lived=false` / not systemd)
+- [x] Host CU `payment_wall` / `has_payment` / `live_paid_residual` (never auto-charge; `BITBOT_CU_LIVE_PAID` gated)
+- [x] Host purchase sandbox receipt honesty (`paid=false`, `live_paid_residual`; live needs `BITBOT_PURCHASE_LIVE`+token)
+- [x] Host cloud remote probe (`BITBOT_CLOUD_API_URL`+token → remote or honest local_worker_after_remote_fail; never pretend remote)
+- [x] Host meeting_chat live transport probe (`BITBOT_MEETING_*`; else `live_meeting_residual=true`)
+- [x] Host routine daemon `--long-lived` + systemd unit scaffold (`bitbot-routine-daemon.service.example`; install still residual)
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN

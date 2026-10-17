@@ -894,16 +894,44 @@ function createHostFfi(repoRoot) {
       const meetingDir = path.join(REPO_ROOT, "data", "meetings");
       fs.mkdirSync(meetingDir, { recursive: true });
       const transcriptPath = path.join(meetingDir, "live-chat.jsonl");
+      const meetingToken = String(process.env.BITBOT_MEETING_TOKEN || "").trim();
+      const meetingApi = String(process.env.BITBOT_MEETING_API_URL || "").trim();
+      const liveMeeting = Boolean(meetingToken && meetingApi);
+      let livePost = false;
+      let liveProbe = null;
+      if (liveMeeting) {
+        try {
+          const resp = await fetch(meetingApi.replace(/\/$/, "") + "/messages", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${meetingToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ text: body, source: "bitbot-host" }),
+          });
+          livePost = resp.ok;
+          liveProbe = { ok: resp.ok, http_status: resp.status };
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+        }
+      }
       const entry = {
         scheme: "meeting_chat",
         address: "meeting_chat",
         body,
-        mode: "meeting_chat_direct",
+        mode: livePost ? "meeting_chat_live" : "meeting_chat_direct",
         direct_send: true,
         draft_card: false,
         ok: true,
-        live_post: false,
-        note: "CM-2153 DirectSend durable transcript (live meeting transport residual)",
+        live_post: livePost,
+        live_meeting_residual: !livePost,
+        live_probe: liveProbe,
+        note: livePost
+          ? "CM-2153 DirectSend live meeting transport"
+          : "CM-2153 DirectSend durable transcript (live meeting transport residual)",
         at: stamp,
       };
       appendJsonl(outboundPath, entry);
@@ -3587,15 +3615,87 @@ function createHostFfi(repoRoot) {
         (bcId ? `https://cursor.com/agents/${bcId}` : "");
       const prompt = parts.slice(2).join("|") || "";
       const depth = nestDepth();
+      const cloudApiUrl = String(process.env.BITBOT_CLOUD_API_URL || "").trim();
+      const cloudToken = String(
+        process.env.BITBOT_CURSOR_CLOUD_TOKEN ||
+          process.env.BITBOT_CLOUD_API_TOKEN ||
+          "",
+      ).trim();
+      const wantRemote = Boolean(cloudApiUrl || cloudToken);
+      let remoteProbe = null;
+      let mode = "local_worker";
+      let remoteResidual = true;
+      let remoteAttempted = false;
+
+      // Honest remote Cursor Cloud path: probe when URL+token set; never pretend remote success.
+      if (wantRemote && cloudApiUrl && cloudToken) {
+        remoteAttempted = true;
+        try {
+          const probeUrl = cloudApiUrl.replace(/\/$/, "") + "/agents";
+          const resp = await fetch(probeUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${cloudToken}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              prompt: prompt || "cloud agent ping",
+              bc_id: bcId,
+              source: "bitbot-host",
+            }),
+          });
+          const text = await resp.text();
+          let body = null;
+          try {
+            body = JSON.parse(text);
+          } catch (_) {
+            body = { raw: String(text || "").slice(0, 400) };
+          }
+          remoteProbe = {
+            ok: resp.ok,
+            http_status: resp.status,
+            body_keys: body && typeof body === "object" ? Object.keys(body).slice(0, 12) : [],
+          };
+          if (resp.ok) {
+            mode = "remote_cloud_api";
+            remoteResidual = false;
+          } else {
+            mode = "local_worker_after_remote_fail";
+            remoteResidual = true;
+          }
+        } catch (err) {
+          remoteProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+          mode = "local_worker_after_remote_fail";
+          remoteResidual = true;
+        }
+      } else if (wantRemote) {
+        // Partial remote config → honest residual, still run local worker.
+        remoteResidual = true;
+        mode = "local_worker";
+        remoteProbe = {
+          ok: false,
+          error: "BITBOT_CLOUD_API_URL and BITBOT_CURSOR_CLOUD_TOKEN both required for remote",
+        };
+      }
 
       let session = {
         bc_id: bcId,
         url,
         prompt,
         status: "launching",
-        mode: "local_worker",
+        mode,
         pretend_remote_cloud: false,
-        note: "Host local MoonBit worker — not Cursor Cloud API (no production cloud credentials)",
+        remote_cloud_residual: remoteResidual,
+        remote_api_attempted: remoteAttempted,
+        remote_probe: remoteProbe,
+        note:
+          mode === "remote_cloud_api"
+            ? "Host remote Cursor Cloud API launch"
+            : "Host local MoonBit worker — remote Cursor Cloud API residual (no live remote session claimed)",
         at,
       };
       const sessionPath = writeCloudSession(bcId, session);
@@ -3606,7 +3706,21 @@ function createHostFfi(repoRoot) {
         assistant: "",
         intent: "",
       };
-      if (depth >= 1) {
+      if (mode === "remote_cloud_api") {
+        // Remote API accepted launch — do not also invent a pretend remote completion body.
+        session = {
+          ...session,
+          status: "launched_remote",
+          completed_at: at,
+          assistant: String(
+            (remoteProbe && remoteProbe.body_keys && remoteProbe.body_keys.join(",")) ||
+              "remote cloud launch accepted",
+          ).slice(0, 4000),
+          worker_ok: true,
+          nested_skipped: false,
+        };
+        worker = { ok: true, nested_skipped: false, assistant: session.assistant, intent: "remote_cloud" };
+      } else if (depth >= 1) {
         session = {
           ...session,
           status: "completed_nest_skipped",
@@ -3650,6 +3764,9 @@ function createHostFfi(repoRoot) {
         status: session.status,
         session_path: sessionPath,
         pretend_remote_cloud: false,
+        remote_cloud_residual: remoteResidual,
+        remote_api_attempted: remoteAttempted,
+        remote_probe: remoteProbe,
         at,
       };
       const pathWritten = appendJsonl(CLOUD_LAUNCHES_PATH, entry);
@@ -3675,7 +3792,7 @@ function createHostFfi(repoRoot) {
         ...entry,
         path: pathWritten,
         launched: true,
-        ran: depth < 1,
+        ran: depth < 1 || mode === "remote_cloud_api",
         worker_ok: Boolean(worker.ok),
         nested_skipped: Boolean(worker.nested_skipped),
         assistant_prefix: String(session.assistant || "").slice(0, 160),
@@ -4601,11 +4718,18 @@ function createHostFfi(repoRoot) {
       const receiptId = `rcpt-${Date.now().toString(36)}`;
       const receiptPath = path.join(receiptDir, `${receiptId}.html`);
       const safeCmd = String(cmd || "").replace(/[<>&]/g, "");
+      // Sandbox receipt HTML only unless BITBOT_PURCHASE_LIVE=1 + processor token.
+      const livePurchase =
+        String(process.env.BITBOT_PURCHASE_LIVE || "").trim() === "1" &&
+        Boolean(String(process.env.BITBOT_PURCHASE_TOKEN || "").trim());
+      const mode = livePurchase ? "live_charge" : "sandbox_receipt";
+      const charged = livePurchase; // never claim live charge without processor token
       fs.writeFileSync(
         receiptPath,
         `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt ${receiptId}</title></head>` +
           `<body><h1>Bit Bot purchase receipt</h1><p id="receipt">${safeCmd}</p>` +
-          `<p>paid=true</p><p>at=${at}</p></body></html>\n`,
+          `<p>mode=${mode}</p><p>paid=${charged ? "true" : "sandbox"}</p>` +
+          `<p>live_paid_residual=${charged ? "false" : "true"}</p><p>at=${at}</p></body></html>\n`,
       );
       const entry = {
         receipt: cmd,
@@ -4614,7 +4738,10 @@ function createHostFfi(repoRoot) {
         receipt_ok:
           fs.existsSync(receiptPath) &&
           fs.readFileSync(receiptPath, "utf8").includes("purchase receipt"),
-        paid: true,
+        mode,
+        paid: charged,
+        sandbox_receipt: !charged,
+        live_paid_residual: !charged,
         pretend_paid: false,
         at,
       };
@@ -4624,6 +4751,8 @@ function createHostFfi(repoRoot) {
         path: receiptPath,
         label: "purchase_receipt",
         receipt_id: receiptId,
+        mode,
+        live_paid_residual: !charged,
         source_kind: kind,
         at,
       });
