@@ -89,6 +89,9 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | `BITBOT_OUTLOOK_GRAPH_URL` | Override Graph root (local mock e.g. `http://127.0.0.1:18775`) |
 | `BITBOT_CALENDAR_API_URL` + `BITBOT_CALENDAR_TOKEN` | Live calendar POST `/events` |
 | `BITBOT_CODE_APPLY` | Set `1` to write code-changes applied sidecar (still never auto-commits) |
+| `BITBOT_GH_CREATE_PR` | Set `1` to allow `gh pr view` / `gh pr create --dry-run` |
+| `BITBOT_GH_PR_CREATE` | Set `1` to allow real `gh pr create` (default remains dry-run / gated) |
+| `BITBOT_GH_BIN` | Optional path to injectable `gh` (e.g. `scripts/host_gh_mock.sh` for smoke) |
 | `SLACK_DEFAULT_CHANNEL` | Channel for optional Slack posts |
 
 Absent Slack/Gmail/Outlook credentials are documented in `connectors_live.CONNECTOR_ENV_DOCS` and echoed by `/api/host/connectors/status`.
