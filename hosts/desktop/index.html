@@ -885,6 +885,25 @@
                     rtId +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                } else if (h.kind === "device_permission") {
+                  label =
+                    "perm:" +
+                    (p.tool || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("widget");
+                } else if (h.kind === "device_tool") {
+                  label =
+                    "device:" +
+                    (p.tool || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "voice_session") {
+                  label =
+                    "voice:" +
+                    (p.action || "session") +
+                    (p.media_ok ? "/wav" : "") +
+                    (p.path ? "/snap" : "");
+                  types.push("voice");
                 } else if (p.media_path) {
                   label = h.kind + ": " + String(p.media_path).split("/").slice(-1)[0];
                 } else if (p.path) {

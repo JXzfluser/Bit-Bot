@@ -39,7 +39,7 @@ python3 -c "import json;d=json.load(open('/tmp/parity-reaction.json'));h=next(x 
 
 # 5) Voice
 "${RUN[@]}" "voice start parity1" >/tmp/parity-voice.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-voice.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_session');p=json.loads(h['stdout']);assert p.get('media_ok') is True and os.path.isfile(p.get('media_path') or '');print('parity voice ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-voice.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_session');p=json.loads(h['stdout']);assert p.get('media_ok') is True and os.path.isfile(p.get('media_path') or '');assert p.get('pretend_live') is False;assert p.get('pretend_media') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('sessions_path') and os.path.isfile(p['sessions_path']);print('parity voice ok', p.get('path'))"
 
 # 6) Credentials metadata (no secrets)
 "${RUN[@]}" "list credentials" >/tmp/parity-creds.json
@@ -192,7 +192,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-cu.json'));h=next(x for
 "${RUN[@]}" --machine-kind ios --machine-id phone-ios "device tools" >/tmp/parity-dt.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-dt.json'));h=next(x for x in d['host_results'] if x.get('kind')=='device_tools_list');p=json.loads(h['stdout']);assert p.get('machine_kind')=='ios';assert p.get('count')>=1;assert p.get('pretend_granted') is False;assert os.path.isfile(p['path']);print('parity device_tools_list ok', p.get('count'), p.get('path'))"
 "${RUN[@]}" --machine-kind ios "device tool camera" >/tmp/parity-dti.json
-python3 -c "import json;d=json.load(open('/tmp/parity-dti.json'));hrs=d.get('host_results')or[];kinds=[h.get('kind') for h in hrs];assert 'device_tool' in kinds or 'device_permission' in kinds;h=next(x for x in hrs if x.get('kind') in ('device_tool','device_permission'));p=json.loads(h['stdout']);assert p.get('pretend_granted') is False if 'pretend_granted' in p else p.get('executed') is True;print('parity device invoke ok', h.get('kind'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-dti.json'));hrs=d.get('host_results')or[];kinds=[h.get('kind') for h in hrs];assert 'device_tool' in kinds or 'device_permission' in kinds;h=next(x for x in hrs if x.get('kind') in ('device_tool','device_permission'));p=json.loads(h['stdout']);assert p.get('pretend_granted') is False if 'pretend_granted' in p else p.get('executed') is True;assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_executed') is not True;print('parity device invoke ok', h.get('kind'), p.get('path'))"
 "${RUN[@]}" "identity browser" >/tmp/parity-id.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-id.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='identity_browser_switch';assert p.get('pretend_connected_slack') is False;assert p.get('connected') is False;assert p.get('session_path') and os.path.isfile(p['session_path']);print('parity identity_browser ok')"
 "${RUN[@]}" "list workflows" >/tmp/parity-wf.json

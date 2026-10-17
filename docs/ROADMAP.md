@@ -241,6 +241,8 @@
 - [x] Parity: shared_memory_put/journal_append path + pretend_stored honesty
 - [x] Host mcp_discover durable tools catalog + mcp_namespace register snapshot
 - [x] Parity: mcp_discover tool_count/path honesty (not tmp-only)
+- [x] Host device_permission card JSON + device_tool invoke snapshot + voice_session action snapshot
+- [x] Parity: device invoke path + voice_session path/sessions_path honesty
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

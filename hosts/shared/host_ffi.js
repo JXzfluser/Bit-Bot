@@ -3185,7 +3185,10 @@ function createHostFfi(repoRoot) {
     if (kind === "room_turn" || kind === "send_to_agent" || kind === "subagent_run") {
       return null; // SendToUser already recorded in multi-agent handlers
     }
-    if (kind === "voice_session" || kind === "voice_end_write") {
+    if (kind === "voice_session") {
+      return null; // already recorded in voice_session handler
+    }
+    if (kind === "voice_end_write") {
       return recordSendToUser({
         type: "voice",
         voice_address: parsed.voice_address || "",
@@ -6017,14 +6020,45 @@ function createHostFfi(repoRoot) {
         pretend_granted: false,
         os_card: true,
         settings_guide: true,
+        true_device_os_dialog_residual: true,
+        mode: "host_device_permission_card",
         at,
       };
       const pathWritten = appendJsonl(DEVICE_PERMS_PATH, entry);
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      const cardDir = path.join(REPO_ROOT, "data", "device", "permission-cards");
+      fs.mkdirSync(cardDir, { recursive: true });
+      const cardPath = path.join(
+        cardDir,
+        `perm-${Date.now().toString(36)}.json`,
+      );
+      fs.writeFileSync(
+        cardPath,
+        JSON.stringify({ ...entry, queue_path: pathWritten }, null, 2),
+      );
+      const delivery = recordSendToUser({
+        type: "widget",
+        widget: "device_permission",
+        path: cardPath,
+        tool: entry.tool,
+        machine_id: entry.machine_id,
+        pretend_granted: false,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: cardPath,
+        queue_path: pathWritten,
+        at,
+      });
       return okJson(kind, cmd, {
         ...entry,
-        path: pathWritten,
-        note: "OS permission card / Settings guide — not pretend-granted",
+        path: cardPath,
+        queue_path: pathWritten,
+        send_to_user: delivery,
+        note: "OS permission card / Settings guide — not pretend-granted; true-device dialog residual",
+        ok: true,
       });
     }
 
@@ -6092,14 +6126,48 @@ function createHostFfi(repoRoot) {
         tool: parts[1] || "",
         executed: true,
         mode: "host_ffi_device_local",
+        pretend_executed: false,
+        pretend_granted: false,
         at,
       };
-      const pathWritten = appendJsonl(
-        path.join(REPO_ROOT, "data", "device", "tool-invokes.jsonl"),
-        entry,
+      const invDir = path.join(REPO_ROOT, "data", "device", "tool-invokes");
+      fs.mkdirSync(invDir, { recursive: true });
+      const ledgerPath = path.join(
+        REPO_ROOT,
+        "data",
+        "device",
+        "tool-invokes.jsonl",
       );
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten });
+      const invokePath = path.join(
+        invDir,
+        `invoke-${Date.now().toString(36)}.json`,
+      );
+      fs.writeFileSync(invokePath, JSON.stringify(entry, null, 2));
+      const pathWritten = appendJsonl(ledgerPath, {
+        ...entry,
+        path: invokePath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: invokePath,
+        label: "device_tool",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: invokePath,
+        ledger_path: pathWritten,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: invokePath,
+        ledger_path: pathWritten,
+        send_to_user: delivery,
+        ok: true,
+      });
     }
 
     if (kind === "voice_session") {
@@ -6166,21 +6234,54 @@ function createHostFfi(repoRoot) {
       if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
       else rows.push(row);
       writeJsonArray(VOICE_SESSIONS_PATH, rows);
-      appendHostDeliveryJournal({
-        kind,
-        command: cmd,
-        path: VOICE_SESSIONS_PATH,
-        media_ok: media.ok,
-        at,
-      });
-      return okJson(kind, cmd, {
+      const sessDir = path.join(REPO_ROOT, "data", "voice", "session-actions");
+      fs.mkdirSync(sessDir, { recursive: true });
+      const actionPath = path.join(
+        sessDir,
+        `${action}-${slug || "voice"}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
         stored: true,
-        path: VOICE_SESSIONS_PATH,
+        action,
         voice_address: address,
         live: row.live,
         media_ok: Boolean(media.ok),
         media_path: media.path,
         media_bytes: media.bytes || 0,
+        media_tool: media.tool || null,
+        sessions_path: VOICE_SESSIONS_PATH,
+        mode: "host_voice_session",
+        pretend_live: false,
+        pretend_media: false,
+        at,
+      };
+      fs.writeFileSync(actionPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(sessDir, "actions.jsonl"), {
+        ...artifact,
+        path: actionPath,
+      });
+      const delivery = recordSendToUser({
+        type: "voice",
+        voice_address: address,
+        media_path: media.path,
+        media_ok: Boolean(media.ok),
+        path: actionPath,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: actionPath,
+        sessions_path: VOICE_SESSIONS_PATH,
+        media_ok: media.ok,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...artifact,
+        path: actionPath,
+        send_to_user: delivery,
+        ok: true,
       });
     }
 
