@@ -18,6 +18,13 @@ One MoonBit turn without the window:
 
 ```bash
 moon run cmd/desktop_turn --target native -- "ListMachines"
+moon run cmd/desktop_turn --target native -- "list connectors"
+moon run cmd/desktop_turn --target native -- "reply via slack:C123 :: hi"
+# ADR 0002 Host FFI 回注 (after Desktop executes shell/channel effects):
+moon run cmd/desktop_turn --target native -- --apply-host-results \
+  --turn-id t1 --prior-text "shell echo" \
+  --result-ok true --result-kind shell --result-command "echo hi" \
+  --result-stdout "hi" --result-stderr "" --result-error ""
 # JSON v:1 includes machines kind desktop + ios + android
 ```
 

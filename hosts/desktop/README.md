@@ -8,6 +8,8 @@ Electron HostAbi surface for the **MoonBit** product brain (ADR 0005). Lives und
 - Boot IPC runs `moon run cmd/main --target native` and shows the kernel banner
 - Chat IPC runs `moon run cmd/desktop_turn --target native -- "<text>"` and renders versioned turn JSON (`v:1`)
 - On boot, asks MoonBit `ListMachines` so Desktop / iOS / Android kinds appear in the machines panel
+- Host FFI loop (ADR 0002): MoonBit plans `effects` → Desktop executes → `--apply-host-results` re-injects into MoonBit
+- Product intents also cover channel delivery, connectors status, claim inbox, draft mail (not Python LocalBrain)
 
 Python `scripts/bitbot_runtime/` is **not** on this path. It remains optional Host FFI / legacy deploy only.
 

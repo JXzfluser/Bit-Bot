@@ -27,6 +27,17 @@ async function executeHostEffects(effects) {
   const results = [];
   for (const e of effects || []) {
     const kind = (e && e.kind) || "";
+    // Channel / mail plans: Host acknowledges; live Slack/SMTP is Host-live later.
+    if (kind === "channel_send" || kind === "mail_draft") {
+      results.push({
+        kind,
+        ok: true,
+        command: String((e && e.command) || ""),
+        stdout: `Host stub executed ${kind} (live connector FFI pending)`,
+        stderr: "",
+      });
+      continue;
+    }
     if (kind !== "shell") {
       results.push({
         kind,
@@ -191,27 +202,103 @@ ipcMain.handle("bitbot:turn", async (_event, text) => {
       stderr: stderr.trim(),
     };
   }
-  // Host FFI: MoonBit plans effects; Desktop executes (ADR 0002 / 0005).
+  // Host FFI: MoonBit plans effects; Desktop executes; results re-injected
+  // into MoonBit via --apply-host-results (ADR 0002 TurnEvent 回注).
   if (parsed && parsed.needs_host_ffi && Array.isArray(parsed.effects) && parsed.effects.length) {
     const host_results = await executeHostEffects(parsed.effects);
     parsed.host_results = host_results;
-    parsed.messages = Array.isArray(parsed.messages) ? parsed.messages.slice() : [];
-    for (const hr of host_results) {
-      if (hr.ok) {
-        parsed.messages.push({
-          role: "assistant",
-          text: `Host FFI shell \`${hr.command}\`:\n\`\`\`\n${(hr.stdout || "").trim() || "(no stdout)"}\n\`\`\``,
-        });
+    try {
+      const contArgs = [
+        "run",
+        "cmd/desktop_turn",
+        "--target",
+        MOON_TARGET,
+        "--",
+        "--apply-host-results",
+        "--turn-id",
+        String(parsed.turn_id || "desktop-host-cont"),
+        "--prior-text",
+        encodeHostArg(userText),
+      ];
+      for (let i = 0; i < host_results.length; i++) {
+        if (i > 0) contArgs.push("--result-next");
+        const hr = host_results[i];
+        contArgs.push(
+          "--result-ok",
+          hr.ok ? "true" : "false",
+          "--result-kind",
+          String(hr.kind || "shell"),
+          "--result-command",
+          encodeHostArg(hr.command || ""),
+          "--result-stdout",
+          encodeHostArg(hr.stdout || ""),
+          "--result-stderr",
+          encodeHostArg(hr.stderr || ""),
+          "--result-error",
+          encodeHostArg(hr.error || ""),
+        );
+      }
+      const cont = await runMoon(contArgs);
+      const contRaw = lastJsonLine(cont.stdout || cont.stderr);
+      const continued = JSON.parse(contRaw);
+      if (continued && continued.ok) {
+        parsed.messages = Array.isArray(parsed.messages)
+          ? parsed.messages.slice()
+          : [];
+        const contMsgs = Array.isArray(continued.messages)
+          ? continued.messages
+          : [];
+        for (const m of contMsgs) {
+          if (m && m.role === "assistant") {
+            parsed.messages.push(m);
+          }
+        }
+        parsed.host_continued = true;
+        parsed.needs_host_ffi = false;
+        parsed.intent_continued = continued.intent;
       } else {
+        parsed.messages = Array.isArray(parsed.messages)
+          ? parsed.messages.slice()
+          : [];
         parsed.messages.push({
           role: "assistant",
-          text: `Host FFI refused/failed: ${hr.error || "unknown"}${hr.command ? ` (${hr.command})` : ""}`,
+          text: `Host FFI continue failed: ${(continued && continued.error) || contRaw}`,
         });
+      }
+    } catch (err) {
+      parsed.messages = Array.isArray(parsed.messages)
+        ? parsed.messages.slice()
+        : [];
+      parsed.messages.push({
+        role: "assistant",
+        text: `Host FFI continue error: ${err.message || String(err)}`,
+      });
+      // Fallback: surface raw host stdout so the user still sees effect output.
+      for (const hr of host_results) {
+        if (hr.ok) {
+          parsed.messages.push({
+            role: "assistant",
+            text: `Host FFI shell \`${hr.command}\`:\n\`\`\`\n${(hr.stdout || "").trim() || "(no stdout)"}\n\`\`\``,
+          });
+        } else {
+          parsed.messages.push({
+            role: "assistant",
+            text: `Host FFI refused/failed: ${hr.error || "unknown"}${hr.command ? ` (${hr.command})` : ""}`,
+          });
+        }
       }
     }
   }
   return parsed;
 });
+
+/** Encode newlines/tabs for MoonBit unescape_host_arg. */
+function encodeHostArg(s) {
+  return String(s || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/\t/g, "\\t");
+}
 
 app.whenReady().then(() => {
   createWindow();

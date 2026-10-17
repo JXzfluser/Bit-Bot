@@ -18,6 +18,7 @@ test "desktop_turn_ack_and_json_shape" {
   assert_true(json.contains("runtime"))
   assert_true(json.contains("\"machines\":[]"))
   assert_true(json.contains("\"needs_host_ffi\":false"))
+  assert_true(json.contains("\"host_continued\":false"))
 }
 
 ///|
@@ -70,6 +71,84 @@ test "desktop_turn_host_effect_needs_ffi" {
 }
 
 ///|
+test "desktop_turn_host_ffi_continue_adr0002" {
+  let results : Array[DesktopHostResult] = [
+    {
+      kind: "shell",
+      ok: true,
+      command: "echo hi",
+      stdout: "hi\n",
+      stderr: "",
+      error: "",
+    },
+  ]
+  let r = continue_after_host_ffi(
+    turn_id="fx-cont",
+    prior_user_text="shell echo hi",
+    results,
+  )
+  assert_true(r.ok)
+  assert_eq(r.intent, "host_continue")
+  assert_true(r.host_continued)
+  assert_false(r.needs_host_ffi)
+  assert_true(r.messages.length() >= 2)
+  let last = r.messages[r.messages.length() - 1].text
+  assert_true(last.contains("Host FFI results applied"))
+  assert_true(last.contains("hi"))
+  assert_true(r.to_json_line().contains("\"host_continued\":true"))
+}
+
+///|
+test "desktop_turn_channel_delivery_external" {
+  let r = run_desktop_turn(
+    "reply via slack:C123 :: thanks from desktop",
+    turn_id="ch-1",
+  )
+  assert_true(r.ok)
+  assert_eq(r.intent, "channel_delivery")
+  assert_true(r.channel_delivery.has_prefix("external:"))
+  assert_true(r.needs_host_ffi)
+  assert_eq(r.effects.length(), 1)
+  assert_eq(r.effects[0].kind, "channel_send")
+}
+
+///|
+test "desktop_turn_channel_in_app_omit" {
+  let r = run_desktop_turn(
+    "channel plan body=stay in chat only",
+    turn_id="ch-2",
+  )
+  assert_true(r.ok)
+  assert_eq(r.intent, "channel_delivery")
+  assert_eq(r.channel_delivery, "in_app")
+  assert_false(r.needs_host_ffi)
+}
+
+///|
+test "desktop_turn_connectors_status" {
+  let r = run_desktop_turn("list connectors", turn_id="conn-1")
+  assert_true(r.ok)
+  assert_eq(r.intent, "connectors_status")
+  assert_true(r.messages[r.messages.length() - 1].text.contains("Connectors status"))
+}
+
+///|
+test "desktop_turn_claim_inbox_and_draft_mail" {
+  let c = run_desktop_turn("claim inbox alpha", turn_id="mail-c")
+  assert_true(c.ok)
+  assert_eq(c.intent, "claim_inbox")
+  assert_true(c.messages[c.messages.length() - 1].text.contains("alpha@"))
+  let d = run_desktop_turn(
+    "draft mail to=bob@example.com subject=Hi body=Hello Bob",
+    turn_id="mail-d",
+  )
+  assert_true(d.ok)
+  assert_eq(d.intent, "draft_mail")
+  assert_eq(d.effects.length(), 1)
+  assert_eq(d.effects[0].kind, "mail_draft")
+}
+
+///|
 test "classify_intent_table" {
   assert_eq(classify_intent("ListMachines"), ListMachines)
   assert_eq(classify_intent("list machines"), ListMachines)
@@ -85,4 +164,41 @@ test "classify_intent_table" {
     _ => fail("expected HostEffect")
   }
   assert_eq(classify_intent("hi"), Chat)
+  assert_eq(classify_intent("list connectors"), ConnectorsStatus)
+  match classify_intent("claim inbox zoe") {
+    ClaimInbox(local_part~) => assert_eq(local_part, "zoe")
+    _ => fail("expected ClaimInbox")
+  }
+}
+
+///|
+test "unescape_and_parse_host_continue_args" {
+  assert_eq(unescape_host_arg("a\\nb"), "a\nb")
+  let args = [
+    "exe",
+    "--apply-host-results",
+    "--turn-id",
+    "t1",
+    "--prior-text",
+    "shell echo",
+    "--result-ok",
+    "true",
+    "--result-kind",
+    "shell",
+    "--result-command",
+    "echo hi",
+    "--result-stdout",
+    "hi\\n",
+    "--result-stderr",
+    "",
+    "--result-error",
+    "",
+  ]
+  assert_true(args_want_host_continue(args))
+  let (tid, prior, results) = parse_host_continue_args(args)
+  assert_eq(tid, "t1")
+  assert_eq(prior, "shell echo")
+  assert_eq(results.length(), 1)
+  assert_true(results[0].ok)
+  assert_eq(results[0].stdout, "hi\n")
 }

@@ -35,6 +35,17 @@ pub(all) struct DesktopEffect {
 } derive(Eq, Debug)
 
 ///|
+/// Host FFI execution result re-injected as TurnEvent (ADR 0002).
+pub(all) struct DesktopHostResult {
+  kind : String
+  ok : Bool
+  command : String
+  stdout : String
+  stderr : String
+  error : String
+} derive(Eq, Debug)
+
+///|
 /// Classified user intent for one MoonBit turn.
 pub(all) enum TurnIntent {
   Chat
@@ -42,6 +53,11 @@ pub(all) enum TurnIntent {
   MemoryRecall(prefix~ : String)
   MemoryUpdate(key~ : String, value~ : String)
   HostEffect(command~ : String)
+  ChannelDelivery(inbound~ : String?, outbound~ : String?, body~ : String)
+  ConnectorsStatus
+  ClaimInbox(local_part~ : String)
+  DraftMail(to_~ : String, subject~ : String, body~ : String)
+  HostContinue
 } derive(Eq, Debug)
 
 ///|
@@ -52,6 +68,11 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     MemoryRecall(_) => "memory_recall"
     MemoryUpdate(_) => "memory_update"
     HostEffect(_) => "host_effect"
+    ChannelDelivery(_) => "channel_delivery"
+    ConnectorsStatus => "connectors_status"
+    ClaimInbox(_) => "claim_inbox"
+    DraftMail(_) => "draft_mail"
+    HostContinue => "host_continue"
   }
 }
 
@@ -68,6 +89,10 @@ pub(all) struct DesktopTurnResult {
   memory : Array[DesktopMemoryRow]
   effects : Array[DesktopEffect]
   needs_host_ffi : Bool
+  /// ADR 0002: true when this turn absorbed Host FFI results.
+  host_continued : Bool
+  /// Channel delivery plan: "in_app" | "external:<addr>" | "".
+  channel_delivery : String
   error : String?
 } derive(Eq, Debug)
 
@@ -83,6 +108,36 @@ fn escape_json_string(s : String) -> String {
       '\t' => buf.write_string("\\t")
       _ => buf.write_char(c)
     }
+  }
+  buf.to_string()
+}
+
+///|
+/// Unescape \\n / \\t / \\\\ produced by Host argv encoding.
+pub fn unescape_host_arg(s : String) -> String {
+  let buf = StringBuilder()
+  let mut i = 0
+  let n = s.length()
+  while i < n {
+    let c = s[i:i + 1].to_owned()
+    if c == "\\" && i + 1 < n {
+      let nxt = s[i + 1:i + 2].to_owned()
+      if nxt == "n" {
+        buf.write_char('\n')
+        i = i + 2
+        continue
+      } else if nxt == "t" {
+        buf.write_char('\t')
+        i = i + 2
+        continue
+      } else if nxt == "\\" {
+        buf.write_char('\\')
+        i = i + 2
+        continue
+      }
+    }
+    buf.write_string(c)
+    i = i + 1
   }
   buf.to_string()
 }
@@ -132,6 +187,35 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     let prefix = extract_recall_prefix(trimmed)
     return MemoryRecall(prefix~)
   }
+  // Channel delivery (Grok multi-channel): reply via / channel plan / channel:
+  match parse_channel_intent(trimmed, low) {
+    Some(ci) => return ci
+    None => ()
+  }
+  // Connectors / mail product path
+  if low == "list connectors" ||
+      low == "connectors" ||
+      low == "connectors status" ||
+      low == "connector status" {
+    return ConnectorsStatus
+  }
+  if low.has_prefix("claim inbox ") {
+    let part = trimmed[12:].trim().to_owned()
+    if part != "" {
+      return ClaimInbox(local_part=part)
+    }
+  }
+  if low.has_prefix("draft mail ") || low.has_prefix("draft email ") {
+    let rest = if low.has_prefix("draft mail ") {
+      trimmed[11:].to_owned()
+    } else {
+      trimmed[12:].to_owned()
+    }
+    match parse_draft_mail(rest) {
+      Some((to_, subject, body)) => return DraftMail(to_~, subject~, body~)
+      None => ()
+    }
+  }
   // Host FFI shell plans (Grok-like: shell / Shell: / ! / run / 执行)
   if low.has_prefix("!") ||
       low.has_prefix("shell ") ||
@@ -164,6 +248,128 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   Chat
+}
+
+///|
+fn parse_channel_intent(trimmed : String, low : String) -> TurnIntent? {
+  // reply via <addr> :: <body>
+  if low.has_prefix("reply via ") {
+    let rest = trimmed[10:].to_owned()
+    match split_once(rest, " :: ") {
+      Some((addr, body)) => {
+        let a = addr.trim().to_owned()
+        let b = body.trim().to_owned()
+        if a != "" && b != "" {
+          return Some(
+            ChannelDelivery(inbound=Some(a), outbound=Some(a), body=b),
+          )
+        }
+      }
+      None => ()
+    }
+  }
+  // channel plan inbound=<addr> body=<text>
+  if low.has_prefix("channel plan ") {
+    let rest = trimmed[13:].to_owned()
+    let inbound = extract_kv(rest, "inbound")
+    let outbound = extract_kv(rest, "outbound")
+    let body = match extract_kv(rest, "body") {
+      Some(b) => b
+      None => ""
+    }
+    if body != "" {
+      return Some(ChannelDelivery(inbound~, outbound~, body~))
+    }
+  }
+  // channel:<addr> <body>  e.g. channel:slack:C1 hello
+  if low.has_prefix("channel:") {
+    let rest = trimmed[8:].to_owned()
+    match split_once(rest, " ") {
+      Some((addr, body)) => {
+        let a = addr.trim().to_owned()
+        let b = body.trim().to_owned()
+        if a != "" && b != "" {
+          let full = "channel:" + a
+          // If addr already has scheme (slack:/email:/teams:), use as-is
+          let inbound_addr = if a.has_prefix("slack:") ||
+              a.has_prefix("email:") ||
+              a.has_prefix("teams:") ||
+              a.has_prefix("voice:") {
+            a
+          } else {
+            // "channel:slack:C1 body" → rest starts with slack:
+            // We already stripped "channel:", so addr may be "slack:C1"
+            a
+          }
+          let _ = full
+          return Some(
+            ChannelDelivery(
+              inbound=Some(inbound_addr),
+              outbound=Some(inbound_addr),
+              body=b,
+            ),
+          )
+        }
+      }
+      None => ()
+    }
+  }
+  None
+}
+
+///|
+fn split_once(s : String, sep : String) -> (String, String)? {
+  match s.find(sep) {
+    Some(i) => Some((s[:i].to_owned(), s[i + sep.length():].to_owned()))
+    None => None
+  }
+}
+
+///|
+fn extract_kv(rest : String, key : String) -> String? {
+  let marker = key + "="
+  match rest.find(marker) {
+    None => None
+    Some(i) => {
+      let after = rest[i + marker.length():].to_owned()
+      // value runs until next known key= or end.
+      let keys = [" inbound=", " outbound=", " body=", " to=", " subject="]
+      let mut end = after.length()
+      for k in keys {
+        match after.find(k) {
+          Some(j) => if j < end { end = j }
+          None => ()
+        }
+      }
+      let v = after[:end].trim().to_owned()
+      if v == "" {
+        None
+      } else {
+        Some(v)
+      }
+    }
+  }
+}
+
+///|
+fn parse_draft_mail(rest : String) -> (String, String, String)? {
+  let to_ = match extract_kv(rest, "to") {
+    Some(v) => v
+    None => return None
+  }
+  let subject = match extract_kv(rest, "subject") {
+    Some(v) => v
+    None => ""
+  }
+  let body = match extract_kv(rest, "body") {
+    Some(v) => v
+    None => ""
+  }
+  if to_ == "" {
+    None
+  } else {
+    Some((to_, subject, body))
+  }
 }
 
 ///|
@@ -242,6 +448,8 @@ fn deliver_ok(
   memory~ : Array[DesktopMemoryRow] = [],
   effects~ : Array[DesktopEffect] = [],
   needs_host_ffi~ : Bool = false,
+  host_continued~ : Bool = false,
+  channel_delivery~ : String = "",
 ) -> DesktopTurnResult {
   let mods = @bitbot.registered_modules()
   let opened = @runtime.open_turn(turn_id~, text=user_text)
@@ -262,6 +470,8 @@ fn deliver_ok(
         memory,
         effects,
         needs_host_ffi,
+        host_continued,
+        channel_delivery,
         error: Some(e),
       }
     }
@@ -287,6 +497,8 @@ fn deliver_ok(
         memory,
         effects,
         needs_host_ffi,
+        host_continued,
+        channel_delivery,
         error: None,
       }
     }
@@ -294,7 +506,82 @@ fn deliver_ok(
 }
 
 ///|
-/// Run open_turn → policy (intent) → deliver; Host effects stay plans (no Python LocalBrain).
+fn channel_delivery_label(plan : @channels.ChannelDelivery) -> String {
+  match plan {
+    @channels.InAppOnly => "in_app"
+    @channels.External(channel~) => "external:" + channel
+  }
+}
+
+///|
+/// ADR 0002: Effect → Host → TurnEvent 回注. Kernel absorbs Host FFI results
+/// and emits the user-visible continuation (no LocalBrain).
+pub fn continue_after_host_ffi(
+  turn_id~ : String,
+  prior_user_text~ : String,
+  results : Array[DesktopHostResult],
+) -> DesktopTurnResult {
+  let buf = StringBuilder()
+  buf.write_string("Host FFI results applied (MoonBit kernel / ADR 0002):\n")
+  let mut i = 0
+  while i < results.length() {
+    let r = results[i]
+    if i > 0 {
+      buf.write_string("\n")
+    }
+    if r.ok {
+      buf.write_string("- ok kind=")
+      buf.write_string(r.kind)
+      if r.command != "" {
+        buf.write_string(" cmd=`")
+        buf.write_string(r.command)
+        buf.write_string("`")
+      }
+      let out = r.stdout.trim().to_owned()
+      if out != "" {
+        buf.write_string("\n```\n")
+        buf.write_string(out)
+        buf.write_string("\n```")
+      } else {
+        buf.write_string(" (no stdout)")
+      }
+      let err = r.stderr.trim().to_owned()
+      if err != "" {
+        buf.write_string("\nstderr: ")
+        buf.write_string(err)
+      }
+    } else {
+      buf.write_string("- fail kind=")
+      buf.write_string(r.kind)
+      if r.command != "" {
+        buf.write_string(" cmd=`")
+        buf.write_string(r.command)
+        buf.write_string("`")
+      }
+      buf.write_string(": ")
+      let e = if r.error != "" { r.error } else { "unknown host error" }
+      buf.write_string(e)
+    }
+    i = i + 1
+  }
+  let reply = buf.to_string()
+  let prior = if prior_user_text == "" {
+    "(host-continue)"
+  } else {
+    prior_user_text
+  }
+  deliver_ok(
+    prior,
+    turn_id,
+    reply,
+    HostContinue,
+    host_continued=true,
+  )
+}
+
+///|
+/// Run open_turn → policy (intent) → deliver; Host effects stay plans until Host
+/// executes and calls continue_after_host_ffi (ADR 0002).
 pub fn run_desktop_turn(user_text : String, turn_id~ : String = "desktop-1") -> DesktopTurnResult {
   let mods = @bitbot.registered_modules()
   let trimmed = user_text.trim().to_owned()
@@ -310,6 +597,8 @@ pub fn run_desktop_turn(user_text : String, turn_id~ : String = "desktop-1") -> 
       memory: [],
       effects: [],
       needs_host_ffi: false,
+      host_continued: false,
+      channel_delivery: "",
       error: Some("empty user text"),
     }
   }
@@ -366,7 +655,7 @@ pub fn run_desktop_turn(user_text : String, turn_id~ : String = "desktop-1") -> 
         needs_host_ffi: true,
       }
       let reply =
-        "Host effect planned (shell). Desktop must execute via Host FFI; needs_host_ffi=true. Sync stub only — not LocalBrain."
+        "Host effect planned (shell). Desktop must execute via Host FFI then call continue_after_host_ffi (ADR 0002). Not LocalBrain."
       deliver_ok(
         trimmed,
         turn_id,
@@ -374,6 +663,139 @@ pub fn run_desktop_turn(user_text : String, turn_id~ : String = "desktop-1") -> 
         intent,
         effects=[effect],
         needs_host_ffi=true,
+      )
+    }
+    ChannelDelivery(inbound~, outbound~, body~) => {
+      match @channels.plan_channel_reply(
+        inbound_address=inbound,
+        outbound_channel=outbound,
+        body~,
+      ) {
+        Err(e) => {
+          {
+            v: DESKTOP_TURN_JSON_V,
+            ok: false,
+            turn_id,
+            intent: intent.name(),
+            messages: [
+              { role: "user", text: trimmed },
+              { role: "assistant", text: "Channel delivery refused: " + e },
+            ],
+            modules: mods,
+            machines: [],
+            memory: [],
+            effects: [],
+            needs_host_ffi: false,
+            host_continued: false,
+            channel_delivery: "",
+            error: Some(e),
+          }
+        }
+        Ok(plan) => {
+          let label = channel_delivery_label(plan)
+          let reply = match plan {
+            @channels.InAppOnly =>
+              "Channel plan: in-app only (no external delivery). Body kept in Desktop chat. " +
+              body
+            @channels.External(channel~) =>
+              "Channel plan: external delivery to " +
+              channel +
+              ". Host must send via channel FFI; MoonBit planned reply. Body: " +
+              body
+          }
+          // External channel send is a Host effect (delivery), not LocalBrain.
+          let effects : Array[DesktopEffect] = match plan {
+            @channels.InAppOnly => []
+            @channels.External(channel~) => [
+              {
+                kind: "channel_send",
+                command: channel + " :: " + body,
+                needs_host_ffi: true,
+              },
+            ]
+          }
+          let needs = effects.length() > 0
+          deliver_ok(
+            trimmed,
+            turn_id,
+            reply,
+            intent,
+            effects~,
+            needs_host_ffi=needs,
+            channel_delivery=label,
+          )
+        }
+      }
+    }
+    ConnectorsStatus => {
+      let reg = @connectors.PluginRegistry::seed_demo()
+      let ready = reg.ready_namespaces()
+      let buf = StringBuilder()
+      buf.write_string("Connectors status (PluginRegistry seed_demo): ")
+      buf.write_string(ready.length().to_string())
+      buf.write_string(" ready namespace(s)")
+      if ready.length() > 0 {
+        buf.write_string(" — ")
+        buf.write_string(ready.join(", "))
+      }
+      buf.write_string(". Product path uses @connectors (not Python).")
+      deliver_ok(trimmed, turn_id, buf.to_string(), intent)
+    }
+    ClaimInbox(local_part~) => {
+      let svc = @mail.MailService::new()
+      match svc.claim_inbox(local_part~, user_confirmed=true) {
+        Err(e) => {
+          {
+            v: DESKTOP_TURN_JSON_V,
+            ok: false,
+            turn_id,
+            intent: intent.name(),
+            messages: [
+              { role: "user", text: trimmed },
+              { role: "assistant", text: "Claim inbox failed: " + e },
+            ],
+            modules: mods,
+            machines: [],
+            memory: [],
+            effects: [],
+            needs_host_ffi: false,
+            host_continued: false,
+            channel_delivery: "",
+            error: Some(e),
+          }
+        }
+        Ok(inbox) => {
+          let reply =
+            "Claimed agent inbox " +
+            inbox.address() +
+            " via @mail.MailService (Grok mail claim path)."
+          deliver_ok(trimmed, turn_id, reply, intent)
+        }
+      }
+    }
+    DraftMail(to_~, subject~, body~) => {
+      let card = @mail.DraftEmailCard::new(to_~, subject~, body~)
+      // Draft only — send requires Host + user press (CM-1005).
+      let reply =
+        "Draft mail card ready (not sent). to=" +
+        card.to_ +
+        " subject=" +
+        card.subject +
+        ". Press-send is Host/UI; MoonBit holds draft semantics."
+      let effect : DesktopEffect = {
+        kind: "mail_draft",
+        command: "to=" + to_ + " subject=" + subject,
+        needs_host_ffi: false,
+      }
+      deliver_ok(trimmed, turn_id, reply, intent, effects=[effect])
+    }
+    HostContinue => {
+      // Should be invoked via continue_after_host_ffi, not plain chat.
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Host continue requires --apply-host-results (ADR 0002).",
+        intent,
       )
     }
     Chat => {
@@ -510,6 +932,11 @@ pub fn DesktopTurnResult::to_json_line(self : DesktopTurnResult) -> String {
   write_effects_json(buf, self.effects)
   buf.write_string(",\"needs_host_ffi\":")
   buf.write_string(if self.needs_host_ffi { "true" } else { "false" })
+  buf.write_string(",\"host_continued\":")
+  buf.write_string(if self.host_continued { "true" } else { "false" })
+  buf.write_string(",\"channel_delivery\":\"")
+  buf.write_string(escape_json_string(self.channel_delivery))
+  buf.write_string("\"")
   match self.error {
     Some(e) => {
       buf.write_string(",\"error\":\"")
@@ -552,4 +979,126 @@ pub fn user_text_from_args(args : Array[String]) -> String {
     return args[args.length() - 1]
   }
   parts.join(" ")
+}
+
+///|
+/// True when argv requests Host FFI result re-injection (ADR 0002).
+pub fn args_want_host_continue(args : Array[String]) -> Bool {
+  for a in args {
+    if a == "--apply-host-results" {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn push_host_result(
+  results : Array[DesktopHostResult],
+  kind : String,
+  ok : Bool,
+  command : String,
+  stdout : String,
+  stderr : String,
+  error : String,
+) -> Unit {
+  results.push(
+    {
+      kind,
+      ok,
+      command: unescape_host_arg(command),
+      stdout: unescape_host_arg(stdout),
+      stderr: unescape_host_arg(stderr),
+      error: unescape_host_arg(error),
+    },
+  )
+}
+
+///|
+/// Parse `--apply-host-results` argv into (turn_id, prior, results).
+/// Flags: --turn-id --prior-text --result-ok --result-kind --result-command
+/// --result-stdout --result-stderr --result-error
+/// Multiple results: repeat --result-* groups separated by --result-next.
+pub fn parse_host_continue_args(
+  args : Array[String],
+) -> (String, String, Array[DesktopHostResult]) {
+  let mut turn_id = "host-continue-1"
+  let mut prior = ""
+  let results : Array[DesktopHostResult] = []
+  let mut kind = "shell"
+  let mut ok = true
+  let mut command = ""
+  let mut stdout = ""
+  let mut stderr = ""
+  let mut error = ""
+  let mut saw_result = false
+  let mut i = 0
+  while i < args.length() {
+    let a = args[i]
+    if a == "--turn-id" && i + 1 < args.length() {
+      turn_id = args[i + 1]
+      i = i + 2
+      continue
+    }
+    if a == "--prior-text" && i + 1 < args.length() {
+      prior = unescape_host_arg(args[i + 1])
+      i = i + 2
+      continue
+    }
+    if a == "--result-next" {
+      if saw_result {
+        push_host_result(results, kind, ok, command, stdout, stderr, error)
+      }
+      kind = "shell"
+      ok = true
+      command = ""
+      stdout = ""
+      stderr = ""
+      error = ""
+      saw_result = false
+      i = i + 1
+      continue
+    }
+    if a == "--result-ok" && i + 1 < args.length() {
+      ok = args[i + 1] != "false" && args[i + 1] != "0"
+      saw_result = true
+      i = i + 2
+      continue
+    }
+    if a == "--result-kind" && i + 1 < args.length() {
+      kind = args[i + 1]
+      saw_result = true
+      i = i + 2
+      continue
+    }
+    if a == "--result-command" && i + 1 < args.length() {
+      command = args[i + 1]
+      saw_result = true
+      i = i + 2
+      continue
+    }
+    if a == "--result-stdout" && i + 1 < args.length() {
+      stdout = args[i + 1]
+      saw_result = true
+      i = i + 2
+      continue
+    }
+    if a == "--result-stderr" && i + 1 < args.length() {
+      stderr = args[i + 1]
+      saw_result = true
+      i = i + 2
+      continue
+    }
+    if a == "--result-error" && i + 1 < args.length() {
+      error = args[i + 1]
+      saw_result = true
+      i = i + 2
+      continue
+    }
+    i = i + 1
+  }
+  if saw_result {
+    push_host_result(results, kind, ok, command, stdout, stderr, error)
+  }
+  (turn_id, prior, results)
 }

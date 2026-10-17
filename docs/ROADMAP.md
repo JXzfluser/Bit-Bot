@@ -76,7 +76,11 @@
 ## Desktop host + MoonBit brain (ADR 0005)
 
 - [x] ADR 0005 accepted — `docs/adr/0005-course-correct-moonbit-desktop.md`
-- [x] `cmd/desktop_turn` — intents: chat / ListMachines / memory / host_effect (`v:1` JSON)
+- [x] `cmd/desktop_turn` — intents: chat / ListMachines / memory / host_effect / channel_delivery / connectors_status / claim_inbox / draft_mail (`v:1` JSON)
+- [x] ADR 0002 Host FFI 回注 — Desktop executes effects then `--apply-host-results` → `continue_after_host_ffi` (MoonBit kernel absorbs TurnEvent)
 - [x] `hosts/desktop/` Electron — agents + machines + turn transcript from MoonBit
 - [x] `hosts/ios/` + `hosts/android/` stubs + `scripts/host_mobile_stub.sh`
 - [x] `scripts/start-desktop.sh` — moon on PATH, npm, Electron under `hosts/desktop`
+- [ ] Live Slack/SMTP/MCP Host FFI (beyond stub channel_send / mail_draft)
+- [ ] Real iOS/Android hosts beyond ListMachines kinds + stub scripts
+- [ ] Session-scoped persistent memory across moon processes
