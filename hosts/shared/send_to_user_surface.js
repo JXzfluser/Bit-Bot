@@ -77,6 +77,9 @@ function extractDeliveryTypes(turnJsonText) {
           "shared_memory_read",
           "journal_append",
           "connectors_probe",
+          "device_tools_list",
+          "device_tool",
+          "device_permission",
         ].includes(h.kind)
       ) {
         types.push("attachment");

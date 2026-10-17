@@ -210,6 +210,8 @@
 - [x] Parity: Gmail live search/read/send, sections, slides, purchase sandbox+live, install plugin, learn_from_demo
 - [x] section_add idempotent when section id already exists (return existing partition; never invent duplicate)
 - [x] Parity live mocks: X search, job catalog, calendar events, finance tools + author_skill
+- [x] DeviceTools Host FFI catalog (`device_tools_list` durable JSON; pretend_granted=false)
+- [x] Parity: CU OCR+native act, device tools/invoke, identity browser, workflows, box copy, cold mail, meeting DirectSend, Outlook live
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

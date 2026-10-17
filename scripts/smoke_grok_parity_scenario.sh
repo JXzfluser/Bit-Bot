@@ -180,6 +180,35 @@ python3 -c "import json;d=json.load(open('/tmp/parity-job.json'));h=next(x for x
 python3 -c "import json,os;d=json.load(open('/tmp/parity-cal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('mode')=='calendar_live';assert p.get('live_calendar_residual') is False;assert p.get('ics_ok') is True and os.path.isfile(p['ics_path']);print('parity calendar live ok')"
 python3 -c "import json;d=json.load(open('/tmp/parity-fin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='finance_call');p=json.loads(h['stdout']);assert p.get('mode')=='finance_live';assert p.get('live_finance_residual') is False;assert p.get('pretend_live') is False;print('parity finance_call live ok')"
 
+# 9h) CU OCR/native + device tools + identity + workflows + box copy + cold mail + meeting + Outlook
+BITBOT_CU_OCR=1 BITBOT_CU_NATIVE_ACT=1 \
+  "${RUN[@]}" "computer use open example.com" >/tmp/parity-cu.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cu.json'));h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h['stdout']);g=p.get('gui')or{};vp=g.get('vision_plan')or{};assert g.get('vision_ok') is True;assert vp.get('ocr') is True;assert vp.get('ocr_residual') is False;na=g.get('native_os_act')or{};assert na.get('enabled') is True;assert na.get('ok') is True;assert na.get('os_window_automation_residual') is False;assert p.get('evidence') and os.path.isfile(p['evidence']);assert (p.get('outcome') or {}).get('pretend_purchased') is False;print('parity CU OCR+native ok', 'ocr_prefix', (vp.get('ocr_text_prefix') or '')[:24])"
+"${RUN[@]}" --machine-kind ios --machine-id phone-ios "device tools" >/tmp/parity-dt.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-dt.json'));h=next(x for x in d['host_results'] if x.get('kind')=='device_tools_list');p=json.loads(h['stdout']);assert p.get('machine_kind')=='ios';assert p.get('count')>=1;assert p.get('pretend_granted') is False;assert os.path.isfile(p['path']);print('parity device_tools_list ok', p.get('count'), p.get('path'))"
+"${RUN[@]}" --machine-kind ios "device tool camera" >/tmp/parity-dti.json
+python3 -c "import json;d=json.load(open('/tmp/parity-dti.json'));hrs=d.get('host_results')or[];kinds=[h.get('kind') for h in hrs];assert 'device_tool' in kinds or 'device_permission' in kinds;h=next(x for x in hrs if x.get('kind') in ('device_tool','device_permission'));p=json.loads(h['stdout']);assert p.get('pretend_granted') is False if 'pretend_granted' in p else p.get('executed') is True;print('parity device invoke ok', h.get('kind'))"
+"${RUN[@]}" "identity browser" >/tmp/parity-id.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-id.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='identity_browser_switch';assert p.get('pretend_connected_slack') is False;assert p.get('connected') is False;assert p.get('session_path') and os.path.isfile(p['session_path']);print('parity identity_browser ok')"
+"${RUN[@]}" "list workflows" >/tmp/parity-wf.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-wf.json'));h=next(x for x in d['host_results'] if x.get('kind')=='workflow_list');p=json.loads(h['stdout']);assert p.get('count')>=1;assert p.get('path') and os.path.isfile(p['path']);assert all(w.get('pretend_shared') is False for w in p.get('workflows')or[]);print('parity workflow_list ok', p.get('count'))"
+mkdir -p uploads
+echo "parity-box-$MARKER" > uploads/parity-box-src.txt
+"${RUN[@]}" "copy to box machine=desk-1 src=uploads/parity-box-src.txt dest=uploads/parity-box-dest.txt" >/tmp/parity-box.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-box.json'));h=next(x for x in d['host_results'] if x.get('kind')=='copy_to_box');p=json.loads(h['stdout']);assert p.get('under_repo') is True;assert p.get('pretend_remote_machine') is False;assert os.path.isfile('uploads/parity-box-dest.txt');print('parity copy_to_box ok')"
+"${RUN[@]}" --approved "cold mail to=parity@example.com subject=Hi body=Hello $MARKER" >/tmp/parity-cold.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cold.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('provider')=='cold';assert p.get('pretend_sent') is False;assert 'List-Unsubscribe:' in open(p['eml_path']).read();print('parity cold_mail ok')"
+"${RUN[@]}" "meeting chat body=parity standup $MARKER direct=1" >/tmp/parity-meet.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-meet.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_direct';assert p.get('live_meeting_residual') is True;assert p.get('transcript') and os.path.isfile(p['transcript']);print('parity meeting_chat DirectSend ok')"
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18775 --mode outlook --token smoke-out >/tmp/parity-outlook-mock.log 2>&1 &
+OUT_PID=$!
+sleep 0.35
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-out BITBOT_MAIL_SEND=1 \
+  "${RUN[@]}" --approved "draft outlook mail to=parity@example.com subject=Parity body=$MARKER" >/tmp/parity-outlook.json || true
+kill "$OUT_PID" >/dev/null 2>&1 || true
+wait "$OUT_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/parity-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;print('parity outlook live ok')"
+
 # 10) Multi-end mobile Host strip + ListMachines host-present honesty
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
 python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'machine_kind=ios' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"

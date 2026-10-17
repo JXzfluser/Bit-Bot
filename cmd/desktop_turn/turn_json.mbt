@@ -2058,15 +2058,40 @@ pub fn run_desktop_turn(
       buf.write_string(mid)
       buf.write_string(": ")
       buf.write_string(tools.length().to_string())
+      // Host FFI command: machine_id|machine_kind|name=perm,name=perm…
+      let cmd = StringBuilder()
+      cmd.write_string(mid)
+      cmd.write_string("|")
+      cmd.write_string(ctx.machine_kind)
+      cmd.write_string("|")
       let mut i = 0
       while i < tools.length() {
         buf.write_string(" | ")
         buf.write_string(tools[i].name)
         buf.write_string("=")
         buf.write_string(tools[i].permission.label())
+        if i > 0 {
+          cmd.write_string(",")
+        }
+        cmd.write_string(tools[i].name)
+        cmd.write_string("=")
+        cmd.write_string(tools[i].permission.label())
         i = i + 1
       }
-      deliver_ok(trimmed, turn_id, buf.to_string(), intent, ctx~)
+      let effect : DesktopEffect = {
+        kind: "device_tools_list",
+        command: cmd.to_string(),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        buf.to_string() + " Host materializes durable tool catalog (CM-0705).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     DeviceToolInvoke(tool~) => {
       let reg = @box_host.DeviceLocalToolsRegistry::seed_phones()

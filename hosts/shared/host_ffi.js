@@ -5354,6 +5354,63 @@ function createHostFfi(repoRoot) {
       });
     }
 
+    if (kind === "device_tools_list") {
+      // command: machine_id|machine_kind|name=perm,name=perm…
+      const parts = cmd.split("|");
+      const machineId = parts[0] || "";
+      const machineKind = parts[1] || "desktop";
+      const toolsRaw = parts.slice(2).join("|") || "";
+      const tools = toolsRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((pair) => {
+          const eq = pair.indexOf("=");
+          if (eq < 0) return { name: pair, permission: "unknown" };
+          return {
+            name: pair.slice(0, eq),
+            permission: pair.slice(eq + 1) || "unknown",
+          };
+        });
+      const dir = path.join(REPO_ROOT, "data", "device");
+      fs.mkdirSync(dir, { recursive: true });
+      const listPath = path.join(
+        dir,
+        `tools-${machineKind}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        machine_id: machineId,
+        machine_kind: machineKind,
+        tools,
+        count: tools.length,
+        pretend_granted: false,
+        mode: "host_device_tools_catalog",
+        at,
+      };
+      fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "tools-list.jsonl"), artifact);
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: listPath,
+        label: "device_tools_list",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: listPath,
+        count: tools.length,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...artifact,
+        path: listPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
     if (kind === "device_tool") {
       const parts = cmd.split("|");
       const entry = {
