@@ -208,14 +208,18 @@ BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_
 kill "$SLACK_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SLACK_MOCK_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-slack-live-thread.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('mode')=='live_slack_thread';assert p.get('thread_ts')=='1710000000.000060';assert p.get('pretend_live') is False;deliv=next(x for x in hrs if x.get('kind')=='delivery');dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='thread';print('channel_send slack live thread ok', p.get('mode'), 'ts', p.get('ts'))"
-# Live Teams Graph post against local mock
+# Live Teams Graph post / claim against local mock
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18770 --mode teams --token smoke-teams >/tmp/bitbot-teams-mock.log 2>&1 &
 TEAMS_MOCK_PID=$!
 sleep 0.4
 BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_POST=1 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: live teams mock" >/tmp/bitbot-teams-live.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('scheme')=='teams';assert p.get('live_post') is True;assert p.get('live_teams_residual') is False;assert p.get('pretend_live') is False;assert p.get('mode')=='live_teams_chat_message';print('channel_send teams live mock ok', p.get('mode'), 'status', p.get('http_status'))"
+BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_CLAIM=1 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: claim teams" >/tmp/bitbot-teams-claim-live.json || true
 kill "$TEAMS_MOCK_PID" >/dev/null 2>&1 || true
 wait "$TEAMS_MOCK_PID" 2>/dev/null || true
-python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('scheme')=='teams';assert p.get('live_post') is True;assert p.get('live_teams_residual') is False;assert p.get('pretend_live') is False;assert p.get('mode')=='live_teams_chat_message';print('channel_send teams live mock ok', p.get('mode'), 'status', p.get('http_status'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_teams_claim';assert p.get('claimed_count',0)>=1;assert p.get('pretend_live') is False;assert os.path.isfile('data/channels/inbound.jsonl');assert 'live_teams_claim' in open('data/channels/inbound.jsonl').read();print('channel_send teams live claim ok', 'claimed', p.get('claimed_count'))"
+BITBOT_TEAMS_CLAIM=1 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: sandbox claim" >/tmp/bitbot-teams-claim-sandbox.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-claim-sandbox.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='sandbox_teams_claim';assert p.get('pretend_live') is False;print('channel_send teams sandbox claim ok')"
 # copy_to_box / copy_from_box durable JSON under data/box-copy/
 mkdir -p uploads
 echo 'box-copy-smoke' > uploads/box-src.txt

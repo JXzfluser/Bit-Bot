@@ -612,7 +612,13 @@
             "section_add",
             "section_post",
             "credential_list",
+            "credential_fill",
             "source_control",
+            "shared_memory_put",
+            "shared_memory_read",
+            "journal_append",
+            "export_pack",
+            "mcp_discover",
           ];
           const attaches = r.host_results.filter(
             (h) => h && h.ok && attachKinds.includes(h.kind),
@@ -724,6 +730,27 @@
                 } else if (h.kind === "code_changes") {
                   label = "code:" + (p.applied ? "applied" : "plan");
                   types.push("attachment");
+                } else if (h.kind === "credential_fill") {
+                  label = "cred_fill:" + (p.domain || p.vault_id || "vault");
+                  types.push("attachment");
+                } else if (h.kind === "credential_list") {
+                  label = "creds:" + (p.count || 0);
+                  types.push("attachment");
+                } else if (h.kind === "export_pack") {
+                  label = "export:" + String(p.path || "").split("/").slice(-1)[0];
+                  types.push("attachment");
+                } else if (h.kind === "mcp_discover") {
+                  label = "mcp_discover";
+                  types.push("attachment");
+                } else if (h.kind === "shared_memory_put" || h.kind === "shared_memory_read") {
+                  label = h.kind.replace("shared_memory_", "mem:") + ":" + (p.scope || "?");
+                  types.push("attachment");
+                } else if (h.kind === "journal_append") {
+                  label = "journal";
+                  types.push("attachment");
+                } else if (h.kind === "voice_relay" && p.reply_media_path) {
+                  label = "voice_relay:" + String(p.reply_media_path).split("/").slice(-1)[0];
+                  types.push("voice");
                 } else if (h.kind === "source_control") {
                   const rp = p.remote_pr || {};
                   const mode =

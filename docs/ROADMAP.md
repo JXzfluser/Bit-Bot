@@ -200,6 +200,10 @@
 - [x] Desktop Memory panel (Host session seed meta + Recall action)
 - [x] Parity scenario shared_memory put/read + journal_append durable Host evidence
 - [x] ListMachines marks active Host shell Connected (`MachineRegistry::mark_host_present`; android seed stays disconnected until android Host present)
+- [x] Credential fill upserts vault metadata for list credentials (CM-2130; never secret plaintext)
+- [x] Teams inbound claim (`BITBOT_TEAMS_CLAIM=1` → live Graph messages / sandbox_teams_claim)
+- [x] Parity scenario: credential fill→list, MCP discover, export_pack, subagent, voice_relay
+- [x] Desktop delivery chips for credential_fill / export / mcp_discover / shared_memory / journal / voice_relay
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

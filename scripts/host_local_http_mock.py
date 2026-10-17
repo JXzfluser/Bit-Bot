@@ -22,7 +22,10 @@ Endpoints:
             POST /conversations.history
             POST /auth.test
             (BITBOT_SLACK_API_BASE=http://host:port)
-  teams:    POST /chats/<id>/messages  (BITBOT_TEAMS_GRAPH_URL=http://host:port)
+  teams:    POST /chats/<id>/messages
+            GET  /chats/<id>/messages
+            GET  /me/chats
+            (BITBOT_TEAMS_GRAPH_URL=http://host:port)
   job:      POST /jobs/search  (BITBOT_JOB_API_URL=http://host:port)
   x:        GET  /tweets/search/recent  (BITBOT_X_API_BASE=http://host:port)
   gmail:    POST /users/me/messages/send
@@ -285,6 +288,36 @@ def main() -> int:
                     self._json(401, {"ok": False, "error": "unauthorized"})
                     return
                 self._json(200, {"value": [{"id": "Tsmoke", "topic": "smoke"}]})
+                return
+            if (
+                mode == "teams"
+                and "/chats/" in path
+                and path.endswith("/messages")
+            ):
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                self._json(
+                    200,
+                    {
+                        "value": [
+                            {
+                                "id": "tm-live-1",
+                                "body": {
+                                    "contentType": "text",
+                                    "content": "live mock teams inbound",
+                                },
+                            },
+                            {
+                                "id": "tm-live-2",
+                                "body": {
+                                    "contentType": "text",
+                                    "content": "second teams hit",
+                                },
+                            },
+                        ]
+                    },
+                )
                 return
             if mode == "x" and path.endswith("/tweets/search/recent"):
                 if not self._auth_ok():

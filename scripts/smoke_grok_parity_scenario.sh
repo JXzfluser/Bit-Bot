@@ -82,6 +82,23 @@ python3 -c "import json;d=json.load(open('/tmp/parity-shared-get.json'));h=next(
 "${RUN[@]}" "journal note parity $MARKER" >/tmp/parity-journal.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-journal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='journal_append');p=json.loads(h['stdout']);assert p.get('ok') is True or h.get('ok');path=p.get('path') or 'data/journal/events.jsonl';assert os.path.isfile(path);assert '$MARKER' in open(path).read();print('parity journal_append ok', path)"
 
+# 9c) Credential fill → vault metadata → list (never secret echo)
+"${RUN[@]}" "fill credential domain=parity.example.test" >/tmp/parity-cred-fill.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-cred-fill.json'));h=next(x for x in d['host_results'] if x.get('kind')=='credential_fill');p=json.loads(h['stdout']);assert p.get('secret_echoed') is False;assert p.get('vault_only') is True;assert p.get('pretend_secret_view') is False;assert os.path.isfile(p.get('vault_path') or 'data/credentials/vault.json');vault=json.load(open(p['vault_path']));assert any(e.get('domain')=='parity.example.test' for e in vault.get('entries')or[]);blob=json.dumps(p)+json.dumps(vault);assert 'vault:secret' not in blob.lower() and 'password' not in blob.lower() or 'has_secret' in blob;assert 'secret-ref' not in blob;print('parity credential_fill vault meta ok', p.get('vault_id'))"
+"${RUN[@]}" "list credentials" >/tmp/parity-cred-list2.json
+python3 -c "import json;d=json.load(open('/tmp/parity-cred-list2.json'));h=next(x for x in d['host_results'] if x.get('kind')=='credential_list');p=json.loads(h['stdout']);assert p.get('secret_echoed') is False;assert any(c.get('domain')=='parity.example.test' for c in p.get('credentials')or[]);print('parity credential_list sees fill ok', p.get('count'))"
+
+# 9d) MCP discover + export pack + subagent + voice relay
+"${RUN[@]}" "mcp discover user-Gmail" >/tmp/parity-mcp.json
+python3 -c "import json;d=json.load(open('/tmp/parity-mcp.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mcp_discover');assert h.get('ok');print('parity mcp_discover ok')"
+"${RUN[@]}" "export bot template name=parity-$MARKER" >/tmp/parity-export.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-export.json'));h=next(x for x in d['host_results'] if x.get('kind')=='export_pack');p=json.loads(h['stdout']);assert p.get('secrets_stripped') is True;assert p.get('path') and os.path.isfile(p['path']);print('parity export_pack ok', p.get('path'))"
+"${RUN[@]}" "spawn subagent triage parity-$MARKER" >/tmp/parity-sub.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sub.json'));h=next(x for x in d['host_results'] if x.get('kind')=='subagent_run');p=json.loads(h['stdout']);assert p.get('ran') is True;assert (p.get('subagent') or {}).get('status')=='completed';assert (p.get('send_to_user') or {}).get('type')=='text';print('parity subagent_run ok', (p.get('subagent') or {}).get('id'))"
+"${RUN[@]}" "voice start parity-vr" >/tmp/parity-vr-start.json
+"${RUN[@]}" "voice relay parity-vr :: hello parity $MARKER" >/tmp/parity-vr.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-vr.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_relay');p=json.loads(h['stdout']);assert p.get('reply_media_ok') is True;assert p.get('reply_media_path') and os.path.isfile(p['reply_media_path']);assert open(p['reply_media_path'],'rb').read(4)==b'RIFF';print('parity voice_relay ok', p.get('turns'))"
+
 # 10) Multi-end mobile Host strip + ListMachines host-present honesty
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios "list credentials" >/tmp/parity-ios.txt
 python3 -c "t=open('/tmp/parity-ios.txt').read();assert 'SendToUser' in t or 'credential_list' in t;assert 'list_credentials' in t or '\"ok\": true' in t or '\"ok\":true' in t;print('parity ios SendToUser strip ok')"

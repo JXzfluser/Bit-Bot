@@ -802,15 +802,65 @@ function createHostFfi(repoRoot) {
     if (addr.startsWith("teams:")) {
       const teamsToken = String(process.env.BITBOT_TEAMS_TOKEN || "").trim();
       const chatId = addr.slice("teams:".length).split(":")[0] || "";
+      const graphBase = (
+        process.env.BITBOT_TEAMS_GRAPH_URL ||
+        "https://graph.microsoft.com/v1.0"
+      ).replace(/\/$/, "");
+      const inboundPath = path.join(
+        REPO_ROOT,
+        "data",
+        "channels",
+        "inbound.jsonl",
+      );
+      // Live Teams inbound claim (Graph chat messages) when CLAIM=1 + token.
+      let teamsClaim = null;
+      if (
+        teamsToken &&
+        process.env.BITBOT_TEAMS_CLAIM === "1" &&
+        chatId &&
+        chatId !== "me"
+      ) {
+        const histUrl = `${graphBase}/chats/${encodeURIComponent(chatId)}/messages`;
+        const hist = await httpJson(histUrl, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${teamsToken}` },
+        });
+        const okHist =
+          Boolean(hist.ok) || (hist.status >= 200 && hist.status < 300);
+        const values =
+          (hist.json && (hist.json.value || hist.json.messages)) || [];
+        const claimed = [];
+        for (const m of Array.isArray(values) ? values : []) {
+          if (!m || typeof m !== "object") continue;
+          const row = {
+            scheme: "teams",
+            channel: chatId,
+            id: m.id || "",
+            text_prefix: String(
+              (m.body && m.body.content) || m.content || "",
+            ).slice(0, 80),
+            text_len: String(
+              (m.body && m.body.content) || m.content || "",
+            ).length,
+            mode: "live_teams_claim",
+            at: stamp,
+          };
+          appendJsonl(inboundPath, row);
+          claimed.push({ id: row.id, text_len: row.text_len });
+        }
+        teamsClaim = {
+          ok: okHist,
+          claimed_count: claimed.length,
+          claimed,
+          error: okHist ? "" : hist.error || `http_${hist.status}`,
+        };
+      }
       if (teamsToken && process.env.BITBOT_TEAMS_POST === "1" && body) {
         // Prefer chat message POST when chat id present; else probe chats list.
-        const graphBase =
-          process.env.BITBOT_TEAMS_GRAPH_URL ||
-          "https://graph.microsoft.com/v1.0";
         let post;
         let mode = "live_teams_graph";
         if (chatId && chatId !== "me") {
-          const msgUrl = `${graphBase.replace(/\/$/, "")}/chats/${encodeURIComponent(chatId)}/messages`;
+          const msgUrl = `${graphBase}/chats/${encodeURIComponent(chatId)}/messages`;
           post = await httpJson(msgUrl, {
             method: "POST",
             headers: {
@@ -823,7 +873,7 @@ function createHostFfi(repoRoot) {
           });
           mode = "live_teams_chat_message";
         } else {
-          post = await httpJson(`${graphBase.replace(/\/$/, "")}/me/chats`, {
+          post = await httpJson(`${graphBase}/me/chats`, {
             method: "GET",
             headers: { Authorization: `Bearer ${teamsToken}` },
           });
@@ -841,6 +891,7 @@ function createHostFfi(repoRoot) {
           pretend_live: false,
           http_status: post.status || 0,
           chat_id: chatId || null,
+          claim: teamsClaim,
           at: stamp,
         };
         appendJsonl(outboundPath, entry);
@@ -848,8 +899,76 @@ function createHostFfi(repoRoot) {
           kind: "channel_send",
           ok: entry.ok,
           command: raw,
-          stdout: JSON.stringify({ ...entry, outbound: outboundPath }, null, 2),
+          stdout: JSON.stringify(
+            {
+              ...entry,
+              outbound: outboundPath,
+              inbound: teamsClaim ? inboundPath : undefined,
+            },
+            null,
+            2,
+          ),
           error: entry.ok ? "" : `teams graph failed: ${post.error || post.status}`,
+          stderr: "",
+        };
+      }
+      // Claim-only Teams path (no live post).
+      if (teamsClaim) {
+        const entry = {
+          scheme: "teams",
+          address: addr,
+          body,
+          mode: "live_teams_claim",
+          ok: Boolean(teamsClaim.ok),
+          live_post: false,
+          claimed_count: teamsClaim.claimed_count,
+          claim: teamsClaim,
+          pretend_live: false,
+          chat_id: chatId || null,
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        return {
+          kind: "channel_send",
+          ok: entry.ok,
+          command: raw,
+          stdout: JSON.stringify({ ...entry, outbound: outboundPath }, null, 2),
+          error: entry.ok ? "" : teamsClaim.error,
+          stderr: "",
+        };
+      }
+      // Sandbox Teams claim rehearsal when CLAIM=1 but no token.
+      if (process.env.BITBOT_TEAMS_CLAIM === "1" && chatId && !teamsToken) {
+        const row = {
+          scheme: "teams",
+          channel: chatId,
+          id: "sandbox-teams-1",
+          text_prefix: "[sandbox] teams inbound claim",
+          text_len: 28,
+          mode: "sandbox_teams_claim",
+          at: stamp,
+        };
+        appendJsonl(inboundPath, row);
+        const entry = {
+          scheme: "teams",
+          address: addr,
+          body,
+          mode: "sandbox_teams_claim",
+          ok: true,
+          live_post: false,
+          claimed_count: 1,
+          pretend_live: false,
+          at: stamp,
+          inbound: inboundPath,
+          note: "sandbox claim — set BITBOT_TEAMS_TOKEN for live Graph messages",
+        };
+        appendJsonl(outboundPath, entry);
+        return {
+          kind: "channel_send",
+          ok: true,
+          command: raw,
+          stdout: JSON.stringify({ ...entry, outbound: outboundPath }, null, 2),
           stderr: "",
         };
       }
@@ -866,7 +985,7 @@ function createHostFfi(repoRoot) {
         connector_ready: connectorReady,
         widget_degraded: /\[widget:|type=widget/i.test(body),
         at: stamp,
-        note: "Teams live Graph post needs BITBOT_TEAMS_TOKEN + BITBOT_TEAMS_POST=1",
+        note: "Teams live Graph post needs BITBOT_TEAMS_TOKEN + BITBOT_TEAMS_POST=1; claim needs BITBOT_TEAMS_CLAIM=1",
       };
       if (entry.widget_degraded) {
         entry.body = body
@@ -6059,19 +6178,65 @@ function createHostFfi(repoRoot) {
 
     if (kind === "credential_fill") {
       const parts = cmd.split("|");
+      const fillHandle = parts[0] || "";
+      const domain = parts[1] || "";
+      const username = parts[2] || "";
       const entry = {
-        fill_handle: parts[0] || "",
-        domain: parts[1] || "",
+        fill_handle: fillHandle,
+        domain,
+        username,
         secret_echoed: false,
         vault_only: true,
         at,
       };
       const pathWritten = appendJsonl(CREDENTIAL_FILLS_PATH, entry);
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
+      // Upsert vault metadata only (CM-2130) — never store secret/password/token plaintext here.
+      const vaultPath = path.join(REPO_ROOT, "data", "credentials", "vault.json");
+      fs.mkdirSync(path.dirname(vaultPath), { recursive: true });
+      let vault = { entries: [] };
+      try {
+        if (fs.existsSync(vaultPath)) {
+          vault = JSON.parse(fs.readFileSync(vaultPath, "utf8")) || vault;
+        }
+      } catch (_) {
+        vault = { entries: [] };
+      }
+      if (!Array.isArray(vault.entries)) vault.entries = [];
+      const id =
+        fillHandle ||
+        `cred-${Buffer.from(domain || "fill")
+          .toString("hex")
+          .slice(0, 10)}`;
+      const existing = vault.entries.findIndex(
+        (e) => e && (e.id === id || (domain && e.domain === domain)),
+      );
+      const meta = {
+        id,
+        domain: domain || "unknown",
+        username: username || "",
+        label: domain || id,
+        has_secret: true,
+        // Intentionally omit secret/password/token fields.
+        filled_at: at,
+        fill_handle: fillHandle,
+      };
+      if (existing >= 0) vault.entries[existing] = { ...vault.entries[existing], ...meta };
+      else vault.entries.push(meta);
+      fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2));
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: pathWritten,
+        vault_path: vaultPath,
+        at,
+      });
       return okJson(kind, cmd, {
         ...entry,
         path: pathWritten,
-        note: "secret stays in Host vault — never assistant_view",
+        vault_path: vaultPath,
+        vault_id: id,
+        pretend_secret_view: false,
+        note: "secret stays in Host vault — never assistant_view; metadata upserted for list credentials",
       });
     }
 

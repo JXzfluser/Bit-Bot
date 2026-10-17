@@ -39,6 +39,8 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Store signing certs (Desktop/iOS/Android) | **Deferred** (user) — signing scaffolds + unsigned pack evidence present; store certs skipped |
 | Slack post without `BITBOT_SLACK_POST=1` | Draft-first only (live gated); live mock closes residual when API base + token + POST=1 |
 | Slack inbound claim | `BITBOT_SLACK_CLAIM=1` + token → live `conversations.history` (`live_slack_claim`); without token → `sandbox_slack_claim`; mock serves history |
+| Teams inbound claim | `BITBOT_TEAMS_CLAIM=1` + token → live Graph chat messages (`live_teams_claim`); without token → `sandbox_teams_claim` |
+| Credential fill | Upserts `data/credentials/vault.json` metadata only; `list credentials` sees domain/username; never secret plaintext |
 | Teams without `BITBOT_TEAMS_POST=1` | Draft transcript only; live Graph mock when token + POST + optional `BITBOT_TEAMS_GRAPH_URL` |
 | Screenshot | Only when `DISPLAY` set and ffmpeg/import/scrot available |
 | Routine wake scheduler | On-demand `routine_fire` + daemon `--long-lived` / `--interval-ms`; `--install-user-unit` installs user systemd unit |
