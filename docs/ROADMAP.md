@@ -235,6 +235,8 @@
 - [x] Parity: ListMachines only marks active Host Connected (ios residual on desktop)
 - [x] Host profile memory_update/recall vault + shared_memory_read durable reads
 - [x] Parity: memory Host vault/snapshot + shared_memory_read path
+- [x] Host routine_schedule/fire per-op JSON artifacts + teammate_create create snapshot (parity with list/pause/resume)
+- [x] Parity: routine_schedule/fire path + teammate_create path honesty
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

@@ -2048,6 +2048,7 @@ function createHostFfi(repoRoot) {
       } else {
         nextDue = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
       }
+      const dueNow = cron === "@now" || cron === "@once";
       const row = upsertRoutine({
         id: parts[0] || "routine-1",
         cron,
@@ -2056,29 +2057,53 @@ function createHostFfi(repoRoot) {
         lifecycle: "active",
         next_due: nextDue,
       });
+      const atSched = new Date().toISOString();
+      const dir = path.join(REPO_ROOT, "data", "routines");
+      fs.mkdirSync(dir, { recursive: true });
+      const schedulePath = path.join(
+        dir,
+        `schedule-${row.id}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        stored: true,
+        id: row.id,
+        cron: row.cron,
+        prompt: row.prompt || "",
+        next_due: row.next_due || nextDue,
+        due_now: dueNow,
+        lifecycle: row.lifecycle || "active",
+        enabled: row.enabled !== false,
+        routines_path: ROUTINES_PATH,
+        mode: "host_routine_schedule",
+        pretend_scheduled: false,
+        long_lived_cron_residual: !dueNow,
+        at: atSched,
+      };
+      fs.writeFileSync(schedulePath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "schedules.jsonl"), {
+        ...artifact,
+        path: schedulePath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: schedulePath,
+        label: "routine_schedule",
+        source_kind: kind,
+        at: atSched,
+      });
       appendHostDeliveryJournal({
         kind,
         command,
+        path: schedulePath,
         stored: row,
-        at: new Date().toISOString(),
+        at: atSched,
       });
-      return {
-        kind,
+      return okJson(kind, command, {
+        ...artifact,
+        path: schedulePath,
+        send_to_user: delivery,
         ok: true,
-        command,
-        stdout: JSON.stringify(
-          {
-            stored: true,
-            id: row.id,
-            cron: row.cron,
-            next_due: row.next_due || nextDue,
-            due_now: cron === "@now" || cron === "@once",
-          },
-          null,
-          2,
-        ),
-        stderr: "",
-      };
+      });
     }
     if (kind === "routine_list") {
       const rows = loadRoutines();
@@ -2205,11 +2230,12 @@ function createHostFfi(repoRoot) {
         hit.next_due = nextDue;
         saveRoutines(rows);
       }
-      const firesPath = path.join(
-        REPO_ROOT,
-        "data",
-        "routines",
-        "fires.jsonl",
+      const firesDir = path.join(REPO_ROOT, "data", "routines");
+      fs.mkdirSync(firesDir, { recursive: true });
+      const firesPath = path.join(firesDir, "fires.jsonl");
+      const firePath = path.join(
+        firesDir,
+        `fire-${id || "routine"}-${Date.now().toString(36)}.json`,
       );
       const fireEntry = {
         id,
@@ -2218,33 +2244,36 @@ function createHostFfi(repoRoot) {
         fired: true,
         at: firedAt,
         next_due: nextDue,
+        mode: "host_routine_fire",
+        pretend_fired: false,
+        routines_path: ROUTINES_PATH,
       };
-      appendJsonl(firesPath, fireEntry);
+      fs.writeFileSync(firePath, JSON.stringify(fireEntry, null, 2));
+      appendJsonl(firesPath, { ...fireEntry, path: firePath });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: firePath,
+        label: "routine_fire",
+        source_kind: kind,
+        at: firedAt,
+      });
       appendHostDeliveryJournal({
         kind,
         command,
+        path: firePath,
+        fires: firesPath,
         fired: true,
         prompt: fireEntry.prompt,
         next_due: nextDue,
         at: firedAt,
       });
-      return {
-        kind,
+      return okJson(kind, command, {
+        ...fireEntry,
+        path: firePath,
+        fires: firesPath,
+        send_to_user: delivery,
         ok: true,
-        command,
-        stdout: JSON.stringify(
-          {
-            fired: true,
-            id,
-            prompt: fireEntry.prompt,
-            next_due: nextDue,
-            fires: firesPath,
-          },
-          null,
-          2,
-        ),
-        stderr: "",
-      };
+      });
     }
     if (kind === "routine_tick" || kind === "routine_wake") {
       // Wake due routines (Host-side scheduler tick; not LocalBrain).
@@ -6313,20 +6342,50 @@ function createHostFfi(repoRoot) {
       };
       const rows = readJsonArray(TEAMMATES_PATH);
       const idx = rows.findIndex((r) => r && r.id === row.id);
-      if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
+      const existing = idx >= 0;
+      if (existing) rows[idx] = { ...rows[idx], ...row };
       else rows.push(row);
       writeJsonArray(TEAMMATES_PATH, rows);
+      const tmDir = path.join(REPO_ROOT, "data", "agents", "teammate-creates");
+      fs.mkdirSync(tmDir, { recursive: true });
+      const createPath = path.join(
+        tmDir,
+        `create-${row.id}-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        stored: true,
+        existing,
+        teammate: row,
+        teammates_path: TEAMMATES_PATH,
+        members_sidebar: true,
+        mode: "host_teammate_create",
+        pretend_created: false,
+        at,
+      };
+      fs.writeFileSync(createPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(tmDir, "creates.jsonl"), {
+        ...artifact,
+        path: createPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: createPath,
+        label: "teammate_create",
+        source_kind: kind,
+        at,
+      });
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: TEAMMATES_PATH,
+        path: createPath,
+        teammates_path: TEAMMATES_PATH,
         at,
       });
       return okJson(kind, cmd, {
-        stored: true,
-        path: TEAMMATES_PATH,
-        teammate: row,
-        members_sidebar: true,
+        ...artifact,
+        path: createPath,
+        send_to_user: delivery,
+        ok: true,
       });
     }
 

@@ -113,10 +113,11 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-write.json'));asser
 
 echo "==> Host durable routines"
 node hosts/cli_host/run_turn.js --approved "create routine id=host-r cron=@hourly prompt=tick" >/tmp/bitbot-routine-create.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-routine-create.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='routine_schedule');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('stored') is True;assert p.get('id')=='host-r';assert p.get('pretend_scheduled') is False;assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/routines/schedules.jsonl');print('routine_schedule durable ok', p.get('path'))"
 node hosts/cli_host/run_turn.js "list routines" >/tmp/bitbot-routine-list.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-routine-list.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='routine_list' and 'host-r' in (h.get('stdout') or '') for h in hrs);print('routine_list durable ok')"
 node hosts/cli_host/run_turn.js --approved "fire routine host-r" >/tmp/bitbot-routine-fire.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-routine-fire.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='routine_fire');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('fired') is True;assert p.get('next_due');assert os.path.isfile('data/routines/fires.jsonl');print('routine_fire durable ok', 'next_due', p.get('next_due'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-routine-fire.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='routine_fire');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('fired') is True;assert p.get('next_due');assert p.get('pretend_fired') is False;assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/routines/fires.jsonl');print('routine_fire durable ok', 'next_due', p.get('next_due'), 'path', p.get('path'))"
 python3 - <<'PY'
 import json, pathlib
 p=pathlib.Path('data/routines/host-routines.json')

@@ -803,8 +803,11 @@
                       (p.pretend_remote_pr ? " · pretend!" : "");
                   }
                 } else if (h.kind === "teammate_create") {
-                  label = "teammate:" + ((p.teammate && p.teammate.id) || "?");
-                  types.push("text");
+                  label =
+                    "teammate:" +
+                    ((p.teammate && p.teammate.id) || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
                 } else if (h.kind === "section_add") {
                   label = "section:+" + ((p.section && p.section.id) || "?");
                   types.push("attachment");
@@ -848,10 +851,16 @@
                       : "no connectors";
                   }
                 } else if (h.kind === "routine_schedule" || h.kind === "routine_tick" || h.kind === "routine_fire") {
+                  const rtId =
+                    p.id ||
+                    (p.fired && p.fired[0] && p.fired[0].id) ||
+                    p.fired_count ||
+                    "";
                   label =
                     h.kind.replace("routine_", "rt:") +
                     ":" +
-                    (p.id || (p.fired && p.fired[0] && p.fired[0].id) || p.fired_count || "");
+                    rtId +
+                    (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (p.media_path) {
                   label = h.kind + ": " + String(p.media_path).split("/").slice(-1)[0];
