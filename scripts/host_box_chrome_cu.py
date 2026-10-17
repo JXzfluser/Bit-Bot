@@ -896,7 +896,12 @@ def main() -> int:
         if m:
             url = "https://" + m.group(1)
 
-    blocked = bool(url) and any(b in url for b in PK_BLOCKED)
+    allow_local = os.environ.get("BITBOT_CU_ALLOW_LOCAL", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    blocked = bool(url) and any(b in url for b in PK_BLOCKED) and not allow_local
     navigate: Dict[str, Any] = {
         "url": url or None,
         "navigate_reachable": False,
