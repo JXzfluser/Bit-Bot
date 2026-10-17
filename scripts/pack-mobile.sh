@@ -68,6 +68,27 @@ EOF
 export BITBOT_REPO_ROOT="$ROOT"
 bash "$ROOT/scripts/verify_native_shells.sh"
 
+# Unsigned release archive (checksummed) — store submit still requires signing.
+ARCHIVE_DIR="$OUT/archives"
+mkdir -p "$ARCHIVE_DIR"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+ARCHIVE="$ARCHIVE_DIR/bitbot-mobile-unsigned-$STAMP.tar.gz"
+tar -C "$OUT" -czf "$ARCHIVE" ios android meta
+(
+  cd "$ARCHIVE_DIR"
+  sha256sum "$(basename "$ARCHIVE")" >"$(basename "$ARCHIVE").sha256"
+)
+cat >"$OUT/meta/unsigned-release.json" <<EOF
+{
+  "v": 1,
+  "kind": "unsigned_mobile_host_bundle",
+  "archive": "hosts/dist/mobile/archives/$(basename "$ARCHIVE")",
+  "sha256_file": "hosts/dist/mobile/archives/$(basename "$ARCHIVE").sha256",
+  "signed": false,
+  "note": "App Store / Play signing still required before store submit"
+}
+EOF
+
 echo "[pack-mobile] staged under hosts/dist/mobile/"
-ls -la "$OUT" "$OUT/meta"
-echo "OK: pack-mobile.sh (signing still required for store submit)"
+ls -la "$OUT" "$OUT/meta" "$ARCHIVE_DIR"
+echo "OK: pack-mobile.sh (unsigned archive ready; signing still required for store submit)"

@@ -480,47 +480,184 @@ function createHostFfi(repoRoot) {
       addr = raw.slice(0, at).trim();
       body = raw.slice(at + sep.length);
     }
-    const journalPath = appendHostDeliveryJournal({
-      kind: "channel_send",
-      address: addr,
-      body,
-      at: new Date().toISOString(),
-    });
+    const stamp = new Date().toISOString();
+    const scheme = addr.includes(":") ? addr.split(":")[0] : "unknown";
+    const outboundPath = path.join(
+      REPO_ROOT,
+      "data",
+      "channels",
+      "outbound.jsonl",
+    );
+    const connectorHint =
+      scheme === "slack"
+        ? loadConnectorState("slack")
+        : scheme === "teams"
+          ? loadConnectorState("teams")
+          : scheme === "email" || scheme === "gmail"
+            ? loadConnectorState("gmail")
+            : {};
+    const connectorReady = Boolean(
+      connectorHint.connected ||
+        connectorHint.status === "Connected" ||
+        connectorHint.status === "Ready",
+    );
 
-    // Live Slack when token + BITBOT_SLACK_POST=1
+    // Live Slack when token + BITBOT_SLACK_POST=1 (env or connector sandbox/live token)
     if (addr.startsWith("slack:")) {
-      const token = String(process.env.SLACK_BOT_TOKEN || "").trim();
+      const envToken = String(process.env.SLACK_BOT_TOKEN || "").trim();
+      const connectorToken = extractAccessToken(connectorHint);
+      const token = envToken || (connectorToken && !String(connectorToken).startsWith("sandbox:")
+        ? connectorToken
+        : envToken);
       const channelId = addr.slice("slack:".length).split(":")[0];
       if (token && process.env.BITBOT_SLACK_POST === "1" && channelId && body) {
         const post = await slackApi("chat.postMessage", token, {
           channel: channelId,
           text: body,
         });
+        const entry = {
+          scheme,
+          address: addr,
+          body,
+          mode: "live_slack",
+          ok: Boolean(post.ok),
+          ts: post.ts || "",
+          connector_ready: connectorReady,
+          at: stamp,
+        };
+        appendJsonl(outboundPath, entry);
+        const journalPath = appendHostDeliveryJournal({
+          kind: "channel_send",
+          ...entry,
+        });
         return {
           kind: "channel_send",
           ok: Boolean(post.ok),
           command: raw,
-          stdout: post.ok
-            ? `live Slack post ok ts=${post.ts || ""} journal=${journalPath}`
-            : "",
+          stdout: JSON.stringify(
+            {
+              ...entry,
+              journal: journalPath,
+              outbound: outboundPath,
+            },
+            null,
+            2,
+          ),
           error: post.ok ? "" : `slack post failed: ${post.error || "unknown"}`,
           stderr: "",
         };
       }
+      const entry = {
+        scheme,
+        address: addr,
+        body,
+        mode: connectorReady ? "connector_draft" : "sandbox_draft",
+        ok: true,
+        live_post: false,
+        connector_ready: connectorReady,
+        connector_status: connectorHint.status || "unknown",
+        at: stamp,
+        note: "live post needs SLACK_BOT_TOKEN + BITBOT_SLACK_POST=1",
+      };
+      appendJsonl(outboundPath, entry);
+      const journalPath = appendHostDeliveryJournal({
+        kind: "channel_send",
+        ...entry,
+      });
       return {
         kind: "channel_send",
         ok: true,
         command: raw,
-        stdout: `Slack draft recorded (journal=${journalPath}); live post needs SLACK_BOT_TOKEN + BITBOT_SLACK_POST=1`,
+        stdout: JSON.stringify(
+          { ...entry, journal: journalPath, outbound: outboundPath },
+          null,
+          2,
+        ),
         stderr: "",
       };
     }
 
+    if (addr.startsWith("teams:")) {
+      const entry = {
+        scheme: "teams",
+        address: addr,
+        body,
+        mode: connectorReady ? "connector_draft" : "sandbox_draft",
+        ok: true,
+        live_post: false,
+        connector_ready: connectorReady,
+        at: stamp,
+        note: "Teams live Graph post still needs BITBOT_TEAMS_TOKEN",
+      };
+      appendJsonl(outboundPath, entry);
+      const journalPath = appendHostDeliveryJournal({
+        kind: "channel_send",
+        ...entry,
+      });
+      return {
+        kind: "channel_send",
+        ok: true,
+        command: raw,
+        stdout: JSON.stringify(
+          { ...entry, journal: journalPath, outbound: outboundPath },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    }
+
+    if (addr.startsWith("email:") || addr.startsWith("gmail:")) {
+      const entry = {
+        scheme,
+        address: addr,
+        body,
+        mode: "mail_outbound_draft",
+        ok: true,
+        at: stamp,
+      };
+      appendJsonl(outboundPath, entry);
+      appendJsonl(MAIL_DRAFTS_PATH, {
+        kind: "channel_email",
+        address: addr,
+        body,
+        at: stamp,
+      });
+      return {
+        kind: "channel_send",
+        ok: true,
+        command: raw,
+        stdout: JSON.stringify(
+          { ...entry, outbound: outboundPath, drafts: MAIL_DRAFTS_PATH },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    }
+
+    const entry = {
+      scheme,
+      address: addr,
+      body,
+      mode: "durable_outbound",
+      ok: true,
+      at: stamp,
+    };
+    appendJsonl(outboundPath, entry);
+    const journalPath = appendHostDeliveryJournal({
+      kind: "channel_send",
+      ...entry,
+    });
     return {
       kind: "channel_send",
       ok: true,
       command: raw,
-      stdout: `Host delivery journal: ${journalPath}`,
+      stdout: JSON.stringify(
+        { ...entry, journal: journalPath, outbound: outboundPath },
+        null,
+        2,
+      ),
       stderr: "",
     };
   }
@@ -1167,7 +1304,7 @@ function createHostFfi(repoRoot) {
     return null;
   }
 
-  async function executeOauth(command) {
+  function resolveOauthConnector(command) {
     const raw = String(command || "").trim().toLowerCase();
     let provider = "slack";
     let connectorName = "slack";
@@ -1187,6 +1324,172 @@ function createHostFfi(repoRoot) {
       provider = "slack";
       connectorName = "slack";
     }
+    return { raw, provider, connectorName };
+  }
+
+  function readLiveOauthToken(connectorName) {
+    const envKey = `BITBOT_OAUTH_TOKEN_${String(connectorName || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")}`;
+    const fromEnv = String(process.env[envKey] || "").trim();
+    if (fromEnv) return { access_token: fromEnv, source: envKey };
+    const tokenFile = String(
+      process.env.BITBOT_OAUTH_TOKEN_FILE ||
+        process.env[`BITBOT_OAUTH_TOKEN_FILE_${connectorName.toUpperCase()}`] ||
+        "",
+    ).trim();
+    if (tokenFile && fs.existsSync(tokenFile)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
+        const tok =
+          (raw && (raw.access_token || raw.token)) ||
+          String(fs.readFileSync(tokenFile, "utf8")).trim();
+        if (tok && !String(tok).startsWith("sandbox:")) {
+          return { access_token: String(tok), source: tokenFile };
+        }
+      } catch {
+        const tok = String(fs.readFileSync(tokenFile, "utf8")).trim();
+        if (tok) return { access_token: tok, source: tokenFile };
+      }
+    }
+    return null;
+  }
+
+  async function executeOauthLive(command, connectorName, provider, artifactDir) {
+    const statusDesired =
+      connectorName === "slack" || connectorName === "identity-browser"
+        ? "Connected"
+        : "Ready";
+    const live = readLiveOauthToken(connectorName);
+    const clientId = String(
+      process.env[`BITBOT_OAUTH_CLIENT_ID_${provider.toUpperCase()}`] ||
+        process.env.BITBOT_OAUTH_CLIENT_ID ||
+        "",
+    ).trim();
+    const authorizeUrl = clientId
+      ? `https://oauth.example.invalid/authorize?client_id=${encodeURIComponent(clientId)}&provider=${encodeURIComponent(provider)}&connector=${encodeURIComponent(connectorName)}`
+      : "";
+    fs.writeFileSync(
+      path.join(artifactDir, "live_oauth_attempt.json"),
+      JSON.stringify(
+        {
+          mode: "live",
+          provider,
+          connector: connectorName,
+          client_id_present: Boolean(clientId),
+          token_present: Boolean(live),
+          authorize_url: authorizeUrl || null,
+          at: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+    if (live && live.access_token) {
+      const state = {
+        connected: true,
+        status: statusDesired,
+        mode: "live_token",
+        provider,
+        detail: `live OAuth token applied from ${live.source} → ${statusDesired}`,
+        oauth: {
+          access_token: live.access_token,
+          token_type: "Bearer",
+          sandbox: false,
+        },
+        access_token: live.access_token,
+        artifact_dir: artifactDir,
+        at: new Date().toISOString(),
+      };
+      saveConnectorState(connectorName, state);
+      if (connectorName === "gmail") {
+        fs.writeFileSync(
+          path.join(CONNECTORS_DIR, "gmail_token.json"),
+          JSON.stringify(
+            {
+              access_token: live.access_token,
+              token_type: "Bearer",
+              sandbox: false,
+            },
+            null,
+            2,
+          ),
+        );
+      }
+      appendHostDeliveryJournal({
+        kind: "oauth",
+        command,
+        connector: connectorName,
+        ok: true,
+        status: state.status,
+        mode: "live_token",
+        at: state.at,
+      });
+      return {
+        kind: "oauth",
+        ok: true,
+        command,
+        stdout: JSON.stringify(
+          {
+            connector: connectorName,
+            status: state.status,
+            connected: true,
+            mode: "live_token",
+            summary_ok: true,
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+        error: "",
+      };
+    }
+    // Honest NeedsAuth — never pretend Connected without a live token.
+    const state = {
+      connected: false,
+      status: "NeedsAuth",
+      mode: "live_needs_auth",
+      provider,
+      detail: clientId
+        ? `live OAuth NeedsAuth — open authorize URL (client_id present; no access token)`
+        : `live OAuth NeedsAuth — set BITBOT_OAUTH_TOKEN_${connectorName.toUpperCase()} or CLIENT_ID`,
+      authorize_url: authorizeUrl || null,
+      artifact_dir: artifactDir,
+      at: new Date().toISOString(),
+    };
+    saveConnectorState(connectorName, state);
+    appendHostDeliveryJournal({
+      kind: "oauth",
+      command,
+      connector: connectorName,
+      ok: false,
+      status: "NeedsAuth",
+      mode: "live_needs_auth",
+      at: state.at,
+    });
+    return {
+      kind: "oauth",
+      ok: false,
+      command,
+      stdout: JSON.stringify(
+        {
+          connector: connectorName,
+          status: "NeedsAuth",
+          connected: false,
+          mode: "live_needs_auth",
+          authorize_url: authorizeUrl || null,
+          summary_ok: false,
+        },
+        null,
+        2,
+      ),
+      stderr: "",
+      error: "oauth live NeedsAuth — no access token",
+    };
+  }
+
+  async function executeOauth(command) {
+    const { provider, connectorName } = resolveOauthConnector(command);
     const artifactDir = path.join(
       REPO_ROOT,
       "data",
@@ -1194,6 +1497,12 @@ function createHostFfi(repoRoot) {
       `oauth-${connectorName}-${Date.now()}`,
     );
     fs.mkdirSync(artifactDir, { recursive: true });
+    const mode = String(process.env.BITBOT_OAUTH_MODE || "sandbox")
+      .trim()
+      .toLowerCase();
+    if (mode === "live" || mode === "production") {
+      return executeOauthLive(command, connectorName, provider, artifactDir);
+    }
     try {
       const { stdout, stderr } = await execFileAsync(
         process.env.PYTHON || "python3",
@@ -1906,63 +2215,132 @@ function createHostFfi(repoRoot) {
     const cmd = String(command || "");
     const urlMatch = cmd.match(/https?:\/\/[^\s|"']+/);
     const url = urlMatch ? urlMatch[0] : "";
-    const evidenceDir = path.join(REPO_ROOT, "data", "journal", "computer-use");
+    const evidenceDir = path.join(
+      REPO_ROOT,
+      "data",
+      "journal",
+      "computer-use",
+      `cu-${Date.now()}`,
+    );
     fs.mkdirSync(evidenceDir, { recursive: true });
-    const stamp = Date.now();
-    const evidencePath = path.join(evidenceDir, `nav-${stamp}.json`);
-    let navigate = {
-      url: url || null,
-      navigate_reachable: false,
-      public_page: false,
-      blocked: false,
-      evidence: "no url in computer_use command",
-      http_status: 0,
-    };
-    if (url) {
-      if (
-        url.includes("localhost") ||
-        url.includes("127.0.0.1") ||
-        url.startsWith("file:")
-      ) {
-        navigate = {
-          url,
-          navigate_reachable: false,
-          public_page: false,
-          blocked: true,
-          evidence: "blocked non-public target",
-          http_status: 0,
-        };
+    const evidencePath = path.join(evidenceDir, "cu_run.json");
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        process.env.PYTHON || "python3",
+        [
+          path.join(REPO_ROOT, "scripts", "host_box_chrome_cu.py"),
+          "--url",
+          url || "",
+          "--command",
+          cmd,
+          "--artifact-dir",
+          evidenceDir,
+        ],
+        { cwd: REPO_ROOT, timeout: 90000, maxBuffer: 4 * 1024 * 1024 },
+      );
+      let summary = {};
+      if (fs.existsSync(evidencePath)) {
+        summary = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
       } else {
+        const line = String(stdout || "")
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .pop();
+        if (line && line.startsWith("{")) summary = JSON.parse(line);
+      }
+      const navigate = summary.navigate || {};
+      const gui = summary.gui || {};
+      appendHostDeliveryJournal({
+        kind: "computer_use",
+        command: cmd,
+        evidence: evidencePath,
+        navigate_reachable: Boolean(navigate.navigate_reachable),
+        box_chrome_process: Boolean(gui.box_chrome_process),
+        shared_cdp_untouched: gui.shared_cdp_untouched !== false,
+        at: new Date().toISOString(),
+      });
+      return {
+        kind: "computer_use",
+        ok: true,
+        command: cmd,
+        stdout: JSON.stringify(
+          {
+            evidence: evidencePath,
+            navigate,
+            gui: {
+              box_chrome_process: Boolean(gui.box_chrome_process),
+              private_cdp_port: gui.private_cdp_port || null,
+              shared_cdp_untouched: gui.shared_cdp_untouched !== false,
+              chrome_bin: gui.chrome_bin || null,
+            },
+            mode: "host_box_chrome_cu",
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    } catch (err) {
+      // Fallback: Host-local HTTP navigate so product path never dead-ends.
+      let navigate = {
+        url: url || null,
+        navigate_reachable: false,
+        public_page: false,
+        blocked: false,
+        evidence: `box_chrome_cu failed: ${err.message || String(err)}`,
+        http_status: 0,
+      };
+      if (
+        url &&
+        !url.includes("localhost") &&
+        !url.includes("127.0.0.1") &&
+        !url.startsWith("file:")
+      ) {
         const res = await httpJson(url, { method: "GET" });
-        const reachable = Boolean(res.ok) || (res.status >= 200 && res.status < 500);
+        const reachable =
+          Boolean(res.ok) || (res.status >= 200 && res.status < 500);
         navigate = {
           url,
           navigate_reachable: reachable,
           public_page: true,
           blocked: false,
           evidence: reachable
-            ? `navigate_reachable=true; http_status=${res.status}`
-            : `navigate_reachable=false; error=${res.error || res.status}`,
+            ? `fallback_http navigate_reachable=true; http_status=${res.status}`
+            : `fallback_http navigate_reachable=false; error=${res.error || res.status}`,
           http_status: res.status || 0,
           body_prefix: String(res.body || "").slice(0, 240),
         };
       }
+      fs.writeFileSync(
+        evidencePath,
+        JSON.stringify({ command: cmd, navigate, fallback: true }, null, 2),
+      );
+      appendHostDeliveryJournal({
+        kind: "computer_use",
+        command: cmd,
+        evidence: evidencePath,
+        navigate_reachable: navigate.navigate_reachable,
+        fallback: true,
+        at: new Date().toISOString(),
+      });
+      return {
+        kind: "computer_use",
+        ok: true,
+        command: cmd,
+        stdout: JSON.stringify(
+          {
+            evidence: evidencePath,
+            navigate,
+            gui: { box_chrome_process: false, fallback: true },
+            mode: "http_fallback",
+          },
+          null,
+          2,
+        ),
+        stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
+      };
     }
-    fs.writeFileSync(evidencePath, JSON.stringify({ command: cmd, navigate }, null, 2));
-    appendHostDeliveryJournal({
-      kind: "computer_use",
-      command: cmd,
-      evidence: evidencePath,
-      navigate_reachable: navigate.navigate_reachable,
-      at: new Date().toISOString(),
-    });
-    return {
-      kind: "computer_use",
-      ok: true,
-      command: cmd,
-      stdout: JSON.stringify({ evidence: evidencePath, navigate }, null, 2),
-      stderr: "",
-    };
   }
 
   async function executeHostEffects(effects) {
