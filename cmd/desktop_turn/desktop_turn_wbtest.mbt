@@ -472,6 +472,31 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let fr = run_desktop_turn("fire routine smoke-r", turn_id="fr-1")
   assert_true(fr.ok)
   assert_eq(fr.intent, "fire_routine")
+  let cg = run_desktop_turn("connect gmail", turn_id="cg-1")
+  assert_true(cg.ok)
+  assert_eq(cg.intent, "connect_gmail")
+  assert_eq(cg.effects[0].kind, "oauth")
+  let ja = run_desktop_turn(
+    "journal date=2026-10-17 id=e1 body=hello journal",
+    turn_id="ja-1",
+  )
+  assert_true(ja.ok)
+  assert_eq(ja.intent, "journal_append")
+  let jq = run_desktop_turn(
+    "query journal from=2026-10-01 to=2026-10-31",
+    turn_id="jq-1",
+  )
+  assert_true(jq.ok)
+  assert_eq(jq.intent, "journal_query")
+  let sp = run_desktop_turn(
+    "shared memory put scope=team key=k value=v",
+    turn_id="sp-1",
+  )
+  assert_true(sp.ok)
+  assert_eq(sp.intent, "shared_memory_put")
+  let ir = run_desktop_turn("[inbound] reaction :+1:", turn_id="ir-1")
+  assert_true(ir.ok)
+  assert_eq(ir.intent, "inbound_reaction")
 }
 
 ///|

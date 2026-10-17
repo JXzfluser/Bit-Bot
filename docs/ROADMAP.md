@@ -105,4 +105,7 @@
 - [x] Durable routines on Host: create/list/pause/resume/fire → `data/routines/host-routines.json`
 - [x] Mail search/read product turns (`search_mail` / `read_mail_thread`) + Host `mail_search`/`mail_read`
 - [x] Desktop Electron ApprovalGate UI (Approve & re-run with `--approved`) + effect chips
+- [x] Host sandbox OAuth: `oauth` effect runs real IdP authorize→token for Slack/Gmail/Finance; Desktop Connectors panel
+- [x] Host `computer_use` navigate: real HTTP public-page fetch + evidence under `data/journal/computer-use/`
+- [x] Journal / shared memory / inbound reaction product turns + durable Host stores (`events.jsonl` / `shared-scopes.json` / `inbound-reactions.jsonl`; CM-0302 / 0303 / 0110)
 - [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit

@@ -33,6 +33,24 @@ function createHostFfi(repoRoot) {
   );
   const CONNECTORS_DIR = path.join(REPO_ROOT, "data", "connectors");
   const ROUTINES_PATH = path.join(REPO_ROOT, "data", "routines", "host-routines.json");
+  const JOURNAL_EVENTS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "journal",
+    "events.jsonl",
+  );
+  const SHARED_MEMORY_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "memory",
+    "shared-scopes.json",
+  );
+  const INBOUND_REACTIONS_PATH = path.join(
+    REPO_ROOT,
+    "data",
+    "journal",
+    "inbound-reactions.jsonl",
+  );
   const MCP_SERVER = path.join(REPO_ROOT, "scripts", "host_h4_mcp_stdio.py");
   const MCP_CLIENT = path.join(REPO_ROOT, "scripts", "host_h4_mcp_client.py");
   const MCP_TMP = path.join(REPO_ROOT, "data", "tmp");
@@ -825,6 +843,459 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  function loadJournalEvents() {
+    try {
+      if (!fs.existsSync(JOURNAL_EVENTS_PATH)) return [];
+      return fs
+        .readFileSync(JOURNAL_EVENTS_PATH, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return null;
+          }
+        })
+        .filter((e) => e && e.date && e.event_id != null);
+    } catch {
+      return [];
+    }
+  }
+
+  function appendJournalEvent(entry) {
+    fs.mkdirSync(path.dirname(JOURNAL_EVENTS_PATH), { recursive: true });
+    fs.appendFileSync(JOURNAL_EVENTS_PATH, JSON.stringify(entry) + "\n");
+    return JOURNAL_EVENTS_PATH;
+  }
+
+  function loadSharedMemory() {
+    try {
+      if (!fs.existsSync(SHARED_MEMORY_PATH)) return {};
+      const raw = JSON.parse(fs.readFileSync(SHARED_MEMORY_PATH, "utf8"));
+      return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveSharedMemory(store) {
+    fs.mkdirSync(path.dirname(SHARED_MEMORY_PATH), { recursive: true });
+    fs.writeFileSync(SHARED_MEMORY_PATH, JSON.stringify(store, null, 2));
+  }
+
+  function executeJournalSharedInbound(kind, command) {
+    const at = new Date().toISOString();
+    if (kind === "journal_append") {
+      const parts = String(command || "").split("|");
+      const date = parts[0] || "";
+      const event_id = parts[1] || "";
+      const body = parts.slice(2).join("|");
+      const entry = {
+        date,
+        event_id,
+        body,
+        pollutes_profile: false,
+        at,
+      };
+      const pathWritten = appendJournalEvent(entry);
+      appendHostDeliveryJournal({ kind, command, path: pathWritten, at });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: JSON.stringify(
+          {
+            stored: true,
+            path: pathWritten,
+            date,
+            event_id,
+            pollutes_profile: false,
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    }
+    if (kind === "journal_query") {
+      const parts = String(command || "").split("|");
+      const from_date = parts[0] || "";
+      const to_date = parts[1] || "";
+      const hits = loadJournalEvents().filter((e) => {
+        if (from_date && e.date < from_date) return false;
+        if (to_date && e.date > to_date) return false;
+        return true;
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        hit_count: hits.length,
+        at,
+      });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: JSON.stringify(
+          {
+            from_date,
+            to_date,
+            hit_count: hits.length,
+            hits: hits.slice(0, 50),
+            pollutes_profile: false,
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    }
+    if (kind === "shared_memory_put") {
+      const parts = String(command || "").split("|");
+      const scope = parts[0] || "default";
+      const key = parts[1] || "";
+      const value = parts.slice(2).join("|");
+      const store = loadSharedMemory();
+      if (!store[scope] || typeof store[scope] !== "object") store[scope] = {};
+      store[scope][key] = { value, at };
+      saveSharedMemory(store);
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        scope,
+        key,
+        path: SHARED_MEMORY_PATH,
+        at,
+      });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: JSON.stringify(
+          {
+            stored: true,
+            scope,
+            key,
+            path: SHARED_MEMORY_PATH,
+            isolation: "scope-bound",
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    }
+    if (kind === "shared_memory_read") {
+      const parts = String(command || "").split("|");
+      const scope = parts[0] || "default";
+      const key = parts[1] || "";
+      const store = loadSharedMemory();
+      const scoped = store[scope];
+      if (!scoped || typeof scoped !== "object" || !(key in scoped)) {
+        // Cross-scope / missing: refuse (CM-0303 isolation).
+        const otherScopes = Object.keys(store).filter(
+          (s) => s !== scope && store[s] && key in store[s],
+        );
+        const refused = otherScopes.length > 0;
+        appendHostDeliveryJournal({
+          kind,
+          command,
+          scope,
+          key,
+          ok: false,
+          refused_cross_scope: refused,
+          at,
+        });
+        return {
+          kind,
+          ok: false,
+          command,
+          error: refused
+            ? `cross-scope read refused for key=${key} (exists in ${otherScopes.join(",")})`
+            : `shared memory miss scope=${scope} key=${key}`,
+          stdout: JSON.stringify(
+            {
+              scope,
+              key,
+              found: false,
+              refused_cross_scope: refused,
+            },
+            null,
+            2,
+          ),
+          stderr: "",
+        };
+      }
+      const cell = scoped[key];
+      const value = cell && typeof cell === "object" ? cell.value : cell;
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        scope,
+        key,
+        ok: true,
+        at,
+      });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: JSON.stringify(
+          {
+            scope,
+            key,
+            found: true,
+            value,
+            value_len: String(value ?? "").length,
+            isolation: "scope-bound",
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    }
+    if (kind === "inbound_reaction") {
+      const parts = String(command || "").split("|");
+      const emoji = parts[0] || "";
+      const useful = /useful=1/.test(String(command || ""));
+      const disposition = useful
+        ? "act_without_forced_reply"
+        : "wake_only_no_forced_reply";
+      const entry = {
+        emoji,
+        useful,
+        disposition,
+        forced_reply: false,
+        at,
+      };
+      fs.mkdirSync(path.dirname(INBOUND_REACTIONS_PATH), { recursive: true });
+      fs.appendFileSync(INBOUND_REACTIONS_PATH, JSON.stringify(entry) + "\n");
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        path: INBOUND_REACTIONS_PATH,
+        disposition,
+        at,
+      });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: JSON.stringify(
+          {
+            emoji,
+            useful,
+            disposition,
+            forced_reply: false,
+            path: INBOUND_REACTIONS_PATH,
+          },
+          null,
+          2,
+        ),
+        stderr: "",
+      };
+    }
+    return null;
+  }
+
+  async function executeOauth(command) {
+    const raw = String(command || "").trim().toLowerCase();
+    let provider = "slack";
+    let connectorName = "slack";
+    if (raw.startsWith("gmail") || raw.includes("gmail")) {
+      provider = "outlook"; // sandbox IdP provider set; product stores as gmail
+      connectorName = "gmail";
+    } else if (raw.includes("finance") || raw.includes("user-finance")) {
+      provider = "finance";
+      connectorName = "finance";
+    } else if (raw.includes("outlook")) {
+      provider = "outlook";
+      connectorName = "outlook";
+    } else if (raw.startsWith("identity") || raw.includes("browser")) {
+      provider = "slack";
+      connectorName = "identity-browser";
+    } else if (raw.includes("slack") || raw === "slack") {
+      provider = "slack";
+      connectorName = "slack";
+    }
+    const artifactDir = path.join(
+      REPO_ROOT,
+      "data",
+      "tmp",
+      `oauth-${connectorName}-${Date.now()}`,
+    );
+    fs.mkdirSync(artifactDir, { recursive: true });
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        process.env.PYTHON || "python3",
+        [
+          path.join(REPO_ROOT, "scripts", "host_h4_oauth_idp.py"),
+          "--sandbox-run",
+          "--provider",
+          provider,
+          "--artifact-dir",
+          artifactDir,
+        ],
+        { cwd: REPO_ROOT, timeout: 60000, maxBuffer: 2 * 1024 * 1024 },
+      );
+      let summary = {};
+      const summaryPath = path.join(artifactDir, "sandbox_run.json");
+      if (fs.existsSync(summaryPath)) {
+        summary = JSON.parse(fs.readFileSync(summaryPath, "utf8"));
+      } else {
+        // IdP also prints the sandbox summary on stdout as a single JSON object.
+        const out = String(stdout || "").trim();
+        const line = out.split("\n").filter(Boolean).pop() || "";
+        if (line.startsWith("{")) {
+          try {
+            summary = JSON.parse(line);
+          } catch {
+            summary = {};
+          }
+        }
+      }
+      const ok = Boolean(summary.ok);
+      const status =
+        connectorName === "slack" || connectorName === "identity-browser"
+          ? "Connected"
+          : "Ready";
+      const token = `sandbox:${provider}:${Date.now().toString(36)}`;
+      const state = {
+        connected: ok,
+        status: ok ? status : "NeedsAuth",
+        mode: "sandbox_idp",
+        provider,
+        detail: ok
+          ? `sandbox IdP OAuth completed → ${status}`
+          : `sandbox IdP failed: ${(stderr || stdout || "").slice(0, 200)}`,
+        oauth: { access_token: token, token_type: "Bearer", sandbox: true },
+        access_token: token,
+        artifact_dir: artifactDir,
+        at: new Date().toISOString(),
+      };
+      if (ok) {
+        saveConnectorState(connectorName, state);
+        if (connectorName === "gmail") {
+          fs.writeFileSync(
+            path.join(CONNECTORS_DIR, "gmail_token.json"),
+            JSON.stringify(
+              { access_token: token, token_type: "Bearer", sandbox: true },
+              null,
+              2,
+            ),
+          );
+        }
+      }
+      appendHostDeliveryJournal({
+        kind: "oauth",
+        command,
+        connector: connectorName,
+        ok,
+        status: state.status,
+        at: new Date().toISOString(),
+      });
+      return {
+        kind: "oauth",
+        ok,
+        command,
+        stdout: JSON.stringify(
+          {
+            connector: connectorName,
+            status: state.status,
+            connected: state.connected,
+            mode: "sandbox_idp",
+            summary_ok: ok,
+          },
+          null,
+          2,
+        ),
+        stderr: ok ? "" : String(stderr || "").slice(0, 2000),
+        error: ok ? "" : "oauth sandbox failed",
+      };
+    } catch (err) {
+      appendHostDeliveryJournal({
+        kind: "oauth",
+        command,
+        ok: false,
+        error: err.message || String(err),
+        at: new Date().toISOString(),
+      });
+      return {
+        kind: "oauth",
+        ok: false,
+        command,
+        error: err.message || String(err),
+        stdout: err.stdout ? String(err.stdout).slice(0, 4000) : "",
+        stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
+      };
+    }
+  }
+
+  async function executeComputerUse(command) {
+    const cmd = String(command || "");
+    const urlMatch = cmd.match(/https?:\/\/[^\s|"']+/);
+    const url = urlMatch ? urlMatch[0] : "";
+    const evidenceDir = path.join(REPO_ROOT, "data", "journal", "computer-use");
+    fs.mkdirSync(evidenceDir, { recursive: true });
+    const stamp = Date.now();
+    const evidencePath = path.join(evidenceDir, `nav-${stamp}.json`);
+    let navigate = {
+      url: url || null,
+      navigate_reachable: false,
+      public_page: false,
+      blocked: false,
+      evidence: "no url in computer_use command",
+      http_status: 0,
+    };
+    if (url) {
+      if (
+        url.includes("localhost") ||
+        url.includes("127.0.0.1") ||
+        url.startsWith("file:")
+      ) {
+        navigate = {
+          url,
+          navigate_reachable: false,
+          public_page: false,
+          blocked: true,
+          evidence: "blocked non-public target",
+          http_status: 0,
+        };
+      } else {
+        const res = await httpJson(url, { method: "GET" });
+        const reachable = Boolean(res.ok) || (res.status >= 200 && res.status < 500);
+        navigate = {
+          url,
+          navigate_reachable: reachable,
+          public_page: true,
+          blocked: false,
+          evidence: reachable
+            ? `navigate_reachable=true; http_status=${res.status}`
+            : `navigate_reachable=false; error=${res.error || res.status}`,
+          http_status: res.status || 0,
+          body_prefix: String(res.body || "").slice(0, 240),
+        };
+      }
+    }
+    fs.writeFileSync(evidencePath, JSON.stringify({ command: cmd, navigate }, null, 2));
+    appendHostDeliveryJournal({
+      kind: "computer_use",
+      command: cmd,
+      evidence: evidencePath,
+      navigate_reachable: navigate.navigate_reachable,
+      at: new Date().toISOString(),
+    });
+    return {
+      kind: "computer_use",
+      ok: true,
+      command: cmd,
+      stdout: JSON.stringify({ evidence: evidencePath, navigate }, null, 2),
+      stderr: "",
+    };
+  }
+
   async function executeHostEffects(effects) {
     const results = [];
     for (const e of effects || []) {
@@ -839,6 +1310,14 @@ function createHostFfi(repoRoot) {
         results.push(await executeMcp(kind, cmd));
         continue;
       }
+      if (kind === "oauth") {
+        results.push(await executeOauth(cmd));
+        continue;
+      }
+      if (kind === "computer_use") {
+        results.push(await executeComputerUse(cmd));
+        continue;
+      }
       const routineRes = executeRoutineEffect(kind, cmd);
       if (routineRes) {
         results.push(routineRes);
@@ -848,13 +1327,16 @@ function createHostFfi(repoRoot) {
         results.push(executeMailReadSearch(kind, cmd));
         continue;
       }
+      const memRes = executeJournalSharedInbound(kind, cmd);
+      if (memRes) {
+        results.push(memRes);
+        continue;
+      }
       if (
         kind === "mail_draft" ||
         kind === "mcp_namespace" ||
-        kind === "oauth" ||
         kind === "approval_card" ||
         kind === "subagent_run" ||
-        kind === "computer_use" ||
         kind === "device_tool" ||
         kind === "voice_session" ||
         kind === "voice_relay" ||

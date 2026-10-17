@@ -448,6 +448,103 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(AuthorSkill(name~, description~, body~))
   }
+  if low == "connect gmail" || low == "setup gmail" || low == "gmail connect" {
+    return Some(ConnectGmail)
+  }
+  if low.has_prefix("journal ") || low.has_prefix("append journal ") {
+    let rest = if low.has_prefix("append journal ") {
+      trimmed[15:].to_owned()
+    } else {
+      trimmed[8:].to_owned()
+    }
+    let date = match extract_kv(rest, "date") {
+      Some(v) => v
+      None => "2026-10-17"
+    }
+    let event_id = match extract_kv(rest, "id") {
+      Some(v) => v
+      None => "evt-1"
+    }
+    let body = match extract_kv(rest, "body") {
+      Some(v) => v
+      None => rest.trim().to_owned()
+    }
+    if body != "" {
+      return Some(JournalAppend(date~, event_id~, body~))
+    }
+  }
+  if low.has_prefix("query journal ") || low.has_prefix("journal query ") {
+    let rest = if low.has_prefix("query journal ") {
+      trimmed[14:].to_owned()
+    } else {
+      trimmed[14:].to_owned()
+    }
+    let from_date = match extract_kv(rest, "from") {
+      Some(v) => v
+      None => "2026-01-01"
+    }
+    let to_date = match extract_kv(rest, "to") {
+      Some(v) => v
+      None => "2026-12-31"
+    }
+    return Some(JournalQuery(from_date~, to_date~))
+  }
+  if low.has_prefix("shared memory put ") || low.has_prefix("share memory ") {
+    let rest = if low.has_prefix("shared memory put ") {
+      trimmed[18:].to_owned()
+    } else {
+      trimmed[13:].to_owned()
+    }
+    let scope = match extract_kv(rest, "scope") {
+      Some(v) => v
+      None => "team"
+    }
+    let key = match extract_kv(rest, "key") {
+      Some(v) => v
+      None => ""
+    }
+    let value = match extract_kv(rest, "value") {
+      Some(v) => v
+      None => ""
+    }
+    if key != "" {
+      return Some(SharedMemoryPut(scope~, key~, value~))
+    }
+  }
+  if low.has_prefix("shared memory read ") || low.has_prefix("read shared ") {
+    let rest = if low.has_prefix("shared memory read ") {
+      trimmed[19:].to_owned()
+    } else {
+      trimmed[12:].to_owned()
+    }
+    let scope = match extract_kv(rest, "scope") {
+      Some(v) => v
+      None => "team"
+    }
+    let key = match extract_kv(rest, "key") {
+      Some(v) => v
+      None => rest.trim().to_owned()
+    }
+    if key != "" {
+      return Some(SharedMemoryRead(scope~, key~))
+    }
+  }
+  if @channels.has_inbound_reaction_cue(trimmed) {
+    // Avoid matching the substring "act" inside "reaction".
+    let useful = low.contains("useful") ||
+      low.contains(" act") ||
+      low.has_prefix("act ") ||
+      low == "act" ||
+      low.has_suffix(" act")
+    let emoji = if low.contains(":+1:") || low.contains("thumbs") {
+      "+1"
+    } else if low.contains("heart") {
+      "heart"
+    } else {
+      "reaction"
+    }
+    return Some(InboundReaction(emoji~, useful~))
+  }
   if low.has_prefix("export bot template ") || low.has_prefix("export bot ") {
     let rest = if low.has_prefix("export bot template ") {
       trimmed[20:].to_owned()

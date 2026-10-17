@@ -109,6 +109,12 @@ pub(all) enum TurnIntent {
   XSearch(query~ : String)
   AuthorSkill(name~ : String, description~ : String, body~ : String)
   ExportBotTemplate(bot_id~ : String, name~ : String)
+  ConnectGmail
+  JournalAppend(date~ : String, event_id~ : String, body~ : String)
+  JournalQuery(from_date~ : String, to_date~ : String)
+  SharedMemoryPut(scope~ : String, key~ : String, value~ : String)
+  SharedMemoryRead(scope~ : String, key~ : String)
+  InboundReaction(emoji~ : String, useful~ : Bool)
   HostContinue
 } derive(Eq, Debug)
 
@@ -176,6 +182,12 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     XSearch(_) => "x_search"
     AuthorSkill(_) => "author_skill"
     ExportBotTemplate(_) => "export_bot_template"
+    ConnectGmail => "connect_gmail"
+    JournalAppend(_) => "journal_append"
+    JournalQuery(_) => "journal_query"
+    SharedMemoryPut(_) => "shared_memory_put"
+    SharedMemoryRead(_) => "shared_memory_read"
+    InboundReaction(_) => "inbound_reaction"
     HostContinue => "host_continue"
   }
 }
@@ -667,6 +679,11 @@ fn extract_kv(rest : String, key : String) -> String? {
         " direct=",
         " steps=",
         " description=",
+        " date=",
+        " from=",
+        " scope=",
+        " key=",
+        " value=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -2962,6 +2979,146 @@ pub fn run_desktop_turn(
           )
         }
       }
+    }
+    ConnectGmail => {
+      let effect : DesktopEffect = {
+        kind: "oauth",
+        command: "gmail",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Gmail connect planned. Host runs sandbox IdP OAuth → Connected/Ready (CM-0906).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    JournalAppend(date~, event_id~, body~) => {
+      let j = @memory.JournalStore::new()
+      j.append(date~, event_id~, body~)
+      let pollutes = j.journal_pollutes_profile()
+      let effect : DesktopEffect = {
+        kind: "journal_append",
+        command: date + "|" + event_id + "|" + body,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Journal appended " +
+        date +
+        "/" +
+        event_id +
+        " (CM-0302; pollutes_profile=" +
+        (if pollutes { "true" } else { "false" }) +
+        ").",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    JournalQuery(from_date~, to_date~) => {
+      let j = @memory.JournalStore::new()
+      j.append(date="2026-10-17", event_id="seed", body="seed event")
+      let hits = j.query_range(from_date~, to_date~)
+      let effect : DesktopEffect = {
+        kind: "journal_query",
+        command: from_date + "|" + to_date,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Journal query [" +
+        from_date +
+        ".." +
+        to_date +
+        "]: " +
+        hits.length().to_string() +
+        " event(s) (CM-0302).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    SharedMemoryPut(scope~, key~, value~) => {
+      let store = @memory.SharedMemoryStore::new()
+      store.put(scope=@memory.SharedScopeId::new(scope), key~, value~)
+      let effect : DesktopEffect = {
+        kind: "shared_memory_put",
+        command: scope + "|" + key + "|" + value,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Shared memory put scope=" + scope + " key=" + key + " (CM-0303).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    SharedMemoryRead(scope~, key~) => {
+      let store = @memory.SharedMemoryStore::new()
+      store.put(scope=@memory.SharedScopeId::new(scope), key~, value="host-seed")
+      match store.read(scope=@memory.SharedScopeId::new(scope), key~) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(v) => {
+          let effect : DesktopEffect = {
+            kind: "shared_memory_read",
+            command: scope + "|" + key,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Shared memory read scope=" +
+            scope +
+            " key=" +
+            key +
+            " value_len=" +
+            v.length().to_string() +
+            " (CM-0303 isolation).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    InboundReaction(emoji~, useful~) => {
+      let reaction = @channels.InboundReaction::new(
+        emoji~,
+        target_message_id="msg-1",
+        useful~,
+      )
+      let plan = @channels.plan_reaction_outbound(reaction)
+      let reply = if plan.disposition.acts() {
+        "Inbound reaction useful — act without forced reply (CM-0110)."
+      } else {
+        "Inbound reaction wake only — no forced reply (CM-0110)."
+      }
+      let effect : DesktopEffect = {
+        kind: "inbound_reaction",
+        command: emoji + "|useful=" + (if useful { "1" } else { "0" }),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        reply,
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     HostContinue => {
       // Should be invoked via continue_after_host_ffi, not plain chat.

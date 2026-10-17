@@ -256,6 +256,16 @@
     <div id="machine-list">
       <div class="machine-item"><div class="meta">Ask ListMachines to refresh</div></div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Connectors</div>
+    <div class="machine-item">
+      <div class="name">Slack / Gmail</div>
+      <div class="meta">Host sandbox IdP OAuth</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="connect-slack" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Connect Slack</button>
+        <button type="button" id="connect-gmail" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Connect Gmail</button>
+        <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
+      </div>
+    </div>
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) will appear here</pre>
@@ -398,6 +408,16 @@
       if (!text) return;
       input.value = "";
       await runUserTurn(text, {});
+    });
+
+    document.getElementById("connect-slack").addEventListener("click", () => {
+      runUserTurn("setup slack", {});
+    });
+    document.getElementById("connect-gmail").addEventListener("click", () => {
+      runUserTurn("connect gmail", {});
+    });
+    document.getElementById("probe-connectors").addEventListener("click", () => {
+      runUserTurn("list connectors", {});
     });
 
     boot();

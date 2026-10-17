@@ -103,6 +103,26 @@ node hosts/cli_host/run_turn.js --approved "create routine id=host-r cron=@hourl
 node hosts/cli_host/run_turn.js "list routines" >/tmp/bitbot-routine-list.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-routine-list.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='routine_list' and 'host-r' in (h.get('stdout') or '') for h in hrs);print('routine_list durable ok')"
 
+echo "==> Host sandbox OAuth (Slack + Gmail) + computer_use navigate"
+node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-slack.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-oauth-slack.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='oauth' and h.get('ok') for h in hrs);print('oauth slack host ok')"
+node hosts/cli_host/run_turn.js "connect gmail" >/tmp/bitbot-oauth-gmail.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-oauth-gmail.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='oauth' and h.get('ok') for h in hrs);print('oauth gmail host ok')"
+node hosts/cli_host/run_turn.js "computer use open https://example.com" >/tmp/bitbot-cu.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-cu.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');assert h.get('ok');assert 'navigate_reachable' in (h.get('stdout') or '');print('computer_use navigate host ok')"
+
+echo "==> journal / shared memory / inbound reaction (durable Host stores)"
+node hosts/cli_host/run_turn.js "journal date=2026-10-17 id=smoke body=smoke-event" >/tmp/bitbot-journal-append.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-journal-append.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='journal_append');assert h.get('ok') and 'events.jsonl' in (h.get('stdout') or '');print('journal_append durable ok')"
+node hosts/cli_host/run_turn.js "query journal from=2026-10-01 to=2026-10-31" >/tmp/bitbot-journal-query.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-journal-query.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='journal_query');assert h.get('ok') and 'hit_count' in (h.get('stdout') or '');print('journal_query durable ok')"
+node hosts/cli_host/run_turn.js "shared memory put scope=team key=k value=v" >/tmp/bitbot-shared-put.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-shared-put.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='shared_memory_put');assert h.get('ok') and 'shared-scopes.json' in (h.get('stdout') or '');print('shared_memory_put durable ok')"
+node hosts/cli_host/run_turn.js "shared memory read scope=team key=k" >/tmp/bitbot-shared-read.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-shared-read.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='shared_memory_read');assert h.get('ok') and '\"found\": true' in (h.get('stdout') or '');print('shared_memory_read durable ok')"
+node hosts/cli_host/run_turn.js "[inbound] reaction :+1:" >/tmp/bitbot-inbound.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-inbound.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='inbound_reaction');assert h.get('ok') and 'forced_reply' in (h.get('stdout') or '') and 'false' in (h.get('stdout') or '').lower();print('inbound_reaction durable ok')"
+
 echo "==> native iOS/Android Host shells"
 bash "$ROOT/scripts/verify_native_shells.sh"
 
