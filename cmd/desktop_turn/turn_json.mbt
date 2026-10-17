@@ -56,7 +56,12 @@ pub(all) enum TurnIntent {
   ChannelDelivery(inbound~ : String?, outbound~ : String?, body~ : String)
   ConnectorsStatus
   ClaimInbox(local_part~ : String)
-  DraftMail(to_~ : String, subject~ : String, body~ : String)
+  DraftMail(
+    to_~ : String,
+    subject~ : String,
+    body~ : String,
+    provider~ : String,
+  )
   InstallPlugin(plugin_id~ : String)
   SetupSlack
   FsList(path~ : String)
@@ -522,14 +527,21 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       return ClaimInbox(local_part=part)
     }
   }
-  if low.has_prefix("draft mail ") || low.has_prefix("draft email ") {
-    let rest = if low.has_prefix("draft mail ") {
-      trimmed[11:].to_owned()
+  if low.has_prefix("draft outlook mail ") ||
+      low.has_prefix("draft mail ") ||
+      low.has_prefix("draft email ") {
+    let (rest, default_provider) = if low.has_prefix("draft outlook mail ") {
+      (trimmed[19:].to_owned(), "outlook")
+    } else if low.has_prefix("draft mail ") {
+      (trimmed[11:].to_owned(), "gmail")
     } else {
-      trimmed[12:].to_owned()
+      (trimmed[12:].to_owned(), "gmail")
     }
     match parse_draft_mail(rest) {
-      Some((to_, subject, body)) => return DraftMail(to_~, subject~, body~)
+      Some((to_, subject, body, provider)) => {
+        let prov = if provider != "" { provider } else { default_provider }
+        return DraftMail(to_~, subject~, body~, provider=prov)
+      }
       None => ()
     }
   }
@@ -705,7 +717,7 @@ fn extract_kv(rest : String, key : String) -> String? {
 }
 
 ///|
-fn parse_draft_mail(rest : String) -> (String, String, String)? {
+fn parse_draft_mail(rest : String) -> (String, String, String, String)? {
   let to_ = match extract_kv(rest, "to") {
     Some(v) => v
     None => return None
@@ -718,10 +730,14 @@ fn parse_draft_mail(rest : String) -> (String, String, String)? {
     Some(v) => v
     None => ""
   }
+  let provider = match extract_kv(rest, "provider") {
+    Some(v) => v.to_lower()
+    None => ""
+  }
   if to_ == "" {
     None
   } else {
-    Some((to_, subject, body))
+    Some((to_, subject, body, provider))
   }
 }
 
@@ -1533,8 +1549,9 @@ pub fn run_desktop_turn(
         }
       }
     }
-    DraftMail(to_~, subject~, body~) => {
+    DraftMail(to_~, subject~, body~, provider~) => {
       let card = @mail.DraftEmailCard::new(to_~, subject~, body~)
+      let prov = if provider == "" { "gmail" } else { provider }
       match gate_consequential(
         trimmed,
         turn_id,
@@ -1547,14 +1564,16 @@ pub fn run_desktop_turn(
         Some(blocked) => blocked
         None => {
           let reply =
-            "Draft mail card ready. to=" +
+            "Draft mail card ready. provider=" +
+            prov +
+            " to=" +
             card.to_ +
             " subject=" +
             card.subject +
             ". Host FFI mail_send executes (sandbox journal without token)."
           let effect : DesktopEffect = {
             kind: "mail_send",
-            command: "gmail|" + to_ + "|" + subject + "|" + body,
+            command: prov + "|" + to_ + "|" + subject + "|" + body,
             needs_host_ffi: true,
           }
           deliver_ok(

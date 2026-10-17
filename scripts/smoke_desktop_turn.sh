@@ -97,6 +97,11 @@ node hosts/cli_host/run_turn.js --approved "mcp discover user-Gmail" >/tmp/bitbo
 python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-discover.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='mcp_discover' and h.get('ok') for h in hrs);print('mcp_discover host ok', 'host_continued', d.get('host_continued'))"
 node hosts/cli_host/run_turn.js --approved "mcp call user-Gmail.search_threads {}" >/tmp/bitbot-mcp-call.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-call.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='mcp_call' and h.get('ok') for h in hrs);print('mcp_call host ok')"
+# CM-2163 product path: Host FFI expands $file: before stdio MCP (search_threads→echo_body)
+mkdir -p uploads
+printf 'LARGE_PAYLOAD_BEGIN_%s_LARGE_PAYLOAD_END' "$(python3 -c 'print("x"*200)')" > uploads/bitbot-mcp-file-body.txt
+node hosts/cli_host/run_turn.js --approved 'mcp call user-Gmail.search_threads {"body":"$file:uploads/bitbot-mcp-file-body.txt","q":"invoice"}' >/tmp/bitbot-mcp-file.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-file.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mcp_call');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');fe=p.get('file_expand') or {};assert fe.get('expanded_count',0)>=1;assert fe.get('pretend_inject') is False;refs=fe.get('refs') or [];assert refs and '\$file:' in (refs[0].get('ref') or '');print('mcp_call \$file: expand ok', fe.get('expanded_count'), 'bytes', (refs[0] or {}).get('bytes'))"
 
 echo "==> Host durable routines"
 node hosts/cli_host/run_turn.js --approved "create routine id=host-r cron=@hourly prompt=tick" >/tmp/bitbot-routine-create.json
@@ -306,6 +311,14 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-mail-live.json'));hrs=d.ge
 python3 -c "import json;d=json.load(open('/tmp/bitbot-mail-search-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_search');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='gmail_live';assert p.get('live_mail_residual') is False;assert p.get('hit_count')>=1;print('mail_search gmail_live ok', p.get('hit_count'))"
 python3 -c "import json;d=json.load(open('/tmp/bitbot-mail-read-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_read');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='gmail_live';assert p.get('live_mail_residual') is False;print('mail_read gmail_live ok', p.get('thread_id'))"
 python3 -c "import json;d=json.load(open('/tmp/bitbot-email-channel-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('mode')=='live_email_gmail';assert p.get('pretend_live') is False;print('channel_send email live ok', p.get('mode'), (p.get('mail') or {}).get('message_id'))"
+# Live Outlook Graph send against local mock
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18775 --mode outlook --token smoke-outlook >/tmp/bitbot-outlook-mock.log 2>&1 &
+OUTLOOK_MOCK_PID=$!
+sleep 0.4
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-outlook BITBOT_MAIL_SEND=1 node hosts/cli_host/run_turn.js --approved "draft outlook mail to=live@example.com subject=Hi body=Outlook" >/tmp/bitbot-outlook-live.json || true
+kill "$OUTLOOK_MOCK_PID" >/dev/null 2>&1 || true
+wait "$OUTLOOK_MOCK_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-outlook-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is False;print('mail_send live_outlook ok', p.get('message_id'))"
 node hosts/cli_host/run_turn.js "shell echo needs-approve" >/tmp/bitbot-approval-widget.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-approval-widget.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='approval_card');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');w=p.get('widget') or {};assert w.get('widget_id');opts=w.get('options') or [];assert any(o.get('id')=='approve' for o in opts);assert any(o.get('id')=='dismiss' for o in opts);deliv=next(x for x in hrs if x.get('kind')=='delivery' and 'approval_card' in (x.get('stdout') or ''));dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='widget';assert os.path.isfile('data/delivery/send-to-user.jsonl');print('approval_card CM-0105 widget ok', w.get('widget_id'), 'options', len(opts))"
 node hosts/cli_host/run_turn.js "personal slack dm owner=Uowner text=ping [widget:decision_card]" >/tmp/bitbot-personal-dm.json
@@ -353,7 +366,15 @@ kill "$JOB_MOCK_PID" >/dev/null 2>&1 || true
 wait "$JOB_MOCK_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-jobs-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='job_search');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='job_live';assert p.get('live_job_residual') is False;assert p.get('pretend_applied') is False;assert p.get('hit_count')>=1;assert (p.get('live_probe') or {}).get('ok') is True;print('job_search live mock ok', p.get('path'), 'hits', p.get('hit_count'))"
 node hosts/cli_host/run_turn.js "schedule meeting title=Sprint when=tomorrow-3pm" >/tmp/bitbot-schedule.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-schedule.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='schedule_meeting');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('scheduled') is True;assert p.get('ics_ok') is True;assert p.get('ics_path') and os.path.isfile(p['ics_path']);assert b'BEGIN:VEVENT' in open(p['ics_path'],'rb').read();print('schedule_meeting ICS ok', p.get('ics_path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-schedule.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='schedule_meeting');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('scheduled') is True;assert p.get('ics_ok') is True;assert p.get('ics_path') and os.path.isfile(p['ics_path']);assert b'BEGIN:VEVENT' in open(p['ics_path'],'rb').read();assert p.get('live_calendar_residual') is True;assert p.get('pretend_live') is False;print('schedule_meeting ICS ok', p.get('ics_path'), p.get('mode'))"
+# Live calendar against local mock
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18776 --mode calendar --token smoke-cal >/tmp/bitbot-cal-mock.log 2>&1 &
+CAL_MOCK_PID=$!
+sleep 0.4
+BITBOT_CALENDAR_API_URL=http://127.0.0.1:18776 BITBOT_CALENDAR_TOKEN=smoke-cal node hosts/cli_host/run_turn.js "schedule meeting title=LiveSprint when=tomorrow-4pm" >/tmp/bitbot-schedule-live.json || true
+kill "$CAL_MOCK_PID" >/dev/null 2>&1 || true
+wait "$CAL_MOCK_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-schedule-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='schedule_meeting');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='calendar_live';assert p.get('live_calendar_residual') is False;assert p.get('pretend_live') is False;assert (p.get('live_probe') or {}).get('ok') is True;print('schedule_meeting calendar_live ok', p.get('remote_event_id'), p.get('ics_path'))"
 
 echo "==> journal / shared memory / inbound reaction (durable Host stores)"
 node hosts/cli_host/run_turn.js "journal date=2026-10-17 id=smoke body=smoke-event" >/tmp/bitbot-journal-append.json

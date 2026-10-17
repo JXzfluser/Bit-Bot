@@ -1371,6 +1371,85 @@ function createHostFfi(repoRoot) {
         send_to_user: delivery,
       });
     }
+    if (provider === "outlook") {
+      // Prefer env token for local mock / CI over connector rehearsal tokens.
+      let outlookToken = String(process.env.BITBOT_OUTLOOK_TOKEN || "").trim();
+      if (!outlookToken) outlookToken = token;
+      if (String(process.env.BITBOT_MAIL_SEND || "").trim() !== "1") {
+        return finishSandbox(
+          "outlook token present — set BITBOT_MAIL_SEND=1 for live Graph send",
+          "outlook_token_draft",
+        );
+      }
+      const graphBase = String(
+        process.env.BITBOT_OUTLOOK_GRAPH_URL ||
+          process.env.BITBOT_OUTLOOK_API_BASE ||
+          "https://graph.microsoft.com/v1.0",
+      )
+        .trim()
+        .replace(/\/$/, "");
+      const payload = JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: "Text", content: body },
+          toRecipients: [{ emailAddress: { address: to } }],
+        },
+        saveToSentItems: true,
+      });
+      const res = await httpJson(`${graphBase}/me/sendMail`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${outlookToken}`,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+        body: payload,
+      });
+      // Graph sendMail returns 202 Accepted with empty body on success.
+      const ok =
+        Boolean(res.ok) ||
+        res.status === 202 ||
+        Boolean(res.json && (res.json.id || res.json.ok));
+      if (!ok) {
+        return finishSandbox(
+          `outlook send failed: ${res.error || res.status || "auth"} — sandbox eml draft`,
+          "outlook_live_failed",
+        );
+      }
+      const eml = writeMailEml({
+        provider,
+        to,
+        subject,
+        body,
+        status: "sent",
+        at,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: eml.eml_path,
+        label: "outlook_sent.eml",
+        to,
+        subject,
+        source_kind: "mail_send",
+        at,
+      });
+      return okJson("mail_send", command, {
+        provider,
+        to,
+        subject,
+        mode: "live_outlook",
+        sent: true,
+        pretend_sent: false,
+        live_mail_residual: false,
+        message_id:
+          (res.json && (res.json.id || res.json.message_id)) ||
+          `outlook-${Date.now().toString(36)}`,
+        http_status: res.status || 0,
+        journal,
+        ...eml,
+        send_to_user: delivery,
+      });
+    }
     return finishSandbox(
       `mail token present for ${provider}; no live adapter — sandbox eml draft`,
     );
@@ -1429,12 +1508,48 @@ function createHostFfi(repoRoot) {
     return next;
   }
 
+  function expandMcpFileArgs(value, meta) {
+    // CM-2163: expand $file:/abs/or/repo/rel paths from Host FS into arg values.
+    // Plain strings without $file: are left unchanged (caller may refuse separately).
+    if (typeof value === "string") {
+      const m = value.match(/^\$file:(.+)$/);
+      if (!m) return value;
+      const rawPath = String(m[1] || "").trim();
+      const abs = resolveUnderRepo(rawPath) ||
+        (path.isAbsolute(rawPath) ? rawPath : null);
+      if (!abs || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+        meta.errors.push(`$file: missing or outside repo: ${rawPath}`);
+        meta.refused = true;
+        return value;
+      }
+      const text = fs.readFileSync(abs, "utf8");
+      meta.expanded.push({
+        ref: value,
+        path: abs,
+        bytes: Buffer.byteLength(text),
+      });
+      return text;
+    }
+    if (Array.isArray(value)) {
+      return value.map((v) => expandMcpFileArgs(v, meta));
+    }
+    if (value && typeof value === "object") {
+      const out = {};
+      for (const [k, v] of Object.entries(value)) {
+        out[k] = expandMcpFileArgs(v, meta);
+      }
+      return out;
+    }
+    return value;
+  }
+
   async function executeMcp(kind, command) {
     fs.mkdirSync(MCP_TMP, { recursive: true });
     const stamp = Date.now();
     const reqPath = path.join(MCP_TMP, `mcp-req-${stamp}.json`);
     const outPath = path.join(MCP_TMP, `mcp-out-${stamp}.json`);
     let requests;
+    let fileExpandMeta = null;
     if (kind === "mcp_discover") {
       requests = [{ jsonrpc: "2.0", method: "tools/list", params: {} }];
     } else {
@@ -1455,11 +1570,47 @@ function createHostFfi(repoRoot) {
       const mapped =
         toolName === "search_threads" || toolName === "echo_body"
           ? "echo_body"
-          : toolName === "write_result"
+          : toolName === "write_result" || toolName === "write_to_file"
             ? "write_result"
             : "echo_body";
+      // Expand $file: refs before MCP call (CM-2163 product Host path).
+      fileExpandMeta = { expanded: [], errors: [], refused: false };
+      args = expandMcpFileArgs(args, fileExpandMeta);
+      if (fileExpandMeta.refused) {
+        appendHostDeliveryJournal({
+          kind,
+          command,
+          ok: false,
+          file_expand: fileExpandMeta,
+          at: new Date().toISOString(),
+        });
+        return {
+          kind,
+          ok: false,
+          command,
+          error: fileExpandMeta.errors.join("; ") || "$file: expand refused",
+          stdout: JSON.stringify(
+            {
+              mode: "file_expand_refused",
+              pretend_inject: false,
+              file_expand: fileExpandMeta,
+            },
+            null,
+            2,
+          ),
+          stderr: "",
+        };
+      }
       if (mapped === "echo_body" && args.body == null) {
         args = { body: JSON.stringify(args), source_ref: left };
+      }
+      // Preserve original $file: ref in source_ref when we expanded body from file.
+      if (
+        mapped === "echo_body" &&
+        fileExpandMeta.expanded.length > 0 &&
+        !args.source_ref
+      ) {
+        args.source_ref = fileExpandMeta.expanded[0].ref;
       }
       requests = [
         {
@@ -1493,13 +1644,36 @@ function createHostFfi(repoRoot) {
         kind,
         command,
         mode: "stdio-mcp",
+        file_expand: fileExpandMeta,
         at: new Date().toISOString(),
       });
+      let outText = String(payload || "").slice(0, 12000);
+      if (fileExpandMeta && fileExpandMeta.expanded.length > 0) {
+        // Annotate Host result with expand meta; do not re-embed large body in chat.
+        try {
+          const parsed = JSON.parse(outText);
+          const annotated = {
+            ...parsed,
+            file_expand: {
+              expanded_count: fileExpandMeta.expanded.length,
+              refs: fileExpandMeta.expanded.map((e) => ({
+                ref: e.ref,
+                path: e.path,
+                bytes: e.bytes,
+              })),
+              pretend_inject: false,
+            },
+          };
+          outText = JSON.stringify(annotated, null, 2).slice(0, 12000);
+        } catch (_) {
+          /* keep raw MCP payload */
+        }
+      }
       return {
         kind,
         ok: true,
         command,
-        stdout: String(payload || "").slice(0, 12000),
+        stdout: outText,
         stderr: String(stderr || "").slice(0, 2000),
       };
     } catch (err) {
@@ -1508,6 +1682,7 @@ function createHostFfi(repoRoot) {
         command,
         ok: false,
         error: err.message || String(err),
+        file_expand: fileExpandMeta,
         at: new Date().toISOString(),
       });
       return {
@@ -5145,13 +5320,54 @@ function createHostFfi(repoRoot) {
         "",
       ].join("\r\n");
       fs.writeFileSync(icsPath, ics);
+      // Live calendar when BITBOT_CALENDAR_API_URL+token; else ICS-only residual.
+      const calApi = String(process.env.BITBOT_CALENDAR_API_URL || "").trim();
+      const calToken = String(process.env.BITBOT_CALENDAR_TOKEN || "").trim();
+      let mode = "sandbox_ics";
+      let liveProbe = null;
+      let remoteEventId = null;
+      if (calApi && calToken) {
+        const base = calApi.replace(/\/$/, "");
+        const probe = await httpJson(`${base}/events`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${calToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: eventId,
+            subject: title,
+            when,
+            source: "bitbot-host",
+          }),
+        });
+        liveProbe = {
+          ok: Boolean(probe.ok),
+          http_status: probe.status || 0,
+          error: probe.error || null,
+        };
+        if (probe.ok) {
+          mode = "calendar_live";
+          remoteEventId =
+            (probe.json && (probe.json.id || probe.json.event_id)) || eventId;
+        } else {
+          mode = "calendar_live_failed";
+        }
+      }
       const entry = {
         event_id: eventId,
         title,
         when,
         connector: "calendar",
+        mode,
         ics_path: icsPath,
-        ics_ok: fs.existsSync(icsPath) && fs.readFileSync(icsPath, "utf8").includes("BEGIN:VEVENT"),
+        ics_ok:
+          fs.existsSync(icsPath) &&
+          fs.readFileSync(icsPath, "utf8").includes("BEGIN:VEVENT"),
+        live_calendar_residual: mode !== "calendar_live",
+        pretend_live: false,
+        remote_event_id: remoteEventId,
+        live_probe: liveProbe,
         at,
       };
       const pathWritten = appendJsonl(CALENDAR_EVENTS_PATH, entry);
@@ -5163,7 +5379,14 @@ function createHostFfi(repoRoot) {
         source_kind: kind,
         at,
       });
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, ics: icsPath, at });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: pathWritten,
+        ics: icsPath,
+        mode,
+        at,
+      });
       return okJson(kind, cmd, {
         ...entry,
         path: pathWritten,

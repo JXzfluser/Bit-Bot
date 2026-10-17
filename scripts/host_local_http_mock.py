@@ -11,6 +11,8 @@ Usage:
   python3 scripts/host_local_http_mock.py --port 18772 --mode x
   python3 scripts/host_local_http_mock.py --port 18773 --mode gmail
   python3 scripts/host_local_http_mock.py --port 18774 --mode cloud
+  python3 scripts/host_local_http_mock.py --port 18775 --mode outlook
+  python3 scripts/host_local_http_mock.py --port 18776 --mode calendar
 
 Endpoints:
   purchase: POST /charge
@@ -25,6 +27,8 @@ Endpoints:
             GET  /users/me/threads/<id>
             (BITBOT_GMAIL_API_BASE=http://host:port)
   cloud:    POST /agents  (BITBOT_CLOUD_API_URL=http://host:port)
+  outlook:  POST /me/sendMail  (BITBOT_OUTLOOK_GRAPH_URL=http://host:port)
+  calendar: POST /events  (BITBOT_CALENDAR_API_URL=http://host:port)
 """
 
 from __future__ import annotations
@@ -51,6 +55,8 @@ def main() -> int:
             "x",
             "gmail",
             "cloud",
+            "outlook",
+            "calendar",
         ),
         required=True,
     )
@@ -92,6 +98,8 @@ def main() -> int:
                 or (mode == "job" and path == "/jobs/search")
                 or (mode == "gmail" and path.endswith("/users/me/messages/send"))
                 or (mode == "cloud" and path == "/agents")
+                or (mode == "outlook" and path.endswith("/me/sendMail"))
+                or (mode == "calendar" and path == "/events")
             )
             if not ok_path:
                 self._json(404, {"ok": False, "error": "not_found"})
@@ -181,6 +189,26 @@ def main() -> int:
                         "bc_id": payload.get("bc_id") or "bc-mock-cloud-1",
                         "status": "launched",
                         "url": "https://cursor.com/agents/bc-mock-cloud-1",
+                    },
+                )
+            elif mode == "outlook":
+                # Graph sendMail is typically 202 empty; return 202 + id for Host probes.
+                self._json(
+                    202,
+                    {
+                        "ok": True,
+                        "id": "outlook-msg-mock-1",
+                        "received": payload,
+                    },
+                )
+            elif mode == "calendar":
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "id": payload.get("id") or "cal-evt-mock-1",
+                        "subject": payload.get("subject") or "",
+                        "when": payload.get("when") or "",
                     },
                 )
             else:  # teams

@@ -253,6 +253,16 @@ test "desktop_turn_claim_inbox_and_draft_mail" {
   assert_eq(d.effects.length(), 1)
   assert_eq(d.effects[0].kind, "mail_send")
   assert_true(d.needs_host_ffi)
+  assert_true(d.effects[0].command.has_prefix("gmail|"))
+  let od = run_desktop_turn(
+    "draft outlook mail to=bob@example.com subject=Hi body=Hello",
+    turn_id="mail-outlook",
+    ctx=actx,
+  )
+  assert_true(od.ok)
+  assert_eq(od.intent, "draft_mail")
+  assert_eq(od.effects[0].kind, "mail_send")
+  assert_true(od.effects[0].command.has_prefix("outlook|"))
 }
 
 ///|
