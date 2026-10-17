@@ -458,6 +458,29 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let fcall = run_desktop_turn("finance get_balance", turn_id="fin-2")
   assert_true(fcall.ok)
   assert_eq(fcall.intent, "finance_call")
+  let jq = run_desktop_turn(
+    "journal query from=2020-01-01 to=2099-12-31",
+    turn_id="jq-1",
+  )
+  assert_true(jq.ok)
+  assert_eq(jq.intent, "journal_query")
+  assert_true(jq.needs_host_ffi)
+  assert_eq(jq.effects[0].kind, "journal_query")
+  let ts = run_desktop_turn(
+    "teams send Tsmoke :: hello host chat",
+    turn_id="ts-1",
+    ctx={
+      session_id: "s",
+      machine_id: "desk-1",
+      machine_kind: "desktop",
+      channel: "",
+      approved: true,
+    },
+  )
+  assert_true(ts.ok)
+  assert_eq(ts.intent, "teams_send")
+  assert_eq(ts.effects[0].kind, "channel_send")
+  assert_true(ts.effects[0].command.has_prefix("teams:Tsmoke"))
   let fill = run_desktop_turn(
     "fill credential domain=login.example.test",
     turn_id="cred-1",

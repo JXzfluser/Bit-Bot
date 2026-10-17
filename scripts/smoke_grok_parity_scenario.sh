@@ -281,6 +281,22 @@ python3 -c "import json;d=json.load(open('/tmp/parity-routines-pause.json'));h=n
 python3 -c "import json;d=json.load(open('/tmp/parity-routines-resume.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_resume');assert h.get('ok');assert 'resumed' in (h.get('stdout') or '').lower() or (h.get('stdout') or '').strip().startswith('{');print('parity routine_resume ok')"
 "${RUN[@]}" "connect gmail" >/tmp/parity-connect-gmail.json
 python3 -c "import json;d=json.load(open('/tmp/parity-connect-gmail.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('connector')=='gmail';assert p.get('mode')=='sandbox_idp';assert p.get('connected') is True;print('parity connect_gmail sandbox ok', p.get('status'))"
+"${RUN[@]}" "connect finance" >/tmp/parity-connect-finance.json
+python3 -c "import json;d=json.load(open('/tmp/parity-connect-finance.json'));assert d.get('intent')=='finance_connect';h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('connector')=='finance';assert p.get('mode')=='sandbox_idp';assert p.get('connected') is True;print('parity connect_finance sandbox ok', p.get('status'))"
+"${RUN[@]}" "journal query from=2020-01-01 to=2099-12-31" >/tmp/parity-journal-query.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-journal-query.json'));assert d.get('intent')=='journal_query';h=next(x for x in d['host_results'] if x.get('kind')=='journal_query');p=json.loads(h['stdout']);assert p.get('pretend_hits') is False;assert p.get('pollutes_profile') is False;assert os.path.isfile(p['path']);print('parity journal_query ok', p.get('hit_count'))"
+"${RUN[@]}" --approved "teams send teams:tenant-A/team-1/general :: parity teams cm1107 $MARKER" >/tmp/parity-teams-send.json
+python3 -c "import json;d=json.load(open('/tmp/parity-teams-send.json'));assert d.get('intent')=='teams_send';h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert 'teams:' in str(p.get('target') or p.get('address') or p.get('command') or h.get('command') or '');assert p.get('pretend_live') is not True;print('parity teams_send cm1107 ok', p.get('mode'))"
+"${RUN[@]}" --approved "teams send Tsmoke :: parity teams chatid $MARKER" >/tmp/parity-teams-chatid.json
+python3 -c "import json;d=json.load(open('/tmp/parity-teams-chatid.json'));assert d.get('intent')=='teams_send';h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert h.get('ok');print('parity teams_send chatid ok', p.get('mode'))"
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18783 --mode teams --token smoke-teams >/tmp/parity-teams-post-mock.log 2>&1 &
+TEAMS_POST_PID=$!
+sleep 0.4
+BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18783 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_POST=1 \
+  "${RUN[@]}" --approved "teams send teams:Tsmoke :: live teams post $MARKER" >/tmp/parity-teams-live-post.json || true
+kill "$TEAMS_POST_PID" >/dev/null 2>&1 || true
+wait "$TEAMS_POST_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/parity-teams-live-post.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode') in ('live_teams_chat_message','live_teams','live_teams_post') or 'live' in str(p.get('mode') or '');assert p.get('pretend_live') is False;print('parity teams live post ok', p.get('mode'))"
 
 # 9k) OAuth sandbox + load skill + code apply + MCP call + send on behalf + pack evidence
 "${RUN[@]}" "setup slack" >/tmp/parity-oauth.json

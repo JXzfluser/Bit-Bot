@@ -462,6 +462,23 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "connect gmail" || low == "setup gmail" || low == "gmail connect" {
     return Some(ConnectGmail)
   }
+  // Journal query before append — "journal query …" also matches "journal " prefix.
+  if low.has_prefix("query journal ") || low.has_prefix("journal query ") {
+    let rest = if low.has_prefix("query journal ") {
+      trimmed[14:].to_owned()
+    } else {
+      trimmed[14:].to_owned()
+    }
+    let from_date = match extract_kv(rest, "from") {
+      Some(v) => v
+      None => "2026-01-01"
+    }
+    let to_date = match extract_kv(rest, "to") {
+      Some(v) => v
+      None => "2026-12-31"
+    }
+    return Some(JournalQuery(from_date~, to_date~))
+  }
   if low.has_prefix("journal ") || low.has_prefix("append journal ") {
     let rest = if low.has_prefix("append journal ") {
       trimmed[15:].to_owned()
@@ -483,22 +500,6 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     if body != "" {
       return Some(JournalAppend(date~, event_id~, body~))
     }
-  }
-  if low.has_prefix("query journal ") || low.has_prefix("journal query ") {
-    let rest = if low.has_prefix("query journal ") {
-      trimmed[14:].to_owned()
-    } else {
-      trimmed[14:].to_owned()
-    }
-    let from_date = match extract_kv(rest, "from") {
-      Some(v) => v
-      None => "2026-01-01"
-    }
-    let to_date = match extract_kv(rest, "to") {
-      Some(v) => v
-      None => "2026-12-31"
-    }
-    return Some(JournalQuery(from_date~, to_date~))
   }
   if low.has_prefix("shared memory put ") || low.has_prefix("share memory ") {
     let rest = if low.has_prefix("shared memory put ") {

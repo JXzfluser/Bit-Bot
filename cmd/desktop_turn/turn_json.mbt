@@ -2017,8 +2017,13 @@ pub fn run_desktop_turn(
       }
     }
     TeamsSend(scope~, body~) => {
-      match @channels.parse_teams_scope(scope) {
-        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+      // Accept CM-1107 teams:<tenant>/<team>[/<channel>] or Host Graph chat id teams:<chatId>.
+      let addr = if scope.has_prefix("teams:") {
+        scope
+      } else {
+        "teams:" + scope
+      }
+      match @channels.parse_teams_scope(addr) {
         Ok(ts) =>
           match @channels.plan_teams_outbound(
             { scope: ts, message_id: turn_id, sender: "user", body: "" },
@@ -2060,6 +2065,50 @@ pub fn run_desktop_turn(
               }
             }
           }
+        Err(_) => {
+          // Host Graph chat-id form (teams:Tsmoke) — still channel_send; not pretend tenant/team.
+          if !addr.has_prefix("teams:") || addr == "teams:" {
+            fail_turn(
+              trimmed,
+              turn_id,
+              intent,
+              "not a teams: address",
+              ctx,
+              assistant="not a teams: address",
+            )
+          } else {
+            match gate_consequential(
+              trimmed,
+              turn_id,
+              intent,
+              ctx,
+              @security.ExternalSend,
+              "teams_send " + addr,
+              irreversible=true,
+            ) {
+              Some(blocked) => blocked
+              None => {
+                let effect : DesktopEffect = {
+                  kind: "channel_send",
+                  command: addr + " :: " + body,
+                  needs_host_ffi: true,
+                }
+                deliver_ok(
+                  trimmed,
+                  turn_id,
+                  "Teams Host chat outbound planned to " +
+                  addr +
+                  " (Graph chat id). Host channel FFI delivers.",
+                  intent,
+                  ctx~,
+                  effects=[effect],
+                  needs_host_ffi=true,
+                  channel_delivery="external:" + addr,
+                )
+              }
+            }
+          }
+        }
       }
     }
     DeviceTools => {

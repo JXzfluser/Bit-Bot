@@ -2538,29 +2538,47 @@ function createHostFfi(repoRoot) {
         if (to_date && e.date > to_date) return false;
         return true;
       });
+      const dir = path.join(REPO_ROOT, "data", "journal", "queries");
+      fs.mkdirSync(dir, { recursive: true });
+      const queryPath = path.join(
+        dir,
+        `query-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        from_date,
+        to_date,
+        hit_count: hits.length,
+        hits: hits.slice(0, 50),
+        pollutes_profile: false,
+        pretend_hits: false,
+        mode: "host_journal_query",
+        at,
+      };
+      fs.writeFileSync(queryPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "queries.jsonl"), {
+        ...artifact,
+        path: queryPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: queryPath,
+        label: "journal_query",
+        source_kind: kind,
+        at,
+      });
       appendHostDeliveryJournal({
         kind,
         command,
         hit_count: hits.length,
+        path: queryPath,
         at,
       });
-      return {
-        kind,
+      return okJson(kind, command, {
+        ...artifact,
+        path: queryPath,
+        send_to_user: delivery,
         ok: true,
-        command,
-        stdout: JSON.stringify(
-          {
-            from_date,
-            to_date,
-            hit_count: hits.length,
-            hits: hits.slice(0, 50),
-            pollutes_profile: false,
-          },
-          null,
-          2,
-        ),
-        stderr: "",
-      };
+      });
     }
     if (kind === "shared_memory_put") {
       const parts = String(command || "").split("|");

@@ -221,6 +221,8 @@
 - [x] Parity: Slack/Teams live+sandbox claim, cloud artifact deliver, OAuth remote_callback, routine daemon sweeps
 - [x] Host fs_list/fs_read/webfetch durable artifacts (`pretend_*=false`)
 - [x] Parity: fs list/read, webfetch, copy_from_box, routine pause/resume, connect gmail
+- [x] Journal query routed before append; Host query artifact (`pretend_hits=false`)
+- [x] TeamsSend accepts CM-1107 scope + Host Graph chat id; parity live Teams post + connect finance
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)
