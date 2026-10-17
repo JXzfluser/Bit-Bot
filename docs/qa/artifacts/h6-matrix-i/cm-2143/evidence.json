@@ -18,7 +18,7 @@
   "i_claimed": false,
   "env": {
     "USER_IANA": "Asia/Shanghai",
-    "stamp_utc": "20261017T093407Z",
+    "stamp_utc": "20261017T093458Z",
     "shared_cdp_9223": "untouched"
   },
   "assert": "U acceptance `acceptance_CM-2143_refused_send_no_channel_bypass` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
