@@ -298,6 +298,26 @@ kill "$TEAMS_POST_PID" >/dev/null 2>&1 || true
 wait "$TEAMS_POST_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-teams-live-post.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_teams_chat_message';assert p.get('pretend_live') is False;assert p.get('live_post') is True;print('parity teams live post ok', p.get('mode'))"
 
+# 9j2) Personal Slack DM + live Slack channel post + voice end + host_continued
+"${RUN[@]}" --approved "personal slack dm owner=Uowner text=parity dm draft $MARKER" >/tmp/parity-psd-draft.json
+python3 -c "import json;d=json.load(open('/tmp/parity-psd-draft.json'));assert d.get('intent')=='personal_slack_dm';h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='personal_slack_dm_draft';assert p.get('personal_dm') is True;assert p.get('live_post') is False;print('parity personal_slack_dm draft ok')"
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18784 --mode slack --token smoke-slack >/tmp/parity-psd-mock.log 2>&1 &
+PSD_PID=$!
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18785 --mode slack --token smoke-slack >/tmp/parity-slp-mock.log 2>&1 &
+SLP_PID=$!
+sleep 0.4
+BITBOT_SLACK_API_BASE=http://127.0.0.1:18784 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_POST=1 \
+  "${RUN[@]}" --approved "personal slack dm owner=Uowner text=parity dm live $MARKER" >/tmp/parity-psd-live.json || true
+BITBOT_SLACK_API_BASE=http://127.0.0.1:18785 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_POST=1 \
+  "${RUN[@]}" --approved "reply via slack:Csmoke :: live channel post $MARKER" >/tmp/parity-slack-live-post.json || true
+kill "$PSD_PID" "$SLP_PID" >/dev/null 2>&1 || true
+wait "$PSD_PID" "$SLP_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/parity-psd-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_personal_slack_dm';assert p.get('personal_dm') is True;assert p.get('live_post') is True;assert p.get('pretend_live') is False;print('parity personal_slack_dm live ok', p.get('ts'))"
+python3 -c "import json;d=json.load(open('/tmp/parity-slack-live-post.json'));assert d.get('host_continued') is True;h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_slack';assert p.get('live_post') is True;assert p.get('pretend_live') is False;print('parity live_slack post + host_continued ok', p.get('mode'))"
+"${RUN[@]}" "voice start parity-end-$MARKER" >/tmp/parity-voice-start2.json
+"${RUN[@]}" "voice end parity-end-$MARKER" >/tmp/parity-voice-end.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-voice-end.json'));assert d.get('intent')=='voice_end';h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('pretend_still_live') is False;assert p.get('media_ok') is True;assert p.get('end_artifact_path') and os.path.isfile(p['end_artifact_path']);print('parity voice_end ok', p.get('end_artifact_path'))"
+
 # 9k) OAuth sandbox + load skill + code apply + MCP call + send on behalf + pack evidence
 "${RUN[@]}" "setup slack" >/tmp/parity-oauth.json
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_idp';assert p.get('connected') is True;deliv=next(x for x in d['host_results'] if x.get('kind')=='delivery');dp=json.loads(deliv['stdout']);assert dp.get('type')=='widget';print('parity oauth sandbox_idp ok', p.get('status'))"

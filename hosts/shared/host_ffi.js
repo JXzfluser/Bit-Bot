@@ -5764,6 +5764,7 @@ function createHostFfi(repoRoot) {
       const rows = readJsonArray(VOICE_SESSIONS_PATH);
       let mediaPath = null;
       let mediaOk = false;
+      let callId = "";
       for (const r of rows) {
         if (r && r.live) {
           r.live = false;
@@ -5771,22 +5772,59 @@ function createHostFfi(repoRoot) {
           r.summary_path = outPath;
           mediaPath = r.media_path || null;
           mediaOk = Boolean(r.media_ok);
+          callId = r.call_id || r.id || "";
         }
       }
       writeJsonArray(VOICE_SESSIONS_PATH, rows);
+      const endDir = path.join(REPO_ROOT, "data", "voice", "ends");
+      fs.mkdirSync(endDir, { recursive: true });
+      const endArtifactPath = path.join(
+        endDir,
+        `end-${Date.now().toString(36)}.json`,
+      );
+      const endArtifact = {
+        call_id: callId,
+        summary_path: outPath,
+        summary_prefix: summary.slice(0, 120),
+        media_path: mediaPath,
+        media_ok: mediaOk,
+        live: false,
+        pretend_still_live: false,
+        mode: "host_voice_end",
+        at,
+      };
+      fs.writeFileSync(endArtifactPath, JSON.stringify(endArtifact, null, 2));
+      appendJsonl(path.join(endDir, "ends.jsonl"), {
+        ...endArtifact,
+        path: endArtifactPath,
+      });
+      const delivery = recordSendToUser({
+        type: "voice",
+        voice_address: callId || "",
+        media_path: mediaPath || "",
+        media_ok: mediaOk,
+        path: endArtifactPath,
+        source_kind: kind,
+        at,
+      });
       appendHostDeliveryJournal({
         kind,
         command: cmd,
         path: outPath,
+        end_artifact: endArtifactPath,
         media_ok: mediaOk,
         at,
       });
       return okJson(kind, cmd, {
         path: outPath,
+        end_artifact_path: endArtifactPath,
         bytes: Buffer.byteLength(summary + "\n"),
         summary_prefix: summary.slice(0, 120),
         media_path: mediaPath,
         media_ok: mediaOk,
+        pretend_still_live: false,
+        send_to_user: delivery,
+        ok: true,
       });
     }
 
