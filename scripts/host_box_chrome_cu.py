@@ -136,6 +136,146 @@ def plan_actions(command: str) -> List[str]:
     return steps
 
 
+# DOM observe expression — no "|" (host_cdp_actions splits steps on "|").
+_DOM_OBSERVE_JS = (
+    "evaluate:(function(){try{"
+    "var t=(document.title||'').slice(0,120);"
+    "var txt=((document.body&&document.body.innerText)||'').slice(0,600).toLowerCase();"
+    "var inputs=document.querySelectorAll('input,textarea,[contenteditable]').length;"
+    "var buttons=document.querySelectorAll('button,a,[role=button]').length;"
+    "var links=document.querySelectorAll('a[href]').length;"
+    "return JSON.stringify({"
+    "title:t,text_len:txt.length,inputs:inputs,buttons:buttons,links:links,"
+    "has_search:/search|query|find/.test(txt)||!!document.querySelector('input[type=search],[name*=search i],[placeholder*=search i]'),"
+    "has_signin:/sign in|log in|login|sso/.test(txt),"
+    "has_cart:/cart|bag|checkout|add to/.test(txt),"
+    "has_results:/results|showing|items|products/.test(txt)"
+    "});}catch(e){return JSON.stringify({error:String(e)});}})()"
+)
+
+
+def analyze_screenshot(path: Optional[str]) -> Dict[str, Any]:
+    """PIL vision heuristics (no OCR/tesseract). Host-side observe only."""
+    if not path or not Path(path).exists():
+        return {"ok": False, "error": "no screenshot"}
+    try:
+        from PIL import Image, ImageStat, ImageFilter
+
+        img = Image.open(path).convert("RGB")
+        w, h = img.size
+        # Downsample for hotspot scan.
+        small = img.resize((min(220, w), max(1, int(min(220, w) * h / max(w, 1)))), Image.BILINEAR)
+        sw, sh = small.size
+        edge = small.filter(ImageFilter.FIND_EDGES)
+        px = edge.load()
+        # Grid cells with high edge energy ≈ likely UI controls.
+        cells: List[Tuple[int, int, float]] = []
+        gx, gy = 8, 6
+        cw, ch = max(1, sw // gx), max(1, sh // gy)
+        for iy in range(gy):
+            for ix in range(gx):
+                energy = 0.0
+                n = 0
+                for y in range(iy * ch, min(sh, (iy + 1) * ch)):
+                    for x in range(ix * cw, min(sw, (ix + 1) * cw)):
+                        r, g, b = px[x, y]
+                        energy += (r + g + b) / 3.0
+                        n += 1
+                if n:
+                    cells.append((ix, iy, energy / n))
+        cells.sort(key=lambda c: c[2], reverse=True)
+        hotspots = []
+        for ix, iy, energy in cells[:5]:
+            # Map cell center back to window coords (1100x800 capture).
+            cx = int((ix + 0.5) * (1100 / gx))
+            cy = int((iy + 0.5) * (800 / gy))
+            hotspots.append({"x": cx, "y": cy, "energy": round(energy, 2)})
+        stat = ImageStat.Stat(img)
+        mean = sum(stat.mean) / 3.0
+        # Unique-ish color estimate via quantized palette.
+        q = img.resize((160, 120)).quantize(colors=64)
+        unique = len(q.getcolors() or [])
+        return {
+            "ok": True,
+            "width": w,
+            "height": h,
+            "brightness": round(mean, 2),
+            "unique_colors_est": unique,
+            "sparse": unique < 12 and mean > 200,
+            "dark": mean < 40,
+            "hotspots": hotspots,
+            "tool": "pil-edge-hotspots",
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)}
+
+
+def parse_dom_observe(action_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract DOM observe JSON from CDP evaluate action results."""
+    actions = action_result.get("actions") if isinstance(action_result, dict) else None
+    if not isinstance(actions, list):
+        return {}
+    for a in actions:
+        if not isinstance(a, dict):
+            continue
+        if a.get("kind") != "evaluate":
+            continue
+        val = a.get("value")
+        if isinstance(val, str) and val.startswith("{"):
+            try:
+                return json.loads(val)
+            except json.JSONDecodeError:
+                continue
+        if isinstance(val, dict):
+            return val
+    return {}
+
+
+def plan_vision_actions(
+    command: str, dom: Dict[str, Any], vision: Dict[str, Any]
+) -> List[str]:
+    """Second-pass planner: DOM keywords + screenshot hotspots → act steps."""
+    low = (command or "").lower()
+    steps: List[str] = []
+    blocked_signin = bool(dom.get("has_signin")) and not dom.get("has_results")
+    hotspot = None
+    if vision.get("ok") and vision.get("hotspots"):
+        hotspot = vision["hotspots"][0]
+    # Prefer search field when shopping/travel/food and page exposes search.
+    if dom.get("has_search") and any(
+        k in low for k in ("shop", "retail", "travel", "flight", "hotel", "food", "job")
+    ):
+        # Click near typical search bar, then type a short query token.
+        query = "headphones"
+        for tok in ("headphones", "laptop", "shoes", "flights", "hotel", "pizza", "engineer"):
+            if tok in low:
+                query = tok
+                break
+        steps.extend(
+            [
+                "click:550,120",
+                f"type:{query}",
+                "evaluate:document.title",
+            ]
+        )
+    elif blocked_signin:
+        # Honest stop: do not attempt credential entry; re-observe only.
+        steps.append("evaluate:document.title")
+    elif hotspot and not vision.get("sparse"):
+        steps.extend(
+            [
+                f"click:{hotspot['x']},{hotspot['y']}",
+                "scroll:0,250",
+                "evaluate:document.title",
+            ]
+        )
+    elif dom.get("has_cart") or "shop" in low:
+        steps.extend(["scroll:0,500", "click:900,80", "evaluate:document.title"])
+    else:
+        steps.extend(["scroll:0,300", "evaluate:document.title"])
+    return steps
+
+
 def choose_gui_mode(explicit: str = "") -> str:
     mode = (explicit or os.environ.get("BITBOT_CU_GUI_MODE") or "").strip().lower()
     if mode in ("window", "os", "headed", "headless"):
@@ -303,14 +443,55 @@ def run_chrome_session(
             break
     # Probe shared CDP must remain untouched / unused by us.
     _shared_probe = cdp_get(SHARED_CDP_PORT, "/json/version", timeout=0.5)
+
+    # Agent loop while Chrome stays alive:
+    # observe(DOM) → act(playbook) → vision(screenshot+PIL) → act(vision) → reobserve.
+    observe_dom: Dict[str, Any] = {}
     action_result: Dict[str, Any] = {}
-    if version and actions:
-        action_result = run_cdp_actions(port, actions, repo_root)
+    vision_plan: Dict[str, Any] = {"ok": False}
+    vision_actions: Dict[str, Any] = {}
     screenshot: Dict[str, Any] = {"ok": False}
-    if gui_mode == "window":
-        # Give the window a moment to map, then capture root display.
-        time.sleep(0.6)
-        screenshot = capture_screenshot(artifact_dir)
+    command_hint = ""
+    # Prefer original command from env for vision keywording when caller sets it.
+    command_hint = os.environ.get("BITBOT_CU_COMMAND") or ""
+
+    if version:
+        # Observe: DOM structure / keywords (Host FFI, not LocalBrain).
+        obs = run_cdp_actions(port, _DOM_OBSERVE_JS, repo_root)
+        observe_dom = parse_dom_observe(obs)
+        if not observe_dom and isinstance(obs, dict):
+            observe_dom = {"title": obs.get("title"), "raw_ok": obs.get("ok")}
+        # Act: playbook / explicit steps.
+        if actions:
+            action_result = run_cdp_actions(port, actions, repo_root)
+        # Vision: screenshot + PIL hotspots (window mode preferred; headless skip).
+        if gui_mode == "window":
+            time.sleep(0.5)
+            screenshot = capture_screenshot(artifact_dir)
+        vision = analyze_screenshot(screenshot.get("path") if screenshot else None)
+        # Prefer command from caller via actions context file if present.
+        cmd_path = artifact_dir / "cu_command.txt"
+        if cmd_path.exists():
+            command_hint = cmd_path.read_text(encoding="utf-8")
+        vision_steps = plan_vision_actions(command_hint, observe_dom, vision)
+        vision_plan = {
+            "ok": bool(vision.get("ok") or observe_dom),
+            "dom": observe_dom,
+            "vision": vision,
+            "steps": vision_steps,
+            "blocked_on_signin": bool(observe_dom.get("has_signin"))
+            and not observe_dom.get("has_results"),
+        }
+        if vision_steps:
+            vision_actions = run_cdp_actions(port, "|".join(vision_steps), repo_root)
+        # Re-observe screenshot after vision act.
+        if gui_mode == "window":
+            time.sleep(0.4)
+            screenshot = capture_screenshot(artifact_dir)
+            vision_plan["reobserve_vision"] = analyze_screenshot(
+                screenshot.get("path") if screenshot else None
+            )
+
     result = {
         "started": True,
         "pid": proc.pid,
@@ -326,6 +507,8 @@ def run_chrome_session(
         "targets_count": len(targets) if isinstance(targets, list) else 0,
         "args": args,
         "actions": action_result,
+        "vision_plan": vision_plan,
+        "vision_actions": vision_actions,
         "screenshot": screenshot,
         "display": os.environ.get("DISPLAY") or None,
     }
@@ -413,6 +596,9 @@ def main() -> int:
     chrome = find_chrome()
     gui_mode = choose_gui_mode(args.gui_mode)
     actions = parse_actions(args.command or "")
+    # Persist command for vision keywording inside chrome session.
+    (artifact_dir / "cu_command.txt").write_text(args.command or "", encoding="utf-8")
+    os.environ["BITBOT_CU_COMMAND"] = args.command or ""
     gui: Dict[str, Any] = {
         "box_chrome_process": False,
         "chrome_bin": chrome,
@@ -435,34 +621,49 @@ def main() -> int:
     title = None
     if isinstance(gui.get("actions"), dict):
         title = gui["actions"].get("title")
+    if not title and isinstance(gui.get("vision_actions"), dict):
+        title = gui["vision_actions"].get("title")
     steps_ok = True
     if isinstance(gui.get("actions"), dict) and "ok" in gui["actions"]:
         steps_ok = bool(gui["actions"].get("ok"))
+    vision_plan = gui.get("vision_plan") if isinstance(gui.get("vision_plan"), dict) else {}
+    vision_ok = bool(vision_plan.get("ok"))
+    blocked_signin = bool(vision_plan.get("blocked_on_signin"))
     outcome = {
         "agent_id": f"cu-host-{artifact_dir.name}",
         "summary": "structured outcome only",
         "final_url": navigate.get("url"),
-        "blocked_on_signin": False,
+        "blocked_on_signin": blocked_signin,
         "navigate_reachable": bool(navigate.get("navigate_reachable")),
         "os_window": bool(gui.get("os_window")),
         "actions_ok": steps_ok,
         "screenshot_ok": bool((gui.get("screenshot") or {}).get("ok")),
+        "vision_ok": vision_ok,
         "page_title": title,
         "shared_cdp_untouched": gui.get("shared_cdp_untouched", True),
     }
-    # Agent loop record: observe → act → re-observe (Host-side, not LocalBrain).
+    # Agent loop: observe → act → vision → act → reobserve (Host-side, not LocalBrain).
     agent_loop = {
         "observe": {
             "http_status": navigate.get("http_status"),
             "navigate_reachable": navigate.get("navigate_reachable"),
+            "dom": vision_plan.get("dom") if vision_plan else None,
         },
         "act": {
             "gui_mode": gui.get("gui_mode"),
             "actions": (gui.get("actions") or {}).get("actions"),
         },
+        "vision": {
+            "ok": vision_ok,
+            "steps": vision_plan.get("steps") if vision_plan else [],
+            "hotspots": ((vision_plan.get("vision") or {}).get("hotspots") if vision_plan else None),
+            "vision_actions": (gui.get("vision_actions") or {}).get("actions"),
+            "blocked_on_signin": blocked_signin,
+        },
         "reobserve": {
             "title": title,
             "screenshot": gui.get("screenshot"),
+            "vision": vision_plan.get("reobserve_vision") if vision_plan else None,
         },
         "outcome": outcome,
     }

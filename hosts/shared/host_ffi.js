@@ -469,8 +469,42 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  async function claimSlackInbound(token, channelId, inboundPath, stamp) {
+    /** Pull recent channel history into durable inbound store (Host FFI). */
+    const hist = await slackApi("conversations.history", token, {
+      channel: channelId,
+      limit: 10,
+    });
+    const messages = Array.isArray(hist.messages) ? hist.messages : [];
+    const claimed = [];
+    for (const m of messages) {
+      if (!m || typeof m !== "object") continue;
+      const row = {
+        scheme: "slack",
+        channel: channelId,
+        ts: m.ts || "",
+        thread_ts: m.thread_ts || "",
+        user: m.user || "",
+        text_len: String(m.text || "").length,
+        // Never echo full message bodies into evidence by default.
+        text_prefix: String(m.text || "").slice(0, 80),
+        mode: "live_slack_claim",
+        at: stamp,
+      };
+      appendJsonl(inboundPath, row);
+      claimed.push({ ts: row.ts, text_len: row.text_len });
+    }
+    return {
+      ok: Boolean(hist.ok),
+      error: hist.ok ? "" : hist.error || "conversations.history failed",
+      claimed_count: claimed.length,
+      claimed,
+    };
+  }
+
   async function executeChannelSend(command) {
     // command format: "<addr> :: <body>" from MoonBit
+    // slack addr may be slack:CHANNEL or slack:CHANNEL:THREAD_TS
     const raw = String(command || "");
     let addr = raw;
     let body = "";
@@ -487,6 +521,12 @@ function createHostFfi(repoRoot) {
       "data",
       "channels",
       "outbound.jsonl",
+    );
+    const inboundPath = path.join(
+      REPO_ROOT,
+      "data",
+      "channels",
+      "inbound.jsonl",
     );
     const connectorHint =
       scheme === "slack"
@@ -509,20 +549,37 @@ function createHostFfi(repoRoot) {
       const token = envToken || (connectorToken && !String(connectorToken).startsWith("sandbox:")
         ? connectorToken
         : envToken);
-      const channelId = addr.slice("slack:".length).split(":")[0];
+      const slackParts = addr.slice("slack:".length).split(":").filter(Boolean);
+      const channelId = slackParts[0] || "";
+      const threadTs = slackParts[1] || "";
+      // Optional inbound claim before / instead of post.
+      let claim = null;
+      if (
+        token &&
+        process.env.BITBOT_SLACK_CLAIM === "1" &&
+        channelId
+      ) {
+        claim = await claimSlackInbound(token, channelId, inboundPath, stamp);
+      }
       if (token && process.env.BITBOT_SLACK_POST === "1" && channelId && body) {
-        const post = await slackApi("chat.postMessage", token, {
+        const payload = {
           channel: channelId,
           text: body,
-        });
+        };
+        if (threadTs) payload.thread_ts = threadTs;
+        const post = await slackApi("chat.postMessage", token, payload);
         const entry = {
           scheme,
           address: addr,
           body,
-          mode: "live_slack",
+          mode: threadTs ? "live_slack_thread" : "live_slack",
           ok: Boolean(post.ok),
           ts: post.ts || "",
+          thread_ts: threadTs || "",
           connector_ready: connectorReady,
+          claim: claim
+            ? { ok: claim.ok, claimed_count: claim.claimed_count }
+            : null,
           at: stamp,
         };
         appendJsonl(outboundPath, entry);
@@ -539,11 +596,40 @@ function createHostFfi(repoRoot) {
               ...entry,
               journal: journalPath,
               outbound: outboundPath,
+              inbound: claim ? inboundPath : undefined,
             },
             null,
             2,
           ),
           error: post.ok ? "" : `slack post failed: ${post.error || "unknown"}`,
+          stderr: "",
+        };
+      }
+      // Claim-only path (no live post): still durable outbound draft + inbound evidence.
+      if (claim) {
+        const entry = {
+          scheme,
+          address: addr,
+          body,
+          mode: "live_slack_claim",
+          ok: Boolean(claim.ok),
+          live_post: false,
+          claimed_count: claim.claimed_count,
+          connector_ready: connectorReady,
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        return {
+          kind: "channel_send",
+          ok: Boolean(claim.ok),
+          command: raw,
+          stdout: JSON.stringify(
+            { ...entry, outbound: outboundPath, claim },
+            null,
+            2,
+          ),
+          error: claim.ok ? "" : claim.error,
           stderr: "",
         };
       }
@@ -554,10 +640,11 @@ function createHostFfi(repoRoot) {
         mode: connectorReady ? "connector_draft" : "sandbox_draft",
         ok: true,
         live_post: false,
+        thread_ts: threadTs || "",
         connector_ready: connectorReady,
         connector_status: connectorHint.status || "unknown",
         at: stamp,
-        note: "live post needs SLACK_BOT_TOKEN + BITBOT_SLACK_POST=1",
+        note: "live post needs SLACK_BOT_TOKEN + BITBOT_SLACK_POST=1; claim needs BITBOT_SLACK_CLAIM=1",
       };
       appendJsonl(outboundPath, entry);
       const journalPath = appendHostDeliveryJournal({
@@ -579,23 +666,42 @@ function createHostFfi(repoRoot) {
 
     if (addr.startsWith("teams:")) {
       const teamsToken = String(process.env.BITBOT_TEAMS_TOKEN || "").trim();
+      const chatId = addr.slice("teams:".length).split(":")[0] || "";
       if (teamsToken && process.env.BITBOT_TEAMS_POST === "1" && body) {
-        // Graph live post path — record attempt; network call is gated on token+flag.
-        const graphUrl =
+        // Prefer chat message POST when chat id present; else probe chats list.
+        const graphBase =
           process.env.BITBOT_TEAMS_GRAPH_URL ||
-          "https://graph.microsoft.com/v1.0/me/chats";
-        const post = await httpJson(graphUrl, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${teamsToken}` },
-        });
+          "https://graph.microsoft.com/v1.0";
+        let post;
+        let mode = "live_teams_graph";
+        if (chatId && chatId !== "me") {
+          const msgUrl = `${graphBase.replace(/\/$/, "")}/chats/${encodeURIComponent(chatId)}/messages`;
+          post = await httpJson(msgUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${teamsToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              body: { contentType: "text", content: body },
+            }),
+          });
+          mode = "live_teams_chat_message";
+        } else {
+          post = await httpJson(`${graphBase.replace(/\/$/, "")}/me/chats`, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${teamsToken}` },
+          });
+        }
         const entry = {
           scheme: "teams",
           address: addr,
           body,
-          mode: "live_teams_graph",
+          mode,
           ok: Boolean(post.ok) || (post.status > 0 && post.status < 500),
           live_post: true,
           http_status: post.status || 0,
+          chat_id: chatId || null,
           at: stamp,
         };
         appendJsonl(outboundPath, entry);
@@ -1414,6 +1520,106 @@ function createHostFfi(repoRoot) {
     return { summary, stdout, stderr, ok: Boolean(summary.ok) };
   }
 
+  function shouldOpenOauthBrowser(exchangeMode) {
+    const flag = String(process.env.BITBOT_OAUTH_OPEN_BROWSER || "")
+      .trim()
+      .toLowerCase();
+    if (flag === "1" || flag === "true" || flag === "yes") return true;
+    const m = String(exchangeMode || "").toLowerCase();
+    return (
+      m === "remote_open" ||
+      m === "open" ||
+      m === "open_browser" ||
+      m === "browser_open"
+    );
+  }
+
+  async function openAuthorizeBrowser(authorizeUrl, artifactDir) {
+    /** Open remote authorize URL in a headed browser. Still NeedsAuth until token. */
+    const out = {
+      opened: false,
+      tool: null,
+      authorize_url: authorizeUrl || null,
+      error: null,
+    };
+    if (!authorizeUrl) {
+      out.error = "no authorize_url";
+      return out;
+    }
+    fs.mkdirSync(artifactDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(artifactDir, "authorize_url.txt"),
+      authorizeUrl + "\n",
+    );
+    const chromeCandidates = [
+      process.env.CHROME_BIN,
+      "/usr/local/bin/google-chrome",
+      "/usr/bin/google-chrome",
+      "/usr/bin/chromium-browser",
+      "/usr/bin/chromium",
+    ].filter(Boolean);
+    let chrome = chromeCandidates.find((c) => fs.existsSync(c));
+    if (chrome) {
+      try {
+        const profile = path.join(artifactDir, "oauth-browser-profile");
+        fs.mkdirSync(profile, { recursive: true });
+        const { spawn } = require("child_process");
+        const child = spawn(
+          chrome,
+          [
+            "--disable-gpu",
+            "--no-first-run",
+            "--no-default-browser-check",
+            `--user-data-dir=${profile}`,
+            "--new-window",
+            "--window-size=1100,800",
+            authorizeUrl,
+          ],
+          {
+            cwd: artifactDir,
+            env: process.env,
+            detached: true,
+            stdio: "ignore",
+          },
+        );
+        child.unref();
+        out.opened = true;
+        out.tool = "chrome";
+        out.pid = child.pid;
+        // Best-effort: give the window a moment, then terminate throwaway session.
+        setTimeout(() => {
+          try {
+            process.kill(child.pid, "SIGTERM");
+          } catch {
+            /* ignore */
+          }
+        }, 4000);
+      } catch (err) {
+        out.error = err.message || String(err);
+      }
+    }
+    if (!out.opened) {
+      for (const opener of ["xdg-open", "gio"]) {
+        try {
+          await execFileAsync(opener, [authorizeUrl], {
+            timeout: 5000,
+            cwd: artifactDir,
+          });
+          out.opened = true;
+          out.tool = opener;
+          break;
+        } catch (err) {
+          out.error = err.message || String(err);
+        }
+      }
+    }
+    fs.writeFileSync(
+      path.join(artifactDir, "browser_open.json"),
+      JSON.stringify(out, null, 2) + "\n",
+    );
+    return out;
+  }
+
   async function executeOauthLive(command, connectorName, provider, artifactDir) {
     const statusDesired =
       connectorName === "slack" || connectorName === "identity-browser"
@@ -1815,17 +2021,26 @@ function createHostFfi(repoRoot) {
     }
 
     // Remote authorize/token URLs present but no token yet → honest NeedsAuth with URLs.
-    // (Full browser redirect against production IdP still residual without interactive user.)
+    // Optionally open authorize URL in a headed browser (still NeedsAuth until code/token).
     if (authorizeUrlEnv && tokenUrlEnv && !live) {
+      let browser = { opened: false };
+      let mode = "live_remote_needs_auth";
+      if (shouldOpenOauthBrowser(exchangeMode)) {
+        browser = await openAuthorizeBrowser(authorizeUrlEnv, artifactDir);
+        if (browser.opened) mode = "live_remote_browser_open";
+      }
       const state = {
         connected: false,
         status: "NeedsAuth",
-        mode: "live_remote_needs_auth",
+        mode,
         provider,
-        detail:
-          "live remote OAuth NeedsAuth — authorize/token URLs configured; interactive user consent residual",
+        detail: browser.opened
+          ? "live remote OAuth browser opened for authorize URL — awaiting user consent / auth code"
+          : "live remote OAuth NeedsAuth — authorize/token URLs configured; interactive user consent residual",
         authorize_url: authorizeUrlEnv,
         token_url: tokenUrlEnv,
+        browser_opened: Boolean(browser.opened),
+        browser_tool: browser.tool || null,
         artifact_dir: artifactDir,
         at: new Date().toISOString(),
       };
@@ -1836,7 +2051,8 @@ function createHostFfi(repoRoot) {
         connector: connectorName,
         ok: false,
         status: "NeedsAuth",
-        mode: "live_remote_needs_auth",
+        mode,
+        browser_opened: Boolean(browser.opened),
         at: state.at,
       });
       return {
@@ -1848,29 +2064,44 @@ function createHostFfi(repoRoot) {
             connector: connectorName,
             status: "NeedsAuth",
             connected: false,
-            mode: "live_remote_needs_auth",
+            mode,
             authorize_url: authorizeUrlEnv,
             token_url: tokenUrlEnv,
+            browser_opened: Boolean(browser.opened),
+            browser_tool: browser.tool || null,
             summary_ok: false,
           },
           null,
           2,
         ),
         stderr: "",
-        error: "oauth live remote NeedsAuth — interactive consent residual",
+        error: browser.opened
+          ? "oauth live remote browser opened — NeedsAuth until token"
+          : "oauth live remote NeedsAuth — interactive consent residual",
       };
     }
 
     // Honest NeedsAuth — never pretend Connected without a live token/exchange.
+    // When OPEN_BROWSER is set and we have an authorize URL, open it (still NeedsAuth).
+    let browser = { opened: false };
+    let mode = "live_needs_auth";
+    if (authorizeUrl && shouldOpenOauthBrowser(exchangeMode)) {
+      browser = await openAuthorizeBrowser(authorizeUrl, artifactDir);
+      if (browser.opened) mode = "live_remote_browser_open";
+    }
     const state = {
       connected: false,
       status: "NeedsAuth",
-      mode: "live_needs_auth",
+      mode,
       provider,
-      detail: clientId
-        ? `live OAuth NeedsAuth — open authorize URL (client_id present; no access token)`
-        : `live OAuth NeedsAuth — set BITBOT_OAUTH_TOKEN_${connectorName.toUpperCase()} or BITBOT_OAUTH_EXCHANGE=local`,
+      detail: browser.opened
+        ? `live OAuth browser opened authorize URL — awaiting consent (client_id=${Boolean(clientId)})`
+        : clientId
+          ? `live OAuth NeedsAuth — open authorize URL (client_id present; no access token)`
+          : `live OAuth NeedsAuth — set BITBOT_OAUTH_TOKEN_${connectorName.toUpperCase()} or BITBOT_OAUTH_EXCHANGE=local`,
       authorize_url: authorizeUrl || null,
+      browser_opened: Boolean(browser.opened),
+      browser_tool: browser.tool || null,
       artifact_dir: artifactDir,
       at: new Date().toISOString(),
     };
@@ -1881,7 +2112,8 @@ function createHostFfi(repoRoot) {
       connector: connectorName,
       ok: false,
       status: "NeedsAuth",
-      mode: "live_needs_auth",
+      mode,
+      browser_opened: Boolean(browser.opened),
       at: state.at,
     });
     return {
@@ -1893,15 +2125,19 @@ function createHostFfi(repoRoot) {
           connector: connectorName,
           status: "NeedsAuth",
           connected: false,
-          mode: "live_needs_auth",
+          mode,
           authorize_url: authorizeUrl || null,
+          browser_opened: Boolean(browser.opened),
+          browser_tool: browser.tool || null,
           summary_ok: false,
         },
         null,
         2,
       ),
       stderr: "",
-      error: "oauth live NeedsAuth — no access token",
+      error: browser.opened
+        ? "oauth live browser opened — NeedsAuth until token"
+        : "oauth live NeedsAuth — no access token",
     };
   }
 
