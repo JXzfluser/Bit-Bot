@@ -1,0 +1,21 @@
+{
+  "CM": "CM-1105",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-1105",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-1105-slack-connect",
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "shared_cdp_9223": "untouched",
+    "H4_OAUTH_SANDBOX": true,
+    "SLACK_OAUTH_SANDBOX": true
+  },
+  "oauth_provider": "slack",
+  "namespace_before": "NeedsAuth",
+  "namespace_after": "Connected",
+  "oauth_callback_observed": true,
+  "stub_authenticate": false,
+  "http_redirect_observed": true,
+  "refresh_token_in_artifacts": false,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "NeedsAuth\u2192real HTTP authorize/confirm/callback/token\u2192Connected; write refused pre-auth; post-auth harmless op; no refresh token; i_claimed=false"
+}

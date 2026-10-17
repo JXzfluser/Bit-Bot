@@ -1,0 +1,91 @@
+{
+  "settingsOpen": false,
+  "entry": null,
+  "anchor": null,
+  "deletePhase": null,
+  "deleteAgent": null,
+  "contextMenuOpen": false,
+  "contextMenuAgent": null,
+  "activeTab": "General",
+  "updateComputerPhase": "idle",
+  "updateComputerPrompt": null,
+  "localExecutionEnabled": true,
+  "lastMachineCall": null,
+  "gateLog": [],
+  "agents": [
+    {
+      "id": "h2-throwaway-agent",
+      "name": "H2 Throwaway Agent",
+      "hidden": false
+    },
+    {
+      "id": "demo-agent",
+      "name": "Demo Agent",
+      "hidden": false
+    }
+  ],
+  "activeChat": null,
+  "activeChatHidden": false,
+  "infoPanel": {
+    "open": false,
+    "agentId": null,
+    "view": null,
+    "sections": [],
+    "members": []
+  },
+  "notify": {},
+  "permissionGuide": {
+    "open": false,
+    "kind": null,
+    "namespace": null,
+    "anchor": null,
+    "connected": false,
+    "status": null,
+    "followed": false
+  },
+  "webhookPanel": {
+    "open": false,
+    "url": null,
+    "key_present": false,
+    "key_masked": null,
+    "last_copy": null
+  },
+  "devicePermissionCard": {
+    "open": false,
+    "machine_id": null,
+    "tool_name": null,
+    "permission_label": null,
+    "shown": false
+  },
+  "chatMessages": [
+    {
+      "id": "msg-h5-1",
+      "role": "assistant",
+      "text": "H5 sample message for ReactToMessage pill.",
+      "reactions": {}
+    }
+  ],
+  "reactPill": {
+    "message_id": null,
+    "emoji": null,
+    "visible": false
+  },
+  "endTurnLeftPill": false,
+  "mathMermaid": {
+    "open": true,
+    "math_tex": "E = mc^2",
+    "math_rendered": true,
+    "mermaid_src": "flowchart LR; A-->B-->C",
+    "mermaid_rendered": true
+  },
+  "cursorAgentCard": {
+    "open": false,
+    "agent_id": null,
+    "url": null,
+    "shown": false
+  },
+  "surface": "bit-bot-host-ui",
+  "i_claimed": false,
+  "anchorViewport": null,
+  "rev": 1
+}

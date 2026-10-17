@@ -24,3 +24,11 @@ Browser on private Xvfb is a **viewer** for LiveDisplay frames; CDP port is not 
 - `POST /api/host/open_reset_computer`
 - `POST /api/host/set_local_execution` / `try_machine_call`
 - Smoke: `bash scripts/host_h2_smoke.sh batch2`
+
+## H5 HostUiShell routes (CM-2101 / 2128 / 2103 / 2131)
+
+- `POST /api/host/react_to_message` — emoji reaction pill visible/toggle
+- `POST /api/host/end_turn` — leave pill visible after end_turn
+- `POST /api/host/show_math_mermaid` — math + mermaid SVG surface
+- `POST /api/host/show_cursor_agent_card` — cursor-agent card with cloud URL
+- Smoke: `bash scripts/host_h5_smoke.sh ui` (C′; never CDP 9223)

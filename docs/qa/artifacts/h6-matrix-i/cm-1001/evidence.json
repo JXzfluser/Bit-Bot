@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1001",
+  "wave": "H6",
+  "title": "ListEmailInboxes",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1001_list_inboxes_empty_then_claimed",
+  "u_acceptance_file": "connectors/mail/acceptance_mail_test.mbt",
+  "u_evidence": "`connectors/mail/acceptance_mail_test.mbt`::acceptance_CM-1001_list_inboxes_empty_then_claimed \u2014 \u7a7a\u5219\u5f15\u5bfc claim\uff1b\u5df2\u6709\u5219\u4e0d\u4e8cclaim",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1001",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1001",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1001_list_inboxes_empty_then_claimed` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

@@ -1,0 +1,3 @@
+{"ts": 1792228437.067409, "kind": "authorize_shown", "auth_req": "QsbUmmDUpvtcAi4A-bFlJg", "provider": "outlook", "redirect_uri": "http://127.0.0.1:42597/callback"}
+{"ts": 1792228437.081878, "kind": "authorize_allowed", "provider": "outlook", "code_prefix": "h7dulC4r"}
+{"ts": 1792228437.0838037, "kind": "token_issued", "provider": "outlook", "access_prefix": "atk_nneQwX"}

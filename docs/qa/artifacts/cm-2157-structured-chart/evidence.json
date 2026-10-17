@@ -1,0 +1,16 @@
+{
+  "CM": "CM-2157",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-2157",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-2157-structured-chart",
+  "image_path": "/workspace/agent-tools/h5-cm2157-chart.png",
+  "png_magic_ok": true,
+  "series": {
+    "alpha": 4,
+    "beta": 9,
+    "gamma": 6,
+    "delta": 3
+  },
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Pillow chart PNG from structured data (no matplotlib); magic 89504e47"
+}

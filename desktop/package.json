@@ -1,0 +1,14 @@
+{
+  "name": "bitbot-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bit Bot Desktop host — MoonBit product brain via Electron",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "echo \"Packaging: use electron-builder or electron-packager when ready; for now npm start runs the unpackaged app.\""
+  },
+  "dependencies": {
+    "electron": "^33.2.0"
+  }
+}

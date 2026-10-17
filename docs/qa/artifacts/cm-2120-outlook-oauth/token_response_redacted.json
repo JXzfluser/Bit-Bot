@@ -1,0 +1,9 @@
+{
+  "http_status": 200,
+  "access_token_sha256_8": "1bbfdba8",
+  "access_token_prefix": "atk_nn\u2026",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "provider": "outlook",
+  "refresh_token_present_in_idp_response": false
+}

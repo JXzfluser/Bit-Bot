@@ -1,0 +1,6 @@
+namespace_before=NeedsAuth
+namespace_after=Connected
+oauth_callback_observed=true
+stub_authenticate=false
+fake_connected=false
+provider=slack

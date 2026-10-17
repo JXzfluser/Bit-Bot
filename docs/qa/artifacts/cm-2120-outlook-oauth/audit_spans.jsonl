@@ -1,0 +1,1 @@
+{"id": "h4-cm-2120-oauth-sandbox", "tool_name": "h4_probe:CM-2120", "ok": true, "detail": "provider=outlook before=NeedsAuth after=Ready callback=True; i_claimed=false", "artifact_path": "/workspace/docs/qa/artifacts/cm-2120-outlook-oauth"}

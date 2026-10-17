@@ -1,0 +1,7 @@
+{
+  "event": "GenerateVideoComplete",
+  "path": "/workspace/agent-tools/h5-cm1602-generate.mp4",
+  "bytes": 12408,
+  "notified": true,
+  "i_claimed": false
+}

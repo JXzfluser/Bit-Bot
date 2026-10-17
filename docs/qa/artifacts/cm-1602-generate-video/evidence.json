@@ -1,0 +1,11 @@
+{
+  "CM": "CM-1602",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-1602",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-1602-generate-video",
+  "video_path": "/workspace/agent-tools/h5-cm1602-generate.mp4",
+  "video_complete_notified": true,
+  "bytes": 12408,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "ffmpeg-encoded mp4 under agent-tools; completion notify meta present"
+}

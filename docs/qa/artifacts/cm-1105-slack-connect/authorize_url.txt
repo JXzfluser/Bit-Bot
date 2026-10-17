@@ -1,0 +1,1 @@
+http://127.0.0.1:33887/authorize?response_type=code&client_id=bitbot-h4-sandbox&redirect_uri=http%3A%2F%2F127.0.0.1%3A55845%2Fcallback&state=kOuIcN3Y8QGlfBkZ&provider=slack&scope=slack.sandbox

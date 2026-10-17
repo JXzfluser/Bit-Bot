@@ -1,0 +1,9 @@
+{
+  "observed": true,
+  "raw_path": "/callback?code=h7dulC4r7wfMAYlONwZxIXNw3SqbIYzn&state=Q2QOfPTRvMA8UT-c",
+  "has_code": true,
+  "state_matches": true,
+  "state": "Q2QOfPTRvMA8UT-c",
+  "error": null,
+  "code_prefix": "h7dulC4r"
+}

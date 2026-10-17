@@ -1,0 +1,2 @@
+magic_hex=89504e470d0a1a0a
+png_magic_ok=True

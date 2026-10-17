@@ -1,0 +1,1 @@
+{"id": "h4-cm-1105-oauth-sandbox", "tool_name": "h4_probe:CM-1105", "ok": true, "detail": "provider=slack before=NeedsAuth after=Connected callback=True; i_claimed=false", "artifact_path": "/workspace/docs/qa/artifacts/cm-1105-slack-connect"}

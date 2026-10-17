@@ -1,0 +1,26 @@
+{
+  "CM": "CM-2166",
+  "wave": "H6",
+  "title": "\u9700\u6ce8\u610f\u65f6\u6295\u9012",
+  "pri": "P1",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-2166_routine_break_silence_when_notable",
+  "u_acceptance_file": "routines/acceptance_cm2166_test.mbt",
+  "u_evidence": "`routines/acceptance_cm2166_test.mbt`::acceptance_CM-2166_routine_break_silence_when_notable \u2014 failure/approval/decision/notable\u2192SendToUser\uff1bquiet \u4e0d\u53ef assert break",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-2166",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-2166",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-2166_routine_break_silence_when_notable` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

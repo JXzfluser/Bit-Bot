@@ -1,0 +1,26 @@
+{
+  "CM": "CM-2149",
+  "wave": "H6",
+  "title": "\u8de8\u52a9\u624b\u4e0d\u539f\u6837\u8f6c\u8ff0\u62b1\u6028",
+  "pri": "P2",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-2149_cross_agent_complaint_diplomatic_paraphrase",
+  "u_acceptance_file": "agents/teammates/acceptance_cm2149_test.mbt",
+  "u_evidence": "`agents/teammates/acceptance_cm2149_test.mbt`::acceptance_CM-2149_cross_agent_complaint_diplomatic_paraphrase \u2014 \u62b1\u6028\u5916\u4ea4\u8f6c\u8ff0\uff1bSendToAgent \u65e0 awful/stupid\uff1bCM-2141 ask-first \u4ecd\u7eff",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-2149",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-2149",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-2149_cross_agent_complaint_diplomatic_paraphrase` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

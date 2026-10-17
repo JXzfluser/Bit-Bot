@@ -1,0 +1,26 @@
+{
+  "CM": "CM-0910",
+  "wave": "H6",
+  "title": "\u516c\u5f00 x \u641c\u7d22\u547d\u540d\u7a7a\u95f4",
+  "pri": "P2",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-0910_public_x_search_namespace_readonly",
+  "u_acceptance_file": "connectors/acceptance_cm0910_test.mbt",
+  "u_evidence": "`connectors/acceptance_cm0910_test.mbt`::acceptance_CM-0910_public_x_search_namespace_readonly \u2014 \u547d\u540d\u7a7a\u95f4 `x` \u65e0\u9274\u6743\uff1bsearch_posts \u7b49\u53ea\u8bfb\uff1b\u5199\u5de5\u5177\u62d2",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-0910",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-0910",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-0910_public_x_search_namespace_readonly` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

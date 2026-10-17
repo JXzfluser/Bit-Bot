@@ -1,0 +1,3 @@
+arg=plain-string
+result=REFUSED
+reason=not a $file: placeholder
