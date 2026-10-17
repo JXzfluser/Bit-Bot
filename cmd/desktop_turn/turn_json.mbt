@@ -2693,12 +2693,18 @@ pub fn run_desktop_turn(
       match host.run_linkedin_readonly_search(query~) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(res) => {
-          let effect : DesktopEffect = {
+          let cu : DesktopEffect = {
             kind: "computer_use",
             command: "job-search:" +
             res.playbook_name +
             " :: readonly query=" +
             query,
+            needs_host_ffi: true,
+          }
+          // Host also materializes durable job results (CM-1806) — not CU-only.
+          let jobs : DesktopEffect = {
+            kind: "job_search",
+            command: query + "|" + res.playbook_name + "|" + res.hit_count.to_string(),
             needs_host_ffi: true,
           }
           deliver_ok(
@@ -2708,10 +2714,10 @@ pub fn run_desktop_turn(
             res.playbook_name +
             "»: " +
             res.hit_count.to_string() +
-            " hit(s) (CM-1806).",
+            " hit(s) (CM-1806). Host persists results + CU playbook.",
             intent,
             ctx~,
-            effects=[effect],
+            effects=[cu, jobs],
             needs_host_ffi=true,
           )
         }

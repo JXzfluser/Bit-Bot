@@ -21,7 +21,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, required=True)
-    ap.add_argument("--mode", choices=("purchase", "meeting"), required=True)
+    ap.add_argument(
+        "--mode", choices=("purchase", "meeting", "finance"), required=True
+    )
     ap.add_argument("--token", default="smoke-token")
     args = ap.parse_args()
     mode = args.mode
@@ -39,8 +41,10 @@ def main() -> int:
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
             path = self.path.split("?", 1)[0]
-            ok_path = (mode == "purchase" and path == "/charge") or (
-                mode == "meeting" and path == "/messages"
+            ok_path = (
+                (mode == "purchase" and path == "/charge")
+                or (mode == "meeting" and path == "/messages")
+                or (mode == "finance" and path.startswith("/tools/"))
             )
             if not ok_path:
                 self.send_response(404)
@@ -60,8 +64,14 @@ def main() -> int:
                 "ok": True,
                 "mode": mode,
                 "received": payload,
-                "charge_id" if mode == "purchase" else "message_id": f"mock-{mode}-1",
             }
+            if mode == "purchase":
+                resp["charge_id"] = "mock-purchase-1"
+            elif mode == "meeting":
+                resp["message_id"] = "mock-meeting-1"
+            else:
+                resp["balance"] = {"currency": "USD", "amount": 42.0}
+                resp["call_id"] = "mock-finance-1"
             data = json.dumps(resp).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

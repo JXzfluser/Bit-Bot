@@ -165,6 +165,8 @@
 - [x] Host mail_search/mail_read durable artifacts (`data/mail/search|threads`; live Gmail when token; never pretend_live)
 - [x] Host workflow_list catalog (`data/workflows/catalog.json`; CM-2118 Host FFI)
 - [x] Host x_search durable results (`data/connectors/x/`; live when `BITBOT_X_BEARER`; never pretend_live)
+- [x] Host job_search durable catalog (`data/jobs/`; CU playbook + Host artifact; never pretend_applied)
+- [x] Host finance_call live API (`BITBOT_FINANCE_API_URL`+token → `/tools/*`; else sandbox residual)
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN

@@ -5128,11 +5128,56 @@ function createHostFfi(repoRoot) {
       const tool = parts[0] || "";
       const output = parts.slice(1).join("|") || "";
       const finState = loadConnectorState("finance");
+      const accessToken = String(
+        (finState.oauth && finState.oauth.access_token) ||
+          finState.access_token ||
+          process.env.BITBOT_FINANCE_TOKEN ||
+          "",
+      ).trim();
+      const financeApi = String(process.env.BITBOT_FINANCE_API_URL || "").trim();
       const connected = Boolean(
-        finState.connected ||
-          (finState.oauth && finState.oauth.access_token) ||
-          finState.access_token,
+        finState.connected || accessToken,
       );
+      let mode = connected ? "live_token_present" : "sandbox";
+      let liveProbe = null;
+      let liveResult = null;
+      // Live finance call only when token + API URL; never pretend bank data.
+      if (accessToken && financeApi) {
+        try {
+          const resp = await fetch(
+            financeApi.replace(/\/$/, "") + "/tools/" + encodeURIComponent(tool || "call"),
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({ tool, output, source: "bitbot-host" }),
+            },
+          );
+          const text = await resp.text();
+          let body = null;
+          try {
+            body = JSON.parse(text);
+          } catch (_) {
+            body = { raw: String(text || "").slice(0, 400) };
+          }
+          liveProbe = { ok: resp.ok, http_status: resp.status };
+          if (resp.ok) {
+            liveResult = body;
+            mode = "finance_live";
+          } else {
+            mode = "finance_live_failed";
+          }
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+          mode = "finance_live_failed";
+        }
+      }
       const artifactDir = path.join(REPO_ROOT, "data", "connectors", "finance");
       fs.mkdirSync(artifactDir, { recursive: true });
       const artifactPath = path.join(
@@ -5142,10 +5187,14 @@ function createHostFfi(repoRoot) {
       const artifact = {
         tool,
         output,
-        mode: connected ? "live_token_present" : "sandbox",
+        mode,
         pretend_live: false,
+        live_finance_residual: mode !== "finance_live",
+        live_probe: liveProbe,
+        live_result: liveResult,
         balance_sandbox:
-          /balance|get_balance/i.test(tool) || /balance/i.test(output)
+          mode !== "finance_live" &&
+          (/balance|get_balance/i.test(tool) || /balance/i.test(output))
             ? { currency: "USD", amount: 0, note: "sandbox zero — not live bank" }
             : null,
         at,
@@ -5157,6 +5206,8 @@ function createHostFfi(repoRoot) {
         mode: artifact.mode,
         artifact_path: artifactPath,
         artifact_ok: fs.existsSync(artifactPath),
+        live_finance_residual: artifact.live_finance_residual,
+        pretend_live: false,
         at,
       };
       const pathWritten = appendJsonl(FINANCE_CALLS_PATH, entry);
@@ -5172,6 +5223,59 @@ function createHostFfi(repoRoot) {
         path: pathWritten,
         ok: true,
         balance_sandbox: artifact.balance_sandbox,
+        live_probe: liveProbe,
+      });
+    }
+
+    if (kind === "job_search") {
+      const parts = cmd.split("|");
+      const query = parts[0] || "";
+      const playbook = parts[1] || "linkedin-readonly";
+      const hitCount = Number(parts[2] || 0) || 0;
+      const jobDir = path.join(REPO_ROOT, "data", "jobs");
+      fs.mkdirSync(jobDir, { recursive: true });
+      const artifactPath = path.join(
+        jobDir,
+        `search-${Date.now().toString(36)}.json`,
+      );
+      const hits = Array.from({ length: Math.max(hitCount, 1) }, (_, i) => ({
+        id: `job-sandbox-${i + 1}`,
+        title: `${query || "role"} (sandbox ${i + 1})`,
+        company: "BitBot Sandbox Co",
+        readonly: true,
+        pretend_applied: false,
+      }));
+      const artifact = {
+        query,
+        playbook,
+        mode: "sandbox_readonly",
+        live_job_residual: true,
+        pretend_applied: false,
+        hit_count: hits.length,
+        hits,
+        note: "Host job search catalog — CU playbook separate; never auto-applies",
+        at,
+      };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(jobDir, "searches.jsonl"), artifact);
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: artifactPath,
+        label: "job_search",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: cmd,
+        path: artifactPath,
+        at,
+      });
+      return okJson(kind, cmd, {
+        ...artifact,
+        path: artifactPath,
+        send_to_user: delivery,
+        ok: true,
       });
     }
 

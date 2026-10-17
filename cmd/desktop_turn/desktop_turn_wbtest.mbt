@@ -400,6 +400,10 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let js = run_desktop_turn("job search engineer", turn_id="js-1")
   assert_true(js.ok)
   assert_eq(js.intent, "job_search")
+  assert_true(js.needs_host_ffi)
+  assert_true(js.effects.length() >= 2)
+  assert_eq(js.effects[0].kind, "computer_use")
+  assert_eq(js.effects[1].kind, "job_search")
   let lfd = run_desktop_turn(
     "learn from demo title=Checkout steps=click:Cart|type:email",
     turn_id="lfd-1",
