@@ -6617,10 +6617,60 @@ function createHostFfi(repoRoot) {
     return null;
   }
 
+  function parseVerticalPlaybook(command) {
+    const cmd = String(command || "");
+    let family = "";
+    if (cmd.startsWith("shopping:")) family = "shopping";
+    else if (cmd.startsWith("travel:")) family = "travel";
+    else if (cmd.startsWith("food:")) family = "food";
+    if (!family) return null;
+    const playbookMatch = cmd.match(/site-playbooks-[a-z0-9-]+/i);
+    const navigateMatch = cmd.match(/NAVIGATE\s+([^\s;]+)/i);
+    const host = navigateMatch ? String(navigateMatch[1] || "").trim() : "";
+    return {
+      family,
+      playbook_name: playbookMatch ? playbookMatch[0] : "",
+      navigate_host: host,
+      pretend_purchased: false,
+    };
+  }
+
+  function materializePlaybookJournal(vertical, command) {
+    if (!vertical) return null;
+    const dir = path.join(REPO_ROOT, "data", "skills", "playbooks");
+    fs.mkdirSync(dir, { recursive: true });
+    const at = new Date().toISOString();
+    const artifact = {
+      family: vertical.family,
+      playbook_name: vertical.playbook_name,
+      navigate_host: vertical.navigate_host,
+      command: String(command || "").slice(0, 500),
+      pretend_purchased: false,
+      mode: "host_site_playbook_dispatch",
+      at,
+    };
+    const playbookPath = path.join(
+      dir,
+      `${vertical.family}-${Date.now().toString(36)}.json`,
+    );
+    fs.writeFileSync(playbookPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "dispatches.jsonl"), {
+      ...artifact,
+      path: playbookPath,
+    });
+    return { ...artifact, path: playbookPath };
+  }
+
   async function executeComputerUse(command) {
     const cmd = String(command || "");
+    const vertical = parseVerticalPlaybook(cmd);
+    const playbookJournal = materializePlaybookJournal(vertical, cmd);
     const urlMatch = cmd.match(/https?:\/\/[^\s|"']+/);
-    const url = urlMatch ? urlMatch[0] : "";
+    let url = urlMatch ? urlMatch[0] : "";
+    if (!url && vertical && vertical.navigate_host) {
+      const host = vertical.navigate_host.replace(/^https?:\/\//, "");
+      url = `https://${host}`;
+    }
     const evidenceDir = path.join(
       REPO_ROOT,
       "data",
@@ -6657,6 +6707,23 @@ function createHostFfi(repoRoot) {
       }
       const navigate = summary.navigate || {};
       const gui = summary.gui || {};
+      const baseOutcome = summary.outcome || {
+        summary: "structured outcome only",
+        final_url: navigate.url || url || null,
+        blocked_on_signin: false,
+        checkout_stage: "n/a",
+        pretend_purchased: false,
+      };
+      const outcome = {
+        ...baseOutcome,
+        pretend_purchased: false,
+        vertical_family: vertical ? vertical.family : baseOutcome.vertical_family || "",
+        playbook_name: vertical
+          ? vertical.playbook_name
+          : baseOutcome.playbook_name || "",
+        playbook_journal: playbookJournal ? playbookJournal.path : null,
+        paid_checkout_attempted: Boolean(baseOutcome.paid_checkout_attempted),
+      };
       appendHostDeliveryJournal({
         kind: "computer_use",
         command: cmd,
@@ -6664,6 +6731,8 @@ function createHostFfi(repoRoot) {
         navigate_reachable: Boolean(navigate.navigate_reachable),
         box_chrome_process: Boolean(gui.box_chrome_process),
         shared_cdp_untouched: gui.shared_cdp_untouched !== false,
+        vertical_family: outcome.vertical_family || "",
+        playbook_name: outcome.playbook_name || "",
         at: new Date().toISOString(),
       });
       return {
@@ -6674,6 +6743,7 @@ function createHostFfi(repoRoot) {
           {
             evidence: evidencePath,
             navigate,
+            playbook: playbookJournal,
             gui: {
               box_chrome_process: Boolean(gui.box_chrome_process),
               gui_mode: gui.gui_mode || null,
@@ -6739,13 +6809,7 @@ function createHostFfi(repoRoot) {
                 (gui.vision_actions && gui.vision_actions.title) ||
                 null,
             },
-            outcome: summary.outcome || {
-              summary: "structured outcome only",
-              final_url: navigate.url || null,
-              blocked_on_signin: false,
-              checkout_stage: "n/a",
-              pretend_purchased: false,
-            },
+            outcome,
             agent_loop: summary.agent_loop || null,
             mode: "host_box_chrome_cu",
           },
@@ -6787,7 +6851,16 @@ function createHostFfi(repoRoot) {
       }
       fs.writeFileSync(
         evidencePath,
-        JSON.stringify({ command: cmd, navigate, fallback: true }, null, 2),
+        JSON.stringify(
+          {
+            command: cmd,
+            navigate,
+            playbook: playbookJournal,
+            fallback: true,
+          },
+          null,
+          2,
+        ),
       );
       appendHostDeliveryJournal({
         kind: "computer_use",
@@ -6795,6 +6868,8 @@ function createHostFfi(repoRoot) {
         evidence: evidencePath,
         navigate_reachable: navigate.navigate_reachable,
         fallback: true,
+        vertical_family: vertical ? vertical.family : "",
+        playbook_name: vertical ? vertical.playbook_name : "",
         at: new Date().toISOString(),
       });
       return {
@@ -6805,7 +6880,19 @@ function createHostFfi(repoRoot) {
           {
             evidence: evidencePath,
             navigate,
+            playbook: playbookJournal,
             gui: { box_chrome_process: false, fallback: true },
+            outcome: {
+              summary: "structured outcome only (http fallback)",
+              final_url: navigate.url || null,
+              blocked_on_signin: false,
+              checkout_stage: "n/a",
+              pretend_purchased: false,
+              vertical_family: vertical ? vertical.family : "",
+              playbook_name: vertical ? vertical.playbook_name : "",
+              playbook_journal: playbookJournal ? playbookJournal.path : null,
+              paid_checkout_attempted: false,
+            },
             mode: "http_fallback",
           },
           null,

@@ -209,11 +209,28 @@ kill "$OUT_PID" >/dev/null 2>&1 || true
 wait "$OUT_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;print('parity outlook live ok')"
 
+# 9h) Site-playbook verticals (shopping / travel / food) + CU payment_wall honesty
+"${RUN[@]}" "shop https://www.target.com/ headphones" >/tmp/parity-shop.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-shop.json'));assert d.get('ok') and d.get('intent')=='shop_retail';h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h['stdout']);oc=p.get('outcome')or{};assert oc.get('pretend_purchased') is False;assert oc.get('vertical_family')=='shopping';assert 'target' in (oc.get('playbook_name') or '');assert oc.get('playbook_journal') and os.path.isfile(oc['playbook_journal']);pb=json.load(open(oc['playbook_journal']));assert pb.get('pretend_purchased') is False;assert pb.get('family')=='shopping';print('parity shop playbook ok', oc.get('playbook_name'), oc.get('checkout_stage'))"
+"${RUN[@]}" "book flight https://www.expedia.com/" >/tmp/parity-travel.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-travel.json'));assert d.get('ok') and d.get('intent')=='travel_book';h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h['stdout']);oc=p.get('outcome')or{};assert oc.get('pretend_purchased') is False;assert oc.get('vertical_family')=='travel';assert 'expedia' in (oc.get('playbook_name') or '');assert oc.get('playbook_journal') and os.path.isfile(oc['playbook_journal']);print('parity travel playbook ok', oc.get('playbook_name'))"
+"${RUN[@]}" "order food https://www.doordash.com/" >/tmp/parity-food.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-food.json'));assert d.get('ok') and d.get('intent')=='order_food';h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h['stdout']);oc=p.get('outcome')or{};assert oc.get('pretend_purchased') is False;assert oc.get('vertical_family')=='food';assert 'doordash' in (oc.get('playbook_name') or '');assert oc.get('playbook_journal') and os.path.isfile(oc['playbook_journal']);print('parity food playbook ok', oc.get('playbook_name'))"
+python3 "$ROOT/scripts/host_cu_checkout_fixture.py" --port 18769 >/tmp/parity-cu-fixture.log 2>&1 &
+CU_PID=$!
+sleep 0.5
+BITBOT_CU_ALLOW_LOCAL=1 "${RUN[@]}" "computer use open http://127.0.0.1:18769/ shop cart checkout buy" >/tmp/parity-cu-paywall.json || true
+kill "$CU_PID" 2>/dev/null || true
+wait "$CU_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/parity-cu-paywall.json'));h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('has_payment') is True;assert oc.get('checkout_stage')=='payment_wall' or oc.get('vertical_stage')=='payment_wall';assert oc.get('pretend_purchased') is False;assert oc.get('paid_checkout_attempted') is False;assert oc.get('live_paid_residual') is True;print('parity CU payment_wall ok', oc.get('checkout_stage'))"
+
 # 9i) OAuth sandbox + load skill + code apply + MCP call + send on behalf + pack evidence
 "${RUN[@]}" "setup slack" >/tmp/parity-oauth.json
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_idp';assert p.get('connected') is True;deliv=next(x for x in d['host_results'] if x.get('kind')=='delivery');dp=json.loads(deliv['stdout']);assert dp.get('type')=='widget';print('parity oauth sandbox_idp ok', p.get('status'))"
 BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=local "${RUN[@]}" "setup slack" >/tmp/parity-oauth-ex.json
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth-ex.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert 'local_exchange' in (h.get('stdout') or '');print('parity oauth local_exchange ok')"
+BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=interactive "${RUN[@]}" "setup slack" >/tmp/parity-oauth-int.json
+python3 -c "import json;d=json.load(open('/tmp/parity-oauth-int.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');out=h.get('stdout') or '';assert 'interactive_local' in out;assert 'interactive_browser' in out;print('parity oauth interactive_local ok')"
 "${RUN[@]}" "load skill slides presentation" >/tmp/parity-load.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-load.json'));h=next(x for x in d['host_results'] if x.get('kind')=='skill_load');p=json.loads(h['stdout']);assert p.get('pretend_loaded') is False;assert os.path.isfile(p['path']);print('parity skill_load ok', p.get('task'), p.get('loaded_count'))"
 "${RUN[@]}" "code changes README.mbt.md" >/tmp/parity-code.json
