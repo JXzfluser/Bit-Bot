@@ -1,5 +1,6 @@
 namespace_before=NeedsAuth
-namespace_after=NeedsAuth
-oauth_callback_observed=false
+namespace_after=Ready
+oauth_callback_observed=true
 stub_authenticate=false
 fake_connected=false
+provider=finance

@@ -1,0 +1,239 @@
+{
+  "result": {
+    "state": {
+      "settingsOpen": true,
+      "entry": "command-palette",
+      "anchor": "update-computer",
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "Computer",
+      "updateComputerPhase": "prompted",
+      "updateComputerPrompt": "Update",
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": null,
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "webhookPanel": {
+        "open": false,
+        "url": null,
+        "key_present": false,
+        "key_masked": null,
+        "last_copy": null
+      },
+      "devicePermissionCard": {
+        "open": false,
+        "machine_id": null,
+        "tool_name": null,
+        "permission_label": null,
+        "shown": false
+      },
+      "chatMessages": [
+        {
+          "id": "msg-h5-1",
+          "role": "assistant",
+          "text": "H5 sample message for ReactToMessage pill.",
+          "reactions": {}
+        }
+      ],
+      "reactPill": {
+        "message_id": null,
+        "emoji": null,
+        "visible": false
+      },
+      "endTurnLeftPill": false,
+      "mathMermaid": {
+        "open": false,
+        "math_tex": null,
+        "math_rendered": false,
+        "mermaid_src": null,
+        "mermaid_rendered": false
+      },
+      "cursorAgentCard": {
+        "open": false,
+        "agent_id": null,
+        "url": null,
+        "shown": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "anchorViewport": null,
+      "rev": 1
+    },
+    "event_tail": [
+      {
+        "id": "ab340f72-cc31-49d1-932b-8e4644920fe1",
+        "ts": 1792228197.9655101,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "c74884a9-51c2-4369-abc6-0de9dd76b04c",
+        "ts": 1792228197.9655182,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "0a22ffd0-3a33-4ed5-a2f8-09da5ec72406",
+        "ts": 1792228197.965523,
+        "kind": "UpdateComputerPhaseChanged",
+        "phase": "prompted"
+      }
+    ],
+    "audit": {
+      "id": "a46c5433-42c4-4ded-875d-96e8eb6592db",
+      "tool_name": "host_ui:request_update_computer",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "Update Computer prompted (not Reset); two-step required",
+      "artifact_path": "/workspace/docs/qa/artifacts/cm-0806-session-jar",
+      "ts": 1792228197.9655268
+    }
+  },
+  "state": {
+    "settingsOpen": true,
+    "entry": "command-palette",
+    "anchor": "update-computer",
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "Computer",
+    "updateComputerPhase": "prompted",
+    "updateComputerPrompt": "Update",
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "webhookPanel": {
+      "open": false,
+      "url": null,
+      "key_present": false,
+      "key_masked": null,
+      "last_copy": null
+    },
+    "devicePermissionCard": {
+      "open": false,
+      "machine_id": null,
+      "tool_name": null,
+      "permission_label": null,
+      "shown": false
+    },
+    "chatMessages": [
+      {
+        "id": "msg-h5-1",
+        "role": "assistant",
+        "text": "H5 sample message for ReactToMessage pill.",
+        "reactions": {}
+      }
+    ],
+    "reactPill": {
+      "message_id": null,
+      "emoji": null,
+      "visible": false
+    },
+    "endTurnLeftPill": false,
+    "mathMermaid": {
+      "open": false,
+      "math_tex": null,
+      "math_rendered": false,
+      "mermaid_src": null,
+      "mermaid_rendered": false
+    },
+    "cursorAgentCard": {
+      "open": false,
+      "agent_id": null,
+      "url": null,
+      "shown": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "anchorViewport": null,
+    "rev": 1
+  },
+  "events": {
+    "events": [
+      {
+        "id": "ab340f72-cc31-49d1-932b-8e4644920fe1",
+        "ts": 1792228197.9655101,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "c74884a9-51c2-4369-abc6-0de9dd76b04c",
+        "ts": 1792228197.9655182,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "0a22ffd0-3a33-4ed5-a2f8-09da5ec72406",
+        "ts": 1792228197.965523,
+        "kind": "UpdateComputerPhaseChanged",
+        "phase": "prompted"
+      }
+    ]
+  }
+}

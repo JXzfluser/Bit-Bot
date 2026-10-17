@@ -1,0 +1,3 @@
+request_url=http://127.0.0.1:52393/callback?code=9WDA6Hvii-k4XKrmq2bC9HguvcEGHTwR&state=UPIWH7wgeYlygvWS
+http_status=200
+body=oauth callback ok

@@ -1,0 +1,1 @@
+{"id": "h4-cm-2109-oauth-sandbox", "tool_name": "h4_probe:CM-2109", "ok": true, "detail": "provider=finance before=NeedsAuth after=Ready callback=True; i_claimed=false", "artifact_path": "/workspace/docs/qa/artifacts/cm-2109-finance-oauth"}

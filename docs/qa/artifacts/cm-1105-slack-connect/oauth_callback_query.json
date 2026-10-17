@@ -1,0 +1,9 @@
+{
+  "observed": true,
+  "raw_path": "/callback?code=HDkGfp6wwPsqem-gXpKgG0f30sepIjvi&state=7Cf0oAabXWqjp222",
+  "has_code": true,
+  "state_matches": true,
+  "state": "7Cf0oAabXWqjp222",
+  "error": null,
+  "code_prefix": "HDkGfp6w"
+}

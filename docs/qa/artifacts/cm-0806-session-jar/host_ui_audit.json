@@ -1,0 +1,58 @@
+{
+  "spans": [
+    {
+      "id": "a46c5433-42c4-4ded-875d-96e8eb6592db",
+      "tool_name": "host_ui:request_update_computer",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "Update Computer prompted (not Reset); two-step required",
+      "artifact_path": null,
+      "ts": 1792228197.9655268
+    },
+    {
+      "id": "42379c32-6b23-494a-ad17-2291de050663",
+      "tool_name": "host_ui:report_anchor_viewport",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "anchor=update-computer scrollTop=432 highlighted=True inViewport=True rect={'x': 265, 'y': 99.578125, 'width': 718, 'height': 255.328125, 'top': 99.578125, 'left': 265, 'bottom': 354.90625, 'right': 983}",
+      "artifact_path": null,
+      "ts": 1792228197.9864979
+    },
+    {
+      "id": "ce58f1ec-18fa-4190-8941-be0d722855f2",
+      "tool_name": "host_ui:confirm_update_computer_step",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "awaiting-second-confirm (Click Again to Confirm)",
+      "artifact_path": null,
+      "ts": 1792228198.441915
+    },
+    {
+      "id": "28da34ab-dcdb-4306-99eb-633f26c1fd84",
+      "tool_name": "host_ui:report_anchor_viewport",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "anchor=update-computer scrollTop=432 highlighted=True inViewport=True rect={'x': 265, 'y': 99.578125, 'width': 718, 'height': 255.328125, 'top': 99.578125, 'left': 265, 'bottom': 354.90625, 'right': 983}",
+      "artifact_path": null,
+      "ts": 1792228198.583321
+    },
+    {
+      "id": "7dfc7ed7-4700-44fb-ab26-aa0dedb14111",
+      "tool_name": "host_ui:confirm_update_computer_step",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "completed (smoke should prefer cancel)",
+      "artifact_path": null,
+      "ts": 1792228198.9222934
+    },
+    {
+      "id": "1965dbb6-1a37-4c02-b02e-cf149f13c115",
+      "tool_name": "host_ui:report_anchor_viewport",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "anchor=update-computer scrollTop=432 highlighted=True inViewport=True rect={'x': 265, 'y': 99.578125, 'width': 718, 'height': 255.328125, 'top': 99.578125, 'left': 265, 'bottom': 354.90625, 'right': 983}",
+      "artifact_path": null,
+      "ts": 1792228199.0341935
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+http_status=302
+location=http://127.0.0.1:52393/callback?code=9WDA6Hvii-k4XKrmq2bC9HguvcEGHTwR&state=UPIWH7wgeYlygvWS
+body_bytes=0

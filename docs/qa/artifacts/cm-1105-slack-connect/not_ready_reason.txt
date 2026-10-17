@@ -1,4 +1,0 @@
-NeedsAuth: SLACK_OAUTH_SANDBOX is unset.
-H4 smoke refuses to stub authenticate→Connected/Ready or invent refresh tokens.
-Provide a sandbox OAuth account via SLACK_OAUTH_SANDBOX=1 (or a real token harness) and re-run.
-Namespace remains NeedsAuth. i_claimed=false.

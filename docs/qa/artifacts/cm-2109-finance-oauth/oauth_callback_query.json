@@ -1,0 +1,9 @@
+{
+  "observed": true,
+  "raw_path": "/callback?code=9WDA6Hvii-k4XKrmq2bC9HguvcEGHTwR&state=UPIWH7wgeYlygvWS",
+  "has_code": true,
+  "state_matches": true,
+  "state": "UPIWH7wgeYlygvWS",
+  "error": null,
+  "code_prefix": "9WDA6Hvi"
+}

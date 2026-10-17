@@ -1,0 +1,4 @@
+op=list_accounts
+ok=False
+msg=REFUSED:list_accounts:needsAuth
+namespace=NeedsAuth

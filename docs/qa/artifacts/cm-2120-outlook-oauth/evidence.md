@@ -5,9 +5,9 @@
 | CM | CM-2120 |
 | evidence_cmd | `bash /workspace/bitbot/scripts/host_h4_smoke.sh cm-2120` |
 | artifact_dir | `/workspace/docs/qa/artifacts/cm-2120-outlook-oauth` |
-| env | box Live Host; USER_IANA=Asia/Shanghai; stamp_utc=20261017T084026Z; shared_cdp_9223=untouched |
-| assert | NeedsAuth without stubbing Connected; OUTLOOK_OAUTH_SANDBOX sandbox required for I; i_claimed=false |
-| status | NOT_READY |
+| env | box Live Host; USER_IANA=Asia/Shanghai; stamp_utc=20261017T090951Z; shared_cdp_9223=untouched |
+| assert | NeedsAuth→sandbox OAuth HTTP code flow→Ready; callback observed; no refresh token; i_claimed=false |
+| status | READY_FOR_I_REVIEW |
 | i_claimed | false |
 | note | Produced by scripts/host_h4_smoke.sh — **not** HostAbi::mock() / in-process fake MCP. Bit验证 decides I-PASS. |
 

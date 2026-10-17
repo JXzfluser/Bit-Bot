@@ -1,0 +1,92 @@
+{
+  "events": [
+    {
+      "id": "ab340f72-cc31-49d1-932b-8e4644920fe1",
+      "ts": 1792228197.9655101,
+      "kind": "SettingsOpened",
+      "entry": "command-palette",
+      "anchor": "update-computer"
+    },
+    {
+      "id": "c74884a9-51c2-4369-abc6-0de9dd76b04c",
+      "ts": 1792228197.9655182,
+      "kind": "SettingsAnchorVisible",
+      "anchor": "update-computer"
+    },
+    {
+      "id": "0a22ffd0-3a33-4ed5-a2f8-09da5ec72406",
+      "ts": 1792228197.965523,
+      "kind": "UpdateComputerPhaseChanged",
+      "phase": "prompted"
+    },
+    {
+      "id": "8a29f0e1-0cb2-49bf-aea0-bae01388dd9f",
+      "ts": 1792228197.9864802,
+      "kind": "SettingsAnchorViewportReported",
+      "anchor_id": "update-computer",
+      "scrollTop": 432,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.578125,
+        "width": 718,
+        "height": 255.328125,
+        "top": 99.578125,
+        "left": 265,
+        "bottom": 354.90625,
+        "right": 983
+      },
+      "highlighted": true,
+      "inViewport": true
+    },
+    {
+      "id": "bde22854-dcf0-421a-b8dc-7a67e674905b",
+      "ts": 1792228198.4419086,
+      "kind": "UpdateComputerPhaseChanged",
+      "phase": "awaiting-second-confirm"
+    },
+    {
+      "id": "3cdf0817-b518-4518-bade-b269e2e1fe26",
+      "ts": 1792228198.5833046,
+      "kind": "SettingsAnchorViewportReported",
+      "anchor_id": "update-computer",
+      "scrollTop": 432,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.578125,
+        "width": 718,
+        "height": 255.328125,
+        "top": 99.578125,
+        "left": 265,
+        "bottom": 354.90625,
+        "right": 983
+      },
+      "highlighted": true,
+      "inViewport": true
+    },
+    {
+      "id": "66c49f3d-5ed8-444b-b67d-d6abc5d3f06c",
+      "ts": 1792228198.922287,
+      "kind": "UpdateComputerPhaseChanged",
+      "phase": "completed"
+    },
+    {
+      "id": "89d7f65e-16e6-4a42-bc0a-d73425db5eda",
+      "ts": 1792228199.0341783,
+      "kind": "SettingsAnchorViewportReported",
+      "anchor_id": "update-computer",
+      "scrollTop": 432,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.578125,
+        "width": 718,
+        "height": 255.328125,
+        "top": 99.578125,
+        "left": 265,
+        "bottom": 354.90625,
+        "right": 983
+      },
+      "highlighted": true,
+      "inViewport": true
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+{"ts": 1792228186.5396252, "kind": "authorize_shown", "auth_req": "20dwTG7ir6olApLjefL5fg", "provider": "slack", "redirect_uri": "http://127.0.0.1:53447/callback"}
+{"ts": 1792228186.559111, "kind": "authorize_allowed", "provider": "slack", "code_prefix": "HDkGfp6w"}
+{"ts": 1792228186.5616071, "kind": "token_issued", "provider": "slack", "access_prefix": "atk_omD67V"}

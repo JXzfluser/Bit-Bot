@@ -1,0 +1,328 @@
+{
+  "result": {
+    "state": {
+      "settingsOpen": true,
+      "entry": "command-palette",
+      "anchor": "update-computer",
+      "deletePhase": null,
+      "deleteAgent": null,
+      "contextMenuOpen": false,
+      "contextMenuAgent": null,
+      "activeTab": "Computer",
+      "updateComputerPhase": "completed",
+      "updateComputerPrompt": null,
+      "localExecutionEnabled": true,
+      "lastMachineCall": null,
+      "gateLog": [],
+      "agents": [
+        {
+          "id": "h2-throwaway-agent",
+          "name": "H2 Throwaway Agent",
+          "hidden": false
+        },
+        {
+          "id": "demo-agent",
+          "name": "Demo Agent",
+          "hidden": false
+        }
+      ],
+      "activeChat": null,
+      "activeChatHidden": false,
+      "infoPanel": {
+        "open": false,
+        "agentId": null,
+        "view": null,
+        "sections": [],
+        "members": []
+      },
+      "notify": {},
+      "permissionGuide": {
+        "open": false,
+        "kind": null,
+        "namespace": null,
+        "anchor": null,
+        "connected": false,
+        "status": null,
+        "followed": false
+      },
+      "webhookPanel": {
+        "open": false,
+        "url": null,
+        "key_present": false,
+        "key_masked": null,
+        "last_copy": null
+      },
+      "devicePermissionCard": {
+        "open": false,
+        "machine_id": null,
+        "tool_name": null,
+        "permission_label": null,
+        "shown": false
+      },
+      "chatMessages": [
+        {
+          "id": "msg-h5-1",
+          "role": "assistant",
+          "text": "H5 sample message for ReactToMessage pill.",
+          "reactions": {}
+        }
+      ],
+      "reactPill": {
+        "message_id": null,
+        "emoji": null,
+        "visible": false
+      },
+      "endTurnLeftPill": false,
+      "mathMermaid": {
+        "open": false,
+        "math_tex": null,
+        "math_rendered": false,
+        "mermaid_src": null,
+        "mermaid_rendered": false
+      },
+      "cursorAgentCard": {
+        "open": false,
+        "agent_id": null,
+        "url": null,
+        "shown": false
+      },
+      "surface": "bit-bot-host-ui",
+      "i_claimed": false,
+      "anchorViewport": {
+        "anchor_id": "update-computer",
+        "scrollTop": 432,
+        "boundingRect": {
+          "x": 265,
+          "y": 99.578125,
+          "width": 718,
+          "height": 255.328125,
+          "top": 99.578125,
+          "left": 265,
+          "bottom": 354.90625,
+          "right": 983
+        },
+        "highlighted": true,
+        "viewport": {
+          "top": 87.296875,
+          "left": 240,
+          "bottom": 712,
+          "right": 1279,
+          "width": 1039,
+          "height": 624.703125,
+          "scrollHeight": 1503,
+          "clientHeight": 625
+        },
+        "inViewport": true,
+        "ts": 1792228198.5832791
+      },
+      "rev": 3
+    },
+    "event_tail": [
+      {
+        "id": "66c49f3d-5ed8-444b-b67d-d6abc5d3f06c",
+        "ts": 1792228198.922287,
+        "kind": "UpdateComputerPhaseChanged",
+        "phase": "completed"
+      }
+    ],
+    "audit": {
+      "id": "7dfc7ed7-4700-44fb-ab26-aa0dedb14111",
+      "tool_name": "host_ui:confirm_update_computer_step",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "completed (smoke should prefer cancel)",
+      "artifact_path": "/workspace/docs/qa/artifacts/cm-0806-session-jar",
+      "ts": 1792228198.9222934
+    }
+  },
+  "state": {
+    "settingsOpen": true,
+    "entry": "command-palette",
+    "anchor": "update-computer",
+    "deletePhase": null,
+    "deleteAgent": null,
+    "contextMenuOpen": false,
+    "contextMenuAgent": null,
+    "activeTab": "Computer",
+    "updateComputerPhase": "completed",
+    "updateComputerPrompt": null,
+    "localExecutionEnabled": true,
+    "lastMachineCall": null,
+    "gateLog": [],
+    "agents": [
+      {
+        "id": "h2-throwaway-agent",
+        "name": "H2 Throwaway Agent",
+        "hidden": false
+      },
+      {
+        "id": "demo-agent",
+        "name": "Demo Agent",
+        "hidden": false
+      }
+    ],
+    "activeChat": null,
+    "activeChatHidden": false,
+    "infoPanel": {
+      "open": false,
+      "agentId": null,
+      "view": null,
+      "sections": [],
+      "members": []
+    },
+    "notify": {},
+    "permissionGuide": {
+      "open": false,
+      "kind": null,
+      "namespace": null,
+      "anchor": null,
+      "connected": false,
+      "status": null,
+      "followed": false
+    },
+    "webhookPanel": {
+      "open": false,
+      "url": null,
+      "key_present": false,
+      "key_masked": null,
+      "last_copy": null
+    },
+    "devicePermissionCard": {
+      "open": false,
+      "machine_id": null,
+      "tool_name": null,
+      "permission_label": null,
+      "shown": false
+    },
+    "chatMessages": [
+      {
+        "id": "msg-h5-1",
+        "role": "assistant",
+        "text": "H5 sample message for ReactToMessage pill.",
+        "reactions": {}
+      }
+    ],
+    "reactPill": {
+      "message_id": null,
+      "emoji": null,
+      "visible": false
+    },
+    "endTurnLeftPill": false,
+    "mathMermaid": {
+      "open": false,
+      "math_tex": null,
+      "math_rendered": false,
+      "mermaid_src": null,
+      "mermaid_rendered": false
+    },
+    "cursorAgentCard": {
+      "open": false,
+      "agent_id": null,
+      "url": null,
+      "shown": false
+    },
+    "surface": "bit-bot-host-ui",
+    "i_claimed": false,
+    "anchorViewport": {
+      "anchor_id": "update-computer",
+      "scrollTop": 432,
+      "boundingRect": {
+        "x": 265,
+        "y": 99.578125,
+        "width": 718,
+        "height": 255.328125,
+        "top": 99.578125,
+        "left": 265,
+        "bottom": 354.90625,
+        "right": 983
+      },
+      "highlighted": true,
+      "viewport": {
+        "top": 87.296875,
+        "left": 240,
+        "bottom": 712,
+        "right": 1279,
+        "width": 1039,
+        "height": 624.703125,
+        "scrollHeight": 1503,
+        "clientHeight": 625
+      },
+      "inViewport": true,
+      "ts": 1792228198.5832791
+    },
+    "rev": 3
+  },
+  "events": {
+    "events": [
+      {
+        "id": "ab340f72-cc31-49d1-932b-8e4644920fe1",
+        "ts": 1792228197.9655101,
+        "kind": "SettingsOpened",
+        "entry": "command-palette",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "c74884a9-51c2-4369-abc6-0de9dd76b04c",
+        "ts": 1792228197.9655182,
+        "kind": "SettingsAnchorVisible",
+        "anchor": "update-computer"
+      },
+      {
+        "id": "0a22ffd0-3a33-4ed5-a2f8-09da5ec72406",
+        "ts": 1792228197.965523,
+        "kind": "UpdateComputerPhaseChanged",
+        "phase": "prompted"
+      },
+      {
+        "id": "8a29f0e1-0cb2-49bf-aea0-bae01388dd9f",
+        "ts": 1792228197.9864802,
+        "kind": "SettingsAnchorViewportReported",
+        "anchor_id": "update-computer",
+        "scrollTop": 432,
+        "boundingRect": {
+          "x": 265,
+          "y": 99.578125,
+          "width": 718,
+          "height": 255.328125,
+          "top": 99.578125,
+          "left": 265,
+          "bottom": 354.90625,
+          "right": 983
+        },
+        "highlighted": true,
+        "inViewport": true
+      },
+      {
+        "id": "bde22854-dcf0-421a-b8dc-7a67e674905b",
+        "ts": 1792228198.4419086,
+        "kind": "UpdateComputerPhaseChanged",
+        "phase": "awaiting-second-confirm"
+      },
+      {
+        "id": "3cdf0817-b518-4518-bade-b269e2e1fe26",
+        "ts": 1792228198.5833046,
+        "kind": "SettingsAnchorViewportReported",
+        "anchor_id": "update-computer",
+        "scrollTop": 432,
+        "boundingRect": {
+          "x": 265,
+          "y": 99.578125,
+          "width": 718,
+          "height": 255.328125,
+          "top": 99.578125,
+          "left": 265,
+          "bottom": 354.90625,
+          "right": 983
+        },
+        "highlighted": true,
+        "inViewport": true
+      },
+      {
+        "id": "66c49f3d-5ed8-444b-b67d-d6abc5d3f06c",
+        "ts": 1792228198.922287,
+        "kind": "UpdateComputerPhaseChanged",
+        "phase": "completed"
+      }
+    ]
+  }
+}

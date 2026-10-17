@@ -5,14 +5,17 @@
   "env": {
     "USER_IANA": "Asia/Shanghai",
     "shared_cdp_9223": "untouched",
-    "FINANCE_OAUTH_SANDBOX": false
+    "H4_OAUTH_SANDBOX": true,
+    "FINANCE_OAUTH_SANDBOX": true
   },
   "oauth_provider": "finance",
   "namespace_before": "NeedsAuth",
-  "namespace_after": "NeedsAuth",
-  "oauth_callback_observed": false,
+  "namespace_after": "Ready",
+  "oauth_callback_observed": true,
   "stub_authenticate": false,
+  "http_redirect_observed": true,
+  "refresh_token_in_artifacts": false,
   "i_claimed": false,
-  "status": "NOT_READY",
-  "assert": "Honest NOT_READY without sandbox OAuth; no stub Connected/Ready; no invented refresh tokens"
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "NeedsAuth\u2192real HTTP authorize/confirm/callback/token\u2192Ready; write refused pre-auth; post-auth harmless op; no refresh token; i_claimed=false"
 }
