@@ -21,6 +21,8 @@ agent-tools/
 /data/**/*.json
 /data/**/*.jsonl
 /data/**/*.ics
+/data/**/*.eml
+/data/**/*.html
 /data/voice/media/
 !/data/**/.gitkeep
 /data/journal/computer-use/

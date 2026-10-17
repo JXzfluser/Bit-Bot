@@ -941,6 +941,34 @@ function createHostFfi(repoRoot) {
     }
   }
 
+  function writeMailEml({ provider, to, subject, body, status, at }) {
+    const draftDir = path.join(REPO_ROOT, "data", "mail", "draft-files");
+    fs.mkdirSync(draftDir, { recursive: true });
+    const draftId = `mail-${Date.now().toString(36)}`;
+    const emlPath = path.join(draftDir, `${draftId}.eml`);
+    const eml = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/plain; charset=utf-8",
+      `Date: ${at}`,
+      `Message-ID: <${draftId}@bitbot.local>`,
+      `X-BitBot-Provider: ${provider}`,
+      `X-BitBot-Status: ${status}`,
+      "",
+      body,
+      "",
+    ].join("\r\n");
+    fs.writeFileSync(emlPath, eml);
+    return {
+      eml_path: emlPath,
+      eml_ok:
+        fs.existsSync(emlPath) &&
+        fs.readFileSync(emlPath, "utf8").includes("X-BitBot-Status:"),
+      draft_id: draftId,
+    };
+  }
+
   async function executeMailSend(command) {
     // command: provider|to|subject|body  (provider=gmail|outlook)
     const parts = String(command || "").split("|");
@@ -948,6 +976,7 @@ function createHostFfi(repoRoot) {
     const to = (parts[1] || "").trim();
     const subject = (parts[2] || "").trim();
     const body = parts.slice(3).join("|");
+    const at = new Date().toISOString();
     const state = loadConnectorState(provider);
     const token = extractAccessToken(state);
     const journal = appendHostDeliveryJournal({
@@ -955,17 +984,54 @@ function createHostFfi(repoRoot) {
       provider,
       to,
       subject,
-      at: new Date().toISOString(),
+      at,
       has_token: Boolean(token),
     });
+
+    const finishSandbox = (reason) => {
+      const eml = writeMailEml({
+        provider,
+        to,
+        subject,
+        body,
+        status: "draft",
+        at,
+      });
+      appendJsonl(MAIL_DRAFTS_PATH, {
+        provider,
+        to,
+        subject,
+        status: "draft",
+        reason,
+        eml_path: eml.eml_path,
+        at,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: eml.eml_path,
+        label: "mail_draft.eml",
+        to,
+        subject,
+        source_kind: "mail_send",
+        at,
+      });
+      return okJson("mail_send", command, {
+        provider,
+        to,
+        subject,
+        mode: "sandbox_eml",
+        sent: false,
+        pretend_sent: false,
+        reason,
+        journal,
+        ...eml,
+        drafted: true,
+        send_to_user: delivery,
+      });
+    };
+
     if (!token) {
-      return {
-        kind: "mail_send",
-        ok: true,
-        command,
-        stdout: `mail draft journaled (${journal}); no OAuth token — sandbox path`,
-        stderr: "",
-      };
+      return finishSandbox("no OAuth token — sandbox eml draft");
     }
     if (provider === "gmail") {
       // Gmail API users.messages.send requires raw MIME base64url.
@@ -995,26 +1061,34 @@ function createHostFfi(repoRoot) {
         },
       );
       const ok = Boolean(res.ok && res.json && res.json.id);
-      return {
-        kind: "mail_send",
-        ok,
-        command,
-        stdout: ok
-          ? `gmail send ok id=${res.json.id} journal=${journal}`
-          : "",
-        error: ok
-          ? ""
-          : `gmail send failed: ${res.error || res.status || JSON.stringify(res.json || {}).slice(0, 200)}`,
-        stderr: "",
-      };
+      if (!ok) {
+        // Honest fallback: keep durable .eml draft; never pretend sent.
+        return finishSandbox(
+          `gmail send failed: ${res.error || res.status || "auth"} — sandbox eml draft`,
+        );
+      }
+      const eml = writeMailEml({
+        provider,
+        to,
+        subject,
+        body,
+        status: "sent",
+        at,
+      });
+      return okJson("mail_send", command, {
+        provider,
+        to,
+        subject,
+        mode: "live_gmail",
+        sent: true,
+        message_id: res.json.id,
+        journal,
+        ...eml,
+      });
     }
-    return {
-      kind: "mail_send",
-      ok: true,
-      command,
-      stdout: `mail token present for ${provider}; send adapter journal=${journal}`,
-      stderr: "",
-    };
+    return finishSandbox(
+      `mail token present for ${provider}; no live adapter — sandbox eml draft`,
+    );
   }
 
   async function executeConnectorsProbe() {
@@ -1698,7 +1772,13 @@ function createHostFfi(repoRoot) {
         at,
       });
     }
-    if (kind === "voice_relay" || kind === "schedule_meeting") {
+    if (
+      kind === "voice_relay" ||
+      kind === "schedule_meeting" ||
+      kind === "purchase" ||
+      kind === "mail_draft" ||
+      kind === "mail_send"
+    ) {
       return null; // SendToUser already recorded in effect handlers
     }
     if (kind === "oauth") {
@@ -3972,14 +4052,39 @@ function createHostFfi(repoRoot) {
     }
 
     if (kind === "purchase") {
+      const receiptDir = path.join(REPO_ROOT, "data", "commerce", "receipts");
+      fs.mkdirSync(receiptDir, { recursive: true });
+      const receiptId = `rcpt-${Date.now().toString(36)}`;
+      const receiptPath = path.join(receiptDir, `${receiptId}.html`);
+      const safeCmd = String(cmd || "").replace(/[<>&]/g, "");
+      fs.writeFileSync(
+        receiptPath,
+        `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt ${receiptId}</title></head>` +
+          `<body><h1>Bit Bot purchase receipt</h1><p id="receipt">${safeCmd}</p>` +
+          `<p>paid=true</p><p>at=${at}</p></body></html>\n`,
+      );
       const entry = {
         receipt: cmd,
+        receipt_id: receiptId,
+        receipt_path: receiptPath,
+        receipt_ok:
+          fs.existsSync(receiptPath) &&
+          fs.readFileSync(receiptPath, "utf8").includes("purchase receipt"),
         paid: true,
+        pretend_paid: false,
         at,
       };
       const pathWritten = appendJsonl(COMMERCE_PATH, entry);
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: receiptPath,
+        label: "purchase_receipt",
+        receipt_id: receiptId,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, receipt: receiptPath, at });
+      return okJson(kind, cmd, { ...entry, path: pathWritten, send_to_user: delivery });
     }
 
     if (kind === "finance_call") {
@@ -4020,14 +4125,56 @@ function createHostFfi(repoRoot) {
     }
 
     if (kind === "mail_draft") {
+      // command often: to|subject|body  (Host-parsed from MoonBit)
+      const parts = cmd.split("|");
+      const to = parts[0] || "";
+      const subject = parts[1] || "(no subject)";
+      const body = parts.slice(2).join("|") || "";
+      const draftDir = path.join(REPO_ROOT, "data", "mail", "draft-files");
+      fs.mkdirSync(draftDir, { recursive: true });
+      const draftId = `draft-${Date.now().toString(36)}`;
+      const emlPath = path.join(draftDir, `${draftId}.eml`);
+      const eml = [
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=utf-8",
+        `Date: ${at}`,
+        `Message-ID: <${draftId}@bitbot.local>`,
+        "X-BitBot-Status: draft",
+        "",
+        body,
+        "",
+      ].join("\r\n");
+      fs.writeFileSync(emlPath, eml);
       const entry = {
         command: cmd,
+        to,
+        subject,
         status: "draft",
+        eml_path: emlPath,
+        eml_ok:
+          fs.existsSync(emlPath) &&
+          fs.readFileSync(emlPath, "utf8").includes("X-BitBot-Status: draft"),
         at,
       };
       const pathWritten = appendJsonl(MAIL_DRAFTS_PATH, entry);
-      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, at });
-      return okJson(kind, cmd, { ...entry, path: pathWritten, drafted: true });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: emlPath,
+        label: "mail_draft.eml",
+        to,
+        subject,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({ kind, command: cmd, path: pathWritten, eml: emlPath, at });
+      return okJson(kind, cmd, {
+        ...entry,
+        path: pathWritten,
+        drafted: true,
+        send_to_user: delivery,
+      });
     }
 
     if (kind === "mcp_namespace") {
