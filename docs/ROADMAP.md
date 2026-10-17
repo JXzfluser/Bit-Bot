@@ -59,7 +59,8 @@
 - [x] Grok-like Desktop chrome（agents sidebar + machines panel + MoonBit transcript）
 - [x] Packaged installer / deeper Desktop Host FFI（Shell/FS/network execute loop）— `pack-desktop.sh` + shared Host FFI execute loop
 - [x] iOS / Android beyond stub — `hosts/{ios,android}/BitBotHost` native shells + `mobile_host` HostAbi
-- [ ] App Store / Play Store signed packaging (signing still open)
+- [x] Mobile pack staging — `scripts/pack-mobile.sh` stages BitBotHost + store metadata
+- [ ] App Store / Play Store signed packaging (Apple/Play certificates still required)
 
 ## M7 — Hardening
 - [x] 全矩阵验收清零 P0 gaps（U=234；I=234）
@@ -93,7 +94,9 @@
 - [x] Product turns: create_routine / mcp_discover / mcp_call / spawn_subagent / computer_use / teams_send / device_tools / load_skill / voice_start|relay|end
 - [x] `hosts/mobile_host` — multi-end phone Host process (deviceLocalTools)
 - [x] Native Host project trees: `hosts/ios/BitBotHost` (SwiftUI) + `hosts/android/BitBotHost` (Compose) sharing MoonBit brain
-- [ ] App Store / Play Store signed packaging (signing / store submit still open)
+- [x] `scripts/pack-mobile.sh` — stages iOS/Android BitBotHost + store-packaging.json / SIGNING.md
+- [ ] App Store / Play Store signed packaging (Apple/Play certificates / store submit still open)
 - [x] Teammates: create_teammate / room_turn / send_to_agent on product path
 - [x] Cloud / commerce / vertical: launch_cloud_agent / deliver_cloud_artifact / schedule_meeting / shop_retail / purchase_item
+- [x] Vertical+connectors batch: travel_book / order_food / meeting_chat / finance_connect|call / fill_credential / cold_mail / personal_slack_dm / job_search
 - [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit

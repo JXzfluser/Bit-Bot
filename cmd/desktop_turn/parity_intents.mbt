@@ -131,6 +131,160 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(PurchaseItem(item~, amount_cents~))
     }
   }
+  // CM-1804 travel vertical
+  if low.has_prefix("book flight ") ||
+      low.has_prefix("book hotel ") ||
+      low.has_prefix("rideshare ") ||
+      low.has_prefix("travel ") {
+    let host = if low.has_prefix("book flight ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("book hotel ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("rideshare ") {
+      trimmed[10:].trim().to_owned()
+    } else {
+      trimmed[7:].trim().to_owned()
+    }
+    if host != "" {
+      return Some(TravelBook(url_or_host=host))
+    }
+  }
+  // CM-1805 food ordering
+  if low.has_prefix("order food ") ||
+      low.has_prefix("reserve table ") ||
+      low.has_prefix("food order ") {
+    let host = if low.has_prefix("order food ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("reserve table ") {
+      trimmed[14:].trim().to_owned()
+    } else {
+      trimmed[11:].trim().to_owned()
+    }
+    if host != "" {
+      return Some(OrderFood(url_or_host=host))
+    }
+  }
+  // CM-2153 meetings live chat
+  if low.has_prefix("meeting chat ") || low.has_prefix("live meeting send ") {
+    let rest = if low.has_prefix("meeting chat ") {
+      trimmed[13:].to_owned()
+    } else {
+      trimmed[18:].to_owned()
+    }
+    let direct = low.contains(" direct") || rest.to_lower().contains("direct=1")
+    let body = match extract_kv(rest, "body") {
+      Some(v) => v
+      None =>
+        match extract_kv(rest, "direct") {
+          Some(_) => {
+            // body after dropping direct= flag via split
+            match split_once(rest.trim().to_owned(), " ") {
+              Some((_, t)) => t.trim().to_owned()
+              None => rest.trim().to_owned()
+            }
+          }
+          None => rest.trim().to_owned()
+        }
+    }
+    if body != "" && body.to_lower() != "direct=1" {
+      return Some(MeetingChat(body~, direct~))
+    }
+  }
+  if low == "connect finance" ||
+      low == "finance connect" ||
+      low == "authenticate finance" {
+    return Some(FinanceConnect)
+  }
+  if low.has_prefix("finance ") || low.has_prefix("finance call ") {
+    let tool = if low.has_prefix("finance call ") {
+      trimmed[13:].trim().to_owned()
+    } else {
+      trimmed[8:].trim().to_owned()
+    }
+    if tool != "" && tool != "connect" {
+      return Some(FinanceCall(tool~))
+    }
+  }
+  if low.has_prefix("fill credential ") || low.has_prefix("autofill login ") {
+    let rest = if low.has_prefix("fill credential ") {
+      trimmed[16:].to_owned()
+    } else {
+      trimmed[15:].to_owned()
+    }
+    let domain = match extract_kv(rest, "domain") {
+      Some(v) => v
+      None => rest.trim().to_owned()
+    }
+    if domain != "" {
+      return Some(FillCredential(domain~))
+    }
+  }
+  if low.has_prefix("cold email ") ||
+      low.has_prefix("cold mail ") ||
+      low.has_prefix("unsolicited mail ") {
+    let rest = if low.has_prefix("cold email ") {
+      trimmed[11:].to_owned()
+    } else if low.has_prefix("cold mail ") {
+      trimmed[10:].to_owned()
+    } else {
+      trimmed[17:].to_owned()
+    }
+    let to_ = match extract_kv(rest, "to") {
+      Some(v) => v
+      None => ""
+    }
+    let subject = match extract_kv(rest, "subject") {
+      Some(v) => v
+      None => "hello"
+    }
+    let body = match extract_kv(rest, "body") {
+      Some(v) => v
+      None => "outreach"
+    }
+    let unsubscribe = match extract_kv(rest, "unsubscribe") {
+      Some(v) => v
+      None => "mailto:unsub@example.com"
+    }
+    if to_ != "" {
+      return Some(ColdMail(to_~, subject~, body~, unsubscribe~))
+    }
+  }
+  if low.has_prefix("personal slack dm ") || low.has_prefix("personal slack ") {
+    let rest = if low.has_prefix("personal slack dm ") {
+      trimmed[18:].to_owned()
+    } else {
+      trimmed[15:].to_owned()
+    }
+    let owner_id = match extract_kv(rest, "owner") {
+      Some(v) => v
+      None => "Uowner"
+    }
+    let text = match extract_kv(rest, "text") {
+      Some(v) => v
+      None =>
+        match split_once(rest.trim().to_owned(), " :: ") {
+          Some((_, t)) => t.trim().to_owned()
+          None => rest.trim().to_owned()
+        }
+    }
+    if text != "" {
+      return Some(PersonalSlackDm(owner_id~, text~))
+    }
+  }
+  if low.has_prefix("job search ") ||
+      low.has_prefix("linkedin search ") ||
+      low.has_prefix("find jobs ") {
+    let query = if low.has_prefix("job search ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("linkedin search ") {
+      trimmed[16:].trim().to_owned()
+    } else {
+      trimmed[10:].trim().to_owned()
+    }
+    if query != "" {
+      return Some(JobSearch(query~))
+    }
+  }
   if low.has_prefix("create routine ") || low.has_prefix("schedule routine ") {
     let rest = if low.has_prefix("create routine ") {
       trimmed[15:].to_owned()

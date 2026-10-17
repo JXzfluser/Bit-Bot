@@ -85,6 +85,15 @@ pub(all) enum TurnIntent {
   ScheduleMeeting(title~ : String, when_desc~ : String)
   ShopRetail(url_or_host~ : String)
   PurchaseItem(item~ : String, amount_cents~ : Int32)
+  TravelBook(url_or_host~ : String)
+  OrderFood(url_or_host~ : String)
+  MeetingChat(body~ : String, direct~ : Bool)
+  FinanceConnect
+  FinanceCall(tool~ : String)
+  FillCredential(domain~ : String)
+  ColdMail(to_~ : String, subject~ : String, body~ : String, unsubscribe~ : String)
+  PersonalSlackDm(owner_id~ : String, text~ : String)
+  JobSearch(query~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -128,6 +137,15 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     ScheduleMeeting(_) => "schedule_meeting"
     ShopRetail(_) => "shop_retail"
     PurchaseItem(_) => "purchase_item"
+    TravelBook(_) => "travel_book"
+    OrderFood(_) => "order_food"
+    MeetingChat(_) => "meeting_chat"
+    FinanceConnect => "finance_connect"
+    FinanceCall(_) => "finance_call"
+    FillCredential(_) => "fill_credential"
+    ColdMail(_) => "cold_mail"
+    PersonalSlackDm(_) => "personal_slack_dm"
+    JobSearch(_) => "job_search"
     HostContinue => "host_continue"
   }
 }
@@ -539,6 +557,11 @@ fn extract_kv(rest : String, key : String) -> String? {
         " title=",
         " when=",
         " artifact=",
+        " domain=",
+        " unsubscribe=",
+        " owner=",
+        " text=",
+        " direct=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -2090,6 +2113,268 @@ pub fn run_desktop_turn(
               )
             }
           }
+        }
+      }
+    }
+    TravelBook(url_or_host~) => {
+      match @skills.dispatch_travel_playbook(url_or_host) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok((vertical, snip)) => {
+          let effect : DesktopEffect = {
+            kind: "computer_use",
+            command: "travel:" +
+            vertical.skill_name() +
+            ":" +
+            snip.playbook_name +
+            " :: " +
+            snip.child_task_prompt,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Travel «" +
+            vertical.skill_name() +
+            "» playbook «" +
+            snip.playbook_name +
+            "» dispatched (CM-1804). Host runs computerUse child.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    OrderFood(url_or_host~) => {
+      match @skills.dispatch_food_ordering_playbook(url_or_host) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(snip) => {
+          let effect : DesktopEffect = {
+            kind: "computer_use",
+            command: "food:" +
+            snip.playbook_name +
+            " :: " +
+            snip.child_task_prompt,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Food-ordering playbook «" +
+            snip.playbook_name +
+            "» dispatched (CM-1805).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    MeetingChat(body~, direct~) => {
+      match @skills.plan_meetings_live_chat_outbound(
+        skill_loaded=true,
+        explicit_allow_direct=direct,
+        is_live_meeting_chat=true,
+        body~,
+      ) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(mode) => {
+          let (kind, reply) = match mode {
+            @channels.DirectSend =>
+              ("channel_send", "Meeting chat DirectSend planned (CM-2153).")
+            @channels.DraftCard =>
+              ("mail_draft", "Meeting chat DraftCard planned (CM-2153).")
+          }
+          let effect : DesktopEffect = {
+            kind: kind,
+            command: "meeting_chat :: " + body,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            reply,
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    FinanceConnect => {
+      let fin = @connectors.FinanceConnector::new()
+      match fin.authenticate() {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(_) => {
+          let effect : DesktopEffect = {
+            kind: "oauth",
+            command: "user-Finance",
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Finance connector authenticated (CM-2109). Host completes live OAuth.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    FinanceCall(tool~) => {
+      let fin = @connectors.FinanceConnector::new()
+      fin.seed_stub_tools()
+      let _ = fin.authenticate()
+      match fin.call_tool(name=tool) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(out) => {
+          let effect : DesktopEffect = {
+            kind: "finance_call",
+            command: tool + "|" + out,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Finance tool «" + tool + "» planned (CM-2109). Host executes live call.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    FillCredential(domain~) => {
+      let store = @security.CredentialStore::new()
+      // Seed vault-handle secret (never echoed to assistant_view).
+      store.save(
+        id="cred-desktop",
+        label="saved login",
+        domain~,
+        username="user",
+        secret="vault:secret-ref",
+      )
+      match store.fill_credential_request(domain~) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(fill) => {
+          let effect : DesktopEffect = {
+            kind: "credential_fill",
+            command: fill.fill_handle + "|" + fill.domain,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Credential fill planned for " +
+            fill.domain +
+            " handle=" +
+            fill.fill_handle +
+            " (CM-2129; secret stays in Host vault).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    ColdMail(to_~, subject~, body~, unsubscribe~) => {
+      let plan = @mail.UnsolicitedMailPlan::cold(
+        to_,
+        subject~,
+        body~,
+        unsubscribe~,
+      )
+      match @mail.plan_unsolicited_send(plan, via_card=false) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(msg) => {
+          match gate_consequential(
+            trimmed,
+            turn_id,
+            intent,
+            ctx,
+            @security.ExternalSend,
+            "cold mail to " + to_,
+            irreversible=false,
+          ) {
+            Some(gated) => gated
+            None => {
+              let effect : DesktopEffect = {
+                kind: "mail_send",
+                command: "cold|" + to_ + "|" + subject + "|" + body + "|" + unsubscribe,
+                needs_host_ffi: true,
+              }
+              deliver_ok(
+                trimmed,
+                turn_id,
+                msg + " (CM-1009). Host mail_send executes.",
+                intent,
+                ctx~,
+                effects=[effect],
+                needs_host_ffi=true,
+              )
+            }
+          }
+        }
+      }
+    }
+    PersonalSlackDm(owner_id~, text~) => {
+      let bot = @channels.PersonalSlackBot::new(owner_user_id=owner_id)
+      let dm = @channels.parse_channel_address(bot.owner_dm_address())
+      match bot.try_send(dm, text~) {
+        @channels.RefusedSharedChannel(hint~) =>
+          fail_turn(trimmed, turn_id, intent, hint, ctx, assistant=hint)
+        @channels.SentDm(owner_id~, text~) => {
+          let effect : DesktopEffect = {
+            kind: "channel_send",
+            command: "slack:" + owner_id + " :: " + text,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Personal Slack DM planned to owner (CM-1103).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+            channel_delivery="external:slack:" + owner_id,
+          )
+        }
+      }
+    }
+    JobSearch(query~) => {
+      let host = @skills.JobSearchHost::mock()
+      match host.run_linkedin_readonly_search(query~) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(res) => {
+          let effect : DesktopEffect = {
+            kind: "computer_use",
+            command: "job-search:" +
+            res.playbook_name +
+            " :: readonly query=" +
+            query,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Job search readonly «" +
+            res.playbook_name +
+            "»: " +
+            res.hit_count.to_string() +
+            " hit(s) (CM-1806).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
         }
       }
     }

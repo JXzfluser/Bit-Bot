@@ -605,7 +605,10 @@ function createHostFfi(repoRoot) {
         kind === "cloud_agent_launch" ||
         kind === "cloud_artifact_deliver" ||
         kind === "schedule_meeting" ||
-        kind === "purchase"
+        kind === "purchase" ||
+        kind === "finance_call" ||
+        kind === "credential_fill" ||
+        kind === "mail_draft"
       ) {
         const journalLine = appendHostDeliveryJournal({
           kind,

@@ -361,6 +361,45 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(buy_ok.ok)
   assert_eq(buy_ok.intent, "purchase_item")
   assert_eq(buy_ok.effects[0].kind, "purchase")
+  let tr = run_desktop_turn("book flight google.com/flights", turn_id="tr-1")
+  assert_true(tr.ok)
+  assert_eq(tr.intent, "travel_book")
+  let fo = run_desktop_turn("order food doordash.com", turn_id="fo-1")
+  assert_true(fo.ok)
+  assert_eq(fo.intent, "order_food")
+  let mc = run_desktop_turn(
+    "meeting chat body=stand-up update direct=1",
+    turn_id="mc-1",
+  )
+  assert_true(mc.ok)
+  assert_eq(mc.intent, "meeting_chat")
+  let fc = run_desktop_turn("connect finance", turn_id="fin-1")
+  assert_true(fc.ok)
+  assert_eq(fc.intent, "finance_connect")
+  let fcall = run_desktop_turn("finance get_balance", turn_id="fin-2")
+  assert_true(fcall.ok)
+  assert_eq(fcall.intent, "finance_call")
+  let fill = run_desktop_turn(
+    "fill credential domain=login.example.test",
+    turn_id="cred-1",
+  )
+  assert_true(fill.ok)
+  assert_eq(fill.intent, "fill_credential")
+  let cold = run_desktop_turn(
+    "cold mail to=a@example.com subject=Hi body=Hello unsubscribe=mailto:u@example.com",
+    turn_id="cold-1",
+  )
+  assert_true(cold.ok)
+  assert_eq(cold.intent, "cold_mail")
+  let ps = run_desktop_turn(
+    "personal slack dm owner=Uowner text=ping",
+    turn_id="ps-1",
+  )
+  assert_true(ps.ok)
+  assert_eq(ps.intent, "personal_slack_dm")
+  let js = run_desktop_turn("job search engineer", turn_id="js-1")
+  assert_true(js.ok)
+  assert_eq(js.intent, "job_search")
 }
 
 ///|
