@@ -247,6 +247,8 @@
 - [x] Parity: inbound_reaction path + pretend_forced_reply honesty
 - [x] Host cloud_agent_launch / cloud_artifact_deliver per-op snapshots + mobile_host CM-0705 card path mirror
 - [x] Parity: cloud launch/artifact paths + ios mobile permission mirror
+- [x] Host room_turn / send_to_agent / subagent_run per-op snapshots + iOS/Android card_path parse
+- [x] Parity: multi-agent path honesty (pretend_private_dm / pretend_delivered / pretend_completed)
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

@@ -22,6 +22,9 @@ object DevicePermissionHost {
     val status: String,
     val settingsGuide: String,
     val androidPermission: String?,
+    /** Host FFI per-card JSON path when present (data/device/permission-cards/). */
+    val cardPath: String? = null,
+    val trueDeviceOsDialogResidual: Boolean = true,
     val at: String = Instant.now().toString(),
   )
 
@@ -70,22 +73,44 @@ object DevicePermissionHost {
 
   fun cardsFromTurnJson(context: Context?, jsonLine: String): List<Card> {
     return runCatching {
-      val obj = JSONObject(jsonLine.trim().lineSequence().last { it.isNotBlank() })
-      val commands = mutableListOf<String>()
+      // Prefer first JSON object line (HostAbi trailers may follow).
+      val line = jsonLine.trim().lineSequence().firstOrNull { it.trim().startsWith("{") }
+        ?: jsonLine.trim().lineSequence().last { it.isNotBlank() }
+      val obj = JSONObject(line.trim())
+      val cards = mutableListOf<Card>()
       fun collect(arrName: String) {
         if (!obj.has(arrName)) return
         val arr: JSONArray = obj.getJSONArray(arrName)
         for (i in 0 until arr.length()) {
           val row = arr.optJSONObject(i) ?: continue
-          if (row.optString("kind") == "device_permission") {
-            val c = row.optString("command")
-            if (c.isNotBlank()) commands.add(c)
+          if (row.optString("kind") != "device_permission") continue
+          val c = row.optString("command")
+          if (c.isBlank()) continue
+          val base = raiseCard(context, c)
+          var cardPath: String? = null
+          var pretend = false
+          var residual = true
+          val stdout = row.optString("stdout")
+          if (stdout.isNotBlank()) {
+            runCatching {
+              val payload = JSONObject(stdout)
+              cardPath = payload.optString("path").ifBlank { null }
+              pretend = payload.optBoolean("pretend_granted", false)
+              residual = payload.optBoolean("true_device_os_dialog_residual", true)
+            }
           }
+          cards.add(
+            base.copy(
+              pretendGranted = pretend,
+              cardPath = cardPath,
+              trueDeviceOsDialogResidual = residual,
+            ),
+          )
         }
       }
       collect("host_results")
-      if (commands.isEmpty()) collect("effects")
-      commands.map { raiseCard(context, it) }
+      if (cards.isEmpty()) collect("effects")
+      cards
     }.getOrDefault(emptyList())
   }
 

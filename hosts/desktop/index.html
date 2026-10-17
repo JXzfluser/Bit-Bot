@@ -767,15 +767,26 @@
                   label = "personal-dm:" + (p.mode || "draft");
                   types.push("text");
                 } else if (h.kind === "room_turn") {
-                  label = "room:" + (p.room || "?") + "×" + (p.member_count || 0);
+                  label =
+                    "room:" +
+                    (p.room || "?") +
+                    "×" +
+                    (p.member_count || 0) +
+                    (p.path ? "/snap" : "");
                   types.push("thread");
                 } else if (h.kind === "send_to_agent") {
-                  label = "agent:" + (p.to_id || "?") + "/" + (p.status || "routed");
+                  label =
+                    "agent:" +
+                    (p.to_id || "?") +
+                    "/" +
+                    (p.status || "routed") +
+                    (p.path ? "/snap" : "");
                   types.push("text");
                 } else if (h.kind === "subagent_run") {
                   label =
                     "subagent:" +
-                    ((p.subagent && p.subagent.status) || p.status || "run");
+                    ((p.subagent && p.subagent.status) || p.status || "run") +
+                    (p.path ? "/snap" : "");
                   types.push("text");
                 } else if (h.kind === "mail_search") {
                   label = "mail_search:" + (p.hit_count || 0) + "×" + (p.mode || "");

@@ -61,7 +61,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-sc-real.json'));h=next(
 
 # 8) Thread (room fanout) + cursor-agent card (CHARTER Delivery completeness)
 "${RUN[@]}" "room eng :: parity thread $MARKER" >/tmp/parity-room.json
-python3 -c "import json;d=json.load(open('/tmp/parity-room.json'));h=next(x for x in d['host_results'] if x.get('kind')=='room_turn');p=json.loads(h['stdout']);stu=p.get('send_to_user') or {};assert p.get('room')=='eng';assert stu.get('type')=='thread';print('parity room/thread ok', p.get('room'), stu.get('type'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-room.json'));h=next(x for x in d['host_results'] if x.get('kind')=='room_turn');p=json.loads(h['stdout']);stu=p.get('send_to_user') or {};assert p.get('room')=='eng';assert stu.get('type')=='thread';assert p.get('pretend_private_dm') is False;assert p.get('path') and os.path.isfile(p['path']);print('parity room/thread ok', p.get('room'), stu.get('type'), p.get('path'))"
 # Prefer delivery ledger type=thread from recordSendToUser
 python3 -c "
 import json
@@ -99,7 +99,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-mcp.json'));h=next(x fo
 "${RUN[@]}" "export bot template name=parity-$MARKER" >/tmp/parity-export.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-export.json'));h=next(x for x in d['host_results'] if x.get('kind')=='export_pack');p=json.loads(h['stdout']);assert p.get('secrets_stripped') is True;assert p.get('path') and os.path.isfile(p['path']);print('parity export_pack ok', p.get('path'))"
 "${RUN[@]}" "spawn subagent triage parity-$MARKER" >/tmp/parity-sub.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-sub.json'));h=next(x for x in d['host_results'] if x.get('kind')=='subagent_run');p=json.loads(h['stdout']);assert p.get('ran') is True;assert (p.get('subagent') or {}).get('status')=='completed';assert (p.get('send_to_user') or {}).get('type')=='text';print('parity subagent_run ok', (p.get('subagent') or {}).get('id'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sub.json'));h=next(x for x in d['host_results'] if x.get('kind')=='subagent_run');p=json.loads(h['stdout']);assert p.get('ran') is True;assert (p.get('subagent') or {}).get('status')=='completed';assert p.get('pretend_completed') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('result_path') and os.path.isfile(p['result_path']);assert (p.get('send_to_user') or {}).get('type')=='text';print('parity subagent_run ok', (p.get('subagent') or {}).get('id'), p.get('path'))"
 "${RUN[@]}" "voice start parity-vr" >/tmp/parity-vr-start.json
 "${RUN[@]}" "voice relay parity-vr :: hello parity $MARKER" >/tmp/parity-vr.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-vr.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_relay');p=json.loads(h['stdout']);assert p.get('reply_media_ok') is True;assert p.get('reply_media_path') and os.path.isfile(p['reply_media_path']);assert open(p['reply_media_path'],'rb').read(4)==b'RIFF';print('parity voice_relay ok', p.get('turns'))"
@@ -110,7 +110,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-conn.json'));h=next(x f
 "${RUN[@]}" "create teammate id=asst-parity name=Parity role=executor" >/tmp/parity-tm.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-tm.json'));h=next(x for x in d['host_results'] if x.get('kind')=='teammate_create');p=json.loads(h['stdout']);assert h.get('ok');assert p.get('pretend_created') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('teammates_path') and os.path.isfile(p['teammates_path']);print('parity teammate_create ok', p.get('path'))"
 "${RUN[@]}" "send to agent asst-parity :: review parity $MARKER" >/tmp/parity-sta.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-sta.json'));h=next(x for x in d['host_results'] if x.get('kind')=='send_to_agent');p=json.loads(h['stdout']);assert p.get('to_id')=='asst-parity';assert (p.get('send_to_user') or {}).get('type')=='text';assert p.get('path') and os.path.isfile(p['path']);print('parity send_to_agent ok', p.get('status'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-sta.json'));h=next(x for x in d['host_results'] if x.get('kind')=='send_to_agent');p=json.loads(h['stdout']);assert p.get('to_id')=='asst-parity';assert (p.get('send_to_user') or {}).get('type')=='text';assert p.get('pretend_delivered') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('inbox_path') and os.path.isfile(p['inbox_path']);print('parity send_to_agent ok', p.get('status'), p.get('path'))"
 "${RUN[@]}" "create routine id=parity-now cron=@now prompt=ping $MARKER" >/tmp/parity-rt.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-rt.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);assert p.get('stored') is True;assert p.get('due_now') is True;assert p.get('id')=='parity-now';assert p.get('pretend_scheduled') is False;assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/routines/schedules.jsonl');print('parity routine_schedule @now ok', p.get('next_due'), p.get('path'))"
 "${RUN[@]}" "tick routines" >/tmp/parity-tick.json

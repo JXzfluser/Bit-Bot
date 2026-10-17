@@ -5651,6 +5651,12 @@ function createHostFfi(repoRoot) {
         });
         delivered_to.push(m.id);
       }
+      const roomDir = path.join(REPO_ROOT, "data", "agents", "room-turns");
+      fs.mkdirSync(roomDir, { recursive: true });
+      const turnPath = path.join(
+        roomDir,
+        `turn-${sanitizeSkillName(room) || "room"}-${Date.now().toString(36)}.json`,
+      );
       const entry = {
         room,
         body,
@@ -5661,30 +5667,39 @@ function createHostFfi(repoRoot) {
         members,
         delivered_to,
         member_count: members.length,
+        mode: "room_fanout",
+        pretend_private_dm: false,
         at,
       };
-      const pathWritten = appendJsonl(ROOM_TURNS_PATH, entry);
+      fs.writeFileSync(turnPath, JSON.stringify(entry, null, 2));
+      const pathWritten = appendJsonl(ROOM_TURNS_PATH, {
+        ...entry,
+        path: turnPath,
+      });
       const delivery = recordSendToUser({
         type: "thread",
         channel: `room:${room}`,
         body_prefix: String(body || "").slice(0, 120),
         room,
         member_count: members.length,
+        path: turnPath,
         source_kind: kind,
         at,
       });
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: pathWritten,
+        path: turnPath,
+        ledger_path: pathWritten,
         delivered_to,
         at,
       });
       return okJson(kind, cmd, {
         ...entry,
-        path: pathWritten,
+        path: turnPath,
+        ledger_path: pathWritten,
         send_to_user: delivery,
-        mode: "room_fanout",
+        ok: true,
       });
     }
 
@@ -5769,37 +5784,59 @@ function createHostFfi(repoRoot) {
         reply_prefix: String(reply).slice(0, 120),
         at,
       });
+      const sendDir = path.join(REPO_ROOT, "data", "agents", "sends");
+      fs.mkdirSync(sendDir, { recursive: true });
+      const sendPath = path.join(
+        sendDir,
+        `send-${sanitizeSkillName(toId) || "agent"}-${Date.now().toString(36)}.json`,
+      );
+      const sendArtifact = {
+        to_id: toId,
+        body,
+        reply: String(reply).slice(0, 2000),
+        status,
+        teammate_known: Boolean(known),
+        teammate: known,
+        inbox_path: inboxPath,
+        outbox_path: outboxPath,
+        routed: true,
+        delivered: true,
+        nested_skipped: Boolean(worker.nested_skipped),
+        worker_ok: Boolean(worker.ok),
+        mode: "host_send_to_agent",
+        pretend_delivered: false,
+        at,
+      };
+      fs.writeFileSync(sendPath, JSON.stringify(sendArtifact, null, 2));
+      appendJsonl(path.join(sendDir, "sends.jsonl"), {
+        ...sendArtifact,
+        path: sendPath,
+      });
       const delivery = recordSendToUser({
         type: "text",
         channel: `agent:${toId}`,
         body_prefix: String(reply).slice(0, 120),
         to_id: toId,
         status,
+        path: sendPath,
         source_kind: kind,
         at,
       });
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: inboxPath,
+        path: sendPath,
+        inbox: inboxPath,
         outbox: outboxPath,
         status,
         at,
       });
       return okJson(kind, cmd, {
-        to_id: toId,
-        body,
-        path: inboxPath,
+        ...sendArtifact,
+        path: sendPath,
         outbox: outboxPath,
-        routed: true,
-        delivered: true,
-        status,
-        teammate_known: Boolean(known),
-        teammate: known,
-        reply: String(reply).slice(0, 2000),
-        nested_skipped: Boolean(worker.nested_skipped),
-        worker_ok: Boolean(worker.ok),
         send_to_user: delivery,
+        ok: true,
       });
     }
 
@@ -5828,6 +5865,8 @@ function createHostFfi(repoRoot) {
         error: "",
       };
       let resultPath = "";
+      fs.mkdirSync(SUBAGENT_RESULTS_DIR, { recursive: true });
+      const runStamp = Date.now().toString(36);
       if (depth >= 1) {
         row = {
           ...row,
@@ -5835,6 +5874,26 @@ function createHostFfi(repoRoot) {
           completed_at: at,
           note: "CM-2133 nest guard — no busy-loop subagent spawn",
         };
+        resultPath = path.join(
+          SUBAGENT_RESULTS_DIR,
+          `run-${sanitizeSkillName(id) || "sub"}-nest-${runStamp}.json`,
+        );
+        fs.writeFileSync(
+          resultPath,
+          JSON.stringify(
+            {
+              id,
+              prompt,
+              status: row.status,
+              nested_skipped: true,
+              pretend_completed: false,
+              note: row.note,
+              at,
+            },
+            null,
+            2,
+          ),
+        );
       } else {
         worker = await runWorkerMoonTurn({
           prompt: prompt || "summarize",
@@ -5850,10 +5909,9 @@ function createHostFfi(repoRoot) {
             else process.env.BITBOT_NEST_DEPTH = prev;
           }
         }
-        fs.mkdirSync(SUBAGENT_RESULTS_DIR, { recursive: true });
         resultPath = path.join(
           SUBAGENT_RESULTS_DIR,
-          `${sanitizeSkillName(id)}.json`,
+          `run-${sanitizeSkillName(id) || "sub"}-${runStamp}.json`,
         );
         fs.writeFileSync(
           resultPath,
@@ -5865,6 +5923,25 @@ function createHostFfi(repoRoot) {
               intent: worker.intent || "",
               ok: Boolean(worker.ok),
               error: worker.error || "",
+              pretend_completed: false,
+              at,
+            },
+            null,
+            2,
+          ),
+        );
+        // Keep last-known result alias for tooling that expects id.json.
+        fs.writeFileSync(
+          path.join(SUBAGENT_RESULTS_DIR, `${sanitizeSkillName(id)}.json`),
+          JSON.stringify(
+            {
+              id,
+              prompt,
+              assistant: worker.assistant || "",
+              intent: worker.intent || "",
+              ok: Boolean(worker.ok),
+              error: worker.error || "",
+              run_path: resultPath,
               at,
             },
             null,
@@ -5885,6 +5962,23 @@ function createHostFfi(repoRoot) {
       if (i2 >= 0) next[i2] = { ...next[i2], ...row };
       else next.push(row);
       writeJsonArray(SUBAGENTS_PATH, next);
+      const runMetaPath = path.join(
+        SUBAGENT_RESULTS_DIR,
+        `meta-${sanitizeSkillName(id) || "sub"}-${runStamp}.json`,
+      );
+      const runMeta = {
+        stored: true,
+        subagent: row,
+        result_path: resultPath || null,
+        registry_path: SUBAGENTS_PATH,
+        worker_ok: Boolean(worker.ok),
+        nested_skipped: Boolean(worker.nested_skipped) || depth >= 1,
+        ran: depth < 1,
+        pretend_completed: false,
+        mode: "host_subagent_run",
+        at,
+      };
+      fs.writeFileSync(runMetaPath, JSON.stringify(runMeta, null, 2));
       const delivery = recordSendToUser({
         type: "text",
         channel: `subagent:${id}`,
@@ -5893,26 +5987,24 @@ function createHostFfi(repoRoot) {
           120,
         ),
         status: row.status,
+        path: runMetaPath,
         source_kind: kind,
         at,
       });
       appendHostDeliveryJournal({
         kind,
         command: cmd,
-        path: SUBAGENTS_PATH,
+        path: runMetaPath,
+        registry_path: SUBAGENTS_PATH,
         result_path: resultPath || null,
         status: row.status,
         at,
       });
       return okJson(kind, cmd, {
-        stored: true,
-        path: SUBAGENTS_PATH,
-        subagent: row,
-        result_path: resultPath || null,
-        worker_ok: Boolean(worker.ok),
-        nested_skipped: Boolean(worker.nested_skipped),
+        ...runMeta,
+        path: runMetaPath,
         send_to_user: delivery,
-        ran: depth < 1,
+        ok: true,
       });
     }
 

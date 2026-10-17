@@ -80,7 +80,10 @@ class MainActivity : ComponentActivity() {
                 }
                 val cardNote = if (cards.isEmpty()) "" else
                   "\n[host permission cards pretend_granted=false] " +
-                    cards.joinToString { "${it.tool}:${it.status}" }
+                    cards.joinToString {
+                      "${it.tool}:${it.status}" +
+                        (it.cardPath?.let { p -> " card=$p" } ?: "")
+                    }
                 transcript += "\n> $text\n$body$cardNote\n"
                 busy = false
               }

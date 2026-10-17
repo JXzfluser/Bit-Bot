@@ -13,6 +13,9 @@ enum DevicePermissionHost {
     let pretendGranted: Bool
     let status: String
     let settingsGuide: String
+    /// Host FFI per-card JSON path when present (`data/device/permission-cards/`).
+    let cardPath: String?
+    let trueDeviceOsDialogResidual: Bool
     let at: String
   }
 
@@ -27,16 +30,23 @@ enum DevicePermissionHost {
   }
 
   /// Probe OS auth status without elevating; returns a Host card (pretend_granted=false).
-  static func raiseCard(command: String) -> Card {
+  static func raiseCard(
+    command: String,
+    cardPath: String? = nil,
+    pretendGranted: Bool = false,
+    trueDeviceOsDialogResidual: Bool = true
+  ) -> Card {
     let parsed = parseCommand(command)
     let status = probeStatus(tool: parsed.tool)
     return Card(
       machineId: parsed.machineId,
       tool: parsed.tool,
       permission: parsed.permission,
-      pretendGranted: false,
+      pretendGranted: pretendGranted,
       status: status,
       settingsGuide: "Open iOS Settings → Bit Bot → enable \(parsed.tool)",
+      cardPath: cardPath,
+      trueDeviceOsDialogResidual: trueDeviceOsDialogResidual,
       at: ISO8601DateFormatter().string(from: Date())
     )
   }
@@ -60,20 +70,43 @@ enum DevicePermissionHost {
 
   /// Extract device_permission effects/results from a turn JSON line and build cards.
   static func cards(fromTurnJSON jsonLine: String) -> [Card] {
-    guard let data = jsonLine.data(using: .utf8),
+    // Prefer first JSON object line (HostAbi trailers may follow).
+    let line =
+      jsonLine
+      .split(whereSeparator: \.isNewline)
+      .map(String.init)
+      .first(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("{") })
+      ?? jsonLine
+    guard let data = line.data(using: .utf8),
           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     else { return [] }
-    var commands: [String] = []
-    if let hrs = obj["host_results"] as? [[String: Any]] {
-      for h in hrs where (h["kind"] as? String) == "device_permission" {
-        if let c = h["command"] as? String { commands.append(c) }
+    var cards: [Card] = []
+    func collect(_ key: String) {
+      guard let rows = obj[key] as? [[String: Any]] else { return }
+      for h in rows where (h["kind"] as? String) == "device_permission" {
+        guard let c = h["command"] as? String else { continue }
+        var cardPath: String? = nil
+        var pretend = false
+        var residual = true
+        if let stdout = h["stdout"] as? String,
+           let sdata = stdout.data(using: .utf8),
+           let payload = try? JSONSerialization.jsonObject(with: sdata) as? [String: Any] {
+          cardPath = payload["path"] as? String
+          pretend = (payload["pretend_granted"] as? Bool) ?? false
+          residual = (payload["true_device_os_dialog_residual"] as? Bool) ?? true
+        }
+        cards.append(
+          raiseCard(
+            command: c,
+            cardPath: cardPath,
+            pretendGranted: pretend,
+            trueDeviceOsDialogResidual: residual
+          )
+        )
       }
     }
-    if commands.isEmpty, let effects = obj["effects"] as? [[String: Any]] {
-      for e in effects where (e["kind"] as? String) == "device_permission" {
-        if let c = e["command"] as? String { commands.append(c) }
-      }
-    }
-    return commands.map { raiseCard(command: $0) }
+    collect("host_results")
+    if cards.isEmpty { collect("effects") }
+    return cards
   }
 }
