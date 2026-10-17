@@ -210,7 +210,25 @@ test "desktop_turn_claim_inbox_and_draft_mail" {
   assert_true(d.ok)
   assert_eq(d.intent, "draft_mail")
   assert_eq(d.effects.length(), 1)
-  assert_eq(d.effects[0].kind, "mail_draft")
+  assert_eq(d.effects[0].kind, "mail_send")
+  assert_true(d.needs_host_ffi)
+}
+
+///|
+test "desktop_turn_copy_to_from_box" {
+  let t = run_desktop_turn(
+    "copy to box machine=desk-1 src=README.mbt.md dest=/workspace/uploads/README.mbt.md",
+    turn_id="c2b",
+  )
+  assert_true(t.ok)
+  assert_eq(t.intent, "copy_to_box")
+  assert_eq(t.effects[0].kind, "copy_to_box")
+  let f = run_desktop_turn(
+    "copy from box machine=desk-1 box=/workspace/uploads/README.mbt.md dest=/workspace/uploads/out-README.mbt.md",
+    turn_id="cfb",
+  )
+  assert_true(f.ok)
+  assert_eq(f.intent, "copy_from_box")
 }
 
 ///|

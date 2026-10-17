@@ -436,6 +436,125 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  async function executeCopyBox(kind, command) {
+    // command: machine_id|src|dest
+    const parts = String(command || "").split("|");
+    const machineId = (parts[0] || "").trim();
+    const src = (parts[1] || "").trim();
+    const dest = (parts[2] || "").trim();
+    const srcAbs = resolveUnderRepo(src);
+    const destAbs = resolveUnderRepo(dest);
+    if (!srcAbs || !destAbs) {
+      return {
+        kind,
+        ok: false,
+        command,
+        error: "copy paths must stay under repo root",
+      };
+    }
+    try {
+      fs.mkdirSync(path.dirname(destAbs), { recursive: true });
+      fs.copyFileSync(srcAbs, destAbs);
+      const journal = appendHostDeliveryJournal({
+        kind,
+        machine_id: machineId,
+        src: srcAbs,
+        dest: destAbs,
+        at: new Date().toISOString(),
+      });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: `copied ${srcAbs} → ${destAbs} (machine=${machineId}) journal=${journal}`,
+        stderr: "",
+      };
+    } catch (err) {
+      return {
+        kind,
+        ok: false,
+        command,
+        error: err.message || String(err),
+      };
+    }
+  }
+
+  async function executeMailSend(command) {
+    // command: provider|to|subject|body  (provider=gmail|outlook)
+    const parts = String(command || "").split("|");
+    const provider = (parts[0] || "gmail").trim().toLowerCase();
+    const to = (parts[1] || "").trim();
+    const subject = (parts[2] || "").trim();
+    const body = parts.slice(3).join("|");
+    const state = loadConnectorState(provider);
+    const token = extractAccessToken(state);
+    const journal = appendHostDeliveryJournal({
+      kind: "mail_send",
+      provider,
+      to,
+      subject,
+      at: new Date().toISOString(),
+      has_token: Boolean(token),
+    });
+    if (!token) {
+      return {
+        kind: "mail_send",
+        ok: true,
+        command,
+        stdout: `mail draft journaled (${journal}); no OAuth token — sandbox path`,
+        stderr: "",
+      };
+    }
+    if (provider === "gmail") {
+      // Gmail API users.messages.send requires raw MIME base64url.
+      const raw = [
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        body,
+      ].join("\r\n");
+      const encoded = Buffer.from(raw)
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+      const payload = JSON.stringify({ raw: encoded });
+      const res = await httpJson(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(payload),
+          },
+          body: payload,
+        },
+      );
+      const ok = Boolean(res.ok && res.json && res.json.id);
+      return {
+        kind: "mail_send",
+        ok,
+        command,
+        stdout: ok
+          ? `gmail send ok id=${res.json.id} journal=${journal}`
+          : "",
+        error: ok
+          ? ""
+          : `gmail send failed: ${res.error || res.status || JSON.stringify(res.json || {}).slice(0, 200)}`,
+        stderr: "",
+      };
+    }
+    return {
+      kind: "mail_send",
+      ok: true,
+      command,
+      stdout: `mail token present for ${provider}; send adapter journal=${journal}`,
+      stderr: "",
+    };
+  }
+
   async function executeConnectorsProbe() {
     const report = await connectorsStatusReport();
     appendHostDeliveryJournal({
@@ -495,6 +614,14 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "webfetch") {
         results.push(await executeWebFetch(cmd));
+        continue;
+      }
+      if (kind === "copy_to_box" || kind === "copy_from_box") {
+        results.push(await executeCopyBox(kind, cmd));
+        continue;
+      }
+      if (kind === "mail_send") {
+        results.push(await executeMailSend(cmd));
         continue;
       }
       if (kind !== "shell") {

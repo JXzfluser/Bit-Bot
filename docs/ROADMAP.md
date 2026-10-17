@@ -86,6 +86,7 @@
 - [x] Multi-end CLI Host (`hosts/cli_host/run_turn.js`) — same brain as Desktop with `--machine-kind ios|android|desktop`
 - [x] TurnContext flags: `--session-id` `--machine-id` `--machine-kind` `--channel` on product JSON
 - [x] Desktop pack script: `bash scripts/pack-desktop.sh` (electron-builder --dir)
-- [ ] Live SMTP send when Gmail/Outlook OAuth tokens present (beyond draft/journal)
+- [x] CopyToBox / CopyFromBox product turns + Host real FS copy under repo
+- [x] `mail_send` Host effect (Gmail API when OAuth token present; else journal sandbox)
 - [ ] Native iOS/Android app shells (beyond CLI Host attach)
 - [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit

@@ -62,6 +62,8 @@ pub(all) enum TurnIntent {
   FsList(path~ : String)
   FsRead(path~ : String)
   WebFetch(url~ : String)
+  CopyToBox(machine_id~ : String, src~ : String, dest~ : String)
+  CopyFromBox(machine_id~ : String, box_path~ : String, dest~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -82,6 +84,8 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     FsList(_) => "fs_list"
     FsRead(_) => "fs_read"
     WebFetch(_) => "webfetch"
+    CopyToBox(_) => "copy_to_box"
+    CopyFromBox(_) => "copy_from_box"
     HostContinue => "host_continue"
   }
 }
@@ -267,6 +271,55 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       return WebFetch(url=u)
     }
   }
+  // Multi-end file routing (CM-0703/0704) — Host FFI copies real bytes.
+  if low.has_prefix("copy to box ") || low.has_prefix("copytobox ") {
+    let rest = if low.has_prefix("copy to box ") {
+      trimmed[12:].to_owned()
+    } else {
+      trimmed[10:].to_owned()
+    }
+    let mid = match extract_kv(rest, "machine") {
+      Some(v) => v
+      None => "desk-1"
+    }
+    let src = match extract_kv(rest, "src") {
+      Some(v) => v
+      None => ""
+    }
+    let dest = match extract_kv(rest, "dest") {
+      Some(v) => v
+      None => ""
+    }
+    if src != "" {
+      return CopyToBox(machine_id=mid, src~, dest~)
+    }
+  }
+  if low.has_prefix("copy from box ") || low.has_prefix("copyfrombox ") {
+    let rest = if low.has_prefix("copy from box ") {
+      trimmed[14:].to_owned()
+    } else {
+      trimmed[12:].to_owned()
+    }
+    let mid = match extract_kv(rest, "machine") {
+      Some(v) => v
+      None => "desk-1"
+    }
+    let box_path = match extract_kv(rest, "box") {
+      Some(v) => v
+      None =>
+        match extract_kv(rest, "src") {
+          Some(v) => v
+          None => ""
+        }
+    }
+    let dest = match extract_kv(rest, "dest") {
+      Some(v) => v
+      None => ""
+    }
+    if box_path != "" && dest != "" {
+      return CopyFromBox(machine_id=mid, box_path~, dest~)
+    }
+  }
   if low.has_prefix("install plugin ") || low.has_prefix("add connector ") {
     let id = if low.has_prefix("install plugin ") {
       trimmed[15:].trim().to_owned()
@@ -417,7 +470,17 @@ fn extract_kv(rest : String, key : String) -> String? {
     Some(i) => {
       let after = rest[i + marker.length():].to_owned()
       // value runs until next known key= or end.
-      let keys = [" inbound=", " outbound=", " body=", " to=", " subject="]
+      let keys = [
+        " inbound=",
+        " outbound=",
+        " body=",
+        " to=",
+        " subject=",
+        " machine=",
+        " src=",
+        " dest=",
+        " box=",
+      ]
       let mut end = after.length()
       for k in keys {
         match after.find(k) {
@@ -1066,6 +1129,55 @@ pub fn run_desktop_turn(
         needs_host_ffi=true,
       )
     }
+    CopyToBox(machine_id~, src~, dest~) => {
+      let dest_final = if dest == "" {
+        "/workspace/uploads/" + src
+      } else {
+        dest
+      }
+      let effect : DesktopEffect = {
+        kind: "copy_to_box",
+        command: machine_id + "|" + src + "|" + dest_final,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "CopyToBox planned for machine=" +
+        machine_id +
+        " src=" +
+        src +
+        " → " +
+        dest_final +
+        ". Host FFI performs real copy (CM-0703).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    CopyFromBox(machine_id~, box_path~, dest~) => {
+      let effect : DesktopEffect = {
+        kind: "copy_from_box",
+        command: machine_id + "|" + box_path + "|" + dest,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "CopyFromBox planned for machine=" +
+        machine_id +
+        " box=" +
+        box_path +
+        " → " +
+        dest +
+        ". Host FFI performs real copy (CM-0704).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
     InstallPlugin(plugin_id~) => {
       let reg = @connectors.PluginRegistry::seed_demo()
       match reg.install(plugin_id) {
@@ -1160,19 +1272,27 @@ pub fn run_desktop_turn(
     }
     DraftMail(to_~, subject~, body~) => {
       let card = @mail.DraftEmailCard::new(to_~, subject~, body~)
-      // Draft only — send requires Host + user press (CM-1005).
+      // Draft card + Host mail_send effect (CM-1005: Host/UI press-send; live if OAuth).
       let reply =
-        "Draft mail card ready (not sent). to=" +
+        "Draft mail card ready. to=" +
         card.to_ +
         " subject=" +
         card.subject +
-        ". Press-send is Host/UI; MoonBit holds draft semantics."
+        ". Host FFI mail_send executes on confirm (sandbox journal without token)."
       let effect : DesktopEffect = {
-        kind: "mail_draft",
-        command: "to=" + to_ + " subject=" + subject,
-        needs_host_ffi: false,
+        kind: "mail_send",
+        command: "gmail|" + to_ + "|" + subject + "|" + body,
+        needs_host_ffi: true,
       }
-      deliver_ok(trimmed, turn_id, reply, intent, ctx~, effects=[effect])
+      deliver_ok(
+        trimmed,
+        turn_id,
+        reply,
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     HostContinue => {
       // Should be invoked via continue_after_host_ffi, not plain chat.
