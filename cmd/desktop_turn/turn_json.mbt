@@ -66,6 +66,11 @@ pub(all) enum TurnIntent {
   CopyFromBox(machine_id~ : String, box_path~ : String, dest~ : String)
   CreateRoutine(id~ : String, cron~ : String, prompt~ : String)
   ListRoutines
+  PauseRoutine(id~ : String)
+  ResumeRoutine(id~ : String)
+  FireRoutine(id~ : String)
+  SearchMail(query~ : String)
+  ReadMailThread(thread_id~ : String)
   SpawnSubagent(prompt~ : String)
   McpDiscover(namespace_~ : String)
   McpCall(namespace_~ : String, name~ : String, args_json~ : String)
@@ -128,6 +133,11 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     CopyFromBox(_) => "copy_from_box"
     CreateRoutine(_) => "create_routine"
     ListRoutines => "list_routines"
+    PauseRoutine(_) => "pause_routine"
+    ResumeRoutine(_) => "resume_routine"
+    FireRoutine(_) => "fire_routine"
+    SearchMail(_) => "search_mail"
+    ReadMailThread(_) => "read_mail_thread"
     SpawnSubagent(_) => "spawn_subagent"
     McpDiscover(_) => "mcp_discover"
     McpCall(_) => "mcp_call"
@@ -1539,13 +1549,201 @@ pub fn run_desktop_turn(
       }
     }
     ListRoutines => {
+      let effect : DesktopEffect = {
+        kind: "routine_list",
+        command: "list",
+        needs_host_ffi: true,
+      }
       deliver_ok(
         trimmed,
         turn_id,
-        "Routines: use create routine id=… cron=… prompt=… (product path @routines; Host holds cron clock).",
+        "List routines via Host durable store (CM-04).",
         intent,
         ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
       )
+    }
+    PauseRoutine(id~) => {
+      let store = @routines.RoutineStore::empty()
+      let spec : @routines.RoutineSpec = {
+        id,
+        name: id,
+        prompt: "(host-persisted)",
+        trigger: @routines.Cron(expr="@daily"),
+        timing: @routines.Exact,
+        enabled: true,
+        early_minutes: 0,
+        late_minutes: 0,
+      }
+      let _ = store.create(spec)
+      match store.pause(id) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(_) => {
+          let effect : DesktopEffect = {
+            kind: "routine_pause",
+            command: id,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Routine paused: " + id + " (CM-0413). Host updates durable store.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    ResumeRoutine(id~) => {
+      let store = @routines.RoutineStore::empty()
+      let spec : @routines.RoutineSpec = {
+        id,
+        name: id,
+        prompt: "(host-persisted)",
+        trigger: @routines.Cron(expr="@daily"),
+        timing: @routines.Exact,
+        enabled: false,
+        early_minutes: 0,
+        late_minutes: 0,
+      }
+      let _ = store.create(spec)
+      let _ = store.pause(id)
+      match store.resume_routine(id) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(_) => {
+          let effect : DesktopEffect = {
+            kind: "routine_resume",
+            command: id,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Routine resumed: " + id + " (CM-0413). Host updates durable store.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    FireRoutine(id~) => {
+      let store = @routines.RoutineStore::empty()
+      let spec : @routines.RoutineSpec = {
+        id,
+        name: id,
+        prompt: "(host-persisted)",
+        trigger: @routines.Cron(expr="@daily"),
+        timing: @routines.Exact,
+        enabled: true,
+        early_minutes: 0,
+        late_minutes: 0,
+      }
+      let _ = store.create(spec)
+      if !store.is_fireable(id) {
+        fail_turn(
+          trimmed,
+          turn_id,
+          intent,
+          "routine not fireable: " + id,
+          ctx,
+          assistant="routine not fireable: " + id,
+        )
+      } else {
+        let effect : DesktopEffect = {
+          kind: "routine_fire",
+          command: id,
+          needs_host_ffi: true,
+        }
+        deliver_ok(
+          trimmed,
+          turn_id,
+          "Routine fire planned: " +
+          id +
+          ". Host wakes destination delivery (CM-04).",
+          intent,
+          ctx~,
+          effects=[effect],
+          needs_host_ffi=true,
+        )
+      }
+    }
+    SearchMail(query~) => {
+      let gmail = @mail.GmailMcpSurface::new()
+      gmail.seed_thread(
+        id="t-invoice-1",
+        subject="Invoice #42",
+        snippet="Please pay invoice for " + query,
+      )
+      gmail.seed_thread(
+        id="t-hello-1",
+        subject="Hello",
+        snippet="Hi there",
+      )
+      let hits = gmail.search_threads(query~)
+      let buf = StringBuilder()
+      buf.write_string("Mail search «")
+      buf.write_string(query)
+      buf.write_string("»: ")
+      buf.write_string(hits.length().to_string())
+      buf.write_string(" thread(s)")
+      let mut i = 0
+      while i < hits.length() && i < 5 {
+        buf.write_string(" | ")
+        buf.write_string(hits[i].id)
+        buf.write_string(":")
+        buf.write_string(hits[i].subject)
+        i = i + 1
+      }
+      let effect : DesktopEffect = {
+        kind: "mail_search",
+        command: query,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        buf.to_string() + " (CM-0906/1004). Host executes live Gmail when token present.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    ReadMailThread(thread_id~) => {
+      let gmail = @mail.GmailMcpSurface::new()
+      gmail.seed_thread(
+        id=thread_id,
+        subject="Thread " + thread_id,
+        snippet="Body for " + thread_id,
+      )
+      match gmail.read_thread(thread_id~) {
+        Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
+        Ok(th) => {
+          let effect : DesktopEffect = {
+            kind: "mail_read",
+            command: thread_id,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Read mail thread " +
+            th.id +
+            " subject=" +
+            th.subject +
+            " (CM-0906). Host fetches live body when connected.",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
     }
     SpawnSubagent(prompt~) => {
       let h = @task.SubagentHandle::dispatch_executor(

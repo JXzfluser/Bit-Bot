@@ -32,6 +32,56 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "list routines" || low == "routines" || low == "show routines" {
     return Some(ListRoutines)
   }
+  if low.has_prefix("pause routine ") {
+    let id = trimmed[14:].trim().to_owned()
+    if id != "" {
+      return Some(PauseRoutine(id~))
+    }
+  }
+  if low.has_prefix("resume routine ") {
+    let id = trimmed[15:].trim().to_owned()
+    if id != "" {
+      return Some(ResumeRoutine(id~))
+    }
+  }
+  if low.has_prefix("fire routine ") || low.has_prefix("run routine ") {
+    let id = if low.has_prefix("fire routine ") {
+      trimmed[13:].trim().to_owned()
+    } else {
+      trimmed[12:].trim().to_owned()
+    }
+    if id != "" {
+      return Some(FireRoutine(id~))
+    }
+  }
+  if low.has_prefix("search mail ") ||
+      low.has_prefix("search inbox ") ||
+      low.has_prefix("search email ") {
+    let query = if low.has_prefix("search mail ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("search inbox ") {
+      trimmed[13:].trim().to_owned()
+    } else {
+      trimmed[13:].trim().to_owned()
+    }
+    if query != "" {
+      return Some(SearchMail(query~))
+    }
+  }
+  if low.has_prefix("read mail ") ||
+      low.has_prefix("read thread ") ||
+      low.has_prefix("open mail ") {
+    let thread_id = if low.has_prefix("read mail ") {
+      trimmed[10:].trim().to_owned()
+    } else if low.has_prefix("read thread ") {
+      trimmed[12:].trim().to_owned()
+    } else {
+      trimmed[10:].trim().to_owned()
+    }
+    if thread_id != "" {
+      return Some(ReadMailThread(thread_id~))
+    }
+  }
   // CM-1801 scheduling skill (before routine `schedule routine`).
   if low.has_prefix("schedule meeting ") ||
       low.has_prefix("calendar event ") ||

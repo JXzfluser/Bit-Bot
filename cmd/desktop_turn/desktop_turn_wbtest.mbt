@@ -456,6 +456,22 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(cam.ok)
   assert_eq(cam.intent, "device_tool_invoke")
   assert_eq(cam.effects[0].kind, "device_permission")
+  let sm = run_desktop_turn("search mail Invoice", turn_id="sm-mail")
+  assert_true(sm.ok)
+  assert_eq(sm.intent, "search_mail")
+  assert_eq(sm.effects[0].kind, "mail_search")
+  let rm = run_desktop_turn("read mail t-invoice-1", turn_id="rm-1")
+  assert_true(rm.ok)
+  assert_eq(rm.intent, "read_mail_thread")
+  let pr = run_desktop_turn("pause routine smoke-r", turn_id="pr-1")
+  assert_true(pr.ok)
+  assert_eq(pr.intent, "pause_routine")
+  let rr = run_desktop_turn("resume routine smoke-r", turn_id="rr-1")
+  assert_true(rr.ok)
+  assert_eq(rr.intent, "resume_routine")
+  let fr = run_desktop_turn("fire routine smoke-r", turn_id="fr-1")
+  assert_true(fr.ok)
+  assert_eq(fr.intent, "fire_routine")
 }
 
 ///|

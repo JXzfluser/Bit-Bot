@@ -22,6 +22,12 @@ run "claim inbox" "claim inbox alpha"
 run "draft mail gated" "draft mail to=smoke@example.com subject=Hi body=Smoke"
 run "draft mail approved" --approved "draft mail to=smoke@example.com subject=Hi body=Smoke"
 run "create routine" "create routine id=smoke-r cron=@daily prompt=ping"
+run "list routines" "list routines"
+run "pause routine" "pause routine smoke-r"
+run "resume routine" "resume routine smoke-r"
+run "fire routine" "fire routine smoke-r"
+run "search mail" "search mail Invoice"
+run "read mail" "read mail t-invoice-1"
 run "mcp discover" "mcp discover user-Gmail"
 run "mcp call" "mcp call user-Gmail.search_threads {}"
 run "spawn subagent" "spawn subagent triage mail"
@@ -85,6 +91,17 @@ node hosts/cli_host/run_turn.js --machine-kind android --approved "listdir docs"
 python3 -c "import json;d=json.load(open('/tmp/bitbot-android-turn.json'));assert d.get('ok');assert d.get('host_continued');assert d.get('machine_kind')=='android';print('android fs_list ok', d.get('machine_kind'), 'host_continued', d.get('host_continued'))"
 node hosts/cli_host/run_turn.js --machine-kind ios "device tools" >/tmp/bitbot-ios-tools.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-ios-tools.json'));assert d.get('ok');assert d.get('intent')=='device_tools';print('ios device_tools ok')"
+
+echo "==> Host MCP stdio (real subprocess, not journal-only)"
+node hosts/cli_host/run_turn.js --approved "mcp discover user-Gmail" >/tmp/bitbot-mcp-discover.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-discover.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='mcp_discover' and h.get('ok') for h in hrs);print('mcp_discover host ok', 'host_continued', d.get('host_continued'))"
+node hosts/cli_host/run_turn.js --approved "mcp call user-Gmail.search_threads {}" >/tmp/bitbot-mcp-call.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-call.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='mcp_call' and h.get('ok') for h in hrs);print('mcp_call host ok')"
+
+echo "==> Host durable routines"
+node hosts/cli_host/run_turn.js --approved "create routine id=host-r cron=@hourly prompt=tick" >/tmp/bitbot-routine-create.json
+node hosts/cli_host/run_turn.js "list routines" >/tmp/bitbot-routine-list.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-routine-list.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='routine_list' and 'host-r' in (h.get('stdout') or '') for h in hrs);print('routine_list durable ok')"
 
 echo "==> native iOS/Android Host shells"
 bash "$ROOT/scripts/verify_native_shells.sh"

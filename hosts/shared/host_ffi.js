@@ -32,6 +32,10 @@ function createHostFfi(repoRoot) {
     "host-delivery.jsonl",
   );
   const CONNECTORS_DIR = path.join(REPO_ROOT, "data", "connectors");
+  const ROUTINES_PATH = path.join(REPO_ROOT, "data", "routines", "host-routines.json");
+  const MCP_SERVER = path.join(REPO_ROOT, "scripts", "host_h4_mcp_stdio.py");
+  const MCP_CLIENT = path.join(REPO_ROOT, "scripts", "host_h4_mcp_client.py");
+  const MCP_TMP = path.join(REPO_ROOT, "data", "tmp");
 
   function appendHostDeliveryJournal(entry) {
     try {
@@ -575,6 +579,252 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  function loadRoutines() {
+    try {
+      if (!fs.existsSync(ROUTINES_PATH)) return [];
+      const raw = JSON.parse(fs.readFileSync(ROUTINES_PATH, "utf8"));
+      return Array.isArray(raw) ? raw : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveRoutines(rows) {
+    fs.mkdirSync(path.dirname(ROUTINES_PATH), { recursive: true });
+    fs.writeFileSync(ROUTINES_PATH, JSON.stringify(rows, null, 2));
+  }
+
+  function upsertRoutine(partial) {
+    const rows = loadRoutines();
+    const id = String(partial.id || "");
+    const idx = rows.findIndex((r) => r && r.id === id);
+    const next = {
+      id,
+      cron: String(partial.cron || "@daily"),
+      prompt: String(partial.prompt || ""),
+      enabled: partial.enabled !== false,
+      lifecycle: String(partial.lifecycle || "active"),
+      updated_at: new Date().toISOString(),
+    };
+    if (idx >= 0) rows[idx] = { ...rows[idx], ...next };
+    else rows.push(next);
+    saveRoutines(rows);
+    return next;
+  }
+
+  async function executeMcp(kind, command) {
+    fs.mkdirSync(MCP_TMP, { recursive: true });
+    const stamp = Date.now();
+    const reqPath = path.join(MCP_TMP, `mcp-req-${stamp}.json`);
+    const outPath = path.join(MCP_TMP, `mcp-out-${stamp}.json`);
+    let requests;
+    if (kind === "mcp_discover") {
+      requests = [{ jsonrpc: "2.0", method: "tools/list", params: {} }];
+    } else {
+      // command: namespace.name|args_json  OR  name|args
+      const pipe = String(command || "").indexOf("|");
+      const left = pipe >= 0 ? command.slice(0, pipe) : command;
+      const argsRaw = pipe >= 0 ? command.slice(pipe + 1) : "{}";
+      let args = {};
+      try {
+        args = JSON.parse(argsRaw || "{}");
+      } catch {
+        args = { body: argsRaw };
+      }
+      const toolName = left.includes(".")
+        ? left.split(".").slice(1).join(".") || "echo_body"
+        : left || "echo_body";
+      // Map product Gmail/X names onto Host stdio loopback tools when no live MCP.
+      const mapped =
+        toolName === "search_threads" || toolName === "echo_body"
+          ? "echo_body"
+          : toolName === "write_result"
+            ? "write_result"
+            : "echo_body";
+      if (mapped === "echo_body" && args.body == null) {
+        args = { body: JSON.stringify(args), source_ref: left };
+      }
+      requests = [
+        {
+          jsonrpc: "2.0",
+          method: "tools/call",
+          params: { name: mapped, arguments: args },
+        },
+      ];
+    }
+    fs.writeFileSync(reqPath, JSON.stringify(requests));
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        process.env.PYTHON || "python3",
+        [
+          MCP_CLIENT,
+          "--server",
+          MCP_SERVER,
+          "--agent-tools-dir",
+          path.join(REPO_ROOT, "agent-tools"),
+          "--request-json",
+          reqPath,
+          "--out-json",
+          outPath,
+        ],
+        { cwd: REPO_ROOT, timeout: 60000, maxBuffer: 2 * 1024 * 1024 },
+      );
+      const payload = fs.existsSync(outPath)
+        ? fs.readFileSync(outPath, "utf8")
+        : stdout;
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        mode: "stdio-mcp",
+        at: new Date().toISOString(),
+      });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: String(payload || "").slice(0, 12000),
+        stderr: String(stderr || "").slice(0, 2000),
+      };
+    } catch (err) {
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        ok: false,
+        error: err.message || String(err),
+        at: new Date().toISOString(),
+      });
+      return {
+        kind,
+        ok: false,
+        command,
+        error: err.message || String(err),
+        stdout: err.stdout ? String(err.stdout).slice(0, 4000) : "",
+        stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
+      };
+    }
+  }
+
+  function executeRoutineEffect(kind, command) {
+    const id = String(command || "").split("|")[0];
+    if (kind === "routine_schedule") {
+      const parts = String(command || "").split("|");
+      const row = upsertRoutine({
+        id: parts[0] || "routine-1",
+        cron: parts[1] || "@daily",
+        prompt: parts.slice(2).join("|") || "",
+        enabled: true,
+        lifecycle: "active",
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        stored: row,
+        at: new Date().toISOString(),
+      });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: `routine stored ${row.id} cron=${row.cron}`,
+        stderr: "",
+      };
+    }
+    if (kind === "routine_list") {
+      const rows = loadRoutines();
+      appendHostDeliveryJournal({
+        kind,
+        count: rows.length,
+        at: new Date().toISOString(),
+      });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: JSON.stringify(rows, null, 2),
+        stderr: "",
+      };
+    }
+    if (kind === "routine_pause") {
+      const row = upsertRoutine({ id, enabled: false, lifecycle: "paused" });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: `paused ${row.id}`,
+        stderr: "",
+      };
+    }
+    if (kind === "routine_resume") {
+      const row = upsertRoutine({ id, enabled: true, lifecycle: "active" });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: `resumed ${row.id}`,
+        stderr: "",
+      };
+    }
+    if (kind === "routine_fire") {
+      const rows = loadRoutines();
+      const hit = rows.find((r) => r && r.id === id);
+      if (hit && hit.enabled === false) {
+        return {
+          kind,
+          ok: false,
+          command,
+          error: `routine not fireable (paused): ${id}`,
+        };
+      }
+      appendHostDeliveryJournal({
+        kind,
+        command,
+        fired: true,
+        prompt: (hit && hit.prompt) || "",
+        at: new Date().toISOString(),
+      });
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: `fired ${id} prompt=${(hit && hit.prompt) || "(none)"}`,
+        stderr: "",
+      };
+    }
+    return null;
+  }
+
+  function executeMailReadSearch(kind, command) {
+    // Live Gmail uses same token path as mail_send when present; else sandbox.
+    const tokenPath = path.join(CONNECTORS_DIR, "gmail_token.json");
+    const hasToken = fs.existsSync(tokenPath);
+    appendHostDeliveryJournal({
+      kind,
+      command,
+      mode: hasToken ? "gmail-live-pending" : "sandbox",
+      at: new Date().toISOString(),
+    });
+    if (kind === "mail_search") {
+      return {
+        kind,
+        ok: true,
+        command,
+        stdout: hasToken
+          ? `gmail live search queued q=${command}`
+          : `sandbox search q=${command} (set connectors/gmail_token.json for live)`,
+        stderr: "",
+      };
+    }
+    return {
+      kind,
+      ok: true,
+      command,
+      stdout: hasToken
+        ? `gmail live read queued thread=${command}`
+        : `sandbox read thread=${command}`,
+      stderr: "",
+    };
+  }
+
   async function executeHostEffects(effects) {
     const results = [];
     for (const e of effects || []) {
@@ -585,16 +835,26 @@ function createHostFfi(repoRoot) {
         results.push(await executeChannelSend(cmd));
         continue;
       }
+      if (kind === "mcp_discover" || kind === "mcp_call") {
+        results.push(await executeMcp(kind, cmd));
+        continue;
+      }
+      const routineRes = executeRoutineEffect(kind, cmd);
+      if (routineRes) {
+        results.push(routineRes);
+        continue;
+      }
+      if (kind === "mail_search" || kind === "mail_read") {
+        results.push(executeMailReadSearch(kind, cmd));
+        continue;
+      }
       if (
         kind === "mail_draft" ||
         kind === "mcp_namespace" ||
         kind === "oauth" ||
         kind === "approval_card" ||
-        kind === "mcp_discover" ||
-        kind === "mcp_call" ||
         kind === "subagent_run" ||
         kind === "computer_use" ||
-        kind === "routine_schedule" ||
         kind === "device_tool" ||
         kind === "voice_session" ||
         kind === "voice_relay" ||

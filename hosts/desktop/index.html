@@ -179,6 +179,36 @@
     max-height: 120px;
     overflow: auto;
   }
+  #approval {
+    display: none;
+    margin: 0 16px 8px;
+    padding: 12px;
+    border: 1px solid var(--warn);
+    border-radius: 8px;
+    background: #1a1810;
+  }
+  #approval.visible { display: block; }
+  #approval .title { font-weight: 700; color: var(--warn); margin-bottom: 6px; }
+  #approval .detail { font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+  #approval .actions { margin-top: 10px; display: flex; gap: 8px; }
+  #approval button {
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  #approve-btn { background: var(--accent); color: #062014; }
+  #deny-btn { background: #3a2a2a; color: #f0b4b4; }
+  .effect-chip {
+    display: inline-block;
+    margin: 2px 4px 0 0;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    font: 10px/1.4 ui-monospace, monospace;
+    color: #b7e0c8;
+  }
   @media (max-width: 900px) {
     body {
       grid-template-columns: 1fr;
@@ -211,6 +241,14 @@
   </aside>
   <div id="main">
     <pre id="banner">booting MoonBit…</pre>
+    <div id="approval">
+      <div class="title">Approval required</div>
+      <div class="detail" id="approval-detail"></div>
+      <div class="actions">
+        <button type="button" id="approve-btn">Approve &amp; re-run</button>
+        <button type="button" id="deny-btn">Dismiss</button>
+      </div>
+    </div>
     <div id="log"></div>
   </div>
   <aside id="machines">
@@ -234,6 +272,11 @@
     const input = document.getElementById("text");
     const sendBtn = document.getElementById("send");
     const machineList = document.getElementById("machine-list");
+    const approval = document.getElementById("approval");
+    const approvalDetail = document.getElementById("approval-detail");
+    const approveBtn = document.getElementById("approve-btn");
+    const denyBtn = document.getElementById("deny-btn");
+    let pendingApprovalText = "";
 
     function addMsg(role, text) {
       const el = document.createElement("div");
@@ -244,6 +287,79 @@
       log.appendChild(el);
       log.scrollTop = log.scrollHeight;
     }
+
+    function hideApproval() {
+      approval.classList.remove("visible");
+      pendingApprovalText = "";
+      approvalDetail.textContent = "";
+    }
+
+    function showApproval(text, effects) {
+      pendingApprovalText = text;
+      const cards = (effects || []).filter((e) => e && e.kind === "approval_card");
+      approvalDetail.textContent = cards.map((c) => c.command || "").join("\n") || "Consequential action needs user confirmation.";
+      approval.classList.add("visible");
+    }
+
+    function renderEffects(effects) {
+      if (!Array.isArray(effects) || !effects.length) return;
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      el.innerHTML = '<div class="role">effects</div><div class="body"></div>';
+      const body = el.querySelector(".body");
+      for (const e of effects) {
+        const chip = document.createElement("span");
+        chip.className = "effect-chip";
+        chip.textContent = (e.kind || "?") + (e.command ? ": " + String(e.command).slice(0, 48) : "");
+        body.appendChild(chip);
+      }
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function runUserTurn(text, opts) {
+      addMsg("user", text + (opts && opts.approved ? " [approved]" : ""));
+      sendBtn.disabled = true;
+      try {
+        const r = await window.bitbot.turn(text, opts || {});
+        jsonOut.textContent = JSON.stringify(r, null, 2);
+        if (r && Array.isArray(r.machines)) renderMachines(r.machines);
+        if (r && Array.isArray(r.messages)) {
+          for (const m of r.messages) {
+            if (m.role === "user") continue;
+            addMsg(m.role || "assistant", m.text || "");
+          }
+        } else if (r && r.error) {
+          addMsg("assistant", "error: " + r.error);
+        }
+        if (r && Array.isArray(r.effects)) renderEffects(r.effects);
+        const needsApprove =
+          r &&
+          Array.isArray(r.effects) &&
+          r.effects.some((e) => e && e.kind === "approval_card") &&
+          !(opts && opts.approved);
+        if (needsApprove) showApproval(text, r.effects);
+        else hideApproval();
+        if (r && r.host_continued) {
+          addMsg("assistant", "[host] ADR 0002 continue applied (MoonBit absorbed Host results)");
+        }
+      } catch (e) {
+        const msg = String(e && e.message ? e.message : e);
+        jsonOut.textContent = msg;
+        addMsg("assistant", msg);
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    approveBtn.addEventListener("click", () => {
+      if (!pendingApprovalText) return;
+      const t = pendingApprovalText;
+      hideApproval();
+      runUserTurn(t, { approved: true });
+    });
+    denyBtn.addEventListener("click", hideApproval);
 
     function renderMachines(machines) {
       if (!Array.isArray(machines) || machines.length === 0) return;
@@ -281,31 +397,7 @@
       const text = input.value.trim();
       if (!text) return;
       input.value = "";
-      sendBtn.disabled = true;
-      addMsg("user", text);
-      try {
-        const r = await window.bitbot.turn(text);
-        jsonOut.textContent = JSON.stringify(r, null, 2);
-        if (r && Array.isArray(r.machines)) renderMachines(r.machines);
-        if (r && Array.isArray(r.messages)) {
-          for (const m of r.messages) {
-            if (m.role === "user") continue;
-            addMsg(m.role || "assistant", m.text || "");
-          }
-        } else if (r && r.error) {
-          addMsg("assistant", "error: " + r.error);
-        }
-        if (r && r.needs_host_ffi) {
-          addMsg("assistant", "[host] needs_host_ffi — Desktop executes effects via Host FFI");
-        }
-      } catch (e) {
-        const msg = String(e && e.message ? e.message : e);
-        jsonOut.textContent = msg;
-        addMsg("assistant", msg);
-      } finally {
-        sendBtn.disabled = false;
-        input.focus();
-      }
+      await runUserTurn(text, {});
     });
 
     boot();

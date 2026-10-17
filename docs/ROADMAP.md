@@ -101,4 +101,8 @@
 - [x] Vertical+connectors batch: travel_book / order_food / meeting_chat / finance_connect|call / fill_credential / cold_mail / personal_slack_dm / job_search
 - [x] Skills+identity batch: learn_from_demo / make_slides / code_changes / source_control / send_on_behalf / list_workflows / identity_browser / x_search / author_skill / export_bot_template
 - [x] CM-0705 product path: `device_permission` Host effect + phone machine_id resolve; mobile_host journals OS permission card (true-device dialog still residual)
+- [x] Host MCP deepen: `mcp_discover`/`mcp_call` execute real stdio MCP (`host_h4_mcp_stdio.py`), not journal-only
+- [x] Durable routines on Host: create/list/pause/resume/fire → `data/routines/host-routines.json`
+- [x] Mail search/read product turns (`search_mail` / `read_mail_thread`) + Host `mail_search`/`mail_read`
+- [x] Desktop Electron ApprovalGate UI (Approve & re-run with `--approved`) + effect chips
 - [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit

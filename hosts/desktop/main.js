@@ -33,12 +33,13 @@ function createWindow() {
 
 ipcMain.handle("bitbot:boot", async () => runner.bootBanner());
 
-ipcMain.handle("bitbot:turn", async (_event, text) => {
+ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   return runner.runTurn(String(text || ""), {
     sessionId: "desktop-session",
     machineId: "desk-1",
     machineKind: "desktop",
     channel: "",
+    approved: !!(opts && opts.approved),
   });
 });
 
