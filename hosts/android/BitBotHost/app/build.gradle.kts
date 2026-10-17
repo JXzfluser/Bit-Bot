@@ -13,6 +13,30 @@ android {
     versionCode = 1
     versionName = "0.1.0"
   }
+  // Store signing scaffold: release keystore via env (still open until secrets present).
+  // BITBOT_ANDROID_STORE_FILE / STORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD
+  val storeFilePath = System.getenv("BITBOT_ANDROID_STORE_FILE")
+  signingConfigs {
+    create("release") {
+      if (!storeFilePath.isNullOrBlank()) {
+        storeFile = file(storeFilePath)
+        storePassword = System.getenv("BITBOT_ANDROID_STORE_PASSWORD") ?: ""
+        keyAlias = System.getenv("BITBOT_ANDROID_KEY_ALIAS") ?: "bitbot"
+        keyPassword = System.getenv("BITBOT_ANDROID_KEY_PASSWORD") ?: ""
+      }
+    }
+  }
+  buildTypes {
+    getByName("release") {
+      signingConfig =
+        if (!storeFilePath.isNullOrBlank()) signingConfigs.getByName("release")
+        else signingConfigs.getByName("debug")
+      isMinifyEnabled = false
+    }
+    getByName("debug") {
+      applicationIdSuffix = ".debug"
+    }
+  }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17

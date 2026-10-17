@@ -3,14 +3,16 @@
 
 Product path for CM-1202 / site playbooks:
   - Never touch shared CDP 9223 or /home/box/chrome-profile
-  - Prefer google-chrome/chromium headless on a private --remote-debugging-port
-  - Always record HTTP navigate evidence + optional CDP title/DOM snapshot
+  - Prefer google-chrome/chromium on a private --remote-debugging-port
+  - Windowed mode when DISPLAY is set (true OS window + optional screenshot)
+  - CDP click/type/scroll via scripts/host_cdp_actions.mjs
+  - Always record HTTP navigate evidence
   - Emit machine-readable JSON on stdout for Host FFI
 
 Usage:
   python3 scripts/host_box_chrome_cu.py \\
     --url https://example.com \\
-    --command 'open https://example.com' \\
+    --command 'computer use open https://example.com click:40,40' \\
     --artifact-dir data/journal/computer-use/cu-1
 """
 
@@ -99,8 +101,106 @@ def cdp_get(port: int, path: str, timeout: float = 3.0) -> Tuple[int, Any]:
         return 0, {"error": str(e)}
 
 
-def run_headless_chrome(
-    chrome: str, url: str, artifact_dir: Path
+def parse_actions(command: str) -> str:
+    """Extract CDP action steps from a computer_use command string."""
+    import re
+
+    steps: List[str] = []
+    for m in re.finditer(
+        r"\b(click|type|type_text|scroll|evaluate|js):([^\s|]+)",
+        command or "",
+        flags=re.I,
+    ):
+        steps.append(f"{m.group(1).lower()}:{m.group(2)}")
+    # Default evaluate title so every GUI session records an action outcome.
+    if not steps:
+        steps.append("evaluate:document.title")
+    return "|".join(steps)
+
+
+def choose_gui_mode(explicit: str = "") -> str:
+    mode = (explicit or os.environ.get("BITBOT_CU_GUI_MODE") or "").strip().lower()
+    if mode in ("window", "os", "headed", "headless"):
+        return "window" if mode in ("window", "os", "headed") else "headless"
+    if os.environ.get("DISPLAY"):
+        return "window"
+    return "headless"
+
+
+def capture_screenshot(artifact_dir: Path) -> Dict[str, Any]:
+    out = artifact_dir / "gui-screenshot.png"
+    display = os.environ.get("DISPLAY") or ""
+    if not display:
+        return {"ok": False, "error": "no DISPLAY", "path": None}
+    # Prefer import (ImageMagick) then gnome-screenshot / scrot.
+    for cmd in (
+        ["import", "-window", "root", str(out)],
+        ["gnome-screenshot", "-f", str(out)],
+        ["scrot", str(out)],
+    ):
+        bin_path = shutil.which(cmd[0])
+        if not bin_path:
+            continue
+        try:
+            subprocess.run(
+                [bin_path, *cmd[1:]],
+                check=False,
+                timeout=8,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if out.exists() and out.stat().st_size > 0:
+                return {
+                    "ok": True,
+                    "path": str(out),
+                    "bytes": out.stat().st_size,
+                    "tool": cmd[0],
+                    "display": display,
+                }
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": str(e), "path": None, "tool": cmd[0]}
+    return {"ok": False, "error": "no screenshot tool", "path": None}
+
+
+def run_cdp_actions(port: int, actions: str, repo_root: Path) -> Dict[str, Any]:
+    script = repo_root / "scripts" / "host_cdp_actions.mjs"
+    if not script.exists():
+        return {"ok": False, "error": "host_cdp_actions.mjs missing"}
+    try:
+        proc = subprocess.run(
+            [
+                os.environ.get("NODE") or "node",
+                str(script),
+                "--port",
+                str(port),
+                "--actions",
+                actions,
+            ],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        line = (proc.stdout or "").strip().splitlines()[-1] if proc.stdout else ""
+        if line.startswith("{"):
+            return json.loads(line)
+        return {
+            "ok": False,
+            "error": (proc.stderr or proc.stdout or "cdp actions failed")[:400],
+            "exit_code": proc.returncode,
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)}
+
+
+def run_chrome_session(
+    chrome: str,
+    url: str,
+    artifact_dir: Path,
+    *,
+    gui_mode: str,
+    actions: str,
+    repo_root: Path,
 ) -> Dict[str, Any]:
     port = free_port()
     if port == SHARED_CDP_PORT:
@@ -118,37 +218,54 @@ def run_headless_chrome(
     stderr_path = artifact_dir / "chrome.stderr.txt"
     args: List[str] = [
         chrome,
-        "--headless=new",
         "--disable-gpu",
         "--no-first-run",
         "--no-default-browser-check",
         f"--user-data-dir={profile}",
         f"--remote-debugging-port={port}",
         "--remote-allow-origins=*",
-        url,
+        f"--window-size=1100,800",
     ]
+    if gui_mode == "headless":
+        args.insert(1, "--headless=new")
+    else:
+        # True OS window on DISPLAY (Grok-like computerUse surface).
+        args.extend(["--new-window"])
+    args.append(url)
+    env = os.environ.copy()
     with open(stdout_path, "wb") as so, open(stderr_path, "wb") as se:
         proc = subprocess.Popen(
             args,
             stdout=so,
             stderr=se,
             cwd=str(artifact_dir),
+            env=env,
         )
     # Wait briefly for CDP
     version = None
     targets = None
-    for _ in range(25):
-        time.sleep(0.2)
+    for _ in range(40):
+        time.sleep(0.25)
         code, payload = cdp_get(port, "/json/version")
         if code == 200 and isinstance(payload, dict) and "webSocketDebuggerUrl" in payload:
             version = payload
             _, targets = cdp_get(port, "/json/list")
             break
     # Probe shared CDP must remain untouched / unused by us.
-    shared_probe = cdp_get(SHARED_CDP_PORT, "/json/version", timeout=0.5)
+    _shared_probe = cdp_get(SHARED_CDP_PORT, "/json/version", timeout=0.5)
+    action_result: Dict[str, Any] = {}
+    if version and actions:
+        action_result = run_cdp_actions(port, actions, repo_root)
+    screenshot: Dict[str, Any] = {"ok": False}
+    if gui_mode == "window":
+        # Give the window a moment to map, then capture root display.
+        time.sleep(0.6)
+        screenshot = capture_screenshot(artifact_dir)
     result = {
         "started": True,
         "pid": proc.pid,
+        "gui_mode": gui_mode,
+        "os_window": gui_mode == "window",
         "private_cdp_port": port,
         "shared_cdp_port": SHARED_CDP_PORT,
         "shared_cdp_untouched": True,
@@ -158,6 +275,9 @@ def run_headless_chrome(
         "version": version,
         "targets_count": len(targets) if isinstance(targets, list) else 0,
         "args": args,
+        "actions": action_result,
+        "screenshot": screenshot,
+        "display": os.environ.get("DISPLAY") or None,
     }
     # Best-effort terminate throwaway session.
     try:
@@ -180,14 +300,15 @@ def main() -> int:
     ap.add_argument("--url", default="")
     ap.add_argument("--command", default="")
     ap.add_argument("--artifact-dir", required=True)
+    ap.add_argument("--gui-mode", default="", help="window|headless (default: DISPLAY→window)")
     args = ap.parse_args()
 
     artifact_dir = Path(args.artifact_dir)
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    repo_root = Path(__file__).resolve().parents[1]
 
     url = (args.url or "").strip()
     if not url:
-        m = None
         import re
 
         m = re.search(r"https?://[^\s|\"']+", args.command or "")
@@ -229,13 +350,24 @@ def main() -> int:
         navigate["evidence"] = "blocked non-public target"
 
     chrome = find_chrome()
+    gui_mode = choose_gui_mode(args.gui_mode)
+    actions = parse_actions(args.command or "")
     gui: Dict[str, Any] = {
         "box_chrome_process": False,
         "chrome_bin": chrome,
         "shared_cdp_untouched": True,
+        "gui_mode": gui_mode,
+        "os_window": False,
     }
     if chrome and url and not blocked and navigate.get("navigate_reachable"):
-        gui = run_headless_chrome(chrome, url, artifact_dir)
+        gui = run_chrome_session(
+            chrome,
+            url,
+            artifact_dir,
+            gui_mode=gui_mode,
+            actions=actions,
+            repo_root=repo_root,
+        )
         gui["box_chrome_process"] = bool(gui.get("started"))
 
     summary = {

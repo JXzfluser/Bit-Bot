@@ -108,12 +108,16 @@ node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-slack.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-oauth-slack.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='oauth' and h.get('ok') for h in hrs);print('oauth slack host ok')"
 node hosts/cli_host/run_turn.js "connect gmail" >/tmp/bitbot-oauth-gmail.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-oauth-gmail.json'));assert d.get('ok');hrs=d.get('host_results') or [];assert any(h.get('kind')=='oauth' and h.get('ok') for h in hrs);print('oauth gmail host ok')"
-node hosts/cli_host/run_turn.js "computer use open https://example.com" >/tmp/bitbot-cu.json
-python3 -c "import json;d=json.load(open('/tmp/bitbot-cu.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');assert h.get('ok');out=h.get('stdout') or '';assert 'navigate_reachable' in out;assert 'box_chrome_process' in out or 'host_box_chrome_cu' in out or 'http_fallback' in out;print('computer_use box-chrome host ok')"
+node hosts/cli_host/run_turn.js "computer use open https://example.com click:40,40" >/tmp/bitbot-cu.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-cu.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');assert h.get('ok');out=h.get('stdout') or '';assert 'navigate_reachable' in out;assert 'box_chrome_process' in out or 'host_box_chrome_cu' in out or 'http_fallback' in out;g=json.loads(out).get('gui') or {};assert g.get('box_chrome_process') is True or 'http_fallback' in out;print('computer_use box-chrome host ok', 'os_window', g.get('os_window'), 'actions_ok', g.get('actions_ok'))"
 BITBOT_OAUTH_MODE=live node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-live.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-oauth-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='oauth');assert h.get('ok') is False;assert 'NeedsAuth' in (h.get('stdout') or '') or 'live_needs_auth' in (h.get('stdout') or '');print('oauth live NeedsAuth (honest) ok')"
+BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=local node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-exchange.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-oauth-exchange.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='oauth');assert h.get('ok');assert 'local_exchange' in (h.get('stdout') or '');print('oauth local_exchange authorize→token ok')"
 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: smoke body" >/tmp/bitbot-channel.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-channel.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');assert h.get('ok');assert 'outbound' in (h.get('stdout') or '') or os.path.isfile('data/channels/outbound.jsonl');print('channel_send outbound durable ok')"
+node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: teams body" >/tmp/bitbot-teams.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-teams.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');assert h.get('ok');assert 'teams' in (h.get('stdout') or '');print('channel_send teams outbound ok')"
 
 echo "==> Host skill_write / slides_pptx / export_pack (real artifacts)"
 node hosts/cli_host/run_turn.js "author skill name=smoke-skill description=demo body=Do the thing." >/tmp/bitbot-skill-write.json

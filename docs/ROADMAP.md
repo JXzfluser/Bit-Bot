@@ -108,10 +108,13 @@
 - [x] Host sandbox OAuth: `oauth` effect runs real IdP authorize→token for Slack/Gmail/Finance; Desktop Connectors panel
 - [x] Host `computer_use` navigate: real HTTP public-page fetch + evidence under `data/journal/computer-use/`
 - [x] Host `computer_use` box-chrome child process (`scripts/host_box_chrome_cu.py`): private CDP only, shared 9223/profile untouched; GUI residual remains true OS window automation
+- [x] Host computer_use OS-window mode (DISPLAY) + CDP click/type/scroll (`host_cdp_actions.mjs`) + screenshot evidence when tools available
 - [x] Host OAuth modes: default sandbox IdP; `BITBOT_OAUTH_MODE=live` applies real token or honest NeedsAuth (never pretend Connected)
-- [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST
+- [x] Host OAuth `BITBOT_OAUTH_EXCHANGE=local` authorize→callback→token rehearsal (`local_exchange`); remote production IdP interactive consent still residual
+- [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)
+- [x] Mobile signing scaffolds: Android `signingConfigs.release` env hooks + iOS `ExportOptions.plist` / `DEVELOPMENT_TEAM` (certs/keystore still required)
 - [x] Journal / shared memory / inbound reaction product turns + durable Host stores (`events.jsonl` / `shared-scopes.json` / `inbound-reactions.jsonl`; CM-0302 / 0303 / 0110)
 - [x] Host `skill_write` / `slides_pptx` / `export_pack` materialize real artifacts under `agent-tools/` (python-pptx PK zip; secrets stripped)
 - [x] Host durable product delivery: device_permission/tool, voice session/relay/end, teammates/room/send_to_agent, subagent, approval queue, cloud launch/artifact, schedule/purchase/finance/credential/mail_draft (not journal-only)
