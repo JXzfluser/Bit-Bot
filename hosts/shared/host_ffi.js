@@ -1029,13 +1029,93 @@ function createHostFfi(repoRoot) {
   }
 
   async function executeMailSend(command) {
-    // command: provider|to|subject|body  (provider=gmail|outlook)
+    // command: provider|to|subject|body  (provider=gmail|outlook|cold)
+    // cold: cold|to|subject|body|unsubscribe (CM-1009)
     const parts = String(command || "").split("|");
     const provider = (parts[0] || "gmail").trim().toLowerCase();
+    const at = new Date().toISOString();
+
+    if (provider === "cold") {
+      const to = (parts[1] || "").trim();
+      const subject = (parts[2] || "").trim();
+      const body = (parts[3] || "").trim();
+      const unsubscribe = (parts[4] || "mailto:unsub@example.com").trim();
+      const draftDir = path.join(REPO_ROOT, "data", "mail", "draft-files");
+      fs.mkdirSync(draftDir, { recursive: true });
+      const draftId = `cold-${Date.now().toString(36)}`;
+      const emlPath = path.join(draftDir, `${draftId}.eml`);
+      const eml = [
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=utf-8",
+        `Date: ${at}`,
+        `Message-ID: <${draftId}@bitbot.local>`,
+        `List-Unsubscribe: <${unsubscribe}>`,
+        "X-BitBot-Status: draft",
+        "X-BitBot-Cold-Mail: 1",
+        "",
+        body,
+        "",
+      ].join("\r\n");
+      fs.writeFileSync(emlPath, eml);
+      const coldPath = path.join(REPO_ROOT, "data", "mail", "cold-outbound.jsonl");
+      appendJsonl(coldPath, {
+        to,
+        subject,
+        unsubscribe,
+        eml_path: emlPath,
+        sent: false,
+        pretend_sent: false,
+        at,
+      });
+      appendJsonl(MAIL_DRAFTS_PATH, {
+        provider: "cold",
+        to,
+        subject,
+        status: "draft",
+        unsubscribe,
+        eml_path: emlPath,
+        at,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: emlPath,
+        label: "cold_mail.eml",
+        to,
+        subject,
+        source_kind: "mail_send",
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind: "mail_send",
+        provider: "cold",
+        to,
+        subject,
+        eml: emlPath,
+        at,
+      });
+      return okJson("mail_send", command, {
+        provider: "cold",
+        to,
+        subject,
+        unsubscribe,
+        mode: "cold_sandbox_eml",
+        sent: false,
+        pretend_sent: false,
+        eml_path: emlPath,
+        eml_ok:
+          fs.existsSync(emlPath) &&
+          fs.readFileSync(emlPath, "utf8").includes("List-Unsubscribe:"),
+        cold_outbound: coldPath,
+        drafted: true,
+        send_to_user: delivery,
+      });
+    }
+
     const to = (parts[1] || "").trim();
     const subject = (parts[2] || "").trim();
     const body = parts.slice(3).join("|");
-    const at = new Date().toISOString();
     const state = loadConnectorState(provider);
     const token = extractAccessToken(state);
     const journal = appendHostDeliveryJournal({
@@ -1895,6 +1975,9 @@ function createHostFfi(repoRoot) {
       return null; // SendToUser already recorded in effect handlers
     }
     if (kind === "oauth") {
+      if (parsed.mode === "identity_browser_switch") {
+        return null; // already recorded in identity-browser handler
+      }
       return recordSendToUser({
         type: "widget",
         widget: "connector_oauth",
@@ -1924,6 +2007,11 @@ function createHostFfi(repoRoot) {
         path: parsed.evidence || "",
         vision_ok: Boolean(parsed.gui && parsed.gui.vision_ok),
         outcome: (parsed.outcome && parsed.outcome.summary) || "",
+        checkout_stage: (parsed.outcome && parsed.outcome.checkout_stage) || "",
+        blocked_on_signin: Boolean(
+          parsed.outcome && parsed.outcome.blocked_on_signin,
+        ),
+        pretend_purchased: false,
         gui_mode: (parsed.gui && parsed.gui.gui_mode) || "",
         os_window: Boolean(parsed.gui && parsed.gui.os_window),
         source_kind: kind,
@@ -2935,6 +3023,55 @@ function createHostFfi(repoRoot) {
       `oauth-${connectorName}-${Date.now()}`,
     );
     fs.mkdirSync(artifactDir, { recursive: true });
+
+    // CM-2146 identity browser: switch session marker — never pretend Slack Connected.
+    if (connectorName === "identity-browser") {
+      const at = new Date().toISOString();
+      const identityDir = path.join(REPO_ROOT, "data", "connectors", "identity");
+      fs.mkdirSync(identityDir, { recursive: true });
+      const sessionPath = path.join(identityDir, "browser-session.json");
+      const session = {
+        identity: "user-browser",
+        previous: "app-identity",
+        status: "SwitchedToSignedInBrowser",
+        pretend_connected_slack: false,
+        connected: false,
+        mode: "identity_browser_switch",
+        command: String(command || ""),
+        at,
+      };
+      fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));
+      saveConnectorState("identity-browser", session);
+      const delivery = recordSendToUser({
+        type: "widget",
+        widget: "identity_browser",
+        status: session.status,
+        mode: session.mode,
+        connected: false,
+        source_kind: "oauth",
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind: "oauth",
+        command,
+        connector: "identity-browser",
+        ok: true,
+        status: session.status,
+        path: sessionPath,
+        at,
+      });
+      return okJson("oauth", command, {
+        connector: "identity-browser",
+        status: session.status,
+        connected: false,
+        pretend_connected_slack: false,
+        mode: "identity_browser_switch",
+        session_path: sessionPath,
+        switched: true,
+        send_to_user: delivery,
+      });
+    }
+
     const mode = String(process.env.BITBOT_OAUTH_MODE || "sandbox")
       .trim()
       .toLowerCase();
@@ -4577,8 +4714,15 @@ function createHostFfi(repoRoot) {
                         gui.vision_plan.dom.targets &&
                         Object.values(gui.vision_plan.dom.targets).some(Boolean),
                     ),
+                    has_checkout: Boolean(
+                      gui.vision_plan.dom && gui.vision_plan.dom.has_checkout,
+                    ),
+                    has_cart: Boolean(
+                      gui.vision_plan.dom && gui.vision_plan.dom.has_cart,
+                    ),
                   }
                 : null,
+              checkout_summary: gui.checkout_summary || null,
               title:
                 (gui.actions && gui.actions.title) ||
                 (gui.vision_actions && gui.vision_actions.title) ||
@@ -4588,6 +4732,8 @@ function createHostFfi(repoRoot) {
               summary: "structured outcome only",
               final_url: navigate.url || null,
               blocked_on_signin: false,
+              checkout_stage: "n/a",
+              pretend_purchased: false,
             },
             agent_loop: summary.agent_loop || null,
             mode: "host_box_chrome_cu",

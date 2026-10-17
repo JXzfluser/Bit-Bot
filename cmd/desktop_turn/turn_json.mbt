@@ -2723,9 +2723,15 @@ pub fn run_desktop_turn(
       match @skills.crystallize_demonstration_to_skill_draft(demo) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(draft) => {
+          // Host skill_write: name|description|body (steps crystallized into body)
           let effect : DesktopEffect = {
             kind: "skill_write",
-            command: draft.name + "|" + draft.description,
+            command: draft.name +
+            "|" +
+            draft.description +
+            "|" +
+            "# Steps\n" +
+            steps_csv,
             needs_host_ffi: true,
           }
           deliver_ok(

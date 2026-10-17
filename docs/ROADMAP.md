@@ -140,6 +140,10 @@
 - [x] Host routine daemon one-shot sweeps (`scripts/host_routine_daemon.sh`; `long_lived=false` — not systemd cron)
 - [x] Host meeting_chat CM-2153: DirectSend → `data/meetings/live-chat.jsonl`; DraftCard → meeting eml
 - [x] Host Teams sandbox drafts + CM-1104 widget degrade + `data/channels/teams/outbound-drafts.jsonl`
+- [x] Host CU checkout deepen: `checkout_stage` + `checkout_summary.json` (never pretend_purchased)
+- [x] Host identity_browser switch session (`identity_browser_switch`; never pretend Slack Connected)
+- [x] Host cold_mail sandbox `.eml` with `List-Unsubscribe` (CM-1009; pretend_sent=false)
+- [x] Host learn_from_demo skill_write includes crystallized steps in SKILL.md body
 - [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
 - [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
 - [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN

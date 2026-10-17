@@ -122,8 +122,16 @@ def plan_actions(command: str) -> List[str]:
     """Host-side GUI planner (observe heuristics → act steps). Not LocalBrain."""
     low = (command or "").lower()
     steps: List[str] = ["evaluate:document.title"]
-    if "shop" in low or "retail" in low or "cart" in low:
-        steps.extend(["scroll:0,400", "click:520,360", "evaluate:document.title"])
+    if "shop" in low or "retail" in low or "cart" in low or "checkout" in low:
+        # Observe → search/product → cart → checkout (honest stop on sign-in later).
+        steps.extend(
+            [
+                "scroll:0,400",
+                "click:520,360",
+                "scroll:0,200",
+                "evaluate:document.title",
+            ]
+        )
     elif "travel" in low or "flight" in low or "hotel" in low:
         steps.extend(["scroll:0,300", "click:480,300", "evaluate:document.title"])
     elif "food" in low or "order" in low or "restaurant" in low:
@@ -150,18 +158,20 @@ _DOM_OBSERVE_JS = (
     "var txt=(bodyTxt?bodyTxt:'').slice(0,600).toLowerCase();"
     "var searchEl=pick(['input[type=search]','input[name*=search]','input[placeholder*=search]','input[aria-label*=search]','#search','[data-test=searchInput]']);"
     "var cartEl=pick(['a[href*=cart]','button[aria-label*=cart]','[data-test*=cart]','a[href*=bag]']);"
+    "var checkoutEl=pick(['a[href*=checkout]','button[name*=checkout]','button[aria-label*=checkout]','[data-test*=checkout]','input[value*=checkout]']);"
     "var primaryBtn=pick(['button[type=submit]','button.primary','a.button','[role=button]','button']);"
     "var inputs=document.querySelectorAll('input,textarea,[contenteditable]').length;"
     "var buttons=document.querySelectorAll('button,a,[role=button]').length;"
     "var links=document.querySelectorAll('a[href]').length;"
-    "var searchBox=box(searchEl);var cartBox=box(cartEl);var primaryBox=box(primaryBtn);"
+    "var searchBox=box(searchEl);var cartBox=box(cartEl);var checkoutBox=box(checkoutEl);var primaryBox=box(primaryBtn);"
     "var hasSearch=searchEl?true:/search/.test(txt);"
     "var hasSignin=/sign in/.test(txt);if(!hasSignin)hasSignin=/log in/.test(txt);if(!hasSignin)hasSignin=/login/.test(txt);"
-    "var hasCart=cartEl?true:/cart/.test(txt);if(!hasCart)hasCart=/checkout/.test(txt);"
+    "var hasCart=cartEl?true:/cart/.test(txt);"
+    "var hasCheckout=checkoutEl?true:/checkout/.test(txt);if(!hasCheckout)hasCheckout=/place order/.test(txt);"
     "var hasResults=/results/.test(txt);if(!hasResults)hasResults=/products/.test(txt);"
     "return JSON.stringify({title:t,text_len:txt.length,inputs:inputs,buttons:buttons,links:links,"
-    "has_search:hasSearch,has_signin:hasSignin,has_cart:hasCart,has_results:hasResults,"
-    "targets:{search:searchBox,cart:cartBox,primary:primaryBox}});"
+    "has_search:hasSearch,has_signin:hasSignin,has_cart:hasCart,has_checkout:hasCheckout,has_results:hasResults,"
+    "targets:{search:searchBox,cart:cartBox,checkout:checkoutBox,primary:primaryBox}});"
     "}catch(e){return JSON.stringify({error:String(e)});}})()"
 )
 
@@ -293,6 +303,11 @@ def plan_vision_actions(
     elif blocked_signin:
         # Honest stop: do not attempt credential entry; re-observe only.
         steps.append("evaluate:document.title")
+    elif targets.get("checkout") and (
+        "checkout" in low or "shop" in low or dom.get("has_checkout")
+    ):
+        ox, oy = int(targets["checkout"]["x"]), int(targets["checkout"]["y"])
+        steps.extend([f"click:{ox},{oy}", "evaluate:document.title"])
     elif targets.get("cart") and ("shop" in low or "cart" in low or dom.get("has_cart")):
         cx, cy = int(targets["cart"]["x"]), int(targets["cart"]["y"])
         steps.extend([f"click:{cx},{cy}", "evaluate:document.title"])
@@ -680,11 +695,32 @@ def main() -> int:
     vision_plan = gui.get("vision_plan") if isinstance(gui.get("vision_plan"), dict) else {}
     vision_ok = bool(vision_plan.get("ok"))
     blocked_signin = bool(vision_plan.get("blocked_on_signin"))
+    dom_obs = vision_plan.get("dom") if isinstance(vision_plan.get("dom"), dict) else {}
+    cmd_low = (args.command or "").lower()
+    is_shop = any(k in cmd_low for k in ("shop", "retail", "cart", "checkout", "buy"))
+    # Honest checkout stage machine for shopping playbooks (CM-1803 / CU deepen).
+    if blocked_signin:
+        checkout_stage = "blocked_on_signin"
+    elif dom_obs.get("has_checkout"):
+        checkout_stage = "checkout"
+    elif dom_obs.get("has_cart"):
+        checkout_stage = "cart"
+    elif dom_obs.get("has_results") or dom_obs.get("has_search"):
+        checkout_stage = "browse"
+    elif is_shop and navigate.get("navigate_reachable"):
+        checkout_stage = "landed"
+    elif is_shop:
+        checkout_stage = "unreachable"
+    else:
+        checkout_stage = "n/a"
     outcome = {
         "agent_id": f"cu-host-{artifact_dir.name}",
         "summary": "structured outcome only",
         "final_url": navigate.get("url"),
         "blocked_on_signin": blocked_signin,
+        "checkout_stage": checkout_stage,
+        "has_cart": bool(dom_obs.get("has_cart")),
+        "has_checkout": bool(dom_obs.get("has_checkout")),
         "navigate_reachable": bool(navigate.get("navigate_reachable")),
         "os_window": bool(gui.get("os_window")),
         "actions_ok": steps_ok,
@@ -692,7 +728,21 @@ def main() -> int:
         "vision_ok": vision_ok,
         "page_title": title,
         "shared_cdp_untouched": gui.get("shared_cdp_untouched", True),
+        "pretend_purchased": False,
     }
+    checkout_summary = {
+        "checkout_stage": checkout_stage,
+        "blocked_on_signin": blocked_signin,
+        "has_cart": bool(dom_obs.get("has_cart")),
+        "has_checkout": bool(dom_obs.get("has_checkout")),
+        "playbook": "shopping" if is_shop else "generic",
+        "pretend_purchased": False,
+        "note": "Host CU checkout deepen — never pretends paid without purchase effect",
+    }
+    (artifact_dir / "checkout_summary.json").write_text(
+        json.dumps(checkout_summary, indent=2) + "\n", encoding="utf-8"
+    )
+    gui["checkout_summary"] = checkout_summary
     # Agent loop: observe → act → vision → act → reobserve (Host-side, not LocalBrain).
     agent_loop = {
         "observe": {
