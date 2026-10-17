@@ -278,6 +278,14 @@
       <div class="name">SendToUser</div>
       <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent</div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Memory</div>
+    <div class="machine-item">
+      <div class="name">Host session seed</div>
+      <div class="meta" id="memory-meta">remember k=v · recall (desktop-host.json)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="mem-recall" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Recall</button>
+      </div>
+    </div>
     <div class="panel-title" style="margin-top:16px">Source control</div>
     <div class="machine-item">
       <div class="name">git / PR plan</div>
@@ -427,6 +435,17 @@
           addMsg("assistant", "error: " + r.error);
         }
         if (r && Array.isArray(r.effects)) renderEffects(r.effects);
+        if (r && Array.isArray(r.memory)) {
+          const meta = document.getElementById("memory-meta");
+          if (meta) {
+            const keys = r.memory
+              .filter((m) => m && m.key)
+              .map((m) => m.key + "=" + String(m.value || "").slice(0, 24));
+            meta.textContent = keys.length
+              ? keys.slice(0, 4).join(" · ") + (keys.length > 4 ? "…" : "")
+              : "empty profile seed";
+          }
+        }
         const needsApprove =
           r &&
           Array.isArray(r.effects) &&
@@ -850,6 +869,9 @@
     });
     document.getElementById("sc-create-pr").addEventListener("click", () => {
       runUserTurn("source control create_pr", {});
+    });
+    document.getElementById("mem-recall").addEventListener("click", () => {
+      runUserTurn("recall", {});
     });
 
     boot();
