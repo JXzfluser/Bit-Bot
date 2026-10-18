@@ -1350,6 +1350,31 @@ function stripHostAppliedMarker(file) {
   if (confirmDelP.mapped !== "host_delete_agent" || confirmDelP.product_tool_residual !== false) throw new Error(JSON.stringify(confirmDelP).slice(0,200));
   if ((confirmDelP.delete_agent||{}).pretend_deleted === true) throw new Error("pretend_deleted confirm");
   console.log("mcp_call confirm_delete_agent alias short-circuit ok", confirmDelP.mapped, (confirmDelP.delete_agent||{}).phase || (confirmDelP.delete_agent||{}).mode);
+  const listPluginsRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.list_plugins|{\"q\":\"slides\"}" }]);
+  const listPluginsH = listPluginsRuns.find((r) => r && r.kind === "mcp_call");
+  if (!listPluginsH || !listPluginsH.ok) throw new Error("list_plugins mcp");
+  const listPluginsP = JSON.parse(listPluginsH.stdout || "{}");
+  if (listPluginsP.mapped !== "host_mcp_list_plugins" || listPluginsP.product_tool_residual !== false) throw new Error(JSON.stringify(listPluginsP).slice(0,200));
+  if ((listPluginsP.mcp_list_plugins||{}).pretend_listing === true) throw new Error("pretend_listing");
+  if (!((listPluginsP.mcp_list_plugins||{}).count >= 1)) throw new Error("list_plugins count: " + JSON.stringify(listPluginsP.mcp_list_plugins||{}).slice(0,200));
+  console.log("mcp_call list_plugins short-circuit ok", listPluginsP.mapped, (listPluginsP.mcp_list_plugins||{}).count, (listPluginsP.mcp_list_plugins||{}).query);
+  const openPluginsRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.open_plugins|{}" }]);
+  const openPluginsH = openPluginsRuns.find((r) => r && r.kind === "mcp_call");
+  if (!openPluginsH || !openPluginsH.ok) throw new Error("open_plugins mcp");
+  const openPluginsP = JSON.parse(openPluginsH.stdout || "{}");
+  if (openPluginsP.mapped !== "host_mcp_list_plugins" || openPluginsP.product_tool_residual !== false) throw new Error(JSON.stringify(openPluginsP).slice(0,200));
+  if ((openPluginsP.mcp_list_plugins||{}).pretend_listing === true) throw new Error("pretend_listing open");
+  console.log("mcp_call open_plugins alias short-circuit ok", openPluginsP.mapped, (openPluginsP.mcp_list_plugins||{}).count);
+  const getPluginRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.get_plugin|{\"plugin_id\":\"plugin-slides\"}" }]);
+  const getPluginH = getPluginRuns.find((r) => r && r.kind === "mcp_call");
+  if (!getPluginH || !getPluginH.ok) throw new Error("get_plugin mcp");
+  const getPluginP = JSON.parse(getPluginH.stdout || "{}");
+  if (getPluginP.mapped !== "host_mcp_get_plugin" || getPluginP.product_tool_residual !== false) throw new Error(JSON.stringify(getPluginP).slice(0,200));
+  if ((getPluginP.mcp_get_plugin||{}).pretend_plugin === true) throw new Error("pretend_plugin");
+  if ((getPluginP.mcp_get_plugin||{}).id !== "plugin-slides" && (getPluginP.mcp_get_plugin||{}).plugin_id !== "plugin-slides") {
+    throw new Error("get_plugin id: " + JSON.stringify(getPluginP.mcp_get_plugin||{}).slice(0,200));
+  }
+  console.log("mcp_call get_plugin short-circuit ok", getPluginP.mapped, (getPluginP.mcp_get_plugin||{}).id || (getPluginP.mcp_get_plugin||{}).plugin_id);
   // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}

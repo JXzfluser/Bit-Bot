@@ -7172,6 +7172,12 @@ function createHostFfi(repoRoot) {
         register_plugin: "host_mcp_namespace",
         author_plugin: "host_mcp_namespace",
         plugin_install: "host_mcp_namespace",
+        list_plugins: "host_mcp_list_plugins",
+        open_plugins: "host_mcp_list_plugins",
+        search_plugins: "host_mcp_list_plugins",
+        plugin_list: "host_mcp_list_plugins",
+        get_plugin: "host_mcp_get_plugin",
+        plugin_get: "host_mcp_get_plugin",
         skill_list: "list_skills",
         memory_recall: "host_memory_recall",
         recall_memory: "host_memory_recall",
@@ -7363,6 +7369,8 @@ function createHostFfi(repoRoot) {
         mapped === "host_connectors_probe" ||
         mapped === "host_mcp_discover" ||
         mapped === "host_mcp_namespace" ||
+        mapped === "host_mcp_list_plugins" ||
+        mapped === "host_mcp_get_plugin" ||
         mapped === "host_memory_recall" ||
         mapped === "host_device_permission" ||
         mapped === "host_members_panel" ||
@@ -10838,6 +10846,113 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(nsHit && nsHit.ok),
             mcp_namespace: nsPayload,
+          });
+        }
+        if (mapped === "host_mcp_list_plugins") {
+          // Product list_plugins / open_plugins / search_plugins → Host mcp_list_plugins.
+          const q =
+            String(
+              args.q || args.query || args.search || args.body || "",
+            ).trim() || "";
+          const listCmd =
+            String(args.command || "").trim() || (q ? `q=${q}` : "");
+          const listResults = await executeHostEffects([
+            { kind: "mcp_list_plugins", command: listCmd },
+          ]);
+          const listHit = (listResults || []).find(
+            (r) => r && r.kind === "mcp_list_plugins",
+          );
+          let listPayload = {};
+          try {
+            listPayload = JSON.parse((listHit && listHit.stdout) || "{}");
+          } catch {
+            listPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "mcp_list_plugins",
+              mcp_list_plugins: {
+                path: listPayload.path || null,
+                mode: listPayload.mode || null,
+                count: listPayload.count,
+                query: listPayload.query || null,
+                pretend_listing: listPayload.pretend_listing,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(listHit && listHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(listHit && listHit.ok),
+            mcp_list_plugins: listPayload,
+          });
+        }
+        if (mapped === "host_mcp_get_plugin") {
+          // Product get_plugin → Host mcp_get_plugin (never invent unknown plugins).
+          const pluginId =
+            String(
+              args.plugin_id ||
+                args.pluginId ||
+                args.id ||
+                args.plugin ||
+                args.name ||
+                args.body ||
+                "plugin-slides",
+            ).trim() || "plugin-slides";
+          const getCmd = String(args.command || "").trim() || pluginId;
+          const getResults = await executeHostEffects([
+            { kind: "mcp_get_plugin", command: getCmd },
+          ]);
+          const getHit = (getResults || []).find(
+            (r) => r && r.kind === "mcp_get_plugin",
+          );
+          let getPayload = {};
+          try {
+            getPayload = JSON.parse((getHit && getHit.stdout) || "{}");
+          } catch {
+            getPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "mcp_get_plugin",
+              mcp_get_plugin: {
+                path: getPayload.path || null,
+                mode: getPayload.mode || null,
+                id: getPayload.id || null,
+                plugin_id: getPayload.plugin_id || pluginId,
+                skill_count: getPayload.skill_count,
+                pretend_plugin: getPayload.pretend_plugin,
+                refused: getPayload.refused,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(getHit && getHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(getHit && getHit.ok),
+            mcp_get_plugin: getPayload,
           });
         }
         if (mapped === "host_memory_recall") {
