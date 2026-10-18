@@ -401,11 +401,12 @@
     </div>
     <div class="panel-title" style="margin-top:16px">Connectors</div>
     <div class="machine-item">
-      <div class="name">Slack / Gmail</div>
+      <div class="name">Slack / Gmail / Outlook</div>
       <div class="meta" id="connectors-meta">Host sandbox IdP OAuth</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="connect-slack" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Connect Slack</button>
         <button type="button" id="connect-gmail" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
+        <button type="button" id="connect-outlook" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Outlook</button>
         <button type="button" id="connect-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
         <button type="button" id="connect-identity" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
         <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
@@ -1219,6 +1220,37 @@
               : "empty profile seed";
           }
         }
+        if (r && Array.isArray(r.host_results)) {
+          const memHost = r.host_results.find(
+            (h) =>
+              h &&
+              (h.kind === "memory_update" ||
+                h.kind === "memory_recall" ||
+                h.kind === "shared_memory_put" ||
+                h.kind === "shared_memory_read") &&
+              h.ok,
+          );
+          if (memHost) {
+            try {
+              const mp = JSON.parse(memHost.stdout || "{}");
+              const meta = document.getElementById("memory-meta");
+              if (meta) {
+                const leaf = String(mp.path || "")
+                  .split("/")
+                  .slice(-1)[0];
+                meta.textContent =
+                  memHost.kind.replace(/_/g, " ") +
+                  (mp.key ? " · " + mp.key : "") +
+                  (mp.value != null
+                    ? "=" + String(mp.value).slice(0, 24)
+                    : "") +
+                  (leaf ? " · " + leaf : "");
+              }
+            } catch (_) {
+              /* ignore */
+            }
+          }
+        }
         const needsApprove =
           r &&
           Array.isArray(r.effects) &&
@@ -1799,21 +1831,37 @@
                   if (p.widget_degraded) {
                     label += " (degraded)";
                   }
-                } else if (h.kind === "inbound_reaction" && p.visible_pill) {
-                  const pill = document.createElement("div");
-                  pill.className = "reaction-pill";
-                  pill.innerHTML =
-                    '<span class="emoji"></span><span class="tag">reaction</span>';
-                  pill.querySelector(".emoji").textContent = p.emoji || "👍";
-                  body.appendChild(pill);
-                  const tray = document.getElementById("reaction-tray");
-                  if (tray) {
-                    const tp = document.createElement("span");
-                    tp.className = "tray-pill";
-                    tp.textContent = (p.emoji || "👍") + " · no forced reply";
-                    tray.prepend(tp);
-                    while (tray.children.length > 6) tray.removeChild(tray.lastChild);
+                } else if (
+                  (h.kind === "inbound_reaction" && p.visible_pill) ||
+                  h.kind === "react_message"
+                ) {
+                  const off =
+                    h.kind === "react_message" && p.visible_pill === false;
+                  if (!off) {
+                    const pill = document.createElement("div");
+                    pill.className = "reaction-pill";
+                    pill.innerHTML =
+                      '<span class="emoji"></span><span class="tag">reaction</span>';
+                    pill.querySelector(".emoji").textContent = p.emoji || "👍";
+                    body.appendChild(pill);
+                    const tray = document.getElementById("reaction-tray");
+                    if (tray) {
+                      const tp = document.createElement("span");
+                      tp.className = "tray-pill";
+                      tp.textContent =
+                        (p.emoji || "👍") +
+                        (h.kind === "react_message"
+                          ? " · pill"
+                          : " · no forced reply");
+                      tray.prepend(tp);
+                      while (tray.children.length > 6)
+                        tray.removeChild(tray.lastChild);
+                    }
                   }
+                  label =
+                    "reaction:" +
+                    (p.emoji || "👍") +
+                    (off ? "/off" : "");
                   types.push("reaction");
                   continue;
                 } else if (h.kind === "approval_card" && p.widget) {
@@ -2763,7 +2811,8 @@
                     (p.path ? "/snap" : "") +
                     (p.live_slack_residual === true ||
                     p.live_teams_residual === true ||
-                    p.live_meeting_residual === true
+                    p.live_meeting_residual === true ||
+                    p.live_channel_residual === true
                       ? "/live_residual"
                       : "");
                   types.push(p.thread_ts ? "thread" : "text");
@@ -2783,6 +2832,9 @@
                         : "") +
                       (p.live_meeting_residual === true
                         ? " · live_meeting_residual"
+                        : "") +
+                      (p.live_channel_residual === true
+                        ? " · live_channel_residual"
                         : "") +
                       (p.pretend_live === true ? " · pretend!" : "");
                   }
@@ -3087,6 +3139,9 @@
     });
     document.getElementById("connect-gmail").addEventListener("click", () => {
       runUserTurn("connect gmail", {});
+    });
+    document.getElementById("connect-outlook").addEventListener("click", () => {
+      runUserTurn("connect outlook", {});
     });
     document.getElementById("connect-finance").addEventListener("click", () => {
       runUserTurn("connect finance", {});

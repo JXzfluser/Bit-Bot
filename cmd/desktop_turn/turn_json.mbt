@@ -158,6 +158,7 @@ pub(all) enum TurnIntent {
   AuthorSkill(name~ : String, description~ : String, body~ : String)
   ExportBotTemplate(bot_id~ : String, name~ : String)
   ConnectGmail
+  ConnectOutlook
   JournalAppend(date~ : String, event_id~ : String, body~ : String)
   JournalQuery(from_date~ : String, to_date~ : String)
   SharedMemoryPut(scope~ : String, key~ : String, value~ : String)
@@ -269,6 +270,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     AuthorSkill(_) => "author_skill"
     ExportBotTemplate(_) => "export_bot_template"
     ConnectGmail => "connect_gmail"
+    ConnectOutlook => "connect_outlook"
     JournalAppend(_) => "journal_append"
     JournalQuery(_) => "journal_query"
     SharedMemoryPut(_) => "shared_memory_put"
@@ -2910,8 +2912,23 @@ pub fn run_desktop_turn(
             user_present=ctx.approved,
           )
           match outcome {
-            @commerce.DraftOnly(summary~) =>
-              deliver_ok(trimmed, turn_id, summary, intent, ctx~)
+            @commerce.DraftOnly(summary~) => {
+              // Sandbox receipt via Host FFI — never claim paid without processor.
+              let effect : DesktopEffect = {
+                kind: "purchase",
+                command: summary,
+                needs_host_ffi: true,
+              }
+              deliver_ok(
+                trimmed,
+                turn_id,
+                summary + " (Host sandbox receipt).",
+                intent,
+                ctx~,
+                effects=[effect],
+                needs_host_ffi=true,
+              )
+            }
             @commerce.NeedUserPresent(reason~) => {
               let effect : DesktopEffect = {
                 kind: "approval_card",
@@ -4131,6 +4148,22 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Gmail connect planned. Host runs sandbox IdP OAuth → Connected/Ready (CM-0906).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    ConnectOutlook => {
+      let effect : DesktopEffect = {
+        kind: "oauth",
+        command: "outlook",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Outlook connect planned. Host runs sandbox IdP OAuth → Connected/Ready (CM-2120).",
         intent,
         ctx~,
         effects=[effect],

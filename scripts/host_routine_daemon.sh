@@ -101,7 +101,8 @@ status = {
   "systemd_unit": systemd_unit,
   "systemd_unit_path": unit_dst if os.path.isfile(unit_dst) else None,
   "systemd_user_unit_path": user_dst if os.path.isfile(user_dst) else None,
-  "systemd_unit_installed": systemd_unit,
+  # Scaffold write alone is not an install — keep residual honest.
+  "systemd_unit_installed": bool(install_user and systemd_unit),
   "systemd_scope": scope or None,
   "sweeps": 0,
   "interval_ms": 0,

@@ -69,6 +69,7 @@ object SendToUserSurface {
       "live_mail_residual", "live_x_residual", "live_job_residual",
       "live_finance_residual", "live_paid_residual", "live_calendar_residual",
       "live_slack_residual", "live_teams_residual", "live_meeting_residual",
+      "live_channel_residual",
       "box_doctor_bin_residual", "box_chrome_bin_residual",
       "long_lived_cron_residual", "remote_cloud_residual", "code_apply_residual",
       "screenshot_residual", "remote_pr_residual", "public_fallback_residual",
@@ -201,6 +202,9 @@ object SendToUserSurface {
           kind == "approval_card" -> {
             typeSet += "widget"
             labels += "widget:approval$pathSuffix"
+            if (filePath.isNotBlank()) {
+              attachments += Attachment(kind = kind, path = filePath, role = "snap")
+            }
           }
           kind == "device_permission" -> {
             typeSet += "widget"
@@ -223,6 +227,9 @@ object SendToUserSurface {
                 p.optString("mode").ifBlank { p.optString("status", "card") }
               }
             labels += "oauth:$mode$pathSuffix"
+            if (filePath.isNotBlank()) {
+              attachments += Attachment(kind = kind, path = filePath, role = "snap")
+            }
           }
         }
       }

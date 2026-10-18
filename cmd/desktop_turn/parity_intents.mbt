@@ -1028,6 +1028,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "connect gmail" || low == "setup gmail" || low == "gmail connect" {
     return Some(ConnectGmail)
   }
+  if low == "connect outlook" || low == "setup outlook" || low == "outlook connect" {
+    return Some(ConnectOutlook)
+  }
   // Journal query before append — "journal query …" also matches "journal " prefix.
   if low.has_prefix("query journal ") || low.has_prefix("journal query ") {
     let rest = if low.has_prefix("query journal ") {

@@ -1377,6 +1377,8 @@ function createHostFfi(repoRoot) {
       mode: "durable_outbound",
       ok: true,
       pretend_live: false,
+      // Unknown schemes: durable snap only — honest residual (not pretend live).
+      live_channel_residual: true,
       at: stamp,
     };
     appendJsonl(outboundPath, entry);
@@ -1608,6 +1610,7 @@ function createHostFfi(repoRoot) {
             provider === "cold" ? "cold_sandbox_eml" : "onbehalf_sandbox_eml",
           sent: false,
           pretend_sent: false,
+          live_mail_residual: true,
           eml_path: emlPath,
           eml_ok:
             fs.existsSync(emlPath) &&
@@ -5558,29 +5561,20 @@ function createHostFfi(repoRoot) {
         dir,
         `schedule-${row.id}-${Date.now().toString(36)}.json`,
       );
-      // Close long_lived_cron_residual when a long-lived daemon / user unit is present.
+      // Close long_lived_cron_residual only when a long-lived daemon is armed
+      // (env or daemon-status.long_lived). Scaffold --write-systemd-unit alone
+      // must NOT over-close (even if status stamps systemd_unit_installed).
       let longLivedCronClosed = process.env.BITBOT_ROUTINE_LONG_LIVED === "1";
       try {
         const stPath = path.join(REPO_ROOT, "data", "routines", "daemon-status.json");
         if (fs.existsSync(stPath)) {
           const st = JSON.parse(fs.readFileSync(stPath, "utf8"));
-          if (st.long_lived === true || st.systemd_unit_installed === true) {
+          if (st.long_lived === true) {
             longLivedCronClosed = true;
           }
         }
       } catch (_) {
         /* residual stays open */
-      }
-      try {
-        if (
-          fs.existsSync(
-            path.join(REPO_ROOT, "data", "routines", "bitbot-routine-daemon.service"),
-          )
-        ) {
-          longLivedCronClosed = true;
-        }
-      } catch (_) {
-        /* ignore */
       }
       const artifact = {
         stored: true,

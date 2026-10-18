@@ -66,6 +66,7 @@ enum SendToUserSurface {
       "live_mail_residual", "live_x_residual", "live_job_residual",
       "live_finance_residual", "live_paid_residual", "live_calendar_residual",
       "live_slack_residual", "live_teams_residual", "live_meeting_residual",
+      "live_channel_residual",
       "box_doctor_bin_residual", "box_chrome_bin_residual",
       "long_lived_cron_residual", "remote_cloud_residual", "code_apply_residual",
       "screenshot_residual", "remote_pr_residual", "public_fallback_residual",
@@ -187,6 +188,11 @@ enum SendToUserSurface {
       } else if kind == "approval_card" {
         typeSet.insert("widget")
         summary.labels.append("widget:approval" + pathSuffix)
+        if !filePath.isEmpty {
+          summary.attachments.append(
+            Attachment(kind: kind, path: filePath, role: "snap")
+          )
+        }
       } else if kind == "device_permission" {
         typeSet.insert("widget")
         let tool = (p["tool"] as? String) ?? (p["permission"] as? String) ?? "card"
@@ -205,6 +211,11 @@ enum SendToUserSurface {
           mode = (p["mode"] as? String) ?? (p["status"] as? String) ?? "card"
         }
         summary.labels.append("oauth:" + mode + pathSuffix)
+        if !filePath.isEmpty {
+          summary.attachments.append(
+            Attachment(kind: kind, path: filePath, role: "snap")
+          )
+        }
       }
     }
     // CHARTER Delivery: channel_delivery plans even without Host FFI effects.

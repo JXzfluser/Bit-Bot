@@ -61,6 +61,7 @@ function residualSuffix(p) {
     "live_slack_residual",
     "live_teams_residual",
     "live_meeting_residual",
+    "live_channel_residual",
     "box_doctor_bin_residual",
     "box_chrome_bin_residual",
     "long_lived_cron_residual",
@@ -319,7 +320,14 @@ function extractDeliveryTypes(turnJsonText) {
         }
       } else if (h.kind === "approval_card") {
         types.push("widget");
-        labels.push("widget:approval" + (p.path ? "/snap" : ""));
+        labels.push("widget:approval" + (p.path || filePath ? "/snap" : ""));
+        if (p.path || filePath) {
+          attachments.push({
+            kind: h.kind,
+            path: p.path || filePath,
+            role: "snap",
+          });
+        }
       } else if (h.kind === "device_permission") {
         // CHARTER CM-0705: permission card is a widget, not a file attachment.
         types.push("widget");
@@ -341,7 +349,14 @@ function extractDeliveryTypes(turnJsonText) {
           p.status === "NeedsAuth" || oauthNeedsAuth
             ? "NeedsAuth"
             : p.mode || p.status || "card";
-        labels.push("oauth:" + oauthLabel + (p.path ? "/snap" : ""));
+        labels.push("oauth:" + oauthLabel + (p.path || filePath ? "/snap" : ""));
+        if (p.path || filePath) {
+          attachments.push({
+            kind: h.kind,
+            path: p.path || filePath,
+            role: "snap",
+          });
+        }
       }
     }
     // CHARTER Delivery: channel_delivery plans (in_app / external) even when
