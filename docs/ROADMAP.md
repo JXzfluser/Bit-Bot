@@ -281,6 +281,8 @@
 - [x] Parity: structured_chart path + png_magic + series honesty
 - [x] Host webfetch CM-1703 public fallback (403/block → curl UA; auth wall refuses; `credential_bypass=false`)
 - [x] Parity: webfetch used_fallback/path honesty + auth-wall no-bypass mock
+- [x] Product Host `box_doctor` (CM-0607): real bin when present else honest FS probe residual; snaps under `data/box/doctor/`
+- [x] Parity: box_doctor path/log PASS/SUMMARY honesty (`pretend_healthy=false`)
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

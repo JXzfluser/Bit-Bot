@@ -1855,6 +1855,185 @@ function createHostFfi(repoRoot) {
     );
   }
 
+  function parseBoxDoctorLines(raw) {
+    const lines = String(raw || "").split(/\r?\n/);
+    const parsed = [];
+    let pass = 0;
+    let fail = 0;
+    let summary = null;
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t) continue;
+      // Accept both "PASS name" and "[box-doctor] PASS name"
+      const m = t.match(/^(?:\[box-doctor\]\s*)?(PASS|FAIL|SUMMARY)\b(.*)$/i);
+      if (!m) continue;
+      const kind = m[1].toUpperCase();
+      const rest = String(m[2] || "").trim().replace(/^:\s*/, "");
+      if (kind === "PASS") {
+        pass += 1;
+        parsed.push({ kind: "PASS", check: rest.split(":")[0].trim() || rest });
+      } else if (kind === "FAIL") {
+        fail += 1;
+        parsed.push({ kind: "FAIL", check: rest.split(":")[0].trim() || rest });
+      } else {
+        summary = rest || t;
+        parsed.push({ kind: "SUMMARY", check: summary });
+      }
+    }
+    return { parsed, pass, fail, summary };
+  }
+
+  async function executeBoxDoctor(command) {
+    // CM-0607 product Host path — real box-doctor bin when present; else honest FS probe.
+    const at = new Date().toISOString();
+    const doctorDir = path.join(REPO_ROOT, "data", "box", "doctor");
+    fs.mkdirSync(doctorDir, { recursive: true });
+    const snapPath = path.join(
+      doctorDir,
+      `doctor-${Date.now().toString(36)}.json`,
+    );
+    const logPath = path.join(doctorDir, "last.log");
+    const classicLog = "/tmp/box-doctor-host.log";
+
+    let doctorBin = null;
+    for (const cand of [
+      process.env.BITBOT_BOX_DOCTOR,
+      "box-doctor",
+      "/usr/local/bin/box-doctor",
+    ]) {
+      if (!cand) continue;
+      try {
+        if (cand.includes("/") && fs.existsSync(cand) && fs.statSync(cand).mode & 0o111) {
+          doctorBin = cand;
+          break;
+        }
+        const { stdout } = await execFileAsync("bash", ["-lc", `command -v ${cand}`], {
+          timeout: 5000,
+        });
+        const found = String(stdout || "").trim();
+        if (found) {
+          doctorBin = found;
+          break;
+        }
+      } catch (_) {
+        /* try next */
+      }
+    }
+
+    let rawLog = "";
+    let mode = "host_box_doctor";
+    let binResidual = false;
+    let rc = 0;
+    try {
+      if (doctorBin) {
+        try {
+          const { stdout, stderr } = await execFileAsync(doctorBin, [], {
+            cwd: REPO_ROOT,
+            timeout: 60000,
+            maxBuffer: 2 * 1024 * 1024,
+            env: process.env,
+          });
+          rawLog = String(stdout || "") + (stderr ? "\n" + String(stderr) : "");
+          rc = 0;
+        } catch (err) {
+          rawLog =
+            (err.stdout ? String(err.stdout) : "") +
+            (err.stderr ? "\n" + String(err.stderr) : "") +
+            (err.message ? "\n" + err.message : "");
+          rc = typeof err.code === "number" ? err.code : 1;
+        }
+      } else {
+        binResidual = true;
+        mode = "host_box_doctor_fs_probe";
+        const checks = [
+          ["disk", true],
+          ["workspace", fs.existsSync(REPO_ROOT)],
+          ["date", true],
+          [
+            "display",
+            fs.existsSync("/tmp/.X11-unix/X1") ||
+              Boolean(process.env.DISPLAY),
+          ],
+          ["dockerenv", fs.existsSync("/.dockerenv")],
+        ];
+        const lines = [];
+        let fails = 0;
+        for (const [name, ok] of checks) {
+          if (ok) lines.push(`PASS ${name}`);
+          else {
+            lines.push(`FAIL ${name}`);
+            fails += 1;
+          }
+        }
+        lines.push(
+          `SUMMARY: ${checks.length} checks, ${fails} failed (no box-doctor bin; FS probe only)`,
+        );
+        rawLog = lines.join("\n") + "\n";
+        rc = fails > 0 ? 1 : 0;
+      }
+    } catch (err) {
+      rawLog = String(err.message || err);
+      rc = 1;
+      binResidual = !doctorBin;
+    }
+
+    fs.writeFileSync(logPath, rawLog);
+    try {
+      fs.writeFileSync(classicLog, rawLog);
+    } catch (_) {
+      /* /tmp may be restricted */
+    }
+
+    const parsed = parseBoxDoctorLines(rawLog);
+    const overallPass =
+      parsed.fail === 0 &&
+      (parsed.pass > 0 || /0 failed/i.test(parsed.summary || rawLog));
+    const artifact = {
+      mode,
+      doctor_bin: doctorBin,
+      box_doctor_bin_residual: binResidual,
+      pretend_healthy: false,
+      overall_pass: overallPass,
+      pass_count: parsed.pass,
+      fail_count: parsed.fail,
+      summary: parsed.summary,
+      checks: parsed.parsed.filter((x) => x.kind !== "SUMMARY"),
+      log_path: logPath,
+      classic_log_path: fs.existsSync(classicLog) ? classicLog : null,
+      rc,
+      stdout_prefix: rawLog.slice(0, 1200),
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(doctorDir, "runs.jsonl"), {
+      ...artifact,
+      path: snapPath,
+      command: String(command || "box-doctor"),
+    });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: snapPath,
+      label: "box_doctor",
+      overall_pass: overallPass,
+      source_kind: "box_doctor",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "box_doctor",
+      command: String(command || "box-doctor"),
+      path: snapPath,
+      log_path: logPath,
+      overall_pass: overallPass,
+      at,
+    });
+    return okJson("box_doctor", String(command || "box-doctor"), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeConnectorsProbe() {
     const report = await connectorsStatusReport();
     const at = new Date().toISOString();
@@ -8871,6 +9050,10 @@ function createHostFfi(repoRoot) {
       const productRes = await executeProductDeliveryEffect(kind, cmd);
       if (productRes) {
         results.push(productRes);
+        continue;
+      }
+      if (kind === "box_doctor") {
+        results.push(await executeBoxDoctor(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

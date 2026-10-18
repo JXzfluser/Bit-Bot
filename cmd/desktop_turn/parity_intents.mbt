@@ -420,6 +420,14 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(WatchVideo(video_path~))
     }
   }
+  // CM-0607 product Host box-doctor self-check.
+  if low == "box doctor" ||
+      low == "run box doctor" ||
+      low == "check box" ||
+      low == "box-doctor" ||
+      low == "doctor box" {
+    return Some(BoxDoctor)
+  }
   // CM-2157 product Host structured chart (Pillow PNG via Host FFI).
   if low.has_prefix("structured chart ") ||
       low.has_prefix("make chart ") ||

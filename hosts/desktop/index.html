@@ -628,6 +628,7 @@
             "generate_video",
             "watch_video",
             "structured_chart",
+            "box_doctor",
             "export_pack",
             "computer_use",
             "voice_session",
@@ -908,6 +909,12 @@
                     String(p.media_path || p.frame_path || p.path || "")
                       .split("/")
                       .slice(-1)[0] +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "box_doctor") {
+                  label =
+                    "box_doctor:" +
+                    (p.overall_pass ? "PASS" : "FAIL") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "mcp_discover") {

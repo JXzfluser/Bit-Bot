@@ -143,6 +143,7 @@ try {
       "generate_video",
       "watch_video",
       "structured_chart",
+      "box_doctor",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

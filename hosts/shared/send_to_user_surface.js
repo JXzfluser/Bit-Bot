@@ -92,6 +92,7 @@ function extractDeliveryTypes(turnJsonText) {
           "generate_video",
           "watch_video",
           "structured_chart",
+          "box_doctor",
         ].includes(h.kind)
       ) {
         types.push("attachment");

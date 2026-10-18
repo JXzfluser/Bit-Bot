@@ -24,6 +24,7 @@ enum SendToUserSurface {
     "skill_load", "mail_claim_inbox", "cloud_artifact_deliver", "teammate_create",
     "shell", "computer_use",
     "generate_image", "generate_video", "watch_video", "structured_chart",
+    "box_doctor",
   ]
 
   static func extract(fromTurnJSON jsonText: String) -> Summary {
