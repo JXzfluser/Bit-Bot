@@ -1254,7 +1254,13 @@
                   (p.bc_id || "?") +
                   " · " +
                   (p.status || "launched") +
-                  (p.pretend_remote === true ? " · pretend!" : "");
+                  (p.remote_cloud_residual === true
+                    ? " · remote_cloud_residual"
+                    : "") +
+                  (p.pretend_remote === true ||
+                  p.pretend_remote_cloud === true
+                    ? " · pretend!"
+                    : "");
               }
               if (p.cursor_agent_card) renderCursorAgentCard(p.cursor_agent_card);
               if (p.status) {
@@ -1551,8 +1557,13 @@
               const boxMeta = document.getElementById("box-meta");
               if (boxMeta) {
                 boxMeta.textContent = p.has_frame
-                  ? "screenshot · " + (p.tool || "frame") + " · read_only"
-                  : "screenshot residual · " + (p.residual_reason || "n/a");
+                  ? "screenshot · " +
+                    (p.tool || "frame") +
+                    " · read_only" +
+                    (p.screenshot_residual === true
+                      ? " · screenshot_residual"
+                      : "")
+                  : "screenshot_residual · " + (p.residual_reason || "n/a");
               }
               if (p.has_frame && p.frame_path) {
                 addMsg(
@@ -1812,8 +1823,25 @@
                   label =
                     "cursor-agent:" +
                     (p.cursor_agent_card.bc_id || p.bc_id || "?") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.remote_cloud_residual === true ? "/remote_residual" : "");
                   types.push("cursor-agent");
+                } else if (h.kind === "cloud_agent_launch") {
+                  label =
+                    "cloud:" +
+                    (p.mode || "local_worker") +
+                    (p.remote_cloud_residual === true ? "/remote_residual" : "");
+                  types.push("attachment");
+                  const cloudMeta = document.getElementById("cloud-meta");
+                  if (cloudMeta) {
+                    cloudMeta.textContent =
+                      (p.mode || "local_worker") +
+                      " · " +
+                      (p.bc_id || "?") +
+                      (p.remote_cloud_residual === true
+                        ? " · remote_cloud_residual"
+                        : "");
+                  }
                 } else if (h.kind === "cloud_artifact_deliver") {
                   label =
                     "cloud-art:" +
@@ -1870,7 +1898,12 @@
                       (p.path ? " · snap" : "");
                   }
                 } else if (h.kind === "mail_search") {
-                  label = "mail_search:" + (p.hit_count || 0) + "×" + (p.mode || "");
+                  label =
+                    "mail_search:" +
+                    (p.hit_count || 0) +
+                    "×" +
+                    (p.mode || "") +
+                    (p.live_mail_residual === true ? "/live_residual" : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
@@ -1878,16 +1911,25 @@
                       "search · " +
                       (p.hit_count || 0) +
                       "× · " +
-                      (p.mode || "sandbox");
+                      (p.mode || "sandbox") +
+                      (p.live_mail_residual === true
+                        ? " · live_mail_residual"
+                        : "");
                   }
                 } else if (h.kind === "mail_read") {
-                  label = "mail_read:" + (p.thread_id || "?");
+                  label =
+                    "mail_read:" +
+                    (p.thread_id || "?") +
+                    (p.live_mail_residual === true ? "/live_residual" : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
                     mailMeta.textContent =
                       "read · " +
                       (p.thread_id || "?") +
+                      (p.live_mail_residual === true
+                        ? " · live_mail_residual"
+                        : "") +
                       (p.pretend_live === true ? " · pretend!" : "") +
                       (p.path ? " · snap" : "");
                   }
@@ -2204,8 +2246,21 @@
                       (p.pretend_all_connected === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "code_changes") {
-                  label = "code:" + (p.applied ? "applied" : "plan");
+                  label =
+                    "code:" +
+                    (p.applied ? "applied" : "plan") +
+                    (p.code_apply_residual === true ? "/apply_residual" : "");
                   types.push("attachment");
+                  const scMeta = document.getElementById("source-control-meta");
+                  if (scMeta) {
+                    scMeta.textContent =
+                      "code_changes · " +
+                      (p.applied ? "applied" : "plan") +
+                      (p.code_apply_residual === true
+                        ? " · code_apply_residual"
+                        : "") +
+                      (p.pretend_committed === true ? " · pretend!" : "");
+                  }
                 } else if (h.kind === "credential_list") {
                   label = "creds:" + (p.count || 0);
                   types.push("attachment");
@@ -2383,6 +2438,9 @@
                       (bareRefused
                         ? "chrome refused bare · shared profile untouched"
                         : "chrome · private " + (p.private_cdp_port || "?")) +
+                      (p.box_chrome_bin_residual === true
+                        ? " · box_chrome_bin_residual"
+                        : "") +
                       (p.shared_cdp_untouched === true
                         ? " · cdp untouched"
                         : "") +
@@ -2559,7 +2617,8 @@
                       : "git_status");
                   const gated =
                     rp.real_create_gated === true ||
-                    p.remote_pr_residual === true
+                    p.remote_pr_residual === true ||
+                    String(mode || "").includes("gh_pr_create_residual")
                       ? "/gated"
                       : "";
                   label = "sc:" + mode + gated + (p.path ? "/snap" : "");
@@ -2571,6 +2630,12 @@
                       " · " +
                       mode +
                       (gated ? " · real create gated" : " · create path open") +
+                      (p.remote_pr_residual === true
+                        ? " · remote_pr_residual"
+                        : "") +
+                      (String(mode || "").includes("gh_pr_create_residual")
+                        ? " · gh_pr_create_residual"
+                        : "") +
                       (p.pretend_remote_pr ? " · pretend!" : "");
                   }
                 } else if (h.kind === "teammate_create") {
@@ -2805,8 +2870,18 @@
                   label =
                     "perm:" +
                     (p.tool || "?") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.pretend_granted === true ? "/pretend!" : "");
                   types.push("widget");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "device_permission · " +
+                      (p.tool || p.permission || "card") +
+                      (p.pretend_granted === true
+                        ? " · pretend!"
+                        : " · honest card");
+                  }
                 } else if (h.kind === "device_tool") {
                   label =
                     "device:" +
