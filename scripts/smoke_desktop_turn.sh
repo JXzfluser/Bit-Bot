@@ -1954,6 +1954,231 @@ function stripHostAppliedMarker(file) {
     delete process.env.BITBOT_GMAIL_TOKEN;
     delete process.env.BITBOT_MAIL_SEND;
   }
+  // NON-DEFERRED mcp residual-CLOSE (gates+mocks; not True-only asserts)
+  // 1) apply_patch: BITBOT_CODE_APPLY (+ optional COMMIT/PUSH + GIT_BIN)
+  const readmeTarget = path.join(process.cwd(), "README.mbt.md");
+  stripHostAppliedMarker(readmeTarget);
+  process.env.BITBOT_CODE_APPLY = "1";
+  delete process.env.BITBOT_CODE_COMMIT;
+  delete process.env.BITBOT_CODE_PUSH;
+  delete process.env.BITBOT_GIT_BIN;
+  delete process.env.BITBOT_GIT_MOCK_LOG_DIR;
+  const applyCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-github.apply_patch|{\"path\":\"README.mbt.md\"}" }]);
+  const applyCloseH = applyCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!applyCloseH || !applyCloseH.ok) throw new Error("apply_patch residual close mcp");
+  const applyCloseP = JSON.parse(applyCloseH.stdout || "{}");
+  if (applyCloseP.mapped !== "host_code_changes" || applyCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(applyCloseP).slice(0, 200));
+  }
+  if ((applyCloseP.code_changes || {}).code_apply_residual !== false) {
+    throw new Error("code_apply_residual must close: " + JSON.stringify(applyCloseP.code_changes || {}).slice(0, 200));
+  }
+  if ((applyCloseP.code_changes || {}).applied !== true) throw new Error("applied expected");
+  if ((applyCloseP.code_changes || {}).git_commit_residual !== true) {
+    throw new Error("git_commit_residual after apply-only: " + JSON.stringify(applyCloseP.code_changes || {}).slice(0, 200));
+  }
+  if ((applyCloseP.code_changes || {}).pretend_committed === true) throw new Error("pretend_committed apply");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-apply-close.json", JSON.stringify({ ok: true, ...applyCloseP }, null, 2));
+  console.log("mcp_call apply_patch residual close ok", applyCloseP.mapped, (applyCloseP.code_changes || {}).code_apply_residual, (applyCloseP.code_changes || {}).git_commit_residual);
+  stripHostAppliedMarker(readmeTarget);
+  require("child_process").execSync("rm -rf /tmp/bitbot-mcp-git-mock /tmp/bitbot-mcp-git-mock-push && mkdir -p /tmp/bitbot-mcp-git-mock /tmp/bitbot-mcp-git-mock-push");
+  process.env.BITBOT_CODE_APPLY = "1";
+  process.env.BITBOT_CODE_COMMIT = "1";
+  process.env.BITBOT_GIT_BIN = path.join(process.cwd(), "scripts/host_git_mock.sh");
+  process.env.BITBOT_GIT_MOCK_LOG_DIR = "/tmp/bitbot-mcp-git-mock";
+  delete process.env.BITBOT_CODE_PUSH;
+  const commitCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-github.apply_patch|{\"path\":\"README.mbt.md\"}" }]);
+  const commitCloseH = commitCloseRuns.find((r) => r && r.kind === "mcp_call");
+  const commitCloseP = JSON.parse((commitCloseH && commitCloseH.stdout) || "{}");
+  if ((commitCloseP.code_changes || {}).code_apply_residual !== false) throw new Error("commit close code_apply");
+  if ((commitCloseP.code_changes || {}).git_commit_residual !== false) {
+    throw new Error("git_commit_residual must close: " + JSON.stringify(commitCloseP.code_changes || {}).slice(0, 200));
+  }
+  if ((commitCloseP.code_changes || {}).git_push_residual !== true) {
+    throw new Error("git_push_residual after commit: " + JSON.stringify(commitCloseP.code_changes || {}).slice(0, 200));
+  }
+  if ((commitCloseP.code_changes || {}).pretend_committed === true) throw new Error("pretend_committed commit");
+  console.log("mcp_call apply_patch commit residual close ok", (commitCloseP.code_changes || {}).commit_sha, (commitCloseP.code_changes || {}).git_commit_residual, (commitCloseP.code_changes || {}).git_push_residual);
+  stripHostAppliedMarker(readmeTarget);
+  process.env.BITBOT_CODE_PUSH = "1";
+  process.env.BITBOT_GIT_MOCK_LOG_DIR = "/tmp/bitbot-mcp-git-mock-push";
+  const pushCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-github.apply_patch|{\"path\":\"README.mbt.md\"}" }]);
+  const pushCloseH = pushCloseRuns.find((r) => r && r.kind === "mcp_call");
+  const pushCloseP = JSON.parse((pushCloseH && pushCloseH.stdout) || "{}");
+  if ((pushCloseP.code_changes || {}).code_apply_residual !== false) throw new Error("push close code_apply");
+  if ((pushCloseP.code_changes || {}).git_commit_residual !== false) throw new Error("push close git_commit");
+  if ((pushCloseP.code_changes || {}).git_push_residual !== false) {
+    throw new Error("git_push_residual must close: " + JSON.stringify(pushCloseP.code_changes || {}).slice(0, 200));
+  }
+  if ((pushCloseP.code_changes || {}).pretend_pushed === true) throw new Error("pretend_pushed");
+  console.log("mcp_call apply_patch push residual close ok", (pushCloseP.code_changes || {}).commit_sha, (pushCloseP.code_changes || {}).git_push_residual);
+  stripHostAppliedMarker(readmeTarget);
+  delete process.env.BITBOT_CODE_APPLY;
+  delete process.env.BITBOT_CODE_COMMIT;
+  delete process.env.BITBOT_CODE_PUSH;
+  delete process.env.BITBOT_GIT_BIN;
+  delete process.env.BITBOT_GIT_MOCK_LOG_DIR;
+  // 2) create_pr: BITBOT_GH_CREATE_PR + BITBOT_GH_PR_CREATE + BITBOT_GH_BIN mock
+  require("child_process").execSync("rm -rf /tmp/bitbot-mcp-gh-mock && mkdir -p /tmp/bitbot-mcp-gh-mock");
+  process.env.BITBOT_GH_CREATE_PR = "1";
+  process.env.BITBOT_GH_PR_CREATE = "1";
+  process.env.BITBOT_GH_BIN = path.join(process.cwd(), "scripts/host_gh_mock.sh");
+  process.env.BITBOT_GH_MOCK_LOG_DIR = "/tmp/bitbot-mcp-gh-mock";
+  const prCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-github.create_pr|{}" }]);
+  const prCloseH = prCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!prCloseH || !prCloseH.ok) throw new Error("create_pr residual close mcp");
+  const prCloseP = JSON.parse(prCloseH.stdout || "{}");
+  if (prCloseP.mapped !== "host_source_control" || prCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(prCloseP).slice(0, 200));
+  }
+  if ((prCloseP.source_control || {}).remote_pr_residual !== false) {
+    throw new Error("remote_pr_residual must close: " + JSON.stringify(prCloseP.source_control || {}).slice(0, 240));
+  }
+  if ((prCloseP.source_control || {}).gh_pr_create_residual !== false) {
+    throw new Error("gh_pr_create_residual must close: " + JSON.stringify(prCloseP.source_control || {}).slice(0, 240));
+  }
+  if ((prCloseP.source_control || {}).pretend_remote_pr === true) throw new Error("pretend_remote_pr close");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-create-pr-close.json", JSON.stringify({ ok: true, ...prCloseP }, null, 2));
+  console.log("mcp_call create_pr residual close ok", prCloseP.mapped, (prCloseP.source_control || {}).remote_pr_residual, (prCloseP.source_control || {}).gh_pr_create_residual);
+  delete process.env.BITBOT_GH_CREATE_PR;
+  delete process.env.BITBOT_GH_PR_CREATE;
+  delete process.env.BITBOT_GH_BIN;
+  delete process.env.BITBOT_GH_MOCK_LOG_DIR;
+  // 3) claim_inbox: mail_claim mock closes live_mail_claim_residual; empty keeps true
+  // Ports 18807/18808 avoid calendar/purchase/gmail mcp live (18804-18806).
+  const claimCloseMock = startMock(18807, "mail_claim", "smoke-mcp-claim");
+  const claimEmptyMock = startMock(18808, "mail_claim", "smoke-mcp-claim-empty", true);
+  await sleep(500);
+  try {
+    process.env.BITBOT_MAIL_CLAIM_API_URL = "http://127.0.0.1:18807";
+    process.env.BITBOT_MAIL_CLAIM_TOKEN = "smoke-mcp-claim";
+    process.env.BITBOT_MAIL_CLAIM_POST = "1";
+    const claimCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.claim_inbox|{\"local_part\":\"mcpclaimlive\",\"address\":\"mcpclaimlive@bitbot.local\"}" }]);
+    const claimCloseH = claimCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!claimCloseH || !claimCloseH.ok) throw new Error("claim_inbox residual close mcp");
+    const claimCloseP = JSON.parse(claimCloseH.stdout || "{}");
+    if (claimCloseP.mapped !== "host_mail_claim_inbox" || claimCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(claimCloseP).slice(0, 200));
+    }
+    if ((claimCloseP.mail_claim || {}).live_mail_claim_residual !== false) {
+      throw new Error("live_mail_claim_residual must close: " + JSON.stringify(claimCloseP.mail_claim || {}).slice(0, 240));
+    }
+    if (!((claimCloseP.mail_claim || {}).claimed_count >= 1)) {
+      throw new Error("claimed_count live: " + JSON.stringify(claimCloseP.mail_claim || {}).slice(0, 200));
+    }
+    if ((claimCloseP.mail_claim || {}).pretend_claimed === true) throw new Error("pretend_claimed close");
+    require("fs").writeFileSync("/tmp/bitbot-mcp-claim-close.json", JSON.stringify({ ok: true, ...claimCloseP }, null, 2));
+    console.log("mcp_call claim_inbox residual close ok", claimCloseP.mapped, (claimCloseP.mail_claim || {}).mode, (claimCloseP.mail_claim || {}).live_mail_claim_residual);
+    process.env.BITBOT_MAIL_CLAIM_API_URL = "http://127.0.0.1:18808";
+    process.env.BITBOT_MAIL_CLAIM_TOKEN = "smoke-mcp-claim-empty";
+    process.env.BITBOT_MAIL_CLAIM_POST = "1";
+    const claimEmptyRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.claim_inbox|{\"local_part\":\"mcpclaimempty\",\"address\":\"mcpclaimempty@bitbot.local\"}" }]);
+    const claimEmptyH = claimEmptyRuns.find((r) => r && r.kind === "mcp_call");
+    const claimEmptyP = JSON.parse((claimEmptyH && claimEmptyH.stdout) || "{}");
+    if (claimEmptyP.mapped !== "host_mail_claim_inbox" || claimEmptyP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(claimEmptyP).slice(0, 200));
+    }
+    if ((claimEmptyP.mail_claim || {}).live_mail_claim_residual !== true) {
+      throw new Error("empty inbox must keep live_mail_claim_residual: " + JSON.stringify(claimEmptyP.mail_claim || {}).slice(0, 240));
+    }
+    if ((claimEmptyP.mail_claim || {}).claimed_count !== 0) {
+      throw new Error("empty claimed_count: " + JSON.stringify(claimEmptyP.mail_claim || {}).slice(0, 200));
+    }
+    console.log("mcp_call claim_inbox empty residual open ok", (claimEmptyP.mail_claim || {}).mode, (claimEmptyP.mail_claim || {}).claimed_count, (claimEmptyP.mail_claim || {}).live_mail_claim_residual);
+  } finally {
+    try { claimCloseMock.kill(); } catch (_) {}
+    try { claimEmptyMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_MAIL_CLAIM_API_URL;
+    delete process.env.BITBOT_MAIL_CLAIM_TOKEN;
+    delete process.env.BITBOT_MAIL_CLAIM_POST;
+  }
+  // 4) launch_cloud_agent + deliver_cloud_artifact with cloud mock
+  // Port 18809 avoids mail_claim mcp close (18807/18808) and cal/pay/gmail (18804-18806).
+  const cloudCloseMock = startMock(18809, "cloud", "smoke-mcp-cloud");
+  await sleep(500);
+  try {
+    process.env.BITBOT_CLOUD_API_URL = "http://127.0.0.1:18809";
+    process.env.BITBOT_CURSOR_CLOUD_TOKEN = "smoke-mcp-cloud";
+    delete process.env.BITBOT_CLOUD_API_TOKEN;
+    delete process.env.BITBOT_CLOUD_ARTIFACT_FETCH;
+    const cloudCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.launch_cloud_agent|{\"bc_id\":\"bc-mcp-close\",\"prompt\":\"mcp cloud residual close\"}" }]);
+    const cloudCloseH = cloudCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!cloudCloseH || !cloudCloseH.ok) throw new Error("launch_cloud_agent residual close mcp");
+    const cloudCloseP = JSON.parse(cloudCloseH.stdout || "{}");
+    if (cloudCloseP.mapped !== "host_cloud_agent_launch" || cloudCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(cloudCloseP).slice(0, 200));
+    }
+    if ((cloudCloseP.cloud_launch || {}).remote_cloud_residual !== false) {
+      throw new Error("remote_cloud_residual must close: " + JSON.stringify(cloudCloseP.cloud_launch || {}).slice(0, 240));
+    }
+    if ((cloudCloseP.cloud_launch || {}).pretend_remote_cloud === true) throw new Error("pretend_remote_cloud close");
+    require("fs").writeFileSync("/tmp/bitbot-mcp-cloud-close.json", JSON.stringify({ ok: true, ...cloudCloseP }, null, 2));
+    console.log("mcp_call launch_cloud_agent residual close ok", cloudCloseP.mapped, (cloudCloseP.cloud_launch || {}).mode, (cloudCloseP.cloud_launch || {}).remote_cloud_residual);
+    process.env.BITBOT_CLOUD_ARTIFACT_FETCH = "1";
+    const artCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.deliver_cloud_artifact|{\"bc_id\":\"bc-mcp-close\",\"dest\":\"mcp-cloud-close.md\"}" }]);
+    const artCloseH = artCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!artCloseH || !artCloseH.ok) throw new Error("deliver_cloud_artifact residual close mcp");
+    const artCloseP = JSON.parse(artCloseH.stdout || "{}");
+    if (artCloseP.mapped !== "host_cloud_artifact_deliver" || artCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(artCloseP).slice(0, 200));
+    }
+    if ((artCloseP.cloud_artifact || {}).remote_cloud_artifact_residual !== false) {
+      throw new Error("remote_cloud_artifact_residual must close: " + JSON.stringify(artCloseP.cloud_artifact || {}).slice(0, 240));
+    }
+    if ((artCloseP.cloud_artifact || {}).pretend_remote_fetch === true) throw new Error("pretend_remote_fetch close");
+    require("fs").writeFileSync("/tmp/bitbot-mcp-cloud-art-close.json", JSON.stringify({ ok: true, ...artCloseP }, null, 2));
+    console.log("mcp_call deliver_cloud_artifact residual close ok", artCloseP.mapped, (artCloseP.cloud_artifact || {}).mode, (artCloseP.cloud_artifact || {}).remote_cloud_artifact_residual);
+  } finally {
+    try { cloudCloseMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_CLOUD_API_URL;
+    delete process.env.BITBOT_CURSOR_CLOUD_TOKEN;
+    delete process.env.BITBOT_CLOUD_API_TOKEN;
+    delete process.env.BITBOT_CLOUD_ARTIFACT_FETCH;
+  }
+  // 5) voice_start/relay: BITBOT_STT_BIN + BITBOT_ESPEAK_BIN close STT/TTS residuals
+  require("child_process").execSync("rm -rf /tmp/bitbot-mcp-stt-mock /tmp/bitbot-mcp-espeak-mock && mkdir -p /tmp/bitbot-mcp-stt-mock /tmp/bitbot-mcp-espeak-mock");
+  process.env.BITBOT_STT_BIN = path.join(process.cwd(), "scripts/host_stt_mock.sh");
+  process.env.BITBOT_ESPEAK_BIN = path.join(process.cwd(), "scripts/host_espeak_mock.sh");
+  process.env.BITBOT_STT_MOCK_LOG_DIR = "/tmp/bitbot-mcp-stt-mock";
+  process.env.BITBOT_ESPEAK_MOCK_LOG_DIR = "/tmp/bitbot-mcp-espeak-mock";
+  delete process.env.BITBOT_VOICE_STT;
+  const voiceCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.voice_start|{\"call_id\":\"mcp-voice-close\"}" }]);
+  const voiceCloseH = voiceCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!voiceCloseH || !voiceCloseH.ok) throw new Error("voice_start residual close mcp");
+  const voiceCloseP = JSON.parse(voiceCloseH.stdout || "{}");
+  if (voiceCloseP.mapped !== "host_voice_session" || voiceCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(voiceCloseP).slice(0, 200));
+  }
+  if ((voiceCloseP.voice_session || {}).voice_stt_residual !== false) {
+    throw new Error("voice_stt_residual must close: " + JSON.stringify(voiceCloseP.voice_session || {}).slice(0, 240));
+  }
+  if ((voiceCloseP.voice_session || {}).voice_tts_residual !== false) {
+    throw new Error("voice_tts_residual must close: " + JSON.stringify(voiceCloseP.voice_session || {}).slice(0, 240));
+  }
+  if ((voiceCloseP.voice_session || {}).pretend_live === true) throw new Error("pretend_live voice close");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-voice-close.json", JSON.stringify({ ok: true, ...voiceCloseP }, null, 2));
+  console.log("mcp_call voice_start residual close ok", voiceCloseP.mapped, (voiceCloseP.voice_session || {}).voice_stt_residual, (voiceCloseP.voice_session || {}).voice_tts_residual);
+  // $stt forces STT on session WAV (typed text alone keeps voice_stt_residual).
+  const relayCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.voice_relay|{\"call_id\":\"mcp-voice-close\",\"text\":\"$stt\"}" }]);
+  const relayCloseH = relayCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!relayCloseH || !relayCloseH.ok) throw new Error("voice_relay residual close mcp");
+  const relayCloseP = JSON.parse(relayCloseH.stdout || "{}");
+  if (relayCloseP.mapped !== "host_voice_relay" || relayCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(relayCloseP).slice(0, 200));
+  }
+  if ((relayCloseP.voice_relay || {}).voice_stt_residual !== false) {
+    throw new Error("voice_stt_residual relay must close: " + JSON.stringify(relayCloseP.voice_relay || {}).slice(0, 240));
+  }
+  if ((relayCloseP.voice_relay || {}).voice_tts_residual !== false) {
+    throw new Error("voice_tts_residual relay must close: " + JSON.stringify(relayCloseP.voice_relay || {}).slice(0, 240));
+  }
+  if ((relayCloseP.voice_relay || {}).pretend_silent === true) throw new Error("pretend_silent relay close");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-voice-relay-close.json", JSON.stringify({ ok: true, ...relayCloseP }, null, 2));
+  console.log("mcp_call voice_relay residual close ok", relayCloseP.mapped, (relayCloseP.voice_relay || {}).voice_stt_residual, (relayCloseP.voice_relay || {}).voice_tts_residual);
+  delete process.env.BITBOT_STT_BIN;
+  delete process.env.BITBOT_ESPEAK_BIN;
+  delete process.env.BITBOT_STT_MOCK_LOG_DIR;
+  delete process.env.BITBOT_ESPEAK_MOCK_LOG_DIR;
 })().catch((e)=>{console.error(e);process.exit(1);});
 '
 node hosts/cli_host/run_turn.js "create teammate id=asst-smoke name=Smoke role=executor" >/tmp/bitbot-teammate.json
