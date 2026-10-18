@@ -133,6 +133,8 @@
 - [x] Host delete agent (CM-1907): sidebar confirm lifecycle; Settings/archive paths refused; Desktop confirm UI
 - [x] Host box package install (CM-2158): `package_install` via Shell only; npm sandbox tree evidence; non-Shell refused
 - [x] Host cross-agent shared box FS (CM-2174): `shared_box_fs` dual-session write/read + distinct desktops; other Host root isolated
+- [x] Host hidden agents (CM-0204): `hide_agent` / `list_agents_sidebar` — hidden off main sidebar, still addressable
+- [x] Host Members panel (CM-1405): `members_panel` from durable teammates under info-panel `members` anchor
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn
 - [x] Host schedule_meeting materializes real `.ics` (VCALENDAR/VEVENT) under `data/calendar/` + SendToUser attachment

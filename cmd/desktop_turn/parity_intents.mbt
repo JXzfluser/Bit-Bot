@@ -567,6 +567,51 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       low == "check shared box fs" {
     return Some(SharedBoxFs)
   }
+  // CM-0204 product Host hidden agents (sidebar filter; still addressable).
+  if low == "list agents" ||
+      low == "list sidebar agents" ||
+      low == "main sidebar agents" {
+    return Some(ListAgentsSidebar)
+  }
+  if low.has_prefix("hide agent ") || low.has_prefix("unhide agent ") {
+    let hidden = low.has_prefix("hide agent ")
+    let rest = if hidden {
+      trimmed[11:].trim().to_owned()
+    } else {
+      trimmed[13:].trim().to_owned()
+    }
+    let agent_id = match extract_kv(rest, "agent") {
+      Some(v) => v.trim().to_owned()
+      None => rest.trim().to_owned()
+    }
+    if agent_id != "" {
+      return Some(HideAgent(agent_id~, hidden~))
+    }
+  }
+  // CM-1405 product Host Members panel.
+  if low == "open members" ||
+      low == "members panel" ||
+      low == "show members" ||
+      low.has_prefix("open members ") ||
+      low.has_prefix("members panel ") {
+    let rest = if low.has_prefix("open members ") {
+      trimmed[13:].trim().to_owned()
+    } else if low.has_prefix("members panel ") {
+      trimmed[14:].trim().to_owned()
+    } else {
+      ""
+    }
+    let group_id = match extract_kv(rest, "group") {
+      Some(v) => v.trim().to_owned()
+      None =>
+        if rest == "" {
+          "group-1"
+        } else {
+          rest
+        }
+    }
+    return Some(MembersPanel(group_id~))
+  }
   // CM-2158 product Host box package install (Shell only).
   if low.has_prefix("install package ") ||
       low.has_prefix("box install ") ||

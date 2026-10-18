@@ -2854,6 +2854,245 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  function agentDirectoryPath() {
+    return path.join(REPO_ROOT, "data", "agents", "directory.json");
+  }
+
+  function loadAgentDirectory() {
+    try {
+      const p = agentDirectoryPath();
+      if (!fs.existsSync(p)) {
+        const seed = [
+          {
+            id: "agent-bit",
+            name: "Bit Bot",
+            title: "Main",
+            hidden: false,
+          },
+          {
+            id: "sys-hidden",
+            name: "SystemHelper",
+            title: "Hidden sub-session",
+            hidden: true,
+          },
+        ];
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, JSON.stringify(seed, null, 2));
+        return seed;
+      }
+      const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+      return Array.isArray(raw) ? raw : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveAgentDirectory(rows) {
+    const p = agentDirectoryPath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(rows, null, 2));
+    return p;
+  }
+
+  async function executeHideAgent(command) {
+    // CM-0204 — hidden flag: not in main sidebar; still addressable.
+    const at = new Date().toISOString();
+    const dir = agentsUiDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let agentId = "";
+    let hidden = true;
+    const am = raw.match(/\bagent=([^\s]+)/i);
+    if (am) agentId = am[1].trim();
+    else {
+      const parts = raw.trim().split(/\s+/);
+      if (parts[0]) agentId = parts[0];
+    }
+    if (/\bhidden=0\b/i.test(raw)) hidden = false;
+    else if (/\bhidden=1\b/i.test(raw)) hidden = true;
+
+    let rows = loadAgentDirectory();
+    // Fix seed write if first load created with bad stringify — rewrite clean.
+    saveAgentDirectory(rows);
+    let row = rows.find((r) => r && r.id === agentId);
+    if (!row) {
+      row = { id: agentId, name: agentId, title: agentId, hidden: false };
+      rows.push(row);
+    }
+    row.hidden = Boolean(hidden);
+    const dirPath = saveAgentDirectory(rows);
+    const sidebarIds = rows
+      .filter((r) => r && !r.hidden)
+      .map((r) => r.id);
+    const addressable = rows.some((r) => r && r.id === agentId);
+    const inSidebar = sidebarIds.includes(agentId);
+    const snapPath = path.join(
+      opsDir,
+      `hide-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_hide_agent",
+      pretend_removed: false,
+      agent_id: agentId,
+      hidden: Boolean(hidden),
+      in_main_sidebar: inSidebar,
+      addressable,
+      sidebar_ids: sidebarIds,
+      directory_path: dirPath,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "hide-ops.jsonl"), {
+      ...artifact,
+      path: snapPath,
+    });
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "agent_directory",
+      path: snapPath,
+      label: "hide_agent",
+      agent_id: agentId,
+      hidden: Boolean(hidden),
+      source_kind: "hide_agent",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "hide_agent",
+      command: raw || agentId,
+      path: snapPath,
+      agent_id: agentId,
+      hidden: Boolean(hidden),
+      at,
+    });
+    return okJson("hide_agent", raw || agentId, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeListAgentsSidebar(command) {
+    const at = new Date().toISOString();
+    const dir = agentsUiDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const rows = loadAgentDirectory();
+    saveAgentDirectory(rows);
+    const sidebar = rows.filter((r) => r && !r.hidden);
+    const hidden = rows.filter((r) => r && r.hidden);
+    const snapPath = path.join(
+      opsDir,
+      `sidebar-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_list_agents_sidebar",
+      pretend_complete: false,
+      sidebar_ids: sidebar.map((r) => r.id),
+      sidebar,
+      hidden_ids: hidden.map((r) => r.id),
+      hidden_still_addressable: hidden.every((r) => Boolean(r.id)),
+      directory_path: agentDirectoryPath(),
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "agents_sidebar",
+      path: snapPath,
+      label: "list_agents_sidebar",
+      sidebar_ids: artifact.sidebar_ids,
+      source_kind: "list_agents_sidebar",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "list_agents_sidebar",
+      command: String(command || "main"),
+      path: snapPath,
+      at,
+    });
+    return okJson("list_agents_sidebar", String(command || "main"), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeMembersPanel(command) {
+    // CM-1405 — Members panel from durable teammates under info-panel members anchor.
+    const at = new Date().toISOString();
+    const dir = agentsUiDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let groupId = "group-1";
+    const gm = raw.match(/\bgroup=([^\s]+)/i);
+    if (gm) groupId = gm[1].trim();
+    else if (raw.trim() && !raw.includes("=")) groupId = raw.trim();
+
+    const teammates = readJsonArray(TEAMMATES_PATH);
+    const memberIds = teammates
+      .map((t) => (t && (t.id || t.agent_id)) || null)
+      .filter(Boolean);
+    const panelPath = path.join(dir, "members-panel.json");
+    const panel = {
+      group_id: groupId,
+      section_anchor: "members",
+      matches_app_ui: true,
+      member_ids: memberIds,
+      members: teammates,
+      open: true,
+      info_panel_has_members: true,
+      at,
+    };
+    fs.writeFileSync(panelPath, JSON.stringify(panel, null, 2));
+    const snapPath = path.join(
+      opsDir,
+      `members-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_members_panel",
+      pretend_members: false,
+      ...panel,
+      panel_path: panelPath,
+      teammates_path: TEAMMATES_PATH,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "members-ops.jsonl"), {
+      group_id: groupId,
+      member_count: memberIds.length,
+      path: snapPath,
+      at,
+    });
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "members_panel",
+      path: snapPath,
+      label: "members_panel",
+      group_id: groupId,
+      member_ids: memberIds,
+      source_kind: "members_panel",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "members_panel",
+      command: raw || groupId,
+      path: snapPath,
+      panel_path: panelPath,
+      group_id: groupId,
+      at,
+    });
+    return okJson("members_panel", raw || groupId, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeSharedBoxFs(command) {
     // CM-2174 product Host — same box shared FS; distinct per-agent desktops.
     const at = new Date().toISOString();
@@ -5113,6 +5352,9 @@ function createHostFfi(repoRoot) {
       kind === "delete_agent" ||
       kind === "package_install" ||
       kind === "shared_box_fs" ||
+      kind === "hide_agent" ||
+      kind === "list_agents_sidebar" ||
+      kind === "members_panel" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -10434,6 +10676,18 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "shared_box_fs") {
         results.push(await executeSharedBoxFs(cmd));
+        continue;
+      }
+      if (kind === "hide_agent") {
+        results.push(await executeHideAgent(cmd));
+        continue;
+      }
+      if (kind === "list_agents_sidebar") {
+        results.push(await executeListAgentsSidebar(cmd));
+        continue;
+      }
+      if (kind === "members_panel") {
+        results.push(await executeMembersPanel(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

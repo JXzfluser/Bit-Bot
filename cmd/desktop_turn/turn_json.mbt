@@ -131,6 +131,9 @@ pub(all) enum TurnIntent {
   DeleteAgent(agent_id~ : String, confirm~ : Bool)
   PackageInstall(pm~ : String, packages_csv~ : String, via~ : String)
   SharedBoxFs
+  HideAgent(agent_id~ : String, hidden~ : Bool)
+  ListAgentsSidebar
+  MembersPanel(group_id~ : String)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -224,6 +227,9 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     DeleteAgent(_) => "delete_agent"
     PackageInstall(_) => "package_install"
     SharedBoxFs => "shared_box_fs"
+    HideAgent(_) => "hide_agent"
+    ListAgentsSidebar => "list_agents_sidebar"
+    MembersPanel(_) => "members_panel"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -760,6 +766,8 @@ fn extract_kv(rest : String, key : String) -> String? {
         " pm=",
         " pkgs=",
         " packages=",
+        " group=",
+        " hidden=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -3418,6 +3426,54 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Cross-agent shared box FS planned (CM-2174). Host: shared FS + distinct desktops.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    HideAgent(agent_id~, hidden~) => {
+      let effect : DesktopEffect = {
+        kind: "hide_agent",
+        command: "agent=" + agent_id + " hidden=" + (if hidden { "1" } else { "0" }),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Hide/unhide agent planned (CM-0204). Host drops hidden from main sidebar; still addressable.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    ListAgentsSidebar => {
+      let effect : DesktopEffect = {
+        kind: "list_agents_sidebar",
+        command: "main",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "List agents sidebar planned (CM-0204). Host returns main-sidebar ids only.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    MembersPanel(group_id~) => {
+      let effect : DesktopEffect = {
+        kind: "members_panel",
+        command: "group=" + group_id,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Members panel planned (CM-1405). Host lists teammates under info-panel members anchor.",
         intent,
         ctx~,
         effects=[effect],

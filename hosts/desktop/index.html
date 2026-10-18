@@ -812,6 +812,56 @@
               }
             } catch (_) { /* ignore */ }
           }
+          const listAgentsHost = r.host_results.find(
+            (h) => h && h.kind === "list_agents_sidebar" && h.ok,
+          );
+          if (listAgentsHost) {
+            try {
+              const p = JSON.parse(listAgentsHost.stdout || "{}");
+              const meta = document.getElementById("teammates-meta");
+              if (meta) {
+                meta.textContent =
+                  "Sidebar " +
+                  ((p.sidebar_ids || []).join(",") || "(empty)") +
+                  " · hidden " +
+                  ((p.hidden_ids || []).length || 0);
+              }
+              addMsg(
+                "assistant",
+                "Sidebar agents: " +
+                  ((p.sidebar_ids || []).join(", ") || "(none)") +
+                  "; hidden still addressable: " +
+                  ((p.hidden_ids || []).join(", ") || "(none)"),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const membersHost = r.host_results.find(
+            (h) => h && h.kind === "members_panel" && h.ok,
+          );
+          if (membersHost) {
+            try {
+              const p = JSON.parse(membersHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Members «" +
+                  (p.group_id || "?") +
+                  "»: " +
+                  ((p.member_ids || []).join(", ") || "(none)"),
+              );
+              const sections = document.getElementById("agent-info-sections");
+              if (sections) {
+                let chip = sections.querySelector("[data-members-live]");
+                if (!chip) {
+                  chip = document.createElement("span");
+                  chip.className = "effect-chip";
+                  chip.dataset.membersLive = "1";
+                  sections.appendChild(chip);
+                }
+                chip.textContent =
+                  "members:" + ((p.member_ids || []).length || 0);
+              }
+            } catch (_) { /* ignore */ }
+          }
           // CHARTER Delivery: SendToUser surface (text/widget/attachment/voice/reaction/thread).
           const attachKinds = [
             "skill_write",
