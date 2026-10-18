@@ -686,7 +686,29 @@ def run_chrome_session(
     port = free_port()
     if port == SHARED_CDP_PORT:
         port = free_port()
+    identity_meta: Dict[str, Any] = {
+        "identity_browser": False,
+        "switched": False,
+        "user_data_dir": None,
+    }
     profile = artifact_dir / "throwaway-chrome-profile"
+    # CM-2146: prefer identity-browser user-data-dir when Host switched session.
+    id_env = (os.environ.get("BITBOT_IDENTITY_USER_DATA_DIR") or "").strip()
+    if not id_env:
+        sess = repo_root / "data" / "connectors" / "identity" / "browser-session.json"
+        if sess.is_file():
+            try:
+                payload = json.loads(sess.read_text(encoding="utf-8"))
+                if payload.get("switched") or payload.get("status") == "SwitchedToSignedInBrowser":
+                    id_env = str(payload.get("user_data_dir") or "").strip()
+                    identity_meta["session_path"] = str(sess)
+            except Exception:
+                id_env = ""
+    if id_env:
+        profile = Path(id_env)
+        identity_meta["identity_browser"] = True
+        identity_meta["switched"] = True
+        identity_meta["user_data_dir"] = str(profile)
     profile.mkdir(parents=True, exist_ok=True)
     # Hard refuse shared profile path.
     if str(profile.resolve()).startswith(SHARED_PROFILE):
@@ -694,6 +716,7 @@ def run_chrome_session(
             "started": False,
             "error": "refused shared chrome profile",
             "shared_cdp_untouched": True,
+            "identity_browser": identity_meta,
         }
     stdout_path = artifact_dir / "chrome.stdout.txt"
     stderr_path = artifact_dir / "chrome.stderr.txt"
@@ -838,6 +861,7 @@ def run_chrome_session(
         "shared_profile_untouched": True,
         "chrome_bin": chrome,
         "user_data_dir": str(profile),
+        "identity_browser": identity_meta,
         "version": version,
         "targets_count": len(targets) if isinstance(targets, list) else 0,
         "args": args,

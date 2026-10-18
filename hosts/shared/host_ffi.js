@@ -5287,6 +5287,7 @@ function createHostFfi(repoRoot) {
     let fileExpandMeta = null;
     let mcpToolName = null;
     let mcpMapped = null;
+    let mcpProductToolResidual = false;
     if (kind === "mcp_discover") {
       requests = [{ jsonrpc: "2.0", method: "tools/list", params: {} }];
     } else {
@@ -5307,21 +5308,46 @@ function createHostFfi(repoRoot) {
       // Expand $file: refs before MCP call (CM-2163 product Host path).
       fileExpandMeta = { expanded: [], errors: [], refused: false };
       args = expandMcpFileArgs(args, fileExpandMeta);
-      // Map product Gmail/X names onto Host stdio loopback tools when no live MCP.
+      // Map product Gmail/X/skill names onto Host stdio tools when no live MCP.
       // CM-2164: write_to_file args or write_result tool → write_result.
+      // Product search/list/journal map to durable Host FS tools (not echo stub).
       const wantWrite =
         toolName === "write_result" ||
         toolName === "write_to_file" ||
         args.write_to_file === true ||
         args.write_to_file === "true";
+      const productMap = {
+        search_threads: "search_mail_artifacts",
+        mail_search: "search_mail_artifacts",
+        search_mail: "search_mail_artifacts",
+        list_skills: "list_skills",
+        skills_list: "list_skills",
+        journal_query: "journal_tail",
+        journal_tail: "journal_tail",
+        echo_body: "echo_body",
+      };
       const mapped = wantWrite
         ? "write_result"
-        : toolName === "search_threads" || toolName === "echo_body"
-          ? "echo_body"
-          : "echo_body";
+        : productMap[toolName] ||
+          (toolName === "search_mail_artifacts" ||
+          toolName === "list_skills" ||
+          toolName === "journal_tail"
+            ? toolName
+            : "echo_body");
       mcpMapped = mapped;
+      mcpProductToolResidual =
+        !wantWrite &&
+        mapped === "echo_body" &&
+        toolName !== "echo_body" &&
+        !productMap[toolName];
       if (wantWrite && args.write_to_file == null) {
         args.write_to_file = true;
+      }
+      // Carry query into search_mail_artifacts from product Gmail args.
+      if (mapped === "search_mail_artifacts") {
+        if (args.q == null && args.query != null) args.q = args.query;
+        if (args.q == null && typeof args.body === "string" && args.body && !args.body.startsWith("$file:"))
+          args.q = args.body;
       }
       if (fileExpandMeta.refused) {
         const refusedAt = new Date().toISOString();
@@ -5563,6 +5589,7 @@ function createHostFfi(repoRoot) {
                 ? { expanded_count: 0, pretend_inject: false }
                 : null,
           write_to_file: writeMeta,
+          product_tool_residual: mcpProductToolResidual,
           ok: true,
           at: mcpAt,
         });
@@ -5570,6 +5597,7 @@ function createHostFfi(repoRoot) {
         annotated.mode = callArtifact.mode;
         annotated.tool = mcpToolName;
         annotated.mapped = mcpMapped;
+        annotated.product_tool_residual = mcpProductToolResidual;
         annotated.pretend_ok = false;
         annotated.ok = true;
         const callDelivery = recordSendToUser({
@@ -8043,11 +8071,14 @@ function createHostFfi(repoRoot) {
     );
     fs.mkdirSync(artifactDir, { recursive: true });
 
-    // CM-2146 identity browser: switch session marker — never pretend Slack Connected.
+    // CM-2146 identity browser: switch to durable user-data-dir for later CU.
+    // Never pretend Slack Connected; never touch shared /home/box/chrome-profile.
     if (connectorName === "identity-browser") {
       const at = new Date().toISOString();
       const identityDir = path.join(REPO_ROOT, "data", "connectors", "identity");
       fs.mkdirSync(identityDir, { recursive: true });
+      const userDataDir = path.join(identityDir, "chrome-user-data");
+      fs.mkdirSync(userDataDir, { recursive: true });
       const sessionPath = path.join(identityDir, "browser-session.json");
       const session = {
         identity: "user-browser",
@@ -8055,11 +8086,19 @@ function createHostFfi(repoRoot) {
         status: "SwitchedToSignedInBrowser",
         pretend_connected_slack: false,
         connected: false,
+        switched: true,
+        user_data_dir: userDataDir,
+        shared_profile_untouched: true,
         mode: "identity_browser_switch",
         command: String(command || ""),
         at,
       };
       fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));
+      // Pointer env file for child CU processes (Host FFI sets when spawning CU).
+      fs.writeFileSync(
+        path.join(identityDir, "active-user-data-dir.txt"),
+        userDataDir + "\n",
+      );
       saveConnectorState("identity-browser", session);
       const delivery = recordSendToUser({
         type: "widget",
@@ -8077,6 +8116,7 @@ function createHostFfi(repoRoot) {
         ok: true,
         status: session.status,
         path: sessionPath,
+        user_data_dir: userDataDir,
         at,
       });
       return okJson("oauth", command, {
@@ -8086,6 +8126,8 @@ function createHostFfi(repoRoot) {
         pretend_connected_slack: false,
         mode: "identity_browser_switch",
         session_path: sessionPath,
+        user_data_dir: userDataDir,
+        shared_profile_untouched: true,
         switched: true,
         send_to_user: delivery,
       });
@@ -10375,17 +10417,102 @@ function createHostFfi(repoRoot) {
 
     if (kind === "device_tool") {
       const parts = cmd.split("|");
+      const machineId = parts[0] || "";
+      const tool = String(parts[1] || "").trim().toLowerCase();
+      const invDir = path.join(REPO_ROOT, "data", "device", "tool-invokes");
+      const mediaDir = path.join(REPO_ROOT, "data", "device", "captures");
+      fs.mkdirSync(invDir, { recursive: true });
+      fs.mkdirSync(mediaDir, { recursive: true });
+      const stampId = Date.now().toString(36);
+      let capturePath = null;
+      let captureOk = false;
+      let captureError = "";
+      let mode = "host_ffi_device_local";
+      // Best-effort real capture when device nodes / tools exist.
+      // Never claim executed without a durable capture artifact.
+      try {
+        if (tool === "camera" || tool === "photo" || tool === "screenshot") {
+          capturePath = path.join(mediaDir, `camera-${stampId}.png`);
+          const display = String(process.env.DISPLAY || "").trim();
+          if (display && fs.existsSync("/usr/bin/import")) {
+            await execFileAsync(
+              "/usr/bin/import",
+              ["-window", "root", capturePath],
+              { timeout: 8000 },
+            );
+            captureOk = fs.existsSync(capturePath) && fs.statSync(capturePath).size > 32;
+            mode = "host_device_import_root";
+          } else if (fs.existsSync("/usr/bin/ffmpeg") && fs.existsSync("/dev/video0")) {
+            await execFileAsync(
+              "/usr/bin/ffmpeg",
+              [
+                "-y",
+                "-f",
+                "v4l2",
+                "-i",
+                "/dev/video0",
+                "-frames:v",
+                "1",
+                capturePath,
+              ],
+              { timeout: 10000 },
+            );
+            captureOk =
+              fs.existsSync(capturePath) && fs.statSync(capturePath).size > 32;
+            mode = "host_device_v4l2_frame";
+          } else {
+            captureError =
+              "no DISPLAY/import and no /dev/video0 — device_capture_residual";
+          }
+        } else if (tool === "mic" || tool === "microphone" || tool === "audio") {
+          capturePath = path.join(mediaDir, `mic-${stampId}.wav`);
+          if (fs.existsSync("/usr/bin/ffmpeg") && fs.existsSync("/dev/snd")) {
+            await execFileAsync(
+              "/usr/bin/ffmpeg",
+              [
+                "-y",
+                "-f",
+                "alsa",
+                "-i",
+                "default",
+                "-t",
+                "1",
+                capturePath,
+              ],
+              { timeout: 8000 },
+            );
+            captureOk =
+              fs.existsSync(capturePath) && fs.statSync(capturePath).size > 44;
+            mode = "host_device_alsa_wav";
+          } else {
+            captureError =
+              "no ALSA default capture — device_capture_residual";
+          }
+        } else {
+          // Non-media tools: durable invoke only (contacts/location remain residual).
+          captureError = `tool=${tool || "unknown"} has no local capture backend`;
+          mode = "host_device_invoke_residual";
+        }
+      } catch (err) {
+        captureError = String((err && err.message) || err).slice(0, 240);
+        captureOk = false;
+      }
       const entry = {
-        machine_id: parts[0] || "",
-        tool: parts[1] || "",
-        executed: true,
-        mode: "host_ffi_device_local",
+        machine_id: machineId,
+        tool: tool || parts[1] || "",
+        executed: captureOk,
+        capture_path: captureOk ? capturePath : null,
+        capture_bytes:
+          captureOk && capturePath && fs.existsSync(capturePath)
+            ? fs.statSync(capturePath).size
+            : 0,
+        mode,
         pretend_executed: false,
         pretend_granted: false,
+        device_capture_residual: !captureOk,
+        capture_error: captureError || null,
         at,
       };
-      const invDir = path.join(REPO_ROOT, "data", "device", "tool-invokes");
-      fs.mkdirSync(invDir, { recursive: true });
       const ledgerPath = path.join(
         REPO_ROOT,
         "data",
@@ -10394,7 +10521,7 @@ function createHostFfi(repoRoot) {
       );
       const invokePath = path.join(
         invDir,
-        `invoke-${Date.now().toString(36)}.json`,
+        `invoke-${stampId}.json`,
       );
       fs.writeFileSync(invokePath, JSON.stringify(entry, null, 2));
       const pathWritten = appendJsonl(ledgerPath, {
@@ -10402,8 +10529,8 @@ function createHostFfi(repoRoot) {
         path: invokePath,
       });
       const delivery = recordSendToUser({
-        type: "attachment",
-        path: invokePath,
+        type: captureOk && capturePath ? "media" : "attachment",
+        path: captureOk && capturePath ? capturePath : invokePath,
         label: "device_tool",
         source_kind: kind,
         at,
@@ -10412,12 +10539,14 @@ function createHostFfi(repoRoot) {
         kind,
         command: cmd,
         path: invokePath,
+        capture_path: entry.capture_path,
         ledger_path: pathWritten,
         at,
       });
       return okJson(kind, cmd, {
         ...entry,
         path: invokePath,
+        media_path: entry.capture_path,
         ledger_path: pathWritten,
         send_to_user: delivery,
         ok: true,
@@ -12384,6 +12513,42 @@ function createHostFfi(repoRoot) {
     fs.mkdirSync(evidenceDir, { recursive: true });
     const evidencePath = path.join(evidenceDir, "cu_run.json");
     try {
+      // CM-2146: pass identity-browser user-data-dir into CU child when switched.
+      const cuEnv = { ...process.env };
+      const identityPtr = path.join(
+        REPO_ROOT,
+        "data",
+        "connectors",
+        "identity",
+        "active-user-data-dir.txt",
+      );
+      const identitySess = path.join(
+        REPO_ROOT,
+        "data",
+        "connectors",
+        "identity",
+        "browser-session.json",
+      );
+      let identityUserData = "";
+      if (fs.existsSync(identityPtr)) {
+        identityUserData = String(fs.readFileSync(identityPtr, "utf8") || "")
+          .trim()
+          .split("\n")[0]
+          .trim();
+      }
+      if (!identityUserData && fs.existsSync(identitySess)) {
+        try {
+          const sess = JSON.parse(fs.readFileSync(identitySess, "utf8"));
+          if (sess && (sess.switched || sess.status === "SwitchedToSignedInBrowser")) {
+            identityUserData = String(sess.user_data_dir || "").trim();
+          }
+        } catch {
+          identityUserData = "";
+        }
+      }
+      if (identityUserData) {
+        cuEnv.BITBOT_IDENTITY_USER_DATA_DIR = identityUserData;
+      }
       const { stdout, stderr } = await execFileAsync(
         process.env.PYTHON || "python3",
         [
@@ -12395,7 +12560,12 @@ function createHostFfi(repoRoot) {
           "--artifact-dir",
           evidenceDir,
         ],
-        { cwd: REPO_ROOT, timeout: 90000, maxBuffer: 4 * 1024 * 1024 },
+        {
+          cwd: REPO_ROOT,
+          timeout: 90000,
+          maxBuffer: 4 * 1024 * 1024,
+          env: cuEnv,
+        },
       );
       let summary = {};
       if (fs.existsSync(evidencePath)) {
@@ -12454,6 +12624,8 @@ function createHostFfi(repoRoot) {
               private_cdp_port: gui.private_cdp_port || null,
               shared_cdp_untouched: gui.shared_cdp_untouched !== false,
               chrome_bin: gui.chrome_bin || null,
+              user_data_dir: gui.user_data_dir || null,
+              identity_browser: gui.identity_browser || null,
               actions_ok: Boolean(gui.actions && gui.actions.ok),
               screenshot_ok: Boolean(gui.screenshot && gui.screenshot.ok),
               vision_ok: Boolean(

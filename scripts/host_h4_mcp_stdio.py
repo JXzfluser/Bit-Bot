@@ -6,8 +6,11 @@ Speaks MCP-style Content-Length framed JSON-RPC on stdin/stdout.
 Audit spans go to stderr (and optional --audit-log file).
 
 Tools:
-  echo_body     — returns injected body length / echo marker (CM-2163 inject path)
-  write_result  — writes large body under /workspace/agent-tools/ (CM-2164)
+  echo_body             — returns injected body length / echo marker (CM-2163 inject path)
+  write_result          — writes large body under /workspace/agent-tools/ (CM-2164)
+  search_mail_artifacts — search durable Host mail snaps (product Gmail.search_threads path)
+  list_skills           — list Host skills under data/skills
+  journal_tail          — tail Host delivery/journal JSONL
 
 Usage (driven by host_h4_smoke.sh):
   python3 scripts/host_h4_mcp_stdio.py [--audit-log PATH] [--agent-tools-dir PATH]
@@ -23,12 +26,14 @@ import sys
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Optional, TextIO
+from typing import Any, Dict, List, Optional, TextIO
 
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "bitbot-h4-mcp-stdio"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
+
+REPO_ROOT = Path(os.environ.get("BITBOT_REPO_ROOT") or "/workspace")
 
 TOOLS = [
     {
@@ -57,6 +62,37 @@ TOOLS = [
                 "write_to_file": {"type": "boolean", "default": True},
             },
             "required": ["body"],
+        },
+    },
+    {
+        "name": "search_mail_artifacts",
+        "description": "Search durable Host mail artifacts under data/mail (product search_threads).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string", "description": "Query substring"},
+                "limit": {"type": "integer", "default": 10},
+            },
+        },
+    },
+    {
+        "name": "list_skills",
+        "description": "List Host skill SKILL.md files under data/skills.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "journal_tail",
+        "description": "Tail Host journal/delivery JSONL lines.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "description": "host-delivery|events|send-to-user",
+                    "default": "host-delivery",
+                },
+                "limit": {"type": "integer", "default": 20},
+            },
         },
     },
 ]
@@ -240,6 +276,107 @@ class H4McpServer:
                 sha256=sha,
             )
             # Return path only — never the PAYLOAD body
+            return tool_result_text(json.dumps(meta, ensure_ascii=False))
+
+        if name == "search_mail_artifacts":
+            q = str(args.get("q") or args.get("query") or args.get("body") or "").strip()
+            limit = int(args.get("limit") or 10)
+            mail_root = REPO_ROOT / "data" / "mail"
+            hits: List[Dict[str, Any]] = []
+            if mail_root.is_dir():
+                for path in sorted(mail_root.rglob("*.json"))[:400]:
+                    try:
+                        text = path.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        continue
+                    if q and q.lower() not in text.lower():
+                        continue
+                    hits.append(
+                        {
+                            "path": str(path),
+                            "bytes": path.stat().st_size,
+                            "match": q or "(all)",
+                        }
+                    )
+                    if len(hits) >= max(1, limit):
+                        break
+            meta = {
+                "ok": True,
+                "tool": name,
+                "query": q or "(all)",
+                "hit_count": len(hits),
+                "hits": hits,
+                "pretend_live": False,
+                "mode": "host_mail_artifacts",
+            }
+            self._span(
+                "tools/call",
+                ok=True,
+                detail="search_mail_artifacts",
+                tool=name,
+                hits=len(hits),
+            )
+            return tool_result_text(json.dumps(meta, ensure_ascii=False))
+
+        if name == "list_skills":
+            skills_root = REPO_ROOT / "data" / "skills"
+            skills: List[Dict[str, Any]] = []
+            if skills_root.is_dir():
+                for path in sorted(skills_root.rglob("SKILL.md"))[:100]:
+                    skills.append(
+                        {
+                            "id": path.parent.name,
+                            "path": str(path),
+                            "bytes": path.stat().st_size,
+                        }
+                    )
+            meta = {
+                "ok": True,
+                "tool": name,
+                "count": len(skills),
+                "skills": skills,
+                "pretend_listing": False,
+                "mode": "host_skills_fs",
+            }
+            self._span(
+                "tools/call",
+                ok=True,
+                detail="list_skills",
+                tool=name,
+                count=len(skills),
+            )
+            return tool_result_text(json.dumps(meta, ensure_ascii=False))
+
+        if name == "journal_tail":
+            source = str(args.get("source") or "host-delivery").strip().lower()
+            limit = int(args.get("limit") or 20)
+            candidates = {
+                "host-delivery": REPO_ROOT / "data" / "journal" / "host-delivery.jsonl",
+                "events": REPO_ROOT / "data" / "journal" / "events.jsonl",
+                "send-to-user": REPO_ROOT / "data" / "delivery" / "send-to-user.jsonl",
+            }
+            path = candidates.get(source) or candidates["host-delivery"]
+            lines: List[str] = []
+            if path.is_file():
+                raw = path.read_text(encoding="utf-8", errors="replace").splitlines()
+                lines = raw[-max(1, limit) :]
+            meta = {
+                "ok": True,
+                "tool": name,
+                "source": source,
+                "path": str(path),
+                "line_count": len(lines),
+                "lines": lines,
+                "pretend_stored": False,
+                "mode": "host_journal_tail",
+            }
+            self._span(
+                "tools/call",
+                ok=True,
+                detail="journal_tail",
+                tool=name,
+                lines=len(lines),
+            )
             return tool_result_text(json.dumps(meta, ensure_ascii=False))
 
         self._span("tools/call", ok=False, detail=f"unknown tool {name}", tool=name)
