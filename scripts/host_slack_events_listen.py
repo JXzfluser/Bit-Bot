@@ -317,7 +317,7 @@ def main() -> int:
     ap.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("BITBOT_SLACK_EVENTS_LISTEN_PORT") or 18792),
+        default=int(os.environ.get("BITBOT_SLACK_EVENTS_LISTEN_PORT") or 18797),
     )
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()

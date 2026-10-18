@@ -1662,20 +1662,21 @@ kill "$WH_LISTEN_TURN_PID" >/dev/null 2>&1 || true
 wait "$WH_LISTEN_TURN_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('path') and os.path.isfile(d['path']);snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('webhook http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 # Slack Events HTTP push: closes inbound_push_residual; token never echoed; turn residual stays open without BITBOT_INBOUND_TURN.
-python3 "$ROOT/scripts/host_slack_events_listen.py" --port 18792 >/tmp/bitbot-slack-events-listen.log 2>&1 &
+# Port 18797 avoids SMS mock (18792) / webhook claim (18793) collisions.
+python3 "$ROOT/scripts/host_slack_events_listen.py" --port 18797 >/tmp/bitbot-slack-events-listen.log 2>&1 &
 SLACK_EVENTS_LISTEN_PID=$!
 sleep 0.4
-curl -s -X POST http://127.0.0.1:18792/slack/events -H 'Content-Type: application/json' \
+curl -s -X POST http://127.0.0.1:18797/slack/events -H 'Content-Type: application/json' \
   -d '{"token":"slack-verify-secret-smoke","type":"event_callback","event_id":"EvHttpSmoke","event":{"type":"message","channel":"Csmoke","user":"U_SMOKE","text":"slack events push smoke","ts":"1710000000.000199"}}' \
   >/tmp/bitbot-slack-events-curl.json || true
 kill "$SLACK_EVENTS_LISTEN_PID" >/dev/null 2>&1 || true
 wait "$SLACK_EVENTS_LISTEN_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-events-curl.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is True;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'slack-verify-secret-smoke' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is True;assert snap.get('mode')=='host_slack_events_listen';th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is False;rows=open('data/channels/inbound.jsonl').read();assert 'live_slack_events_push' in rows;print('slack events http listen push wake ok', d.get('path'), 'inbound_turn_residual', True)"
 # Slack Events listen + BITBOT_INBOUND_TURN=1 executes pending turn via Host run_turn (webhook listen parity).
-BITBOT_INBOUND_TURN=1 python3 "$ROOT/scripts/host_slack_events_listen.py" --port 18792 >/tmp/bitbot-slack-events-listen-turn.log 2>&1 &
+BITBOT_INBOUND_TURN=1 python3 "$ROOT/scripts/host_slack_events_listen.py" --port 18797 >/tmp/bitbot-slack-events-listen-turn.log 2>&1 &
 SLACK_EVENTS_LISTEN_TURN_PID=$!
 sleep 0.4
-curl -s -X POST http://127.0.0.1:18792/slack/events -H 'Content-Type: application/json' \
+curl -s -X POST http://127.0.0.1:18797/slack/events -H 'Content-Type: application/json' \
   -d '{"token":"slack-verify-secret-turn","type":"event_callback","event_id":"EvHttpTurn","event":{"type":"message","channel":"Csmoke","user":"U_SMOKE","text":"slack events inbound turn smoke","ts":"1710000000.000299"}}' \
   >/tmp/bitbot-slack-events-curl-turn.json || true
 kill "$SLACK_EVENTS_LISTEN_TURN_PID" >/dev/null 2>&1 || true
