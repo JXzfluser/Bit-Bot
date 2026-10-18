@@ -44,7 +44,8 @@ Endpoints:
   webhook:  POST /hooks
             GET  /hooks     (BITBOT_WEBHOOK_CLAIM=1 inbound claim)
   webhook:  POST /hooks (any POST; no Bearer — BITBOT_WEBHOOK_OUTBOUND_URL + BITBOT_WEBHOOK_POST=1)
-  mail_claim: GET /messages?q=  (BITBOT_MAIL_CLAIM_API_URL + BITBOT_MAIL_CLAIM_POST=1)
+  mail_claim: GET /messages?q=  (BITBOT_MAIL_CLAIM_API_URL + BITBOT_MAIL_CLAIM_POST=1;
+                                 also channel email claim: BITBOT_EMAIL_CLAIM=1)
   cold:     POST /send  (BITBOT_COLD_MAIL_API_URL + BITBOT_MAIL_SEND=1)
   onbehalf: POST /send  (BITBOT_ONBEHALF_MAIL_API_URL + BITBOT_MAIL_SEND=1)
   webfetch: GET /docs-blocked (403 unless UA BitBot-PublicFallback)

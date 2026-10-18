@@ -1650,6 +1650,7 @@ function createHostFfi(repoRoot) {
       addr.startsWith("outlook:")
     ) {
       // Channel email: durable draft by default; live Gmail/Outlook when gated.
+      // Inbound claim (BITBOT_EMAIL_CLAIM=1) reuses mail_claim mock token/API.
       const toAddr =
         addr.replace(/^(email|gmail|outlook):/i, "").trim() ||
         "user@example.com";
@@ -1672,6 +1673,164 @@ function createHostFfi(repoRoot) {
             mailProviderEnv !== "gmail");
         if (preferOutlook) mailProvider = "outlook";
       }
+      // Live email inbound claim via existing mail_claim mock (parity with SMS/Slack).
+      let emailClaim = null;
+      const claimApi = String(
+        process.env.BITBOT_MAIL_CLAIM_API_URL || "",
+      ).trim();
+      const claimToken =
+        String(process.env.BITBOT_MAIL_CLAIM_TOKEN || "").trim() ||
+        resolveProviderAccessToken("mail_claim") ||
+        resolveProviderAccessToken(mailProvider) ||
+        resolveProviderAccessToken("gmail") ||
+        resolveProviderAccessToken("outlook");
+      const claimApiBase = claimApi ? claimApi.replace(/\/$/, "") : "";
+      if (
+        claimToken &&
+        claimApiBase &&
+        process.env.BITBOT_EMAIL_CLAIM === "1"
+      ) {
+        const hist = await httpJson(
+          claimApiBase +
+            "/messages?q=" +
+            encodeURIComponent(toAddr || "inbox"),
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${claimToken}`,
+              Accept: "application/json",
+            },
+          },
+        );
+        const okHist =
+          Boolean(hist.ok) || (hist.status >= 200 && hist.status < 300);
+        const values =
+          (hist.json &&
+            (hist.json.messages || hist.json.items || hist.json.value)) ||
+          [];
+        const claimed = [];
+        for (const m of Array.isArray(values) ? values : []) {
+          if (!m || typeof m !== "object") continue;
+          const text = String(
+            m.text_prefix || m.snippet || m.subject || m.text || m.body || "",
+          );
+          const row = {
+            scheme: "email",
+            id: m.id || m.message_id || "",
+            to: toAddr,
+            from: m.from || "",
+            subject: m.subject || "",
+            text_prefix: text.slice(0, 80),
+            text_len: text.length,
+            mode: "live_email_claim",
+            at: stamp,
+          };
+          appendJsonl(inboundPath, row);
+          claimed.push({ id: row.id, text_len: row.text_len });
+        }
+        emailClaim = {
+          ok: okHist,
+          claimed_count: claimed.length,
+          claimed,
+          error: okHist ? "" : hist.error || `http_${hist.status}`,
+        };
+      }
+      // Claim-only path (CLAIM=1, no live mail send): close live_mail_residual on ok.
+      const mailSendArmed = process.env.BITBOT_MAIL_SEND === "1";
+      if (emailClaim && !mailSendArmed) {
+        const claimOk = Boolean(emailClaim.ok);
+        const entry = {
+          scheme,
+          address: addr,
+          body,
+          mode: "live_email_claim",
+          ok: claimOk,
+          live_post: false,
+          pretend_live: false,
+          live_mail_residual: !claimOk,
+          live_channel_residual: !claimOk,
+          claimed_count: emailClaim.claimed_count,
+          claim: emailClaim,
+          mail: {
+            provider: mailProvider,
+            mode: "live_email_claim",
+            sent: false,
+            eml_path: null,
+            message_id: null,
+          },
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        appendJsonl(MAIL_DRAFTS_PATH, {
+          kind: "channel_email_claim",
+          address: addr,
+          body,
+          mail_mode: entry.mode,
+          at: stamp,
+        });
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+          mail: entry.mail,
+          claim: emailClaim,
+          ok: claimOk,
+          error: claimOk ? "" : emailClaim.error || "email claim failed",
+        });
+      }
+      // Sandbox claim rehearsal when CLAIM=1 but no live token/API.
+      if (
+        process.env.BITBOT_EMAIL_CLAIM === "1" &&
+        !(claimToken && claimApiBase)
+      ) {
+        const sandboxRow = {
+          scheme: "email",
+          id: `sandbox-email-${Date.now().toString(36)}`,
+          to: toAddr,
+          from: "sandbox@local",
+          subject: "sandbox email inbound",
+          text_prefix: "sandbox email inbound claim",
+          text_len: 28,
+          mode: "sandbox_email_claim",
+          at: stamp,
+        };
+        appendJsonl(inboundPath, sandboxRow);
+        const entry = {
+          scheme,
+          address: addr,
+          body,
+          mode: "sandbox_email_claim",
+          ok: true,
+          live_post: false,
+          pretend_live: false,
+          live_mail_residual: true,
+          live_channel_residual: true,
+          claimed_count: 1,
+          note: "sandbox email claim — set BITBOT_MAIL_CLAIM_TOKEN + BITBOT_MAIL_CLAIM_API_URL for live",
+          mail: {
+            provider: mailProvider,
+            mode: "sandbox_email_claim",
+            sent: false,
+            eml_path: null,
+            message_id: null,
+          },
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        appendJsonl(MAIL_DRAFTS_PATH, {
+          kind: "channel_email_claim",
+          address: addr,
+          body,
+          mail_mode: entry.mode,
+          at: stamp,
+        });
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+          mail: entry.mail,
+        });
+      }
       const mailCmd = `${mailProvider}|${toAddr}|channel delivery|${body}`;
       const mailResult = await executeMailSend(mailCmd);
       let mailPayload = {};
@@ -1685,6 +1844,8 @@ function createHostFfi(repoRoot) {
           (mailPayload.mode === "live_gmail" ||
             mailPayload.mode === "live_outlook"),
       );
+      const claimOk = Boolean(emailClaim && emailClaim.ok);
+      const residualClosed = live || claimOk;
       const entry = {
         scheme,
         address: addr,
@@ -1696,8 +1857,11 @@ function createHostFfi(repoRoot) {
           : mailPayload.mode || "mail_outbound_draft",
         ok: true,
         live_post: live,
-        live_mail_residual: !live,
+        live_mail_residual: !residualClosed,
         pretend_live: false,
+        claim: emailClaim
+          ? { ok: emailClaim.ok, claimed_count: emailClaim.claimed_count }
+          : null,
         mail: {
           provider: mailProvider,
           mode: mailPayload.mode || null,
@@ -1717,7 +1881,9 @@ function createHostFfi(repoRoot) {
       });
       return finalizeChannelSend(raw, entry, {
         outboundPath,
+        inbound: emailClaim ? inboundPath : undefined,
         mail: entry.mail,
+        claim: emailClaim || undefined,
       });
     }
 

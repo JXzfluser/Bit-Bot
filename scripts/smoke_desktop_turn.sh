@@ -1479,6 +1479,30 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-claim-live.json'));
 env -u BITBOT_SMS_TOKEN -u BITBOT_SMS_API_URL BITBOT_SMS_CLAIM=1 \
   node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: sandbox claim" >/tmp/bitbot-sms-claim-sandbox.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-sms-claim-sandbox.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_sms_claim';assert p.get('live_sms_residual') is True;assert p.get('pretend_live') is False;print('channel sms sandbox claim residual open ok', p.get('claimed_count'))"
+# Live email/gmail/outlook channel claim closes live_mail_residual (reuses mail_claim mock).
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18795 --mode mail_claim --token smoke-claim >/tmp/bitbot-email-claim-mock.log 2>&1 &
+EMAIL_CLAIM_MOCK_PID=$!
+sleep 0.4
+BITBOT_MAIL_CLAIM_API_URL=http://127.0.0.1:18795 BITBOT_MAIL_CLAIM_TOKEN=smoke-claim BITBOT_EMAIL_CLAIM=1 \
+  env -u BITBOT_MAIL_SEND \
+  node hosts/cli_host/run_turn.js --approved "reply via email:claim@example.com :: claim email inbound" >/tmp/bitbot-email-claim-live.json || true
+kill "$EMAIL_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
+wait "$EMAIL_CLAIM_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-email-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_email_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_mail_residual') is False;assert p.get('live_channel_residual') is False;assert (p.get('claim') or {}).get('ok') is True;assert p.get('pretend_live') is False;assert 'live_email_claim' in open('data/channels/inbound.jsonl').read();print('channel email live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+# Email channel live claim + BITBOT_INBOUND_TURN closes inbound_turn_residual.
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18796 --mode mail_claim --token smoke-claim >/tmp/bitbot-email-claim-turn-mock.log 2>&1 &
+EMAIL_CLAIM_TURN_MOCK_PID=$!
+sleep 0.4
+BITBOT_MAIL_CLAIM_API_URL=http://127.0.0.1:18796 BITBOT_MAIL_CLAIM_TOKEN=smoke-claim BITBOT_EMAIL_CLAIM=1 BITBOT_INBOUND_TURN=1 \
+  env -u BITBOT_MAIL_SEND \
+  node hosts/cli_host/run_turn.js --approved "reply via gmail:claim@example.com :: claim inbound turn" >/tmp/bitbot-email-claim-turn.json || true
+kill "$EMAIL_CLAIM_TURN_MOCK_PID" >/dev/null 2>&1 || true
+wait "$EMAIL_CLAIM_TURN_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-email-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_email_claim';assert p.get('live_mail_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel email claim inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
+env -u BITBOT_MAIL_CLAIM_TOKEN -u BITBOT_MAIL_CLAIM_API_URL BITBOT_EMAIL_CLAIM=1 \
+  env -u BITBOT_MAIL_SEND \
+  node hosts/cli_host/run_turn.js --approved "reply via outlook:claim@example.com :: sandbox email claim" >/tmp/bitbot-email-claim-sandbox.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-email-claim-sandbox.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_email_claim';assert p.get('live_mail_residual') is True;assert p.get('pretend_live') is False;print('channel email sandbox claim residual open ok', p.get('claimed_count'))"
 # CM-1104 widget degrade on SMS (parity with Slack/Teams/meeting).
 node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: hello [widget:decision_card]" >/tmp/bitbot-sms-widget.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-sms-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;print('channel sms widget_degraded ok', p.get('mode'), p.get('body'))"
