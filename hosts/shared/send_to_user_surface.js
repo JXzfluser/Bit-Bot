@@ -128,7 +128,8 @@ function residualSuffix(p) {
   const vp = g.vision_plan || {};
   if (vp.ocr_residual === true && !parts.includes("/ocr_residual"))
     parts.push("/ocr_residual");
-  // Do not conflate dry-run gate with remote_pr_residual (Host sets those separately).
+  // Do not conflate dry-run / real_create_gated with remote_pr_residual
+  // (Host sets remote_pr_residual + gh_pr_create_residual separately).
   const rp = p.remote_pr || {};
   if (
     rp.real_create_gated === true &&
@@ -137,9 +138,10 @@ function residualSuffix(p) {
   ) {
     parts.push("/real_create_gated");
   }
+  // Mode-string fallback when Host stamps create-failed mode without boolean.
   if (
+    p.gh_pr_create_residual !== true &&
     String(rp.mode || p.mode || "").includes("gh_pr_create_residual") &&
-    p.remote_pr_residual !== true &&
     !parts.includes("/gh_pr_create_residual") &&
     !parts.includes("/remote_pr_residual")
   ) {

@@ -2788,8 +2788,7 @@
                     p.remote_pr_residual !== true
                       ? "/real_create_gated"
                       : "") +
-                    (String(mode || "").includes("gh_pr_create_residual") &&
-                    p.remote_pr_residual !== true
+                    (p.gh_pr_create_residual === true
                       ? "/gh_pr_create_residual"
                       : "");
                   label = "sc:" + mode + residual + (p.path ? "/snap" : "");
@@ -2806,7 +2805,7 @@
                       (p.remote_pr_residual === true
                         ? " · remote_pr_residual"
                         : "") +
-                      (String(mode || "").includes("gh_pr_create_residual")
+                      (p.gh_pr_create_residual === true
                         ? " · gh_pr_create_residual"
                         : "") +
                       (p.pretend_remote_pr ? " · pretend!" : "");

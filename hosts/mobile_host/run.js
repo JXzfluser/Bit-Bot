@@ -326,10 +326,11 @@ try {
           payload.true_device_os_dialog_residual === true,
         gh_pr_create_residual:
           payload.gh_pr_create_residual === true ||
-          String((payload.remote_pr && payload.remote_pr.mode) || payload.mode || "").includes(
-            "gh_pr_create_residual",
-          ),
-        remote_pr_residual: payload.remote_pr_residual === true,
+          String(
+            (payload.remote_pr && payload.remote_pr.mode) ||
+              payload.mode ||
+              "",
+          ).includes("gh_pr_create_residual"),
         ocr_residual:
           payload.ocr_residual === true ||
           oc.ocr_residual === true ||

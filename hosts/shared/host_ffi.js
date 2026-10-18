@@ -11408,6 +11408,9 @@ function createHostFfi(repoRoot) {
 
       // Remote PR: BITBOT_GH_CREATE_PR=1 enables view/dry-run; never pretend create.
       // BITBOT_GH_PR_CREATE=1 would allow real create — default is dry-run only.
+      // gh_pr_create_residual stays open through dry-run/plan/gated; close only when
+      // BITBOT_GH_PR_CREATE=1 + gh pr create succeeds (BITBOT_GH_BIN mock OK).
+      // remote_pr_residual is separate — dry-run may clear it for view fidelity.
       const wantPr =
         /create_pr|pull_request|open_pr/i.test(action) ||
         String(process.env.BITBOT_GH_CREATE_PR || "").trim() === "1";
@@ -11415,8 +11418,10 @@ function createHostFfi(repoRoot) {
         String(process.env.BITBOT_GH_PR_CREATE || "").trim() === "1";
       let remotePr = null;
       let remotePrResidual = true;
+      let ghPrCreateResidual = false;
       let mode = "host_git_status";
       if (wantPr) {
+        ghPrCreateResidual = true;
         // BITBOT_GH_BIN overrides real gh for Host fidelity smoke (mock create/view).
         const ghBin = (() => {
           const override = String(process.env.BITBOT_GH_BIN || "").trim();
@@ -11540,8 +11545,12 @@ function createHostFfi(repoRoot) {
                 plan_path: planPath,
                 real_create_gated: !allowRealCreate,
               };
-              // Dry-run closes create residual for Host fidelity without inventing a PR URL.
+              // Dry-run clears remote_pr_residual for view fidelity only —
+              // gh_pr_create_residual stays open until BITBOT_GH_PR_CREATE=1 succeeds.
               remotePrResidual = false;
+              if (allowRealCreate) {
+                ghPrCreateResidual = false;
+              }
               mode = allowRealCreate
                 ? "host_git_status+gh_pr_create"
                 : "host_git_status+gh_pr_create_dry_run";
@@ -11625,6 +11634,7 @@ function createHostFfi(repoRoot) {
         mode,
         pretend_remote_pr: false,
         remote_pr_residual: remotePrResidual,
+        gh_pr_create_residual: ghPrCreateResidual,
         remote_pr: remotePr,
         ok,
         error: err || null,

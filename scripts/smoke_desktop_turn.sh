@@ -607,6 +607,7 @@ for needle in (
   '/remote_cloud_residual',
   '/remote_cloud_artifact_residual',
   '/remote_pr_residual',
+  '/gh_pr_create_residual',
   '/real_create_gated',
   '/code_apply_residual',
   '/git_commit_residual',
@@ -649,7 +650,8 @@ for short in (
   assert short not in html, short
 assert 'true_device_os_dialog_residual' in shared
 assert 'refused_cross_scope' in shared
-assert 'gh_pr_create_residual' in shared or 'remote_pr_residual' in shared
+assert 'gh_pr_create_residual' in shared
+assert 'remote_pr_residual' in shared
 assert 'remote_cloud_artifact_residual' in shared
 assert 'git_commit_residual' in shared
 assert 'live_voice_residual' in shared
@@ -694,6 +696,7 @@ for needle in (
   'git_commit_residual',
   'screenshot_residual',
   'remote_pr_residual',
+  'gh_pr_create_residual',
   'public_fallback_residual',
   'ocr_residual',
   'os_window_automation_residual',
@@ -1456,24 +1459,33 @@ console.log("STU code_changes git_commit_residual chip ok", apply.labels.filter(
 node hosts/cli_host/run_turn.js "source control github" >/tmp/bitbot-sc.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='host_git_status' or str(p.get('mode') or '').startswith('host_git_status');assert p.get('pretend_remote_pr') is False;assert p.get('remote_pr_residual') is True;assert p.get('branch');assert p.get('path') and os.path.isfile(p['path']);assert p.get('status_path') and os.path.isfile(p['status_path']);print('source_control git status ok', p.get('branch'), 'dirty', p.get('dirty'), 'path', p.get('path'), 'remote_pr_residual', p.get('remote_pr_residual'))"
 node hosts/cli_host/run_turn.js "source control create_pr" >/tmp/bitbot-sc-pr.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_remote_pr') is False;assert p.get('remote_pr_residual') is True;rp=p.get('remote_pr') or {};assert rp.get('mode') in ('remote_pr_residual','gh_pr_view_failed','gh_pr_view','gh_pr_create_dry_run','gh_pr_create_failed');assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;assert plan.get('real_create_gated') is True;print('source_control remote PR residual+plan ok', rp.get('mode'), rp.get('plan_path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_remote_pr') is False;assert p.get('remote_pr_residual') is True;assert p.get('gh_pr_create_residual') is True;rp=p.get('remote_pr') or {};assert rp.get('mode') in ('remote_pr_residual','gh_pr_view_failed','gh_pr_view','gh_pr_create_dry_run','gh_pr_create_failed');assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;assert plan.get('real_create_gated') is True;print('source_control remote PR residual+plan ok', rp.get('mode'), rp.get('plan_path'), 'gh_pr_create_residual', True)"
 BITBOT_GH_CREATE_PR=1 node hosts/cli_host/run_turn.js "source control create_pr" >/tmp/bitbot-sc-pr-live.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_remote_pr') is False;rp=p.get('remote_pr') or {};assert rp.get('mode') in ('gh_pr_view','gh_pr_create_dry_run','gh_pr_create');assert p.get('remote_pr_residual') is False;assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;print('source_control remote PR live/view ok', rp.get('mode'), 'residual', p.get('remote_pr_residual'), 'gated', plan.get('real_create_gated'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_remote_pr') is False;rp=p.get('remote_pr') or {};assert rp.get('mode') in ('gh_pr_view','gh_pr_create_dry_run','gh_pr_create');assert p.get('remote_pr_residual') is False;assert p.get('gh_pr_create_residual') is True or rp.get('mode')=='gh_pr_create';assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;print('source_control remote PR live/view ok', rp.get('mode'), 'remote_pr_residual', p.get('remote_pr_residual'), 'gh_pr_create_residual', p.get('gh_pr_create_residual'), 'gated', plan.get('real_create_gated'))"
 # Gated create evidence via injectable gh mock (no real GitHub PR invent).
 rm -rf /tmp/bitbot-gh-mock-dry /tmp/bitbot-gh-mock-real
 mkdir -p /tmp/bitbot-gh-mock-dry /tmp/bitbot-gh-mock-real
 BITBOT_GH_BIN="$ROOT/scripts/host_gh_mock.sh" BITBOT_GH_MOCK_LOG_DIR=/tmp/bitbot-gh-mock-dry BITBOT_GH_CREATE_PR=1 node hosts/cli_host/run_turn.js "source control create_pr" >/tmp/bitbot-sc-pr-dry.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-dry.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create_dry_run';assert rp.get('dry_run') is True;assert rp.get('real_create_gated') is True;assert p.get('remote_pr_residual') is False;assert p.get('pretend_remote_pr') is False;plan=json.load(open(rp['plan_path']));assert plan.get('dry_run') is True;assert plan.get('real_create_gated') is True;assert plan.get('allow_real_create') is False;assert '--dry-run' in (plan.get('args') or []);log=open('/tmp/bitbot-gh-mock-dry/invocations.log').read();assert 'pr create' in log and '--dry-run' in log;print('source_control mock dry-run create ok', rp.get('plan_path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-dry.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create_dry_run';assert rp.get('dry_run') is True;assert rp.get('real_create_gated') is True;assert p.get('remote_pr_residual') is False;assert p.get('gh_pr_create_residual') is True;assert p.get('pretend_remote_pr') is False;plan=json.load(open(rp['plan_path']));assert plan.get('dry_run') is True;assert plan.get('real_create_gated') is True;assert plan.get('allow_real_create') is False;assert '--dry-run' in (plan.get('args') or []);log=open('/tmp/bitbot-gh-mock-dry/invocations.log').read();assert 'pr create' in log and '--dry-run' in log;print('source_control mock dry-run create ok', rp.get('plan_path'), 'gh_pr_create_residual', True, 'remote_pr_residual', False)"
 node -e '
 const fs=require("fs");
 const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
 const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-sc-pr-dry.json","utf8"));
 if(s.labels.some(l=>l.includes("/remote_pr_residual"))) { console.error("dry-run must not stamp remote_pr_residual", s); process.exit(1); }
+if(!s.labels.some(l=>l.includes("/gh_pr_create_residual"))) { console.error("dry-run must stamp gh_pr_create_residual", s); process.exit(1); }
 if(!s.labels.some(l=>l.includes("real_create_gated")||l.includes("source_control")||l.includes("gh_pr"))) { console.error(s); process.exit(1); }
-console.log("STU dry-run no remote_pr_residual conflation ok", s.labels.slice(0,4));
+console.log("STU dry-run gh_pr_create_residual chip + no remote_pr_residual conflation ok", s.labels.slice(0,4));
 '
 BITBOT_GH_BIN="$ROOT/scripts/host_gh_mock.sh" BITBOT_GH_MOCK_LOG_DIR=/tmp/bitbot-gh-mock-real BITBOT_GH_CREATE_PR=1 BITBOT_GH_PR_CREATE=1 node hosts/cli_host/run_turn.js "source control create_pr" >/tmp/bitbot-sc-pr-real.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-real.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create';assert rp.get('dry_run') is False;assert rp.get('real_create_gated') is False;assert rp.get('create_attempted') is True;assert p.get('remote_pr_residual') is False;assert p.get('pretend_remote_pr') is False;plan=json.load(open(rp['plan_path']));assert plan.get('dry_run') is False;assert plan.get('allow_real_create') is True;assert plan.get('real_create_gated') is False;assert '--dry-run' not in (plan.get('args') or []);assert os.path.isfile('/tmp/bitbot-gh-mock-real/last-create.json');print('source_control mock gated real create ok', rp.get('plan_path'), plan.get('output_prefix','')[:80])"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-real.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create';assert rp.get('dry_run') is False;assert rp.get('real_create_gated') is False;assert rp.get('create_attempted') is True;assert p.get('remote_pr_residual') is False;assert p.get('gh_pr_create_residual') is False;assert p.get('pretend_remote_pr') is False;plan=json.load(open(rp['plan_path']));assert plan.get('dry_run') is False;assert plan.get('allow_real_create') is True;assert plan.get('real_create_gated') is False;assert '--dry-run' not in (plan.get('args') or []);assert os.path.isfile('/tmp/bitbot-gh-mock-real/last-create.json');print('source_control mock gated real create ok', rp.get('plan_path'), 'gh_pr_create_residual', False, plan.get('output_prefix','')[:80])"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-sc-pr-real.json","utf8"));
+if(s.labels.some(l=>l.includes("/gh_pr_create_residual"))) { console.error("real create must close gh_pr_create_residual", s); process.exit(1); }
+if(s.labels.some(l=>l.includes("/remote_pr_residual"))) { console.error("real create must not stamp remote_pr_residual", s); process.exit(1); }
+console.log("STU real create closes gh_pr_create_residual chip ok", s.labels.slice(0,4));
+'
 node hosts/cli_host/run_turn.js --approved "send on behalf to=a@example.com subject=Hi body=Hello" >/tmp/bitbot-sob.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sob.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('provider')=='onbehalf';assert p.get('mode')=='onbehalf_sandbox_eml';assert p.get('sent') is False;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is True;assert 'X-BitBot-Send-On-Behalf: 1' in open(p['eml_path']).read();assert p.get('path') and os.path.isfile(p['path']);print('send_on_behalf eml ok', p.get('eml_path'), p.get('path'), 'live_mail_residual', True)"
 # Live onbehalf mail mock closes live_mail_residual
