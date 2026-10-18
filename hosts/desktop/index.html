@@ -2889,6 +2889,7 @@
                     (p.scheme || "channel") +
                     "/" +
                     (p.mode || "post") +
+                    (p.widget_degraded === true ? "/widget_degraded" : "") +
                     (p.path ? "/snap" : "") +
                     (p.live_slack_residual === true
                       ? "/live_slack_residual"
@@ -2905,6 +2906,7 @@
                     chMeta.textContent =
                       "live · " +
                       (p.mode || p.scheme || "post") +
+                      (p.widget_degraded === true ? " · widget_degraded" : "") +
                       (p.live_slack_residual === true
                         ? " · live_slack_residual"
                         : "") +
