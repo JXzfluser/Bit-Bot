@@ -1771,13 +1771,50 @@ function createHostFfi(repoRoot) {
         }
         widgetDegraded = true;
       }
+      const apiBase = smsApi ? smsApi.replace(/\/$/, "") : "";
+      // Live SMS inbound claim when CLAIM=1 + token + API (parity with meeting).
+      let smsClaim = null;
+      if (smsToken && apiBase && process.env.BITBOT_SMS_CLAIM === "1") {
+        const hist = await httpJson(apiBase + "/messages", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${smsToken}` },
+        });
+        const okHist =
+          Boolean(hist.ok) || (hist.status >= 200 && hist.status < 300);
+        const values =
+          (hist.json && (hist.json.messages || hist.json.value)) || [];
+        const claimed = [];
+        for (const m of Array.isArray(values) ? values : []) {
+          if (!m || typeof m !== "object") continue;
+          const text = String(m.text || m.body || m.content || "");
+          const row = {
+            scheme: "sms",
+            id: m.id || m.message_id || "",
+            to,
+            text_prefix: text.slice(0, 80),
+            text_len: text.length,
+            mode: "live_sms_claim",
+            at: stamp,
+          };
+          appendJsonl(inboundPath, row);
+          claimed.push({ id: row.id, text_len: row.text_len });
+        }
+        smsClaim = {
+          ok: okHist,
+          claimed_count: claimed.length,
+          claimed,
+          error: okHist ? "" : hist.error || `http_${hist.status}`,
+        };
+      }
       let livePost = false;
       let liveProbe = null;
+      let liveAttempted = false;
       let mode = "sandbox_sms";
       // Gate live SMS behind BITBOT_SMS_POST=1 (parity with webhook/voice).
       if (smsApi && smsToken && process.env.BITBOT_SMS_POST === "1") {
+        liveAttempted = true;
         try {
-          const resp = await httpJson(smsApi.replace(/\/$/, "") + "/messages", {
+          const resp = await httpJson(apiBase + "/messages", {
             method: "POST",
             headers: {
               Authorization: "Bearer " + smsToken,
@@ -1803,6 +1840,76 @@ function createHostFfi(repoRoot) {
           mode = "live_sms_failed";
         }
       }
+      // Claim-only path (CLAIM=1, no POST): close residual when live claim ok.
+      if (smsClaim && !liveAttempted) {
+        const claimOk = Boolean(smsClaim.ok);
+        const entry = {
+          scheme: "sms",
+          address: addr,
+          to,
+          body: outboundBody.slice(0, 1600),
+          mode: "live_sms_claim",
+          ok: claimOk,
+          live_post: false,
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          live_sms_residual: !claimOk,
+          live_channel_residual: !claimOk,
+          claimed_count: smsClaim.claimed_count,
+          claim: smsClaim,
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        appendJsonl(path.join(smsDir, "outbound.jsonl"), entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+          claim: smsClaim,
+          ok: claimOk,
+          error: claimOk ? "" : smsClaim.error || "sms claim failed",
+          send_to_user_type: "text",
+        });
+      }
+      // Sandbox claim rehearsal when CLAIM=1 but no live token/API.
+      if (process.env.BITBOT_SMS_CLAIM === "1" && !(smsToken && apiBase)) {
+        const sandboxRow = {
+          scheme: "sms",
+          id: `sandbox-sms-${Date.now().toString(36)}`,
+          to,
+          text_prefix: "sandbox sms inbound",
+          text_len: 20,
+          mode: "sandbox_sms_claim",
+          at: stamp,
+        };
+        appendJsonl(inboundPath, sandboxRow);
+        const entry = {
+          scheme: "sms",
+          address: addr,
+          to,
+          body: outboundBody.slice(0, 1600),
+          mode: "sandbox_sms_claim",
+          ok: true,
+          live_post: false,
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          live_sms_residual: true,
+          live_channel_residual: true,
+          claimed_count: 1,
+          note: "sandbox sms claim — set BITBOT_SMS_TOKEN + BITBOT_SMS_API_URL for live",
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        appendJsonl(path.join(smsDir, "outbound.jsonl"), entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+          send_to_user_type: "text",
+        });
+      }
+      const claimOk = Boolean(smsClaim && smsClaim.ok);
+      const residualClosed = livePost || claimOk;
       const entry = {
         scheme: "sms",
         address: addr,
@@ -1813,9 +1920,12 @@ function createHostFfi(repoRoot) {
         live_post: livePost,
         pretend_live: false,
         widget_degraded: widgetDegraded,
-        live_sms_residual: !livePost,
-        live_channel_residual: !livePost,
+        live_sms_residual: !residualClosed,
+        live_channel_residual: !residualClosed,
         live_probe: liveProbe,
+        claim: smsClaim
+          ? { ok: smsClaim.ok, claimed_count: smsClaim.claimed_count }
+          : null,
         at: stamp,
       };
       appendJsonl(outboundPath, entry);
@@ -1827,6 +1937,8 @@ function createHostFfi(repoRoot) {
       fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
       return finalizeChannelSend(raw, entry, {
         outboundPath,
+        inbound: smsClaim ? inboundPath : undefined,
+        claim: smsClaim || undefined,
         send_to_user_type: "text",
       });
     }
@@ -1852,10 +1964,45 @@ function createHostFfi(repoRoot) {
         }
         widgetDegraded = true;
       }
+      // Live webhook inbound claim when CLAIM=1 + outbound URL (GET /hooks).
+      let webhookClaim = null;
+      if (hookUrl && process.env.BITBOT_WEBHOOK_CLAIM === "1") {
+        const claimUrl = hookUrl.replace(/\/$/, "");
+        const hist = await httpJson(claimUrl, { method: "GET" });
+        const okHist =
+          Boolean(hist.ok) || (hist.status >= 200 && hist.status < 300);
+        const values =
+          (hist.json &&
+            (hist.json.events || hist.json.messages || hist.json.value)) ||
+          [];
+        const claimed = [];
+        for (const m of Array.isArray(values) ? values : []) {
+          if (!m || typeof m !== "object") continue;
+          const text = String(m.text || m.body || m.summary || "");
+          const row = {
+            scheme: "webhook",
+            id: m.id || m.event_id || "",
+            text_prefix: text.slice(0, 80),
+            text_len: text.length,
+            mode: "live_webhook_claim",
+            at: stamp,
+          };
+          appendJsonl(inboundPath, row);
+          claimed.push({ id: row.id, text_len: row.text_len });
+        }
+        webhookClaim = {
+          ok: okHist,
+          claimed_count: claimed.length,
+          claimed,
+          error: okHist ? "" : hist.error || `http_${hist.status}`,
+        };
+      }
       let livePost = false;
       let liveProbe = null;
+      let liveAttempted = false;
       let mode = "sandbox_webhook_outbound";
       if (hookUrl && process.env.BITBOT_WEBHOOK_POST === "1") {
+        liveAttempted = true;
         try {
           const resp = await httpJson(hookUrl, {
             method: "POST",
@@ -1886,6 +2033,71 @@ function createHostFfi(repoRoot) {
           mode = "live_webhook_failed";
         }
       }
+      if (webhookClaim && !liveAttempted) {
+        const claimOk = Boolean(webhookClaim.ok);
+        const entry = {
+          scheme: "webhook",
+          address: addr,
+          body: outboundBody.slice(0, 4000),
+          mode: "live_webhook_claim",
+          ok: claimOk,
+          live_post: false,
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          live_webhook_residual: !claimOk,
+          live_channel_residual: !claimOk,
+          key_leaked: false,
+          hook_url_set: Boolean(hookUrl),
+          claimed_count: webhookClaim.claimed_count,
+          claim: webhookClaim,
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+          claim: webhookClaim,
+          ok: claimOk,
+          error: claimOk ? "" : webhookClaim.error || "webhook claim failed",
+        });
+      }
+      if (process.env.BITBOT_WEBHOOK_CLAIM === "1" && !hookUrl) {
+        const sandboxRow = {
+          scheme: "webhook",
+          id: `sandbox-wh-${Date.now().toString(36)}`,
+          text_prefix: "sandbox webhook inbound",
+          text_len: 24,
+          mode: "sandbox_webhook_claim",
+          at: stamp,
+        };
+        appendJsonl(inboundPath, sandboxRow);
+        const entry = {
+          scheme: "webhook",
+          address: addr,
+          body: outboundBody.slice(0, 4000),
+          mode: "sandbox_webhook_claim",
+          ok: true,
+          live_post: false,
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          live_webhook_residual: true,
+          live_channel_residual: true,
+          key_leaked: false,
+          hook_url_set: false,
+          claimed_count: 1,
+          note: "sandbox webhook claim — set BITBOT_WEBHOOK_OUTBOUND_URL for live",
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+        });
+      }
+      const claimOk = Boolean(webhookClaim && webhookClaim.ok);
+      const residualClosed = livePost || claimOk;
       const entry = {
         scheme: "webhook",
         address: addr,
@@ -1895,15 +2107,25 @@ function createHostFfi(repoRoot) {
         live_post: livePost,
         pretend_live: false,
         widget_degraded: widgetDegraded,
-        live_webhook_residual: !livePost,
-        live_channel_residual: !livePost,
+        live_webhook_residual: !residualClosed,
+        live_channel_residual: !residualClosed,
         key_leaked: false,
         hook_url_set: Boolean(hookUrl),
         live_probe: liveProbe,
+        claim: webhookClaim
+          ? {
+              ok: webhookClaim.ok,
+              claimed_count: webhookClaim.claimed_count,
+            }
+          : null,
         at: stamp,
       };
       appendJsonl(outboundPath, entry);
-      return finalizeChannelSend(raw, entry, { outboundPath });
+      return finalizeChannelSend(raw, entry, {
+        outboundPath,
+        inbound: webhookClaim ? inboundPath : undefined,
+        claim: webhookClaim || undefined,
+      });
     }
 
     // Voice channel adapter (CM-2005 / CM-0108): voice:<call> → session + media.
@@ -1985,26 +2207,63 @@ function createHostFfi(repoRoot) {
       const voiceToken =
         String(process.env.BITBOT_VOICE_TOKEN || "").trim() ||
         resolveProviderAccessToken("voice");
+      const voiceApiBase = voiceApi ? voiceApi.replace(/\/$/, "") : "";
+      let voiceClaim = null;
+      if (
+        voiceToken &&
+        voiceApiBase &&
+        process.env.BITBOT_VOICE_CLAIM === "1"
+      ) {
+        const hist = await httpJson(voiceApiBase + "/messages", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${voiceToken}` },
+        });
+        const okHist =
+          Boolean(hist.ok) || (hist.status >= 200 && hist.status < 300);
+        const values =
+          (hist.json && (hist.json.messages || hist.json.value)) || [];
+        const claimed = [];
+        for (const m of Array.isArray(values) ? values : []) {
+          if (!m || typeof m !== "object") continue;
+          const text = String(m.text || m.body || m.content || "");
+          const row = {
+            scheme: "voice",
+            id: m.id || m.message_id || "",
+            call_id: callId,
+            text_prefix: text.slice(0, 80),
+            text_len: text.length,
+            mode: "live_voice_claim",
+            at: stamp,
+          };
+          appendJsonl(inboundPath, row);
+          claimed.push({ id: row.id, text_len: row.text_len });
+        }
+        voiceClaim = {
+          ok: okHist,
+          claimed_count: claimed.length,
+          claimed,
+          error: okHist ? "" : hist.error || `http_${hist.status}`,
+        };
+      }
       let livePost = false;
       let liveProbe = null;
+      let liveAttempted = false;
       let mode = "sandbox_voice_channel";
       if (voiceApi && voiceToken && process.env.BITBOT_VOICE_POST === "1") {
+        liveAttempted = true;
         try {
-          const resp = await httpJson(
-            voiceApi.replace(/\/$/, "") + "/messages",
-            {
-              method: "POST",
-              headers: {
-                Authorization: "Bearer " + voiceToken,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                voice_address: addr,
-                call_id: callId,
-                text: outboundBody.slice(0, 4000),
-              }),
+          const resp = await httpJson(voiceApiBase + "/messages", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + voiceToken,
+              "Content-Type": "application/json",
             },
-          );
+            body: JSON.stringify({
+              voice_address: addr,
+              call_id: callId,
+              text: outboundBody.slice(0, 4000),
+            }),
+          });
           liveProbe = {
             ok: Boolean(resp.ok),
             http_status: resp.status || 0,
@@ -2020,6 +2279,91 @@ function createHostFfi(repoRoot) {
           mode = "live_voice_failed";
         }
       }
+      if (voiceClaim && !liveAttempted) {
+        const claimOk = Boolean(voiceClaim.ok);
+        const entry = {
+          scheme: "voice",
+          address: addr,
+          voice_address: addr.startsWith("voice:") ? addr : "voice:" + callKey,
+          call_id: callId,
+          body: outboundBody.slice(0, 4000),
+          mode: "live_voice_claim",
+          ok: claimOk,
+          live_post: false,
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          live_voice_residual: !claimOk,
+          live_channel_residual: !claimOk,
+          voice_tts_residual: media.voice_tts_residual !== false,
+          media_ok: Boolean(media.ok),
+          media_path: media.path,
+          media_bytes: media.bytes || 0,
+          media_tool: media.tool || null,
+          sessions_path: VOICE_SESSIONS_PATH,
+          claimed_count: voiceClaim.claimed_count,
+          claim: voiceClaim,
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        appendJsonl(path.join(voiceChDir, "outbound.jsonl"), entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+          claim: voiceClaim,
+          ok: claimOk,
+          error: claimOk ? "" : voiceClaim.error || "voice claim failed",
+          send_to_user_type: "voice",
+        });
+      }
+      if (
+        process.env.BITBOT_VOICE_CLAIM === "1" &&
+        !(voiceToken && voiceApiBase)
+      ) {
+        const sandboxRow = {
+          scheme: "voice",
+          id: `sandbox-voice-${Date.now().toString(36)}`,
+          call_id: callId,
+          text_prefix: "sandbox voice inbound",
+          text_len: 22,
+          mode: "sandbox_voice_claim",
+          at: stamp,
+        };
+        appendJsonl(inboundPath, sandboxRow);
+        const entry = {
+          scheme: "voice",
+          address: addr,
+          voice_address: addr.startsWith("voice:") ? addr : "voice:" + callKey,
+          call_id: callId,
+          body: outboundBody.slice(0, 4000),
+          mode: "sandbox_voice_claim",
+          ok: true,
+          live_post: false,
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          live_voice_residual: true,
+          live_channel_residual: true,
+          voice_tts_residual: media.voice_tts_residual !== false,
+          media_ok: Boolean(media.ok),
+          media_path: media.path,
+          media_bytes: media.bytes || 0,
+          media_tool: media.tool || null,
+          sessions_path: VOICE_SESSIONS_PATH,
+          claimed_count: 1,
+          note: "sandbox voice claim — set BITBOT_VOICE_TOKEN + BITBOT_VOICE_API_URL for live",
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        appendJsonl(path.join(voiceChDir, "outbound.jsonl"), entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          inbound: inboundPath,
+          send_to_user_type: "voice",
+        });
+      }
+      const claimOk = Boolean(voiceClaim && voiceClaim.ok);
+      const residualClosed = livePost || claimOk;
       const entry = {
         scheme: "voice",
         address: addr,
@@ -2031,8 +2375,8 @@ function createHostFfi(repoRoot) {
         live_post: livePost,
         pretend_live: false,
         widget_degraded: widgetDegraded,
-        live_voice_residual: !livePost,
-        live_channel_residual: !livePost,
+        live_voice_residual: !residualClosed,
+        live_channel_residual: !residualClosed,
         voice_tts_residual: media.voice_tts_residual !== false,
         media_ok: Boolean(media.ok),
         media_path: media.path,
@@ -2040,6 +2384,9 @@ function createHostFfi(repoRoot) {
         media_tool: media.tool || null,
         sessions_path: VOICE_SESSIONS_PATH,
         live_probe: liveProbe,
+        claim: voiceClaim
+          ? { ok: voiceClaim.ok, claimed_count: voiceClaim.claimed_count }
+          : null,
         at: stamp,
       };
       appendJsonl(outboundPath, entry);
@@ -2051,6 +2398,8 @@ function createHostFfi(repoRoot) {
       fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
       return finalizeChannelSend(raw, entry, {
         outboundPath,
+        inbound: voiceClaim ? inboundPath : undefined,
+        claim: voiceClaim || undefined,
         send_to_user_type: "voice",
       });
     }

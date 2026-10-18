@@ -1386,6 +1386,18 @@ BITBOT_SMS_API_URL=http://127.0.0.1:18777 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_
 kill "$SMS_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SMS_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('mode')=='live_sms';assert p.get('live_sms_residual') is False;assert p.get('live_channel_residual') is False;assert p.get('live_post') is True;assert p.get('pretend_live') is False;print('channel sms live mock residual close ok', p.get('mode'), p.get('path'))"
+# Live SMS claim closes live_sms_residual (GET /messages); widget degrade on claim body.
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18792 --mode sms --token smoke-sms >/tmp/bitbot-sms-claim-mock.log 2>&1 &
+SMS_CLAIM_MOCK_PID=$!
+sleep 0.4
+BITBOT_SMS_API_URL=http://127.0.0.1:18792 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_CLAIM=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: claim sms [widget:decision_card]" >/tmp/bitbot-sms-claim-live.json || true
+kill "$SMS_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
+wait "$SMS_CLAIM_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_sms_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_sms_residual') is False;assert p.get('live_channel_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;assert 'live_sms_claim' in open('data/channels/inbound.jsonl').read();print('channel sms live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+env -u BITBOT_SMS_TOKEN -u BITBOT_SMS_API_URL BITBOT_SMS_CLAIM=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: sandbox claim" >/tmp/bitbot-sms-claim-sandbox.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-sms-claim-sandbox.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_sms_claim';assert p.get('live_sms_residual') is True;assert p.get('pretend_live') is False;print('channel sms sandbox claim residual open ok', p.get('claimed_count'))"
 # CM-1104 widget degrade on SMS (parity with Slack/Teams/meeting).
 node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: hello [widget:decision_card]" >/tmp/bitbot-sms-widget.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-sms-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;print('channel sms widget_degraded ok', p.get('mode'), p.get('body'))"
@@ -1400,6 +1412,15 @@ BITBOT_WEBHOOK_OUTBOUND_URL=http://127.0.0.1:18778/hooks BITBOT_WEBHOOK_POST=1 \
 kill "$WH_OUT_MOCK_PID" >/dev/null 2>&1 || true
 wait "$WH_OUT_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-out-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='webhook';assert p.get('live_webhook_residual') is False;assert p.get('live_post') is True;assert p.get('key_leaked') is False;assert p.get('pretend_live') is False;print('channel webhook live mock residual close ok', p.get('mode'), p.get('path'))"
+# Live webhook claim closes live_webhook_residual (GET /hooks).
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18793 --mode webhook >/tmp/bitbot-wh-claim-mock.log 2>&1 &
+WH_CLAIM_MOCK_PID=$!
+sleep 0.4
+BITBOT_WEBHOOK_OUTBOUND_URL=http://127.0.0.1:18793/hooks BITBOT_WEBHOOK_CLAIM=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: claim hook [widget:decision_card]" >/tmp/bitbot-wh-claim-live.json || true
+kill "$WH_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
+wait "$WH_CLAIM_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_webhook_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_webhook_residual') is False;assert p.get('widget_degraded') is True;assert p.get('key_leaked') is False;assert p.get('pretend_live') is False;assert 'live_webhook_claim' in open('data/channels/inbound.jsonl').read();print('channel webhook live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
 node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: hook [widget:decision_card]" >/tmp/bitbot-wh-out-widget.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-wh-out-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='webhook';assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;print('channel webhook widget_degraded ok', p.get('mode'), p.get('body'))"
 node hosts/cli_host/run_turn.js --approved "reply via voice:call-smoke :: hello voice channel" >/tmp/bitbot-voice-ch.json
@@ -1413,6 +1434,15 @@ BITBOT_VOICE_API_URL=http://127.0.0.1:18779 BITBOT_VOICE_TOKEN=smoke-voice BITBO
 kill "$VOICE_CH_MOCK_PID" >/dev/null 2>&1 || true
 wait "$VOICE_CH_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-ch-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='voice';assert p.get('mode')=='live_voice_channel';assert p.get('live_voice_residual') is False;assert p.get('live_post') is True;assert p.get('pretend_live') is False;print('channel voice live mock residual close ok', p.get('mode'), p.get('call_id'), p.get('path'))"
+# Live voice claim closes live_voice_residual (GET /messages).
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18794 --mode voice --token smoke-voice >/tmp/bitbot-voice-claim-mock.log 2>&1 &
+VOICE_CLAIM_MOCK_PID=$!
+sleep 0.4
+BITBOT_VOICE_API_URL=http://127.0.0.1:18794 BITBOT_VOICE_TOKEN=smoke-voice BITBOT_VOICE_CLAIM=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via voice:call-claim :: claim voice [widget:decision_card]" >/tmp/bitbot-voice-claim-live.json || true
+kill "$VOICE_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
+wait "$VOICE_CLAIM_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_voice_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_voice_residual') is False;assert p.get('live_channel_residual') is False;assert p.get('widget_degraded') is True;assert p.get('pretend_live') is False;assert 'live_voice_claim' in open('data/channels/inbound.jsonl').read();print('channel voice live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
 node hosts/cli_host/run_turn.js --approved "reply via voice:call-widget :: speak [widget:decision_card]" >/tmp/bitbot-voice-ch-widget.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-ch-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='voice';assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;print('channel voice widget_degraded ok', p.get('mode'), p.get('body'))"
 node hosts/cli_host/run_turn.js --approved "claim inbox alpha" >/tmp/bitbot-mail-claim.json

@@ -37,7 +37,11 @@ Endpoints:
   outlook:  POST /me/sendMail  (BITBOT_OUTLOOK_GRAPH_URL=http://host:port)
   calendar: POST /events  (BITBOT_CALENDAR_API_URL=http://host:port)
   sms:      POST /messages  (BITBOT_SMS_API_URL=http://host:port + BITBOT_SMS_POST=1)
+            GET  /messages  (BITBOT_SMS_CLAIM=1 inbound claim)
   voice:    POST /messages  (BITBOT_VOICE_API_URL=http://host:port + BITBOT_VOICE_POST=1)
+            GET  /messages  (BITBOT_VOICE_CLAIM=1 inbound claim)
+  webhook:  POST /hooks
+            GET  /hooks     (BITBOT_WEBHOOK_CLAIM=1 inbound claim)
   webhook:  POST /hooks (any POST; no Bearer — BITBOT_WEBHOOK_OUTBOUND_URL + BITBOT_WEBHOOK_POST=1)
   mail_claim: GET /messages?q=  (BITBOT_MAIL_CLAIM_API_URL + BITBOT_MAIL_CLAIM_POST=1)
   cold:     POST /send  (BITBOT_COLD_MAIL_API_URL + BITBOT_MAIL_SEND=1)
@@ -412,6 +416,68 @@ def main() -> int:
                             {
                                 "id": "meet-live-2",
                                 "text": "second meeting hit",
+                            },
+                        ],
+                    },
+                )
+                return
+            if mode == "sms" and path == "/messages":
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "messages": [
+                            {
+                                "id": "sms-live-1",
+                                "text": "live mock sms inbound",
+                            },
+                            {
+                                "id": "sms-live-2",
+                                "text": "second sms hit",
+                            },
+                        ],
+                    },
+                )
+                return
+            if mode == "voice" and path == "/messages":
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "messages": [
+                            {
+                                "id": "voice-live-1",
+                                "text": "live mock voice inbound",
+                            },
+                            {
+                                "id": "voice-live-2",
+                                "text": "second voice hit",
+                            },
+                        ],
+                    },
+                )
+                return
+            if mode == "webhook" and (
+                path == "/hooks" or path.startswith("/hooks")
+            ):
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "events": [
+                            {
+                                "id": "wh-live-1",
+                                "text": "live mock webhook inbound",
+                            },
+                            {
+                                "id": "wh-live-2",
+                                "text": "second webhook hit",
                             },
                         ],
                     },
