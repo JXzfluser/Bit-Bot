@@ -1198,6 +1198,17 @@ const fs = require("fs");
   if (p.device_capture_residual !== false) throw new Error("mic residual expected closed: " + JSON.stringify(p));
   fs.writeFileSync("/tmp/bitbot-device-mic.json", JSON.stringify({ ok: true, ...p }, null, 2));
   console.log("device_tool mic fixture/capture ok", p.mode, p.capture_path);
+  // location fixture (parity with contacts)
+  try { fs.unlinkSync("data/device/location.json"); } catch (_) {}
+  r = await ffi.executeHostEffects([{ kind: "device_tool", command: "desktop|location" }]);
+  p = JSON.parse(r.find((x) => x.kind === "device_tool").stdout);
+  if (p.device_tool_residual !== true || p.executed !== false) throw new Error("expected location residual");
+  fs.writeFileSync("data/device/location.json", JSON.stringify({ lat: 37.77, lon: -122.42, pretend: false }));
+  r = await ffi.executeHostEffects([{ kind: "device_tool", command: "desktop|location" }]);
+  p = JSON.parse(r.find((x) => x.kind === "device_tool").stdout);
+  if (p.executed !== true || p.device_tool_residual !== false || p.mode !== "host_device_location_fixture") throw new Error(JSON.stringify(p));
+  fs.writeFileSync("/tmp/bitbot-device-location.json", JSON.stringify({ ok: true, ...p }, null, 2));
+  console.log("device_tool location fixture ok", p.mode, p.capture_path);
 })().catch((e)=>{console.error(e);process.exit(1);});
 '
 node hosts/cli_host/run_turn.js --approved "cold mail to=a@example.com subject=Hi body=Hello unsubscribe=mailto:u@example.com" >/tmp/bitbot-cold.json
@@ -1243,7 +1254,7 @@ BITBOT_SMS_API_URL=http://127.0.0.1:18777 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_
   node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: live sms mock" >/tmp/bitbot-sms-live.json || true
 kill "$SMS_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SMS_MOCK_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('mode')=='live_sms';assert p.get('live_sms_residual') is False;assert p.get('live_post') is True;assert p.get('pretend_live') is False;print('channel sms live mock residual close ok', p.get('mode'), p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('mode')=='live_sms';assert p.get('live_sms_residual') is False;assert p.get('live_channel_residual') is False;assert p.get('live_post') is True;assert p.get('pretend_live') is False;print('channel sms live mock residual close ok', p.get('mode'), p.get('path'))"
 node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: hello hook" >/tmp/bitbot-wh-out.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-out.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='webhook';assert p.get('live_webhook_residual') is True;assert p.get('key_leaked') is False;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel webhook outbound residual ok', p.get('mode'), p.get('path'))"
 # Live webhook outbound mock closes live_webhook_residual
