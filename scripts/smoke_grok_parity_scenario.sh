@@ -463,6 +463,10 @@ for needle in (
     'draft mail',
     'schedule meeting',
     'purchase item',
+    'reply via slack:',
+    'reply via teams:',
+    'finance get_balance',
+    'job search',
 ):
     assert needle in cv, needle
     assert needle in main, needle

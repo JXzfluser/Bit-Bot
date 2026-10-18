@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
       "Purchase" to "purchase item=AndroidWidget cents=299",
       "Slack draft" to "reply via slack:Candroid :: android draft",
       "Teams draft" to "reply via teams:Tandroid :: android teams draft",
-      "Finance" to "finance quote AAPL",
+      "Finance" to "finance get_balance",
       "Jobs" to "job search engineer",
       "Box doctor" to "box doctor",
       "Box env" to "box env",
