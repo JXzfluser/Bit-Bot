@@ -16,6 +16,8 @@ function pickAttachmentPath(kind, p, h) {
     p.ics_path,
     p.eml_path,
     p.reply_media_path,
+    p.skill_path,
+    p.export_path,
     p.artifact_path,
   ];
   for (const c of candidates) {
@@ -24,16 +26,22 @@ function pickAttachmentPath(kind, p, h) {
   const path = (p.path || h.path || "").trim();
   if (!path) return "";
   // Prefer openable / previewable file extensions over JSON snap paths.
-  if (/\.(png|jpe?g|gif|webp|wav|mp3|mp4|webm|html?|pptx|ics|eml)$/i.test(path)) {
+  if (
+    /\.(png|jpe?g|gif|webp|wav|mp3|mp4|webm|html?|pptx|ics|eml|md|json)$/i.test(
+      path,
+    )
+  ) {
     return path;
   }
-  // Media / purchase / slides often put the real file in path already.
+  // Media / purchase / slides / skills often put the real file in path already.
   if (
     kind === "generate_image" ||
     kind === "generate_video" ||
     kind === "structured_chart" ||
     kind === "slides_pptx" ||
-    kind === "purchase"
+    kind === "purchase" ||
+    kind === "skill_write" ||
+    kind === "export_pack"
   ) {
     return path;
   }
@@ -62,7 +70,14 @@ function attachmentRole(kind, filePath) {
   ) {
     return "media";
   }
-  if (kind === "slides_pptx" || kind === "schedule_meeting" || kind === "mail_send" || kind === "mail_draft") {
+  if (
+    kind === "slides_pptx" ||
+    kind === "schedule_meeting" ||
+    kind === "mail_send" ||
+    kind === "mail_draft" ||
+    kind === "skill_write" ||
+    kind === "export_pack"
+  ) {
     return "openable";
   }
   return "snap";

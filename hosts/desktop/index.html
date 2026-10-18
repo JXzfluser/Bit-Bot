@@ -896,6 +896,12 @@
         } else if (kind === "mail_send" || kind === "mail_draft") {
           const fp = p.eml_path;
           if (fp) out.push({ path: fp, label: kind + "_eml" });
+        } else if (kind === "skill_write") {
+          const fp = p.skill_path || p.path;
+          if (fp) out.push({ path: fp, label: "skill_md" });
+        } else if (kind === "export_pack") {
+          const fp = p.export_path || p.path;
+          if (fp) out.push({ path: fp, label: "export_pack" });
         }
       }
       return out;
@@ -2217,10 +2223,23 @@
           for (const item of htmlItems) {
             await renderDeliveryHtml(item.path, item.label);
           }
-          // CHARTER Delivery: OS-open for pptx / ics / eml attachments.
+          // CHARTER Delivery: OS-open for pptx / ics / eml / skill / export.
           const openItems = collectHostOpenablePaths(r.host_results);
           for (const item of openItems) {
             await renderOpenArtifact(item.path, item.label);
+          }
+          // Delivery panel: show concrete attachment leaves (multi-end parity).
+          const dmeta2 = document.getElementById("delivery-meta");
+          if (dmeta2) {
+            const leaves = []
+              .concat(mediaItems, htmlItems, openItems)
+              .map((it) => String(it.path || "").split("/").slice(-1)[0])
+              .filter(Boolean)
+              .slice(0, 6);
+            if (leaves.length) {
+              dmeta2.textContent =
+                (dmeta2.textContent || "delivery") + " · files: " + leaves.join(", ");
+            }
           }
         }
       } catch (e) {

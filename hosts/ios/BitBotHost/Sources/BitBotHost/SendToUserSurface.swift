@@ -45,7 +45,8 @@ enum SendToUserSurface {
   private static func pickAttachmentPath(kind: String, p: [String: Any], h: [String: Any]) -> String {
     let keys = [
       "media_path", "frame_path", "html_path", "receipt_path",
-      "pptx_path", "ics_path", "eml_path", "reply_media_path", "artifact_path",
+      "pptx_path", "ics_path", "eml_path", "reply_media_path",
+      "skill_path", "export_path", "artifact_path",
     ]
     for k in keys {
       if let v = p[k] as? String, !v.isEmpty { return v }
@@ -68,7 +69,7 @@ enum SendToUserSurface {
     ].contains(kind) {
       return "media"
     }
-    if ["slides_pptx", "schedule_meeting", "mail_send", "mail_draft"].contains(kind) {
+    if ["slides_pptx", "schedule_meeting", "mail_send", "mail_draft", "skill_write", "export_pack"].contains(kind) {
       return "openable"
     }
     return "snap"

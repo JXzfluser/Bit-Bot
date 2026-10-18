@@ -48,7 +48,8 @@ object SendToUserSurface {
   private fun pickAttachmentPath(kind: String, p: JSONObject, h: JSONObject): String {
     val keys = listOf(
       "media_path", "frame_path", "html_path", "receipt_path",
-      "pptx_path", "ics_path", "eml_path", "reply_media_path", "artifact_path",
+      "pptx_path", "ics_path", "eml_path", "reply_media_path",
+      "skill_path", "export_path", "artifact_path",
     )
     for (k in keys) {
       val v = p.optString(k)
@@ -72,7 +73,11 @@ object SendToUserSurface {
     ) {
       return "media"
     }
-    if (kind in setOf("slides_pptx", "schedule_meeting", "mail_send", "mail_draft")) {
+    if (kind in setOf(
+        "slides_pptx", "schedule_meeting", "mail_send", "mail_draft",
+        "skill_write", "export_pack",
+      )
+    ) {
       return "openable"
     }
     return "snap"

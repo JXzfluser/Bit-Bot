@@ -337,6 +337,8 @@ assert 'renderOpenArtifact' in html and 'collectHostOpenablePaths' in html
 assert 'delivery-media' in html
 assert 'delivery-html' in html and 'html_iframe' in html
 assert 'purchase_receipt' in html
+assert 'skill_md' in html and 'export_pack' in html
+assert 'files:' in html
 assert 'open-artifact' in html and 'Open with OS' in html
 assert 'srcdoc' in html
 assert 'bitbot:readArtifact' in main and 'data_url' in main
@@ -346,6 +348,9 @@ assert 'text/html' in main and '\".html\"' in main
 assert 'buf.toString(\"utf8\")' in main
 assert 'readArtifact' in preload and 'openArtifact' in preload
 assert 'path outside repo' in main
+shared=Path('hosts/shared/send_to_user_surface.js').read_text()
+assert 'skill_path' in shared and 'export_path' in shared
+assert 'SendToUser attachments' in shared
 mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
 assert 'payload.media_path' in mobile
