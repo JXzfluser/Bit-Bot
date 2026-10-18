@@ -1725,7 +1725,8 @@ function createHostFfi(repoRoot) {
         row = {
           voice_address: addr.startsWith("voice:") ? addr : "voice:" + callKey,
           call_id: callId,
-          live: true,
+          // Channel outbound alone is not a live CM-2005 call — do not steal voice_end.
+          live: false,
           relay_log: [],
           media_path: media.path,
           media_ok: Boolean(media.ok),
@@ -1738,6 +1739,7 @@ function createHostFfi(repoRoot) {
         row.media_path = media.path;
         row.media_ok = Boolean(media.ok);
         row.relay_log = Array.isArray(row.relay_log) ? row.relay_log : [];
+        // Keep existing live flag from voice_session; channel_send must not force live.
       }
       row.relay_log.push({
         role: "assistant",
@@ -11736,17 +11738,60 @@ function createHostFfi(repoRoot) {
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, summary + "\n");
       const rows = readJsonArray(VOICE_SESSIONS_PATH);
+      // Prefer the session named by the end artifact stem (voice-calls/smoke1.json → smoke1).
+      const endStem = path
+        .basename(outPath, path.extname(outPath))
+        .replace(/^end-/, "")
+        .replace(/^voice[_-]?/, "");
+      const matchAddr = (r) => {
+        if (!r) return false;
+        const va = String(r.voice_address || "");
+        const id = String(r.call_id || r.id || "");
+        if (!endStem) return false;
+        return (
+          va === endStem ||
+          va === "voice:" + endStem ||
+          va.endsWith(":" + endStem) ||
+          id === endStem ||
+          id.includes(endStem)
+        );
+      };
       let mediaPath = null;
       let mediaOk = false;
       let callId = "";
+      let matched = false;
       for (const r of rows) {
-        if (r && r.live) {
+        if (r && matchAddr(r)) {
           r.live = false;
           r.ended_at = at;
           r.summary_path = outPath;
           mediaPath = r.media_path || null;
           mediaOk = Boolean(r.media_ok);
-          callId = r.call_id || r.id || "";
+          callId = r.call_id || r.id || callId;
+          matched = true;
+        }
+      }
+      // Legacy fallback: end all live sessions, but keep call_id from first match.
+      if (!matched) {
+        for (const r of rows) {
+          if (r && r.live) {
+            r.live = false;
+            r.ended_at = at;
+            r.summary_path = outPath;
+            if (!callId) {
+              mediaPath = r.media_path || null;
+              mediaOk = Boolean(r.media_ok);
+              callId = r.call_id || r.id || "";
+            }
+          }
+        }
+      } else {
+        // Still clear other live flags so leftovers cannot pretend still live.
+        for (const r of rows) {
+          if (r && r.live) {
+            r.live = false;
+            r.ended_at = at;
+          }
         }
       }
       writeJsonArray(VOICE_SESSIONS_PATH, rows);
