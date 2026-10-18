@@ -3257,12 +3257,19 @@
                   label =
                     "voice_end:" +
                     (p.call_id || "?") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.voice_end_match_residual === true
+                      ? "/voice_end_match_residual"
+                      : "");
                   types.push("voice");
                   const voiceMeta = document.getElementById("voice-meta");
                   if (voiceMeta) {
                     voiceMeta.textContent =
-                      "ended · " + (p.call_id || "?");
+                      "ended · " +
+                      (p.call_id || "?") +
+                      (p.voice_end_match_residual === true
+                        ? " · voice_end_match_residual"
+                        : "");
                   }
                 } else if (p.media_path) {
                   label =

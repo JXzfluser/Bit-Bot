@@ -79,7 +79,8 @@ enum SendToUserSurface {
       "interactive_oauth_residual", "true_device_os_dialog_residual",
       "credential_browser_fill_residual", "signin_fill_residual",
       "device_capture_residual", "device_tool_residual", "product_tool_residual",
-      "voice_stt_residual", "voice_tts_residual", "cross_machine_copy_residual",
+      "voice_stt_residual", "voice_tts_residual", "voice_end_match_residual",
+      "cross_machine_copy_residual",
     ]
     if let hit = keys.first(where: { (p[$0] as? Bool) == true }) {
       let base = "/" + hit

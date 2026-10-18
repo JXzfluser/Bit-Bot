@@ -13085,29 +13085,8 @@ function createHostFfi(repoRoot) {
           matched = true;
         }
       }
-      // Legacy fallback: end all live sessions, but keep call_id from first match.
-      if (!matched) {
-        for (const r of rows) {
-          if (r && r.live) {
-            r.live = false;
-            r.ended_at = at;
-            r.summary_path = outPath;
-            if (!callId) {
-              mediaPath = r.media_path || null;
-              mediaOk = Boolean(r.media_ok);
-              callId = r.call_id || r.id || "";
-            }
-          }
-        }
-      } else {
-        // Still clear other live flags so leftovers cannot pretend still live.
-        for (const r of rows) {
-          if (r && r.live) {
-            r.live = false;
-            r.ended_at = at;
-          }
-        }
-      }
+      // Unmatched: do not steal other live calls — leave residual open.
+      // Matched: only the ranked session(s) above were ended; siblings stay live.
       writeJsonArray(VOICE_SESSIONS_PATH, rows);
       // CM-2005: durable end under data/voice/voice-calls/ with app_summary.
       const endDir = path.join(REPO_ROOT, "data", "voice", "voice-calls");
@@ -13125,7 +13104,9 @@ function createHostFfi(repoRoot) {
         media_ok: mediaOk,
         live: false,
         pretend_still_live: false,
-        mode: "host_voice_end",
+        matched: matched,
+        voice_end_match_residual: !matched,
+        mode: matched ? "host_voice_end" : "host_voice_end_unmatched",
         at,
       };
       fs.writeFileSync(endArtifactPath, JSON.stringify(endArtifact, null, 2));

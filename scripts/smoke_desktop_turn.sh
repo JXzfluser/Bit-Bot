@@ -585,6 +585,7 @@ for needle in (
   'inbound_push_residual',
   'voice_stt_residual',
   'voice_tts_residual',
+  'voice_end_match_residual',
   'cross_machine_copy_residual',
   'device_capture_residual',
   'device_tool_residual',
@@ -621,6 +622,7 @@ for needle in (
   '/inbound_push_residual',
   '/voice_stt_residual',
   '/voice_tts_residual',
+  '/voice_end_match_residual',
   '/cross_machine_copy_residual',
   '/device_capture_residual',
   '/device_tool_residual',
@@ -684,6 +686,7 @@ for needle in (
   'live_voice_residual',
   'voice_stt_residual',
   'voice_tts_residual',
+  'voice_end_match_residual',
   'inbound_turn_residual',
   'inbound_push_residual',
   'widget_degraded',
@@ -729,6 +732,7 @@ for needle in (
   'cross_machine_copy_residual',
   'voice_stt_residual',
   'voice_tts_residual',
+  'voice_end_match_residual',
   'widget_degraded',
   'inbound_push_residual',
   'remote_cloud_artifact_residual',
@@ -1137,8 +1141,12 @@ PY
 BITBOT_STT_BIN="$ROOT/scripts/host_stt_mock.sh" BITBOT_STT_MOCK_LOG_DIR=/tmp/bitbot-stt-mock \
   node hosts/cli_host/run_turn.js 'voice relay sttbin :: $wav:data/voice/media/stt-mock.wav' >/tmp/bitbot-voice-stt-bin.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-stt-bin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_relay');p=json.loads(h['stdout']);assert p.get('stt_ok') is True;assert p.get('stt_tool')=='host_stt_mock.sh';assert p.get('voice_stt_residual') is False;assert 'mock stt transcript' in (p.get('stt_text') or '');assert os.path.isfile('/tmp/bitbot-stt-mock/last-stt.json');print('voice_relay STT bin mock residual close ok', p.get('stt_tool'), p.get('path'))"
+# Distractor session must not steal voice_end smoke1 (exact match).
+node hosts/cli_host/run_turn.js "voice start smoke1b" >/tmp/bitbot-voice-smoke1b.json
 node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
+node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
 # MCP product short-circuit: slides + X (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");

@@ -84,6 +84,7 @@ function residualSuffix(p) {
     "product_tool_residual",
     "voice_stt_residual",
     "voice_tts_residual",
+    "voice_end_match_residual",
     "cross_machine_copy_residual",
     "live_sms_residual",
     "live_webhook_residual",

@@ -297,6 +297,7 @@ try {
         live_calendar_residual: payload.live_calendar_residual === true,
         voice_stt_residual: payload.voice_stt_residual === true,
         voice_tts_residual: payload.voice_tts_residual === true,
+        voice_end_match_residual: payload.voice_end_match_residual === true,
         inbound_turn_residual: payload.inbound_turn_residual === true,
         credential_browser_fill_residual:
           payload.credential_browser_fill_residual === true,
