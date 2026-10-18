@@ -324,7 +324,7 @@ if(!strip.includes('oauth:NeedsAuth')) { console.error(strip); process.exit(1); 
 console.log('parity oauth NeedsAuth SendToUser strip ok', strip.trim());
 "
 BITBOT_OAUTH_MODE=live "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-oauth "setup slack" >/tmp/parity-ios-oauth.txt || true
-python3 -c "t=open('/tmp/parity-ios-oauth.txt').read();assert 'oauth:NeedsAuth' in t or 'NeedsAuth' in t;assert 'SendToUser' in t;assert 'machine_kind=ios' in t;print('parity ios oauth NeedsAuth SendToUser strip ok')"
+python3 -c "import json,os,glob;t=open('/tmp/parity-ios-oauth.txt').read();assert 'oauth:NeedsAuth' in t or 'NeedsAuth' in t;assert 'SendToUser' in t;assert 'machine_kind=ios' in t;assert 'HostAbi oauth path=' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/oauth-*.json'));assert mirrors, t[-800:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='oauth';assert m.get('host_path') and os.path.isfile(m['host_path']);assert m.get('host_ok') is False;print('parity ios oauth NeedsAuth SendToUser+mirror ok', m.get('host_path'), mirrors[-1])"
 BITBOT_OAUTH_MODE=live BITBOT_OAUTH_OPEN_BROWSER=1 BITBOT_OAUTH_CLIENT_ID=smoke-client \
   "${RUN[@]}" "setup slack" >/tmp/parity-oauth-browser.json || true
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth-browser.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('mode')=='live_remote_browser_open';assert p.get('browser_opened') is True;assert p.get('connected') is False;print('parity oauth live_remote_browser_open ok', p.get('browser_tool'))"
