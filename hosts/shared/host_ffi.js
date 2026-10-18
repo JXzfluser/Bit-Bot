@@ -13043,31 +13043,45 @@ function createHostFfi(repoRoot) {
         .basename(outPath, path.extname(outPath))
         .replace(/^end-/, "")
         .replace(/^voice[_-]?/, "");
-      const matchAddr = (r) => {
-        if (!r) return false;
+      // Exact address / call_id prefixes only — never id.includes(stem)
+      // (smoke1 must not steal smoke1b / call-voice_smoke1b-…).
+      const matchRank = (r) => {
+        if (!r || !endStem) return 0;
         const va = String(r.voice_address || "");
         const id = String(r.call_id || r.id || "");
-        if (!endStem) return false;
-        return (
+        if (
           va === endStem ||
           va === "voice:" + endStem ||
-          va.endsWith(":" + endStem) ||
+          va.endsWith(":" + endStem)
+        ) {
+          return 3;
+        }
+        if (
           id === endStem ||
-          id.includes(endStem)
-        );
+          id === "call-" + endStem ||
+          id.startsWith("call-voice_" + endStem + "-") ||
+          id.startsWith("call-" + endStem + "-")
+        ) {
+          return 2;
+        }
+        return 0;
       };
       let mediaPath = null;
       let mediaOk = false;
       let callId = "";
       let matched = false;
+      let bestRank = 0;
       for (const r of rows) {
-        if (r && matchAddr(r)) {
-          r.live = false;
-          r.ended_at = at;
-          r.summary_path = outPath;
+        const rank = matchRank(r);
+        if (rank <= 0) continue;
+        r.live = false;
+        r.ended_at = at;
+        r.summary_path = outPath;
+        if (rank >= bestRank) {
           mediaPath = r.media_path || null;
           mediaOk = Boolean(r.media_ok);
           callId = r.call_id || r.id || callId;
+          bestRank = rank;
           matched = true;
         }
       }
