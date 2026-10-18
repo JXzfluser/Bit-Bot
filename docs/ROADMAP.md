@@ -148,6 +148,7 @@
 - [x] Multi-end SendToUser surfaces mirror product Host kinds (shared JS + iOS/Android: screenshot/check_updates/auto_review/box_chrome/react/markdown/settings…)
 - [x] Host InstallPlugin → `mcp_namespace` Ready/usable catalog (CM-0904); unknown plugin refused; no pretend_registered
 - [x] Host UninstallPlugin → `mcp_uninstall` marks namespace Unavailable + drops tools (CM-2107); never pretend_uninstalled
+- [x] Host GetPlugin / list-search plugins (`mcp_get_plugin` / `mcp_list_plugins`; CM-2108 + CM-0904 directory)
 - [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn

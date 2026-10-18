@@ -64,6 +64,8 @@ pub(all) enum TurnIntent {
   )
   InstallPlugin(plugin_id~ : String)
   UninstallPlugin(plugin_id~ : String)
+  GetPlugin(plugin_id~ : String)
+  ListPlugins(query~ : String)
   SetupSlack
   FsList(path~ : String)
   FsRead(path~ : String)
@@ -178,6 +180,8 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     DraftMail(_) => "draft_mail"
     InstallPlugin(_) => "install_plugin"
     UninstallPlugin(_) => "uninstall_plugin"
+    GetPlugin(_) => "get_plugin"
+    ListPlugins(_) => "list_plugins"
     SetupSlack => "setup_slack"
     FsList(_) => "fs_list"
     FsRead(_) => "fs_read"
@@ -600,6 +604,30 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
     if id != "" {
       return UninstallPlugin(plugin_id=id)
+    }
+  }
+  // CM-2108 GetPlugin + directory list/search (CM-0904 install funnel).
+  if low == "list plugins" ||
+      low == "search plugins" ||
+      low.has_prefix("list plugins ") ||
+      low.has_prefix("search plugins ") {
+    let q = if low.has_prefix("list plugins ") {
+      trimmed[13:].trim().to_owned()
+    } else if low.has_prefix("search plugins ") {
+      trimmed[15:].trim().to_owned()
+    } else {
+      ""
+    }
+    return ListPlugins(query=q)
+  }
+  if low.has_prefix("get plugin ") || low.has_prefix("plugin info ") {
+    let id = if low.has_prefix("get plugin ") {
+      trimmed[11:].trim().to_owned()
+    } else {
+      trimmed[12:].trim().to_owned()
+    }
+    if id != "" {
+      return GetPlugin(plugin_id=id)
     }
   }
   if low.has_prefix("install plugin ") || low.has_prefix("add connector ") {
@@ -1726,6 +1754,58 @@ pub fn run_desktop_turn(
           )
         }
       }
+    }
+    GetPlugin(plugin_id~) => {
+      let reg = @connectors.PluginRegistry::seed_demo()
+      match reg.get_plugin(plugin_id) {
+        Err(e) =>
+          fail_turn(
+            trimmed,
+            turn_id,
+            intent,
+            e,
+            ctx,
+            assistant="Get plugin failed: " + e,
+          )
+        Ok(meta) => {
+          let effect : DesktopEffect = {
+            kind: "mcp_get_plugin",
+            command: plugin_id + "|" + meta.mcp_namespace,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "GetPlugin " +
+            meta.id +
+            " (" +
+            meta.skills.length().to_string() +
+            " skill(s), ns=" +
+            meta.mcp_namespace +
+            ") planned (CM-2108).",
+            intent,
+            ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    ListPlugins(query~) => {
+      let effect : DesktopEffect = {
+        kind: "mcp_list_plugins",
+        command: if query == "" { "q=" } else { "q=" + query },
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "List/search plugins planned (CM-0904 directory). Host returns available connectors.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
     SetupSlack => {
       let session = @channels.SetUpSlackSession::new()

@@ -261,6 +261,17 @@ else:
   assert p.get('pretend_registered') is not True
   print('install unknown plugin host refuse ok', p.get('error'))
 "
+node hosts/cli_host/run_turn.js "get plugin plugin-slides" >/tmp/bitbot-mcp-get.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-get.json'));assert d.get('intent')=='get_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_get_plugin');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_plugin') is False;assert p.get('id')=='plugin-slides';assert p.get('mcp_namespace')=='user-Slides';assert p.get('skill_count',0)>=1;assert 'slides-quickstart' in (p.get('skill_names') or []);assert p.get('path') and os.path.isfile(p['path']);print('mcp_get_plugin ok', p.get('id'), p.get('skill_names'))"
+node hosts/cli_host/run_turn.js "get plugin plugin-missing" >/tmp/bitbot-mcp-get-bad.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-get-bad.json'));
+if d.get('ok') is False:
+  print('get unknown plugin moon refuse ok', d.get('error') or d.get('assistant') or 'failed')
+else:
+  h=next(x for x in d['host_results'] if x.get('kind')=='mcp_get_plugin');p=json.loads(h['stdout']);assert p.get('refused') is True;assert p.get('pretend_plugin') is False;print('get unknown plugin host refuse ok', p.get('error'))
+"
+node hosts/cli_host/run_turn.js "list plugins slides" >/tmp/bitbot-mcp-list.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-list.json'));assert d.get('intent')=='list_plugins';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_list_plugins');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_listing') is False;assert p.get('count',0)>=1;assert any(x.get('id')=='plugin-slides' for x in (p.get('plugins') or []));assert p.get('path') and os.path.isfile(p['path']);print('mcp_list_plugins ok', p.get('count'), [x.get('id') for x in p.get('plugins') or []])"
 node hosts/cli_host/run_turn.js "uninstall plugin plugin-slides" >/tmp/bitbot-mcp-uninstall.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-uninstall.json'));assert d.get('intent')=='uninstall_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_uninstall');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_uninstalled') is False;assert p.get('namespace')=='user-Slides';assert p.get('status')=='Unavailable';assert p.get('usable') is False;assert p.get('namespace_gone') is True;assert p.get('path') and os.path.isfile(p['path']);cat=json.load(open(p['catalog_path']));assert (cat.get('namespaces') or {}).get('user-Slides',{}).get('usable') is False;assert 'plugin-slides' not in (cat.get('installed_plugins') or []);print('mcp_uninstall Unavailable ok', p.get('namespace'), p.get('path'))"
 echo "==> Desktop Electron Host smoke turn (ADR 0005 product path)"

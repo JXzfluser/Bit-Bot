@@ -6683,6 +6683,8 @@ function createHostFfi(repoRoot) {
       kind === "auto_review_settings" ||
       kind === "box_chrome_probe" ||
       kind === "mcp_uninstall" ||
+      kind === "mcp_get_plugin" ||
+      kind === "mcp_list_plugins" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -11546,6 +11548,186 @@ function createHostFfi(repoRoot) {
         path: draftMetaPath,
         drafted: true,
         mode: meetingDraft ? "meeting_chat_draft_card" : "mail_draft",
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    if (kind === "mcp_get_plugin") {
+      // CM-2108 — GetPlugin metadata + skills.
+      const nsDir = path.join(REPO_ROOT, "data", "connectors", "mcp-namespaces");
+      fs.mkdirSync(nsDir, { recursive: true });
+      const catalogPath = path.join(nsDir, "catalog.json");
+      const raw = String(command || "").trim();
+      const parts = raw.split("|").map((s) => s.trim()).filter(Boolean);
+      const pluginId = parts[0] || raw;
+      const PLUGIN_META = {
+        "plugin-slides": {
+          id: "plugin-slides",
+          display_name: "Slides helper",
+          mcp_namespace: "user-Slides",
+          skills: ["slides-quickstart"],
+        },
+        "plugin-calendar": {
+          id: "plugin-calendar",
+          display_name: "Calendar sync",
+          mcp_namespace: "user-Calendar",
+          skills: ["calendar-sync"],
+        },
+      };
+      const meta = PLUGIN_META[pluginId];
+      if (!meta) {
+        const snapPath = path.join(
+          nsDir,
+          `get-refused-${Date.now().toString(36)}.json`,
+        );
+        const artifact = {
+          mode: "host_mcp_get_plugin",
+          ok: false,
+          refused: true,
+          pretend_plugin: false,
+          plugin_id: pluginId,
+          error: "unknown plugin: " + pluginId,
+          at,
+        };
+        fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+        return okJson(kind, raw, { ...artifact, path: snapPath });
+      }
+      let installed = false;
+      let status = "available";
+      try {
+        if (fs.existsSync(catalogPath)) {
+          const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+          installed = Array.isArray(catalog.installed_plugins)
+            ? catalog.installed_plugins.includes(pluginId)
+            : false;
+          const ns = (catalog.namespaces || {})[meta.mcp_namespace];
+          if (ns && ns.status) status = ns.status;
+          else if (installed) status = "Ready";
+        }
+      } catch {
+        /* defaults */
+      }
+      const snapPath = path.join(
+        nsDir,
+        `get-${pluginId.replace(/[^\w.-]+/g, "_")}-${Date.now().toString(36)}.json`,
+      );
+      const entry = {
+        mode: "host_mcp_get_plugin",
+        pretend_plugin: false,
+        ...meta,
+        skill_count: meta.skills.length,
+        skill_names: meta.skills.slice(),
+        installed,
+        status,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: snapPath,
+        label: "mcp_get_plugin",
+        plugin_id: pluginId,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: raw,
+        path: snapPath,
+        plugin_id: pluginId,
+        at,
+      });
+      return okJson(kind, raw, {
+        ...entry,
+        path: snapPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    if (kind === "mcp_list_plugins") {
+      // CM-0904 directory — SearchPlugins / list available connectors.
+      const nsDir = path.join(REPO_ROOT, "data", "connectors", "mcp-namespaces");
+      fs.mkdirSync(nsDir, { recursive: true });
+      const catalogPath = path.join(nsDir, "catalog.json");
+      const raw = String(command || "");
+      let query = "";
+      const qm = raw.match(/\bq=([^\n]*)/i);
+      if (qm) query = String(qm[1] || "").trim().toLowerCase();
+      const ALL = [
+        {
+          id: "plugin-slides",
+          display_name: "Slides helper",
+          mcp_namespace: "user-Slides",
+          skills: ["slides-quickstart"],
+        },
+        {
+          id: "plugin-calendar",
+          display_name: "Calendar sync",
+          mcp_namespace: "user-Calendar",
+          skills: ["calendar-sync"],
+        },
+      ];
+      let installed = [];
+      try {
+        if (fs.existsSync(catalogPath)) {
+          const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+          installed = Array.isArray(catalog.installed_plugins)
+            ? catalog.installed_plugins
+            : [];
+        }
+      } catch {
+        installed = [];
+      }
+      const plugins = ALL.filter((p) => {
+        if (!query) return true;
+        const hay = (
+          p.id +
+          " " +
+          p.display_name +
+          " " +
+          p.mcp_namespace +
+          " " +
+          p.skills.join(" ")
+        ).toLowerCase();
+        return hay.includes(query);
+      }).map((p) => ({
+        ...p,
+        installed: installed.includes(p.id),
+        skill_count: p.skills.length,
+      }));
+      const snapPath = path.join(
+        nsDir,
+        `list-${Date.now().toString(36)}.json`,
+      );
+      const entry = {
+        mode: "host_mcp_list_plugins",
+        pretend_listing: false,
+        query: query || null,
+        count: plugins.length,
+        plugins,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: snapPath,
+        label: "mcp_list_plugins",
+        count: plugins.length,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: raw || "list",
+        path: snapPath,
+        count: plugins.length,
+        at,
+      });
+      return okJson(kind, raw || "list", {
+        ...entry,
+        path: snapPath,
         send_to_user: delivery,
         ok: true,
       });

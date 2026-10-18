@@ -1109,6 +1109,10 @@
             "check_updates",
             "auto_review_settings",
             "box_chrome_probe",
+            "mcp_namespace",
+            "mcp_uninstall",
+            "mcp_get_plugin",
+            "mcp_list_plugins",
             "export_pack",
             "computer_use",
             "voice_session",
@@ -1473,6 +1477,27 @@
                   label =
                     "mcp_ns:" +
                     (p.namespace || "?") +
+                    ":" +
+                    (p.status || "Ready") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "mcp_uninstall") {
+                  label =
+                    "mcp_uninstall:" +
+                    (p.namespace || "?") +
+                    ":Unavailable" +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "mcp_get_plugin") {
+                  label =
+                    "mcp_get:" +
+                    (p.id || p.plugin_id || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "mcp_list_plugins") {
+                  label =
+                    "mcp_list×" +
+                    (p.count != null ? p.count : "?") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
                 } else if (h.kind === "shared_memory_put") {
