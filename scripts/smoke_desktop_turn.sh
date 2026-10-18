@@ -640,6 +640,8 @@ for needle in (
   '"list_agents_sidebar"',
   '"members_panel"',
   '"react_message"',
+  '"todo_write"',
+  'h.kind === "todo_write"',
 ):
   assert needle in html, needle
 # Prefer full residual flag names on Desktop chip labels (not short forms).
