@@ -247,7 +247,8 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-bare-chrome.json'));assert
 echo "==> Host mcp_namespace InstallPlugin (CM-0904)"
 node hosts/cli_host/run_turn.js "install plugin plugin-slides" >/tmp/bitbot-mcp-ns.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-ns.json'));assert d.get('intent')=='install_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_namespace');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_registered') is False;assert p.get('namespace')=='user-Slides';assert p.get('status')=='Ready';assert p.get('usable') is True;assert p.get('namespace_ready') is True;assert p.get('plugin_id')=='plugin-slides';assert p.get('skill_count',0)>=1;assert p.get('path') and os.path.isfile(p['path']);assert p.get('catalog_path') and os.path.isfile(p['catalog_path']);cat=json.load(open(p['catalog_path']));assert 'user-Slides' in (cat.get('namespaces') or {});assert 'plugin-slides' in (cat.get('installed_plugins') or []);print('mcp_namespace Ready ok', p.get('namespace'), p.get('path'))"
-node hosts/cli_host/run_turn.js "install plugin plugin-unknown-xyz" >/tmp/bitbot-mcp-ns-bad.json
+# MoonBit may refuse unknown before Host (ok=false → run_turn exit 1); keep JSON for assert.
+node hosts/cli_host/run_turn.js "install plugin plugin-unknown-xyz" >/tmp/bitbot-mcp-ns-bad.json || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-ns-bad.json'));
 # MoonBit may fail before Host, or Host refuses unknown — either way no pretend register.
 if d.get('ok') is False:
@@ -263,7 +264,7 @@ else:
 "
 node hosts/cli_host/run_turn.js "get plugin plugin-slides" >/tmp/bitbot-mcp-get.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-get.json'));assert d.get('intent')=='get_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_get_plugin');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_plugin') is False;assert p.get('id')=='plugin-slides';assert p.get('mcp_namespace')=='user-Slides';assert p.get('skill_count',0)>=1;assert 'slides-quickstart' in (p.get('skill_names') or []);assert p.get('path') and os.path.isfile(p['path']);print('mcp_get_plugin ok', p.get('id'), p.get('skill_names'))"
-node hosts/cli_host/run_turn.js "get plugin plugin-missing" >/tmp/bitbot-mcp-get-bad.json
+node hosts/cli_host/run_turn.js "get plugin plugin-missing" >/tmp/bitbot-mcp-get-bad.json || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-get-bad.json'));
 if d.get('ok') is False:
   print('get unknown plugin moon refuse ok', d.get('error') or d.get('assistant') or 'failed')
