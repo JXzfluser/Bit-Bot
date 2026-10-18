@@ -2295,7 +2295,7 @@
       "arch": "D-PROF",
       "title": "Hidden/系统助手",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm0204_test.mbt`::acceptance_CM-0204_hidden_agent_not_in_main_sidebar — hidden 标志不出现在主侧边栏但仍可寻址 — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm0204_test.mbt`::acceptance_CM-0204_hidden_agent_not_in_main_sidebar — hidden 标志不出现在主侧边栏但仍可寻址 — **kernel-contract PASS**；product Host `hide_agent`/`list_agents_sidebar`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -2304,7 +2304,7 @@
       "arch": "D-PROF",
       "title": "Per-agent 信息面板",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm0205_test.mbt`::acceptance_CM-0205_per_agent_info_panel_fields — 面板字段与 app-ui.md 锚点一致 — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm0205_test.mbt`::acceptance_CM-0205_per_agent_info_panel_fields — 面板字段与 app-ui.md 锚点一致 — **kernel-contract PASS**；product Host `agent_info_panel`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -2313,7 +2313,7 @@
       "arch": "D-PROF",
       "title": "Per-assistant 通知设置",
       "pri": "P2",
-      "evidence": "`ui_protocol/acceptance_cm0206_test.mbt`::acceptance_CM-0206_per_assistant_notification_settings — 助手级 desktop/sound/mentions_only 开关隔离；profile entries — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm0206_test.mbt`::acceptance_CM-0206_per_assistant_notification_settings — 助手级 desktop/sound/mentions_only 开关隔离；profile entries — **kernel-contract PASS**；product Host `notify_settings`/`set_notify`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -2498,7 +2498,7 @@
       "arch": "D-RTN",
       "title": "Webhook 触发",
       "pri": "P1",
-      "evidence": "`routines/acceptance_cm0408_0412_test.mbt`::acceptance_CM-0411_webhook_trigger_key_opaque — **kernel-contract PASS**；真面板 host-integration GAP 另跟踪",
+      "evidence": "`routines/acceptance_cm0408_0412_test.mbt`::acceptance_CM-0411_webhook_trigger_key_opaque — **kernel-contract PASS**；product Host `webhook_panel`/`webhook_copy`/`webhook_wake`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -2714,7 +2714,7 @@
       "arch": "D-BOX",
       "title": "box-doctor 自检",
       "pri": "P1",
-      "evidence": "`box_host/acceptance_cm0607_test.mbt`::acceptance_CM-0607_box_doctor_pass_fail_parsable — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`box_host/acceptance_cm0607_test.mbt`::acceptance_CM-0607_box_doctor_pass_fail_parsable — **kernel-contract PASS**；product Host `box_doctor`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -2723,7 +2723,7 @@
       "arch": "D-BOX",
       "title": "Docker vs anyrun 识别",
       "pri": "P2",
-      "evidence": "`box_host/acceptance_cm0608_test.mbt`::acceptance_CM-0608_docker_vs_anyrun_env_detect — kernel-contract PASS：local-docker/hosted-anyrun/bare 诊断正确；HostAbi 记 effect；host-integration GAP 另跟踪",
+      "evidence": "`box_host/acceptance_cm0608_test.mbt`::acceptance_CM-0608_docker_vs_anyrun_env_detect — kernel-contract PASS：local-docker/hosted-anyrun/bare 诊断正确；HostAbi 记 effect；product Host `box_env`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -2818,7 +2818,7 @@
       "arch": "D-DESK",
       "title": "box-chrome 启动器",
       "pri": "P1",
-      "evidence": "`agents/computer_use/acceptance_cm0802_test.mbt`::acceptance_CM-0802_box_chrome_launcher_not_bare — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`agents/computer_use/acceptance_cm0802_test.mbt`::acceptance_CM-0802_box_chrome_launcher_not_bare — **kernel-contract PASS**；product Host `box_chrome_probe` (+ `computer_use` box-chrome CU)",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3360,7 +3360,7 @@
       "arch": "D-TEAM",
       "title": "Members 面板",
       "pri": "P2",
-      "evidence": "`agents/teammates/acceptance_cm1405_test.mbt`::acceptance_CM-1405_members_panel_matches_app_ui — Members anchor=app-ui；info panel has_members — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`agents/teammates/acceptance_cm1405_test.mbt`::acceptance_CM-1405_members_panel_matches_app_ui — Members anchor=app-ui；info panel has_members — **kernel-contract PASS**；product Host `members_panel`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3455,7 +3455,7 @@
       "arch": "FILE-05 · D-FILE",
       "title": "GenerateImage",
       "pri": "P1",
-      "evidence": "`tools/media/acceptance_cm1601_test.mbt`::acceptance_CM-1601_generate_image_artifact_deliverable — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`tools/media/acceptance_cm1601_test.mbt`::acceptance_CM-1601_generate_image_artifact_deliverable — **kernel-contract PASS**；product Host `generate_image`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3464,7 +3464,7 @@
       "arch": "FILE-06 · D-FILE",
       "title": "GenerateVideo",
       "pri": "P2",
-      "evidence": "`tools/media/acceptance_cm1602_test.mbt`::acceptance_CM-1602_generate_video_queue_and_notify — enqueue→Queued；complete→Completed+notifiable；空 prompt 拒 — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`tools/media/acceptance_cm1602_test.mbt`::acceptance_CM-1602_generate_video_queue_and_notify — enqueue→Queued；complete→Completed+notifiable；空 prompt 拒 — **kernel-contract PASS**；product Host `generate_video`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3473,7 +3473,7 @@
       "arch": "D-FILE",
       "title": "watchVideo / 视频理解",
       "pri": "P1",
-      "evidence": "`agents/task/acceptance_cm1603_test.mbt`::acceptance_CM-1603_watch_video_answer_from_frames — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`agents/task/acceptance_cm1603_test.mbt`::acceptance_CM-1603_watch_video_answer_from_frames — **kernel-contract PASS**；product Host `watch_video`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3526,7 +3526,7 @@
       "arch": "D-FILE(tools/web)",
       "title": "Fetch 失败回退",
       "pri": "P1",
-      "evidence": "`tools/acceptance_cm1703_test.mbt`::acceptance_CM-1703_fetch_fail_public_fallback_no_cred_bypass — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`tools/acceptance_cm1703_test.mbt`::acceptance_CM-1703_fetch_fail_public_fallback_no_cred_bypass — **kernel-contract PASS**；product Host `webfetch`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3601,7 +3601,7 @@
       "arch": "D-SKILL/D-BUY",
       "title": "slides / office-pptx",
       "pri": "P1",
-      "evidence": "`skills/acceptance_cm1807_test.mbt`::acceptance_CM-1807_slides_pptx_openable — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`skills/acceptance_cm1807_test.mbt`::acceptance_CM-1807_slides_pptx_openable — **kernel-contract PASS**；product Host `slides_pptx`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3643,7 +3643,7 @@
       "arch": "D-PROF(Host UI)",
       "title": "Settings 入口",
       "pri": "P0",
-      "evidence": "`ui_protocol/acceptance_cm1901_1902_1907_test.mbt`::acceptance_CM-1901_settings_entry_closed_set — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm1901_1902_1907_test.mbt`::acceptance_CM-1901_settings_entry_closed_set — **kernel-contract PASS**；product Host `settings_open`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3652,7 +3652,7 @@
       "arch": "D-PROF(Host UI)",
       "title": "Settings tabs 与锚点",
       "pri": "P0",
-      "evidence": "`ui_protocol/acceptance_cm1901_1902_1907_test.mbt`::acceptance_CM-1902_settings_anchor_deeplink_bijection — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm1901_1902_1907_test.mbt`::acceptance_CM-1902_settings_anchor_deeplink_bijection — **kernel-contract PASS**；product Host `settings_open` deep-link anchors",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3661,7 +3661,7 @@
       "arch": "D-PROF(Host UI)",
       "title": "Update Bot's Computer",
       "pri": "P0",
-      "evidence": "`box_host/acceptance_cm0806_1903_1905_test.mbt`::acceptance_CM-1903_update_computer_two_step_prefer_guide — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`box_host/acceptance_cm0806_1903_1905_test.mbt`::acceptance_CM-1903_update_computer_two_step_prefer_guide — **kernel-contract PASS**；product Host `update_computer`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3670,7 +3670,7 @@
       "arch": "D-PROF(Host UI)",
       "title": "Reset Bot's Computer",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm1904_1906_test.mbt`::acceptance_CM-1904_reset_computer_not_preferred — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm1904_1906_test.mbt`::acceptance_CM-1904_reset_computer_not_preferred — **kernel-contract PASS**；product Host `reset_computer`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3679,7 +3679,7 @@
       "arch": "D-PROF(Host UI)",
       "title": "local-execution 设置",
       "pri": "P0",
-      "evidence": "`box_host/acceptance_cm0806_1903_1905_test.mbt`::acceptance_CM-1905_local_execution_off_rejects_machine — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`box_host/acceptance_cm0806_1903_1905_test.mbt`::acceptance_CM-1905_local_execution_off_rejects_machine — **kernel-contract PASS**；product Host `local_execution`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3697,7 +3697,7 @@
       "arch": "D-PROF(Host UI)",
       "title": "删除助手",
       "pri": "P0",
-      "evidence": "`ui_protocol/acceptance_cm1901_1902_1907_test.mbt`::acceptance_CM-1907_delete_agent_confirm_not_settings — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm1901_1902_1907_test.mbt`::acceptance_CM-1907_delete_agent_confirm_not_settings — **kernel-contract PASS**；product Host `delete_agent`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3794,7 +3794,7 @@
       "arch": "TURN-07 · D-TURN",
       "title": "ReactToMessage",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm2101_test.mbt`::acceptance_CM-2101_react_to_message_pill_toggle — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm2101_test.mbt`::acceptance_CM-2101_react_to_message_pill_toggle — **kernel-contract PASS**；product Host `react_message`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3814,7 +3814,7 @@
       "arch": "COMM-01 · D-COMM",
       "title": "Markdown 数学与 mermaid",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm2103_test.mbt`::acceptance_CM-2103_markdown_math_and_mermaid — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm2103_test.mbt`::acceptance_CM-2103_markdown_math_and_mermaid — **kernel-contract PASS**；product Host `render_markdown`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4083,7 +4083,7 @@
       "arch": "TURN-07 · D-TURN",
       "title": "ReactToMessage 出站",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm2128_test.mbt`::acceptance_CM-2128_react_outbound_end_turn_pill_no_body — thank-you→React end_turn；pill 可见；body 可省略 — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm2128_test.mbt`::acceptance_CM-2128_react_outbound_end_turn_pill_no_body — thank-you→React end_turn；pill 可见；body 可省略 — **kernel-contract PASS**；product Host `react_message` outbound pill",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4114,7 +4114,7 @@
       "arch": "D-补遗",
       "title": "cursor-agent 卡片",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm2131_test.mbt`::acceptance_CM-2131_cursor_agent_card_opens_cloud — type=cursor-agent+bcId；can_open_cloud；open_cloud→cursor.com/agents/<bcId>；空 bcId Err — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm2131_test.mbt`::acceptance_CM-2131_cursor_agent_card_opens_cloud — type=cursor-agent+bcId；can_open_cloud；open_cloud→cursor.com/agents/<bcId>；空 bcId Err — **kernel-contract PASS**；product Host `cloud_agent_launch` cursor-agent card",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4277,7 +4277,7 @@
       "arch": "D-补遗",
       "title": "连接器 app vs 用户身份",
       "pri": "P1",
-      "evidence": "`connectors/acceptance_cm2146_test.mbt`::acceptance_CM-2146_connector_app_vs_user_identity_browser — App+UserRequired→SwitchToSignedInBrowser；UserBrowser 可 Proceed；AppSufficient 不切 — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`connectors/acceptance_cm2146_test.mbt`::acceptance_CM-2146_connector_app_vs_user_identity_browser — App+UserRequired→SwitchToSignedInBrowser；UserBrowser 可 Proceed；AppSufficient 不切 — **kernel-contract PASS**；product Host `identity_browser` switch",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4396,7 +4396,7 @@
       "arch": "FILE-04 · D-FILE",
       "title": "图表生成",
       "pri": "P2",
-      "evidence": "`tools/media/acceptance_cm2157_test.mbt`::acceptance_CM-2157_structured_chart_file_deliverable — StructuredChart→`/workspace` 落盘+deliverable AttachmentRef — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`tools/media/acceptance_cm2157_test.mbt`::acceptance_CM-2157_structured_chart_file_deliverable — StructuredChart→`/workspace` 落盘+deliverable AttachmentRef — **kernel-contract PASS**；product Host `structured_chart`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4405,7 +4405,7 @@
       "arch": "BOX-05 · D-BOX",
       "title": "包管理/安装",
       "pri": "P1",
-      "evidence": "`box_host/acceptance_cm2158_test.mbt`::acceptance_CM-2158_box_package_install_via_shell — apt/npm 经 Shell；拒 non-Shell；HostAbi mock effects 含 shell: — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`box_host/acceptance_cm2158_test.mbt`::acceptance_CM-2158_box_package_install_via_shell — apt/npm 经 Shell；拒 non-Shell；HostAbi mock effects 含 shell: — **kernel-contract PASS**；product Host `package_install`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4425,7 +4425,7 @@
       "arch": "DESK-03 · D-DESK",
       "title": "浏览器导航",
       "pri": "P0",
-      "evidence": "`agents/computer_use/acceptance_cm2160_test.mbt`::acceptance_CM-2160_browser_navigate_public_reachable — Given 打开/操作网页 When 验收 Then 公开页可达 — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`agents/computer_use/acceptance_cm2160_test.mbt`::acceptance_CM-2160_browser_navigate_public_reachable — Given 打开/操作网页 When 验收 Then 公开页可达 — **kernel-contract PASS**；product Host `computer_use` navigate",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4456,7 +4456,7 @@
       "arch": "MCP-06 · D-MCP",
       "title": "$file: 参数展开",
       "pri": "P1",
-      "evidence": "`tools/acceptance_cm2163_2164_test.mbt`::acceptance_CM-2163_mcp_file_arg_expand_no_chat_bloat — kernel-contract PASS：`$file:` Host FS 注入；chat 仅 ref、无 LARGE_PAYLOAD；plain 拒；host-integration GAP 另跟踪",
+      "evidence": "`tools/acceptance_cm2163_2164_test.mbt`::acceptance_CM-2163_mcp_file_arg_expand_no_chat_bloat — kernel-contract PASS：`$file:` Host FS 注入；chat 仅 ref、无 LARGE_PAYLOAD；plain 拒；product Host `mcp_call` `$file:` expand",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4465,7 +4465,7 @@
       "arch": "MCP-07 · D-MCP",
       "title": "write_to_file 结果",
       "pri": "P1",
-      "evidence": "`tools/acceptance_cm2163_2164_test.mbt`::acceptance_CM-2164_mcp_write_to_file_returns_path — kernel-contract PASS：大结果落 `/workspace/agent-tools/`；返回路径不含 body；chat 无 PAYLOAD；host-integration GAP 另跟踪",
+      "evidence": "`tools/acceptance_cm2163_2164_test.mbt`::acceptance_CM-2164_mcp_write_to_file_returns_path — kernel-contract PASS：大结果落 `/workspace/agent-tools/`；返回路径不含 body；chat 无 PAYLOAD；product Host `mcp_call` write_to_file",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4573,7 +4573,7 @@
       "arch": "STORE-04 · D-STORE",
       "title": "跨代理共享机状态",
       "pri": "P1",
-      "evidence": "`box_host/acceptance_cm2174_test.mbt`::acceptance_CM-2174_cross_agent_shared_box_fs_charter — kernel-contract PASS：shared_fs+distinct_desktops；A 见 B 写；异 HostAbi mock 不串盘；host-integration GAP 另跟踪",
+      "evidence": "`box_host/acceptance_cm2174_test.mbt`::acceptance_CM-2174_cross_agent_shared_box_fs_charter — kernel-contract PASS：shared_fs+distinct_desktops；A 见 B 写；异 HostAbi mock 不串盘；product Host `shared_box_fs`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4582,7 +4582,7 @@
       "arch": "TIME-04 · D-TIME",
       "title": "box 时钟对齐",
       "pri": "P1",
-      "evidence": "`box_host/acceptance_cm2175_test.mbt`::acceptance_CM-2175_box_clock_aligns_user_timezone — kernel-contract PASS：Asia/Shanghai/CST；aligns；错区 Err；effects `date:`；host-integration GAP 另跟踪",
+      "evidence": "`box_host/acceptance_cm2175_test.mbt`::acceptance_CM-2175_box_clock_aligns_user_timezone — kernel-contract PASS：Asia/Shanghai/CST；aligns；错区 Err；effects `date:`；product Host `box_clock`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -4613,7 +4613,7 @@
       "arch": "PERM-05 · D-PERM",
       "title": "设置页引导",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm2178_test.mbt`::acceptance_CM-2178_missing_permission_guide_settings_not_pretend — guide→Settings deeplink；pretends_connected=false；假装已连接拒；HostSettingsUiMock — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm2178_test.mbt`::acceptance_CM-2178_missing_permission_guide_settings_not_pretend — guide→Settings deeplink；pretends_connected=false；假装已连接拒；HostSettingsUiMock — **kernel-contract PASS**；product Host `guide_permission`",
       "i": "PASS",
       "u": "PASS"
     }

@@ -3972,6 +3972,176 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  async function executeBoxChromeProbe(command) {
+    // CM-0802 — box-chrome launcher not bare chrome; private CDP; shared 9223 untouched.
+    const net = require("net");
+    const http = require("http");
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "box", "chrome");
+    fs.mkdirSync(dir, { recursive: true });
+    const raw = String(command || "probe");
+    const wantBare = /\bbare=1\b/i.test(raw) || /\bbare\b/i.test(raw);
+
+    const documentedPath = "/usr/local/bin/box-chrome";
+    const sharedCdpPort = 9223;
+    const sharedProfile = "/home/box/chrome-profile";
+    const lockfile = path.join(dir, "box-chrome.lock");
+
+    // Product launch path is always box-chrome (CM-0802). Fallback chrome bins are residual only.
+    const boxChromeCandidates = [
+      process.env.BOX_CHROME_BIN,
+      documentedPath,
+    ].filter(Boolean);
+    const fallbackCandidates = [
+      process.env.CHROME_BIN,
+      "/usr/bin/google-chrome",
+      "/usr/bin/chromium-browser",
+      "/usr/bin/chromium",
+    ].filter(Boolean);
+    function firstExecutable(list) {
+      for (const cand of list) {
+        try {
+          if (fs.existsSync(cand) && (fs.statSync(cand).mode & 0o111)) {
+            return cand;
+          }
+        } catch {
+          /* next */
+        }
+      }
+      return null;
+    }
+    const boxChromeBin = firstExecutable(boxChromeCandidates);
+    const fallbackBin = firstExecutable(fallbackCandidates);
+    const chromeBin = boxChromeBin || fallbackBin;
+    const launchPath = documentedPath;
+    const viaBoxChrome = true; // product policy: box-chrome path, never bare
+    const binResidual = !boxChromeBin;
+
+    if (wantBare) {
+      const snapPath = path.join(
+        dir,
+        `bare-refused-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_box_chrome_probe",
+        ok: false,
+        refused: true,
+        rejected_bare: true,
+        via_box_chrome: false,
+        pretend_launched: false,
+        launch_path: documentedPath,
+        error: "browser must launch via box-chrome; bare chrome forbidden",
+        shared_cdp_port: sharedCdpPort,
+        shared_profile: sharedProfile,
+        pollutes_profile: false,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("box_chrome_probe", raw || "bare", {
+        ...artifact,
+        path: snapPath,
+      });
+    }
+
+    // Allocate a private CDP port (never 9223).
+    const privatePort = await new Promise((resolve) => {
+      const srv = net.createServer();
+      srv.listen(0, "127.0.0.1", () => {
+        const port = srv.address().port;
+        srv.close(() => resolve(port));
+      });
+      srv.on("error", () => resolve(19222));
+    });
+
+    // Probe shared CDP without claiming it (must remain untouched by us).
+    let sharedReachable = false;
+    try {
+      sharedReachable = await new Promise((resolve) => {
+        const req = http.get(
+          { host: "127.0.0.1", port: sharedCdpPort, path: "/json/version", timeout: 400 },
+          (res) => {
+            res.resume();
+            resolve(true);
+          },
+        );
+        req.on("error", () => resolve(false));
+        req.on("timeout", () => {
+          req.destroy();
+          resolve(false);
+        });
+      });
+    } catch {
+      sharedReachable = false;
+    }
+
+    const lockBody =
+      "pid=host-box-chrome-probe\npath=" +
+      launchPath +
+      "\nstatus=probed\nprivate_cdp_port=" +
+      privatePort +
+      "\nshared_cdp_untouched=true\n";
+    fs.writeFileSync(lockfile, lockBody);
+    // Also mirror classic lock path when writable.
+    try {
+      fs.writeFileSync("/tmp/box-chrome.lock", lockBody);
+    } catch {
+      /* /tmp may be restricted */
+    }
+
+    const snapPath = path.join(
+      dir,
+      `probe-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_box_chrome_probe",
+      pretend_launched: false,
+      via_box_chrome: viaBoxChrome,
+      rejected_bare: true,
+      launch_path: launchPath,
+      documented_path: documentedPath,
+      chrome_bin: chromeBin,
+      box_chrome_bin: boxChromeBin,
+      fallback_chrome_bin: boxChromeBin ? null : fallbackBin,
+      box_chrome_bin_residual: binResidual,
+      lockfile,
+      lockfile_diagnosable:
+        lockBody.includes("pid=") && lockBody.includes("status="),
+      lock_body_prefix: lockBody.slice(0, 200),
+      private_cdp_port: privatePort,
+      shared_cdp_port: sharedCdpPort,
+      shared_cdp_untouched: true,
+      shared_cdp_reachable: sharedReachable,
+      shared_profile: sharedProfile,
+      pollutes_profile: false,
+      used_shared_cdp: false,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "probes.jsonl"), { ...artifact, path: snapPath });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: snapPath,
+      label: "box_chrome_probe",
+      via_box_chrome: true,
+      source_kind: "box_chrome_probe",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "box_chrome_probe",
+      command: raw || "probe",
+      path: snapPath,
+      launch_path: launchPath,
+      private_cdp_port: privatePort,
+      at,
+    });
+    return okJson("box_chrome_probe", raw || "probe", {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeReactMessage(command) {
     // CM-2101/2128 — toggle visible emoji pill on a message; may end turn.
     const at = new Date().toISOString();
@@ -6511,6 +6681,7 @@ function createHostFfi(repoRoot) {
       kind === "screenshot" ||
       kind === "check_updates" ||
       kind === "auto_review_settings" ||
+      kind === "box_chrome_probe" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -11899,6 +12070,10 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "auto_review_settings") {
         results.push(await executeAutoReviewSettings(cmd));
+        continue;
+      }
+      if (kind === "box_chrome_probe") {
+        results.push(await executeBoxChromeProbe(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

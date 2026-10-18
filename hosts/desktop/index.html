@@ -1060,6 +1060,28 @@
               );
             } catch (_) { /* ignore */ }
           }
+          const bcpHost = r.host_results.find(
+            (h) => h && h.kind === "box_chrome_probe",
+          );
+          if (bcpHost) {
+            try {
+              const p = JSON.parse(bcpHost.stdout || "{}");
+              if (p.refused) {
+                addMsg(
+                  "assistant",
+                  "box-chrome · refused bare chrome",
+                );
+              } else if (bcpHost.ok) {
+                addMsg(
+                  "assistant",
+                  "box-chrome · " +
+                    (p.launch_path || "launcher") +
+                    " · private CDP " +
+                    String(p.private_cdp_port || "?"),
+                );
+              }
+            } catch (_) { /* ignore */ }
+          }
           // CHARTER Delivery: SendToUser surface (text/widget/attachment/voice/reaction/thread).
           const attachKinds = [
             "skill_write",
@@ -1086,6 +1108,7 @@
             "screenshot",
             "check_updates",
             "auto_review_settings",
+            "box_chrome_probe",
             "export_pack",
             "computer_use",
             "voice_session",

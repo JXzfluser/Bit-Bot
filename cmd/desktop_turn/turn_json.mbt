@@ -145,6 +145,7 @@ pub(all) enum TurnIntent {
   Screenshot(agent_id~ : String)
   CheckUpdates
   AutoReviewSettings
+  BoxChromeProbe(want_bare~ : Bool)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -252,6 +253,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     Screenshot(_) => "screenshot"
     CheckUpdates => "check_updates"
     AutoReviewSettings => "auto_review_settings"
+    BoxChromeProbe(_) => "box_chrome_probe"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -3688,6 +3690,26 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Auto-review Settings deeplinks planned (CM-1507). Host opens General anchors; closed-set only.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    BoxChromeProbe(want_bare~) => {
+      let effect : DesktopEffect = {
+        kind: "box_chrome_probe",
+        command: if want_bare { "bare=1" } else { "probe" },
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        if want_bare {
+          "Bare chrome launch requested (CM-0802). Host must refuse; use box-chrome."
+        } else {
+          "box-chrome launcher probe planned (CM-0802). Host rejects bare chrome; private CDP; shared 9223 untouched."
+        },
         intent,
         ctx~,
         effects=[effect],

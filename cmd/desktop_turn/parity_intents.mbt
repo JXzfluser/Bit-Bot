@@ -713,6 +713,21 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       low == "auto review anchors" {
     return Some(AutoReviewSettings)
   }
+  // CM-0802 product Host box-chrome launcher (not bare chrome).
+  if low == "launch bare chrome" ||
+      low == "bare chrome" ||
+      low == "launch chrome bare" {
+    return Some(BoxChromeProbe(want_bare=true))
+  }
+  if low == "box chrome probe" ||
+      low == "box-chrome probe" ||
+      low == "probe box chrome" ||
+      low == "probe box-chrome" ||
+      low == "launch box chrome" ||
+      low == "box chrome launcher" ||
+      low == "box-chrome launcher" {
+    return Some(BoxChromeProbe(want_bare=false))
+  }
   // CM-2101/2128 product Host ReactToMessage pill toggle.
   if low.has_prefix("react message ") ||
       low.has_prefix("react to message ") ||
