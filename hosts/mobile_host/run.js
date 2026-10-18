@@ -264,6 +264,8 @@ try {
         deliveryMirrorDir,
         `${kind}-${Date.now().toString(36)}.json`,
       );
+      const oc = payload.outcome || {};
+      const vp = (payload.gui && payload.gui.vision_plan) || {};
       const mirror = {
         kind: kind + "_mobile_mirror",
         machine_kind: machineKind,
@@ -276,6 +278,25 @@ try {
         mode: payload.mode || null,
         pretend_live: payload.pretend_live === true,
         pretend_sent: payload.pretend_sent === true,
+        pretend_connected: payload.pretend_connected === true,
+        live_mail_residual: payload.live_mail_residual === true,
+        live_channel_residual: payload.live_channel_residual === true,
+        live_slack_residual: payload.live_slack_residual === true,
+        live_teams_residual: payload.live_teams_residual === true,
+        live_meeting_residual: payload.live_meeting_residual === true,
+        live_x_residual: payload.live_x_residual === true,
+        live_job_residual: payload.live_job_residual === true,
+        live_finance_residual: payload.live_finance_residual === true,
+        public_fallback_residual: payload.public_fallback_residual === true,
+        interactive_oauth_residual:
+          payload.interactive_oauth_residual === true,
+        live_paid_residual:
+          payload.live_paid_residual === true ||
+          oc.live_paid_residual === true,
+        ocr_residual:
+          payload.ocr_residual === true ||
+          oc.ocr_residual === true ||
+          vp.ocr_residual === true,
         host_ok: hit.ok !== false,
         at: new Date().toISOString(),
         note: "Mobile Host mirrors Desktop Host delivery snap path — no invent",

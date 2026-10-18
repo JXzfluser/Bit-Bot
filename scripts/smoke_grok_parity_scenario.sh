@@ -266,8 +266,41 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-outlook.json'));h=next(
 python3 -c "import json;d=json.load(open('/tmp/parity-email-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_email_outlook';assert p.get('live_post') is True;assert p.get('live_mail_residual') is False;print('parity channel email outlook live ok')"
 python3 -c "import json;d=json.load(open('/tmp/parity-mail-search-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_search');p=json.loads(h['stdout']);assert p.get('mode')=='outlook_live';assert p.get('live_mail_residual') is False;assert p.get('hit_count')>=1;print('parity mail_search outlook_live ok', p.get('hit_count'))"
 python3 -c "import json;d=json.load(open('/tmp/parity-mail-read-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_read');p=json.loads(h['stdout']);assert p.get('mode')=='outlook_live';assert p.get('live_mail_residual') is False;print('parity mail_read outlook_live ok', p.get('thread_id'))"
+rm -f data/connectors/outlook_token.json
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-outlook "connect outlook" >/tmp/parity-ios-outlook.txt || true
-python3 -c "t=open('/tmp/parity-ios-outlook.txt').read();assert 'connect_outlook' in t or 'oauth' in t;assert 'machine_kind=ios' in t;print('parity ios connect outlook ok')"
+python3 -c "
+import json,os,glob
+t=open('/tmp/parity-ios-outlook.txt').read()
+assert 'connect_outlook' in t or 'oauth' in t
+assert 'machine_kind=ios' in t
+assert os.path.isfile('data/connectors/outlook_token.json')
+mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/oauth-*.json'))
+assert mirrors, t[-500:]
+m=json.load(open(mirrors[-1]))
+assert m.get('host_kind')=='oauth'
+assert m.get('interactive_oauth_residual') is False or m.get('mode')=='sandbox_idp'
+print('parity ios connect outlook + mirror ok', mirrors[-1])
+"
+"${MOBILE[@]}" --machine-kind android --session-id parity-and-outlook "connect outlook" >/tmp/parity-and-outlook.txt || true
+python3 -c "
+t=open('/tmp/parity-and-outlook.txt').read()
+assert 'connect_outlook' in t or 'oauth' in t
+assert 'machine_kind=android' in t
+print('parity android connect outlook ok')
+"
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-out BITBOT_MAIL_PROVIDER=outlook \
+  env -u BITBOT_GMAIL_TOKEN "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-mail-ol "search mail Invoice" >/tmp/parity-ios-mail-search-ol.txt || true
+python3 -c "
+import json,os,glob
+t=open('/tmp/parity-ios-mail-search-ol.txt').read()
+assert 'mail_search' in t or 'HostAbi' in t
+mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/mail_search-*.json'))
+assert mirrors
+m=json.load(open(mirrors[-1]))
+assert m.get('live_mail_residual') is False, m
+assert m.get('mode')=='outlook_live', m
+print('parity ios mail_search outlook mirror residual closed ok', mirrors[-1])
+"
 
 # 9h) Site-playbook verticals (shopping / travel / food) + CU payment_wall honesty
 "${RUN[@]}" "shop https://www.target.com/ headphones" >/tmp/parity-shop.json
@@ -372,7 +405,14 @@ sleep 0.3
 "${RUN[@]}" --approved "webfetch http://127.0.0.1:18790/login" >/tmp/parity-webfetch-auth.json || true
 kill "$WF_PID" >/dev/null 2>&1 || true
 wait "$WF_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/parity-webfetch-fb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');p=json.loads(h['stdout']);assert h.get('ok') is True;assert p.get('used_fallback') is True;assert p.get('fallback')=='curl';assert p.get('credential_bypass') is False;assert p.get('pretend_fetched') is False;assert 'Public docs' in (p.get('body_prefix') or '');assert p.get('path') and os.path.isfile(p['path']);print('parity webfetch CM-1703 public fallback ok', p.get('fallback'), p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-webfetch-fb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');p=json.loads(h['stdout']);assert h.get('ok') is True;assert p.get('used_fallback') is True;assert p.get('fallback')=='curl';assert p.get('public_fallback_residual') is False;assert p.get('credential_bypass') is False;assert p.get('pretend_fetched') is False;assert 'Public docs' in (p.get('body_prefix') or '');assert p.get('path') and os.path.isfile(p['path']);print('parity webfetch CM-1703 public fallback ok', p.get('fallback'), 'residual', False)"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/parity-webfetch-fb.json","utf8"));
+if(s.labels.some(l=>l.includes("public_fallback_residual"))) { console.error(s); process.exit(1); }
+console.log("parity webfetch STU no residual on success fallback ok");
+'
 python3 -c "import json;d=json.load(open('/tmp/parity-webfetch-auth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');p=json.loads(h.get('stdout') or '{}');assert h.get('ok') is False;assert p.get('used_fallback') is False;assert p.get('credential_bypass') is False;assert 'auth_wall' in (p.get('error') or h.get('error') or '') or p.get('mode')=='host_webfetch_auth_wall';print('parity webfetch auth wall no-bypass ok', p.get('mode') or h.get('error'))"
 mkdir -p uploads
 printf 'parity-box-roundtrip\n' > uploads/parity-round-src.txt

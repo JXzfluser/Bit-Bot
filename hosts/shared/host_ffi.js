@@ -234,6 +234,72 @@ function createHostFfi(repoRoot) {
     ).trim();
   }
 
+  function connectorTokenPath(name) {
+    const safe =
+      String(name || "connector")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "_") || "connector";
+    return path.join(CONNECTORS_DIR, `${safe}_token.json`);
+  }
+
+  function readConnectorTokenFile(name) {
+    try {
+      const p = connectorTokenPath(name);
+      if (!fs.existsSync(p)) return "";
+      const tok = JSON.parse(fs.readFileSync(p, "utf8"));
+      return String((tok && (tok.access_token || tok.token)) || "").trim();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function writeConnectorTokenFile(name, tokenObj) {
+    fs.mkdirSync(CONNECTORS_DIR, { recursive: true });
+    fs.writeFileSync(
+      connectorTokenPath(name),
+      JSON.stringify(tokenObj || {}, null, 2),
+    );
+  }
+
+  /** Provider-scoped token: never let Gmail env/file steal Outlook Bearer. */
+  function resolveProviderAccessToken(provider) {
+    const p = String(provider || "gmail").trim().toLowerCase();
+    if (p === "outlook") {
+      let token = String(process.env.BITBOT_OUTLOOK_TOKEN || "").trim();
+      if (!token) token = readConnectorTokenFile("outlook");
+      if (!token) token = extractAccessToken(loadConnectorState("outlook"));
+      return token;
+    }
+    let token = String(process.env.BITBOT_GMAIL_TOKEN || "").trim();
+    if (!token) token = readConnectorTokenFile("gmail");
+    if (!token) token = extractAccessToken(loadConnectorState("gmail"));
+    return token;
+  }
+
+  function connectorArmed(name) {
+    const n = String(name || "").trim().toLowerCase();
+    if (n === "outlook") {
+      const st = loadConnectorState("outlook");
+      return Boolean(
+        resolveProviderAccessToken("outlook") ||
+          st.connected === true ||
+          st.status === "Ready" ||
+          st.status === "Connected",
+      );
+    }
+    if (n === "gmail") {
+      const st = loadConnectorState("gmail");
+      return Boolean(
+        resolveProviderAccessToken("gmail") ||
+          st.connected === true ||
+          st.status === "Ready" ||
+          st.status === "Connected",
+      );
+    }
+    return Boolean(resolveProviderAccessToken(n));
+  }
+
   function httpJson(url, { method = "GET", headers = {}, body = null } = {}) {
     return new Promise((resolve) => {
       try {
@@ -1289,14 +1355,17 @@ function createHostFfi(repoRoot) {
       } else if (/^gmail:/i.test(addr)) {
         mailProvider = "gmail";
       } else {
-        // bare email: — prefer Outlook when only Outlook token is armed, or
-        // BITBOT_MAIL_PROVIDER=outlook.
+        // bare email: — prefer Outlook when BITBOT_MAIL_PROVIDER=outlook, or when
+        // Outlook is armed and no Gmail env token (Connect Outlook alone must
+        // not lose to a stale gmail_token.json from prior runs).
+        const mailProviderEnv = String(process.env.BITBOT_MAIL_PROVIDER || "")
+          .trim()
+          .toLowerCase();
         const preferOutlook =
-          String(process.env.BITBOT_MAIL_PROVIDER || "")
-            .trim()
-            .toLowerCase() === "outlook" ||
-          (Boolean(String(process.env.BITBOT_OUTLOOK_TOKEN || "").trim()) &&
-            !String(process.env.BITBOT_GMAIL_TOKEN || "").trim());
+          mailProviderEnv === "outlook" ||
+          (connectorArmed("outlook") &&
+            !String(process.env.BITBOT_GMAIL_TOKEN || "").trim() &&
+            mailProviderEnv !== "gmail");
         if (preferOutlook) mailProvider = "outlook";
       }
       const mailCmd = `${mailProvider}|${toAddr}|channel delivery|${body}`;
@@ -1658,22 +1727,8 @@ function createHostFfi(repoRoot) {
     const subject = (parts[2] || "").trim();
     const body = parts.slice(3).join("|");
     const state = loadConnectorState(provider);
-    // Prefer explicit env token (local mock / CI) over connector rehearsal tokens.
-    let token = String(process.env.BITBOT_GMAIL_TOKEN || "").trim();
-    if (!token) {
-      try {
-        const tokPath = path.join(CONNECTORS_DIR, "gmail_token.json");
-        if (fs.existsSync(tokPath)) {
-          const tok = JSON.parse(fs.readFileSync(tokPath, "utf8"));
-          token = String((tok && (tok.access_token || tok.token)) || "").trim();
-        }
-      } catch (_) {
-        token = "";
-      }
-    }
-    if (!token) {
-      token = extractAccessToken(state);
-    }
+    // Provider-scoped token — never let Gmail env/file steal Outlook Bearer.
+    let token = resolveProviderAccessToken(provider);
     const journal = appendHostDeliveryJournal({
       kind: "mail_send",
       provider,
@@ -1815,9 +1870,7 @@ function createHostFfi(repoRoot) {
       );
     }
     if (provider === "outlook") {
-      // Prefer env token for local mock / CI over connector rehearsal tokens.
-      let outlookToken = String(process.env.BITBOT_OUTLOOK_TOKEN || "").trim();
-      if (!outlookToken) outlookToken = token;
+      const outlookToken = resolveProviderAccessToken("outlook") || token;
       if (String(process.env.BITBOT_MAIL_SEND || "").trim() !== "1") {
         return finishSandbox(
           "outlook token present — set BITBOT_MAIL_SEND=1 for live Graph send",
@@ -6754,6 +6807,9 @@ function createHostFfi(repoRoot) {
         pretend_connected: parsed.pretend_connected === true,
         browser_opened: Boolean(parsed.browser_opened),
         needs_auth: Boolean(oauthNeedsAuth || parsed.status === "NeedsAuth"),
+        interactive_oauth_residual:
+          parsed.interactive_oauth_residual === true ||
+          Boolean(oauthNeedsAuth || parsed.status === "NeedsAuth"),
         path: parsed.path || null,
         source_kind: kind,
         at,
@@ -6877,6 +6933,12 @@ function createHostFfi(repoRoot) {
       oauthDir,
       `oauth-${connector}-${modeSlug}-${Date.now().toString(36)}.json`,
     );
+    const needsAuthSnap =
+      payload.status === "NeedsAuth" ||
+      payload.mode === "live_needs_auth" ||
+      payload.mode === "live_remote_browser_open" ||
+      payload.mode === "live_remote_needs_auth" ||
+      (payload.connected === false && result && result.ok === false);
     const artifact = {
       connector: payload.connector || connector,
       status: payload.status || (result && result.ok ? "ok" : "NeedsAuth"),
@@ -6895,6 +6957,10 @@ function createHostFfi(repoRoot) {
       pretend_connected: false,
       pretend_connected_slack:
         payload.pretend_connected_slack === true ? true : false,
+      interactive_oauth_residual:
+        typeof payload.interactive_oauth_residual === "boolean"
+          ? payload.interactive_oauth_residual
+          : Boolean(needsAuthSnap),
       mode_note: "host_oauth",
       host_ok: Boolean(result && result.ok),
       at,
@@ -7205,19 +7271,12 @@ function createHostFfi(repoRoot) {
         at: new Date().toISOString(),
       };
       saveConnectorState(connectorName, state);
-      if (connectorName === "gmail") {
-        fs.writeFileSync(
-          path.join(CONNECTORS_DIR, "gmail_token.json"),
-          JSON.stringify(
-            {
-              access_token: live.access_token,
-              token_type: "Bearer",
-              sandbox: false,
-            },
-            null,
-            2,
-          ),
-        );
+      if (connectorName === "gmail" || connectorName === "outlook") {
+        writeConnectorTokenFile(connectorName, {
+          access_token: live.access_token,
+          token_type: "Bearer",
+          sandbox: false,
+        });
       }
       appendHostDeliveryJournal({
         kind: "oauth",
@@ -7418,20 +7477,13 @@ function createHostFfi(repoRoot) {
         };
         if (ok) {
           saveConnectorState(connectorName, state);
-          if (connectorName === "gmail") {
-            fs.writeFileSync(
-              path.join(CONNECTORS_DIR, "gmail_token.json"),
-              JSON.stringify(
-                {
-                  access_token: token,
-                  token_type: "Bearer",
-                  sandbox: false,
-                  interactive: true,
-                },
-                null,
-                2,
-              ),
-            );
+          if (connectorName === "gmail" || connectorName === "outlook") {
+            writeConnectorTokenFile(connectorName, {
+              access_token: token,
+              token_type: "Bearer",
+              sandbox: false,
+              interactive: true,
+            });
           }
         }
         appendHostDeliveryJournal({
@@ -7501,20 +7553,13 @@ function createHostFfi(repoRoot) {
       };
       if (ok) {
         saveConnectorState(connectorName, state);
-        if (connectorName === "gmail") {
-          fs.writeFileSync(
-            path.join(CONNECTORS_DIR, "gmail_token.json"),
-            JSON.stringify(
-              {
-                access_token: token,
-                token_type: "Bearer",
-                sandbox: false,
-                exchange: "local_idp",
-              },
-              null,
-              2,
-            ),
-          );
+        if (connectorName === "gmail" || connectorName === "outlook") {
+          writeConnectorTokenFile(connectorName, {
+            access_token: token,
+            token_type: "Bearer",
+            sandbox: false,
+            exchange: "local_idp",
+          });
         }
       }
       appendHostDeliveryJournal({
@@ -8012,15 +8057,12 @@ function createHostFfi(repoRoot) {
       };
       if (ok) {
         saveConnectorState(connectorName, state);
-        if (connectorName === "gmail") {
-          fs.writeFileSync(
-            path.join(CONNECTORS_DIR, "gmail_token.json"),
-            JSON.stringify(
-              { access_token: token, token_type: "Bearer", sandbox: true },
-              null,
-              2,
-            ),
-          );
+        if (connectorName === "gmail" || connectorName === "outlook") {
+          writeConnectorTokenFile(connectorName, {
+            access_token: token,
+            token_type: "Bearer",
+            sandbox: true,
+          });
         }
       }
       appendHostDeliveryJournal({
@@ -8042,6 +8084,8 @@ function createHostFfi(repoRoot) {
             connected: state.connected,
             mode: "sandbox_idp",
             summary_ok: ok,
+            pretend_connected: false,
+            interactive_oauth_residual: false,
           },
           null,
           2,

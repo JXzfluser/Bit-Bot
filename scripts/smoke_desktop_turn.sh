@@ -79,7 +79,23 @@ node hosts/cli_host/run_turn.js --approved "webfetch http://127.0.0.1:18790/logi
 node hosts/cli_host/run_turn.js --approved "webfetch http://127.0.0.1:18790/ok" >/tmp/bitbot-webfetch-ok.json || true
 kill "$WF_MOCK_PID" >/dev/null 2>&1 || true
 wait "$WF_MOCK_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-webfetch-fb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('used_fallback') is True;assert p.get('fallback')=='curl';assert p.get('credential_bypass') is False;assert p.get('pretend_fetched') is False;assert 'Public docs' in (p.get('body_prefix') or '');assert p.get('path') and os.path.isfile(p['path']);print('webfetch public fallback ok', p.get('fallback'), p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-webfetch-fb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('used_fallback') is True;assert p.get('fallback')=='curl';assert p.get('public_fallback_residual') is False;assert p.get('credential_bypass') is False;assert p.get('pretend_fetched') is False;assert 'Public docs' in (p.get('body_prefix') or '');assert p.get('path') and os.path.isfile(p['path']);print('webfetch public fallback ok', p.get('fallback'), 'residual', p.get('public_fallback_residual'), p.get('path'))"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-webfetch-fb.json","utf8"));
+if(s.labels.some(l=>l.includes("public_fallback_residual"))) { console.error("success fallback must not stamp residual", s); process.exit(1); }
+console.log("webfetch success fallback STU no residual ok");
+'
+node hosts/cli_host/run_turn.js --approved "webfetch http://127.0.0.1:9/nope" >/tmp/bitbot-webfetch-fail.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-webfetch-fail.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');p=json.loads(h.get('stdout') or '{}');assert p.get('public_fallback_residual') is True or h.get('ok') is False;print('webfetch fail residual ok', p.get('public_fallback_residual'), p.get('mode') or h.get('error'))"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-webfetch-fail.json","utf8"));
+if(!s.labels.some(l=>l.includes("public_fallback_residual")||l.includes("webfetch"))) { console.error(s); process.exit(1); }
+console.log("webfetch fail STU residual/label ok", s.labels.slice(0,3));
+'
 python3 -c "import json;d=json.load(open('/tmp/bitbot-webfetch-auth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('used_fallback') is False;assert p.get('credential_bypass') is False;assert 'auth_wall' in (p.get('error') or h.get('error') or '') or p.get('mode')=='host_webfetch_auth_wall';print('webfetch auth wall refuse ok', p.get('mode') or h.get('error'))"
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-webfetch-ok.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('used_fallback') is False;assert p.get('http_status')==200;assert p.get('path') and os.path.isfile(p['path']);print('webfetch direct ok', p.get('http_status'), p.get('path'))"
 run "host effect gated" "shell echo desktop-smoke"
@@ -875,10 +891,34 @@ const c=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-cold.json","utf8"));
 if(!c.labels.some(l=>l.includes("live_mail_residual"))) { console.error(c); process.exit(1); }
 console.log("STU residual labels channel+cold ok");
 '
+# Fresh connectors: connect outlook must arm outlook_token.json (not gmail).
+rm -f data/connectors/outlook_token.json data/connectors/outlook.json
 node hosts/cli_host/run_turn.js "connect outlook" >/tmp/bitbot-oauth-outlook.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-oauth-outlook.json'));assert d.get('intent')=='connect_outlook';h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h.get('stdout') or '{}');assert p.get('connector')=='outlook';assert p.get('path') and os.path.isfile(p['path']);print('connect_outlook oauth ok', p.get('mode') or p.get('status'), p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-oauth-outlook.json'));assert d.get('intent')=='connect_outlook';h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h.get('stdout') or '{}');assert p.get('connector')=='outlook';assert p.get('interactive_oauth_residual') is False;assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/connectors/outlook_token.json');tok=json.load(open('data/connectors/outlook_token.json'));assert tok.get('access_token');snap=json.load(open(p['path']));assert snap.get('interactive_oauth_residual') is False;print('connect_outlook oauth+token file ok', p.get('mode') or p.get('status'), p.get('path'))"
+# Bare email: after Connect Outlook (no Gmail env) routes to Outlook path.
+env -u BITBOT_GMAIL_TOKEN -u BITBOT_OUTLOOK_TOKEN -u BITBOT_MAIL_PROVIDER \
+  node hosts/cli_host/run_turn.js --approved "reply via email:user@example.com :: bare after connect" >/tmp/bitbot-email-bare-outlook.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-email-bare-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert (p.get('mail') or {}).get('provider')=='outlook', p;assert p.get('pretend_live') is False;print('bare email prefer outlook after connect ok', p.get('mode'), (p.get('mail') or {}).get('provider'))"
+# Gmail env must not steal Outlook provider Bearer when drafting outlook mail.
+python3 scripts/host_local_http_mock.py --port 18776 --mode outlook --token smoke-outlook-iso >/tmp/bitbot-outlook-iso-mock.log 2>&1 &
+OUT_ISO=$!
+sleep 0.3
+BITBOT_GMAIL_TOKEN=steal-me BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18776 BITBOT_OUTLOOK_TOKEN=smoke-outlook-iso BITBOT_MAIL_SEND=1 \
+  node hosts/cli_host/run_turn.js --approved "draft outlook mail to=iso@example.com subject=Hi body=Iso" >/tmp/bitbot-outlook-no-steal.json || true
+kill "$OUT_ISO" >/dev/null 2>&1 || true
+wait "$OUT_ISO" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-outlook-no-steal.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_outlook';assert p.get('live_mail_residual') is False;assert p.get('pretend_sent') is False;print('outlook mail ignores gmail token steal ok', p.get('mode'))"
 BITBOT_OAUTH_MODE=live node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-needsauth.json || true
-python3 -c "import json;d=json.load(open('/tmp/bitbot-oauth-needsauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('interactive_oauth_residual') is True;assert p.get('pretend_connected') is False;print('oauth interactive_oauth_residual ok', p.get('mode'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-oauth-needsauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('interactive_oauth_residual') is True;assert p.get('pretend_connected') is False;assert p.get('path') and os.path.isfile(p['path']);snap=json.load(open(p['path']));assert snap.get('interactive_oauth_residual') is True;print('oauth interactive_oauth_residual ok', p.get('mode'), 'snap', True)"
+python3 -c "
+import json,os
+lines=open('data/delivery/send-to-user.jsonl').read().strip().splitlines()
+hits=[json.loads(l) for l in lines if 'oauth' in l or (json.loads(l).get('source_kind')=='oauth')]
+assert hits, 'no oauth delivery ledger'
+last=hits[-1]
+assert last.get('interactive_oauth_residual') is True or last.get('needs_auth') is True
+print('oauth delivery ledger residual ok', last.get('status') or last.get('mode'))
+"
 node -e '
 const fs=require("fs");
 const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
