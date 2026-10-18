@@ -415,6 +415,22 @@ assert 'fill credential domain=login.example.test' in html
 assert 'BITBOT_CU_ALLOW_LOCAL' in html
 assert 'shop cart checkout buy' in html
 assert 'credential_fill' in mobile
+assert 'id=\"connect-finance\"' in html and 'id=\"connect-identity\"' in html
+assert 'id=\"ch-teams-send\"' in html
+assert 'id=\"del-section-add\"' in html
+assert 'id=\"tool-journal-append\"' in html
+assert 'id=\"cu-flight\"' in html
+assert 'id=\"rt-pause\"' in html and 'id=\"rt-resume\"' in html
+assert 'id=\"mail-read\"' in html and 'id=\"mail-outlook\"' in html
+assert 'connect finance' in html and 'identity browser' in html
+assert 'teams send tsmoke' in html
+assert 'add section group=g1' in html
+assert 'book flight google.com/flights' in html
+assert 'pause routine smoke-r' in html and 'resume routine smoke-r' in html
+assert 'read mail t-invoice-1' in html
+assert 'draft outlook mail' in html
+assert 'journal date=2026-10-17' in html
+assert 'routine_pause' in mobile and 'journal_append' in mobile
 print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines + skills/box + mcp/subagent + prefs panels wired ok')
 "
 python3 -c "

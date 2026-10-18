@@ -405,6 +405,8 @@
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="connect-slack" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Connect Slack</button>
         <button type="button" id="connect-gmail" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
+        <button type="button" id="connect-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
+        <button type="button" id="connect-identity" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
         <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
       </div>
     </div>
@@ -430,6 +432,7 @@
         <button type="button" id="ch-slack-thread" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
         <button type="button" id="ch-slack-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
         <button type="button" id="ch-teams-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
+        <button type="button" id="ch-teams-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams send</button>
         <button type="button" id="ch-teams-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
         <button type="button" id="ch-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
         <button type="button" id="ch-jobs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
@@ -480,6 +483,7 @@
         <button type="button" id="del-export" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export bot template</button>
         <button type="button" id="del-load-skill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Load skill</button>
         <button type="button" id="del-section" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Section post</button>
+        <button type="button" id="del-section-add" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Add section</button>
         <button type="button" id="del-learn" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Learn from demo</button>
       </div>
     </div>
@@ -505,6 +509,7 @@
         <button type="button" id="tool-webfetch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">WebFetch example.com</button>
         <button type="button" id="tool-device" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Device tools</button>
         <button type="button" id="tool-journal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
+        <button type="button" id="tool-journal-append" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal append</button>
         <button type="button" id="tool-pkg" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
       </div>
     </div>
@@ -518,6 +523,7 @@
         <button type="button" id="cu-ocr" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">OCR pass</button>
         <button type="button" id="cu-shop" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shop playbook</button>
         <button type="button" id="cu-travel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Travel expedia</button>
+        <button type="button" id="cu-flight" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Book flight</button>
         <button type="button" id="cu-food" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Order food</button>
         <button type="button" id="cu-paywall" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Payment wall fixture</button>
       </div>
@@ -587,6 +593,8 @@
         <button type="button" id="rt-list" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List routines</button>
         <button type="button" id="rt-fire" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fire routine</button>
         <button type="button" id="rt-tick" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Tick routines</button>
+        <button type="button" id="rt-pause" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Pause routine</button>
+        <button type="button" id="rt-resume" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Resume routine</button>
         <button type="button" id="rt-auto-review" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Auto-review settings</button>
       </div>
     </div>
@@ -603,6 +611,8 @@
         <button type="button" id="mail-purchase" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Purchase (sandbox)</button>
         <button type="button" id="mail-search" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Search mail</button>
         <button type="button" id="mail-meeting" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Meeting chat</button>
+        <button type="button" id="mail-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read mail</button>
+        <button type="button" id="mail-outlook" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Draft Outlook</button>
       </div>
     </div>
   </aside>
@@ -1822,6 +1832,39 @@
                 } else if (h.kind === "mail_read") {
                   label = "mail_read:" + (p.thread_id || "?");
                   types.push("attachment");
+                  const mailMeta = document.getElementById("mail-meta");
+                  if (mailMeta) {
+                    mailMeta.textContent =
+                      "read · " +
+                      (p.thread_id || "?") +
+                      (p.pretend_live === true ? " · pretend!" : "") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "journal_append") {
+                  label =
+                    "journal_append:" +
+                    (p.id || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "journal_append · " +
+                      (p.id || "?") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "section_add") {
+                  label =
+                    "section_add:" +
+                    (p.section_id || p.id || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta) {
+                    delMeta.textContent =
+                      "section_add · " +
+                      (p.section_id || p.id || p.title || "?");
+                  }
                 } else if (h.kind === "workflow_list") {
                   label =
                     "workflows:" +
@@ -2594,7 +2637,9 @@
                   h.kind === "routine_schedule" ||
                   h.kind === "routine_tick" ||
                   h.kind === "routine_fire" ||
-                  h.kind === "routine_list"
+                  h.kind === "routine_list" ||
+                  h.kind === "routine_pause" ||
+                  h.kind === "routine_resume"
                 ) {
                   const rtId =
                     p.id ||
@@ -2828,6 +2873,12 @@
     document.getElementById("connect-gmail").addEventListener("click", () => {
       runUserTurn("connect gmail", {});
     });
+    document.getElementById("connect-finance").addEventListener("click", () => {
+      runUserTurn("connect finance", {});
+    });
+    document.getElementById("connect-identity").addEventListener("click", () => {
+      runUserTurn("identity browser", {});
+    });
     document.getElementById("probe-connectors").addEventListener("click", () => {
       runUserTurn("list connectors", {});
     });
@@ -2868,6 +2919,11 @@
     });
     document.getElementById("ch-teams-draft").addEventListener("click", () => {
       runUserTurn("reply via teams:Tdesktop :: teams desktop draft", {
+        approved: true,
+      });
+    });
+    document.getElementById("ch-teams-send").addEventListener("click", () => {
+      runUserTurn("teams send tsmoke :: hello host chat", {
         approved: true,
       });
     });
@@ -2929,6 +2985,9 @@
         "section post group=g1 section=sec-a from=asst-1 body=hello",
         { approved: true },
       );
+    });
+    document.getElementById("del-section-add").addEventListener("click", () => {
+      runUserTurn("add section group=g1 id=sec-a title=alpha", {});
     });
     document.getElementById("del-learn").addEventListener("click", () => {
       runUserTurn(
@@ -3064,6 +3123,12 @@
     document.getElementById("rt-tick").addEventListener("click", () => {
       runUserTurn("tick routines", {});
     });
+    document.getElementById("rt-pause").addEventListener("click", () => {
+      runUserTurn("pause routine smoke-r", {});
+    });
+    document.getElementById("rt-resume").addEventListener("click", () => {
+      runUserTurn("resume routine smoke-r", {});
+    });
     document.getElementById("rt-auto-review").addEventListener("click", () => {
       runUserTurn("auto review settings", {});
     });
@@ -3140,6 +3205,15 @@
         approved: true,
       });
     });
+    document.getElementById("mail-read").addEventListener("click", () => {
+      runUserTurn("read mail t-invoice-1", {});
+    });
+    document.getElementById("mail-outlook").addEventListener("click", () => {
+      runUserTurn(
+        "draft outlook mail to=bob@example.com subject=hi body=hello",
+        { approved: true },
+      );
+    });
     document.getElementById("mem-remember").addEventListener("click", () => {
       runUserTurn("remember desktop_panel=ready", {});
     });
@@ -3170,6 +3244,12 @@
     document.getElementById("tool-journal").addEventListener("click", () => {
       runUserTurn("journal query hello", {});
     });
+    document.getElementById("tool-journal-append").addEventListener("click", () => {
+      runUserTurn(
+        "journal date=2026-10-17 id=e1 body=hello journal",
+        {},
+      );
+    });
     document.getElementById("tool-pkg").addEventListener("click", () => {
       runUserTurn("package install cowsay", {
         approved: true,
@@ -3193,6 +3273,9 @@
     });
     document.getElementById("cu-travel").addEventListener("click", () => {
       runUserTurn("travel expedia.com", {});
+    });
+    document.getElementById("cu-flight").addEventListener("click", () => {
+      runUserTurn("book flight google.com/flights", {});
     });
     document.getElementById("cu-food").addEventListener("click", () => {
       runUserTurn("order food doordash.com", {});

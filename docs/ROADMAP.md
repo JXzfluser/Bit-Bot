@@ -173,6 +173,7 @@
 - [x] Desktop Plugins MCP discover/call + Teammates spawn subagent + CU travel/food + Tools package install; mobile subagent_run mirror + native quick actions
 - [x] Desktop Agents list/hide + Host prefs (notify/guide/update/reset/local) + shared box fs + section/learn/meeting; mobile room_turn/send_to_agent mirrors
 - [x] Desktop Channels fill-credential + CU payment-wall fixture button (BITBOT_CU_ALLOW_LOCAL); mobile credential_fill quick action
+- [x] Desktop connect finance/identity, teams send, add section, journal append, book flight, pause/resume routine, read mail, draft Outlook; mobile routine_pause/resume + journal_append mirrors
 - [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn

@@ -118,6 +118,13 @@ for needle in (
     "meeting chat body=stand-up",
     "learn from demo title=Checkout",
     "fill credential domain=login.example.test",
+    "read mail t-invoice-1",
+    "pause routine smoke-r",
+    "resume routine smoke-r",
+    "add section group=g1",
+    "connect finance",
+    "book flight google.com/flights",
+    "journal date=2026-10-17",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
@@ -151,6 +158,9 @@ for kind in (
     "room_turn",
     "send_to_agent",
     "credential_fill",
+    "routine_pause",
+    "routine_resume",
+    "journal_append",
 ):
     assert kind in mobile, kind
 assert "receipt_path" in mobile and "skill_path" in mobile

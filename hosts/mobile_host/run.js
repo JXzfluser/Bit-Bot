@@ -211,6 +211,9 @@ try {
       "subagent_run",
       "room_turn",
       "send_to_agent",
+      "routine_pause",
+      "routine_resume",
+      "journal_append",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

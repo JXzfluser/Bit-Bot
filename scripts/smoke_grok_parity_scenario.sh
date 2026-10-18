@@ -503,6 +503,13 @@ for needle in (
     'meeting chat body=stand-up',
     'learn from demo title=Checkout',
     'fill credential domain=login.example.test',
+    'read mail t-invoice-1',
+    'pause routine smoke-r',
+    'resume routine smoke-r',
+    'add section group=g1',
+    'connect finance',
+    'book flight google.com/flights',
+    'journal date=2026-10-17',
 ):
     assert needle in cv, needle
     assert needle in main, needle
@@ -529,6 +536,10 @@ python3 -c "import json,os,glob;t=open('/tmp/parity-ios-sbfs.txt').read();assert
 python3 -c "import json,os,glob;t=open('/tmp/parity-and-las.txt').read();assert 'list_agents_sidebar' in t;assert 'machine_kind=android' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/list_agents_sidebar-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='list_agents_sidebar';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity android list_agents_sidebar delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-cred --approved "fill credential domain=login.example.test" >/tmp/parity-ios-cred.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-cred.txt').read();assert 'credential_fill' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/credential_fill-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='credential_fill';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios credential_fill delivery mirror ok', m.get('host_path'), mirrors[-1])"
+"${MOBILE[@]}" --machine-kind android --session-id parity-and-japp "journal date=2026-10-17 id=e1 body=hello journal" >/tmp/parity-and-japp.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-and-japp.txt').read();assert 'journal_append' in t;assert 'machine_kind=android' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/journal_append-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='journal_append';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity android journal_append delivery mirror ok', m.get('host_path'), mirrors[-1])"
+"${MOBILE[@]}" --machine-kind ios --session-id parity-ios-rmail "read mail t-invoice-1" >/tmp/parity-ios-rmail.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-ios-rmail.txt').read();assert 'mail_read' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/mail_read-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='mail_read';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios mail_read delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-fetch "webfetch https://example.com" >/tmp/parity-ios-fetch.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-fetch.txt').read();assert 'webfetch' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/webfetch-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='webfetch';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios webfetch delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-x "x search moonbit" >/tmp/parity-ios-x.txt
