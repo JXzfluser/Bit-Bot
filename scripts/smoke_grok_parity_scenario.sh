@@ -471,6 +471,9 @@ for needle in (
     'list workflows',
     'list credentials',
     'react message',
+    'screenshot agent=executor',
+    'check updates',
+    'launch cloud agent',
 ):
     assert needle in cv, needle
     assert needle in main, needle

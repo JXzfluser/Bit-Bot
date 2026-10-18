@@ -492,6 +492,17 @@
         <button type="button" id="box-env" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Box env</button>
         <button type="button" id="box-clock" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Box clock</button>
         <button type="button" id="box-chrome" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Chrome probe</button>
+        <button type="button" id="box-screenshot" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Screenshot</button>
+        <button type="button" id="box-check-updates" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Check updates</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Cloud</div>
+    <div class="machine-item">
+      <div class="name">Cursor agent card (CM-2131)</div>
+      <div class="meta" id="cloud-meta">local_worker · artifact deliver</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="cloud-launch" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Launch cloud agent</button>
+        <button type="button" id="cloud-deliver" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Deliver last artifact</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Mail / commerce</div>
@@ -1122,6 +1133,17 @@
           if (cloudHost) {
             try {
               const p = JSON.parse(cloudHost.stdout || "{}");
+              if (p.bc_id) window.__bitbotLastCloudBcId = p.bc_id;
+              const cloudMeta = document.getElementById("cloud-meta");
+              if (cloudMeta) {
+                cloudMeta.textContent =
+                  (p.mode || "local_worker") +
+                  " · " +
+                  (p.bc_id || "?") +
+                  " · " +
+                  (p.status || "launched") +
+                  (p.pretend_remote === true ? " · pretend!" : "");
+              }
               if (p.cursor_agent_card) renderCursorAgentCard(p.cursor_agent_card);
               if (p.status) {
                 addMsg(
@@ -1413,6 +1435,12 @@
           if (shotHost) {
             try {
               const p = JSON.parse(shotHost.stdout || "{}");
+              const boxMeta = document.getElementById("box-meta");
+              if (boxMeta) {
+                boxMeta.textContent = p.has_frame
+                  ? "screenshot · " + (p.tool || "frame") + " · read_only"
+                  : "screenshot residual · " + (p.residual_reason || "n/a");
+              }
               if (p.has_frame && p.frame_path) {
                 addMsg(
                   "assistant",
@@ -2566,6 +2594,22 @@
     });
     document.getElementById("box-chrome").addEventListener("click", () => {
       runUserTurn("box chrome probe", {});
+    });
+    document.getElementById("box-screenshot").addEventListener("click", () => {
+      runUserTurn("screenshot agent=executor", {});
+    });
+    document.getElementById("box-check-updates").addEventListener("click", () => {
+      runUserTurn("check updates", {});
+    });
+    document.getElementById("cloud-launch").addEventListener("click", () => {
+      runUserTurn("launch cloud agent triage desktop panel", {});
+    });
+    document.getElementById("cloud-deliver").addEventListener("click", () => {
+      const bc = window.__bitbotLastCloudBcId || "bc-1";
+      runUserTurn(
+        "deliver cloud artifact artifact=" + bc + " dest=desktop-report.md",
+        {},
+      );
     });
     document.getElementById("tm-create").addEventListener("click", () => {
       runUserTurn(

@@ -309,8 +309,13 @@ html=Path('hosts/desktop/index.html').read_text()
 assert 'id=\"box-meta\"' in html
 assert 'id=\"box-doctor\"' in html and 'id=\"box-env\"' in html
 assert 'id=\"box-clock\"' in html and 'id=\"box-chrome\"' in html
+assert 'id=\"box-screenshot\"' in html and 'id=\"box-check-updates\"' in html
+assert 'id=\"cloud-meta\"' in html and 'id=\"cloud-launch\"' in html
+assert 'id=\"cloud-deliver\"' in html
 assert 'box doctor' in html and 'box chrome probe' in html
-print('desktop box panel wired ok')
+assert 'screenshot agent=executor' in html and 'check updates' in html
+assert 'launch cloud agent' in html and 'deliver cloud artifact' in html
+print('desktop box + cloud panels wired ok')
 "
 python3 -c "
 from pathlib import Path

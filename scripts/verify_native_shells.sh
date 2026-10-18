@@ -86,15 +86,18 @@ for needle in (
     "list workflows",
     "list credentials",
     "react message",
+    "screenshot agent=executor",
+    "check updates",
+    "launch cloud agent",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
 mobile = Path("hosts/mobile_host/run.js").read_text()
-for kind in ("finance_call", "job_search", "workflow_list", "inbound_reaction", "slides_pptx"):
+for kind in ("finance_call", "job_search", "workflow_list", "inbound_reaction", "slides_pptx", "cloud_agent_launch"):
     assert kind in mobile, kind
 assert "receipt_path" in mobile and "skill_path" in mobile
 print("native device_permission + SendToUser Host scaffolds ok")
-print("native product quick actions (plugins/media/voice/box/mail/channels) ok")
+print("native product quick actions (plugins/media/voice/box/mail/channels/cloud) ok")
 PY
 
 # mobile_host may append SendToUser / HostAbi trailer lines after turn JSON.
