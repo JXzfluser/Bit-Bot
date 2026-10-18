@@ -759,6 +759,54 @@
       }
     }
 
+    /** CHARTER Delivery: sandboxed HTML artifact iframe (purchase receipt, etc.). */
+    async function renderDeliveryHtml(filePath, label) {
+      if (!filePath || !window.bitbot || !window.bitbot.readArtifact) return;
+      try {
+        const art = await window.bitbot.readArtifact(filePath);
+        if (!art || !art.ok || art.mime !== "text/html" || !art.text) {
+          addMsg(
+            "assistant",
+            "HTML · " +
+              (label || "attachment") +
+              " · " +
+              filePath +
+              (art && art.error ? " (" + art.error + ")" : ""),
+          );
+          return;
+        }
+        const el = document.createElement("div");
+        el.className = "msg assistant media";
+        el.innerHTML =
+          '<div class="role">attachment</div><div class="body"></div>';
+        const body = el.querySelector(".body");
+        const lab = document.createElement("div");
+        lab.className = "media-label";
+        lab.textContent =
+          (label || "html") +
+          " · " +
+          String(filePath).split("/").slice(-1)[0] +
+          " · " +
+          (art.bytes || 0) +
+          "B";
+        body.appendChild(lab);
+        const iframe = document.createElement("iframe");
+        iframe.className = "delivery-html";
+        iframe.title = label || "Host HTML attachment";
+        iframe.setAttribute("sandbox", "");
+        iframe.srcdoc = art.text;
+        body.appendChild(iframe);
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+      } catch (e) {
+        addMsg(
+          "assistant",
+          "HTML preview failed: " +
+            String(e && e.message ? e.message : e),
+        );
+      }
+    }
+
     function collectHostMediaPaths(hostResults) {
       const out = [];
       if (!Array.isArray(hostResults)) return out;
@@ -785,6 +833,28 @@
           out.push({ path: p.reply_media_path, label: "voice_relay" });
         } else if (kind === "voice_session" && p.media_path) {
           out.push({ path: p.media_path, label: "voice_session" });
+        }
+      }
+      return out;
+    }
+
+    function collectHostHtmlPaths(hostResults) {
+      const out = [];
+      if (!Array.isArray(hostResults)) return out;
+      for (const h of hostResults) {
+        if (!h || h.ok === false) continue;
+        let p = {};
+        try {
+          p = JSON.parse(h.stdout || "{}");
+        } catch (_) {
+          p = {};
+        }
+        const kind = h.kind || "";
+        if (kind === "purchase") {
+          const hp = p.receipt_path || (String(p.path || "").endsWith(".html") ? p.path : null);
+          if (hp) out.push({ path: hp, label: "purchase_receipt" });
+        } else if (kind === "render_markdown" && p.html_path) {
+          // Handled by renderMathMermaidCard; skip duplicate iframe.
         }
       }
       return out;
@@ -2052,6 +2122,11 @@
           const mediaItems = collectHostMediaPaths(r.host_results);
           for (const item of mediaItems) {
             await renderDeliveryMedia(item.path, item.label);
+          }
+          // CHARTER Delivery: inline Host HTML attachments (purchase receipt, …).
+          const htmlItems = collectHostHtmlPaths(r.host_results);
+          for (const item of htmlItems) {
+            await renderDeliveryHtml(item.path, item.label);
           }
         }
       } catch (e) {
