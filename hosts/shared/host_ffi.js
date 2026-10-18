@@ -7354,10 +7354,27 @@ function createHostFfi(repoRoot) {
           } catch {
             searchPayload = {};
           }
+          // Preserve CM-2163 $file: expand meta on short-circuit (parity with stdio path).
+          const fileExpandSnap =
+            fileExpandMeta &&
+            Array.isArray(fileExpandMeta.expanded) &&
+            fileExpandMeta.expanded.length > 0
+              ? {
+                  expanded_count: fileExpandMeta.expanded.length,
+                  refs: fileExpandMeta.expanded.map((e) => ({
+                    ref: e.ref || null,
+                    bytes: e.bytes || 0,
+                    path: e.path || null,
+                  })),
+                  pretend_inject: false,
+                }
+              : null;
           const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
             tool: toolName,
             mapped,
+            mode: "host_mail_search",
             host_kind: "mail_search",
+            file_expand: fileExpandSnap,
             mail_search: {
               path: searchPayload.path || null,
               query: searchPayload.query || q,
@@ -7380,6 +7397,7 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(searchHit && searchHit.ok),
             mail_search: searchPayload,
+            file_expand: fileExpandSnap,
           });
         }
         if (mapped === "host_skill_write") {
