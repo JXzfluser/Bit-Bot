@@ -6916,6 +6916,10 @@ function createHostFfi(repoRoot) {
         get_balance: "host_finance_call",
         search_jobs: "host_job_search",
         job_search: "host_job_search",
+        create_event: "host_schedule_meeting",
+        schedule_meeting: "host_schedule_meeting",
+        purchase_item: "host_purchase",
+        purchase: "host_purchase",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -6923,11 +6927,15 @@ function createHostFfi(repoRoot) {
         : productMap[toolName] ||
           (String(toolName).startsWith("finance_")
             ? "host_finance_call"
-            : toolName === "search_mail_artifacts" ||
-                toolName === "list_skills" ||
-                toolName === "journal_tail"
-              ? toolName
-              : "echo_body");
+            : String(toolName).startsWith("calendar_")
+              ? "host_schedule_meeting"
+              : String(toolName).startsWith("buy_")
+                ? "host_purchase"
+                : toolName === "search_mail_artifacts" ||
+                    toolName === "list_skills" ||
+                    toolName === "journal_tail"
+                  ? toolName
+                  : "echo_body");
       mcpMapped = mapped;
       mcpProductToolResidual =
         !wantWrite &&
@@ -6984,13 +6992,15 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/finance/job onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/finance/job/calendar/purchase onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
         mapped === "host_mail_draft" ||
         mapped === "host_finance_call" ||
-        mapped === "host_job_search"
+        mapped === "host_job_search" ||
+        mapped === "host_schedule_meeting" ||
+        mapped === "host_purchase"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -7163,6 +7173,134 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(jobHit && jobHit.ok),
             job_search: jobPayload,
+          });
+        }
+        if (mapped === "host_schedule_meeting") {
+          const eventId =
+            String(
+              args.id || args.event_id || args.uid || "",
+            ).trim() || `evt-${Date.now().toString(36)}`;
+          const title =
+            String(
+              args.title ||
+                args.subject ||
+                args.summary ||
+                args.name ||
+                args.q ||
+                "Meeting",
+            ).trim() || "Meeting";
+          const when =
+            String(
+              args.when ||
+                args.start ||
+                args.datetime ||
+                args.time ||
+                args.body ||
+                "",
+            ).trim() || "unspecified";
+          const schedCmd = [eventId, title, when].join("|");
+          const schedResults = await executeHostEffects([
+            { kind: "schedule_meeting", command: schedCmd },
+          ]);
+          const schedHit = (schedResults || []).find(
+            (r) => r && r.kind === "schedule_meeting",
+          );
+          let schedPayload = {};
+          try {
+            schedPayload = JSON.parse((schedHit && schedHit.stdout) || "{}");
+          } catch {
+            schedPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "schedule_meeting",
+            schedule: {
+              path: schedPayload.path || null,
+              ics_path: schedPayload.ics_path || null,
+              mode: schedPayload.mode || null,
+              live_calendar_residual: schedPayload.live_calendar_residual,
+              scheduled: schedPayload.scheduled,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(schedHit && schedHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(schedHit && schedHit.ok),
+            schedule: schedPayload,
+          });
+        }
+        if (mapped === "host_purchase") {
+          const item = String(
+            args.item || args.product || args.name || args.q || "",
+          ).trim();
+          const cents =
+            args.cents != null
+              ? String(args.cents).trim()
+              : args.amount != null
+                ? String(args.amount).trim()
+                : "";
+          let purchaseCmd = String(args.command || args.body || "").trim();
+          if (!purchaseCmd) {
+            const bits = [];
+            if (item) bits.push("item=" + item);
+            if (cents) bits.push("cents=" + cents);
+            purchaseCmd =
+              bits.join(" ") ||
+              JSON.stringify({
+                item: item || undefined,
+                cents: cents || undefined,
+                ...args,
+              }).slice(0, 400);
+          }
+          const purchaseResults = await executeHostEffects([
+            { kind: "purchase", command: purchaseCmd },
+          ]);
+          const purchaseHit = (purchaseResults || []).find(
+            (r) => r && r.kind === "purchase",
+          );
+          let purchasePayload = {};
+          try {
+            purchasePayload = JSON.parse(
+              (purchaseHit && purchaseHit.stdout) || "{}",
+            );
+          } catch {
+            purchasePayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "purchase",
+            purchase: {
+              path: purchasePayload.path || null,
+              receipt_path: purchasePayload.receipt_path || null,
+              mode: purchasePayload.mode || null,
+              live_paid_residual: purchasePayload.live_paid_residual,
+              paid: purchasePayload.paid,
+              pretend_paid: purchasePayload.pretend_paid,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(purchaseHit && purchaseHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(purchaseHit && purchaseHit.ok),
+            purchase: purchasePayload,
           });
         }
         const q = String(
