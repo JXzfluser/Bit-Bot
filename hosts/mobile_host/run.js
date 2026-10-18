@@ -144,6 +144,8 @@ try {
       "watch_video",
       "structured_chart",
       "box_doctor",
+      "box_env",
+      "box_clock",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

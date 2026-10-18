@@ -2034,6 +2034,263 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  async function executeBoxEnv(command) {
+    // CM-0608 product Host path — real /.dockerenv (+ hosted markers) probe.
+    const at = new Date().toISOString();
+    const envDir = path.join(REPO_ROOT, "data", "box", "env");
+    fs.mkdirSync(envDir, { recursive: true });
+    const snapPath = path.join(envDir, `env-${Date.now().toString(36)}.json`);
+    const diagPath = path.join(envDir, "last_diagnostic.txt");
+
+    let dockerenvPresent = "no";
+    let equiv = "none";
+    const probeNotes = [];
+    if (fs.existsSync("/.dockerenv")) {
+      dockerenvPresent = "yes";
+      equiv = "/.dockerenv";
+      probeNotes.push("dockerenv=/.dockerenv");
+    } else if (fs.existsSync("/run/.containerenv")) {
+      dockerenvPresent = "equiv";
+      equiv = "/run/.containerenv";
+      probeNotes.push("equiv=/run/.containerenv");
+    } else {
+      try {
+        if (fs.existsSync("/proc/1/cgroup")) {
+          const cg = fs.readFileSync("/proc/1/cgroup", "utf8").slice(0, 8192);
+          if (
+            /docker|containerd|kubepods|podman|libpod|\/pod-|system\.slice\/pod-/i.test(
+              cg,
+            )
+          ) {
+            dockerenvPresent = "equiv";
+            equiv = "/proc/1/cgroup(container-or-pod)";
+            probeNotes.push("equiv=cgroup");
+          }
+        }
+      } catch (_) {
+        /* ignore */
+      }
+      if (
+        dockerenvPresent === "no" &&
+        (process.env.container || process.env.KUBERNETES_SERVICE_HOST)
+      ) {
+        dockerenvPresent = "equiv";
+        equiv = "env:container_or_k8s";
+        probeNotes.push("equiv=env");
+      }
+    }
+
+    let hosted = false;
+    if (
+      process.env.KUBERNETES_SERVICE_HOST ||
+      process.env.ANYRUN ||
+      process.env.ANYRUN_HOSTED
+    ) {
+      hosted = true;
+      probeNotes.push("hosted=env_marker");
+    }
+    let hostname = "";
+    try {
+      hostname = require("os").hostname() || "";
+    } catch (_) {
+      hostname = "";
+    }
+    if (/anyrun|grok-bot-vm|hosted/i.test(hostname)) {
+      hosted = true;
+      probeNotes.push("hosted=hostname:" + hostname);
+    }
+    if (fs.existsSync("/.anyrun-hosted")) {
+      hosted = true;
+      probeNotes.push("hosted=/.anyrun-hosted");
+    }
+
+    let runtime = "unknown";
+    if (dockerenvPresent === "yes" || dockerenvPresent === "equiv") {
+      runtime = hosted ? "hosted-anyrun" : "local-docker";
+    }
+
+    const summary =
+      "runtime=" +
+      runtime +
+      " dockerenv=" +
+      dockerenvPresent +
+      " hosted=" +
+      (hosted ? "yes" : "no") +
+      " equiv=" +
+      equiv;
+    const diagnosticText = [
+      "dockerenv_path=/.dockerenv",
+      "dockerenv_present=" + dockerenvPresent,
+      "equiv_probe=" + equiv,
+      "hosted=" + (hosted ? "yes" : "no"),
+      "runtime=" + runtime,
+      "summary=" + summary,
+    ].join("\n");
+    fs.writeFileSync(diagPath, diagnosticText + "\n");
+
+    const artifact = {
+      mode: "host_box_env",
+      pretend_runtime: false,
+      dockerenv_path: "/.dockerenv",
+      dockerenv_present: dockerenvPresent,
+      equiv_probe: equiv,
+      hosted,
+      runtime,
+      summary,
+      hostname: hostname || null,
+      probe_notes: probeNotes,
+      diagnostic_path: diagPath,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(envDir, "runs.jsonl"), {
+      ...artifact,
+      path: snapPath,
+      command: String(command || "env-detect"),
+    });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: snapPath,
+      label: "box_env",
+      runtime,
+      source_kind: "box_env",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "box_env",
+      command: String(command || "env-detect"),
+      path: snapPath,
+      diagnostic_path: diagPath,
+      runtime,
+      at,
+    });
+    return okJson("box_env", String(command || "env-detect"), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeBoxClock(command) {
+    // CM-2175 product Host path — real TZ=$USER_IANA date.
+    const at = new Date().toISOString();
+    const clockDir = path.join(REPO_ROOT, "data", "box", "clock");
+    fs.mkdirSync(clockDir, { recursive: true });
+    const snapPath = path.join(
+      clockDir,
+      `clock-${Date.now().toString(36)}.json`,
+    );
+    const outPath = path.join(clockDir, "last_date.txt");
+    const rawIana =
+      process.env.USER_IANA ||
+      process.env.BITBOT_USER_IANA ||
+      "Asia/Shanghai";
+    // IANA-like only (reject shell metacharacters).
+    const userIana = /^[A-Za-z0-9_+\-\/]+$/.test(String(rawIana))
+      ? String(rawIana)
+      : "Asia/Shanghai";
+
+    let raw = "";
+    let rawRfc = "";
+    let rc = 0;
+    const dateEnv = { ...process.env, TZ: userIana };
+    try {
+      const { stdout } = await execFileAsync("date", [], {
+        timeout: 10000,
+        env: dateEnv,
+      });
+      raw = String(stdout || "").trim();
+    } catch (err) {
+      raw = String((err && err.message) || err);
+      rc = 1;
+    }
+    try {
+      const { stdout } = await execFileAsync("date", ["-Iseconds"], {
+        timeout: 10000,
+        env: dateEnv,
+      });
+      rawRfc = String(stdout || "").trim();
+    } catch (_) {
+      try {
+        const { stdout } = await execFileAsync(
+          "date",
+          ["+%Y-%m-%dT%H:%M:%S%z"],
+          { timeout: 10000, env: dateEnv },
+        );
+        rawRfc = String(stdout || "").trim();
+      } catch (__) {
+        rawRfc = "";
+      }
+    }
+
+    let aligns = true;
+    let zoneStatus = "aligned";
+    if (userIana === "Asia/Shanghai" || userIana === "Asia/Chongqing") {
+      if (!/CST|\+0800|UTC\+8|Asia\/Shanghai|Asia\/Chongqing/i.test(raw + " " + rawRfc)) {
+        aligns = false;
+        zoneStatus = "needs_review_zone_string";
+      }
+    } else if (userIana && !raw.includes(userIana) && !rawRfc) {
+      // Non-Shanghai: accept any successful date output; note IANA in artifact.
+      zoneStatus = "date_ok_iana_recorded";
+    }
+
+    const outText = [
+      "user_iana=" + userIana,
+      "date_raw=" + raw,
+      "date_rfc3339ish=" + rawRfc,
+      "evidence_cmd_expanded=TZ=" + userIana + " date",
+      "aligns=" + (aligns ? "yes" : "no"),
+      "zone_status=" + zoneStatus,
+    ].join("\n");
+    fs.writeFileSync(outPath, outText + "\n");
+
+    const artifact = {
+      mode: "host_box_clock",
+      pretend_aligned: false,
+      user_iana: userIana,
+      date_raw: raw,
+      date_rfc3339ish: rawRfc,
+      aligns,
+      zone_status: zoneStatus,
+      evidence_cmd: "TZ=" + userIana + " date",
+      date_output_path: outPath,
+      rc,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(clockDir, "runs.jsonl"), {
+      ...artifact,
+      path: snapPath,
+      command: String(command || "date"),
+    });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: snapPath,
+      label: "box_clock",
+      user_iana: userIana,
+      aligns,
+      source_kind: "box_clock",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "box_clock",
+      command: String(command || "date"),
+      path: snapPath,
+      date_output_path: outPath,
+      user_iana: userIana,
+      aligns,
+      at,
+    });
+    return okJson("box_clock", String(command || "date"), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeConnectorsProbe() {
     const report = await connectorsStatusReport();
     const at = new Date().toISOString();
@@ -9054,6 +9311,14 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "box_doctor") {
         results.push(await executeBoxDoctor(cmd));
+        continue;
+      }
+      if (kind === "box_env") {
+        results.push(await executeBoxEnv(cmd));
+        continue;
+      }
+      if (kind === "box_clock") {
+        results.push(await executeBoxClock(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

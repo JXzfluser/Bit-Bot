@@ -93,6 +93,8 @@ function extractDeliveryTypes(turnJsonText) {
           "watch_video",
           "structured_chart",
           "box_doctor",
+          "box_env",
+          "box_clock",
         ].includes(h.kind)
       ) {
         types.push("attachment");

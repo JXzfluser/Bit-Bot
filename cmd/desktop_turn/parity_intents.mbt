@@ -428,6 +428,22 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       low == "doctor box" {
     return Some(BoxDoctor)
   }
+  // CM-0608 product Host Docker vs anyrun env detect.
+  if low == "box env" ||
+      low == "detect box env" ||
+      low == "box runtime" ||
+      low == "detect runtime" ||
+      low == "dockerenv" {
+    return Some(BoxEnv)
+  }
+  // CM-2175 product Host box clock align to user timezone.
+  if low == "box clock" ||
+      low == "check box clock" ||
+      low == "align clock" ||
+      low == "box time" ||
+      low.has_prefix("box clock ") {
+    return Some(BoxClock)
+  }
   // CM-2157 product Host structured chart (Pillow PNG via Host FFI).
   if low.has_prefix("structured chart ") ||
       low.has_prefix("make chart ") ||

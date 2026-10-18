@@ -120,6 +120,8 @@ pub(all) enum TurnIntent {
   WatchVideo(video_path~ : String)
   StructuredChart(series_json~ : String)
   BoxDoctor
+  BoxEnv
+  BoxClock
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -202,6 +204,8 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     WatchVideo(_) => "watch_video"
     StructuredChart(_) => "structured_chart"
     BoxDoctor => "box_doctor"
+    BoxEnv => "box_env"
+    BoxClock => "box_clock"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -3198,6 +3202,38 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "box-doctor planned (CM-0607). Host runs real probe or honest FS residual.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    BoxEnv => {
+      let effect : DesktopEffect = {
+        kind: "box_env",
+        command: "env-detect",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "box env detect planned (CM-0608). Host probes /.dockerenv vs hosted-anyrun.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    BoxClock => {
+      let effect : DesktopEffect = {
+        kind: "box_clock",
+        command: "date",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "box clock planned (CM-2175). Host aligns date to user timezone.",
         intent,
         ctx~,
         effects=[effect],
