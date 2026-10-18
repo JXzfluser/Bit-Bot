@@ -319,6 +319,7 @@ function extractDeliveryTypes(turnJsonText) {
           "device_tools_list",
           "device_tool",
           "skill_load",
+          "list_skills",
           "mail_claim_inbox",
           "cloud_artifact_deliver",
           "teammate_create",

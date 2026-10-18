@@ -725,6 +725,8 @@ assert 'widget:device_permission:' in ios and 'widget:device_permission:' in and
 assert 'inbound_reaction' in ios and 'react_message' in ios
 assert 'inbound_reaction' in android and 'react_message' in android
 assert 'todo_write' in ios and 'todo_write' in android
+assert 'list_skills' in ios and 'list_skills' in android
+assert '"list_skills"' in shared
 for needle in (
   'gh_pr_create_residual',
   'true_device_os_dialog_residual',

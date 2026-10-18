@@ -1405,6 +1405,8 @@ function stripHostAppliedMarker(file) {
     ["upload_file", "host_copy_to_box", "copy_to_box"],
     ["download_file", "host_copy_from_box", "copy_from_box"],
     ["archive_agent", "host_hide_agent", "hide_agent"],
+    ["list_skills", "host_list_skills", "list_skills"],
+    ["open_skills", "host_list_skills", "list_skills"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1446,7 +1448,11 @@ function stripHostAppliedMarker(file) {
                                           ? '{"path":"README.mbt.md"}'
                                           : tool === "archive_agent"
                                             ? '{"agent_id":"asst-alias-hide"}'
-                                            : "{}";
+                                            : tool === "list_skills" ||
+                                                tool === "open_skills" ||
+                                                tool === "skills_list"
+                                              ? '{"q":"smoke"}'
+                                              : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);
@@ -1456,8 +1462,19 @@ function stripHostAppliedMarker(file) {
     if (payload.mapped !== wantMapped || payload.product_tool_residual !== false) {
       throw new Error(tool + " alias: " + JSON.stringify(payload).slice(0, 220));
     }
-    if (payload[field] && payload[field].pretend_ok === true) {
-      throw new Error(tool + " pretend_ok");
+    if (
+      payload[field] &&
+      (payload[field].pretend_ok === true ||
+        payload[field].pretend_listing === true ||
+        payload[field].pretend_loaded === true)
+    ) {
+      throw new Error(tool + " pretend flag");
+    }
+    if (
+      (tool === "list_skills" || tool === "open_skills") &&
+      !((payload.list_skills || {}).count >= 1)
+    ) {
+      throw new Error(tool + " count: " + JSON.stringify(payload.list_skills || {}).slice(0, 200));
     }
     console.log("mcp_call alias short-circuit ok", tool, payload.mapped);
   }

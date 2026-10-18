@@ -1752,6 +1752,7 @@
             "device_permission",
             "computer_use",
             "skill_load",
+            "list_skills",
             "mail_claim_inbox",
             "fs_list",
             "fs_read",
@@ -2475,6 +2476,18 @@
                       "skill_load · " +
                       (p.task || "?") +
                       (p.pretend_loaded === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "list_skills") {
+                  label =
+                    "list_skills×" +
+                    (p.count != null ? p.count : (p.skills || []).length);
+                  types.push("attachment");
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta) {
+                    delMeta.textContent =
+                      "list_skills · " +
+                      (p.count != null ? p.count : (p.skills || []).length) +
+                      (p.pretend_listing === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "device_tools_list") {
                   label =

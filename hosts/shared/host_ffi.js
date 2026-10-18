@@ -7017,8 +7017,11 @@ function createHostFfi(repoRoot) {
         search_threads: "host_mail_search",
         mail_search: "host_mail_search",
         search_mail: "host_mail_search",
-        list_skills: "list_skills",
-        skills_list: "list_skills",
+        list_skills: "host_list_skills",
+        skills_list: "host_list_skills",
+        skill_list: "host_list_skills",
+        open_skills: "host_list_skills",
+        skills_panel: "host_list_skills",
         journal_query: "host_journal_query",
         journal_append: "host_journal_append",
         journal_tail: "host_journal_query",
@@ -7255,7 +7258,6 @@ function createHostFfi(repoRoot) {
         plugin_get: "host_mcp_get_plugin",
         plugin_info: "host_mcp_get_plugin",
         plugin_details: "host_mcp_get_plugin",
-        skill_list: "list_skills",
         memory_recall: "host_memory_recall",
         recall_memory: "host_memory_recall",
         open_memory: "host_memory_recall",
@@ -7340,9 +7342,7 @@ function createHostFfi(repoRoot) {
                     String(toolName).startsWith("travel_") ||
                     String(toolName).startsWith("food_")
                   ? "host_computer_use"
-                  : toolName === "search_mail_artifacts" ||
-                      toolName === "list_skills" ||
-                      toolName === "journal_tail"
+                  : toolName === "search_mail_artifacts"
                     ? toolName
                     : "echo_body");
       mcpMapped = mapped;
@@ -7427,6 +7427,7 @@ function createHostFfi(repoRoot) {
         mapped === "host_oauth" ||
         mapped === "host_channel_send" ||
         mapped === "host_skill_load" ||
+        mapped === "host_list_skills" ||
         mapped === "host_mail_claim_inbox" ||
         mapped === "host_credential_fill" ||
         mapped === "host_credential_list" ||
@@ -8701,6 +8702,56 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(loadHit && loadHit.ok),
             skill_load: loadPayload,
+          });
+        }
+        if (mapped === "host_list_skills") {
+          // Product list_skills / skills_list → Host list_skills directory (not stdio stub).
+          const q =
+            String(
+              args.q || args.query || args.search || args.body || "",
+            ).trim() || "";
+          const listCmd =
+            String(args.command || "").trim() || (q ? `q=${q}` : "");
+          const listResults = await executeHostEffects([
+            { kind: "list_skills", command: listCmd },
+          ]);
+          const listHit = (listResults || []).find(
+            (r) => r && r.kind === "list_skills",
+          );
+          let listPayload = {};
+          try {
+            listPayload = JSON.parse((listHit && listHit.stdout) || "{}");
+          } catch {
+            listPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "list_skills",
+              list_skills: {
+                path: listPayload.path || null,
+                mode: listPayload.mode || null,
+                count: listPayload.count,
+                query: listPayload.query || null,
+                pretend_listing: listPayload.pretend_listing,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(listHit && listHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(listHit && listHit.ok),
+            list_skills: listPayload,
           });
         }
         if (mapped === "host_mail_claim_inbox") {
@@ -13446,6 +13497,7 @@ function createHostFfi(repoRoot) {
       kind === "mcp_uninstall" ||
       kind === "mcp_get_plugin" ||
       kind === "mcp_list_plugins" ||
+      kind === "list_skills" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -17214,6 +17266,76 @@ function createHostFfi(repoRoot) {
       return okJson(kind, cmd, {
         ...artifact,
         path: loadPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    if (kind === "list_skills") {
+      // CM skill directory — list agent-tools/skills (never pretend_listing).
+      const raw = String(command || "");
+      let query = "";
+      const qm = raw.match(/\bq=([^\n]*)/i);
+      if (qm) query = String(qm[1] || "").trim().toLowerCase();
+      else if (raw.trim() && !raw.includes("=")) {
+        query = raw.trim().toLowerCase();
+      }
+      const skillsRoot = path.join(REPO_ROOT, "agent-tools", "skills");
+      fs.mkdirSync(skillsRoot, { recursive: true });
+      let names = [];
+      try {
+        names = fs
+          .readdirSync(skillsRoot, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => d.name)
+          .sort();
+      } catch {
+        names = [];
+      }
+      const skills = names
+        .filter((n) => !query || n.toLowerCase().includes(query))
+        .map((n) => {
+          const skillMd = path.join(skillsRoot, n, "SKILL.md");
+          return {
+            id: n,
+            name: n,
+            path: path.join(skillsRoot, n),
+            has_skill_md: fs.existsSync(skillMd),
+          };
+        });
+      const dir = path.join(REPO_ROOT, "data", "skills");
+      fs.mkdirSync(dir, { recursive: true });
+      const listPath = path.join(
+        dir,
+        `list-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_list_skills",
+        pretend_listing: false,
+        query: query || null,
+        count: skills.length,
+        skills,
+        at,
+      };
+      fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: listPath,
+        label: "list_skills",
+        count: skills.length,
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: raw || "list",
+        path: listPath,
+        count: skills.length,
+        at,
+      });
+      return okJson(kind, raw || "list", {
+        ...artifact,
+        path: listPath,
         send_to_user: delivery,
         ok: true,
       });

@@ -210,6 +210,7 @@ try {
       "delivery",
       "journal_query",
       "skill_load",
+      "list_skills",
       "copy_to_box",
       "copy_from_box",
       "subagent_run",

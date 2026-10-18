@@ -30,7 +30,7 @@ enum SendToUserSurface {
     "x_search", "job_search", "finance_call", "copy_to_box", "copy_from_box",
     "shared_memory_put", "shared_memory_read", "journal_append", "journal_query",
     "connectors_probe", "device_tools_list", "device_tool",
-    "skill_load", "mail_claim_inbox", "cloud_artifact_deliver", "teammate_create",
+    "skill_load", "list_skills", "mail_claim_inbox", "cloud_artifact_deliver", "teammate_create",
     "shell", "computer_use",
     "generate_image", "generate_video", "watch_video", "structured_chart",
     "box_doctor", "box_env", "box_clock", "todo_write",
