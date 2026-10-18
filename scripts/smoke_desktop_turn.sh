@@ -1268,11 +1268,12 @@ function startMock(port, mode, token) {
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}
   try { fs.unlinkSync("data/connectors/calendar_token.json"); } catch (_) {}
-  const calMock = startMock(18786, "calendar", "smoke-mcp-cal");
-  const payMock = startMock(18787, "purchase", "smoke-mcp-pay");
-  await sleep(400);
+  // Ports 18804/18805 avoid CU/channel mocks and leftover 18786/18787 listeners.
+  const calMock = startMock(18804, "calendar", "smoke-mcp-cal");
+  const payMock = startMock(18805, "purchase", "smoke-mcp-pay");
+  await sleep(500);
   try {
-    process.env.BITBOT_CALENDAR_API_URL = "http://127.0.0.1:18786";
+    process.env.BITBOT_CALENDAR_API_URL = "http://127.0.0.1:18804";
     process.env.BITBOT_CALENDAR_TOKEN = "smoke-mcp-cal";
     const liveCal = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.create_event|{\"title\":\"LiveMCP\",\"when\":\"tomorrow-6pm\"}" }]);
     const lch = liveCal.find((r) => r && r.kind === "mcp_call");
@@ -1284,7 +1285,7 @@ function startMock(port, mode, token) {
     console.log("mcp_call calendar live residual close ok", (lcp.schedule||{}).mode, (lcp.schedule||{}).live_calendar_residual);
     process.env.BITBOT_PURCHASE_LIVE = "1";
     process.env.BITBOT_PURCHASE_TOKEN = "smoke-mcp-pay";
-    process.env.BITBOT_PURCHASE_API_URL = "http://127.0.0.1:18787";
+    process.env.BITBOT_PURCHASE_API_URL = "http://127.0.0.1:18805";
     const liveBuy = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.purchase_item|{\"item\":\"LiveMCPWidget\",\"cents\":777}" }]);
     const lbh = liveBuy.find((r) => r && r.kind === "mcp_call");
     const lbp = JSON.parse((lbh && lbh.stdout) || "{}");
