@@ -1355,6 +1355,16 @@ assert meta['identity_browser']['switched'] is True
 assert meta['user_data_dir']==udd
 print('identity_browser CU profile prefer ok', meta['user_data_dir'])
 "
+echo "==> Host credential_fill live CDP username (BITBOT_CREDENTIAL_BROWSER_FILL=1 closes credential_browser_fill_residual; password deferred)"
+# Port 18798 avoids CU signin (18766) / webhook claim (18793) / Slack events (18797).
+python3 "$ROOT/scripts/host_cu_signin_fixture.py" --port 18798 >/tmp/bitbot-cred-signin-fixture.log 2>&1 &
+CRED_SIGNIN_FIX_PID=$!
+sleep 0.4
+BITBOT_CU_ALLOW_LOCAL=1 BITBOT_CREDENTIAL_BROWSER_FILL=1 \
+  node hosts/cli_host/run_turn.js 'fill credential domain=[signin](http://127.0.0.1:18798/)' >/tmp/bitbot-cred-live.json || true
+kill "$CRED_SIGNIN_FIX_PID" >/dev/null 2>&1 || true
+wait "$CRED_SIGNIN_FIX_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cred-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='credential_fill');p=json.loads(h['stdout']);assert p.get('mode')=='host_credential_fill_browser';assert p.get('credential_browser_fill_residual') is False;assert p.get('signin_fill_residual') is True;assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;bf=p.get('browser_fill') or {};assert bf.get('username_typed') is True;assert bf.get('ok') is True;assert bf.get('password_filled') is not True;assert 'vault:secret' not in json.dumps(p).lower();assert p.get('identity_browser_ready') is True;print('credential_fill live CDP username residual close ok', p.get('path'), 'mode', p.get('mode'), 'cred_residual', False, 'signin_residual', True, 'secret_echoed', False)"
 # device_tool capture path (bypass MoonBit permission gate — Host FFI only)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");

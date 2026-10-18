@@ -14123,14 +14123,33 @@ function createHostFfi(repoRoot) {
           identityReady = false;
         }
       }
-      const navUrl = domain
-        ? domain.startsWith("http://") || domain.startsWith("https://")
-          ? domain
-          : `https://${domain}`
-        : null;
+      // CM-0111: domain may arrive as markdown [label](url); unwrap for navigate.
+      const resolveCredentialNavigateUrl = (raw) => {
+        const s = String(raw || "").trim();
+        if (!s) return null;
+        const md = s.match(/\]\((https?:\/\/[^)\s]+)\)/);
+        let urlOrHost = md ? md[1] : s;
+        const bare = String(urlOrHost).match(/https?:\/\/[^\s|"')\]]+/);
+        if (bare) urlOrHost = bare[0];
+        urlOrHost = String(urlOrHost)
+          .replace(/[.,;:]+$/, "")
+          .trim();
+        if (!urlOrHost) return null;
+        if (
+          urlOrHost.startsWith("http://") ||
+          urlOrHost.startsWith("https://")
+        ) {
+          return urlOrHost;
+        }
+        return `https://${urlOrHost}`;
+      };
+      const navUrl = resolveCredentialNavigateUrl(domain);
+      const domainForPlan = navUrl
+        ? navUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")
+        : domain || "";
       const browserPlan = {
         fill_handle: fillHandle || id,
-        domain: domain || "",
+        domain: domainForPlan,
         username: username || "",
         // Password never leaves vault / never appears in plan JSON.
         secret_in_plan: false,
@@ -14218,8 +14237,19 @@ function createHostFfi(repoRoot) {
           if (identityUserData) {
             cuEnv.BITBOT_IDENTITY_USER_DATA_DIR = identityUserData;
           }
+          // Local sign-in fixtures (smoke) need BITBOT_CU_ALLOW_LOCAL like CU blocked_on_signin.
+          const localNav =
+            navUrl &&
+            (navUrl.includes("127.0.0.1") ||
+              navUrl.includes("localhost") ||
+              navUrl.includes("0.0.0.0"));
+          if (localNav && !cuEnv.BITBOT_CU_ALLOW_LOCAL) {
+            cuEnv.BITBOT_CU_ALLOW_LOCAL = "1";
+          }
           // Username only in CU command — never append password/token.
-          const cuCmd = `credential fill username type:${username} ${navUrl}`;
+          // Navigate to sign-in wall; CDP username fill reuses CU blocked_on_signin
+          // browser-plan path (focus + type_username; password stays residual).
+          const cuCmd = `credential fill username sign in login ${navUrl}`;
           const { stdout } = await execFileAsync(
             process.env.PYTHON || "python3",
             [
@@ -14235,7 +14265,7 @@ function createHostFfi(repoRoot) {
             ],
             {
               cwd: REPO_ROOT,
-              timeout: 60000,
+              timeout: 90000,
               maxBuffer: 2 * 1024 * 1024,
               env: cuEnv,
             },
@@ -14253,15 +14283,36 @@ function createHostFfi(repoRoot) {
             if (line && line.startsWith("{")) summary = JSON.parse(line);
           }
           const gui = summary.gui || {};
-          const actionsOk = Boolean(gui.actions && gui.actions.ok);
+          const outcome = summary.outcome || {};
+          const signinFill =
+            (gui.vision_plan && gui.vision_plan.signin_fill) ||
+            outcome.signin_fill ||
+            {};
+          // Prefer CU blocked_on_signin username CDP (focus+type_username from plan).
+          const usernameTyped = Boolean(signinFill.username_typed);
+          const chromeOk = Boolean(gui.box_chrome_process || gui.started);
           browserFill = {
             attempted: true,
-            username_typed: actionsOk,
-            ok: Boolean(gui.box_chrome_process || gui.started) && actionsOk,
-            error: null,
+            username_typed: usernameTyped,
+            ok: chromeOk && usernameTyped,
+            error: usernameTyped
+              ? null
+              : String(
+                  signinFill.error ||
+                    (gui.actions && gui.actions.error) ||
+                    outcome.summary ||
+                    "username CDP fill did not type",
+                ).slice(0, 240),
             evidence: fs.existsSync(cuRun) ? cuRun : evidenceDir,
             identity_browser: gui.identity_browser || null,
             user_data_dir: gui.user_data_dir || identityUserData,
+            mode: signinFill.mode || "host_credential_fill_browser",
+            signin_fill: {
+              username_typed: usernameTyped,
+              password_filled: false,
+              filled: false,
+              mode: signinFill.mode || null,
+            },
           };
         } catch (err) {
           browserFill = {

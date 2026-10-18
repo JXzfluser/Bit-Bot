@@ -726,13 +726,18 @@ def run_cdp_actions(port: int, actions: str, repo_root: Path) -> Dict[str, Any]:
 
 
 def latest_browser_plan(repo_root: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
-    """Newest Host credential browser-plan (username-only; never secrets)."""
+    """Newest Host credential browser-plan (username-only; never secrets).
+
+    Prefer mtime so a just-written live credential_fill plan wins over older
+    lexicographically-newer names (e.g. leftover browser-plan-zzz-*).
+    """
     fills_dir = repo_root / "data" / "credentials" / "fills"
     if not fills_dir.is_dir():
         return None, {}
-    plans = sorted(fills_dir.glob("browser-plan-*.json"), reverse=True)
+    plans = list(fills_dir.glob("browser-plan-*.json"))
     if not plans:
         return None, {}
+    plans.sort(key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)
     try:
         return plans[0], json.loads(plans[0].read_text(encoding="utf-8"))
     except Exception:
