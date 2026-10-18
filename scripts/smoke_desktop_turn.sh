@@ -1170,6 +1170,11 @@ const fs = require("fs");
 function sleep(ms){ return new Promise((r)=>setTimeout(r,ms)); }
 function startMock(port, mode, token) {
   const log = "/tmp/bitbot-mcp-" + mode + "-mock.log";
+  try {
+    require("child_process").execSync("fuser -k " + port + "/tcp", {
+      stdio: "ignore",
+    });
+  } catch (_) {}
   const child = spawn(process.env.PYTHON || "python3", [
     path.join(process.cwd(), "scripts/host_local_http_mock.py"),
     "--port", String(port), "--mode", mode, "--token", token,
