@@ -7022,6 +7022,9 @@ function createHostFfi(repoRoot) {
         voice_end_write: "host_voice_end_write",
         webfetch: "host_webfetch",
         web_fetch: "host_webfetch",
+        browser_open: "host_webfetch",
+        open_url: "host_webfetch",
+        open_browser: "host_webfetch",
         screenshot: "host_screenshot",
         computer_use: "host_computer_use",
         shop_retail: "host_computer_use",
@@ -9265,11 +9268,14 @@ function createHostFfi(repoRoot) {
           });
         }
         if (mapped === "host_webfetch") {
-          // Product webfetch / web_fetch → Host webfetch; public_fallback_residual stays gated.
+          // Product webfetch / web_fetch / browser_open / open_url → Host webfetch;
+          // public_fallback_residual stays gated (never credential_bypass).
           const fetchUrl = String(
             args.url ||
               args.href ||
               args.uri ||
+              args.link ||
+              args.target ||
               args.q ||
               args.query ||
               args.body ||

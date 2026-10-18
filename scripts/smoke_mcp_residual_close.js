@@ -813,6 +813,18 @@ function stripHostAppliedMarker(file) {
   const wfapMcp = JSON.parse((wfahMcp && wfahMcp.stdout) || "{}");
   if (wfapMcp.mapped !== "host_webfetch" || wfapMcp.product_tool_residual !== false) throw new Error(JSON.stringify(wfapMcp).slice(0,200));
   console.log("mcp_call web_fetch alias short-circuit ok", wfapMcp.mapped, (wfapMcp.webfetch||{}).mode);
+  const browserOpenRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.browser_open|{\"url\":\"https://example.com\"}" }]);
+  const browserOpenH = browserOpenRuns.find((r) => r && r.kind === "mcp_call");
+  if (!browserOpenH || !browserOpenH.ok) throw new Error("browser_open mcp");
+  const browserOpenP = JSON.parse(browserOpenH.stdout || "{}");
+  if (browserOpenP.mapped !== "host_webfetch" || browserOpenP.product_tool_residual !== false) throw new Error(JSON.stringify(browserOpenP).slice(0,200));
+  if ((browserOpenP.webfetch||{}).credential_bypass === true) throw new Error("credential_bypass browser_open");
+  console.log("mcp_call browser_open alias short-circuit ok", browserOpenP.mapped, (browserOpenP.webfetch||{}).mode);
+  const openUrlRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.open_url|{\"href\":\"https://example.com\"}" }]);
+  const openUrlH = openUrlRuns.find((r) => r && r.kind === "mcp_call");
+  const openUrlP = JSON.parse((openUrlH && openUrlH.stdout) || "{}");
+  if (openUrlP.mapped !== "host_webfetch" || openUrlP.product_tool_residual !== false) throw new Error(JSON.stringify(openUrlP).slice(0,200));
+  console.log("mcp_call open_url alias short-circuit ok", openUrlP.mapped, (openUrlP.webfetch||{}).mode);
   const shots = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.screenshot|{\"agent\":\"mcp-smoke\"}" }]);
   const shoth = shots.find((r) => r && r.kind === "mcp_call");
   if (!shoth || !shoth.ok) throw new Error("screenshot mcp");
