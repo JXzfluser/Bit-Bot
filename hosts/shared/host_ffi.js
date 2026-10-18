@@ -6992,6 +6992,9 @@ function createHostFfi(repoRoot) {
         voice_channel_send: "host_channel_send",
         webhook_send: "host_channel_send",
         webhook_wake: "host_channel_send",
+        meeting_chat: "host_channel_send",
+        meeting_send: "host_channel_send",
+        send_meeting_chat: "host_channel_send",
         load_skill: "host_skill_load",
         skill_load: "host_skill_load",
         claim_inbox: "host_mail_claim_inbox",
@@ -8000,9 +8003,10 @@ function createHostFfi(repoRoot) {
             else if (tn.includes("voice")) scheme = "voice";
             else if (tn.includes("webhook")) scheme = "webhook";
             else if (tn.includes("email") || tn.includes("mail")) scheme = "email";
-            else if (tn.includes("meeting")) scheme = "meeting";
+            else if (tn.includes("meeting")) scheme = "meeting_chat";
             else scheme = "slack";
           }
+          if (scheme === "meeting") scheme = "meeting_chat";
           if (tn === "personal_slack_dm" || args.personal_dm === true) {
             scheme = "slack";
           }
@@ -8025,7 +8029,9 @@ function createHostFfi(repoRoot) {
                       ? "call-smoke"
                       : scheme === "webhook"
                         ? "panel"
-                        : "Csmoke"),
+                        : scheme === "meeting_chat" || scheme === "meeting"
+                          ? "meeting_chat"
+                          : "Csmoke"),
           ).trim();
           const body = String(
             args.body || args.text || args.message || args.content || "",
@@ -8035,7 +8041,11 @@ function createHostFfi(repoRoot) {
             args.thread_ts || args.thread || args.threadTs || "",
           ).trim();
           if (threadTs) threadPart = ` thread_ts=${threadTs}`;
-          let addr = `${scheme}:${address}${threadPart}`;
+          // CM-2153 meeting_chat uses address form "meeting_chat :: body" (not scheme:addr).
+          let addr =
+            scheme === "meeting_chat" || scheme === "meeting"
+              ? `meeting_chat :: ${body}`
+              : `${scheme}:${address}${threadPart}`;
           if (tn === "personal_slack_dm" || args.personal_dm === true) {
             if (!String(address).startsWith("D")) {
               addr = `slack:D${address.replace(/^D/, "")}${threadPart}`;
@@ -8093,7 +8103,11 @@ function createHostFfi(repoRoot) {
               webhook_wake: wakePayload,
             });
           }
-          const channelCmd = `${addr} :: ${body}`;
+          // meeting_chat addr is already "meeting_chat :: body"; other schemes use "scheme:addr :: body".
+          const channelCmd =
+            scheme === "meeting_chat" || scheme === "meeting"
+              ? addr
+              : `${addr} :: ${body}`;
           const chResults = await executeHostEffects([
             { kind: "channel_send", command: channelCmd },
           ]);
@@ -8122,6 +8136,7 @@ function createHostFfi(repoRoot) {
                 live_sms_residual: chPayload.live_sms_residual,
                 live_voice_residual: chPayload.live_voice_residual,
                 live_webhook_residual: chPayload.live_webhook_residual,
+                live_meeting_residual: chPayload.live_meeting_residual,
                 live_mail_residual: chPayload.live_mail_residual,
                 pretend_live: chPayload.pretend_live,
                 widget_degraded: chPayload.widget_degraded,
@@ -12948,6 +12963,9 @@ function createHostFfi(repoRoot) {
               interactive_browser: true,
               interactive_cdp_click: Boolean(summary.interactive_cdp_click),
               summary_ok: ok,
+              pretend_connected: false,
+              // Headed local IdP consent closes residual when ok; production IdP stays deferred.
+              interactive_oauth_residual: !ok,
             },
             null,
             2,
@@ -13020,6 +13038,9 @@ function createHostFfi(repoRoot) {
             mode: "local_exchange",
             exchange: "authorize_callback_token",
             summary_ok: ok,
+            pretend_connected: false,
+            // Local authorize→token rehearsal closes residual when ok.
+            interactive_oauth_residual: !ok,
           },
           null,
           2,

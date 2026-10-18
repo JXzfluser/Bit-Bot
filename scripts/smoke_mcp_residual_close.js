@@ -199,12 +199,15 @@ function stripHostAppliedMarker(file) {
   const osp = JSON.parse(osh.stdout || "{}");
   if (osp.mapped !== "host_oauth" || osp.product_tool_residual !== false) throw new Error(JSON.stringify(osp).slice(0,200));
   if ((osp.oauth||{}).pretend_connected === true) throw new Error("pretend_connected slack");
+  if ((osp.oauth||{}).interactive_oauth_residual !== false) {
+    throw new Error("sandbox oauth residual must close: " + JSON.stringify(osp.oauth||{}).slice(0,240));
+  }
   if ((osp.oauth||{}).mode !== "sandbox_idp" && (osp.oauth||{}).status !== "Connected") {
     // sandbox IdP Connected is honest (local IdP), not pretend
     if (!(osp.oauth||{}).path) throw new Error("oauth slack payload: " + JSON.stringify(osp).slice(0,240));
   }
   require("fs").writeFileSync("/tmp/bitbot-mcp-oauth-slack.json", JSON.stringify({ ok: true, ...osp }, null, 2));
-  console.log("mcp_call setup_slack short-circuit ok", osp.mapped, (osp.oauth||{}).mode, (osp.oauth||{}).status, (osp.oauth||{}).connector);
+  console.log("mcp_call setup_slack short-circuit ok", osp.mapped, (osp.oauth||{}).mode, (osp.oauth||{}).status, (osp.oauth||{}).connector, (osp.oauth||{}).interactive_oauth_residual);
   const oauthGmail = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.connect_gmail|{}" }]);
   const ogh = oauthGmail.find((r) => r && r.kind === "mcp_call");
   const ogp = JSON.parse((ogh && ogh.stdout) || "{}");
@@ -227,9 +230,42 @@ function stripHostAppliedMarker(file) {
   if ((olp.oauth||{}).status !== "NeedsAuth" && (olp.oauth||{}).mode !== "live_needs_auth") {
     throw new Error("live NeedsAuth expected: " + JSON.stringify(olp.oauth||{}).slice(0,240));
   }
-  console.log("mcp_call setup_slack live NeedsAuth ok", (olp.oauth||{}).mode, (olp.oauth||{}).status);
+  if ((olp.oauth||{}).interactive_oauth_residual !== true) {
+    throw new Error("live NeedsAuth residual must stay open: " + JSON.stringify(olp.oauth||{}).slice(0,240));
+  }
+  console.log("mcp_call setup_slack live NeedsAuth ok", (olp.oauth||{}).mode, (olp.oauth||{}).status, (olp.oauth||{}).interactive_oauth_residual);
+  // local_exchange / interactive residual-CLOSE (local IdP; production IdP stays deferred)
+  process.env.BITBOT_OAUTH_MODE = "live";
+  process.env.BITBOT_OAUTH_EXCHANGE = "local";
+  const oauthLocalClose = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.setup_slack|{}" }]);
+  const olcH = oauthLocalClose.find((r) => r && r.kind === "mcp_call");
+  if (!olcH || !olcH.ok) throw new Error("setup_slack local_exchange mcp");
+  const olcP = JSON.parse(olcH.stdout || "{}");
+  if (olcP.mapped !== "host_oauth" || olcP.product_tool_residual !== false) throw new Error(JSON.stringify(olcP).slice(0,200));
+  if ((olcP.oauth||{}).mode !== "local_exchange") throw new Error("local_exchange mode: " + JSON.stringify(olcP.oauth||{}).slice(0,200));
+  if ((olcP.oauth||{}).interactive_oauth_residual !== false) {
+    throw new Error("local_exchange residual must close: " + JSON.stringify(olcP.oauth||{}).slice(0,240));
+  }
+  if ((olcP.oauth||{}).pretend_connected === true) throw new Error("pretend_connected local_exchange");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-oauth-local-close.json", JSON.stringify({ ok: true, ...olcP }, null, 2));
+  console.log("mcp_call setup_slack local_exchange residual close ok", (olcP.oauth||{}).mode, (olcP.oauth||{}).interactive_oauth_residual);
+  process.env.BITBOT_OAUTH_EXCHANGE = "interactive";
+  const oauthIntClose = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.setup_slack|{}" }]);
+  const oicH = oauthIntClose.find((r) => r && r.kind === "mcp_call");
+  if (!oicH || !oicH.ok) throw new Error("setup_slack interactive mcp");
+  const oicP = JSON.parse(oicH.stdout || "{}");
+  if (oicP.mapped !== "host_oauth" || oicP.product_tool_residual !== false) throw new Error(JSON.stringify(oicP).slice(0,200));
+  if ((oicP.oauth||{}).mode !== "interactive_local") throw new Error("interactive_local mode: " + JSON.stringify(oicP.oauth||{}).slice(0,200));
+  if ((oicP.oauth||{}).interactive_oauth_residual !== false) {
+    throw new Error("interactive residual must close: " + JSON.stringify(oicP.oauth||{}).slice(0,240));
+  }
+  if ((oicP.oauth||{}).interactive_browser !== true) throw new Error("interactive_browser");
+  if ((oicP.oauth||{}).pretend_connected === true) throw new Error("pretend_connected interactive");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-oauth-interactive-close.json", JSON.stringify({ ok: true, ...oicP }, null, 2));
+  console.log("mcp_call setup_slack interactive residual close ok", (oicP.oauth||{}).mode, (oicP.oauth||{}).interactive_oauth_residual);
   delete process.env.BITBOT_OAUTH_MODE;
-  // channel_send / slack_send / teams_send / personal_slack_dm → host_channel_send
+  delete process.env.BITBOT_OAUTH_EXCHANGE;
+  // channel_send / slack_send / teams_send / personal_slack_dm / meeting_chat → host_channel_send
   delete process.env.BITBOT_SLACK_POST;
   delete process.env.BITBOT_SLACK_CLAIM;
   delete process.env.BITBOT_SLACK_API_BASE;
@@ -259,6 +295,29 @@ function stripHostAppliedMarker(file) {
   const dmPayload = JSON.parse((dmHit && dmHit.stdout) || "{}");
   if (dmPayload.mapped !== "host_channel_send" || dmPayload.product_tool_residual !== false) throw new Error(JSON.stringify(dmPayload).slice(0,200));
   console.log("mcp_call personal_slack_dm short-circuit ok", dmPayload.mapped, (dmPayload.channel_send||{}).mode);
+  const meetSend = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.meeting_chat|{\"body\":\"mcp meeting direct\"}" }]);
+  const meetHit = meetSend.find((r) => r && r.kind === "mcp_call");
+  if (!meetHit || !meetHit.ok) throw new Error("meeting_chat mcp");
+  const meetPayload = JSON.parse(meetHit.stdout || "{}");
+  if (meetPayload.mapped !== "host_channel_send" || meetPayload.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(meetPayload).slice(0,200));
+  }
+  if ((meetPayload.channel_send||{}).scheme !== "meeting_chat") {
+    throw new Error("meeting scheme: " + JSON.stringify(meetPayload.channel_send||{}).slice(0,200));
+  }
+  if ((meetPayload.channel_send||{}).live_meeting_residual !== true) {
+    throw new Error("meeting sandbox residual must stay open: " + JSON.stringify(meetPayload.channel_send||{}).slice(0,200));
+  }
+  if ((meetPayload.channel_send||{}).pretend_live === true) throw new Error("pretend_live meeting");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-meeting-chat.json", JSON.stringify({ ok: true, ...meetPayload }, null, 2));
+  console.log("mcp_call meeting_chat short-circuit ok", meetPayload.mapped, (meetPayload.channel_send||{}).mode, (meetPayload.channel_send||{}).live_meeting_residual);
+  const meetAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.meeting_send|{\"body\":\"mcp meeting alias\"}" }]);
+  const meetAliasHit = meetAlias.find((r) => r && r.kind === "mcp_call");
+  const meetAliasP = JSON.parse((meetAliasHit && meetAliasHit.stdout) || "{}");
+  if (meetAliasP.mapped !== "host_channel_send" || meetAliasP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(meetAliasP).slice(0,200));
+  }
+  console.log("mcp_call meeting_send alias short-circuit ok", meetAliasP.mapped, (meetAliasP.channel_send||{}).mode);
   // Live Slack post residual-CLOSE via MCP channel_send
   const mcpSlackMock = startMock(18820, "slack", "smoke-mcp-ch");
   await sleep(400);
@@ -280,6 +339,35 @@ function stripHostAppliedMarker(file) {
     delete process.env.BITBOT_SLACK_API_BASE;
     delete process.env.SLACK_BOT_TOKEN;
     delete process.env.BITBOT_SLACK_POST;
+  }
+  // Live meeting_chat residual-CLOSE via BITBOT_MEETING_POST + mock
+  const mcpMeetMock = startMock(18821, "meeting", "smoke-mcp-meet");
+  await sleep(400);
+  try {
+    process.env.BITBOT_MEETING_API_URL = "http://127.0.0.1:18821";
+    process.env.BITBOT_MEETING_TOKEN = "smoke-mcp-meet";
+    process.env.BITBOT_MEETING_POST = "1";
+    const liveMeet = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.meeting_chat|{\"body\":\"mcp live meeting\"}" }]);
+    const liveMeetHit = liveMeet.find((r) => r && r.kind === "mcp_call");
+    if (!liveMeetHit || !liveMeetHit.ok) throw new Error("meeting_chat live mcp");
+    const liveMeetPayload = JSON.parse(liveMeetHit.stdout || "{}");
+    if (liveMeetPayload.mapped !== "host_channel_send" || liveMeetPayload.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(liveMeetPayload).slice(0,200));
+    }
+    if ((liveMeetPayload.channel_send||{}).live_meeting_residual !== false || (liveMeetPayload.channel_send||{}).live_post !== true) {
+      throw new Error("meeting live residual: " + JSON.stringify(liveMeetPayload.channel_send||{}).slice(0,240));
+    }
+    if ((liveMeetPayload.channel_send||{}).mode !== "meeting_chat_live") {
+      throw new Error("meeting live mode: " + JSON.stringify(liveMeetPayload.channel_send||{}).slice(0,200));
+    }
+    if ((liveMeetPayload.channel_send||{}).pretend_live === true) throw new Error("pretend_live live meeting");
+    require("fs").writeFileSync("/tmp/bitbot-mcp-meeting-live-close.json", JSON.stringify({ ok: true, ...liveMeetPayload }, null, 2));
+    console.log("mcp_call meeting_chat live residual close ok", (liveMeetPayload.channel_send||{}).mode, (liveMeetPayload.channel_send||{}).live_meeting_residual);
+  } finally {
+    try { mcpMeetMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_MEETING_API_URL;
+    delete process.env.BITBOT_MEETING_TOKEN;
+    delete process.env.BITBOT_MEETING_POST;
   }
   // Skill/export product short-circuit → host_skill_write / host_export_pack (no pretend_shared / secret echo)
   const skills = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.author_skill|{\"name\":\"mcp-author-skill\",\"description\":\"mcp smoke\",\"body\":\"Do the MCP thing.\"}" }]);
