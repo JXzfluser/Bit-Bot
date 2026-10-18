@@ -704,6 +704,15 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       low == "app updates" {
     return Some(CheckUpdates)
   }
+  // CM-1507 product Host auto-review / rules / security-keys Settings anchors.
+  if low == "auto review settings" ||
+      low == "open auto review" ||
+      low == "auto-review settings" ||
+      low == "security keys settings" ||
+      low == "open auto-review" ||
+      low == "auto review anchors" {
+    return Some(AutoReviewSettings)
+  }
   // CM-2101/2128 product Host ReactToMessage pill toggle.
   if low.has_prefix("react message ") ||
       low.has_prefix("react to message ") ||

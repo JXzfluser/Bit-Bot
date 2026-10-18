@@ -44,6 +44,8 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Teams without `BITBOT_TEAMS_POST=1` | Draft transcript only; live Graph mock when token + POST + optional `BITBOT_TEAMS_GRAPH_URL` |
 | Screenshot (CM-0605 product path) | `screenshot` Host effect: ffmpeg x11grab / import / gnome-screenshot / scrot when `DISPLAY` set; else `screenshot_residual=true`, never `pretend_live` / `pretend_frame` |
 | Check Updates (CM-1906) | `check_updates` opens Updates tab (`update-channel`); artifact asserts `ne_update_computer` vs Computer tab `update-computer` |
+| CreateAgent → Members (CM-1401) | `teammate_create` durable row + `appears_in_members` / `in_sidebar`; Members panel reads same store |
+| Auto-review Settings (CM-1507) | `auto_review_settings` opens General deeplinks `auto-review` / `auto-review-rules` / `security-keys` (closed set) |
 | Routine wake scheduler | On-demand `routine_fire` + daemon `--long-lived` / `--interval-ms`; `--install-user-unit` installs user systemd unit |
 | CU paid checkout | `payment_wall` / `live_paid_residual` when pay form seen; local fixture via `BITBOT_CU_ALLOW_LOCAL=1`; never pretend_purchased without `BITBOT_CU_LIVE_PAID` |
 | Purchase charge | Sandbox HTML receipt by default; live `/charge` when `BITBOT_PURCHASE_LIVE=1` + token + `BITBOT_PURCHASE_API_URL` |

@@ -1047,6 +1047,19 @@
               );
             } catch (_) { /* ignore */ }
           }
+          const arsHost = r.host_results.find(
+            (h) => h && h.kind === "auto_review_settings" && h.ok,
+          );
+          if (arsHost) {
+            try {
+              const p = JSON.parse(arsHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Auto-review Settings · " +
+                  ((p.anchors || []).join(", ") || "auto-review"),
+              );
+            } catch (_) { /* ignore */ }
+          }
           // CHARTER Delivery: SendToUser surface (text/widget/attachment/voice/reaction/thread).
           const attachKinds = [
             "skill_write",
@@ -1072,6 +1085,7 @@
             "guide_permission",
             "screenshot",
             "check_updates",
+            "auto_review_settings",
             "export_pack",
             "computer_use",
             "voice_session",

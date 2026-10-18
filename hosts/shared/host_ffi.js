@@ -3791,6 +3791,98 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  async function executeAutoReviewSettings(command) {
+    // CM-1507 — auto-review / auto-review-rules / security-keys deeplink anchors.
+    const at = new Date().toISOString();
+    const dir = settingsDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "anchors=auto-review,auto-review-rules,security-keys");
+    const anchors = ["auto-review", "auto-review-rules", "security-keys"];
+    const opened = [];
+    for (const anchor of anchors) {
+      const tab = SETTINGS_ANCHORS[anchor];
+      if (!tab) {
+        return okJson("auto_review_settings", raw, {
+          mode: "host_auto_review_settings",
+          ok: false,
+          refused: true,
+          pretend_opened: false,
+          error: "CM-1507: unknown auto-review anchor: " + anchor,
+          at,
+        });
+      }
+      opened.push({
+        anchor,
+        tab,
+        deep_link: "grokbot://app/v1/settings?id=" + anchor,
+        entry: "command-palette",
+      });
+    }
+    // Land panel on primary auto-review anchor.
+    const primary = opened[0];
+    const panelPath = path.join(dir, "panel.json");
+    const panel = {
+      open: true,
+      entry: primary.entry,
+      anchor: primary.anchor,
+      tab: primary.tab,
+      deep_link: primary.deep_link,
+      tabs: ["General", "Computer", "Vault", "Usage & Billing", "Updates"],
+      auto_review_anchors: anchors,
+      at,
+    };
+    fs.writeFileSync(panelPath, JSON.stringify(panel, null, 2));
+    const snapPath = path.join(
+      opsDir,
+      `auto-review-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_auto_review_settings",
+      pretend_opened: false,
+      panel_open: true,
+      anchors,
+      opened,
+      primary_anchor: primary.anchor,
+      primary_tab: primary.tab,
+      primary_deep_link: primary.deep_link,
+      all_on_general: opened.every((o) => o.tab === "General"),
+      closed_set: true,
+      unknown_refused: true,
+      panel_path: panelPath,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "opens.jsonl"), {
+      ...artifact,
+      path: snapPath,
+      kind: "auto_review_settings",
+    });
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "settings_auto_review",
+      path: snapPath,
+      label: "auto_review_settings",
+      anchors,
+      source_kind: "auto_review_settings",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "auto_review_settings",
+      command: raw,
+      path: snapPath,
+      panel_path: panelPath,
+      anchors,
+      at,
+    });
+    return okJson("auto_review_settings", raw || "auto review settings", {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeCheckUpdates(command) {
     // CM-1906 — Updates tab (update-channel) ≠ Update Computer (update-computer).
     const at = new Date().toISOString();
@@ -6418,6 +6510,7 @@ function createHostFfi(repoRoot) {
       kind === "react_message" ||
       kind === "screenshot" ||
       kind === "check_updates" ||
+      kind === "auto_review_settings" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -10341,12 +10434,21 @@ function createHostFfi(repoRoot) {
         tmDir,
         `create-${row.id}-${Date.now().toString(36)}.json`,
       );
+      // CM-1401 — CreateAgent must appear in Members + sidebar immediately.
+      const memberIds = rows
+        .map((r) => (r && (r.id || r.agent_id)) || null)
+        .filter(Boolean);
+      const inMembers = memberIds.includes(row.id);
       const artifact = {
         stored: true,
         existing,
         teammate: row,
         teammates_path: TEAMMATES_PATH,
         members_sidebar: true,
+        appears_in_members: inMembers,
+        in_members: inMembers,
+        in_sidebar: inMembers,
+        member_ids: memberIds,
         mode: "host_teammate_create",
         pretend_created: false,
         at,
@@ -10360,6 +10462,7 @@ function createHostFfi(repoRoot) {
         type: "attachment",
         path: createPath,
         label: "teammate_create",
+        appears_in_members: inMembers,
         source_kind: kind,
         at,
       });
@@ -10368,6 +10471,7 @@ function createHostFfi(repoRoot) {
         command: cmd,
         path: createPath,
         teammates_path: TEAMMATES_PATH,
+        appears_in_members: inMembers,
         at,
       });
       return okJson(kind, cmd, {
@@ -11791,6 +11895,10 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "check_updates") {
         results.push(await executeCheckUpdates(cmd));
+        continue;
+      }
+      if (kind === "auto_review_settings") {
+        results.push(await executeAutoReviewSettings(cmd));
         continue;
       }
       if (kind === "connectors_probe") {
