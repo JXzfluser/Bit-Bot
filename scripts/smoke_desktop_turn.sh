@@ -2181,6 +2181,96 @@ function stripHostAppliedMarker(file) {
   delete process.env.BITBOT_ESPEAK_BIN;
   delete process.env.BITBOT_STT_MOCK_LOG_DIR;
   delete process.env.BITBOT_ESPEAK_MOCK_LOG_DIR;
+  // 6) copy_to_box / copy_from_box: BITBOT_COPYBOX_REMOTE + BITBOT_SCP_BIN closes cross_machine_copy_residual
+  require("child_process").execSync("rm -rf /tmp/bitbot-mcp-scp-to /tmp/bitbot-mcp-scp-from && mkdir -p /tmp/bitbot-mcp-scp-to /tmp/bitbot-mcp-scp-from uploads");
+  fs.writeFileSync("uploads/mcp-copy-close-src.txt", "mcp copy residual close\n");
+  try { fs.unlinkSync("uploads/mcp-copy-close-dest.txt"); } catch (_) {}
+  try { fs.unlinkSync("uploads/mcp-copy-close-from-dest.txt"); } catch (_) {}
+  process.env.BITBOT_COPYBOX_REMOTE = "1";
+  process.env.BITBOT_COPYBOX_SSH = "smoke@127.0.0.1";
+  process.env.BITBOT_SCP_BIN = path.join(process.cwd(), "scripts/host_scp_mock.sh");
+  process.env.BITBOT_SCP_MOCK_LOG_DIR = "/tmp/bitbot-mcp-scp-to";
+  const copyToCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.copy_to_box|{\"machine_id\":\"remote-close\",\"src\":\"uploads/mcp-copy-close-src.txt\",\"dest\":\"uploads/mcp-copy-close-dest.txt\"}" }]);
+  const copyToCloseH = copyToCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!copyToCloseH || !copyToCloseH.ok) throw new Error("copy_to_box residual close mcp");
+  const copyToCloseP = JSON.parse(copyToCloseH.stdout || "{}");
+  if (copyToCloseP.mapped !== "host_copy_to_box" || copyToCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(copyToCloseP).slice(0, 200));
+  }
+  if ((copyToCloseP.copy_box || {}).cross_machine_copy_residual !== false) {
+    throw new Error("cross_machine_copy_residual must close: " + JSON.stringify(copyToCloseP.copy_box || {}).slice(0, 240));
+  }
+  if ((copyToCloseP.copy_box || {}).pretend_remote_machine === true) throw new Error("pretend_remote_machine copy_to close");
+  if (((copyToCloseP.copy_box || {}).remote || {}).ok !== true) {
+    throw new Error("copy_to remote.ok: " + JSON.stringify((copyToCloseP.copy_box || {}).remote || {}).slice(0, 200));
+  }
+  require("fs").writeFileSync("/tmp/bitbot-mcp-copy-to-close.json", JSON.stringify({ ok: true, ...copyToCloseP }, null, 2));
+  console.log("mcp_call copy_to_box residual close ok", copyToCloseP.mapped, (copyToCloseP.copy_box || {}).cross_machine_copy_residual, ((copyToCloseP.copy_box || {}).remote || {}).scp_bin);
+  process.env.BITBOT_SCP_MOCK_LOG_DIR = "/tmp/bitbot-mcp-scp-from";
+  const copyFromCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.copy_from_box|{\"machine_id\":\"remote-close\",\"src\":\"uploads/mcp-copy-close-src.txt\",\"dest\":\"uploads/mcp-copy-close-from-dest.txt\",\"overwrite\":\"allow\"}" }]);
+  const copyFromCloseH = copyFromCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!copyFromCloseH || !copyFromCloseH.ok) throw new Error("copy_from_box residual close mcp");
+  const copyFromCloseP = JSON.parse(copyFromCloseH.stdout || "{}");
+  if (copyFromCloseP.mapped !== "host_copy_from_box" || copyFromCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(copyFromCloseP).slice(0, 200));
+  }
+  if ((copyFromCloseP.copy_box || {}).cross_machine_copy_residual !== false) {
+    throw new Error("copy_from cross_machine_copy_residual must close: " + JSON.stringify(copyFromCloseP.copy_box || {}).slice(0, 240));
+  }
+  if ((copyFromCloseP.copy_box || {}).pretend_remote_machine === true) throw new Error("pretend_remote_machine copy_from close");
+  if (((copyFromCloseP.copy_box || {}).remote || {}).ok !== true) {
+    throw new Error("copy_from remote.ok: " + JSON.stringify((copyFromCloseP.copy_box || {}).remote || {}).slice(0, 200));
+  }
+  require("fs").writeFileSync("/tmp/bitbot-mcp-copy-from-close.json", JSON.stringify({ ok: true, ...copyFromCloseP }, null, 2));
+  console.log("mcp_call copy_from_box residual close ok", copyFromCloseP.mapped, (copyFromCloseP.copy_box || {}).cross_machine_copy_residual, ((copyFromCloseP.copy_box || {}).remote || {}).scp_bin);
+  delete process.env.BITBOT_COPYBOX_REMOTE;
+  delete process.env.BITBOT_COPYBOX_SSH;
+  delete process.env.BITBOT_SCP_BIN;
+  delete process.env.BITBOT_SCP_MOCK_LOG_DIR;
+  // 7) screenshot: BITBOT_SCREENSHOT_FIXTURE=1 closes screenshot_residual (no live DISPLAY)
+  const savedDisplayClose = process.env.DISPLAY;
+  delete process.env.DISPLAY;
+  process.env.BITBOT_SCREENSHOT_FIXTURE = "1";
+  const shotFxCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.screenshot|{\"agent\":\"mcp-fx-close\"}" }]);
+  const shotFxCloseH = shotFxCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!shotFxCloseH || !shotFxCloseH.ok) throw new Error("screenshot residual close mcp");
+  const shotFxCloseP = JSON.parse(shotFxCloseH.stdout || "{}");
+  if (shotFxCloseP.mapped !== "host_screenshot" || shotFxCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(shotFxCloseP).slice(0, 200));
+  }
+  if ((shotFxCloseP.screenshot || {}).screenshot_residual !== false) {
+    throw new Error("screenshot_residual must close: " + JSON.stringify(shotFxCloseP.screenshot || {}).slice(0, 240));
+  }
+  if ((shotFxCloseP.screenshot || {}).has_frame !== true) throw new Error("fixture has_frame");
+  if ((shotFxCloseP.screenshot || {}).tool !== "fixture") {
+    throw new Error("fixture tool: " + JSON.stringify(shotFxCloseP.screenshot || {}).slice(0, 200));
+  }
+  if ((shotFxCloseP.screenshot || {}).pretend_frame === true || (shotFxCloseP.screenshot || {}).pretend_live === true) {
+    throw new Error("pretend screenshot close");
+  }
+  require("fs").writeFileSync("/tmp/bitbot-mcp-screenshot-close.json", JSON.stringify({ ok: true, ...shotFxCloseP }, null, 2));
+  console.log("mcp_call screenshot residual close ok", shotFxCloseP.mapped, (shotFxCloseP.screenshot || {}).tool, (shotFxCloseP.screenshot || {}).screenshot_residual);
+  delete process.env.BITBOT_SCREENSHOT_FIXTURE;
+  if (savedDisplayClose !== undefined) process.env.DISPLAY = savedDisplayClose;
+  // 8) routine_schedule: BITBOT_ROUTINE_LONG_LIVED=1 closes long_lived_cron_residual
+  process.env.BITBOT_ROUTINE_LONG_LIVED = "1";
+  const routLlCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.routine_schedule|{\"id\":\"mcp-r-ll-close\",\"cron\":\"@daily\",\"prompt\":\"mcp routine residual close\"}" }]);
+  const routLlCloseH = routLlCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!routLlCloseH || !routLlCloseH.ok) throw new Error("routine_schedule residual close mcp");
+  const routLlCloseP = JSON.parse(routLlCloseH.stdout || "{}");
+  if (routLlCloseP.mapped !== "host_routine_schedule" || routLlCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(routLlCloseP).slice(0, 200));
+  }
+  if ((routLlCloseP.routine_schedule || {}).long_lived_cron_residual !== false) {
+    throw new Error("long_lived_cron_residual must close: " + JSON.stringify(routLlCloseP.routine_schedule || {}).slice(0, 240));
+  }
+  if ((routLlCloseP.routine_schedule || {}).stored !== true) {
+    throw new Error("routine stored close: " + JSON.stringify(routLlCloseP.routine_schedule || {}).slice(0, 200));
+  }
+  if ((routLlCloseP.routine_schedule || {}).pretend_scheduled === true) throw new Error("pretend_scheduled close");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-routine-close.json", JSON.stringify({ ok: true, ...routLlCloseP }, null, 2));
+  console.log("mcp_call routine_schedule residual close ok", routLlCloseP.mapped, (routLlCloseP.routine_schedule || {}).id, (routLlCloseP.routine_schedule || {}).long_lived_cron_residual);
+  delete process.env.BITBOT_ROUTINE_LONG_LIVED;
 })().catch((e)=>{console.error(e);process.exit(1);});
 '
 node hosts/cli_host/run_turn.js "create teammate id=asst-smoke name=Smoke role=executor" >/tmp/bitbot-teammate.json
