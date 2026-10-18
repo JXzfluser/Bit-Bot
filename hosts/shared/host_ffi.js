@@ -18,6 +18,44 @@ const execFileAsync = promisify(execFile);
 const SHELL_DENY =
   /\brm\s+-rf\s+\/|\bmkfs\b|\bdd\s+if=|:\(\)\s*\{|:;\s*\}|shutdown|reboot|fork\s*bomb/i;
 
+/** Durable Host marker line/comment appended when BITBOT_CODE_APPLY=1 mutates a target. */
+const BITBOT_HOST_APPLIED_TAG = "bitbot-host-applied";
+
+function hostCodeApplyMarkerLine(filePath, at) {
+  const ext = path.extname(String(filePath || "")).toLowerCase();
+  const body = `${BITBOT_HOST_APPLIED_TAG} at=${at}`;
+  if (
+    ext === ".md" ||
+    ext === ".html" ||
+    ext === ".htm" ||
+    ext === ".xml" ||
+    ext === ".svg"
+  ) {
+    return `<!-- ${body} -->\n`;
+  }
+  if (
+    ext === ".js" ||
+    ext === ".ts" ||
+    ext === ".mjs" ||
+    ext === ".cjs" ||
+    ext === ".jsx" ||
+    ext === ".tsx" ||
+    ext === ".java" ||
+    ext === ".go" ||
+    ext === ".c" ||
+    ext === ".cpp" ||
+    ext === ".h" ||
+    ext === ".mbt" ||
+    ext === ".rs" ||
+    ext === ".swift" ||
+    ext === ".kt"
+  ) {
+    return `// ${body}\n`;
+  }
+  // Shell, Python, YAML, TOML, and unknown text: `#` comment.
+  return `# ${body}\n`;
+}
+
 function createHostFfi(repoRoot) {
   const REPO_ROOT = path.resolve(repoRoot);
   const SESSION_MEMORY_PATH = path.join(
@@ -10796,21 +10834,32 @@ function createHostFfi(repoRoot) {
       } catch {
         gitDiffStat = "";
       }
-      // BITBOT_CODE_APPLY=1 applies a durable sidecar patch under repo; never auto-commits.
+      // BITBOT_CODE_APPLY=1: durable sidecar + mutate target with Host marker; never auto-commits.
       const allowApply =
         String(process.env.BITBOT_CODE_APPLY || "").trim() === "1";
       let applied = false;
       let appliedPath = null;
       let applyError = null;
+      let targetMutated = false;
       if (allowApply && exists && underRepo && fs.statSync(abs).isFile()) {
         try {
           appliedPath = abs + ".bitbot-applied.json";
+          const markerLine = hostCodeApplyMarkerLine(abs, at);
+          let body = fs.readFileSync(abs, "utf8");
+          if (!body.includes(BITBOT_HOST_APPLIED_TAG)) {
+            const needsNl = body.length > 0 && !body.endsWith("\n");
+            body = body + (needsNl ? "\n" : "") + markerLine;
+            fs.writeFileSync(abs, body);
+          }
+          targetMutated = body.includes(BITBOT_HOST_APPLIED_TAG);
           const marker = {
             target: abs,
             namespace: ns,
             applied: true,
             pretend_committed: false,
-            note: "Host applied durable sidecar — git commit still requires explicit source_control",
+            target_mutated: targetMutated,
+            marker: BITBOT_HOST_APPLIED_TAG,
+            note: "Host applied durable sidecar + target marker — git commit still requires explicit source_control",
             at,
           };
           fs.writeFileSync(appliedPath, JSON.stringify(marker, null, 2));
@@ -10818,6 +10867,7 @@ function createHostFfi(repoRoot) {
         } catch (err) {
           applyError = String((err && err.message) || err).slice(0, 200);
           applied = false;
+          targetMutated = false;
         }
       }
       const plan = {
@@ -10830,12 +10880,13 @@ function createHostFfi(repoRoot) {
         apply_gated: allowApply,
         applied_path: appliedPath,
         apply_error: applyError,
+        target_mutated: targetMutated,
         pretend_committed: false,
         code_apply_residual: !applied,
         git_diff_stat: gitDiffStat,
         note: applied
-          ? "Host code-changes applied sidecar — not auto-committed (CM-1810)"
-          : "Host code-changes plan — scoped edit not auto-committed (CM-1810); set BITBOT_CODE_APPLY=1 to apply sidecar",
+          ? "Host code-changes applied sidecar + target marker — not auto-committed (CM-1810)"
+          : "Host code-changes plan — scoped edit not auto-committed (CM-1810); set BITBOT_CODE_APPLY=1 to apply sidecar + target marker",
         at,
       };
       fs.writeFileSync(planPath, JSON.stringify(plan, null, 2));
