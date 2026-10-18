@@ -8434,6 +8434,13 @@ function createHostFfi(repoRoot) {
         blocked_on_signin: Boolean(
           parsed.outcome && parsed.outcome.blocked_on_signin,
         ),
+        // Nested CU residuals lifted for Desktop / STU chips (password stays deferred).
+        credential_browser_fill_residual: Boolean(
+          parsed.outcome && parsed.outcome.credential_browser_fill_residual,
+        ),
+        signin_fill_residual: Boolean(
+          parsed.outcome && parsed.outcome.signin_fill_residual,
+        ),
         pretend_purchased: false,
         gui_mode: (parsed.gui && parsed.gui.gui_mode) || "",
         os_window: Boolean(parsed.gui && parsed.gui.os_window),

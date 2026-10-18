@@ -833,6 +833,40 @@ BITBOT_CU_ALLOW_LOCAL=1 BITBOT_CU_LIVE_PAID=1 BITBOT_PURCHASE_API_URL=http://127
 kill "$CHECKOUT_PAID_PID" "$CHARGE_MOCK_PID" >/dev/null 2>&1 || true
 wait "$CHECKOUT_PAID_PID" "$CHARGE_MOCK_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-cu-paywall-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('has_payment') is True;assert oc.get('paid_checkout_attempted') is True;assert oc.get('live_paid_residual') is False;assert oc.get('pretend_purchased') is False;assert (oc.get('charge_probe') or {}).get('ok') is True;print('computer_use payment_wall live charge ok', oc.get('checkout_stage'), oc.get('charge_probe'))"
+echo "==> Host CU blocked_on_signin username CDP fill (closes credential_browser_fill_residual; password deferred)"
+mkdir -p data/credentials/fills
+python3 - <<'PY'
+import json, time
+from pathlib import Path
+plan = {
+  "fill_handle": "fill-cu-signin-smoke",
+  "domain": "127.0.0.1",
+  "username": "cu-smoke-user",
+  "secret_in_plan": False,
+  "navigate_url": "http://127.0.0.1:18766/",
+  "cdp_actions": [
+    "focus:input[type=email],input[name*=user],input[name*=email],input[type=text]",
+    "type_username:cu-smoke-user",
+    "password_fill:residual",
+  ],
+  "pretend_secret_view": False,
+  "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+}
+# Lexicographically newest under sorted(..., reverse=True)
+path = Path("data/credentials/fills/browser-plan-zzz-cu-signin-smoke.json")
+path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+print(path)
+PY
+python3 "$ROOT/scripts/host_cu_signin_fixture.py" --port 18766 >/tmp/bitbot-signin-fixture.log 2>&1 &
+SIGNIN_FIX_PID=$!
+sleep 0.4
+BITBOT_CU_ALLOW_LOCAL=1 node hosts/cli_host/run_turn.js "computer use open http://127.0.0.1:18766/ sign in login" >/tmp/bitbot-cu-signin.json || true
+kill "$SIGNIN_FIX_PID" >/dev/null 2>&1 || true
+wait "$SIGNIN_FIX_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cu-signin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};sf=oc.get('signin_fill') or {};assert oc.get('blocked_on_signin') is True;assert sf.get('username_planned') is True;assert sf.get('username_typed') is True;assert sf.get('password_filled') is False;assert sf.get('filled') is False;assert oc.get('credential_browser_fill_residual') is False;assert oc.get('signin_fill_residual') is True;assert 'vault:secret' not in json.dumps(oc).lower();print('computer_use blocked_on_signin username fill ok', sf.get('mode'), 'cred_residual', False, 'signin_residual', True)"
+# Mock path (no live CDP typing required) still closes username residual only.
+BITBOT_CU_ALLOW_LOCAL=1 BITBOT_CU_SIGNIN_USERNAME_MOCK=1 node hosts/cli_host/run_turn.js "computer use open http://127.0.0.1:18766/ sign in login" >/tmp/bitbot-cu-signin-mock.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-cu-signin-mock.json'));h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};sf=oc.get('signin_fill') or {};assert oc.get('blocked_on_signin') is True or sf.get('username_typed') is True;assert oc.get('credential_browser_fill_residual') is False;assert oc.get('signin_fill_residual') is True;assert sf.get('mode') in ('host_cu_signin_username_mock','host_cu_signin_username_cdp') or sf.get('username_typed') is True;print('computer_use signin username mock residual close ok', sf.get('mode'), 'signin_fill_residual', True)"
 node hosts/cli_host/run_turn.js "shop target.com headphones" >/tmp/bitbot-cu-vision.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-cu-vision.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');al=p.get('agent_loop') or {};assert 'vision' in al;oc=p.get('outcome') or {};assert 'vision_ok' in oc;v=al.get('vision') or {};dt=v.get('dom_targets');assert isinstance(dt,dict) or dt is None;print('computer_use vision planner host ok', 'vision_ok', oc.get('vision_ok'), 'blocked_on_signin', oc.get('blocked_on_signin'), 'hotspots', bool(v.get('hotspots')), 'dom_targets', isinstance(dt,dict), 'has_bbox', bool(dt and any(dt.values())))"
 BITBOT_OAUTH_MODE=live BITBOT_OAUTH_OPEN_BROWSER=1 BITBOT_OAUTH_CLIENT_ID=smoke-client node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-browser.json

@@ -2283,6 +2283,12 @@
                         : "") +
                       (oc.live_paid_residual === true
                         ? "/live_paid_residual"
+                        : "") +
+                      (oc.credential_browser_fill_residual === true
+                        ? "/credential_browser_fill_residual"
+                        : "") +
+                      (oc.signin_fill_residual === true
+                        ? "/signin_fill_residual"
                         : "");
                     types.push("attachment");
                     const cuMeta = document.getElementById("cu-meta");
@@ -2302,6 +2308,12 @@
                             : "") +
                         (oc.live_paid_residual === true
                           ? " · live_paid_residual"
+                          : "") +
+                        (oc.credential_browser_fill_residual === true
+                          ? " · credential_browser_fill_residual"
+                          : "") +
+                        (oc.signin_fill_residual === true
+                          ? " · signin_fill_residual"
                           : "") +
                         (oc.pretend_purchased === true ? " · pretend!" : "");
                     }

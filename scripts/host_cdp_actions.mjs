@@ -141,10 +141,43 @@ async function main() {
           clickCount: 1,
         });
         results.push({ step, ok: true, kind: "click", x, y });
-      } else if (k === "type" || k === "type_text") {
+      } else if (k === "type" || k === "type_text" || k === "type_username") {
         const text = rest;
         await client.send("Input.insertText", { text });
-        results.push({ step, ok: true, kind: "type", chars: text.length });
+        results.push({
+          step,
+          ok: true,
+          kind: k === "type_username" ? "type_username" : "type",
+          chars: text.length,
+        });
+      } else if (k === "focus") {
+        // Comma-separated CSS selectors; first match wins (Host browser-plan).
+        const expr = `(() => {
+          const sels = ${JSON.stringify(String(rest || ""))}
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          for (const sel of sels) {
+            const el = document.querySelector(sel);
+            if (el) {
+              try { el.focus(); } catch (_) {}
+              try { el.click(); } catch (_) {}
+              return sel;
+            }
+          }
+          return null;
+        })()`;
+        const r = await client.send("Runtime.evaluate", {
+          expression: expr,
+          returnByValue: true,
+        });
+        const focused = r && r.result ? r.result.value : null;
+        results.push({
+          step,
+          ok: Boolean(focused),
+          kind: "focus",
+          focused,
+        });
       } else if (k === "scroll") {
         const [dxs, dys] = rest.split(",");
         const deltaX = Number(dxs || 0);

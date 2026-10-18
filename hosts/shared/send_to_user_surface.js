@@ -107,6 +107,16 @@ function residualSuffix(p) {
     !parts.includes("/os_window_automation_residual")
   )
     parts.push("/os_window_automation_residual");
+  if (
+    oc.credential_browser_fill_residual === true &&
+    !parts.includes("/credential_browser_fill_residual")
+  )
+    parts.push("/credential_browser_fill_residual");
+  if (
+    oc.signin_fill_residual === true &&
+    !parts.includes("/signin_fill_residual")
+  )
+    parts.push("/signin_fill_residual");
   const g = p.gui || {};
   if (
     g.os_window_automation_residual === true &&

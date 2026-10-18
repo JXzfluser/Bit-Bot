@@ -365,7 +365,7 @@ def plan_vision_actions(
             ["click:550,120", f"type:{query}", "evaluate:document.title"]
         )
     elif blocked_signin:
-        # Honest stop: do not attempt credential entry; re-observe only.
+        # Honest stop on password; username fill is Host browser-plan CDP (elsewhere).
         steps.append("evaluate:document.title")
     elif targets.get("checkout") and (
         "checkout" in low or "shop" in low or dom.get("has_checkout")
@@ -674,6 +674,149 @@ def run_cdp_actions(port: int, actions: str, repo_root: Path) -> Dict[str, Any]:
         return {"ok": False, "error": str(e)}
 
 
+def latest_browser_plan(repo_root: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
+    """Newest Host credential browser-plan (username-only; never secrets)."""
+    fills_dir = repo_root / "data" / "credentials" / "fills"
+    if not fills_dir.is_dir():
+        return None, {}
+    plans = sorted(fills_dir.glob("browser-plan-*.json"), reverse=True)
+    if not plans:
+        return None, {}
+    try:
+        return plans[0], json.loads(plans[0].read_text(encoding="utf-8"))
+    except Exception:
+        return plans[0], {}
+
+
+def username_cdp_actions_from_plan(plan: Dict[str, Any]) -> List[str]:
+    """Username-only CDP steps from Host browser-plan (password stays deferred)."""
+    username = str(plan.get("username") or "").strip()
+    if not username:
+        return []
+    steps: List[str] = []
+    raw = plan.get("cdp_actions") if isinstance(plan.get("cdp_actions"), list) else []
+    for a in raw:
+        s = str(a or "").strip()
+        if not s:
+            continue
+        low = s.lower()
+        # Never navigate away from the sign-in wall; never touch password.
+        if low.startswith("navigate:") or low.startswith("password_fill"):
+            continue
+        if low.startswith("focus:") or low.startswith("type_username:"):
+            steps.append(s)
+        elif low.startswith("type:") or low.startswith("type_text:"):
+            steps.append(s)
+    if not steps:
+        steps = [
+            "focus:input[type=email],input[name*=user],input[name*=email],input[type=text]",
+            f"type_username:{username}",
+        ]
+    return steps
+
+
+def try_signin_username_fill(
+    *,
+    port: Optional[int],
+    repo_root: Path,
+    artifact_dir: Path,
+) -> Dict[str, Any]:
+    """CDP or mock-type username from latest browser-plan. Password never filled."""
+    plan_path, plan = latest_browser_plan(repo_root)
+    out: Dict[str, Any] = {
+        "requested": True,
+        "plan_path": str(plan_path) if plan_path else None,
+        "username_planned": bool(str(plan.get("username") or "").strip()),
+        "username_typed": False,
+        "password_filled": False,
+        "filled": False,  # full sign-in (incl. password) — always residual
+        "mode": None,
+        "ok": False,
+        "cdp": None,
+        "evidence": None,
+    }
+    username = str(plan.get("username") or "").strip()
+    if not username:
+        return out
+
+    force_mock = os.environ.get("BITBOT_CU_SIGNIN_USERNAME_MOCK", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+    def _stamp_mock() -> Dict[str, Any]:
+        evidence = artifact_dir / "signin_username_fill_mock.json"
+        evidence.write_text(
+            json.dumps(
+                {
+                    "username_typed": True,
+                    "password_filled": False,
+                    "pretend_secret_view": False,
+                    "mode": "host_cu_signin_username_mock",
+                    "plan_path": out["plan_path"],
+                    "username": username,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        out["username_typed"] = True
+        out["ok"] = True
+        out["mode"] = "host_cu_signin_username_mock"
+        out["evidence"] = str(evidence)
+        return out
+
+    if force_mock:
+        return _stamp_mock()
+
+    if not port:
+        # No live CDP — mock only when explicitly requested (handled above).
+        out["error"] = "no_cdp_port"
+        return out
+
+    actions = username_cdp_actions_from_plan(plan)
+    cdp_result = (
+        run_cdp_actions(port, "|".join(actions), repo_root)
+        if actions
+        else {"ok": False, "error": "no username cdp actions"}
+    )
+    typed = False
+    for a in cdp_result.get("actions") or []:
+        if not isinstance(a, dict) or not a.get("ok"):
+            continue
+        if a.get("kind") in ("type_username", "type"):
+            typed = True
+    out["cdp"] = {
+        "ok": bool(cdp_result.get("ok")),
+        "actions": cdp_result.get("actions"),
+        "error": cdp_result.get("error"),
+    }
+    if typed:
+        out["username_typed"] = True
+        out["ok"] = True
+        out["mode"] = "host_cu_signin_username_cdp"
+        evidence = artifact_dir / "signin_username_fill.json"
+        evidence.write_text(
+            json.dumps(
+                {
+                    "username_typed": True,
+                    "password_filled": False,
+                    "pretend_secret_view": False,
+                    "mode": out["mode"],
+                    "plan_path": out["plan_path"],
+                    "cdp": out["cdp"],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        out["evidence"] = str(evidence)
+    return out
+
+
 def run_chrome_session(
     chrome: str,
     url: str,
@@ -801,14 +944,25 @@ def run_chrome_session(
         if cmd_path.exists():
             command_hint = cmd_path.read_text(encoding="utf-8")
         vision_steps = plan_vision_actions(command_hint, observe_dom, vision)
+        blocked_on_signin = bool(observe_dom.get("has_signin")) and not observe_dom.get(
+            "has_results"
+        )
         vision_plan = {
             "ok": bool(vision.get("ok") or observe_dom),
             "dom": observe_dom,
             "vision": vision,
             "steps": vision_steps,
-            "blocked_on_signin": bool(observe_dom.get("has_signin"))
-            and not observe_dom.get("has_results"),
+            "blocked_on_signin": blocked_on_signin,
         }
+        # CM-0803 × CM-2129: username CDP from Host browser-plan (password deferred).
+        signin_fill_live: Dict[str, Any] = {}
+        if blocked_on_signin:
+            signin_fill_live = try_signin_username_fill(
+                port=port,
+                repo_root=repo_root,
+                artifact_dir=artifact_dir,
+            )
+            vision_plan["signin_fill"] = signin_fill_live
         if vision_steps:
             vision_actions = run_cdp_actions(port, "|".join(vision_steps), repo_root)
         # Re-observe screenshot after vision act.
@@ -1090,28 +1244,50 @@ def main() -> int:
     checkout_stage = vertical_stage if is_shop else (
         "n/a" if playbook == "generic" else vertical_stage
     )
-    # CM-0803 × CM-2129: on sign-in wall, look for Host credential browser-plan
-    # (username-only). Never type secrets from CU command string.
+    # CM-0803 × CM-2129: on sign-in wall, username from Host browser-plan
+    # (CDP/mock during chrome session). Never type secrets / OS password.
     signin_fill: Dict[str, Any] = {
         "requested": False,
         "plan_path": None,
         "username_planned": False,
+        "username_typed": False,
+        "password_filled": False,
         "filled": False,
+        "ok": False,
+        "mode": None,
     }
+    live_fill = None
+    if isinstance(vision_plan.get("signin_fill"), dict):
+        live_fill = vision_plan.get("signin_fill")
+    elif isinstance(gui.get("signin_fill"), dict):
+        live_fill = gui.get("signin_fill")
     if blocked_signin:
         signin_fill["requested"] = True
-        fills_dir = repo_root / "data" / "credentials" / "fills"
-        if fills_dir.is_dir():
-            plans = sorted(fills_dir.glob("browser-plan-*.json"), reverse=True)
-            if plans:
-                try:
-                    plan = json.loads(plans[0].read_text(encoding="utf-8"))
-                    signin_fill["plan_path"] = str(plans[0])
-                    signin_fill["username_planned"] = bool(plan.get("username"))
-                    # Password fill stays residual (no secret in plan).
-                    signin_fill["filled"] = False
-                except Exception:
-                    pass
+        if live_fill:
+            signin_fill.update(live_fill)
+            # Password / full fill always deferred (OS secret provider).
+            signin_fill["password_filled"] = False
+            signin_fill["filled"] = False
+        else:
+            # Chrome session missed fill (e.g. fallback) — still resolve plan + optional mock.
+            fill_attempt = try_signin_username_fill(
+                port=None,
+                repo_root=repo_root,
+                artifact_dir=artifact_dir,
+            )
+            signin_fill.update(fill_attempt)
+            signin_fill["password_filled"] = False
+            signin_fill["filled"] = False
+            if not signin_fill.get("plan_path"):
+                plan_path, plan = latest_browser_plan(repo_root)
+                signin_fill["plan_path"] = str(plan_path) if plan_path else None
+                signin_fill["username_planned"] = bool(
+                    str(plan.get("username") or "").strip()
+                )
+    # Username typed closes credential_browser_fill_residual; password stays open.
+    credential_browser_fill_residual = bool(
+        blocked_signin and not signin_fill.get("username_typed")
+    )
     signin_fill_residual = bool(blocked_signin and not signin_fill.get("filled"))
     outcome = {
         "agent_id": f"cu-host-{artifact_dir.name}",
@@ -1128,6 +1304,7 @@ def main() -> int:
         "live_paid_residual": live_paid_residual,
         "charge_probe": charge_probe or None,
         "signin_fill": signin_fill,
+        "credential_browser_fill_residual": credential_browser_fill_residual,
         "signin_fill_residual": signin_fill_residual,
         "navigate_reachable": bool(navigate.get("navigate_reachable")),
         "os_window": bool(gui.get("os_window")),
