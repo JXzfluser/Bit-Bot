@@ -7347,6 +7347,19 @@ function createHostFfi(repoRoot) {
         rename_agent: "host_agent_info_panel",
         pin_agent: "host_list_agents_sidebar",
         unpin_agent: "host_list_agents_sidebar",
+        section_add: "host_section_add",
+        add_section: "host_section_add",
+        section_post: "host_section_post",
+        post_section: "host_section_post",
+        archive_mail: "host_mail_read",
+        mark_read: "host_mail_read",
+        mark_unread: "host_mail_read",
+        star_mail: "host_mail_read",
+        feedback: "host_guide_permission",
+        bug_report: "host_box_doctor",
+        about: "host_check_updates",
+        version: "host_check_updates",
+        status: "host_box_doctor",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7519,6 +7532,8 @@ function createHostFfi(repoRoot) {
         mapped === "host_settings_open" ||
         mapped === "host_delete_agent" ||
         mapped === "host_agent_info_panel" ||
+        mapped === "host_section_add" ||
+        mapped === "host_section_post" ||
         mapped === "host_todo_write"
       ) {
         const shortAt = new Date().toISOString();
@@ -11685,6 +11700,49 @@ function createHostFfi(repoRoot) {
                 pretend_complete: p.pretend_complete,
                 item_count: p.item_count,
                 done_count: p.done_count,
+              }),
+            },
+            host_section_add: {
+              kind: "section_add",
+              field: "section_add",
+              cmd: () =>
+                String(args.command || "").trim() ||
+                [
+                  String(args.group_id || args.group || "g-mcp").trim() || "g-mcp",
+                  String(args.section_id || args.section || args.id || "sec-mcp")
+                    .trim() || "sec-mcp",
+                  String(args.title || args.name || args.body || "MCP section")
+                    .trim() || "MCP section",
+                ].join("|"),
+              pick: (p) => ({
+                path: p.path || null,
+                group_path: p.group_path || null,
+                mode: p.mode || null,
+                pretend_shared: p.pretend_shared,
+                section_count: p.section_count,
+                existing: p.existing,
+              }),
+            },
+            host_section_post: {
+              kind: "section_post",
+              field: "section_post",
+              cmd: () =>
+                String(args.command || "").trim() ||
+                [
+                  String(args.group_id || args.group || "g-mcp").trim() || "g-mcp",
+                  String(args.section_id || args.section || args.id || "sec-mcp")
+                    .trim() || "sec-mcp",
+                  String(args.from || args.agent_id || args.agent || "asst-mcp")
+                    .trim() || "asst-mcp",
+                  String(args.body || args.text || args.content || "mcp-post")
+                    .trim() || "mcp-post",
+                ].join("|"),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_shared: p.pretend_shared,
+                group_id: p.group_id || null,
+                section_id: p.section_id || null,
               }),
             },
           };

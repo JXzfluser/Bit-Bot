@@ -1412,6 +1412,10 @@ function stripHostAppliedMarker(file) {
     ["open_chat", "host_channel_send", "channel_send"],
     ["agent_info", "host_agent_info_panel", "agent_info_panel"],
     ["pin_agent", "host_list_agents_sidebar", "list_agents_sidebar"],
+    ["section_add", "host_section_add", "section_add"],
+    ["section_post", "host_section_post", "section_post"],
+    ["archive_mail", "host_mail_read", "mail_read"],
+    ["bug_report", "host_box_doctor", "box_doctor"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1474,7 +1478,18 @@ function stripHostAppliedMarker(file) {
                                                       : tool === "pin_agent" ||
                                                           tool === "unpin_agent"
                                                         ? '{"agent_id":"asst-mcp-pin"}'
-                                                        : "{}";
+                                                        : tool === "section_add" ||
+                                                            tool === "add_section"
+                                                          ? '{"group_id":"g-mcp","section_id":"sec-mcp","title":"MCP Sec"}'
+                                                          : tool === "section_post" ||
+                                                              tool === "post_section"
+                                                            ? '{"group_id":"g-mcp","section_id":"sec-mcp","from":"asst-mcp","body":"hello-section"}'
+                                                            : tool === "archive_mail" ||
+                                                                tool === "mark_read"
+                                                              ? '{"thread_id":"t-archive-1"}'
+                                                              : tool === "bug_report"
+                                                                ? '{}'
+                                                                : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);
