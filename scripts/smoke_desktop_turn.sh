@@ -1161,7 +1161,7 @@ node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
 node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
-# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + media (Host FFI; MoonBit catalog may lack names)
+# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + workflows/cold/identity + code/pr + media (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");
 const { spawn } = require("child_process");
@@ -1391,6 +1391,74 @@ function startMock(port, mode, token) {
   if (sprp.mapped !== "host_source_control" || sprp.product_tool_residual !== false) throw new Error(JSON.stringify(sprp).slice(0,200));
   if ((sprp.source_control||{}).pretend_remote_pr === true) throw new Error("pretend_remote_pr slash");
   console.log("mcp_call source_control/create_pr short-circuit ok", sprp.mapped, (sprp.source_control||{}).remote_pr_residual);
+  // list_workflows / cold_mail / send_on_behalf / identity_browser product short-circuit
+  const wfs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.list_workflows|{\"names\":[\"mcp-wf-a\",\"mcp-wf-b\"]}" }]);
+  const wfh = wfs.find((r) => r && r.kind === "mcp_call");
+  if (!wfh || !wfh.ok) throw new Error("list_workflows mcp");
+  const wfp = JSON.parse(wfh.stdout || "{}");
+  if (wfp.mapped !== "host_workflow_list" || wfp.product_tool_residual !== false) throw new Error(JSON.stringify(wfp).slice(0,200));
+  if ((wfp.workflow_list||{}).pretend_shared === true) throw new Error("pretend_shared");
+  if (!(wfp.workflow_list||{}).path || !(wfp.workflow_list||{}).catalog_path) throw new Error("workflow_list payload: " + JSON.stringify(wfp).slice(0,200));
+  if (!((wfp.workflow_list||{}).count >= 1)) throw new Error("workflow count: " + JSON.stringify(wfp.workflow_list||{}).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-list-workflows.json", JSON.stringify({ ok: true, ...wfp }, null, 2));
+  console.log("mcp_call list_workflows short-circuit ok", wfp.mapped, (wfp.workflow_list||{}).mode, (wfp.workflow_list||{}).count);
+  const wfAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.user_workflows|{\"name\":\"mcp-alias-wf\"}" }]);
+  const wfah = wfAlias.find((r) => r && r.kind === "mcp_call");
+  const wfap = JSON.parse((wfah && wfah.stdout) || "{}");
+  if (wfap.mapped !== "host_workflow_list" || wfap.product_tool_residual !== false) throw new Error(JSON.stringify(wfap).slice(0,200));
+  console.log("mcp_call user_workflows alias short-circuit ok", wfap.mapped, (wfap.workflow_list||{}).count);
+  const wfSlash = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.workflows_list|{\"workflows\":\"mcp-slash-a,mcp-slash-b\"}" }]);
+  const wfsh = wfSlash.find((r) => r && r.kind === "mcp_call");
+  const wfsp = JSON.parse((wfsh && wfsh.stdout) || "{}");
+  if (wfsp.mapped !== "host_workflow_list" || wfsp.product_tool_residual !== false) throw new Error(JSON.stringify(wfsp).slice(0,200));
+  console.log("mcp_call workflows_list alias short-circuit ok", wfsp.mapped, (wfsp.workflow_list||{}).count);
+  delete process.env.BITBOT_MAIL_SEND;
+  delete process.env.BITBOT_COLD_MAIL_API_URL;
+  delete process.env.BITBOT_COLD_MAIL_TOKEN;
+  delete process.env.BITBOT_ONBEHALF_MAIL_API_URL;
+  delete process.env.BITBOT_ONBEHALF_MAIL_TOKEN;
+  const colds = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.cold_mail|{\"to\":\"mcp-cold@example.com\",\"subject\":\"MCP Cold\",\"body\":\"hello cold\",\"unsubscribe\":\"mailto:u@example.com\"}" }]);
+  const coldh = colds.find((r) => r && r.kind === "mcp_call");
+  if (!coldh || !coldh.ok) throw new Error("cold_mail mcp");
+  const coldp = JSON.parse(coldh.stdout || "{}");
+  if (coldp.mapped !== "host_mail_send" || coldp.product_tool_residual !== false) throw new Error(JSON.stringify(coldp).slice(0,200));
+  if ((coldp.mail_send||{}).provider !== "cold") throw new Error("cold provider: " + JSON.stringify(coldp.mail_send||{}).slice(0,200));
+  if ((coldp.mail_send||{}).pretend_sent === true) throw new Error("pretend_sent cold");
+  if ((coldp.mail_send||{}).live_mail_residual !== true) throw new Error("live_mail_residual must stay gated: " + JSON.stringify(coldp.mail_send||{}).slice(0,200));
+  if (!(coldp.mail_send||{}).eml_path && !(coldp.mail_send||{}).path) throw new Error("cold_mail payload: " + JSON.stringify(coldp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-cold-mail.json", JSON.stringify({ ok: true, ...coldp }, null, 2));
+  console.log("mcp_call cold_mail short-circuit ok", coldp.mapped, (coldp.mail_send||{}).mode, (coldp.mail_send||{}).live_mail_residual);
+  const sobs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.send_on_behalf|{\"to\":\"mcp-sob@example.com\",\"subject\":\"MCP SOB\",\"body\":\"hello sob\"}" }]);
+  const sobh = sobs.find((r) => r && r.kind === "mcp_call");
+  if (!sobh || !sobh.ok) throw new Error("send_on_behalf mcp");
+  const sobp = JSON.parse(sobh.stdout || "{}");
+  if (sobp.mapped !== "host_mail_send" || sobp.product_tool_residual !== false) throw new Error(JSON.stringify(sobp).slice(0,200));
+  if ((sobp.mail_send||{}).provider !== "onbehalf") throw new Error("onbehalf provider: " + JSON.stringify(sobp.mail_send||{}).slice(0,200));
+  if ((sobp.mail_send||{}).pretend_sent === true) throw new Error("pretend_sent sob");
+  if ((sobp.mail_send||{}).live_mail_residual !== true) throw new Error("live_mail_residual must stay gated sob: " + JSON.stringify(sobp.mail_send||{}).slice(0,200));
+  if (!(sobp.mail_send||{}).eml_path && !(sobp.mail_send||{}).path) throw new Error("send_on_behalf payload: " + JSON.stringify(sobp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-send-on-behalf.json", JSON.stringify({ ok: true, ...sobp }, null, 2));
+  console.log("mcp_call send_on_behalf short-circuit ok", sobp.mapped, (sobp.mail_send||{}).mode, (sobp.mail_send||{}).live_mail_residual);
+  const ids = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.identity_browser|{}" }]);
+  const idh = ids.find((r) => r && r.kind === "mcp_call");
+  if (!idh || !idh.ok) throw new Error("identity_browser mcp");
+  const idp = JSON.parse(idh.stdout || "{}");
+  if (idp.mapped !== "host_identity_browser" || idp.product_tool_residual !== false) throw new Error(JSON.stringify(idp).slice(0,200));
+  if ((idp.identity_browser||{}).connected === true) throw new Error("never pretend Connected");
+  if ((idp.identity_browser||{}).pretend_connected_slack === true) throw new Error("pretend_connected_slack");
+  if ((idp.identity_browser||{}).connector !== "identity-browser") throw new Error("connector: " + JSON.stringify(idp.identity_browser||{}).slice(0,200));
+  if ((idp.identity_browser||{}).mode !== "identity_browser_switch") throw new Error("mode: " + JSON.stringify(idp.identity_browser||{}).slice(0,200));
+  if (!(idp.identity_browser||{}).session_path || !(idp.identity_browser||{}).user_data_dir) throw new Error("identity payload: " + JSON.stringify(idp).slice(0,200));
+  if ((idp.identity_browser||{}).switched !== true) throw new Error("switched: " + JSON.stringify(idp.identity_browser||{}).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-identity-browser.json", JSON.stringify({ ok: true, ...idp }, null, 2));
+  console.log("mcp_call identity_browser short-circuit ok", idp.mapped, (idp.identity_browser||{}).mode, (idp.identity_browser||{}).connected);
+  const idAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.switch_identity_browser|{}" }]);
+  const idah = idAlias.find((r) => r && r.kind === "mcp_call");
+  const idap = JSON.parse((idah && idah.stdout) || "{}");
+  if (idap.mapped !== "host_identity_browser" || idap.product_tool_residual !== false) throw new Error(JSON.stringify(idap).slice(0,200));
+  if ((idap.identity_browser||{}).connected === true) throw new Error("never pretend Connected alias");
+  if ((idap.identity_browser||{}).pretend_connected_slack === true) throw new Error("pretend_connected_slack alias");
+  console.log("mcp_call switch_identity_browser alias short-circuit ok", idap.mapped, (idap.identity_browser||{}).connected);
   // Media product short-circuit → executeMediaProductEffect (generate_image/video/watch/chart)
   const imgs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.generate_image|{\"prompt\":\"MCP aurora smoke\"}" }]);
   const ih = imgs.find((r) => r && r.kind === "mcp_call");

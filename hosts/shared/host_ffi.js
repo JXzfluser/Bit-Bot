@@ -6951,6 +6951,13 @@ function createHostFfi(repoRoot) {
         "code_changes/apply_patch": "host_code_changes",
         create_pr: "host_source_control",
         "source_control/create_pr": "host_source_control",
+        list_workflows: "host_workflow_list",
+        user_workflows: "host_workflow_list",
+        workflows_list: "host_workflow_list",
+        cold_mail: "host_mail_send",
+        send_on_behalf: "host_mail_send",
+        identity_browser: "host_identity_browser",
+        switch_identity_browser: "host_identity_browser",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7023,7 +7030,7 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/media onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/media onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
@@ -7038,6 +7045,8 @@ function createHostFfi(repoRoot) {
         mapped === "host_purchase" ||
         mapped === "host_code_changes" ||
         mapped === "host_source_control" ||
+        mapped === "host_workflow_list" ||
+        mapped === "host_identity_browser" ||
         mapped === "host_generate_image" ||
         mapped === "host_generate_video" ||
         mapped === "host_watch_video" ||
@@ -7090,11 +7099,23 @@ function createHostFfi(repoRoot) {
           });
         }
         if (mapped === "host_mail_send") {
-          const provider = String(
+          // cold_mail / send_on_behalf force provider; live_mail_residual stays gated.
+          let provider = String(
             args.provider || args.account || "gmail",
           )
             .trim()
             .toLowerCase() || "gmail";
+          if (
+            toolName === "cold_mail" ||
+            /^cold[_-]?mail$/i.test(toolName)
+          ) {
+            provider = "cold";
+          } else if (
+            toolName === "send_on_behalf" ||
+            /^send[_-]?on[_-]?behalf$/i.test(toolName)
+          ) {
+            provider = "onbehalf";
+          }
           const to = String(args.to || args.recipient || args.email || "").trim();
           const subject = String(
             args.subject || args.title || "(no subject)",
@@ -7102,7 +7123,22 @@ function createHostFfi(repoRoot) {
           const body = String(
             args.body || args.text || args.content || args.message || "",
           ).trim();
-          const sendCmd = [provider, to, subject, body].join("|");
+          const unsubscribe = String(
+            args.unsubscribe ||
+              args.list_unsubscribe ||
+              args.unsub ||
+              "",
+          ).trim();
+          const sendCmd =
+            provider === "cold"
+              ? [
+                  provider,
+                  to,
+                  subject,
+                  body,
+                  unsubscribe || "mailto:unsub@example.com",
+                ].join("|")
+              : [provider, to, subject, body].join("|");
           const sendResults = await executeHostEffects([
             { kind: "mail_send", command: sendCmd },
           ]);
@@ -7123,6 +7159,7 @@ function createHostFfi(repoRoot) {
               path: sendPayload.path || null,
               eml_path: sendPayload.eml_path || null,
               mode: sendPayload.mode || null,
+              provider: sendPayload.provider || provider,
               sent: sendPayload.sent,
               pretend_sent: sendPayload.pretend_sent,
               live_mail_residual: sendPayload.live_mail_residual,
@@ -7690,6 +7727,137 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(scHit && scHit.ok),
             source_control: scPayload,
+          });
+        }
+        if (mapped === "host_workflow_list") {
+          // Product list_workflows → Host workflow_list catalog (CM-2118).
+          let names = [];
+          if (Array.isArray(args.workflows)) {
+            names = args.workflows.map((n) => String(n || "").trim()).filter(Boolean);
+          } else if (Array.isArray(args.names)) {
+            names = args.names.map((n) => String(n || "").trim()).filter(Boolean);
+          } else if (typeof args.workflows === "string" && args.workflows.trim()) {
+            names = args.workflows.split(",").map((s) => s.trim()).filter(Boolean);
+          } else if (typeof args.names === "string" && args.names.trim()) {
+            names = args.names.split(",").map((s) => s.trim()).filter(Boolean);
+          } else {
+            const single = String(
+              args.name || args.workflow || args.q || args.query || args.body || "",
+            ).trim();
+            if (single) {
+              names = single.includes(",")
+                ? single.split(",").map((s) => s.trim()).filter(Boolean)
+                : [single];
+            }
+          }
+          if (names.length === 0) {
+            names = ["mcp-private-example"];
+          }
+          const wfCmd = names.join(",");
+          const wfResults = await executeHostEffects([
+            { kind: "workflow_list", command: wfCmd },
+          ]);
+          const wfHit = (wfResults || []).find(
+            (r) => r && r.kind === "workflow_list",
+          );
+          let wfPayload = {};
+          try {
+            wfPayload = JSON.parse((wfHit && wfHit.stdout) || "{}");
+          } catch {
+            wfPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "workflow_list",
+              workflow_list: {
+                path: wfPayload.path || null,
+                catalog_path: wfPayload.catalog_path || null,
+                count: wfPayload.count,
+                mode: wfPayload.mode || null,
+                pretend_shared: wfPayload.pretend_shared,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(wfHit && wfHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(wfHit && wfHit.ok),
+            workflow_list: wfPayload,
+          });
+        }
+        if (mapped === "host_identity_browser") {
+          // Product identity_browser → existing oauth identity-browser path.
+          // Never pretend Connected / Slack Connected (CM-2146).
+          const idCmd = String(
+            args.command ||
+              args.connector ||
+              args.identity ||
+              "identity-browser|user-browser",
+          ).trim() || "identity-browser|user-browser";
+          const oauthCmd = /identity|browser/i.test(idCmd)
+            ? idCmd
+            : "identity-browser|user-browser";
+          const idResults = await executeHostEffects([
+            { kind: "oauth", command: oauthCmd },
+          ]);
+          const idHit = (idResults || []).find(
+            (r) => r && r.kind === "oauth",
+          );
+          let idPayload = {};
+          try {
+            idPayload = JSON.parse((idHit && idHit.stdout) || "{}");
+          } catch {
+            idPayload = {};
+          }
+          // Honesty: never surface Connected from this product short-circuit.
+          const connected = false;
+          const pretendConnected = false;
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "oauth",
+              identity_browser: {
+                connector: idPayload.connector || "identity-browser",
+                mode: idPayload.mode || "identity_browser_switch",
+                status: idPayload.status || null,
+                connected,
+                pretend_connected_slack: pretendConnected,
+                switched: idPayload.switched,
+                session_path: idPayload.session_path || null,
+                user_data_dir: idPayload.user_data_dir || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(idHit && idHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(idHit && idHit.ok),
+            identity_browser: {
+              ...idPayload,
+              connected,
+              pretend_connected_slack: pretendConnected,
+            },
           });
         }
 
