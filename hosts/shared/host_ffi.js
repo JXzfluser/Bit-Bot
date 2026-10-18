@@ -3548,6 +3548,164 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  function parseMarkdownMathAndMermaid(text) {
+    // CM-2103 Host parser — mirrors ui_protocol kernel contract shape.
+    const src = String(text || "");
+    const mathSpans = [];
+    const mermaidFences = [];
+    let i = 0;
+    // Inline \( ... \)
+    const inlineRe = /\\\(([\s\S]+?)\\\)/g;
+    let m;
+    while ((m = inlineRe.exec(src))) {
+      mathSpans.push({
+        kind: "inline_paren",
+        body: m[1],
+        start: m.index,
+        end: m.index + m[0].length,
+      });
+    }
+    // Display $$ ... $$
+    const displayRe = /\$\$([\s\S]+?)\$\$/g;
+    while ((m = displayRe.exec(src))) {
+      mathSpans.push({
+        kind: "display_dollar",
+        body: m[1].trim(),
+        start: m.index,
+        end: m.index + m[0].length,
+      });
+    }
+    // Unclosed inline → error
+    if (/\\\((?:(?!\\\)).)*$/s.test(src) && !/\\\([\s\S]+?\\\)/.test(src)) {
+      // crude: if open without close
+    }
+    const openCount = (src.match(/\\\(/g) || []).length;
+    const closeCount = (src.match(/\\\)/g) || []).length;
+    if (openCount > closeCount) {
+      return { error: "unclosed inline math", mathSpans: [], mermaidFences: [] };
+    }
+    const fenceRe = /```mermaid\s*([\s\S]*?)```/gi;
+    while ((m = fenceRe.exec(src))) {
+      mermaidFences.push({ body: m[1].trim(), start: m.index });
+    }
+    return {
+      error: null,
+      mathSpans,
+      mermaidFences,
+      has_inline_math: mathSpans.some((s) => s.kind === "inline_paren"),
+      has_display_math: mathSpans.some((s) => s.kind === "display_dollar"),
+      has_mermaid: mermaidFences.length > 0,
+    };
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  async function executeRenderMarkdown(command) {
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "delivery", "markdown-render");
+    fs.mkdirSync(dir, { recursive: true });
+    const body = String(command || "");
+    const parsed = parseMarkdownMathAndMermaid(body);
+    if (parsed.error) {
+      const snapPath = path.join(
+        dir,
+        `markdown-err-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_render_markdown",
+        ok: false,
+        refused: true,
+        pretend_rendered: false,
+        error: parsed.error,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("render_markdown", body.slice(0, 120), {
+        ...artifact,
+        path: snapPath,
+      });
+    }
+
+    const id = Date.now().toString(36);
+    const htmlPath = path.join(dir, `render-${id}.html`);
+    let html =
+      '<!DOCTYPE html><html><head><meta charset="utf-8"/><title>CM-2103</title>' +
+      "<style>" +
+      "body{font:15px/1.5 IBM Plex Sans,sans-serif;background:#0c1210;color:#e7f0ea;padding:16px}" +
+      ".math-inline{font-family:IBM Plex Serif,Georgia,serif;color:#b7e0c8;padding:0 2px}" +
+      ".math-display{display:block;margin:12px 0;padding:12px;border:1px solid #2a3d34;border-radius:8px;background:#101a15;font-family:IBM Plex Serif,Georgia,serif;text-align:center}" +
+      ".mermaid{margin:12px 0;padding:12px;border:1px dashed #3d6b52;border-radius:8px;background:#0e1612;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:#b7e0c8}" +
+      "</style></head><body>\n";
+    // Build a simple annotated view from spans.
+    html += "<p>Source preview (math/mermaid extracted):</p>\n";
+    for (const s of parsed.mathSpans) {
+      if (s.kind === "inline_paren") {
+        html +=
+          '<span class="math-inline" data-kind="inline">\\(' +
+          escapeHtml(s.body) +
+          "\\)</span>\n";
+      } else {
+        html +=
+          '<div class="math-display" data-kind="display">$$' +
+          escapeHtml(s.body) +
+          "$$</div>\n";
+      }
+    }
+    for (const f of parsed.mermaidFences) {
+      html +=
+        '<pre class="mermaid" data-kind="mermaid">' +
+        escapeHtml(f.body) +
+        "</pre>\n";
+    }
+    html += "</body></html>\n";
+    fs.writeFileSync(htmlPath, html);
+
+    const snapPath = path.join(dir, `render-${id}.json`);
+    const artifact = {
+      mode: "host_render_markdown",
+      pretend_rendered: false,
+      has_inline_math: parsed.has_inline_math,
+      has_display_math: parsed.has_display_math,
+      has_mermaid: parsed.has_mermaid,
+      math_spans: parsed.mathSpans,
+      mermaid_fences: parsed.mermaidFences,
+      math_count: parsed.mathSpans.length,
+      mermaid_count: parsed.mermaidFences.length,
+      html_path: htmlPath,
+      body_prefix: body.slice(0, 160),
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: htmlPath,
+      label: "render_markdown",
+      has_inline_math: parsed.has_inline_math,
+      has_display_math: parsed.has_display_math,
+      has_mermaid: parsed.has_mermaid,
+      source_kind: "render_markdown",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "render_markdown",
+      path: snapPath,
+      html_path: htmlPath,
+      at,
+    });
+    return okJson("render_markdown", body.slice(0, 120), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeGuidePermission(command) {
     // CM-2178 — guide to Settings; never pretend connected.
     const at = new Date().toISOString();
@@ -5906,6 +6064,7 @@ function createHostFfi(repoRoot) {
       kind === "reset_computer" ||
       kind === "local_execution" ||
       kind === "guide_permission" ||
+      kind === "render_markdown" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -11263,6 +11422,10 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "guide_permission") {
         results.push(await executeGuidePermission(cmd));
+        continue;
+      }
+      if (kind === "render_markdown") {
+        results.push(await executeRenderMarkdown(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

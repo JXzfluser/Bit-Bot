@@ -657,6 +657,13 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   )
   assert_true(gp.ok)
   assert_eq(gp.intent, "guide_permission")
+  let md = run_desktop_turn(
+    "render markdown Inline \\(E=mc^2\\) and $$a^2+b^2=c^2$$ ```mermaid\ngraph TD\n  A-->B\n```",
+    turn_id="md-1",
+  )
+  assert_true(md.ok)
+  assert_eq(md.intent, "render_markdown")
+  assert_eq(md.effects[0].kind, "render_markdown")
   let cc = run_desktop_turn("code changes README.mbt.md", turn_id="cc-1")
   assert_true(cc.ok)
   assert_eq(cc.intent, "code_changes")

@@ -483,6 +483,53 @@
       panel.style.display = "block";
     }
 
+    function renderMathMermaidCard(payload) {
+      if (!payload) return;
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      el.innerHTML =
+        '<div class="role">markdown</div><div class="body"></div>';
+      const body = el.querySelector(".body");
+      const spans = payload.math_spans || [];
+      for (const s of spans) {
+        if (s.kind === "inline_paren") {
+          const span = document.createElement("span");
+          span.style.cssText =
+            "font-family:IBM Plex Serif,Georgia,serif;color:#b7e0c8;margin-right:6px";
+          span.textContent = "\\(" + (s.body || "") + "\\)";
+          body.appendChild(span);
+        } else {
+          const div = document.createElement("div");
+          div.style.cssText =
+            "margin:8px 0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#101a15;text-align:center;font-family:IBM Plex Serif,Georgia,serif";
+          div.textContent = "$$" + (s.body || "") + "$$";
+          body.appendChild(div);
+        }
+      }
+      for (const f of payload.mermaid_fences || []) {
+        const pre = document.createElement("pre");
+        pre.style.cssText =
+          "margin:8px 0;padding:10px;border:1px dashed #3d6b52;border-radius:8px;background:#0e1612;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:#b7e0c8";
+        pre.textContent = f.body || "";
+        body.appendChild(pre);
+      }
+      if (!spans.length && !(payload.mermaid_fences || []).length) {
+        body.textContent = payload.body_prefix || "(empty markdown)";
+      }
+      const meta = document.createElement("div");
+      meta.style.cssText = "margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace";
+      meta.textContent =
+        "CM-2103 · inline=" +
+        String(Boolean(payload.has_inline_math)) +
+        " display=" +
+        String(Boolean(payload.has_display_math)) +
+        " mermaid=" +
+        String(Boolean(payload.has_mermaid));
+      body.appendChild(meta);
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
     function renderAgentInfoPanel(payload) {
       const panel = document.getElementById("agent-info-panel");
       const sectionsEl = document.getElementById("agent-info-sections");
@@ -915,6 +962,15 @@
               }
             } catch (_) { /* ignore */ }
           }
+          const mdHost = r.host_results.find(
+            (h) => h && h.kind === "render_markdown" && h.ok,
+          );
+          if (mdHost) {
+            try {
+              const p = JSON.parse(mdHost.stdout || "{}");
+              renderMathMermaidCard(p);
+            } catch (_) { /* ignore */ }
+          }
           // CHARTER Delivery: SendToUser surface (text/widget/attachment/voice/reaction/thread).
           const attachKinds = [
             "skill_write",
@@ -933,6 +989,11 @@
             "settings_open",
             "agent_info_panel",
             "delete_agent",
+            "render_markdown",
+            "notify_settings",
+            "set_notify",
+            "update_computer",
+            "guide_permission",
             "export_pack",
             "computer_use",
             "voice_session",

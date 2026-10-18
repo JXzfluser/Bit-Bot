@@ -199,6 +199,14 @@ node hosts/cli_host/run_turn.js "local execution off" >/tmp/bitbot-local-off.jso
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-local-off.json'));h=next(x for x in d['host_results'] if x.get('kind')=='local_execution');p=json.loads(h['stdout']);assert p.get('enabled') is False;assert p.get('machine_use_rejected') is True;assert p.get('pretend_on') is False;assert os.path.isfile('data/settings/local-execution.json');print('local_execution off ok', p.get('reject_reason'))"
 node hosts/cli_host/run_turn.js "guide permission kind=needs-auth ns=user-Gmail" >/tmp/bitbot-guide-perm.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-guide-perm.json'));assert d.get('intent')=='guide_permission';h=next(x for x in d['host_results'] if x.get('kind')=='guide_permission');p=json.loads(h['stdout']);assert p.get('pretends_connected') is False;assert p.get('pretend_connected') is False;assert p.get('guides_to_settings') is True;assert p.get('deep_link')=='grokbot://app/v1/settings?id=account';assert 'Settings' in (p.get('guidance') or '');print('guide_permission host ok', p.get('deep_link'))"
+echo "==> Host render_markdown math/mermaid (CM-2103)"
+node hosts/cli_host/run_turn.js 'render markdown Inline \(E=mc^2\) and $$a^2+b^2=c^2$$ ```mermaid
+graph TD
+  A-->B
+```' >/tmp/bitbot-markdown.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-markdown.json'));assert d.get('intent')=='render_markdown';h=next(x for x in d['host_results'] if x.get('kind')=='render_markdown');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_rendered') is False;assert p.get('has_inline_math') is True;assert p.get('has_display_math') is True;assert p.get('has_mermaid') is True;assert p.get('math_count',0)>=2;assert p.get('mermaid_count')==1;assert p.get('html_path') and os.path.isfile(p['html_path']);assert 'math-display' in open(p['html_path']).read() or 'math-inline' in open(p['html_path']).read();assert p.get('path') and os.path.isfile(p['path']);print('render_markdown host ok', p.get('math_count'), p.get('mermaid_count'), p.get('html_path'))"
+node hosts/cli_host/run_turn.js 'render markdown bad \(no close' >/tmp/bitbot-markdown-bad.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-markdown-bad.json'));h=next(x for x in d['host_results'] if x.get('kind')=='render_markdown');p=json.loads(h['stdout']);assert p.get('refused') is True;assert p.get('pretend_rendered') is False;assert 'unclosed' in (p.get('error') or '');print('render_markdown unclosed refuse ok', p.get('error'))"
 
 echo "==> Host durable routines"
 node hosts/cli_host/run_turn.js --approved "create routine id=host-r cron=@hourly prompt=tick" >/tmp/bitbot-routine-create.json

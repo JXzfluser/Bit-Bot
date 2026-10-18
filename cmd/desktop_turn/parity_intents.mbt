@@ -669,6 +669,21 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(LocalExecution(enabled=on))
   }
+  // CM-2103 product Host markdown math + mermaid render.
+  if low.has_prefix("render markdown ") ||
+      low.has_prefix("render math ") ||
+      low.has_prefix("markdown math ") {
+    let body = if low.has_prefix("render markdown ") {
+      trimmed[16:].to_owned()
+    } else if low.has_prefix("render math ") {
+      trimmed[12:].to_owned()
+    } else {
+      trimmed[14:].to_owned()
+    }
+    if body.trim().length() > 0 {
+      return Some(RenderMarkdown(body=body.trim().to_owned()))
+    }
+  }
   // CM-2178 product Host missing-permission → Settings guide.
   if low.has_prefix("guide permission ") ||
       low.has_prefix("missing permission ") ||

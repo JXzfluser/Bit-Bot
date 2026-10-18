@@ -140,6 +140,7 @@ pub(all) enum TurnIntent {
   ResetComputer
   LocalExecution(enabled~ : Bool)
   GuidePermission(kind~ : String, detail~ : String)
+  RenderMarkdown(body~ : String)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -242,6 +243,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     ResetComputer => "reset_computer"
     LocalExecution(_) => "local_execution"
     GuidePermission(_) => "guide_permission"
+    RenderMarkdown(_) => "render_markdown"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -3595,6 +3597,22 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Missing-permission Settings guide planned (CM-2178). Host must not pretend connected.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    RenderMarkdown(body~) => {
+      let effect : DesktopEffect = {
+        kind: "render_markdown",
+        command: body,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Markdown math/mermaid render planned (CM-2103). Host parses \\( \\)/$$ and mermaid fences.",
         intent,
         ctx~,
         effects=[effect],
