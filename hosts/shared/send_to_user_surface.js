@@ -75,6 +75,10 @@ function residualSuffix(p) {
     "os_window_automation_residual",
     "interactive_oauth_residual",
     "true_device_os_dialog_residual",
+    "credential_browser_fill_residual",
+    "inbound_turn_residual",
+    "device_capture_residual",
+    "product_tool_residual",
   ];
   const parts = [];
   for (const k of keys) {

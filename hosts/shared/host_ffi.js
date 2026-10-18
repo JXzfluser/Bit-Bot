@@ -2732,6 +2732,107 @@ function createHostFfi(repoRoot) {
       "</webhook_event>";
     const key = panel ? panel.key : null;
     const keyLeaked = Boolean(key && wakePayload.includes(key));
+    // Claim → turn hook: durable pending turn for Host / routine consumer.
+    const hooksDir = path.join(dir, "turn-hooks");
+    fs.mkdirSync(hooksDir, { recursive: true });
+    const hookPath = path.join(
+      hooksDir,
+      `hook-${Date.now().toString(36)}.json`,
+    );
+    const turnPrompt = `Webhook inbound: ${summary}`.slice(0, 400);
+    const hook = {
+      event_id: eventId,
+      summary,
+      wake_payload: wakePayload,
+      turn_prompt: turnPrompt,
+      status: "pending",
+      pretend_turn: false,
+      at,
+    };
+    fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
+    const pendingPath = path.join(dir, "pending-turns.jsonl");
+    appendJsonl(pendingPath, {
+      event_id: eventId,
+      hook_path: hookPath,
+      turn_prompt: turnPrompt,
+      status: "pending",
+      at,
+    });
+    let turnHookResult = {
+      hooked: true,
+      hook_path: hookPath,
+      pending_path: pendingPath,
+      turn_executed: false,
+      turn_ok: false,
+      turn_path: null,
+      error: null,
+    };
+    // Optional live turn: BITBOT_INBOUND_TURN=1 runs cli_host on the wake prompt.
+    if (process.env.BITBOT_INBOUND_TURN === "1") {
+      try {
+        const turnOut = path.join(
+          hooksDir,
+          `turn-${Date.now().toString(36)}.json`,
+        );
+        const { stdout, stderr } = await execFileAsync(
+          process.execPath,
+          [
+            path.join(REPO_ROOT, "hosts", "cli_host", "run_turn.js"),
+            "--approved",
+            turnPrompt,
+          ],
+          {
+            cwd: REPO_ROOT,
+            timeout: 60000,
+            maxBuffer: 2 * 1024 * 1024,
+            env: {
+              ...process.env,
+              // Prevent recursive inbound wake loops.
+              BITBOT_INBOUND_TURN: "0",
+            },
+          },
+        );
+        fs.writeFileSync(
+          turnOut,
+          String(stdout || "").trim() ||
+            JSON.stringify({ ok: false, error: "empty turn stdout", stderr }),
+        );
+        let turnOk = false;
+        try {
+          const parsed = JSON.parse(fs.readFileSync(turnOut, "utf8"));
+          turnOk = Boolean(parsed && parsed.ok);
+        } catch (_) {
+          turnOk = false;
+        }
+        hook.status = turnOk ? "executed" : "failed";
+        hook.turn_path = turnOut;
+        fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
+        turnHookResult = {
+          hooked: true,
+          hook_path: hookPath,
+          pending_path: pendingPath,
+          turn_executed: true,
+          turn_ok: turnOk,
+          turn_path: turnOut,
+          error: turnOk ? null : "inbound turn returned ok=false",
+        };
+      } catch (err) {
+        hook.status = "failed";
+        hook.error = String((err && err.message) || err).slice(0, 240);
+        fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
+        turnHookResult = {
+          hooked: true,
+          hook_path: hookPath,
+          pending_path: pendingPath,
+          turn_executed: true,
+          turn_ok: false,
+          turn_path: null,
+          error: hook.error,
+        };
+      }
+    }
+    const inboundTurnResidual =
+      !turnHookResult.turn_executed || !turnHookResult.turn_ok;
     const artifact = {
       mode: "host_webhook_wake",
       pretend_wake: false,
@@ -2742,6 +2843,8 @@ function createHostFfi(repoRoot) {
       key_leaked: keyLeaked,
       key_in_payload: keyLeaked,
       panel_id: panel ? panel.id : null,
+      turn_hook: turnHookResult,
+      inbound_turn_residual: inboundTurnResidual,
       at,
     };
     fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
@@ -2751,6 +2854,8 @@ function createHostFfi(repoRoot) {
       has_webhook_event: artifact.has_webhook_event,
       key_leaked: keyLeaked,
       path: snapPath,
+      hook_path: hookPath,
+      inbound_turn_residual: inboundTurnResidual,
       at,
     });
     // Persist wake payload without key for assistant/routine consumer.
@@ -2770,12 +2875,15 @@ function createHostFfi(repoRoot) {
       wake_path: wakePath,
       event_id: eventId,
       key_leaked: keyLeaked,
+      hook_path: hookPath,
+      inbound_turn_residual: inboundTurnResidual,
       at,
     });
     return okJson("webhook_wake", raw || "wake", {
       ...artifact,
       path: snapPath,
       wake_path: wakePath,
+      hook_path: hookPath,
       send_to_user: delivery,
       ok: true,
     });
@@ -10463,6 +10571,7 @@ function createHostFfi(repoRoot) {
           } else {
             captureError =
               "no DISPLAY/import and no /dev/video0 — device_capture_residual";
+            mode = "host_device_capture_residual";
           }
         } else if (tool === "mic" || tool === "microphone" || tool === "audio") {
           capturePath = path.join(mediaDir, `mic-${stampId}.wav`);
@@ -10487,6 +10596,7 @@ function createHostFfi(repoRoot) {
           } else {
             captureError =
               "no ALSA default capture — device_capture_residual";
+            mode = "host_device_capture_residual";
           }
         } else {
           // Non-media tools: durable invoke only (contacts/location remain residual).
@@ -11646,16 +11756,7 @@ function createHostFfi(repoRoot) {
       const parts = cmd.split("|");
       const fillHandle = parts[0] || "";
       const domain = parts[1] || "";
-      const username = parts[2] || "";
-      const entry = {
-        fill_handle: fillHandle,
-        domain,
-        username,
-        secret_echoed: false,
-        vault_only: true,
-        at,
-      };
-      const pathWritten = appendJsonl(CREDENTIAL_FILLS_PATH, entry);
+      let username = parts[2] || "";
       // Upsert vault metadata only (CM-2130) — never store secret/password/token plaintext here.
       const vaultPath = path.join(REPO_ROOT, "data", "credentials", "vault.json");
       fs.mkdirSync(path.dirname(vaultPath), { recursive: true });
@@ -11668,6 +11769,28 @@ function createHostFfi(repoRoot) {
         vault = { entries: [] };
       }
       if (!Array.isArray(vault.entries)) vault.entries = [];
+      // Prefer username from vault metadata when MoonBit sends handle|domain only.
+      if (!username) {
+        const prior = vault.entries.find(
+          (e) =>
+            e &&
+            ((fillHandle && e.fill_handle === fillHandle) ||
+              (domain && e.domain === domain) ||
+              (fillHandle && e.id === fillHandle)),
+        );
+        if (prior && prior.username) username = String(prior.username);
+      }
+      // Product seed username when vault has none (matches MoonBit CredentialStore seed).
+      if (!username) username = "user";
+      const entry = {
+        fill_handle: fillHandle,
+        domain,
+        username,
+        secret_echoed: false,
+        vault_only: true,
+        at,
+      };
+      const pathWritten = appendJsonl(CREDENTIAL_FILLS_PATH, entry);
       const id =
         fillHandle ||
         `cred-${Buffer.from(domain || "fill")
@@ -11695,14 +11818,160 @@ function createHostFfi(repoRoot) {
         fillDir,
         `fill-${sanitizeSkillName(id) || "cred"}-${Date.now().toString(36)}.json`,
       );
+      // CM-2130 + identity-browser: durable CDP fill plan (username only — never secret).
+      const identitySessPath = path.join(
+        REPO_ROOT,
+        "data",
+        "connectors",
+        "identity",
+        "browser-session.json",
+      );
+      let identityReady = false;
+      let identityUserData = null;
+      if (fs.existsSync(identitySessPath)) {
+        try {
+          const sess = JSON.parse(fs.readFileSync(identitySessPath, "utf8"));
+          if (
+            sess &&
+            (sess.switched || sess.status === "SwitchedToSignedInBrowser")
+          ) {
+            identityReady = true;
+            identityUserData = sess.user_data_dir || null;
+          }
+        } catch (_) {
+          identityReady = false;
+        }
+      }
+      const navUrl = domain
+        ? domain.startsWith("http://") || domain.startsWith("https://")
+          ? domain
+          : `https://${domain}`
+        : null;
+      const browserPlan = {
+        fill_handle: fillHandle || id,
+        domain: domain || "",
+        username: username || "",
+        // Password never leaves vault / never appears in plan JSON.
+        secret_in_plan: false,
+        identity_browser_ready: identityReady,
+        user_data_dir: identityUserData,
+        navigate_url: navUrl,
+        cdp_actions: username
+          ? [
+              navUrl ? `navigate:${navUrl}` : null,
+              "focus:input[type=email],input[name*=user],input[name*=email],input[type=text]",
+              `type_username:${username}`,
+              // Password fill stays residual until OS secret provider (deferred).
+              "password_fill:residual",
+            ].filter(Boolean)
+          : [],
+        pretend_secret_view: false,
+        at,
+      };
+      const planPath = path.join(
+        fillDir,
+        `browser-plan-${sanitizeSkillName(id) || "cred"}-${Date.now().toString(36)}.json`,
+      );
+      fs.writeFileSync(planPath, JSON.stringify(browserPlan, null, 2));
+      // Optional live username CDP attempt when identity profile is switched.
+      let browserFill = {
+        attempted: false,
+        username_typed: false,
+        ok: false,
+        error: null,
+        evidence: null,
+      };
+      const wantLiveFill =
+        process.env.BITBOT_CREDENTIAL_BROWSER_FILL === "1" &&
+        identityReady &&
+        Boolean(username) &&
+        Boolean(navUrl);
+      if (wantLiveFill) {
+        try {
+          const evidenceDir = path.join(
+            REPO_ROOT,
+            "data",
+            "journal",
+            "computer-use",
+            `cred-fill-${Date.now().toString(36)}`,
+          );
+          fs.mkdirSync(evidenceDir, { recursive: true });
+          const cuEnv = { ...process.env };
+          if (identityUserData) {
+            cuEnv.BITBOT_IDENTITY_USER_DATA_DIR = identityUserData;
+          }
+          // Username only in CU command — never append password/token.
+          const cuCmd = `credential fill username type:${username} ${navUrl}`;
+          const { stdout } = await execFileAsync(
+            process.env.PYTHON || "python3",
+            [
+              path.join(REPO_ROOT, "scripts", "host_box_chrome_cu.py"),
+              "--url",
+              navUrl,
+              "--command",
+              cuCmd,
+              "--artifact-dir",
+              evidenceDir,
+              "--gui-mode",
+              "headless",
+            ],
+            {
+              cwd: REPO_ROOT,
+              timeout: 60000,
+              maxBuffer: 2 * 1024 * 1024,
+              env: cuEnv,
+            },
+          );
+          const cuRun = path.join(evidenceDir, "cu_run.json");
+          let summary = {};
+          if (fs.existsSync(cuRun)) {
+            summary = JSON.parse(fs.readFileSync(cuRun, "utf8"));
+          } else {
+            const line = String(stdout || "")
+              .trim()
+              .split("\n")
+              .filter(Boolean)
+              .pop();
+            if (line && line.startsWith("{")) summary = JSON.parse(line);
+          }
+          const gui = summary.gui || {};
+          const actionsOk = Boolean(gui.actions && gui.actions.ok);
+          browserFill = {
+            attempted: true,
+            username_typed: actionsOk,
+            ok: Boolean(gui.box_chrome_process || gui.started) && actionsOk,
+            error: null,
+            evidence: fs.existsSync(cuRun) ? cuRun : evidenceDir,
+            identity_browser: gui.identity_browser || null,
+            user_data_dir: gui.user_data_dir || identityUserData,
+          };
+        } catch (err) {
+          browserFill = {
+            attempted: true,
+            username_typed: false,
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 240),
+            evidence: null,
+          };
+        }
+      }
+      // Password fill always residual (no secret in Host vault JSON).
+      const credentialBrowserFillResidual =
+        !browserFill.ok || !browserFill.username_typed;
       const artifact = {
         ...entry,
         vault_path: vaultPath,
         vault_id: id,
         ledger_path: pathWritten,
         pretend_secret_view: false,
-        mode: "host_credential_fill",
-        note: "secret stays in Host vault — never assistant_view; metadata upserted for list credentials",
+        mode: wantLiveFill
+          ? "host_credential_fill_browser"
+          : "host_credential_fill",
+        browser_plan_path: planPath,
+        browser_fill: browserFill,
+        identity_browser_ready: identityReady,
+        credential_browser_fill_residual: credentialBrowserFillResidual,
+        note: "secret stays in Host vault — never assistant_view; CDP plan is username-only",
         at,
       };
       fs.writeFileSync(fillPath, JSON.stringify(artifact, null, 2));
@@ -11712,6 +11981,8 @@ function createHostFfi(repoRoot) {
         path: fillPath,
         vault_path: vaultPath,
         ledger_path: pathWritten,
+        browser_plan_path: planPath,
+        credential_browser_fill_residual: credentialBrowserFillResidual,
         at,
       });
       return okJson(kind, cmd, {
