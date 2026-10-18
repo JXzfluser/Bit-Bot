@@ -392,6 +392,17 @@
         <button type="button" id="sc-create-pr" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create PR plan</button>
       </div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Media</div>
+    <div class="machine-item">
+      <div class="name">Image / video / chart (CM-1601–1603 / 2157)</div>
+      <div class="meta" id="media-meta">generate · watch · structured chart</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="media-image" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Generate image</button>
+        <button type="button" id="media-video" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Generate video</button>
+        <button type="button" id="media-chart" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Structured chart</button>
+        <button type="button" id="media-watch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Watch last video</button>
+      </div>
+    </div>
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) will appear here</pre>
@@ -1406,6 +1417,18 @@
                       .slice(-1)[0] +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const mediaMeta = document.getElementById("media-meta");
+                  if (mediaMeta) {
+                    mediaMeta.textContent =
+                      h.kind +
+                      " · " +
+                      String(p.media_path || p.frame_path || p.path || "?")
+                        .split("/")
+                        .slice(-1)[0];
+                  }
+                  if (h.kind === "generate_video" && p.media_path) {
+                    window.__bitbotLastVideoPath = String(p.media_path);
+                  }
                 } else if (h.kind === "box_doctor") {
                   label =
                     "box_doctor:" +
@@ -1882,6 +1905,24 @@
     });
     document.getElementById("sc-create-pr").addEventListener("click", () => {
       runUserTurn("source control create_pr", {});
+    });
+    document.getElementById("media-image").addEventListener("click", () => {
+      runUserTurn("generate image desktop aurora skyline", {});
+    });
+    document.getElementById("media-video").addEventListener("click", () => {
+      runUserTurn("generate video desktop clip wave", {});
+    });
+    document.getElementById("media-chart").addEventListener("click", () => {
+      runUserTurn(
+        'structured chart {"alpha":4,"beta":9,"gamma":6}',
+        {},
+      );
+    });
+    document.getElementById("media-watch").addEventListener("click", () => {
+      const vp =
+        window.__bitbotLastVideoPath ||
+        "agent-tools/gen-video-desktop.mp4";
+      runUserTurn("watch video " + vp, {});
     });
     document.getElementById("mem-recall").addEventListener("click", () => {
       runUserTurn("recall", {});

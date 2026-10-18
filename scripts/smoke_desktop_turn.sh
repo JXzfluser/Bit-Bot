@@ -282,6 +282,16 @@ assert 'get plugin plugin-slides' in html
 assert 'list plugins' in html
 print('desktop plugins panel wired ok')
 "
+python3 -c "
+from pathlib import Path
+html=Path('hosts/desktop/index.html').read_text()
+assert 'id=\"media-meta\"' in html
+assert 'id=\"media-image\"' in html and 'id=\"media-video\"' in html
+assert 'id=\"media-chart\"' in html and 'id=\"media-watch\"' in html
+assert 'generate image desktop aurora skyline' in html
+assert 'structured chart' in html
+print('desktop media panel wired ok')
+"
 node hosts/cli_host/run_turn.js "uninstall plugin plugin-slides" >/tmp/bitbot-mcp-uninstall.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-uninstall.json'));assert d.get('intent')=='uninstall_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_uninstall');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_uninstalled') is False;assert p.get('namespace')=='user-Slides';assert p.get('status')=='Unavailable';assert p.get('usable') is False;assert p.get('namespace_gone') is True;assert p.get('path') and os.path.isfile(p['path']);cat=json.load(open(p['catalog_path']));assert (cat.get('namespaces') or {}).get('user-Slides',{}).get('usable') is False;assert 'plugin-slides' not in (cat.get('installed_plugins') or []);print('mcp_uninstall Unavailable ok', p.get('namespace'), p.get('path'))"
 echo "==> Desktop Electron Host smoke turn (ADR 0005 product path)"
