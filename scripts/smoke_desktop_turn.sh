@@ -620,6 +620,7 @@ assert 'memory_update' in mobile and 'memory_recall' in mobile
 assert '"device_tool"' in mobile and '"delivery"' in mobile
 for needle in (
   'live_mail_residual',
+  'live_mail_claim_residual',
   'live_x_residual',
   'live_job_residual',
   'live_finance_residual',
@@ -629,6 +630,12 @@ for needle in (
   'live_teams_residual',
   'live_meeting_residual',
   'live_channel_residual',
+  'live_sms_residual',
+  'live_webhook_residual',
+  'live_voice_residual',
+  'voice_stt_residual',
+  'voice_tts_residual',
+  'inbound_turn_residual',
   'box_doctor_bin_residual',
   'box_chrome_bin_residual',
   'long_lived_cron_residual',
