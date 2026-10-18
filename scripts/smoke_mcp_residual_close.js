@@ -1661,6 +1661,64 @@ function stripHostAppliedMarker(file) {
     delete process.env.BITBOT_ONBEHALF_MAIL_TOKEN;
     delete process.env.BITBOT_MAIL_SEND;
   }
+  // 14d) box_doctor: BITBOT_BOX_DOCTOR mock closes box_doctor_bin_residual
+  process.env.BITBOT_BOX_DOCTOR = path.join(process.cwd(), "scripts/fixtures/box-doctor-mock.sh");
+  const docCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.box_doctor|{}" }]);
+  const docCloseH = docCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!docCloseH || !docCloseH.ok) throw new Error("box_doctor residual close mcp");
+  const docCloseP = JSON.parse(docCloseH.stdout || "{}");
+  if (docCloseP.mapped !== "host_box_doctor" || docCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(docCloseP).slice(0, 200));
+  }
+  if ((docCloseP.box_doctor || {}).box_doctor_bin_residual !== false) {
+    throw new Error("box_doctor_bin_residual must close: " + JSON.stringify(docCloseP.box_doctor || {}).slice(0, 240));
+  }
+  if ((docCloseP.box_doctor || {}).pretend_healthy === true) throw new Error("pretend_healthy box_doctor close");
+  if (!(docCloseP.box_doctor || {}).doctor_bin) throw new Error("doctor_bin missing");
+  if (((docCloseP.box_doctor || {}).pass_count || 0) < 1) throw new Error("pass_count box_doctor close");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-box-doctor-close.json", JSON.stringify({ ok: true, ...docCloseP }, null, 2));
+  console.log("mcp_call box_doctor residual close ok", docCloseP.mapped, (docCloseP.box_doctor || {}).doctor_bin, (docCloseP.box_doctor || {}).box_doctor_bin_residual, (docCloseP.box_doctor || {}).pass_count);
+  delete process.env.BITBOT_BOX_DOCTOR;
+  // 14e) computer_use shop: BITBOT_CU_LIVE_PAID + purchase mock closes live_paid_residual on payment_wall
+  const cuPayFx = spawn(process.env.PYTHON || "python3", [
+    path.join(process.cwd(), "scripts/host_cu_checkout_fixture.py"),
+    "--port", "18823",
+  ], { stdio: ["ignore", fs.openSync("/tmp/bitbot-mcp-cu-pay-fx.log", "w"), fs.openSync("/tmp/bitbot-mcp-cu-pay-fx.log", "a")] });
+  const cuPayMock = startMock(18824, "purchase", "smoke-mcp-cu-pay");
+  await sleep(500);
+  try {
+    process.env.BITBOT_CU_ALLOW_LOCAL = "1";
+    process.env.BITBOT_CU_LIVE_PAID = "1";
+    process.env.BITBOT_PURCHASE_API_URL = "http://127.0.0.1:18824";
+    process.env.BITBOT_PURCHASE_TOKEN = "smoke-mcp-cu-pay";
+    const cuPayCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.shop_retail|{\"command\":\"computer use open http://127.0.0.1:18823/ shop cart checkout buy\"}" }]);
+    const cuPayCloseH = cuPayCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!cuPayCloseH || !cuPayCloseH.ok) throw new Error("shop_retail live_paid residual close mcp");
+    const cuPayCloseP = JSON.parse(cuPayCloseH.stdout || "{}");
+    if (cuPayCloseP.mapped !== "host_computer_use" || cuPayCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(cuPayCloseP).slice(0, 200));
+    }
+    const cuPayOc = (cuPayCloseP.computer_use || {}).outcome || {};
+    if (cuPayOc.paid_checkout_attempted !== true) {
+      throw new Error("paid_checkout_attempted: " + JSON.stringify(cuPayOc).slice(0, 240));
+    }
+    if (cuPayOc.live_paid_residual !== false) {
+      throw new Error("live_paid_residual must close: " + JSON.stringify(cuPayOc).slice(0, 240));
+    }
+    if (cuPayOc.pretend_purchased === true) throw new Error("pretend_purchased cu pay close");
+    if ((cuPayOc.charge_probe || {}).ok !== true) {
+      throw new Error("charge_probe: " + JSON.stringify(cuPayOc.charge_probe || {}).slice(0, 200));
+    }
+    require("fs").writeFileSync("/tmp/bitbot-mcp-cu-live-paid-close.json", JSON.stringify({ ok: true, ...cuPayCloseP }, null, 2));
+    console.log("mcp_call shop_retail live_paid residual close ok", cuPayOc.checkout_stage || cuPayOc.vertical_stage, cuPayOc.live_paid_residual, (cuPayOc.charge_probe || {}).ok);
+  } finally {
+    try { cuPayFx.kill(); } catch (_) {}
+    try { cuPayMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_CU_ALLOW_LOCAL;
+    delete process.env.BITBOT_CU_LIVE_PAID;
+    delete process.env.BITBOT_PURCHASE_API_URL;
+    delete process.env.BITBOT_PURCHASE_TOKEN;
+  }
   // 15) webfetch: local mock docs-blocked → curl public fallback → public_fallback_residual false
   // Port 18813 avoids finance/job/x close (18810-18812) and cloud close (18809).
   const wfFbCloseMock = startMock(18813, "webfetch", "smoke-mcp-wf-fb");
