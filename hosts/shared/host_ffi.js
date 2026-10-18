@@ -6958,6 +6958,15 @@ function createHostFfi(repoRoot) {
         send_on_behalf: "host_mail_send",
         identity_browser: "host_identity_browser",
         switch_identity_browser: "host_identity_browser",
+        load_skill: "host_skill_load",
+        skill_load: "host_skill_load",
+        claim_inbox: "host_mail_claim_inbox",
+        mail_claim_inbox: "host_mail_claim_inbox",
+        claim_mail: "host_mail_claim_inbox",
+        fill_credential: "host_credential_fill",
+        credential_fill: "host_credential_fill",
+        list_credentials: "host_credential_list",
+        credential_list: "host_credential_list",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7030,7 +7039,7 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/media onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/skill_load/mail_claim/credential/media onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
@@ -7047,6 +7056,10 @@ function createHostFfi(repoRoot) {
         mapped === "host_source_control" ||
         mapped === "host_workflow_list" ||
         mapped === "host_identity_browser" ||
+        mapped === "host_skill_load" ||
+        mapped === "host_mail_claim_inbox" ||
+        mapped === "host_credential_fill" ||
+        mapped === "host_credential_list" ||
         mapped === "host_generate_image" ||
         mapped === "host_generate_video" ||
         mapped === "host_watch_video" ||
@@ -7857,6 +7870,273 @@ function createHostFfi(repoRoot) {
               ...idPayload,
               connected,
               pretend_connected_slack: pretendConnected,
+            },
+          });
+        }
+        if (mapped === "host_skill_load") {
+          // Product load_skill / skill_load → Host skill_load (CM skill surface).
+          const task =
+            String(
+              args.task ||
+                args.name ||
+                args.skill ||
+                args.skill_name ||
+                args.q ||
+                args.query ||
+                args.body ||
+                "",
+            ).trim() || "mcp-skill-load";
+          const loadedCount = Number(
+            args.loaded_count != null
+              ? args.loaded_count
+              : args.count != null
+                ? args.count
+                : 0,
+          ) || 0;
+          const loadCmd = [task, String(loadedCount)].join("|");
+          const loadResults = await executeHostEffects([
+            { kind: "skill_load", command: loadCmd },
+          ]);
+          const loadHit = (loadResults || []).find(
+            (r) => r && r.kind === "skill_load",
+          );
+          let loadPayload = {};
+          try {
+            loadPayload = JSON.parse((loadHit && loadHit.stdout) || "{}");
+          } catch {
+            loadPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "skill_load",
+              skill_load: {
+                path: loadPayload.path || null,
+                task: loadPayload.task || task,
+                loaded_count: loadPayload.loaded_count,
+                mode: loadPayload.mode || "host_skill_load",
+                pretend_loaded: loadPayload.pretend_loaded,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(loadHit && loadHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(loadHit && loadHit.ok),
+            skill_load: loadPayload,
+          });
+        }
+        if (mapped === "host_mail_claim_inbox") {
+          // Product claim_inbox → Host mail_claim_inbox; live_mail_claim_residual stays gated.
+          const localPart =
+            String(
+              args.local_part ||
+                args.local ||
+                args.inbox ||
+                args.name ||
+                args.q ||
+                args.query ||
+                args.body ||
+                "",
+            ).trim() || "mcp-claim";
+          const address =
+            String(
+              args.address || args.email || args.to || "",
+            ).trim() || `${localPart}@bitbot.local`;
+          const claimCmd = [localPart, address].join("|");
+          const claimResults = await executeHostEffects([
+            { kind: "mail_claim_inbox", command: claimCmd },
+          ]);
+          const claimHit = (claimResults || []).find(
+            (r) => r && r.kind === "mail_claim_inbox",
+          );
+          let claimPayload = {};
+          try {
+            claimPayload = JSON.parse((claimHit && claimHit.stdout) || "{}");
+          } catch {
+            claimPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "mail_claim_inbox",
+              mail_claim: {
+                path: claimPayload.path || null,
+                local_part: claimPayload.local_part || localPart,
+                address: claimPayload.address || address,
+                mode: claimPayload.mode || null,
+                claimed_count: claimPayload.claimed_count,
+                pretend_claimed: claimPayload.pretend_claimed,
+                live_mail_claim_residual: claimPayload.live_mail_claim_residual,
+                fixture_path: claimPayload.fixture_path || null,
+                inbound_path: claimPayload.inbound_path || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(claimHit && claimHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(claimHit && claimHit.ok),
+            mail_claim: claimPayload,
+          });
+        }
+        if (mapped === "host_credential_list") {
+          // Product list_credentials → Host credential_list metadata only (never secret echo).
+          const listResults = await executeHostEffects([
+            { kind: "credential_list", command: String(args.q || args.query || "").trim() },
+          ]);
+          const listHit = (listResults || []).find(
+            (r) => r && r.kind === "credential_list",
+          );
+          let listPayload = {};
+          try {
+            listPayload = JSON.parse((listHit && listHit.stdout) || "{}");
+          } catch {
+            listPayload = {};
+          }
+          const secretEchoed = false;
+          const pretendSecret = false;
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "credential_list",
+              credential_list: {
+                path: listPayload.path || null,
+                vault_path: listPayload.vault_path || null,
+                count: listPayload.count,
+                mode: listPayload.mode || "host_vault_metadata",
+                secret_echoed: secretEchoed,
+                pretend_secret_view: pretendSecret,
+                pretend_secret_echo: false,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(listHit && listHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(listHit && listHit.ok),
+            secret_echoed: secretEchoed,
+            pretend_secret_echo: false,
+            credential_list: {
+              ...listPayload,
+              secret_echoed: secretEchoed,
+              pretend_secret_view: pretendSecret,
+              pretend_secret_echo: false,
+            },
+          });
+        }
+        if (mapped === "host_credential_fill") {
+          // Product fill_credential → Host credential_fill.
+          // signin_fill_residual stays true (password deferred); never secret_echo.
+          const fillHandle = String(
+            args.fill_handle ||
+              args.handle ||
+              args.id ||
+              args.credential_id ||
+              args.name ||
+              "",
+          ).trim();
+          const domain = String(
+            args.domain ||
+              args.url ||
+              args.site ||
+              args.host ||
+              args.q ||
+              args.query ||
+              "",
+          ).trim();
+          const username = String(
+            args.username || args.user || args.email || "",
+          ).trim();
+          const fillCmd = [fillHandle, domain, username].join("|");
+          const fillResults = await executeHostEffects([
+            { kind: "credential_fill", command: fillCmd },
+          ]);
+          const fillHit = (fillResults || []).find(
+            (r) => r && r.kind === "credential_fill",
+          );
+          let fillPayload = {};
+          try {
+            fillPayload = JSON.parse((fillHit && fillHit.stdout) || "{}");
+          } catch {
+            fillPayload = {};
+          }
+          const secretEchoed = false;
+          const pretendSecret = false;
+          // Password / OS secret fill stays residual regardless of username CDP.
+          const signinFillResidual = true;
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "credential_fill",
+              credential_fill: {
+                path: fillPayload.path || null,
+                vault_path: fillPayload.vault_path || null,
+                browser_plan_path: fillPayload.browser_plan_path || null,
+                mode: fillPayload.mode || "host_credential_fill",
+                username: fillPayload.username || username || null,
+                secret_echoed: secretEchoed,
+                pretend_secret_view: pretendSecret,
+                pretend_secret_echo: false,
+                credential_browser_fill_residual:
+                  fillPayload.credential_browser_fill_residual,
+                signin_fill_residual: signinFillResidual,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(fillHit && fillHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(fillHit && fillHit.ok),
+            secret_echoed: secretEchoed,
+            pretend_secret_echo: false,
+            signin_fill_residual: signinFillResidual,
+            credential_fill: {
+              ...fillPayload,
+              secret_echoed: secretEchoed,
+              pretend_secret_view: pretendSecret,
+              pretend_secret_echo: false,
+              signin_fill_residual: signinFillResidual,
             },
           });
         }

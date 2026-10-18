@@ -1161,7 +1161,7 @@ node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
 node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
-# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + workflows/cold/identity + code/pr + media (Host FFI; MoonBit catalog may lack names)
+# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + workflows/cold/identity + skill_load/mail_claim/credential + code/pr + media (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");
 const { spawn } = require("child_process");
@@ -1459,6 +1459,83 @@ function startMock(port, mode, token) {
   if ((idap.identity_browser||{}).connected === true) throw new Error("never pretend Connected alias");
   if ((idap.identity_browser||{}).pretend_connected_slack === true) throw new Error("pretend_connected_slack alias");
   console.log("mcp_call switch_identity_browser alias short-circuit ok", idap.mapped, (idap.identity_browser||{}).connected);
+  // load_skill / claim_inbox / fill_credential / list_credentials product short-circuit
+  const loads = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.load_skill|{\"task\":\"mcp-load-skill\",\"loaded_count\":2}" }]);
+  const loadh = loads.find((r) => r && r.kind === "mcp_call");
+  if (!loadh || !loadh.ok) throw new Error("load_skill mcp");
+  const loadp = JSON.parse(loadh.stdout || "{}");
+  if (loadp.mapped !== "host_skill_load" || loadp.product_tool_residual !== false) throw new Error(JSON.stringify(loadp).slice(0,200));
+  if ((loadp.skill_load||{}).mode !== "host_skill_load") throw new Error("skill_load mode: " + JSON.stringify(loadp.skill_load||{}).slice(0,200));
+  if ((loadp.skill_load||{}).pretend_loaded === true) throw new Error("pretend_loaded");
+  if (!(loadp.skill_load||{}).path) throw new Error("skill_load path: " + JSON.stringify(loadp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-load-skill.json", JSON.stringify({ ok: true, ...loadp }, null, 2));
+  console.log("mcp_call load_skill short-circuit ok", loadp.mapped, (loadp.skill_load||{}).mode, (loadp.skill_load||{}).path);
+  const loadAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.skill_load|{\"name\":\"mcp-skill-alias\",\"count\":1}" }]);
+  const loada = loadAlias.find((r) => r && r.kind === "mcp_call");
+  const loadap = JSON.parse((loada && loada.stdout) || "{}");
+  if (loadap.mapped !== "host_skill_load" || loadap.product_tool_residual !== false) throw new Error(JSON.stringify(loadap).slice(0,200));
+  console.log("mcp_call skill_load alias short-circuit ok", loadap.mapped, (loadap.skill_load||{}).task);
+  delete process.env.BITBOT_MAIL_CLAIM_API_URL;
+  delete process.env.BITBOT_MAIL_CLAIM_TOKEN;
+  delete process.env.BITBOT_MAIL_CLAIM_POST;
+  const claims = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.claim_inbox|{\"local_part\":\"mcpclaim\",\"address\":\"mcpclaim@bitbot.local\"}" }]);
+  const claimh = claims.find((r) => r && r.kind === "mcp_call");
+  if (!claimh || !claimh.ok) throw new Error("claim_inbox mcp");
+  const claimp = JSON.parse(claimh.stdout || "{}");
+  if (claimp.mapped !== "host_mail_claim_inbox" || claimp.product_tool_residual !== false) throw new Error(JSON.stringify(claimp).slice(0,200));
+  if ((claimp.mail_claim||{}).pretend_claimed === true) throw new Error("pretend_claimed");
+  if ((claimp.mail_claim||{}).live_mail_claim_residual !== true) throw new Error("live_mail_claim_residual must stay gated: " + JSON.stringify(claimp.mail_claim||{}).slice(0,200));
+  if (!((claimp.mail_claim||{}).claimed_count >= 1)) throw new Error("claimed_count: " + JSON.stringify(claimp.mail_claim||{}).slice(0,200));
+  if (!(claimp.mail_claim||{}).path && !(claimp.mail_claim||{}).fixture_path) throw new Error("mail_claim payload: " + JSON.stringify(claimp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-claim-inbox.json", JSON.stringify({ ok: true, ...claimp }, null, 2));
+  console.log("mcp_call claim_inbox short-circuit ok", claimp.mapped, (claimp.mail_claim||{}).mode, (claimp.mail_claim||{}).live_mail_claim_residual);
+  const claimAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.mail_claim_inbox|{\"local_part\":\"mcpclaim2\"}" }]);
+  const claima = claimAlias.find((r) => r && r.kind === "mcp_call");
+  const claimap = JSON.parse((claima && claima.stdout) || "{}");
+  if (claimap.mapped !== "host_mail_claim_inbox" || claimap.product_tool_residual !== false) throw new Error(JSON.stringify(claimap).slice(0,200));
+  if ((claimap.mail_claim||{}).live_mail_claim_residual !== true) throw new Error("live_mail_claim_residual alias gated");
+  console.log("mcp_call mail_claim_inbox alias short-circuit ok", claimap.mapped, (claimap.mail_claim||{}).local_part);
+  const claimMail = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.claim_mail|{\"inbox\":\"mcpclaim3\"}" }]);
+  const claimmh = claimMail.find((r) => r && r.kind === "mcp_call");
+  const claimmp = JSON.parse((claimmh && claimmh.stdout) || "{}");
+  if (claimmp.mapped !== "host_mail_claim_inbox" || claimmp.product_tool_residual !== false) throw new Error(JSON.stringify(claimmp).slice(0,200));
+  console.log("mcp_call claim_mail alias short-circuit ok", claimmp.mapped, (claimmp.mail_claim||{}).live_mail_claim_residual);
+  const credLists = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.list_credentials|{}" }]);
+  const clh = credLists.find((r) => r && r.kind === "mcp_call");
+  if (!clh || !clh.ok) throw new Error("list_credentials mcp");
+  const clp = JSON.parse(clh.stdout || "{}");
+  if (clp.mapped !== "host_credential_list" || clp.product_tool_residual !== false) throw new Error(JSON.stringify(clp).slice(0,200));
+  if (clp.secret_echoed === true || (clp.credential_list||{}).secret_echoed === true) throw new Error("secret_echoed list");
+  if (clp.pretend_secret_echo === true || (clp.credential_list||{}).pretend_secret_echo === true) throw new Error("pretend_secret_echo list");
+  if (!((clp.credential_list||{}).count >= 1)) throw new Error("credential_list count: " + JSON.stringify(clp.credential_list||{}).slice(0,200));
+  if (/vault:secret/i.test(JSON.stringify(clp))) throw new Error("secret leak list");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-list-credentials.json", JSON.stringify({ ok: true, ...clp }, null, 2));
+  console.log("mcp_call list_credentials short-circuit ok", clp.mapped, (clp.credential_list||{}).mode, (clp.credential_list||{}).count);
+  const credListAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.credential_list|{}" }]);
+  const clah = credListAlias.find((r) => r && r.kind === "mcp_call");
+  const clap = JSON.parse((clah && clah.stdout) || "{}");
+  if (clap.mapped !== "host_credential_list" || clap.product_tool_residual !== false) throw new Error(JSON.stringify(clap).slice(0,200));
+  console.log("mcp_call credential_list alias short-circuit ok", clap.mapped, (clap.credential_list||{}).count);
+  const fills = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.fill_credential|{\"fill_handle\":\"mcp-fill-1\",\"domain\":\"login.example.test\",\"username\":\"mcp@example.test\"}" }]);
+  const fillh = fills.find((r) => r && r.kind === "mcp_call");
+  if (!fillh || !fillh.ok) throw new Error("fill_credential mcp");
+  const fillp = JSON.parse(fillh.stdout || "{}");
+  if (fillp.mapped !== "host_credential_fill" || fillp.product_tool_residual !== false) throw new Error(JSON.stringify(fillp).slice(0,200));
+  if (fillp.secret_echoed === true || (fillp.credential_fill||{}).secret_echoed === true) throw new Error("secret_echoed fill");
+  if (fillp.pretend_secret_echo === true || (fillp.credential_fill||{}).pretend_secret_echo === true) throw new Error("pretend_secret_echo fill");
+  if (fillp.signin_fill_residual !== true || (fillp.credential_fill||{}).signin_fill_residual !== true) throw new Error("signin_fill_residual must stay true: " + JSON.stringify(fillp).slice(0,200));
+  if ((fillp.credential_fill||{}).pretend_secret_view === true) throw new Error("pretend_secret_view");
+  if (!(fillp.credential_fill||{}).path || !(fillp.credential_fill||{}).vault_path) throw new Error("fill payload: " + JSON.stringify(fillp).slice(0,200));
+  if (/vault:secret/i.test(JSON.stringify(fillp))) throw new Error("secret leak fill");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-fill-credential.json", JSON.stringify({ ok: true, ...fillp }, null, 2));
+  console.log("mcp_call fill_credential short-circuit ok", fillp.mapped, (fillp.credential_fill||{}).mode, fillp.signin_fill_residual);
+  const fillAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.credential_fill|{\"handle\":\"mcp-fill-2\",\"domain\":\"login.example.test\",\"user\":\"alias@example.test\"}" }]);
+  const filla = fillAlias.find((r) => r && r.kind === "mcp_call");
+  const fillap = JSON.parse((filla && filla.stdout) || "{}");
+  if (fillap.mapped !== "host_credential_fill" || fillap.product_tool_residual !== false) throw new Error(JSON.stringify(fillap).slice(0,200));
+  if (fillap.signin_fill_residual !== true) throw new Error("signin_fill_residual alias");
+  if (fillap.secret_echoed === true) throw new Error("secret_echoed alias");
+  console.log("mcp_call credential_fill alias short-circuit ok", fillap.mapped, (fillap.credential_fill||{}).mode, fillap.signin_fill_residual);
   // Media product short-circuit → executeMediaProductEffect (generate_image/video/watch/chart)
   const imgs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.generate_image|{\"prompt\":\"MCP aurora smoke\"}" }]);
   const ih = imgs.find((r) => r && r.kind === "mcp_call");
