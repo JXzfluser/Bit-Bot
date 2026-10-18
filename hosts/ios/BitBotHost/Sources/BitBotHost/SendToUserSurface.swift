@@ -69,9 +69,10 @@ enum SendToUserSurface {
       "live_channel_residual",
       "box_doctor_bin_residual", "box_chrome_bin_residual",
       "long_lived_cron_residual", "remote_cloud_residual", "code_apply_residual",
-      "screenshot_residual", "remote_pr_residual", "public_fallback_residual",
+      "screenshot_residual", "remote_pr_residual", "gh_pr_create_residual",
+      "public_fallback_residual",
       "ocr_residual", "os_window_automation_residual",
-      "interactive_oauth_residual",
+      "interactive_oauth_residual", "true_device_os_dialog_residual",
     ]
     if let hit = keys.first(where: { (p[$0] as? Bool) == true }) {
       return "/" + hit
@@ -88,6 +89,12 @@ enum SendToUserSurface {
          (vp["ocr_residual"] as? Bool) == true {
         return "/ocr_residual"
       }
+    }
+    let rp = p["remote_pr"] as? [String: Any] ?? [:]
+    let mode = String(describing: rp["mode"] ?? p["mode"] ?? "")
+    if (rp["real_create_gated"] as? Bool) == true
+      || mode.contains("gh_pr_create_residual") {
+      return "/remote_pr_residual"
     }
     return ""
   }

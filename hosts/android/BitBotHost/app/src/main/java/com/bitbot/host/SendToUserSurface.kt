@@ -72,9 +72,10 @@ object SendToUserSurface {
       "live_channel_residual",
       "box_doctor_bin_residual", "box_chrome_bin_residual",
       "long_lived_cron_residual", "remote_cloud_residual", "code_apply_residual",
-      "screenshot_residual", "remote_pr_residual", "public_fallback_residual",
+      "screenshot_residual", "remote_pr_residual", "gh_pr_create_residual",
+      "public_fallback_residual",
       "ocr_residual", "os_window_automation_residual",
-      "interactive_oauth_residual",
+      "interactive_oauth_residual", "true_device_os_dialog_residual",
     )
     for (k in keys) {
       if (p.optBoolean(k, false)) return "/$k"
@@ -93,6 +94,13 @@ object SendToUserSurface {
       if (vp != null && vp.optBoolean("ocr_residual", false)) {
         return "/ocr_residual"
       }
+    }
+    val rp = p.optJSONObject("remote_pr")
+    val mode = (rp?.optString("mode") ?: p.optString("mode") ?: "")
+    if (rp != null && rp.optBoolean("real_create_gated", false)
+      || mode.contains("gh_pr_create_residual")
+    ) {
+      return "/remote_pr_residual"
     }
     return ""
   }

@@ -543,6 +543,18 @@ for needle in (
   '/live_finance_residual',
   '/live_paid_residual',
   '/live_calendar_residual',
+  '/live_slack_residual',
+  '/live_teams_residual',
+  '/live_meeting_residual',
+  '/live_channel_residual',
+  '/remote_cloud_residual',
+  '/remote_pr_residual',
+  '/code_apply_residual',
+  '/box_doctor_bin_residual',
+  '/box_chrome_bin_residual',
+  '/long_lived_cron_residual',
+  '/screenshot_residual',
+  'h.kind === "screenshot"',
   'vision_plan',
   '"mail_draft"',
   '"package_install"',
@@ -555,9 +567,16 @@ for needle in (
   '"react_message"',
 ):
   assert needle in html, needle
-# Prefer full residual flag names on Desktop chip labels (not bare /live_residual|/gated).
-assert '? "/live_residual"' not in html
-assert '? "/gated"' not in html
+# Prefer full residual flag names on Desktop chip labels (not short forms).
+for short in (
+  '? "/live_residual"',
+  '? "/gated"',
+  '? "/remote_residual"',
+  '? "/apply_residual"',
+  '? "/bin_residual"',
+  '? "/cron_residual"',
+):
+  assert short not in html, short
 assert 'true_device_os_dialog_residual' in shared
 assert 'refused_cross_scope' in shared
 assert 'gh_pr_create_residual' in shared or 'remote_pr_residual' in shared
@@ -567,7 +586,16 @@ assert 'payload.media_path' in mobile
 assert 'memory_update' in mobile and 'memory_recall' in mobile
 assert '"device_tool"' in mobile and '"delivery"' in mobile
 for needle in (
+  'live_mail_residual',
+  'live_x_residual',
+  'live_job_residual',
+  'live_finance_residual',
+  'live_paid_residual',
   'live_calendar_residual',
+  'live_slack_residual',
+  'live_teams_residual',
+  'live_meeting_residual',
+  'live_channel_residual',
   'box_doctor_bin_residual',
   'box_chrome_bin_residual',
   'long_lived_cron_residual',
@@ -575,6 +603,8 @@ for needle in (
   'code_apply_residual',
   'screenshot_residual',
   'remote_pr_residual',
+  'public_fallback_residual',
+  'ocr_residual',
   'os_window_automation_residual',
   'interactive_oauth_residual',
 ):
@@ -584,6 +614,14 @@ android=Path('hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToU
 assert 'widget:device_permission:' in ios and 'widget:device_permission:' in android
 assert 'inbound_reaction' in ios and 'react_message' in ios
 assert 'inbound_reaction' in android and 'react_message' in android
+for needle in (
+  'gh_pr_create_residual',
+  'true_device_os_dialog_residual',
+  'remote_pr',
+  'real_create_gated',
+):
+  assert needle in ios, needle
+  assert needle in android, needle
 print('desktop inline media + HTML + OS-open + NeedsAuth + STU residual chips wired ok')
 PY
 python3 - <<'PY'

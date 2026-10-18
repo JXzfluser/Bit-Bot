@@ -1872,13 +1872,17 @@
                     "cursor-agent:" +
                     (p.cursor_agent_card.bc_id || p.bc_id || "?") +
                     (p.path ? "/snap" : "") +
-                    (p.remote_cloud_residual === true ? "/remote_residual" : "");
+                    (p.remote_cloud_residual === true
+                      ? "/remote_cloud_residual"
+                      : "");
                   types.push("cursor-agent");
                 } else if (h.kind === "cloud_agent_launch") {
                   label =
                     "cloud:" +
                     (p.mode || "local_worker") +
-                    (p.remote_cloud_residual === true ? "/remote_residual" : "");
+                    (p.remote_cloud_residual === true
+                      ? "/remote_cloud_residual"
+                      : "");
                   types.push("attachment");
                   const cloudMeta = document.getElementById("cloud-meta");
                   if (cloudMeta) {
@@ -2333,7 +2337,9 @@
                   label =
                     "code:" +
                     (p.applied ? "applied" : "plan") +
-                    (p.code_apply_residual === true ? "/apply_residual" : "");
+                    (p.code_apply_residual === true
+                      ? "/code_apply_residual"
+                      : "");
                   types.push("attachment");
                   const scMeta = document.getElementById("source-control-meta");
                   if (scMeta) {
@@ -2468,7 +2474,9 @@
                     "box_doctor:" +
                     (p.overall_pass ? "PASS" : "FAIL") +
                     (p.path ? "/snap" : "") +
-                    (p.box_doctor_bin_residual === true ? "/bin_residual" : "");
+                    (p.box_doctor_bin_residual === true
+                      ? "/box_doctor_bin_residual"
+                      : "");
                   types.push("attachment");
                   const boxMeta = document.getElementById("box-meta");
                   if (boxMeta) {
@@ -2514,7 +2522,10 @@
                     (bareRefused
                       ? "refuse"
                       : "p" + (p.private_cdp_port || "?")) +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.box_chrome_bin_residual === true
+                      ? "/box_chrome_bin_residual"
+                      : "");
                   types.push("attachment");
                   const boxMeta = document.getElementById("box-meta");
                   if (boxMeta) {
@@ -2954,7 +2965,7 @@
                     rtId +
                     (p.path ? "/snap" : "") +
                     (p.long_lived_cron_residual === true
-                      ? "/cron_residual"
+                      ? "/long_lived_cron_residual"
                       : "");
                   types.push("attachment");
                   const rtMeta = document.getElementById("routines-meta");
@@ -3028,6 +3039,25 @@
                       (p.pretend_persisted === true || p.pretend_empty === true
                         ? " · pretend!"
                         : "");
+                  }
+                } else if (h.kind === "screenshot") {
+                  label =
+                    "screenshot:" +
+                    (p.tool || p.mode || "frame") +
+                    (p.frame_path || p.path ? "/snap" : "") +
+                    (p.screenshot_residual === true
+                      ? "/screenshot_residual"
+                      : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      "screenshot · " +
+                      (p.tool || p.mode || "frame") +
+                      (p.screenshot_residual === true
+                        ? " · screenshot_residual"
+                        : "") +
+                      (p.pretend_live === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "device_tool") {
                   label =
