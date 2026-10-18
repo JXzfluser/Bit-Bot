@@ -1531,13 +1531,15 @@ kill "$SMS_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SMS_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('mode')=='live_sms';assert p.get('live_sms_residual') is False;assert p.get('live_channel_residual') is False;assert p.get('live_post') is True;assert p.get('pretend_live') is False;print('channel sms live mock residual close ok', p.get('mode'), p.get('path'))"
 # Live SMS claim closes live_sms_residual (GET /messages); widget degrade on claim body.
-python3 "$ROOT/scripts/host_local_http_mock.py" --port 18792 --mode sms --token smoke-sms >/tmp/bitbot-sms-claim-mock.log 2>&1 &
+# Port 18801 avoids leftover 18792 listeners and SMS listen (18802).
+fuser -k 18801/tcp >/dev/null 2>&1 || true
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18801 --mode sms --token smoke-sms >/tmp/bitbot-sms-claim-mock.log 2>&1 &
 SMS_CLAIM_MOCK_PID=$!
 sleep 0.4
-BITBOT_SMS_API_URL=http://127.0.0.1:18792 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_CLAIM=1 \
+BITBOT_SMS_API_URL=http://127.0.0.1:18801 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_CLAIM=1 \
   node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: claim sms [widget:decision_card]" >/tmp/bitbot-sms-claim-live.json || true
 # Live SMS claim + BITBOT_INBOUND_TURN closes inbound_turn_residual (parity with Slack/Teams).
-BITBOT_SMS_API_URL=http://127.0.0.1:18792 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_CLAIM=1 BITBOT_INBOUND_TURN=1 \
+BITBOT_SMS_API_URL=http://127.0.0.1:18801 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_CLAIM=1 BITBOT_INBOUND_TURN=1 \
   node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: claim sms inbound turn" >/tmp/bitbot-sms-claim-turn.json || true
 kill "$SMS_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SMS_CLAIM_MOCK_PID" 2>/dev/null || true
@@ -1716,11 +1718,12 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams-events-curl-turn.
 # Claim-only Teams path keeps inbound_push_residual true (not notifications push).
 python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_teams_claim';assert p.get('inbound_push_residual') is True;print('teams claim-only keeps inbound_push_residual true ok', p.get('mode'))"
 # SMS Twilio-style HTTP push: closes inbound_push_residual; AuthToken never echoed; turn residual stays open without BITBOT_INBOUND_TURN.
-# Port 18796 avoids SMS claim mock (18792) / Slack Events (18797) / reserved 18798 collisions.
-python3 "$ROOT/scripts/host_sms_listen.py" --port 18796 >/tmp/bitbot-sms-listen.log 2>&1 &
+# Port 18802 avoids SMS claim (18801) / email claim turn (18796) / Slack Events (18797).
+fuser -k 18802/tcp >/dev/null 2>&1 || true
+python3 "$ROOT/scripts/host_sms_listen.py" --port 18802 >/tmp/bitbot-sms-listen.log 2>&1 &
 SMS_LISTEN_PID=$!
 sleep 0.4
-curl -s -X POST http://127.0.0.1:18796/sms/inbound -H 'Content-Type: application/x-www-form-urlencoded' \
+curl -s -X POST http://127.0.0.1:18802/sms/inbound -H 'Content-Type: application/x-www-form-urlencoded' \
   -d 'MessageSid=SMhttpSmoke&AccountSid=ACsmoke&From=%2B15550001111&To=%2B15551212&Body=sms+inbound+push+smoke&AuthToken=sms-auth-secret-smoke' \
   >/tmp/bitbot-sms-listen-curl.json || true
 kill "$SMS_LISTEN_PID" >/dev/null 2>&1 || true
