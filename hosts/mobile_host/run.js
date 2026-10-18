@@ -296,6 +296,14 @@ try {
         voice_stt_residual: payload.voice_stt_residual === true,
         voice_tts_residual: payload.voice_tts_residual === true,
         inbound_turn_residual: payload.inbound_turn_residual === true,
+        credential_browser_fill_residual:
+          payload.credential_browser_fill_residual === true,
+        signin_fill_residual: payload.signin_fill_residual === true,
+        cross_machine_copy_residual:
+          payload.cross_machine_copy_residual === true,
+        device_capture_residual: payload.device_capture_residual === true,
+        device_tool_residual: payload.device_tool_residual === true,
+        product_tool_residual: payload.product_tool_residual === true,
         live_paid_residual:
           payload.live_paid_residual === true ||
           oc.live_paid_residual === true,

@@ -35,6 +35,9 @@ Endpoints:
   cloud:    POST /agents  (BITBOT_CLOUD_API_URL=http://host:port)
   outlook:  POST /me/sendMail  (BITBOT_OUTLOOK_GRAPH_URL=http://host:port)
   calendar: POST /events  (BITBOT_CALENDAR_API_URL=http://host:port)
+  sms:      POST /messages  (BITBOT_SMS_API_URL=http://host:port + BITBOT_SMS_POST=1)
+  voice:    POST /messages  (BITBOT_VOICE_API_URL=http://host:port + BITBOT_VOICE_POST=1)
+  webhook:  POST /hooks (any POST; no Bearer — BITBOT_WEBHOOK_OUTBOUND_URL + BITBOT_WEBHOOK_POST=1)
   webfetch: GET /docs-blocked (403 unless UA BitBot-PublicFallback)
             GET /login (401 auth wall)
             GET /ok (200)
@@ -66,6 +69,9 @@ def main() -> int:
             "cloud",
             "outlook",
             "calendar",
+            "sms",
+            "voice",
+            "webhook",
             "webfetch",
         ),
         required=True,
@@ -98,6 +104,9 @@ def main() -> int:
             ok_path = (
                 (mode == "purchase" and path == "/charge")
                 or (mode == "meeting" and path == "/messages")
+                or (mode == "sms" and path == "/messages")
+                or (mode == "voice" and path == "/messages")
+                or (mode == "webhook" and (path == "/hooks" or path.startswith("/hooks")))
                 or (mode == "finance" and path.startswith("/tools/"))
                 or (
                     mode == "slack"
@@ -123,7 +132,8 @@ def main() -> int:
             if not ok_path:
                 self._json(404, {"ok": False, "error": "not_found"})
                 return
-            if not self._auth_ok():
+            # Webhook outbound uses opaque key header, not Bearer.
+            if mode != "webhook" and not self._auth_ok():
                 self._json(401, {"ok": False, "error": "unauthorized"})
                 return
             try:
@@ -148,6 +158,38 @@ def main() -> int:
                         "mode": mode,
                         "received": payload,
                         "message_id": "mock-meeting-1",
+                    },
+                )
+            elif mode == "sms":
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "mode": mode,
+                        "received": payload,
+                        "message_id": "mock-sms-1",
+                        "to": payload.get("to") or "",
+                    },
+                )
+            elif mode == "voice":
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "mode": mode,
+                        "received": payload,
+                        "message_id": "mock-voice-1",
+                        "call_id": payload.get("call_id") or "mock-call",
+                    },
+                )
+            elif mode == "webhook":
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "mode": mode,
+                        "received": payload,
+                        "event_id": "mock-webhook-1",
                     },
                 )
             elif mode == "finance":

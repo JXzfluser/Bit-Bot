@@ -2862,6 +2862,9 @@
                     (p.path ? "/snap" : "") +
                     (p.credential_browser_fill_residual === true
                       ? "/credential_browser_fill_residual"
+                      : "") +
+                    (p.signin_fill_residual === true
+                      ? "/signin_fill_residual"
                       : "");
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
@@ -2871,6 +2874,9 @@
                       (p.domain || "?") +
                       (p.credential_browser_fill_residual === true
                         ? " · credential_browser_fill_residual"
+                        : "") +
+                      (p.signin_fill_residual === true
+                        ? " · signin_fill_residual"
                         : "") +
                       (p.pretend_secret_echo === true ? " · pretend!" : "") +
                       (p.path ? " · snap" : "");
@@ -3153,8 +3159,24 @@
                     (p.path ? "/snap" : "") +
                     (p.device_capture_residual === true
                       ? "/device_capture_residual"
+                      : "") +
+                    (p.device_tool_residual === true
+                      ? "/device_tool_residual"
                       : "");
                   types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      "device · " +
+                      (p.tool || "?") +
+                      (p.mode ? " · " + p.mode : "") +
+                      (p.device_capture_residual === true
+                        ? " · device_capture_residual"
+                        : "") +
+                      (p.device_tool_residual === true
+                        ? " · device_tool_residual"
+                        : "");
+                  }
                 } else if (h.kind === "voice_session") {
                   label =
                     "voice:" +

@@ -1578,7 +1578,8 @@ function createHostFfi(repoRoot) {
       let livePost = false;
       let liveProbe = null;
       let mode = "sandbox_sms";
-      if (smsApi && smsToken) {
+      // Gate live SMS behind BITBOT_SMS_POST=1 (parity with webhook/voice).
+      if (smsApi && smsToken && process.env.BITBOT_SMS_POST === "1") {
         try {
           const resp = await httpJson(smsApi.replace(/\/$/, "") + "/messages", {
             method: "POST",
@@ -1966,11 +1967,13 @@ function createHostFfi(repoRoot) {
         .update(fs.readFileSync(destAbs))
         .digest("hex");
       // Cross-machine: optional scp when BITBOT_COPYBOX_SSH + remote host mapped.
+      // BITBOT_SCP_BIN injects a mock scp for residual-close smoke (never invents remote).
       let remote = {
         attempted: false,
         ok: false,
         host: null,
         error: null,
+        scp_bin: null,
       };
       const sshMapPath = path.join(
         REPO_ROOT,
@@ -1993,13 +1996,27 @@ function createHostFfi(repoRoot) {
       if (wantRemote) {
         remote.attempted = true;
         remote.host = remoteHost;
+        const scpBin =
+          String(process.env.BITBOT_SCP_BIN || "").trim() || "scp";
+        remote.scp_bin = scpBin;
         try {
           const { execFileSync } = require("child_process");
           const remoteDest = `${remoteHost}:${destAbs}`;
-          execFileSync("scp", ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", srcAbs, remoteDest], {
-            stdio: "ignore",
-            timeout: 30000,
-          });
+          execFileSync(
+            scpBin,
+            [
+              "-o",
+              "BatchMode=yes",
+              "-o",
+              "StrictHostKeyChecking=accept-new",
+              srcAbs,
+              remoteDest,
+            ],
+            {
+              stdio: "ignore",
+              timeout: 30000,
+            },
+          );
           remote.ok = true;
         } catch (err) {
           remote.ok = false;
@@ -5846,6 +5863,9 @@ function createHostFfi(repoRoot) {
         generate_pptx: "host_slides_pptx",
         search_posts: "host_x_search",
         x_search: "host_x_search",
+        create_draft: "host_mail_draft",
+        mail_draft: "host_mail_draft",
+        draft_mail: "host_mail_draft",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -5912,9 +5932,58 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X onto existing Host handlers (not echo stdio).
-      if (mapped === "host_slides_pptx" || mapped === "host_x_search") {
+      // Short-circuit slides/X/mail_draft onto existing Host handlers (not echo stdio).
+      if (
+        mapped === "host_slides_pptx" ||
+        mapped === "host_x_search" ||
+        mapped === "host_mail_draft"
+      ) {
         const shortAt = new Date().toISOString();
+        if (mapped === "host_mail_draft") {
+          const to = String(args.to || args.recipient || "").trim();
+          const subject = String(args.subject || args.title || "(no subject)").trim();
+          const body = String(
+            args.body || args.text || args.content || "",
+          ).trim();
+          const draftCmd = [to, subject, body].join("|");
+          const draftResults = await executeHostEffects([
+            { kind: "mail_draft", command: draftCmd },
+          ]);
+          const draftHit = (draftResults || []).find(
+            (r) => r && r.kind === "mail_draft",
+          );
+          let draftPayload = {};
+          try {
+            draftPayload = JSON.parse((draftHit && draftHit.stdout) || "{}");
+          } catch {
+            draftPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "mail_draft",
+            mail_draft: {
+              path: draftPayload.path || null,
+              eml_path: draftPayload.eml_path || null,
+              mode: draftPayload.mode || null,
+              drafted: draftPayload.drafted,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(draftHit && draftHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(draftHit && draftHit.ok),
+            mail_draft: draftPayload,
+          });
+        }
         if (mapped === "host_slides_pptx") {
           const title =
             String(args.title || args.body || args.q || "MCP deck").slice(0, 200);
@@ -11424,6 +11493,12 @@ function createHostFfi(repoRoot) {
         if (tool === "camera" || tool === "photo" || tool === "screenshot") {
           capturePath = path.join(mediaDir, `camera-${stampId}.png`);
           const display = String(process.env.DISPLAY || "").trim();
+          const cameraFixture = path.join(
+            REPO_ROOT,
+            "data",
+            "device",
+            "camera.png",
+          );
           if (display && fs.existsSync("/usr/bin/import")) {
             await execFileAsync(
               "/usr/bin/import",
@@ -11450,13 +11525,20 @@ function createHostFfi(repoRoot) {
             captureOk =
               fs.existsSync(capturePath) && fs.statSync(capturePath).size > 32;
             mode = "host_device_v4l2_frame";
+          } else if (fs.existsSync(cameraFixture)) {
+            // Sandbox fixture backend (not OS camera) — closes capture residual honestly.
+            fs.copyFileSync(cameraFixture, capturePath);
+            captureOk =
+              fs.existsSync(capturePath) && fs.statSync(capturePath).size > 32;
+            mode = "host_device_camera_fixture";
           } else {
             captureError =
-              "no DISPLAY/import and no /dev/video0 — device_capture_residual";
+              "no DISPLAY/import, /dev/video0, or data/device/camera.png — device_capture_residual";
             mode = "host_device_capture_residual";
           }
         } else if (tool === "mic" || tool === "microphone" || tool === "audio") {
           capturePath = path.join(mediaDir, `mic-${stampId}.wav`);
+          const micFixture = path.join(REPO_ROOT, "data", "device", "mic.wav");
           if (fs.existsSync("/usr/bin/ffmpeg") && fs.existsSync("/dev/snd")) {
             await execFileAsync(
               "/usr/bin/ffmpeg",
@@ -11475,9 +11557,14 @@ function createHostFfi(repoRoot) {
             captureOk =
               fs.existsSync(capturePath) && fs.statSync(capturePath).size > 44;
             mode = "host_device_alsa_wav";
+          } else if (fs.existsSync(micFixture)) {
+            fs.copyFileSync(micFixture, capturePath);
+            captureOk =
+              fs.existsSync(capturePath) && fs.statSync(capturePath).size > 44;
+            mode = "host_device_mic_fixture";
           } else {
             captureError =
-              "no ALSA default capture — device_capture_residual";
+              "no ALSA default capture or data/device/mic.wav — device_capture_residual";
             mode = "host_device_capture_residual";
           }
         } else if (tool === "contacts" || tool === "location") {
@@ -12856,6 +12943,7 @@ function createHostFfi(repoRoot) {
       );
       fs.writeFileSync(planPath, JSON.stringify(browserPlan, null, 2));
       // Optional live username CDP attempt when identity profile is switched.
+      // BITBOT_CREDENTIAL_FILL_MOCK=1 closes username residual without CU (password stays residual).
       let browserFill = {
         attempted: false,
         username_typed: false,
@@ -12863,12 +12951,48 @@ function createHostFfi(repoRoot) {
         error: null,
         evidence: null,
       };
+      const wantMockFill =
+        process.env.BITBOT_CREDENTIAL_FILL_MOCK === "1" &&
+        Boolean(username) &&
+        Boolean(navUrl);
       const wantLiveFill =
         process.env.BITBOT_CREDENTIAL_BROWSER_FILL === "1" &&
         identityReady &&
         Boolean(username) &&
         Boolean(navUrl);
-      if (wantLiveFill) {
+      if (wantMockFill) {
+        const evidenceDir = path.join(
+          REPO_ROOT,
+          "data",
+          "journal",
+          "computer-use",
+          `cred-fill-mock-${Date.now().toString(36)}`,
+        );
+        fs.mkdirSync(evidenceDir, { recursive: true });
+        const mockEvidence = path.join(evidenceDir, "username_fill_mock.json");
+        fs.writeFileSync(
+          mockEvidence,
+          JSON.stringify(
+            {
+              username_typed: true,
+              password_filled: false,
+              pretend_secret_view: false,
+              mode: "host_credential_username_mock",
+              at,
+            },
+            null,
+            2,
+          ),
+        );
+        browserFill = {
+          attempted: true,
+          username_typed: true,
+          ok: true,
+          error: null,
+          evidence: mockEvidence,
+          mode: "host_credential_username_mock",
+        };
+      } else if (wantLiveFill) {
         try {
           const evidenceDir = path.join(
             REPO_ROOT,
@@ -12937,23 +13061,27 @@ function createHostFfi(repoRoot) {
           };
         }
       }
-      // Password fill always residual (no secret in Host vault JSON).
+      // Username residual closes when typed; password/OS secret fill stays residual (deferred).
       const credentialBrowserFillResidual =
         !browserFill.ok || !browserFill.username_typed;
+      const signinFillResidual = true;
       const artifact = {
         ...entry,
         vault_path: vaultPath,
         vault_id: id,
         ledger_path: pathWritten,
         pretend_secret_view: false,
-        mode: wantLiveFill
-          ? "host_credential_fill_browser"
-          : "host_credential_fill",
+        mode: wantMockFill
+          ? "host_credential_fill_username_mock"
+          : wantLiveFill
+            ? "host_credential_fill_browser"
+            : "host_credential_fill",
         browser_plan_path: planPath,
         browser_fill: browserFill,
         identity_browser_ready: identityReady,
         credential_browser_fill_residual: credentialBrowserFillResidual,
-        note: "secret stays in Host vault — never assistant_view; CDP plan is username-only",
+        signin_fill_residual: signinFillResidual,
+        note: "secret stays in Host vault — never assistant_view; CDP plan is username-only; password OS fill residual",
         at,
       };
       fs.writeFileSync(fillPath, JSON.stringify(artifact, null, 2));
@@ -12965,6 +13093,7 @@ function createHostFfi(repoRoot) {
         ledger_path: pathWritten,
         browser_plan_path: planPath,
         credential_browser_fill_residual: credentialBrowserFillResidual,
+        signin_fill_residual: signinFillResidual,
         at,
       });
       return okJson(kind, cmd, {

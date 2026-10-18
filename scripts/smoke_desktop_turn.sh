@@ -126,8 +126,27 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-discover.json'));as
 node hosts/cli_host/run_turn.js --approved "mcp call user-Gmail.search_threads {}" >/tmp/bitbot-mcp-call.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-call.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mcp_call' and x.get('ok'));p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_ok') is False;assert p.get('mapped')=='search_mail_artifacts';assert p.get('product_tool_residual') is False;assert p.get('path') and os.path.isfile(p['path']);snap=json.load(open(p['path']));assert snap.get('pretend_ok') is False;assert snap.get('mode')=='stdio-mcp';assert snap.get('mapped')=='search_mail_artifacts';print('mcp_call host ok', p.get('mapped') or p.get('tool'), p.get('path'))"
 # Catalog tool without Host product map → echo_body + product_tool_residual
-node hosts/cli_host/run_turn.js --approved 'mcp call user-Gmail.create_draft {"to":"a@b.c","subject":"x","body":"y"}' >/tmp/bitbot-mcp-residual.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-residual.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mcp_call' and x.get('ok'));p=json.loads(h.get('stdout') or '{}');assert p.get('tool')=='create_draft';assert p.get('mapped')=='echo_body';assert p.get('product_tool_residual') is True;assert p.get('pretend_ok') is False;print('mcp_call product_tool_residual ok', p.get('tool'), p.get('mapped'))"
+node hosts/cli_host/run_turn.js --approved 'mcp call user-Gmail.create_draft {"to":"a@b.c","subject":"x","body":"y"}' >/tmp/bitbot-mcp-draft.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-draft.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mcp_call' and x.get('ok'));p=json.loads(h.get('stdout') or '{}');assert p.get('tool')=='create_draft';assert p.get('mapped')=='host_mail_draft';assert p.get('product_tool_residual') is False;assert p.get('pretend_ok') is False;md=p.get('mail_draft') or {};assert md.get('eml_path') and os.path.isfile(md['eml_path']);assert 'X-BitBot-Status: draft' in open(md['eml_path']).read();print('mcp_call create_draft→mail_draft ok', p.get('mapped'), md.get('eml_path'))"
+# Unmapped product tool still stamps product_tool_residual (Host FFI; MoonBit catalog only seeds mapped tools).
+node -e '
+const { createHostFfi } = require("./hosts/shared/host_ffi.js");
+(async () => {
+  const ffi = createHostFfi(process.cwd());
+  const results = await ffi.executeHostEffects([
+    { kind: "mcp_call", command: "user-Gmail.some_unmapped_tool|{\"q\":\"x\"}" },
+  ]);
+  const h = results.find((r) => r && r.kind === "mcp_call");
+  if (!h || !h.ok) throw new Error("mcp_call missing: " + JSON.stringify(results).slice(0, 400));
+  const p = JSON.parse(h.stdout || "{}");
+  if (p.tool !== "some_unmapped_tool") throw new Error("tool " + p.tool);
+  if (p.mapped !== "echo_body") throw new Error("mapped " + p.mapped);
+  if (p.product_tool_residual !== true) throw new Error("expected product_tool_residual");
+  if (p.pretend_ok === true) throw new Error("pretend_ok");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-residual.json", JSON.stringify({ ok: true, ...p }, null, 2));
+  console.log("mcp_call product_tool_residual ok", p.tool, p.mapped);
+})().catch((e) => { console.error(e); process.exit(1); });
+'
 # CM-2163 product path: Host FFI expands $file: before stdio MCP (search_threads→search_mail_artifacts)
 mkdir -p uploads
 printf 'LARGE_PAYLOAD_BEGIN_%s_LARGE_PAYLOAD_END' "$(python3 -c 'print("x"*200)')" > uploads/bitbot-mcp-file-body.txt
@@ -547,11 +566,13 @@ for needle in (
   'remote_pr_residual',
   'true_device_os_dialog_residual',
   'credential_browser_fill_residual',
+  'signin_fill_residual',
   'inbound_turn_residual',
   'voice_stt_residual',
   'voice_tts_residual',
   'cross_machine_copy_residual',
   'device_capture_residual',
+  'device_tool_residual',
   'product_tool_residual',
   'refused_cross_scope',
   '/live_mail_residual',
@@ -577,11 +598,13 @@ for needle in (
   '/long_lived_cron_residual',
   '/screenshot_residual',
   '/credential_browser_fill_residual',
+  '/signin_fill_residual',
   '/inbound_turn_residual',
   '/voice_stt_residual',
   '/voice_tts_residual',
   '/cross_machine_copy_residual',
   '/device_capture_residual',
+  '/device_tool_residual',
   '/product_tool_residual',
   'h.kind === "screenshot"',
   'vision_plan',
@@ -647,6 +670,12 @@ for needle in (
   'ocr_residual',
   'os_window_automation_residual',
   'interactive_oauth_residual',
+  'credential_browser_fill_residual',
+  'signin_fill_residual',
+  'cross_machine_copy_residual',
+  'device_capture_residual',
+  'device_tool_residual',
+  'product_tool_residual',
 ):
   assert needle in mobile, needle
 ios=Path('hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift').read_text()
@@ -834,6 +863,13 @@ mkdir -p uploads
 echo 'box-copy-smoke' > uploads/box-src.txt
 node hosts/cli_host/run_turn.js "copy to box machine=desk-1 src=uploads/box-src.txt dest=uploads/box-dest.txt" >/tmp/bitbot-copy-to-box.json
 python3 -c "import json,os,glob;d=json.load(open('/tmp/bitbot-copy-to-box.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='copy_to_box');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('under_repo') is True;assert p.get('pretend_remote_machine') is False;assert p.get('cross_machine_copy_residual') is True;assert p.get('binary_intact') is True;assert p.get('sha256_src')==p.get('sha256_dest');assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('uploads/box-dest.txt');assert glob.glob('data/box-copy/copy_to_box-*.json');print('copy_to_box artifact ok', p.get('path'), 'bytes', p.get('bytes'), 'sha', str(p.get('sha256_src') or '')[:12], 'cross_machine_residual', True)"
+# Cross-machine SCP mock closes residual when BITBOT_COPYBOX_REMOTE=1 + BITBOT_SCP_BIN.
+rm -rf /tmp/bitbot-scp-mock
+mkdir -p /tmp/bitbot-scp-mock
+BITBOT_COPYBOX_REMOTE=1 BITBOT_COPYBOX_SSH=smoke@127.0.0.1 \
+  BITBOT_SCP_BIN="$ROOT/scripts/host_scp_mock.sh" BITBOT_SCP_MOCK_LOG_DIR=/tmp/bitbot-scp-mock \
+  node hosts/cli_host/run_turn.js "copy to box machine=desk-1 src=uploads/box-src.txt dest=uploads/box-dest-scp.txt" >/tmp/bitbot-copy-scp.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-copy-scp.json'));h=next(x for x in d['host_results'] if x.get('kind')=='copy_to_box');p=json.loads(h['stdout']);assert p.get('ok') is True;assert p.get('cross_machine_copy_residual') is False;remote=p.get('remote') or {};assert remote.get('attempted') is True;assert remote.get('ok') is True;assert remote.get('host')=='smoke@127.0.0.1';assert os.path.isfile('/tmp/bitbot-scp-mock/last-scp.json');assert os.path.isfile('/tmp/bitbot-scp-mock/invocations.log');print('copy_to_box SCP mock residual close ok', remote.get('scp_bin'), p.get('path'))"
 # Fresh dest so default overwrite=Refuse does not trip on prior smoke runs.
 rm -f uploads/box-out.txt
 node hosts/cli_host/run_turn.js "copy from box machine=desk-1 box=uploads/box-dest.txt dest=uploads/box-out.txt" >/tmp/bitbot-copy-from-box.json
@@ -1050,7 +1086,10 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-personal-dm.json'));ass
 node hosts/cli_host/run_turn.js "list credentials" >/tmp/bitbot-cred-list.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-cred-list.json'));assert d.get('ok');assert d.get('intent')=='list_credentials';hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='credential_list');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;assert p.get('count')>=1;assert 'vault:secret' not in json.dumps(p).lower();print('credential_list metadata ok', p.get('count'))"
 node hosts/cli_host/run_turn.js "fill credential domain=login.example.test" >/tmp/bitbot-cred.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cred.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='credential_fill');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('vault_path') and os.path.isfile(p['vault_path']);assert p.get('browser_plan_path') and os.path.isfile(p['browser_plan_path']);plan=json.load(open(p['browser_plan_path']));assert plan.get('secret_in_plan') is False;assert plan.get('username');assert 'vault:secret' not in json.dumps(plan).lower();assert 'vault:secret' not in json.dumps(p).lower();assert p.get('credential_browser_fill_residual') is True;print('credential_fill vault+browser_plan ok', p.get('path'), 'plan', p.get('browser_plan_path'), 'user', plan.get('username'), 'identity', p.get('identity_browser_ready'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cred.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='credential_fill');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('vault_path') and os.path.isfile(p['vault_path']);assert p.get('browser_plan_path') and os.path.isfile(p['browser_plan_path']);plan=json.load(open(p['browser_plan_path']));assert plan.get('secret_in_plan') is False;assert plan.get('username');assert 'vault:secret' not in json.dumps(plan).lower();assert 'vault:secret' not in json.dumps(p).lower();assert p.get('credential_browser_fill_residual') is True;assert p.get('signin_fill_residual') is True;print('credential_fill vault+browser_plan ok', p.get('path'), 'plan', p.get('browser_plan_path'), 'user', plan.get('username'), 'identity', p.get('identity_browser_ready'))"
+# Username fill mock closes credential_browser_fill_residual; password stays signin_fill_residual.
+BITBOT_CREDENTIAL_FILL_MOCK=1 node hosts/cli_host/run_turn.js "fill credential domain=example.com" >/tmp/bitbot-cred-user.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cred-user.json'));h=next(x for x in d['host_results'] if x.get('kind')=='credential_fill');p=json.loads(h['stdout']);assert p.get('credential_browser_fill_residual') is False;assert p.get('signin_fill_residual') is True;bf=p.get('browser_fill') or {};assert bf.get('username_typed') is True;assert bf.get('ok') is True;assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;assert p.get('mode')=='host_credential_fill_username_mock';print('credential_fill username mock residual close ok', p.get('path'), 'signin_fill_residual', True)"
 node hosts/cli_host/run_turn.js "identity browser" >/tmp/bitbot-identity.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-identity.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='oauth');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('connector')=='identity-browser';assert p.get('mode')=='identity_browser_switch';assert p.get('connected') is False;assert p.get('pretend_connected_slack') is False;assert p.get('switched') is True;assert p.get('session_path') and os.path.isfile(p['session_path']);assert p.get('user_data_dir') and os.path.isdir(p['user_data_dir']);assert 'chrome-user-data' in p['user_data_dir'];sess=json.load(open(p['session_path']));assert sess.get('user_data_dir')==p['user_data_dir'];ptr=os.path.join('data','connectors','identity','active-user-data-dir.txt');assert os.path.isfile(ptr);assert open(ptr).read().strip()==p['user_data_dir'];print('identity_browser switch ok', p.get('status'), p.get('user_data_dir'))"
 # Identity profile pointer is preferred by CU chrome session (no live Chrome required).
@@ -1126,6 +1165,33 @@ const fs = require("fs");
   if (p.executed !== true || p.device_tool_residual !== false || p.mode !== "host_device_contacts_fixture") throw new Error(JSON.stringify(p));
   fs.writeFileSync("/tmp/bitbot-device-contacts.json", JSON.stringify({ ok: true, ...p }, null, 2));
   console.log("device_tool contacts fixture ok", p.mode, p.capture_path);
+  // camera/mic fixtures close device_capture_residual without OS devices
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  fs.writeFileSync("data/device/camera.png", png);
+  // Minimal RIFF/WAV (44-byte header + 8 sample bytes)
+  const wav = Buffer.alloc(52);
+  wav.write("RIFF", 0); wav.writeUInt32LE(44, 4); wav.write("WAVE", 8);
+  wav.write("fmt ", 12); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22); wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(8000, 28);
+  wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34);
+  wav.write("data", 36); wav.writeUInt32LE(8, 40);
+  fs.writeFileSync("data/device/mic.wav", wav);
+  r = await ffi.executeHostEffects([{ kind: "device_tool", command: "desktop|camera" }]);
+  p = JSON.parse(r.find((x) => x.kind === "device_tool").stdout);
+  if (!(p.executed === true || p.mode === "host_device_camera_fixture" || p.mode === "host_device_import_root" || p.mode === "host_device_v4l2_frame")) {
+    throw new Error("camera capture unexpected: " + JSON.stringify(p));
+  }
+  if (p.device_capture_residual !== false) throw new Error("camera residual expected closed: " + JSON.stringify(p));
+  fs.writeFileSync("/tmp/bitbot-device-camera.json", JSON.stringify({ ok: true, ...p }, null, 2));
+  console.log("device_tool camera fixture/capture ok", p.mode, p.capture_path);
+  r = await ffi.executeHostEffects([{ kind: "device_tool", command: "desktop|mic" }]);
+  p = JSON.parse(r.find((x) => x.kind === "device_tool").stdout);
+  if (!(p.executed === true || p.mode === "host_device_mic_fixture" || p.mode === "host_device_alsa_wav")) {
+    throw new Error("mic capture unexpected: " + JSON.stringify(p));
+  }
+  if (p.device_capture_residual !== false) throw new Error("mic residual expected closed: " + JSON.stringify(p));
+  fs.writeFileSync("/tmp/bitbot-device-mic.json", JSON.stringify({ ok: true, ...p }, null, 2));
+  console.log("device_tool mic fixture/capture ok", p.mode, p.capture_path);
 })().catch((e)=>{console.error(e);process.exit(1);});
 '
 node hosts/cli_host/run_turn.js --approved "cold mail to=a@example.com subject=Hi body=Hello unsubscribe=mailto:u@example.com" >/tmp/bitbot-cold.json
@@ -1163,10 +1229,37 @@ node hosts/cli_host/run_turn.js --approved "reply via foo:bar :: unknown scheme 
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-ch-unknown.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='durable_outbound';assert p.get('live_channel_residual') is True;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel unknown scheme live_channel_residual ok', p.get('path'))"
 node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: hello sms" >/tmp/bitbot-sms.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('mode')=='sandbox_sms';assert p.get('live_sms_residual') is True;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel sms sandbox residual ok', p.get('mode'), p.get('path'))"
+# Live SMS mock closes live_sms_residual
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18777 --mode sms --token smoke-sms >/tmp/bitbot-sms-mock.log 2>&1 &
+SMS_MOCK_PID=$!
+sleep 0.4
+BITBOT_SMS_API_URL=http://127.0.0.1:18777 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_POST=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: live sms mock" >/tmp/bitbot-sms-live.json || true
+kill "$SMS_MOCK_PID" >/dev/null 2>&1 || true
+wait "$SMS_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('mode')=='live_sms';assert p.get('live_sms_residual') is False;assert p.get('live_post') is True;assert p.get('pretend_live') is False;print('channel sms live mock residual close ok', p.get('mode'), p.get('path'))"
 node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: hello hook" >/tmp/bitbot-wh-out.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-out.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='webhook';assert p.get('live_webhook_residual') is True;assert p.get('key_leaked') is False;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel webhook outbound residual ok', p.get('mode'), p.get('path'))"
+# Live webhook outbound mock closes live_webhook_residual
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18778 --mode webhook >/tmp/bitbot-wh-out-mock.log 2>&1 &
+WH_OUT_MOCK_PID=$!
+sleep 0.4
+BITBOT_WEBHOOK_OUTBOUND_URL=http://127.0.0.1:18778/hooks BITBOT_WEBHOOK_POST=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: live hook mock" >/tmp/bitbot-wh-out-live.json || true
+kill "$WH_OUT_MOCK_PID" >/dev/null 2>&1 || true
+wait "$WH_OUT_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-out-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='webhook';assert p.get('live_webhook_residual') is False;assert p.get('live_post') is True;assert p.get('key_leaked') is False;assert p.get('pretend_live') is False;print('channel webhook live mock residual close ok', p.get('mode'), p.get('path'))"
 node hosts/cli_host/run_turn.js --approved "reply via voice:call-smoke :: hello voice channel" >/tmp/bitbot-voice-ch.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-ch.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='voice';assert p.get('mode')=='sandbox_voice_channel';assert p.get('live_voice_residual') is True;assert p.get('pretend_live') is False;assert p.get('call_id');assert p.get('media_ok') is True;assert p.get('media_path') and os.path.isfile(p['media_path']);assert open(p['media_path'],'rb').read(4)==b'RIFF';assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/channels/voice/outbound.jsonl');print('channel voice sandbox residual ok', p.get('mode'), p.get('call_id'), p.get('path'))"
+# Live voice channel mock closes live_voice_residual
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18779 --mode voice --token smoke-voice >/tmp/bitbot-voice-ch-mock.log 2>&1 &
+VOICE_CH_MOCK_PID=$!
+sleep 0.4
+BITBOT_VOICE_API_URL=http://127.0.0.1:18779 BITBOT_VOICE_TOKEN=smoke-voice BITBOT_VOICE_POST=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via voice:call-live :: live voice mock" >/tmp/bitbot-voice-ch-live.json || true
+kill "$VOICE_CH_MOCK_PID" >/dev/null 2>&1 || true
+wait "$VOICE_CH_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-ch-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='voice';assert p.get('mode')=='live_voice_channel';assert p.get('live_voice_residual') is False;assert p.get('live_post') is True;assert p.get('pretend_live') is False;print('channel voice live mock residual close ok', p.get('mode'), p.get('call_id'), p.get('path'))"
 node hosts/cli_host/run_turn.js --approved "claim inbox alpha" >/tmp/bitbot-mail-claim.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-claim.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_claim_inbox');p=json.loads(h['stdout']);assert p.get('mode')=='host_mail_claim_inbox';assert p.get('local_part')=='alpha';assert p.get('pretend_claimed') is False;assert p.get('live_mail_claim_residual') is True;assert p.get('claimed_count',0)>=1;assert p.get('fixture_path') and os.path.isfile(p['fixture_path']);assert p.get('inbound_path') and os.path.isfile(p['inbound_path']);assert 'sandbox_mail_claim' in open(p['inbound_path']).read();th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('hook_path') and os.path.isfile(th['hook_path']);assert p.get('path') and os.path.isfile(p['path']);print('mail_claim_inbox fixture+inbound ok', p.get('claimed_count'), p.get('path'), 'live_mail_claim_residual', True)"
 # Inbound HTTP push wake (no turn prompt)
