@@ -229,10 +229,6 @@ function extractDeliveryTypes(turnJsonText) {
           "routine_tick",
           "routine_pause",
           "routine_resume",
-          "code_changes",
-          "shared_memory_put",
-          "shared_memory_read",
-          "source_control",
         ].includes(h.kind)
       ) {
         types.push("attachment");
