@@ -690,6 +690,16 @@ for needle in (
   'true_device_os_dialog_residual',
   'remote_pr',
   'real_create_gated',
+  'live_sms_residual',
+  'live_webhook_residual',
+  'live_voice_residual',
+  'live_mail_claim_residual',
+  'credential_browser_fill_residual',
+  'signin_fill_residual',
+  'device_capture_residual',
+  'cross_machine_copy_residual',
+  'voice_stt_residual',
+  'voice_tts_residual',
 ):
   assert needle in ios, needle
   assert needle in android, needle
@@ -844,6 +854,10 @@ TEAMS_MOCK_PID=$!
 sleep 0.4
 BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_POST=1 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: live teams mock" >/tmp/bitbot-teams-live.json || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('scheme')=='teams';assert p.get('live_post') is True;assert p.get('live_teams_residual') is False;assert p.get('pretend_live') is False;assert p.get('mode')=='live_teams_chat_message';print('channel_send teams live mock ok', p.get('mode'), 'status', p.get('http_status'))"
+# Live Teams post + CM-1104 widget degrade closes live_teams_residual.
+BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_POST=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: live teams [widget:decision_card]" >/tmp/bitbot-teams-live-widget.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-live-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_teams_chat_message';assert p.get('live_post') is True;assert p.get('live_teams_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;print('channel_send teams live+widget residual close ok', p.get('mode'), 'degraded', True)"
 # Teams live via connector token file (resolveProviderAccessToken), not only env.
 mkdir -p data/connectors
 printf '%s\n' '{"access_token":"smoke-teams","token_type":"Bearer"}' > data/connectors/teams_token.json
@@ -851,10 +865,12 @@ BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_POST=1 \
   env -u BITBOT_TEAMS_TOKEN \
   node hosts/cli_host/run_turn.js --approved "reply via teams:Tfile :: live teams file token" >/tmp/bitbot-teams-file-token.json || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('live_post') is True;assert p.get('live_teams_residual') is False;assert p.get('mode')=='live_teams_chat_message';print('channel_send teams connector token file ok', p.get('mode'))"
-BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_CLAIM=1 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: claim teams" >/tmp/bitbot-teams-claim-live.json || true
+# Live Teams claim closes live_teams_residual (Graph messages claimed); widget degrade on claim body.
+BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_CLAIM=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: claim teams [widget:decision_card]" >/tmp/bitbot-teams-claim-live.json || true
 kill "$TEAMS_MOCK_PID" >/dev/null 2>&1 || true
 wait "$TEAMS_MOCK_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_teams_claim';assert p.get('claimed_count',0)>=1;assert p.get('pretend_live') is False;assert os.path.isfile('data/channels/inbound.jsonl');assert 'live_teams_claim' in open('data/channels/inbound.jsonl').read();print('channel_send teams live claim ok', 'claimed', p.get('claimed_count'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_teams_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_teams_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;assert os.path.isfile('data/channels/inbound.jsonl');assert 'live_teams_claim' in open('data/channels/inbound.jsonl').read();print('channel_send teams live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
 # Clear connector token so sandbox claim is not reclassified as live_teams_claim.
 rm -f data/connectors/teams_token.json
 env -u BITBOT_TEAMS_TOKEN -u BITBOT_TEAMS_GRAPH_URL BITBOT_TEAMS_CLAIM=1 \

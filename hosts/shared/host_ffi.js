@@ -1252,6 +1252,20 @@ function createHostFfi(repoRoot) {
         "channels",
         "inbound.jsonl",
       );
+      // CM-1104: channel degrade — strip naked widget payloads before live/draft.
+      let outboundBody = body;
+      let widgetDegraded = false;
+      if (/\[widget:|type=widget|decision_card/i.test(body)) {
+        outboundBody = body
+          .replace(/\[widget:[^\]]*\]/gi, "")
+          .replace(/type=widget\S*/gi, "")
+          .trim();
+        if (!outboundBody) {
+          outboundBody =
+            "(widget degraded to text — open Desktop chat for choices)";
+        }
+        widgetDegraded = true;
+      }
       // Live Teams inbound claim (Graph chat messages) when CLAIM=1 + token.
       let teamsClaim = null;
       if (
@@ -1295,7 +1309,11 @@ function createHostFfi(repoRoot) {
           error: okHist ? "" : hist.error || `http_${hist.status}`,
         };
       }
-      if (teamsToken && process.env.BITBOT_TEAMS_POST === "1" && body) {
+      if (
+        teamsToken &&
+        process.env.BITBOT_TEAMS_POST === "1" &&
+        outboundBody
+      ) {
         // Prefer chat message POST when chat id present; else probe chats list.
         let post;
         let mode = "live_teams_graph";
@@ -1308,7 +1326,7 @@ function createHostFfi(repoRoot) {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              body: { contentType: "text", content: body },
+              body: { contentType: "text", content: outboundBody },
             }),
           });
           mode = "live_teams_chat_message";
@@ -1323,12 +1341,13 @@ function createHostFfi(repoRoot) {
         const entry = {
           scheme: "teams",
           address: addr,
-          body,
+          body: outboundBody,
           mode: ok ? mode : "live_teams_failed",
           ok,
           live_post: ok,
           live_teams_residual: !ok,
           pretend_live: false,
+          widget_degraded: widgetDegraded,
           http_status: post.status || 0,
           chat_id: chatId || null,
           claim: teamsClaim,
@@ -1347,17 +1366,20 @@ function createHostFfi(repoRoot) {
       }
       // Claim-only Teams path (no live post).
       if (teamsClaim) {
+        const claimOk = Boolean(teamsClaim.ok);
         const entry = {
           scheme: "teams",
           address: addr,
-          body,
+          body: outboundBody,
           mode: "live_teams_claim",
-          ok: Boolean(teamsClaim.ok),
+          ok: claimOk,
           live_post: false,
-          live_teams_residual: true,
+          // Live Graph claim closes residual; sandbox/fail leave it open.
+          live_teams_residual: !claimOk,
           claimed_count: teamsClaim.claimed_count,
           claim: teamsClaim,
           pretend_live: false,
+          widget_degraded: widgetDegraded,
           chat_id: chatId || null,
           at: stamp,
           inbound: inboundPath,
@@ -1386,13 +1408,14 @@ function createHostFfi(repoRoot) {
         const entry = {
           scheme: "teams",
           address: addr,
-          body,
+          body: outboundBody,
           mode: "sandbox_teams_claim",
           ok: true,
           live_post: false,
           live_teams_residual: true,
           claimed_count: 1,
           pretend_live: false,
+          widget_degraded: widgetDegraded,
           at: stamp,
           inbound: inboundPath,
           note: "sandbox claim — set BITBOT_TEAMS_TOKEN for live Graph messages",
@@ -1409,23 +1432,17 @@ function createHostFfi(repoRoot) {
       const entry = {
         scheme: "teams",
         address: addr,
-        body,
+        body: outboundBody,
         mode: connectorReady ? "connector_draft" : "sandbox_draft",
         ok: true,
         live_post: false,
         live_teams_residual: true,
         pretend_live: false,
         connector_ready: connectorReady,
-        widget_degraded: /\[widget:|type=widget/i.test(body),
+        widget_degraded: widgetDegraded,
         at: stamp,
         note: "Teams live Graph post needs BITBOT_TEAMS_TOKEN + BITBOT_TEAMS_POST=1; claim needs BITBOT_TEAMS_CLAIM=1",
       };
-      if (entry.widget_degraded) {
-        entry.body = body
-          .replace(/\[widget:[^\]]*\]/gi, "")
-          .replace(/type=widget\S*/gi, "")
-          .trim() || "(widget degraded to text)";
-      }
       appendJsonl(outboundPath, entry);
       appendJsonl(teamsTranscript, entry);
       return finalizeChannelSend(raw, entry, {
