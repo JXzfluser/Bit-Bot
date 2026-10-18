@@ -1692,6 +1692,29 @@ curl -s -X POST http://127.0.0.1:18797/slack/events -H 'Content-Type: applicatio
 kill "$SLACK_EVENTS_LISTEN_TURN_PID" >/dev/null 2>&1 || true
 wait "$SLACK_EVENTS_LISTEN_TURN_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-events-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'slack-verify-secret-turn' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('slack events http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
+# SMS Twilio-style HTTP push: closes inbound_push_residual; AuthToken never echoed; turn residual stays open without BITBOT_INBOUND_TURN.
+# Port 18796 avoids SMS claim mock (18792) / Slack Events (18797) / reserved 18798 collisions.
+python3 "$ROOT/scripts/host_sms_listen.py" --port 18796 >/tmp/bitbot-sms-listen.log 2>&1 &
+SMS_LISTEN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18796/sms/inbound -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'MessageSid=SMhttpSmoke&AccountSid=ACsmoke&From=%2B15550001111&To=%2B15551212&Body=sms+inbound+push+smoke&AuthToken=sms-auth-secret-smoke' \
+  >/tmp/bitbot-sms-listen-curl.json || true
+kill "$SMS_LISTEN_PID" >/dev/null 2>&1 || true
+wait "$SMS_LISTEN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-listen-curl.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is True;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'sms-auth-secret-smoke' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is True;assert snap.get('mode')=='host_sms_listen';th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is False;rows=open('data/channels/inbound.jsonl').read();assert 'live_sms_events_push' in rows;print('sms http listen push wake ok', d.get('path'), 'inbound_turn_residual', True)"
+# SMS listen + BITBOT_INBOUND_TURN=1 executes pending turn via Host run_turn (webhook/slack listen parity).
+BITBOT_INBOUND_TURN=1 python3 "$ROOT/scripts/host_sms_listen.py" --port 18796 >/tmp/bitbot-sms-listen-turn.log 2>&1 &
+SMS_LISTEN_TURN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18796/sms/inbound -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'MessageSid=SMhttpTurn&AccountSid=ACsmoke&From=%2B15550002222&To=%2B15551212&Body=sms+inbound+turn+smoke&AuthToken=sms-auth-secret-turn' \
+  >/tmp/bitbot-sms-listen-curl-turn.json || true
+kill "$SMS_LISTEN_TURN_PID" >/dev/null 2>&1 || true
+wait "$SMS_LISTEN_TURN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-listen-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'sms-auth-secret-turn' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('sms http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
+# Claim-only SMS path keeps inbound_push_residual true (not Events push).
+python3 -c "import json;d=json.load(open('/tmp/bitbot-sms-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_sms_claim';assert p.get('inbound_push_residual') is True;print('sms claim-only keeps inbound_push_residual true ok', p.get('mode'))"
 node -e '
 const fs=require("fs");
 const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
