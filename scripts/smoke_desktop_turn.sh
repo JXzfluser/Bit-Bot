@@ -901,21 +901,44 @@ echo old > uploads/box-out-exist.txt
 node hosts/cli_host/run_turn.js "copy from box machine=desk-1 box=uploads/box-dest.txt dest=uploads/box-out-exist.txt" >/tmp/bitbot-copy-ow.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-copy-ow.json'));h=next(x for x in d['host_results'] if x.get('kind')=='copy_from_box');p=json.loads(h['stdout']);assert p.get('refused') is True;assert p.get('overwrite')=='refuse';assert open('uploads/box-out-exist.txt').read().strip()=='old';print('copy_from_box overwrite refuse ok', p.get('mode'))"
 node hosts/cli_host/run_turn.js "meeting chat body=standup note direct=1" >/tmp/bitbot-meeting-direct.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-direct.json'));assert d.get('ok');assert d.get('intent')=='meeting_chat';hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='meeting_chat_direct';assert p.get('direct_send') is True;assert p.get('live_post') is False;assert p.get('live_meeting_residual') is True;assert p.get('transcript') and os.path.isfile(p['transcript']);print('meeting_chat DirectSend ok', p.get('transcript'), 'live_residual', p.get('live_meeting_residual'))"
-# Live meeting transport against local mock (closes residual when API+token ok)
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-direct.json'));assert d.get('ok');assert d.get('intent')=='meeting_chat';hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='meeting_chat_direct';assert p.get('direct_send') is True;assert p.get('live_post') is False;assert p.get('live_meeting_residual') is True;assert p.get('pretend_live') is False;assert p.get('transcript') and os.path.isfile(p['transcript']);print('meeting_chat DirectSend ok', p.get('transcript'), 'live_residual', p.get('live_meeting_residual'))"
+# Live meeting transport against local mock (closes residual when API+token+POST=1)
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18766 --mode meeting --token smoke-meeting >/tmp/bitbot-meeting-mock.log 2>&1 &
 MEETING_MOCK_PID=$!
 sleep 0.4
-BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting node hosts/cli_host/run_turn.js "meeting chat body=live standup direct=1" >/tmp/bitbot-meeting-live.json || true
-python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('live_meeting_residual') is False;assert p.get('mode')=='meeting_chat_live';print('meeting_chat live transport ok', p.get('live_probe'))"
+# Token+API without POST gate stays DirectSend residual (honest; parity with Slack/Teams/SMS).
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting \
+  env -u BITBOT_MEETING_POST \
+  node hosts/cli_host/run_turn.js "meeting chat body=no post gate direct=1" >/tmp/bitbot-meeting-nopost.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-nopost.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_direct';assert p.get('live_post') is False;assert p.get('live_meeting_residual') is True;assert p.get('pretend_live') is False;print('meeting_chat no-POST gate residual open ok')"
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting BITBOT_MEETING_POST=1 \
+  node hosts/cli_host/run_turn.js "meeting chat body=live standup direct=1" >/tmp/bitbot-meeting-live.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('live_meeting_residual') is False;assert p.get('mode')=='meeting_chat_live';assert p.get('pretend_live') is False;print('meeting_chat live transport ok', p.get('live_probe'))"
+# Live meeting + CM-1104 widget degrade closes live_meeting_residual.
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting BITBOT_MEETING_POST=1 \
+  node hosts/cli_host/run_turn.js "meeting chat body=live standup [widget:decision_card] direct=1" >/tmp/bitbot-meeting-live-widget.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-live-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_live';assert p.get('live_post') is True;assert p.get('live_meeting_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;print('meeting_chat live+widget residual close ok', p.get('mode'), 'degraded', True)"
+# Live meeting POST fail leaves residual open (honest live_failed mode).
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=wrong-meeting BITBOT_MEETING_POST=1 \
+  node hosts/cli_host/run_turn.js "meeting chat body=fail standup direct=1" >/tmp/bitbot-meeting-live-fail.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-live-fail.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='meeting_chat_live_failed';assert p.get('live_post') is False;assert p.get('live_meeting_residual') is True;assert p.get('pretend_live') is False;print('meeting_chat live fail residual open ok', p.get('mode'), (p.get('live_probe') or {}).get('http_status'))"
 mkdir -p data/connectors
 printf '%s\n' '{"access_token":"smoke-meeting","token_type":"Bearer"}' > data/connectors/meeting_token.json
-BITBOT_MEETING_API_URL=http://127.0.0.1:18766 \
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_POST=1 \
   env -u BITBOT_MEETING_TOKEN \
   node hosts/cli_host/run_turn.js "meeting chat body=file token standup direct=1" >/tmp/bitbot-meeting-file-token.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('live_post') is True;assert p.get('live_meeting_residual') is False;assert p.get('mode')=='meeting_chat_live';print('meeting_chat connector token file ok', p.get('live_probe'))"
+# Live meeting claim closes live_meeting_residual (GET /messages); widget degrade on claim body.
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting BITBOT_MEETING_CLAIM=1 \
+  node hosts/cli_host/run_turn.js "meeting chat body=claim meeting [widget:decision_card] direct=1" >/tmp/bitbot-meeting-claim-live.json || true
 kill "$MEETING_MOCK_PID" >/dev/null 2>&1 || true
 wait "$MEETING_MOCK_PID" 2>/dev/null || true
-python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('live_post') is True;assert p.get('live_meeting_residual') is False;assert p.get('mode')=='meeting_chat_live';print('meeting_chat connector token file ok', p.get('live_probe'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_meeting_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_meeting_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;assert os.path.isfile('data/channels/inbound.jsonl');assert 'live_meeting_claim' in open('data/channels/inbound.jsonl').read();print('meeting_chat live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+# Sandbox meeting claim leaves residual open.
+rm -f data/connectors/meeting_token.json
+env -u BITBOT_MEETING_TOKEN -u BITBOT_MEETING_API_URL BITBOT_MEETING_CLAIM=1 \
+  node hosts/cli_host/run_turn.js "meeting chat body=sandbox claim direct=1" >/tmp/bitbot-meeting-claim-sandbox.json || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-claim-sandbox.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_meeting_claim';assert p.get('live_meeting_residual') is True;assert p.get('pretend_live') is False;assert p.get('claimed_count',0)>=1;assert os.path.isfile('data/channels/inbound.jsonl');print('meeting_chat sandbox claim residual open ok', p.get('claimed_count'))"
 node hosts/cli_host/run_turn.js "meeting chat body=followup notes" >/tmp/bitbot-meeting-draft.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-draft.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_draft');p=json.loads(h.get('stdout') or '{}');assert p.get('meeting_chat') is True;assert p.get('mode')=='meeting_chat_draft_card';assert p.get('eml_ok') is True;assert os.path.isfile(p.get('eml_path') or '');assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_sent') is False;print('meeting_chat DraftCard eml ok', p.get('eml_path'), p.get('path'))"
 

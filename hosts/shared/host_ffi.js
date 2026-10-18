@@ -1533,22 +1533,90 @@ function createHostFfi(repoRoot) {
       const meetingDir = path.join(REPO_ROOT, "data", "meetings");
       fs.mkdirSync(meetingDir, { recursive: true });
       const transcriptPath = path.join(meetingDir, "live-chat.jsonl");
+      const inboundPath = path.join(
+        REPO_ROOT,
+        "data",
+        "channels",
+        "inbound.jsonl",
+      );
       const meetingToken = resolveProviderAccessToken("meeting");
       const meetingApi = resolveConnectorApiUrl("meeting", [
         "BITBOT_MEETING_API_URL",
       ]);
-      const liveMeeting = Boolean(meetingToken && meetingApi);
+      const apiBase = meetingApi ? meetingApi.replace(/\/$/, "") : "";
+      // CM-1104: strip naked widget payloads before live/direct meeting send.
+      let outboundBody = body;
+      let widgetDegraded = false;
+      if (/\[widget:|type=widget|decision_card/i.test(body)) {
+        outboundBody = body
+          .replace(/\[widget:[^\]]*\]/gi, "")
+          .replace(/type=widget\S*/gi, "")
+          .trim();
+        if (!outboundBody) {
+          outboundBody =
+            "(widget degraded to text — open Desktop chat for choices)";
+        }
+        widgetDegraded = true;
+      }
+      // Live meeting inbound claim when CLAIM=1 + token + API.
+      let meetingClaim = null;
+      if (
+        meetingToken &&
+        apiBase &&
+        process.env.BITBOT_MEETING_CLAIM === "1"
+      ) {
+        const hist = await httpJson(apiBase + "/messages", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${meetingToken}` },
+        });
+        const okHist =
+          Boolean(hist.ok) || (hist.status >= 200 && hist.status < 300);
+        const values =
+          (hist.json && (hist.json.messages || hist.json.value)) || [];
+        const claimed = [];
+        for (const m of Array.isArray(values) ? values : []) {
+          if (!m || typeof m !== "object") continue;
+          const text = String(m.text || m.body || m.content || "");
+          const row = {
+            scheme: "meeting_chat",
+            id: m.id || m.message_id || "",
+            text_prefix: text.slice(0, 80),
+            text_len: text.length,
+            mode: "live_meeting_claim",
+            at: stamp,
+          };
+          appendJsonl(inboundPath, row);
+          claimed.push({ id: row.id, text_len: row.text_len });
+        }
+        meetingClaim = {
+          ok: okHist,
+          claimed_count: claimed.length,
+          claimed,
+          error: okHist ? "" : hist.error || `http_${hist.status}`,
+        };
+      }
+      const liveMeeting = Boolean(meetingToken && apiBase);
       let livePost = false;
+      let liveAttempted = false;
       let liveProbe = null;
-      if (liveMeeting) {
+      // Gate live meeting POST behind BITBOT_MEETING_POST=1 (parity with Slack/Teams/SMS).
+      if (
+        liveMeeting &&
+        process.env.BITBOT_MEETING_POST === "1" &&
+        outboundBody
+      ) {
+        liveAttempted = true;
         try {
-          const resp = await fetch(meetingApi.replace(/\/$/, "") + "/messages", {
+          const resp = await fetch(apiBase + "/messages", {
             method: "POST",
             headers: {
               Authorization: `Bearer ${meetingToken}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ text: body, source: "bitbot-host" }),
+            body: JSON.stringify({
+              text: outboundBody,
+              source: "bitbot-host",
+            }),
           });
           livePost = resp.ok;
           liveProbe = { ok: resp.ok, http_status: resp.status };
@@ -1559,20 +1627,107 @@ function createHostFfi(repoRoot) {
           };
         }
       }
+      // Claim-only path (CLAIM=1, no POST gate): close residual when live claim ok.
+      if (meetingClaim && !liveAttempted) {
+        const claimOk = Boolean(meetingClaim.ok);
+        const entry = {
+          scheme: "meeting_chat",
+          address: "meeting_chat",
+          body: outboundBody,
+          mode: "live_meeting_claim",
+          direct_send: true,
+          draft_card: false,
+          ok: claimOk,
+          live_post: false,
+          // Live meeting claim closes residual; sandbox/fail leave it open.
+          live_meeting_residual: !claimOk,
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          claimed_count: meetingClaim.claimed_count,
+          claim: meetingClaim,
+          note: claimOk
+            ? "CM-2153 live meeting inbound claim"
+            : "CM-2153 meeting claim failed (live_meeting_residual)",
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        appendJsonl(transcriptPath, entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          transcript: transcriptPath,
+          inbound: inboundPath,
+          claim: meetingClaim,
+          ok: claimOk,
+          error: claimOk ? "" : meetingClaim.error || "meeting claim failed",
+        });
+      }
+      // Sandbox claim rehearsal when CLAIM=1 but no live token/API.
+      if (process.env.BITBOT_MEETING_CLAIM === "1" && !liveMeeting) {
+        const sandboxRow = {
+          scheme: "meeting_chat",
+          id: `sandbox-meet-${Date.now().toString(36)}`,
+          text_prefix: "sandbox meeting inbound",
+          text_len: 24,
+          mode: "sandbox_meeting_claim",
+          at: stamp,
+        };
+        appendJsonl(inboundPath, sandboxRow);
+        const entry = {
+          scheme: "meeting_chat",
+          address: "meeting_chat",
+          body: outboundBody,
+          mode: "sandbox_meeting_claim",
+          direct_send: true,
+          draft_card: false,
+          ok: true,
+          live_post: false,
+          live_meeting_residual: true,
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          claimed_count: 1,
+          note: "sandbox meeting claim — set BITBOT_MEETING_TOKEN + BITBOT_MEETING_API_URL for live",
+          at: stamp,
+          inbound: inboundPath,
+        };
+        appendJsonl(outboundPath, entry);
+        appendJsonl(transcriptPath, entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          transcript: transcriptPath,
+          inbound: inboundPath,
+        });
+      }
+      let mode = "meeting_chat_direct";
+      if (livePost) mode = "meeting_chat_live";
+      else if (liveAttempted) mode = "meeting_chat_live_failed";
+      // Live post closes residual; claim-ok alongside failed/direct also closes.
+      const claimOk = Boolean(meetingClaim && meetingClaim.ok);
+      const residualClosed = livePost || claimOk;
       const entry = {
         scheme: "meeting_chat",
         address: "meeting_chat",
-        body,
-        mode: livePost ? "meeting_chat_live" : "meeting_chat_direct",
+        body: outboundBody,
+        mode,
         direct_send: true,
         draft_card: false,
-        ok: true,
+        ok: livePost || !liveAttempted,
         live_post: livePost,
-        live_meeting_residual: !livePost,
+        live_meeting_residual: !residualClosed,
+        pretend_live: false,
+        widget_degraded: widgetDegraded,
         live_probe: liveProbe,
+        claim: meetingClaim
+          ? {
+              ok: meetingClaim.ok,
+              claimed_count: meetingClaim.claimed_count,
+            }
+          : null,
         note: livePost
           ? "CM-2153 DirectSend live meeting transport"
-          : "CM-2153 DirectSend durable transcript (live meeting transport residual)",
+          : liveAttempted
+            ? "CM-2153 live meeting transport failed (live_meeting_residual)"
+            : "CM-2153 DirectSend durable transcript (live meeting transport residual)",
         at: stamp,
       };
       appendJsonl(outboundPath, entry);
@@ -1580,6 +1735,12 @@ function createHostFfi(repoRoot) {
       return finalizeChannelSend(raw, entry, {
         outboundPath,
         transcript: transcriptPath,
+        inbound: meetingClaim ? inboundPath : undefined,
+        claim: meetingClaim || undefined,
+        ok: entry.ok,
+        error: liveAttempted && !livePost
+          ? `meeting post failed: ${(liveProbe && (liveProbe.error || liveProbe.http_status)) || "unknown"}`
+          : "",
       });
     }
 

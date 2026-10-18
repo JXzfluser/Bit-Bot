@@ -17,6 +17,7 @@ Usage:
 Endpoints:
   purchase: POST /charge
   meeting:  POST /messages
+            GET  /messages  (BITBOT_MEETING_CLAIM=1 inbound claim)
   finance:  POST /tools/<name>
   slack:    POST /chat.postMessage
             POST /conversations.history
@@ -394,6 +395,27 @@ def main() -> int:
                     self.wfile.write(html)
                     return
                 self._json(404, {"ok": False, "error": "not_found"})
+                return
+            if mode == "meeting" and path == "/messages":
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "messages": [
+                            {
+                                "id": "meet-live-1",
+                                "text": "live mock meeting inbound",
+                            },
+                            {
+                                "id": "meet-live-2",
+                                "text": "second meeting hit",
+                            },
+                        ],
+                    },
+                )
                 return
             if mode == "teams" and path.endswith("/me/chats"):
                 if not self._auth_ok():

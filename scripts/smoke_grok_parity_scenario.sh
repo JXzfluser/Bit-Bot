@@ -242,7 +242,7 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-meet-draft.json'));h=ne
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18766 --mode meeting --token smoke-meeting >/tmp/parity-meet-live-mock.log 2>&1 &
 MEET_LIVE_PID=$!
 sleep 0.4
-BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting \
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting BITBOT_MEETING_POST=1 \
   "${RUN[@]}" --approved "meeting chat body=parity live standup direct=1" >/tmp/parity-meet-live.json || true
 kill "$MEET_LIVE_PID" >/dev/null 2>&1 || true
 wait "$MEET_LIVE_PID" 2>/dev/null || true
