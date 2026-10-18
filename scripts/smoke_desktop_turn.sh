@@ -879,9 +879,13 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-file-token.json'));h
 # Live Teams claim closes live_teams_residual (Graph messages claimed); widget degrade on claim body.
 BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_CLAIM=1 \
   node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: claim teams [widget:decision_card]" >/tmp/bitbot-teams-claim-live.json || true
+# Live Teams claim + BITBOT_INBOUND_TURN closes inbound_turn_residual (parity with webhook/mail).
+BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_CLAIM=1 BITBOT_INBOUND_TURN=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: claim teams inbound turn" >/tmp/bitbot-teams-claim-turn.json || true
 kill "$TEAMS_MOCK_PID" >/dev/null 2>&1 || true
 wait "$TEAMS_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_teams_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_teams_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;assert os.path.isfile('data/channels/inbound.jsonl');assert 'live_teams_claim' in open('data/channels/inbound.jsonl').read();print('channel_send teams live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams-claim-turn.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_teams_claim';assert p.get('live_teams_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel_send teams claim inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 # Clear connector token so sandbox claim is not reclassified as live_teams_claim.
 rm -f data/connectors/teams_token.json
 env -u BITBOT_TEAMS_TOKEN -u BITBOT_TEAMS_GRAPH_URL BITBOT_TEAMS_CLAIM=1 \

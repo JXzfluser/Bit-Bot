@@ -939,7 +939,125 @@ function createHostFfi(repoRoot) {
     };
   }
 
-  function finalizeChannelSend(raw, entry, extras = {}) {
+  /**
+   * Claim → nested Host turn hook (webhook_wake / mail_claim_inbox parity).
+   * When BITBOT_INBOUND_TURN=1, runs cli_host on turnPrompt and closes
+   * inbound_turn_residual on turn_ok.
+   */
+  async function runInboundTurnHook({
+    hooksBaseDir,
+    turnPrompt,
+    hookMeta = {},
+    pendingMeta = {},
+  }) {
+    const at = new Date().toISOString();
+    const hooksDir = path.join(hooksBaseDir, "turn-hooks");
+    fs.mkdirSync(hooksDir, { recursive: true });
+    const hookPath = path.join(
+      hooksDir,
+      `hook-${Date.now().toString(36)}.json`,
+    );
+    const prompt = String(turnPrompt || "").slice(0, 400);
+    const hook = {
+      ...hookMeta,
+      turn_prompt: prompt,
+      status: "pending",
+      pretend_turn: false,
+      at,
+    };
+    fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
+    const pendingPath = path.join(hooksBaseDir, "pending-turns.jsonl");
+    appendJsonl(pendingPath, {
+      ...pendingMeta,
+      hook_path: hookPath,
+      turn_prompt: prompt,
+      status: "pending",
+      at,
+    });
+    let turnHookResult = {
+      hooked: true,
+      hook_path: hookPath,
+      pending_path: pendingPath,
+      turn_executed: false,
+      turn_ok: false,
+      turn_path: null,
+      error: null,
+    };
+    if (process.env.BITBOT_INBOUND_TURN === "1") {
+      try {
+        const turnOut = path.join(
+          hooksDir,
+          `turn-${Date.now().toString(36)}.json`,
+        );
+        const { stdout, stderr } = await execFileAsync(
+          process.execPath,
+          [
+            path.join(REPO_ROOT, "hosts", "cli_host", "run_turn.js"),
+            "--approved",
+            prompt,
+          ],
+          {
+            cwd: REPO_ROOT,
+            timeout: 60000,
+            maxBuffer: 2 * 1024 * 1024,
+            env: {
+              ...process.env,
+              // Prevent recursive inbound wake loops.
+              BITBOT_INBOUND_TURN: "0",
+            },
+          },
+        );
+        fs.writeFileSync(
+          turnOut,
+          String(stdout || "").trim() ||
+            JSON.stringify({ ok: false, error: "empty turn stdout", stderr }),
+        );
+        let turnOk = false;
+        try {
+          const parsed = JSON.parse(fs.readFileSync(turnOut, "utf8"));
+          turnOk = Boolean(parsed && parsed.ok);
+        } catch (_) {
+          turnOk = false;
+        }
+        hook.status = turnOk ? "executed" : "failed";
+        hook.turn_path = turnOut;
+        fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
+        turnHookResult = {
+          hooked: true,
+          hook_path: hookPath,
+          pending_path: pendingPath,
+          turn_executed: true,
+          turn_ok: turnOk,
+          turn_path: turnOut,
+          error: turnOk ? null : "inbound turn returned ok=false",
+        };
+      } catch (err) {
+        hook.status = "failed";
+        hook.error = String((err && err.message) || err).slice(0, 240);
+        fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
+        turnHookResult = {
+          hooked: true,
+          hook_path: hookPath,
+          pending_path: pendingPath,
+          turn_executed: true,
+          turn_ok: false,
+          turn_path: null,
+          error: hook.error,
+        };
+      }
+    }
+    const inboundTurnResidual =
+      !turnHookResult.turn_executed || !turnHookResult.turn_ok;
+    return {
+      turnHookResult,
+      inboundTurnResidual,
+      hookPath,
+      pendingPath,
+      hooksDir,
+    };
+  }
+
+  async function finalizeChannelSend(raw, entry, extras = {}) {
     // Per-send Host snapshot (ledger jsonl retained by caller).
     const outboundPath =
       extras.outboundPath ||
@@ -956,6 +1074,35 @@ function createHostFfi(repoRoot) {
         entry && entry.pretend_live === true ? true : false,
       mode: (entry && entry.mode) || "channel_send",
     };
+    const claim = extras.claim || artifact.claim || undefined;
+    // Live claim-ok → nested Host turn hook for all schemes (Slack/Teams/
+    // meeting/SMS/webhook/voice) without per-path copies.
+    let turnHookResult = undefined;
+    let inboundTurnResidual = undefined;
+    if (claim && Boolean(claim.ok)) {
+      const channelsDir = path.join(REPO_ROOT, "data", "channels");
+      const turnPrompt =
+        `Channel claim ${artifact.scheme || "channel"} ${artifact.address || ""}: ${claim.claimed_count || 0} message(s)`.slice(
+          0,
+          400,
+        );
+      const hooked = await runInboundTurnHook({
+        hooksBaseDir: channelsDir,
+        turnPrompt,
+        hookMeta: {
+          scheme: artifact.scheme || null,
+          address: artifact.address || null,
+          mode: artifact.mode || null,
+          claimed_count: claim.claimed_count || 0,
+        },
+        pendingMeta: {
+          scheme: artifact.scheme || null,
+          address: artifact.address || null,
+        },
+      });
+      turnHookResult = hooked.turnHookResult;
+      inboundTurnResidual = hooked.inboundTurnResidual;
+    }
     const snapshot = {
       ...artifact,
       path: sendPath,
@@ -965,7 +1112,9 @@ function createHostFfi(repoRoot) {
       teams_transcript:
         extras.teams_transcript || artifact.teams_transcript || undefined,
       mail: extras.mail || artifact.mail || undefined,
-      claim: extras.claim || artifact.claim || undefined,
+      claim,
+      turn_hook: turnHookResult,
+      inbound_turn_residual: inboundTurnResidual,
     };
     fs.writeFileSync(sendPath, JSON.stringify(snapshot, null, 2));
     appendJsonl(path.join(sendDir, "sends.jsonl"), snapshot);
@@ -975,6 +1124,8 @@ function createHostFfi(repoRoot) {
         kind: "channel_send",
         path: sendPath,
         ...artifact,
+        turn_hook: turnHookResult || undefined,
+        inbound_turn_residual: inboundTurnResidual,
       });
     const ok = extras.ok != null ? Boolean(extras.ok) : artifact.ok !== false;
     return {
@@ -3816,106 +3967,20 @@ function createHostFfi(repoRoot) {
     const key = panel ? panel.key : null;
     const keyLeaked = Boolean(key && wakePayload.includes(key));
     // Claim → turn hook: durable pending turn for Host / routine consumer.
-    const hooksDir = path.join(dir, "turn-hooks");
-    fs.mkdirSync(hooksDir, { recursive: true });
-    const hookPath = path.join(
-      hooksDir,
-      `hook-${Date.now().toString(36)}.json`,
-    );
     const turnPrompt = `Webhook inbound: ${summary}`.slice(0, 400);
-    const hook = {
-      event_id: eventId,
-      summary,
-      wake_payload: wakePayload,
-      turn_prompt: turnPrompt,
-      status: "pending",
-      pretend_turn: false,
-      at,
-    };
-    fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
-    const pendingPath = path.join(dir, "pending-turns.jsonl");
-    appendJsonl(pendingPath, {
-      event_id: eventId,
-      hook_path: hookPath,
-      turn_prompt: turnPrompt,
-      status: "pending",
-      at,
+    const hooked = await runInboundTurnHook({
+      hooksBaseDir: dir,
+      turnPrompt,
+      hookMeta: {
+        event_id: eventId,
+        summary,
+        wake_payload: wakePayload,
+      },
+      pendingMeta: { event_id: eventId },
     });
-    let turnHookResult = {
-      hooked: true,
-      hook_path: hookPath,
-      pending_path: pendingPath,
-      turn_executed: false,
-      turn_ok: false,
-      turn_path: null,
-      error: null,
-    };
-    // Optional live turn: BITBOT_INBOUND_TURN=1 runs cli_host on the wake prompt.
-    if (process.env.BITBOT_INBOUND_TURN === "1") {
-      try {
-        const turnOut = path.join(
-          hooksDir,
-          `turn-${Date.now().toString(36)}.json`,
-        );
-        const { stdout, stderr } = await execFileAsync(
-          process.execPath,
-          [
-            path.join(REPO_ROOT, "hosts", "cli_host", "run_turn.js"),
-            "--approved",
-            turnPrompt,
-          ],
-          {
-            cwd: REPO_ROOT,
-            timeout: 60000,
-            maxBuffer: 2 * 1024 * 1024,
-            env: {
-              ...process.env,
-              // Prevent recursive inbound wake loops.
-              BITBOT_INBOUND_TURN: "0",
-            },
-          },
-        );
-        fs.writeFileSync(
-          turnOut,
-          String(stdout || "").trim() ||
-            JSON.stringify({ ok: false, error: "empty turn stdout", stderr }),
-        );
-        let turnOk = false;
-        try {
-          const parsed = JSON.parse(fs.readFileSync(turnOut, "utf8"));
-          turnOk = Boolean(parsed && parsed.ok);
-        } catch (_) {
-          turnOk = false;
-        }
-        hook.status = turnOk ? "executed" : "failed";
-        hook.turn_path = turnOut;
-        fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
-        turnHookResult = {
-          hooked: true,
-          hook_path: hookPath,
-          pending_path: pendingPath,
-          turn_executed: true,
-          turn_ok: turnOk,
-          turn_path: turnOut,
-          error: turnOk ? null : "inbound turn returned ok=false",
-        };
-      } catch (err) {
-        hook.status = "failed";
-        hook.error = String((err && err.message) || err).slice(0, 240);
-        fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
-        turnHookResult = {
-          hooked: true,
-          hook_path: hookPath,
-          pending_path: pendingPath,
-          turn_executed: true,
-          turn_ok: false,
-          turn_path: null,
-          error: hook.error,
-        };
-      }
-    }
-    const inboundTurnResidual =
-      !turnHookResult.turn_executed || !turnHookResult.turn_ok;
+    const turnHookResult = hooked.turnHookResult;
+    const inboundTurnResidual = hooked.inboundTurnResidual;
+    const hookPath = hooked.hookPath;
     // HTTP listen path (host_webhook_listen.py) closes push residual; synthetic
     // turn wake stays open unless BITBOT_INBOUND_PUSH=1 proves a push source.
     const inboundPushResidual =
@@ -11941,111 +12006,22 @@ function createHostFfi(repoRoot) {
         });
       }
       // Claim → turn hook (same pattern as webhook inbound wake).
-      const hooksDir = path.join(dir, "turn-hooks");
-      fs.mkdirSync(hooksDir, { recursive: true });
-      const hookPath = path.join(
-        hooksDir,
-        `hook-${Date.now().toString(36)}.json`,
-      );
       const turnPrompt = `Mail claim inbox ${address}: ${claimed.length} fixture message(s)`.slice(
         0,
         400,
       );
-      const hook = {
-        address,
-        local_part: localPart,
-        claimed_count: claimed.length,
-        turn_prompt: turnPrompt,
-        status: "pending",
-        pretend_turn: false,
-        at,
-      };
-      fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
-      const pendingPath = path.join(dir, "pending-turns.jsonl");
-      appendJsonl(pendingPath, {
-        address,
-        hook_path: hookPath,
-        turn_prompt: turnPrompt,
-        status: "pending",
-        at,
+      const hooked = await runInboundTurnHook({
+        hooksBaseDir: dir,
+        turnPrompt,
+        hookMeta: {
+          address,
+          local_part: localPart,
+          claimed_count: claimed.length,
+        },
+        pendingMeta: { address },
       });
-      let turnHookResult = {
-        hooked: true,
-        hook_path: hookPath,
-        pending_path: pendingPath,
-        turn_executed: false,
-        turn_ok: false,
-        turn_path: null,
-        error: null,
-      };
-      if (process.env.BITBOT_INBOUND_TURN === "1") {
-        try {
-          const turnOut = path.join(
-            hooksDir,
-            `turn-${Date.now().toString(36)}.json`,
-          );
-          const { stdout, stderr } = await execFileAsync(
-            process.execPath,
-            [
-              path.join(REPO_ROOT, "hosts", "cli_host", "run_turn.js"),
-              "--approved",
-              turnPrompt,
-            ],
-            {
-              cwd: REPO_ROOT,
-              timeout: 60000,
-              maxBuffer: 2 * 1024 * 1024,
-              env: {
-                ...process.env,
-                BITBOT_INBOUND_TURN: "0",
-              },
-            },
-          );
-          fs.writeFileSync(
-            turnOut,
-            String(stdout || "").trim() ||
-              JSON.stringify({
-                ok: false,
-                error: "empty turn stdout",
-                stderr,
-              }),
-          );
-          let turnOk = false;
-          try {
-            const parsed = JSON.parse(fs.readFileSync(turnOut, "utf8"));
-            turnOk = Boolean(parsed && parsed.ok);
-          } catch (_) {
-            turnOk = false;
-          }
-          hook.status = turnOk ? "executed" : "failed";
-          hook.turn_path = turnOut;
-          fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
-          turnHookResult = {
-            hooked: true,
-            hook_path: hookPath,
-            pending_path: pendingPath,
-            turn_executed: true,
-            turn_ok: turnOk,
-            turn_path: turnOut,
-            error: turnOk ? null : "inbound turn returned ok=false",
-          };
-        } catch (err) {
-          hook.status = "failed";
-          hook.error = String((err && err.message) || err).slice(0, 240);
-          fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
-          turnHookResult = {
-            hooked: true,
-            hook_path: hookPath,
-            pending_path: pendingPath,
-            turn_executed: true,
-            turn_ok: false,
-            turn_path: null,
-            error: hook.error,
-          };
-        }
-      }
-      const inboundTurnResidual =
-        !turnHookResult.turn_executed || !turnHookResult.turn_ok;
+      const turnHookResult = hooked.turnHookResult;
+      const inboundTurnResidual = hooked.inboundTurnResidual;
       const artifact = {
         local_part: localPart,
         address,
