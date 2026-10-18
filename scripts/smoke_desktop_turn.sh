@@ -951,6 +951,38 @@ WAV=$(cat /tmp/bitbot-voice-wav.txt)
 printf 'transcribed hello from mic\n' > "${WAV}.stt.txt"
 BITBOT_VOICE_STT=force node hosts/cli_host/run_turn.js 'voice relay smoke1 :: $stt' >/tmp/bitbot-voice-stt.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-stt.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_relay');p=json.loads(h['stdout']);assert p.get('stt_ok') is True;assert p.get('stt_tool')=='stt_sidecar';assert p.get('voice_stt_residual') is False;assert 'transcribed hello' in (p.get('stt_text') or '');assert p.get('path') and os.path.isfile(p['path']);print('voice_relay STT sidecar ok', p.get('stt_tool'), 'residual', False, p.get('path'))"
+# BITBOT_STT_BIN mock closes voice_stt_residual without sidecar.
+rm -rf /tmp/bitbot-stt-mock
+mkdir -p /tmp/bitbot-stt-mock data/voice/media
+python3 - <<'PY'
+from pathlib import Path
+import struct
+p = Path("data/voice/media/stt-mock.wav")
+rate, ch, bits, n = 16000, 1, 16, 800
+data = b"\x00\x00" * n
+byte_rate = rate * ch * bits // 8
+block = ch * bits // 8
+hdr = struct.pack(
+    "<4sI4s4sIHHIIHH4sI",
+    b"RIFF",
+    36 + len(data),
+    b"WAVE",
+    b"fmt ",
+    16,
+    1,
+    ch,
+    rate,
+    byte_rate,
+    block,
+    bits,
+    b"data",
+    len(data),
+)
+p.write_bytes(hdr + data)
+PY
+BITBOT_STT_BIN="$ROOT/scripts/host_stt_mock.sh" BITBOT_STT_MOCK_LOG_DIR=/tmp/bitbot-stt-mock \
+  node hosts/cli_host/run_turn.js 'voice relay sttbin :: $wav:data/voice/media/stt-mock.wav' >/tmp/bitbot-voice-stt-bin.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-stt-bin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_relay');p=json.loads(h['stdout']);assert p.get('stt_ok') is True;assert p.get('stt_tool')=='host_stt_mock.sh';assert p.get('voice_stt_residual') is False;assert 'mock stt transcript' in (p.get('stt_text') or '');assert os.path.isfile('/tmp/bitbot-stt-mock/last-stt.json');print('voice_relay STT bin mock residual close ok', p.get('stt_tool'), p.get('path'))"
 node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'))"
 # MCP product short-circuit: slides + X (Host FFI; MoonBit catalog may lack names)
