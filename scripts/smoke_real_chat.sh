@@ -136,4 +136,25 @@ for name in ("slack","gmail","outlook"):
 print("PASS connectors/status", {k: {"live": v.get("live"), "mode": v.get("mode")} for k,v in c.items()})
 PY
 
+echo "== smoke: Host honesty on chat artifacts =="
+python3 - <<'PY'
+import json, os, re
+out = os.environ["BITBOT_SMOKE_OUT"]
+for name in ("shell", "listdir", "memory_set", "memory_get", "webfetch"):
+    path = os.path.join(out, name + ".json")
+    raw = open(path).read()
+    # Never claim pretend_live in product chat payloads.
+    assert '"pretend_live": true' not in raw and '"pretend_live":true' not in raw, name
+    d = json.loads(raw)
+    for h in d.get("host_results") or []:
+        try:
+            p = json.loads(h.get("stdout") or "{}")
+        except Exception:
+            p = {}
+        assert p.get("pretend_live") is not True, (name, h.get("kind"), p)
+        assert p.get("pretend_sent") is not True, (name, h.get("kind"), p)
+        assert p.get("pretend_fetched") is not True, (name, h.get("kind"), p)
+print("PASS chat Host honesty (no pretend_live/sent/fetched)")
+PY
+
 echo "OK smoke_real_chat all PASS → ${OUT_DIR}/"
