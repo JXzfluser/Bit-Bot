@@ -6946,11 +6946,6 @@ function createHostFfi(repoRoot) {
         make_chart: "host_structured_chart",
         render_chart: "host_structured_chart",
         chart: "host_structured_chart",
-        apply_patch: "host_code_changes",
-        code_changes: "host_code_changes",
-        "code_changes/apply_patch": "host_code_changes",
-        create_pr: "host_source_control",
-        "source_control/create_pr": "host_source_control",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7023,7 +7018,7 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/media onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/media onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
@@ -7036,8 +7031,6 @@ function createHostFfi(repoRoot) {
         mapped === "host_job_search" ||
         mapped === "host_schedule_meeting" ||
         mapped === "host_purchase" ||
-        mapped === "host_code_changes" ||
-        mapped === "host_source_control" ||
         mapped === "host_generate_image" ||
         mapped === "host_generate_video" ||
         mapped === "host_watch_video" ||
@@ -7566,130 +7559,6 @@ function createHostFfi(repoRoot) {
           });
         }
 
-        if (mapped === "host_code_changes") {
-          // Product apply_patch → Host code_changes. Keep BITBOT_CODE_* gates;
-          // never invent commit/push SHA (product_tool_residual closes on map only).
-          const ns = left.includes(".")
-            ? left.split(".")[0] || "user-github"
-            : "user-github";
-          const target =
-            String(
-              args.path ||
-                args.target ||
-                args.file ||
-                args.filename ||
-                args.q ||
-                args.query ||
-                args.body ||
-                "",
-            ).trim() || "README.mbt.md";
-          const codeCmd = ns + "|" + target;
-          const codeResults = await executeHostEffects([
-            { kind: "code_changes", command: codeCmd },
-          ]);
-          const codeHit = (codeResults || []).find(
-            (r) => r && r.kind === "code_changes",
-          );
-          let codePayload = {};
-          try {
-            codePayload = JSON.parse((codeHit && codeHit.stdout) || "{}");
-          } catch {
-            codePayload = {};
-          }
-          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
-            command,
-            {
-              tool: toolName,
-              mapped,
-              host_kind: "code_changes",
-              code_changes: {
-                path: codePayload.path || null,
-                target: codePayload.target || target,
-                applied: codePayload.applied,
-                pretend_committed: codePayload.pretend_committed,
-                pretend_pushed: codePayload.pretend_pushed,
-                code_apply_residual: codePayload.code_apply_residual,
-                git_commit_residual: codePayload.git_commit_residual,
-                git_push_residual: codePayload.git_push_residual,
-                commit_sha: codePayload.commit_sha || null,
-              },
-              product_tool_residual: false,
-              pretend_ok: false,
-              ok: Boolean(codeHit && codeHit.ok),
-              at: shortAt,
-            },
-          );
-          return okJson(kind, command, {
-            ...callArtifact,
-            tool: toolName,
-            mapped,
-            product_tool_residual: false,
-            path: snapPath,
-            pretend_ok: false,
-            ok: Boolean(codeHit && codeHit.ok),
-            code_changes: codePayload,
-          });
-        }
-        if (mapped === "host_source_control") {
-          // Product create_pr → Host source_control. Keep BITBOT_GH_* gates;
-          // never invent remote PR (product_tool_residual closes on map only).
-          const ns = left.includes(".")
-            ? left.split(".")[0] || "user-github"
-            : "user-github";
-          const actionHint = String(
-            args.action || args.op || args.command || toolName || "",
-          ).trim();
-          const action =
-            /create_pr|pull_request|open_pr/i.test(actionHint) ||
-            /create_pr|pull_request|open_pr/i.test(toolName)
-              ? "create_pr"
-              : actionHint || "create_pr";
-          const scCmd = ns + "|" + action;
-          const scResults = await executeHostEffects([
-            { kind: "source_control", command: scCmd },
-          ]);
-          const scHit = (scResults || []).find(
-            (r) => r && r.kind === "source_control",
-          );
-          let scPayload = {};
-          try {
-            scPayload = JSON.parse((scHit && scHit.stdout) || "{}");
-          } catch {
-            scPayload = {};
-          }
-          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
-            command,
-            {
-              tool: toolName,
-              mapped,
-              host_kind: "source_control",
-              source_control: {
-                path: scPayload.path || null,
-                status_path: scPayload.status_path || null,
-                mode: scPayload.mode || null,
-                branch: scPayload.branch || null,
-                pretend_remote_pr: scPayload.pretend_remote_pr,
-                remote_pr_residual: scPayload.remote_pr_residual,
-                gh_pr_create_residual: scPayload.gh_pr_create_residual,
-                action: scPayload.action || action,
-              },
-              product_tool_residual: false,
-              pretend_ok: false,
-              ok: Boolean(scHit && scHit.ok),
-              at: shortAt,
-            },
-          );
-          return okJson(kind, command, {
-            ...callArtifact,
-            tool: toolName,
-            mapped,
-            product_tool_residual: false,
-            path: snapPath,
-            pretend_ok: false,
-            ok: Boolean(scHit && scHit.ok),
-            source_control: scPayload,
-          });
-        }
 
         if (
           mapped === "host_generate_image" ||
