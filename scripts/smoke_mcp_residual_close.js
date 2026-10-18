@@ -1392,10 +1392,12 @@ function stripHostAppliedMarker(file) {
     ["open_todo", "host_todo_write", "todo_write"],
     ["paste_from_box", "host_copy_from_box", "copy_from_box"],
     ["git_status", "host_source_control", "source_control"],
-    ["navigate", "host_computer_use", "computer_use"],
     ["list_contacts", "host_device_tool", "device_tool"],
     ["guide", "host_guide_permission", "guide_permission"],
     ["open_memory", "host_memory_recall", "memory_recall"],
+    ["open_journal", "host_journal_query", "journal_query"],
+    ["append_journal", "host_journal_append", "journal_append"],
+    ["journal_tail", "host_journal_query", "journal_query"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1409,7 +1411,7 @@ function stripHostAppliedMarker(file) {
               ? '{"command":"echo alias-shell"}'
               : tool === "list_dir"
                 ? '{"path":"."}'
-                : tool === "search_web" || tool === "navigate"
+                : tool === "search_web"
                   ? '{"url":"https://example.com/"}'
                   : tool === "list_contacts" || tool === "get_location"
                     ? '{"tool":"contacts"}'
@@ -1419,7 +1421,11 @@ function stripHostAppliedMarker(file) {
                         ? '{"path":"README.mbt.md"}'
                         : tool === "git_status"
                           ? '{"command":"status"}'
-                          : "{}";
+                          : tool === "open_journal" || tool === "journal_tail"
+                            ? '{"q":"alias-journal"}'
+                            : tool === "append_journal"
+                              ? '{"event":"alias","body":"journal-alias"}'
+                              : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);
