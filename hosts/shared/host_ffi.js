@@ -2189,6 +2189,70 @@ function createHostFfi(repoRoot) {
       }
       const eml = [...headers, "", body, ""].join("\r\n");
       fs.writeFileSync(emlPath, eml);
+      // Optional live transport mock (not production MTA / IdP).
+      // BITBOT_MAIL_SEND=1 + BITBOT_COLD_MAIL_API_URL / BITBOT_ONBEHALF_MAIL_API_URL.
+      let livePost = false;
+      let liveProbe = null;
+      let messageId = null;
+      const apiEnv =
+        provider === "cold"
+          ? "BITBOT_COLD_MAIL_API_URL"
+          : "BITBOT_ONBEHALF_MAIL_API_URL";
+      const tokenEnv =
+        provider === "cold"
+          ? "BITBOT_COLD_MAIL_TOKEN"
+          : "BITBOT_ONBEHALF_MAIL_TOKEN";
+      const mailApi = String(process.env[apiEnv] || "").trim();
+      const mailToken =
+        String(process.env[tokenEnv] || "").trim() ||
+        resolveProviderAccessToken(provider);
+      if (mailApi && mailToken && process.env.BITBOT_MAIL_SEND === "1") {
+        try {
+          const resp = await httpJson(mailApi.replace(/\/$/, "") + "/send", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + mailToken,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              provider,
+              to,
+              subject,
+              body: String(body || "").slice(0, 4000),
+              unsubscribe: unsubscribe || null,
+              eml_path: emlPath,
+            }),
+          });
+          liveProbe = {
+            ok: Boolean(resp.ok),
+            http_status: resp.status || 0,
+            error: resp.error || null,
+          };
+          livePost = Boolean(resp.ok);
+          if (livePost && resp.json) {
+            messageId =
+              resp.json.message_id ||
+              resp.json.id ||
+              `${provider}-live-${Date.now().toString(36)}`;
+          }
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+        }
+      }
+      if (livePost) {
+        // Mark eml as sent for honesty (still durable under repo).
+        try {
+          const sentEml = fs
+            .readFileSync(emlPath, "utf8")
+            .replace("X-BitBot-Status: draft", "X-BitBot-Status: sent");
+          fs.writeFileSync(emlPath, sentEml);
+        } catch (_) {
+          /* keep draft marker if rewrite fails */
+        }
+      }
       const ledger =
         provider === "cold"
           ? path.join(REPO_ROOT, "data", "mail", "cold-outbound.jsonl")
@@ -2199,15 +2263,17 @@ function createHostFfi(repoRoot) {
         subject,
         unsubscribe: unsubscribe || null,
         eml_path: emlPath,
-        sent: false,
+        sent: livePost,
         pretend_sent: false,
+        live_post: livePost,
+        message_id: messageId,
         at,
       });
       appendJsonl(MAIL_DRAFTS_PATH, {
         provider,
         to,
         subject,
-        status: "draft",
+        status: livePost ? "sent" : "draft",
         unsubscribe: unsubscribe || null,
         eml_path: emlPath,
         at,
@@ -2221,6 +2287,13 @@ function createHostFfi(repoRoot) {
         source_kind: "mail_send",
         at,
       });
+      const mode = livePost
+        ? provider === "cold"
+          ? "cold_live"
+          : "onbehalf_live"
+        : provider === "cold"
+          ? "cold_sandbox_eml"
+          : "onbehalf_sandbox_eml";
       return finalizeMailSend(
         command,
         {
@@ -2228,17 +2301,22 @@ function createHostFfi(repoRoot) {
           to,
           subject,
           unsubscribe: unsubscribe || null,
-          mode:
-            provider === "cold" ? "cold_sandbox_eml" : "onbehalf_sandbox_eml",
-          sent: false,
+          mode,
+          sent: livePost,
           pretend_sent: false,
-          live_mail_residual: true,
+          live_mail_residual: !livePost,
+          live_probe: liveProbe,
+          message_id: messageId,
           eml_path: emlPath,
           eml_ok:
             fs.existsSync(emlPath) &&
-            fs.readFileSync(emlPath, "utf8").includes("X-BitBot-Status: draft"),
+            (livePost
+              ? fs.readFileSync(emlPath, "utf8").includes("X-BitBot-Status: sent")
+              : fs
+                  .readFileSync(emlPath, "utf8")
+                  .includes("X-BitBot-Status: draft")),
           ledger,
-          drafted: true,
+          drafted: !livePost,
           at,
         },
         { delivery, ledger },

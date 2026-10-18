@@ -39,6 +39,8 @@ Endpoints:
   voice:    POST /messages  (BITBOT_VOICE_API_URL=http://host:port + BITBOT_VOICE_POST=1)
   webhook:  POST /hooks (any POST; no Bearer — BITBOT_WEBHOOK_OUTBOUND_URL + BITBOT_WEBHOOK_POST=1)
   mail_claim: GET /messages?q=  (BITBOT_MAIL_CLAIM_API_URL + BITBOT_MAIL_CLAIM_POST=1)
+  cold:     POST /send  (BITBOT_COLD_MAIL_API_URL + BITBOT_MAIL_SEND=1)
+  onbehalf: POST /send  (BITBOT_ONBEHALF_MAIL_API_URL + BITBOT_MAIL_SEND=1)
   webfetch: GET /docs-blocked (403 unless UA BitBot-PublicFallback)
             GET /login (401 auth wall)
             GET /ok (200)
@@ -74,6 +76,8 @@ def main() -> int:
             "voice",
             "webhook",
             "mail_claim",
+            "cold",
+            "onbehalf",
             "webfetch",
         ),
         required=True,
@@ -130,6 +134,8 @@ def main() -> int:
                 or (mode == "cloud" and path == "/agents")
                 or (mode == "outlook" and path.endswith("/me/sendMail"))
                 or (mode == "calendar" and path == "/events")
+                or (mode == "cold" and path == "/send")
+                or (mode == "onbehalf" and path == "/send")
             )
             if not ok_path:
                 self._json(404, {"ok": False, "error": "not_found"})
@@ -192,6 +198,16 @@ def main() -> int:
                         "mode": mode,
                         "received": payload,
                         "event_id": "mock-webhook-1",
+                    },
+                )
+            elif mode in ("cold", "onbehalf"):
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "mode": mode,
+                        "received": payload,
+                        "message_id": f"mock-{mode}-1",
                     },
                 )
             elif mode == "finance":

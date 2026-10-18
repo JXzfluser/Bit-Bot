@@ -1213,6 +1213,15 @@ const fs = require("fs");
 '
 node hosts/cli_host/run_turn.js --approved "cold mail to=a@example.com subject=Hi body=Hello unsubscribe=mailto:u@example.com" >/tmp/bitbot-cold.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cold.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('provider')=='cold';assert p.get('mode')=='cold_sandbox_eml';assert p.get('sent') is False;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is True;assert p.get('eml_ok') is True;assert 'List-Unsubscribe:' in open(p['eml_path']).read();assert p.get('path') and os.path.isfile(p['path']);print('cold_mail List-Unsubscribe eml ok', p.get('eml_path'), p.get('path'), 'live_mail_residual', True)"
+# Live cold mail mock closes live_mail_residual
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18781 --mode cold --token smoke-cold >/tmp/bitbot-cold-mock.log 2>&1 &
+COLD_MOCK_PID=$!
+sleep 0.4
+BITBOT_COLD_MAIL_API_URL=http://127.0.0.1:18781 BITBOT_COLD_MAIL_TOKEN=smoke-cold BITBOT_MAIL_SEND=1 \
+  node hosts/cli_host/run_turn.js --approved "cold mail to=a@example.com subject=Hi body=Hello unsubscribe=mailto:u@example.com" >/tmp/bitbot-cold-live.json || true
+kill "$COLD_MOCK_PID" >/dev/null 2>&1 || true
+wait "$COLD_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cold-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('provider')=='cold';assert p.get('mode')=='cold_live';assert p.get('sent') is True;assert p.get('live_mail_residual') is False;assert p.get('pretend_sent') is False;assert 'X-BitBot-Status: sent' in open(p['eml_path']).read();assert 'List-Unsubscribe:' in open(p['eml_path']).read();print('cold_mail live mock residual close ok', p.get('message_id'), p.get('path'))"
 node hosts/cli_host/run_turn.js "learn from demo title=Checkout steps=click:Cart|type:email" >/tmp/bitbot-lfd.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-lfd.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='skill_write');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('path') and os.path.isfile(p['path']);body=open(p['path']).read();assert 'click:Cart' in body or 'Steps' in body;print('learn_from_demo skill steps ok', p.get('path'))"
 node hosts/cli_host/run_turn.js "code changes README.mbt.md" >/tmp/bitbot-code-changes.json
@@ -1242,6 +1251,15 @@ BITBOT_GH_BIN="$ROOT/scripts/host_gh_mock.sh" BITBOT_GH_MOCK_LOG_DIR=/tmp/bitbot
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-real.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create';assert rp.get('dry_run') is False;assert rp.get('real_create_gated') is False;assert rp.get('create_attempted') is True;assert p.get('remote_pr_residual') is False;assert p.get('pretend_remote_pr') is False;plan=json.load(open(rp['plan_path']));assert plan.get('dry_run') is False;assert plan.get('allow_real_create') is True;assert plan.get('real_create_gated') is False;assert '--dry-run' not in (plan.get('args') or []);assert os.path.isfile('/tmp/bitbot-gh-mock-real/last-create.json');print('source_control mock gated real create ok', rp.get('plan_path'), plan.get('output_prefix','')[:80])"
 node hosts/cli_host/run_turn.js --approved "send on behalf to=a@example.com subject=Hi body=Hello" >/tmp/bitbot-sob.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sob.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('provider')=='onbehalf';assert p.get('mode')=='onbehalf_sandbox_eml';assert p.get('sent') is False;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is True;assert 'X-BitBot-Send-On-Behalf: 1' in open(p['eml_path']).read();assert p.get('path') and os.path.isfile(p['path']);print('send_on_behalf eml ok', p.get('eml_path'), p.get('path'), 'live_mail_residual', True)"
+# Live onbehalf mail mock closes live_mail_residual
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18782 --mode onbehalf --token smoke-sob >/tmp/bitbot-sob-mock.log 2>&1 &
+SOB_MOCK_PID=$!
+sleep 0.4
+BITBOT_ONBEHALF_MAIL_API_URL=http://127.0.0.1:18782 BITBOT_ONBEHALF_MAIL_TOKEN=smoke-sob BITBOT_MAIL_SEND=1 \
+  node hosts/cli_host/run_turn.js --approved "send on behalf to=a@example.com subject=Hi body=Hello" >/tmp/bitbot-sob-live.json || true
+kill "$SOB_MOCK_PID" >/dev/null 2>&1 || true
+wait "$SOB_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sob-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('provider')=='onbehalf';assert p.get('mode')=='onbehalf_live';assert p.get('sent') is True;assert p.get('live_mail_residual') is False;assert p.get('pretend_sent') is False;assert 'X-BitBot-Send-On-Behalf: 1' in open(p['eml_path']).read();assert 'X-BitBot-Status: sent' in open(p['eml_path']).read();print('send_on_behalf live mock residual close ok', p.get('message_id'), p.get('path'))"
 node hosts/cli_host/run_turn.js --approved "reply via foo:bar :: unknown scheme residual" >/tmp/bitbot-ch-unknown.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-ch-unknown.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='durable_outbound';assert p.get('live_channel_residual') is True;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel unknown scheme live_channel_residual ok', p.get('path'))"
 node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: hello sms" >/tmp/bitbot-sms.json
