@@ -34,6 +34,7 @@ Endpoints:
             GET  /users/me/threads/<id>
             (BITBOT_GMAIL_API_BASE=http://host:port)
   cloud:    POST /agents  (BITBOT_CLOUD_API_URL=http://host:port)
+            GET  /agents/<bc_id>/artifact  (BITBOT_CLOUD_ARTIFACT_FETCH=1)
   outlook:  POST /me/sendMail  (BITBOT_OUTLOOK_GRAPH_URL=http://host:port)
   calendar: POST /events  (BITBOT_CALENDAR_API_URL=http://host:port)
   sms:      POST /messages  (BITBOT_SMS_API_URL=http://host:port + BITBOT_SMS_POST=1)
@@ -418,6 +419,26 @@ def main() -> int:
                                 "text": "second meeting hit",
                             },
                         ],
+                    },
+                )
+                return
+            if mode == "cloud" and "/agents/" in path and path.endswith(
+                "/artifact"
+            ):
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                bc = path.split("/agents/", 1)[-1].split("/", 1)[0]
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "bc_id": bc or "bc-mock-cloud-1",
+                        "markdown": (
+                            f"# Cloud artifact\n\nbc_id: {bc or 'bc-mock-cloud-1'}\n"
+                            "remote_fetch: true\npretend_remote_fetch: false\n"
+                            "body: live mock cloud artifact\n"
+                        ),
                     },
                 )
                 return

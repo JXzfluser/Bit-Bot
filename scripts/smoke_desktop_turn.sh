@@ -281,6 +281,10 @@ if ok:
   assert p.get('frame_path') and os.path.isfile(p['frame_path']);assert p.get('frame_bytes_len',0)>0;assert p.get('screenshot_residual') is False;print('screenshot live frame ok', p.get('tool'), p.get('frame_path'), p.get('frame_bytes_len'))
 else:
   assert p.get('screenshot_residual') is True;assert p.get('has_frame') is False;assert p.get('residual_reason');print('screenshot honest residual ok', p.get('residual_reason'))"
+# Fixture close when live capture unavailable (opt-in BITBOT_SCREENSHOT_FIXTURE=1).
+env -u DISPLAY BITBOT_SCREENSHOT_FIXTURE=1 \
+  node hosts/cli_host/run_turn.js "screenshot agent=executor" >/tmp/bitbot-screenshot-fixture.json || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-screenshot-fixture.json'));h=next(x for x in d['host_results'] if x.get('kind')=='screenshot');p=json.loads(h['stdout']);assert p.get('screenshot_residual') is False;assert p.get('has_frame') is True;assert p.get('tool')=='fixture';assert p.get('frame_origin')=='Fixture';assert p.get('pretend_live') is False;assert p.get('pretend_frame') is False;assert p.get('frame_path') and os.path.isfile(p['frame_path']);print('screenshot fixture residual close ok', p.get('frame_path'), p.get('frame_bytes_len'))"
 node hosts/cli_host/run_turn.js "check updates" >/tmp/bitbot-check-updates.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-check-updates.json'));assert d.get('intent')=='check_updates';h=next(x for x in d['host_results'] if x.get('kind')=='check_updates');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('updates_anchor')=='update-channel';assert p.get('updates_tab')=='Updates';assert p.get('computer_anchor')=='update-computer';assert p.get('computer_tab')=='Computer';assert p.get('ne_update_computer') is True;assert p.get('distinct_deep_links') is True;assert p.get('distinct_tabs') is True;assert p.get('updates_deep_link')!=p.get('computer_deep_link');assert p.get('check_for_updates') is True;assert p.get('pretend_opened') is False;assert p.get('path') and os.path.isfile(p['path']);print('check_updates vs update-computer ok', p.get('updates_deep_link'), '≠', p.get('computer_deep_link'))"
 echo "==> Host auto_review_settings deeplinks (CM-1507)"
@@ -1125,6 +1129,15 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-cloud-file-token.json'));h
 BC_ID="$(cat /tmp/bitbot-cloud-bc.txt)"
 node hosts/cli_host/run_turn.js "deliver cloud artifact artifact=${BC_ID} dest=smoke-report.md" >/tmp/bitbot-cloud-art.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud-art.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_artifact_deliver');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('delivered') is True;assert p.get('from_session') is True;assert p.get('pretend_remote_fetch') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('meta_path') and os.path.isfile(p['meta_path']);assert os.path.getsize(p['path'])>20;body=open(p['path']).read();assert 'bc_id:' in body and 'from_session: true' in body;print('cloud_artifact_deliver from_session ok', p.get('path'), 'meta', p.get('meta_path'), 'bytes', p.get('bytes'))"
+# Remote cloud artifact fetch closes remote_cloud_artifact_residual (local mock).
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18795 --mode cloud --token smoke-cloud >/tmp/bitbot-cloud-art-mock.log 2>&1 &
+CLOUD_ART_MOCK_PID=$!
+sleep 0.4
+BITBOT_CLOUD_API_URL=http://127.0.0.1:18795 BITBOT_CURSOR_CLOUD_TOKEN=smoke-cloud BITBOT_CLOUD_ARTIFACT_FETCH=1 \
+  node hosts/cli_host/run_turn.js "deliver cloud artifact artifact=bc-mock-cloud-1 dest=remote-art.md" >/tmp/bitbot-cloud-art-remote.json || true
+kill "$CLOUD_ART_MOCK_PID" >/dev/null 2>&1 || true
+wait "$CLOUD_ART_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud-art-remote.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_artifact_deliver');p=json.loads(h['stdout']);assert p.get('mode')=='host_cloud_artifact_remote_fetch';assert p.get('remote_fetched') is True;assert p.get('remote_cloud_artifact_residual') is False;assert p.get('pretend_remote_fetch') is False;assert p.get('path') and os.path.isfile(p['path']);assert 'remote_fetch: true' in open(p['path']).read();print('cloud_artifact_deliver remote fetch residual close ok', p.get('bc_id'), p.get('path'))"
 # Clear prior live purchase token so sandbox_receipt is not reclassified as live_charge.
 rm -f data/connectors/purchase_token.json
 env -u BITBOT_PURCHASE_TOKEN -u BITBOT_PURCHASE_LIVE -u BITBOT_PURCHASE_API_URL \

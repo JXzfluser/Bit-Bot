@@ -5240,6 +5240,40 @@ function createHostFfi(repoRoot) {
       }
     }
 
+    // Fixture close when live capture is unavailable (not pretend live display).
+    // Opt-in: BITBOT_SCREENSHOT_FIXTURE=1|path (default residual stays open).
+    const fixtureOpt = String(
+      process.env.BITBOT_SCREENSHOT_FIXTURE || "",
+    ).trim();
+    if (!capture.ok && fixtureOpt) {
+      const fixtureCandidates = [
+        fixtureOpt !== "1" ? fixtureOpt : "",
+        path.join(REPO_ROOT, "scripts", "fixtures", "screenshot-fixture.png"),
+        path.join(REPO_ROOT, "data", "box", "screenshot-fixture.png"),
+      ].filter(Boolean);
+      for (const fx of fixtureCandidates) {
+        try {
+          if (!fx || !fs.existsSync(fx) || !fs.statSync(fx).isFile()) continue;
+          fs.copyFileSync(fx, outPath);
+          const bytes = fs.statSync(outPath).size;
+          if (bytes > 0) {
+            capture = {
+              ok: true,
+              path: outPath,
+              tool: "fixture",
+              bytes,
+              error: null,
+              display: display || null,
+              frame_origin: "Fixture",
+            };
+            break;
+          }
+        } catch (_) {
+          /* try next */
+        }
+      }
+    }
+
     const residual = !capture.ok;
     const hasFrame = Boolean(capture.ok && capture.path && capture.bytes > 0);
     const snapPath = path.join(
@@ -5260,7 +5294,10 @@ function createHostFfi(repoRoot) {
       display: capture.display,
       screenshot_residual: residual,
       residual_reason: residual ? capture.error || "capture_failed" : null,
-      frame_origin: hasFrame ? "LiveDisplay" : null,
+      frame_origin: hasFrame
+        ? capture.frame_origin ||
+          (capture.tool === "fixture" ? "Fixture" : "LiveDisplay")
+        : null,
       at,
     };
     fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
@@ -10703,6 +10740,9 @@ function createHostFfi(repoRoot) {
 
       let copied = false;
       let fromSession = false;
+      let remoteFetched = false;
+      let remoteProbe = null;
+      let remoteCloudArtifactResidual = true;
       let bcId = "";
       const bcMatch = String(srcOrUrl).match(/bc-[A-Za-z0-9_-]+/);
       if (bcMatch) bcId = bcMatch[0];
@@ -10711,39 +10751,99 @@ function createHostFfi(repoRoot) {
       if (srcOrUrl && fs.existsSync(srcOrUrl) && fs.statSync(srcOrUrl).isFile()) {
         fs.copyFileSync(srcOrUrl, destPath);
         copied = true;
+        remoteCloudArtifactResidual = false;
       } else {
-        const session = bcId ? readCloudSession(bcId) : null;
-        fromSession = Boolean(session);
-        let body;
-        if (session) {
-          // Always wrap session state into a durable markdown report — never
-          // use a short assistant stub (e.g. remote body_keys join) as the file.
-          const assistantBody = String(session.assistant || "").trim();
-          body = [
-            `# Cloud artifact`,
-            ``,
-            `bc_id: ${session.bc_id || bcId || "(none)"}`,
-            `status: ${session.status || "unknown"}`,
-            `mode: ${session.mode || ""}`,
-            `url: ${session.url || ""}`,
-            `source: ${srcOrUrl || "(session)"}`,
-            `from_session: true`,
-            `pretend_remote_fetch: false`,
-            `at: ${session.completed_at || session.at || at}`,
-            ``,
-            `## Session note`,
-            String(session.note || "Materialized from Host cloud session.").trim(),
-            ``,
-            `## Assistant`,
-            assistantBody || "(no assistant body — launch accepted / worker pending)",
-            ``,
-          ].join("\n");
-        } else {
-          body = `# Cloud artifact\n\nsource: ${srcOrUrl}\nbc_id: ${
-            bcId || "(none)"
-          }\nstatus: no_session\n\nNo local session — placeholder report (not remote cloud fetch).\n`;
+        // Optional remote artifact fetch (local mock / BITBOT_CLOUD_API_URL).
+        const cloudApi = String(process.env.BITBOT_CLOUD_API_URL || "")
+          .trim()
+          .replace(/\/$/, "");
+        const cloudToken =
+          String(
+            process.env.BITBOT_CURSOR_CLOUD_TOKEN ||
+              process.env.BITBOT_CLOUD_API_TOKEN ||
+              "",
+          ).trim() || resolveProviderAccessToken("cloud");
+        if (
+          cloudApi &&
+          cloudToken &&
+          bcId &&
+          process.env.BITBOT_CLOUD_ARTIFACT_FETCH === "1"
+        ) {
+          try {
+            const artUrl = `${cloudApi}/agents/${encodeURIComponent(bcId)}/artifact`;
+            const resp = await httpJson(artUrl, {
+              method: "GET",
+              headers: { Authorization: `Bearer ${cloudToken}` },
+            });
+            const ok =
+              Boolean(resp.ok) || (resp.status >= 200 && resp.status < 300);
+            remoteProbe = {
+              ok,
+              http_status: resp.status || 0,
+              error: resp.error || null,
+            };
+            if (ok) {
+              const bodyText =
+                (resp.json &&
+                  (resp.json.body ||
+                    resp.json.content ||
+                    resp.json.markdown)) ||
+                (typeof resp.text === "string" ? resp.text : "");
+              const text =
+                String(bodyText || "").trim() ||
+                `# Cloud artifact\n\nbc_id: ${bcId}\nremote_fetch: true\n`;
+              fs.writeFileSync(
+                destPath,
+                text.endsWith("\n") ? text : text + "\n",
+              );
+              remoteFetched = true;
+              remoteCloudArtifactResidual = false;
+            }
+          } catch (err) {
+            remoteProbe = {
+              ok: false,
+              error: String((err && err.message) || err).slice(0, 200),
+            };
+          }
         }
-        fs.writeFileSync(destPath, body.endsWith("\n") ? body : body + "\n");
+        if (!remoteFetched) {
+          const session = bcId ? readCloudSession(bcId) : null;
+          fromSession = Boolean(session);
+          let body;
+          if (session) {
+            // Always wrap session state into a durable markdown report — never
+            // use a short assistant stub (e.g. remote body_keys join) as the file.
+            const assistantBody = String(session.assistant || "").trim();
+            body = [
+              `# Cloud artifact`,
+              ``,
+              `bc_id: ${session.bc_id || bcId || "(none)"}`,
+              `status: ${session.status || "unknown"}`,
+              `mode: ${session.mode || ""}`,
+              `url: ${session.url || ""}`,
+              `source: ${srcOrUrl || "(session)"}`,
+              `from_session: true`,
+              `pretend_remote_fetch: false`,
+              `at: ${session.completed_at || session.at || at}`,
+              ``,
+              `## Session note`,
+              String(
+                session.note || "Materialized from Host cloud session.",
+              ).trim(),
+              ``,
+              `## Assistant`,
+              assistantBody ||
+                "(no assistant body — launch accepted / worker pending)",
+              ``,
+            ].join("\n");
+            remoteCloudArtifactResidual = false;
+          } else {
+            body = `# Cloud artifact\n\nsource: ${srcOrUrl}\nbc_id: ${
+              bcId || "(none)"
+            }\nstatus: no_session\n\nNo local session — placeholder report (not remote cloud fetch).\n`;
+          }
+          fs.writeFileSync(destPath, body.endsWith("\n") ? body : body + "\n");
+        }
       }
 
       const delivDir = path.join(REPO_ROOT, "data", "cloud", "deliveries");
@@ -10758,15 +10858,20 @@ function createHostFfi(repoRoot) {
         bc_id: bcId || "",
         copied,
         from_session: fromSession,
+        remote_fetched: remoteFetched,
+        remote_probe: remoteProbe,
         delivered: true,
         bytes: fs.statSync(destPath).size,
         pretend_remote_fetch: false,
         pretend_delivered: false,
-        mode: fromSession
-          ? "host_cloud_artifact_from_session"
-          : copied
-            ? "host_cloud_artifact_copy"
-            : "host_cloud_artifact_placeholder",
+        remote_cloud_artifact_residual: remoteCloudArtifactResidual,
+        mode: remoteFetched
+          ? "host_cloud_artifact_remote_fetch"
+          : fromSession
+            ? "host_cloud_artifact_from_session"
+            : copied
+              ? "host_cloud_artifact_copy"
+              : "host_cloud_artifact_placeholder",
         at,
       };
       fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
