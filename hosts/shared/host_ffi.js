@@ -6982,6 +6982,23 @@ function createHostFfi(repoRoot) {
         voice_relay: "host_voice_relay",
         voice_end: "host_voice_end_write",
         voice_end_write: "host_voice_end_write",
+        webfetch: "host_webfetch",
+        web_fetch: "host_webfetch",
+        screenshot: "host_screenshot",
+        computer_use: "host_computer_use",
+        shop_retail: "host_computer_use",
+        travel_book: "host_computer_use",
+        order_food: "host_computer_use",
+        device_tool: "host_device_tool",
+        device_tools_list: "host_device_tools_list",
+        machines_list: "host_machines_list",
+        list_machines: "host_machines_list",
+        copy_to_box: "host_copy_to_box",
+        copy_from_box: "host_copy_from_box",
+        react_message: "host_react_message",
+        routine_schedule: "host_routine_schedule",
+        create_routine: "host_routine_schedule",
+        box_doctor: "host_box_doctor",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -6993,11 +7010,15 @@ function createHostFfi(repoRoot) {
               ? "host_schedule_meeting"
               : String(toolName).startsWith("buy_")
                 ? "host_purchase"
-                : toolName === "search_mail_artifacts" ||
-                    toolName === "list_skills" ||
-                    toolName === "journal_tail"
-                  ? toolName
-                  : "echo_body");
+                : String(toolName).startsWith("shop_") ||
+                    String(toolName).startsWith("travel_") ||
+                    String(toolName).startsWith("food_")
+                  ? "host_computer_use"
+                  : toolName === "search_mail_artifacts" ||
+                      toolName === "list_skills" ||
+                      toolName === "journal_tail"
+                    ? toolName
+                    : "echo_body");
       mcpMapped = mapped;
       mcpProductToolResidual =
         !wantWrite &&
@@ -7054,7 +7075,7 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/skill_load/mail_claim/credential/subagent/teammate/room/cloud/voice/media onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/skill_load/mail_claim/credential/subagent/teammate/room/cloud/voice/media/webfetch/screenshot/CU/device/machines/copy/react/routine/box_doctor onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
@@ -7087,7 +7108,18 @@ function createHostFfi(repoRoot) {
         mapped === "host_generate_image" ||
         mapped === "host_generate_video" ||
         mapped === "host_watch_video" ||
-        mapped === "host_structured_chart"
+        mapped === "host_structured_chart" ||
+        mapped === "host_webfetch" ||
+        mapped === "host_screenshot" ||
+        mapped === "host_computer_use" ||
+        mapped === "host_device_tool" ||
+        mapped === "host_device_tools_list" ||
+        mapped === "host_machines_list" ||
+        mapped === "host_copy_to_box" ||
+        mapped === "host_copy_from_box" ||
+        mapped === "host_react_message" ||
+        mapped === "host_routine_schedule" ||
+        mapped === "host_box_doctor"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -8763,6 +8795,628 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(endHit && endHit.ok),
             voice_end: endPayload,
+          });
+        }
+        if (mapped === "host_webfetch") {
+          // Product webfetch / web_fetch → Host webfetch; public_fallback_residual stays gated.
+          const fetchUrl = String(
+            args.url ||
+              args.href ||
+              args.uri ||
+              args.q ||
+              args.query ||
+              args.body ||
+              "",
+          ).trim();
+          const fetchResults = await executeHostEffects([
+            { kind: "webfetch", command: fetchUrl },
+          ]);
+          const fetchHit = (fetchResults || []).find(
+            (r) => r && r.kind === "webfetch",
+          );
+          let fetchPayload = {};
+          try {
+            fetchPayload = JSON.parse((fetchHit && fetchHit.stdout) || "{}");
+          } catch {
+            fetchPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "webfetch",
+              webfetch: {
+                path: fetchPayload.path || null,
+                url: fetchPayload.url || fetchUrl || null,
+                mode: fetchPayload.mode || null,
+                http_status: fetchPayload.http_status,
+                used_fallback: fetchPayload.used_fallback,
+                public_fallback_residual: fetchPayload.public_fallback_residual,
+                pretend_fetched: fetchPayload.pretend_fetched,
+                credential_bypass: fetchPayload.credential_bypass,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(fetchHit && fetchHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(fetchHit && fetchHit.ok),
+            webfetch: fetchPayload,
+          });
+        }
+        if (mapped === "host_screenshot") {
+          // Product screenshot → Host screenshot; screenshot_residual stays gated.
+          const agentId = String(
+            args.agent || args.agent_id || args.id || "executor",
+          ).trim() || "executor";
+          const shotCmd = String(
+            args.command || args.body || `agent=${agentId}`,
+          ).trim() || `agent=${agentId}`;
+          const shotResults = await executeHostEffects([
+            { kind: "screenshot", command: shotCmd },
+          ]);
+          const shotHit = (shotResults || []).find(
+            (r) => r && r.kind === "screenshot",
+          );
+          let shotPayload = {};
+          try {
+            shotPayload = JSON.parse((shotHit && shotHit.stdout) || "{}");
+          } catch {
+            shotPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "screenshot",
+              screenshot: {
+                path: shotPayload.path || null,
+                frame_path: shotPayload.frame_path || null,
+                mode: shotPayload.mode || null,
+                screenshot_residual: shotPayload.screenshot_residual,
+                pretend_frame: shotPayload.pretend_frame,
+                pretend_live: shotPayload.pretend_live,
+                has_frame: shotPayload.has_frame,
+                read_only: shotPayload.read_only,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(shotHit && shotHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(shotHit && shotHit.ok),
+            screenshot: shotPayload,
+          });
+        }
+        if (mapped === "host_computer_use") {
+          // Product computer_use / shop|travel|food → Host computer_use.
+          // Nested CU residuals (ocr/os_window/live_paid/signin) stay gated.
+          const cuUrl = String(
+            args.url || args.href || args.q || args.query || "",
+          ).trim();
+          let cuCmd = String(
+            args.command || args.body || args.prompt || "",
+          ).trim();
+          if (!cuCmd) {
+            if (
+              toolName === "shop_retail" ||
+              String(toolName).startsWith("shop_")
+            ) {
+              cuCmd =
+                "shopping:site-playbooks-target :: NAVIGATE " +
+                (cuUrl || "example.com");
+            } else if (
+              toolName === "travel_book" ||
+              String(toolName).startsWith("travel_")
+            ) {
+              cuCmd =
+                "travel:flights:site-playbooks-expedia :: NAVIGATE " +
+                (cuUrl || "example.com");
+            } else if (
+              toolName === "order_food" ||
+              String(toolName).startsWith("food_")
+            ) {
+              cuCmd =
+                "food:site-playbooks-doordash :: NAVIGATE " +
+                (cuUrl || "example.com");
+            } else {
+              cuCmd = cuUrl || "https://example.com";
+            }
+          } else if (
+            cuUrl &&
+            !/https?:\/\//i.test(cuCmd) &&
+            !/NAVIGATE/i.test(cuCmd)
+          ) {
+            cuCmd = cuCmd + " " + cuUrl;
+          }
+          const cuResults = await executeHostEffects([
+            { kind: "computer_use", command: cuCmd },
+          ]);
+          const cuHit = (cuResults || []).find(
+            (r) => r && r.kind === "computer_use",
+          );
+          let cuPayload = {};
+          try {
+            cuPayload = JSON.parse((cuHit && cuHit.stdout) || "{}");
+          } catch {
+            cuPayload = {};
+          }
+          const cuOutcome = cuPayload.outcome || {};
+          const cuGui = cuPayload.gui || {};
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "computer_use",
+              computer_use: {
+                evidence: cuPayload.evidence || null,
+                mode: cuPayload.mode || null,
+                pretend_purchased: cuOutcome.pretend_purchased,
+                vertical_family: cuOutcome.vertical_family || null,
+                playbook_name: cuOutcome.playbook_name || null,
+                ocr_residual: cuOutcome.ocr_residual,
+                os_window_automation_residual:
+                  cuOutcome.os_window_automation_residual != null
+                    ? cuOutcome.os_window_automation_residual
+                    : cuGui.os_window_automation_residual,
+                live_paid_residual: cuOutcome.live_paid_residual,
+                signin_fill_residual: cuOutcome.signin_fill_residual,
+                credential_browser_fill_residual:
+                  cuOutcome.credential_browser_fill_residual,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(cuHit && cuHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(cuHit && cuHit.ok),
+            computer_use: cuPayload,
+          });
+        }
+        if (mapped === "host_device_tools_list") {
+          const machineId = String(
+            args.machine_id || args.machine || args.id || "mcp-device",
+          ).trim() || "mcp-device";
+          const machineKind = String(
+            args.machine_kind || args.kind || "desktop",
+          ).trim() || "desktop";
+          let toolsRaw = "";
+          if (typeof args.tools === "string") {
+            toolsRaw = args.tools;
+          } else if (Array.isArray(args.tools)) {
+            toolsRaw = args.tools
+              .map((t) => {
+                if (typeof t === "string") return t;
+                if (t && typeof t === "object") {
+                  return (
+                    String(t.name || t.tool || "") +
+                    "=" +
+                    String(t.permission || t.perm || "unknown")
+                  );
+                }
+                return "";
+              })
+              .filter(Boolean)
+              .join(",");
+          } else {
+            toolsRaw = String(args.body || args.catalog || "camera=ask").trim();
+          }
+          const dtlCmd = [machineId, machineKind, toolsRaw].join("|");
+          const dtlResults = await executeHostEffects([
+            { kind: "device_tools_list", command: dtlCmd },
+          ]);
+          const dtlHit = (dtlResults || []).find(
+            (r) => r && r.kind === "device_tools_list",
+          );
+          let dtlPayload = {};
+          try {
+            dtlPayload = JSON.parse((dtlHit && dtlHit.stdout) || "{}");
+          } catch {
+            dtlPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "device_tools_list",
+              device_tools_list: {
+                path: dtlPayload.path || null,
+                count: dtlPayload.count,
+                mode: dtlPayload.mode || null,
+                pretend_granted: dtlPayload.pretend_granted,
+                machine_id: dtlPayload.machine_id || machineId,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(dtlHit && dtlHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(dtlHit && dtlHit.ok),
+            device_tools_list: dtlPayload,
+          });
+        }
+        if (mapped === "host_device_tool") {
+          // Product device_tool → Host device_tool; device_tool_residual stays gated.
+          const machineId = String(
+            args.machine_id || args.machine || args.id || "mcp-device",
+          ).trim() || "mcp-device";
+          const tool = String(
+            args.tool || args.name || args.q || args.query || args.body || "camera",
+          )
+            .trim()
+            .toLowerCase() || "camera";
+          const dtCmd = [machineId, tool].join("|");
+          const dtResults = await executeHostEffects([
+            { kind: "device_tool", command: dtCmd },
+          ]);
+          const dtHit = (dtResults || []).find(
+            (r) => r && r.kind === "device_tool",
+          );
+          let dtPayload = {};
+          try {
+            dtPayload = JSON.parse((dtHit && dtHit.stdout) || "{}");
+          } catch {
+            dtPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "device_tool",
+              device_tool: {
+                path: dtPayload.path || null,
+                capture_path: dtPayload.capture_path || null,
+                mode: dtPayload.mode || null,
+                device_tool_residual: dtPayload.device_tool_residual,
+                pretend_granted: dtPayload.pretend_granted,
+                tool: dtPayload.tool || tool,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(dtHit && dtHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(dtHit && dtHit.ok),
+            device_tool: dtPayload,
+          });
+        }
+        if (mapped === "host_machines_list") {
+          const hostKind = String(
+            args.host_kind || args.kind || "desktop",
+          ).trim() || "desktop";
+          const hostId = String(
+            args.host_id || args.id || "mcp-host",
+          ).trim() || "mcp-host";
+          let rowsRaw = "";
+          if (typeof args.machines === "string") {
+            rowsRaw = args.machines;
+          } else if (Array.isArray(args.machines)) {
+            rowsRaw = args.machines
+              .map((m) => {
+                if (typeof m === "string") return m;
+                if (m && typeof m === "object") {
+                  return [
+                    m.id || "m1",
+                    m.kind || "desktop",
+                    m.status || "disconnected",
+                  ].join(":");
+                }
+                return "";
+              })
+              .filter(Boolean)
+              .join(",");
+          } else {
+            rowsRaw = String(
+              args.rows || args.body || "desk-1:desktop:connected",
+            ).trim();
+          }
+          const mlCmd = [hostKind, hostId, rowsRaw].join("|");
+          const mlResults = await executeHostEffects([
+            { kind: "machines_list", command: mlCmd },
+          ]);
+          const mlHit = (mlResults || []).find(
+            (r) => r && r.kind === "machines_list",
+          );
+          let mlPayload = {};
+          try {
+            mlPayload = JSON.parse((mlHit && mlHit.stdout) || "{}");
+          } catch {
+            mlPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "machines_list",
+              machines_list: {
+                path: mlPayload.path || null,
+                count: mlPayload.count,
+                mode: mlPayload.mode || null,
+                pretend_all_connected: mlPayload.pretend_all_connected,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(mlHit && mlHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(mlHit && mlHit.ok),
+            machines_list: mlPayload,
+          });
+        }
+        if (
+          mapped === "host_copy_to_box" ||
+          mapped === "host_copy_from_box"
+        ) {
+          // Product copy_* → Host copy kinds; cross_machine_copy_residual stays gated.
+          const copyKind =
+            mapped === "host_copy_from_box" ? "copy_from_box" : "copy_to_box";
+          const machineId = String(
+            args.machine_id || args.machine || "",
+          ).trim();
+          const src = String(
+            args.src || args.source || args.from || args.path || "",
+          ).trim();
+          const dest = String(
+            args.dest || args.destination || args.to || args.out || "",
+          ).trim();
+          const overwrite = String(args.overwrite || "").trim();
+          const copyParts = [machineId, src, dest];
+          if (overwrite) copyParts.push("overwrite=" + overwrite);
+          const copyCmd = copyParts.join("|");
+          const copyResults = await executeHostEffects([
+            { kind: copyKind, command: copyCmd },
+          ]);
+          const copyHit = (copyResults || []).find(
+            (r) => r && r.kind === copyKind,
+          );
+          let copyPayload = {};
+          try {
+            copyPayload = JSON.parse((copyHit && copyHit.stdout) || "{}");
+          } catch {
+            copyPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: copyKind,
+              copy_box: {
+                path: copyPayload.path || null,
+                kind: copyKind,
+                mode: copyPayload.mode || null,
+                cross_machine_copy_residual:
+                  copyPayload.cross_machine_copy_residual,
+                pretend_remote_machine: copyPayload.pretend_remote_machine,
+                bytes: copyPayload.bytes,
+                refused: copyPayload.refused,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(copyHit && copyHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(copyHit && copyHit.ok),
+            copy_box: copyPayload,
+          });
+        }
+        if (mapped === "host_react_message") {
+          const messageId = String(
+            args.message_id || args.msg || args.id || "msg-mcp",
+          ).trim() || "msg-mcp";
+          const emoji = String(args.emoji || args.reaction || "👍").trim() || "👍";
+          const reactCmd = `msg=${messageId} emoji=${emoji}`;
+          const reactResults = await executeHostEffects([
+            { kind: "react_message", command: reactCmd },
+          ]);
+          const reactHit = (reactResults || []).find(
+            (r) => r && r.kind === "react_message",
+          );
+          let reactPayload = {};
+          try {
+            reactPayload = JSON.parse((reactHit && reactHit.stdout) || "{}");
+          } catch {
+            reactPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "react_message",
+              react_message: {
+                path: reactPayload.path || null,
+                message_id: reactPayload.message_id || messageId,
+                emoji: reactPayload.emoji || emoji,
+                mode: reactPayload.mode || null,
+                visible_pill: reactPayload.visible_pill,
+                pretend_pill: reactPayload.pretend_pill,
+                active: reactPayload.active,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(reactHit && reactHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(reactHit && reactHit.ok),
+            react_message: reactPayload,
+          });
+        }
+        if (mapped === "host_routine_schedule") {
+          // Product routine_schedule / create_routine → Host routine_schedule.
+          // long_lived_cron_residual stays gated unless daemon/unit armed.
+          const rid = String(
+            args.id || args.routine_id || args.name || "mcp-routine",
+          ).trim() || "mcp-routine";
+          const cron = String(
+            args.cron || args.schedule || args.when || "@daily",
+          ).trim() || "@daily";
+          const prompt = String(
+            args.prompt || args.body || args.text || args.q || "mcp routine",
+          ).trim() || "mcp routine";
+          const routCmd = [rid, cron, prompt].join("|");
+          const routResults = await executeHostEffects([
+            { kind: "routine_schedule", command: routCmd },
+          ]);
+          const routHit = (routResults || []).find(
+            (r) => r && r.kind === "routine_schedule",
+          );
+          let routPayload = {};
+          try {
+            routPayload = JSON.parse((routHit && routHit.stdout) || "{}");
+          } catch {
+            routPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "routine_schedule",
+              routine_schedule: {
+                path: routPayload.path || null,
+                id: routPayload.id || rid,
+                cron: routPayload.cron || cron,
+                mode: routPayload.mode || null,
+                stored: routPayload.stored,
+                pretend_scheduled: routPayload.pretend_scheduled,
+                long_lived_cron_residual: routPayload.long_lived_cron_residual,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(routHit && routHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(routHit && routHit.ok),
+            routine_schedule: routPayload,
+          });
+        }
+        if (mapped === "host_box_doctor") {
+          // Product box_doctor → Host box_doctor; box_doctor_bin_residual stays gated.
+          const doctorCmd = String(
+            args.command || args.body || args.q || "box-doctor",
+          ).trim() || "box-doctor";
+          const doctorResults = await executeHostEffects([
+            { kind: "box_doctor", command: doctorCmd },
+          ]);
+          const doctorHit = (doctorResults || []).find(
+            (r) => r && r.kind === "box_doctor",
+          );
+          let doctorPayload = {};
+          try {
+            doctorPayload = JSON.parse((doctorHit && doctorHit.stdout) || "{}");
+          } catch {
+            doctorPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "box_doctor",
+              box_doctor: {
+                path: doctorPayload.path || null,
+                log_path: doctorPayload.log_path || null,
+                mode: doctorPayload.mode || null,
+                box_doctor_bin_residual: doctorPayload.box_doctor_bin_residual,
+                pretend_healthy: doctorPayload.pretend_healthy,
+                pass_count: doctorPayload.pass_count,
+                fail_count: doctorPayload.fail_count,
+                doctor_bin: doctorPayload.doctor_bin || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(doctorHit && doctorHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(doctorHit && doctorHit.ok),
+            box_doctor: doctorPayload,
           });
         }
 

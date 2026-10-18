@@ -1161,25 +1161,42 @@ node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
 node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
-# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + workflows/cold/identity + skill_load/mail_claim/credential + subagent/teammate/room/cloud/voice + code/pr + media (Host FFI; MoonBit catalog may lack names)
+# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + workflows/cold/identity + skill_load/mail_claim/credential + subagent/teammate/room/cloud/voice + code/pr + media + webfetch/screenshot/CU/device/machines/copy/react/routine/box_doctor (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 function sleep(ms){ return new Promise((r)=>setTimeout(r,ms)); }
-function startMock(port, mode, token) {
-  const log = "/tmp/bitbot-mcp-" + mode + "-mock.log";
+function startMock(port, mode, token, empty) {
+  const log =
+    "/tmp/bitbot-mcp-" + mode + (empty ? "-empty" : "") + "-mock.log";
   try {
     require("child_process").execSync("fuser -k " + port + "/tcp", {
       stdio: "ignore",
     });
   } catch (_) {}
-  const child = spawn(process.env.PYTHON || "python3", [
+  const args = [
     path.join(process.cwd(), "scripts/host_local_http_mock.py"),
     "--port", String(port), "--mode", mode, "--token", token,
-  ], { stdio: ["ignore", fs.openSync(log, "w"), fs.openSync(log, "a")] });
+  ];
+  if (empty) args.push("--empty");
+  const child = spawn(process.env.PYTHON || "python3", args, {
+    stdio: ["ignore", fs.openSync(log, "w"), fs.openSync(log, "a")],
+  });
   return child;
+}
+function stripHostAppliedMarker(file) {
+  try {
+    const t = fs.readFileSync(file, "utf8");
+    fs.writeFileSync(
+      file,
+      t
+        .split(/\n/)
+        .filter((ln) => !ln.includes("bitbot-host-applied"))
+        .join("\n") + (t.endsWith("\n") ? "\n" : ""),
+    );
+  } catch (_) {}
 }
 (async () => {
   const ffi = createHostFfi(process.cwd());
@@ -1735,6 +1752,141 @@ function startMock(port, mode, token) {
   const cap = JSON.parse((cah && cah.stdout) || "{}");
   if (cap.mapped !== "host_structured_chart" || cap.product_tool_residual !== false) throw new Error(JSON.stringify(cap).slice(0,200));
   console.log("mcp_call make_chart alias short-circuit ok", cap.mapped, (cap.media||{}).mode);
+  // webfetch / screenshot / computer_use(+shop) / device / machines / copy / react / routine / box_doctor
+  const wfetches = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.webfetch|{\"url\":\"https://example.com\"}" }]);
+  const wfh = wfetches.find((r) => r && r.kind === "mcp_call");
+  if (!wfh || !wfh.ok) throw new Error("webfetch mcp");
+  const wfpMcp = JSON.parse(wfh.stdout || "{}");
+  if (wfpMcp.mapped !== "host_webfetch" || wfpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(wfpMcp).slice(0,200));
+  if ((wfpMcp.webfetch||{}).pretend_fetched === true) throw new Error("pretend_fetched");
+  if (typeof (wfpMcp.webfetch||{}).public_fallback_residual !== "boolean") throw new Error("public_fallback_residual missing");
+  if (!(wfpMcp.webfetch||{}).path) throw new Error("webfetch path: " + JSON.stringify(wfpMcp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-webfetch.json", JSON.stringify({ ok: true, ...wfpMcp }, null, 2));
+  console.log("mcp_call webfetch short-circuit ok", wfpMcp.mapped, (wfpMcp.webfetch||{}).mode, (wfpMcp.webfetch||{}).public_fallback_residual);
+  const wfAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.web_fetch|{\"url\":\"https://example.com\"}" }]);
+  const wfah = wfAlias.find((r) => r && r.kind === "mcp_call");
+  const wfapMcp = JSON.parse((wfah && wfah.stdout) || "{}");
+  if (wfapMcp.mapped !== "host_webfetch" || wfapMcp.product_tool_residual !== false) throw new Error(JSON.stringify(wfapMcp).slice(0,200));
+  console.log("mcp_call web_fetch alias short-circuit ok", wfapMcp.mapped, (wfapMcp.webfetch||{}).mode);
+  const shots = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.screenshot|{\"agent\":\"mcp-smoke\"}" }]);
+  const shoth = shots.find((r) => r && r.kind === "mcp_call");
+  if (!shoth || !shoth.ok) throw new Error("screenshot mcp");
+  const shotpMcp = JSON.parse(shoth.stdout || "{}");
+  if (shotpMcp.mapped !== "host_screenshot" || shotpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(shotpMcp).slice(0,200));
+  if ((shotpMcp.screenshot||{}).pretend_frame === true) throw new Error("pretend_frame");
+  if (typeof (shotpMcp.screenshot||{}).screenshot_residual !== "boolean") throw new Error("screenshot_residual missing");
+  if (!(shotpMcp.screenshot||{}).path) throw new Error("screenshot path: " + JSON.stringify(shotpMcp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-screenshot.json", JSON.stringify({ ok: true, ...shotpMcp }, null, 2));
+  console.log("mcp_call screenshot short-circuit ok", shotpMcp.mapped, (shotpMcp.screenshot||{}).mode, (shotpMcp.screenshot||{}).screenshot_residual);
+  const cus = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.computer_use|{\"command\":\"mcp-cu-smoke-no-url\"}" }]);
+  const cuh = cus.find((r) => r && r.kind === "mcp_call");
+  if (!cuh || !cuh.ok) throw new Error("computer_use mcp");
+  const cupMcp = JSON.parse(cuh.stdout || "{}");
+  if (cupMcp.mapped !== "host_computer_use" || cupMcp.product_tool_residual !== false) throw new Error(JSON.stringify(cupMcp).slice(0,200));
+  if (((cupMcp.computer_use||{}).outcome||{}).pretend_purchased === true) throw new Error("pretend_purchased cu");
+  if (typeof ((cupMcp.computer_use||{}).outcome||{}).ocr_residual !== "boolean" && typeof ((cupMcp.computer_use||{}).gui||{}).os_window_automation_residual !== "boolean") {
+    // Nested residuals may live on snap computer_use summary or payload outcome/gui.
+    const cuSum = cupMcp.computer_use || {};
+    if (typeof cuSum.ocr_residual !== "boolean" && typeof cuSum.os_window_automation_residual !== "boolean") {
+      throw new Error("cu nested residual missing: " + JSON.stringify(cuSum).slice(0,200));
+    }
+  }
+  require("fs").writeFileSync("/tmp/bitbot-mcp-computer-use.json", JSON.stringify({ ok: true, ...cupMcp }, null, 2));
+  console.log("mcp_call computer_use short-circuit ok", cupMcp.mapped, (cupMcp.computer_use||{}).mode || ((cupMcp.computer_use||{}).outcome||{}).summary);
+  const shopCus = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.shop_retail|{\"command\":\"shopping:site-playbooks-target :: mcp shop smoke\"}" }]);
+  const shopCuh = shopCus.find((r) => r && r.kind === "mcp_call");
+  if (!shopCuh || !shopCuh.ok) throw new Error("shop_retail mcp");
+  const shopCup = JSON.parse(shopCuh.stdout || "{}");
+  if (shopCup.mapped !== "host_computer_use" || shopCup.product_tool_residual !== false) throw new Error(JSON.stringify(shopCup).slice(0,200));
+  if (((shopCup.computer_use||{}).outcome||{}).pretend_purchased === true) throw new Error("pretend_purchased shop");
+  const shopFam = ((shopCup.computer_use||{}).outcome||{}).vertical_family || (shopCup.computer_use||{}).vertical_family;
+  if (shopFam && shopFam !== "shopping") throw new Error("shop vertical_family: " + shopFam);
+  console.log("mcp_call shop_retail alias short-circuit ok", shopCup.mapped, shopFam || "shopping");
+  // travel_book / order_food share host_computer_use map (shop_* / travel_* / food_* prefixes); skip extra CU runs.
+  const dtls = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.device_tools_list|{\"machine_id\":\"mcp-ios\",\"machine_kind\":\"ios\",\"tools\":\"camera=ask,mic=deny\"}" }]);
+  const dtlh = dtls.find((r) => r && r.kind === "mcp_call");
+  if (!dtlh || !dtlh.ok) throw new Error("device_tools_list mcp");
+  const dtlpMcp = JSON.parse(dtlh.stdout || "{}");
+  if (dtlpMcp.mapped !== "host_device_tools_list" || dtlpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(dtlpMcp).slice(0,200));
+  if ((dtlpMcp.device_tools_list||{}).pretend_granted === true) throw new Error("pretend_granted tools");
+  if (!((dtlpMcp.device_tools_list||{}).count >= 1)) throw new Error("device_tools count: " + JSON.stringify(dtlpMcp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-device-tools-list.json", JSON.stringify({ ok: true, ...dtlpMcp }, null, 2));
+  console.log("mcp_call device_tools_list short-circuit ok", dtlpMcp.mapped, (dtlpMcp.device_tools_list||{}).count);
+  const dts = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.device_tool|{\"machine_id\":\"mcp-ios\",\"tool\":\"camera\"}" }]);
+  const dth = dts.find((r) => r && r.kind === "mcp_call");
+  if (!dth || !dth.ok) throw new Error("device_tool mcp");
+  const dtpMcp = JSON.parse(dth.stdout || "{}");
+  if (dtpMcp.mapped !== "host_device_tool" || dtpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(dtpMcp).slice(0,200));
+  if (typeof (dtpMcp.device_tool||{}).device_tool_residual !== "boolean") throw new Error("device_tool_residual missing");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-device-tool.json", JSON.stringify({ ok: true, ...dtpMcp }, null, 2));
+  console.log("mcp_call device_tool short-circuit ok", dtpMcp.mapped, (dtpMcp.device_tool||{}).mode, (dtpMcp.device_tool||{}).device_tool_residual);
+  const mls = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.machines_list|{\"host_kind\":\"desktop\",\"host_id\":\"mcp-host\",\"machines\":\"desk-1:desktop:connected,phone-1:ios:disconnected\"}" }]);
+  const mlh = mls.find((r) => r && r.kind === "mcp_call");
+  if (!mlh || !mlh.ok) throw new Error("machines_list mcp");
+  const mlpMcp = JSON.parse(mlh.stdout || "{}");
+  if (mlpMcp.mapped !== "host_machines_list" || mlpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(mlpMcp).slice(0,200));
+  if ((mlpMcp.machines_list||{}).pretend_all_connected === true) throw new Error("pretend_all_connected");
+  if (!((mlpMcp.machines_list||{}).count >= 1)) throw new Error("machines count");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-machines-list.json", JSON.stringify({ ok: true, ...mlpMcp }, null, 2));
+  console.log("mcp_call machines_list short-circuit ok", mlpMcp.mapped, (mlpMcp.machines_list||{}).count);
+  const mlAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.list_machines|{\"host_id\":\"mcp-alias\"}" }]);
+  const mlah = mlAlias.find((r) => r && r.kind === "mcp_call");
+  const mlapMcp = JSON.parse((mlah && mlah.stdout) || "{}");
+  if (mlapMcp.mapped !== "host_machines_list" || mlapMcp.product_tool_residual !== false) throw new Error(JSON.stringify(mlapMcp).slice(0,200));
+  console.log("mcp_call list_machines alias short-circuit ok", mlapMcp.mapped, (mlapMcp.machines_list||{}).count);
+  fs.mkdirSync("uploads", { recursive: true });
+  fs.writeFileSync("uploads/mcp-copy-src.txt", "mcp copy short-circuit\n");
+  const c2s = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.copy_to_box|{\"machine_id\":\"remote-1\",\"src\":\"uploads/mcp-copy-src.txt\",\"dest\":\"uploads/mcp-copy-dest.txt\"}" }]);
+  const c2h = c2s.find((r) => r && r.kind === "mcp_call");
+  if (!c2h || !c2h.ok) throw new Error("copy_to_box mcp");
+  const c2p = JSON.parse(c2h.stdout || "{}");
+  if (c2p.mapped !== "host_copy_to_box" || c2p.product_tool_residual !== false) throw new Error(JSON.stringify(c2p).slice(0,200));
+  if ((c2p.copy_box||{}).pretend_remote_machine === true) throw new Error("pretend_remote_machine");
+  if ((c2p.copy_box||{}).cross_machine_copy_residual !== true) throw new Error("cross_machine_copy_residual must stay gated: " + JSON.stringify(c2p.copy_box||{}).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-copy-to-box.json", JSON.stringify({ ok: true, ...c2p }, null, 2));
+  console.log("mcp_call copy_to_box short-circuit ok", c2p.mapped, (c2p.copy_box||{}).mode, (c2p.copy_box||{}).cross_machine_copy_residual);
+  try { fs.unlinkSync("uploads/mcp-copy-from-dest.txt"); } catch (_) {}
+  const cfs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.copy_from_box|{\"machine_id\":\"remote-1\",\"src\":\"uploads/mcp-copy-src.txt\",\"dest\":\"uploads/mcp-copy-from-dest.txt\",\"overwrite\":\"allow\"}" }]);
+  const cfh = cfs.find((r) => r && r.kind === "mcp_call");
+  if (!cfh || !cfh.ok) throw new Error("copy_from_box mcp");
+  const cfpMcp = JSON.parse(cfh.stdout || "{}");
+  if (cfpMcp.mapped !== "host_copy_from_box" || cfpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(cfpMcp).slice(0,200));
+  if ((cfpMcp.copy_box||{}).cross_machine_copy_residual !== true) throw new Error("copy_from residual gated");
+  console.log("mcp_call copy_from_box short-circuit ok", cfpMcp.mapped, (cfpMcp.copy_box||{}).mode, (cfpMcp.copy_box||{}).cross_machine_copy_residual);
+  const reacts = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.react_message|{\"message_id\":\"msg-mcp-smoke\",\"emoji\":\"🎉\"}" }]);
+  const reacth = reacts.find((r) => r && r.kind === "mcp_call");
+  if (!reacth || !reacth.ok) throw new Error("react_message mcp");
+  const reactpMcp = JSON.parse(reacth.stdout || "{}");
+  if (reactpMcp.mapped !== "host_react_message" || reactpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(reactpMcp).slice(0,200));
+  if ((reactpMcp.react_message||{}).pretend_pill === true) throw new Error("pretend_pill");
+  if ((reactpMcp.react_message||{}).visible_pill !== true) throw new Error("visible_pill: " + JSON.stringify(reactpMcp.react_message||{}).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-react.json", JSON.stringify({ ok: true, ...reactpMcp }, null, 2));
+  console.log("mcp_call react_message short-circuit ok", reactpMcp.mapped, (reactpMcp.react_message||{}).emoji);
+  const routs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.routine_schedule|{\"id\":\"mcp-r\",\"cron\":\"@daily\",\"prompt\":\"mcp routine smoke\"}" }]);
+  const routh = routs.find((r) => r && r.kind === "mcp_call");
+  if (!routh || !routh.ok) throw new Error("routine_schedule mcp");
+  const routpMcp = JSON.parse(routh.stdout || "{}");
+  if (routpMcp.mapped !== "host_routine_schedule" || routpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(routpMcp).slice(0,200));
+  if ((routpMcp.routine_schedule||{}).pretend_scheduled === true) throw new Error("pretend_scheduled");
+  if ((routpMcp.routine_schedule||{}).stored !== true) throw new Error("stored: " + JSON.stringify(routpMcp.routine_schedule||{}).slice(0,200));
+  if (typeof (routpMcp.routine_schedule||{}).long_lived_cron_residual !== "boolean") throw new Error("long_lived_cron_residual missing");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-routine.json", JSON.stringify({ ok: true, ...routpMcp }, null, 2));
+  console.log("mcp_call routine_schedule short-circuit ok", routpMcp.mapped, (routpMcp.routine_schedule||{}).mode, (routpMcp.routine_schedule||{}).long_lived_cron_residual);
+  const routAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.create_routine|{\"id\":\"mcp-r2\",\"cron\":\"@hourly\",\"prompt\":\"alias routine\"}" }]);
+  const routah = routAlias.find((r) => r && r.kind === "mcp_call");
+  const routapMcp = JSON.parse((routah && routah.stdout) || "{}");
+  if (routapMcp.mapped !== "host_routine_schedule" || routapMcp.product_tool_residual !== false) throw new Error(JSON.stringify(routapMcp).slice(0,200));
+  console.log("mcp_call create_routine alias short-circuit ok", routapMcp.mapped, (routapMcp.routine_schedule||{}).id);
+  const docs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.box_doctor|{}" }]);
+  const doch = docs.find((r) => r && r.kind === "mcp_call");
+  if (!doch || !doch.ok) throw new Error("box_doctor mcp");
+  const docpMcp = JSON.parse(doch.stdout || "{}");
+  if (docpMcp.mapped !== "host_box_doctor" || docpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(docpMcp).slice(0,200));
+  if ((docpMcp.box_doctor||{}).pretend_healthy === true) throw new Error("pretend_healthy");
+  if (typeof (docpMcp.box_doctor||{}).box_doctor_bin_residual !== "boolean") throw new Error("box_doctor_bin_residual missing");
+  if (!(docpMcp.box_doctor||{}).path) throw new Error("box_doctor path");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-box-doctor.json", JSON.stringify({ ok: true, ...docpMcp }, null, 2));
+  console.log("mcp_call box_doctor short-circuit ok", docpMcp.mapped, (docpMcp.box_doctor||{}).mode, (docpMcp.box_doctor||{}).box_doctor_bin_residual);
   // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}
