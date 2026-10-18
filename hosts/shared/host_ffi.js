@@ -12044,6 +12044,30 @@ function createHostFfi(repoRoot) {
           };
         }
       }
+      // After media write: close voice_stt_residual when sidecar / BITBOT_STT_BIN
+      // / BITBOT_VOICE_STT path yields a transcript (never pretend heard).
+      let stt = {
+        ok: false,
+        text: "",
+        tool: null,
+        voice_stt_residual: true,
+      };
+      if (action === "start" && media.ok && media.path) {
+        const wantStt =
+          process.env.BITBOT_VOICE_STT === "1" ||
+          process.env.BITBOT_VOICE_STT === "force" ||
+          Boolean(String(process.env.BITBOT_STT_BIN || "").trim()) ||
+          fs.existsSync(media.path + ".stt.txt") ||
+          fs.existsSync(
+            path.join(
+              path.dirname(media.path),
+              path.basename(media.path, path.extname(media.path)) + ".stt.txt",
+            ),
+          );
+        if (wantStt) {
+          stt = transcribeVoiceWav(media.path);
+        }
+      }
       const callId =
         action === "start"
           ? `call-${slug || "voice"}-${Date.now().toString(36)}`
@@ -12075,6 +12099,7 @@ function createHostFfi(repoRoot) {
         sessDir,
         `${action}-${slug || "voice"}-${Date.now().toString(36)}.json`,
       );
+      const voiceSttResidual = stt.voice_stt_residual !== false || !stt.ok;
       const artifact = {
         stored: true,
         action,
@@ -12087,8 +12112,11 @@ function createHostFfi(repoRoot) {
         media_tool: media.tool || null,
         sessions_path: VOICE_SESSIONS_PATH,
         mode: "host_voice_session",
-        // Session start uses sine probe — not mic STT / spoken TTS yet.
-        voice_stt_residual: true,
+        stt_ok: Boolean(stt.ok),
+        stt_tool: stt.tool || null,
+        stt_text: stt.ok ? String(stt.text || "").slice(0, 400) : null,
+        // Honest residual: closed only when STT mock/sidecar actually heard.
+        voice_stt_residual: voiceSttResidual,
         voice_tts_residual: media.tool !== "espeak",
         pretend_live: false,
         pretend_media: false,
