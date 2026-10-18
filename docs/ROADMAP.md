@@ -40,7 +40,7 @@
 - [x] **H4** MCP/OAuth/出网×7 — smoke + I-PASS（OAuth 三项用 **local sandbox IdP**，非生产）
 - [x] **H5** 媒体/卡/像素×9 — smoke + I-PASS
 - [x] **H6** 全矩阵 I 收口×193 — sweep + I-PASS（ADR 0004；kernel-sufficient / covered-by-H0-H5）
-- [ ] **Residual（非矩阵 I 阻塞）**：CM-0705 真手机 OS 权限卡仍 GAP
+- [ ] **User-deferred residual（非矩阵 I 阻塞）**：CM-0705 真手机 OS 权限弹窗；生产 Slack/Gmail IdP；商店签名证书（见下 M6/M7 同项）
 
 ## M4 — Connectors & IO
 - [x] MCP dynamic tools / InstallPlugin / Authenticate
