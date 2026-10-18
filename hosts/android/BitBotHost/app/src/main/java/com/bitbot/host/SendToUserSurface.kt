@@ -28,7 +28,7 @@ object SendToUserSurface {
     "mail_send", "mail_draft", "mail_search", "mail_read",
     "slides_pptx", "skill_write", "export_pack", "schedule_meeting",
     "purchase", "mcp_call", "mcp_discover", "mcp_namespace",
-    "credential_list", "credential_fill", "code_changes",
+    "credential_list", "code_changes",
     "section_add", "section_post", "source_control", "workflow_list",
     "x_search", "job_search", "finance_call", "copy_to_box", "copy_from_box",
     "shared_memory_put", "shared_memory_read", "journal_append", "journal_query",
@@ -231,6 +231,14 @@ object SendToUserSurface {
             if (filePath.isNotBlank()) {
               attachments += Attachment(kind = kind, path = filePath, role = "snap")
             }
+          }
+          kind == "credential_fill" -> {
+            // CHARTER CM-1106: secret-request — vault only, never attachment.
+            typeSet += "secret-request"
+            val handle = p.optString("vault_id").ifBlank {
+              p.optString("fill_handle").ifBlank { p.optString("domain", "vault") }
+            }
+            labels += "secret-request:$handle$pathSuffix"
           }
           kind == "device_permission" -> {
             typeSet += "widget"

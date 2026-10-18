@@ -296,7 +296,6 @@ function extractDeliveryTypes(turnJsonText) {
           "mcp_discover",
           "mcp_namespace",
           "credential_list",
-          "credential_fill",
           "code_changes",
           "section_add",
           "section_post",
@@ -409,6 +408,14 @@ function extractDeliveryTypes(turnJsonText) {
             role: "snap",
           });
         }
+      } else if (h.kind === "credential_fill") {
+        // CHARTER CM-1106: secret-request card — vault only, never attachment.
+        types.push("secret-request");
+        labels.push(
+          "secret-request:" +
+            (p.vault_id || p.fill_handle || p.domain || "vault") +
+            residualSuffix(p),
+        );
       } else if (h.kind === "device_permission") {
         // CHARTER CM-0705: permission card is a widget, not a file attachment.
         types.push("widget");

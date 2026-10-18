@@ -475,7 +475,7 @@
     <div class="panel-title" style="margin-top:16px">Delivery</div>
     <div class="machine-item">
       <div class="name">SendToUser</div>
-      <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent</div>
+      <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent · secret-request</div>
       <div id="reaction-tray" aria-label="Reaction pills"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="del-react" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">React message</button>
@@ -2879,7 +2879,7 @@
                   }
                 } else if (h.kind === "credential_fill") {
                   label =
-                    "cred_fill:" +
+                    "secret-request:" +
                     (p.domain || p.vault_id || "vault") +
                     (p.path ? "/snap" : "") +
                     (p.credential_browser_fill_residual === true
@@ -2888,11 +2888,11 @@
                     (p.signin_fill_residual === true
                       ? "/signin_fill_residual"
                       : "");
-                  types.push("attachment");
+                  types.push("secret-request");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
                     chMeta.textContent =
-                      "cred_fill · " +
+                      "secret-request · " +
                       (p.domain || "?") +
                       (p.credential_browser_fill_residual === true
                         ? " · credential_browser_fill_residual"
@@ -2902,6 +2902,11 @@
                         : "") +
                       (p.pretend_secret_echo === true ? " · pretend!" : "") +
                       (p.path ? " · snap" : "");
+                  }
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta && !/secret-request/.test(delMeta.textContent || "")) {
+                    delMeta.textContent =
+                      (delMeta.textContent || "") + " · secret-request";
                   }
                 } else if (h.kind === "channel_send" && p.live_post) {
                   label =

@@ -532,17 +532,22 @@ assert 'h.kind !== "oauth"' in html
 assert 'widget:device_permission:' in shared
 assert 'h.kind === "inbound_reaction" || h.kind === "react_message"' in shared
 assert 'h.kind === "device_permission"' in shared
+assert 'h.kind === "credential_fill"' in shared
+assert 'secret-request' in shared
 assert 'function residualSuffix' in shared
 assert 'live_x_residual' in shared
 assert 'h.kind === "react_message"' in html
 assert 'types.push("reaction")' in html
+assert 'secret-request' in html
+assert 'types.push("secret-request")' in html
 assert 'id="connect-outlook"' in html or "id=\"connect-outlook\"" in html
 assert 'connect outlook' in html
 assert 'memory_update' in html and 'memory-meta' in html
-# device_permission must not sit in the generic attachment includes list
+# device_permission / credential_fill must not sit in the generic attachment includes list
 attach_block = shared.split('.includes(h.kind)')[0]
 assert '"device_tool"' in attach_block
 assert '"device_permission"' not in attach_block
+assert '"credential_fill"' not in attach_block
 # Desktop honesty chips + attachKinds parity for delivery strip
 for needle in (
   'live_paid_residual',
@@ -1256,7 +1261,16 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-personal-dm-live.json')
 node hosts/cli_host/run_turn.js "list credentials" >/tmp/bitbot-cred-list.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-cred-list.json'));assert d.get('ok');assert d.get('intent')=='list_credentials';hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='credential_list');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;assert p.get('count')>=1;assert 'vault:secret' not in json.dumps(p).lower();print('credential_list metadata ok', p.get('count'))"
 node hosts/cli_host/run_turn.js "fill credential domain=login.example.test" >/tmp/bitbot-cred.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cred.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='credential_fill');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('vault_path') and os.path.isfile(p['vault_path']);assert p.get('browser_plan_path') and os.path.isfile(p['browser_plan_path']);plan=json.load(open(p['browser_plan_path']));assert plan.get('secret_in_plan') is False;assert plan.get('username');assert 'vault:secret' not in json.dumps(plan).lower();assert 'vault:secret' not in json.dumps(p).lower();assert p.get('credential_browser_fill_residual') is True;assert p.get('signin_fill_residual') is True;print('credential_fill vault+browser_plan ok', p.get('path'), 'plan', p.get('browser_plan_path'), 'user', plan.get('username'), 'identity', p.get('identity_browser_ready'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cred.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='credential_fill');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('vault_path') and os.path.isfile(p['vault_path']);assert p.get('browser_plan_path') and os.path.isfile(p['browser_plan_path']);plan=json.load(open(p['browser_plan_path']));assert plan.get('secret_in_plan') is False;assert plan.get('username');assert 'vault:secret' not in json.dumps(plan).lower();assert 'vault:secret' not in json.dumps(p).lower();assert p.get('credential_browser_fill_residual') is True;assert p.get('signin_fill_residual') is True;stu=p.get('send_to_user') or {};assert stu.get('type')=='secret-request';assert stu.get('secret_echoed') is False;deliv=next(x for x in hrs if x.get('kind')=='delivery' and 'secret-request' in (x.get('stdout') or ''));dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='secret-request';assert dp.get('secret_echoed') is False;assert 'vault:secret' not in json.dumps(dp).lower();print('credential_fill vault+browser_plan+secret-request ok', p.get('path'), 'plan', p.get('browser_plan_path'), 'user', plan.get('username'), 'identity', p.get('identity_browser_ready'))"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-cred.json","utf8"));
+if(!s.types.includes("secret-request")) { console.error(s); process.exit(1); }
+if(s.types.includes("attachment") && s.labels.some(l=>l.startsWith("credential_fill"))) { console.error("credential_fill must not be attachment", s); process.exit(1); }
+if(!s.labels.some(l=>l.startsWith("secret-request:"))) { console.error(s); process.exit(1); }
+console.log("STU secret-request extract ok", s.types.slice(0,4), s.labels.slice(0,2));
+'
 # Username fill mock closes credential_browser_fill_residual; password stays signin_fill_residual.
 BITBOT_CREDENTIAL_FILL_MOCK=1 node hosts/cli_host/run_turn.js "fill credential domain=example.com" >/tmp/bitbot-cred-user.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cred-user.json'));h=next(x for x in d['host_results'] if x.get('kind')=='credential_fill');p=json.loads(h['stdout']);assert p.get('credential_browser_fill_residual') is False;assert p.get('signin_fill_residual') is True;bf=p.get('browser_fill') or {};assert bf.get('username_typed') is True;assert bf.get('ok') is True;assert p.get('secret_echoed') is False;assert p.get('pretend_secret_view') is False;assert p.get('mode')=='host_credential_fill_username_mock';print('credential_fill username mock residual close ok', p.get('path'), 'signin_fill_residual', True)"

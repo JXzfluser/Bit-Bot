@@ -8423,6 +8423,30 @@ function createHostFfi(repoRoot) {
         at,
       });
     }
+    if (kind === "credential_fill") {
+      // Prefer effect-recorded secret-request; re-stamp delivery receipt for Host results.
+      if (parsed.send_to_user && parsed.send_to_user.type === "secret-request") {
+        return parsed.send_to_user;
+      }
+      return recordSendToUser({
+        type: "secret-request",
+        name: parsed.domain || parsed.vault_id || "credential",
+        label: parsed.domain || parsed.vault_id || "credential",
+        handle: parsed.vault_id || parsed.fill_handle || "",
+        vault_path: parsed.vault_path || null,
+        vault_id: parsed.vault_id || "",
+        fill_handle: parsed.fill_handle || parsed.vault_id || "",
+        path: parsed.path || null,
+        secret_echoed: false,
+        pretend_secret_view: false,
+        pretend_secret_echo: false,
+        credential_browser_fill_residual:
+          parsed.credential_browser_fill_residual === true,
+        signin_fill_residual: parsed.signin_fill_residual === true,
+        source_kind: kind,
+        at,
+      });
+    }
     if (kind === "computer_use") {
       return recordSendToUser({
         type: "attachment",
@@ -13949,6 +13973,24 @@ function createHostFfi(repoRoot) {
         at,
       };
       fs.writeFileSync(fillPath, JSON.stringify(artifact, null, 2));
+      // CM-1106: SendToUser type=secret-request → vault; never plaintext / attachment mislabel.
+      const delivery = recordSendToUser({
+        type: "secret-request",
+        name: domain || id,
+        label: meta.label || domain || "credential",
+        handle: id,
+        vault_path: vaultPath,
+        vault_id: id,
+        fill_handle: fillHandle || id,
+        path: fillPath,
+        secret_echoed: false,
+        pretend_secret_view: false,
+        pretend_secret_echo: false,
+        credential_browser_fill_residual: credentialBrowserFillResidual,
+        signin_fill_residual: signinFillResidual,
+        source_kind: "credential_fill",
+        at,
+      });
       appendHostDeliveryJournal({
         kind,
         command: cmd,
@@ -13958,11 +14000,13 @@ function createHostFfi(repoRoot) {
         browser_plan_path: planPath,
         credential_browser_fill_residual: credentialBrowserFillResidual,
         signin_fill_residual: signinFillResidual,
+        send_to_user_type: "secret-request",
         at,
       });
       return okJson(kind, cmd, {
         ...artifact,
         path: fillPath,
+        send_to_user: delivery,
         ok: true,
       });
     }

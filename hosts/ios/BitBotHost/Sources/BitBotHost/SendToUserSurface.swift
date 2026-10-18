@@ -25,7 +25,7 @@ enum SendToUserSurface {
     "mail_send", "mail_draft", "mail_search", "mail_read",
     "slides_pptx", "skill_write", "export_pack", "schedule_meeting",
     "purchase", "mcp_call", "mcp_discover", "mcp_namespace",
-    "credential_list", "credential_fill", "code_changes",
+    "credential_list", "code_changes",
     "section_add", "section_post", "source_control", "workflow_list",
     "x_search", "job_search", "finance_call", "copy_to_box", "copy_from_box",
     "shared_memory_put", "shared_memory_read", "journal_append", "journal_query",
@@ -223,6 +223,14 @@ enum SendToUserSurface {
             Attachment(kind: kind, path: filePath, role: "snap")
           )
         }
+      } else if kind == "credential_fill" {
+        // CHARTER CM-1106: secret-request — vault only, never attachment.
+        typeSet.insert("secret-request")
+        let handle = (p["vault_id"] as? String)
+          ?? (p["fill_handle"] as? String)
+          ?? (p["domain"] as? String)
+          ?? "vault"
+        summary.labels.append("secret-request:" + handle + pathSuffix)
       } else if kind == "device_permission" {
         typeSet.insert("widget")
         let tool = (p["tool"] as? String) ?? (p["permission"] as? String) ?? "card"
