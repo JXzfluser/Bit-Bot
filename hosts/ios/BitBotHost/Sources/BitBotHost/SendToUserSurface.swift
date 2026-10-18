@@ -29,7 +29,7 @@ enum SendToUserSurface {
     "section_add", "section_post", "source_control", "workflow_list",
     "x_search", "job_search", "finance_call", "copy_to_box", "copy_from_box",
     "shared_memory_put", "shared_memory_read", "journal_append", "journal_query",
-    "connectors_probe", "device_tools_list", "device_tool", "device_permission",
+    "connectors_probe", "device_tools_list", "device_tool",
     "skill_load", "mail_claim_inbox", "cloud_artifact_deliver", "teammate_create",
     "shell", "computer_use",
     "generate_image", "generate_video", "watch_video", "structured_chart",
@@ -38,7 +38,7 @@ enum SendToUserSurface {
     "settings_open", "agent_info_panel", "delete_agent", "package_install",
     "shared_box_fs", "hide_agent", "list_agents_sidebar", "members_panel",
     "notify_settings", "set_notify", "update_computer", "reset_computer",
-    "local_execution", "guide_permission", "render_markdown", "react_message",
+    "local_execution", "guide_permission", "render_markdown",
     "screenshot", "check_updates", "auto_review_settings", "box_chrome_probe",
     "mcp_uninstall", "mcp_get_plugin", "mcp_list_plugins",
     // Multi-end parity with hosts/shared/send_to_user_surface.js
@@ -127,10 +127,11 @@ enum SendToUserSurface {
             Attachment(kind: "delivery", path: filePath, role: attachmentRole(kind: "delivery", filePath: filePath))
           )
         }
-      } else if kind == "inbound_reaction" {
+      } else if kind == "inbound_reaction" || kind == "react_message" {
         typeSet.insert("reaction")
         let emoji = (p["emoji"] as? String) ?? "👍"
-        summary.labels.append("reaction:" + emoji)
+        let off = kind == "react_message" && (p["visible_pill"] as? Bool) == false
+        summary.labels.append("reaction:" + emoji + (off ? "/off" : ""))
       } else if kind == "channel_send" {
         let t = (p["thread_ts"] as? String)?.isEmpty == false ? "thread" : "text"
         typeSet.insert(t)
@@ -162,6 +163,15 @@ enum SendToUserSurface {
       } else if kind == "approval_card" {
         typeSet.insert("widget")
         summary.labels.append("widget:approval" + pathSuffix)
+      } else if kind == "device_permission" {
+        typeSet.insert("widget")
+        let tool = (p["tool"] as? String) ?? (p["permission"] as? String) ?? "card"
+        summary.labels.append("widget:device_permission:" + tool + pathSuffix)
+        if !filePath.isEmpty {
+          summary.attachments.append(
+            Attachment(kind: kind, path: filePath, role: attachmentRole(kind: kind, filePath: filePath))
+          )
+        }
       } else if kind == "oauth" {
         typeSet.insert("widget")
         let mode: String

@@ -452,7 +452,7 @@ assert 'query journal from=2026-10-01' in html
 assert 'channel_delivery' in html
 print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines + skills/box + mcp/subagent + prefs panels wired ok')
 "
-python3 -c "
+python3 - <<'PY'
 from pathlib import Path
 html=Path('hosts/desktop/index.html').read_text()
 main=Path('hosts/desktop/main.js').read_text()
@@ -470,8 +470,8 @@ assert 'srcdoc' in html
 assert 'bitbot:readArtifact' in main and 'data_url' in main
 assert 'bitbot:openArtifact' in main and 'shell.openPath' in main
 assert 'pretend_open: false' in main
-assert 'text/html' in main and '\".html\"' in main
-assert 'buf.toString(\"utf8\")' in main
+assert 'text/html' in main and '".html"' in main
+assert 'buf.toString("utf8")' in main
 assert 'readArtifact' in preload and 'openArtifact' in preload
 assert 'path outside repo' in main
 shared=Path('hosts/shared/send_to_user_surface.js').read_text()
@@ -480,12 +480,45 @@ assert 'SendToUser attachments' in shared
 assert 'oauthNeedsAuth' in shared or 'NeedsAuth' in shared
 assert 'live_needs_auth' in html
 assert 'h.kind !== "oauth"' in html
+# STU classification: permission card = widget; react_message = reaction
+assert 'widget:device_permission:' in shared
+assert 'h.kind === "inbound_reaction" || h.kind === "react_message"' in shared
+assert 'h.kind === "device_permission"' in shared
+# device_permission must not sit in the generic attachment includes list
+attach_block = shared.split('.includes(h.kind)')[0]
+assert '"device_tool"' in attach_block
+assert '"device_permission"' not in attach_block
+# Desktop honesty chips + attachKinds parity for delivery strip
+for needle in (
+  'live_paid_residual',
+  'live_calendar_residual',
+  'live_mail_residual',
+  'live_x_residual',
+  'live_job_residual',
+  'live_finance_residual',
+  '"mail_draft"',
+  '"package_install"',
+  '"shared_box_fs"',
+  '"hide_agent"',
+  '"reset_computer"',
+  '"local_execution"',
+  '"list_agents_sidebar"',
+  '"members_panel"',
+  '"react_message"',
+):
+  assert needle in html, needle
 mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
 assert 'payload.media_path' in mobile
 assert 'memory_update' in mobile and 'memory_recall' in mobile
-print('desktop inline media + HTML + OS-open + NeedsAuth delivery wired ok')
-"
+assert '"device_tool"' in mobile and '"delivery"' in mobile
+ios=Path('hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift').read_text()
+android=Path('hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt').read_text()
+assert 'widget:device_permission:' in ios and 'widget:device_permission:' in android
+assert 'inbound_reaction' in ios and 'react_message' in ios
+assert 'inbound_reaction' in android and 'react_message' in android
+print('desktop inline media + HTML + OS-open + NeedsAuth + STU residual chips wired ok')
+PY
 python3 - <<'PY'
 from pathlib import Path
 import base64

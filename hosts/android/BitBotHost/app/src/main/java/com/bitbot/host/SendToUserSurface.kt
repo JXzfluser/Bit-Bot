@@ -32,7 +32,7 @@ object SendToUserSurface {
     "section_add", "section_post", "source_control", "workflow_list",
     "x_search", "job_search", "finance_call", "copy_to_box", "copy_from_box",
     "shared_memory_put", "shared_memory_read", "journal_append", "journal_query",
-    "connectors_probe", "device_tools_list", "device_tool", "device_permission",
+    "connectors_probe", "device_tools_list", "device_tool",
     "skill_load", "mail_claim_inbox", "cloud_artifact_deliver", "teammate_create",
     "shell", "computer_use",
     "generate_image", "generate_video", "watch_video", "structured_chart",
@@ -41,7 +41,7 @@ object SendToUserSurface {
     "settings_open", "agent_info_panel", "delete_agent", "package_install",
     "shared_box_fs", "hide_agent", "list_agents_sidebar", "members_panel",
     "notify_settings", "set_notify", "update_computer", "reset_computer",
-    "local_execution", "guide_permission", "render_markdown", "react_message",
+    "local_execution", "guide_permission", "render_markdown",
     "screenshot", "check_updates", "auto_review_settings", "box_chrome_probe",
     "mcp_uninstall", "mcp_get_plugin", "mcp_list_plugins",
     // Multi-end parity with hosts/shared/send_to_user_surface.js
@@ -135,9 +135,10 @@ object SendToUserSurface {
               )
             }
           }
-          kind == "inbound_reaction" -> {
+          kind == "inbound_reaction" || kind == "react_message" -> {
             typeSet += "reaction"
-            labels += "reaction:" + p.optString("emoji", "👍")
+            val off = kind == "react_message" && p.has("visible_pill") && !p.optBoolean("visible_pill", true)
+            labels += "reaction:" + p.optString("emoji", "👍") + if (off) "/off" else ""
           }
           kind == "channel_send" -> {
             val t = if (p.optString("thread_ts").isNotBlank()) "thread" else "text"
@@ -175,6 +176,18 @@ object SendToUserSurface {
           kind == "approval_card" -> {
             typeSet += "widget"
             labels += "widget:approval$pathSuffix"
+          }
+          kind == "device_permission" -> {
+            typeSet += "widget"
+            val tool = p.optString("tool").ifBlank { p.optString("permission", "card") }
+            labels += "widget:device_permission:$tool$pathSuffix"
+            if (filePath.isNotBlank()) {
+              attachments += Attachment(
+                kind = kind,
+                path = filePath,
+                role = attachmentRole(kind, filePath),
+              )
+            }
           }
           kind == "oauth" -> {
             typeSet += "widget"

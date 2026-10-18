@@ -1722,6 +1722,16 @@
             "memory_update",
             "memory_recall",
             "shared_memory_read",
+            // Chip handlers exist; keep attachKinds in parity so delivery strip hits them.
+            "mail_draft",
+            "package_install",
+            "shared_box_fs",
+            "hide_agent",
+            "reset_computer",
+            "local_execution",
+            "list_agents_sidebar",
+            "members_panel",
+            "react_message",
           ];
           // CHARTER Delivery: include honest oauth NeedsAuth even when Host ok=false.
           const attaches = r.host_results.filter((h) => {
@@ -1911,7 +1921,12 @@
                     chMeta.textContent = "workflows · " + (p.count || 0);
                   }
                 } else if (h.kind === "x_search") {
-                  label = "x_search:" + (p.hit_count || 0) + "×" + (p.mode || "");
+                  label =
+                    "x_search:" +
+                    (p.hit_count || 0) +
+                    "×" +
+                    (p.mode || "") +
+                    (p.live_x_residual === true ? "/live_residual" : "");
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
@@ -1920,26 +1935,41 @@
                       (p.mode || "?") +
                       " · hits " +
                       (p.hit_count || 0) +
+                      (p.live_x_residual === true
+                        ? " · live_x_residual"
+                        : "") +
                       (p.pretend_live === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "job_search") {
-                  label = "jobs:" + (p.hit_count || 0);
+                  label =
+                    "jobs:" +
+                    (p.hit_count || 0) +
+                    (p.live_job_residual === true ? "/live_residual" : "");
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
-                    chMeta.textContent = "jobs · hits " + (p.hit_count || 0);
+                    chMeta.textContent =
+                      "jobs · hits " +
+                      (p.hit_count || 0) +
+                      (p.live_job_residual === true
+                        ? " · live_job_residual"
+                        : "");
                   }
                 } else if (h.kind === "finance_call") {
                   label =
                     "finance:" +
                     (p.mode || p.tool || "call") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.live_finance_residual === true ? "/live_residual" : "");
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
                     chMeta.textContent =
                       "finance · " +
                       (p.mode || "call") +
+                      (p.live_finance_residual === true
+                        ? " · live_finance_residual"
+                        : "") +
                       (p.pretend_live === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "mail_draft") {
@@ -1970,14 +2000,18 @@
                   label =
                     "purchase:" +
                     (p.mode || "receipt") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.live_paid_residual === true ? "/live_residual" : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
                     mailMeta.textContent =
                       "purchase · " +
                       (p.mode || "sandbox") +
-                      (p.paid === true ? " · paid" : " · unpaid");
+                      (p.paid === true ? " · paid" : " · unpaid") +
+                      (p.live_paid_residual === true
+                        ? " · live_paid_residual"
+                        : "");
                   }
                 } else if (h.kind === "schedule_meeting") {
                   label =
@@ -1985,7 +2019,8 @@
                     (p.mode || "calendar") +
                     "/" +
                     String(p.ics_path || "").split("/").slice(-1)[0] +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.live_calendar_residual === true ? "/live_residual" : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
@@ -1995,7 +2030,10 @@
                       " · " +
                       String(p.ics_path || p.path || "?")
                         .split("/")
-                        .slice(-1)[0];
+                        .slice(-1)[0] +
+                      (p.live_calendar_residual === true
+                        ? " · live_calendar_residual"
+                        : "");
                   }
                 } else if (h.kind === "mcp_call") {
                   const wtf = p.write_to_file || {};
@@ -2098,13 +2136,17 @@
                       (g.os_window_automation_residual === false
                         ? " · native_act"
                         : "") +
+                      (oc.live_paid_residual === true
+                        ? " · live_paid_residual"
+                        : "") +
                       (oc.pretend_purchased === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "mail_send") {
                   label =
                     "mail:" +
                     (p.mode || p.provider || "draft") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.live_mail_residual === true ? "/live_residual" : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
@@ -2118,6 +2160,9 @@
                             : "send") +
                       " · " +
                       (p.mode || p.provider || "?") +
+                      (p.live_mail_residual === true
+                        ? " · live_mail_residual"
+                        : "") +
                       (p.pretend_sent ? " · pretend!" : "") +
                       (p.eml_path || p.path ? " · snap" : "");
                   }

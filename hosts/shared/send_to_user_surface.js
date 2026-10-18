@@ -132,9 +132,15 @@ function extractDeliveryTypes(turnJsonText) {
             role: attachmentRole("delivery", p.path || filePath),
           });
         }
-      } else if (h.kind === "inbound_reaction") {
+      } else if (h.kind === "inbound_reaction" || h.kind === "react_message") {
         types.push("reaction");
-        labels.push("reaction:" + (p.emoji || "👍"));
+        labels.push(
+          "reaction:" +
+            (p.emoji || "👍") +
+            (h.kind === "react_message" && p.visible_pill === false
+              ? "/off"
+              : ""),
+        );
       } else if (h.kind === "channel_send") {
         const t = p.thread_ts ? "thread" : "text";
         types.push(t);
@@ -186,7 +192,6 @@ function extractDeliveryTypes(turnJsonText) {
           "connectors_probe",
           "device_tools_list",
           "device_tool",
-          "device_permission",
           "skill_load",
           "mail_claim_inbox",
           "cloud_artifact_deliver",
@@ -219,7 +224,6 @@ function extractDeliveryTypes(turnJsonText) {
           "local_execution",
           "guide_permission",
           "render_markdown",
-          "react_message",
           "screenshot",
           "check_updates",
           "auto_review_settings",
@@ -271,6 +275,21 @@ function extractDeliveryTypes(turnJsonText) {
       } else if (h.kind === "approval_card") {
         types.push("widget");
         labels.push("widget:approval" + (p.path ? "/snap" : ""));
+      } else if (h.kind === "device_permission") {
+        // CHARTER CM-0705: permission card is a widget, not a file attachment.
+        types.push("widget");
+        labels.push(
+          "widget:device_permission:" +
+            (p.tool || p.permission || "card") +
+            (p.path || filePath ? "/snap" : ""),
+        );
+        if (filePath) {
+          attachments.push({
+            kind: h.kind,
+            path: filePath,
+            role: attachmentRole(h.kind, filePath),
+          });
+        }
       } else if (h.kind === "oauth") {
         types.push("widget");
         const oauthLabel =

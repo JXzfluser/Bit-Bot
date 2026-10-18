@@ -206,6 +206,8 @@ try {
       "machines_list",
       "mail_claim_inbox",
       "device_tools_list",
+      "device_tool",
+      "delivery",
       "journal_query",
       "skill_load",
       "copy_to_box",
