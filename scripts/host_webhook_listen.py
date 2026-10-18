@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -16,12 +17,81 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+RUN_TURN_JS = REPO_ROOT / "hosts" / "cli_host" / "run_turn.js"
 
 
 def webhook_dir() -> Path:
     d = REPO_ROOT / "data" / "routines" / "webhooks"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _execute_inbound_turn(hook: Path, hooks_dir: Path, turn_prompt: str, hook_body: dict) -> dict:
+    """Same Host path as webhook_wake / runInboundTurnHook when BITBOT_INBOUND_TURN=1."""
+    turn_hook: dict = {
+        "hooked": True,
+        "hook_path": str(hook),
+        "turn_executed": False,
+        "turn_ok": False,
+        "turn_path": None,
+        "error": None,
+    }
+    if os.environ.get("BITBOT_INBOUND_TURN") != "1":
+        return turn_hook
+
+    turn_out = hooks_dir / f"turn-listen-{int(time.time() * 1000):x}.json"
+    env = {**os.environ, "BITBOT_INBOUND_TURN": "0"}  # prevent recursive inbound loops
+    try:
+        proc = subprocess.run(
+            ["node", str(RUN_TURN_JS), "--approved", turn_prompt],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+        )
+        stdout = (proc.stdout or "").strip()
+        stderr = (proc.stderr or "").strip()
+        if not stdout:
+            turn_out.write_text(
+                json.dumps({"ok": False, "error": "empty turn stdout", "stderr": stderr[:400]}, indent=2)
+                + "\n",
+                encoding="utf-8",
+            )
+            turn_ok = False
+        else:
+            turn_out.write_text(stdout + "\n", encoding="utf-8")
+            try:
+                turn_ok = bool(json.loads(stdout).get("ok"))
+            except json.JSONDecodeError:
+                turn_ok = False
+        hook_body["status"] = "executed" if turn_ok else "failed"
+        hook_body["turn_path"] = str(turn_out)
+        if not turn_ok:
+            hook_body["error"] = "inbound turn returned ok=false"
+        hook.write_text(json.dumps(hook_body, indent=2) + "\n", encoding="utf-8")
+        turn_hook = {
+            "hooked": True,
+            "hook_path": str(hook),
+            "turn_executed": True,
+            "turn_ok": turn_ok,
+            "turn_path": str(turn_out),
+            "error": None if turn_ok else "inbound turn returned ok=false",
+        }
+    except Exception as err:  # noqa: BLE001 — mirror host_ffi catch width
+        err_msg = str(err)[:240]
+        hook_body["status"] = "failed"
+        hook_body["error"] = err_msg
+        hook.write_text(json.dumps(hook_body, indent=2) + "\n", encoding="utf-8")
+        turn_hook = {
+            "hooked": True,
+            "hook_path": str(hook),
+            "turn_executed": True,
+            "turn_ok": False,
+            "turn_path": None,
+            "error": err_msg,
+        }
+    return turn_hook
 
 
 def write_wake(event_id: str, summary: str) -> dict:
@@ -46,40 +116,6 @@ def write_wake(event_id: str, summary: str) -> dict:
         "at": at,
     }
     hook.write_text(json.dumps(hook_body, indent=2) + "\n", encoding="utf-8")
-    artifact = {
-        "mode": "host_webhook_listen",
-        "pretend_wake": False,
-        "event_id": event_id,
-        "summary": summary,
-        "wake_payload": wake_payload,
-        "has_webhook_event": True,
-        "key_leaked": False,
-        "inbound_push_residual": False,
-        "turn_hook": {
-            "hooked": True,
-            "hook_path": str(hook),
-            "turn_executed": False,
-        },
-        "inbound_turn_residual": True,
-        "at": at,
-    }
-    snap.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
-    with (dir_ / "wakes.jsonl").open("a", encoding="utf-8") as fh:
-        fh.write(
-            json.dumps(
-                {
-                    "event_id": event_id,
-                    "summary": summary,
-                    "path": str(snap),
-                    "hook_path": str(hook),
-                    "inbound_push_residual": False,
-                    "source": "http_listen",
-                    "at": at,
-                }
-            )
-            + "\n"
-        )
-    (dir_ / "last_wake.txt").write_text(wake_payload + "\n", encoding="utf-8")
     with (dir_ / "pending-turns.jsonl").open("a", encoding="utf-8") as fh:
         fh.write(
             json.dumps(
@@ -93,6 +129,40 @@ def write_wake(event_id: str, summary: str) -> dict:
             )
             + "\n"
         )
+    # BITBOT_INBOUND_TURN=1 → same Host run_turn path as webhook_wake; else residual stays true.
+    turn_hook = _execute_inbound_turn(hook, hooks, turn_prompt, hook_body)
+    inbound_turn_residual = (not turn_hook.get("turn_executed")) or (not turn_hook.get("turn_ok"))
+    artifact = {
+        "mode": "host_webhook_listen",
+        "pretend_wake": False,
+        "event_id": event_id,
+        "summary": summary,
+        "wake_payload": wake_payload,
+        "has_webhook_event": True,
+        "key_leaked": False,
+        "inbound_push_residual": False,
+        "turn_hook": turn_hook,
+        "inbound_turn_residual": inbound_turn_residual,
+        "at": at,
+    }
+    snap.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
+    with (dir_ / "wakes.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "event_id": event_id,
+                    "summary": summary,
+                    "path": str(snap),
+                    "hook_path": str(hook),
+                    "inbound_push_residual": False,
+                    "inbound_turn_residual": inbound_turn_residual,
+                    "source": "http_listen",
+                    "at": at,
+                }
+            )
+            + "\n"
+        )
+    (dir_ / "last_wake.txt").write_text(wake_payload + "\n", encoding="utf-8")
     return artifact
 
 
@@ -125,7 +195,6 @@ class Handler(BaseHTTPRequestHandler):
         )[:400]
         # Never persist inbound Authorization / X-Webhook-Key values.
         artifact = write_wake(event_id, summary)
-        body = json.dumps({"ok": True, "path": None, **{k: artifact[k] for k in ("event_id", "inbound_push_residual", "has_webhook_event")}})
         # Include snap path for smoke without leaking keys.
         snap_hint = None
         for p in sorted((webhook_dir() / "ops").glob("wake-listen-*.json"))[-1:]:
@@ -134,9 +203,11 @@ class Handler(BaseHTTPRequestHandler):
             "ok": True,
             "event_id": event_id,
             "inbound_push_residual": False,
+            "inbound_turn_residual": artifact.get("inbound_turn_residual", True),
             "has_webhook_event": True,
             "path": snap_hint,
             "key_leaked": False,
+            "turn_hook": artifact.get("turn_hook"),
         }
         data = json.dumps(out).encode("utf-8")
         self.send_response(200)

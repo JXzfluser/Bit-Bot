@@ -1602,14 +1602,22 @@ BITBOT_MAIL_CLAIM_API_URL=http://127.0.0.1:18781 BITBOT_MAIL_CLAIM_TOKEN=smoke-c
 kill "$MAIL_CLAIM_TURN_MOCK_PID" >/dev/null 2>&1 || true
 wait "$MAIL_CLAIM_TURN_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_claim_inbox');p=json.loads(h['stdout']);assert p.get('live_mail_claim_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;print('mail_claim_inbox inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
-# Inbound HTTP push wake (no turn prompt)
+# Inbound HTTP push wake: push residual closed; turn residual stays true without BITBOT_INBOUND_TURN.
 python3 "$ROOT/scripts/host_webhook_listen.py" --port 18791 >/tmp/bitbot-wh-listen.log 2>&1 &
 WH_LISTEN_PID=$!
 sleep 0.4
 curl -s -X POST http://127.0.0.1:18791/hooks -H 'Content-Type: application/json' -d '{"id":"evt-http","summary":"push wake smoke"}' >/tmp/bitbot-wh-curl.json || true
 kill "$WH_LISTEN_PID" >/dev/null 2>&1 || true
 wait "$WH_LISTEN_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-curl.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('key_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert '<webhook_event' in (snap.get('wake_payload') or '');print('webhook http listen push wake ok', d.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-curl.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is True;assert d.get('key_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is True;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is False;assert '<webhook_event' in (snap.get('wake_payload') or '');print('webhook http listen push wake ok', d.get('path'), 'inbound_turn_residual', True)"
+# HTTP listen + BITBOT_INBOUND_TURN=1 executes pending turn via Host run_turn (webhook_wake parity).
+BITBOT_INBOUND_TURN=1 python3 "$ROOT/scripts/host_webhook_listen.py" --port 18791 >/tmp/bitbot-wh-listen-turn.log 2>&1 &
+WH_LISTEN_TURN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18791/hooks -H 'Content-Type: application/json' -d '{"id":"evt-http-turn","summary":"inbound turn listen smoke"}' >/tmp/bitbot-wh-curl-turn.json || true
+kill "$WH_LISTEN_TURN_PID" >/dev/null 2>&1 || true
+wait "$WH_LISTEN_TURN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('path') and os.path.isfile(d['path']);snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('webhook http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 node -e '
 const fs=require("fs");
 const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
