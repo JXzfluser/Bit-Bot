@@ -1576,8 +1576,8 @@ function startMock(port, mode, token) {
   if (!(roomp.room_turn||{}).path) throw new Error("room_turn path: " + JSON.stringify(roomp).slice(0,200));
   require("fs").writeFileSync("/tmp/bitbot-mcp-room-turn.json", JSON.stringify({ ok: true, ...roomp }, null, 2));
   console.log("mcp_call room_turn short-circuit ok", roomp.mapped, (roomp.room_turn||{}).mode, (roomp.room_turn||{}).member_count);
-  const sends = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.send_to_agent|{\"to_id\":\"asst-mcp-smoke\",\"body\":\"mcp wake\"}" }]);
-  const sendh = sends.find((r) => r && r.kind === "mcp_call");
+  const agentSends = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.send_to_agent|{\"to_id\":\"asst-mcp-smoke\",\"body\":\"mcp wake\"}" }]);
+  const sendh = agentSends.find((r) => r && r.kind === "mcp_call");
   if (!sendh || !sendh.ok) throw new Error("send_to_agent mcp");
   const sendp = JSON.parse(sendh.stdout || "{}");
   if (sendp.mapped !== "host_send_to_agent" || sendp.product_tool_residual !== false) throw new Error(JSON.stringify(sendp).slice(0,200));
