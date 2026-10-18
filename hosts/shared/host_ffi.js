@@ -12054,43 +12054,12 @@ function createHostFfi(repoRoot) {
       const mediaPath = path.join(mediaDir, `${slug || "voice"}.wav`);
       let media = { ok: false, path: mediaPath, tool: null, bytes: 0 };
       if (action === "start") {
-        // Real Host media surface (not journal-only): short sine WAV via ffmpeg.
-        try {
-          const { execFileSync } = require("child_process");
-          const ffmpeg = process.env.FFMPEG || "ffmpeg";
-          execFileSync(
-            ffmpeg,
-            [
-              "-y",
-              "-f",
-              "lavfi",
-              "-i",
-              "sine=frequency=440:duration=0.4",
-              "-ar",
-              "16000",
-              "-ac",
-              "1",
-              mediaPath,
-            ],
-            { stdio: "ignore", timeout: 15000 },
-          );
-          if (fs.existsSync(mediaPath) && fs.statSync(mediaPath).size > 44) {
-            media = {
-              ok: true,
-              path: mediaPath,
-              tool: "ffmpeg-sine",
-              bytes: fs.statSync(mediaPath).size,
-            };
-          }
-        } catch (err) {
-          media = {
-            ok: false,
-            path: mediaPath,
-            tool: "ffmpeg",
-            error: err.message || String(err),
-            bytes: 0,
-          };
-        }
+        // Prefer BITBOT_ESPEAK_BIN / espeak via synthesizeVoiceWav; sine residual otherwise.
+        media = synthesizeVoiceWav(mediaPath, {
+          frequency: 440,
+          duration: 0.4,
+          text: `Bit Bot voice session ${address}`,
+        });
       }
       // After media write: close voice_stt_residual when sidecar / BITBOT_STT_BIN
       // / BITBOT_VOICE_STT path yields a transcript (never pretend heard).
@@ -12165,7 +12134,8 @@ function createHostFfi(repoRoot) {
         stt_text: stt.ok ? String(stt.text || "").slice(0, 400) : null,
         // Honest residual: closed only when STT mock/sidecar actually heard.
         voice_stt_residual: voiceSttResidual,
-        voice_tts_residual: media.tool !== "espeak",
+        // Honest residual: closed only when synthesizeVoiceWav used espeak/TTS.
+        voice_tts_residual: media.voice_tts_residual !== false,
         pretend_live: false,
         pretend_media: false,
         at,
