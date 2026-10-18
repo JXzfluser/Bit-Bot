@@ -209,6 +209,8 @@ try {
       "copy_to_box",
       "copy_from_box",
       "subagent_run",
+      "room_turn",
+      "send_to_agent",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

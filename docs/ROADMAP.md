@@ -171,6 +171,7 @@
 - [x] Desktop Machines list + Mail cold/on-behalf/claim buttons; mobile mirrors for machines_list/mail_claim_inbox + cold/onbehalf quick actions
 - [x] Desktop Delivery slides/skill/export/load-skill + Tools device/journal + Box copy to/from; mobile mirrors for device_tools_list/journal_query/skill_load/copy_*
 - [x] Desktop Plugins MCP discover/call + Teammates spawn subagent + CU travel/food + Tools package install; mobile subagent_run mirror + native quick actions
+- [x] Desktop Agents list/hide + Host prefs (notify/guide/update/reset/local) + shared box fs + section/learn/meeting; mobile room_turn/send_to_agent mirrors
 - [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn

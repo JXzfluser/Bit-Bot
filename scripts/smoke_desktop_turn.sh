@@ -397,7 +397,20 @@ assert 'spawn subagent summarize inbox' in html
 assert 'travel expedia.com' in html and 'order food doordash.com' in html
 assert 'package install cowsay' in html
 assert 'subagent_run' in mobile
-print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines + skills/box + mcp/subagent panels wired ok')
+assert 'id=\"ag-list\"' in html and 'id=\"ag-hide\"' in html
+assert 'id=\"pref-notify\"' in html and 'id=\"pref-guide\"' in html
+assert 'id=\"pref-update\"' in html and 'id=\"pref-local\"' in html
+assert 'id=\"box-shared-fs\"' in html
+assert 'id=\"del-section\"' in html and 'id=\"del-learn\"' in html
+assert 'id=\"mail-meeting\"' in html
+assert 'list agents' in html and 'hide agent research' in html
+assert 'notify settings assistant=asst-alpha' in html
+assert 'shared box fs' in html
+assert 'section post group=g1' in html
+assert 'learn from demo title=Checkout' in html
+assert 'meeting chat body=stand-up' in html
+assert 'room_turn' in mobile and 'send_to_agent' in mobile
+print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines + skills/box + mcp/subagent + prefs panels wired ok')
 "
 python3 -c "
 from pathlib import Path

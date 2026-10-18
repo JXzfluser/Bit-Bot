@@ -109,6 +109,14 @@ for needle in (
     "travel expedia.com",
     "order food doordash.com",
     "package install cowsay",
+    "list agents",
+    "hide agent research",
+    "notify settings assistant=asst-alpha",
+    "update computer",
+    "shared box fs",
+    "section post group=g1",
+    "meeting chat body=stand-up",
+    "learn from demo title=Checkout",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
@@ -139,6 +147,8 @@ for kind in (
     "mcp_discover",
     "mcp_call",
     "package_install",
+    "room_turn",
+    "send_to_agent",
 ):
     assert kind in mobile, kind
 assert "receipt_path" in mobile and "skill_path" in mobile
