@@ -1912,6 +1912,7 @@
                   label =
                     "personal-dm:" +
                     (p.mode || "draft") +
+                    (p.live_post === true ? "/live" : "") +
                     (p.live_slack_residual === true
                       ? "/live_slack_residual"
                       : "");
@@ -1921,6 +1922,7 @@
                     chMeta.textContent =
                       "personal_dm · " +
                       (p.mode || "draft") +
+                      (p.live_post === true ? " · live" : "") +
                       (p.live_slack_residual === true
                         ? " · live_slack_residual"
                         : "") +
