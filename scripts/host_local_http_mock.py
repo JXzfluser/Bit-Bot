@@ -38,6 +38,7 @@ Endpoints:
   sms:      POST /messages  (BITBOT_SMS_API_URL=http://host:port + BITBOT_SMS_POST=1)
   voice:    POST /messages  (BITBOT_VOICE_API_URL=http://host:port + BITBOT_VOICE_POST=1)
   webhook:  POST /hooks (any POST; no Bearer — BITBOT_WEBHOOK_OUTBOUND_URL + BITBOT_WEBHOOK_POST=1)
+  mail_claim: GET /messages?q=  (BITBOT_MAIL_CLAIM_API_URL + BITBOT_MAIL_CLAIM_POST=1)
   webfetch: GET /docs-blocked (403 unless UA BitBot-PublicFallback)
             GET /login (401 auth wall)
             GET /ok (200)
@@ -72,6 +73,7 @@ def main() -> int:
             "sms",
             "voice",
             "webhook",
+            "mail_claim",
             "webfetch",
         ),
         required=True,
@@ -466,6 +468,33 @@ def main() -> int:
                         "snippet": f"Live mock thread {tid}",
                         "historyId": "1",
                         "messages": [{"id": "m-live-1", "threadId": tid}],
+                    },
+                )
+                return
+            if mode == "mail_claim" and path.endswith("/messages"):
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                qs = parse_qs(parsed.query)
+                q = (qs.get("q") or ["inbox"])[0]
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "messages": [
+                            {
+                                "id": "claim-live-1",
+                                "from": "live@mock",
+                                "subject": f"live claim for {q}",
+                                "text_prefix": f"mock inbox hit {q}",
+                            },
+                            {
+                                "id": "claim-live-2",
+                                "from": "noreply@mock",
+                                "subject": f"second claim {q}",
+                                "text_prefix": "second mock claim",
+                            },
+                        ],
                     },
                 )
                 return

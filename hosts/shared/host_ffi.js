@@ -9534,12 +9534,14 @@ function createHostFfi(repoRoot) {
     const { execFileSync } = require("child_process");
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     const speakText = String(text || "").trim().slice(0, 400);
-    // Prefer real TTS (espeak) → wav when available; else honest sine residual.
+    // Prefer real TTS (espeak / BITBOT_ESPEAK_BIN) → wav when available; else honest sine residual.
     if (speakText) {
       try {
         const wavTmp = outPath + ".espeak.wav";
+        const espeakBin =
+          String(process.env.BITBOT_ESPEAK_BIN || "").trim() || "espeak";
         execFileSync(
-          "espeak",
+          espeakBin,
           ["-w", wavTmp, "-s", "150", speakText],
           { stdio: "ignore", timeout: 15000 },
         );
@@ -11139,7 +11141,8 @@ function createHostFfi(repoRoot) {
 
     if (kind === "mail_claim_inbox") {
       // command: local_part|address — durable claim + fixture inbox + inbound wake.
-      // Production Gmail/Outlook IdP inbox pull remains deferred (live_mail_claim_residual).
+      // Optional live mock: BITBOT_MAIL_CLAIM_API_URL + BITBOT_MAIL_CLAIM_POST=1.
+      // Production Gmail/Outlook IdP remains deferred when mock/API unset.
       const parts = cmd.split("|");
       const localPart = parts[0] || "";
       const address = parts[1] || `${localPart}@bitbot.local`;
@@ -11157,13 +11160,69 @@ function createHostFfi(repoRoot) {
         dir,
         `claim-${localPart || "inbox"}-${Date.now().toString(36)}.json`,
       );
+      // Optional live claim against local HTTP mock (not production IdP).
+      let liveClaim = false;
+      let liveProbe = null;
+      let liveRows = [];
+      const claimApi = String(process.env.BITBOT_MAIL_CLAIM_API_URL || "").trim();
+      const claimToken =
+        String(process.env.BITBOT_MAIL_CLAIM_TOKEN || "").trim() ||
+        resolveProviderAccessToken("mail_claim") ||
+        resolveProviderAccessToken("gmail") ||
+        resolveProviderAccessToken("outlook");
+      if (claimApi && claimToken && process.env.BITBOT_MAIL_CLAIM_POST === "1") {
+        try {
+          const resp = await httpJson(
+            claimApi.replace(/\/$/, "") +
+              "/messages?q=" +
+              encodeURIComponent(localPart || "inbox"),
+            {
+              method: "GET",
+              headers: {
+                Authorization: "Bearer " + claimToken,
+                Accept: "application/json",
+              },
+            },
+          );
+          liveProbe = {
+            ok: Boolean(resp.ok),
+            http_status: resp.status || 0,
+            error: resp.error || null,
+          };
+          if (resp.ok && resp.json) {
+            const msgs =
+              resp.json.messages ||
+              resp.json.items ||
+              (Array.isArray(resp.json) ? resp.json : []);
+            if (Array.isArray(msgs) && msgs.length > 0) {
+              liveRows = msgs.slice(0, 20).map((m, i) => ({
+                id: String((m && (m.id || m.message_id)) || `live-claim-${i}`),
+                from: String((m && m.from) || "live@mock"),
+                to: address,
+                subject: String((m && m.subject) || "live claim"),
+                text_prefix: String(
+                  (m && (m.text_prefix || m.snippet || m.subject)) || "",
+                ).slice(0, 80),
+                mode: "live_mail_claim",
+                at,
+              }));
+              liveClaim = true;
+            }
+          }
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+        }
+      }
       // Seed / load local fixture messages for this inbox (not live IdP).
       const fixturePath = path.join(
         inboxDir,
         `${sanitizeSkillName(localPart) || "inbox"}.jsonl`,
       );
-      let fixtureRows = [];
-      if (fs.existsSync(fixturePath)) {
+      let fixtureRows = liveRows.slice();
+      if (fixtureRows.length === 0 && fs.existsSync(fixturePath)) {
         try {
           fixtureRows = fs
             .readFileSync(fixturePath, "utf8")
@@ -11196,6 +11255,7 @@ function createHostFfi(repoRoot) {
         fixtureRows = [seed];
       }
       const claimed = [];
+      const claimMode = liveClaim ? "live_mail_claim" : "sandbox_mail_claim";
       for (const m of fixtureRows.slice(0, 20)) {
         const row = {
           scheme: "mail",
@@ -11205,7 +11265,7 @@ function createHostFfi(repoRoot) {
           from: m.from || "",
           subject: m.subject || "",
           text_prefix: String(m.text_prefix || m.subject || "").slice(0, 80),
-          mode: "sandbox_mail_claim",
+          mode: claimMode,
           at,
         };
         appendJsonl(inboundPath, row);
@@ -11324,7 +11384,7 @@ function createHostFfi(repoRoot) {
       const artifact = {
         local_part: localPart,
         address,
-        mode: "host_mail_claim_inbox",
+        mode: liveClaim ? "live_mail_claim_inbox" : "host_mail_claim_inbox",
         pretend_claimed: false,
         user_confirmed: true,
         claimed_count: claimed.length,
@@ -11332,8 +11392,10 @@ function createHostFfi(repoRoot) {
         fixture_path: fixturePath,
         inbound_path: inboundPath,
         turn_hook: turnHookResult,
-        // Honest: fixture/sandbox claim only — live IdP inbox pull deferred.
-        live_mail_claim_residual: true,
+        live_claim: liveClaim,
+        live_probe: liveProbe,
+        // Closes when live mock/API returns messages; production IdP still deferred.
+        live_mail_claim_residual: !liveClaim,
         inbound_turn_residual: inboundTurnResidual,
         at,
       };
