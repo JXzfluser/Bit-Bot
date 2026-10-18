@@ -59,7 +59,21 @@ for kind in ("screenshot", "box_chrome_probe", "check_updates", "auto_review_set
     assert kind in shared, kind
 assert "SendToUserSurface" in ios_cv and "SendToUserChipRow" in ios_cv
 assert "SendToUserSurface" in and_main
+# Multi-end product quick actions mirror Desktop Plugins/Media/Voice/Box.
+for needle in (
+    "productActions",
+    "list plugins",
+    "get plugin plugin-slides",
+    "generate image",
+    "structured chart",
+    "voice start",
+    "box doctor",
+    "box chrome probe",
+):
+    assert needle in ios_cv, needle
+    assert needle in and_main, needle
 print("native device_permission + SendToUser Host scaffolds ok")
+print("native product quick actions (plugins/media/voice/box) ok")
 PY
 
 # mobile_host may append SendToUser / HostAbi trailer lines after turn JSON.

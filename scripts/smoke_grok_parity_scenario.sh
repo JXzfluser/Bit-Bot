@@ -445,7 +445,19 @@ main=Path('hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivi
 assert 'formatStrip' in ios and 'SendToUserChipRow' in ios
 assert 'formatStrip' in kt and 'SendToUser' in kt
 assert 'SendToUserSurface' in cv and 'SendToUserSurface' in main
+for needle in (
+    'productActions',
+    'list plugins',
+    'get plugin plugin-slides',
+    'generate image',
+    'voice start',
+    'box doctor',
+    'box chrome probe',
+):
+    assert needle in cv, needle
+    assert needle in main, needle
 print('parity native SendToUser surface wired ok')
+print('parity native product quick actions ok')
 "
 "${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
 python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;assert 'machine_kind=android' in t;print('parity android turn ok')"

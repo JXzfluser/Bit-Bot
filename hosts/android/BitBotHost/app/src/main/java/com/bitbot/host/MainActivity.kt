@@ -33,10 +33,25 @@ import kotlinx.coroutines.withContext
  * This activity only bridges user text → Host FFI via [TurnBridge].
  * CM-0705: device_permission raises a real OS permission request (never pretend-granted).
  * CHARTER Delivery: [SendToUserSurface] chips mirror Desktop without inventing live posts.
+ * Product quick actions mirror Desktop Plugins/Media/Voice/Box panels (multi-end HostAbi).
  */
 class MainActivity : ComponentActivity() {
   private val permissionLauncher =
     registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* Host only; no auto-ok */ }
+
+  /** label → MoonBit turn text (Host FFI only; no LocalBrain). */
+  private val productActions =
+    listOf(
+      "ListMachines" to "ListMachines",
+      "List plugins" to "list plugins",
+      "Get plugin" to "get plugin plugin-slides",
+      "Gen image" to "generate image android aurora",
+      "Chart" to "structured chart {\"alpha\":3,\"beta\":5}",
+      "Voice start" to "voice start android-voice",
+      "Box doctor" to "box doctor",
+      "Box env" to "box env",
+      "Chrome probe" to "box chrome probe",
+    )
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -49,6 +64,38 @@ class MainActivity : ComponentActivity() {
         var busy by remember { mutableStateOf(false) }
         var delivery by remember { mutableStateOf(SendToUserSurface.Summary()) }
         val scope = rememberCoroutineScope()
+
+        fun runProductTurn(text: String) {
+          scope.launch {
+            busy = true
+            input = text
+            val result = withContext(Dispatchers.IO) {
+              runCatching { TurnBridge.runTurn(text, machineKind = "android") }
+            }
+            val body = result.fold(
+              onSuccess = { it },
+              onFailure = { "! ${it.message}" },
+            )
+            // CM-0705: Host raises OS permission dialogs for device_permission cards.
+            val cards = DevicePermissionHost.cardsFromTurnJson(this@MainActivity, body)
+            val need = cards.mapNotNull { it.androidPermission }.distinct().toTypedArray()
+            if (need.isNotEmpty()) {
+              permissionLauncher.launch(need)
+            }
+            val summary = SendToUserSurface.extract(body)
+            delivery = summary
+            val strip = SendToUserSurface.formatStrip(summary)
+            val cardNote = if (cards.isEmpty()) "" else
+              "\n[host permission cards pretend_granted=false] " +
+                cards.joinToString {
+                  "${it.tool}:${it.status}" +
+                    (it.cardPath?.let { p -> " card=$p" } ?: "")
+                }
+            transcript += "\n> $text\n$body$strip$cardNote\n"
+            busy = false
+          }
+        }
+
         Column(
           Modifier
             .fillMaxSize()
@@ -79,6 +126,21 @@ class MainActivity : ComponentActivity() {
               }
             }
           }
+          Row(
+            Modifier
+              .horizontalScroll(rememberScrollState())
+              .padding(vertical = 6.dp),
+          ) {
+            productActions.forEach { (label, turn) ->
+              Button(
+                enabled = !busy,
+                onClick = { runProductTurn(turn) },
+                modifier = Modifier.padding(end = 6.dp),
+              ) {
+                Text(label, style = MaterialTheme.typography.labelSmall)
+              }
+            }
+          }
           Text(transcript, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 12.dp))
           OutlinedTextField(
             value = input,
@@ -88,36 +150,7 @@ class MainActivity : ComponentActivity() {
           )
           Button(
             enabled = !busy && input.isNotBlank(),
-            onClick = {
-              scope.launch {
-                busy = true
-                val text = input
-                val result = withContext(Dispatchers.IO) {
-                  runCatching { TurnBridge.runTurn(text, machineKind = "android") }
-                }
-                val body = result.fold(
-                  onSuccess = { it },
-                  onFailure = { "! ${it.message}" },
-                )
-                // CM-0705: Host raises OS permission dialogs for device_permission cards.
-                val cards = DevicePermissionHost.cardsFromTurnJson(this@MainActivity, body)
-                val need = cards.mapNotNull { it.androidPermission }.distinct().toTypedArray()
-                if (need.isNotEmpty()) {
-                  permissionLauncher.launch(need)
-                }
-                val summary = SendToUserSurface.extract(body)
-                delivery = summary
-                val strip = SendToUserSurface.formatStrip(summary)
-                val cardNote = if (cards.isEmpty()) "" else
-                  "\n[host permission cards pretend_granted=false] " +
-                    cards.joinToString {
-                      "${it.tool}:${it.status}" +
-                        (it.cardPath?.let { p -> " card=$p" } ?: "")
-                    }
-                transcript += "\n> $text\n$body$strip$cardNote\n"
-                busy = false
-              }
-            },
+            onClick = { runProductTurn(input) },
           ) {
             Text(if (busy) "…" else "Send")
           }
