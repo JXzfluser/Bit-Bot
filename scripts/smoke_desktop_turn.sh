@@ -1320,4 +1320,11 @@ if(!s.labels.some(l=>l.includes("refused_cross_scope"))) { console.error(s); pro
 console.log("STU shared_memory refuse ok", s.labels.slice(0,3));
 '
 node hosts/cli_host/run_turn.js "[inbound] reaction :+1:" >/tmp/bitbot-inbound.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-inbound.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='inbound_reaction');assert h.get('ok') and 'forced_reply' in (h.get('stdout') or '') and 'false' in (h.get('stdout') or '').lower();p=json.loads(h.get('stdout') or '{}');assert p.get('visible_pill') is True;assert os.path.isfile('data/delivery/outbound-reactions.jsonl');assert os.path.isfile('data/delivery/send-to-user
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-inbound.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='inbound_reaction');assert h.get('ok') and 'forced_reply' in (h.get('stdout') or '') and 'false' in (h.get('stdout') or '').lower();p=json.loads(h.get('stdout') or '{}');assert p.get('visible_pill') is True;assert os.path.isfile('data/delivery/outbound-reactions.jsonl');assert os.path.isfile('data/delivery/send-to-user.jsonl');print('inbound_reaction SendToUser pill ok', p.get('emoji'))"
+node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: delivery body" >/tmp/bitbot-delivery.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-delivery.json'));hrs=d.get('host_results') or [];assert any(h.get('kind')=='channel_send' and h.get('ok') for h in hrs);deliv=next(x for x in hrs if x.get('kind')=='delivery');assert deliv.get('ok');p=json.loads(deliv.get('stdout') or '{}');assert p.get('type') in ('text','thread');assert p.get('send_to_user') is True;assert os.path.isfile('data/delivery/send-to-user.jsonl');print('SendToUser delivery receipt ok', p.get('type'), p.get('channel'))"
+
+echo "==> native iOS/Android Host shells"
+bash "$ROOT/scripts/verify_native_shells.sh"
+
+echo "OK: smoke_desktop_turn.sh"
