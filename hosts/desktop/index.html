@@ -1913,6 +1913,7 @@
                     "personal-dm:" +
                     (p.mode || "draft") +
                     (p.live_post === true ? "/live" : "") +
+                    (p.widget_degraded === true ? "/widget_degraded" : "") +
                     (p.live_slack_residual === true
                       ? "/live_slack_residual"
                       : "");
@@ -1923,6 +1924,7 @@
                       "personal_dm · " +
                       (p.mode || "draft") +
                       (p.live_post === true ? " · live" : "") +
+                      (p.widget_degraded === true ? " · widget_degraded" : "") +
                       (p.live_slack_residual === true
                         ? " · live_slack_residual"
                         : "") +
@@ -2630,6 +2632,9 @@
                     (p.path ? "/snap" : "") +
                     (p.inbound_turn_residual === true
                       ? "/inbound_turn_residual"
+                      : "") +
+                    (p.inbound_push_residual === true
+                      ? "/inbound_push_residual"
                       : "");
                   types.push("text");
                   const meta = document.getElementById("webhook-meta");
@@ -2640,6 +2645,9 @@
                       (p.key_leaked ? " KEY LEAK" : " ok") +
                       (p.inbound_turn_residual === true
                         ? " · inbound_turn_residual"
+                        : "") +
+                      (p.inbound_push_residual === true
+                        ? " · inbound_push_residual"
                         : "");
                   }
                 } else if (h.kind === "mcp_discover") {

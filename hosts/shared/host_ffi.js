@@ -3519,6 +3519,11 @@ function createHostFfi(repoRoot) {
     }
     const inboundTurnResidual =
       !turnHookResult.turn_executed || !turnHookResult.turn_ok;
+    // HTTP listen path (host_webhook_listen.py) closes push residual; synthetic
+    // turn wake stays open unless BITBOT_INBOUND_PUSH=1 proves a push source.
+    const inboundPushResidual =
+      process.env.BITBOT_INBOUND_PUSH !== "1" &&
+      process.env.BITBOT_WEBHOOK_LISTEN !== "1";
     const artifact = {
       mode: "host_webhook_wake",
       pretend_wake: false,
@@ -3531,6 +3536,7 @@ function createHostFfi(repoRoot) {
       panel_id: panel ? panel.id : null,
       turn_hook: turnHookResult,
       inbound_turn_residual: inboundTurnResidual,
+      inbound_push_residual: inboundPushResidual,
       at,
     };
     fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
@@ -3542,6 +3548,7 @@ function createHostFfi(repoRoot) {
       path: snapPath,
       hook_path: hookPath,
       inbound_turn_residual: inboundTurnResidual,
+      inbound_push_residual: inboundPushResidual,
       at,
     });
     // Persist wake payload without key for assistant/routine consumer.
@@ -3563,6 +3570,7 @@ function createHostFfi(repoRoot) {
       key_leaked: keyLeaked,
       hook_path: hookPath,
       inbound_turn_residual: inboundTurnResidual,
+      inbound_push_residual: inboundPushResidual,
       at,
     });
     return okJson("webhook_wake", raw || "wake", {
