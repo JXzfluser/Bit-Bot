@@ -636,6 +636,8 @@ assert 'live_voice_residual' in shared
 assert 'live_mail_claim_residual' in shared
 assert 'live_sms_residual' in shared
 assert 'live_webhook_residual' in shared
+assert 'personal-dm:' in html
+assert 'p.live_post === true' in html or "p.live_post === true" in html
 mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
 assert 'payload.media_path' in mobile
