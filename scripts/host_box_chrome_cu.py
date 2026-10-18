@@ -417,12 +417,36 @@ def choose_gui_mode(explicit: str = "") -> str:
     return "headless"
 
 
+def resolve_tool_bin(env_key: str, default_name: str) -> Optional[str]:
+    """Resolve a host tool binary path, honoring an injectable override env.
+
+    Mirrors BITBOT_TESSERACT_BIN / BITBOT_STT_BIN: prefer an absolute executable
+    override, else which(override), else which(default_name).
+    """
+    override = os.environ.get(env_key, "").strip()
+    if override:
+        if os.path.isfile(override) and os.access(override, os.X_OK):
+            return override
+        found = shutil.which(override)
+        if found:
+            return found
+        return None
+    return shutil.which(default_name)
+
+
 def probe_native_os_input() -> Dict[str, Any]:
-    """Probe true OS-window input tools (xdotool/wmctrl) — never invent clicks."""
+    """Probe true OS-window input tools (xdotool/wmctrl) — never invent clicks.
+
+    BITBOT_XDOTOOL_BIN / BITBOT_WMCTRL_BIN inject alternate binaries (like
+    BITBOT_TESSERACT_BIN) for smoke/mock; default without working tools keeps
+    os_window_automation_residual true until a successful native act.
+    """
     display = os.environ.get("DISPLAY") or ""
+    xd = resolve_tool_bin("BITBOT_XDOTOOL_BIN", "xdotool")
+    wm = resolve_tool_bin("BITBOT_WMCTRL_BIN", "wmctrl")
     tools = {
-        "xdotool": bool(shutil.which("xdotool")),
-        "wmctrl": bool(shutil.which("wmctrl")),
+        "xdotool": bool(xd),
+        "wmctrl": bool(wm),
         "xwininfo": bool(shutil.which("xwininfo")),
     }
     probe: Dict[str, Any] = {
@@ -432,14 +456,18 @@ def probe_native_os_input() -> Dict[str, Any]:
         "windows": None,
         "ok": False,
     }
+    if xd:
+        probe["xdotool_bin"] = Path(xd).name
+    if wm:
+        probe["wmctrl_bin"] = Path(wm).name
     if not display:
         probe["error"] = "no DISPLAY"
         probe["os_window_automation_residual"] = True
         return probe
-    if tools["xdotool"]:
+    if xd:
         try:
             proc = subprocess.run(
-                ["xdotool", "getmouselocation", "--shell"],
+                [xd, "getmouselocation", "--shell"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -455,10 +483,10 @@ def probe_native_os_input() -> Dict[str, Any]:
                 probe["ok"] = True
         except Exception as e:  # noqa: BLE001
             probe["xdotool_error"] = str(e)[:200]
-    if tools["wmctrl"]:
+    if wm:
         try:
             proc = subprocess.run(
-                ["wmctrl", "-l"],
+                [wm, "-l"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -470,11 +498,11 @@ def probe_native_os_input() -> Dict[str, Any]:
                 probe["ok"] = True
         except Exception as e:  # noqa: BLE001
             probe["wmctrl_error"] = str(e)[:200]
-    elif tools["xdotool"]:
+    elif xd:
         # Fallback window list via xdotool when wmctrl absent.
         try:
             proc = subprocess.run(
-                ["xdotool", "search", "--name", "."],
+                [xd, "search", "--name", "."],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -506,7 +534,11 @@ def probe_native_os_input() -> Dict[str, Any]:
 
 
 def run_native_os_actions(command: str, probe: Dict[str, Any]) -> Dict[str, Any]:
-    """Optional true OS-window act via xdotool (BITBOT_CU_NATIVE_ACT=1). CDP stays primary."""
+    """Optional true OS-window act via xdotool (BITBOT_CU_NATIVE_ACT=1). CDP stays primary.
+
+    BITBOT_XDOTOOL_BIN injects an alternate binary for smoke/mock; without a
+    working binary (and without a successful act) residual stays true.
+    """
     enabled = os.environ.get("BITBOT_CU_NATIVE_ACT", "").strip().lower() in (
         "1",
         "true",
@@ -521,10 +553,14 @@ def run_native_os_actions(command: str, probe: Dict[str, Any]) -> Dict[str, Any]
     if not enabled:
         result["note"] = "native act disabled — CDP primary (BITBOT_CU_NATIVE_ACT unset)"
         return result
-    if not shutil.which("xdotool"):
+    xd = resolve_tool_bin("BITBOT_XDOTOOL_BIN", "xdotool")
+    if not xd:
         result["error"] = "xdotool missing"
-        result["note"] = "native act residual — install xdotool"
+        result["note"] = (
+            "native act residual — install xdotool or set BITBOT_XDOTOOL_BIN"
+        )
         return result
+    result["xdotool_bin"] = Path(xd).name
     display = os.environ.get("DISPLAY") or ""
     if not display:
         result["error"] = "no DISPLAY"
@@ -544,7 +580,7 @@ def run_native_os_actions(command: str, probe: Dict[str, Any]) -> Dict[str, Any]
         try:
             if step[0] == "click":
                 subprocess.run(
-                    ["xdotool", "mousemove", step[1], step[2], "click", "1"],
+                    [xd, "mousemove", step[1], step[2], "click", "1"],
                     check=False,
                     timeout=5,
                     env=env,
@@ -555,7 +591,7 @@ def run_native_os_actions(command: str, probe: Dict[str, Any]) -> Dict[str, Any]
                 ok_any = True
             elif step[0] == "type":
                 subprocess.run(
-                    ["xdotool", "type", "--clearmodifiers", step[1][:80]],
+                    [xd, "type", "--clearmodifiers", step[1][:80]],
                     check=False,
                     timeout=8,
                     env=env,
@@ -566,7 +602,7 @@ def run_native_os_actions(command: str, probe: Dict[str, Any]) -> Dict[str, Any]
                 ok_any = True
             else:
                 proc = subprocess.run(
-                    ["xdotool", "getmouselocation", "--shell"],
+                    [xd, "getmouselocation", "--shell"],
                     capture_output=True,
                     text=True,
                     timeout=5,
