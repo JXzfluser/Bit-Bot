@@ -1911,6 +1911,8 @@ function createHostFfi(repoRoot) {
     let doctorBin = null;
     for (const cand of [
       process.env.BITBOT_BOX_DOCTOR,
+      path.join(REPO_ROOT, "scripts", "fixtures", "box-doctor-mock.sh"),
+      path.join(REPO_ROOT, "scripts", "box-doctor"),
       "box-doctor",
       "/usr/local/bin/box-doctor",
     ]) {
@@ -4000,8 +4002,11 @@ function createHostFfi(repoRoot) {
     const lockfile = path.join(dir, "box-chrome.lock");
 
     // Product launch path is always box-chrome (CM-0802). Fallback chrome bins are residual only.
+    // Prefer repo fixture / scripts/box-chrome so Host can close bin_residual without env.
     const boxChromeCandidates = [
       process.env.BOX_CHROME_BIN,
+      path.join(REPO_ROOT, "scripts", "fixtures", "box-chrome-mock.sh"),
+      path.join(REPO_ROOT, "scripts", "box-chrome"),
       documentedPath,
     ].filter(Boolean);
     const fallbackCandidates = [

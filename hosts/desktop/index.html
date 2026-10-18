@@ -1723,9 +1723,23 @@
             "memory_recall",
             "shared_memory_read",
           ];
-          const attaches = r.host_results.filter(
-            (h) => h && h.ok && attachKinds.includes(h.kind),
-          );
+          // CHARTER Delivery: include honest oauth NeedsAuth even when Host ok=false.
+          const attaches = r.host_results.filter((h) => {
+            if (!h || !attachKinds.includes(h.kind)) return false;
+            if (h.ok) return true;
+            if (h.kind !== "oauth") return false;
+            try {
+              const p = JSON.parse(h.stdout || "{}");
+              return (
+                p.status === "NeedsAuth" ||
+                p.mode === "live_needs_auth" ||
+                p.mode === "live_remote_browser_open" ||
+                (p.connected === false && p.pretend_connected === false)
+              );
+            } catch (_) {
+              return false;
+            }
+          });
           if (attaches.length) {
             const el = document.createElement("div");
             el.className = "msg assistant";
@@ -2625,20 +2639,27 @@
                       (p.pretend_live === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "oauth") {
+                  const oauthNeedsAuth =
+                    p.status === "NeedsAuth" ||
+                    p.mode === "live_needs_auth" ||
+                    p.mode === "live_remote_browser_open" ||
+                    (p.connected === false && p.pretend_connected === false);
                   label =
                     "oauth:" +
-                    (p.status || "?") +
-                    "/" +
-                    (p.mode || "") +
+                    (oauthNeedsAuth
+                      ? "NeedsAuth"
+                      : (p.status || p.mode || "card")) +
                     (p.path ? "/snap" : "");
+                  types.push("widget");
                   const meta = document.getElementById("connectors-meta");
                   if (meta) {
                     meta.textContent =
                       (p.connector || "connector") +
                       " · " +
-                      (p.status || "?") +
+                      (oauthNeedsAuth ? "NeedsAuth" : p.status || "?") +
                       " · " +
-                      (p.mode || "");
+                      (p.mode || "") +
+                      (p.pretend_connected === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "connectors_probe") {
                   const cons = p.connectors || {};
