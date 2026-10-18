@@ -187,7 +187,15 @@ try {
       } catch {
         payload = {};
       }
-      if (!payload.path) continue;
+      // Prefer durable snap path; fall back to media/frame/html for SendToUser attachments.
+      const hostPath =
+        payload.path ||
+        payload.media_path ||
+        payload.frame_path ||
+        payload.html_path ||
+        payload.reply_media_path ||
+        null;
+      if (!hostPath) continue;
       fs.mkdirSync(deliveryMirrorDir, { recursive: true });
       const mirrorPath = path.join(
         deliveryMirrorDir,
@@ -197,7 +205,10 @@ try {
         kind: kind + "_mobile_mirror",
         machine_kind: machineKind,
         host_kind: kind,
-        host_path: payload.path,
+        host_path: hostPath,
+        media_path: payload.media_path || null,
+        frame_path: payload.frame_path || null,
+        html_path: payload.html_path || null,
         eml_path: payload.eml_path || null,
         mode: payload.mode || null,
         pretend_live: payload.pretend_live === true,
@@ -215,7 +226,7 @@ try {
         "[HostAbi " +
           kind +
           " path=" +
-          payload.path +
+          hostPath +
           " mirror=" +
           mirrorPath +
           "]\n",

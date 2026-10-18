@@ -129,6 +129,8 @@ ipcMain.handle("bitbot:readArtifact", async (_event, artifactPath) => {
       ".mp3": "audio/mpeg",
       ".mp4": "video/mp4",
       ".webm": "video/webm",
+      ".html": "text/html",
+      ".htm": "text/html",
     }[ext] || null;
   if (!mime) {
     return {
@@ -146,6 +148,17 @@ ipcMain.handle("bitbot:readArtifact", async (_event, artifactPath) => {
       error: "artifact too large for inline preview",
       path: resolved,
       bytes: buf.length,
+      pretend_read: false,
+    };
+  }
+  // HTML: return text for sandboxed iframe srcdoc (CM-2103 delivery).
+  if (mime === "text/html") {
+    return {
+      ok: true,
+      path: resolved,
+      mime,
+      bytes: buf.length,
+      text: buf.toString("utf8"),
       pretend_read: false,
     };
   }

@@ -158,6 +158,7 @@
 - [x] Host continue CM-0111: linkify bare URLs in FFI dumps; schedule fallback hint markdown-safe; CU extracts markdown URL
 - [x] Mobile delivery mirrors for teammate_create / schedule_meeting / mail_search / mail_read
 - [x] Desktop inline SendToUser media preview (`bitbot:readArtifact` IPC → img/audio/video in transcript)
+- [x] Desktop inline CM-2103 markdown HTML iframe (`readArtifact` text/html → sandboxed `srcdoc`; mobile mirrors accept media/html paths)
 - [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn

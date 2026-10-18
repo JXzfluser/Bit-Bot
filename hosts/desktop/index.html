@@ -157,6 +157,15 @@
     width: min(100%, 480px);
     margin-top: 4px;
   }
+  .msg.media iframe.delivery-html {
+    display: block;
+    width: min(100%, 560px);
+    height: 280px;
+    margin-top: 4px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #0a100e;
+  }
   #composer {
     grid-area: composer;
     padding: 12px 16px 16px;
@@ -563,43 +572,75 @@
       panel.style.display = "block";
     }
 
-    function renderMathMermaidCard(payload) {
+    /** CM-2103 / CHARTER Delivery: prefer Host HTML artifact iframe over text remount. */
+    async function renderMathMermaidCard(payload) {
       if (!payload) return;
       const el = document.createElement("div");
-      el.className = "msg assistant";
+      el.className = "msg assistant media";
       el.innerHTML =
         '<div class="role">markdown</div><div class="body"></div>';
       const body = el.querySelector(".body");
-      const spans = payload.math_spans || [];
-      for (const s of spans) {
-        if (s.kind === "inline_paren") {
-          const span = document.createElement("span");
-          span.style.cssText =
-            "font-family:IBM Plex Serif,Georgia,serif;color:#b7e0c8;margin-right:6px";
-          span.textContent = "\\(" + (s.body || "") + "\\)";
-          body.appendChild(span);
-        } else {
-          const div = document.createElement("div");
-          div.style.cssText =
-            "margin:8px 0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#101a15;text-align:center;font-family:IBM Plex Serif,Georgia,serif";
-          div.textContent = "$$" + (s.body || "") + "$$";
-          body.appendChild(div);
+      const htmlPath = payload.html_path || "";
+      let framed = false;
+      if (htmlPath && window.bitbot && window.bitbot.readArtifact) {
+        try {
+          const art = await window.bitbot.readArtifact(htmlPath);
+          if (art && art.ok && art.mime === "text/html" && art.text) {
+            const lab = document.createElement("div");
+            lab.className = "media-label";
+            lab.textContent =
+              "render_markdown · " +
+              String(htmlPath).split("/").slice(-1)[0] +
+              " · " +
+              (art.bytes || 0) +
+              "B";
+            body.appendChild(lab);
+            const iframe = document.createElement("iframe");
+            iframe.className = "delivery-html";
+            iframe.title = "Host markdown render (CM-2103)";
+            iframe.setAttribute("sandbox", "");
+            iframe.srcdoc = art.text;
+            body.appendChild(iframe);
+            framed = true;
+          }
+        } catch (_) {
+          framed = false;
         }
       }
-      for (const f of payload.mermaid_fences || []) {
-        const pre = document.createElement("pre");
-        pre.style.cssText =
-          "margin:8px 0;padding:10px;border:1px dashed #3d6b52;border-radius:8px;background:#0e1612;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:#b7e0c8";
-        pre.textContent = f.body || "";
-        body.appendChild(pre);
-      }
-      if (!spans.length && !(payload.mermaid_fences || []).length) {
-        body.textContent = payload.body_prefix || "(empty markdown)";
+      if (!framed) {
+        const spans = payload.math_spans || [];
+        for (const s of spans) {
+          if (s.kind === "inline_paren") {
+            const span = document.createElement("span");
+            span.style.cssText =
+              "font-family:IBM Plex Serif,Georgia,serif;color:#b7e0c8;margin-right:6px";
+            span.textContent = "\\(" + (s.body || "") + "\\)";
+            body.appendChild(span);
+          } else {
+            const div = document.createElement("div");
+            div.style.cssText =
+              "margin:8px 0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#101a15;text-align:center;font-family:IBM Plex Serif,Georgia,serif";
+            div.textContent = "$$" + (s.body || "") + "$$";
+            body.appendChild(div);
+          }
+        }
+        for (const f of payload.mermaid_fences || []) {
+          const pre = document.createElement("pre");
+          pre.style.cssText =
+            "margin:8px 0;padding:10px;border:1px dashed #3d6b52;border-radius:8px;background:#0e1612;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:#b7e0c8";
+          pre.textContent = f.body || "";
+          body.appendChild(pre);
+        }
+        if (!spans.length && !(payload.mermaid_fences || []).length) {
+          body.textContent = payload.body_prefix || "(empty markdown)";
+        }
       }
       const meta = document.createElement("div");
       meta.style.cssText = "margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace";
       meta.textContent =
-        "CM-2103 · inline=" +
+        "CM-2103 · html_iframe=" +
+        String(framed) +
+        " · inline=" +
         String(Boolean(payload.has_inline_math)) +
         " display=" +
         String(Boolean(payload.has_display_math)) +
@@ -1143,7 +1184,7 @@
           if (mdHost) {
             try {
               const p = JSON.parse(mdHost.stdout || "{}");
-              renderMathMermaidCard(p);
+              await renderMathMermaidCard(p);
             } catch (_) { /* ignore */ }
           }
           const reactHost = r.host_results.find(
