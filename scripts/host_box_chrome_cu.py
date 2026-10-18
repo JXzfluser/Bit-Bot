@@ -1006,7 +1006,55 @@ def main() -> int:
     else:
         vertical_stage = "n/a"
     paid_checkout_attempted = False
-    live_paid_residual = bool(is_shop and vertical_stage == "payment_wall" and not live_paid)
+    charge_probe: Dict[str, Any] = {}
+    # BITBOT_CU_LIVE_PAID=1 alone must not clear residual — require a real /charge attempt
+    # (same pattern as Host purchase live: API URL + token + mock server).
+    if live_paid and is_shop and vertical_stage == "payment_wall":
+        api = (os.environ.get("BITBOT_PURCHASE_API_URL") or "").strip().rstrip("/")
+        token = (os.environ.get("BITBOT_PURCHASE_TOKEN") or "").strip()
+        if api and token:
+            paid_checkout_attempted = True
+            try:
+                req = urllib.request.Request(
+                    api + "/charge",
+                    data=json.dumps(
+                        {
+                            "item": "cu-checkout",
+                            "cents": 100,
+                            "source": "computer_use_payment_wall",
+                        }
+                    ).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + token,
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    body = resp.read().decode("utf-8", errors="replace")
+                    charge_probe = {
+                        "ok": 200 <= int(resp.status) < 300,
+                        "http_status": int(resp.status),
+                        "body_prefix": body[:240],
+                    }
+            except urllib.error.HTTPError as e:
+                charge_probe = {
+                    "ok": False,
+                    "http_status": int(e.code),
+                    "error": str(e),
+                }
+            except Exception as e:  # noqa: BLE001 — Host honesty: record probe failure
+                charge_probe = {"ok": False, "error": str(e)}
+        else:
+            charge_probe = {
+                "ok": False,
+                "error": "BITBOT_CU_LIVE_PAID=1 requires BITBOT_PURCHASE_API_URL + BITBOT_PURCHASE_TOKEN",
+            }
+    live_paid_residual = bool(
+        is_shop
+        and vertical_stage == "payment_wall"
+        and not (paid_checkout_attempted and charge_probe.get("ok"))
+    )
     if is_travel:
         playbook = "travel"
     elif is_food:
@@ -1031,6 +1079,7 @@ def main() -> int:
         "has_payment": has_payment,
         "paid_checkout_attempted": paid_checkout_attempted,
         "live_paid_residual": live_paid_residual,
+        "charge_probe": charge_probe or None,
         "navigate_reachable": bool(navigate.get("navigate_reachable")),
         "os_window": bool(gui.get("os_window")),
         "os_window_automation_residual": bool(
@@ -1061,14 +1110,19 @@ def main() -> int:
         "has_payment": has_payment,
         "paid_checkout_attempted": paid_checkout_attempted,
         "live_paid_residual": live_paid_residual,
+        "charge_probe": charge_probe or None,
         "playbook": playbook,
         "pretend_purchased": False,
         "pretend_booked": False,
         "pretend_ordered": False,
         "note": (
-            "payment_wall reached — live paid checkout residual (BITBOT_CU_LIVE_PAID unset)"
+            "payment_wall reached — live paid checkout residual (no successful /charge)"
             if live_paid_residual
-            else "Host CU vertical deepen — never pretends paid/booked/ordered"
+            else (
+                "payment_wall /charge attempted via BITBOT_CU_LIVE_PAID + purchase API"
+                if paid_checkout_attempted
+                else "Host CU vertical deepen — never pretends paid/booked/ordered"
+            )
         ),
     }
     (artifact_dir / "checkout_summary.json").write_text(

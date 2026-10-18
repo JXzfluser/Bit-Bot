@@ -991,6 +991,7 @@ function createHostFfi(repoRoot) {
           mode: "live_slack_claim",
           ok: Boolean(claim.ok),
           live_post: false,
+          live_slack_residual: true,
           pretend_live: false,
           claimed_count: claim.claimed_count,
           connector_ready: connectorReady,
@@ -1029,6 +1030,7 @@ function createHostFfi(repoRoot) {
           mode: "sandbox_slack_claim",
           ok: true,
           live_post: false,
+          live_slack_residual: true,
           pretend_live: false,
           claimed_count: sandboxRows.length,
           connector_ready: connectorReady,
@@ -1058,6 +1060,7 @@ function createHostFfi(repoRoot) {
         mode: draftMode,
         ok: true,
         live_post: false,
+        live_slack_residual: true,
         pretend_live: false,
         personal_dm: isPersonalDm,
         shared_channel: isSharedChannel,
@@ -1191,6 +1194,7 @@ function createHostFfi(repoRoot) {
           mode: "live_teams_claim",
           ok: Boolean(teamsClaim.ok),
           live_post: false,
+          live_teams_residual: true,
           claimed_count: teamsClaim.claimed_count,
           claim: teamsClaim,
           pretend_live: false,
@@ -1226,6 +1230,7 @@ function createHostFfi(repoRoot) {
           mode: "sandbox_teams_claim",
           ok: true,
           live_post: false,
+          live_teams_residual: true,
           claimed_count: 1,
           pretend_live: false,
           at: stamp,
@@ -1248,6 +1253,7 @@ function createHostFfi(repoRoot) {
         mode: connectorReady ? "connector_draft" : "sandbox_draft",
         ok: true,
         live_post: false,
+        live_teams_residual: true,
         pretend_live: false,
         connector_ready: connectorReady,
         widget_degraded: /\[widget:|type=widget/i.test(body),
@@ -5788,16 +5794,21 @@ function createHostFfi(repoRoot) {
       const tickAt = new Date().toISOString();
       const wakesPath = path.join(REPO_ROOT, "data", "routines", "wakes.jsonl");
       const daemonSweep = process.env.BITBOT_ROUTINE_DAEMON === "1";
+      // Honor BITBOT_ROUTINE_LONG_LIVED the same way the daemon script exports it —
+      // one-shot sweeps leave this unset so long_lived stays false (honest residual).
+      const longLived = process.env.BITBOT_ROUTINE_LONG_LIVED === "1";
       const wakeEntry = {
         due_count: due.length,
         fired_count: fired.length,
         fired_ids: fired.map((f) => f.id),
         at: tickAt,
         daemon: daemonSweep,
-        long_lived: false,
-        note: daemonSweep
-          ? "Host daemon one-shot sweep (scripts/host_routine_daemon.sh)"
-          : "on-demand Host tick (long-lived cron residual)",
+        long_lived: longLived,
+        note: longLived
+          ? "Host long-lived routine sweep (BITBOT_ROUTINE_LONG_LIVED=1)"
+          : daemonSweep
+            ? "Host daemon one-shot sweep (scripts/host_routine_daemon.sh)"
+            : "on-demand Host tick (long-lived cron residual)",
       };
       appendJsonl(wakesPath, wakeEntry);
       const lastTickPath = path.join(
@@ -5817,11 +5828,13 @@ function createHostFfi(repoRoot) {
           JSON.stringify(
             {
               daemon: true,
-              long_lived: false,
+              long_lived: longLived,
               last_sweep_at: tickAt,
               fired_count: fired.length,
               due_count: due.length,
-              note: "one-shot sweep — not systemd cron",
+              note: longLived
+                ? "long-lived Host sweep — BITBOT_ROUTINE_LONG_LIVED=1"
+                : "one-shot sweep — not systemd cron",
             },
             null,
             2,
@@ -5835,6 +5848,7 @@ function createHostFfi(repoRoot) {
         fired_count: fired.length,
         wakes: wakesPath,
         daemon: daemonSweep,
+        long_lived: longLived,
         at: tickAt,
       });
       return {
@@ -5850,7 +5864,7 @@ function createHostFfi(repoRoot) {
             wakes_path: wakesPath,
             last_tick_path: lastTickPath,
             daemon: daemonSweep,
-            long_lived: false,
+            long_lived: longLived,
           },
           null,
           2,

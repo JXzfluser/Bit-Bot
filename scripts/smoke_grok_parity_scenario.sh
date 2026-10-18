@@ -115,6 +115,10 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-watch-video.json'));ass
 python3 -c "import json,os;d=json.load(open('/tmp/parity-chart.json'));assert d.get('intent')=='structured_chart';h=next(x for x in d['host_results'] if x.get('kind')=='structured_chart');p=json.loads(h['stdout']);assert h.get('ok');assert p.get('pretend_media') is False;assert p.get('png_magic_ok') is True;assert p.get('media_path') and os.path.isfile(p['media_path']);assert open(p['media_path'],'rb').read(8)==b'\\x89PNG\\r\\n\\x1a\\n';assert p.get('series',{}).get('mau')==42;assert p.get('path') and os.path.isfile(p['path']);print('parity structured_chart ok', p.get('media_path'), p.get('path'))"
 "${RUN[@]}" --approved "box doctor" >/tmp/parity-box-doctor.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-box-doctor.json'));assert d.get('intent')=='box_doctor';h=next(x for x in d['host_results'] if x.get('kind')=='box_doctor');p=json.loads(h['stdout']);assert h.get('ok');assert p.get('pretend_healthy') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('log_path') and os.path.isfile(p['log_path']);assert p.get('pass_count',0)>=1;assert 'SUMMARY' in open(p['log_path']).read() or 'PASS' in open(p['log_path']).read();print('parity box_doctor ok', p.get('mode'), p.get('pass_count'), p.get('path'), 'bin_residual', p.get('box_doctor_bin_residual'))"
+BITBOT_BOX_DOCTOR="$ROOT/scripts/fixtures/box-doctor-mock.sh" "${RUN[@]}" "box doctor" >/tmp/parity-box-doctor-bin.json
+python3 -c "import json;d=json.load(open('/tmp/parity-box-doctor-bin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='box_doctor');p=json.loads(h['stdout']);assert p.get('box_doctor_bin_residual') is False;assert p.get('doctor_bin');assert p.get('pretend_healthy') is False;print('parity box_doctor mock bin residual closed ok', p.get('doctor_bin'))"
+BOX_CHROME_BIN="$ROOT/scripts/fixtures/box-chrome-mock.sh" "${RUN[@]}" "box chrome probe" >/tmp/parity-box-chrome-bin.json
+python3 -c "import json;d=json.load(open('/tmp/parity-box-chrome-bin.json'));h=next(x for x in d['host_results'] if x.get('kind')=='box_chrome_probe');p=json.loads(h['stdout']);assert p.get('box_chrome_bin_residual') is False;assert p.get('box_chrome_bin');assert p.get('rejected_bare') is True;assert p.get('pretend_launched') is False;print('parity box_chrome mock bin residual closed ok', p.get('box_chrome_bin'))"
 "${RUN[@]}" --approved "box env" >/tmp/parity-box-env.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-box-env.json'));assert d.get('intent')=='box_env';h=next(x for x in d['host_results'] if x.get('kind')=='box_env');p=json.loads(h['stdout']);assert h.get('ok');assert p.get('pretend_runtime') is False;assert p.get('runtime') in ('local-docker','hosted-anyrun','unknown');assert p.get('path') and os.path.isfile(p['path']);assert p.get('diagnostic_path') and os.path.isfile(p['diagnostic_path']);print('parity box_env ok', p.get('mode'), p.get('runtime'), p.get('path'))"
 USER_IANA="${USER_IANA:-Asia/Shanghai}" "${RUN[@]}" --approved "box clock" >/tmp/parity-box-clock.json
@@ -268,12 +272,22 @@ BITBOT_CU_ALLOW_LOCAL=1 "${RUN[@]}" "computer use open http://127.0.0.1:18780/ s
 kill "$CU_PID" 2>/dev/null || true
 wait "$CU_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-cu-paywall.json'));h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('has_payment') is True;assert oc.get('checkout_stage')=='payment_wall' or oc.get('vertical_stage')=='payment_wall';assert oc.get('pretend_purchased') is False;assert oc.get('paid_checkout_attempted') is False;assert oc.get('live_paid_residual') is True;print('parity CU payment_wall ok', oc.get('checkout_stage'))"
+python3 "$ROOT/scripts/host_cu_checkout_fixture.py" --port 18786 >/tmp/parity-checkout-paid.log 2>&1 &
+CU_PAID_PID=$!
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18787 --mode purchase --token smoke-purchase >/tmp/parity-cu-charge-mock.log 2>&1 &
+CU_CHARGE_PID=$!
+sleep 0.4
+BITBOT_CU_ALLOW_LOCAL=1 BITBOT_CU_LIVE_PAID=1 BITBOT_PURCHASE_API_URL=http://127.0.0.1:18787 BITBOT_PURCHASE_TOKEN=smoke-purchase \
+  "${RUN[@]}" "computer use open http://127.0.0.1:18786/ shop cart checkout buy" >/tmp/parity-cu-paywall-live.json || true
+kill "$CU_PAID_PID" "$CU_CHARGE_PID" >/dev/null 2>&1 || true
+wait "$CU_PAID_PID" "$CU_CHARGE_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/parity-cu-paywall-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('paid_checkout_attempted') is True;assert oc.get('live_paid_residual') is False;assert oc.get('pretend_purchased') is False;assert (oc.get('charge_probe') or {}).get('ok') is True;print('parity CU payment_wall live charge ok', oc.get('checkout_stage'))"
 
 # 9i) Mail claim inbox + Slack/Teams channel claim + cloud artifact + OAuth callback + daemon
 "${RUN[@]}" "claim inbox bravo" >/tmp/parity-mail-claim.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-mail-claim.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_claim_inbox');p=json.loads(h['stdout']);assert p.get('pretend_claimed') is False;assert 'bravo@' in (p.get('address') or '');assert os.path.isfile(p['path']);print('parity mail_claim_inbox ok', p.get('address'))"
 BITBOT_SLACK_CLAIM=1 "${RUN[@]}" --approved "reply via slack:Csmoke :: claim rehearsal $MARKER" >/tmp/parity-slack-claim.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-slack-claim.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_slack_claim';assert p.get('pretend_live') is not True;assert os.path.isfile('data/channels/inbound.jsonl');print('parity sandbox_slack_claim ok', p.get('claimed_count'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-slack-claim.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_slack_claim';assert p.get('pretend_live') is not True;assert p.get('live_slack_residual') is True;assert os.path.isfile('data/channels/inbound.jsonl');print('parity sandbox_slack_claim ok', p.get('claimed_count'))"
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18781 --mode slack --token smoke-slack >/tmp/parity-slack-claim-mock.log 2>&1 &
 SLACK_CLAIM_PID=$!
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18782 --mode teams --token smoke-teams >/tmp/parity-teams-claim-mock.log 2>&1 &
@@ -352,7 +366,7 @@ python3 -c "import json;d=json.load(open('/tmp/parity-teams-live-post.json'));h=
 
 # 9j2) Personal Slack DM + live Slack channel post + voice end + host_continued
 "${RUN[@]}" --approved "personal slack dm owner=Uowner text=parity dm draft $MARKER" >/tmp/parity-psd-draft.json
-python3 -c "import json;d=json.load(open('/tmp/parity-psd-draft.json'));assert d.get('intent')=='personal_slack_dm';h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='personal_slack_dm_draft';assert p.get('personal_dm') is True;assert p.get('live_post') is False;print('parity personal_slack_dm draft ok')"
+python3 -c "import json;d=json.load(open('/tmp/parity-psd-draft.json'));assert d.get('intent')=='personal_slack_dm';h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='personal_slack_dm_draft';assert p.get('personal_dm') is True;assert p.get('live_post') is False;assert p.get('live_slack_residual') is True;assert p.get('pretend_live') is False;print('parity personal_slack_dm draft ok', 'live_slack_residual', True)"
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18784 --mode slack --token smoke-slack >/tmp/parity-psd-mock.log 2>&1 &
 PSD_PID=$!
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18785 --mode slack --token smoke-slack >/tmp/parity-slp-mock.log 2>&1 &
