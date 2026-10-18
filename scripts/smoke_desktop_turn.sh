@@ -1161,7 +1161,7 @@ node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
 node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
-# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + workflows/cold/identity + skill_load/mail_claim/credential + code/pr + media (Host FFI; MoonBit catalog may lack names)
+# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + workflows/cold/identity + skill_load/mail_claim/credential + subagent/teammate/room/cloud/voice + code/pr + media (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");
 const { spawn } = require("child_process");
@@ -1536,6 +1536,146 @@ function startMock(port, mode, token) {
   if (fillap.signin_fill_residual !== true) throw new Error("signin_fill_residual alias");
   if (fillap.secret_echoed === true) throw new Error("secret_echoed alias");
   console.log("mcp_call credential_fill alias short-circuit ok", fillap.mapped, (fillap.credential_fill||{}).mode, fillap.signin_fill_residual);
+  // spawn_subagent / create_teammate / room_turn / send_to_agent product short-circuit
+  const subs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.spawn_subagent|{\"id\":\"sub-mcp-smoke\",\"prompt\":\"mcp subagent smoke\"}" }]);
+  const subh = subs.find((r) => r && r.kind === "mcp_call");
+  if (!subh || !subh.ok) throw new Error("spawn_subagent mcp");
+  const subp = JSON.parse(subh.stdout || "{}");
+  if (subp.mapped !== "host_subagent_run" || subp.product_tool_residual !== false) throw new Error(JSON.stringify(subp).slice(0,200));
+  if ((subp.subagent||{}).pretend_completed === true) throw new Error("pretend_completed");
+  if (!(subp.subagent||{}).path) throw new Error("subagent path: " + JSON.stringify(subp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-spawn-subagent.json", JSON.stringify({ ok: true, ...subp }, null, 2));
+  console.log("mcp_call spawn_subagent short-circuit ok", subp.mapped, (subp.subagent||{}).mode, (subp.subagent||{}).path);
+  const subAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.subagent_run|{\"id\":\"sub-mcp-alias\",\"prompt\":\"alias sub\"}" }]);
+  const subah = subAlias.find((r) => r && r.kind === "mcp_call");
+  const subap = JSON.parse((subah && subah.stdout) || "{}");
+  if (subap.mapped !== "host_subagent_run" || subap.product_tool_residual !== false) throw new Error(JSON.stringify(subap).slice(0,200));
+  console.log("mcp_call subagent_run alias short-circuit ok", subap.mapped, (subap.subagent||{}).mode);
+  const tms = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.create_teammate|{\"id\":\"asst-mcp-smoke\",\"name\":\"McpSmoke\",\"role\":\"executor\"}" }]);
+  const tmh = tms.find((r) => r && r.kind === "mcp_call");
+  if (!tmh || !tmh.ok) throw new Error("create_teammate mcp");
+  const tmp = JSON.parse(tmh.stdout || "{}");
+  if (tmp.mapped !== "host_teammate_create" || tmp.product_tool_residual !== false) throw new Error(JSON.stringify(tmp).slice(0,200));
+  if ((tmp.teammate||{}).pretend_created === true) throw new Error("pretend_created");
+  if ((tmp.teammate||{}).appears_in_members !== true) throw new Error("appears_in_members: " + JSON.stringify(tmp.teammate||{}).slice(0,200));
+  if (!(tmp.teammate||{}).path) throw new Error("teammate path: " + JSON.stringify(tmp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-create-teammate.json", JSON.stringify({ ok: true, ...tmp }, null, 2));
+  console.log("mcp_call create_teammate short-circuit ok", tmp.mapped, (tmp.teammate||{}).mode, (tmp.teammate||{}).appears_in_members);
+  const tmAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.teammate_create|{\"id\":\"asst-mcp-alias\",\"name\":\"Alias\",\"role\":\"researcher\"}" }]);
+  const tmah = tmAlias.find((r) => r && r.kind === "mcp_call");
+  const tmap = JSON.parse((tmah && tmah.stdout) || "{}");
+  if (tmap.mapped !== "host_teammate_create" || tmap.product_tool_residual !== false) throw new Error(JSON.stringify(tmap).slice(0,200));
+  console.log("mcp_call teammate_create alias short-circuit ok", tmap.mapped, (tmap.teammate||{}).mode);
+  const rooms = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.room_turn|{\"room\":\"mcp-room\",\"body\":\"hello room\"}" }]);
+  const roomh = rooms.find((r) => r && r.kind === "mcp_call");
+  if (!roomh || !roomh.ok) throw new Error("room_turn mcp");
+  const roomp = JSON.parse(roomh.stdout || "{}");
+  if (roomp.mapped !== "host_room_turn" || roomp.product_tool_residual !== false) throw new Error(JSON.stringify(roomp).slice(0,200));
+  if ((roomp.room_turn||{}).pretend_private_dm === true) throw new Error("pretend_private_dm");
+  if ((roomp.room_turn||{}).is_room !== true) throw new Error("is_room: " + JSON.stringify(roomp.room_turn||{}).slice(0,200));
+  if (!(roomp.room_turn||{}).path) throw new Error("room_turn path: " + JSON.stringify(roomp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-room-turn.json", JSON.stringify({ ok: true, ...roomp }, null, 2));
+  console.log("mcp_call room_turn short-circuit ok", roomp.mapped, (roomp.room_turn||{}).mode, (roomp.room_turn||{}).member_count);
+  const sends = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.send_to_agent|{\"to_id\":\"asst-mcp-smoke\",\"body\":\"mcp wake\"}" }]);
+  const sendh = sends.find((r) => r && r.kind === "mcp_call");
+  if (!sendh || !sendh.ok) throw new Error("send_to_agent mcp");
+  const sendp = JSON.parse(sendh.stdout || "{}");
+  if (sendp.mapped !== "host_send_to_agent" || sendp.product_tool_residual !== false) throw new Error(JSON.stringify(sendp).slice(0,200));
+  if ((sendp.send_to_agent||{}).pretend_delivered === true) throw new Error("pretend_delivered");
+  if ((sendp.send_to_agent||{}).routed !== true) throw new Error("routed: " + JSON.stringify(sendp.send_to_agent||{}).slice(0,200));
+  if (!(sendp.send_to_agent||{}).path) throw new Error("send_to_agent path: " + JSON.stringify(sendp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-send-to-agent.json", JSON.stringify({ ok: true, ...sendp }, null, 2));
+  console.log("mcp_call send_to_agent short-circuit ok", sendp.mapped, (sendp.send_to_agent||{}).mode, (sendp.send_to_agent||{}).status);
+  // launch_cloud_agent / deliver_cloud_artifact product short-circuit (remote residuals stay gated)
+  delete process.env.BITBOT_CLOUD_API_URL;
+  delete process.env.BITBOT_CURSOR_CLOUD_TOKEN;
+  delete process.env.BITBOT_CLOUD_API_TOKEN;
+  delete process.env.BITBOT_CLOUD_ARTIFACT_FETCH;
+  const clouds = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.launch_cloud_agent|{\"bc_id\":\"bc-mcp-smoke\",\"prompt\":\"mcp cloud smoke\"}" }]);
+  const cloudh = clouds.find((r) => r && r.kind === "mcp_call");
+  if (!cloudh || !cloudh.ok) throw new Error("launch_cloud_agent mcp");
+  const cloudp = JSON.parse(cloudh.stdout || "{}");
+  if (cloudp.mapped !== "host_cloud_agent_launch" || cloudp.product_tool_residual !== false) throw new Error(JSON.stringify(cloudp).slice(0,200));
+  if ((cloudp.cloud_launch||{}).pretend_remote_cloud === true) throw new Error("pretend_remote_cloud");
+  if ((cloudp.cloud_launch||{}).remote_cloud_residual !== true) throw new Error("remote_cloud_residual must stay gated: " + JSON.stringify(cloudp.cloud_launch||{}).slice(0,200));
+  if (!(cloudp.cloud_launch||{}).path) throw new Error("cloud_launch path: " + JSON.stringify(cloudp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-launch-cloud.json", JSON.stringify({ ok: true, ...cloudp }, null, 2));
+  console.log("mcp_call launch_cloud_agent short-circuit ok", cloudp.mapped, (cloudp.cloud_launch||{}).mode, (cloudp.cloud_launch||{}).remote_cloud_residual);
+  const cloudAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.cloud_agent_launch|{\"bc_id\":\"bc-mcp-alias\",\"prompt\":\"alias cloud\"}" }]);
+  const cloudah = cloudAlias.find((r) => r && r.kind === "mcp_call");
+  const cloudap = JSON.parse((cloudah && cloudah.stdout) || "{}");
+  if (cloudap.mapped !== "host_cloud_agent_launch" || cloudap.product_tool_residual !== false) throw new Error(JSON.stringify(cloudap).slice(0,200));
+  if ((cloudap.cloud_launch||{}).remote_cloud_residual !== true) throw new Error("remote_cloud_residual alias gated");
+  console.log("mcp_call cloud_agent_launch alias short-circuit ok", cloudap.mapped, (cloudap.cloud_launch||{}).bc_id);
+  const arts = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.deliver_cloud_artifact|{\"bc_id\":\"bc-mcp-smoke\",\"dest\":\"mcp-cloud-smoke.md\"}" }]);
+  const arth = arts.find((r) => r && r.kind === "mcp_call");
+  if (!arth || !arth.ok) throw new Error("deliver_cloud_artifact mcp");
+  const artp = JSON.parse(arth.stdout || "{}");
+  if (artp.mapped !== "host_cloud_artifact_deliver" || artp.product_tool_residual !== false) throw new Error(JSON.stringify(artp).slice(0,200));
+  if ((artp.cloud_artifact||{}).pretend_remote_fetch === true) throw new Error("pretend_remote_fetch");
+  if ((artp.cloud_artifact||{}).pretend_delivered === true) throw new Error("pretend_delivered artifact");
+  // from_session after launch closes remote_cloud_artifact_residual; without session it stays gated
+  if (!(artp.cloud_artifact||{}).path && !(artp.cloud_artifact||{}).meta_path) throw new Error("cloud_artifact path: " + JSON.stringify(artp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-deliver-cloud.json", JSON.stringify({ ok: true, ...artp }, null, 2));
+  console.log("mcp_call deliver_cloud_artifact short-circuit ok", artp.mapped, (artp.cloud_artifact||{}).mode, (artp.cloud_artifact||{}).remote_cloud_artifact_residual);
+  const artAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.cloud_artifact_deliver|{\"artifact\":\"bc-mcp-alias\",\"dest\":\"mcp-cloud-alias.md\"}" }]);
+  const artah = artAlias.find((r) => r && r.kind === "mcp_call");
+  const artap = JSON.parse((artah && artah.stdout) || "{}");
+  if (artap.mapped !== "host_cloud_artifact_deliver" || artap.product_tool_residual !== false) throw new Error(JSON.stringify(artap).slice(0,200));
+  console.log("mcp_call cloud_artifact_deliver alias short-circuit ok", artap.mapped, (artap.cloud_artifact||{}).mode);
+  // voice_start / voice_relay / voice_end product short-circuit (STT/TTS/end-match residuals stay gated)
+  delete process.env.BITBOT_VOICE_STT;
+  delete process.env.BITBOT_STT_BIN;
+  delete process.env.BITBOT_ESPEAK_BIN;
+  const voices = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.voice_start|{\"call_id\":\"mcp-voice-smoke\"}" }]);
+  const voiceh = voices.find((r) => r && r.kind === "mcp_call");
+  if (!voiceh || !voiceh.ok) throw new Error("voice_start mcp");
+  const voicep = JSON.parse(voiceh.stdout || "{}");
+  if (voicep.mapped !== "host_voice_session" || voicep.product_tool_residual !== false) throw new Error(JSON.stringify(voicep).slice(0,200));
+  if ((voicep.voice_session||{}).pretend_live === true) throw new Error("pretend_live");
+  if ((voicep.voice_session||{}).pretend_media === true) throw new Error("pretend_media voice");
+  if ((voicep.voice_session||{}).voice_stt_residual !== true) throw new Error("voice_stt_residual must stay gated: " + JSON.stringify(voicep.voice_session||{}).slice(0,200));
+  if ((voicep.voice_session||{}).voice_tts_residual !== true) throw new Error("voice_tts_residual must stay gated: " + JSON.stringify(voicep.voice_session||{}).slice(0,200));
+  if (!(voicep.voice_session||{}).path) throw new Error("voice_session path: " + JSON.stringify(voicep).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-voice-start.json", JSON.stringify({ ok: true, ...voicep }, null, 2));
+  console.log("mcp_call voice_start short-circuit ok", voicep.mapped, (voicep.voice_session||{}).mode, (voicep.voice_session||{}).voice_stt_residual);
+  const voiceAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.voice_session|{\"call_id\":\"mcp-voice-alias\"}" }]);
+  const voiceah = voiceAlias.find((r) => r && r.kind === "mcp_call");
+  const voiceap = JSON.parse((voiceah && voiceah.stdout) || "{}");
+  if (voiceap.mapped !== "host_voice_session" || voiceap.product_tool_residual !== false) throw new Error(JSON.stringify(voiceap).slice(0,200));
+  console.log("mcp_call voice_session alias short-circuit ok", voiceap.mapped, (voiceap.voice_session||{}).call_id);
+  const relays = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.voice_relay|{\"call_id\":\"mcp-voice-smoke\",\"text\":\"mcp relay hello\"}" }]);
+  const relayh = relays.find((r) => r && r.kind === "mcp_call");
+  if (!relayh || !relayh.ok) throw new Error("voice_relay mcp");
+  const relayp = JSON.parse(relayh.stdout || "{}");
+  if (relayp.mapped !== "host_voice_relay" || relayp.product_tool_residual !== false) throw new Error(JSON.stringify(relayp).slice(0,200));
+  if ((relayp.voice_relay||{}).pretend_silent === true) throw new Error("pretend_silent");
+  if ((relayp.voice_relay||{}).voice_stt_residual !== true) throw new Error("voice_stt_residual relay gated: " + JSON.stringify(relayp.voice_relay||{}).slice(0,200));
+  if (typeof (relayp.voice_relay||{}).voice_tts_residual !== "boolean") throw new Error("voice_tts_residual missing");
+  if (!(relayp.voice_relay||{}).path) throw new Error("voice_relay path: " + JSON.stringify(relayp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-voice-relay.json", JSON.stringify({ ok: true, ...relayp }, null, 2));
+  console.log("mcp_call voice_relay short-circuit ok", relayp.mapped, (relayp.voice_relay||{}).mode, (relayp.voice_relay||{}).voice_stt_residual, (relayp.voice_relay||{}).voice_tts_residual);
+  const ends = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.voice_end|{\"call_id\":\"mcp-voice-smoke\",\"summary\":\"mcp voice ended\"}" }]);
+  const endh = ends.find((r) => r && r.kind === "mcp_call");
+  if (!endh || !endh.ok) throw new Error("voice_end mcp");
+  const endp = JSON.parse(endh.stdout || "{}");
+  if (endp.mapped !== "host_voice_end_write" || endp.product_tool_residual !== false) throw new Error(JSON.stringify(endp).slice(0,200));
+  if ((endp.voice_end||{}).pretend_still_live === true) throw new Error("pretend_still_live");
+  // Matched session from voice_start closes match residual; unmatched would stay true.
+  if ((endp.voice_end||{}).matched !== true || (endp.voice_end||{}).voice_end_match_residual !== false) {
+    throw new Error("voice_end match expected after voice_start: " + JSON.stringify(endp.voice_end||{}).slice(0,200));
+  }
+  if (!(endp.voice_end||{}).path) throw new Error("voice_end path: " + JSON.stringify(endp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-voice-end.json", JSON.stringify({ ok: true, ...endp }, null, 2));
+  console.log("mcp_call voice_end short-circuit ok", endp.mapped, (endp.voice_end||{}).mode, (endp.voice_end||{}).voice_end_match_residual);
+  const endMiss = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.voice_end_write|{\"call_id\":\"mcp-voice-missing\",\"summary\":\"unmatched\"}" }]);
+  const endmh = endMiss.find((r) => r && r.kind === "mcp_call");
+  const endmp = JSON.parse((endmh && endmh.stdout) || "{}");
+  if (endmp.mapped !== "host_voice_end_write" || endmp.product_tool_residual !== false) throw new Error(JSON.stringify(endmp).slice(0,200));
+  if ((endmp.voice_end||{}).matched !== false || (endmp.voice_end||{}).voice_end_match_residual !== true) {
+    throw new Error("voice_end unmatched residual must stay gated: " + JSON.stringify(endmp.voice_end||{}).slice(0,200));
+  }
+  console.log("mcp_call voice_end unmatched residual ok", endmp.mapped, (endmp.voice_end||{}).mode, (endmp.voice_end||{}).voice_end_match_residual);
   // Media product short-circuit → executeMediaProductEffect (generate_image/video/watch/chart)
   const imgs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.generate_image|{\"prompt\":\"MCP aurora smoke\"}" }]);
   const ih = imgs.find((r) => r && r.kind === "mcp_call");

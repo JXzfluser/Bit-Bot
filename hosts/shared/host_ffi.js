@@ -6967,6 +6967,21 @@ function createHostFfi(repoRoot) {
         credential_fill: "host_credential_fill",
         list_credentials: "host_credential_list",
         credential_list: "host_credential_list",
+        spawn_subagent: "host_subagent_run",
+        subagent_run: "host_subagent_run",
+        create_teammate: "host_teammate_create",
+        teammate_create: "host_teammate_create",
+        room_turn: "host_room_turn",
+        send_to_agent: "host_send_to_agent",
+        launch_cloud_agent: "host_cloud_agent_launch",
+        cloud_agent_launch: "host_cloud_agent_launch",
+        deliver_cloud_artifact: "host_cloud_artifact_deliver",
+        cloud_artifact_deliver: "host_cloud_artifact_deliver",
+        voice_start: "host_voice_session",
+        voice_session: "host_voice_session",
+        voice_relay: "host_voice_relay",
+        voice_end: "host_voice_end_write",
+        voice_end_write: "host_voice_end_write",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7039,7 +7054,7 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/skill_load/mail_claim/credential/media onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/skill_load/mail_claim/credential/subagent/teammate/room/cloud/voice/media onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
@@ -7060,6 +7075,15 @@ function createHostFfi(repoRoot) {
         mapped === "host_mail_claim_inbox" ||
         mapped === "host_credential_fill" ||
         mapped === "host_credential_list" ||
+        mapped === "host_subagent_run" ||
+        mapped === "host_teammate_create" ||
+        mapped === "host_room_turn" ||
+        mapped === "host_send_to_agent" ||
+        mapped === "host_cloud_agent_launch" ||
+        mapped === "host_cloud_artifact_deliver" ||
+        mapped === "host_voice_session" ||
+        mapped === "host_voice_relay" ||
+        mapped === "host_voice_end_write" ||
         mapped === "host_generate_image" ||
         mapped === "host_generate_video" ||
         mapped === "host_watch_video" ||
@@ -8138,6 +8162,607 @@ function createHostFfi(repoRoot) {
               pretend_secret_echo: false,
               signin_fill_residual: signinFillResidual,
             },
+          });
+        }
+        if (mapped === "host_subagent_run") {
+          // Product spawn_subagent → Host subagent_run; keep pretend honesty.
+          const subId =
+            String(
+              args.id ||
+                args.subagent_id ||
+                args.agent_id ||
+                args.name ||
+                "",
+            ).trim() || `sub-mcp-${Date.now().toString(36)}`;
+          const prompt = String(
+            args.prompt ||
+              args.body ||
+              args.text ||
+              args.task ||
+              args.q ||
+              args.query ||
+              "",
+          ).trim() || "mcp subagent ping";
+          const subCmd = [subId, prompt].join("|");
+          const subResults = await executeHostEffects([
+            { kind: "subagent_run", command: subCmd },
+          ]);
+          const subHit = (subResults || []).find(
+            (r) => r && r.kind === "subagent_run",
+          );
+          let subPayload = {};
+          try {
+            subPayload = JSON.parse((subHit && subHit.stdout) || "{}");
+          } catch {
+            subPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "subagent_run",
+              subagent: {
+                path: subPayload.path || null,
+                result_path: subPayload.result_path || null,
+                mode: subPayload.mode || "host_subagent_run",
+                pretend_completed: subPayload.pretend_completed,
+                worker_ok: subPayload.worker_ok,
+                nested_skipped: subPayload.nested_skipped,
+                subagent: subPayload.subagent || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(subHit && subHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(subHit && subHit.ok),
+            subagent: subPayload,
+          });
+        }
+        if (mapped === "host_teammate_create") {
+          // Product create_teammate → Host teammate_create; pretend_created stays false.
+          const tmId =
+            String(
+              args.id ||
+                args.agent_id ||
+                args.teammate_id ||
+                args.name ||
+                "",
+            ).trim() || `asst-mcp-${Date.now().toString(36)}`;
+          const tmName =
+            String(args.name || args.title || args.display_name || tmId).trim() ||
+            tmId;
+          const tmRole =
+            String(args.role || args.kind || "executor").trim() || "executor";
+          const tmCmd = [tmId, tmName, tmRole].join("|");
+          const tmResults = await executeHostEffects([
+            { kind: "teammate_create", command: tmCmd },
+          ]);
+          const tmHit = (tmResults || []).find(
+            (r) => r && r.kind === "teammate_create",
+          );
+          let tmPayload = {};
+          try {
+            tmPayload = JSON.parse((tmHit && tmHit.stdout) || "{}");
+          } catch {
+            tmPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "teammate_create",
+              teammate: {
+                path: tmPayload.path || null,
+                mode: tmPayload.mode || "host_teammate_create",
+                appears_in_members: tmPayload.appears_in_members,
+                in_sidebar: tmPayload.in_sidebar,
+                pretend_created: tmPayload.pretend_created,
+                member_ids: tmPayload.member_ids || null,
+                teammate: tmPayload.teammate || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(tmHit && tmHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(tmHit && tmHit.ok),
+            teammate: tmPayload,
+          });
+        }
+        if (mapped === "host_room_turn") {
+          // Product room_turn → Host room_turn fanout; pretend_private_dm stays false.
+          const room =
+            String(
+              args.room ||
+                args.room_name ||
+                args.channel ||
+                args.name ||
+                "",
+            ).trim() || "mcp-room";
+          const body = String(
+            args.body ||
+              args.text ||
+              args.message ||
+              args.prompt ||
+              args.q ||
+              args.query ||
+              "",
+          ).trim() || "mcp room ping";
+          const roomCmd = room + " :: " + body;
+          const roomResults = await executeHostEffects([
+            { kind: "room_turn", command: roomCmd },
+          ]);
+          const roomHit = (roomResults || []).find(
+            (r) => r && r.kind === "room_turn",
+          );
+          let roomPayload = {};
+          try {
+            roomPayload = JSON.parse((roomHit && roomHit.stdout) || "{}");
+          } catch {
+            roomPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "room_turn",
+              room_turn: {
+                path: roomPayload.path || null,
+                room: roomPayload.room || room,
+                mode: roomPayload.mode || "room_fanout",
+                is_room: roomPayload.is_room,
+                is_private_dm: roomPayload.is_private_dm,
+                pretend_private_dm: roomPayload.pretend_private_dm,
+                forbids_private_assumptions:
+                  roomPayload.forbids_private_assumptions,
+                member_count: roomPayload.member_count,
+                delivered_to: roomPayload.delivered_to || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(roomHit && roomHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(roomHit && roomHit.ok),
+            room_turn: roomPayload,
+          });
+        }
+        if (mapped === "host_send_to_agent") {
+          // Product send_to_agent → Host send_to_agent; pretend_delivered stays false.
+          const toId =
+            String(
+              args.to_id ||
+                args.to ||
+                args.agent_id ||
+                args.id ||
+                args.teammate ||
+                "",
+            ).trim() || "asst-mcp";
+          const body = String(
+            args.body ||
+              args.text ||
+              args.message ||
+              args.prompt ||
+              args.q ||
+              args.query ||
+              "",
+          ).trim() || "mcp send ping";
+          const sendCmd = toId + " :: " + body;
+          const sendResults = await executeHostEffects([
+            { kind: "send_to_agent", command: sendCmd },
+          ]);
+          const sendHit = (sendResults || []).find(
+            (r) => r && r.kind === "send_to_agent",
+          );
+          let sendPayload = {};
+          try {
+            sendPayload = JSON.parse((sendHit && sendHit.stdout) || "{}");
+          } catch {
+            sendPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "send_to_agent",
+              send_to_agent: {
+                path: sendPayload.path || null,
+                to_id: sendPayload.to_id || toId,
+                mode: sendPayload.mode || "host_send_to_agent",
+                routed: sendPayload.routed,
+                delivered: sendPayload.delivered,
+                pretend_delivered: sendPayload.pretend_delivered,
+                status: sendPayload.status || null,
+                teammate_known: sendPayload.teammate_known,
+                outbox: sendPayload.outbox || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(sendHit && sendHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(sendHit && sendHit.ok),
+            send_to_agent: sendPayload,
+          });
+        }
+        if (mapped === "host_cloud_agent_launch") {
+          // Product launch_cloud_agent → Host cloud_agent_launch; remote residual stays gated.
+          const bcId =
+            String(
+              args.bc_id ||
+                args.id ||
+                args.agent_id ||
+                args.name ||
+                "",
+            ).trim() || `bc-mcp-${Date.now().toString(36)}`;
+          const url =
+            String(args.url || args.open_url || "").trim() ||
+            `https://cursor.com/agents/${bcId}`;
+          const prompt = String(
+            args.prompt ||
+              args.body ||
+              args.text ||
+              args.task ||
+              args.q ||
+              args.query ||
+              "",
+          ).trim() || "mcp cloud ping";
+          const launchCmd = [bcId, url, prompt].join("|");
+          const launchResults = await executeHostEffects([
+            { kind: "cloud_agent_launch", command: launchCmd },
+          ]);
+          const launchHit = (launchResults || []).find(
+            (r) => r && r.kind === "cloud_agent_launch",
+          );
+          let launchPayload = {};
+          try {
+            launchPayload = JSON.parse((launchHit && launchHit.stdout) || "{}");
+          } catch {
+            launchPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "cloud_agent_launch",
+              cloud_launch: {
+                path: launchPayload.path || null,
+                bc_id: launchPayload.bc_id || bcId,
+                url: launchPayload.url || url,
+                mode: launchPayload.mode || null,
+                status: launchPayload.status || null,
+                pretend_remote_cloud: launchPayload.pretend_remote_cloud,
+                remote_cloud_residual: launchPayload.remote_cloud_residual,
+                launched: launchPayload.launched,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(launchHit && launchHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(launchHit && launchHit.ok),
+            cloud_launch: launchPayload,
+          });
+        }
+        if (mapped === "host_cloud_artifact_deliver") {
+          // Product deliver_cloud_artifact → Host cloud_artifact_deliver; remote residual stays gated.
+          const src =
+            String(
+              args.artifact ||
+                args.bc_id ||
+                args.source ||
+                args.src ||
+                args.path ||
+                args.url ||
+                args.id ||
+                "",
+            ).trim() || "bc-mcp-art";
+          const dest =
+            String(
+              args.dest ||
+                args.destination ||
+                args.filename ||
+                args.out ||
+                args.name ||
+                "",
+            ).trim() || "mcp-cloud-report.md";
+          const artCmd = [src, dest].join("|");
+          const artResults = await executeHostEffects([
+            { kind: "cloud_artifact_deliver", command: artCmd },
+          ]);
+          const artHit = (artResults || []).find(
+            (r) => r && r.kind === "cloud_artifact_deliver",
+          );
+          let artPayload = {};
+          try {
+            artPayload = JSON.parse((artHit && artHit.stdout) || "{}");
+          } catch {
+            artPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "cloud_artifact_deliver",
+              cloud_artifact: {
+                path: artPayload.path || artPayload.artifact_path || null,
+                meta_path: artPayload.meta_path || null,
+                bc_id: artPayload.bc_id || null,
+                mode: artPayload.mode || null,
+                delivered: artPayload.delivered,
+                pretend_delivered: artPayload.pretend_delivered,
+                pretend_remote_fetch: artPayload.pretend_remote_fetch,
+                remote_cloud_artifact_residual:
+                  artPayload.remote_cloud_artifact_residual,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(artHit && artHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(artHit && artHit.ok),
+            cloud_artifact: artPayload,
+          });
+        }
+        if (mapped === "host_voice_session") {
+          // Product voice_start → Host voice_session; STT/TTS residuals stay gated.
+          const callId =
+            String(
+              args.call_id ||
+                args.id ||
+                args.voice_address ||
+                args.address ||
+                args.name ||
+                "",
+            ).trim() || `mcp-voice-${Date.now().toString(36)}`;
+          const address = callId.startsWith("voice:")
+            ? callId
+            : `voice:${callId}`;
+          const voiceCmd = ["start", address].join("|");
+          const voiceResults = await executeHostEffects([
+            { kind: "voice_session", command: voiceCmd },
+          ]);
+          const voiceHit = (voiceResults || []).find(
+            (r) => r && r.kind === "voice_session",
+          );
+          let voicePayload = {};
+          try {
+            voicePayload = JSON.parse((voiceHit && voiceHit.stdout) || "{}");
+          } catch {
+            voicePayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "voice_session",
+              voice_session: {
+                path: voicePayload.path || null,
+                voice_address: voicePayload.voice_address || address,
+                call_id: voicePayload.call_id || null,
+                mode: voicePayload.mode || "host_voice_session",
+                live: voicePayload.live,
+                pretend_live: voicePayload.pretend_live,
+                pretend_media: voicePayload.pretend_media,
+                voice_stt_residual: voicePayload.voice_stt_residual,
+                voice_tts_residual: voicePayload.voice_tts_residual,
+                media_path: voicePayload.media_path || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(voiceHit && voiceHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(voiceHit && voiceHit.ok),
+            voice_session: voicePayload,
+          });
+        }
+        if (mapped === "host_voice_relay") {
+          // Product voice_relay → Host voice_relay; STT/TTS residuals stay gated.
+          const address = String(
+            args.voice_address ||
+              args.address ||
+              args.call_id ||
+              args.id ||
+              "",
+          ).trim() || "voice:mcp-relay";
+          const text = String(
+            args.text ||
+              args.body ||
+              args.message ||
+              args.prompt ||
+              args.q ||
+              args.query ||
+              "",
+          ).trim() || "mcp voice relay";
+          const relayCmd = address + " :: " + text;
+          const relayResults = await executeHostEffects([
+            { kind: "voice_relay", command: relayCmd },
+          ]);
+          const relayHit = (relayResults || []).find(
+            (r) => r && r.kind === "voice_relay",
+          );
+          let relayPayload = {};
+          try {
+            relayPayload = JSON.parse((relayHit && relayHit.stdout) || "{}");
+          } catch {
+            relayPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "voice_relay",
+              voice_relay: {
+                path: relayPayload.path || null,
+                voice_address: relayPayload.voice_address || address,
+                mode: relayPayload.mode || null,
+                turns: relayPayload.turns,
+                pretend_silent: relayPayload.pretend_silent,
+                voice_stt_residual: relayPayload.voice_stt_residual,
+                voice_tts_residual: relayPayload.voice_tts_residual,
+                reply_media_ok: relayPayload.reply_media_ok,
+                reply_media_path: relayPayload.reply_media_path || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(relayHit && relayHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(relayHit && relayHit.ok),
+            voice_relay: relayPayload,
+          });
+        }
+        if (mapped === "host_voice_end_write") {
+          // Product voice_end → Host voice_end_write; voice_end_match_residual stays gated.
+          const outPath = String(
+            args.path ||
+              args.out ||
+              args.summary_path ||
+              args.filename ||
+              "",
+          ).trim();
+          const summary = String(
+            args.summary ||
+              args.body ||
+              args.text ||
+              args.message ||
+              args.app_summary ||
+              "",
+          ).trim() || "mcp voice end";
+          // Prefer call_id stem in path so match residual can close when session exists.
+          const callStem = String(
+            args.call_id ||
+              args.id ||
+              args.voice_address ||
+              args.address ||
+              "",
+          )
+            .trim()
+            .replace(/^voice:/, "");
+          // Basename stem must equal call_id / voice address (voice_end matchRank).
+          const endPath =
+            outPath ||
+            (callStem
+              ? `agent-tools/${callStem}.txt`
+              : "agent-tools/voice-summary-mcp.txt");
+          const endCmd = [endPath, summary].join("|");
+          const endResults = await executeHostEffects([
+            { kind: "voice_end_write", command: endCmd },
+          ]);
+          const endHit = (endResults || []).find(
+            (r) => r && r.kind === "voice_end_write",
+          );
+          let endPayload = {};
+          try {
+            endPayload = JSON.parse((endHit && endHit.stdout) || "{}");
+          } catch {
+            endPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "voice_end_write",
+              voice_end: {
+                path: endPayload.path || null,
+                summary_path: endPayload.summary_path || null,
+                call_id: endPayload.call_id || null,
+                mode: endPayload.mode || null,
+                matched: endPayload.matched,
+                voice_end_match_residual: endPayload.voice_end_match_residual,
+                pretend_still_live: endPayload.pretend_still_live,
+                app_summary: endPayload.app_summary || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(endHit && endHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(endHit && endHit.ok),
+            voice_end: endPayload,
           });
         }
 
