@@ -2271,6 +2271,131 @@ function stripHostAppliedMarker(file) {
   require("fs").writeFileSync("/tmp/bitbot-mcp-routine-close.json", JSON.stringify({ ok: true, ...routLlCloseP }, null, 2));
   console.log("mcp_call routine_schedule residual close ok", routLlCloseP.mapped, (routLlCloseP.routine_schedule || {}).id, (routLlCloseP.routine_schedule || {}).long_lived_cron_residual);
   delete process.env.BITBOT_ROUTINE_LONG_LIVED;
+  // 9) get_balance / finance_*: BITBOT_FINANCE_API_URL + TOKEN → live_finance_residual false
+  // Ports 18810/18811/18812 avoid cloud close (18809) and cal/pay/gmail (18804-18806).
+  try { fs.unlinkSync("data/connectors/finance_token.json"); } catch (_) {}
+  try { fs.unlinkSync("data/connectors/job_token.json"); } catch (_) {}
+  try { fs.unlinkSync("data/connectors/x_token.json"); } catch (_) {}
+  const finCloseMock = startMock(18810, "finance", "smoke-mcp-fin");
+  const jobCloseMock = startMock(18811, "job", "smoke-mcp-job");
+  const xCloseMock = startMock(18812, "x", "smoke-mcp-x");
+  await sleep(500);
+  try {
+    process.env.BITBOT_FINANCE_API_URL = "http://127.0.0.1:18810";
+    process.env.BITBOT_FINANCE_TOKEN = "smoke-mcp-fin";
+    const finCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.get_balance|{}" }]);
+    const finCloseH = finCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!finCloseH || !finCloseH.ok) throw new Error("get_balance residual close mcp");
+    const finCloseP = JSON.parse(finCloseH.stdout || "{}");
+    if (finCloseP.mapped !== "host_finance_call" || finCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(finCloseP).slice(0, 200));
+    }
+    if ((finCloseP.finance || {}).live_finance_residual !== false || (finCloseP.finance || {}).mode !== "finance_live") {
+      throw new Error("live_finance_residual must close: " + JSON.stringify(finCloseP.finance || {}).slice(0, 240));
+    }
+    if ((finCloseP.finance || {}).pretend_live === true) throw new Error("pretend_live finance close");
+    require("fs").writeFileSync("/tmp/bitbot-mcp-finance-close.json", JSON.stringify({ ok: true, ...finCloseP }, null, 2));
+    console.log("mcp_call get_balance residual close ok", finCloseP.mapped, (finCloseP.finance || {}).mode, (finCloseP.finance || {}).live_finance_residual);
+    const finStarCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.finance_list_accounts|{}" }]);
+    const finStarCloseH = finStarCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!finStarCloseH || !finStarCloseH.ok) throw new Error("finance_* residual close mcp");
+    const finStarCloseP = JSON.parse(finStarCloseH.stdout || "{}");
+    if (finStarCloseP.mapped !== "host_finance_call" || finStarCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(finStarCloseP).slice(0, 200));
+    }
+    if ((finStarCloseP.finance || {}).live_finance_residual !== false || (finStarCloseP.finance || {}).mode !== "finance_live") {
+      throw new Error("finance_* live_finance_residual must close: " + JSON.stringify(finStarCloseP.finance || {}).slice(0, 240));
+    }
+    console.log("mcp_call finance_* residual close ok", finStarCloseP.mapped, (finStarCloseP.finance || {}).mode, (finStarCloseP.finance || {}).live_finance_residual, (finStarCloseP.finance || {}).tool || finStarCloseP.tool);
+    // 10) search_jobs: BITBOT_JOB_API_URL + TOKEN → live_job_residual false
+    process.env.BITBOT_JOB_API_URL = "http://127.0.0.1:18811";
+    process.env.BITBOT_JOB_TOKEN = "smoke-mcp-job";
+    const jobCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.search_jobs|{\"q\":\"engineer\"}" }]);
+    const jobCloseH = jobCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!jobCloseH || !jobCloseH.ok) throw new Error("search_jobs residual close mcp");
+    const jobCloseP = JSON.parse(jobCloseH.stdout || "{}");
+    if (jobCloseP.mapped !== "host_job_search" || jobCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(jobCloseP).slice(0, 200));
+    }
+    if ((jobCloseP.job_search || {}).live_job_residual !== false || (jobCloseP.job_search || {}).mode !== "job_live") {
+      throw new Error("live_job_residual must close: " + JSON.stringify(jobCloseP.job_search || {}).slice(0, 240));
+    }
+    if ((jobCloseP.job_search || {}).pretend_applied === true) throw new Error("pretend_applied job close");
+    if (!((jobCloseP.job_search || {}).hit_count >= 1)) {
+      throw new Error("job hit_count close: " + JSON.stringify(jobCloseP.job_search || {}).slice(0, 200));
+    }
+    require("fs").writeFileSync("/tmp/bitbot-mcp-job-close.json", JSON.stringify({ ok: true, ...jobCloseP }, null, 2));
+    console.log("mcp_call search_jobs residual close ok", jobCloseP.mapped, (jobCloseP.job_search || {}).mode, (jobCloseP.job_search || {}).live_job_residual);
+    // 11) search_posts / x_search: BITBOT_X_API_BASE + BEARER → live_x_residual false
+    process.env.BITBOT_X_API_BASE = "http://127.0.0.1:18812";
+    process.env.BITBOT_X_BEARER = "smoke-mcp-x";
+    delete process.env.BITBOT_X_TOKEN;
+    const xCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.search_posts|{\"q\":\"smoke-close\"}" }]);
+    const xCloseH = xCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!xCloseH || !xCloseH.ok) throw new Error("search_posts residual close mcp");
+    const xCloseP = JSON.parse(xCloseH.stdout || "{}");
+    if (xCloseP.mapped !== "host_x_search" || xCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(xCloseP).slice(0, 200));
+    }
+    if ((xCloseP.x_search || {}).live_x_residual !== false || (xCloseP.x_search || {}).mode !== "x_live") {
+      throw new Error("live_x_residual must close: " + JSON.stringify(xCloseP.x_search || {}).slice(0, 240));
+    }
+    if ((xCloseP.x_search || {}).pretend_live === true) throw new Error("pretend_live x close");
+    if (!((xCloseP.x_search || {}).hit_count >= 1)) {
+      throw new Error("x hit_count close: " + JSON.stringify(xCloseP.x_search || {}).slice(0, 200));
+    }
+    require("fs").writeFileSync("/tmp/bitbot-mcp-x-close.json", JSON.stringify({ ok: true, ...xCloseP }, null, 2));
+    console.log("mcp_call search_posts residual close ok", xCloseP.mapped, (xCloseP.x_search || {}).mode, (xCloseP.x_search || {}).live_x_residual);
+    const xAliasCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.x_search|{\"q\":\"alias-close\"}" }]);
+    const xAliasCloseH = xAliasCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!xAliasCloseH || !xAliasCloseH.ok) throw new Error("x_search residual close mcp");
+    const xAliasCloseP = JSON.parse(xAliasCloseH.stdout || "{}");
+    if (xAliasCloseP.mapped !== "host_x_search" || xAliasCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(xAliasCloseP).slice(0, 200));
+    }
+    if ((xAliasCloseP.x_search || {}).live_x_residual !== false || (xAliasCloseP.x_search || {}).mode !== "x_live") {
+      throw new Error("x_search live_x_residual must close: " + JSON.stringify(xAliasCloseP.x_search || {}).slice(0, 240));
+    }
+    console.log("mcp_call x_search residual close ok", xAliasCloseP.mapped, (xAliasCloseP.x_search || {}).mode, (xAliasCloseP.x_search || {}).live_x_residual);
+  } finally {
+    try { finCloseMock.kill(); } catch (_) {}
+    try { jobCloseMock.kill(); } catch (_) {}
+    try { xCloseMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_FINANCE_API_URL;
+    delete process.env.BITBOT_FINANCE_TOKEN;
+    delete process.env.BITBOT_JOB_API_URL;
+    delete process.env.BITBOT_JOB_TOKEN;
+    delete process.env.BITBOT_X_API_BASE;
+    delete process.env.BITBOT_X_BEARER;
+    delete process.env.BITBOT_X_TOKEN;
+  }
+  // 12) Optional fill_credential + BITBOT_CREDENTIAL_FILL_MOCK=1 → credential_browser_fill_residual false; signin_fill_residual stays true
+  // Do NOT close password/OS dialog / IdP signin_fill (deferred).
+  process.env.BITBOT_CREDENTIAL_FILL_MOCK = "1";
+  delete process.env.BITBOT_CREDENTIAL_BROWSER_FILL;
+  const fillMockCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.fill_credential|{\"fill_handle\":\"mcp-fill-close\",\"domain\":\"login.example.test\",\"username\":\"mcp-close@example.test\"}" }]);
+  const fillMockCloseH = fillMockCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!fillMockCloseH || !fillMockCloseH.ok) throw new Error("fill_credential residual close mcp");
+  const fillMockCloseP = JSON.parse(fillMockCloseH.stdout || "{}");
+  if (fillMockCloseP.mapped !== "host_credential_fill" || fillMockCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(fillMockCloseP).slice(0, 200));
+  }
+  if ((fillMockCloseP.credential_fill || {}).credential_browser_fill_residual !== false) {
+    throw new Error("credential_browser_fill_residual must close: " + JSON.stringify(fillMockCloseP.credential_fill || {}).slice(0, 240));
+  }
+  if (fillMockCloseP.signin_fill_residual !== true || (fillMockCloseP.credential_fill || {}).signin_fill_residual !== true) {
+    throw new Error("signin_fill_residual must stay true: " + JSON.stringify(fillMockCloseP).slice(0, 240));
+  }
+  if ((fillMockCloseP.credential_fill || {}).mode !== "host_credential_fill_username_mock") {
+    throw new Error("fill mock mode: " + JSON.stringify(fillMockCloseP.credential_fill || {}).slice(0, 200));
+  }
+  if (fillMockCloseP.secret_echoed === true || (fillMockCloseP.credential_fill || {}).secret_echoed === true) {
+    throw new Error("secret_echoed fill close");
+  }
+  if (/vault:secret/i.test(JSON.stringify(fillMockCloseP))) throw new Error("secret leak fill close");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-fill-close.json", JSON.stringify({ ok: true, ...fillMockCloseP }, null, 2));
+  console.log("mcp_call fill_credential residual close ok", fillMockCloseP.mapped, (fillMockCloseP.credential_fill || {}).mode, (fillMockCloseP.credential_fill || {}).credential_browser_fill_residual, fillMockCloseP.signin_fill_residual);
+  delete process.env.BITBOT_CREDENTIAL_FILL_MOCK;
 })().catch((e)=>{console.error(e);process.exit(1);});
 '
 node hosts/cli_host/run_turn.js "create teammate id=asst-smoke name=Smoke role=executor" >/tmp/bitbot-teammate.json
