@@ -1090,6 +1090,29 @@ def main() -> int:
     checkout_stage = vertical_stage if is_shop else (
         "n/a" if playbook == "generic" else vertical_stage
     )
+    # CM-0803 × CM-2129: on sign-in wall, look for Host credential browser-plan
+    # (username-only). Never type secrets from CU command string.
+    signin_fill: Dict[str, Any] = {
+        "requested": False,
+        "plan_path": None,
+        "username_planned": False,
+        "filled": False,
+    }
+    if blocked_signin:
+        signin_fill["requested"] = True
+        fills_dir = repo_root / "data" / "credentials" / "fills"
+        if fills_dir.is_dir():
+            plans = sorted(fills_dir.glob("browser-plan-*.json"), reverse=True)
+            if plans:
+                try:
+                    plan = json.loads(plans[0].read_text(encoding="utf-8"))
+                    signin_fill["plan_path"] = str(plans[0])
+                    signin_fill["username_planned"] = bool(plan.get("username"))
+                    # Password fill stays residual (no secret in plan).
+                    signin_fill["filled"] = False
+                except Exception:
+                    pass
+    signin_fill_residual = bool(blocked_signin and not signin_fill.get("filled"))
     outcome = {
         "agent_id": f"cu-host-{artifact_dir.name}",
         "summary": "structured outcome only",
@@ -1104,6 +1127,8 @@ def main() -> int:
         "paid_checkout_attempted": paid_checkout_attempted,
         "live_paid_residual": live_paid_residual,
         "charge_probe": charge_probe or None,
+        "signin_fill": signin_fill,
+        "signin_fill_residual": signin_fill_residual,
         "navigate_reachable": bool(navigate.get("navigate_reachable")),
         "os_window": bool(gui.get("os_window")),
         "os_window_automation_residual": bool(

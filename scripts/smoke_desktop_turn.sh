@@ -811,9 +811,16 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-claim-sandbox.json')
 mkdir -p uploads
 echo 'box-copy-smoke' > uploads/box-src.txt
 node hosts/cli_host/run_turn.js "copy to box machine=desk-1 src=uploads/box-src.txt dest=uploads/box-dest.txt" >/tmp/bitbot-copy-to-box.json
-python3 -c "import json,os,glob;d=json.load(open('/tmp/bitbot-copy-to-box.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='copy_to_box');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('under_repo') is True;assert p.get('pretend_remote_machine') is False;assert p.get('cross_machine_copy_residual') is True;assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('uploads/box-dest.txt');assert glob.glob('data/box-copy/copy_to_box-*.json');print('copy_to_box artifact ok', p.get('path'), 'bytes', p.get('bytes'), 'cross_machine_residual', True)"
+python3 -c "import json,os,glob;d=json.load(open('/tmp/bitbot-copy-to-box.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='copy_to_box');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('under_repo') is True;assert p.get('pretend_remote_machine') is False;assert p.get('cross_machine_copy_residual') is True;assert p.get('binary_intact') is True;assert p.get('sha256_src')==p.get('sha256_dest');assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('uploads/box-dest.txt');assert glob.glob('data/box-copy/copy_to_box-*.json');print('copy_to_box artifact ok', p.get('path'), 'bytes', p.get('bytes'), 'sha', str(p.get('sha256_src') or '')[:12], 'cross_machine_residual', True)"
 node hosts/cli_host/run_turn.js "copy from box machine=desk-1 box=uploads/box-dest.txt dest=uploads/box-out.txt" >/tmp/bitbot-copy-from-box.json
-python3 -c "import json,os,glob;d=json.load(open('/tmp/bitbot-copy-from-box.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='copy_from_box');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('uploads/box-out.txt');assert glob.glob('data/box-copy/copy_from_box-*.json');print('copy_from_box artifact ok', p.get('path'), 'bytes', p.get('bytes'))"
+python3 -c "import json,os,glob;d=json.load(open('/tmp/bitbot-copy-from-box.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='copy_from_box');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('uploads/box-out.txt');assert p.get('binary_intact') is True;assert glob.glob('data/box-copy/copy_from_box-*.json');print('copy_from_box artifact ok', p.get('path'), 'bytes', p.get('bytes'))"
+# CM-0703 size refuse + CM-0704 overwrite refuse
+python3 -c "p='uploads/huge-box.bin';f=open(p,'wb');f.seek(100*1024*1024);f.write(b'x');f.close()"
+node hosts/cli_host/run_turn.js "copy to box machine=desk-1 src=uploads/huge-box.bin dest=uploads/huge-out.bin" >/tmp/bitbot-copy-huge.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-copy-huge.json'));h=next(x for x in d['host_results'] if x.get('kind')=='copy_to_box');p=json.loads(h['stdout']);assert p.get('refused') is True;assert p.get('ok') is False;assert '100MiB' in (p.get('error') or '');assert p.get('path') and os.path.isfile(p['path']);print('copy_to_box 100MiB refuse ok', p.get('mode'));os.remove('uploads/huge-box.bin')"
+echo old > uploads/box-out-exist.txt
+node hosts/cli_host/run_turn.js "copy from box machine=desk-1 box=uploads/box-dest.txt dest=uploads/box-out-exist.txt" >/tmp/bitbot-copy-ow.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-copy-ow.json'));h=next(x for x in d['host_results'] if x.get('kind')=='copy_from_box');p=json.loads(h['stdout']);assert p.get('refused') is True;assert p.get('overwrite')=='refuse';assert open('uploads/box-out-exist.txt').read().strip()=='old';print('copy_from_box overwrite refuse ok', p.get('mode'))"
 node hosts/cli_host/run_turn.js "meeting chat body=standup note direct=1" >/tmp/bitbot-meeting-direct.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-direct.json'));assert d.get('ok');assert d.get('intent')=='meeting_chat';hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='meeting_chat_direct';assert p.get('direct_send') is True;assert p.get('live_post') is False;assert p.get('live_meeting_residual') is True;assert p.get('transcript') and os.path.isfile(p['transcript']);print('meeting_chat DirectSend ok', p.get('transcript'), 'live_residual', p.get('live_meeting_residual'))"
 # Live meeting transport against local mock (closes residual when API+token ok)
@@ -866,9 +873,31 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-x-file-token.json'));h=nex
 
 echo "==> Host durable product delivery (voice/teammates/device/subagent/cloud/commerce)"
 node hosts/cli_host/run_turn.js "voice start smoke1" >/tmp/bitbot-voice.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='voice_session');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('media_ok') is True;assert os.path.isfile(p.get('media_path') or '');assert open(p['media_path'],'rb').read(4)==b'RIFF';assert p.get('pretend_live') is False;assert p.get('voice_stt_residual') is True;assert isinstance(p.get('voice_tts_residual'),bool);assert p.get('path') and os.path.isfile(p['path']);assert p.get('sessions_path') and os.path.isfile(p['sessions_path']);print('voice_session durable+media ok', p.get('path'), 'bytes', p.get('media_bytes'), 'stt_residual', True)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='voice_session');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('media_ok') is True;assert os.path.isfile(p.get('media_path') or '');assert open(p['media_path'],'rb').read(4)==b'RIFF';assert p.get('pretend_live') is False;assert p.get('call_id');assert p.get('voice_stt_residual') is True;assert isinstance(p.get('voice_tts_residual'),bool);assert p.get('path') and os.path.isfile(p['path']);assert p.get('sessions_path') and os.path.isfile(p['sessions_path']);open('/tmp/bitbot-voice-call-id.txt','w').write(p['call_id']);print('voice_session durable+media ok', p.get('path'), 'call_id', p.get('call_id'), 'bytes', p.get('media_bytes'), 'stt_residual', True)"
 node hosts/cli_host/run_turn.js "voice relay smoke1 :: hello from smoke" >/tmp/bitbot-voice-relay.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-relay.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='voice_relay');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('turns')>=2;assert p.get('transcript_path') and os.path.isfile(p['transcript_path']);assert p.get('reply');assert p.get('reply_media_ok') is True;assert p.get('reply_media_path') and os.path.isfile(p['reply_media_path']);assert open(p['reply_media_path'],'rb').read(4)==b'RIFF';assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_silent') is False;assert p.get('voice_stt_residual') is True;assert isinstance(p.get('voice_tts_residual'),bool);assert p.get('reply_media_tool') in ('espeak','ffmpeg-sine');assert p.get('sessions_path') and os.path.isfile(p['sessions_path']);print('voice_relay reply WAV ok', p.get('turns'), 'bytes', p.get('reply_media_bytes'), 'tool', p.get('reply_media_tool'), 'tts_residual', p.get('voice_tts_residual'), 'snap', p.get('path'))"
+node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'))"
+# MCP product short-circuit: slides + X (Host FFI; MoonBit catalog may lack names)
+node -e '
+const { createHostFfi } = require("./hosts/shared/host_ffi.js");
+(async () => {
+  const ffi = createHostFfi(process.cwd());
+  const slides = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.make_slides|{\"title\":\"Smoke Deck\"}" }]);
+  const h = slides.find((r) => r && r.kind === "mcp_call");
+  if (!h || !h.ok) throw new Error("slides mcp");
+  const p = JSON.parse(h.stdout || "{}");
+  if (p.mapped !== "host_slides_pptx" || p.product_tool_residual !== false) throw new Error(JSON.stringify(p).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-slides.json", JSON.stringify({ ok: true, ...p }, null, 2));
+  console.log("mcp_call slides short-circuit ok", p.mapped, (p.slides||{}).pptx_path);
+  const xs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.search_posts|{\"q\":\"smoke\"}" }]);
+  const xh = xs.find((r) => r && r.kind === "mcp_call");
+  const xp = JSON.parse((xh && xh.stdout) || "{}");
+  if (xp.mapped !== "host_x_search" || xp.product_tool_residual !== false) throw new Error(JSON.stringify(xp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-x.json", JSON.stringify({ ok: true, ...xp }, null, 2));
+  console.log("mcp_call x short-circuit ok", xp.mapped, (xp.x_search||{}).mode);
+})().catch((e)=>{console.error(e);process.exit(1);});
+'
 node hosts/cli_host/run_turn.js "create teammate id=asst-smoke name=Smoke role=executor" >/tmp/bitbot-teammate.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teammate.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='teammate_create');assert h.get('ok') and 'teammates.json' in (h.get('stdout') or '');assert os.path.isfile('data/agents/teammates.json');print('teammate_create durable ok')"
 # CM-1403 section partitions (Host durable isolation)
@@ -1077,6 +1106,18 @@ node hosts/cli_host/run_turn.js --approved "send on behalf to=a@example.com subj
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sob.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('provider')=='onbehalf';assert p.get('mode')=='onbehalf_sandbox_eml';assert p.get('sent') is False;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is True;assert 'X-BitBot-Send-On-Behalf: 1' in open(p['eml_path']).read();assert p.get('path') and os.path.isfile(p['path']);print('send_on_behalf eml ok', p.get('eml_path'), p.get('path'), 'live_mail_residual', True)"
 node hosts/cli_host/run_turn.js --approved "reply via foo:bar :: unknown scheme residual" >/tmp/bitbot-ch-unknown.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-ch-unknown.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='durable_outbound';assert p.get('live_channel_residual') is True;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel unknown scheme live_channel_residual ok', p.get('path'))"
+node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: hello sms" >/tmp/bitbot-sms.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('mode')=='sandbox_sms';assert p.get('live_sms_residual') is True;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel sms sandbox residual ok', p.get('mode'), p.get('path'))"
+node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: hello hook" >/tmp/bitbot-wh-out.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-out.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='webhook';assert p.get('live_webhook_residual') is True;assert p.get('key_leaked') is False;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel webhook outbound residual ok', p.get('mode'), p.get('path'))"
+# Inbound HTTP push wake (no turn prompt)
+python3 "$ROOT/scripts/host_webhook_listen.py" --port 18791 >/tmp/bitbot-wh-listen.log 2>&1 &
+WH_LISTEN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18791/hooks -H 'Content-Type: application/json' -d '{"id":"evt-http","summary":"push wake smoke"}' >/tmp/bitbot-wh-curl.json || true
+kill "$WH_LISTEN_PID" >/dev/null 2>&1 || true
+wait "$WH_LISTEN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-curl.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('key_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert '<webhook_event' in (snap.get('wake_payload') or '');print('webhook http listen push wake ok', d.get('path'))"
 node -e '
 const fs=require("fs");
 const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");

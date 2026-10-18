@@ -1566,6 +1566,130 @@ function createHostFfi(repoRoot) {
       });
     }
 
+    // SMS adapter (sandbox + optional live mock).
+    if (scheme === "sms" || addr.startsWith("sms:")) {
+      const smsDir = path.join(REPO_ROOT, "data", "channels", "sms");
+      fs.mkdirSync(smsDir, { recursive: true });
+      const to = addr.includes(":") ? addr.split(":").slice(1).join(":") : addr;
+      const smsApi = String(process.env.BITBOT_SMS_API_URL || "").trim();
+      const smsToken =
+        String(process.env.BITBOT_SMS_TOKEN || "").trim() ||
+        resolveProviderAccessToken("sms");
+      let livePost = false;
+      let liveProbe = null;
+      let mode = "sandbox_sms";
+      if (smsApi && smsToken) {
+        try {
+          const resp = await httpJson(smsApi.replace(/\/$/, "") + "/messages", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + smsToken,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ to, body: String(body || "").slice(0, 1600) }),
+          });
+          liveProbe = {
+            ok: Boolean(resp.ok),
+            http_status: resp.status || 0,
+            error: resp.error || null,
+          };
+          livePost = Boolean(resp.ok);
+          mode = livePost ? "live_sms" : "live_sms_failed";
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+          mode = "live_sms_failed";
+        }
+      }
+      const entry = {
+        scheme: "sms",
+        address: addr,
+        to,
+        body: String(body || "").slice(0, 1600),
+        mode,
+        ok: true,
+        live_post: livePost,
+        pretend_live: false,
+        live_sms_residual: !livePost,
+        live_channel_residual: !livePost,
+        live_probe: liveProbe,
+        at: stamp,
+      };
+      appendJsonl(outboundPath, entry);
+      appendJsonl(path.join(smsDir, "outbound.jsonl"), entry);
+      const snapPath = path.join(
+        smsDir,
+        `send-${Date.now().toString(36)}.json`,
+      );
+      fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
+      return finalizeChannelSend(raw, entry, {
+        outboundPath,
+        send_to_user_type: "text",
+      });
+    }
+
+    // Webhook outbound adapter — POST to panel URL or BITBOT_WEBHOOK_OUTBOUND_URL.
+    if (scheme === "webhook" || addr.startsWith("webhook:")) {
+      const panel = loadWebhookPanel();
+      const hookUrl =
+        String(process.env.BITBOT_WEBHOOK_OUTBOUND_URL || "").trim() ||
+        (panel && panel.url) ||
+        "";
+      let livePost = false;
+      let liveProbe = null;
+      let mode = "sandbox_webhook_outbound";
+      if (hookUrl && process.env.BITBOT_WEBHOOK_POST === "1") {
+        try {
+          const resp = await httpJson(hookUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(panel && panel.key
+                ? { "X-Webhook-Key": "opaque" }
+                : {}),
+            },
+            body: JSON.stringify({
+              address: addr,
+              body: String(body || "").slice(0, 4000),
+              at: stamp,
+            }),
+          });
+          liveProbe = {
+            ok: Boolean(resp.ok),
+            http_status: resp.status || 0,
+            error: resp.error || null,
+          };
+          livePost = Boolean(resp.ok);
+          mode = livePost ? "live_webhook_outbound" : "live_webhook_failed";
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+          mode = "live_webhook_failed";
+        }
+      }
+      const entry = {
+        scheme: "webhook",
+        address: addr,
+        body: String(body || "").slice(0, 4000),
+        mode,
+        ok: true,
+        live_post: livePost,
+        pretend_live: false,
+        live_webhook_residual: !livePost,
+        live_channel_residual: !livePost,
+        key_leaked: false,
+        hook_url_set: Boolean(hookUrl),
+        live_probe: liveProbe,
+        at: stamp,
+      };
+      appendJsonl(outboundPath, entry);
+      return finalizeChannelSend(raw, entry, { outboundPath });
+    }
+
     const entry = {
       scheme,
       address: addr,
@@ -1582,11 +1706,20 @@ function createHostFfi(repoRoot) {
   }
 
   async function executeCopyBox(kind, command) {
-    // command: machine_id|src|dest
+    // command: machine_id|src|dest[|overwrite=allow|refuse]
     const parts = String(command || "").split("|");
     const machineId = (parts[0] || "").trim();
     const src = (parts[1] || "").trim();
-    const dest = (parts[2] || "").trim();
+    let dest = (parts[2] || "").trim();
+    let overwriteArg = "";
+    for (const p of parts.slice(3)) {
+      const m = String(p || "").match(/^overwrite=(allow|refuse)$/i);
+      if (m) overwriteArg = m[1].toLowerCase();
+    }
+    // CM-0703: default dest under /workspace/uploads when omitted.
+    if (!dest) {
+      dest = path.join("uploads", path.basename(src) || "box-copy.bin");
+    }
     const srcAbs = resolveUnderRepo(src);
     const destAbs = resolveUnderRepo(dest);
     const at = new Date().toISOString();
@@ -1598,7 +1731,89 @@ function createHostFfi(repoRoot) {
         error: "copy paths must stay under repo root",
       };
     }
+    const COPYBOX_MAX = 100 * 1024 * 1024; // CM-0703 ≤100MiB
     try {
+      if (!fs.existsSync(srcAbs)) {
+        return {
+          kind,
+          ok: false,
+          command,
+          error: "source not found: " + src,
+          pretend_remote_machine: false,
+        };
+      }
+      const srcBytes = fs.statSync(srcAbs).size;
+      if (srcBytes > COPYBOX_MAX) {
+        const copyDir = path.join(REPO_ROOT, "data", "box-copy");
+        fs.mkdirSync(copyDir, { recursive: true });
+        const refusePath = path.join(
+          copyDir,
+          `${kind}-refuse-${Date.now().toString(36)}.json`,
+        );
+        const refused = {
+          kind,
+          machine_id: machineId,
+          src: srcAbs,
+          dest: destAbs,
+          bytes: srcBytes,
+          max_bytes: COPYBOX_MAX,
+          refused: true,
+          pretend_remote_machine: false,
+          cross_machine_copy_residual: Boolean(machineId),
+          error: "CopyBox refused: source exceeds 100MiB",
+          mode: "host_copybox_size_refuse",
+          at,
+        };
+        fs.writeFileSync(refusePath, JSON.stringify(refused, null, 2));
+        return okJson(kind, command, {
+          ...refused,
+          path: refusePath,
+          ok: false,
+        });
+      }
+      const overwriteEnv = String(
+        process.env.BITBOT_COPYBOX_OVERWRITE || "",
+      )
+        .trim()
+        .toLowerCase();
+      // CM-0704: CopyFromBox defaults to Refuse when dest exists unless allow.
+      const overwrite =
+        overwriteArg ||
+        overwriteEnv ||
+        (kind === "copy_from_box" ? "refuse" : "allow");
+      if (
+        kind === "copy_from_box" &&
+        overwrite === "refuse" &&
+        fs.existsSync(destAbs)
+      ) {
+        const copyDir = path.join(REPO_ROOT, "data", "box-copy");
+        fs.mkdirSync(copyDir, { recursive: true });
+        const refusePath = path.join(
+          copyDir,
+          `${kind}-overwrite-refuse-${Date.now().toString(36)}.json`,
+        );
+        const priorBytes = fs.statSync(destAbs).size;
+        const refused = {
+          kind,
+          machine_id: machineId,
+          src: srcAbs,
+          dest: destAbs,
+          bytes: priorBytes,
+          refused: true,
+          overwrite: "refuse",
+          pretend_remote_machine: false,
+          cross_machine_copy_residual: Boolean(machineId),
+          error: "CopyFromBox: dest exists and overwrite=Refuse",
+          mode: "host_copybox_overwrite_refuse",
+          at,
+        };
+        fs.writeFileSync(refusePath, JSON.stringify(refused, null, 2));
+        return okJson(kind, command, {
+          ...refused,
+          path: refusePath,
+          ok: false,
+        });
+      }
       fs.mkdirSync(path.dirname(destAbs), { recursive: true });
       fs.copyFileSync(srcAbs, destAbs);
       const copyDir = path.join(REPO_ROOT, "data", "box-copy");
@@ -1608,6 +1823,14 @@ function createHostFfi(repoRoot) {
         `${kind}-${Date.now().toString(36)}.json`,
       );
       const bytes = fs.existsSync(destAbs) ? fs.statSync(destAbs).size : 0;
+      const srcSha = crypto
+        .createHash("sha256")
+        .update(fs.readFileSync(srcAbs))
+        .digest("hex");
+      const destSha = crypto
+        .createHash("sha256")
+        .update(fs.readFileSync(destAbs))
+        .digest("hex");
       // Cross-machine: optional scp when BITBOT_COPYBOX_SSH + remote host mapped.
       let remote = {
         attempted: false,
@@ -1657,6 +1880,10 @@ function createHostFfi(repoRoot) {
         src: srcAbs,
         dest: destAbs,
         bytes,
+        sha256_src: srcSha,
+        sha256_dest: destSha,
+        binary_intact: srcSha === destSha,
+        overwrite,
         under_repo: true,
         pretend_remote_machine: false,
         remote,
@@ -5480,6 +5707,11 @@ function createHostFfi(repoRoot) {
         skills_list: "list_skills",
         journal_query: "journal_tail",
         journal_tail: "journal_tail",
+        make_slides: "host_slides_pptx",
+        render_pptx: "host_slides_pptx",
+        generate_pptx: "host_slides_pptx",
+        search_posts: "host_x_search",
+        x_search: "host_x_search",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -5545,6 +5777,82 @@ function createHostFfi(repoRoot) {
           ),
           stderr: "",
         };
+      }
+      // Short-circuit slides/X onto existing Host handlers (not echo stdio).
+      if (mapped === "host_slides_pptx" || mapped === "host_x_search") {
+        const shortAt = new Date().toISOString();
+        if (mapped === "host_slides_pptx") {
+          const title =
+            String(args.title || args.body || args.q || "MCP deck").slice(0, 200);
+          const slidesRes = await executeSlidesPptx("|" + title);
+          let slidesPayload = {};
+          try {
+            slidesPayload = JSON.parse(slidesRes.stdout || "{}");
+          } catch {
+            slidesPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "slides_pptx",
+            slides: {
+              pptx_path: slidesPayload.pptx_path || slidesPayload.path || null,
+              pptx_pk_magic_ok: slidesPayload.pptx_pk_magic_ok,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(slidesRes.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(slidesRes.ok),
+            slides: slidesPayload,
+          });
+        }
+        const q = String(
+          args.q || args.query || args.body || "",
+        ).trim() || "(empty)";
+        const xResults = await executeHostEffects([
+          { kind: "x_search", command: q },
+        ]);
+        const xHit = (xResults || []).find((r) => r && r.kind === "x_search");
+        let xPayload = {};
+        try {
+          xPayload = JSON.parse((xHit && xHit.stdout) || "{}");
+        } catch {
+          xPayload = {};
+        }
+        const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+          tool: toolName,
+          mapped,
+          host_kind: "x_search",
+          x_search: {
+            path: xPayload.path || null,
+            mode: xPayload.mode || null,
+            hit_count: xPayload.hit_count,
+            live_x_residual: xPayload.live_x_residual,
+          },
+          product_tool_residual: false,
+          pretend_ok: false,
+          ok: Boolean(xHit && xHit.ok),
+          at: shortAt,
+        });
+        return okJson(kind, command, {
+          ...callArtifact,
+          tool: toolName,
+          mapped,
+          product_tool_residual: false,
+          path: snapPath,
+          pretend_ok: false,
+          ok: Boolean(xHit && xHit.ok),
+          x_search: xPayload,
+        });
       }
       if (mapped === "echo_body" && args.body == null) {
         args = { body: JSON.stringify(args), source_ref: left };
@@ -10816,9 +11124,15 @@ function createHostFfi(repoRoot) {
           };
         }
       }
+      const callId =
+        action === "start"
+          ? `call-${slug || "voice"}-${Date.now().toString(36)}`
+          : (rows.find((r) => r && r.voice_address === address) || {}).call_id ||
+            `call-${slug || "voice"}`;
       const row = {
         action,
         voice_address: address,
+        call_id: callId,
         live: action === "start",
         relay_log: [],
         media_path: media.path,
@@ -10826,8 +11140,14 @@ function createHostFfi(repoRoot) {
         at,
       };
       const idx = rows.findIndex((r) => r && r.voice_address === address);
-      if (idx >= 0) rows[idx] = { ...rows[idx], ...row };
-      else rows.push(row);
+      if (idx >= 0) {
+        rows[idx] = {
+          ...rows[idx],
+          ...row,
+          call_id: rows[idx].call_id || callId,
+          relay_log: rows[idx].relay_log || [],
+        };
+      } else rows.push(row);
       writeJsonArray(VOICE_SESSIONS_PATH, rows);
       const sessDir = path.join(REPO_ROOT, "data", "voice", "session-actions");
       fs.mkdirSync(sessDir, { recursive: true });
@@ -10839,6 +11159,7 @@ function createHostFfi(repoRoot) {
         stored: true,
         action,
         voice_address: address,
+        call_id: (rows[idx >= 0 ? idx : rows.length - 1] || row).call_id || callId,
         live: row.live,
         media_ok: Boolean(media.ok),
         media_path: media.path,
@@ -10928,15 +11249,17 @@ function createHostFfi(repoRoot) {
         }
       }
       writeJsonArray(VOICE_SESSIONS_PATH, rows);
-      const endDir = path.join(REPO_ROOT, "data", "voice", "ends");
+      // CM-2005: durable end under data/voice/voice-calls/ with app_summary.
+      const endDir = path.join(REPO_ROOT, "data", "voice", "voice-calls");
       fs.mkdirSync(endDir, { recursive: true });
       const endArtifactPath = path.join(
         endDir,
-        `end-${Date.now().toString(36)}.json`,
+        `end-${callId || Date.now().toString(36)}.json`,
       );
       const endArtifact = {
         call_id: callId,
         summary_path: outPath,
+        app_summary: summary.slice(0, 2000),
         summary_prefix: summary.slice(0, 120),
         media_path: mediaPath,
         media_ok: mediaOk,
@@ -10946,7 +11269,14 @@ function createHostFfi(repoRoot) {
         at,
       };
       fs.writeFileSync(endArtifactPath, JSON.stringify(endArtifact, null, 2));
-      appendJsonl(path.join(endDir, "ends.jsonl"), {
+      // Keep legacy ends/ ledger pointer for older smokes.
+      const legacyEnds = path.join(REPO_ROOT, "data", "voice", "ends");
+      fs.mkdirSync(legacyEnds, { recursive: true });
+      appendJsonl(path.join(legacyEnds, "ends.jsonl"), {
+        ...endArtifact,
+        path: endArtifactPath,
+      });
+      appendJsonl(path.join(endDir, "calls.jsonl"), {
         ...endArtifact,
         path: endArtifactPath,
       });
@@ -10968,10 +11298,11 @@ function createHostFfi(repoRoot) {
         at,
       });
       return okJson(kind, cmd, {
-        path: outPath,
+        ...endArtifact,
+        path: endArtifactPath,
+        summary_path: outPath,
         end_artifact_path: endArtifactPath,
         bytes: Buffer.byteLength(summary + "\n"),
-        summary_prefix: summary.slice(0, 120),
         media_path: mediaPath,
         media_ok: mediaOk,
         pretend_still_live: false,
