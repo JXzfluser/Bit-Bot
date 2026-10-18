@@ -80,7 +80,14 @@ enum SendToUserSurface {
       "voice_stt_residual", "voice_tts_residual", "cross_machine_copy_residual",
     ]
     if let hit = keys.first(where: { (p[$0] as? Bool) == true }) {
-      return "/" + hit
+      let base = "/" + hit
+      if (p["widget_degraded"] as? Bool) == true {
+        return base + "/widget_degraded"
+      }
+      return base
+    }
+    if (p["widget_degraded"] as? Bool) == true {
+      return "/widget_degraded"
     }
     if let oc = p["outcome"] as? [String: Any] {
       if (oc["live_paid_residual"] as? Bool) == true { return "/live_paid_residual" }

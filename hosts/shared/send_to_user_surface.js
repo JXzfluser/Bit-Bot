@@ -94,6 +94,8 @@ function residualSuffix(p) {
   for (const k of keys) {
     if (p[k] === true) parts.push("/" + k);
   }
+  // CM-1104 honesty chip (not a residual key): surface when Host stripped widgets.
+  if (p.widget_degraded === true) parts.push("/widget_degraded");
   // Nested CU outcome / vision residuals (append all open, like Desktop chips).
   const oc = p.outcome || {};
   if (oc.live_paid_residual === true && !parts.includes("/live_paid_residual"))

@@ -639,6 +639,7 @@ assert 'live_webhook_residual' in shared
 assert 'personal-dm:' in html
 assert 'p.live_post === true' in html or "p.live_post === true" in html
 assert 'widget_degraded' in html
+assert 'widget_degraded' in shared
 mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
 assert 'payload.media_path' in mobile
@@ -662,6 +663,8 @@ for needle in (
   'voice_stt_residual',
   'voice_tts_residual',
   'inbound_turn_residual',
+  'inbound_push_residual',
+  'widget_degraded',
   'box_doctor_bin_residual',
   'box_chrome_bin_residual',
   'long_lived_cron_residual',
@@ -701,6 +704,8 @@ for needle in (
   'cross_machine_copy_residual',
   'voice_stt_residual',
   'voice_tts_residual',
+  'widget_degraded',
+  'inbound_push_residual',
 ):
   assert needle in ios, needle
   assert needle in android, needle
@@ -843,8 +848,8 @@ SLACK_MOCK_PID=$!
 sleep 0.4
 BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_POST=1 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: live mock body" >/tmp/bitbot-slack-live.json || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-slack-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('live_slack_residual') is False;assert p.get('pretend_live') is False;assert p.get('mode')=='live_slack';assert p.get('ts');print('channel_send slack live mock ok', p.get('mode'), 'ts', p.get('ts'))"
-BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_CLAIM=1 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: claim live" >/tmp/bitbot-slack-claim-live.json || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_slack_claim';assert p.get('claimed_count',0)>=1;assert (p.get('claim') or {}).get('ok') is True or p.get('ok') is True;assert os.path.isfile('data/channels/inbound.jsonl');rows=open('data/channels/inbound.jsonl').read();assert 'live_slack_claim' in rows;print('channel_send slack live claim ok', 'claimed', p.get('claimed_count'))"
+BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_CLAIM=1 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: claim live [widget:decision_card]" >/tmp/bitbot-slack-claim-live.json || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_slack_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_slack_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert (p.get('claim') or {}).get('ok') is True or p.get('ok') is True;assert p.get('pretend_live') is False;assert os.path.isfile('data/channels/inbound.jsonl');rows=open('data/channels/inbound.jsonl').read();assert 'live_slack_claim' in rows;print('channel_send slack live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
 BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_POST=1 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke thread_ts=1710000000.000060 :: live thread mock" >/tmp/bitbot-slack-live-thread.json || true
 kill "$SLACK_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SLACK_MOCK_PID" 2>/dev/null || true
@@ -893,6 +898,14 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-copy-scp.json'));h=next
 rm -f uploads/box-out.txt
 node hosts/cli_host/run_turn.js "copy from box machine=desk-1 box=uploads/box-dest.txt dest=uploads/box-out.txt" >/tmp/bitbot-copy-from-box.json
 python3 -c "import json,os,glob;d=json.load(open('/tmp/bitbot-copy-from-box.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='copy_from_box');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('uploads/box-out.txt');assert p.get('binary_intact') is True;assert glob.glob('data/box-copy/copy_from_box-*.json');print('copy_from_box artifact ok', p.get('path'), 'bytes', p.get('bytes'))"
+# Cross-machine SCP mock closes residual on copy_from_box (parity with copy_to_box).
+rm -rf /tmp/bitbot-scp-mock-from
+mkdir -p /tmp/bitbot-scp-mock-from
+rm -f uploads/box-out-scp.txt
+BITBOT_COPYBOX_REMOTE=1 BITBOT_COPYBOX_SSH=smoke@127.0.0.1 \
+  BITBOT_SCP_BIN="$ROOT/scripts/host_scp_mock.sh" BITBOT_SCP_MOCK_LOG_DIR=/tmp/bitbot-scp-mock-from \
+  node hosts/cli_host/run_turn.js "copy from box machine=desk-1 box=uploads/box-dest.txt dest=uploads/box-out-scp.txt" >/tmp/bitbot-copy-from-scp.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-copy-from-scp.json'));h=next(x for x in d['host_results'] if x.get('kind')=='copy_from_box');p=json.loads(h['stdout']);assert p.get('ok') is True;assert p.get('cross_machine_copy_residual') is False;remote=p.get('remote') or {};assert remote.get('attempted') is True;assert remote.get('ok') is True;assert remote.get('host')=='smoke@127.0.0.1';assert os.path.isfile('uploads/box-out-scp.txt');assert os.path.isfile('/tmp/bitbot-scp-mock-from/last-scp.json');print('copy_from_box SCP mock residual close ok', remote.get('scp_bin'), p.get('path'))"
 # CM-0703 size refuse + CM-0704 overwrite refuse
 python3 -c "p='uploads/huge-box.bin';f=open(p,'wb');f.seek(100*1024*1024);f.write(b'x');f.close()"
 node hosts/cli_host/run_turn.js "copy to box machine=desk-1 src=uploads/huge-box.bin dest=uploads/huge-out.bin" >/tmp/bitbot-copy-huge.json
@@ -1389,6 +1402,15 @@ BITBOT_MAIL_CLAIM_API_URL=http://127.0.0.1:18780 BITBOT_MAIL_CLAIM_TOKEN=smoke-c
 kill "$MAIL_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
 wait "$MAIL_CLAIM_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_claim_inbox');p=json.loads(h['stdout']);assert p.get('mode')=='live_mail_claim_inbox';assert p.get('live_mail_claim_residual') is False;assert p.get('live_claim') is True;assert p.get('claimed_count',0)>=1;assert 'live_mail_claim' in open(p['inbound_path']).read();assert p.get('pretend_claimed') is False;print('mail_claim_inbox live mock residual close ok', p.get('claimed_count'), p.get('path'))"
+# Live mail claim + inbound turn closes inbound_turn_residual (parity with webhook wake).
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18781 --mode mail_claim --token smoke-claim >/tmp/bitbot-mail-claim-turn-mock.log 2>&1 &
+MAIL_CLAIM_TURN_MOCK_PID=$!
+sleep 0.4
+BITBOT_MAIL_CLAIM_API_URL=http://127.0.0.1:18781 BITBOT_MAIL_CLAIM_TOKEN=smoke-claim BITBOT_MAIL_CLAIM_POST=1 BITBOT_INBOUND_TURN=1 \
+  node hosts/cli_host/run_turn.js --approved "claim inbox alpha" >/tmp/bitbot-mail-claim-turn.json || true
+kill "$MAIL_CLAIM_TURN_MOCK_PID" >/dev/null 2>&1 || true
+wait "$MAIL_CLAIM_TURN_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_claim_inbox');p=json.loads(h['stdout']);assert p.get('live_mail_claim_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;print('mail_claim_inbox inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 # Inbound HTTP push wake (no turn prompt)
 python3 "$ROOT/scripts/host_webhook_listen.py" --port 18791 >/tmp/bitbot-wh-listen.log 2>&1 &
 WH_LISTEN_PID=$!

@@ -83,8 +83,12 @@ object SendToUserSurface {
       "voice_stt_residual", "voice_tts_residual", "cross_machine_copy_residual",
     )
     for (k in keys) {
-      if (p.optBoolean(k, false)) return "/$k"
+      if (p.optBoolean(k, false)) {
+        val base = "/$k"
+        return if (p.optBoolean("widget_degraded", false)) "$base/widget_degraded" else base
+      }
     }
+    if (p.optBoolean("widget_degraded", false)) return "/widget_degraded"
     val oc = p.optJSONObject("outcome")
     if (oc != null) {
       if (oc.optBoolean("live_paid_residual", false)) return "/live_paid_residual"

@@ -1143,17 +1143,21 @@ function createHostFfi(repoRoot) {
         });
       }
       // Claim-only path (no live post): still durable outbound draft + inbound evidence.
+      // Live claim closes residual (parity with Teams/meeting claim); sandbox/fail leave it open.
       if (claim) {
+        const claimOk = Boolean(claim.ok);
         const entry = {
           scheme,
           address: addr,
-          body,
+          body: outboundBody,
           mode: "live_slack_claim",
-          ok: Boolean(claim.ok),
+          ok: claimOk,
           live_post: false,
-          live_slack_residual: true,
+          live_slack_residual: !claimOk,
           pretend_live: false,
+          widget_degraded: widgetDegraded,
           claimed_count: claim.claimed_count,
+          claim,
           connector_ready: connectorReady,
           at: stamp,
           inbound: inboundPath,
@@ -1163,8 +1167,8 @@ function createHostFfi(repoRoot) {
           outboundPath,
           inbound: inboundPath,
           claim,
-          ok: Boolean(claim.ok),
-          error: claim.ok ? "" : claim.error,
+          ok: claimOk,
+          error: claimOk ? "" : claim.error,
         });
       }
       // Sandbox inbound claim rehearsal when CLAIM=1 but no live token (honest: not live).

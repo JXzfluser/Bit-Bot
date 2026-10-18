@@ -2922,6 +2922,7 @@
                   label =
                     "ch:" +
                     (p.mode || p.scheme || "send") +
+                    (p.widget_degraded === true ? "/widget_degraded" : "") +
                     (p.path ? "/snap" : "") +
                     (p.live_slack_residual === true
                       ? "/live_slack_residual"
@@ -2960,6 +2961,7 @@
                         : "") +
                       (p.call_id ? " · " + p.call_id : "") +
                       (p.thread_ts ? " · thread" : "") +
+                      (p.widget_degraded === true ? " · widget_degraded" : "") +
                       (p.live_slack_residual === true
                         ? " · live_slack_residual"
                         : "") +

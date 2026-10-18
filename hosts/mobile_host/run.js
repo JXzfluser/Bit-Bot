@@ -283,6 +283,8 @@ try {
         live_mail_residual: payload.live_mail_residual === true,
         live_mail_claim_residual: payload.live_mail_claim_residual === true,
         live_channel_residual: payload.live_channel_residual === true,
+        widget_degraded: payload.widget_degraded === true,
+        inbound_push_residual: payload.inbound_push_residual === true,
         live_slack_residual: payload.live_slack_residual === true,
         live_teams_residual: payload.live_teams_residual === true,
         live_meeting_residual: payload.live_meeting_residual === true,
