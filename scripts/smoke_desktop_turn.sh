@@ -312,6 +312,20 @@ assert 'id=\"box-clock\"' in html and 'id=\"box-chrome\"' in html
 assert 'box doctor' in html and 'box chrome probe' in html
 print('desktop box panel wired ok')
 "
+python3 -c "
+from pathlib import Path
+html=Path('hosts/desktop/index.html').read_text()
+assert 'id=\"tm-create\"' in html and 'id=\"tm-members\"' in html
+assert 'id=\"tm-room\"' in html and 'id=\"tm-send\"' in html
+assert 'create teammate id=asst-desktop' in html
+assert 'members panel' in html
+assert 'id=\"mail-meta\"' in html
+assert 'id=\"mail-draft\"' in html and 'id=\"mail-schedule\"' in html
+assert 'id=\"mail-purchase\"' in html and 'id=\"mail-search\"' in html
+assert 'draft mail to=desktop@example.com' in html
+assert 'schedule meeting title=DesktopSync' in html
+print('desktop teammates + mail/commerce panels wired ok')
+"
 node hosts/cli_host/run_turn.js "uninstall plugin plugin-slides" >/tmp/bitbot-mcp-uninstall.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-uninstall.json'));assert d.get('intent')=='uninstall_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_uninstall');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_uninstalled') is False;assert p.get('namespace')=='user-Slides';assert p.get('status')=='Unavailable';assert p.get('usable') is False;assert p.get('namespace_gone') is True;assert p.get('path') and os.path.isfile(p['path']);cat=json.load(open(p['catalog_path']));assert (cat.get('namespaces') or {}).get('user-Slides',{}).get('usable') is False;assert 'plugin-slides' not in (cat.get('installed_plugins') or []);print('mcp_uninstall Unavailable ok', p.get('namespace'), p.get('path'))"
 echo "==> Desktop Electron Host smoke turn (ADR 0005 product path)"
