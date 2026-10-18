@@ -3093,6 +3093,551 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  function notifyStorePath() {
+    return path.join(REPO_ROOT, "data", "settings", "notify.json");
+  }
+
+  function loadNotifyStore() {
+    try {
+      const p = notifyStorePath();
+      if (!fs.existsSync(p)) return {};
+      const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+      return raw && typeof raw === "object" ? raw : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function defaultNotify(assistantId) {
+    return {
+      assistant_id: assistantId,
+      desktop: true,
+      sound: true,
+      mentions_only: false,
+      routines: true,
+      channels: true,
+    };
+  }
+
+  function normalizeNotifyToggle(toggle) {
+    const t = String(toggle || "").toLowerCase().replace(/^notify\./, "");
+    if (t === "desktop") return "desktop";
+    if (t === "sound") return "sound";
+    if (t === "mentions-only" || t === "mentions_only" || t === "mentions") {
+      return "mentions_only";
+    }
+    if (t === "routines") return "routines";
+    if (t === "channels") return "channels";
+    return null;
+  }
+
+  async function executeNotifySettings(command) {
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "settings");
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let assistantId = "asst-alpha";
+    const m = raw.match(/\bassistant=([^\s]+)/i);
+    if (m) assistantId = m[1].trim();
+    else if (raw.trim() && !raw.includes("=")) assistantId = raw.trim();
+    const store = loadNotifyStore();
+    const settings = store[assistantId] || defaultNotify(assistantId);
+    if (!store[assistantId]) {
+      store[assistantId] = settings;
+      fs.writeFileSync(notifyStorePath(), JSON.stringify(store, null, 2));
+    }
+    const snapPath = path.join(
+      opsDir,
+      `notify-${assistantId.replace(/[^\w.-]+/g, "_")}-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_notify_settings",
+      pretend_global: false,
+      assistant_scoped: true,
+      ...settings,
+      toggles: {
+        desktop: settings.desktop,
+        sound: settings.sound,
+        mentions_only: settings.mentions_only,
+        routines: settings.routines,
+        channels: settings.channels,
+      },
+      store_path: notifyStorePath(),
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "notify_settings",
+      path: snapPath,
+      label: "notify_settings",
+      assistant_id: assistantId,
+      source_kind: "notify_settings",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "notify_settings",
+      command: raw || assistantId,
+      path: snapPath,
+      assistant_id: assistantId,
+      at,
+    });
+    return okJson("notify_settings", raw || assistantId, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeSetNotify(command) {
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "settings");
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let assistantId = "asst-alpha";
+    let toggleRaw = "sound";
+    let enabled = false;
+    const am = raw.match(/\bassistant=([^\s]+)/i);
+    if (am) assistantId = am[1].trim();
+    const tm = raw.match(/\btoggle=([^\s]+)/i);
+    if (tm) toggleRaw = tm[1].trim();
+    if (/\benabled=1\b/i.test(raw)) enabled = true;
+    else if (/\benabled=0\b/i.test(raw)) enabled = false;
+    const toggle = normalizeNotifyToggle(toggleRaw);
+    if (!toggle) {
+      const snapPath = path.join(
+        opsDir,
+        `notify-bad-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_set_notify",
+        ok: false,
+        refused: true,
+        pretend_updated: false,
+        error: "CM-0206: unknown notify toggle",
+        toggle: toggleRaw,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("set_notify", raw || "set", { ...artifact, path: snapPath });
+    }
+    const store = loadNotifyStore();
+    const settings = {
+      ...(store[assistantId] || defaultNotify(assistantId)),
+      assistant_id: assistantId,
+    };
+    settings[toggle] = enabled;
+    store[assistantId] = settings;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(notifyStorePath(), JSON.stringify(store, null, 2));
+    // Isolation check: other assistants unchanged.
+    const otherId = assistantId === "asst-beta" ? "asst-alpha" : "asst-beta";
+    const other = store[otherId] || defaultNotify(otherId);
+    const snapPath = path.join(
+      opsDir,
+      `set-notify-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_set_notify",
+      pretend_updated: false,
+      assistant_scoped: true,
+      assistant_id: assistantId,
+      toggle,
+      enabled,
+      settings,
+      other_assistant_id: otherId,
+      other_unaffected: other[toggle] !== undefined,
+      store_path: notifyStorePath(),
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "notify_settings",
+      path: snapPath,
+      label: "set_notify",
+      assistant_id: assistantId,
+      toggle,
+      enabled,
+      source_kind: "set_notify",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "set_notify",
+      command: raw,
+      path: snapPath,
+      assistant_id: assistantId,
+      toggle,
+      enabled,
+      at,
+    });
+    return okJson("set_notify", raw, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  function updateComputerStatePath() {
+    return path.join(REPO_ROOT, "data", "box", "update-computer.json");
+  }
+
+  function localExecutionPath() {
+    return path.join(REPO_ROOT, "data", "settings", "local-execution.json");
+  }
+
+  function loadLocalExecution() {
+    try {
+      const p = localExecutionPath();
+      if (!fs.existsSync(p)) return { enabled: true };
+      const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+      return { enabled: raw.enabled !== false };
+    } catch {
+      return { enabled: true };
+    }
+  }
+
+  async function executeUpdateComputer(command) {
+    // CM-1903 — two-step confirm; prefer guide over Reset; preserve files/logins.
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "box");
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let step = 0;
+    const cm = raw.match(/\bconfirm=(\d+)/i);
+    if (cm) step = Number(cm[1]) || 0;
+    else if (/\bconfirm\b/i.test(raw)) step = 1;
+
+    let state = { confirms: 0, guide_preferred: true, session_jar: true };
+    try {
+      if (fs.existsSync(updateComputerStatePath())) {
+        state = {
+          ...state,
+          ...JSON.parse(fs.readFileSync(updateComputerStatePath(), "utf8")),
+        };
+      }
+    } catch {
+      /* keep defaults */
+    }
+
+    if (step <= 0) {
+      state.confirms = 0;
+      state.phase = "awaiting_confirm_1";
+      fs.writeFileSync(updateComputerStatePath(), JSON.stringify(state, null, 2));
+      const snapPath = path.join(
+        opsDir,
+        `update-await1-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_update_computer",
+        pretend_updated: false,
+        phase: "awaiting_confirm_1",
+        confirms: 0,
+        two_step_ready: false,
+        guide_before_reset: true,
+        preferred_over_reset: true,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("update_computer", raw || "update", {
+        ...artifact,
+        path: snapPath,
+        ok: true,
+      });
+    }
+
+    state.confirms = Math.min(2, (state.confirms || 0) + 1);
+    if (state.confirms < 2) {
+      state.phase = "awaiting_confirm_2";
+      fs.writeFileSync(updateComputerStatePath(), JSON.stringify(state, null, 2));
+      const snapPath = path.join(
+        opsDir,
+        `update-await2-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_update_computer",
+        pretend_updated: false,
+        phase: "awaiting_confirm_2",
+        confirms: state.confirms,
+        two_step_ready: false,
+        guide_before_reset: true,
+        error: null,
+        note: "CM-1903: need second confirm step",
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("update_computer", raw || "confirm", {
+        ...artifact,
+        path: snapPath,
+        ok: true,
+      });
+    }
+
+    // Complete update: preserve workspace files + session jar; software needs reinstall.
+    const notesPath = path.join(REPO_ROOT, "data", "box", "workspace-notes.txt");
+    if (!fs.existsSync(notesPath)) {
+      fs.writeFileSync(notesPath, "keep-me\n");
+    }
+    const jarPath = path.join(dir, "session-jar.json");
+    let jar = { domain: "box.local", cookie: "login-product-1903" };
+    if (fs.existsSync(jarPath)) {
+      try {
+        jar = JSON.parse(fs.readFileSync(jarPath, "utf8"));
+      } catch {
+        /* keep */
+      }
+    } else {
+      fs.writeFileSync(jarPath, JSON.stringify(jar, null, 2));
+    }
+    state = {
+      confirms: 0,
+      phase: "completed",
+      guide_preferred: true,
+      session_jar: true,
+      software_needs_reinstall: true,
+      files_preserved: fs.existsSync(notesPath),
+      last_updated_at: at,
+    };
+    fs.writeFileSync(updateComputerStatePath(), JSON.stringify(state, null, 2));
+    const snapPath = path.join(
+      opsDir,
+      `update-done-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_update_computer",
+      pretend_updated: false,
+      phase: "completed",
+      two_step_confirmed: true,
+      two_step_ready: true,
+      guide_before_reset: true,
+      preferred_over_reset: true,
+      session_jar_intact: true,
+      software_needs_reinstall: true,
+      files_preserved: true,
+      notes_path: notesPath,
+      jar_path: jarPath,
+      jar_domain: jar.domain || null,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "update_computer",
+      path: snapPath,
+      label: "update_computer",
+      phase: "completed",
+      source_kind: "update_computer",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "update_computer",
+      command: raw || "confirm=2",
+      path: snapPath,
+      phase: "completed",
+      at,
+    });
+    return okJson("update_computer", raw || "confirm=2", {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeResetComputer(command) {
+    // CM-1904 — visible but not preferred vs Update Computer.
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "box");
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const snapPath = path.join(
+      opsDir,
+      `reset-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_reset_computer",
+      pretend_reset: false,
+      open: true,
+      preferred: false,
+      not_preferred_vs_update: true,
+      prefer_update_computer: true,
+      warning: "May discard unsynced work; prefer Update Computer guide",
+      deep_link: "grokbot://app/v1/settings?id=reset-computer",
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "reset_computer",
+      path: snapPath,
+      label: "reset_computer",
+      preferred: false,
+      source_kind: "reset_computer",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "reset_computer",
+      command: String(command || "open"),
+      path: snapPath,
+      at,
+    });
+    return okJson("reset_computer", String(command || "open"), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeLocalExecution(command) {
+    // CM-1905 — persist local-execution; off rejects machine use.
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "settings");
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let enabled = true;
+    if (/\benabled=0\b/i.test(raw) || /\boff\b/i.test(raw)) enabled = false;
+    if (/\benabled=1\b/i.test(raw) || /\bon\b/i.test(raw)) enabled = true;
+    const state = { enabled, at, deep_link: "grokbot://app/v1/settings?id=local-execution" };
+    fs.writeFileSync(localExecutionPath(), JSON.stringify(state, null, 2));
+    const machineRejected = !enabled;
+    const snapPath = path.join(
+      opsDir,
+      `local-exec-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_local_execution",
+      pretend_on: false,
+      enabled,
+      machine_use_rejected: machineRejected,
+      reject_reason: machineRejected
+        ? "CM-1905: local-execution off rejects machine"
+        : null,
+      state_path: localExecutionPath(),
+      deep_link: state.deep_link,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "local_execution",
+      path: snapPath,
+      label: "local_execution",
+      enabled,
+      source_kind: "local_execution",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "local_execution",
+      command: raw || (enabled ? "on" : "off"),
+      path: snapPath,
+      enabled,
+      at,
+    });
+    return okJson("local_execution", raw || (enabled ? "on" : "off"), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeGuidePermission(command) {
+    // CM-2178 — guide to Settings; never pretend connected.
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "settings");
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let kind = "needs-auth";
+    let detail = "user-Gmail";
+    const km = raw.match(/\bkind=([^\s]+)/i);
+    if (km) kind = km[1].trim().toLowerCase();
+    const dm =
+      raw.match(/\bdetail=([^\s]+)/i) ||
+      raw.match(/\bns=([^\s]+)/i) ||
+      raw.match(/\btool=([^\s]+)/i);
+    if (dm) detail = dm[1].trim();
+
+    let anchor = "account";
+    let label = kind + ":" + detail;
+    if (kind === "needs-auth" || kind === "needs-grant") {
+      anchor = "account";
+      label = kind + ":" + detail;
+    } else if (
+      kind === "local-execution" ||
+      kind === "local-execution-disabled"
+    ) {
+      anchor = "local-execution";
+      label = "local-execution-disabled";
+    } else if (kind === "device-tool" || kind === "device") {
+      anchor = "computers";
+      label = "device-tool:" + detail;
+    }
+
+    const deepLink = "grokbot://app/v1/settings?id=" + anchor;
+    const guidance =
+      "Permission missing (" +
+      label +
+      "). Open Settings → " +
+      deepLink +
+      " to connect or grant access. Do not pretend connected.";
+    const pretends = /already connected|you're connected|nothing to do/i.test(
+      guidance,
+    );
+    const snapPath = path.join(
+      opsDir,
+      `guide-perm-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_guide_permission",
+      pretend_connected: false,
+      pretends_connected: pretends,
+      guides_to_settings: true,
+      kind,
+      detail,
+      label,
+      anchor,
+      deep_link: deepLink,
+      guidance,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    // Also open settings panel state for Desktop.
+    await executeSettingsOpen(
+      "entry=sidebar-account-button anchor=" + anchor,
+    );
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "permission_guide",
+      path: snapPath,
+      label: "guide_permission",
+      deep_link: deepLink,
+      pretends_connected: false,
+      source_kind: "guide_permission",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "guide_permission",
+      command: raw,
+      path: snapPath,
+      deep_link: deepLink,
+      at,
+    });
+    return okJson("guide_permission", raw, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeSharedBoxFs(command) {
     // CM-2174 product Host — same box shared FS; distinct per-agent desktops.
     const at = new Date().toISOString();
@@ -5355,6 +5900,12 @@ function createHostFfi(repoRoot) {
       kind === "hide_agent" ||
       kind === "list_agents_sidebar" ||
       kind === "members_panel" ||
+      kind === "notify_settings" ||
+      kind === "set_notify" ||
+      kind === "update_computer" ||
+      kind === "reset_computer" ||
+      kind === "local_execution" ||
+      kind === "guide_permission" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -10688,6 +11239,30 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "members_panel") {
         results.push(await executeMembersPanel(cmd));
+        continue;
+      }
+      if (kind === "notify_settings") {
+        results.push(await executeNotifySettings(cmd));
+        continue;
+      }
+      if (kind === "set_notify") {
+        results.push(await executeSetNotify(cmd));
+        continue;
+      }
+      if (kind === "update_computer") {
+        results.push(await executeUpdateComputer(cmd));
+        continue;
+      }
+      if (kind === "reset_computer") {
+        results.push(await executeResetComputer(cmd));
+        continue;
+      }
+      if (kind === "local_execution") {
+        results.push(await executeLocalExecution(cmd));
+        continue;
+      }
+      if (kind === "guide_permission") {
+        results.push(await executeGuidePermission(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

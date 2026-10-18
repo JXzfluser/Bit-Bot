@@ -134,6 +134,12 @@ pub(all) enum TurnIntent {
   HideAgent(agent_id~ : String, hidden~ : Bool)
   ListAgentsSidebar
   MembersPanel(group_id~ : String)
+  NotifySettings(assistant_id~ : String)
+  SetNotify(assistant_id~ : String, toggle~ : String, enabled~ : Bool)
+  UpdateComputer(confirm_step~ : Int32)
+  ResetComputer
+  LocalExecution(enabled~ : Bool)
+  GuidePermission(kind~ : String, detail~ : String)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -230,6 +236,12 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     HideAgent(_) => "hide_agent"
     ListAgentsSidebar => "list_agents_sidebar"
     MembersPanel(_) => "members_panel"
+    NotifySettings(_) => "notify_settings"
+    SetNotify(_) => "set_notify"
+    UpdateComputer(_) => "update_computer"
+    ResetComputer => "reset_computer"
+    LocalExecution(_) => "local_execution"
+    GuidePermission(_) => "guide_permission"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -768,6 +780,14 @@ fn extract_kv(rest : String, key : String) -> String? {
         " packages=",
         " group=",
         " hidden=",
+        " assistant=",
+        " toggle=",
+        " enabled=",
+        " confirm=",
+        " kind=",
+        " ns=",
+        " tool=",
+        " detail=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -3474,6 +3494,107 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Members panel planned (CM-1405). Host lists teammates under info-panel members anchor.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    NotifySettings(assistant_id~) => {
+      let effect : DesktopEffect = {
+        kind: "notify_settings",
+        command: "assistant=" + assistant_id,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Notify settings planned (CM-0206). Host returns per-assistant desktop/sound/mentions toggles.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    SetNotify(assistant_id~, toggle~, enabled~) => {
+      let effect : DesktopEffect = {
+        kind: "set_notify",
+        command: "assistant=" +
+          assistant_id +
+          " toggle=" +
+          toggle +
+          " enabled=" +
+          (if enabled { "1" } else { "0" }),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Set notify planned (CM-0206). Host updates assistant-scoped toggle only.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    UpdateComputer(confirm_step~) => {
+      let effect : DesktopEffect = {
+        kind: "update_computer",
+        command: "confirm=" + confirm_step.to_string(),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Update Bot's Computer planned (CM-1903). Host requires two-step confirm; prefer guide over Reset.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    ResetComputer => {
+      let effect : DesktopEffect = {
+        kind: "reset_computer",
+        command: "open",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Reset Bot's Computer planned (CM-1904). Host marks not preferred vs Update Computer.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    LocalExecution(enabled~) => {
+      let effect : DesktopEffect = {
+        kind: "local_execution",
+        command: if enabled { "enabled=1" } else { "enabled=0" },
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Local execution setting planned (CM-1905). Host persists switch; off rejects machine use.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    GuidePermission(kind~, detail~) => {
+      let effect : DesktopEffect = {
+        kind: "guide_permission",
+        command: "kind=" + kind + " detail=" + detail,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Missing-permission Settings guide planned (CM-2178). Host must not pretend connected.",
         intent,
         ctx~,
         effects=[effect],

@@ -588,6 +588,121 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(HideAgent(agent_id~, hidden~))
     }
   }
+  // CM-0206 product Host per-assistant notification settings.
+  if low.has_prefix("notify settings ") ||
+      low == "notify settings" ||
+      low.has_prefix("show notify ") {
+    let rest = if low.has_prefix("notify settings ") {
+      trimmed[16:].trim().to_owned()
+    } else if low.has_prefix("show notify ") {
+      trimmed[12:].trim().to_owned()
+    } else {
+      ""
+    }
+    let assistant_id = match extract_kv(rest, "assistant") {
+      Some(v) => v.trim().to_owned()
+      None =>
+        if rest == "" {
+          "asst-alpha"
+        } else {
+          rest
+        }
+    }
+    return Some(NotifySettings(assistant_id~))
+  }
+  if low.has_prefix("set notify ") {
+    let rest = trimmed[11:].trim().to_owned()
+    let assistant_id = match extract_kv(rest, "assistant") {
+      Some(v) => v.trim().to_owned()
+      None => "asst-alpha"
+    }
+    let toggle = match extract_kv(rest, "toggle") {
+      Some(v) => v.trim().to_owned()
+      None => "sound"
+    }
+    let enabled = match extract_kv(rest, "enabled") {
+      Some(v) => {
+        let t = v.trim().to_lower()
+        t == "1" || t == "true" || t == "on" || t == "yes"
+      }
+      None => false
+    }
+    return Some(SetNotify(assistant_id~, toggle~, enabled~))
+  }
+  // CM-1903/1904/1905 product Host computer lifecycle + local-execution.
+  if low == "update computer" ||
+      low == "update bot computer" ||
+      low.has_prefix("update computer ") {
+    let rest = if low.has_prefix("update computer ") {
+      trimmed[16:].trim().to_owned()
+    } else {
+      ""
+    }
+    let confirm_step = match extract_kv(rest, "confirm") {
+      Some(v) => parse_nonneg_i32(v)
+      None =>
+        if rest == "confirm" || rest == "confirm=1" {
+          1
+        } else if rest == "confirm=2" {
+          2
+        } else {
+          0
+        }
+    }
+    return Some(UpdateComputer(confirm_step~))
+  }
+  if low == "reset computer" || low == "reset bot computer" {
+    return Some(ResetComputer)
+  }
+  if low == "local execution off" ||
+      low == "disable local execution" ||
+      low == "local execution on" ||
+      low == "enable local execution" ||
+      low.has_prefix("local execution ") {
+    let on = if low == "local execution off" ||
+        low == "disable local execution" ||
+        low.has_suffix(" enabled=0") ||
+        low.has_suffix(" off") {
+      false
+    } else {
+      true
+    }
+    return Some(LocalExecution(enabled=on))
+  }
+  // CM-2178 product Host missing-permission → Settings guide.
+  if low.has_prefix("guide permission ") ||
+      low.has_prefix("missing permission ") ||
+      low.has_prefix("permission guide ") {
+    let rest = if low.has_prefix("guide permission ") {
+      trimmed[17:].trim().to_owned()
+    } else if low.has_prefix("missing permission ") {
+      trimmed[19:].trim().to_owned()
+    } else {
+      trimmed[17:].trim().to_owned()
+    }
+    let kind = match extract_kv(rest, "kind") {
+      Some(v) => v.trim().to_owned()
+      None => "needs-auth"
+    }
+    let detail = match extract_kv(rest, "ns") {
+      Some(v) => v.trim().to_owned()
+      None =>
+        match extract_kv(rest, "tool") {
+          Some(v) => v.trim().to_owned()
+          None =>
+            match extract_kv(rest, "detail") {
+              Some(v) => v.trim().to_owned()
+              None =>
+                if rest != "" && !rest.has_prefix("kind=") {
+                  rest
+                } else {
+                  "user-Gmail"
+                }
+            }
+        }
+    }
+    return Some(GuidePermission(kind~, detail~))
+  }
   // CM-1405 product Host Members panel.
   if low == "open members" ||
       low == "members panel" ||

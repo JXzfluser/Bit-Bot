@@ -633,6 +633,30 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(mp.ok)
   assert_eq(mp.intent, "members_panel")
   assert_eq(mp.effects[0].kind, "members_panel")
+  let ns = run_desktop_turn("notify settings assistant=asst-alpha", turn_id="ns-1")
+  assert_true(ns.ok)
+  assert_eq(ns.intent, "notify_settings")
+  let sn = run_desktop_turn(
+    "set notify assistant=asst-alpha toggle=sound enabled=0",
+    turn_id="sn-1",
+  )
+  assert_true(sn.ok)
+  assert_eq(sn.intent, "set_notify")
+  let uc = run_desktop_turn("update computer", turn_id="uc-1")
+  assert_true(uc.ok)
+  assert_eq(uc.intent, "update_computer")
+  let rc = run_desktop_turn("reset computer", turn_id="rc-1")
+  assert_true(rc.ok)
+  assert_eq(rc.intent, "reset_computer")
+  let le = run_desktop_turn("local execution off", turn_id="le-1")
+  assert_true(le.ok)
+  assert_eq(le.intent, "local_execution")
+  let gp = run_desktop_turn(
+    "guide permission kind=needs-auth ns=user-Gmail",
+    turn_id="gp-1",
+  )
+  assert_true(gp.ok)
+  assert_eq(gp.intent, "guide_permission")
   let cc = run_desktop_turn("code changes README.mbt.md", turn_id="cc-1")
   assert_true(cc.ok)
   assert_eq(cc.intent, "code_changes")
