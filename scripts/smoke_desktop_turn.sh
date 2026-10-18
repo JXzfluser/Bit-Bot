@@ -745,9 +745,15 @@ python3 "$ROOT/scripts/host_local_http_mock.py" --port 18766 --mode meeting --to
 MEETING_MOCK_PID=$!
 sleep 0.4
 BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting node hosts/cli_host/run_turn.js "meeting chat body=live standup direct=1" >/tmp/bitbot-meeting-live.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('live_meeting_residual') is False;assert p.get('mode')=='meeting_chat_live';print('meeting_chat live transport ok', p.get('live_probe'))"
+mkdir -p data/connectors
+printf '%s\n' '{"access_token":"smoke-meeting","token_type":"Bearer"}' > data/connectors/meeting_token.json
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 \
+  env -u BITBOT_MEETING_TOKEN \
+  node hosts/cli_host/run_turn.js "meeting chat body=file token standup direct=1" >/tmp/bitbot-meeting-file-token.json || true
 kill "$MEETING_MOCK_PID" >/dev/null 2>&1 || true
 wait "$MEETING_MOCK_PID" 2>/dev/null || true
-python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('live_meeting_residual') is False;assert p.get('mode')=='meeting_chat_live';print('meeting_chat live transport ok', p.get('live_probe'))"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('live_post') is True;assert p.get('live_meeting_residual') is False;assert p.get('mode')=='meeting_chat_live';print('meeting_chat connector token file ok', p.get('live_probe'))"
 node hosts/cli_host/run_turn.js "meeting chat body=followup notes" >/tmp/bitbot-meeting-draft.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-draft.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_draft');p=json.loads(h.get('stdout') or '{}');assert p.get('meeting_chat') is True;assert p.get('mode')=='meeting_chat_draft_card';assert p.get('eml_ok') is True;assert os.path.isfile(p.get('eml_path') or '');assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_sent') is False;print('meeting_chat DraftCard eml ok', p.get('eml_path'), p.get('path'))"
 
