@@ -184,8 +184,21 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-tm-alpha.json'));assert
 node hosts/cli_host/run_turn.js "open members group=group-1" >/tmp/bitbot-members.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-members.json'));assert d.get('intent')=='members_panel';h=next(x for x in d['host_results'] if x.get('kind')=='members_panel');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('section_anchor')=='members';assert p.get('matches_app_ui') is True;assert p.get('info_panel_has_members') is True;assert p.get('pretend_members') is False;assert 'asst-alpha' in (p.get('member_ids') or []);assert p.get('path') and os.path.isfile(p['path']);print('members_panel host ok', p.get('member_ids'), p.get('path'))"
 echo "==> Host notify / update-computer / local-execution / permission guide (CM-0206/1903/1904/1905/2178)"
+# Seed known defaults so durable notify store from prior runs does not flake asserts.
+python3 - <<'PY'
+import json, pathlib
+p = pathlib.Path('data/settings/notify.json')
+p.parent.mkdir(parents=True, exist_ok=True)
+store = json.loads(p.read_text()) if p.exists() else {}
+store['asst-alpha'] = {
+  'desktop': True, 'sound': True, 'mentions_only': False,
+  'routines': True, 'channels': True,
+}
+p.write_text(json.dumps(store, indent=2))
+print('seeded notify defaults for asst-alpha')
+PY
 node hosts/cli_host/run_turn.js "notify settings assistant=asst-alpha" >/tmp/bitbot-notify.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-notify.json'));assert d.get('intent')=='notify_settings';h=next(x for x in d['host_results'] if x.get('kind')=='notify_settings');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('assistant_scoped') is True;assert p.get('pretend_global') is False;assert p.get('sound') is True;assert p.get('path') and os.path.isfile(p['path']);print('notify_settings host ok', p.get('assistant_id'), p.get('toggles'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-notify.json'));assert d.get('intent')=='notify_settings';h=next(x for x in d['host_results'] if x.get('kind')=='notify_settings');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('assistant_scoped') is True;assert p.get('pretend_global') is False;assert p.get('sound') is True;assert isinstance(p.get('toggles'), dict);assert p.get('path') and os.path.isfile(p['path']);print('notify_settings host ok', p.get('assistant_id'), p.get('toggles'))"
 node hosts/cli_host/run_turn.js "set notify assistant=asst-alpha toggle=sound enabled=0" >/tmp/bitbot-set-notify.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-set-notify.json'));h=next(x for x in d['host_results'] if x.get('kind')=='set_notify');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('toggle')=='sound';assert p.get('enabled') is False;assert (p.get('settings') or {}).get('sound') is False;assert p.get('assistant_scoped') is True;store=json.load(open('data/settings/notify.json'));assert store['asst-alpha']['sound'] is False;print('set_notify host ok', p.get('assistant_id'), 'sound', p.get('enabled'))"
 node hosts/cli_host/run_turn.js "update computer" >/tmp/bitbot-update1.json
