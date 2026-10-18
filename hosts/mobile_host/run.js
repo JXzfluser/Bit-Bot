@@ -313,6 +313,8 @@ try {
         box_chrome_bin_residual: payload.box_chrome_bin_residual === true,
         long_lived_cron_residual: payload.long_lived_cron_residual === true,
         remote_cloud_residual: payload.remote_cloud_residual === true,
+        remote_cloud_artifact_residual:
+          payload.remote_cloud_artifact_residual === true,
         code_apply_residual: payload.code_apply_residual === true,
         screenshot_residual: payload.screenshot_residual === true,
         remote_pr_residual: payload.remote_pr_residual === true,
