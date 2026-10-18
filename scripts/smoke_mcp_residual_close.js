@@ -168,6 +168,27 @@ function stripHostAppliedMarker(file) {
   const gmp = JSON.parse((gmh && gmh.stdout) || "{}");
   if (gmp.mapped !== "host_mail_read" || gmp.product_tool_residual !== false) throw new Error(JSON.stringify(gmp).slice(0,200));
   console.log("mcp_call get_message alias short-circuit ok", gmp.mapped, (gmp.mail_read||{}).thread_id);
+  // mail_search / search_threads / search_mail → host_mail_search (not stdio search_mail_artifacts)
+  const searches = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.mail_search|{\"q\":\"invoice\"}" }]);
+  const seh = searches.find((r) => r && r.kind === "mcp_call");
+  if (!seh || !seh.ok) throw new Error("mail_search mcp");
+  const sep = JSON.parse(seh.stdout || "{}");
+  if (sep.mapped !== "host_mail_search" || sep.product_tool_residual !== false) throw new Error(JSON.stringify(sep).slice(0,200));
+  if ((sep.mail_search||{}).pretend_live === true) throw new Error("pretend_live search");
+  if ((sep.mail_search||{}).live_mail_residual !== true) throw new Error("sandbox search residual must stay open: " + JSON.stringify(sep.mail_search||{}).slice(0,200));
+  if (!(sep.mail_search||{}).path) throw new Error("mail_search payload: " + JSON.stringify(sep).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-mail-search.json", JSON.stringify({ ok: true, ...sep }, null, 2));
+  console.log("mcp_call mail_search short-circuit ok", sep.mapped, (sep.mail_search||{}).mode, (sep.mail_search||{}).hit_count, (sep.mail_search||{}).live_mail_residual);
+  const searchAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.search_threads|{\"query\":\"invoice\"}" }]);
+  const stah = searchAlias.find((r) => r && r.kind === "mcp_call");
+  const stap = JSON.parse((stah && stah.stdout) || "{}");
+  if (stap.mapped !== "host_mail_search" || stap.product_tool_residual !== false) throw new Error(JSON.stringify(stap).slice(0,200));
+  console.log("mcp_call search_threads alias short-circuit ok", stap.mapped, (stap.mail_search||{}).query);
+  const searchMailAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.search_mail|{\"q\":\"invoice\"}" }]);
+  const smah2 = searchMailAlias.find((r) => r && r.kind === "mcp_call");
+  const smap2 = JSON.parse((smah2 && smah2.stdout) || "{}");
+  if (smap2.mapped !== "host_mail_search" || smap2.product_tool_residual !== false) throw new Error(JSON.stringify(smap2).slice(0,200));
+  console.log("mcp_call search_mail alias short-circuit ok", smap2.mapped, (smap2.mail_search||{}).mode);
   // Skill/export product short-circuit → host_skill_write / host_export_pack (no pretend_shared / secret echo)
   const skills = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.author_skill|{\"name\":\"mcp-author-skill\",\"description\":\"mcp smoke\",\"body\":\"Do the MCP thing.\"}" }]);
   const skh = skills.find((r) => r && r.kind === "mcp_call");
@@ -913,6 +934,15 @@ function stripHostAppliedMarker(file) {
     }
     if ((lrp.mail_read||{}).pretend_live === true) throw new Error("pretend_live live");
     console.log("mcp_call mail_read live residual close ok", (lrp.mail_read||{}).mode, (lrp.mail_read||{}).live_mail_residual);
+    const liveSearch = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.mail_search|{\"q\":\"invoice\"}" }]);
+    const lseh = liveSearch.find((r) => r && r.kind === "mcp_call");
+    const lsep = JSON.parse((lseh && lseh.stdout) || "{}");
+    if (lsep.mapped !== "host_mail_search" || lsep.product_tool_residual !== false) throw new Error(JSON.stringify(lsep).slice(0,200));
+    if ((lsep.mail_search||{}).live_mail_residual !== false || (lsep.mail_search||{}).mode !== "gmail_live") {
+      throw new Error("mail_search live residual: " + JSON.stringify(lsep.mail_search||{}).slice(0,200));
+    }
+    if ((lsep.mail_search||{}).pretend_live === true) throw new Error("pretend_live live search");
+    console.log("mcp_call mail_search live residual close ok", (lsep.mail_search||{}).mode, (lsep.mail_search||{}).live_mail_residual, (lsep.mail_search||{}).hit_count);
   } finally {
     try { calMock.kill(); } catch (_) {}
     try { payMock.kill(); } catch (_) {}

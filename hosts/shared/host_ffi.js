@@ -6898,9 +6898,10 @@ function createHostFfi(repoRoot) {
         args.write_to_file === true ||
         args.write_to_file === "true";
       const productMap = {
-        search_threads: "search_mail_artifacts",
-        mail_search: "search_mail_artifacts",
-        search_mail: "search_mail_artifacts",
+        // Product Gmail search → Host mail_search (not stdio search_mail_artifacts).
+        search_threads: "host_mail_search",
+        mail_search: "host_mail_search",
+        search_mail: "host_mail_search",
         list_skills: "list_skills",
         skills_list: "list_skills",
         journal_query: "host_journal_query",
@@ -7041,10 +7042,15 @@ function createHostFfi(repoRoot) {
       if (wantWrite && args.write_to_file == null) {
         args.write_to_file = true;
       }
-      // Carry query into search_mail_artifacts from product Gmail args.
-      if (mapped === "search_mail_artifacts") {
+      // Carry query into mail search from product Gmail args.
+      if (mapped === "host_mail_search" || mapped === "search_mail_artifacts") {
         if (args.q == null && args.query != null) args.q = args.query;
-        if (args.q == null && typeof args.body === "string" && args.body && !args.body.startsWith("$file:"))
+        if (
+          args.q == null &&
+          typeof args.body === "string" &&
+          args.body &&
+          !args.body.startsWith("$file:")
+        )
           args.q = args.body;
       }
       if (fileExpandMeta.refused) {
@@ -7088,13 +7094,14 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/skill_load/mail_claim/credential/subagent/teammate/room/cloud/voice/media/webfetch/screenshot/CU/device/machines/copy/react/routine/box_doctor/box_env/box_clock/package_install/shell/fs/shared_box_fs/journal/shared_memory onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/mail_send/mail_read/mail_search/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/skill_load/mail_claim/credential/subagent/teammate/room/cloud/voice/media/webfetch/screenshot/CU/device/machines/copy/react/routine/box_doctor/box_env/box_clock/package_install/shell/fs/shared_box_fs/journal/shared_memory onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
         mapped === "host_mail_draft" ||
         mapped === "host_mail_send" ||
         mapped === "host_mail_read" ||
+        mapped === "host_mail_search" ||
         mapped === "host_skill_write" ||
         mapped === "host_export_pack" ||
         mapped === "host_finance_call" ||
@@ -7323,6 +7330,56 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(readHit && readHit.ok),
             mail_read: readPayload,
+          });
+        }
+        if (mapped === "host_mail_search") {
+          const q =
+            String(
+              args.q ||
+                args.query ||
+                args.search ||
+                args.body ||
+                args.text ||
+                "",
+            ).trim() || "(all)";
+          const searchResults = await executeHostEffects([
+            { kind: "mail_search", command: q },
+          ]);
+          const searchHit = (searchResults || []).find(
+            (r) => r && r.kind === "mail_search",
+          );
+          let searchPayload = {};
+          try {
+            searchPayload = JSON.parse((searchHit && searchHit.stdout) || "{}");
+          } catch {
+            searchPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "mail_search",
+            mail_search: {
+              path: searchPayload.path || null,
+              query: searchPayload.query || q,
+              mode: searchPayload.mode || null,
+              hit_count: searchPayload.hit_count,
+              live_mail_residual: searchPayload.live_mail_residual,
+              pretend_live: searchPayload.pretend_live,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(searchHit && searchHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(searchHit && searchHit.ok),
+            mail_search: searchPayload,
           });
         }
         if (mapped === "host_skill_write") {
