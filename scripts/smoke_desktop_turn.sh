@@ -1853,7 +1853,9 @@ function stripHostAppliedMarker(file) {
   if (cfpMcp.mapped !== "host_copy_from_box" || cfpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(cfpMcp).slice(0,200));
   if ((cfpMcp.copy_box||{}).cross_machine_copy_residual !== true) throw new Error("copy_from residual gated");
   console.log("mcp_call copy_from_box short-circuit ok", cfpMcp.mapped, (cfpMcp.copy_box||{}).mode, (cfpMcp.copy_box||{}).cross_machine_copy_residual);
-  const reacts = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.react_message|{\"message_id\":\"msg-mcp-smoke\",\"emoji\":\"🎉\"}" }]);
+  // Unique message_id so re-runs do not toggle an existing active pill off.
+  const reactMsgId = "msg-mcp-smoke-" + Date.now().toString(36);
+  const reacts = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.react_message|" + JSON.stringify({ message_id: reactMsgId, emoji: "🎉" }) }]);
   const reacth = reacts.find((r) => r && r.kind === "mcp_call");
   if (!reacth || !reacth.ok) throw new Error("react_message mcp");
   const reactpMcp = JSON.parse(reacth.stdout || "{}");
