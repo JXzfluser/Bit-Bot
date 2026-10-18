@@ -2854,6 +2854,123 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  async function executeSharedBoxFs(command) {
+    // CM-2174 product Host — same box shared FS; distinct per-agent desktops.
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "box", "shared-fs");
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const sharedPath = path.join(REPO_ROOT, "h3-cross-agent-shared.txt");
+    const agentA = "product-agent-a";
+    const agentB = "product-agent-b";
+    const marker = "from-agent-b-" + Date.now().toString(36);
+    const desktopA = ":40";
+    const desktopB = ":41";
+
+    // Agent B writes shared path (real FS under repo).
+    fs.writeFileSync(sharedPath, marker + "\n");
+    const writeCopy = path.join(opsDir, "agent_b_write.txt");
+    fs.copyFileSync(sharedPath, writeCopy);
+    fs.writeFileSync(
+      path.join(opsDir, "session_b_meta.txt"),
+      [
+        "agent_id=" + agentB,
+        "display=" + desktopB,
+        "pid=" + process.pid,
+        "shared_path=" + sharedPath,
+      ].join("\n") + "\n",
+    );
+
+    // Agent A reads same path (distinct desktop marker).
+    const readCopy = path.join(opsDir, "agent_a_read.txt");
+    fs.copyFileSync(sharedPath, readCopy);
+    fs.writeFileSync(
+      path.join(opsDir, "session_a_meta.txt"),
+      [
+        "agent_id=" + agentA,
+        "display=" + desktopA,
+        "pid=" + process.pid,
+        "shared_path=" + sharedPath,
+      ].join("\n") + "\n",
+    );
+
+    const aText = fs.readFileSync(readCopy, "utf8").trim();
+    const bText = fs.readFileSync(writeCopy, "utf8").trim();
+    const saw = aText === bText && bText === marker;
+    const distinct = desktopA !== desktopB;
+
+    // Negative: separate REPO mock root must not leak into primary shared path.
+    const otherRoot = fs.mkdtempSync(path.join("/tmp", "bitbot-other-host-"));
+    const otherShared = path.join(otherRoot, "h3-cross-agent-shared.txt");
+    fs.writeFileSync(otherShared, "solo-other-host\n");
+    const leaked = fs.readFileSync(sharedPath, "utf8").includes("solo-other-host");
+
+    const snapPath = path.join(
+      opsDir,
+      `shared-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_shared_box_fs",
+      pretend_shared: false,
+      shared_fs: true,
+      distinct_desktops: distinct,
+      agent_a_sees_agent_b_write: saw,
+      agent_a_id: agentA,
+      agent_b_id: agentB,
+      desktop_a_display: desktopA,
+      desktop_b_display: desktopB,
+      shared_path: sharedPath,
+      marker,
+      other_host_isolated: !leaked,
+      charter_consistent: saw && distinct && !leaked,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    fs.writeFileSync(
+      path.join(dir, "desktops.json"),
+      JSON.stringify(
+        {
+          agent_a_id: agentA,
+          agent_b_id: agentB,
+          desktop_a_display: desktopA,
+          desktop_b_display: desktopB,
+          shared_path: sharedPath,
+          shared_fs: true,
+          distinct_desktops: distinct,
+          agent_a_sees_agent_b_write: saw,
+        },
+        null,
+        2,
+      ),
+    );
+    appendJsonl(path.join(dir, "probes.jsonl"), {
+      ...artifact,
+      path: snapPath,
+      command: String(command || "probe"),
+    });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: snapPath,
+      label: "shared_box_fs",
+      shared_path: sharedPath,
+      source_kind: "shared_box_fs",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "shared_box_fs",
+      command: String(command || "probe"),
+      path: snapPath,
+      shared_path: sharedPath,
+      at,
+    });
+    return okJson("shared_box_fs", String(command || "probe"), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executePackageInstall(command) {
     // CM-2158 product Host — package install via Shell only (sandbox npm/apt plan).
     const at = new Date().toISOString();
@@ -4995,6 +5112,7 @@ function createHostFfi(repoRoot) {
       kind === "agent_info_panel" ||
       kind === "delete_agent" ||
       kind === "package_install" ||
+      kind === "shared_box_fs" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -10312,6 +10430,10 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "package_install") {
         results.push(await executePackageInstall(cmd));
+        continue;
+      }
+      if (kind === "shared_box_fs") {
+        results.push(await executeSharedBoxFs(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

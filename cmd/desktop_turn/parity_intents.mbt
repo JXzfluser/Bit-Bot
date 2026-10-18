@@ -559,6 +559,14 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(OpenAgentInfoPanel(agent_id~))
     }
   }
+  // CM-2174 product Host cross-agent shared box FS.
+  if low == "shared box fs" ||
+      low == "cross agent shared fs" ||
+      low == "probe shared box" ||
+      low == "shared fs probe" ||
+      low == "check shared box fs" {
+    return Some(SharedBoxFs)
+  }
   // CM-2158 product Host box package install (Shell only).
   if low.has_prefix("install package ") ||
       low.has_prefix("box install ") ||

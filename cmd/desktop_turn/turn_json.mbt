@@ -130,6 +130,7 @@ pub(all) enum TurnIntent {
   OpenAgentInfoPanel(agent_id~ : String)
   DeleteAgent(agent_id~ : String, confirm~ : Bool)
   PackageInstall(pm~ : String, packages_csv~ : String, via~ : String)
+  SharedBoxFs
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -222,6 +223,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     OpenAgentInfoPanel(_) => "open_agent_info_panel"
     DeleteAgent(_) => "delete_agent"
     PackageInstall(_) => "package_install"
+    SharedBoxFs => "shared_box_fs"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -3400,6 +3402,22 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Box package install planned (CM-2158). Host must run via Shell only; refuse non-Shell.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    SharedBoxFs => {
+      let effect : DesktopEffect = {
+        kind: "shared_box_fs",
+        command: "probe",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Cross-agent shared box FS planned (CM-2174). Host: shared FS + distinct desktops.",
         intent,
         ctx~,
         effects=[effect],
