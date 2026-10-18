@@ -6984,6 +6984,14 @@ function createHostFfi(repoRoot) {
         finance_connect: "host_oauth",
         connect_finance: "host_oauth",
         oauth: "host_oauth",
+        channel_send: "host_channel_send",
+        slack_send: "host_channel_send",
+        teams_send: "host_channel_send",
+        personal_slack_dm: "host_channel_send",
+        sms_send: "host_channel_send",
+        voice_channel_send: "host_channel_send",
+        webhook_send: "host_channel_send",
+        webhook_wake: "host_channel_send",
         load_skill: "host_skill_load",
         skill_load: "host_skill_load",
         claim_inbox: "host_mail_claim_inbox",
@@ -7125,6 +7133,7 @@ function createHostFfi(repoRoot) {
         mapped === "host_workflow_list" ||
         mapped === "host_identity_browser" ||
         mapped === "host_oauth" ||
+        mapped === "host_channel_send" ||
         mapped === "host_skill_load" ||
         mapped === "host_mail_claim_inbox" ||
         mapped === "host_credential_fill" ||
@@ -7975,6 +7984,164 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(wfHit && wfHit.ok),
             workflow_list: wfPayload,
+          });
+        }
+        if (mapped === "host_channel_send") {
+          // Product channel tools → existing channel_send Host path.
+          const tn = String(toolName || "").toLowerCase();
+          let scheme = String(
+            args.scheme || args.channel_type || args.provider || "",
+          )
+            .trim()
+            .toLowerCase();
+          if (!scheme) {
+            if (tn.includes("teams")) scheme = "teams";
+            else if (tn.includes("sms")) scheme = "sms";
+            else if (tn.includes("voice")) scheme = "voice";
+            else if (tn.includes("webhook")) scheme = "webhook";
+            else if (tn.includes("email") || tn.includes("mail")) scheme = "email";
+            else if (tn.includes("meeting")) scheme = "meeting";
+            else scheme = "slack";
+          }
+          if (tn === "personal_slack_dm" || args.personal_dm === true) {
+            scheme = "slack";
+          }
+          const address = String(
+            args.address ||
+              args.channel ||
+              args.channel_id ||
+              args.to ||
+              args.chat_id ||
+              args.destination ||
+              (scheme === "slack"
+                ? tn === "personal_slack_dm"
+                  ? "Dsmoke"
+                  : "Csmoke"
+                : scheme === "teams"
+                  ? "Tsmoke"
+                  : scheme === "sms"
+                    ? "+15551212"
+                    : scheme === "voice"
+                      ? "call-smoke"
+                      : scheme === "webhook"
+                        ? "panel"
+                        : "Csmoke"),
+          ).trim();
+          const body = String(
+            args.body || args.text || args.message || args.content || "",
+          ).trim() || "(empty)";
+          let threadPart = "";
+          const threadTs = String(
+            args.thread_ts || args.thread || args.threadTs || "",
+          ).trim();
+          if (threadTs) threadPart = ` thread_ts=${threadTs}`;
+          let addr = `${scheme}:${address}${threadPart}`;
+          if (tn === "personal_slack_dm" || args.personal_dm === true) {
+            if (!String(address).startsWith("D")) {
+              addr = `slack:D${address.replace(/^D/, "")}${threadPart}`;
+            }
+          }
+          if (tn === "webhook_wake") {
+            // Prefer webhook_wake Host kind when wake-shaped.
+            const wakeId = String(args.id || args.event_id || "mcp-wake").trim();
+            const summary = String(
+              args.summary || args.body || args.text || "mcp webhook wake",
+            ).trim();
+            const wakeResults = await executeHostEffects([
+              {
+                kind: "webhook_wake",
+                command: `id=${wakeId} summary=${summary}`,
+              },
+            ]);
+            const wakeHit = (wakeResults || []).find(
+              (r) => r && r.kind === "webhook_wake",
+            );
+            let wakePayload = {};
+            try {
+              wakePayload = JSON.parse((wakeHit && wakeHit.stdout) || "{}");
+            } catch {
+              wakePayload = {};
+            }
+            const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+              command,
+              {
+                tool: toolName,
+                mapped,
+                mode: "host_webhook_wake",
+                host_kind: "webhook_wake",
+                webhook_wake: {
+                  path: wakePayload.path || null,
+                  event_id: wakePayload.event_id || wakeId,
+                  inbound_turn_residual: wakePayload.inbound_turn_residual,
+                  inbound_push_residual: wakePayload.inbound_push_residual,
+                  pretend_wake: wakePayload.pretend_wake,
+                },
+                product_tool_residual: false,
+                pretend_ok: false,
+                ok: Boolean(wakeHit && wakeHit.ok),
+                at: shortAt,
+              },
+            );
+            return okJson(kind, command, {
+              ...callArtifact,
+              tool: toolName,
+              mapped,
+              product_tool_residual: false,
+              path: snapPath,
+              pretend_ok: false,
+              ok: Boolean(wakeHit && wakeHit.ok),
+              webhook_wake: wakePayload,
+            });
+          }
+          const channelCmd = `${addr} :: ${body}`;
+          const chResults = await executeHostEffects([
+            { kind: "channel_send", command: channelCmd },
+          ]);
+          const chHit = (chResults || []).find(
+            (r) => r && r.kind === "channel_send",
+          );
+          let chPayload = {};
+          try {
+            chPayload = JSON.parse((chHit && chHit.stdout) || "{}");
+          } catch {
+            chPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              mode: "host_channel_send",
+              host_kind: "channel_send",
+              channel_send: {
+                scheme: chPayload.scheme || scheme,
+                mode: chPayload.mode || null,
+                path: chPayload.path || null,
+                live_slack_residual: chPayload.live_slack_residual,
+                live_teams_residual: chPayload.live_teams_residual,
+                live_sms_residual: chPayload.live_sms_residual,
+                live_voice_residual: chPayload.live_voice_residual,
+                live_webhook_residual: chPayload.live_webhook_residual,
+                live_mail_residual: chPayload.live_mail_residual,
+                pretend_live: chPayload.pretend_live,
+                widget_degraded: chPayload.widget_degraded,
+                claimed_count: chPayload.claimed_count,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(chHit && chHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(chHit && chHit.ok),
+            channel_send: chPayload,
           });
         }
         if (mapped === "host_oauth") {

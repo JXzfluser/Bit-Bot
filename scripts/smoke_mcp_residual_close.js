@@ -229,6 +229,58 @@ function stripHostAppliedMarker(file) {
   }
   console.log("mcp_call setup_slack live NeedsAuth ok", (olp.oauth||{}).mode, (olp.oauth||{}).status);
   delete process.env.BITBOT_OAUTH_MODE;
+  // channel_send / slack_send / teams_send / personal_slack_dm → host_channel_send
+  delete process.env.BITBOT_SLACK_POST;
+  delete process.env.BITBOT_SLACK_CLAIM;
+  delete process.env.BITBOT_SLACK_API_BASE;
+  delete process.env.SLACK_BOT_TOKEN;
+  const chSend = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.channel_send|{\"scheme\":\"slack\",\"channel\":\"Csmoke\",\"body\":\"mcp channel hello\"}" }]);
+  const chHit = chSend.find((r) => r && r.kind === "mcp_call");
+  if (!chHit || !chHit.ok) throw new Error("channel_send mcp");
+  const chPayload = JSON.parse(chHit.stdout || "{}");
+  if (chPayload.mapped !== "host_channel_send" || chPayload.product_tool_residual !== false) throw new Error(JSON.stringify(chPayload).slice(0,200));
+  if ((chPayload.channel_send||{}).pretend_live === true) throw new Error("pretend_live channel");
+  if ((chPayload.channel_send||{}).live_slack_residual !== true) throw new Error("sandbox channel residual must stay open: " + JSON.stringify(chPayload.channel_send||{}).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-channel-send.json", JSON.stringify({ ok: true, ...chPayload }, null, 2));
+  console.log("mcp_call channel_send short-circuit ok", chPayload.mapped, (chPayload.channel_send||{}).mode, (chPayload.channel_send||{}).scheme, (chPayload.channel_send||{}).live_slack_residual);
+  const slackSend = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.slack_send|{\"channel\":\"Csmoke\",\"body\":\"mcp slack alias\"}" }]);
+  const slackHit = slackSend.find((r) => r && r.kind === "mcp_call");
+  const slackPayload = JSON.parse((slackHit && slackHit.stdout) || "{}");
+  if (slackPayload.mapped !== "host_channel_send" || slackPayload.product_tool_residual !== false) throw new Error(JSON.stringify(slackPayload).slice(0,200));
+  console.log("mcp_call slack_send alias short-circuit ok", slackPayload.mapped, (slackPayload.channel_send||{}).mode);
+  const teamsSend = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.teams_send|{\"channel\":\"Tsmoke\",\"body\":\"mcp teams [widget:decision_card]\"}" }]);
+  const teamsHit = teamsSend.find((r) => r && r.kind === "mcp_call");
+  const teamsPayload = JSON.parse((teamsHit && teamsHit.stdout) || "{}");
+  if (teamsPayload.mapped !== "host_channel_send" || teamsPayload.product_tool_residual !== false) throw new Error(JSON.stringify(teamsPayload).slice(0,200));
+  if ((teamsPayload.channel_send||{}).widget_degraded !== true) throw new Error("teams widget degrade: " + JSON.stringify(teamsPayload.channel_send||{}).slice(0,200));
+  console.log("mcp_call teams_send short-circuit ok", teamsPayload.mapped, (teamsPayload.channel_send||{}).mode, (teamsPayload.channel_send||{}).widget_degraded);
+  const dmSend = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.personal_slack_dm|{\"channel\":\"Dsmoke\",\"body\":\"mcp dm\"}" }]);
+  const dmHit = dmSend.find((r) => r && r.kind === "mcp_call");
+  const dmPayload = JSON.parse((dmHit && dmHit.stdout) || "{}");
+  if (dmPayload.mapped !== "host_channel_send" || dmPayload.product_tool_residual !== false) throw new Error(JSON.stringify(dmPayload).slice(0,200));
+  console.log("mcp_call personal_slack_dm short-circuit ok", dmPayload.mapped, (dmPayload.channel_send||{}).mode);
+  // Live Slack post residual-CLOSE via MCP channel_send
+  const mcpSlackMock = startMock(18820, "slack", "smoke-mcp-ch");
+  await sleep(400);
+  try {
+    process.env.BITBOT_SLACK_API_BASE = "http://127.0.0.1:18820";
+    process.env.SLACK_BOT_TOKEN = "smoke-mcp-ch";
+    process.env.BITBOT_SLACK_POST = "1";
+    const liveCh = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.slack_send|{\"channel\":\"Csmoke\",\"body\":\"mcp live slack\"}" }]);
+    const liveChHit = liveCh.find((r) => r && r.kind === "mcp_call");
+    const liveChPayload = JSON.parse((liveChHit && liveChHit.stdout) || "{}");
+    if (liveChPayload.mapped !== "host_channel_send" || liveChPayload.product_tool_residual !== false) throw new Error(JSON.stringify(liveChPayload).slice(0,200));
+    if ((liveChPayload.channel_send||{}).live_slack_residual !== false || (liveChPayload.channel_send||{}).live_post !== true) {
+      throw new Error("slack live residual: " + JSON.stringify(liveChPayload.channel_send||{}).slice(0,240));
+    }
+    if ((liveChPayload.channel_send||{}).pretend_live === true) throw new Error("pretend_live live channel");
+    console.log("mcp_call slack_send live residual close ok", (liveChPayload.channel_send||{}).mode, (liveChPayload.channel_send||{}).live_slack_residual);
+  } finally {
+    try { mcpSlackMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_SLACK_API_BASE;
+    delete process.env.SLACK_BOT_TOKEN;
+    delete process.env.BITBOT_SLACK_POST;
+  }
   // Skill/export product short-circuit → host_skill_write / host_export_pack (no pretend_shared / secret echo)
   const skills = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.author_skill|{\"name\":\"mcp-author-skill\",\"description\":\"mcp smoke\",\"body\":\"Do the MCP thing.\"}" }]);
   const skh = skills.find((r) => r && r.kind === "mcp_call");
