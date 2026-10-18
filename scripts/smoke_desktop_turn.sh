@@ -824,7 +824,10 @@ BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BIT
 kill "$TEAMS_MOCK_PID" >/dev/null 2>&1 || true
 wait "$TEAMS_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_teams_claim';assert p.get('claimed_count',0)>=1;assert p.get('pretend_live') is False;assert os.path.isfile('data/channels/inbound.jsonl');assert 'live_teams_claim' in open('data/channels/inbound.jsonl').read();print('channel_send teams live claim ok', 'claimed', p.get('claimed_count'))"
-BITBOT_TEAMS_CLAIM=1 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: sandbox claim" >/tmp/bitbot-teams-claim-sandbox.json
+# Clear connector token so sandbox claim is not reclassified as live_teams_claim.
+rm -f data/connectors/teams_token.json
+env -u BITBOT_TEAMS_TOKEN -u BITBOT_TEAMS_GRAPH_URL BITBOT_TEAMS_CLAIM=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: sandbox claim" >/tmp/bitbot-teams-claim-sandbox.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-claim-sandbox.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='sandbox_teams_claim';assert p.get('pretend_live') is False;assert p.get('live_teams_residual') is True;print('channel_send teams sandbox claim ok')"
 # copy_to_box / copy_from_box durable JSON under data/box-copy/
 mkdir -p uploads
