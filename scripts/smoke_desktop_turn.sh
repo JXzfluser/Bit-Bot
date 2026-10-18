@@ -478,8 +478,8 @@ shared=Path('hosts/shared/send_to_user_surface.js').read_text()
 assert 'skill_path' in shared and 'export_path' in shared
 assert 'SendToUser attachments' in shared
 assert 'oauthNeedsAuth' in shared or 'NeedsAuth' in shared
-assert 'live_needs_auth' in html or 'oauth:NeedsAuth' in html
-assert 'h.kind !== \"oauth\"' in html or \"h.kind !== 'oauth'\" in html or 'kind !== \"oauth\"' in html
+assert 'live_needs_auth' in html
+assert 'h.kind !== "oauth"' in html
 mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
 assert 'payload.media_path' in mobile
