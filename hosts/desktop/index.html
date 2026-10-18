@@ -328,6 +328,7 @@
         <button type="button" id="tm-members" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Members panel</button>
         <button type="button" id="tm-room" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Room turn</button>
         <button type="button" id="tm-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
+        <button type="button" id="tm-subagent" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
       </div>
     </div>
   </aside>
@@ -425,6 +426,8 @@
         <button type="button" id="plugin-get" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Get plugin-slides</button>
         <button type="button" id="plugin-install" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install plugin-slides</button>
         <button type="button" id="plugin-uninstall" style="background:#2a1a1a;color:#e0b0b0;border:1px solid #5a3a3a;border-radius:6px;padding:6px 8px;cursor:pointer">Uninstall plugin-slides</button>
+        <button type="button" id="plugin-mcp-discover" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP discover</button>
+        <button type="button" id="plugin-mcp-call" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP call Gmail search</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Webhook</div>
@@ -478,6 +481,7 @@
         <button type="button" id="tool-webfetch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">WebFetch example.com</button>
         <button type="button" id="tool-device" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Device tools</button>
         <button type="button" id="tool-journal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
+        <button type="button" id="tool-pkg" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Computer use</div>
@@ -489,6 +493,8 @@
         <button type="button" id="cu-native" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Native act click</button>
         <button type="button" id="cu-ocr" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">OCR pass</button>
         <button type="button" id="cu-shop" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shop playbook</button>
+        <button type="button" id="cu-travel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Travel expedia</button>
+        <button type="button" id="cu-food" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Order food</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Source control</div>
@@ -1764,6 +1770,16 @@
                     ((p.subagent && p.subagent.status) || p.status || "run") +
                     (p.path ? "/snap" : "");
                   types.push("text");
+                  const tmMeta = document.getElementById("teammates-meta");
+                  if (tmMeta) {
+                    const s = p.subagent || {};
+                    tmMeta.textContent =
+                      "subagent · " +
+                      (s.id || p.id || "?") +
+                      " · " +
+                      (s.status || p.status || "run") +
+                      (p.path ? " · snap" : "");
+                  }
                 } else if (h.kind === "mail_search") {
                   label = "mail_search:" + (p.hit_count || 0) + "×" + (p.mode || "");
                   types.push("attachment");
@@ -1892,6 +1908,29 @@
                     label = "mcp_call" + (p.path ? "/snap" : "");
                   }
                   types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      "mcp_call · " +
+                      (p.tool || p.name || p.namespace || "?") +
+                      (p.path ? " · snap" : "") +
+                      (p.pretend_ok === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "package_install") {
+                  label =
+                    "pkg:" +
+                    (p.pkgs || p.packages || p.pm || "install") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "package · " +
+                      (p.pm || "npm") +
+                      " · " +
+                      (p.pkgs || p.packages || "?") +
+                      (p.pretend_installed === true ? " · pretend!" : "");
+                  }
                 } else if (h.kind === "shell") {
                   label =
                     "shell" +
@@ -2240,6 +2279,13 @@
                     (p.tool_count != null ? p.tool_count : "?") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      "discover · tools×" +
+                      (p.tool_count != null ? p.tool_count : "?") +
+                      (p.path ? " · snap" : "");
+                  }
                 } else if (h.kind === "mcp_namespace") {
                   label =
                     "mcp_ns:" +
@@ -2782,6 +2828,14 @@
     document.getElementById("plugin-uninstall").addEventListener("click", () => {
       runUserTurn("uninstall plugin plugin-slides", {});
     });
+    document.getElementById("plugin-mcp-discover").addEventListener("click", () => {
+      runUserTurn("mcp discover", {});
+    });
+    document.getElementById("plugin-mcp-call").addEventListener("click", () => {
+      runUserTurn('mcp call user-Gmail.search_threads {}', {
+        approved: true,
+      });
+    });
     document.getElementById("wh-open").addEventListener("click", () => {
       runUserTurn("open webhook panel", {});
     });
@@ -2909,6 +2963,11 @@
         approved: true,
       });
     });
+    document.getElementById("tm-subagent").addEventListener("click", () => {
+      runUserTurn("spawn subagent summarize inbox", {
+        approved: true,
+      });
+    });
     document.getElementById("mach-list").addEventListener("click", () => {
       runUserTurn("list machines", {});
     });
@@ -2977,6 +3036,11 @@
     document.getElementById("tool-journal").addEventListener("click", () => {
       runUserTurn("journal query hello", {});
     });
+    document.getElementById("tool-pkg").addEventListener("click", () => {
+      runUserTurn("package install cowsay", {
+        approved: true,
+      });
+    });
     document.getElementById("cu-open").addEventListener("click", () => {
       runUserTurn("computer use open https://example.com click:40,40", {});
     });
@@ -2992,6 +3056,12 @@
     });
     document.getElementById("cu-shop").addEventListener("click", () => {
       runUserTurn("shop target.com headphones", {});
+    });
+    document.getElementById("cu-travel").addEventListener("click", () => {
+      runUserTurn("travel expedia.com", {});
+    });
+    document.getElementById("cu-food").addEventListener("click", () => {
+      runUserTurn("order food doordash.com", {});
     });
     document.getElementById("sc-code").addEventListener("click", () => {
       runUserTurn("code changes README.mbt.md", {});

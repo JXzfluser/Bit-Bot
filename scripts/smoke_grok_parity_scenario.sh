@@ -488,6 +488,12 @@ for needle in (
     'device tools',
     'journal query hello',
     'copy to box machine=',
+    'mcp discover',
+    'mcp call user-Gmail.search_threads',
+    'spawn subagent summarize inbox',
+    'travel expedia.com',
+    'order food doordash.com',
+    'package install cowsay',
 ):
     assert needle in cv, needle
     assert needle in main, needle
@@ -504,6 +510,10 @@ python3 -c "import json,os,glob;t=open('/tmp/parity-and-mach.txt').read();assert
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-dev.txt').read();assert 'device_tools_list' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/device_tools_list-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='device_tools_list';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios device_tools_list delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind android --session-id parity-and-jq "journal query hello" >/tmp/parity-and-jq.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-and-jq.txt').read();assert 'journal_query' in t;assert 'machine_kind=android' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/journal_query-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='journal_query';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity android journal_query delivery mirror ok', m.get('host_path'), mirrors[-1])"
+"${MOBILE[@]}" --machine-kind ios --session-id parity-ios-mcp "mcp discover" >/tmp/parity-ios-mcp.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-ios-mcp.txt').read();assert 'mcp_discover' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/mcp_discover-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='mcp_discover';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios mcp_discover delivery mirror ok', m.get('host_path'), mirrors[-1])"
+"${MOBILE[@]}" --machine-kind android --session-id parity-and-sa --approved "spawn subagent summarize inbox" >/tmp/parity-and-sa.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-and-sa.txt').read();assert 'subagent_run' in t;assert 'machine_kind=android' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/subagent_run-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='subagent_run';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity android subagent_run delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-fetch "webfetch https://example.com" >/tmp/parity-ios-fetch.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-fetch.txt').read();assert 'webfetch' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/webfetch-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='webfetch';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios webfetch delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-x "x search moonbit" >/tmp/parity-ios-x.txt

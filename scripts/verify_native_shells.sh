@@ -103,6 +103,12 @@ for needle in (
     "device tools",
     "journal query hello",
     "copy to box machine=",
+    "mcp discover",
+    "mcp call user-Gmail.search_threads",
+    "spawn subagent summarize inbox",
+    "travel expedia.com",
+    "order food doordash.com",
+    "package install cowsay",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
@@ -129,6 +135,10 @@ for kind in (
     "skill_load",
     "copy_to_box",
     "copy_from_box",
+    "subagent_run",
+    "mcp_discover",
+    "mcp_call",
+    "package_install",
 ):
     assert kind in mobile, kind
 assert "receipt_path" in mobile and "skill_path" in mobile

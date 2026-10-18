@@ -387,7 +387,17 @@ assert 'device tools' in html and 'journal query hello' in html
 assert 'copy to box machine=desk-1' in html and 'copy from box machine=desk-1' in html
 assert 'device_tools_list' in mobile and 'journal_query' in mobile
 assert 'skill_load' in mobile and 'copy_to_box' in mobile
-print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines + skills/box panels wired ok')
+assert 'id=\"plugin-mcp-discover\"' in html and 'id=\"plugin-mcp-call\"' in html
+assert 'id=\"tm-subagent\"' in html
+assert 'id=\"cu-travel\"' in html and 'id=\"cu-food\"' in html
+assert 'id=\"tool-pkg\"' in html
+assert 'mcp discover' in html
+assert 'mcp call user-Gmail.search_threads' in html
+assert 'spawn subagent summarize inbox' in html
+assert 'travel expedia.com' in html and 'order food doordash.com' in html
+assert 'package install cowsay' in html
+assert 'subagent_run' in mobile
+print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines + skills/box + mcp/subagent panels wired ok')
 "
 python3 -c "
 from pathlib import Path
