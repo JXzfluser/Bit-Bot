@@ -48,6 +48,8 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | Auto-review Settings (CM-1507) | `auto_review_settings` opens General deeplinks `auto-review` / `auto-review-rules` / `security-keys` (closed set) |
 | box-chrome launcher (CM-0802) | `box_chrome_probe` prefers `/usr/local/bin/box-chrome`; refuses bare; private CDP; never uses shared 9223/profile |
 | InstallPlugin namespace (CM-0904) | `mcp_namespace` marks Ready/usable in `data/connectors/mcp-namespaces/`; unknown plugin refused; never pretend_registered |
+| GetPlugin / list plugins (CM-2108) | `mcp_get_plugin` / `mcp_list_plugins` durable snaps; Desktop Plugins panel; mobile HostAbi mirrors |
+| Desktop Media / Voice panels | Buttons for generate image/video/chart + voice start/relay/end (MoonBit turns via Host FFI) |
 | Desktop Electron smoke turn | `BITBOT_DESKTOP_SMOKE_TURN=… npx electron .` writes `data/tmp/desktop-electron-turn.json` (MoonBit brain; local_brain=false) |
 | Routine wake scheduler | On-demand `routine_fire` + daemon `--long-lived` / `--interval-ms`; `--install-user-unit` installs user systemd unit |
 | CU paid checkout | `payment_wall` / `live_paid_residual` when pay form seen; local fixture via `BITBOT_CU_ALLOW_LOCAL=1`; never pretend_purchased without `BITBOT_CU_LIVE_PAID` |

@@ -151,6 +151,7 @@
 - [x] Host GetPlugin / list-search plugins (`mcp_get_plugin` / `mcp_list_plugins`; CM-2108 + CM-0904 directory)
 - [x] Desktop Plugins panel (list / get / install / uninstall) + mobile delivery mirrors for `mcp_get_plugin` / `mcp_list_plugins`
 - [x] Desktop Media panel (generate image/video, structured chart, watch last video)
+- [x] Desktop Voice panel (start / relay / end for Host voice session)
 - [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn

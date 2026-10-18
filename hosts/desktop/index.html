@@ -403,6 +403,16 @@
         <button type="button" id="media-watch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Watch last video</button>
       </div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Voice</div>
+    <div class="machine-item">
+      <div class="name">Session / relay / end</div>
+      <div class="meta" id="voice-meta">start · relay WAV · end write</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="voice-start" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Start voice</button>
+        <button type="button" id="voice-relay" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Voice relay</button>
+        <button type="button" id="voice-end" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End voice</button>
+      </div>
+    </div>
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) will appear here</pre>
@@ -1595,6 +1605,13 @@
                     String(p.reply_media_path).split("/").slice(-1)[0] +
                     (p.path ? "/snap" : "");
                   types.push("voice");
+                  const voiceMeta = document.getElementById("voice-meta");
+                  if (voiceMeta) {
+                    voiceMeta.textContent =
+                      "relay · " +
+                      String(p.reply_media_path).split("/").slice(-1)[0] +
+                      (p.call_id ? " · " + p.call_id : "");
+                  }
                 } else if (h.kind === "source_control") {
                   const rp = p.remote_pr || {};
                   const mode =
@@ -1726,6 +1743,27 @@
                     (p.media_ok ? "/wav" : "") +
                     (p.path ? "/snap" : "");
                   types.push("voice");
+                  const voiceMeta = document.getElementById("voice-meta");
+                  if (voiceMeta) {
+                    voiceMeta.textContent =
+                      (p.action || "session") +
+                      (p.media_ok ? " · wav" : "") +
+                      (p.call_id ? " · " + p.call_id : "");
+                  }
+                } else if (
+                  h.kind === "voice_end_write" ||
+                  h.kind === "voice_end"
+                ) {
+                  label =
+                    "voice_end:" +
+                    (p.call_id || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("voice");
+                  const voiceMeta = document.getElementById("voice-meta");
+                  if (voiceMeta) {
+                    voiceMeta.textContent =
+                      "ended · " + (p.call_id || "?");
+                  }
                 } else if (p.media_path) {
                   label = h.kind + ": " + String(p.media_path).split("/").slice(-1)[0];
                 } else if (p.path) {
@@ -1923,6 +1961,17 @@
         window.__bitbotLastVideoPath ||
         "agent-tools/gen-video-desktop.mp4";
       runUserTurn("watch video " + vp, {});
+    });
+    document.getElementById("voice-start").addEventListener("click", () => {
+      runUserTurn("voice start desktop-voice", {});
+    });
+    document.getElementById("voice-relay").addEventListener("click", () => {
+      runUserTurn("voice relay desktop-voice :: hello from desktop", {
+        approved: true,
+      });
+    });
+    document.getElementById("voice-end").addEventListener("click", () => {
+      runUserTurn("voice end desktop-voice", {});
     });
     document.getElementById("mem-recall").addEventListener("click", () => {
       runUserTurn("recall", {});
