@@ -1141,6 +1141,9 @@ function createHostFfi(repoRoot) {
       turnHookResult = hooked.turnHookResult;
       inboundTurnResidual = hooked.inboundTurnResidual;
     }
+    // Claim/pull is not HTTP Events push — keep inbound_push_residual true
+    // (host_slack_events_listen.py closes it on real Slack Events POST).
+    const inboundPushResidual = claim && Boolean(claim.ok) ? true : undefined;
     const snapshot = {
       ...artifact,
       path: sendPath,
@@ -1153,6 +1156,7 @@ function createHostFfi(repoRoot) {
       claim,
       turn_hook: turnHookResult,
       inbound_turn_residual: inboundTurnResidual,
+      inbound_push_residual: inboundPushResidual,
     };
     fs.writeFileSync(sendPath, JSON.stringify(snapshot, null, 2));
     appendJsonl(path.join(sendDir, "sends.jsonl"), snapshot);

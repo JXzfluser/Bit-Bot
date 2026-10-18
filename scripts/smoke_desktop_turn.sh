@@ -933,7 +933,7 @@ BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_
 BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_POST=1 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke thread_ts=1710000000.000060 :: live thread mock" >/tmp/bitbot-slack-live-thread.json || true
 kill "$SLACK_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SLACK_MOCK_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-claim-turn.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_slack_claim';assert p.get('live_slack_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel_send slack claim inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-claim-turn.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_slack_claim';assert p.get('live_slack_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;assert p.get('inbound_push_residual') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel_send slack claim inbound turn residual close ok', th.get('turn_path'), 'inbound_push_residual', True)"
 python3 -c "import json;d=json.load(open('/tmp/bitbot-slack-live-thread.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('mode')=='live_slack_thread';assert p.get('thread_ts')=='1710000000.000060';assert p.get('pretend_live') is False;deliv=next(x for x in hrs if x.get('kind')=='delivery');dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='thread';print('channel_send slack live thread ok', p.get('mode'), 'ts', p.get('ts'))"
 # Live Teams Graph post / claim against local mock
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18770 --mode teams --token smoke-teams >/tmp/bitbot-teams-mock.log 2>&1 &
@@ -1661,6 +1661,26 @@ curl -s -X POST http://127.0.0.1:18791/hooks -H 'Content-Type: application/json'
 kill "$WH_LISTEN_TURN_PID" >/dev/null 2>&1 || true
 wait "$WH_LISTEN_TURN_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('path') and os.path.isfile(d['path']);snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('webhook http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
+# Slack Events HTTP push: closes inbound_push_residual; token never echoed; turn residual stays open without BITBOT_INBOUND_TURN.
+python3 "$ROOT/scripts/host_slack_events_listen.py" --port 18792 >/tmp/bitbot-slack-events-listen.log 2>&1 &
+SLACK_EVENTS_LISTEN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18792/slack/events -H 'Content-Type: application/json' \
+  -d '{"token":"slack-verify-secret-smoke","type":"event_callback","event_id":"EvHttpSmoke","event":{"type":"message","channel":"Csmoke","user":"U_SMOKE","text":"slack events push smoke","ts":"1710000000.000199"}}' \
+  >/tmp/bitbot-slack-events-curl.json || true
+kill "$SLACK_EVENTS_LISTEN_PID" >/dev/null 2>&1 || true
+wait "$SLACK_EVENTS_LISTEN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-events-curl.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is True;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'slack-verify-secret-smoke' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is True;assert snap.get('mode')=='host_slack_events_listen';th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is False;rows=open('data/channels/inbound.jsonl').read();assert 'live_slack_events_push' in rows;print('slack events http listen push wake ok', d.get('path'), 'inbound_turn_residual', True)"
+# Slack Events listen + BITBOT_INBOUND_TURN=1 executes pending turn via Host run_turn (webhook listen parity).
+BITBOT_INBOUND_TURN=1 python3 "$ROOT/scripts/host_slack_events_listen.py" --port 18792 >/tmp/bitbot-slack-events-listen-turn.log 2>&1 &
+SLACK_EVENTS_LISTEN_TURN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18792/slack/events -H 'Content-Type: application/json' \
+  -d '{"token":"slack-verify-secret-turn","type":"event_callback","event_id":"EvHttpTurn","event":{"type":"message","channel":"Csmoke","user":"U_SMOKE","text":"slack events inbound turn smoke","ts":"1710000000.000299"}}' \
+  >/tmp/bitbot-slack-events-curl-turn.json || true
+kill "$SLACK_EVENTS_LISTEN_TURN_PID" >/dev/null 2>&1 || true
+wait "$SLACK_EVENTS_LISTEN_TURN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-events-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'slack-verify-secret-turn' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('slack events http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 node -e '
 const fs=require("fs");
 const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");

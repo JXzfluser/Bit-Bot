@@ -2981,6 +2981,9 @@
                     (p.inbound_turn_residual === true
                       ? "/inbound_turn_residual"
                       : "") +
+                    (p.inbound_push_residual === true
+                      ? "/inbound_push_residual"
+                      : "") +
                     (p.voice_tts_residual === true
                       ? "/voice_tts_residual"
                       : "");
@@ -3024,6 +3027,9 @@
                         : "") +
                       (p.inbound_turn_residual === true
                         ? " · inbound_turn_residual"
+                        : "") +
+                      (p.inbound_push_residual === true
+                        ? " · inbound_push_residual"
                         : "") +
                       (p.voice_tts_residual === true
                         ? " · voice_tts_residual"
