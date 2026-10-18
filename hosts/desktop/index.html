@@ -404,6 +404,9 @@
         <button type="button" id="ch-teams-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
         <button type="button" id="ch-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
         <button type="button" id="ch-jobs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
+        <button type="button" id="ch-xsearch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
+        <button type="button" id="ch-workflows" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List workflows</button>
+        <button type="button" id="ch-credentials" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List credentials</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Plugins</div>
@@ -436,6 +439,11 @@
       <div class="name">SendToUser</div>
       <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent</div>
       <div id="reaction-tray" aria-label="Reaction pills"></div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="del-react" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">React message</button>
+        <button type="button" id="del-inbound-react" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Inbound reaction</button>
+        <button type="button" id="del-markdown" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Render markdown</button>
+      </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Memory</div>
     <div class="machine-item">
@@ -1692,18 +1700,42 @@
                     (p.count || 0) +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent = "workflows · " + (p.count || 0);
+                  }
                 } else if (h.kind === "x_search") {
                   label = "x_search:" + (p.hit_count || 0) + "×" + (p.mode || "");
                   types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "x_search · " +
+                      (p.mode || "?") +
+                      " · hits " +
+                      (p.hit_count || 0) +
+                      (p.pretend_live === true ? " · pretend!" : "");
+                  }
                 } else if (h.kind === "job_search") {
                   label = "jobs:" + (p.hit_count || 0);
                   types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent = "jobs · hits " + (p.hit_count || 0);
+                  }
                 } else if (h.kind === "finance_call") {
                   label =
                     "finance:" +
                     (p.mode || p.tool || "call") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "finance · " +
+                      (p.mode || "call") +
+                      (p.pretend_live === true ? " · pretend!" : "");
+                  }
                 } else if (h.kind === "mail_draft") {
                   label =
                     "draft:" +
@@ -1797,6 +1829,13 @@
                 } else if (h.kind === "credential_list") {
                   label = "creds:" + (p.count || 0);
                   types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "credentials · " +
+                      (p.count || 0) +
+                      " (metadata only)";
+                  }
                 } else if (h.kind === "export_pack") {
                   label =
                     "export:" +
@@ -2432,6 +2471,27 @@
     });
     document.getElementById("ch-jobs").addEventListener("click", () => {
       runUserTurn("job search engineer", {});
+    });
+    document.getElementById("ch-xsearch").addEventListener("click", () => {
+      runUserTurn("x search moonbit", {});
+    });
+    document.getElementById("ch-workflows").addEventListener("click", () => {
+      runUserTurn("list workflows", {});
+    });
+    document.getElementById("ch-credentials").addEventListener("click", () => {
+      runUserTurn("list credentials", {});
+    });
+    document.getElementById("del-react").addEventListener("click", () => {
+      runUserTurn("react message msg=msg-desktop emoji=👍", {});
+    });
+    document.getElementById("del-inbound-react").addEventListener("click", () => {
+      runUserTurn("[inbound] reaction :+1:", {});
+    });
+    document.getElementById("del-markdown").addEventListener("click", () => {
+      runUserTurn(
+        "render markdown Inline \\(E=mc^2\\) and $$a^2+b^2=c^2$$",
+        {},
+      );
     });
     document.getElementById("plugin-list").addEventListener("click", () => {
       runUserTurn("list plugins", {});

@@ -178,6 +178,15 @@ try {
       "schedule_meeting",
       "mail_search",
       "mail_read",
+      "finance_call",
+      "job_search",
+      "workflow_list",
+      "slides_pptx",
+      "skill_write",
+      "export_pack",
+      "inbound_reaction",
+      "cloud_agent_launch",
+      "cloud_artifact_deliver",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;
@@ -193,6 +202,12 @@ try {
         payload.media_path ||
         payload.frame_path ||
         payload.html_path ||
+        payload.receipt_path ||
+        payload.pptx_path ||
+        payload.ics_path ||
+        payload.eml_path ||
+        payload.skill_path ||
+        payload.export_path ||
         payload.reply_media_path ||
         null;
       if (!hostPath) continue;

@@ -328,11 +328,23 @@ assert 'id=\"channels-meta\"' in html
 assert 'id=\"ch-slack-draft\"' in html and 'id=\"ch-slack-claim\"' in html
 assert 'id=\"ch-teams-draft\"' in html and 'id=\"ch-teams-claim\"' in html
 assert 'id=\"ch-finance\"' in html and 'id=\"ch-jobs\"' in html
+assert 'id=\"ch-xsearch\"' in html and 'id=\"ch-workflows\"' in html
+assert 'id=\"ch-credentials\"' in html
+assert 'id=\"del-react\"' in html and 'id=\"del-inbound-react\"' in html
+assert 'id=\"del-markdown\"' in html
 assert 'BITBOT_SLACK_CLAIM' in html and 'BITBOT_TEAMS_CLAIM' in html
+assert 'x search moonbit' in html and 'list workflows' in html
+assert 'list credentials' in html
+assert 'react message msg=msg-desktop' in html
+assert '[inbound] reaction' in html
 mainjs=Path('hosts/desktop/main.js').read_text()
 assert 'envPatch' in mainjs
 assert 'BITBOT_SLACK_CLAIM' in html
-print('desktop teammates + mail/commerce + channels panels wired ok')
+mobile=Path('hosts/mobile_host/run.js').read_text()
+assert 'finance_call' in mobile and 'job_search' in mobile
+assert 'workflow_list' in mobile and 'inbound_reaction' in mobile
+assert 'receipt_path' in mobile and 'skill_path' in mobile
+print('desktop teammates + mail/commerce + channels/delivery panels wired ok')
 "
 python3 -c "
 from pathlib import Path

@@ -164,6 +164,7 @@
 - [x] Multi-end SendToUser attachment path strip (shared JS + iOS/Android; media/html/openable roles) + mail/commerce mobile quick actions
 - [x] Desktop OS-open for skill_write / export_pack + Delivery panel attachment leaf names
 - [x] Desktop Channels panel (Slack/Teams draft·thread·sandbox claim via per-turn Host env) + finance/jobs; mobile channel quick actions
+- [x] Desktop Channels+Delivery deepen: X search / workflows / credentials + react/inbound/markdown buttons; mobile mirrors for finance/jobs/workflows/inbound/slides/skill/export
 - [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn

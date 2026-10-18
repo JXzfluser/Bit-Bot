@@ -467,12 +467,20 @@ for needle in (
     'reply via teams:',
     'finance get_balance',
     'job search',
+    'x search moonbit',
+    'list workflows',
+    'list credentials',
+    'react message',
 ):
     assert needle in cv, needle
     assert needle in main, needle
 print('parity native SendToUser surface wired ok')
 print('parity native product quick actions ok')
 "
+"${MOBILE[@]}" --machine-kind ios --session-id parity-ios-x "x search moonbit" >/tmp/parity-ios-x.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-ios-x.txt').read();assert 'x_search' in t;assert 'machine_kind=ios' in t;assert 'HostAbi x_search path=' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/x_search-*.json'));assert mirrors;m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='x_search';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios x_search delivery mirror ok', m.get('host_path'), mirrors[-1])"
+"${MOBILE[@]}" --machine-kind android --session-id parity-and-fin "finance get_balance" >/tmp/parity-and-fin.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-and-fin.txt').read();assert 'finance_call' in t or 'finance' in t;assert 'machine_kind=android' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/finance_call-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='finance_call';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity android finance_call delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
 python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;assert 'machine_kind=android' in t;print('parity android turn ok')"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-slides "make slides title=MobileParity" >/tmp/parity-ios-slides.txt
