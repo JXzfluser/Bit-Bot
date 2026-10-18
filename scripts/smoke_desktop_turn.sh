@@ -1235,6 +1235,11 @@ function startMock(port, mode, token) {
   const sap = JSON.parse((sah && sah.stdout) || "{}");
   if (sap.mapped !== "host_schedule_meeting" || sap.product_tool_residual !== false) throw new Error(JSON.stringify(sap).slice(0,200));
   console.log("mcp_call schedule_meeting alias short-circuit ok", sap.mapped, (sap.schedule||{}).mode);
+  // Clear prior live purchase token so sandbox_receipt is not reclassified as live_charge.
+  try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}
+  delete process.env.BITBOT_PURCHASE_LIVE;
+  delete process.env.BITBOT_PURCHASE_TOKEN;
+  delete process.env.BITBOT_PURCHASE_API_URL;
   const buys = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.purchase_item|{\"item\":\"MCPWidget\",\"cents\":999}" }]);
   const bh = buys.find((r) => r && r.kind === "mcp_call");
   if (!bh || !bh.ok) throw new Error("purchase mcp");
@@ -1255,6 +1260,9 @@ function startMock(port, mode, token) {
   if (pap.mapped !== "host_purchase" || pap.product_tool_residual !== false) throw new Error(JSON.stringify(pap).slice(0,200));
   console.log("mcp_call purchase alias short-circuit ok", pap.mapped, (pap.purchase||{}).mode);
   // Optional live residual close via existing calendar/purchase mocks
+  // Clear connector token files so env API URL/token win (file api_url overrides env).
+  try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}
+  try { fs.unlinkSync("data/connectors/calendar_token.json"); } catch (_) {}
   const calMock = startMock(18786, "calendar", "smoke-mcp-cal");
   const payMock = startMock(18787, "purchase", "smoke-mcp-pay");
   await sleep(400);
