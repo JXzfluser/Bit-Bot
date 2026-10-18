@@ -11176,7 +11176,9 @@ function createHostFfi(repoRoot) {
       } catch {
         gitDiffStat = "";
       }
-      // BITBOT_CODE_APPLY=1: durable sidecar + mutate target with Host marker; never auto-commits.
+      // BITBOT_CODE_APPLY=1: durable sidecar + mutate target with Host marker.
+      // After apply, stamp git_commit_residual until BITBOT_CODE_COMMIT=1 closes it
+      // via real git or BITBOT_GIT_BIN mock — never invent SHA / pretend_committed.
       const allowApply =
         String(process.env.BITBOT_CODE_APPLY || "").trim() === "1";
       let applied = false;
@@ -11201,7 +11203,7 @@ function createHostFfi(repoRoot) {
             pretend_committed: false,
             target_mutated: targetMutated,
             marker: BITBOT_HOST_APPLIED_TAG,
-            note: "Host applied durable sidecar + target marker — git commit still requires explicit source_control",
+            note: "Host applied durable sidecar + target marker — git commit gated on BITBOT_CODE_COMMIT=1",
             at,
           };
           fs.writeFileSync(appliedPath, JSON.stringify(marker, null, 2));
@@ -11210,6 +11212,88 @@ function createHostFfi(repoRoot) {
           applyError = String((err && err.message) || err).slice(0, 200);
           applied = false;
           targetMutated = false;
+        }
+      }
+      let gitCommitResidual = applied;
+      let pretendCommitted = false;
+      let commitSha = null;
+      let commitError = null;
+      let commitAttempted = false;
+      let commitGitBin = null;
+      const allowCommit =
+        applied &&
+        String(process.env.BITBOT_CODE_COMMIT || "").trim() === "1";
+      if (allowCommit) {
+        commitAttempted = true;
+        const gitBin = (() => {
+          const override = String(process.env.BITBOT_GIT_BIN || "").trim();
+          if (override) {
+            try {
+              if (fs.existsSync(override)) return override;
+            } catch {
+              /* fall through */
+            }
+          }
+          return "git";
+        })();
+        commitGitBin = gitBin;
+        const rel = path.relative(REPO_ROOT, abs);
+        try {
+          await execFileAsync(gitBin, ["add", "--", rel], {
+            cwd: REPO_ROOT,
+            timeout: 15000,
+          });
+          await execFileAsync(
+            gitBin,
+            [
+              "commit",
+              "-m",
+              "Bit Bot Host code_changes apply (BITBOT_CODE_COMMIT=1)",
+              "--",
+              rel,
+            ],
+            { cwd: REPO_ROOT, timeout: 30000 },
+          );
+          const hd = await execFileAsync(gitBin, ["rev-parse", "HEAD"], {
+            cwd: REPO_ROOT,
+            timeout: 10000,
+          });
+          const sha = String(hd.stdout || "").trim().slice(0, 40);
+          if (!sha) {
+            commitError = "rev-parse HEAD returned empty";
+            gitCommitResidual = true;
+          } else {
+            commitSha = sha;
+            gitCommitResidual = false;
+            pretendCommitted = false;
+            if (appliedPath && fs.existsSync(appliedPath)) {
+              try {
+                const prev = JSON.parse(fs.readFileSync(appliedPath, "utf8"));
+                fs.writeFileSync(
+                  appliedPath,
+                  JSON.stringify(
+                    {
+                      ...prev,
+                      committed: true,
+                      commit_sha: sha,
+                      git_commit_residual: false,
+                      pretend_committed: false,
+                      at,
+                    },
+                    null,
+                    2,
+                  ),
+                );
+              } catch {
+                /* sidecar refresh best-effort */
+              }
+            }
+          }
+        } catch (err) {
+          commitError = String((err && err.message) || err).slice(0, 240);
+          gitCommitResidual = true;
+          commitSha = null;
+          pretendCommitted = false;
         }
       }
       const plan = {
@@ -11223,11 +11307,19 @@ function createHostFfi(repoRoot) {
         applied_path: appliedPath,
         apply_error: applyError,
         target_mutated: targetMutated,
-        pretend_committed: false,
+        pretend_committed: pretendCommitted,
         code_apply_residual: !applied,
+        git_commit_residual: gitCommitResidual,
+        commit_gated: allowCommit,
+        commit_attempted: commitAttempted,
+        commit_sha: commitSha,
+        commit_error: commitError,
+        commit_git_bin: commitGitBin,
         git_diff_stat: gitDiffStat,
         note: applied
-          ? "Host code-changes applied sidecar + target marker — not auto-committed (CM-1810)"
+          ? gitCommitResidual
+            ? "Host code-changes applied — git_commit_residual until BITBOT_CODE_COMMIT=1 (CM-1810)"
+            : "Host code-changes applied + committed via BITBOT_CODE_COMMIT=1 (CM-1810)"
           : "Host code-changes plan — scoped edit not auto-committed (CM-1810); set BITBOT_CODE_APPLY=1 to apply sidecar + target marker",
         at,
       };
@@ -11238,7 +11330,7 @@ function createHostFfi(repoRoot) {
         sidecar = abs + ".bitbot-plan.md";
         fs.writeFileSync(
           sidecar,
-          `# Bit Bot code-changes plan\n\n- target: \`${abs}\`\n- namespace: \`${ns}\`\n- applied: ${applied}\n- pretend_committed: false\n\nHost recorded a scoped edit plan; MoonBit owns intent (CM-1810).\n`,
+          `# Bit Bot code-changes plan\n\n- target: \`${abs}\`\n- namespace: \`${ns}\`\n- applied: ${applied}\n- pretend_committed: ${pretendCommitted}\n- git_commit_residual: ${gitCommitResidual}\n- commit_sha: ${commitSha || ""}\n\nHost recorded a scoped edit plan; MoonBit owns intent (CM-1810).\n`,
         );
       }
       const delivery = recordSendToUser({
@@ -11255,6 +11347,8 @@ function createHostFfi(repoRoot) {
         sidecar,
         applied,
         applied_path: appliedPath,
+        git_commit_residual: gitCommitResidual,
+        commit_sha: commitSha,
         at,
       });
       return okJson(kind, cmd, {

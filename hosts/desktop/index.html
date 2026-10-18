@@ -2397,6 +2397,9 @@
                     (p.applied ? "applied" : "plan") +
                     (p.code_apply_residual === true
                       ? "/code_apply_residual"
+                      : "") +
+                    (p.git_commit_residual === true
+                      ? "/git_commit_residual"
                       : "");
                   types.push("attachment");
                   const scMeta = document.getElementById("source-control-meta");
@@ -2406,6 +2409,9 @@
                       (p.applied ? "applied" : "plan") +
                       (p.code_apply_residual === true
                         ? " · code_apply_residual"
+                        : "") +
+                      (p.git_commit_residual === true
+                        ? " · git_commit_residual"
                         : "") +
                       (p.pretend_committed === true ? " · pretend!" : "");
                   }

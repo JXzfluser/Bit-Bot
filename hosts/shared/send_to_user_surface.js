@@ -68,6 +68,7 @@ function residualSuffix(p) {
     "remote_cloud_residual",
     "remote_cloud_artifact_residual",
     "code_apply_residual",
+    "git_commit_residual",
     "screenshot_residual",
     "remote_pr_residual",
     "gh_pr_create_residual",

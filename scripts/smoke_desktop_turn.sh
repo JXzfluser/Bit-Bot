@@ -570,6 +570,7 @@ for needle in (
   'remote_cloud_residual',
   'remote_cloud_artifact_residual',
   'code_apply_residual',
+  'git_commit_residual',
   'screenshot_residual',
   'gh_pr_create_residual',
   'public_fallback_residual',
@@ -608,6 +609,7 @@ for needle in (
   '/remote_pr_residual',
   '/real_create_gated',
   '/code_apply_residual',
+  '/git_commit_residual',
   '/box_doctor_bin_residual',
   '/box_chrome_bin_residual',
   '/long_lived_cron_residual',
@@ -649,6 +651,7 @@ assert 'true_device_os_dialog_residual' in shared
 assert 'refused_cross_scope' in shared
 assert 'gh_pr_create_residual' in shared or 'remote_pr_residual' in shared
 assert 'remote_cloud_artifact_residual' in shared
+assert 'git_commit_residual' in shared
 assert 'live_voice_residual' in shared
 assert 'live_mail_claim_residual' in shared
 assert 'live_sms_residual' in shared
@@ -688,6 +691,7 @@ for needle in (
   'remote_cloud_residual',
   'remote_cloud_artifact_residual',
   'code_apply_residual',
+  'git_commit_residual',
   'screenshot_residual',
   'remote_pr_residual',
   'public_fallback_residual',
@@ -725,6 +729,7 @@ for needle in (
   'widget_degraded',
   'inbound_push_residual',
   'remote_cloud_artifact_residual',
+  'git_commit_residual',
 ):
   assert needle in ios, needle
   assert needle in android, needle
@@ -1428,10 +1433,26 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cold-live.json'));h=nex
 node hosts/cli_host/run_turn.js "learn from demo title=Checkout steps=click:Cart|type:email" >/tmp/bitbot-lfd.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-lfd.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='skill_write');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('path') and os.path.isfile(p['path']);body=open(p['path']).read();assert 'click:Cart' in body or 'Steps' in body;print('learn_from_demo skill steps ok', p.get('path'))"
 node hosts/cli_host/run_turn.js "code changes README.mbt.md" >/tmp/bitbot-code-changes.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-code-changes.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='code_changes');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('applied') is False;assert p.get('pretend_committed') is False;assert p.get('code_apply_residual') is True;assert p.get('path') and os.path.isfile(p['path']);print('code_changes plan ok', p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-code-changes.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='code_changes');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('applied') is False;assert p.get('pretend_committed') is False;assert p.get('code_apply_residual') is True;assert p.get('git_commit_residual') is False;assert p.get('path') and os.path.isfile(p['path']);print('code_changes plan ok', p.get('path'))"
 python3 -c "from pathlib import Path;p=Path('README.mbt.md');t=p.read_text();p.write_text(''.join(ln for ln in t.splitlines(True) if 'bitbot-host-applied' not in ln));Path('/tmp/bitbot-code-apply-before.txt').write_text(p.read_text());print('code_changes apply target pre-clean ok')"
 BITBOT_CODE_APPLY=1 node hosts/cli_host/run_turn.js "code changes README.mbt.md" >/tmp/bitbot-code-apply.json
-python3 -c "import json,os;from pathlib import Path;d=json.load(open('/tmp/bitbot-code-apply.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='code_changes');p=json.loads(h.get('stdout') or '{}');assert p.get('applied') is True;assert p.get('code_apply_residual') is False;assert p.get('pretend_committed') is False;assert p.get('target_mutated') is True;assert p.get('applied_path') and os.path.isfile(p['applied_path']);target=p.get('target') or 'README.mbt.md';before=Path('/tmp/bitbot-code-apply-before.txt').read_text();after=Path(target).read_text();assert after!=before,'target file content must change on apply';assert 'bitbot-host-applied' in after;Path(target).write_text(''.join(ln for ln in after.splitlines(True) if 'bitbot-host-applied' not in ln));print('code_changes apply target+sidecar ok', p.get('applied_path'), target)"
+python3 -c "import json,os;from pathlib import Path;d=json.load(open('/tmp/bitbot-code-apply.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='code_changes');p=json.loads(h.get('stdout') or '{}');assert p.get('applied') is True;assert p.get('code_apply_residual') is False;assert p.get('git_commit_residual') is True;assert p.get('pretend_committed') is False;assert p.get('commit_sha') in (None,'');assert p.get('target_mutated') is True;assert p.get('applied_path') and os.path.isfile(p['applied_path']);target=p.get('target') or 'README.mbt.md';before=Path('/tmp/bitbot-code-apply-before.txt').read_text();after=Path(target).read_text();assert after!=before,'target file content must change on apply';assert 'bitbot-host-applied' in after;Path(target).write_text(''.join(ln for ln in after.splitlines(True) if 'bitbot-host-applied' not in ln));print('code_changes apply target+sidecar ok', p.get('applied_path'), target, 'git_commit_residual', True)"
+# Gated git commit closes git_commit_residual via BITBOT_GIT_BIN mock (never invent SHA).
+python3 -c "from pathlib import Path;p=Path('README.mbt.md');t=p.read_text();p.write_text(''.join(ln for ln in t.splitlines(True) if 'bitbot-host-applied' not in ln));print('code_changes commit target pre-clean ok')"
+rm -rf /tmp/bitbot-git-mock
+mkdir -p /tmp/bitbot-git-mock
+BITBOT_CODE_APPLY=1 BITBOT_CODE_COMMIT=1 BITBOT_GIT_BIN="$ROOT/scripts/host_git_mock.sh" BITBOT_GIT_MOCK_LOG_DIR=/tmp/bitbot-git-mock \
+  node hosts/cli_host/run_turn.js "code changes README.mbt.md" >/tmp/bitbot-code-commit.json
+python3 -c "import json,os;from pathlib import Path;d=json.load(open('/tmp/bitbot-code-commit.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='code_changes');p=json.loads(h.get('stdout') or '{}');assert p.get('applied') is True;assert p.get('code_apply_residual') is False;assert p.get('git_commit_residual') is False;assert p.get('pretend_committed') is False;assert p.get('commit_attempted') is True;assert p.get('commit_sha')=='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';assert os.path.isfile('/tmp/bitbot-git-mock/invocations.log');log=open('/tmp/bitbot-git-mock/invocations.log').read();assert 'commit' in log and 'rev-parse' in log;assert os.path.isfile('/tmp/bitbot-git-mock/last-commit.json');target=p.get('target') or 'README.mbt.md';Path(target).write_text(''.join(ln for ln in Path(target).read_text().splitlines(True) if 'bitbot-host-applied' not in ln));print('code_changes git commit mock residual close ok', p.get('commit_sha'), p.get('commit_git_bin'))"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const apply=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-code-apply.json","utf8"));
+if(!apply.labels.some(l=>l.includes("/git_commit_residual"))) { console.error("apply must stamp git_commit_residual", apply); process.exit(1); }
+const committed=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-code-commit.json","utf8"));
+if(committed.labels.some(l=>l.includes("/git_commit_residual"))) { console.error("commit must close git_commit_residual", committed); process.exit(1); }
+console.log("STU code_changes git_commit_residual chip ok", apply.labels.filter(l=>l.includes("code")).slice(0,2));
+'
 node hosts/cli_host/run_turn.js "source control github" >/tmp/bitbot-sc.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='host_git_status' or str(p.get('mode') or '').startswith('host_git_status');assert p.get('pretend_remote_pr') is False;assert p.get('remote_pr_residual') is True;assert p.get('branch');assert p.get('path') and os.path.isfile(p['path']);assert p.get('status_path') and os.path.isfile(p['status_path']);print('source_control git status ok', p.get('branch'), 'dirty', p.get('dirty'), 'path', p.get('path'), 'remote_pr_residual', p.get('remote_pr_residual'))"
 node hosts/cli_host/run_turn.js "source control create_pr" >/tmp/bitbot-sc-pr.json
