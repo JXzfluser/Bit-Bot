@@ -876,6 +876,12 @@ node hosts/cli_host/run_turn.js "voice start smoke1" >/tmp/bitbot-voice.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='voice_session');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('media_ok') is True;assert os.path.isfile(p.get('media_path') or '');assert open(p['media_path'],'rb').read(4)==b'RIFF';assert p.get('pretend_live') is False;assert p.get('call_id');assert p.get('voice_stt_residual') is True;assert isinstance(p.get('voice_tts_residual'),bool);assert p.get('path') and os.path.isfile(p['path']);assert p.get('sessions_path') and os.path.isfile(p['sessions_path']);open('/tmp/bitbot-voice-call-id.txt','w').write(p['call_id']);print('voice_session durable+media ok', p.get('path'), 'call_id', p.get('call_id'), 'bytes', p.get('media_bytes'), 'stt_residual', True)"
 node hosts/cli_host/run_turn.js "voice relay smoke1 :: hello from smoke" >/tmp/bitbot-voice-relay.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-relay.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='voice_relay');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('turns')>=2;assert p.get('transcript_path') and os.path.isfile(p['transcript_path']);assert p.get('reply');assert p.get('reply_media_ok') is True;assert p.get('reply_media_path') and os.path.isfile(p['reply_media_path']);assert open(p['reply_media_path'],'rb').read(4)==b'RIFF';assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_silent') is False;assert p.get('voice_stt_residual') is True;assert isinstance(p.get('voice_tts_residual'),bool);assert p.get('reply_media_tool') in ('espeak','ffmpeg-sine');assert p.get('sessions_path') and os.path.isfile(p['sessions_path']);print('voice_relay reply WAV ok', p.get('turns'), 'bytes', p.get('reply_media_bytes'), 'tool', p.get('reply_media_tool'), 'tts_residual', p.get('voice_tts_residual'), 'snap', p.get('path'))"
+# STT closes residual when Host WAV sidecar transcript exists
+python3 -c "import json;d=json.load(open('/tmp/bitbot-voice.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_session');p=json.loads(h['stdout']);open('/tmp/bitbot-voice-wav.txt','w').write(p['media_path'])"
+WAV=$(cat /tmp/bitbot-voice-wav.txt)
+printf 'transcribed hello from mic\n' > "${WAV}.stt.txt"
+BITBOT_VOICE_STT=force node hosts/cli_host/run_turn.js 'voice relay smoke1 :: $stt' >/tmp/bitbot-voice-stt.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-stt.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_relay');p=json.loads(h['stdout']);assert p.get('stt_ok') is True;assert p.get('stt_tool')=='stt_sidecar';assert p.get('voice_stt_residual') is False;assert 'transcribed hello' in (p.get('stt_text') or '');assert p.get('path') and os.path.isfile(p['path']);print('voice_relay STT sidecar ok', p.get('stt_tool'), 'residual', False, p.get('path'))"
 node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'))"
 # MCP product short-circuit: slides + X (Host FFI; MoonBit catalog may lack names)
@@ -1073,6 +1079,25 @@ const { createHostFfi } = require("./hosts/shared/host_ffi.js");
 })().catch((e) => { console.error(e); process.exit(1); });
 '
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-device-tool-ffi.json'));assert d.get('ok');assert d.get('pretend_executed') is not True;assert isinstance(d.get('device_capture_residual'),bool);assert d.get('path') and os.path.isfile(d['path']);print('device_tool ffi snap ok', d.get('mode'), d.get('path'))"
+# contacts/location: residual without fixture; closes with data/device/*.json
+node -e '
+const { createHostFfi } = require("./hosts/shared/host_ffi.js");
+const fs = require("fs");
+(async () => {
+  const ffi = createHostFfi(process.cwd());
+  fs.mkdirSync("data/device", { recursive: true });
+  try { fs.unlinkSync("data/device/contacts.json"); } catch (_) {}
+  let r = await ffi.executeHostEffects([{ kind: "device_tool", command: "desktop|contacts" }]);
+  let p = JSON.parse(r.find((x) => x.kind === "device_tool").stdout);
+  if (p.device_tool_residual !== true || p.executed !== false) throw new Error("expected residual");
+  fs.writeFileSync("data/device/contacts.json", JSON.stringify({ contacts: [{ id: "1", name: "Ada" }], pretend: false }));
+  r = await ffi.executeHostEffects([{ kind: "device_tool", command: "desktop|contacts" }]);
+  p = JSON.parse(r.find((x) => x.kind === "device_tool").stdout);
+  if (p.executed !== true || p.device_tool_residual !== false || p.mode !== "host_device_contacts_fixture") throw new Error(JSON.stringify(p));
+  fs.writeFileSync("/tmp/bitbot-device-contacts.json", JSON.stringify({ ok: true, ...p }, null, 2));
+  console.log("device_tool contacts fixture ok", p.mode, p.capture_path);
+})().catch((e)=>{console.error(e);process.exit(1);});
+'
 node hosts/cli_host/run_turn.js --approved "cold mail to=a@example.com subject=Hi body=Hello unsubscribe=mailto:u@example.com" >/tmp/bitbot-cold.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cold.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('provider')=='cold';assert p.get('mode')=='cold_sandbox_eml';assert p.get('sent') is False;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is True;assert p.get('eml_ok') is True;assert 'List-Unsubscribe:' in open(p['eml_path']).read();assert p.get('path') and os.path.isfile(p['path']);print('cold_mail List-Unsubscribe eml ok', p.get('eml_path'), p.get('path'), 'live_mail_residual', True)"
 node hosts/cli_host/run_turn.js "learn from demo title=Checkout steps=click:Cart|type:email" >/tmp/bitbot-lfd.json
