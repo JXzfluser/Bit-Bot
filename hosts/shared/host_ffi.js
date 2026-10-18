@@ -977,22 +977,6 @@ function createHostFfi(repoRoot) {
     };
   }
 
-  /** Close residual / run inbound turn only when HTTP-ok AND ≥1 claimed. */
-  function gateClaimForResidual(claim) {
-    if (!claim || typeof claim !== "object") return claim;
-    const httpOk = Boolean(claim.ok);
-    const count = Number(claim.claimed_count || 0);
-    const claimOk = httpOk && count >= 1;
-    if (claimOk) return claim;
-    return {
-      ...claim,
-      ok: false,
-      error:
-        claim.error ||
-        (httpOk && count < 1 ? "empty claim inbox" : "claim failed"),
-    };
-  }
-
   /**
    * Claim → nested Host turn hook (webhook_wake / mail_claim_inbox parity).
    * When BITBOT_INBOUND_TURN=1, runs cli_host on turnPrompt and closes
@@ -1129,16 +1113,11 @@ function createHostFfi(repoRoot) {
       mode: (entry && entry.mode) || "channel_send",
     };
     const claim = extras.claim || artifact.claim || undefined;
-    // Live claim-ok with ≥1 message → nested Host turn hook for all schemes
-    // (Slack/Teams/meeting/SMS/webhook/voice). Empty HTTP-ok inbox must not
-    // execute inbound turn as success.
+    // Live claim-ok → nested Host turn hook for all schemes (Slack/Teams/
+    // meeting/SMS/webhook/voice) without per-path copies.
     let turnHookResult = undefined;
     let inboundTurnResidual = undefined;
-    const claimReady =
-      claim &&
-      Boolean(claim.ok) &&
-      Number(claim.claimed_count || 0) >= 1;
-    if (claimReady) {
+    if (claim && Boolean(claim.ok)) {
       const channelsDir = path.join(REPO_ROOT, "data", "channels");
       const turnPrompt =
         `Channel claim ${artifact.scheme || "channel"} ${artifact.address || ""}: ${claim.claimed_count || 0} message(s)`.slice(
@@ -1164,7 +1143,7 @@ function createHostFfi(repoRoot) {
     }
     // Claim/pull is not HTTP Events push — keep inbound_push_residual true
     // (host_slack/teams/email_events_listen close it on real Events/push POST).
-    const inboundPushResidual = claimReady ? true : undefined;
+    const inboundPushResidual = claim && Boolean(claim.ok) ? true : undefined;
     const snapshot = {
       ...artifact,
       path: sendPath,
@@ -1357,10 +1336,9 @@ function createHostFfi(repoRoot) {
         });
       }
       // Claim-only path (no live post): still durable outbound draft + inbound evidence.
-      // Close residual only when HTTP ok AND ≥1 claimed (empty inbox keeps residual open).
+      // Live claim closes residual (parity with Teams/meeting claim); sandbox/fail leave it open.
       if (claim) {
-        const gated = gateClaimForResidual(claim);
-        const claimOk = Boolean(gated.ok);
+        const claimOk = Boolean(claim.ok);
         const entry = {
           scheme,
           address: addr,
@@ -1372,7 +1350,7 @@ function createHostFfi(repoRoot) {
           pretend_live: false,
           widget_degraded: widgetDegraded,
           claimed_count: claim.claimed_count,
-          claim: gated,
+          claim,
           connector_ready: connectorReady,
           at: stamp,
           inbound: inboundPath,
@@ -1381,9 +1359,9 @@ function createHostFfi(repoRoot) {
         return finalizeChannelSend(raw, entry, {
           outboundPath,
           inbound: inboundPath,
-          claim: gated,
+          claim,
           ok: claimOk,
-          error: claimOk ? "" : gated.error,
+          error: claimOk ? "" : claim.error,
         });
       }
       // Sandbox inbound claim rehearsal when CLAIM=1 but no live token (honest: not live).
@@ -1584,10 +1562,8 @@ function createHostFfi(repoRoot) {
         });
       }
       // Claim-only Teams path (no live post).
-      // Close residual only when HTTP ok AND ≥1 claimed (empty inbox keeps residual open).
       if (teamsClaim) {
-        const gated = gateClaimForResidual(teamsClaim);
-        const claimOk = Boolean(gated.ok);
+        const claimOk = Boolean(teamsClaim.ok);
         const entry = {
           scheme: "teams",
           address: addr,
@@ -1595,9 +1571,10 @@ function createHostFfi(repoRoot) {
           mode: "live_teams_claim",
           ok: claimOk,
           live_post: false,
+          // Live Graph claim closes residual; sandbox/fail leave it open.
           live_teams_residual: !claimOk,
           claimed_count: teamsClaim.claimed_count,
-          claim: gated,
+          claim: teamsClaim,
           pretend_live: false,
           widget_degraded: widgetDegraded,
           chat_id: chatId || null,
@@ -1608,9 +1585,9 @@ function createHostFfi(repoRoot) {
         return finalizeChannelSend(raw, entry, {
           outboundPath,
           inbound: inboundPath,
-          claim: gated,
-          ok: claimOk,
-          error: claimOk ? "" : gated.error,
+          claim: teamsClaim,
+          ok: entry.ok,
+          error: entry.ok ? "" : teamsClaim.error,
         });
       }
       // Sandbox Teams claim rehearsal when CLAIM=1 but no token.
@@ -1762,12 +1739,10 @@ function createHostFfi(repoRoot) {
           error: okHist ? "" : hist.error || `http_${hist.status}`,
         };
       }
-      // Claim-only path (CLAIM=1, no live mail send): close residual only when
-      // HTTP ok AND ≥1 claimed (empty inbox keeps residual open).
+      // Claim-only path (CLAIM=1, no live mail send): close live_mail_residual on ok.
       const mailSendArmed = process.env.BITBOT_MAIL_SEND === "1";
       if (emailClaim && !mailSendArmed) {
-        const gated = gateClaimForResidual(emailClaim);
-        const claimOk = Boolean(gated.ok);
+        const claimOk = Boolean(emailClaim.ok);
         const entry = {
           scheme,
           address: addr,
@@ -1779,7 +1754,7 @@ function createHostFfi(repoRoot) {
           live_mail_residual: !claimOk,
           live_channel_residual: !claimOk,
           claimed_count: emailClaim.claimed_count,
-          claim: gated,
+          claim: emailClaim,
           mail: {
             provider: mailProvider,
             mode: "live_email_claim",
@@ -1802,9 +1777,9 @@ function createHostFfi(repoRoot) {
           outboundPath,
           inbound: inboundPath,
           mail: entry.mail,
-          claim: gated,
+          claim: emailClaim,
           ok: claimOk,
-          error: claimOk ? "" : gated.error || "email claim failed",
+          error: claimOk ? "" : emailClaim.error || "email claim failed",
         });
       }
       // Sandbox claim rehearsal when CLAIM=1 but no live token/API.
@@ -2015,11 +1990,9 @@ function createHostFfi(repoRoot) {
           };
         }
       }
-      // Claim-only path (CLAIM=1, no POST gate): close residual only when HTTP ok
-      // AND ≥1 claimed (empty inbox keeps residual open).
+      // Claim-only path (CLAIM=1, no POST gate): close residual when live claim ok.
       if (meetingClaim && !liveAttempted) {
-        const gated = gateClaimForResidual(meetingClaim);
-        const claimOk = Boolean(gated.ok);
+        const claimOk = Boolean(meetingClaim.ok);
         const entry = {
           scheme: "meeting_chat",
           address: "meeting_chat",
@@ -2029,11 +2002,12 @@ function createHostFfi(repoRoot) {
           draft_card: false,
           ok: claimOk,
           live_post: false,
+          // Live meeting claim closes residual; sandbox/fail leave it open.
           live_meeting_residual: !claimOk,
           pretend_live: false,
           widget_degraded: widgetDegraded,
           claimed_count: meetingClaim.claimed_count,
-          claim: gated,
+          claim: meetingClaim,
           note: claimOk
             ? "CM-2153 live meeting inbound claim"
             : "CM-2153 meeting claim failed (live_meeting_residual)",
@@ -2046,9 +2020,9 @@ function createHostFfi(repoRoot) {
           outboundPath,
           transcript: transcriptPath,
           inbound: inboundPath,
-          claim: gated,
+          claim: meetingClaim,
           ok: claimOk,
-          error: claimOk ? "" : gated.error || "meeting claim failed",
+          error: claimOk ? "" : meetingClaim.error || "meeting claim failed",
         });
       }
       // Sandbox claim rehearsal when CLAIM=1 but no live token/API.
@@ -2228,8 +2202,8 @@ function createHostFfi(repoRoot) {
       // Claim-only path (CLAIM=1, no POST): close residual only when HTTP ok
       // and at least one message was claimed (empty inbox keeps residual open).
       if (smsClaim && !liveAttempted) {
-        const gated = gateClaimForResidual(smsClaim);
-        const claimOk = Boolean(gated.ok);
+        const claimOk =
+          Boolean(smsClaim.ok) && Number(smsClaim.claimed_count || 0) >= 1;
         const entry = {
           scheme: "sms",
           address: addr,
@@ -2243,7 +2217,7 @@ function createHostFfi(repoRoot) {
           live_sms_residual: !claimOk,
           live_channel_residual: !claimOk,
           claimed_count: smsClaim.claimed_count,
-          claim: gated,
+          claim: smsClaim,
           at: stamp,
           inbound: inboundPath,
         };
@@ -2252,9 +2226,9 @@ function createHostFfi(repoRoot) {
         return finalizeChannelSend(raw, entry, {
           outboundPath,
           inbound: inboundPath,
-          claim: gated,
+          claim: smsClaim,
           ok: claimOk,
-          error: claimOk ? "" : gated.error || "sms claim failed",
+          error: claimOk ? "" : smsClaim.error || "sms claim failed",
           send_to_user_type: "text",
         });
       }
@@ -2420,10 +2394,8 @@ function createHostFfi(repoRoot) {
           mode = "live_webhook_failed";
         }
       }
-      // Claim-only: close residual only when HTTP ok AND ≥1 claimed.
       if (webhookClaim && !liveAttempted) {
-        const gated = gateClaimForResidual(webhookClaim);
-        const claimOk = Boolean(gated.ok);
+        const claimOk = Boolean(webhookClaim.ok);
         const entry = {
           scheme: "webhook",
           address: addr,
@@ -2438,7 +2410,7 @@ function createHostFfi(repoRoot) {
           key_leaked: false,
           hook_url_set: Boolean(hookUrl),
           claimed_count: webhookClaim.claimed_count,
-          claim: gated,
+          claim: webhookClaim,
           at: stamp,
           inbound: inboundPath,
         };
@@ -2446,9 +2418,9 @@ function createHostFfi(repoRoot) {
         return finalizeChannelSend(raw, entry, {
           outboundPath,
           inbound: inboundPath,
-          claim: gated,
+          claim: webhookClaim,
           ok: claimOk,
-          error: claimOk ? "" : gated.error || "webhook claim failed",
+          error: claimOk ? "" : webhookClaim.error || "webhook claim failed",
         });
       }
       if (process.env.BITBOT_WEBHOOK_CLAIM === "1" && !hookUrl) {
@@ -2693,10 +2665,8 @@ function createHostFfi(repoRoot) {
           mode = "live_voice_failed";
         }
       }
-      // Claim-only: close residual only when HTTP ok AND ≥1 claimed.
       if (voiceClaim && !liveAttempted) {
-        const gated = gateClaimForResidual(voiceClaim);
-        const claimOk = Boolean(gated.ok);
+        const claimOk = Boolean(voiceClaim.ok);
         const entry = {
           scheme: "voice",
           address: addr,
@@ -2722,7 +2692,7 @@ function createHostFfi(repoRoot) {
           media_tool: media.tool || null,
           sessions_path: VOICE_SESSIONS_PATH,
           claimed_count: voiceClaim.claimed_count,
-          claim: gated,
+          claim: voiceClaim,
           at: stamp,
           inbound: inboundPath,
         };
@@ -2731,9 +2701,9 @@ function createHostFfi(repoRoot) {
         return finalizeChannelSend(raw, entry, {
           outboundPath,
           inbound: inboundPath,
-          claim: gated,
+          claim: voiceClaim,
           ok: claimOk,
-          error: claimOk ? "" : gated.error || "voice claim failed",
+          error: claimOk ? "" : voiceClaim.error || "voice claim failed",
           send_to_user_type: "voice",
         });
       }
@@ -11230,6 +11200,8 @@ function createHostFfi(repoRoot) {
       // BITBOT_CODE_APPLY=1: durable sidecar + mutate target with Host marker.
       // After apply, stamp git_commit_residual until BITBOT_CODE_COMMIT=1 closes it
       // via real git or BITBOT_GIT_BIN mock — never invent SHA / pretend_committed.
+      // After commit success, stamp git_push_residual until BITBOT_CODE_PUSH=1 closes it
+      // via real git push or BITBOT_GIT_BIN mock — never invent remote / pretend_pushed.
       const allowApply =
         String(process.env.BITBOT_CODE_APPLY || "").trim() === "1";
       let applied = false;
@@ -11252,6 +11224,7 @@ function createHostFfi(repoRoot) {
             namespace: ns,
             applied: true,
             pretend_committed: false,
+            pretend_pushed: false,
             target_mutated: targetMutated,
             marker: BITBOT_HOST_APPLIED_TAG,
             note: "Host applied durable sidecar + target marker — git commit gated on BITBOT_CODE_COMMIT=1",
@@ -11271,22 +11244,23 @@ function createHostFfi(repoRoot) {
       let commitError = null;
       let commitAttempted = false;
       let commitGitBin = null;
+      const resolveGitBin = () => {
+        const override = String(process.env.BITBOT_GIT_BIN || "").trim();
+        if (override) {
+          try {
+            if (fs.existsSync(override)) return override;
+          } catch {
+            /* fall through */
+          }
+        }
+        return "git";
+      };
       const allowCommit =
         applied &&
         String(process.env.BITBOT_CODE_COMMIT || "").trim() === "1";
       if (allowCommit) {
         commitAttempted = true;
-        const gitBin = (() => {
-          const override = String(process.env.BITBOT_GIT_BIN || "").trim();
-          if (override) {
-            try {
-              if (fs.existsSync(override)) return override;
-            } catch {
-              /* fall through */
-            }
-          }
-          return "git";
-        })();
+        const gitBin = resolveGitBin();
         commitGitBin = gitBin;
         const rel = path.relative(REPO_ROOT, abs);
         try {
@@ -11329,6 +11303,8 @@ function createHostFfi(repoRoot) {
                       commit_sha: sha,
                       git_commit_residual: false,
                       pretend_committed: false,
+                      git_push_residual: true,
+                      pretend_pushed: false,
                       at,
                     },
                     null,
@@ -11347,6 +11323,54 @@ function createHostFfi(repoRoot) {
           pretendCommitted = false;
         }
       }
+      // After BITBOT_CODE_COMMIT success, stamp git_push_residual until BITBOT_CODE_PUSH=1.
+      let gitPushResidual = Boolean(commitSha && !gitCommitResidual);
+      let pretendPushed = false;
+      let pushError = null;
+      let pushAttempted = false;
+      let pushGitBin = null;
+      const allowPush =
+        gitPushResidual &&
+        String(process.env.BITBOT_CODE_PUSH || "").trim() === "1";
+      if (allowPush) {
+        pushAttempted = true;
+        const gitBin = commitGitBin || resolveGitBin();
+        pushGitBin = gitBin;
+        try {
+          // Bare `git push` — never invent remote name/URL in Host.
+          await execFileAsync(gitBin, ["push"], {
+            cwd: REPO_ROOT,
+            timeout: 60000,
+          });
+          gitPushResidual = false;
+          pretendPushed = false;
+          if (appliedPath && fs.existsSync(appliedPath)) {
+            try {
+              const prev = JSON.parse(fs.readFileSync(appliedPath, "utf8"));
+              fs.writeFileSync(
+                appliedPath,
+                JSON.stringify(
+                  {
+                    ...prev,
+                    pushed: true,
+                    git_push_residual: false,
+                    pretend_pushed: false,
+                    at,
+                  },
+                  null,
+                  2,
+                ),
+              );
+            } catch {
+              /* sidecar refresh best-effort */
+            }
+          }
+        } catch (err) {
+          pushError = String((err && err.message) || err).slice(0, 240);
+          gitPushResidual = true;
+          pretendPushed = false;
+        }
+      }
       const plan = {
         id: planId,
         namespace: ns,
@@ -11359,18 +11383,26 @@ function createHostFfi(repoRoot) {
         apply_error: applyError,
         target_mutated: targetMutated,
         pretend_committed: pretendCommitted,
+        pretend_pushed: pretendPushed,
         code_apply_residual: !applied,
         git_commit_residual: gitCommitResidual,
+        git_push_residual: gitPushResidual,
         commit_gated: allowCommit,
         commit_attempted: commitAttempted,
         commit_sha: commitSha,
         commit_error: commitError,
         commit_git_bin: commitGitBin,
+        push_gated: allowPush,
+        push_attempted: pushAttempted,
+        push_error: pushError,
+        push_git_bin: pushGitBin,
         git_diff_stat: gitDiffStat,
         note: applied
           ? gitCommitResidual
             ? "Host code-changes applied — git_commit_residual until BITBOT_CODE_COMMIT=1 (CM-1810)"
-            : "Host code-changes applied + committed via BITBOT_CODE_COMMIT=1 (CM-1810)"
+            : gitPushResidual
+              ? "Host code-changes applied + committed — git_push_residual until BITBOT_CODE_PUSH=1 (CM-1810)"
+              : "Host code-changes applied + committed + pushed via BITBOT_CODE_PUSH=1 (CM-1810)"
           : "Host code-changes plan — scoped edit not auto-committed (CM-1810); set BITBOT_CODE_APPLY=1 to apply sidecar + target marker",
         at,
       };
@@ -11381,7 +11413,7 @@ function createHostFfi(repoRoot) {
         sidecar = abs + ".bitbot-plan.md";
         fs.writeFileSync(
           sidecar,
-          `# Bit Bot code-changes plan\n\n- target: \`${abs}\`\n- namespace: \`${ns}\`\n- applied: ${applied}\n- pretend_committed: ${pretendCommitted}\n- git_commit_residual: ${gitCommitResidual}\n- commit_sha: ${commitSha || ""}\n\nHost recorded a scoped edit plan; MoonBit owns intent (CM-1810).\n`,
+          `# Bit Bot code-changes plan\n\n- target: \`${abs}\`\n- namespace: \`${ns}\`\n- applied: ${applied}\n- pretend_committed: ${pretendCommitted}\n- pretend_pushed: ${pretendPushed}\n- git_commit_residual: ${gitCommitResidual}\n- git_push_residual: ${gitPushResidual}\n- commit_sha: ${commitSha || ""}\n\nHost recorded a scoped edit plan; MoonBit owns intent (CM-1810).\n`,
         );
       }
       const delivery = recordSendToUser({
@@ -11399,6 +11431,7 @@ function createHostFfi(repoRoot) {
         applied,
         applied_path: appliedPath,
         git_commit_residual: gitCommitResidual,
+        git_push_residual: gitPushResidual,
         commit_sha: commitSha,
         at,
       });
@@ -12440,6 +12473,8 @@ function createHostFfi(repoRoot) {
       );
       // Optional live claim against local HTTP mock (not production IdP).
       let liveClaim = false;
+      let liveAttempted = false;
+      let liveEmpty = false;
       let liveProbe = null;
       let liveRows = [];
       const claimApi = String(process.env.BITBOT_MAIL_CLAIM_API_URL || "").trim();
@@ -12449,6 +12484,7 @@ function createHostFfi(repoRoot) {
         resolveProviderAccessToken("gmail") ||
         resolveProviderAccessToken("outlook");
       if (claimApi && claimToken && process.env.BITBOT_MAIL_CLAIM_POST === "1") {
+        liveAttempted = true;
         try {
           const resp = await httpJson(
             claimApi.replace(/\/$/, "") +
@@ -12485,6 +12521,9 @@ function createHostFfi(repoRoot) {
                 at,
               }));
               liveClaim = true;
+            } else {
+              // HTTP-ok empty inbox: keep residual open; do not seed fixture.
+              liveEmpty = true;
             }
           }
         } catch (err) {
@@ -12495,12 +12534,13 @@ function createHostFfi(repoRoot) {
         }
       }
       // Seed / load local fixture messages for this inbox (not live IdP).
+      // Skip fixture fallback when live HTTP-ok returned an empty inbox.
       const fixturePath = path.join(
         inboxDir,
         `${sanitizeSkillName(localPart) || "inbox"}.jsonl`,
       );
       let fixtureRows = liveRows.slice();
-      if (fixtureRows.length === 0 && fs.existsSync(fixturePath)) {
+      if (!liveEmpty && fixtureRows.length === 0 && fs.existsSync(fixturePath)) {
         try {
           fixtureRows = fs
             .readFileSync(fixturePath, "utf8")
@@ -12519,7 +12559,7 @@ function createHostFfi(repoRoot) {
           fixtureRows = [];
         }
       }
-      if (fixtureRows.length === 0) {
+      if (!liveEmpty && fixtureRows.length === 0) {
         const seed = {
           id: `fixture-${localPart || "inbox"}-welcome`,
           from: "bitbot@local",
@@ -12553,27 +12593,38 @@ function createHostFfi(repoRoot) {
           text_len: String(m.text_prefix || "").length,
         });
       }
-      // Claim → turn hook (same pattern as webhook inbound wake).
-      const turnPrompt = `Mail claim inbox ${address}: ${claimed.length} fixture message(s)`.slice(
-        0,
-        400,
-      );
-      const hooked = await runInboundTurnHook({
-        hooksBaseDir: dir,
-        turnPrompt,
-        hookMeta: {
-          address,
-          local_part: localPart,
-          claimed_count: claimed.length,
-        },
-        pendingMeta: { address },
-      });
-      const turnHookResult = hooked.turnHookResult;
-      const inboundTurnResidual = hooked.inboundTurnResidual;
+      // Close residual only when live claim ok AND ≥1 message; empty inbox
+      // keeps residual open and must not execute inbound turn as success.
+      const claimOk = liveClaim && claimed.length >= 1;
+      let turnHookResult = undefined;
+      let inboundTurnResidual = undefined;
+      if (claimOk || (!liveAttempted && claimed.length >= 1)) {
+        // Sandbox fixture still wakes turn hook; live empty skips it.
+        const turnPrompt = `Mail claim inbox ${address}: ${claimed.length} fixture message(s)`.slice(
+          0,
+          400,
+        );
+        const hooked = await runInboundTurnHook({
+          hooksBaseDir: dir,
+          turnPrompt,
+          hookMeta: {
+            address,
+            local_part: localPart,
+            claimed_count: claimed.length,
+          },
+          pendingMeta: { address },
+        });
+        turnHookResult = hooked.turnHookResult;
+        inboundTurnResidual = hooked.inboundTurnResidual;
+      }
       const artifact = {
         local_part: localPart,
         address,
-        mode: liveClaim ? "live_mail_claim_inbox" : "host_mail_claim_inbox",
+        mode: liveClaim
+          ? "live_mail_claim_inbox"
+          : liveEmpty
+            ? "live_mail_claim_inbox"
+            : "host_mail_claim_inbox",
         pretend_claimed: false,
         user_confirmed: true,
         claimed_count: claimed.length,
@@ -12583,8 +12634,8 @@ function createHostFfi(repoRoot) {
         turn_hook: turnHookResult,
         live_claim: liveClaim,
         live_probe: liveProbe,
-        // Closes when live mock/API returns messages; production IdP still deferred.
-        live_mail_claim_residual: !liveClaim,
+        // Closes only when live mock/API returns ≥1 message.
+        live_mail_claim_residual: !claimOk,
         inbound_turn_residual: inboundTurnResidual,
         at,
       };
@@ -12613,7 +12664,8 @@ function createHostFfi(repoRoot) {
         ...artifact,
         path: claimPath,
         send_to_user: delivery,
-        ok: true,
+        ok: liveEmpty ? false : true,
+        error: liveEmpty ? "empty claim inbox" : "",
       });
     }
 
