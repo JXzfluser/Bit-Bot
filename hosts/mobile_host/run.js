@@ -170,6 +170,10 @@ try {
       "check_updates",
       "auto_review_settings",
       "box_chrome_probe",
+      "mcp_namespace",
+      "mcp_uninstall",
+      "mcp_get_plugin",
+      "mcp_list_plugins",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;
