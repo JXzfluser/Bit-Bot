@@ -1336,6 +1336,20 @@ function stripHostAppliedMarker(file) {
   if (!(todoWriteP.todo_write||{}).path || !(todoWriteP.todo_write||{}).store_path) throw new Error("todo paths");
   require("fs").writeFileSync("/tmp/bitbot-mcp-todo-write.json", JSON.stringify({ ok: true, ...todoWriteP }, null, 2));
   console.log("mcp_call todo_write short-circuit ok", todoWriteP.mapped, (todoWriteP.todo_write||{}).item_count, (todoWriteP.todo_write||{}).done_count);
+  const authorPluginRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.author_plugin|{\"namespace\":\"user-AuthorPlugin\",\"plugin_id\":\"plugin-author\"}" }]);
+  const authorPluginH = authorPluginRuns.find((r) => r && r.kind === "mcp_call");
+  if (!authorPluginH || !authorPluginH.ok) throw new Error("author_plugin mcp");
+  const authorPluginP = JSON.parse(authorPluginH.stdout || "{}");
+  if (authorPluginP.mapped !== "host_mcp_namespace" || authorPluginP.product_tool_residual !== false) throw new Error(JSON.stringify(authorPluginP).slice(0,200));
+  if ((authorPluginP.mcp_namespace||{}).pretend_registered === true) throw new Error("pretend_registered author");
+  console.log("mcp_call author_plugin alias short-circuit ok", authorPluginP.mapped, (authorPluginP.mcp_namespace||{}).namespace);
+  const confirmDelRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.confirm_delete_agent|{\"agent_id\":\"asst-mcp-del\",\"command\":\"confirm\"}" }]);
+  const confirmDelH = confirmDelRuns.find((r) => r && r.kind === "mcp_call");
+  if (!confirmDelH || !confirmDelH.ok) throw new Error("confirm_delete_agent mcp");
+  const confirmDelP = JSON.parse(confirmDelH.stdout || "{}");
+  if (confirmDelP.mapped !== "host_delete_agent" || confirmDelP.product_tool_residual !== false) throw new Error(JSON.stringify(confirmDelP).slice(0,200));
+  if ((confirmDelP.delete_agent||{}).pretend_deleted === true) throw new Error("pretend_deleted confirm");
+  console.log("mcp_call confirm_delete_agent alias short-circuit ok", confirmDelP.mapped, (confirmDelP.delete_agent||{}).phase || (confirmDelP.delete_agent||{}).mode);
   // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}

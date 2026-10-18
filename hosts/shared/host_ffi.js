@@ -7170,6 +7170,9 @@ function createHostFfi(repoRoot) {
         install_plugin: "host_mcp_namespace",
         mcp_namespace: "host_mcp_namespace",
         register_plugin: "host_mcp_namespace",
+        author_plugin: "host_mcp_namespace",
+        plugin_install: "host_mcp_namespace",
+        skill_list: "list_skills",
         memory_recall: "host_memory_recall",
         recall_memory: "host_memory_recall",
         device_permission: "host_device_permission",
@@ -7216,6 +7219,7 @@ function createHostFfi(repoRoot) {
         settings_open: "host_settings_open",
         delete_agent: "host_delete_agent",
         remove_agent: "host_delete_agent",
+        confirm_delete_agent: "host_delete_agent",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
