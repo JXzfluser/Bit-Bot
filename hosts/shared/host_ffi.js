@@ -6913,6 +6913,12 @@ function createHostFfi(repoRoot) {
         create_draft: "host_mail_draft",
         mail_draft: "host_mail_draft",
         draft_mail: "host_mail_draft",
+        send_mail: "host_mail_send",
+        mail_send: "host_mail_send",
+        send_message: "host_mail_send",
+        mail_read: "host_mail_read",
+        read_mail_thread: "host_mail_read",
+        get_message: "host_mail_read",
         get_balance: "host_finance_call",
         search_jobs: "host_job_search",
         job_search: "host_job_search",
@@ -6992,11 +6998,13 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/finance/job/calendar/purchase onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/mail_send/mail_read/finance/job/calendar/purchase onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
         mapped === "host_mail_draft" ||
+        mapped === "host_mail_send" ||
+        mapped === "host_mail_read" ||
         mapped === "host_finance_call" ||
         mapped === "host_job_search" ||
         mapped === "host_schedule_meeting" ||
@@ -7046,6 +7054,112 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(draftHit && draftHit.ok),
             mail_draft: draftPayload,
+          });
+        }
+        if (mapped === "host_mail_send") {
+          const provider = String(
+            args.provider || args.account || "gmail",
+          )
+            .trim()
+            .toLowerCase() || "gmail";
+          const to = String(args.to || args.recipient || args.email || "").trim();
+          const subject = String(
+            args.subject || args.title || "(no subject)",
+          ).trim();
+          const body = String(
+            args.body || args.text || args.content || args.message || "",
+          ).trim();
+          const sendCmd = [provider, to, subject, body].join("|");
+          const sendResults = await executeHostEffects([
+            { kind: "mail_send", command: sendCmd },
+          ]);
+          const sendHit = (sendResults || []).find(
+            (r) => r && r.kind === "mail_send",
+          );
+          let sendPayload = {};
+          try {
+            sendPayload = JSON.parse((sendHit && sendHit.stdout) || "{}");
+          } catch {
+            sendPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "mail_send",
+            mail_send: {
+              path: sendPayload.path || null,
+              eml_path: sendPayload.eml_path || null,
+              mode: sendPayload.mode || null,
+              sent: sendPayload.sent,
+              pretend_sent: sendPayload.pretend_sent,
+              live_mail_residual: sendPayload.live_mail_residual,
+              message_id: sendPayload.message_id || null,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(sendHit && sendHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(sendHit && sendHit.ok),
+            mail_send: sendPayload,
+          });
+        }
+        if (mapped === "host_mail_read") {
+          const threadId =
+            String(
+              args.thread_id ||
+                args.id ||
+                args.message_id ||
+                args.q ||
+                args.query ||
+                args.body ||
+                "",
+            ).trim() || "t-unknown";
+          const readResults = await executeHostEffects([
+            { kind: "mail_read", command: threadId },
+          ]);
+          const readHit = (readResults || []).find(
+            (r) => r && r.kind === "mail_read",
+          );
+          let readPayload = {};
+          try {
+            readPayload = JSON.parse((readHit && readHit.stdout) || "{}");
+          } catch {
+            readPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "mail_read",
+            mail_read: {
+              path: readPayload.path || null,
+              thread_id: readPayload.thread_id || threadId,
+              mode: readPayload.mode || null,
+              live_mail_residual: readPayload.live_mail_residual,
+              pretend_live: readPayload.pretend_live,
+              subject: readPayload.subject || null,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(readHit && readHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(readHit && readHit.ok),
+            mail_read: readPayload,
           });
         }
         if (mapped === "host_slides_pptx") {

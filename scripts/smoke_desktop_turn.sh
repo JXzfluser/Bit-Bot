@@ -1161,7 +1161,7 @@ node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
 node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
-# MCP product short-circuit: slides + X + finance + job + calendar + purchase (Host FFI; MoonBit catalog may lack names)
+# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");
 const { spawn } = require("child_process");
@@ -1264,13 +1264,58 @@ function startMock(port, mode, token) {
   const pap = JSON.parse((pah && pah.stdout) || "{}");
   if (pap.mapped !== "host_purchase" || pap.product_tool_residual !== false) throw new Error(JSON.stringify(pap).slice(0,200));
   console.log("mcp_call purchase alias short-circuit ok", pap.mapped, (pap.purchase||{}).mode);
-  // Optional live residual close via existing calendar/purchase mocks
+  // Mail send/read product short-circuit (sandbox; residual may stay open without live mock)
+  delete process.env.BITBOT_MAIL_SEND;
+  delete process.env.BITBOT_GMAIL_TOKEN;
+  delete process.env.BITBOT_GMAIL_API_BASE;
+  try { fs.unlinkSync("data/connectors/gmail_token.json"); } catch (_) {}
+  const sends = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.send_mail|{\"to\":\"mcp@example.com\",\"subject\":\"MCP Send\",\"body\":\"hello\"}" }]);
+  const sh = sends.find((r) => r && r.kind === "mcp_call");
+  if (!sh || !sh.ok) throw new Error("mail_send mcp");
+  const sp = JSON.parse(sh.stdout || "{}");
+  if (sp.mapped !== "host_mail_send" || sp.product_tool_residual !== false) throw new Error(JSON.stringify(sp).slice(0,200));
+  if ((sp.mail_send||{}).pretend_sent === true) throw new Error("pretend_sent");
+  if (!(sp.mail_send||{}).eml_path && !(sp.mail_send||{}).path) throw new Error("mail_send payload: " + JSON.stringify(sp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-mail-send.json", JSON.stringify({ ok: true, ...sp }, null, 2));
+  console.log("mcp_call mail_send short-circuit ok", sp.mapped, (sp.mail_send||{}).mode, (sp.mail_send||{}).eml_path);
+  const sendAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.send_message|{\"to\":\"alias@example.com\",\"subject\":\"Alias\",\"body\":\"hi\"}" }]);
+  const smah = sendAlias.find((r) => r && r.kind === "mcp_call");
+  const smap = JSON.parse((smah && smah.stdout) || "{}");
+  if (smap.mapped !== "host_mail_send" || smap.product_tool_residual !== false) throw new Error(JSON.stringify(smap).slice(0,200));
+  console.log("mcp_call send_message alias short-circuit ok", smap.mapped, (smap.mail_send||{}).mode);
+  const mailSendAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.mail_send|{\"to\":\"ms@example.com\",\"subject\":\"MS\",\"body\":\"ms\"}" }]);
+  const msah = mailSendAlias.find((r) => r && r.kind === "mcp_call");
+  const msap = JSON.parse((msah && msah.stdout) || "{}");
+  if (msap.mapped !== "host_mail_send" || msap.product_tool_residual !== false) throw new Error(JSON.stringify(msap).slice(0,200));
+  console.log("mcp_call mail_send alias short-circuit ok", msap.mapped, (msap.mail_send||{}).mode);
+  const reads = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.mail_read|{\"thread_id\":\"t-invoice-1\"}" }]);
+  const rh = reads.find((r) => r && r.kind === "mcp_call");
+  if (!rh || !rh.ok) throw new Error("mail_read mcp");
+  const rp = JSON.parse(rh.stdout || "{}");
+  if (rp.mapped !== "host_mail_read" || rp.product_tool_residual !== false) throw new Error(JSON.stringify(rp).slice(0,200));
+  if ((rp.mail_read||{}).pretend_live === true) throw new Error("pretend_live");
+  if (!(rp.mail_read||{}).path) throw new Error("mail_read payload: " + JSON.stringify(rp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-mail-read.json", JSON.stringify({ ok: true, ...rp }, null, 2));
+  console.log("mcp_call mail_read short-circuit ok", rp.mapped, (rp.mail_read||{}).mode, (rp.mail_read||{}).thread_id);
+  const readAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.read_mail_thread|{\"id\":\"t-alias-1\"}" }]);
+  const rah = readAlias.find((r) => r && r.kind === "mcp_call");
+  const rap = JSON.parse((rah && rah.stdout) || "{}");
+  if (rap.mapped !== "host_mail_read" || rap.product_tool_residual !== false) throw new Error(JSON.stringify(rap).slice(0,200));
+  console.log("mcp_call read_mail_thread alias short-circuit ok", rap.mapped, (rap.mail_read||{}).thread_id);
+  const getMsg = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.get_message|{\"message_id\":\"t-get-1\"}" }]);
+  const gmh = getMsg.find((r) => r && r.kind === "mcp_call");
+  const gmp = JSON.parse((gmh && gmh.stdout) || "{}");
+  if (gmp.mapped !== "host_mail_read" || gmp.product_tool_residual !== false) throw new Error(JSON.stringify(gmp).slice(0,200));
+  console.log("mcp_call get_message alias short-circuit ok", gmp.mapped, (gmp.mail_read||{}).thread_id);
+  // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}
   try { fs.unlinkSync("data/connectors/calendar_token.json"); } catch (_) {}
-  // Ports 18804/18805 avoid CU/channel mocks and leftover 18786/18787 listeners.
+  try { fs.unlinkSync("data/connectors/gmail_token.json"); } catch (_) {}
+  // Ports 18804/18805/18806 avoid CU/channel mocks and leftover 18786/18787 listeners.
   const calMock = startMock(18804, "calendar", "smoke-mcp-cal");
   const payMock = startMock(18805, "purchase", "smoke-mcp-pay");
+  const gmailMock = startMock(18806, "gmail", "smoke-mcp-gmail");
   await sleep(500);
   try {
     process.env.BITBOT_CALENDAR_API_URL = "http://127.0.0.1:18804";
@@ -1295,14 +1340,39 @@ function startMock(port, mode, token) {
     }
     if ((lbp.purchase||{}).pretend_paid === true) throw new Error("pretend_paid live");
     console.log("mcp_call purchase live residual close ok", (lbp.purchase||{}).mode, (lbp.purchase||{}).live_paid_residual);
+    process.env.BITBOT_GMAIL_API_BASE = "http://127.0.0.1:18806";
+    process.env.BITBOT_GMAIL_TOKEN = "smoke-mcp-gmail";
+    process.env.BITBOT_MAIL_SEND = "1";
+    const liveSend = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.send_mail|{\"to\":\"live-mcp@example.com\",\"subject\":\"LiveMCP\",\"body\":\"sent\"}" }]);
+    const lsh = liveSend.find((r) => r && r.kind === "mcp_call");
+    const lsp = JSON.parse((lsh && lsh.stdout) || "{}");
+    if (lsp.mapped !== "host_mail_send" || lsp.product_tool_residual !== false) throw new Error(JSON.stringify(lsp).slice(0,200));
+    if ((lsp.mail_send||{}).live_mail_residual !== false || (lsp.mail_send||{}).mode !== "live_gmail") {
+      throw new Error("mail_send live residual: " + JSON.stringify(lsp.mail_send||{}).slice(0,200));
+    }
+    if ((lsp.mail_send||{}).pretend_sent === true) throw new Error("pretend_sent live");
+    console.log("mcp_call mail_send live residual close ok", (lsp.mail_send||{}).mode, (lsp.mail_send||{}).live_mail_residual);
+    const liveRead = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.mail_read|{\"thread_id\":\"t-invoice-1\"}" }]);
+    const lrh = liveRead.find((r) => r && r.kind === "mcp_call");
+    const lrp = JSON.parse((lrh && lrh.stdout) || "{}");
+    if (lrp.mapped !== "host_mail_read" || lrp.product_tool_residual !== false) throw new Error(JSON.stringify(lrp).slice(0,200));
+    if ((lrp.mail_read||{}).live_mail_residual !== false || (lrp.mail_read||{}).mode !== "gmail_live") {
+      throw new Error("mail_read live residual: " + JSON.stringify(lrp.mail_read||{}).slice(0,200));
+    }
+    if ((lrp.mail_read||{}).pretend_live === true) throw new Error("pretend_live live");
+    console.log("mcp_call mail_read live residual close ok", (lrp.mail_read||{}).mode, (lrp.mail_read||{}).live_mail_residual);
   } finally {
     try { calMock.kill(); } catch (_) {}
     try { payMock.kill(); } catch (_) {}
+    try { gmailMock.kill(); } catch (_) {}
     delete process.env.BITBOT_CALENDAR_API_URL;
     delete process.env.BITBOT_CALENDAR_TOKEN;
     delete process.env.BITBOT_PURCHASE_LIVE;
     delete process.env.BITBOT_PURCHASE_TOKEN;
     delete process.env.BITBOT_PURCHASE_API_URL;
+    delete process.env.BITBOT_GMAIL_API_BASE;
+    delete process.env.BITBOT_GMAIL_TOKEN;
+    delete process.env.BITBOT_MAIL_SEND;
   }
 })().catch((e)=>{console.error(e);process.exit(1);});
 '
