@@ -1407,6 +1407,9 @@ function stripHostAppliedMarker(file) {
     ["archive_agent", "host_hide_agent", "hide_agent"],
     ["list_skills", "host_list_skills", "list_skills"],
     ["open_skills", "host_list_skills", "list_skills"],
+    ["export_skill", "host_export_pack", "export_pack"],
+    ["mark_done", "host_todo_write", "todo_write"],
+    ["open_chat", "host_channel_send", "channel_send"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
