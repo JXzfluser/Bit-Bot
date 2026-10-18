@@ -1161,7 +1161,7 @@ node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
 node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
-# MCP product short-circuit: slides + X (Host FFI; MoonBit catalog may lack names)
+# MCP product short-circuit: slides + X + finance + job (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");
 (async () => {
@@ -1179,6 +1179,32 @@ const { createHostFfi } = require("./hosts/shared/host_ffi.js");
   if (xp.mapped !== "host_x_search" || xp.product_tool_residual !== false) throw new Error(JSON.stringify(xp).slice(0,200));
   require("fs").writeFileSync("/tmp/bitbot-mcp-x.json", JSON.stringify({ ok: true, ...xp }, null, 2));
   console.log("mcp_call x short-circuit ok", xp.mapped, (xp.x_search||{}).mode);
+  const fins = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.get_balance|{}" }]);
+  const fh = fins.find((r) => r && r.kind === "mcp_call");
+  if (!fh || !fh.ok) throw new Error("finance mcp");
+  const fp = JSON.parse(fh.stdout || "{}");
+  if (fp.mapped !== "host_finance_call" || fp.product_tool_residual !== false) throw new Error(JSON.stringify(fp).slice(0,200));
+  if (!(fp.finance||{}).path && !(fp.finance||{}).mode) throw new Error("finance payload: " + JSON.stringify(fp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-finance.json", JSON.stringify({ ok: true, ...fp }, null, 2));
+  console.log("mcp_call finance short-circuit ok", fp.mapped, (fp.finance||{}).mode, (fp.finance||{}).path);
+  const finStar = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.finance_list_accounts|{}" }]);
+  const fsh = finStar.find((r) => r && r.kind === "mcp_call");
+  const fsp = JSON.parse((fsh && fsh.stdout) || "{}");
+  if (fsp.mapped !== "host_finance_call" || fsp.product_tool_residual !== false) throw new Error(JSON.stringify(fsp).slice(0,200));
+  console.log("mcp_call finance_* short-circuit ok", fsp.mapped, (fsp.finance||{}).tool || fsp.tool);
+  const jobs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.search_jobs|{\"q\":\"engineer\"}" }]);
+  const jh = jobs.find((r) => r && r.kind === "mcp_call");
+  if (!jh || !jh.ok) throw new Error("job mcp");
+  const jp = JSON.parse(jh.stdout || "{}");
+  if (jp.mapped !== "host_job_search" || jp.product_tool_residual !== false) throw new Error(JSON.stringify(jp).slice(0,200));
+  if ((jp.job_search||{}).pretend_applied === true) throw new Error("pretend_applied");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-job.json", JSON.stringify({ ok: true, ...jp }, null, 2));
+  console.log("mcp_call job short-circuit ok", jp.mapped, (jp.job_search||{}).mode, (jp.job_search||{}).hit_count);
+  const jobsAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.job_search|{\"q\":\"pm\"}" }]);
+  const jah = jobsAlias.find((r) => r && r.kind === "mcp_call");
+  const jap = JSON.parse((jah && jah.stdout) || "{}");
+  if (jap.mapped !== "host_job_search" || jap.product_tool_residual !== false) throw new Error(JSON.stringify(jap).slice(0,200));
+  console.log("mcp_call job_search alias short-circuit ok", jap.mapped, (jap.job_search||{}).mode);
 })().catch((e)=>{console.error(e);process.exit(1);});
 '
 node hosts/cli_host/run_turn.js "create teammate id=asst-smoke name=Smoke role=executor" >/tmp/bitbot-teammate.json

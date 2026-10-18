@@ -6913,16 +6913,21 @@ function createHostFfi(repoRoot) {
         create_draft: "host_mail_draft",
         mail_draft: "host_mail_draft",
         draft_mail: "host_mail_draft",
+        get_balance: "host_finance_call",
+        search_jobs: "host_job_search",
+        job_search: "host_job_search",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
         ? "write_result"
         : productMap[toolName] ||
-          (toolName === "search_mail_artifacts" ||
-          toolName === "list_skills" ||
-          toolName === "journal_tail"
-            ? toolName
-            : "echo_body");
+          (String(toolName).startsWith("finance_")
+            ? "host_finance_call"
+            : toolName === "search_mail_artifacts" ||
+                toolName === "list_skills" ||
+                toolName === "journal_tail"
+              ? toolName
+              : "echo_body");
       mcpMapped = mapped;
       mcpProductToolResidual =
         !wantWrite &&
@@ -6979,11 +6984,13 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/finance/job onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
-        mapped === "host_mail_draft"
+        mapped === "host_mail_draft" ||
+        mapped === "host_finance_call" ||
+        mapped === "host_job_search"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -7063,6 +7070,99 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(slidesRes.ok),
             slides: slidesPayload,
+          });
+        }
+        if (mapped === "host_finance_call") {
+          const finTool = String(toolName).startsWith("finance_")
+            ? String(toolName).slice("finance_".length) || toolName
+            : toolName;
+          const finOut = String(
+            args.output || args.body || args.q || args.query || "",
+          ).trim();
+          const finCmd = finTool + "|" + finOut;
+          const finResults = await executeHostEffects([
+            { kind: "finance_call", command: finCmd },
+          ]);
+          const finHit = (finResults || []).find(
+            (r) => r && r.kind === "finance_call",
+          );
+          let finPayload = {};
+          try {
+            finPayload = JSON.parse((finHit && finHit.stdout) || "{}");
+          } catch {
+            finPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "finance_call",
+            finance: {
+              path: finPayload.path || finPayload.artifact_path || null,
+              mode: finPayload.mode || null,
+              live_finance_residual: finPayload.live_finance_residual,
+              tool: finPayload.tool || finTool,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(finHit && finHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(finHit && finHit.ok),
+            finance: finPayload,
+          });
+        }
+        if (mapped === "host_job_search") {
+          const jobQ =
+            String(args.q || args.query || args.body || "").trim() || "(empty)";
+          const playbook = String(
+            args.playbook || "linkedin-readonly",
+          ).trim();
+          const hitCount = Number(args.hit_count || args.limit || 0) || 0;
+          const jobCmd = [jobQ, playbook, String(hitCount)].join("|");
+          const jobResults = await executeHostEffects([
+            { kind: "job_search", command: jobCmd },
+          ]);
+          const jobHit = (jobResults || []).find(
+            (r) => r && r.kind === "job_search",
+          );
+          let jobPayload = {};
+          try {
+            jobPayload = JSON.parse((jobHit && jobHit.stdout) || "{}");
+          } catch {
+            jobPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "job_search",
+            job_search: {
+              path: jobPayload.path || null,
+              mode: jobPayload.mode || null,
+              hit_count: jobPayload.hit_count,
+              live_job_residual: jobPayload.live_job_residual,
+              pretend_applied: jobPayload.pretend_applied,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(jobHit && jobHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(jobHit && jobHit.ok),
+            job_search: jobPayload,
           });
         }
         const q = String(
