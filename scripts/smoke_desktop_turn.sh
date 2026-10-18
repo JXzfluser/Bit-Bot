@@ -1161,9 +1161,21 @@ node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
 node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
-# MCP product short-circuit: slides + X + finance + job (Host FFI; MoonBit catalog may lack names)
+# MCP product short-circuit: slides + X + finance + job + calendar + purchase (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");
+const { spawn } = require("child_process");
+const path = require("path");
+const fs = require("fs");
+function sleep(ms){ return new Promise((r)=>setTimeout(r,ms)); }
+function startMock(port, mode, token) {
+  const log = "/tmp/bitbot-mcp-" + mode + "-mock.log";
+  const child = spawn(process.env.PYTHON || "python3", [
+    path.join(process.cwd(), "scripts/host_local_http_mock.py"),
+    "--port", String(port), "--mode", mode, "--token", token,
+  ], { stdio: ["ignore", fs.openSync(log, "w"), fs.openSync(log, "a")] });
+  return child;
+}
 (async () => {
   const ffi = createHostFfi(process.cwd());
   const slides = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.make_slides|{\"title\":\"Smoke Deck\"}" }]);
@@ -1205,6 +1217,75 @@ const { createHostFfi } = require("./hosts/shared/host_ffi.js");
   const jap = JSON.parse((jah && jah.stdout) || "{}");
   if (jap.mapped !== "host_job_search" || jap.product_tool_residual !== false) throw new Error(JSON.stringify(jap).slice(0,200));
   console.log("mcp_call job_search alias short-circuit ok", jap.mapped, (jap.job_search||{}).mode);
+  const cals = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.create_event|{\"title\":\"MCP Sprint\",\"when\":\"tomorrow-3pm\"}" }]);
+  const ch = cals.find((r) => r && r.kind === "mcp_call");
+  if (!ch || !ch.ok) throw new Error("calendar mcp");
+  const cp = JSON.parse(ch.stdout || "{}");
+  if (cp.mapped !== "host_schedule_meeting" || cp.product_tool_residual !== false) throw new Error(JSON.stringify(cp).slice(0,200));
+  if (!(cp.schedule||{}).ics_path && !(cp.schedule||{}).path) throw new Error("schedule payload: " + JSON.stringify(cp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-calendar.json", JSON.stringify({ ok: true, ...cp }, null, 2));
+  console.log("mcp_call calendar short-circuit ok", cp.mapped, (cp.schedule||{}).mode, (cp.schedule||{}).ics_path);
+  const calStar = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.calendar_create_event|{\"title\":\"CalStar\",\"when\":\"tomorrow-4pm\"}" }]);
+  const csh = calStar.find((r) => r && r.kind === "mcp_call");
+  const csp = JSON.parse((csh && csh.stdout) || "{}");
+  if (csp.mapped !== "host_schedule_meeting" || csp.product_tool_residual !== false) throw new Error(JSON.stringify(csp).slice(0,200));
+  console.log("mcp_call calendar_* short-circuit ok", csp.mapped, (csp.schedule||{}).mode || csp.tool);
+  const schedAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.schedule_meeting|{\"title\":\"AliasMeet\",\"when\":\"friday\"}" }]);
+  const sah = schedAlias.find((r) => r && r.kind === "mcp_call");
+  const sap = JSON.parse((sah && sah.stdout) || "{}");
+  if (sap.mapped !== "host_schedule_meeting" || sap.product_tool_residual !== false) throw new Error(JSON.stringify(sap).slice(0,200));
+  console.log("mcp_call schedule_meeting alias short-circuit ok", sap.mapped, (sap.schedule||{}).mode);
+  const buys = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.purchase_item|{\"item\":\"MCPWidget\",\"cents\":999}" }]);
+  const bh = buys.find((r) => r && r.kind === "mcp_call");
+  if (!bh || !bh.ok) throw new Error("purchase mcp");
+  const bp = JSON.parse(bh.stdout || "{}");
+  if (bp.mapped !== "host_purchase" || bp.product_tool_residual !== false) throw new Error(JSON.stringify(bp).slice(0,200));
+  if ((bp.purchase||{}).pretend_paid === true) throw new Error("pretend_paid");
+  if (!(bp.purchase||{}).receipt_path && !(bp.purchase||{}).path) throw new Error("purchase payload: " + JSON.stringify(bp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-purchase.json", JSON.stringify({ ok: true, ...bp }, null, 2));
+  console.log("mcp_call purchase short-circuit ok", bp.mapped, (bp.purchase||{}).mode, (bp.purchase||{}).receipt_path);
+  const buyStar = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.buy_widget|{\"item\":\"BuyStar\",\"cents\":499}" }]);
+  const bsh = buyStar.find((r) => r && r.kind === "mcp_call");
+  const bsp = JSON.parse((bsh && bsh.stdout) || "{}");
+  if (bsp.mapped !== "host_purchase" || bsp.product_tool_residual !== false) throw new Error(JSON.stringify(bsp).slice(0,200));
+  console.log("mcp_call buy_* short-circuit ok", bsp.mapped, (bsp.purchase||{}).mode || bsp.tool);
+  const purchaseAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.purchase|{\"item\":\"AliasBuy\",\"cents\":100}" }]);
+  const pah = purchaseAlias.find((r) => r && r.kind === "mcp_call");
+  const pap = JSON.parse((pah && pah.stdout) || "{}");
+  if (pap.mapped !== "host_purchase" || pap.product_tool_residual !== false) throw new Error(JSON.stringify(pap).slice(0,200));
+  console.log("mcp_call purchase alias short-circuit ok", pap.mapped, (pap.purchase||{}).mode);
+  // Optional live residual close via existing calendar/purchase mocks
+  const calMock = startMock(18786, "calendar", "smoke-mcp-cal");
+  const payMock = startMock(18787, "purchase", "smoke-mcp-pay");
+  await sleep(400);
+  try {
+    process.env.BITBOT_CALENDAR_API_URL = "http://127.0.0.1:18786";
+    process.env.BITBOT_CALENDAR_TOKEN = "smoke-mcp-cal";
+    const liveCal = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.create_event|{\"title\":\"LiveMCP\",\"when\":\"tomorrow-6pm\"}" }]);
+    const lch = liveCal.find((r) => r && r.kind === "mcp_call");
+    const lcp = JSON.parse((lch && lch.stdout) || "{}");
+    if (lcp.mapped !== "host_schedule_meeting" || lcp.product_tool_residual !== false) throw new Error(JSON.stringify(lcp).slice(0,200));
+    if ((lcp.schedule||{}).live_calendar_residual !== false || (lcp.schedule||{}).mode !== "calendar_live") throw new Error("calendar live residual: " + JSON.stringify(lcp.schedule||{}).slice?.(0,200) || JSON.stringify(lcp.schedule||{}).slice(0,200));
+    console.log("mcp_call calendar live residual close ok", (lcp.schedule||{}).mode, (lcp.schedule||{}).live_calendar_residual);
+    process.env.BITBOT_PURCHASE_LIVE = "1";
+    process.env.BITBOT_PURCHASE_TOKEN = "smoke-mcp-pay";
+    process.env.BITBOT_PURCHASE_API_URL = "http://127.0.0.1:18787";
+    const liveBuy = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.purchase_item|{\"item\":\"LiveMCPWidget\",\"cents\":777}" }]);
+    const lbh = liveBuy.find((r) => r && r.kind === "mcp_call");
+    const lbp = JSON.parse((lbh && lbh.stdout) || "{}");
+    if (lbp.mapped !== "host_purchase" || lbp.product_tool_residual !== false) throw new Error(JSON.stringify(lbp).slice(0,200));
+    if ((lbp.purchase||{}).live_paid_residual !== false || (lbp.purchase||{}).mode !== "live_charge") throw new Error("purchase live residual: " + JSON.stringify(lbp.purchase||{}).slice(0,200));
+    if ((lbp.purchase||{}).pretend_paid === true) throw new Error("pretend_paid live");
+    console.log("mcp_call purchase live residual close ok", (lbp.purchase||{}).mode, (lbp.purchase||{}).live_paid_residual);
+  } finally {
+    try { calMock.kill(); } catch (_) {}
+    try { payMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_CALENDAR_API_URL;
+    delete process.env.BITBOT_CALENDAR_TOKEN;
+    delete process.env.BITBOT_PURCHASE_LIVE;
+    delete process.env.BITBOT_PURCHASE_TOKEN;
+    delete process.env.BITBOT_PURCHASE_API_URL;
+  }
 })().catch((e)=>{console.error(e);process.exit(1);});
 '
 node hosts/cli_host/run_turn.js "create teammate id=asst-smoke name=Smoke role=executor" >/tmp/bitbot-teammate.json
