@@ -2783,7 +2783,10 @@
                     h.kind.replace("routine_", "rt:") +
                     ":" +
                     rtId +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.long_lived_cron_residual === true
+                      ? "/cron_residual"
+                      : "");
                   types.push("attachment");
                   const rtMeta = document.getElementById("routines-meta");
                   if (rtMeta) {
@@ -2792,7 +2795,11 @@
                       (rtId ? " · " + rtId : "") +
                       (p.next_due
                         ? " · next " + String(p.next_due).slice(0, 19)
-                        : "");
+                        : "") +
+                      (p.long_lived_cron_residual === true
+                        ? " · long_lived_cron_residual"
+                        : "") +
+                      (p.long_lived === true ? " · long_lived" : "");
                   }
                 } else if (h.kind === "device_permission") {
                   label =
