@@ -1017,9 +1017,13 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-file-token.json'))
 # Live meeting claim closes live_meeting_residual (GET /messages); widget degrade on claim body.
 BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting BITBOT_MEETING_CLAIM=1 \
   node hosts/cli_host/run_turn.js "meeting chat body=claim meeting [widget:decision_card] direct=1" >/tmp/bitbot-meeting-claim-live.json || true
+# Live meeting claim + BITBOT_INBOUND_TURN closes inbound_turn_residual (parity with Slack/Teams).
+BITBOT_MEETING_API_URL=http://127.0.0.1:18766 BITBOT_MEETING_TOKEN=smoke-meeting BITBOT_MEETING_CLAIM=1 BITBOT_INBOUND_TURN=1 \
+  node hosts/cli_host/run_turn.js "meeting chat body=claim meeting inbound turn direct=1" >/tmp/bitbot-meeting-claim-turn.json || true
 kill "$MEETING_MOCK_PID" >/dev/null 2>&1 || true
 wait "$MEETING_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_meeting_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_meeting_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;assert os.path.isfile('data/channels/inbound.jsonl');assert 'live_meeting_claim' in open('data/channels/inbound.jsonl').read();print('meeting_chat live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-claim-turn.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_meeting_claim';assert p.get('live_meeting_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('meeting_chat claim inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 # Sandbox meeting claim leaves residual open.
 rm -f data/connectors/meeting_token.json
 env -u BITBOT_MEETING_TOKEN -u BITBOT_MEETING_API_URL BITBOT_MEETING_CLAIM=1 \
@@ -1479,9 +1483,13 @@ SMS_CLAIM_MOCK_PID=$!
 sleep 0.4
 BITBOT_SMS_API_URL=http://127.0.0.1:18792 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_CLAIM=1 \
   node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: claim sms [widget:decision_card]" >/tmp/bitbot-sms-claim-live.json || true
+# Live SMS claim + BITBOT_INBOUND_TURN closes inbound_turn_residual (parity with Slack/Teams).
+BITBOT_SMS_API_URL=http://127.0.0.1:18792 BITBOT_SMS_TOKEN=smoke-sms BITBOT_SMS_CLAIM=1 BITBOT_INBOUND_TURN=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: claim sms inbound turn" >/tmp/bitbot-sms-claim-turn.json || true
 kill "$SMS_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SMS_CLAIM_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_sms_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_sms_residual') is False;assert p.get('live_channel_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;assert 'live_sms_claim' in open('data/channels/inbound.jsonl').read();print('channel sms live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_sms_claim';assert p.get('live_sms_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel sms claim inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 env -u BITBOT_SMS_TOKEN -u BITBOT_SMS_API_URL BITBOT_SMS_CLAIM=1 \
   node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: sandbox claim" >/tmp/bitbot-sms-claim-sandbox.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-sms-claim-sandbox.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='sandbox_sms_claim';assert p.get('live_sms_residual') is True;assert p.get('pretend_live') is False;print('channel sms sandbox claim residual open ok', p.get('claimed_count'))"
@@ -1529,9 +1537,13 @@ WH_CLAIM_MOCK_PID=$!
 sleep 0.4
 BITBOT_WEBHOOK_OUTBOUND_URL=http://127.0.0.1:18793/hooks BITBOT_WEBHOOK_CLAIM=1 \
   node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: claim hook [widget:decision_card]" >/tmp/bitbot-wh-claim-live.json || true
+# Live webhook claim + BITBOT_INBOUND_TURN closes inbound_turn_residual (parity with Slack/Teams).
+BITBOT_WEBHOOK_OUTBOUND_URL=http://127.0.0.1:18793/hooks BITBOT_WEBHOOK_CLAIM=1 BITBOT_INBOUND_TURN=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: claim hook inbound turn" >/tmp/bitbot-wh-claim-turn.json || true
 kill "$WH_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
 wait "$WH_CLAIM_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_webhook_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_webhook_residual') is False;assert p.get('widget_degraded') is True;assert p.get('key_leaked') is False;assert p.get('pretend_live') is False;assert 'live_webhook_claim' in open('data/channels/inbound.jsonl').read();print('channel webhook live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_webhook_claim';assert p.get('live_webhook_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel webhook claim inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: hook [widget:decision_card]" >/tmp/bitbot-wh-out-widget.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-wh-out-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='webhook';assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;print('channel webhook widget_degraded ok', p.get('mode'), p.get('body'))"
 node hosts/cli_host/run_turn.js --approved "reply via voice:call-smoke :: hello voice channel" >/tmp/bitbot-voice-ch.json
@@ -1561,9 +1573,13 @@ VOICE_CLAIM_MOCK_PID=$!
 sleep 0.4
 BITBOT_VOICE_API_URL=http://127.0.0.1:18794 BITBOT_VOICE_TOKEN=smoke-voice BITBOT_VOICE_CLAIM=1 \
   node hosts/cli_host/run_turn.js --approved "reply via voice:call-claim :: claim voice [widget:decision_card]" >/tmp/bitbot-voice-claim-live.json || true
+# Live voice claim + BITBOT_INBOUND_TURN closes inbound_turn_residual (parity with Slack/Teams).
+BITBOT_VOICE_API_URL=http://127.0.0.1:18794 BITBOT_VOICE_TOKEN=smoke-voice BITBOT_VOICE_CLAIM=1 BITBOT_INBOUND_TURN=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via voice:call-claim :: claim voice inbound turn" >/tmp/bitbot-voice-claim-turn.json || true
 kill "$VOICE_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
 wait "$VOICE_CLAIM_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_voice_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_voice_residual') is False;assert p.get('live_channel_residual') is False;assert p.get('widget_degraded') is True;assert p.get('pretend_live') is False;assert 'live_voice_claim' in open('data/channels/inbound.jsonl').read();print('channel voice live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_voice_claim';assert p.get('live_voice_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel voice claim inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 node hosts/cli_host/run_turn.js --approved "reply via voice:call-widget :: speak [widget:decision_card]" >/tmp/bitbot-voice-ch-widget.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-ch-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='voice';assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;print('channel voice widget_degraded ok', p.get('mode'), p.get('body'))"
 node hosts/cli_host/run_turn.js --approved "claim inbox alpha" >/tmp/bitbot-mail-claim.json
