@@ -263,12 +263,12 @@ else:
 "
 echo "==> Desktop Electron Host smoke turn (ADR 0005 product path)"
 (
-  cd hosts/desktop
+  cd "$ROOT/hosts/desktop"
   BITBOT_DESKTOP_SMOKE_TURN="ListMachines" \
   BITBOT_REPO_ROOT="$ROOT" \
   ELECTRON_ENABLE_LOGGING=1 \
   npx --no-install electron . --no-sandbox >/tmp/bitbot-desktop-electron-smoke.log 2>&1
-) || true
+)
 python3 -c "import json,os;p='data/tmp/desktop-electron-turn.json';assert os.path.isfile(p), open('/tmp/bitbot-desktop-electron-smoke.log').read()[-2000:];d=json.load(open(p));assert d.get('via_electron') is True;assert d.get('moonbit_brain') is True;assert d.get('local_brain') is False;assert d.get('pretend_desktop') is False;assert d.get('ok') is True;t=d.get('turn') or {};assert t.get('intent')=='list_machines';assert t.get('machine_kind')=='desktop';print('desktop electron smoke turn ok', t.get('intent'), p)"
 
 echo "==> Host durable routines"
