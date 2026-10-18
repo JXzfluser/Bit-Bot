@@ -1161,7 +1161,7 @@ node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
 node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
-# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + workflows/cold/identity + skill_load/mail_claim/credential + subagent/teammate/room/cloud/voice + code/pr + media + webfetch/screenshot/CU/device/machines/copy/react/routine/box_doctor (Host FFI; MoonBit catalog may lack names)
+# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + workflows/cold/identity + skill_load/mail_claim/credential + subagent/teammate/room/cloud/voice + code/pr + media + webfetch/screenshot/CU/device/machines/copy/react/routine/box_doctor + box_env/clock/package/shell/fs/journal/shared_memory (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");
 const { spawn } = require("child_process");
@@ -1889,6 +1889,132 @@ function stripHostAppliedMarker(file) {
   if (!(docpMcp.box_doctor||{}).path) throw new Error("box_doctor path");
   require("fs").writeFileSync("/tmp/bitbot-mcp-box-doctor.json", JSON.stringify({ ok: true, ...docpMcp }, null, 2));
   console.log("mcp_call box_doctor short-circuit ok", docpMcp.mapped, (docpMcp.box_doctor||{}).mode, (docpMcp.box_doctor||{}).box_doctor_bin_residual);
+  // box_env / box_clock / package_install / shell / fs_list / fs_read / shared_box_fs / journal_* / shared_memory_*
+  const boxEnvRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.box_env|{}" }]);
+  const boxEnvH = boxEnvRuns.find((r) => r && r.kind === "mcp_call");
+  if (!boxEnvH || !boxEnvH.ok) throw new Error("box_env mcp");
+  const boxEnvP = JSON.parse(boxEnvH.stdout || "{}");
+  if (boxEnvP.mapped !== "host_box_env" || boxEnvP.product_tool_residual !== false) throw new Error(JSON.stringify(boxEnvP).slice(0,200));
+  if ((boxEnvP.box_env||{}).pretend_runtime === true) throw new Error("pretend_runtime");
+  if (!(boxEnvP.box_env||{}).path) throw new Error("box_env path");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-box-env.json", JSON.stringify({ ok: true, ...boxEnvP }, null, 2));
+  console.log("mcp_call box_env short-circuit ok", boxEnvP.mapped, (boxEnvP.box_env||{}).mode, (boxEnvP.box_env||{}).runtime);
+  const boxClockRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.box_clock|{}" }]);
+  const boxClockH = boxClockRuns.find((r) => r && r.kind === "mcp_call");
+  if (!boxClockH || !boxClockH.ok) throw new Error("box_clock mcp");
+  const boxClockP = JSON.parse(boxClockH.stdout || "{}");
+  if (boxClockP.mapped !== "host_box_clock" || boxClockP.product_tool_residual !== false) throw new Error(JSON.stringify(boxClockP).slice(0,200));
+  if ((boxClockP.box_clock||{}).pretend_aligned === true) throw new Error("pretend_aligned");
+  if (!(boxClockP.box_clock||{}).path) throw new Error("box_clock path");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-box-clock.json", JSON.stringify({ ok: true, ...boxClockP }, null, 2));
+  console.log("mcp_call box_clock short-circuit ok", boxClockP.mapped, (boxClockP.box_clock||{}).mode, (boxClockP.box_clock||{}).user_iana);
+  const pkgInstRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.package_install|{\"pm\":\"npm\",\"pkgs\":\"left-pad@1.3.0\",\"via\":\"shell\"}" }]);
+  const pkgInstH = pkgInstRuns.find((r) => r && r.kind === "mcp_call");
+  if (!pkgInstH || !pkgInstH.ok) throw new Error("package_install mcp");
+  const pkgInstP = JSON.parse(pkgInstH.stdout || "{}");
+  if (pkgInstP.mapped !== "host_package_install" || pkgInstP.product_tool_residual !== false) throw new Error(JSON.stringify(pkgInstP).slice(0,200));
+  if ((pkgInstP.package_install||{}).pretend_installed === true) throw new Error("pretend_installed");
+  if ((pkgInstP.package_install||{}).via_shell !== true) throw new Error("via_shell: " + JSON.stringify(pkgInstP.package_install||{}).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-package-install.json", JSON.stringify({ ok: true, ...pkgInstP }, null, 2));
+  console.log("mcp_call package_install short-circuit ok", pkgInstP.mapped, (pkgInstP.package_install||{}).mode, (pkgInstP.package_install||{}).pm);
+  const pkgAliasRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.install_package|{\"pm\":\"npm\",\"pkgs\":\"is-arrayish@0.3.2\",\"via\":\"shell\"}" }]);
+  const pkgAliasH = pkgAliasRuns.find((r) => r && r.kind === "mcp_call");
+  const pkgAliasP = JSON.parse((pkgAliasH && pkgAliasH.stdout) || "{}");
+  if (pkgAliasP.mapped !== "host_package_install" || pkgAliasP.product_tool_residual !== false) throw new Error(JSON.stringify(pkgAliasP).slice(0,200));
+  console.log("mcp_call install_package alias short-circuit ok", pkgAliasP.mapped, (pkgAliasP.package_install||{}).pm);
+  // Shell: approval honesty — without approved, map closes residual but does not pretend-run.
+  const shellNeedRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.shell|{\"command\":\"echo mcp-shell-needs-approval\"}" }]);
+  const shellNeedH = shellNeedRuns.find((r) => r && r.kind === "mcp_call");
+  if (!shellNeedH || !shellNeedH.ok) throw new Error("shell needs-approval mcp");
+  const shellNeedP = JSON.parse(shellNeedH.stdout || "{}");
+  if (shellNeedP.mapped !== "host_shell" || shellNeedP.product_tool_residual !== false) throw new Error(JSON.stringify(shellNeedP).slice(0,200));
+  if ((shellNeedP.shell||{}).pretend_approved === true) throw new Error("pretend_approved needs");
+  if ((shellNeedP.shell||{}).needs_approval !== true || (shellNeedP.shell||{}).ran === true) {
+    throw new Error("shell approval honesty: " + JSON.stringify(shellNeedP.shell||{}).slice(0,200));
+  }
+  console.log("mcp_call shell needs-approval short-circuit ok", shellNeedP.mapped, (shellNeedP.shell||{}).mode);
+  const shellOkRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.shell|{\"command\":\"echo mcp-shell-approved\",\"approved\":true}" }]);
+  const shellOkH = shellOkRuns.find((r) => r && r.kind === "mcp_call");
+  if (!shellOkH || !shellOkH.ok) throw new Error("shell approved mcp");
+  const shellOkP = JSON.parse(shellOkH.stdout || "{}");
+  if (shellOkP.mapped !== "host_shell" || shellOkP.product_tool_residual !== false) throw new Error(JSON.stringify(shellOkP).slice(0,200));
+  if ((shellOkP.shell||{}).pretend_approved === true) throw new Error("pretend_approved ok");
+  if ((shellOkP.shell||{}).ran !== true) throw new Error("shell ran: " + JSON.stringify(shellOkP.shell||{}).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-shell.json", JSON.stringify({ ok: true, ...shellOkP }, null, 2));
+  console.log("mcp_call shell approved short-circuit ok", shellOkP.mapped, (shellOkP.shell||{}).mode, (shellOkP.shell||{}).ran);
+  const fsListRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.fs_list|{\"path\":\"docs\"}" }]);
+  const fsListH = fsListRuns.find((r) => r && r.kind === "mcp_call");
+  if (!fsListH || !fsListH.ok) throw new Error("fs_list mcp");
+  const fsListP = JSON.parse(fsListH.stdout || "{}");
+  if (fsListP.mapped !== "host_fs_list" || fsListP.product_tool_residual !== false) throw new Error(JSON.stringify(fsListP).slice(0,200));
+  if ((fsListP.fs_list||{}).pretend_listing === true) throw new Error("pretend_listing");
+  if (!((fsListP.fs_list||{}).count >= 1)) throw new Error("fs_list count");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-fs-list.json", JSON.stringify({ ok: true, ...fsListP }, null, 2));
+  console.log("mcp_call fs_list short-circuit ok", fsListP.mapped, (fsListP.fs_list||{}).mode, (fsListP.fs_list||{}).count);
+  const fsListAliasRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.listdir|{\"path\":\"docs\"}" }]);
+  const fsListAliasH = fsListAliasRuns.find((r) => r && r.kind === "mcp_call");
+  const fsListAliasP = JSON.parse((fsListAliasH && fsListAliasH.stdout) || "{}");
+  if (fsListAliasP.mapped !== "host_fs_list" || fsListAliasP.product_tool_residual !== false) throw new Error(JSON.stringify(fsListAliasP).slice(0,200));
+  console.log("mcp_call listdir alias short-circuit ok", fsListAliasP.mapped, (fsListAliasP.fs_list||{}).count);
+  const fsReadRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.fs_read|{\"path\":\"README.mbt.md\"}" }]);
+  const fsReadH = fsReadRuns.find((r) => r && r.kind === "mcp_call");
+  if (!fsReadH || !fsReadH.ok) throw new Error("fs_read mcp");
+  const fsReadP = JSON.parse(fsReadH.stdout || "{}");
+  if (fsReadP.mapped !== "host_fs_read" || fsReadP.product_tool_residual !== false) throw new Error(JSON.stringify(fsReadP).slice(0,200));
+  if ((fsReadP.fs_read||{}).pretend_contents === true) throw new Error("pretend_contents");
+  if (!((fsReadP.fs_read||{}).bytes >= 1)) throw new Error("fs_read bytes");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-fs-read.json", JSON.stringify({ ok: true, ...fsReadP }, null, 2));
+  console.log("mcp_call fs_read short-circuit ok", fsReadP.mapped, (fsReadP.fs_read||{}).mode, (fsReadP.fs_read||{}).bytes);
+  const fsReadAliasRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.read_file|{\"path\":\"README.mbt.md\"}" }]);
+  const fsReadAliasH = fsReadAliasRuns.find((r) => r && r.kind === "mcp_call");
+  const fsReadAliasP = JSON.parse((fsReadAliasH && fsReadAliasH.stdout) || "{}");
+  if (fsReadAliasP.mapped !== "host_fs_read" || fsReadAliasP.product_tool_residual !== false) throw new Error(JSON.stringify(fsReadAliasP).slice(0,200));
+  console.log("mcp_call read_file alias short-circuit ok", fsReadAliasP.mapped, (fsReadAliasP.fs_read||{}).bytes);
+  const sharedFsRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.shared_box_fs|{}" }]);
+  const sharedFsH = sharedFsRuns.find((r) => r && r.kind === "mcp_call");
+  if (!sharedFsH || !sharedFsH.ok) throw new Error("shared_box_fs mcp");
+  const sharedFsP = JSON.parse(sharedFsH.stdout || "{}");
+  if (sharedFsP.mapped !== "host_shared_box_fs" || sharedFsP.product_tool_residual !== false) throw new Error(JSON.stringify(sharedFsP).slice(0,200));
+  if ((sharedFsP.shared_box_fs||{}).pretend_shared === true) throw new Error("pretend_shared");
+  if ((sharedFsP.shared_box_fs||{}).shared_fs !== true) throw new Error("shared_fs");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-shared-box-fs.json", JSON.stringify({ ok: true, ...sharedFsP }, null, 2));
+  console.log("mcp_call shared_box_fs short-circuit ok", sharedFsP.mapped, (sharedFsP.shared_box_fs||{}).mode);
+  const jAppendRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.journal_append|{\"date\":\"2026-10-18\",\"event_id\":\"mcp-j-append\",\"body\":\"mcp journal append smoke\"}" }]);
+  const jAppendH = jAppendRuns.find((r) => r && r.kind === "mcp_call");
+  if (!jAppendH || !jAppendH.ok) throw new Error("journal_append mcp");
+  const jAppendP = JSON.parse(jAppendH.stdout || "{}");
+  if (jAppendP.mapped !== "host_journal_append" || jAppendP.product_tool_residual !== false) throw new Error(JSON.stringify(jAppendP).slice(0,200));
+  if ((jAppendP.journal_append||{}).pretend_stored === true) throw new Error("pretend_stored journal");
+  if ((jAppendP.journal_append||{}).stored !== true) throw new Error("journal stored");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-journal-append.json", JSON.stringify({ ok: true, ...jAppendP }, null, 2));
+  console.log("mcp_call journal_append short-circuit ok", jAppendP.mapped, (jAppendP.journal_append||{}).mode);
+  const jQueryRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.journal_query|{\"from_date\":\"2026-10-01\",\"to_date\":\"2026-10-31\"}" }]);
+  const jQueryH = jQueryRuns.find((r) => r && r.kind === "mcp_call");
+  if (!jQueryH || !jQueryH.ok) throw new Error("journal_query mcp");
+  const jQueryP = JSON.parse(jQueryH.stdout || "{}");
+  if (jQueryP.mapped !== "host_journal_query" || jQueryP.product_tool_residual !== false) throw new Error(JSON.stringify(jQueryP).slice(0,200));
+  if ((jQueryP.journal_query||{}).pretend_hits === true) throw new Error("pretend_hits");
+  if (typeof (jQueryP.journal_query||{}).hit_count !== "number") throw new Error("hit_count");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-journal-query.json", JSON.stringify({ ok: true, ...jQueryP }, null, 2));
+  console.log("mcp_call journal_query short-circuit ok", jQueryP.mapped, (jQueryP.journal_query||{}).mode, (jQueryP.journal_query||{}).hit_count);
+  const memPutRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.shared_memory_put|{\"scope\":\"mcp-smoke\",\"key\":\"k1\",\"value\":\"v-mcp-smoke\"}" }]);
+  const memPutH = memPutRuns.find((r) => r && r.kind === "mcp_call");
+  if (!memPutH || !memPutH.ok) throw new Error("shared_memory_put mcp");
+  const memPutP = JSON.parse(memPutH.stdout || "{}");
+  if (memPutP.mapped !== "host_shared_memory_put" || memPutP.product_tool_residual !== false) throw new Error(JSON.stringify(memPutP).slice(0,200));
+  if ((memPutP.shared_memory_put||{}).pretend_stored === true) throw new Error("pretend_stored mem");
+  if ((memPutP.shared_memory_put||{}).stored !== true) throw new Error("mem stored");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-shared-memory-put.json", JSON.stringify({ ok: true, ...memPutP }, null, 2));
+  console.log("mcp_call shared_memory_put short-circuit ok", memPutP.mapped, (memPutP.shared_memory_put||{}).mode);
+  const memReadRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.shared_memory_read|{\"scope\":\"mcp-smoke\",\"key\":\"k1\"}" }]);
+  const memReadH = memReadRuns.find((r) => r && r.kind === "mcp_call");
+  if (!memReadH || !memReadH.ok) throw new Error("shared_memory_read mcp");
+  const memReadP = JSON.parse(memReadH.stdout || "{}");
+  if (memReadP.mapped !== "host_shared_memory_read" || memReadP.product_tool_residual !== false) throw new Error(JSON.stringify(memReadP).slice(0,200));
+  if ((memReadP.shared_memory_read||{}).found !== true) throw new Error("mem found: " + JSON.stringify(memReadP.shared_memory_read||{}).slice(0,200));
+  if ((memReadP.shared_memory_read||{}).pretend_cross_scope === true) throw new Error("pretend_cross_scope");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-shared-memory-read.json", JSON.stringify({ ok: true, ...memReadP }, null, 2));
+  console.log("mcp_call shared_memory_read short-circuit ok", memReadP.mapped, (memReadP.shared_memory_read||{}).mode, (memReadP.shared_memory_read||{}).found);
   // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}

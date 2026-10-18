@@ -6903,8 +6903,21 @@ function createHostFfi(repoRoot) {
         search_mail: "search_mail_artifacts",
         list_skills: "list_skills",
         skills_list: "list_skills",
-        journal_query: "journal_tail",
+        journal_query: "host_journal_query",
+        journal_append: "host_journal_append",
         journal_tail: "journal_tail",
+        box_env: "host_box_env",
+        box_clock: "host_box_clock",
+        package_install: "host_package_install",
+        install_package: "host_package_install",
+        shell: "host_shell",
+        fs_list: "host_fs_list",
+        listdir: "host_fs_list",
+        fs_read: "host_fs_read",
+        read_file: "host_fs_read",
+        shared_box_fs: "host_shared_box_fs",
+        shared_memory_put: "host_shared_memory_put",
+        shared_memory_read: "host_shared_memory_read",
         make_slides: "host_slides_pptx",
         render_pptx: "host_slides_pptx",
         generate_pptx: "host_slides_pptx",
@@ -7075,7 +7088,7 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/skill_load/mail_claim/credential/subagent/teammate/room/cloud/voice/media/webfetch/screenshot/CU/device/machines/copy/react/routine/box_doctor onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/mail_send/mail_read/skill/export/finance/job/calendar/purchase/code/source_control/workflow/identity/skill_load/mail_claim/credential/subagent/teammate/room/cloud/voice/media/webfetch/screenshot/CU/device/machines/copy/react/routine/box_doctor/box_env/box_clock/package_install/shell/fs/shared_box_fs/journal/shared_memory onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
@@ -7119,7 +7132,18 @@ function createHostFfi(repoRoot) {
         mapped === "host_copy_from_box" ||
         mapped === "host_react_message" ||
         mapped === "host_routine_schedule" ||
-        mapped === "host_box_doctor"
+        mapped === "host_box_doctor" ||
+        mapped === "host_box_env" ||
+        mapped === "host_box_clock" ||
+        mapped === "host_package_install" ||
+        mapped === "host_shell" ||
+        mapped === "host_fs_list" ||
+        mapped === "host_fs_read" ||
+        mapped === "host_shared_box_fs" ||
+        mapped === "host_journal_append" ||
+        mapped === "host_journal_query" ||
+        mapped === "host_shared_memory_put" ||
+        mapped === "host_shared_memory_read"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -9417,6 +9441,676 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(doctorHit && doctorHit.ok),
             box_doctor: doctorPayload,
+          });
+        }
+        if (mapped === "host_box_env") {
+          // Product box_env → Host box_env.
+          const envCmd = String(
+            args.command || args.body || args.q || "env-detect",
+          ).trim() || "env-detect";
+          const envResults = await executeHostEffects([
+            { kind: "box_env", command: envCmd },
+          ]);
+          const envHit = (envResults || []).find(
+            (r) => r && r.kind === "box_env",
+          );
+          let envPayload = {};
+          try {
+            envPayload = JSON.parse((envHit && envHit.stdout) || "{}");
+          } catch {
+            envPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "box_env",
+              box_env: {
+                path: envPayload.path || null,
+                diagnostic_path: envPayload.diagnostic_path || null,
+                mode: envPayload.mode || null,
+                runtime: envPayload.runtime || null,
+                pretend_runtime: envPayload.pretend_runtime,
+                dockerenv_present: envPayload.dockerenv_present,
+                hosted: envPayload.hosted,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(envHit && envHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(envHit && envHit.ok),
+            box_env: envPayload,
+          });
+        }
+        if (mapped === "host_box_clock") {
+          // Product box_clock → Host box_clock.
+          const clockCmd = String(
+            args.command || args.body || args.q || "date",
+          ).trim() || "date";
+          const clockResults = await executeHostEffects([
+            { kind: "box_clock", command: clockCmd },
+          ]);
+          const clockHit = (clockResults || []).find(
+            (r) => r && r.kind === "box_clock",
+          );
+          let clockPayload = {};
+          try {
+            clockPayload = JSON.parse((clockHit && clockHit.stdout) || "{}");
+          } catch {
+            clockPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "box_clock",
+              box_clock: {
+                path: clockPayload.path || null,
+                date_output_path: clockPayload.date_output_path || null,
+                mode: clockPayload.mode || null,
+                user_iana: clockPayload.user_iana || null,
+                date_raw: clockPayload.date_raw || null,
+                pretend_aligned: clockPayload.pretend_aligned,
+                aligns: clockPayload.aligns,
+                zone_status: clockPayload.zone_status || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(clockHit && clockHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(clockHit && clockHit.ok),
+            box_clock: clockPayload,
+          });
+        }
+        if (mapped === "host_package_install") {
+          // Product package_install → Host package_install (Shell-via honesty).
+          const pkgsRaw =
+            args.pkgs ||
+            args.packages ||
+            args.package ||
+            args.name ||
+            args.body ||
+            "";
+          const pkgsStr = Array.isArray(pkgsRaw)
+            ? pkgsRaw.map((p) => String(p).trim()).filter(Boolean).join(",")
+            : String(pkgsRaw).trim();
+          const pm = String(args.pm || args.package_manager || "npm").trim() || "npm";
+          const via = String(args.via || "shell").trim() || "shell";
+          let pkgCmd = String(args.command || "").trim();
+          if (!pkgCmd) {
+            pkgCmd =
+              "via=" +
+              via +
+              " pm=" +
+              pm +
+              (pkgsStr ? " pkgs=" + pkgsStr : "");
+          }
+          const pkgResults = await executeHostEffects([
+            { kind: "package_install", command: pkgCmd },
+          ]);
+          const pkgHit = (pkgResults || []).find(
+            (r) => r && r.kind === "package_install",
+          );
+          let pkgPayload = {};
+          try {
+            pkgPayload = JSON.parse((pkgHit && pkgHit.stdout) || "{}");
+          } catch {
+            pkgPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "package_install",
+              package_install: {
+                path: pkgPayload.path || null,
+                mode: pkgPayload.mode || null,
+                via: pkgPayload.via || null,
+                via_shell: pkgPayload.via_shell,
+                pm: pkgPayload.pm || null,
+                packages: pkgPayload.packages || null,
+                completed: pkgPayload.completed,
+                refused: pkgPayload.refused,
+                pretend_installed: pkgPayload.pretend_installed,
+                tree_ok: pkgPayload.tree_ok,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(pkgHit && pkgHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(pkgHit && pkgHit.ok),
+            package_install: pkgPayload,
+          });
+        }
+        if (mapped === "host_shell") {
+          // Product shell → Host shell. Approval honesty: never pretend user approved.
+          const shellCmd = String(
+            args.command || args.cmd || args.body || args.q || "",
+          ).trim();
+          const shellApproved =
+            args.approved === true ||
+            args.approved === "true" ||
+            args.approved === 1 ||
+            args.approved === "1";
+          // Honesty: mcp product short-circuit does not mint approval; refuse unless args.approved.
+          if (!shellApproved) {
+            const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+              command,
+              {
+                tool: toolName,
+                mapped,
+                host_kind: "shell",
+                shell: {
+                  command: shellCmd || null,
+                  mode: "host_shell_needs_approval",
+                  pretend_approved: false,
+                  pretend_ok: false,
+                  needs_approval: true,
+                  ran: false,
+                },
+                product_tool_residual: false,
+                pretend_ok: false,
+                pretend_approved: false,
+                ok: true,
+                at: shortAt,
+              },
+            );
+            return okJson(kind, command, {
+              ...callArtifact,
+              tool: toolName,
+              mapped,
+              product_tool_residual: false,
+              path: snapPath,
+              pretend_ok: false,
+              pretend_approved: false,
+              ok: true,
+              shell: {
+                command: shellCmd || null,
+                mode: "host_shell_needs_approval",
+                pretend_approved: false,
+                needs_approval: true,
+                ran: false,
+              },
+            });
+          }
+          const shellResults = await executeHostEffects([
+            { kind: "shell", command: shellCmd },
+          ]);
+          const shellHit = (shellResults || []).find(
+            (r) => r && r.kind === "shell",
+          );
+          let shellPayload = {};
+          try {
+            shellPayload = JSON.parse((shellHit && shellHit.stdout) || "{}");
+          } catch {
+            // Host shell keeps raw stdout for reinjection; wrap honestly.
+            shellPayload = {
+              command: shellCmd,
+              stdout_prefix: String((shellHit && shellHit.stdout) || "").slice(
+                0,
+                400,
+              ),
+              path: shellHit && shellHit.path,
+              mode: "host_shell_exec",
+              pretend_ok: false,
+            };
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "shell",
+              shell: {
+                command: shellCmd || null,
+                path: (shellHit && shellHit.path) || shellPayload.path || null,
+                mode: shellPayload.mode || "host_shell_exec",
+                pretend_approved: false,
+                pretend_ok: false,
+                needs_approval: false,
+                ran: Boolean(shellHit && shellHit.ok),
+                ok: Boolean(shellHit && shellHit.ok),
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              pretend_approved: false,
+              ok: Boolean(shellHit && shellHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            pretend_approved: false,
+            ok: Boolean(shellHit && shellHit.ok),
+            shell: {
+              ...shellPayload,
+              command: shellCmd || null,
+              pretend_approved: false,
+              needs_approval: false,
+              ran: Boolean(shellHit && shellHit.ok),
+            },
+          });
+        }
+        if (mapped === "host_fs_list") {
+          // Product fs_list / listdir → Host fs_list.
+          const listPath = String(
+            args.path || args.dir || args.directory || args.body || args.q || ".",
+          ).trim() || ".";
+          const listResults = await executeHostEffects([
+            { kind: "fs_list", command: listPath },
+          ]);
+          const listHit = (listResults || []).find(
+            (r) => r && r.kind === "fs_list",
+          );
+          let listPayload = {};
+          try {
+            listPayload = JSON.parse((listHit && listHit.stdout) || "{}");
+          } catch {
+            listPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "fs_list",
+              fs_list: {
+                path: listPayload.path || null,
+                listed_path: listPayload.listed_path || listPath,
+                mode: listPayload.mode || null,
+                count: listPayload.count,
+                pretend_listing: listPayload.pretend_listing,
+                under_repo: listPayload.under_repo,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(listHit && listHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(listHit && listHit.ok),
+            fs_list: listPayload,
+          });
+        }
+        if (mapped === "host_fs_read") {
+          // Product fs_read / read_file → Host fs_read.
+          const readPath = String(
+            args.path || args.file || args.filename || args.body || args.q || "",
+          ).trim();
+          const readResults = await executeHostEffects([
+            { kind: "fs_read", command: readPath },
+          ]);
+          const readHit = (readResults || []).find(
+            (r) => r && r.kind === "fs_read",
+          );
+          let readPayload = {};
+          try {
+            readPayload = JSON.parse((readHit && readHit.stdout) || "{}");
+          } catch {
+            readPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "fs_read",
+              fs_read: {
+                path: readPayload.path || null,
+                read_path: readPayload.read_path || readPath,
+                mode: readPayload.mode || null,
+                bytes: readPayload.bytes,
+                pretend_contents: readPayload.pretend_contents,
+                under_repo: readPayload.under_repo,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(readHit && readHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(readHit && readHit.ok),
+            fs_read: readPayload,
+          });
+        }
+        if (mapped === "host_shared_box_fs") {
+          // Product shared_box_fs → Host shared_box_fs.
+          const sharedFsCmd = String(
+            args.command || args.body || args.q || "probe",
+          ).trim() || "probe";
+          const sharedFsResults = await executeHostEffects([
+            { kind: "shared_box_fs", command: sharedFsCmd },
+          ]);
+          const sharedFsHit = (sharedFsResults || []).find(
+            (r) => r && r.kind === "shared_box_fs",
+          );
+          let sharedFsPayload = {};
+          try {
+            sharedFsPayload = JSON.parse(
+              (sharedFsHit && sharedFsHit.stdout) || "{}",
+            );
+          } catch {
+            sharedFsPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "shared_box_fs",
+              shared_box_fs: {
+                path: sharedFsPayload.path || null,
+                shared_path: sharedFsPayload.shared_path || null,
+                mode: sharedFsPayload.mode || null,
+                pretend_shared: sharedFsPayload.pretend_shared,
+                shared_fs: sharedFsPayload.shared_fs,
+                distinct_desktops: sharedFsPayload.distinct_desktops,
+                charter_consistent: sharedFsPayload.charter_consistent,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(sharedFsHit && sharedFsHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(sharedFsHit && sharedFsHit.ok),
+            shared_box_fs: sharedFsPayload,
+          });
+        }
+        if (mapped === "host_journal_append") {
+          // Product journal_append → Host journal_append.
+          const jDate = String(args.date || args.day || "").trim();
+          const jEvent = String(
+            args.event_id || args.event || args.id || "",
+          ).trim();
+          const jBody = String(
+            args.body || args.text || args.content || args.q || "",
+          ).trim();
+          let jAppendCmd = String(args.command || "").trim();
+          if (!jAppendCmd) {
+            jAppendCmd = [jDate, jEvent, jBody].join("|");
+          }
+          const jAppendResults = await executeHostEffects([
+            { kind: "journal_append", command: jAppendCmd },
+          ]);
+          const jAppendHit = (jAppendResults || []).find(
+            (r) => r && r.kind === "journal_append",
+          );
+          let jAppendPayload = {};
+          try {
+            jAppendPayload = JSON.parse(
+              (jAppendHit && jAppendHit.stdout) || "{}",
+            );
+          } catch {
+            jAppendPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "journal_append",
+              journal_append: {
+                path: jAppendPayload.path || null,
+                events_path: jAppendPayload.events_path || null,
+                mode: jAppendPayload.mode || null,
+                stored: jAppendPayload.stored,
+                pretend_stored: jAppendPayload.pretend_stored,
+                pollutes_profile: jAppendPayload.pollutes_profile,
+                date: jAppendPayload.date || null,
+                event_id: jAppendPayload.event_id || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(jAppendHit && jAppendHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(jAppendHit && jAppendHit.ok),
+            journal_append: jAppendPayload,
+          });
+        }
+        if (mapped === "host_journal_query") {
+          // Product journal_query → Host journal_query (not echo / journal_tail stub).
+          const fromDate = String(
+            args.from_date || args.from || args.start || "",
+          ).trim();
+          const toDate = String(
+            args.to_date || args.to || args.end || "",
+          ).trim();
+          let jQueryCmd = String(args.command || "").trim();
+          if (!jQueryCmd) {
+            jQueryCmd = [fromDate, toDate].join("|");
+          }
+          const jQueryResults = await executeHostEffects([
+            { kind: "journal_query", command: jQueryCmd },
+          ]);
+          const jQueryHit = (jQueryResults || []).find(
+            (r) => r && r.kind === "journal_query",
+          );
+          let jQueryPayload = {};
+          try {
+            jQueryPayload = JSON.parse(
+              (jQueryHit && jQueryHit.stdout) || "{}",
+            );
+          } catch {
+            jQueryPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "journal_query",
+              journal_query: {
+                path: jQueryPayload.path || null,
+                mode: jQueryPayload.mode || null,
+                hit_count: jQueryPayload.hit_count,
+                pretend_hits: jQueryPayload.pretend_hits,
+                pollutes_profile: jQueryPayload.pollutes_profile,
+                from_date: jQueryPayload.from_date || null,
+                to_date: jQueryPayload.to_date || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(jQueryHit && jQueryHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(jQueryHit && jQueryHit.ok),
+            journal_query: jQueryPayload,
+          });
+        }
+        if (mapped === "host_shared_memory_put") {
+          // Product shared_memory_put → Host shared_memory_put.
+          const memScope = String(
+            args.scope || args.namespace || "default",
+          ).trim() || "default";
+          const memKey = String(args.key || args.name || "").trim();
+          const memValue = String(
+            args.value != null
+              ? args.value
+              : args.body != null
+                ? args.body
+                : args.text != null
+                  ? args.text
+                  : "",
+          );
+          let memPutCmd = String(args.command || "").trim();
+          if (!memPutCmd) {
+            memPutCmd = [memScope, memKey, memValue].join("|");
+          }
+          const memPutResults = await executeHostEffects([
+            { kind: "shared_memory_put", command: memPutCmd },
+          ]);
+          const memPutHit = (memPutResults || []).find(
+            (r) => r && r.kind === "shared_memory_put",
+          );
+          let memPutPayload = {};
+          try {
+            memPutPayload = JSON.parse(
+              (memPutHit && memPutHit.stdout) || "{}",
+            );
+          } catch {
+            memPutPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "shared_memory_put",
+              shared_memory_put: {
+                path: memPutPayload.path || null,
+                store_path: memPutPayload.store_path || null,
+                mode: memPutPayload.mode || null,
+                stored: memPutPayload.stored,
+                pretend_stored: memPutPayload.pretend_stored,
+                pretend_cross_scope: memPutPayload.pretend_cross_scope,
+                scope: memPutPayload.scope || null,
+                key: memPutPayload.key || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(memPutHit && memPutHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(memPutHit && memPutHit.ok),
+            shared_memory_put: memPutPayload,
+          });
+        }
+        if (mapped === "host_shared_memory_read") {
+          // Product shared_memory_read → Host shared_memory_read; cross-scope stays refused.
+          const memReadScope = String(
+            args.scope || args.namespace || "default",
+          ).trim() || "default";
+          const memReadKey = String(args.key || args.name || "").trim();
+          let memReadCmd = String(args.command || "").trim();
+          if (!memReadCmd) {
+            memReadCmd = [memReadScope, memReadKey].join("|");
+          }
+          const memReadResults = await executeHostEffects([
+            { kind: "shared_memory_read", command: memReadCmd },
+          ]);
+          const memReadHit = (memReadResults || []).find(
+            (r) => r && r.kind === "shared_memory_read",
+          );
+          let memReadPayload = {};
+          try {
+            memReadPayload = JSON.parse(
+              (memReadHit && memReadHit.stdout) || "{}",
+            );
+          } catch {
+            memReadPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "shared_memory_read",
+              shared_memory_read: {
+                path: memReadPayload.path || null,
+                mode: memReadPayload.mode || null,
+                found: memReadPayload.found,
+                refused_cross_scope: memReadPayload.refused_cross_scope,
+                pretend_cross_scope: memReadPayload.pretend_cross_scope,
+                scope: memReadPayload.scope || memReadScope,
+                key: memReadPayload.key || memReadKey,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(memReadHit && memReadHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(memReadHit && memReadHit.ok),
+            shared_memory_read: memReadPayload,
           });
         }
 
