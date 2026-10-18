@@ -175,6 +175,7 @@
 - [x] Desktop Channels fill-credential + CU payment-wall fixture button (BITBOT_CU_ALLOW_LOCAL); mobile credential_fill quick action
 - [x] Desktop connect finance/identity, teams send, add section, journal append, book flight, pause/resume routine, read mail, draft Outlook; mobile routine_pause/resume + journal_append mirrors
 - [x] Desktop personal Slack DM + channel plan in-app + launch bare chrome refuse + npm package + members group + journal range; bare-chrome honesty meta
+- [x] SendToUser strip surfaces `channel_delivery` (in_app/external) on mobile even without Host FFI effects
 - [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn

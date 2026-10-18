@@ -259,12 +259,28 @@ function extractDeliveryTypes(turnJsonText) {
         );
       }
     }
+    // CHARTER Delivery: channel_delivery plans (in_app / external) even when
+    // no Host FFI effects ran — still a SendToUser surface decision.
+    const cd = String(turn.channel_delivery || "").trim();
+    if (cd) {
+      if (cd === "in_app" || cd.startsWith("in_app")) {
+        types.push("text");
+        labels.push("channel_delivery:in_app");
+      } else if (cd.startsWith("external:")) {
+        types.push("text");
+        labels.push("channel_delivery:" + cd);
+      } else {
+        types.push("text");
+        labels.push("channel_delivery:" + cd);
+      }
+    }
     return {
       types: [...new Set(types)],
       labels,
       attachments,
       ok: Boolean(turn.ok),
       machine_kind: turn.machine_kind || "",
+      channel_delivery: cd || "",
     };
   } catch (_) {
     return { types, labels, attachments, ok: false };
