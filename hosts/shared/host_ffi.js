@@ -6920,6 +6920,7 @@ function createHostFfi(repoRoot) {
         shared_memory_put: "host_shared_memory_put",
         shared_memory_read: "host_shared_memory_read",
         make_slides: "host_slides_pptx",
+        slides_pptx: "host_slides_pptx",
         render_pptx: "host_slides_pptx",
         generate_pptx: "host_slides_pptx",
         search_posts: "host_x_search",
@@ -7068,6 +7069,23 @@ function createHostFfi(repoRoot) {
         request_approval: "host_approval_card",
         reset_computer: "host_reset_computer",
         computer_reset: "host_reset_computer",
+        routine_list: "host_routine_list",
+        list_routines: "host_routine_list",
+        routine_pause: "host_routine_pause",
+        pause_routine: "host_routine_pause",
+        routine_resume: "host_routine_resume",
+        resume_routine: "host_routine_resume",
+        routine_fire: "host_routine_fire",
+        fire_routine: "host_routine_fire",
+        routine_tick: "host_routine_tick",
+        tick_routines: "host_routine_tick",
+        box_chrome_probe: "host_box_chrome_probe",
+        webhook_panel: "host_webhook_panel",
+        open_webhook_panel: "host_webhook_panel",
+        local_execution: "host_local_execution",
+        guide_permission: "host_guide_permission",
+        render_markdown: "host_render_markdown",
+        auto_review_settings: "host_auto_review_settings",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7224,7 +7242,18 @@ function createHostFfi(repoRoot) {
         mapped === "host_inbound_reaction" ||
         mapped === "host_mcp_uninstall" ||
         mapped === "host_approval_card" ||
-        mapped === "host_reset_computer"
+        mapped === "host_reset_computer" ||
+        mapped === "host_routine_list" ||
+        mapped === "host_routine_pause" ||
+        mapped === "host_routine_resume" ||
+        mapped === "host_routine_fire" ||
+        mapped === "host_routine_tick" ||
+        mapped === "host_box_chrome_probe" ||
+        mapped === "host_webhook_panel" ||
+        mapped === "host_local_execution" ||
+        mapped === "host_guide_permission" ||
+        mapped === "host_render_markdown" ||
+        mapped === "host_auto_review_settings"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -11019,6 +11048,132 @@ function createHostFfi(repoRoot) {
                 mode: p.mode || null,
                 pretend_reset: p.pretend_reset,
                 prefer_update_computer: p.prefer_update_computer,
+              }),
+            },
+            host_routine_list: {
+              kind: "routine_list",
+              field: "routine_list",
+              cmd: () => String(args.command || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_empty: p.pretend_empty,
+                count: p.count,
+              }),
+            },
+            host_routine_pause: {
+              kind: "routine_pause",
+              field: "routine_pause",
+              cmd: () =>
+                String(args.command || args.id || args.routine_id || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_paused: p.pretend_paused,
+                id: p.id || null,
+              }),
+            },
+            host_routine_resume: {
+              kind: "routine_resume",
+              field: "routine_resume",
+              cmd: () =>
+                String(args.command || args.id || args.routine_id || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_resumed: p.pretend_resumed,
+                id: p.id || null,
+              }),
+            },
+            host_routine_fire: {
+              kind: "routine_fire",
+              field: "routine_fire",
+              cmd: () =>
+                String(args.command || args.id || args.routine_id || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_fired: p.pretend_fired,
+                id: p.id || null,
+              }),
+            },
+            host_routine_tick: {
+              kind: "routine_tick",
+              field: "routine_tick",
+              cmd: () => String(args.command || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                fired: p.fired,
+                long_lived: p.long_lived,
+              }),
+            },
+            host_box_chrome_probe: {
+              kind: "box_chrome_probe",
+              field: "box_chrome_probe",
+              cmd: () => String(args.command || args.url || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_launched: p.pretend_launched,
+                box_chrome_bin_residual: p.box_chrome_bin_residual,
+              }),
+            },
+            host_webhook_panel: {
+              kind: "webhook_panel",
+              field: "webhook_panel",
+              cmd: () =>
+                String(args.command || args.action || "open").trim() || "open",
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_key_readable: p.pretend_key_readable,
+                key_leaked: p.key_leaked,
+              }),
+            },
+            host_local_execution: {
+              kind: "local_execution",
+              field: "local_execution",
+              cmd: () =>
+                String(args.command || args.body || args.shell || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_on: p.pretend_on,
+              }),
+            },
+            host_guide_permission: {
+              kind: "guide_permission",
+              field: "guide_permission",
+              cmd: () =>
+                String(args.command || args.tool || args.body || "camera").trim() ||
+                "camera",
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_connected: p.pretend_connected,
+              }),
+            },
+            host_render_markdown: {
+              kind: "render_markdown",
+              field: "render_markdown",
+              cmd: () =>
+                String(args.command || args.body || args.markdown || args.text || "# mcp").trim() ||
+                "# mcp",
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_rendered: p.pretend_rendered,
+              }),
+            },
+            host_auto_review_settings: {
+              kind: "auto_review_settings",
+              field: "auto_review_settings",
+              cmd: () => String(args.command || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_opened: p.pretend_opened,
               }),
             },
           };
