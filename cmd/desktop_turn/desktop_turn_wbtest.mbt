@@ -664,6 +664,13 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(md.ok)
   assert_eq(md.intent, "render_markdown")
   assert_eq(md.effects[0].kind, "render_markdown")
+  let rm = run_desktop_turn(
+    "react message msg=msg-1 emoji=👍",
+    turn_id="rm-1",
+  )
+  assert_true(rm.ok)
+  assert_eq(rm.intent, "react_message")
+  assert_eq(rm.effects[0].kind, "react_message")
   let cc = run_desktop_turn("code changes README.mbt.md", turn_id="cc-1")
   assert_true(cc.ok)
   assert_eq(cc.intent, "code_changes")

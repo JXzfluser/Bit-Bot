@@ -669,6 +669,45 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(LocalExecution(enabled=on))
   }
+  // CM-2101/2128 product Host ReactToMessage pill toggle.
+  if low.has_prefix("react message ") ||
+      low.has_prefix("react to message ") ||
+      low.has_prefix("toggle reaction ") {
+    let rest = if low.has_prefix("react to message ") {
+      trimmed[17:].trim().to_owned()
+    } else if low.has_prefix("toggle reaction ") {
+      trimmed[16:].trim().to_owned()
+    } else {
+      trimmed[14:].trim().to_owned()
+    }
+    let message_id = match extract_kv(rest, "msg") {
+      Some(v) => v.trim().to_owned()
+      None =>
+        match extract_kv(rest, "message") {
+          Some(v) => v.trim().to_owned()
+          None => "msg-1"
+        }
+    }
+    let emoji = match extract_kv(rest, "emoji") {
+      Some(v) => v.trim().to_owned()
+      None =>
+        // Positional trailing token as emoji if present.
+        match split_once(rest, " ") {
+          Some((_, e)) => {
+            let t = e.trim().to_owned()
+            if t.has_prefix("emoji=") {
+              t[6:].trim().to_owned()
+            } else if t != "" {
+              t
+            } else {
+              "👍"
+            }
+          }
+          None => "👍"
+        }
+    }
+    return Some(ReactMessage(message_id~, emoji~))
+  }
   // CM-2103 product Host markdown math + mermaid render.
   if low.has_prefix("render markdown ") ||
       low.has_prefix("render math ") ||

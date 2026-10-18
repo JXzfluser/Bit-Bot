@@ -3606,6 +3606,97 @@ function createHostFfi(repoRoot) {
       .replace(/"/g, "&quot;");
   }
 
+  function reactPillsPath() {
+    return path.join(REPO_ROOT, "data", "delivery", "react-pills.json");
+  }
+
+  function loadReactPills() {
+    try {
+      const p = reactPillsPath();
+      if (!fs.existsSync(p)) return {};
+      const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+      return raw && typeof raw === "object" ? raw : {};
+    } catch {
+      return {};
+    }
+  }
+
+  async function executeReactMessage(command) {
+    // CM-2101/2128 — toggle visible emoji pill on a message; may end turn.
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "delivery");
+    fs.mkdirSync(dir, { recursive: true });
+    const raw = String(command || "");
+    let messageId = "msg-1";
+    let emoji = "👍";
+    const mm = raw.match(/\bmsg=([^\s]+)/i) || raw.match(/\bmessage=([^\s]+)/i);
+    if (mm) messageId = mm[1].trim();
+    const em = raw.match(/\bemoji=([^\s]+)/i);
+    if (em) emoji = em[1].trim();
+    else {
+      const parts = raw.trim().split(/\s+/);
+      const last = parts[parts.length - 1];
+      if (last && !last.includes("=") && last !== messageId) emoji = last;
+    }
+
+    const pills = loadReactPills();
+    const key = messageId + "::" + emoji;
+    const existing = pills[key];
+    let active = true;
+    let visible = true;
+    if (existing && existing.active && existing.emoji === emoji) {
+      // Toggle off (cancel).
+      active = false;
+      visible = false;
+    }
+    const pill = {
+      message_id: messageId,
+      emoji,
+      active,
+      visible,
+      visible_pill: active && visible,
+      end_turn: active,
+      body_omitted: active,
+      at,
+    };
+    pills[key] = pill;
+    // Clear other emoji on same message when activating a new one.
+    if (active) {
+      for (const k of Object.keys(pills)) {
+        if (k.startsWith(messageId + "::") && k !== key) {
+          pills[k] = { ...pills[k], active: false, visible: false, visible_pill: false };
+        }
+      }
+    }
+    fs.writeFileSync(reactPillsPath(), JSON.stringify(pills, null, 2));
+    appendJsonl(path.join(dir, "react-ops.jsonl"), { ...pill, path: reactPillsPath() });
+    const delivery = recordSendToUser({
+      type: "reaction",
+      emoji,
+      message_id: messageId,
+      visible_pill: pill.visible_pill,
+      active,
+      source_kind: "react_message",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "react_message",
+      command: raw,
+      message_id: messageId,
+      emoji,
+      active,
+      at,
+    });
+    return okJson("react_message", raw || messageId, {
+      mode: "host_react_message",
+      pretend_pill: false,
+      ...pill,
+      path: reactPillsPath(),
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeRenderMarkdown(command) {
     const at = new Date().toISOString();
     const dir = path.join(REPO_ROOT, "data", "delivery", "markdown-render");
@@ -6065,6 +6156,7 @@ function createHostFfi(repoRoot) {
       kind === "local_execution" ||
       kind === "guide_permission" ||
       kind === "render_markdown" ||
+      kind === "react_message" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -11426,6 +11518,10 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "render_markdown") {
         results.push(await executeRenderMarkdown(cmd));
+        continue;
+      }
+      if (kind === "react_message") {
+        results.push(await executeReactMessage(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

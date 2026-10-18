@@ -971,6 +971,39 @@
               renderMathMermaidCard(p);
             } catch (_) { /* ignore */ }
           }
+          const reactHost = r.host_results.find(
+            (h) => h && h.kind === "react_message" && h.ok,
+          );
+          if (reactHost) {
+            try {
+              const p = JSON.parse(reactHost.stdout || "{}");
+              const tray = document.getElementById("reaction-tray");
+              if (tray) {
+                const id = "react-" + (p.message_id || "msg");
+                let pill = document.getElementById(id);
+                if (p.visible_pill) {
+                  if (!pill) {
+                    pill = document.createElement("span");
+                    pill.id = id;
+                    pill.className = "reaction-pill";
+                    pill.innerHTML =
+                      '<span class="emoji"></span><span class="tag">react</span>';
+                    tray.appendChild(pill);
+                  }
+                  pill.querySelector(".emoji").textContent = p.emoji || "👍";
+                  pill.style.display = "";
+                } else if (pill) {
+                  pill.style.display = "none";
+                }
+              }
+              addMsg(
+                "assistant",
+                p.visible_pill
+                  ? "React pill " + (p.emoji || "👍") + " on " + (p.message_id || "msg")
+                  : "React cancelled on " + (p.message_id || "msg"),
+              );
+            } catch (_) { /* ignore */ }
+          }
           // CHARTER Delivery: SendToUser surface (text/widget/attachment/voice/reaction/thread).
           const attachKinds = [
             "skill_write",

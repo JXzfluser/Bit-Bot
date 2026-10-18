@@ -141,6 +141,7 @@ pub(all) enum TurnIntent {
   LocalExecution(enabled~ : Bool)
   GuidePermission(kind~ : String, detail~ : String)
   RenderMarkdown(body~ : String)
+  ReactMessage(message_id~ : String, emoji~ : String)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -244,6 +245,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     LocalExecution(_) => "local_execution"
     GuidePermission(_) => "guide_permission"
     RenderMarkdown(_) => "render_markdown"
+    ReactMessage(_) => "react_message"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -790,6 +792,9 @@ fn extract_kv(rest : String, key : String) -> String? {
         " ns=",
         " tool=",
         " detail=",
+        " msg=",
+        " message=",
+        " emoji=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -3613,6 +3618,22 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Markdown math/mermaid render planned (CM-2103). Host parses \\( \\)/$$ and mermaid fences.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    ReactMessage(message_id~, emoji~) => {
+      let effect : DesktopEffect = {
+        kind: "react_message",
+        command: "msg=" + message_id + " emoji=" + emoji,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "ReactToMessage planned (CM-2101/2128). Host toggles visible emoji pill; may end turn.",
         intent,
         ctx~,
         effects=[effect],
