@@ -219,6 +219,20 @@ function extractDeliveryTypes(turnJsonText) {
           "mcp_get_plugin",
           "mcp_list_plugins",
           "journal_query",
+          "fs_list",
+          "fs_read",
+          "webfetch",
+          "machines_list",
+          "routine_schedule",
+          "routine_list",
+          "routine_fire",
+          "routine_tick",
+          "routine_pause",
+          "routine_resume",
+          "code_changes",
+          "shared_memory_put",
+          "shared_memory_read",
+          "source_control",
         ].includes(h.kind)
       ) {
         types.push("attachment");
