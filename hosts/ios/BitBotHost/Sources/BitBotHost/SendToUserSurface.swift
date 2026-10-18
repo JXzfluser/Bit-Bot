@@ -61,6 +61,30 @@ enum SendToUserSurface {
     return path
   }
 
+  private static func residualSuffix(_ p: [String: Any]) -> String {
+    let keys = [
+      "live_mail_residual", "live_x_residual", "live_job_residual",
+      "live_finance_residual", "live_paid_residual", "live_calendar_residual",
+      "live_slack_residual", "live_teams_residual", "live_meeting_residual",
+      "box_doctor_bin_residual", "box_chrome_bin_residual",
+      "long_lived_cron_residual", "remote_cloud_residual", "code_apply_residual",
+      "screenshot_residual", "remote_pr_residual", "public_fallback_residual",
+      "ocr_residual", "os_window_automation_residual",
+    ]
+    if let hit = keys.first(where: { (p[$0] as? Bool) == true }) {
+      return "/" + hit
+    }
+    if let oc = p["outcome"] as? [String: Any] {
+      if (oc["live_paid_residual"] as? Bool) == true { return "/live_paid_residual" }
+      if (oc["ocr_residual"] as? Bool) == true { return "/ocr_residual" }
+    }
+    if let g = p["gui"] as? [String: Any],
+       (g["os_window_automation_residual"] as? Bool) == true {
+      return "/os_window_automation_residual"
+    }
+    return ""
+  }
+
   private static func attachmentRole(kind: String, filePath: String) -> String {
     let ext = (filePath as NSString).pathExtension.lowercased()
     if ["png", "jpg", "jpeg", "gif", "webp", "wav", "mp3", "mp4", "webm"].contains(ext) {
@@ -118,7 +142,7 @@ enum SendToUserSurface {
           ((p["connected"] as? Bool) == false && (p["pretend_connected"] as? Bool) != true))
       if (h["ok"] as? Bool) == false && !oauthNeedsAuth { continue }
       let filePath = pickAttachmentPath(kind: kind, p: p, h: h)
-      let pathSuffix: String = filePath.isEmpty ? "" : "/snap"
+      let pathSuffix: String = (filePath.isEmpty ? "" : "/snap") + residualSuffix(p)
       if kind == "delivery", let t = p["type"] as? String, !t.isEmpty {
         typeSet.insert(t)
         summary.labels.append("SendToUser:" + t)

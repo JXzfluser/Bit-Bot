@@ -484,6 +484,8 @@ assert 'h.kind !== "oauth"' in html
 assert 'widget:device_permission:' in shared
 assert 'h.kind === "inbound_reaction" || h.kind === "react_message"' in shared
 assert 'h.kind === "device_permission"' in shared
+assert 'function residualSuffix' in shared
+assert 'live_x_residual' in shared
 # device_permission must not sit in the generic attachment includes list
 attach_block = shared.split('.includes(h.kind)')[0]
 assert '"device_tool"' in attach_block

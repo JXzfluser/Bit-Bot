@@ -64,6 +64,31 @@ object SendToUserSurface {
     return p.optString("path").ifBlank { h.optString("path") }
   }
 
+  private fun residualSuffix(p: JSONObject): String {
+    val keys = listOf(
+      "live_mail_residual", "live_x_residual", "live_job_residual",
+      "live_finance_residual", "live_paid_residual", "live_calendar_residual",
+      "live_slack_residual", "live_teams_residual", "live_meeting_residual",
+      "box_doctor_bin_residual", "box_chrome_bin_residual",
+      "long_lived_cron_residual", "remote_cloud_residual", "code_apply_residual",
+      "screenshot_residual", "remote_pr_residual", "public_fallback_residual",
+      "ocr_residual", "os_window_automation_residual",
+    )
+    for (k in keys) {
+      if (p.optBoolean(k, false)) return "/$k"
+    }
+    val oc = p.optJSONObject("outcome")
+    if (oc != null) {
+      if (oc.optBoolean("live_paid_residual", false)) return "/live_paid_residual"
+      if (oc.optBoolean("ocr_residual", false)) return "/ocr_residual"
+    }
+    val g = p.optJSONObject("gui")
+    if (g != null && g.optBoolean("os_window_automation_residual", false)) {
+      return "/os_window_automation_residual"
+    }
+    return ""
+  }
+
   private fun attachmentRole(kind: String, filePath: String): String {
     val ext = filePath.substringAfterLast('.', "").lowercase()
     if (ext in setOf("png", "jpg", "jpeg", "gif", "webp", "wav", "mp3", "mp4", "webm")) {
@@ -122,7 +147,7 @@ object SendToUserSurface {
               (!p.optBoolean("connected", true) && !p.optBoolean("pretend_connected", false)))
         if (h.has("ok") && !h.optBoolean("ok", true) && !oauthNeedsAuth) continue
         val filePath = pickAttachmentPath(kind, p, h)
-        val pathSuffix = if (filePath.isNotBlank()) "/snap" else ""
+        val pathSuffix = (if (filePath.isNotBlank()) "/snap" else "") + residualSuffix(p)
         when {
           kind == "delivery" && p.optString("type").isNotBlank() -> {
             typeSet += p.optString("type")

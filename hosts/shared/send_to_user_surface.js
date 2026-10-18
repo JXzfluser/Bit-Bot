@@ -48,6 +48,42 @@ function pickAttachmentPath(kind, p, h) {
   return path;
 }
 
+/** Honesty residual chip suffix from Host payload (never invents residuals). */
+function residualSuffix(p) {
+  if (!p || typeof p !== "object") return "";
+  const keys = [
+    "live_mail_residual",
+    "live_x_residual",
+    "live_job_residual",
+    "live_finance_residual",
+    "live_paid_residual",
+    "live_calendar_residual",
+    "live_slack_residual",
+    "live_teams_residual",
+    "live_meeting_residual",
+    "box_doctor_bin_residual",
+    "box_chrome_bin_residual",
+    "long_lived_cron_residual",
+    "remote_cloud_residual",
+    "code_apply_residual",
+    "screenshot_residual",
+    "remote_pr_residual",
+    "public_fallback_residual",
+    "ocr_residual",
+    "os_window_automation_residual",
+  ];
+  const hit = keys.find((k) => p[k] === true);
+  if (hit) return "/" + hit;
+  // Nested CU outcome residuals
+  const oc = p.outcome || {};
+  if (oc.live_paid_residual === true) return "/live_paid_residual";
+  if (oc.ocr_residual === true) return "/ocr_residual";
+  const g = p.gui || {};
+  if (g.os_window_automation_residual === true)
+    return "/os_window_automation_residual";
+  return "";
+}
+
 function attachmentRole(kind, filePath) {
   const ext = String(filePath || "")
     .split(".")
@@ -144,7 +180,11 @@ function extractDeliveryTypes(turnJsonText) {
       } else if (h.kind === "channel_send") {
         const t = p.thread_ts ? "thread" : "text";
         types.push(t);
-        labels.push("channel:" + (p.mode || p.scheme || "draft"));
+        labels.push(
+          "channel:" +
+            (p.mode || p.scheme || "draft") +
+            residualSuffix(p),
+        );
       } else if (
         h.kind === "section_post" ||
         h.kind === "send_to_agent" ||
@@ -156,10 +196,10 @@ function extractDeliveryTypes(turnJsonText) {
             ? "thread"
             : (p.send_to_user && p.send_to_user.type) || "text";
         types.push(t);
-        labels.push(h.kind);
+        labels.push(h.kind + residualSuffix(p));
       } else if (h.kind === "cloud_agent_launch") {
         types.push("cursor-agent");
-        labels.push("cursor-agent");
+        labels.push("cursor-agent" + residualSuffix(p));
       } else if (
         [
           "mail_send",
@@ -247,7 +287,11 @@ function extractDeliveryTypes(turnJsonText) {
         ].includes(h.kind)
       ) {
         types.push("attachment");
-        labels.push(h.kind + (filePath || p.path || p.artifact_path || h.path ? "/snap" : ""));
+        labels.push(
+          h.kind +
+            (filePath || p.path || p.artifact_path || h.path ? "/snap" : "") +
+            residualSuffix(p),
+        );
         if (filePath) {
           attachments.push({
             kind: h.kind,
@@ -263,7 +307,8 @@ function extractDeliveryTypes(turnJsonText) {
         types.push("voice");
         labels.push(
           h.kind +
-            (p.path || p.end_artifact_path || p.reply_media_path ? "/snap" : ""),
+            (p.path || p.end_artifact_path || p.reply_media_path ? "/snap" : "") +
+            residualSuffix(p),
         );
         if (filePath) {
           attachments.push({
@@ -353,4 +398,5 @@ module.exports = {
   formatDeliveryStrip,
   pickAttachmentPath,
   attachmentRole,
+  residualSuffix,
 };
