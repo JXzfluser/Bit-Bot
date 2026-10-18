@@ -10673,8 +10673,23 @@ function createHostFfi(repoRoot) {
       path.dirname(wav),
       path.basename(wav, path.extname(wav)) + ".stt.txt",
     );
+    // Only honor sidecars written for this wav generation (mtime >= wav).
+    // Stale .stt.txt from prior BITBOT_STT_BIN smokes must not close residual.
+    let wavMtime = 0;
+    try {
+      wavMtime = fs.statSync(wav).mtimeMs || 0;
+    } catch (_) {
+      wavMtime = 0;
+    }
     for (const side of [sidecar, alt]) {
       if (fs.existsSync(side) && fs.statSync(side).isFile()) {
+        let sideMtime = 0;
+        try {
+          sideMtime = fs.statSync(side).mtimeMs || 0;
+        } catch (_) {
+          sideMtime = 0;
+        }
+        if (wavMtime && sideMtime + 1 < wavMtime) continue;
         const text = String(fs.readFileSync(side, "utf8") || "")
           .trim()
           .slice(0, 4000);

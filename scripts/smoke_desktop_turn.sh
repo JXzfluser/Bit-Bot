@@ -1075,6 +1075,8 @@ wait "$X_MOCK_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-x-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='x_search');p=json.loads(h['stdout']);assert p.get('mode')=='x_live';assert p.get('live_x_residual') is False;print('x_search connector token+api_url file ok', p.get('mode'))"
 
 echo "==> Host durable product delivery (voice/teammates/device/subagent/cloud/commerce)"
+# Drop stale STT sidecars so honest voice_session keeps voice_stt_residual open.
+rm -f data/voice/media/voice_smoke1.wav.stt.txt data/voice/media/voice_smoke1.stt.txt
 node hosts/cli_host/run_turn.js "voice start smoke1" >/tmp/bitbot-voice.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='voice_session');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('media_ok') is True;assert os.path.isfile(p.get('media_path') or '');assert open(p['media_path'],'rb').read(4)==b'RIFF';assert p.get('pretend_live') is False;assert p.get('call_id');assert p.get('voice_stt_residual') is True;assert isinstance(p.get('voice_tts_residual'),bool);assert p.get('path') and os.path.isfile(p['path']);assert p.get('sessions_path') and os.path.isfile(p['sessions_path']);open('/tmp/bitbot-voice-call-id.txt','w').write(p['call_id']);print('voice_session durable+media ok', p.get('path'), 'call_id', p.get('call_id'), 'bytes', p.get('media_bytes'), 'stt_residual', True)"
 # BITBOT_STT_BIN mock closes voice_stt_residual on voice_session start (not hardcode after sine).
