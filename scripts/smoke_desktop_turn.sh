@@ -879,7 +879,10 @@ node hosts/cli_host/run_turn.js "read mail t-invoice-1" >/tmp/bitbot-mail-read.j
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-read.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_read');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode') in ('sandbox','gmail_live','gmail_live_failed','outlook_live','outlook_live_failed');assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('mail_read artifact ok', p.get('mode'), p.get('path'), 'thread', p.get('thread_id'), 'residual', p.get('live_mail_residual'))"
 node hosts/cli_host/run_turn.js "list workflows" >/tmp/bitbot-workflows.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-workflows.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='workflow_list');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('count')>=1;assert p.get('path') and os.path.isfile(p['path']);assert p.get('catalog_path') and os.path.isfile(p['catalog_path']);assert p.get('pretend_shared') is False;print('workflow_list catalog ok', p.get('count'), p.get('path'))"
-node hosts/cli_host/run_turn.js "x search moonbit" >/tmp/bitbot-x-search.json
+# Clear prior live token file so sandbox mode is not reclassified as x_live*.
+rm -f data/connectors/x_token.json
+env -u BITBOT_X_BEARER -u BITBOT_X_TOKEN -u BITBOT_X_API_BASE \
+  node hosts/cli_host/run_turn.js "x search moonbit" >/tmp/bitbot-x-search.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-x-search.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='x_search');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='sandbox_public';assert p.get('live_x_residual') is True;assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;assert p.get('path') and os.path.isfile(p['path']);print('x_search sandbox artifact ok', p.get('path'), 'hits', p.get('hit_count'))"
 # Live X search against local mock (BITBOT_X_API_BASE)
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18772 --mode x --token smoke-x >/tmp/bitbot-x-mock.log 2>&1 &
