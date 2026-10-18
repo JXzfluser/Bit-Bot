@@ -6926,6 +6926,21 @@ function createHostFfi(repoRoot) {
         schedule_meeting: "host_schedule_meeting",
         purchase_item: "host_purchase",
         purchase: "host_purchase",
+        generate_image: "host_generate_image",
+        gen_image: "host_generate_image",
+        make_image: "host_generate_image",
+        create_image: "host_generate_image",
+        generate_video: "host_generate_video",
+        gen_video: "host_generate_video",
+        make_video: "host_generate_video",
+        create_video: "host_generate_video",
+        watch_video: "host_watch_video",
+        video_watch: "host_watch_video",
+        extract_frame: "host_watch_video",
+        structured_chart: "host_structured_chart",
+        make_chart: "host_structured_chart",
+        render_chart: "host_structured_chart",
+        chart: "host_structured_chart",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -6998,7 +7013,7 @@ function createHostFfi(repoRoot) {
           stderr: "",
         };
       }
-      // Short-circuit slides/X/mail_draft/mail_send/mail_read/finance/job/calendar/purchase onto existing Host handlers (not echo stdio).
+      // Short-circuit slides/X/mail_draft/mail_send/mail_read/finance/job/calendar/purchase/media onto existing Host handlers (not echo stdio).
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
@@ -7008,7 +7023,11 @@ function createHostFfi(repoRoot) {
         mapped === "host_finance_call" ||
         mapped === "host_job_search" ||
         mapped === "host_schedule_meeting" ||
-        mapped === "host_purchase"
+        mapped === "host_purchase" ||
+        mapped === "host_generate_image" ||
+        mapped === "host_generate_video" ||
+        mapped === "host_watch_video" ||
+        mapped === "host_structured_chart"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -7160,6 +7179,121 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(readHit && readHit.ok),
             mail_read: readPayload,
+          });
+        }
+        if (mapped === "host_skill_write") {
+          const skillName =
+            String(
+              args.name || args.skill || args.skill_name || args.title || "",
+            ).trim() || "mcp-skill";
+          const description = String(
+            args.description || args.desc || args.summary || "",
+          ).trim();
+          let body = String(
+            args.body || args.content || args.md || args.text || "",
+          ).trim();
+          if (!body) {
+            const steps =
+              args.steps_csv ||
+              args.steps ||
+              (Array.isArray(args.demo_steps)
+                ? args.demo_steps.join(",")
+                : "");
+            if (steps) {
+              body =
+                "# Steps\n" +
+                (Array.isArray(steps) ? steps.join(",") : String(steps));
+            }
+          }
+          const skillCmd = [skillName, description, body].join("|");
+          const skillResults = await executeHostEffects([
+            { kind: "skill_write", command: skillCmd },
+          ]);
+          const skillHit = (skillResults || []).find(
+            (r) => r && r.kind === "skill_write",
+          );
+          let skillPayload = {};
+          try {
+            skillPayload = JSON.parse((skillHit && skillHit.stdout) || "{}");
+          } catch {
+            skillPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "skill_write",
+            skill_write: {
+              path: skillPayload.path || skillPayload.skill_path || null,
+              meta_path: skillPayload.meta_path || null,
+              name: skillPayload.name || skillName,
+              mode: skillPayload.mode || null,
+              persisted: skillPayload.persisted,
+              pretend_shared: skillPayload.pretend_shared,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(skillHit && skillHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(skillHit && skillHit.ok),
+            skill_write: skillPayload,
+          });
+        }
+        if (mapped === "host_export_pack") {
+          const botId =
+            String(
+              args.bot_id || args.id || args.name || args.bot || "",
+            ).trim() || "bot";
+          const packKind = String(
+            args.kind || args.template_kind || "shareable-template",
+          ).trim() || "shareable-template";
+          const exportCmd = [botId, packKind].join("|");
+          const exportResults = await executeHostEffects([
+            { kind: "export_pack", command: exportCmd },
+          ]);
+          const exportHit = (exportResults || []).find(
+            (r) => r && r.kind === "export_pack",
+          );
+          let exportPayload = {};
+          try {
+            exportPayload = JSON.parse((exportHit && exportHit.stdout) || "{}");
+          } catch {
+            exportPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "export_pack",
+            export_pack: {
+              path: exportPayload.path || exportPayload.export_path || null,
+              meta_path: exportPayload.meta_path || null,
+              bot_id: exportPayload.bot_id || botId,
+              kind: exportPayload.kind || packKind,
+              mode: exportPayload.mode || null,
+              secrets_stripped: exportPayload.secrets_stripped,
+              pretend_secrets_included: exportPayload.pretend_secrets_included,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(exportHit && exportHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(exportHit && exportHit.ok),
+            export_pack: exportPayload,
           });
         }
         if (mapped === "host_slides_pptx") {
@@ -7415,6 +7549,134 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(purchaseHit && purchaseHit.ok),
             purchase: purchasePayload,
+          });
+        }
+        if (
+          mapped === "host_generate_image" ||
+          mapped === "host_generate_video" ||
+          mapped === "host_watch_video" ||
+          mapped === "host_structured_chart"
+        ) {
+          const mediaKind =
+            mapped === "host_generate_image"
+              ? "generate_image"
+              : mapped === "host_generate_video"
+                ? "generate_video"
+                : mapped === "host_watch_video"
+                  ? "watch_video"
+                  : "structured_chart";
+          let mediaCmd = "";
+          if (mediaKind === "generate_image" || mediaKind === "generate_video") {
+            const out = String(
+              args.out || args.path || args.output || args.filename || "",
+            ).trim();
+            const prompt = String(
+              args.prompt ||
+                args.body ||
+                args.q ||
+                args.query ||
+                args.text ||
+                args.description ||
+                "",
+            ).trim() || `MCP ${mediaKind}`;
+            mediaCmd = out + "|" + prompt;
+          } else if (mediaKind === "watch_video") {
+            const video = String(
+              args.video ||
+                args.video_path ||
+                args.path ||
+                args.q ||
+                args.query ||
+                args.body ||
+                "",
+            ).trim();
+            const frame = String(
+              args.frame ||
+                args.frame_out ||
+                args.out ||
+                args.output ||
+                args.filename ||
+                "",
+            ).trim();
+            mediaCmd = video + "|" + frame;
+          } else {
+            const out = String(
+              args.out || args.path || args.output || args.filename || "",
+            ).trim();
+            let seriesRaw = "";
+            if (args.series != null) {
+              seriesRaw =
+                typeof args.series === "string"
+                  ? args.series
+                  : JSON.stringify(args.series);
+            } else if (args.data != null) {
+              seriesRaw =
+                typeof args.data === "string"
+                  ? args.data
+                  : JSON.stringify(args.data);
+            } else if (args.body != null) {
+              seriesRaw =
+                typeof args.body === "string"
+                  ? args.body
+                  : JSON.stringify(args.body);
+            } else {
+              const skip = new Set([
+                "out",
+                "path",
+                "output",
+                "filename",
+                "tool",
+                "command",
+              ]);
+              const seriesObj = {};
+              for (const [k, v] of Object.entries(args || {})) {
+                if (skip.has(k)) continue;
+                if (typeof v === "number" || typeof v === "string") {
+                  seriesObj[k] = v;
+                }
+              }
+              seriesRaw = Object.keys(seriesObj).length
+                ? JSON.stringify(seriesObj)
+                : "";
+            }
+            mediaCmd = out + "|" + seriesRaw;
+          }
+          const mediaRes = await executeMediaProductEffect(mediaKind, mediaCmd);
+          let mediaPayload = {};
+          try {
+            mediaPayload = JSON.parse((mediaRes && mediaRes.stdout) || "{}");
+          } catch {
+            mediaPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: mediaKind,
+            media: {
+              path: mediaPayload.path || null,
+              media_path: mediaPayload.media_path || null,
+              frame_path: mediaPayload.frame_path || null,
+              video_path: mediaPayload.video_path || null,
+              mode: mediaPayload.mode || null,
+              png_magic_ok: mediaPayload.png_magic_ok,
+              video_complete_notified: mediaPayload.video_complete_notified,
+              pretend_media: mediaPayload.pretend_media,
+              series: mediaPayload.series || null,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(mediaRes && mediaRes.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(mediaRes && mediaRes.ok),
+            media: mediaPayload,
           });
         }
         const q = String(

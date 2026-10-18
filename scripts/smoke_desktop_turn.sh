@@ -1161,7 +1161,7 @@ node hosts/cli_host/run_turn.js "voice end smoke1" >/tmp/bitbot-voice-end.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-end.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);cid=open('/tmp/bitbot-voice-call-id.txt').read().strip();assert p.get('call_id')==cid;assert 'smoke1b' not in (p.get('call_id') or '');assert p.get('matched') is True;assert p.get('voice_end_match_residual') is False;assert p.get('app_summary') is not None;assert p.get('mode')=='host_voice_end';assert p.get('path') and os.path.isfile(p['path']);assert 'voice-calls' in p['path'];assert p.get('pretend_still_live') is False;rows=json.load(open('data/voice/sessions.json'));sib=next(r for r in rows if str(r.get('voice_address') or '') in ('voice:smoke1b','smoke1b'));assert sib.get('live') is True;print('voice_end call_id+app_summary ok', p.get('call_id'), p.get('path'), 'match_residual', False)"
 node hosts/cli_host/run_turn.js "voice end missing-xyz" >/tmp/bitbot-voice-end-miss.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-voice-end-miss.json'));h=next(x for x in d['host_results'] if x.get('kind')=='voice_end_write');p=json.loads(h['stdout']);assert p.get('matched') is False;assert p.get('voice_end_match_residual') is True;assert p.get('mode')=='host_voice_end_unmatched';assert p.get('pretend_still_live') is False;print('voice_end unmatched residual ok', p.get('mode'), 'residual', True)"
-# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read (Host FFI; MoonBit catalog may lack names)
+# MCP product short-circuit: slides + X + finance + job + calendar + purchase + mail_send/read + media (Host FFI; MoonBit catalog may lack names)
 node -e '
 const { createHostFfi } = require("./hosts/shared/host_ffi.js");
 const { spawn } = require("child_process");
@@ -1307,6 +1307,65 @@ function startMock(port, mode, token) {
   const gmp = JSON.parse((gmh && gmh.stdout) || "{}");
   if (gmp.mapped !== "host_mail_read" || gmp.product_tool_residual !== false) throw new Error(JSON.stringify(gmp).slice(0,200));
   console.log("mcp_call get_message alias short-circuit ok", gmp.mapped, (gmp.mail_read||{}).thread_id);
+  // Media product short-circuit → executeMediaProductEffect (generate_image/video/watch/chart)
+  const imgs = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.generate_image|{\"prompt\":\"MCP aurora smoke\"}" }]);
+  const ih = imgs.find((r) => r && r.kind === "mcp_call");
+  if (!ih || !ih.ok) throw new Error("generate_image mcp");
+  const ip = JSON.parse(ih.stdout || "{}");
+  if (ip.mapped !== "host_generate_image" || ip.product_tool_residual !== false) throw new Error(JSON.stringify(ip).slice(0,200));
+  if ((ip.media||{}).pretend_media === true) throw new Error("pretend_media image");
+  if (!(ip.media||{}).media_path || !(ip.media||{}).png_magic_ok) throw new Error("image payload: " + JSON.stringify(ip).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-gen-image.json", JSON.stringify({ ok: true, ...ip }, null, 2));
+  console.log("mcp_call generate_image short-circuit ok", ip.mapped, (ip.media||{}).media_path);
+  const imgAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.make_image|{\"prompt\":\"alias image\"}" }]);
+  const iah = imgAlias.find((r) => r && r.kind === "mcp_call");
+  const iap = JSON.parse((iah && iah.stdout) || "{}");
+  if (iap.mapped !== "host_generate_image" || iap.product_tool_residual !== false) throw new Error(JSON.stringify(iap).slice(0,200));
+  console.log("mcp_call make_image alias short-circuit ok", iap.mapped, (iap.media||{}).mode);
+  const vids = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.generate_video|{\"prompt\":\"MCP clip smoke\"}" }]);
+  const vh = vids.find((r) => r && r.kind === "mcp_call");
+  if (!vh || !vh.ok) throw new Error("generate_video mcp");
+  const vp = JSON.parse(vh.stdout || "{}");
+  if (vp.mapped !== "host_generate_video" || vp.product_tool_residual !== false) throw new Error(JSON.stringify(vp).slice(0,200));
+  if ((vp.media||{}).pretend_media === true) throw new Error("pretend_media video");
+  if (!(vp.media||{}).media_path) throw new Error("video payload: " + JSON.stringify(vp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-gen-video.json", JSON.stringify({ ok: true, ...vp }, null, 2));
+  console.log("mcp_call generate_video short-circuit ok", vp.mapped, (vp.media||{}).media_path);
+  const vidAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.gen_video|{\"prompt\":\"alias video\"}" }]);
+  const vah = vidAlias.find((r) => r && r.kind === "mcp_call");
+  const vap = JSON.parse((vah && vah.stdout) || "{}");
+  if (vap.mapped !== "host_generate_video" || vap.product_tool_residual !== false) throw new Error(JSON.stringify(vap).slice(0,200));
+  console.log("mcp_call gen_video alias short-circuit ok", vap.mapped, (vap.media||{}).mode);
+  const watchVid = (vp.media||{}).media_path;
+  const watches = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.watch_video|{\"video\":" + JSON.stringify(watchVid) + "}" }]);
+  const wh = watches.find((r) => r && r.kind === "mcp_call");
+  if (!wh || !wh.ok) throw new Error("watch_video mcp");
+  const wp = JSON.parse(wh.stdout || "{}");
+  if (wp.mapped !== "host_watch_video" || wp.product_tool_residual !== false) throw new Error(JSON.stringify(wp).slice(0,200));
+  if ((wp.media||{}).pretend_media === true) throw new Error("pretend_media watch");
+  if (!(wp.media||{}).frame_path || !(wp.media||{}).png_magic_ok) throw new Error("watch payload: " + JSON.stringify(wp).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-watch-video.json", JSON.stringify({ ok: true, ...wp }, null, 2));
+  console.log("mcp_call watch_video short-circuit ok", wp.mapped, (wp.media||{}).frame_path);
+  const watchAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.extract_frame|{\"video\":" + JSON.stringify(watchVid) + "}" }]);
+  const wahh = watchAlias.find((r) => r && r.kind === "mcp_call");
+  const wap = JSON.parse((wahh && wahh.stdout) || "{}");
+  if (wap.mapped !== "host_watch_video" || wap.product_tool_residual !== false) throw new Error(JSON.stringify(wap).slice(0,200));
+  console.log("mcp_call extract_frame alias short-circuit ok", wap.mapped, (wap.media||{}).frame_path);
+  const charts = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.structured_chart|{\"series\":{\"alpha\":4,\"beta\":9,\"gamma\":6}}" }]);
+  const chh = charts.find((r) => r && r.kind === "mcp_call");
+  if (!chh || !chh.ok) throw new Error("structured_chart mcp");
+  const chp = JSON.parse(chh.stdout || "{}");
+  if (chp.mapped !== "host_structured_chart" || chp.product_tool_residual !== false) throw new Error(JSON.stringify(chp).slice(0,200));
+  if ((chp.media||{}).pretend_media === true) throw new Error("pretend_media chart");
+  if (!(chp.media||{}).media_path || !(chp.media||{}).png_magic_ok) throw new Error("chart payload: " + JSON.stringify(chp).slice(0,200));
+  if (!((chp.media||{}).series) || (chp.media||{}).series.alpha !== 4) throw new Error("chart series: " + JSON.stringify((chp.media||{}).series));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-chart.json", JSON.stringify({ ok: true, ...chp }, null, 2));
+  console.log("mcp_call structured_chart short-circuit ok", chp.mapped, (chp.media||{}).media_path);
+  const chartAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.make_chart|{\"alpha\":2,\"beta\":5}" }]);
+  const cah = chartAlias.find((r) => r && r.kind === "mcp_call");
+  const cap = JSON.parse((cah && cah.stdout) || "{}");
+  if (cap.mapped !== "host_structured_chart" || cap.product_tool_residual !== false) throw new Error(JSON.stringify(cap).slice(0,200));
+  console.log("mcp_call make_chart alias short-circuit ok", cap.mapped, (cap.media||{}).mode);
   // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}
