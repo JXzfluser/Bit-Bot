@@ -6972,6 +6972,18 @@ function createHostFfi(repoRoot) {
         send_on_behalf: "host_mail_send",
         identity_browser: "host_identity_browser",
         switch_identity_browser: "host_identity_browser",
+        setup_slack: "host_oauth",
+        connect_slack: "host_oauth",
+        oauth_slack: "host_oauth",
+        connect_gmail: "host_oauth",
+        setup_gmail: "host_oauth",
+        oauth_gmail: "host_oauth",
+        connect_outlook: "host_oauth",
+        setup_outlook: "host_oauth",
+        oauth_outlook: "host_oauth",
+        finance_connect: "host_oauth",
+        connect_finance: "host_oauth",
+        oauth: "host_oauth",
         load_skill: "host_skill_load",
         skill_load: "host_skill_load",
         claim_inbox: "host_mail_claim_inbox",
@@ -7112,6 +7124,7 @@ function createHostFfi(repoRoot) {
         mapped === "host_source_control" ||
         mapped === "host_workflow_list" ||
         mapped === "host_identity_browser" ||
+        mapped === "host_oauth" ||
         mapped === "host_skill_load" ||
         mapped === "host_mail_claim_inbox" ||
         mapped === "host_credential_fill" ||
@@ -7962,6 +7975,101 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(wfHit && wfHit.ok),
             workflow_list: wfPayload,
+          });
+        }
+        if (mapped === "host_oauth") {
+          // Product setup_slack / connect_gmail / connect_outlook / finance_connect
+          // → existing Host oauth path (sandbox IdP / live NeedsAuth honesty).
+          let oauthCmd = "slack";
+          const tn = String(toolName || "").toLowerCase();
+          const argConn = String(
+            args.connector || args.provider || args.service || args.name || "",
+          )
+            .trim()
+            .toLowerCase();
+          if (
+            tn.includes("gmail") ||
+            argConn.includes("gmail") ||
+            tn === "connect_gmail" ||
+            tn === "setup_gmail" ||
+            tn === "oauth_gmail"
+          ) {
+            oauthCmd = "gmail";
+          } else if (
+            tn.includes("outlook") ||
+            argConn.includes("outlook") ||
+            tn === "connect_outlook" ||
+            tn === "setup_outlook" ||
+            tn === "oauth_outlook"
+          ) {
+            oauthCmd = "outlook";
+          } else if (
+            tn.includes("finance") ||
+            argConn.includes("finance") ||
+            tn === "finance_connect" ||
+            tn === "connect_finance"
+          ) {
+            oauthCmd = "finance";
+          } else if (
+            tn.includes("slack") ||
+            argConn.includes("slack") ||
+            tn === "setup_slack" ||
+            tn === "connect_slack" ||
+            tn === "oauth_slack" ||
+            tn === "oauth"
+          ) {
+            oauthCmd = String(args.command || args.connector || "slack").trim() || "slack";
+            if (!/slack|gmail|outlook|finance|identity/i.test(oauthCmd)) {
+              oauthCmd = "slack";
+            }
+          } else if (argConn) {
+            oauthCmd = argConn;
+          }
+          const oauthResults = await executeHostEffects([
+            { kind: "oauth", command: oauthCmd },
+          ]);
+          const oauthHit = (oauthResults || []).find(
+            (r) => r && r.kind === "oauth",
+          );
+          let oauthPayload = {};
+          try {
+            oauthPayload = JSON.parse((oauthHit && oauthHit.stdout) || "{}");
+          } catch {
+            oauthPayload = {};
+          }
+          const pretendConnected = Boolean(oauthPayload.pretend_connected);
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              mode: "host_oauth",
+              host_kind: "oauth",
+              oauth: {
+                connector: oauthPayload.connector || oauthCmd,
+                mode: oauthPayload.mode || null,
+                status: oauthPayload.status || null,
+                connected: oauthPayload.connected,
+                pretend_connected: pretendConnected,
+                interactive_oauth_residual:
+                  oauthPayload.interactive_oauth_residual,
+                path: oauthPayload.path || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(oauthHit && oauthHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(oauthHit && oauthHit.ok),
+            oauth: oauthPayload,
           });
         }
         if (mapped === "host_identity_browser") {

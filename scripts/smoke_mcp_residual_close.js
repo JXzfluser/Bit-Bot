@@ -189,6 +189,46 @@ function stripHostAppliedMarker(file) {
   const smap2 = JSON.parse((smah2 && smah2.stdout) || "{}");
   if (smap2.mapped !== "host_mail_search" || smap2.product_tool_residual !== false) throw new Error(JSON.stringify(smap2).slice(0,200));
   console.log("mcp_call search_mail alias short-circuit ok", smap2.mapped, (smap2.mail_search||{}).mode);
+  // setup_slack / connect_gmail / connect_outlook → host_oauth (sandbox IdP; never pretend_connected)
+  delete process.env.BITBOT_OAUTH_MODE;
+  delete process.env.BITBOT_OAUTH_EXCHANGE;
+  delete process.env.BITBOT_OAUTH_OPEN_BROWSER;
+  const oauthSlack = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.setup_slack|{}" }]);
+  const osh = oauthSlack.find((r) => r && r.kind === "mcp_call");
+  if (!osh || !osh.ok) throw new Error("setup_slack mcp");
+  const osp = JSON.parse(osh.stdout || "{}");
+  if (osp.mapped !== "host_oauth" || osp.product_tool_residual !== false) throw new Error(JSON.stringify(osp).slice(0,200));
+  if ((osp.oauth||{}).pretend_connected === true) throw new Error("pretend_connected slack");
+  if ((osp.oauth||{}).mode !== "sandbox_idp" && (osp.oauth||{}).status !== "Connected") {
+    // sandbox IdP Connected is honest (local IdP), not pretend
+    if (!(osp.oauth||{}).path) throw new Error("oauth slack payload: " + JSON.stringify(osp).slice(0,240));
+  }
+  require("fs").writeFileSync("/tmp/bitbot-mcp-oauth-slack.json", JSON.stringify({ ok: true, ...osp }, null, 2));
+  console.log("mcp_call setup_slack short-circuit ok", osp.mapped, (osp.oauth||{}).mode, (osp.oauth||{}).status, (osp.oauth||{}).connector);
+  const oauthGmail = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.connect_gmail|{}" }]);
+  const ogh = oauthGmail.find((r) => r && r.kind === "mcp_call");
+  const ogp = JSON.parse((ogh && ogh.stdout) || "{}");
+  if (ogp.mapped !== "host_oauth" || ogp.product_tool_residual !== false) throw new Error(JSON.stringify(ogp).slice(0,200));
+  if ((ogp.oauth||{}).pretend_connected === true) throw new Error("pretend_connected gmail");
+  console.log("mcp_call connect_gmail short-circuit ok", ogp.mapped, (ogp.oauth||{}).mode, (ogp.oauth||{}).connector);
+  const oauthOutlook = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.connect_outlook|{}" }]);
+  const ooh = oauthOutlook.find((r) => r && r.kind === "mcp_call");
+  const oop = JSON.parse((ooh && ooh.stdout) || "{}");
+  if (oop.mapped !== "host_oauth" || oop.product_tool_residual !== false) throw new Error(JSON.stringify(oop).slice(0,200));
+  if ((oop.oauth||{}).pretend_connected === true) throw new Error("pretend_connected outlook");
+  console.log("mcp_call connect_outlook short-circuit ok", oop.mapped, (oop.oauth||{}).mode, (oop.oauth||{}).connector);
+  // Live NeedsAuth honesty via BITBOT_OAUTH_MODE=live (residual open; no pretend Connected)
+  process.env.BITBOT_OAUTH_MODE = "live";
+  const oauthLive = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.setup_slack|{}" }]);
+  const olh = oauthLive.find((r) => r && r.kind === "mcp_call");
+  const olp = JSON.parse((olh && olh.stdout) || "{}");
+  if (olp.mapped !== "host_oauth" || olp.product_tool_residual !== false) throw new Error(JSON.stringify(olp).slice(0,200));
+  if ((olp.oauth||{}).pretend_connected === true) throw new Error("pretend_connected live");
+  if ((olp.oauth||{}).status !== "NeedsAuth" && (olp.oauth||{}).mode !== "live_needs_auth") {
+    throw new Error("live NeedsAuth expected: " + JSON.stringify(olp.oauth||{}).slice(0,240));
+  }
+  console.log("mcp_call setup_slack live NeedsAuth ok", (olp.oauth||{}).mode, (olp.oauth||{}).status);
+  delete process.env.BITBOT_OAUTH_MODE;
   // Skill/export product short-circuit → host_skill_write / host_export_pack (no pretend_shared / secret echo)
   const skills = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.author_skill|{\"name\":\"mcp-author-skill\",\"description\":\"mcp smoke\",\"body\":\"Do the MCP thing.\"}" }]);
   const skh = skills.find((r) => r && r.kind === "mcp_call");
