@@ -276,6 +276,10 @@ function createHostFfi(repoRoot) {
     if (p === "job" || p === "jobs") return ["BITBOT_JOB_TOKEN"];
     if (p === "x" || p === "twitter")
       return ["BITBOT_X_BEARER", "BITBOT_X_TOKEN"];
+    if (p === "purchase" || p === "commerce")
+      return ["BITBOT_PURCHASE_TOKEN"];
+    if (p === "cloud" || p === "cursor_cloud")
+      return ["BITBOT_CURSOR_CLOUD_TOKEN", "BITBOT_CLOUD_API_TOKEN"];
     const upper = p.replace(/[^a-z0-9]+/g, "_").toUpperCase();
     return upper ? [`BITBOT_${upper}_TOKEN`] : [];
   }
@@ -8786,11 +8790,7 @@ function createHostFfi(repoRoot) {
       const prompt = parts.slice(2).join("|") || "";
       const depth = nestDepth();
       const cloudApiUrl = String(process.env.BITBOT_CLOUD_API_URL || "").trim();
-      const cloudToken = String(
-        process.env.BITBOT_CURSOR_CLOUD_TOKEN ||
-          process.env.BITBOT_CLOUD_API_TOKEN ||
-          "",
-      ).trim();
+      const cloudToken = resolveProviderAccessToken("cloud");
       const wantRemote = Boolean(cloudApiUrl || cloudToken);
       let remoteProbe = null;
       let mode = "local_worker";
@@ -11036,7 +11036,7 @@ function createHostFfi(repoRoot) {
       // Never claim paid without a successful processor response.
       const wantLive =
         String(process.env.BITBOT_PURCHASE_LIVE || "").trim() === "1";
-      const purchaseToken = String(process.env.BITBOT_PURCHASE_TOKEN || "").trim();
+      const purchaseToken = resolveProviderAccessToken("purchase");
       const purchaseApi = String(process.env.BITBOT_PURCHASE_API_URL || "").trim();
       let chargeProbe = null;
       let charged = false;

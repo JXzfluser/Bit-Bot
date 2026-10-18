@@ -875,9 +875,15 @@ python3 "$ROOT/scripts/host_local_http_mock.py" --port 18774 --mode cloud --toke
 CLOUD_MOCK_PID=$!
 sleep 0.4
 BITBOT_CLOUD_API_URL=http://127.0.0.1:18774 BITBOT_CURSOR_CLOUD_TOKEN=smoke-cloud node hosts/cli_host/run_turn.js "launch cloud agent live mock" >/tmp/bitbot-cloud-live.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-cloud-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_agent_launch');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='remote_cloud_api';assert p.get('remote_cloud_residual') is False;assert p.get('pretend_remote_cloud') is False;assert p.get('remote_api_attempted') is True;assert p.get('status')=='launched_remote';assert (p.get('remote_probe') or {}).get('ok') is True;print('cloud_agent_launch remote live mock ok', p.get('bc_id'), p.get('status'))"
+mkdir -p data/connectors
+printf '%s\n' '{"access_token":"smoke-cloud","token_type":"Bearer"}' > data/connectors/cloud_token.json
+BITBOT_CLOUD_API_URL=http://127.0.0.1:18774 \
+  env -u BITBOT_CURSOR_CLOUD_TOKEN -u BITBOT_CLOUD_API_TOKEN \
+  node hosts/cli_host/run_turn.js "launch cloud agent file token" >/tmp/bitbot-cloud-file-token.json || true
 kill "$CLOUD_MOCK_PID" >/dev/null 2>&1 || true
 wait "$CLOUD_MOCK_PID" 2>/dev/null || true
-python3 -c "import json;d=json.load(open('/tmp/bitbot-cloud-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_agent_launch');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='remote_cloud_api';assert p.get('remote_cloud_residual') is False;assert p.get('pretend_remote_cloud') is False;assert p.get('remote_api_attempted') is True;assert p.get('status')=='launched_remote';assert (p.get('remote_probe') or {}).get('ok') is True;print('cloud_agent_launch remote live mock ok', p.get('bc_id'), p.get('status'))"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-cloud-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_agent_launch');p=json.loads(h['stdout']);assert p.get('mode')=='remote_cloud_api';assert p.get('remote_cloud_residual') is False;print('cloud_agent_launch connector token file ok', p.get('mode'))"
 BC_ID="$(cat /tmp/bitbot-cloud-bc.txt)"
 node hosts/cli_host/run_turn.js "deliver cloud artifact artifact=${BC_ID} dest=smoke-report.md" >/tmp/bitbot-cloud-art.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud-art.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_artifact_deliver');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('delivered') is True;assert p.get('from_session') is True;assert p.get('pretend_remote_fetch') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('meta_path') and os.path.isfile(p['meta_path']);assert os.path.getsize(p['path'])>20;body=open(p['path']).read();assert 'bc_id:' in body and 'from_session: true' in body;print('cloud_artifact_deliver from_session ok', p.get('path'), 'meta', p.get('meta_path'), 'bytes', p.get('bytes'))"
@@ -892,9 +898,15 @@ python3 "$ROOT/scripts/host_local_http_mock.py" --port 18765 --mode purchase --t
 PURCHASE_MOCK_PID=$!
 sleep 0.4
 BITBOT_PURCHASE_LIVE=1 BITBOT_PURCHASE_TOKEN=smoke-pay BITBOT_PURCHASE_API_URL=http://127.0.0.1:18765 node hosts/cli_host/run_turn.js --approved "purchase item=LiveWidget cents=999" >/tmp/bitbot-purchase-live.json || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-purchase-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='purchase');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_charge';assert p.get('paid') is True;assert p.get('live_paid_residual') is False;assert p.get('pretend_paid') is False;assert (p.get('charge_probe') or {}).get('ok') is True;assert p.get('path') and os.path.isfile(p['path']);print('purchase live charge ok', p.get('receipt_path'), 'snap', p.get('path'), 'charge', p.get('charge_probe'))"
+mkdir -p data/connectors
+printf '%s\n' '{"access_token":"smoke-pay","token_type":"Bearer"}' > data/connectors/purchase_token.json
+BITBOT_PURCHASE_LIVE=1 BITBOT_PURCHASE_API_URL=http://127.0.0.1:18765 \
+  env -u BITBOT_PURCHASE_TOKEN \
+  node hosts/cli_host/run_turn.js --approved "purchase item=FileTokenWidget cents=499" >/tmp/bitbot-purchase-file-token.json || true
 kill "$PURCHASE_MOCK_PID" >/dev/null 2>&1 || true
 wait "$PURCHASE_MOCK_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-purchase-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='purchase');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_charge';assert p.get('paid') is True;assert p.get('live_paid_residual') is False;assert p.get('pretend_paid') is False;assert (p.get('charge_probe') or {}).get('ok') is True;assert p.get('path') and os.path.isfile(p['path']);print('purchase live charge ok', p.get('receipt_path'), 'snap', p.get('path'), 'charge', p.get('charge_probe'))"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-purchase-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='purchase');p=json.loads(h['stdout']);assert p.get('mode')=='live_charge';assert p.get('live_paid_residual') is False;print('purchase connector token file ok', p.get('mode'))"
 node hosts/cli_host/run_turn.js --approved "draft mail to=smoke@example.com subject=Hi body=Smoke" >/tmp/bitbot-mail-eml.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-eml.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('eml_ok') is True;assert p.get('eml_path') and os.path.isfile(p['eml_path']);assert p.get('pretend_sent') is False;assert 'X-BitBot-Status:' in open(p['eml_path']).read();print('mail_send sandbox eml ok', p.get('mode'), p.get('eml_path'))"
 # Live Gmail send + search/read against local mock (BITBOT_GMAIL_API_BASE)
@@ -1105,11 +1117,4 @@ if(!s.labels.some(l=>l.includes("refused_cross_scope"))) { console.error(s); pro
 console.log("STU shared_memory refuse ok", s.labels.slice(0,3));
 '
 node hosts/cli_host/run_turn.js "[inbound] reaction :+1:" >/tmp/bitbot-inbound.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-inbound.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='inbound_reaction');assert h.get('ok') and 'forced_reply' in (h.get('stdout') or '') and 'false' in (h.get('stdout') or '').lower();p=json.loads(h.get('stdout') or '{}');assert p.get('visible_pill') is True;assert os.path.isfile('data/delivery/outbound-reactions.jsonl');assert os.path.isfile('data/delivery/send-to-user.jsonl');print('inbound_reaction SendToUser pill ok', p.get('emoji'))"
-node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: delivery body" >/tmp/bitbot-delivery.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-delivery.json'));hrs=d.get('host_results') or [];assert any(h.get('kind')=='channel_send' and h.get('ok') for h in hrs);deliv=next(x for x in hrs if x.get('kind')=='delivery');assert deliv.get('ok');p=json.loads(deliv.get('stdout') or '{}');assert p.get('type') in ('text','thread');assert p.get('send_to_user') is True;assert os.path.isfile('data/delivery/send-to-user.jsonl');print('SendToUser delivery receipt ok', p.get('type'), p.get('channel'))"
-
-echo "==> native iOS/Android Host shells"
-bash "$ROOT/scripts/verify_native_shells.sh"
-
-echo "OK: smoke_desktop_turn.sh"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-inbound.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='inbound_reaction');assert h.get('ok') and 'forced_reply' in (h.get('stdout') or '') and 'false' in (h.get('stdout') or '').lower();p=json.loads(h.get('stdout') or '{}');assert p.get('visible_pill') is True;assert os.path.isfile('data/delivery/outbound-reactions.jsonl');assert os.path.isfile('data/delivery/send-to-user
