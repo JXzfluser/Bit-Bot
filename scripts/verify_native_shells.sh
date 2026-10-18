@@ -42,6 +42,21 @@ ios_cv = Path("hosts/ios/BitBotHost/Sources/BitBotHost/ContentView.swift").read_
 and_main = Path("hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivity.kt").read_text()
 assert "SendToUser" in ios_stu and "mcp_call" in ios_stu and "voice_relay" in ios_stu
 assert "SendToUser" in and_stu and "mcp_call" in and_stu and "voice_relay" in and_stu
+# Recent product Host kinds mirrored on both native SendToUser surfaces.
+for kind in (
+    "screenshot",
+    "check_updates",
+    "auto_review_settings",
+    "box_chrome_probe",
+    "react_message",
+    "render_markdown",
+    "settings_open",
+):
+    assert kind in ios_stu, kind
+    assert kind in and_stu, kind
+shared = Path("hosts/shared/send_to_user_surface.js").read_text()
+for kind in ("screenshot", "box_chrome_probe", "check_updates", "auto_review_settings"):
+    assert kind in shared, kind
 assert "SendToUserSurface" in ios_cv and "SendToUserChipRow" in ios_cv
 assert "SendToUserSurface" in and_main
 print("native device_permission + SendToUser Host scaffolds ok")

@@ -30,6 +30,11 @@ object SendToUserSurface {
     "generate_image", "generate_video", "watch_video", "structured_chart",
     "box_doctor", "box_env", "box_clock",
     "webhook_panel", "webhook_copy", "webhook_tool_read_key", "webhook_wake",
+    "settings_open", "agent_info_panel", "delete_agent", "package_install",
+    "shared_box_fs", "hide_agent", "list_agents_sidebar", "members_panel",
+    "notify_settings", "set_notify", "update_computer", "reset_computer",
+    "local_execution", "guide_permission", "render_markdown", "react_message",
+    "screenshot", "check_updates", "auto_review_settings", "box_chrome_probe",
   )
 
   fun extract(fromTurnJson: String): Summary {

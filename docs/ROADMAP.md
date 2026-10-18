@@ -145,6 +145,7 @@
 - [x] Host CreateAgent appears in Members (CM-1401): `teammate_create` returns `appears_in_members`/`in_sidebar`/`member_ids` from durable store
 - [x] Host auto-review Settings deeplinks (CM-1507): `auto_review_settings` opens General anchors auto-review / rules / security-keys
 - [x] Host box-chrome launcher probe (CM-0802): `box_chrome_probe` rejects bare chrome; private CDP ≠ 9223; shared profile untouched; lockfile diagnosable
+- [x] Multi-end SendToUser surfaces mirror product Host kinds (shared JS + iOS/Android: screenshot/check_updates/auto_review/box_chrome/react/markdown/settings…)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn
 - [x] Host schedule_meeting materializes real `.ics` (VCALENDAR/VEVENT) under `data/calendar/` + SendToUser attachment
