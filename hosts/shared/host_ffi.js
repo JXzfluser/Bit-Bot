@@ -9381,6 +9381,77 @@ function createHostFfi(repoRoot) {
     return { ok: false, path: outPath, bytes: 0, voice_tts_residual: true };
   }
 
+  function transcribeVoiceWav(wavPath) {
+    // Host STT: sidecar transcript, BITBOT_STT_BIN, or residual.
+    // Never pretend heard — typed relay text alone keeps voice_stt_residual.
+    const wav = String(wavPath || "").trim();
+    if (!wav || !fs.existsSync(wav)) {
+      return {
+        ok: false,
+        text: "",
+        tool: null,
+        voice_stt_residual: true,
+        error: "wav missing",
+      };
+    }
+    const sidecar = wav + ".stt.txt";
+    const alt = path.join(
+      path.dirname(wav),
+      path.basename(wav, path.extname(wav)) + ".stt.txt",
+    );
+    for (const side of [sidecar, alt]) {
+      if (fs.existsSync(side) && fs.statSync(side).isFile()) {
+        const text = String(fs.readFileSync(side, "utf8") || "")
+          .trim()
+          .slice(0, 4000);
+        if (text) {
+          return {
+            ok: true,
+            text,
+            tool: "stt_sidecar",
+            voice_stt_residual: false,
+            sidecar: side,
+          };
+        }
+      }
+    }
+    const sttBin = String(process.env.BITBOT_STT_BIN || "").trim();
+    if (sttBin) {
+      try {
+        const { execFileSync } = require("child_process");
+        const out = execFileSync(sttBin, [wav], {
+          encoding: "utf8",
+          timeout: 30000,
+          maxBuffer: 1024 * 1024,
+        });
+        const text = String(out || "").trim().slice(0, 4000);
+        if (text) {
+          return {
+            ok: true,
+            text,
+            tool: path.basename(sttBin),
+            voice_stt_residual: false,
+          };
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          text: "",
+          tool: path.basename(sttBin),
+          voice_stt_residual: true,
+          error: String((err && err.message) || err).slice(0, 200),
+        };
+      }
+    }
+    return {
+      ok: false,
+      text: "",
+      tool: null,
+      voice_stt_residual: true,
+      error: "no STT sidecar or BITBOT_STT_BIN",
+    };
+  }
+
   function cloudSessionPath(bcId) {
     return path.join(
       REPO_ROOT,
@@ -10155,15 +10226,24 @@ function createHostFfi(repoRoot) {
     const cmd = String(command || "");
     const sep = cmd.indexOf(" :: ");
     const address = sep >= 0 ? cmd.slice(0, sep) : cmd;
-    const text = sep >= 0 ? cmd.slice(sep + 4) : "";
+    let text = sep >= 0 ? cmd.slice(sep + 4) : "";
     const rows = readJsonArray(VOICE_SESSIONS_PATH);
     let row = rows.find((r) => r && r.voice_address === address);
+    if (!row) {
+      // Accept bare id (smoke1) or voice:id forms from MoonBit.
+      row = rows.find(
+        (r) =>
+          r &&
+          (r.voice_address === "voice:" + address ||
+            String(r.voice_address || "").endsWith(":" + address) ||
+            String(r.voice_address || "").endsWith(address)),
+      );
+    }
     if (!row) {
       row = { voice_address: address, live: true, relay_log: [], at };
       rows.push(row);
     }
     row.relay_log = Array.isArray(row.relay_log) ? row.relay_log : [];
-    row.relay_log.push({ role: "user", text, at });
     row.at = at;
 
     const mediaDir = path.join(REPO_ROOT, "data", "voice", "media");
@@ -10174,12 +10254,52 @@ function createHostFfi(repoRoot) {
     if (!row.media_path) {
       row.media_path = path.join(mediaDir, `${slug || "voice"}.wav`);
     }
+    // STT from session WAV when: $stt / empty+$BITBOT_VOICE_STT / $wav:path
+    let stt = {
+      ok: false,
+      text: "",
+      tool: null,
+      voice_stt_residual: true,
+    };
+    let wavForStt = row.media_path;
+    const wantStt =
+      /^\$stt\b/i.test(text.trim()) ||
+      /^\$wav:/i.test(text.trim()) ||
+      (process.env.BITBOT_VOICE_STT === "1" && !String(text || "").trim()) ||
+      process.env.BITBOT_VOICE_STT === "force";
+    if (/^\$wav:/i.test(text.trim())) {
+      const raw = text.trim().slice(5).trim();
+      const abs = resolveUnderRepo(raw) || (path.isAbsolute(raw) ? raw : null);
+      if (abs) wavForStt = abs;
+    }
+    if (wantStt || /^\$stt\b/i.test(text.trim()) || /^\$wav:/i.test(text.trim())) {
+      stt = transcribeVoiceWav(wavForStt);
+      if (stt.ok && stt.text) {
+        text = stt.text;
+      } else if (/^\$stt\b/i.test(String(command || "").slice(sep + 4).trim()) || /^\$wav:/i.test(String(command || "").slice(sep + 4).trim())) {
+        // Explicit STT request with no transcript — keep residual, empty typed body.
+        text = "";
+      }
+    }
+    row.relay_log.push({
+      role: "user",
+      text,
+      stt_ok: Boolean(stt.ok),
+      stt_tool: stt.tool || null,
+      at,
+    });
     const transcript = path.join(
       path.dirname(row.media_path),
       path.basename(row.media_path, path.extname(row.media_path)) +
         ".transcript.jsonl",
     );
-    appendJsonl(transcript, { role: "user", text, at });
+    appendJsonl(transcript, {
+      role: "user",
+      text,
+      stt_ok: Boolean(stt.ok),
+      stt_tool: stt.tool || null,
+      at,
+    });
     row.transcript_path = transcript;
 
     // Host voice reply: MoonBit worker text + reply WAV (CHARTER SendToUser voice).
@@ -10201,8 +10321,7 @@ function createHostFfi(repoRoot) {
       duration: 0.3,
       text: replyText,
     });
-    // Typed relay text ≠ mic STT until Host transcribes inbound WAV.
-    const voiceSttResidual = true;
+    const voiceSttResidual = stt.voice_stt_residual !== false || !stt.ok;
     const voiceTtsResidual = replyMedia.voice_tts_residual !== false;
     row.relay_log.push({
       role: "assistant",
@@ -10240,10 +10359,17 @@ function createHostFfi(repoRoot) {
       reply_media_bytes: replyMedia.bytes || 0,
       reply_media_tool: replyMedia.tool || null,
       reply_prefix: replyText.slice(0, 120),
+      user_text_prefix: String(text || "").slice(0, 120),
+      stt_text: stt.ok ? String(stt.text || "").slice(0, 400) : null,
+      stt_tool: stt.tool || null,
+      stt_ok: Boolean(stt.ok),
       worker_ok: Boolean(worker.ok),
       nested_skipped: Boolean(worker.nested_skipped),
-      mode:
-        replyMedia.tool === "espeak"
+      mode: stt.ok
+        ? replyMedia.tool === "espeak"
+          ? "host_voice_relay_stt_tts"
+          : "host_voice_relay_stt"
+        : replyMedia.tool === "espeak"
           ? "host_voice_relay_tts"
           : "host_voice_relay",
       voice_stt_residual: voiceSttResidual,
@@ -11008,8 +11134,31 @@ function createHostFfi(repoRoot) {
               "no ALSA default capture — device_capture_residual";
             mode = "host_device_capture_residual";
           }
+        } else if (tool === "contacts" || tool === "location") {
+          // Sandbox fixture backends (not OS address-book / GPS).
+          const fixture =
+            tool === "contacts"
+              ? path.join(REPO_ROOT, "data", "device", "contacts.json")
+              : path.join(REPO_ROOT, "data", "device", "location.json");
+          if (fs.existsSync(fixture)) {
+            const raw = fs.readFileSync(fixture, "utf8");
+            capturePath = path.join(
+              mediaDir,
+              `${tool}-${stampId}.json`,
+            );
+            fs.writeFileSync(capturePath, raw);
+            captureOk = true;
+            mode =
+              tool === "contacts"
+                ? "host_device_contacts_fixture"
+                : "host_device_location_fixture";
+          } else {
+            captureError =
+              `no data/device/${tool}.json fixture — device_tool_residual`;
+            mode = "host_device_invoke_residual";
+          }
         } else {
-          // Non-media tools: durable invoke only (contacts/location remain residual).
+          // Unknown non-media tools: durable invoke only.
           captureError = `tool=${tool || "unknown"} has no local capture backend`;
           mode = "host_device_invoke_residual";
         }
@@ -11017,6 +11166,13 @@ function createHostFfi(repoRoot) {
         captureError = String((err && err.message) || err).slice(0, 240);
         captureOk = false;
       }
+      const isMediaTool =
+        tool === "camera" ||
+        tool === "photo" ||
+        tool === "screenshot" ||
+        tool === "mic" ||
+        tool === "microphone" ||
+        tool === "audio";
       const entry = {
         machine_id: machineId,
         tool: tool || parts[1] || "",
@@ -11029,7 +11185,8 @@ function createHostFfi(repoRoot) {
         mode,
         pretend_executed: false,
         pretend_granted: false,
-        device_capture_residual: !captureOk,
+        device_capture_residual: isMediaTool ? !captureOk : false,
+        device_tool_residual: !captureOk,
         capture_error: captureError || null,
         at,
       };

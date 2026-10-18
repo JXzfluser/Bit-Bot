@@ -78,6 +78,7 @@ function residualSuffix(p) {
     "credential_browser_fill_residual",
     "inbound_turn_residual",
     "device_capture_residual",
+    "device_tool_residual",
     "product_tool_residual",
     "voice_stt_residual",
     "voice_tts_residual",
