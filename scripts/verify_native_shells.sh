@@ -65,11 +65,15 @@ for kind in (
     "routine_tick",
     "routine_pause",
     "routine_resume",
+    "memory_update",
+    "memory_recall",
 ):
     assert kind in ios_stu, kind
     assert kind in and_stu, kind
 assert "channelDelivery" in ios_stu and "channel_delivery:in_app" in ios_stu
 assert "channelDelivery" in and_stu and "channel_delivery:in_app" in and_stu
+assert "oauthNeedsAuth" in ios_stu and 'NeedsAuth' in ios_stu
+assert "oauthNeedsAuth" in and_stu and "NeedsAuth" in and_stu
 shared = Path("hosts/shared/send_to_user_surface.js").read_text()
 for kind in (
     "screenshot",
@@ -81,11 +85,15 @@ for kind in (
     "machines_list",
     "routine_pause",
     "channel_delivery",
+    "memory_update",
+    "memory_recall",
+    "oauthNeedsAuth",
 ):
     assert kind in shared, kind
 assert "pickAttachmentPath" in shared and "attachments" in shared
 assert "SendToUser attachments" in shared
 assert "channel_delivery:in_app" in shared
+assert "oauth:NeedsAuth" in shared or 'NeedsAuth' in shared
 assert "SendToUserSurface" in ios_cv and "SendToUserChipRow" in ios_cv
 assert "SendToUserSurface" in and_main
 # Multi-end product quick actions mirror Desktop Plugins/Media/Voice/Box + mail/commerce.
@@ -193,6 +201,16 @@ for needle in (
     "[inbound] reaction :+1:",
     "open agent info agent=agent-bit",
     "delete agent agent-bit",
+    "confirm delete agent",
+    "create routine id=desk-r",
+    "create teammate id=",
+    "room ",
+    "deliver cloud artifact artifact=",
+    "teams send tsmoke",
+    "thread_ts=",
+    "draft outlook mail",
+    "claim rehearsal",
+    "sandbox claim",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle

@@ -116,6 +116,16 @@ struct ContentView: View {
     ("Inbound reaction", "[inbound] reaction :+1:"),
     ("Agent info", "open agent info agent=agent-bit"),
     ("Delete agent", "delete agent agent-bit"),
+    ("Confirm delete", "confirm delete agent agent-bit"),
+    ("Create routine", "create routine id=desk-r cron=@hourly prompt=ios tick"),
+    ("Create teammate", "create teammate id=asst-parity name=MobileMate role=executor"),
+    ("Room", "room ios :: hello teammates from ios"),
+    ("Cloud artifact", "deliver cloud artifact artifact=bc-1 dest=ios-report.md"),
+    ("Teams send", "teams send tsmoke :: hello host chat"),
+    ("Slack thread", "reply via slack:Cios thread_ts=1710000000.000001 :: ios thread"),
+    ("Outlook draft", "draft outlook mail to=bob@example.com subject=hi body=hello"),
+    ("Slack claim", "reply via slack:Cios :: claim rehearsal"),
+    ("Teams claim", "reply via teams:Tios :: sandbox claim"),
   ]
 
   var body: some View {

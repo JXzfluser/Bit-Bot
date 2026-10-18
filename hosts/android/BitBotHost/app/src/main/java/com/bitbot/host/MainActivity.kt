@@ -149,6 +149,16 @@ class MainActivity : ComponentActivity() {
       "Inbound reaction" to "[inbound] reaction :+1:",
       "Agent info" to "open agent info agent=agent-bit",
       "Delete agent" to "delete agent agent-bit",
+      "Confirm delete" to "confirm delete agent agent-bit",
+      "Create routine" to "create routine id=desk-r cron=@hourly prompt=android tick",
+      "Create teammate" to "create teammate id=asst-parity name=MobileMate role=executor",
+      "Room" to "room android :: hello teammates from android",
+      "Cloud artifact" to "deliver cloud artifact artifact=bc-1 dest=android-report.md",
+      "Teams send" to "teams send tsmoke :: hello host chat",
+      "Slack thread" to "reply via slack:Candroid thread_ts=1710000000.000001 :: android thread",
+      "Outlook draft" to "draft outlook mail to=bob@example.com subject=hi body=hello",
+      "Slack claim" to "reply via slack:Candroid :: claim rehearsal",
+      "Teams claim" to "reply via teams:Tandroid :: sandbox claim",
     )
 
   override fun onCreate(savedInstanceState: Bundle?) {

@@ -48,6 +48,7 @@ object SendToUserSurface {
     "fs_list", "fs_read", "webfetch", "machines_list",
     "routine_schedule", "routine_list", "routine_fire", "routine_tick",
     "routine_pause", "routine_resume",
+    "memory_update", "memory_recall",
   )
 
   private fun pickAttachmentPath(kind: String, p: JSONObject, h: JSONObject): String {
@@ -107,13 +108,19 @@ object SendToUserSurface {
       val attachments = mutableListOf<Attachment>()
       for (i in 0 until hrs.length()) {
         val h = hrs.optJSONObject(i) ?: continue
-        if (h.has("ok") && !h.optBoolean("ok", true)) continue
         val kind = h.optString("kind")
         var p = JSONObject()
         val stdout = h.optString("stdout")
         if (stdout.isNotBlank()) {
           runCatching { p = JSONObject(stdout) }
         }
+        val oauthNeedsAuth =
+          kind == "oauth" &&
+            (p.optString("status") == "NeedsAuth" ||
+              p.optString("mode") == "live_needs_auth" ||
+              p.optString("mode") == "live_remote_browser_open" ||
+              (!p.optBoolean("connected", true) && !p.optBoolean("pretend_connected", false)))
+        if (h.has("ok") && !h.optBoolean("ok", true) && !oauthNeedsAuth) continue
         val filePath = pickAttachmentPath(kind, p, h)
         val pathSuffix = if (filePath.isNotBlank()) "/snap" else ""
         when {
@@ -171,7 +178,12 @@ object SendToUserSurface {
           }
           kind == "oauth" -> {
             typeSet += "widget"
-            val mode = p.optString("mode").ifBlank { p.optString("status", "card") }
+            val mode =
+              if (p.optString("status") == "NeedsAuth" || oauthNeedsAuth) {
+                "NeedsAuth"
+              } else {
+                p.optString("mode").ifBlank { p.optString("status", "card") }
+              }
             labels += "oauth:$mode$pathSuffix"
           }
         }

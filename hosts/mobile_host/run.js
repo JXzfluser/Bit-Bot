@@ -199,6 +199,8 @@ try {
       "computer_use",
       "shared_memory_put",
       "shared_memory_read",
+      "memory_update",
+      "memory_recall",
       "code_changes",
       "source_control",
       "machines_list",

@@ -5553,6 +5553,30 @@ function createHostFfi(repoRoot) {
         dir,
         `schedule-${row.id}-${Date.now().toString(36)}.json`,
       );
+      // Close long_lived_cron_residual when a long-lived daemon / user unit is present.
+      let longLivedCronClosed = process.env.BITBOT_ROUTINE_LONG_LIVED === "1";
+      try {
+        const stPath = path.join(REPO_ROOT, "data", "routines", "daemon-status.json");
+        if (fs.existsSync(stPath)) {
+          const st = JSON.parse(fs.readFileSync(stPath, "utf8"));
+          if (st.long_lived === true || st.systemd_unit_installed === true) {
+            longLivedCronClosed = true;
+          }
+        }
+      } catch (_) {
+        /* residual stays open */
+      }
+      try {
+        if (
+          fs.existsSync(
+            path.join(REPO_ROOT, "data", "routines", "bitbot-routine-daemon.service"),
+          )
+        ) {
+          longLivedCronClosed = true;
+        }
+      } catch (_) {
+        /* ignore */
+      }
       const artifact = {
         stored: true,
         id: row.id,
@@ -5565,7 +5589,7 @@ function createHostFfi(repoRoot) {
         routines_path: ROUTINES_PATH,
         mode: "host_routine_schedule",
         pretend_scheduled: false,
-        long_lived_cron_residual: !dueNow,
+        long_lived_cron_residual: !dueNow && !longLivedCronClosed,
         at: atSched,
       };
       fs.writeFileSync(schedulePath, JSON.stringify(artifact, null, 2));
@@ -6570,7 +6594,7 @@ function createHostFfi(repoRoot) {
   }
 
   function deliveryFromHostResult(result) {
-    if (!result || !result.ok) return null;
+    if (!result) return null;
     const kind = result.kind || "";
     const at = new Date().toISOString();
     let parsed = {};
@@ -6579,6 +6603,14 @@ function createHostFfi(repoRoot) {
     } catch {
       parsed = {};
     }
+    // Honest NeedsAuth OAuth still gets a SendToUser widget (ok may be false).
+    const oauthNeedsAuth =
+      kind === "oauth" &&
+      (parsed.status === "NeedsAuth" ||
+        parsed.mode === "live_needs_auth" ||
+        parsed.mode === "live_remote_browser_open" ||
+        (parsed.connected === false && parsed.pretend_connected === false));
+    if (!result.ok && !oauthNeedsAuth) return null;
     if (kind === "channel_send") {
       const isMeeting = parsed.mode === "meeting_chat_direct" || parsed.direct_send;
       return recordSendToUser({
@@ -6637,10 +6669,13 @@ function createHostFfi(repoRoot) {
       return recordSendToUser({
         type: "widget",
         widget: "connector_oauth",
-        status: parsed.status || "",
+        status: parsed.status || (oauthNeedsAuth ? "NeedsAuth" : ""),
         mode: parsed.mode || "",
         connected: Boolean(parsed.connected),
+        pretend_connected: parsed.pretend_connected === true,
         browser_opened: Boolean(parsed.browser_opened),
+        needs_auth: Boolean(oauthNeedsAuth || parsed.status === "NeedsAuth"),
+        path: parsed.path || null,
         source_kind: kind,
         at,
       });

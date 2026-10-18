@@ -105,13 +105,22 @@ function extractDeliveryTypes(turnJsonText) {
     const turn = JSON.parse(raw);
     const hrs = Array.isArray(turn.host_results) ? turn.host_results : [];
     for (const h of hrs) {
-      if (!h || h.ok === false) continue;
+      if (!h) continue;
       let p = {};
       try {
         p = JSON.parse(h.stdout || "{}");
       } catch (_) {
         p = {};
       }
+      // CHARTER Delivery: honest OAuth NeedsAuth must still surface as a widget
+      // even when Host ok=false (never pretend Connected).
+      const oauthNeedsAuth =
+        h.kind === "oauth" &&
+        (p.status === "NeedsAuth" ||
+          p.mode === "live_needs_auth" ||
+          p.mode === "live_remote_browser_open" ||
+          (p.connected === false && p.pretend_connected === false));
+      if (h.ok === false && !oauthNeedsAuth) continue;
       const filePath = pickAttachmentPath(h.kind || "", p, h);
       if (h.kind === "delivery" && p.type) {
         types.push(p.type);
@@ -229,6 +238,8 @@ function extractDeliveryTypes(turnJsonText) {
           "routine_tick",
           "routine_pause",
           "routine_resume",
+          "memory_update",
+          "memory_recall",
         ].includes(h.kind)
       ) {
         types.push("attachment");
@@ -262,11 +273,11 @@ function extractDeliveryTypes(turnJsonText) {
         labels.push("widget:approval" + (p.path ? "/snap" : ""));
       } else if (h.kind === "oauth") {
         types.push("widget");
-        labels.push(
-          "oauth:" +
-            (p.mode || p.status || "card") +
-            (p.path ? "/snap" : ""),
-        );
+        const oauthLabel =
+          p.status === "NeedsAuth" || oauthNeedsAuth
+            ? "NeedsAuth"
+            : p.mode || p.status || "card";
+        labels.push("oauth:" + oauthLabel + (p.path ? "/snap" : ""));
       }
     }
     // CHARTER Delivery: channel_delivery plans (in_app / external) even when

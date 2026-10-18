@@ -76,6 +76,12 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-cloud.json'));h=next(x 
 SESS="parity-mem-$MARKER"
 "${RUN[@]}" --session-id "$SESS" "remember parity_marker=$MARKER" >/tmp/parity-mem-set.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-mem-set.json'));assert d.get('ok');assert d.get('intent')=='memory_update';assert any(m.get('key')=='parity_marker' for m in (d.get('memory') or []));h=next(x for x in d['host_results'] if x.get('kind')=='memory_update');p=json.loads(h['stdout']);assert p.get('pretend_persisted') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('vault_path') and os.path.isfile(p['vault_path']);vault=json.load(open(p['vault_path']));assert (vault.get('entries') or {}).get('parity_marker');print('parity memory update Host vault ok', p.get('path'))"
+node -e "
+const {extractDeliveryTypes}=require('./hosts/shared/send_to_user_surface.js');
+const s=extractDeliveryTypes(require('fs').readFileSync('/tmp/parity-mem-set.json','utf8'));
+if(!s.labels.some(l=>l.startsWith('memory_update'))) { console.error(s); process.exit(1); }
+console.log('parity memory_update SendToUser strip ok', s.labels.filter(l=>l.startsWith('memory')).join(','));
+"
 "${RUN[@]}" --session-id "$SESS" "recall" >/tmp/parity-mem-get.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-mem-get.json'));assert d.get('ok');assert d.get('intent')=='memory_recall';blob=json.dumps(d.get('memory') or [])+ (d.get('assistant') or '')+json.dumps(d);assert '$MARKER' in blob;h=next(x for x in d['host_results'] if x.get('kind')=='memory_recall');p=json.loads(h['stdout']);assert p.get('pretend_empty') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('count',0)>=1;print('parity memory recall Host snapshot ok', p.get('count'), p.get('path'))"
 
@@ -308,7 +314,19 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-cloud-art.json'));h=nex
 bash "$ROOT/scripts/host_routine_daemon.sh" --sweeps 2 --interval-ms 50 --write-systemd-unit >/tmp/parity-daemon.log 2>&1
 python3 -c "import json,os;assert os.path.isfile('data/routines/daemon-sweep-1.json');assert os.path.isfile('data/routines/daemon-sweep-2.json');st=json.load(open('data/routines/daemon-status.json'));assert st.get('sweeps',0)>=2;assert os.path.isfile('data/routines/bitbot-routine-daemon.service');print('parity routine daemon sweeps ok', st.get('sweeps'), 'systemd_unit', st.get('systemd_unit'))"
 BITBOT_OAUTH_MODE=live "${RUN[@]}" "setup slack" >/tmp/parity-oauth-needsauth.json || true
-python3 -c "import json,os;d=json.load(open('/tmp/parity-oauth-needsauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('mode')=='live_needs_auth';assert p.get('connected') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_connected') is False;print('parity oauth live NeedsAuth ok', p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-oauth-needsauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('mode')=='live_needs_auth';assert p.get('connected') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_connected') is False;deliv=next((x for x in d['host_results'] if x.get('kind')=='delivery'),None);assert deliv and deliv.get('ok');dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='widget';assert dp.get('needs_auth') is True or dp.get('status')=='NeedsAuth';assert dp.get('pretend_connected') is not True;print('parity oauth live NeedsAuth ok', p.get('path'), 'delivery', dp.get('status') or dp.get('widget'))"
+# SendToUser strip must surface oauth:NeedsAuth even when Host ok=false
+node -e "
+const {extractDeliveryTypes,formatDeliveryStrip}=require('./hosts/shared/send_to_user_surface.js');
+const raw=require('fs').readFileSync('/tmp/parity-oauth-needsauth.json','utf8');
+const s=extractDeliveryTypes(raw);
+const strip=formatDeliveryStrip(s);
+if(!s.labels.some(l=>l.includes('oauth:NeedsAuth'))) { console.error(s); process.exit(1); }
+if(!strip.includes('oauth:NeedsAuth')) { console.error(strip); process.exit(1); }
+console.log('parity oauth NeedsAuth SendToUser strip ok', strip.trim());
+"
+BITBOT_OAUTH_MODE=live "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-oauth "setup slack" >/tmp/parity-ios-oauth.txt || true
+python3 -c "t=open('/tmp/parity-ios-oauth.txt').read();assert 'oauth:NeedsAuth' in t or 'NeedsAuth' in t;assert 'SendToUser' in t;assert 'machine_kind=ios' in t;print('parity ios oauth NeedsAuth SendToUser strip ok')"
 BITBOT_OAUTH_MODE=live BITBOT_OAUTH_OPEN_BROWSER=1 BITBOT_OAUTH_CLIENT_ID=smoke-client \
   "${RUN[@]}" "setup slack" >/tmp/parity-oauth-browser.json || true
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth-browser.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('mode')=='live_remote_browser_open';assert p.get('browser_opened') is True;assert p.get('connected') is False;print('parity oauth live_remote_browser_open ok', p.get('browser_tool'))"
@@ -317,6 +335,8 @@ BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=remote_callback BITBOT_OAUTH_AUTHOR
 python3 -c "import json;d=json.load(open('/tmp/parity-oauth-cb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h['stdout']);assert p.get('mode')=='live_remote_callback';assert p.get('connected') is True;print('parity oauth remote_callback ok', p.get('callback_received'))"
 BITBOT_ROUTINE_MAX_SWEEPS=2 bash "$ROOT/scripts/host_routine_daemon.sh" --long-lived --interval-ms 50 --install-user-unit >/tmp/parity-daemon-long.log 2>&1
 python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is True;assert d.get('sweeps')==2;assert d.get('ok')==2;assert d.get('systemd_unit_installed') is True;assert d.get('systemd_scope') in ('user','system');assert d.get('systemd_user_unit_path') and os.path.isfile(d['systemd_user_unit_path']);print('parity routine daemon long-lived+user unit ok', d.get('sweeps'), d.get('systemd_scope'))"
+"${RUN[@]}" "create routine id=parity-daily cron=@daily prompt=daily tick $MARKER" >/tmp/parity-rt-daily.json
+python3 -c "import json;d=json.load(open('/tmp/parity-rt-daily.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);assert p.get('due_now') is False;assert p.get('long_lived_cron_residual') is False;assert p.get('pretend_scheduled') is False;print('parity routine @daily long_lived residual closed ok', p.get('path'))"
 
 # 9j) Host tools: fs list/read, webfetch, copy_from_box, routines list/pause/resume, connect gmail
 "${RUN[@]}" "fs list ." >/tmp/parity-fs-list.json
@@ -577,9 +597,24 @@ for needle in (
     '[inbound] reaction :+1:',
     'open agent info agent=agent-bit',
     'delete agent agent-bit',
+    'confirm delete agent',
+    'create routine id=desk-r',
+    'create teammate id=',
+    'room ',
+    'deliver cloud artifact artifact=',
+    'teams send tsmoke',
+    'thread_ts=',
+    'draft outlook mail',
+    'claim rehearsal',
+    'sandbox claim',
 ):
     assert needle in cv, needle
     assert needle in main, needle
+for kind in ('memory_update', 'memory_recall'):
+    assert kind in ios, kind
+    assert kind in kt, kind
+assert 'oauthNeedsAuth' in ios and 'NeedsAuth' in ios
+assert 'oauthNeedsAuth' in kt and 'NeedsAuth' in kt
 print('parity native SendToUser surface wired ok')
 print('parity native product quick actions ok')
 "

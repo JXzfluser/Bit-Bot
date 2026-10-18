@@ -45,6 +45,7 @@ enum SendToUserSurface {
     "fs_list", "fs_read", "webfetch", "machines_list",
     "routine_schedule", "routine_list", "routine_fire", "routine_tick",
     "routine_pause", "routine_resume",
+    "memory_update", "memory_recall",
   ]
 
   private static func pickAttachmentPath(kind: String, p: [String: Any], h: [String: Any]) -> String {
@@ -102,7 +103,6 @@ enum SendToUserSurface {
     let hrs = (turn["host_results"] as? [[String: Any]]) ?? []
     var typeSet = Set<String>()
     for h in hrs {
-      guard (h["ok"] as? Bool) != false else { continue }
       let kind = (h["kind"] as? String) ?? ""
       var p: [String: Any] = [:]
       if let stdout = h["stdout"] as? String,
@@ -110,6 +110,13 @@ enum SendToUserSurface {
          let obj = try? JSONSerialization.jsonObject(with: sdata) as? [String: Any] {
         p = obj
       }
+      let oauthNeedsAuth =
+        kind == "oauth" &&
+        ((p["status"] as? String) == "NeedsAuth" ||
+          (p["mode"] as? String) == "live_needs_auth" ||
+          (p["mode"] as? String) == "live_remote_browser_open" ||
+          ((p["connected"] as? Bool) == false && (p["pretend_connected"] as? Bool) != true))
+      if (h["ok"] as? Bool) == false && !oauthNeedsAuth { continue }
       let filePath = pickAttachmentPath(kind: kind, p: p, h: h)
       let pathSuffix: String = filePath.isEmpty ? "" : "/snap"
       if kind == "delivery", let t = p["type"] as? String, !t.isEmpty {
@@ -157,7 +164,12 @@ enum SendToUserSurface {
         summary.labels.append("widget:approval" + pathSuffix)
       } else if kind == "oauth" {
         typeSet.insert("widget")
-        let mode = (p["mode"] as? String) ?? (p["status"] as? String) ?? "card"
+        let mode: String
+        if (p["status"] as? String) == "NeedsAuth" || oauthNeedsAuth {
+          mode = "NeedsAuth"
+        } else {
+          mode = (p["mode"] as? String) ?? (p["status"] as? String) ?? "card"
+        }
         summary.labels.append("oauth:" + mode + pathSuffix)
       }
     }
