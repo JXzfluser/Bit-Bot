@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -917,6 +918,29 @@ def run_chrome_session(
             "shared_cdp_untouched": True,
             "identity_browser": identity_meta,
         }
+    # Drop stale Singleton* locks from a dead chrome (OOM / kill leaves them).
+    for lock_name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        lock_path = profile / lock_name
+        if not lock_path.exists() and not lock_path.is_symlink():
+            continue
+        try:
+            target = os.readlink(lock_path) if lock_path.is_symlink() else ""
+        except OSError:
+            target = ""
+        stale = True
+        if "SingletonLock" in lock_name and "-" in str(target):
+            # Chrome lock target looks like hostname-pid.
+            try:
+                lock_pid = int(str(target).rsplit("-", 1)[-1])
+                os.kill(lock_pid, 0)
+                stale = False
+            except (ValueError, OSError, ProcessLookupError):
+                stale = True
+        if stale:
+            try:
+                lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass
     stdout_path = artifact_dir / "chrome.stdout.txt"
     stderr_path = artifact_dir / "chrome.stderr.txt"
     args: List[str] = [
@@ -943,6 +967,8 @@ def run_chrome_session(
             stderr=se,
             cwd=str(artifact_dir),
             env=env,
+            # Own session → terminate/killpg reaps zygote + renderers.
+            start_new_session=True,
         )
     # Wait briefly for CDP
     version = None
@@ -1084,15 +1110,42 @@ def run_chrome_session(
         "os_window_automation_residual": os_auto_residual,
         "display": os.environ.get("DISPLAY") or None,
     }
-    # Best-effort terminate throwaway session.
+    # Best-effort terminate throwaway session (whole process group).
+    def _reap_chrome_tree(sig: int) -> None:
+        try:
+            os.killpg(proc.pid, sig)
+        except Exception:
+            try:
+                proc.send_signal(sig)
+            except Exception:
+                pass
+
     try:
-        proc.terminate()
+        _reap_chrome_tree(signal.SIGTERM)
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    try:
         proc.wait(timeout=5)
     except Exception:
         try:
+            _reap_chrome_tree(signal.SIGKILL)
             proc.kill()
         except Exception:
             pass
+    # Also match by profile in case chrome re-parented outside the group.
+    try:
+        subprocess.run(
+            ["pkill", "-f", f"--user-data-dir={profile}"],
+            check=False,
+            timeout=3,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
     result["exit_code"] = proc.poll()
     (artifact_dir / "chrome_session.json").write_text(
         json.dumps(result, indent=2) + "\n", encoding="utf-8"

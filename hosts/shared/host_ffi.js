@@ -12176,6 +12176,22 @@ function createHostFfi(repoRoot) {
     return { summary, stdout, stderr, ok: Boolean(summary.ok) };
   }
 
+  function killChromeByUserDataDir(profilePath) {
+    /** Best-effort: reap chrome/chromium trees bound to a throwaway profile. */
+    const needle = String(profilePath || "").trim();
+    if (!needle) return;
+    try {
+      const { execFileSync } = require("child_process");
+      // pkill -f matches full argv; profile path is unique per oauth artifact.
+      execFileSync("pkill", ["-f", `--user-data-dir=${needle}`], {
+        timeout: 3000,
+        stdio: "ignore",
+      });
+    } catch {
+      /* no matching process is fine */
+    }
+  }
+
   async function openAuthorizeBrowser(authorizeUrl, artifactDir) {
     /** Open remote authorize URL in a headed browser. Still NeedsAuth until token. */
     const out = {
@@ -12220,6 +12236,7 @@ function createHostFfi(repoRoot) {
           {
             cwd: artifactDir,
             env: process.env,
+            // New session so we can SIGTERM the whole chrome tree (-pid).
             detached: true,
             stdio: "ignore",
           },
@@ -12228,14 +12245,29 @@ function createHostFfi(repoRoot) {
         out.opened = true;
         out.tool = "chrome";
         out.pid = child.pid;
-        // Best-effort: give the window a moment, then terminate throwaway session.
+        out.user_data_dir = profile;
+        // Best-effort: brief headed flash, then kill process group + profile match.
+        // Killing only child.pid leaves zygote/renderer orphans that OOM later CU.
         setTimeout(() => {
           try {
-            process.kill(child.pid, "SIGTERM");
+            if (child.pid) process.kill(-child.pid, "SIGTERM");
+          } catch {
+            try {
+              if (child.pid) process.kill(child.pid, "SIGTERM");
+            } catch {
+              /* ignore */
+            }
+          }
+          killChromeByUserDataDir(profile);
+        }, 2500);
+        setTimeout(() => {
+          try {
+            if (child.pid) process.kill(-child.pid, "SIGKILL");
           } catch {
             /* ignore */
           }
-        }, 4000);
+          killChromeByUserDataDir(profile);
+        }, 4500);
       } catch (err) {
         out.error = err.message || String(err);
       }
@@ -18459,52 +18491,46 @@ function createHostFfi(repoRoot) {
       const host = vertical.navigate_host.replace(/^https?:\/\//, "");
       url = `https://${host}`;
     }
-    const evidenceDir = path.join(
+    // CM-2146: pass identity-browser user-data-dir into CU child when switched.
+    const cuEnv = { ...process.env };
+    const identityPtr = path.join(
       REPO_ROOT,
       "data",
-      "journal",
-      "computer-use",
-      `cu-${Date.now()}`,
+      "connectors",
+      "identity",
+      "active-user-data-dir.txt",
     );
-    fs.mkdirSync(evidenceDir, { recursive: true });
-    const evidencePath = path.join(evidenceDir, "cu_run.json");
-    try {
-      // CM-2146: pass identity-browser user-data-dir into CU child when switched.
-      const cuEnv = { ...process.env };
-      const identityPtr = path.join(
-        REPO_ROOT,
-        "data",
-        "connectors",
-        "identity",
-        "active-user-data-dir.txt",
-      );
-      const identitySess = path.join(
-        REPO_ROOT,
-        "data",
-        "connectors",
-        "identity",
-        "browser-session.json",
-      );
-      let identityUserData = "";
-      if (fs.existsSync(identityPtr)) {
-        identityUserData = String(fs.readFileSync(identityPtr, "utf8") || "")
-          .trim()
-          .split("\n")[0]
-          .trim();
-      }
-      if (!identityUserData && fs.existsSync(identitySess)) {
-        try {
-          const sess = JSON.parse(fs.readFileSync(identitySess, "utf8"));
-          if (sess && (sess.switched || sess.status === "SwitchedToSignedInBrowser")) {
-            identityUserData = String(sess.user_data_dir || "").trim();
-          }
-        } catch {
-          identityUserData = "";
+    const identitySess = path.join(
+      REPO_ROOT,
+      "data",
+      "connectors",
+      "identity",
+      "browser-session.json",
+    );
+    let identityUserData = "";
+    if (fs.existsSync(identityPtr)) {
+      identityUserData = String(fs.readFileSync(identityPtr, "utf8") || "")
+        .trim()
+        .split("\n")[0]
+        .trim();
+    }
+    if (!identityUserData && fs.existsSync(identitySess)) {
+      try {
+        const sess = JSON.parse(fs.readFileSync(identitySess, "utf8"));
+        if (sess && (sess.switched || sess.status === "SwitchedToSignedInBrowser")) {
+          identityUserData = String(sess.user_data_dir || "").trim();
         }
+      } catch {
+        identityUserData = "";
       }
-      if (identityUserData) {
-        cuEnv.BITBOT_IDENTITY_USER_DATA_DIR = identityUserData;
-      }
+    }
+    if (identityUserData) {
+      cuEnv.BITBOT_IDENTITY_USER_DATA_DIR = identityUserData;
+    }
+
+    async function runBoxChromeCuOnce(evidenceDir) {
+      fs.mkdirSync(evidenceDir, { recursive: true });
+      const evidencePath = path.join(evidenceDir, "cu_run.json");
       const { stdout, stderr } = await execFileAsync(
         process.env.PYTHON || "python3",
         [
@@ -18534,6 +18560,65 @@ function createHostFfi(repoRoot) {
           .pop();
         if (line && line.startsWith("{")) summary = JSON.parse(line);
       }
+      return { summary, evidencePath, stderr: String(stderr || "") };
+    }
+
+    function reapStrayThrowawayChrome() {
+      // OAuth headed flash + prior CU can leave zygote orphans that OOM the next CU.
+      try {
+        const { execFileSync } = require("child_process");
+        for (const needle of [
+          "oauth-browser-profile",
+          "throwaway-chrome-profile",
+        ]) {
+          try {
+            execFileSync("pkill", ["-f", needle], {
+              timeout: 3000,
+              stdio: "ignore",
+            });
+          } catch {
+            /* no match */
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      if (identityUserData) killChromeByUserDataDir(identityUserData);
+    }
+
+    let evidenceDir = path.join(
+      REPO_ROOT,
+      "data",
+      "journal",
+      "computer-use",
+      `cu-${Date.now()}`,
+    );
+    let evidencePath = path.join(evidenceDir, "cu_run.json");
+    try {
+      let ran;
+      try {
+        ran = await runBoxChromeCuOnce(evidenceDir);
+      } catch (firstErr) {
+        // One retry after reaping leftover chrome (smoke oauth→CU flake / OOM).
+        reapStrayThrowawayChrome();
+        await new Promise((r) => setTimeout(r, 400));
+        evidenceDir = path.join(
+          REPO_ROOT,
+          "data",
+          "journal",
+          "computer-use",
+          `cu-${Date.now()}-retry`,
+        );
+        evidencePath = path.join(evidenceDir, "cu_run.json");
+        try {
+          ran = await runBoxChromeCuOnce(evidenceDir);
+        } catch (retryErr) {
+          retryErr.message = `${retryErr.message || String(retryErr)}; first=${firstErr.message || String(firstErr)}`;
+          throw retryErr;
+        }
+      }
+      evidencePath = ran.evidencePath;
+      const summary = ran.summary || {};
       const navigate = summary.navigate || {};
       const gui = summary.gui || {};
       const baseOutcome = summary.outcome || {
@@ -18740,7 +18825,14 @@ function createHostFfi(repoRoot) {
           null,
           2,
         ),
-        stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",
+        stderr: [
+          err && err.message ? String(err.message) : "",
+          err && err.stderr ? String(err.stderr) : "",
+          err && err.killed ? "killed=timeout_or_signal" : "",
+        ]
+          .filter(Boolean)
+          .join("\n")
+          .slice(0, 2000),
       };
     }
   }
