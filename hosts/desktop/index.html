@@ -1680,6 +1680,7 @@
             "box_doctor",
             "box_env",
             "box_clock",
+            "todo_write",
             "webhook_panel",
             "webhook_copy",
             "webhook_tool_read_key",
@@ -2559,6 +2560,15 @@
                         ? " · box_doctor_bin_residual"
                         : "");
                   }
+                } else if (h.kind === "todo_write") {
+                  label =
+                    "todo_write:" +
+                    String(p.item_count != null ? p.item_count : "?") +
+                    "/" +
+                    String(p.done_count != null ? p.done_count : "0") +
+                    (p.path ? "/snap" : "") +
+                    (p.pretend_complete === true ? "/pretend_complete" : "");
+                  types.push("attachment");
                 } else if (h.kind === "box_env") {
                   label =
                     "box_env:" +

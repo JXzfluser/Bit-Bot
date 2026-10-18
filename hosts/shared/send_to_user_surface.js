@@ -331,6 +331,7 @@ function extractDeliveryTypes(turnJsonText) {
           "box_doctor",
           "box_env",
           "box_clock",
+          "todo_write",
           "webhook_panel",
           "webhook_copy",
           "webhook_tool_read_key",
