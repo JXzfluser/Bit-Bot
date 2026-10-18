@@ -272,6 +272,10 @@ function createHostFfi(repoRoot) {
     if (p === "meeting" || p === "meeting_chat")
       return ["BITBOT_MEETING_TOKEN"];
     if (p === "finance") return ["BITBOT_FINANCE_TOKEN"];
+    if (p === "calendar") return ["BITBOT_CALENDAR_TOKEN"];
+    if (p === "job" || p === "jobs") return ["BITBOT_JOB_TOKEN"];
+    if (p === "x" || p === "twitter")
+      return ["BITBOT_X_BEARER", "BITBOT_X_TOKEN"];
     const upper = p.replace(/[^a-z0-9]+/g, "_").toUpperCase();
     return upper ? [`BITBOT_${upper}_TOKEN`] : [];
   }
@@ -939,9 +943,11 @@ function createHostFfi(repoRoot) {
         ? loadConnectorState("slack")
         : scheme === "teams"
           ? loadConnectorState("teams")
-          : scheme === "email" || scheme === "gmail"
-            ? loadConnectorState("gmail")
-            : {};
+          : scheme === "outlook"
+            ? loadConnectorState("outlook")
+            : scheme === "email" || scheme === "gmail"
+              ? loadConnectorState("gmail")
+              : {};
     const connectorReady = Boolean(
       connectorHint.connected ||
         connectorHint.status === "Connected" ||
@@ -6917,6 +6923,8 @@ function createHostFfi(repoRoot) {
       payload.mode === "live_needs_auth" ||
       payload.mode === "live_remote_browser_open" ||
       payload.mode === "live_remote_needs_auth" ||
+      payload.mode === "live_code_exchange_failed" ||
+      payload.mode === "live_remote_callback_pending" ||
       (payload.connected === false && result && result.ok === false);
     const artifact = {
       connector: payload.connector || connector,
@@ -7343,6 +7351,12 @@ function createHostFfi(repoRoot) {
           at: new Date().toISOString(),
         };
         saveConnectorState(connectorName, state);
+        writeConnectorTokenFile(connectorName, {
+          access_token: access,
+          token_type: "Bearer",
+          sandbox: false,
+          exchange: "authorization_code",
+        });
         appendHostDeliveryJournal({
           kind: "oauth",
           command,
@@ -7363,6 +7377,8 @@ function createHostFfi(repoRoot) {
               connected: true,
               mode: "live_code_exchange",
               summary_ok: true,
+              interactive_oauth_residual: false,
+              pretend_connected: false,
             },
             null,
             2,
@@ -7378,6 +7394,8 @@ function createHostFfi(repoRoot) {
         mode: "live_code_exchange_failed",
         provider,
         detail: `live code exchange failed http=${tokenRes.status || 0}`,
+        interactive_oauth_residual: true,
+        pretend_connected: false,
         artifact_dir: artifactDir,
         at: new Date().toISOString(),
       };
@@ -7393,6 +7411,8 @@ function createHostFfi(repoRoot) {
             connected: false,
             mode: "live_code_exchange_failed",
             summary_ok: false,
+            interactive_oauth_residual: true,
+            pretend_connected: false,
           },
           null,
           2,
@@ -7704,6 +7724,12 @@ function createHostFfi(repoRoot) {
             at: new Date().toISOString(),
           };
           saveConnectorState(connectorName, state);
+          writeConnectorTokenFile(connectorName, {
+            access_token: access,
+            token_type: "Bearer",
+            sandbox: false,
+            remote_callback: true,
+          });
           appendHostDeliveryJournal({
             kind: "oauth",
             command,
@@ -7728,6 +7754,8 @@ function createHostFfi(repoRoot) {
                 callback_received: true,
                 child_exit: childResult.code,
                 summary_ok: true,
+                interactive_oauth_residual: false,
+                pretend_connected: false,
               },
               null,
               2,
@@ -7751,6 +7779,8 @@ function createHostFfi(repoRoot) {
           token_url: tokenUrlEnv,
           browser_opened: Boolean(browser.opened),
           callback_received: Boolean(summary.callback_received),
+          interactive_oauth_residual: true,
+          pretend_connected: false,
           artifact_dir: artifactDir,
           at: new Date().toISOString(),
         };
@@ -7779,6 +7809,8 @@ function createHostFfi(repoRoot) {
               browser_opened: Boolean(browser.opened),
               callback_received: Boolean(summary.callback_received),
               summary_ok: false,
+              interactive_oauth_residual: true,
+              pretend_connected: false,
             },
             null,
             2,
@@ -8056,7 +8088,7 @@ function createHostFfi(repoRoot) {
             mode: "sandbox_idp",
             summary_ok: ok,
             pretend_connected: false,
-            interactive_oauth_residual: false,
+            interactive_oauth_residual: !ok,
           },
           null,
           2,
@@ -10906,7 +10938,7 @@ function createHostFfi(repoRoot) {
       fs.writeFileSync(icsPath, ics);
       // Live calendar when BITBOT_CALENDAR_API_URL+token; else ICS-only residual.
       const calApi = String(process.env.BITBOT_CALENDAR_API_URL || "").trim();
-      const calToken = String(process.env.BITBOT_CALENDAR_TOKEN || "").trim();
+      const calToken = resolveProviderAccessToken("calendar");
       let mode = "sandbox_ics";
       let liveProbe = null;
       let remoteEventId = null;
@@ -11232,7 +11264,7 @@ function createHostFfi(repoRoot) {
         `search-${Date.now().toString(36)}.json`,
       );
       const jobApi = String(process.env.BITBOT_JOB_API_URL || "").trim();
-      const jobToken = String(process.env.BITBOT_JOB_TOKEN || "").trim();
+      const jobToken = resolveProviderAccessToken("job");
       let mode = "sandbox_readonly";
       let liveProbe = null;
       let hits = Array.from({ length: Math.max(hitCount, 1) }, (_, i) => ({
@@ -11519,7 +11551,7 @@ function createHostFfi(repoRoot) {
       const q = String(cmd || "").trim() || "(empty)";
       const xDir = path.join(REPO_ROOT, "data", "connectors", "x");
       fs.mkdirSync(xDir, { recursive: true });
-      const bearer = String(process.env.BITBOT_X_BEARER || "").trim();
+      const bearer = resolveProviderAccessToken("x");
       const xApiBase = String(process.env.BITBOT_X_API_BASE || "").trim();
       let mode = "sandbox_public";
       let liveHits = null;
@@ -12367,7 +12399,9 @@ function createHostFfi(repoRoot) {
                       gui.vision_plan.vision &&
                       gui.vision_plan.vision.ocr_residual !== undefined
                         ? Boolean(gui.vision_plan.vision.ocr_residual)
-                        : true,
+                        : !Boolean(
+                            gui.vision_plan.vision && gui.vision_plan.vision.ocr,
+                          ),
                     ocr_text_prefix:
                       (gui.vision_plan.vision &&
                         gui.vision_plan.vision.ocr_text_prefix) ||

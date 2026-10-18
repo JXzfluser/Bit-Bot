@@ -1900,7 +1900,9 @@
                   label =
                     "personal-dm:" +
                     (p.mode || "draft") +
-                    (p.live_slack_residual === true ? "/live_residual" : "");
+                    (p.live_slack_residual === true
+                      ? "/live_slack_residual"
+                      : "");
                   types.push("text");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
@@ -1951,7 +1953,9 @@
                     (p.hit_count || 0) +
                     "×" +
                     (p.mode || "") +
-                    (p.live_mail_residual === true ? "/live_residual" : "");
+                    (p.live_mail_residual === true
+                      ? "/live_mail_residual"
+                      : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
@@ -1968,7 +1972,9 @@
                   label =
                     "mail_read:" +
                     (p.thread_id || "?") +
-                    (p.live_mail_residual === true ? "/live_residual" : "");
+                    (p.live_mail_residual === true
+                      ? "/live_mail_residual"
+                      : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
@@ -2022,7 +2028,7 @@
                     (p.hit_count || 0) +
                     "×" +
                     (p.mode || "") +
-                    (p.live_x_residual === true ? "/live_residual" : "");
+                    (p.live_x_residual === true ? "/live_x_residual" : "");
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
@@ -2040,7 +2046,7 @@
                   label =
                     "jobs:" +
                     (p.hit_count || 0) +
-                    (p.live_job_residual === true ? "/live_residual" : "");
+                    (p.live_job_residual === true ? "/live_job_residual" : "");
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
@@ -2056,7 +2062,9 @@
                     "finance:" +
                     (p.mode || p.tool || "call") +
                     (p.path ? "/snap" : "") +
-                    (p.live_finance_residual === true ? "/live_residual" : "");
+                    (p.live_finance_residual === true
+                      ? "/live_finance_residual"
+                      : "");
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
@@ -2097,7 +2105,9 @@
                     "purchase:" +
                     (p.mode || "receipt") +
                     (p.path ? "/snap" : "") +
-                    (p.live_paid_residual === true ? "/live_residual" : "");
+                    (p.live_paid_residual === true
+                      ? "/live_paid_residual"
+                      : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
@@ -2116,7 +2126,9 @@
                     "/" +
                     String(p.ics_path || "").split("/").slice(-1)[0] +
                     (p.path ? "/snap" : "") +
-                    (p.live_calendar_residual === true ? "/live_residual" : "");
+                    (p.live_calendar_residual === true
+                      ? "/live_calendar_residual"
+                      : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
@@ -2218,41 +2230,55 @@
                         : "");
                   }
                 } else if (h.kind === "computer_use") {
-                  label =
-                    "cu:" +
-                    ((p.outcome && p.outcome.checkout_stage) ||
-                      (p.gui && p.gui.gui_mode) ||
-                      "run");
-                  types.push("attachment");
-                  const cuMeta = document.getElementById("cu-meta");
-                  if (cuMeta) {
+                  {
                     const oc = p.outcome || {};
                     const g = p.gui || {};
                     const vp = g.vision_plan || {};
                     const ocrResidual =
                       oc.ocr_residual === true || vp.ocr_residual === true;
-                    cuMeta.textContent =
-                      (g.gui_mode || "cu") +
-                      (g.os_window ? " · os_window" : "") +
-                      (oc.ocr
-                        ? " · ocr"
-                        : ocrResidual
-                          ? " · ocr_residual"
-                          : "") +
-                      (g.os_window_automation_residual === false
-                        ? " · native_act"
+                    const osAutoResidual =
+                      g.os_window_automation_residual === true ||
+                      oc.os_window_automation_residual === true;
+                    label =
+                      "cu:" +
+                      (oc.checkout_stage || g.gui_mode || "run") +
+                      (ocrResidual ? "/ocr_residual" : "") +
+                      (osAutoResidual
+                        ? "/os_window_automation_residual"
                         : "") +
                       (oc.live_paid_residual === true
-                        ? " · live_paid_residual"
-                        : "") +
-                      (oc.pretend_purchased === true ? " · pretend!" : "");
+                        ? "/live_paid_residual"
+                        : "");
+                    types.push("attachment");
+                    const cuMeta = document.getElementById("cu-meta");
+                    if (cuMeta) {
+                      cuMeta.textContent =
+                        (g.gui_mode || "cu") +
+                        (g.os_window ? " · os_window" : "") +
+                        (oc.ocr
+                          ? " · ocr"
+                          : ocrResidual
+                            ? " · ocr_residual"
+                            : "") +
+                        (g.os_window_automation_residual === false
+                          ? " · native_act"
+                          : osAutoResidual
+                            ? " · os_window_automation_residual"
+                            : "") +
+                        (oc.live_paid_residual === true
+                          ? " · live_paid_residual"
+                          : "") +
+                        (oc.pretend_purchased === true ? " · pretend!" : "");
+                    }
                   }
                 } else if (h.kind === "mail_send") {
                   label =
                     "mail:" +
                     (p.mode || p.provider || "draft") +
                     (p.path ? "/snap" : "") +
-                    (p.live_mail_residual === true ? "/live_residual" : "");
+                    (p.live_mail_residual === true
+                      ? "/live_mail_residual"
+                      : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
@@ -2677,7 +2703,7 @@
                     rp.real_create_gated === true ||
                     p.remote_pr_residual === true ||
                     String(mode || "").includes("gh_pr_create_residual")
-                      ? "/gated"
+                      ? "/remote_pr_residual"
                       : "";
                   label = "sc:" + mode + gated + (p.path ? "/snap" : "");
                   types.push("attachment");
@@ -2792,10 +2818,14 @@
                     "/" +
                     (p.mode || "post") +
                     (p.path ? "/snap" : "") +
-                    (p.live_slack_residual === true ||
-                    p.live_teams_residual === true ||
-                    p.live_meeting_residual === true
-                      ? "/live_residual"
+                    (p.live_slack_residual === true
+                      ? "/live_slack_residual"
+                      : "") +
+                    (p.live_teams_residual === true
+                      ? "/live_teams_residual"
+                      : "") +
+                    (p.live_meeting_residual === true
+                      ? "/live_meeting_residual"
                       : "");
                   types.push("text");
                   const chMeta = document.getElementById("channels-meta");
@@ -2819,11 +2849,17 @@
                     "ch:" +
                     (p.mode || p.scheme || "send") +
                     (p.path ? "/snap" : "") +
-                    (p.live_slack_residual === true ||
-                    p.live_teams_residual === true ||
-                    p.live_meeting_residual === true ||
-                    p.live_channel_residual === true
-                      ? "/live_residual"
+                    (p.live_slack_residual === true
+                      ? "/live_slack_residual"
+                      : "") +
+                    (p.live_teams_residual === true
+                      ? "/live_teams_residual"
+                      : "") +
+                    (p.live_meeting_residual === true
+                      ? "/live_meeting_residual"
+                      : "") +
+                    (p.live_channel_residual === true
+                      ? "/live_channel_residual"
                       : "");
                   types.push(p.thread_ts ? "thread" : "text");
                   const chMeta = document.getElementById("channels-meta");
@@ -2939,6 +2975,9 @@
                     "perm:" +
                     (p.tool || "?") +
                     (p.path ? "/snap" : "") +
+                    (p.true_device_os_dialog_residual === true
+                      ? "/true_device_os_dialog_residual"
+                      : "") +
                     (p.pretend_granted === true ? "/pretend!" : "");
                   types.push("widget");
                   const toolsMeta = document.getElementById("tools-meta");
@@ -2946,9 +2985,49 @@
                     toolsMeta.textContent =
                       "device_permission · " +
                       (p.tool || p.permission || "card") +
+                      (p.true_device_os_dialog_residual === true
+                        ? " · true_device_os_dialog_residual"
+                        : "") +
                       (p.pretend_granted === true
                         ? " · pretend!"
                         : " · honest card");
+                  }
+                } else if (
+                  h.kind === "memory_update" ||
+                  h.kind === "memory_recall" ||
+                  h.kind === "shared_memory_put" ||
+                  h.kind === "shared_memory_read"
+                ) {
+                  label =
+                    (h.kind === "memory_update"
+                      ? "mem:"
+                      : h.kind === "memory_recall"
+                        ? "recall:"
+                        : h.kind === "shared_memory_put"
+                          ? "shared-put:"
+                          : "shared-read:") +
+                    (p.key || p.scope || "?") +
+                    (p.path ? "/snap" : "") +
+                    (p.refused_cross_scope === true
+                      ? "/refused_cross_scope"
+                      : "") +
+                    (p.pretend_persisted === true || p.pretend_empty === true
+                      ? "/pretend!"
+                      : "");
+                  types.push(
+                    p.refused_cross_scope === true ? "widget" : "attachment",
+                  );
+                  const memMeta = document.getElementById("memory-meta");
+                  if (memMeta) {
+                    memMeta.textContent =
+                      h.kind.replace(/_/g, " ") +
+                      (p.key ? " · " + p.key : "") +
+                      (p.refused_cross_scope === true
+                        ? " · refused_cross_scope"
+                        : "") +
+                      (p.pretend_persisted === true || p.pretend_empty === true
+                        ? " · pretend!"
+                        : "");
                   }
                 } else if (h.kind === "device_tool") {
                   label =

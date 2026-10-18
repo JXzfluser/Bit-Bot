@@ -69,10 +69,12 @@ function residualSuffix(p) {
     "code_apply_residual",
     "screenshot_residual",
     "remote_pr_residual",
+    "gh_pr_create_residual",
     "public_fallback_residual",
     "ocr_residual",
     "os_window_automation_residual",
     "interactive_oauth_residual",
+    "true_device_os_dialog_residual",
   ];
   const hit = keys.find((k) => p[k] === true);
   if (hit) return "/" + hit;
@@ -85,6 +87,13 @@ function residualSuffix(p) {
     return "/os_window_automation_residual";
   const vp = g.vision_plan || {};
   if (vp.ocr_residual === true) return "/ocr_residual";
+  const rp = p.remote_pr || {};
+  if (
+    rp.real_create_gated === true ||
+    String(rp.mode || p.mode || "").includes("gh_pr_create_residual")
+  ) {
+    return "/remote_pr_residual";
+  }
   return "";
 }
 
@@ -159,8 +168,12 @@ function extractDeliveryTypes(turnJsonText) {
         (p.status === "NeedsAuth" ||
           p.mode === "live_needs_auth" ||
           p.mode === "live_remote_browser_open" ||
+          p.mode === "live_code_exchange_failed" ||
+          p.mode === "live_remote_callback_pending" ||
           (p.connected === false && p.pretend_connected === false));
-      if (h.ok === false && !oauthNeedsAuth) continue;
+      const sharedMemoryRefuse =
+        h.kind === "shared_memory_read" && p.refused_cross_scope === true;
+      if (h.ok === false && !oauthNeedsAuth && !sharedMemoryRefuse) continue;
       const filePath = pickAttachmentPath(h.kind || "", p, h);
       if (h.kind === "delivery" && p.type) {
         types.push(p.type);
@@ -204,6 +217,12 @@ function extractDeliveryTypes(turnJsonText) {
       } else if (h.kind === "cloud_agent_launch") {
         types.push("cursor-agent");
         labels.push("cursor-agent" + residualSuffix(p));
+      } else if (
+        h.kind === "shared_memory_read" &&
+        p.refused_cross_scope === true
+      ) {
+        types.push("widget");
+        labels.push("shared_memory_read/refused_cross_scope");
       } else if (
         [
           "mail_send",
@@ -337,7 +356,8 @@ function extractDeliveryTypes(turnJsonText) {
         labels.push(
           "widget:device_permission:" +
             (p.tool || p.permission || "card") +
-            (p.path || filePath ? "/snap" : ""),
+            (p.path || filePath ? "/snap" : "") +
+            residualSuffix(p),
         );
         if (filePath) {
           attachments.push({

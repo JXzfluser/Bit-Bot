@@ -532,6 +532,17 @@ for needle in (
   'gh_pr_create_residual',
   'public_fallback_residual',
   'interactive_oauth_residual',
+  'ocr_residual',
+  'os_window_automation_residual',
+  'remote_pr_residual',
+  'true_device_os_dialog_residual',
+  'refused_cross_scope',
+  '/live_mail_residual',
+  '/live_x_residual',
+  '/live_job_residual',
+  '/live_finance_residual',
+  '/live_paid_residual',
+  '/live_calendar_residual',
   'vision_plan',
   '"mail_draft"',
   '"package_install"',
@@ -544,6 +555,12 @@ for needle in (
   '"react_message"',
 ):
   assert needle in html, needle
+# Prefer full residual flag names on Desktop chip labels (not bare /live_residual|/gated).
+assert '? "/live_residual"' not in html
+assert '? "/gated"' not in html
+assert 'true_device_os_dialog_residual' in shared
+assert 'refused_cross_scope' in shared
+assert 'gh_pr_create_residual' in shared or 'remote_pr_residual' in shared
 mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
 assert 'payload.media_path' in mobile
@@ -989,9 +1006,22 @@ python3 "$ROOT/scripts/host_local_http_mock.py" --port 18771 --mode job --token 
 JOB_MOCK_PID=$!
 sleep 0.4
 BITBOT_JOB_API_URL=http://127.0.0.1:18771 BITBOT_JOB_TOKEN=smoke-job node hosts/cli_host/run_turn.js "job search engineer" >/tmp/bitbot-jobs-live.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-jobs-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='job_search');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='job_live';assert p.get('live_job_residual') is False;assert p.get('pretend_applied') is False;assert p.get('hit_count')>=1;assert (p.get('live_probe') or {}).get('ok') is True;print('job_search live mock ok', p.get('path'), 'hits', p.get('hit_count'))"
+mkdir -p data/connectors
+printf '%s\n' '{"access_token":"smoke-job","token_type":"Bearer"}' > data/connectors/job_token.json
+BITBOT_JOB_API_URL=http://127.0.0.1:18771 \
+  env -u BITBOT_JOB_TOKEN \
+  node hosts/cli_host/run_turn.js "job search engineer" >/tmp/bitbot-jobs-file-token.json || true
 kill "$JOB_MOCK_PID" >/dev/null 2>&1 || true
 wait "$JOB_MOCK_PID" 2>/dev/null || true
-python3 -c "import json;d=json.load(open('/tmp/bitbot-jobs-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='job_search');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='job_live';assert p.get('live_job_residual') is False;assert p.get('pretend_applied') is False;assert p.get('hit_count')>=1;assert (p.get('live_probe') or {}).get('ok') is True;print('job_search live mock ok', p.get('path'), 'hits', p.get('hit_count'))"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-jobs-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='job_search');p=json.loads(h['stdout']);assert p.get('mode')=='job_live';assert p.get('live_job_residual') is False;print('job_search connector token file ok', p.get('mode'))"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-jobs.json","utf8"));
+if(!s.labels.some(l=>l.includes("live_job_residual"))) { console.error(s); process.exit(1); }
+console.log("STU live_job_residual ok");
+'
 node hosts/cli_host/run_turn.js "schedule meeting title=Sprint when=tomorrow-3pm" >/tmp/bitbot-schedule.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-schedule.json'));assert d.get('ok');assert d.get('host_continued') is True, 'CM-0111 must not block Host continue on schedule+CU fallback';hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='schedule_meeting');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('scheduled') is True;assert p.get('ics_ok') is True;assert p.get('ics_path') and os.path.isfile(p['ics_path']);assert b'BEGIN:VEVENT' in open(p['ics_path'],'rb').read();assert p.get('path') and os.path.isfile(p['path']);assert p.get('live_calendar_residual') is True;assert p.get('pretend_live') is False;cu=next((x for x in hrs if x.get('kind')=='computer_use'), None);assert cu is not None;cup=json.loads(cu.get('stdout') or '{}');nav=(cup.get('navigate') or {}).get('url') or '';assert nav=='https://calendar.example.com/create' or nav.startswith('https://calendar.example.com/create');assert not nav.endswith(')');print('schedule_meeting ICS ok', p.get('ics_path'), p.get('mode'), p.get('path'), 'host_continued', d.get('host_continued'), 'cu_url', nav)"
 # Live calendar against local mock
@@ -999,9 +1029,23 @@ python3 "$ROOT/scripts/host_local_http_mock.py" --port 18776 --mode calendar --t
 CAL_MOCK_PID=$!
 sleep 0.4
 BITBOT_CALENDAR_API_URL=http://127.0.0.1:18776 BITBOT_CALENDAR_TOKEN=smoke-cal node hosts/cli_host/run_turn.js "schedule meeting title=LiveSprint when=tomorrow-4pm" >/tmp/bitbot-schedule-live.json || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-schedule-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='schedule_meeting');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='calendar_live';assert p.get('live_calendar_residual') is False;assert p.get('pretend_live') is False;assert (p.get('live_probe') or {}).get('ok') is True;assert p.get('path') and os.path.isfile(p['path']);print('schedule_meeting calendar_live ok', p.get('remote_event_id'), p.get('ics_path'), p.get('path'))"
+printf '%s\n' '{"access_token":"smoke-cal","token_type":"Bearer"}' > data/connectors/calendar_token.json
+BITBOT_CALENDAR_API_URL=http://127.0.0.1:18776 \
+  env -u BITBOT_CALENDAR_TOKEN \
+  node hosts/cli_host/run_turn.js "schedule meeting title=FileCal when=tomorrow-5pm" >/tmp/bitbot-schedule-file-token.json || true
 kill "$CAL_MOCK_PID" >/dev/null 2>&1 || true
 wait "$CAL_MOCK_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-schedule-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='schedule_meeting');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='calendar_live';assert p.get('live_calendar_residual') is False;assert p.get('pretend_live') is False;assert (p.get('live_probe') or {}).get('ok') is True;assert p.get('path') and os.path.isfile(p['path']);print('schedule_meeting calendar_live ok', p.get('remote_event_id'), p.get('ics_path'), p.get('path'))"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-schedule-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='schedule_meeting');p=json.loads(h['stdout']);assert p.get('mode')=='calendar_live';assert p.get('live_calendar_residual') is False;print('schedule_meeting connector token file ok', p.get('mode'))"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-schedule.json","utf8"));
+if(!s.labels.some(l=>l.includes("live_calendar_residual"))) { console.error(s); process.exit(1); }
+const p=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-purchase.json","utf8"));
+if(!p.labels.some(l=>l.includes("live_paid_residual"))) { console.error(p); process.exit(1); }
+console.log("STU live_calendar+live_paid residual ok");
+'
 
 echo "==> journal / shared memory / inbound reaction (durable Host stores)"
 node hosts/cli_host/run_turn.js "journal date=2026-10-17 id=smoke body=smoke-event" >/tmp/bitbot-journal-append.json
@@ -1012,6 +1056,16 @@ node hosts/cli_host/run_turn.js "shared memory put scope=team key=k value=v" >/t
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-shared-put.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='shared_memory_put');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_stored') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('store_path') and os.path.isfile(p['store_path']);assert 'shared-scopes.json' in (p.get('store_path') or '');print('shared_memory_put durable ok', p.get('path'))"
 node hosts/cli_host/run_turn.js "shared memory read scope=team key=k" >/tmp/bitbot-shared-read.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-shared-read.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='shared_memory_read');assert h.get('ok') and '\"found\": true' in (h.get('stdout') or '');print('shared_memory_read durable ok')"
+# Cross-scope refuse must still surface on STU (ok=false exception).
+node hosts/cli_host/run_turn.js "shared memory read scope=other key=k" >/tmp/bitbot-shared-refuse.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-shared-refuse.json'));h=next(x for x in d['host_results'] if x.get('kind')=='shared_memory_read');p=json.loads(h.get('stdout') or '{}');assert h.get('ok') is False;assert p.get('refused_cross_scope') is True;print('shared_memory_read refuse ok')"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-shared-refuse.json","utf8"));
+if(!s.labels.some(l=>l.includes("refused_cross_scope"))) { console.error(s); process.exit(1); }
+console.log("STU shared_memory refuse ok", s.labels.slice(0,3));
+'
 node hosts/cli_host/run_turn.js "[inbound] reaction :+1:" >/tmp/bitbot-inbound.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-inbound.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='inbound_reaction');assert h.get('ok') and 'forced_reply' in (h.get('stdout') or '') and 'false' in (h.get('stdout') or '').lower();p=json.loads(h.get('stdout') or '{}');assert p.get('visible_pill') is True;assert os.path.isfile('data/delivery/outbound-reactions.jsonl');assert os.path.isfile('data/delivery/send-to-user.jsonl');print('inbound_reaction SendToUser pill ok', p.get('emoji'))"
 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: delivery body" >/tmp/bitbot-delivery.json
