@@ -166,6 +166,19 @@
     border-radius: 6px;
     background: #0a100e;
   }
+  .msg.media button.open-artifact {
+    margin-top: 6px;
+    background: #1a2420;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font: 12px/1.3 "IBM Plex Sans", sans-serif;
+  }
+  .msg.media button.open-artifact:hover {
+    border-color: var(--accent, #3d6b52);
+  }
   #composer {
     grid-area: composer;
     padding: 12px 16px 16px;
@@ -858,6 +871,82 @@
         }
       }
       return out;
+    }
+
+    /** Openable Host files that are not inline-previewable (pptx / ics / eml). */
+    function collectHostOpenablePaths(hostResults) {
+      const out = [];
+      if (!Array.isArray(hostResults)) return out;
+      for (const h of hostResults) {
+        if (!h || h.ok === false) continue;
+        let p = {};
+        try {
+          p = JSON.parse(h.stdout || "{}");
+        } catch (_) {
+          p = {};
+        }
+        const kind = h.kind || "";
+        if (kind === "slides_pptx") {
+          const fp = p.pptx_path || p.path;
+          if (fp && String(fp).endsWith(".pptx"))
+            out.push({ path: fp, label: "slides_pptx" });
+        } else if (kind === "schedule_meeting") {
+          const fp = p.ics_path;
+          if (fp) out.push({ path: fp, label: "schedule_ics" });
+        } else if (kind === "mail_send" || kind === "mail_draft") {
+          const fp = p.eml_path;
+          if (fp) out.push({ path: fp, label: kind + "_eml" });
+        }
+      }
+      return out;
+    }
+
+    async function renderOpenArtifact(filePath, label) {
+      if (!filePath || !window.bitbot || !window.bitbot.openArtifact) return;
+      const el = document.createElement("div");
+      el.className = "msg assistant media";
+      el.innerHTML =
+        '<div class="role">attachment</div><div class="body"></div>';
+      const body = el.querySelector(".body");
+      const lab = document.createElement("div");
+      lab.className = "media-label";
+      lab.textContent =
+        (label || "file") + " · " + String(filePath).split("/").slice(-1)[0];
+      body.appendChild(lab);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "open-artifact";
+      btn.textContent = "Open with OS";
+      btn.addEventListener("click", async () => {
+        try {
+          const r = await window.bitbot.openArtifact(filePath);
+          if (!r || !r.ok) {
+            addMsg(
+              "assistant",
+              "Open failed: " +
+                (r && r.error ? r.error : "unknown") +
+                " · " +
+                filePath,
+            );
+          } else {
+            lab.textContent =
+              (label || "file") +
+              " · opened · " +
+              String(filePath).split("/").slice(-1)[0] +
+              " · " +
+              (r.bytes || 0) +
+              "B";
+          }
+        } catch (e) {
+          addMsg(
+            "assistant",
+            "Open failed: " + String(e && e.message ? e.message : e),
+          );
+        }
+      });
+      body.appendChild(btn);
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
     }
 
     function hideApproval() {
@@ -2127,6 +2216,11 @@
           const htmlItems = collectHostHtmlPaths(r.host_results);
           for (const item of htmlItems) {
             await renderDeliveryHtml(item.path, item.label);
+          }
+          // CHARTER Delivery: OS-open for pptx / ics / eml attachments.
+          const openItems = collectHostOpenablePaths(r.host_results);
+          for (const item of openItems) {
+            await renderOpenArtifact(item.path, item.label);
           }
         }
       } catch (e) {

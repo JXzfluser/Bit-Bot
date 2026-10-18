@@ -160,6 +160,7 @@
 - [x] Desktop inline SendToUser media preview (`bitbot:readArtifact` IPC → img/audio/video in transcript)
 - [x] Desktop inline CM-2103 markdown HTML iframe (`readArtifact` text/html → sandboxed `srcdoc`; mobile mirrors accept media/html paths)
 - [x] Desktop inline purchase receipt HTML iframe (`renderDeliveryHtml` / `collectHostHtmlPaths`)
+- [x] Desktop OS-open for pptx/ics/eml attachments (`bitbot:openArtifact` → `shell.openPath`)
 - [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn

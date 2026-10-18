@@ -333,19 +333,23 @@ main=Path('hosts/desktop/main.js').read_text()
 preload=Path('hosts/desktop/preload.js').read_text()
 assert 'renderDeliveryMedia' in html and 'collectHostMediaPaths' in html
 assert 'renderDeliveryHtml' in html and 'collectHostHtmlPaths' in html
+assert 'renderOpenArtifact' in html and 'collectHostOpenablePaths' in html
 assert 'delivery-media' in html
 assert 'delivery-html' in html and 'html_iframe' in html
 assert 'purchase_receipt' in html
+assert 'open-artifact' in html and 'Open with OS' in html
 assert 'srcdoc' in html
 assert 'bitbot:readArtifact' in main and 'data_url' in main
+assert 'bitbot:openArtifact' in main and 'shell.openPath' in main
+assert 'pretend_open: false' in main
 assert 'text/html' in main and '\".html\"' in main
 assert 'buf.toString(\"utf8\")' in main
-assert 'readArtifact' in preload
+assert 'readArtifact' in preload and 'openArtifact' in preload
 assert 'path outside repo' in main
 mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
 assert 'payload.media_path' in mobile
-print('desktop inline media + markdown/purchase HTML delivery wired ok')
+print('desktop inline media + HTML + OS-open delivery wired ok')
 "
 python3 - <<'PY'
 from pathlib import Path

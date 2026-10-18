@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
 
@@ -169,6 +169,40 @@ ipcMain.handle("bitbot:readArtifact", async (_event, artifactPath) => {
     bytes: buf.length,
     data_url: "data:" + mime + ";base64," + buf.toString("base64"),
     pretend_read: false,
+  };
+});
+
+/** CHARTER Delivery: open Host attachment with OS handler (pptx/ics/eml/…). */
+ipcMain.handle("bitbot:openArtifact", async (_event, artifactPath) => {
+  const raw = String(artifactPath || "").trim();
+  if (!raw) return { ok: false, error: "empty path", pretend_open: false };
+  let resolved;
+  try {
+    resolved = path.resolve(raw);
+  } catch {
+    return { ok: false, error: "invalid path", pretend_open: false };
+  }
+  const root = path.resolve(REPO_ROOT);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    return { ok: false, error: "path outside repo", pretend_open: false };
+  }
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    return { ok: false, error: "missing file", pretend_open: false };
+  }
+  const err = await shell.openPath(resolved);
+  if (err) {
+    return {
+      ok: false,
+      error: err,
+      path: resolved,
+      pretend_open: false,
+    };
+  }
+  return {
+    ok: true,
+    path: resolved,
+    bytes: fs.statSync(resolved).size,
+    pretend_open: false,
   };
 });
 
