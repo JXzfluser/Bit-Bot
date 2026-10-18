@@ -549,6 +549,19 @@ assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobi
 assert 'payload.media_path' in mobile
 assert 'memory_update' in mobile and 'memory_recall' in mobile
 assert '"device_tool"' in mobile and '"delivery"' in mobile
+for needle in (
+  'live_calendar_residual',
+  'box_doctor_bin_residual',
+  'box_chrome_bin_residual',
+  'long_lived_cron_residual',
+  'remote_cloud_residual',
+  'code_apply_residual',
+  'screenshot_residual',
+  'remote_pr_residual',
+  'os_window_automation_residual',
+  'interactive_oauth_residual',
+):
+  assert needle in mobile, needle
 ios=Path('hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift').read_text()
 android=Path('hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt').read_text()
 assert 'widget:device_permission:' in ios and 'widget:device_permission:' in android
@@ -705,6 +718,13 @@ TEAMS_MOCK_PID=$!
 sleep 0.4
 BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_POST=1 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: live teams mock" >/tmp/bitbot-teams-live.json || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('scheme')=='teams';assert p.get('live_post') is True;assert p.get('live_teams_residual') is False;assert p.get('pretend_live') is False;assert p.get('mode')=='live_teams_chat_message';print('channel_send teams live mock ok', p.get('mode'), 'status', p.get('http_status'))"
+# Teams live via connector token file (resolveProviderAccessToken), not only env.
+mkdir -p data/connectors
+printf '%s\n' '{"access_token":"smoke-teams","token_type":"Bearer"}' > data/connectors/teams_token.json
+BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_POST=1 \
+  env -u BITBOT_TEAMS_TOKEN \
+  node hosts/cli_host/run_turn.js --approved "reply via teams:Tfile :: live teams file token" >/tmp/bitbot-teams-file-token.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('live_post') is True;assert p.get('live_teams_residual') is False;assert p.get('mode')=='live_teams_chat_message';print('channel_send teams connector token file ok', p.get('mode'))"
 BITBOT_TEAMS_GRAPH_URL=http://127.0.0.1:18770 BITBOT_TEAMS_TOKEN=smoke-teams BITBOT_TEAMS_CLAIM=1 node hosts/cli_host/run_turn.js --approved "reply via teams:Tsmoke :: claim teams" >/tmp/bitbot-teams-claim-live.json || true
 kill "$TEAMS_MOCK_PID" >/dev/null 2>&1 || true
 wait "$TEAMS_MOCK_PID" 2>/dev/null || true
@@ -835,8 +855,6 @@ python3 "$ROOT/scripts/host_local_http_mock.py" --port 18775 --mode outlook --to
 OUTLOOK_MOCK_PID=$!
 sleep 0.4
 BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-outlook BITBOT_MAIL_SEND=1 node hosts/cli_host/run_turn.js --approved "draft outlook mail to=live@example.com subject=Hi body=Outlook" >/tmp/bitbot-outlook-live.json || true
-kill "$OUTLOOK_MOCK_PID" >/dev/null 2>&1 || true
-wait "$OUTLOOK_MOCK_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-outlook-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is False;print('mail_send live_outlook ok', p.get('message_id'))"
 BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-outlook BITBOT_MAIL_SEND=1 BITBOT_MAIL_PROVIDER=outlook \
   node hosts/cli_host/run_turn.js --approved "reply via email:live@example.com :: channel outlook mail" >/tmp/bitbot-email-channel-outlook.json || true
@@ -847,6 +865,21 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-mail-search-outlook.json')
 BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-outlook BITBOT_MAIL_PROVIDER=outlook \
   env -u BITBOT_GMAIL_TOKEN node hosts/cli_host/run_turn.js "read mail outlook-msg-1" >/tmp/bitbot-mail-read-outlook.json || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-mail-read-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_read');p=json.loads(h['stdout']);assert p.get('mode')=='outlook_live';assert p.get('live_mail_residual') is False;print('mail_read outlook_live ok', p.get('thread_id'))"
+# mail_search/read prefer Outlook when connector armed (no BITBOT_MAIL_PROVIDER) — matches bare email.
+mkdir -p data/connectors
+printf '%s\n' '{"access_token":"smoke-outlook","token_type":"Bearer"}' > data/connectors/outlook_token.json
+printf '%s\n' '{"connected":true,"status":"Ready"}' > data/connectors/outlook.json
+printf '%s\n' '{"access_token":"stale-gmail-file","token_type":"Bearer"}' > data/connectors/gmail_token.json
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 \
+  env -u BITBOT_GMAIL_TOKEN -u BITBOT_OUTLOOK_TOKEN -u BITBOT_MAIL_PROVIDER \
+  node hosts/cli_host/run_turn.js "search mail PreferOutlook" >/tmp/bitbot-mail-search-prefer.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-mail-search-prefer.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_search');p=json.loads(h['stdout']);assert p.get('mode')=='outlook_live', p;assert (p.get('live_probe') or {}).get('provider')=='outlook';assert p.get('live_mail_residual') is False;print('mail_search prefer outlook after connect ok', p.get('mode'))"
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 \
+  env -u BITBOT_GMAIL_TOKEN -u BITBOT_OUTLOOK_TOKEN -u BITBOT_MAIL_PROVIDER \
+  node hosts/cli_host/run_turn.js "read mail prefer-1" >/tmp/bitbot-mail-read-prefer.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-mail-read-prefer.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_read');p=json.loads(h['stdout']);assert p.get('mode')=='outlook_live', p;assert (p.get('live_probe') or {}).get('provider')=='outlook';print('mail_read prefer outlook after connect ok', p.get('mode'))"
+kill "$OUTLOOK_MOCK_PID" >/dev/null 2>&1 || true
+wait "$OUTLOOK_MOCK_PID" 2>/dev/null || true
 node hosts/cli_host/run_turn.js "shell echo needs-approve" >/tmp/bitbot-approval-widget.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-approval-widget.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='approval_card');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');w=p.get('widget') or {};assert w.get('widget_id');opts=w.get('options') or [];assert any(o.get('id')=='approve' for o in opts);assert any(o.get('id')=='dismiss' for o in opts);deliv=next(x for x in hrs if x.get('kind')=='delivery' and 'approval_card' in (x.get('stdout') or ''));dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='widget';assert os.path.isfile('data/delivery/send-to-user.jsonl');print('approval_card CM-0105 widget ok', w.get('widget_id'), 'options', len(opts))"
 node hosts/cli_host/run_turn.js "personal slack dm owner=Uowner text=ping [widget:decision_card]" >/tmp/bitbot-personal-dm.json

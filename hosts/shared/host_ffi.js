@@ -262,42 +262,45 @@ function createHostFfi(repoRoot) {
     );
   }
 
+  /** Env var names for connector tokens (Slack uses SLACK_BOT_TOKEN historically). */
+  function providerTokenEnvKeys(provider) {
+    const p = String(provider || "").trim().toLowerCase();
+    if (p === "slack") return ["SLACK_BOT_TOKEN", "BITBOT_SLACK_TOKEN"];
+    if (p === "outlook") return ["BITBOT_OUTLOOK_TOKEN"];
+    if (p === "gmail") return ["BITBOT_GMAIL_TOKEN"];
+    if (p === "teams") return ["BITBOT_TEAMS_TOKEN"];
+    if (p === "meeting" || p === "meeting_chat")
+      return ["BITBOT_MEETING_TOKEN"];
+    if (p === "finance") return ["BITBOT_FINANCE_TOKEN"];
+    const upper = p.replace(/[^a-z0-9]+/g, "_").toUpperCase();
+    return upper ? [`BITBOT_${upper}_TOKEN`] : [];
+  }
+
   /** Provider-scoped token: never let Gmail env/file steal Outlook Bearer. */
   function resolveProviderAccessToken(provider) {
     const p = String(provider || "gmail").trim().toLowerCase();
-    if (p === "outlook") {
-      let token = String(process.env.BITBOT_OUTLOOK_TOKEN || "").trim();
-      if (!token) token = readConnectorTokenFile("outlook");
-      if (!token) token = extractAccessToken(loadConnectorState("outlook"));
-      return token;
+    const fileName =
+      p === "meeting_chat" ? "meeting" : p === "meeting" ? "meeting" : p;
+    for (const key of providerTokenEnvKeys(p)) {
+      const fromEnv = String(process.env[key] || "").trim();
+      if (fromEnv) return fromEnv;
     }
-    let token = String(process.env.BITBOT_GMAIL_TOKEN || "").trim();
-    if (!token) token = readConnectorTokenFile("gmail");
-    if (!token) token = extractAccessToken(loadConnectorState("gmail"));
+    let token = readConnectorTokenFile(fileName);
+    if (!token) token = extractAccessToken(loadConnectorState(fileName));
     return token;
   }
 
   function connectorArmed(name) {
     const n = String(name || "").trim().toLowerCase();
-    if (n === "outlook") {
-      const st = loadConnectorState("outlook");
-      return Boolean(
-        resolveProviderAccessToken("outlook") ||
-          st.connected === true ||
-          st.status === "Ready" ||
-          st.status === "Connected",
-      );
-    }
-    if (n === "gmail") {
-      const st = loadConnectorState("gmail");
-      return Boolean(
-        resolveProviderAccessToken("gmail") ||
-          st.connected === true ||
-          st.status === "Ready" ||
-          st.status === "Connected",
-      );
-    }
-    return Boolean(resolveProviderAccessToken(n));
+    const fileName =
+      n === "meeting_chat" ? "meeting" : n === "meeting" ? "meeting" : n;
+    const st = loadConnectorState(fileName);
+    return Boolean(
+      resolveProviderAccessToken(n) ||
+        st.connected === true ||
+        st.status === "Ready" ||
+        st.status === "Connected",
+    );
   }
 
   function httpJson(url, { method = "GET", headers = {}, body = null } = {}) {
@@ -948,7 +951,9 @@ function createHostFfi(repoRoot) {
     // Live Slack when token + BITBOT_SLACK_POST=1 (env or connector sandbox/live token)
     if (addr.startsWith("slack:")) {
       const envToken = String(process.env.SLACK_BOT_TOKEN || "").trim();
-      const connectorToken = extractAccessToken(connectorHint);
+      const connectorToken =
+        extractAccessToken(connectorHint) ||
+        resolveProviderAccessToken("slack");
       // Real Slack bot tokens (xox*) OR local mock token when BITBOT_SLACK_API_BASE is set.
       const slackApiBase = String(process.env.BITBOT_SLACK_API_BASE || "").trim();
       const looksLiveSlack = (t) =>
@@ -1146,7 +1151,7 @@ function createHostFfi(repoRoot) {
     }
 
     if (addr.startsWith("teams:")) {
-      const teamsToken = String(process.env.BITBOT_TEAMS_TOKEN || "").trim();
+      const teamsToken = resolveProviderAccessToken("teams");
       const chatId = addr.slice("teams:".length).split(":")[0] || "";
       const graphBase = (
         process.env.BITBOT_TEAMS_GRAPH_URL ||
@@ -1422,7 +1427,7 @@ function createHostFfi(repoRoot) {
       const meetingDir = path.join(REPO_ROOT, "data", "meetings");
       fs.mkdirSync(meetingDir, { recursive: true });
       const transcriptPath = path.join(meetingDir, "live-chat.jsonl");
-      const meetingToken = String(process.env.BITBOT_MEETING_TOKEN || "").trim();
+      const meetingToken = resolveProviderAccessToken("meeting");
       const meetingApi = String(process.env.BITBOT_MEETING_API_URL || "").trim();
       const liveMeeting = Boolean(meetingToken && meetingApi);
       let livePost = false;
@@ -5985,45 +5990,19 @@ function createHostFfi(repoRoot) {
   async function executeMailReadSearch(kind, command) {
     // Durable sandbox artifacts always; live Gmail or Outlook Graph when token
     // + API reachable. Never pretend live hits without a successful API response.
+    // Provider pick matches bare-email channel: BITBOT_MAIL_PROVIDER=outlook, or
+    // Outlook armed with no Gmail env token (stale gmail_token.json must not win).
     const at = new Date().toISOString();
+    const mailProviderEnv = String(process.env.BITBOT_MAIL_PROVIDER || "")
+      .trim()
+      .toLowerCase();
     const preferOutlook =
-      String(process.env.BITBOT_MAIL_PROVIDER || "")
-        .trim()
-        .toLowerCase() === "outlook";
-    const gmailTokenPath = path.join(CONNECTORS_DIR, "gmail_token.json");
-    const outlookTokenPath = path.join(CONNECTORS_DIR, "outlook_token.json");
-    let gmailToken = String(process.env.BITBOT_GMAIL_TOKEN || "").trim();
-    if (!gmailToken) {
-      try {
-        if (fs.existsSync(gmailTokenPath)) {
-          const tok = JSON.parse(fs.readFileSync(gmailTokenPath, "utf8"));
-          gmailToken = String(
-            (tok && (tok.access_token || tok.token)) || "",
-          ).trim();
-        }
-      } catch (_) {
-        gmailToken = "";
-      }
-    }
-    if (!gmailToken) {
-      gmailToken = extractAccessToken(loadConnectorState("gmail"));
-    }
-    let outlookToken = String(process.env.BITBOT_OUTLOOK_TOKEN || "").trim();
-    if (!outlookToken) {
-      try {
-        if (fs.existsSync(outlookTokenPath)) {
-          const tok = JSON.parse(fs.readFileSync(outlookTokenPath, "utf8"));
-          outlookToken = String(
-            (tok && (tok.access_token || tok.token)) || "",
-          ).trim();
-        }
-      } catch (_) {
-        outlookToken = "";
-      }
-    }
-    if (!outlookToken) {
-      outlookToken = extractAccessToken(loadConnectorState("outlook"));
-    }
+      mailProviderEnv === "outlook" ||
+      (connectorArmed("outlook") &&
+        !String(process.env.BITBOT_GMAIL_TOKEN || "").trim() &&
+        mailProviderEnv !== "gmail");
+    const gmailToken = resolveProviderAccessToken("gmail");
+    const outlookToken = resolveProviderAccessToken("outlook");
     const useOutlook =
       Boolean(outlookToken) && (preferOutlook || !gmailToken);
     const accessToken = useOutlook ? outlookToken : gmailToken;
@@ -7271,13 +7250,11 @@ function createHostFfi(repoRoot) {
         at: new Date().toISOString(),
       };
       saveConnectorState(connectorName, state);
-      if (connectorName === "gmail" || connectorName === "outlook") {
-        writeConnectorTokenFile(connectorName, {
-          access_token: live.access_token,
-          token_type: "Bearer",
-          sandbox: false,
-        });
-      }
+      writeConnectorTokenFile(connectorName, {
+        access_token: live.access_token,
+        token_type: "Bearer",
+        sandbox: false,
+      });
       appendHostDeliveryJournal({
         kind: "oauth",
         command,
@@ -7477,14 +7454,12 @@ function createHostFfi(repoRoot) {
         };
         if (ok) {
           saveConnectorState(connectorName, state);
-          if (connectorName === "gmail" || connectorName === "outlook") {
-            writeConnectorTokenFile(connectorName, {
-              access_token: token,
-              token_type: "Bearer",
-              sandbox: false,
-              interactive: true,
-            });
-          }
+          writeConnectorTokenFile(connectorName, {
+            access_token: token,
+            token_type: "Bearer",
+            sandbox: false,
+            interactive: true,
+          });
         }
         appendHostDeliveryJournal({
           kind: "oauth",
@@ -7553,14 +7528,12 @@ function createHostFfi(repoRoot) {
       };
       if (ok) {
         saveConnectorState(connectorName, state);
-        if (connectorName === "gmail" || connectorName === "outlook") {
-          writeConnectorTokenFile(connectorName, {
-            access_token: token,
-            token_type: "Bearer",
-            sandbox: false,
-            exchange: "local_idp",
-          });
-        }
+        writeConnectorTokenFile(connectorName, {
+          access_token: token,
+          token_type: "Bearer",
+          sandbox: false,
+          exchange: "local_idp",
+        });
       }
       appendHostDeliveryJournal({
         kind: "oauth",
@@ -8057,13 +8030,11 @@ function createHostFfi(repoRoot) {
       };
       if (ok) {
         saveConnectorState(connectorName, state);
-        if (connectorName === "gmail" || connectorName === "outlook") {
-          writeConnectorTokenFile(connectorName, {
-            access_token: token,
-            token_type: "Bearer",
-            sandbox: true,
-          });
-        }
+        writeConnectorTokenFile(connectorName, {
+          access_token: token,
+          token_type: "Bearer",
+          sandbox: true,
+        });
       }
       appendHostDeliveryJournal({
         kind: "oauth",
@@ -11153,16 +11124,11 @@ function createHostFfi(repoRoot) {
       const tool = parts[0] || "";
       const output = parts.slice(1).join("|") || "";
       const finState = loadConnectorState("finance");
-      // Explicit env token wins for live mock/API gates (sandbox oauth must not mask it).
-      const accessToken = String(
-        process.env.BITBOT_FINANCE_TOKEN ||
-          (finState.oauth && finState.oauth.access_token) ||
-          finState.access_token ||
-          "",
-      ).trim();
+      // Explicit env / connector token file wins for live mock/API gates.
+      const accessToken = resolveProviderAccessToken("finance");
       const financeApi = String(process.env.BITBOT_FINANCE_API_URL || "").trim();
       const connected = Boolean(
-        finState.connected || accessToken,
+        finState.connected || accessToken || connectorArmed("finance"),
       );
       let mode = connected ? "live_token_present" : "sandbox";
       let liveProbe = null;

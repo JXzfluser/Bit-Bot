@@ -266,6 +266,7 @@ try {
       );
       const oc = payload.outcome || {};
       const vp = (payload.gui && payload.gui.vision_plan) || {};
+      const gui = payload.gui || {};
       const mirror = {
         kind: kind + "_mobile_mirror",
         machine_kind: machineKind,
@@ -287,16 +288,28 @@ try {
         live_x_residual: payload.live_x_residual === true,
         live_job_residual: payload.live_job_residual === true,
         live_finance_residual: payload.live_finance_residual === true,
-        public_fallback_residual: payload.public_fallback_residual === true,
-        interactive_oauth_residual:
-          payload.interactive_oauth_residual === true,
+        live_calendar_residual: payload.live_calendar_residual === true,
         live_paid_residual:
           payload.live_paid_residual === true ||
           oc.live_paid_residual === true,
+        box_doctor_bin_residual: payload.box_doctor_bin_residual === true,
+        box_chrome_bin_residual: payload.box_chrome_bin_residual === true,
+        long_lived_cron_residual: payload.long_lived_cron_residual === true,
+        remote_cloud_residual: payload.remote_cloud_residual === true,
+        code_apply_residual: payload.code_apply_residual === true,
+        screenshot_residual: payload.screenshot_residual === true,
+        remote_pr_residual: payload.remote_pr_residual === true,
+        public_fallback_residual: payload.public_fallback_residual === true,
+        interactive_oauth_residual:
+          payload.interactive_oauth_residual === true,
         ocr_residual:
           payload.ocr_residual === true ||
           oc.ocr_residual === true ||
           vp.ocr_residual === true,
+        os_window_automation_residual:
+          payload.os_window_automation_residual === true ||
+          oc.os_window_automation_residual === true ||
+          gui.os_window_automation_residual === true,
         host_ok: hit.ok !== false,
         at: new Date().toISOString(),
         note: "Mobile Host mirrors Desktop Host delivery snap path — no invent",
