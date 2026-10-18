@@ -101,6 +101,7 @@ class MainActivity : ComponentActivity() {
       "Add section" to "add section group=g1 id=sec-a title=alpha",
       "Connect finance" to "connect finance",
       "Connect gmail" to "connect gmail",
+      "Connect outlook" to "connect outlook",
       "List connectors" to "list connectors",
       "Setup slack" to "setup slack",
       "Identity browser" to "identity browser",

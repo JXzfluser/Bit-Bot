@@ -254,9 +254,20 @@ OUT_PID=$!
 sleep 0.35
 BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-out BITBOT_MAIL_SEND=1 \
   "${RUN[@]}" --approved "draft outlook mail to=parity@example.com subject=Parity body=$MARKER" >/tmp/parity-outlook.json || true
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-out BITBOT_MAIL_SEND=1 BITBOT_MAIL_PROVIDER=outlook \
+  "${RUN[@]}" --approved "reply via email:parity@example.com :: channel outlook $MARKER" >/tmp/parity-email-outlook.json || true
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-out BITBOT_MAIL_PROVIDER=outlook \
+  env -u BITBOT_GMAIL_TOKEN "${RUN[@]}" "search mail Invoice" >/tmp/parity-mail-search-outlook.json || true
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-out BITBOT_MAIL_PROVIDER=outlook \
+  env -u BITBOT_GMAIL_TOKEN "${RUN[@]}" "read mail outlook-msg-1" >/tmp/parity-mail-read-outlook.json || true
 kill "$OUT_PID" >/dev/null 2>&1 || true
 wait "$OUT_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/parity-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;assert p.get('path') and os.path.isfile(p['path']);print('parity outlook live ok', p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is False;assert p.get('path') and os.path.isfile(p['path']);print('parity outlook live ok', p.get('path'), 'live_mail_residual', False)"
+python3 -c "import json;d=json.load(open('/tmp/parity-email-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_email_outlook';assert p.get('live_post') is True;assert p.get('live_mail_residual') is False;print('parity channel email outlook live ok')"
+python3 -c "import json;d=json.load(open('/tmp/parity-mail-search-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_search');p=json.loads(h['stdout']);assert p.get('mode')=='outlook_live';assert p.get('live_mail_residual') is False;assert p.get('hit_count')>=1;print('parity mail_search outlook_live ok', p.get('hit_count'))"
+python3 -c "import json;d=json.load(open('/tmp/parity-mail-read-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_read');p=json.loads(h['stdout']);assert p.get('mode')=='outlook_live';assert p.get('live_mail_residual') is False;print('parity mail_read outlook_live ok', p.get('thread_id'))"
+"${MOBILE[@]}" --machine-kind ios --session-id parity-ios-outlook "connect outlook" >/tmp/parity-ios-outlook.txt || true
+python3 -c "t=open('/tmp/parity-ios-outlook.txt').read();assert 'connect_outlook' in t or 'oauth' in t;assert 'machine_kind=ios' in t;print('parity ios connect outlook ok')"
 
 # 9h) Site-playbook verticals (shopping / travel / food) + CU payment_wall honesty
 "${RUN[@]}" "shop https://www.target.com/ headphones" >/tmp/parity-shop.json
@@ -316,7 +327,14 @@ rm -f data/routines/daemon-status.json
 "${RUN[@]}" --approved "create routine id=parity-unit-only cron=@daily prompt=unit only $MARKER" >/tmp/parity-rt-unit-only.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-rt-unit-only.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);assert p.get('due_now') is False;assert p.get('long_lived_cron_residual') is True;assert os.path.isfile('data/routines/bitbot-routine-daemon.service');print('parity routine write-unit-only residual still open ok')"
 BITBOT_OAUTH_MODE=live "${RUN[@]}" "setup slack" >/tmp/parity-oauth-needsauth.json || true
-python3 -c "import json,os;d=json.load(open('/tmp/parity-oauth-needsauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('mode')=='live_needs_auth';assert p.get('connected') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_connected') is False;deliv=next((x for x in d['host_results'] if x.get('kind')=='delivery'),None);assert deliv and deliv.get('ok');dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='widget';assert dp.get('needs_auth') is True or dp.get('status')=='NeedsAuth';assert dp.get('pretend_connected') is not True;print('parity oauth live NeedsAuth ok', p.get('path'), 'delivery', dp.get('status') or dp.get('widget'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-oauth-needsauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('mode')=='live_needs_auth';assert p.get('connected') is False;assert p.get('interactive_oauth_residual') is True;assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_connected') is False;deliv=next((x for x in d['host_results'] if x.get('kind')=='delivery'),None);assert deliv and deliv.get('ok');dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='widget';assert dp.get('needs_auth') is True or dp.get('status')=='NeedsAuth';assert dp.get('pretend_connected') is not True;print('parity oauth live NeedsAuth ok', p.get('path'), 'interactive_oauth_residual', True)"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/parity-oauth-needsauth.json","utf8"));
+if(!s.labels.some(l=>l.includes("interactive_oauth_residual"))) { console.error(s); process.exit(1); }
+console.log("parity oauth NeedsAuth STU residual ok", s.labels.slice(0,3));
+'
 # SendToUser strip must surface oauth:NeedsAuth even when Host ok=false
 node -e "
 const {extractDeliveryTypes,formatDeliveryStrip}=require('./hosts/shared/send_to_user_surface.js');

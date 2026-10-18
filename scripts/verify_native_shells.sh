@@ -164,6 +164,7 @@ for needle in (
     "open members group=group-1",
     "query journal from=2026-10-01",
     "connect gmail",
+    "connect outlook",
     "list connectors",
     "setup slack",
     "identity browser",

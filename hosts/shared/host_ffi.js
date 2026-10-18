@@ -1274,10 +1274,32 @@ function createHostFfi(repoRoot) {
       });
     }
 
-    if (addr.startsWith("email:") || addr.startsWith("gmail:")) {
-      // Channel email: durable draft by default; live Gmail send when gated.
-      const toAddr = addr.replace(/^(email|gmail):/i, "").trim() || "user@example.com";
-      const mailCmd = `gmail|${toAddr}|channel delivery|${body}`;
+    if (
+      addr.startsWith("email:") ||
+      addr.startsWith("gmail:") ||
+      addr.startsWith("outlook:")
+    ) {
+      // Channel email: durable draft by default; live Gmail/Outlook when gated.
+      const toAddr =
+        addr.replace(/^(email|gmail|outlook):/i, "").trim() ||
+        "user@example.com";
+      let mailProvider = "gmail";
+      if (/^outlook:/i.test(addr)) {
+        mailProvider = "outlook";
+      } else if (/^gmail:/i.test(addr)) {
+        mailProvider = "gmail";
+      } else {
+        // bare email: — prefer Outlook when only Outlook token is armed, or
+        // BITBOT_MAIL_PROVIDER=outlook.
+        const preferOutlook =
+          String(process.env.BITBOT_MAIL_PROVIDER || "")
+            .trim()
+            .toLowerCase() === "outlook" ||
+          (Boolean(String(process.env.BITBOT_OUTLOOK_TOKEN || "").trim()) &&
+            !String(process.env.BITBOT_GMAIL_TOKEN || "").trim());
+        if (preferOutlook) mailProvider = "outlook";
+      }
+      const mailCmd = `${mailProvider}|${toAddr}|channel delivery|${body}`;
       const mailResult = await executeMailSend(mailCmd);
       let mailPayload = {};
       try {
@@ -1285,17 +1307,26 @@ function createHostFfi(repoRoot) {
       } catch (_) {
         mailPayload = {};
       }
-      const live = Boolean(mailPayload.sent && mailPayload.mode === "live_gmail");
+      const live = Boolean(
+        mailPayload.sent &&
+          (mailPayload.mode === "live_gmail" ||
+            mailPayload.mode === "live_outlook"),
+      );
       const entry = {
         scheme,
         address: addr,
         body,
-        mode: live ? "live_email_gmail" : mailPayload.mode || "mail_outbound_draft",
+        mode: live
+          ? mailPayload.mode === "live_outlook"
+            ? "live_email_outlook"
+            : "live_email_gmail"
+          : mailPayload.mode || "mail_outbound_draft",
         ok: true,
         live_post: live,
         live_mail_residual: !live,
         pretend_live: false,
         mail: {
+          provider: mailProvider,
           mode: mailPayload.mode || null,
           sent: Boolean(mailPayload.sent),
           eml_path: mailPayload.eml_path || null,
@@ -5899,30 +5930,61 @@ function createHostFfi(repoRoot) {
   }
 
   async function executeMailReadSearch(kind, command) {
-    // Durable sandbox artifacts always; live Gmail when token + API reachable.
-    // Never pretend live hits without a successful API response.
+    // Durable sandbox artifacts always; live Gmail or Outlook Graph when token
+    // + API reachable. Never pretend live hits without a successful API response.
     const at = new Date().toISOString();
-    const tokenPath = path.join(CONNECTORS_DIR, "gmail_token.json");
-    let accessToken = String(process.env.BITBOT_GMAIL_TOKEN || "").trim();
-    if (!accessToken) {
+    const preferOutlook =
+      String(process.env.BITBOT_MAIL_PROVIDER || "")
+        .trim()
+        .toLowerCase() === "outlook";
+    const gmailTokenPath = path.join(CONNECTORS_DIR, "gmail_token.json");
+    const outlookTokenPath = path.join(CONNECTORS_DIR, "outlook_token.json");
+    let gmailToken = String(process.env.BITBOT_GMAIL_TOKEN || "").trim();
+    if (!gmailToken) {
       try {
-        if (fs.existsSync(tokenPath)) {
-          const tok = JSON.parse(fs.readFileSync(tokenPath, "utf8"));
-          accessToken = String(
+        if (fs.existsSync(gmailTokenPath)) {
+          const tok = JSON.parse(fs.readFileSync(gmailTokenPath, "utf8"));
+          gmailToken = String(
             (tok && (tok.access_token || tok.token)) || "",
           ).trim();
         }
       } catch (_) {
-        accessToken = "";
+        gmailToken = "";
       }
     }
-    if (!accessToken) {
-      accessToken = extractAccessToken(loadConnectorState("gmail"));
+    if (!gmailToken) {
+      gmailToken = extractAccessToken(loadConnectorState("gmail"));
     }
+    let outlookToken = String(process.env.BITBOT_OUTLOOK_TOKEN || "").trim();
+    if (!outlookToken) {
+      try {
+        if (fs.existsSync(outlookTokenPath)) {
+          const tok = JSON.parse(fs.readFileSync(outlookTokenPath, "utf8"));
+          outlookToken = String(
+            (tok && (tok.access_token || tok.token)) || "",
+          ).trim();
+        }
+      } catch (_) {
+        outlookToken = "";
+      }
+    }
+    if (!outlookToken) {
+      outlookToken = extractAccessToken(loadConnectorState("outlook"));
+    }
+    const useOutlook =
+      Boolean(outlookToken) && (preferOutlook || !gmailToken);
+    const accessToken = useOutlook ? outlookToken : gmailToken;
     const wantLive = Boolean(accessToken);
     const gmailBase = String(
       process.env.BITBOT_GMAIL_API_BASE ||
         "https://gmail.googleapis.com/gmail/v1",
+    )
+      .trim()
+      .replace(/\/$/, "");
+    const outlookBase = String(
+      process.env.BITBOT_OUTLOOK_GRAPH_URL ||
+        process.env.BITBOT_OUTLOOK_API_BASE ||
+        "https://graph.microsoft.com/v1.0",
     )
       .trim()
       .replace(/\/$/, "");
@@ -5939,10 +6001,13 @@ function createHostFfi(repoRoot) {
       let mode = "sandbox";
       if (wantLive) {
         try {
-          const url =
-            `${gmailBase}/users/me/messages?q=` +
-            encodeURIComponent(q) +
-            "&maxResults=10";
+          const url = useOutlook
+            ? `${outlookBase}/me/messages?$search=` +
+              encodeURIComponent(q) +
+              "&$top=10"
+            : `${gmailBase}/users/me/messages?q=` +
+              encodeURIComponent(q) +
+              "&maxResults=10";
           const resp = await httpJson(url, {
             method: "GET",
             headers: { Authorization: `Bearer ${accessToken}` },
@@ -5952,19 +6017,27 @@ function createHostFfi(repoRoot) {
             ok: Boolean(resp.ok),
             http_status: resp.status || 0,
             error: resp.error || null,
+            provider: useOutlook ? "outlook" : "gmail",
           };
           if (resp.ok) {
-            liveHits = Array.isArray(body.messages) ? body.messages : [];
-            mode = "gmail_live";
+            liveHits = useOutlook
+              ? Array.isArray(body.value)
+                ? body.value
+                : []
+              : Array.isArray(body.messages)
+                ? body.messages
+                : [];
+            mode = useOutlook ? "outlook_live" : "gmail_live";
           } else {
-            mode = "gmail_live_failed";
+            mode = useOutlook ? "outlook_live_failed" : "gmail_live_failed";
           }
         } catch (err) {
           liveProbe = {
             ok: false,
             error: String((err && err.message) || err).slice(0, 200),
+            provider: useOutlook ? "outlook" : "gmail",
           };
-          mode = "gmail_live_failed";
+          mode = useOutlook ? "outlook_live_failed" : "gmail_live_failed";
         }
       }
       const sandboxHits = [
@@ -5972,15 +6045,15 @@ function createHostFfi(repoRoot) {
           id: "t-sandbox-1",
           threadId: "t-sandbox-1",
           subject: `Sandbox hit for ${q}`,
-          snippet: "Host sandbox mail index — not live Gmail",
+          snippet: "Host sandbox mail index — not live mail",
         },
       ];
       const hits = liveHits
         ? liveHits.map((m) => ({
             id: m.id || "",
-            threadId: m.threadId || m.id || "",
-            subject: "(live)",
-            snippet: "",
+            threadId: m.conversationId || m.threadId || m.id || "",
+            subject: m.subject || "(live)",
+            snippet: m.bodyPreview || m.snippet || "",
           }))
         : sandboxHits;
       const artifactPath = path.join(
@@ -5991,7 +6064,9 @@ function createHostFfi(repoRoot) {
         kind: "mail_search",
         query: q,
         mode,
-        live_mail_residual: mode !== "gmail_live",
+        live_mail_residual: !(
+          mode === "gmail_live" || mode === "outlook_live"
+        ),
         pretend_live: false,
         hit_count: hits.length,
         hits,
@@ -6028,10 +6103,11 @@ function createHostFfi(repoRoot) {
     let mode = "sandbox";
     if (wantLive) {
       try {
-        const url =
-          `${gmailBase}/users/me/threads/` +
-          encodeURIComponent(threadId) +
-          "?format=metadata";
+        const url = useOutlook
+          ? `${outlookBase}/me/messages/` + encodeURIComponent(threadId)
+          : `${gmailBase}/users/me/threads/` +
+            encodeURIComponent(threadId) +
+            "?format=metadata";
         const resp = await httpJson(url, {
           method: "GET",
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -6041,19 +6117,21 @@ function createHostFfi(repoRoot) {
           ok: Boolean(resp.ok),
           http_status: resp.status || 0,
           error: resp.error || null,
+          provider: useOutlook ? "outlook" : "gmail",
         };
         if (resp.ok) {
           liveThread = body;
-          mode = "gmail_live";
+          mode = useOutlook ? "outlook_live" : "gmail_live";
         } else {
-          mode = "gmail_live_failed";
+          mode = useOutlook ? "outlook_live_failed" : "gmail_live_failed";
         }
       } catch (err) {
         liveProbe = {
           ok: false,
           error: String((err && err.message) || err).slice(0, 200),
+          provider: useOutlook ? "outlook" : "gmail",
         };
-        mode = "gmail_live_failed";
+        mode = useOutlook ? "outlook_live_failed" : "gmail_live_failed";
       }
     }
     const artifactPath = path.join(
@@ -6064,14 +6142,16 @@ function createHostFfi(repoRoot) {
       kind: "mail_read",
       thread_id: threadId,
       mode,
-      live_mail_residual: mode !== "gmail_live",
+      live_mail_residual: !(mode === "gmail_live" || mode === "outlook_live"),
       pretend_live: false,
       subject:
-        (liveThread && liveThread.snippet) ||
+        (liveThread &&
+          (liveThread.subject || liveThread.snippet || liveThread.bodyPreview)) ||
         `Sandbox thread ${threadId}`,
       snippet:
-        (liveThread && liveThread.snippet) ||
-        "Host sandbox mail body — not live Gmail",
+        (liveThread &&
+          (liveThread.bodyPreview || liveThread.snippet)) ||
+        "Host sandbox mail body — not live mail",
       live_probe: liveProbe,
       at,
     };
@@ -7701,6 +7781,8 @@ function createHostFfi(repoRoot) {
         status: "NeedsAuth",
         mode,
         provider,
+        interactive_oauth_residual: true,
+        pretend_connected: false,
         detail: browser.opened
           ? "live remote OAuth browser opened for authorize URL — awaiting user consent / auth code"
           : "live remote OAuth NeedsAuth — authorize/token URLs configured; interactive user consent residual",
@@ -7720,6 +7802,7 @@ function createHostFfi(repoRoot) {
         status: "NeedsAuth",
         mode,
         browser_opened: Boolean(browser.opened),
+        interactive_oauth_residual: true,
         at: state.at,
       });
       return {
@@ -7731,6 +7814,8 @@ function createHostFfi(repoRoot) {
             connector: connectorName,
             status: "NeedsAuth",
             connected: false,
+            pretend_connected: false,
+            interactive_oauth_residual: true,
             mode,
             authorize_url: authorizeUrlEnv,
             token_url: tokenUrlEnv,
@@ -7761,6 +7846,8 @@ function createHostFfi(repoRoot) {
       status: "NeedsAuth",
       mode,
       provider,
+      interactive_oauth_residual: true,
+      pretend_connected: false,
       detail: browser.opened
         ? `live OAuth browser opened authorize URL — awaiting consent (client_id=${Boolean(clientId)})`
         : clientId
@@ -7781,6 +7868,7 @@ function createHostFfi(repoRoot) {
       status: "NeedsAuth",
       mode,
       browser_opened: Boolean(browser.opened),
+      interactive_oauth_residual: true,
       at: state.at,
     });
     return {
@@ -7792,6 +7880,8 @@ function createHostFfi(repoRoot) {
           connector: connectorName,
           status: "NeedsAuth",
           connected: false,
+          pretend_connected: false,
+          interactive_oauth_residual: true,
           mode,
           authorize_url: authorizeUrl || null,
           browser_opened: Boolean(browser.opened),

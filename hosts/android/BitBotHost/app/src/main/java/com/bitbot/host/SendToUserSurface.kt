@@ -74,6 +74,7 @@ object SendToUserSurface {
       "long_lived_cron_residual", "remote_cloud_residual", "code_apply_residual",
       "screenshot_residual", "remote_pr_residual", "public_fallback_residual",
       "ocr_residual", "os_window_automation_residual",
+      "interactive_oauth_residual",
     )
     for (k in keys) {
       if (p.optBoolean(k, false)) return "/$k"
@@ -84,8 +85,14 @@ object SendToUserSurface {
       if (oc.optBoolean("ocr_residual", false)) return "/ocr_residual"
     }
     val g = p.optJSONObject("gui")
-    if (g != null && g.optBoolean("os_window_automation_residual", false)) {
-      return "/os_window_automation_residual"
+    if (g != null) {
+      if (g.optBoolean("os_window_automation_residual", false)) {
+        return "/os_window_automation_residual"
+      }
+      val vp = g.optJSONObject("vision_plan")
+      if (vp != null && vp.optBoolean("ocr_residual", false)) {
+        return "/ocr_residual"
+      }
     }
     return ""
   }

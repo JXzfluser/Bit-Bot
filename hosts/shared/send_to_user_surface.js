@@ -72,16 +72,19 @@ function residualSuffix(p) {
     "public_fallback_residual",
     "ocr_residual",
     "os_window_automation_residual",
+    "interactive_oauth_residual",
   ];
   const hit = keys.find((k) => p[k] === true);
   if (hit) return "/" + hit;
-  // Nested CU outcome residuals
+  // Nested CU outcome / vision residuals
   const oc = p.outcome || {};
   if (oc.live_paid_residual === true) return "/live_paid_residual";
   if (oc.ocr_residual === true) return "/ocr_residual";
   const g = p.gui || {};
   if (g.os_window_automation_residual === true)
     return "/os_window_automation_residual";
+  const vp = g.vision_plan || {};
+  if (vp.ocr_residual === true) return "/ocr_residual";
   return "";
 }
 
@@ -349,7 +352,12 @@ function extractDeliveryTypes(turnJsonText) {
           p.status === "NeedsAuth" || oauthNeedsAuth
             ? "NeedsAuth"
             : p.mode || p.status || "card";
-        labels.push("oauth:" + oauthLabel + (p.path || filePath ? "/snap" : ""));
+        labels.push(
+          "oauth:" +
+            oauthLabel +
+            (p.path || filePath ? "/snap" : "") +
+            residualSuffix(p),
+        );
         if (p.path || filePath) {
           attachments.push({
             kind: h.kind,

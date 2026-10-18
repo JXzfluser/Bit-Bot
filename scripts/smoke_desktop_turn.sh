@@ -506,6 +506,7 @@ for needle in (
   'live_slack_residual',
   'live_teams_residual',
   'live_meeting_residual',
+  'live_channel_residual',
   'box_doctor_bin_residual',
   'box_chrome_bin_residual',
   'long_lived_cron_residual',
@@ -513,6 +514,9 @@ for needle in (
   'code_apply_residual',
   'screenshot_residual',
   'gh_pr_create_residual',
+  'public_fallback_residual',
+  'interactive_oauth_residual',
+  'vision_plan',
   '"mail_draft"',
   '"package_install"',
   '"shared_box_fs"',
@@ -721,9 +725,9 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-export.json'));assert d
 
 echo "==> Host mail_search/read + workflow_list + x_search (durable artifacts)"
 node hosts/cli_host/run_turn.js "search mail Invoice" >/tmp/bitbot-mail-search.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-search.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_search');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode') in ('sandbox','gmail_live','gmail_live_failed');assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;assert p.get('path') and os.path.isfile(p['path']);print('mail_search artifact ok', p.get('mode'), p.get('path'), 'hits', p.get('hit_count'), 'residual', p.get('live_mail_residual'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-search.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_search');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode') in ('sandbox','gmail_live','gmail_live_failed','outlook_live','outlook_live_failed');assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;assert p.get('path') and os.path.isfile(p['path']);print('mail_search artifact ok', p.get('mode'), p.get('path'), 'hits', p.get('hit_count'), 'residual', p.get('live_mail_residual'))"
 node hosts/cli_host/run_turn.js "read mail t-invoice-1" >/tmp/bitbot-mail-read.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-read.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_read');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode') in ('sandbox','gmail_live','gmail_live_failed');assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('mail_read artifact ok', p.get('mode'), p.get('path'), 'thread', p.get('thread_id'), 'residual', p.get('live_mail_residual'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-read.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_read');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode') in ('sandbox','gmail_live','gmail_live_failed','outlook_live','outlook_live_failed');assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('mail_read artifact ok', p.get('mode'), p.get('path'), 'thread', p.get('thread_id'), 'residual', p.get('live_mail_residual'))"
 node hosts/cli_host/run_turn.js "list workflows" >/tmp/bitbot-workflows.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-workflows.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='workflow_list');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('count')>=1;assert p.get('path') and os.path.isfile(p['path']);assert p.get('catalog_path') and os.path.isfile(p['catalog_path']);assert p.get('pretend_shared') is False;print('workflow_list catalog ok', p.get('count'), p.get('path'))"
 node hosts/cli_host/run_turn.js "x search moonbit" >/tmp/bitbot-x-search.json
@@ -818,6 +822,15 @@ BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-outlo
 kill "$OUTLOOK_MOCK_PID" >/dev/null 2>&1 || true
 wait "$OUTLOOK_MOCK_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-outlook-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_outlook';assert p.get('sent') is True;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is False;print('mail_send live_outlook ok', p.get('message_id'))"
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-outlook BITBOT_MAIL_SEND=1 BITBOT_MAIL_PROVIDER=outlook \
+  node hosts/cli_host/run_turn.js --approved "reply via email:live@example.com :: channel outlook mail" >/tmp/bitbot-email-channel-outlook.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-email-channel-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_email_outlook';assert p.get('live_post') is True;assert p.get('live_mail_residual') is False;assert p.get('pretend_live') is False;print('channel email live_outlook ok', p.get('mode'))"
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-outlook BITBOT_MAIL_PROVIDER=outlook \
+  env -u BITBOT_GMAIL_TOKEN node hosts/cli_host/run_turn.js "search mail Invoice" >/tmp/bitbot-mail-search-outlook.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-mail-search-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_search');p=json.loads(h['stdout']);assert p.get('mode')=='outlook_live';assert p.get('live_mail_residual') is False;assert p.get('hit_count')>=1;print('mail_search outlook_live ok', p.get('hit_count'))"
+BITBOT_OUTLOOK_GRAPH_URL=http://127.0.0.1:18775 BITBOT_OUTLOOK_TOKEN=smoke-outlook BITBOT_MAIL_PROVIDER=outlook \
+  env -u BITBOT_GMAIL_TOKEN node hosts/cli_host/run_turn.js "read mail outlook-msg-1" >/tmp/bitbot-mail-read-outlook.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-mail-read-outlook.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_read');p=json.loads(h['stdout']);assert p.get('mode')=='outlook_live';assert p.get('live_mail_residual') is False;print('mail_read outlook_live ok', p.get('thread_id'))"
 node hosts/cli_host/run_turn.js "shell echo needs-approve" >/tmp/bitbot-approval-widget.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-approval-widget.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='approval_card');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');w=p.get('widget') or {};assert w.get('widget_id');opts=w.get('options') or [];assert any(o.get('id')=='approve' for o in opts);assert any(o.get('id')=='dismiss' for o in opts);deliv=next(x for x in hrs if x.get('kind')=='delivery' and 'approval_card' in (x.get('stdout') or ''));dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='widget';assert os.path.isfile('data/delivery/send-to-user.jsonl');print('approval_card CM-0105 widget ok', w.get('widget_id'), 'options', len(opts))"
 node hosts/cli_host/run_turn.js "personal slack dm owner=Uowner text=ping [widget:decision_card]" >/tmp/bitbot-personal-dm.json
@@ -853,8 +866,26 @@ node hosts/cli_host/run_turn.js --approved "send on behalf to=a@example.com subj
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sob.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('provider')=='onbehalf';assert p.get('mode')=='onbehalf_sandbox_eml';assert p.get('sent') is False;assert p.get('pretend_sent') is False;assert p.get('live_mail_residual') is True;assert 'X-BitBot-Send-On-Behalf: 1' in open(p['eml_path']).read();assert p.get('path') and os.path.isfile(p['path']);print('send_on_behalf eml ok', p.get('eml_path'), p.get('path'), 'live_mail_residual', True)"
 node hosts/cli_host/run_turn.js --approved "reply via foo:bar :: unknown scheme residual" >/tmp/bitbot-ch-unknown.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-ch-unknown.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='durable_outbound';assert p.get('live_channel_residual') is True;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel unknown scheme live_channel_residual ok', p.get('path'))"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-ch-unknown.json","utf8"));
+if(!s.labels.some(l=>l.includes("live_channel_residual"))) { console.error(s); process.exit(1); }
+const c=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-cold.json","utf8"));
+if(!c.labels.some(l=>l.includes("live_mail_residual"))) { console.error(c); process.exit(1); }
+console.log("STU residual labels channel+cold ok");
+'
 node hosts/cli_host/run_turn.js "connect outlook" >/tmp/bitbot-oauth-outlook.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-oauth-outlook.json'));assert d.get('intent')=='connect_outlook';h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h.get('stdout') or '{}');assert 'outlook' in str(p.get('connector') or p.get('command') or h.get('command') or '').lower() or p.get('provider')=='outlook' or True;assert p.get('path') and os.path.isfile(p['path']);print('connect_outlook oauth ok', p.get('mode') or p.get('status'), p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-oauth-outlook.json'));assert d.get('intent')=='connect_outlook';h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h.get('stdout') or '{}');assert p.get('connector')=='outlook';assert p.get('path') and os.path.isfile(p['path']);print('connect_outlook oauth ok', p.get('mode') or p.get('status'), p.get('path'))"
+BITBOT_OAUTH_MODE=live node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-needsauth.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-oauth-needsauth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth';assert p.get('interactive_oauth_residual') is True;assert p.get('pretend_connected') is False;print('oauth interactive_oauth_residual ok', p.get('mode'))"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-oauth-needsauth.json","utf8"));
+if(!s.labels.some(l=>l.includes("interactive_oauth_residual")||l.includes("NeedsAuth"))) { console.error(s); process.exit(1); }
+console.log("STU oauth NeedsAuth residual ok", s.labels.slice(0,4));
+'
 # write-unit-only must NOT close long_lived_cron_residual
 rm -f data/routines/daemon-status.json
 bash "$ROOT/scripts/host_routine_daemon.sh" --write-systemd-unit >/tmp/bitbot-rt-unit-only.log 2>&1 || true

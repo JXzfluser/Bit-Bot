@@ -68,6 +68,7 @@ struct ContentView: View {
     ("Add section", "add section group=g1 id=sec-a title=alpha"),
     ("Connect finance", "connect finance"),
     ("Connect gmail", "connect gmail"),
+    ("Connect outlook", "connect outlook"),
     ("List connectors", "list connectors"),
     ("Setup slack", "setup slack"),
     ("Identity browser", "identity browser"),

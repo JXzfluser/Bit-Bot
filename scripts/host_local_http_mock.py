@@ -427,6 +427,47 @@ def main() -> int:
                     },
                 )
                 return
+            if mode == "outlook" and path.rstrip("/").endswith("/me/messages"):
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                qs = parse_qs(parsed.query)
+                q = (qs.get("$search") or qs.get("q") or ["mail"])[0]
+                self._json(
+                    200,
+                    {
+                        "value": [
+                            {
+                                "id": "outlook-msg-1",
+                                "conversationId": "t-invoice-1",
+                                "subject": f"Outlook live hit for {q}",
+                                "bodyPreview": "Graph mock search hit",
+                            },
+                            {
+                                "id": "outlook-msg-2",
+                                "conversationId": "t-live-2",
+                                "subject": f"Second Outlook hit {q}",
+                                "bodyPreview": "Graph mock search hit 2",
+                            },
+                        ],
+                    },
+                )
+                return
+            if mode == "outlook" and "/me/messages/" in path:
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
+                mid = path.rstrip("/").split("/")[-1]
+                self._json(
+                    200,
+                    {
+                        "id": mid,
+                        "conversationId": mid,
+                        "subject": f"Outlook live message {mid}",
+                        "bodyPreview": f"Graph mock body for {mid}",
+                    },
+                )
+                return
             self._json(404, {"ok": False, "error": "not_found"})
 
     httpd = HTTPServer(("127.0.0.1", args.port), Handler)

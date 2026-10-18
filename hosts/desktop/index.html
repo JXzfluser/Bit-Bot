@@ -2200,7 +2200,10 @@
                     String(p.path || p.url || p.count || "")
                       .toString()
                       .split("/")
-                      .slice(-1)[0];
+                      .slice(-1)[0] +
+                    (p.public_fallback_residual === true
+                      ? "/public_fallback_residual"
+                      : "");
                   types.push("attachment");
                   const toolsMeta = document.getElementById("tools-meta");
                   if (toolsMeta) {
@@ -2208,7 +2211,7 @@
                       h.kind +
                       (p.count != null ? " · " + p.count + " entries" : "") +
                       (p.public_fallback_residual === true
-                        ? " · fallback residual"
+                        ? " · public_fallback_residual"
                         : "") +
                       (p.pretend_fetched === true || p.pretend_listing === true
                         ? " · pretend!"
@@ -2225,10 +2228,17 @@
                   if (cuMeta) {
                     const oc = p.outcome || {};
                     const g = p.gui || {};
+                    const vp = g.vision_plan || {};
+                    const ocrResidual =
+                      oc.ocr_residual === true || vp.ocr_residual === true;
                     cuMeta.textContent =
                       (g.gui_mode || "cu") +
                       (g.os_window ? " · os_window" : "") +
-                      (oc.ocr ? " · ocr" : oc.ocr_residual ? " · ocr_residual" : "") +
+                      (oc.ocr
+                        ? " · ocr"
+                        : ocrResidual
+                          ? " · ocr_residual"
+                          : "") +
                       (g.os_window_automation_residual === false
                         ? " · native_act"
                         : "") +
@@ -2849,7 +2859,10 @@
                     (oauthNeedsAuth
                       ? "NeedsAuth"
                       : (p.status || p.mode || "card")) +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.interactive_oauth_residual === true
+                      ? "/interactive_oauth_residual"
+                      : "");
                   types.push("widget");
                   const meta = document.getElementById("connectors-meta");
                   if (meta) {
@@ -2859,6 +2872,9 @@
                       (oauthNeedsAuth ? "NeedsAuth" : p.status || "?") +
                       " · " +
                       (p.mode || "") +
+                      (p.interactive_oauth_residual === true
+                        ? " · interactive_oauth_residual"
+                        : "") +
                       (p.pretend_connected === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "connectors_probe") {

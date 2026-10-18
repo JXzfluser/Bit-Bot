@@ -71,6 +71,7 @@ enum SendToUserSurface {
       "long_lived_cron_residual", "remote_cloud_residual", "code_apply_residual",
       "screenshot_residual", "remote_pr_residual", "public_fallback_residual",
       "ocr_residual", "os_window_automation_residual",
+      "interactive_oauth_residual",
     ]
     if let hit = keys.first(where: { (p[$0] as? Bool) == true }) {
       return "/" + hit
@@ -79,9 +80,14 @@ enum SendToUserSurface {
       if (oc["live_paid_residual"] as? Bool) == true { return "/live_paid_residual" }
       if (oc["ocr_residual"] as? Bool) == true { return "/ocr_residual" }
     }
-    if let g = p["gui"] as? [String: Any],
-       (g["os_window_automation_residual"] as? Bool) == true {
-      return "/os_window_automation_residual"
+    if let g = p["gui"] as? [String: Any] {
+      if (g["os_window_automation_residual"] as? Bool) == true {
+        return "/os_window_automation_residual"
+      }
+      if let vp = g["vision_plan"] as? [String: Any],
+         (vp["ocr_residual"] as? Bool) == true {
+        return "/ocr_residual"
+      }
     }
     return ""
   }
