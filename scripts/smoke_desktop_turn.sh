@@ -433,6 +433,7 @@ assert 'claim inbox alpha' in html
 assert 'machines_list' in mobile and 'mail_claim_inbox' in mobile
 assert 'id=\"del-slides\"' in html and 'id=\"del-skill\"' in html
 assert 'id=\"del-export\"' in html and 'id=\"del-load-skill\"' in html
+assert 'id=\"del-list-skills\"' in html
 assert 'id=\"tool-device\"' in html and 'id=\"tool-journal\"' in html
 assert 'id=\"box-copy-to\"' in html and 'id=\"box-copy-from\"' in html
 assert 'make slides title=DeskParity' in html

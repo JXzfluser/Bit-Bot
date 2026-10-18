@@ -1410,6 +1410,8 @@ function stripHostAppliedMarker(file) {
     ["export_skill", "host_export_pack", "export_pack"],
     ["mark_done", "host_todo_write", "todo_write"],
     ["open_chat", "host_channel_send", "channel_send"],
+    ["agent_info", "host_agent_info_panel", "agent_info_panel"],
+    ["pin_agent", "host_list_agents_sidebar", "list_agents_sidebar"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1465,7 +1467,14 @@ function stripHostAppliedMarker(file) {
                                                       tool === "chat_panel" ||
                                                       tool === "dm_panel"
                                                     ? '{"scheme":"slack","addr":"UCHAT","body":"open-chat"}'
-                                                    : "{}";
+                                                    : tool === "agent_info" ||
+                                                        tool === "agent_info_panel" ||
+                                                        tool === "rename_agent"
+                                                      ? '{"agent_id":"asst-mcp-info"}'
+                                                      : tool === "pin_agent" ||
+                                                          tool === "unpin_agent"
+                                                        ? '{"agent_id":"asst-mcp-pin"}'
+                                                        : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);

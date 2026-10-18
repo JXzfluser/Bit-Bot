@@ -7340,6 +7340,13 @@ function createHostFfi(repoRoot) {
         delete_agent: "host_delete_agent",
         remove_agent: "host_delete_agent",
         confirm_delete_agent: "host_delete_agent",
+        agent_info: "host_agent_info_panel",
+        agent_info_panel: "host_agent_info_panel",
+        open_agent_info: "host_agent_info_panel",
+        show_agent: "host_agent_info_panel",
+        rename_agent: "host_agent_info_panel",
+        pin_agent: "host_list_agents_sidebar",
+        unpin_agent: "host_list_agents_sidebar",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7511,6 +7518,7 @@ function createHostFfi(repoRoot) {
         mapped === "host_auto_review_settings" ||
         mapped === "host_settings_open" ||
         mapped === "host_delete_agent" ||
+        mapped === "host_agent_info_panel" ||
         mapped === "host_todo_write"
       ) {
         const shortAt = new Date().toISOString();
@@ -11630,6 +11638,26 @@ function createHostFfi(repoRoot) {
                 pretend_deleted: p.pretend_deleted,
                 agent_id: p.agent_id || null,
                 phase: p.phase || null,
+              }),
+            },
+            host_agent_info_panel: {
+              kind: "agent_info_panel",
+              field: "agent_info_panel",
+              cmd: () =>
+                String(
+                  args.command ||
+                    args.agent_id ||
+                    args.id ||
+                    args.agent ||
+                    args.name ||
+                    "asst-mcp",
+                ).trim() || "asst-mcp",
+              pick: (p) => ({
+                path: p.path || null,
+                panel_path: p.panel_path || null,
+                mode: p.mode || null,
+                pretend_panel: p.pretend_panel,
+                agent_id: p.agent_id || null,
               }),
             },
             host_todo_write: {

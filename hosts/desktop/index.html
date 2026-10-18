@@ -486,6 +486,7 @@
         <button type="button" id="del-skill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Author skill</button>
         <button type="button" id="del-export" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export bot template</button>
         <button type="button" id="del-load-skill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Load skill</button>
+        <button type="button" id="del-list-skills" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List skills</button>
         <button type="button" id="del-section" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Section post</button>
         <button type="button" id="del-section-add" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Add section</button>
         <button type="button" id="del-learn" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Learn from demo</button>
@@ -3638,6 +3639,9 @@
     });
     document.getElementById("del-load-skill").addEventListener("click", () => {
       runUserTurn("load skill slides presentation", {});
+    });
+    document.getElementById("del-list-skills").addEventListener("click", () => {
+      runUserTurn("list skills", {});
     });
     document.getElementById("del-section").addEventListener("click", () => {
       runUserTurn(
