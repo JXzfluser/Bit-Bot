@@ -451,6 +451,15 @@ assert 'formatStrip' in kt and 'SendToUser' in kt
 assert 'attachments' in ios and 'pickAttachmentPath' in ios
 assert 'attachments' in kt and 'pickAttachmentPath' in kt
 assert 'SendToUserSurface' in cv and 'SendToUserSurface' in main
+for kind in (
+    'fs_list', 'fs_read', 'webfetch', 'machines_list',
+    'routine_schedule', 'routine_list', 'routine_fire', 'routine_tick',
+    'routine_pause', 'routine_resume',
+):
+    assert kind in ios, kind
+    assert kind in kt, kind
+assert 'channelDelivery' in ios and 'channel_delivery:in_app' in ios
+assert 'channelDelivery' in kt and 'channel_delivery:in_app' in kt
 for needle in (
     'productActions',
     'list plugins',

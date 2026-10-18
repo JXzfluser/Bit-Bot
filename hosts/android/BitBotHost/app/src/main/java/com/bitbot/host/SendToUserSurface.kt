@@ -21,6 +21,7 @@ object SendToUserSurface {
     val attachments: List<Attachment> = emptyList(),
     val ok: Boolean = false,
     val machineKind: String = "",
+    val channelDelivery: String = "",
   )
 
   private val attachmentKinds = setOf(
@@ -43,6 +44,10 @@ object SendToUserSurface {
     "local_execution", "guide_permission", "render_markdown", "react_message",
     "screenshot", "check_updates", "auto_review_settings", "box_chrome_probe",
     "mcp_uninstall", "mcp_get_plugin", "mcp_list_plugins",
+    // Multi-end parity with hosts/shared/send_to_user_surface.js
+    "fs_list", "fs_read", "webfetch", "machines_list",
+    "routine_schedule", "routine_list", "routine_fire", "routine_tick",
+    "routine_pause", "routine_resume",
   )
 
   private fun pickAttachmentPath(kind: String, p: JSONObject, h: JSONObject): String {
@@ -171,12 +176,23 @@ object SendToUserSurface {
           }
         }
       }
+      // CHARTER Delivery: channel_delivery plans even without Host FFI effects.
+      val cd = turn.optString("channel_delivery").trim()
+      if (cd.isNotBlank()) {
+        typeSet += "text"
+        labels += if (cd == "in_app" || cd.startsWith("in_app")) {
+          "channel_delivery:in_app"
+        } else {
+          "channel_delivery:$cd"
+        }
+      }
       Summary(
         types = typeSet.sorted(),
         labels = labels,
         attachments = attachments,
         ok = turn.optBoolean("ok", false),
         machineKind = turn.optString("machine_kind"),
+        channelDelivery = cd,
       )
     }.getOrDefault(Summary())
   }

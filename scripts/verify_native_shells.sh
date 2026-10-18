@@ -54,14 +54,38 @@ for kind in (
     "react_message",
     "render_markdown",
     "settings_open",
+    # Multi-end parity with hosts/shared/send_to_user_surface.js
+    "fs_list",
+    "fs_read",
+    "webfetch",
+    "machines_list",
+    "routine_schedule",
+    "routine_list",
+    "routine_fire",
+    "routine_tick",
+    "routine_pause",
+    "routine_resume",
 ):
     assert kind in ios_stu, kind
     assert kind in and_stu, kind
+assert "channelDelivery" in ios_stu and "channel_delivery:in_app" in ios_stu
+assert "channelDelivery" in and_stu and "channel_delivery:in_app" in and_stu
 shared = Path("hosts/shared/send_to_user_surface.js").read_text()
-for kind in ("screenshot", "box_chrome_probe", "check_updates", "auto_review_settings"):
+for kind in (
+    "screenshot",
+    "box_chrome_probe",
+    "check_updates",
+    "auto_review_settings",
+    "fs_list",
+    "webfetch",
+    "machines_list",
+    "routine_pause",
+    "channel_delivery",
+):
     assert kind in shared, kind
 assert "pickAttachmentPath" in shared and "attachments" in shared
 assert "SendToUser attachments" in shared
+assert "channel_delivery:in_app" in shared
 assert "SendToUserSurface" in ios_cv and "SendToUserChipRow" in ios_cv
 assert "SendToUserSurface" in and_main
 # Multi-end product quick actions mirror Desktop Plugins/Media/Voice/Box + mail/commerce.

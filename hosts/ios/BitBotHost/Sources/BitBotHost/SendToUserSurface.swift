@@ -18,6 +18,7 @@ enum SendToUserSurface {
     var attachments: [Attachment] = []
     var ok: Bool = false
     var machineKind: String = ""
+    var channelDelivery: String = ""
   }
 
   private static let attachmentKinds: Set<String> = [
@@ -40,6 +41,10 @@ enum SendToUserSurface {
     "local_execution", "guide_permission", "render_markdown", "react_message",
     "screenshot", "check_updates", "auto_review_settings", "box_chrome_probe",
     "mcp_uninstall", "mcp_get_plugin", "mcp_list_plugins",
+    // Multi-end parity with hosts/shared/send_to_user_surface.js
+    "fs_list", "fs_read", "webfetch", "machines_list",
+    "routine_schedule", "routine_list", "routine_fire", "routine_tick",
+    "routine_pause", "routine_resume",
   ]
 
   private static func pickAttachmentPath(kind: String, p: [String: Any], h: [String: Any]) -> String {
@@ -154,6 +159,17 @@ enum SendToUserSurface {
         typeSet.insert("widget")
         let mode = (p["mode"] as? String) ?? (p["status"] as? String) ?? "card"
         summary.labels.append("oauth:" + mode + pathSuffix)
+      }
+    }
+    // CHARTER Delivery: channel_delivery plans even without Host FFI effects.
+    let cd = ((turn["channel_delivery"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    summary.channelDelivery = cd
+    if !cd.isEmpty {
+      typeSet.insert("text")
+      if cd == "in_app" || cd.hasPrefix("in_app") {
+        summary.labels.append("channel_delivery:in_app")
+      } else {
+        summary.labels.append("channel_delivery:" + cd)
       }
     }
     summary.types = Array(typeSet).sorted()
