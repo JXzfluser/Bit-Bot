@@ -302,6 +302,14 @@ try {
         public_fallback_residual: payload.public_fallback_residual === true,
         interactive_oauth_residual:
           payload.interactive_oauth_residual === true,
+        true_device_os_dialog_residual:
+          payload.true_device_os_dialog_residual === true,
+        gh_pr_create_residual:
+          payload.gh_pr_create_residual === true ||
+          String((payload.remote_pr && payload.remote_pr.mode) || payload.mode || "").includes(
+            "gh_pr_create_residual",
+          ),
+        remote_pr_residual: payload.remote_pr_residual === true,
         ocr_residual:
           payload.ocr_residual === true ||
           oc.ocr_residual === true ||

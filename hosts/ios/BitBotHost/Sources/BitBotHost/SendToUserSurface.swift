@@ -92,9 +92,14 @@ enum SendToUserSurface {
     }
     let rp = p["remote_pr"] as? [String: Any] ?? [:]
     let mode = String(describing: rp["mode"] ?? p["mode"] ?? "")
-    if (rp["real_create_gated"] as? Bool) == true
-      || mode.contains("gh_pr_create_residual") {
+    if (p["remote_pr_residual"] as? Bool) == true {
       return "/remote_pr_residual"
+    }
+    if (rp["real_create_gated"] as? Bool) == true {
+      return "/real_create_gated"
+    }
+    if mode.contains("gh_pr_create_residual") {
+      return "/gh_pr_create_residual"
     }
     return ""
   }

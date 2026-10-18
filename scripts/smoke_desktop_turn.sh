@@ -549,6 +549,7 @@ for needle in (
   '/live_channel_residual',
   '/remote_cloud_residual',
   '/remote_pr_residual',
+  '/real_create_gated',
   '/code_apply_residual',
   '/box_doctor_bin_residual',
   '/box_chrome_bin_residual',
@@ -834,9 +835,14 @@ python3 "$ROOT/scripts/host_local_http_mock.py" --port 18772 --mode x --token sm
 X_MOCK_PID=$!
 sleep 0.4
 BITBOT_X_API_BASE=http://127.0.0.1:18772 BITBOT_X_BEARER=smoke-x node hosts/cli_host/run_turn.js "x search moonbit" >/tmp/bitbot-x-live.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-x-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='x_search');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='x_live';assert p.get('live_x_residual') is False;assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;print('x_search live mock ok', p.get('path'), 'hits', p.get('hit_count'))"
+mkdir -p data/connectors
+printf '%s\n' '{"access_token":"smoke-x","token_type":"Bearer","api_url":"http://127.0.0.1:18772"}' > data/connectors/x_token.json
+env -u BITBOT_X_BEARER -u BITBOT_X_TOKEN -u BITBOT_X_API_BASE \
+  node hosts/cli_host/run_turn.js "x search moonbit" >/tmp/bitbot-x-file-token.json || true
 kill "$X_MOCK_PID" >/dev/null 2>&1 || true
 wait "$X_MOCK_PID" 2>/dev/null || true
-python3 -c "import json;d=json.load(open('/tmp/bitbot-x-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='x_search');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='x_live';assert p.get('live_x_residual') is False;assert p.get('pretend_live') is False;assert p.get('hit_count')>=1;print('x_search live mock ok', p.get('path'), 'hits', p.get('hit_count'))"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-x-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='x_search');p=json.loads(h['stdout']);assert p.get('mode')=='x_live';assert p.get('live_x_residual') is False;print('x_search connector token+api_url file ok', p.get('mode'))"
 
 echo "==> Host durable product delivery (voice/teammates/device/subagent/cloud/commerce)"
 node hosts/cli_host/run_turn.js "voice start smoke1" >/tmp/bitbot-voice.json
@@ -900,13 +906,12 @@ sleep 0.4
 BITBOT_PURCHASE_LIVE=1 BITBOT_PURCHASE_TOKEN=smoke-pay BITBOT_PURCHASE_API_URL=http://127.0.0.1:18765 node hosts/cli_host/run_turn.js --approved "purchase item=LiveWidget cents=999" >/tmp/bitbot-purchase-live.json || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-purchase-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='purchase');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_charge';assert p.get('paid') is True;assert p.get('live_paid_residual') is False;assert p.get('pretend_paid') is False;assert (p.get('charge_probe') or {}).get('ok') is True;assert p.get('path') and os.path.isfile(p['path']);print('purchase live charge ok', p.get('receipt_path'), 'snap', p.get('path'), 'charge', p.get('charge_probe'))"
 mkdir -p data/connectors
-printf '%s\n' '{"access_token":"smoke-pay","token_type":"Bearer"}' > data/connectors/purchase_token.json
-BITBOT_PURCHASE_LIVE=1 BITBOT_PURCHASE_API_URL=http://127.0.0.1:18765 \
-  env -u BITBOT_PURCHASE_TOKEN \
+printf '%s\n' '{"access_token":"smoke-pay","token_type":"Bearer","api_url":"http://127.0.0.1:18765","live":true}' > data/connectors/purchase_token.json
+env -u BITBOT_PURCHASE_TOKEN -u BITBOT_PURCHASE_LIVE -u BITBOT_PURCHASE_API_URL \
   node hosts/cli_host/run_turn.js --approved "purchase item=FileTokenWidget cents=499" >/tmp/bitbot-purchase-file-token.json || true
 kill "$PURCHASE_MOCK_PID" >/dev/null 2>&1 || true
 wait "$PURCHASE_MOCK_PID" 2>/dev/null || true
-python3 -c "import json;d=json.load(open('/tmp/bitbot-purchase-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='purchase');p=json.loads(h['stdout']);assert p.get('mode')=='live_charge';assert p.get('live_paid_residual') is False;print('purchase connector token file ok', p.get('mode'))"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-purchase-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='purchase');p=json.loads(h['stdout']);assert p.get('mode')=='live_charge';assert p.get('live_paid_residual') is False;print('purchase connector token live:true file ok', p.get('mode'))"
 node hosts/cli_host/run_turn.js --approved "draft mail to=smoke@example.com subject=Hi body=Smoke" >/tmp/bitbot-mail-eml.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-eml.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_send');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('eml_ok') is True;assert p.get('eml_path') and os.path.isfile(p['eml_path']);assert p.get('pretend_sent') is False;assert 'X-BitBot-Status:' in open(p['eml_path']).read();print('mail_send sandbox eml ok', p.get('mode'), p.get('eml_path'))"
 # Live Gmail send + search/read against local mock (BITBOT_GMAIL_API_BASE)
@@ -982,6 +987,14 @@ rm -rf /tmp/bitbot-gh-mock-dry /tmp/bitbot-gh-mock-real
 mkdir -p /tmp/bitbot-gh-mock-dry /tmp/bitbot-gh-mock-real
 BITBOT_GH_BIN="$ROOT/scripts/host_gh_mock.sh" BITBOT_GH_MOCK_LOG_DIR=/tmp/bitbot-gh-mock-dry BITBOT_GH_CREATE_PR=1 node hosts/cli_host/run_turn.js "source control create_pr" >/tmp/bitbot-sc-pr-dry.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-dry.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create_dry_run';assert rp.get('dry_run') is True;assert rp.get('real_create_gated') is True;assert p.get('remote_pr_residual') is False;assert p.get('pretend_remote_pr') is False;plan=json.load(open(rp['plan_path']));assert plan.get('dry_run') is True;assert plan.get('real_create_gated') is True;assert plan.get('allow_real_create') is False;assert '--dry-run' in (plan.get('args') or []);log=open('/tmp/bitbot-gh-mock-dry/invocations.log').read();assert 'pr create' in log and '--dry-run' in log;print('source_control mock dry-run create ok', rp.get('plan_path'))"
+node -e '
+const fs=require("fs");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const s=extractDeliveryTypes(fs.readFileSync("/tmp/bitbot-sc-pr-dry.json","utf8"));
+if(s.labels.some(l=>l.includes("/remote_pr_residual"))) { console.error("dry-run must not stamp remote_pr_residual", s); process.exit(1); }
+if(!s.labels.some(l=>l.includes("real_create_gated")||l.includes("source_control")||l.includes("gh_pr"))) { console.error(s); process.exit(1); }
+console.log("STU dry-run no remote_pr_residual conflation ok", s.labels.slice(0,4));
+'
 BITBOT_GH_BIN="$ROOT/scripts/host_gh_mock.sh" BITBOT_GH_MOCK_LOG_DIR=/tmp/bitbot-gh-mock-real BITBOT_GH_CREATE_PR=1 BITBOT_GH_PR_CREATE=1 node hosts/cli_host/run_turn.js "source control create_pr" >/tmp/bitbot-sc-pr-real.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-real.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');rp=p.get('remote_pr') or {};assert rp.get('mode')=='gh_pr_create';assert rp.get('dry_run') is False;assert rp.get('real_create_gated') is False;assert rp.get('create_attempted') is True;assert p.get('remote_pr_residual') is False;assert p.get('pretend_remote_pr') is False;plan=json.load(open(rp['plan_path']));assert plan.get('dry_run') is False;assert plan.get('allow_real_create') is True;assert plan.get('real_create_gated') is False;assert '--dry-run' not in (plan.get('args') or []);assert os.path.isfile('/tmp/bitbot-gh-mock-real/last-create.json');print('source_control mock gated real create ok', rp.get('plan_path'), plan.get('output_prefix','')[:80])"
 node hosts/cli_host/run_turn.js --approved "send on behalf to=a@example.com subject=Hi body=Hello" >/tmp/bitbot-sob.json
@@ -1001,6 +1014,10 @@ console.log("STU residual labels channel+cold ok");
 rm -f data/connectors/outlook_token.json data/connectors/outlook.json
 node hosts/cli_host/run_turn.js "connect outlook" >/tmp/bitbot-oauth-outlook.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-oauth-outlook.json'));assert d.get('intent')=='connect_outlook';h=next(x for x in d['host_results'] if x.get('kind')=='oauth');p=json.loads(h.get('stdout') or '{}');assert p.get('connector')=='outlook';assert p.get('interactive_oauth_residual') is False;assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/connectors/outlook_token.json');tok=json.load(open('data/connectors/outlook_token.json'));assert tok.get('access_token');snap=json.load(open(p['path']));assert snap.get('interactive_oauth_residual') is False;print('connect_outlook oauth+token file ok', p.get('mode') or p.get('status'), p.get('path'))"
+# connectors_probe must see outlook_token.json (no env) as live-ready, not sandbox_idp.
+env -u BITBOT_OUTLOOK_TOKEN -u BITBOT_GMAIL_TOKEN -u SLACK_BOT_TOKEN \
+  node hosts/cli_host/run_turn.js "list connectors" >/tmp/bitbot-connectors-probe-file.json || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-connectors-probe-file.json'));h=next(x for x in d['host_results'] if x.get('kind')=='connectors_probe');p=json.loads(h['stdout']);c=(p.get('connectors') or {}).get('outlook') or {};assert c.get('live') is True or c.get('mode')=='oauth_token_file', c;assert c.get('mode')!='sandbox_idp', c;assert p.get('pretend_all_connected') is False;print('connectors_probe outlook token file live ok', c.get('mode'))"
 # Bare email: after Connect Outlook (no Gmail env) routes to Outlook path.
 env -u BITBOT_GMAIL_TOKEN -u BITBOT_OUTLOOK_TOKEN -u BITBOT_MAIL_PROVIDER \
   node hosts/cli_host/run_turn.js --approved "reply via email:user@example.com :: bare after connect" >/tmp/bitbot-email-bare-outlook.json || true
@@ -1046,9 +1063,14 @@ python3 "$ROOT/scripts/host_local_http_mock.py" --port 18768 --mode finance --to
 FINANCE_MOCK_PID=$!
 sleep 0.4
 BITBOT_FINANCE_TOKEN=smoke-fin BITBOT_FINANCE_API_URL=http://127.0.0.1:18768 node hosts/cli_host/run_turn.js "finance get_balance" >/tmp/bitbot-finance-live.json || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-finance-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='finance_call');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='finance_live';assert p.get('live_finance_residual') is False;assert p.get('pretend_live') is False;assert (p.get('live_probe') or {}).get('ok') is True;print('finance_call live ok', p.get('artifact_path'), p.get('live_probe'))"
+mkdir -p data/connectors
+printf '%s\n' '{"access_token":"smoke-fin","token_type":"Bearer","api_url":"http://127.0.0.1:18768"}' > data/connectors/finance_token.json
+env -u BITBOT_FINANCE_TOKEN -u BITBOT_FINANCE_API_URL \
+  node hosts/cli_host/run_turn.js "finance get_balance" >/tmp/bitbot-finance-file-token.json || true
 kill "$FINANCE_MOCK_PID" >/dev/null 2>&1 || true
 wait "$FINANCE_MOCK_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-finance-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='finance_call');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='finance_live';assert p.get('live_finance_residual') is False;assert p.get('pretend_live') is False;assert (p.get('live_probe') or {}).get('ok') is True;print('finance_call live ok', p.get('artifact_path'), p.get('live_probe'))"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-finance-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='finance_call');p=json.loads(h['stdout']);assert p.get('mode')=='finance_live';assert p.get('live_finance_residual') is False;print('finance_call connector token+api_url file ok', p.get('mode'))"
 node hosts/cli_host/run_turn.js "job search engineer" >/tmp/bitbot-jobs.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-jobs.json'));hrs=d.get('host_results') or [];kinds=[h.get('kind') for h in hrs];assert 'computer_use' in kinds;h=next(x for x in hrs if x.get('kind')=='job_search');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_applied') is False;assert p.get('live_job_residual') is True;assert p.get('mode')=='sandbox_readonly';assert p.get('path') and os.path.isfile(p['path']);assert p.get('hit_count')>=1;print('job_search durable ok', p.get('path'), 'hits', p.get('hit_count'), 'playbook', p.get('playbook'))"
 # Live job catalog against local mock

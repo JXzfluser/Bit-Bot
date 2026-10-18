@@ -76,25 +76,48 @@ function residualSuffix(p) {
     "interactive_oauth_residual",
     "true_device_os_dialog_residual",
   ];
-  const hit = keys.find((k) => p[k] === true);
-  if (hit) return "/" + hit;
-  // Nested CU outcome / vision residuals
+  const parts = [];
+  for (const k of keys) {
+    if (p[k] === true) parts.push("/" + k);
+  }
+  // Nested CU outcome / vision residuals (append all open, like Desktop chips).
   const oc = p.outcome || {};
-  if (oc.live_paid_residual === true) return "/live_paid_residual";
-  if (oc.ocr_residual === true) return "/ocr_residual";
+  if (oc.live_paid_residual === true && !parts.includes("/live_paid_residual"))
+    parts.push("/live_paid_residual");
+  if (oc.ocr_residual === true && !parts.includes("/ocr_residual"))
+    parts.push("/ocr_residual");
+  if (
+    oc.os_window_automation_residual === true &&
+    !parts.includes("/os_window_automation_residual")
+  )
+    parts.push("/os_window_automation_residual");
   const g = p.gui || {};
-  if (g.os_window_automation_residual === true)
-    return "/os_window_automation_residual";
+  if (
+    g.os_window_automation_residual === true &&
+    !parts.includes("/os_window_automation_residual")
+  )
+    parts.push("/os_window_automation_residual");
   const vp = g.vision_plan || {};
-  if (vp.ocr_residual === true) return "/ocr_residual";
+  if (vp.ocr_residual === true && !parts.includes("/ocr_residual"))
+    parts.push("/ocr_residual");
+  // Do not conflate dry-run gate with remote_pr_residual (Host sets those separately).
   const rp = p.remote_pr || {};
   if (
-    rp.real_create_gated === true ||
-    String(rp.mode || p.mode || "").includes("gh_pr_create_residual")
+    rp.real_create_gated === true &&
+    p.remote_pr_residual !== true &&
+    !parts.includes("/real_create_gated")
   ) {
-    return "/remote_pr_residual";
+    parts.push("/real_create_gated");
   }
-  return "";
+  if (
+    String(rp.mode || p.mode || "").includes("gh_pr_create_residual") &&
+    p.remote_pr_residual !== true &&
+    !parts.includes("/gh_pr_create_residual") &&
+    !parts.includes("/remote_pr_residual")
+  ) {
+    parts.push("/gh_pr_create_residual");
+  }
+  return parts.join("");
 }
 
 function attachmentRole(kind, filePath) {
@@ -325,7 +348,8 @@ function extractDeliveryTypes(turnJsonText) {
       } else if (
         h.kind === "voice_session" ||
         h.kind === "voice_relay" ||
-        h.kind === "voice_end_write"
+        h.kind === "voice_end_write" ||
+        h.kind === "voice_end"
       ) {
         types.push("voice");
         labels.push(

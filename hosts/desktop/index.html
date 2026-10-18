@@ -1776,17 +1776,25 @@
             "members_panel",
             "react_message",
           ];
-          // CHARTER Delivery: include honest oauth NeedsAuth even when Host ok=false.
+          // CHARTER Delivery: include honest oauth NeedsAuth / shared-memory refuse
+          // even when Host ok=false.
           const attaches = r.host_results.filter((h) => {
             if (!h || !attachKinds.includes(h.kind)) return false;
             if (h.ok) return true;
-            if (h.kind !== "oauth") return false;
             try {
               const p = JSON.parse(h.stdout || "{}");
+              if (
+                h.kind === "shared_memory_read" &&
+                p.refused_cross_scope === true
+              )
+                return true;
+              if (h.kind !== "oauth") return false;
               return (
                 p.status === "NeedsAuth" ||
                 p.mode === "live_needs_auth" ||
                 p.mode === "live_remote_browser_open" ||
+                p.mode === "live_code_exchange_failed" ||
+                p.mode === "live_remote_callback_pending" ||
                 (p.connected === false && p.pretend_connected === false)
               );
             } catch (_) {
@@ -2670,20 +2678,6 @@
                       (p.count != null ? p.count : ids.length) +
                       (ids.length ? " · " + ids.join(", ") : "");
                   }
-                } else if (h.kind === "shared_memory_put") {
-                  label =
-                    "mem:put:" +
-                    (p.scope || "?") +
-                    "/" +
-                    (p.key || "?") +
-                    (p.path ? "/snap" : "");
-                  types.push("attachment");
-                } else if (h.kind === "shared_memory_read") {
-                  label =
-                    "mem:read:" +
-                    (p.scope || "?") +
-                    (p.path ? "/snap" : "");
-                  types.push("attachment");
                 } else if (h.kind === "journal_append") {
                   label =
                     "journal:" +
@@ -2710,13 +2704,19 @@
                     (String(p.mode || "").includes("gh_pr")
                       ? String(p.mode).split("+").slice(-1)[0]
                       : "git_status");
-                  const gated =
-                    rp.real_create_gated === true ||
-                    p.remote_pr_residual === true ||
-                    String(mode || "").includes("gh_pr_create_residual")
+                  const residual =
+                    (p.remote_pr_residual === true
                       ? "/remote_pr_residual"
-                      : "";
-                  label = "sc:" + mode + gated + (p.path ? "/snap" : "");
+                      : "") +
+                    (rp.real_create_gated === true &&
+                    p.remote_pr_residual !== true
+                      ? "/real_create_gated"
+                      : "") +
+                    (String(mode || "").includes("gh_pr_create_residual") &&
+                    p.remote_pr_residual !== true
+                      ? "/gh_pr_create_residual"
+                      : "");
+                  label = "sc:" + mode + residual + (p.path ? "/snap" : "");
                   types.push("attachment");
                   const scMeta = document.getElementById("source-control-meta");
                   if (scMeta) {
@@ -2724,7 +2724,9 @@
                       (p.branch || "?") +
                       " · " +
                       mode +
-                      (gated ? " · real create gated" : " · create path open") +
+                      (rp.real_create_gated === true
+                        ? " · real create gated"
+                        : " · create path open") +
                       (p.remote_pr_residual === true
                         ? " · remote_pr_residual"
                         : "") +
@@ -2927,7 +2929,7 @@
                 } else if (h.kind === "connectors_probe") {
                   const cons = p.connectors || {};
                   const bits = Object.keys(cons)
-                    .slice(0, 4)
+                    .slice(0, 6)
                     .map((k) => {
                       const c = cons[k] || {};
                       return (
@@ -2938,13 +2940,22 @@
                         (c.mode || "?")
                       );
                     });
-                  label = "connectors×" + bits.length;
+                  const under = Object.values(cons).some(
+                    (c) => c && c.mode === "sandbox_idp" && c.live === false,
+                  );
+                  label =
+                    "connectors×" +
+                    bits.length +
+                    (p.pretend_all_connected === true ? "/pretend!" : "") +
+                    (under ? "/sandbox_probe" : "");
                   types.push("attachment");
                   const meta = document.getElementById("connectors-meta");
                   if (meta) {
-                    meta.textContent = bits.length
-                      ? bits.join(" · ")
-                      : "no connectors";
+                    meta.textContent =
+                      (bits.length ? bits.join(" · ") : "no connectors") +
+                      (p.pretend_all_connected === true
+                        ? " · pretend!"
+                        : " · honest");
                   }
                 } else if (
                   h.kind === "routine_schedule" ||
@@ -3094,13 +3105,55 @@
                       "ended · " + (p.call_id || "?");
                   }
                 } else if (p.media_path) {
-                  label = h.kind + ": " + String(p.media_path).split("/").slice(-1)[0];
+                  label =
+                    h.kind +
+                    ": " +
+                    String(p.media_path).split("/").slice(-1)[0] +
+                    (p.screenshot_residual === true
+                      ? "/screenshot_residual"
+                      : "") +
+                    (p.live_paid_residual === true
+                      ? "/live_paid_residual"
+                      : "");
                 } else if (p.path) {
-                  label = h.kind + ": " + String(p.path).split("/").slice(-2).join("/");
+                  label =
+                    h.kind +
+                    ": " +
+                    String(p.path).split("/").slice(-2).join("/") +
+                    (p.live_channel_residual === true
+                      ? "/live_channel_residual"
+                      : "") +
+                    (p.refused_cross_scope === true
+                      ? "/refused_cross_scope"
+                      : "") +
+                    (p.remote_pr_residual === true
+                      ? "/remote_pr_residual"
+                      : "") +
+                    (p.interactive_oauth_residual === true
+                      ? "/interactive_oauth_residual"
+                      : "");
                 } else if (p.evidence) {
-                  label = h.kind + ": " + String(p.evidence).split("/").slice(-2).join("/");
+                  label =
+                    h.kind +
+                    ": " +
+                    String(p.evidence).split("/").slice(-2).join("/") +
+                    ((p.outcome && p.outcome.ocr_residual === true) ||
+                    (p.gui &&
+                      p.gui.vision_plan &&
+                      p.gui.vision_plan.ocr_residual === true)
+                      ? "/ocr_residual"
+                      : "");
                 } else if (p.outcome && p.outcome.summary) {
-                  label = h.kind + ": " + p.outcome.summary;
+                  label =
+                    h.kind +
+                    ": " +
+                    p.outcome.summary +
+                    (p.outcome.ocr_residual === true
+                      ? "/ocr_residual"
+                      : "") +
+                    (p.outcome.live_paid_residual === true
+                      ? "/live_paid_residual"
+                      : "");
                 }
               } catch (_) { /* ignore */ }
               chip.textContent = label;

@@ -95,12 +95,14 @@ object SendToUserSurface {
         return "/ocr_residual"
       }
     }
+    if (p.optBoolean("remote_pr_residual", false)) return "/remote_pr_residual"
     val rp = p.optJSONObject("remote_pr")
     val mode = (rp?.optString("mode") ?: p.optString("mode") ?: "")
-    if (rp != null && rp.optBoolean("real_create_gated", false)
-      || mode.contains("gh_pr_create_residual")
-    ) {
-      return "/remote_pr_residual"
+    if (rp != null && rp.optBoolean("real_create_gated", false)) {
+      return "/real_create_gated"
+    }
+    if (mode.contains("gh_pr_create_residual")) {
+      return "/gh_pr_create_residual"
     }
     return ""
   }

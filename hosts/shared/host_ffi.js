@@ -382,15 +382,48 @@ function createHostFfi(repoRoot) {
     return res.json || { ok: false, error: res.error || `http_${res.status}` };
   }
 
+  /** API/base URL from connector state, token file, then env keys. */
+  function resolveConnectorApiUrl(name, envKeys) {
+    const n = String(name || "").trim().toLowerCase();
+    const st = loadConnectorState(n);
+    const fromState = String(
+      st.api_url ||
+        st.base_url ||
+        (st.oauth && (st.oauth.api_url || st.oauth.base_url)) ||
+        "",
+    ).trim();
+    if (fromState) return fromState;
+    try {
+      const p = connectorTokenPath(n);
+      if (fs.existsSync(p)) {
+        const tok = JSON.parse(fs.readFileSync(p, "utf8"));
+        const u = String(
+          (tok && (tok.api_url || tok.base_url || tok.graph_url)) || "",
+        ).trim();
+        if (u) return u;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    for (const key of envKeys || []) {
+      const v = String(process.env[key] || "").trim();
+      if (v) return v;
+    }
+    return "";
+  }
+
   async function probeSlack() {
-    const token = String(process.env.SLACK_BOT_TOKEN || "").trim();
+    const token = resolveProviderAccessToken("slack");
     const state = loadConnectorState("slack");
     if (!token) {
       const out = {
         connector: "slack",
         mode: "sandbox_idp",
         connected: Boolean(state.connected),
-        detail: state.detail || "SLACK_BOT_TOKEN unset; sandbox IdP path",
+        detail:
+          state.detail ||
+          "SLACK_BOT_TOKEN / slack_token.json unset; sandbox IdP path",
+        live: false,
       };
       return out;
     }
@@ -400,6 +433,7 @@ function createHostFfi(repoRoot) {
       connector: "slack",
       mode: "live",
       connected: ok,
+      live: ok,
       auth_test: {
         ok,
         team: auth.team,
@@ -414,15 +448,16 @@ function createHostFfi(repoRoot) {
 
   function probeEmail(name) {
     const state = loadConnectorState(name);
-    const token = extractAccessToken(state);
+    const token = resolveProviderAccessToken(name);
     if (!token) {
       return {
         connector: name,
         mode: "sandbox_idp",
         connected: Boolean(state.connected),
+        live: false,
         detail:
           state.detail ||
-          `no OAuth token in data/connectors/${name}.json; sandbox IdP`,
+          `no OAuth token in data/connectors/${name}_token.json; sandbox IdP`,
       };
     }
     return {
@@ -434,20 +469,64 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  function probeConnectorToken(name) {
+    const state = loadConnectorState(name);
+    const token = resolveProviderAccessToken(name);
+    if (!token) {
+      return {
+        connector: name,
+        mode: "sandbox_idp",
+        connected: Boolean(
+          state.connected ||
+            state.status === "Ready" ||
+            state.status === "Connected",
+        ),
+        live: false,
+        detail: state.detail || `${name} token unset; sandbox path`,
+      };
+    }
+    return {
+      connector: name,
+      mode: "connector_token_file",
+      connected: true,
+      live: true,
+      detail: `${name} token present (env or *_token.json)`,
+    };
+  }
+
   async function connectorsStatusReport() {
     const slack = await probeSlack();
     const gmail = probeEmail("gmail");
     const outlook = probeEmail("outlook");
+    const teams = probeConnectorToken("teams");
+    const finance = probeConnectorToken("finance");
+    const calendar = probeConnectorToken("calendar");
+    const job = probeConnectorToken("job");
+    const x = probeConnectorToken("x");
+    const purchase = probeConnectorToken("purchase");
+    const meeting = probeConnectorToken("meeting");
     return {
       ok: true,
-      connectors: { slack, gmail, outlook },
+      connectors: {
+        slack,
+        gmail,
+        outlook,
+        teams,
+        meeting,
+        finance,
+        calendar,
+        job,
+        x,
+        purchase,
+      },
       env: {
-        SLACK_BOT_TOKEN: Boolean(String(process.env.SLACK_BOT_TOKEN || "").trim()),
+        SLACK_BOT_TOKEN: Boolean(resolveProviderAccessToken("slack")),
         BITBOT_SLACK_POST: process.env.BITBOT_SLACK_POST === "1",
         SLACK_DEFAULT_CHANNEL: Boolean(
           String(process.env.SLACK_DEFAULT_CHANNEL || "").trim(),
         ),
       },
+      pretend_all_connected: false,
       note: "Host FFI probe; MoonBit owns turn policy (not LocalBrain)",
     };
   }
@@ -1438,7 +1517,9 @@ function createHostFfi(repoRoot) {
       fs.mkdirSync(meetingDir, { recursive: true });
       const transcriptPath = path.join(meetingDir, "live-chat.jsonl");
       const meetingToken = resolveProviderAccessToken("meeting");
-      const meetingApi = String(process.env.BITBOT_MEETING_API_URL || "").trim();
+      const meetingApi = resolveConnectorApiUrl("meeting", [
+        "BITBOT_MEETING_API_URL",
+      ]);
       const liveMeeting = Boolean(meetingToken && meetingApi);
       let livePost = false;
       let liveProbe = null;
@@ -8789,7 +8870,9 @@ function createHostFfi(repoRoot) {
         (bcId ? `https://cursor.com/agents/${bcId}` : "");
       const prompt = parts.slice(2).join("|") || "";
       const depth = nestDepth();
-      const cloudApiUrl = String(process.env.BITBOT_CLOUD_API_URL || "").trim();
+      const cloudApiUrl = resolveConnectorApiUrl("cloud", [
+        "BITBOT_CLOUD_API_URL",
+      ]);
       const cloudToken = resolveProviderAccessToken("cloud");
       const wantRemote = Boolean(cloudApiUrl || cloudToken);
       let remoteProbe = null;
@@ -10936,8 +11019,10 @@ function createHostFfi(repoRoot) {
         "",
       ].join("\r\n");
       fs.writeFileSync(icsPath, ics);
-      // Live calendar when BITBOT_CALENDAR_API_URL+token; else ICS-only residual.
-      const calApi = String(process.env.BITBOT_CALENDAR_API_URL || "").trim();
+      // Live calendar when API URL+token; else ICS-only residual.
+      const calApi = resolveConnectorApiUrl("calendar", [
+        "BITBOT_CALENDAR_API_URL",
+      ]);
       const calToken = resolveProviderAccessToken("calendar");
       let mode = "sandbox_ics";
       let liveProbe = null;
@@ -11034,10 +11119,22 @@ function createHostFfi(repoRoot) {
       const safeCmd = String(cmd || "").replace(/[<>&]/g, "");
       // Live charge only when LIVE=1 + token + API URL and processor returns 2xx.
       // Never claim paid without a successful processor response.
-      const wantLive =
-        String(process.env.BITBOT_PURCHASE_LIVE || "").trim() === "1";
       const purchaseToken = resolveProviderAccessToken("purchase");
-      const purchaseApi = String(process.env.BITBOT_PURCHASE_API_URL || "").trim();
+      const purchaseApi = resolveConnectorApiUrl("purchase", [
+        "BITBOT_PURCHASE_API_URL",
+      ]);
+      // Live when LIVE=1 or purchase_token.json sets live:true (never pretend charge).
+      let wantLive =
+        String(process.env.BITBOT_PURCHASE_LIVE || "").trim() === "1";
+      try {
+        const tokPath = connectorTokenPath("purchase");
+        if (fs.existsSync(tokPath)) {
+          const tok = JSON.parse(fs.readFileSync(tokPath, "utf8"));
+          if (tok && tok.live === true) wantLive = true;
+        }
+      } catch (_) {
+        /* ignore */
+      }
       let chargeProbe = null;
       let charged = false;
       let mode = "sandbox_receipt";
@@ -11085,7 +11182,7 @@ function createHostFfi(repoRoot) {
         chargeProbe = {
           ok: false,
           error:
-            "BITBOT_PURCHASE_LIVE=1 requires BITBOT_PURCHASE_TOKEN and BITBOT_PURCHASE_API_URL",
+            "BITBOT_PURCHASE_LIVE=1 requires purchase token (env or connectors/purchase_token.json) and BITBOT_PURCHASE_API_URL",
         };
         mode = "live_charge_residual";
       }
@@ -11158,7 +11255,9 @@ function createHostFfi(repoRoot) {
       const finState = loadConnectorState("finance");
       // Explicit env / connector token file wins for live mock/API gates.
       const accessToken = resolveProviderAccessToken("finance");
-      const financeApi = String(process.env.BITBOT_FINANCE_API_URL || "").trim();
+      const financeApi = resolveConnectorApiUrl("finance", [
+        "BITBOT_FINANCE_API_URL",
+      ]);
       const connected = Boolean(
         finState.connected || accessToken || connectorArmed("finance"),
       );
@@ -11263,7 +11362,7 @@ function createHostFfi(repoRoot) {
         jobDir,
         `search-${Date.now().toString(36)}.json`,
       );
-      const jobApi = String(process.env.BITBOT_JOB_API_URL || "").trim();
+      const jobApi = resolveConnectorApiUrl("job", ["BITBOT_JOB_API_URL"]);
       const jobToken = resolveProviderAccessToken("job");
       let mode = "sandbox_readonly";
       let liveProbe = null;
@@ -11552,7 +11651,7 @@ function createHostFfi(repoRoot) {
       const xDir = path.join(REPO_ROOT, "data", "connectors", "x");
       fs.mkdirSync(xDir, { recursive: true });
       const bearer = resolveProviderAccessToken("x");
-      const xApiBase = String(process.env.BITBOT_X_API_BASE || "").trim();
+      const xApiBase = resolveConnectorApiUrl("x", ["BITBOT_X_API_BASE"]);
       let mode = "sandbox_public";
       let liveHits = null;
       let liveProbe = null;
@@ -12487,7 +12586,12 @@ function createHostFfi(repoRoot) {
             evidence: evidencePath,
             navigate,
             playbook: playbookJournal,
-            gui: { box_chrome_process: false, fallback: true },
+            gui: {
+              box_chrome_process: false,
+              fallback: true,
+              os_window_automation_residual: true,
+              vision_plan: { ocr: false, ocr_residual: true },
+            },
             outcome: {
               summary: "structured outcome only (http fallback)",
               final_url: navigate.url || null,
@@ -12498,6 +12602,10 @@ function createHostFfi(repoRoot) {
               playbook_name: vertical ? vertical.playbook_name : "",
               playbook_journal: playbookJournal ? playbookJournal.path : null,
               paid_checkout_attempted: false,
+              ocr_residual: true,
+              ocr: false,
+              os_window_automation_residual: true,
+              live_paid_residual: true,
             },
             mode: "http_fallback",
           },
