@@ -1555,7 +1555,7 @@ BITBOT_MAIL_CLAIM_API_URL=http://127.0.0.1:18795 BITBOT_MAIL_CLAIM_TOKEN=smoke-c
   node hosts/cli_host/run_turn.js --approved "reply via email:claim@example.com :: claim email inbound" >/tmp/bitbot-email-claim-live.json || true
 kill "$EMAIL_CLAIM_MOCK_PID" >/dev/null 2>&1 || true
 wait "$EMAIL_CLAIM_MOCK_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-email-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_email_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_mail_residual') is False;assert p.get('live_channel_residual') is False;assert (p.get('claim') or {}).get('ok') is True;assert p.get('pretend_live') is False;assert 'live_email_claim' in open('data/channels/inbound.jsonl').read();print('channel email live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-email-claim-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_email_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_mail_residual') is False;assert p.get('live_channel_residual') is False;assert (p.get('claim') or {}).get('ok') is True;assert p.get('pretend_live') is False;assert p.get('inbound_push_residual') is True;assert 'live_email_claim' in open('data/channels/inbound.jsonl').read();print('channel email live claim residual close ok', 'claimed', p.get('claimed_count'), 'inbound_push_residual', True)"
 # Email channel live claim + BITBOT_INBOUND_TURN closes inbound_turn_residual.
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18796 --mode mail_claim --token smoke-claim >/tmp/bitbot-email-claim-turn-mock.log 2>&1 &
 EMAIL_CLAIM_TURN_MOCK_PID=$!
@@ -1565,7 +1565,7 @@ BITBOT_MAIL_CLAIM_API_URL=http://127.0.0.1:18796 BITBOT_MAIL_CLAIM_TOKEN=smoke-c
   node hosts/cli_host/run_turn.js --approved "reply via gmail:claim@example.com :: claim inbound turn" >/tmp/bitbot-email-claim-turn.json || true
 kill "$EMAIL_CLAIM_TURN_MOCK_PID" >/dev/null 2>&1 || true
 wait "$EMAIL_CLAIM_TURN_MOCK_PID" 2>/dev/null || true
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-email-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_email_claim';assert p.get('live_mail_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel email claim inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-email-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('mode')=='live_email_claim';assert p.get('live_mail_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;assert p.get('inbound_push_residual') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel email claim inbound turn residual close ok', th.get('turn_path'), 'inbound_push_residual', True)"
 env -u BITBOT_MAIL_CLAIM_TOKEN -u BITBOT_MAIL_CLAIM_API_URL BITBOT_EMAIL_CLAIM=1 \
   env -u BITBOT_MAIL_SEND \
   node hosts/cli_host/run_turn.js --approved "reply via outlook:claim@example.com :: sandbox email claim" >/tmp/bitbot-email-claim-sandbox.json
@@ -1692,6 +1692,29 @@ curl -s -X POST http://127.0.0.1:18797/slack/events -H 'Content-Type: applicatio
 kill "$SLACK_EVENTS_LISTEN_TURN_PID" >/dev/null 2>&1 || true
 wait "$SLACK_EVENTS_LISTEN_TURN_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-events-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'slack-verify-secret-turn' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('slack events http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
+# Teams notifications HTTP push: closes inbound_push_residual; token never echoed; turn residual stays open without BITBOT_INBOUND_TURN.
+# Port 18798 is free here (credential fixture earlier killed); avoids Slack 18797 / SMS listen 18796.
+python3 "$ROOT/scripts/host_teams_events_listen.py" --port 18798 >/tmp/bitbot-teams-events-listen.log 2>&1 &
+TEAMS_EVENTS_LISTEN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18798/teams/notifications -H 'Content-Type: application/json' \
+  -d '{"token":"teams-verify-secret-smoke","event_id":"TnHttpSmoke","channel":"Tsmoke","user":"U_TEAMS","text":"teams notifications push smoke"}' \
+  >/tmp/bitbot-teams-events-curl.json || true
+kill "$TEAMS_EVENTS_LISTEN_PID" >/dev/null 2>&1 || true
+wait "$TEAMS_EVENTS_LISTEN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams-events-curl.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is True;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'teams-verify-secret-smoke' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is True;assert snap.get('mode')=='host_teams_events_listen';th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is False;rows=open('data/channels/inbound.jsonl').read();assert 'live_teams_events_push' in rows;print('teams events http listen push wake ok', d.get('path'), 'inbound_turn_residual', True)"
+# Teams notifications listen + BITBOT_INBOUND_TURN=1 executes pending turn via Host run_turn (Slack Events listen parity).
+BITBOT_INBOUND_TURN=1 python3 "$ROOT/scripts/host_teams_events_listen.py" --port 18798 >/tmp/bitbot-teams-events-listen-turn.log 2>&1 &
+TEAMS_EVENTS_LISTEN_TURN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18798/teams/notifications -H 'Content-Type: application/json' \
+  -d '{"token":"teams-verify-secret-turn","event_id":"TnHttpTurn","channel":"Tsmoke","user":"U_TEAMS","text":"teams notifications inbound turn smoke"}' \
+  >/tmp/bitbot-teams-events-curl-turn.json || true
+kill "$TEAMS_EVENTS_LISTEN_TURN_PID" >/dev/null 2>&1 || true
+wait "$TEAMS_EVENTS_LISTEN_TURN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-teams-events-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'teams-verify-secret-turn' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('teams events http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
+# Claim-only Teams path keeps inbound_push_residual true (not notifications push).
+python3 -c "import json;d=json.load(open('/tmp/bitbot-teams-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_teams_claim';assert p.get('inbound_push_residual') is True;print('teams claim-only keeps inbound_push_residual true ok', p.get('mode'))"
 # SMS Twilio-style HTTP push: closes inbound_push_residual; AuthToken never echoed; turn residual stays open without BITBOT_INBOUND_TURN.
 # Port 18796 avoids SMS claim mock (18792) / Slack Events (18797) / reserved 18798 collisions.
 python3 "$ROOT/scripts/host_sms_listen.py" --port 18796 >/tmp/bitbot-sms-listen.log 2>&1 &

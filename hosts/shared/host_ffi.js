@@ -1142,7 +1142,7 @@ function createHostFfi(repoRoot) {
       inboundTurnResidual = hooked.inboundTurnResidual;
     }
     // Claim/pull is not HTTP Events push — keep inbound_push_residual true
-    // (host_slack_events_listen.py closes it on real Slack Events POST).
+    // (host_slack_events_listen / host_teams_events_listen close it on real POST).
     const inboundPushResidual = claim && Boolean(claim.ok) ? true : undefined;
     const snapshot = {
       ...artifact,
