@@ -1,10 +1,16 @@
 #!/usr/bin/env node
 "use strict";
 /** MCP product short-circuit residual-CLOSE suite (extracted from smoke_desktop_turn.sh). */
-const { createHostFfi } = require("./hosts/shared/host_ffi.js");
-const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const { spawn } = require("child_process");
+const { createHostFfi } = require(path.join(
+  __dirname,
+  "..",
+  "hosts",
+  "shared",
+  "host_ffi.js",
+));
 function sleep(ms){ return new Promise((r)=>setTimeout(r,ms)); }
 function startMock(port, mode, token, empty) {
   const log =
