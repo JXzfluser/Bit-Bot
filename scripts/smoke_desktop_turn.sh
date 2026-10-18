@@ -1754,18 +1754,18 @@ function stripHostAppliedMarker(file) {
   console.log("mcp_call make_chart alias short-circuit ok", cap.mapped, (cap.media||{}).mode);
   // webfetch / screenshot / computer_use(+shop) / device / machines / copy / react / routine / box_doctor
   const wfetches = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.webfetch|{\"url\":\"https://example.com\"}" }]);
-  const wfh = wfetches.find((r) => r && r.kind === "mcp_call");
-  if (!wfh || !wfh.ok) throw new Error("webfetch mcp");
-  const wfpMcp = JSON.parse(wfh.stdout || "{}");
+  const wfhMcp = wfetches.find((r) => r && r.kind === "mcp_call");
+  if (!wfhMcp || !wfhMcp.ok) throw new Error("webfetch mcp");
+  const wfpMcp = JSON.parse(wfhMcp.stdout || "{}");
   if (wfpMcp.mapped !== "host_webfetch" || wfpMcp.product_tool_residual !== false) throw new Error(JSON.stringify(wfpMcp).slice(0,200));
   if ((wfpMcp.webfetch||{}).pretend_fetched === true) throw new Error("pretend_fetched");
   if (typeof (wfpMcp.webfetch||{}).public_fallback_residual !== "boolean") throw new Error("public_fallback_residual missing");
   if (!(wfpMcp.webfetch||{}).path) throw new Error("webfetch path: " + JSON.stringify(wfpMcp).slice(0,200));
   require("fs").writeFileSync("/tmp/bitbot-mcp-webfetch.json", JSON.stringify({ ok: true, ...wfpMcp }, null, 2));
   console.log("mcp_call webfetch short-circuit ok", wfpMcp.mapped, (wfpMcp.webfetch||{}).mode, (wfpMcp.webfetch||{}).public_fallback_residual);
-  const wfAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.web_fetch|{\"url\":\"https://example.com\"}" }]);
-  const wfah = wfAlias.find((r) => r && r.kind === "mcp_call");
-  const wfapMcp = JSON.parse((wfah && wfah.stdout) || "{}");
+  const wfFetchAlias = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.web_fetch|{\"url\":\"https://example.com\"}" }]);
+  const wfahMcp = wfFetchAlias.find((r) => r && r.kind === "mcp_call");
+  const wfapMcp = JSON.parse((wfahMcp && wfahMcp.stdout) || "{}");
   if (wfapMcp.mapped !== "host_webfetch" || wfapMcp.product_tool_residual !== false) throw new Error(JSON.stringify(wfapMcp).slice(0,200));
   console.log("mcp_call web_fetch alias short-circuit ok", wfapMcp.mapped, (wfapMcp.webfetch||{}).mode);
   const shots = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.screenshot|{\"agent\":\"mcp-smoke\"}" }]);
