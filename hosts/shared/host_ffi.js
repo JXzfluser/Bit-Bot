@@ -2854,6 +2854,226 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  async function executePackageInstall(command) {
+    // CM-2158 product Host — package install via Shell only (sandbox npm/apt plan).
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "box", "package-install");
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let via = "shell";
+    let pm = "npm";
+    let pkgsCsv = "";
+    const viaM = raw.match(/\bvia=([^\s]+)/i);
+    if (viaM) via = viaM[1].trim().toLowerCase();
+    const pmM = raw.match(/\bpm=([^\s]+)/i);
+    if (pmM) pm = pmM[1].trim().toLowerCase();
+    const pkgsM = raw.match(/\bpkgs=([^\s]+)/i) || raw.match(/\bpackages=([^\s]+)/i);
+    if (pkgsM) pkgsCsv = pkgsM[1].trim();
+    const packages = pkgsCsv
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (!packages.length) {
+      const snapPath = path.join(
+        opsDir,
+        `refuse-empty-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_package_install",
+        ok: false,
+        refused: true,
+        pretend_installed: false,
+        error: "CM-2158: package list must not be empty",
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("package_install", raw || "install", {
+        ...artifact,
+        path: snapPath,
+      });
+    }
+    for (const p of packages) {
+      if (/[;|`]/.test(p)) {
+        const snapPath = path.join(
+          opsDir,
+          `refuse-meta-${Date.now().toString(36)}.json`,
+        );
+        const artifact = {
+          mode: "host_package_install",
+          ok: false,
+          refused: true,
+          pretend_installed: false,
+          error: "CM-2158: package name must not contain shell metacharacters",
+          packages,
+          at,
+        };
+        fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+        return okJson("package_install", raw || "install", {
+          ...artifact,
+          path: snapPath,
+        });
+      }
+    }
+
+    if (via !== "shell") {
+      const snapPath = path.join(
+        opsDir,
+        `refuse-nonshell-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_package_install",
+        ok: false,
+        refused: true,
+        pretend_installed: false,
+        via,
+        pm,
+        packages,
+        error: "CM-2158: box package install must go through Shell",
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(path.join(dir, "refusals.jsonl"), {
+        ...artifact,
+        path: snapPath,
+      });
+      return okJson("package_install", raw || "install", {
+        ...artifact,
+        path: snapPath,
+      });
+    }
+
+    let shellCmd = "";
+    if (pm === "apt") {
+      shellCmd = "apt-get install -y " + packages.join(" ");
+    } else if (pm === "npm") {
+      shellCmd =
+        "npm install --no-save --no-package-lock " + packages.join(" ");
+    } else if (pm === "pip") {
+      shellCmd = "pip install " + packages.join(" ");
+    } else if (pm === "cargo") {
+      shellCmd = "cargo install " + packages.join(" ");
+    } else {
+      const snapPath = path.join(
+        opsDir,
+        `refuse-pm-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_package_install",
+        ok: false,
+        refused: true,
+        pretend_installed: false,
+        pm,
+        error: "CM-2158: unknown package manager (apt|npm|pip|cargo)",
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("package_install", raw || "install", {
+        ...artifact,
+        path: snapPath,
+      });
+    }
+
+    // Sandbox cwd for npm; apt/pip/cargo stay planned but may fail without root — honest exit.
+    const sandbox =
+      pm === "npm"
+        ? fs.mkdtempSync(path.join("/tmp", "bitbot-npm-sandbox-"))
+        : REPO_ROOT;
+    let exitCode = 1;
+    let stdout = "";
+    let stderr = "";
+    let completed = false;
+    let treeOk = false;
+    let treePath = null;
+    try {
+      const { stdout: so, stderr: se } = await execFileAsync(
+        "/bin/bash",
+        ["-lc", shellCmd],
+        {
+          cwd: sandbox,
+          timeout: 120000,
+          maxBuffer: 2 * 1024 * 1024,
+          env: process.env,
+        },
+      );
+      stdout = String(so || "").slice(0, 8000);
+      stderr = String(se || "").slice(0, 4000);
+      exitCode = 0;
+      completed = true;
+    } catch (err) {
+      stdout = err.stdout ? String(err.stdout).slice(0, 8000) : "";
+      stderr = err.stderr
+        ? String(err.stderr).slice(0, 4000)
+        : err.message || String(err);
+      exitCode = typeof err.code === "number" ? err.code : 1;
+      completed = false;
+    }
+    if (pm === "npm" && completed) {
+      const spec = packages[0];
+      let pkgName = spec;
+      if (spec.startsWith("@")) {
+        const m = spec.match(/^(@[^/]+\/[^@]+)/);
+        pkgName = m ? m[1] : spec;
+      } else {
+        pkgName = spec.split("@")[0];
+      }
+      treePath = path.join(sandbox, "node_modules", pkgName);
+      treeOk = fs.existsSync(treePath);
+    }
+
+    const snapPath = path.join(
+      opsDir,
+      `install-${pm}-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_package_install",
+      pretend_installed: false,
+      via: "shell",
+      pm,
+      packages,
+      shell_command: shellCmd,
+      cwd: sandbox,
+      exit_code: exitCode,
+      completed,
+      stdout_prefix: stdout.slice(0, 400),
+      stderr_prefix: stderr.slice(0, 400),
+      tree_ok: treeOk,
+      tree_path: treePath,
+      via_shell: true,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "installs.jsonl"), {
+      ...artifact,
+      path: snapPath,
+    });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: snapPath,
+      label: "package_install",
+      pm,
+      packages,
+      completed,
+      source_kind: "package_install",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "package_install",
+      command: raw || shellCmd,
+      path: snapPath,
+      pm,
+      completed,
+      at,
+    });
+    return okJson("package_install", raw || shellCmd, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: completed || via === "shell", // Host ran Shell path even if install failed honestly
+    });
+  }
+
   async function executeDeleteAgent(command) {
     // CM-1907 product Host delete — sidebar context-menu + confirm; never Settings.
     const at = new Date().toISOString();
@@ -4774,6 +4994,7 @@ function createHostFfi(repoRoot) {
       kind === "settings_open" ||
       kind === "agent_info_panel" ||
       kind === "delete_agent" ||
+      kind === "package_install" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -10087,6 +10308,10 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "delete_agent") {
         results.push(await executeDeleteAgent(cmd));
+        continue;
+      }
+      if (kind === "package_install") {
+        results.push(await executePackageInstall(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

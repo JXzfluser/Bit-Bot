@@ -131,6 +131,7 @@
 - [x] Host Settings product path (CM-1901/1902): `settings_open` closed entry set + deep-link anchors; Desktop Account button + tabs panel; gear/Preferences refused
 - [x] Host per-agent info panel (CM-0205): `agent_info_panel` app-ui sections + Desktop click-name panel
 - [x] Host delete agent (CM-1907): sidebar confirm lifecycle; Settings/archive paths refused; Desktop confirm UI
+- [x] Host box package install (CM-2158): `package_install` via Shell only; npm sandbox tree evidence; non-Shell refused
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn
 - [x] Host schedule_meeting materializes real `.ics` (VCALENDAR/VEVENT) under `data/calendar/` + SendToUser attachment

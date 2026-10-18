@@ -129,6 +129,7 @@ pub(all) enum TurnIntent {
   OpenSettings(entry~ : String, anchor~ : String)
   OpenAgentInfoPanel(agent_id~ : String)
   DeleteAgent(agent_id~ : String, confirm~ : Bool)
+  PackageInstall(pm~ : String, packages_csv~ : String, via~ : String)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -220,6 +221,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     OpenSettings(_) => "open_settings"
     OpenAgentInfoPanel(_) => "open_agent_info_panel"
     DeleteAgent(_) => "delete_agent"
+    PackageInstall(_) => "package_install"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -752,6 +754,10 @@ fn extract_kv(rest : String, key : String) -> String? {
         " anchor=",
         " agent=",
         " confirm=",
+        " via=",
+        " pm=",
+        " pkgs=",
+        " packages=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -3378,6 +3384,22 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Delete agent planned (CM-1907). Host requires sidebar confirm; not Settings.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    PackageInstall(pm~, packages_csv~, via~) => {
+      let effect : DesktopEffect = {
+        kind: "package_install",
+        command: "via=" + via + " pm=" + pm + " pkgs=" + packages_csv,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Box package install planned (CM-2158). Host must run via Shell only; refuse non-Shell.",
         intent,
         ctx~,
         effects=[effect],

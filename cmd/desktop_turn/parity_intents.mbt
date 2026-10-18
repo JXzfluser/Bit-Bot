@@ -559,6 +559,75 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(OpenAgentInfoPanel(agent_id~))
     }
   }
+  // CM-2158 product Host box package install (Shell only).
+  if low.has_prefix("install package ") ||
+      low.has_prefix("box install ") ||
+      low.has_prefix("package install ") {
+    let rest = if low.has_prefix("install package ") {
+      trimmed[16:].trim().to_owned()
+    } else if low.has_prefix("package install ") {
+      trimmed[16:].trim().to_owned()
+    } else {
+      trimmed[12:].trim().to_owned()
+    }
+    let mut via = "shell"
+    let mut pm = "npm"
+    let mut packages_csv = ""
+    match extract_kv(rest, "via") {
+      Some(v) => via = v.trim().to_owned()
+      None => ()
+    }
+    match extract_kv(rest, "pm") {
+      Some(v) => pm = v.trim().to_owned()
+      None => ()
+    }
+    match extract_kv(rest, "pkgs") {
+      Some(v) => packages_csv = v.trim().to_owned()
+      None =>
+        match extract_kv(rest, "packages") {
+          Some(v) => packages_csv = v.trim().to_owned()
+          None => ()
+        }
+    }
+    // Positional: "install package npm left-pad" or "box install apt curl,jq"
+    if packages_csv == "" {
+      let parts = rest.split(" ")
+      let tokens : Array[String] = []
+      for p in parts {
+        let t = p.trim().to_owned()
+        if t != "" && !t.has_prefix("via=") && !t.has_prefix("pm=") && !t.has_prefix("pkgs=") && !t.has_prefix("packages=") {
+          tokens.push(t)
+        }
+      }
+      if tokens.length() >= 2 {
+        // First token may be pm if not already set via kv
+        let first = tokens[0].to_lower()
+        if first == "apt" || first == "npm" || first == "pip" || first == "cargo" {
+          pm = first
+          let mut i = 1
+          while i < tokens.length() {
+            if packages_csv != "" {
+              packages_csv = packages_csv + ","
+            }
+            packages_csv = packages_csv + tokens[i]
+            i = i + 1
+          }
+        } else {
+          packages_csv = tokens[0]
+          let mut i = 1
+          while i < tokens.length() {
+            packages_csv = packages_csv + "," + tokens[i]
+            i = i + 1
+          }
+        }
+      } else if tokens.length() == 1 {
+        packages_csv = tokens[0]
+      }
+    }
+    if packages_csv != "" {
+      return Some(PackageInstall(pm~, packages_csv~, via~))
+    }
+  }
   // CM-1907 product Host delete agent (sidebar confirm; not Settings).
   if low.has_prefix("delete agent ") || low.has_prefix("confirm delete agent ") {
     let confirmed = low.has_prefix("confirm delete agent ")

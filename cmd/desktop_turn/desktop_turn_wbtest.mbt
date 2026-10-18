@@ -603,6 +603,21 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(dac.ok)
   assert_eq(dac.intent, "delete_agent")
   assert_true(dac.effects[0].command.contains("confirm=1"))
+  let pkg = run_desktop_turn(
+    "install package npm left-pad@1.3.0",
+    turn_id="pkg-1",
+  )
+  assert_true(pkg.ok)
+  assert_eq(pkg.intent, "package_install")
+  assert_eq(pkg.effects[0].kind, "package_install")
+  assert_true(pkg.effects[0].command.contains("via=shell"))
+  let pkgr = run_desktop_turn(
+    "install package via=direct-apt-api pm=apt pkgs=curl",
+    turn_id="pkgr-1",
+  )
+  assert_true(pkgr.ok)
+  assert_eq(pkgr.intent, "package_install")
+  assert_true(pkgr.effects[0].command.contains("via=direct-apt-api"))
   let cc = run_desktop_turn("code changes README.mbt.md", turn_id="cc-1")
   assert_true(cc.ok)
   assert_eq(cc.intent, "code_changes")
