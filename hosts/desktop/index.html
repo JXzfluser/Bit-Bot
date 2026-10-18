@@ -344,6 +344,17 @@
         <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
       </div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Plugins</div>
+    <div class="machine-item">
+      <div class="name">MCP plugins (CM-0904 / 2107 / 2108)</div>
+      <div class="meta" id="plugins-meta">list · get · install → Ready · uninstall → Unavailable</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="plugin-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List plugins</button>
+        <button type="button" id="plugin-get" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Get plugin-slides</button>
+        <button type="button" id="plugin-install" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install plugin-slides</button>
+        <button type="button" id="plugin-uninstall" style="background:#2a1a1a;color:#e0b0b0;border:1px solid #5a3a3a;border-radius:6px;padding:6px 8px;cursor:pointer">Uninstall plugin-slides</button>
+      </div>
+    </div>
     <div class="panel-title" style="margin-top:16px">Webhook</div>
     <div class="machine-item" id="webhook-panel" role="region" aria-label="Webhook trigger panel">
       <div class="name">Routine trigger (CM-0411)</div>
@@ -1481,6 +1492,14 @@
                     (p.status || "Ready") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      "install " +
+                      (p.plugin_id || p.namespace || "?") +
+                      " · " +
+                      (p.status || "Ready");
+                  }
                 } else if (h.kind === "mcp_uninstall") {
                   label =
                     "mcp_uninstall:" +
@@ -1488,18 +1507,45 @@
                     ":Unavailable" +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      "uninstall " +
+                      (p.plugin_id || p.namespace || "?") +
+                      " · Unavailable";
+                  }
                 } else if (h.kind === "mcp_get_plugin") {
                   label =
                     "mcp_get:" +
                     (p.id || p.plugin_id || "?") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      (p.id || p.plugin_id || "?") +
+                      " · " +
+                      (p.status || (p.refused ? "refused" : "?")) +
+                      " · skills×" +
+                      (p.skill_count != null ? p.skill_count : "?");
+                  }
                 } else if (h.kind === "mcp_list_plugins") {
                   label =
                     "mcp_list×" +
                     (p.count != null ? p.count : "?") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    const ids = (p.plugins || [])
+                      .slice(0, 4)
+                      .map((x) => x && x.id)
+                      .filter(Boolean);
+                    pluginsMeta.textContent =
+                      "list×" +
+                      (p.count != null ? p.count : ids.length) +
+                      (ids.length ? " · " + ids.join(", ") : "");
+                  }
                 } else if (h.kind === "shared_memory_put") {
                   label =
                     "mem:put:" +
@@ -1803,6 +1849,18 @@
     });
     document.getElementById("probe-connectors").addEventListener("click", () => {
       runUserTurn("list connectors", {});
+    });
+    document.getElementById("plugin-list").addEventListener("click", () => {
+      runUserTurn("list plugins", {});
+    });
+    document.getElementById("plugin-get").addEventListener("click", () => {
+      runUserTurn("get plugin plugin-slides", {});
+    });
+    document.getElementById("plugin-install").addEventListener("click", () => {
+      runUserTurn("install plugin plugin-slides", {});
+    });
+    document.getElementById("plugin-uninstall").addEventListener("click", () => {
+      runUserTurn("uninstall plugin plugin-slides", {});
     });
     document.getElementById("wh-open").addEventListener("click", () => {
       runUserTurn("open webhook panel", {});
