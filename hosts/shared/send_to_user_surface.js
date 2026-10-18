@@ -79,6 +79,9 @@ function residualSuffix(p) {
     "inbound_turn_residual",
     "device_capture_residual",
     "product_tool_residual",
+    "voice_stt_residual",
+    "voice_tts_residual",
+    "cross_machine_copy_residual",
   ];
   const parts = [];
   for (const k of keys) {

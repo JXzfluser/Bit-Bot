@@ -1608,6 +1608,49 @@ function createHostFfi(repoRoot) {
         `${kind}-${Date.now().toString(36)}.json`,
       );
       const bytes = fs.existsSync(destAbs) ? fs.statSync(destAbs).size : 0;
+      // Cross-machine: optional scp when BITBOT_COPYBOX_SSH + remote host mapped.
+      let remote = {
+        attempted: false,
+        ok: false,
+        host: null,
+        error: null,
+      };
+      const sshMapPath = path.join(
+        REPO_ROOT,
+        "data",
+        "box",
+        "machine-ssh.json",
+      );
+      let remoteHost = (process.env.BITBOT_COPYBOX_SSH || "").trim();
+      if (!remoteHost && machineId && fs.existsSync(sshMapPath)) {
+        try {
+          const map = JSON.parse(fs.readFileSync(sshMapPath, "utf8")) || {};
+          remoteHost = String((map[machineId] || map.hosts?.[machineId] || ""))
+            .trim();
+        } catch (_) {
+          remoteHost = "";
+        }
+      }
+      const wantRemote =
+        Boolean(remoteHost) && process.env.BITBOT_COPYBOX_REMOTE === "1";
+      if (wantRemote) {
+        remote.attempted = true;
+        remote.host = remoteHost;
+        try {
+          const { execFileSync } = require("child_process");
+          const remoteDest = `${remoteHost}:${destAbs}`;
+          execFileSync("scp", ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", srcAbs, remoteDest], {
+            stdio: "ignore",
+            timeout: 30000,
+          });
+          remote.ok = true;
+        } catch (err) {
+          remote.ok = false;
+          remote.error = String((err && err.message) || err).slice(0, 240);
+        }
+      }
+      const crossMachineResidual =
+        Boolean(machineId) && !(remote.attempted && remote.ok);
       const artifact = {
         kind,
         machine_id: machineId,
@@ -1616,7 +1659,11 @@ function createHostFfi(repoRoot) {
         bytes,
         under_repo: true,
         pretend_remote_machine: false,
-        note: "Host FS copy under repo — machine_id is routing metadata",
+        remote,
+        cross_machine_copy_residual: crossMachineResidual,
+        note: remote.ok
+          ? "Host FS copy + remote scp to machine"
+          : "Host FS copy under repo — machine_id is routing metadata until remote scp",
         at,
       };
       fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
@@ -1626,6 +1673,7 @@ function createHostFfi(repoRoot) {
         src: srcAbs,
         dest: destAbs,
         path: artifactPath,
+        cross_machine_copy_residual: crossMachineResidual,
         at,
       });
       const delivery = recordSendToUser({
@@ -8941,11 +8989,53 @@ function createHostFfi(repoRoot) {
     }
   }
 
-  function synthesizeVoiceWav(outPath, { frequency = 440, duration = 0.35 } = {}) {
+  function synthesizeVoiceWav(
+    outPath,
+    { frequency = 440, duration = 0.35, text = "" } = {},
+  ) {
+    const { execFileSync } = require("child_process");
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    const speakText = String(text || "").trim().slice(0, 400);
+    // Prefer real TTS (espeak) → wav when available; else honest sine residual.
+    if (speakText) {
+      try {
+        const wavTmp = outPath + ".espeak.wav";
+        execFileSync(
+          "espeak",
+          ["-w", wavTmp, "-s", "150", speakText],
+          { stdio: "ignore", timeout: 15000 },
+        );
+        if (fs.existsSync(wavTmp) && fs.statSync(wavTmp).size > 44) {
+          // Normalize to 16k mono for voice pipeline consistency.
+          try {
+            const ffmpeg = process.env.FFMPEG || "ffmpeg";
+            execFileSync(
+              ffmpeg,
+              ["-y", "-i", wavTmp, "-ar", "16000", "-ac", "1", outPath],
+              { stdio: "ignore", timeout: 15000 },
+            );
+          } catch (_) {
+            fs.copyFileSync(wavTmp, outPath);
+          }
+          try {
+            fs.unlinkSync(wavTmp);
+          } catch (_) {}
+          if (fs.existsSync(outPath) && fs.statSync(outPath).size > 44) {
+            return {
+              ok: true,
+              path: outPath,
+              bytes: fs.statSync(outPath).size,
+              tool: "espeak",
+              voice_tts_residual: false,
+            };
+          }
+        }
+      } catch (_) {
+        // fall through to sine
+      }
+    }
     try {
-      const { execFileSync } = require("child_process");
       const ffmpeg = process.env.FFMPEG || "ffmpeg";
-      fs.mkdirSync(path.dirname(outPath), { recursive: true });
       execFileSync(
         ffmpeg,
         [
@@ -8968,6 +9058,7 @@ function createHostFfi(repoRoot) {
           path: outPath,
           bytes: fs.statSync(outPath).size,
           tool: "ffmpeg-sine",
+          voice_tts_residual: true,
         };
       }
     } catch (err) {
@@ -8976,9 +9067,10 @@ function createHostFfi(repoRoot) {
         path: outPath,
         bytes: 0,
         error: err.message || String(err),
+        voice_tts_residual: true,
       };
     }
-    return { ok: false, path: outPath, bytes: 0 };
+    return { ok: false, path: outPath, bytes: 0, voice_tts_residual: true };
   }
 
   function cloudSessionPath(bcId) {
@@ -9799,7 +9891,11 @@ function createHostFfi(repoRoot) {
     const replyMedia = synthesizeVoiceWav(replyWav, {
       frequency: 660,
       duration: 0.3,
+      text: replyText,
     });
+    // Typed relay text ≠ mic STT until Host transcribes inbound WAV.
+    const voiceSttResidual = true;
+    const voiceTtsResidual = replyMedia.voice_tts_residual !== false;
     row.relay_log.push({
       role: "assistant",
       text: replyText.slice(0, 2000),
@@ -9834,10 +9930,16 @@ function createHostFfi(repoRoot) {
       reply_media_path: replyMedia.path,
       reply_media_ok: Boolean(replyMedia.ok),
       reply_media_bytes: replyMedia.bytes || 0,
+      reply_media_tool: replyMedia.tool || null,
       reply_prefix: replyText.slice(0, 120),
       worker_ok: Boolean(worker.ok),
       nested_skipped: Boolean(worker.nested_skipped),
-      mode: "host_voice_relay",
+      mode:
+        replyMedia.tool === "espeak"
+          ? "host_voice_relay_tts"
+          : "host_voice_relay",
+      voice_stt_residual: voiceSttResidual,
+      voice_tts_residual: voiceTtsResidual,
       pretend_silent: false,
       pretend_ok: false,
       at,
@@ -10744,6 +10846,9 @@ function createHostFfi(repoRoot) {
         media_tool: media.tool || null,
         sessions_path: VOICE_SESSIONS_PATH,
         mode: "host_voice_session",
+        // Session start uses sine probe — not mic STT / spoken TTS yet.
+        voice_stt_residual: true,
+        voice_tts_residual: media.tool !== "espeak",
         pretend_live: false,
         pretend_media: false,
         at,
