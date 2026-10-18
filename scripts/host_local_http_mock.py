@@ -46,6 +46,7 @@ Endpoints:
   webhook:  POST /hooks (any POST; no Bearer — BITBOT_WEBHOOK_OUTBOUND_URL + BITBOT_WEBHOOK_POST=1)
   mail_claim: GET /messages?q=  (BITBOT_MAIL_CLAIM_API_URL + BITBOT_MAIL_CLAIM_POST=1;
                                  also channel email claim: BITBOT_EMAIL_CLAIM=1)
+  --empty:    HTTP-ok empty messages/events list for claim residual honesty smoke
   cold:     POST /send  (BITBOT_COLD_MAIL_API_URL + BITBOT_MAIL_SEND=1)
   onbehalf: POST /send  (BITBOT_ONBEHALF_MAIL_API_URL + BITBOT_MAIL_SEND=1)
   webfetch: GET /docs-blocked (403 unless UA BitBot-PublicFallback)
@@ -90,9 +91,15 @@ def main() -> int:
         required=True,
     )
     ap.add_argument("--token", default="smoke-token")
+    ap.add_argument(
+        "--empty",
+        action="store_true",
+        help="Return HTTP-ok empty messages/events list (empty-claim residual smoke)",
+    )
     args = ap.parse_args()
     mode = args.mode
     expect = args.token
+    empty_inbox = bool(args.empty)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt: str, *a) -> None:  # noqa: A003
@@ -246,28 +253,38 @@ def main() -> int:
                     or path == "/conversations.history"
                 ):
                     ch = payload.get("channel") or "Csmoke"
-                    self._json(
-                        200,
-                        {
-                            "ok": True,
-                            "messages": [
-                                {
-                                    "type": "message",
-                                    "user": "U_INBOUND",
-                                    "text": f"live mock inbound for {ch}",
-                                    "ts": "1710000000.000050",
-                                },
-                                {
-                                    "type": "message",
-                                    "user": "U_INBOUND",
-                                    "text": "thread parent",
-                                    "ts": "1710000000.000060",
-                                    "thread_ts": "1710000000.000060",
-                                },
-                            ],
-                            "has_more": False,
-                        },
-                    )
+                    if empty_inbox:
+                        self._json(
+                            200,
+                            {
+                                "ok": True,
+                                "messages": [],
+                                "has_more": False,
+                            },
+                        )
+                    else:
+                        self._json(
+                            200,
+                            {
+                                "ok": True,
+                                "messages": [
+                                    {
+                                        "type": "message",
+                                        "user": "U_INBOUND",
+                                        "text": f"live mock inbound for {ch}",
+                                        "ts": "1710000000.000050",
+                                    },
+                                    {
+                                        "type": "message",
+                                        "user": "U_INBOUND",
+                                        "text": "thread parent",
+                                        "ts": "1710000000.000060",
+                                        "thread_ts": "1710000000.000060",
+                                    },
+                                ],
+                                "has_more": False,
+                            },
+                        )
                 else:
                     self._json(
                         200,
@@ -406,22 +423,25 @@ def main() -> int:
                 if not self._auth_ok():
                     self._json(401, {"ok": False, "error": "unauthorized"})
                     return
-                self._json(
-                    200,
-                    {
-                        "ok": True,
-                        "messages": [
-                            {
-                                "id": "meet-live-1",
-                                "text": "live mock meeting inbound",
-                            },
-                            {
-                                "id": "meet-live-2",
-                                "text": "second meeting hit",
-                            },
-                        ],
-                    },
-                )
+                if empty_inbox:
+                    self._json(200, {"ok": True, "messages": []})
+                else:
+                    self._json(
+                        200,
+                        {
+                            "ok": True,
+                            "messages": [
+                                {
+                                    "id": "meet-live-1",
+                                    "text": "live mock meeting inbound",
+                                },
+                                {
+                                    "id": "meet-live-2",
+                                    "text": "second meeting hit",
+                                },
+                            ],
+                        },
+                    )
                 return
             if mode == "cloud" and "/agents/" in path and path.endswith(
                 "/artifact"
@@ -447,63 +467,72 @@ def main() -> int:
                 if not self._auth_ok():
                     self._json(401, {"ok": False, "error": "unauthorized"})
                     return
-                self._json(
-                    200,
-                    {
-                        "ok": True,
-                        "messages": [
-                            {
-                                "id": "sms-live-1",
-                                "text": "live mock sms inbound",
-                            },
-                            {
-                                "id": "sms-live-2",
-                                "text": "second sms hit",
-                            },
-                        ],
-                    },
-                )
+                if empty_inbox:
+                    self._json(200, {"ok": True, "messages": []})
+                else:
+                    self._json(
+                        200,
+                        {
+                            "ok": True,
+                            "messages": [
+                                {
+                                    "id": "sms-live-1",
+                                    "text": "live mock sms inbound",
+                                },
+                                {
+                                    "id": "sms-live-2",
+                                    "text": "second sms hit",
+                                },
+                            ],
+                        },
+                    )
                 return
             if mode == "voice" and path == "/messages":
                 if not self._auth_ok():
                     self._json(401, {"ok": False, "error": "unauthorized"})
                     return
-                self._json(
-                    200,
-                    {
-                        "ok": True,
-                        "messages": [
-                            {
-                                "id": "voice-live-1",
-                                "text": "live mock voice inbound",
-                            },
-                            {
-                                "id": "voice-live-2",
-                                "text": "second voice hit",
-                            },
-                        ],
-                    },
-                )
+                if empty_inbox:
+                    self._json(200, {"ok": True, "messages": []})
+                else:
+                    self._json(
+                        200,
+                        {
+                            "ok": True,
+                            "messages": [
+                                {
+                                    "id": "voice-live-1",
+                                    "text": "live mock voice inbound",
+                                },
+                                {
+                                    "id": "voice-live-2",
+                                    "text": "second voice hit",
+                                },
+                            ],
+                        },
+                    )
                 return
             if mode == "webhook" and (
                 path == "/hooks" or path.startswith("/hooks")
             ):
-                self._json(
-                    200,
-                    {
-                        "ok": True,
-                        "events": [
-                            {
-                                "id": "wh-live-1",
-                                "text": "live mock webhook inbound",
-                            },
-                            {
-                                "id": "wh-live-2",
-                                "text": "second webhook hit",
-                            },
-                        ],
-                    },
-                )
+                if empty_inbox:
+                    self._json(200, {"ok": True, "events": []})
+                else:
+                    self._json(
+                        200,
+                        {
+                            "ok": True,
+                            "events": [
+                                {
+                                    "id": "wh-live-1",
+                                    "text": "live mock webhook inbound",
+                                },
+                                {
+                                    "id": "wh-live-2",
+                                    "text": "second webhook hit",
+                                },
+                            ],
+                        },
+                    )
                 return
             if mode == "teams" and path.endswith("/me/chats"):
                 if not self._auth_ok():
@@ -519,27 +548,30 @@ def main() -> int:
                 if not self._auth_ok():
                     self._json(401, {"ok": False, "error": "unauthorized"})
                     return
-                self._json(
-                    200,
-                    {
-                        "value": [
-                            {
-                                "id": "tm-live-1",
-                                "body": {
-                                    "contentType": "text",
-                                    "content": "live mock teams inbound",
+                if empty_inbox:
+                    self._json(200, {"value": []})
+                else:
+                    self._json(
+                        200,
+                        {
+                            "value": [
+                                {
+                                    "id": "tm-live-1",
+                                    "body": {
+                                        "contentType": "text",
+                                        "content": "live mock teams inbound",
+                                    },
                                 },
-                            },
-                            {
-                                "id": "tm-live-2",
-                                "body": {
-                                    "contentType": "text",
-                                    "content": "second teams hit",
+                                {
+                                    "id": "tm-live-2",
+                                    "body": {
+                                        "contentType": "text",
+                                        "content": "second teams hit",
+                                    },
                                 },
-                            },
-                        ]
-                    },
-                )
+                            ]
+                        },
+                    )
                 return
             if mode == "x" and path.endswith("/tweets/search/recent"):
                 if not self._auth_ok():
@@ -603,26 +635,29 @@ def main() -> int:
                     return
                 qs = parse_qs(parsed.query)
                 q = (qs.get("q") or ["inbox"])[0]
-                self._json(
-                    200,
-                    {
-                        "ok": True,
-                        "messages": [
-                            {
-                                "id": "claim-live-1",
-                                "from": "live@mock",
-                                "subject": f"live claim for {q}",
-                                "text_prefix": f"mock inbox hit {q}",
-                            },
-                            {
-                                "id": "claim-live-2",
-                                "from": "noreply@mock",
-                                "subject": f"second claim {q}",
-                                "text_prefix": "second mock claim",
-                            },
-                        ],
-                    },
-                )
+                if empty_inbox:
+                    self._json(200, {"ok": True, "messages": []})
+                else:
+                    self._json(
+                        200,
+                        {
+                            "ok": True,
+                            "messages": [
+                                {
+                                    "id": "claim-live-1",
+                                    "from": "live@mock",
+                                    "subject": f"live claim for {q}",
+                                    "text_prefix": f"mock inbox hit {q}",
+                                },
+                                {
+                                    "id": "claim-live-2",
+                                    "from": "noreply@mock",
+                                    "subject": f"second claim {q}",
+                                    "text_prefix": "second mock claim",
+                                },
+                            ],
+                        },
+                    )
                 return
             if mode == "outlook" and path.rstrip("/").endswith("/me/messages"):
                 if not self._auth_ok():

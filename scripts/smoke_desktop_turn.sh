@@ -940,6 +940,15 @@ kill "$SLACK_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SLACK_MOCK_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-claim-turn.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_slack_claim';assert p.get('live_slack_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;assert p.get('inbound_push_residual') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel_send slack claim inbound turn residual close ok', th.get('turn_path'), 'inbound_push_residual', True)"
 python3 -c "import json;d=json.load(open('/tmp/bitbot-slack-live-thread.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('mode')=='live_slack_thread';assert p.get('thread_ts')=='1710000000.000060';assert p.get('pretend_live') is False;deliv=next(x for x in hrs if x.get('kind')=='delivery');dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='thread';print('channel_send slack live thread ok', p.get('mode'), 'ts', p.get('ts'))"
+# Empty HTTP-ok Slack inbox keeps live_slack_residual open; no inbound turn success.
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18803 --mode slack --token smoke-slack --empty >/tmp/bitbot-slack-empty-mock.log 2>&1 &
+SLACK_EMPTY_MOCK_PID=$!
+sleep 0.4
+BITBOT_SLACK_API_BASE=http://127.0.0.1:18803 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_CLAIM=1 BITBOT_INBOUND_TURN=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via slack:Cempty :: claim empty inbox" >/tmp/bitbot-slack-claim-empty.json || true
+kill "$SLACK_EMPTY_MOCK_PID" >/dev/null 2>&1 || true
+wait "$SLACK_EMPTY_MOCK_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-slack-claim-empty.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_slack_claim';assert p.get('claimed_count',0)==0;assert p.get('live_slack_residual') is True;assert p.get('ok') is False;assert (p.get('claim') or {}).get('ok') is False;th=p.get('turn_hook') or {};assert th.get('turn_executed') is not True;assert p.get('inbound_turn_residual') is None or p.get('inbound_turn_residual') is True;assert p.get('pretend_live') is False;print('channel_send slack empty claim residual open ok', 'claimed', p.get('claimed_count'), 'residual', True)"
 # Live Teams Graph post / claim against local mock
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18770 --mode teams --token smoke-teams >/tmp/bitbot-teams-mock.log 2>&1 &
 TEAMS_MOCK_PID=$!
