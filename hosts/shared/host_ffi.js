@@ -537,6 +537,82 @@ function createHostFfi(repoRoot) {
     }
   }
 
+  function isWebFetchAuthWall(url, status, body) {
+    const u = String(url || "").toLowerCase();
+    const b = String(body || "").toLowerCase();
+    if (status === 401 || status === 407) return true;
+    if (/\/login(?:\/|$|\?)|\/signin|\/oauth|\/sso/.test(u)) return true;
+    if (
+      b.includes("www-authenticate") ||
+      b.includes("unauthorized") ||
+      b.includes("sign in") ||
+      b.includes("please log in") ||
+      b.includes("credential")
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  function isWebFetchBlocked(status, body) {
+    const b = String(body || "").toLowerCase();
+    if (status === 403 || status === 429 || status === 451) return true;
+    if (
+      b.includes("blocked") ||
+      b.includes("access denied") ||
+      b.includes("forbidden") ||
+      b.includes("bot detected")
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  async function curlPublicFallback(url) {
+    // CM-1703: public egress via curl UA — never send auth headers (no cred bypass).
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        "curl",
+        [
+          "-fsSL",
+          "--max-time",
+          "20",
+          "-A",
+          "BitBot-PublicFallback/1.0",
+          url,
+        ],
+        {
+          cwd: REPO_ROOT,
+          timeout: 25000,
+          maxBuffer: 1024 * 1024,
+          env: {
+            ...process.env,
+            // Strip inherited auth to enforce no credential bypass.
+            CURL_HOME: path.join(REPO_ROOT, "data", "tmp", "curl-empty-home"),
+          },
+        },
+      );
+      const body = String(stdout || "");
+      return {
+        ok: body.length > 0,
+        status: 200,
+        body: body.slice(0, 16000),
+        error: null,
+        tool: "curl",
+        stderr: String(stderr || "").slice(0, 400),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 0,
+        body: err.stdout ? String(err.stdout).slice(0, 4000) : "",
+        error: err.message || String(err),
+        tool: "curl",
+        stderr: err.stderr ? String(err.stderr).slice(0, 400) : "",
+      };
+    }
+  }
+
   async function executeWebFetch(command) {
     const at = new Date().toISOString();
     const url = String(command || "").trim();
@@ -551,25 +627,75 @@ function createHostFfi(repoRoot) {
     const res = await httpJson(url, { method: "GET" });
     const dir = path.join(REPO_ROOT, "data", "host-tools", "webfetch");
     fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(path.join(REPO_ROOT, "data", "tmp", "curl-empty-home"), {
+      recursive: true,
+    });
     const artifactPath = path.join(
       dir,
       `fetch-${Date.now().toString(36)}.json`,
     );
-    const body = String(res.body || "");
+    let body = String(res.body || "");
+    let httpStatus = res.status || 0;
+    let ok = Boolean(res.ok);
+    let error = res.error || null;
+    let usedFallback = false;
+    let fallback = null;
+    let credentialBypass = false;
+    let mode = "host_webfetch";
+    let publicFallbackResidual = false;
+
+    if (!ok) {
+      if (isWebFetchAuthWall(url, httpStatus, body)) {
+        // Auth wall: refuse public fallback (CM-1703 no credential bypass).
+        error =
+          error ||
+          `auth_wall http_${httpStatus}: public fallback refused (credential bypass forbidden)`;
+        mode = "host_webfetch_auth_wall";
+        credentialBypass = false;
+        publicFallbackResidual = false;
+      } else if (isWebFetchBlocked(httpStatus, body) || httpStatus === 0) {
+        const fb = await curlPublicFallback(url);
+        if (fb.ok) {
+          usedFallback = true;
+          fallback = "curl";
+          body = fb.body;
+          httpStatus = fb.status || 200;
+          ok = true;
+          error = null;
+          mode = "host_webfetch_public_fallback";
+          credentialBypass = false;
+          publicFallbackResidual = false;
+        } else {
+          error =
+            error ||
+            fb.error ||
+            `blocked http_${httpStatus}; curl public fallback failed`;
+          mode = "host_webfetch_blocked";
+          publicFallbackResidual = true;
+          fallback = "curl_failed";
+        }
+      }
+    }
+
     const artifact = {
       url,
-      http_status: res.status || 0,
-      ok: Boolean(res.ok),
-      error: res.error || null,
+      http_status: httpStatus,
+      ok,
+      error,
       body_prefix: body.slice(0, 800),
       body_bytes: Buffer.byteLength(body, "utf8"),
-      mode: "host_webfetch",
+      mode,
+      used_fallback: usedFallback,
+      fallback,
+      credential_bypass: credentialBypass,
+      public_fallback_residual: publicFallbackResidual,
       pretend_fetched: false,
       at,
     };
     fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
     appendJsonl(path.join(dir, "fetches.jsonl"), {
       ...artifact,
+      path: artifactPath,
       artifact_path: artifactPath,
     });
     const delivery = recordSendToUser({
@@ -577,6 +703,7 @@ function createHostFfi(repoRoot) {
       path: artifactPath,
       label: "webfetch",
       url,
+      used_fallback: usedFallback,
       source_kind: "webfetch",
       at,
     });
@@ -585,17 +712,20 @@ function createHostFfi(repoRoot) {
       command: url,
       path: artifactPath,
       http_status: artifact.http_status,
+      used_fallback: usedFallback,
+      fallback,
       at,
     });
-    if (!res.ok) {
+    if (!ok) {
       return {
         kind: "webfetch",
         ok: false,
         command: url,
-        error: res.error || `http_${res.status}`,
+        error: error || `http_${httpStatus}`,
         stdout: JSON.stringify(
           {
             ...artifact,
+            path: artifactPath,
             artifact_path: artifactPath,
             send_to_user: delivery,
           },
@@ -606,6 +736,7 @@ function createHostFfi(repoRoot) {
     }
     return okJson("webfetch", url, {
       ...artifact,
+      path: artifactPath,
       artifact_path: artifactPath,
       send_to_user: delivery,
       ok: true,

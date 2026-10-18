@@ -296,7 +296,16 @@ python3 -c "import json,os;d=json.load(open('/tmp/parity-fs-list.json'));h=next(
 "${RUN[@]}" "fs read README.mbt.md" >/tmp/parity-fs-read.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-fs-read.json'));h=next(x for x in d['host_results'] if x.get('kind')=='fs_read');p=json.loads(h['stdout']);assert p.get('pretend_contents') is False;assert p.get('bytes',0)>=1;assert 'MoonBit' in (p.get('body_prefix') or p.get('body') or '');assert os.path.isfile(p['artifact_path']);print('parity fs_read ok', p.get('bytes'))"
 "${RUN[@]}" "webfetch https://example.com" >/tmp/parity-webfetch.json
-python3 -c "import json,os;d=json.load(open('/tmp/parity-webfetch.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');p=json.loads(h['stdout']);assert p.get('pretend_fetched') is False;assert p.get('ok') is True;assert p.get('http_status')==200;assert os.path.isfile(p['artifact_path']);print('parity webfetch ok', p.get('http_status'), p.get('body_bytes'))"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-webfetch.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');p=json.loads(h['stdout']);assert p.get('pretend_fetched') is False;assert p.get('ok') is True;assert p.get('http_status')==200;assert p.get('used_fallback') is False;assert p.get('credential_bypass') is False;assert os.path.isfile(p.get('path') or p['artifact_path']);print('parity webfetch ok', p.get('http_status'), p.get('body_bytes'), p.get('path') or p.get('artifact_path'))"
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18790 --mode webfetch >/tmp/parity-webfetch-mock.log 2>&1 &
+WF_PID=$!
+sleep 0.3
+"${RUN[@]}" --approved "webfetch http://127.0.0.1:18790/docs-blocked" >/tmp/parity-webfetch-fb.json || true
+"${RUN[@]}" --approved "webfetch http://127.0.0.1:18790/login" >/tmp/parity-webfetch-auth.json || true
+kill "$WF_PID" >/dev/null 2>&1 || true
+wait "$WF_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/parity-webfetch-fb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');p=json.loads(h['stdout']);assert h.get('ok') is True;assert p.get('used_fallback') is True;assert p.get('fallback')=='curl';assert p.get('credential_bypass') is False;assert p.get('pretend_fetched') is False;assert 'Public docs' in (p.get('body_prefix') or '');assert p.get('path') and os.path.isfile(p['path']);print('parity webfetch CM-1703 public fallback ok', p.get('fallback'), p.get('path'))"
+python3 -c "import json;d=json.load(open('/tmp/parity-webfetch-auth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');p=json.loads(h.get('stdout') or '{}');assert h.get('ok') is False;assert p.get('used_fallback') is False;assert p.get('credential_bypass') is False;assert 'auth_wall' in (p.get('error') or h.get('error') or '') or p.get('mode')=='host_webfetch_auth_wall';print('parity webfetch auth wall no-bypass ok', p.get('mode') or h.get('error'))"
 mkdir -p uploads
 printf 'parity-box-roundtrip\n' > uploads/parity-round-src.txt
 "${RUN[@]}" "copy to box machine=desk-1 src=uploads/parity-round-src.txt dest=uploads/parity-round-box.txt" >/tmp/parity-box-to.json

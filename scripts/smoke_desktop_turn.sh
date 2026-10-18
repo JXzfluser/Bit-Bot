@@ -70,6 +70,18 @@ run "device permission ios camera" --machine-kind ios "device tool camera"
 run "copy to box plan" --approved "copy to box machine=desk-1 src=README.mbt.md dest=/workspace/uploads/README.mbt.md"
 run "fs_list plan" "listdir docs"
 run "webfetch plan" "webfetch https://example.com"
+echo "==> Host webfetch CM-1703 public fallback (403→curl, auth wall refuse)"
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18790 --mode webfetch >/tmp/bitbot-webfetch-mock.log 2>&1 &
+WF_MOCK_PID=$!
+sleep 0.3
+node hosts/cli_host/run_turn.js --approved "webfetch http://127.0.0.1:18790/docs-blocked" >/tmp/bitbot-webfetch-fb.json || true
+node hosts/cli_host/run_turn.js --approved "webfetch http://127.0.0.1:18790/login" >/tmp/bitbot-webfetch-auth.json || true
+node hosts/cli_host/run_turn.js --approved "webfetch http://127.0.0.1:18790/ok" >/tmp/bitbot-webfetch-ok.json || true
+kill "$WF_MOCK_PID" >/dev/null 2>&1 || true
+wait "$WF_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-webfetch-fb.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('used_fallback') is True;assert p.get('fallback')=='curl';assert p.get('credential_bypass') is False;assert p.get('pretend_fetched') is False;assert 'Public docs' in (p.get('body_prefix') or '');assert p.get('path') and os.path.isfile(p['path']);print('webfetch public fallback ok', p.get('fallback'), p.get('path'))"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-webfetch-auth.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('used_fallback') is False;assert p.get('credential_bypass') is False;assert 'auth_wall' in (p.get('error') or h.get('error') or '') or p.get('mode')=='host_webfetch_auth_wall';print('webfetch auth wall refuse ok', p.get('mode') or h.get('error'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-webfetch-ok.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webfetch');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('used_fallback') is False;assert p.get('http_status')==200;assert p.get('path') and os.path.isfile(p['path']);print('webfetch direct ok', p.get('http_status'), p.get('path'))"
 run "host effect gated" "shell echo desktop-smoke"
 run "host effect approved" --approved "shell echo desktop-smoke"
 run "host FFI continue (ADR 0002)" \

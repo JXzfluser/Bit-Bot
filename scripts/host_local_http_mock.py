@@ -35,6 +35,9 @@ Endpoints:
   cloud:    POST /agents  (BITBOT_CLOUD_API_URL=http://host:port)
   outlook:  POST /me/sendMail  (BITBOT_OUTLOOK_GRAPH_URL=http://host:port)
   calendar: POST /events  (BITBOT_CALENDAR_API_URL=http://host:port)
+  webfetch: GET /docs-blocked (403 unless UA BitBot-PublicFallback)
+            GET /login (401 auth wall)
+            GET /ok (200)
 """
 
 from __future__ import annotations
@@ -63,6 +66,7 @@ def main() -> int:
             "cloud",
             "outlook",
             "calendar",
+            "webfetch",
         ),
         required=True,
     )
@@ -283,6 +287,54 @@ def main() -> int:
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             path = parsed.path
+            if mode == "webfetch":
+                ua = self.headers.get("User-Agent") or ""
+                if path.endswith("/docs-blocked") or path == "/docs-blocked":
+                    if "BitBot-PublicFallback" in ua:
+                        html = (
+                            "<html><body>Public docs via alternate egress"
+                            "</body></html>"
+                        ).encode("utf-8")
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/html")
+                        self.send_header("Content-Length", str(len(html)))
+                        self.end_headers()
+                        self.wfile.write(html)
+                        return
+                    self._json(
+                        403,
+                        {
+                            "ok": False,
+                            "error": "blocked",
+                            "message": "Access denied / bot detected",
+                        },
+                    )
+                    return
+                if path.endswith("/login") or path == "/login":
+                    self.send_response(401)
+                    self.send_header("WWW-Authenticate", 'Bearer realm="login"')
+                    data = json.dumps(
+                        {
+                            "ok": False,
+                            "error": "unauthorized",
+                            "message": "Please log in",
+                        }
+                    ).encode("utf-8")
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                if path.endswith("/ok") or path == "/ok":
+                    html = b"<html><body>Example Domain ok</body></html>"
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html")
+                    self.send_header("Content-Length", str(len(html)))
+                    self.end_headers()
+                    self.wfile.write(html)
+                    return
+                self._json(404, {"ok": False, "error": "not_found"})
+                return
             if mode == "teams" and path.endswith("/me/chats"):
                 if not self._auth_ok():
                     self._json(401, {"ok": False, "error": "unauthorized"})
