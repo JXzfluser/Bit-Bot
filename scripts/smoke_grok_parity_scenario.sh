@@ -448,6 +448,8 @@ cv=Path('hosts/ios/BitBotHost/Sources/BitBotHost/ContentView.swift').read_text()
 main=Path('hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivity.kt').read_text()
 assert 'formatStrip' in ios and 'SendToUserChipRow' in ios
 assert 'formatStrip' in kt and 'SendToUser' in kt
+assert 'attachments' in ios and 'pickAttachmentPath' in ios
+assert 'attachments' in kt and 'pickAttachmentPath' in kt
 assert 'SendToUserSurface' in cv and 'SendToUserSurface' in main
 for needle in (
     'productActions',
@@ -457,6 +459,10 @@ for needle in (
     'voice start',
     'box doctor',
     'box chrome probe',
+    'make slides',
+    'draft mail',
+    'schedule meeting',
+    'purchase item',
 ):
     assert needle in cv, needle
     assert needle in main, needle
@@ -466,7 +472,9 @@ print('parity native product quick actions ok')
 "${MOBILE[@]}" --machine-kind android --session-id parity-android --approved "listdir docs" >/tmp/parity-android.txt
 python3 -c "t=open('/tmp/parity-android.txt').read();assert 'android' in t;assert 'machine_kind=android' in t;print('parity android turn ok')"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-slides "make slides title=MobileParity" >/tmp/parity-ios-slides.txt
-python3 -c "t=open('/tmp/parity-ios-slides.txt').read();assert 'SendToUser' in t;assert 'attachment' in t or 'slides_pptx' in t;assert 'machine_kind=ios' in t;print('parity ios slides SendToUser strip ok')"
+python3 -c "t=open('/tmp/parity-ios-slides.txt').read();assert 'SendToUser' in t;assert 'attachment' in t or 'slides_pptx' in t;assert 'SendToUser attachments' in t;assert 'slides_pptx' in t;assert 'machine_kind=ios' in t;print('parity ios slides SendToUser strip+attachments ok')"
+"${MOBILE[@]}" --machine-kind android --session-id parity-and-img "generate image android parity aurora" >/tmp/parity-and-img.txt
+python3 -c "t=open('/tmp/parity-and-img.txt').read();assert 'generate_image' in t;assert 'SendToUser attachments' in t;assert 'machine_kind=android' in t;print('parity android generate_image attachment strip ok')"
 "${RUN[@]}" --machine-kind android --machine-id phone-android "ListMachines" >/tmp/parity-lm-android.json
 python3 -c "import json;d=json.load(open('/tmp/parity-lm-android.json'));ms=d.get('machines')or[];a=next(m for m in ms if m.get('kind')=='android');assert a.get('status')=='connected';assert a.get('id')=='phone-android';print('parity android host-present ListMachines ok', a.get('status'))"
 "${RUN[@]}" --machine-kind desktop "ListMachines" >/tmp/parity-lm-desk.json

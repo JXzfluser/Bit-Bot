@@ -6,12 +6,19 @@ import org.json.JSONObject
 /**
  * CHARTER Delivery — native Android Host SendToUser surface.
  * Mirrors `hosts/shared/send_to_user_surface.js`: summarize Host turn JSON into
- * delivery type chips without inventing content or live channel posts.
+ * delivery type chips + concrete attachment paths without inventing content.
  */
 object SendToUserSurface {
+  data class Attachment(
+    val kind: String,
+    val path: String,
+    val role: String,
+  )
+
   data class Summary(
     val types: List<String> = emptyList(),
     val labels: List<String> = emptyList(),
+    val attachments: List<Attachment> = emptyList(),
     val ok: Boolean = false,
     val machineKind: String = "",
   )
@@ -38,6 +45,39 @@ object SendToUserSurface {
     "mcp_uninstall", "mcp_get_plugin", "mcp_list_plugins",
   )
 
+  private fun pickAttachmentPath(kind: String, p: JSONObject, h: JSONObject): String {
+    val keys = listOf(
+      "media_path", "frame_path", "html_path", "receipt_path",
+      "pptx_path", "ics_path", "eml_path", "reply_media_path", "artifact_path",
+    )
+    for (k in keys) {
+      val v = p.optString(k)
+      if (v.isNotBlank()) return v
+    }
+    return p.optString("path").ifBlank { h.optString("path") }
+  }
+
+  private fun attachmentRole(kind: String, filePath: String): String {
+    val ext = filePath.substringAfterLast('.', "").lowercase()
+    if (ext in setOf("png", "jpg", "jpeg", "gif", "webp", "wav", "mp3", "mp4", "webm")) {
+      return "media"
+    }
+    if (ext in setOf("html", "htm")) return "html"
+    if (ext in setOf("pptx", "ics", "eml")) return "openable"
+    if (kind == "render_markdown" || kind == "purchase") return "html"
+    if (kind in setOf(
+        "generate_image", "generate_video", "watch_video", "structured_chart",
+        "screenshot", "voice_session", "voice_relay",
+      )
+    ) {
+      return "media"
+    }
+    if (kind in setOf("slides_pptx", "schedule_meeting", "mail_send", "mail_draft")) {
+      return "openable"
+    }
+    return "snap"
+  }
+
   fun extract(fromTurnJson: String): Summary {
     return runCatching {
       val lines = fromTurnJson.lineSequence()
@@ -54,6 +94,7 @@ object SendToUserSurface {
       val hrs: JSONArray = turn.optJSONArray("host_results") ?: JSONArray()
       val typeSet = linkedSetOf<String>()
       val labels = mutableListOf<String>()
+      val attachments = mutableListOf<Attachment>()
       for (i in 0 until hrs.length()) {
         val h = hrs.optJSONObject(i) ?: continue
         if (h.has("ok") && !h.optBoolean("ok", true)) continue
@@ -63,13 +104,19 @@ object SendToUserSurface {
         if (stdout.isNotBlank()) {
           runCatching { p = JSONObject(stdout) }
         }
-        val pathSuffix =
-          if (p.optString("path").isNotBlank() || h.optString("path").isNotBlank()) "/snap"
-          else ""
+        val filePath = pickAttachmentPath(kind, p, h)
+        val pathSuffix = if (filePath.isNotBlank()) "/snap" else ""
         when {
           kind == "delivery" && p.optString("type").isNotBlank() -> {
             typeSet += p.optString("type")
             labels += "SendToUser:" + p.optString("type")
+            if (filePath.isNotBlank()) {
+              attachments += Attachment(
+                kind = "delivery",
+                path = filePath,
+                role = attachmentRole("delivery", filePath),
+              )
+            }
           }
           kind == "inbound_reaction" -> {
             typeSet += "reaction"
@@ -93,10 +140,20 @@ object SendToUserSurface {
           kind in attachmentKinds -> {
             typeSet += "attachment"
             labels += kind + pathSuffix
+            if (filePath.isNotBlank()) {
+              attachments += Attachment(
+                kind = kind,
+                path = filePath,
+                role = attachmentRole(kind, filePath),
+              )
+            }
           }
           kind == "voice_session" || kind == "voice_relay" || kind == "voice_end_write" -> {
             typeSet += "voice"
             labels += kind + pathSuffix
+            if (filePath.isNotBlank()) {
+              attachments += Attachment(kind = kind, path = filePath, role = "media")
+            }
           }
           kind == "approval_card" -> {
             typeSet += "widget"
@@ -112,6 +169,7 @@ object SendToUserSurface {
       Summary(
         types = typeSet.sorted(),
         labels = labels,
+        attachments = attachments,
         ok = turn.optBoolean("ok", false),
         machineKind = turn.optString("machine_kind"),
       )
@@ -122,6 +180,14 @@ object SendToUserSurface {
     if (summary.labels.isEmpty()) return ""
     val types = summary.types.joinToString("|")
     val labels = summary.labels.take(12).joinToString(", ")
-    return "\n[SendToUser $types] $labels"
+    var strip = "\n[SendToUser $types] $labels"
+    if (summary.attachments.isNotEmpty()) {
+      val atts = summary.attachments.take(8).joinToString(", ") { att ->
+        val leaf = att.path.substringAfterLast('/')
+        "${att.kind}:$leaf"
+      }
+      strip += "\n[SendToUser attachments] $atts"
+    }
+    return strip
   }
 }

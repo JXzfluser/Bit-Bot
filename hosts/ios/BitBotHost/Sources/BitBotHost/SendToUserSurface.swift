@@ -3,11 +3,19 @@ import SwiftUI
 
 /// CHARTER Delivery — native iOS Host SendToUser surface.
 /// Mirrors `hosts/shared/send_to_user_surface.js`: summarize Host turn JSON into
-/// delivery type chips without inventing content or live channel posts.
+/// delivery type chips + concrete attachment paths without inventing content.
 enum SendToUserSurface {
+  struct Attachment: Identifiable, Equatable {
+    let id = UUID()
+    var kind: String
+    var path: String
+    var role: String
+  }
+
   struct Summary {
     var types: [String] = []
     var labels: [String] = []
+    var attachments: [Attachment] = []
     var ok: Bool = false
     var machineKind: String = ""
   }
@@ -33,6 +41,38 @@ enum SendToUserSurface {
     "screenshot", "check_updates", "auto_review_settings", "box_chrome_probe",
     "mcp_uninstall", "mcp_get_plugin", "mcp_list_plugins",
   ]
+
+  private static func pickAttachmentPath(kind: String, p: [String: Any], h: [String: Any]) -> String {
+    let keys = [
+      "media_path", "frame_path", "html_path", "receipt_path",
+      "pptx_path", "ics_path", "eml_path", "reply_media_path", "artifact_path",
+    ]
+    for k in keys {
+      if let v = p[k] as? String, !v.isEmpty { return v }
+    }
+    let path = (p["path"] as? String) ?? (h["path"] as? String) ?? ""
+    return path
+  }
+
+  private static func attachmentRole(kind: String, filePath: String) -> String {
+    let ext = (filePath as NSString).pathExtension.lowercased()
+    if ["png", "jpg", "jpeg", "gif", "webp", "wav", "mp3", "mp4", "webm"].contains(ext) {
+      return "media"
+    }
+    if ["html", "htm"].contains(ext) { return "html" }
+    if ["pptx", "ics", "eml"].contains(ext) { return "openable" }
+    if kind == "render_markdown" || kind == "purchase" { return "html" }
+    if [
+      "generate_image", "generate_video", "watch_video", "structured_chart",
+      "screenshot", "voice_session", "voice_relay",
+    ].contains(kind) {
+      return "media"
+    }
+    if ["slides_pptx", "schedule_meeting", "mail_send", "mail_draft"].contains(kind) {
+      return "openable"
+    }
+    return "snap"
+  }
 
   static func extract(fromTurnJSON jsonText: String) -> Summary {
     var summary = Summary()
@@ -64,18 +104,16 @@ enum SendToUserSurface {
          let obj = try? JSONSerialization.jsonObject(with: sdata) as? [String: Any] {
         p = obj
       }
-      let pathSuffix: String = {
-        if let path = p["path"] as? String, !path.isEmpty {
-          return "/snap"
-        }
-        if let path = h["path"] as? String, !path.isEmpty {
-          return "/snap"
-        }
-        return ""
-      }()
+      let filePath = pickAttachmentPath(kind: kind, p: p, h: h)
+      let pathSuffix: String = filePath.isEmpty ? "" : "/snap"
       if kind == "delivery", let t = p["type"] as? String, !t.isEmpty {
         typeSet.insert(t)
         summary.labels.append("SendToUser:" + t)
+        if !filePath.isEmpty {
+          summary.attachments.append(
+            Attachment(kind: "delivery", path: filePath, role: attachmentRole(kind: "delivery", filePath: filePath))
+          )
+        }
       } else if kind == "inbound_reaction" {
         typeSet.insert("reaction")
         let emoji = (p["emoji"] as? String) ?? "👍"
@@ -95,9 +133,19 @@ enum SendToUserSurface {
       } else if attachmentKinds.contains(kind) {
         typeSet.insert("attachment")
         summary.labels.append(kind + pathSuffix)
+        if !filePath.isEmpty {
+          summary.attachments.append(
+            Attachment(kind: kind, path: filePath, role: attachmentRole(kind: kind, filePath: filePath))
+          )
+        }
       } else if kind == "voice_session" || kind == "voice_relay" || kind == "voice_end_write" {
         typeSet.insert("voice")
         summary.labels.append(kind + pathSuffix)
+        if !filePath.isEmpty {
+          summary.attachments.append(
+            Attachment(kind: kind, path: filePath, role: "media")
+          )
+        }
       } else if kind == "approval_card" {
         typeSet.insert("widget")
         summary.labels.append("widget:approval" + pathSuffix)
@@ -115,26 +163,54 @@ enum SendToUserSurface {
     guard !summary.labels.isEmpty else { return "" }
     let types = summary.types.joined(separator: "|")
     let labels = summary.labels.prefix(12).joined(separator: ", ")
-    return "\n[SendToUser \(types)] \(labels)"
+    var strip = "\n[SendToUser \(types)] \(labels)"
+    if !summary.attachments.isEmpty {
+      let atts = summary.attachments.prefix(8).map { att in
+        let leaf = (att.path as NSString).lastPathComponent
+        return "\(att.kind):\(leaf)"
+      }.joined(separator: ", ")
+      strip += "\n[SendToUser attachments] \(atts)"
+    }
+    return strip
   }
 }
 
-/// Compact chip row for native iOS Host transcript (CHARTER Delivery types).
+/// Compact chip row for native iOS Host transcript (CHARTER Delivery types + paths).
 struct SendToUserChipRow: View {
   let summary: SendToUserSurface.Summary
 
   var body: some View {
-    if !summary.labels.isEmpty {
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 6) {
-          ForEach(Array(summary.labels.prefix(12).enumerated()), id: \.offset) { _, label in
-            Text(label)
-              .font(.caption.monospaced())
-              .padding(.horizontal, 8)
-              .padding(.vertical, 4)
-              .background(Color.secondary.opacity(0.15))
-              .clipShape(RoundedRectangle(cornerRadius: 6))
+    if !summary.labels.isEmpty || !summary.attachments.isEmpty {
+      VStack(alignment: .leading, spacing: 6) {
+        if !summary.labels.isEmpty {
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+              ForEach(Array(summary.labels.prefix(12).enumerated()), id: \.offset) { _, label in
+                Text(label)
+                  .font(.caption.monospaced())
+                  .padding(.horizontal, 8)
+                  .padding(.vertical, 4)
+                  .background(Color.secondary.opacity(0.15))
+                  .clipShape(RoundedRectangle(cornerRadius: 6))
+              }
+            }
           }
+        }
+        if !summary.attachments.isEmpty {
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+              ForEach(summary.attachments.prefix(8)) { att in
+                let leaf = (att.path as NSString).lastPathComponent
+                Text("\(att.role):\(leaf)")
+                  .font(.caption2.monospaced())
+                  .padding(.horizontal, 8)
+                  .padding(.vertical, 4)
+                  .background(Color.accentColor.opacity(0.12))
+                  .clipShape(RoundedRectangle(cornerRadius: 6))
+              }
+            }
+          }
+          .accessibilityLabel("SendToUser attachments")
         }
       }
       .accessibilityLabel("SendToUser \(summary.types.joined(separator: " "))")

@@ -2,12 +2,76 @@
 
 /**
  * CHARTER Delivery — shared SendToUser surface helper for Desktop/iOS/Android Hosts.
- * Summarizes Host turn JSON into delivery type chips without inventing content.
+ * Summarizes Host turn JSON into delivery type chips + concrete attachment paths
+ * without inventing content.
  */
+
+function pickAttachmentPath(kind, p, h) {
+  const candidates = [
+    p.media_path,
+    p.frame_path,
+    p.html_path,
+    p.receipt_path,
+    p.pptx_path,
+    p.ics_path,
+    p.eml_path,
+    p.reply_media_path,
+    p.artifact_path,
+  ];
+  for (const c of candidates) {
+    if (c && String(c).trim()) return String(c).trim();
+  }
+  const path = (p.path || h.path || "").trim();
+  if (!path) return "";
+  // Prefer openable / previewable file extensions over JSON snap paths.
+  if (/\.(png|jpe?g|gif|webp|wav|mp3|mp4|webm|html?|pptx|ics|eml)$/i.test(path)) {
+    return path;
+  }
+  // Media / purchase / slides often put the real file in path already.
+  if (
+    kind === "generate_image" ||
+    kind === "generate_video" ||
+    kind === "structured_chart" ||
+    kind === "slides_pptx" ||
+    kind === "purchase"
+  ) {
+    return path;
+  }
+  return path;
+}
+
+function attachmentRole(kind, filePath) {
+  const ext = String(filePath || "")
+    .split(".")
+    .pop()
+    .toLowerCase();
+  if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return "media";
+  if (["wav", "mp3", "mp4", "webm"].includes(ext)) return "media";
+  if (["html", "htm"].includes(ext)) return "html";
+  if (ext === "pptx" || ext === "ics" || ext === "eml") return "openable";
+  if (kind === "render_markdown") return "html";
+  if (kind === "purchase") return "html";
+  if (
+    kind === "generate_image" ||
+    kind === "generate_video" ||
+    kind === "watch_video" ||
+    kind === "structured_chart" ||
+    kind === "screenshot" ||
+    kind === "voice_session" ||
+    kind === "voice_relay"
+  ) {
+    return "media";
+  }
+  if (kind === "slides_pptx" || kind === "schedule_meeting" || kind === "mail_send" || kind === "mail_draft") {
+    return "openable";
+  }
+  return "snap";
+}
 
 function extractDeliveryTypes(turnJsonText) {
   const types = [];
   const labels = [];
+  const attachments = [];
   try {
     const lines = String(turnJsonText || "")
       .split(/\r?\n/)
@@ -17,22 +81,33 @@ function extractDeliveryTypes(turnJsonText) {
     // Strip optional mobile permission-card trailer.
     const cut = raw.indexOf("/* bitbot_device_permission_cards */");
     if (cut >= 0) raw = raw.slice(0, cut).trim();
+    // Prefer first turn JSON when HostAbi trailers follow.
+    const firstObj = lines.find((l) => l.startsWith("{"));
+    if (firstObj) raw = firstObj;
     if (!raw.startsWith("{")) {
-      return { types, labels, ok: false };
+      return { types, labels, attachments, ok: false };
     }
     const turn = JSON.parse(raw);
     const hrs = Array.isArray(turn.host_results) ? turn.host_results : [];
     for (const h of hrs) {
-      if (!h || !h.ok) continue;
+      if (!h || h.ok === false) continue;
       let p = {};
       try {
         p = JSON.parse(h.stdout || "{}");
       } catch (_) {
         p = {};
       }
+      const filePath = pickAttachmentPath(h.kind || "", p, h);
       if (h.kind === "delivery" && p.type) {
         types.push(p.type);
         labels.push("SendToUser:" + p.type);
+        if (p.path || filePath) {
+          attachments.push({
+            kind: "delivery",
+            path: p.path || filePath,
+            role: attachmentRole("delivery", p.path || filePath),
+          });
+        }
       } else if (h.kind === "inbound_reaction") {
         types.push("reaction");
         labels.push("reaction:" + (p.emoji || "👍"));
@@ -40,7 +115,12 @@ function extractDeliveryTypes(turnJsonText) {
         const t = p.thread_ts ? "thread" : "text";
         types.push(t);
         labels.push("channel:" + (p.mode || p.scheme || "draft"));
-      } else if (h.kind === "section_post" || h.kind === "send_to_agent" || h.kind === "subagent_run" || h.kind === "room_turn") {
+      } else if (
+        h.kind === "section_post" ||
+        h.kind === "send_to_agent" ||
+        h.kind === "subagent_run" ||
+        h.kind === "room_turn"
+      ) {
         const t =
           h.kind === "room_turn"
             ? "thread"
@@ -127,9 +207,14 @@ function extractDeliveryTypes(turnJsonText) {
         ].includes(h.kind)
       ) {
         types.push("attachment");
-        labels.push(
-          h.kind + (p.path || p.artifact_path || h.path ? "/snap" : ""),
-        );
+        labels.push(h.kind + (filePath || p.path || p.artifact_path || h.path ? "/snap" : ""));
+        if (filePath) {
+          attachments.push({
+            kind: h.kind,
+            path: filePath,
+            role: attachmentRole(h.kind, filePath),
+          });
+        }
       } else if (
         h.kind === "voice_session" ||
         h.kind === "voice_relay" ||
@@ -140,6 +225,13 @@ function extractDeliveryTypes(turnJsonText) {
           h.kind +
             (p.path || p.end_artifact_path || p.reply_media_path ? "/snap" : ""),
         );
+        if (filePath) {
+          attachments.push({
+            kind: h.kind,
+            path: filePath,
+            role: "media",
+          });
+        }
       } else if (h.kind === "approval_card") {
         types.push("widget");
         labels.push("widget:approval" + (p.path ? "/snap" : ""));
@@ -155,11 +247,12 @@ function extractDeliveryTypes(turnJsonText) {
     return {
       types: [...new Set(types)],
       labels,
+      attachments,
       ok: Boolean(turn.ok),
       machine_kind: turn.machine_kind || "",
     };
   } catch (_) {
-    return { types, labels, ok: false };
+    return { types, labels, attachments, ok: false };
   }
 }
 
@@ -167,15 +260,26 @@ function formatDeliveryStrip(summary) {
   if (!summary || !summary.labels || !summary.labels.length) {
     return "";
   }
-  return (
+  let strip =
     "\n[SendToUser " +
     (summary.types || []).join("|") +
     "] " +
-    summary.labels.slice(0, 12).join(", ")
-  );
+    summary.labels.slice(0, 12).join(", ");
+  const atts = summary.attachments || [];
+  if (atts.length) {
+    strip +=
+      "\n[SendToUser attachments] " +
+      atts
+        .slice(0, 8)
+        .map((a) => (a.kind || "?") + ":" + String(a.path || "").split("/").slice(-1)[0])
+        .join(", ");
+  }
+  return strip;
 }
 
 module.exports = {
   extractDeliveryTypes,
   formatDeliveryStrip,
+  pickAttachmentPath,
+  attachmentRole,
 };

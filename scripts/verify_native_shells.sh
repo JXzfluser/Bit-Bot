@@ -42,6 +42,9 @@ ios_cv = Path("hosts/ios/BitBotHost/Sources/BitBotHost/ContentView.swift").read_
 and_main = Path("hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivity.kt").read_text()
 assert "SendToUser" in ios_stu and "mcp_call" in ios_stu and "voice_relay" in ios_stu
 assert "SendToUser" in and_stu and "mcp_call" in and_stu and "voice_relay" in and_stu
+assert "attachments" in ios_stu and "pickAttachmentPath" in ios_stu
+assert "attachments" in and_stu and "pickAttachmentPath" in and_stu
+assert "SendToUser attachments" in ios_stu and "SendToUser attachments" in and_stu
 # Recent product Host kinds mirrored on both native SendToUser surfaces.
 for kind in (
     "screenshot",
@@ -57,9 +60,11 @@ for kind in (
 shared = Path("hosts/shared/send_to_user_surface.js").read_text()
 for kind in ("screenshot", "box_chrome_probe", "check_updates", "auto_review_settings"):
     assert kind in shared, kind
+assert "pickAttachmentPath" in shared and "attachments" in shared
+assert "SendToUser attachments" in shared
 assert "SendToUserSurface" in ios_cv and "SendToUserChipRow" in ios_cv
 assert "SendToUserSurface" in and_main
-# Multi-end product quick actions mirror Desktop Plugins/Media/Voice/Box.
+# Multi-end product quick actions mirror Desktop Plugins/Media/Voice/Box + mail/commerce.
 for needle in (
     "productActions",
     "list plugins",
@@ -69,11 +74,15 @@ for needle in (
     "voice start",
     "box doctor",
     "box chrome probe",
+    "make slides",
+    "draft mail",
+    "schedule meeting",
+    "purchase item",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
 print("native device_permission + SendToUser Host scaffolds ok")
-print("native product quick actions (plugins/media/voice/box) ok")
+print("native product quick actions (plugins/media/voice/box/mail) ok")
 PY
 
 # mobile_host may append SendToUser / HostAbi trailer lines after turn JSON.

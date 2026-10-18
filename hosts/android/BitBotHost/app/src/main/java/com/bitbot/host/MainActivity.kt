@@ -47,7 +47,12 @@ class MainActivity : ComponentActivity() {
       "Get plugin" to "get plugin plugin-slides",
       "Gen image" to "generate image android aurora",
       "Chart" to "structured chart {\"alpha\":3,\"beta\":5}",
+      "Slides" to "make slides title=AndroidParity",
+      "Markdown" to "render markdown Inline \\(E=mc^2\\) and $$a^2+b^2=c^2$$",
       "Voice start" to "voice start android-voice",
+      "Draft mail" to "draft mail to=android@example.com subject=Ping body=Hello",
+      "Schedule" to "schedule meeting title=AndroidSync at=2026-11-01T10:00:00Z",
+      "Purchase" to "purchase item=AndroidWidget cents=299",
       "Box doctor" to "box doctor",
       "Box env" to "box env",
       "Chrome probe" to "box chrome probe",
@@ -104,24 +109,47 @@ class MainActivity : ComponentActivity() {
         ) {
           Text("Bit Bot", style = MaterialTheme.typography.headlineLarge)
           Text("Android Host · MoonBit turn v:1", style = MaterialTheme.typography.bodyMedium)
-          if (delivery.labels.isNotEmpty()) {
-            Row(
-              Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(vertical = 6.dp),
-            ) {
-              delivery.labels.take(12).forEach { label ->
-                Surface(
-                  tonalElevation = 2.dp,
-                  shape = MaterialTheme.shapes.small,
-                  modifier = Modifier.padding(end = 6.dp),
+          if (delivery.labels.isNotEmpty() || delivery.attachments.isNotEmpty()) {
+            Column(Modifier = Modifier.padding(vertical = 6.dp)) {
+              if (delivery.labels.isNotEmpty()) {
+                Row(Modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                  delivery.labels.take(12).forEach { label ->
+                    Surface(
+                      tonalElevation = 2.dp,
+                      shape = MaterialTheme.shapes.small,
+                      modifier = Modifier.padding(end = 6.dp),
+                    ) {
+                      Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                      )
+                    }
+                  }
+                }
+              }
+              if (delivery.attachments.isNotEmpty()) {
+                Row(
+                  Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = 4.dp),
                 ) {
-                  Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                  )
+                  delivery.attachments.take(8).forEach { att ->
+                    val leaf = att.path.substringAfterLast('/')
+                    Surface(
+                      tonalElevation = 1.dp,
+                      shape = MaterialTheme.shapes.small,
+                      modifier = Modifier.padding(end = 6.dp),
+                    ) {
+                      Text(
+                        "${att.role}:$leaf",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                      )
+                    }
+                  }
                 }
               }
             }
