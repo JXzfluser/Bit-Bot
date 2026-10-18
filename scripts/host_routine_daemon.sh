@@ -75,14 +75,22 @@ if [[ "$INSTALL_USER" -eq 1 ]]; then
   fi
 fi
 # Detect installed systemd unit (system or user) without requiring root.
+# Active is separate from installed/enabled — residual closes only on active/long_lived.
+SYSTEMD_ACTIVE=0
 if command -v systemctl >/dev/null 2>&1; then
-  if systemctl is-enabled bitbot-routine-daemon.service >/dev/null 2>&1 \
-    || systemctl is-active bitbot-routine-daemon.service >/dev/null 2>&1 \
+  if systemctl is-active bitbot-routine-daemon.service >/dev/null 2>&1; then
+    SYSTEMD_UNIT=1
+    SYSTEMD_ACTIVE=1
+    SYSTEMD_SCOPE="system"
+  elif systemctl --user is-active bitbot-routine-daemon.service >/dev/null 2>&1; then
+    SYSTEMD_UNIT=1
+    SYSTEMD_ACTIVE=1
+    SYSTEMD_SCOPE="user"
+  elif systemctl is-enabled bitbot-routine-daemon.service >/dev/null 2>&1 \
     || [[ -f /etc/systemd/system/bitbot-routine-daemon.service ]]; then
     SYSTEMD_UNIT=1
     SYSTEMD_SCOPE="system"
   elif systemctl --user is-enabled bitbot-routine-daemon.service >/dev/null 2>&1 \
-    || systemctl --user is-active bitbot-routine-daemon.service >/dev/null 2>&1 \
     || [[ -f "$USER_UNIT_DST" ]]; then
     SYSTEMD_UNIT=1
     SYSTEMD_SCOPE="user"
@@ -90,10 +98,12 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 if [[ ( "$WRITE_UNIT" -eq 1 || "$INSTALL_USER" -eq 1 ) && "$LONG_LIVED" -eq 0 && "$SWEEPS" -eq 1 && "$INTERVAL_MS" -eq 0 ]]; then
   # Unit-scaffold / user-install only — do not run sweeps.
-  python3 - "$STATUS_DIR" "$SYSTEMD_UNIT" "$UNIT_DST" "$USER_UNIT_DST" "$SYSTEMD_SCOPE" "$INSTALL_USER" <<'PY'
+  # enable-without-start keeps long_lived=false and systemd_unit_active=false.
+  python3 - "$STATUS_DIR" "$SYSTEMD_UNIT" "$UNIT_DST" "$USER_UNIT_DST" "$SYSTEMD_SCOPE" "$INSTALL_USER" "$SYSTEMD_ACTIVE" <<'PY'
 import json, os, sys, time
-root, systemd_unit, unit_dst, user_dst, scope, install_user = (
-  sys.argv[1], sys.argv[2] == "1", sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6] == "1"
+root, systemd_unit, unit_dst, user_dst, scope, install_user, systemd_active = (
+  sys.argv[1], sys.argv[2] == "1", sys.argv[3], sys.argv[4], sys.argv[5],
+  sys.argv[6] == "1", sys.argv[7] == "1",
 )
 status = {
   "daemon": False,
@@ -103,15 +113,21 @@ status = {
   "systemd_user_unit_path": user_dst if os.path.isfile(user_dst) else None,
   # Scaffold write alone is not an install — keep residual honest.
   "systemd_unit_installed": bool(install_user and systemd_unit),
+  # Active (running) is required to close long_lived_cron_residual via unit path.
+  "systemd_unit_active": bool(systemd_active),
   "systemd_scope": scope or None,
   "sweeps": 0,
   "interval_ms": 0,
   "ok": 0,
   "fail": 0,
   "note": (
-    f"systemd {scope or 'user'} unit installed"
-    if systemd_unit and install_user
-    else "systemd unit scaffold written — --install-user-unit or /etc install closes residual"
+    f"systemd {scope or 'user'} unit active"
+    if systemd_active
+    else (
+      f"systemd {scope or 'user'} unit installed (not active) — start with --now or --long-lived to close residual"
+      if systemd_unit and install_user
+      else "systemd unit scaffold written — --install-user-unit or /etc install; residual stays until active/long_lived"
+    )
   ),
   "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
 }
@@ -121,7 +137,7 @@ with open(path, "w") as f:
 print("daemon-status", path, status)
 PY
   if [[ "$INSTALL_USER" -eq 1 ]]; then
-    echo "OK: installed user systemd unit → $USER_UNIT_DST (systemd_unit=$SYSTEMD_UNIT scope=$SYSTEMD_SCOPE)"
+    echo "OK: installed user systemd unit → $USER_UNIT_DST (systemd_unit=$SYSTEMD_UNIT active=$SYSTEMD_ACTIVE scope=$SYSTEMD_SCOPE)"
   else
     echo "OK: wrote systemd unit scaffold → $UNIT_DST"
   fi
@@ -147,11 +163,12 @@ if [[ "$LONG_LIVED" -eq 1 || "${BITBOT_ROUTINE_LONG_LIVED:-}" == "1" ]]; then
     else
       fail=$((fail + 1))
     fi
-    python3 - "$STATUS_DIR" "$i" "$ok" "$fail" "$INTERVAL_MS" "$SYSTEMD_UNIT" "$UNIT_DST" "$SYSTEMD_SCOPE" "$USER_UNIT_DST" <<'PY'
+    python3 - "$STATUS_DIR" "$i" "$ok" "$fail" "$INTERVAL_MS" "$SYSTEMD_UNIT" "$UNIT_DST" "$SYSTEMD_SCOPE" "$USER_UNIT_DST" "$SYSTEMD_ACTIVE" <<'PY'
 import json, os, sys, time
-root, sweeps, ok, fail, interval_ms, systemd_unit, unit_dst, scope, user_dst = (
+root, sweeps, ok, fail, interval_ms, systemd_unit, unit_dst, scope, user_dst, systemd_active = (
   sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]),
   int(sys.argv[5]), sys.argv[6] == "1", sys.argv[7], sys.argv[8], sys.argv[9],
+  sys.argv[10] == "1",
 )
 status = {
   "daemon": True,
@@ -160,6 +177,7 @@ status = {
   "systemd_unit_path": unit_dst if os.path.isfile(unit_dst) else None,
   "systemd_user_unit_path": user_dst if os.path.isfile(user_dst) else None,
   "systemd_unit_installed": systemd_unit,
+  "systemd_unit_active": bool(systemd_active),
   "systemd_scope": scope or None,
   "sweeps": sweeps,
   "interval_ms": interval_ms,
@@ -206,11 +224,12 @@ time.sleep(max(0, int(sys.argv[1])) / 1000.0)
 PY
   fi
 done
-python3 - "$STATUS_DIR" "$SWEEPS" "$ok" "$fail" "$INTERVAL_MS" "$SYSTEMD_UNIT" "$UNIT_DST" "$SYSTEMD_SCOPE" "$USER_UNIT_DST" <<'PY'
+python3 - "$STATUS_DIR" "$SWEEPS" "$ok" "$fail" "$INTERVAL_MS" "$SYSTEMD_UNIT" "$UNIT_DST" "$SYSTEMD_SCOPE" "$USER_UNIT_DST" "$SYSTEMD_ACTIVE" <<'PY'
 import json, os, sys, time
-root, sweeps, ok, fail, interval_ms, systemd_unit, unit_dst, scope, user_dst = (
+root, sweeps, ok, fail, interval_ms, systemd_unit, unit_dst, scope, user_dst, systemd_active = (
   sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]),
   int(sys.argv[5]), sys.argv[6] == "1", sys.argv[7], sys.argv[8], sys.argv[9],
+  sys.argv[10] == "1",
 )
 status = {
   "daemon": True,
@@ -219,6 +238,7 @@ status = {
   "systemd_unit_path": unit_dst if os.path.isfile(unit_dst) else None,
   "systemd_user_unit_path": user_dst if os.path.isfile(user_dst) else None,
   "systemd_unit_installed": systemd_unit,
+  "systemd_unit_active": bool(systemd_active),
   "systemd_scope": scope or None,
   "sweeps": sweeps,
   "interval_ms": interval_ms,

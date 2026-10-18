@@ -1690,6 +1690,138 @@ function createHostFfi(repoRoot) {
       return finalizeChannelSend(raw, entry, { outboundPath });
     }
 
+    // Voice channel adapter (CM-2005 / CM-0108): voice:<call> → session + media.
+    if (scheme === "voice" || addr.startsWith("voice:")) {
+      const voiceChDir = path.join(REPO_ROOT, "data", "channels", "voice");
+      fs.mkdirSync(voiceChDir, { recursive: true });
+      const mediaDir = path.join(REPO_ROOT, "data", "voice", "media");
+      fs.mkdirSync(mediaDir, { recursive: true });
+      const callKey =
+        addr.includes(":") ? addr.split(":").slice(1).join(":") : addr;
+      const slug = String(callKey || "voice")
+        .replace(/[^a-zA-Z0-9._-]+/g, "_")
+        .slice(0, 64);
+      const rows = readJsonArray(VOICE_SESSIONS_PATH);
+      let row = rows.find(
+        (r) =>
+          r &&
+          (r.voice_address === addr ||
+            r.voice_address === "voice:" + callKey ||
+            String(r.call_id || "") === callKey),
+      );
+      const callId =
+        (row && row.call_id) ||
+        `call-${slug || "voice"}-${Date.now().toString(36)}`;
+      const mediaPath = path.join(
+        mediaDir,
+        `${slug || "voice"}-ch-${Date.now().toString(36)}.wav`,
+      );
+      const media = synthesizeVoiceWav(mediaPath, {
+        frequency: 520,
+        duration: 0.28,
+        text: String(body || "").slice(0, 400),
+      });
+      if (!row) {
+        row = {
+          voice_address: addr.startsWith("voice:") ? addr : "voice:" + callKey,
+          call_id: callId,
+          live: true,
+          relay_log: [],
+          media_path: media.path,
+          media_ok: Boolean(media.ok),
+          at: stamp,
+        };
+        rows.push(row);
+      } else {
+        row.call_id = row.call_id || callId;
+        row.at = stamp;
+        row.media_path = media.path;
+        row.media_ok = Boolean(media.ok);
+        row.relay_log = Array.isArray(row.relay_log) ? row.relay_log : [];
+      }
+      row.relay_log.push({
+        role: "assistant",
+        text: String(body || "").slice(0, 2000),
+        media_path: media.path,
+        media_ok: Boolean(media.ok),
+        source: "channel_send",
+        at: stamp,
+      });
+      writeJsonArray(VOICE_SESSIONS_PATH, rows);
+      // Optional live voice transport mock (not carrier PSTN / OS mic).
+      const voiceApi = String(process.env.BITBOT_VOICE_API_URL || "").trim();
+      const voiceToken =
+        String(process.env.BITBOT_VOICE_TOKEN || "").trim() ||
+        resolveProviderAccessToken("voice");
+      let livePost = false;
+      let liveProbe = null;
+      let mode = "sandbox_voice_channel";
+      if (voiceApi && voiceToken && process.env.BITBOT_VOICE_POST === "1") {
+        try {
+          const resp = await httpJson(
+            voiceApi.replace(/\/$/, "") + "/messages",
+            {
+              method: "POST",
+              headers: {
+                Authorization: "Bearer " + voiceToken,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                voice_address: addr,
+                call_id: callId,
+                text: String(body || "").slice(0, 4000),
+              }),
+            },
+          );
+          liveProbe = {
+            ok: Boolean(resp.ok),
+            http_status: resp.status || 0,
+            error: resp.error || null,
+          };
+          livePost = Boolean(resp.ok);
+          mode = livePost ? "live_voice_channel" : "live_voice_failed";
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+          mode = "live_voice_failed";
+        }
+      }
+      const entry = {
+        scheme: "voice",
+        address: addr,
+        voice_address: addr.startsWith("voice:") ? addr : "voice:" + callKey,
+        call_id: callId,
+        body: String(body || "").slice(0, 4000),
+        mode,
+        ok: true,
+        live_post: livePost,
+        pretend_live: false,
+        live_voice_residual: !livePost,
+        live_channel_residual: !livePost,
+        voice_tts_residual: media.voice_tts_residual !== false,
+        media_ok: Boolean(media.ok),
+        media_path: media.path,
+        media_bytes: media.bytes || 0,
+        media_tool: media.tool || null,
+        sessions_path: VOICE_SESSIONS_PATH,
+        live_probe: liveProbe,
+        at: stamp,
+      };
+      appendJsonl(outboundPath, entry);
+      appendJsonl(path.join(voiceChDir, "outbound.jsonl"), entry);
+      const snapPath = path.join(
+        voiceChDir,
+        `send-${Date.now().toString(36)}.json`,
+      );
+      fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
+      return finalizeChannelSend(raw, entry, {
+        outboundPath,
+        send_to_user_type: "voice",
+      });
+    }
+
     const entry = {
       scheme,
       address: addr,
@@ -6234,9 +6366,12 @@ function createHostFfi(repoRoot) {
         `schedule-${row.id}-${Date.now().toString(36)}.json`,
       );
       // Close long_lived_cron_residual only when a long-lived daemon is armed
-      // (env or daemon-status.long_lived). Scaffold --write-systemd-unit alone
-      // must NOT over-close (even if status stamps systemd_unit_installed).
+      // (env / daemon-status.long_lived) OR the user systemd unit is *active*.
+      // Scaffold --write-systemd-unit and enable-without-start must NOT close
+      // (systemd_unit_installed alone is insufficient).
       let longLivedCronClosed = process.env.BITBOT_ROUTINE_LONG_LIVED === "1";
+      let systemdUnitActive = false;
+      let systemdUnitInstalled = false;
       try {
         const stPath = path.join(REPO_ROOT, "data", "routines", "daemon-status.json");
         if (fs.existsSync(stPath)) {
@@ -6244,9 +6379,31 @@ function createHostFfi(repoRoot) {
           if (st.long_lived === true) {
             longLivedCronClosed = true;
           }
+          if (st.systemd_unit_active === true) {
+            systemdUnitActive = true;
+            longLivedCronClosed = true;
+          }
+          if (st.systemd_unit_installed === true) {
+            systemdUnitInstalled = true;
+          }
         }
       } catch (_) {
         /* residual stays open */
+      }
+      // Probe live unit activity (not merely enabled / unit file present).
+      try {
+        const { execFileSync } = require("child_process");
+        const out = execFileSync(
+          "systemctl",
+          ["--user", "is-active", "bitbot-routine-daemon.service"],
+          { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] },
+        );
+        if (String(out || "").trim() === "active") {
+          systemdUnitActive = true;
+          longLivedCronClosed = true;
+        }
+      } catch (_) {
+        /* inactive / missing unit — residual stays unless long_lived armed */
       }
       const artifact = {
         stored: true,
@@ -6260,6 +6417,8 @@ function createHostFfi(repoRoot) {
         routines_path: ROUTINES_PATH,
         mode: "host_routine_schedule",
         pretend_scheduled: false,
+        systemd_unit_installed: systemdUnitInstalled,
+        systemd_unit_active: systemdUnitActive,
         long_lived_cron_residual: !dueNow && !longLivedCronClosed,
         at: atSched,
       };
@@ -10908,26 +11067,210 @@ function createHostFfi(repoRoot) {
     }
 
     if (kind === "mail_claim_inbox") {
-      // command: local_part|address
+      // command: local_part|address — durable claim + fixture inbox + inbound wake.
+      // Production Gmail/Outlook IdP inbox pull remains deferred (live_mail_claim_residual).
       const parts = cmd.split("|");
       const localPart = parts[0] || "";
       const address = parts[1] || `${localPart}@bitbot.local`;
       const dir = path.join(REPO_ROOT, "data", "mail", "claims");
       fs.mkdirSync(dir, { recursive: true });
+      const inboxDir = path.join(REPO_ROOT, "data", "mail", "inbox");
+      fs.mkdirSync(inboxDir, { recursive: true });
+      const inboundPath = path.join(
+        REPO_ROOT,
+        "data",
+        "channels",
+        "inbound.jsonl",
+      );
       const claimPath = path.join(
         dir,
         `claim-${localPart || "inbox"}-${Date.now().toString(36)}.json`,
       );
+      // Seed / load local fixture messages for this inbox (not live IdP).
+      const fixturePath = path.join(
+        inboxDir,
+        `${sanitizeSkillName(localPart) || "inbox"}.jsonl`,
+      );
+      let fixtureRows = [];
+      if (fs.existsSync(fixturePath)) {
+        try {
+          fixtureRows = fs
+            .readFileSync(fixturePath, "utf8")
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .map((l) => {
+              try {
+                return JSON.parse(l);
+              } catch (_) {
+                return null;
+              }
+            })
+            .filter(Boolean);
+        } catch (_) {
+          fixtureRows = [];
+        }
+      }
+      if (fixtureRows.length === 0) {
+        const seed = {
+          id: `fixture-${localPart || "inbox"}-welcome`,
+          from: "bitbot@local",
+          to: address,
+          subject: "Welcome to claimed inbox",
+          text_prefix: "Sandbox claim fixture — not live IdP mail.",
+          mode: "sandbox_mail_fixture",
+          at,
+        };
+        appendJsonl(fixturePath, seed);
+        fixtureRows = [seed];
+      }
+      const claimed = [];
+      for (const m of fixtureRows.slice(0, 20)) {
+        const row = {
+          scheme: "mail",
+          address,
+          local_part: localPart,
+          id: m.id || "",
+          from: m.from || "",
+          subject: m.subject || "",
+          text_prefix: String(m.text_prefix || m.subject || "").slice(0, 80),
+          mode: "sandbox_mail_claim",
+          at,
+        };
+        appendJsonl(inboundPath, row);
+        claimed.push({
+          id: row.id,
+          subject: row.subject,
+          text_len: String(m.text_prefix || "").length,
+        });
+      }
+      // Claim → turn hook (same pattern as webhook inbound wake).
+      const hooksDir = path.join(dir, "turn-hooks");
+      fs.mkdirSync(hooksDir, { recursive: true });
+      const hookPath = path.join(
+        hooksDir,
+        `hook-${Date.now().toString(36)}.json`,
+      );
+      const turnPrompt = `Mail claim inbox ${address}: ${claimed.length} fixture message(s)`.slice(
+        0,
+        400,
+      );
+      const hook = {
+        address,
+        local_part: localPart,
+        claimed_count: claimed.length,
+        turn_prompt: turnPrompt,
+        status: "pending",
+        pretend_turn: false,
+        at,
+      };
+      fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
+      const pendingPath = path.join(dir, "pending-turns.jsonl");
+      appendJsonl(pendingPath, {
+        address,
+        hook_path: hookPath,
+        turn_prompt: turnPrompt,
+        status: "pending",
+        at,
+      });
+      let turnHookResult = {
+        hooked: true,
+        hook_path: hookPath,
+        pending_path: pendingPath,
+        turn_executed: false,
+        turn_ok: false,
+        turn_path: null,
+        error: null,
+      };
+      if (process.env.BITBOT_INBOUND_TURN === "1") {
+        try {
+          const turnOut = path.join(
+            hooksDir,
+            `turn-${Date.now().toString(36)}.json`,
+          );
+          const { stdout, stderr } = await execFileAsync(
+            process.execPath,
+            [
+              path.join(REPO_ROOT, "hosts", "cli_host", "run_turn.js"),
+              "--approved",
+              turnPrompt,
+            ],
+            {
+              cwd: REPO_ROOT,
+              timeout: 60000,
+              maxBuffer: 2 * 1024 * 1024,
+              env: {
+                ...process.env,
+                BITBOT_INBOUND_TURN: "0",
+              },
+            },
+          );
+          fs.writeFileSync(
+            turnOut,
+            String(stdout || "").trim() ||
+              JSON.stringify({
+                ok: false,
+                error: "empty turn stdout",
+                stderr,
+              }),
+          );
+          let turnOk = false;
+          try {
+            const parsed = JSON.parse(fs.readFileSync(turnOut, "utf8"));
+            turnOk = Boolean(parsed && parsed.ok);
+          } catch (_) {
+            turnOk = false;
+          }
+          hook.status = turnOk ? "executed" : "failed";
+          hook.turn_path = turnOut;
+          fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
+          turnHookResult = {
+            hooked: true,
+            hook_path: hookPath,
+            pending_path: pendingPath,
+            turn_executed: true,
+            turn_ok: turnOk,
+            turn_path: turnOut,
+            error: turnOk ? null : "inbound turn returned ok=false",
+          };
+        } catch (err) {
+          hook.status = "failed";
+          hook.error = String((err && err.message) || err).slice(0, 240);
+          fs.writeFileSync(hookPath, JSON.stringify(hook, null, 2));
+          turnHookResult = {
+            hooked: true,
+            hook_path: hookPath,
+            pending_path: pendingPath,
+            turn_executed: true,
+            turn_ok: false,
+            turn_path: null,
+            error: hook.error,
+          };
+        }
+      }
+      const inboundTurnResidual =
+        !turnHookResult.turn_executed || !turnHookResult.turn_ok;
       const artifact = {
         local_part: localPart,
         address,
         mode: "host_mail_claim_inbox",
         pretend_claimed: false,
         user_confirmed: true,
+        claimed_count: claimed.length,
+        claimed,
+        fixture_path: fixturePath,
+        inbound_path: inboundPath,
+        turn_hook: turnHookResult,
+        // Honest: fixture/sandbox claim only — live IdP inbox pull deferred.
+        live_mail_claim_residual: true,
+        inbound_turn_residual: inboundTurnResidual,
         at,
       };
       fs.writeFileSync(claimPath, JSON.stringify(artifact, null, 2));
-      appendJsonl(path.join(dir, "claims.jsonl"), artifact);
+      appendJsonl(path.join(dir, "claims.jsonl"), {
+        ...artifact,
+        path: claimPath,
+      });
       const delivery = recordSendToUser({
         type: "attachment",
         path: claimPath,
@@ -10941,6 +11284,7 @@ function createHostFfi(repoRoot) {
         command: cmd,
         path: claimPath,
         address,
+        claimed_count: claimed.length,
         at,
       });
       return okJson(kind, cmd, {

@@ -85,6 +85,8 @@ function residualSuffix(p) {
     "cross_machine_copy_residual",
     "live_sms_residual",
     "live_webhook_residual",
+    "live_voice_residual",
+    "live_mail_claim_residual",
     "inbound_push_residual",
     "signin_fill_residual",
   ];

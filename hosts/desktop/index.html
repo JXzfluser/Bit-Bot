@@ -2333,13 +2333,25 @@
                   label =
                     "claim:" +
                     (p.local_part || p.mode || "inbox") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.live_mail_claim_residual === true
+                      ? "/live_mail_claim_residual"
+                      : "") +
+                    (p.inbound_turn_residual === true
+                      ? "/inbound_turn_residual"
+                      : "");
                   types.push("attachment");
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
                     mailMeta.textContent =
                       "claim · " +
                       (p.local_part || "?") +
+                      (p.claimed_count != null
+                        ? " · ×" + p.claimed_count
+                        : "") +
+                      (p.live_mail_claim_residual === true
+                        ? " · live_mail_claim_residual"
+                        : "") +
                       (p.pretend_claimed === true ? " · pretend!" : "") +
                       (p.path ? " · snap" : "");
                   }
@@ -2910,10 +2922,25 @@
                     (p.live_meeting_residual === true
                       ? "/live_meeting_residual"
                       : "") +
+                    (p.live_sms_residual === true
+                      ? "/live_sms_residual"
+                      : "") +
+                    (p.live_webhook_residual === true
+                      ? "/live_webhook_residual"
+                      : "") +
+                    (p.live_voice_residual === true
+                      ? "/live_voice_residual"
+                      : "") +
                     (p.live_channel_residual === true
                       ? "/live_channel_residual"
                       : "");
-                  types.push(p.thread_ts ? "thread" : "text");
+                  types.push(
+                    p.scheme === "voice" || p.send_to_user_type === "voice"
+                      ? "voice"
+                      : p.thread_ts
+                        ? "thread"
+                        : "text",
+                  );
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
                     chMeta.textContent =
@@ -2921,6 +2948,7 @@
                       (p.claimed_count != null
                         ? " · claimed " + p.claimed_count
                         : "") +
+                      (p.call_id ? " · " + p.call_id : "") +
                       (p.thread_ts ? " · thread" : "") +
                       (p.live_slack_residual === true
                         ? " · live_slack_residual"
@@ -2930,6 +2958,15 @@
                         : "") +
                       (p.live_meeting_residual === true
                         ? " · live_meeting_residual"
+                        : "") +
+                      (p.live_sms_residual === true
+                        ? " · live_sms_residual"
+                        : "") +
+                      (p.live_webhook_residual === true
+                        ? " · live_webhook_residual"
+                        : "") +
+                      (p.live_voice_residual === true
+                        ? " · live_voice_residual"
                         : "") +
                       (p.live_channel_residual === true
                         ? " · live_channel_residual"

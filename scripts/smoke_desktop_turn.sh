@@ -529,6 +529,10 @@ for needle in (
   'live_teams_residual',
   'live_meeting_residual',
   'live_channel_residual',
+  'live_sms_residual',
+  'live_webhook_residual',
+  'live_voice_residual',
+  'live_mail_claim_residual',
   'box_doctor_bin_residual',
   'box_chrome_bin_residual',
   'long_lived_cron_residual',
@@ -560,6 +564,10 @@ for needle in (
   '/live_teams_residual',
   '/live_meeting_residual',
   '/live_channel_residual',
+  '/live_sms_residual',
+  '/live_webhook_residual',
+  '/live_voice_residual',
+  '/live_mail_claim_residual',
   '/remote_cloud_residual',
   '/remote_pr_residual',
   '/real_create_gated',
@@ -601,6 +609,10 @@ for short in (
 assert 'true_device_os_dialog_residual' in shared
 assert 'refused_cross_scope' in shared
 assert 'gh_pr_create_residual' in shared or 'remote_pr_residual' in shared
+assert 'live_voice_residual' in shared
+assert 'live_mail_claim_residual' in shared
+assert 'live_sms_residual' in shared
+assert 'live_webhook_residual' in shared
 mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
 assert 'payload.media_path' in mobile
@@ -1135,6 +1147,10 @@ node hosts/cli_host/run_turn.js --approved "reply via sms:+15551212 :: hello sms
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sms.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='sms';assert p.get('mode')=='sandbox_sms';assert p.get('live_sms_residual') is True;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel sms sandbox residual ok', p.get('mode'), p.get('path'))"
 node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: hello hook" >/tmp/bitbot-wh-out.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-out.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='webhook';assert p.get('live_webhook_residual') is True;assert p.get('key_leaked') is False;assert p.get('pretend_live') is False;assert p.get('path') and os.path.isfile(p['path']);print('channel webhook outbound residual ok', p.get('mode'), p.get('path'))"
+node hosts/cli_host/run_turn.js --approved "reply via voice:call-smoke :: hello voice channel" >/tmp/bitbot-voice-ch.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-ch.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='voice';assert p.get('mode')=='sandbox_voice_channel';assert p.get('live_voice_residual') is True;assert p.get('pretend_live') is False;assert p.get('call_id');assert p.get('media_ok') is True;assert p.get('media_path') and os.path.isfile(p['media_path']);assert open(p['media_path'],'rb').read(4)==b'RIFF';assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/channels/voice/outbound.jsonl');print('channel voice sandbox residual ok', p.get('mode'), p.get('call_id'), p.get('path'))"
+node hosts/cli_host/run_turn.js --approved "claim inbox alpha" >/tmp/bitbot-mail-claim.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mail-claim.json'));h=next(x for x in d['host_results'] if x.get('kind')=='mail_claim_inbox');p=json.loads(h['stdout']);assert p.get('mode')=='host_mail_claim_inbox';assert p.get('local_part')=='alpha';assert p.get('pretend_claimed') is False;assert p.get('live_mail_claim_residual') is True;assert p.get('claimed_count',0)>=1;assert p.get('fixture_path') and os.path.isfile(p['fixture_path']);assert p.get('inbound_path') and os.path.isfile(p['inbound_path']);assert 'sandbox_mail_claim' in open(p['inbound_path']).read();th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('hook_path') and os.path.isfile(th['hook_path']);assert p.get('path') and os.path.isfile(p['path']);print('mail_claim_inbox fixture+inbound ok', p.get('claimed_count'), p.get('path'), 'live_mail_claim_residual', True)"
 # Inbound HTTP push wake (no turn prompt)
 python3 "$ROOT/scripts/host_webhook_listen.py" --port 18791 >/tmp/bitbot-wh-listen.log 2>&1 &
 WH_LISTEN_PID=$!
@@ -1195,7 +1211,12 @@ console.log("STU oauth NeedsAuth residual ok", s.labels.slice(0,4));
 rm -f data/routines/daemon-status.json
 bash "$ROOT/scripts/host_routine_daemon.sh" --write-systemd-unit >/tmp/bitbot-rt-unit-only.log 2>&1 || true
 node hosts/cli_host/run_turn.js --approved "create routine id=unit-only cron=@daily prompt=tick" >/tmp/bitbot-rt-unit-only.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-rt-unit-only.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);assert p.get('due_now') is False;assert p.get('long_lived_cron_residual') is True;assert os.path.isfile('data/routines/bitbot-routine-daemon.service');print('routine write-unit-only keeps long_lived_cron_residual True ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-rt-unit-only.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);assert p.get('due_now') is False;assert p.get('long_lived_cron_residual') is True;assert p.get('systemd_unit_active') is False;assert os.path.isfile('data/routines/bitbot-routine-daemon.service');print('routine write-unit-only keeps long_lived_cron_residual True ok')"
+# install-user-unit enable-without-start must also keep residual open
+rm -f data/routines/daemon-status.json
+bash "$ROOT/scripts/host_routine_daemon.sh" --install-user-unit >/tmp/bitbot-rt-install-only.log 2>&1 || true
+node hosts/cli_host/run_turn.js --approved "create routine id=install-only cron=@daily prompt=tick" >/tmp/bitbot-rt-install-only.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-rt-install-only.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);st=json.load(open('data/routines/daemon-status.json'));assert st.get('long_lived') is False;assert st.get('systemd_unit_active') is False;assert p.get('due_now') is False;assert p.get('long_lived_cron_residual') is True;assert p.get('systemd_unit_active') is False;print('routine install-user-unit (not active) keeps long_lived_cron_residual True ok', 'installed', st.get('systemd_unit_installed'))"
 node hosts/cli_host/run_turn.js "book flight google.com/flights" >/tmp/bitbot-travel.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-travel.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('pretend_booked') is False;assert 'vertical_stage' in oc or 'checkout_stage' in oc;g=p.get('gui') or {};assert (g.get('vertical_summary') or g.get('checkout_summary') or {}).get('playbook') in ('travel','shopping','food','generic',None) or True;print('travel CU vertical_stage ok', oc.get('vertical_stage') or oc.get('checkout_stage'), 'playbook', oc.get('playbook'))"
 node hosts/cli_host/run_turn.js "finance get_balance" >/tmp/bitbot-finance.json
