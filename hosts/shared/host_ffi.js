@@ -7052,6 +7052,22 @@ function createHostFfi(repoRoot) {
         list_members: "host_members_panel",
         update_computer: "host_update_computer",
         computer_update: "host_update_computer",
+        memory_update: "host_memory_update",
+        remember: "host_memory_update",
+        hide_agent: "host_hide_agent",
+        list_agents_sidebar: "host_list_agents_sidebar",
+        agents_sidebar: "host_list_agents_sidebar",
+        check_updates: "host_check_updates",
+        notify_settings: "host_notify_settings",
+        set_notify: "host_set_notify",
+        inbound_reaction: "host_inbound_reaction",
+        react_inbound: "host_inbound_reaction",
+        uninstall_plugin: "host_mcp_uninstall",
+        mcp_uninstall: "host_mcp_uninstall",
+        approval_card: "host_approval_card",
+        request_approval: "host_approval_card",
+        reset_computer: "host_reset_computer",
+        computer_reset: "host_reset_computer",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7198,7 +7214,17 @@ function createHostFfi(repoRoot) {
         mapped === "host_memory_recall" ||
         mapped === "host_device_permission" ||
         mapped === "host_members_panel" ||
-        mapped === "host_update_computer"
+        mapped === "host_update_computer" ||
+        mapped === "host_memory_update" ||
+        mapped === "host_hide_agent" ||
+        mapped === "host_list_agents_sidebar" ||
+        mapped === "host_check_updates" ||
+        mapped === "host_notify_settings" ||
+        mapped === "host_set_notify" ||
+        mapped === "host_inbound_reaction" ||
+        mapped === "host_mcp_uninstall" ||
+        mapped === "host_approval_card" ||
+        mapped === "host_reset_computer"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -10835,6 +10861,207 @@ function createHostFfi(repoRoot) {
             ok: Boolean(updHit && updHit.ok),
             update_computer: updPayload,
           });
+        }
+        // Generic product→Host short-circuits for UI/settings/memory/agent ops.
+        {
+          const genericMaps = {
+            host_memory_update: {
+              kind: "memory_update",
+              field: "memory_update",
+              cmd: () =>
+                String(args.command || "").trim() ||
+                [
+                  String(args.key || args.name || "mcp-key").trim() || "mcp-key",
+                  String(args.value || args.v || args.body || "mcp-val").trim() ||
+                    "mcp-val",
+                  String(args.scope || "profile").trim() || "profile",
+                ].join("|"),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                key: p.key || null,
+                pretend_persisted: p.pretend_persisted,
+              }),
+            },
+            host_hide_agent: {
+              kind: "hide_agent",
+              field: "hide_agent",
+              cmd: () =>
+                String(
+                  args.command || args.agent_id || args.id || args.agent || "asst-mcp",
+                ).trim() || "asst-mcp",
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                agent_id: p.agent_id || null,
+                pretend_removed: p.pretend_removed,
+                hidden: p.hidden,
+              }),
+            },
+            host_list_agents_sidebar: {
+              kind: "list_agents_sidebar",
+              field: "list_agents_sidebar",
+              cmd: () => String(args.command || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_complete: p.pretend_complete,
+                sidebar_ids: p.sidebar_ids || [],
+              }),
+            },
+            host_check_updates: {
+              kind: "check_updates",
+              field: "check_updates",
+              cmd: () => String(args.command || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_opened: p.pretend_opened,
+                ne_update_computer: p.ne_update_computer,
+                distinct_deep_links: p.distinct_deep_links,
+              }),
+            },
+            host_notify_settings: {
+              kind: "notify_settings",
+              field: "notify_settings",
+              cmd: () =>
+                String(args.command || args.assistant_id || args.id || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_global: p.pretend_global,
+                assistant_scoped: p.assistant_scoped,
+              }),
+            },
+            host_set_notify: {
+              kind: "set_notify",
+              field: "set_notify",
+              cmd: () =>
+                String(args.command || "").trim() ||
+                [
+                  String(args.toggle || args.key || "desktop").trim() || "desktop",
+                  String(args.enabled != null ? args.enabled : args.value || "on")
+                    .trim() || "on",
+                  String(args.assistant_id || args.id || "").trim(),
+                ]
+                  .filter(Boolean)
+                  .join("|"),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_updated: p.pretend_updated,
+                toggle: p.toggle || null,
+                enabled: p.enabled,
+              }),
+            },
+            host_inbound_reaction: {
+              kind: "inbound_reaction",
+              field: "inbound_reaction",
+              cmd: () =>
+                String(args.command || "").trim() ||
+                [
+                  String(args.message_id || args.msg || "msg-mcp").trim() ||
+                    "msg-mcp",
+                  String(args.emoji || args.reaction || "+1").trim() || "+1",
+                ].join("|"),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_forced_reply: p.pretend_forced_reply,
+                emoji: p.emoji || null,
+                visible_pill: p.visible_pill,
+              }),
+            },
+            host_mcp_uninstall: {
+              kind: "mcp_uninstall",
+              field: "mcp_uninstall",
+              cmd: () =>
+                String(
+                  args.command ||
+                    args.namespace ||
+                    args.plugin ||
+                    args.name ||
+                    "user-Slides",
+                ).trim() || "user-Slides",
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_uninstalled: p.pretend_uninstalled,
+                namespace: p.namespace || null,
+                status: p.status || null,
+                usable: p.usable,
+              }),
+            },
+            host_approval_card: {
+              kind: "approval_card",
+              field: "approval_card",
+              cmd: () =>
+                String(
+                  args.command ||
+                    args.body ||
+                    args.text ||
+                    "Shell :: mcp approval :: needs confirmation",
+                ).trim() || "Shell :: mcp approval :: needs confirmation",
+              pick: (p) => ({
+                path: p.path || null,
+                status: p.status || null,
+                pretend_approved: p.pretend_approved,
+                widget_id: (p.widget && p.widget.widget_id) || null,
+              }),
+            },
+            host_reset_computer: {
+              kind: "reset_computer",
+              field: "reset_computer",
+              cmd: () =>
+                String(args.command || args.action || args.body || "").trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_reset: p.pretend_reset,
+                prefer_update_computer: p.prefer_update_computer,
+              }),
+            },
+          };
+          const gSpec = genericMaps[mapped];
+          if (gSpec) {
+            const gCmd = gSpec.cmd();
+            const gResults = await executeHostEffects([
+              { kind: gSpec.kind, command: gCmd },
+            ]);
+            const gHit = (gResults || []).find(
+              (r) => r && r.kind === gSpec.kind,
+            );
+            let gPayload = {};
+            try {
+              gPayload = JSON.parse((gHit && gHit.stdout) || "{}");
+            } catch {
+              gPayload = {};
+            }
+            const picked = gSpec.pick(gPayload) || {};
+            const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+              command,
+              {
+                tool: toolName,
+                mapped,
+                host_kind: gSpec.kind,
+                [gSpec.field]: picked,
+                product_tool_residual: false,
+                pretend_ok: false,
+                ok: Boolean(gHit && gHit.ok),
+                at: shortAt,
+              },
+            );
+            return okJson(kind, command, {
+              ...callArtifact,
+              tool: toolName,
+              mapped,
+              product_tool_residual: false,
+              path: snapPath,
+              pretend_ok: false,
+              ok: Boolean(gHit && gHit.ok),
+              [gSpec.field]: gPayload,
+            });
+          }
         }
 
         if (
