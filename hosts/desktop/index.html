@@ -505,6 +505,18 @@
         <button type="button" id="cloud-deliver" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Deliver last artifact</button>
       </div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Routines</div>
+    <div class="machine-item">
+      <div class="name">Schedule · fire · tick</div>
+      <div class="meta" id="routines-meta">durable Host wakes (not cron pretend)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="rt-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create routine</button>
+        <button type="button" id="rt-list" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List routines</button>
+        <button type="button" id="rt-fire" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fire routine</button>
+        <button type="button" id="rt-tick" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Tick routines</button>
+        <button type="button" id="rt-auto-review" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Auto-review settings</button>
+      </div>
+    </div>
     <div class="panel-title" style="margin-top:16px">Mail / commerce</div>
     <div class="machine-item">
       <div class="name">Draft · schedule · purchase</div>
@@ -2239,7 +2251,12 @@
                       ? bits.join(" · ")
                       : "no connectors";
                   }
-                } else if (h.kind === "routine_schedule" || h.kind === "routine_tick" || h.kind === "routine_fire") {
+                } else if (
+                  h.kind === "routine_schedule" ||
+                  h.kind === "routine_tick" ||
+                  h.kind === "routine_fire" ||
+                  h.kind === "routine_list"
+                ) {
                   const rtId =
                     p.id ||
                     (p.fired && p.fired[0] && p.fired[0].id) ||
@@ -2251,6 +2268,15 @@
                     rtId +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const rtMeta = document.getElementById("routines-meta");
+                  if (rtMeta) {
+                    rtMeta.textContent =
+                      h.kind.replace("routine_", "") +
+                      (rtId ? " · " + rtId : "") +
+                      (p.next_due
+                        ? " · next " + String(p.next_due).slice(0, 19)
+                        : "");
+                  }
                 } else if (h.kind === "device_permission") {
                   label =
                     "perm:" +
@@ -2610,6 +2636,24 @@
         "deliver cloud artifact artifact=" + bc + " dest=desktop-report.md",
         {},
       );
+    });
+    document.getElementById("rt-create").addEventListener("click", () => {
+      runUserTurn(
+        "create routine id=desk-r cron=@hourly prompt=desktop tick",
+        { approved: true },
+      );
+    });
+    document.getElementById("rt-list").addEventListener("click", () => {
+      runUserTurn("list routines", {});
+    });
+    document.getElementById("rt-fire").addEventListener("click", () => {
+      runUserTurn("fire routine desk-r", { approved: true });
+    });
+    document.getElementById("rt-tick").addEventListener("click", () => {
+      runUserTurn("tick routines", {});
+    });
+    document.getElementById("rt-auto-review").addEventListener("click", () => {
+      runUserTurn("auto review settings", {});
     });
     document.getElementById("tm-create").addEventListener("click", () => {
       runUserTurn(

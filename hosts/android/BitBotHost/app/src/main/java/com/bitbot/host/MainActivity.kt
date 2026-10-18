@@ -64,6 +64,8 @@ class MainActivity : ComponentActivity() {
       "Screenshot" to "screenshot agent=executor",
       "Check updates" to "check updates",
       "Cloud launch" to "launch cloud agent triage android",
+      "Routines" to "list routines",
+      "Tick routines" to "tick routines",
       "Box doctor" to "box doctor",
       "Box env" to "box env",
       "Chrome probe" to "box chrome probe",

@@ -315,7 +315,13 @@ assert 'id=\"cloud-deliver\"' in html
 assert 'box doctor' in html and 'box chrome probe' in html
 assert 'screenshot agent=executor' in html and 'check updates' in html
 assert 'launch cloud agent' in html and 'deliver cloud artifact' in html
-print('desktop box + cloud panels wired ok')
+assert 'id=\"routines-meta\"' in html
+assert 'id=\"rt-create\"' in html and 'id=\"rt-list\"' in html
+assert 'id=\"rt-fire\"' in html and 'id=\"rt-tick\"' in html
+assert 'id=\"rt-auto-review\"' in html
+assert 'create routine id=desk-r' in html and 'tick routines' in html
+assert 'auto review settings' in html
+print('desktop box + cloud + routines panels wired ok')
 "
 python3 -c "
 from pathlib import Path

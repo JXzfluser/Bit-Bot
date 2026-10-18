@@ -31,6 +31,8 @@ struct ContentView: View {
     ("Screenshot", "screenshot agent=executor"),
     ("Check updates", "check updates"),
     ("Cloud launch", "launch cloud agent triage ios"),
+    ("Routines", "list routines"),
+    ("Tick routines", "tick routines"),
     ("Box doctor", "box doctor"),
     ("Box env", "box env"),
     ("Chrome probe", "box chrome probe"),

@@ -187,6 +187,11 @@ try {
       "inbound_reaction",
       "cloud_agent_launch",
       "cloud_artifact_deliver",
+      "routine_schedule",
+      "routine_list",
+      "routine_fire",
+      "routine_tick",
+      "auto_review_settings",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

@@ -474,6 +474,8 @@ for needle in (
     'screenshot agent=executor',
     'check updates',
     'launch cloud agent',
+    'list routines',
+    'tick routines',
 ):
     assert needle in cv, needle
     assert needle in main, needle
