@@ -1818,6 +1818,30 @@ wait "$EMAIL_EVENTS_LISTEN_TURN_PID" 2>/dev/null || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-email-events-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'outlook-oauth-secret-turn' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('email events http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 # Claim-only email path keeps inbound_push_residual true (not Events push).
 python3 -c "import json;d=json.load(open('/tmp/bitbot-email-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_email_claim';assert p.get('inbound_push_residual') is True;print('email claim-only keeps inbound_push_residual true ok', p.get('mode'))"
+# Meeting events HTTP push: closes inbound_push_residual; token never echoed; turn residual stays open without BITBOT_INBOUND_TURN.
+# Port 18803 is free here (Slack empty-claim mock earlier); kill leftovers before listen.
+fuser -k 18803/tcp >/dev/null 2>&1 || true
+python3 "$ROOT/scripts/host_meeting_events_listen.py" --port 18803 >/tmp/bitbot-meeting-events-listen.log 2>&1 &
+MEETING_EVENTS_LISTEN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18803/meeting/events -H 'Content-Type: application/json' \
+  -d '{"token":"meeting-verify-secret-smoke","event_id":"MnHttpSmoke","channel":"Msmoke","user":"U_MEET","text":"meeting events push smoke"}' \
+  >/tmp/bitbot-meeting-events-curl.json || true
+kill "$MEETING_EVENTS_LISTEN_PID" >/dev/null 2>&1 || true
+wait "$MEETING_EVENTS_LISTEN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-events-curl.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is True;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'meeting-verify-secret-smoke' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is True;assert snap.get('mode')=='host_meeting_events_listen';th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is False;rows=open('data/channels/inbound.jsonl').read();assert 'live_meeting_events_push' in rows;print('meeting events http listen push wake ok', d.get('path'), 'inbound_turn_residual', True)"
+# Meeting events listen + BITBOT_INBOUND_TURN=1 executes pending turn via Host run_turn (Teams Events listen parity).
+BITBOT_INBOUND_TURN=1 python3 "$ROOT/scripts/host_meeting_events_listen.py" --port 18803 >/tmp/bitbot-meeting-events-listen-turn.log 2>&1 &
+MEETING_EVENTS_LISTEN_TURN_PID=$!
+sleep 0.4
+curl -s -X POST http://127.0.0.1:18803/meeting/events -H 'Content-Type: application/json' \
+  -d '{"token":"meeting-verify-secret-turn","event_id":"MnHttpTurn","channel":"Msmoke","user":"U_MEET","text":"meeting events inbound turn smoke"}' \
+  >/tmp/bitbot-meeting-events-curl-turn.json || true
+kill "$MEETING_EVENTS_LISTEN_TURN_PID" >/dev/null 2>&1 || true
+wait "$MEETING_EVENTS_LISTEN_TURN_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-events-curl-turn.json'));assert d.get('ok') is True;assert d.get('inbound_push_residual') is False;assert d.get('inbound_turn_residual') is False;assert d.get('token_leaked') is False;assert d.get('path') and os.path.isfile(d['path']);assert 'meeting-verify-secret-turn' not in open(d['path']).read();snap=json.load(open(d['path']));assert snap.get('inbound_push_residual') is False;assert snap.get('inbound_turn_residual') is False;th=snap.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('meeting events http listen inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
+# Claim-only meeting path keeps inbound_push_residual true (not Events push).
+python3 -c "import json;d=json.load(open('/tmp/bitbot-meeting-claim-turn.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_meeting_claim';assert p.get('inbound_push_residual') is True;print('meeting claim-only keeps inbound_push_residual true ok', p.get('mode'))"
 node -e '
 const fs=require("fs");
 const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
