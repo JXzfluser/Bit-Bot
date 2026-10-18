@@ -1455,7 +1455,17 @@ function stripHostAppliedMarker(file) {
                                                 tool === "open_skills" ||
                                                 tool === "skills_list"
                                               ? '{"q":"smoke"}'
-                                              : "{}";
+                                              : tool === "export_skill" ||
+                                                  tool === "share_skill"
+                                                ? '{"name":"smoke-skill"}'
+                                                : tool === "mark_done" ||
+                                                    tool === "complete_todo"
+                                                  ? '{"id":"a1","status":"done","title":"done"}'
+                                                  : tool === "open_chat" ||
+                                                      tool === "chat_panel" ||
+                                                      tool === "dm_panel"
+                                                    ? '{"scheme":"slack","addr":"UCHAT","body":"open-chat"}'
+                                                    : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);
