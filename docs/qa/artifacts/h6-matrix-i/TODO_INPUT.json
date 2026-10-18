@@ -2694,7 +2694,7 @@
       "arch": "FILE-03/DESK-02 · D-FILE/D-DESK",
       "title": "Screenshot",
       "pri": "P0",
-      "evidence": "`box_host/host_abi_test.mbt`::acceptance_CM-0605_screenshot_frame_evidence — kernel-contract：has_frame/read_only/未 click；host-integration GAP 另跟踪",
+      "evidence": "`box_host/host_abi_test.mbt`::acceptance_CM-0605_screenshot_frame_evidence — kernel-contract：has_frame/read_only/未 click；product Host `screenshot`（ffmpeg/import 或 honest residual）",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3318,7 +3318,7 @@
       "arch": "TEAM-02 · D-TEAM",
       "title": "CreateAgent",
       "pri": "P1",
-      "evidence": "`agents/teammates/acceptance_cm1401_test.mbt`::acceptance_CM-1401_create_agent_appears_in_members — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`agents/teammates/acceptance_cm1401_test.mbt`::acceptance_CM-1401_create_agent_appears_in_members — **kernel-contract PASS**；product Host `teammate_create` → `appears_in_members`/`in_sidebar`",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3446,7 +3446,7 @@
       "arch": "D-SEC/D-PERM",
       "title": "settings auto-review 锚点",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm1507_test.mbt`::acceptance_CM-1507_auto_review_settings_deeplink_anchors — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm1507_test.mbt`::acceptance_CM-1507_auto_review_settings_deeplink_anchors — **kernel-contract PASS**；product Host `auto_review_settings` deeplinks",
       "i": "PASS",
       "u": "PASS"
     },
@@ -3688,7 +3688,7 @@
       "arch": "D-PROF(Host UI)",
       "title": "应用 Updates vs box Update",
       "pri": "P1",
-      "evidence": "`ui_protocol/acceptance_cm1904_1906_test.mbt`::acceptance_CM-1906_update_channel_ne_update_computer — **kernel-contract PASS**；host-integration GAP 另跟踪",
+      "evidence": "`ui_protocol/acceptance_cm1904_1906_test.mbt`::acceptance_CM-1906_update_channel_ne_update_computer — **kernel-contract PASS**；product Host `check_updates` ≠ `update_computer`",
       "i": "PASS",
       "u": "PASS"
     },
