@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const http = require("http");
+const crypto = require("crypto");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 
@@ -2286,6 +2287,298 @@ function createHostFfi(repoRoot) {
     return okJson("box_clock", String(command || "date"), {
       ...artifact,
       path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  function webhookDir() {
+    const dir = path.join(REPO_ROOT, "data", "routines", "webhooks");
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  function webhookPanelPath() {
+    return path.join(webhookDir(), "panel.json");
+  }
+
+  function loadWebhookPanel() {
+    const p = webhookPanelPath();
+    if (!fs.existsSync(p)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(p, "utf8"));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveWebhookPanel(panel) {
+    const p = webhookPanelPath();
+    fs.writeFileSync(p, JSON.stringify(panel, null, 2));
+    return p;
+  }
+
+  async function executeWebhookPanel(command) {
+    // CM-0411 product Host path — durable opaque URL/key for user panel.
+    const at = new Date().toISOString();
+    const dir = webhookDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const snapPath = path.join(
+      opsDir,
+      `panel-${Date.now().toString(36)}.json`,
+    );
+
+    let panel = loadWebhookPanel();
+    if (!panel || !panel.url || !panel.key) {
+      const id = crypto.randomBytes(6).toString("hex");
+      const key = "whsec_" + crypto.randomBytes(18).toString("hex");
+      panel = {
+        id: "wh-" + id,
+        url: "https://hooks.bitbot.local/v1/" + id,
+        key,
+        opaque_to_tools: true,
+        created_at: at,
+        last_opened_at: at,
+      };
+    } else {
+      panel = { ...panel, last_opened_at: at, opaque_to_tools: true };
+    }
+    const panelPath = saveWebhookPanel(panel);
+
+    const artifact = {
+      mode: "host_webhook_panel",
+      pretend_key_visible_to_tools: false,
+      panel_open: true,
+      id: panel.id,
+      url: panel.url,
+      // User panel may see key; assistant tool-read must refuse.
+      key: panel.key,
+      key_masked: panel.key.slice(0, 8) + "…" + panel.key.slice(-4),
+      opaque_to_tools: true,
+      panel_path: panelPath,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "panel-ops.jsonl"), {
+      ...artifact,
+      path: snapPath,
+      command: String(command || "open"),
+    });
+    const delivery = recordSendToUser({
+      type: "widget",
+      path: snapPath,
+      label: "webhook_panel",
+      url: panel.url,
+      key_masked: artifact.key_masked,
+      source_kind: "webhook_panel",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "webhook_panel",
+      command: String(command || "open"),
+      path: snapPath,
+      panel_path: panelPath,
+      url: panel.url,
+      at,
+    });
+    return okJson("webhook_panel", String(command || "open"), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeWebhookCopy(command) {
+    const at = new Date().toISOString();
+    const dir = webhookDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const what = String(command || "url").trim().toLowerCase();
+    const snapPath = path.join(
+      opsDir,
+      `copy-${what}-${Date.now().toString(36)}.json`,
+    );
+    let panel = loadWebhookPanel();
+    if (!panel) {
+      // Ensure panel exists so copy is meaningful.
+      await executeWebhookPanel("open");
+      panel = loadWebhookPanel();
+    }
+    let copied = null;
+    let receipt = "";
+    let okCopy = true;
+    if (what === "url") {
+      copied = panel.url;
+      receipt = "user_copied_webhook_url:" + panel.url;
+    } else if (what === "key") {
+      copied = panel.key;
+      receipt = "user_copied_webhook_key:" + panel.key;
+    } else {
+      okCopy = false;
+      receipt = "bad_what=" + what;
+    }
+    const artifact = {
+      mode: "host_webhook_copy",
+      pretend_copy: false,
+      what,
+      copied: okCopy ? copied : null,
+      receipt,
+      user_allowed: true,
+      panel_path: webhookPanelPath(),
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "copies.jsonl"), {
+      ...artifact,
+      path: snapPath,
+    });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: snapPath,
+      label: "webhook_copy_" + what,
+      receipt,
+      source_kind: "webhook_copy",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "webhook_copy",
+      what,
+      path: snapPath,
+      receipt,
+      at,
+    });
+    return okJson("webhook_copy", what, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: okCopy,
+    });
+  }
+
+  async function executeWebhookToolReadKey(command) {
+    const at = new Date().toISOString();
+    const dir = webhookDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const snapPath = path.join(
+      opsDir,
+      `tool-read-${Date.now().toString(36)}.json`,
+    );
+    const panel = loadWebhookPanel();
+    const error =
+      "webhook key is opaque; assistant cannot tool-read key";
+    const artifact = {
+      mode: "host_webhook_tool_read_key",
+      pretend_key_readable: false,
+      refused: true,
+      key: null,
+      key_leaked: false,
+      error,
+      panel_present: Boolean(panel),
+      panel_id: panel ? panel.id : null,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "tool-reads.jsonl"), {
+      ...artifact,
+      path: snapPath,
+      command: String(command || "tool-read-key"),
+    });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: snapPath,
+      label: "webhook_tool_read_refused",
+      refused: true,
+      source_kind: "webhook_tool_read_key",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "webhook_tool_read_key",
+      path: snapPath,
+      refused: true,
+      at,
+    });
+    return okJson("webhook_tool_read_key", String(command || "tool-read-key"), {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeWebhookWake(command) {
+    const at = new Date().toISOString();
+    const dir = webhookDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const snapPath = path.join(
+      opsDir,
+      `wake-${Date.now().toString(36)}.json`,
+    );
+    const panel = loadWebhookPanel();
+    const raw = String(command || "");
+    let eventId = "evt-1";
+    let summary = "POST /hooks received";
+    const idMatch = raw.match(/\bid=([^\s]+)/i);
+    if (idMatch) eventId = idMatch[1];
+    const sumMatch = raw.match(/\bsummary=(.+)$/i);
+    if (sumMatch) summary = sumMatch[1].trim();
+    else if (!idMatch && raw.trim()) summary = raw.trim();
+
+    const wakePayload =
+      '<webhook_event id="' +
+      eventId.replace(/"/g, "") +
+      '">' +
+      summary +
+      "</webhook_event>";
+    const key = panel ? panel.key : null;
+    const keyLeaked = Boolean(key && wakePayload.includes(key));
+    const artifact = {
+      mode: "host_webhook_wake",
+      pretend_wake: false,
+      event_id: eventId,
+      summary,
+      wake_payload: wakePayload,
+      has_webhook_event: /<webhook_event\b/.test(wakePayload),
+      key_leaked: keyLeaked,
+      key_in_payload: keyLeaked,
+      panel_id: panel ? panel.id : null,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "wakes.jsonl"), {
+      event_id: eventId,
+      summary,
+      has_webhook_event: artifact.has_webhook_event,
+      key_leaked: keyLeaked,
+      path: snapPath,
+      at,
+    });
+    // Persist wake payload without key for assistant/routine consumer.
+    const wakePath = path.join(dir, "last_wake.txt");
+    fs.writeFileSync(wakePath, wakePayload + "\n");
+    const delivery = recordSendToUser({
+      type: "text",
+      path: snapPath,
+      label: "webhook_wake",
+      wake_payload: wakePayload,
+      source_kind: "webhook_wake",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "webhook_wake",
+      path: snapPath,
+      wake_path: wakePath,
+      event_id: eventId,
+      key_leaked: keyLeaked,
+      at,
+    });
+    return okJson("webhook_wake", raw || "wake", {
+      ...artifact,
+      path: snapPath,
+      wake_path: wakePath,
       send_to_user: delivery,
       ok: true,
     });
@@ -9319,6 +9612,22 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "box_clock") {
         results.push(await executeBoxClock(cmd));
+        continue;
+      }
+      if (kind === "webhook_panel") {
+        results.push(await executeWebhookPanel(cmd));
+        continue;
+      }
+      if (kind === "webhook_copy") {
+        results.push(await executeWebhookCopy(cmd));
+        continue;
+      }
+      if (kind === "webhook_tool_read_key") {
+        results.push(await executeWebhookToolReadKey(cmd));
+        continue;
+      }
+      if (kind === "webhook_wake") {
+        results.push(await executeWebhookWake(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

@@ -287,6 +287,8 @@
 - [x] Parity: box_env runtime/path honesty (`pretend_runtime=false`)
 - [x] Product Host `box_clock` (CM-2175): real `TZ=$USER_IANA date`; snaps under `data/box/clock/`
 - [x] Parity: box_clock aligns/path honesty (`pretend_aligned=false`)
+- [x] Product Host webhook panel (CM-0411): durable URL/key under `data/routines/webhooks/`; user copy receipts; tool-read refuse; wake `<webhook_event>` no key leak; Desktop panel
+- [x] Parity: webhook panel/copy/tool-read/wake honesty (`pretend_key_readable=false`, `key_leaked=false`)
 - [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
 - [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
 - [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)

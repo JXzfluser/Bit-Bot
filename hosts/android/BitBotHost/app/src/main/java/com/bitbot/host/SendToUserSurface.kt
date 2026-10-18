@@ -29,6 +29,7 @@ object SendToUserSurface {
     "shell", "computer_use",
     "generate_image", "generate_video", "watch_video", "structured_chart",
     "box_doctor", "box_env", "box_clock",
+    "webhook_panel", "webhook_copy", "webhook_tool_read_key", "webhook_wake",
   )
 
   fun extract(fromTurnJson: String): Summary {

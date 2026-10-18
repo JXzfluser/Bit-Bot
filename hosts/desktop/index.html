@@ -314,6 +314,20 @@
         <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
       </div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Webhook</div>
+    <div class="machine-item" id="webhook-panel" role="region" aria-label="Webhook trigger panel">
+      <div class="name">Routine trigger (CM-0411)</div>
+      <div class="meta" id="webhook-meta">Open panel · user copy URL/key · key opaque to tools</div>
+      <div id="webhook-url" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
+      <div id="webhook-key" style="margin-top:4px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="wh-open" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Open webhook panel</button>
+        <button type="button" id="wh-copy-url" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy URL</button>
+        <button type="button" id="wh-copy-key" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy key</button>
+        <button type="button" id="wh-tool-read" style="background:#2a1a1a;color:#e0b0b0;border:1px solid #5a3a3a;border-radius:6px;padding:6px 8px;cursor:pointer">Tool-read key (must refuse)</button>
+        <button type="button" id="wh-wake" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Simulate wake POST</button>
+      </div>
+    </div>
     <div class="panel-title" style="margin-top:16px">Delivery</div>
     <div class="machine-item">
       <div class="name">SendToUser</div>
@@ -631,6 +645,10 @@
             "box_doctor",
             "box_env",
             "box_clock",
+            "webhook_panel",
+            "webhook_copy",
+            "webhook_tool_read_key",
+            "webhook_wake",
             "export_pack",
             "computer_use",
             "voice_session",
@@ -932,6 +950,59 @@
                     (p.aligns === false ? "/misaligned" : "") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                } else if (h.kind === "webhook_panel") {
+                  label =
+                    "webhook:" +
+                    (p.id || "panel") +
+                    (p.path ? "/snap" : "");
+                  types.push("widget");
+                  const meta = document.getElementById("webhook-meta");
+                  const urlEl = document.getElementById("webhook-url");
+                  const keyEl = document.getElementById("webhook-key");
+                  if (meta) {
+                    meta.textContent =
+                      "open · opaque_to_tools=" +
+                      String(p.opaque_to_tools !== false);
+                  }
+                  if (urlEl) urlEl.textContent = "URL: " + (p.url || "");
+                  if (keyEl) {
+                    keyEl.textContent =
+                      "Key (user only): " + (p.key || p.key_masked || "");
+                  }
+                } else if (h.kind === "webhook_copy") {
+                  label =
+                    "webhook_copy:" +
+                    (p.what || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const meta = document.getElementById("webhook-meta");
+                  if (meta) meta.textContent = "copied " + (p.what || "");
+                } else if (h.kind === "webhook_tool_read_key") {
+                  label =
+                    "webhook_tool_read:" +
+                    (p.refused ? "REFUSED" : "LEAK") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const meta = document.getElementById("webhook-meta");
+                  if (meta) {
+                    meta.textContent = p.refused
+                      ? "tool-read refused (opaque)"
+                      : "tool-read unexpected";
+                  }
+                } else if (h.kind === "webhook_wake") {
+                  label =
+                    "webhook_wake:" +
+                    (p.event_id || "?") +
+                    (p.key_leaked ? "/LEAK" : "") +
+                    (p.path ? "/snap" : "");
+                  types.push("text");
+                  const meta = document.getElementById("webhook-meta");
+                  if (meta) {
+                    meta.textContent =
+                      "wake " +
+                      (p.event_id || "") +
+                      (p.key_leaked ? " KEY LEAK" : " ok");
+                  }
                 } else if (h.kind === "mcp_discover") {
                   label =
                     "mcp_discover×" +
@@ -1194,6 +1265,21 @@
     });
     document.getElementById("probe-connectors").addEventListener("click", () => {
       runUserTurn("list connectors", {});
+    });
+    document.getElementById("wh-open").addEventListener("click", () => {
+      runUserTurn("open webhook panel", {});
+    });
+    document.getElementById("wh-copy-url").addEventListener("click", () => {
+      runUserTurn("copy webhook url", {});
+    });
+    document.getElementById("wh-copy-key").addEventListener("click", () => {
+      runUserTurn("copy webhook key", {});
+    });
+    document.getElementById("wh-tool-read").addEventListener("click", () => {
+      runUserTurn("tool-read webhook key", {});
+    });
+    document.getElementById("wh-wake").addEventListener("click", () => {
+      runUserTurn("webhook wake id=evt-desktop summary=POST /hooks received", {});
     });
     document.getElementById("sc-status").addEventListener("click", () => {
       runUserTurn("source control github", {});

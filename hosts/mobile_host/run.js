@@ -146,6 +146,10 @@ try {
       "box_doctor",
       "box_env",
       "box_clock",
+      "webhook_panel",
+      "webhook_copy",
+      "webhook_tool_read_key",
+      "webhook_wake",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

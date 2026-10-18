@@ -122,6 +122,10 @@ pub(all) enum TurnIntent {
   BoxDoctor
   BoxEnv
   BoxClock
+  WebhookPanel
+  WebhookCopy(what~ : String)
+  WebhookToolReadKey
+  WebhookWake(event_id~ : String, summary~ : String)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -206,6 +210,10 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     BoxDoctor => "box_doctor"
     BoxEnv => "box_env"
     BoxClock => "box_clock"
+    WebhookPanel => "webhook_panel"
+    WebhookCopy(_) => "webhook_copy"
+    WebhookToolReadKey => "webhook_tool_read_key"
+    WebhookWake(_) => "webhook_wake"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -3234,6 +3242,72 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "box clock planned (CM-2175). Host aligns date to user timezone.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    WebhookPanel => {
+      let effect : DesktopEffect = {
+        kind: "webhook_panel",
+        command: "open",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "webhook panel planned (CM-0411). Host creates opaque URL/key for user copy.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    WebhookCopy(what~) => {
+      let effect : DesktopEffect = {
+        kind: "webhook_copy",
+        command: what,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "webhook user-copy planned (CM-0411). Host records copy receipt for " +
+          what +
+          ".",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    WebhookToolReadKey => {
+      let effect : DesktopEffect = {
+        kind: "webhook_tool_read_key",
+        command: "tool-read-key",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "webhook tool-read key planned (CM-0411). Host must refuse; key stays opaque.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    WebhookWake(event_id~, summary~) => {
+      let effect : DesktopEffect = {
+        kind: "webhook_wake",
+        command: "id=" + event_id + " summary=" + summary,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "webhook wake planned (CM-0411). Host emits <webhook_event> without key leak.",
         intent,
         ctx~,
         effects=[effect],

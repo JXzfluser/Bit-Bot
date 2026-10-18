@@ -95,6 +95,10 @@ function extractDeliveryTypes(turnJsonText) {
           "box_doctor",
           "box_env",
           "box_clock",
+          "webhook_panel",
+          "webhook_copy",
+          "webhook_tool_read_key",
+          "webhook_wake",
         ].includes(h.kind)
       ) {
         types.push("attachment");

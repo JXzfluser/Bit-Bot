@@ -444,6 +444,49 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       low.has_prefix("box clock ") {
     return Some(BoxClock)
   }
+  // CM-0411 product Host webhook panel (opaque key; user copy; wake tag).
+  if low == "open webhook" ||
+      low == "webhook panel" ||
+      low == "show webhook" ||
+      low == "open webhook panel" {
+    return Some(WebhookPanel)
+  }
+  if low == "copy webhook url" || low == "webhook copy url" {
+    return Some(WebhookCopy(what="url"))
+  }
+  if low == "copy webhook key" || low == "webhook copy key" {
+    return Some(WebhookCopy(what="key"))
+  }
+  if low == "tool-read webhook key" ||
+      low == "tool read webhook key" ||
+      low == "read webhook key" {
+    return Some(WebhookToolReadKey)
+  }
+  if low.has_prefix("webhook wake ") {
+    let rest = trimmed[13:].trim().to_owned()
+    let mut event_id = "evt-1"
+    let mut summary = rest
+    // Optional id=<id> summary=<text> kv form.
+    if rest.has_prefix("id=") {
+      let after = rest[3:].to_owned()
+      match split_once(after, " summary=") {
+        Some((eid, sum)) => {
+          event_id = eid.trim().to_owned()
+          summary = sum.trim().to_owned()
+        }
+        None => {
+          event_id = after.trim().to_owned()
+          summary = "POST /hooks received"
+        }
+      }
+    } else {
+      summary = rest
+    }
+    if summary.length() == 0 {
+      summary = "POST /hooks received"
+    }
+    return Some(WebhookWake(event_id~, summary~))
+  }
   // CM-2157 product Host structured chart (Pillow PNG via Host FFI).
   if low.has_prefix("structured chart ") ||
       low.has_prefix("make chart ") ||
