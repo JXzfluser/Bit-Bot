@@ -7036,6 +7036,22 @@ function createHostFfi(repoRoot) {
         routine_schedule: "host_routine_schedule",
         create_routine: "host_routine_schedule",
         box_doctor: "host_box_doctor",
+        connectors_probe: "host_connectors_probe",
+        probe_connectors: "host_connectors_probe",
+        mcp_discover: "host_mcp_discover",
+        discover_mcp: "host_mcp_discover",
+        list_mcp_tools: "host_mcp_discover",
+        install_plugin: "host_mcp_namespace",
+        mcp_namespace: "host_mcp_namespace",
+        register_plugin: "host_mcp_namespace",
+        memory_recall: "host_memory_recall",
+        recall_memory: "host_memory_recall",
+        device_permission: "host_device_permission",
+        request_device_permission: "host_device_permission",
+        members_panel: "host_members_panel",
+        list_members: "host_members_panel",
+        update_computer: "host_update_computer",
+        computer_update: "host_update_computer",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7175,7 +7191,14 @@ function createHostFfi(repoRoot) {
         mapped === "host_journal_append" ||
         mapped === "host_journal_query" ||
         mapped === "host_shared_memory_put" ||
-        mapped === "host_shared_memory_read"
+        mapped === "host_shared_memory_read" ||
+        mapped === "host_connectors_probe" ||
+        mapped === "host_mcp_discover" ||
+        mapped === "host_mcp_namespace" ||
+        mapped === "host_memory_recall" ||
+        mapped === "host_device_permission" ||
+        mapped === "host_members_panel" ||
+        mapped === "host_update_computer"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -10476,6 +10499,341 @@ function createHostFfi(repoRoot) {
             pretend_ok: false,
             ok: Boolean(memReadHit && memReadHit.ok),
             shared_memory_read: memReadPayload,
+          });
+        }
+        if (mapped === "host_connectors_probe") {
+          const probeResults = await executeHostEffects([
+            { kind: "connectors_probe", command: "" },
+          ]);
+          const probeHit = (probeResults || []).find(
+            (r) => r && r.kind === "connectors_probe",
+          );
+          let probePayload = {};
+          try {
+            probePayload = JSON.parse((probeHit && probeHit.stdout) || "{}");
+          } catch {
+            probePayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "connectors_probe",
+              connectors_probe: {
+                path: probePayload.path || null,
+                mode: probePayload.mode || null,
+                pretend_all_connected: probePayload.pretend_all_connected,
+                connector_count: Object.keys(probePayload.connectors || {})
+                  .length,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(probeHit && probeHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(probeHit && probeHit.ok),
+            connectors_probe: probePayload,
+          });
+        }
+        if (mapped === "host_mcp_discover") {
+          const discResults = await executeHostEffects([
+            { kind: "mcp_discover", command: String(args.command || "").trim() },
+          ]);
+          const discHit = (discResults || []).find(
+            (r) => r && r.kind === "mcp_discover",
+          );
+          let discPayload = {};
+          try {
+            discPayload = JSON.parse((discHit && discHit.stdout) || "{}");
+          } catch {
+            discPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "mcp_discover",
+              mcp_discover: {
+                path: discPayload.path || null,
+                tool_count: discPayload.tool_count,
+                pretend_empty: discPayload.pretend_empty,
+                pretend_discovered: discPayload.pretend_discovered,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(discHit && discHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(discHit && discHit.ok),
+            mcp_discover: discPayload,
+          });
+        }
+        if (mapped === "host_mcp_namespace") {
+          // Product install_plugin → Host mcp_namespace register (never pretend_registered).
+          const ns =
+            String(
+              args.namespace ||
+                args.plugin ||
+                args.name ||
+                args.id ||
+                "user-Slides",
+            ).trim() || "user-Slides";
+          const pluginId =
+            String(args.plugin_id || args.pluginId || args.id || "plugin-slides")
+              .trim() || "plugin-slides";
+          const nsCmd =
+            String(args.command || "").trim() || `${ns}|${pluginId}`;
+          const nsResults = await executeHostEffects([
+            { kind: "mcp_namespace", command: nsCmd },
+          ]);
+          const nsHit = (nsResults || []).find(
+            (r) => r && r.kind === "mcp_namespace",
+          );
+          let nsPayload = {};
+          try {
+            nsPayload = JSON.parse((nsHit && nsHit.stdout) || "{}");
+          } catch {
+            nsPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "mcp_namespace",
+              mcp_namespace: {
+                path: nsPayload.path || null,
+                catalog_path: nsPayload.catalog_path || null,
+                namespace: nsPayload.namespace || ns,
+                plugin_id: nsPayload.plugin_id || pluginId,
+                status: nsPayload.status || null,
+                usable: nsPayload.usable,
+                pretend_registered: nsPayload.pretend_registered,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(nsHit && nsHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(nsHit && nsHit.ok),
+            mcp_namespace: nsPayload,
+          });
+        }
+        if (mapped === "host_memory_recall") {
+          const recallQ = String(
+            args.q || args.query || args.prefix || args.key || args.body || "smoke",
+          ).trim() || "smoke";
+          const recallResults = await executeHostEffects([
+            { kind: "memory_recall", command: recallQ },
+          ]);
+          const recallHit = (recallResults || []).find(
+            (r) => r && r.kind === "memory_recall",
+          );
+          let recallPayload = {};
+          try {
+            recallPayload = JSON.parse((recallHit && recallHit.stdout) || "{}");
+          } catch {
+            recallPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "memory_recall",
+              memory_recall: {
+                path: recallPayload.path || null,
+                mode: recallPayload.mode || null,
+                count: recallPayload.count,
+                pretend_empty: recallPayload.pretend_empty,
+                prefix: recallPayload.prefix || recallQ,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(recallHit && recallHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(recallHit && recallHit.ok),
+            memory_recall: recallPayload,
+          });
+        }
+        if (mapped === "host_device_permission") {
+          const permTool = String(
+            args.tool || args.name || args.device || args.body || "camera",
+          )
+            .trim()
+            .toLowerCase() || "camera";
+          const permResults = await executeHostEffects([
+            { kind: "device_permission", command: permTool },
+          ]);
+          const permHit = (permResults || []).find(
+            (r) => r && r.kind === "device_permission",
+          );
+          let permPayload = {};
+          try {
+            permPayload = JSON.parse((permHit && permHit.stdout) || "{}");
+          } catch {
+            permPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "device_permission",
+              device_permission: {
+                path: permPayload.path || null,
+                tool: permPayload.tool || permTool,
+                permission: permPayload.permission || null,
+                pretend_granted: permPayload.pretend_granted,
+                true_device_os_dialog_residual:
+                  permPayload.true_device_os_dialog_residual,
+                mode: permPayload.mode || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(permHit && permHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(permHit && permHit.ok),
+            device_permission: permPayload,
+          });
+        }
+        if (mapped === "host_members_panel") {
+          const membersCmd = String(
+            args.command || args.group || args.group_id || "",
+          ).trim();
+          const membersResults = await executeHostEffects([
+            { kind: "members_panel", command: membersCmd },
+          ]);
+          const membersHit = (membersResults || []).find(
+            (r) => r && r.kind === "members_panel",
+          );
+          let membersPayload = {};
+          try {
+            membersPayload = JSON.parse(
+              (membersHit && membersHit.stdout) || "{}",
+            );
+          } catch {
+            membersPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "members_panel",
+              members_panel: {
+                path: membersPayload.path || membersPayload.panel_path || null,
+                mode: membersPayload.mode || null,
+                pretend_members: membersPayload.pretend_members,
+                member_ids: membersPayload.member_ids || [],
+                section_anchor: membersPayload.section_anchor || null,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(membersHit && membersHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(membersHit && membersHit.ok),
+            members_panel: membersPayload,
+          });
+        }
+        if (mapped === "host_update_computer") {
+          const updCmd = String(
+            args.command || args.phase || args.action || args.body || "",
+          ).trim();
+          const updResults = await executeHostEffects([
+            { kind: "update_computer", command: updCmd },
+          ]);
+          const updHit = (updResults || []).find(
+            (r) => r && r.kind === "update_computer",
+          );
+          let updPayload = {};
+          try {
+            updPayload = JSON.parse((updHit && updHit.stdout) || "{}");
+          } catch {
+            updPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "update_computer",
+              update_computer: {
+                path: updPayload.path || null,
+                mode: updPayload.mode || null,
+                phase: updPayload.phase || null,
+                pretend_updated: updPayload.pretend_updated,
+                two_step_ready: updPayload.two_step_ready,
+                guide_before_reset: updPayload.guide_before_reset,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(updHit && updHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(updHit && updHit.ok),
+            update_computer: updPayload,
           });
         }
 

@@ -1060,6 +1060,72 @@ function stripHostAppliedMarker(file) {
   if ((memReadP.shared_memory_read||{}).pretend_cross_scope === true) throw new Error("pretend_cross_scope");
   require("fs").writeFileSync("/tmp/bitbot-mcp-shared-memory-read.json", JSON.stringify({ ok: true, ...memReadP }, null, 2));
   console.log("mcp_call shared_memory_read short-circuit ok", memReadP.mapped, (memReadP.shared_memory_read||{}).mode, (memReadP.shared_memory_read||{}).found);
+  // connectors_probe / mcp_discover / install_plugin / memory_recall / device_permission / members_panel / update_computer
+  const connProbeRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.connectors_probe|{}" }]);
+  const connProbeH = connProbeRuns.find((r) => r && r.kind === "mcp_call");
+  if (!connProbeH || !connProbeH.ok) throw new Error("connectors_probe mcp");
+  const connProbeP = JSON.parse(connProbeH.stdout || "{}");
+  if (connProbeP.mapped !== "host_connectors_probe" || connProbeP.product_tool_residual !== false) throw new Error(JSON.stringify(connProbeP).slice(0,200));
+  if ((connProbeP.connectors_probe||{}).pretend_all_connected === true) throw new Error("pretend_all_connected");
+  if (!(connProbeP.connectors_probe||{}).path) throw new Error("connectors_probe path");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-connectors-probe.json", JSON.stringify({ ok: true, ...connProbeP }, null, 2));
+  console.log("mcp_call connectors_probe short-circuit ok", connProbeP.mapped, (connProbeP.connectors_probe||{}).mode);
+  const mcpDiscRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.mcp_discover|{}" }]);
+  const mcpDiscH = mcpDiscRuns.find((r) => r && r.kind === "mcp_call");
+  if (!mcpDiscH || !mcpDiscH.ok) throw new Error("mcp_discover mcp");
+  const mcpDiscP = JSON.parse(mcpDiscH.stdout || "{}");
+  if (mcpDiscP.mapped !== "host_mcp_discover" || mcpDiscP.product_tool_residual !== false) throw new Error(JSON.stringify(mcpDiscP).slice(0,200));
+  if ((mcpDiscP.mcp_discover||{}).pretend_empty === true) throw new Error("pretend_empty discover");
+  if (!((mcpDiscP.mcp_discover||{}).tool_count >= 1)) throw new Error("discover tool_count");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-discover-sc.json", JSON.stringify({ ok: true, ...mcpDiscP }, null, 2));
+  console.log("mcp_call mcp_discover short-circuit ok", mcpDiscP.mapped, (mcpDiscP.mcp_discover||{}).tool_count);
+  const installPluginRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.install_plugin|{\"namespace\":\"user-McpSmoke\",\"plugin_id\":\"plugin-mcp-smoke\"}" }]);
+  const installPluginH = installPluginRuns.find((r) => r && r.kind === "mcp_call");
+  if (!installPluginH || !installPluginH.ok) throw new Error("install_plugin mcp");
+  const installPluginP = JSON.parse(installPluginH.stdout || "{}");
+  if (installPluginP.mapped !== "host_mcp_namespace" || installPluginP.product_tool_residual !== false) throw new Error(JSON.stringify(installPluginP).slice(0,200));
+  if ((installPluginP.mcp_namespace||{}).pretend_registered === true) throw new Error("pretend_registered");
+  if ((installPluginP.mcp_namespace||{}).usable !== true) throw new Error("namespace usable: " + JSON.stringify(installPluginP.mcp_namespace||{}).slice(0,200));
+  require("fs").writeFileSync("/tmp/bitbot-mcp-install-plugin.json", JSON.stringify({ ok: true, ...installPluginP }, null, 2));
+  console.log("mcp_call install_plugin short-circuit ok", installPluginP.mapped, (installPluginP.mcp_namespace||{}).namespace, (installPluginP.mcp_namespace||{}).status);
+  const memRecallRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.memory_recall|{\"q\":\"smoke\"}" }]);
+  const memRecallH = memRecallRuns.find((r) => r && r.kind === "mcp_call");
+  if (!memRecallH || !memRecallH.ok) throw new Error("memory_recall mcp");
+  const memRecallP = JSON.parse(memRecallH.stdout || "{}");
+  if (memRecallP.mapped !== "host_memory_recall" || memRecallP.product_tool_residual !== false) throw new Error(JSON.stringify(memRecallP).slice(0,200));
+  if ((memRecallP.memory_recall||{}).pretend_empty === true) throw new Error("pretend_empty recall");
+  if (!(memRecallP.memory_recall||{}).path) throw new Error("memory_recall path");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-memory-recall.json", JSON.stringify({ ok: true, ...memRecallP }, null, 2));
+  console.log("mcp_call memory_recall short-circuit ok", memRecallP.mapped, (memRecallP.memory_recall||{}).mode, (memRecallP.memory_recall||{}).count);
+  const devPermRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.device_permission|{\"tool\":\"camera\"}" }]);
+  const devPermH = devPermRuns.find((r) => r && r.kind === "mcp_call");
+  if (!devPermH || !devPermH.ok) throw new Error("device_permission mcp");
+  const devPermP = JSON.parse(devPermH.stdout || "{}");
+  if (devPermP.mapped !== "host_device_permission" || devPermP.product_tool_residual !== false) throw new Error(JSON.stringify(devPermP).slice(0,200));
+  if ((devPermP.device_permission||{}).pretend_granted === true) throw new Error("pretend_granted perm");
+  if ((devPermP.device_permission||{}).true_device_os_dialog_residual !== true) {
+    throw new Error("true_device_os_dialog_residual must stay open (deferred): " + JSON.stringify(devPermP.device_permission||{}).slice(0,240));
+  }
+  if (!(devPermP.device_permission||{}).path) throw new Error("device_permission path");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-device-permission.json", JSON.stringify({ ok: true, ...devPermP }, null, 2));
+  console.log("mcp_call device_permission short-circuit ok", devPermP.mapped, (devPermP.device_permission||{}).tool, (devPermP.device_permission||{}).true_device_os_dialog_residual);
+  const membersRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.members_panel|{}" }]);
+  const membersH = membersRuns.find((r) => r && r.kind === "mcp_call");
+  if (!membersH || !membersH.ok) throw new Error("members_panel mcp");
+  const membersP = JSON.parse(membersH.stdout || "{}");
+  if (membersP.mapped !== "host_members_panel" || membersP.product_tool_residual !== false) throw new Error(JSON.stringify(membersP).slice(0,200));
+  if ((membersP.members_panel||{}).pretend_members === true) throw new Error("pretend_members");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-members-panel.json", JSON.stringify({ ok: true, ...membersP }, null, 2));
+  console.log("mcp_call members_panel short-circuit ok", membersP.mapped, ((membersP.members_panel||{}).member_ids||[]).length);
+  const updCompRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.update_computer|{}" }]);
+  const updCompH = updCompRuns.find((r) => r && r.kind === "mcp_call");
+  if (!updCompH || !updCompH.ok) throw new Error("update_computer mcp");
+  const updCompP = JSON.parse(updCompH.stdout || "{}");
+  if (updCompP.mapped !== "host_update_computer" || updCompP.product_tool_residual !== false) throw new Error(JSON.stringify(updCompP).slice(0,200));
+  if ((updCompP.update_computer||{}).pretend_updated === true) throw new Error("pretend_updated");
+  if (!(updCompP.update_computer||{}).path) throw new Error("update_computer path");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-update-computer.json", JSON.stringify({ ok: true, ...updCompP }, null, 2));
+  console.log("mcp_call update_computer short-circuit ok", updCompP.mapped, (updCompP.update_computer||{}).phase, (updCompP.update_computer||{}).mode);
   // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}
