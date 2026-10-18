@@ -379,6 +379,13 @@
   </div>
   <aside id="machines">
     <div class="panel-title">Machines</div>
+    <div class="machine-item">
+      <div class="name">Multi-end roster</div>
+      <div class="meta" id="machines-meta">desktop / ios / android (active Host only Connected)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="mach-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List machines</button>
+      </div>
+    </div>
     <div id="machine-list">
       <div class="machine-item"><div class="meta">Ask ListMachines to refresh</div></div>
     </div>
@@ -545,11 +552,14 @@
     </div>
     <div class="panel-title" style="margin-top:16px">Mail / commerce</div>
     <div class="machine-item">
-      <div class="name">Draft · schedule · purchase</div>
+      <div class="name">Draft · cold · on-behalf · claim</div>
       <div class="meta" id="mail-meta">sandbox eml · ICS · receipt</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="mail-draft" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Draft mail</button>
-        <button type="button" id="mail-schedule" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Schedule meeting</button>
+        <button type="button" id="mail-cold" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Cold mail</button>
+        <button type="button" id="mail-onbehalf" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Send on behalf</button>
+        <button type="button" id="mail-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Claim inbox</button>
+        <button type="button" id="mail-schedule" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Schedule meeting</button>
         <button type="button" id="mail-purchase" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Purchase (sandbox)</button>
         <button type="button" id="mail-search" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Search mail</button>
       </div>
@@ -1936,11 +1946,48 @@
                   const mailMeta = document.getElementById("mail-meta");
                   if (mailMeta) {
                     mailMeta.textContent =
-                      (p.drafted ? "draft" : "send") +
+                      (p.provider === "cold"
+                        ? "cold"
+                        : p.provider === "onbehalf"
+                          ? "onbehalf"
+                          : p.drafted
+                            ? "draft"
+                            : "send") +
                       " · " +
                       (p.mode || p.provider || "?") +
                       (p.pretend_sent ? " · pretend!" : "") +
+                      (p.eml_path || p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "mail_claim_inbox") {
+                  label =
+                    "claim:" +
+                    (p.local_part || p.mode || "inbox") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const mailMeta = document.getElementById("mail-meta");
+                  if (mailMeta) {
+                    mailMeta.textContent =
+                      "claim · " +
+                      (p.local_part || "?") +
+                      (p.pretend_claimed === true ? " · pretend!" : "") +
                       (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "machines_list") {
+                  label =
+                    "machines×" +
+                    (p.count != null ? p.count : (p.machines || []).length);
+                  types.push("attachment");
+                  if (Array.isArray(p.machines)) renderMachines(p.machines);
+                  const machMeta = document.getElementById("machines-meta");
+                  if (machMeta) {
+                    const connected = (p.machines || []).filter(
+                      (m) => String(m.status || "").toLowerCase() === "connected",
+                    ).length;
+                    machMeta.textContent =
+                      (p.count != null ? p.count : (p.machines || []).length) +
+                      " · connected " +
+                      connected +
+                      (p.pretend_all_connected === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "code_changes") {
                   label = "code:" + (p.applied ? "applied" : "plan");
@@ -2753,11 +2800,29 @@
         approved: true,
       });
     });
+    document.getElementById("mach-list").addEventListener("click", () => {
+      runUserTurn("list machines", {});
+    });
     document.getElementById("mail-draft").addEventListener("click", () => {
       runUserTurn(
         "draft mail to=desktop@example.com subject=Hi body=Desktop draft",
         { approved: true },
       );
+    });
+    document.getElementById("mail-cold").addEventListener("click", () => {
+      runUserTurn(
+        "cold mail to=prospect@example.com subject=Hello body=Desktop cold unsubscribe=mailto:unsub@example.com",
+        { approved: true },
+      );
+    });
+    document.getElementById("mail-onbehalf").addEventListener("click", () => {
+      runUserTurn(
+        "send on behalf to=boss@example.com subject=Update body=Desktop on-behalf",
+        { approved: true },
+      );
+    });
+    document.getElementById("mail-claim").addEventListener("click", () => {
+      runUserTurn("claim inbox alpha", {});
     });
     document.getElementById("mail-schedule").addEventListener("click", () => {
       runUserTurn(

@@ -95,6 +95,9 @@ for needle in (
     "webfetch https://example.com",
     "computer use open",
     "shell echo",
+    "cold mail to=",
+    "send on behalf to=",
+    "claim inbox",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
@@ -114,6 +117,8 @@ for kind in (
     "webfetch",
     "computer_use",
     "shared_memory_put",
+    "machines_list",
+    "mail_claim_inbox",
 ):
     assert kind in mobile, kind
 assert "receipt_path" in mobile and "skill_path" in mobile

@@ -201,6 +201,8 @@ try {
       "shared_memory_read",
       "code_changes",
       "source_control",
+      "machines_list",
+      "mail_claim_inbox",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

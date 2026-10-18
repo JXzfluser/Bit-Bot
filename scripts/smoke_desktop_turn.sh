@@ -367,7 +367,15 @@ assert 'BITBOT_CU_NATIVE_ACT' in html and 'BITBOT_CU_OCR' in html
 assert 'code changes README.mbt.md' in html
 assert 'fs_list' in mobile and 'webfetch' in mobile and 'computer_use' in mobile
 assert 'shared_memory_put' in mobile and 'code_changes' in mobile
-print('desktop teammates + mail/commerce + channels/delivery + tools/CU panels wired ok')
+assert 'id=\"mach-list\"' in html and 'id=\"machines-meta\"' in html
+assert 'id=\"mail-cold\"' in html and 'id=\"mail-onbehalf\"' in html
+assert 'id=\"mail-claim\"' in html
+assert 'list machines' in html
+assert 'cold mail to=prospect@example.com' in html
+assert 'send on behalf to=boss@example.com' in html
+assert 'claim inbox alpha' in html
+assert 'machines_list' in mobile and 'mail_claim_inbox' in mobile
+print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines panels wired ok')
 "
 python3 -c "
 from pathlib import Path
