@@ -98,6 +98,11 @@ for needle in (
     "cold mail to=",
     "send on behalf to=",
     "claim inbox",
+    "author skill name=",
+    "export bot template id=",
+    "device tools",
+    "journal query hello",
+    "copy to box machine=",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
@@ -119,6 +124,11 @@ for kind in (
     "shared_memory_put",
     "machines_list",
     "mail_claim_inbox",
+    "device_tools_list",
+    "journal_query",
+    "skill_load",
+    "copy_to_box",
+    "copy_from_box",
 ):
     assert kind in mobile, kind
 assert "receipt_path" in mobile and "skill_path" in mobile

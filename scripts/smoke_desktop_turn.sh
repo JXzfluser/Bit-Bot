@@ -375,7 +375,19 @@ assert 'cold mail to=prospect@example.com' in html
 assert 'send on behalf to=boss@example.com' in html
 assert 'claim inbox alpha' in html
 assert 'machines_list' in mobile and 'mail_claim_inbox' in mobile
-print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines panels wired ok')
+assert 'id=\"del-slides\"' in html and 'id=\"del-skill\"' in html
+assert 'id=\"del-export\"' in html and 'id=\"del-load-skill\"' in html
+assert 'id=\"tool-device\"' in html and 'id=\"tool-journal\"' in html
+assert 'id=\"box-copy-to\"' in html and 'id=\"box-copy-from\"' in html
+assert 'make slides title=DeskParity' in html
+assert 'author skill name=demo-skill' in html
+assert 'export bot template id=bot-smoke' in html
+assert 'load skill slides presentation' in html
+assert 'device tools' in html and 'journal query hello' in html
+assert 'copy to box machine=desk-1' in html and 'copy from box machine=desk-1' in html
+assert 'device_tools_list' in mobile and 'journal_query' in mobile
+assert 'skill_load' in mobile and 'copy_to_box' in mobile
+print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines + skills/box panels wired ok')
 "
 python3 -c "
 from pathlib import Path

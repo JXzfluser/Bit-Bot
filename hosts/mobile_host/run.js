@@ -203,6 +203,11 @@ try {
       "source_control",
       "machines_list",
       "mail_claim_inbox",
+      "device_tools_list",
+      "journal_query",
+      "skill_load",
+      "copy_to_box",
+      "copy_from_box",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;
