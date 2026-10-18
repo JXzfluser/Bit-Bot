@@ -673,6 +673,8 @@ mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
 assert 'payload.media_path' in mobile
 assert 'memory_update' in mobile and 'memory_recall' in mobile
+assert 'todo_write' in mobile or '"todo_write"' in Path('hosts/shared/send_to_user_surface.js').read_text()
+assert 'todo_write' in ios and 'todo_write' in android
 assert '"device_tool"' in mobile and '"delivery"' in mobile
 for needle in (
   'live_mail_residual',

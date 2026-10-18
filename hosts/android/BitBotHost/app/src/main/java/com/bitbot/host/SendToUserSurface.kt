@@ -36,7 +36,7 @@ object SendToUserSurface {
     "skill_load", "mail_claim_inbox", "cloud_artifact_deliver", "teammate_create",
     "shell", "computer_use",
     "generate_image", "generate_video", "watch_video", "structured_chart",
-    "box_doctor", "box_env", "box_clock",
+    "box_doctor", "box_env", "box_clock", "todo_write",
     "webhook_panel", "webhook_copy", "webhook_tool_read_key", "webhook_wake",
     "settings_open", "agent_info_panel", "delete_agent", "package_install",
     "shared_box_fs", "hide_agent", "list_agents_sidebar", "members_panel",
