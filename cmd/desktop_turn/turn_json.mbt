@@ -1649,6 +1649,10 @@ pub fn run_desktop_turn(
           )
         Ok(skills) => {
           let ready = reg.ready_namespaces()
+          let ns = match reg.mcp_namespace_for(plugin_id) {
+            Some(n) => n
+            None => plugin_id
+          }
           let reply =
             "Installed plugin " +
             plugin_id +
@@ -1659,7 +1663,7 @@ pub fn run_desktop_turn(
             ". MCP Live calls still need Host FFI."
           let effect : DesktopEffect = {
             kind: "mcp_namespace",
-            command: plugin_id,
+            command: plugin_id + "|" + ns,
             needs_host_ffi: true,
           }
           deliver_ok(

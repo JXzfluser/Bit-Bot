@@ -838,6 +838,8 @@ test "desktop_turn_install_plugin_and_setup_slack" {
   assert_eq(p.intent, "install_plugin")
   assert_true(p.needs_host_ffi)
   assert_eq(p.effects[0].kind, "mcp_namespace")
+  assert_true(p.effects[0].command.contains("plugin-slides"))
+  assert_true(p.effects[0].command.contains("user-Slides"))
   let s = run_desktop_turn("setup slack", turn_id="slack-1")
   assert_true(s.ok)
   assert_eq(s.intent, "setup_slack")

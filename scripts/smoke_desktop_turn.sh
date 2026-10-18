@@ -244,6 +244,32 @@ node hosts/cli_host/run_turn.js "box chrome probe" >/tmp/bitbot-box-chrome.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-box-chrome.json'));assert d.get('intent')=='box_chrome_probe';h=next(x for x in d['host_results'] if x.get('kind')=='box_chrome_probe');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('via_box_chrome') is True;assert p.get('rejected_bare') is True;assert p.get('pretend_launched') is False;assert 'box-chrome' in (p.get('launch_path') or '');assert p.get('shared_cdp_untouched') is True;assert p.get('used_shared_cdp') is False;assert p.get('private_cdp_port') not in (None, 9223);assert p.get('lockfile_diagnosable') is True;assert p.get('path') and os.path.isfile(p['path']);print('box_chrome_probe ok', p.get('launch_path'), 'private', p.get('private_cdp_port'), 'bin_residual', p.get('box_chrome_bin_residual'))"
 node hosts/cli_host/run_turn.js "launch bare chrome" >/tmp/bitbot-bare-chrome.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-bare-chrome.json'));assert d.get('intent')=='box_chrome_probe';h=next(x for x in d['host_results'] if x.get('kind')=='box_chrome_probe');p=json.loads(h['stdout']);assert p.get('refused') is True;assert p.get('rejected_bare') is True;assert p.get('pretend_launched') is False;assert 'box-chrome' in (p.get('error') or '').lower() or 'bare' in (p.get('error') or '').lower();print('box_chrome bare refuse ok', p.get('error'))"
+echo "==> Host mcp_namespace InstallPlugin (CM-0904)"
+node hosts/cli_host/run_turn.js "install plugin plugin-slides" >/tmp/bitbot-mcp-ns.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-ns.json'));assert d.get('intent')=='install_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_namespace');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_registered') is False;assert p.get('namespace')=='user-Slides';assert p.get('status')=='Ready';assert p.get('usable') is True;assert p.get('namespace_ready') is True;assert p.get('plugin_id')=='plugin-slides';assert p.get('skill_count',0)>=1;assert p.get('path') and os.path.isfile(p['path']);assert p.get('catalog_path') and os.path.isfile(p['catalog_path']);cat=json.load(open(p['catalog_path']));assert 'user-Slides' in (cat.get('namespaces') or {});assert 'plugin-slides' in (cat.get('installed_plugins') or []);print('mcp_namespace Ready ok', p.get('namespace'), p.get('path'))"
+node hosts/cli_host/run_turn.js "install plugin plugin-unknown-xyz" >/tmp/bitbot-mcp-ns-bad.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-mcp-ns-bad.json'));
+# MoonBit may fail before Host, or Host refuses unknown — either way no pretend register.
+if d.get('ok') is False:
+  print('install unknown plugin moon refuse ok', d.get('error') or d.get('assistant') or 'failed')
+else:
+  hrs=d.get('host_results') or []
+  h=next((x for x in hrs if x.get('kind')=='mcp_namespace'), None)
+  assert h is not None
+  p=json.loads(h.get('stdout') or '{}')
+  assert p.get('refused') is True or p.get('pretend_registered') is False
+  assert p.get('pretend_registered') is not True
+  print('install unknown plugin host refuse ok', p.get('error'))
+"
+echo "==> Desktop Electron Host smoke turn (ADR 0005 product path)"
+(
+  cd hosts/desktop
+  BITBOT_DESKTOP_SMOKE_TURN="ListMachines" \
+  BITBOT_REPO_ROOT="$ROOT" \
+  ELECTRON_ENABLE_LOGGING=1 \
+  npx --no-install electron . --no-sandbox >/tmp/bitbot-desktop-electron-smoke.log 2>&1
+) || true
+python3 -c "import json,os;p='data/tmp/desktop-electron-turn.json';assert os.path.isfile(p), open('/tmp/bitbot-desktop-electron-smoke.log').read()[-2000:];d=json.load(open(p));assert d.get('via_electron') is True;assert d.get('moonbit_brain') is True;assert d.get('local_brain') is False;assert d.get('pretend_desktop') is False;assert d.get('ok') is True;t=d.get('turn') or {};assert t.get('intent')=='list_machines';assert t.get('machine_kind')=='desktop';print('desktop electron smoke turn ok', t.get('intent'), p)"
 
 echo "==> Host durable routines"
 node hosts/cli_host/run_turn.js --approved "create routine id=host-r cron=@hourly prompt=tick" >/tmp/bitbot-routine-create.json

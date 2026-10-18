@@ -178,7 +178,7 @@ wait "$PAY_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/parity-purchase-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='purchase');p=json.loads(h['stdout']);assert p.get('mode')=='live_charge';assert p.get('paid') is True;assert p.get('live_paid_residual') is False;assert p.get('pretend_paid') is False;print('parity purchase live ok', (p.get('charge_probe') or {}).get('ok'))"
 
 "${RUN[@]}" "install plugin plugin-slides" >/tmp/parity-plugin.json
-python3 -c "import json;d=json.load(open('/tmp/parity-plugin.json'));assert d.get('ok');assert d.get('intent')=='install_plugin';print('parity install_plugin ok')"
+python3 -c "import json,os;d=json.load(open('/tmp/parity-plugin.json'));assert d.get('ok');assert d.get('intent')=='install_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_namespace');p=json.loads(h['stdout']);assert p.get('pretend_registered') is False;assert p.get('namespace')=='user-Slides';assert p.get('status')=='Ready';assert p.get('usable') is True;assert p.get('path') and os.path.isfile(p['path']);print('parity install_plugin mcp_namespace Ready ok', p.get('namespace'), p.get('path'))"
 "${RUN[@]}" "learn from demo title=ParityCheckout steps=click:Cart|type:email" >/tmp/parity-lfd.json
 python3 -c "import json,os;d=json.load(open('/tmp/parity-lfd.json'));h=next(x for x in d['host_results'] if x.get('kind')=='skill_write');p=json.loads(h['stdout']);assert p.get('path') and os.path.isfile(p['path']);body=open(p['path']).read();assert 'click:Cart' in body or 'Steps' in body;print('parity learn_from_demo ok')"
 "${RUN[@]}" "author skill name=parity-skill description=demo body=Do the parity thing $MARKER" >/tmp/parity-author.json

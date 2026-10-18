@@ -11551,6 +11551,7 @@ function createHostFfi(repoRoot) {
     }
 
     if (kind === "mcp_namespace") {
+      // CM-0904 — InstallPlugin / add-connector registers MCP namespace Ready+usable.
       const nsDir = path.join(REPO_ROOT, "data", "connectors", "mcp-namespaces");
       fs.mkdirSync(nsDir, { recursive: true });
       const ledgerPath = path.join(
@@ -11559,14 +11560,107 @@ function createHostFfi(repoRoot) {
         "connectors",
         "mcp-namespaces.jsonl",
       );
+      const catalogPath = path.join(nsDir, "catalog.json");
+      const raw = String(cmd || "").trim();
+      const parts = raw.split("|").map((s) => s.trim()).filter(Boolean);
+      const pluginToken = parts[0] || raw;
+      const nsHint = parts[1] || "";
+      // Known demo plugins (mirrors connectors/plugins.mbt seed_demo).
+      const PLUGIN_NS = {
+        "plugin-slides": {
+          namespace: "user-Slides",
+          display_name: "Slides helper",
+          skills: ["slides-quickstart"],
+        },
+        "plugin-calendar": {
+          namespace: "user-Calendar",
+          display_name: "Calendar sync",
+          skills: ["calendar-sync"],
+        },
+      };
+      let pluginId = pluginToken;
+      let namespace = nsHint || pluginToken;
+      let displayName = pluginToken;
+      let skills = [];
+      const known = PLUGIN_NS[pluginToken];
+      if (known) {
+        pluginId = pluginToken;
+        namespace = nsHint || known.namespace;
+        displayName = known.display_name;
+        skills = known.skills.slice();
+      } else if (
+        pluginToken.startsWith("user-") ||
+        pluginToken.startsWith("cursor-") ||
+        pluginToken.includes("/")
+      ) {
+        // Direct namespace register (source-control backends etc.).
+        namespace = pluginToken;
+        pluginId = null;
+        displayName = pluginToken;
+      } else if (pluginToken) {
+        const snapPath = path.join(
+          nsDir,
+          `ns-refused-${Date.now().toString(36)}.json`,
+        );
+        const artifact = {
+          mode: "host_mcp_namespace",
+          ok: false,
+          refused: true,
+          pretend_registered: false,
+          plugin_id: pluginToken,
+          error: "unknown plugin: " + pluginToken,
+          at,
+        };
+        fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+        return okJson(kind, raw, { ...artifact, path: snapPath });
+      }
+
+      let catalog = { namespaces: {}, installed_plugins: [] };
+      try {
+        if (fs.existsSync(catalogPath)) {
+          catalog = {
+            ...catalog,
+            ...JSON.parse(fs.readFileSync(catalogPath, "utf8")),
+          };
+          if (!catalog.namespaces) catalog.namespaces = {};
+          if (!Array.isArray(catalog.installed_plugins)) {
+            catalog.installed_plugins = [];
+          }
+        }
+      } catch {
+        /* keep defaults */
+      }
+      catalog.namespaces[namespace] = {
+        namespace,
+        status: "Ready",
+        usable: true,
+        plugin_id: pluginId,
+        display_name: displayName,
+        skills,
+        at,
+      };
+      if (pluginId && !catalog.installed_plugins.includes(pluginId)) {
+        catalog.installed_plugins.push(pluginId);
+      }
+      catalog.updated_at = at;
+      fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
+
       const snapPath = path.join(
         nsDir,
-        `ns-${Date.now().toString(36)}.json`,
+        `ns-${(namespace || "ns").replace(/[^\w.-]+/g, "_")}-${Date.now().toString(36)}.json`,
       );
       const entry = {
-        namespace: cmd,
         mode: "host_mcp_namespace",
         pretend_registered: false,
+        plugin_id: pluginId,
+        namespace,
+        display_name: displayName,
+        skills,
+        skill_count: skills.length,
+        status: "Ready",
+        usable: true,
+        namespace_ready: true,
+        catalog_path: catalogPath,
         at,
       };
       fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
@@ -11578,17 +11672,20 @@ function createHostFfi(repoRoot) {
         type: "attachment",
         path: snapPath,
         label: "mcp_namespace",
+        namespace,
+        status: "Ready",
         source_kind: kind,
         at,
       });
       appendHostDeliveryJournal({
         kind,
-        command: cmd,
+        command: raw,
         path: snapPath,
         ledger_path: pathWritten,
+        namespace,
         at,
       });
-      return okJson(kind, cmd, {
+      return okJson(kind, raw, {
         ...entry,
         path: snapPath,
         ledger_path: pathWritten,
