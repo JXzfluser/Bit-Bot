@@ -1580,6 +1580,87 @@ function stripHostAppliedMarker(file) {
   }
   require("fs").writeFileSync("/tmp/bitbot-mcp-device-mic-close.json", JSON.stringify({ ok: true, ...dtMicCloseP }, null, 2));
   console.log("mcp_call device_tool mic residual close ok", dtMicCloseP.mapped, (dtMicCloseP.device_tool || {}).mode, (dtMicCloseP.device_tool || {}).device_capture_residual, (dtMicCloseP.device_tool || {}).device_tool_residual);
+  // 14b) device_tool contacts/location fixtures close device_tool_residual
+  fs.writeFileSync("data/device/contacts.json", JSON.stringify({ contacts: [{ id: "1", name: "Ada" }], pretend: false }));
+  const dtContactsCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.device_tool|{\"machine_id\":\"mcp-dev-close\",\"tool\":\"contacts\"}" }]);
+  const dtContactsCloseH = dtContactsCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!dtContactsCloseH || !dtContactsCloseH.ok) throw new Error("device_tool contacts residual close mcp");
+  const dtContactsCloseP = JSON.parse(dtContactsCloseH.stdout || "{}");
+  if (dtContactsCloseP.mapped !== "host_device_tool" || dtContactsCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(dtContactsCloseP).slice(0, 200));
+  }
+  if ((dtContactsCloseP.device_tool || {}).device_tool_residual !== false) {
+    throw new Error("contacts device_tool_residual must close: " + JSON.stringify(dtContactsCloseP.device_tool || {}).slice(0, 240));
+  }
+  if ((dtContactsCloseP.device_tool || {}).pretend_granted === true) throw new Error("pretend_granted contacts");
+  if (!((dtContactsCloseP.device_tool || {}).mode === "host_device_contacts_fixture" || (dtContactsCloseP.device_tool || {}).executed === true)) {
+    throw new Error("contacts fixture mode: " + JSON.stringify(dtContactsCloseP.device_tool || {}).slice(0, 200));
+  }
+  require("fs").writeFileSync("/tmp/bitbot-mcp-device-contacts-close.json", JSON.stringify({ ok: true, ...dtContactsCloseP }, null, 2));
+  console.log("mcp_call device_tool contacts residual close ok", dtContactsCloseP.mapped, (dtContactsCloseP.device_tool || {}).mode, (dtContactsCloseP.device_tool || {}).device_tool_residual);
+  fs.writeFileSync("data/device/location.json", JSON.stringify({ lat: 37.77, lon: -122.42, pretend: false }));
+  const dtLocCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.device_tool|{\"machine_id\":\"mcp-dev-close\",\"tool\":\"location\"}" }]);
+  const dtLocCloseH = dtLocCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!dtLocCloseH || !dtLocCloseH.ok) throw new Error("device_tool location residual close mcp");
+  const dtLocCloseP = JSON.parse(dtLocCloseH.stdout || "{}");
+  if (dtLocCloseP.mapped !== "host_device_tool" || dtLocCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(dtLocCloseP).slice(0, 200));
+  }
+  if ((dtLocCloseP.device_tool || {}).device_tool_residual !== false) {
+    throw new Error("location device_tool_residual must close: " + JSON.stringify(dtLocCloseP.device_tool || {}).slice(0, 240));
+  }
+  if ((dtLocCloseP.device_tool || {}).pretend_granted === true) throw new Error("pretend_granted location");
+  if (!((dtLocCloseP.device_tool || {}).mode === "host_device_location_fixture" || (dtLocCloseP.device_tool || {}).executed === true)) {
+    throw new Error("location fixture mode: " + JSON.stringify(dtLocCloseP.device_tool || {}).slice(0, 200));
+  }
+  require("fs").writeFileSync("/tmp/bitbot-mcp-device-location-close.json", JSON.stringify({ ok: true, ...dtLocCloseP }, null, 2));
+  console.log("mcp_call device_tool location residual close ok", dtLocCloseP.mapped, (dtLocCloseP.device_tool || {}).mode, (dtLocCloseP.device_tool || {}).device_tool_residual);
+  // 14c) cold_mail / send_on_behalf live residual-CLOSE (BITBOT_MAIL_SEND + cold/onbehalf mocks)
+  const coldCloseMock = startMock(18821, "cold", "smoke-mcp-cold");
+  const sobCloseMock = startMock(18822, "onbehalf", "smoke-mcp-sob");
+  await sleep(400);
+  try {
+    process.env.BITBOT_COLD_MAIL_API_URL = "http://127.0.0.1:18821";
+    process.env.BITBOT_COLD_MAIL_TOKEN = "smoke-mcp-cold";
+    process.env.BITBOT_MAIL_SEND = "1";
+    const coldCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.cold_mail|{\"to\":\"mcp-cold-live@example.com\",\"subject\":\"MCP Cold Live\",\"body\":\"hello cold live\",\"unsubscribe\":\"mailto:u@example.com\"}" }]);
+    const coldCloseH = coldCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!coldCloseH || !coldCloseH.ok) throw new Error("cold_mail residual close mcp");
+    const coldCloseP = JSON.parse(coldCloseH.stdout || "{}");
+    if (coldCloseP.mapped !== "host_mail_send" || coldCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(coldCloseP).slice(0, 200));
+    }
+    if ((coldCloseP.mail_send || {}).live_mail_residual !== false || (coldCloseP.mail_send || {}).mode !== "cold_live") {
+      throw new Error("cold live residual: " + JSON.stringify(coldCloseP.mail_send || {}).slice(0, 240));
+    }
+    if ((coldCloseP.mail_send || {}).pretend_sent === true) throw new Error("pretend_sent cold close");
+    console.log("mcp_call cold_mail live residual close ok", (coldCloseP.mail_send || {}).mode, (coldCloseP.mail_send || {}).live_mail_residual);
+    delete process.env.BITBOT_COLD_MAIL_API_URL;
+    delete process.env.BITBOT_COLD_MAIL_TOKEN;
+    process.env.BITBOT_ONBEHALF_MAIL_API_URL = "http://127.0.0.1:18822";
+    process.env.BITBOT_ONBEHALF_MAIL_TOKEN = "smoke-mcp-sob";
+    process.env.BITBOT_MAIL_SEND = "1";
+    const sobCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.send_on_behalf|{\"to\":\"mcp-sob-live@example.com\",\"subject\":\"MCP SOB Live\",\"body\":\"hello sob live\"}" }]);
+    const sobCloseH = sobCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!sobCloseH || !sobCloseH.ok) throw new Error("send_on_behalf residual close mcp");
+    const sobCloseP = JSON.parse(sobCloseH.stdout || "{}");
+    if (sobCloseP.mapped !== "host_mail_send" || sobCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(sobCloseP).slice(0, 200));
+    }
+    if ((sobCloseP.mail_send || {}).live_mail_residual !== false || (sobCloseP.mail_send || {}).mode !== "onbehalf_live") {
+      throw new Error("onbehalf live residual: " + JSON.stringify(sobCloseP.mail_send || {}).slice(0, 240));
+    }
+    if ((sobCloseP.mail_send || {}).pretend_sent === true) throw new Error("pretend_sent sob close");
+    console.log("mcp_call send_on_behalf live residual close ok", (sobCloseP.mail_send || {}).mode, (sobCloseP.mail_send || {}).live_mail_residual);
+  } finally {
+    try { coldCloseMock.kill(); } catch (_) {}
+    try { sobCloseMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_COLD_MAIL_API_URL;
+    delete process.env.BITBOT_COLD_MAIL_TOKEN;
+    delete process.env.BITBOT_ONBEHALF_MAIL_API_URL;
+    delete process.env.BITBOT_ONBEHALF_MAIL_TOKEN;
+    delete process.env.BITBOT_MAIL_SEND;
+  }
   // 15) webfetch: local mock docs-blocked → curl public fallback → public_fallback_residual false
   // Port 18813 avoids finance/job/x close (18810-18812) and cloud close (18809).
   const wfFbCloseMock = startMock(18813, "webfetch", "smoke-mcp-wf-fb");
