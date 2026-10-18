@@ -2528,6 +2528,31 @@ function createHostFfi(repoRoot) {
         duration: 0.28,
         text: outboundBody.slice(0, 400),
       });
+      // After media write: close voice_stt_residual when sidecar / BITBOT_STT_BIN
+      // / BITBOT_VOICE_STT path yields a transcript (never pretend heard).
+      let stt = {
+        ok: false,
+        text: "",
+        tool: null,
+        voice_stt_residual: true,
+      };
+      if (media.ok && media.path) {
+        const wantStt =
+          process.env.BITBOT_VOICE_STT === "1" ||
+          process.env.BITBOT_VOICE_STT === "force" ||
+          Boolean(String(process.env.BITBOT_STT_BIN || "").trim()) ||
+          fs.existsSync(media.path + ".stt.txt") ||
+          fs.existsSync(
+            path.join(
+              path.dirname(media.path),
+              path.basename(media.path, path.extname(media.path)) + ".stt.txt",
+            ),
+          );
+        if (wantStt) {
+          stt = transcribeVoiceWav(media.path);
+        }
+      }
+      const voiceSttResidual = stt.voice_stt_residual !== false || !stt.ok;
       if (!row) {
         row = {
           voice_address: addr.startsWith("voice:") ? addr : "voice:" + callKey,
@@ -2650,6 +2675,11 @@ function createHostFfi(repoRoot) {
           live_voice_residual: !claimOk,
           live_channel_residual: !claimOk,
           voice_tts_residual: media.voice_tts_residual !== false,
+          // Honest residual: closed only when STT mock/sidecar actually heard.
+          voice_stt_residual: voiceSttResidual,
+          stt_ok: Boolean(stt.ok),
+          stt_tool: stt.tool || null,
+          stt_text: stt.ok ? String(stt.text || "").slice(0, 400) : null,
           media_ok: Boolean(media.ok),
           media_path: media.path,
           media_bytes: media.bytes || 0,
@@ -2699,6 +2729,11 @@ function createHostFfi(repoRoot) {
           live_voice_residual: true,
           live_channel_residual: true,
           voice_tts_residual: media.voice_tts_residual !== false,
+          // Honest residual: closed only when STT mock/sidecar actually heard.
+          voice_stt_residual: voiceSttResidual,
+          stt_ok: Boolean(stt.ok),
+          stt_tool: stt.tool || null,
+          stt_text: stt.ok ? String(stt.text || "").slice(0, 400) : null,
           media_ok: Boolean(media.ok),
           media_path: media.path,
           media_bytes: media.bytes || 0,
@@ -2733,6 +2768,11 @@ function createHostFfi(repoRoot) {
         live_voice_residual: !residualClosed,
         live_channel_residual: !residualClosed,
         voice_tts_residual: media.voice_tts_residual !== false,
+        // Honest residual: closed only when STT mock/sidecar actually heard.
+        voice_stt_residual: voiceSttResidual,
+        stt_ok: Boolean(stt.ok),
+        stt_tool: stt.tool || null,
+        stt_text: stt.ok ? String(stt.text || "").slice(0, 400) : null,
         media_ok: Boolean(media.ok),
         media_path: media.path,
         media_bytes: media.bytes || 0,
