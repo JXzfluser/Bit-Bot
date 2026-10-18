@@ -217,7 +217,23 @@ try {
       "routine_resume",
       "journal_append",
     ]) {
-      const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
+      const hit = hrs.find((h) => {
+        if (!h || h.kind !== kind) return false;
+        if (h.ok !== false) return true;
+        // Honest OAuth NeedsAuth still mirrors when Host ok=false.
+        if (kind !== "oauth") return false;
+        try {
+          const p = JSON.parse(h.stdout || "{}");
+          return (
+            p.status === "NeedsAuth" ||
+            p.mode === "live_needs_auth" ||
+            p.mode === "live_remote_browser_open" ||
+            (p.connected === false && p.pretend_connected === false)
+          );
+        } catch {
+          return false;
+        }
+      });
       if (!hit) continue;
       let payload = {};
       try {
