@@ -318,6 +318,7 @@ try {
           payload.remote_cloud_artifact_residual === true,
         code_apply_residual: payload.code_apply_residual === true,
         git_commit_residual: payload.git_commit_residual === true,
+        git_push_residual: payload.git_push_residual === true,
         screenshot_residual: payload.screenshot_residual === true,
         remote_pr_residual: payload.remote_pr_residual === true,
         public_fallback_residual: payload.public_fallback_residual === true,

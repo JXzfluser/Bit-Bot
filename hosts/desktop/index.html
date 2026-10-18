@@ -2400,6 +2400,9 @@
                       : "") +
                     (p.git_commit_residual === true
                       ? "/git_commit_residual"
+                      : "") +
+                    (p.git_push_residual === true
+                      ? "/git_push_residual"
                       : "");
                   types.push("attachment");
                   const scMeta = document.getElementById("source-control-meta");
@@ -2413,7 +2416,11 @@
                       (p.git_commit_residual === true
                         ? " · git_commit_residual"
                         : "") +
-                      (p.pretend_committed === true ? " · pretend!" : "");
+                      (p.git_push_residual === true
+                        ? " · git_push_residual"
+                        : "") +
+                      (p.pretend_committed === true ? " · pretend!" : "") +
+                      (p.pretend_pushed === true ? " · pretend_pushed!" : "");
                   }
                 } else if (h.kind === "credential_list") {
                   label = "creds:" + (p.count || 0);

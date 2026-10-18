@@ -72,7 +72,7 @@ enum SendToUserSurface {
       "box_doctor_bin_residual", "box_chrome_bin_residual",
       "long_lived_cron_residual", "remote_cloud_residual",
       "remote_cloud_artifact_residual", "code_apply_residual",
-      "git_commit_residual",
+      "git_commit_residual", "git_push_residual",
       "screenshot_residual", "remote_pr_residual", "gh_pr_create_residual",
       "public_fallback_residual",
       "ocr_residual", "os_window_automation_residual",

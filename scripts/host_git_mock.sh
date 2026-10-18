@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Injectable git CLI mock for Host code_changes commit smoke (BITBOT_GIT_BIN).
-# Never talks to a real repo index. Exercises Host add→commit→rev-parse path.
+# Injectable git CLI mock for Host code_changes commit/push smoke (BITBOT_GIT_BIN).
+# Never talks to a real repo index or remote. Exercises Host
+# add→commit→rev-parse and gated push paths.
 set -euo pipefail
 LOG_DIR="${BITBOT_GIT_MOCK_LOG_DIR:-/tmp/bitbot-git-mock}"
 mkdir -p "$LOG_DIR"
@@ -33,6 +34,15 @@ if [[ "$cmd" == "rev-parse" ]]; then
     exit 0
   fi
   echo "$MOCK_SHA"
+  exit 0
+fi
+
+if [[ "$cmd" == "push" ]]; then
+  # Host gated BITBOT_CODE_PUSH=1 — acknowledge push without inventing remote URL.
+  printf '%s\n' "$@" >"$LOG_DIR/last-push-args.txt"
+  echo '{"ok":true,"mock":true,"cmd":"push","pretend_pushed":false}' \
+    >"$LOG_DIR/last-push.json"
+  echo "[host_git_mock] push ok"
   exit 0
 fi
 
