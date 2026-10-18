@@ -2199,9 +2199,11 @@ function createHostFfi(repoRoot) {
           mode = "live_sms_failed";
         }
       }
-      // Claim-only path (CLAIM=1, no POST): close residual when live claim ok.
+      // Claim-only path (CLAIM=1, no POST): close residual only when HTTP ok
+      // and at least one message was claimed (empty inbox keeps residual open).
       if (smsClaim && !liveAttempted) {
-        const claimOk = Boolean(smsClaim.ok);
+        const claimOk =
+          Boolean(smsClaim.ok) && Number(smsClaim.claimed_count || 0) >= 1;
         const entry = {
           scheme: "sms",
           address: addr,
