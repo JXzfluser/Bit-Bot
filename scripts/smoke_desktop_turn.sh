@@ -1343,6 +1343,15 @@ rm -f data/routines/daemon-status.json
 bash "$ROOT/scripts/host_routine_daemon.sh" --install-user-unit >/tmp/bitbot-rt-install-only.log 2>&1 || true
 node hosts/cli_host/run_turn.js --approved "create routine id=install-only cron=@daily prompt=tick" >/tmp/bitbot-rt-install-only.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-rt-install-only.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);st=json.load(open('data/routines/daemon-status.json'));assert st.get('long_lived') is False;assert st.get('systemd_unit_active') is False;assert p.get('due_now') is False;assert p.get('long_lived_cron_residual') is True;assert p.get('systemd_unit_active') is False;print('routine install-user-unit (not active) keeps long_lived_cron_residual True ok', 'installed', st.get('systemd_unit_installed'))"
+# Armed long-lived / active status closes long_lived_cron_residual.
+rm -f data/routines/daemon-status.json
+BITBOT_ROUTINE_LONG_LIVED=1 node hosts/cli_host/run_turn.js --approved "create routine id=long-lived cron=@daily prompt=tick" >/tmp/bitbot-rt-long-lived.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-rt-long-lived.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);assert p.get('due_now') is False;assert p.get('long_lived_cron_residual') is False;print('routine BITBOT_ROUTINE_LONG_LIVED closes residual ok', p.get('path'))"
+mkdir -p data/routines
+printf '%s\n' '{"long_lived":false,"systemd_unit_installed":true,"systemd_unit_active":true}' > data/routines/daemon-status.json
+node hosts/cli_host/run_turn.js --approved "create routine id=unit-active cron=@daily prompt=tick" >/tmp/bitbot-rt-unit-active.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-rt-unit-active.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);assert p.get('long_lived_cron_residual') is False;assert p.get('systemd_unit_active') is True;print('routine daemon-status active closes residual ok', p.get('path'))"
+rm -f data/routines/daemon-status.json
 node hosts/cli_host/run_turn.js "book flight google.com/flights" >/tmp/bitbot-travel.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-travel.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('pretend_booked') is False;assert 'vertical_stage' in oc or 'checkout_stage' in oc;g=p.get('gui') or {};assert (g.get('vertical_summary') or g.get('checkout_summary') or {}).get('playbook') in ('travel','shopping','food','generic',None) or True;print('travel CU vertical_stage ok', oc.get('vertical_stage') or oc.get('checkout_stage'), 'playbook', oc.get('playbook'))"
 node hosts/cli_host/run_turn.js "finance get_balance" >/tmp/bitbot-finance.json
