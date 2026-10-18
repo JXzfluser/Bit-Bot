@@ -1265,7 +1265,9 @@ function startMock(port, mode, token) {
     const lch = liveCal.find((r) => r && r.kind === "mcp_call");
     const lcp = JSON.parse((lch && lch.stdout) || "{}");
     if (lcp.mapped !== "host_schedule_meeting" || lcp.product_tool_residual !== false) throw new Error(JSON.stringify(lcp).slice(0,200));
-    if ((lcp.schedule||{}).live_calendar_residual !== false || (lcp.schedule||{}).mode !== "calendar_live") throw new Error("calendar live residual: " + JSON.stringify(lcp.schedule||{}).slice?.(0,200) || JSON.stringify(lcp.schedule||{}).slice(0,200));
+    if ((lcp.schedule||{}).live_calendar_residual !== false || (lcp.schedule||{}).mode !== "calendar_live") {
+      throw new Error("calendar live residual: " + JSON.stringify(lcp.schedule||{}).slice(0,200));
+    }
     console.log("mcp_call calendar live residual close ok", (lcp.schedule||{}).mode, (lcp.schedule||{}).live_calendar_residual);
     process.env.BITBOT_PURCHASE_LIVE = "1";
     process.env.BITBOT_PURCHASE_TOKEN = "smoke-mcp-pay";
@@ -1274,7 +1276,9 @@ function startMock(port, mode, token) {
     const lbh = liveBuy.find((r) => r && r.kind === "mcp_call");
     const lbp = JSON.parse((lbh && lbh.stdout) || "{}");
     if (lbp.mapped !== "host_purchase" || lbp.product_tool_residual !== false) throw new Error(JSON.stringify(lbp).slice(0,200));
-    if ((lbp.purchase||{}).live_paid_residual !== false || (lbp.purchase||{}).mode !== "live_charge") throw new Error("purchase live residual: " + JSON.stringify(lbp.purchase||{}).slice(0,200));
+    if ((lbp.purchase||{}).live_paid_residual !== false || (lbp.purchase||{}).mode !== "live_charge") {
+      throw new Error("purchase live residual: " + JSON.stringify(lbp.purchase||{}).slice(0,200));
+    }
     if ((lbp.purchase||{}).pretend_paid === true) throw new Error("pretend_paid live");
     console.log("mcp_call purchase live residual close ok", (lbp.purchase||{}).mode, (lbp.purchase||{}).live_paid_residual);
   } finally {
