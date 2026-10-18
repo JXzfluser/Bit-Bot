@@ -180,7 +180,11 @@ _DOM_OBSERVE_JS = (
 
 
 def run_tesseract_ocr(path: str) -> Dict[str, Any]:
-    """Optional OCR via tesseract CLI (BITBOT_CU_OCR=1). Never invent text."""
+    """Optional OCR via tesseract CLI (BITBOT_CU_OCR=1). Never invent text.
+
+    BITBOT_TESSERACT_BIN injects an alternate binary (like BITBOT_STT_BIN) for
+    smoke/mock; default without a working binary keeps ocr_residual true.
+    """
     enabled = os.environ.get("BITBOT_CU_OCR", "").strip().lower() in (
         "1",
         "true",
@@ -196,11 +200,21 @@ def run_tesseract_ocr(path: str) -> Dict[str, Any]:
     if not enabled:
         out["note"] = "OCR disabled — set BITBOT_CU_OCR=1 to run tesseract"
         return out
-    tess = shutil.which("tesseract")
+    tess_override = os.environ.get("BITBOT_TESSERACT_BIN", "").strip()
+    if tess_override:
+        if os.path.isfile(tess_override) and os.access(tess_override, os.X_OK):
+            tess = tess_override
+        else:
+            tess = shutil.which(tess_override)
+    else:
+        tess = shutil.which("tesseract")
     if not tess:
         out["error"] = "tesseract not found"
-        out["note"] = "OCR residual — install tesseract-ocr"
+        out["note"] = (
+            "OCR residual — install tesseract-ocr or set BITBOT_TESSERACT_BIN"
+        )
         return out
+    tool_name = Path(tess).name
     try:
         proc = subprocess.run(
             [tess, path, "stdout", "-l", "eng", "--psm", "6"],
@@ -211,18 +225,19 @@ def run_tesseract_ocr(path: str) -> Dict[str, Any]:
         text = (proc.stdout or "").strip()
         out["ok"] = proc.returncode == 0 and bool(text)
         out["text"] = text[:2000]
-        out["tool"] = "tesseract"
+        out["tool"] = tool_name
         out["ocr_residual"] = not out["ok"]
         out["note"] = (
-            "tesseract OCR ok"
+            f"{tool_name} OCR ok"
             if out["ok"]
-            else f"tesseract failed rc={proc.returncode}"
+            else f"{tool_name} failed rc={proc.returncode}"
         )
         if proc.stderr:
             out["stderr_prefix"] = (proc.stderr or "")[:200]
         return out
     except Exception as e:  # noqa: BLE001
         out["error"] = str(e)[:200]
+        out["tool"] = tool_name
         out["note"] = "OCR residual — tesseract exception"
         return out
 
