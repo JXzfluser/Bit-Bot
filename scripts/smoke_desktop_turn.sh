@@ -975,7 +975,10 @@ python3 -c "import json;d=json.load(open('/tmp/bitbot-cloud-file-token.json'));h
 BC_ID="$(cat /tmp/bitbot-cloud-bc.txt)"
 node hosts/cli_host/run_turn.js "deliver cloud artifact artifact=${BC_ID} dest=smoke-report.md" >/tmp/bitbot-cloud-art.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud-art.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_artifact_deliver');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('delivered') is True;assert p.get('from_session') is True;assert p.get('pretend_remote_fetch') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('meta_path') and os.path.isfile(p['meta_path']);assert os.path.getsize(p['path'])>20;body=open(p['path']).read();assert 'bc_id:' in body and 'from_session: true' in body;print('cloud_artifact_deliver from_session ok', p.get('path'), 'meta', p.get('meta_path'), 'bytes', p.get('bytes'))"
-node hosts/cli_host/run_turn.js --approved "purchase item=BlueYeti cents=12900" >/tmp/bitbot-purchase.json
+# Clear prior live purchase token so sandbox_receipt is not reclassified as live_charge.
+rm -f data/connectors/purchase_token.json
+env -u BITBOT_PURCHASE_TOKEN -u BITBOT_PURCHASE_LIVE -u BITBOT_PURCHASE_API_URL \
+  node hosts/cli_host/run_turn.js --approved "purchase item=BlueYeti cents=12900" >/tmp/bitbot-purchase.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-purchase.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind') in ('purchase','approval_card') and x.get('ok'));assert h; 
 if h.get('kind')=='purchase':
  p=json.loads(h.get('stdout') or '{}');assert p.get('receipt_ok') is True;assert p.get('receipt_path') and os.path.isfile(p['receipt_path']);assert b'purchase receipt' in open(p['receipt_path'],'rb').read();assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_paid') is False;assert p.get('sandbox_receipt') is True;assert p.get('live_paid_residual') is True;assert p.get('paid') is False;assert p.get('mode')=='sandbox_receipt';print('purchase sandbox receipt HTML ok', p.get('receipt_path'), 'snap', p.get('path'), 'live_paid_residual', p.get('live_paid_residual'))
