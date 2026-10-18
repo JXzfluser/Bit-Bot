@@ -6682,6 +6682,7 @@ function createHostFfi(repoRoot) {
       kind === "check_updates" ||
       kind === "auto_review_settings" ||
       kind === "box_chrome_probe" ||
+      kind === "mcp_uninstall" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -11545,6 +11546,157 @@ function createHostFfi(repoRoot) {
         path: draftMetaPath,
         drafted: true,
         mode: meetingDraft ? "meeting_chat_draft_card" : "mail_draft",
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    if (kind === "mcp_uninstall") {
+      // CM-2107 — UninstallPlugin: namespace Unavailable; tools under ns gone.
+      const nsDir = path.join(REPO_ROOT, "data", "connectors", "mcp-namespaces");
+      fs.mkdirSync(nsDir, { recursive: true });
+      const catalogPath = path.join(nsDir, "catalog.json");
+      const toolsCatalogPath = path.join(
+        REPO_ROOT,
+        "data",
+        "connectors",
+        "mcp-tools-catalog.json",
+      );
+      const raw = String(cmd || "").trim();
+      const parts = raw.split("|").map((s) => s.trim()).filter(Boolean);
+      const pluginId = parts[0] || raw;
+      let namespace = parts[1] || "";
+      const PLUGIN_NS = {
+        "plugin-slides": "user-Slides",
+        "plugin-calendar": "user-Calendar",
+      };
+      if (!namespace) namespace = PLUGIN_NS[pluginId] || pluginId;
+
+      let catalog = { namespaces: {}, installed_plugins: [] };
+      try {
+        if (fs.existsSync(catalogPath)) {
+          catalog = {
+            ...catalog,
+            ...JSON.parse(fs.readFileSync(catalogPath, "utf8")),
+          };
+          if (!catalog.namespaces) catalog.namespaces = {};
+          if (!Array.isArray(catalog.installed_plugins)) {
+            catalog.installed_plugins = [];
+          }
+        }
+      } catch {
+        /* defaults */
+      }
+
+      const wasInstalled =
+        (catalog.namespaces[namespace] &&
+          catalog.namespaces[namespace].status === "Ready") ||
+        catalog.installed_plugins.includes(pluginId);
+      const knownPlugin = Boolean(PLUGIN_NS[pluginId]);
+      if (!wasInstalled && !knownPlugin) {
+        const snapPath = path.join(
+          nsDir,
+          `uninstall-refused-${Date.now().toString(36)}.json`,
+        );
+        const artifact = {
+          mode: "host_mcp_uninstall",
+          ok: false,
+          refused: true,
+          pretend_uninstalled: false,
+          plugin_id: pluginId,
+          namespace,
+          error: "unknown or not installed plugin: " + pluginId,
+          at,
+        };
+        fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+        return okJson(kind, raw, { ...artifact, path: snapPath });
+      }
+
+      // Mark Unavailable / remove from ready catalog.
+      if (catalog.namespaces[namespace]) {
+        catalog.namespaces[namespace] = {
+          ...catalog.namespaces[namespace],
+          status: "Unavailable",
+          usable: false,
+          uninstalled_at: at,
+        };
+      } else {
+        catalog.namespaces[namespace] = {
+          namespace,
+          status: "Unavailable",
+          usable: false,
+          plugin_id: pluginId,
+          uninstalled_at: at,
+        };
+      }
+      catalog.installed_plugins = catalog.installed_plugins.filter(
+        (id) => id !== pluginId,
+      );
+      catalog.updated_at = at;
+      fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
+
+      // Drop tools under namespace from durable MCP tools catalog if present.
+      let toolsRemoved = 0;
+      try {
+        if (fs.existsSync(toolsCatalogPath)) {
+          const toolsCat = JSON.parse(fs.readFileSync(toolsCatalogPath, "utf8"));
+          const tools = Array.isArray(toolsCat.tools) ? toolsCat.tools : [];
+          const kept = tools.filter((t) => {
+            const ns = (t && (t.namespace || t.namespace_)) || "";
+            if (ns === namespace) {
+              toolsRemoved += 1;
+              return false;
+            }
+            return true;
+          });
+          toolsCat.tools = kept;
+          toolsCat.updated_at = at;
+          fs.writeFileSync(toolsCatalogPath, JSON.stringify(toolsCat, null, 2));
+        }
+      } catch {
+        /* optional catalog */
+      }
+
+      const snapPath = path.join(
+        nsDir,
+        `uninstall-${(namespace || "ns").replace(/[^\w.-]+/g, "_")}-${Date.now().toString(36)}.json`,
+      );
+      const entry = {
+        mode: "host_mcp_uninstall",
+        pretend_uninstalled: false,
+        plugin_id: pluginId,
+        namespace,
+        status: "Unavailable",
+        usable: false,
+        namespace_gone: true,
+        tools_removed: toolsRemoved,
+        catalog_path: catalogPath,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
+      appendJsonl(path.join(nsDir, "uninstalls.jsonl"), {
+        ...entry,
+        path: snapPath,
+      });
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: snapPath,
+        label: "mcp_uninstall",
+        namespace,
+        status: "Unavailable",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: raw,
+        path: snapPath,
+        namespace,
+        at,
+      });
+      return okJson(kind, raw, {
+        ...entry,
+        path: snapPath,
         send_to_user: delivery,
         ok: true,
       });

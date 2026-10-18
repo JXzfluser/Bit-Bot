@@ -63,6 +63,7 @@ pub(all) enum TurnIntent {
     provider~ : String,
   )
   InstallPlugin(plugin_id~ : String)
+  UninstallPlugin(plugin_id~ : String)
   SetupSlack
   FsList(path~ : String)
   FsRead(path~ : String)
@@ -176,6 +177,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     ClaimInbox(_) => "claim_inbox"
     DraftMail(_) => "draft_mail"
     InstallPlugin(_) => "install_plugin"
+    UninstallPlugin(_) => "uninstall_plugin"
     SetupSlack => "setup_slack"
     FsList(_) => "fs_list"
     FsRead(_) => "fs_read"
@@ -584,6 +586,20 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
     if box_path != "" && dest != "" {
       return CopyFromBox(machine_id=mid, box_path~, dest~)
+    }
+  }
+  if low.has_prefix("uninstall plugin ") ||
+      low.has_prefix("remove plugin ") ||
+      low.has_prefix("remove connector ") {
+    let id = if low.has_prefix("uninstall plugin ") {
+      trimmed[17:].trim().to_owned()
+    } else if low.has_prefix("remove plugin ") {
+      trimmed[14:].trim().to_owned()
+    } else {
+      trimmed[17:].trim().to_owned()
+    }
+    if id != "" {
+      return UninstallPlugin(plugin_id=id)
     }
   }
   if low.has_prefix("install plugin ") || low.has_prefix("add connector ") {
@@ -1671,6 +1687,40 @@ pub fn run_desktop_turn(
             turn_id,
             reply,
             intent, ctx~,
+            effects=[effect],
+            needs_host_ffi=true,
+          )
+        }
+      }
+    }
+    UninstallPlugin(plugin_id~) => {
+      let reg = @connectors.PluginRegistry::seed_demo()
+      match reg.mcp_namespace_for(plugin_id) {
+        None =>
+          fail_turn(
+            trimmed,
+            turn_id,
+            intent,
+            "unknown plugin: " + plugin_id,
+            ctx,
+            assistant="Uninstall plugin failed: unknown plugin: " + plugin_id,
+          )
+        Some(ns) => {
+          let effect : DesktopEffect = {
+            kind: "mcp_uninstall",
+            command: plugin_id + "|" + ns,
+            needs_host_ffi: true,
+          }
+          deliver_ok(
+            trimmed,
+            turn_id,
+            "Uninstall plugin " +
+            plugin_id +
+            " planned (CM-2107). Host drops namespace " +
+            ns +
+            " to Unavailable.",
+            intent,
+            ctx~,
             effects=[effect],
             needs_host_ffi=true,
           )

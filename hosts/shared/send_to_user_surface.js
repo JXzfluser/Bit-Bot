@@ -120,6 +120,7 @@ function extractDeliveryTypes(turnJsonText) {
           "check_updates",
           "auto_review_settings",
           "box_chrome_probe",
+          "mcp_uninstall",
           "journal_query",
         ].includes(h.kind)
       ) {

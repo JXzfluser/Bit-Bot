@@ -35,6 +35,7 @@ object SendToUserSurface {
     "notify_settings", "set_notify", "update_computer", "reset_computer",
     "local_execution", "guide_permission", "render_markdown", "react_message",
     "screenshot", "check_updates", "auto_review_settings", "box_chrome_probe",
+    "mcp_uninstall",
   )
 
   fun extract(fromTurnJson: String): Summary {
