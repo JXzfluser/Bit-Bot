@@ -1757,6 +1757,20 @@ function createHostFfi(repoRoot) {
       const smsToken =
         String(process.env.BITBOT_SMS_TOKEN || "").trim() ||
         resolveProviderAccessToken("sms");
+      // CM-1104: strip naked widget payloads before SMS send (parity with Slack/Teams).
+      let outboundBody = String(body || "");
+      let widgetDegraded = false;
+      if (/\[widget:|type=widget|decision_card/i.test(outboundBody)) {
+        outboundBody = outboundBody
+          .replace(/\[widget:[^\]]*\]/gi, "")
+          .replace(/type=widget\S*/gi, "")
+          .trim();
+        if (!outboundBody) {
+          outboundBody =
+            "(widget degraded to text — open Desktop chat for choices)";
+        }
+        widgetDegraded = true;
+      }
       let livePost = false;
       let liveProbe = null;
       let mode = "sandbox_sms";
@@ -1769,7 +1783,10 @@ function createHostFfi(repoRoot) {
               Authorization: "Bearer " + smsToken,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ to, body: String(body || "").slice(0, 1600) }),
+            body: JSON.stringify({
+              to,
+              body: outboundBody.slice(0, 1600),
+            }),
           });
           liveProbe = {
             ok: Boolean(resp.ok),
@@ -1790,11 +1807,12 @@ function createHostFfi(repoRoot) {
         scheme: "sms",
         address: addr,
         to,
-        body: String(body || "").slice(0, 1600),
+        body: outboundBody.slice(0, 1600),
         mode,
         ok: true,
         live_post: livePost,
         pretend_live: false,
+        widget_degraded: widgetDegraded,
         live_sms_residual: !livePost,
         live_channel_residual: !livePost,
         live_probe: liveProbe,
@@ -1820,6 +1838,20 @@ function createHostFfi(repoRoot) {
         String(process.env.BITBOT_WEBHOOK_OUTBOUND_URL || "").trim() ||
         (panel && panel.url) ||
         "";
+      // CM-1104: strip naked widget payloads before webhook outbound.
+      let outboundBody = String(body || "");
+      let widgetDegraded = false;
+      if (/\[widget:|type=widget|decision_card/i.test(outboundBody)) {
+        outboundBody = outboundBody
+          .replace(/\[widget:[^\]]*\]/gi, "")
+          .replace(/type=widget\S*/gi, "")
+          .trim();
+        if (!outboundBody) {
+          outboundBody =
+            "(widget degraded to text — open Desktop chat for choices)";
+        }
+        widgetDegraded = true;
+      }
       let livePost = false;
       let liveProbe = null;
       let mode = "sandbox_webhook_outbound";
@@ -1835,7 +1867,7 @@ function createHostFfi(repoRoot) {
             },
             body: JSON.stringify({
               address: addr,
-              body: String(body || "").slice(0, 4000),
+              body: outboundBody.slice(0, 4000),
               at: stamp,
             }),
           });
@@ -1857,11 +1889,12 @@ function createHostFfi(repoRoot) {
       const entry = {
         scheme: "webhook",
         address: addr,
-        body: String(body || "").slice(0, 4000),
+        body: outboundBody.slice(0, 4000),
         mode,
         ok: true,
         live_post: livePost,
         pretend_live: false,
+        widget_degraded: widgetDegraded,
         live_webhook_residual: !livePost,
         live_channel_residual: !livePost,
         key_leaked: false,
@@ -1884,6 +1917,20 @@ function createHostFfi(repoRoot) {
       const slug = String(callKey || "voice")
         .replace(/[^a-zA-Z0-9._-]+/g, "_")
         .slice(0, 64);
+      // CM-1104: strip naked widget payloads before voice channel outbound.
+      let outboundBody = String(body || "");
+      let widgetDegraded = false;
+      if (/\[widget:|type=widget|decision_card/i.test(outboundBody)) {
+        outboundBody = outboundBody
+          .replace(/\[widget:[^\]]*\]/gi, "")
+          .replace(/type=widget\S*/gi, "")
+          .trim();
+        if (!outboundBody) {
+          outboundBody =
+            "(widget degraded to text — open Desktop chat for choices)";
+        }
+        widgetDegraded = true;
+      }
       const rows = readJsonArray(VOICE_SESSIONS_PATH);
       let row = rows.find(
         (r) =>
@@ -1902,7 +1949,7 @@ function createHostFfi(repoRoot) {
       const media = synthesizeVoiceWav(mediaPath, {
         frequency: 520,
         duration: 0.28,
-        text: String(body || "").slice(0, 400),
+        text: outboundBody.slice(0, 400),
       });
       if (!row) {
         row = {
@@ -1926,7 +1973,7 @@ function createHostFfi(repoRoot) {
       }
       row.relay_log.push({
         role: "assistant",
-        text: String(body || "").slice(0, 2000),
+        text: outboundBody.slice(0, 2000),
         media_path: media.path,
         media_ok: Boolean(media.ok),
         source: "channel_send",
@@ -1954,7 +2001,7 @@ function createHostFfi(repoRoot) {
               body: JSON.stringify({
                 voice_address: addr,
                 call_id: callId,
-                text: String(body || "").slice(0, 4000),
+                text: outboundBody.slice(0, 4000),
               }),
             },
           );
@@ -1978,11 +2025,12 @@ function createHostFfi(repoRoot) {
         address: addr,
         voice_address: addr.startsWith("voice:") ? addr : "voice:" + callKey,
         call_id: callId,
-        body: String(body || "").slice(0, 4000),
+        body: outboundBody.slice(0, 4000),
         mode,
         ok: true,
         live_post: livePost,
         pretend_live: false,
+        widget_degraded: widgetDegraded,
         live_voice_residual: !livePost,
         live_channel_residual: !livePost,
         voice_tts_residual: media.voice_tts_residual !== false,
