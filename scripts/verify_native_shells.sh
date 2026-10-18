@@ -78,11 +78,15 @@ for needle in (
     "draft mail",
     "schedule meeting",
     "purchase item",
+    "reply via slack:",
+    "reply via teams:",
+    "finance get_balance",
+    "job search",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
 print("native device_permission + SendToUser Host scaffolds ok")
-print("native product quick actions (plugins/media/voice/box/mail) ok")
+print("native product quick actions (plugins/media/voice/box/mail/channels) ok")
 PY
 
 # mobile_host may append SendToUser / HostAbi trailer lines after turn JSON.

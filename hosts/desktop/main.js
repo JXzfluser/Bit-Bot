@@ -91,13 +91,32 @@ function createWindow() {
 ipcMain.handle("bitbot:boot", async () => runner.bootBanner());
 
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
-  return runner.runTurn(String(text || ""), {
-    sessionId: "desktop-session",
-    machineId: "desk-1",
-    machineKind: "desktop",
-    channel: "",
-    approved: !!(opts && opts.approved),
-  });
+  // Optional per-turn Host env (e.g. BITBOT_SLACK_CLAIM) — restore after turn.
+  const envPatch = (opts && opts.env && typeof opts.env === "object") ? opts.env : null;
+  const prev = {};
+  if (envPatch) {
+    for (const [k, v] of Object.entries(envPatch)) {
+      prev[k] = process.env[k];
+      if (v === null || v === undefined || v === "") delete process.env[k];
+      else process.env[k] = String(v);
+    }
+  }
+  try {
+    return await runner.runTurn(String(text || ""), {
+      sessionId: "desktop-session",
+      machineId: "desk-1",
+      machineKind: "desktop",
+      channel: "",
+      approved: !!(opts && opts.approved),
+    });
+  } finally {
+    if (envPatch) {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  }
 });
 
 /** CHARTER Delivery: read Host artifact under repo for inline Desktop preview. */

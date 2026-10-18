@@ -324,7 +324,15 @@ assert 'id=\"mail-draft\"' in html and 'id=\"mail-schedule\"' in html
 assert 'id=\"mail-purchase\"' in html and 'id=\"mail-search\"' in html
 assert 'draft mail to=desktop@example.com' in html
 assert 'schedule meeting title=DesktopSync' in html
-print('desktop teammates + mail/commerce panels wired ok')
+assert 'id=\"channels-meta\"' in html
+assert 'id=\"ch-slack-draft\"' in html and 'id=\"ch-slack-claim\"' in html
+assert 'id=\"ch-teams-draft\"' in html and 'id=\"ch-teams-claim\"' in html
+assert 'id=\"ch-finance\"' in html and 'id=\"ch-jobs\"' in html
+assert 'BITBOT_SLACK_CLAIM' in html and 'BITBOT_TEAMS_CLAIM' in html
+mainjs=Path('hosts/desktop/main.js').read_text()
+assert 'envPatch' in mainjs
+assert 'BITBOT_SLACK_CLAIM' in html
+print('desktop teammates + mail/commerce + channels panels wired ok')
 "
 python3 -c "
 from pathlib import Path

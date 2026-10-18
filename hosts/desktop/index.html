@@ -392,6 +392,20 @@
         <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
       </div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Channels</div>
+    <div class="machine-item">
+      <div class="name">Slack / Teams outbound + claim</div>
+      <div class="meta" id="channels-meta">draft · thread · sandbox claim (Host env)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="ch-slack-draft" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Slack draft</button>
+        <button type="button" id="ch-slack-thread" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
+        <button type="button" id="ch-slack-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
+        <button type="button" id="ch-teams-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
+        <button type="button" id="ch-teams-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
+        <button type="button" id="ch-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
+        <button type="button" id="ch-jobs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
+      </div>
+    </div>
     <div class="panel-title" style="margin-top:16px">Plugins</div>
     <div class="machine-item">
       <div class="name">MCP plugins (CM-0904 / 2107 / 2108)</div>
@@ -2097,12 +2111,29 @@
                     (p.mode || "post") +
                     (p.path ? "/snap" : "");
                   types.push("text");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "live · " +
+                      (p.mode || p.scheme || "post") +
+                      (p.pretend_live === true ? " · pretend!" : " · honest");
+                  }
                 } else if (h.kind === "channel_send") {
                   label =
                     "ch:" +
                     (p.mode || p.scheme || "send") +
                     (p.path ? "/snap" : "");
                   types.push(p.thread_ts ? "thread" : "text");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      (p.mode || p.scheme || "send") +
+                      (p.claimed_count != null
+                        ? " · claimed " + p.claimed_count
+                        : "") +
+                      (p.thread_ts ? " · thread" : "") +
+                      (p.pretend_live === true ? " · pretend!" : "");
+                  }
                 } else if (h.kind === "oauth") {
                   label =
                     "oauth:" +
@@ -2367,6 +2398,40 @@
     });
     document.getElementById("probe-connectors").addEventListener("click", () => {
       runUserTurn("list connectors", {});
+    });
+    document.getElementById("ch-slack-draft").addEventListener("click", () => {
+      runUserTurn("reply via slack:Cdesktop :: desktop draft body", {
+        approved: true,
+      });
+    });
+    document.getElementById("ch-slack-thread").addEventListener("click", () => {
+      runUserTurn(
+        "reply via slack:Cdesktop thread_ts=1710000000.000001 :: desktop thread",
+        { approved: true },
+      );
+    });
+    document.getElementById("ch-slack-claim").addEventListener("click", () => {
+      runUserTurn("reply via slack:Cdesktop :: claim rehearsal", {
+        approved: true,
+        env: { BITBOT_SLACK_CLAIM: "1" },
+      });
+    });
+    document.getElementById("ch-teams-draft").addEventListener("click", () => {
+      runUserTurn("reply via teams:Tdesktop :: teams desktop draft", {
+        approved: true,
+      });
+    });
+    document.getElementById("ch-teams-claim").addEventListener("click", () => {
+      runUserTurn("reply via teams:Tdesktop :: sandbox claim", {
+        approved: true,
+        env: { BITBOT_TEAMS_CLAIM: "1" },
+      });
+    });
+    document.getElementById("ch-finance").addEventListener("click", () => {
+      runUserTurn("finance quote AAPL", {});
+    });
+    document.getElementById("ch-jobs").addEventListener("click", () => {
+      runUserTurn("job search engineer", {});
     });
     document.getElementById("plugin-list").addEventListener("click", () => {
       runUserTurn("list plugins", {});
