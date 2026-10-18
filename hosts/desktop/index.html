@@ -862,6 +862,59 @@
               }
             } catch (_) { /* ignore */ }
           }
+          const notifyHost = r.host_results.find(
+            (h) =>
+              h &&
+              (h.kind === "notify_settings" || h.kind === "set_notify") &&
+              h.ok,
+          );
+          if (notifyHost) {
+            try {
+              const p = JSON.parse(notifyHost.stdout || "{}");
+              const t = p.toggles || p.settings || p;
+              addMsg(
+                "assistant",
+                "Notify «" +
+                  (p.assistant_id || "?") +
+                  "» desktop=" +
+                  String(t.desktop) +
+                  " sound=" +
+                  String(t.sound) +
+                  " mentions_only=" +
+                  String(t.mentions_only),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const updateHost = r.host_results.find(
+            (h) => h && h.kind === "update_computer" && h.ok,
+          );
+          if (updateHost) {
+            try {
+              const p = JSON.parse(updateHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Update Computer · " +
+                  (p.phase || "?") +
+                  (p.two_step_confirmed ? " (files+login preserved)" : ""),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const guideHost = r.host_results.find(
+            (h) => h && h.kind === "guide_permission" && h.ok,
+          );
+          if (guideHost) {
+            try {
+              const p = JSON.parse(guideHost.stdout || "{}");
+              addMsg("assistant", p.guidance || "Open Settings to grant access.");
+              if (p.deep_link) {
+                runUserTurn(
+                  "open settings entry=sidebar-account-button anchor=" +
+                    (p.anchor || "account"),
+                  {},
+                );
+              }
+            } catch (_) { /* ignore */ }
+          }
           // CHARTER Delivery: SendToUser surface (text/widget/attachment/voice/reaction/thread).
           const attachKinds = [
             "skill_write",
