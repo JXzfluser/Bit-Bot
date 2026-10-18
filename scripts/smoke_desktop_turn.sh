@@ -2522,6 +2522,124 @@ function stripHostAppliedMarker(file) {
   require("fs").writeFileSync("/tmp/bitbot-mcp-fill-close.json", JSON.stringify({ ok: true, ...fillMockCloseP }, null, 2));
   console.log("mcp_call fill_credential residual close ok", fillMockCloseP.mapped, (fillMockCloseP.credential_fill || {}).mode, (fillMockCloseP.credential_fill || {}).credential_browser_fill_residual, fillMockCloseP.signin_fill_residual);
   delete process.env.BITBOT_CREDENTIAL_FILL_MOCK;
+  // 13) computer_use: BITBOT_CU_OCR + TESSERACT_BIN + CU_NATIVE_ACT + XDOTOOL_BIN → ocr_residual + os_window_automation_residual false
+  // Do NOT touch IdP/signin_fill/OS dialogs or invent password fill.
+  require("child_process").execSync("rm -rf /tmp/bitbot-mcp-tesseract-close /tmp/bitbot-mcp-xdotool-close && mkdir -p /tmp/bitbot-mcp-tesseract-close /tmp/bitbot-mcp-xdotool-close");
+  process.env.BITBOT_CU_OCR = "1";
+  process.env.BITBOT_TESSERACT_BIN = path.join(process.cwd(), "scripts/host_tesseract_mock.sh");
+  process.env.BITBOT_TESSERACT_MOCK_LOG_DIR = "/tmp/bitbot-mcp-tesseract-close";
+  process.env.BITBOT_CU_NATIVE_ACT = "1";
+  process.env.BITBOT_XDOTOOL_BIN = path.join(process.cwd(), "scripts/host_xdotool_mock.sh");
+  process.env.BITBOT_XDOTOOL_MOCK_LOG_DIR = "/tmp/bitbot-mcp-xdotool-close";
+  const cuOcrActCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.computer_use|{\"command\":\"computer use open https://example.com click:40,40\"}" }]);
+  const cuOcrActCloseH = cuOcrActCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!cuOcrActCloseH || !cuOcrActCloseH.ok) throw new Error("computer_use residual close mcp");
+  const cuOcrActCloseP = JSON.parse(cuOcrActCloseH.stdout || "{}");
+  if (cuOcrActCloseP.mapped !== "host_computer_use" || cuOcrActCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(cuOcrActCloseP).slice(0, 200));
+  }
+  const cuOcrActOc = (cuOcrActCloseP.computer_use || {}).outcome || {};
+  const cuOcrActGui = (cuOcrActCloseP.computer_use || {}).gui || {};
+  const cuOcrActVp = cuOcrActGui.vision_plan || {};
+  const cuOcrActVision = cuOcrActVp.vision || {};
+  const cuOcrClosed =
+    cuOcrActOc.ocr_residual === false ||
+    cuOcrActVision.ocr_residual === false ||
+    cuOcrActVp.ocr_residual === false;
+  if (!cuOcrClosed) {
+    throw new Error("ocr_residual must close: " + JSON.stringify({ outcome: cuOcrActOc, vision_plan: cuOcrActVp }).slice(0, 280));
+  }
+  const cuOsAutoClosed =
+    cuOcrActGui.os_window_automation_residual === false ||
+    ((cuOcrActGui.native_os_act || {}).os_window_automation_residual === false) ||
+    cuOcrActOc.os_window_automation_residual === false;
+  if (!cuOsAutoClosed) {
+    throw new Error("os_window_automation_residual must close: " + JSON.stringify({ gui: cuOcrActGui, outcome: cuOcrActOc }).slice(0, 280));
+  }
+  if (cuOcrActOc.pretend_purchased === true) throw new Error("pretend_purchased cu close");
+  if (!fs.existsSync("/tmp/bitbot-mcp-tesseract-close/last-ocr.json")) throw new Error("tesseract mock log missing");
+  if (!fs.existsSync("/tmp/bitbot-mcp-xdotool-close/last-xdotool.json")) throw new Error("xdotool mock log missing");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-cu-ocr-act-close.json", JSON.stringify({ ok: true, ...cuOcrActCloseP }, null, 2));
+  console.log("mcp_call computer_use residual close ok", cuOcrActCloseP.mapped, "ocr_residual", false, "os_window_automation_residual", false);
+  delete process.env.BITBOT_CU_OCR;
+  delete process.env.BITBOT_TESSERACT_BIN;
+  delete process.env.BITBOT_TESSERACT_MOCK_LOG_DIR;
+  delete process.env.BITBOT_CU_NATIVE_ACT;
+  delete process.env.BITBOT_XDOTOOL_BIN;
+  delete process.env.BITBOT_XDOTOOL_MOCK_LOG_DIR;
+  // 14) device_tool camera/mic: data/device fixtures → device_capture_residual + device_tool_residual false
+  fs.mkdirSync("data/device", { recursive: true });
+  const camFxPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  fs.writeFileSync("data/device/camera.png", camFxPng);
+  const micFxWav = Buffer.alloc(52);
+  micFxWav.write("RIFF", 0); micFxWav.writeUInt32LE(44, 4); micFxWav.write("WAVE", 8);
+  micFxWav.write("fmt ", 12); micFxWav.writeUInt32LE(16, 16); micFxWav.writeUInt16LE(1, 20);
+  micFxWav.writeUInt16LE(1, 22); micFxWav.writeUInt32LE(8000, 24); micFxWav.writeUInt32LE(8000, 28);
+  micFxWav.writeUInt16LE(1, 32); micFxWav.writeUInt16LE(8, 34);
+  micFxWav.write("data", 36); micFxWav.writeUInt32LE(8, 40);
+  fs.writeFileSync("data/device/mic.wav", micFxWav);
+  const dtCamCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.device_tool|{\"machine_id\":\"mcp-dev-close\",\"tool\":\"camera\"}" }]);
+  const dtCamCloseH = dtCamCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!dtCamCloseH || !dtCamCloseH.ok) throw new Error("device_tool camera residual close mcp");
+  const dtCamCloseP = JSON.parse(dtCamCloseH.stdout || "{}");
+  if (dtCamCloseP.mapped !== "host_device_tool" || dtCamCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(dtCamCloseP).slice(0, 200));
+  }
+  if ((dtCamCloseP.device_tool || {}).device_capture_residual !== false) {
+    throw new Error("camera device_capture_residual must close: " + JSON.stringify(dtCamCloseP.device_tool || {}).slice(0, 240));
+  }
+  if ((dtCamCloseP.device_tool || {}).device_tool_residual !== false) {
+    throw new Error("camera device_tool_residual must close: " + JSON.stringify(dtCamCloseP.device_tool || {}).slice(0, 240));
+  }
+  if (!((dtCamCloseP.device_tool || {}).executed === true || (dtCamCloseP.device_tool || {}).mode === "host_device_camera_fixture")) {
+    throw new Error("camera fixture mode: " + JSON.stringify(dtCamCloseP.device_tool || {}).slice(0, 200));
+  }
+  require("fs").writeFileSync("/tmp/bitbot-mcp-device-camera-close.json", JSON.stringify({ ok: true, ...dtCamCloseP }, null, 2));
+  console.log("mcp_call device_tool camera residual close ok", dtCamCloseP.mapped, (dtCamCloseP.device_tool || {}).mode, (dtCamCloseP.device_tool || {}).device_capture_residual, (dtCamCloseP.device_tool || {}).device_tool_residual);
+  const dtMicCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.device_tool|{\"machine_id\":\"mcp-dev-close\",\"tool\":\"mic\"}" }]);
+  const dtMicCloseH = dtMicCloseRuns.find((r) => r && r.kind === "mcp_call");
+  if (!dtMicCloseH || !dtMicCloseH.ok) throw new Error("device_tool mic residual close mcp");
+  const dtMicCloseP = JSON.parse(dtMicCloseH.stdout || "{}");
+  if (dtMicCloseP.mapped !== "host_device_tool" || dtMicCloseP.product_tool_residual !== false) {
+    throw new Error(JSON.stringify(dtMicCloseP).slice(0, 200));
+  }
+  if ((dtMicCloseP.device_tool || {}).device_capture_residual !== false) {
+    throw new Error("mic device_capture_residual must close: " + JSON.stringify(dtMicCloseP.device_tool || {}).slice(0, 240));
+  }
+  if ((dtMicCloseP.device_tool || {}).device_tool_residual !== false) {
+    throw new Error("mic device_tool_residual must close: " + JSON.stringify(dtMicCloseP.device_tool || {}).slice(0, 240));
+  }
+  if (!((dtMicCloseP.device_tool || {}).executed === true || (dtMicCloseP.device_tool || {}).mode === "host_device_mic_fixture")) {
+    throw new Error("mic fixture mode: " + JSON.stringify(dtMicCloseP.device_tool || {}).slice(0, 200));
+  }
+  require("fs").writeFileSync("/tmp/bitbot-mcp-device-mic-close.json", JSON.stringify({ ok: true, ...dtMicCloseP }, null, 2));
+  console.log("mcp_call device_tool mic residual close ok", dtMicCloseP.mapped, (dtMicCloseP.device_tool || {}).mode, (dtMicCloseP.device_tool || {}).device_capture_residual, (dtMicCloseP.device_tool || {}).device_tool_residual);
+  // 15) webfetch: local mock docs-blocked → curl public fallback → public_fallback_residual false
+  // Port 18813 avoids finance/job/x close (18810-18812) and cloud close (18809).
+  const wfFbCloseMock = startMock(18813, "webfetch", "smoke-mcp-wf-fb");
+  await sleep(500);
+  try {
+    const wfFbCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.webfetch|{\"url\":\"http://127.0.0.1:18813/docs-blocked\"}" }]);
+    const wfFbCloseH = wfFbCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!wfFbCloseH || !wfFbCloseH.ok) throw new Error("webfetch residual close mcp");
+    const wfFbCloseP = JSON.parse(wfFbCloseH.stdout || "{}");
+    if (wfFbCloseP.mapped !== "host_webfetch" || wfFbCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(wfFbCloseP).slice(0, 200));
+    }
+    if ((wfFbCloseP.webfetch || {}).public_fallback_residual !== false) {
+      throw new Error("public_fallback_residual must close: " + JSON.stringify(wfFbCloseP.webfetch || {}).slice(0, 240));
+    }
+    if ((wfFbCloseP.webfetch || {}).used_fallback !== true || (wfFbCloseP.webfetch || {}).fallback !== "curl") {
+      throw new Error("webfetch fallback: " + JSON.stringify(wfFbCloseP.webfetch || {}).slice(0, 200));
+    }
+    if ((wfFbCloseP.webfetch || {}).pretend_fetched === true) throw new Error("pretend_fetched webfetch close");
+    if ((wfFbCloseP.webfetch || {}).credential_bypass === true) throw new Error("credential_bypass webfetch close");
+    if (!(wfFbCloseP.webfetch || {}).path) throw new Error("webfetch close path missing");
+    require("fs").writeFileSync("/tmp/bitbot-mcp-webfetch-fb-close.json", JSON.stringify({ ok: true, ...wfFbCloseP }, null, 2));
+    console.log("mcp_call webfetch residual close ok", wfFbCloseP.mapped, (wfFbCloseP.webfetch || {}).fallback, (wfFbCloseP.webfetch || {}).public_fallback_residual);
+  } finally {
+    try { wfFbCloseMock.kill(); } catch (_) {}
+  }
 })().catch((e)=>{console.error(e);process.exit(1);});
 '
 node hosts/cli_host/run_turn.js "create teammate id=asst-smoke name=Smoke role=executor" >/tmp/bitbot-teammate.json
