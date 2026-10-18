@@ -568,6 +568,7 @@ for needle in (
   'box_chrome_bin_residual',
   'long_lived_cron_residual',
   'remote_cloud_residual',
+  'remote_cloud_artifact_residual',
   'code_apply_residual',
   'screenshot_residual',
   'gh_pr_create_residual',
@@ -603,6 +604,7 @@ for needle in (
   '/live_voice_residual',
   '/live_mail_claim_residual',
   '/remote_cloud_residual',
+  '/remote_cloud_artifact_residual',
   '/remote_pr_residual',
   '/real_create_gated',
   '/code_apply_residual',
@@ -646,6 +648,7 @@ for short in (
 assert 'true_device_os_dialog_residual' in shared
 assert 'refused_cross_scope' in shared
 assert 'gh_pr_create_residual' in shared or 'remote_pr_residual' in shared
+assert 'remote_cloud_artifact_residual' in shared
 assert 'live_voice_residual' in shared
 assert 'live_mail_claim_residual' in shared
 assert 'live_sms_residual' in shared
@@ -683,6 +686,7 @@ for needle in (
   'box_chrome_bin_residual',
   'long_lived_cron_residual',
   'remote_cloud_residual',
+  'remote_cloud_artifact_residual',
   'code_apply_residual',
   'screenshot_residual',
   'remote_pr_residual',
@@ -720,6 +724,7 @@ for needle in (
   'voice_tts_residual',
   'widget_degraded',
   'inbound_push_residual',
+  'remote_cloud_artifact_residual',
 ):
   assert needle in ios, needle
   assert needle in android, needle
@@ -904,9 +909,13 @@ BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_
 python3 -c "import json;d=json.load(open('/tmp/bitbot-slack-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('live_slack_residual') is False;assert p.get('pretend_live') is False;assert p.get('mode')=='live_slack';assert p.get('ts');print('channel_send slack live mock ok', p.get('mode'), 'ts', p.get('ts'))"
 BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_CLAIM=1 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: claim live [widget:decision_card]" >/tmp/bitbot-slack-claim-live.json || true
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-claim-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_slack_claim';assert p.get('claimed_count',0)>=1;assert p.get('live_slack_residual') is False;assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert (p.get('claim') or {}).get('ok') is True or p.get('ok') is True;assert p.get('pretend_live') is False;assert os.path.isfile('data/channels/inbound.jsonl');rows=open('data/channels/inbound.jsonl').read();assert 'live_slack_claim' in rows;print('channel_send slack live claim residual close ok', 'claimed', p.get('claimed_count'), 'residual', False)"
+# Slack live claim + BITBOT_INBOUND_TURN closes inbound_turn_residual (parity with Teams/mail).
+BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_CLAIM=1 BITBOT_INBOUND_TURN=1 \
+  node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke :: claim inbound turn" >/tmp/bitbot-slack-claim-turn.json || true
 BITBOT_SLACK_API_BASE=http://127.0.0.1:18769 SLACK_BOT_TOKEN=smoke-slack BITBOT_SLACK_POST=1 node hosts/cli_host/run_turn.js --approved "reply via slack:Csmoke thread_ts=1710000000.000060 :: live thread mock" >/tmp/bitbot-slack-live-thread.json || true
 kill "$SLACK_MOCK_PID" >/dev/null 2>&1 || true
 wait "$SLACK_MOCK_PID" 2>/dev/null || true
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-slack-claim-turn.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='live_slack_claim';assert p.get('live_slack_residual') is False;th=p.get('turn_hook') or {};assert th.get('hooked') is True;assert th.get('turn_executed') is True;assert th.get('turn_path') and os.path.isfile(th['turn_path']);turn=json.load(open(th['turn_path']));assert turn.get('ok') is True;assert p.get('inbound_turn_residual') is False;hook=json.load(open(th['hook_path']));assert hook.get('status')=='executed';print('channel_send slack claim inbound turn residual close ok', th.get('turn_path'), 'residual', False)"
 python3 -c "import json;d=json.load(open('/tmp/bitbot-slack-live-thread.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='channel_send');p=json.loads(h.get('stdout') or '{}');assert p.get('live_post') is True;assert p.get('mode')=='live_slack_thread';assert p.get('thread_ts')=='1710000000.000060';assert p.get('pretend_live') is False;deliv=next(x for x in hrs if x.get('kind')=='delivery');dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='thread';print('channel_send slack live thread ok', p.get('mode'), 'ts', p.get('ts'))"
 # Live Teams Graph post / claim against local mock
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18770 --mode teams --token smoke-teams >/tmp/bitbot-teams-mock.log 2>&1 &
@@ -1173,7 +1182,7 @@ wait "$CLOUD_MOCK_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-cloud-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='cloud_agent_launch');p=json.loads(h['stdout']);assert p.get('mode')=='remote_cloud_api';assert p.get('remote_cloud_residual') is False;print('cloud_agent_launch connector token file ok', p.get('mode'))"
 BC_ID="$(cat /tmp/bitbot-cloud-bc.txt)"
 node hosts/cli_host/run_turn.js "deliver cloud artifact artifact=${BC_ID} dest=smoke-report.md" >/tmp/bitbot-cloud-art.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud-art.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_artifact_deliver');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('delivered') is True;assert p.get('from_session') is True;assert p.get('pretend_remote_fetch') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('meta_path') and os.path.isfile(p['meta_path']);assert os.path.getsize(p['path'])>20;body=open(p['path']).read();assert 'bc_id:' in body and 'from_session: true' in body;print('cloud_artifact_deliver from_session ok', p.get('path'), 'meta', p.get('meta_path'), 'bytes', p.get('bytes'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cloud-art.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='cloud_artifact_deliver');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('delivered') is True;assert p.get('from_session') is True;assert p.get('pretend_remote_fetch') is False;assert p.get('remote_cloud_artifact_residual') is False;assert p.get('path') and os.path.isfile(p['path']);assert p.get('meta_path') and os.path.isfile(p['meta_path']);assert os.path.getsize(p['path'])>20;body=open(p['path']).read();assert 'bc_id:' in body and 'from_session: true' in body;print('cloud_artifact_deliver from_session ok', p.get('path'), 'meta', p.get('meta_path'), 'bytes', p.get('bytes'), 'remote_artifact_residual', False)"
 # Remote cloud artifact fetch closes remote_cloud_artifact_residual (local mock).
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18795 --mode cloud --token smoke-cloud >/tmp/bitbot-cloud-art-mock.log 2>&1 &
 CLOUD_ART_MOCK_PID=$!
@@ -1496,7 +1505,12 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-wh-claim-live.json'));h
 node hosts/cli_host/run_turn.js --approved "reply via webhook:panel :: hook [widget:decision_card]" >/tmp/bitbot-wh-out-widget.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-wh-out-widget.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='webhook';assert p.get('widget_degraded') is True;assert '[widget:' not in (p.get('body') or '');assert p.get('pretend_live') is False;print('channel webhook widget_degraded ok', p.get('mode'), p.get('body'))"
 node hosts/cli_host/run_turn.js --approved "reply via voice:call-smoke :: hello voice channel" >/tmp/bitbot-voice-ch.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-ch.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='voice';assert p.get('mode')=='sandbox_voice_channel';assert p.get('live_voice_residual') is True;assert p.get('pretend_live') is False;assert p.get('call_id');assert p.get('media_ok') is True;assert p.get('media_path') and os.path.isfile(p['media_path']);assert open(p['media_path'],'rb').read(4)==b'RIFF';assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/channels/voice/outbound.jsonl');print('channel voice sandbox residual ok', p.get('mode'), p.get('call_id'), p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-ch.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='voice';assert p.get('mode')=='sandbox_voice_channel';assert p.get('live_voice_residual') is True;assert p.get('pretend_live') is False;assert p.get('call_id');assert p.get('media_ok') is True;assert p.get('media_path') and os.path.isfile(p['media_path']);assert open(p['media_path'],'rb').read(4)==b'RIFF';assert p.get('path') and os.path.isfile(p['path']);assert os.path.isfile('data/channels/voice/outbound.jsonl');assert p.get('voice_tts_residual') is True;print('channel voice sandbox residual ok', p.get('mode'), p.get('call_id'), p.get('path'), 'tts_residual', True)"
+# Channel voice ESPEAK mock closes voice_tts_residual (parity with voice_session/relay).
+rm -rf /tmp/bitbot-voice-ch-tts-mock
+BITBOT_ESPEAK_BIN="$ROOT/scripts/host_espeak_mock.sh" BITBOT_ESPEAK_MOCK_LOG_DIR=/tmp/bitbot-voice-ch-tts-mock \
+  node hosts/cli_host/run_turn.js --approved "reply via voice:call-tts :: speak channel tts" >/tmp/bitbot-voice-ch-tts.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-voice-ch-tts.json'));h=next(x for x in d['host_results'] if x.get('kind')=='channel_send');p=json.loads(h['stdout']);assert p.get('scheme')=='voice';assert p.get('media_ok') is True;assert p.get('media_tool')=='espeak';assert p.get('voice_tts_residual') is False;assert open(p['media_path'],'rb').read(4)==b'RIFF';assert os.path.isfile('/tmp/bitbot-voice-ch-tts-mock/last-espeak.json');print('channel voice TTS bin mock residual close ok', p.get('media_tool'), 'residual', False, p.get('path'))"
 # Live voice channel mock closes live_voice_residual
 python3 "$ROOT/scripts/host_local_http_mock.py" --port 18779 --mode voice --token smoke-voice >/tmp/bitbot-voice-ch-mock.log 2>&1 &
 VOICE_CH_MOCK_PID=$!

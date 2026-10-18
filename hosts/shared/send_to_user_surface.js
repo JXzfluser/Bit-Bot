@@ -66,6 +66,7 @@ function residualSuffix(p) {
     "box_chrome_bin_residual",
     "long_lived_cron_residual",
     "remote_cloud_residual",
+    "remote_cloud_artifact_residual",
     "code_apply_residual",
     "screenshot_residual",
     "remote_pr_residual",

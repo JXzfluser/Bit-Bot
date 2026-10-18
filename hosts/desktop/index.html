@@ -1906,7 +1906,10 @@
                   label =
                     "cloud-art:" +
                     String(p.path || "").split("/").slice(-1)[0] +
-                    (p.meta_path ? "/meta" : "");
+                    (p.meta_path ? "/meta" : "") +
+                    (p.remote_cloud_artifact_residual === true
+                      ? "/remote_cloud_artifact_residual"
+                      : "");
                   types.push("attachment");
                 } else if (h.kind === "channel_send" && p.personal_dm) {
                   label =
@@ -2969,6 +2972,12 @@
                       : "") +
                     (p.live_channel_residual === true
                       ? "/live_channel_residual"
+                      : "") +
+                    (p.inbound_turn_residual === true
+                      ? "/inbound_turn_residual"
+                      : "") +
+                    (p.voice_tts_residual === true
+                      ? "/voice_tts_residual"
                       : "");
                   types.push(
                     p.scheme === "voice" || p.send_to_user_type === "voice"
@@ -3007,6 +3016,12 @@
                         : "") +
                       (p.live_channel_residual === true
                         ? " · live_channel_residual"
+                        : "") +
+                      (p.inbound_turn_residual === true
+                        ? " · inbound_turn_residual"
+                        : "") +
+                      (p.voice_tts_residual === true
+                        ? " · voice_tts_residual"
                         : "") +
                       (p.pretend_live === true ? " · pretend!" : "");
                   }
