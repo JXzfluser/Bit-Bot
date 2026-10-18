@@ -1310,6 +1310,32 @@ function stripHostAppliedMarker(file) {
   if (delAgentP.mapped !== "host_delete_agent" || delAgentP.product_tool_residual !== false) throw new Error(JSON.stringify(delAgentP).slice(0,200));
   if ((delAgentP.delete_agent||{}).pretend_deleted === true) throw new Error("pretend_deleted");
   console.log("mcp_call delete_agent short-circuit ok", delAgentP.mapped, (delAgentP.delete_agent||{}).mode, (delAgentP.delete_agent||{}).phase);
+  const shareBotRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.share_bot|{\"bot_id\":\"mcp-share\",\"name\":\"McpShareBot\"}" }]);
+  const shareBotH = shareBotRuns.find((r) => r && r.kind === "mcp_call");
+  if (!shareBotH || !shareBotH.ok) throw new Error("share_bot mcp");
+  const shareBotP = JSON.parse(shareBotH.stdout || "{}");
+  if (shareBotP.mapped !== "host_export_pack" || shareBotP.product_tool_residual !== false) throw new Error(JSON.stringify(shareBotP).slice(0,200));
+  if ((shareBotP.export_pack||{}).secrets_stripped !== true && (shareBotP.export_pack||{}).pretend_shared === true) {
+    throw new Error("share_bot honesty: " + JSON.stringify(shareBotP.export_pack||{}).slice(0,200));
+  }
+  console.log("mcp_call share_bot alias short-circuit ok", shareBotP.mapped, (shareBotP.export_pack||{}).mode || shareBotP.mapped);
+  const installSkillRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.install_skill|{\"name\":\"learned-checkout\"}" }]);
+  const installSkillH = installSkillRuns.find((r) => r && r.kind === "mcp_call");
+  if (!installSkillH || !installSkillH.ok) throw new Error("install_skill mcp");
+  const installSkillP = JSON.parse(installSkillH.stdout || "{}");
+  if (installSkillP.mapped !== "host_skill_load" || installSkillP.product_tool_residual !== false) throw new Error(JSON.stringify(installSkillP).slice(0,200));
+  console.log("mcp_call install_skill alias short-circuit ok", installSkillP.mapped, (installSkillP.skill_load||{}).mode || installSkillP.mapped);
+  const todoWriteRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.todo_write|{\"items\":[{\"id\":\"t1\",\"title\":\"step one\",\"status\":\"pending\"},{\"id\":\"t2\",\"title\":\"step two\",\"status\":\"done\"},{\"id\":\"t3\",\"title\":\"step three\",\"status\":\"pending\"}]}" }]);
+  const todoWriteH = todoWriteRuns.find((r) => r && r.kind === "mcp_call");
+  if (!todoWriteH || !todoWriteH.ok) throw new Error("todo_write mcp");
+  const todoWriteP = JSON.parse(todoWriteH.stdout || "{}");
+  if (todoWriteP.mapped !== "host_todo_write" || todoWriteP.product_tool_residual !== false) throw new Error(JSON.stringify(todoWriteP).slice(0,200));
+  if ((todoWriteP.todo_write||{}).pretend_complete === true) throw new Error("pretend_complete");
+  if (!((todoWriteP.todo_write||{}).item_count >= 3)) throw new Error("todo item_count: " + JSON.stringify(todoWriteP.todo_write||{}).slice(0,200));
+  if (!((todoWriteP.todo_write||{}).done_count >= 1)) throw new Error("todo done_count");
+  if (!(todoWriteP.todo_write||{}).path || !(todoWriteP.todo_write||{}).store_path) throw new Error("todo paths");
+  require("fs").writeFileSync("/tmp/bitbot-mcp-todo-write.json", JSON.stringify({ ok: true, ...todoWriteP }, null, 2));
+  console.log("mcp_call todo_write short-circuit ok", todoWriteP.mapped, (todoWriteP.todo_write||{}).item_count, (todoWriteP.todo_write||{}).done_count);
   // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}

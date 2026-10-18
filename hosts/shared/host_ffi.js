@@ -3593,6 +3593,121 @@ function createHostFfi(repoRoot) {
     return { parsed, pass, fail, summary };
   }
 
+  function executeTodoWrite(command) {
+    // CM-0112 Host durable todo checklist (MCP/product path). Never invent done.
+    const at = new Date().toISOString();
+    const todoDir = path.join(REPO_ROOT, "data", "todos");
+    const opsDir = path.join(todoDir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const storePath = path.join(todoDir, "checklist.json");
+    let store = { items: [], updated_at: null };
+    try {
+      if (fs.existsSync(storePath)) {
+        store = JSON.parse(fs.readFileSync(storePath, "utf8")) || store;
+      }
+    } catch (_) {
+      store = { items: [], updated_at: null };
+    }
+    if (!Array.isArray(store.items)) store.items = [];
+    const raw = String(command || "").trim();
+    let itemsIn = [];
+    if (raw.startsWith("{") || raw.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) itemsIn = parsed;
+        else if (Array.isArray(parsed.items)) itemsIn = parsed.items;
+        else if (parsed.id || parsed.title || parsed.content) itemsIn = [parsed];
+      } catch (_) {
+        itemsIn = [];
+      }
+    }
+    if (!itemsIn.length && raw) {
+      // id|title|status  (status optional; default pending)
+      const parts = raw.split("|").map((s) => s.trim());
+      if (parts.length >= 2) {
+        itemsIn = [
+          {
+            id: parts[0] || `todo-${Date.now().toString(36)}`,
+            title: parts[1] || parts[0],
+            status: (parts[2] || "pending").toLowerCase(),
+          },
+        ];
+      } else {
+        itemsIn = [
+          {
+            id: `todo-${Date.now().toString(36)}`,
+            title: raw,
+            status: "pending",
+          },
+        ];
+      }
+    }
+    if (!itemsIn.length) {
+      itemsIn = [
+        {
+          id: `todo-${Date.now().toString(36)}`,
+          title: "mcp todo placeholder",
+          status: "pending",
+        },
+      ];
+    }
+    const upserted = [];
+    for (const it of itemsIn) {
+      const id = String(it.id || it.key || `todo-${Date.now().toString(36)}`).trim();
+      const title = String(it.title || it.content || it.text || id).trim();
+      let status = String(it.status || it.state || "pending")
+        .trim()
+        .toLowerCase();
+      if (status === "complete" || status === "completed" || status === "done") {
+        status = "done";
+      } else if (status === "cancelled" || status === "canceled") {
+        status = "cancelled";
+      } else {
+        status = "pending";
+      }
+      const idx = store.items.findIndex((x) => x && x.id === id);
+      const row = {
+        id,
+        title,
+        status,
+        updated_at: at,
+      };
+      if (idx >= 0) store.items[idx] = { ...store.items[idx], ...row };
+      else store.items.push(row);
+      upserted.push(row);
+    }
+    store.updated_at = at;
+    fs.writeFileSync(storePath, JSON.stringify(store, null, 2));
+    const snapPath = path.join(
+      opsDir,
+      `todo-${Date.now().toString(36)}.json`,
+    );
+    const doneCount = store.items.filter((x) => x && x.status === "done").length;
+    const payload = {
+      mode: "host_todo_write",
+      pretend_complete: false,
+      pretend_empty: false,
+      item_count: store.items.length,
+      done_count: doneCount,
+      upserted,
+      store_path: storePath,
+      path: snapPath,
+      at,
+      ok: true,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(payload, null, 2));
+    appendJsonl(path.join(opsDir, "events.jsonl"), payload);
+    appendHostDeliveryJournal({
+      kind: "todo_write",
+      command,
+      path: snapPath,
+      store_path: storePath,
+      item_count: payload.item_count,
+      at,
+    });
+    return okJson("todo_write", String(command || "todo"), payload);
+  }
+
   async function executeBoxDoctor(command) {
     // CM-0607 product Host path — real box-doctor bin when present; else honest FS probe.
     const at = new Date().toISOString();
@@ -6939,6 +7054,13 @@ function createHostFfi(repoRoot) {
         skill_write: "host_skill_write",
         export_bot_template: "host_export_pack",
         export_pack: "host_export_pack",
+        share_bot: "host_export_pack",
+        shareable_template: "host_export_pack",
+        install_skill: "host_skill_load",
+        todo_write: "host_todo_write",
+        create_todo: "host_todo_write",
+        update_todo: "host_todo_write",
+        list_todos: "host_todo_write",
         get_balance: "host_finance_call",
         search_jobs: "host_job_search",
         job_search: "host_job_search",
@@ -7263,7 +7385,8 @@ function createHostFfi(repoRoot) {
         mapped === "host_render_markdown" ||
         mapped === "host_auto_review_settings" ||
         mapped === "host_settings_open" ||
-        mapped === "host_delete_agent"
+        mapped === "host_delete_agent" ||
+        mapped === "host_todo_write"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -11225,6 +11348,33 @@ function createHostFfi(repoRoot) {
                 pretend_deleted: p.pretend_deleted,
                 agent_id: p.agent_id || null,
                 phase: p.phase || null,
+              }),
+            },
+            host_todo_write: {
+              kind: "todo_write",
+              field: "todo_write",
+              cmd: () => {
+                if (args.items || args.todos || args.list) {
+                  return JSON.stringify({
+                    items: args.items || args.todos || args.list,
+                  });
+                }
+                if (args.id || args.title || args.content || args.text) {
+                  return JSON.stringify({
+                    id: args.id,
+                    title: args.title || args.content || args.text,
+                    status: args.status || args.state || "pending",
+                  });
+                }
+                return String(args.command || args.body || "").trim();
+              },
+              pick: (p) => ({
+                path: p.path || null,
+                store_path: p.store_path || null,
+                mode: p.mode || null,
+                pretend_complete: p.pretend_complete,
+                item_count: p.item_count,
+                done_count: p.done_count,
               }),
             },
           };
@@ -20054,6 +20204,10 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "export_pack") {
         results.push(executeExportPack(cmd));
+        continue;
+      }
+      if (kind === "todo_write") {
+        results.push(executeTodoWrite(cmd));
         continue;
       }
       if (kind === "voice_relay") {
