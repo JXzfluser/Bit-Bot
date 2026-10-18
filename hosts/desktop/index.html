@@ -137,6 +137,26 @@
     color: var(--muted);
   }
   .msg .body { margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+  .msg.media .body { white-space: normal; }
+  .msg.media .media-label {
+    font: 12px/1.4 ui-monospace, "IBM Plex Mono", monospace;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .msg.media img.delivery-media {
+    display: block;
+    max-width: min(100%, 520px);
+    max-height: 360px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: #0a100e;
+  }
+  .msg.media audio.delivery-media,
+  .msg.media video.delivery-media {
+    display: block;
+    width: min(100%, 480px);
+    margin-top: 4px;
+  }
   #composer {
     grid-area: composer;
     padding: 12px 16px 16px;
@@ -632,6 +652,101 @@
       el.querySelector(".body").textContent = text;
       log.appendChild(el);
       log.scrollTop = log.scrollHeight;
+    }
+
+    /** CHARTER Delivery: inline Host media attachment in Desktop transcript. */
+    async function renderDeliveryMedia(filePath, label) {
+      if (!filePath || !window.bitbot || !window.bitbot.readArtifact) return;
+      try {
+        const art = await window.bitbot.readArtifact(filePath);
+        if (!art || !art.ok || !art.data_url) {
+          addMsg(
+            "assistant",
+            "Attachment · " +
+              (label || "media") +
+              " · " +
+              filePath +
+              (art && art.error ? " (" + art.error + ")" : ""),
+          );
+          return;
+        }
+        const el = document.createElement("div");
+        el.className = "msg assistant media";
+        el.innerHTML =
+          '<div class="role">attachment</div><div class="body"></div>';
+        const body = el.querySelector(".body");
+        const lab = document.createElement("div");
+        lab.className = "media-label";
+        lab.textContent =
+          (label || "media") +
+          " · " +
+          String(filePath).split("/").slice(-1)[0] +
+          " · " +
+          (art.bytes || 0) +
+          "B";
+        body.appendChild(lab);
+        const mime = String(art.mime || "");
+        if (mime.startsWith("image/")) {
+          const img = document.createElement("img");
+          img.className = "delivery-media";
+          img.alt = label || "Host media";
+          img.src = art.data_url;
+          body.appendChild(img);
+        } else if (mime.startsWith("audio/")) {
+          const audio = document.createElement("audio");
+          audio.className = "delivery-media";
+          audio.controls = true;
+          audio.src = art.data_url;
+          body.appendChild(audio);
+        } else if (mime.startsWith("video/")) {
+          const video = document.createElement("video");
+          video.className = "delivery-media";
+          video.controls = true;
+          video.src = art.data_url;
+          body.appendChild(video);
+        } else {
+          lab.textContent += " · preview unsupported";
+        }
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+      } catch (e) {
+        addMsg(
+          "assistant",
+          "Attachment preview failed: " +
+            String(e && e.message ? e.message : e),
+        );
+      }
+    }
+
+    function collectHostMediaPaths(hostResults) {
+      const out = [];
+      if (!Array.isArray(hostResults)) return out;
+      for (const h of hostResults) {
+        if (!h || h.ok === false) continue;
+        let p = {};
+        try {
+          p = JSON.parse(h.stdout || "{}");
+        } catch (_) {
+          p = {};
+        }
+        const kind = h.kind || "";
+        if (kind === "generate_image" || kind === "structured_chart") {
+          const mp = p.media_path || p.path;
+          if (mp) out.push({ path: mp, label: kind });
+        } else if (kind === "generate_video") {
+          if (p.media_path) out.push({ path: p.media_path, label: "generate_video" });
+        } else if (kind === "watch_video") {
+          if (p.frame_path) out.push({ path: p.frame_path, label: "watch_frame" });
+        } else if (kind === "screenshot") {
+          if (p.has_frame && p.frame_path)
+            out.push({ path: p.frame_path, label: "screenshot" });
+        } else if (kind === "voice_relay" && p.reply_media_path) {
+          out.push({ path: p.reply_media_path, label: "voice_relay" });
+        } else if (kind === "voice_session" && p.media_path) {
+          out.push({ path: p.media_path, label: "voice_session" });
+        }
+      }
+      return out;
     }
 
     function hideApproval() {
@@ -1891,6 +2006,11 @@
             }
             log.appendChild(el);
             log.scrollTop = log.scrollHeight;
+          }
+          // CHARTER Delivery: inline Host media (image/audio/video) in transcript.
+          const mediaItems = collectHostMediaPaths(r.host_results);
+          for (const item of mediaItems) {
+            await renderDeliveryMedia(item.path, item.label);
           }
         }
       } catch (e) {

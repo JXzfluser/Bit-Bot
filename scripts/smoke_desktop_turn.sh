@@ -326,6 +326,37 @@ assert 'draft mail to=desktop@example.com' in html
 assert 'schedule meeting title=DesktopSync' in html
 print('desktop teammates + mail/commerce panels wired ok')
 "
+python3 -c "
+from pathlib import Path
+html=Path('hosts/desktop/index.html').read_text()
+main=Path('hosts/desktop/main.js').read_text()
+preload=Path('hosts/desktop/preload.js').read_text()
+assert 'renderDeliveryMedia' in html and 'collectHostMediaPaths' in html
+assert 'delivery-media' in html
+assert 'bitbot:readArtifact' in main and 'data_url' in main
+assert 'readArtifact' in preload
+assert 'path outside repo' in main
+print('desktop inline media delivery wired ok')
+"
+python3 - <<'PY'
+from pathlib import Path
+import base64
+root = Path('/workspace')
+sample = root / 'agent-tools'
+sample.mkdir(parents=True, exist_ok=True)
+pngs = list(sample.glob('*.png'))
+if not pngs:
+  img = sample / 'smoke-inline-media.png'
+  img.write_bytes(base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+  ))
+else:
+  img = pngs[0]
+assert img.is_file() and img.stat().st_size > 0
+main = Path('hosts/desktop/main.js').read_text()
+assert 'bitbot:readArtifact' in main and 'pretend_read: false' in main
+print('desktop media artifact sample ok', img)
+PY
 node hosts/cli_host/run_turn.js "uninstall plugin plugin-slides" >/tmp/bitbot-mcp-uninstall.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-uninstall.json'));assert d.get('intent')=='uninstall_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_uninstall');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_uninstalled') is False;assert p.get('namespace')=='user-Slides';assert p.get('status')=='Unavailable';assert p.get('usable') is False;assert p.get('namespace_gone') is True;assert p.get('path') and os.path.isfile(p['path']);cat=json.load(open(p['catalog_path']));assert (cat.get('namespaces') or {}).get('user-Slides',{}).get('usable') is False;assert 'plugin-slides' not in (cat.get('installed_plugins') or []);print('mcp_uninstall Unavailable ok', p.get('namespace'), p.get('path'))"
 echo "==> Desktop Electron Host smoke turn (ADR 0005 product path)"
