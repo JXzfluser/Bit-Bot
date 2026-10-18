@@ -487,6 +487,94 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(WebhookWake(event_id~, summary~))
   }
+  // CM-1901/1902 product Host Settings (closed entry set + deep-link anchors).
+  if low == "open settings" ||
+      low == "settings" ||
+      low == "open settings panel" ||
+      low.has_prefix("open settings ") ||
+      low.has_prefix("settings ") {
+    let rest = if low.has_prefix("open settings ") {
+      trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("settings ") {
+      trimmed[9:].trim().to_owned()
+    } else {
+      ""
+    }
+    let mut entry = "sidebar-account-button"
+    let mut anchor = ""
+    if rest == "cmd+," || rest == "shortcut" || rest == "keyboard" {
+      entry = "keyboard-shortcut"
+    } else if rest == "palette" || rest == "command palette" {
+      entry = "command-palette"
+    } else if rest.has_prefix("entry=") {
+      match extract_kv(rest, "entry") {
+        Some(v) => entry = v.trim().to_owned()
+        None => ()
+      }
+      match extract_kv(rest, "anchor") {
+        Some(v) => anchor = v.trim().to_owned()
+        None => ()
+      }
+    } else if rest.has_prefix("anchor=") || rest.has_prefix("id=") {
+      match extract_kv(rest, "anchor") {
+        Some(v) => anchor = v.trim().to_owned()
+        None =>
+          match extract_kv(rest, "id") {
+            Some(v) => anchor = v.trim().to_owned()
+            None => ()
+          }
+      }
+    } else if rest != "" && !rest.has_prefix("entry=") {
+      // Bare token as anchor id (e.g. "open settings theme").
+      anchor = rest.trim().to_owned()
+    }
+    // Forbidden gear / Preferences still emit effect; Host refuses honestly.
+    return Some(OpenSettings(entry~, anchor~))
+  }
+  // CM-0205 product Host per-agent info panel.
+  if low.has_prefix("open agent info ") ||
+      low.has_prefix("agent info ") ||
+      low.has_prefix("info panel ") ||
+      low == "open agent info" ||
+      low == "agent info panel" {
+    let rest = if low.has_prefix("open agent info ") {
+      trimmed[16:].trim().to_owned()
+    } else if low.has_prefix("agent info ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("info panel ") {
+      trimmed[11:].trim().to_owned()
+    } else {
+      "agent-bit"
+    }
+    let agent_id = match extract_kv(rest, "agent") {
+      Some(v) => v.trim().to_owned()
+      None =>
+        if rest == "" {
+          "agent-bit"
+        } else {
+          rest
+        }
+    }
+    if agent_id != "" {
+      return Some(OpenAgentInfoPanel(agent_id~))
+    }
+  }
+  // CM-1907 product Host delete agent (sidebar confirm; not Settings).
+  if low.has_prefix("delete agent ") || low.has_prefix("confirm delete agent ") {
+    let confirmed = low.has_prefix("confirm delete agent ")
+    let rest = if confirmed {
+      trimmed[21:].trim().to_owned()
+    } else {
+      trimmed[13:].trim().to_owned()
+    }
+    let agent_id = match extract_kv(rest, "agent") {
+      Some(v) => v.trim().to_owned()
+      None => rest.trim().to_owned()
+    }
+    if agent_id != "" {
+      return Some(DeleteAgent(agent_id~, confirm=confirmed))
+    }
+  }
   // CM-2157 product Host structured chart (Pillow PNG via Host FFI).
   if low.has_prefix("structured chart ") ||
       low.has_prefix("make chart ") ||

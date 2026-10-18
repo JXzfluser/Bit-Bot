@@ -2584,6 +2584,444 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  const SETTINGS_ENTRIES = new Set([
+    "sidebar-account-button",
+    "keyboard-shortcut",
+    "command-palette",
+  ]);
+  const SETTINGS_ANCHORS = {
+    account: "General",
+    theme: "General",
+    accent: "General",
+    language: "General",
+    "spell-check": "General",
+    microphone: "General",
+    "hardware-acceleration": "General",
+    "hardware-acceleration-restart": "General",
+    "network-debugger": "General",
+    "notification-sound-enabled": "General",
+    "notification-sound": "General",
+    timezone: "General",
+    "auto-review": "General",
+    "auto-review-rules": "General",
+    "security-keys": "General",
+    "local-execution": "Computer",
+    computers: "Computer",
+    "update-computer": "Computer",
+    "reset-computer": "Computer",
+    usage: "Usage & Billing",
+    plan: "Usage & Billing",
+    "cancel-trial": "Usage & Billing",
+    "on-demand": "Usage & Billing",
+    billing: "Usage & Billing",
+    "update-status": "Updates",
+    "update-channel": "Updates",
+    "automatic-updates": "Updates",
+  };
+  const INFO_PANEL_SECTIONS = [
+    "desktop-preview",
+    "routines",
+    "channels",
+    "members",
+    "gear-settings",
+  ];
+
+  function settingsDir() {
+    return path.join(REPO_ROOT, "data", "settings");
+  }
+
+  function agentsUiDir() {
+    return path.join(REPO_ROOT, "data", "agents", "ui");
+  }
+
+  async function executeSettingsOpen(command) {
+    // CM-1901/1902 product Host Settings — closed entry set + deep-link anchors.
+    const at = new Date().toISOString();
+    const dir = settingsDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let entry = "sidebar-account-button";
+    let anchor = "";
+    const entryMatch = raw.match(/\bentry=([^\s]+)/i);
+    if (entryMatch) entry = entryMatch[1].trim();
+    const anchorMatch = raw.match(/\banchor=([^\s]+)/i);
+    if (anchorMatch) anchor = anchorMatch[1].trim();
+    else {
+      const idMatch = raw.match(/\bid=([^\s]+)/i);
+      if (idMatch) anchor = idMatch[1].trim();
+    }
+
+    const forbidden =
+      entry === "gear" ||
+      entry === "preferences" ||
+      entry === "per-agent-gear" ||
+      /gear|preferences/i.test(entry);
+    if (forbidden || !SETTINGS_ENTRIES.has(entry)) {
+      const snapPath = path.join(
+        opsDir,
+        `settings-refused-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_settings_open",
+        ok: false,
+        refused: true,
+        pretend_opened: false,
+        entry,
+        anchor: anchor || null,
+        error: forbidden
+          ? "CM-1901: gear/Preferences/per-agent-gear are not Settings entries"
+          : "CM-1901: unknown Settings entry (allowed: sidebar-account-button|keyboard-shortcut|command-palette)",
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("settings_open", raw || "open", {
+        ...artifact,
+        path: snapPath,
+      });
+    }
+
+    let deepLink = null;
+    let tab = null;
+    let unknownAnchor = false;
+    if (anchor) {
+      if (!Object.prototype.hasOwnProperty.call(SETTINGS_ANCHORS, anchor)) {
+        unknownAnchor = true;
+      } else {
+        tab = SETTINGS_ANCHORS[anchor];
+        deepLink = "grokbot://app/v1/settings?id=" + anchor;
+      }
+    }
+    if (unknownAnchor) {
+      const snapPath = path.join(
+        opsDir,
+        `settings-bad-anchor-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_settings_open",
+        ok: false,
+        refused: true,
+        pretend_opened: false,
+        entry,
+        anchor,
+        error: "CM-1902: unknown settings anchor id: " + anchor,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("settings_open", raw || "open", {
+        ...artifact,
+        path: snapPath,
+      });
+    }
+
+    const panelPath = path.join(dir, "panel.json");
+    const panel = {
+      open: true,
+      entry,
+      anchor: anchor || null,
+      tab: tab || "General",
+      deep_link: deepLink,
+      tabs: ["General", "Computer", "Vault", "Usage & Billing", "Updates"],
+      anchors_closed_set_count: Object.keys(SETTINGS_ANCHORS).length,
+      gear_path_forbidden: true,
+      at,
+    };
+    fs.writeFileSync(panelPath, JSON.stringify(panel, null, 2));
+    const snapPath = path.join(
+      opsDir,
+      `open-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_settings_open",
+      pretend_opened: false,
+      panel_open: true,
+      entry,
+      entry_allowed: true,
+      anchor: anchor || null,
+      tab: panel.tab,
+      deep_link: deepLink,
+      tabs: panel.tabs,
+      anchors_closed_set_count: panel.anchors_closed_set_count,
+      panel_path: panelPath,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "opens.jsonl"), {
+      ...artifact,
+      path: snapPath,
+    });
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "settings_panel",
+      path: snapPath,
+      label: "settings_open",
+      entry,
+      anchor: anchor || null,
+      deep_link: deepLink,
+      source_kind: "settings_open",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "settings_open",
+      command: raw || "open",
+      path: snapPath,
+      panel_path: panelPath,
+      entry,
+      anchor: anchor || null,
+      at,
+    });
+    return okJson("settings_open", raw || "open", {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeAgentInfoPanel(command) {
+    // CM-0205 product Host per-agent info panel (app-ui section anchors).
+    const at = new Date().toISOString();
+    const dir = agentsUiDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let agentId = "agent-bit";
+    const m = raw.match(/\bagent=([^\s]+)/i);
+    if (m) agentId = m[1].trim();
+    else if (raw.trim() && !raw.includes("=")) agentId = raw.trim();
+
+    const sections = INFO_PANEL_SECTIONS.map((label) => ({
+      label,
+      present: true,
+    }));
+    const snapPath = path.join(
+      opsDir,
+      `info-${agentId.replace(/[^\w.-]+/g, "_")}-${Date.now().toString(36)}.json`,
+    );
+    const panelPath = path.join(dir, "info-panel.json");
+    const panel = {
+      agent_id: agentId,
+      open: true,
+      open_trigger: "click-agent-name",
+      sections: INFO_PANEL_SECTIONS,
+      has_desktop_preview: true,
+      has_routines: true,
+      has_channels: true,
+      has_members: true,
+      has_gear_settings: true,
+      gear_is_per_agent_not_global: true,
+      fields_align_with_app_ui: true,
+      at,
+    };
+    fs.writeFileSync(panelPath, JSON.stringify(panel, null, 2));
+    const artifact = {
+      mode: "host_agent_info_panel",
+      pretend_panel: false,
+      ...panel,
+      section_rows: sections,
+      panel_path: panelPath,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "info-panel-ops.jsonl"), {
+      agent_id: agentId,
+      path: snapPath,
+      at,
+    });
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "agent_info_panel",
+      path: snapPath,
+      label: "agent_info_panel",
+      agent_id: agentId,
+      sections: INFO_PANEL_SECTIONS,
+      source_kind: "agent_info_panel",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "agent_info_panel",
+      command: raw || agentId,
+      path: snapPath,
+      panel_path: panelPath,
+      agent_id: agentId,
+      at,
+    });
+    return okJson("agent_info_panel", raw || agentId, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeDeleteAgent(command) {
+    // CM-1907 product Host delete — sidebar context-menu + confirm; never Settings.
+    const at = new Date().toISOString();
+    const dir = agentsUiDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "");
+    let agentId = "";
+    let confirm = false;
+    let pathHint = "sidebar-context-menu";
+    const agentMatch = raw.match(/\bagent=([^\s]+)/i);
+    if (agentMatch) agentId = agentMatch[1].trim();
+    else {
+      const parts = raw.trim().split(/\s+/);
+      if (parts[0] && parts[0] !== "confirm=0" && parts[0] !== "confirm=1") {
+        agentId = parts[0];
+      }
+    }
+    confirm = /\bconfirm=1\b/i.test(raw);
+    const pathMatch = raw.match(/\bpath=([^\s]+)/i);
+    if (pathMatch) pathHint = pathMatch[1].trim().toLowerCase();
+
+    if (!agentId) {
+      const snapPath = path.join(
+        opsDir,
+        `delete-missing-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_delete_agent",
+        ok: false,
+        refused: true,
+        pretend_deleted: false,
+        error: "CM-1907: agent id required",
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("delete_agent", raw || "delete", {
+        ...artifact,
+        path: snapPath,
+      });
+    }
+
+    if (
+      pathHint === "settings" ||
+      pathHint === "settings-panel" ||
+      pathHint === "archive" ||
+      pathHint === "hide" ||
+      pathHint === "archive-or-hide"
+    ) {
+      const snapPath = path.join(
+        opsDir,
+        `delete-refused-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_delete_agent",
+        ok: false,
+        refused: true,
+        pretend_deleted: false,
+        agent_id: agentId,
+        path: pathHint,
+        phase: "refused",
+        error:
+          pathHint.startsWith("archive") || pathHint === "hide"
+            ? "CM-1907: archive/hide is not delete"
+            : "CM-1907: delete via Settings forbidden; use sidebar context-menu",
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      return okJson("delete_agent", raw || agentId, {
+        ...artifact,
+        path: snapPath,
+      });
+    }
+
+    const lifecyclePath = path.join(dir, "delete-lifecycle.jsonl");
+    if (!confirm) {
+      const snapPath = path.join(
+        opsDir,
+        `delete-await-${Date.now().toString(36)}.json`,
+      );
+      const artifact = {
+        mode: "host_delete_agent",
+        pretend_deleted: false,
+        agent_id: agentId,
+        path: "sidebar-context-menu",
+        phase: "awaiting_confirm",
+        agent_removed: false,
+        transcript_removed: false,
+        needs_confirm: true,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+      appendJsonl(lifecyclePath, { ...artifact, path: snapPath });
+      const delivery = recordSendToUser({
+        type: "widget",
+        widget: "delete_agent_confirm",
+        path: snapPath,
+        label: "delete_agent",
+        agent_id: agentId,
+        phase: "awaiting_confirm",
+        source_kind: "delete_agent",
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind: "delete_agent",
+        command: raw || agentId,
+        path: snapPath,
+        agent_id: agentId,
+        phase: "awaiting_confirm",
+        at,
+      });
+      return okJson("delete_agent", raw || agentId, {
+        ...artifact,
+        path: snapPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    const removedPath = path.join(dir, "removed-agents.jsonl");
+    const snapPath = path.join(
+      opsDir,
+      `delete-done-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_delete_agent",
+      pretend_deleted: false,
+      agent_id: agentId,
+      path: "sidebar-context-menu",
+      phase: "completed",
+      agent_removed: true,
+      transcript_removed: true,
+      needs_confirm: false,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(lifecyclePath, { ...artifact, path: snapPath });
+    appendJsonl(removedPath, {
+      agent_id: agentId,
+      removed_at: at,
+      snap: snapPath,
+    });
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "delete_agent_done",
+      path: snapPath,
+      label: "delete_agent",
+      agent_id: agentId,
+      phase: "completed",
+      source_kind: "delete_agent",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "delete_agent",
+      command: raw || agentId,
+      path: snapPath,
+      agent_id: agentId,
+      phase: "completed",
+      at,
+    });
+    return okJson("delete_agent", raw || agentId, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeConnectorsProbe() {
     const report = await connectorsStatusReport();
     const at = new Date().toISOString();
@@ -4332,7 +4770,16 @@ function createHostFfi(repoRoot) {
       kind === "generate_image" ||
       kind === "generate_video" ||
       kind === "watch_video" ||
-      kind === "structured_chart"
+      kind === "structured_chart" ||
+      kind === "settings_open" ||
+      kind === "agent_info_panel" ||
+      kind === "delete_agent" ||
+      kind === "box_doctor" ||
+      kind === "box_env" ||
+      kind === "box_clock" ||
+      kind === "webhook_panel" ||
+      kind === "webhook_copy" ||
+      kind === "webhook_wake"
     ) {
       return null; // SendToUser already recorded in effect handlers
     }
@@ -9628,6 +10075,18 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "webhook_wake") {
         results.push(await executeWebhookWake(cmd));
+        continue;
+      }
+      if (kind === "settings_open") {
+        results.push(await executeSettingsOpen(cmd));
+        continue;
+      }
+      if (kind === "agent_info_panel") {
+        results.push(await executeAgentInfoPanel(cmd));
+        continue;
+      }
+      if (kind === "delete_agent") {
+        results.push(await executeDeleteAgent(cmd));
         continue;
       }
       if (kind === "connectors_probe") {

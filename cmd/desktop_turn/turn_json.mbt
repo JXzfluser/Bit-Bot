@@ -126,6 +126,9 @@ pub(all) enum TurnIntent {
   WebhookCopy(what~ : String)
   WebhookToolReadKey
   WebhookWake(event_id~ : String, summary~ : String)
+  OpenSettings(entry~ : String, anchor~ : String)
+  OpenAgentInfoPanel(agent_id~ : String)
+  DeleteAgent(agent_id~ : String, confirm~ : Bool)
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -214,6 +217,9 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     WebhookCopy(_) => "webhook_copy"
     WebhookToolReadKey => "webhook_tool_read_key"
     WebhookWake(_) => "webhook_wake"
+    OpenSettings(_) => "open_settings"
+    OpenAgentInfoPanel(_) => "open_agent_info_panel"
+    DeleteAgent(_) => "delete_agent"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -742,6 +748,10 @@ fn extract_kv(rest : String, key : String) -> String? {
         " group=",
         " section=",
         " provider=",
+        " entry=",
+        " anchor=",
+        " agent=",
+        " confirm=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -3308,6 +3318,66 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "webhook wake planned (CM-0411). Host emits <webhook_event> without key leak.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    OpenSettings(entry~, anchor~) => {
+      let cmd = if anchor.length() > 0 {
+        "entry=" + entry + " anchor=" + anchor
+      } else {
+        "entry=" + entry
+      }
+      let effect : DesktopEffect = {
+        kind: "settings_open",
+        command: cmd,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Settings open planned (CM-1901/1902). Host opens via " +
+          entry +
+          (if anchor.length() > 0 { " → " + anchor } else { "" }) +
+          "; gear/Preferences forbidden.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    OpenAgentInfoPanel(agent_id~) => {
+      let effect : DesktopEffect = {
+        kind: "agent_info_panel",
+        command: "agent=" + agent_id,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Per-agent info panel planned (CM-0205). Host surfaces desktop-preview/Routines/Channels/Members/gear-settings.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    DeleteAgent(agent_id~, confirm~) => {
+      let effect : DesktopEffect = {
+        kind: "delete_agent",
+        command: if confirm {
+          "agent=" + agent_id + " confirm=1"
+        } else {
+          "agent=" + agent_id + " confirm=0"
+        },
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Delete agent planned (CM-1907). Host requires sidebar confirm; not Settings.",
         intent,
         ctx~,
         effects=[effect],

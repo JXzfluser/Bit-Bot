@@ -128,6 +128,9 @@
 - [x] Host personal Slack DM mode (`personal_slack_dm_draft` / `live_personal_slack_dm`) + CM-1104 channel widget degrade on outbound
 - [x] Host approval_card CM-0105-shaped widget options + Desktop interactive Approve/Dismiss card
 - [x] Host cloud_agent_launch CM-2131 cursor-agent SendToUser card (`type=cursor-agent` + open_url) + Desktop render
+- [x] Host Settings product path (CM-1901/1902): `settings_open` closed entry set + deep-link anchors; Desktop Account button + tabs panel; gear/Preferences refused
+- [x] Host per-agent info panel (CM-0205): `agent_info_panel` app-ui sections + Desktop click-name panel
+- [x] Host delete agent (CM-1907): sidebar confirm lifecycle; Settings/archive paths refused; Desktop confirm UI
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn
 - [x] Host schedule_meeting materializes real `.ics` (VCALENDAR/VEVENT) under `data/calendar/` + SendToUser attachment
