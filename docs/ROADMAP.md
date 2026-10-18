@@ -167,6 +167,7 @@
 - [x] Desktop Channels+Delivery deepen: X search / workflows / credentials + react/inbound/markdown buttons; mobile mirrors for finance/jobs/workflows/inbound/slides/skill/export
 - [x] Desktop Cloud panel (launch + deliver artifact) + Box screenshot/check-updates; mobile cloud/screenshot/updates quick actions
 - [x] Desktop Routines panel (create/list/fire/tick + auto-review); mobile routines mirrors + quick actions
+- [x] Desktop Tools + Computer Use panels (shell/FS/webfetch + CU native/OCR env) + Memory remember/shared; mobile FS/shell/CU mirrors
 - [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn

@@ -192,6 +192,15 @@ try {
       "routine_fire",
       "routine_tick",
       "auto_review_settings",
+      "shell",
+      "fs_list",
+      "fs_read",
+      "webfetch",
+      "computer_use",
+      "shared_memory_put",
+      "shared_memory_read",
+      "code_changes",
+      "source_control",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;
@@ -203,6 +212,7 @@ try {
       }
       // Prefer durable snap path; fall back to media/frame/html for SendToUser attachments.
       const hostPath =
+        payload.artifact_path ||
         payload.path ||
         payload.media_path ||
         payload.frame_path ||

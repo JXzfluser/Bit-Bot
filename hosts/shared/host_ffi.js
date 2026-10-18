@@ -411,7 +411,7 @@ function createHostFfi(repoRoot) {
         `list-${Date.now().toString(36)}.json`,
       );
       const artifact = {
-        path: command,
+        listed_path: command,
         abs,
         count: entries.length,
         entries: entries.slice(0, 200),
@@ -423,6 +423,7 @@ function createHostFfi(repoRoot) {
       fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
       appendJsonl(path.join(dir, "lists.jsonl"), {
         ...artifact,
+        path: artifactPath,
         artifact_path: artifactPath,
       });
       const delivery = recordSendToUser({
@@ -439,8 +440,10 @@ function createHostFfi(repoRoot) {
         count: entries.length,
         at,
       });
+      // CHARTER Delivery: path is durable snap (not the listed dir name).
       return okJson("fs_list", command, {
         ...artifact,
+        path: artifactPath,
         artifact_path: artifactPath,
         send_to_user: delivery,
         ok: true,
@@ -492,7 +495,7 @@ function createHostFfi(repoRoot) {
         `read-${Date.now().toString(36)}.json`,
       );
       const artifact = {
-        path: command,
+        read_path: command,
         abs,
         bytes: Buffer.byteLength(text, "utf8"),
         body_prefix: text.slice(0, 400),
@@ -504,6 +507,7 @@ function createHostFfi(repoRoot) {
       fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
       appendJsonl(path.join(dir, "reads.jsonl"), {
         ...artifact,
+        path: artifactPath,
         artifact_path: artifactPath,
       });
       const delivery = recordSendToUser({
@@ -520,8 +524,10 @@ function createHostFfi(repoRoot) {
         bytes: artifact.bytes,
         at,
       });
+      // CHARTER Delivery: path is durable snap (not the read target path).
       return okJson("fs_read", command, {
         ...artifact,
+        path: artifactPath,
         artifact_path: artifactPath,
         // Keep truncated body for Host consumers that still expect text.
         body: text,

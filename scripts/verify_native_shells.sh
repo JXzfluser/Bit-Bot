@@ -91,6 +91,10 @@ for needle in (
     "launch cloud agent",
     "list routines",
     "tick routines",
+    "listdir docs",
+    "webfetch https://example.com",
+    "computer use open",
+    "shell echo",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
@@ -104,11 +108,17 @@ for kind in (
     "cloud_agent_launch",
     "routine_schedule",
     "routine_tick",
+    "shell",
+    "fs_list",
+    "fs_read",
+    "webfetch",
+    "computer_use",
+    "shared_memory_put",
 ):
     assert kind in mobile, kind
 assert "receipt_path" in mobile and "skill_path" in mobile
 print("native device_permission + SendToUser Host scaffolds ok")
-print("native product quick actions (plugins/media/voice/box/mail/channels/cloud/routines) ok")
+print("native product quick actions (plugins/media/voice/box/mail/channels/cloud/routines/tools) ok")
 PY
 
 # mobile_host may append SendToUser / HostAbi trailer lines after turn JSON.

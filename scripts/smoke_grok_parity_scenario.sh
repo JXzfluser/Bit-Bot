@@ -476,12 +476,20 @@ for needle in (
     'launch cloud agent',
     'list routines',
     'tick routines',
+    'listdir docs',
+    'webfetch https://example.com',
+    'computer use open',
+    'shell echo',
 ):
     assert needle in cv, needle
     assert needle in main, needle
 print('parity native SendToUser surface wired ok')
 print('parity native product quick actions ok')
 "
+"${MOBILE[@]}" --machine-kind android --session-id parity-and-fs --approved "listdir docs" >/tmp/parity-and-fs-tools.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-and-fs-tools.txt').read();assert 'fs_list' in t or 'listdir' in t;assert 'machine_kind=android' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/fs_list-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='fs_list';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity android fs_list delivery mirror ok', m.get('host_path'), mirrors[-1])"
+"${MOBILE[@]}" --machine-kind ios --session-id parity-ios-fetch "webfetch https://example.com" >/tmp/parity-ios-fetch.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-ios-fetch.txt').read();assert 'webfetch' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/webfetch-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='webfetch';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios webfetch delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-x "x search moonbit" >/tmp/parity-ios-x.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-x.txt').read();assert 'x_search' in t;assert 'machine_kind=ios' in t;assert 'HostAbi x_search path=' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/x_search-*.json'));assert mirrors;m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='x_search';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios x_search delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind android --session-id parity-and-fin "finance get_balance" >/tmp/parity-and-fin.txt

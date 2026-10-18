@@ -355,7 +355,19 @@ mobile=Path('hosts/mobile_host/run.js').read_text()
 assert 'finance_call' in mobile and 'job_search' in mobile
 assert 'workflow_list' in mobile and 'inbound_reaction' in mobile
 assert 'receipt_path' in mobile and 'skill_path' in mobile
-print('desktop teammates + mail/commerce + channels/delivery panels wired ok')
+assert 'id=\"mem-remember\"' in html and 'id=\"tools-meta\"' in html
+assert 'id=\"tool-shell\"' in html and 'id=\"tool-listdir\"' in html
+assert 'id=\"tool-read\"' in html and 'id=\"tool-webfetch\"' in html
+assert 'id=\"cu-meta\"' in html and 'id=\"cu-open\"' in html
+assert 'id=\"cu-native\"' in html and 'id=\"cu-ocr\"' in html and 'id=\"cu-shop\"' in html
+assert 'id=\"sc-code\"' in html
+assert 'shell echo desktop-tools-panel' in html
+assert 'listdir docs' in html and 'webfetch https://example.com' in html
+assert 'BITBOT_CU_NATIVE_ACT' in html and 'BITBOT_CU_OCR' in html
+assert 'code changes README.mbt.md' in html
+assert 'fs_list' in mobile and 'webfetch' in mobile and 'computer_use' in mobile
+assert 'shared_memory_put' in mobile and 'code_changes' in mobile
+print('desktop teammates + mail/commerce + channels/delivery + tools/CU panels wired ok')
 "
 python3 -c "
 from pathlib import Path

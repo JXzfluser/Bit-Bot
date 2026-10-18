@@ -450,7 +450,32 @@
       <div class="name">Host session seed</div>
       <div class="meta" id="memory-meta">remember k=v · recall (desktop-host.json)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="mem-remember" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Remember</button>
         <button type="button" id="mem-recall" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Recall</button>
+        <button type="button" id="mem-shared-put" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared put</button>
+        <button type="button" id="mem-shared-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared read</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Tools</div>
+    <div class="machine-item">
+      <div class="name">Shell / FS (Host FFI)</div>
+      <div class="meta" id="tools-meta">shell · listdir · read (ADR 0002)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="tool-shell" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Shell echo</button>
+        <button type="button" id="tool-listdir" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Listdir docs</button>
+        <button type="button" id="tool-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read README</button>
+        <button type="button" id="tool-webfetch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">WebFetch example.com</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Computer use</div>
+    <div class="machine-item">
+      <div class="name">box-chrome CU (CM-0802)</div>
+      <div class="meta" id="cu-meta">navigate · act · vision (private CDP)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="cu-open" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Open example.com</button>
+        <button type="button" id="cu-native" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Native act click</button>
+        <button type="button" id="cu-ocr" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">OCR pass</button>
+        <button type="button" id="cu-shop" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shop playbook</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Source control</div>
@@ -460,6 +485,7 @@
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="sc-status" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Git status</button>
         <button type="button" id="sc-create-pr" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create PR plan</button>
+        <button type="button" id="sc-code" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Code changes plan</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Media</div>
@@ -1848,6 +1874,59 @@
                           .slice(-1)[0]
                       : "");
                   types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "shell · " +
+                      (h.ok === false ? "fail" : "ok") +
+                      (h.path || h.artifact_path
+                        ? " · " +
+                          String(h.path || h.artifact_path)
+                            .split("/")
+                            .slice(-1)[0]
+                        : "");
+                  }
+                } else if (h.kind === "fs_list" || h.kind === "fs_read" || h.kind === "webfetch") {
+                  label =
+                    h.kind +
+                    ":" +
+                    String(p.path || p.url || p.count || "")
+                      .toString()
+                      .split("/")
+                      .slice(-1)[0];
+                  types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      h.kind +
+                      (p.count != null ? " · " + p.count + " entries" : "") +
+                      (p.public_fallback_residual === true
+                        ? " · fallback residual"
+                        : "") +
+                      (p.pretend_fetched === true || p.pretend_listing === true
+                        ? " · pretend!"
+                        : "");
+                  }
+                } else if (h.kind === "computer_use") {
+                  label =
+                    "cu:" +
+                    ((p.outcome && p.outcome.checkout_stage) ||
+                      (p.gui && p.gui.gui_mode) ||
+                      "run");
+                  types.push("attachment");
+                  const cuMeta = document.getElementById("cu-meta");
+                  if (cuMeta) {
+                    const oc = p.outcome || {};
+                    const g = p.gui || {};
+                    cuMeta.textContent =
+                      (g.gui_mode || "cu") +
+                      (g.os_window ? " · os_window" : "") +
+                      (oc.ocr ? " · ocr" : oc.ocr_residual ? " · ocr_residual" : "") +
+                      (g.os_window_automation_residual === false
+                        ? " · native_act"
+                        : "") +
+                      (oc.pretend_purchased === true ? " · pretend!" : "");
+                  }
                 } else if (h.kind === "mail_send") {
                   label =
                     "mail:" +
@@ -2694,8 +2773,48 @@
     document.getElementById("mail-search").addEventListener("click", () => {
       runUserTurn("search mail Invoice", {});
     });
+    document.getElementById("mem-remember").addEventListener("click", () => {
+      runUserTurn("remember desktop_panel=ready", {});
+    });
     document.getElementById("mem-recall").addEventListener("click", () => {
       runUserTurn("recall", {});
+    });
+    document.getElementById("mem-shared-put").addEventListener("click", () => {
+      runUserTurn("shared memory put scope=desk key=panel value=1", {});
+    });
+    document.getElementById("mem-shared-read").addEventListener("click", () => {
+      runUserTurn("shared memory read scope=desk key=panel", {});
+    });
+    document.getElementById("tool-shell").addEventListener("click", () => {
+      runUserTurn("shell echo desktop-tools-panel", { approved: true });
+    });
+    document.getElementById("tool-listdir").addEventListener("click", () => {
+      runUserTurn("listdir docs", {});
+    });
+    document.getElementById("tool-read").addEventListener("click", () => {
+      runUserTurn("read README.mbt.md", {});
+    });
+    document.getElementById("tool-webfetch").addEventListener("click", () => {
+      runUserTurn("webfetch https://example.com", {});
+    });
+    document.getElementById("cu-open").addEventListener("click", () => {
+      runUserTurn("computer use open https://example.com click:40,40", {});
+    });
+    document.getElementById("cu-native").addEventListener("click", () => {
+      runUserTurn("computer use open https://example.com click:40,40", {
+        env: { BITBOT_CU_NATIVE_ACT: "1" },
+      });
+    });
+    document.getElementById("cu-ocr").addEventListener("click", () => {
+      runUserTurn("computer use open https://example.com click:40,40", {
+        env: { BITBOT_CU_OCR: "1" },
+      });
+    });
+    document.getElementById("cu-shop").addEventListener("click", () => {
+      runUserTurn("shop target.com headphones", {});
+    });
+    document.getElementById("sc-code").addEventListener("click", () => {
+      runUserTurn("code changes README.mbt.md", {});
     });
 
     boot();
