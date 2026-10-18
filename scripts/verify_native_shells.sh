@@ -117,6 +117,7 @@ for needle in (
     "section post group=g1",
     "meeting chat body=stand-up",
     "learn from demo title=Checkout",
+    "fill credential domain=login.example.test",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle
@@ -149,6 +150,7 @@ for kind in (
     "package_install",
     "room_turn",
     "send_to_agent",
+    "credential_fill",
 ):
     assert kind in mobile, kind
 assert "receipt_path" in mobile and "skill_path" in mobile

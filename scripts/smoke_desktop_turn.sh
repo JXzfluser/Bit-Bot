@@ -410,6 +410,11 @@ assert 'section post group=g1' in html
 assert 'learn from demo title=Checkout' in html
 assert 'meeting chat body=stand-up' in html
 assert 'room_turn' in mobile and 'send_to_agent' in mobile
+assert 'id=\"ch-cred-fill\"' in html and 'id=\"cu-paywall\"' in html
+assert 'fill credential domain=login.example.test' in html
+assert 'BITBOT_CU_ALLOW_LOCAL' in html
+assert 'shop cart checkout buy' in html
+assert 'credential_fill' in mobile
 print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines + skills/box + mcp/subagent + prefs panels wired ok')
 "
 python3 -c "

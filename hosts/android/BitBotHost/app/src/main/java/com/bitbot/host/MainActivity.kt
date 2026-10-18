@@ -94,6 +94,7 @@ class MainActivity : ComponentActivity() {
       "Section post" to "section post group=g1 section=sec-a from=asst-1 body=hello",
       "Meeting chat" to "meeting chat body=stand-up update direct=1",
       "Learn demo" to "learn from demo title=Checkout steps=click:Cart|type:email",
+      "Fill credential" to "fill credential domain=login.example.test",
       "Box doctor" to "box doctor",
       "Box env" to "box env",
       "Chrome probe" to "box chrome probe",

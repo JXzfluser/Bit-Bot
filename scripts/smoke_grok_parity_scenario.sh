@@ -502,6 +502,7 @@ for needle in (
     'section post group=g1',
     'meeting chat body=stand-up',
     'learn from demo title=Checkout',
+    'fill credential domain=login.example.test',
 ):
     assert needle in cv, needle
     assert needle in main, needle
@@ -526,6 +527,8 @@ python3 -c "import json,os,glob;t=open('/tmp/parity-and-sa.txt').read();assert '
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-sbfs.txt').read();assert 'shared_box_fs' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/shared_box_fs-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='shared_box_fs';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios shared_box_fs delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind android --session-id parity-and-las "list agents" >/tmp/parity-and-las.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-and-las.txt').read();assert 'list_agents_sidebar' in t;assert 'machine_kind=android' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/list_agents_sidebar-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='list_agents_sidebar';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity android list_agents_sidebar delivery mirror ok', m.get('host_path'), mirrors[-1])"
+"${MOBILE[@]}" --machine-kind ios --session-id parity-ios-cred --approved "fill credential domain=login.example.test" >/tmp/parity-ios-cred.txt
+python3 -c "import json,os,glob;t=open('/tmp/parity-ios-cred.txt').read();assert 'credential_fill' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/credential_fill-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='credential_fill';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios credential_fill delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-fetch "webfetch https://example.com" >/tmp/parity-ios-fetch.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-fetch.txt').read();assert 'webfetch' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/webfetch-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='webfetch';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios webfetch delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-x "x search moonbit" >/tmp/parity-ios-x.txt

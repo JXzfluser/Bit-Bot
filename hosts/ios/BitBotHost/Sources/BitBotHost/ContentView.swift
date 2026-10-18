@@ -61,6 +61,7 @@ struct ContentView: View {
     ("Section post", "section post group=g1 section=sec-a from=asst-1 body=hello"),
     ("Meeting chat", "meeting chat body=stand-up update direct=1"),
     ("Learn demo", "learn from demo title=Checkout steps=click:Cart|type:email"),
+    ("Fill credential", "fill credential domain=login.example.test"),
     ("Box doctor", "box doctor"),
     ("Box env", "box env"),
     ("Chrome probe", "box chrome probe"),
