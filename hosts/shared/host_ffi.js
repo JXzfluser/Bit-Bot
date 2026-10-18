@@ -7089,6 +7089,11 @@ function createHostFfi(repoRoot) {
         guide_permission: "host_guide_permission",
         render_markdown: "host_render_markdown",
         auto_review_settings: "host_auto_review_settings",
+        open_settings: "host_settings_open",
+        settings: "host_settings_open",
+        settings_open: "host_settings_open",
+        delete_agent: "host_delete_agent",
+        remove_agent: "host_delete_agent",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7256,7 +7261,9 @@ function createHostFfi(repoRoot) {
         mapped === "host_local_execution" ||
         mapped === "host_guide_permission" ||
         mapped === "host_render_markdown" ||
-        mapped === "host_auto_review_settings"
+        mapped === "host_auto_review_settings" ||
+        mapped === "host_settings_open" ||
+        mapped === "host_delete_agent"
       ) {
         const shortAt = new Date().toISOString();
         if (mapped === "host_mail_draft") {
@@ -11180,6 +11187,44 @@ function createHostFfi(repoRoot) {
                 path: p.path || null,
                 mode: p.mode || null,
                 pretend_opened: p.pretend_opened,
+              }),
+            },
+            host_settings_open: {
+              kind: "settings_open",
+              field: "settings_open",
+              cmd: () =>
+                String(
+                  args.command ||
+                    args.anchor ||
+                    args.id ||
+                    args.section ||
+                    args.body ||
+                    "",
+                ).trim(),
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_opened: p.pretend_opened,
+                anchor: p.anchor || null,
+              }),
+            },
+            host_delete_agent: {
+              kind: "delete_agent",
+              field: "delete_agent",
+              cmd: () =>
+                String(
+                  args.command ||
+                    args.agent_id ||
+                    args.id ||
+                    args.agent ||
+                    "asst-mcp",
+                ).trim() || "asst-mcp",
+              pick: (p) => ({
+                path: p.path || null,
+                mode: p.mode || null,
+                pretend_deleted: p.pretend_deleted,
+                agent_id: p.agent_id || null,
+                phase: p.phase || null,
               }),
             },
           };

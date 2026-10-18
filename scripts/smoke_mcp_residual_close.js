@@ -1296,6 +1296,20 @@ function stripHostAppliedMarker(file) {
   const slidesAliasP = JSON.parse(slidesAliasH.stdout || "{}");
   if (slidesAliasP.mapped !== "host_slides_pptx" || slidesAliasP.product_tool_residual !== false) throw new Error(JSON.stringify(slidesAliasP).slice(0,200));
   console.log("mcp_call slides_pptx alias short-circuit ok", slidesAliasP.mapped, (slidesAliasP.slides||{}).mode || slidesAliasP.mapped);
+  const settingsOpenRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.open_settings|{\"anchor\":\"theme\"}" }]);
+  const settingsOpenH = settingsOpenRuns.find((r) => r && r.kind === "mcp_call");
+  if (!settingsOpenH || !settingsOpenH.ok) throw new Error("open_settings mcp");
+  const settingsOpenP = JSON.parse(settingsOpenH.stdout || "{}");
+  if (settingsOpenP.mapped !== "host_settings_open" || settingsOpenP.product_tool_residual !== false) throw new Error(JSON.stringify(settingsOpenP).slice(0,200));
+  if ((settingsOpenP.settings_open||{}).pretend_opened === true) throw new Error("pretend_opened settings");
+  console.log("mcp_call open_settings short-circuit ok", settingsOpenP.mapped, (settingsOpenP.settings_open||{}).mode);
+  const delAgentRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.delete_agent|{\"agent_id\":\"asst-mcp-del\"}" }]);
+  const delAgentH = delAgentRuns.find((r) => r && r.kind === "mcp_call");
+  if (!delAgentH || !delAgentH.ok) throw new Error("delete_agent mcp");
+  const delAgentP = JSON.parse(delAgentH.stdout || "{}");
+  if (delAgentP.mapped !== "host_delete_agent" || delAgentP.product_tool_residual !== false) throw new Error(JSON.stringify(delAgentP).slice(0,200));
+  if ((delAgentP.delete_agent||{}).pretend_deleted === true) throw new Error("pretend_deleted");
+  console.log("mcp_call delete_agent short-circuit ok", delAgentP.mapped, (delAgentP.delete_agent||{}).mode, (delAgentP.delete_agent||{}).phase);
   // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}
