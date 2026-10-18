@@ -1163,7 +1163,7 @@ function createHostFfi(repoRoot) {
       inboundTurnResidual = hooked.inboundTurnResidual;
     }
     // Claim/pull is not HTTP Events push — keep inbound_push_residual true
-    // (host_slack/teams/email/meeting_events_listen close it on real Events/push POST).
+    // (host_slack/teams/email/meeting/voice_events_listen close it on real Events/push POST).
     const inboundPushResidual = claimReady ? true : undefined;
     const snapshot = {
       ...artifact,
