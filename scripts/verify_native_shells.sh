@@ -125,6 +125,12 @@ for needle in (
     "connect finance",
     "book flight google.com/flights",
     "journal date=2026-10-17",
+    "personal slack dm owner=Uowner",
+    "channel plan body=stay in chat only",
+    "launch bare chrome",
+    "install package npm left-pad@1.3.0",
+    "open members group=group-1",
+    "query journal from=2026-10-01",
 ):
     assert needle in ios_cv, needle
     assert needle in and_main, needle

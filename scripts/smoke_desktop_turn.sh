@@ -431,6 +431,17 @@ assert 'read mail t-invoice-1' in html
 assert 'draft outlook mail' in html
 assert 'journal date=2026-10-17' in html
 assert 'routine_pause' in mobile and 'journal_append' in mobile
+assert 'id=\"ch-slack-dm\"' in html and 'id=\"del-channel-plan\"' in html
+assert 'id=\"box-bare-chrome\"' in html
+assert 'id=\"tool-pkg-npm\"' in html and 'id=\"tool-journal-range\"' in html
+assert 'id=\"tm-members-group\"' in html
+assert 'personal slack dm owner=Uowner' in html
+assert 'channel plan body=stay in chat only' in html
+assert 'launch bare chrome' in html
+assert 'install package npm left-pad@1.3.0' in html
+assert 'open members group=group-1' in html
+assert 'query journal from=2026-10-01' in html
+assert 'channel_delivery' in html
 print('desktop teammates + mail/commerce + channels/delivery + tools/CU + machines + skills/box + mcp/subagent + prefs panels wired ok')
 "
 python3 -c "

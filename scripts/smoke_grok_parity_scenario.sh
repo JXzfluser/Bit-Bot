@@ -510,6 +510,12 @@ for needle in (
     'connect finance',
     'book flight google.com/flights',
     'journal date=2026-10-17',
+    'personal slack dm owner=Uowner',
+    'channel plan body=stay in chat only',
+    'launch bare chrome',
+    'install package npm left-pad@1.3.0',
+    'open members group=group-1',
+    'query journal from=2026-10-01',
 ):
     assert needle in cv, needle
     assert needle in main, needle
@@ -540,6 +546,10 @@ python3 -c "import json,os,glob;t=open('/tmp/parity-ios-cred.txt').read();assert
 python3 -c "import json,os,glob;t=open('/tmp/parity-and-japp.txt').read();assert 'journal_append' in t;assert 'machine_kind=android' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/journal_append-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='journal_append';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity android journal_append delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-rmail "read mail t-invoice-1" >/tmp/parity-ios-rmail.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-rmail.txt').read();assert 'mail_read' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/mail_read-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='mail_read';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios mail_read delivery mirror ok', m.get('host_path'), mirrors[-1])"
+"${RUN[@]}" --approved "launch bare chrome" >/tmp/parity-bare-chrome.json
+python3 -c "import json,os;d=json.load(open('/tmp/parity-bare-chrome.json'));assert d.get('intent')=='box_chrome_probe';h=next(x for x in d.get('host_results')or[] if x.get('kind')=='box_chrome_probe');p=json.loads(h.get('stdout')or'{}');assert p.get('ok') is False or p.get('rejected_bare') is True or 'bare-refused' in str(p.get('path')or'');assert p.get('pretend_launched') is not True;assert p.get('path') and os.path.isfile(p['path']);print('parity launch bare chrome refuse honesty ok', p.get('path'))"
+"${RUN[@]}" "channel plan body=stay in chat only" >/tmp/parity-channel-plan.json
+python3 -c "import json;d=json.load(open('/tmp/parity-channel-plan.json'));assert d.get('intent')=='channel_delivery';assert d.get('channel_delivery')=='in_app';assert not d.get('effects');print('parity channel plan in_app ok', d.get('channel_delivery'))"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-fetch "webfetch https://example.com" >/tmp/parity-ios-fetch.txt
 python3 -c "import json,os,glob;t=open('/tmp/parity-ios-fetch.txt').read();assert 'webfetch' in t;assert 'machine_kind=ios' in t;mirrors=sorted(glob.glob('data/device/mobile-delivery-mirrors/webfetch-*.json'));assert mirrors, t[-600:];m=json.load(open(mirrors[-1]));assert m.get('host_kind')=='webfetch';assert m.get('host_path') and os.path.isfile(m['host_path']);print('parity ios webfetch delivery mirror ok', m.get('host_path'), mirrors[-1])"
 "${MOBILE[@]}" --machine-kind ios --session-id parity-ios-x "x search moonbit" >/tmp/parity-ios-x.txt
