@@ -142,6 +142,8 @@ pub(all) enum TurnIntent {
   GuidePermission(kind~ : String, detail~ : String)
   RenderMarkdown(body~ : String)
   ReactMessage(message_id~ : String, emoji~ : String)
+  Screenshot(agent_id~ : String)
+  CheckUpdates
   CodeChanges(path~ : String)
   SourceControl(repo_kind~ : String)
   SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
@@ -246,6 +248,8 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     GuidePermission(_) => "guide_permission"
     RenderMarkdown(_) => "render_markdown"
     ReactMessage(_) => "react_message"
+    Screenshot(_) => "screenshot"
+    CheckUpdates => "check_updates"
     CodeChanges(_) => "code_changes"
     SourceControl(_) => "source_control"
     SendOnBehalf(_) => "send_on_behalf"
@@ -3634,6 +3638,38 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "ReactToMessage planned (CM-2101/2128). Host toggles visible emoji pill; may end turn.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    Screenshot(agent_id~) => {
+      let effect : DesktopEffect = {
+        kind: "screenshot",
+        command: "agent=" + agent_id,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Screenshot planned (CM-0605). Host captures read-only frame when DISPLAY/tools available; never pretends Live.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    CheckUpdates => {
+      let effect : DesktopEffect = {
+        kind: "check_updates",
+        command: "anchor=update-channel",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Check for Updates planned (CM-1906). Host opens Updates tab (update-channel); distinct from Update Computer.",
         intent,
         ctx~,
         effects=[effect],

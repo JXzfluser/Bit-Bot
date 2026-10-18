@@ -140,6 +140,8 @@
 - [x] Host missing-permission Settings guide (CM-2178): `guide_permission` deeplink; never pretend connected
 - [x] Host markdown math/mermaid render (CM-2103): `render_markdown` durable HTML + Desktop math/mermaid cards; unclosed math refused
 - [x] Host ReactToMessage pill toggle (CM-2101/2128): `react_message` durable pills + Desktop tray; same emoji cancels
+- [x] Host screenshot product path (CM-0605): `screenshot` read-only frame via ffmpeg/import when DISPLAY; honest `screenshot_residual` otherwise; never pretend Live
+- [x] Host Check for Updates ≠ Update Computer (CM-1906): `check_updates` opens Updates/`update-channel`; artifact asserts distinct from Computer/`update-computer`
 - [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
 - [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn
 - [x] Host schedule_meeting materializes real `.ics` (VCALENDAR/VEVENT) under `data/calendar/` + SendToUser attachment

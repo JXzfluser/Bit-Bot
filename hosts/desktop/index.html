@@ -1004,6 +1004,49 @@
               );
             } catch (_) { /* ignore */ }
           }
+          const shotHost = r.host_results.find(
+            (h) => h && h.kind === "screenshot" && h.ok,
+          );
+          if (shotHost) {
+            try {
+              const p = JSON.parse(shotHost.stdout || "{}");
+              if (p.has_frame && p.frame_path) {
+                addMsg(
+                  "assistant",
+                  "Screenshot · " +
+                    (p.tool || "capture") +
+                    " · " +
+                    p.frame_path +
+                    " (read_only)",
+                );
+              } else {
+                addMsg(
+                  "assistant",
+                  "Screenshot residual · " +
+                    (p.residual_reason || "unavailable") +
+                    " (no pretend Live)",
+                );
+              }
+            } catch (_) { /* ignore */ }
+          }
+          const cupHost = r.host_results.find(
+            (h) => h && h.kind === "check_updates" && h.ok,
+          );
+          if (cupHost) {
+            try {
+              const p = JSON.parse(cupHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Updates · " +
+                  (p.updates_tab || "Updates") +
+                  " / " +
+                  (p.updates_anchor || "update-channel") +
+                  (p.ne_update_computer
+                    ? " ≠ Update Computer"
+                    : ""),
+              );
+            } catch (_) { /* ignore */ }
+          }
           // CHARTER Delivery: SendToUser surface (text/widget/attachment/voice/reaction/thread).
           const attachKinds = [
             "skill_write",
@@ -1027,6 +1070,8 @@
             "set_notify",
             "update_computer",
             "guide_permission",
+            "screenshot",
+            "check_updates",
             "export_pack",
             "computer_use",
             "voice_session",

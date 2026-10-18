@@ -669,6 +669,41 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(LocalExecution(enabled=on))
   }
+  // CM-0605 product Host read-only screenshot (real frame when DISPLAY/tools).
+  if low == "screenshot" ||
+      low == "take screenshot" ||
+      low == "capture screenshot" ||
+      low == "screen shot" ||
+      low.has_prefix("screenshot ") ||
+      low.has_prefix("take screenshot ") {
+    let rest = if low.has_prefix("screenshot ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("take screenshot ") {
+      trimmed[16:].trim().to_owned()
+    } else {
+      ""
+    }
+    let agent_id = match extract_kv(rest, "agent") {
+      Some(v) => v.trim().to_owned()
+      None =>
+        if rest != "" && !rest.contains("=") {
+          rest
+        } else {
+          "executor"
+        }
+    }
+    return Some(Screenshot(agent_id~))
+  }
+  // CM-1906 product Host Updates tab ≠ Update Computer.
+  if low == "check updates" ||
+      low == "check for updates" ||
+      low == "open updates" ||
+      low == "updates tab" ||
+      low == "update channel" ||
+      low == "open update channel" ||
+      low == "app updates" {
+    return Some(CheckUpdates)
+  }
   // CM-2101/2128 product Host ReactToMessage pill toggle.
   if low.has_prefix("react message ") ||
       low.has_prefix("react to message ") ||

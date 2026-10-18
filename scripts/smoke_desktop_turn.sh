@@ -212,6 +212,16 @@ node hosts/cli_host/run_turn.js "react message msg=msg-smoke emoji=👍" >/tmp/b
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-react1.json'));assert d.get('intent')=='react_message';h=next(x for x in d['host_results'] if x.get('kind')=='react_message');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('visible_pill') is True;assert p.get('active') is True;assert p.get('emoji');assert p.get('pretend_pill') is False;assert p.get('end_turn') is True;assert os.path.isfile('data/delivery/react-pills.json');print('react_message on ok', p.get('emoji'), p.get('message_id'))"
 node hosts/cli_host/run_turn.js "react message msg=msg-smoke emoji=👍" >/tmp/bitbot-react2.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-react2.json'));h=next(x for x in d['host_results'] if x.get('kind')=='react_message');p=json.loads(h['stdout']);assert p.get('visible_pill') is False;assert p.get('active') is False;assert p.get('visible') is False;print('react_message toggle-off ok', p.get('message_id'))"
+echo "==> Host screenshot + check_updates (CM-0605/1906)"
+node hosts/cli_host/run_turn.js "screenshot agent=executor" >/tmp/bitbot-screenshot.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-screenshot.json'));assert d.get('intent')=='screenshot';h=next(x for x in d['host_results'] if x.get('kind')=='screenshot');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('read_only') is True;assert p.get('clicked') is False;assert p.get('pretend_live') is False;assert p.get('pretend_frame') is False;assert p.get('path') and os.path.isfile(p['path']);
+ok=p.get('has_frame') is True
+if ok:
+  assert p.get('frame_path') and os.path.isfile(p['frame_path']);assert p.get('frame_bytes_len',0)>0;assert p.get('screenshot_residual') is False;print('screenshot live frame ok', p.get('tool'), p.get('frame_path'), p.get('frame_bytes_len'))
+else:
+  assert p.get('screenshot_residual') is True;assert p.get('has_frame') is False;assert p.get('residual_reason');print('screenshot honest residual ok', p.get('residual_reason'))"
+node hosts/cli_host/run_turn.js "check updates" >/tmp/bitbot-check-updates.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-check-updates.json'));assert d.get('intent')=='check_updates';h=next(x for x in d['host_results'] if x.get('kind')=='check_updates');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('updates_anchor')=='update-channel';assert p.get('updates_tab')=='Updates';assert p.get('computer_anchor')=='update-computer';assert p.get('computer_tab')=='Computer';assert p.get('ne_update_computer') is True;assert p.get('distinct_deep_links') is True;assert p.get('distinct_tabs') is True;assert p.get('updates_deep_link')!=p.get('computer_deep_link');assert p.get('check_for_updates') is True;assert p.get('pretend_opened') is False;assert p.get('path') and os.path.isfile(p['path']);print('check_updates vs update-computer ok', p.get('updates_deep_link'), '≠', p.get('computer_deep_link'))"
 
 echo "==> Host durable routines"
 node hosts/cli_host/run_turn.js --approved "create routine id=host-r cron=@hourly prompt=tick" >/tmp/bitbot-routine-create.json

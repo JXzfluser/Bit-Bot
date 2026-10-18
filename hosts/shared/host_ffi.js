@@ -3621,6 +3621,265 @@ function createHostFfi(repoRoot) {
     }
   }
 
+  async function executeScreenshot(command) {
+    // CM-0605 — read-only box desktop capture; real frame when DISPLAY+tools, else honest residual.
+    const { execFileSync } = require("child_process");
+    const at = new Date().toISOString();
+    const dir = path.join(REPO_ROOT, "data", "box", "screenshots");
+    fs.mkdirSync(dir, { recursive: true });
+    const raw = String(command || "");
+    let agentId = "executor";
+    const am = raw.match(/\bagent=([^\s]+)/i);
+    if (am) agentId = am[1].trim();
+    else if (raw.trim() && !raw.includes("=")) agentId = raw.trim();
+
+    const display = process.env.DISPLAY || "";
+    const outPath = path.join(
+      dir,
+      `shot-${agentId.replace(/[^\w.-]+/g, "_")}-${Date.now().toString(36)}.png`,
+    );
+    let capture = {
+      ok: false,
+      path: null,
+      tool: null,
+      bytes: 0,
+      error: null,
+      display: display || null,
+    };
+
+    function tryCapture(bin, args, toolName) {
+      try {
+        execFileSync(bin, args, {
+          timeout: 15000,
+          stdio: ["ignore", "ignore", "ignore"],
+          env: process.env,
+        });
+        if (fs.existsSync(outPath) && fs.statSync(outPath).size > 0) {
+          return {
+            ok: true,
+            path: outPath,
+            tool: toolName,
+            bytes: fs.statSync(outPath).size,
+            error: null,
+            display: display || null,
+          };
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          path: null,
+          tool: toolName,
+          bytes: 0,
+          error: String(err && err.message ? err.message : err),
+          display: display || null,
+        };
+      }
+      return null;
+    }
+
+    if (!display) {
+      capture.error = "no DISPLAY";
+    } else {
+      // Prefer ffmpeg x11grab (Host env), then ImageMagick import / gnome-screenshot / scrot.
+      let whichFfmpeg = null;
+      try {
+        whichFfmpeg = String(
+          execFileSync("bash", ["-lc", "command -v ffmpeg"], {
+            timeout: 3000,
+          }),
+        ).trim();
+      } catch {
+        whichFfmpeg = process.env.FFMPEG || null;
+      }
+      if (whichFfmpeg) {
+        const r = tryCapture(
+          whichFfmpeg,
+          [
+            "-y",
+            "-f",
+            "x11grab",
+            "-video_size",
+            "1100x800",
+            "-i",
+            `${display}+0,0`,
+            "-frames:v",
+            "1",
+            outPath,
+          ],
+          "ffmpeg-x11grab",
+        );
+        if (r && r.ok) capture = r;
+        else if (r && r.error) capture.error = r.error;
+      }
+      if (!capture.ok) {
+        for (const [bin, args, toolName] of [
+          ["import", ["-window", "root", outPath], "import"],
+          ["gnome-screenshot", ["-f", outPath], "gnome-screenshot"],
+          ["scrot", [outPath], "scrot"],
+        ]) {
+          let found = null;
+          try {
+            found = String(
+              execFileSync("bash", ["-lc", `command -v ${bin}`], {
+                timeout: 3000,
+              }),
+            ).trim();
+          } catch {
+            found = null;
+          }
+          if (!found) continue;
+          const r = tryCapture(found, args, toolName);
+          if (r && r.ok) {
+            capture = r;
+            break;
+          }
+          if (r && r.error) capture.error = r.error;
+        }
+      }
+      if (!capture.ok && !capture.error) {
+        capture.error = "no screenshot tool";
+      }
+    }
+
+    const residual = !capture.ok;
+    const hasFrame = Boolean(capture.ok && capture.path && capture.bytes > 0);
+    const snapPath = path.join(
+      dir,
+      `meta-${agentId.replace(/[^\w.-]+/g, "_")}-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_screenshot",
+      agent_id: agentId,
+      pretend_live: false,
+      pretend_frame: false,
+      read_only: true,
+      clicked: false,
+      has_frame: hasFrame,
+      frame_bytes_len: capture.bytes || 0,
+      frame_path: hasFrame ? capture.path : null,
+      tool: capture.tool,
+      display: capture.display,
+      screenshot_residual: residual,
+      residual_reason: residual ? capture.error || "capture_failed" : null,
+      frame_origin: hasFrame ? "LiveDisplay" : null,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "shots.jsonl"), { ...artifact, path: snapPath });
+    const delivery = recordSendToUser({
+      type: "attachment",
+      path: hasFrame ? capture.path : snapPath,
+      label: "screenshot",
+      has_frame: hasFrame,
+      read_only: true,
+      source_kind: "screenshot",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "screenshot",
+      command: raw || agentId,
+      path: snapPath,
+      frame_path: artifact.frame_path,
+      has_frame: hasFrame,
+      at,
+    });
+    return okJson("screenshot", raw || agentId, {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
+  async function executeCheckUpdates(command) {
+    // CM-1906 — Updates tab (update-channel) ≠ Update Computer (update-computer).
+    const at = new Date().toISOString();
+    const dir = settingsDir();
+    const opsDir = path.join(dir, "ops");
+    fs.mkdirSync(opsDir, { recursive: true });
+    const raw = String(command || "anchor=update-channel");
+
+    const updatesAnchor = "update-channel";
+    const computerAnchor = "update-computer";
+    const updatesTab = SETTINGS_ANCHORS[updatesAnchor]; // Updates
+    const computerTab = SETTINGS_ANCHORS[computerAnchor]; // Computer
+    const updatesDeepLink = "grokbot://app/v1/settings?id=" + updatesAnchor;
+    const computerDeepLink = "grokbot://app/v1/settings?id=" + computerAnchor;
+
+    // Open Settings panel onto Updates / update-channel (not Computer).
+    const panelPath = path.join(dir, "panel.json");
+    const panel = {
+      open: true,
+      entry: "sidebar-account-button",
+      anchor: updatesAnchor,
+      tab: updatesTab,
+      deep_link: updatesDeepLink,
+      tabs: ["General", "Computer", "Vault", "Usage & Billing", "Updates"],
+      check_for_updates: true,
+      update_track: "stable",
+      at,
+    };
+    fs.writeFileSync(panelPath, JSON.stringify(panel, null, 2));
+
+    const snapPath = path.join(
+      opsDir,
+      `check-updates-${Date.now().toString(36)}.json`,
+    );
+    const artifact = {
+      mode: "host_check_updates",
+      pretend_opened: false,
+      panel_open: true,
+      // Updates (app) track
+      updates_anchor: updatesAnchor,
+      updates_tab: updatesTab,
+      updates_deep_link: updatesDeepLink,
+      check_for_updates: true,
+      update_track: "stable",
+      // Explicit distinction from Update Computer (box)
+      computer_anchor: computerAnchor,
+      computer_tab: computerTab,
+      computer_deep_link: computerDeepLink,
+      ne_update_computer: true,
+      distinct_deep_links: updatesDeepLink !== computerDeepLink,
+      distinct_tabs: updatesTab !== computerTab,
+      distinct_anchors: updatesAnchor !== computerAnchor,
+      panel_path: panelPath,
+      at,
+    };
+    fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(dir, "opens.jsonl"), {
+      ...artifact,
+      path: snapPath,
+      kind: "check_updates",
+    });
+    const delivery = recordSendToUser({
+      type: "widget",
+      widget: "settings_updates",
+      path: snapPath,
+      label: "check_updates",
+      anchor: updatesAnchor,
+      tab: updatesTab,
+      ne_update_computer: true,
+      source_kind: "check_updates",
+      at,
+    });
+    appendHostDeliveryJournal({
+      kind: "check_updates",
+      command: raw,
+      path: snapPath,
+      panel_path: panelPath,
+      updates_anchor: updatesAnchor,
+      computer_anchor: computerAnchor,
+      at,
+    });
+    return okJson("check_updates", raw || "check updates", {
+      ...artifact,
+      path: snapPath,
+      send_to_user: delivery,
+      ok: true,
+    });
+  }
+
   async function executeReactMessage(command) {
     // CM-2101/2128 — toggle visible emoji pill on a message; may end turn.
     const at = new Date().toISOString();
@@ -6157,6 +6416,8 @@ function createHostFfi(repoRoot) {
       kind === "guide_permission" ||
       kind === "render_markdown" ||
       kind === "react_message" ||
+      kind === "screenshot" ||
+      kind === "check_updates" ||
       kind === "box_doctor" ||
       kind === "box_env" ||
       kind === "box_clock" ||
@@ -11522,6 +11783,14 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "react_message") {
         results.push(await executeReactMessage(cmd));
+        continue;
+      }
+      if (kind === "screenshot") {
+        results.push(await executeScreenshot(cmd));
+        continue;
+      }
+      if (kind === "check_updates") {
+        results.push(await executeCheckUpdates(cmd));
         continue;
       }
       if (kind === "connectors_probe") {
