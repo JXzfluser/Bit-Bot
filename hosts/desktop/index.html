@@ -2100,7 +2100,13 @@
                       "draft · " + (p.mode || "mail") + (p.path ? " · snap" : "");
                   }
                 } else if (h.kind === "copy_to_box" || h.kind === "copy_from_box") {
-                  label = h.kind + ":" + String(p.dest || p.path || "").split("/").slice(-1)[0];
+                  label =
+                    h.kind +
+                    ":" +
+                    String(p.dest || p.path || "").split("/").slice(-1)[0] +
+                    (p.cross_machine_copy_residual === true
+                      ? "/cross_machine_copy_residual"
+                      : "");
                   types.push("attachment");
                   const boxMeta = document.getElementById("box-meta");
                   if (boxMeta) {
@@ -2110,6 +2116,9 @@
                       String(p.dest || p.path || "?")
                         .split("/")
                         .slice(-1)[0] +
+                      (p.cross_machine_copy_residual === true
+                        ? " · cross_machine_copy_residual"
+                        : "") +
                       (p.pretend_remote_machine === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "purchase") {
@@ -2158,18 +2167,28 @@
                 } else if (h.kind === "mcp_call") {
                   const wtf = p.write_to_file || {};
                   const fe = p.file_expand || {};
+                  const mcpResidual =
+                    p.product_tool_residual === true
+                      ? "/product_tool_residual"
+                      : "";
                   if (wtf.path) {
                     label =
                       "mcp_write:" +
                       String(wtf.path).split("/").slice(-1)[0] +
-                      (p.path ? "/snap" : "");
+                      (p.path ? "/snap" : "") +
+                      mcpResidual;
                   } else if (fe.expanded_count) {
                     label =
                       "mcp_file×" +
                       fe.expanded_count +
-                      (p.path ? "/snap" : "");
+                      (p.path ? "/snap" : "") +
+                      mcpResidual;
                   } else {
-                    label = "mcp_call" + (p.path ? "/snap" : "");
+                    label =
+                      "mcp_call" +
+                      (p.mapped ? ":" + p.mapped : "") +
+                      (p.path ? "/snap" : "") +
+                      mcpResidual;
                   }
                   types.push("attachment");
                   const pluginsMeta = document.getElementById("plugins-meta");
@@ -2594,14 +2613,20 @@
                     "webhook_wake:" +
                     (p.event_id || "?") +
                     (p.key_leaked ? "/LEAK" : "") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.inbound_turn_residual === true
+                      ? "/inbound_turn_residual"
+                      : "");
                   types.push("text");
                   const meta = document.getElementById("webhook-meta");
                   if (meta) {
                     meta.textContent =
                       "wake " +
                       (p.event_id || "") +
-                      (p.key_leaked ? " KEY LEAK" : " ok");
+                      (p.key_leaked ? " KEY LEAK" : " ok") +
+                      (p.inbound_turn_residual === true
+                        ? " · inbound_turn_residual"
+                        : "");
                   }
                 } else if (h.kind === "mcp_discover") {
                   label =
@@ -2688,14 +2713,22 @@
                   label =
                     "voice_relay:" +
                     String(p.reply_media_path).split("/").slice(-1)[0] +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.voice_stt_residual === true ? "/voice_stt_residual" : "") +
+                    (p.voice_tts_residual === true ? "/voice_tts_residual" : "");
                   types.push("voice");
                   const voiceMeta = document.getElementById("voice-meta");
                   if (voiceMeta) {
                     voiceMeta.textContent =
                       "relay · " +
                       String(p.reply_media_path).split("/").slice(-1)[0] +
-                      (p.call_id ? " · " + p.call_id : "");
+                      (p.call_id ? " · " + p.call_id : "") +
+                      (p.voice_stt_residual === true
+                        ? " · voice_stt_residual"
+                        : "") +
+                      (p.voice_tts_residual === true
+                        ? " · voice_tts_residual"
+                        : "");
                   }
                 } else if (h.kind === "source_control") {
                   const rp = p.remote_pr || {};
@@ -2814,13 +2847,19 @@
                   label =
                     "cred_fill:" +
                     (p.domain || p.vault_id || "vault") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.credential_browser_fill_residual === true
+                      ? "/credential_browser_fill_residual"
+                      : "");
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
                     chMeta.textContent =
                       "cred_fill · " +
                       (p.domain || "?") +
+                      (p.credential_browser_fill_residual === true
+                        ? " · credential_browser_fill_residual"
+                        : "") +
                       (p.pretend_secret_echo === true ? " · pretend!" : "") +
                       (p.path ? " · snap" : "");
                   }
@@ -3074,21 +3113,32 @@
                   label =
                     "device:" +
                     (p.tool || "?") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.device_capture_residual === true
+                      ? "/device_capture_residual"
+                      : "");
                   types.push("attachment");
                 } else if (h.kind === "voice_session") {
                   label =
                     "voice:" +
                     (p.action || "session") +
                     (p.media_ok ? "/wav" : "") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.voice_stt_residual === true ? "/voice_stt_residual" : "") +
+                    (p.voice_tts_residual === true ? "/voice_tts_residual" : "");
                   types.push("voice");
                   const voiceMeta = document.getElementById("voice-meta");
                   if (voiceMeta) {
                     voiceMeta.textContent =
                       (p.action || "session") +
                       (p.media_ok ? " · wav" : "") +
-                      (p.call_id ? " · " + p.call_id : "");
+                      (p.call_id ? " · " + p.call_id : "") +
+                      (p.voice_stt_residual === true
+                        ? " · voice_stt_residual"
+                        : "") +
+                      (p.voice_tts_residual === true
+                        ? " · voice_tts_residual"
+                        : "");
                   }
                 } else if (
                   h.kind === "voice_end_write" ||
