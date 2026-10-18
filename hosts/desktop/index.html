@@ -1821,13 +1821,19 @@
                     (p.meta_path ? "/meta" : "");
                   types.push("attachment");
                 } else if (h.kind === "channel_send" && p.personal_dm) {
-                  label = "personal-dm:" + (p.mode || "draft");
+                  label =
+                    "personal-dm:" +
+                    (p.mode || "draft") +
+                    (p.live_slack_residual === true ? "/live_residual" : "");
                   types.push("text");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
                     chMeta.textContent =
                       "personal_dm · " +
                       (p.mode || "draft") +
+                      (p.live_slack_residual === true
+                        ? " · live_slack_residual"
+                        : "") +
                       (p.pretend_live === true ? " · pretend!" : "") +
                       (p.shared_channel === true ? " · shared!" : " · owner-only");
                   }
@@ -2322,14 +2328,18 @@
                   label =
                     "box_doctor:" +
                     (p.overall_pass ? "PASS" : "FAIL") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.box_doctor_bin_residual === true ? "/bin_residual" : "");
                   types.push("attachment");
                   const boxMeta = document.getElementById("box-meta");
                   if (boxMeta) {
                     boxMeta.textContent =
                       "doctor · " +
                       (p.overall_pass ? "PASS" : "FAIL") +
-                      (p.mode ? " · " + p.mode : "");
+                      (p.mode ? " · " + p.mode : "") +
+                      (p.box_doctor_bin_residual === true
+                        ? " · box_doctor_bin_residual"
+                        : "");
                   }
                 } else if (h.kind === "box_env") {
                   label =
@@ -2658,20 +2668,39 @@
                     (p.scheme || "channel") +
                     "/" +
                     (p.mode || "post") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.live_slack_residual === true ||
+                    p.live_teams_residual === true ||
+                    p.live_meeting_residual === true
+                      ? "/live_residual"
+                      : "");
                   types.push("text");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
                     chMeta.textContent =
                       "live · " +
                       (p.mode || p.scheme || "post") +
+                      (p.live_slack_residual === true
+                        ? " · live_slack_residual"
+                        : "") +
+                      (p.live_teams_residual === true
+                        ? " · live_teams_residual"
+                        : "") +
+                      (p.live_meeting_residual === true
+                        ? " · live_meeting_residual"
+                        : "") +
                       (p.pretend_live === true ? " · pretend!" : " · honest");
                   }
                 } else if (h.kind === "channel_send") {
                   label =
                     "ch:" +
                     (p.mode || p.scheme || "send") +
-                    (p.path ? "/snap" : "");
+                    (p.path ? "/snap" : "") +
+                    (p.live_slack_residual === true ||
+                    p.live_teams_residual === true ||
+                    p.live_meeting_residual === true
+                      ? "/live_residual"
+                      : "");
                   types.push(p.thread_ts ? "thread" : "text");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
@@ -2681,6 +2710,15 @@
                         ? " · claimed " + p.claimed_count
                         : "") +
                       (p.thread_ts ? " · thread" : "") +
+                      (p.live_slack_residual === true
+                        ? " · live_slack_residual"
+                        : "") +
+                      (p.live_teams_residual === true
+                        ? " · live_teams_residual"
+                        : "") +
+                      (p.live_meeting_residual === true
+                        ? " · live_meeting_residual"
+                        : "") +
                       (p.pretend_live === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "oauth") {
