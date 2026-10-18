@@ -413,6 +413,17 @@
         <button type="button" id="voice-end" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End voice</button>
       </div>
     </div>
+    <div class="panel-title" style="margin-top:16px">Box</div>
+    <div class="machine-item">
+      <div class="name">Doctor / env / clock (CM-0607/0608/2175)</div>
+      <div class="meta" id="box-meta">self-check · runtime · TZ align</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="box-doctor" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Box doctor</button>
+        <button type="button" id="box-env" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Box env</button>
+        <button type="button" id="box-clock" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Box clock</button>
+        <button type="button" id="box-chrome" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Chrome probe</button>
+      </div>
+    </div>
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) will appear here</pre>
@@ -1445,12 +1456,23 @@
                     (p.overall_pass ? "PASS" : "FAIL") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      "doctor · " +
+                      (p.overall_pass ? "PASS" : "FAIL") +
+                      (p.mode ? " · " + p.mode : "");
+                  }
                 } else if (h.kind === "box_env") {
                   label =
                     "box_env:" +
                     (p.runtime || "?") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent = "env · " + (p.runtime || "?");
+                  }
                 } else if (h.kind === "box_clock") {
                   label =
                     "box_clock:" +
@@ -1458,6 +1480,29 @@
                     (p.aligns === false ? "/misaligned" : "") +
                     (p.path ? "/snap" : "");
                   types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      "clock · " +
+                      (p.user_iana || "?") +
+                      (p.aligns === false ? " · misaligned" : " · aligned");
+                  }
+                } else if (h.kind === "box_chrome_probe") {
+                  label =
+                    "box_chrome:" +
+                    (p.refused
+                      ? "refuse"
+                      : "p" + (p.private_cdp_port || "?")) +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      (p.refused
+                        ? "chrome refused bare"
+                        : "chrome · private " + (p.private_cdp_port || "?")) +
+                      (p.path ? " · snap" : "");
+                  }
                 } else if (h.kind === "webhook_panel") {
                   label =
                     "webhook:" +
@@ -1972,6 +2017,18 @@
     });
     document.getElementById("voice-end").addEventListener("click", () => {
       runUserTurn("voice end desktop-voice", {});
+    });
+    document.getElementById("box-doctor").addEventListener("click", () => {
+      runUserTurn("box doctor", {});
+    });
+    document.getElementById("box-env").addEventListener("click", () => {
+      runUserTurn("box env", {});
+    });
+    document.getElementById("box-clock").addEventListener("click", () => {
+      runUserTurn("box clock", {});
+    });
+    document.getElementById("box-chrome").addEventListener("click", () => {
+      runUserTurn("box chrome probe", {});
     });
     document.getElementById("mem-recall").addEventListener("click", () => {
       runUserTurn("recall", {});
