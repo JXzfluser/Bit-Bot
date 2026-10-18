@@ -1398,6 +1398,13 @@ function stripHostAppliedMarker(file) {
     ["open_journal", "host_journal_query", "journal_query"],
     ["append_journal", "host_journal_append", "journal_append"],
     ["journal_tail", "host_journal_query", "journal_query"],
+    ["create_agent", "host_teammate_create", "teammate_create"],
+    ["select_agent", "host_send_to_agent", "send_to_agent"],
+    ["enable_skill", "host_skill_load", "skill_load"],
+    ["remove_member", "host_members_panel", "members_panel"],
+    ["upload_file", "host_copy_to_box", "copy_to_box"],
+    ["download_file", "host_copy_from_box", "copy_from_box"],
+    ["archive_agent", "host_hide_agent", "hide_agent"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1425,7 +1432,21 @@ function stripHostAppliedMarker(file) {
                             ? '{"q":"alias-journal"}'
                             : tool === "append_journal"
                               ? '{"event":"alias","body":"journal-alias"}'
-                              : "{}";
+                              : tool === "create_agent" || tool === "new_agent"
+                                ? '{"name":"alias-agent","agent_id":"asst-alias"}'
+                                : tool === "select_agent" || tool === "switch_agent"
+                                  ? '{"agent_id":"asst-alias","body":"ping"}'
+                                  : tool === "enable_skill"
+                                    ? '{"skill":"slides-quickstart","name":"slides-quickstart"}'
+                                    : tool === "remove_member" || tool === "invite_member"
+                                      ? '{"member_id":"u-alias"}'
+                                      : tool === "upload_file" || tool === "attach_file"
+                                        ? '{"path":"README.mbt.md"}'
+                                        : tool === "download_file"
+                                          ? '{"path":"README.mbt.md"}'
+                                          : tool === "archive_agent"
+                                            ? '{"agent_id":"asst-alias-hide"}'
+                                            : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);
