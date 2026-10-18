@@ -882,8 +882,14 @@ def main() -> int:
     if not url:
         import re
 
-        m = re.search(r"https?://[^\s|\"']+", args.command or "")
-        url = m.group(0) if m else ""
+        # Prefer markdown [label](url); else bare URL without trailing ')'.
+        cmd = args.command or ""
+        m = re.search(r"\]\((https?://[^)\s]+)\)", cmd)
+        if not m:
+            m = re.search(r"https?://[^\s|\"')\]]+", cmd)
+        url = m.group(1) if m and m.lastindex else (m.group(0) if m else "")
+        if url:
+            url = url.rstrip(".,;:")
     if not url:
         import re
 

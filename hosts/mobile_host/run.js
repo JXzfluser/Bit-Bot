@@ -174,6 +174,10 @@ try {
       "mcp_uninstall",
       "mcp_get_plugin",
       "mcp_list_plugins",
+      "teammate_create",
+      "schedule_meeting",
+      "mail_search",
+      "mail_read",
     ]) {
       const hit = hrs.find((h) => h && h.kind === kind && h.ok !== false);
       if (!hit) continue;

@@ -56,6 +56,92 @@ fn strip_markdown_links(text : String) -> String {
 }
 
 ///|
+/// True when the single-unit slice at `i` terminates a URL token.
+fn url_terminator_at(text : String, i : Int) -> Bool {
+  if i < 0 || i >= text.length() {
+    return true
+  }
+  let u = text[i:i + 1].to_owned()
+  u == " " ||
+  u == "\n" ||
+  u == "\t" ||
+  u == "\r" ||
+  u == "\"" ||
+  u == "'" ||
+  u == "`" ||
+  u == ")" ||
+  u == "]" ||
+  u == "<" ||
+  u == ">" ||
+  u == "," ||
+  u == ";"
+}
+
+///|
+/// Wrap bare http(s) URLs as `[url](url)` so Host FFI continue dumps (JSON with
+/// navigate URLs) remain CM-0111-legal when echoed into assistant text.
+/// Already-linked `[label](url)` spans are left intact.
+pub fn linkify_bare_http_urls(text : String) -> String {
+  let sb = StringBuilder()
+  let mut i = 0
+  let n = text.length()
+  while i < n {
+    // Preserve existing markdown links.
+    if text[i] == '[' {
+      match skip_markdown_link(text, i) {
+        Some(next) => {
+          sb.write_string(text[i:next].to_owned())
+          i = next
+          continue
+        }
+        None => ()
+      }
+    }
+    let rest = text[i:].to_owned()
+    let scheme = if rest.has_prefix("https://") {
+      Some("https://")
+    } else if rest.has_prefix("http://") {
+      Some("http://")
+    } else {
+      None
+    }
+    match scheme {
+      None => {
+        sb.write_string(text[i:i + 1].to_owned())
+        i = i + 1
+      }
+      Some(s) => {
+        let start = i
+        i = i + s.length()
+        while i < n && !url_terminator_at(text, i) {
+          i = i + 1
+        }
+        // Trim trailing punctuation often attached in prose.
+        let mut end = i
+        while end > start + s.length() {
+          let last = text[end - 1:end].to_owned()
+          if last == "." || last == "," || last == ";" || last == ":" {
+            end = end - 1
+          } else {
+            break
+          }
+        }
+        let url = text[start:end].to_owned()
+        sb.write_string("[")
+        sb.write_string(url)
+        sb.write_string("](")
+        sb.write_string(url)
+        sb.write_string(")")
+        if end < i {
+          sb.write_string(text[end:i].to_owned())
+        }
+      }
+    }
+  }
+  sb.to_string()
+}
+
+///|
 /// CM-0111: outbound user-visible text must not contain bare http(s) URLs.
 /// Passes when every URL is wrapped as markdown `[label](url)`.
 pub fn ensure_markdown_links(text : String) -> Result[Unit, String] {

@@ -1105,7 +1105,9 @@ pub fn continue_after_host_ffi(
     }
     i = i + 1
   }
-  let reply = buf.to_string()
+  // Host stdout/commands often embed navigate URLs (CU/schedule fallback).
+  // Linkify before deliver so CM-0111 does not reject Host continue dumps.
+  let reply = @ui_protocol.linkify_bare_http_urls(buf.to_string())
   let prior = if prior_user_text == "" {
     "(host-continue)"
   } else {

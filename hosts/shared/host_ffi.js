@@ -12079,8 +12079,12 @@ function createHostFfi(repoRoot) {
     const cmd = String(command || "");
     const vertical = parseVerticalPlaybook(cmd);
     const playbookJournal = materializePlaybookJournal(vertical, cmd);
-    const urlMatch = cmd.match(/https?:\/\/[^\s|"']+/);
-    let url = urlMatch ? urlMatch[0] : "";
+    // Prefer markdown [label](url) (CM-0111-safe Host hints); else bare URL
+    // without trailing markdown punctuation.
+    const mdUrl = cmd.match(/\]\((https?:\/\/[^)\s]+)\)/);
+    const bareUrl = cmd.match(/https?:\/\/[^\s|"')\]]+/);
+    let url = mdUrl ? mdUrl[1] : bareUrl ? bareUrl[0] : "";
+    if (url) url = url.replace(/[.,;:]+$/, "");
     if (!url && vertical && vertical.navigate_host) {
       const host = vertical.navigate_host.replace(/^https?:\/\//, "");
       url = `https://${host}`;
