@@ -210,7 +210,16 @@ function extractDeliveryTypes(turnJsonText) {
           (p.connected === false && p.pretend_connected === false));
       const sharedMemoryRefuse =
         h.kind === "shared_memory_read" && p.refused_cross_scope === true;
-      if (h.ok === false && !oauthNeedsAuth && !sharedMemoryRefuse) continue;
+      // Failed webfetch with public_fallback_residual must still surface honesty chips.
+      const webfetchFallbackResidual =
+        h.kind === "webfetch" && p.public_fallback_residual === true;
+      if (
+        h.ok === false &&
+        !oauthNeedsAuth &&
+        !sharedMemoryRefuse &&
+        !webfetchFallbackResidual
+      )
+        continue;
       const filePath = pickAttachmentPath(h.kind || "", p, h);
       if (h.kind === "delivery" && p.type) {
         types.push(p.type);
