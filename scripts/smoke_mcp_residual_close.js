@@ -1375,6 +1375,65 @@ function stripHostAppliedMarker(file) {
     throw new Error("get_plugin id: " + JSON.stringify(getPluginP.mcp_get_plugin||{}).slice(0,200));
   }
   console.log("mcp_call get_plugin short-circuit ok", getPluginP.mapped, (getPluginP.mcp_get_plugin||{}).id || (getPluginP.mcp_get_plugin||{}).plugin_id);
+  const aliasWave = [
+    ["browse_plugins", "host_mcp_list_plugins", "mcp_list_plugins"],
+    ["doctor", "host_box_doctor", "box_doctor"],
+    ["take_screenshot", "host_screenshot", "screenshot"],
+    ["run_shell", "host_shell", "shell"],
+    ["list_dir", "host_fs_list", "fs_list"],
+    ["compose_mail", "host_mail_draft", "mail_draft"],
+    ["dm_send", "host_channel_send", "channel_send"],
+    ["add_reaction", "host_react_message", "react_message"],
+    ["open_routines", "host_routine_list", "routine_list"],
+    ["open_connectors", "host_connectors_probe", "connectors_probe"],
+    ["list_agents", "host_list_agents_sidebar", "list_agents_sidebar"],
+    ["set_theme", "host_settings_open", "settings_open"],
+    ["search_web", "host_webfetch", "webfetch"],
+    ["open_todo", "host_todo_write", "todo_write"],
+    ["paste_from_box", "host_copy_from_box", "copy_from_box"],
+    ["git_status", "host_source_control", "source_control"],
+    ["navigate", "host_computer_use", "computer_use"],
+    ["list_contacts", "host_device_tool", "device_tool"],
+    ["guide", "host_guide_permission", "guide_permission"],
+    ["open_memory", "host_memory_recall", "memory_recall"],
+  ];
+  for (const [tool, wantMapped, field] of aliasWave) {
+    const body =
+      tool === "compose_mail"
+        ? '{"to":"alias@example.com","subject":"alias","body":"hi"}'
+        : tool === "dm_send"
+          ? '{"scheme":"slack","addr":"UALIAS","body":"alias-dm"}'
+          : tool === "add_reaction"
+            ? '{"message_id":"msg-alias","emoji":"+1"}'
+            : tool === "run_shell"
+              ? '{"command":"echo alias-shell"}'
+              : tool === "list_dir"
+                ? '{"path":"."}'
+                : tool === "search_web" || tool === "navigate"
+                  ? '{"url":"https://example.com/"}'
+                  : tool === "list_contacts" || tool === "get_location"
+                    ? '{"tool":"contacts"}'
+                    : tool === "open_todo"
+                      ? '{"items":[{"id":"a1","title":"alias","status":"pending"}]}'
+                      : tool === "paste_from_box"
+                        ? '{"path":"README.mbt.md"}'
+                        : tool === "git_status"
+                          ? '{"command":"status"}'
+                          : "{}";
+    const runs = await ffi.executeHostEffects([
+      { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
+    ]);
+    const hit = runs.find((r) => r && r.kind === "mcp_call");
+    if (!hit || !hit.ok) throw new Error(tool + " mcp alias");
+    const payload = JSON.parse(hit.stdout || "{}");
+    if (payload.mapped !== wantMapped || payload.product_tool_residual !== false) {
+      throw new Error(tool + " alias: " + JSON.stringify(payload).slice(0, 220));
+    }
+    if (payload[field] && payload[field].pretend_ok === true) {
+      throw new Error(tool + " pretend_ok");
+    }
+    console.log("mcp_call alias short-circuit ok", tool, payload.mapped);
+  }
   // Optional live residual close via existing calendar/purchase/gmail mocks
   // Clear connector token files so env API URL/token win (file api_url overrides env).
   try { fs.unlinkSync("data/connectors/purchase_token.json"); } catch (_) {}
