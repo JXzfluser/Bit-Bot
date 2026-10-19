@@ -109,6 +109,17 @@ if [[ -f "$ROOT/hosts/shared/cn_inbound_server.js" ]]; then
 else
   bad "CN inbound server module missing"
 fi
+if [[ -f "$ROOT/scripts/cn_inbound_tunnel.sh" ]]; then
+  if [[ -f "$ROOT/data/routines/webhooks/cn-inbound/public-url.txt" ]] && \
+     grep -q '^https://' "$ROOT/data/routines/webhooks/cn-inbound/public-url.txt"; then
+    ok "CN inbound public tunnel URL recorded (channel console config still residual)"
+  else
+    note "WARN CN inbound tunnel script present — run scripts/cn_inbound_tunnel.sh for HTTPS callbacks"
+  fi
+fi
+if [[ -f "$ROOT/scripts/ios_archive_export.sh" ]]; then
+  note "INFO iOS archive script present (Darwin + BITBOT_IOS_TEAM_ID required)"
+fi
 
 # P2 real CN channel — at least one live gate with non-local credential
 cn_ok=0
