@@ -516,6 +516,10 @@
         <button type="button" id="tool-device" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Device tools</button>
         <button type="button" id="tool-take-photo" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Take photo</button>
         <button type="button" id="tool-record-video" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Record video</button>
+        <button type="button" id="tool-open-terminal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open terminal</button>
+        <button type="button" id="tool-version-info" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Version info</button>
+        <button type="button" id="tool-mute-channel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Mute channel</button>
+        <button type="button" id="tool-toggle-theme" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Toggle theme</button>
         <button type="button" id="tool-journal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
         <button type="button" id="tool-journal-append" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal append</button>
         <button type="button" id="tool-pkg" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
@@ -3947,6 +3951,18 @@
     });
     document.getElementById("tool-record-video").addEventListener("click", () => {
       runUserTurn("record video", {});
+    });
+    document.getElementById("tool-open-terminal").addEventListener("click", () => {
+      runUserTurn("open terminal", { approved: true });
+    });
+    document.getElementById("tool-version-info").addEventListener("click", () => {
+      runUserTurn("version info", {});
+    });
+    document.getElementById("tool-mute-channel").addEventListener("click", () => {
+      runUserTurn("mute channel", {});
+    });
+    document.getElementById("tool-toggle-theme").addEventListener("click", () => {
+      runUserTurn("toggle theme", {});
     });
     document.getElementById("tool-journal").addEventListener("click", () => {
       runUserTurn("journal query hello", {});

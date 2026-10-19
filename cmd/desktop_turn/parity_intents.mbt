@@ -494,12 +494,17 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "open settings" ||
     low == "settings" ||
     low == "open settings panel" ||
+    low == "toggle theme" ||
+    low == "dark mode" ||
+    low == "light mode" ||
     low.has_prefix("open settings ") ||
     low.has_prefix("settings ") {
     let rest = if low.has_prefix("open settings ") {
       trimmed[14:].trim().to_owned()
     } else if low.has_prefix("settings ") {
       trimmed[9:].trim().to_owned()
+    } else if low == "toggle theme" || low == "dark mode" || low == "light mode" {
+      "theme"
     } else {
       ""
     }
@@ -622,6 +627,15 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(SetNotify(assistant_id~, toggle~, enabled~))
   }
+  if low == "mute channel" ||
+    low == "mute chat" ||
+    low == "unmute channel" ||
+    low == "unmute chat" {
+    let enabled = low.has_prefix("unmute")
+    return Some(
+      SetNotify(assistant_id="asst-alpha", toggle="desktop", enabled~),
+    )
+  }
   // CM-1903/1904/1905 product Host computer lifecycle + local-execution.
   if low == "update computer" ||
     low == "update bot computer" ||
@@ -667,6 +681,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "take screenshot" ||
     low == "capture screenshot" ||
     low == "screen shot" ||
+    low == "list windows" ||
     low.has_prefix("screenshot ") ||
     low.has_prefix("take screenshot ") {
     let rest = if low.has_prefix("screenshot ") {
@@ -689,7 +704,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "updates tab" ||
     low == "update channel" ||
     low == "open update channel" ||
-    low == "app updates" {
+    low == "app updates" ||
+    low == "version info" ||
+    low == "about version" ||
+    low == "app version" {
     return Some(CheckUpdates)
   }
   // CM-1507 product Host auto-review / rules / security-keys Settings anchors.
@@ -771,6 +789,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   // CM-2178 product Host missing-permission → Settings guide.
+  if low == "summarize thread" || low.has_prefix("summarize thread ") {
+    return Some(GuidePermission(kind="summarize", detail="thread"))
+  }
   if low.has_prefix("guide permission ") ||
     low.has_prefix("missing permission ") ||
     low.has_prefix("permission guide ") {
@@ -808,12 +829,16 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "open members" ||
     low == "members panel" ||
     low == "show members" ||
+    low == "invite to channel" ||
     low.has_prefix("open members ") ||
-    low.has_prefix("members panel ") {
+    low.has_prefix("members panel ") ||
+    low.has_prefix("invite to channel ") {
     let rest = if low.has_prefix("open members ") {
       trimmed[13:].trim().to_owned()
     } else if low.has_prefix("members panel ") {
       trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("invite to channel ") {
+      trimmed[18:].trim().to_owned()
     } else {
       ""
     }
@@ -1024,6 +1049,13 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     return Some(ConnectOutlook)
   }
   // Journal query before append — "journal query …" also matches "journal " prefix.
+  if low == "bookmark message" ||
+    low == "save message" ||
+    low == "bookmark" ||
+    low.has_prefix("bookmark message ") ||
+    low.has_prefix("save message ") {
+    return Some(JournalQuery(from_date="2026-01-01", to_date="2099-12-31"))
+  }
   if low.has_prefix("query journal ") || low.has_prefix("journal query ") {
     let rest = if low.has_prefix("query journal ") {
       trimmed[14:].to_owned()
@@ -1118,11 +1150,24 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(InboundReaction(emoji~, useful~))
   }
-  if low.has_prefix("export bot template ") || low.has_prefix("export bot ") {
+  if low.has_prefix("export bot template ") ||
+    low.has_prefix("export bot ") ||
+    low == "backup chat" ||
+    low == "share link" ||
+    low.has_prefix("backup chat ") ||
+    low.has_prefix("share link ") {
     let rest = if low.has_prefix("export bot template ") {
       trimmed[20:].to_owned()
-    } else {
+    } else if low.has_prefix("export bot ") {
       trimmed[11:].to_owned()
+    } else if low.has_prefix("backup chat ") {
+      trimmed[12:].to_owned()
+    } else if low.has_prefix("share link ") {
+      trimmed[11:].to_owned()
+    } else if low == "backup chat" || low == "share link" {
+      "id=bot-backup name=Backup"
+    } else {
+      ""
     }
     let bot_id = match extract_kv(rest, "id") {
       Some(v) => v

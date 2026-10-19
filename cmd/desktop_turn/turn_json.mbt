@@ -677,6 +677,9 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     None => ()
   }
   // Host FFI shell plans (Grok-like: shell / Shell: / ! / run / 执行)
+  if low == "open terminal" || low == "open shell" {
+    return HostEffect(command="echo terminal")
+  }
   if low.has_prefix("!") ||
       low.has_prefix("shell ") ||
       low.has_prefix("shell:") ||
