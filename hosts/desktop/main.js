@@ -669,6 +669,44 @@ ipcMain.handle("bitbot:secrets:set", async (_e, patch) => {
   }
 });
 
+/** Run honest acceptance gate script; never invents PASS. */
+ipcMain.handle("bitbot:secrets:runGate", async () => {
+  const script = path.join(REPO_ROOT, "scripts/prove_cn_product_acceptance.sh");
+  return await new Promise((resolve) => {
+    const child = spawn("bash", [script], {
+      cwd: REPO_ROOT,
+      env: process.env,
+      timeout: 120000,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => {
+      stdout += String(d);
+    });
+    child.stderr.on("data", (d) => {
+      stderr += String(d);
+    });
+    child.on("error", (err) => {
+      resolve({
+        ok: false,
+        exit_code: -1,
+        error: String(err && err.message ? err.message : err),
+        pretend_pass: false,
+      });
+    });
+    child.on("close", (code) => {
+      resolve({
+        ok: code === 0,
+        exit_code: code,
+        stdout: stdout.slice(0, 8000),
+        stderr: stderr.slice(0, 2000),
+        pretend_pass: false,
+        script: "scripts/prove_cn_product_acceptance.sh",
+      });
+    });
+  });
+});
+
 /** Probe current LLM config with a tiny completion (real HTTP; no pretend). */
 ipcMain.handle("bitbot:secrets:probeLlm", async () => {
   try {
