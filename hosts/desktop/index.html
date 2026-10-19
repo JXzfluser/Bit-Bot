@@ -18,7 +18,8 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     font: 15px/1.45 "Source Han Sans SC", "Noto Sans SC", "IBM Plex Sans", sans-serif;
     color: var(--ink);
     background-color: var(--bg0);
@@ -34,7 +35,6 @@
       "header header header"
       "agents main machines"
       "agents composer machines";
-    min-height: 100vh;
     transition: grid-template-columns 0.25s ease;
   }
   body.tools-open {
@@ -212,6 +212,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    min-height: 0;
   }
   #banner {
     margin: 12px 16px 0;
@@ -2206,11 +2207,22 @@
             }
           }
         }
+        const cardRefusedByPolicy =
+          r &&
+          Array.isArray(r.host_results) &&
+          r.host_results.some(
+            (h) =>
+              h &&
+              h.kind === "approval_card" &&
+              !h.ok &&
+              (h.mode === "host_approval_card_refused" || h.refused),
+          );
         const needsApprove =
           r &&
           Array.isArray(r.effects) &&
           r.effects.some((e) => e && e.kind === "approval_card") &&
           !(opts && opts.approved) &&
+          !cardRefusedByPolicy &&
           !(r.auto_approved === true);
         if (needsApprove) showApproval(text, r.effects);
         else hideApproval();

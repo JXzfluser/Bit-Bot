@@ -873,6 +873,10 @@ function createProductSurface(repoRoot) {
         if (target) {
           responders = [target];
           responder_policy = "mentioned_only";
+        } else {
+          // Mention doesn't resolve to a room member — don't fake a directed
+          // route; let members decide (GP-51 no-mention semantics).
+          responder_policy = "bot_discretion";
         }
       }
     } else {

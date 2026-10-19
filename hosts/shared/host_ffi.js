@@ -20067,6 +20067,7 @@ function createHostFfi(repoRoot) {
             ok: false,
             command: cmd,
             refused: cg.reason,
+            error: cg.reason + ": user setting refuses this local action",
             stdout: JSON.stringify({
               command: cmd,
               status: "refused",
