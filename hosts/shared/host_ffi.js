@@ -4982,6 +4982,12 @@ function createHostFfi(repoRoot) {
               }
             });
             res.on("end", () => {
+              emitLlmStream({
+                phase: "end",
+                partial: text,
+                ok: status >= 200 && status < 300 && Boolean(text),
+                status,
+              });
               resolve({
                 ok: status >= 200 && status < 300 && Boolean(text),
                 status,

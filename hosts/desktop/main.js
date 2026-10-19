@@ -127,6 +127,28 @@ const ALLOWED_SECRET_KEYS = new Set([
   "BITBOT_UPDATE_FEED_URL",
 ]);
 
+/**
+ * If Cloud Agent / shell injected BITBOT_* into process.env but .env.local
+ * lacks them, persist for Settings + acceptance gate (never write stubs).
+ */
+function syncInjectedSecretsToEnvLocal() {
+  const current = parseEnvFile(DESKTOP_ENV_LOCAL);
+  const patch = {};
+  for (const k of ALLOWED_SECRET_KEYS) {
+    const v = String(process.env[k] || "").trim();
+    if (!v) continue;
+    if (/^stub/i.test(v) || v === "test" || v === "changeme") continue;
+    if (current[k]) continue;
+    patch[k] = v;
+  }
+  if (!Object.keys(patch).length) return { ok: true, synced: [] };
+  const r = upsertDesktopEnvLocal(patch);
+  process.stdout.write(
+    `[desktop] synced injected secrets → .env.local: ${(r.applied || Object.keys(patch)).join(",")}\n`,
+  );
+  return r;
+}
+
 function maskSecret(v) {
   const s = String(v || "");
   if (!s) return { present: false, masked: "" };
@@ -177,6 +199,8 @@ function upsertDesktopEnvLocal(patch) {
     pretend_saved: false,
   };
 }
+
+syncInjectedSecretsToEnvLocal();
 
 const runner = createTurnRunner(REPO_ROOT);
 const sessions = createSessionStore(REPO_ROOT);

@@ -502,7 +502,7 @@
       <div id="settings-anchors" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="secrets-panel" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div style="font-weight:700;margin-bottom:6px">产品凭证（写入 .env.local · 热加载）</div>
-        <div style="color:var(--muted);font-size:12px;margin-bottom:8px">DeepSeek key 与国内渠道凭证保存在本机 gitignored 文件；不假装已备案/已 live。</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:8px">DeepSeek key 与国内渠道凭证保存在本机 gitignored 文件；不假装已备案/已 live。申请 key：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_API_KEY <span id="sec-llm-mask"></span>
             <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-… DeepSeek" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
@@ -4221,6 +4221,13 @@
               }
               streamEl.textContent = chunk.partial || streamEl.textContent + (chunk.text || "");
               log.scrollTop = log.scrollHeight;
+              return;
+            }
+            if (chunk.phase === "end") {
+              if (streamEl) {
+                streamEl.dataset.streaming = "0";
+                if (chunk.partial) streamEl.textContent = chunk.partial;
+              }
               return;
             }
             if (chunk.phase === "error") {
