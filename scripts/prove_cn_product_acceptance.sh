@@ -99,6 +99,13 @@ else
   fi
 fi
 
+# CN inbound module present (local HTTP receiver; cloud still needs public URL)
+if [[ -f "$ROOT/hosts/shared/cn_inbound_server.js" ]]; then
+  ok "CN inbound server module present (钉钉/飞书/企微 callback receiver)"
+else
+  bad "CN inbound server module missing"
+fi
+
 # P2 real CN channel — at least one live gate with non-local credential
 cn_ok=0
 if [[ "${BITBOT_DINGTALK_POST:-}" == "1" && -n "${BITBOT_DINGTALK_WEBHOOK:-}${BITBOT_DINGTALK_TOKEN:-}" ]]; then

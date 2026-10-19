@@ -26,12 +26,22 @@ try {
 }
 const { createSessionStore } = require("./sessions");
 
+let createCnInboundServer;
+try {
+  createCnInboundServer = require("./shared/cn_inbound_server").createCnInboundServer;
+} catch (_e) {
+  createCnInboundServer = require("../shared/cn_inbound_server").createCnInboundServer;
+}
+
 let autoUpdater = null;
 try {
   autoUpdater = require("electron-updater").autoUpdater;
 } catch (_e) {
   autoUpdater = null;
 }
+
+/** CN inbound HTTP server (钉钉/飞书/企微 callbacks). */
+let cnInbound = null;
 
 const REPO_ROOT = process.env.BITBOT_REPO_ROOT
   ? path.resolve(process.env.BITBOT_REPO_ROOT)
@@ -589,11 +599,18 @@ ipcMain.handle("bitbot:cn:status", async () => {
     mobile_deferred: true,
     channels,
     any_live_ready: anyLive,
+    inbound: cnInbound ? cnInbound.status() : { listening: false, residual: "not_started" },
     pretend_live: false,
     hint: anyLive
       ? "至少一条国内渠道 live 门控已开"
       : "国内渠道均为 draft — 在 .env.local 设 BITBOT_*_POST=1 + 凭证",
   };
+});
+
+ipcMain.handle("bitbot:cn:inbound:status", async () => {
+  return cnInbound
+    ? cnInbound.status()
+    : { ok: false, listening: false, residual: "not_started" };
 });
 
 ipcMain.handle("bitbot:secrets:status", async () => {
@@ -1021,7 +1038,41 @@ ipcMain.handle("bitbot:openArtifact", async (_event, artifactPath) => {
   };
 });
 
-app.whenReady().then(() => {
+async function ensureCnInbound() {
+  if (process.env.BITBOT_CN_INBOUND === "0") {
+    return { ok: false, skipped: true, reason: "BITBOT_CN_INBOUND=0" };
+  }
+  if (!cnInbound) {
+    cnInbound = createCnInboundServer({
+      repoRoot: REPO_ROOT,
+      onTurn: async (prompt, meta) => {
+        const sessionId = `cn-${(meta && meta.channel) || "in"}`;
+        broadcast("bitbot:llm-stream", {
+          phase: "start",
+          session_id: sessionId,
+          user: String(prompt || "").slice(0, 200),
+          channel: meta && meta.channel,
+        });
+        const result = await runner.runTurn(String(prompt || ""), {
+          sessionId,
+          machineId: "desk-1",
+          machineKind: "desktop",
+          channel: (meta && meta.channel) || "",
+          approved: true,
+        });
+        broadcast("bitbot:llm-stream", {
+          phase: "end",
+          session_id: sessionId,
+          ok: Boolean(result && result.ok),
+        });
+        return result;
+      },
+    });
+  }
+  return cnInbound.start();
+}
+
+app.whenReady().then(async () => {
   if (process.env.BITBOT_DESKTOP_SMOKE_TURN !== undefined) {
     return runSmokeTurnAndExit();
   }
@@ -1038,6 +1089,16 @@ app.whenReady().then(() => {
   process.stdout.write(
     `[desktop] routine-daemon ok=${daemon.ok} pid=${daemon.pid || "n/a"} long_lived=${daemon.long_lived || false}\n`,
   );
+  try {
+    const inbound = await ensureCnInbound();
+    process.stdout.write(
+      `[desktop] cn-inbound listening=${inbound.listening} port=${inbound.port}\n`,
+    );
+  } catch (err) {
+    process.stderr.write(
+      `[desktop] cn-inbound failed: ${err && err.message ? err.message : err}\n`,
+    );
+  }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();

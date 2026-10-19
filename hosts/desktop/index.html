@@ -1006,6 +1006,14 @@
                     .join(","),
               );
             }
+            if (cn && cn.inbound) {
+              bits.push(
+                "入站=" +
+                  (cn.inbound.listening
+                    ? ":" + cn.inbound.port
+                    : "off"),
+              );
+            }
           }
         } catch (_) {
           /* ignore */
@@ -1666,11 +1674,15 @@
           const cn = await window.bitbot.cnStatus();
           const meta = document.getElementById("cn-channels-meta");
           if (meta && cn && Array.isArray(cn.channels)) {
-            meta.textContent = cn.channels
+            let t = cn.channels
               .map(function (c) {
                 return c.connector + "=" + (c.live_ready ? "live" : "draft");
               })
               .join(" · ");
+            if (cn.inbound && cn.inbound.listening) {
+              t += " · 入站:" + cn.inbound.port;
+            }
+            meta.textContent = t;
           }
         }
       } catch (_) {
