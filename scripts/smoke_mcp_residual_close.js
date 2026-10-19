@@ -1688,6 +1688,15 @@ function stripHostAppliedMarker(file) {
     ["toggle_theme", "host_settings_open", "settings_open"],
     ["save_message", "host_journal_query", "journal_query"],
     ["bookmark", "host_journal_query", "journal_query"],
+    ["star_message", "host_journal_query", "journal_query"],
+    ["follow_thread", "host_channel_send", "channel_send"],
+    ["join_channel", "host_channel_send", "channel_send"],
+    ["create_huddle", "host_voice_session", "voice_session"],
+    ["end_huddle", "host_voice_end_write", "voice_end"],
+    ["set_away", "host_set_notify", "set_notify"],
+    ["custom_status", "host_set_notify", "set_notify"],
+    ["translate_message", "host_guide_permission", "guide_permission"],
+    ["snooze_thread", "host_routine_schedule", "routine_schedule"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1732,7 +1741,8 @@ function stripHostAppliedMarker(file) {
                               tool === "journal_tail" ||
                               tool === "save_message" ||
                               tool === "bookmark" ||
-                              tool === "unbookmark"
+                              tool === "unbookmark" ||
+                              tool === "star_message"
                             ? '{"q":"alias-journal"}'
                             : tool === "append_journal" || tool === "note_create"
                               ? '{"event":"alias","body":"journal-alias"}'
@@ -1801,7 +1811,11 @@ function stripHostAppliedMarker(file) {
                                                       tool === "archive_dm" ||
                                                       tool === "unarchive_dm" ||
                                                       tool === "set_topic" ||
-                                                      tool === "set_description"
+                                                      tool === "set_description" ||
+                                                      tool === "follow_thread" ||
+                                                      tool === "unfollow_thread" ||
+                                                      tool === "join_channel" ||
+                                                      tool === "leave_channel"
                                                     ? '{"scheme":"slack","channel":"Csmoke","body":"claim-or-chat"}'
                                                     : tool === "sms_claim" ||
                                                         tool === "claim_sms"
@@ -1825,7 +1839,8 @@ function stripHostAppliedMarker(file) {
                                                                 : tool === "export_transcript"
                                                                   ? '{"name":"transcript-export"}'
                                                                   : tool === "schedule_message" ||
-                                                                      tool === "create_reminder"
+                                                                      tool === "create_reminder" ||
+                                                                      tool === "snooze_thread"
                                                                     ? '{"name":"sched-msg","cron":"0 10 * * *","action":"ping"}'
                                                                     : tool === "edit_agent_instructions"
                                                                       ? '{"agent_id":"asst-mcp-info"}'
@@ -1889,7 +1904,11 @@ function stripHostAppliedMarker(file) {
                                                                   tool === "focus_window" ||
                                                                   tool === "minimize_window" ||
                                                                   tool === "list_scheduled" ||
-                                                                  tool === "cancel_scheduled"
+                                                                  tool === "cancel_scheduled" ||
+                                                                  tool === "translate_message" ||
+                                                                  tool === "create_huddle" ||
+                                                                  tool === "end_huddle" ||
+                                                                  tool === "start_huddle"
                                                                 ? '{}'
                                                                 : tool === "x_post" ||
                                                                     tool === "post_tweet" ||
@@ -1906,7 +1925,11 @@ function stripHostAppliedMarker(file) {
                                                                       tool === "typing_indicator" ||
                                                                       tool === "set_status" ||
                                                                       tool === "set_presence" ||
-                                                                      tool === "do_not_disturb_until"
+                                                                      tool === "do_not_disturb_until" ||
+                                                                      tool === "status_emoji" ||
+                                                                      tool === "custom_status" ||
+                                                                      tool === "set_away" ||
+                                                                      tool === "set_active"
                                                                     ? '{"toggle":"desktop","enabled":"off"}'
                                                                     : tool === "save_memory" ||
                                                                         tool === "delete_memory"

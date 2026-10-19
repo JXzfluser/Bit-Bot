@@ -284,6 +284,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "show credentials" {
     return Some(ListCredentials)
   }
+  if low == "fill credential" || low == "autofill login" {
+    return Some(FillCredential(domain="login.example.test"))
+  }
   if low.has_prefix("fill credential ") || low.has_prefix("autofill login ") {
     let rest = if low.has_prefix("fill credential ") {
       trimmed[16:].to_owned()
@@ -440,6 +443,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     if prompt != "" {
       return Some(GenerateVideo(prompt~))
     }
+  }
+  if low == "watch video" {
+    return Some(WatchVideo(video_path="agent-tools/gen-video-desktop-1.mp4"))
   }
   if low.has_prefix("watch video ") ||
     low.has_prefix("analyze video ") ||
@@ -797,15 +803,31 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     return Some(BoxChromeProbe(want_bare=false))
   }
   // CM-2101/2128 product Host ReactToMessage pill toggle.
-  if low.has_prefix("react message ") ||
+  if low == "react message" ||
+    low == "add reaction" ||
+    low == "remove reaction" ||
+    low == "pin message" ||
+    low == "unpin message" ||
+    low.has_prefix("react message ") ||
     low.has_prefix("react to message ") ||
-    low.has_prefix("toggle reaction ") {
+    low.has_prefix("toggle reaction ") ||
+    low.has_prefix("add reaction ") ||
+    low.has_prefix("pin message ") ||
+    low.has_prefix("unpin message ") {
     let rest = if low.has_prefix("react to message ") {
       trimmed[17:].trim().to_owned()
     } else if low.has_prefix("toggle reaction ") {
       trimmed[16:].trim().to_owned()
-    } else {
+    } else if low.has_prefix("add reaction ") {
+      trimmed[13:].trim().to_owned()
+    } else if low.has_prefix("pin message ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("unpin message ") {
       trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("react message ") {
+      trimmed[14:].trim().to_owned()
+    } else {
+      ""
     }
     let message_id = match extract_kv(rest, "msg") {
       Some(v) => v.trim().to_owned()
@@ -1008,11 +1030,14 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   // CM-2157 product Host structured chart (Pillow PNG via Host FFI).
-  if low.has_prefix("structured chart ") ||
+  if low == "structured chart" ||
+    low.has_prefix("structured chart ") ||
     low.has_prefix("make chart ") ||
     low.has_prefix("chart series ") ||
     low.has_prefix("generate chart ") {
-    let series_json = if low.has_prefix("structured chart ") {
+    let series_json = if low == "structured chart" {
+      "{\"alpha\":1,\"beta\":2}"
+    } else if low.has_prefix("structured chart ") {
       trimmed[17:].trim().to_owned()
     } else if low.has_prefix("make chart ") {
       trimmed[11:].trim().to_owned()
@@ -1024,6 +1049,11 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     if series_json != "" {
       return Some(StructuredChart(series_json~))
     }
+  }
+  if low == "clear chat" ||
+    low == "delete chat" ||
+    low == "archive chat" {
+    return Some(HideAgent(agent_id="asst-chat", hidden=true))
   }
   if low.has_prefix("code changes ") || low.has_prefix("edit code ") {
     let path = if low.has_prefix("code changes ") {
@@ -1490,6 +1520,11 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     if id != "" {
       return Some(VoiceEnd(call_id=id))
     }
+  }
+  if low == "create teammate" || low == "create agent" {
+    return Some(
+      CreateTeammate(id="asst-1", name="Teammate", role="executor"),
+    )
   }
   if low.has_prefix("create teammate ") || low.has_prefix("create agent ") {
     let rest = if low.has_prefix("create teammate ") {
