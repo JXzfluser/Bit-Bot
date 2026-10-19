@@ -978,11 +978,8 @@
         " · anchors=" +
         ((payload && payload.anchors_closed_set_count) || 27);
       panel.style.display = "block";
-      try {
-        await refreshSecretsForm();
-      } catch (_) {
-        /* ignore */
-      }
+      refreshSecretsForm().catch(() => {});
+      refreshInboundUrlStrip().catch(() => {});
       // Honest product residuals (brain / CN channels / filing / OTA) — never pretend ready.
       (async () => {
         const bits = [];
