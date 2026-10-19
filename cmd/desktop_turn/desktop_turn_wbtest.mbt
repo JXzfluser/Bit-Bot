@@ -382,6 +382,22 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(lsk.ok)
   assert_eq(lsk.intent, "list_skills")
   assert_eq(lsk.effects[0].kind, "list_skills")
+  let xp = run_desktop_turn("x post Bit Bot desktop draft", turn_id="xp-1")
+  assert_true(xp.ok)
+  assert_eq(xp.intent, "x_post")
+  assert_eq(xp.effects[0].kind, "x_post")
+  let op = run_desktop_turn("open plugins", turn_id="op-1")
+  assert_true(op.ok)
+  assert_eq(op.intent, "list_plugins")
+  let pin = run_desktop_turn("pin agent asst-1", turn_id="pin-1")
+  assert_true(pin.ok)
+  assert_eq(pin.intent, "hide_agent")
+  let brow = run_desktop_turn(
+    "browser open https://example.com",
+    turn_id="brow-1",
+  )
+  assert_true(brow.ok)
+  assert_eq(brow.intent, "webfetch")
   let jq = run_desktop_turn("journal query", turn_id="jq-bare-1")
   assert_true(jq.ok)
   assert_eq(jq.intent, "journal_query")

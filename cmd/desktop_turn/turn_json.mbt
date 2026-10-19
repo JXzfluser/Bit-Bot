@@ -168,6 +168,8 @@ pub(all) enum TurnIntent {
   TodoWrite(command~ : String)
   /// Host durable skill directory listing (product phrasing → list_skills FFI).
   ListSkills(query~ : String)
+  /// Host durable X post (draft-first; live gated by BITBOT_X_POST + bearer).
+  XPost(text~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -278,6 +280,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     JournalAppend(_) => "journal_append"
     TodoWrite(_) => "todo_write"
     ListSkills(_) => "list_skills"
+    XPost(_) => "x_post"
     JournalQuery(_) => "journal_query"
     SharedMemoryPut(_) => "shared_memory_put"
     SharedMemoryRead(_) => "shared_memory_read"
@@ -541,11 +544,20 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   }
   if low.has_prefix("webfetch ") ||
       low.has_prefix("fetch ") ||
-      low.has_prefix("web fetch ") {
+      low.has_prefix("web fetch ") ||
+      low.has_prefix("browser open ") ||
+      low.has_prefix("open url ") ||
+      low.has_prefix("open browser ") {
     let u = if low.has_prefix("webfetch ") {
       trimmed[9:].trim().to_owned()
     } else if low.has_prefix("web fetch ") {
       trimmed[10:].trim().to_owned()
+    } else if low.has_prefix("browser open ") {
+      trimmed[13:].trim().to_owned()
+    } else if low.has_prefix("open url ") {
+      trimmed[9:].trim().to_owned()
+    } else if low.has_prefix("open browser ") {
+      trimmed[13:].trim().to_owned()
     } else {
       trimmed[6:].trim().to_owned()
     }
@@ -652,6 +664,9 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       low == "mcp list tools" ||
       low == "list mcp tools" ||
       low == "mcp tools" ||
+      low == "open plugins" ||
+      low == "plugin marketplace" ||
+      low == "plugins marketplace" ||
       low.has_prefix("list plugins ") ||
       low.has_prefix("search plugins ") ||
       low.has_prefix("mcp list tools ") {
@@ -703,10 +718,16 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   }
   if low.has_prefix("draft outlook mail ") ||
       low.has_prefix("draft mail ") ||
-      low.has_prefix("draft email ") {
+      low.has_prefix("draft email ") ||
+      low.has_prefix("send mail ") ||
+      low.has_prefix("send email ") {
     let (rest, default_provider) = if low.has_prefix("draft outlook mail ") {
       (trimmed[19:].to_owned(), "outlook")
     } else if low.has_prefix("draft mail ") {
+      (trimmed[11:].to_owned(), "gmail")
+    } else if low.has_prefix("send mail ") {
+      (trimmed[10:].to_owned(), "gmail")
+    } else if low.has_prefix("send email ") {
       (trimmed[11:].to_owned(), "gmail")
     } else {
       (trimmed[12:].to_owned(), "gmail")
@@ -4125,6 +4146,22 @@ pub fn run_desktop_turn(
         "X public search: " +
         hits.length().to_string() +
         " hit(s) (CM-0910; Host persists results).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    XPost(text~) => {
+      let effect : DesktopEffect = {
+        kind: "x_post",
+        command: text,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "X post planned (draft-first). Host persists draft; live only when BITBOT_X_POST=1 + bearer (never pretend_posted).",
         intent,
         ctx~,
         effects=[effect],

@@ -242,6 +242,13 @@ for needle in (
     "attach file ",
     "journal query",
     "open identity browser",
+    "x post ",
+    "open plugins",
+    "pin agent ",
+    "browser open ",
+    "share bot",
+    "record audio",
+    "scan document",
     "deliver cloud artifact artifact=",
     "teams send tsmoke",
     "thread_ts=",
@@ -459,6 +466,36 @@ p=json.loads(h.get('stdout') or '{}')
 assert p.get('pretend_copied') is not True
 assert os.path.isfile(p.get('path') or '') or p.get('ok') is True or p.get('dest') or p.get('mode')
 print('ios attach file Host path ok', p.get('mode') or p.get('dest') or p.get('path'))
+"
+# Product x post → durable x_post Host draft on Android (never pretend_posted).
+node hosts/mobile_host/run.js --machine-kind android --session-id android-xpost "x post Bit Bot android draft" \
+  >/tmp/bitbot-android-xpost.raw
+parse_turn_json /tmp/bitbot-android-xpost.raw >/tmp/bitbot-android-xpost.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-xpost.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='x_post'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='x_post')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_posted') is not True
+assert p.get('mode')=='sandbox_draft' or p.get('live_x_post_residual') is True
+assert os.path.isfile(p.get('path') or '')
+print('android x post Host path ok', p.get('mode'), p.get('live_x_post_residual'))
+"
+# Product open plugins → mcp_list_plugins Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-plugins "open plugins" \
+  >/tmp/bitbot-ios-plugins.raw
+parse_turn_json /tmp/bitbot-ios-plugins.raw >/tmp/bitbot-ios-plugins.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-plugins.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='list_plugins'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='mcp_list_plugins')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_ok') is not True
+print('ios open plugins Host path ok', p.get('mode') or h.get('kind'))
 "
 
 echo "OK: verify_native_shells.sh"

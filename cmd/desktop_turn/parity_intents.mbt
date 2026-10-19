@@ -38,11 +38,14 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   if low.has_prefix("pause routine ") ||
     low.has_prefix("cancel scheduled ") ||
-    low.has_prefix("cancel reminder ") {
+    low.has_prefix("cancel reminder ") ||
+    low.has_prefix("pause reminder ") {
     let id = if low.has_prefix("pause routine ") {
       trimmed[14:].trim().to_owned()
     } else if low.has_prefix("cancel scheduled ") {
       trimmed[17:].trim().to_owned()
+    } else if low.has_prefix("pause reminder ") {
+      trimmed[15:].trim().to_owned()
     } else {
       trimmed[16:].trim().to_owned()
     }
@@ -104,11 +107,17 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   if low.has_prefix("read mail ") ||
     low.has_prefix("read thread ") ||
-    low.has_prefix("open mail ") {
+    low.has_prefix("open mail ") ||
+    low.has_prefix("archive mail ") ||
+    low.has_prefix("trash mail ") {
     let thread_id = if low.has_prefix("read mail ") {
       trimmed[10:].trim().to_owned()
     } else if low.has_prefix("read thread ") {
       trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("archive mail ") {
+      trimmed[13:].trim().to_owned()
+    } else if low.has_prefix("trash mail ") {
+      trimmed[11:].trim().to_owned()
     } else {
       trimmed[10:].trim().to_owned()
     }
@@ -662,15 +671,27 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   // CM-0204 product Host hidden agents (sidebar filter; still addressable).
   if low == "list agents" ||
     low == "list sidebar agents" ||
-    low == "main sidebar agents" {
+    low == "main sidebar agents" ||
+    low == "open agents sidebar" ||
+    low == "agents sidebar" {
     return Some(ListAgentsSidebar)
   }
-  if low.has_prefix("hide agent ") || low.has_prefix("unhide agent ") {
-    let hidden = low.has_prefix("hide agent ")
-    let rest = if hidden {
+  if low.has_prefix("hide agent ") ||
+    low.has_prefix("unhide agent ") ||
+    low.has_prefix("show agent ") ||
+    low.has_prefix("pin agent ") ||
+    low.has_prefix("unpin agent ") {
+    let hidden = low.has_prefix("hide agent ") || low.has_prefix("unpin agent ")
+    let rest = if low.has_prefix("hide agent ") {
       trimmed[11:].trim().to_owned()
-    } else {
+    } else if low.has_prefix("unhide agent ") {
       trimmed[13:].trim().to_owned()
+    } else if low.has_prefix("show agent ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("pin agent ") {
+      trimmed[10:].trim().to_owned()
+    } else {
+      trimmed[12:].trim().to_owned()
     }
     let agent_id = match extract_kv(rest, "agent") {
       Some(v) => v.trim().to_owned()
@@ -678,6 +699,20 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     if agent_id != "" {
       return Some(HideAgent(agent_id~, hidden~))
+    }
+  }
+  if low.has_prefix("rename agent ") {
+    let rest = trimmed[13:].trim().to_owned()
+    let agent_id = match extract_kv(rest, "agent") {
+      Some(v) => v.trim().to_owned()
+      None =>
+        match split_once(rest, " ") {
+          Some((id, _)) => id.trim().to_owned()
+          None => rest
+        }
+    }
+    if agent_id != "" {
+      return Some(OpenAgentInfoPanel(agent_id~))
     }
   }
   // CM-0206 product Host per-assistant notification settings.
@@ -859,7 +894,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "app updates" ||
     low == "version info" ||
     low == "about version" ||
-    low == "app version" {
+    low == "app version" ||
+    low == "about bitbot" ||
+    low == "about bit bot" ||
+    low == "about" {
     return Some(CheckUpdates)
   }
   // CM-1507 product Host auto-review / rules / security-keys Settings anchors.
@@ -1275,19 +1313,74 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(XSearch(query~))
     }
   }
-  if low.has_prefix("author skill ") {
-    let rest = trimmed[13:].to_owned()
+  // Product X post → Host x_post draft-first (Desktop button was chat fallback).
+  if low.has_prefix("x post ") ||
+    low.has_prefix("post tweet ") ||
+    low.has_prefix("tweet ") ||
+    low.has_prefix("create post ") ||
+    low.has_prefix("draft post ") ||
+    low.has_prefix("reply tweet ") {
+    let text = if low.has_prefix("x post ") {
+      trimmed[7:].trim().to_owned()
+    } else if low.has_prefix("post tweet ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("tweet ") {
+      trimmed[6:].trim().to_owned()
+    } else if low.has_prefix("create post ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("draft post ") {
+      trimmed[11:].trim().to_owned()
+    } else {
+      // reply tweet <id> <body>
+      let rest = trimmed[12:].trim().to_owned()
+      match split_once(rest, " ") {
+        Some((_, body)) => body.trim().to_owned()
+        None => rest
+      }
+    }
+    if text != "" {
+      return Some(XPost(text~))
+    }
+  }
+  if low.has_prefix("author skill ") ||
+    low.has_prefix("edit skill ") ||
+    low.has_prefix("delete skill ") ||
+    low.has_prefix("update skill ") {
+    let rest = if low.has_prefix("author skill ") {
+      trimmed[13:].to_owned()
+    } else if low.has_prefix("edit skill ") {
+      trimmed[11:].to_owned()
+    } else if low.has_prefix("delete skill ") {
+      trimmed[13:].to_owned()
+    } else {
+      trimmed[13:].to_owned()
+    }
     let name = match extract_kv(rest, "name") {
       Some(v) => v
-      None => "custom-skill"
+      None =>
+        if rest != "" && !rest.contains("=") {
+          rest.trim().to_owned()
+        } else {
+          "custom-skill"
+        }
     }
     let description = match extract_kv(rest, "description") {
       Some(v) => v
-      None => "user authored skill"
+      None =>
+        if low.has_prefix("delete skill ") {
+          "deleted skill"
+        } else {
+          "user authored skill"
+        }
     }
     let body = match extract_kv(rest, "body") {
       Some(v) => v
-      None => "Follow steps carefully."
+      None =>
+        if low.has_prefix("delete skill ") {
+          "# deleted"
+        } else {
+          "Follow steps carefully."
+        }
     }
     return Some(AuthorSkill(name~, description~, body~))
   }
@@ -1468,8 +1561,11 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   if low.has_prefix("export bot template ") ||
     low.has_prefix("export bot ") ||
+    low.has_prefix("export skill ") ||
+    low.has_prefix("share bot ") ||
     low == "backup chat" ||
     low == "share link" ||
+    low == "share bot" ||
     low == "copy invite" ||
     low == "export chat" ||
     low == "restore backup" ||
@@ -1485,11 +1581,15 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       trimmed[20:].to_owned()
     } else if low.has_prefix("export bot ") {
       trimmed[11:].to_owned()
+    } else if low.has_prefix("export skill ") {
+      "id=" + trimmed[13:].trim().to_owned() + " name=" + trimmed[13:].trim().to_owned()
+    } else if low.has_prefix("share bot ") {
+      "id=" + trimmed[10:].trim().to_owned() + " name=Share"
     } else if low.has_prefix("backup chat ") {
       trimmed[12:].to_owned()
     } else if low.has_prefix("share link ") {
       trimmed[11:].to_owned()
-    } else if low == "backup chat" || low == "share link" {
+    } else if low == "backup chat" || low == "share link" || low == "share bot" {
       "id=bot-backup name=Backup"
     } else {
       ""
@@ -1711,6 +1811,16 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       low == "take video" ||
       low.has_prefix("record video ") {
     return Some(DeviceToolInvoke(tool="mic"))
+  }
+  if low == "record audio" ||
+      low == "record voice" ||
+      low.has_prefix("record audio ") {
+    return Some(DeviceToolInvoke(tool="mic"))
+  }
+  if low == "scan document" ||
+      low == "scan doc" ||
+      low.has_prefix("scan document ") {
+    return Some(DeviceToolInvoke(tool="camera"))
   }
   if low == "scan qr" || low == "nfc read" || low == "wifi status" || low == "battery status" {
     let tool = if low == "scan qr" {
