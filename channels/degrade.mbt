@@ -49,7 +49,7 @@ pub fn deliver_for_channel(
   match address.kind {
     Chat | Internal =>
       { turn_id: env.turn_id, parts: env.parts, channel_hint: None, }
-    Slack | Email | Sms | Webhook | Voice | Teams =>
+    Slack | Email | Sms | Webhook | Voice | Teams | DingTalk | Feishu | WeCom =>
       {
         turn_id: env.turn_id,
         parts: degrade_for_channel(env.parts),

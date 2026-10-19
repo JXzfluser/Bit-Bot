@@ -10,6 +10,12 @@ pub(all) enum ChannelKind {
   Voice
   /// CM-1107: Microsoft Teams channel teams:<tenant>/<team>[/<channel>]
   Teams
+  /// CN product: 钉钉 dingtalk:<chat|webhook>
+  DingTalk
+  /// CN product: 飞书 / Lark feishu:<chat_id> (lark: alias)
+  Feishu
+  /// CN product: 企业微信 wecom:<touser|chatid>
+  WeCom
 } derive(Eq, Debug)
 
 ///|
@@ -41,6 +47,9 @@ pub fn ChannelId::render(self : ChannelId) -> String {
     Internal => "internal"
     Voice => "voice"
     Teams => "teams"
+    DingTalk => "dingtalk"
+    Feishu => "feishu"
+    WeCom => "wecom"
   }
   k + ":" + self.id
 }

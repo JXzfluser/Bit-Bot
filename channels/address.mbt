@@ -41,6 +41,20 @@ pub fn parse_channel_address(raw : String) -> ChannelAddress {
   } else if raw.has_prefix("teams:") {
     // CM-1107: teams:<tenant>/<team>[/<channel>]
     { kind: Teams, channel_id: raw[6:].to_owned(), thread_ts: None, }
+  } else if raw.has_prefix("dingtalk:") {
+    { kind: DingTalk, channel_id: raw[9:].to_owned(), thread_ts: None, }
+  } else if raw.has_prefix("feishu:") {
+    { kind: Feishu, channel_id: raw[7:].to_owned(), thread_ts: None, }
+  } else if raw.has_prefix("lark:") {
+    // Lark is Feishu international alias.
+    { kind: Feishu, channel_id: raw[5:].to_owned(), thread_ts: None, }
+  } else if raw.has_prefix("wecom:") || raw.has_prefix("wework:") {
+    let rest = if raw.has_prefix("wecom:") {
+      raw[6:].to_owned()
+    } else {
+      raw[7:].to_owned()
+    }
+    { kind: WeCom, channel_id: rest, thread_ts: None, }
   } else {
     { kind: Chat, channel_id: raw, thread_ts: None, }
   }
@@ -57,6 +71,9 @@ pub fn ChannelAddress::reply_hint(self : ChannelAddress) -> String {
     Email => "email:" + self.channel_id
     Voice => "voice:" + self.channel_id
     Teams => "teams:" + self.channel_id
+    DingTalk => "dingtalk:" + self.channel_id
+    Feishu => "feishu:" + self.channel_id
+    WeCom => "wecom:" + self.channel_id
     Chat | Sms | Webhook | Internal => self.channel_id
   }
 }

@@ -39,7 +39,8 @@ pub fn plan_channel_reply(
     Some(inbound) => {
       let parsed = parse_channel_address(inbound)
       let inbound_is_external = match parsed.kind {
-        Slack | Email | Sms | Webhook | Voice | Teams => true
+        Slack | Email | Sms | Webhook | Voice | Teams | DingTalk | Feishu | WeCom =>
+          true
         Chat | Internal => false
       }
       if !inbound_is_external {

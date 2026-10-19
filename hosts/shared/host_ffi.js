@@ -549,6 +549,36 @@ function createHostFfi(repoRoot) {
     const x = probeConnectorToken("x");
     const purchase = probeConnectorToken("purchase");
     const meeting = probeConnectorToken("meeting");
+    const dingtalk = {
+      connector: "dingtalk",
+      connected: Boolean(
+        String(process.env.BITBOT_DINGTALK_WEBHOOK || "").trim() ||
+          String(process.env.BITBOT_DINGTALK_TOKEN || "").trim() ||
+          resolveProviderAccessToken("dingtalk"),
+      ),
+      live_post_armed: process.env.BITBOT_DINGTALK_POST === "1",
+      pretend_connected: false,
+    };
+    const feishu = {
+      connector: "feishu",
+      connected: Boolean(
+        String(process.env.BITBOT_FEISHU_TOKEN || "").trim() ||
+          resolveProviderAccessToken("feishu") ||
+          resolveProviderAccessToken("lark"),
+      ),
+      live_post_armed: process.env.BITBOT_FEISHU_POST === "1",
+      pretend_connected: false,
+    };
+    const wecom = {
+      connector: "wecom",
+      connected: Boolean(
+        String(process.env.BITBOT_WECOM_TOKEN || "").trim() ||
+          resolveProviderAccessToken("wecom") ||
+          resolveProviderAccessToken("wework"),
+      ),
+      live_post_armed: process.env.BITBOT_WECOM_POST === "1",
+      pretend_connected: false,
+    };
     return {
       ok: true,
       connectors: {
@@ -562,6 +592,9 @@ function createHostFfi(repoRoot) {
         job,
         x,
         purchase,
+        dingtalk,
+        feishu,
+        wecom,
       },
       env: {
         SLACK_BOT_TOKEN: Boolean(resolveProviderAccessToken("slack")),
@@ -569,6 +602,9 @@ function createHostFfi(repoRoot) {
         SLACK_DEFAULT_CHANNEL: Boolean(
           String(process.env.SLACK_DEFAULT_CHANNEL || "").trim(),
         ),
+        BITBOT_DINGTALK_POST: process.env.BITBOT_DINGTALK_POST === "1",
+        BITBOT_FEISHU_POST: process.env.BITBOT_FEISHU_POST === "1",
+        BITBOT_WECOM_POST: process.env.BITBOT_WECOM_POST === "1",
       },
       pretend_all_connected: false,
       note: "Host FFI probe; MoonBit owns turn policy (not LocalBrain)",
@@ -2839,6 +2875,246 @@ function createHostFfi(repoRoot) {
         claim: voiceClaim || undefined,
         send_to_user_type: "voice",
       });
+    }
+
+    // CN product channels: 钉钉 / 飞书(Lark) / 企微 — live when env+POST gate; else durable draft.
+    if (
+      addr.startsWith("dingtalk:") ||
+      addr.startsWith("feishu:") ||
+      addr.startsWith("lark:") ||
+      addr.startsWith("wecom:") ||
+      addr.startsWith("wework:")
+    ) {
+      const cnScheme = addr.startsWith("dingtalk:")
+        ? "dingtalk"
+        : addr.startsWith("wecom:") || addr.startsWith("wework:")
+          ? "wecom"
+          : "feishu";
+      const target = addr
+        .replace(/^(dingtalk|feishu|lark|wecom|wework):/i, "")
+        .trim();
+      let outboundBody = body;
+      let widgetDegraded = false;
+      if (/\[widget:|type=widget|decision_card/i.test(body)) {
+        outboundBody = body
+          .replace(/\[widget:[^\]]*\]/gi, "")
+          .replace(/type=widget\S*/gi, "")
+          .trim();
+        if (!outboundBody) {
+          outboundBody =
+            "(widget degraded to text — open Desktop chat for choices)";
+        }
+        widgetDegraded = true;
+      }
+
+      async function postCnLive() {
+        if (cnScheme === "dingtalk") {
+          const webhook =
+            String(process.env.BITBOT_DINGTALK_WEBHOOK || "").trim() ||
+            (target.startsWith("http") ? target : "");
+          const token =
+            String(process.env.BITBOT_DINGTALK_TOKEN || "").trim() ||
+            resolveProviderAccessToken("dingtalk");
+          const want = process.env.BITBOT_DINGTALK_POST === "1";
+          if (!want || (!webhook && !token)) {
+            return {
+              attempted: false,
+              ok: false,
+              error: !want
+                ? "BITBOT_DINGTALK_POST!=1"
+                : "missing BITBOT_DINGTALK_WEBHOOK or TOKEN",
+            };
+          }
+          const url =
+            webhook ||
+            `https://oapi.dingtalk.com/robot/send?access_token=${encodeURIComponent(token)}`;
+          const payload = JSON.stringify({
+            msgtype: "text",
+            text: { content: outboundBody },
+          });
+          const resp = await httpJson(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(payload),
+            },
+            body: payload,
+            timeoutMs: 30000,
+          });
+          const errcode =
+            resp.json && typeof resp.json.errcode === "number"
+              ? resp.json.errcode
+              : resp.ok
+                ? 0
+                : -1;
+          return {
+            attempted: true,
+            ok: Boolean(resp.ok) && errcode === 0,
+            http_status: resp.status || 0,
+            error:
+              errcode === 0
+                ? ""
+                : (resp.json && (resp.json.errmsg || resp.json.message)) ||
+                  resp.error ||
+                  `dingtalk_http_${resp.status || 0}`,
+            url: url.replace(/access_token=[^&]+/i, "access_token=***"),
+          };
+        }
+        if (cnScheme === "feishu") {
+          const token =
+            String(process.env.BITBOT_FEISHU_TOKEN || "").trim() ||
+            resolveProviderAccessToken("feishu") ||
+            resolveProviderAccessToken("lark");
+          const want = process.env.BITBOT_FEISHU_POST === "1";
+          const chatId = target || String(process.env.BITBOT_FEISHU_CHAT_ID || "").trim();
+          if (!want || !token || !chatId) {
+            return {
+              attempted: false,
+              ok: false,
+              error: !want
+                ? "BITBOT_FEISHU_POST!=1"
+                : "missing BITBOT_FEISHU_TOKEN or chat id",
+            };
+          }
+          const base = (
+            process.env.BITBOT_FEISHU_API_BASE ||
+            "https://open.feishu.cn/open-apis"
+          ).replace(/\/$/, "");
+          const url = `${base}/im/v1/messages?receive_id_type=chat_id`;
+          const payload = JSON.stringify({
+            receive_id: chatId,
+            msg_type: "text",
+            content: JSON.stringify({ text: outboundBody }),
+          });
+          const resp = await httpJson(url, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(payload),
+            },
+            body: payload,
+            timeoutMs: 30000,
+          });
+          const code =
+            resp.json && typeof resp.json.code === "number"
+              ? resp.json.code
+              : resp.ok
+                ? 0
+                : -1;
+          return {
+            attempted: true,
+            ok: Boolean(resp.ok) && code === 0,
+            http_status: resp.status || 0,
+            error:
+              code === 0
+                ? ""
+                : (resp.json && (resp.json.msg || resp.json.message)) ||
+                  resp.error ||
+                  `feishu_http_${resp.status || 0}`,
+          };
+        }
+        // wecom
+        const token =
+          String(process.env.BITBOT_WECOM_TOKEN || "").trim() ||
+          resolveProviderAccessToken("wecom") ||
+          resolveProviderAccessToken("wework");
+        const agentId = String(process.env.BITBOT_WECOM_AGENT_ID || "").trim();
+        const want = process.env.BITBOT_WECOM_POST === "1";
+        const to = target || String(process.env.BITBOT_WECOM_TOUSER || "").trim();
+        if (!want || !token || !to) {
+          return {
+            attempted: false,
+            ok: false,
+            error: !want
+              ? "BITBOT_WECOM_POST!=1"
+              : "missing BITBOT_WECOM_TOKEN or target",
+          };
+        }
+        const base = (
+          process.env.BITBOT_WECOM_API_BASE ||
+          "https://qyapi.weixin.qq.com/cgi-bin"
+        ).replace(/\/$/, "");
+        const url = `${base}/message/send?access_token=${encodeURIComponent(token)}`;
+        const payloadObj = {
+          msgtype: "text",
+          agentid: agentId ? Number(agentId) || agentId : undefined,
+          text: { content: outboundBody },
+        };
+        if (/^wr/i.test(to) || to.includes("@")) {
+          payloadObj.chatid = to;
+        } else {
+          payloadObj.touser = to;
+        }
+        const payload = JSON.stringify(payloadObj);
+        const resp = await httpJson(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(payload),
+          },
+          body: payload,
+          timeoutMs: 30000,
+        });
+        const errcode =
+          resp.json && typeof resp.json.errcode === "number"
+            ? resp.json.errcode
+            : resp.ok
+              ? 0
+              : -1;
+        return {
+          attempted: true,
+          ok: Boolean(resp.ok) && errcode === 0,
+          http_status: resp.status || 0,
+          error:
+            errcode === 0
+              ? ""
+              : (resp.json && (resp.json.errmsg || resp.json.message)) ||
+                resp.error ||
+                `wecom_http_${resp.status || 0}`,
+        };
+      }
+
+      const live = await postCnLive();
+      if (live.attempted) {
+        const entry = {
+          scheme: cnScheme,
+          address: addr,
+          body: outboundBody,
+          mode: live.ok ? `live_${cnScheme}` : `live_${cnScheme}_failed`,
+          ok: Boolean(live.ok),
+          live_post: Boolean(live.ok),
+          live_channel_residual: !Boolean(live.ok),
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          http_status: live.http_status || 0,
+          error: live.error || "",
+          at: stamp,
+        };
+        appendJsonl(outboundPath, entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          ok: Boolean(live.ok),
+          error: live.ok ? "" : live.error || `${cnScheme} post failed`,
+        });
+      }
+      const entry = {
+        scheme: cnScheme,
+        address: addr,
+        body: outboundBody,
+        mode: "cn_channel_draft",
+        ok: true,
+        live_post: false,
+        live_channel_residual: true,
+        pretend_live: false,
+        widget_degraded: widgetDegraded,
+        note:
+          live.error ||
+          `draft only — set BITBOT_${cnScheme.toUpperCase()}_POST=1 + credentials for live`,
+        at: stamp,
+      };
+      appendJsonl(outboundPath, entry);
+      return finalizeChannelSend(raw, entry, { outboundPath });
     }
 
     const entry = {

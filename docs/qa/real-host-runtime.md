@@ -87,6 +87,9 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 | `BITBOT_DATA_ROOT` | Default `/workspace/data` |
 | `HOST_UI_PORT` | Default `8765` |
 | `SLACK_BOT_TOKEN` | Live Slack adapter; **absent → sandbox_idp** |
+| `BITBOT_DINGTALK_WEBHOOK` / `BITBOT_DINGTALK_TOKEN` + `BITBOT_DINGTALK_POST=1` | Live 钉钉 robot send (`dingtalk:<id\|webhook>`) |
+| `BITBOT_FEISHU_TOKEN` + `BITBOT_FEISHU_POST=1` (+ chat id in address) | Live 飞书 IM (`feishu:<chat_id>` / `lark:`) |
+| `BITBOT_WECOM_TOKEN` + `BITBOT_WECOM_POST=1` (+ `BITBOT_WECOM_AGENT_ID`) | Live 企微 message (`wecom:<touser\|chatid>`) |
 | `BITBOT_SLACK_POST` | Set `1` to allow `chat.postMessage` |
 | `BITBOT_SLACK_API_BASE` | Override Slack API root (local mock e.g. `http://127.0.0.1:18769`) |
 | `BITBOT_TEAMS_TOKEN` | Bearer for Teams Graph live post |

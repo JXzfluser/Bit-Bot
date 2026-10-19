@@ -848,7 +848,12 @@ fn parse_channel_intent(trimmed : String, low : String) -> TurnIntent? {
           let inbound_addr = if a.has_prefix("slack:") ||
             a.has_prefix("email:") ||
             a.has_prefix("teams:") ||
-            a.has_prefix("voice:") {
+            a.has_prefix("voice:") ||
+            a.has_prefix("dingtalk:") ||
+            a.has_prefix("feishu:") ||
+            a.has_prefix("lark:") ||
+            a.has_prefix("wecom:") ||
+            a.has_prefix("wework:") {
             a
           } else {
             // "channel:slack:C1 body" → rest starts with slack:

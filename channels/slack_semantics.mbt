@@ -38,7 +38,8 @@ pub fn classify_slack_target(
 pub fn ChannelAddress::slack_target(self : ChannelAddress) -> SlackTargetKind? {
   match self.kind {
     Slack => Some(classify_slack_target(self.channel_id, self.thread_ts))
-    Chat | Email | Sms | Webhook | Internal | Voice | Teams => None
+    Chat | Email | Sms | Webhook | Internal | Voice | Teams | DingTalk | Feishu |
+    WeCom => None
   }
 }
 
@@ -75,7 +76,8 @@ pub fn is_external_hint(hint : String?) -> Bool {
       let addr = parse_channel_address(h)
       match addr.kind {
         Chat | Internal => false
-        Slack | Email | Sms | Webhook | Voice | Teams => true
+        Slack | Email | Sms | Webhook | Voice | Teams | DingTalk | Feishu | WeCom =>
+          true
       }
     }
   }
