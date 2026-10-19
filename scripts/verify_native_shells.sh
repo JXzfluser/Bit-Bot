@@ -331,5 +331,36 @@ assert p.get('enabled') is False
 assert os.path.isfile(p.get('path') or '')
 print('android mute channel Host path ok', p.get('mode'))
 "
+# Product phrasing create canvas page → slides_pptx Host (not chat fallback).
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-canvas "create canvas page" \
+  >/tmp/bitbot-ios-canvas.raw
+parse_turn_json /tmp/bitbot-ios-canvas.raw >/tmp/bitbot-ios-canvas.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-canvas.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='make_slides'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='slides_pptx')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_ok') is not True
+assert os.path.isfile(p.get('path') or '') or p.get('ok') is True or p.get('mode')
+print('ios create canvas Host path ok', p.get('mode') or p.get('path'))
+"
+# Product phrasing do not disturb → set_notify on Android.
+node hosts/mobile_host/run.js --machine-kind android --session-id android-dnd "do not disturb" \
+  >/tmp/bitbot-android-dnd.raw
+parse_turn_json /tmp/bitbot-android-dnd.raw >/tmp/bitbot-android-dnd.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-dnd.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='set_notify'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='set_notify')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_updated') is False
+assert p.get('toggle')=='desktop'
+assert os.path.isfile(p.get('path') or '')
+print('android do not disturb Host path ok', p.get('mode'))
+"
 
 echo "OK: verify_native_shells.sh"
