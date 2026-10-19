@@ -65,9 +65,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       "scheduled send"
     }
     let p = if prompt != "" { prompt } else { "scheduled send" }
-    return Some(
-      CreateRoutine(id="sched-send-1", cron="0 9 * * *", prompt=p),
-    )
+    return Some(CreateRoutine(id="sched-send-1", cron="0 9 * * *", prompt=p))
   }
   if low.has_prefix("resume routine ") {
     let id = trimmed[15:].trim().to_owned()
@@ -126,12 +124,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   // CM-1801 scheduling skill (before routine `schedule routine`).
-  if low == "list calendar" ||
-    low == "calendar list" ||
-    low == "show calendar" {
-    return Some(
-      ScheduleMeeting(title="CalendarList", when_desc="list"),
-    )
+  if low == "list calendar" || low == "calendar list" || low == "show calendar" {
+    return Some(ScheduleMeeting(title="CalendarList", when_desc="list"))
   }
   if low.has_prefix("delete calendar ") || low.has_prefix("cancel calendar ") {
     let id = if low.has_prefix("delete calendar ") {
@@ -644,10 +638,12 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       low == "rate bitbot" ||
       low == "send feedback" {
       "feedback"
+    } else if low.has_prefix("switch model ") {
+      // Preserve provider/model id for Host llm_set_model.
+      "model=" + trimmed[13:].trim().to_owned()
     } else if low == "list models" ||
       low == "switch model" ||
       low == "model picker" ||
-      low.has_prefix("switch model ") ||
       low.has_prefix("list models ") {
       "models"
     } else {
@@ -824,7 +820,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     let enabled = if low.has_prefix("set status ") {
       let st = trimmed[11:].trim().to_lower()
       !(st == "away" || st == "dnd" || st == "offline" || st == "busy")
-    } else if low.has_prefix("custom status ") || low.has_prefix("set presence ") {
+    } else if low.has_prefix("custom status ") ||
+      low.has_prefix("set presence ") {
       let st = if low.has_prefix("custom status ") {
         trimmed[14:].trim().to_lower()
       } else {
@@ -1449,7 +1446,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "refresh token gmail" {
     return Some(ConnectGmail)
   }
-  if low == "reauth slack" || low == "authorize slack" || low == "refresh token slack" {
+  if low == "reauth slack" ||
+    low == "authorize slack" ||
+    low == "refresh token slack" {
     return Some(SetupSlack)
   }
   if low == "connect outlook" ||
@@ -1468,7 +1467,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     if low == "disconnect slack" {
       return Some(SetupSlack)
     }
-    return Some(OpenSettings(entry="sidebar-account-button", anchor="connectors"))
+    return Some(
+      OpenSettings(entry="sidebar-account-button", anchor="connectors"),
+    )
   }
   // Journal query before append — bare "journal query" also matches "journal " prefix.
   if low == "bookmark message" ||
@@ -1662,7 +1663,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     } else if low.has_prefix("export bot ") {
       trimmed[11:].to_owned()
     } else if low.has_prefix("export skill ") {
-      "id=" + trimmed[13:].trim().to_owned() + " name=" + trimmed[13:].trim().to_owned()
+      "id=" +
+      trimmed[13:].trim().to_owned() +
+      " name=" +
+      trimmed[13:].trim().to_owned()
     } else if low.has_prefix("share bot ") {
       "id=" + trimmed[10:].trim().to_owned() + " name=Share"
     } else if low.has_prefix("backup chat ") {
@@ -1897,27 +1901,30 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // Product phrasing → same Host device_tool kinds (multi-end quick actions).
   if low == "take photo" ||
-      low == "take a photo" ||
-      low == "capture photo" ||
-      low.has_prefix("take photo ") {
+    low == "take a photo" ||
+    low == "capture photo" ||
+    low.has_prefix("take photo ") {
     return Some(DeviceToolInvoke(tool="camera"))
   }
   if low == "record video" ||
-      low == "take video" ||
-      low.has_prefix("record video ") {
+    low == "take video" ||
+    low.has_prefix("record video ") {
     return Some(DeviceToolInvoke(tool="mic"))
   }
   if low == "record audio" ||
-      low == "record voice" ||
-      low.has_prefix("record audio ") {
+    low == "record voice" ||
+    low.has_prefix("record audio ") {
     return Some(DeviceToolInvoke(tool="mic"))
   }
   if low == "scan document" ||
-      low == "scan doc" ||
-      low.has_prefix("scan document ") {
+    low == "scan doc" ||
+    low.has_prefix("scan document ") {
     return Some(DeviceToolInvoke(tool="camera"))
   }
-  if low == "scan qr" || low == "nfc read" || low == "wifi status" || low == "battery status" {
+  if low == "scan qr" ||
+    low == "nfc read" ||
+    low == "wifi status" ||
+    low == "battery status" {
     let tool = if low == "scan qr" {
       "camera"
     } else if low == "nfc read" {
@@ -1958,9 +1965,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(LoadSkill(task~))
     }
   }
-  if low == "start huddle" ||
-    low == "huddle start" ||
-    low == "join huddle" {
+  if low == "start huddle" || low == "huddle start" || low == "join huddle" {
     return Some(VoiceStart(call_id="huddle-1"))
   }
   if low == "end huddle" || low == "huddle end" || low == "leave huddle" {
@@ -2000,9 +2005,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low == "create teammate" || low == "create agent" {
-    return Some(
-      CreateTeammate(id="asst-1", name="Teammate", role="executor"),
-    )
+    return Some(CreateTeammate(id="asst-1", name="Teammate", role="executor"))
   }
   if low.has_prefix("create teammate ") || low.has_prefix("create agent ") {
     let rest = if low.has_prefix("create teammate ") {

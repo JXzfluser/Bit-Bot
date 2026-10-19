@@ -349,7 +349,10 @@ function createHostFfi(repoRoot) {
     );
   }
 
-  function httpJson(url, { method = "GET", headers = {}, body = null } = {}) {
+  function httpJson(
+    url,
+    { method = "GET", headers = {}, body = null, timeoutMs = 20000 } = {},
+  ) {
     return new Promise((resolve) => {
       try {
         const u = new URL(url);
@@ -362,7 +365,7 @@ function createHostFfi(repoRoot) {
             path: u.pathname + u.search,
             method,
             headers,
-            timeout: 20000,
+            timeout: Math.max(1000, Number(timeoutMs) || 20000),
           },
           (res) => {
             let data = "";
@@ -4461,6 +4464,7 @@ function createHostFfi(repoRoot) {
     "auto-review": "General",
     "auto-review-rules": "General",
     "security-keys": "General",
+    models: "General",
     "local-execution": "Computer",
     computers: "Computer",
     "update-computer": "Computer",
@@ -4474,6 +4478,412 @@ function createHostFfi(repoRoot) {
     "update-channel": "Updates",
     "automatic-updates": "Updates",
   };
+
+  /** Default CN product brain: DeepSeek OpenAI-compatible API (env-key). */
+  const DEFAULT_LLM_PROVIDERS = [
+    {
+      id: "deepseek",
+      label: "DeepSeek",
+      base_url: "https://api.deepseek.com/v1",
+      model: "deepseek-chat",
+      env_key: "BITBOT_LLM_API_KEY",
+      env_base: "BITBOT_LLM_BASE_URL",
+      env_model: "BITBOT_LLM_MODEL",
+    },
+    {
+      id: "qwen",
+      label: "通义千问",
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      model: "qwen-plus",
+      env_key: "BITBOT_LLM_QWEN_API_KEY",
+      env_base: "BITBOT_LLM_QWEN_BASE_URL",
+      env_model: "BITBOT_LLM_QWEN_MODEL",
+    },
+    {
+      id: "moonshot",
+      label: "Kimi / Moonshot",
+      base_url: "https://api.moonshot.cn/v1",
+      model: "moonshot-v1-8k",
+      env_key: "BITBOT_LLM_MOONSHOT_API_KEY",
+      env_base: "BITBOT_LLM_MOONSHOT_BASE_URL",
+      env_model: "BITBOT_LLM_MOONSHOT_MODEL",
+    },
+  ];
+
+  function llmDir() {
+    return path.join(REPO_ROOT, "data", "llm");
+  }
+
+  function llmProvidersPath() {
+    return path.join(llmDir(), "providers.json");
+  }
+
+  function llmActivePath() {
+    return path.join(llmDir(), "active.json");
+  }
+
+  function loadLlmProviders() {
+    fs.mkdirSync(llmDir(), { recursive: true });
+    const p = llmProvidersPath();
+    if (!fs.existsSync(p)) {
+      const seed = {
+        version: 1,
+        default_provider: "deepseek",
+        providers: DEFAULT_LLM_PROVIDERS,
+      };
+      fs.writeFileSync(p, JSON.stringify(seed, null, 2));
+      return seed;
+    }
+    try {
+      const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+      if (!raw || !Array.isArray(raw.providers) || !raw.providers.length) {
+        return {
+          version: 1,
+          default_provider: "deepseek",
+          providers: DEFAULT_LLM_PROVIDERS,
+        };
+      }
+      return raw;
+    } catch {
+      return {
+        version: 1,
+        default_provider: "deepseek",
+        providers: DEFAULT_LLM_PROVIDERS,
+      };
+    }
+  }
+
+  function loadLlmActive() {
+    try {
+      if (fs.existsSync(llmActivePath())) {
+        return JSON.parse(fs.readFileSync(llmActivePath(), "utf8")) || {};
+      }
+    } catch {
+      /* ignore */
+    }
+    return {};
+  }
+
+  function saveLlmActive(active) {
+    fs.mkdirSync(llmDir(), { recursive: true });
+    fs.writeFileSync(llmActivePath(), JSON.stringify(active, null, 2));
+  }
+
+  /**
+   * Resolve active OpenAI-compatible endpoint.
+   * Priority: BITBOT_LLM_* env (product override) → active.json → providers.json default (DeepSeek).
+   */
+  function resolveLlmConfig() {
+    const catalog = loadLlmProviders();
+    const active = loadLlmActive();
+    const wantId = String(
+      process.env.BITBOT_LLM_PROVIDER ||
+        active.provider_id ||
+        catalog.default_provider ||
+        "deepseek",
+    )
+      .trim()
+      .toLowerCase();
+    const providers = catalog.providers || DEFAULT_LLM_PROVIDERS;
+    let provider =
+      providers.find(
+        (p) => String(p.id || "").toLowerCase() === wantId,
+      ) ||
+      providers.find(
+        (p) =>
+          String(p.id || "").toLowerCase() ===
+          String(catalog.default_provider || "deepseek").toLowerCase(),
+      ) ||
+      providers[0] ||
+      DEFAULT_LLM_PROVIDERS[0];
+
+    const envBase = String(
+      process.env.BITBOT_LLM_BASE_URL ||
+        (provider.env_base && process.env[provider.env_base]) ||
+        "",
+    ).trim();
+    const envKey = String(
+      process.env.BITBOT_LLM_API_KEY ||
+        (provider.env_key && process.env[provider.env_key]) ||
+        "",
+    ).trim();
+    const envModel = String(
+      process.env.BITBOT_LLM_MODEL ||
+        (provider.env_model && process.env[provider.env_model]) ||
+        "",
+    ).trim();
+
+    const base_url = (
+      envBase ||
+      active.base_url ||
+      provider.base_url ||
+      "https://api.deepseek.com/v1"
+    ).replace(/\/$/, "");
+    const model =
+      envModel || active.model || provider.model || "deepseek-chat";
+    const api_key = envKey || String(active.api_key || "").trim();
+
+    return {
+      provider_id: provider.id || wantId || "deepseek",
+      label: provider.label || provider.id || "LLM",
+      base_url,
+      model,
+      api_key,
+      key_configured: Boolean(api_key),
+      key_source: envKey
+        ? "env"
+        : active.api_key
+          ? "active.json"
+          : "missing",
+      catalog_path: llmProvidersPath(),
+      active_path: llmActivePath(),
+    };
+  }
+
+  async function executeLlmChat(command) {
+    const at = new Date().toISOString();
+    const userText = String(command || "").trim();
+    const cfg = resolveLlmConfig();
+    const dir = path.join(llmDir(), "turns");
+    fs.mkdirSync(dir, { recursive: true });
+    const artifactPath = path.join(
+      dir,
+      `chat-${Date.now().toString(36)}.json`,
+    );
+
+    if (!userText) {
+      const artifact = {
+        mode: "host_llm_chat",
+        ok: false,
+        error: "empty user text",
+        provider_id: cfg.provider_id,
+        model: cfg.model,
+        pretend_completion: false,
+        at,
+      };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      return {
+        kind: "llm_chat",
+        ok: false,
+        command: userText,
+        stdout: "",
+        stderr: "",
+        error: "empty user text",
+      };
+    }
+
+    if (!cfg.api_key) {
+      const artifact = {
+        mode: "host_llm_chat",
+        ok: false,
+        error:
+          "BITBOT_LLM_API_KEY (or provider env_key) not set — no LocalBrain fallback on product path",
+        provider_id: cfg.provider_id,
+        base_url: cfg.base_url,
+        model: cfg.model,
+        pretend_completion: false,
+        at,
+      };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      return {
+        kind: "llm_chat",
+        ok: false,
+        command: userText,
+        stdout: "",
+        stderr: "",
+        error: artifact.error,
+      };
+    }
+
+    const url = `${cfg.base_url}/chat/completions`;
+    const payload = {
+      model: cfg.model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。",
+        },
+        { role: "user", content: userText },
+      ],
+      temperature: 0.3,
+      stream: false,
+    };
+    const body = JSON.stringify(payload);
+    const res = await httpJson(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cfg.api_key}`,
+        Accept: "application/json",
+        "Content-Length": Buffer.byteLength(body),
+      },
+      body,
+      timeoutMs: Number(process.env.BITBOT_LLM_TIMEOUT_MS || 90000),
+    });
+
+    let text = "";
+    let finish = null;
+    const choices =
+      res.json && Array.isArray(res.json.choices) ? res.json.choices : [];
+    if (choices.length) {
+      const msg = choices[0].message || {};
+      text = String(msg.content || "").trim();
+      finish = choices[0].finish_reason || null;
+    }
+    const ok = Boolean(res.ok && text);
+    const error = ok
+      ? null
+      : res.error ||
+        (res.json &&
+          ((res.json.error && res.json.error.message) || res.json.message)) ||
+        `llm_http_${res.status || 0}` ||
+        "empty completion";
+
+    const artifact = {
+      mode: "host_llm_chat",
+      ok,
+      provider_id: cfg.provider_id,
+      label: cfg.label,
+      base_url: cfg.base_url,
+      model: cfg.model,
+      http_status: res.status || 0,
+      finish_reason: finish,
+      reply_chars: text.length,
+      reply_prefix: text.slice(0, 240),
+      error,
+      pretend_completion: false,
+      localbrain: false,
+      at,
+    };
+    fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(llmDir(), "chats.jsonl"), {
+      ...artifact,
+      path: artifactPath,
+      user_prefix: userText.slice(0, 120),
+    });
+
+    return {
+      kind: "llm_chat",
+      ok,
+      command: userText,
+      stdout: ok ? text : "",
+      stderr: ok ? "" : String(error || ""),
+      error: ok ? "" : String(error || "llm_chat failed"),
+      artifact_path: artifactPath,
+      provider_id: cfg.provider_id,
+      model: cfg.model,
+    };
+  }
+
+  async function executeLlmListModels(command) {
+    const at = new Date().toISOString();
+    const catalog = loadLlmProviders();
+    const cfg = resolveLlmConfig();
+    const rows = (catalog.providers || []).map((p) => {
+      const id = String(p.id || "");
+      const keyEnv = p.env_key || "BITBOT_LLM_API_KEY";
+      const keyed = Boolean(
+        String(process.env[keyEnv] || "").trim() ||
+          (id === cfg.provider_id && cfg.key_configured),
+      );
+      return {
+        id,
+        label: p.label || id,
+        model: p.model || "",
+        base_url: p.base_url || "",
+        key_env: keyEnv,
+        key_configured: keyed,
+        active: id === cfg.provider_id,
+      };
+    });
+    const dir = llmDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const listPath = path.join(dir, `models-${Date.now().toString(36)}.json`);
+    const artifact = {
+      mode: "host_llm_list_models",
+      active: {
+        provider_id: cfg.provider_id,
+        model: cfg.model,
+        base_url: cfg.base_url,
+        key_configured: cfg.key_configured,
+      },
+      providers: rows,
+      command: String(command || ""),
+      pretend_listed: false,
+      at,
+    };
+    fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
+    const lines = rows
+      .map(
+        (r) =>
+          `${r.active ? "*" : "-"} ${r.id} · ${r.label} · model=${r.model} · key=${r.key_configured ? "set" : "missing (" + r.key_env + ")"}`,
+      )
+      .join("\n");
+    const summary =
+      `LLM providers (${rows.length}); active=${cfg.provider_id}/${cfg.model}\n` +
+      lines;
+    return {
+      kind: "llm_list_models",
+      ok: true,
+      command: String(command || "list"),
+      stdout: summary,
+      stderr: "",
+      artifact_path: listPath,
+    };
+  }
+
+  async function executeLlmSetModel(command) {
+    const at = new Date().toISOString();
+    const raw = String(command || "").trim();
+    let providerId = raw;
+    let modelOverride = "";
+    const m = raw.match(/^(?:provider=)?([^\s|/]+)(?:\s*[|/]\s*model=([^\s]+))?/i);
+    if (m) {
+      providerId = m[1];
+      modelOverride = m[2] || "";
+    }
+    if (raw.includes("=") && !raw.startsWith("provider=")) {
+      const pm = raw.match(/\bprovider=([^\s]+)/i);
+      const mm = raw.match(/\bmodel=([^\s]+)/i);
+      if (pm) providerId = pm[1];
+      if (mm) modelOverride = mm[1];
+    }
+    providerId = String(providerId || "")
+      .trim()
+      .toLowerCase();
+    const catalog = loadLlmProviders();
+    const hit = (catalog.providers || []).find(
+      (p) => String(p.id || "").toLowerCase() === providerId,
+    );
+    if (!hit) {
+      return {
+        kind: "llm_set_model",
+        ok: false,
+        command: raw,
+        stdout: "",
+        stderr: "",
+        error: `unknown provider: ${providerId || "(empty)"}`,
+      };
+    }
+    const active = {
+      provider_id: hit.id,
+      model: modelOverride || hit.model || "",
+      base_url: hit.base_url || "",
+      updated_at: at,
+    };
+    saveLlmActive(active);
+    const summary = `Active LLM → ${active.provider_id} / ${active.model}`;
+    return {
+      kind: "llm_set_model",
+      ok: true,
+      command: raw,
+      stdout: summary,
+      stderr: "",
+      provider_id: active.provider_id,
+      model: active.model,
+    };
+  }
   const INFO_PANEL_SECTIONS = [
     "desktop-preview",
     "routines",
@@ -21182,6 +21592,18 @@ function createHostFfi(repoRoot) {
       }
       if (kind === "settings_open") {
         results.push(await executeSettingsOpen(cmd));
+        continue;
+      }
+      if (kind === "llm_chat") {
+        results.push(await executeLlmChat(cmd));
+        continue;
+      }
+      if (kind === "llm_list_models") {
+        results.push(await executeLlmListModels(cmd));
+        continue;
+      }
+      if (kind === "llm_set_model") {
+        results.push(await executeLlmSetModel(cmd));
         continue;
       }
       if (kind === "agent_info_panel") {

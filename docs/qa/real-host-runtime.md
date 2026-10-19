@@ -20,7 +20,7 @@ Smoke: `bash scripts/smoke_real_chat.sh` (Shell, ListDir, memory set/get, WebFet
 | Memory panel | Host UI optional snippet from `state.memorySnippet` after turns |
 | Routines | LocalBrain list/create → `data/routines/<agent>.json` |
 | Irreversible gate | Refuses `rm -rf /` and similar without running |
-| LLM chain | `BITBOT_LLM_*` API → Ollama → **LocalBrain** (heuristic + real tools) |
+| LLM chain (product) | MoonBit `Chat` → Host `llm_chat` → OpenAI-compat (`BITBOT_LLM_*`, DeepSeek default). **No LocalBrain** on product path. |
 | LLM badge | Host UI shows `llm=` mode on chat header + chat strip |
 | Connectors status | `POST /api/host/connectors/status` → live vs sandbox per Slack/Gmail/Outlook |
 | Slack | If `SLACK_BOT_TOKEN` set: live `auth.test` (+ draft-first post); live `chat.postMessage` when `BITBOT_SLACK_POST=1`; local mock via `BITBOT_SLACK_API_BASE` |
@@ -79,9 +79,11 @@ Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 000
 
 | Var | Role |
 |-----|------|
-| `BITBOT_LLM_BASE_URL` + `BITBOT_LLM_API_KEY` (+ `BITBOT_LLM_MODEL`) | OpenAI-compatible chat completions |
-| `BITBOT_OLLAMA_URL` | Default `http://127.0.0.1:11434` |
-| `BITBOT_OLLAMA_MODEL` | Default `llama3.2:1b` |
+| `BITBOT_LLM_BASE_URL` + `BITBOT_LLM_API_KEY` (+ `BITBOT_LLM_MODEL`) | Product Host `llm_chat` OpenAI-compatible completions (default DeepSeek `https://api.deepseek.com/v1` / `deepseek-chat`) |
+| `BITBOT_LLM_PROVIDER` | Select catalog id from `data/llm/providers.json` (`deepseek` / `qwen` / `moonshot`) |
+| `BITBOT_LLM_TIMEOUT_MS` | Host LLM HTTP timeout (default 90000) |
+| `BITBOT_OLLAMA_URL` | Legacy demoted runtime only — not product Chat |
+| `BITBOT_OLLAMA_MODEL` | Legacy demoted runtime only |
 | `BITBOT_DATA_ROOT` | Default `/workspace/data` |
 | `HOST_UI_PORT` | Default `8765` |
 | `SLACK_BOT_TOKEN` | Live Slack adapter; **absent → sandbox_idp** |
