@@ -282,6 +282,23 @@ parse_turn_json /tmp/bitbot-ios-native.raw >/tmp/bitbot-ios-native.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-ios-native.json'));assert d.get('ok');assert d.get('machine_kind')=='ios';print('ios shell path ok')"
 # CHARTER Delivery trailer should still be present on raw mobile_host output.
 python3 -c "t=open('/tmp/bitbot-ios-native.raw').read();assert 'machine_kind=ios' in t;print('ios HostAbi trailer ok')"
+# Product phrasing take photo → device_permission Host FFI (true_device residual honest).
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-take-photo "take photo" \
+  >/tmp/bitbot-ios-take-photo.raw
+parse_turn_json /tmp/bitbot-ios-take-photo.raw >/tmp/bitbot-ios-take-photo.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-take-photo.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='device_tool_invoke'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='device_permission')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('tool')=='camera'
+assert p.get('pretend_granted') is False
+assert p.get('true_device_os_dialog_residual') is True
+assert os.path.isfile(p.get('path') or '')
+print('ios take photo Host path ok', p.get('mode'), 'residual', True)
+"
 
 echo "==> Android machine_kind via mobile_host (BitBotHost bridge target)"
 node hosts/mobile_host/run.js --machine-kind android --session-id android-native-shell "device tools" \
@@ -289,5 +306,22 @@ node hosts/mobile_host/run.js --machine-kind android --session-id android-native
 parse_turn_json /tmp/bitbot-android-native.raw >/tmp/bitbot-android-native.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-android-native.json'));assert d.get('ok');assert d.get('machine_kind')=='android';assert d.get('intent')=='device_tools';h=next(x for x in d.get('host_results')or[] if x.get('kind')=='device_tools_list');p=__import__('json').loads(h['stdout']);assert p.get('pretend_granted') is False;assert os.path.isfile(p['path']);print('android shell path ok', 'tools', p.get('count'))"
 python3 -c "t=open('/tmp/bitbot-android-native.raw').read();assert 'machine_kind=android' in t;assert 'SendToUser' in t or 'device_tools_list' in t;print('android HostAbi trailer ok')"
+# Product phrasing mute channel → set_notify durable Host (not chat fallback).
+node hosts/mobile_host/run.js --machine-kind android --session-id android-mute "mute channel" \
+  >/tmp/bitbot-android-mute.raw
+parse_turn_json /tmp/bitbot-android-mute.raw >/tmp/bitbot-android-mute.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-mute.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='set_notify'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='set_notify')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_updated') is False
+assert p.get('toggle')=='desktop'
+assert p.get('enabled') is False
+assert os.path.isfile(p.get('path') or '')
+print('android mute channel Host path ok', p.get('mode'))
+"
 
 echo "OK: verify_native_shells.sh"
