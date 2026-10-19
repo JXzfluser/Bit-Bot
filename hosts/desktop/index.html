@@ -304,7 +304,7 @@
     display: flex;
     gap: 10px;
   }
-  #composer input {
+  #composer input, #composer textarea {
     flex: 1;
     background: #0e1612;
     color: var(--ink);
@@ -312,8 +312,31 @@
     border-radius: 8px;
     padding: 12px 14px;
     font: inherit;
+    resize: none;
+    max-height: 160px;
   }
-  #composer input:focus { outline: none; border-color: var(--accent); }
+  #composer input:focus, #composer textarea:focus { outline: none; border-color: var(--accent); }
+  #composer #attach-btn, #composer #voice-btn { background: #2a4a3a; color: #b7e0c8; padding: 0 12px; }
+  .attach-strip { display: flex; flex-wrap: wrap; gap: 6px; }
+  .attach-strip .attach-chip {
+    background: #16241c; border: 1px solid var(--line); border-radius: 6px;
+    padding: 3px 8px; font-size: 11px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center;
+  }
+  .attach-strip .attach-chip button { background: none; border: 0; color: #e08a8a; cursor: pointer; padding: 0; font-weight: 700; }
+  .composer-menu {
+    position: absolute; bottom: 72px; left: 20px; z-index: 40;
+    background: #0f1814; border: 1px solid var(--accent); border-radius: 8px;
+    padding: 6px; max-height: 220px; overflow: auto; min-width: 240px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .composer-menu button {
+    background: none; color: var(--ink); border: 0; text-align: left;
+    padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px;
+  }
+  .composer-menu button:hover { background: #1a2420; }
+  #composer {
+    position: relative;
+  }
   #composer button {
     background: var(--accent);
     color: #062014;
@@ -356,7 +379,49 @@
     cursor: pointer;
   }
   #approve-btn { background: var(--accent); color: #062014; }
+  #allow-always-btn { background: #2a4a3a; color: #b7e0c8; }
   #deny-btn { background: #3a2a2a; color: #f0b4b4; }
+  #approval .kv { margin: 2px 0; color: var(--muted); font: 11px/1.5 ui-monospace, monospace; }
+  #approval .kv b { color: var(--ink); }
+  #approval .secret-hint { margin-top: 8px; color: var(--warn); font-size: 12px; }
+  /* Grok Parity Panel (Wave G) */
+  #computer-panel .frame-box { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: #0a1210; padding: 8px; color: var(--muted); font: 12px/1.4 ui-monospace, monospace; }
+  #computer-panel .frame-box img { max-width: 100%; border-radius: 6px; display: block; }
+  .gp-chip { background: #1a2420; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
+  .gp-chip.active { border-color: var(--accent); color: #b7e0c8; }
+  .gp-label { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .gp-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .gp-select { background: #0a1210; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  /* Take over banner (GP-33/34) */
+  #takeover-banner {
+    display: none;
+    margin: 0 16px 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    background: #10231a;
+  }
+  #takeover-banner.visible { display: block; }
+  #takeover-banner .row1 { font-weight: 700; color: #b7e0c8; }
+  #takeover-banner .hint { margin-top: 4px; font-size: 12px; color: var(--warn); }
+  #takeover-banner .actions { margin-top: 8px; display: flex; gap: 8px; }
+  /* Approval queue (GP-23) */
+  #approval-queue { margin-top: 8px; }
+  #approval-queue .q-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #0a1210; color: var(--muted); font: 11px/1.4 ui-monospace, monospace; margin-bottom: 4px; flex-wrap: wrap; }
+  #approval-queue .q-expired { border-color: #5a4a2a; }
+  #approval-queue button { background: #1a2420; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px; }
+  /* Pending approvals bar (GP-23) */
+  #pending-bar { display: none; margin: 0 16px 8px; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: 8px; background: #1a1810; color: var(--muted); font-size: 12px; }
+  #pending-bar.visible { display: block; }
+  /* Draft cards (GP-40/41) */
+  .draft-card { border: 1px solid var(--accent); border-radius: 8px; background: #10231a; padding: 10px 12px; margin-top: 8px; }
+  .draft-card .role { color: #b7e0c8; font-weight: 700; font-size: 12px; }
+  .draft-card label { display: block; font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .draft-card input, .draft-card textarea { width: 100%; margin-top: 2px; background: #0a1210; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 13px/1.4 inherit; }
+  .draft-card .actions { margin-top: 8px; display: flex; gap: 8px; }
+  .draft-card .send-btn { background: var(--accent); color: #062014; border: 0; border-radius: 6px; padding: 7px 12px; font-weight: 700; cursor: pointer; }
+  .draft-card .discard-btn { background: #3a2a2a; color: #f0b4b4; border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+  .draft-card .draft-status { font-size: 11px; color: var(--muted); align-self: center; }
   .effect-chip {
     display: inline-block;
     margin: 2px 4px 0 0;
@@ -433,19 +498,42 @@
       </div>
       <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板">能力</button>
       <button type="button" id="cred-settings-btn" title="配置 DeepSeek / 钉钉飞书企微（不写死）">凭证</button>
+      <button type="button" id="gp-panel-btn" title="Computer / 群组 / 后台审批（Grok Parity）">Parity</button>
       <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton">Account</button>
     </div>
   </header>
   <aside id="agents">
     <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span>会话</span>
-      <button type="button" id="sess-new" title="新对话" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px">新建</button>
+      <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px">新建</button>
     </div>
     <div id="session-list" aria-label="Chat sessions"></div>
-    <div class="agent-item active" id="agent-bit" data-agent-id="agent-bit" style="cursor:pointer;margin-top:12px">
-      <div class="name">Bit Bot</div>
-      <div class="meta">MoonBit · llm_chat</div>
+    <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px">
+      <span>Bots</span>
+      <button type="button" id="bot-new-btn" title="Create new Bot (Name / Job / Description)" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px">New Bot</button>
     </div>
+    <div id="bot-list" aria-label="Bots"></div>
+    <details class="lab" id="hidden-bots-lab">
+      <summary>Hidden Bots (<span id="hidden-bots-count">0</span>)</summary>
+      <div id="hidden-bot-list"></div>
+    </details>
+    <div id="bot-create-form" style="display:none;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#0f1814">
+      <div style="font-weight:700;font-size:12px;margin-bottom:6px">Create new Bot</div>
+      <input id="bc-name" type="text" placeholder="Name（短名称，如 Piper）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" />
+      <input id="bc-job" type="text" placeholder="Job（主要职责，如 Product performance）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" />
+      <textarea id="bc-desc" rows="3" placeholder="Description（工作方式/工具/边界，例如 Never change production settings）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px"></textarea>
+      <div style="color:var(--muted);font-size:11px;margin-bottom:6px">模板：
+        <button type="button" class="bc-template" data-tpl="sales">Sales Outbound</button>
+        <button type="button" class="bc-template" data-tpl="scout">Talent Scout</button>
+        <button type="button" class="bc-template" data-tpl="expense">Expense Manager</button>
+        <button type="button" class="bc-template" data-tpl="bug">Bug Reproduction</button>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button type="button" id="bc-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer">创建</button>
+        <button type="button" id="bc-cancel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">取消</button>
+      </div>
+    </div>
+    <button type="button" id="connect-apps-btn" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" style="margin-top:10px;width:100%;background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px;cursor:pointer">Connect apps</button>
     <details class="lab" id="agents-lab">
       <summary>高级 · Agents / Teammates</summary>
       <div class="agent-item" id="agents-host-panel" style="margin-top:8px">
@@ -479,11 +567,69 @@
   <div id="main">
     <pre id="banner">booting MoonBit…</pre>
     <div id="approval">
-      <div class="title">Approval required</div>
+      <div class="title" id="approval-title">Approval required</div>
       <div class="detail" id="approval-detail"></div>
       <div class="actions">
-        <button type="button" id="approve-btn">Approve &amp; re-run</button>
-        <button type="button" id="deny-btn">Dismiss</button>
+        <button type="button" id="approve-btn">Allow once</button>
+        <button type="button" id="allow-always-btn">Always allow</button>
+        <button type="button" id="deny-btn">Deny</button>
+      </div>
+    </div>
+    <div id="takeover-banner">
+      <div class="row1" id="takeover-title">Take over — 你正在直接操作本机屏幕</div>
+      <div class="hint">密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。</div>
+      <div class="actions">
+        <button type="button" id="takeover-done-btn" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer">I'm done</button>
+      </div>
+    </div>
+    <div id="pending-bar">
+      <span id="pending-bar-text"></span>
+      <button type="button" id="pending-bar-btn" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer;margin-left:8px">查看</button>
+    </div>
+    <div id="gp-panel" style="display:none;margin:0 16px 8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="font-weight:700">Grok Parity 面板</div>
+        <button type="button" class="gp-chip gp-tab active" data-gptab="computer">Computer</button>
+        <button type="button" class="gp-chip gp-tab" data-gptab="group">群组</button>
+        <button type="button" class="gp-chip gp-tab" data-gptab="approvals">后台审批</button>
+        <button type="button" id="gp-panel-close" class="gp-chip">关闭</button>
+      </div>
+      <div id="gp-computer" style="margin-top:8px">
+        <div class="gp-row" id="gp-bot-chips"></div>
+        <div id="computer-panel" class="frame-box" style="margin-top:8px">
+          <div id="gp-frame-meta" style="margin-bottom:6px">帧预览：每 3s 轮询 Host 真实截屏（无 DISPLAY 时诚实显示 residual）</div>
+          <div id="gp-frame-box" style="color:var(--muted)">（尚无帧）</div>
+        </div>
+        <div class="gp-row" style="margin-top:8px">
+          <button type="button" class="gp-chip" id="gp-takeover-btn">Take over</button>
+          <button type="button" class="gp-chip" id="gp-refresh-frame">刷新帧</button>
+          <button type="button" class="gp-chip" id="gp-recover-btn" style="display:none">Recover Computer</button>
+          <select id="gp-computer-state" class="gp-select" style="display:none"></select>
+        </div>
+        <div id="gp-computer-status" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace"></div>
+      </div>
+      <div id="gp-group" style="display:none;margin-top:8px">
+        <div class="gp-label">新建群组（选 2–6 个 Bot，名称可改）</div>
+        <div class="gp-row">
+          <input id="gp-room-title" type="text" placeholder="群名（可留空自动命名）" style="flex:1;min-width:140px;background:#0a1210;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px" />
+          <button type="button" class="gp-chip" id="gp-room-create">创建群组</button>
+        </div>
+        <div id="gp-room-members" class="gp-row" style="margin-top:6px"></div>
+        <div class="gp-label">群内消息（@BotName / @everyone / 无 @ 自行决定）</div>
+        <div class="gp-row">
+          <select id="gp-room-pick" class="gp-select"></select>
+          <input id="gp-room-text" type="text" placeholder="room &lt;id&gt; :: @Piper 看一下这个" style="flex:2;min-width:180px;background:#0a1210;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px" />
+          <button type="button" class="gp-chip" id="gp-room-send">发送</button>
+        </div>
+        <div style="margin-top:4px;color:var(--muted);font-size:11px">审批 / Secret 请求永远只进对应 Bot 私聊，不进群 transcript（GP-53）。</div>
+        <div id="gp-group-status" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace"></div>
+      </div>
+      <div id="gp-approvals" style="display:none;margin-top:8px">
+        <div class="gp-label">后台审批队列（Routine / teammate 来源；~10 分钟过期显示 Expired，仍可 Always allow / Deny）</div>
+        <div id="approval-queue"></div>
+        <div class="gp-row" style="margin-top:6px">
+          <button type="button" class="gp-chip" id="gp-pending-refresh">刷新</button>
+        </div>
       </div>
     </div>
     <div id="permission" style="display:none;margin:12px 16px;padding:12px;border:1px solid #5a4a2a;background:#2a2418;border-radius:8px">
@@ -501,6 +647,62 @@
       <div id="settings-tabs" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="settings-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div id="settings-anchors" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+      <div id="waveg-settings" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div style="font-weight:700;margin-bottom:4px">Grok Parity · General（真实生效并持久化）</div>
+        <div class="gp-label">Appearance</div>
+        <div class="gp-row" id="gp-appearance-row">
+          <button type="button" class="gp-chip" data-appearance="system">Follow System</button>
+          <button type="button" class="gp-chip" data-appearance="light">Light</button>
+          <button type="button" class="gp-chip" data-appearance="dark">Dark</button>
+        </div>
+        <div class="gp-label">Language</div>
+        <div class="gp-row">
+          <select id="gp-language" class="gp-select">
+            <option value="zh-CN">简体中文</option>
+            <option value="zh-TW">繁體中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div class="gp-label">Bot Timezone（Routines 按此区计算）</div>
+        <div class="gp-row">
+          <select id="gp-timezone" class="gp-select">
+            <option value="Asia/Shanghai">Asia/Shanghai</option>
+            <option value="Asia/Hong_Kong">Asia/Hong_Kong</option>
+            <option value="Asia/Taipei">Asia/Taipei</option>
+            <option value="UTC">UTC</option>
+            <option value="America/Los_Angeles">America/Los_Angeles</option>
+            <option value="Europe/Berlin">Europe/Berlin</option>
+          </select>
+        </div>
+        <div class="gp-label">Local execution（Computer 权限）</div>
+        <div class="gp-row" id="gp-locexec-row">
+          <button type="button" class="gp-chip" data-locexec="ask">Ask every time</button>
+          <button type="button" class="gp-chip" data-locexec="always">Always allow</button>
+          <button type="button" class="gp-chip" data-locexec="never">Never allow</button>
+        </div>
+        <div class="gp-label">Route traffic through this computer</div>
+        <div class="gp-row">
+          <button type="button" class="gp-chip" id="gp-route-toggle">—</button>
+        </div>
+        <div class="gp-label">Auto-review 规则（Ask first 优先于 Allow automatically）</div>
+        <div class="gp-row">
+          <select id="gp-rule-kind" class="gp-select">
+            <option value="shell">shell</option>
+            <option value="channel_send">channel_send</option>
+            <option value="mail_send">mail_send</option>
+            <option value="purchase_item">purchase_item</option>
+            <option value="mcp_call">mcp_call</option>
+            <option value="computer_use">computer_use</option>
+            <option value="delegate_task">delegate_task</option>
+          </select>
+          <button type="button" class="gp-chip" id="gp-rule-allow">Allow automatically</button>
+          <button type="button" class="gp-chip" id="gp-rule-ask">Ask first</button>
+        </div>
+        <div id="gp-rules-list" style="margin-top:6px"></div>
+        <div class="gp-label">Usage & Billing（本周真实 LLM 用量；无数据即空态，不造假）</div>
+        <div id="gp-usage" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">读取中…</div>
+        <div id="waveg-settings-status" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
+      </div>
       <div id="secrets-panel" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div style="font-weight:700;margin-bottom:6px">产品凭证 · 开放配置（不写死）</div>
         <div style="color:var(--muted);font-size:12px;margin-bottom:8px">Key / 渠道凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
@@ -881,10 +1083,14 @@
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
+    <div id="attachment-strip" class="attach-strip" aria-label="待发送附件"></div>
     <div class="row">
-      <input id="text" type="text" placeholder="给 Bit Bot 发消息…" autocomplete="off" autofocus />
+      <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…（Shift+Enter 换行）" autocomplete="off" autofocus></textarea>
+      <button type="button" id="attach-btn" title="添加附件（≤6 · 文档/图片/音频 25MB · 视频 200MB）">📎</button>
+      <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）">🎙</button>
       <button id="send" type="submit">发送</button>
     </div>
+    <div id="composer-menu" class="composer-menu" hidden></div>
   </form>
   <script>
     const banner = document.getElementById("banner");
@@ -897,8 +1103,12 @@
     const approval = document.getElementById("approval");
     const approvalDetail = document.getElementById("approval-detail");
     const approveBtn = document.getElementById("approve-btn");
+    const alwaysAllowBtn = document.getElementById("allow-always-btn");
     const denyBtn = document.getElementById("deny-btn");
     let pendingApprovalText = "";
+    let pendingApprovalClass = "";
+    let pendingApprovalSummary = "";
+    let pendingApprovalPattern = null;
     let pendingDeleteAgentId = "agent-bit";
     const SETTINGS_TAB_ANCHORS = {
       General: [
@@ -1419,14 +1629,102 @@
     function hideApproval() {
       approval.classList.remove("visible");
       pendingApprovalText = "";
+      pendingApprovalClass = "";
+      pendingApprovalSummary = "";
       approvalDetail.textContent = "";
+    }
+
+    // GP-20: structured card — proposed action / input params / target system.
+    // Kernel command grammar (security.ApprovalClass): "<Class> :: <summary> :: <reason>"
+    // or mcp "mcp :: <request_id>" / commerce "Purchase :: present :: <reason>".
+    function parseApprovalCommand(cmd) {
+      const parts = String(cmd || "").split("::").map((s) => s.trim());
+      const classTokens = ["Shell","LocalMachine","McpMutation","CloudAgent","ExternalSend","Purchase","Destructive","mcp","Purchase "];
+      let cls = parts.length > 1 && classTokens.some((t) => parts[0].indexOf(t) === 0 || parts[0] === t) ? parts[0] : "";
+      const summary = cls ? parts.slice(1).join(" :: ") : parts.join(" :: ");
+      let target = "";
+      const mTarget = summary.match(/(?:to=|agent=|bot=|item=|ns=)([^\s|]+)/);
+      if (mTarget) target = mTarget[1];
+      else if (cls === "mcp") target = parts[1] || "";
+      return { cls: cls || "Action", summary, target };
+    }
+
+    // Map kernel ApprovalClass → approval-rules pattern kind (host gate vocabulary).
+    function approvalPatternForClass(cls, summary) {
+      const s = String(summary || "").toLowerCase();
+      if (cls === "ExternalSend") {
+        return s.indexOf("mail") >= 0 || s.indexOf("email") >= 0
+          ? "mail_send:*"
+          : "channel_send:*";
+      }
+      if (cls === "Shell") return "shell:*";
+      if (cls === "McpMutation" || s.indexOf("mcp") >= 0) return "mcp_call:*";
+      if (cls === "Purchase") return "purchase_item:*";
+      if (cls === "LocalMachine" || cls === "CloudAgent") return "computer_use:*";
+      if (cls === "Destructive") return null; // never auto-allowable
+      return null;
     }
 
     function showApproval(text, effects) {
       pendingApprovalText = text;
       const cards = (effects || []).filter((e) => e && e.kind === "approval_card");
-      approvalDetail.textContent = cards.map((c) => c.command || "").join("\n") || "Consequential action needs user confirmation.";
+      const parsed = parseApprovalCommand((cards[0] && cards[0].command) || "");
+      pendingApprovalClass = parsed.cls;
+      pendingApprovalSummary = parsed.summary;
+      const approvalTitleEl = document.getElementById("approval-title");
+      if (approvalTitleEl) approvalTitleEl.textContent = "Approval required — " + parsed.cls;
+      approvalDetail.textContent = "";
+      const mk = (label, value) => {
+        const row = document.createElement("div");
+        row.className = "kv";
+        const b = document.createElement("b");
+        b.textContent = label;
+        row.appendChild(b);
+        row.appendChild(document.createTextNode(" " + (value || "—")));
+        approvalDetail.appendChild(row);
+      };
+      mk("操作:", parsed.cls);
+      mk("参数:", parsed.summary);
+      mk("目标:", parsed.target);
+      pendingApprovalPattern = approvalPatternForClass(parsed.cls, parsed.summary);
+      const alwaysBtn = document.getElementById("allow-always-btn");
+      if (alwaysBtn) alwaysBtn.style.display = pendingApprovalPattern ? "" : "none";
+      if (/password|2fa|passkey|captcha|验证码|支付/i.test(parsed.summary)) {
+        const hint = document.createElement("div");
+        hint.className = "secret-hint";
+        hint.textContent = "密码/验证码请在本机输入，不要贴进对话（官方安全提醒）。";
+        approvalDetail.appendChild(hint);
+      }
       approval.classList.add("visible");
+      refreshPendingBar().catch(() => {});
+      // GP-40/41: the gated draft IS the approval moment — surface an editable
+      // New Email / New Message card instead of a bare confirm bar.
+      maybeRenderDraftCard(text, cards);
+    }
+
+    // GP-40/41: when the gated action is an outbound draft (Email / Slack message),
+    // show an editable New Email card prefilled from the source phrase. Send runs a
+    // REAL turn with the edited values (approved); Discard sends nothing (honest note).
+    function maybeRenderDraftCard(sourceText, cards) {
+      const cmd = (cards && cards[0] && cards[0].command) || "";
+      const isExternalSend = cmd.indexOf("ExternalSend") === 0;
+      const t = String(sourceText || "");
+      if (!isExternalSend) return;
+      const mDraft = t.match(/^(?:draft (?:outlook )?(?:mail|email)|send (?:mail|email))\s+(.*)$/i);
+      if (mDraft) {
+        const rest = mDraft[1];
+        const grab = (key) => {
+          const mm = rest.match(
+            new RegExp(key + "=([^\\s]+(?:\\s+(?!to=|subject=|body=|provider=)[^\\s]+)*)"),
+          );
+          return mm ? mm[1].replace(/\+/g, " ").trim() : "";
+        };
+        const provider = /outlook/i.test(t) ? "outlook" : grab("provider") || "gmail";
+        renderDraftCard(provider, grab("to"), grab("subject"), grab("body"));
+        return;
+      }
+      const mChan = t.match(/^(?:reply|send) via (\S+)\s*::\s*(.*)$/i);
+      if (mChan) renderDraftCard("slack", mChan[1], "", mChan[2]);
     }
 
     function renderWidgetCard(widget, sourceText) {
@@ -1912,9 +2210,18 @@
           r &&
           Array.isArray(r.effects) &&
           r.effects.some((e) => e && e.kind === "approval_card") &&
-          !(opts && opts.approved);
+          !(opts && opts.approved) &&
+          !(r.auto_approved === true);
         if (needsApprove) showApproval(text, r.effects);
         else hideApproval();
+        if (r && r.auto_approved === true) {
+          addMsg(
+            "assistant",
+            "Auto-review：命中 " +
+              (r.auto_approved_via || "approval_rule") +
+              " 规则，已自动执行（未再次询问）。",
+          );
+        }
         if (r && r.host_continued) {
           addMsg("assistant", "[host] ADR 0002 continue applied (MoonBit absorbed Host results)");
         }
@@ -4045,6 +4352,8 @@
             log.appendChild(el);
             log.scrollTop = log.scrollHeight;
           }
+          // Wave G: refresh parity UI surfaces from real host results.
+          postProcessWaveGResults(r, opts);
           // CHARTER Delivery: inline Host media (image/audio/video) in transcript.
           const mediaItems = collectHostMediaPaths(r.host_results);
           for (const item of mediaItems) {
@@ -4088,9 +4397,50 @@
       if (!pendingApprovalText) return;
       const t = pendingApprovalText;
       hideApproval();
+      // GP-21: Allow once = run this turn only; no rule persisted.
       runUserTurn(t, { approved: true });
     });
-    denyBtn.addEventListener("click", hideApproval);
+    if (alwaysAllowBtn) {
+      alwaysAllowBtn.addEventListener("click", () => {
+        if (!pendingApprovalText || !pendingApprovalPattern) return;
+        const t = pendingApprovalText;
+        const pattern = pendingApprovalPattern;
+        hideApproval();
+        // GP-21: persist allow rule via real kernel phrase → approval_rule effect.
+        window.bitbot.bots
+          .op({ phrase: "always allow pattern=" + pattern })
+          .then((res) => {
+            gpStatus(
+              "waveg-settings-status",
+              res && res.ok
+                ? "Always allow 规则已持久化：" + pattern + "（intent=" + res.intent + "）"
+                : "规则写入失败：" + (res && res.error ? res.error : "unknown"),
+            );
+            refreshApprovalRules().catch(() => {});
+          })
+          .catch(() => {});
+        runUserTurn(t, { approved: true });
+      });
+    }
+    denyBtn.addEventListener("click", () => {
+      // GP-21: Deny recorded to approvals.log via pending queue when available.
+      if (pendingApprovalClass && pendingApprovalSummary) {
+        recordDeniedApproval({
+          source: "chat",
+          kind: pendingApprovalPattern ? pendingApprovalPattern.replace(":*", "") : "chat_action",
+          command: pendingApprovalClass + " :: " + pendingApprovalSummary,
+        });
+      }
+      hideApproval();
+    });
+
+    // ---- Wave G boot wiring (sidebar collapse CSS) ----
+    const styleWaveG = document.createElement("style");
+    styleWaveG.textContent =
+      "body.sidebar-collapsed { grid-template-columns: 0px 1fr 0fr !important; }" +
+      "body.sidebar-collapsed #agents { display: none; }" +
+      "body.sidebar-collapsed.tools-open { grid-template-columns: 0px 1fr 280px !important; }";
+    document.head.appendChild(styleWaveG);
     function openProductCredentials(hint) {
       const panel = document.getElementById("settings-panel");
       const secrets = document.getElementById("secrets-panel");
@@ -4333,17 +4683,214 @@
         }
       });
     }
-    const agentBit = document.getElementById("agent-bit");
-    if (agentBit) {
-      agentBit.addEventListener("click", () => {
-        runUserTurn("open agent info agent=agent-bit", {});
+    /* ---- Wave G Bot sidebar (GP-01…GP-08, GP-A2): real store data source ---- */
+    const BOT_TEMPLATES = {
+      sales: { job: "Sales Outbound", description: "Research accounts, pull contacts, draft outreach in my voice. Leave drafts to approve. Never send without approval." },
+      scout: { job: "Talent Scout", description: "Screen candidates against the role brief, preserve links, separate evidence from hypotheses. Never contact candidates directly." },
+      expense: { job: "Expense Manager", description: "Collect receipts, reconcile against policy, prepare approval lists. Do not submit reimbursements without explicit approval." },
+      bug: { job: "Bug Reproduction", description: "Reproduce reported bugs in the browser on the Bot computer, capture steps and screenshots, file reproduction notes. Never change production settings." },
+    };
+
+    async function refreshBots() {
+      if (!window.bitbot || !window.bitbot.bots) return;
+      let view = null;
+      try {
+        view = await window.bitbot.bots.list();
+      } catch (_) {
+        view = null;
+      }
+      const box = document.getElementById("bot-list");
+      const hiddenBox = document.getElementById("hidden-bot-list");
+      const hiddenCount = document.getElementById("hidden-bots-count");
+      if (!box) return;
+      box.innerHTML = "";
+      if (hiddenBox) hiddenBox.innerHTML = "";
+      const bots = (view && view.bots) || [];
+      const hidden = (view && view.hidden_bots) || [];
+      if (hiddenCount) hiddenCount.textContent = String(hidden.length);
+      for (const b of bots) {
+        box.appendChild(botRow(b, view.primary_id, false));
+      }
+      for (const b of hidden) {
+        if (hiddenBox) hiddenBox.appendChild(botRow(b, view.primary_id, true));
+      }
+    }
+
+    function botRow(b, primaryId, isHidden) {
+      const el = document.createElement("div");
+      el.className = "agent-item";
+      el.style.cursor = "pointer";
+      el.dataset.agentId = b.id;
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = (b.pinned ? "★ " : "") + b.name + (b.id === primaryId ? " · primary" : "");
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = (b.job || "bot") + (isHidden ? " · hidden" : "");
+      el.appendChild(name);
+      el.appendChild(meta);
+      el.addEventListener("click", () => {
+        selectBotForChat(b);
       });
-      agentBit.addEventListener("contextmenu", (ev) => {
+      el.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
-        pendingDeleteAgentId = "agent-bit";
-        runUserTurn("delete agent agent-bit", {});
+        showBotMenu(ev, b);
+      });
+      return el;
+    }
+
+    // Grok-style: clicking a Bot opens its DM session (session id bot-<id>),
+    // sets activeBotId for notifications, and shows the agent info in side panel.
+    function selectBotForChat(b) {
+      activeBotId = b.id;
+      const dmTitle = (b.name || b.id) + " · DM";
+      (async () => {
+        const list = await window.bitbot.sessions.list().catch(() => null);
+        const existing = ((list && list.sessions) || []).find((s) => s.title === dmTitle);
+        if (existing) {
+          const r = await window.bitbot.sessions.setActive(existing.id);
+          if (r && r.ok) activeSessionId = existing.id;
+        } else {
+          const created = await window.bitbot.sessions.create(dmTitle).catch(() => null);
+          if (!created || !created.ok) {
+            runUserTurn("open agent info agent=" + b.id, {});
+            return;
+          }
+          activeSessionId = created.session.id;
+        }
+        await loadActiveSessionTranscript();
+        const lst = await window.bitbot.sessions.list();
+        renderSessionList(lst);
+        delete unreadBySession[activeSessionId];
+        const total = Object.values(unreadBySession).reduce((a, x) => a + x, 0);
+        if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
+        renderUnreadMarks();
+        runUserTurn("open agent info agent=" + b.id, { skipSession: true })
+          .then(() => addMsg("assistant", "与 " + (b.name || b.id) + " 的私聊会话。" + (b.job ? "职责：" + b.job + "。" : "")))
+          .catch(() => {});
+      })().catch(() => {
+        runUserTurn("open agent info agent=" + b.id, {});
       });
     }
+
+    // Right-click / long-press menu: Edit · Pin · Duplicate · Primary · Hide · Delete (spec §2.2)
+    let botMenuEl = null;
+    function showBotMenu(ev, bot) {
+      hideBotMenu();
+      botMenuEl = document.createElement("div");
+      botMenuEl.className = "composer-menu";
+      botMenuEl.style.position = "fixed";
+      botMenuEl.style.left = Math.min(ev.clientX, window.innerWidth - 260) + "px";
+      botMenuEl.style.top = Math.min(ev.clientY, window.innerHeight - 260) + "px";
+      botMenuEl.style.bottom = "auto";
+      const items = [
+        ["Pin / Unpin", () => runUserTurn((bot.pinned ? "unpin bot " : "pin bot ") + bot.id, {})],
+        ["Duplicate", () => runUserTurn("duplicate bot " + bot.id, {})],
+        ["Set as Primary", () => runUserTurn("set primary bot " + bot.id, {})],
+        [bot.hidden ? "Unhide" : "Hide from sidebar", () => runUserTurn((bot.hidden ? "unhide agent " : "hide agent ") + bot.id, {})],
+        ["Edit Profile…", () => openBotEditForm(bot)],
+        ["Delete…", () => { pendingDeleteAgentId = bot.id; runUserTurn("delete agent " + bot.id, {}); }],
+      ];
+      for (const [label, fn] of items) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = label;
+        b.addEventListener("click", async () => {
+          hideBotMenu();
+          await fn();
+          await refreshBots();
+        });
+        botMenuEl.appendChild(b);
+      }
+      document.body.appendChild(botMenuEl);
+      const kill = (e) => {
+        if (botMenuEl && !botMenuEl.contains(e.target)) {
+          hideBotMenu();
+          document.removeEventListener("mousedown", kill);
+        }
+      };
+      setTimeout(() => document.addEventListener("mousedown", kill), 0);
+    }
+    function hideBotMenu() {
+      if (botMenuEl && botMenuEl.parentNode) botMenuEl.parentNode.removeChild(botMenuEl);
+      botMenuEl = null;
+    }
+
+    function openBotEditForm(bot) {
+      const form = document.getElementById("bot-create-form");
+      const title = form.querySelector("div");
+      title.textContent = "Edit Bot Profile";
+      document.getElementById("bc-name").value = bot.name || "";
+      document.getElementById("bc-job").value = bot.job || "";
+      document.getElementById("bc-desc").value = bot.description || "";
+      form.dataset.editingBot = bot.id;
+      form.style.display = "block";
+    }
+
+    const botNewBtn = document.getElementById("bot-new-btn");
+    if (botNewBtn) {
+      botNewBtn.addEventListener("click", () => {
+        const form = document.getElementById("bot-create-form");
+        form.dataset.editingBot = "";
+        form.querySelector("div").textContent = "Create new Bot";
+        document.getElementById("bc-name").value = "";
+        document.getElementById("bc-job").value = "";
+        document.getElementById("bc-desc").value = "";
+        form.style.display = form.style.display === "none" ? "block" : "none";
+      });
+    }
+    for (const t of document.querySelectorAll(".bc-template")) {
+      t.addEventListener("click", () => {
+        const tpl = BOT_TEMPLATES[t.dataset.tpl];
+        if (!tpl) return;
+        document.getElementById("bc-job").value = tpl.job;
+        document.getElementById("bc-desc").value = tpl.description;
+        if (!document.getElementById("bc-name").value) {
+          document.getElementById("bc-name").value = tpl.job.split(" ")[0];
+        }
+      });
+    }
+    const bcCancel = document.getElementById("bc-cancel");
+    if (bcCancel) {
+      bcCancel.addEventListener("click", () => {
+        document.getElementById("bot-create-form").style.display = "none";
+      });
+    }
+    const bcCreate = document.getElementById("bc-create");
+    if (bcCreate) {
+      bcCreate.addEventListener("click", async () => {
+        const name = document.getElementById("bc-name").value.trim();
+        const job = document.getElementById("bc-job").value.trim();
+        const desc = document.getElementById("bc-desc").value.trim();
+        if (!name) {
+          addMsg("assistant", "Bot 需要名称（Name 必填）。");
+          return;
+        }
+        const enc = (s) => String(s || "").replace(/\s+/g, "+");
+        const form = document.getElementById("bot-create-form");
+        const editing = form.dataset.editingBot || "";
+        const phrase = editing
+          ? "update bot " + editing + " name=" + enc(name) + " job=" + enc(job) + " description=" + enc(desc)
+          : "create bot " + enc(name) + " job=" + enc(job) + " description=" + enc(desc);
+        if (!window.bitbot || !window.bitbot.bots || !window.bitbot.bots.op) return;
+        const r = await window.bitbot.bots.op({ phrase });
+        form.style.display = "none";
+        if (r && r.ok) {
+          addMsg("assistant", (editing ? "Bot 已更新（intent=" + r.intent + "）" : "Bot「" + name + "」已创建（intent=" + r.intent + "）· 打开对话即可交办任务"));
+          await refreshBots();
+        } else {
+          const err = (r && (r.error || (r.turn && r.turn.error))) || "unknown";
+          addMsg("assistant", "Bot 操作失败: " + err);
+        }
+      });
+    }
+    const connectAppsBtn = document.getElementById("connect-apps-btn");
+    if (connectAppsBtn) {
+      connectAppsBtn.addEventListener("click", () => {
+        runUserTurn("list plugins", {});
+      });
+    }
+
     const agentInfoClose = document.getElementById("agent-info-close");
     if (agentInfoClose) {
       agentInfoClose.addEventListener("click", () => {
@@ -4397,6 +4944,836 @@
         machineList.appendChild(el);
       }
     }
+
+    // ===== Wave G: Grok parity runtime (GP-2x/3x/4x/5x/7x/8x/ATx) =====
+    function gpStatus(elId, text) {
+      const el = document.getElementById(elId);
+      if (el) el.textContent = text;
+    }
+
+    // React to real host_results from any turn: refresh the affected parity surface.
+    function postProcessWaveGResults(r, opts) {
+      const hosts = (r && r.host_results) || [];
+      const hasOk = (k) => hosts.some((h) => h && h.kind === k && h.ok);
+      try {
+        if (
+          hasOk("bot_create") || hasOk("bot_update") || hasOk("bot_duplicate") ||
+          hasOk("bot_pin") || hasOk("bot_set_primary") || hasOk("hide_agent") ||
+          hasOk("delete_agent") || hasOk("list_agents_sidebar")
+        ) {
+          refreshBots().catch(() => {});
+        }
+        if (
+          hasOk("appearance_set") || hasOk("language_set") ||
+          hasOk("timezone_set") || hasOk("local_execution_mode")
+        ) {
+          refreshWaveGSettings().catch(() => {});
+        }
+        if (hasOk("approval_rule")) {
+          refreshApprovalRules().catch(() => {});
+        }
+        if (hasOk("take_over") || hasOk("takeover_done")) {
+          refreshComputerState().catch(() => {});
+        }
+        if (hasOk("recover_computer") || hasOk("update_computer") || hasOk("reset_computer")) {
+          refreshComputerState().catch(() => {});
+        }
+        if (hasOk("group_chat") || hasOk("room_turn")) {
+          refreshRooms().catch(() => {});
+        }
+        // GP-33: takeover guidance is honest — bot input pauses while user drives.
+        const tk = hosts.find((h) => h && h.kind === "take_over" && h.ok);
+        if (tk) {
+          try {
+            const p = JSON.parse(tk.stdout || "{}");
+            if (p.guidance) addMsg("assistant", "接管中：" + p.guidance);
+            if (p.residual) addMsg("assistant", "截屏 residual：" + p.residual + "（无 DISPLAY，不假装有帧）");
+          } catch (_) { /* ignore */ }
+        }
+        const done = hosts.find((h) => h && h.kind === "takeover_done" && h.ok);
+        if (done) addMsg("assistant", "已交还控制权（handback）。可以在对话里让 Bot 从当前页面继续。");
+      } catch (_) { /* never break transcript */ }
+      notifyTurnIfNeeded(r, opts).catch(() => {});
+      refreshPendingBar().catch(() => {});
+    }
+
+    async function recordDeniedApproval(item) {
+      // GP-21 Deny receipt: real line in data/desktop/approvals.log.jsonl, nothing executed.
+      try {
+        const res = await window.bitbot.approvals.listPending();
+        const queued = ((res && res.pending) || []).filter(
+          (it) => it.status === "pending" && it.kind === item.kind && it.command === item.command,
+        );
+        if (queued.length) {
+          await window.bitbot.approvals.decide(queued[queued.length - 1].id, "deny");
+          addMsg("assistant", "已拒绝（Deny）并写入 approvals.log：" + item.kind + " — 该操作未执行。");
+          return;
+        }
+      } catch (_) { /* fall through to receipt */ }
+      try {
+        const r = await window.bitbot.approvals.denyReceipt(item);
+        addMsg(
+          "assistant",
+          r && r.ok
+            ? "已拒绝（Deny）：" + item.kind + " — 该操作未执行，回执已写入 approvals.log.jsonl。"
+            : "已拒绝（Deny）：" + item.kind + " — 该操作未执行（回执写入失败：" + (r && r.error) + "）。",
+        );
+      } catch (_) {
+        addMsg("assistant", "已拒绝（Deny）：" + item.kind + " — 该操作未执行。");
+      }
+    }
+
+    let pendingApprovalIdsSeen = new Set();
+    async function refreshPendingBar() {
+      const bar = document.getElementById("pending-bar");
+      const txt = document.getElementById("pending-bar-text");
+      if (!bar || !window.bitbot.approvals) return;
+      try {
+        const res = await window.bitbot.approvals.listPending();
+        const items = (res && res.pending) || [];
+        const open = items.filter((it) => it.status === "pending" || it.status === "expired");
+        if (!open.length) {
+          bar.classList.remove("visible");
+          pendingApprovalIdsSeen = new Set();
+          return;
+        }
+        const exp = open.filter((it) => it.status === "expired").length;
+        txt.textContent =
+          "待处理后台审批 " + open.length + " 项" + (exp ? "（含 " + exp + " 项已过期 Expired）" : "");
+        bar.classList.add("visible");
+        const fresh = open.filter((it) => !pendingApprovalIdsSeen.has(it.id));
+        for (const it of fresh) pendingApprovalIdsSeen.add(it.id);
+        if (fresh.length) {
+          await window.bitbot.notify.turn({
+            title: "Bit Bot 需要你的确认",
+            body: fresh[0].kind + " · " + String(fresh[0].command || "").slice(0, 80),
+            bot_id: activeBotId || "agent-bit",
+            session_id: activeSessionId,
+          });
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    async function refreshApprovalQueue() {
+      const box = document.getElementById("approval-queue");
+      if (!box) return;
+      box.innerHTML = "";
+      let res = null;
+      try {
+        res = await window.bitbot.approvals.listPending();
+      } catch (_) {
+        box.textContent = "读取失败";
+        return;
+      }
+      const items = ((res && res.pending) || []).filter((it) => it.status !== "decided");
+      if (!items.length) {
+        box.innerHTML = '<div style="color:var(--muted);font-size:12px">队列为空（真实状态，非占位）</div>';
+        return;
+      }
+      for (const it of items) {
+        const row = document.createElement("div");
+        row.className = "q-item" + (it.status === "expired" ? " q-expired" : "");
+        const info = document.createElement("span");
+        info.textContent =
+          (it.status === "expired" ? "[Expired] " : "") +
+          it.source + " · " + it.kind + " · " + String(it.command || "").slice(0, 70);
+        row.appendChild(info);
+        if (it.status !== "expired") {
+          const bOnce = document.createElement("button");
+          bOnce.textContent = "Allow once";
+          bOnce.addEventListener("click", async () => {
+            const r = await window.bitbot.approvals.decide(it.id, "allow_once");
+            info.textContent = (r && r.ok ? "已单次放行 " : "失败:" + (r && r.error) + " ") + info.textContent;
+            refreshApprovalQueue();
+            refreshPendingBar();
+          });
+          row.appendChild(bOnce);
+        }
+        const bAlways = document.createElement("button");
+        bAlways.textContent = "Always allow";
+        bAlways.addEventListener("click", async () => {
+          const r = await window.bitbot.approvals.decide(it.id, "always");
+          if (r && r.ok) {
+            info.textContent = "[always→" + (r.persisted_pattern || "?") + "] " + info.textContent;
+            reRunApprovedKind(r.kind, r.command);
+          } else {
+            info.textContent = "失败:" + (r && r.error) + " " + info.textContent;
+          }
+          refreshApprovalQueue();
+          refreshApprovalRules();
+          refreshPendingBar();
+        });
+        row.appendChild(bAlways);
+        const bDeny = document.createElement("button");
+        bDeny.textContent = "Deny";
+        bDeny.addEventListener("click", async () => {
+          const r = await window.bitbot.approvals.decide(it.id, "deny");
+          info.textContent = (r && r.ok ? "[denied] " : "[deny failed] ") + info.textContent;
+          refreshApprovalQueue();
+          refreshPendingBar();
+        });
+        row.appendChild(bDeny);
+        box.appendChild(row);
+      }
+    }
+
+    // GP-21: a queued background approval that was allowed runs its stored action
+    // exactly once via the Host executor (no phrase round-trip guessing).
+    async function reRunApprovedKind(kind, command) {
+      if (!kind) return;
+      try {
+        const results = await window.bitbot.approvals.runAllowed({ kind, command });
+        if (results && results.ok) {
+          addMsg("assistant", "后台审批放行后已执行一次：" + kind + (results.summary ? " · " + results.summary : ""));
+        } else {
+          addMsg("assistant", "放行后执行失败：" + (results && results.error ? results.error : "host refused") + "（" + kind + "）");
+        }
+      } catch (_) {
+        addMsg("assistant", "规则已保存（" + kind + "）。本次后台动作未能即时重放，将在下次触发时按新规则执行。");
+      }
+    }
+
+    async function refreshApprovalRules() {
+      const box = document.getElementById("gp-rules-list");
+      if (!box || !window.bitbot.approvals) return;
+      let res = null;
+      try {
+        res = await window.bitbot.approvals.listRules();
+      } catch (_) {
+        /* ignore */
+      }
+      box.innerHTML = "";
+      const rules = (res && res.rules) || [];
+      if (!rules.length) {
+        box.innerHTML = '<div style="color:var(--muted);font-size:12px">暂无个人规则（默认全部 Ask）</div>';
+        return;
+      }
+      for (const rl of rules) {
+        const row = document.createElement("div");
+        row.className = "kv";
+        row.style.cssText = "display:flex;gap:8px;align-items:center;margin:2px 0";
+        const label = document.createElement("span");
+        label.style.cssText = "color:var(--muted);font:11px/1.4 ui-monospace,monospace";
+        label.textContent =
+          rl.pattern + " → " + (rl.decision === "ask" ? "Ask first" : "Allow automatically") +
+          (rl.source === "team" ? " · 团队规则（锁定）" : "");
+        row.appendChild(label);
+        const btn = document.createElement("button");
+        if (rl.locked) {
+          btn.textContent = "锁定";
+          btn.disabled = true;
+          btn.style.opacity = "0.4";
+        } else {
+          btn.textContent = "删除";
+          btn.addEventListener("click", async () => {
+            const r = await window.bitbot.approvals.removeRule(rl.pattern);
+            if (r && r.ok) refreshApprovalRules();
+            else gpStatus("waveg-settings-status", "删除失败: " + (r && r.error));
+          });
+        }
+        btn.className = "gp-chip";
+        btn.style.padding = "2px 8px";
+        row.appendChild(btn);
+        box.appendChild(row);
+      }
+    }
+
+    async function refreshWaveGSettings() {
+      if (!window.bitbot.settings) return;
+      try {
+        const res = await window.bitbot.settings.get();
+        const st = (res && (res.settings && res.settings.settings ? res.settings.settings : res.settings)) || {};
+        const inner = st.settings || st; // getSettings wraps once
+        document
+          .querySelectorAll("#gp-appearance-row .gp-chip")
+          .forEach((b) => b.classList.toggle("active", b.dataset.appearance === inner.appearance));
+        document
+          .querySelectorAll("#gp-locexec-row .gp-chip")
+          .forEach((b) => b.classList.toggle("active", b.dataset.locexec === inner.local_execution));
+        const langSel = document.getElementById("gp-language");
+        if (langSel) langSel.value = inner.language || "zh-CN";
+        const tzSel = document.getElementById("gp-timezone");
+        if (tzSel) tzSel.value = inner.timezone || "UTC";
+        const routeBtn = document.getElementById("gp-route-toggle");
+        if (routeBtn) {
+          routeBtn.textContent = inner.route_traffic ? "Route traffic: ON（记录态）" : "Route traffic: OFF";
+          routeBtn.classList.toggle("active", Boolean(inner.route_traffic));
+        }
+        wavegLangApply(inner.language || "zh-CN");
+      } catch (_) {
+        /* ignore */
+      }
+      try {
+        const u = await window.bitbot.usage.week();
+        const box = document.getElementById("gp-usage");
+        if (box) {
+          const usage = (u && u.usage) || {};
+          const payload = usage.usage ? usage.usage : usage;
+          const rows = payload.rows || [];
+          if (!rows.length) {
+            box.textContent = "本周暂无真实 LLM 用量记录（空态，不造假 0）。";
+          } else {
+            const t = rows.reduce(
+              (acc, r) => {
+                acc.p += r.prompt_tokens || 0;
+                acc.c += r.completion_tokens || 0;
+                acc.q += r.requests || 0;
+                return acc;
+              },
+              { p: 0, c: 0, q: 0 },
+            );
+            box.textContent =
+              "周 " + (payload.week || "?") + " · 请求 " + t.q + " · prompt " + t.p + " tokens · completion " + t.c +
+              " tokens · 来源 llm-usage.json";
+          }
+        }
+      } catch (_) {
+        const box = document.getElementById("gp-usage");
+        if (box) box.textContent = "用量读取失败（Host 未就绪）";
+      }
+      refreshApprovalRules().catch(() => {});
+    }
+
+    // GP-71: real renderer language switching for key chrome (kernel 语义不受 UI 语言绑架).
+    const WAVEG_I18N = {
+      "zh-CN": {
+        newBot: "New Bot",
+        hiddenBots: "Hidden Bots",
+        connectApps: "Connect apps",
+        send: "发送",
+        allowOnce: "Allow once",
+        alwaysAllow: "Always allow",
+        deny: "Deny",
+        takeover: "Take over",
+        imDone: "I'm done",
+        placeholder: "输入消息…（/ 技能 · @ Bot · Shift+Enter 换行）",
+      },
+      "zh-TW": {
+        newBot: "新建立 Bot",
+        hiddenBots: "已隱藏的 Bot",
+        connectApps: "連接應用",
+        send: "傳送",
+        allowOnce: "本次允許",
+        alwaysAllow: "總是允許",
+        deny: "拒絕",
+        takeover: "接管",
+        imDone: "我操作完了",
+        placeholder: "輸入訊息…（/ 技能 · @ Bot · Shift+Enter 換行）",
+      },
+      en: {
+        newBot: "New Bot",
+        hiddenBots: "Hidden Bots",
+        connectApps: "Connect apps",
+        send: "Send",
+        allowOnce: "Allow once",
+        alwaysAllow: "Always allow",
+        deny: "Deny",
+        takeover: "Take over",
+        imDone: "I'm done",
+        placeholder: "Message… (/ skills · @ bots · Shift+Enter newline)",
+      },
+    };
+    function wavegLangApply(code) {
+      const dict = WAVEG_I18N[code] || WAVEG_I18N["zh-CN"];
+      const nb = document.getElementById("bot-new-btn");
+      if (nb) nb.textContent = dict.newBot;
+      const sum = document.querySelector("#hidden-bots-lab summary");
+      if (sum) {
+        const cnt = document.getElementById("hidden-bots-count");
+        sum.textContent = dict.hiddenBots + " (";
+        if (cnt) {
+          sum.appendChild(cnt);
+          sum.appendChild(document.createTextNode(")"));
+        }
+      }
+      const ca = document.getElementById("connect-apps-btn");
+      if (ca) ca.textContent = dict.connectApps;
+      const inp = document.getElementById("text");
+      if (inp) inp.placeholder = dict.placeholder;
+      approveBtn.textContent = dict.allowOnce;
+      if (alwaysAllowBtn) alwaysAllowBtn.textContent = dict.alwaysAllow;
+      denyBtn.textContent = dict.deny;
+      const tk = document.getElementById("gp-takeover-btn");
+      if (tk) tk.textContent = dict.takeover;
+      const td = document.getElementById("takeover-done-btn");
+      if (td) td.textContent = dict.imDone;
+      const sb = document.getElementById("send");
+      if (sb) sb.title = dict.send;
+    }
+
+    function wireWaveGSettingsControls() {
+      document.querySelectorAll("#gp-appearance-row .gp-chip").forEach((b) => {
+        b.addEventListener("click", async () => {
+          const mode = b.dataset.appearance;
+          const res = await window.bitbot.settings.set({ appearance: mode });
+          if (res && res.ok) gpStatus("waveg-settings-status", "Appearance → " + mode + "（nativeTheme.themeSource 已生效并持久化）");
+          refreshWaveGSettings();
+          runUserTurn("set appearance " + mode, { skipSession: true }).catch(() => {});
+        });
+      });
+      document.querySelectorAll("#gp-locexec-row .gp-chip").forEach((b) => {
+        b.addEventListener("click", async () => {
+          const mode = b.dataset.locexec;
+          const res = await window.bitbot.settings.set({ local_execution: mode });
+          if (res && res.ok) gpStatus("waveg-settings-status", "Local execution → " + mode + "（Host 执行前判定已生效）");
+          refreshWaveGSettings();
+          runUserTurn("local execution " + mode, { skipSession: true }).catch(() => {});
+        });
+      });
+      const langSel = document.getElementById("gp-language");
+      if (langSel) {
+        langSel.addEventListener("change", async () => {
+          const code = langSel.value;
+          const res = await window.bitbot.settings.set({ language: code });
+          if (res && res.ok) {
+            wavegLangApply(code);
+            gpStatus("waveg-settings-status", "Language → " + code);
+          }
+          runUserTurn("set language " + code, { skipSession: true }).catch(() => {});
+        });
+      }
+      const tzSel = document.getElementById("gp-timezone");
+      if (tzSel) {
+        tzSel.addEventListener("change", async () => {
+          const tz = tzSel.value;
+          const res = await window.bitbot.settings.set({ timezone: tz });
+          if (res && res.ok) gpStatus("waveg-settings-status", "Timezone → " + tz + "（daemon 经 BITBOT_TZ 生效）");
+          runUserTurn("set timezone " + tz, { skipSession: true }).catch(() => {});
+        });
+      }
+      const routeBtn = document.getElementById("gp-route-toggle");
+      if (routeBtn) {
+        routeBtn.addEventListener("click", async () => {
+          let cur = false;
+          try {
+            const res = await window.bitbot.settings.get();
+            const st = res && res.settings ? (res.settings.settings || res.settings) : {};
+            cur = Boolean(st.route_traffic);
+          } catch (_) { /* ignore */ }
+          const res2 = await window.bitbot.settings.set({ route_traffic: !cur });
+          if (res2 && res2.ok) {
+            gpStatus("waveg-settings-status", !cur ?
+              "Route traffic 开关已持久化=on（真实代理生效为 residual：本机未起代理）" :
+              "Route traffic 开关已持久化=off");
+          }
+          refreshWaveGSettings();
+        });
+      }
+      const ruleAllow = document.getElementById("gp-rule-allow");
+      const ruleAsk = document.getElementById("gp-rule-ask");
+      const ruleKind = document.getElementById("gp-rule-kind");
+      const addRule = async (decision) => {
+        if (!ruleKind) return;
+        const pattern = ruleKind.value + ":*";
+        const phrase = (decision === "allow" ? "always allow pattern=" : "ask first pattern=") + pattern;
+        const res = await window.bitbot.bots.op({ phrase });
+        if (res && res.ok) gpStatus("waveg-settings-status", "规则已写入：" + pattern + " → " + decision);
+        else gpStatus("waveg-settings-status", "规则写入失败：" + (res && res.error ? res.error : "unknown"));
+        refreshApprovalRules();
+      };
+      if (ruleAllow) ruleAllow.addEventListener("click", () => addRule("allow"));
+      if (ruleAsk) ruleAsk.addEventListener("click", () => addRule("ask"));
+      const pendBtn = document.getElementById("pending-bar-btn");
+      if (pendBtn) {
+        pendBtn.addEventListener("click", () => {
+          openGpPanel("approvals");
+          refreshApprovalQueue();
+        });
+      }
+      const pRefresh = document.getElementById("gp-pending-refresh");
+      if (pRefresh) pRefresh.addEventListener("click", () => { refreshApprovalQueue(); refreshPendingBar(); });
+    }
+
+    // ----- GP panel (Computer / 群组 / 后台审批) -----
+    let gpActiveTab = "computer";
+    function openGpPanel(tab) {
+      const panel = document.getElementById("gp-panel");
+      if (!panel) return;
+      panel.style.display = "block";
+      gpSwitchTab(tab || gpActiveTab);
+    }
+    function gpSwitchTab(tab) {
+      gpActiveTab = tab;
+      document.querySelectorAll(".gp-tab").forEach((b) =>
+        b.classList.toggle("active", b.dataset.gptab === tab),
+      );
+      const map = { computer: "gp-computer", group: "gp-group", approvals: "gp-approvals" };
+      Object.entries(map).forEach(([k, id]) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = k === tab ? "" : "none";
+      });
+      if (tab === "approvals") refreshApprovalQueue();
+      if (tab === "group") refreshRooms();
+      if (tab === "computer") pollComputerFrame();
+    }
+
+    async function wireGpPanel() {
+      const btn = document.getElementById("gp-panel-btn");
+      if (btn) btn.addEventListener("click", () => openGpPanel(gpVisible() ? null : "computer"));
+      const close = document.getElementById("gp-panel-close");
+      if (close) close.addEventListener("click", () => {
+        const panel = document.getElementById("gp-panel");
+        if (panel) panel.style.display = "none";
+      });
+      document.querySelectorAll(".gp-tab").forEach((b) =>
+        b.addEventListener("click", () => gpSwitchTab(b.dataset.gptab)),
+      );
+      const takeBtn = document.getElementById("gp-takeover-btn");
+      if (takeBtn)
+        takeBtn.addEventListener("click", () => {
+          runUserTurn("take over reason=user_request", { skipSession: false }).catch(() => {});
+        });
+      const doneBtn = document.getElementById("takeover-done-btn");
+      if (doneBtn)
+        doneBtn.addEventListener("click", () => {
+          runUserTurn("i'm done", {}).catch(() => {});
+        });
+      const refreshBtn = document.getElementById("gp-refresh-frame");
+      if (refreshBtn) refreshBtn.addEventListener("click", () => pollComputerFrame(true));
+      const recoverBtn = document.getElementById("gp-recover-btn");
+      if (recoverBtn)
+        recoverBtn.addEventListener("click", () => {
+          runUserTurn("recover computer", { approved: true }).catch(() => {});
+        });
+      const roomCreateBtn = document.getElementById("gp-room-create");
+      if (roomCreateBtn) roomCreateBtn.addEventListener("click", createRoomFromUi);
+      const roomSend = document.getElementById("gp-room-send");
+      if (roomSend) roomSend.addEventListener("click", sendRoomMessage);
+    }
+    function gpVisible() {
+      const panel = document.getElementById("gp-panel");
+      return panel && panel.style.display !== "none";
+    }
+
+    // ----- GP-3x Computer -----
+    let activeBotId = "agent-bit";
+    let computerFrameTimer = null;
+    let lastFrameUrl = null;
+    async function pollComputerFrame(force) {
+      if (!window.bitbot.computer) return;
+      try {
+        const res = await window.bitbot.computer.frame({ bot_id: activeBotId });
+        const box = document.getElementById("gp-frame-box");
+        const meta = document.getElementById("gp-frame-meta");
+        if (!box) return;
+        if (res && res.ok && res.data_url) {
+          if (lastFrameUrl !== res.data_url || force) {
+            lastFrameUrl = res.data_url;
+            box.innerHTML = "";
+            const img = document.createElement("img");
+            img.src = res.data_url;
+            box.appendChild(img);
+          }
+          if (meta) meta.textContent = "Host 真实帧 · " + String(res.frame_path || "").split("/").slice(-1)[0] + " · " + (res.at || "");
+        } else {
+          box.textContent =
+            res && res.residual
+              ? "无帧（诚实 residual：" + res.residual + "）。有 DISPLAY 且 Bot 运行 computer-use 任务时自动出现真帧。"
+              : "无帧（residual：" + (res && res.error ? res.error : "unknown") + "）";
+          if (meta) meta.textContent = "帧轮询：3s（当前无可用帧）";
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    function startComputerPolling() {
+      if (computerFrameTimer) return;
+      computerFrameTimer = setInterval(() => {
+        if (gpVisible() && gpActiveTab === "computer") pollComputerFrame(false);
+      }, 3000);
+    }
+
+    async function refreshComputerState() {
+      // GP-35: Recover button only in error state; per-bot screen chips (GP-30).
+      const rec = document.getElementById("gp-recover-btn");
+      const chipsBox = document.getElementById("gp-bot-chips");
+      try {
+        const res = await window.bitbot.computer.state();
+        const comp = (res && res.computer) || {};
+        if (rec) rec.style.display = comp.state === "error" ? "" : "none";
+        if (chipsBox) {
+          chipsBox.innerHTML = "";
+          const screens = comp.screens || {};
+          const ids = Object.keys(screens);
+          const view = await window.bitbot.bots.list().catch(() => null);
+          const names = {};
+          for (const b of ((view && view.bots) || [])) names[b.id] = b.name || b.id;
+          const list = ids.length ? ids : [activeBotId];
+          for (const id of list) {
+            const sc = screens[id] || {};
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "gp-chip" + (id === activeBotId ? " active" : "");
+            chip.textContent =
+              (names[id] || id) + (sc.status ? " · " + sc.status : "");
+            chip.addEventListener("click", () => {
+              activeBotId = id;
+              lastFrameUrl = null;
+              refreshComputerState();
+              pollComputerFrame(true);
+            });
+            chipsBox.appendChild(chip);
+          }
+        }
+        const takeoverActive = comp.takeover && comp.takeover.active;
+        const banner = document.getElementById("takeover-banner");
+        if (banner) banner.classList.toggle("visible", Boolean(takeoverActive));
+      } catch (_) {
+        if (rec) rec.style.display = "none";
+      }
+    }
+
+    // ----- GP-40/41 Draft cards (New Email) -----
+    function renderDraftCard(provider, toAddr, subject, body, sendCommand) {
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      el.innerHTML =
+        '<div class="draft-card"><div class="role">' +
+        (provider === "slack"
+          ? "New Slack Message"
+          : "New " + (provider === "outlook" ? "Outlook " : "") + "Email") +
+        '</div>' +
+        '<label>' + (provider === "slack" ? "频道" : "收件人") + ' <input class="dc-to" type="text" /></label>' +
+        (provider === "slack"
+          ? ""
+          : '<label>主题 <input class="dc-subject" type="text" /></label>') +
+        '<label>正文 <textarea class="dc-body" rows="4"></textarea></label>' +
+        '<div class="actions"><button type="button" class="send-btn">Send</button>' +
+        '<button type="button" class="discard-btn">Discard</button>' +
+        '<span class="draft-status">草稿 — 未发送</span></div></div>';
+      el.querySelector(".dc-to").value = toAddr || "";
+      const subEl = el.querySelector(".dc-subject");
+      if (subEl) subEl.value = subject || "";
+      el.querySelector(".dc-body").value = body || "";
+      const status = el.querySelector(".draft-status");
+      el.querySelector(".send-btn").addEventListener("click", () => {
+        const t = encodeURIComponentVal(el.querySelector(".dc-to").value);
+        const s = encodeURIComponentVal(el.querySelector(".dc-subject").value);
+        const b = encodeURIComponentVal(el.querySelector(".dc-body").value);
+        const phrase =
+          provider === "slack"
+            ? "reply via " + t + " :: " + b
+            : "send mail provider=" + (provider || "gmail") + " to=" + t + " subject=" + s + " body=" + b;
+        status.textContent = "已提交 Send → kernel gate";
+        hideApproval();
+        runUserTurn(phrase, { approved: true });
+      });
+      el.querySelector(".discard-btn").addEventListener("click", () => {
+        status.textContent = "Discarded（无出站；draft 保留在 Host 供审计）";
+        el.querySelectorAll("input,textarea,button").forEach((n) => (n.disabled = true));
+        hideApproval();
+      });
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+    function encodeURIComponentVal(s) {
+      return String(s || "").replace(/\+/g, "%2B").replace(/\s+/g, "+").trim();
+    }
+
+    // ----- GP-5x Group chat -----
+    let gpRooms = [];
+    const gpRoomSelected = new Set();
+    async function refreshRooms() {
+      const members = document.getElementById("gp-room-members");
+      const pick = document.getElementById("gp-room-pick");
+      if (!members) return;
+      let view = null;
+      try {
+        view = await window.bitbot.bots.list();
+      } catch (_) { /* ignore */ }
+      const bots = (view && view.bots) || [];
+      members.innerHTML = "";
+      for (const b of bots) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "gp-chip" + (gpRoomSelected.has(b.id) ? " active" : "");
+        chip.textContent = b.name || b.id;
+        chip.addEventListener("click", () => {
+          if (gpRoomSelected.has(b.id)) gpRoomSelected.delete(b.id);
+          else if (gpRoomSelected.size < 6) gpRoomSelected.add(b.id);
+          else gpStatus("gp-group-status", "最多 6 个 Bot（GP-50）");
+          refreshRooms();
+        });
+        members.appendChild(chip);
+      }
+      try {
+        const res = await window.bitbot.rooms.list();
+        const payload = (res && res.rooms) || {};
+        gpRooms = Array.isArray(payload) ? payload : payload.rooms || [];
+      } catch (_) {
+        gpRooms = [];
+      }
+      if (pick) {
+        pick.innerHTML = "";
+        for (const rm of gpRooms) {
+          const o = document.createElement("option");
+          o.value = rm.id;
+          o.textContent = (rm.title || rm.id) + "（" + (rm.members || []).length + "）";
+          pick.appendChild(o);
+        }
+        if (!gpRooms.length) {
+          const o = document.createElement("option");
+          o.value = "";
+          o.textContent = "暂无群组";
+          pick.appendChild(o);
+        }
+      }
+    }
+    async function createRoomFromUi() {
+      const status = document.getElementById("gp-group-status");
+      if (gpRoomSelected.size < 2) {
+        if (status) status.textContent = "至少选择 2 个 Bot（GP-50：2–6）";
+        return;
+      }
+      const csv = Array.from(gpRoomSelected).join(",");
+      const titleEl = document.getElementById("gp-room-title");
+      const title = (titleEl && titleEl.value.trim()) || "群聊 " + new Date().toISOString().slice(5, 10);
+      const phrase = "create group chat bots=" + csv + " title=" + encodeURIComponentVal(title);
+      const res = await window.bitbot.bots.op({ phrase });
+      if (status)
+        status.textContent =
+          res && res.ok
+            ? "群组已建（intent=" + res.intent + "）：" + title
+            : "创建失败：" + (res && res.error ? res.error : "kernel 未识别");
+      refreshRooms();
+    }
+    function sendRoomMessage() {
+      const pick = document.getElementById("gp-room-pick");
+      const txt = document.getElementById("gp-room-text");
+      const status = document.getElementById("gp-group-status");
+      if (!pick || !txt) return;
+      const roomId = pick.value;
+      const body = txt.value.trim();
+      if (!roomId || !body) {
+        if (status) status.textContent = "选择群组并输入消息";
+        return;
+      }
+      runUserTurn("room " + roomId + " :: " + body, {});
+      txt.value = "";
+      if (status) status.textContent = "已发送 → kernel RoomTurn 路由（@Name 定向 / @everyone 全体 / 无 @ 自行决定）";
+    }
+
+    // ----- GP-80/81/82 notifications + unread + badge -----
+    let unreadBySession = {};
+    async function notifyTurnIfNeeded(r, opts) {
+      if (!window.bitbot.notify) return;
+      if (opts && opts.skipSession) return;
+      const ok = r && r.ok;
+      const needsInput =
+        r && Array.isArray(r.effects) && r.effects.some((e) => e && e.kind === "approval_card");
+      if (!ok && !needsInput) return;
+      const sid = (r && r.session_id) || activeSessionId || "desktop-session";
+      if (sid !== activeSessionId || !document.hasFocus()) {
+        unreadBySession[sid] = (unreadBySession[sid] || 0) + 1;
+        const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
+        if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
+        renderUnreadMarks();
+      }
+      await window.bitbot.notify
+        .turn({
+          title: needsInput ? "Bit Bot 需要你的确认" : "Bit Bot 完成任务",
+          body: needsInput ? "审批等待处理" : String((r.assistant && r.assistant[0] && r.assistant[0].text) || r.text || "回合完成").slice(0, 120),
+          session_id: sid,
+          bot_id: activeBotId || "agent-bit",
+        })
+        .catch(() => {});
+      await refreshPendingBar().catch(() => {});
+    }
+    function renderUnreadMarks() {
+      document.querySelectorAll("#session-list .agent-item").forEach((el) => {
+        const sid = el.dataset.sessionId;
+        const n = unreadBySession[sid] || 0;
+        let dot = el.querySelector(".unread-dot");
+        if (n > 0) {
+          if (!dot) {
+            dot = document.createElement("span");
+            dot.className = "unread-dot";
+            dot.style.cssText = "color:var(--accent);font-weight:700;margin-left:6px";
+            el.querySelector(".name").appendChild(dot);
+          }
+          dot.textContent = "●" + n;
+        } else if (dot) {
+          dot.remove();
+        }
+      });
+    }
+
+    // ----- GP-ATx accelerators + sidebar collapse -----
+    let sidebarCollapsed = false;
+    function applySidebarCollapse(collapsed) {
+      sidebarCollapsed = collapsed;
+      document.body.classList.toggle("sidebar-collapsed", collapsed);
+      window.bitbot.settings.set({ sidebar_collapsed: collapsed }).catch(() => {});
+    }
+    function wireAccelerators() {
+      document.addEventListener("keydown", (ev) => {
+        const meta = ev.metaKey || ev.ctrlKey;
+        if (!meta) return;
+        if (ev.key === "b" || ev.key === "B") {
+          ev.preventDefault();
+          applySidebarCollapse(!sidebarCollapsed);
+        } else if (ev.key === "n" || ev.key === "N") {
+          ev.preventDefault();
+          createNewChatFromUi();
+        } else if (ev.key === "f" || ev.key === "F") {
+          ev.preventDefault();
+          openGpPanel("computer");
+        }
+      });
+      if (window.bitbot.onMenuSidebarToggle) {
+        window.bitbot.onMenuSidebarToggle(() => applySidebarCollapse(!sidebarCollapsed));
+      }
+      if (window.bitbot.onMenuNewChat) {
+        window.bitbot.onMenuNewChat(() => createNewChatFromUi());
+      }
+    }
+    async function createNewChatFromUi() {
+      const created = await window.bitbot.sessions.create("新对话");
+      if (created && created.ok) {
+        activeSessionId = created.session.id;
+        log.innerHTML = welcomeMarkup("新对话已创建 · 输入消息开始");
+        await refreshSessions();
+        await refreshConfigGate();
+        const inp = document.getElementById("text");
+        if (inp) inp.focus();
+      }
+    }
+    async function wireFocusSession() {
+      if (!window.bitbot.onFocusSession) return;
+      window.bitbot.onFocusSession(async (payload) => {
+        const sid = payload && payload.session_id;
+        if (!sid) return;
+        const r = await window.bitbot.sessions.setActive(sid);
+        if (r && r.ok) {
+          activeSessionId = sid;
+          delete unreadBySession[sid];
+          const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
+          if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
+          await loadActiveSessionTranscript();
+          const list = await window.bitbot.sessions.list();
+          renderSessionList(list);
+          renderUnreadMarks();
+        }
+      });
+      if (window.bitbot.onSettingsChanged) {
+        window.bitbot.onSettingsChanged(() => refreshWaveGSettings());
+      }
+      if (window.bitbot.onApprovalAlwaysAllow) {
+        window.bitbot.onApprovalAlwaysAllow((payload) => {
+          addMsg("assistant", "Always allow 规则命中：" + (payload && payload.kind ? payload.kind : "?") + " → 同类操作后续自动执行。");
+          refreshApprovalRules();
+        });
+      }
+    }
+
+    // ----- settings-panel open hook: render real controls -----
+    const _origRenderSettingsPanel = renderSettingsPanel;
+    renderSettingsPanel = function (payload) {
+      _origRenderSettingsPanel(payload);
+      refreshWaveGSettings().catch(() => {});
+    };
 
     async function boot() {
       try {
@@ -4497,6 +5874,21 @@
         await refreshSessions();
         await loadActiveSessionTranscript();
         if (log.querySelector(".msg")) clearWelcome();
+        // Wave G boot: bots sidebar + parity settings + listeners + accelerators.
+        try { await refreshBots(); } catch (_) { /* ignore */ }
+        try {
+          const stRes = await window.bitbot.settings.get();
+          const st = (stRes && stRes.settings && stRes.settings.settings) || (stRes && stRes.settings) || {};
+          if (st.sidebar_collapsed) applySidebarCollapse(true);
+        } catch (_) { /* ignore */ }
+        wireWaveGSettingsControls();
+        wireGpPanel();
+        wireAccelerators();
+        wireFocusSession();
+        startComputerPolling();
+        refreshPendingBar().catch(() => {});
+        refreshApprovalQueue().catch(() => {});
+        refreshRooms().catch(() => {});
         try {
           if (window.bitbot.llmStatus) {
             const ls = await window.bitbot.llmStatus();
@@ -4591,10 +5983,196 @@
     form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const text = input.value.trim();
-      if (!text) return;
+      if (!text && !pendingAttachments.length) return;
+      let finalText = text;
+      if (pendingAttachments.length) {
+        // Real staged paths only (Host validated count/size); never fabricate.
+        const refs = pendingAttachments.map((p) => "attach file " + p).join("; ");
+        finalText = (text ? text + "\n" : "") + refs;
+        pendingAttachments = [];
+        renderAttachmentStrip();
+      }
       input.value = "";
-      await runUserTurn(text, {});
+      autoGrow();
+      await runUserTurn(finalText, {});
     });
+
+    /* ---- Wave G composer parity (GP-10/11/12/13/15) ---- */
+    function autoGrow() {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 160) + "px";
+    }
+    input.addEventListener("input", () => {
+      autoGrow();
+      updateComposerMenu();
+    });
+    input.addEventListener("keydown", (ev) => {
+      // Shift+Enter = newline (textarea default); Enter sends; Ctrl/Cmd+Enter sends.
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        form.requestSubmit();
+      }
+      if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "d") {
+        ev.preventDefault();
+        startVoiceInput();
+      }
+    });
+
+    let pendingAttachments = [];
+    function renderAttachmentStrip() {
+      const strip = document.getElementById("attachment-strip");
+      if (!strip) return;
+      strip.innerHTML = "";
+      for (const p of pendingAttachments) {
+        const chip = document.createElement("span");
+        chip.className = "attach-chip";
+        const label = document.createElement("span");
+        label.textContent = String(p).split("/").slice(-1)[0];
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.textContent = "×";
+        rm.addEventListener("click", () => {
+          pendingAttachments = pendingAttachments.filter((x) => x !== p);
+          renderAttachmentStrip();
+        });
+        chip.appendChild(label);
+        chip.appendChild(rm);
+        strip.appendChild(chip);
+      }
+    }
+    const attachBtn = document.getElementById("attach-btn");
+    if (attachBtn) {
+      attachBtn.addEventListener("click", async () => {
+        if (!window.bitbot || !window.bitbot.attachments) return;
+        const r = await window.bitbot.attachments.pick();
+        if (r && r.ok && Array.isArray(r.paths)) {
+          pendingAttachments = pendingAttachments.concat(r.paths);
+          renderAttachmentStrip();
+        } else if (r && r.error && !r.canceled) {
+          addMsg("assistant", "附件被拒绝: " + r.error);
+        }
+      });
+    }
+
+    // `/` skills and `@` mention autocomplete (GP-12/13)
+    const menuEl = document.getElementById("composer-menu");
+    let skillsCache = null;
+    async function updateComposerMenu() {
+      if (!menuEl) return;
+      const v = input.value;
+      const slash = v.match(/^\/([^\s]*)$/);
+      const at = v.match(/(^|\s)@([^\s@]*)$/);
+      if (slash) {
+        if (!skillsCache && window.bitbot && window.bitbot.skills) {
+          skillsCache = await window.bitbot.skills.list();
+        }
+        const items = (skillsCache && skillsCache.skills) || [];
+        const q = slash[1].toLowerCase();
+        menuEl.innerHTML = "";
+        menuEl.hidden = false;
+        const hits = items
+          .filter((s) => !q || String(s.name || s.id || "").toLowerCase().includes(q))
+          .slice(0, 12);
+        if (!hits.length) {
+          const div = document.createElement("div");
+          div.style.cssText = "color:var(--muted);font-size:11px;padding:4px 8px";
+          div.textContent = skillsCache && skillsCache.error ? "技能列表不可用: " + skillsCache.error : "无匹配技能";
+          menuEl.appendChild(div);
+        }
+        for (const s of hits) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = "/" + (s.name || s.id) + (s.description ? " — " + String(s.description).slice(0, 40) : "");
+          b.addEventListener("click", () => {
+            input.value = "use skill " + (s.name || s.id) + " ";
+            menuEl.hidden = true;
+            input.focus();
+          });
+          menuEl.appendChild(b);
+        }
+      } else if (at) {
+        let bots = [];
+        try {
+          if (window.bitbot && window.bitbot.bots) {
+            const view = await window.bitbot.bots.list();
+            bots = (view && view.bots) || [];
+          }
+        } catch (_) {
+          bots = [];
+        }
+        menuEl.innerHTML = "";
+        menuEl.hidden = false;
+        const q = at[2].toLowerCase();
+        const hits = bots
+          .filter((b) => !q || String(b.name || "").toLowerCase().includes(q))
+          .slice(0, 12);
+        for (const b of hits) {
+          const el = document.createElement("button");
+          el.type = "button";
+          el.textContent = "@" + b.name;
+          el.addEventListener("click", () => {
+            input.value = input.value.replace(/@([^\s@]*)$/, "@" + b.name + " ");
+            menuEl.hidden = true;
+            input.focus();
+          });
+          menuEl.appendChild(el);
+        }
+      } else {
+        menuEl.hidden = true;
+      }
+    }
+
+    // Voice input → WAV → Host voice chain; transcript lands in composer for edit (GP-15).
+    let mediaRec = null;
+    let recChunks = [];
+    async function startVoiceInput() {
+      if (mediaRec && mediaRec.state === "recording") {
+        mediaRec.stop();
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        addMsg("assistant", "语音输入不可用：无麦克风 API（residual，不伪造转写）");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recChunks = [];
+        mediaRec = new MediaRecorder(stream);
+        mediaRec.ondataavailable = (e) => recChunks.push(e.data);
+        mediaRec.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const blob = await new Response(recChunks.length ? new Blob(recChunks, { type: "audio/webm" }) : null).blob().catch(() => null);
+          // Blob→base64
+          const buf = await (recChunks.length ? new Blob(recChunks) : new Blob()).arrayBuffer();
+          let b64 = "";
+          const bytes = new Uint8Array(buf);
+          for (let i = 0; i < bytes.length; i += 4096) {
+            b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + 4096));
+          }
+          if (!b64) {
+            addMsg("assistant", "录音为空，未提交");
+            return;
+          }
+          const r = await window.bitbot.voice.ingest({ wav_b64: btoa(b64), session: activeSessionId });
+          if (r && r.ok) {
+            addMsg("assistant", "录音已存 " + r.wav_path + (r.residual ? "（" + r.residual + "，转写需你在下方补文字）" : ""));
+            if (r.transcript) {
+              input.value = r.transcript + " ";
+              input.focus();
+            }
+          } else {
+            addMsg("assistant", "录音失败: " + ((r && (r.error || r.residual)) || "unknown"));
+          }
+        };
+        mediaRec.start();
+        addMsg("assistant", "录音中…再点 🎙 或按 Ctrl/Cmd+D 停止");
+      } catch (e) {
+        addMsg("assistant", "麦克风被拒绝: " + (e && e.name));
+      }
+    }
+    const voiceBtn = document.getElementById("voice-btn");
+    if (voiceBtn) voiceBtn.addEventListener("click", startVoiceInput);
+
 
     document.getElementById("connect-slack").addEventListener("click", () => {
       runUserTurn("setup slack", {});

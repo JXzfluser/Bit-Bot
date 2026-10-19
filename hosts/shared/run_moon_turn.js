@@ -136,7 +136,7 @@ function createTurnRunner(repoRoot, opts = {}) {
       Array.isArray(parsed.effects) &&
       parsed.effects.length
     ) {
-      const host_results = await ffi.executeHostEffects(parsed.effects);
+      const host_results = await ffi.executeHostEffects(parsed.effects, { approved: Boolean(ctx.approved) });
       parsed.host_results = host_results;
       try {
         const contArgs = [
@@ -230,6 +230,56 @@ function createTurnRunner(repoRoot, opts = {}) {
           }
         }
       }
+    }
+
+    // Wave G GP-21/GP-36: kernel asked, Host auto-review says allow → execute
+    // the original request once with --approved (one guarded re-run, no loops).
+    if (
+      parsed &&
+      parsed.ok &&
+      !ctx.approved &&
+      Array.isArray(parsed.host_results) &&
+      parsed.host_results.some((h) => h && h.kind === "approval_card" && h.ok && h.mode === "host_approval_card_auto")
+    ) {
+      try {
+        const autoRerun = await runTurn(text, { ...ctx, approved: true, turnId: (parsed.turn_id || "turn") + "-auto" });
+        parsed.auto_approved = true;
+        parsed.auto_approved_via = (() => {
+          const h = parsed.host_results.find((x) => x && x.mode === "host_approval_card_auto");
+          try { return JSON.parse(h.stdout).auto_via; } catch { return null; }
+        })();
+        if (autoRerun && Array.isArray(autoRerun.host_results)) {
+          parsed.host_results = parsed.host_results.concat(autoRerun.host_results);
+        }
+        parsed.messages = Array.isArray(parsed.messages) ? parsed.messages.slice() : [];
+        parsed.messages.push({
+          role: "assistant",
+          text:
+            "Auto-review 命中（" + (parsed.auto_approved_via || "approval_rule") +
+            "）：已按 Always-allow 规则自动执行，未再次询问。",
+        });
+        if (autoRerun && autoRerun.assistant !== undefined) parsed.assistant = autoRerun.assistant;
+        if (autoRerun && autoRerun.effects) parsed.effects_after_auto = autoRerun.effects;
+      } catch (err) {
+        parsed.messages = Array.isArray(parsed.messages) ? parsed.messages.slice() : [];
+        parsed.messages.push({
+          role: "assistant",
+          text: `Auto-allow re-run failed: ${err.message || String(err)}`,
+        });
+      }
+    }
+    // GP-36 never-mode: card refused → do NOT re-run; say so honestly.
+    if (
+      parsed &&
+      parsed.ok &&
+      Array.isArray(parsed.host_results) &&
+      parsed.host_results.some((h) => h && h.mode === "host_approval_card_refused")
+    ) {
+      parsed.messages = Array.isArray(parsed.messages) ? parsed.messages.slice() : [];
+      parsed.messages.push({
+        role: "assistant",
+        text: "Local execution = Never allow：该操作被你的设置直接拒绝，未执行。",
+      });
     }
 
     return parsed;

@@ -9,6 +9,9 @@ const {
   Menu,
   nativeImage,
   globalShortcut,
+  dialog,
+  nativeTheme,
+  Notification,
 } = require("electron");
 const fs = require("fs");
 const path = require("path");
@@ -25,6 +28,22 @@ try {
   createHostFfi = require("../shared/host_ffi").createHostFfi;
 }
 const { createSessionStore } = require("./sessions");
+
+let createProductSurface;
+try {
+  createProductSurface = require("./product_surface").createProductSurface;
+} catch (_e) {
+  try {
+    createProductSurface = require("../desktop/product_surface").createProductSurface;
+  } catch (_e2) {
+    // Wave G surface not built yet — IPC handlers answer honestly instead of crashing.
+    createProductSurface = () => ({
+      unavailable: true,
+      bots: {},
+      settings: { get: () => ({ ok: false, error: "product_surface missing" }) },
+    });
+  }
+}
 
 let createCnInboundServer;
 try {
@@ -209,6 +228,8 @@ syncInjectedSecretsToEnvLocal();
 const runner = createTurnRunner(REPO_ROOT);
 const sessions = createSessionStore(REPO_ROOT);
 const ffi = createHostFfi(REPO_ROOT);
+/** Wave G stores: bots / settings / approvals / computer / rooms / usage (docs/grok-desktop-parity/ipc-contract.md §2). */
+const surface = createProductSurface(REPO_ROOT);
 
 let mainWindow = null;
 let tray = null;
@@ -541,6 +562,348 @@ ipcMain.handle("bitbot:sessions:setActive", async (_e, id) => {
   broadcast("bitbot:sessions-changed", sessions.list());
   return r;
 });
+ipcMain.handle("bitbot:sessions:rename", async (_e, id, title) => {
+  const r = sessions.rename ? sessions.rename(id, title) : { ok: false, error: "rename unsupported" };
+  broadcast("bitbot:sessions-changed", sessions.list());
+  return r;
+});
+ipcMain.handle("bitbot:sessions:delete", async (_e, id) => {
+  const r = sessions.remove ? sessions.remove(id) : { ok: false, error: "delete unsupported" };
+  broadcast("bitbot:sessions-changed", sessions.list());
+  return r;
+});
+
+/* ------------------------------------------------------------------ *
+ * Wave G — Grok desktop parity product surface IPC.
+ * Stores live in product_surface.js (Host side); kernel keeps policy.
+ * ------------------------------------------------------------------ */
+
+ipcMain.handle("bitbot:bots:list", async () => {
+  try {
+    return surface.listBotsView();
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), bots: [], hidden_bots: [] };
+  }
+});
+
+/** Kernel-authoritative product phrases (ADR 0002): Bot lifecycle runs a real turn. */
+ipcMain.handle("bitbot:bots:op", async (_e, payload) => {
+  const p = payload || {};
+  const phrase = String(p.phrase || "").trim();
+  if (!phrase) return { ok: false, error: "empty phrase" };
+  try {
+    const result = await runner.runTurn(phrase, {
+      sessionId: "bot-ops",
+      machineId: "desk-1",
+      machineKind: "desktop",
+      channel: "",
+      approved: p.approved === true,
+      skipSession: true,
+    });
+    return {
+      ok: Boolean(result && result.ok),
+      intent: (result && result.intent) || null,
+      turn: result,
+      view: (() => {
+        try {
+          return surface.listBotsView();
+        } catch (_) {
+          return null;
+        }
+      })(),
+    };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+function applyAppearance(mode) {
+  // Real Electron theme switch — GP-70 (nativeTheme.themeSource is the source of truth).
+  if (mode === "light" || mode === "dark" || mode === "system") {
+    nativeTheme.themeSource = mode;
+    return { applied: true, theme_source: nativeTheme.themeSource };
+  }
+  return { applied: false, theme_source: nativeTheme.themeSource };
+}
+
+ipcMain.handle("bitbot:settings:get", async () => {
+  try {
+    const st = surface.getSettings();
+    return { ok: true, settings: st, theme_source: nativeTheme.themeSource };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:settings:set", async (_e, patch) => {
+  try {
+    const res = surface.patchSettings(patch || {});
+    if (res && res.ok && patch && patch.appearance) applyAppearance(String(patch.appearance));
+    // GP-72: new timezone must reach the routine daemon → env + restart cycle.
+    if (res && res.ok && patch && patch.timezone) {
+      process.env.BITBOT_TZ = String(patch.timezone);
+      try {
+        if (routineDaemonChild && !routineDaemonChild.killed) routineDaemonChild.kill();
+        ensureRoutineDaemon();
+      } catch (_) { /* daemon respawn best-effort */ }
+    }
+    broadcast("bitbot:settings-changed", res);
+    return res;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:attachments:pick", async () => {
+  try {
+    const win = BrowserWindow.getFocusedWindow() || mainWindow;
+    const r = await dialog.showOpenDialog(win, {
+      title: "添加附件",
+      properties: ["openFile", "multiSelections"],
+    });
+    if (r.canceled || !r.filePaths.length) {
+      return { ok: false, canceled: true, paths: [] };
+    }
+    const staged = surface.stageAttachments(r.filePaths, sessions.activeId() || "desktop");
+    return staged;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), paths: [] };
+  }
+});
+
+ipcMain.handle("bitbot:skills:list", async () => {
+  try {
+    // Reuse Host product path (no LocalBrain): a real kernel turn plans list_skills.
+    const result = await runner.runTurn("list skills", {
+      sessionId: "skills-pick",
+      machineId: "desk-1",
+      machineKind: "desktop",
+      channel: "",
+      skipSession: true,
+    });
+    const hit = ((result && result.host_results) || []).find((h) => h && h.kind === "list_skills");
+    if (!hit || !hit.ok) {
+      return { ok: false, skills: [], error: (hit && hit.error) || "no list_skills host result" };
+    }
+    let payload = null;
+    try {
+      payload = JSON.parse(hit.stdout);
+    } catch (_) {
+      payload = null;
+    }
+    return { ok: true, skills: (payload && payload.skills) || [], raw: payload };
+  } catch (err) {
+    return { ok: false, skills: [], error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:approvals:rule", async (_e, patch) => {
+  try {
+    return surface.upsertApprovalRule(patch || {});
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:approvals:listRules", async () => {
+  try {
+    return surface.listApprovalRules();
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), rules: [] };
+  }
+});
+
+ipcMain.handle("bitbot:approvals:removeRule", async (_e, pattern) => {
+  try {
+    return surface.removeApprovalRule(String(pattern || ""));
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:approvals:match", async (_e, info) => {
+  try {
+    const kind = String((info && info.kind) || "");
+    const command = String((info && info.command) || "");
+    let decision = surface.approvalRuleMatch(kind, command);
+    // GP-36: local kinds follow the local_execution mode when no rule decides.
+    if (!decision && (kind === "shell" || kind === "computer_use")) {
+      const wrap = surface.getSettings();
+      const st = (wrap && wrap.settings) || wrap || {};
+      if (st.local_execution === "always") decision = "allow";
+      if (st.local_execution === "never") decision = "deny";
+    }
+    return { ok: true, decision };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), decision: null };
+  }
+});
+
+ipcMain.handle("bitbot:approvals:listPending", async () => {
+  try {
+    return surface.listPendingApprovals();
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), items: [] };
+  }
+});
+
+ipcMain.handle("bitbot:approvals:decide", async (_e, id, decision) => {
+  try {
+    const res = surface.decideApproval(id, String(decision || ""), new Date().toISOString());
+    if (res && res.ok && res.decision === "always") {
+      // Always allow → also run the originally blocked action once, via kernel re-run.
+      broadcast("bitbot:approval-always-allow", { id, kind: res.kind || null });
+    }
+    return res;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:approvals:denyReceipt", async (_e, info) => {
+  try {
+    return surface.denyApprovalReceipt({
+      source: (info && info.source) || "chat",
+      kind: String((info && info.kind) || "chat_action"),
+      command: String((info && info.command) || ""),
+    });
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:approvals:runAllowed", async (_e, info) => {
+  try {
+    const kind = String((info && info.kind) || "");
+    const command = String((info && info.command) || "");
+    const ALLOWABLE = ["shell", "channel_send", "mail_send", "mcp_call", "computer_use"];
+    if (!ALLOWABLE.includes(kind)) {
+      return { ok: false, error: "kind_not_replayable" };
+    }
+    const out = await ffi.executeHostEffects([{ kind, command }], { approved: true });
+    const hr = Array.isArray(out) ? out[0] : null;
+    return {
+      ok: Boolean(hr && hr.ok),
+      summary: hr && hr.ok ? String(hr.stdout || "").slice(0, 160) : (hr && (hr.error || hr.refused)) || "failed",
+      error: hr && !hr.ok ? hr.error || hr.refused || "refused" : undefined,
+    };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:rooms:list", async () => {
+  try {
+    return { ok: true, rooms: surface.loadRooms() };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), rooms: [] };
+  }
+});
+
+ipcMain.handle("bitbot:computer:state", async () => {
+  try {
+    return { ok: true, computer: surface.loadComputer() };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), computer: null };
+  }
+});
+
+ipcMain.handle("bitbot:computer:frame", async (_e, opts) => {
+  try {
+    const botId = (opts && opts.bot_id) || "agent-bit";
+    const comp = surface.loadComputer();
+    const screen = (comp.screens && comp.screens[botId]) || null;
+    const framePath = screen && screen.frame_path ? screen.frame_path : null;
+    if (!framePath || !fs.existsSync(framePath)) {
+      return { ok: false, residual: screen && screen.residual ? screen.residual : "no_frame", frame_path: null, data_url: null };
+    }
+    const buf = fs.readFileSync(framePath);
+    const b64 = buf.toString("base64");
+    return { ok: true, frame_path: framePath, data_url: "data:image/png;base64," + b64, at: screen.updated_at || null };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), residual: "frame_error" };
+  }
+});
+
+ipcMain.handle("bitbot:computer:takeover", async (_e, opts) => {
+  try {
+    const action = String((opts && opts.action) || "");
+    if (action === "begin") return surface.beginTakeover(String(opts.bot_id || "agent-bit"), String(opts.reason || ""));
+    if (action === "end") return surface.endTakeover();
+    return { ok: false, error: "action must be begin|end" };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:usage:week", async () => {
+  try {
+    return { ok: true, usage: surface.weekView() };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+ipcMain.handle("bitbot:voice:ingest", async (_e, payload) => {
+  // Wave G: store the real recording on Host disk; no STT in sandbox → transcript stays null (never faked).
+  try {
+    const b64 = String((payload && payload.wav_b64) || "");
+    if (!b64) return { ok: false, error: "empty wav", residual: "empty_recording" };
+    const dir = path.join(REPO_ROOT, "data", "desktop", "voice");
+    fs.mkdirSync(dir, { recursive: true });
+    const wavPath = path.join(dir, "voice-" + Date.now().toString(36) + ".wav");
+    fs.writeFileSync(wavPath, Buffer.from(b64, "base64"));
+    return {
+      ok: true,
+      wav_path: wavPath,
+      bytes: fs.statSync(wavPath).size,
+      transcript: null,
+      residual: "no_stt",
+      pretend_transcript: false,
+    };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), residual: "voice_error" };
+  }
+});
+
+ipcMain.handle("bitbot:notify:turn", async (_e, payload) => {
+  try {
+    const p = payload || {};
+    const botId = String(p.bot_id || "agent-bit");
+    const wrap = surface.getSettings();
+    const st = (wrap && wrap.settings) || wrap || {};
+    const notifyOn = !st.notify ? true : st.notify[botId] !== false;
+    const win = mainWindow;
+    const focused = Boolean(win && !win.isDestroyed() && win.isFocused() && win.isVisible());
+    // GP-80: focus-suppression + per-bot toggle (never notify when window is frontmost).
+    if (!notifyOn || focused || !Notification.isSupported()) {
+      return { ok: true, shown: false, reason: !notifyOn ? "bot_notify_off" : focused ? "window_focused" : "unsupported" };
+    }
+    const n = new Notification({ title: String(p.title || "Bit Bot"), body: String(p.body || "").slice(0, 200) });
+    n.on("click", () => {
+      if (win && !win.isDestroyed()) {
+        win.show();
+        win.focus();
+      }
+      broadcast("bitbot:focus-session", { session_id: p.session_id || null, bot_id: botId });
+    });
+    n.show();
+    return { ok: true, shown: true };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), shown: false };
+  }
+});
+
+ipcMain.handle("bitbot:badge:set", async (_e, n) => {
+  try {
+    const count = Number(n) || 0;
+    const supported = app.setBadgeCount ? app.setBadgeCount(count) : false;
+    return { ok: true, count, set: Boolean(supported), platform: process.platform };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
 
 ipcMain.handle("bitbot:autostart:get", async () => {
   const settings = app.getLoginItemSettings();
@@ -1227,6 +1590,46 @@ app.whenReady().then(async () => {
   if (process.env.BITBOT_DESKTOP_SMOKE_TURN !== undefined) {
     return runSmokeTurnAndExit();
   }
+  // GP-70: persisted appearance wins over OS default at boot.
+  try {
+    const stBoot = surface.settingsGet();
+    if (stBoot && stBoot.appearance) applyAppearance(String(stBoot.appearance));
+  } catch (_) { /* keep OS default */ }
+  // GP-A1: app menu with accelerators (Cmd/Ctrl+B sidebar, Cmd/Ctrl+N new chat).
+  const appMenu = Menu.buildFromTemplate([
+    {
+      label: "Bit Bot",
+      submenu: [
+        {
+          label: "新对话",
+          accelerator: "CmdOrCtrl+N",
+          click: () => {
+            sessions.create("新对话");
+            broadcast("bitbot:sessions-changed", sessions.list());
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.show();
+              mainWindow.focus();
+              mainWindow.webContents.send("bitbot:menu-new-chat", {});
+            }
+          },
+        },
+        {
+          label: "折叠/展开侧边栏",
+          accelerator: "CmdOrCtrl+B",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("bitbot:menu-sidebar-toggle", {});
+            }
+          },
+        },
+        { type: "separator" },
+        { role: "quit", label: "退出" },
+      ],
+    },
+    { role: "editMenu", label: "编辑" },
+    { role: "viewMenu", label: "视图" },
+  ]);
+  Menu.setApplicationMenu(appMenu);
   if (AUTOSTART_ENABLED) {
     const login = applyLoginItem(true);
     process.stdout.write(

@@ -24,6 +24,7 @@
       "preload.js",
       "index.html",
       "sessions.js",
+      "product_surface.js",
       {
         "from": "../shared",
         "to": "shared",

@@ -138,6 +138,35 @@ function createSessionStore(repoRoot) {
     return load().active_id;
   }
 
+  function rename(id, title) {
+    const state = load();
+    const hit = state.sessions.find((s) => s.id === String(id || ""));
+    if (!hit) return { ok: false, error: "unknown session" };
+    const t = String(title || "").trim();
+    if (!t) return { ok: false, error: "empty title" };
+    hit.title = t.slice(0, 60);
+    hit.updated_at = new Date().toISOString();
+    save(state);
+    return { ok: true, session: hit };
+  }
+
+  function remove(id) {
+    const state = load();
+    const want = String(id || "");
+    const before = state.sessions.length;
+    state.sessions = state.sessions.filter((s) => s.id !== want);
+    if (state.sessions.length === before) return { ok: false, error: "unknown session" };
+    if (!state.sessions.length) {
+      const fresh = empty();
+      state.sessions = fresh.sessions;
+      state.active_id = fresh.active_id;
+    } else if (state.active_id === want) {
+      state.active_id = state.sessions[0].id;
+    }
+    save(state);
+    return { ok: true, active_id: state.active_id, removed: want };
+  }
+
   return {
     storePath,
     list,
@@ -146,6 +175,8 @@ function createSessionStore(repoRoot) {
     setActive,
     appendMessages,
     activeId,
+    rename,
+    remove,
   };
 }
 

@@ -41,6 +41,19 @@ export BITBOT_LLM_MODEL=deepseek-chat                    # default
 - 可选 systemd user unit：`bash scripts/host_routine_daemon.sh --install-user-unit`
 - IPC：`bitbot.autostart.*` / `bitbot.daemon.*`
 
+### Grok Bot 产品对等（Wave G · 分支 `cursor/grok-bot-parity-desktop-v2`）
+
+规格：`docs/grok-desktop-parity/`（spec.md / ipc-contract.md / gaps.md）。真功能而非 UI 外壳——每条走 kernel intent → Host effect → `data/desktop/*.json` 落盘：
+
+- **`product_surface.js`（Host 数据层）**：bots / approval-rules / pending-approvals（~10min 过期，过期仍可 always-allow/deny，allow-once 拒绝）/ approvals.log（deny 回执）/ settings（appearance·language·timezone·local_execution 三档·route_traffic·notify·unread·sidebar_collapsed）/ computer（screens + takeover begin/end）/ llm-usage / rooms（群聊 2–6 Bot + transcript ≤200）。原子写 tmp+rename。
+- **审批三按钮**：Allow once（`--approved` 续跑）/ Always allow（落 `<kind>:*` 规则，下次 `auto_approved via=approval_rule` 真执行）/ Deny（pending 决定 + `approvals.log.jsonl` 回执，不静默）。ask-first 优先于 allow；GP-36 never 时卡直接拒绝（`host_approval_card_refused`）且无执行。
+- **群聊路由**：`room <id> :: @BotName …` → mentioned_only；`@everyone` → all；无 @ → bot_discretion；审批/secret 永不进群（`escalations:"dm-only"`）。
+- **Take over / I'm done / Recover**：接管 banner 提示"密码/验证码/2FA 请在本机输入，不要贴进对话"；Recover 仅错误态出现。
+- **草稿卡**：New Email / New Slack Message 可编辑，Send 才真发（approved 回合），Discard 零出站。
+- **快捷键**：`Cmd/Ctrl+B` 折叠侧边栏（持久）、`Cmd/Ctrl+N` 新对话（原生菜单 + renderer 双通道）。
+- **通知**：聚焦抑制、侧边栏未读、`setBadgeCount`、点击通知跳会话。
+- **验收**：`bash scripts/smoke_grok_desktop_parity.sh`（25 项，逐 kind 断言 store 真实变化）+ `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a npm start`（退出码 0，bots.json 出现 Piper）。注意自由文本 `+` 编码约定（spec/contract §3）。
+
 ### Release / OTA / 备案 (P4)
 
 见 [`docs/desktop-release.md`](../../docs/desktop-release.md)。要点：

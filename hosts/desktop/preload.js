@@ -14,6 +14,53 @@ contextBridge.exposeInMainWorld("bitbot", {
     get: (id) => ipcRenderer.invoke("bitbot:sessions:get", id),
     create: (title) => ipcRenderer.invoke("bitbot:sessions:create", title),
     setActive: (id) => ipcRenderer.invoke("bitbot:sessions:setActive", id),
+    rename: (id, title) => ipcRenderer.invoke("bitbot:sessions:rename", id, title),
+    delete: (id) => ipcRenderer.invoke("bitbot:sessions:delete", id),
+  },
+  // Wave G — Grok desktop parity (docs/grok-desktop-parity/ipc-contract.md §4).
+  bots: {
+    list: () => ipcRenderer.invoke("bitbot:bots:list"),
+    op: (payload) => ipcRenderer.invoke("bitbot:bots:op", payload),
+  },
+  settings: {
+    get: () => ipcRenderer.invoke("bitbot:settings:get"),
+    set: (patch) => ipcRenderer.invoke("bitbot:settings:set", patch),
+  },
+  attachments: {
+    pick: () => ipcRenderer.invoke("bitbot:attachments:pick"),
+  },
+  skills: {
+    list: () => ipcRenderer.invoke("bitbot:skills:list"),
+  },
+  approvals: {
+    rule: (patch) => ipcRenderer.invoke("bitbot:approvals:rule", patch),
+    listRules: () => ipcRenderer.invoke("bitbot:approvals:listRules"),
+    removeRule: (pattern) => ipcRenderer.invoke("bitbot:approvals:removeRule", pattern),
+    match: (info) => ipcRenderer.invoke("bitbot:approvals:match", info),
+    listPending: () => ipcRenderer.invoke("bitbot:approvals:listPending"),
+    decide: (id, decision) => ipcRenderer.invoke("bitbot:approvals:decide", id, decision),
+    denyReceipt: (info) => ipcRenderer.invoke("bitbot:approvals:denyReceipt", info),
+    runAllowed: (info) => ipcRenderer.invoke("bitbot:approvals:runAllowed", info),
+  },
+  computer: {
+    frame: (opts) => ipcRenderer.invoke("bitbot:computer:frame", opts || {}),
+    takeover: (opts) => ipcRenderer.invoke("bitbot:computer:takeover", opts),
+    state: () => ipcRenderer.invoke("bitbot:computer:state"),
+  },
+  rooms: {
+    list: () => ipcRenderer.invoke("bitbot:rooms:list"),
+  },
+  usage: {
+    week: () => ipcRenderer.invoke("bitbot:usage:week"),
+  },
+  voice: {
+    ingest: (payload) => ipcRenderer.invoke("bitbot:voice:ingest", payload),
+  },
+  notify: {
+    turn: (payload) => ipcRenderer.invoke("bitbot:notify:turn", payload),
+  },
+  badge: {
+    set: (n) => ipcRenderer.invoke("bitbot:badge:set", n),
   },
   onLlmStream: (cb) => {
     const handler = (_e, chunk) => {
@@ -37,6 +84,65 @@ contextBridge.exposeInMainWorld("bitbot", {
     ipcRenderer.on("bitbot:sessions-changed", handler);
     return () =>
       ipcRenderer.removeListener("bitbot:sessions-changed", handler);
+  },
+  onSettingsChanged: (cb) => {
+    const handler = (_e, payload) => {
+      try {
+        cb(payload);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:settings-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("bitbot:settings-changed", handler);
+  },
+  onFocusSession: (cb) => {
+    const handler = (_e, payload) => {
+      try {
+        cb(payload);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:focus-session", handler);
+    return () =>
+      ipcRenderer.removeListener("bitbot:focus-session", handler);
+  },
+  onApprovalAlwaysAllow: (cb) => {
+    const handler = (_e, payload) => {
+      try {
+        cb(payload);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:approval-always-allow", handler);
+    return () =>
+      ipcRenderer.removeListener("bitbot:approval-always-allow", handler);
+  },
+  onMenuSidebarToggle: (cb) => {
+    const handler = () => {
+      try {
+        cb();
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:menu-sidebar-toggle", handler);
+    return () =>
+      ipcRenderer.removeListener("bitbot:menu-sidebar-toggle", handler);
+  },
+  onMenuNewChat: (cb) => {
+    const handler = () => {
+      try {
+        cb();
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:menu-new-chat", handler);
+    return () => ipcRenderer.removeListener("bitbot:menu-new-chat", handler);
   },
   autostart: {
     get: () => ipcRenderer.invoke("bitbot:autostart:get"),

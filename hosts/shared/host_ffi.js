@@ -15,6 +15,11 @@ const { promisify } = require("util");
 
 const execFileAsync = promisify(execFile);
 
+// Wave G product surface (dev/packaged dual-path)
+let _ProductSurface;
+try { _ProductSurface = require("../desktop/product_surface"); }
+catch { try { _ProductSurface = require("../../hosts/desktop/product_surface"); } catch { _ProductSurface = null; } }
+
 /** Shared across createHostFfi instances so Desktop can subscribe once. */
 let sharedLlmStreamHandler = null;
 
@@ -61,6 +66,145 @@ function hostCodeApplyMarkerLine(filePath, at) {
 
 function createHostFfi(repoRoot) {
   const REPO_ROOT = path.resolve(repoRoot);
+
+  // Wave G product surface instance (null if module unavailable)
+  const surface = _ProductSurface && typeof _ProductSurface.createProductSurface === "function"
+    ? _ProductSurface.createProductSurface(REPO_ROOT)
+    : null;
+
+  // Wave G command parser: "key=value" with "+"→" "; description=/title= consume to EOL
+  function parseWaveGCommand(raw) {
+    const s = String(raw || "");
+    const out = {};
+    const kvKeys = new Set(["name","job","bot","pinned","mode","code","tz","bots","title",
+      "pattern","decision","source","confirm","reason","ok","id","decision"]);
+    const eolKeys = new Set(["description","title","text","body"]);
+    // Tokenize by spaces, but respect eol-keys
+    let i = 0;
+    const n = s.length;
+    while (i < n) {
+      while (i < n && s[i] === " ") i++;
+      if (i >= n) break;
+      const eq = s.indexOf("=", i);
+      const nextSp = s.indexOf(" ", i);
+      if (eq < 0 || (nextSp >= 0 && nextSp < eq)) {
+        // bare token without '=' — skip
+        if (nextSp < 0) break;
+        i = nextSp + 1;
+        continue;
+      }
+      const key = s.slice(i, eq);
+      const valStart = eq + 1;
+      if (eolKeys.has(key)) {
+        // consume to EOL, then decode "+"→" "
+        const val = s.slice(valStart).replace(/\+/g, " ");
+        out[key] = val;
+        break;
+      }
+      let valEnd;
+      if (nextSp < 0) valEnd = n;
+      else {
+        // find next space that is followed by another key=
+        valEnd = nextSp;
+      }
+      let val = s.slice(valStart, valEnd).replace(/\+/g, " ");
+      out[key] = val;
+      i = valEnd;
+    }
+    return out;
+  }
+
+  // Wave G approval gate for gated kinds (shell/channel_send/mail_send/purchase_item/mcp_call/computer_use writes)
+  function waveGApprovalGate(kind) {
+    if (!surface) return { proceed: true };
+    // Only apply when rules exist; otherwise preserve existing behavior.
+    let rulesList;
+    try {
+      const r = surface.listApprovalRules();
+      rulesList = r && r.rules ? r.rules : [];
+    } catch { rulesList = []; }
+    if (!rulesList.length) return { proceed: true };
+    const m = surface.matchApprovalRule(kind);
+    if (m && m.matched) {
+      if (m.decision === "allow") return { proceed: true, rule: m.rule, auto_allowed: true };
+      if (m.decision === "ask") return { proceed: false, needs_approval: true, rule: m.rule, approval_reason: "approval_rule_ask" };
+    }
+    return { proceed: true };
+  }
+
+  // Wave G local_execution gate (only active when settings.json explicitly set)
+  function waveGLocalExecGate() {
+    if (!surface) return { proceed: true };
+    let settings;
+    try { settings = surface.loadSettings(); } catch { return { proceed: true }; }
+    const mode = settings && settings.local_execution;
+    if (!mode || mode === "ask") return { proceed: true }; // preserve existing behavior
+    if (mode === "never") return { proceed: false, refused: "local_execution_never" };
+    if (mode === "always") return { proceed: true, auto_allowed: true };
+    return { proceed: true };
+  }
+
+  // Wave G GP-21/GP-36: map a kernel approval_card command ("Class :: summary :: reason")
+  // to the host auto-review rule vocabulary. Destructive never maps (can't auto-allow).
+  const WAVEG_LOCAL_KINDS = ["shell", "computer_use"];
+  function parseApprovalCardCommand(cmd) {
+    const parts = String(cmd || "").split("::").map((s) => s.trim());
+    let cls = parts[0] || "";
+    let summary = parts.slice(1).join(" :: ");
+    let patternKind = null;
+    if (cls === "mcp") {
+      patternKind = "mcp_call";
+    } else if (cls === "Shell") {
+      patternKind = "shell";
+    } else if (cls === "ExternalSend") {
+      patternKind = /mail|email/i.test(summary) ? "mail_send" : "channel_send";
+    } else if (cls === "McpMutation") {
+      patternKind = "mcp_call";
+    } else if (cls === "Purchase") {
+      patternKind = "purchase_item";
+    } else if (cls === "LocalMachine" || cls === "CloudAgent") {
+      patternKind = "computer_use";
+    } else if (cls === "Destructive") {
+      patternKind = null; // GP-24: never auto-allowable
+    }
+    return { cls, summary, patternKind };
+  }
+
+  // For "kind:prefix*" patterns, the tested command is the summary with the
+  // kernel's "<kind>: " label stripped (e.g. "shell: echo hi" → "echo hi").
+  function cardRuleCommand(parsed) {
+    const s = String((parsed && parsed.summary) || "");
+    const k = parsed && parsed.patternKind;
+    if (!k) return "";
+    const esc = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const m = s.match(new RegExp("^" + esc + ":?\\s*(.*)$"));
+    return m ? m[1] : s;
+  }
+
+  function waveGApprovalCardGate(cmd) {
+    if (!surface) return { proceed: false };
+    const parsed = parseApprovalCardCommand(cmd);
+    if (!parsed.patternKind) return { proceed: false };
+    if (parsed.cls === "Purchase") return { proceed: false, parsed }; // purchases always ask
+    let mode = "ask";
+    try {
+      const st = surface.loadSettings();
+      mode = (st && st.local_execution) || "ask";
+    } catch (_) { /* default ask */ }
+    if (mode === "never" && WAVEG_LOCAL_KINDS.includes(parsed.patternKind)) {
+      return { denied: true, reason: "local_execution_never", parsed };
+    }
+    let decision = null;
+    try {
+      decision = surface.approvalRuleMatch(parsed.patternKind, cardRuleCommand(parsed));
+    } catch (_) { /* none */ }
+    if (decision === "allow") return { auto: true, via: "approval_rule", parsed };
+    if (mode === "always" && WAVEG_LOCAL_KINDS.includes(parsed.patternKind)) {
+      return { auto: true, via: "local_execution_always", parsed };
+    }
+    return { proceed: false, parsed };
+  }
+
   const SESSION_MEMORY_PATH = path.join(
     REPO_ROOT,
     "data",
@@ -8167,6 +8311,20 @@ function createHostFfi(repoRoot) {
         new_agent: "host_teammate_create",
         duplicate_agent: "host_teammate_create",
         room_turn: "host_room_turn",
+        bot_create: "host_bot_create",
+        bot_update: "host_bot_update",
+        bot_duplicate: "host_bot_duplicate",
+        bot_pin: "host_bot_pin",
+        bot_set_primary: "host_bot_set_primary",
+        take_over: "host_take_over",
+        takeover_done: "host_takeover_done",
+        recover_computer: "host_recover_computer",
+        approval_rule: "host_approval_rule",
+        appearance_set: "host_appearance_set",
+        language_set: "host_language_set",
+        timezone_set: "host_timezone_set",
+        local_execution_mode: "host_local_execution_mode",
+        group_chat: "host_group_chat",
         send_to_agent: "host_send_to_agent",
         select_agent: "host_send_to_agent",
         switch_agent: "host_send_to_agent",
@@ -19898,6 +20056,54 @@ function createHostFfi(repoRoot) {
     // room_turn / send_to_agent / subagent_run → executeMultiAgentEffect (async)
 
     if (kind === "approval_card") {
+      // Wave G GP-21/GP-22/GP-23/GP-36: annotate the card with the personal
+      // auto-review verdict so the Host can auto-allow (allow rule / local-exec
+      // always) or refuse (local-exec never). Kernel card itself is never faked.
+      try {
+        const cg = waveGApprovalCardGate(cmd);
+        if (cg.denied) {
+          return {
+            kind,
+            ok: false,
+            command: cmd,
+            refused: cg.reason,
+            stdout: JSON.stringify({
+              command: cmd,
+              status: "refused",
+              refused: cg.reason,
+              auto_approved: false,
+              pretend_approved: false,
+              at,
+            }),
+            stderr: "local_execution_never: user setting refuses this local action",
+            mode: "host_approval_card_refused",
+          };
+        }
+        if (cg.auto) {
+          // Background-source queue stays honest: it is decided in the queue UI.
+          surface.appendPendingApproval({
+            source: "chat",
+            kind: (cg.parsed && cg.parsed.patternKind) || "card",
+            command: cmd,
+          });
+          return {
+            kind,
+            ok: true,
+            command: cmd,
+            stdout: JSON.stringify({
+              command: cmd,
+              status: "auto_approved",
+              auto_approved: true,
+              auto_via: cg.via,
+              rule_kind: (cg.parsed && cg.parsed.patternKind) || null,
+              pretend_approved: false,
+              at,
+            }),
+            stderr: "",
+            mode: "host_approval_card_auto",
+          };
+        }
+      } catch (_) { /* fall through to normal card */ }
       // CM-0105-shaped decision widget for Desktop (Approve / Dismiss).
       const widget = {
         widget_id: `approval-${Date.now().toString(36)}`,
@@ -22047,11 +22253,78 @@ function createHostFfi(repoRoot) {
     }
   }
 
-  async function executeHostEffects(effects) {
+  async function executeHostEffects(effects, ffiOpts) {
     const results = [];
+    // GP-21: explicit user approval (Allow once / approved re-run) bypasses the
+    // ask-rule gate, but never-mode still hard-refuses local kinds.
+    const userApproved = Boolean(ffiOpts && ffiOpts.approved);
     for (const e of effects || []) {
       const kind = (e && e.kind) || "";
       const cmd = String((e && e.command) || "");
+
+      // Wave G GP-21/GP-22/GP-36: personal auto-review rules + local-execution mode gate.
+      // Ask-first beats allow-automatically; never-mode hard-refuses local kinds.
+      if (surface) {
+        let waveGate = null;
+        try {
+          if (
+            kind === "shell" ||
+            kind === "computer_use" ||
+            kind === "skill_write" ||
+            kind === "slides_pptx" ||
+            kind === "export_pack" ||
+            kind === "generate_image" ||
+            kind === "generate_video"
+          ) {
+            waveGate = waveGLocalExecGate();
+            if (waveGate && waveGate.refused) {
+              results.push({
+                kind,
+                ok: false,
+                command: cmd,
+                refused: waveGate.refused,
+                stdout: "",
+                stderr: "local_execution_never: user setting refuses local execution",
+              });
+              continue;
+            }
+          }
+          if (
+            !userApproved &&
+            (
+              kind === "shell" ||
+              kind === "channel_send" ||
+              kind === "mail_send" ||
+              kind === "purchase_item" ||
+              kind === "mcp_call" ||
+              kind === "computer_use" ||
+              kind === "delegate_task"
+            )
+          ) {
+            const ag = waveGApprovalGate(kind);
+            if (ag && !ag.proceed) {
+              const pend = surface.appendPendingApproval({
+                source: "chat",
+                kind,
+                command: cmd,
+              });
+              results.push({
+                kind,
+                ok: false,
+                command: cmd,
+                needs_approval: true,
+                approval_id: pend && pend.id,
+                approval_reason: ag.approval_reason || "approval_rule_ask",
+                stdout: "",
+                stderr: "approval_rule_ask: ask-first rule matched; queued in pending-approvals",
+              });
+              continue;
+            }
+          }
+        } catch (_) {
+          /* gate must never break execution path */
+        }
+      }
 
       if (kind === "channel_send") {
         results.push(await executeChannelSend(cmd));
@@ -22125,6 +22398,43 @@ function createHostFfi(repoRoot) {
         kind === "send_to_agent" ||
         kind === "subagent_run"
       ) {
+        // Wave G GP-50..53: product rooms (rooms.json) route with @mention policy;
+        // legacy teammate rooms keep the old fanout untouched.
+        if (kind === "room_turn" && surface) {
+          const sep = cmd.indexOf(" :: ");
+          const roomId = sep >= 0 ? cmd.slice(0, sep) : "";
+          const body = sep >= 0 ? cmd.slice(sep + 4) : cmd;
+          let hitRoom = null;
+          try {
+            const roomsData = surface.loadRooms();
+            hitRoom = (roomsData.rooms || []).find((r) => r.id === roomId || r.title === roomId);
+          } catch (_) {
+            hitRoom = null;
+          }
+          if (hitRoom) {
+            const res = surface.roomTurn(hitRoom.id, body, new Date().toISOString());
+            if (res && res.ok) {
+              // Persist product transcript line (rooms.json entry keeps last 200).
+              surface.appendRoomTranscript(hitRoom.id, res.transcript_entry);
+              results.push({
+                kind,
+                ok: true,
+                command: cmd,
+                stdout: JSON.stringify({
+                  ...res,
+                  room: hitRoom.id,
+                  title: hitRoom.title,
+                  member_count: (res.transcript_entry.responders || []).length,
+                  total_members: (hitRoom.members || []).length,
+                  body,
+                }),
+                stderr: "",
+                mode: "host_room_turn",
+              });
+              continue;
+            }
+          }
+        }
         results.push(await executeMultiAgentEffect(kind, cmd));
         continue;
       }
@@ -22277,6 +22587,187 @@ function createHostFfi(repoRoot) {
         results.push(await executeMailSend(cmd));
         continue;
       }
+
+      // Wave G: Bot lifecycle effects
+      if (kind === "bot_create") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.createBot({ name: args.name, job: args.job, description: args.description });
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+      if (kind === "bot_update") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.updateBot({ bot_id: args.bot, name: args.name, job: args.job, description: args.description, avatar: args.avatar });
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+      if (kind === "bot_duplicate") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.duplicateBot(args.bot);
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+      if (kind === "bot_pin") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const pinned = args.pinned === "1" || args.pinned === "true";
+        const res = surface.pinBot(args.bot, pinned);
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+      if (kind === "bot_set_primary") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.setPrimaryBot(args.bot);
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+
+      // Wave G: Takeover effects
+      if (kind === "take_over") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.beginTakeover(args.bot || "agent-bit", args.reason || "");
+        // Try to capture screenshot if DISPLAY available
+        let frame_path = null;
+        let residual = null;
+        try {
+          const { execFileSync } = require("child_process");
+          const display = process.env.DISPLAY;
+          if (display) {
+            const framesDir = path.join(REPO_ROOT, "data", "desktop", "frames");
+            fs.mkdirSync(framesDir, { recursive: true });
+            const frameFile = path.join(framesDir, `takeover-${Date.now()}.png`);
+            // Try scrot or import
+            try {
+              execFileSync("scrot", [frameFile], { timeout: 3000 });
+              if (fs.existsSync(frameFile)) frame_path = frameFile;
+            } catch {
+              try {
+                execFileSync("import", ["-window", "root", frameFile], { timeout: 3000 });
+                if (fs.existsSync(frameFile)) frame_path = frameFile;
+              } catch { /* no screenshot tool */ }
+            }
+          } else {
+            residual = "no DISPLAY";
+          }
+        } catch { /* screenshot failed */ }
+        const payload = { ...res, frame_path, guidance: "密码/验证码请在本机输入，不要贴进对话", residual };
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(payload), stderr: "", mode: res.mode });
+        continue;
+      }
+      if (kind === "takeover_done") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const res = surface.endTakeover();
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+
+      // Wave G: Computer recovery
+      if (kind === "recover_computer") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const force = args.confirm === "recover" || args.force === "1";
+        const res = surface.recoverComputer(new Date().toISOString(), force);
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+
+      // Wave G: Approval rules
+      if (kind === "approval_rule") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.upsertApprovalRule({ pattern: args.pattern, decision: args.decision, source: args.source || "personal" });
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+
+      // Wave G: Settings effects
+      if (kind === "appearance_set") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.patchSettings({ appearance: args.mode });
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+      if (kind === "language_set") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.patchSettings({ language: args.code });
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+      if (kind === "timezone_set") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.patchSettings({ timezone: args.tz });
+        // GP-72: daemon/routine math picks up the new IANA zone via BITBOT_TZ.
+        if (res.ok && args.tz) process.env.BITBOT_TZ = String(args.tz);
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+      if (kind === "local_execution_mode") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.patchSettings({ local_execution: args.mode });
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+
+      // Wave G: Group chat
+      if (kind === "group_chat") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.createRoom(args.bots, args.title);
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+
       if (kind !== "shell") {
         results.push({
           kind,
