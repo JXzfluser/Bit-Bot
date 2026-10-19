@@ -432,6 +432,7 @@
         <span class="mp-label">模型</span>
       </div>
       <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板">能力</button>
+      <button type="button" id="cred-settings-btn" title="配置 DeepSeek / 钉钉飞书企微（不写死）">凭证</button>
       <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton">Account</button>
     </div>
   </header>
@@ -501,14 +502,23 @@
       <div id="settings-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div id="settings-anchors" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="secrets-panel" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div style="font-weight:700;margin-bottom:6px">产品凭证（写入 .env.local · 热加载）</div>
-        <div style="color:var(--muted);font-size:12px;margin-bottom:8px">DeepSeek key 与国内渠道凭证保存在本机 gitignored 文件；不假装已备案/已 live。申请 key：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
+        <div style="font-weight:700;margin-bottom:6px">产品凭证 · 开放配置（不写死）</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:8px">Key / 渠道凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_API_KEY <span id="sec-llm-mask"></span>
             <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-… DeepSeek" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
           </label>
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_BASE_URL
             <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MODEL
+            <input id="sec-llm-model" type="text" placeholder="deepseek-chat" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_QWEN_API_KEY <span id="sec-qwen-mask"></span>
+            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选 · 通义" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MOONSHOT_API_KEY <span id="sec-moon-mask"></span>
+            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选 · Moonshot/Kimi" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
           </label>
           <label style="font-size:12px;color:var(--muted)">钉钉 webhook（勾选开启 live）
             <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
@@ -580,7 +590,15 @@
         <div class="w-brand">Bit Bot</div>
         <div class="w-line">对标 Grok 的国产桌面助手。<br/>Desktop 优先 · MoonBit → DeepSeek Host。</div>
         <div class="w-hint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div>
+        <div id="welcome-cfg" style="margin-top:16px;display:none">
+          <button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:#062014;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer">配置 DeepSeek / 渠道凭证</button>
+          <div style="margin-top:8px;color:var(--muted);font-size:12px">密钥开放配置，不写死在安装包里</div>
+        </div>
       </div>
+    </div>
+    <div id="cfg-strip" style="display:none;margin:0 16px 8px;padding:10px 12px;border:1px solid #5a4a2a;background:#1a1810;border-radius:8px;color:#e8d9a8;font-size:13px;flex-shrink:0">
+      <span id="cfg-strip-text">尚未配置大脑 key — 点击「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）</span>
+      <button type="button" id="cfg-strip-btn" style="margin-left:10px;background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer">去配置</button>
     </div>
   </div>
   <aside id="machines">
@@ -1531,8 +1549,8 @@
       log.innerHTML = "";
       const msgs = got.session.messages || [];
       if (!msgs.length) {
-        log.innerHTML =
-          '<div id="welcome"><div class="w-brand">Bit Bot</div><div class="w-line">对标 Grok 的国产桌面助手。<br/>Desktop 优先 · MoonBit → DeepSeek Host。</div><div class="w-hint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div></div>';
+        log.innerHTML = welcomeMarkup();
+        refreshConfigGate().catch(() => {});
         return;
       }
       for (const m of msgs) {
@@ -1552,9 +1570,27 @@
           ? "（已配置 " + f.BITBOT_LLM_API_KEY.masked + "）"
           : "（未配置）";
       }
+      const qwenMask = document.getElementById("sec-qwen-mask");
+      if (qwenMask) {
+        qwenMask.textContent =
+          f.BITBOT_LLM_QWEN_API_KEY && f.BITBOT_LLM_QWEN_API_KEY.present
+            ? "（已配置 " + f.BITBOT_LLM_QWEN_API_KEY.masked + "）"
+            : "（未配置）";
+      }
+      const moonMask = document.getElementById("sec-moon-mask");
+      if (moonMask) {
+        moonMask.textContent =
+          f.BITBOT_LLM_MOONSHOT_API_KEY && f.BITBOT_LLM_MOONSHOT_API_KEY.present
+            ? "（已配置 " + f.BITBOT_LLM_MOONSHOT_API_KEY.masked + "）"
+            : "（未配置）";
+      }
       const base = document.getElementById("sec-llm-base");
       if (base && f.BITBOT_LLM_BASE_URL && f.BITBOT_LLM_BASE_URL.value !== undefined) {
         base.value = f.BITBOT_LLM_BASE_URL.value || base.placeholder;
+      }
+      const model = document.getElementById("sec-llm-model");
+      if (model && f.BITBOT_LLM_MODEL && f.BITBOT_LLM_MODEL.value !== undefined) {
+        model.value = f.BITBOT_LLM_MODEL.value || model.placeholder;
       }
       const dingPost = document.getElementById("sec-ding-post");
       if (dingPost) dingPost.checked = f.BITBOT_DINGTALK_POST && f.BITBOT_DINGTALK_POST.present && f.BITBOT_DINGTALK_POST.value === "1";
@@ -1618,6 +1654,15 @@
       const baseEl = document.getElementById("sec-llm-base");
       const baseVal = baseEl && baseEl.value ? baseEl.value.trim() : "";
       if (baseVal) patch.BITBOT_LLM_BASE_URL = baseVal;
+      const modelEl = document.getElementById("sec-llm-model");
+      const modelVal = modelEl && modelEl.value ? modelEl.value.trim() : "";
+      if (modelVal) patch.BITBOT_LLM_MODEL = modelVal;
+      const qwenEl = document.getElementById("sec-qwen-key");
+      const qwenVal = qwenEl && qwenEl.value ? qwenEl.value.trim() : "";
+      if (qwenVal) patch.BITBOT_LLM_QWEN_API_KEY = qwenVal;
+      const moonEl = document.getElementById("sec-moon-key");
+      const moonVal = moonEl && moonEl.value ? moonEl.value.trim() : "";
+      if (moonVal) patch.BITBOT_LLM_MOONSHOT_API_KEY = moonVal;
       patch.BITBOT_DINGTALK_POST = document.getElementById("sec-ding-post") &&
         document.getElementById("sec-ding-post").checked
         ? "1"
@@ -1664,6 +1709,8 @@
           : "保存失败: " + ((r && r.error) || "?");
       }
       if (keyEl) keyEl.value = "";
+      if (qwenEl) qwenEl.value = "";
+      if (moonEl) moonEl.value = "";
       if (ft) ft.value = "";
       if (wt) wt.value = "";
       await refreshSecretsForm();
@@ -1691,7 +1738,23 @@
       } catch (_) {
         /* ignore */
       }
+      try {
+        await refreshConfigGate();
+      } catch (_) {
+        /* ignore */
+      }
       return r;
+    }
+
+    function welcomeMarkup(hintText) {
+      const hint =
+        hintText ||
+        "输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板";
+      return (
+        '<div id="welcome"><div class="w-brand">Bit Bot</div><div class="w-line">对标 Grok 的国产桌面助手。<br/>Desktop 优先 · MoonBit → DeepSeek Host。</div><div class="w-hint">' +
+        hint +
+        '</div><div id="welcome-cfg" style="margin-top:16px;display:none"><button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:#062014;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer">配置 DeepSeek / 渠道凭证</button><div style="margin-top:8px;color:var(--muted);font-size:12px">密钥开放配置，不写死在安装包里</div></div></div>'
+      );
     }
 
     async function refreshModelPicker() {
@@ -1724,6 +1787,16 @@
         btn.textContent =
           (p.label || p.id) + (p.key_configured ? "" : " · 无key");
         btn.addEventListener("click", async () => {
+          if (!p.key_configured) {
+            openProductCredentials(
+              "模型 " +
+                (p.label || p.id) +
+                " 缺 " +
+                (p.key_env || "key") +
+                " — 请在下方填写（开放配置，不写死）",
+            );
+            return;
+          }
           await runUserTurn("switch model " + p.id, { skipSession: true });
           try {
             await refreshModelPicker();
@@ -4017,12 +4090,81 @@
       runUserTurn(t, { approved: true });
     });
     denyBtn.addEventListener("click", hideApproval);
+    function openProductCredentials(hint) {
+      const panel = document.getElementById("settings-panel");
+      const secrets = document.getElementById("secrets-panel");
+      if (panel) panel.style.display = "block";
+      if (secrets) {
+        secrets.scrollIntoView({ behavior: "smooth", block: "start" });
+        const keyEl = document.getElementById("sec-llm-key");
+        if (keyEl) keyEl.focus();
+      }
+      const secStatus = document.getElementById("sec-status");
+      if (secStatus && hint) secStatus.textContent = hint;
+      refreshSecretsForm().catch(() => {});
+    }
+
+    async function refreshConfigGate() {
+      const strip = document.getElementById("cfg-strip");
+      const welcomeCfg = document.getElementById("welcome-cfg");
+      let keyed = false;
+      let anyCn = false;
+      try {
+        if (window.bitbot.llmStatus) {
+          const ls = await window.bitbot.llmStatus();
+          keyed = Boolean(ls && ls.key_configured);
+        }
+        if (window.bitbot.cnStatus) {
+          const cn = await window.bitbot.cnStatus();
+          anyCn = Boolean(cn && cn.any_live_ready);
+        }
+      } catch (_) {
+        /* ignore */
+      }
+      if (strip) {
+        if (!keyed) {
+          strip.style.display = "block";
+          const t = document.getElementById("cfg-strip-text");
+          if (t) {
+            t.textContent =
+              "尚未配置大脑 key — 点「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）";
+          }
+        } else if (!anyCn) {
+          strip.style.display = "block";
+          const t = document.getElementById("cfg-strip-text");
+          if (t) {
+            t.textContent =
+              "大脑已配 · 国内渠道仍为 draft — 可在「凭证」勾选钉钉/飞书/企微 live";
+          }
+        } else {
+          strip.style.display = "none";
+        }
+      }
+      if (welcomeCfg) welcomeCfg.style.display = keyed ? "none" : "block";
+    }
+
     const accountBtn = document.getElementById("account-settings-btn");
     if (accountBtn) {
       accountBtn.addEventListener("click", () => {
         runUserTurn("open settings", {});
       });
     }
+    const credBtn = document.getElementById("cred-settings-btn");
+    if (credBtn) {
+      credBtn.addEventListener("click", () => {
+        openProductCredentials("在此填写 DeepSeek / 渠道凭证（不写死）");
+      });
+    }
+    const cfgStripBtn = document.getElementById("cfg-strip-btn");
+    if (cfgStripBtn) {
+      cfgStripBtn.addEventListener("click", () => openProductCredentials());
+    }
+    document.addEventListener("click", (ev) => {
+      const t = ev.target;
+      if (t && t.id === "welcome-cfg-btn") {
+        openProductCredentials("在此填写 DeepSeek / 渠道凭证（不写死）");
+      }
+    });
     const settingsClose = document.getElementById("settings-close");
     if (settingsClose) {
       settingsClose.addEventListener("click", () => {
@@ -4244,9 +4386,9 @@
             const created = await window.bitbot.sessions.create("新对话");
             if (created && created.ok) {
               activeSessionId = created.session.id;
-              log.innerHTML =
-                '<div id="welcome"><div class="w-brand">Bit Bot</div><div class="w-line">新对话已创建。</div><div class="w-hint">输入消息开始</div></div>';
+              log.innerHTML = welcomeMarkup("新对话已创建 · 输入消息开始");
               await refreshSessions();
+              await refreshConfigGate();
             }
           });
         }
@@ -4298,7 +4440,7 @@
             const hint = document.querySelector("#welcome .w-hint");
             if (hint && ls && !ls.key_configured) {
               hint.textContent =
-                "未配置 BITBOT_LLM_API_KEY — 在 hosts/desktop/.env.local 写入 DeepSeek key 后重启（默认 " +
+                "未配置 BITBOT_LLM_API_KEY — 点右上角「凭证」填写（开放配置，热加载，不写死；默认 " +
                 (ls.model || "deepseek-chat") +
                 "）";
             } else if (hint && ls && ls.key_configured) {
@@ -4310,6 +4452,11 @@
                 " · 输入消息开始";
             }
           }
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          await refreshConfigGate();
         } catch (_) {
           /* ignore */
         }

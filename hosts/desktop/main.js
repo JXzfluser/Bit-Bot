@@ -666,7 +666,7 @@ ipcMain.handle("bitbot:cn:status", async () => {
     pretend_live: false,
     hint: anyLive
       ? "至少一条国内渠道 live 门控已开"
-      : "国内渠道均为 draft — 在 .env.local 设 BITBOT_*_POST=1 + 凭证",
+      : "国内渠道均为 draft — Settings→凭证 勾选 POST=1 并填写 webhook/token（开放配置，不写死）",
   };
 });
 
@@ -681,6 +681,8 @@ ipcMain.handle("bitbot:secrets:status", async () => {
     "BITBOT_LLM_API_KEY",
     "BITBOT_LLM_BASE_URL",
     "BITBOT_LLM_MODEL",
+    "BITBOT_LLM_QWEN_API_KEY",
+    "BITBOT_LLM_MOONSHOT_API_KEY",
     "BITBOT_DINGTALK_POST",
     "BITBOT_DINGTALK_WEBHOOK",
     "BITBOT_DINGTALK_TOKEN",
