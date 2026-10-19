@@ -495,6 +495,8 @@
         <button type="button" id="del-list-skills" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List skills</button>
         <button type="button" id="del-todo-write" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Todo write</button>
         <button type="button" id="del-todo-list" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List todos</button>
+        <button type="button" id="del-attach-file" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Attach file</button>
+        <button type="button" id="del-journal-query" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
         <button type="button" id="del-open-thread" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open thread</button>
         <button type="button" id="del-x-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X post draft</button>
         <button type="button" id="del-section" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Section post</button>
@@ -3696,6 +3698,12 @@
     });
     document.getElementById("del-todo-list").addEventListener("click", () => {
       runUserTurn("list todos", {});
+    });
+    document.getElementById("del-attach-file").addEventListener("click", () => {
+      runUserTurn("attach file README.mbt.md", { approved: true });
+    });
+    document.getElementById("del-journal-query").addEventListener("click", () => {
+      runUserTurn("journal query", {});
     });
     document.getElementById("del-open-thread").addEventListener("click", () => {
       runUserTurn("open thread", { approved: true });
