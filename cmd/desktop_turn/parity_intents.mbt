@@ -446,7 +446,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "doctor box" ||
     low == "ping host" ||
     low == "health check" ||
-    low == "host health" {
+    low == "host health" ||
+    low == "report bug" ||
+    low == "bug report" {
     return Some(BoxDoctor)
   }
   // CM-0608 product Host Docker vs anyrun env detect.
@@ -515,6 +517,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "toggle theme" ||
     low == "dark mode" ||
     low == "light mode" ||
+    low == "set locale" ||
+    low == "rate app" ||
     low.has_prefix("open settings ") ||
     low.has_prefix("settings ") {
     let rest = if low.has_prefix("open settings ") {
@@ -523,6 +527,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       trimmed[9:].trim().to_owned()
     } else if low == "toggle theme" || low == "dark mode" || low == "light mode" {
       "theme"
+    } else if low == "set locale" {
+      "locale"
+    } else if low == "rate app" {
+      "feedback"
     } else {
       ""
     }
@@ -676,7 +684,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(UpdateComputer(confirm_step~))
   }
-  if low == "reset computer" || low == "reset bot computer" {
+  if low == "reset computer" ||
+    low == "reset bot computer" ||
+    low == "factory reset" ||
+    low == "wipe data" {
     return Some(ResetComputer)
   }
   if low == "local execution off" ||
@@ -1181,8 +1192,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low.has_prefix("export bot ") ||
     low == "backup chat" ||
     low == "share link" ||
+    low == "copy invite" ||
     low.has_prefix("backup chat ") ||
-    low.has_prefix("share link ") {
+    low.has_prefix("share link ") ||
+    low.has_prefix("copy invite ") {
     let rest = if low.has_prefix("export bot template ") {
       trimmed[20:].to_owned()
     } else if low.has_prefix("export bot ") {
@@ -1327,15 +1340,27 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // Product phrasing → same Host device_tool kinds (multi-end quick actions).
   if low == "take photo" ||
-    low == "take a photo" ||
-    low == "capture photo" ||
-    low.has_prefix("take photo ") {
+      low == "take a photo" ||
+      low == "capture photo" ||
+      low.has_prefix("take photo ") {
     return Some(DeviceToolInvoke(tool="camera"))
   }
   if low == "record video" ||
-    low == "take video" ||
-    low.has_prefix("record video ") {
+      low == "take video" ||
+      low.has_prefix("record video ") {
     return Some(DeviceToolInvoke(tool="mic"))
+  }
+  if low == "scan qr" || low == "nfc read" || low == "wifi status" || low == "battery status" {
+    let tool = if low == "scan qr" {
+      "camera"
+    } else if low == "nfc read" {
+      "contacts"
+    } else if low == "wifi status" || low == "battery status" {
+      "location"
+    } else {
+      "camera"
+    }
+    return Some(DeviceToolInvoke(tool~))
   }
   if low.has_prefix("load skill ") || low.has_prefix("use skill ") {
     let task = if low.has_prefix("load skill ") {
