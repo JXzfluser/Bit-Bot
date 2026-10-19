@@ -22367,6 +22367,38 @@ function createHostFfi(repoRoot) {
     sharedLlmStreamHandler = typeof fn === "function" ? fn : null;
   }
 
+  /** Catalog for Desktop model picker (honest key_configured; no pretend). */
+  function listLlmCatalog() {
+    const catalog = loadLlmProviders();
+    const cfg = resolveLlmConfig();
+    const providers = (catalog.providers || []).map((p) => {
+      const id = String(p.id || "");
+      const keyEnv = p.env_key || "BITBOT_LLM_API_KEY";
+      const keyed = Boolean(String(process.env[keyEnv] || "").trim());
+      return {
+        id,
+        label: p.label || id,
+        model: p.model || "",
+        base_url: p.base_url || "",
+        key_env: keyEnv,
+        key_configured: keyed,
+        active: id === cfg.provider_id,
+      };
+    });
+    return {
+      ok: true,
+      active: {
+        provider_id: cfg.provider_id,
+        label: cfg.label,
+        model: cfg.model,
+        base_url: cfg.base_url,
+        key_configured: Boolean(cfg.key_configured),
+      },
+      providers,
+      pretend_ready: false,
+    };
+  }
+
   return {
     REPO_ROOT,
     encodeHostArg,
@@ -22378,6 +22410,7 @@ function createHostFfi(repoRoot) {
     appendHostDeliveryJournal,
     setLlmStreamHandler,
     resolveLlmConfig,
+    listLlmCatalog,
   };
 }
 

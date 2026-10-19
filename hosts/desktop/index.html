@@ -74,6 +74,36 @@
     border-color: var(--accent);
     color: #e7f0ea;
   }
+  #model-picker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  #model-picker .mp-btn {
+    background: #12201a;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #model-picker .mp-btn.active {
+    border-color: var(--accent);
+    color: #e7f0ea;
+    background: #1a3026;
+  }
+  #model-picker .mp-btn.nokey {
+    opacity: 0.72;
+  }
+  #model-picker .mp-label {
+    color: var(--muted);
+    font-size: 11px;
+    margin-right: 2px;
+  }
   #agents details.lab {
     margin-top: 12px;
     border: 1px solid var(--line);
@@ -398,6 +428,9 @@
       <div class="sub">国产多端助手 · DeepSeek 大脑 · <span id="hotkey-hint">Ctrl+Shift+Space</span> 呼出</div>
     </div>
     <div id="header-actions">
+      <div id="model-picker" title="国产多模型 · 经 MoonBit llm_set_model" aria-label="LLM model picker">
+        <span class="mp-label">模型</span>
+      </div>
       <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板">能力</button>
       <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton">Account</button>
     </div>
@@ -1378,6 +1411,60 @@
       for (const m of msgs) {
         if (!m || !m.text) continue;
         addMsg(m.role === "user" ? "user" : "assistant", m.text);
+      }
+    }
+
+    async function refreshModelPicker() {
+      const box = document.getElementById("model-picker");
+      if (!box || !window.bitbot.llmCatalog) return;
+      const cat = await window.bitbot.llmCatalog();
+      if (!cat || !cat.ok) return;
+      const label = box.querySelector(".mp-label");
+      box.innerHTML = "";
+      const lab = document.createElement("span");
+      lab.className = "mp-label";
+      lab.textContent = label ? label.textContent : "模型";
+      box.appendChild(lab);
+      const providers = cat.providers || [];
+      for (const p of providers) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className =
+          "mp-btn" +
+          (p.active ? " active" : "") +
+          (p.key_configured ? "" : " nokey");
+        btn.dataset.providerId = p.id;
+        btn.title =
+          (p.label || p.id) +
+          " · " +
+          (p.model || "") +
+          (p.key_configured
+            ? " · key 已配"
+            : " · 缺 " + (p.key_env || "BITBOT_LLM_API_KEY"));
+        btn.textContent =
+          (p.label || p.id) + (p.key_configured ? "" : " · 无key");
+        btn.addEventListener("click", async () => {
+          await runUserTurn("switch model " + p.id, { skipSession: true });
+          try {
+            await refreshModelPicker();
+          } catch (_) {
+            /* ignore */
+          }
+        });
+        box.appendChild(btn);
+      }
+      const sub = document.querySelector("header .sub");
+      if (sub && cat.active) {
+        const hot = document.getElementById("hotkey-hint");
+        const hotTxt = hot ? hot.textContent : "Ctrl+Shift+Space";
+        sub.innerHTML =
+          (cat.active.label || cat.active.provider_id || "LLM") +
+          " / " +
+          (cat.active.model || "") +
+          (cat.active.key_configured ? "" : " · 缺 key") +
+          " · <span id=\"hotkey-hint\">" +
+          hotTxt +
+          "</span> 呼出";
       }
     }
 
@@ -3857,6 +3944,11 @@
                 .join(" · ");
             }
           }
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          await refreshModelPicker();
         } catch (_) {
           /* ignore */
         }

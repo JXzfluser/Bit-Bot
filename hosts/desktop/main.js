@@ -411,6 +411,32 @@ ipcMain.handle("bitbot:llm:status", async () => {
   }
 });
 
+ipcMain.handle("bitbot:llm:catalog", async () => {
+  try {
+    if (typeof ffi.listLlmCatalog === "function") {
+      return ffi.listLlmCatalog();
+    }
+    const cfg = ffi.resolveLlmConfig();
+    return {
+      ok: true,
+      active: {
+        provider_id: cfg.provider_id,
+        label: cfg.label,
+        model: cfg.model,
+        key_configured: Boolean(cfg.key_configured),
+      },
+      providers: [],
+      pretend_ready: false,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+      pretend_ready: false,
+    };
+  }
+});
+
 /** Honest CN channel live-gate status (钉钉/飞书/企微). Never pretends live. */
 function cnChannelGate(name, postEnv, credEnvs) {
   const postOn = process.env[postEnv] === "1";
