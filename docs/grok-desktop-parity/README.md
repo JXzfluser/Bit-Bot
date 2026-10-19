@@ -1,0 +1,31 @@
+# Grok Bot 桌面端复刻 — 产品对等规格（Wave G）
+
+> 依据：xAI Grok Bot 官方文档 17 页全文（存档 `/app/grokspec/grok-bot-spec.md`，抓取 2026-10-19）
+> 交叉合同：`docs/capability-matrix.md`（234 CM）、`docs/00-vision-and-non-negotiables.md`、`docs/non-goals.md`（NG-001：复刻行为与协议，不做像素皮肤）。
+> 基线分支：`cursor/cn-product-brain-deepseek-2004` → 本分支 `cursor/grok-bot-parity-desktop-v2`。
+> 范围：**Desktop-first**（Electron 宿主 `hosts/desktop`）。iOS/Android 保持 `MachineKind` 注册，不在本波。
+
+## 判定口径
+
+- **Grok 行为 = 规格**：每条能力写「官方行为 → Bit 实现落点（kernel intent / Host FFI kind / IPC / renderer）→ 可证伪验收」。
+- **真功能，不是 UI 外壳**：验收必须打到 MoonBit 内核回合（`cmd/desktop_turn` JSON `v:1`）与 Host 真实执行（文件、进程、HTTP、掩码存储），renderer 只做呈现与输入，不伪造状态。
+- **诚实残留**：真机不可达的项（如生产 OAuth IdP、商店签名、真实云 VM 远程桌面流）按仓库既有口径标 residual，永不 pretend。
+
+## 工作包
+
+| WP | 主题 | 规格 | 实现落点 |
+|----|------|------|----------|
+| G-1 | Bot 生命周期（建/编/置顶/复制/隐藏/恢复/删） | spec.md §2 | `parity_intents.mbt` + `host_ffi.js` bots store + renderer sidebar |
+| G-2 | Composer 对等（多行/附件≤6/`/`技能/`@`提及/语音/快捷键） | spec.md §5 | renderer composer + IPC `attachments`/`skills` + kernel skill/voice intents |
+| G-3 | 审批卡对等（Allow once / Always allow / Deny + 规则持久 + 后台过期） | spec.md §6 | `security` 规则引擎 + Host approvals store + renderer 卡 |
+| G-4 | Take over / Computer 视图（接管请求、实时屏、I'm done、Update/Reset/Recover、本地执行三档） | spec.md §4 | kernel `take_over` intent + Host screen/takeover + renderer Computer 面板 |
+| G-5 | 草稿卡对等（New Email / New Slack Message 可编辑 + Send/Discard） | spec.md §7 | `mail_draft`/`channel_send` 回路 + renderer 草稿编辑器 |
+| G-6 | 群聊（2–6 Bot、`@BotName`/`@everyone`、Reply、审批不入群） | spec.md §3 | kernel routing policy + Host room store + renderer 群聊 |
+| G-7 | 语音（voice input→composer 可编辑、voice chat、voice memo 播放+转录） | spec.md §5.3–5.4 | renderer 录音 + `voice_session/relay/end_write` 已有链 |
+| G-8 | Settings 对等（Appearance/Language/Timezone/Local execution/Auto-review 规则/Updates/Usage） | spec.md §8 | Host settings store + nativeTheme + renderer 真控件 |
+| G-9 | 通知与未读（聚焦抑制、系统通知、侧边栏未读、跳转） | spec.md §9 | IPC notifications + renderer badge |
+| G-10 | 文件与交付（文件卡、预览、`/workspace` 路径纪律、保存/打开） | spec.md §10 | `readArtifact/openArtifact` + renderer 预览侧栏 |
+| G-11 | 安全（secret 掩码框不进上下文、untrusted fence、auto-review 独立闸门） | spec.md §6/11 | 既有 kernel fence + Host secret mask store，补 UI 闭环 |
+| G-12 | 侧边栏 chrome（Cmd/Ctrl+B 折叠、置顶区、Hidden Bots、Connect apps、⌘N） | spec.md §2 | renderer + accelerator |
+
+详细验收条目见 `spec.md`；IPC/载荷契约见 `ipc-contract.md`；现状差距审计见 `gaps.md`。

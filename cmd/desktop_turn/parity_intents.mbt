@@ -890,7 +890,25 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "disable local execution" ||
     low == "local execution on" ||
     low == "enable local execution" ||
+    low.has_prefix("local execution mode ") ||
     low.has_prefix("local execution ") {
+    // Wave G: three-mode Grok policy wins over legacy on/off boolean.
+    if low.has_prefix("local execution mode ") {
+      let mode = trimmed[20:].trim().to_owned().to_lower()
+      let mode = if mode == "ask" ||
+        mode == "ask every time" ||
+        mode == "always" ||
+        mode == "always allow" ||
+        mode == "never" ||
+        mode == "never allow" {
+        mode
+      } else {
+        ""
+      }
+      if mode != "" {
+        return Some(LocalExecutionMode(mode~))
+      }
+    }
     let on = if low == "local execution off" ||
       low == "disable local execution" ||
       low.has_suffix(" enabled=0") ||
@@ -2186,6 +2204,165 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
         }
       }
       None => ()
+    }
+  }
+  // ---- Wave G (Grok desktop parity · docs/grok-desktop-parity/ipc-contract.md §1) ----
+  // Bot lifecycle: create bot <name> job=<job> description=<free text to EOL>
+  if low.has_prefix("create bot ") {
+    let rest = trimmed[11:].trim().to_owned()
+    let name = match split_once(rest, " ") {
+      Some((n, _)) => n.trim().to_owned()
+      None =>
+        if rest.contains("job=") || rest.contains("description=") {
+          ""
+        } else {
+          rest.trim().to_owned()
+        }
+    }
+    let job = match extract_kv(rest, "job") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    let description = match extract_kv(rest, "description") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    if name != "" {
+      return Some(CreateBot(name~, job~, description~))
+    }
+  }
+  if low.has_prefix("update bot ") && !low.has_prefix("update bot computer") {
+    let rest = trimmed[11:].trim().to_owned()
+    let bot_id = match extract_kv(rest, "bot") {
+      Some(v) => v.trim().to_owned()
+      None =>
+        match split_once(rest, " ") {
+          Some((id, _)) => id.trim().to_owned()
+          None => rest.trim().to_owned()
+        }
+    }
+    let name = match extract_kv(rest, "name") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    let job = match extract_kv(rest, "job") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    let description = match extract_kv(rest, "description") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    let avatar = match extract_kv(rest, "avatar") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    if bot_id != "" {
+      return Some(UpdateBot(bot_id~, name~, job~, description~, avatar~))
+    }
+  }
+  if low.has_prefix("duplicate bot ") {
+    let bot_id = trimmed[14:].trim().to_owned()
+    if bot_id != "" {
+      return Some(DuplicateBot(bot_id~))
+    }
+  }
+  if low.has_prefix("pin bot ") {
+    let bot_id = trimmed[8:].trim().to_owned()
+    if bot_id != "" {
+      return Some(PinBot(bot_id~, pinned=true))
+    }
+  }
+  if low.has_prefix("unpin bot ") {
+    let bot_id = trimmed[10:].trim().to_owned()
+    if bot_id != "" {
+      return Some(PinBot(bot_id~, pinned=false))
+    }
+  }
+  if low.has_prefix("set primary bot ") {
+    let bot_id = trimmed[16:].trim().to_owned()
+    if bot_id != "" {
+      return Some(PrimaryBot(bot_id~))
+    }
+  }
+  // Take over / hand back (spec §3.2).
+  if low == "take over" ||
+    low == "need takeover" ||
+    low == "need take over" ||
+    low.has_prefix("take over reason") {
+    let reason = match extract_kv(trimmed, "reason") {
+      Some(v) => v.trim().to_owned()
+      None => "credential_step"
+    }
+    return Some(TakeOver(reason~))
+  }
+  if low == "i'm done" ||
+    low == "im done" ||
+    low == "hand back control" ||
+    low == "done taking over" {
+    return Some(TakeoverDone)
+  }
+  if low == "recover computer" || low == "recover bot computer" {
+    return Some(RecoverComputer)
+  }
+  // Approval rules (Always allow / Ask first · spec §5.8/§8.1).
+  if low.has_prefix("always allow pattern=") ||
+    low.has_prefix("ask first pattern=") {
+    let decision = if low.has_prefix("always allow") { "allow" } else { "ask" }
+    let pattern = match extract_kv(trimmed, "pattern") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    if pattern != "" {
+      return Some(ApprovalRule(pattern~, decision~))
+    }
+  }
+  // Settings product switches (explicit phrases; legacy "dark mode" keeps
+  // OpenSettings anchor route for CM-1902 regression safety).
+  if low.has_prefix("set appearance ") || low == "system theme" {
+    let mode = if low == "system theme" {
+      "system"
+    } else {
+      trimmed[15:].trim().to_owned().to_lower()
+    }
+    let mode = if mode == "dark" || mode == "light" || mode == "system" {
+      mode
+    } else {
+      ""
+    }
+    if mode != "" {
+      return Some(AppearanceSet(mode~))
+    }
+  }
+  if low.has_prefix("set language ") {
+    let code = trimmed[13:].trim().to_owned()
+    if code != "" {
+      return Some(LanguageSet(code~))
+    }
+  }
+  if low.has_prefix("set timezone ") {
+    let tz = trimmed[13:].trim().to_owned()
+    if tz != "" {
+      return Some(TimezoneSet(tz~))
+    }
+  }
+  // Group chat (spec §2.4): create group chat bots=<a,b> title=<t>
+  if low.has_prefix("create group chat ") || low.has_prefix("new group chat ") {
+    let rest = if low.has_prefix("create group chat ") {
+      trimmed[18:].trim().to_owned()
+    } else {
+      trimmed[15:].trim().to_owned()
+    }
+    let bots_csv = match extract_kv(rest, "bots") {
+      Some(v) => v.trim().to_owned().replace(old=" ", new="")
+      None => ""
+    }
+    let title = match extract_kv(rest, "title") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    if bots_csv != "" {
+      return Some(GroupChat(bots_csv~, title~))
     }
   }
   None

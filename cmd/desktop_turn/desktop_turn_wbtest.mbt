@@ -1103,3 +1103,108 @@ test "unescape_and_parse_host_continue_args" {
   assert_true(results[0].ok)
   assert_eq(results[0].stdout, "hi\n")
 }
+
+///|
+/// Wave G (Grok desktop parity): phrase → intent → effect kind contracts
+/// pinned per docs/grok-desktop-parity/ipc-contract.md §1.
+test "desktop_turn_wave_g_bot_lifecycle_kinds" {
+  let r1 = run_desktop_turn(
+    "create bot Piper job=scout description=Watch+the+market",
+    turn_id="wg-1",
+  )
+  assert_true(r1.ok)
+  assert_eq(r1.intent, "create_bot")
+  assert_eq(r1.effects.length(), 1)
+  assert_eq(r1.effects[0].kind, "bot_create")
+  assert_eq(
+    r1.effects[0].command,
+    "name=Piper job=scout description=Watch+the+market",
+  )
+
+  let r2 = run_desktop_turn(
+    "update bot bot-1 name=Piper+Jr job=Perf description=Keep+voice",
+    turn_id="wg-2",
+  )
+  assert_eq(r2.intent, "update_bot")
+  assert_eq(r2.effects[0].kind, "bot_update")
+  assert_true(r2.effects[0].command.contains("bot=bot-1"))
+
+  let r3 = run_desktop_turn("duplicate bot bot-1", turn_id="wg-3")
+  assert_eq(r3.intent, "duplicate_bot")
+  assert_eq(r3.effects[0].kind, "bot_duplicate")
+
+  let r4 = run_desktop_turn("pin bot bot-1", turn_id="wg-4")
+  assert_eq(r4.effects[0].command, "bot=bot-1 pinned=1")
+  let r5 = run_desktop_turn("unpin bot bot-1", turn_id="wg-5")
+  assert_eq(r5.effects[0].command, "bot=bot-1 pinned=0")
+
+  let r6 = run_desktop_turn("set primary bot bot-1", turn_id="wg-6")
+  assert_eq(r6.effects[0].kind, "bot_set_primary")
+}
+
+///|
+test "desktop_turn_wave_g_takeover_and_computer" {
+  let r1 = run_desktop_turn("take over reason=password", turn_id="wg-t1")
+  assert_true(r1.ok)
+  assert_eq(r1.intent, "take_over")
+  assert_eq(r1.effects[0].kind, "take_over")
+  assert_eq(r1.effects[0].command, "reason=password")
+
+  let r2 = run_desktop_turn("i'm done", turn_id="wg-t2")
+  assert_eq(r2.intent, "takeover_done")
+  assert_eq(r2.effects[0].kind, "takeover_done")
+
+  let r3 = run_desktop_turn("recover computer", turn_id="wg-t3")
+  assert_eq(r3.intent, "recover_computer")
+  assert_eq(r3.effects[0].command, "confirm=recover")
+}
+
+///|
+test "desktop_turn_wave_g_rules_settings_group" {
+  let r1 = run_desktop_turn(
+    "always allow pattern=shell:echo* decision=allow",
+    turn_id="wg-a1",
+  )
+  assert_eq(r1.intent, "approval_rule")
+  assert_eq(r1.effects[0].kind, "approval_rule")
+
+  let r2 = run_desktop_turn("set appearance dark", turn_id="wg-a2")
+  assert_eq(r2.effects[0].command, "mode=dark")
+  let r3 = run_desktop_turn("system theme", turn_id="wg-a3")
+  assert_eq(r3.effects[0].command, "mode=system")
+
+  let r4 = run_desktop_turn("set language zh-CN", turn_id="wg-a4")
+  assert_eq(r4.effects[0].kind, "language_set")
+  let r5 = run_desktop_turn("set timezone Asia/Shanghai", turn_id="wg-a5")
+  assert_eq(r5.effects[0].command, "tz=Asia/Shanghai")
+
+  let r6 = run_desktop_turn("local execution mode never", turn_id="wg-a6")
+  assert_eq(r6.intent, "local_execution_mode")
+  assert_eq(r6.effects[0].kind, "local_execution_mode")
+
+  let r7 = run_desktop_turn(
+    "create group chat bots=bit,piper title=Ops+room",
+    turn_id="wg-a7",
+  )
+  assert_eq(r7.intent, "group_chat")
+  assert_eq(r7.effects[0].command, "bots=bit,piper title=Ops+room")
+}
+
+///|
+/// Regression safety: legacy Grok phrases keep their CM routes (Wave G must
+/// not steal "dark mode" from CM-1902 settings anchor).
+test "desktop_turn_wave_g_legacy_routes_kept" {
+  let r1 = run_desktop_turn("dark mode", turn_id="wg-r1")
+  assert_eq(r1.intent, "open_settings")
+  assert_eq(r1.effects[0].kind, "settings_open")
+
+  let r2 = run_desktop_turn("local execution off", turn_id="wg-r2")
+  assert_eq(r2.intent, "local_execution")
+  assert_eq(r2.effects[0].kind, "local_execution")
+
+  let r3 = run_desktop_turn("hide agent asst-chat", turn_id="wg-r3")
+  assert_eq(r3.intent, "hide_agent")
+
+  let r4 = run_desktop_turn("update bot computer", turn_id="wg-r4")
+  assert_eq(r4.intent, "update_computer")
+}

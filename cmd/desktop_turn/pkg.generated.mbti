@@ -8,7 +8,7 @@ import {
 }
 
 // Values
-pub const DESKTOP_TURN_JSON_V : Int = 1
+pub const DESKTOP_TURN_JSON_V : Int32 = 1
 
 pub fn args_want_host_continue(Array[String]) -> Bool
 
@@ -84,7 +84,7 @@ pub(all) struct DesktopTurnContext {
 pub fn DesktopTurnContext::default() -> Self
 
 pub(all) struct DesktopTurnResult {
-  v : Int
+  v : Int32
   ok : Bool
   turn_id : String
   intent : String
@@ -152,7 +152,7 @@ pub(all) enum TurnIntent {
   DeliverCloudArtifact(artifact~ : String, dest~ : String)
   ScheduleMeeting(title~ : String, when_desc~ : String)
   ShopRetail(url_or_host~ : String)
-  PurchaseItem(item~ : String, amount_cents~ : Int)
+  PurchaseItem(item~ : String, amount_cents~ : Int32)
   TravelBook(url_or_host~ : String)
   OrderFood(url_or_host~ : String)
   MeetingChat(body~ : String, direct~ : Bool)
@@ -186,7 +186,7 @@ pub(all) enum TurnIntent {
   MembersPanel(group_id~ : String)
   NotifySettings(assistant_id~ : String)
   SetNotify(assistant_id~ : String, toggle~ : String, enabled~ : Bool)
-  UpdateComputer(confirm_step~ : Int)
+  UpdateComputer(confirm_step~ : Int32)
   ResetComputer
   LocalExecution(enabled~ : Bool)
   GuidePermission(kind~ : String, detail~ : String)
@@ -214,6 +214,20 @@ pub(all) enum TurnIntent {
   TodoWrite(command~ : String)
   ListSkills(query~ : String)
   XPost(text~ : String)
+  CreateBot(name~ : String, job~ : String, description~ : String)
+  UpdateBot(bot_id~ : String, name~ : String, job~ : String, description~ : String, avatar~ : String)
+  DuplicateBot(bot_id~ : String)
+  PinBot(bot_id~ : String, pinned~ : Bool)
+  PrimaryBot(bot_id~ : String)
+  TakeOver(reason~ : String)
+  TakeoverDone
+  RecoverComputer
+  ApprovalRule(pattern~ : String, decision~ : String)
+  AppearanceSet(mode~ : String)
+  LanguageSet(code~ : String)
+  TimezoneSet(tz~ : String)
+  LocalExecutionMode(mode~ : String)
+  GroupChat(bots_csv~ : String, title~ : String)
   HostContinue
 } derive(Eq, @debug.Debug)
 pub fn TurnIntent::name(Self) -> String

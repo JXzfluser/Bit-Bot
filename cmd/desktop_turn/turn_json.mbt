@@ -175,6 +175,28 @@ pub(all) enum TurnIntent {
   ListSkills(query~ : String)
   /// Host durable X post (draft-first; live gated by BITBOT_X_POST + bearer).
   XPost(text~ : String)
+  /// Wave G (Grok desktop parity · docs/grok-desktop-parity/ipc-contract.md §1):
+  /// Bot lifecycle / takeover / settings / approval rules / group chat.
+  CreateBot(name~ : String, job~ : String, description~ : String)
+  UpdateBot(
+    bot_id~ : String,
+    name~ : String,
+    job~ : String,
+    description~ : String,
+    avatar~ : String
+  )
+  DuplicateBot(bot_id~ : String)
+  PinBot(bot_id~ : String, pinned~ : Bool)
+  PrimaryBot(bot_id~ : String)
+  TakeOver(reason~ : String)
+  TakeoverDone
+  RecoverComputer
+  ApprovalRule(pattern~ : String, decision~ : String)
+  AppearanceSet(mode~ : String)
+  LanguageSet(code~ : String)
+  TimezoneSet(tz~ : String)
+  LocalExecutionMode(mode~ : String)
+  GroupChat(bots_csv~ : String, title~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -290,6 +312,20 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     SharedMemoryPut(_) => "shared_memory_put"
     SharedMemoryRead(_) => "shared_memory_read"
     InboundReaction(_) => "inbound_reaction"
+    CreateBot(_) => "create_bot"
+    UpdateBot(_) => "update_bot"
+    DuplicateBot(_) => "duplicate_bot"
+    PinBot(_) => "pin_bot"
+    PrimaryBot(_) => "primary_bot"
+    TakeOver(_) => "take_over"
+    TakeoverDone => "takeover_done"
+    RecoverComputer => "recover_computer"
+    ApprovalRule(_) => "approval_rule"
+    AppearanceSet(_) => "appearance_set"
+    LanguageSet(_) => "language_set"
+    TimezoneSet(_) => "timezone_set"
+    LocalExecutionMode(_) => "local_execution_mode"
+    GroupChat(_) => "group_chat"
     HostContinue => "host_continue"
   }
 }
@@ -885,6 +921,21 @@ fn split_once(s : String, sep : String) -> (String, String)? {
 }
 
 ///|
+/// Wave G: encode a free-text value so the Host command stays key=value safe
+/// (spaces -> '+'). Host side reverses '+' -> ' ' when reading the field.
+fn encode_field_value(s : String) -> String {
+  let buf = StringBuilder()
+  for c in s {
+    if c == ' ' {
+      buf.write_string("+")
+    } else {
+      buf.write_char(c)
+    }
+  }
+  buf.to_string()
+}
+
+///|
 fn extract_kv(rest : String, key : String) -> String? {
   let marker = key + "="
   match rest.find(marker) {
@@ -900,7 +951,9 @@ fn extract_kv(rest : String, key : String) -> String? {
         " scope=", " key=", " value=", " group=", " section=", " provider=", " entry=",
         " anchor=", " agent=", " confirm=", " via=", " pm=", " pkgs=", " packages=",
         " group=", " hidden=", " assistant=", " toggle=", " enabled=", " confirm=",
-        " kind=", " ns=", " tool=", " detail=", " msg=", " message=", " emoji=",
+        " bots=", " job=", " avatar=", " pattern=", " decision=", " mode=", " code=",
+        " tz=", " reason=", " kind=", " ns=", " tool=", " detail=", " msg=", " message=",
+        " emoji=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -4478,6 +4531,247 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         reply,
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    CreateBot(name~, job~, description~) => {
+      let effect : DesktopEffect = {
+        kind: "bot_create",
+        command: "name=" +
+        encode_field_value(name) +
+        " job=" +
+        encode_field_value(job) +
+        " description=" +
+        encode_field_value(description),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Create Bot planned (GP-01). Host persists bots store with name/job/description and opens the conversation.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    UpdateBot(bot_id~, name~, job~, description~, avatar~) => {
+      let effect : DesktopEffect = {
+        kind: "bot_update",
+        command: "bot=" +
+        bot_id +
+        " name=" +
+        encode_field_value(name) +
+        " job=" +
+        encode_field_value(job) +
+        " avatar=" +
+        avatar +
+        " description=" +
+        encode_field_value(description),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Edit Bot profile planned (GP-03). Host updates the store row; invalid avatar paths are rejected, not faked.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    DuplicateBot(bot_id~) => {
+      let effect : DesktopEffect = {
+        kind: "bot_duplicate",
+        command: "bot=" + bot_id,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Duplicate Bot planned (GP-05). Host copies config to \"<name> copy\" without messages or learned memory.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    PinBot(bot_id~, pinned~) => {
+      let effect : DesktopEffect = {
+        kind: "bot_pin",
+        command: "bot=" + bot_id + " pinned=" + (if pinned { "1" } else { "0" }),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Pin/unpin Bot planned (GP-04). Host persists the flag so pinned Bots stay at the sidebar top.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    PrimaryBot(bot_id~) => {
+      let effect : DesktopEffect = {
+        kind: "bot_set_primary",
+        command: "bot=" + bot_id,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Primary Bot planned (GP-08). Host routes @bot inbound to the persisted primary id.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    TakeOver(reason~) => {
+      let effect : DesktopEffect = {
+        kind: "take_over",
+        command: "reason=" + encode_field_value(reason),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Take over planned (GP-32/GP-33). Host marks the shared screen handed to the user and shows the \u5bc6\u7801/\u9a8c\u8bc1\u7801 don't-paste-in-chat guidance.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    TakeoverDone => {
+      let effect : DesktopEffect = {
+        kind: "takeover_done",
+        command: "ok=1",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Hand back control planned (GP-33). Host closes the takeover window so the Bot can continue from the current page.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    RecoverComputer => {
+      let effect : DesktopEffect = {
+        kind: "recover_computer",
+        command: "confirm=recover",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Recover Bot's Computer planned (GP-35). Host may only run it from an error state; persistent files and logins are kept.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    ApprovalRule(pattern~, decision~) => {
+      let effect : DesktopEffect = {
+        kind: "approval_rule",
+        command: "pattern=" +
+        encode_field_value(pattern) +
+        " decision=" +
+        decision,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Approval rule planned (GP-21/GP-22). Host persists the rule; ask-first wins over allow-automatically.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    AppearanceSet(mode~) => {
+      let effect : DesktopEffect = {
+        kind: "appearance_set",
+        command: "mode=" + mode,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Appearance planned (GP-70). Host persists system|light|dark and applies the native theme immediately.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    LanguageSet(code~) => {
+      let effect : DesktopEffect = {
+        kind: "language_set",
+        command: "code=" + code,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Language planned (GP-71). Host persists the UI locale (zh-CN / zh-TW / en / ...).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    TimezoneSet(tz~) => {
+      let effect : DesktopEffect = {
+        kind: "timezone_set",
+        command: "tz=" + tz,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Timezone planned (GP-72). Host persists the IANA zone used by Routines (CM-0402).",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    LocalExecutionMode(mode~) => {
+      let effect : DesktopEffect = {
+        kind: "local_execution_mode",
+        command: "mode=" + mode,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Local execution policy planned (GP-36). Host enforces ask|always|never for local effects.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    GroupChat(bots_csv~, title~) => {
+      let effect : DesktopEffect = {
+        kind: "group_chat",
+        command: "bots=" + bots_csv + " title=" + encode_field_value(title),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Group chat planned (GP-50). Host requires 2\u20136 real Bot members; approvals and secret requests never appear in the room.",
         intent,
         ctx~,
         effects=[effect],
