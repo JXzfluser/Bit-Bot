@@ -1,5 +1,6 @@
 package com.bitbot.host
 
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -29,6 +30,28 @@ object TurnBridge {
       error("turn failed ($code): $out")
     }
     return out.trim()
+  }
+
+  /** Prefer final assistant message (post Host llm_chat continue). */
+  fun assistantText(raw: String): String? {
+    val line =
+      raw.lineSequence()
+        .map { it.trim() }
+        .firstOrNull { it.startsWith("{") }
+        ?: raw.trim()
+    return runCatching {
+      val obj = JSONObject(line)
+      val messages = obj.optJSONArray("messages") ?: return@runCatching null
+      var last: String? = null
+      for (i in 0 until messages.length()) {
+        val m = messages.optJSONObject(i) ?: continue
+        if (m.optString("role") == "assistant") {
+          val t = m.optString("text")
+          if (t.isNotEmpty()) last = t
+        }
+      }
+      last
+    }.getOrNull()
   }
 
   private fun inferRepoRoot(): String {

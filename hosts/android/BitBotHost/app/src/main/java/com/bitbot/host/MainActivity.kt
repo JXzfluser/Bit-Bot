@@ -4,336 +4,260 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Android Host shell — MoonBit (`cmd/desktop_turn`) is the product brain.
- * This activity only bridges user text → Host FFI via [TurnBridge].
- * CM-0705: device_permission raises a real OS permission request (never pretend-granted).
- * CHARTER Delivery: [SendToUserSurface] chips mirror Desktop without inventing live posts.
- * Product quick actions mirror Desktop Plugins/Media/Voice/Box panels (multi-end HostAbi).
+ * Grok-style Android product shell — chat first.
+ * MoonBit (`cmd/desktop_turn`) → Host `llm_chat` (ADR 0005). No LocalBrain.
  */
 class MainActivity : ComponentActivity() {
   private val permissionLauncher =
-    registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* Host only; no auto-ok */ }
+    registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* Host only */ }
 
-  /** label → MoonBit turn text (Host FFI only; no LocalBrain). */
+  data class ChatLine(val role: String, val text: String)
+
   private val productActions =
     listOf(
       "ListMachines" to "ListMachines",
-      "List plugins" to "list plugins",
-      "Get plugin" to "get plugin plugin-slides",
-      "Gen image" to "generate image android aurora",
-      "Chart" to "structured chart {\"alpha\":3,\"beta\":5}",
-      "Slides" to "make slides title=AndroidParity",
-      "Markdown" to "render markdown Inline \\(E=mc^2\\) and $$a^2+b^2=c^2$$",
-      "Voice start" to "voice start android-voice",
-      "Draft mail" to "draft mail to=android@example.com subject=Ping body=Hello",
-      "Schedule" to "schedule meeting title=AndroidSync at=2026-11-01T10:00:00Z",
-      "Purchase" to "purchase item=AndroidWidget cents=299",
-      "Slack draft" to "reply via slack:Candroid :: android draft",
-      "Teams draft" to "reply via teams:Tandroid :: android teams draft",
-      "Finance" to "finance get_balance",
-      "Jobs" to "job search engineer",
-      "X search" to "x search moonbit",
-      "Workflows" to "list workflows",
-      "Credentials" to "list credentials",
-      "React" to "react message msg=msg-android emoji=👍",
-      "Screenshot" to "screenshot agent=executor",
-      "Check updates" to "check updates",
-      "Cloud launch" to "launch cloud agent triage android",
-      "Routines" to "list routines",
-      "Tick routines" to "tick routines",
-      "Shell" to "shell echo android-tools",
-      "Listdir" to "listdir docs",
-      "Read" to "read README.mbt.md",
-      "WebFetch" to "webfetch https://example.com",
-      "CU open" to "computer use open https://example.com",
-      "Remember" to "remember android_panel=ready",
-      "Cold mail" to "cold mail to=android@example.com subject=Hi body=Android cold unsubscribe=mailto:unsub@example.com",
-      "On behalf" to "send on behalf to=boss@example.com subject=Update body=Android on-behalf",
-      "Claim inbox" to "claim inbox alpha",
-      "Author skill" to "author skill name=android-skill description=demo body=Do the thing.",
-      "Export bot" to "export bot template id=bot-android name=AndroidBot",
+      "钉钉" to "reply via dingtalk:cid-android :: Bit Bot Android 钉钉",
+      "飞书" to "reply via feishu:oc_android :: Bit Bot Android 飞书",
+      "企微" to "reply via wecom:BitBotAndroid :: Bit Bot Android 企微",
+      "List models" to "list models",
       "Device tools" to "device tools",
       "Take photo" to "take photo",
-      "Record video" to "record video",
-      "Create reminder" to "create reminder id=desk-rem cron=@daily prompt=android reminder",
-      "Version info" to "version info",
-      "Mute channel" to "mute channel",
-      "Toggle theme" to "toggle theme",
-      "Open terminal" to "open terminal",
-      "Share screen" to "share screen",
-      "Ping host" to "ping host",
-      "List scheduled" to "list scheduled",
-      "Create canvas" to "create canvas page",
-      "Do not disturb" to "do not disturb",
-      "Export chat" to "export chat",
-      "Open identity" to "open identity",
-      "Edit message" to "edit message",
-      "React message" to "react message",
-      "Pin message" to "pin message",
-      "Clear chat" to "clear chat",
-      "Journal" to "journal query hello",
-      "Copy to box" to "copy to box machine=phone-android src=README.mbt.md dest=/workspace/uploads/README.mbt.md",
-      "MCP discover" to "mcp discover",
-      "MCP call" to "mcp call user-Gmail.search_threads {}",
-      "Subagent" to "spawn subagent summarize inbox",
-      "Travel" to "travel expedia.com",
-      "Order food" to "order food doordash.com",
-      "Package install" to "package install cowsay",
-      "List agents" to "list agents",
-      "Hide agent" to "hide agent research",
-      "Notify" to "notify settings assistant=asst-alpha",
-      "Update computer" to "update computer",
-      "Shared box" to "shared box fs",
-      "Section post" to "section post group=g1 section=sec-a from=asst-1 body=hello",
-      "Meeting chat" to "meeting chat body=stand-up update direct=1",
-      "Learn demo" to "learn from demo title=Checkout steps=click:Cart|type:email",
-      "Fill credential" to "fill credential domain=login.example.test",
-      "Read mail" to "read mail t-invoice-1",
-      "Pause routine" to "pause routine smoke-r",
-      "Resume routine" to "resume routine smoke-r",
-      "Add section" to "add section group=g1 id=sec-a title=alpha",
-      "Connect finance" to "connect finance",
-      "Connect gmail" to "connect gmail",
-      "Connect outlook" to "connect outlook",
-      "List connectors" to "list connectors",
-      "Setup slack" to "setup slack",
-      "Identity browser" to "identity browser",
-      "Book flight" to "book flight google.com/flights",
-      "Journal append" to "journal date=2026-10-17 id=e1 body=hello journal",
-      "Personal DM" to "personal slack dm owner=Uowner text=ping",
-      "Channel plan" to "channel plan body=stay in chat only",
-      "Bare chrome" to "launch bare chrome",
-      "Install npm" to "install package npm left-pad@1.3.0",
-      "Members group" to "open members group=group-1",
-      "Journal range" to "query journal from=2026-10-01 to=2026-10-31",
-      "Box doctor" to "box doctor",
-      "Box env" to "box env",
-      "Box clock" to "box clock",
-      "Chrome probe" to "box chrome probe",
-      "Copy from box" to "copy from box machine=phone-android box=/workspace/uploads/README.mbt.md dest=/workspace/uploads/out-README.mbt.md",
-      "Voice relay" to "voice relay android-voice :: hello from android",
-      "Voice end" to "voice end android-voice",
-      "Gen video" to "generate video android clip wave",
-      "Webhook panel" to "open webhook panel",
-      "Copy webhook url" to "copy webhook url",
-      "Auto review" to "auto review settings",
-      "Search mail" to "search mail Invoice",
-      "Fire routine" to "fire routine desk-r",
-      "Shared mem put" to "shared memory put scope=android key=panel value=1",
-      "Shared mem read" to "shared memory read scope=android key=panel",
-      "Open settings" to "open settings",
-      "Source control" to "source control github",
-      "Create PR plan" to "source control create_pr",
-      "Load skill" to "load skill slides presentation",
-      "Install plugin" to "install plugin plugin-slides",
-      "Uninstall plugin" to "uninstall plugin plugin-slides",
-      "Copy webhook key" to "copy webhook key",
-      "Tool-read webhook" to "tool-read webhook key",
-      "Webhook wake" to "webhook wake id=evt-android summary=POST /hooks received",
-      "Members panel" to "members panel",
-      "Recall" to "recall",
-      "Reset computer" to "reset computer",
-      "Local exec off" to "local execution off",
-      "Guide permission" to "guide permission kind=needs-auth ns=user-Gmail",
-      "Watch video" to "watch video agent-tools/gen-video-desktop-1.mp4",
-      "Shop" to "shop target.com headphones",
-      "Code changes" to "code changes README.mbt.md",
-      "Send to agent" to "send to agent asst-parity :: ping from android host",
-      "Set notify" to "set notify assistant=asst-alpha toggle=sound enabled=0",
-      "Inbound reaction" to "[inbound] reaction :+1:",
-      "Agent info" to "open agent info agent=agent-bit",
-      "Delete agent" to "delete agent agent-bit",
-      "Confirm delete" to "confirm delete agent agent-bit",
-      "Create routine" to "create routine id=desk-r cron=@hourly prompt=android tick",
-      "Create teammate" to "create teammate id=asst-parity name=MobileMate role=executor",
-      "Room" to "room android :: hello teammates from android",
-      "Post to room" to "post to room android :: hello from android post phrasing",
-      "Join room" to "join room android",
-      "List members" to "list members",
-      "List channels" to "list channels",
-      "Start huddle" to "start huddle",
-      "End huddle" to "end huddle",
-      "Open canvas" to "open canvas",
-      "List models" to "list models",
-      "Focus mode" to "focus mode on",
-      "Todo write" to "todo write android checklist item",
-      "List todos" to "list todos",
-      "Open thread" to "open thread",
-      "Start screen share" to "start screen share",
-      "Claim inbox" to "claim inbox",
-      "List skills" to "list skills",
-      "Attach file" to "attach file README.mbt.md",
-      "Journal query" to "journal query",
-      "Open identity browser" to "open identity browser",
-      "X post" to "x post Bit Bot android draft",
-      "Open plugins" to "open plugins",
-      "Pin agent" to "pin agent asst-parity",
-      "Browser open" to "browser open https://example.com",
-      "Share bot" to "share bot",
-      "Record audio" to "record audio",
-      "Scan document" to "scan document",
-      "Vault list" to "vault list",
-      "Clipboard read" to "clipboard read",
-      "Note create" to "note create android note",
-      "List calendar" to "list calendar",
-      "Export pdf" to "export pdf",
-      "Export markdown" to "export markdown",
-      "Cloud artifact" to "deliver cloud artifact artifact=bc-1 dest=android-report.md",
-      "Teams send" to "teams send tsmoke :: hello host chat",
-      "Slack thread" to "reply via slack:Candroid thread_ts=1710000000.000001 :: android thread",
-      "Outlook draft" to "draft outlook mail to=bob@example.com subject=hi body=hello",
-      "Slack claim" to "reply via slack:Candroid :: claim rehearsal",
-      "Teams claim" to "reply via teams:Tandroid :: sandbox claim",
+      "Routines" to "list routines",
+      "Tick routines" to "tick routines",
+      "Check updates" to "check updates",
     )
 
+  @OptIn(ExperimentalMaterial3Api::class)
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
       MaterialTheme {
-        var input by remember { mutableStateOf("ListMachines") }
-        var transcript by remember {
-          mutableStateOf("Bit Bot Android Host\nMachineKind=android\nMoonBit brain via TurnBridge.\n")
-        }
+        var input by remember { mutableStateOf("") }
+        val lines = remember { mutableStateListOf<ChatLine>() }
         var busy by remember { mutableStateOf(false) }
+        var showCapabilities by remember { mutableStateOf(false) }
         var delivery by remember { mutableStateOf(SendToUserSurface.Summary()) }
         val scope = rememberCoroutineScope()
+        val listState = rememberLazyListState()
+        val sheetState = rememberModalBottomSheetState()
 
         fun runProductTurn(text: String) {
+          val trimmed = text.trim()
+          if (trimmed.isEmpty()) return
           scope.launch {
             busy = true
-            input = text
-            val result = withContext(Dispatchers.IO) {
-              runCatching { TurnBridge.runTurn(text, machineKind = "android") }
-            }
-            val body = result.fold(
-              onSuccess = { it },
-              onFailure = { "! ${it.message}" },
-            )
-            // CM-0705: Host raises OS permission dialogs for device_permission cards.
+            input = ""
+            lines.add(ChatLine("user", trimmed))
+            val result =
+              withContext(Dispatchers.IO) {
+                runCatching { TurnBridge.runTurn(trimmed, machineKind = "android") }
+              }
+            val body =
+              result.fold(
+                onSuccess = { it },
+                onFailure = { "! ${it.message}" },
+              )
             val cards = DevicePermissionHost.cardsFromTurnJson(this@MainActivity, body)
             val need = cards.mapNotNull { it.androidPermission }.distinct().toTypedArray()
             if (need.isNotEmpty()) {
               permissionLauncher.launch(need)
             }
-            val summary = SendToUserSurface.extract(body)
-            delivery = summary
-            val strip = SendToUserSurface.formatStrip(summary)
-            val cardNote = if (cards.isEmpty()) "" else
-              "\n[host permission cards pretend_granted=false] " +
-                cards.joinToString {
-                  "${it.tool}:${it.status}" +
-                    (it.cardPath?.let { p -> " card=$p" } ?: "")
-                }
-            transcript += "\n> $text\n$body$strip$cardNote\n"
+            delivery = SendToUserSurface.extract(body)
+            val assistant =
+              TurnBridge.assistantText(body)
+                ?: if (body.startsWith("!")) body
+                else "(empty assistant — check BITBOT_LLM_API_KEY for Chat)"
+            lines.add(ChatLine("assistant", assistant))
             busy = false
           }
         }
 
-        Column(
-          Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        ) {
-          Text("Bit Bot", style = MaterialTheme.typography.headlineLarge)
-          Text("Android Host · MoonBit turn v:1", style = MaterialTheme.typography.bodyMedium)
-          if (delivery.labels.isNotEmpty() || delivery.attachments.isNotEmpty()) {
-            Column(Modifier = Modifier.padding(vertical = 6.dp)) {
-              if (delivery.labels.isNotEmpty()) {
-                Row(Modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                  delivery.labels.take(12).forEach { label ->
-                    Surface(
-                      tonalElevation = 2.dp,
-                      shape = MaterialTheme.shapes.small,
-                      modifier = Modifier.padding(end = 6.dp),
-                    ) {
-                      Text(
-                        label,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                      )
-                    }
-                  }
-                }
+        LaunchedEffect(lines.size) {
+          if (lines.isNotEmpty()) {
+            listState.animateScrollToItem(lines.lastIndex)
+          }
+        }
+
+        Column(Modifier.fillMaxSize()) {
+          TopAppBar(
+            title = { Text("Bit Bot", fontWeight = FontWeight.Bold) },
+            actions = {
+              TextButton(onClick = { showCapabilities = true }) { Text("能力") }
+            },
+          )
+
+          Box(
+            Modifier
+              .weight(1f)
+              .fillMaxWidth()
+              .padding(horizontal = 12.dp),
+          ) {
+            if (lines.isEmpty()) {
+              Column(
+                Modifier.align(Alignment.Center).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+              ) {
+                Text("Bit Bot", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                  "对标 Grok 的国产助手 · Android Host",
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                  "MoonBit → DeepSeek Host · 配置 BITBOT_LLM_API_KEY",
+                  style = MaterialTheme.typography.labelMedium,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
               }
-              if (delivery.attachments.isNotEmpty()) {
-                Row(
-                  Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(top = 4.dp),
-                ) {
-                  delivery.attachments.take(8).forEach { att ->
-                    val leaf = att.path.substringAfterLast('/')
-                    Surface(
-                      tonalElevation = 1.dp,
-                      shape = MaterialTheme.shapes.small,
-                      modifier = Modifier.padding(end = 6.dp),
+            } else {
+              LazyColumn(
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxSize().padding(vertical = 8.dp),
+              ) {
+                items(lines) { line ->
+                  val isUser = line.role == "user"
+                  Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+                  ) {
+                    Column(
+                      Modifier
+                        .widthIn(max = 320.dp)
+                        .background(
+                          if (isUser) MaterialTheme.colorScheme.primaryContainer
+                          else MaterialTheme.colorScheme.surfaceVariant,
+                          RoundedCornerShape(12.dp),
+                        )
+                        .padding(10.dp),
                     ) {
                       Text(
-                        "${att.role}:$leaf",
+                        if (isUser) "你" else "Bit Bot",
                         style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                       )
+                      Text(line.text, style = MaterialTheme.typography.bodyMedium)
                     }
                   }
                 }
               }
             }
           }
+
+          if (delivery.labels.isNotEmpty() || delivery.attachments.isNotEmpty()) {
+            Row(
+              Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+              delivery.labels.take(8).forEach { label ->
+                Surface(
+                  tonalElevation = 2.dp,
+                  shape = MaterialTheme.shapes.small,
+                  modifier = Modifier.padding(end = 6.dp),
+                ) {
+                  Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                  )
+                }
+              }
+            }
+          }
+
           Row(
             Modifier
-              .horizontalScroll(rememberScrollState())
-              .padding(vertical = 6.dp),
+              .fillMaxWidth()
+              .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
           ) {
-            productActions.forEach { (label, turn) ->
-              Button(
-                enabled = !busy,
-                onClick = { runProductTurn(turn) },
-                modifier = Modifier.padding(end = 6.dp),
-              ) {
-                Text(label, style = MaterialTheme.typography.labelSmall)
-              }
+            OutlinedTextField(
+              value = input,
+              onValueChange = { input = it },
+              placeholder = { Text("给 Bit Bot 发消息…") },
+              modifier = Modifier.weight(1f).padding(end = 8.dp),
+              enabled = !busy,
+            )
+            Button(
+              enabled = !busy && input.isNotBlank(),
+              onClick = { runProductTurn(input) },
+            ) {
+              Text(if (busy) "…" else "发送")
             }
           }
-          Text(transcript, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 12.dp))
-          OutlinedTextField(
-            value = input,
-            onValueChange = { input = it },
-            label = { Text("Turn text") },
-            modifier = Modifier.padding(bottom = 8.dp),
-          )
-          Button(
-            enabled = !busy && input.isNotBlank(),
-            onClick = { runProductTurn(input) },
+        }
+
+        if (showCapabilities) {
+          ModalBottomSheet(
+            onDismissRequest = { showCapabilities = false },
+            sheetState = sheetState,
           ) {
-            Text(if (busy) "…" else "Send")
+            Text(
+              "能力 · 国内渠道 / 设备",
+              style = MaterialTheme.typography.titleMedium,
+              modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            productActions.forEach { (label, turn) ->
+              TextButton(
+                enabled = !busy,
+                onClick = {
+                  showCapabilities = false
+                  runProductTurn(turn)
+                },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+              ) {
+                Text(label, modifier = Modifier.fillMaxWidth())
+              }
+            }
+            Spacer(Modifier.height(24.dp))
           }
         }
       }

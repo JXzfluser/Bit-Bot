@@ -20,7 +20,12 @@ bash hosts/android/stub_attach.sh
 bash scripts/verify_native_shells.sh
 ```
 
+## Product shell (chat-first)
+
+`BitBotHost` MainActivity is a Grok-style chat: bubbles + composer; 「能力」sheet for 钉钉/飞书/企微 and device tools. Turns go through `TurnBridge` → `hosts/mobile_host` → MoonBit `llm_chat` (same brain as Desktop).
+
 ## Still open
 
-- Play Store signing & packaging
+- Play Store / 国内渠道包 signing（`BITBOT_ANDROID_STORE_*`）
+- Device/emulator build of BitBotHost (needs Android SDK)
 - Python LocalBrain (demoted — not used)

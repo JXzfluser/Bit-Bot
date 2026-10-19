@@ -59,4 +59,26 @@ enum TurnBridge {
     }
     return FileManager.default.currentDirectoryPath
   }
+
+  /// Prefer final assistant message from turn JSON (post Host llm_chat continue).
+  static func assistantText(fromTurnJSON raw: String) -> String? {
+    let line =
+      raw
+      .split(whereSeparator: \.isNewline)
+      .map(String.init)
+      .first(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") })
+      ?? raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let data = line.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let messages = obj["messages"] as? [[String: Any]]
+    else { return nil }
+    let assistants = messages.compactMap { m -> String? in
+      guard (m["role"] as? String) == "assistant",
+            let text = m["text"] as? String,
+            !text.isEmpty
+      else { return nil }
+      return text
+    }
+    return assistants.last
+  }
 }
