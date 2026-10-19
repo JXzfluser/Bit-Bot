@@ -1156,6 +1156,14 @@ test "desktop_turn_wave_g_bot_lifecycle_kinds" {
 
   let r10 = run_desktop_turn("confirm delete bot bot-1", turn_id="wg-10")
   assert_eq(r10.effects[0].command, "bot=bot-1 confirm=yes")
+
+  let r11 = run_desktop_turn("open computer", turn_id="wg-11")
+  assert_eq(r11.intent, "computer_preview")
+  assert_eq(r11.effects[0].kind, "computer_preview")
+  assert_eq(r11.effects[0].command, "bot=agent-bit")
+
+  let r12 = run_desktop_turn("open computer for bot bot-9", turn_id="wg-12")
+  assert_eq(r12.effects[0].command, "bot=bot-9")
 }
 
 ///|

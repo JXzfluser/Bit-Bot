@@ -709,6 +709,35 @@ function createProductSurface(repoRoot) {
     atomicWrite(COMPUTER_PATH, JSON.stringify(data, null, 2));
   }
 
+  // GP-31: per-Bot screen state. Host computer-use/screenshot/takeover runs
+  // record real frames + actions here so the right-side preview reflects the
+  // Bot's actual activity (click / type / navigate / current state).
+  function recordComputerAction({ bot_id, action, detail, frame_path, status }) {
+    const id = String(bot_id || "agent-bit");
+    const data = loadComputer();
+    if (!data.screens || typeof data.screens !== "object") data.screens = {};
+    const prev = data.screens[id] || { actions: [] };
+    const at = nowIso();
+    const entry = {
+      action: String(action || "observe"),
+      detail: String(detail || "").slice(0, 200),
+      frame_path: frame_path && fs.existsSync(String(frame_path)) ? String(frame_path) : null,
+      at,
+    };
+    const actions = Array.isArray(prev.actions) ? prev.actions : [];
+    actions.push(entry);
+    data.screens[id] = {
+      status: String(status || prev.status || "active"),
+      frame_path: entry.frame_path || prev.frame_path || null,
+      last_action: entry.action,
+      last_detail: entry.detail,
+      updated_at: at,
+      actions: actions.slice(-12),
+    };
+    saveComputer(data);
+    return { ok: true, mode: "host_computer_screen_record", screen: data.screens[id] };
+  }
+
   function computerFrame(botId) {
     // Look for latest frame for this bot
     try {
@@ -1205,6 +1234,7 @@ function createProductSurface(repoRoot) {
 
     // Computer
     computerFrame,
+    recordComputerAction,
     takeoverBegin,
     takeoverEnd,
     recoverComputer,

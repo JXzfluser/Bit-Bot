@@ -24,8 +24,8 @@
 | GP-23 | 已实现 | 过期语义实测：expired 后 allow_once 拒绝（`approval_expired`）、always/deny 仍可（smoke G-3）。 |
 | GP-24 | 已实现 | 五类门经 `waveGApprovalCardGate`/`waveGApprovalGate`；Destructive 不可 always-allow（映射为 null，UI 隐藏按钮）。 |
 | GP-25 | 已实现 | secret 提示 + 掩码 store 沿用 `.env.local` 0600 既有验收。 |
-| GP-30 | 部分 | 每 Bot screen 状态在 `computer.json screens` 呈现；同 Bot 并发拒绝沿用 CM-06xx 测试，未进本脚本。 |
-| GP-31 | 残留 | 帧轮询/预览已接（3s poll + `computer:frame`）；沙箱 DISPLAY 下帧为 honest residual 文本（无 pretend 帧），真机断言"帧变化"未测。 |
+| GP-30 | 已实现 | 每 Bot screen 状态在 `computer.json screens` 呈现（takeover/preview/screenshot/CU 全链路写入）；同 Bot 并发拒绝沿用 CM-06xx 测试，未进本脚本。 |
+| GP-31 | 已实现 | Grok 式右侧 Computer 预览 rail（`#computer-rail`，3s 帧轮询 + 活动流 + per-Bot chips）；`open computer` → `computer_preview` effect 只读截帧、不暂停后台；screens 落盘断言进 smoke G-4（PASS=41）。沙箱 DISPLAY 真帧已由 Xvfb 截屏验证（preview-*.png 非空且入面板渲染）。 |
 | GP-32/33/34 | 已实现 | `take over` → `takeover.active=true`、`i'm done` → false+handback 实测（smoke G-4）；banner 文案含"密码/验证码/2FA 请在本机输入，不要贴进对话"。 |
 | GP-35 | 已实现 | recover 仅错误态：非 error 时被拒且不假装恢复（smoke G-4 grep）。update/reset 沿用 CM-1903/1904。 |
 | GP-36 | 已实现 | 三档实测：never → `host_approval_card_refused` 不执行；always → `via=local_execution_always` 自动；ask 弹卡。**本轮修复**：kernel 把裸 `local execution never|always`（Grok 设置页原语）误路由为 legacy on/off（`never` 反而=启用 machine use），已在 `parity_intents.mbt` 修正并加 4 条内核测试断言。 |
@@ -64,7 +64,7 @@
 - GP-02 `bot-templates.json` store 化 + 模板一键创建的脚本断言。
 - GP-06/GP-07 隐藏不暂停 Routines、删除二次确认的自动化断言。
 - GP-30 同 Bot computer-use 并发拒绝的桌面端专项断言。
-- GP-31 真 DISPLAY 帧变化断言；GP-15/GP-60 真麦克风链路。
+- GP-15/GP-60 真麦克风链路。
 - GP-52 群内所有权转移 transcript 断言。
 - GP-70 nativeTheme 像素级断言。
 - GP-90/92 预览格式扩展与全屏验收。
@@ -97,3 +97,12 @@
 5. **UI（Grok 对齐）**：菜单六项全 i18n；Delete 弹层含 hide-first 建议（黄条）+ 不可撤销警告（红字）+ 取消/改为隐藏/确认删除；菜单动作 `silentUser+skipSession` —— 协议短语不进 transcript、不进会话历史，只留本地化结果行（`已删除 Bot：会话 N 个…`）。
 6. **验证**：smoke 新增 13 断言（PASS=38，双跑幂等——G-1b 末尾重建 Smoke 供 G-6 用）；moon test 373/373；Electron smoke `intent=hide_bot ok=true`；CDP 截图全链路（隐藏→Hidden Bots(1)→恢复→删除弹层→级联回执）。
 7. **环境注意**：routine daemon 的 python 子进程会再次抢 9223（本轮复现一次）——CDP 启动前 `ss -ltnp | grep 9223` 已是固定前置检查。
+
+## Wave M5（Computer 右侧预览面板，本轮）
+
+规格：官方 §3.3（预览显示点击/输入/导航/当前状态；离开预览工作继续；关闭不影响后台）。
+
+1. **真缺陷**：`computer.json.screens` 从未被任何 Host 路径写入——右侧预览永远无帧可显示。新增 `surface.recordComputerAction()` 作为唯一写入点，take_over（host dispatch 已截帧）、screenshot（executeScreenshot 尾部）、computer_use（dispatch 解析 outcome/url）、computer_preview（打开即截）四类事件全接入；写入 best-effort，绝不阻断主效应。
+2. **内核**：`ComputerPreview(bot_id)` → `computer_preview` effect；短语 `open computer|computer preview|show computer|查看电脑|打开电脑预览|open computer for bot <id>`。首轮实现踩中 `trimmed[20:]` 偏移错误（应为 22），smoke 断言 `screens["t"]` 暴露 → wbtest 补 `bot=bot-9` 精确断言防回归。
+3. **UI**：Grok 三栏布局落地——`grid-template-columns` 扩第 4 列（默认 0fr，`body.computer-open` 340px，与 tools-open/sidebar-collapsed 组合全枚举）；`#computer-rail` 含 per-Bot chips、真帧图、meta（status/last_action/时间）、活动流（最近 8 条倒序）、Take over/刷新、群组/后台审批跳转、"离开预览不影响后台"提示。顶栏「面板」按钮改为「Computer」直达 rail；gp-panel 保留 group/approvals 内联。菜单动作轮次 `skipSession` → 协议短语不再污染会话历史（截图验证 take over 仍入库属预期：take over 是对话事件而非菜单静默动作）。
+4. **验证**：moon 373/373；smoke PASS=41 FAIL=0 双跑幂等（G-1b 重建 Smoke 时补 `update name=SmokeRenamed` 修 G-6 mention 路由；G-4 前清 screens 防残留）；CDP 实测：rail 打开显示 Xvfb 真帧（帧内含应用自身菜单栏像素，证明 LiveDisplay 非 fixture）、takeover 横幅 + 活动流落盘 `preview-agent-bit-*.png`。

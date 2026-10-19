@@ -2311,6 +2311,20 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(DeleteBot(bot_id~, confirmed=false))
     }
   }
+  if low == "open computer" ||
+    low == "computer preview" ||
+    low == "open computer preview" ||
+    low == "show computer" ||
+    low == "查看电脑" ||
+    low == "打开电脑预览" {
+    return Some(ComputerPreview(bot_id="agent-bit"))
+  }
+  if low.has_prefix("open computer for bot ") {
+    let bot_id = trimmed[22:].trim().to_owned()
+    if bot_id != "" {
+      return Some(ComputerPreview(bot_id~))
+    }
+  }
   // Take over / hand back (spec §3.2).
   if low == "take over" ||
     low == "need takeover" ||

@@ -6734,6 +6734,17 @@ function createHostFfi(repoRoot) {
       has_frame: hasFrame,
       at,
     });
+    // GP-31: screenshot frames also drive the per-Bot preview state.
+    if (surface && surface.recordComputerAction) {
+      try {
+        surface.recordComputerAction({
+          bot_id: agentId,
+          action: "observe",
+          detail: hasFrame ? "live frame captured" : "residual: " + (artifact.residual_reason || "no_frame"),
+          frame_path: artifact.frame_path,
+        });
+      } catch (_) { /* best-effort */ }
+    }
     return okJson("screenshot", raw || agentId, {
       ...artifact,
       path: snapPath,
@@ -22338,7 +22349,72 @@ function createHostFfi(repoRoot) {
         continue;
       }
       if (kind === "computer_use") {
-        results.push(await executeComputerUse(cmd));
+        const cuRes = await executeComputerUse(cmd);
+        // GP-31: record what the Bot did (navigate/click/type) for the preview.
+        if (surface && surface.recordComputerAction) {
+          try {
+            const out = JSON.parse(cuRes && cuRes.stdout ? cuRes.stdout : "{}");
+            const summary = (out && out.outcome && out.outcome.summary) ||
+              (out && out.summary) || cmd.slice(0, 120);
+            const nav = String(cmd).match(/https?:\/\/[^\s|"')\]]+/);
+            surface.recordComputerAction({
+              bot_id: (out && out.agent_id) || "agent-bit",
+              action: nav ? "navigate" : "computer_use",
+              detail: nav ? nav[0] : String(summary || ""),
+              frame_path: (out && (out.frame_path || (out.gui && out.gui.frame_path))) || null,
+              status: cuRes && cuRes.ok === false ? "error" : "active",
+            });
+          } catch (_) { /* best-effort preview state */ }
+        }
+        results.push(cuRes);
+        continue;
+      }
+      if (kind === "computer_preview") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const botId = args.bot || "agent-bit";
+        // GP-31: opening the preview is read-only — capture a fresh frame when
+        // a display exists, never pause or alter the Bot's background work.
+        let frame_path = null;
+        try {
+          const display = process.env.DISPLAY;
+          if (display) {
+            const framesDir = path.join(REPO_ROOT, "data", "desktop", "frames");
+            fs.mkdirSync(framesDir, { recursive: true });
+            const frameFile = path.join(framesDir, `preview-${botId}-${Date.now()}.png`);
+            for (const [bin, fargs] of [
+              ["scrot", [frameFile]],
+              ["import", ["-window", "root", frameFile]],
+            ]) {
+              try {
+                require("child_process").execFileSync(bin, fargs, { timeout: 4000, stdio: "ignore" });
+                if (fs.existsSync(frameFile)) { frame_path = frameFile; break; }
+              } catch (_) { /* next tool */ }
+            }
+          }
+        } catch (_) { /* no frame — panel falls back to last recorded */ }
+        if (surface.recordComputerAction) {
+          try {
+            surface.recordComputerAction({
+              bot_id: botId,
+              action: "preview_open",
+              detail: "user opened Computer preview",
+              frame_path,
+            });
+          } catch (_) { /* ignore */ }
+        }
+        const screen = (surface.loadComputer().screens || {})[botId] || null;
+        results.push({
+          kind,
+          ok: true,
+          command: cmd,
+          stdout: JSON.stringify({ ok: true, bot_id: botId, frame_path, screen, mode: "host_computer_preview" }),
+          stderr: "",
+          mode: "host_computer_preview",
+        });
         continue;
       }
       const routineRes = executeRoutineEffect(kind, cmd);
@@ -22676,8 +22752,7 @@ function createHostFfi(repoRoot) {
           continue;
         }
         const args = parseWaveGCommand(cmd);
-        const res = surface.beginTakeover(args.bot || "agent-bit", args.reason || "");
-        // Try to capture screenshot if DISPLAY available
+        const res = surface.beginTakeover(args.bot || "agent-bit", args.reason || "");        // Try to capture screenshot if DISPLAY available
         let frame_path = null;
         let residual = null;
         try {
@@ -22701,6 +22776,18 @@ function createHostFfi(repoRoot) {
             residual = "no DISPLAY";
           }
         } catch { /* screenshot failed */ }
+        // GP-31: takeover frame feeds the right-side preview too.
+        if (surface.recordComputerAction) {
+          try {
+            surface.recordComputerAction({
+              bot_id: args.bot || "agent-bit",
+              action: "takeover",
+              detail: "reason=" + (args.reason || "user_request"),
+              frame_path,
+              status: "takeover",
+            });
+          } catch (_) { /* preview state is best-effort, never blocks takeover */ }
+        }
         const payload = { ...res, frame_path, guidance: "密码/验证码请在本机输入，不要贴进对话", residual };
         results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(payload), stderr: "", mode: res.mode });
         continue;

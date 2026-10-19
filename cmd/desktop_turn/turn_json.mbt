@@ -190,6 +190,7 @@ pub(all) enum TurnIntent {
   PrimaryBot(bot_id~ : String)
   HideBot(bot_id~ : String, hidden~ : Bool)
   DeleteBot(bot_id~ : String, confirmed~ : Bool)
+  ComputerPreview(bot_id~ : String)
   TakeOver(reason~ : String)
   TakeoverDone
   RecoverComputer
@@ -321,6 +322,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     PrimaryBot(_) => "primary_bot"
     HideBot(_) => "hide_bot"
     DeleteBot(_) => "delete_bot"
+    ComputerPreview(_) => "computer_preview"
     TakeOver(_) => "take_over"
     TakeoverDone => "takeover_done"
     RecoverComputer => "recover_computer"
@@ -4669,6 +4671,22 @@ pub fn run_desktop_turn(
         } else {
           "Delete Bot needs confirmation (GP-07). Deletion is irreversible and cascades sessions/routines. If it was just clutter, hiding is reversible \u2014 Host shows the hide-first advisory."
         },
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    ComputerPreview(bot_id~) => {
+      let effect : DesktopEffect = {
+        kind: "computer_preview",
+        command: "bot=" + bot_id,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Computer preview planned (GP-31). Host opens the right-side panel with live frames; leaving the preview never pauses background work.",
         intent,
         ctx~,
         effects=[effect],

@@ -77,16 +77,22 @@
       linear-gradient(165deg, var(--bg0), var(--bg1));
     display: grid;
     /* Grok-style default: sessions + chat only; tools rail opt-in */
-    grid-template-columns: 260px 1fr 0fr;
+    grid-template-columns: 260px 1fr 0fr 0fr;
     grid-template-rows: auto 1fr auto;
     grid-template-areas:
-      "header header header"
-      "agents main machines"
-      "agents composer machines";
+      "header header header header"
+      "agents main machines computer"
+      "agents composer machines computer";
     transition: grid-template-columns 0.25s ease;
   }
   body.tools-open {
-    grid-template-columns: 260px 1fr 280px;
+    grid-template-columns: 260px 1fr 280px 0fr;
+  }
+  body.computer-open {
+    grid-template-columns: 260px 1fr 0fr 340px;
+  }
+  body.tools-open.computer-open {
+    grid-template-columns: 260px 1fr 280px 340px;
   }
   header {
     grid-area: header;
@@ -593,7 +599,7 @@
       </div>
       <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板" data-i18n="headerSkills">能力</button>
       <button type="button" id="cred-settings-btn" title="配置 DeepSeek / 钉钉飞书企微（不写死）" data-i18n="headerCreds">凭证</button>
-      <button type="button" id="gp-panel-btn" title="Computer / 群组 / 后台审批（Grok Parity）" data-i18n="headerParity">面板</button>
+      <button type="button" id="gp-panel-btn" title="Computer 预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer">Computer</button>
       <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton" data-i18n="headerAccount">账户</button>
     </div>
   </header>
@@ -1191,6 +1197,29 @@
       </div>
     </div>
   </aside>
+  <!-- GP-31: Grok-style right-side Computer preview rail (live frames + activity) -->
+  <aside id="computer-rail">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 12px 0">
+      <div class="panel-title" style="margin:0" data-i18n="computerPreview">Computer 预览</div>
+      <div style="display:flex;gap:6px">
+        <button type="button" id="cr-open-group" class="gp-chip" data-i18n="gpGroup">群组</button>
+        <button type="button" id="cr-open-approvals" class="gp-chip" data-i18n="gpApprovals">后台审批</button>
+        <button type="button" id="computer-rail-close" class="gp-chip" data-i18n="gpClose">关闭</button>
+      </div>
+    </div>
+    <div class="gp-row" id="cr-bot-chips" style="padding:8px 12px 0"></div>
+    <div id="cr-frame-box" class="frame-box" style="margin:8px 12px 0">
+      <div id="cr-frame-img" style="color:var(--muted)" data-i18n="gpNoFrame">（尚无帧）</div>
+    </div>
+    <div id="cr-frame-meta" style="padding:6px 12px 0;color:var(--muted);font:11px/1.4 ui-monospace,monospace"></div>
+    <div class="panel-title" style="margin:12px 12px 0" data-i18n="crActivity">Bot 活动（点击 / 输入 / 导航 / 状态）</div>
+    <div id="cr-activity" style="padding:6px 12px;color:var(--muted);font:11px/1.5 ui-monospace,monospace"></div>
+    <div class="gp-row" style="padding:8px 12px 12px">
+      <button type="button" class="gp-chip" id="cr-takeover-btn" data-i18n="takeover">Take over</button>
+      <button type="button" class="gp-chip" id="cr-refresh-btn" data-i18n="gpRefreshFrame">刷新帧</button>
+    </div>
+    <div style="padding:0 12px 14px;color:var(--muted);font-size:11px" data-i18n="crLeaveNote">离开预览不影响 Bot 后台任务。</div>
+  </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
     <div id="attachment-strip" class="attach-strip" aria-label="待发送附件"></div>
@@ -1500,6 +1529,7 @@
       [/^Unhide Bot planned \(GP-06\)\..*/i, "rBotUnhide"],
       [/^Delete Bot needs confirmation \(GP-07\)\..*/i, "rBotDeleteConfirm"],
       [/^Delete Bot confirmed \(GP-07\)\..*/i, "rBotDeleteGo"],
+      [/^Computer preview planned \(GP-31\)\..*/i, "rComputerPreview"],
     ];
     function wavegLocalizeReply(text) {
       const raw = String(text || "");
@@ -4651,9 +4681,13 @@
     // ---- Wave G boot wiring (sidebar collapse CSS) ----
     const styleWaveG = document.createElement("style");
     styleWaveG.textContent =
-      "body.sidebar-collapsed { grid-template-columns: 0px 1fr 0fr !important; }" +
+      "body.sidebar-collapsed { grid-template-columns: 0px 1fr 0fr 0fr !important; }" +
       "body.sidebar-collapsed #agents { display: none; }" +
-      "body.sidebar-collapsed.tools-open { grid-template-columns: 0px 1fr 280px !important; }";
+      "body.sidebar-collapsed.tools-open { grid-template-columns: 0px 1fr 280px 0fr !important; }" +
+      "body.sidebar-collapsed.computer-open { grid-template-columns: 0px 1fr 0fr 340px !important; }" +
+      "body.sidebar-collapsed.tools-open.computer-open { grid-template-columns: 0px 1fr 280px 340px !important; }" +
+      "#computer-rail { grid-area: computer; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; border-left: 1px solid var(--line); background: var(--side); }" +
+      "body.computer-open #computer-rail { opacity: 1; pointer-events: auto; overflow: auto; }";
     document.head.appendChild(styleWaveG);
     function openProductCredentials(hint) {
       const panel = document.getElementById("settings-panel");
@@ -5650,6 +5684,12 @@
         deleteConfirmBtn: "确认删除",
         deleteHideBtn: "改为隐藏",
         deleteCancelBtn: "取消",
+        computerPreview: "Computer 预览",
+        crActivity: "Bot 活动（点击 / 输入 / 导航 / 状态）",
+        crNoActivity: "暂无活动记录 — Bot 执行 computer-use / 截图后自动出现。",
+        crIdle: "空闲（未收到帧）",
+        crLeaveNote: "离开预览不影响 Bot 后台任务。",
+        rComputerPreview: "已打开 Computer 预览（右侧面板）— 关闭预览不影响后台任务。",
         chatCreatedHint: "新会话已创建 · 输入消息开始",
       },
       "zh-TW": {
@@ -5780,6 +5820,12 @@
         deleteConfirmBtn: "確認刪除",
         deleteHideBtn: "改為隱藏",
         deleteCancelBtn: "取消",
+        computerPreview: "Computer 預覽",
+        crActivity: "Bot 活動（點擊 / 輸入 / 導覽 / 狀態）",
+        crNoActivity: "暫無活動記錄 — Bot 執行 computer-use / 截圖後自動出現。",
+        crIdle: "空閒（未收到幀）",
+        crLeaveNote: "離開預覽不影響 Bot 背景任務。",
+        rComputerPreview: "已開啟 Computer 預覽（右側面板）— 關閉預覽不影響背景任務。",
         chatCreatedHint: "新工作已建立 · 輸入訊息開始",
       },
       en: {
@@ -5910,6 +5956,12 @@
         deleteConfirmBtn: "Confirm delete",
         deleteHideBtn: "Hide instead",
         deleteCancelBtn: "Cancel",
+        computerPreview: "Computer preview",
+        crActivity: "Bot activity (click / type / navigate / status)",
+        crNoActivity: "No activity yet — appears after the Bot runs computer-use / screenshots.",
+        crIdle: "Idle (no frame)",
+        crLeaveNote: "Leaving the preview never pauses background work.",
+        rComputerPreview: "Computer preview opened (right panel) — closing it doesn't pause tasks.",
         chatCreatedHint: "New chat created · type a message to start",
       },
     };
@@ -6079,6 +6131,12 @@
       gpSwitchTab(tab || gpActiveTab);
     }
     function gpSwitchTab(tab) {
+      // GP-31: Computer moved to the right-side rail (Grok layout); the tab
+      // now opens the rail instead of the inline frame box.
+      if (tab === "computer") {
+        toggleComputerRail(true);
+        return;
+      }
       gpActiveTab = tab;
       document.querySelectorAll(".gp-tab").forEach((b) =>
         b.classList.toggle("active", b.dataset.gptab === tab),
@@ -6095,7 +6153,38 @@
 
     async function wireGpPanel() {
       const btn = document.getElementById("gp-panel-btn");
-      if (btn) btn.addEventListener("click", () => openGpPanel(gpVisible() ? null : "computer"));
+      if (btn)
+        btn.addEventListener("click", () => {
+          // Grok layout: Computer lives in the right-side rail; group/approvals
+          // stay in the inline panel.
+          if (computerRailOpen() || (gpVisible() && gpActiveTab === "computer")) {
+            toggleComputerRail(false);
+            const panel = document.getElementById("gp-panel");
+            if (panel) panel.style.display = "none";
+            return;
+          }
+          toggleComputerRail(true);
+        });
+      const railClose = document.getElementById("computer-rail-close");
+      if (railClose) railClose.addEventListener("click", () => toggleComputerRail(false));
+      const railGroup = document.getElementById("cr-open-group");
+      if (railGroup) railGroup.addEventListener("click", () => openGpPanel("group"));
+      const railApps = document.getElementById("cr-open-approvals");
+      if (railApps) railApps.addEventListener("click", () => { openGpPanel("approvals"); refreshApprovalQueue(); });
+      const railRefresh = document.getElementById("cr-refresh-btn");
+      if (railRefresh)
+        railRefresh.addEventListener("click", () => {
+          lastFrameUrl = null;
+          lastRailFrameUrl = null;
+          runUserTurn("open computer for bot " + activeBotId, { skipSession: true, silentUser: true }).catch(() => {});
+          pollComputerFrame(true);
+          renderComputerRail();
+        });
+      const railTake = document.getElementById("cr-takeover-btn");
+      if (railTake)
+        railTake.addEventListener("click", () => {
+          runUserTurn("take over reason=user_request", { skipSession: false }).catch(() => {});
+        });
       const close = document.getElementById("gp-panel-close");
       if (close) close.addEventListener("click", () => {
         const panel = document.getElementById("gp-panel");
@@ -6135,15 +6224,93 @@
     let activeBotId = "agent-bit";
     let computerFrameTimer = null;
     let lastFrameUrl = null;
+    let lastRailFrameUrl = null;
+
+    // GP-31: right-side Computer preview rail (Grok layout).
+    function computerRailOpen() {
+      return document.body.classList.contains("computer-open");
+    }
+    async function toggleComputerRail(force) {
+      const open = force === true ? true : force === false ? false : !computerRailOpen();
+      document.body.classList.toggle("computer-open", open);
+      if (open) {
+        renderComputerRail();
+        pollComputerFrame(true);
+        runUserTurn("open computer for bot " + activeBotId, { skipSession: true, silentUser: true }).catch(() => {});
+      }
+    }
+    function renderComputerRail() {
+      const actEl = document.getElementById("cr-activity");
+      const chipsEl = document.getElementById("cr-bot-chips");
+      if (!actEl || !chipsEl || !window.bitbot || !window.bitbot.computer) return;
+      (async () => {
+        let comp = {};
+        try {
+          const res = await window.bitbot.computer.state();
+          comp = (res && res.computer) || {};
+        } catch (_) { return; }
+        const screens = comp.screens || {};
+        const view = await window.bitbot.bots.list().catch(() => null);
+        const names = {};
+        for (const b of [...(((view && view.bots) || [])), ...(((view && view.hidden_bots) || []))]) names[b.id] = b.name || b.id;
+        const ids = Array.from(new Set(Object.keys(screens).concat([activeBotId])));
+        chipsEl.innerHTML = "";
+        for (const id of ids) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "gp-chip" + (id === activeBotId ? " active" : "");
+          chip.textContent = names[id] || id;
+          chip.addEventListener("click", () => {
+            activeBotId = id;
+            lastFrameUrl = null;
+            lastRailFrameUrl = null;
+            renderComputerRail();
+            pollComputerFrame(true);
+          });
+          chipsEl.appendChild(chip);
+        }
+        const sc = screens[activeBotId] || {};
+        const acts = Array.isArray(sc.actions) ? sc.actions.slice(-8).reverse() : [];
+        actEl.innerHTML = "";
+        if (!acts.length) {
+          actEl.textContent = wavegT("crNoActivity");
+        } else {
+          for (const a of acts) {
+            const line = document.createElement("div");
+            line.textContent =
+              String(a.at || "").slice(11, 19) + " · " + (a.action || "?") +
+              (a.detail ? " · " + a.detail : "");
+            actEl.appendChild(line);
+          }
+        }
+        const meta = document.getElementById("cr-frame-meta");
+        if (meta) {
+          const bits = [];
+          if (sc.status) bits.push(sc.status);
+          if (sc.last_action) bits.push("last: " + sc.last_action);
+          if (sc.updated_at) bits.push(String(sc.updated_at).slice(11, 19));
+          meta.textContent = bits.join(" · ") || wavegT("crIdle");
+        }
+      })().catch(() => {});
+    }
     async function pollComputerFrame(force) {
       if (!window.bitbot.computer) return;
       try {
         const res = await window.bitbot.computer.frame({ bot_id: activeBotId });
         const box = document.getElementById("gp-frame-box");
         const meta = document.getElementById("gp-frame-meta");
-        if (!box) return;
+        const railBox = document.getElementById("cr-frame-img");
+        if (!box && !railBox) return;
         if (res && res.ok && res.data_url) {
-          if (lastFrameUrl !== res.data_url || force) {
+          if (railBox && (lastRailFrameUrl !== res.data_url || force)) {
+            lastRailFrameUrl = res.data_url;
+            railBox.innerHTML = "";
+            const im = document.createElement("img");
+            im.src = res.data_url;
+            im.alt = "Computer frame";
+            railBox.appendChild(im);
+          }
+          if (box && (lastFrameUrl !== res.data_url || force)) {
             lastFrameUrl = res.data_url;
             box.innerHTML = "";
             const img = document.createElement("img");
@@ -6152,10 +6319,12 @@
           }
           if (meta) meta.textContent = "Host 真实帧 · " + String(res.frame_path || "").split("/").slice(-1)[0] + " · " + (res.at || "");
         } else {
-          box.textContent =
+          const txt =
             res && res.residual
               ? "无帧（诚实 residual：" + res.residual + "）。有 DISPLAY 且 Bot 运行 computer-use 任务时自动出现真帧。"
               : "无帧（residual：" + (res && res.error ? res.error : "unknown") + "）";
+          if (box) box.textContent = txt;
+          if (railBox) railBox.textContent = txt;
           if (meta) meta.textContent = "帧轮询：3s（当前无可用帧）";
         }
       } catch (_) {
@@ -6165,7 +6334,12 @@
     function startComputerPolling() {
       if (computerFrameTimer) return;
       computerFrameTimer = setInterval(() => {
-        if (gpVisible() && gpActiveTab === "computer") pollComputerFrame(false);
+        const wantGp = gpVisible() && gpActiveTab === "computer";
+        const wantRail = computerRailOpen();
+        if (wantGp || wantRail) {
+          pollComputerFrame(false);
+          if (wantRail) renderComputerRail();
+        }
       }, 3000);
     }
 

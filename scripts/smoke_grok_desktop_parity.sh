@@ -99,6 +99,7 @@ node -e "require('fs').unlinkSync('data/workspace/smoke-kept.txt')" 2>/dev/null 
 # 删除后重建 Smoke 供后续 G-6 群组用例使用（delete 是级联的，旧 id 不复存在）
 j=$(turn_json "create bot Smoke job=verify description=Wave+G+smoke+bot")
 smid=$(node -e "const b=require('./$DATA/bots.json').bots.filter(x=>x.name==='Smoke').pop();console.log(b?b.id:'')")
+j=$(turn_json "update bot $smid name=SmokeRenamed")
 [ -n "$smid" ] && ok "Smoke 重建（G-6 前置）" || bad "Smoke recreate for G-6"
 
 echo "== G-3 审批（GP-20..23）=="
@@ -126,6 +127,22 @@ echo "== G-4 Computer / Take over =="
 j=$(turn_json "take over reason=password"); echo "$j" | field hostKinds | grep -q take_over:ok && node -e "process.exit(require('./$DATA/computer.json').takeover.active===true?0:1)" && ok "take_over → computer.json active=true" || bad "takeover begin"
 j=$(turn_json "i'm done"); echo "$j" | field hostKinds | grep -q takeover_done:ok && node -e "process.exit(require('./$DATA/computer.json').takeover.active===false?0:1)" && ok "takeover_done → active=false + handback" || bad "takeover end"
 j=$(turn_json "recover computer"); echo "$j" | grep -q "recover only from error state\|host_recover_computer" && ok "recover：非错误态被正确拒绝/或恢复（不假装）" || bad "recover guard"
+# GP-31: Computer 预览（右侧面板）——只读、不暂停后台、screens 状态落盘
+node -e "
+const fs=require('fs');const f='$DATA/computer.json';
+if(fs.existsSync(f)){const c=JSON.parse(fs.readFileSync(f,'utf8'));c.screens={};fs.writeFileSync(f,JSON.stringify(c,null,2))}"
+j=$(turn_json "open computer for bot agent-bit")
+echo "$j" | field hostKinds | grep -q computer_preview:ok && ok "open computer → computer_preview host ok" || bad "computer preview chain"
+node -e "
+const c=require('./$DATA/computer.json');
+const sc=(c.screens||{})['agent-bit'];
+process.exit(sc && Array.isArray(sc.actions) && sc.actions.some(a=>a.action==='preview_open') ? 0:1)" && ok "GP-31 screens.agent-bit 活动记录落盘" || bad "GP-31 screen record"
+j=$(turn_json "take over reason=password")
+node -e "
+const c=require('./$DATA/computer.json');
+const sc=(c.screens||{})['agent-bit']||{};
+process.exit(sc.last_action==='takeover' ? 0:1)" && ok "GP-31 takeover 帧/动作进入 screens 状态" || bad "takeover screen record"
+j=$(turn_json "i'm done")
 
 echo "== G-5/6 Settings（GP-70..72）=="
 j=$(turn_json "set appearance dark"); echo "$j" | field hostKinds | grep -q appearance_set:ok && node -e "process.exit(require('./$DATA/settings.json').appearance==='dark'?0:1)" && ok "appearance dark 持久化" || bad "appearance"
