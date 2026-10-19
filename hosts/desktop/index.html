@@ -3663,9 +3663,27 @@
         await loadActiveSessionTranscript();
         const r = await window.bitbot.boot();
         banner.className = r.ok ? "ok" : "err";
+        let deskExtra = "sessions · tray · hotkey · llm_chat stream";
+        try {
+          if (window.bitbot.autostart) {
+            const a = await window.bitbot.autostart.get();
+            deskExtra +=
+              " · autostart=" + (a && a.openAtLogin ? "on" : "off");
+          }
+          if (window.bitbot.daemon) {
+            const d = await window.bitbot.daemon.ensure();
+            const st = await window.bitbot.daemon.status();
+            deskExtra +=
+              " · daemon=" +
+              (d && d.ok ? "pid:" + (d.pid || d.child_pid || "?") : "off") +
+              (st && st.status && st.status.long_lived ? " long_lived" : "");
+          }
+        } catch (_) {
+          /* ignore */
+        }
         banner.textContent = (r.banner || JSON.stringify(r, null, 2)) +
           "\n\n[host] target=" + (r.target || "?") + " · " + (r.note || "") +
-          "\n[desktop] sessions · tray · hotkey · llm_chat stream";
+          "\n[desktop] " + deskExtra;
         const lm = await window.bitbot.turn("ListMachines", { skipSession: true });
         if (lm && lm.machines) renderMachines(lm.machines);
       } catch (e) {

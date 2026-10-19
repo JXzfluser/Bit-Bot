@@ -12,6 +12,7 @@ const {
 } = require("electron");
 const fs = require("fs");
 const path = require("path");
+const { spawn } = require("child_process");
 
 // Dev: hosts/shared; packaged: hosts/desktop/shared (copied by electron-builder).
 let createTurnRunner;
@@ -34,9 +35,118 @@ const ffi = createHostFfi(REPO_ROOT);
 
 let mainWindow = null;
 let tray = null;
+let routineDaemonChild = null;
 const HOTKEY =
   process.env.BITBOT_DESKTOP_HOTKEY ||
   (process.platform === "darwin" ? "Command+Shift+Space" : "Control+Shift+Space");
+const AUTOSTART_ENABLED =
+  process.env.BITBOT_DESKTOP_AUTOSTART === undefined
+    ? true
+    : process.env.BITBOT_DESKTOP_AUTOSTART === "1";
+const DAEMON_AUTOSTART =
+  process.env.BITBOT_ROUTINE_DAEMON_AUTOSTART === undefined
+    ? true
+    : process.env.BITBOT_ROUTINE_DAEMON_AUTOSTART === "1";
+
+function applyLoginItem(enabled) {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: Boolean(enabled),
+      openAsHidden: true,
+      path: process.execPath,
+      args:
+        process.env.BITBOT_DESKTOP_LOGIN_ARGS
+          ? String(process.env.BITBOT_DESKTOP_LOGIN_ARGS).split(/\s+/).filter(Boolean)
+          : [],
+    });
+    return { ok: true, openAtLogin: Boolean(enabled) };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+    };
+  }
+}
+
+function readDaemonStatus() {
+  const p = path.join(REPO_ROOT, "data", "routines", "daemon-status.json");
+  try {
+    if (fs.existsSync(p)) {
+      return { ok: true, path: p, status: JSON.parse(fs.readFileSync(p, "utf8")) };
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return {
+    ok: true,
+    path: p,
+    status: {
+      daemon: false,
+      long_lived: false,
+      note: "no daemon-status yet",
+    },
+  };
+}
+
+function ensureRoutineDaemon() {
+  if (!DAEMON_AUTOSTART) {
+    return { ok: false, skipped: true, reason: "BITBOT_ROUTINE_DAEMON_AUTOSTART=0" };
+  }
+  if (routineDaemonChild && !routineDaemonChild.killed) {
+    return {
+      ok: true,
+      already_running: true,
+      pid: routineDaemonChild.pid,
+    };
+  }
+  const script = path.join(REPO_ROOT, "scripts", "host_routine_daemon.sh");
+  if (!fs.existsSync(script)) {
+    return { ok: false, error: "missing scripts/host_routine_daemon.sh" };
+  }
+  const interval = String(process.env.BITBOT_ROUTINE_INTERVAL_MS || "60000");
+  try {
+    routineDaemonChild = spawn(
+      "/bin/bash",
+      [script, "--long-lived", "--interval-ms", interval],
+      {
+        cwd: REPO_ROOT,
+        env: {
+          ...process.env,
+          BITBOT_ROUTINE_DAEMON: "1",
+          BITBOT_ROUTINE_LONG_LIVED: "1",
+          PATH: `${process.env.HOME || ""}/.moon/bin:${process.env.PATH || ""}`,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: false,
+      },
+    );
+    routineDaemonChild.stdout.on("data", (c) => {
+      process.stdout.write(`[routine-daemon] ${c}`);
+    });
+    routineDaemonChild.stderr.on("data", (c) => {
+      process.stderr.write(`[routine-daemon] ${c}`);
+    });
+    routineDaemonChild.on("exit", (code) => {
+      process.stdout.write(
+        `[routine-daemon] exited code=${code}\n`,
+      );
+      routineDaemonChild = null;
+    });
+    return {
+      ok: true,
+      pid: routineDaemonChild.pid,
+      interval_ms: Number(interval) || 60000,
+      long_lived: true,
+      pretend_daemon: false,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+      pretend_daemon: false,
+    };
+  }
+}
 
 function broadcast(channel, payload) {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -216,6 +326,32 @@ ipcMain.handle("bitbot:sessions:setActive", async (_e, id) => {
   return r;
 });
 
+ipcMain.handle("bitbot:autostart:get", async () => {
+  const settings = app.getLoginItemSettings();
+  return {
+    ok: true,
+    openAtLogin: Boolean(settings.openAtLogin),
+    wasOpenedAtLogin: Boolean(settings.wasOpenedAtLogin),
+    configured: AUTOSTART_ENABLED,
+  };
+});
+
+ipcMain.handle("bitbot:autostart:set", async (_e, enabled) => {
+  return applyLoginItem(Boolean(enabled));
+});
+
+ipcMain.handle("bitbot:daemon:status", async () => {
+  const st = readDaemonStatus();
+  return {
+    ...st,
+    child_pid: routineDaemonChild && !routineDaemonChild.killed
+      ? routineDaemonChild.pid
+      : null,
+  };
+});
+
+ipcMain.handle("bitbot:daemon:ensure", async () => ensureRoutineDaemon());
+
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   // Optional per-turn Host env (e.g. BITBOT_SLACK_CLAIM) — restore after turn.
   const envPatch = (opts && opts.env && typeof opts.env === "object") ? opts.env : null;
@@ -386,9 +522,19 @@ app.whenReady().then(() => {
   if (process.env.BITBOT_DESKTOP_SMOKE_TURN !== undefined) {
     return runSmokeTurnAndExit();
   }
+  if (AUTOSTART_ENABLED) {
+    const login = applyLoginItem(true);
+    process.stdout.write(
+      `[desktop] openAtLogin=${login.openAtLogin} ok=${login.ok}\n`,
+    );
+  }
   createWindow();
   createTray();
   registerHotkey();
+  const daemon = ensureRoutineDaemon();
+  process.stdout.write(
+    `[desktop] routine-daemon ok=${daemon.ok} pid=${daemon.pid || "n/a"} long_lived=${daemon.long_lived || false}\n`,
+  );
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -403,6 +549,13 @@ app.on("will-quit", () => {
     globalShortcut.unregisterAll();
   } catch (_) {
     /* ignore */
+  }
+  if (routineDaemonChild && !routineDaemonChild.killed) {
+    try {
+      routineDaemonChild.kill("SIGTERM");
+    } catch (_) {
+      /* ignore */
+    }
   }
 });
 

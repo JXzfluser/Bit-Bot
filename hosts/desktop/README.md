@@ -30,6 +30,13 @@ export BITBOT_LLM_MODEL=deepseek-chat                    # default
 - **托盘**：关闭窗口隐藏到托盘；托盘菜单显示/隐藏、新对话、退出
 - **全局快捷键**：`Ctrl+Shift+Space`（macOS `⌘⇧Space`），可用 `BITBOT_DESKTOP_HOTKEY` 覆盖
 
+### Resident / schedule (P3)
+
+- **开机自启**：`app.setLoginItemSettings({ openAtLogin })`（默认开；`BITBOT_DESKTOP_AUTOSTART=0` 关）
+- **定时守护**：启动时拉起 `scripts/host_routine_daemon.sh --long-lived`（`BITBOT_ROUTINE_DAEMON_AUTOSTART=0` 关）
+- 可选 systemd user unit：`bash scripts/host_routine_daemon.sh --install-user-unit`
+- IPC：`bitbot.autostart.*` / `bitbot.daemon.*`
+
 Python `scripts/bitbot_runtime/` is **not** on this path. It remains optional Host FFI / legacy deploy only.
 
 ## Start

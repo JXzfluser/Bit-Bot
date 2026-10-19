@@ -38,4 +38,12 @@ contextBridge.exposeInMainWorld("bitbot", {
     return () =>
       ipcRenderer.removeListener("bitbot:sessions-changed", handler);
   },
+  autostart: {
+    get: () => ipcRenderer.invoke("bitbot:autostart:get"),
+    set: (enabled) => ipcRenderer.invoke("bitbot:autostart:set", enabled),
+  },
+  daemon: {
+    status: () => ipcRenderer.invoke("bitbot:daemon:status"),
+    ensure: () => ipcRenderer.invoke("bitbot:daemon:ensure"),
+  },
 });
