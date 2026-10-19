@@ -50,8 +50,21 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(PauseRoutine(id~))
     }
   }
-  if low == "cancel scheduled" || low == "cancel reminder" {
+  if low == "cancel scheduled" ||
+    low == "cancel reminder" ||
+    low == "cancel scheduled message" {
     return Some(PauseRoutine(id="routine-1"))
+  }
+  if low == "schedule send" || low.has_prefix("schedule send ") {
+    let prompt = if low.has_prefix("schedule send ") {
+      trimmed[14:].trim().to_owned()
+    } else {
+      "scheduled send"
+    }
+    let p = if prompt != "" { prompt } else { "scheduled send" }
+    return Some(
+      CreateRoutine(id="sched-send-1", cron="0 9 * * *", prompt=p),
+    )
   }
   if low.has_prefix("resume routine ") {
     let id = trimmed[15:].trim().to_owned()
@@ -706,6 +719,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "mute channel" ||
     low == "mute chat" ||
     low == "mute notifications" ||
+    low == "enable notifications" ||
+    low == "disable notifications" ||
     low == "unmute channel" ||
     low == "unmute chat" ||
     low == "do not disturb" ||
@@ -716,16 +731,34 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "focus mode off" ||
     low == "typing indicator" ||
     low == "read receipts" ||
-    low.has_prefix("set status ") {
+    low == "set presence online" ||
+    low == "raise hand" ||
+    low == "lower hand" ||
+    low == "push to talk" ||
+    low == "toggle mute mic" ||
+    low.has_prefix("set status ") ||
+    low.has_prefix("custom status ") ||
+    low.has_prefix("set presence ") {
     let enabled = if low.has_prefix("set status ") {
       let st = trimmed[11:].trim().to_lower()
+      !(st == "away" || st == "dnd" || st == "offline" || st == "busy")
+    } else if low.has_prefix("custom status ") || low.has_prefix("set presence ") {
+      let st = if low.has_prefix("custom status ") {
+        trimmed[14:].trim().to_lower()
+      } else {
+        trimmed[13:].trim().to_lower()
+      }
       !(st == "away" || st == "dnd" || st == "offline" || st == "busy")
     } else {
       low.has_prefix("unmute") ||
       low == "typing indicator" ||
       low == "read receipts" ||
       low == "do not disturb off" ||
-      low == "focus mode off"
+      low == "focus mode off" ||
+      low == "enable notifications" ||
+      low == "set presence online" ||
+      low == "raise hand" ||
+      low == "push to talk"
     }
     let toggle = if low == "do not disturb" ||
       low == "do not disturb on" ||
@@ -797,6 +830,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "list windows" ||
     low == "share screen" ||
     low == "screen share" ||
+    low == "start screen share" ||
+    low == "stop screen share" ||
     low == "stop share screen" ||
     low == "screen share stop" ||
     low.has_prefix("screenshot ") ||
@@ -983,7 +1018,18 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low.has_prefix("block user ") ||
     low.has_prefix("unblock user ") ||
     low == "block user" ||
-    low == "unblock user" {
+    low == "unblock user" ||
+    low == "share invite link" ||
+    low == "revoke invite" ||
+    low == "transfer ownership" ||
+    low == "switch workspace" ||
+    low == "list workspaces" ||
+    low == "create workspace" ||
+    low == "open activity" ||
+    low == "open inbox" ||
+    low == "open mentions" ||
+    low.has_prefix("switch workspace ") ||
+    low.has_prefix("create workspace ") {
     let rest = if low.has_prefix("open members ") {
       trimmed[13:].trim().to_owned()
     } else if low.has_prefix("members panel ") {
@@ -998,7 +1044,16 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       low == "members panel" ||
       low == "show members" ||
       low == "list members" ||
-      low == "members" {
+      low == "members" ||
+      low == "share invite link" ||
+      low == "revoke invite" ||
+      low == "transfer ownership" ||
+      low == "switch workspace" ||
+      low == "list workspaces" ||
+      low == "create workspace" ||
+      low == "open activity" ||
+      low == "open inbox" ||
+      low == "open mentions" {
       ""
     } else if low.has_prefix("invite to channel ") {
       trimmed[18:].trim().to_owned()
@@ -1302,6 +1357,52 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(JournalAppend(date~, event_id~, body~))
     }
   }
+  // CM-0112 product Host durable todo checklist.
+  if low == "list todos" ||
+    low == "todo list" ||
+    low == "open todo" ||
+    low == "todos" ||
+    low == "checklist" ||
+    low == "clear todos" {
+    return Some(TodoWrite(command=low))
+  }
+  if low == "mark as done" ||
+    low == "mark done" ||
+    low.has_prefix("mark done ") ||
+    low.has_prefix("mark as done ") ||
+    low.has_prefix("complete todo ") {
+    let rest = if low.has_prefix("mark as done ") {
+      trimmed[13:].trim().to_owned()
+    } else if low.has_prefix("mark done ") {
+      trimmed[10:].trim().to_owned()
+    } else if low.has_prefix("complete todo ") {
+      trimmed[14:].trim().to_owned()
+    } else {
+      "todo-1"
+    }
+    let id = if rest != "" { rest } else { "todo-1" }
+    return Some(TodoWrite(command=id + "|done|done"))
+  }
+  if low.has_prefix("todo write ") ||
+    low.has_prefix("write todo ") ||
+    low.has_prefix("add todo ") ||
+    low.has_prefix("create todo ") ||
+    low.has_prefix("task create ") {
+    let rest = if low.has_prefix("todo write ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("write todo ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("add todo ") {
+      trimmed[9:].trim().to_owned()
+    } else if low.has_prefix("create todo ") {
+      trimmed[12:].trim().to_owned()
+    } else {
+      trimmed[12:].trim().to_owned()
+    }
+    if rest != "" {
+      return Some(TodoWrite(command=rest))
+    }
+  }
   if low.has_prefix("shared memory put ") || low.has_prefix("share memory ") {
     let rest = if low.has_prefix("shared memory put ") {
       trimmed[18:].to_owned()
@@ -1497,13 +1598,28 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "create channel" ||
     low == "archive channel" ||
     low == "leave channel" ||
+    low == "star channel" ||
+    low == "unstar channel" ||
+    low == "open thread" ||
+    low == "close thread" ||
+    low == "collapse thread" ||
+    low == "reply in thread" ||
+    low == "save for later" ||
+    low == "snooze message" ||
+    low == "translate message" ||
+    low == "search in channel" ||
     low.has_prefix("edit message ") ||
     low.has_prefix("delete message ") ||
     low.has_prefix("forward message ") ||
     low.has_prefix("set topic ") ||
     low.has_prefix("create channel ") ||
     low.has_prefix("archive channel ") ||
-    low.has_prefix("leave channel ") {
+    low.has_prefix("leave channel ") ||
+    low.has_prefix("rename channel ") ||
+    low.has_prefix("topic channel ") ||
+    low.has_prefix("reply in thread ") ||
+    low.has_prefix("search messages ") ||
+    low.has_prefix("open thread ") {
     let body = if low.has_prefix("edit message ") {
       trimmed[14:].trim().to_owned()
     } else if low.has_prefix("delete message ") {
@@ -1518,6 +1634,16 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       "archive channel " + trimmed[16:].trim().to_owned()
     } else if low.has_prefix("leave channel ") {
       "leave channel " + trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("rename channel ") {
+      "rename channel " + trimmed[15:].trim().to_owned()
+    } else if low.has_prefix("topic channel ") {
+      "set topic " + trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("reply in thread ") {
+      trimmed[16:].trim().to_owned()
+    } else if low.has_prefix("search messages ") {
+      "search " + trimmed[16:].trim().to_owned()
+    } else if low.has_prefix("open thread ") {
+      "open thread " + trimmed[12:].trim().to_owned()
     } else {
       low
     }

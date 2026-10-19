@@ -233,6 +233,11 @@ for needle in (
     "open canvas",
     "list models",
     "focus mode on",
+    "todo write ",
+    "list todos",
+    "open thread",
+    "start screen share",
+    "claim inbox",
     "deliver cloud artifact artifact=",
     "teams send tsmoke",
     "thread_ts=",
@@ -403,6 +408,23 @@ p=json.loads(h.get('stdout') or '{}')
 assert p.get('pretend_opened') is not True
 assert 'models' in str(p.get('anchor') or p.get('command') or p.get('entry') or h.get('command') or '')
 print('android list models Host path ok', p.get('mode') or p.get('anchor') or p.get('entry'))
+"
+
+# Product phrasing todo write → durable todo_write Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-todo "todo write ios checklist item" \
+  >/tmp/bitbot-ios-todo.raw
+parse_turn_json /tmp/bitbot-ios-todo.raw >/tmp/bitbot-ios-todo.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-todo.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='todo_write'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='todo_write')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_complete') is not True
+assert (p.get('item_count') or 0) >= 1
+assert os.path.isfile(p.get('path') or '') or os.path.isfile(p.get('store_path') or '')
+print('ios todo write Host path ok', p.get('mode'), p.get('item_count'))
 "
 
 echo "OK: verify_native_shells.sh"

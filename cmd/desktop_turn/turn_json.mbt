@@ -164,6 +164,8 @@ pub(all) enum TurnIntent {
   SharedMemoryPut(scope~ : String, key~ : String, value~ : String)
   SharedMemoryRead(scope~ : String, key~ : String)
   InboundReaction(emoji~ : String, useful~ : Bool)
+  /// CM-0112 Host durable todo checklist (product phrasing → todo_write FFI).
+  TodoWrite(command~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -272,6 +274,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     ConnectGmail => "connect_gmail"
     ConnectOutlook => "connect_outlook"
     JournalAppend(_) => "journal_append"
+    TodoWrite(_) => "todo_write"
     JournalQuery(_) => "journal_query"
     SharedMemoryPut(_) => "shared_memory_put"
     SharedMemoryRead(_) => "shared_memory_read"
@@ -649,6 +652,9 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       low == "connect slack" ||
       low == "setupslack" {
     return SetupSlack
+  }
+  if low == "claim inbox" {
+    return ClaimInbox(local_part="alpha")
   }
   if low.has_prefix("claim inbox ") {
     let part = trimmed[12:].trim().to_owned()
@@ -4194,6 +4200,22 @@ pub fn run_desktop_turn(
         " (CM-0302; pollutes_profile=" +
         (if pollutes { "true" } else { "false" }) +
         ").",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    TodoWrite(command~) => {
+      let effect : DesktopEffect = {
+        kind: "todo_write",
+        command: command,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Todo write planned (CM-0112). Host upserts durable checklist; never invents done.",
         intent,
         ctx~,
         effects=[effect],

@@ -458,6 +458,22 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let focus = run_desktop_turn("focus mode on", turn_id="focus-1")
   assert_true(focus.ok)
   assert_eq(focus.intent, "set_notify")
+  let todo_w = run_desktop_turn("todo write buy milk", turn_id="todo-w-1")
+  assert_true(todo_w.ok)
+  assert_eq(todo_w.intent, "todo_write")
+  assert_eq(todo_w.effects[0].kind, "todo_write")
+  let todo_list = run_desktop_turn("list todos", turn_id="todo-l-1")
+  assert_true(todo_list.ok)
+  assert_eq(todo_list.intent, "todo_write")
+  let claim_bare = run_desktop_turn("claim inbox", turn_id="claim-bare-1")
+  assert_true(claim_bare.ok)
+  assert_eq(claim_bare.intent, "claim_inbox")
+  let thr = run_desktop_turn("open thread", turn_id="thr-1")
+  assert_true(thr.ok)
+  assert_eq(thr.intent, "channel_delivery")
+  let ss = run_desktop_turn("start screen share", turn_id="ss-1")
+  assert_true(ss.ok)
+  assert_eq(ss.intent, "screenshot")
   let sa2 = run_desktop_turn(
     "send to agent asst-alpha :: please review",
     turn_id="sta-1",

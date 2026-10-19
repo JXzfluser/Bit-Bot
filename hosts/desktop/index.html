@@ -493,6 +493,9 @@
         <button type="button" id="del-export" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export bot template</button>
         <button type="button" id="del-load-skill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Load skill</button>
         <button type="button" id="del-list-skills" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List skills</button>
+        <button type="button" id="del-todo-write" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Todo write</button>
+        <button type="button" id="del-todo-list" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List todos</button>
+        <button type="button" id="del-open-thread" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open thread</button>
         <button type="button" id="del-x-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X post draft</button>
         <button type="button" id="del-section" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Section post</button>
         <button type="button" id="del-section-add" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Add section</button>
@@ -3687,6 +3690,15 @@
     });
     document.getElementById("del-list-skills").addEventListener("click", () => {
       runUserTurn("list skills", {});
+    });
+    document.getElementById("del-todo-write").addEventListener("click", () => {
+      runUserTurn("todo write desktop checklist item", { approved: true });
+    });
+    document.getElementById("del-todo-list").addEventListener("click", () => {
+      runUserTurn("list todos", {});
+    });
+    document.getElementById("del-open-thread").addEventListener("click", () => {
+      runUserTurn("open thread", { approved: true });
     });
     document.getElementById("del-x-post").addEventListener("click", () => {
       runUserTurn("x post Bit Bot desktop draft", { approved: true });
