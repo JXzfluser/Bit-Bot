@@ -26,9 +26,24 @@ try {
 }
 const { createSessionStore } = require("./sessions");
 
+let autoUpdater = null;
+try {
+  autoUpdater = require("electron-updater").autoUpdater;
+} catch (_e) {
+  autoUpdater = null;
+}
+
 const REPO_ROOT = process.env.BITBOT_REPO_ROOT
   ? path.resolve(process.env.BITBOT_REPO_ROOT)
   : path.resolve(__dirname, "../..");
+
+/** Last OTA check result — honest residual until feed + packaged app. */
+const otaState = {
+  last_check: null,
+  last_result: null,
+  update_available: false,
+  error: null,
+};
 
 const DESKTOP_ENV_LOCAL = path.join(__dirname, ".env.local");
 
@@ -766,9 +781,78 @@ ipcMain.handle("bitbot:product:status", async () => {
       residual: !(filingIcp || filingAlgo),
     },
     content_moderation: { armed: moderation, residual: !moderation },
-    ota: { feed_configured: otaFeed, residual: !otaFeed },
+    ota: {
+      feed_configured: otaFeed,
+      updater_loaded: Boolean(autoUpdater),
+      packaged: app.isPackaged,
+      last_check: otaState.last_check,
+      last_result: otaState.last_result,
+      update_available: otaState.update_available,
+      error: otaState.error,
+      residual: !(otaFeed && autoUpdater && app.isPackaged),
+    },
     pretend_complete: false,
   };
+});
+
+/** P4 auto-update — real electron-updater against BITBOT_UPDATE_FEED_URL; no pretend. */
+ipcMain.handle("bitbot:ota:check", async () => {
+  const feed = String(process.env.BITBOT_UPDATE_FEED_URL || "").trim();
+  if (!autoUpdater) {
+    otaState.error = "electron-updater not installed";
+    return {
+      ok: false,
+      residual: true,
+      error: otaState.error,
+      pretend_update: false,
+    };
+  }
+  if (!feed) {
+    otaState.error = "BITBOT_UPDATE_FEED_URL not set";
+    return {
+      ok: false,
+      residual: true,
+      error: otaState.error,
+      pretend_update: false,
+    };
+  }
+  if (!app.isPackaged) {
+    otaState.error = "OTA check only in packaged app (npm run dist)";
+    return {
+      ok: false,
+      residual: true,
+      error: otaState.error,
+      pretend_update: false,
+      packaged: false,
+    };
+  }
+  try {
+    autoUpdater.setFeedURL({ provider: "generic", url: feed });
+    autoUpdater.autoDownload = false;
+    otaState.last_check = new Date().toISOString();
+    const result = await autoUpdater.checkForUpdates();
+    const info = result && result.updateInfo ? result.updateInfo : null;
+    otaState.last_result = info
+      ? { version: info.version, path: info.path || null }
+      : null;
+    otaState.update_available = Boolean(info);
+    otaState.error = null;
+    return {
+      ok: true,
+      residual: false,
+      update_available: otaState.update_available,
+      info: otaState.last_result,
+      pretend_update: false,
+    };
+  } catch (err) {
+    otaState.error = String(err && err.message ? err.message : err);
+    return {
+      ok: false,
+      residual: true,
+      error: otaState.error,
+      pretend_update: false,
+    };
+  }
 });
 
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {

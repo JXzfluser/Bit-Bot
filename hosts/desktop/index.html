@@ -542,7 +542,10 @@
             内容审核门 BITBOT_CONTENT_MODERATION=1（拦截违禁词输出）
           </label>
           <label style="font-size:12px;color:var(--muted)">OTA feed URL
-            <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
+              <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" style="flex:1;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <button type="button" id="sec-ota-check" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;white-space:nowrap">查更新</button>
+            </div>
           </label>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button type="button" id="sec-save" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">保存并热加载</button>
@@ -4043,6 +4046,36 @@
           if (secStatus) {
             secStatus.textContent =
               "试连异常 · " + String(e && e.message ? e.message : e);
+          }
+        }
+      });
+    }
+    const secOtaCheck = document.getElementById("sec-ota-check");
+    if (secOtaCheck) {
+      secOtaCheck.addEventListener("click", async () => {
+        const secStatus = document.getElementById("sec-status");
+        if (secStatus) secStatus.textContent = "查 OTA…";
+        try {
+          const r = await window.bitbot.ota.check();
+          if (secStatus) {
+            if (r && r.ok && r.update_available) {
+              secStatus.textContent =
+                "有更新 · " +
+                ((r.info && r.info.version) || "?") +
+                "（不自动假装已升级）";
+            } else if (r && r.ok) {
+              secStatus.textContent = "已是最新 / 无新版本元数据";
+            } else {
+              secStatus.textContent =
+                "OTA residual · " +
+                ((r && r.error) || "unknown") +
+                "（不假装完成）";
+            }
+          }
+        } catch (e) {
+          if (secStatus) {
+            secStatus.textContent =
+              "OTA 异常 · " + String(e && e.message ? e.message : e);
           }
         }
       });

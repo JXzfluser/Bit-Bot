@@ -46,6 +46,34 @@ else
   bad "Desktop pack artifact missing (run npm run dist:linux)"
 fi
 
+# Win/mac pack artifacts — reported honestly when present; required on those hosts.
+if ls "$ROOT"/hosts/desktop/dist/*win*.zip >/dev/null 2>&1 || \
+   ls "$ROOT"/hosts/desktop/dist/*.exe >/dev/null 2>&1 || \
+   [[ -d "$ROOT/hosts/desktop/dist/win-unpacked" ]]; then
+  ok "Desktop Windows pack artifact present (code-sign residual until CSC_* / cert)"
+elif [[ "$(uname -s)" == "MINGW"* || "$(uname -s)" == "MSYS"* || "$(uname -s)" == CYGWIN* ]]; then
+  bad "Desktop Windows pack missing on Windows host (npm run dist:win)"
+else
+  note "WARN Windows pack not in tree (npm run dist:win; sign residual)"
+fi
+if ls "$ROOT"/hosts/desktop/dist/*.dmg >/dev/null 2>&1 || \
+   [[ -d "$ROOT/hosts/desktop/dist/mac" ]] || \
+   [[ -d "$ROOT/hosts/desktop/dist/mac-arm64" ]]; then
+  ok "Desktop macOS pack artifact present"
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+  bad "Desktop macOS pack missing on Darwin (npm run dist:mac + notarize)"
+else
+  note "WARN macOS dmg/notarize residual (needs Darwin + APPLE_* creds)"
+fi
+
+# OTA updater module present (feed URL still a residual until configured)
+if [[ -f "$ROOT/hosts/desktop/node_modules/electron-updater/package.json" ]] || \
+   grep -q '"electron-updater"' "$ROOT/hosts/desktop/package.json" 2>/dev/null; then
+  ok "Desktop electron-updater wired"
+else
+  bad "Desktop electron-updater missing"
+fi
+
 # P0 real model — require configured key AND successful live probe to DeepSeek (or configured base)
 KEY="${BITBOT_LLM_API_KEY:-}"
 BASE="${BITBOT_LLM_BASE_URL:-https://api.deepseek.com/v1}"
