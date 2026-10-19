@@ -1,0 +1,7 @@
+# Bit Bot CN content moderation blocklist (UTF-8, one term per line or comma-separated).
+# Loaded when BITBOT_CONTENT_MODERATION=1. Not a substitute for regulatory review.
+制作炸弹
+买卖枪支
+儿童色情
+恐怖袭击
+制毒配方

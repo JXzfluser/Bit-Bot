@@ -137,6 +137,19 @@ if [[ "$cn_ok" -eq 0 ]]; then
   bad "真渠道: no non-stub 钉钉/飞书/企微 live gate"
 fi
 
+# P4 compliance artifacts (armed at runtime via Settings; file must exist)
+if [[ -f "$ROOT/data/compliance/content-blocklist.txt" ]]; then
+  ok "Content moderation blocklist file present"
+else
+  bad "Content moderation blocklist missing (data/compliance/content-blocklist.txt)"
+fi
+if [[ -f "$ROOT/data/routines/daemon-status.json" ]] && \
+   grep -q '"long_lived": true' "$ROOT/data/routines/daemon-status.json" 2>/dev/null; then
+  ok "Routine long-lived daemon armed (P3)"
+else
+  note "WARN P3 long-lived daemon not active in this session (Desktop autostart / --long-lived)"
+fi
+
 # Mobile APK residual honesty
 if ls "$ROOT"/hosts/android/BitBotHost/app/build/outputs/apk/*/debug/*.apk >/dev/null 2>&1; then
   ok "Android CN flavor debug APKs built (device/store residual may remain)"

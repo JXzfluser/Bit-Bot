@@ -5174,12 +5174,37 @@ function createHostFfi(repoRoot) {
       passed: true,
       hits: [],
       residual: process.env.BITBOT_CONTENT_MODERATION !== "1",
+      blocklist_source: null,
     };
     if (ok && moderation.armed) {
-      const blocklist = String(
-        process.env.BITBOT_CONTENT_BLOCKLIST ||
-          "制作炸弹,买卖枪支,儿童色情",
-      )
+      let blocklistRaw = String(process.env.BITBOT_CONTENT_BLOCKLIST || "").trim();
+      let blocklistSource = blocklistRaw ? "env:BITBOT_CONTENT_BLOCKLIST" : null;
+      if (!blocklistRaw) {
+        const blPath = path.join(
+          REPO_ROOT,
+          "data",
+          "compliance",
+          "content-blocklist.txt",
+        );
+        try {
+          if (fs.existsSync(blPath)) {
+            blocklistRaw = fs
+              .readFileSync(blPath, "utf8")
+              .split(/\r?\n/)
+              .map((l) => l.replace(/#.*$/, "").trim())
+              .filter(Boolean)
+              .join(",");
+            blocklistSource = blPath;
+          }
+        } catch (_) {
+          /* fall through */
+        }
+      }
+      if (!blocklistRaw) {
+        blocklistRaw = "制作炸弹,买卖枪支,儿童色情";
+        blocklistSource = "builtin_default";
+      }
+      const blocklist = blocklistRaw
         .split(/[,，]/)
         .map((s) => s.trim())
         .filter(Boolean);
@@ -5192,8 +5217,12 @@ function createHostFfi(repoRoot) {
           passed: false,
           hits,
           residual: false,
+          blocklist_source: blocklistSource,
         };
         text = "";
+      } else {
+        moderation.blocklist_source = blocklistSource;
+        moderation.residual = false;
       }
     }
 
