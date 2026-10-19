@@ -29,6 +29,42 @@ const { createSessionStore } = require("./sessions");
 const REPO_ROOT = process.env.BITBOT_REPO_ROOT
   ? path.resolve(process.env.BITBOT_REPO_ROOT)
   : path.resolve(__dirname, "../..");
+
+/** Load hosts/desktop/.env.local then repo .env.local (never commit secrets). */
+function loadEnvLocalFiles() {
+  const candidates = [
+    path.join(__dirname, ".env.local"),
+    path.join(REPO_ROOT, ".env.local"),
+  ];
+  for (const file of candidates) {
+    if (!fs.existsSync(file)) continue;
+    try {
+      const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        const eq = t.indexOf("=");
+        if (eq <= 0) continue;
+        const k = t.slice(0, eq).trim();
+        let v = t.slice(eq + 1).trim();
+        if (
+          (v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'"))
+        ) {
+          v = v.slice(1, -1);
+        }
+        if (k && process.env[k] === undefined) process.env[k] = v;
+      }
+      process.stdout.write(`[desktop] loaded env file ${file}\n`);
+    } catch (err) {
+      process.stderr.write(
+        `[desktop] env load failed ${file}: ${err && err.message ? err.message : err}\n`,
+      );
+    }
+  }
+}
+loadEnvLocalFiles();
+
 const runner = createTurnRunner(REPO_ROOT);
 const sessions = createSessionStore(REPO_ROOT);
 const ffi = createHostFfi(REPO_ROOT);

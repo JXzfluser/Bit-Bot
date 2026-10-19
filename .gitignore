@@ -49,3 +49,6 @@ agent-tools/
 /uploads/
 data/voice/
 h3-cross-agent-shared.txt
+
+.env.local
+**/.env.local

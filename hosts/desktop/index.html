@@ -19,20 +19,26 @@
   body {
     margin: 0;
     min-height: 100vh;
-    font: 15px/1.45 "IBM Plex Sans", "Segoe UI", sans-serif;
+    font: 15px/1.45 "Source Han Sans SC", "Noto Sans SC", "IBM Plex Sans", sans-serif;
     color: var(--ink);
-    background:
+    background-color: var(--bg0);
+    background-image:
       radial-gradient(1200px 600px at 10% -10%, #1a3a2c 0%, transparent 55%),
       radial-gradient(900px 500px at 100% 0%, #1e2a22 0%, transparent 50%),
       linear-gradient(165deg, var(--bg0), var(--bg1));
     display: grid;
-    grid-template-columns: 220px 1fr 240px;
+    /* Grok-style default: sessions + chat only; tools rail opt-in */
+    grid-template-columns: 260px 1fr 0fr;
     grid-template-rows: auto 1fr auto;
     grid-template-areas:
       "header header header"
       "agents main machines"
       "agents composer machines";
     min-height: 100vh;
+    transition: grid-template-columns 0.25s ease;
+  }
+  body.tools-open {
+    grid-template-columns: 260px 1fr 280px;
   }
   header {
     grid-area: header;
@@ -40,13 +46,89 @@
     border-bottom: 1px solid var(--line);
   }
   header .brand {
-    font: 700 28px/1.1 "IBM Plex Serif", Georgia, serif;
+    font: 700 32px/1.05 "Source Han Serif SC", "Noto Serif SC", "IBM Plex Serif", Georgia, serif;
     letter-spacing: -0.02em;
   }
   header .sub {
     margin-top: 6px;
     color: var(--muted);
     font-size: 13px;
+  }
+  #header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  #header-actions button {
+    margin-top: 4px;
+    background: #1a2420;
+    color: #b7e0c8;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #header-actions button.active {
+    border-color: var(--accent);
+    color: #e7f0ea;
+  }
+  #agents details.lab {
+    margin-top: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #0c1410;
+  }
+  #agents details.lab > summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    list-style: none;
+  }
+  #agents details.lab > summary::-webkit-details-marker { display: none; }
+  #welcome {
+    margin: auto;
+    max-width: 420px;
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+  }
+  #welcome .w-brand {
+    font: 700 40px/1.1 "Source Han Serif SC", "Noto Serif SC", Georgia, serif;
+    color: var(--ink);
+    letter-spacing: -0.03em;
+  }
+  #welcome .w-line {
+    margin-top: 12px;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  #welcome .w-hint {
+    margin-top: 18px;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+  #machines {
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  body.tools-open #machines {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #banner.collapsed {
+    max-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    opacity: 0;
   }
   #agents {
     grid-area: agents;
@@ -61,6 +143,7 @@
     background: var(--side);
     padding: 14px 12px;
     overflow: auto;
+    /* visibility toggled via body.tools-open (see rules above) */
   }
   .panel-title {
     font-size: 11px;
@@ -220,7 +303,9 @@
     white-space: pre-wrap;
     max-height: 120px;
     overflow: auto;
+    display: none;
   }
+  body.debug-json #json-out { display: block; }
   #approval {
     display: none;
     margin: 0 16px 8px;
@@ -310,9 +395,12 @@
   <header style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
     <div>
       <div class="brand">Bit Bot</div>
-      <div class="sub">Desktop · MoonBit 内核 · DeepSeek / BITBOT_LLM_* · 托盘 · <span id="hotkey-hint">Ctrl+Shift+Space</span></div>
+      <div class="sub">国产多端助手 · DeepSeek 大脑 · <span id="hotkey-hint">Ctrl+Shift+Space</span> 呼出</div>
     </div>
-    <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton" style="margin-top:4px;background:#1a2420;color:#b7e0c8;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-weight:600;cursor:pointer">Account</button>
+    <div id="header-actions">
+      <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板">能力</button>
+      <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton">Account</button>
+    </div>
   </header>
   <aside id="agents">
     <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -320,37 +408,39 @@
       <button type="button" id="sess-new" title="新对话" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px">新建</button>
     </div>
     <div id="session-list" aria-label="Chat sessions"></div>
-    <div class="panel-title" style="margin-top:14px">Agents</div>
-    <div class="agent-item active" id="agent-bit" data-agent-id="agent-bit" style="cursor:pointer">
+    <div class="agent-item active" id="agent-bit" data-agent-id="agent-bit" style="cursor:pointer;margin-top:12px">
       <div class="name">Bit Bot</div>
-      <div class="meta">MoonBit · llm_chat · click for info</div>
+      <div class="meta">MoonBit · llm_chat</div>
     </div>
-    <div class="agent-item" id="agents-host-panel">
-      <div class="name">Sidebar agents</div>
-      <div class="meta" id="agents-meta">list · hide (CM-1906/1907)</div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="ag-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List agents</button>
-        <button type="button" id="ag-hide" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Hide agent research</button>
+    <details class="lab" id="agents-lab">
+      <summary>高级 · Agents / Teammates</summary>
+      <div class="agent-item" id="agents-host-panel" style="margin-top:8px">
+        <div class="name">Sidebar agents</div>
+        <div class="meta" id="agents-meta">list · hide (CM-1906/1907)</div>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <button type="button" id="ag-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List agents</button>
+          <button type="button" id="ag-hide" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Hide agent research</button>
+        </div>
       </div>
-    </div>
-    <div class="agent-item" id="teammates-panel">
-      <div class="name">Teammates</div>
-      <div class="meta" id="teammates-meta">Host durable store</div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="tm-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create teammate</button>
-        <button type="button" id="tm-members" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Members panel</button>
-        <button type="button" id="tm-members-group" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Open members group</button>
-        <button type="button" id="tm-room" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Room turn</button>
-        <button type="button" id="tm-room-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Post to room</button>
-        <button type="button" id="tm-room-join" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Join room</button>
-        <button type="button" id="tm-list-members" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List members</button>
-        <button type="button" id="tm-list-channels" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List channels</button>
-        <button type="button" id="tm-open-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open canvas</button>
-        <button type="button" id="tm-list-models" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List models</button>
-        <button type="button" id="tm-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
-        <button type="button" id="tm-subagent" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
+      <div class="agent-item" id="teammates-panel">
+        <div class="name">Teammates</div>
+        <div class="meta" id="teammates-meta">Host durable store</div>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <button type="button" id="tm-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create teammate</button>
+          <button type="button" id="tm-members" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Members panel</button>
+          <button type="button" id="tm-members-group" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Open members group</button>
+          <button type="button" id="tm-room" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Room turn</button>
+          <button type="button" id="tm-room-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Post to room</button>
+          <button type="button" id="tm-room-join" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Join room</button>
+          <button type="button" id="tm-list-members" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List members</button>
+          <button type="button" id="tm-list-channels" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List channels</button>
+          <button type="button" id="tm-open-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open canvas</button>
+          <button type="button" id="tm-list-models" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List models</button>
+          <button type="button" id="tm-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
+          <button type="button" id="tm-subagent" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
+        </div>
       </div>
-    </div>
+    </details>
   </aside>
   <div id="main">
     <pre id="banner">booting MoonBit…</pre>
@@ -396,7 +486,13 @@
         </div>
       </div>
     </div>
-    <div id="log"></div>
+    <div id="log">
+      <div id="welcome">
+        <div class="w-brand">Bit Bot</div>
+        <div class="w-line">对标 Grok 的国产桌面助手。<br/>对话经 MoonBit 内核 → DeepSeek Host。</div>
+        <div class="w-hint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div>
+      </div>
+    </div>
   </div>
   <aside id="machines">
     <div class="panel-title">Machines</div>
@@ -409,6 +505,16 @@
     </div>
     <div id="machine-list">
       <div class="machine-item"><div class="meta">Ask ListMachines to refresh</div></div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">国内渠道</div>
+    <div class="machine-item">
+      <div class="name">钉钉 / 飞书 / 企微</div>
+      <div class="meta" id="cn-channels-meta">BITBOT_*_POST=1 + 凭证 → live；否则 draft</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="cn-dingtalk" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">发钉钉</button>
+        <button type="button" id="cn-feishu" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">发飞书</button>
+        <button type="button" id="cn-wecom" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发企微</button>
+      </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Connectors</div>
     <div class="machine-item">
@@ -661,9 +767,9 @@
     </div>
   </aside>
   <form id="composer">
-    <pre id="json-out">turn JSON (v:1) will appear here</pre>
+    <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
     <div class="row">
-      <input id="text" type="text" placeholder="ListMachines · remember k=v · recall · shell …" autocomplete="off" />
+      <input id="text" type="text" placeholder="给 Bit Bot 发消息…" autocomplete="off" autofocus />
       <button id="send" type="submit">发送</button>
     </div>
   </form>
@@ -1263,7 +1369,13 @@
       if (!got || !got.ok || !got.session) return;
       activeSessionId = got.session.id;
       log.innerHTML = "";
-      for (const m of got.session.messages || []) {
+      const msgs = got.session.messages || [];
+      if (!msgs.length) {
+        log.innerHTML =
+          '<div id="welcome"><div class="w-brand">Bit Bot</div><div class="w-line">对标 Grok 的国产桌面助手。<br/>对话经 MoonBit 内核 → DeepSeek Host。</div><div class="w-hint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div></div>';
+        return;
+      }
+      for (const m of msgs) {
         if (!m || !m.text) continue;
         addMsg(m.role === "user" ? "user" : "assistant", m.text);
       }
@@ -1275,7 +1387,13 @@
       renderSessionList(list);
     }
 
+    function clearWelcome() {
+      const w = document.getElementById("welcome");
+      if (w && w.parentNode) w.parentNode.removeChild(w);
+    }
+
     async function runUserTurn(text, opts) {
+      clearWelcome();
       addMsg("user", text + (opts && opts.approved ? " [approved]" : ""));
       sendBtn.disabled = true;
       streamEl = null;
@@ -3654,13 +3772,54 @@
             const created = await window.bitbot.sessions.create("新对话");
             if (created && created.ok) {
               activeSessionId = created.session.id;
-              log.innerHTML = "";
+              log.innerHTML =
+                '<div id="welcome"><div class="w-brand">Bit Bot</div><div class="w-line">新对话已创建。</div><div class="w-hint">输入消息开始</div></div>';
               await refreshSessions();
             }
           });
         }
+        const toolsBtn = document.getElementById("tools-toggle-btn");
+        if (toolsBtn) {
+          toolsBtn.addEventListener("click", () => {
+            document.body.classList.toggle("tools-open");
+            toolsBtn.classList.toggle(
+              "active",
+              document.body.classList.contains("tools-open"),
+            );
+          });
+        }
+        document.addEventListener("keydown", (ev) => {
+          if (ev.altKey && (ev.key === "d" || ev.key === "D")) {
+            document.body.classList.toggle("debug-json");
+          }
+        });
+        const cnDing = document.getElementById("cn-dingtalk");
+        if (cnDing) {
+          cnDing.addEventListener("click", () => {
+            runUserTurn("reply via dingtalk:cid-desktop :: Bit Bot 钉钉消息", {
+              approved: true,
+            });
+          });
+        }
+        const cnFeishu = document.getElementById("cn-feishu");
+        if (cnFeishu) {
+          cnFeishu.addEventListener("click", () => {
+            runUserTurn("reply via feishu:oc_desktop :: Bit Bot 飞书消息", {
+              approved: true,
+            });
+          });
+        }
+        const cnWecom = document.getElementById("cn-wecom");
+        if (cnWecom) {
+          cnWecom.addEventListener("click", () => {
+            runUserTurn("reply via wecom:BitBotUser :: Bit Bot 企微消息", {
+              approved: true,
+            });
+          });
+        }
         await refreshSessions();
         await loadActiveSessionTranscript();
+        if (log.querySelector(".msg")) clearWelcome();
         const r = await window.bitbot.boot();
         banner.className = r.ok ? "ok" : "err";
         let deskExtra = "sessions · tray · hotkey · llm_chat stream";
@@ -3684,6 +3843,7 @@
         banner.textContent = (r.banner || JSON.stringify(r, null, 2)) +
           "\n\n[host] target=" + (r.target || "?") + " · " + (r.note || "") +
           "\n[desktop] " + deskExtra;
+        setTimeout(() => banner.classList.add("collapsed"), 2400);
         const lm = await window.bitbot.turn("ListMachines", { skipSession: true });
         if (lm && lm.machines) renderMachines(lm.machines);
       } catch (e) {
