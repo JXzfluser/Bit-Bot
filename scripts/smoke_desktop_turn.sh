@@ -735,6 +735,10 @@ assert 'list_skills' in ios and 'list_skills' in android
 assert '"list_skills"' in shared
 assert 'x_post' in ios and 'x_post' in android
 assert '"x_post"' in shared
+# Native STU residualSuffix must append *all* open chips (JS parity), not first-only.
+assert 'parts.append' in ios or 'parts.append("/"' in ios or 'parts.joined()' in ios
+assert 'parts.add' in android and 'parts.joinToString' in android
+assert 'append *all* open residual' in ios and 'append *all* open residual' in android
 for needle in (
   'gh_pr_create_residual',
   'true_device_os_dialog_residual',

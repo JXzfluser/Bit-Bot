@@ -62,6 +62,7 @@ enum SendToUserSurface {
   }
 
   private static func residualSuffix(_ p: [String: Any]) -> String {
+    // Mirror hosts/shared/send_to_user_surface.js: append *all* open residual chips.
     let keys = [
       "live_mail_residual", "live_x_residual", "live_x_post_residual", "live_job_residual",
       "live_finance_residual", "live_paid_residual", "live_calendar_residual",
@@ -82,41 +83,55 @@ enum SendToUserSurface {
       "voice_stt_residual", "voice_tts_residual", "voice_end_match_residual",
       "cross_machine_copy_residual",
     ]
-    if let hit = keys.first(where: { (p[$0] as? Bool) == true }) {
-      let base = "/" + hit
-      if (p["widget_degraded"] as? Bool) == true {
-        return base + "/widget_degraded"
-      }
-      return base
+    var parts: [String] = []
+    for k in keys {
+      if (p[k] as? Bool) == true { parts.append("/" + k) }
     }
-    if (p["widget_degraded"] as? Bool) == true {
-      return "/widget_degraded"
+    if (p["widget_degraded"] as? Bool) == true { parts.append("/widget_degraded") }
+    let oc = p["outcome"] as? [String: Any] ?? [:]
+    if (oc["live_paid_residual"] as? Bool) == true,
+       !parts.contains("/live_paid_residual") {
+      parts.append("/live_paid_residual")
     }
-    if let oc = p["outcome"] as? [String: Any] {
-      if (oc["live_paid_residual"] as? Bool) == true { return "/live_paid_residual" }
-      if (oc["ocr_residual"] as? Bool) == true { return "/ocr_residual" }
+    if (oc["ocr_residual"] as? Bool) == true, !parts.contains("/ocr_residual") {
+      parts.append("/ocr_residual")
     }
-    if let g = p["gui"] as? [String: Any] {
-      if (g["os_window_automation_residual"] as? Bool) == true {
-        return "/os_window_automation_residual"
-      }
-      if let vp = g["vision_plan"] as? [String: Any],
-         (vp["ocr_residual"] as? Bool) == true {
-        return "/ocr_residual"
-      }
+    if (oc["os_window_automation_residual"] as? Bool) == true,
+       !parts.contains("/os_window_automation_residual") {
+      parts.append("/os_window_automation_residual")
+    }
+    if (oc["credential_browser_fill_residual"] as? Bool) == true,
+       !parts.contains("/credential_browser_fill_residual") {
+      parts.append("/credential_browser_fill_residual")
+    }
+    if (oc["signin_fill_residual"] as? Bool) == true,
+       !parts.contains("/signin_fill_residual") {
+      parts.append("/signin_fill_residual")
+    }
+    let g = p["gui"] as? [String: Any] ?? [:]
+    if (g["os_window_automation_residual"] as? Bool) == true,
+       !parts.contains("/os_window_automation_residual") {
+      parts.append("/os_window_automation_residual")
+    }
+    if let vp = g["vision_plan"] as? [String: Any],
+       (vp["ocr_residual"] as? Bool) == true,
+       !parts.contains("/ocr_residual") {
+      parts.append("/ocr_residual")
     }
     let rp = p["remote_pr"] as? [String: Any] ?? [:]
     let mode = String(describing: rp["mode"] ?? p["mode"] ?? "")
-    if (p["remote_pr_residual"] as? Bool) == true {
-      return "/remote_pr_residual"
+    if (p["remote_pr_residual"] as? Bool) != true,
+       (rp["real_create_gated"] as? Bool) == true,
+       !parts.contains("/real_create_gated") {
+      parts.append("/real_create_gated")
     }
-    if (rp["real_create_gated"] as? Bool) == true {
-      return "/real_create_gated"
+    if (p["gh_pr_create_residual"] as? Bool) != true,
+       mode.contains("gh_pr_create_residual"),
+       !parts.contains("/gh_pr_create_residual"),
+       !parts.contains("/remote_pr_residual") {
+      parts.append("/gh_pr_create_residual")
     }
-    if mode.contains("gh_pr_create_residual") {
-      return "/gh_pr_create_residual"
-    }
-    return ""
+    return parts.joined()
   }
 
   private static func attachmentRole(kind: String, filePath: String) -> String {

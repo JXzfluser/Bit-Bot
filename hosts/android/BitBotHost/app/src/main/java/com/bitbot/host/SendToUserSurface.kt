@@ -65,6 +65,7 @@ object SendToUserSurface {
   }
 
   private fun residualSuffix(p: JSONObject): String {
+    // Mirror hosts/shared/send_to_user_surface.js: append *all* open residual chips.
     val keys = listOf(
       "live_mail_residual", "live_x_residual", "live_x_post_residual", "live_job_residual",
       "live_finance_residual", "live_paid_residual", "live_calendar_residual",
@@ -85,38 +86,70 @@ object SendToUserSurface {
       "voice_stt_residual", "voice_tts_residual", "voice_end_match_residual",
       "cross_machine_copy_residual",
     )
+    val parts = mutableListOf<String>()
     for (k in keys) {
-      if (p.optBoolean(k, false)) {
-        val base = "/$k"
-        return if (p.optBoolean("widget_degraded", false)) "$base/widget_degraded" else base
-      }
+      if (p.optBoolean(k, false)) parts.add("/$k")
     }
-    if (p.optBoolean("widget_degraded", false)) return "/widget_degraded"
+    if (p.optBoolean("widget_degraded", false)) parts.add("/widget_degraded")
     val oc = p.optJSONObject("outcome")
     if (oc != null) {
-      if (oc.optBoolean("live_paid_residual", false)) return "/live_paid_residual"
-      if (oc.optBoolean("ocr_residual", false)) return "/ocr_residual"
+      if (oc.optBoolean("live_paid_residual", false) && !parts.contains("/live_paid_residual")) {
+        parts.add("/live_paid_residual")
+      }
+      if (oc.optBoolean("ocr_residual", false) && !parts.contains("/ocr_residual")) {
+        parts.add("/ocr_residual")
+      }
+      if (
+        oc.optBoolean("os_window_automation_residual", false) &&
+        !parts.contains("/os_window_automation_residual")
+      ) {
+        parts.add("/os_window_automation_residual")
+      }
+      if (
+        oc.optBoolean("credential_browser_fill_residual", false) &&
+        !parts.contains("/credential_browser_fill_residual")
+      ) {
+        parts.add("/credential_browser_fill_residual")
+      }
+      if (
+        oc.optBoolean("signin_fill_residual", false) &&
+        !parts.contains("/signin_fill_residual")
+      ) {
+        parts.add("/signin_fill_residual")
+      }
     }
     val g = p.optJSONObject("gui")
     if (g != null) {
-      if (g.optBoolean("os_window_automation_residual", false)) {
-        return "/os_window_automation_residual"
+      if (
+        g.optBoolean("os_window_automation_residual", false) &&
+        !parts.contains("/os_window_automation_residual")
+      ) {
+        parts.add("/os_window_automation_residual")
       }
       val vp = g.optJSONObject("vision_plan")
-      if (vp != null && vp.optBoolean("ocr_residual", false)) {
-        return "/ocr_residual"
+      if (vp != null && vp.optBoolean("ocr_residual", false) && !parts.contains("/ocr_residual")) {
+        parts.add("/ocr_residual")
       }
     }
-    if (p.optBoolean("remote_pr_residual", false)) return "/remote_pr_residual"
     val rp = p.optJSONObject("remote_pr")
     val mode = (rp?.optString("mode") ?: p.optString("mode") ?: "")
-    if (rp != null && rp.optBoolean("real_create_gated", false)) {
-      return "/real_create_gated"
+    if (
+      !p.optBoolean("remote_pr_residual", false) &&
+      rp != null &&
+      rp.optBoolean("real_create_gated", false) &&
+      !parts.contains("/real_create_gated")
+    ) {
+      parts.add("/real_create_gated")
     }
-    if (mode.contains("gh_pr_create_residual")) {
-      return "/gh_pr_create_residual"
+    if (
+      !p.optBoolean("gh_pr_create_residual", false) &&
+      mode.contains("gh_pr_create_residual") &&
+      !parts.contains("/gh_pr_create_residual") &&
+      !parts.contains("/remote_pr_residual")
+    ) {
+      parts.add("/gh_pr_create_residual")
     }
-    return ""
+    return parts.joinToString("")
   }
 
   private fun attachmentRole(kind: String, filePath: String): String {
