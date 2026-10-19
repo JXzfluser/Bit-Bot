@@ -103,6 +103,10 @@ function loadEnvLocalFiles(opts = {}) {
   }
 }
 loadEnvLocalFiles();
+// Product default: content moderation armed unless explicitly disabled.
+if (process.env.BITBOT_CONTENT_MODERATION === undefined) {
+  process.env.BITBOT_CONTENT_MODERATION = "1";
+}
 
 const ALLOWED_SECRET_KEYS = new Set([
   "BITBOT_LLM_API_KEY",

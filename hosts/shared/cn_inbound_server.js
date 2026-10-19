@@ -96,22 +96,26 @@ function extractWecomText(payload) {
   return "";
 }
 
-function postJson(urlStr, bodyObj) {
+function postJson(urlStr, bodyObj, extraHeaders) {
   return new Promise((resolve) => {
     try {
       const u = new URL(urlStr);
       const body = JSON.stringify(bodyObj);
       const lib = u.protocol === "https:" ? https : http;
+      const headers = Object.assign(
+        {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        extraHeaders && typeof extraHeaders === "object" ? extraHeaders : {},
+      );
       const req = lib.request(
         {
           hostname: u.hostname,
           port: u.port || (u.protocol === "https:" ? 443 : 80),
           path: u.pathname + u.search,
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(body),
-          },
+          headers,
           timeout: 15000,
         },
         (res) => {
@@ -135,6 +139,102 @@ function postJson(urlStr, bodyObj) {
       resolve({ ok: false, error: String(err && err.message ? err.message : err) });
     }
   });
+}
+
+/** Prefer last assistant message from Host turn (never invent content). */
+function assistantTextFromTurn(turnResult) {
+  if (!turnResult || typeof turnResult !== "object") return "";
+  if (Array.isArray(turnResult.messages)) {
+    for (let i = turnResult.messages.length - 1; i >= 0; i--) {
+      const m = turnResult.messages[i];
+      if (m && m.role === "assistant" && m.text) {
+        return String(m.text).slice(0, 1500);
+      }
+    }
+  }
+  if (turnResult.stdout) return String(turnResult.stdout).slice(0, 1500);
+  return "";
+}
+
+async function maybeReplyCnChannel(channel, turnResult, meta) {
+  if (!turnResult || !turnResult.ok) {
+    return { attempted: false, ok: false, residual: "turn_not_ok" };
+  }
+  const text = assistantTextFromTurn(turnResult) || "Bit Bot 已收到";
+  if (channel === "dingtalk") {
+    const webhook =
+      (meta && meta.sessionWebhook) ||
+      String(process.env.BITBOT_DINGTALK_WEBHOOK || "").trim();
+    if (process.env.BITBOT_DINGTALK_POST !== "1" || !webhook) {
+      return {
+        attempted: false,
+        ok: false,
+        residual: "dingtalk_draft — POST!=1 or missing webhook",
+      };
+    }
+    const reply = await postJson(webhook, {
+      msgtype: "text",
+      text: { content: text },
+    });
+    return { attempted: true, ok: Boolean(reply && reply.ok), reply, pretend_live: false };
+  }
+  if (channel === "feishu") {
+    const token = String(process.env.BITBOT_FEISHU_TOKEN || "").trim();
+    const chatId =
+      (meta && meta.chat_id) ||
+      String(process.env.BITBOT_FEISHU_CHAT_ID || "").trim();
+    if (process.env.BITBOT_FEISHU_POST !== "1" || !token || !chatId) {
+      return {
+        attempted: false,
+        ok: false,
+        residual: "feishu_draft — POST!=1 or missing token/chat_id",
+      };
+    }
+    const base = (
+      process.env.BITBOT_FEISHU_API_BASE ||
+      "https://open.feishu.cn/open-apis"
+    ).replace(/\/$/, "");
+    const reply = await postJson(
+      `${base}/im/v1/messages?receive_id_type=chat_id`,
+      {
+        receive_id: chatId,
+        msg_type: "text",
+        content: JSON.stringify({ text }),
+      },
+      { Authorization: `Bearer ${token}` },
+    );
+    return { attempted: true, ok: Boolean(reply && reply.ok), reply, pretend_live: false };
+  }
+  if (channel === "wecom") {
+    const token = String(process.env.BITBOT_WECOM_TOKEN || "").trim();
+    const to =
+      (meta && (meta.from || meta.touser)) ||
+      String(process.env.BITBOT_WECOM_TOUSER || "").trim();
+    const agentId = String(process.env.BITBOT_WECOM_AGENT_ID || "").trim();
+    if (process.env.BITBOT_WECOM_POST !== "1" || !token || !to) {
+      return {
+        attempted: false,
+        ok: false,
+        residual: "wecom_draft — POST!=1 or missing token/touser",
+      };
+    }
+    const base = (
+      process.env.BITBOT_WECOM_API_BASE ||
+      "https://qyapi.weixin.qq.com/cgi-bin"
+    ).replace(/\/$/, "");
+    const payload = {
+      msgtype: "text",
+      agentid: agentId ? Number(agentId) || agentId : undefined,
+      text: { content: text },
+      touser: to,
+    };
+    const reply = await postJson(
+      `${base}/message/send?access_token=${encodeURIComponent(token)}`,
+      payload,
+    );
+    return { attempted: true, ok: Boolean(reply && reply.ok), reply, pretend_live: false };
+  }
+  return { attempted: false, ok: false, residual: "unknown_channel" };
 }
 
 /**
@@ -245,33 +345,16 @@ function createCnInboundServer(opts = {}) {
       conversationId: payload.conversationId,
       sessionWebhook: payload.sessionWebhook,
     });
-    // Best-effort session reply when live post armed and sessionWebhook present
-    let reply = null;
-    if (
-      process.env.BITBOT_DINGTALK_POST === "1" &&
-      payload.sessionWebhook &&
-      enq.turnResult &&
-      enq.turnResult.ok
-    ) {
-      const replyText =
-        (enq.turnResult.stdout && String(enq.turnResult.stdout).slice(0, 1500)) ||
-        (Array.isArray(enq.turnResult.messages) &&
-          enq.turnResult.messages
-            .map((m) => m && m.text)
-            .filter(Boolean)
-            .join("\n")
-            .slice(0, 1500)) ||
-        "Bit Bot 已收到";
-      reply = await postJson(payload.sessionWebhook, {
-        msgtype: "text",
-        text: { content: replyText },
-      });
-    }
+    // Live outbound reply when POST armed (sessionWebhook or BITBOT_DINGTALK_WEBHOOK).
+    const reply = await maybeReplyCnChannel("dingtalk", enq.turnResult, {
+      sessionWebhook: payload.sessionWebhook,
+    });
     appendJsonl(path.join(logDir, "events.jsonl"), {
       channel: "dingtalk",
       text_prefix: text.slice(0, 120),
       enqueue: true,
       reply,
+      pretend_live: false,
       at: new Date().toISOString(),
       raw_bytes: raw.length,
     });
@@ -290,16 +373,28 @@ function createCnInboundServer(opts = {}) {
       return;
     }
     const text = extractFeishuText(payload);
-    await enqueueTurn("feishu", text, {
+    const chatId =
+      (payload &&
+        payload.event &&
+        payload.event.message &&
+        (payload.event.message.chat_id || payload.event.message.chatId)) ||
+      null;
+    const enq = await enqueueTurn("feishu", text, {
       event_type: payload && payload.header ? payload.header.event_type : null,
       message_id:
         payload && payload.event && payload.event.message
           ? payload.event.message.message_id
           : null,
+      chat_id: chatId,
+    });
+    const reply = await maybeReplyCnChannel("feishu", enq.turnResult, {
+      chat_id: chatId,
     });
     appendJsonl(path.join(logDir, "events.jsonl"), {
       channel: "feishu",
       text_prefix: text.slice(0, 120),
+      reply,
+      pretend_live: false,
       at: new Date().toISOString(),
       raw_bytes: raw.length,
     });
@@ -316,13 +411,20 @@ function createCnInboundServer(opts = {}) {
       return;
     }
     const text = extractWecomText(payload || {});
-    await enqueueTurn("wecom", text, {
+    const from = payload && (payload.FromUserName || payload.touser);
+    const enq = await enqueueTurn("wecom", text, {
       msgId: payload && (payload.MsgId || payload.msgid),
-      from: payload && (payload.FromUserName || payload.touser),
+      from,
+    });
+    const reply = await maybeReplyCnChannel("wecom", enq.turnResult, {
+      from,
+      touser: from,
     });
     appendJsonl(path.join(logDir, "events.jsonl"), {
       channel: "wecom",
       text_prefix: text.slice(0, 120),
+      reply,
+      pretend_live: false,
       at: new Date().toISOString(),
       raw_bytes: raw.length,
     });

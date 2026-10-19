@@ -231,6 +231,18 @@ if [[ -f "$ROOT/data/compliance/content-blocklist.txt" ]]; then
 else
   bad "Content moderation blocklist missing (data/compliance/content-blocklist.txt)"
 fi
+if grep -q 'maybeReplyCnChannel' "$ROOT/hosts/shared/cn_inbound_server.js" 2>/dev/null && \
+   grep -q 'assistantTextFromTurn' "$ROOT/hosts/shared/cn_inbound_server.js" 2>/dev/null; then
+  ok "CN inbound→outbound reply path (钉钉/飞书/企微) wired"
+else
+  bad "CN inbound→outbound reply helper missing"
+fi
+# Desktop product defaults content moderation ON when unset
+if grep -q 'BITBOT_CONTENT_MODERATION === undefined' "$ROOT/hosts/desktop/main.js" 2>/dev/null; then
+  ok "Desktop content moderation product default armed"
+else
+  note "WARN Desktop moderation default not explicit"
+fi
 if [[ -f "$ROOT/data/routines/daemon-status.json" ]] && \
    grep -q '"long_lived": true' "$ROOT/data/routines/daemon-status.json" 2>/dev/null; then
   ok "Routine long-lived daemon armed (P3)"
