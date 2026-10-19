@@ -1,16 +1,35 @@
 import Foundation
 
 /// ADR 0002 Host bridge.
-/// Product path: POST Desktop shared-brain `/v1/turn` (BITBOT_HOST_URL).
+/// Product path: POST Desktop shared-brain `/v1/turn` (open-config BITBOT_HOST_URL).
+/// Prefer UserDefaults「凭证」over env; never hardcode secrets.
 /// Dev fallback: `node hosts/mobile_host/run.js` when repo is present on Mac.
 enum TurnBridge {
+  private static let hostUrlDefaultsKey = "BITBOT_HOST_URL"
+
   struct BridgeError: Error, LocalizedError {
     let message: String
     var errorDescription: String? { message }
   }
 
+  static func configuredHostURL() -> String? {
+    let prefs = UserDefaults.standard.string(forKey: hostUrlDefaultsKey)?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !prefs.isEmpty { return prefs }
+    return hostBaseURLFromEnv()
+  }
+
+  static func setHostURL(_ url: String?) {
+    let trimmed = (url ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      UserDefaults.standard.removeObject(forKey: hostUrlDefaultsKey)
+    } else {
+      UserDefaults.standard.set(trimmed, forKey: hostUrlDefaultsKey)
+    }
+  }
+
   static func runTurn(text: String, machineKind: String = "ios") async throws -> String {
-    if let host = hostBaseURL() {
+    if let host = configuredHostURL() {
       do {
         return try await runTurnHttp(base: host, text: text, machineKind: machineKind)
       } catch {
@@ -27,7 +46,7 @@ enum TurnBridge {
     return try await runTurnLocal(text: text, machineKind: machineKind)
   }
 
-  private static func hostBaseURL() -> String? {
+  private static func hostBaseURLFromEnv() -> String? {
     if let env = ProcessInfo.processInfo.environment["BITBOT_HOST_URL"], !env.isEmpty {
       return env
     }

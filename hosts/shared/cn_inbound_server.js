@@ -196,23 +196,14 @@ function createCnInboundServer(opts = {}) {
           error: String(err && err.message ? err.message : err),
         };
       }
-    } else if (process.env.BITBOT_INBOUND_TURN === "1" && prompt) {
-      // Fallback: defer to cli_host when Desktop onTurn not wired
+    } else if (prompt && process.env.BITBOT_INBOUND_ECHO !== "1") {
+      // Product default: MoonBit + Host FFI (never tunnel-echo).
       try {
-        const { execFile } = require("child_process");
-        const { promisify } = require("util");
-        const execFileAsync = promisify(execFile);
-        const { stdout } = await execFileAsync(
-          process.execPath,
-          [path.join(repoRoot, "hosts", "cli_host", "run_turn.js"), "--approved", prompt],
-          {
-            cwd: repoRoot,
-            timeout: 60000,
-            env: { ...process.env, BITBOT_INBOUND_TURN: "0" },
-            maxBuffer: 2 * 1024 * 1024,
-          },
-        );
-        turnResult = JSON.parse(String(stdout || "{}"));
+        if (!state._productOnTurn) {
+          const { createProductOnTurn } = require("./cn_inbound_product_on_turn");
+          state._productOnTurn = createProductOnTurn(repoRoot);
+        }
+        turnResult = await state._productOnTurn(prompt, { channel, ...meta });
       } catch (err) {
         turnResult = {
           ok: false,

@@ -74,16 +74,20 @@ class MainActivity : ComponentActivity() {
   @OptIn(ExperimentalMaterial3Api::class)
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    TurnBridge.bind(this)
     setContent {
       MaterialTheme {
         var input by remember { mutableStateOf("") }
         val lines = remember { mutableStateListOf<ChatLine>() }
         var busy by remember { mutableStateOf(false) }
         var showCapabilities by remember { mutableStateOf(false) }
+        var showCredentials by remember { mutableStateOf(false) }
+        var hostUrlDraft by remember { mutableStateOf(TurnBridge.hostUrl().orEmpty()) }
         var delivery by remember { mutableStateOf(SendToUserSurface.Summary()) }
         val scope = rememberCoroutineScope()
         val listState = rememberLazyListState()
         val sheetState = rememberModalBottomSheetState()
+        val credSheetState = rememberModalBottomSheetState()
 
         fun runProductTurn(text: String) {
           val trimmed = text.trim()
@@ -126,6 +130,10 @@ class MainActivity : ComponentActivity() {
           TopAppBar(
             title = { Text("Bit Bot", fontWeight = FontWeight.Bold) },
             actions = {
+              TextButton(onClick = {
+                hostUrlDraft = TurnBridge.hostUrl().orEmpty()
+                showCredentials = true
+              }) { Text("凭证") }
               TextButton(onClick = { showCapabilities = true }) { Text("能力") }
             },
           )
@@ -150,10 +158,17 @@ class MainActivity : ComponentActivity() {
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                  "配对 Desktop BITBOT_HOST_URL（默认模拟器 10.0.2.2:18765）",
+                  "配对 Desktop 大脑 — 点「凭证」填写 BITBOT_HOST_URL（开放配置，不写死）",
                   style = MaterialTheme.typography.labelMedium,
                   color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = {
+                  hostUrlDraft = TurnBridge.hostUrl().orEmpty()
+                  showCredentials = true
+                }) {
+                  Text("配置 Desktop 配对凭证")
+                }
               }
             } else {
               LazyColumn(
@@ -232,6 +247,47 @@ class MainActivity : ComponentActivity() {
             ) {
               Text(if (busy) "…" else "发送")
             }
+          }
+        }
+
+        if (showCredentials) {
+          ModalBottomSheet(
+            onDismissRequest = { showCredentials = false },
+            sheetState = credSheetState,
+          ) {
+            Text(
+              "产品凭证 · 开放配置（不写死）",
+              style = MaterialTheme.typography.titleMedium,
+              modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            Text(
+              "DeepSeek / 钉钉飞书企微 key 在 Desktop「凭证」配置；本机只配配对地址。",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+              modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            OutlinedTextField(
+              value = hostUrlDraft,
+              onValueChange = { hostUrlDraft = it },
+              label = { Text("BITBOT_HOST_URL") },
+              placeholder = { Text("http://10.0.2.2:18765") },
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+              singleLine = true,
+            )
+            Button(
+              onClick = {
+                TurnBridge.setHostUrl(hostUrlDraft)
+                showCredentials = false
+              },
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            ) {
+              Text("保存并热加载")
+            }
+            Spacer(Modifier.height(24.dp))
           }
         }
 

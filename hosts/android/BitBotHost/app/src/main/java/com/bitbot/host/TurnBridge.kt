@@ -1,5 +1,6 @@
 package com.bitbot.host
 
+import android.content.Context
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
@@ -10,15 +11,40 @@ import java.net.URL
 
 /**
  * ADR 0002 Host bridge.
- * Product path: POST Desktop shared-brain `/v1/turn` (BITBOT_HOST_URL).
+ * Product path: POST Desktop shared-brain `/v1/turn` (open-config BITBOT_HOST_URL).
+ * Prefer in-app「凭证」prefs over env; never hardcode secrets.
  * Dev fallback: `node hosts/mobile_host/run.js` when repo + node present.
  */
 object TurnBridge {
+  private const val PREFS = "bitbot_host"
+  private const val KEY_HOST_URL = "BITBOT_HOST_URL"
+
+  @Volatile private var appContext: Context? = null
+
+  fun bind(context: Context) {
+    appContext = context.applicationContext
+  }
+
+  fun hostUrl(): String? {
+    val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val fromPrefs = prefs?.getString(KEY_HOST_URL, null)?.trim().orEmpty()
+    if (fromPrefs.isNotEmpty()) return fromPrefs
+    return System.getenv("BITBOT_HOST_URL")
+      ?: System.getenv("BITBOT_TURN_URL")
+      ?: defaultHostUrl()
+  }
+
+  fun setHostUrl(url: String?) {
+    val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return
+    val trimmed = url?.trim().orEmpty()
+    prefs.edit().apply {
+      if (trimmed.isEmpty()) remove(KEY_HOST_URL) else putString(KEY_HOST_URL, trimmed)
+      apply()
+    }
+  }
+
   fun runTurn(text: String, machineKind: String = "android"): String {
-    val hostUrl =
-      System.getenv("BITBOT_HOST_URL")
-        ?: System.getenv("BITBOT_TURN_URL")
-        ?: defaultHostUrl()
+    val hostUrl = hostUrl()
     if (!hostUrl.isNullOrBlank()) {
       return runCatching { runTurnHttp(hostUrl, text, machineKind) }
         .getOrElse { httpErr ->
@@ -27,7 +53,7 @@ object TurnBridge {
             .getOrElse { localErr ->
               error(
                 "HTTP turn failed (${httpErr.message}); local fallback failed (${localErr.message}). " +
-                  "Set BITBOT_HOST_URL to Desktop LAN (e.g. http://192.168.1.10:18765)",
+                  "在「凭证」填写 BITBOT_HOST_URL（如 http://192.168.1.10:18765）",
               )
             }
         }

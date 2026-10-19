@@ -1,0 +1,72 @@
+"use strict";
+
+/**
+ * Product onTurn for CN inbound / mobile /v1/turn.
+ * Uses the same MoonBit + Host FFI path as Desktop (never tunnel-echo).
+ */
+
+const path = require("path");
+const fs = require("fs");
+const { createTurnRunner } = require("./run_moon_turn");
+
+function loadEnvLocal(repoRoot) {
+  const candidates = [
+    path.join(repoRoot, "hosts/desktop/.env.local"),
+    path.join(repoRoot, ".env.local"),
+  ];
+  for (const file of candidates) {
+    if (!fs.existsSync(file)) continue;
+    try {
+      for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        const eq = t.indexOf("=");
+        if (eq <= 0) continue;
+        const k = t.slice(0, eq).trim();
+        let v = t.slice(eq + 1).trim();
+        if (
+          (v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'"))
+        ) {
+          v = v.slice(1, -1);
+        }
+        if (k && process.env[k] === undefined) process.env[k] = v;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * @param {string} repoRoot
+ * @returns {(prompt: string, meta?: object) => Promise<object>}
+ */
+function createProductOnTurn(repoRoot) {
+  const root = path.resolve(repoRoot || process.cwd());
+  loadEnvLocal(root);
+  const runner = createTurnRunner(root);
+
+  return async function productOnTurn(prompt, meta) {
+    const channel = (meta && meta.channel) || "in";
+    const machineKind =
+      (meta && meta.machine_kind) ||
+      (channel === "android" || channel === "ios" ? channel : "desktop");
+    const sessionId =
+      (meta && meta.session_id) || `cn-${channel}-${Date.now().toString(36)}`;
+    const useChannel =
+      channel === "android" || channel === "ios" || channel === "in"
+        ? ""
+        : channel;
+    return runner.runTurn(String(prompt || ""), {
+      sessionId,
+      machineId:
+        machineKind === "desktop" ? "desk-1" : `${machineKind}-inbound`,
+      machineKind,
+      channel: useChannel,
+      approved: true,
+    });
+  };
+}
+
+module.exports = { createProductOnTurn, loadEnvLocal };

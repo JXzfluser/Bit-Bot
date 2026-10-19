@@ -120,6 +120,32 @@ if [[ -f "$ROOT/hosts/shared/cn_inbound_server.js" ]]; then
 else
   bad "CN inbound server module missing"
 fi
+if [[ -f "$ROOT/hosts/shared/cn_inbound_product_on_turn.js" ]]; then
+  ok "CN inbound product onTurn (MoonBit Host; not tunnel-echo)"
+else
+  bad "CN inbound product onTurn helper missing"
+fi
+# Live local inbound must not be the echo stub
+if curl -fsS "http://127.0.0.1:${BITBOT_CN_INBOUND_PORT:-18765}/health" >/dev/null 2>&1; then
+  probe=$(curl -sS -X POST "http://127.0.0.1:${BITBOT_CN_INBOUND_PORT:-18765}/v1/turn" \
+    -H 'Content-Type: application/json' \
+    -d '{"text":"ListMachines","machine_kind":"desktop","session_id":"gate-probe"}' \
+    --connect-timeout 5 --max-time 90 || true)
+  if echo "$probe" | grep -q '\[tunnel-echo\]'; then
+    bad "CN inbound :18765 is tunnel-echo stub — not product Host"
+  elif echo "$probe" | grep -q '"brain":"shared_desktop_host"\|"ok":true\|ListMachines\|machine'; then
+    ok "CN inbound /v1/turn product Host responds (not echo)"
+  else
+    note "WARN CN inbound listening but probe inconclusive (may need LLM key for full turn)"
+  fi
+fi
+# Open-config UX (keys never hardcoded)
+if grep -q '开放配置（不写死）' "$ROOT/hosts/desktop/index.html" 2>/dev/null && \
+   grep -q 'openProductCredentials\|refreshConfigGate' "$ROOT/hosts/desktop/index.html" 2>/dev/null; then
+  ok "Desktop open credential config UX present"
+else
+  bad "Desktop open credential config UX missing"
+fi
 if [[ -f "$ROOT/scripts/cn_inbound_tunnel.sh" ]]; then
   if [[ -f "$ROOT/data/routines/webhooks/cn-inbound/public-url.txt" ]] && \
      grep -q '^https://' "$ROOT/data/routines/webhooks/cn-inbound/public-url.txt"; then

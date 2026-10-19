@@ -25,22 +25,20 @@ if [[ -z "$CLOUDFLARED" ]]; then
 fi
 chmod +x "$CLOUDFLARED" 2>/dev/null || true
 
-# Ensure inbound is listening (standalone if Desktop not running)
+# Ensure inbound is listening (standalone product Host if Desktop not running).
+# Never start tunnel-echo — that would fake 真渠道/真模型.
 if ! curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
-  echo "starting standalone cn_inbound on :$PORT"
+  echo "starting standalone product cn_inbound on :$PORT (MoonBit Host onTurn)"
   BITBOT_CN_INBOUND_PORT="$PORT" BITBOT_CN_INBOUND_HOST=127.0.0.1 \
     node -e '
       const { createCnInboundServer } = require("./hosts/shared/cn_inbound_server");
+      const { createProductOnTurn } = require("./hosts/shared/cn_inbound_product_on_turn");
+      const root = process.cwd();
       createCnInboundServer({
-        repoRoot: process.cwd(),
+        repoRoot: root,
         port: Number(process.env.BITBOT_CN_INBOUND_PORT || 18765),
         host: "127.0.0.1",
-        onTurn: async (p, m) => ({
-          ok: true,
-          messages: [{ role: "assistant", text: "[tunnel-echo] " + p }],
-          pretend_turn: false,
-          meta: m,
-        }),
+        onTurn: createProductOnTurn(root),
       }).start();
     ' >/tmp/cn-inbound-standalone.log 2>&1 &
   echo $! >"$OUT_DIR/standalone.pid"
@@ -48,6 +46,14 @@ if ! curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
     curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 && break
     sleep 0.5
   done
+fi
+# Refuse if an old tunnel-echo stub is still bound (honest residual).
+if curl -fsS -X POST "http://127.0.0.1:${PORT}/v1/turn" \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"ListMachines","machine_kind":"desktop","session_id":"tunnel-probe"}' \
+  2>/dev/null | grep -q '\[tunnel-echo\]'; then
+  echo "FAIL: :$PORT still serves tunnel-echo — kill stub and re-run with product onTurn" >&2
+  exit 1
 fi
 
 echo "tunnel → http://127.0.0.1:${PORT} (log: $LOG_FILE)"

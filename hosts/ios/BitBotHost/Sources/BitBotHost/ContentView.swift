@@ -12,9 +12,11 @@ struct ContentView: View {
   @State private var lines: [ChatLine] = []
   @State private var busy = false
   @State private var showCapabilities = false
+  @State private var showCredentials = false
+  @State private var hostUrlDraft = TurnBridge.configuredHostURL() ?? ""
   @State private var delivery = SendToUserSurface.Summary()
   @State private var statusHint =
-    "MoonBit 内核 · 配对 Desktop BITBOT_HOST_URL · DeepSeek key 在 Desktop Settings"
+    "MoonBit 内核 · 点「凭证」配对 Desktop（开放配置）· DeepSeek key 在 Desktop Settings"
 
   /// Compact product actions (CN channels + essentials). Full matrix stays on Desktop lab.
   private let productActions: [(label: String, turn: String)] = [
@@ -46,6 +48,11 @@ struct ContentView: View {
               .foregroundStyle(.tertiary)
               .multilineTextAlignment(.center)
               .padding(.horizontal)
+            Button("配置 Desktop 配对凭证") {
+              hostUrlDraft = TurnBridge.configuredHostURL() ?? ""
+              showCredentials = true
+            }
+            .buttonStyle(.borderedProminent)
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -92,8 +99,45 @@ struct ContentView: View {
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
+          Button("凭证") {
+            hostUrlDraft = TurnBridge.configuredHostURL() ?? ""
+            showCredentials = true
+          }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
           Button("能力") { showCapabilities.toggle() }
         }
+      }
+      .sheet(isPresented: $showCredentials) {
+        NavigationStack {
+          Form {
+            Section {
+              Text("产品凭证 · 开放配置（不写死）")
+                .font(.headline)
+              Text("DeepSeek / 渠道 key 在 Desktop「凭证」；本机只配配对地址。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              TextField("BITBOT_HOST_URL", text: $hostUrlDraft)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+            }
+            Section {
+              Button("保存并热加载") {
+                TurnBridge.setHostURL(hostUrlDraft)
+                statusHint = "已配对 \(TurnBridge.configuredHostURL() ?? "（空）")"
+                showCredentials = false
+              }
+            }
+          }
+          .navigationTitle("凭证")
+          .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+              Button("关闭") { showCredentials = false }
+            }
+          }
+        }
+        .presentationDetents([.medium])
       }
       .sheet(isPresented: $showCapabilities) {
         NavigationStack {
