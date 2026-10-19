@@ -520,6 +520,8 @@
         <button type="button" id="tool-version-info" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Version info</button>
         <button type="button" id="tool-mute-channel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Mute channel</button>
         <button type="button" id="tool-toggle-theme" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Toggle theme</button>
+        <button type="button" id="tool-share-screen" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Share screen</button>
+        <button type="button" id="tool-ping-host" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Ping host</button>
         <button type="button" id="tool-journal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
         <button type="button" id="tool-journal-append" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal append</button>
         <button type="button" id="tool-pkg" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
@@ -606,6 +608,7 @@
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="rt-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create routine</button>
         <button type="button" id="rt-reminder" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create reminder</button>
+        <button type="button" id="rt-list-scheduled" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List scheduled</button>
         <button type="button" id="rt-list" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List routines</button>
         <button type="button" id="rt-fire" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fire routine</button>
         <button type="button" id="rt-tick" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Tick routines</button>
@@ -3816,6 +3819,9 @@
         { approved: true },
       );
     });
+    document.getElementById("rt-list-scheduled").addEventListener("click", () => {
+      runUserTurn("list scheduled", {});
+    });
     document.getElementById("rt-list").addEventListener("click", () => {
       runUserTurn("list routines", {});
     });
@@ -3963,6 +3969,12 @@
     });
     document.getElementById("tool-toggle-theme").addEventListener("click", () => {
       runUserTurn("toggle theme", {});
+    });
+    document.getElementById("tool-share-screen").addEventListener("click", () => {
+      runUserTurn("share screen", {});
+    });
+    document.getElementById("tool-ping-host").addEventListener("click", () => {
+      runUserTurn("ping host", {});
     });
     document.getElementById("tool-journal").addEventListener("click", () => {
       runUserTurn("journal query hello", {});
