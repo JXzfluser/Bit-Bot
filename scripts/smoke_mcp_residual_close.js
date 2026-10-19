@@ -2010,6 +2010,34 @@ function stripHostAppliedMarker(file) {
       throw new Error("x_search live_x_residual must close: " + JSON.stringify(xAliasCloseP.x_search || {}).slice(0, 240));
     }
     console.log("mcp_call x_search residual close ok", xAliasCloseP.mapped, (xAliasCloseP.x_search || {}).mode, (xAliasCloseP.x_search || {}).live_x_residual);
+    process.env.BITBOT_X_POST = "1";
+    const xPostCloseRuns = await ffi.executeHostEffects([
+      { kind: "mcp_call", command: 'user-Gmail.x_post|{"text":"mcp live x_post close"}' },
+    ]);
+    const xPostCloseH = xPostCloseRuns.find((r) => r && r.kind === "mcp_call");
+    if (!xPostCloseH || !xPostCloseH.ok) throw new Error("x_post residual close mcp");
+    const xPostCloseP = JSON.parse(xPostCloseH.stdout || "{}");
+    if (xPostCloseP.mapped !== "host_x_post" || xPostCloseP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(xPostCloseP).slice(0, 200));
+    }
+    if (
+      (xPostCloseP.x_post || {}).live_x_post_residual !== false ||
+      (xPostCloseP.x_post || {}).mode !== "x_live_post"
+    ) {
+      throw new Error(
+        "live_x_post_residual must close: " +
+          JSON.stringify(xPostCloseP.x_post || {}).slice(0, 240),
+      );
+    }
+    if ((xPostCloseP.x_post || {}).pretend_posted === true) {
+      throw new Error("pretend_posted x_post close");
+    }
+    console.log(
+      "mcp_call x_post residual close ok",
+      xPostCloseP.mapped,
+      (xPostCloseP.x_post || {}).mode,
+      (xPostCloseP.x_post || {}).live_x_post_residual,
+    );
   } finally {
     try { finCloseMock.kill(); } catch (_) {}
     try { jobCloseMock.kill(); } catch (_) {}
@@ -2021,6 +2049,7 @@ function stripHostAppliedMarker(file) {
     delete process.env.BITBOT_X_API_BASE;
     delete process.env.BITBOT_X_BEARER;
     delete process.env.BITBOT_X_TOKEN;
+    delete process.env.BITBOT_X_POST;
   }
   // 12) Optional fill_credential + BITBOT_CREDENTIAL_FILL_MOCK=1 → credential_browser_fill_residual false; signin_fill_residual stays true
   // Do NOT close password/OS dialog / IdP signin_fill (deferred).

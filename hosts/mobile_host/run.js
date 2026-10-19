@@ -294,6 +294,7 @@ try {
         live_webhook_residual: payload.live_webhook_residual === true,
         live_voice_residual: payload.live_voice_residual === true,
         live_x_residual: payload.live_x_residual === true,
+        live_x_post_residual: payload.live_x_post_residual === true,
         live_job_residual: payload.live_job_residual === true,
         live_finance_residual: payload.live_finance_residual === true,
         live_calendar_residual: payload.live_calendar_residual === true,

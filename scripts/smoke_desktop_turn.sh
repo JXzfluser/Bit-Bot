@@ -596,6 +596,7 @@ for needle in (
   'refused_cross_scope',
   '/live_mail_residual',
   '/live_x_residual',
+  '/live_x_post_residual',
   '/live_job_residual',
   '/live_finance_residual',
   '/live_paid_residual',
