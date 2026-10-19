@@ -26,6 +26,7 @@ bash scripts/verify_native_shells.sh
 
 ## Still open
 
+- **本阶段真机暂缓**（用户：可先不考虑 iOS/Android）；壳与同脑路径保留
 - App Store / TestFlight signing & packaging
 - Device-side build of BitBotHost (needs macOS / Xcode)
 - Python LocalBrain (demoted — not used)

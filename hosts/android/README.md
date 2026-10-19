@@ -24,8 +24,14 @@ bash scripts/verify_native_shells.sh
 
 `BitBotHost` MainActivity is a Grok-style chat: bubbles + composer; 「能力」sheet for 钉钉/飞书/企微 and device tools. Turns go through `TurnBridge` → `hosts/mobile_host` → MoonBit `llm_chat` (same brain as Desktop).
 
+## 国内渠道 flavors（P4）
+
+`app/build.gradle.kts`：`universal` / `huawei` / `xiaomi` / `honor` / `oppo` / `vivo`（`applicationIdSuffix`）。  
+例：`./gradlew :app:assembleHuaweiRelease`（无 keystore 时 release 回落 debug，不假装已签）。
+
 ## Still open
 
+- **本阶段真机暂缓**（用户：可先不考虑）；渠道 flavors 已就绪
 - Play Store / 国内渠道包 signing（`BITBOT_ANDROID_STORE_*`）
 - Device/emulator build of BitBotHost (needs Android SDK)
 - Python LocalBrain (demoted — not used)
