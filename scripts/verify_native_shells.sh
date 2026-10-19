@@ -225,6 +225,8 @@ for needle in (
     "create teammate id=",
     "room ",
     "post to room ",
+    "join room ",
+    "list members",
     "deliver cloud artifact artifact=",
     "teams send tsmoke",
     "thread_ts=",

@@ -173,6 +173,8 @@ class MainActivity : ComponentActivity() {
       "Create teammate" to "create teammate id=asst-parity name=MobileMate role=executor",
       "Room" to "room android :: hello teammates from android",
       "Post to room" to "post to room android :: hello from android post phrasing",
+      "Join room" to "join room android",
+      "List members" to "list members",
       "Cloud artifact" to "deliver cloud artifact artifact=bc-1 dest=android-report.md",
       "Teams send" to "teams send tsmoke :: hello host chat",
       "Slack thread" to "reply via slack:Candroid thread_ts=1710000000.000001 :: android thread",

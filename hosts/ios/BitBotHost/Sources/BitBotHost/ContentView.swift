@@ -140,6 +140,8 @@ struct ContentView: View {
     ("Create teammate", "create teammate id=asst-parity name=MobileMate role=executor"),
     ("Room", "room ios :: hello teammates from ios"),
     ("Post to room", "post to room ios :: hello from ios post phrasing"),
+    ("Join room", "join room ios"),
+    ("List members", "list members"),
     ("Cloud artifact", "deliver cloud artifact artifact=bc-1 dest=ios-report.md"),
     ("Teams send", "teams send tsmoke :: hello host chat"),
     ("Slack thread", "reply via slack:Cios thread_ts=1710000000.000001 :: ios thread"),

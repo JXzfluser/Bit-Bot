@@ -337,6 +337,8 @@
         <button type="button" id="tm-members-group" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Open members group</button>
         <button type="button" id="tm-room" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Room turn</button>
         <button type="button" id="tm-room-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Post to room</button>
+        <button type="button" id="tm-room-join" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Join room</button>
+        <button type="button" id="tm-list-members" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List members</button>
         <button type="button" id="tm-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
         <button type="button" id="tm-subagent" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
       </div>
@@ -3869,6 +3871,12 @@
       runUserTurn("post to room desk :: hello from desktop post phrasing", {
         approved: true,
       });
+    });
+    document.getElementById("tm-room-join").addEventListener("click", () => {
+      runUserTurn("join room desk", { approved: true });
+    });
+    document.getElementById("tm-list-members").addEventListener("click", () => {
+      runUserTurn("list members", {});
     });
     document.getElementById("tm-send").addEventListener("click", () => {
       runUserTurn("send to agent asst-desktop :: ping from desktop host", {
