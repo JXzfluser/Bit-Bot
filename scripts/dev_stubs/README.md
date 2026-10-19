@@ -4,8 +4,8 @@
 
 | Stub | 证明什么 | **不**证明什么 |
 |------|----------|----------------|
-| `openai_compat_stub.js` | MoonBit → Host `llm_chat` 能完成一轮回复；内容审核门可拦截 | 国产 DeepSeek 真模型 |
-| `cn_webhook_stub.js` | `BITBOT_DINGTALK_POST=1` + webhook → `live_dingtalk` | 钉钉/飞书/企微云端真渠道 |
+| `openai_compat_stub.js` | MoonBit → Host `llm_chat` 非流式/SSE 流式完成；内容审核门可拦截 | 国产 DeepSeek 真模型 |
+| `cn_api_stub.js`（及旧 `cn_webhook_stub.js`） | 钉钉/飞书/企微 `*_POST=1` → `live_*` HTTP | 云端真渠道 |
 | 本地 `BITBOT_UPDATE_FEED_URL` | `check_updates` 真探测 `latest.yml` | 已上架 OTA / 已公证安装包 |
 
 ```bash

@@ -549,19 +549,21 @@
         <button type="button" id="cn-wecom" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发企微</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">Connectors</div>
-    <div class="machine-item">
-      <div class="name">Slack / Gmail / Outlook</div>
-      <div class="meta" id="connectors-meta">Host sandbox IdP OAuth</div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="connect-slack" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Connect Slack</button>
-        <button type="button" id="connect-gmail" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
-        <button type="button" id="connect-outlook" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Outlook</button>
-        <button type="button" id="connect-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
-        <button type="button" id="connect-identity" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
-        <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
+    <details class="lab" style="margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#0c1410">
+      <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外 Connectors（Slack/Gmail · 非本阶段主路径）</summary>
+      <div class="machine-item" style="margin-top:8px">
+        <div class="name">Slack / Gmail / Outlook</div>
+        <div class="meta" id="connectors-meta">降级保留 · 主渠道见上方国内钉钉/飞书/企微</div>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <button type="button" id="connect-slack" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Slack</button>
+          <button type="button" id="connect-gmail" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
+          <button type="button" id="connect-outlook" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Outlook</button>
+          <button type="button" id="connect-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
+          <button type="button" id="connect-identity" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
+          <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
+        </div>
       </div>
-    </div>
+    </details>
     <div class="panel-title" style="margin-top:16px">Host prefs</div>
     <div class="machine-item">
       <div class="name">Notify · computer · guide</div>
@@ -575,7 +577,7 @@
         <button type="button" id="pref-local" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Local execution off</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">Channels</div>
+    <div class="panel-title" style="margin-top:16px">Channels（海外 · 次要）</div>
     <div class="machine-item">
       <div class="name">Slack / Teams outbound + claim</div>
       <div class="meta" id="channels-meta">draft · thread · sandbox claim (Host env)</div>
