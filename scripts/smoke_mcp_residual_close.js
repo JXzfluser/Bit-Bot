@@ -1443,6 +1443,22 @@ function stripHostAppliedMarker(file) {
     ["mute_chat", "host_set_notify", "set_notify"],
     ["pin_chat", "host_list_agents_sidebar", "list_agents_sidebar"],
     ["task_create", "host_todo_write", "todo_write"],
+    ["create_folder", "host_shared_box_fs", "shared_box_fs"],
+    ["list_folders", "host_fs_list", "fs_list"],
+    ["export_chat", "host_export_pack", "export_pack"],
+    ["fork_chat", "host_teammate_create", "teammate_create"],
+    ["star_chat", "host_list_agents_sidebar", "list_agents_sidebar"],
+    ["create_canvas", "host_slides_pptx", "slides_pptx"],
+    ["summarize", "host_guide_permission", "guide_permission"],
+    ["plan", "host_guide_permission", "guide_permission"],
+    ["deep_research", "host_webfetch", "webfetch"],
+    ["block_user", "host_members_panel", "members_panel"],
+    ["set_system_prompt", "host_settings_open", "settings_open"],
+    ["force_sync", "host_check_updates", "check_updates"],
+    ["download_attachment", "host_copy_from_box", "copy_from_box"],
+    ["snooze", "host_routine_schedule", "routine_schedule"],
+    ["add_label", "host_mail_read", "mail_read"],
+    ["list_labels", "host_mail_search", "mail_search"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1456,7 +1472,9 @@ function stripHostAppliedMarker(file) {
               ? '{"command":"echo alias-shell"}'
               : tool === "list_dir"
                 ? '{"path":"."}'
-                : tool === "search_web" || tool === "deep_search"
+                : tool === "search_web" ||
+                    tool === "deep_search" ||
+                    tool === "deep_research"
                   ? '{"url":"https://example.com/"}'
                   : tool === "list_contacts" ||
                       tool === "get_location" ||
@@ -1483,17 +1501,24 @@ function stripHostAppliedMarker(file) {
                                     : tool === "remove_member" ||
                                         tool === "invite_member" ||
                                         tool === "invite_user" ||
-                                        tool === "kick_user"
+                                        tool === "kick_user" ||
+                                        tool === "block_user" ||
+                                        tool === "unblock_user" ||
+                                        tool === "report_user"
                                       ? '{"member_id":"u-alias"}'
                                       : tool === "upload_file" ||
                                           tool === "attach_file" ||
                                           tool === "upload_image" ||
                                           tool === "attach_image"
                                         ? '{"path":"README.mbt.md"}'
-                                        : tool === "download_file"
+                                        : tool === "download_file" ||
+                                            tool === "download_attachment" ||
+                                            tool === "open_attachments"
                                           ? '{"path":"README.mbt.md"}'
                                           : tool === "archive_agent" ||
-                                              tool === "archive_chat"
+                                              tool === "archive_chat" ||
+                                              tool === "delete_chat" ||
+                                              tool === "clear_chat"
                                             ? '{"agent_id":"asst-alias-hide"}'
                                             : tool === "list_skills" ||
                                                 tool === "open_skills" ||
@@ -1540,7 +1565,19 @@ function stripHostAppliedMarker(file) {
                                                                   tool === "docs" ||
                                                                   tool === "list_models" ||
                                                                   tool === "set_model" ||
-                                                                  tool === "billing"
+                                                                  tool === "billing" ||
+                                                                  tool === "summarize" ||
+                                                                  tool === "rewrite" ||
+                                                                  tool === "translate" ||
+                                                                  tool === "think" ||
+                                                                  tool === "reason" ||
+                                                                  tool === "plan" ||
+                                                                  tool === "prove" ||
+                                                                  tool === "set_system_prompt" ||
+                                                                  tool === "edit_instructions" ||
+                                                                  tool === "set_temperature" ||
+                                                                  tool === "force_sync" ||
+                                                                  tool === "avatar"
                                                                 ? '{}'
                                                                 : tool === "x_post" ||
                                                                     tool === "post_tweet" ||
@@ -1550,7 +1587,9 @@ function stripHostAppliedMarker(file) {
                                                                       tool === "focus_mode" ||
                                                                       tool === "do_not_disturb" ||
                                                                       tool === "mute_chat" ||
-                                                                      tool === "unmute_chat"
+                                                                      tool === "unmute_chat" ||
+                                                                      tool === "read_receipts" ||
+                                                                      tool === "typing_indicator"
                                                                     ? '{"toggle":"desktop","enabled":"off"}'
                                                                     : tool === "save_memory" ||
                                                                         tool === "delete_memory"
@@ -1571,10 +1610,13 @@ function stripHostAppliedMarker(file) {
                                                                                 tool === "dictate" ||
                                                                                 tool === "transcribe"
                                                                               ? '{"session":"alias-voice","text":"hello"}'
-                                                                              : tool === "set_reminder"
+                                                                              : tool === "set_reminder" ||
+                                                                                  tool === "snooze" ||
+                                                                                  tool === "schedule_send"
                                                                                 ? '{"name":"alias-rem","cron":"0 9 * * *","action":"ping"}'
                                                                                 : tool === "list_reminders" ||
-                                                                                    tool === "cancel_reminder"
+                                                                                    tool === "cancel_reminder" ||
+                                                                                    tool === "unsnooze"
                                                                                   ? '{"name":"alias-rem"}'
                                                                                   : tool === "join_room" ||
                                                                                       tool === "leave_room"
@@ -1590,7 +1632,35 @@ function stripHostAppliedMarker(file) {
                                                                                           ? '{"title":"AliasCal","when":"tomorrow-6pm"}'
                                                                                           : tool === "note_list"
                                                                                             ? '{"q":"alias-note"}'
-                                                                                            : "{}";
+                                                                                            : tool === "create_folder" ||
+                                                                                                tool === "move_to_folder"
+                                                                                              ? '{"path":"data/box/alias-folder","op":"mkdir"}'
+                                                                                              : tool === "list_folders" ||
+                                                                                                  tool === "open_folder" ||
+                                                                                                  tool === "list_attachments"
+                                                                                                ? '{"path":"."}'
+                                                                                                : tool === "export_chat" ||
+                                                                                                    tool === "share_chat" ||
+                                                                                                    tool === "restore"
+                                                                                                  ? '{"name":"smoke-chat"}'
+                                                                                                  : tool === "fork_chat" ||
+                                                                                                      tool === "duplicate_chat"
+                                                                                                    ? '{"name":"alias-fork","agent_id":"asst-fork"}'
+                                                                                                    : tool === "star_chat" ||
+                                                                                                        tool === "unstar_chat"
+                                                                                                      ? '{"agent_id":"asst-mcp-pin"}'
+                                                                                                      : tool === "create_canvas" ||
+                                                                                                          tool === "open_canvas" ||
+                                                                                                          tool === "edit_canvas"
+                                                                                                        ? '{"title":"Alias Canvas","slides":["a","b"]}'
+                                                                                                        : tool === "rename_chat"
+                                                                                                          ? '{"scheme":"slack","addr":"UCHAT","body":"rename"}'
+                                                                                                          : tool === "add_label" ||
+                                                                                                              tool === "remove_label"
+                                                                                                            ? '{"thread_id":"t-label-1","label":"alias"}'
+                                                                                                            : tool === "list_labels"
+                                                                                                              ? '{"q":"label:alias"}'
+                                                                                                              : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);
