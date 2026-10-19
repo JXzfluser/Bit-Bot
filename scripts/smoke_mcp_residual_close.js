@@ -1670,6 +1670,24 @@ function stripHostAppliedMarker(file) {
     ["edit_agent_instructions", "host_agent_info_panel", "agent_info_panel"],
     ["disconnect_connector", "host_connectors_probe", "connectors_probe"],
     ["revoke_token", "host_oauth", "oauth"],
+    ["mute_channel", "host_set_notify", "set_notify"],
+    ["create_reminder", "host_routine_schedule", "routine_schedule"],
+    ["list_scheduled", "host_routine_list", "routine_list"],
+    ["cancel_scheduled", "host_routine_pause", "routine_pause"],
+    ["summarize_thread", "host_guide_permission", "guide_permission"],
+    ["invite_to_channel", "host_members_panel", "members_panel"],
+    ["create_canvas_page", "host_slides_pptx", "slides_pptx"],
+    ["backup_chat", "host_export_pack", "export_pack"],
+    ["generate_invite", "host_members_panel", "members_panel"],
+    ["take_photo", "host_device_tool", "device_tool"],
+    ["record_video", "host_device_tool", "device_tool"],
+    ["open_terminal", "host_shell", "shell"],
+    ["list_windows", "host_screenshot", "screenshot"],
+    ["version_info", "host_check_updates", "check_updates"],
+    ["ping_host", "host_box_doctor", "box_doctor"],
+    ["toggle_theme", "host_settings_open", "settings_open"],
+    ["save_message", "host_journal_query", "journal_query"],
+    ["bookmark", "host_journal_query", "journal_query"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1685,7 +1703,7 @@ function stripHostAppliedMarker(file) {
           ? '{"scheme":"slack","addr":"UALIAS","body":"alias-dm"}'
           : tool === "add_reaction"
             ? '{"message_id":"msg-alias","emoji":"+1"}'
-            : tool === "run_shell"
+            : tool === "run_shell" || tool === "open_terminal"
               ? '{"command":"echo alias-shell"}'
               : tool === "list_dir"
                 ? '{"path":"."}'
@@ -1697,7 +1715,9 @@ function stripHostAppliedMarker(file) {
                       tool === "get_location" ||
                       tool === "clipboard_read" ||
                       tool === "clipboard_copy" ||
-                      tool === "clipboard_paste"
+                      tool === "clipboard_paste" ||
+                      tool === "take_photo" ||
+                      tool === "record_video"
                     ? '{"tool":"contacts"}'
                     : tool === "open_todo" ||
                         tool === "task_create" ||
@@ -1708,7 +1728,11 @@ function stripHostAppliedMarker(file) {
                         ? '{"path":"README.mbt.md"}'
                         : tool === "git_status"
                           ? '{"command":"status"}'
-                          : tool === "open_journal" || tool === "journal_tail"
+                          : tool === "open_journal" ||
+                              tool === "journal_tail" ||
+                              tool === "save_message" ||
+                              tool === "bookmark" ||
+                              tool === "unbookmark"
                             ? '{"q":"alias-journal"}'
                             : tool === "append_journal" || tool === "note_create"
                               ? '{"event":"alias","body":"journal-alias"}'
@@ -1724,7 +1748,12 @@ function stripHostAppliedMarker(file) {
                                         tool === "kick_user" ||
                                         tool === "block_user" ||
                                         tool === "unblock_user" ||
-                                        tool === "report_user"
+                                        tool === "report_user" ||
+                                        tool === "invite_to_channel" ||
+                                        tool === "remove_from_channel" ||
+                                        tool === "generate_invite" ||
+                                        tool === "accept_invite" ||
+                                        tool === "decline_invite"
                                       ? '{"member_id":"u-alias"}'
                                       : tool === "upload_file" ||
                                           tool === "attach_file" ||
@@ -1751,7 +1780,11 @@ function stripHostAppliedMarker(file) {
                                                   tool === "pdf_export" ||
                                                   tool === "print" ||
                                                   tool === "backup" ||
-                                                  tool === "export_bot"
+                                                  tool === "export_bot" ||
+                                                  tool === "backup_chat" ||
+                                                  tool === "restore_backup" ||
+                                                  tool === "share_link" ||
+                                                  tool === "copy_invite"
                                                 ? '{"name":"smoke-skill"}'
                                                 : tool === "mark_done" ||
                                                     tool === "complete_todo"
@@ -1764,7 +1797,11 @@ function stripHostAppliedMarker(file) {
                                                       tool === "archive_channel" ||
                                                       tool === "slack_claim" ||
                                                       tool === "claim_slack" ||
-                                                      tool === "unpin_message"
+                                                      tool === "unpin_message" ||
+                                                      tool === "archive_dm" ||
+                                                      tool === "unarchive_dm" ||
+                                                      tool === "set_topic" ||
+                                                      tool === "set_description"
                                                     ? '{"scheme":"slack","channel":"Csmoke","body":"claim-or-chat"}'
                                                     : tool === "sms_claim" ||
                                                         tool === "claim_sms"
@@ -1778,13 +1815,17 @@ function stripHostAppliedMarker(file) {
                                                           : tool === "webhook_claim"
                                                             ? '{"scheme":"webhook","body":"wh-claim"}'
                                                             : tool === "share_screen" ||
-                                                                tool === "screen_share"
+                                                                tool === "screen_share" ||
+                                                                tool === "screen_share_stop" ||
+                                                                tool === "stop_share_screen" ||
+                                                                tool === "list_windows"
                                                               ? '{}'
                                                               : tool === "open_transcript"
                                                                 ? '{"q":"transcript"}'
                                                                 : tool === "export_transcript"
                                                                   ? '{"name":"transcript-export"}'
-                                                                  : tool === "schedule_message"
+                                                                  : tool === "schedule_message" ||
+                                                                      tool === "create_reminder"
                                                                     ? '{"name":"sched-msg","cron":"0 10 * * *","action":"ping"}'
                                                                     : tool === "edit_agent_instructions"
                                                                       ? '{"agent_id":"asst-mcp-info"}'
@@ -1828,6 +1869,7 @@ function stripHostAppliedMarker(file) {
                                                                   tool === "set_model" ||
                                                                   tool === "billing" ||
                                                                   tool === "summarize" ||
+                                                                  tool === "summarize_thread" ||
                                                                   tool === "rewrite" ||
                                                                   tool === "translate" ||
                                                                   tool === "think" ||
@@ -1838,7 +1880,16 @@ function stripHostAppliedMarker(file) {
                                                                   tool === "edit_instructions" ||
                                                                   tool === "set_temperature" ||
                                                                   tool === "force_sync" ||
-                                                                  tool === "avatar"
+                                                                  tool === "avatar" ||
+                                                                  tool === "version_info" ||
+                                                                  tool === "ping_host" ||
+                                                                  tool === "toggle_theme" ||
+                                                                  tool === "dark_mode" ||
+                                                                  tool === "light_mode" ||
+                                                                  tool === "focus_window" ||
+                                                                  tool === "minimize_window" ||
+                                                                  tool === "list_scheduled" ||
+                                                                  tool === "cancel_scheduled"
                                                                 ? '{}'
                                                                 : tool === "x_post" ||
                                                                     tool === "post_tweet" ||
@@ -1849,6 +1900,8 @@ function stripHostAppliedMarker(file) {
                                                                       tool === "do_not_disturb" ||
                                                                       tool === "mute_chat" ||
                                                                       tool === "unmute_chat" ||
+                                                                      tool === "mute_channel" ||
+                                                                      tool === "unmute_channel" ||
                                                                       tool === "read_receipts" ||
                                                                       tool === "typing_indicator" ||
                                                                       tool === "set_status" ||
@@ -1916,7 +1969,9 @@ function stripHostAppliedMarker(file) {
                                                                                                       ? '{"agent_id":"asst-mcp-pin"}'
                                                                                                       : tool === "create_canvas" ||
                                                                                                           tool === "open_canvas" ||
-                                                                                                          tool === "edit_canvas"
+                                                                                                          tool === "edit_canvas" ||
+                                                                                                          tool === "create_canvas_page" ||
+                                                                                                          tool === "publish_page"
                                                                                                         ? '{"title":"Alias Canvas","slides":["a","b"]}'
                                                                                                         : tool === "rename_chat"
                                                                                                           ? '{"scheme":"slack","addr":"UCHAT","body":"rename"}'

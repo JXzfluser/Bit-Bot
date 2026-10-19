@@ -7546,6 +7546,43 @@ function createHostFfi(repoRoot) {
         revoke_token: "host_oauth",
         disconnect_slack: "host_oauth",
         disconnect_gmail: "host_oauth",
+        mute_channel: "host_set_notify",
+        unmute_channel: "host_set_notify",
+        archive_dm: "host_channel_send",
+        unarchive_dm: "host_channel_send",
+        save_message: "host_journal_query",
+        bookmark: "host_journal_query",
+        unbookmark: "host_journal_query",
+        create_reminder: "host_routine_schedule",
+        list_scheduled: "host_routine_list",
+        cancel_scheduled: "host_routine_pause",
+        summarize_thread: "host_guide_permission",
+        set_topic: "host_channel_send",
+        set_description: "host_channel_send",
+        invite_to_channel: "host_members_panel",
+        remove_from_channel: "host_members_panel",
+        create_canvas_page: "host_slides_pptx",
+        publish_page: "host_slides_pptx",
+        backup_chat: "host_export_pack",
+        restore_backup: "host_export_pack",
+        share_link: "host_export_pack",
+        copy_invite: "host_export_pack",
+        generate_invite: "host_members_panel",
+        accept_invite: "host_members_panel",
+        decline_invite: "host_members_panel",
+        take_photo: "host_device_tool",
+        record_video: "host_device_tool",
+        screen_share_stop: "host_screenshot",
+        stop_share_screen: "host_screenshot",
+        open_terminal: "host_shell",
+        list_windows: "host_screenshot",
+        focus_window: "host_computer_use",
+        minimize_window: "host_computer_use",
+        version_info: "host_check_updates",
+        ping_host: "host_box_doctor",
+        toggle_theme: "host_settings_open",
+        dark_mode: "host_settings_open",
+        light_mode: "host_settings_open",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -10103,8 +10140,27 @@ function createHostFfi(repoRoot) {
           const machineId = String(
             args.machine_id || args.machine || args.id || "mcp-device",
           ).trim() || "mcp-device";
+          const tnDevice = String(toolName || "").toLowerCase();
+          const inferredDevice =
+            tnDevice.includes("photo") || tnDevice.includes("camera")
+              ? "camera"
+              : tnDevice.includes("video") || tnDevice.includes("mic")
+                ? "mic"
+                : tnDevice.includes("contact")
+                  ? "contacts"
+                  : tnDevice.includes("location") || tnDevice.includes("geo")
+                    ? "location"
+                    : tnDevice.includes("clipboard")
+                      ? "clipboard"
+                      : "";
           const tool = String(
-            args.tool || args.name || args.q || args.query || args.body || "camera",
+            args.tool ||
+              args.name ||
+              args.q ||
+              args.query ||
+              args.body ||
+              inferredDevice ||
+              "camera",
           )
             .trim()
             .toLowerCase() || "camera";
