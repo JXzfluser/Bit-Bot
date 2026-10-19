@@ -526,6 +526,9 @@
         <button type="button" id="tool-export-chat" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export chat</button>
         <button type="button" id="tool-create-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Create canvas</button>
         <button type="button" id="tool-edit-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Edit message</button>
+        <button type="button" id="tool-react-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">React message</button>
+        <button type="button" id="tool-pin-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Pin message</button>
+        <button type="button" id="tool-clear-chat" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Clear chat</button>
         <button type="button" id="tool-journal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
         <button type="button" id="tool-journal-append" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal append</button>
         <button type="button" id="tool-pkg" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
@@ -3991,6 +3994,15 @@
     });
     document.getElementById("tool-edit-message").addEventListener("click", () => {
       runUserTurn("edit message", { approved: true });
+    });
+    document.getElementById("tool-react-message").addEventListener("click", () => {
+      runUserTurn("react message", {});
+    });
+    document.getElementById("tool-pin-message").addEventListener("click", () => {
+      runUserTurn("pin message", {});
+    });
+    document.getElementById("tool-clear-chat").addEventListener("click", () => {
+      runUserTurn("clear chat", {});
     });
     document.getElementById("tool-journal").addEventListener("click", () => {
       runUserTurn("journal query hello", {});
