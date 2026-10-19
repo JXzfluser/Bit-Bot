@@ -1255,6 +1255,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   if low == "use user browser" ||
     low == "identity browser" ||
+    low == "open identity browser" ||
     low == "switch to browser identity" ||
     low == "open identity" ||
     low == "switch identity" {
@@ -1290,7 +1291,11 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(AuthorSkill(name~, description~, body~))
   }
-  if low == "connect gmail" || low == "setup gmail" || low == "gmail connect" {
+  if low == "connect gmail" ||
+    low == "setup gmail" ||
+    low == "gmail connect" ||
+    low == "oauth gmail" ||
+    low == "gmail oauth" {
     return Some(ConnectGmail)
   }
   if low == "connect outlook" ||
@@ -1311,10 +1316,12 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(OpenSettings(entry="sidebar-account-button", anchor="connectors"))
   }
-  // Journal query before append — "journal query …" also matches "journal " prefix.
+  // Journal query before append — bare "journal query" also matches "journal " prefix.
   if low == "bookmark message" ||
     low == "save message" ||
     low == "bookmark" ||
+    low == "journal query" ||
+    low == "query journal" ||
     low.has_prefix("bookmark message ") ||
     low.has_prefix("save message ") {
     return Some(JournalQuery(from_date="2026-01-01", to_date="2099-12-31"))
@@ -1717,9 +1724,28 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(DeviceToolInvoke(tool~))
   }
-  if low.has_prefix("load skill ") || low.has_prefix("use skill ") {
+  if low == "list skills" ||
+    low == "skills list" ||
+    low == "open skills" ||
+    low == "skills panel" ||
+    low == "reload skills" {
+    return Some(ListSkills(query=""))
+  }
+  if low.has_prefix("list skills ") || low.has_prefix("skills list ") {
+    let q = if low.has_prefix("list skills ") {
+      trimmed[12:].trim().to_owned()
+    } else {
+      trimmed[12:].trim().to_owned()
+    }
+    return Some(ListSkills(query=q))
+  }
+  if low.has_prefix("load skill ") ||
+    low.has_prefix("use skill ") ||
+    low.has_prefix("install skill ") {
     let task = if low.has_prefix("load skill ") {
       trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("install skill ") {
+      trimmed[14:].trim().to_owned()
     } else {
       trimmed[10:].trim().to_owned()
     }

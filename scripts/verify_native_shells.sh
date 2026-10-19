@@ -238,6 +238,10 @@ for needle in (
     "open thread",
     "start screen share",
     "claim inbox",
+    "list skills",
+    "attach file ",
+    "journal query",
+    "open identity browser",
     "deliver cloud artifact artifact=",
     "teams send tsmoke",
     "thread_ts=",
@@ -425,6 +429,36 @@ assert p.get('pretend_complete') is not True
 assert (p.get('item_count') or 0) >= 1
 assert os.path.isfile(p.get('path') or '') or os.path.isfile(p.get('store_path') or '')
 print('ios todo write Host path ok', p.get('mode'), p.get('item_count'))
+"
+# Product phrasing list skills → durable list_skills Host on Android.
+node hosts/mobile_host/run.js --machine-kind android --session-id android-skills "list skills" \
+  >/tmp/bitbot-android-skills.raw
+parse_turn_json /tmp/bitbot-android-skills.raw >/tmp/bitbot-android-skills.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-skills.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='list_skills'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='list_skills')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_listing') is not True
+assert isinstance(p.get('count'), int) or isinstance(p.get('skills'), list)
+print('android list skills Host path ok', p.get('mode'), p.get('count'))
+"
+# Product attach file → copy_to_box Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-attach "attach file README.mbt.md" \
+  >/tmp/bitbot-ios-attach.raw
+parse_turn_json /tmp/bitbot-ios-attach.raw >/tmp/bitbot-ios-attach.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-attach.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='copy_to_box'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='copy_to_box')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_copied') is not True
+assert os.path.isfile(p.get('path') or '') or p.get('ok') is True or p.get('dest') or p.get('mode')
+print('ios attach file Host path ok', p.get('mode') or p.get('dest') or p.get('path'))
 "
 
 echo "OK: verify_native_shells.sh"

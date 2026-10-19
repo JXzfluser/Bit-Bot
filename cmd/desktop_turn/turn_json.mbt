@@ -166,6 +166,8 @@ pub(all) enum TurnIntent {
   InboundReaction(emoji~ : String, useful~ : Bool)
   /// CM-0112 Host durable todo checklist (product phrasing → todo_write FFI).
   TodoWrite(command~ : String)
+  /// Host durable skill directory listing (product phrasing → list_skills FFI).
+  ListSkills(query~ : String)
   HostContinue
 } derive(Eq, Debug)
 
@@ -275,6 +277,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     ConnectOutlook => "connect_outlook"
     JournalAppend(_) => "journal_append"
     TodoWrite(_) => "todo_write"
+    ListSkills(_) => "list_skills"
     JournalQuery(_) => "journal_query"
     SharedMemoryPut(_) => "shared_memory_put"
     SharedMemoryRead(_) => "shared_memory_read"
@@ -551,6 +554,36 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   // Multi-end file routing (CM-0703/0704) — Host FFI copies real bytes.
+  // Product attach/upload → CopyToBox; download → CopyFromBox.
+  if low.has_prefix("attach file ") ||
+    low.has_prefix("upload file ") ||
+    low.has_prefix("attach ") ||
+    low.has_prefix("upload ") {
+    let src = if low.has_prefix("attach file ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("upload file ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("attach ") {
+      trimmed[7:].trim().to_owned()
+    } else {
+      trimmed[7:].trim().to_owned()
+    }
+    if src != "" && !src.contains("=") {
+      let dest = "/workspace/uploads/" + src
+      return CopyToBox(machine_id="desk-1", src~, dest~)
+    }
+  }
+  if low.has_prefix("download file ") || low.has_prefix("download ") {
+    let box_path = if low.has_prefix("download file ") {
+      trimmed[14:].trim().to_owned()
+    } else {
+      trimmed[9:].trim().to_owned()
+    }
+    if box_path != "" && !box_path.contains("=") {
+      let dest = "./downloads/" + box_path
+      return CopyFromBox(machine_id="desk-1", box_path~, dest~)
+    }
+  }
   if low.has_prefix("copy to box ") || low.has_prefix("copytobox ") {
     let rest = if low.has_prefix("copy to box ") {
       trimmed[12:].to_owned()
@@ -616,11 +649,17 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   // CM-2108 GetPlugin + directory list/search (CM-0904 install funnel).
   if low == "list plugins" ||
       low == "search plugins" ||
+      low == "mcp list tools" ||
+      low == "list mcp tools" ||
+      low == "mcp tools" ||
       low.has_prefix("list plugins ") ||
-      low.has_prefix("search plugins ") {
+      low.has_prefix("search plugins ") ||
+      low.has_prefix("mcp list tools ") {
     let q = if low.has_prefix("list plugins ") {
       trimmed[13:].trim().to_owned()
     } else if low.has_prefix("search plugins ") {
+      trimmed[15:].trim().to_owned()
+    } else if low.has_prefix("mcp list tools ") {
       trimmed[15:].trim().to_owned()
     } else {
       ""
@@ -4216,6 +4255,23 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Todo write planned (CM-0112). Host upserts durable checklist; never invents done.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    ListSkills(query~) => {
+      let cmd = if query.length() > 0 { "q=" + query } else { "q=" }
+      let effect : DesktopEffect = {
+        kind: "list_skills",
+        command: cmd,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "List skills planned. Host enumerates agent-tools/skills (never pretend_listing).",
         intent,
         ctx~,
         effects=[effect],
