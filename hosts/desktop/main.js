@@ -596,6 +596,10 @@ ipcMain.handle("bitbot:secrets:status", async () => {
     "BITBOT_WECOM_TOKEN",
     "BITBOT_WECOM_AGENT_ID",
     "BITBOT_WECOM_TOUSER",
+    "BITBOT_ICP_FILING",
+    "BITBOT_ALGORITHM_FILING",
+    "BITBOT_CONTENT_MODERATION",
+    "BITBOT_UPDATE_FEED_URL",
   ];
   const fields = {};
   for (const k of keys) {

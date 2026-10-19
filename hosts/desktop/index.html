@@ -531,6 +531,19 @@
               <input id="sec-wecom-to" type="text" placeholder="touser" style="width:100px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
             </div>
           </label>
+          <label style="font-size:12px;color:var(--muted)">AI 备案号（未填则 residual，不假装已备案）
+            <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+              <input id="sec-icp" type="text" placeholder="BITBOT_ICP_FILING" style="flex:1;min-width:140px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-algo" type="text" placeholder="BITBOT_ALGORITHM_FILING" style="flex:1;min-width:140px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            </div>
+          </label>
+          <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px">
+            <input id="sec-moderation" type="checkbox" />
+            内容审核门 BITBOT_CONTENT_MODERATION=1（拦截违禁词输出）
+          </label>
+          <label style="font-size:12px;color:var(--muted)">OTA feed URL
+            <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button type="button" id="sec-save" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">保存并热加载</button>
             <button type="button" id="sec-probe" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连大脑</button>
@@ -1553,6 +1566,22 @@
       if (wecomTo && f.BITBOT_WECOM_TOUSER && f.BITBOT_WECOM_TOUSER.value !== undefined) {
         wecomTo.value = f.BITBOT_WECOM_TOUSER.value || "";
       }
+      const icp = document.getElementById("sec-icp");
+      if (icp && f.BITBOT_ICP_FILING && f.BITBOT_ICP_FILING.value !== undefined) {
+        icp.value = f.BITBOT_ICP_FILING.value || "";
+      }
+      const algo = document.getElementById("sec-algo");
+      if (algo && f.BITBOT_ALGORITHM_FILING && f.BITBOT_ALGORITHM_FILING.value !== undefined) {
+        algo.value = f.BITBOT_ALGORITHM_FILING.value || "";
+      }
+      const mod = document.getElementById("sec-moderation");
+      if (mod && f.BITBOT_CONTENT_MODERATION && f.BITBOT_CONTENT_MODERATION.value !== undefined) {
+        mod.checked = f.BITBOT_CONTENT_MODERATION.value === "1";
+      }
+      const ota = document.getElementById("sec-ota");
+      if (ota && f.BITBOT_UPDATE_FEED_URL && f.BITBOT_UPDATE_FEED_URL.value !== undefined) {
+        ota.value = f.BITBOT_UPDATE_FEED_URL.value || "";
+      }
       const secStatus = document.getElementById("sec-status");
       if (secStatus && st.llm) {
         secStatus.textContent =
@@ -1599,6 +1628,17 @@
       if (wa && wa.value.trim()) patch.BITBOT_WECOM_AGENT_ID = wa.value.trim();
       const wto = document.getElementById("sec-wecom-to");
       if (wto && wto.value.trim()) patch.BITBOT_WECOM_TOUSER = wto.value.trim();
+      const icpEl = document.getElementById("sec-icp");
+      if (icpEl) patch.BITBOT_ICP_FILING = icpEl.value.trim();
+      const algoEl = document.getElementById("sec-algo");
+      if (algoEl) patch.BITBOT_ALGORITHM_FILING = algoEl.value.trim();
+      patch.BITBOT_CONTENT_MODERATION =
+        document.getElementById("sec-moderation") &&
+        document.getElementById("sec-moderation").checked
+          ? "1"
+          : "0";
+      const otaEl = document.getElementById("sec-ota");
+      if (otaEl) patch.BITBOT_UPDATE_FEED_URL = otaEl.value.trim();
       const r = await window.bitbot.secrets.set(patch);
       const secStatus = document.getElementById("sec-status");
       if (secStatus) {
