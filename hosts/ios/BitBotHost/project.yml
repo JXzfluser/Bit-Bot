@@ -1,0 +1,20 @@
+name: BitBotHost
+options:
+  bundleIdPrefix: com.bitbot
+settings:
+  BASE_SDK: iphoneos
+targets:
+  BitBotHost:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - Sources/BitBotHost
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.bitbot.host
+      INFOPLIST_KEY_CFBundleDisplayName: Bit Bot
+      INFOPLIST_KEY_UILaunchScreen_Generation: YES
+      SWIFT_VERSION: "5.0"
+      # Store signing scaffold — set BITBOT_IOS_TEAM_ID for archive/export (still open).
+      DEVELOPMENT_TEAM: ${BITBOT_IOS_TEAM_ID}
+      CODE_SIGN_STYLE: Automatic

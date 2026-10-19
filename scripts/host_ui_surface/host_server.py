@@ -7,14 +7,23 @@ NOT via CDP Runtime.evaluate of page JS (that is B / rejected for I).
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import time
 import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
+SCRIPTS = ROOT.parent
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
+from bitbot_runtime import detect_llm_mode, run_turn  # noqa: E402
+from bitbot_runtime import persist as bitbot_persist  # noqa: E402
+from bitbot_runtime import connectors_live as bitbot_connectors  # noqa: E402
+
 LOCK = threading.Lock()
 STATE = {
     "settingsOpen": False,
@@ -57,14 +66,85 @@ STATE = {
         "permission_label": None,
         "shown": False,
     },
+    # H5 CM-2101 / 2128 — chat message + emoji reaction pill
+    "chatMessages": [
+        {
+            "id": "msg-h5-1",
+            "role": "assistant",
+            "text": "H5 sample message for ReactToMessage pill.",
+            "reactions": {},
+        }
+    ],
+    "reactPill": {"message_id": None, "emoji": None, "visible": False},
+    "endTurnLeftPill": False,
+    # H5 CM-2103 math / mermaid render surface
+    "mathMermaid": {
+        "open": False,
+        "math_tex": None,
+        "math_rendered": False,
+        "mermaid_src": None,
+        "mermaid_rendered": False,
+    },
+    # H5 CM-2131 cursor-agent card
+    "cursorAgentCard": {
+        "open": False,
+        "agent_id": None,
+        "url": None,
+        "shown": False,
+    },
     "surface": "bit-bot-host-ui",
     "i_claimed": False,
     # CM-1507: page→Host DOM viewport receipt after render (scrollTop/boundingRect)
     "anchorViewport": None,
+    # Product Host runtime
+    "llmMode": None,
+    "lastTurnAudit": [],
+    "lastToolStrip": [],
+    "memorySnippet": None,
     "rev": 0,
 }
 EVENTS: list[dict] = []
 AUDIT: list[dict] = []
+H5_SAMPLE_MESSAGE = {
+    "id": "msg-h5-1",
+    "role": "assistant",
+    "text": "H5 sample message for ReactToMessage pill.",
+    "reactions": {},
+}
+
+
+def _memory_snippet(agent_id: str) -> dict | None:
+    mem = bitbot_persist.load_memory(agent_id)
+    profile = mem.get("profile") if isinstance(mem, dict) else None
+    if not profile:
+        return None
+    return {
+        "agent_id": agent_id,
+        "profile": dict(profile),
+        "updated_at": mem.get("updated_at"),
+    }
+
+
+def _bootstrap_persistence():
+    """Load disk-backed chats into STATE; keep H5 sample when agent has no history."""
+    bitbot_persist.ensure_data_dirs()
+    try:
+        STATE["llmMode"] = detect_llm_mode()
+    except Exception:
+        STATE["llmMode"] = "localbrain"
+    # Prefer activeChat / demo-agent persisted transcript
+    aid = STATE.get("activeChat") or "demo-agent"
+    msgs = bitbot_persist.load_chat(aid)
+    if msgs:
+        STATE["chatMessages"] = msgs
+    else:
+        # Preserve H5 smoke fixture message when nothing persisted yet
+        STATE["chatMessages"] = [dict(H5_SAMPLE_MESSAGE)]
+    STATE["activeChat"] = aid
+    STATE["memorySnippet"] = _memory_snippet(aid)
+
+
+_bootstrap_persistence()
 
 
 def _push_event(kind: str, **payload):
@@ -468,6 +548,9 @@ def apply_address_agent(agent_id):
             return {"error": "unknown_agent", "state": dict(STATE), "audit": span}
         STATE["activeChat"] = agent_id
         STATE["activeChatHidden"] = bool(a.get("hidden"))
+        persisted = bitbot_persist.load_chat(agent_id)
+        if persisted:
+            STATE["chatMessages"] = list(persisted)
         STATE["settingsOpen"] = False
         STATE["infoPanel"] = dict(STATE["infoPanel"], open=False)
         _close_overlays()
@@ -751,6 +834,311 @@ def apply_show_device_permission_card(machine_id, tool_name, permission_label="n
         return {"state": dict(STATE), "card": dict(STATE["devicePermissionCard"]), "audit": span}
 
 
+def _find_message(message_id: str):
+    for m in STATE["chatMessages"]:
+        if m["id"] == message_id:
+            return m
+    return None
+
+
+def apply_react_to_message(message_id: str, emoji: str, toggle: bool = True):
+    """H5 CM-2101: show/toggle emoji reaction pill on a message via Host API."""
+    with LOCK:
+        mid = message_id or "msg-h5-1"
+        emo = emoji or "👍"
+        msg = _find_message(mid)
+        if msg is None:
+            msg = {
+                "id": mid,
+                "role": "assistant",
+                "text": "H5 message",
+                "reactions": {},
+            }
+            STATE["chatMessages"].append(msg)
+        reactions = dict(msg.get("reactions") or {})
+        if toggle and emo in reactions:
+            del reactions[emo]
+            visible = len(reactions) > 0
+            active = next(iter(reactions), None)
+        else:
+            reactions[emo] = reactions.get(emo, 0) + 1
+            visible = True
+            active = emo
+        msg["reactions"] = reactions
+        STATE["reactPill"] = {
+            "message_id": mid,
+            "emoji": active,
+            "visible": visible,
+            "reactions": dict(reactions),
+        }
+        STATE["settingsOpen"] = False
+        STATE["infoPanel"] = dict(STATE["infoPanel"], open=False)
+        STATE["rev"] += 1
+        _push_event(
+            "ReactPillChanged",
+            message_id=mid,
+            emoji=active,
+            visible=visible,
+            reactions=dict(reactions),
+        )
+        span = _audit(
+            "host_ui:react_to_message",
+            True,
+            f"pill message={mid} emoji={active} visible={visible}",
+        )
+        return {
+            "state": dict(STATE),
+            "pill": dict(STATE["reactPill"]),
+            "audit": span,
+        }
+
+
+def apply_end_turn(leave_pill: bool = True):
+    """H5 CM-2128: end_turn leaves reaction pill visible for LiveDisplay frame."""
+    with LOCK:
+        leave = bool(leave_pill)
+        pill = STATE.get("reactPill") or {}
+        if leave and not pill.get("visible"):
+            mid = pill.get("message_id") or "msg-h5-1"
+            emo = pill.get("emoji") or "🎉"
+            msg = _find_message(mid)
+            if msg is None:
+                msg = {
+                    "id": mid,
+                    "role": "assistant",
+                    "text": "H5 outbound react end_turn",
+                    "reactions": {},
+                }
+                STATE["chatMessages"].append(msg)
+            reactions = dict(msg.get("reactions") or {})
+            reactions[emo] = reactions.get(emo, 0) + 1
+            msg["reactions"] = reactions
+            STATE["reactPill"] = {
+                "message_id": mid,
+                "emoji": emo,
+                "visible": True,
+                "reactions": dict(reactions),
+            }
+        STATE["endTurnLeftPill"] = leave and bool(
+            (STATE.get("reactPill") or {}).get("visible")
+        )
+        STATE["rev"] += 1
+        _push_event(
+            "EndTurn",
+            leave_pill=leave,
+            pill_visible=bool((STATE.get("reactPill") or {}).get("visible")),
+            emoji=(STATE.get("reactPill") or {}).get("emoji"),
+        )
+        span = _audit(
+            "host_ui:end_turn",
+            True,
+            f"end_turn leave_pill={leave} pill_visible={STATE['endTurnLeftPill']}",
+        )
+        return {
+            "state": dict(STATE),
+            "end_turn_left_pill": STATE["endTurnLeftPill"],
+            "pill": dict(STATE.get("reactPill") or {}),
+            "audit": span,
+        }
+
+
+def apply_show_math_mermaid(math_tex: str | None = None, mermaid_src: str | None = None):
+    """H5 CM-2103: Host surfaces math + mermaid (SVG fallback on page)."""
+    with LOCK:
+        math_tex = math_tex or r"E = mc^2"
+        mermaid_src = mermaid_src or "flowchart LR; A-->B-->C"
+        STATE["mathMermaid"] = {
+            "open": True,
+            "math_tex": math_tex,
+            "math_rendered": True,
+            "mermaid_src": mermaid_src,
+            "mermaid_rendered": True,
+        }
+        STATE["settingsOpen"] = False
+        STATE["rev"] += 1
+        _push_event(
+            "MathMermaidShown",
+            math_tex=math_tex,
+            mermaid_src=mermaid_src,
+            math_rendered=True,
+            mermaid_rendered=True,
+        )
+        span = _audit(
+            "host_ui:show_math_mermaid",
+            True,
+            f"math+mermaid open tex={math_tex!r}",
+        )
+        return {
+            "state": dict(STATE),
+            "mathMermaid": dict(STATE["mathMermaid"]),
+            "audit": span,
+        }
+
+
+def apply_show_cursor_agent_card(agent_id: str | None = None, url: str | None = None):
+    """H5 CM-2131: show cursor-agent card with cloud agent URL (throwaway id)."""
+    with LOCK:
+        aid = agent_id or "h5-throwaway-agent"
+        open_url = url or f"https://cursor.com/agents/{aid}"
+        STATE["cursorAgentCard"] = {
+            "open": True,
+            "agent_id": aid,
+            "url": open_url,
+            "shown": True,
+        }
+        STATE["settingsOpen"] = False
+        STATE["rev"] += 1
+        _push_event(
+            "CursorAgentCardShown",
+            agent_id=aid,
+            url=open_url,
+            shown=True,
+        )
+        span = _audit(
+            "host_ui:show_cursor_agent_card",
+            True,
+            f"card agent={aid} url={open_url}",
+        )
+        return {
+            "state": dict(STATE),
+            "card": dict(STATE["cursorAgentCard"]),
+            "audit": span,
+        }
+
+
+def apply_host_chat(agent_id: str, text: str):
+    """Product chat: run_turn → append to STATE.chatMessages → persist (via runtime)."""
+    aid = (agent_id or STATE.get("activeChat") or "demo-agent").strip() or "demo-agent"
+    body = text if isinstance(text, str) else str(text or "")
+    if not body.strip():
+        return {"error": "text required", "messages": list(STATE.get("chatMessages") or [])}
+
+    # Ensure agent exists for UI addressing (create soft if missing)
+    with LOCK:
+        if _agent(aid) is None:
+            STATE["agents"].append({"id": aid, "name": aid, "hidden": False})
+        STATE["activeChat"] = aid
+
+    result = run_turn(body, aid)
+
+    with LOCK:
+        # Prefer full persisted transcript; fall back to append user+assistant
+        msgs = list(result.get("messages") or [])
+        if not msgs:
+            msgs = list(STATE.get("chatMessages") or [])
+            um = result.get("user_message")
+            am = result.get("assistant_message")
+            if um:
+                msgs.append(um)
+            if am:
+                msgs.append(am)
+        STATE["chatMessages"] = msgs
+        STATE["llmMode"] = result.get("llm_mode") or STATE.get("llmMode")
+        STATE["memorySnippet"] = _memory_snippet(aid)
+        STATE["lastTurnAudit"] = list(result.get("audit_spans") or [])
+        STATE["lastToolStrip"] = [
+            {
+                "tool": t.get("tool"),
+                "ok": t.get("ok"),
+                "refused": t.get("refused"),
+                "detail": t.get("detail"),
+                "excerpt": (t.get("output") or "")[:160],
+            }
+            for t in (result.get("tool_calls") or [])
+        ]
+        for span in result.get("audit_spans") or []:
+            AUDIT.append(
+                {
+                    "id": span.get("id") or str(uuid.uuid4()),
+                    "tool_name": span.get("tool_name") or "runtime",
+                    "duration_ms": span.get("duration_ms") or 0,
+                    "ok": bool(span.get("ok")),
+                    "detail": span.get("detail") or "",
+                    "artifact_path": span.get("artifact_path"),
+                    "ts": span.get("ts") or time.time(),
+                }
+            )
+        STATE["settingsOpen"] = False
+        STATE["rev"] += 1
+        _push_event(
+            "HostChatTurn",
+            agent_id=aid,
+            turn_id=result.get("turn_id"),
+            llm_mode=result.get("llm_mode"),
+            tools=len(result.get("tool_calls") or []),
+        )
+        span = _audit(
+            "host_ui:chat",
+            True,
+            f"chat agent={aid} mode={result.get('llm_mode')} tools={len(result.get('tool_calls') or [])}",
+        )
+        return {
+            "ok": True,
+            "agent_id": aid,
+            "llm_mode": result.get("llm_mode"),
+            "assistant_text": result.get("assistant_text"),
+            "messages": list(STATE["chatMessages"]),
+            "tool_calls": result.get("tool_calls") or [],
+            "audit_spans": result.get("audit_spans") or [],
+            "state": dict(STATE),
+            "audit": span,
+        }
+
+
+def apply_chat_history(agent_id: str | None):
+    aid = (agent_id or STATE.get("activeChat") or "demo-agent").strip() or "demo-agent"
+    msgs = bitbot_persist.load_chat(aid)
+    with LOCK:
+        if aid == (STATE.get("activeChat") or aid) and msgs:
+            STATE["chatMessages"] = list(msgs)
+            STATE["rev"] += 1
+        return {
+            "agent_id": aid,
+            "messages": msgs if msgs else list(STATE.get("chatMessages") or []),
+        }
+
+
+def apply_memory_recall(agent_id: str | None):
+    aid = (agent_id or STATE.get("activeChat") or "demo-agent").strip() or "demo-agent"
+    mem = bitbot_persist.load_memory(aid)
+    journal = bitbot_persist.load_journal(aid)
+    with LOCK:
+        STATE["memorySnippet"] = _memory_snippet(aid)
+        STATE["rev"] += 1
+    span = _audit("host_ui:memory_recall", True, f"recall agent={aid}")
+    return {
+        "agent_id": aid,
+        "memory": mem,
+        "journal": journal,
+        "audit": span,
+        "state": dict(STATE),
+    }
+
+
+def apply_memory_update(agent_id: str | None, patch: dict | None):
+    aid = (agent_id or STATE.get("activeChat") or "demo-agent").strip() or "demo-agent"
+    mem = bitbot_persist.update_memory(aid, patch or {})
+    bitbot_persist.append_journal_entry(
+        aid, {"kind": "memory_api_update", "patch": patch or {}}
+    )
+    with LOCK:
+        STATE["memorySnippet"] = _memory_snippet(aid)
+        STATE["rev"] += 1
+        span = _audit("host_ui:memory_update", True, f"update agent={aid}")
+        return {"agent_id": aid, "memory": mem, "audit": span, "state": dict(STATE)}
+
+
+def apply_connectors_status():
+    report = bitbot_connectors.connectors_status_report()
+    span = _audit(
+        "host_ui:connectors_status",
+        True,
+        "connectors status live vs sandbox",
+    )
+    report["audit"] = span
+    return report
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -785,6 +1173,10 @@ class Handler(SimpleHTTPRequestHandler):
             with LOCK:
                 return self._json(200, {"spans": list(AUDIT)})
         if path == "/api/host/health":
+            try:
+                mode = detect_llm_mode()
+            except Exception:
+                mode = STATE.get("llmMode") or "localbrain"
             return self._json(
                 200,
                 {
@@ -792,8 +1184,14 @@ class Handler(SimpleHTTPRequestHandler):
                     "surface": "bit-bot-host-ui",
                     "mode": "C_prime",
                     "i_claimed": False,
+                    "llm_mode": mode,
+                    "runtime": "bitbot_runtime",
                 },
             )
+        if path == "/api/host/chat/history":
+            qs = parse_qs(urlparse(self.path).query or "")
+            agent_id = (qs.get("agent_id") or [None])[0]
+            return self._json(200, apply_chat_history(agent_id))
         return super().do_GET()
 
     def do_POST(self):
@@ -888,6 +1286,40 @@ class Handler(SimpleHTTPRequestHandler):
                 data.get("machine_id") or "phone-ios",
                 data.get("tool_name") or "camera",
                 data.get("permission_label") or "needs_permission"))
+        if path == "/api/host/react_to_message":
+            return self._json(200, apply_react_to_message(
+                data.get("message_id") or "msg-h5-1",
+                data.get("emoji") or "👍",
+                bool(data.get("toggle", True)) if "toggle" in data else True,
+            ))
+        if path == "/api/host/end_turn":
+            leave = data.get("leave_pill")
+            if leave is None:
+                leave = True
+            return self._json(200, apply_end_turn(bool(leave)))
+        if path == "/api/host/show_math_mermaid":
+            return self._json(200, apply_show_math_mermaid(
+                data.get("math_tex"), data.get("mermaid_src")))
+        if path == "/api/host/show_cursor_agent_card":
+            return self._json(200, apply_show_cursor_agent_card(
+                data.get("agent_id"), data.get("url")))
+        if path == "/api/host/chat":
+            return self._json(
+                200,
+                apply_host_chat(
+                    data.get("agent_id") or "demo-agent",
+                    data.get("text") or data.get("message") or "",
+                ),
+            )
+        if path == "/api/host/memory/recall":
+            return self._json(200, apply_memory_recall(data.get("agent_id")))
+        if path == "/api/host/memory/update":
+            patch = data.get("patch") if isinstance(data.get("patch"), dict) else {
+                k: v for k, v in data.items() if k not in ("agent_id",)
+            }
+            return self._json(200, apply_memory_update(data.get("agent_id"), patch))
+        if path == "/api/host/connectors/status":
+            return self._json(200, apply_connectors_status())
         self._json(404, {"error": "unknown HostUiShell route", "path": path})
 
 

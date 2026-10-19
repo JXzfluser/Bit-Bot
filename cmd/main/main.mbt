@@ -1,8 +1,6 @@
 ///|
-/// Entry point: print Bit Bot runtime boot and registered module count.
+/// Entry point: print Bit Bot runtime boot, module list, and I inventory.
 fn main {
-  let n = @bitbot.module_count()
-  println("Bit Bot runtime boot")
-  println("registered modules: " + n.to_string())
+  println(@bitbot.boot_banner())
   ignore(@bitbot.scaffold_ping())
 }

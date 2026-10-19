@@ -1,0 +1,4121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Bit Bot Desktop</title>
+<style>
+  :root {
+    --bg0: #0c1210;
+    --bg1: #14201a;
+    --ink: #e7f0ea;
+    --muted: #8aa396;
+    --line: #2a3d34;
+    --accent: #3dba7e;
+    --warn: #d4a017;
+    --side: #0e1612;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font: 15px/1.45 "IBM Plex Sans", "Segoe UI", sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, #1a3a2c 0%, transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, #1e2a22 0%, transparent 50%),
+      linear-gradient(165deg, var(--bg0), var(--bg1));
+    display: grid;
+    grid-template-columns: 220px 1fr 240px;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "header header header"
+      "agents main machines"
+      "agents composer machines";
+    min-height: 100vh;
+  }
+  header {
+    grid-area: header;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  header .brand {
+    font: 700 28px/1.1 "IBM Plex Serif", Georgia, serif;
+    letter-spacing: -0.02em;
+  }
+  header .sub {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  #agents {
+    grid-area: agents;
+    border-right: 1px solid var(--line);
+    background: var(--side);
+    padding: 14px 12px;
+    overflow: auto;
+  }
+  #machines {
+    grid-area: machines;
+    border-left: 1px solid var(--line);
+    background: var(--side);
+    padding: 14px 12px;
+    overflow: auto;
+  }
+  .panel-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .agent-item, .machine-item {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #101a15;
+  }
+  .agent-item.active { border-color: #2f6b4c; }
+  .agent-item .name, .machine-item .name {
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .agent-item .meta, .machine-item .meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .kind-pill {
+    display: inline-block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #b7e0c8;
+    margin-right: 4px;
+  }
+  #main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  #banner {
+    margin: 12px 16px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #0f1814cc;
+    font: 12px/1.4 ui-monospace, "IBM Plex Mono", monospace;
+    white-space: pre-wrap;
+    color: var(--muted);
+    max-height: 100px;
+    overflow: auto;
+  }
+  #banner.ok { border-color: #2f6b4c; color: #b7e0c8; }
+  #banner.err { border-color: #8a3a3a; color: #f0b4b4; }
+  #log {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg {
+    max-width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: #101a15;
+  }
+  .msg.user { align-self: flex-end; border-color: #355646; }
+  .msg .role {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+  .msg .body { margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+  .msg.media .body { white-space: normal; }
+  .msg.media .media-label {
+    font: 12px/1.4 ui-monospace, "IBM Plex Mono", monospace;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .msg.media img.delivery-media {
+    display: block;
+    max-width: min(100%, 520px);
+    max-height: 360px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: #0a100e;
+  }
+  .msg.media audio.delivery-media,
+  .msg.media video.delivery-media {
+    display: block;
+    width: min(100%, 480px);
+    margin-top: 4px;
+  }
+  .msg.media iframe.delivery-html {
+    display: block;
+    width: min(100%, 560px);
+    height: 280px;
+    margin-top: 4px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #0a100e;
+  }
+  .msg.media button.open-artifact {
+    margin-top: 6px;
+    background: #1a2420;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font: 12px/1.3 "IBM Plex Sans", sans-serif;
+  }
+  .msg.media button.open-artifact:hover {
+    border-color: var(--accent, #3d6b52);
+  }
+  #composer {
+    grid-area: composer;
+    padding: 12px 16px 16px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #composer .row {
+    display: flex;
+    gap: 10px;
+  }
+  #composer input {
+    flex: 1;
+    background: #0e1612;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font: inherit;
+  }
+  #composer input:focus { outline: none; border-color: var(--accent); }
+  #composer button {
+    background: var(--accent);
+    color: #062014;
+    border: 0;
+    border-radius: 8px;
+    padding: 0 18px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  #composer button:disabled { opacity: 0.5; cursor: wait; }
+  #json-out {
+    padding: 8px 10px;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    font: 11px/1.35 ui-monospace, monospace;
+    color: var(--warn);
+    white-space: pre-wrap;
+    max-height: 120px;
+    overflow: auto;
+  }
+  #approval {
+    display: none;
+    margin: 0 16px 8px;
+    padding: 12px;
+    border: 1px solid var(--warn);
+    border-radius: 8px;
+    background: #1a1810;
+  }
+  #approval.visible { display: block; }
+  #approval .title { font-weight: 700; color: var(--warn); margin-bottom: 6px; }
+  #approval .detail { font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+  #approval .actions { margin-top: 10px; display: flex; gap: 8px; }
+  #approval button {
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  #approve-btn { background: var(--accent); color: #062014; }
+  #deny-btn { background: #3a2a2a; color: #f0b4b4; }
+  .effect-chip {
+    display: inline-block;
+    margin: 2px 4px 0 0;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    font: 10px/1.4 ui-monospace, monospace;
+    color: #b7e0c8;
+  }
+  .reaction-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid #3d6b52;
+    background: linear-gradient(180deg, #1a2e24, #122018);
+    font: 14px/1 "IBM Plex Sans", sans-serif;
+    color: var(--ink);
+    animation: reaction-pop 280ms ease-out;
+  }
+  .reaction-pill .emoji { font-size: 18px; line-height: 1; }
+  .reaction-pill .tag {
+    font: 10px/1 ui-monospace, monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  @keyframes reaction-pop {
+    from { transform: scale(0.85); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  #reaction-tray {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    min-height: 28px;
+  }
+  #reaction-tray .tray-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: #101a15;
+    font-size: 13px;
+  }
+  @media (max-width: 900px) {
+    body {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "header"
+        "agents"
+        "machines"
+        "main"
+        "composer";
+    }
+    #agents, #machines { max-height: 140px; border: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+  <header style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+    <div>
+      <div class="brand">Bit Bot</div>
+      <div class="sub">Desktop host · MoonBit brain · multi-end MachineKind (desktop / ios / android)</div>
+    </div>
+    <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton" style="margin-top:4px;background:#1a2420;color:#b7e0c8;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-weight:600;cursor:pointer">Account</button>
+  </header>
+  <aside id="agents">
+    <div class="panel-title">Agents</div>
+    <div class="agent-item active" id="agent-bit" data-agent-id="agent-bit" style="cursor:pointer">
+      <div class="name">Bit Bot</div>
+      <div class="meta">MoonBit · cmd/desktop_turn · click for info</div>
+    </div>
+    <div class="agent-item" id="agents-host-panel">
+      <div class="name">Sidebar agents</div>
+      <div class="meta" id="agents-meta">list · hide (CM-1906/1907)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="ag-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List agents</button>
+        <button type="button" id="ag-hide" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Hide agent research</button>
+      </div>
+    </div>
+    <div class="agent-item" id="teammates-panel">
+      <div class="name">Teammates</div>
+      <div class="meta" id="teammates-meta">Host durable store</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="tm-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create teammate</button>
+        <button type="button" id="tm-members" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Members panel</button>
+        <button type="button" id="tm-members-group" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Open members group</button>
+        <button type="button" id="tm-room" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Room turn</button>
+        <button type="button" id="tm-room-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Post to room</button>
+        <button type="button" id="tm-room-join" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Join room</button>
+        <button type="button" id="tm-list-members" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List members</button>
+        <button type="button" id="tm-list-channels" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List channels</button>
+        <button type="button" id="tm-open-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open canvas</button>
+        <button type="button" id="tm-list-models" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List models</button>
+        <button type="button" id="tm-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
+        <button type="button" id="tm-subagent" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
+      </div>
+    </div>
+  </aside>
+  <div id="main">
+    <pre id="banner">booting MoonBit…</pre>
+    <div id="approval">
+      <div class="title">Approval required</div>
+      <div class="detail" id="approval-detail"></div>
+      <div class="actions">
+        <button type="button" id="approve-btn">Approve &amp; re-run</button>
+        <button type="button" id="deny-btn">Dismiss</button>
+      </div>
+    </div>
+    <div id="permission" style="display:none;margin:12px 16px;padding:12px;border:1px solid #5a4a2a;background:#2a2418;border-radius:8px">
+      <div class="title" style="font-weight:700;color:#f0d9a0">Device permission</div>
+      <div class="detail" id="permission-detail" style="margin-top:6px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
+      <div class="actions" style="margin-top:10px;display:flex;gap:8px">
+        <button type="button" id="permission-dismiss" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">Dismiss card</button>
+      </div>
+    </div>
+    <div id="settings-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:#0f1814;border-radius:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="title" style="font-weight:700">Settings</div>
+        <button type="button" id="settings-close" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">Close</button>
+      </div>
+      <div id="settings-tabs" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+      <div id="settings-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
+      <div id="settings-anchors" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+    <div id="agent-info-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:#0f1814;border-radius:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="title" style="font-weight:700" id="agent-info-title">Agent info</div>
+        <div style="display:flex;gap:6px">
+          <button type="button" id="agent-delete-btn" style="background:#3a2a2a;color:#f0b4b4;border:0;border-radius:6px;padding:4px 8px;cursor:pointer">Delete…</button>
+          <button type="button" id="agent-info-close" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">Close</button>
+        </div>
+      </div>
+      <div id="agent-info-sections" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+      <div id="agent-info-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
+      <div id="agent-delete-confirm" style="display:none;margin-top:10px;padding:8px;border:1px solid #5a3a3a;border-radius:6px;background:#2a1818">
+        <div style="color:#f0b4b4;font-size:13px">Confirm permanent delete (CM-1907 · not Settings)</div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button type="button" id="agent-delete-confirm-btn" style="background:#8a3030;color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer">Confirm delete</button>
+          <button type="button" id="agent-delete-cancel-btn" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+    </div>
+    <div id="log"></div>
+  </div>
+  <aside id="machines">
+    <div class="panel-title">Machines</div>
+    <div class="machine-item">
+      <div class="name">Multi-end roster</div>
+      <div class="meta" id="machines-meta">desktop / ios / android (active Host only Connected)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="mach-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List machines</button>
+      </div>
+    </div>
+    <div id="machine-list">
+      <div class="machine-item"><div class="meta">Ask ListMachines to refresh</div></div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Connectors</div>
+    <div class="machine-item">
+      <div class="name">Slack / Gmail / Outlook</div>
+      <div class="meta" id="connectors-meta">Host sandbox IdP OAuth</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="connect-slack" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Connect Slack</button>
+        <button type="button" id="connect-gmail" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
+        <button type="button" id="connect-outlook" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Outlook</button>
+        <button type="button" id="connect-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
+        <button type="button" id="connect-identity" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
+        <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Host prefs</div>
+    <div class="machine-item">
+      <div class="name">Notify · computer · guide</div>
+      <div class="meta" id="prefs-meta">settings Host effects (not pretend)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="pref-notify" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Notify settings</button>
+        <button type="button" id="pref-set-notify" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Set notify off</button>
+        <button type="button" id="pref-guide" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Guide permission</button>
+        <button type="button" id="pref-update" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Update computer</button>
+        <button type="button" id="pref-reset" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Reset computer</button>
+        <button type="button" id="pref-local" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Local execution off</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Channels</div>
+    <div class="machine-item">
+      <div class="name">Slack / Teams outbound + claim</div>
+      <div class="meta" id="channels-meta">draft · thread · sandbox claim (Host env)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="ch-slack-draft" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Slack draft</button>
+        <button type="button" id="ch-slack-thread" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
+        <button type="button" id="ch-slack-dm" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Personal Slack DM</button>
+        <button type="button" id="ch-slack-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
+        <button type="button" id="ch-teams-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
+        <button type="button" id="ch-teams-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams send</button>
+        <button type="button" id="ch-teams-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
+        <button type="button" id="ch-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
+        <button type="button" id="ch-jobs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
+        <button type="button" id="ch-xsearch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
+        <button type="button" id="ch-workflows" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List workflows</button>
+        <button type="button" id="ch-credentials" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List credentials</button>
+        <button type="button" id="ch-cred-fill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fill credential</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Plugins</div>
+    <div class="machine-item">
+      <div class="name">MCP plugins (CM-0904 / 2107 / 2108)</div>
+      <div class="meta" id="plugins-meta">list · get · install → Ready · uninstall → Unavailable</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="plugin-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List plugins</button>
+        <button type="button" id="plugin-get" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Get plugin-slides</button>
+        <button type="button" id="plugin-install" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install plugin-slides</button>
+        <button type="button" id="plugin-uninstall" style="background:#2a1a1a;color:#e0b0b0;border:1px solid #5a3a3a;border-radius:6px;padding:6px 8px;cursor:pointer">Uninstall plugin-slides</button>
+        <button type="button" id="plugin-mcp-discover" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP discover</button>
+        <button type="button" id="plugin-mcp-call" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP call Gmail search</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Webhook</div>
+    <div class="machine-item" id="webhook-panel" role="region" aria-label="Webhook trigger panel">
+      <div class="name">Routine trigger (CM-0411)</div>
+      <div class="meta" id="webhook-meta">Open panel · user copy URL/key · key opaque to tools</div>
+      <div id="webhook-url" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
+      <div id="webhook-key" style="margin-top:4px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="wh-open" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Open webhook panel</button>
+        <button type="button" id="wh-copy-url" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy URL</button>
+        <button type="button" id="wh-copy-key" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy key</button>
+        <button type="button" id="wh-tool-read" style="background:#2a1a1a;color:#e0b0b0;border:1px solid #5a3a3a;border-radius:6px;padding:6px 8px;cursor:pointer">Tool-read key (must refuse)</button>
+        <button type="button" id="wh-wake" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Simulate wake POST</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Delivery</div>
+    <div class="machine-item">
+      <div class="name">SendToUser</div>
+      <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent · secret-request</div>
+      <div id="reaction-tray" aria-label="Reaction pills"></div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="del-react" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">React message</button>
+        <button type="button" id="del-inbound-react" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Inbound reaction</button>
+        <button type="button" id="del-markdown" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Render markdown</button>
+        <button type="button" id="del-channel-plan" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Channel plan (in-app)</button>
+        <button type="button" id="del-slides" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Make slides</button>
+        <button type="button" id="del-skill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Author skill</button>
+        <button type="button" id="del-export" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export bot template</button>
+        <button type="button" id="del-load-skill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Load skill</button>
+        <button type="button" id="del-list-skills" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List skills</button>
+        <button type="button" id="del-todo-write" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Todo write</button>
+        <button type="button" id="del-todo-list" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List todos</button>
+        <button type="button" id="del-attach-file" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Attach file</button>
+        <button type="button" id="del-journal-query" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
+        <button type="button" id="del-open-thread" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open thread</button>
+        <button type="button" id="del-x-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X post draft</button>
+        <button type="button" id="del-section" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Section post</button>
+        <button type="button" id="del-section-add" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Add section</button>
+        <button type="button" id="del-learn" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Learn from demo</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Memory</div>
+    <div class="machine-item">
+      <div class="name">Host session seed</div>
+      <div class="meta" id="memory-meta">remember k=v · recall (desktop-host.json)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="mem-remember" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Remember</button>
+        <button type="button" id="mem-recall" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Recall</button>
+        <button type="button" id="mem-shared-put" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared put</button>
+        <button type="button" id="mem-shared-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared read</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Tools</div>
+    <div class="machine-item">
+      <div class="name">Shell / FS (Host FFI)</div>
+      <div class="meta" id="tools-meta">shell · listdir · read (ADR 0002)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="tool-shell" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Shell echo</button>
+        <button type="button" id="tool-listdir" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Listdir docs</button>
+        <button type="button" id="tool-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read README</button>
+        <button type="button" id="tool-webfetch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">WebFetch example.com</button>
+        <button type="button" id="tool-device" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Device tools</button>
+        <button type="button" id="tool-take-photo" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Take photo</button>
+        <button type="button" id="tool-record-video" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Record video</button>
+        <button type="button" id="tool-open-terminal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open terminal</button>
+        <button type="button" id="tool-version-info" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Version info</button>
+        <button type="button" id="tool-mute-channel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Mute channel</button>
+        <button type="button" id="tool-toggle-theme" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Toggle theme</button>
+        <button type="button" id="tool-share-screen" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Share screen</button>
+        <button type="button" id="tool-ping-host" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Ping host</button>
+        <button type="button" id="tool-dnd" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Do not disturb</button>
+        <button type="button" id="tool-export-chat" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export chat</button>
+        <button type="button" id="tool-create-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Create canvas</button>
+        <button type="button" id="tool-edit-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Edit message</button>
+        <button type="button" id="tool-react-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">React message</button>
+        <button type="button" id="tool-pin-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Pin message</button>
+        <button type="button" id="tool-clear-chat" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Clear chat</button>
+        <button type="button" id="tool-journal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
+        <button type="button" id="tool-journal-append" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal append</button>
+        <button type="button" id="tool-pkg" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
+        <button type="button" id="tool-pkg-npm" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install package npm</button>
+        <button type="button" id="tool-journal-range" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Query journal range</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Computer use</div>
+    <div class="machine-item">
+      <div class="name">box-chrome CU (CM-0802)</div>
+      <div class="meta" id="cu-meta">navigate · act · vision (private CDP)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="cu-open" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Open example.com</button>
+        <button type="button" id="cu-native" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Native act click</button>
+        <button type="button" id="cu-ocr" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">OCR pass</button>
+        <button type="button" id="cu-shop" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shop playbook</button>
+        <button type="button" id="cu-travel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Travel expedia</button>
+        <button type="button" id="cu-flight" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Book flight</button>
+        <button type="button" id="cu-food" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Order food</button>
+        <button type="button" id="cu-paywall" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Payment wall fixture</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Source control</div>
+    <div class="machine-item">
+      <div class="name">git / PR plan</div>
+      <div class="meta" id="source-control-meta">status · plan gated (BITBOT_GH_PR_CREATE)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="sc-status" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Git status</button>
+        <button type="button" id="sc-create-pr" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create PR plan</button>
+        <button type="button" id="sc-code" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Code changes plan</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Media</div>
+    <div class="machine-item">
+      <div class="name">Image / video / chart (CM-1601–1603 / 2157)</div>
+      <div class="meta" id="media-meta">generate · watch · structured chart</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="media-image" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Generate image</button>
+        <button type="button" id="media-video" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Generate video</button>
+        <button type="button" id="media-chart" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Structured chart</button>
+        <button type="button" id="media-watch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Watch last video</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Voice</div>
+    <div class="machine-item">
+      <div class="name">Session / relay / end</div>
+      <div class="meta" id="voice-meta">start · relay WAV · end write</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="voice-start" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Start voice</button>
+        <button type="button" id="voice-relay" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Voice relay</button>
+        <button type="button" id="voice-end" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End voice</button>
+        <button type="button" id="voice-huddle-start" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Start huddle</button>
+        <button type="button" id="voice-huddle-end" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End huddle</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Box</div>
+    <div class="machine-item">
+      <div class="name">Doctor / env / clock (CM-0607/0608/2175)</div>
+      <div class="meta" id="box-meta">self-check · runtime · TZ align</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="box-doctor" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Box doctor</button>
+        <button type="button" id="box-env" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Box env</button>
+        <button type="button" id="box-clock" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Box clock</button>
+        <button type="button" id="box-chrome" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Chrome probe</button>
+        <button type="button" id="box-bare-chrome" style="background:#2a1a1a;color:#e0b0b0;border:1px solid #5a3a3a;border-radius:6px;padding:6px 8px;cursor:pointer">Launch bare chrome (refuse)</button>
+        <button type="button" id="box-screenshot" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Screenshot</button>
+        <button type="button" id="box-check-updates" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Check updates</button>
+        <button type="button" id="box-copy-to" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy to box</button>
+        <button type="button" id="box-copy-from" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy from box</button>
+        <button type="button" id="box-shared-fs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared box fs</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Cloud</div>
+    <div class="machine-item">
+      <div class="name">Cursor agent card (CM-2131)</div>
+      <div class="meta" id="cloud-meta">local_worker · artifact deliver</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="cloud-launch" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Launch cloud agent</button>
+        <button type="button" id="cloud-deliver" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Deliver last artifact</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Routines</div>
+    <div class="machine-item">
+      <div class="name">Schedule · fire · tick</div>
+      <div class="meta" id="routines-meta">durable Host wakes (not cron pretend)</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="rt-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create routine</button>
+        <button type="button" id="rt-reminder" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create reminder</button>
+        <button type="button" id="rt-list-scheduled" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List scheduled</button>
+        <button type="button" id="rt-list" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List routines</button>
+        <button type="button" id="rt-fire" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fire routine</button>
+        <button type="button" id="rt-tick" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Tick routines</button>
+        <button type="button" id="rt-pause" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Pause routine</button>
+        <button type="button" id="rt-resume" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Resume routine</button>
+        <button type="button" id="rt-auto-review" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Auto-review settings</button>
+      </div>
+    </div>
+    <div class="panel-title" style="margin-top:16px">Mail / commerce</div>
+    <div class="machine-item">
+      <div class="name">Draft · cold · on-behalf · claim</div>
+      <div class="meta" id="mail-meta">sandbox eml · ICS · receipt</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <button type="button" id="mail-draft" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Draft mail</button>
+        <button type="button" id="mail-cold" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Cold mail</button>
+        <button type="button" id="mail-onbehalf" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Send on behalf</button>
+        <button type="button" id="mail-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Claim inbox</button>
+        <button type="button" id="mail-schedule" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Schedule meeting</button>
+        <button type="button" id="mail-purchase" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Purchase (sandbox)</button>
+        <button type="button" id="mail-search" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Search mail</button>
+        <button type="button" id="mail-meeting" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Meeting chat</button>
+        <button type="button" id="mail-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read mail</button>
+        <button type="button" id="mail-outlook" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Draft Outlook</button>
+      </div>
+    </div>
+  </aside>
+  <form id="composer">
+    <pre id="json-out">turn JSON (v:1) will appear here</pre>
+    <div class="row">
+      <input id="text" type="text" placeholder="ListMachines · remember k=v · recall · shell …" autocomplete="off" />
+      <button id="send" type="submit">发送</button>
+    </div>
+  </form>
+  <script>
+    const banner = document.getElementById("banner");
+    const log = document.getElementById("log");
+    const jsonOut = document.getElementById("json-out");
+    const form = document.getElementById("composer");
+    const input = document.getElementById("text");
+    const sendBtn = document.getElementById("send");
+    const machineList = document.getElementById("machine-list");
+    const approval = document.getElementById("approval");
+    const approvalDetail = document.getElementById("approval-detail");
+    const approveBtn = document.getElementById("approve-btn");
+    const denyBtn = document.getElementById("deny-btn");
+    let pendingApprovalText = "";
+    let pendingDeleteAgentId = "agent-bit";
+    const SETTINGS_TAB_ANCHORS = {
+      General: [
+        "account",
+        "theme",
+        "accent",
+        "language",
+        "auto-review",
+        "security-keys",
+      ],
+      Computer: [
+        "local-execution",
+        "computers",
+        "update-computer",
+        "reset-computer",
+      ],
+      Vault: [],
+      "Usage & Billing": ["usage", "plan", "billing"],
+      Updates: ["update-status", "update-channel", "automatic-updates"],
+    };
+
+    function renderSettingsPanel(payload) {
+      const panel = document.getElementById("settings-panel");
+      const tabsEl = document.getElementById("settings-tabs");
+      const meta = document.getElementById("settings-meta");
+      const anchorsEl = document.getElementById("settings-anchors");
+      if (!panel || !tabsEl || !meta || !anchorsEl) return;
+      if (payload && payload.refused) {
+        meta.textContent = payload.error || "Settings refused";
+        panel.style.display = "block";
+        return;
+      }
+      const tabs = (payload && payload.tabs) || Object.keys(SETTINGS_TAB_ANCHORS);
+      const activeTab = (payload && payload.tab) || "General";
+      tabsEl.innerHTML = "";
+      for (const tab of tabs) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = tab;
+        btn.style.cssText =
+          "background:" +
+          (tab === activeTab ? "var(--accent)" : "#1a2420") +
+          ";color:" +
+          (tab === activeTab ? "#062014" : "var(--muted)") +
+          ";border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px";
+        btn.addEventListener("click", () => {
+          const first = (SETTINGS_TAB_ANCHORS[tab] || [])[0];
+          if (first) {
+            runUserTurn("open settings entry=sidebar-account-button anchor=" + first, {});
+          } else {
+            meta.textContent = "tab=" + tab + " (no anchors in Vault stub)";
+          }
+        });
+        tabsEl.appendChild(btn);
+      }
+      anchorsEl.innerHTML = "";
+      for (const id of SETTINGS_TAB_ANCHORS[activeTab] || []) {
+        const chip = document.createElement("span");
+        chip.className = "effect-chip";
+        chip.textContent = id;
+        if (payload && payload.anchor === id) {
+          chip.style.borderColor = "var(--accent)";
+          chip.style.color = "#b7e0c8";
+        }
+        chip.style.cursor = "pointer";
+        chip.addEventListener("click", () => {
+          runUserTurn("open settings entry=sidebar-account-button anchor=" + id, {});
+        });
+        anchorsEl.appendChild(chip);
+      }
+      meta.textContent =
+        "entry=" +
+        ((payload && payload.entry) || "?") +
+        " · tab=" +
+        activeTab +
+        (payload && payload.deep_link ? " · " + payload.deep_link : "") +
+        " · anchors=" +
+        ((payload && payload.anchors_closed_set_count) || 27);
+      panel.style.display = "block";
+    }
+
+    /** CM-2103 / CHARTER Delivery: prefer Host HTML artifact iframe over text remount. */
+    async function renderMathMermaidCard(payload) {
+      if (!payload) return;
+      const el = document.createElement("div");
+      el.className = "msg assistant media";
+      el.innerHTML =
+        '<div class="role">markdown</div><div class="body"></div>';
+      const body = el.querySelector(".body");
+      const htmlPath = payload.html_path || "";
+      let framed = false;
+      if (htmlPath && window.bitbot && window.bitbot.readArtifact) {
+        try {
+          const art = await window.bitbot.readArtifact(htmlPath);
+          if (art && art.ok && art.mime === "text/html" && art.text) {
+            const lab = document.createElement("div");
+            lab.className = "media-label";
+            lab.textContent =
+              "render_markdown · " +
+              String(htmlPath).split("/").slice(-1)[0] +
+              " · " +
+              (art.bytes || 0) +
+              "B";
+            body.appendChild(lab);
+            const iframe = document.createElement("iframe");
+            iframe.className = "delivery-html";
+            iframe.title = "Host markdown render (CM-2103)";
+            iframe.setAttribute("sandbox", "");
+            iframe.srcdoc = art.text;
+            body.appendChild(iframe);
+            framed = true;
+          }
+        } catch (_) {
+          framed = false;
+        }
+      }
+      if (!framed) {
+        const spans = payload.math_spans || [];
+        for (const s of spans) {
+          if (s.kind === "inline_paren") {
+            const span = document.createElement("span");
+            span.style.cssText =
+              "font-family:IBM Plex Serif,Georgia,serif;color:#b7e0c8;margin-right:6px";
+            span.textContent = "\\(" + (s.body || "") + "\\)";
+            body.appendChild(span);
+          } else {
+            const div = document.createElement("div");
+            div.style.cssText =
+              "margin:8px 0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#101a15;text-align:center;font-family:IBM Plex Serif,Georgia,serif";
+            div.textContent = "$$" + (s.body || "") + "$$";
+            body.appendChild(div);
+          }
+        }
+        for (const f of payload.mermaid_fences || []) {
+          const pre = document.createElement("pre");
+          pre.style.cssText =
+            "margin:8px 0;padding:10px;border:1px dashed #3d6b52;border-radius:8px;background:#0e1612;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:#b7e0c8";
+          pre.textContent = f.body || "";
+          body.appendChild(pre);
+        }
+        if (!spans.length && !(payload.mermaid_fences || []).length) {
+          body.textContent = payload.body_prefix || "(empty markdown)";
+        }
+      }
+      const meta = document.createElement("div");
+      meta.style.cssText = "margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace";
+      meta.textContent =
+        "CM-2103 · html_iframe=" +
+        String(framed) +
+        " · inline=" +
+        String(Boolean(payload.has_inline_math)) +
+        " display=" +
+        String(Boolean(payload.has_display_math)) +
+        " mermaid=" +
+        String(Boolean(payload.has_mermaid));
+      body.appendChild(meta);
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function renderAgentInfoPanel(payload) {
+      const panel = document.getElementById("agent-info-panel");
+      const sectionsEl = document.getElementById("agent-info-sections");
+      const meta = document.getElementById("agent-info-meta");
+      const title = document.getElementById("agent-info-title");
+      if (!panel || !sectionsEl || !meta) return;
+      const agentId = (payload && payload.agent_id) || "agent-bit";
+      pendingDeleteAgentId = agentId;
+      if (title) title.textContent = "Agent · " + agentId;
+      sectionsEl.innerHTML = "";
+      const sections =
+        (payload && payload.sections) || [
+          "desktop-preview",
+          "routines",
+          "channels",
+          "members",
+          "gear-settings",
+        ];
+      for (const s of sections) {
+        const chip = document.createElement("span");
+        chip.className = "effect-chip";
+        chip.textContent = s;
+        sectionsEl.appendChild(chip);
+      }
+      meta.textContent =
+        "CM-0205 · gear_is_per_agent_not_global=" +
+        String(Boolean(payload && payload.gear_is_per_agent_not_global)) +
+        " · fields_align=" +
+        String(Boolean(payload && payload.fields_align_with_app_ui));
+      const delBox = document.getElementById("agent-delete-confirm");
+      if (delBox) delBox.style.display = "none";
+      panel.style.display = "block";
+    }
+
+    function addMsg(role, text) {
+      const el = document.createElement("div");
+      el.className = "msg " + role;
+      el.innerHTML = '<div class="role"></div><div class="body"></div>';
+      el.querySelector(".role").textContent = role;
+      el.querySelector(".body").textContent = text;
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    /** CHARTER Delivery: inline Host media attachment in Desktop transcript. */
+    async function renderDeliveryMedia(filePath, label) {
+      if (!filePath || !window.bitbot || !window.bitbot.readArtifact) return;
+      try {
+        const art = await window.bitbot.readArtifact(filePath);
+        if (!art || !art.ok || !art.data_url) {
+          addMsg(
+            "assistant",
+            "Attachment · " +
+              (label || "media") +
+              " · " +
+              filePath +
+              (art && art.error ? " (" + art.error + ")" : ""),
+          );
+          return;
+        }
+        const el = document.createElement("div");
+        el.className = "msg assistant media";
+        el.innerHTML =
+          '<div class="role">attachment</div><div class="body"></div>';
+        const body = el.querySelector(".body");
+        const lab = document.createElement("div");
+        lab.className = "media-label";
+        lab.textContent =
+          (label || "media") +
+          " · " +
+          String(filePath).split("/").slice(-1)[0] +
+          " · " +
+          (art.bytes || 0) +
+          "B";
+        body.appendChild(lab);
+        const mime = String(art.mime || "");
+        if (mime.startsWith("image/")) {
+          const img = document.createElement("img");
+          img.className = "delivery-media";
+          img.alt = label || "Host media";
+          img.src = art.data_url;
+          body.appendChild(img);
+        } else if (mime.startsWith("audio/")) {
+          const audio = document.createElement("audio");
+          audio.className = "delivery-media";
+          audio.controls = true;
+          audio.src = art.data_url;
+          body.appendChild(audio);
+        } else if (mime.startsWith("video/")) {
+          const video = document.createElement("video");
+          video.className = "delivery-media";
+          video.controls = true;
+          video.src = art.data_url;
+          body.appendChild(video);
+        } else {
+          lab.textContent += " · preview unsupported";
+        }
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+      } catch (e) {
+        addMsg(
+          "assistant",
+          "Attachment preview failed: " +
+            String(e && e.message ? e.message : e),
+        );
+      }
+    }
+
+    /** CHARTER Delivery: sandboxed HTML artifact iframe (purchase receipt, etc.). */
+    async function renderDeliveryHtml(filePath, label) {
+      if (!filePath || !window.bitbot || !window.bitbot.readArtifact) return;
+      try {
+        const art = await window.bitbot.readArtifact(filePath);
+        if (!art || !art.ok || art.mime !== "text/html" || !art.text) {
+          addMsg(
+            "assistant",
+            "HTML · " +
+              (label || "attachment") +
+              " · " +
+              filePath +
+              (art && art.error ? " (" + art.error + ")" : ""),
+          );
+          return;
+        }
+        const el = document.createElement("div");
+        el.className = "msg assistant media";
+        el.innerHTML =
+          '<div class="role">attachment</div><div class="body"></div>';
+        const body = el.querySelector(".body");
+        const lab = document.createElement("div");
+        lab.className = "media-label";
+        lab.textContent =
+          (label || "html") +
+          " · " +
+          String(filePath).split("/").slice(-1)[0] +
+          " · " +
+          (art.bytes || 0) +
+          "B";
+        body.appendChild(lab);
+        const iframe = document.createElement("iframe");
+        iframe.className = "delivery-html";
+        iframe.title = label || "Host HTML attachment";
+        iframe.setAttribute("sandbox", "");
+        iframe.srcdoc = art.text;
+        body.appendChild(iframe);
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+      } catch (e) {
+        addMsg(
+          "assistant",
+          "HTML preview failed: " +
+            String(e && e.message ? e.message : e),
+        );
+      }
+    }
+
+    function collectHostMediaPaths(hostResults) {
+      const out = [];
+      if (!Array.isArray(hostResults)) return out;
+      for (const h of hostResults) {
+        if (!h || h.ok === false) continue;
+        let p = {};
+        try {
+          p = JSON.parse(h.stdout || "{}");
+        } catch (_) {
+          p = {};
+        }
+        const kind = h.kind || "";
+        if (kind === "generate_image" || kind === "structured_chart") {
+          const mp = p.media_path || p.path;
+          if (mp) out.push({ path: mp, label: kind });
+        } else if (kind === "generate_video") {
+          if (p.media_path) out.push({ path: p.media_path, label: "generate_video" });
+        } else if (kind === "watch_video") {
+          if (p.frame_path) out.push({ path: p.frame_path, label: "watch_frame" });
+        } else if (kind === "screenshot") {
+          if (p.has_frame && p.frame_path)
+            out.push({ path: p.frame_path, label: "screenshot" });
+        } else if (kind === "voice_relay" && p.reply_media_path) {
+          out.push({ path: p.reply_media_path, label: "voice_relay" });
+        } else if (kind === "voice_session" && p.media_path) {
+          out.push({ path: p.media_path, label: "voice_session" });
+        }
+      }
+      return out;
+    }
+
+    function collectHostHtmlPaths(hostResults) {
+      const out = [];
+      if (!Array.isArray(hostResults)) return out;
+      for (const h of hostResults) {
+        if (!h || h.ok === false) continue;
+        let p = {};
+        try {
+          p = JSON.parse(h.stdout || "{}");
+        } catch (_) {
+          p = {};
+        }
+        const kind = h.kind || "";
+        if (kind === "purchase") {
+          const hp = p.receipt_path || (String(p.path || "").endsWith(".html") ? p.path : null);
+          if (hp) out.push({ path: hp, label: "purchase_receipt" });
+        } else if (kind === "render_markdown" && p.html_path) {
+          // Handled by renderMathMermaidCard; skip duplicate iframe.
+        }
+      }
+      return out;
+    }
+
+    /** Openable Host files that are not inline-previewable (pptx / ics / eml). */
+    function collectHostOpenablePaths(hostResults) {
+      const out = [];
+      if (!Array.isArray(hostResults)) return out;
+      for (const h of hostResults) {
+        if (!h || h.ok === false) continue;
+        let p = {};
+        try {
+          p = JSON.parse(h.stdout || "{}");
+        } catch (_) {
+          p = {};
+        }
+        const kind = h.kind || "";
+        if (kind === "slides_pptx") {
+          const fp = p.pptx_path || p.path;
+          if (fp && String(fp).endsWith(".pptx"))
+            out.push({ path: fp, label: "slides_pptx" });
+        } else if (kind === "schedule_meeting") {
+          const fp = p.ics_path;
+          if (fp) out.push({ path: fp, label: "schedule_ics" });
+        } else if (kind === "mail_send" || kind === "mail_draft") {
+          const fp = p.eml_path;
+          if (fp) out.push({ path: fp, label: kind + "_eml" });
+        } else if (kind === "skill_write") {
+          const fp = p.skill_path || p.path;
+          if (fp) out.push({ path: fp, label: "skill_md" });
+        } else if (kind === "export_pack") {
+          const fp = p.export_path || p.path;
+          if (fp) out.push({ path: fp, label: "export_pack" });
+        }
+      }
+      return out;
+    }
+
+    async function renderOpenArtifact(filePath, label) {
+      if (!filePath || !window.bitbot || !window.bitbot.openArtifact) return;
+      const el = document.createElement("div");
+      el.className = "msg assistant media";
+      el.innerHTML =
+        '<div class="role">attachment</div><div class="body"></div>';
+      const body = el.querySelector(".body");
+      const lab = document.createElement("div");
+      lab.className = "media-label";
+      lab.textContent =
+        (label || "file") + " · " + String(filePath).split("/").slice(-1)[0];
+      body.appendChild(lab);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "open-artifact";
+      btn.textContent = "Open with OS";
+      btn.addEventListener("click", async () => {
+        try {
+          const r = await window.bitbot.openArtifact(filePath);
+          if (!r || !r.ok) {
+            addMsg(
+              "assistant",
+              "Open failed: " +
+                (r && r.error ? r.error : "unknown") +
+                " · " +
+                filePath,
+            );
+          } else {
+            lab.textContent =
+              (label || "file") +
+              " · opened · " +
+              String(filePath).split("/").slice(-1)[0] +
+              " · " +
+              (r.bytes || 0) +
+              "B";
+          }
+        } catch (e) {
+          addMsg(
+            "assistant",
+            "Open failed: " + String(e && e.message ? e.message : e),
+          );
+        }
+      });
+      body.appendChild(btn);
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function hideApproval() {
+      approval.classList.remove("visible");
+      pendingApprovalText = "";
+      approvalDetail.textContent = "";
+    }
+
+    function showApproval(text, effects) {
+      pendingApprovalText = text;
+      const cards = (effects || []).filter((e) => e && e.kind === "approval_card");
+      approvalDetail.textContent = cards.map((c) => c.command || "").join("\n") || "Consequential action needs user confirmation.";
+      approval.classList.add("visible");
+    }
+
+    function renderWidgetCard(widget, sourceText) {
+      if (!widget || !Array.isArray(widget.options)) return;
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      el.innerHTML =
+        '<div class="role">widget</div><div class="body"></div><div class="widget-actions" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px"></div>';
+      el.querySelector(".body").textContent =
+        (widget.title || "Decision") +
+        (widget.prompt ? " — " + widget.prompt : "");
+      const actions = el.querySelector(".widget-actions");
+      for (const opt of widget.options) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = opt.label || opt.id || "choice";
+        btn.style.cssText =
+          "background:" +
+          (opt.style === "Primary" || opt.style === "Danger"
+            ? "var(--accent)"
+            : "#1a2420") +
+          ";color:#062014;border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer";
+        if (opt.style === "Danger") btn.style.background = "#8a3030";
+        btn.addEventListener("click", () => {
+          const choice = String(opt.id || opt.label || "");
+          if (choice === "approve" && sourceText) {
+            runUserTurn(sourceText, { approved: true });
+          } else if (choice === "dismiss") {
+            hideApproval();
+            addMsg("assistant", "Widget dismissed.");
+          } else {
+            runUserTurn("widget choice " + choice, {});
+          }
+        });
+        actions.appendChild(btn);
+      }
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function renderCursorAgentCard(card) {
+      if (!card) return;
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      el.innerHTML =
+        '<div class="role">cursor-agent</div><div class="body"></div>';
+      const body = el.querySelector(".body");
+      body.textContent =
+        "Cloud agent " +
+        (card.bc_id || "?") +
+        (card.prompt_prefix ? " — " + card.prompt_prefix : "");
+      if (card.open_url && card.can_open_cloud) {
+        const a = document.createElement("a");
+        a.href = card.open_url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = "Open cloud agent";
+        a.style.cssText = "display:inline-block;margin-top:6px;color:var(--accent)";
+        body.appendChild(document.createElement("br"));
+        body.appendChild(a);
+      }
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function renderEffects(effects) {
+      if (!Array.isArray(effects) || !effects.length) return;
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      el.innerHTML = '<div class="role">effects</div><div class="body"></div>';
+      const body = el.querySelector(".body");
+      for (const e of effects) {
+        const chip = document.createElement("span");
+        chip.className = "effect-chip";
+        chip.textContent = (e.kind || "?") + (e.command ? ": " + String(e.command).slice(0, 48) : "");
+        body.appendChild(chip);
+      }
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function runUserTurn(text, opts) {
+      addMsg("user", text + (opts && opts.approved ? " [approved]" : ""));
+      sendBtn.disabled = true;
+      try {
+        const r = await window.bitbot.turn(text, opts || {});
+        jsonOut.textContent = JSON.stringify(r, null, 2);
+        if (r && Array.isArray(r.machines)) renderMachines(r.machines);
+        if (r && Array.isArray(r.messages)) {
+          for (const m of r.messages) {
+            if (m.role === "user") continue;
+            addMsg(m.role || "assistant", m.text || "");
+          }
+        } else if (r && r.error) {
+          addMsg("assistant", "error: " + r.error);
+        }
+        if (r && Array.isArray(r.effects)) renderEffects(r.effects);
+        if (r && r.channel_delivery) {
+          const delMeta = document.getElementById("delivery-meta");
+          if (delMeta) {
+            delMeta.textContent =
+              "channel_delivery · " + String(r.channel_delivery);
+          }
+        }
+        if (r && Array.isArray(r.memory)) {
+          const meta = document.getElementById("memory-meta");
+          if (meta) {
+            const keys = r.memory
+              .filter((m) => m && m.key)
+              .map((m) => m.key + "=" + String(m.value || "").slice(0, 24));
+            meta.textContent = keys.length
+              ? keys.slice(0, 4).join(" · ") + (keys.length > 4 ? "…" : "")
+              : "empty profile seed";
+          }
+        }
+        if (r && Array.isArray(r.host_results)) {
+          const memHost = r.host_results.find(
+            (h) =>
+              h &&
+              (h.kind === "memory_update" ||
+                h.kind === "memory_recall" ||
+                h.kind === "shared_memory_put" ||
+                h.kind === "shared_memory_read") &&
+              h.ok,
+          );
+          if (memHost) {
+            try {
+              const mp = JSON.parse(memHost.stdout || "{}");
+              const meta = document.getElementById("memory-meta");
+              if (meta) {
+                const leaf = String(mp.path || "")
+                  .split("/")
+                  .slice(-1)[0];
+                meta.textContent =
+                  memHost.kind.replace(/_/g, " ") +
+                  (mp.key ? " · " + mp.key : "") +
+                  (mp.value != null
+                    ? "=" + String(mp.value).slice(0, 24)
+                    : "") +
+                  (leaf ? " · " + leaf : "");
+              }
+            } catch (_) {
+              /* ignore */
+            }
+          }
+        }
+        const needsApprove =
+          r &&
+          Array.isArray(r.effects) &&
+          r.effects.some((e) => e && e.kind === "approval_card") &&
+          !(opts && opts.approved);
+        if (needsApprove) showApproval(text, r.effects);
+        else hideApproval();
+        if (r && r.host_continued) {
+          addMsg("assistant", "[host] ADR 0002 continue applied (MoonBit absorbed Host results)");
+        }
+        if (r && Array.isArray(r.host_results)) {
+          const approvalHost = r.host_results.find(
+            (h) => h && h.kind === "approval_card" && h.ok,
+          );
+          if (approvalHost) {
+            try {
+              const p = JSON.parse(approvalHost.stdout || "{}");
+              if (p.widget) renderWidgetCard(p.widget, text);
+            } catch (_) { /* ignore */ }
+          }
+          const cloudHost = r.host_results.find(
+            (h) => h && h.kind === "cloud_agent_launch" && h.ok,
+          );
+          if (cloudHost) {
+            try {
+              const p = JSON.parse(cloudHost.stdout || "{}");
+              if (p.bc_id) window.__bitbotLastCloudBcId = p.bc_id;
+              const cloudMeta = document.getElementById("cloud-meta");
+              if (cloudMeta) {
+                cloudMeta.textContent =
+                  (p.mode || "local_worker") +
+                  " · " +
+                  (p.bc_id || "?") +
+                  " · " +
+                  (p.status || "launched") +
+                  (p.remote_cloud_residual === true
+                    ? " · remote_cloud_residual"
+                    : "") +
+                  (p.pretend_remote === true ||
+                  p.pretend_remote_cloud === true
+                    ? " · pretend!"
+                    : "");
+              }
+              if (p.cursor_agent_card) renderCursorAgentCard(p.cursor_agent_card);
+              if (p.status) {
+                addMsg(
+                  "assistant",
+                  "Cloud worker " +
+                    (p.bc_id || "?") +
+                    " → " +
+                    p.status +
+                    (p.assistant_prefix ? ": " + p.assistant_prefix : ""),
+                );
+              }
+            } catch (_) { /* ignore */ }
+          }
+          const artHost = r.host_results.find(
+            (h) => h && h.kind === "cloud_artifact_deliver" && h.ok,
+          );
+          if (artHost) {
+            try {
+              const p = JSON.parse(artHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Cloud artifact → " +
+                  (p.path || "?").split("/").slice(-2).join("/") +
+                  (p.from_session ? " (from session)" : ""),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const tm = r.host_results.find((h) => h && h.kind === "teammate_create" && h.ok);
+          if (tm) {
+            try {
+              const payload = JSON.parse(tm.stdout || "{}");
+              const name = (payload.teammate && payload.teammate.name) || "teammate";
+              document.getElementById("teammates-meta").textContent =
+                "Members: " + name + " (Host durable)";
+            } catch (_) { /* ignore */ }
+          }
+          const roomHost = r.host_results.find((h) => h && h.kind === "room_turn" && h.ok);
+          if (roomHost) {
+            try {
+              const p = JSON.parse(roomHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Room «" +
+                  (p.room || "?") +
+                  "» fanout → " +
+                  (p.member_count || 0) +
+                  " member(s); private assumptions forbidden",
+              );
+              const meta = document.getElementById("teammates-meta");
+              if (meta) {
+                meta.textContent =
+                  "Room " +
+                  (p.room || "") +
+                  " · members " +
+                  (p.member_count || 0);
+              }
+            } catch (_) { /* ignore */ }
+          }
+          const staHost = r.host_results.find((h) => h && h.kind === "send_to_agent" && h.ok);
+          if (staHost) {
+            try {
+              const p = JSON.parse(staHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "SendToAgent → " +
+                  (p.to_id || "?") +
+                  " [" +
+                  (p.status || "routed") +
+                  "]" +
+                  (p.reply ? ": " + String(p.reply).slice(0, 160) : ""),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const subHost = r.host_results.find((h) => h && h.kind === "subagent_run" && h.ok);
+          if (subHost) {
+            try {
+              const p = JSON.parse(subHost.stdout || "{}");
+              const s = p.subagent || {};
+              addMsg(
+                "assistant",
+                "Subagent " +
+                  (s.id || "?") +
+                  " → " +
+                  (s.status || "?") +
+                  (s.assistant_prefix ? ": " + s.assistant_prefix : ""),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const perm = r.host_results.find((h) => h && h.kind === "device_permission");
+          const permPanel = document.getElementById("permission");
+          const permDetail = document.getElementById("permission-detail");
+          if (perm && permPanel && permDetail) {
+            try {
+              const payload = JSON.parse(perm.stdout || "{}");
+              permDetail.textContent =
+                (payload.tool || "tool") +
+                " on " +
+                (payload.machine_id || "?") +
+                " · pretend_granted=" +
+                String(payload.pretend_granted) +
+                " · OS Settings guide (CM-0705)";
+            } catch (_) {
+              permDetail.textContent = perm.command || "device_permission";
+            }
+            permPanel.style.display = "block";
+          }
+          const settingsHost = r.host_results.find(
+            (h) => h && h.kind === "settings_open" && h.ok,
+          );
+          if (settingsHost) {
+            try {
+              renderSettingsPanel(JSON.parse(settingsHost.stdout || "{}"));
+            } catch (_) { /* ignore */ }
+          }
+          const infoHost = r.host_results.find(
+            (h) => h && h.kind === "agent_info_panel" && h.ok,
+          );
+          if (infoHost) {
+            try {
+              renderAgentInfoPanel(JSON.parse(infoHost.stdout || "{}"));
+            } catch (_) { /* ignore */ }
+          }
+          const delHost = r.host_results.find(
+            (h) => h && h.kind === "delete_agent" && h.ok,
+          );
+          if (delHost) {
+            try {
+              const p = JSON.parse(delHost.stdout || "{}");
+              if (p.phase === "awaiting_confirm") {
+                const box = document.getElementById("agent-delete-confirm");
+                if (box) box.style.display = "block";
+                pendingDeleteAgentId = p.agent_id || pendingDeleteAgentId;
+                addMsg("assistant", "Delete awaiting confirm: " + (p.agent_id || "?"));
+              } else if (p.phase === "completed") {
+                addMsg("assistant", "Agent deleted: " + (p.agent_id || "?"));
+                const box = document.getElementById("agent-delete-confirm");
+                if (box) box.style.display = "none";
+              }
+            } catch (_) { /* ignore */ }
+          }
+          const listAgentsHost = r.host_results.find(
+            (h) => h && h.kind === "list_agents_sidebar" && h.ok,
+          );
+          if (listAgentsHost) {
+            try {
+              const p = JSON.parse(listAgentsHost.stdout || "{}");
+              const sidebarTxt =
+                "Sidebar " +
+                ((p.sidebar_ids || []).join(",") || "(empty)") +
+                " · hidden " +
+                ((p.hidden_ids || []).length || 0);
+              const meta = document.getElementById("teammates-meta");
+              if (meta) meta.textContent = sidebarTxt;
+              const agMeta = document.getElementById("agents-meta");
+              if (agMeta) agMeta.textContent = sidebarTxt;
+              addMsg(
+                "assistant",
+                "Sidebar agents: " +
+                  ((p.sidebar_ids || []).join(", ") || "(none)") +
+                  "; hidden still addressable: " +
+                  ((p.hidden_ids || []).join(", ") || "(none)"),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const membersHost = r.host_results.find(
+            (h) => h && h.kind === "members_panel" && h.ok,
+          );
+          if (membersHost) {
+            try {
+              const p = JSON.parse(membersHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Members «" +
+                  (p.group_id || "?") +
+                  "»: " +
+                  ((p.member_ids || []).join(", ") || "(none)"),
+              );
+              const sections = document.getElementById("agent-info-sections");
+              if (sections) {
+                let chip = sections.querySelector("[data-members-live]");
+                if (!chip) {
+                  chip = document.createElement("span");
+                  chip.className = "effect-chip";
+                  chip.dataset.membersLive = "1";
+                  sections.appendChild(chip);
+                }
+                chip.textContent =
+                  "members:" + ((p.member_ids || []).length || 0);
+              }
+            } catch (_) { /* ignore */ }
+          }
+          const notifyHost = r.host_results.find(
+            (h) =>
+              h &&
+              (h.kind === "notify_settings" || h.kind === "set_notify") &&
+              h.ok,
+          );
+          if (notifyHost) {
+            try {
+              const p = JSON.parse(notifyHost.stdout || "{}");
+              const t = p.toggles || p.settings || p;
+              addMsg(
+                "assistant",
+                "Notify «" +
+                  (p.assistant_id || "?") +
+                  "» desktop=" +
+                  String(t.desktop) +
+                  " sound=" +
+                  String(t.sound) +
+                  " mentions_only=" +
+                  String(t.mentions_only),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const updateHost = r.host_results.find(
+            (h) => h && h.kind === "update_computer" && h.ok,
+          );
+          if (updateHost) {
+            try {
+              const p = JSON.parse(updateHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Update Computer · " +
+                  (p.phase || "?") +
+                  (p.two_step_confirmed ? " (files+login preserved)" : ""),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const guideHost = r.host_results.find(
+            (h) => h && h.kind === "guide_permission" && h.ok,
+          );
+          if (guideHost) {
+            try {
+              const p = JSON.parse(guideHost.stdout || "{}");
+              addMsg("assistant", p.guidance || "Open Settings to grant access.");
+              if (p.deep_link) {
+                runUserTurn(
+                  "open settings entry=sidebar-account-button anchor=" +
+                    (p.anchor || "account"),
+                  {},
+                );
+              }
+            } catch (_) { /* ignore */ }
+          }
+          const mdHost = r.host_results.find(
+            (h) => h && h.kind === "render_markdown" && h.ok,
+          );
+          if (mdHost) {
+            try {
+              const p = JSON.parse(mdHost.stdout || "{}");
+              await renderMathMermaidCard(p);
+            } catch (_) { /* ignore */ }
+          }
+          const reactHost = r.host_results.find(
+            (h) => h && h.kind === "react_message" && h.ok,
+          );
+          if (reactHost) {
+            try {
+              const p = JSON.parse(reactHost.stdout || "{}");
+              const tray = document.getElementById("reaction-tray");
+              if (tray) {
+                const id = "react-" + (p.message_id || "msg");
+                let pill = document.getElementById(id);
+                if (p.visible_pill) {
+                  if (!pill) {
+                    pill = document.createElement("span");
+                    pill.id = id;
+                    pill.className = "reaction-pill";
+                    pill.innerHTML =
+                      '<span class="emoji"></span><span class="tag">react</span>';
+                    tray.appendChild(pill);
+                  }
+                  pill.querySelector(".emoji").textContent = p.emoji || "👍";
+                  pill.style.display = "";
+                } else if (pill) {
+                  pill.style.display = "none";
+                }
+              }
+              addMsg(
+                "assistant",
+                p.visible_pill
+                  ? "React pill " + (p.emoji || "👍") + " on " + (p.message_id || "msg")
+                  : "React cancelled on " + (p.message_id || "msg"),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const shotHost = r.host_results.find(
+            (h) => h && h.kind === "screenshot" && h.ok,
+          );
+          if (shotHost) {
+            try {
+              const p = JSON.parse(shotHost.stdout || "{}");
+              const boxMeta = document.getElementById("box-meta");
+              if (boxMeta) {
+                boxMeta.textContent = p.has_frame
+                  ? "screenshot · " +
+                    (p.tool || "frame") +
+                    " · read_only" +
+                    (p.screenshot_residual === true
+                      ? " · screenshot_residual"
+                      : "")
+                  : "screenshot_residual · " + (p.residual_reason || "n/a");
+              }
+              if (p.has_frame && p.frame_path) {
+                addMsg(
+                  "assistant",
+                  "Screenshot · " +
+                    (p.tool || "capture") +
+                    " · " +
+                    p.frame_path +
+                    " (read_only)",
+                );
+              } else {
+                addMsg(
+                  "assistant",
+                  "Screenshot residual · " +
+                    (p.residual_reason || "unavailable") +
+                    " (no pretend Live)",
+                );
+              }
+            } catch (_) { /* ignore */ }
+          }
+          const cupHost = r.host_results.find(
+            (h) => h && h.kind === "check_updates" && h.ok,
+          );
+          if (cupHost) {
+            try {
+              const p = JSON.parse(cupHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Updates · " +
+                  (p.updates_tab || "Updates") +
+                  " / " +
+                  (p.updates_anchor || "update-channel") +
+                  (p.ne_update_computer
+                    ? " ≠ Update Computer"
+                    : ""),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const arsHost = r.host_results.find(
+            (h) => h && h.kind === "auto_review_settings" && h.ok,
+          );
+          if (arsHost) {
+            try {
+              const p = JSON.parse(arsHost.stdout || "{}");
+              addMsg(
+                "assistant",
+                "Auto-review Settings · " +
+                  ((p.anchors || []).join(", ") || "auto-review"),
+              );
+            } catch (_) { /* ignore */ }
+          }
+          const bcpHost = r.host_results.find(
+            (h) => h && h.kind === "box_chrome_probe",
+          );
+          if (bcpHost) {
+            try {
+              const p = JSON.parse(bcpHost.stdout || "{}");
+              if (p.refused) {
+                addMsg(
+                  "assistant",
+                  "box-chrome · refused bare chrome",
+                );
+              } else if (bcpHost.ok) {
+                addMsg(
+                  "assistant",
+                  "box-chrome · " +
+                    (p.launch_path || "launcher") +
+                    " · private CDP " +
+                    String(p.private_cdp_port || "?"),
+                );
+              }
+            } catch (_) { /* ignore */ }
+          }
+          // CHARTER Delivery: SendToUser surface (text/widget/attachment/voice/reaction/thread).
+          const attachKinds = [
+            "skill_write",
+            "slides_pptx",
+            "generate_image",
+            "generate_video",
+            "watch_video",
+            "structured_chart",
+            "box_doctor",
+            "box_env",
+            "box_clock",
+            "todo_write",
+            "webhook_panel",
+            "webhook_copy",
+            "webhook_tool_read_key",
+            "webhook_wake",
+            "settings_open",
+            "agent_info_panel",
+            "delete_agent",
+            "render_markdown",
+            "notify_settings",
+            "set_notify",
+            "update_computer",
+            "guide_permission",
+            "screenshot",
+            "check_updates",
+            "auto_review_settings",
+            "box_chrome_probe",
+            "mcp_namespace",
+            "mcp_uninstall",
+            "mcp_get_plugin",
+            "mcp_list_plugins",
+            "export_pack",
+            "computer_use",
+            "voice_session",
+            "voice_relay",
+            "channel_send",
+            "delivery",
+            "inbound_reaction",
+            "oauth",
+            "approval_card",
+            "cloud_agent_launch",
+            "room_turn",
+            "send_to_agent",
+            "subagent_run",
+            "mail_search",
+            "mail_read",
+            "workflow_list",
+            "x_search",
+            "x_post",
+            "job_search",
+            "finance_call",
+            "copy_to_box",
+            "copy_from_box",
+            "purchase",
+            "schedule_meeting",
+            "mcp_call",
+            "mail_send",
+            "code_changes",
+            "teammate_create",
+            "section_add",
+            "section_post",
+            "credential_list",
+            "credential_fill",
+            "source_control",
+            "shared_memory_put",
+            "shared_memory_read",
+            "journal_append",
+            "journal_query",
+            "export_pack",
+            "mcp_discover",
+            "connectors_probe",
+            "teammate_create",
+            "routine_schedule",
+            "routine_tick",
+            "routine_fire",
+            "routine_list",
+            "routine_pause",
+            "routine_resume",
+            "device_tools_list",
+            "device_tool",
+            "device_permission",
+            "computer_use",
+            "skill_load",
+            "list_skills",
+            "mail_claim_inbox",
+            "fs_list",
+            "fs_read",
+            "webfetch",
+            "cloud_artifact_deliver",
+            "shell",
+            "voice_end_write",
+            "voice_session",
+            "machines_list",
+            "connectors_probe",
+            "approval_card",
+            "memory_update",
+            "memory_recall",
+            "shared_memory_read",
+            // Chip handlers exist; keep attachKinds in parity so delivery strip hits them.
+            "mail_draft",
+            "package_install",
+            "shared_box_fs",
+            "hide_agent",
+            "reset_computer",
+            "local_execution",
+            "list_agents_sidebar",
+            "members_panel",
+            "react_message",
+          ];
+          // CHARTER Delivery: include honest oauth NeedsAuth / shared-memory refuse
+          // even when Host ok=false.
+          const attaches = r.host_results.filter((h) => {
+            if (!h || !attachKinds.includes(h.kind)) return false;
+            if (h.ok) return true;
+            try {
+              const p = JSON.parse(h.stdout || "{}");
+              if (
+                h.kind === "shared_memory_read" &&
+                p.refused_cross_scope === true
+              )
+                return true;
+              if (h.kind !== "oauth") return false;
+              return (
+                p.status === "NeedsAuth" ||
+                p.mode === "live_needs_auth" ||
+                p.mode === "live_remote_browser_open" ||
+                p.mode === "live_code_exchange_failed" ||
+                p.mode === "live_remote_callback_pending" ||
+                (p.connected === false && p.pretend_connected === false)
+              );
+            } catch (_) {
+              return false;
+            }
+          });
+          if (attaches.length) {
+            const el = document.createElement("div");
+            el.className = "msg assistant";
+            el.innerHTML = '<div class="role">delivery</div><div class="body"></div>';
+            const body = el.querySelector(".body");
+            const types = [];
+            for (const h of attaches) {
+              const chip = document.createElement("span");
+              chip.className = "effect-chip";
+              let label = h.kind;
+              try {
+                const p = JSON.parse(h.stdout || "{}");
+                if (h.kind === "delivery" && p.type) {
+                  label = "SendToUser:" + p.type;
+                  types.push(p.type);
+                  if (p.type === "reaction" || p.visible_pill) {
+                    chip.textContent = (p.emoji || "👍") + " reaction";
+                    body.appendChild(chip);
+                    continue;
+                  }
+                  if (p.type === "widget") {
+                    label = "widget:" + (p.widget || p.status || "card");
+                  }
+                  if (p.type === "cursor-agent") {
+                    label = "cursor-agent:" + (p.bc_id || "?");
+                  }
+                  if (p.type === "voice" && p.media_path) {
+                    label = "voice:" + String(p.media_path).split("/").slice(-1)[0];
+                  }
+                  if (p.type === "thread" && p.channel) {
+                    label = "thread:" + p.channel;
+                  }
+                  if (p.personal_dm) {
+                    label = "personal-dm:" + (p.channel || p.mode || "owner");
+                  }
+                  if (p.widget_degraded) {
+                    label += " (degraded)";
+                  }
+                } else if (
+                  (h.kind === "inbound_reaction" && p.visible_pill) ||
+                  h.kind === "react_message"
+                ) {
+                  const off =
+                    h.kind === "react_message" && p.visible_pill === false;
+                  if (!off) {
+                    const pill = document.createElement("div");
+                    pill.className = "reaction-pill";
+                    pill.innerHTML =
+                      '<span class="emoji"></span><span class="tag">reaction</span>';
+                    pill.querySelector(".emoji").textContent = p.emoji || "👍";
+                    body.appendChild(pill);
+                    const tray = document.getElementById("reaction-tray");
+                    if (tray) {
+                      const tp = document.createElement("span");
+                      tp.className = "tray-pill";
+                      tp.textContent =
+                        (p.emoji || "👍") +
+                        (h.kind === "react_message"
+                          ? " · pill"
+                          : " · no forced reply");
+                      tray.prepend(tp);
+                      while (tray.children.length > 6)
+                        tray.removeChild(tray.lastChild);
+                    }
+                  }
+                  label =
+                    "reaction:" +
+                    (p.emoji || "👍") +
+                    (off ? "/off" : "");
+                  types.push("reaction");
+                  continue;
+                } else if (h.kind === "approval_card" && p.widget) {
+                  label = "widget:" + (p.widget.title || "approval");
+                  types.push("widget");
+                } else if (h.kind === "cloud_agent_launch" && p.cursor_agent_card) {
+                  label =
+                    "cursor-agent:" +
+                    (p.cursor_agent_card.bc_id || p.bc_id || "?") +
+                    (p.path ? "/snap" : "") +
+                    (p.remote_cloud_residual === true
+                      ? "/remote_cloud_residual"
+                      : "");
+                  types.push("cursor-agent");
+                } else if (h.kind === "cloud_agent_launch") {
+                  label =
+                    "cloud:" +
+                    (p.mode || "local_worker") +
+                    (p.remote_cloud_residual === true
+                      ? "/remote_cloud_residual"
+                      : "");
+                  types.push("attachment");
+                  const cloudMeta = document.getElementById("cloud-meta");
+                  if (cloudMeta) {
+                    cloudMeta.textContent =
+                      (p.mode || "local_worker") +
+                      " · " +
+                      (p.bc_id || "?") +
+                      (p.remote_cloud_residual === true
+                        ? " · remote_cloud_residual"
+                        : "");
+                  }
+                } else if (h.kind === "cloud_artifact_deliver") {
+                  label =
+                    "cloud-art:" +
+                    String(p.path || "").split("/").slice(-1)[0] +
+                    (p.meta_path ? "/meta" : "") +
+                    (p.remote_cloud_artifact_residual === true
+                      ? "/remote_cloud_artifact_residual"
+                      : "");
+                  types.push("attachment");
+                } else if (h.kind === "channel_send" && p.personal_dm) {
+                  label =
+                    "personal-dm:" +
+                    (p.mode || "draft") +
+                    (p.live_post === true ? "/live" : "") +
+                    (p.widget_degraded === true ? "/widget_degraded" : "") +
+                    (p.live_slack_residual === true
+                      ? "/live_slack_residual"
+                      : "");
+                  types.push("text");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "personal_dm · " +
+                      (p.mode || "draft") +
+                      (p.live_post === true ? " · live" : "") +
+                      (p.widget_degraded === true ? " · widget_degraded" : "") +
+                      (p.live_slack_residual === true
+                        ? " · live_slack_residual"
+                        : "") +
+                      (p.pretend_live === true ? " · pretend!" : "") +
+                      (p.shared_channel === true ? " · shared!" : " · owner-only");
+                  }
+                } else if (h.kind === "room_turn") {
+                  label =
+                    "room:" +
+                    (p.room || "?") +
+                    "×" +
+                    (p.member_count || 0) +
+                    (p.path ? "/snap" : "");
+                  types.push("thread");
+                } else if (h.kind === "send_to_agent") {
+                  label =
+                    "agent:" +
+                    (p.to_id || "?") +
+                    "/" +
+                    (p.status || "routed") +
+                    (p.path ? "/snap" : "");
+                  types.push("text");
+                } else if (h.kind === "subagent_run") {
+                  label =
+                    "subagent:" +
+                    ((p.subagent && p.subagent.status) || p.status || "run") +
+                    (p.path ? "/snap" : "");
+                  types.push("text");
+                  const tmMeta = document.getElementById("teammates-meta");
+                  if (tmMeta) {
+                    const s = p.subagent || {};
+                    tmMeta.textContent =
+                      "subagent · " +
+                      (s.id || p.id || "?") +
+                      " · " +
+                      (s.status || p.status || "run") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "mail_search") {
+                  label =
+                    "mail_search:" +
+                    (p.hit_count || 0) +
+                    "×" +
+                    (p.mode || "") +
+                    (p.live_mail_residual === true
+                      ? "/live_mail_residual"
+                      : "");
+                  types.push("attachment");
+                  const mailMeta = document.getElementById("mail-meta");
+                  if (mailMeta) {
+                    mailMeta.textContent =
+                      "search · " +
+                      (p.hit_count || 0) +
+                      "× · " +
+                      (p.mode || "sandbox") +
+                      (p.live_mail_residual === true
+                        ? " · live_mail_residual"
+                        : "");
+                  }
+                } else if (h.kind === "mail_read") {
+                  label =
+                    "mail_read:" +
+                    (p.thread_id || "?") +
+                    (p.live_mail_residual === true
+                      ? "/live_mail_residual"
+                      : "");
+                  types.push("attachment");
+                  const mailMeta = document.getElementById("mail-meta");
+                  if (mailMeta) {
+                    mailMeta.textContent =
+                      "read · " +
+                      (p.thread_id || "?") +
+                      (p.live_mail_residual === true
+                        ? " · live_mail_residual"
+                        : "") +
+                      (p.pretend_live === true ? " · pretend!" : "") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "journal_append") {
+                  label =
+                    "journal_append:" +
+                    (p.id || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "journal_append · " +
+                      (p.id || "?") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "section_add") {
+                  label =
+                    "section_add:" +
+                    (p.section_id || p.id || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta) {
+                    delMeta.textContent =
+                      "section_add · " +
+                      (p.section_id || p.id || p.title || "?");
+                  }
+                } else if (h.kind === "workflow_list") {
+                  label =
+                    "workflows:" +
+                    (p.count || 0) +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent = "workflows · " + (p.count || 0);
+                  }
+                } else if (h.kind === "x_search") {
+                  label =
+                    "x_search:" +
+                    (p.hit_count || 0) +
+                    "×" +
+                    (p.mode || "") +
+                    (p.live_x_residual === true ? "/live_x_residual" : "");
+                  types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "x_search · " +
+                      (p.mode || "?") +
+                      " · hits " +
+                      (p.hit_count || 0) +
+                      (p.live_x_residual === true
+                        ? " · live_x_residual"
+                        : "") +
+                      (p.pretend_live === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "x_post") {
+                  label =
+                    "x_post:" +
+                    (p.mode || "draft") +
+                    (p.live_x_post_residual === true
+                      ? "/live_x_post_residual"
+                      : "");
+                  types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "x_post · " +
+                      (p.mode || "?") +
+                      (p.live_x_post_residual === true
+                        ? " · live_x_post_residual"
+                        : "") +
+                      (p.pretend_posted === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "job_search") {
+                  label =
+                    "jobs:" +
+                    (p.hit_count || 0) +
+                    (p.live_job_residual === true ? "/live_job_residual" : "");
+                  types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "jobs · hits " +
+                      (p.hit_count || 0) +
+                      (p.live_job_residual === true
+                        ? " · live_job_residual"
+                        : "");
+                  }
+                } else if (h.kind === "finance_call") {
+                  label =
+                    "finance:" +
+                    (p.mode || p.tool || "call") +
+                    (p.path ? "/snap" : "") +
+                    (p.live_finance_residual === true
+                      ? "/live_finance_residual"
+                      : "");
+                  types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "finance · " +
+                      (p.mode || "call") +
+                      (p.live_finance_residual === true
+                        ? " · live_finance_residual"
+                        : "") +
+                      (p.pretend_live === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "mail_draft") {
+                  label =
+                    "draft:" +
+                    (p.mode || "mail") +
+                    (p.path ? "/snap" : "");
+                  types.push(p.meeting_chat ? "widget" : "attachment");
+                  const mailMeta = document.getElementById("mail-meta");
+                  if (mailMeta) {
+                    mailMeta.textContent =
+                      "draft · " + (p.mode || "mail") + (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "copy_to_box" || h.kind === "copy_from_box") {
+                  label =
+                    h.kind +
+                    ":" +
+                    String(p.dest || p.path || "").split("/").slice(-1)[0] +
+                    (p.cross_machine_copy_residual === true
+                      ? "/cross_machine_copy_residual"
+                      : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      h.kind.replace("copy_", "") +
+                      " · " +
+                      String(p.dest || p.path || "?")
+                        .split("/")
+                        .slice(-1)[0] +
+                      (p.cross_machine_copy_residual === true
+                        ? " · cross_machine_copy_residual"
+                        : "") +
+                      (p.pretend_remote_machine === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "purchase") {
+                  label =
+                    "purchase:" +
+                    (p.mode || "receipt") +
+                    (p.path ? "/snap" : "") +
+                    (p.live_paid_residual === true
+                      ? "/live_paid_residual"
+                      : "");
+                  types.push("attachment");
+                  const mailMeta = document.getElementById("mail-meta");
+                  if (mailMeta) {
+                    mailMeta.textContent =
+                      "purchase · " +
+                      (p.mode || "sandbox") +
+                      (p.paid === true ? " · paid" : " · unpaid") +
+                      (p.live_paid_residual === true
+                        ? " · live_paid_residual"
+                        : "");
+                  }
+                } else if (h.kind === "schedule_meeting") {
+                  label =
+                    "ics:" +
+                    (p.mode || "calendar") +
+                    "/" +
+                    String(p.ics_path || "").split("/").slice(-1)[0] +
+                    (p.path ? "/snap" : "") +
+                    (p.live_calendar_residual === true
+                      ? "/live_calendar_residual"
+                      : "");
+                  types.push("attachment");
+                  const mailMeta = document.getElementById("mail-meta");
+                  if (mailMeta) {
+                    mailMeta.textContent =
+                      "meeting · " +
+                      (p.mode || "ics") +
+                      " · " +
+                      String(p.ics_path || p.path || "?")
+                        .split("/")
+                        .slice(-1)[0] +
+                      (p.live_calendar_residual === true
+                        ? " · live_calendar_residual"
+                        : "");
+                  }
+                } else if (h.kind === "mcp_call") {
+                  const wtf = p.write_to_file || {};
+                  const fe = p.file_expand || {};
+                  const mcpResidual =
+                    p.product_tool_residual === true
+                      ? "/product_tool_residual"
+                      : "";
+                  if (wtf.path) {
+                    label =
+                      "mcp_write:" +
+                      String(wtf.path).split("/").slice(-1)[0] +
+                      (p.path ? "/snap" : "") +
+                      mcpResidual;
+                  } else if (fe.expanded_count) {
+                    label =
+                      "mcp_file×" +
+                      fe.expanded_count +
+                      (p.path ? "/snap" : "") +
+                      mcpResidual;
+                  } else {
+                    label =
+                      "mcp_call" +
+                      (p.mapped ? ":" + p.mapped : "") +
+                      (p.path ? "/snap" : "") +
+                      mcpResidual;
+                  }
+                  types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      "mcp_call · " +
+                      (p.tool || p.name || p.namespace || "?") +
+                      (p.path ? " · snap" : "") +
+                      (p.pretend_ok === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "package_install") {
+                  label =
+                    "pkg:" +
+                    (p.pkgs || p.packages || p.pm || "install") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "package · " +
+                      (p.pm || "npm") +
+                      " · " +
+                      (p.pkgs || p.packages || "?") +
+                      (p.pretend_installed === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "shell") {
+                  label =
+                    "shell" +
+                    (h.path || h.artifact_path
+                      ? ":" +
+                        String(h.path || h.artifact_path)
+                          .split("/")
+                          .slice(-1)[0]
+                      : "");
+                  types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "shell · " +
+                      (h.ok === false ? "fail" : "ok") +
+                      (h.path || h.artifact_path
+                        ? " · " +
+                          String(h.path || h.artifact_path)
+                            .split("/")
+                            .slice(-1)[0]
+                        : "");
+                  }
+                } else if (h.kind === "fs_list" || h.kind === "fs_read" || h.kind === "webfetch") {
+                  label =
+                    h.kind +
+                    ":" +
+                    String(p.path || p.url || p.count || "")
+                      .toString()
+                      .split("/")
+                      .slice(-1)[0] +
+                    (p.public_fallback_residual === true
+                      ? "/public_fallback_residual"
+                      : "");
+                  types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      h.kind +
+                      (p.count != null ? " · " + p.count + " entries" : "") +
+                      (p.public_fallback_residual === true
+                        ? " · public_fallback_residual"
+                        : "") +
+                      (p.pretend_fetched === true || p.pretend_listing === true
+                        ? " · pretend!"
+                        : "");
+                  }
+                } else if (h.kind === "computer_use") {
+                  {
+                    const oc = p.outcome || {};
+                    const g = p.gui || {};
+                    const vp = g.vision_plan || {};
+                    const ocrResidual =
+                      oc.ocr_residual === true || vp.ocr_residual === true;
+                    const osAutoResidual =
+                      g.os_window_automation_residual === true ||
+                      oc.os_window_automation_residual === true;
+                    label =
+                      "cu:" +
+                      (oc.checkout_stage || g.gui_mode || "run") +
+                      (ocrResidual ? "/ocr_residual" : "") +
+                      (osAutoResidual
+                        ? "/os_window_automation_residual"
+                        : "") +
+                      (oc.live_paid_residual === true
+                        ? "/live_paid_residual"
+                        : "") +
+                      (oc.credential_browser_fill_residual === true
+                        ? "/credential_browser_fill_residual"
+                        : "") +
+                      (oc.signin_fill_residual === true
+                        ? "/signin_fill_residual"
+                        : "");
+                    types.push("attachment");
+                    const cuMeta = document.getElementById("cu-meta");
+                    if (cuMeta) {
+                      cuMeta.textContent =
+                        (g.gui_mode || "cu") +
+                        (g.os_window ? " · os_window" : "") +
+                        (oc.ocr
+                          ? " · ocr"
+                          : ocrResidual
+                            ? " · ocr_residual"
+                            : "") +
+                        (g.os_window_automation_residual === false
+                          ? " · native_act"
+                          : osAutoResidual
+                            ? " · os_window_automation_residual"
+                            : "") +
+                        (oc.live_paid_residual === true
+                          ? " · live_paid_residual"
+                          : "") +
+                        (oc.credential_browser_fill_residual === true
+                          ? " · credential_browser_fill_residual"
+                          : "") +
+                        (oc.signin_fill_residual === true
+                          ? " · signin_fill_residual"
+                          : "") +
+                        (oc.pretend_purchased === true ? " · pretend!" : "");
+                    }
+                  }
+                } else if (h.kind === "mail_send") {
+                  label =
+                    "mail:" +
+                    (p.mode || p.provider || "draft") +
+                    (p.path ? "/snap" : "") +
+                    (p.live_mail_residual === true
+                      ? "/live_mail_residual"
+                      : "");
+                  types.push("attachment");
+                  const mailMeta = document.getElementById("mail-meta");
+                  if (mailMeta) {
+                    mailMeta.textContent =
+                      (p.provider === "cold"
+                        ? "cold"
+                        : p.provider === "onbehalf"
+                          ? "onbehalf"
+                          : p.drafted
+                            ? "draft"
+                            : "send") +
+                      " · " +
+                      (p.mode || p.provider || "?") +
+                      (p.live_mail_residual === true
+                        ? " · live_mail_residual"
+                        : "") +
+                      (p.pretend_sent ? " · pretend!" : "") +
+                      (p.eml_path || p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "mail_claim_inbox") {
+                  label =
+                    "claim:" +
+                    (p.local_part || p.mode || "inbox") +
+                    (p.path ? "/snap" : "") +
+                    (p.live_mail_claim_residual === true
+                      ? "/live_mail_claim_residual"
+                      : "") +
+                    (p.inbound_turn_residual === true
+                      ? "/inbound_turn_residual"
+                      : "");
+                  types.push("attachment");
+                  const mailMeta = document.getElementById("mail-meta");
+                  if (mailMeta) {
+                    mailMeta.textContent =
+                      "claim · " +
+                      (p.local_part || "?") +
+                      (p.claimed_count != null
+                        ? " · ×" + p.claimed_count
+                        : "") +
+                      (p.live_mail_claim_residual === true
+                        ? " · live_mail_claim_residual"
+                        : "") +
+                      (p.pretend_claimed === true ? " · pretend!" : "") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "machines_list") {
+                  label =
+                    "machines×" +
+                    (p.count != null ? p.count : (p.machines || []).length);
+                  types.push("attachment");
+                  if (Array.isArray(p.machines)) renderMachines(p.machines);
+                  const machMeta = document.getElementById("machines-meta");
+                  if (machMeta) {
+                    const connected = (p.machines || []).filter(
+                      (m) => String(m.status || "").toLowerCase() === "connected",
+                    ).length;
+                    machMeta.textContent =
+                      (p.count != null ? p.count : (p.machines || []).length) +
+                      " · connected " +
+                      connected +
+                      (p.pretend_all_connected === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "code_changes") {
+                  label =
+                    "code:" +
+                    (p.applied ? "applied" : "plan") +
+                    (p.code_apply_residual === true
+                      ? "/code_apply_residual"
+                      : "") +
+                    (p.git_commit_residual === true
+                      ? "/git_commit_residual"
+                      : "") +
+                    (p.git_push_residual === true
+                      ? "/git_push_residual"
+                      : "");
+                  types.push("attachment");
+                  const scMeta = document.getElementById("source-control-meta");
+                  if (scMeta) {
+                    scMeta.textContent =
+                      "code_changes · " +
+                      (p.applied ? "applied" : "plan") +
+                      (p.code_apply_residual === true
+                        ? " · code_apply_residual"
+                        : "") +
+                      (p.git_commit_residual === true
+                        ? " · git_commit_residual"
+                        : "") +
+                      (p.git_push_residual === true
+                        ? " · git_push_residual"
+                        : "") +
+                      (p.pretend_committed === true ? " · pretend!" : "") +
+                      (p.pretend_pushed === true ? " · pretend_pushed!" : "");
+                  }
+                } else if (h.kind === "credential_list") {
+                  label = "creds:" + (p.count || 0);
+                  types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "credentials · " +
+                      (p.count || 0) +
+                      " (metadata only)";
+                  }
+                } else if (h.kind === "export_pack") {
+                  label =
+                    "export:" +
+                    String(p.path || "").split("/").slice(-1)[0] +
+                    (p.meta_path ? "/snap" : "");
+                  types.push("attachment");
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta) {
+                    delMeta.textContent =
+                      "export · " +
+                      String(p.export_path || p.path || "?")
+                        .split("/")
+                        .slice(-1)[0];
+                  }
+                } else if (h.kind === "skill_write") {
+                  label =
+                    "skill:" +
+                    (p.name || String(p.path || "").split("/").slice(-2)[0] || "?") +
+                    (p.meta_path ? "/snap" : "");
+                  types.push("attachment");
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta) {
+                    delMeta.textContent =
+                      "skill_write · " +
+                      (p.name ||
+                        String(p.skill_path || p.path || "?")
+                          .split("/")
+                          .slice(-2)[0]);
+                  }
+                } else if (h.kind === "skill_load") {
+                  label =
+                    "skill_load:" +
+                    (p.task || "?") +
+                    "×" +
+                    (p.loaded_count != null ? p.loaded_count : "?");
+                  types.push("attachment");
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta) {
+                    delMeta.textContent =
+                      "skill_load · " +
+                      (p.task || "?") +
+                      (p.pretend_loaded === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "list_skills") {
+                  label =
+                    "list_skills×" +
+                    (p.count != null ? p.count : (p.skills || []).length);
+                  types.push("attachment");
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta) {
+                    delMeta.textContent =
+                      "list_skills · " +
+                      (p.count != null ? p.count : (p.skills || []).length) +
+                      (p.pretend_listing === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "device_tools_list") {
+                  label =
+                    "device_tools×" +
+                    (p.count != null ? p.count : (p.tools || []).length);
+                  types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "device_tools · " +
+                      (p.count != null ? p.count : (p.tools || []).length) +
+                      (p.pretend_granted === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "journal_query") {
+                  label =
+                    "journal:" +
+                    (p.hit_count != null ? p.hit_count : "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "journal · hits " +
+                      (p.hit_count != null ? p.hit_count : "?") +
+                      (p.pretend_hits === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "slides_pptx") {
+                  label =
+                    "slides:" +
+                    String(p.path || "").split("/").slice(-1)[0] +
+                    (p.meta_path ? "/snap" : "");
+                  types.push("attachment");
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta) {
+                    delMeta.textContent =
+                      "slides · " +
+                      String(p.pptx_path || p.path || "?")
+                        .split("/")
+                        .slice(-1)[0];
+                  }
+                } else if (
+                  h.kind === "generate_image" ||
+                  h.kind === "generate_video" ||
+                  h.kind === "watch_video" ||
+                  h.kind === "structured_chart"
+                ) {
+                  label =
+                    h.kind +
+                    ":" +
+                    String(p.media_path || p.frame_path || p.path || "")
+                      .split("/")
+                      .slice(-1)[0] +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const mediaMeta = document.getElementById("media-meta");
+                  if (mediaMeta) {
+                    mediaMeta.textContent =
+                      h.kind +
+                      " · " +
+                      String(p.media_path || p.frame_path || p.path || "?")
+                        .split("/")
+                        .slice(-1)[0];
+                  }
+                  if (h.kind === "generate_video" && p.media_path) {
+                    window.__bitbotLastVideoPath = String(p.media_path);
+                  }
+                } else if (h.kind === "box_doctor") {
+                  label =
+                    "box_doctor:" +
+                    (p.overall_pass ? "PASS" : "FAIL") +
+                    (p.path ? "/snap" : "") +
+                    (p.box_doctor_bin_residual === true
+                      ? "/box_doctor_bin_residual"
+                      : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      "doctor · " +
+                      (p.overall_pass ? "PASS" : "FAIL") +
+                      (p.mode ? " · " + p.mode : "") +
+                      (p.box_doctor_bin_residual === true
+                        ? " · box_doctor_bin_residual"
+                        : "");
+                  }
+                } else if (h.kind === "todo_write") {
+                  label =
+                    "todo_write:" +
+                    String(p.item_count != null ? p.item_count : "?") +
+                    "/" +
+                    String(p.done_count != null ? p.done_count : "0") +
+                    (p.path ? "/snap" : "") +
+                    (p.pretend_complete === true ? "/pretend_complete" : "");
+                  types.push("attachment");
+                } else if (h.kind === "box_env") {
+                  label =
+                    "box_env:" +
+                    (p.runtime || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent = "env · " + (p.runtime || "?");
+                  }
+                } else if (h.kind === "box_clock") {
+                  label =
+                    "box_clock:" +
+                    (p.user_iana || "?") +
+                    (p.aligns === false ? "/misaligned" : "") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      "clock · " +
+                      (p.user_iana || "?") +
+                      (p.aligns === false ? " · misaligned" : " · aligned");
+                  }
+                } else if (h.kind === "box_chrome_probe") {
+                  const bareRefused =
+                    p.refused === true ||
+                    p.rejected_bare === true ||
+                    (p.ok === false && String(p.path || "").includes("bare-refused"));
+                  label =
+                    "box_chrome:" +
+                    (bareRefused
+                      ? "refuse"
+                      : "p" + (p.private_cdp_port || "?")) +
+                    (p.path ? "/snap" : "") +
+                    (p.box_chrome_bin_residual === true
+                      ? "/box_chrome_bin_residual"
+                      : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      (bareRefused
+                        ? "chrome refused bare · shared profile untouched"
+                        : "chrome · private " + (p.private_cdp_port || "?")) +
+                      (p.box_chrome_bin_residual === true
+                        ? " · box_chrome_bin_residual"
+                        : "") +
+                      (p.shared_cdp_untouched === true
+                        ? " · cdp untouched"
+                        : "") +
+                      (p.pretend_launched === true ? " · pretend!" : "") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "webhook_panel") {
+                  label =
+                    "webhook:" +
+                    (p.id || "panel") +
+                    (p.path ? "/snap" : "");
+                  types.push("widget");
+                  const meta = document.getElementById("webhook-meta");
+                  const urlEl = document.getElementById("webhook-url");
+                  const keyEl = document.getElementById("webhook-key");
+                  if (meta) {
+                    meta.textContent =
+                      "open · opaque_to_tools=" +
+                      String(p.opaque_to_tools !== false);
+                  }
+                  if (urlEl) urlEl.textContent = "URL: " + (p.url || "");
+                  if (keyEl) {
+                    keyEl.textContent =
+                      "Key (user only): " + (p.key || p.key_masked || "");
+                  }
+                } else if (h.kind === "webhook_copy") {
+                  label =
+                    "webhook_copy:" +
+                    (p.what || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const meta = document.getElementById("webhook-meta");
+                  if (meta) meta.textContent = "copied " + (p.what || "");
+                } else if (h.kind === "webhook_tool_read_key") {
+                  label =
+                    "webhook_tool_read:" +
+                    (p.refused ? "REFUSED" : "LEAK") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const meta = document.getElementById("webhook-meta");
+                  if (meta) {
+                    meta.textContent = p.refused
+                      ? "tool-read refused (opaque)"
+                      : "tool-read unexpected";
+                  }
+                } else if (h.kind === "webhook_wake") {
+                  label =
+                    "webhook_wake:" +
+                    (p.event_id || "?") +
+                    (p.key_leaked ? "/LEAK" : "") +
+                    (p.path ? "/snap" : "") +
+                    (p.inbound_turn_residual === true
+                      ? "/inbound_turn_residual"
+                      : "") +
+                    (p.inbound_push_residual === true
+                      ? "/inbound_push_residual"
+                      : "");
+                  types.push("text");
+                  const meta = document.getElementById("webhook-meta");
+                  if (meta) {
+                    meta.textContent =
+                      "wake " +
+                      (p.event_id || "") +
+                      (p.key_leaked ? " KEY LEAK" : " ok") +
+                      (p.inbound_turn_residual === true
+                        ? " · inbound_turn_residual"
+                        : "") +
+                      (p.inbound_push_residual === true
+                        ? " · inbound_push_residual"
+                        : "");
+                  }
+                } else if (h.kind === "mcp_discover") {
+                  label =
+                    "mcp_discover×" +
+                    (p.tool_count != null ? p.tool_count : "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      "discover · tools×" +
+                      (p.tool_count != null ? p.tool_count : "?") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "mcp_namespace") {
+                  label =
+                    "mcp_ns:" +
+                    (p.namespace || "?") +
+                    ":" +
+                    (p.status || "Ready") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      "install " +
+                      (p.plugin_id || p.namespace || "?") +
+                      " · " +
+                      (p.status || "Ready");
+                  }
+                } else if (h.kind === "mcp_uninstall") {
+                  label =
+                    "mcp_uninstall:" +
+                    (p.namespace || "?") +
+                    ":Unavailable" +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      "uninstall " +
+                      (p.plugin_id || p.namespace || "?") +
+                      " · Unavailable";
+                  }
+                } else if (h.kind === "mcp_get_plugin") {
+                  label =
+                    "mcp_get:" +
+                    (p.id || p.plugin_id || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      (p.id || p.plugin_id || "?") +
+                      " · " +
+                      (p.status || (p.refused ? "refused" : "?")) +
+                      " · skills×" +
+                      (p.skill_count != null ? p.skill_count : "?");
+                  }
+                } else if (h.kind === "mcp_list_plugins") {
+                  label =
+                    "mcp_list×" +
+                    (p.count != null ? p.count : "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    const ids = (p.plugins || [])
+                      .slice(0, 4)
+                      .map((x) => x && x.id)
+                      .filter(Boolean);
+                    pluginsMeta.textContent =
+                      "list×" +
+                      (p.count != null ? p.count : ids.length) +
+                      (ids.length ? " · " + ids.join(", ") : "");
+                  }
+                } else if (h.kind === "journal_append") {
+                  label =
+                    "journal:" +
+                    (p.event_id || "note") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "voice_relay" && p.reply_media_path) {
+                  label =
+                    "voice_relay:" +
+                    String(p.reply_media_path).split("/").slice(-1)[0] +
+                    (p.path ? "/snap" : "") +
+                    (p.voice_stt_residual === true ? "/voice_stt_residual" : "") +
+                    (p.voice_tts_residual === true ? "/voice_tts_residual" : "");
+                  types.push("voice");
+                  const voiceMeta = document.getElementById("voice-meta");
+                  if (voiceMeta) {
+                    voiceMeta.textContent =
+                      "relay · " +
+                      String(p.reply_media_path).split("/").slice(-1)[0] +
+                      (p.call_id ? " · " + p.call_id : "") +
+                      (p.voice_stt_residual === true
+                        ? " · voice_stt_residual"
+                        : "") +
+                      (p.voice_tts_residual === true
+                        ? " · voice_tts_residual"
+                        : "");
+                  }
+                } else if (h.kind === "source_control") {
+                  const rp = p.remote_pr || {};
+                  const mode =
+                    rp.mode ||
+                    (String(p.mode || "").includes("gh_pr")
+                      ? String(p.mode).split("+").slice(-1)[0]
+                      : "git_status");
+                  const residual =
+                    (p.remote_pr_residual === true
+                      ? "/remote_pr_residual"
+                      : "") +
+                    (rp.real_create_gated === true &&
+                    p.remote_pr_residual !== true
+                      ? "/real_create_gated"
+                      : "") +
+                    (p.gh_pr_create_residual === true
+                      ? "/gh_pr_create_residual"
+                      : "");
+                  label = "sc:" + mode + residual + (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const scMeta = document.getElementById("source-control-meta");
+                  if (scMeta) {
+                    scMeta.textContent =
+                      (p.branch || "?") +
+                      " · " +
+                      mode +
+                      (rp.real_create_gated === true
+                        ? " · real create gated"
+                        : " · create path open") +
+                      (p.remote_pr_residual === true
+                        ? " · remote_pr_residual"
+                        : "") +
+                      (p.gh_pr_create_residual === true
+                        ? " · gh_pr_create_residual"
+                        : "") +
+                      (p.pretend_remote_pr ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "teammate_create") {
+                  label =
+                    "teammate:" +
+                    ((p.teammate && p.teammate.id) || p.id || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const tmMeta = document.getElementById("teammates-meta");
+                  if (tmMeta) {
+                    tmMeta.textContent =
+                      "created · " +
+                      ((p.teammate && p.teammate.id) || p.id || "?") +
+                      (p.appears_in_members ? " · in members" : "");
+                  }
+                } else if (h.kind === "section_add") {
+                  label =
+                    "section:+" +
+                    ((p.section && p.section.id) || "?") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                } else if (h.kind === "section_post") {
+                  label =
+                    "section:" +
+                    (p.section_id || "?") +
+                    "/post" +
+                    (p.path ? "/snap" : "");
+                  types.push("text");
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta) {
+                    delMeta.textContent =
+                      "section_post · " +
+                      (p.section_id || "?") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "shared_box_fs") {
+                  label =
+                    "shared_box:" +
+                    (p.mode || "fs") +
+                    (p.path ? "/snap" : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      "shared_box_fs · " +
+                      (p.mode || "fs") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "hide_agent") {
+                  label = "hide:" + (p.agent_id || p.id || "?");
+                  types.push("attachment");
+                  const agMeta = document.getElementById("agents-meta");
+                  if (agMeta) {
+                    agMeta.textContent =
+                      "hidden · " + (p.agent_id || p.id || "?");
+                  }
+                } else if (
+                  h.kind === "notify_settings" ||
+                  h.kind === "set_notify" ||
+                  h.kind === "update_computer" ||
+                  h.kind === "reset_computer" ||
+                  h.kind === "local_execution" ||
+                  h.kind === "guide_permission"
+                ) {
+                  label =
+                    h.kind +
+                    (p.path ? "/snap" : "") +
+                    (p.phase ? ":" + p.phase : "");
+                  types.push("attachment");
+                  const prefsMeta = document.getElementById("prefs-meta");
+                  if (prefsMeta) {
+                    prefsMeta.textContent =
+                      h.kind +
+                      (p.assistant_id ? " · " + p.assistant_id : "") +
+                      (p.phase ? " · " + p.phase : "") +
+                      (p.path ? " · snap" : "");
+                  }
+                } else if (h.kind === "credential_fill") {
+                  label =
+                    "secret-request:" +
+                    (p.domain || p.vault_id || "vault") +
+                    (p.path ? "/snap" : "") +
+                    (p.credential_browser_fill_residual === true
+                      ? "/credential_browser_fill_residual"
+                      : "") +
+                    (p.signin_fill_residual === true
+                      ? "/signin_fill_residual"
+                      : "");
+                  types.push("secret-request");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "secret-request · " +
+                      (p.domain || "?") +
+                      (p.credential_browser_fill_residual === true
+                        ? " · credential_browser_fill_residual"
+                        : "") +
+                      (p.signin_fill_residual === true
+                        ? " · signin_fill_residual"
+                        : "") +
+                      (p.pretend_secret_echo === true ? " · pretend!" : "") +
+                      (p.path ? " · snap" : "");
+                  }
+                  const delMeta = document.getElementById("delivery-meta");
+                  if (delMeta && !/secret-request/.test(delMeta.textContent || "")) {
+                    delMeta.textContent =
+                      (delMeta.textContent || "") + " · secret-request";
+                  }
+                } else if (h.kind === "channel_send" && p.live_post) {
+                  label =
+                    "live:" +
+                    (p.scheme || "channel") +
+                    "/" +
+                    (p.mode || "post") +
+                    (p.widget_degraded === true ? "/widget_degraded" : "") +
+                    (p.path ? "/snap" : "") +
+                    (p.live_slack_residual === true
+                      ? "/live_slack_residual"
+                      : "") +
+                    (p.live_teams_residual === true
+                      ? "/live_teams_residual"
+                      : "") +
+                    (p.live_meeting_residual === true
+                      ? "/live_meeting_residual"
+                      : "");
+                  types.push("text");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "live · " +
+                      (p.mode || p.scheme || "post") +
+                      (p.widget_degraded === true ? " · widget_degraded" : "") +
+                      (p.live_slack_residual === true
+                        ? " · live_slack_residual"
+                        : "") +
+                      (p.live_teams_residual === true
+                        ? " · live_teams_residual"
+                        : "") +
+                      (p.live_meeting_residual === true
+                        ? " · live_meeting_residual"
+                        : "") +
+                      (p.pretend_live === true ? " · pretend!" : " · honest");
+                  }
+                } else if (h.kind === "channel_send") {
+                  label =
+                    "ch:" +
+                    (p.mode || p.scheme || "send") +
+                    (p.widget_degraded === true ? "/widget_degraded" : "") +
+                    (p.path ? "/snap" : "") +
+                    (p.live_slack_residual === true
+                      ? "/live_slack_residual"
+                      : "") +
+                    (p.live_teams_residual === true
+                      ? "/live_teams_residual"
+                      : "") +
+                    (p.live_meeting_residual === true
+                      ? "/live_meeting_residual"
+                      : "") +
+                    (p.live_sms_residual === true
+                      ? "/live_sms_residual"
+                      : "") +
+                    (p.live_webhook_residual === true
+                      ? "/live_webhook_residual"
+                      : "") +
+                    (p.live_voice_residual === true
+                      ? "/live_voice_residual"
+                      : "") +
+                    (p.live_channel_residual === true
+                      ? "/live_channel_residual"
+                      : "") +
+                    (p.inbound_turn_residual === true
+                      ? "/inbound_turn_residual"
+                      : "") +
+                    (p.inbound_push_residual === true
+                      ? "/inbound_push_residual"
+                      : "") +
+                    (p.voice_tts_residual === true
+                      ? "/voice_tts_residual"
+                      : "");
+                  types.push(
+                    p.scheme === "voice" || p.send_to_user_type === "voice"
+                      ? "voice"
+                      : p.thread_ts
+                        ? "thread"
+                        : "text",
+                  );
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      (p.mode || p.scheme || "send") +
+                      (p.claimed_count != null
+                        ? " · claimed " + p.claimed_count
+                        : "") +
+                      (p.call_id ? " · " + p.call_id : "") +
+                      (p.thread_ts ? " · thread" : "") +
+                      (p.widget_degraded === true ? " · widget_degraded" : "") +
+                      (p.live_slack_residual === true
+                        ? " · live_slack_residual"
+                        : "") +
+                      (p.live_teams_residual === true
+                        ? " · live_teams_residual"
+                        : "") +
+                      (p.live_meeting_residual === true
+                        ? " · live_meeting_residual"
+                        : "") +
+                      (p.live_sms_residual === true
+                        ? " · live_sms_residual"
+                        : "") +
+                      (p.live_webhook_residual === true
+                        ? " · live_webhook_residual"
+                        : "") +
+                      (p.live_voice_residual === true
+                        ? " · live_voice_residual"
+                        : "") +
+                      (p.live_channel_residual === true
+                        ? " · live_channel_residual"
+                        : "") +
+                      (p.inbound_turn_residual === true
+                        ? " · inbound_turn_residual"
+                        : "") +
+                      (p.inbound_push_residual === true
+                        ? " · inbound_push_residual"
+                        : "") +
+                      (p.voice_tts_residual === true
+                        ? " · voice_tts_residual"
+                        : "") +
+                      (p.pretend_live === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "oauth") {
+                  const oauthNeedsAuth =
+                    p.status === "NeedsAuth" ||
+                    p.mode === "live_needs_auth" ||
+                    p.mode === "live_remote_browser_open" ||
+                    (p.connected === false && p.pretend_connected === false);
+                  label =
+                    "oauth:" +
+                    (oauthNeedsAuth
+                      ? "NeedsAuth"
+                      : (p.status || p.mode || "card")) +
+                    (p.path ? "/snap" : "") +
+                    (p.interactive_oauth_residual === true
+                      ? "/interactive_oauth_residual"
+                      : "");
+                  types.push("widget");
+                  const meta = document.getElementById("connectors-meta");
+                  if (meta) {
+                    meta.textContent =
+                      (p.connector || "connector") +
+                      " · " +
+                      (oauthNeedsAuth ? "NeedsAuth" : p.status || "?") +
+                      " · " +
+                      (p.mode || "") +
+                      (p.interactive_oauth_residual === true
+                        ? " · interactive_oauth_residual"
+                        : "") +
+                      (p.pretend_connected === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "connectors_probe") {
+                  const cons = p.connectors || {};
+                  const bits = Object.keys(cons)
+                    .slice(0, 6)
+                    .map((k) => {
+                      const c = cons[k] || {};
+                      return (
+                        k +
+                        ":" +
+                        (c.connected ? "on" : "off") +
+                        "/" +
+                        (c.mode || "?")
+                      );
+                    });
+                  const under = Object.values(cons).some(
+                    (c) => c && c.mode === "sandbox_idp" && c.live === false,
+                  );
+                  label =
+                    "connectors×" +
+                    bits.length +
+                    (p.pretend_all_connected === true ? "/pretend!" : "") +
+                    (under ? "/sandbox_probe" : "");
+                  types.push("attachment");
+                  const meta = document.getElementById("connectors-meta");
+                  if (meta) {
+                    meta.textContent =
+                      (bits.length ? bits.join(" · ") : "no connectors") +
+                      (p.pretend_all_connected === true
+                        ? " · pretend!"
+                        : " · honest");
+                  }
+                } else if (
+                  h.kind === "routine_schedule" ||
+                  h.kind === "routine_tick" ||
+                  h.kind === "routine_fire" ||
+                  h.kind === "routine_list" ||
+                  h.kind === "routine_pause" ||
+                  h.kind === "routine_resume"
+                ) {
+                  const rtId =
+                    p.id ||
+                    (p.fired && p.fired[0] && p.fired[0].id) ||
+                    p.fired_count ||
+                    "";
+                  label =
+                    h.kind.replace("routine_", "rt:") +
+                    ":" +
+                    rtId +
+                    (p.path ? "/snap" : "") +
+                    (p.long_lived_cron_residual === true
+                      ? "/long_lived_cron_residual"
+                      : "");
+                  types.push("attachment");
+                  const rtMeta = document.getElementById("routines-meta");
+                  if (rtMeta) {
+                    rtMeta.textContent =
+                      h.kind.replace("routine_", "") +
+                      (rtId ? " · " + rtId : "") +
+                      (p.next_due
+                        ? " · next " + String(p.next_due).slice(0, 19)
+                        : "") +
+                      (p.long_lived_cron_residual === true
+                        ? " · long_lived_cron_residual"
+                        : "") +
+                      (p.long_lived === true ? " · long_lived" : "");
+                  }
+                } else if (h.kind === "device_permission") {
+                  label =
+                    "perm:" +
+                    (p.tool || "?") +
+                    (p.path ? "/snap" : "") +
+                    (p.true_device_os_dialog_residual === true
+                      ? "/true_device_os_dialog_residual"
+                      : "") +
+                    (p.pretend_granted === true ? "/pretend!" : "");
+                  types.push("widget");
+                  const toolsMeta = document.getElementById("tools-meta");
+                  if (toolsMeta) {
+                    toolsMeta.textContent =
+                      "device_permission · " +
+                      (p.tool || p.permission || "card") +
+                      (p.true_device_os_dialog_residual === true
+                        ? " · true_device_os_dialog_residual"
+                        : "") +
+                      (p.pretend_granted === true
+                        ? " · pretend!"
+                        : " · honest card");
+                  }
+                } else if (
+                  h.kind === "memory_update" ||
+                  h.kind === "memory_recall" ||
+                  h.kind === "shared_memory_put" ||
+                  h.kind === "shared_memory_read"
+                ) {
+                  label =
+                    (h.kind === "memory_update"
+                      ? "mem:"
+                      : h.kind === "memory_recall"
+                        ? "recall:"
+                        : h.kind === "shared_memory_put"
+                          ? "shared-put:"
+                          : "shared-read:") +
+                    (p.key || p.scope || "?") +
+                    (p.path ? "/snap" : "") +
+                    (p.refused_cross_scope === true
+                      ? "/refused_cross_scope"
+                      : "") +
+                    (p.pretend_persisted === true || p.pretend_empty === true
+                      ? "/pretend!"
+                      : "");
+                  types.push(
+                    p.refused_cross_scope === true ? "widget" : "attachment",
+                  );
+                  const memMeta = document.getElementById("memory-meta");
+                  if (memMeta) {
+                    memMeta.textContent =
+                      h.kind.replace(/_/g, " ") +
+                      (p.key ? " · " + p.key : "") +
+                      (p.refused_cross_scope === true
+                        ? " · refused_cross_scope"
+                        : "") +
+                      (p.pretend_persisted === true || p.pretend_empty === true
+                        ? " · pretend!"
+                        : "");
+                  }
+                } else if (h.kind === "screenshot") {
+                  label =
+                    "screenshot:" +
+                    (p.tool || p.mode || "frame") +
+                    (p.frame_path || p.path ? "/snap" : "") +
+                    (p.screenshot_residual === true
+                      ? "/screenshot_residual"
+                      : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      "screenshot · " +
+                      (p.tool || p.mode || "frame") +
+                      (p.screenshot_residual === true
+                        ? " · screenshot_residual"
+                        : "") +
+                      (p.pretend_live === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "device_tool") {
+                  label =
+                    "device:" +
+                    (p.tool || "?") +
+                    (p.path ? "/snap" : "") +
+                    (p.device_capture_residual === true
+                      ? "/device_capture_residual"
+                      : "") +
+                    (p.device_tool_residual === true
+                      ? "/device_tool_residual"
+                      : "");
+                  types.push("attachment");
+                  const boxMeta = document.getElementById("box-meta");
+                  if (boxMeta) {
+                    boxMeta.textContent =
+                      "device · " +
+                      (p.tool || "?") +
+                      (p.mode ? " · " + p.mode : "") +
+                      (p.device_capture_residual === true
+                        ? " · device_capture_residual"
+                        : "") +
+                      (p.device_tool_residual === true
+                        ? " · device_tool_residual"
+                        : "");
+                  }
+                } else if (h.kind === "voice_session") {
+                  label =
+                    "voice:" +
+                    (p.action || "session") +
+                    (p.media_ok ? "/wav" : "") +
+                    (p.path ? "/snap" : "") +
+                    (p.voice_stt_residual === true ? "/voice_stt_residual" : "") +
+                    (p.voice_tts_residual === true ? "/voice_tts_residual" : "");
+                  types.push("voice");
+                  const voiceMeta = document.getElementById("voice-meta");
+                  if (voiceMeta) {
+                    voiceMeta.textContent =
+                      (p.action || "session") +
+                      (p.media_ok ? " · wav" : "") +
+                      (p.call_id ? " · " + p.call_id : "") +
+                      (p.voice_stt_residual === true
+                        ? " · voice_stt_residual"
+                        : "") +
+                      (p.voice_tts_residual === true
+                        ? " · voice_tts_residual"
+                        : "");
+                  }
+                } else if (
+                  h.kind === "voice_end_write" ||
+                  h.kind === "voice_end"
+                ) {
+                  label =
+                    "voice_end:" +
+                    (p.call_id || "?") +
+                    (p.path ? "/snap" : "") +
+                    (p.voice_end_match_residual === true
+                      ? "/voice_end_match_residual"
+                      : "");
+                  types.push("voice");
+                  const voiceMeta = document.getElementById("voice-meta");
+                  if (voiceMeta) {
+                    voiceMeta.textContent =
+                      "ended · " +
+                      (p.call_id || "?") +
+                      (p.voice_end_match_residual === true
+                        ? " · voice_end_match_residual"
+                        : "");
+                  }
+                } else if (p.media_path) {
+                  label =
+                    h.kind +
+                    ": " +
+                    String(p.media_path).split("/").slice(-1)[0] +
+                    (p.screenshot_residual === true
+                      ? "/screenshot_residual"
+                      : "") +
+                    (p.live_paid_residual === true
+                      ? "/live_paid_residual"
+                      : "");
+                } else if (p.path) {
+                  label =
+                    h.kind +
+                    ": " +
+                    String(p.path).split("/").slice(-2).join("/") +
+                    (p.live_channel_residual === true
+                      ? "/live_channel_residual"
+                      : "") +
+                    (p.refused_cross_scope === true
+                      ? "/refused_cross_scope"
+                      : "") +
+                    (p.remote_pr_residual === true
+                      ? "/remote_pr_residual"
+                      : "") +
+                    (p.interactive_oauth_residual === true
+                      ? "/interactive_oauth_residual"
+                      : "");
+                } else if (p.evidence) {
+                  label =
+                    h.kind +
+                    ": " +
+                    String(p.evidence).split("/").slice(-2).join("/") +
+                    ((p.outcome && p.outcome.ocr_residual === true) ||
+                    (p.gui &&
+                      p.gui.vision_plan &&
+                      p.gui.vision_plan.ocr_residual === true)
+                      ? "/ocr_residual"
+                      : "");
+                } else if (p.outcome && p.outcome.summary) {
+                  label =
+                    h.kind +
+                    ": " +
+                    p.outcome.summary +
+                    (p.outcome.ocr_residual === true
+                      ? "/ocr_residual"
+                      : "") +
+                    (p.outcome.live_paid_residual === true
+                      ? "/live_paid_residual"
+                      : "");
+                }
+              } catch (_) { /* ignore */ }
+              chip.textContent = label;
+              body.appendChild(chip);
+            }
+            const dmeta = document.getElementById("delivery-meta");
+            if (dmeta && types.length) {
+              dmeta.textContent = "last: " + [...new Set(types)].join(" · ");
+            }
+            log.appendChild(el);
+            log.scrollTop = log.scrollHeight;
+          }
+          // CHARTER Delivery: inline Host media (image/audio/video) in transcript.
+          const mediaItems = collectHostMediaPaths(r.host_results);
+          for (const item of mediaItems) {
+            await renderDeliveryMedia(item.path, item.label);
+          }
+          // CHARTER Delivery: inline Host HTML attachments (purchase receipt, …).
+          const htmlItems = collectHostHtmlPaths(r.host_results);
+          for (const item of htmlItems) {
+            await renderDeliveryHtml(item.path, item.label);
+          }
+          // CHARTER Delivery: OS-open for pptx / ics / eml / skill / export.
+          const openItems = collectHostOpenablePaths(r.host_results);
+          for (const item of openItems) {
+            await renderOpenArtifact(item.path, item.label);
+          }
+          // Delivery panel: show concrete attachment leaves (multi-end parity).
+          const dmeta2 = document.getElementById("delivery-meta");
+          if (dmeta2) {
+            const leaves = []
+              .concat(mediaItems, htmlItems, openItems)
+              .map((it) => String(it.path || "").split("/").slice(-1)[0])
+              .filter(Boolean)
+              .slice(0, 6);
+            if (leaves.length) {
+              dmeta2.textContent =
+                (dmeta2.textContent || "delivery") + " · files: " + leaves.join(", ");
+            }
+          }
+        }
+      } catch (e) {
+        const msg = String(e && e.message ? e.message : e);
+        jsonOut.textContent = msg;
+        addMsg("assistant", msg);
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    approveBtn.addEventListener("click", () => {
+      if (!pendingApprovalText) return;
+      const t = pendingApprovalText;
+      hideApproval();
+      runUserTurn(t, { approved: true });
+    });
+    denyBtn.addEventListener("click", hideApproval);
+    const accountBtn = document.getElementById("account-settings-btn");
+    if (accountBtn) {
+      accountBtn.addEventListener("click", () => {
+        runUserTurn("open settings", {});
+      });
+    }
+    const settingsClose = document.getElementById("settings-close");
+    if (settingsClose) {
+      settingsClose.addEventListener("click", () => {
+        const p = document.getElementById("settings-panel");
+        if (p) p.style.display = "none";
+      });
+    }
+    const agentBit = document.getElementById("agent-bit");
+    if (agentBit) {
+      agentBit.addEventListener("click", () => {
+        runUserTurn("open agent info agent=agent-bit", {});
+      });
+      agentBit.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        pendingDeleteAgentId = "agent-bit";
+        runUserTurn("delete agent agent-bit", {});
+      });
+    }
+    const agentInfoClose = document.getElementById("agent-info-close");
+    if (agentInfoClose) {
+      agentInfoClose.addEventListener("click", () => {
+        const p = document.getElementById("agent-info-panel");
+        if (p) p.style.display = "none";
+      });
+    }
+    const agentDeleteBtn = document.getElementById("agent-delete-btn");
+    if (agentDeleteBtn) {
+      agentDeleteBtn.addEventListener("click", () => {
+        runUserTurn("delete agent " + (pendingDeleteAgentId || "agent-bit"), {});
+      });
+    }
+    const agentDeleteConfirmBtn = document.getElementById("agent-delete-confirm-btn");
+    if (agentDeleteConfirmBtn) {
+      agentDeleteConfirmBtn.addEventListener("click", () => {
+        runUserTurn(
+          "confirm delete agent " + (pendingDeleteAgentId || "agent-bit"),
+          {},
+        );
+      });
+    }
+    const agentDeleteCancelBtn = document.getElementById("agent-delete-cancel-btn");
+    if (agentDeleteCancelBtn) {
+      agentDeleteCancelBtn.addEventListener("click", () => {
+        const box = document.getElementById("agent-delete-confirm");
+        if (box) box.style.display = "none";
+      });
+    }
+    const permDismiss = document.getElementById("permission-dismiss");
+    if (permDismiss) {
+      permDismiss.addEventListener("click", () => {
+        const permPanel = document.getElementById("permission");
+        if (permPanel) permPanel.style.display = "none";
+      });
+    }
+
+    function renderMachines(machines) {
+      if (!Array.isArray(machines) || machines.length === 0) return;
+      machineList.innerHTML = "";
+      for (const m of machines) {
+        const el = document.createElement("div");
+        el.className = "machine-item";
+        el.innerHTML =
+          '<div class="name"></div><div class="meta"></div>';
+        el.querySelector(".name").textContent = m.label || m.id || "?";
+        el.querySelector(".meta").innerHTML =
+          '<span class="kind-pill"></span><span class="st"></span>';
+        el.querySelector(".kind-pill").textContent = m.kind || "?";
+        el.querySelector(".st").textContent = m.status || "";
+        machineList.appendChild(el);
+      }
+    }
+
+    async function boot() {
+      try {
+        const r = await window.bitbot.boot();
+        banner.className = r.ok ? "ok" : "err";
+        banner.textContent = (r.banner || JSON.stringify(r, null, 2)) +
+          "\n\n[host] target=" + (r.target || "?") + " · " + (r.note || "");
+        const lm = await window.bitbot.turn("ListMachines");
+        if (lm && lm.machines) renderMachines(lm.machines);
+      } catch (e) {
+        banner.className = "err";
+        banner.textContent = String(e && e.message ? e.message : e);
+      }
+    }
+
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      await runUserTurn(text, {});
+    });
+
+    document.getElementById("connect-slack").addEventListener("click", () => {
+      runUserTurn("setup slack", {});
+    });
+    document.getElementById("connect-gmail").addEventListener("click", () => {
+      runUserTurn("connect gmail", {});
+    });
+    document.getElementById("connect-outlook").addEventListener("click", () => {
+      runUserTurn("connect outlook", {});
+    });
+    document.getElementById("connect-finance").addEventListener("click", () => {
+      runUserTurn("connect finance", {});
+    });
+    document.getElementById("connect-identity").addEventListener("click", () => {
+      runUserTurn("identity browser", {});
+    });
+    document.getElementById("probe-connectors").addEventListener("click", () => {
+      runUserTurn("list connectors", {});
+    });
+    document.getElementById("pref-notify").addEventListener("click", () => {
+      runUserTurn("notify settings assistant=asst-alpha", {});
+    });
+    document.getElementById("pref-set-notify").addEventListener("click", () => {
+      runUserTurn("set notify assistant=asst-alpha toggle=sound enabled=0", {});
+    });
+    document.getElementById("pref-guide").addEventListener("click", () => {
+      runUserTurn("guide permission kind=needs-auth ns=user-Gmail", {});
+    });
+    document.getElementById("pref-update").addEventListener("click", () => {
+      runUserTurn("update computer", { approved: true });
+    });
+    document.getElementById("pref-reset").addEventListener("click", () => {
+      runUserTurn("reset computer", { approved: true });
+    });
+    document.getElementById("pref-local").addEventListener("click", () => {
+      runUserTurn("local execution off", {});
+    });
+    document.getElementById("ch-slack-draft").addEventListener("click", () => {
+      runUserTurn("reply via slack:Cdesktop :: desktop draft body", {
+        approved: true,
+      });
+    });
+    document.getElementById("ch-slack-dm").addEventListener("click", () => {
+      runUserTurn("personal slack dm owner=Uowner text=ping", {
+        approved: true,
+      });
+    });
+    document.getElementById("ch-slack-thread").addEventListener("click", () => {
+      runUserTurn(
+        "reply via slack:Cdesktop thread_ts=1710000000.000001 :: desktop thread",
+        { approved: true },
+      );
+    });
+    document.getElementById("ch-slack-claim").addEventListener("click", () => {
+      runUserTurn("reply via slack:Cdesktop :: claim rehearsal", {
+        approved: true,
+        env: { BITBOT_SLACK_CLAIM: "1" },
+      });
+    });
+    document.getElementById("ch-teams-draft").addEventListener("click", () => {
+      runUserTurn("reply via teams:Tdesktop :: teams desktop draft", {
+        approved: true,
+      });
+    });
+    document.getElementById("ch-teams-send").addEventListener("click", () => {
+      runUserTurn("teams send tsmoke :: hello host chat", {
+        approved: true,
+      });
+    });
+    document.getElementById("ch-teams-claim").addEventListener("click", () => {
+      runUserTurn("reply via teams:Tdesktop :: sandbox claim", {
+        approved: true,
+        env: { BITBOT_TEAMS_CLAIM: "1" },
+      });
+    });
+    document.getElementById("ch-finance").addEventListener("click", () => {
+      runUserTurn("finance get_balance", {});
+    });
+    document.getElementById("ch-jobs").addEventListener("click", () => {
+      runUserTurn("job search engineer", {});
+    });
+    document.getElementById("ch-xsearch").addEventListener("click", () => {
+      runUserTurn("x search moonbit", {});
+    });
+    document.getElementById("ch-workflows").addEventListener("click", () => {
+      runUserTurn("list workflows", {});
+    });
+    document.getElementById("ch-credentials").addEventListener("click", () => {
+      runUserTurn("list credentials", {});
+    });
+    document.getElementById("ch-cred-fill").addEventListener("click", () => {
+      runUserTurn("fill credential domain=login.example.test", {
+        approved: true,
+      });
+    });
+    document.getElementById("del-react").addEventListener("click", () => {
+      runUserTurn("react message msg=msg-desktop emoji=👍", {});
+    });
+    document.getElementById("del-inbound-react").addEventListener("click", () => {
+      runUserTurn("[inbound] reaction :+1:", {});
+    });
+    document.getElementById("del-markdown").addEventListener("click", () => {
+      runUserTurn(
+        "render markdown Inline \\(E=mc^2\\) and $$a^2+b^2=c^2$$",
+        {},
+      );
+    });
+    document.getElementById("del-channel-plan").addEventListener("click", () => {
+      runUserTurn("channel plan body=stay in chat only", {});
+    });
+    document.getElementById("del-slides").addEventListener("click", () => {
+      runUserTurn("make slides title=DeskParity", {});
+    });
+    document.getElementById("del-skill").addEventListener("click", () => {
+      runUserTurn(
+        "author skill name=demo-skill description=demo body=Do the thing.",
+        {},
+      );
+    });
+    document.getElementById("del-export").addEventListener("click", () => {
+      runUserTurn("export bot template id=bot-smoke name=SmokeBot", {});
+    });
+    document.getElementById("del-load-skill").addEventListener("click", () => {
+      runUserTurn("load skill slides presentation", {});
+    });
+    document.getElementById("del-list-skills").addEventListener("click", () => {
+      runUserTurn("list skills", {});
+    });
+    document.getElementById("del-todo-write").addEventListener("click", () => {
+      runUserTurn("todo write desktop checklist item", { approved: true });
+    });
+    document.getElementById("del-todo-list").addEventListener("click", () => {
+      runUserTurn("list todos", {});
+    });
+    document.getElementById("del-attach-file").addEventListener("click", () => {
+      runUserTurn("attach file README.mbt.md", { approved: true });
+    });
+    document.getElementById("del-journal-query").addEventListener("click", () => {
+      runUserTurn("journal query", {});
+    });
+    document.getElementById("del-open-thread").addEventListener("click", () => {
+      runUserTurn("open thread", { approved: true });
+    });
+    document.getElementById("del-x-post").addEventListener("click", () => {
+      runUserTurn("x post Bit Bot desktop draft", { approved: true });
+    });
+    document.getElementById("del-section").addEventListener("click", () => {
+      runUserTurn(
+        "section post group=g1 section=sec-a from=asst-1 body=hello",
+        { approved: true },
+      );
+    });
+    document.getElementById("del-section-add").addEventListener("click", () => {
+      runUserTurn("add section group=g1 id=sec-a title=alpha", {});
+    });
+    document.getElementById("del-learn").addEventListener("click", () => {
+      runUserTurn(
+        "learn from demo title=Checkout steps=click:Cart|type:email",
+        {},
+      );
+    });
+    document.getElementById("plugin-list").addEventListener("click", () => {
+      runUserTurn("list plugins", {});
+    });
+    document.getElementById("plugin-get").addEventListener("click", () => {
+      runUserTurn("get plugin plugin-slides", {});
+    });
+    document.getElementById("plugin-install").addEventListener("click", () => {
+      runUserTurn("install plugin plugin-slides", {});
+    });
+    document.getElementById("plugin-uninstall").addEventListener("click", () => {
+      runUserTurn("uninstall plugin plugin-slides", {});
+    });
+    document.getElementById("plugin-mcp-discover").addEventListener("click", () => {
+      runUserTurn("mcp discover", {});
+    });
+    document.getElementById("plugin-mcp-call").addEventListener("click", () => {
+      runUserTurn('mcp call user-Gmail.search_threads {}', {
+        approved: true,
+      });
+    });
+    document.getElementById("wh-open").addEventListener("click", () => {
+      runUserTurn("open webhook panel", {});
+    });
+    document.getElementById("wh-copy-url").addEventListener("click", () => {
+      runUserTurn("copy webhook url", {});
+    });
+    document.getElementById("wh-copy-key").addEventListener("click", () => {
+      runUserTurn("copy webhook key", {});
+    });
+    document.getElementById("wh-tool-read").addEventListener("click", () => {
+      runUserTurn("tool-read webhook key", {});
+    });
+    document.getElementById("wh-wake").addEventListener("click", () => {
+      runUserTurn("webhook wake id=evt-desktop summary=POST /hooks received", {});
+    });
+    document.getElementById("sc-status").addEventListener("click", () => {
+      runUserTurn("source control github", {});
+    });
+    document.getElementById("sc-create-pr").addEventListener("click", () => {
+      runUserTurn("source control create_pr", {});
+    });
+    document.getElementById("media-image").addEventListener("click", () => {
+      runUserTurn("generate image desktop aurora skyline", {});
+    });
+    document.getElementById("media-video").addEventListener("click", () => {
+      runUserTurn("generate video desktop clip wave", {});
+    });
+    document.getElementById("media-chart").addEventListener("click", () => {
+      runUserTurn(
+        'structured chart {"alpha":4,"beta":9,"gamma":6}',
+        {},
+      );
+    });
+    document.getElementById("media-watch").addEventListener("click", () => {
+      const vp =
+        window.__bitbotLastVideoPath ||
+        "agent-tools/gen-video-desktop.mp4";
+      runUserTurn("watch video " + vp, {});
+    });
+    document.getElementById("voice-start").addEventListener("click", () => {
+      runUserTurn("voice start desktop-voice", {});
+    });
+    document.getElementById("voice-relay").addEventListener("click", () => {
+      runUserTurn("voice relay desktop-voice :: hello from desktop", {
+        approved: true,
+      });
+    });
+    document.getElementById("voice-end").addEventListener("click", () => {
+      runUserTurn("voice end desktop-voice", {});
+    });
+    document.getElementById("voice-huddle-start").addEventListener("click", () => {
+      runUserTurn("start huddle", { approved: true });
+    });
+    document.getElementById("voice-huddle-end").addEventListener("click", () => {
+      runUserTurn("end huddle", { approved: true });
+    });
+    document.getElementById("box-doctor").addEventListener("click", () => {
+      runUserTurn("box doctor", {});
+    });
+    document.getElementById("box-env").addEventListener("click", () => {
+      runUserTurn("box env", {});
+    });
+    document.getElementById("box-clock").addEventListener("click", () => {
+      runUserTurn("box clock", {});
+    });
+    document.getElementById("box-chrome").addEventListener("click", () => {
+      runUserTurn("box chrome probe", {});
+    });
+    document.getElementById("box-bare-chrome").addEventListener("click", () => {
+      runUserTurn("launch bare chrome", { approved: true });
+    });
+    document.getElementById("box-screenshot").addEventListener("click", () => {
+      runUserTurn("screenshot agent=executor", {});
+    });
+    document.getElementById("box-check-updates").addEventListener("click", () => {
+      runUserTurn("check updates", {});
+    });
+    document.getElementById("box-copy-to").addEventListener("click", () => {
+      runUserTurn(
+        "copy to box machine=desk-1 src=README.mbt.md dest=/workspace/uploads/README.mbt.md",
+        { approved: true },
+      );
+    });
+    document.getElementById("box-copy-from").addEventListener("click", () => {
+      runUserTurn(
+        "copy from box machine=desk-1 box=/workspace/uploads/README.mbt.md dest=/workspace/uploads/out-README.mbt.md",
+        { approved: true },
+      );
+    });
+    document.getElementById("box-shared-fs").addEventListener("click", () => {
+      runUserTurn("shared box fs", {});
+    });
+    document.getElementById("cloud-launch").addEventListener("click", () => {
+      runUserTurn("launch cloud agent triage desktop panel", {});
+    });
+    document.getElementById("cloud-deliver").addEventListener("click", () => {
+      const bc = window.__bitbotLastCloudBcId || "bc-1";
+      runUserTurn(
+        "deliver cloud artifact artifact=" + bc + " dest=desktop-report.md",
+        {},
+      );
+    });
+    document.getElementById("rt-create").addEventListener("click", () => {
+      runUserTurn(
+        "create routine id=desk-r cron=@hourly prompt=desktop tick",
+        { approved: true },
+      );
+    });
+    document.getElementById("rt-reminder").addEventListener("click", () => {
+      runUserTurn(
+        "create reminder id=desk-rem cron=@daily prompt=desktop reminder",
+        { approved: true },
+      );
+    });
+    document.getElementById("rt-list-scheduled").addEventListener("click", () => {
+      runUserTurn("list scheduled", {});
+    });
+    document.getElementById("rt-list").addEventListener("click", () => {
+      runUserTurn("list routines", {});
+    });
+    document.getElementById("rt-fire").addEventListener("click", () => {
+      runUserTurn("fire routine desk-r", { approved: true });
+    });
+    document.getElementById("rt-tick").addEventListener("click", () => {
+      runUserTurn("tick routines", {});
+    });
+    document.getElementById("rt-pause").addEventListener("click", () => {
+      runUserTurn("pause routine smoke-r", {});
+    });
+    document.getElementById("rt-resume").addEventListener("click", () => {
+      runUserTurn("resume routine smoke-r", {});
+    });
+    document.getElementById("rt-auto-review").addEventListener("click", () => {
+      runUserTurn("auto review settings", {});
+    });
+    document.getElementById("tm-create").addEventListener("click", () => {
+      runUserTurn(
+        "create teammate id=asst-desktop name=DesktopMate role=executor",
+        {},
+      );
+    });
+    document.getElementById("tm-members").addEventListener("click", () => {
+      runUserTurn("members panel", {});
+    });
+    document.getElementById("tm-members-group").addEventListener("click", () => {
+      runUserTurn("open members group=group-1", {});
+    });
+    document.getElementById("tm-room").addEventListener("click", () => {
+      runUserTurn("room desk :: hello teammates from desktop", {
+        approved: true,
+      });
+    });
+    document.getElementById("tm-room-post").addEventListener("click", () => {
+      runUserTurn("post to room desk :: hello from desktop post phrasing", {
+        approved: true,
+      });
+    });
+    document.getElementById("tm-room-join").addEventListener("click", () => {
+      runUserTurn("join room desk", { approved: true });
+    });
+    document.getElementById("tm-list-members").addEventListener("click", () => {
+      runUserTurn("list members", {});
+    });
+    document.getElementById("tm-list-channels").addEventListener("click", () => {
+      runUserTurn("list channels", { approved: true });
+    });
+    document.getElementById("tm-open-canvas").addEventListener("click", () => {
+      runUserTurn("open canvas", { approved: true });
+    });
+    document.getElementById("tm-list-models").addEventListener("click", () => {
+      runUserTurn("list models", {});
+    });
+    document.getElementById("tm-send").addEventListener("click", () => {
+      runUserTurn("send to agent asst-desktop :: ping from desktop host", {
+        approved: true,
+      });
+    });
+    document.getElementById("tm-subagent").addEventListener("click", () => {
+      runUserTurn("spawn subagent summarize inbox", {
+        approved: true,
+      });
+    });
+    document.getElementById("ag-list").addEventListener("click", () => {
+      runUserTurn("list agents", {});
+    });
+    document.getElementById("ag-hide").addEventListener("click", () => {
+      runUserTurn("hide agent research", {});
+    });
+    document.getElementById("mach-list").addEventListener("click", () => {
+      runUserTurn("list machines", {});
+    });
+    document.getElementById("mail-draft").addEventListener("click", () => {
+      runUserTurn(
+        "draft mail to=desktop@example.com subject=Hi body=Desktop draft",
+        { approved: true },
+      );
+    });
+    document.getElementById("mail-cold").addEventListener("click", () => {
+      runUserTurn(
+        "cold mail to=prospect@example.com subject=Hello body=Desktop cold unsubscribe=mailto:unsub@example.com",
+        { approved: true },
+      );
+    });
+    document.getElementById("mail-onbehalf").addEventListener("click", () => {
+      runUserTurn(
+        "send on behalf to=boss@example.com subject=Update body=Desktop on-behalf",
+        { approved: true },
+      );
+    });
+    document.getElementById("mail-claim").addEventListener("click", () => {
+      runUserTurn("claim inbox alpha", {});
+    });
+    document.getElementById("mail-schedule").addEventListener("click", () => {
+      runUserTurn(
+        "schedule meeting title=DesktopSync when=tomorrow-3pm",
+        {},
+      );
+    });
+    document.getElementById("mail-purchase").addEventListener("click", () => {
+      runUserTurn("purchase item=DesktopWidget cents=499", {
+        approved: true,
+      });
+    });
+    document.getElementById("mail-search").addEventListener("click", () => {
+      runUserTurn("search mail Invoice", {});
+    });
+    document.getElementById("mail-meeting").addEventListener("click", () => {
+      runUserTurn("meeting chat body=stand-up update direct=1", {
+        approved: true,
+      });
+    });
+    document.getElementById("mail-read").addEventListener("click", () => {
+      runUserTurn("read mail t-invoice-1", {});
+    });
+    document.getElementById("mail-outlook").addEventListener("click", () => {
+      runUserTurn(
+        "draft outlook mail to=bob@example.com subject=hi body=hello",
+        { approved: true },
+      );
+    });
+    document.getElementById("mem-remember").addEventListener("click", () => {
+      runUserTurn("remember desktop_panel=ready", {});
+    });
+    document.getElementById("mem-recall").addEventListener("click", () => {
+      runUserTurn("recall", {});
+    });
+    document.getElementById("mem-shared-put").addEventListener("click", () => {
+      runUserTurn("shared memory put scope=desk key=panel value=1", {});
+    });
+    document.getElementById("mem-shared-read").addEventListener("click", () => {
+      runUserTurn("shared memory read scope=desk key=panel", {});
+    });
+    document.getElementById("tool-shell").addEventListener("click", () => {
+      runUserTurn("shell echo desktop-tools-panel", { approved: true });
+    });
+    document.getElementById("tool-listdir").addEventListener("click", () => {
+      runUserTurn("listdir docs", {});
+    });
+    document.getElementById("tool-read").addEventListener("click", () => {
+      runUserTurn("read README.mbt.md", {});
+    });
+    document.getElementById("tool-webfetch").addEventListener("click", () => {
+      runUserTurn("webfetch https://example.com", {});
+    });
+    document.getElementById("tool-device").addEventListener("click", () => {
+      runUserTurn("device tools", {});
+    });
+    document.getElementById("tool-take-photo").addEventListener("click", () => {
+      runUserTurn("take photo", {});
+    });
+    document.getElementById("tool-record-video").addEventListener("click", () => {
+      runUserTurn("record video", {});
+    });
+    document.getElementById("tool-open-terminal").addEventListener("click", () => {
+      runUserTurn("open terminal", { approved: true });
+    });
+    document.getElementById("tool-version-info").addEventListener("click", () => {
+      runUserTurn("version info", {});
+    });
+    document.getElementById("tool-mute-channel").addEventListener("click", () => {
+      runUserTurn("mute channel", {});
+    });
+    document.getElementById("tool-toggle-theme").addEventListener("click", () => {
+      runUserTurn("toggle theme", {});
+    });
+    document.getElementById("tool-share-screen").addEventListener("click", () => {
+      runUserTurn("share screen", {});
+    });
+    document.getElementById("tool-ping-host").addEventListener("click", () => {
+      runUserTurn("ping host", {});
+    });
+    document.getElementById("tool-dnd").addEventListener("click", () => {
+      runUserTurn("do not disturb", {});
+    });
+    document.getElementById("tool-export-chat").addEventListener("click", () => {
+      runUserTurn("export chat", {});
+    });
+    document.getElementById("tool-create-canvas").addEventListener("click", () => {
+      runUserTurn("create canvas page", {});
+    });
+    document.getElementById("tool-edit-message").addEventListener("click", () => {
+      runUserTurn("edit message", { approved: true });
+    });
+    document.getElementById("tool-react-message").addEventListener("click", () => {
+      runUserTurn("react message", {});
+    });
+    document.getElementById("tool-pin-message").addEventListener("click", () => {
+      runUserTurn("pin message", {});
+    });
+    document.getElementById("tool-clear-chat").addEventListener("click", () => {
+      runUserTurn("clear chat", {});
+    });
+    document.getElementById("tool-journal").addEventListener("click", () => {
+      runUserTurn("journal query hello", {});
+    });
+    document.getElementById("tool-journal-append").addEventListener("click", () => {
+      runUserTurn(
+        "journal date=2026-10-17 id=e1 body=hello journal",
+        {},
+      );
+    });
+    document.getElementById("tool-pkg").addEventListener("click", () => {
+      runUserTurn("package install cowsay", {
+        approved: true,
+      });
+    });
+    document.getElementById("tool-pkg-npm").addEventListener("click", () => {
+      runUserTurn("install package npm left-pad@1.3.0", {
+        approved: true,
+      });
+    });
+    document.getElementById("tool-journal-range").addEventListener("click", () => {
+      runUserTurn("query journal from=2026-10-01 to=2026-10-31", {});
+    });
+    document.getElementById("cu-open").addEventListener("click", () => {
+      runUserTurn("computer use open https://example.com click:40,40", {});
+    });
+    document.getElementById("cu-native").addEventListener("click", () => {
+      runUserTurn("computer use open https://example.com click:40,40", {
+        env: { BITBOT_CU_NATIVE_ACT: "1" },
+      });
+    });
+    document.getElementById("cu-ocr").addEventListener("click", () => {
+      runUserTurn("computer use open https://example.com click:40,40", {
+        env: { BITBOT_CU_OCR: "1" },
+      });
+    });
+    document.getElementById("cu-shop").addEventListener("click", () => {
+      runUserTurn("shop target.com headphones", {});
+    });
+    document.getElementById("cu-travel").addEventListener("click", () => {
+      runUserTurn("travel expedia.com", {});
+    });
+    document.getElementById("cu-flight").addEventListener("click", () => {
+      runUserTurn("book flight google.com/flights", {});
+    });
+    document.getElementById("cu-food").addEventListener("click", () => {
+      runUserTurn("order food doordash.com", {});
+    });
+    document.getElementById("cu-paywall").addEventListener("click", () => {
+      runUserTurn(
+        "computer use open http://127.0.0.1:18780/ shop cart checkout buy",
+        { env: { BITBOT_CU_ALLOW_LOCAL: "1" } },
+      );
+    });
+    document.getElementById("sc-code").addEventListener("click", () => {
+      runUserTurn("code changes README.mbt.md", {});
+    });
+
+    boot();
+  </script>
+</body>
+</html>

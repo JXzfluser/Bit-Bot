@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1502",
+  "wave": "H6",
+  "title": "Auto-review",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1502_autoreview_blocks_high_risk",
+  "u_acceptance_file": "runtime/acceptance_cm1502_1503_test.mbt",
+  "u_evidence": "`runtime/acceptance_cm1502_1503_test.mbt`::acceptance_CM-1502_autoreview_blocks_high_risk \u2014 \u9ad8\u5371\u53ef\u62e6\uff1b\u539f\u56e0\u56de\u4f20",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1502",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1502",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1502_autoreview_blocks_high_risk` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

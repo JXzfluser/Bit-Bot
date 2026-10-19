@@ -149,6 +149,14 @@ test "acceptance_CM-0111_reject_unknown_deeplink_and_bare_url" {
     )
     is Ok(_),
   )
+  let linked = @ui_protocol.linkify_bare_http_urls(
+    "nav https://calendar.example.com/create ok",
+  )
+  assert_true(linked.contains("[https://calendar.example.com/create]("))
+  assert_true(@ui_protocol.ensure_markdown_links(linked) is Ok(_))
+  let already =
+    @ui_protocol.linkify_bare_http_urls("see [docs](https://example.com/a)")
+  assert_eq(already, "see [docs](https://example.com/a)")
   assert_true(
     @ui_protocol.validate_deeplink_or_reject("grokbot://settings") is Ok(_),
   )

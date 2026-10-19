@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1805",
+  "wave": "H6",
+  "title": "food-ordering / restaurant-*",
+  "pri": "P2",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1805_food_ordering_restaurant_playbooks",
+  "u_acceptance_file": "skills/acceptance_cm1805_test.mbt",
+  "u_evidence": "`skills/acceptance_cm1805_test.mbt`::acceptance_CM-1805_food_ordering_restaurant_playbooks \u2014 Resy/OpenTable/DoorDash playbooks dispatch\uff1bTarget \u975e\u70b9\u9910\u62d2",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1805",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1805",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1805_food_ordering_restaurant_playbooks` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

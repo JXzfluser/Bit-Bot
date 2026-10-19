@@ -82,19 +82,21 @@ pub fn MachineRegistry::empty() -> MachineRegistry {
 
 ///|
 /// Seed a representative full set: desktop + ios + android.
+/// All start Disconnected; Host `mark_host_present` marks the active shell
+/// Connected (honest — never pretend remote phone OS is online).
 pub fn MachineRegistry::seed() -> MachineRegistry {
   let reg = MachineRegistry::empty()
   reg.machines.push({
     id: "desk-1",
     label: "Work Desktop",
     kind: Desktop,
-    status: Connected,
+    status: Disconnected,
   })
   reg.machines.push({
     id: "phone-ios",
     label: "iPhone",
     kind: Ios,
-    status: Connected,
+    status: Disconnected,
   })
   reg.machines.push({
     id: "phone-android",
@@ -113,6 +115,33 @@ pub fn MachineRegistry::list(self : MachineRegistry) -> Array[MachineInfo] {
     out.push(m)
   }
   out
+}
+
+///|
+/// Mark the Host-present machine Connected when a multi-end Host shell
+/// is actively running as that kind/id (honest: not pretend remote phone OS).
+pub fn MachineRegistry::mark_host_present(
+  self : MachineRegistry,
+  machine_id~ : String,
+  machine_kind~ : String,
+) -> Unit {
+  let mid = machine_id.trim().to_owned()
+  let mk = machine_kind.trim().to_lower().to_owned()
+  let mut i = 0
+  while i < self.machines.length() {
+    let m = self.machines[i]
+    let kind_match = m.kind.name() == mk
+    let id_match = mid != "" && m.id == mid
+    if kind_match || id_match {
+      self.machines[i] = {
+        id: m.id,
+        label: m.label,
+        kind: m.kind,
+        status: Connected,
+      }
+    }
+    i = i + 1
+  }
 }
 
 ///|

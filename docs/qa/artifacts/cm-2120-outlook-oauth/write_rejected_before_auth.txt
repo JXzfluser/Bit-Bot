@@ -1,0 +1,4 @@
+op=draft
+ok=False
+msg=REFUSED:draft:needsAuth
+namespace=NeedsAuth

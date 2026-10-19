@@ -1,0 +1,26 @@
+{
+  "CM": "CM-1702",
+  "wave": "H6",
+  "title": "WebFetch",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-1702_auth_page_fails_clearly",
+  "u_acceptance_file": "tools/acceptance_web_test.mbt",
+  "u_evidence": "`tools/acceptance_web_test.mbt`::acceptance_CM-1702_auth_page_fails_clearly \u2014 200 \u6b63\u6587\u53ef\u8bfb\uff1b/login\u2192401/auth \u660e\u786e\u5931\u8d25",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-1702",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-1702",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-1702_auth_page_fails_clearly` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

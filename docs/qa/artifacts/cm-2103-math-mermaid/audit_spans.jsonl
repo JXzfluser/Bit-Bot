@@ -1,0 +1,2 @@
+{"id": "17978351-17fd-4025-bd63-3979249f04f2", "tool_name": "host_ui:show_math_mermaid", "duration_ms": 1, "ok": true, "detail": "math+mermaid open tex='E = mc^2'", "artifact_path": "/workspace/docs/qa/artifacts/cm-2103-math-mermaid", "ts": 1792227586.797698, "method": "show_math_mermaid"}
+{"id": "h5-2103", "tool_name": "h5_probe:CM-2103", "ok": true, "detail": "math=True mermaid=True; i_claimed=false", "artifact_path": "/workspace/docs/qa/artifacts/cm-2103-math-mermaid"}

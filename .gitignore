@@ -12,3 +12,40 @@ docs/qa/artifacts/**/Cookies*
 docs/qa/artifacts/**/Login Data*
 docs/qa/artifacts/**/Web Data*
 docs/qa/artifacts/**/History*
+
+# H4 smoke live Host FS paths (evidence copies live under docs/qa/artifacts/)
+h4-mcp-big-body.txt
+agent-tools/
+
+# Product Host runtime durable state (dirs created by start/deploy)
+/data/**/*.json
+/data/**/*.jsonl
+/data/**/*.ics
+/data/**/*.eml
+/data/**/*.html
+*.bitbot-plan.md
+*.bitbot-applied.json
+/data/voice/media/
+!/data/**/.gitkeep
+/data/journal/computer-use/
+/tmp/bitbot-sandbox/
+
+# Desktop (Electron)
+/hosts/desktop/node_modules/
+/hosts/desktop/dist/
+/hosts/desktop/out/
+# Mobile pack staging (scripts/pack-mobile.sh)
+/hosts/dist/
+# Host MCP temp request/response files
+/data/tmp/
+/desktop/node_modules/
+/desktop/dist/
+/desktop/out/
+# Accidental root npm init (Desktop lives under hosts/desktop/)
+/package.json
+/package-lock.json
+/node_modules/
+
+/uploads/
+data/voice/
+h3-cross-agent-shared.txt

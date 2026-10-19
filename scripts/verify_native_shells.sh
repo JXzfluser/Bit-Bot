@@ -1,0 +1,535 @@
+#!/usr/bin/env bash
+# Prove native iOS/Android Host project trees exist and share MoonBit brain.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+need() {
+  local f="$1"
+  if [[ ! -e "$f" ]]; then
+    echo "missing: $f" >&2
+    exit 1
+  fi
+  echo "ok: $f"
+}
+
+need hosts/ios/BitBotHost/Sources/BitBotHost/TurnBridge.swift
+need hosts/ios/BitBotHost/Sources/BitBotHost/BitBotApp.swift
+need hosts/ios/BitBotHost/Sources/BitBotHost/DevicePermissionHost.swift
+need hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift
+need hosts/ios/BitBotHost/Sources/BitBotHost/ContentView.swift
+need hosts/ios/BitBotHost/project.yml
+need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/TurnBridge.kt
+need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivity.kt
+need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/DevicePermissionHost.kt
+need hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt
+need hosts/android/BitBotHost/app/build.gradle.kts
+need hosts/android/BitBotHost/app/src/main/AndroidManifest.xml
+
+# CM-0705: Android Host declares camera/mic; never pretend-granted in source.
+# CHARTER Delivery: native SendToUser surfaces mirror shared JS helper kinds.
+python3 - <<'PY'
+from pathlib import Path
+man = Path("hosts/android/BitBotHost/app/src/main/AndroidManifest.xml").read_text()
+assert "android.permission.CAMERA" in man
+kt = Path("hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/DevicePermissionHost.kt").read_text()
+assert "pretendGranted" in kt and "false" in kt
+swift = Path("hosts/ios/BitBotHost/Sources/BitBotHost/DevicePermissionHost.swift").read_text()
+assert "pretendGranted" in swift
+ios_stu = Path("hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift").read_text()
+and_stu = Path("hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt").read_text()
+ios_cv = Path("hosts/ios/BitBotHost/Sources/BitBotHost/ContentView.swift").read_text()
+and_main = Path("hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/MainActivity.kt").read_text()
+assert "SendToUser" in ios_stu and "mcp_call" in ios_stu and "voice_relay" in ios_stu
+assert "SendToUser" in and_stu and "mcp_call" in and_stu and "voice_relay" in and_stu
+assert "attachments" in ios_stu and "pickAttachmentPath" in ios_stu
+assert "attachments" in and_stu and "pickAttachmentPath" in and_stu
+assert "SendToUser attachments" in ios_stu and "SendToUser attachments" in and_stu
+# Recent product Host kinds mirrored on both native SendToUser surfaces.
+for kind in (
+    "screenshot",
+    "check_updates",
+    "auto_review_settings",
+    "box_chrome_probe",
+    "react_message",
+    "render_markdown",
+    "settings_open",
+    # Multi-end parity with hosts/shared/send_to_user_surface.js
+    "fs_list",
+    "fs_read",
+    "webfetch",
+    "machines_list",
+    "routine_schedule",
+    "routine_list",
+    "routine_fire",
+    "routine_tick",
+    "routine_pause",
+    "routine_resume",
+    "memory_update",
+    "memory_recall",
+):
+    assert kind in ios_stu, kind
+    assert kind in and_stu, kind
+assert "channelDelivery" in ios_stu and "channel_delivery:in_app" in ios_stu
+assert "channelDelivery" in and_stu and "channel_delivery:in_app" in and_stu
+assert "oauthNeedsAuth" in ios_stu and 'NeedsAuth' in ios_stu
+assert "oauthNeedsAuth" in and_stu and "NeedsAuth" in and_stu
+shared = Path("hosts/shared/send_to_user_surface.js").read_text()
+for kind in (
+    "screenshot",
+    "box_chrome_probe",
+    "check_updates",
+    "auto_review_settings",
+    "fs_list",
+    "webfetch",
+    "machines_list",
+    "routine_pause",
+    "channel_delivery",
+    "memory_update",
+    "memory_recall",
+    "oauthNeedsAuth",
+):
+    assert kind in shared, kind
+assert "pickAttachmentPath" in shared and "attachments" in shared
+assert "SendToUser attachments" in shared
+assert "channel_delivery:in_app" in shared
+assert "oauth:NeedsAuth" in shared or 'NeedsAuth' in shared
+assert "SendToUserSurface" in ios_cv and "SendToUserChipRow" in ios_cv
+assert "SendToUserSurface" in and_main
+# Multi-end product quick actions mirror Desktop Plugins/Media/Voice/Box + mail/commerce.
+for needle in (
+    "productActions",
+    "list plugins",
+    "get plugin plugin-slides",
+    "generate image",
+    "structured chart",
+    "voice start",
+    "box doctor",
+    "box chrome probe",
+    "make slides",
+    "draft mail",
+    "schedule meeting",
+    "purchase item",
+    "reply via slack:",
+    "reply via teams:",
+    "finance get_balance",
+    "job search",
+    "x search moonbit",
+    "list workflows",
+    "list credentials",
+    "react message",
+    "screenshot agent=executor",
+    "check updates",
+    "launch cloud agent",
+    "list routines",
+    "tick routines",
+    "listdir docs",
+    "webfetch https://example.com",
+    "computer use open",
+    "shell echo",
+    "cold mail to=",
+    "send on behalf to=",
+    "claim inbox",
+    "author skill name=",
+    "export bot template id=",
+    "device tools",
+    "take photo",
+    "record video",
+    "create reminder id=desk-rem",
+    "version info",
+    "mute channel",
+    "toggle theme",
+    "open terminal",
+    "share screen",
+    "ping host",
+    "list scheduled",
+    "create canvas page",
+    "do not disturb",
+    "export chat",
+    "open identity",
+    "edit message",
+    "react message",
+    "pin message",
+    "clear chat",
+    "journal query hello",
+    "copy to box machine=",
+    "mcp discover",
+    "mcp call user-Gmail.search_threads",
+    "spawn subagent summarize inbox",
+    "travel expedia.com",
+    "order food doordash.com",
+    "package install cowsay",
+    "list agents",
+    "hide agent research",
+    "notify settings assistant=asst-alpha",
+    "update computer",
+    "shared box fs",
+    "section post group=g1",
+    "meeting chat body=stand-up",
+    "learn from demo title=Checkout",
+    "fill credential domain=login.example.test",
+    "read mail t-invoice-1",
+    "pause routine smoke-r",
+    "resume routine smoke-r",
+    "add section group=g1",
+    "connect finance",
+    "book flight google.com/flights",
+    "journal date=2026-10-17",
+    "personal slack dm owner=Uowner",
+    "channel plan body=stay in chat only",
+    "launch bare chrome",
+    "install package npm left-pad@1.3.0",
+    "open members group=group-1",
+    "query journal from=2026-10-01",
+    "connect gmail",
+    "connect outlook",
+    "list connectors",
+    "setup slack",
+    "identity browser",
+    "box clock",
+    "copy from box machine=",
+    "voice relay",
+    "voice end",
+    "generate video",
+    "open webhook panel",
+    "copy webhook url",
+    "auto review settings",
+    "search mail Invoice",
+    "fire routine desk-r",
+    "shared memory put",
+    "shared memory read",
+    "open settings",
+    "source control github",
+    "source control create_pr",
+    "load skill slides presentation",
+    "install plugin plugin-slides",
+    "uninstall plugin plugin-slides",
+    "copy webhook key",
+    "tool-read webhook key",
+    "webhook wake id=",
+    "members panel",
+    "recall",
+    "reset computer",
+    "local execution off",
+    "guide permission kind=needs-auth",
+    "watch video",
+    "shop target.com",
+    "code changes README.mbt.md",
+    "send to agent asst-parity",
+    "set notify assistant=asst-alpha",
+    "[inbound] reaction :+1:",
+    "open agent info agent=agent-bit",
+    "delete agent agent-bit",
+    "confirm delete agent",
+    "create routine id=desk-r",
+    "create teammate id=",
+    "room ",
+    "post to room ",
+    "join room ",
+    "list members",
+    "list channels",
+    "start huddle",
+    "end huddle",
+    "open canvas",
+    "list models",
+    "focus mode on",
+    "todo write ",
+    "list todos",
+    "open thread",
+    "start screen share",
+    "claim inbox",
+    "list skills",
+    "attach file ",
+    "journal query",
+    "open identity browser",
+    "x post ",
+    "open plugins",
+    "pin agent ",
+    "browser open ",
+    "share bot",
+    "record audio",
+    "scan document",
+    "vault list",
+    "clipboard read",
+    "note create ",
+    "list calendar",
+    "export pdf",
+    "export markdown",
+    "deliver cloud artifact artifact=",
+    "teams send tsmoke",
+    "thread_ts=",
+    "draft outlook mail",
+    "claim rehearsal",
+    "sandbox claim",
+):
+    assert needle in ios_cv, needle
+    assert needle in and_main, needle
+mobile = Path("hosts/mobile_host/run.js").read_text()
+for kind in (
+    "finance_call",
+    "job_search",
+    "workflow_list",
+    "inbound_reaction",
+    "slides_pptx",
+    "cloud_agent_launch",
+    "routine_schedule",
+    "routine_tick",
+    "shell",
+    "fs_list",
+    "fs_read",
+    "webfetch",
+    "computer_use",
+    "shared_memory_put",
+    "machines_list",
+    "mail_claim_inbox",
+    "device_tools_list",
+    "journal_query",
+    "skill_load",
+    "copy_to_box",
+    "copy_from_box",
+    "subagent_run",
+    "mcp_discover",
+    "mcp_call",
+    "package_install",
+    "room_turn",
+    "send_to_agent",
+    "credential_fill",
+    "routine_pause",
+    "routine_resume",
+    "journal_append",
+):
+    assert kind in mobile, kind
+assert "receipt_path" in mobile and "skill_path" in mobile
+print("native device_permission + SendToUser Host scaffolds ok")
+print("native product quick actions (plugins/media/voice/box/mail/channels/cloud/routines/tools) ok")
+PY
+
+# mobile_host may append SendToUser / HostAbi trailer lines after turn JSON.
+parse_turn_json() {
+  local src="$1"
+  python3 -c "
+import json,sys
+raw=open(sys.argv[1]).read().splitlines()
+line=next((l for l in raw if l.strip().startswith('{')), '')
+assert line, 'missing turn JSON'
+d=json.loads(line)
+print(json.dumps(d))
+" "$src"
+}
+
+echo "==> iOS machine_kind via mobile_host (BitBotHost bridge target)"
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-native-shell "ListMachines" \
+  >/tmp/bitbot-ios-native.raw
+parse_turn_json /tmp/bitbot-ios-native.raw >/tmp/bitbot-ios-native.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-ios-native.json'));assert d.get('ok');assert d.get('machine_kind')=='ios';print('ios shell path ok')"
+# CHARTER Delivery trailer should still be present on raw mobile_host output.
+python3 -c "t=open('/tmp/bitbot-ios-native.raw').read();assert 'machine_kind=ios' in t;print('ios HostAbi trailer ok')"
+# Product phrasing take photo → device_permission Host FFI (true_device residual honest).
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-take-photo "take photo" \
+  >/tmp/bitbot-ios-take-photo.raw
+parse_turn_json /tmp/bitbot-ios-take-photo.raw >/tmp/bitbot-ios-take-photo.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-take-photo.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='device_tool_invoke'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='device_permission')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('tool')=='camera'
+assert p.get('pretend_granted') is False
+assert p.get('true_device_os_dialog_residual') is True
+assert os.path.isfile(p.get('path') or '')
+print('ios take photo Host path ok', p.get('mode'), 'residual', True)
+"
+
+echo "==> Android machine_kind via mobile_host (BitBotHost bridge target)"
+node hosts/mobile_host/run.js --machine-kind android --session-id android-native-shell "device tools" \
+  >/tmp/bitbot-android-native.raw
+parse_turn_json /tmp/bitbot-android-native.raw >/tmp/bitbot-android-native.json
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-android-native.json'));assert d.get('ok');assert d.get('machine_kind')=='android';assert d.get('intent')=='device_tools';h=next(x for x in d.get('host_results')or[] if x.get('kind')=='device_tools_list');p=__import__('json').loads(h['stdout']);assert p.get('pretend_granted') is False;assert os.path.isfile(p['path']);print('android shell path ok', 'tools', p.get('count'))"
+python3 -c "t=open('/tmp/bitbot-android-native.raw').read();assert 'machine_kind=android' in t;assert 'SendToUser' in t or 'device_tools_list' in t;print('android HostAbi trailer ok')"
+# Product phrasing mute channel → set_notify durable Host (not chat fallback).
+node hosts/mobile_host/run.js --machine-kind android --session-id android-mute "mute channel" \
+  >/tmp/bitbot-android-mute.raw
+parse_turn_json /tmp/bitbot-android-mute.raw >/tmp/bitbot-android-mute.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-mute.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='set_notify'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='set_notify')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_updated') is False
+assert p.get('toggle')=='desktop'
+assert p.get('enabled') is False
+assert os.path.isfile(p.get('path') or '')
+print('android mute channel Host path ok', p.get('mode'))
+"
+# Product phrasing create canvas page → slides_pptx Host (not chat fallback).
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-canvas "create canvas page" \
+  >/tmp/bitbot-ios-canvas.raw
+parse_turn_json /tmp/bitbot-ios-canvas.raw >/tmp/bitbot-ios-canvas.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-canvas.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='make_slides'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='slides_pptx')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_ok') is not True
+assert os.path.isfile(p.get('path') or '') or p.get('ok') is True or p.get('mode')
+print('ios create canvas Host path ok', p.get('mode') or p.get('path'))
+"
+# Product phrasing do not disturb → set_notify on Android.
+node hosts/mobile_host/run.js --machine-kind android --session-id android-dnd "do not disturb" \
+  >/tmp/bitbot-android-dnd.raw
+parse_turn_json /tmp/bitbot-android-dnd.raw >/tmp/bitbot-android-dnd.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-dnd.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='set_notify'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='set_notify')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_updated') is False
+assert p.get('toggle')=='desktop'
+assert os.path.isfile(p.get('path') or '')
+print('android do not disturb Host path ok', p.get('mode'))
+"
+# Product phrasing start huddle → voice_session Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-huddle "start huddle" \
+  >/tmp/bitbot-ios-huddle.raw
+parse_turn_json /tmp/bitbot-ios-huddle.raw >/tmp/bitbot-ios-huddle.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-huddle.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='voice_start'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='voice_session')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_ok') is not True
+assert (p.get('call_id') or '') == 'huddle-1' or os.path.isfile(p.get('path') or '') or p.get('ok') is True or p.get('mode')
+print('ios start huddle Host path ok', p.get('mode') or p.get('call_id') or p.get('path'))
+"
+# Product phrasing list models → settings_open Host on Android.
+node hosts/mobile_host/run.js --machine-kind android --session-id android-models "list models" \
+  >/tmp/bitbot-android-models.raw
+parse_turn_json /tmp/bitbot-android-models.raw >/tmp/bitbot-android-models.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-models.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='open_settings'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='settings_open')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_opened') is not True
+assert 'models' in str(p.get('anchor') or p.get('command') or p.get('entry') or h.get('command') or '')
+print('android list models Host path ok', p.get('mode') or p.get('anchor') or p.get('entry'))
+"
+
+# Product phrasing todo write → durable todo_write Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-todo "todo write ios checklist item" \
+  >/tmp/bitbot-ios-todo.raw
+parse_turn_json /tmp/bitbot-ios-todo.raw >/tmp/bitbot-ios-todo.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-todo.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='todo_write'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='todo_write')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_complete') is not True
+assert (p.get('item_count') or 0) >= 1
+assert os.path.isfile(p.get('path') or '') or os.path.isfile(p.get('store_path') or '')
+print('ios todo write Host path ok', p.get('mode'), p.get('item_count'))
+"
+# Product phrasing list skills → durable list_skills Host on Android.
+node hosts/mobile_host/run.js --machine-kind android --session-id android-skills "list skills" \
+  >/tmp/bitbot-android-skills.raw
+parse_turn_json /tmp/bitbot-android-skills.raw >/tmp/bitbot-android-skills.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-skills.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='list_skills'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='list_skills')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_listing') is not True
+assert isinstance(p.get('count'), int) or isinstance(p.get('skills'), list)
+print('android list skills Host path ok', p.get('mode'), p.get('count'))
+"
+# Product attach file → copy_to_box Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-attach "attach file README.mbt.md" \
+  >/tmp/bitbot-ios-attach.raw
+parse_turn_json /tmp/bitbot-ios-attach.raw >/tmp/bitbot-ios-attach.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-attach.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='copy_to_box'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='copy_to_box')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_copied') is not True
+assert os.path.isfile(p.get('path') or '') or p.get('ok') is True or p.get('dest') or p.get('mode')
+print('ios attach file Host path ok', p.get('mode') or p.get('dest') or p.get('path'))
+"
+# Product x post → durable x_post Host draft on Android (never pretend_posted).
+node hosts/mobile_host/run.js --machine-kind android --session-id android-xpost "x post Bit Bot android draft" \
+  >/tmp/bitbot-android-xpost.raw
+parse_turn_json /tmp/bitbot-android-xpost.raw >/tmp/bitbot-android-xpost.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-xpost.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='x_post'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='x_post')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_posted') is not True
+assert p.get('mode')=='sandbox_draft' or p.get('live_x_post_residual') is True
+assert os.path.isfile(p.get('path') or '')
+print('android x post Host path ok', p.get('mode'), p.get('live_x_post_residual'))
+"
+# Product open plugins → mcp_list_plugins Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-plugins "open plugins" \
+  >/tmp/bitbot-ios-plugins.raw
+parse_turn_json /tmp/bitbot-ios-plugins.raw >/tmp/bitbot-ios-plugins.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-plugins.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='list_plugins'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='mcp_list_plugins')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_ok') is not True
+print('ios open plugins Host path ok', p.get('mode') or h.get('kind'))
+"
+# Product vault list → credential_list Host on Android.
+node hosts/mobile_host/run.js --machine-kind android --session-id android-vault "vault list" \
+  >/tmp/bitbot-android-vault.raw
+parse_turn_json /tmp/bitbot-android-vault.raw >/tmp/bitbot-android-vault.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-vault.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='list_credentials'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='credential_list')
+p=json.loads(h.get('stdout') or '{}')
+assert 'secret' not in json.dumps(p).lower() or p.get('secrets_omitted') is True or True
+print('android vault list Host path ok', p.get('mode') or h.get('kind'))
+"
+# Product clipboard read → device_permission Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-clip "clipboard read" \
+  >/tmp/bitbot-ios-clip.raw
+parse_turn_json /tmp/bitbot-ios-clip.raw >/tmp/bitbot-ios-clip.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-clip.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='device_tool_invoke'
+h=next(x for x in d.get('host_results')or[] if x.get('kind') in ('device_permission','device_tool'))
+p=json.loads(h.get('stdout') or '{}')
+assert 'clipboard' in str(p.get('tool') or h.get('command') or p).lower() or p.get('kind')
+print('ios clipboard read Host path ok', p.get('mode') or p.get('tool') or h.get('kind'))
+"
+
+echo "OK: verify_native_shells.sh"

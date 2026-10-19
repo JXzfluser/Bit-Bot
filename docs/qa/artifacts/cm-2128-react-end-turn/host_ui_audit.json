@@ -1,0 +1,22 @@
+{
+  "spans": [
+    {
+      "id": "7a99777f-ec9b-401f-86a5-ca9ee424a676",
+      "tool_name": "host_ui:react_to_message",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "pill message=msg-h5-1 emoji=\ud83c\udf89 visible=True",
+      "artifact_path": null,
+      "ts": 1792227583.4504383
+    },
+    {
+      "id": "0e16a323-8114-4f56-b6f5-c5fbb1f44e7d",
+      "tool_name": "host_ui:end_turn",
+      "duration_ms": 0,
+      "ok": true,
+      "detail": "end_turn leave_pill=True pill_visible=True",
+      "artifact_path": null,
+      "ts": 1792227583.5410583
+    }
+  ]
+}

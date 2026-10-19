@@ -1,0 +1,4 @@
+{"id": "f22270ab-f312-44f8-bc27-76d51d7ce4e8", "ts": 1792226427.2497976, "server": "bitbot-h4-mcp-stdio", "method": "boot", "ok": true, "detail": "stdio MCP server started", "pid": 21661, "agent_tools_dir": "/workspace/agent-tools"}
+{"id": "08c1d284-81f9-4ccc-ba48-379caeccbf39", "ts": 1792226427.2499385, "server": "bitbot-h4-mcp-stdio", "method": "initialize", "ok": true, "detail": "MCP initialize"}
+{"id": "ca621519-731c-417f-a19c-8046ab87981d", "ts": 1792226427.2500176, "server": "bitbot-h4-mcp-stdio", "method": "tools/list", "ok": true, "detail": "n=2"}
+{"id": "6ee598bd-fd4b-4da0-9f52-1393407b954e", "ts": 1792226427.250252, "server": "bitbot-h4-mcp-stdio", "method": "tools/call", "ok": true, "detail": "write_result wrote agent-tools file", "tool": "write_result", "path": "/workspace/agent-tools/h4-loopback-echo.txt", "bytes": 219, "sha256": "37a5f02058deed3f6b751d4458065f799f15776d9a3637730bd402a3d6f41a83"}

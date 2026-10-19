@@ -1,0 +1,26 @@
+{
+  "CM": "CM-0403",
+  "wave": "H6",
+  "title": "Flexible timing / \u5206\u949f\u76f8\u4f4d",
+  "pri": "P0",
+  "u_status": "PASS",
+  "u_acceptance_test": "acceptance_CM-0403_flexible_phase_and_no_blind_step",
+  "u_acceptance_file": "routines/acceptance_cron_extra_test.mbt",
+  "u_evidence": "`routines/acceptance_cron_extra_test.mbt`::acceptance_CM-0403_flexible_phase_and_no_blind_step \u2014 \u300c\u6bcf\u5929 8 \u70b9\u300d\u6309\u89c4\u5219\u843d\u76f8\u4f4d\uff1b\u6458\u8981\u62a5\u786e\u5207\u65f6\u95f4",
+  "evidence_cmd": "bash /workspace/scripts/host_matrix_i_sweep.sh cm-0403",
+  "artifact_dir": "/workspace/docs/qa/artifacts/h6-matrix-i/cm-0403",
+  "moon_test_ok": true,
+  "moon_test_passed": 347,
+  "live_host_ping": true,
+  "live_host_audit": "/workspace/docs/qa/artifacts/h6-matrix-i/_live_host_ping/audit.jsonl",
+  "host_surface": "kernel-sufficient",
+  "status": "READY_FOR_I_REVIEW",
+  "i_claimed": false,
+  "env": {
+    "USER_IANA": "Asia/Shanghai",
+    "stamp_utc": "20261017T093458Z",
+    "shared_cdp_9223": "untouched"
+  },
+  "assert": "U acceptance `acceptance_CM-0403_flexible_phase_and_no_blind_step` linked; moon test ok; Live HostAbi ping audit; host_surface=kernel-sufficient",
+  "note": "Wave H6 matrix I sweep \u2014 kernel-sufficient or covered-by-H0-H5. Not Host-hard invent. Bit\u9a8c\u8bc1 decides I-PASS."
+}

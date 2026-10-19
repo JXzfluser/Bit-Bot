@@ -1,0 +1,11 @@
+{
+  "CM": "CM-2103",
+  "evidence_cmd": "bash /workspace/bitbot/scripts/host_h5_smoke.sh cm-2103",
+  "artifact_dir": "/workspace/docs/qa/artifacts/cm-2103-math-mermaid",
+  "math_rendered": true,
+  "mermaid_rendered": true,
+  "frame_ok": true,
+  "i_claimed": false,
+  "status": "READY_FOR_I_REVIEW",
+  "assert": "Host UI math (SVG/KaTeX-class) + mermaid SVG visible; LiveDisplay frame; C\u2032"
+}

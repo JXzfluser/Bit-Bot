@@ -1,46 +1,350 @@
 # Bit Bot Roadmap（全量，非 Demo）
 
-## M0 — Foundation（进行中）
+## M0 — Foundation
 - [x] MoonBit toolchain
 - [x] `moon new` 仓库
 - [x] 团队就位
-- [ ] 完整能力矩阵（80+ 原子项）
-- [ ] 可编译多包骨架 + boot
-- [ ] 架构/接口文档
+- [x] 完整能力矩阵（234 原子项）
+- [x] 可编译多包骨架 + boot（`scripts/start-bitbot.sh` 现为次级；产品启动见 Desktop）
+- [x] 架构/接口文档
 
 ## M1 — Kernel + Delivery
-- TurnContext / ToolRegistry / ApprovalGate
-- ui_protocol 全消息类型 + end_turn / thread / widget
-- Untrusted content fence 解析与隔离
+- [x] TurnContext / ToolRegistry / ApprovalGate
+- [x] ui_protocol 全消息类型 + end_turn / thread / widget
+- [x] Untrusted content fence 解析与隔离
 
 ## M2 — Persistence
-- Memory（profile/journal/shared + recall/update）
-- Routines（cron + event triggers + lifecycle）
-- Skills catalog（managed / user / plugin）
+- [x] Memory（profile/journal/shared + recall/update）
+- [x] Routines（cron + event triggers + lifecycle）
+- [x] Skills catalog（managed / user / plugin）
 
-## M3 — Hosts
+## M3 — Hosts（产品基线：Desktop + multi-end）
 
 > Host-integration（真屏/FFI/真 MCP）波次见 `docs/host-integration-roadmap.md`；不重开已 U-PASS。
+> **产品基线**：`hosts/desktop` + `hosts/ios` + `hosts/android` 注册 `MachineKind`；MoonBit 编排 turn。
 
-- Box：Read/Shell/Screenshot/desktop session 协议
-- User machines：ListMachines、CopyTo/FromBox、machineId 路由
-- computerUse 任务协议
+- [x] Box：Read/Shell/Screenshot/desktop session 协议
+- [x] User machines：ListMachines、CopyTo/FromBox、machineId 路由
+- [x] computerUse 任务协议
+- [x] **Desktop Electron host** — `hosts/desktop/` + `cmd/desktop_turn`（JSON `v:1`）
+- [x] **Multi-end layout** — `hosts/{desktop,ios,android}` + `scripts/host_mobile_stub.sh`
+
+### Host I 波次（smoke + I-PASS · 2026-10-17 Asia/Shanghai）
+
+权威计数与证据：`docs/qa/host-integration-gaps.md`（**I-PASS=234 / 41 行库存 open=0 / 全矩阵 I-todo=0**）；升裁见 `docs/qa/gaps.md`。
+
+- [x] **H0** 探针绿线（0607/0608/2175）— smoke + I-PASS
+- [x] **H1** 真屏/Desktop（0605/0802/2160/0806）— smoke + I-PASS（0806=隔离 throwaway jar + Update Computer；共享 9223 untouched）
+- [x] **H2** Host UI×14 — smoke + I-PASS（C′）
+- [x] **H3** Host FFI×4 — smoke + I-PASS（0705=平台子集）
+- [x] **H4** MCP/OAuth/出网×7 — smoke + I-PASS（OAuth 三项用 **local sandbox IdP**，非生产）
+- [x] **H5** 媒体/卡/像素×9 — smoke + I-PASS
+- [x] **H6** 全矩阵 I 收口×193 — sweep + I-PASS（ADR 0004；kernel-sufficient / covered-by-H0-H5）
+- [ ] **User-deferred residual（非矩阵 I 阻塞）**：CM-0705 真手机 OS 权限弹窗；生产 Slack/Gmail IdP；商店签名证书（见下 M6/M7 同项）
 
 ## M4 — Connectors & IO
-- MCP dynamic tools / InstallPlugin / Authenticate
-- Email（agent inbox + user connectors + draft card 语义）
-- Channels（Slack 等 inbound/outbound 规则）
+- [x] MCP dynamic tools / InstallPlugin / Authenticate
+- [x] Email（agent inbox + user connectors + draft card 语义）
+- [x] Channels（Slack 等 inbound/outbound 规则）
 
 ## M5 — Multi-agent
-- Task subagents（executor/computerUse/knowledgeWork/video）
-- Teammates SendToAgent / CreateAgent / sections
-- CloudAgent + Origin/GitHub 面
+- [x] Task subagents（executor/computerUse/knowledgeWork/video）
+- [x] Teammates SendToAgent / CreateAgent / sections
+- [x] CloudAgent + Origin/GitHub 面
 
-## M6 — Vertical + App UI parity
-- 垂直 skills（scheduling/shopping/meetings/…）
-- Settings anchors / update-computer 引导语义
-- 首启、语言、时区、voice memo
+## M6 — Vertical + App UI parity（产品基线续）
+- [x] 垂直 skills（scheduling/shopping/meetings/…）
+- [x] Settings anchors / update-computer 引导语义
+- [x] 首启、语言、时区、voice memo
+- [x] Grok-like Desktop chrome（agents sidebar + machines panel + MoonBit transcript）
+- [x] Packaged installer / deeper Desktop Host FFI（Shell/FS/network execute loop）— `pack-desktop.sh` + shared Host FFI execute loop
+- [x] iOS / Android beyond stub — `hosts/{ios,android}/BitBotHost` native shells + `mobile_host` HostAbi
+- [x] Mobile pack staging — `scripts/pack-mobile.sh` stages BitBotHost + store metadata
+- [ ] App Store / Play Store signed packaging (Apple/Play certificates still required)
 
 ## M7 — Hardening
-- 全矩阵验收清零 P0 gaps
-- 回归套件与文档同步
+- [x] 全矩阵验收清零 P0 gaps（U=234；I=234）
+- [x] 回归套件与文档同步（moon CI + H6 sweep soft）
+- [x] Host I：41 行库存 open=0；全矩阵 I-PASS=234
+- [ ] phone residual 仍待真机（非矩阵 I 阻塞）
+
+## Non-goal — Python product deploy（demoted）
+
+- [x] **Demoted**: `scripts/bitbot_runtime/` + `deploy_local.sh` + `:8765` Host UI are **not** the product brain.
+  - Optional Host FFI / secondary only (ADR 0005).
+  - Do not expand Python LocalBrain. Prefer deleting or narrowing entrypoints that advertise Python chat as Bit Bot.
+  - Product path: `bash scripts/start-desktop.sh` → MoonBit turns.
+
+## Desktop host + MoonBit brain (ADR 0005)
+
+- [x] ADR 0005 accepted — `docs/adr/0005-course-correct-moonbit-desktop.md`
+- [x] `cmd/desktop_turn` — intents: chat / ListMachines / memory / host_effect / channel_delivery / connectors_status / claim_inbox / draft_mail / install_plugin / setup_slack (`v:1` JSON)
+- [x] `scripts/smoke_desktop_turn.sh` — product-path smoke (not LocalBrain)
+- [x] ADR 0002 Host FFI 回注 — Desktop executes effects then `--apply-host-results` → `continue_after_host_ffi` (MoonBit kernel absorbs TurnEvent)
+- [x] `hosts/desktop/` Electron — agents + machines + turn transcript from MoonBit
+- [x] `hosts/ios/` + `hosts/android/` native `BitBotHost` shells + `scripts/host_mobile_stub.sh`
+- [x] `scripts/start-desktop.sh` — moon on PATH, npm, Electron under `hosts/desktop`
+- [x] Shared Host FFI (`hosts/shared`) — shell / fs_list / fs_read / webfetch / channel_send (live Slack when token+BITBOT_SLACK_POST) / connectors_probe
+- [x] Multi-end CLI Host (`hosts/cli_host/run_turn.js`) — same brain as Desktop with `--machine-kind ios|android|desktop`
+- [x] TurnContext flags: `--session-id` `--machine-id` `--machine-kind` `--channel` on product JSON
+- [x] Desktop pack script: `bash scripts/pack-desktop.sh` (electron-builder --dir)
+- [x] CopyToBox / CopyFromBox product turns + Host real FS copy under repo
+- [x] `mail_send` Host effect (Gmail API when OAuth token present; else journal sandbox)
+- [x] ApprovalGate on shell / external send / mail (Host `--approved` after NeedUser)
+- [x] Product turns: create_routine / mcp_discover / mcp_call / spawn_subagent / computer_use / teams_send / device_tools / load_skill / voice_start|relay|end
+- [x] `hosts/mobile_host` — multi-end phone Host process (deviceLocalTools)
+- [x] Native Host project trees: `hosts/ios/BitBotHost` (SwiftUI) + `hosts/android/BitBotHost` (Compose) sharing MoonBit brain
+- [x] `scripts/pack-mobile.sh` — stages iOS/Android BitBotHost + store-packaging.json / SIGNING.md
+- [ ] App Store / Play Store signed packaging (Apple/Play certificates / store submit still open)
+- [x] Teammates: create_teammate / room_turn / send_to_agent on product path
+- [x] Cloud / commerce / vertical: launch_cloud_agent / deliver_cloud_artifact / schedule_meeting / shop_retail / purchase_item
+- [x] Vertical+connectors batch: travel_book / order_food / meeting_chat / finance_connect|call / fill_credential / cold_mail / personal_slack_dm / job_search
+- [x] Skills+identity batch: learn_from_demo / make_slides / code_changes / source_control / send_on_behalf / list_workflows / identity_browser / x_search / author_skill / export_bot_template
+- [x] CM-0705 product path: `device_permission` Host effect + phone machine_id resolve; mobile_host journals OS permission card (true-device dialog still residual)
+- [x] Host MCP deepen: `mcp_discover`/`mcp_call` execute real stdio MCP (`host_h4_mcp_stdio.py`), not journal-only
+- [x] Durable routines on Host: create/list/pause/resume/fire → `data/routines/host-routines.json`
+- [x] Mail search/read product turns (`search_mail` / `read_mail_thread`) + Host `mail_search`/`mail_read`
+- [x] Desktop Electron ApprovalGate UI (Approve & re-run with `--approved`) + effect chips
+- [x] Host sandbox OAuth: `oauth` effect runs real IdP authorize→token for Slack/Gmail/Finance; Desktop Connectors panel
+- [x] Host `computer_use` navigate: real HTTP public-page fetch + evidence under `data/journal/computer-use/`
+- [x] Host `computer_use` box-chrome child process (`scripts/host_box_chrome_cu.py`): private CDP only, shared 9223/profile untouched; GUI residual remains true OS window automation
+- [x] Host computer_use OS-window mode (DISPLAY) + CDP click/type/scroll (`host_cdp_actions.mjs`) + screenshot evidence when tools available
+- [x] Host computer_use agent loop (observe→act→reobserve) emits CM-1202-shaped `outcome` + `agent_loop` (no raw click stream to parent)
+- [x] Native iOS/Android `DevicePermissionHost` scaffolds + Android Manifest dangerous perms / Activity permission launcher (true dialog needs device; never pretend-granted)
+- [x] Host OAuth live authorization_code exchange when `BITBOT_OAUTH_TOKEN_URL` + `BITBOT_OAUTH_AUTH_CODE` set (`live_code_exchange`)
+- [x] Host OAuth modes: default sandbox IdP; `BITBOT_OAUTH_MODE=live` applies real token or honest NeedsAuth (never pretend Connected)
+- [x] Host OAuth `BITBOT_OAUTH_EXCHANGE=local` authorize→callback→token rehearsal (`local_exchange`); remote production IdP interactive consent still residual
+- [x] Host OAuth `BITBOT_OAUTH_EXCHANGE=interactive` headed-browser consent (`interactive_local` via CDP); remote production IdP credentials still residual
+- [x] Host computer_use multi-step planner heuristics for shop/travel/food/job playbooks (observe→act steps)
+- [x] Host computer_use vision planner: DOM observe + PIL screenshot hotspots → second-pass act (no OCR; sign-in stop honest)
+- [x] Host computer_use vision DOM bounding-box targets (search/cart/primary) preferred over PIL hotspots when present
+- [x] Host OAuth remote authorize browser open (`BITBOT_OAUTH_OPEN_BROWSER=1` / `EXCHANGE=remote_open`) → `live_remote_browser_open` NeedsAuth (never pretend Connected)
+- [x] Host OAuth remote callback→token rehearsal (`EXCHANGE=remote_callback` / `BITBOT_OAUTH_CALLBACK_WAIT_MS`): browser→local callback→token (`live_remote_callback`); real production IdP credentials deferred
+- [x] Host voice media: `voice_session` materializes real WAV (`data/voice/media/*.wav`) + relay transcript jsonl (not journal-only)
+- [x] Host routine fire durable: `fires.jsonl` + `last_fired_at` / `next_due`
+- [x] Host routine wake tick (`tick routines` → `routine_tick`) fires due routines by `next_due`
+- [x] Host SendToUser delivery receipts (`data/delivery/send-to-user.jsonl`) for text/thread/voice/widget/attachment; outbound reaction pills (`outbound-reactions.jsonl`)
+- [x] Desktop Delivery panel + expanded SendToUser chips (oauth/voice/reaction/delivery)
+- [x] Host personal Slack DM mode (`personal_slack_dm_draft` / `live_personal_slack_dm`) + CM-1104 channel widget degrade on outbound
+- [x] Host approval_card CM-0105-shaped widget options + Desktop interactive Approve/Dismiss card
+- [x] Host cloud_agent_launch CM-2131 cursor-agent SendToUser card (`type=cursor-agent` + open_url) + Desktop render
+- [x] Host Settings product path (CM-1901/1902): `settings_open` closed entry set + deep-link anchors; Desktop Account button + tabs panel; gear/Preferences refused
+- [x] Host per-agent info panel (CM-0205): `agent_info_panel` app-ui sections + Desktop click-name panel
+- [x] Host delete agent (CM-1907): sidebar confirm lifecycle; Settings/archive paths refused; Desktop confirm UI
+- [x] Host box package install (CM-2158): `package_install` via Shell only; npm sandbox tree evidence; non-Shell refused
+- [x] Host cross-agent shared box FS (CM-2174): `shared_box_fs` dual-session write/read + distinct desktops; other Host root isolated
+- [x] Host hidden agents (CM-0204): `hide_agent` / `list_agents_sidebar` — hidden off main sidebar, still addressable
+- [x] Host Members panel (CM-1405): `members_panel` from durable teammates under info-panel `members` anchor
+- [x] Host per-assistant notify settings (CM-0206): `notify_settings` / `set_notify` durable assistant-scoped toggles
+- [x] Host Update/Reset Computer + local-execution (CM-1903/1904/1905): two-step update; reset not preferred; off rejects machine
+- [x] Host missing-permission Settings guide (CM-2178): `guide_permission` deeplink; never pretend connected
+- [x] Host markdown math/mermaid render (CM-2103): `render_markdown` durable HTML + Desktop math/mermaid cards; unclosed math refused
+- [x] Host ReactToMessage pill toggle (CM-2101/2128): `react_message` durable pills + Desktop tray; same emoji cancels
+- [x] Host screenshot product path (CM-0605): `screenshot` read-only frame via ffmpeg/import when DISPLAY; honest `screenshot_residual` otherwise; never pretend Live
+- [x] Host Check for Updates ≠ Update Computer (CM-1906): `check_updates` opens Updates/`update-channel`; artifact asserts distinct from Computer/`update-computer`
+- [x] Host CreateAgent appears in Members (CM-1401): `teammate_create` returns `appears_in_members`/`in_sidebar`/`member_ids` from durable store
+- [x] Host auto-review Settings deeplinks (CM-1507): `auto_review_settings` opens General anchors auto-review / rules / security-keys
+- [x] Host box-chrome launcher probe (CM-0802): `box_chrome_probe` rejects bare chrome; private CDP ≠ 9223; shared profile untouched; lockfile diagnosable
+- [x] Multi-end SendToUser surfaces mirror product Host kinds (shared JS + iOS/Android: screenshot/check_updates/auto_review/box_chrome/react/markdown/settings…)
+- [x] Host InstallPlugin → `mcp_namespace` Ready/usable catalog (CM-0904); unknown plugin refused; no pretend_registered
+- [x] Host UninstallPlugin → `mcp_uninstall` marks namespace Unavailable + drops tools (CM-2107); never pretend_uninstalled
+- [x] Host GetPlugin / list-search plugins (`mcp_get_plugin` / `mcp_list_plugins`; CM-2108 + CM-0904 directory)
+- [x] Desktop Plugins panel (list / get / install / uninstall) + mobile delivery mirrors for `mcp_get_plugin` / `mcp_list_plugins`
+- [x] Desktop Media panel (generate image/video, structured chart, watch last video)
+- [x] Desktop Voice panel (start / relay / end for Host voice session)
+- [x] Desktop Box panel (doctor / env / clock / chrome probe)
+- [x] Native iOS/Android product quick actions (plugins/media/voice/box — mirrors Desktop HostAbi)
+- [x] Desktop Teammates actions (create / members / room / send-to-agent) + Mail/commerce panel (draft / schedule / purchase / search)
+- [x] Host continue CM-0111: linkify bare URLs in FFI dumps; schedule fallback hint markdown-safe; CU extracts markdown URL
+- [x] Mobile delivery mirrors for teammate_create / schedule_meeting / mail_search / mail_read
+- [x] Desktop inline SendToUser media preview (`bitbot:readArtifact` IPC → img/audio/video in transcript)
+- [x] Desktop inline CM-2103 markdown HTML iframe (`readArtifact` text/html → sandboxed `srcdoc`; mobile mirrors accept media/html paths)
+- [x] Desktop inline purchase receipt HTML iframe (`renderDeliveryHtml` / `collectHostHtmlPaths`)
+- [x] Desktop OS-open for pptx/ics/eml attachments (`bitbot:openArtifact` → `shell.openPath`)
+- [x] Multi-end SendToUser attachment path strip (shared JS + iOS/Android; media/html/openable roles) + mail/commerce mobile quick actions
+- [x] Desktop OS-open for skill_write / export_pack + Delivery panel attachment leaf names
+- [x] Desktop Channels panel (Slack/Teams draft·thread·sandbox claim via per-turn Host env) + finance/jobs; mobile channel quick actions
+- [x] Desktop Channels+Delivery deepen: X search / workflows / credentials + react/inbound/markdown buttons; mobile mirrors for finance/jobs/workflows/inbound/slides/skill/export
+- [x] Desktop Cloud panel (launch + deliver artifact) + Box screenshot/check-updates; mobile cloud/screenshot/updates quick actions
+- [x] Desktop Routines panel (create/list/fire/tick + auto-review); mobile routines mirrors + quick actions
+- [x] Desktop Tools + Computer Use panels (shell/FS/webfetch + CU native/OCR env) + Memory remember/shared; mobile FS/shell/CU mirrors
+- [x] Desktop Machines list + Mail cold/on-behalf/claim buttons; mobile mirrors for machines_list/mail_claim_inbox + cold/onbehalf quick actions
+- [x] Desktop Delivery slides/skill/export/load-skill + Tools device/journal + Box copy to/from; mobile mirrors for device_tools_list/journal_query/skill_load/copy_*
+- [x] Desktop Plugins MCP discover/call + Teammates spawn subagent + CU travel/food + Tools package install; mobile subagent_run mirror + native quick actions
+- [x] Desktop Agents list/hide + Host prefs (notify/guide/update/reset/local) + shared box fs + section/learn/meeting; mobile room_turn/send_to_agent mirrors
+- [x] Desktop Channels fill-credential + CU payment-wall fixture button (BITBOT_CU_ALLOW_LOCAL); mobile credential_fill quick action
+- [x] Desktop connect finance/identity, teams send, add section, journal append, book flight, pause/resume routine, read mail, draft Outlook; mobile routine_pause/resume + journal_append mirrors
+- [x] Desktop personal Slack DM + channel plan in-app + launch bare chrome refuse + npm package + members group + journal range; bare-chrome honesty meta
+- [x] SendToUser strip surfaces `channel_delivery` (in_app/external) on mobile even without Host FFI effects
+- [x] SendToUser extract covers fs_list/fs_read/webfetch/machines_list/routine_* mirrors on mobile strips
+- [x] Desktop Electron one-shot smoke turn (`BITBOT_DESKTOP_SMOKE_TURN`) proves MoonBit brain via Electron Host (ADR 0005; not LocalBrain)
+- [x] Host multi-agent deepen: `room_turn` member fanout + `send_to_agent` wake/outbox reply + `subagent_run` MoonBit worker complete (CM-2133 nest guard via `BITBOT_NEST_DEPTH`)
+- [x] Host voice_relay deepen: MoonBit worker reply text + reply WAV (RIFF) + transcript assistant turn
+- [x] Host schedule_meeting materializes real `.ics` (VCALENDAR/VEVENT) under `data/calendar/` + SendToUser attachment
+- [x] Host purchase receipt HTML under `data/commerce/receipts/` + SendToUser attachment
+- [x] Host mail_send durable `.eml` draft (sandbox / live-fail fallback; never pretend sent)
+- [x] Host routine_tick wake log (`wakes.jsonl` + `last-tick.json`; daemon=false honest residual)
+- [x] Host finance_call sandbox/live artifact JSON under `data/connectors/finance/`
+- [x] Host cloud_agent_launch local MoonBit worker session (`mode=local_worker`, not pretend remote cloud) + cursor-agent card
+- [x] Host cloud_artifact_deliver materializes report from local cloud session (`from_session`)
+- [x] Host routine daemon one-shot sweeps (`scripts/host_routine_daemon.sh`; `long_lived=false` — not systemd cron)
+- [x] Host meeting_chat CM-2153: DirectSend → `data/meetings/live-chat.jsonl`; DraftCard → meeting eml
+- [x] Host Teams sandbox drafts + CM-1104 widget degrade + `data/channels/teams/outbound-drafts.jsonl`
+- [x] Host CU checkout deepen: `checkout_stage` + `checkout_summary.json` (never pretend_purchased)
+- [x] Host identity_browser switch session (`identity_browser_switch`; never pretend Slack Connected)
+- [x] Host cold_mail sandbox `.eml` with `List-Unsubscribe` (CM-1009; pretend_sent=false)
+- [x] Host learn_from_demo skill_write includes crystallized steps in SKILL.md body
+- [x] Host `code_changes` plan artifact + optional `.bitbot-plan.md` sidecar (not auto-committed)
+- [x] Host `source_control` real `git status` artifact (`pretend_remote_pr=false`)
+- [x] Host send_on_behalf sandbox `.eml` with proxy headers (`pretend_sent=false`)
+- [x] Host CU travel/food `vertical_stage` alongside shopping checkout stages
+- [x] Host routine daemon `--interval-ms` multi-sweep (still `long_lived=false` / not systemd)
+- [x] Host CU `payment_wall` / `has_payment` / `live_paid_residual` (never auto-charge; `BITBOT_CU_LIVE_PAID` gated)
+- [x] Host purchase sandbox receipt honesty (`paid=false`, `live_paid_residual`; live needs `BITBOT_PURCHASE_LIVE`+token)
+- [x] Host cloud remote probe (`BITBOT_CLOUD_API_URL`+token → remote or honest local_worker_after_remote_fail; never pretend remote)
+- [x] Host cloud remote live mock (`host_local_http_mock --mode cloud` → `remote_cloud_api` / `launched_remote`; never pretend remote)
+- [x] Host meeting_chat live transport probe (`BITBOT_MEETING_*` + `BITBOT_MEETING_POST=1`; else `live_meeting_residual=true`)
+- [x] Host meeting_chat residual edge cases: CM-1104 widget degrade, live_failed honesty, live/sandbox claim (`BITBOT_MEETING_CLAIM=1`)
+- [x] Host routine daemon `--long-lived` + systemd unit scaffold (`bitbot-routine-daemon.service.example`; install still residual)
+- [x] Host CU native OS input probe (`xdotool`/`wmctrl`) + `os_window_automation_residual` / `ocr_residual` honesty
+- [x] Host CU native OS act (`BITBOT_CU_NATIVE_ACT=1` → xdotool click/type; residual closes when probe_ready+act ok)
+- [x] Host CU OCR (`BITBOT_CU_OCR=1` → tesseract; closes `ocr_residual` when text extracted)
+- [x] Host purchase live charge (`BITBOT_PURCHASE_LIVE`+token+API → `/charge`; else sandbox residual)
+- [x] Host meeting live transport (`BITBOT_MEETING_*` + `BITBOT_MEETING_POST=1` → `/messages`; else DirectSend residual)
+- [x] Host source_control remote PR (`BITBOT_GH_CREATE_PR=1` → `gh pr view` or `gh pr create --dry-run`; real create needs `BITBOT_GH_PR_CREATE=1`)
+- [x] Host routine daemon `--install-user-unit` (user systemd; closes `systemd_unit_installed`)
+- [x] Host CU payment_wall fixture (`host_cu_checkout_fixture.py` + `BITBOT_CU_ALLOW_LOCAL=1`; never pretend_purchased)
+- [x] Host mail_search/mail_read durable artifacts (`data/mail/search|threads`; live Gmail when token; never pretend_live)
+- [x] Host workflow_list catalog (`data/workflows/catalog.json`; CM-2118 Host FFI)
+- [x] Host x_search durable results (`data/connectors/x/`; live when `BITBOT_X_BEARER`; never pretend_live)
+- [x] Host job_search durable catalog (`data/jobs/`; CU playbook + Host artifact; never pretend_applied)
+- [x] Host job_search live catalog (`BITBOT_JOB_API_URL`+token → `/jobs/search`; else sandbox residual; never pretend_applied)
+- [x] Host finance_call live API (`BITBOT_FINANCE_API_URL`+token → `/tools/*`; else sandbox residual)
+- [x] Host Slack live mock (`BITBOT_SLACK_API_BASE` + token + `BITBOT_SLACK_POST=1` → `live_slack`; honest `live_slack_residual` / `pretend_live=false`)
+- [x] Host Teams live mock (`BITBOT_TEAMS_GRAPH_URL` + token + `BITBOT_TEAMS_POST=1` → `live_teams_chat_message`; honest residual flags)
+- [x] Host X search live mock (`BITBOT_X_API_BASE` + `BITBOT_X_BEARER` → `x_live`; else sandbox_public residual)
+- [x] Host Gmail live mock (`BITBOT_GMAIL_API_BASE` + token + `BITBOT_MAIL_SEND=1` → `live_gmail` / search+read `gmail_live`; draft-first without SEND gate)
+- [x] Host Outlook live mock (`BITBOT_OUTLOOK_GRAPH_URL` + token + `BITBOT_MAIL_SEND=1` → `live_outlook`; `draft outlook mail` product path)
+- [x] Host calendar live mock (`BITBOT_CALENDAR_API_URL`+token → `calendar_live`; ICS always; never pretend_live)
+- [x] Host MCP `$file:` expand in product FFI path (CM-2163; refuse missing/out-of-repo; never pretend_inject)
+- [x] Host MCP `write_result` / write_to_file product path (CM-2164 → `/workspace/agent-tools/`; path not body; never pretend_inline_payload)
+- [x] Host teammate sections durable partitions (CM-1403 `section_add`/`section_post`; isolation + unknown refuse)
+- [x] Host credential_list metadata vault (CM-2130; never secret_echoed / pretend_secret_view)
+- [x] Host source_control always writes `pr-create-plan.json` with `real_create_gated` honesty
+- [x] Host source_control gated create evidence (`BITBOT_GH_BIN` + `host_gh_mock.sh`; dry-run vs `BITBOT_GH_PR_CREATE=1` real-create path; never invent GitHub PR)
+- [x] Desktop delivery chip for `source_control` (mode + gated flag)
+- [x] Desktop Source control panel (git status / Create PR plan buttons + meta)
+- [x] Mobile Host SendToUser delivery strip (`hosts/shared/send_to_user_surface.js` via mobile_host)
+- [x] Grok parity scenario smoke (`scripts/smoke_grok_parity_scenario.sh` multi-turn SendToUser proof; CHARTER types text/widget/attachment/voice/reaction/thread/cursor-agent)
+- [x] Desktop chips for mcp_call / mail_send / code_changes / teammate / sections
+- [x] Host email channel live (`reply via email:` → mail_send; `live_email_gmail` when gated)
+- [x] Host code_changes gated apply (`BITBOT_CODE_APPLY=1` → durable `.bitbot-applied.json` sidecar; never pretend_committed)
+- [x] Host copy_to_box / copy_from_box durable JSON (`data/box-copy/` + SendToUser attachment; never pretend_remote_machine)
+- [x] Desktop Electron signing scaffolds (`DESKTOP_SIGNING.env.example`, mac entitlements, `pack-desktop.sh` BITBOT_DESKTOP_SIGN hook; certs deferred)
+- [x] Desktop attachment chips for Host materialize / CU outcomes (SendToUser-like delivery surface)
+- [x] Desktop chips expanded: mail/workflow/x/job/finance/copy_box/purchase/schedule + live channel_send
+- [x] Channel outbound durable store (`data/channels/outbound.jsonl`) for slack/teams/email; live Slack when token+BITBOT_SLACK_POST; Teams Graph gated on BITBOT_TEAMS_TOKEN
+- [x] Channel deepen: Slack thread_ts replies + optional `BITBOT_SLACK_CLAIM` inbound.jsonl; Teams chat message POST when chat id present
+- [x] Slack thread address forms: `slack:C:TS` and `slack:C thread_ts=TS` → Host thread draft/live + SendToUser type=thread
+- [x] Slack live claim + live thread via local mock (`conversations.history` / `chat.postMessage` + `auth.test` on `host_local_http_mock --mode slack`)
+- [x] Parity scenario session memory remember→recall Host reinject (`data/memory/desktop-host.json`)
+- [x] Desktop Memory panel (Host session seed meta + Recall action)
+- [x] Parity scenario shared_memory put/read + journal_append durable Host evidence
+- [x] ListMachines marks active Host shell Connected (`MachineRegistry::mark_host_present`; android seed stays disconnected until android Host present)
+- [x] Credential fill upserts vault metadata for list credentials (CM-2130; never secret plaintext)
+- [x] Teams inbound claim (`BITBOT_TEAMS_CLAIM=1` → live Graph messages / sandbox_teams_claim)
+- [x] Parity scenario: credential fill→list, MCP discover, export_pack, subagent, voice_relay
+- [x] Desktop delivery chips for credential_fill / export / mcp_discover / shared_memory / journal / voice_relay
+- [x] Desktop connectors_probe meta refresh + parity teammate/send_to_agent/routine_tick/connectors_probe
+- [x] Routine cron `@now`/`@once` (MoonBit validate + Host next_due=now) so routine_tick fires same session
+- [x] Mobile SendToUser surface broadened (more Host kinds + machine_kind banner)
+- [x] Parity: Gmail live search/read/send, sections, slides, purchase sandbox+live, install plugin, learn_from_demo
+- [x] section_add idempotent when section id already exists (return existing partition; never invent duplicate)
+- [x] Parity live mocks: X search, job catalog, calendar events, finance tools + author_skill
+- [x] DeviceTools Host FFI catalog (`device_tools_list` durable JSON; pretend_granted=false)
+- [x] Parity: CU OCR+native act, device tools/invoke, identity browser, workflows, box copy, cold mail, meeting DirectSend, Outlook live
+- [x] LoadSkill Host FFI journal (`skill_load` durable; pretend_loaded=false)
+- [x] verify_native_shells parses mobile_host JSON ahead of SendToUser trailer
+- [x] Parity: OAuth sandbox+local_exchange, skill_load, code apply, mcp_call, send_on_behalf, desktop/mobile pack evidence
+- [x] Host CU site-playbook journals for shopping/travel/food (`pretend_purchased=false`)
+- [x] Parity: shop/travel/food playbooks + CU payment_wall fixture + OAuth interactive
+- [x] `mail_claim_inbox` Host FFI journal (`pretend_claimed=false`)
+- [x] Parity: Slack/Teams live+sandbox claim, cloud artifact deliver, OAuth remote_callback, routine daemon sweeps
+- [x] Host fs_list/fs_read/webfetch durable artifacts (`pretend_*=false`)
+- [x] Parity: fs list/read, webfetch, copy_from_box, routine pause/resume, connect gmail
+- [x] Journal query routed before append; Host query artifact (`pretend_hits=false`)
+- [x] TeamsSend accepts CM-1107 scope + Host Graph chat id; parity live Teams post + connect finance
+- [x] voice_end Host end artifact (`pretend_still_live=false`)
+- [x] Parity: personal Slack DM draft+live, live Slack channel post + host_continued, voice_end
+- [x] Host shell durable run artifact (`data/host-tools/shell/`, pretend_ok=false)
+- [x] Parity: meeting_chat DraftCard + live transport, shell host_continued
+- [x] routine_list/pause/resume durable Host artifacts
+- [x] Parity: MCP file expand + write_to_file, live email channel, live Slack thread, android fs_list
+- [x] approval_card per-card JSON + CM-0105 Approve/Dismiss options
+- [x] Parity: OAuth live NeedsAuth + browser_open, routine daemon long-lived + user unit
+- [x] MachineRegistry seed all Disconnected; Host `machines_list` journal; connectors_probe durable
+- [x] Parity: ListMachines only marks active Host Connected (ios residual on desktop)
+- [x] Host profile memory_update/recall vault + shared_memory_read durable reads
+- [x] Parity: memory Host vault/snapshot + shared_memory_read path
+- [x] Host routine_schedule/fire per-op JSON artifacts + teammate_create create snapshot (parity with list/pause/resume)
+- [x] Parity: routine_schedule/fire path + teammate_create path honesty
+- [x] Host shared_memory_put + journal_append per-op snapshots (store/events ledger retained)
+- [x] Parity: shared_memory_put/journal_append path + pretend_stored honesty
+- [x] Host mcp_discover durable tools catalog + mcp_namespace register snapshot
+- [x] Parity: mcp_discover tool_count/path honesty (not tmp-only)
+- [x] Host device_permission card JSON + device_tool invoke snapshot + voice_session action snapshot
+- [x] Parity: device invoke path + voice_session path/sessions_path honesty
+- [x] Host inbound_reaction per-op snapshot + Desktop reaction pill / tray (CM-2128 SendToUser reaction)
+- [x] Parity: inbound_reaction path + pretend_forced_reply honesty
+- [x] Host cloud_agent_launch / cloud_artifact_deliver per-op snapshots + mobile_host CM-0705 card path mirror
+- [x] Parity: cloud launch/artifact paths + ios mobile permission mirror
+- [x] Host room_turn / send_to_agent / subagent_run per-op snapshots + iOS/Android card_path parse
+- [x] Parity: multi-agent path honesty (pretend_private_dm / pretend_delivered / pretend_completed)
+- [x] Host channel_send per-send snapshots (Slack/Teams/email/meeting) under `data/channels/sends/`
+- [x] Parity: channel_send path + pretend_live honesty across draft/live paths
+- [x] Host section_add/post + credential_fill per-op snapshots (group/vault ledgers retained)
+- [x] Parity: section/credential path + pretend_shared / pretend_secret_view honesty
+- [x] Host cloud_artifact_deliver session materialization always writes structured markdown report
+- [x] Host schedule_meeting per-op snapshots under `data/calendar/schedules/` (ICS + events ledger retained)
+- [x] Parity: schedule_meeting path + pretend_live honesty
+- [x] Host skill_write / export_pack per-op meta snapshots (`data/skills/writes/`, `data/exports/packs/`)
+- [x] Parity: skill_write meta_path + pretend_shared honesty
+- [x] Host slides_pptx per-op meta snapshots under `data/slides/renders/`
+- [x] Parity: slides_pptx meta_path + pretend_rendered honesty
+- [x] Host mail_draft / purchase / finance_call / workflow_list per-op snaps (eml/receipt/artifact/catalog retained)
+- [x] Parity: mail_draft/purchase/finance/workflow path + pretend_* honesty
+- [x] Host source_control per-op snaps under `data/source-control/ops/` (status.json retained)
+- [x] Parity: source_control path + status_path + pretend_remote_pr honesty
+- [x] Host mail_send finalize snaps under `data/mail/sends/` (cold/onbehalf/gmail/outlook; eml retained)
+- [x] Parity: mail_send path + pretend_sent honesty; multi-end SendToUser kinds expanded
+- [x] Host oauth per-op snaps under `data/connectors/oauth/` (never echo tokens; pretend_connected=false)
+- [x] Parity: oauth path honesty; mobile delivery mirrors include oauth/section/credential/purchase
+- [x] Host mcp_call per-op snaps under `data/connectors/mcp-calls/` (tmp mcp-out retained; pretend_ok=false)
+- [x] Parity: mcp_call path honesty + shell Host `path`/`artifact_path` (stdout stays raw for ADR reinjection)
+- [x] Mobile delivery mirrors include mcp_call / mcp_discover snap paths
+- [x] Host voice_relay per-op snaps under `data/voice/relays/` (sessions ledger + reply WAV retained; pretend_silent=false)
+- [x] Parity: voice_relay path honesty; mobile delivery mirrors include voice_relay; mail_search/read path asserts
+- [x] Native iOS/Android SendToUser delivery surface (`SendToUserSurface.swift` / `.kt`) chips + strip (mirrors shared JS; no invent)
+- [x] Mobile delivery mirrors expanded: voice_session / voice_end_write / credential_list / x_search / approval_card / connectors_probe
+- [x] Product Host media turns: `generate_image` / `generate_video` / `watch_video` (CM-1601/1602/1603 via `host_h5_media.py`; snaps under `data/media/ops/`)
+- [x] Parity: media path honesty + PNG/MP4/frame magic; MoonBit intents + multi-end SendToUser kinds
+- [x] Product Host `structured_chart` (CM-2157) Pillow PNG from series JSON/kv; snaps under `data/media/ops/`
+- [x] Parity: structured_chart path + png_magic + series honesty
+- [x] Host webfetch CM-1703 public fallback (403/block → curl UA; auth wall refuses; `credential_bypass=false`)
+- [x] Parity: webfetch used_fallback/path honesty + auth-wall no-bypass mock
+- [x] Product Host `box_doctor` (CM-0607): real bin when present else honest FS probe residual; snaps under `data/box/doctor/`
+- [x] Parity: box_doctor path/log PASS/SUMMARY honesty (`pretend_healthy=false`)
+- [x] Product Host `box_env` (CM-0608): real `/.dockerenv` (+ hosted markers) → local-docker/hosted-anyrun/unknown; snaps under `data/box/env/`
+- [x] Parity: box_env runtime/path honesty (`pretend_runtime=false`)
+- [x] Product Host `box_clock` (CM-2175): real `TZ=$USER_IANA date`; snaps under `data/box/clock/`
+- [x] Parity: box_clock aligns/path honesty (`pretend_aligned=false`)
+- [x] Product Host webhook panel (CM-0411): durable URL/key under `data/routines/webhooks/`; user copy receipts; tool-read refuse; wake `<webhook_event>` no key leak; Desktop panel
+- [x] Parity: webhook panel/copy/tool-read/wake honesty (`pretend_key_readable=false`, `key_leaked=false`)
+- [x] Channel sandbox inbound claim rehearsal (`BITBOT_SLACK_CLAIM=1` without token → `sandbox_slack_claim` inbound.jsonl; live history still needs token)
+- [x] Desktop device-permission card UI (CM-0705 Host card; true-device OS dialog still residual)
+- [x] Mobile unsigned release archive + sha256 via `pack-mobile.sh` (store signing still open)
+- [x] Mobile signing scaffolds: Android `signingConfigs.release` env hooks + iOS `ExportOptions.plist` / `DEVELOPMENT_TEAM` (certs/keystore still required)
+- [x] Journal / shared memory / inbound reaction product turns + durable Host stores (`events.jsonl` / `shared-scopes.json` / `inbound-reactions.jsonl`; CM-0302 / 0303 / 0110)
+- [x] Host `skill_write` / `slides_pptx` / `export_pack` materialize real artifacts under `agent-tools/` (python-pptx PK zip; secrets stripped)
+- [x] Host durable product delivery: device_permission/tool, voice session/relay/end, teammates/room/send_to_agent, subagent, approval queue, cloud launch/artifact, schedule/purchase/finance/credential/mail_draft (not journal-only)
+- [x] Session-scoped Host memory: Desktop persists `data/memory/desktop-host.json` and reinjects via `--seed-memory` into MoonBit

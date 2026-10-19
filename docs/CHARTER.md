@@ -20,13 +20,17 @@
 | Bit验证 | 验收与缺口 | `docs/qa/` |
 
 ## Runtime shape（目标）
-- **Kernel**：turn loop、tool registry、approval gate、untrusted fence
+- **Kernel**：turn loop、tool registry、approval gate、untrusted fence（**MoonBit**）
 - **Delivery**：SendToUser 语义（text/widget/attachment/voice/reaction/thread）
 - **Persistence**：memory / routines / skills / profile
-- **Hosts**：box（fs/shell/desktop）+ user machines
+- **Hosts（multi-end 是基本交付，非可选）**：`MachineKind::Desktop | Ios | Android` 同 HostAbi 面；Desktop 窗口为现阶段产品宿主，iOS/Android 可 stub 但架构必须真实多端；副作用仅 Host FFI
 - **Connectors**：MCP/plugin auth + dynamic tools
 - **Agents**：subagents、teammates、cloud agents、channels
 - **Vertical skills**：mail, meetings, shopping, … 按矩阵挂载
+
+## Product path
+- **是**：`hosts/desktop` + `cmd/desktop_turn`（open_turn → policy → deliver）
+- **不是**：Python `bitbot_runtime` LocalBrain / `deploy_local.sh` 冒充产品脑
 
 ## Toolchain
 - MoonBit ≥ 0.1.20261012（`~/.moon/bin`）

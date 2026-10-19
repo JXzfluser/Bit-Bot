@@ -1,0 +1,3 @@
+details_state=Connected
+namespace=Connected
+ok=True

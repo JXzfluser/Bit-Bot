@@ -1,0 +1,9 @@
+cm=CM-2130
+evidence_cmd=bash /workspace/scripts/host_matrix_i_sweep.sh cm-2130
+status=READY_FOR_I_REVIEW
+i_claimed=false
+host_surface=kernel-sufficient
+live_host_ping=True
+USER_IANA=Asia/Shanghai
+stamp_utc=20261017T093458Z
+shared_cdp_9223=untouched

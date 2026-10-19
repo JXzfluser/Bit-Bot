@@ -73,8 +73,9 @@ pub fn plan_without_connector(
   if path.is_hard_fail() {
     return Err("no-connector-fallback must not hard-fail for " + skill)
   }
+  // CM-0111: keep hint markdown-safe when echoed into Host continue / assistant text.
   let hint = if target_url.length() > 0 {
-    path.label() + " → " + target_url
+    path.label() + " → [" + skill + "](" + target_url + ")"
   } else {
     path.label() + " for skill " + skill
   }

@@ -1,0 +1,9 @@
+{
+  "observed": true,
+  "raw_path": "/callback?code=vuWdXFDOkMkel3YO_oV1P3wz4p1RS_mp&state=kOuIcN3Y8QGlfBkZ",
+  "has_code": true,
+  "state_matches": true,
+  "state": "kOuIcN3Y8QGlfBkZ",
+  "error": null,
+  "code_prefix": "vuWdXFDO"
+}

@@ -406,6 +406,24 @@ def main():
     p_dpc.add_argument("--permission-label", default="needs_permission")
     p_dpc.add_argument("--tag", default="show_device_permission_card")
 
+    # H5 CM-2101 / 2128 / 2103 / 2131
+    p_react = sub.add_parser("react_to_message")
+    p_react.add_argument("--message-id", default="msg-h5-1")
+    p_react.add_argument("--emoji", default="👍")
+    p_react.add_argument("--toggle", default="true")
+    p_react.add_argument("--tag", default="react_to_message")
+    p_et = sub.add_parser("end_turn")
+    p_et.add_argument("--leave-pill", default="true")
+    p_et.add_argument("--tag", default="end_turn")
+    p_mm = sub.add_parser("show_math_mermaid")
+    p_mm.add_argument("--math-tex", default=r"E = mc^2")
+    p_mm.add_argument("--mermaid-src", default="flowchart LR; A-->B-->C")
+    p_mm.add_argument("--tag", default="show_math_mermaid")
+    p_ca = sub.add_parser("show_cursor_agent_card")
+    p_ca.add_argument("--agent-id", default="h5-throwaway-agent")
+    p_ca.add_argument("--url", default=None)
+    p_ca.add_argument("--tag", default="show_cursor_agent_card")
+
     sub.add_parser("dump")
 
     args = ap.parse_args()
@@ -444,7 +462,9 @@ def main():
                       "set_agent_notify", "create_agent", "open_members_panel",
                       "show_permission_guide", "follow_permission_guide",
                       "open_webhook_panel", "user_copy_webhook", "assistant_tool_read_webhook_key",
-                      "webhook_wake", "show_device_permission_card"):
+                      "webhook_wake", "show_device_permission_card",
+                      "react_to_message", "end_turn", "show_math_mermaid",
+                      "show_cursor_agent_card"):
         truthy = lambda v: str(v).lower() in ("true", "on", "1")
         body: dict = {}
         if getattr(args, "agent_id", None): body["agent_id"] = args.agent_id
@@ -471,6 +491,18 @@ def main():
             body["machine_id"] = args.machine_id or "phone-ios"
             body["tool_name"] = args.tool_name or "camera"
             body["permission_label"] = args.permission_label or "needs_permission"
+        if args.cmd == "react_to_message":
+            body["message_id"] = args.message_id or "msg-h5-1"
+            body["emoji"] = args.emoji or "👍"
+            body["toggle"] = truthy(args.toggle)
+        if args.cmd == "end_turn":
+            body["leave_pill"] = truthy(args.leave_pill)
+        if args.cmd == "show_math_mermaid":
+            body["math_tex"] = args.math_tex
+            body["mermaid_src"] = args.mermaid_src
+        if args.cmd == "show_cursor_agent_card":
+            if args.url:
+                body["url"] = args.url
         cmd_generic(args.base, art, args.cmd, body, args.tag)
     elif args.cmd == "dump":
         cmd_dump(args.base, art)
