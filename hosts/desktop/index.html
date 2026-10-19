@@ -500,6 +500,44 @@
       <div id="settings-tabs" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="settings-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div id="settings-anchors" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+      <div id="secrets-panel" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div style="font-weight:700;margin-bottom:6px">产品凭证（写入 .env.local · 热加载）</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:8px">DeepSeek key 与国内渠道凭证保存在本机 gitignored 文件；不假装已备案/已 live。</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_API_KEY <span id="sec-llm-mask"></span>
+            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-… DeepSeek" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_BASE_URL
+            <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">钉钉 webhook（勾选开启 live）
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+              <input id="sec-ding-post" type="checkbox" />
+              <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" style="flex:1;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            </div>
+          </label>
+          <label style="font-size:12px;color:var(--muted)">飞书 token + chat_id
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+              <input id="sec-feishu-post" type="checkbox" />
+              <input id="sec-feishu-token" type="password" placeholder="tenant token" style="flex:1;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            </div>
+          </label>
+          <label style="font-size:12px;color:var(--muted)">企微 token + agent + touser
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
+              <input id="sec-wecom-post" type="checkbox" />
+              <input id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-wecom-to" type="text" placeholder="touser" style="width:100px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            </div>
+          </label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" id="sec-save" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">保存并热加载</button>
+            <button type="button" id="sec-probe" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连大脑</button>
+          </div>
+          <div id="sec-status" style="color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
+        </div>
+      </div>
     </div>
     <div id="agent-info-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:#0f1814;border-radius:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -900,6 +938,11 @@
         " · anchors=" +
         ((payload && payload.anchors_closed_set_count) || 27);
       panel.style.display = "block";
+      try {
+        await refreshSecretsForm();
+      } catch (_) {
+        /* ignore */
+      }
       // Honest product residuals (brain / CN channels / filing / OTA) — never pretend ready.
       (async () => {
         const bits = [];
@@ -1467,6 +1510,128 @@
         if (!m || !m.text) continue;
         addMsg(m.role === "user" ? "user" : "assistant", m.text);
       }
+    }
+
+    async function refreshSecretsForm() {
+      if (!window.bitbot.secrets) return;
+      const st = await window.bitbot.secrets.status();
+      if (!st || !st.ok) return;
+      const f = st.fields || {};
+      const mask = document.getElementById("sec-llm-mask");
+      if (mask) {
+        mask.textContent = f.BITBOT_LLM_API_KEY && f.BITBOT_LLM_API_KEY.present
+          ? "（已配置 " + f.BITBOT_LLM_API_KEY.masked + "）"
+          : "（未配置）";
+      }
+      const base = document.getElementById("sec-llm-base");
+      if (base && f.BITBOT_LLM_BASE_URL && f.BITBOT_LLM_BASE_URL.value !== undefined) {
+        base.value = f.BITBOT_LLM_BASE_URL.value || base.placeholder;
+      }
+      const dingPost = document.getElementById("sec-ding-post");
+      if (dingPost) dingPost.checked = f.BITBOT_DINGTALK_POST && f.BITBOT_DINGTALK_POST.present && f.BITBOT_DINGTALK_POST.value === "1";
+      // POST value may be in value field
+      if (dingPost && f.BITBOT_DINGTALK_POST && f.BITBOT_DINGTALK_POST.value !== undefined) {
+        dingPost.checked = f.BITBOT_DINGTALK_POST.value === "1";
+      }
+      const feishuPost = document.getElementById("sec-feishu-post");
+      if (feishuPost && f.BITBOT_FEISHU_POST && f.BITBOT_FEISHU_POST.value !== undefined) {
+        feishuPost.checked = f.BITBOT_FEISHU_POST.value === "1";
+      }
+      const wecomPost = document.getElementById("sec-wecom-post");
+      if (wecomPost && f.BITBOT_WECOM_POST && f.BITBOT_WECOM_POST.value !== undefined) {
+        wecomPost.checked = f.BITBOT_WECOM_POST.value === "1";
+      }
+      const feishuChat = document.getElementById("sec-feishu-chat");
+      if (feishuChat && f.BITBOT_FEISHU_CHAT_ID && f.BITBOT_FEISHU_CHAT_ID.value !== undefined) {
+        feishuChat.value = f.BITBOT_FEISHU_CHAT_ID.value || "";
+      }
+      const wecomAgent = document.getElementById("sec-wecom-agent");
+      if (wecomAgent && f.BITBOT_WECOM_AGENT_ID && f.BITBOT_WECOM_AGENT_ID.value !== undefined) {
+        wecomAgent.value = f.BITBOT_WECOM_AGENT_ID.value || "";
+      }
+      const wecomTo = document.getElementById("sec-wecom-to");
+      if (wecomTo && f.BITBOT_WECOM_TOUSER && f.BITBOT_WECOM_TOUSER.value !== undefined) {
+        wecomTo.value = f.BITBOT_WECOM_TOUSER.value || "";
+      }
+      const secStatus = document.getElementById("sec-status");
+      if (secStatus && st.llm) {
+        secStatus.textContent =
+          "大脑=" +
+          (st.llm.provider_id || "?") +
+          "/" +
+          (st.llm.model || "?") +
+          (st.llm.key_configured ? " · key 已热加载" : " · 缺 key");
+      }
+    }
+
+    async function saveSecretsFromForm() {
+      if (!window.bitbot.secrets) return;
+      const patch = {};
+      const keyEl = document.getElementById("sec-llm-key");
+      const keyVal = keyEl && keyEl.value ? keyEl.value.trim() : "";
+      if (keyVal) patch.BITBOT_LLM_API_KEY = keyVal;
+      const baseEl = document.getElementById("sec-llm-base");
+      const baseVal = baseEl && baseEl.value ? baseEl.value.trim() : "";
+      if (baseVal) patch.BITBOT_LLM_BASE_URL = baseVal;
+      patch.BITBOT_DINGTALK_POST = document.getElementById("sec-ding-post") &&
+        document.getElementById("sec-ding-post").checked
+        ? "1"
+        : "0";
+      const dingHook = document.getElementById("sec-ding-hook");
+      if (dingHook && dingHook.value.trim()) {
+        patch.BITBOT_DINGTALK_WEBHOOK = dingHook.value.trim();
+      }
+      patch.BITBOT_FEISHU_POST = document.getElementById("sec-feishu-post") &&
+        document.getElementById("sec-feishu-post").checked
+        ? "1"
+        : "0";
+      const ft = document.getElementById("sec-feishu-token");
+      if (ft && ft.value.trim()) patch.BITBOT_FEISHU_TOKEN = ft.value.trim();
+      const fc = document.getElementById("sec-feishu-chat");
+      if (fc && fc.value.trim()) patch.BITBOT_FEISHU_CHAT_ID = fc.value.trim();
+      patch.BITBOT_WECOM_POST = document.getElementById("sec-wecom-post") &&
+        document.getElementById("sec-wecom-post").checked
+        ? "1"
+        : "0";
+      const wt = document.getElementById("sec-wecom-token");
+      if (wt && wt.value.trim()) patch.BITBOT_WECOM_TOKEN = wt.value.trim();
+      const wa = document.getElementById("sec-wecom-agent");
+      if (wa && wa.value.trim()) patch.BITBOT_WECOM_AGENT_ID = wa.value.trim();
+      const wto = document.getElementById("sec-wecom-to");
+      if (wto && wto.value.trim()) patch.BITBOT_WECOM_TOUSER = wto.value.trim();
+      const r = await window.bitbot.secrets.set(patch);
+      const secStatus = document.getElementById("sec-status");
+      if (secStatus) {
+        secStatus.textContent = r && r.ok
+          ? "已保存 " + (r.applied || []).join(",") + " → " + (r.path || ".env.local") +
+            (r.llm && r.llm.key_configured ? " · 大脑 key 就绪" : " · 大脑仍缺 key")
+          : "保存失败: " + ((r && r.error) || "?");
+      }
+      if (keyEl) keyEl.value = "";
+      if (ft) ft.value = "";
+      if (wt) wt.value = "";
+      await refreshSecretsForm();
+      try {
+        await refreshModelPicker();
+      } catch (_) {
+        /* ignore */
+      }
+      try {
+        if (window.bitbot.cnStatus) {
+          const cn = await window.bitbot.cnStatus();
+          const meta = document.getElementById("cn-channels-meta");
+          if (meta && cn && Array.isArray(cn.channels)) {
+            meta.textContent = cn.channels
+              .map(function (c) {
+                return c.connector + "=" + (c.live_ready ? "live" : "draft");
+              })
+              .join(" · ");
+          }
+        }
+      } catch (_) {
+        /* ignore */
+      }
+      return r;
     }
 
     async function refreshModelPicker() {
@@ -3803,6 +3968,41 @@
       settingsClose.addEventListener("click", () => {
         const p = document.getElementById("settings-panel");
         if (p) p.style.display = "none";
+      });
+    }
+    const secSave = document.getElementById("sec-save");
+    if (secSave) {
+      secSave.addEventListener("click", () => {
+        saveSecretsFromForm().catch(() => {});
+      });
+    }
+    const secProbe = document.getElementById("sec-probe");
+    if (secProbe) {
+      secProbe.addEventListener("click", async () => {
+        const secStatus = document.getElementById("sec-status");
+        if (secStatus) secStatus.textContent = "试连中…";
+        try {
+          const r = await window.bitbot.secrets.probeLlm();
+          if (secStatus) {
+            secStatus.textContent = r && r.ok
+              ? "试连成功 · " +
+                ((r.result && r.result.provider_id) || "") +
+                "/" +
+                ((r.result && r.result.model) || "") +
+                " · " +
+                ((r.result && r.result.stdout_prefix) || "").slice(0, 80)
+              : "试连失败 · " +
+                ((r && r.result && r.result.error) ||
+                  (r && r.error) ||
+                  "unknown") +
+                "（不假装成功）";
+          }
+        } catch (e) {
+          if (secStatus) {
+            secStatus.textContent =
+              "试连异常 · " + String(e && e.message ? e.message : e);
+          }
+        }
       });
     }
     const agentBit = document.getElementById("agent-bit");

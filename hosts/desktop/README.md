@@ -16,8 +16,10 @@ Electron HostAbi surface for the **MoonBit** product brain (ADR 0005). Lives und
 
 ### LLM env (product brain)
 
+Prefer **Settings → 产品凭证**：写入 `hosts/desktop/.env.local` 并热加载（`bitbot:secrets:set`），然后点「试连大脑」。
+
 ```bash
-export BITBOT_LLM_API_KEY=sk-...          # required
+export BITBOT_LLM_API_KEY=sk-...          # required for 真模型
 export BITBOT_LLM_BASE_URL=https://api.deepseek.com/v1   # default
 export BITBOT_LLM_MODEL=deepseek-chat                    # default
 # optional multi-model: BITBOT_LLM_PROVIDER=deepseek|qwen|moonshot

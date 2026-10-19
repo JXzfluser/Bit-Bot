@@ -30,30 +30,44 @@ const REPO_ROOT = process.env.BITBOT_REPO_ROOT
   ? path.resolve(process.env.BITBOT_REPO_ROOT)
   : path.resolve(__dirname, "../..");
 
-/** Load hosts/desktop/.env.local then repo .env.local (never commit secrets). */
-function loadEnvLocalFiles() {
-  const candidates = [
-    path.join(__dirname, ".env.local"),
-    path.join(REPO_ROOT, ".env.local"),
-  ];
+const DESKTOP_ENV_LOCAL = path.join(__dirname, ".env.local");
+
+/** Parse KEY=VALUE lines from an env file. */
+function parseEnvFile(file) {
+  const out = {};
+  if (!fs.existsSync(file)) return out;
+  const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("=");
+    if (eq <= 0) continue;
+    const k = t.slice(0, eq).trim();
+    let v = t.slice(eq + 1).trim();
+    if (
+      (v.startsWith('"') && v.endsWith('"')) ||
+      (v.startsWith("'") && v.endsWith("'"))
+    ) {
+      v = v.slice(1, -1);
+    }
+    if (k) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Load hosts/desktop/.env.local then repo .env.local (never commit secrets).
+ * @param {{overwrite?: boolean}} opts — overwrite=true applies file values over process.env
+ */
+function loadEnvLocalFiles(opts = {}) {
+  const overwrite = Boolean(opts && opts.overwrite);
+  const candidates = [DESKTOP_ENV_LOCAL, path.join(REPO_ROOT, ".env.local")];
   for (const file of candidates) {
     if (!fs.existsSync(file)) continue;
     try {
-      const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t || t.startsWith("#")) continue;
-        const eq = t.indexOf("=");
-        if (eq <= 0) continue;
-        const k = t.slice(0, eq).trim();
-        let v = t.slice(eq + 1).trim();
-        if (
-          (v.startsWith('"') && v.endsWith('"')) ||
-          (v.startsWith("'") && v.endsWith("'"))
-        ) {
-          v = v.slice(1, -1);
-        }
-        if (k && process.env[k] === undefined) process.env[k] = v;
+      const map = parseEnvFile(file);
+      for (const [k, v] of Object.entries(map)) {
+        if (overwrite || process.env[k] === undefined) process.env[k] = v;
       }
       process.stdout.write(`[desktop] loaded env file ${file}\n`);
     } catch (err) {
@@ -64,6 +78,80 @@ function loadEnvLocalFiles() {
   }
 }
 loadEnvLocalFiles();
+
+const ALLOWED_SECRET_KEYS = new Set([
+  "BITBOT_LLM_API_KEY",
+  "BITBOT_LLM_BASE_URL",
+  "BITBOT_LLM_MODEL",
+  "BITBOT_LLM_PROVIDER",
+  "BITBOT_LLM_QWEN_API_KEY",
+  "BITBOT_LLM_MOONSHOT_API_KEY",
+  "BITBOT_DINGTALK_POST",
+  "BITBOT_DINGTALK_WEBHOOK",
+  "BITBOT_DINGTALK_TOKEN",
+  "BITBOT_FEISHU_POST",
+  "BITBOT_FEISHU_TOKEN",
+  "BITBOT_FEISHU_CHAT_ID",
+  "BITBOT_WECOM_POST",
+  "BITBOT_WECOM_TOKEN",
+  "BITBOT_WECOM_AGENT_ID",
+  "BITBOT_WECOM_TOUSER",
+  "BITBOT_CONTENT_MODERATION",
+  "BITBOT_ICP_FILING",
+  "BITBOT_ALGORITHM_FILING",
+  "BITBOT_UPDATE_FEED_URL",
+]);
+
+function maskSecret(v) {
+  const s = String(v || "");
+  if (!s) return { present: false, masked: "" };
+  if (s.length <= 4) return { present: true, masked: "****" };
+  return { present: true, masked: "****" + s.slice(-4) };
+}
+
+/** Upsert keys into hosts/desktop/.env.local and process.env (hot reload). */
+function upsertDesktopEnvLocal(patch) {
+  const incoming = patch && typeof patch === "object" ? patch : {};
+  const current = parseEnvFile(DESKTOP_ENV_LOCAL);
+  const applied = [];
+  for (const [rawK, rawV] of Object.entries(incoming)) {
+    const k = String(rawK || "").trim();
+    if (!ALLOWED_SECRET_KEYS.has(k)) {
+      return {
+        ok: false,
+        error: `key not allowed: ${k}`,
+        pretend_saved: false,
+      };
+    }
+    const v = rawV === null || rawV === undefined ? "" : String(rawV).trim();
+    if (v === "") {
+      delete current[k];
+      delete process.env[k];
+    } else {
+      current[k] = v;
+      process.env[k] = v;
+    }
+    applied.push(k);
+  }
+  const header =
+    "# Bit Bot Desktop secrets — gitignored; never commit.\n" +
+    "# Written by Desktop Settings (product path).\n";
+  const body = Object.keys(current)
+    .sort()
+    .map((k) => `${k}=${current[k]}`)
+    .join("\n");
+  fs.writeFileSync(
+    DESKTOP_ENV_LOCAL,
+    header + (body ? body + "\n" : ""),
+    { mode: 0o600 },
+  );
+  return {
+    ok: true,
+    path: "hosts/desktop/.env.local",
+    applied,
+    pretend_saved: false,
+  };
+}
 
 const runner = createTurnRunner(REPO_ROOT);
 const sessions = createSessionStore(REPO_ROOT);
@@ -491,6 +579,120 @@ ipcMain.handle("bitbot:cn:status", async () => {
       ? "至少一条国内渠道 live 门控已开"
       : "国内渠道均为 draft — 在 .env.local 设 BITBOT_*_POST=1 + 凭证",
   };
+});
+
+ipcMain.handle("bitbot:secrets:status", async () => {
+  const keys = [
+    "BITBOT_LLM_API_KEY",
+    "BITBOT_LLM_BASE_URL",
+    "BITBOT_LLM_MODEL",
+    "BITBOT_DINGTALK_POST",
+    "BITBOT_DINGTALK_WEBHOOK",
+    "BITBOT_DINGTALK_TOKEN",
+    "BITBOT_FEISHU_POST",
+    "BITBOT_FEISHU_TOKEN",
+    "BITBOT_FEISHU_CHAT_ID",
+    "BITBOT_WECOM_POST",
+    "BITBOT_WECOM_TOKEN",
+    "BITBOT_WECOM_AGENT_ID",
+    "BITBOT_WECOM_TOUSER",
+  ];
+  const fields = {};
+  for (const k of keys) {
+    const m = maskSecret(process.env[k]);
+    fields[k] = {
+      present: m.present,
+      masked: m.masked,
+      // Non-secret toggles / urls may show value when short and non-key-like
+      value:
+        /_POST$|_MODEL$|_BASE_URL$|_CHAT_ID$|_AGENT_ID$|_TOUSER$|_FILING$|_FEED_URL$/.test(
+          k,
+        ) && !/_TOKEN$|_KEY$|_WEBHOOK$/.test(k)
+          ? String(process.env[k] || "")
+          : undefined,
+    };
+  }
+  let llm = null;
+  try {
+    llm = ffi.resolveLlmConfig();
+  } catch (_) {
+    /* ignore */
+  }
+  return {
+    ok: true,
+    path: "hosts/desktop/.env.local",
+    fields,
+    llm: llm
+      ? {
+          provider_id: llm.provider_id,
+          model: llm.model,
+          key_configured: Boolean(llm.key_configured),
+        }
+      : null,
+    pretend_ready: false,
+  };
+});
+
+ipcMain.handle("bitbot:secrets:set", async (_e, patch) => {
+  try {
+    const saved = upsertDesktopEnvLocal(patch || {});
+    if (!saved.ok) return saved;
+    // Re-resolve so subsequent turns see new key without restart.
+    loadEnvLocalFiles({ overwrite: true });
+    let llm = null;
+    try {
+      llm = ffi.resolveLlmConfig();
+    } catch (_) {
+      /* ignore */
+    }
+    return {
+      ...saved,
+      llm: llm
+        ? {
+            provider_id: llm.provider_id,
+            model: llm.model,
+            key_configured: Boolean(llm.key_configured),
+            key_source: llm.key_source,
+          }
+        : null,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+      pretend_saved: false,
+    };
+  }
+});
+
+/** Probe current LLM config with a tiny completion (real HTTP; no pretend). */
+ipcMain.handle("bitbot:secrets:probeLlm", async () => {
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind: "llm_chat", command: "ping" }],
+      { sessionId: "secrets-probe" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === "llm_chat") || null;
+    return {
+      ok: Boolean(hit && hit.ok),
+      pretend_probe: false,
+      result: hit
+        ? {
+            ok: hit.ok,
+            error: hit.error || "",
+            stdout_prefix: String(hit.stdout || "").slice(0, 160),
+            provider_id: hit.provider_id,
+            model: hit.model,
+          }
+        : { ok: false, error: "no llm_chat result" },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      pretend_probe: false,
+      error: String(err && err.message ? err.message : err),
+    };
+  }
 });
 
 ipcMain.handle("bitbot:product:status", async () => {
