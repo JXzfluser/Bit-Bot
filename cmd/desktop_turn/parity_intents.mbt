@@ -893,21 +893,23 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low.has_prefix("local execution mode ") ||
     low.has_prefix("local execution ") {
     // Wave G: three-mode Grok policy wins over legacy on/off boolean.
-    if low.has_prefix("local execution mode ") {
-      let mode = trimmed[20:].trim().to_owned().to_lower()
-      let mode = if mode == "ask" ||
-        mode == "ask every time" ||
-        mode == "always" ||
-        mode == "always allow" ||
-        mode == "never" ||
-        mode == "never allow" {
-        mode
-      } else {
-        ""
-      }
-      if mode != "" {
-        return Some(LocalExecutionMode(mode~))
-      }
+    // GP-36 accepts both "local execution mode X" and bare "local execution X";
+    // Grok's UI labels ("Always allow"/"Never allow") normalize to ask|always|never.
+    let mode_arg = if low.has_prefix("local execution mode ") {
+      trimmed[20:].trim().to_owned().to_lower()
+    } else if low.has_prefix("local execution ") {
+      trimmed[16:].trim().to_owned().to_lower()
+    } else {
+      ""
+    }
+    let mode = match mode_arg {
+      "ask" | "ask every time" => "ask"
+      "always" | "always allow" => "always"
+      "never" | "never allow" => "never"
+      _ => ""
+    }
+    if mode != "" {
+      return Some(LocalExecutionMode(mode~))
     }
     let on = if low == "local execution off" ||
       low == "disable local execution" ||

@@ -1182,6 +1182,23 @@ test "desktop_turn_wave_g_rules_settings_group" {
   assert_eq(r6.intent, "local_execution_mode")
   assert_eq(r6.effects[0].kind, "local_execution_mode")
 
+  // GP-36: Grok's settings labels are bare "Local execution: Always allow /
+  // Never allow / Ask every time". These must reach the three-mode policy, not
+  // the legacy CM-1905 on/off boolean (which silently enabled machine use
+  // under "never").
+  let r6a = run_desktop_turn("local execution always", turn_id="wg-a6a")
+  assert_eq(r6a.intent, "local_execution_mode")
+  assert_eq(r6a.effects[0].command, "mode=always")
+  let r6b = run_desktop_turn("local execution never", turn_id="wg-a6b")
+  assert_eq(r6b.intent, "local_execution_mode")
+  assert_eq(r6b.effects[0].command, "mode=never")
+  let r6c = run_desktop_turn("local execution never allow", turn_id="wg-a6c")
+  assert_eq(r6c.intent, "local_execution_mode")
+  assert_eq(r6c.effects[0].command, "mode=never")
+  let r6d = run_desktop_turn("local execution ask", turn_id="wg-a6d")
+  assert_eq(r6d.intent, "local_execution_mode")
+  assert_eq(r6d.effects[0].command, "mode=ask")
+
   let r7 = run_desktop_turn(
     "create group chat bots=bit,piper title=Ops+room",
     turn_id="wg-a7",
