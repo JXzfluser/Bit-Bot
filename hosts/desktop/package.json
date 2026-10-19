@@ -20,6 +20,7 @@
       "main.js",
       "preload.js",
       "index.html",
+      "sessions.js",
       {
         "from": "../shared",
         "to": "shared",

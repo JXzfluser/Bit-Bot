@@ -15,6 +15,9 @@ const { promisify } = require("util");
 
 const execFileAsync = promisify(execFile);
 
+/** Shared across createHostFfi instances so Desktop can subscribe once. */
+let sharedLlmStreamHandler = null;
+
 const SHELL_DENY =
   /\brm\s+-rf\s+\/|\bmkfs\b|\bdd\s+if=|:\(\)\s*\{|:;\s*\}|shutdown|reboot|fork\s*bomb/i;
 
@@ -4640,6 +4643,108 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  function emitLlmStream(chunk) {
+    if (typeof sharedLlmStreamHandler === "function") {
+      try {
+        sharedLlmStreamHandler(chunk);
+      } catch (_) {
+        /* ignore UI sink errors */
+      }
+    }
+  }
+
+  function httpJsonStream(url, { method = "POST", headers = {}, body = null, timeoutMs = 90000 } = {}) {
+    return new Promise((resolve) => {
+      let text = "";
+      let status = 0;
+      let error = null;
+      try {
+        const u = new URL(url);
+        const lib = u.protocol === "https:" ? https : http;
+        const req = lib.request(
+          {
+            protocol: u.protocol,
+            hostname: u.hostname,
+            port: u.port || (u.protocol === "https:" ? 443 : 80),
+            path: u.pathname + u.search,
+            method,
+            headers,
+            timeout: Math.max(1000, Number(timeoutMs) || 90000),
+          },
+          (res) => {
+            status = res.statusCode || 0;
+            let buf = "";
+            res.setEncoding("utf8");
+            res.on("data", (chunk) => {
+              buf += chunk;
+              const parts = buf.split("\n");
+              buf = parts.pop() || "";
+              for (const line of parts) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith("data:")) continue;
+                const data = trimmed.slice(5).trim();
+                if (!data || data === "[DONE]") continue;
+                try {
+                  const obj = JSON.parse(data);
+                  const delta =
+                    obj &&
+                    obj.choices &&
+                    obj.choices[0] &&
+                    obj.choices[0].delta &&
+                    obj.choices[0].delta.content;
+                  if (delta) {
+                    text += delta;
+                    emitLlmStream({
+                      phase: "delta",
+                      text: delta,
+                      partial: text,
+                    });
+                  }
+                } catch (_) {
+                  /* ignore bad SSE line */
+                }
+              }
+            });
+            res.on("end", () => {
+              resolve({
+                ok: status >= 200 && status < 300 && Boolean(text),
+                status,
+                text,
+                error:
+                  status >= 200 && status < 300
+                    ? text
+                      ? null
+                      : "empty stream"
+                    : error || `llm_http_${status}`,
+              });
+            });
+          },
+        );
+        req.on("error", (err) => {
+          resolve({
+            ok: false,
+            status: 0,
+            text: "",
+            error: err.message,
+          });
+        });
+        req.on("timeout", () => {
+          req.destroy();
+          resolve({ ok: false, status: 0, text: "", error: "timeout" });
+        });
+        if (body) req.write(body);
+        req.end();
+      } catch (err) {
+        resolve({
+          ok: false,
+          status: 0,
+          text: "",
+          error: err.message,
+        });
+      }
+    });
+  }
+
   async function executeLlmChat(command) {
     const at = new Date().toISOString();
     const userText = String(command || "").trim();
@@ -4650,6 +4755,9 @@ function createHostFfi(repoRoot) {
       dir,
       `chat-${Date.now().toString(36)}.json`,
     );
+    const wantStream =
+      process.env.BITBOT_LLM_STREAM !== "0" &&
+      typeof sharedLlmStreamHandler === "function";
 
     if (!userText) {
       const artifact = {
@@ -4685,6 +4793,11 @@ function createHostFfi(repoRoot) {
         at,
       };
       fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      emitLlmStream({
+        phase: "error",
+        error: artifact.error,
+        provider_id: cfg.provider_id,
+      });
       return {
         kind: "llm_chat",
         ok: false,
@@ -4696,49 +4809,88 @@ function createHostFfi(repoRoot) {
     }
 
     const url = `${cfg.base_url}/chat/completions`;
-    const payload = {
-      model: cfg.model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。",
-        },
-        { role: "user", content: userText },
-      ],
-      temperature: 0.3,
-      stream: false,
-    };
-    const body = JSON.stringify(payload);
-    const res = await httpJson(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${cfg.api_key}`,
-        Accept: "application/json",
-        "Content-Length": Buffer.byteLength(body),
+    const messages = [
+      {
+        role: "system",
+        content:
+          "你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。",
       },
-      body,
-      timeoutMs: Number(process.env.BITBOT_LLM_TIMEOUT_MS || 90000),
-    });
+      { role: "user", content: userText },
+    ];
+    const timeoutMs = Number(process.env.BITBOT_LLM_TIMEOUT_MS || 90000);
 
     let text = "";
     let finish = null;
-    const choices =
-      res.json && Array.isArray(res.json.choices) ? res.json.choices : [];
-    if (choices.length) {
-      const msg = choices[0].message || {};
-      text = String(msg.content || "").trim();
-      finish = choices[0].finish_reason || null;
-    }
-    const ok = Boolean(res.ok && text);
-    const error = ok
-      ? null
-      : res.error ||
+    let httpStatus = 0;
+    let error = null;
+    let streamed = false;
+
+    if (wantStream) {
+      streamed = true;
+      emitLlmStream({
+        phase: "provider",
+        provider_id: cfg.provider_id,
+        model: cfg.model,
+      });
+      const payload = {
+        model: cfg.model,
+        messages,
+        temperature: 0.3,
+        stream: true,
+      };
+      const body = JSON.stringify(payload);
+      const res = await httpJsonStream(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cfg.api_key}`,
+          Accept: "text/event-stream",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        body,
+        timeoutMs,
+      });
+      text = String(res.text || "").trim();
+      httpStatus = res.status || 0;
+      error = res.error;
+    } else {
+      const payload = {
+        model: cfg.model,
+        messages,
+        temperature: 0.3,
+        stream: false,
+      };
+      const body = JSON.stringify(payload);
+      const res = await httpJson(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cfg.api_key}`,
+          Accept: "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        body,
+        timeoutMs,
+      });
+      httpStatus = res.status || 0;
+      const choices =
+        res.json && Array.isArray(res.json.choices) ? res.json.choices : [];
+      if (choices.length) {
+        const msg = choices[0].message || {};
+        text = String(msg.content || "").trim();
+        finish = choices[0].finish_reason || null;
+      }
+      error =
+        res.error ||
         (res.json &&
           ((res.json.error && res.json.error.message) || res.json.message)) ||
-        `llm_http_${res.status || 0}` ||
-        "empty completion";
+        null;
+    }
+
+    const ok = Boolean(text) && (httpStatus === 0 || (httpStatus >= 200 && httpStatus < 300));
+    if (!ok && !error) {
+      error = `llm_http_${httpStatus || 0}` || "empty completion";
+    }
 
     const artifact = {
       mode: "host_llm_chat",
@@ -4747,11 +4899,12 @@ function createHostFfi(repoRoot) {
       label: cfg.label,
       base_url: cfg.base_url,
       model: cfg.model,
-      http_status: res.status || 0,
+      http_status: httpStatus,
       finish_reason: finish,
+      streamed,
       reply_chars: text.length,
       reply_prefix: text.slice(0, 240),
-      error,
+      error: ok ? null : error,
       pretend_completion: false,
       localbrain: false,
       at,
@@ -4773,6 +4926,7 @@ function createHostFfi(repoRoot) {
       artifact_path: artifactPath,
       provider_id: cfg.provider_id,
       model: cfg.model,
+      streamed,
     };
   }
 
@@ -21865,6 +22019,10 @@ function createHostFfi(repoRoot) {
     return withDelivery;
   }
 
+  function setLlmStreamHandler(fn) {
+    sharedLlmStreamHandler = typeof fn === "function" ? fn : null;
+  }
+
   return {
     REPO_ROOT,
     encodeHostArg,
@@ -21874,6 +22032,8 @@ function createHostFfi(repoRoot) {
     executeHostEffects,
     connectorsStatusReport,
     appendHostDeliveryJournal,
+    setLlmStreamHandler,
+    resolveLlmConfig,
   };
 }
 

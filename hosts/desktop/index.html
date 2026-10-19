@@ -310,15 +310,20 @@
   <header style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
     <div>
       <div class="brand">Bit Bot</div>
-      <div class="sub">Desktop host · MoonBit brain · multi-end MachineKind (desktop / ios / android)</div>
+      <div class="sub">Desktop · MoonBit 内核 · DeepSeek / BITBOT_LLM_* · 托盘 · <span id="hotkey-hint">Ctrl+Shift+Space</span></div>
     </div>
     <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton" style="margin-top:4px;background:#1a2420;color:#b7e0c8;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-weight:600;cursor:pointer">Account</button>
   </header>
   <aside id="agents">
-    <div class="panel-title">Agents</div>
+    <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>会话</span>
+      <button type="button" id="sess-new" title="新对话" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px">新建</button>
+    </div>
+    <div id="session-list" aria-label="Chat sessions"></div>
+    <div class="panel-title" style="margin-top:14px">Agents</div>
     <div class="agent-item active" id="agent-bit" data-agent-id="agent-bit" style="cursor:pointer">
       <div class="name">Bit Bot</div>
-      <div class="meta">MoonBit · cmd/desktop_turn · click for info</div>
+      <div class="meta">MoonBit · llm_chat · click for info</div>
     </div>
     <div class="agent-item" id="agents-host-panel">
       <div class="name">Sidebar agents</div>
@@ -1218,13 +1223,74 @@
       log.scrollTop = log.scrollHeight;
     }
 
+    let activeSessionId = null;
+    let streamEl = null;
+
+    function renderSessionList(payload) {
+      const box = document.getElementById("session-list");
+      if (!box) return;
+      box.innerHTML = "";
+      const rows = (payload && payload.sessions) || [];
+      activeSessionId = (payload && payload.active_id) || activeSessionId;
+      for (const s of rows) {
+        const el = document.createElement("div");
+        el.className =
+          "agent-item" + (s.id === activeSessionId ? " active" : "");
+        el.style.cursor = "pointer";
+        el.dataset.sessionId = s.id;
+        el.innerHTML =
+          '<div class="name"></div><div class="meta"></div>';
+        el.querySelector(".name").textContent = s.title || "对话";
+        el.querySelector(".meta").textContent =
+          (s.message_count || 0) +
+          " 条 · " +
+          String(s.updated_at || "").slice(0, 16).replace("T", " ");
+        el.addEventListener("click", async () => {
+          const r = await window.bitbot.sessions.setActive(s.id);
+          if (r && r.ok) {
+            activeSessionId = s.id;
+            await loadActiveSessionTranscript();
+            const list = await window.bitbot.sessions.list();
+            renderSessionList(list);
+          }
+        });
+        box.appendChild(el);
+      }
+    }
+
+    async function loadActiveSessionTranscript() {
+      const got = await window.bitbot.sessions.get(activeSessionId);
+      if (!got || !got.ok || !got.session) return;
+      activeSessionId = got.session.id;
+      log.innerHTML = "";
+      for (const m of got.session.messages || []) {
+        if (!m || !m.text) continue;
+        addMsg(m.role === "user" ? "user" : "assistant", m.text);
+      }
+    }
+
+    async function refreshSessions() {
+      if (!window.bitbot.sessions) return;
+      const list = await window.bitbot.sessions.list();
+      renderSessionList(list);
+    }
+
     async function runUserTurn(text, opts) {
       addMsg("user", text + (opts && opts.approved ? " [approved]" : ""));
       sendBtn.disabled = true;
+      streamEl = null;
       try {
-        const r = await window.bitbot.turn(text, opts || {});
+        const turnOpts = Object.assign({}, opts || {}, {
+          sessionId: activeSessionId || undefined,
+        });
+        const r = await window.bitbot.turn(text, turnOpts);
         jsonOut.textContent = JSON.stringify(r, null, 2);
         if (r && Array.isArray(r.machines)) renderMachines(r.machines);
+        // Prefer final assistant lines; streaming bubble already showed deltas.
+        if (streamEl && streamEl.parentNode) {
+          streamEl.parentNode.removeChild(streamEl);
+          streamEl = null;
+        }
         if (r && Array.isArray(r.messages)) {
           for (const m of r.messages) {
             if (m.role === "user") continue;
@@ -3546,11 +3612,61 @@
 
     async function boot() {
       try {
+        const hint = document.getElementById("hotkey-hint");
+        if (hint && /Mac|iPhone|iPod|iPad/i.test(navigator.platform || "")) {
+          hint.textContent = "⌘⇧Space";
+        }
+        if (window.bitbot.onLlmStream) {
+          window.bitbot.onLlmStream((chunk) => {
+            if (!chunk) return;
+            if (chunk.phase === "start" || chunk.phase === "provider") {
+              if (!streamEl) {
+                streamEl = document.createElement("div");
+                streamEl.className = "msg assistant";
+                streamEl.dataset.streaming = "1";
+                streamEl.textContent = "";
+                log.appendChild(streamEl);
+              }
+              return;
+            }
+            if (chunk.phase === "delta") {
+              if (!streamEl) {
+                streamEl = document.createElement("div");
+                streamEl.className = "msg assistant";
+                streamEl.dataset.streaming = "1";
+                log.appendChild(streamEl);
+              }
+              streamEl.textContent = chunk.partial || streamEl.textContent + (chunk.text || "");
+              log.scrollTop = log.scrollHeight;
+              return;
+            }
+            if (chunk.phase === "error") {
+              addMsg("assistant", "LLM: " + (chunk.error || "failed"));
+            }
+          });
+        }
+        if (window.bitbot.onSessionsChanged) {
+          window.bitbot.onSessionsChanged((list) => renderSessionList(list));
+        }
+        const newBtn = document.getElementById("sess-new");
+        if (newBtn) {
+          newBtn.addEventListener("click", async () => {
+            const created = await window.bitbot.sessions.create("新对话");
+            if (created && created.ok) {
+              activeSessionId = created.session.id;
+              log.innerHTML = "";
+              await refreshSessions();
+            }
+          });
+        }
+        await refreshSessions();
+        await loadActiveSessionTranscript();
         const r = await window.bitbot.boot();
         banner.className = r.ok ? "ok" : "err";
         banner.textContent = (r.banner || JSON.stringify(r, null, 2)) +
-          "\n\n[host] target=" + (r.target || "?") + " · " + (r.note || "");
-        const lm = await window.bitbot.turn("ListMachines");
+          "\n\n[host] target=" + (r.target || "?") + " · " + (r.note || "") +
+          "\n[desktop] sessions · tray · hotkey · llm_chat stream";
+        const lm = await window.bitbot.turn("ListMachines", { skipSession: true });
         if (lm && lm.machines) renderMachines(lm.machines);
       } catch (e) {
         banner.className = "err";

@@ -20,7 +20,15 @@ export BITBOT_LLM_BASE_URL=https://api.deepseek.com/v1   # default
 export BITBOT_LLM_MODEL=deepseek-chat                    # default
 # optional multi-model: BITBOT_LLM_PROVIDER=deepseek|qwen|moonshot
 # catalog: data/llm/providers.json
+# BITBOT_LLM_STREAM=0 to disable SSE streaming into the Desktop UI
 ```
+
+### Desktop product shell (P1)
+
+- **会话列表**：左侧「会话」+ 新建；持久化 `data/desktop/sessions.json`
+- **流式**：Host `llm_chat` SSE → `bitbot:llm-stream` → 聊天气泡增量
+- **托盘**：关闭窗口隐藏到托盘；托盘菜单显示/隐藏、新对话、退出
+- **全局快捷键**：`Ctrl+Shift+Space`（macOS `⌘⇧Space`），可用 `BITBOT_DESKTOP_HOTKEY` 覆盖
 
 Python `scripts/bitbot_runtime/` is **not** on this path. It remains optional Host FFI / legacy deploy only.
 
