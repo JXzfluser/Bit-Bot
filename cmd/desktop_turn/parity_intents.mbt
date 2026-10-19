@@ -387,12 +387,27 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "create canvas page" ||
     low == "publish page" ||
     low == "create canvas" ||
+    low == "open canvas" ||
+    low == "close canvas" ||
+    low == "export canvas" ||
     low.has_prefix("create canvas page ") ||
-    low.has_prefix("publish page ") {
+    low.has_prefix("publish page ") ||
+    low.has_prefix("open canvas ") ||
+    low.has_prefix("export canvas ") {
     let mut title = if low.has_prefix("create canvas page ") {
       trimmed[19:].trim().to_owned()
     } else if low.has_prefix("publish page ") {
       trimmed[13:].trim().to_owned()
+    } else if low.has_prefix("open canvas ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("export canvas ") {
+      trimmed[14:].trim().to_owned()
+    } else if low == "close canvas" {
+      "CloseCanvas"
+    } else if low == "export canvas" {
+      "ExportCanvas"
+    } else if low == "open canvas" {
+      "OpenCanvas"
     } else {
       "Canvas"
     }
@@ -542,18 +557,30 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "light mode" ||
     low == "set locale" ||
     low == "rate app" ||
+    low == "list models" ||
+    low == "switch model" ||
+    low == "model picker" ||
     low.has_prefix("open settings ") ||
-    low.has_prefix("settings ") {
+    low.has_prefix("settings ") ||
+    low.has_prefix("set locale ") ||
+    low.has_prefix("switch model ") ||
+    low.has_prefix("list models ") {
     let rest = if low.has_prefix("open settings ") {
       trimmed[14:].trim().to_owned()
     } else if low.has_prefix("settings ") {
       trimmed[9:].trim().to_owned()
     } else if low == "toggle theme" || low == "dark mode" || low == "light mode" {
       "theme"
-    } else if low == "set locale" {
+    } else if low == "set locale" || low.has_prefix("set locale ") {
       "locale"
     } else if low == "rate app" {
       "feedback"
+    } else if low == "list models" ||
+      low == "switch model" ||
+      low == "model picker" ||
+      low.has_prefix("switch model ") ||
+      low.has_prefix("list models ") {
+      "models"
     } else {
       ""
     }
@@ -678,20 +705,42 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   if low == "mute channel" ||
     low == "mute chat" ||
+    low == "mute notifications" ||
     low == "unmute channel" ||
     low == "unmute chat" ||
     low == "do not disturb" ||
+    low == "do not disturb on" ||
+    low == "do not disturb off" ||
+    low == "focus mode" ||
+    low == "focus mode on" ||
+    low == "focus mode off" ||
     low == "typing indicator" ||
-    low == "read receipts" {
-    let enabled = low.has_prefix("unmute") ||
+    low == "read receipts" ||
+    low.has_prefix("set status ") {
+    let enabled = if low.has_prefix("set status ") {
+      let st = trimmed[11:].trim().to_lower()
+      !(st == "away" || st == "dnd" || st == "offline" || st == "busy")
+    } else {
+      low.has_prefix("unmute") ||
       low == "typing indicator" ||
-      low == "read receipts"
-    let toggle = if low == "do not disturb" {
+      low == "read receipts" ||
+      low == "do not disturb off" ||
+      low == "focus mode off"
+    }
+    let toggle = if low == "do not disturb" ||
+      low == "do not disturb on" ||
+      low == "do not disturb off" ||
+      low == "focus mode" ||
+      low == "focus mode on" ||
+      low == "focus mode off" ||
+      low.has_prefix("set status ") {
       "desktop"
     } else if low == "typing indicator" {
       "sound"
     } else if low == "read receipts" {
       "mentions_only"
+    } else if low == "mute notifications" {
+      "desktop"
     } else {
       "desktop"
     }
@@ -807,6 +856,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "add reaction" ||
     low == "remove reaction" ||
     low == "pin message" ||
+    low == "pin this message" ||
     low == "unpin message" ||
     low.has_prefix("react message ") ||
     low.has_prefix("react to message ") ||
@@ -929,7 +979,11 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low.has_prefix("invite ") ||
     low.has_prefix("kick user ") ||
     low.has_prefix("kick ") ||
-    low.has_prefix("remove member ") {
+    low.has_prefix("remove member ") ||
+    low.has_prefix("block user ") ||
+    low.has_prefix("unblock user ") ||
+    low == "block user" ||
+    low == "unblock user" {
     let rest = if low.has_prefix("open members ") {
       trimmed[13:].trim().to_owned()
     } else if low.has_prefix("members panel ") {
@@ -962,6 +1016,12 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       trimmed[5:].trim().to_owned()
     } else if low.has_prefix("remove member ") {
       trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("block user ") {
+      trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("unblock user ") {
+      trimmed[13:].trim().to_owned()
+    } else if low == "block user" || low == "unblock user" {
+      ""
     } else {
       ""
     }
@@ -1085,8 +1145,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low == "clear chat" ||
+    low == "clear chat history" ||
     low == "delete chat" ||
-    low == "archive chat" {
+    low == "archive chat" ||
+    low == "new chat" {
     return Some(HideAgent(agent_id="asst-chat", hidden=true))
   }
   if low.has_prefix("code changes ") || low.has_prefix("edit code ") {
@@ -1431,10 +1493,17 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "set description" ||
     low == "archive dm" ||
     low == "unarchive dm" ||
+    low == "list channels" ||
+    low == "create channel" ||
+    low == "archive channel" ||
+    low == "leave channel" ||
     low.has_prefix("edit message ") ||
     low.has_prefix("delete message ") ||
     low.has_prefix("forward message ") ||
-    low.has_prefix("set topic ") {
+    low.has_prefix("set topic ") ||
+    low.has_prefix("create channel ") ||
+    low.has_prefix("archive channel ") ||
+    low.has_prefix("leave channel ") {
     let body = if low.has_prefix("edit message ") {
       trimmed[14:].trim().to_owned()
     } else if low.has_prefix("delete message ") {
@@ -1443,6 +1512,12 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       trimmed[17:].trim().to_owned()
     } else if low.has_prefix("set topic ") {
       trimmed[10:].trim().to_owned()
+    } else if low.has_prefix("create channel ") {
+      "create channel " + trimmed[15:].trim().to_owned()
+    } else if low.has_prefix("archive channel ") {
+      "archive channel " + trimmed[16:].trim().to_owned()
+    } else if low.has_prefix("leave channel ") {
+      "leave channel " + trimmed[14:].trim().to_owned()
     } else {
       low
     }
@@ -1475,7 +1550,11 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       None => ()
     }
   }
-  if low == "device tools" || low == "list device tools" || low == "phone tools" {
+  if low == "device tools" ||
+    low == "list device tools" ||
+    low == "phone tools" ||
+    low == "device status" ||
+    low.has_prefix("device status ") {
     return Some(DeviceTools)
   }
   if low.has_prefix("device tool ") || low.has_prefix("invoke device ") {
@@ -1521,6 +1600,14 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     if task != "" {
       return Some(LoadSkill(task~))
     }
+  }
+  if low == "start huddle" ||
+    low == "huddle start" ||
+    low == "join huddle" {
+    return Some(VoiceStart(call_id="huddle-1"))
+  }
+  if low == "end huddle" || low == "huddle end" || low == "leave huddle" {
+    return Some(VoiceEnd(call_id="huddle-1"))
   }
   if low.has_prefix("voice start ") || low.has_prefix("start voice ") {
     let id = if low.has_prefix("voice start ") {

@@ -339,6 +339,9 @@
         <button type="button" id="tm-room-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Post to room</button>
         <button type="button" id="tm-room-join" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Join room</button>
         <button type="button" id="tm-list-members" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List members</button>
+        <button type="button" id="tm-list-channels" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List channels</button>
+        <button type="button" id="tm-open-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open canvas</button>
+        <button type="button" id="tm-list-models" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List models</button>
         <button type="button" id="tm-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
         <button type="button" id="tm-subagent" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
       </div>
@@ -583,6 +586,8 @@
         <button type="button" id="voice-start" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Start voice</button>
         <button type="button" id="voice-relay" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Voice relay</button>
         <button type="button" id="voice-end" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End voice</button>
+        <button type="button" id="voice-huddle-start" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Start huddle</button>
+        <button type="button" id="voice-huddle-end" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End huddle</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Box</div>
@@ -3771,6 +3776,12 @@
     document.getElementById("voice-end").addEventListener("click", () => {
       runUserTurn("voice end desktop-voice", {});
     });
+    document.getElementById("voice-huddle-start").addEventListener("click", () => {
+      runUserTurn("start huddle", { approved: true });
+    });
+    document.getElementById("voice-huddle-end").addEventListener("click", () => {
+      runUserTurn("end huddle", { approved: true });
+    });
     document.getElementById("box-doctor").addEventListener("click", () => {
       runUserTurn("box doctor", {});
     });
@@ -3877,6 +3888,15 @@
     });
     document.getElementById("tm-list-members").addEventListener("click", () => {
       runUserTurn("list members", {});
+    });
+    document.getElementById("tm-list-channels").addEventListener("click", () => {
+      runUserTurn("list channels", { approved: true });
+    });
+    document.getElementById("tm-open-canvas").addEventListener("click", () => {
+      runUserTurn("open canvas", { approved: true });
+    });
+    document.getElementById("tm-list-models").addEventListener("click", () => {
+      runUserTurn("list models", {});
     });
     document.getElementById("tm-send").addEventListener("click", () => {
       runUserTurn("send to agent asst-desktop :: ping from desktop host", {

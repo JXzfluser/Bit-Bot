@@ -227,6 +227,12 @@ for needle in (
     "post to room ",
     "join room ",
     "list members",
+    "list channels",
+    "start huddle",
+    "end huddle",
+    "open canvas",
+    "list models",
+    "focus mode on",
     "deliver cloud artifact artifact=",
     "teams send tsmoke",
     "thread_ts=",
@@ -367,6 +373,36 @@ assert p.get('pretend_updated') is False
 assert p.get('toggle')=='desktop'
 assert os.path.isfile(p.get('path') or '')
 print('android do not disturb Host path ok', p.get('mode'))
+"
+# Product phrasing start huddle → voice_session Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-huddle "start huddle" \
+  >/tmp/bitbot-ios-huddle.raw
+parse_turn_json /tmp/bitbot-ios-huddle.raw >/tmp/bitbot-ios-huddle.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-huddle.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='voice_start'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='voice_session')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_ok') is not True
+assert (p.get('call_id') or '') == 'huddle-1' or os.path.isfile(p.get('path') or '') or p.get('ok') is True or p.get('mode')
+print('ios start huddle Host path ok', p.get('mode') or p.get('call_id') or p.get('path'))
+"
+# Product phrasing list models → settings_open Host on Android.
+node hosts/mobile_host/run.js --machine-kind android --session-id android-models "list models" \
+  >/tmp/bitbot-android-models.raw
+parse_turn_json /tmp/bitbot-android-models.raw >/tmp/bitbot-android-models.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-models.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='open_settings'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='settings_open')
+p=json.loads(h.get('stdout') or '{}')
+assert p.get('pretend_opened') is not True
+assert 'models' in str(p.get('anchor') or p.get('command') or p.get('entry') or h.get('command') or '')
+print('android list models Host path ok', p.get('mode') or p.get('anchor') or p.get('entry'))
 "
 
 echo "OK: verify_native_shells.sh"
