@@ -522,6 +522,10 @@
         <button type="button" id="tool-toggle-theme" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Toggle theme</button>
         <button type="button" id="tool-share-screen" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Share screen</button>
         <button type="button" id="tool-ping-host" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Ping host</button>
+        <button type="button" id="tool-dnd" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Do not disturb</button>
+        <button type="button" id="tool-export-chat" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export chat</button>
+        <button type="button" id="tool-create-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Create canvas</button>
+        <button type="button" id="tool-edit-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Edit message</button>
         <button type="button" id="tool-journal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
         <button type="button" id="tool-journal-append" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal append</button>
         <button type="button" id="tool-pkg" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
@@ -3975,6 +3979,18 @@
     });
     document.getElementById("tool-ping-host").addEventListener("click", () => {
       runUserTurn("ping host", {});
+    });
+    document.getElementById("tool-dnd").addEventListener("click", () => {
+      runUserTurn("do not disturb", {});
+    });
+    document.getElementById("tool-export-chat").addEventListener("click", () => {
+      runUserTurn("export chat", {});
+    });
+    document.getElementById("tool-create-canvas").addEventListener("click", () => {
+      runUserTurn("create canvas page", {});
+    });
+    document.getElementById("tool-edit-message").addEventListener("click", () => {
+      runUserTurn("edit message", { approved: true });
     });
     document.getElementById("tool-journal").addEventListener("click", () => {
       runUserTurn("journal query hello", {});

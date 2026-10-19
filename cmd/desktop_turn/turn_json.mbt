@@ -522,12 +522,14 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     } else {
       trimmed[5:].trim().to_owned()
     }
-    // Do not steal mail/thread utterances into fs_read.
+    // Do not steal mail/thread/notify utterances into fs_read.
     if p != "" &&
         !p.has_prefix("http://") &&
         !p.has_prefix("https://") &&
         !p.has_prefix("mail ") &&
-        !p.has_prefix("thread ") {
+        !p.has_prefix("thread ") &&
+        p != "receipts" &&
+        !p.has_prefix("receipts ") {
       return FsRead(path=p)
     }
   }

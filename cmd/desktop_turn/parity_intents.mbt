@@ -381,6 +381,23 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(LearnFromDemo(title~, steps_csv~))
   }
+  if low == "create canvas page" ||
+    low == "publish page" ||
+    low == "create canvas" ||
+    low.has_prefix("create canvas page ") ||
+    low.has_prefix("publish page ") {
+    let mut title = if low.has_prefix("create canvas page ") {
+      trimmed[19:].trim().to_owned()
+    } else if low.has_prefix("publish page ") {
+      trimmed[13:].trim().to_owned()
+    } else {
+      "Canvas"
+    }
+    if title == "" {
+      title = "Canvas"
+    }
+    return Some(MakeSlides(title~))
+  }
   if low.has_prefix("make slides ") ||
     low.has_prefix("generate pptx ") ||
     low.has_prefix("generate slides ") {
@@ -656,11 +673,23 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "mute channel" ||
     low == "mute chat" ||
     low == "unmute channel" ||
-    low == "unmute chat" {
-    let enabled = low.has_prefix("unmute")
-    return Some(
-      SetNotify(assistant_id="asst-alpha", toggle="desktop", enabled~),
-    )
+    low == "unmute chat" ||
+    low == "do not disturb" ||
+    low == "typing indicator" ||
+    low == "read receipts" {
+    let enabled = low.has_prefix("unmute") ||
+      low == "typing indicator" ||
+      low == "read receipts"
+    let toggle = if low == "do not disturb" {
+      "desktop"
+    } else if low == "typing indicator" {
+      "sound"
+    } else if low == "read receipts" {
+      "mentions_only"
+    } else {
+      "desktop"
+    }
+    return Some(SetNotify(assistant_id="asst-alpha", toggle~, enabled~))
   }
   // CM-1903/1904/1905 product Host computer lifecycle + local-execution.
   if low == "update computer" ||
@@ -1045,7 +1074,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   if low == "use user browser" ||
     low == "identity browser" ||
-    low == "switch to browser identity" {
+    low == "switch to browser identity" ||
+    low == "open identity" ||
+    low == "switch identity" {
     return Some(IdentityBrowser)
   }
   if low.has_prefix("x search ") ||
@@ -1085,6 +1116,19 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "setup outlook" ||
     low == "outlook connect" {
     return Some(ConnectOutlook)
+  }
+  if low == "disconnect slack" ||
+    low == "disconnect gmail" ||
+    low == "revoke token" ||
+    low == "disconnect connector" {
+    // Product disconnect/revoke → same Host oauth / settings honesty path.
+    if low == "disconnect gmail" {
+      return Some(ConnectGmail)
+    }
+    if low == "disconnect slack" {
+      return Some(SetupSlack)
+    }
+    return Some(OpenSettings(entry="sidebar-account-button", anchor="connectors"))
   }
   // Journal query before append — "journal query …" also matches "journal " prefix.
   if low == "bookmark message" ||
@@ -1193,9 +1237,16 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "backup chat" ||
     low == "share link" ||
     low == "copy invite" ||
+    low == "export chat" ||
+    low == "restore backup" ||
+    low == "fork chat" ||
+    low == "star chat" ||
+    low == "unstar chat" ||
     low.has_prefix("backup chat ") ||
     low.has_prefix("share link ") ||
-    low.has_prefix("copy invite ") {
+    low.has_prefix("copy invite ") ||
+    low.has_prefix("export chat ") ||
+    low.has_prefix("restore backup ") {
     let rest = if low.has_prefix("export bot template ") {
       trimmed[20:].to_owned()
     } else if low.has_prefix("export bot ") {
@@ -1307,6 +1358,41 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     if task != "" {
       return Some(ComputerUse(task~))
     }
+  }
+  // Channel message product phrasing → ChannelDelivery Host path.
+  if low == "edit message" ||
+    low == "delete message" ||
+    low == "forward message" ||
+    low == "set topic" ||
+    low == "set description" ||
+    low == "archive dm" ||
+    low == "unarchive dm" ||
+    low.has_prefix("edit message ") ||
+    low.has_prefix("delete message ") ||
+    low.has_prefix("forward message ") ||
+    low.has_prefix("set topic ") {
+    let body = if low.has_prefix("edit message ") {
+      trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("delete message ") {
+      trimmed[16:].trim().to_owned()
+    } else if low.has_prefix("forward message ") {
+      trimmed[17:].trim().to_owned()
+    } else if low.has_prefix("set topic ") {
+      trimmed[10:].trim().to_owned()
+    } else {
+      low
+    }
+    let b = if body != "" { body } else { low }
+    return Some(
+      ChannelDelivery(
+        inbound=Some("slack:Csmoke"),
+        outbound=Some("slack:Csmoke"),
+        body=b,
+      ),
+    )
+  }
+  if low == "mark unread" || low.has_prefix("mark unread ") {
+    return Some(SearchMail(query="is:unread"))
   }
   if low.has_prefix("teams send ") || low.has_prefix("send teams ") {
     let rest = if low.has_prefix("teams send ") {
