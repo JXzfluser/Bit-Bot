@@ -29,14 +29,29 @@ fn parse_nonneg_i32(s : String) -> Int32 {
 ///|
 /// Extra Grok-parity intent classification (routines/agents/MCP/Teams/device).
 pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
-  if low == "list routines" || low == "routines" || low == "show routines" {
+  if low == "list routines" ||
+    low == "routines" ||
+    low == "show routines" ||
+    low == "list scheduled" ||
+    low == "list reminders" {
     return Some(ListRoutines)
   }
-  if low.has_prefix("pause routine ") {
-    let id = trimmed[14:].trim().to_owned()
+  if low.has_prefix("pause routine ") ||
+    low.has_prefix("cancel scheduled ") ||
+    low.has_prefix("cancel reminder ") {
+    let id = if low.has_prefix("pause routine ") {
+      trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("cancel scheduled ") {
+      trimmed[17:].trim().to_owned()
+    } else {
+      trimmed[16:].trim().to_owned()
+    }
     if id != "" {
       return Some(PauseRoutine(id~))
     }
+  }
+  if low == "cancel scheduled" || low == "cancel reminder" {
+    return Some(PauseRoutine(id="routine-1"))
   }
   if low.has_prefix("resume routine ") {
     let id = trimmed[15:].trim().to_owned()
@@ -428,7 +443,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "run box doctor" ||
     low == "check box" ||
     low == "box-doctor" ||
-    low == "doctor box" {
+    low == "doctor box" ||
+    low == "ping host" ||
+    low == "health check" ||
+    low == "host health" {
     return Some(BoxDoctor)
   }
   // CM-0608 product Host Docker vs anyrun env detect.
@@ -682,6 +700,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "capture screenshot" ||
     low == "screen shot" ||
     low == "list windows" ||
+    low == "share screen" ||
+    low == "screen share" ||
+    low == "stop share screen" ||
+    low == "screen share stop" ||
     low.has_prefix("screenshot ") ||
     low.has_prefix("take screenshot ") {
     let rest = if low.has_prefix("screenshot ") {
@@ -830,9 +852,14 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "members panel" ||
     low == "show members" ||
     low == "invite to channel" ||
+    low == "generate invite" ||
+    low == "accept invite" ||
+    low == "decline invite" ||
     low.has_prefix("open members ") ||
     low.has_prefix("members panel ") ||
-    low.has_prefix("invite to channel ") {
+    low.has_prefix("invite to channel ") ||
+    low.has_prefix("generate invite ") ||
+    low.has_prefix("accept invite ") {
     let rest = if low.has_prefix("open members ") {
       trimmed[13:].trim().to_owned()
     } else if low.has_prefix("members panel ") {
@@ -1254,6 +1281,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
         }
       None => ()
     }
+  }
+  if low == "focus window" || low == "minimize window" {
+    return Some(ComputerUse(task=low))
   }
   if low.has_prefix("computer use ") || low.has_prefix("computeruse ") {
     let task = if low.has_prefix("computer use ") {
