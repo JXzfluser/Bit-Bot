@@ -493,6 +493,24 @@ function createCnInboundServer(opts = {}) {
   }
 
   function status() {
+    let publicUrl = null;
+    try {
+      const urlFile = path.join(
+        repoRoot,
+        "data",
+        "routines",
+        "webhooks",
+        "cn-inbound",
+        "public-url.txt",
+      );
+      if (fs.existsSync(urlFile)) {
+        const line = fs.readFileSync(urlFile, "utf8").split(/\r?\n/)[0].trim();
+        if (/^https:\/\//i.test(line)) publicUrl = line;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    const localHost = host === "0.0.0.0" ? "127.0.0.1" : host;
     return {
       ok: true,
       listening: state.listening,
@@ -501,14 +519,17 @@ function createCnInboundServer(opts = {}) {
       started_at: state.started_at,
       last_event: state.last_event,
       counts: { ...state.counts },
+      public_url: publicUrl,
       routes: {
-        dingtalk: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/dingtalk/callback`,
-        feishu: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/feishu/event`,
-        wecom: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/wecom/callback`,
-        turn: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/v1/turn`,
+        dingtalk: `${publicUrl || `http://${localHost}:${port}`}/dingtalk/callback`,
+        feishu: `${publicUrl || `http://${localHost}:${port}`}/feishu/event`,
+        wecom: `${publicUrl || `http://${localHost}:${port}`}/wecom/callback`,
+        turn: `${publicUrl || `http://${localHost}:${port}`}/v1/turn`,
       },
       pretend_cloud: false,
-      residual: "needs public HTTPS URL + channel app credentials for live cloud",
+      residual: publicUrl
+        ? "public tunnel up — still need BITBOT_*_POST=1 + channel console config"
+        : "needs public HTTPS URL (scripts/cn_inbound_tunnel.sh) + channel app credentials",
     };
   }
 

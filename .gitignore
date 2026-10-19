@@ -52,3 +52,4 @@ h3-cross-agent-shared.txt
 
 .env.local
 **/.env.local
+/tools/cloudflared
