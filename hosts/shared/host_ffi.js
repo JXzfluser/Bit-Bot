@@ -7518,6 +7518,34 @@ function createHostFfi(repoRoot) {
         add_label: "host_mail_read",
         remove_label: "host_mail_read",
         list_labels: "host_mail_search",
+        switch_identity: "host_identity_browser",
+        open_identity: "host_identity_browser",
+        identity_switch: "host_identity_browser",
+        slack_claim: "host_channel_send",
+        teams_claim: "host_channel_send",
+        sms_claim: "host_channel_send",
+        voice_claim: "host_channel_send",
+        webhook_claim: "host_channel_send",
+        meeting_claim: "host_channel_send",
+        email_claim: "host_channel_send",
+        claim_slack: "host_channel_send",
+        claim_teams: "host_channel_send",
+        claim_sms: "host_channel_send",
+        claim_voice: "host_channel_send",
+        share_screen: "host_screenshot",
+        screen_share: "host_screenshot",
+        open_transcript: "host_journal_query",
+        export_transcript: "host_export_pack",
+        unpin_message: "host_channel_send",
+        set_status: "host_set_notify",
+        set_presence: "host_set_notify",
+        do_not_disturb_until: "host_set_notify",
+        schedule_message: "host_routine_schedule",
+        edit_agent_instructions: "host_agent_info_panel",
+        disconnect_connector: "host_connectors_probe",
+        revoke_token: "host_oauth",
+        disconnect_slack: "host_oauth",
+        disconnect_gmail: "host_oauth",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -8628,9 +8656,41 @@ function createHostFfi(repoRoot) {
             scheme === "meeting_chat" || scheme === "meeting"
               ? addr
               : `${addr} :: ${body}`;
-          const chResults = await executeHostEffects([
-            { kind: "channel_send", command: channelCmd },
-          ]);
+          // Product *_claim tools arm the matching BITBOT_*_CLAIM gate for this call only.
+          const isClaimTool =
+            args.claim === true ||
+            args.claim === "true" ||
+            /(?:^|_)claim(?:_|$)/i.test(tn);
+          const claimEnvByScheme = {
+            slack: "BITBOT_SLACK_CLAIM",
+            teams: "BITBOT_TEAMS_CLAIM",
+            sms: "BITBOT_SMS_CLAIM",
+            voice: "BITBOT_VOICE_CLAIM",
+            webhook: "BITBOT_WEBHOOK_CLAIM",
+            meeting_chat: "BITBOT_MEETING_CLAIM",
+            meeting: "BITBOT_MEETING_CLAIM",
+            email: "BITBOT_EMAIL_CLAIM",
+            gmail: "BITBOT_EMAIL_CLAIM",
+            outlook: "BITBOT_EMAIL_CLAIM",
+          };
+          const claimEnvKey = isClaimTool
+            ? claimEnvByScheme[scheme] || null
+            : null;
+          const prevClaimEnv = claimEnvKey
+            ? process.env[claimEnvKey]
+            : undefined;
+          if (claimEnvKey) process.env[claimEnvKey] = "1";
+          let chResults;
+          try {
+            chResults = await executeHostEffects([
+              { kind: "channel_send", command: channelCmd },
+            ]);
+          } finally {
+            if (claimEnvKey) {
+              if (prevClaimEnv === undefined) delete process.env[claimEnvKey];
+              else process.env[claimEnvKey] = prevClaimEnv;
+            }
+          }
           const chHit = (chResults || []).find(
             (r) => r && r.kind === "channel_send",
           );
@@ -8661,6 +8721,7 @@ function createHostFfi(repoRoot) {
                 pretend_live: chPayload.pretend_live,
                 widget_degraded: chPayload.widget_degraded,
                 claimed_count: chPayload.claimed_count,
+                claim_armed: Boolean(claimEnvKey),
               },
               product_tool_residual: false,
               pretend_ok: false,
@@ -8676,7 +8737,11 @@ function createHostFfi(repoRoot) {
             path: snapPath,
             pretend_ok: false,
             ok: Boolean(chHit && chHit.ok),
-            channel_send: chPayload,
+            claim_armed: Boolean(claimEnvKey),
+            channel_send: {
+              ...chPayload,
+              claim_armed: Boolean(claimEnvKey),
+            },
           });
         }
         if (mapped === "host_oauth") {

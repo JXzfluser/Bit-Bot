@@ -510,6 +510,49 @@ function stripHostAppliedMarker(file) {
     delete process.env.BITBOT_WEBHOOK_OUTBOUND_URL;
     delete process.env.BITBOT_WEBHOOK_POST;
   }
+  // slack_claim product tool arms BITBOT_SLACK_CLAIM for inbound claim residual-CLOSE
+  const mcpSlackClaimMock = startMock(18826, "slack", "smoke-mcp-claim");
+  await sleep(400);
+  try {
+    process.env.BITBOT_SLACK_API_BASE = "http://127.0.0.1:18826";
+    process.env.SLACK_BOT_TOKEN = "smoke-mcp-claim";
+    delete process.env.BITBOT_SLACK_CLAIM; // tool itself arms claim
+    const liveClaim = await ffi.executeHostEffects([
+      {
+        kind: "mcp_call",
+        command: 'user-Gmail.slack_claim|{"channel":"Csmoke","body":"mcp claim"}',
+      },
+    ]);
+    const liveClaimHit = liveClaim.find((r) => r && r.kind === "mcp_call");
+    const liveClaimP = JSON.parse((liveClaimHit && liveClaimHit.stdout) || "{}");
+    if (liveClaimP.mapped !== "host_channel_send" || liveClaimP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(liveClaimP).slice(0, 200));
+    }
+    const cs = liveClaimP.channel_send || {};
+    if (cs.mode !== "live_slack_claim" && cs.mode !== "sandbox_slack_claim") {
+      throw new Error("slack_claim mode: " + JSON.stringify(cs).slice(0, 240));
+    }
+    if (!(cs.claimed_count >= 1)) {
+      throw new Error("slack_claim claimed_count: " + JSON.stringify(cs).slice(0, 240));
+    }
+    if (cs.pretend_live === true) throw new Error("pretend_live slack_claim");
+    if (liveClaimP.claim_armed !== true && cs.claim_armed !== true) {
+      throw new Error("slack_claim claim_armed missing: " + JSON.stringify(liveClaimP).slice(0, 240));
+    }
+    console.log(
+      "mcp_call slack_claim residual path ok",
+      cs.mode,
+      "claimed",
+      cs.claimed_count,
+      "armed",
+      true,
+    );
+  } finally {
+    try { mcpSlackClaimMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_SLACK_API_BASE;
+    delete process.env.SLACK_BOT_TOKEN;
+    delete process.env.BITBOT_SLACK_CLAIM;
+  }
   // Skill/export product short-circuit → host_skill_write / host_export_pack (no pretend_shared / secret echo)
   const skills = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.author_skill|{\"name\":\"mcp-author-skill\",\"description\":\"mcp smoke\",\"body\":\"Do the MCP thing.\"}" }]);
   const skh = skills.find((r) => r && r.kind === "mcp_call");
@@ -1616,6 +1659,17 @@ function stripHostAppliedMarker(file) {
     ["todo_list", "host_todo_write", "todo_write"],
     ["export_bot", "host_export_pack", "export_pack"],
     ["mark_todo", "host_todo_write", "todo_write"],
+    ["switch_identity", "host_identity_browser", "identity_browser"],
+    ["slack_claim", "host_channel_send", "channel_send"],
+    ["sms_claim", "host_channel_send", "channel_send"],
+    ["share_screen", "host_screenshot", "screenshot"],
+    ["export_transcript", "host_export_pack", "export_pack"],
+    ["open_transcript", "host_journal_query", "journal_query"],
+    ["set_status", "host_set_notify", "set_notify"],
+    ["schedule_message", "host_routine_schedule", "routine_schedule"],
+    ["edit_agent_instructions", "host_agent_info_panel", "agent_info_panel"],
+    ["disconnect_connector", "host_connectors_probe", "connectors_probe"],
+    ["revoke_token", "host_oauth", "oauth"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1702,17 +1756,50 @@ function stripHostAppliedMarker(file) {
                                                 : tool === "mark_done" ||
                                                     tool === "complete_todo"
                                                   ? '{"id":"a1","status":"done","title":"done"}'
-                                                  : tool === "open_chat" ||
+                                                    : tool === "open_chat" ||
                                                       tool === "chat_panel" ||
                                                       tool === "dm_panel" ||
                                                       tool === "create_channel" ||
                                                       tool === "list_channels" ||
-                                                      tool === "archive_channel"
-                                                    ? '{"scheme":"slack","addr":"UCHAT","body":"open-chat"}'
-                                                    : tool === "agent_info" ||
-                                                        tool === "agent_info_panel" ||
-                                                        tool === "rename_agent"
-                                                      ? '{"agent_id":"asst-mcp-info"}'
+                                                      tool === "archive_channel" ||
+                                                      tool === "slack_claim" ||
+                                                      tool === "claim_slack" ||
+                                                      tool === "unpin_message"
+                                                    ? '{"scheme":"slack","channel":"Csmoke","body":"claim-or-chat"}'
+                                                    : tool === "sms_claim" ||
+                                                        tool === "claim_sms"
+                                                      ? '{"scheme":"sms","to":"+15551212","body":"sms-claim"}'
+                                                      : tool === "teams_claim" ||
+                                                          tool === "claim_teams"
+                                                        ? '{"scheme":"teams","channel":"Tsmoke","body":"teams-claim"}'
+                                                        : tool === "voice_claim" ||
+                                                            tool === "claim_voice"
+                                                          ? '{"scheme":"voice","to":"call-smoke","body":"voice-claim"}'
+                                                          : tool === "webhook_claim"
+                                                            ? '{"scheme":"webhook","body":"wh-claim"}'
+                                                            : tool === "share_screen" ||
+                                                                tool === "screen_share"
+                                                              ? '{}'
+                                                              : tool === "open_transcript"
+                                                                ? '{"q":"transcript"}'
+                                                                : tool === "export_transcript"
+                                                                  ? '{"name":"transcript-export"}'
+                                                                  : tool === "schedule_message"
+                                                                    ? '{"name":"sched-msg","cron":"0 10 * * *","action":"ping"}'
+                                                                    : tool === "edit_agent_instructions"
+                                                                      ? '{"agent_id":"asst-mcp-info"}'
+                                                                      : tool === "switch_identity" ||
+                                                                          tool === "open_identity" ||
+                                                                          tool === "identity_switch"
+                                                                        ? '{"browser":"chrome"}'
+                                                                        : tool === "disconnect_connector" ||
+                                                                            tool === "revoke_token" ||
+                                                                            tool === "disconnect_slack"
+                                                                          ? '{"connector":"slack"}'
+                                                                          : tool === "agent_info" ||
+                                                                              tool === "agent_info_panel" ||
+                                                                              tool === "rename_agent"
+                                                                            ? '{"agent_id":"asst-mcp-info"}'
                                                       : tool === "pin_agent" ||
                                                           tool === "unpin_agent" ||
                                                           tool === "pin_chat" ||
@@ -1763,7 +1850,10 @@ function stripHostAppliedMarker(file) {
                                                                       tool === "mute_chat" ||
                                                                       tool === "unmute_chat" ||
                                                                       tool === "read_receipts" ||
-                                                                      tool === "typing_indicator"
+                                                                      tool === "typing_indicator" ||
+                                                                      tool === "set_status" ||
+                                                                      tool === "set_presence" ||
+                                                                      tool === "do_not_disturb_until"
                                                                     ? '{"toggle":"desktop","enabled":"off"}'
                                                                     : tool === "save_memory" ||
                                                                         tool === "delete_memory"
