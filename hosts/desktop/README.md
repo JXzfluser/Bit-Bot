@@ -37,6 +37,14 @@ export BITBOT_LLM_MODEL=deepseek-chat                    # default
 - 可选 systemd user unit：`bash scripts/host_routine_daemon.sh --install-user-unit`
 - IPC：`bitbot.autostart.*` / `bitbot.daemon.*`
 
+### Release / OTA / 备案 (P4)
+
+见 [`docs/desktop-release.md`](../../docs/desktop-release.md)。要点：
+
+- `npm run dist` / `dist:mac` / `dist:win`；mac 公证走 `build/notarize.js`（缺 Apple 凭证不假装）
+- OTA：`BITBOT_UPDATE_FEED_URL` → Host `check_updates` 真探测
+- 内容审核：`BITBOT_CONTENT_MODERATION=1`；备案号：`BITBOT_ICP_FILING` / `BITBOT_ALGORITHM_FILING`
+
 Python `scripts/bitbot_runtime/` is **not** on this path. It remains optional Host FFI / legacy deploy only.
 
 ## Start

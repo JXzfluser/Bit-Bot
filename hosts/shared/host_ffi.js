@@ -5163,10 +5163,47 @@ function createHostFfi(repoRoot) {
         null;
     }
 
-    const ok = Boolean(text) && (httpStatus === 0 || (httpStatus >= 200 && httpStatus < 300));
+    let ok = Boolean(text) && (httpStatus === 0 || (httpStatus >= 200 && httpStatus < 300));
     if (!ok && !error) {
       error = `llm_http_${httpStatus || 0}` || "empty completion";
     }
+
+    // P4 content moderation — local gate when armed; never pretend pass.
+    let moderation = {
+      armed: process.env.BITBOT_CONTENT_MODERATION === "1",
+      passed: true,
+      hits: [],
+      residual: process.env.BITBOT_CONTENT_MODERATION !== "1",
+    };
+    if (ok && moderation.armed) {
+      const blocklist = String(
+        process.env.BITBOT_CONTENT_BLOCKLIST ||
+          "制作炸弹,买卖枪支,儿童色情",
+      )
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const hits = blocklist.filter((w) => text.includes(w));
+      if (hits.length) {
+        ok = false;
+        error = "content_moderation_blocked: " + hits.join(",");
+        moderation = {
+          armed: true,
+          passed: false,
+          hits,
+          residual: false,
+        };
+        text = "";
+      }
+    }
+
+    const filing = {
+      icp: String(process.env.BITBOT_ICP_FILING || "").trim() || null,
+      algorithm: String(process.env.BITBOT_ALGORITHM_FILING || "").trim() || null,
+      residual: !(
+        process.env.BITBOT_ICP_FILING || process.env.BITBOT_ALGORITHM_FILING
+      ),
+    };
 
     const artifact = {
       mode: "host_llm_chat",
@@ -5183,6 +5220,8 @@ function createHostFfi(repoRoot) {
       error: ok ? null : error,
       pretend_completion: false,
       localbrain: false,
+      moderation,
+      filing,
       at,
     };
     fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
@@ -6618,6 +6657,7 @@ function createHostFfi(repoRoot) {
 
   async function executeCheckUpdates(command) {
     // CM-1906 — Updates tab (update-channel) ≠ Update Computer (update-computer).
+    // P4 OTA: when BITBOT_UPDATE_FEED_URL is set, probe the real feed (no pretend newer).
     const at = new Date().toISOString();
     const dir = settingsDir();
     const opsDir = path.join(dir, "ops");
@@ -6631,6 +6671,21 @@ function createHostFfi(repoRoot) {
     const updatesDeepLink = "grokbot://app/v1/settings?id=" + updatesAnchor;
     const computerDeepLink = "grokbot://app/v1/settings?id=" + computerAnchor;
 
+    const feedUrl = String(process.env.BITBOT_UPDATE_FEED_URL || "").trim();
+    let feedProbe = null;
+    if (feedUrl) {
+      const probeUrl = feedUrl.replace(/\/$/, "") + "/latest.yml";
+      const resp = await httpJson(probeUrl, { method: "GET", timeoutMs: 15000 });
+      feedProbe = {
+        url: probeUrl,
+        ok: Boolean(resp.ok),
+        http_status: resp.status || 0,
+        body_prefix: String(resp.body || "").slice(0, 200),
+        error: resp.error || null,
+        pretend_update_available: false,
+      };
+    }
+
     // Open Settings panel onto Updates / update-channel (not Computer).
     const panelPath = path.join(dir, "panel.json");
     const panel = {
@@ -6642,6 +6697,8 @@ function createHostFfi(repoRoot) {
       tabs: ["General", "Computer", "Vault", "Usage & Billing", "Updates"],
       check_for_updates: true,
       update_track: "stable",
+      feed_url: feedUrl || null,
+      feed_probe: feedProbe,
       at,
     };
     fs.writeFileSync(panelPath, JSON.stringify(panel, null, 2));
@@ -6650,6 +6707,13 @@ function createHostFfi(repoRoot) {
       opsDir,
       `check-updates-${Date.now().toString(36)}.json`,
     );
+    const filing = {
+      icp: String(process.env.BITBOT_ICP_FILING || "").trim() || null,
+      algorithm: String(process.env.BITBOT_ALGORITHM_FILING || "").trim() || null,
+      residual: !(
+        process.env.BITBOT_ICP_FILING || process.env.BITBOT_ALGORITHM_FILING
+      ),
+    };
     const artifact = {
       mode: "host_check_updates",
       pretend_opened: false,
@@ -6660,6 +6724,10 @@ function createHostFfi(repoRoot) {
       updates_deep_link: updatesDeepLink,
       check_for_updates: true,
       update_track: "stable",
+      feed_url: feedUrl || null,
+      feed_probe: feedProbe,
+      feed_residual: !feedUrl,
+      filing,
       // Explicit distinction from Update Computer (box)
       computer_anchor: computerAnchor,
       computer_tab: computerTab,
