@@ -327,6 +327,36 @@ if d.get('ok') is False:
 else:
   h=next(x for x in d['host_results'] if x.get('kind')=='mcp_get_plugin');p=json.loads(h['stdout']);assert p.get('refused') is True;assert p.get('pretend_plugin') is False;print('get unknown plugin host refuse ok', p.get('error'))
 "
+# Host-path refuse + STU honesty chip (MoonBit may short-circuit before FFI).
+node -e '
+const {createHostFfi}=require("./hosts/shared/host_ffi.js");
+const {extractDeliveryTypes}=require("./hosts/shared/send_to_user_surface.js");
+const fs=require("fs");
+const ffi=createHostFfi(process.cwd());
+(async()=>{
+  const hrs=await ffi.executeHostEffects([{kind:"mcp_get_plugin",command:"plugin-missing"}]);
+  const h=hrs.find(r=>r&&r.kind==="mcp_get_plugin");
+  if(!h) throw new Error("mcp_get_plugin missing");
+  const p=JSON.parse(h.stdout||"{}");
+  if(p.refused!==true||p.pretend_plugin===true) throw new Error(JSON.stringify(p).slice(0,240));
+  const turn={ok:true,host_results:hrs,machine_kind:"desktop"};
+  fs.writeFileSync("/tmp/bitbot-mcp-get-host-refuse.json", JSON.stringify(turn,null,2));
+  const s=extractDeliveryTypes(JSON.stringify(turn));
+  if(!s.labels.some((l)=>String(l).includes("mcp_get_plugin/refused"))) throw new Error(JSON.stringify(s));
+  if(!s.types.includes("widget")) throw new Error("types: "+JSON.stringify(s.types));
+  console.log("get unknown plugin Host+STU refused chip ok", s.labels.slice(0,4), s.types);
+})().catch((e)=>{console.error(e);process.exit(1);});
+'
+python3 -c "
+from pathlib import Path
+shared=Path('hosts/shared/send_to_user_surface.js').read_text()
+ios=Path('hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift').read_text()
+android=Path('hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt').read_text()
+assert 'refusedHonesty' in shared
+assert '/refused' in shared
+assert 'refusedHonesty' in ios and 'refusedHonesty' in android
+print('STU refusedHonesty mirrors wired ok')
+"
 node hosts/cli_host/run_turn.js "list plugins slides" >/tmp/bitbot-mcp-list.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-list.json'));assert d.get('intent')=='list_plugins';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_list_plugins');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_listing') is False;assert p.get('count',0)>=1;assert any(x.get('id')=='plugin-slides' for x in (p.get('plugins') or []));assert p.get('path') and os.path.isfile(p['path']);print('mcp_list_plugins ok', p.get('count'), [x.get('id') for x in p.get('plugins') or []])"
 python3 -c "

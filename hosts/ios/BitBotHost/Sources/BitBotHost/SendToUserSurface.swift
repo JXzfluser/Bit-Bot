@@ -218,8 +218,14 @@ enum SendToUserSurface {
         typeSet.insert("cursor-agent")
         summary.labels.append("cursor-agent" + pathSuffix)
       } else if attachmentKinds.contains(kind) {
-        typeSet.insert("attachment")
-        summary.labels.append(kind + pathSuffix)
+        let refusedHonesty =
+          (p["refused"] as? Bool) == true ||
+          (p["unknown_refused"] as? Bool) == true ||
+          (kind == "mcp_get_plugin" && (p["ok"] as? Bool) == false)
+        typeSet.insert(refusedHonesty ? "widget" : "attachment")
+        summary.labels.append(
+          kind + (refusedHonesty ? "/refused" : "") + pathSuffix
+        )
         if !filePath.isEmpty {
           summary.attachments.append(
             Attachment(kind: kind, path: filePath, role: attachmentRole(kind: kind, filePath: filePath))

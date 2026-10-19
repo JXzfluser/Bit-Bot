@@ -244,8 +244,12 @@ object SendToUserSurface {
             labels += "cursor-agent$pathSuffix"
           }
           kind in attachmentKinds -> {
-            typeSet += "attachment"
-            labels += kind + pathSuffix
+            val refusedHonesty =
+              p.optBoolean("refused", false) ||
+                p.optBoolean("unknown_refused", false) ||
+                (kind == "mcp_get_plugin" && p.has("ok") && !p.optBoolean("ok", true))
+            typeSet += if (refusedHonesty) "widget" else "attachment"
+            labels += kind + (if (refusedHonesty) "/refused" else "") + pathSuffix
             if (filePath.isNotBlank()) {
               attachments += Attachment(
                 kind = kind,

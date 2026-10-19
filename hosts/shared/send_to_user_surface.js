@@ -376,9 +376,16 @@ function extractDeliveryTypes(turnJsonText) {
           "memory_recall",
         ].includes(h.kind)
       ) {
-        types.push("attachment");
+        // Honest Host refuses (unknown plugin, bare chrome, opaque webhook key)
+        // must still surface as Delivery chips — never drop because payload.ok=false.
+        const refusedHonesty =
+          p.refused === true ||
+          p.unknown_refused === true ||
+          (h.kind === "mcp_get_plugin" && p.ok === false);
+        types.push(refusedHonesty ? "widget" : "attachment");
         labels.push(
           h.kind +
+            (refusedHonesty ? "/refused" : "") +
             (filePath || p.path || p.artifact_path || h.path ? "/snap" : "") +
             residualSuffix(p),
         );
