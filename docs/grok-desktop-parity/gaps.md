@@ -68,4 +68,4 @@
 - GP-52 群内所有权转移 transcript 断言。
 - GP-70 nativeTheme 像素级断言。
 - GP-90/92 预览格式扩展与全屏验收。
-- renderer E2E（Playwright for Electron）以替掉手工冷启动检查。
+- renderer E2E（Playwright for Electron）以替掉手工冷启动检查。当前已有 `hosts/desktop/shot_cdp.mjs`（CDP 驱动真实控件 + 视口截图，dev-only）做冒烟级验证；本轮真机截图暴露并修复了 3 个问题：body 网格 `min-height:100vh` 导致长对话把 composer/审批条推出视口、never 拒绝后三按钮条仍挂起 + kernel 显示 "unknown host error"、@非成员静默回退 all（现为 bot_discretion）。
