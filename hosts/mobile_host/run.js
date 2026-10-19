@@ -18,6 +18,38 @@ const {
 } = require("../shared/send_to_user_surface");
 
 const root = path.resolve(__dirname, "../..");
+
+/** Load Desktop/repo .env.local so mobile shares BITBOT_LLM_* / CN channel env. */
+function loadEnvLocalFiles() {
+  const candidates = [
+    path.join(root, "hosts/desktop/.env.local"),
+    path.join(root, ".env.local"),
+  ];
+  for (const file of candidates) {
+    if (!fs.existsSync(file)) continue;
+    try {
+      for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        const eq = t.indexOf("=");
+        if (eq <= 0) continue;
+        const k = t.slice(0, eq).trim();
+        let v = t.slice(eq + 1).trim();
+        if (
+          (v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'"))
+        ) {
+          v = v.slice(1, -1);
+        }
+        if (k && process.env[k] === undefined) process.env[k] = v;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+}
+loadEnvLocalFiles();
+
 const args = process.argv.slice(2);
 if (!args.includes("--machine-kind")) {
   args.unshift("--machine-kind", process.env.BITBOT_MACHINE_KIND || "ios");
