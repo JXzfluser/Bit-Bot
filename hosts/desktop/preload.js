@@ -46,4 +46,5 @@ contextBridge.exposeInMainWorld("bitbot", {
     status: () => ipcRenderer.invoke("bitbot:daemon:status"),
     ensure: () => ipcRenderer.invoke("bitbot:daemon:ensure"),
   },
+  llmStatus: () => ipcRenderer.invoke("bitbot:llm:status"),
 });

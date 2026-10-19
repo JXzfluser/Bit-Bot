@@ -3820,6 +3820,27 @@
         await refreshSessions();
         await loadActiveSessionTranscript();
         if (log.querySelector(".msg")) clearWelcome();
+        try {
+          if (window.bitbot.llmStatus) {
+            const ls = await window.bitbot.llmStatus();
+            const hint = document.querySelector("#welcome .w-hint");
+            if (hint && ls && !ls.key_configured) {
+              hint.textContent =
+                "未配置 BITBOT_LLM_API_KEY — 在 hosts/desktop/.env.local 写入 DeepSeek key 后重启（默认 " +
+                (ls.model || "deepseek-chat") +
+                "）";
+            } else if (hint && ls && ls.key_configured) {
+              hint.textContent =
+                "大脑就绪 · " +
+                (ls.label || ls.provider_id) +
+                " / " +
+                (ls.model || "") +
+                " · 输入消息开始";
+            }
+          }
+        } catch (_) {
+          /* ignore */
+        }
         const r = await window.bitbot.boot();
         banner.className = r.ok ? "ok" : "err";
         let deskExtra = "sessions · tray · hotkey · llm_chat stream";

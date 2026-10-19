@@ -388,6 +388,29 @@ ipcMain.handle("bitbot:daemon:status", async () => {
 
 ipcMain.handle("bitbot:daemon:ensure", async () => ensureRoutineDaemon());
 
+ipcMain.handle("bitbot:llm:status", async () => {
+  try {
+    const cfg = ffi.resolveLlmConfig();
+    return {
+      ok: true,
+      provider_id: cfg.provider_id,
+      label: cfg.label,
+      model: cfg.model,
+      base_url: cfg.base_url,
+      key_configured: Boolean(cfg.key_configured),
+      key_source: cfg.key_source,
+      env_local_hint: "hosts/desktop/.env.local",
+      pretend_ready: false,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+      pretend_ready: false,
+    };
+  }
+});
+
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   // Optional per-turn Host env (e.g. BITBOT_SLACK_CLAIM) — restore after turn.
   const envPatch = (opts && opts.env && typeof opts.env === "object") ? opts.env : null;
