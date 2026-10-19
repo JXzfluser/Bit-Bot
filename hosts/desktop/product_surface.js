@@ -266,36 +266,46 @@ function createProductSurface(repoRoot) {
       return { ok: false, error: "cannot_delete_builtin", mode: "host_delete_bot" };
     }
 
+    const bot = data.bots[botIndex];
     data.bots.splice(botIndex, 1);
+    let primaryReassigned = false;
+    if (data.primary_id === bot_id) {
+      data.primary_id = "agent-bit";
+      primaryReassigned = true;
+    }
     saveBots(data);
 
-    // Cascade: delete sessions
-    let sessions_cascaded = false;
+    // GP-07: routines bound to this bot must stop firing. The daemon sweeps
+    // data/routines/host-routines.json, so remove bound rows *there* (plus
+    // schedule artifacts), not just per-bot files under ROUTINES_DIR.
+    let routines_deleted = 0;
+    const ROUTINES_JSON_PATH = path.join(ROUTINES_DIR, "host-routines.json");
     try {
-      const sessions = readJson(SESSIONS_PATH, null);
-      if (sessions && Array.isArray(sessions)) {
-        const filtered = sessions.filter(s => {
-          return !(s.bot && s.bot === `bot:${bot_id}`);
-        });
-        if (filtered.length < sessions.length) {
-          atomicWrite(SESSIONS_PATH, JSON.stringify(filtered, null, 2));
-          sessions_cascaded = true;
+      const rows = readJson(ROUTINES_JSON_PATH, null);
+      if (Array.isArray(rows)) {
+        const bound = (r) =>
+          r &&
+          (String(r.id || "").includes(bot_id) ||
+            String(r.prompt || "").includes(bot_id));
+        const kept = rows.filter((r) => !bound(r));
+        routines_deleted += rows.length - kept.length;
+        if (kept.length !== rows.length) {
+          atomicWrite(ROUTINES_JSON_PATH, JSON.stringify(kept, null, 2));
         }
       }
     } catch {
-      // sessions.json missing or malformed, skip
+      // routines store missing or malformed, skip
     }
-
-    // Cascade: delete routines
-    let routines_deleted = 0;
     try {
       if (fs.existsSync(ROUTINES_DIR)) {
         const files = fs.readdirSync(ROUTINES_DIR);
         for (const file of files) {
+          if (!/^(schedule|list)-.*\.json$/.test(file)) continue;
           const filePath = path.join(ROUTINES_DIR, file);
           try {
             const content = fs.readFileSync(filePath, "utf8");
-            if (content.includes(`owner=${bot_id}`) || file.includes(bot_id)) {
+            if (content.includes(`owner=${bot_id}`) || file.includes(bot_id) ||
+              (JSON.parse(content).prompt || "").includes(bot_id)) {
               fs.unlinkSync(filePath);
               routines_deleted++;
             }
@@ -306,6 +316,54 @@ function createProductSurface(repoRoot) {
       }
     } catch {
       // routines dir missing, skip
+    }
+
+    // GP-07: cascade sessions. sessions.json is {version, active_id, sessions:[]}
+    // and DM sessions are titled "<bot name> · DM" (renderer convention),
+    // with no per-bot field on the row itself.
+    let sessions_deleted = 0;
+    try {
+      const store = readJson(SESSIONS_PATH, null);
+      if (store && Array.isArray(store.sessions)) {
+        const dmTitles = new Set([bot.name || bot_id, bot_id].map((x) => String(x) + " · DM"));
+        const kept = store.sessions.filter(
+          (s) => !(s && dmTitles.has(String(s.title || "")))
+        );
+        sessions_deleted = store.sessions.length - kept.length;
+        if (sessions_deleted > 0) {
+          store.sessions = kept;
+          if (!kept.length) {
+            store.active_id = "";
+          } else if (kept.every((s) => s.id !== store.active_id)) {
+            store.active_id = kept[0].id;
+          }
+          atomicWrite(SESSIONS_PATH, JSON.stringify(store, null, 2));
+        }
+      }
+    } catch {
+      // sessions.json missing or malformed, skip
+    }
+
+    // GP-07: remove the bot from rooms; drop rooms that fall below 2 members.
+    let rooms_removed = 0;
+    try {
+      const rooms = loadRooms();
+      if (Array.isArray(rooms.rooms)) {
+        for (const r of rooms.rooms) {
+          if (Array.isArray(r.bot_ids)) r.bot_ids = r.bot_ids.filter((x) => x !== bot_id);
+          if (Array.isArray(r.members)) r.members = r.members.filter((x) => x !== bot_id);
+          if (Array.isArray(r.bots)) r.bots = r.bots.filter((x) => x !== bot_id);
+        }
+        const before = rooms.rooms.length;
+        rooms.rooms = rooms.rooms.filter((r) => {
+          const n = (r.bot_ids && r.bot_ids.length) || (r.members && r.members.length) || (r.bots && r.bots.length) || 0;
+          return n >= 2;
+        });
+        rooms_removed = before - rooms.rooms.length;
+        saveRooms(rooms);
+      }
+    } catch {
+      // rooms store missing, skip
     }
 
     // Count workspace files kept
@@ -336,8 +394,11 @@ function createProductSurface(repoRoot) {
       ok: true,
       mode: "host_delete_bot",
       pretend_saved: false,
-      sessions_cascaded,
+      sessions_cascaded: sessions_deleted > 0,
+      sessions_deleted,
       routines_deleted,
+      rooms_removed,
+      primary_reassigned: primaryReassigned,
       workspace_files_kept
     };
   }

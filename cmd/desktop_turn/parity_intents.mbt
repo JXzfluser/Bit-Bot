@@ -2287,6 +2287,30 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(PrimaryBot(bot_id~))
     }
   }
+  if low.has_prefix("hide bot ") {
+    let bot_id = trimmed[9:].trim().to_owned()
+    if bot_id != "" {
+      return Some(HideBot(bot_id~, hidden=true))
+    }
+  }
+  if low.has_prefix("unhide bot ") {
+    let bot_id = trimmed[11:].trim().to_owned()
+    if bot_id != "" {
+      return Some(HideBot(bot_id~, hidden=false))
+    }
+  }
+  if low.has_prefix("confirm delete bot ") {
+    let bot_id = trimmed[19:].trim().to_owned()
+    if bot_id != "" {
+      return Some(DeleteBot(bot_id~, confirmed=true))
+    }
+  }
+  if low.has_prefix("delete bot ") {
+    let bot_id = trimmed[11:].trim().to_owned()
+    if bot_id != "" {
+      return Some(DeleteBot(bot_id~, confirmed=false))
+    }
+  }
   // Take over / hand back (spec §3.2).
   if low == "take over" ||
     low == "need takeover" ||

@@ -22639,6 +22639,35 @@ function createHostFfi(repoRoot) {
         results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
         continue;
       }
+      // Wave G M4: hide / unhide / delete (GP-06 / GP-07) — store-backed, not the CM-0204/CM-1907 agent directory.
+      if (kind === "bot_hide" || kind === "bot_unhide") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = kind === "bot_hide" ? surface.hideBot(args.bot) : surface.unhideBot(args.bot);
+        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        continue;
+      }
+      if (kind === "bot_delete") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const res = surface.deleteBot(args.bot, args.confirm || "");
+        results.push({
+          kind,
+          ok: res.ok === true,
+          command: cmd,
+          stdout: JSON.stringify(res),
+          stderr: "",
+          mode: res.mode,
+          awaiting_confirm: res.needs_confirm === true,
+        });
+        continue;
+      }
 
       // Wave G: Takeover effects
       if (kind === "take_over") {

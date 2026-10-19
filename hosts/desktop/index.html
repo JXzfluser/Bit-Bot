@@ -886,6 +886,19 @@
         </div>
       </div>
     </div>
+    <!-- GP-07 store-backed delete dialog (hide-first advisory · irreversible · cascade) -->
+    <div id="bot-delete-dialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;align-items:center;justify-content:center">
+      <div style="width:min(420px,90vw);background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
+        <div id="bot-delete-title" style="font-weight:700;font-size:15px">删除 Bot</div>
+        <div id="bot-delete-advise" style="margin-top:8px;font-size:13px;color:var(--warn-ink);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:8px;padding:8px"></div>
+        <div id="bot-delete-warn" style="margin-top:8px;font-size:13px;color:var(--danger-ink)"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" id="bot-delete-cancel-btn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer"></button>
+          <button type="button" id="bot-delete-hide-btn" style="background:var(--accent-soft);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer"></button>
+          <button type="button" id="bot-delete-go-btn" style="background:var(--danger);color:#fff;border:0;border-radius:8px;padding:6px 12px;cursor:pointer"></button>
+        </div>
+      </div>
+    </div>
     <div id="log">
       <div id="welcome">
         <div class="w-brand">Bit Bot</div>
@@ -1483,6 +1496,10 @@
       [/^Take over planned \(GP-32\/GP-33\)\..*/i, "rTakeover"],
       [/^Local execution = Never allow: .*/i, "rNever"],
       [/^Auto-review 命中（(.+)）：已按 Always-allow 规则自动执行，未再次询问。$/, "rAutoReview"],
+      [/^Hide Bot planned \(GP-06\)\..*/i, "rBotHide"],
+      [/^Unhide Bot planned \(GP-06\)\..*/i, "rBotUnhide"],
+      [/^Delete Bot needs confirmation \(GP-07\)\..*/i, "rBotDeleteConfirm"],
+      [/^Delete Bot confirmed \(GP-07\)\..*/i, "rBotDeleteGo"],
     ];
     function wavegLocalizeReply(text) {
       const raw = String(text || "");
@@ -2276,7 +2293,9 @@
 
     async function runUserTurn(text, opts) {
       clearWelcome();
-      addMsg("user", text + (opts && opts.approved ? " [approved]" : ""));
+      // Menu-driven protocol phrases (pin/hide/delete…) stay out of the
+      // transcript — Grok's sidebar actions never echo raw commands.
+      if (!(opts && opts.silentUser)) addMsg("user", text + (opts && opts.approved ? " [approved]" : ""));
       sendBtn.disabled = true;
       streamEl = null;
       try {
@@ -2569,6 +2588,26 @@
                 addMsg("assistant", "Agent deleted: " + (p.agent_id || "?"));
                 const box = document.getElementById("agent-delete-confirm");
                 if (box) box.style.display = "none";
+              }
+            } catch (_) { /* ignore */ }
+          }
+          // GP-07: store-backed bot_delete result → localized cascade summary.
+          const botDelHost = (r.host_results || []).find(
+            (h) => h && h.kind === "bot_delete",
+          );
+          if (botDelHost) {
+            try {
+              const p = JSON.parse(botDelHost.stdout || "{}");
+              if (p.ok) {
+                addMsg(
+                  "assistant",
+                  wavegT("rBotDeleteDone")
+                    .replace("{sess}", String(p.sessions_deleted || 0))
+                    .replace("{routines}", String(p.routines_deleted || 0))
+                    .replace("{kept}", String(p.workspace_files_kept || 0)),
+                );
+              } else if (p.error === "cannot_delete_builtin") {
+                addMsg("assistant", wavegT("rBotDeleteBuiltin"));
               }
             } catch (_) { /* ignore */ }
           }
@@ -4955,6 +4994,8 @@
     }
 
     // Right-click / long-press menu: Edit · Pin · Duplicate · Primary · Hide · Delete (spec §2.2)
+    // GP-06/GP-07 route through store-backed "hide bot"/"delete bot" phrases —
+    // NOT the legacy CM-0204/CM-1907 agent directory (those don't touch bots.json).
     let botMenuEl = null;
     function showBotMenu(ev, bot) {
       hideBotMenu();
@@ -4965,12 +5006,12 @@
       botMenuEl.style.top = Math.min(ev.clientY, window.innerHeight - 260) + "px";
       botMenuEl.style.bottom = "auto";
       const items = [
-        ["Pin / Unpin", () => runUserTurn((bot.pinned ? "unpin bot " : "pin bot ") + bot.id, {})],
-        ["Duplicate", () => runUserTurn("duplicate bot " + bot.id, {})],
-        ["Set as Primary", () => runUserTurn("set primary bot " + bot.id, {})],
-        [bot.hidden ? "Unhide" : "Hide from sidebar", () => runUserTurn((bot.hidden ? "unhide agent " : "hide agent ") + bot.id, {})],
-        ["Edit Profile…", () => openBotEditForm(bot)],
-        ["Delete…", () => { pendingDeleteAgentId = bot.id; runUserTurn("delete agent " + bot.id, {}); }],
+        [bot.pinned ? wavegT("menuUnpin") : wavegT("menuPin"), () => runUserTurn((bot.pinned ? "unpin bot " : "pin bot ") + bot.id, { skipSession: true, silentUser: true })],
+        [wavegT("menuDuplicate"), () => runUserTurn("duplicate bot " + bot.id, { skipSession: true, silentUser: true })],
+        [wavegT("menuPrimary"), () => runUserTurn("set primary bot " + bot.id, { skipSession: true, silentUser: true })],
+        [bot.hidden ? wavegT("menuUnhide") : wavegT("menuHide"), () => runUserTurn((bot.hidden ? "unhide bot " : "hide bot ") + bot.id, { skipSession: true, silentUser: true })],
+        [wavegT("menuEdit"), () => openBotEditForm(bot)],
+        [wavegT("menuDelete"), () => openBotDeleteDialog(bot)],
       ];
       for (const [label, fn] of items) {
         const b = document.createElement("button");
@@ -4995,6 +5036,33 @@
     function hideBotMenu() {
       if (botMenuEl && botMenuEl.parentNode) botMenuEl.parentNode.removeChild(botMenuEl);
       botMenuEl = null;
+    }
+
+    // GP-07 delete dialog: hide-first advisory + irreversible cascade warning.
+    let pendingDeleteBotId = "";
+    function openBotDeleteDialog(bot) {
+      if (!bot) return;
+      pendingDeleteBotId = bot.id;
+      const dlg = document.getElementById("bot-delete-dialog");
+      if (!dlg) return;
+      const title = document.getElementById("bot-delete-title");
+      if (title) title.textContent = wavegT("menuDelete").replace("…", "") + " · " + (bot.name || bot.id);
+      const adv = document.getElementById("bot-delete-advise");
+      if (adv) adv.textContent = wavegT("deleteAdvise");
+      const warn = document.getElementById("bot-delete-warn");
+      if (warn) warn.textContent = wavegT("deleteWarn");
+      const cancel = document.getElementById("bot-delete-cancel-btn");
+      if (cancel) cancel.textContent = wavegT("deleteCancelBtn");
+      const hideBtn = document.getElementById("bot-delete-hide-btn");
+      if (hideBtn) hideBtn.textContent = wavegT("deleteHideBtn");
+      const go = document.getElementById("bot-delete-go-btn");
+      if (go) go.textContent = wavegT("deleteConfirmBtn");
+      dlg.style.display = "flex";
+    }
+    function closeBotDeleteDialog() {
+      const dlg = document.getElementById("bot-delete-dialog");
+      if (dlg) dlg.style.display = "none";
+      pendingDeleteBotId = "";
     }
 
     function openBotEditForm(bot) {
@@ -5099,6 +5167,38 @@
       agentDeleteCancelBtn.addEventListener("click", () => {
         const box = document.getElementById("agent-delete-confirm");
         if (box) box.style.display = "none";
+      });
+    }
+    // GP-07 store-backed delete dialog wiring (hide-first · confirm · cancel)
+    const botDeleteGoBtn = document.getElementById("bot-delete-go-btn");
+    if (botDeleteGoBtn) {
+      botDeleteGoBtn.addEventListener("click", async () => {
+        const id = pendingDeleteBotId;
+        closeBotDeleteDialog();
+        if (!id) return;
+        await runUserTurn("confirm delete bot " + id, { skipSession: true, silentUser: true });
+        await refreshBots();
+        await refreshSessions();
+      });
+    }
+    const botDeleteHideBtn = document.getElementById("bot-delete-hide-btn");
+    if (botDeleteHideBtn) {
+      botDeleteHideBtn.addEventListener("click", async () => {
+        const id = pendingDeleteBotId;
+        closeBotDeleteDialog();
+        if (!id) return;
+        await runUserTurn("hide bot " + id, { skipSession: true, silentUser: true });
+        await refreshBots();
+      });
+    }
+    const botDeleteCancelBtn = document.getElementById("bot-delete-cancel-btn");
+    if (botDeleteCancelBtn) {
+      botDeleteCancelBtn.addEventListener("click", closeBotDeleteDialog);
+    }
+    const botDeleteDlgEl = document.getElementById("bot-delete-dialog");
+    if (botDeleteDlgEl) {
+      botDeleteDlgEl.addEventListener("click", (e) => {
+        if (e.target === botDeleteDlgEl) closeBotDeleteDialog();
       });
     }
     const permDismiss = document.getElementById("permission-dismiss");
@@ -5531,6 +5631,25 @@
         rTakeover: "接管中 — 你正在直接操作本机屏幕，完成后点「我操作完了」。",
         rNever: "本地执行 = 从不允许：该操作被你的设置直接拒绝，未执行。",
         rAutoReview: "Auto-review：命中 {via} 规则，已自动执行（未再次询问）。",
+        rBotHide: "已从侧栏隐藏（可在「已隐藏的 Bot」恢复）；Bot 与定时任务未暂停，仍在运行。",
+        rBotUnhide: "已恢复到侧栏。",
+        rBotDeleteConfirm: "删除不可撤销：将一并移除配置、私聊会话与定时任务（共享 Computer 文件保留）。只是嫌乱的话，隐藏更可逆。",
+        rBotDeleteGo: "正在删除：配置、会话与定时任务已级联清理（共享 Computer 文件保留）。",
+        rBotDeleteDone: "已删除 Bot：会话 {sess} 个、定时任务 {routines} 个已级联清理；共享 Computer 文件保留 {kept} 个。",
+        rBotDeleteBuiltin: "内置 Bit Bot（agent-bit）不可删除。",
+        menuPin: "置顶",
+        menuUnpin: "取消置顶",
+        menuDuplicate: "创建副本",
+        menuPrimary: "设为 Primary",
+        menuHide: "从侧栏隐藏",
+        menuUnhide: "恢复到侧栏",
+        menuEdit: "编辑资料…",
+        menuDelete: "删除…",
+        deleteAdvise: "建议改用隐藏：隐藏不删数据、随时可恢复。",
+        deleteWarn: "删除不可撤销，将级联移除该 Bot 的会话与定时任务（共享 Computer 文件保留）。",
+        deleteConfirmBtn: "确认删除",
+        deleteHideBtn: "改为隐藏",
+        deleteCancelBtn: "取消",
         chatCreatedHint: "新会话已创建 · 输入消息开始",
       },
       "zh-TW": {
@@ -5642,6 +5761,25 @@
         rTakeover: "接管中 — 你正在直接操作本機螢幕，完成後點「我操作完了」。",
         rNever: "本機執行 = 從不允許：該操作被你的設定直接拒絕，未執行。",
         rAutoReview: "Auto-review：命中 {via} 規則，已自動執行（未再次詢問）。",
+        rBotHide: "已從側欄隱藏（可在「已隱藏的 Bot」恢復）；Bot 與排程任務未暫停，仍在執行。",
+        rBotUnhide: "已恢復到側欄。",
+        rBotDeleteConfirm: "刪除不可撤銷：將一併移除設定、私聊對話與排程任務（共用 Computer 檔案保留）。只是嫌亂的話，隱藏更可逆。",
+        rBotDeleteGo: "正在刪除：設定、對話與排程任務已級聯清理（共用 Computer 檔案保留）。",
+        rBotDeleteDone: "已刪除 Bot：對話 {sess} 個、排程任務 {routines} 個已級聯清理；共用 Computer 檔案保留 {kept} 個。",
+        rBotDeleteBuiltin: "內建 Bit Bot（agent-bit）不可刪除。",
+        menuPin: "釘選",
+        menuUnpin: "取消釘選",
+        menuDuplicate: "建立副本",
+        menuPrimary: "設為 Primary",
+        menuHide: "從側欄隱藏",
+        menuUnhide: "恢復到側欄",
+        menuEdit: "編輯設定檔…",
+        menuDelete: "刪除…",
+        deleteAdvise: "建議改用隱藏：隱藏不刪資料、隨時可恢復。",
+        deleteWarn: "刪除不可撤銷，將級聯移除該 Bot 的對話與排程任務（共用 Computer 檔案保留）。",
+        deleteConfirmBtn: "確認刪除",
+        deleteHideBtn: "改為隱藏",
+        deleteCancelBtn: "取消",
         chatCreatedHint: "新工作已建立 · 輸入訊息開始",
       },
       en: {
@@ -5753,6 +5891,25 @@
         rTakeover: "Take over — you control this screen; hit 「I'm done」 when finished.",
         rNever: "Local execution = Never allow: refused by your setting, nothing ran.",
         rAutoReview: "Auto-review: matched {via} rule, executed without asking again.",
+        rBotHide: "Hidden from sidebar (restore anytime under Hidden Bots); the Bot and its routines are NOT paused.",
+        rBotUnhide: "Restored to the sidebar.",
+        rBotDeleteConfirm: "Delete is irreversible: config, DM sessions and routines are removed (shared Computer files are kept). If it's just clutter, Hide is reversible.",
+        rBotDeleteGo: "Deleting: config, sessions and routines cascaded (shared Computer files kept).",
+        rBotDeleteDone: "Bot deleted: {sess} session(s) and {routines} routine(s) cascaded; {kept} shared Computer file(s) kept.",
+        rBotDeleteBuiltin: "Built-in Bit Bot (agent-bit) cannot be deleted.",
+        menuPin: "Pin",
+        menuUnpin: "Unpin",
+        menuDuplicate: "Duplicate",
+        menuPrimary: "Set as Primary",
+        menuHide: "Hide from sidebar",
+        menuUnhide: "Unhide",
+        menuEdit: "Edit Profile…",
+        menuDelete: "Delete…",
+        deleteAdvise: "Prefer Hide: it keeps your data and is reversible.",
+        deleteWarn: "Delete is irreversible and cascades this Bot's sessions and routines (shared Computer files are kept).",
+        deleteConfirmBtn: "Confirm delete",
+        deleteHideBtn: "Hide instead",
+        deleteCancelBtn: "Cancel",
         chatCreatedHint: "New chat created · type a message to start",
       },
     };

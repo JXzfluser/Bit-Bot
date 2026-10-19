@@ -188,6 +188,8 @@ pub(all) enum TurnIntent {
   DuplicateBot(bot_id~ : String)
   PinBot(bot_id~ : String, pinned~ : Bool)
   PrimaryBot(bot_id~ : String)
+  HideBot(bot_id~ : String, hidden~ : Bool)
+  DeleteBot(bot_id~ : String, confirmed~ : Bool)
   TakeOver(reason~ : String)
   TakeoverDone
   RecoverComputer
@@ -317,6 +319,8 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     DuplicateBot(_) => "duplicate_bot"
     PinBot(_) => "pin_bot"
     PrimaryBot(_) => "primary_bot"
+    HideBot(_) => "hide_bot"
+    DeleteBot(_) => "delete_bot"
     TakeOver(_) => "take_over"
     TakeoverDone => "takeover_done"
     RecoverComputer => "recover_computer"
@@ -4625,6 +4629,46 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Primary Bot planned (GP-08). Host routes @bot inbound to the persisted primary id.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    HideBot(bot_id~, hidden~) => {
+      let effect : DesktopEffect = {
+        kind: if hidden { "bot_hide" } else { "bot_unhide" },
+        command: "bot=" + bot_id,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        if hidden {
+          "Hide Bot planned (GP-06). Host moves the Bot into Hidden Bots; the Bot is not paused and its Routines keep running."
+        } else {
+          "Unhide Bot planned (GP-06). Host restores the Bot from Hidden Bots back to the sidebar."
+        },
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    DeleteBot(bot_id~, confirmed~) => {
+      let effect : DesktopEffect = {
+        kind: "bot_delete",
+        command: "bot=" + bot_id + (if confirmed { " confirm=yes" } else { "" }),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        if confirmed {
+          "Delete Bot confirmed (GP-07). Host removes the Bot config, its sessions and routines; shared Computer files are kept."
+        } else {
+          "Delete Bot needs confirmation (GP-07). Deletion is irreversible and cascades sessions/routines. If it was just clutter, hiding is reversible \u2014 Host shows the hide-first advisory."
+        },
         intent,
         ctx~,
         effects=[effect],

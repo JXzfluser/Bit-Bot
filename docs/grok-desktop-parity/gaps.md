@@ -85,3 +85,15 @@
    - auto_approved 轮次仍显示过期 "Approval required" 行 → 渲染时抑制。
    - 默认会话标题硬编码中文 → renderer 建会话改用 `wavegT("newChat")`；`sessions.js` 自动改名启发式扩为多语言默认标题集。原生菜单标签仍在主进程（会话首条消息即自动改名，不残留）。
    - `host_routine_daemon.sh` 随机占用 CDP 9223 端口 → 驱动测试前需 `ss -ltnp | grep 9223` 排查。
+
+## Wave M4（Bot 信息面板：Hide / Delete 接真 store，本轮）
+
+规格：`/app/grokspec/grok-bot-spec.md` §2.2（Hide ≠ pause、Hidden Bots 恢复；Delete 不可撤销、级联、共享 Computer 文件保留、先提示隐藏）。
+
+1. **断链根因**：菜单 Hide/Delete 走 CM-0204/CM-1907 agent-directory，根本不碰 `bots.json`；`botsDelete` 级联三处错位——sessions.json 实为 `{version,active_id,sessions:[]}` 对象（旧代码按数组读，永不命中）、会话行没有 bot 字段（DM 约定是标题 `"<name> · DM"`）、routines 实住在 `data/routines/host-routines.json`（旧代码扫 `owner=` 文本）。全部修复并有脚本断言。
+2. **内核新意图**：`HideBot(bot_id,hidden)` / `DeleteBot(bot_id,confirmed)` → effects `bot_hide`/`bot_unhide`/`bot_delete`（confirm=yes 后缀）；短语 `hide bot|unhide bot|delete bot|confirm delete bot`；wbtest 断言 intent/kind/command 三件套。
+3. **Host 分发**：`bot_hide/bot_unhide/bot_delete` 接 `surface.hideBot/unhideBot/deleteBot`；未确认删除返回 `needs_confirm + advise_hide_first`，绝不静默执行。
+4. **级联语义（GP-07）**：删 bots 行 + 同名 DM 会话（含按 bot id 命名的）+ host-routines.json 绑定行（id 或 prompt 含 bot id）+ schedule-*.json 工件 + rooms 成员（<2 成员房间整体删除）；primary 命中被删 Bot 时回落 agent-bit；`workspace_files_kept` 计数证明共享 Computer 文件保留；agent-bit 拒绝删除。
+5. **UI（Grok 对齐）**：菜单六项全 i18n；Delete 弹层含 hide-first 建议（黄条）+ 不可撤销警告（红字）+ 取消/改为隐藏/确认删除；菜单动作 `silentUser+skipSession` —— 协议短语不进 transcript、不进会话历史，只留本地化结果行（`已删除 Bot：会话 N 个…`）。
+6. **验证**：smoke 新增 13 断言（PASS=38，双跑幂等——G-1b 末尾重建 Smoke 供 G-6 用）；moon test 373/373；Electron smoke `intent=hide_bot ok=true`；CDP 截图全链路（隐藏→Hidden Bots(1)→恢复→删除弹层→级联回执）。
+7. **环境注意**：routine daemon 的 python 子进程会再次抢 9223（本轮复现一次）——CDP 启动前 `ss -ltnp | grep 9223` 已是固定前置检查。

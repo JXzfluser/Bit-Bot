@@ -1140,6 +1140,22 @@ test "desktop_turn_wave_g_bot_lifecycle_kinds" {
 
   let r6 = run_desktop_turn("set primary bot bot-1", turn_id="wg-6")
   assert_eq(r6.effects[0].kind, "bot_set_primary")
+
+  let r7 = run_desktop_turn("hide bot bot-1", turn_id="wg-7")
+  assert_eq(r7.intent, "hide_bot")
+  assert_eq(r7.effects[0].kind, "bot_hide")
+  assert_eq(r7.effects[0].command, "bot=bot-1")
+
+  let r8 = run_desktop_turn("unhide bot bot-1", turn_id="wg-8")
+  assert_eq(r8.effects[0].kind, "bot_unhide")
+
+  let r9 = run_desktop_turn("delete bot bot-1", turn_id="wg-9")
+  assert_eq(r9.intent, "delete_bot")
+  assert_eq(r9.effects[0].kind, "bot_delete")
+  assert_eq(r9.effects[0].command, "bot=bot-1")
+
+  let r10 = run_desktop_turn("confirm delete bot bot-1", turn_id="wg-10")
+  assert_eq(r10.effects[0].command, "bot=bot-1 confirm=yes")
 }
 
 ///|
