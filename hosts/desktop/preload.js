@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("bitbot", {
     status: () => ipcRenderer.invoke("bitbot:secrets:status"),
     set: (patch) => ipcRenderer.invoke("bitbot:secrets:set", patch || {}),
     probeLlm: () => ipcRenderer.invoke("bitbot:secrets:probeLlm"),
+    probeCnChannels: () =>
+      ipcRenderer.invoke("bitbot:secrets:probeCnChannels"),
     runGate: () => ipcRenderer.invoke("bitbot:secrets:runGate"),
   },
 });

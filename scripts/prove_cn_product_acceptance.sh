@@ -85,6 +85,42 @@ else
   note "WARN DeepSeek API reachability HTTP ${ds_code:-err} (egress may block)"
 fi
 
+# CN channel API egress (reachability only — not live success without creds)
+cn_reach=0
+dt_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+  -X POST "https://oapi.dingtalk.com/robot/send?access_token=reachability" \
+  -H "Content-Type: application/json" -d '{"msgtype":"text","text":{"content":"ping"}}' \
+  --connect-timeout 10 --max-time 20 || true)
+if [[ "$dt_code" == "200" || "$dt_code" == "400" || "$dt_code" == "401" || "$dt_code" == "403" ]]; then
+  cn_reach=$((cn_reach + 1))
+fi
+fs_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+  "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" \
+  -H "Content-Type: application/json" -d '{}' \
+  --connect-timeout 10 --max-time 20 || true)
+if [[ "$fs_code" == "200" || "$fs_code" == "400" || "$fs_code" == "401" || "$fs_code" == "403" ]]; then
+  cn_reach=$((cn_reach + 1))
+fi
+wc_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+  "https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=reach&corpsecret=reach" \
+  --connect-timeout 10 --max-time 20 || true)
+if [[ "$wc_code" == "200" || "$wc_code" == "400" || "$wc_code" == "401" || "$wc_code" == "403" ]]; then
+  cn_reach=$((cn_reach + 1))
+fi
+if [[ "$cn_reach" -ge 2 ]]; then
+  ok "CN channel APIs reachable (dingtalk=$dt_code feishu=$fs_code wecom=$wc_code)"
+else
+  note "WARN CN channel API reachability low (dingtalk=$dt_code feishu=$fs_code wecom=$wc_code)"
+fi
+
+# Product channel probe helper wired in Desktop Settings
+if grep -q 'probeCnChannels' "$ROOT/hosts/desktop/main.js" 2>/dev/null && \
+   grep -q 'sec-probe-cn' "$ROOT/hosts/desktop/index.html" 2>/dev/null; then
+  ok "Desktop「试连国内渠道」product probe wired"
+else
+  bad "Desktop CN channel probe UI/IPC missing"
+fi
+
 # P0 real model — require configured key AND successful live probe to DeepSeek (or configured base)
 KEY="${BITBOT_LLM_API_KEY:-}"
 BASE="${BITBOT_LLM_BASE_URL:-https://api.deepseek.com/v1}"

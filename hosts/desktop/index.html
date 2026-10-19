@@ -557,9 +557,11 @@
               <button type="button" id="sec-ota-check" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;white-space:nowrap">查更新</button>
             </div>
           </label>
+          <div id="sec-inbound-url" style="margin-top:4px;padding:8px;border:1px dashed var(--line);border-radius:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button type="button" id="sec-save" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">保存并热加载</button>
             <button type="button" id="sec-probe" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连大脑</button>
+            <button type="button" id="sec-probe-cn" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连国内渠道</button>
             <button type="button" id="sec-gate" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 12px;cursor:pointer">跑验收门禁</button>
           </div>
           <div id="sec-status" style="color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
@@ -651,26 +653,28 @@
         <button type="button" id="pref-local" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Local execution off</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">Channels（海外 · 次要）</div>
-    <div class="machine-item">
-      <div class="name">Slack / Teams outbound + claim</div>
-      <div class="meta" id="channels-meta">draft · thread · sandbox claim (Host env)</div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="ch-slack-draft" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Slack draft</button>
-        <button type="button" id="ch-slack-thread" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
-        <button type="button" id="ch-slack-dm" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Personal Slack DM</button>
-        <button type="button" id="ch-slack-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
-        <button type="button" id="ch-teams-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
-        <button type="button" id="ch-teams-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams send</button>
-        <button type="button" id="ch-teams-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
-        <button type="button" id="ch-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
-        <button type="button" id="ch-jobs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
-        <button type="button" id="ch-xsearch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
-        <button type="button" id="ch-workflows" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List workflows</button>
-        <button type="button" id="ch-credentials" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List credentials</button>
-        <button type="button" id="ch-cred-fill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fill credential</button>
+    <details class="lab" style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#0c1410">
+      <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外渠道实验室（Slack/Gmail · 非产品主路径）</summary>
+      <div class="machine-item" style="margin-top:8px">
+        <div class="name">Slack / Teams outbound + claim</div>
+        <div class="meta" id="channels-meta">降级 · 主路径是上方钉钉/飞书/企微</div>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <button type="button" id="ch-slack-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack draft</button>
+          <button type="button" id="ch-slack-thread" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
+          <button type="button" id="ch-slack-dm" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Personal Slack DM</button>
+          <button type="button" id="ch-slack-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
+          <button type="button" id="ch-teams-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
+          <button type="button" id="ch-teams-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams send</button>
+          <button type="button" id="ch-teams-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
+          <button type="button" id="ch-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
+          <button type="button" id="ch-jobs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
+          <button type="button" id="ch-xsearch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
+          <button type="button" id="ch-workflows" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List workflows</button>
+          <button type="button" id="ch-credentials" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List credentials</button>
+          <button type="button" id="ch-cred-fill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fill credential</button>
+        </div>
       </div>
-    </div>
+    </details>
     <div class="panel-title" style="margin-top:16px">Plugins</div>
     <div class="machine-item">
       <div class="name">MCP plugins (CM-0904 / 2107 / 2108)</div>
@@ -4102,6 +4106,7 @@
       const secStatus = document.getElementById("sec-status");
       if (secStatus && hint) secStatus.textContent = hint;
       refreshSecretsForm().catch(() => {});
+      refreshInboundUrlStrip().catch(() => {});
     }
 
     async function refreshConfigGate() {
@@ -4178,6 +4183,35 @@
         saveSecretsFromForm().catch(() => {});
       });
     }
+    async function refreshInboundUrlStrip() {
+      const el = document.getElementById("sec-inbound-url");
+      if (!el || !window.bitbot.cnInboundStatus) return;
+      try {
+        const st = await window.bitbot.cnInboundStatus();
+        if (!st || !st.listening) {
+          el.textContent =
+            "入站未监听 — Desktop 启动会拉起 :18765；公网用 scripts/cn_inbound_tunnel.sh";
+          return;
+        }
+        const pub = st.public_url || "";
+        const routes = st.routes || {};
+        el.textContent = pub
+          ? "入站公网（贴进钉钉/飞书/企微控制台）: " +
+            pub +
+            " · dingtalk=" +
+            (routes.dingtalk || "") +
+            " · feishu=" +
+            (routes.feishu || "") +
+            " · wecom=" +
+            (routes.wecom || "")
+          : "入站本机 http://127.0.0.1:" +
+            (st.port || 18765) +
+            " — 尚无公网 URL（跑 cn_inbound_tunnel.sh）";
+      } catch (_) {
+        el.textContent = "入站状态读取失败";
+      }
+    }
+
     const secProbe = document.getElementById("sec-probe");
     if (secProbe) {
       secProbe.addEventListener("click", async () => {
@@ -4203,6 +4237,38 @@
           if (secStatus) {
             secStatus.textContent =
               "试连异常 · " + String(e && e.message ? e.message : e);
+          }
+        }
+      });
+    }
+    const secProbeCn = document.getElementById("sec-probe-cn");
+    if (secProbeCn) {
+      secProbeCn.addEventListener("click", async () => {
+        const secStatus = document.getElementById("sec-status");
+        if (secStatus) secStatus.textContent = "试连国内渠道…";
+        try {
+          const r = await window.bitbot.secrets.probeCnChannels();
+          const parts = ((r && r.channels) || [])
+            .map(function (c) {
+              if (!c.armed) return c.connector + "=draft";
+              return (
+                c.connector +
+                "=" +
+                (c.live_ok ? "live_ok" : "live_fail") +
+                (c.error ? "(" + String(c.error).slice(0, 40) + ")" : "")
+              );
+            })
+            .join(" · ");
+          if (secStatus) {
+            secStatus.textContent = r && r.any_live
+              ? "渠道试连 · 至少一路 live · " + parts
+              : "渠道试连 · 无 live（不假装）· " + parts;
+          }
+          await refreshInboundUrlStrip();
+        } catch (e) {
+          if (secStatus) {
+            secStatus.textContent =
+              "渠道试连异常 · " + String(e && e.message ? e.message : e);
           }
         }
       });
@@ -4457,6 +4523,11 @@
         }
         try {
           await refreshConfigGate();
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          await refreshInboundUrlStrip();
         } catch (_) {
           /* ignore */
         }

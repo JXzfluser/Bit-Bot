@@ -834,6 +834,82 @@ ipcMain.handle("bitbot:secrets:probeLlm", async () => {
   }
 });
 
+/**
+ * Probe 钉钉/飞书/企微 live gates with real Host channel_send (no pretend).
+ * Unarmed channels return honest residual — never invents live success.
+ */
+ipcMain.handle("bitbot:secrets:probeCnChannels", async () => {
+  const probes = [
+    {
+      id: "dingtalk",
+      post: "BITBOT_DINGTALK_POST",
+      addr: "dingtalk:cid-probe",
+      body: "Bit Bot 渠道试连 · 钉钉",
+    },
+    {
+      id: "feishu",
+      post: "BITBOT_FEISHU_POST",
+      addr: `feishu:${String(process.env.BITBOT_FEISHU_CHAT_ID || "oc_probe").trim()}`,
+      body: "Bit Bot 渠道试连 · 飞书",
+    },
+    {
+      id: "wecom",
+      post: "BITBOT_WECOM_POST",
+      addr: `wecom:${String(process.env.BITBOT_WECOM_TOUSER || "BitBotProbe").trim()}`,
+      body: "Bit Bot 渠道试连 · 企微",
+    },
+  ];
+  const channels = [];
+  for (const p of probes) {
+    if (process.env[p.post] !== "1") {
+      channels.push({
+        connector: p.id,
+        armed: false,
+        live_ok: false,
+        residual: `${p.post}!=1 — Settings→凭证 勾选 live`,
+        pretend_live: false,
+      });
+      continue;
+    }
+    try {
+      const results = await ffi.executeHostEffects(
+        [{ kind: "channel_send", command: `${p.addr} :: ${p.body}` }],
+        { sessionId: "cn-probe", approved: true },
+      );
+      const hit =
+        (results || []).find((r) => r && r.kind === "channel_send") || null;
+      const live =
+        Boolean(hit && hit.ok) &&
+        (hit.live_post === true ||
+          (hit.mode && String(hit.mode).startsWith("live")));
+      channels.push({
+        connector: p.id,
+        armed: true,
+        live_ok: live,
+        mode: hit && hit.mode,
+        error: (hit && hit.error) || (!hit ? "no channel_send result" : ""),
+        pretend_live: false,
+      });
+    } catch (err) {
+      channels.push({
+        connector: p.id,
+        armed: true,
+        live_ok: false,
+        error: String(err && err.message ? err.message : err),
+        pretend_live: false,
+      });
+    }
+  }
+  const anyLive = channels.some((c) => c.live_ok);
+  return {
+    ok: anyLive,
+    pretend_probe: false,
+    any_live: anyLive,
+    channels,
+    inbound: cnInbound ? cnInbound.status() : { listening: false },
+  };
+});
+
 ipcMain.handle("bitbot:product:status", async () => {
   let llm = null;
   try {
