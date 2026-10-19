@@ -1,6 +1,16 @@
 # Desktop release / 备案 / OTA（P4 · Desktop-first）
 
-iOS/Android 本阶段暂缓。本文件只覆盖 Desktop（Windows + macOS Electron）。
+iOS/Android 本阶段暂缓（用户确认可先不考虑）。本文件只覆盖 Desktop（Windows + macOS Electron；Linux 作 CI 打包证明）。
+
+## 本阶段验收（Desktop only）
+
+| 项 | 判定 | 阻塞 |
+|----|------|------|
+| 真窗口 | Electron 可见窗 + Grok 式会话 UI | 无（Xvfb/本机可证） |
+| 真模型 | `llm_chat` → DeepSeek；缺/错 key 诚实失败 | `BITBOT_LLM_API_KEY` |
+| 真渠道 | 钉钉/飞书/企微 `BITBOT_*_POST=1` + 凭证 → live | 渠道 webhook/token |
+| 签名/公证 | electron-builder + notarize.js | Apple / Win 证书 |
+| 移动端 | **暂缓** | — |
 
 ## 签名与公证
 

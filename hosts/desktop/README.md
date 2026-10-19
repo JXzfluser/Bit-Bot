@@ -2,6 +2,8 @@
 
 Electron HostAbi surface for the **MoonBit** product brain (ADR 0005). Lives under `hosts/desktop/` as the Desktop end of the multi-end baseline (`MachineKind::Desktop`).
 
+**本阶段 Desktop-first**：iOS / Android 暂缓；验收只盯真 Desktop 窗口 + 真模型 + 真国内渠道。
+
 ## What it does
 
 - Opens a real window titled **Bit Bot Desktop** with agents sidebar + machines panel
@@ -74,4 +76,12 @@ BITBOT_MOON_TARGET=wasm bash scripts/start-desktop.sh
 
 ## Pack
 
-`npm run pack` prints a note. Wire `electron-builder` / packager when you need installers.
+```bash
+cd hosts/desktop
+npm run pack          # --dir 未打包目录（CI/Linux 常用）
+npm run dist:linux    # AppImage + dir
+npm run dist:mac      # dmg/zip（需 Apple 凭证公证）
+npm run dist:win      # nsis
+```
+
+详见 [`docs/desktop-release.md`](../../docs/desktop-release.md)。

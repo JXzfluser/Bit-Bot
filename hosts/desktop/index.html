@@ -489,7 +489,7 @@
     <div id="log">
       <div id="welcome">
         <div class="w-brand">Bit Bot</div>
-        <div class="w-line">对标 Grok 的国产桌面助手。<br/>对话经 MoonBit 内核 → DeepSeek Host。</div>
+        <div class="w-line">对标 Grok 的国产桌面助手。<br/>Desktop 优先 · MoonBit → DeepSeek Host。</div>
         <div class="w-hint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div>
       </div>
     </div>
@@ -498,7 +498,7 @@
     <div class="panel-title">Machines</div>
     <div class="machine-item">
       <div class="name">Multi-end roster</div>
-      <div class="meta" id="machines-meta">desktop / ios / android (active Host only Connected)</div>
+      <div class="meta" id="machines-meta">Desktop 本阶段 · iOS/Android 暂缓</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="mach-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List machines</button>
       </div>
@@ -509,7 +509,7 @@
     <div class="panel-title" style="margin-top:16px">国内渠道</div>
     <div class="machine-item">
       <div class="name">钉钉 / 飞书 / 企微</div>
-      <div class="meta" id="cn-channels-meta">BITBOT_*_POST=1 + 凭证 → live；否则 draft</div>
+      <div class="meta" id="cn-channels-meta">读取中…</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="cn-dingtalk" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">发钉钉</button>
         <button type="button" id="cn-feishu" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">发飞书</button>
@@ -1372,7 +1372,7 @@
       const msgs = got.session.messages || [];
       if (!msgs.length) {
         log.innerHTML =
-          '<div id="welcome"><div class="w-brand">Bit Bot</div><div class="w-line">对标 Grok 的国产桌面助手。<br/>对话经 MoonBit 内核 → DeepSeek Host。</div><div class="w-hint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div></div>';
+          '<div id="welcome"><div class="w-brand">Bit Bot</div><div class="w-line">对标 Grok 的国产桌面助手。<br/>Desktop 优先 · MoonBit → DeepSeek Host。</div><div class="w-hint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div></div>';
         return;
       }
       for (const m of msgs) {
@@ -3836,6 +3836,25 @@
                 " / " +
                 (ls.model || "") +
                 " · 输入消息开始";
+            }
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          if (window.bitbot.cnStatus) {
+            const cn = await window.bitbot.cnStatus();
+            const meta = document.getElementById("cn-channels-meta");
+            if (meta && cn && Array.isArray(cn.channels)) {
+              meta.textContent = cn.channels
+                .map(function (c) {
+                  return (
+                    c.connector +
+                    "=" +
+                    (c.live_ready ? "live" : "draft")
+                  );
+                })
+                .join(" · ");
             }
           }
         } catch (_) {

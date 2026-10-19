@@ -411,6 +411,62 @@ ipcMain.handle("bitbot:llm:status", async () => {
   }
 });
 
+/** Honest CN channel live-gate status (钉钉/飞书/企微). Never pretends live. */
+function cnChannelGate(name, postEnv, credEnvs) {
+  const postOn = process.env[postEnv] === "1";
+  const creds = {};
+  let anyCred = false;
+  for (const k of credEnvs) {
+    const present = Boolean(String(process.env[k] || "").trim());
+    creds[k] = present;
+    if (present) anyCred = true;
+  }
+  const live_ready = postOn && anyCred;
+  return {
+    connector: name,
+    post_env: postEnv,
+    post_enabled: postOn,
+    credentials: creds,
+    live_ready,
+    mode: live_ready ? "live_gated" : "draft_only",
+    residual: live_ready
+      ? null
+      : !postOn
+        ? `${postEnv}!=1`
+        : "missing channel credential env",
+  };
+}
+
+ipcMain.handle("bitbot:cn:status", async () => {
+  const channels = [
+    cnChannelGate("dingtalk", "BITBOT_DINGTALK_POST", [
+      "BITBOT_DINGTALK_WEBHOOK",
+      "BITBOT_DINGTALK_TOKEN",
+    ]),
+    cnChannelGate("feishu", "BITBOT_FEISHU_POST", [
+      "BITBOT_FEISHU_TOKEN",
+      "BITBOT_FEISHU_CHAT_ID",
+    ]),
+    cnChannelGate("wecom", "BITBOT_WECOM_POST", [
+      "BITBOT_WECOM_TOKEN",
+      "BITBOT_WECOM_AGENT_ID",
+      "BITBOT_WECOM_TOUSER",
+    ]),
+  ];
+  const anyLive = channels.some((c) => c.live_ready);
+  return {
+    ok: true,
+    desktop_first: true,
+    mobile_deferred: true,
+    channels,
+    any_live_ready: anyLive,
+    pretend_live: false,
+    hint: anyLive
+      ? "至少一条国内渠道 live 门控已开"
+      : "国内渠道均为 draft — 在 .env.local 设 BITBOT_*_POST=1 + 凭证",
+  };
+});
+
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   // Optional per-turn Host env (e.g. BITBOT_SLACK_CLAIM) — restore after turn.
   const envPatch = (opts && opts.env && typeof opts.env === "object") ? opts.env : null;
