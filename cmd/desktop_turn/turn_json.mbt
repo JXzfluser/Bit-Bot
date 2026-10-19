@@ -523,11 +523,14 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   }
   if low.has_prefix("read ") ||
       low.has_prefix("read file ") ||
-      low.has_prefix("fs read ") {
+      low.has_prefix("fs read ") ||
+      low.has_prefix("open file ") {
     let p = if low.has_prefix("read file ") {
       trimmed[10:].trim().to_owned()
     } else if low.has_prefix("fs read ") {
       trimmed[8:].trim().to_owned()
+    } else if low.has_prefix("open file ") {
+      trimmed[10:].trim().to_owned()
     } else {
       trimmed[5:].trim().to_owned()
     }
@@ -646,11 +649,14 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   }
   if low.has_prefix("uninstall plugin ") ||
       low.has_prefix("remove plugin ") ||
-      low.has_prefix("remove connector ") {
+      low.has_prefix("remove connector ") ||
+      low.has_prefix("disable plugin ") {
     let id = if low.has_prefix("uninstall plugin ") {
       trimmed[17:].trim().to_owned()
     } else if low.has_prefix("remove plugin ") {
       trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("disable plugin ") {
+      trimmed[15:].trim().to_owned()
     } else {
       trimmed[17:].trim().to_owned()
     }
@@ -667,6 +673,9 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       low == "open plugins" ||
       low == "plugin marketplace" ||
       low == "plugins marketplace" ||
+      low == "mcp namespace list" ||
+      low == "list mcp namespaces" ||
+      low == "mcp call tools/list" ||
       low.has_prefix("list plugins ") ||
       low.has_prefix("search plugins ") ||
       low.has_prefix("mcp list tools ") {
@@ -681,9 +690,13 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
     return ListPlugins(query=q)
   }
-  if low.has_prefix("get plugin ") || low.has_prefix("plugin info ") {
+  if low.has_prefix("get plugin ") ||
+      low.has_prefix("plugin info ") ||
+      low.has_prefix("configure plugin ") {
     let id = if low.has_prefix("get plugin ") {
       trimmed[11:].trim().to_owned()
+    } else if low.has_prefix("configure plugin ") {
+      trimmed[17:].trim().to_owned()
     } else {
       trimmed[12:].trim().to_owned()
     }
@@ -691,9 +704,13 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       return GetPlugin(plugin_id=id)
     }
   }
-  if low.has_prefix("install plugin ") || low.has_prefix("add connector ") {
+  if low.has_prefix("install plugin ") ||
+      low.has_prefix("add connector ") ||
+      low.has_prefix("enable plugin ") {
     let id = if low.has_prefix("install plugin ") {
       trimmed[15:].trim().to_owned()
+    } else if low.has_prefix("enable plugin ") {
+      trimmed[14:].trim().to_owned()
     } else {
       trimmed[14:].trim().to_owned()
     }

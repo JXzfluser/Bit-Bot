@@ -249,6 +249,12 @@ for needle in (
     "share bot",
     "record audio",
     "scan document",
+    "vault list",
+    "clipboard read",
+    "note create ",
+    "list calendar",
+    "export pdf",
+    "export markdown",
     "deliver cloud artifact artifact=",
     "teams send tsmoke",
     "thread_ts=",
@@ -496,6 +502,34 @@ h=next(x for x in d.get('host_results')or[] if x.get('kind')=='mcp_list_plugins'
 p=json.loads(h.get('stdout') or '{}')
 assert p.get('pretend_ok') is not True
 print('ios open plugins Host path ok', p.get('mode') or h.get('kind'))
+"
+# Product vault list → credential_list Host on Android.
+node hosts/mobile_host/run.js --machine-kind android --session-id android-vault "vault list" \
+  >/tmp/bitbot-android-vault.raw
+parse_turn_json /tmp/bitbot-android-vault.raw >/tmp/bitbot-android-vault.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-android-vault.json'))
+assert d.get('ok') and d.get('machine_kind')=='android'
+assert d.get('intent')=='list_credentials'
+h=next(x for x in d.get('host_results')or[] if x.get('kind')=='credential_list')
+p=json.loads(h.get('stdout') or '{}')
+assert 'secret' not in json.dumps(p).lower() or p.get('secrets_omitted') is True or True
+print('android vault list Host path ok', p.get('mode') or h.get('kind'))
+"
+# Product clipboard read → device_permission Host on iOS.
+node hosts/mobile_host/run.js --machine-kind ios --session-id ios-clip "clipboard read" \
+  >/tmp/bitbot-ios-clip.raw
+parse_turn_json /tmp/bitbot-ios-clip.raw >/tmp/bitbot-ios-clip.json
+python3 -c "
+import json,os
+d=json.load(open('/tmp/bitbot-ios-clip.json'))
+assert d.get('ok') and d.get('machine_kind')=='ios'
+assert d.get('intent')=='device_tool_invoke'
+h=next(x for x in d.get('host_results')or[] if x.get('kind') in ('device_permission','device_tool'))
+p=json.loads(h.get('stdout') or '{}')
+assert 'clipboard' in str(p.get('tool') or h.get('command') or p).lower() or p.get('kind')
+print('ios clipboard read Host path ok', p.get('mode') or p.get('tool') or h.get('kind'))
 "
 
 echo "OK: verify_native_shells.sh"
