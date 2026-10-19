@@ -13600,27 +13600,65 @@ function createHostFfi(repoRoot) {
     }
   }
 
+  function stripEnvQuotes(s) {
+    let t = String(s || "").trim();
+    if (
+      (t.startsWith("'") && t.endsWith("'")) ||
+      (t.startsWith('"') && t.endsWith('"'))
+    ) {
+      t = t.slice(1, -1).trim();
+    }
+    return t;
+  }
+
+  /** Compute next_due from cron expr (@now/@hourly/@weekly and star-slash-N minute forms). */
+  function nextDueFromCron(cronRaw) {
+    const cron = stripEnvQuotes(cronRaw) || "@daily";
+    if (cron === "@now" || cron === "@once" || /@now|@once/i.test(cron)) {
+      return { cron, nextDue: new Date().toISOString(), dueNow: true };
+    }
+    if (cron === "@hourly" || /^@?hourly$/i.test(cron)) {
+      return {
+        cron,
+        nextDue: new Date(Date.now() + 3600 * 1000).toISOString(),
+        dueNow: false,
+      };
+    }
+    if (cron === "@weekly" || /^@?weekly$/i.test(cron)) {
+      return {
+        cron,
+        nextDue: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+        dueNow: false,
+      };
+    }
+    const everyMin = cron.match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
+    if (everyMin) {
+      const mins = Math.max(1, Number(everyMin[1]) || 1);
+      return {
+        cron,
+        nextDue: new Date(Date.now() + mins * 60 * 1000).toISOString(),
+        dueNow: false,
+      };
+    }
+    return {
+      cron,
+      nextDue: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+      dueNow: false,
+    };
+  }
+
   function executeRoutineEffect(kind, command) {
     const id = String(command || "").split("|")[0];
     if (kind === "routine_schedule") {
       const parts = String(command || "").split("|");
-      const cron = parts[1] || "@daily";
-      // @now / @once → due immediately so routine_tick can fire in the same session.
-      let nextDue = null;
-      if (cron === "@now" || cron === "@once" || /@now|@once/i.test(cron)) {
-        nextDue = new Date().toISOString();
-      } else if (cron === "@hourly" || /hourly/i.test(cron)) {
-        nextDue = new Date(Date.now() + 3600 * 1000).toISOString();
-      } else if (cron === "@weekly" || /weekly/i.test(cron)) {
-        nextDue = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-      } else {
-        nextDue = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-      }
-      const dueNow = cron === "@now" || cron === "@once";
+      const parsed = nextDueFromCron(parts[1] || "@daily");
+      const cron = parsed.cron;
+      const nextDue = parsed.nextDue;
+      const dueNow = parsed.dueNow;
       const row = upsertRoutine({
-        id: parts[0] || "routine-1",
+        id: stripEnvQuotes(parts[0]) || "routine-1",
         cron,
-        prompt: parts.slice(2).join("|") || "",
+        prompt: stripEnvQuotes(parts.slice(2).join("|") || ""),
         enabled: true,
         lifecycle: "active",
         next_due: nextDue,

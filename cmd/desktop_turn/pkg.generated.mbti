@@ -1,0 +1,223 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bitbot/bitbot/cmd/desktop_turn"
+
+import {
+  "bitbot/bitbot/memory",
+  "bitbot/bitbot/security",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub const DESKTOP_TURN_JSON_V : Int = 1
+
+pub fn args_want_host_continue(Array[String]) -> Bool
+
+pub fn classify_intent(String) -> TurnIntent
+
+pub fn classify_parity_intent(String, String) -> TurnIntent?
+
+pub fn continue_after_host_ffi(turn_id~ : String, prior_user_text~ : String, Array[DesktopHostResult], ctx? : DesktopTurnContext) -> DesktopTurnResult
+
+pub fn gate_consequential(String, String, TurnIntent, DesktopTurnContext, @security.ApprovalClass, String, irreversible? : Bool) -> DesktopTurnResult?
+
+pub fn parse_host_continue_args(Array[String]) -> (String, String, Array[DesktopHostResult])
+
+pub fn parse_memory_seeds(Array[String]) -> Array[(String, String)]
+
+pub fn parse_turn_context(Array[String]) -> DesktopTurnContext
+
+pub fn parse_turn_id_flag(Array[String], default~ : String) -> String
+
+pub fn run_desktop_turn(String, turn_id? : String, memory_seeds? : Array[(String, String)], ctx? : DesktopTurnContext) -> DesktopTurnResult
+
+pub fn seed_memory_store(@memory.InMemoryStore, Array[(String, String)]) -> Unit
+
+pub fn unescape_host_arg(String) -> String
+
+pub fn user_text_from_args(Array[String]) -> String
+
+pub fn user_text_from_args_skipping_flags(Array[String]) -> String
+
+// Errors
+
+// Types and methods
+pub(all) struct DesktopEffect {
+  kind : String
+  command : String
+  needs_host_ffi : Bool
+} derive(Eq, @debug.Debug)
+
+pub(all) struct DesktopHostResult {
+  kind : String
+  ok : Bool
+  command : String
+  stdout : String
+  stderr : String
+  error : String
+} derive(Eq, @debug.Debug)
+
+pub(all) struct DesktopMachineRow {
+  id : String
+  label : String
+  kind : String
+  status : String
+} derive(Eq, @debug.Debug)
+
+pub(all) struct DesktopMemoryRow {
+  key : String
+  value : String
+  scope : String
+} derive(Eq, @debug.Debug)
+
+pub(all) struct DesktopMessage {
+  role : String
+  text : String
+} derive(Eq, @debug.Debug)
+
+pub(all) struct DesktopTurnContext {
+  session_id : String
+  machine_id : String
+  machine_kind : String
+  channel : String
+  approved : Bool
+} derive(Eq, @debug.Debug)
+pub fn DesktopTurnContext::default() -> Self
+
+pub(all) struct DesktopTurnResult {
+  v : Int
+  ok : Bool
+  turn_id : String
+  intent : String
+  messages : Array[DesktopMessage]
+  modules : Array[String]
+  machines : Array[DesktopMachineRow]
+  memory : Array[DesktopMemoryRow]
+  effects : Array[DesktopEffect]
+  needs_host_ffi : Bool
+  host_continued : Bool
+  channel_delivery : String
+  session_id : String
+  machine_id : String
+  machine_kind : String
+  channel : String
+  error : String?
+} derive(Eq, @debug.Debug)
+pub fn DesktopTurnResult::to_json_line(Self) -> String
+
+pub(all) enum TurnIntent {
+  Chat
+  ListMachines
+  MemoryRecall(prefix~ : String)
+  MemoryUpdate(key~ : String, value~ : String)
+  HostEffect(command~ : String)
+  ChannelDelivery(inbound~ : String?, outbound~ : String?, body~ : String)
+  ConnectorsStatus
+  ClaimInbox(local_part~ : String)
+  DraftMail(to_~ : String, subject~ : String, body~ : String, provider~ : String)
+  InstallPlugin(plugin_id~ : String)
+  UninstallPlugin(plugin_id~ : String)
+  GetPlugin(plugin_id~ : String)
+  ListPlugins(query~ : String)
+  SetupSlack
+  FsList(path~ : String)
+  FsRead(path~ : String)
+  WebFetch(url~ : String)
+  CopyToBox(machine_id~ : String, src~ : String, dest~ : String)
+  CopyFromBox(machine_id~ : String, box_path~ : String, dest~ : String)
+  CreateRoutine(id~ : String, cron~ : String, prompt~ : String)
+  ListRoutines
+  PauseRoutine(id~ : String)
+  ResumeRoutine(id~ : String)
+  FireRoutine(id~ : String)
+  TickRoutines
+  SearchMail(query~ : String)
+  ReadMailThread(thread_id~ : String)
+  SpawnSubagent(prompt~ : String)
+  McpDiscover(namespace_~ : String)
+  McpCall(namespace_~ : String, name~ : String, args_json~ : String)
+  ComputerUse(task~ : String)
+  TeamsSend(scope~ : String, body~ : String)
+  DeviceTools
+  DeviceToolInvoke(tool~ : String)
+  LoadSkill(task~ : String)
+  VoiceStart(call_id~ : String)
+  VoiceRelay(call_id~ : String, text~ : String)
+  VoiceEnd(call_id~ : String)
+  CreateTeammate(id~ : String, name~ : String, role~ : String)
+  AddSection(group_id~ : String, section_id~ : String, title~ : String)
+  SectionPost(group_id~ : String, section_id~ : String, from_agent~ : String, body~ : String)
+  RoomTurn(room~ : String, body~ : String)
+  SendToAgent(to_id~ : String, body~ : String)
+  LaunchCloudAgent(prompt~ : String)
+  DeliverCloudArtifact(artifact~ : String, dest~ : String)
+  ScheduleMeeting(title~ : String, when_desc~ : String)
+  ShopRetail(url_or_host~ : String)
+  PurchaseItem(item~ : String, amount_cents~ : Int)
+  TravelBook(url_or_host~ : String)
+  OrderFood(url_or_host~ : String)
+  MeetingChat(body~ : String, direct~ : Bool)
+  FinanceConnect
+  FinanceCall(tool~ : String)
+  FillCredential(domain~ : String)
+  ListCredentials
+  ColdMail(to_~ : String, subject~ : String, body~ : String, unsubscribe~ : String)
+  PersonalSlackDm(owner_id~ : String, text~ : String)
+  JobSearch(query~ : String)
+  LearnFromDemo(title~ : String, steps_csv~ : String)
+  MakeSlides(title~ : String)
+  GenerateImage(prompt~ : String)
+  GenerateVideo(prompt~ : String)
+  WatchVideo(video_path~ : String)
+  StructuredChart(series_json~ : String)
+  BoxDoctor
+  BoxEnv
+  BoxClock
+  WebhookPanel
+  WebhookCopy(what~ : String)
+  WebhookToolReadKey
+  WebhookWake(event_id~ : String, summary~ : String)
+  OpenSettings(entry~ : String, anchor~ : String)
+  OpenAgentInfoPanel(agent_id~ : String)
+  DeleteAgent(agent_id~ : String, confirm~ : Bool)
+  PackageInstall(pm~ : String, packages_csv~ : String, via~ : String)
+  SharedBoxFs
+  HideAgent(agent_id~ : String, hidden~ : Bool)
+  ListAgentsSidebar
+  MembersPanel(group_id~ : String)
+  NotifySettings(assistant_id~ : String)
+  SetNotify(assistant_id~ : String, toggle~ : String, enabled~ : Bool)
+  UpdateComputer(confirm_step~ : Int)
+  ResetComputer
+  LocalExecution(enabled~ : Bool)
+  GuidePermission(kind~ : String, detail~ : String)
+  RenderMarkdown(body~ : String)
+  ReactMessage(message_id~ : String, emoji~ : String)
+  Screenshot(agent_id~ : String)
+  CheckUpdates
+  AutoReviewSettings
+  BoxChromeProbe(want_bare~ : Bool)
+  CodeChanges(path~ : String)
+  SourceControl(repo_kind~ : String)
+  SendOnBehalf(to_~ : String, subject~ : String, body~ : String)
+  ListWorkflows
+  IdentityBrowser
+  XSearch(query~ : String)
+  AuthorSkill(name~ : String, description~ : String, body~ : String)
+  ExportBotTemplate(bot_id~ : String, name~ : String)
+  ConnectGmail
+  ConnectOutlook
+  JournalAppend(date~ : String, event_id~ : String, body~ : String)
+  JournalQuery(from_date~ : String, to_date~ : String)
+  SharedMemoryPut(scope~ : String, key~ : String, value~ : String)
+  SharedMemoryRead(scope~ : String, key~ : String)
+  InboundReaction(emoji~ : String, useful~ : Bool)
+  TodoWrite(command~ : String)
+  ListSkills(query~ : String)
+  XPost(text~ : String)
+  HostContinue
+} derive(Eq, @debug.Debug)
+pub fn TurnIntent::name(Self) -> String
+
+// Type aliases
+
+// Traits

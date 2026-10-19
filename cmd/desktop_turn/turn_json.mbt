@@ -909,7 +909,15 @@ fn extract_kv(rest : String, key : String) -> String? {
           None => ()
         }
       }
-      let v = after[:end].trim().to_owned()
+      let mut v = after[:end].trim().to_owned()
+      // Strip matching single/double quotes so cron='*/1 * * * *' stays a cron expr.
+      if v.length() >= 2 {
+        let a = v[0:1].to_owned()
+        let b = v[v.length() - 1:].to_owned()
+        if (a == "'" && b == "'") || (a == "\"" && b == "\"") {
+          v = v[1:v.length() - 1].trim().to_owned()
+        }
+      }
       if v == "" {
         None
       } else {
