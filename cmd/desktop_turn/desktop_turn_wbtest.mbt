@@ -103,7 +103,10 @@ test "desktop_turn_memory_update_and_recall" {
 
 ///|
 test "desktop_turn_session_memory_seeds" {
-  let seeds : Array[(String, String)] = [("favorite_color", "blue"), ("city", "SF")]
+  let seeds : Array[(String, String)] = [
+    ("favorite_color", "blue"),
+    ("city", "SF"),
+  ]
   let r = run_desktop_turn(
     "recall favorite",
     turn_id="mem-seed",
@@ -120,7 +123,9 @@ test "desktop_turn_session_memory_seeds" {
   )
   assert_true(u.ok)
   assert_true(u.memory.length() >= 2)
-  let args = ["exe", "--seed-memory", "a=1", "--seed-memory", "b=2", "recall", "a"]
+  let args = [
+    "exe", "--seed-memory", "a=1", "--seed-memory", "b=2", "recall", "a",
+  ]
   let parsed = parse_memory_seeds(args)
   assert_eq(parsed.length(), 2)
   assert_eq(user_text_from_args_skipping_flags(args), "recall a")
@@ -225,7 +230,9 @@ test "desktop_turn_connectors_status" {
   assert_eq(r.intent, "connectors_status")
   assert_true(r.needs_host_ffi)
   assert_eq(r.effects[0].kind, "connectors_probe")
-  assert_true(r.messages[r.messages.length() - 1].text.contains("Connectors status"))
+  assert_true(
+    r.messages[r.messages.length() - 1].text.contains("Connectors status"),
+  )
 }
 
 ///|
@@ -243,22 +250,12 @@ test "desktop_turn_fs_webfetch_and_context" {
   assert_eq(r.machine_kind, "ios")
   assert_eq(r.channel, "slack:C1")
   assert_eq(r.effects[0].kind, "fs_list")
-  let w = run_desktop_turn(
-    "webfetch https://example.com",
-    turn_id="wf-1",
-    ctx~,
-  )
+  let w = run_desktop_turn("webfetch https://example.com", turn_id="wf-1", ctx~)
   assert_true(w.ok)
   assert_eq(w.intent, "webfetch")
   assert_eq(w.effects[0].command, "https://example.com")
   let args = [
-    "exe",
-    "--machine-kind",
-    "android",
-    "--session-id",
-    "s2",
-    "--channel",
-    "email:a@b",
+    "exe", "--machine-kind", "android", "--session-id", "s2", "--channel", "email:a@b",
     "hi",
   ]
   let parsed = parse_turn_context(args)
@@ -633,7 +630,10 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(mp.ok)
   assert_eq(mp.intent, "members_panel")
   assert_eq(mp.effects[0].kind, "members_panel")
-  let ns = run_desktop_turn("notify settings assistant=asst-alpha", turn_id="ns-1")
+  let ns = run_desktop_turn(
+    "notify settings assistant=asst-alpha",
+    turn_id="ns-1",
+  )
   assert_true(ns.ok)
   assert_eq(ns.intent, "notify_settings")
   let sn = run_desktop_turn(
@@ -729,20 +729,33 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   )
   assert_true(ex.ok)
   assert_eq(ex.intent, "export_bot_template")
-  let cam = run_desktop_turn(
-    "device tool camera",
-    turn_id="cam-1",
-    ctx={
-      session_id: "s",
-      machine_id: "desk-1",
-      machine_kind: "ios",
-      channel: "",
-      approved: false,
-    },
-  )
+  let cam = run_desktop_turn("device tool camera", turn_id="cam-1", ctx={
+    session_id: "s",
+    machine_id: "desk-1",
+    machine_kind: "ios",
+    channel: "",
+    approved: false,
+  })
   assert_true(cam.ok)
   assert_eq(cam.intent, "device_tool_invoke")
   assert_eq(cam.effects[0].kind, "device_permission")
+  let take_photo = run_desktop_turn("take photo", turn_id="cam-photo-1", ctx={
+    session_id: "s",
+    machine_id: "desk-1",
+    machine_kind: "ios",
+    channel: "",
+    approved: false,
+  })
+  assert_true(take_photo.ok)
+  assert_eq(take_photo.intent, "device_tool_invoke")
+  assert_eq(take_photo.effects[0].kind, "device_permission")
+  let rem = run_desktop_turn(
+    "create reminder id=desk-rem cron=@daily prompt=ping",
+    turn_id="rem-1",
+  )
+  assert_true(rem.ok)
+  assert_eq(rem.intent, "create_routine")
+  assert_eq(rem.effects[0].kind, "routine_schedule")
   let sm = run_desktop_turn("search mail Invoice", turn_id="sm-mail")
   assert_true(sm.ok)
   assert_eq(sm.intent, "search_mail")
@@ -864,24 +877,9 @@ test "desktop_turn_install_plugin_and_setup_slack" {
 test "unescape_and_parse_host_continue_args" {
   assert_eq(unescape_host_arg("a\\nb"), "a\nb")
   let args = [
-    "exe",
-    "--apply-host-results",
-    "--turn-id",
-    "t1",
-    "--prior-text",
-    "shell echo",
-    "--result-ok",
-    "true",
-    "--result-kind",
-    "shell",
-    "--result-command",
-    "echo hi",
-    "--result-stdout",
-    "hi\\n",
-    "--result-stderr",
-    "",
-    "--result-error",
-    "",
+    "exe", "--apply-host-results", "--turn-id", "t1", "--prior-text", "shell echo",
+    "--result-ok", "true", "--result-kind", "shell", "--result-command", "echo hi",
+    "--result-stdout", "hi\\n", "--result-stderr", "", "--result-error", "",
   ]
   assert_true(args_want_host_continue(args))
   let (tid, prior, results) = parse_host_continue_args(args)

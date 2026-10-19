@@ -45,9 +45,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low == "tick routines" ||
-      low == "wake routines" ||
-      low == "routine tick" ||
-      low == "routines wake" {
+    low == "wake routines" ||
+    low == "routine tick" ||
+    low == "routines wake" {
     return Some(TickRoutines)
   }
   if low.has_prefix("fire routine ") || low.has_prefix("run routine ") {
@@ -61,8 +61,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("search mail ") ||
-      low.has_prefix("search inbox ") ||
-      low.has_prefix("search email ") {
+    low.has_prefix("search inbox ") ||
+    low.has_prefix("search email ") {
     let query = if low.has_prefix("search mail ") {
       trimmed[12:].trim().to_owned()
     } else if low.has_prefix("search inbox ") {
@@ -75,8 +75,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("read mail ") ||
-      low.has_prefix("read thread ") ||
-      low.has_prefix("open mail ") {
+    low.has_prefix("read thread ") ||
+    low.has_prefix("open mail ") {
     let thread_id = if low.has_prefix("read mail ") {
       trimmed[10:].trim().to_owned()
     } else if low.has_prefix("read thread ") {
@@ -90,8 +90,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-1801 scheduling skill (before routine `schedule routine`).
   if low.has_prefix("schedule meeting ") ||
-      low.has_prefix("calendar event ") ||
-      low.has_prefix("schedule event ") {
+    low.has_prefix("calendar event ") ||
+    low.has_prefix("schedule event ") {
     let rest = if low.has_prefix("schedule meeting ") {
       trimmed[17:].to_owned()
     } else if low.has_prefix("calendar event ") {
@@ -112,8 +112,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("launch cloud agent ") ||
-      low.has_prefix("cloud agent ") ||
-      low.has_prefix("launch cloud ") {
+    low.has_prefix("cloud agent ") ||
+    low.has_prefix("launch cloud ") {
     let prompt = if low.has_prefix("launch cloud agent ") {
       trimmed[19:].trim().to_owned()
     } else if low.has_prefix("cloud agent ") {
@@ -126,7 +126,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("deliver cloud artifact ") ||
-      low.has_prefix("deliver artifact ") {
+    low.has_prefix("deliver artifact ") {
     let rest = if low.has_prefix("deliver cloud artifact ") {
       trimmed[23:].to_owned()
     } else {
@@ -149,15 +149,19 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("shop ") ||
-      low.has_prefix("shopping ") ||
-      (low.has_prefix("buy ") &&
-      (low.contains("target.com") ||
+    low.has_prefix("shopping ") ||
+    (
+      low.has_prefix("buy ") &&
+      (
+        low.contains("target.com") ||
         low.contains("bestbuy") ||
         low.contains("costco") ||
         low.contains("ebay") ||
         low.contains("etsy") ||
         low.contains("instacart") ||
-        low.contains("facebook"))) {
+        low.contains("facebook")
+      )
+    ) {
     let host = if low.has_prefix("shop ") {
       trimmed[5:].trim().to_owned()
     } else if low.has_prefix("shopping ") {
@@ -189,9 +193,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-1804 travel vertical
   if low.has_prefix("book flight ") ||
-      low.has_prefix("book hotel ") ||
-      low.has_prefix("rideshare ") ||
-      low.has_prefix("travel ") {
+    low.has_prefix("book hotel ") ||
+    low.has_prefix("rideshare ") ||
+    low.has_prefix("travel ") {
     let host = if low.has_prefix("book flight ") {
       trimmed[12:].trim().to_owned()
     } else if low.has_prefix("book hotel ") {
@@ -207,8 +211,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-1805 food ordering
   if low.has_prefix("order food ") ||
-      low.has_prefix("reserve table ") ||
-      low.has_prefix("food order ") {
+    low.has_prefix("reserve table ") ||
+    low.has_prefix("food order ") {
     let host = if low.has_prefix("order food ") {
       trimmed[11:].trim().to_owned()
     } else if low.has_prefix("reserve table ") {
@@ -232,13 +236,12 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       Some(v) => v
       None =>
         match extract_kv(rest, "direct") {
-          Some(_) => {
+          Some(_) =>
             // body after dropping direct= flag via split
             match split_once(rest.trim().to_owned(), " ") {
               Some((_, t)) => t.trim().to_owned()
               None => rest.trim().to_owned()
             }
-          }
           None => rest.trim().to_owned()
         }
     }
@@ -247,8 +250,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low == "connect finance" ||
-      low == "finance connect" ||
-      low == "authenticate finance" {
+    low == "finance connect" ||
+    low == "authenticate finance" {
     return Some(FinanceConnect)
   }
   if low.has_prefix("finance ") || low.has_prefix("finance call ") {
@@ -262,8 +265,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low == "list credentials" ||
-      low == "list logins" ||
-      low == "show credentials" {
+    low == "list logins" ||
+    low == "show credentials" {
     return Some(ListCredentials)
   }
   if low.has_prefix("fill credential ") || low.has_prefix("autofill login ") {
@@ -281,8 +284,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("cold email ") ||
-      low.has_prefix("cold mail ") ||
-      low.has_prefix("unsolicited mail ") {
+    low.has_prefix("cold mail ") ||
+    low.has_prefix("unsolicited mail ") {
     let rest = if low.has_prefix("cold email ") {
       trimmed[11:].to_owned()
     } else if low.has_prefix("cold mail ") {
@@ -333,8 +336,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("job search ") ||
-      low.has_prefix("linkedin search ") ||
-      low.has_prefix("find jobs ") {
+    low.has_prefix("linkedin search ") ||
+    low.has_prefix("find jobs ") {
     let query = if low.has_prefix("job search ") {
       trimmed[11:].trim().to_owned()
     } else if low.has_prefix("linkedin search ") {
@@ -347,7 +350,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("learn from demo ") ||
-      low.has_prefix("learn from demonstration ") {
+    low.has_prefix("learn from demonstration ") {
     let rest = if low.has_prefix("learn from demo ") {
       trimmed[16:].to_owned()
     } else {
@@ -364,8 +367,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     return Some(LearnFromDemo(title~, steps_csv~))
   }
   if low.has_prefix("make slides ") ||
-      low.has_prefix("generate pptx ") ||
-      low.has_prefix("generate slides ") {
+    low.has_prefix("generate pptx ") ||
+    low.has_prefix("generate slides ") {
     let title = if low.has_prefix("make slides ") {
       trimmed[12:].trim().to_owned()
     } else if low.has_prefix("generate pptx ") {
@@ -379,8 +382,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-1601 / 1602 / 1603 product Host media (not H5 matrix-only).
   if low.has_prefix("generate image ") ||
-      low.has_prefix("make image ") ||
-      low.has_prefix("draw image ") {
+    low.has_prefix("make image ") ||
+    low.has_prefix("draw image ") {
     let prompt = if low.has_prefix("generate image ") {
       trimmed[15:].trim().to_owned()
     } else if low.has_prefix("make image ") {
@@ -393,8 +396,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("generate video ") ||
-      low.has_prefix("make video ") ||
-      low.has_prefix("render video ") {
+    low.has_prefix("make video ") ||
+    low.has_prefix("render video ") {
     let prompt = if low.has_prefix("generate video ") {
       trimmed[15:].trim().to_owned()
     } else if low.has_prefix("make video ") {
@@ -407,8 +410,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low.has_prefix("watch video ") ||
-      low.has_prefix("analyze video ") ||
-      low.has_prefix("understand video ") {
+    low.has_prefix("analyze video ") ||
+    low.has_prefix("understand video ") {
     let video_path = if low.has_prefix("watch video ") {
       trimmed[12:].trim().to_owned()
     } else if low.has_prefix("analyze video ") {
@@ -422,33 +425,33 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-0607 product Host box-doctor self-check.
   if low == "box doctor" ||
-      low == "run box doctor" ||
-      low == "check box" ||
-      low == "box-doctor" ||
-      low == "doctor box" {
+    low == "run box doctor" ||
+    low == "check box" ||
+    low == "box-doctor" ||
+    low == "doctor box" {
     return Some(BoxDoctor)
   }
   // CM-0608 product Host Docker vs anyrun env detect.
   if low == "box env" ||
-      low == "detect box env" ||
-      low == "box runtime" ||
-      low == "detect runtime" ||
-      low == "dockerenv" {
+    low == "detect box env" ||
+    low == "box runtime" ||
+    low == "detect runtime" ||
+    low == "dockerenv" {
     return Some(BoxEnv)
   }
   // CM-2175 product Host box clock align to user timezone.
   if low == "box clock" ||
-      low == "check box clock" ||
-      low == "align clock" ||
-      low == "box time" ||
-      low.has_prefix("box clock ") {
+    low == "check box clock" ||
+    low == "align clock" ||
+    low == "box time" ||
+    low.has_prefix("box clock ") {
     return Some(BoxClock)
   }
   // CM-0411 product Host webhook panel (opaque key; user copy; wake tag).
   if low == "open webhook" ||
-      low == "webhook panel" ||
-      low == "show webhook" ||
-      low == "open webhook panel" {
+    low == "webhook panel" ||
+    low == "show webhook" ||
+    low == "open webhook panel" {
     return Some(WebhookPanel)
   }
   if low == "copy webhook url" || low == "webhook copy url" {
@@ -458,8 +461,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     return Some(WebhookCopy(what="key"))
   }
   if low == "tool-read webhook key" ||
-      low == "tool read webhook key" ||
-      low == "read webhook key" {
+    low == "tool read webhook key" ||
+    low == "read webhook key" {
     return Some(WebhookToolReadKey)
   }
   if low.has_prefix("webhook wake ") {
@@ -489,10 +492,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-1901/1902 product Host Settings (closed entry set + deep-link anchors).
   if low == "open settings" ||
-      low == "settings" ||
-      low == "open settings panel" ||
-      low.has_prefix("open settings ") ||
-      low.has_prefix("settings ") {
+    low == "settings" ||
+    low == "open settings panel" ||
+    low.has_prefix("open settings ") ||
+    low.has_prefix("settings ") {
     let rest = if low.has_prefix("open settings ") {
       trimmed[14:].trim().to_owned()
     } else if low.has_prefix("settings ") {
@@ -533,10 +536,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-0205 product Host per-agent info panel.
   if low.has_prefix("open agent info ") ||
-      low.has_prefix("agent info ") ||
-      low.has_prefix("info panel ") ||
-      low == "open agent info" ||
-      low == "agent info panel" {
+    low.has_prefix("agent info ") ||
+    low.has_prefix("info panel ") ||
+    low == "open agent info" ||
+    low == "agent info panel" {
     let rest = if low.has_prefix("open agent info ") {
       trimmed[16:].trim().to_owned()
     } else if low.has_prefix("agent info ") {
@@ -548,12 +551,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     let agent_id = match extract_kv(rest, "agent") {
       Some(v) => v.trim().to_owned()
-      None =>
-        if rest == "" {
-          "agent-bit"
-        } else {
-          rest
-        }
+      None => if rest == "" { "agent-bit" } else { rest }
     }
     if agent_id != "" {
       return Some(OpenAgentInfoPanel(agent_id~))
@@ -561,16 +559,16 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-2174 product Host cross-agent shared box FS.
   if low == "shared box fs" ||
-      low == "cross agent shared fs" ||
-      low == "probe shared box" ||
-      low == "shared fs probe" ||
-      low == "check shared box fs" {
+    low == "cross agent shared fs" ||
+    low == "probe shared box" ||
+    low == "shared fs probe" ||
+    low == "check shared box fs" {
     return Some(SharedBoxFs)
   }
   // CM-0204 product Host hidden agents (sidebar filter; still addressable).
   if low == "list agents" ||
-      low == "list sidebar agents" ||
-      low == "main sidebar agents" {
+    low == "list sidebar agents" ||
+    low == "main sidebar agents" {
     return Some(ListAgentsSidebar)
   }
   if low.has_prefix("hide agent ") || low.has_prefix("unhide agent ") {
@@ -590,8 +588,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-0206 product Host per-assistant notification settings.
   if low.has_prefix("notify settings ") ||
-      low == "notify settings" ||
-      low.has_prefix("show notify ") {
+    low == "notify settings" ||
+    low.has_prefix("show notify ") {
     let rest = if low.has_prefix("notify settings ") {
       trimmed[16:].trim().to_owned()
     } else if low.has_prefix("show notify ") {
@@ -601,12 +599,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     let assistant_id = match extract_kv(rest, "assistant") {
       Some(v) => v.trim().to_owned()
-      None =>
-        if rest == "" {
-          "asst-alpha"
-        } else {
-          rest
-        }
+      None => if rest == "" { "asst-alpha" } else { rest }
     }
     return Some(NotifySettings(assistant_id~))
   }
@@ -631,8 +624,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-1903/1904/1905 product Host computer lifecycle + local-execution.
   if low == "update computer" ||
-      low == "update bot computer" ||
-      low.has_prefix("update computer ") {
+    low == "update bot computer" ||
+    low.has_prefix("update computer ") {
     let rest = if low.has_prefix("update computer ") {
       trimmed[16:].trim().to_owned()
     } else {
@@ -655,14 +648,14 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     return Some(ResetComputer)
   }
   if low == "local execution off" ||
-      low == "disable local execution" ||
-      low == "local execution on" ||
-      low == "enable local execution" ||
-      low.has_prefix("local execution ") {
+    low == "disable local execution" ||
+    low == "local execution on" ||
+    low == "enable local execution" ||
+    low.has_prefix("local execution ") {
     let on = if low == "local execution off" ||
-        low == "disable local execution" ||
-        low.has_suffix(" enabled=0") ||
-        low.has_suffix(" off") {
+      low == "disable local execution" ||
+      low.has_suffix(" enabled=0") ||
+      low.has_suffix(" off") {
       false
     } else {
       true
@@ -671,11 +664,11 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-0605 product Host read-only screenshot (real frame when DISPLAY/tools).
   if low == "screenshot" ||
-      low == "take screenshot" ||
-      low == "capture screenshot" ||
-      low == "screen shot" ||
-      low.has_prefix("screenshot ") ||
-      low.has_prefix("take screenshot ") {
+    low == "take screenshot" ||
+    low == "capture screenshot" ||
+    low == "screen shot" ||
+    low.has_prefix("screenshot ") ||
+    low.has_prefix("take screenshot ") {
     let rest = if low.has_prefix("screenshot ") {
       trimmed[11:].trim().to_owned()
     } else if low.has_prefix("take screenshot ") {
@@ -685,53 +678,48 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     let agent_id = match extract_kv(rest, "agent") {
       Some(v) => v.trim().to_owned()
-      None =>
-        if rest != "" && !rest.contains("=") {
-          rest
-        } else {
-          "executor"
-        }
+      None => if rest != "" && !rest.contains("=") { rest } else { "executor" }
     }
     return Some(Screenshot(agent_id~))
   }
   // CM-1906 product Host Updates tab ≠ Update Computer.
   if low == "check updates" ||
-      low == "check for updates" ||
-      low == "open updates" ||
-      low == "updates tab" ||
-      low == "update channel" ||
-      low == "open update channel" ||
-      low == "app updates" {
+    low == "check for updates" ||
+    low == "open updates" ||
+    low == "updates tab" ||
+    low == "update channel" ||
+    low == "open update channel" ||
+    low == "app updates" {
     return Some(CheckUpdates)
   }
   // CM-1507 product Host auto-review / rules / security-keys Settings anchors.
   if low == "auto review settings" ||
-      low == "open auto review" ||
-      low == "auto-review settings" ||
-      low == "security keys settings" ||
-      low == "open auto-review" ||
-      low == "auto review anchors" {
+    low == "open auto review" ||
+    low == "auto-review settings" ||
+    low == "security keys settings" ||
+    low == "open auto-review" ||
+    low == "auto review anchors" {
     return Some(AutoReviewSettings)
   }
   // CM-0802 product Host box-chrome launcher (not bare chrome).
   if low == "launch bare chrome" ||
-      low == "bare chrome" ||
-      low == "launch chrome bare" {
+    low == "bare chrome" ||
+    low == "launch chrome bare" {
     return Some(BoxChromeProbe(want_bare=true))
   }
   if low == "box chrome probe" ||
-      low == "box-chrome probe" ||
-      low == "probe box chrome" ||
-      low == "probe box-chrome" ||
-      low == "launch box chrome" ||
-      low == "box chrome launcher" ||
-      low == "box-chrome launcher" {
+    low == "box-chrome probe" ||
+    low == "probe box chrome" ||
+    low == "probe box-chrome" ||
+    low == "launch box chrome" ||
+    low == "box chrome launcher" ||
+    low == "box-chrome launcher" {
     return Some(BoxChromeProbe(want_bare=false))
   }
   // CM-2101/2128 product Host ReactToMessage pill toggle.
   if low.has_prefix("react message ") ||
-      low.has_prefix("react to message ") ||
-      low.has_prefix("toggle reaction ") {
+    low.has_prefix("react to message ") ||
+    low.has_prefix("toggle reaction ") {
     let rest = if low.has_prefix("react to message ") {
       trimmed[17:].trim().to_owned()
     } else if low.has_prefix("toggle reaction ") {
@@ -769,8 +757,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-2103 product Host markdown math + mermaid render.
   if low.has_prefix("render markdown ") ||
-      low.has_prefix("render math ") ||
-      low.has_prefix("markdown math ") {
+    low.has_prefix("render math ") ||
+    low.has_prefix("markdown math ") {
     let body = if low.has_prefix("render markdown ") {
       trimmed[16:].to_owned()
     } else if low.has_prefix("render math ") {
@@ -784,8 +772,8 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-2178 product Host missing-permission → Settings guide.
   if low.has_prefix("guide permission ") ||
-      low.has_prefix("missing permission ") ||
-      low.has_prefix("permission guide ") {
+    low.has_prefix("missing permission ") ||
+    low.has_prefix("permission guide ") {
     let rest = if low.has_prefix("guide permission ") {
       trimmed[17:].trim().to_owned()
     } else if low.has_prefix("missing permission ") {
@@ -818,10 +806,10 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-1405 product Host Members panel.
   if low == "open members" ||
-      low == "members panel" ||
-      low == "show members" ||
-      low.has_prefix("open members ") ||
-      low.has_prefix("members panel ") {
+    low == "members panel" ||
+    low == "show members" ||
+    low.has_prefix("open members ") ||
+    low.has_prefix("members panel ") {
     let rest = if low.has_prefix("open members ") {
       trimmed[13:].trim().to_owned()
     } else if low.has_prefix("members panel ") {
@@ -831,19 +819,14 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     let group_id = match extract_kv(rest, "group") {
       Some(v) => v.trim().to_owned()
-      None =>
-        if rest == "" {
-          "group-1"
-        } else {
-          rest
-        }
+      None => if rest == "" { "group-1" } else { rest }
     }
     return Some(MembersPanel(group_id~))
   }
   // CM-2158 product Host box package install (Shell only).
   if low.has_prefix("install package ") ||
-      low.has_prefix("box install ") ||
-      low.has_prefix("package install ") {
+    low.has_prefix("box install ") ||
+    low.has_prefix("package install ") {
     let rest = if low.has_prefix("install package ") {
       trimmed[16:].trim().to_owned()
     } else if low.has_prefix("package install ") {
@@ -876,14 +859,21 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       let tokens : Array[String] = []
       for p in parts {
         let t = p.trim().to_owned()
-        if t != "" && !t.has_prefix("via=") && !t.has_prefix("pm=") && !t.has_prefix("pkgs=") && !t.has_prefix("packages=") {
+        if t != "" &&
+          !t.has_prefix("via=") &&
+          !t.has_prefix("pm=") &&
+          !t.has_prefix("pkgs=") &&
+          !t.has_prefix("packages=") {
           tokens.push(t)
         }
       }
       if tokens.length() >= 2 {
         // First token may be pm if not already set via kv
         let first = tokens[0].to_lower()
-        if first == "apt" || first == "npm" || first == "pip" || first == "cargo" {
+        if first == "apt" ||
+          first == "npm" ||
+          first == "pip" ||
+          first == "cargo" {
           pm = first
           let mut i = 1
           while i < tokens.length() {
@@ -927,9 +917,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   // CM-2157 product Host structured chart (Pillow PNG via Host FFI).
   if low.has_prefix("structured chart ") ||
-      low.has_prefix("make chart ") ||
-      low.has_prefix("chart series ") ||
-      low.has_prefix("generate chart ") {
+    low.has_prefix("make chart ") ||
+    low.has_prefix("chart series ") ||
+    low.has_prefix("generate chart ") {
     let series_json = if low.has_prefix("structured chart ") {
       trimmed[17:].trim().to_owned()
     } else if low.has_prefix("make chart ") {
@@ -986,18 +976,18 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   if low == "list workflows" ||
-      low == "user workflows" ||
-      low == "show workflows" {
+    low == "user workflows" ||
+    low == "show workflows" {
     return Some(ListWorkflows)
   }
   if low == "use user browser" ||
-      low == "identity browser" ||
-      low == "switch to browser identity" {
+    low == "identity browser" ||
+    low == "switch to browser identity" {
     return Some(IdentityBrowser)
   }
   if low.has_prefix("x search ") ||
-      low.has_prefix("search x ") ||
-      low.has_prefix("twitter search ") {
+    low.has_prefix("search x ") ||
+    low.has_prefix("twitter search ") {
     let query = if low.has_prefix("x search ") {
       trimmed[9:].trim().to_owned()
     } else if low.has_prefix("search x ") {
@@ -1028,7 +1018,9 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "connect gmail" || low == "setup gmail" || low == "gmail connect" {
     return Some(ConnectGmail)
   }
-  if low == "connect outlook" || low == "setup outlook" || low == "outlook connect" {
+  if low == "connect outlook" ||
+    low == "setup outlook" ||
+    low == "outlook connect" {
     return Some(ConnectOutlook)
   }
   // Journal query before append — "journal query …" also matches "journal " prefix.
@@ -1142,15 +1134,26 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     return Some(ExportBotTemplate(bot_id~, name~))
   }
-  if low.has_prefix("create routine ") || low.has_prefix("schedule routine ") {
+  if low.has_prefix("create routine ") ||
+    low.has_prefix("schedule routine ") ||
+    low.has_prefix("create reminder ") ||
+    low.has_prefix("set reminder ") {
     let rest = if low.has_prefix("create routine ") {
       trimmed[15:].to_owned()
-    } else {
+    } else if low.has_prefix("schedule routine ") {
       trimmed[17:].to_owned()
+    } else if low.has_prefix("create reminder ") {
+      trimmed[16:].to_owned()
+    } else {
+      trimmed[13:].to_owned()
     }
     let id = match extract_kv(rest, "id") {
       Some(v) => v
-      None => "routine-1"
+      None =>
+        match extract_kv(rest, "name") {
+          Some(v) => v
+          None => "routine-1"
+        }
     }
     let cron = match extract_kv(rest, "cron") {
       Some(v) => v
@@ -1158,15 +1161,19 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     let prompt = match extract_kv(rest, "prompt") {
       Some(v) => v
-      None => rest
+      None =>
+        match extract_kv(rest, "action") {
+          Some(v) => v
+          None => rest
+        }
     }
     if prompt != "" {
       return Some(CreateRoutine(id~, cron~, prompt~))
     }
   }
   if low.has_prefix("spawn subagent ") ||
-      low.has_prefix("subagent ") ||
-      low.has_prefix("dispatch agent ") {
+    low.has_prefix("subagent ") ||
+    low.has_prefix("dispatch agent ") {
     let prompt = if low.has_prefix("spawn subagent ") {
       trimmed[15:].trim().to_owned()
     } else if low.has_prefix("dispatch agent ") {
@@ -1192,19 +1199,14 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     let rest = trimmed[9:].trim().to_owned()
     // mcp call user-Gmail.search_threads {"q":"a"}
     match split_once(rest, " ") {
-      Some((tool, args)) => {
+      Some((tool, args)) =>
         match split_once(tool, ".") {
           Some((ns, name)) =>
             return Some(
-              McpCall(
-                namespace_=ns,
-                name~,
-                args_json=args.trim().to_owned(),
-              ),
+              McpCall(namespace_=ns, name~, args_json=args.trim().to_owned()),
             )
           None => ()
         }
-      }
       None => ()
     }
   }
@@ -1235,9 +1237,7 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       None => ()
     }
   }
-  if low == "device tools" ||
-      low == "list device tools" ||
-      low == "phone tools" {
+  if low == "device tools" || low == "list device tools" || low == "phone tools" {
     return Some(DeviceTools)
   }
   if low.has_prefix("device tool ") || low.has_prefix("invoke device ") {
@@ -1249,6 +1249,18 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     if tool != "" {
       return Some(DeviceToolInvoke(tool~))
     }
+  }
+  // Product phrasing → same Host device_tool kinds (multi-end quick actions).
+  if low == "take photo" ||
+    low == "take a photo" ||
+    low == "capture photo" ||
+    low.has_prefix("take photo ") {
+    return Some(DeviceToolInvoke(tool="camera"))
+  }
+  if low == "record video" ||
+    low == "take video" ||
+    low.has_prefix("record video ") {
+    return Some(DeviceToolInvoke(tool="mic"))
   }
   if low.has_prefix("load skill ") || low.has_prefix("use skill ") {
     let task = if low.has_prefix("load skill ") {
@@ -1372,10 +1384,11 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   }
   if low.has_prefix("room ") || @teammates.has_room_cue(trimmed) {
     if @teammates.has_room_cue(trimmed) {
-      match @teammates.open_room_turn_from_cue(
-        cue_and_body=trimmed,
-        speaker_id="user",
-      ) {
+      match
+        @teammates.open_room_turn_from_cue(
+          cue_and_body=trimmed,
+          speaker_id="user",
+        ) {
         Ok(rt) => return Some(RoomTurn(room=rt.room_name, body=rt.body))
         Err(_) => ()
       }

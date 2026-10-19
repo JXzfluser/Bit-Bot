@@ -514,6 +514,8 @@
         <button type="button" id="tool-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read README</button>
         <button type="button" id="tool-webfetch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">WebFetch example.com</button>
         <button type="button" id="tool-device" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Device tools</button>
+        <button type="button" id="tool-take-photo" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Take photo</button>
+        <button type="button" id="tool-record-video" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Record video</button>
         <button type="button" id="tool-journal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
         <button type="button" id="tool-journal-append" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal append</button>
         <button type="button" id="tool-pkg" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
@@ -599,6 +601,7 @@
       <div class="meta" id="routines-meta">durable Host wakes (not cron pretend)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="rt-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create routine</button>
+        <button type="button" id="rt-reminder" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create reminder</button>
         <button type="button" id="rt-list" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List routines</button>
         <button type="button" id="rt-fire" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fire routine</button>
         <button type="button" id="rt-tick" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Tick routines</button>
@@ -3803,6 +3806,12 @@
         { approved: true },
       );
     });
+    document.getElementById("rt-reminder").addEventListener("click", () => {
+      runUserTurn(
+        "create reminder id=desk-rem cron=@daily prompt=desktop reminder",
+        { approved: true },
+      );
+    });
     document.getElementById("rt-list").addEventListener("click", () => {
       runUserTurn("list routines", {});
     });
@@ -3932,6 +3941,12 @@
     });
     document.getElementById("tool-device").addEventListener("click", () => {
       runUserTurn("device tools", {});
+    });
+    document.getElementById("tool-take-photo").addEventListener("click", () => {
+      runUserTurn("take photo", {});
+    });
+    document.getElementById("tool-record-video").addEventListener("click", () => {
+      runUserTurn("record video", {});
     });
     document.getElementById("tool-journal").addEventListener("click", () => {
       runUserTurn("journal query hello", {});
