@@ -898,6 +898,59 @@
         " · anchors=" +
         ((payload && payload.anchors_closed_set_count) || 27);
       panel.style.display = "block";
+      // Honest product residuals (brain / CN channels / filing / OTA) — never pretend ready.
+      (async () => {
+        const bits = [];
+        try {
+          if (window.bitbot.productStatus) {
+            const st = await window.bitbot.productStatus();
+            if (st && st.llm) {
+              bits.push(
+                "大脑=" +
+                  (st.llm.provider_id || "?") +
+                  "/" +
+                  (st.llm.model || "?") +
+                  (st.llm.key_configured ? "·就绪" : "·缺key"),
+              );
+            }
+            if (st && st.filing) {
+              bits.push(
+                "备案=" + (st.filing.residual ? "residual" : "已配"),
+              );
+            }
+            if (st && st.content_moderation) {
+              bits.push(
+                "审核=" +
+                  (st.content_moderation.armed ? "armed" : "residual"),
+              );
+            }
+            if (st && st.ota) {
+              bits.push("OTA=" + (st.ota.residual ? "residual" : "feed"));
+            }
+            if (st && st.mobile_deferred) bits.push("移动=暂缓");
+          }
+          if (window.bitbot.cnStatus) {
+            const cn = await window.bitbot.cnStatus();
+            if (cn && Array.isArray(cn.channels)) {
+              bits.push(
+                "渠道=" +
+                  cn.channels
+                    .map(function (x) {
+                      return (
+                        x.connector + ":" + (x.live_ready ? "live" : "draft")
+                      );
+                    })
+                    .join(","),
+              );
+            }
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        if (bits.length) {
+          meta.textContent = meta.textContent + "\n" + bits.join(" · ");
+        }
+      })();
     }
 
     /** CM-2103 / CHARTER Delivery: prefer Host HTML artifact iframe over text remount. */

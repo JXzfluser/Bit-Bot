@@ -493,6 +493,40 @@ ipcMain.handle("bitbot:cn:status", async () => {
   };
 });
 
+ipcMain.handle("bitbot:product:status", async () => {
+  let llm = null;
+  try {
+    llm =
+      typeof ffi.listLlmCatalog === "function"
+        ? ffi.listLlmCatalog()
+        : { active: ffi.resolveLlmConfig() };
+  } catch (_) {
+    llm = null;
+  }
+  const filingIcp = Boolean(String(process.env.BITBOT_ICP_FILING || "").trim());
+  const filingAlgo = Boolean(
+    String(process.env.BITBOT_ALGORITHM_FILING || "").trim(),
+  );
+  const moderation = process.env.BITBOT_CONTENT_MODERATION === "1";
+  const otaFeed = Boolean(
+    String(process.env.BITBOT_UPDATE_FEED_URL || "").trim(),
+  );
+  return {
+    ok: true,
+    desktop_first: true,
+    mobile_deferred: true,
+    llm: llm && llm.active ? llm.active : llm,
+    filing: {
+      icp: filingIcp,
+      algorithm: filingAlgo,
+      residual: !(filingIcp || filingAlgo),
+    },
+    content_moderation: { armed: moderation, residual: !moderation },
+    ota: { feed_configured: otaFeed, residual: !otaFeed },
+    pretend_complete: false,
+  };
+});
+
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   // Optional per-turn Host env (e.g. BITBOT_SLACK_CLAIM) — restore after turn.
   const envPatch = (opts && opts.env && typeof opts.env === "object") ? opts.env : null;
