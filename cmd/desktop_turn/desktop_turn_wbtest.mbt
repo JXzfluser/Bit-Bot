@@ -416,6 +416,21 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   )
   assert_true(rm_turn.ok)
   assert_eq(rm_turn.intent, "room_turn")
+  let rm_join = run_desktop_turn("join room eng", turn_id="rm-join-1")
+  assert_true(rm_join.ok)
+  assert_eq(rm_join.intent, "room_turn")
+  let rm_leave = run_desktop_turn("leave room eng", turn_id="rm-leave-1")
+  assert_true(rm_leave.ok)
+  assert_eq(rm_leave.intent, "room_turn")
+  let mem_list = run_desktop_turn("list members", turn_id="mem-list-1")
+  assert_true(mem_list.ok)
+  assert_eq(mem_list.intent, "members_panel")
+  let mem_invite = run_desktop_turn("invite user alice", turn_id="mem-inv-1")
+  assert_true(mem_invite.ok)
+  assert_eq(mem_invite.intent, "members_panel")
+  let mem_kick = run_desktop_turn("kick user bob", turn_id="mem-kick-1")
+  assert_true(mem_kick.ok)
+  assert_eq(mem_kick.intent, "members_panel")
   let sa2 = run_desktop_turn(
     "send to agent asst-alpha :: please review",
     turn_id="sta-1",

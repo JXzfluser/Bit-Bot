@@ -913,21 +913,55 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "open members" ||
     low == "members panel" ||
     low == "show members" ||
+    low == "list members" ||
+    low == "members" ||
     low == "invite to channel" ||
     low == "generate invite" ||
     low == "accept invite" ||
     low == "decline invite" ||
     low.has_prefix("open members ") ||
     low.has_prefix("members panel ") ||
+    low.has_prefix("list members ") ||
     low.has_prefix("invite to channel ") ||
     low.has_prefix("generate invite ") ||
-    low.has_prefix("accept invite ") {
+    low.has_prefix("accept invite ") ||
+    low.has_prefix("invite user ") ||
+    low.has_prefix("invite ") ||
+    low.has_prefix("kick user ") ||
+    low.has_prefix("kick ") ||
+    low.has_prefix("remove member ") {
     let rest = if low.has_prefix("open members ") {
       trimmed[13:].trim().to_owned()
     } else if low.has_prefix("members panel ") {
       trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("list members ") {
+      trimmed[13:].trim().to_owned()
+    } else if low == "invite to channel" ||
+      low == "generate invite" ||
+      low == "accept invite" ||
+      low == "decline invite" ||
+      low == "open members" ||
+      low == "members panel" ||
+      low == "show members" ||
+      low == "list members" ||
+      low == "members" {
+      ""
     } else if low.has_prefix("invite to channel ") {
       trimmed[18:].trim().to_owned()
+    } else if low.has_prefix("generate invite ") {
+      trimmed[16:].trim().to_owned()
+    } else if low.has_prefix("accept invite ") {
+      trimmed[14:].trim().to_owned()
+    } else if low.has_prefix("invite user ") {
+      trimmed[12:].trim().to_owned()
+    } else if low.has_prefix("invite ") {
+      trimmed[7:].trim().to_owned()
+    } else if low.has_prefix("kick user ") {
+      trimmed[10:].trim().to_owned()
+    } else if low.has_prefix("kick ") {
+      trimmed[5:].trim().to_owned()
+    } else if low.has_prefix("remove member ") {
+      trimmed[14:].trim().to_owned()
     } else {
       ""
     }
@@ -1601,6 +1635,19 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
     if section_id != "" && body != "" {
       return Some(SectionPost(group_id~, section_id~, from_agent~, body~))
+    }
+  }
+  // join/leave room <name> → RoomTurn (Host room_turn fanout).
+  if low.has_prefix("join room ") {
+    let room = trimmed[10:].trim().to_owned()
+    if room != "" {
+      return Some(RoomTurn(room~, body="joined the room"))
+    }
+  }
+  if low.has_prefix("leave room ") {
+    let room = trimmed[11:].trim().to_owned()
+    if room != "" {
+      return Some(RoomTurn(room~, body="left the room"))
     }
   }
   // Product room phrasing: room / post to room / message room / send to room.
