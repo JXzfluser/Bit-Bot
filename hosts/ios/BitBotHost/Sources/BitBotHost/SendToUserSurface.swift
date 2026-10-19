@@ -63,7 +63,7 @@ enum SendToUserSurface {
 
   private static func residualSuffix(_ p: [String: Any]) -> String {
     let keys = [
-      "live_mail_residual", "live_x_residual", "live_job_residual",
+      "live_mail_residual", "live_x_residual", "live_x_post_residual", "live_job_residual",
       "live_finance_residual", "live_paid_residual", "live_calendar_residual",
       "live_slack_residual", "live_teams_residual", "live_meeting_residual",
       "live_channel_residual",

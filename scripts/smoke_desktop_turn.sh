@@ -434,6 +434,8 @@ assert 'machines_list' in mobile and 'mail_claim_inbox' in mobile
 assert 'id=\"del-slides\"' in html and 'id=\"del-skill\"' in html
 assert 'id=\"del-export\"' in html and 'id=\"del-load-skill\"' in html
 assert 'id=\"del-list-skills\"' in html
+assert 'id=\"del-x-post\"' in html
+assert 'x post Bit Bot desktop draft' in html
 assert 'id=\"tool-device\"' in html and 'id=\"tool-journal\"' in html
 assert 'id=\"box-copy-to\"' in html and 'id=\"box-copy-from\"' in html
 assert 'make slides title=DeskParity' in html
@@ -738,6 +740,7 @@ for needle in (
   'true_device_os_dialog_residual',
   'remote_pr',
   'real_create_gated',
+  'live_x_post_residual',
   'live_sms_residual',
   'live_webhook_residual',
   'live_voice_residual',

@@ -1419,6 +1419,30 @@ function stripHostAppliedMarker(file) {
     ["x_post", "host_x_post", "x_post"],
     ["post_tweet", "host_x_post", "x_post"],
     ["mute", "host_set_notify", "set_notify"],
+    ["save_memory", "host_memory_update", "memory_update"],
+    ["list_memories", "host_memory_recall", "memory_recall"],
+    ["browse", "host_computer_use", "computer_use"],
+    ["run_code", "host_local_execution", "local_execution"],
+    ["code_interpreter", "host_local_execution", "local_execution"],
+    ["speak", "host_voice_session", "voice_session"],
+    ["set_reminder", "host_routine_schedule", "routine_schedule"],
+    ["list_reminders", "host_routine_list", "routine_list"],
+    ["invite_user", "host_members_panel", "members_panel"],
+    ["join_room", "host_room_turn", "room_turn"],
+    ["create_channel", "host_channel_send", "channel_send"],
+    ["open_docs", "host_guide_permission", "guide_permission"],
+    ["list_models", "host_settings_open", "settings_open"],
+    ["create_skill", "host_skill_write", "skill_write"],
+    ["reload_skills", "host_list_skills", "list_skills"],
+    ["pdf_export", "host_export_pack", "export_pack"],
+    ["markdown_export", "host_render_markdown", "render_markdown"],
+    ["clipboard_read", "host_device_tool", "device_tool"],
+    ["deep_search", "host_webfetch", "webfetch"],
+    ["note_create", "host_journal_append", "journal_append"],
+    ["calendar_list", "host_schedule_meeting", "schedule_meeting"],
+    ["mute_chat", "host_set_notify", "set_notify"],
+    ["pin_chat", "host_list_agents_sidebar", "list_agents_sidebar"],
+    ["task_create", "host_todo_write", "todo_write"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1432,11 +1456,15 @@ function stripHostAppliedMarker(file) {
               ? '{"command":"echo alias-shell"}'
               : tool === "list_dir"
                 ? '{"path":"."}'
-                : tool === "search_web"
+                : tool === "search_web" || tool === "deep_search"
                   ? '{"url":"https://example.com/"}'
-                  : tool === "list_contacts" || tool === "get_location"
+                  : tool === "list_contacts" ||
+                      tool === "get_location" ||
+                      tool === "clipboard_read" ||
+                      tool === "clipboard_copy" ||
+                      tool === "clipboard_paste"
                     ? '{"tool":"contacts"}'
-                    : tool === "open_todo"
+                    : tool === "open_todo" || tool === "task_create"
                       ? '{"items":[{"id":"a1","title":"alias","status":"pending"}]}'
                       : tool === "paste_from_box"
                         ? '{"path":"README.mbt.md"}'
@@ -1444,42 +1472,59 @@ function stripHostAppliedMarker(file) {
                           ? '{"command":"status"}'
                           : tool === "open_journal" || tool === "journal_tail"
                             ? '{"q":"alias-journal"}'
-                            : tool === "append_journal"
+                            : tool === "append_journal" || tool === "note_create"
                               ? '{"event":"alias","body":"journal-alias"}'
                               : tool === "create_agent" || tool === "new_agent"
                                 ? '{"name":"alias-agent","agent_id":"asst-alias"}'
                                 : tool === "select_agent" || tool === "switch_agent"
                                   ? '{"agent_id":"asst-alias","body":"ping"}'
-                                  : tool === "enable_skill"
+                                  : tool === "enable_skill" || tool === "import_skill"
                                     ? '{"skill":"slides-quickstart","name":"slides-quickstart"}'
-                                    : tool === "remove_member" || tool === "invite_member"
+                                    : tool === "remove_member" ||
+                                        tool === "invite_member" ||
+                                        tool === "invite_user" ||
+                                        tool === "kick_user"
                                       ? '{"member_id":"u-alias"}'
-                                      : tool === "upload_file" || tool === "attach_file"
+                                      : tool === "upload_file" ||
+                                          tool === "attach_file" ||
+                                          tool === "upload_image" ||
+                                          tool === "attach_image"
                                         ? '{"path":"README.mbt.md"}'
                                         : tool === "download_file"
                                           ? '{"path":"README.mbt.md"}'
-                                          : tool === "archive_agent"
+                                          : tool === "archive_agent" ||
+                                              tool === "archive_chat"
                                             ? '{"agent_id":"asst-alias-hide"}'
                                             : tool === "list_skills" ||
                                                 tool === "open_skills" ||
-                                                tool === "skills_list"
+                                                tool === "skills_list" ||
+                                                tool === "reload_skills" ||
+                                                tool === "skill_info"
                                               ? '{"q":"smoke"}'
                                               : tool === "export_skill" ||
-                                                  tool === "share_skill"
+                                                  tool === "share_skill" ||
+                                                  tool === "pdf_export" ||
+                                                  tool === "print" ||
+                                                  tool === "backup"
                                                 ? '{"name":"smoke-skill"}'
                                                 : tool === "mark_done" ||
                                                     tool === "complete_todo"
                                                   ? '{"id":"a1","status":"done","title":"done"}'
                                                   : tool === "open_chat" ||
                                                       tool === "chat_panel" ||
-                                                      tool === "dm_panel"
+                                                      tool === "dm_panel" ||
+                                                      tool === "create_channel" ||
+                                                      tool === "list_channels" ||
+                                                      tool === "archive_channel"
                                                     ? '{"scheme":"slack","addr":"UCHAT","body":"open-chat"}'
                                                     : tool === "agent_info" ||
                                                         tool === "agent_info_panel" ||
                                                         tool === "rename_agent"
                                                       ? '{"agent_id":"asst-mcp-info"}'
                                                       : tool === "pin_agent" ||
-                                                          tool === "unpin_agent"
+                                                          tool === "unpin_agent" ||
+                                                          tool === "pin_chat" ||
+                                                          tool === "unpin_chat"
                                                         ? '{"agent_id":"asst-mcp-pin"}'
                                                         : tool === "section_add" ||
                                                             tool === "add_section"
@@ -1490,7 +1535,12 @@ function stripHostAppliedMarker(file) {
                                                             : tool === "archive_mail" ||
                                                                 tool === "mark_read"
                                                               ? '{"thread_id":"t-archive-1"}'
-                                                              : tool === "bug_report"
+                                                              : tool === "bug_report" ||
+                                                                  tool === "open_docs" ||
+                                                                  tool === "docs" ||
+                                                                  tool === "list_models" ||
+                                                                  tool === "set_model" ||
+                                                                  tool === "billing"
                                                                 ? '{}'
                                                                 : tool === "x_post" ||
                                                                     tool === "post_tweet" ||
@@ -1498,9 +1548,49 @@ function stripHostAppliedMarker(file) {
                                                                   ? '{"text":"Bit Bot Host x_post smoke"}'
                                                                   : tool === "mute" ||
                                                                       tool === "focus_mode" ||
-                                                                      tool === "do_not_disturb"
+                                                                      tool === "do_not_disturb" ||
+                                                                      tool === "mute_chat" ||
+                                                                      tool === "unmute_chat"
                                                                     ? '{"toggle":"desktop","enabled":"off"}'
-                                                                    : "{}";
+                                                                    : tool === "save_memory" ||
+                                                                        tool === "delete_memory"
+                                                                      ? '{"key":"alias-mem","value":"v1"}'
+                                                                      : tool === "list_memories"
+                                                                        ? '{"q":"alias-mem"}'
+                                                                        : tool === "browse" ||
+                                                                            tool === "click_element" ||
+                                                                            tool === "analyze_image"
+                                                                          ? '{"url":"https://example.com/","action":"navigate"}'
+                                                                          : tool === "run_code" ||
+                                                                              tool === "execute_code" ||
+                                                                              tool === "code_interpreter" ||
+                                                                              tool === "python_repl"
+                                                                            ? '{"command":"echo alias-code","code":"print(1)"}'
+                                                                            : tool === "speak" ||
+                                                                                tool === "read_aloud" ||
+                                                                                tool === "dictate" ||
+                                                                                tool === "transcribe"
+                                                                              ? '{"session":"alias-voice","text":"hello"}'
+                                                                              : tool === "set_reminder"
+                                                                                ? '{"name":"alias-rem","cron":"0 9 * * *","action":"ping"}'
+                                                                                : tool === "list_reminders" ||
+                                                                                    tool === "cancel_reminder"
+                                                                                  ? '{"name":"alias-rem"}'
+                                                                                  : tool === "join_room" ||
+                                                                                      tool === "leave_room"
+                                                                                    ? '{"room":"eng","body":"alias-room"}'
+                                                                                    : tool === "create_skill" ||
+                                                                                        tool === "edit_skill"
+                                                                                      ? '{"name":"alias-skill","body":"steps"}'
+                                                                                      : tool === "markdown_export"
+                                                                                        ? '{"markdown":"# alias"}'
+                                                                                        : tool === "calendar_list" ||
+                                                                                            tool === "calendar_create" ||
+                                                                                            tool === "calendar_delete"
+                                                                                          ? '{"title":"AliasCal","when":"tomorrow-6pm"}'
+                                                                                          : tool === "note_list"
+                                                                                            ? '{"q":"alias-note"}'
+                                                                                            : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);
