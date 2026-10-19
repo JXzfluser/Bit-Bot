@@ -19,20 +19,26 @@
   body {
     margin: 0;
     min-height: 100vh;
-    font: 15px/1.45 "IBM Plex Sans", "Segoe UI", sans-serif;
+    font: 15px/1.45 "Source Han Sans SC", "Noto Sans SC", "IBM Plex Sans", sans-serif;
     color: var(--ink);
-    background:
+    background-color: var(--bg0);
+    background-image:
       radial-gradient(1200px 600px at 10% -10%, #1a3a2c 0%, transparent 55%),
       radial-gradient(900px 500px at 100% 0%, #1e2a22 0%, transparent 50%),
       linear-gradient(165deg, var(--bg0), var(--bg1));
     display: grid;
-    grid-template-columns: 220px 1fr 240px;
+    /* Grok-style default: sessions + chat only; tools rail opt-in */
+    grid-template-columns: 260px 1fr 0fr;
     grid-template-rows: auto 1fr auto;
     grid-template-areas:
       "header header header"
       "agents main machines"
       "agents composer machines";
     min-height: 100vh;
+    transition: grid-template-columns 0.25s ease;
+  }
+  body.tools-open {
+    grid-template-columns: 260px 1fr 280px;
   }
   header {
     grid-area: header;
@@ -40,13 +46,119 @@
     border-bottom: 1px solid var(--line);
   }
   header .brand {
-    font: 700 28px/1.1 "IBM Plex Serif", Georgia, serif;
+    font: 700 32px/1.05 "Source Han Serif SC", "Noto Serif SC", "IBM Plex Serif", Georgia, serif;
     letter-spacing: -0.02em;
   }
   header .sub {
     margin-top: 6px;
     color: var(--muted);
     font-size: 13px;
+  }
+  #header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  #header-actions button {
+    margin-top: 4px;
+    background: #1a2420;
+    color: #b7e0c8;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #header-actions button.active {
+    border-color: var(--accent);
+    color: #e7f0ea;
+  }
+  #model-picker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  #model-picker .mp-btn {
+    background: #12201a;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #model-picker .mp-btn.active {
+    border-color: var(--accent);
+    color: #e7f0ea;
+    background: #1a3026;
+  }
+  #model-picker .mp-btn.nokey {
+    opacity: 0.72;
+  }
+  #model-picker .mp-label {
+    color: var(--muted);
+    font-size: 11px;
+    margin-right: 2px;
+  }
+  #agents details.lab {
+    margin-top: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #0c1410;
+  }
+  #agents details.lab > summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    list-style: none;
+  }
+  #agents details.lab > summary::-webkit-details-marker { display: none; }
+  #welcome {
+    margin: auto;
+    max-width: 420px;
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+  }
+  #welcome .w-brand {
+    font: 700 40px/1.1 "Source Han Serif SC", "Noto Serif SC", Georgia, serif;
+    color: var(--ink);
+    letter-spacing: -0.03em;
+  }
+  #welcome .w-line {
+    margin-top: 12px;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  #welcome .w-hint {
+    margin-top: 18px;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+  #machines {
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  body.tools-open #machines {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #banner.collapsed {
+    max-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    opacity: 0;
   }
   #agents {
     grid-area: agents;
@@ -61,6 +173,7 @@
     background: var(--side);
     padding: 14px 12px;
     overflow: auto;
+    /* visibility toggled via body.tools-open (see rules above) */
   }
   .panel-title {
     font-size: 11px;
@@ -220,7 +333,9 @@
     white-space: pre-wrap;
     max-height: 120px;
     overflow: auto;
+    display: none;
   }
+  body.debug-json #json-out { display: block; }
   #approval {
     display: none;
     margin: 0 16px 8px;
@@ -310,42 +425,56 @@
   <header style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
     <div>
       <div class="brand">Bit Bot</div>
-      <div class="sub">Desktop host · MoonBit brain · multi-end MachineKind (desktop / ios / android)</div>
+      <div class="sub">国产多端助手 · DeepSeek 大脑 · <span id="hotkey-hint">Ctrl+Shift+Space</span> 呼出</div>
     </div>
-    <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton" style="margin-top:4px;background:#1a2420;color:#b7e0c8;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-weight:600;cursor:pointer">Account</button>
+    <div id="header-actions">
+      <div id="model-picker" title="国产多模型 · 经 MoonBit llm_set_model" aria-label="LLM model picker">
+        <span class="mp-label">模型</span>
+      </div>
+      <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板">能力</button>
+      <button type="button" id="cred-settings-btn" title="配置 DeepSeek / 钉钉飞书企微（不写死）">凭证</button>
+      <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton">Account</button>
+    </div>
   </header>
   <aside id="agents">
-    <div class="panel-title">Agents</div>
-    <div class="agent-item active" id="agent-bit" data-agent-id="agent-bit" style="cursor:pointer">
+    <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>会话</span>
+      <button type="button" id="sess-new" title="新对话" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px">新建</button>
+    </div>
+    <div id="session-list" aria-label="Chat sessions"></div>
+    <div class="agent-item active" id="agent-bit" data-agent-id="agent-bit" style="cursor:pointer;margin-top:12px">
       <div class="name">Bit Bot</div>
-      <div class="meta">MoonBit · cmd/desktop_turn · click for info</div>
+      <div class="meta">MoonBit · llm_chat</div>
     </div>
-    <div class="agent-item" id="agents-host-panel">
-      <div class="name">Sidebar agents</div>
-      <div class="meta" id="agents-meta">list · hide (CM-1906/1907)</div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="ag-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List agents</button>
-        <button type="button" id="ag-hide" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Hide agent research</button>
+    <details class="lab" id="agents-lab">
+      <summary>高级 · Agents / Teammates</summary>
+      <div class="agent-item" id="agents-host-panel" style="margin-top:8px">
+        <div class="name">Sidebar agents</div>
+        <div class="meta" id="agents-meta">list · hide (CM-1906/1907)</div>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <button type="button" id="ag-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List agents</button>
+          <button type="button" id="ag-hide" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Hide agent research</button>
+        </div>
       </div>
-    </div>
-    <div class="agent-item" id="teammates-panel">
-      <div class="name">Teammates</div>
-      <div class="meta" id="teammates-meta">Host durable store</div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="tm-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create teammate</button>
-        <button type="button" id="tm-members" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Members panel</button>
-        <button type="button" id="tm-members-group" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Open members group</button>
-        <button type="button" id="tm-room" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Room turn</button>
-        <button type="button" id="tm-room-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Post to room</button>
-        <button type="button" id="tm-room-join" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Join room</button>
-        <button type="button" id="tm-list-members" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List members</button>
-        <button type="button" id="tm-list-channels" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List channels</button>
-        <button type="button" id="tm-open-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open canvas</button>
-        <button type="button" id="tm-list-models" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List models</button>
-        <button type="button" id="tm-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
-        <button type="button" id="tm-subagent" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
+      <div class="agent-item" id="teammates-panel">
+        <div class="name">Teammates</div>
+        <div class="meta" id="teammates-meta">Host durable store</div>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <button type="button" id="tm-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create teammate</button>
+          <button type="button" id="tm-members" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Members panel</button>
+          <button type="button" id="tm-members-group" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Open members group</button>
+          <button type="button" id="tm-room" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Room turn</button>
+          <button type="button" id="tm-room-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Post to room</button>
+          <button type="button" id="tm-room-join" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Join room</button>
+          <button type="button" id="tm-list-members" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List members</button>
+          <button type="button" id="tm-list-channels" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List channels</button>
+          <button type="button" id="tm-open-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open canvas</button>
+          <button type="button" id="tm-list-models" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List models</button>
+          <button type="button" id="tm-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
+          <button type="button" id="tm-subagent" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
+        </div>
       </div>
-    </div>
+    </details>
   </aside>
   <div id="main">
     <pre id="banner">booting MoonBit…</pre>
@@ -372,6 +501,73 @@
       <div id="settings-tabs" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="settings-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div id="settings-anchors" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+      <div id="secrets-panel" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div style="font-weight:700;margin-bottom:6px">产品凭证 · 开放配置（不写死）</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:8px">Key / 渠道凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_API_KEY <span id="sec-llm-mask"></span>
+            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-… DeepSeek" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_BASE_URL
+            <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MODEL
+            <input id="sec-llm-model" type="text" placeholder="deepseek-chat" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_QWEN_API_KEY <span id="sec-qwen-mask"></span>
+            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选 · 通义" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MOONSHOT_API_KEY <span id="sec-moon-mask"></span>
+            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选 · Moonshot/Kimi" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+          </label>
+          <label style="font-size:12px;color:var(--muted)">钉钉 webhook（勾选开启 live）
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+              <input id="sec-ding-post" type="checkbox" />
+              <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" style="flex:1;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            </div>
+          </label>
+          <label style="font-size:12px;color:var(--muted)">飞书 token + chat_id
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+              <input id="sec-feishu-post" type="checkbox" />
+              <input id="sec-feishu-token" type="password" placeholder="tenant token" style="flex:1;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            </div>
+          </label>
+          <label style="font-size:12px;color:var(--muted)">企微 token + agent + touser
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
+              <input id="sec-wecom-post" type="checkbox" />
+              <input id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-wecom-to" type="text" placeholder="touser" style="width:100px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            </div>
+          </label>
+          <label style="font-size:12px;color:var(--muted)">AI 备案号（未填则 residual，不假装已备案）
+            <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+              <input id="sec-icp" type="text" placeholder="BITBOT_ICP_FILING" style="flex:1;min-width:140px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-algo" type="text" placeholder="BITBOT_ALGORITHM_FILING" style="flex:1;min-width:140px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            </div>
+          </label>
+          <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px">
+            <input id="sec-moderation" type="checkbox" />
+            内容审核门 BITBOT_CONTENT_MODERATION=1（拦截违禁词输出）
+          </label>
+          <label style="font-size:12px;color:var(--muted)">OTA feed URL
+            <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
+              <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" style="flex:1;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <button type="button" id="sec-ota-check" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;white-space:nowrap">查更新</button>
+            </div>
+          </label>
+          <div id="sec-inbound-url" style="margin-top:4px;padding:8px;border:1px dashed var(--line);border-radius:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" id="sec-save" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">保存并热加载</button>
+            <button type="button" id="sec-probe" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连大脑</button>
+            <button type="button" id="sec-probe-cn" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连国内渠道</button>
+            <button type="button" id="sec-gate" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 12px;cursor:pointer">跑验收门禁</button>
+          </div>
+          <div id="sec-status" style="color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
+          <pre id="sec-gate-out" style="display:none;margin-top:8px;max-height:180px;overflow:auto;background:#0a1210;border:1px solid var(--line);border-radius:6px;padding:8px;color:var(--muted);font:11px/1.35 ui-monospace,monospace"></pre>
+        </div>
+      </div>
     </div>
     <div id="agent-info-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:#0f1814;border-radius:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -391,13 +587,27 @@
         </div>
       </div>
     </div>
-    <div id="log"></div>
+    <div id="log">
+      <div id="welcome">
+        <div class="w-brand">Bit Bot</div>
+        <div class="w-line">对标 Grok 的国产桌面助手。<br/>Desktop 优先 · MoonBit → DeepSeek Host。</div>
+        <div class="w-hint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div>
+        <div id="welcome-cfg" style="margin-top:16px;display:none">
+          <button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:#062014;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer">配置 DeepSeek / 渠道凭证</button>
+          <div style="margin-top:8px;color:var(--muted);font-size:12px">密钥开放配置，不写死在安装包里</div>
+        </div>
+      </div>
+    </div>
+    <div id="cfg-strip" style="display:none;margin:0 16px 8px;padding:10px 12px;border:1px solid #5a4a2a;background:#1a1810;border-radius:8px;color:#e8d9a8;font-size:13px;flex-shrink:0">
+      <span id="cfg-strip-text">尚未配置大脑 key — 点击「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）</span>
+      <button type="button" id="cfg-strip-btn" style="margin-left:10px;background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer">去配置</button>
+    </div>
   </div>
   <aside id="machines">
     <div class="panel-title">Machines</div>
     <div class="machine-item">
       <div class="name">Multi-end roster</div>
-      <div class="meta" id="machines-meta">desktop / ios / android (active Host only Connected)</div>
+      <div class="meta" id="machines-meta">Desktop 本阶段 · iOS/Android 暂缓</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="mach-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List machines</button>
       </div>
@@ -405,19 +615,31 @@
     <div id="machine-list">
       <div class="machine-item"><div class="meta">Ask ListMachines to refresh</div></div>
     </div>
-    <div class="panel-title" style="margin-top:16px">Connectors</div>
+    <div class="panel-title" style="margin-top:16px">国内渠道</div>
     <div class="machine-item">
-      <div class="name">Slack / Gmail / Outlook</div>
-      <div class="meta" id="connectors-meta">Host sandbox IdP OAuth</div>
+      <div class="name">钉钉 / 飞书 / 企微</div>
+      <div class="meta" id="cn-channels-meta">读取中…</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="connect-slack" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Connect Slack</button>
-        <button type="button" id="connect-gmail" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
-        <button type="button" id="connect-outlook" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Connect Outlook</button>
-        <button type="button" id="connect-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
-        <button type="button" id="connect-identity" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
-        <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
+        <button type="button" id="cn-dingtalk" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">发钉钉</button>
+        <button type="button" id="cn-feishu" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">发飞书</button>
+        <button type="button" id="cn-wecom" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发企微</button>
       </div>
     </div>
+    <details class="lab" style="margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#0c1410">
+      <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外 Connectors（Slack/Gmail · 非本阶段主路径）</summary>
+      <div class="machine-item" style="margin-top:8px">
+        <div class="name">Slack / Gmail / Outlook</div>
+        <div class="meta" id="connectors-meta">降级保留 · 主渠道见上方国内钉钉/飞书/企微</div>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <button type="button" id="connect-slack" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Slack</button>
+          <button type="button" id="connect-gmail" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
+          <button type="button" id="connect-outlook" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Outlook</button>
+          <button type="button" id="connect-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
+          <button type="button" id="connect-identity" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
+          <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
+        </div>
+      </div>
+    </details>
     <div class="panel-title" style="margin-top:16px">Host prefs</div>
     <div class="machine-item">
       <div class="name">Notify · computer · guide</div>
@@ -431,26 +653,28 @@
         <button type="button" id="pref-local" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Local execution off</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">Channels</div>
-    <div class="machine-item">
-      <div class="name">Slack / Teams outbound + claim</div>
-      <div class="meta" id="channels-meta">draft · thread · sandbox claim (Host env)</div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="ch-slack-draft" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Slack draft</button>
-        <button type="button" id="ch-slack-thread" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
-        <button type="button" id="ch-slack-dm" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Personal Slack DM</button>
-        <button type="button" id="ch-slack-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
-        <button type="button" id="ch-teams-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
-        <button type="button" id="ch-teams-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams send</button>
-        <button type="button" id="ch-teams-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
-        <button type="button" id="ch-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
-        <button type="button" id="ch-jobs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
-        <button type="button" id="ch-xsearch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
-        <button type="button" id="ch-workflows" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List workflows</button>
-        <button type="button" id="ch-credentials" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List credentials</button>
-        <button type="button" id="ch-cred-fill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fill credential</button>
+    <details class="lab" style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#0c1410">
+      <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外渠道实验室（Slack/Gmail · 非产品主路径）</summary>
+      <div class="machine-item" style="margin-top:8px">
+        <div class="name">Slack / Teams outbound + claim</div>
+        <div class="meta" id="channels-meta">降级 · 主路径是上方钉钉/飞书/企微</div>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+          <button type="button" id="ch-slack-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack draft</button>
+          <button type="button" id="ch-slack-thread" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
+          <button type="button" id="ch-slack-dm" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Personal Slack DM</button>
+          <button type="button" id="ch-slack-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
+          <button type="button" id="ch-teams-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
+          <button type="button" id="ch-teams-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams send</button>
+          <button type="button" id="ch-teams-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
+          <button type="button" id="ch-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
+          <button type="button" id="ch-jobs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
+          <button type="button" id="ch-xsearch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
+          <button type="button" id="ch-workflows" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List workflows</button>
+          <button type="button" id="ch-credentials" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List credentials</button>
+          <button type="button" id="ch-cred-fill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fill credential</button>
+        </div>
       </div>
-    </div>
+    </details>
     <div class="panel-title" style="margin-top:16px">Plugins</div>
     <div class="machine-item">
       <div class="name">MCP plugins (CM-0904 / 2107 / 2108)</div>
@@ -656,9 +880,9 @@
     </div>
   </aside>
   <form id="composer">
-    <pre id="json-out">turn JSON (v:1) will appear here</pre>
+    <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
     <div class="row">
-      <input id="text" type="text" placeholder="ListMachines · remember k=v · recall · shell …" autocomplete="off" />
+      <input id="text" type="text" placeholder="给 Bit Bot 发消息…" autocomplete="off" autofocus />
       <button id="send" type="submit">发送</button>
     </div>
   </form>
@@ -754,6 +978,72 @@
         " · anchors=" +
         ((payload && payload.anchors_closed_set_count) || 27);
       panel.style.display = "block";
+      refreshSecretsForm().catch(() => {});
+      refreshInboundUrlStrip().catch(() => {});
+      // Honest product residuals (brain / CN channels / filing / OTA) — never pretend ready.
+      (async () => {
+        const bits = [];
+        try {
+          if (window.bitbot.productStatus) {
+            const st = await window.bitbot.productStatus();
+            if (st && st.llm) {
+              bits.push(
+                "大脑=" +
+                  (st.llm.provider_id || "?") +
+                  "/" +
+                  (st.llm.model || "?") +
+                  (st.llm.key_configured ? "·就绪" : "·缺key"),
+              );
+            }
+            if (st && st.filing) {
+              bits.push(
+                "备案=" + (st.filing.residual ? "residual" : "已配"),
+              );
+            }
+            if (st && st.content_moderation) {
+              bits.push(
+                "审核=" +
+                  (st.content_moderation.armed ? "armed" : "residual"),
+              );
+            }
+            if (st && st.ota) {
+              bits.push("OTA=" + (st.ota.residual ? "residual" : "feed"));
+            }
+            if (st && st.mobile_deferred) bits.push("移动=暂缓");
+          }
+          if (window.bitbot.cnStatus) {
+            const cn = await window.bitbot.cnStatus();
+            if (cn && Array.isArray(cn.channels)) {
+              bits.push(
+                "渠道=" +
+                  cn.channels
+                    .map(function (x) {
+                      return (
+                        x.connector + ":" + (x.live_ready ? "live" : "draft")
+                      );
+                    })
+                    .join(","),
+              );
+            }
+            if (cn && cn.inbound) {
+              bits.push(
+                "入站=" +
+                  (cn.inbound.listening
+                    ? ":" + cn.inbound.port
+                    : "off"),
+              );
+              if (cn.inbound.listening && cn.inbound.routes && cn.inbound.routes.turn) {
+                bits.push("手机配对=/v1/turn");
+              }
+            }
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        if (bits.length) {
+          meta.textContent = meta.textContent + "\n" + bits.join(" · ");
+        }
+      })();
     }
 
     /** CM-2103 / CHARTER Delivery: prefer Host HTML artifact iframe over text remount. */
@@ -1218,13 +1508,348 @@
       log.scrollTop = log.scrollHeight;
     }
 
+    let activeSessionId = null;
+    let streamEl = null;
+
+    function renderSessionList(payload) {
+      const box = document.getElementById("session-list");
+      if (!box) return;
+      box.innerHTML = "";
+      const rows = (payload && payload.sessions) || [];
+      activeSessionId = (payload && payload.active_id) || activeSessionId;
+      for (const s of rows) {
+        const el = document.createElement("div");
+        el.className =
+          "agent-item" + (s.id === activeSessionId ? " active" : "");
+        el.style.cursor = "pointer";
+        el.dataset.sessionId = s.id;
+        el.innerHTML =
+          '<div class="name"></div><div class="meta"></div>';
+        el.querySelector(".name").textContent = s.title || "对话";
+        el.querySelector(".meta").textContent =
+          (s.message_count || 0) +
+          " 条 · " +
+          String(s.updated_at || "").slice(0, 16).replace("T", " ");
+        el.addEventListener("click", async () => {
+          const r = await window.bitbot.sessions.setActive(s.id);
+          if (r && r.ok) {
+            activeSessionId = s.id;
+            await loadActiveSessionTranscript();
+            const list = await window.bitbot.sessions.list();
+            renderSessionList(list);
+          }
+        });
+        box.appendChild(el);
+      }
+    }
+
+    async function loadActiveSessionTranscript() {
+      const got = await window.bitbot.sessions.get(activeSessionId);
+      if (!got || !got.ok || !got.session) return;
+      activeSessionId = got.session.id;
+      log.innerHTML = "";
+      const msgs = got.session.messages || [];
+      if (!msgs.length) {
+        log.innerHTML = welcomeMarkup();
+        refreshConfigGate().catch(() => {});
+        return;
+      }
+      for (const m of msgs) {
+        if (!m || !m.text) continue;
+        addMsg(m.role === "user" ? "user" : "assistant", m.text);
+      }
+    }
+
+    async function refreshSecretsForm() {
+      if (!window.bitbot.secrets) return;
+      const st = await window.bitbot.secrets.status();
+      if (!st || !st.ok) return;
+      const f = st.fields || {};
+      const mask = document.getElementById("sec-llm-mask");
+      if (mask) {
+        mask.textContent = f.BITBOT_LLM_API_KEY && f.BITBOT_LLM_API_KEY.present
+          ? "（已配置 " + f.BITBOT_LLM_API_KEY.masked + "）"
+          : "（未配置）";
+      }
+      const qwenMask = document.getElementById("sec-qwen-mask");
+      if (qwenMask) {
+        qwenMask.textContent =
+          f.BITBOT_LLM_QWEN_API_KEY && f.BITBOT_LLM_QWEN_API_KEY.present
+            ? "（已配置 " + f.BITBOT_LLM_QWEN_API_KEY.masked + "）"
+            : "（未配置）";
+      }
+      const moonMask = document.getElementById("sec-moon-mask");
+      if (moonMask) {
+        moonMask.textContent =
+          f.BITBOT_LLM_MOONSHOT_API_KEY && f.BITBOT_LLM_MOONSHOT_API_KEY.present
+            ? "（已配置 " + f.BITBOT_LLM_MOONSHOT_API_KEY.masked + "）"
+            : "（未配置）";
+      }
+      const base = document.getElementById("sec-llm-base");
+      if (base && f.BITBOT_LLM_BASE_URL && f.BITBOT_LLM_BASE_URL.value !== undefined) {
+        base.value = f.BITBOT_LLM_BASE_URL.value || base.placeholder;
+      }
+      const model = document.getElementById("sec-llm-model");
+      if (model && f.BITBOT_LLM_MODEL && f.BITBOT_LLM_MODEL.value !== undefined) {
+        model.value = f.BITBOT_LLM_MODEL.value || model.placeholder;
+      }
+      const dingPost = document.getElementById("sec-ding-post");
+      if (dingPost) dingPost.checked = f.BITBOT_DINGTALK_POST && f.BITBOT_DINGTALK_POST.present && f.BITBOT_DINGTALK_POST.value === "1";
+      // POST value may be in value field
+      if (dingPost && f.BITBOT_DINGTALK_POST && f.BITBOT_DINGTALK_POST.value !== undefined) {
+        dingPost.checked = f.BITBOT_DINGTALK_POST.value === "1";
+      }
+      const feishuPost = document.getElementById("sec-feishu-post");
+      if (feishuPost && f.BITBOT_FEISHU_POST && f.BITBOT_FEISHU_POST.value !== undefined) {
+        feishuPost.checked = f.BITBOT_FEISHU_POST.value === "1";
+      }
+      const wecomPost = document.getElementById("sec-wecom-post");
+      if (wecomPost && f.BITBOT_WECOM_POST && f.BITBOT_WECOM_POST.value !== undefined) {
+        wecomPost.checked = f.BITBOT_WECOM_POST.value === "1";
+      }
+      const feishuChat = document.getElementById("sec-feishu-chat");
+      if (feishuChat && f.BITBOT_FEISHU_CHAT_ID && f.BITBOT_FEISHU_CHAT_ID.value !== undefined) {
+        feishuChat.value = f.BITBOT_FEISHU_CHAT_ID.value || "";
+      }
+      const wecomAgent = document.getElementById("sec-wecom-agent");
+      if (wecomAgent && f.BITBOT_WECOM_AGENT_ID && f.BITBOT_WECOM_AGENT_ID.value !== undefined) {
+        wecomAgent.value = f.BITBOT_WECOM_AGENT_ID.value || "";
+      }
+      const wecomTo = document.getElementById("sec-wecom-to");
+      if (wecomTo && f.BITBOT_WECOM_TOUSER && f.BITBOT_WECOM_TOUSER.value !== undefined) {
+        wecomTo.value = f.BITBOT_WECOM_TOUSER.value || "";
+      }
+      const icp = document.getElementById("sec-icp");
+      if (icp && f.BITBOT_ICP_FILING && f.BITBOT_ICP_FILING.value !== undefined) {
+        icp.value = f.BITBOT_ICP_FILING.value || "";
+      }
+      const algo = document.getElementById("sec-algo");
+      if (algo && f.BITBOT_ALGORITHM_FILING && f.BITBOT_ALGORITHM_FILING.value !== undefined) {
+        algo.value = f.BITBOT_ALGORITHM_FILING.value || "";
+      }
+      const mod = document.getElementById("sec-moderation");
+      if (mod && f.BITBOT_CONTENT_MODERATION && f.BITBOT_CONTENT_MODERATION.value !== undefined) {
+        mod.checked = f.BITBOT_CONTENT_MODERATION.value === "1";
+      }
+      const ota = document.getElementById("sec-ota");
+      if (ota && f.BITBOT_UPDATE_FEED_URL && f.BITBOT_UPDATE_FEED_URL.value !== undefined) {
+        ota.value = f.BITBOT_UPDATE_FEED_URL.value || "";
+      }
+      const secStatus = document.getElementById("sec-status");
+      if (secStatus && st.llm) {
+        secStatus.textContent =
+          "大脑=" +
+          (st.llm.provider_id || "?") +
+          "/" +
+          (st.llm.model || "?") +
+          (st.llm.key_configured ? " · key 已热加载" : " · 缺 key");
+      }
+    }
+
+    async function saveSecretsFromForm() {
+      if (!window.bitbot.secrets) return;
+      const patch = {};
+      const keyEl = document.getElementById("sec-llm-key");
+      const keyVal = keyEl && keyEl.value ? keyEl.value.trim() : "";
+      if (keyVal) patch.BITBOT_LLM_API_KEY = keyVal;
+      const baseEl = document.getElementById("sec-llm-base");
+      const baseVal = baseEl && baseEl.value ? baseEl.value.trim() : "";
+      if (baseVal) patch.BITBOT_LLM_BASE_URL = baseVal;
+      const modelEl = document.getElementById("sec-llm-model");
+      const modelVal = modelEl && modelEl.value ? modelEl.value.trim() : "";
+      if (modelVal) patch.BITBOT_LLM_MODEL = modelVal;
+      const qwenEl = document.getElementById("sec-qwen-key");
+      const qwenVal = qwenEl && qwenEl.value ? qwenEl.value.trim() : "";
+      if (qwenVal) patch.BITBOT_LLM_QWEN_API_KEY = qwenVal;
+      const moonEl = document.getElementById("sec-moon-key");
+      const moonVal = moonEl && moonEl.value ? moonEl.value.trim() : "";
+      if (moonVal) patch.BITBOT_LLM_MOONSHOT_API_KEY = moonVal;
+      patch.BITBOT_DINGTALK_POST = document.getElementById("sec-ding-post") &&
+        document.getElementById("sec-ding-post").checked
+        ? "1"
+        : "0";
+      const dingHook = document.getElementById("sec-ding-hook");
+      if (dingHook && dingHook.value.trim()) {
+        patch.BITBOT_DINGTALK_WEBHOOK = dingHook.value.trim();
+      }
+      patch.BITBOT_FEISHU_POST = document.getElementById("sec-feishu-post") &&
+        document.getElementById("sec-feishu-post").checked
+        ? "1"
+        : "0";
+      const ft = document.getElementById("sec-feishu-token");
+      if (ft && ft.value.trim()) patch.BITBOT_FEISHU_TOKEN = ft.value.trim();
+      const fc = document.getElementById("sec-feishu-chat");
+      if (fc && fc.value.trim()) patch.BITBOT_FEISHU_CHAT_ID = fc.value.trim();
+      patch.BITBOT_WECOM_POST = document.getElementById("sec-wecom-post") &&
+        document.getElementById("sec-wecom-post").checked
+        ? "1"
+        : "0";
+      const wt = document.getElementById("sec-wecom-token");
+      if (wt && wt.value.trim()) patch.BITBOT_WECOM_TOKEN = wt.value.trim();
+      const wa = document.getElementById("sec-wecom-agent");
+      if (wa && wa.value.trim()) patch.BITBOT_WECOM_AGENT_ID = wa.value.trim();
+      const wto = document.getElementById("sec-wecom-to");
+      if (wto && wto.value.trim()) patch.BITBOT_WECOM_TOUSER = wto.value.trim();
+      const icpEl = document.getElementById("sec-icp");
+      if (icpEl) patch.BITBOT_ICP_FILING = icpEl.value.trim();
+      const algoEl = document.getElementById("sec-algo");
+      if (algoEl) patch.BITBOT_ALGORITHM_FILING = algoEl.value.trim();
+      patch.BITBOT_CONTENT_MODERATION =
+        document.getElementById("sec-moderation") &&
+        document.getElementById("sec-moderation").checked
+          ? "1"
+          : "0";
+      const otaEl = document.getElementById("sec-ota");
+      if (otaEl) patch.BITBOT_UPDATE_FEED_URL = otaEl.value.trim();
+      const r = await window.bitbot.secrets.set(patch);
+      const secStatus = document.getElementById("sec-status");
+      if (secStatus) {
+        secStatus.textContent = r && r.ok
+          ? "已保存 " + (r.applied || []).join(",") + " → " + (r.path || ".env.local") +
+            (r.llm && r.llm.key_configured ? " · 大脑 key 就绪" : " · 大脑仍缺 key")
+          : "保存失败: " + ((r && r.error) || "?");
+      }
+      if (keyEl) keyEl.value = "";
+      if (qwenEl) qwenEl.value = "";
+      if (moonEl) moonEl.value = "";
+      if (ft) ft.value = "";
+      if (wt) wt.value = "";
+      await refreshSecretsForm();
+      try {
+        await refreshModelPicker();
+      } catch (_) {
+        /* ignore */
+      }
+      try {
+        if (window.bitbot.cnStatus) {
+          const cn = await window.bitbot.cnStatus();
+          const meta = document.getElementById("cn-channels-meta");
+          if (meta && cn && Array.isArray(cn.channels)) {
+            let t = cn.channels
+              .map(function (c) {
+                return c.connector + "=" + (c.live_ready ? "live" : "draft");
+              })
+              .join(" · ");
+            if (cn.inbound && cn.inbound.listening) {
+              t += " · 入站:" + cn.inbound.port;
+            }
+            meta.textContent = t;
+          }
+        }
+      } catch (_) {
+        /* ignore */
+      }
+      try {
+        await refreshConfigGate();
+      } catch (_) {
+        /* ignore */
+      }
+      return r;
+    }
+
+    function welcomeMarkup(hintText) {
+      const hint =
+        hintText ||
+        "输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板";
+      return (
+        '<div id="welcome"><div class="w-brand">Bit Bot</div><div class="w-line">对标 Grok 的国产桌面助手。<br/>Desktop 优先 · MoonBit → DeepSeek Host。</div><div class="w-hint">' +
+        hint +
+        '</div><div id="welcome-cfg" style="margin-top:16px;display:none"><button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:#062014;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer">配置 DeepSeek / 渠道凭证</button><div style="margin-top:8px;color:var(--muted);font-size:12px">密钥开放配置，不写死在安装包里</div></div></div>'
+      );
+    }
+
+    async function refreshModelPicker() {
+      const box = document.getElementById("model-picker");
+      if (!box || !window.bitbot.llmCatalog) return;
+      const cat = await window.bitbot.llmCatalog();
+      if (!cat || !cat.ok) return;
+      const label = box.querySelector(".mp-label");
+      box.innerHTML = "";
+      const lab = document.createElement("span");
+      lab.className = "mp-label";
+      lab.textContent = label ? label.textContent : "模型";
+      box.appendChild(lab);
+      const providers = cat.providers || [];
+      for (const p of providers) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className =
+          "mp-btn" +
+          (p.active ? " active" : "") +
+          (p.key_configured ? "" : " nokey");
+        btn.dataset.providerId = p.id;
+        btn.title =
+          (p.label || p.id) +
+          " · " +
+          (p.model || "") +
+          (p.key_configured
+            ? " · key 已配"
+            : " · 缺 " + (p.key_env || "BITBOT_LLM_API_KEY"));
+        btn.textContent =
+          (p.label || p.id) + (p.key_configured ? "" : " · 无key");
+        btn.addEventListener("click", async () => {
+          if (!p.key_configured) {
+            openProductCredentials(
+              "模型 " +
+                (p.label || p.id) +
+                " 缺 " +
+                (p.key_env || "key") +
+                " — 请在下方填写（开放配置，不写死）",
+            );
+            return;
+          }
+          await runUserTurn("switch model " + p.id, { skipSession: true });
+          try {
+            await refreshModelPicker();
+          } catch (_) {
+            /* ignore */
+          }
+        });
+        box.appendChild(btn);
+      }
+      const sub = document.querySelector("header .sub");
+      if (sub && cat.active) {
+        const hot = document.getElementById("hotkey-hint");
+        const hotTxt = hot ? hot.textContent : "Ctrl+Shift+Space";
+        sub.innerHTML =
+          (cat.active.label || cat.active.provider_id || "LLM") +
+          " / " +
+          (cat.active.model || "") +
+          (cat.active.key_configured ? "" : " · 缺 key") +
+          " · <span id=\"hotkey-hint\">" +
+          hotTxt +
+          "</span> 呼出";
+      }
+    }
+
+    async function refreshSessions() {
+      if (!window.bitbot.sessions) return;
+      const list = await window.bitbot.sessions.list();
+      renderSessionList(list);
+    }
+
+    function clearWelcome() {
+      const w = document.getElementById("welcome");
+      if (w && w.parentNode) w.parentNode.removeChild(w);
+    }
+
     async function runUserTurn(text, opts) {
+      clearWelcome();
       addMsg("user", text + (opts && opts.approved ? " [approved]" : ""));
       sendBtn.disabled = true;
+      streamEl = null;
       try {
-        const r = await window.bitbot.turn(text, opts || {});
+        const turnOpts = Object.assign({}, opts || {}, {
+          sessionId: activeSessionId || undefined,
+        });
+        const r = await window.bitbot.turn(text, turnOpts);
         jsonOut.textContent = JSON.stringify(r, null, 2);
         if (r && Array.isArray(r.machines)) renderMachines(r.machines);
+        // Prefer final assistant lines; streaming bubble already showed deltas.
+        if (streamEl && streamEl.parentNode) {
+          streamEl.parentNode.removeChild(streamEl);
+          streamEl = null;
+        }
         if (r && Array.isArray(r.messages)) {
           for (const m of r.messages) {
             if (m.role === "user") continue;
@@ -3466,17 +4091,246 @@
       runUserTurn(t, { approved: true });
     });
     denyBtn.addEventListener("click", hideApproval);
+    function openProductCredentials(hint) {
+      const panel = document.getElementById("settings-panel");
+      const secrets = document.getElementById("secrets-panel");
+      if (panel) panel.style.display = "block";
+      if (secrets) {
+        secrets.scrollIntoView({ behavior: "smooth", block: "start" });
+        const keyEl = document.getElementById("sec-llm-key");
+        if (keyEl) keyEl.focus();
+      }
+      const secStatus = document.getElementById("sec-status");
+      if (secStatus && hint) secStatus.textContent = hint;
+      refreshSecretsForm().catch(() => {});
+      refreshInboundUrlStrip().catch(() => {});
+    }
+
+    async function refreshConfigGate() {
+      const strip = document.getElementById("cfg-strip");
+      const welcomeCfg = document.getElementById("welcome-cfg");
+      let keyed = false;
+      let anyCn = false;
+      try {
+        if (window.bitbot.llmStatus) {
+          const ls = await window.bitbot.llmStatus();
+          keyed = Boolean(ls && ls.key_configured);
+        }
+        if (window.bitbot.cnStatus) {
+          const cn = await window.bitbot.cnStatus();
+          anyCn = Boolean(cn && cn.any_live_ready);
+        }
+      } catch (_) {
+        /* ignore */
+      }
+      if (strip) {
+        if (!keyed) {
+          strip.style.display = "block";
+          const t = document.getElementById("cfg-strip-text");
+          if (t) {
+            t.textContent =
+              "尚未配置大脑 key — 点「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）";
+          }
+        } else if (!anyCn) {
+          strip.style.display = "block";
+          const t = document.getElementById("cfg-strip-text");
+          if (t) {
+            t.textContent =
+              "大脑已配 · 国内渠道仍为 draft — 可在「凭证」勾选钉钉/飞书/企微 live";
+          }
+        } else {
+          strip.style.display = "none";
+        }
+      }
+      if (welcomeCfg) welcomeCfg.style.display = keyed ? "none" : "block";
+    }
+
     const accountBtn = document.getElementById("account-settings-btn");
     if (accountBtn) {
       accountBtn.addEventListener("click", () => {
         runUserTurn("open settings", {});
       });
     }
+    const credBtn = document.getElementById("cred-settings-btn");
+    if (credBtn) {
+      credBtn.addEventListener("click", () => {
+        openProductCredentials("在此填写 DeepSeek / 渠道凭证（不写死）");
+      });
+    }
+    const cfgStripBtn = document.getElementById("cfg-strip-btn");
+    if (cfgStripBtn) {
+      cfgStripBtn.addEventListener("click", () => openProductCredentials());
+    }
+    document.addEventListener("click", (ev) => {
+      const t = ev.target;
+      if (t && t.id === "welcome-cfg-btn") {
+        openProductCredentials("在此填写 DeepSeek / 渠道凭证（不写死）");
+      }
+    });
     const settingsClose = document.getElementById("settings-close");
     if (settingsClose) {
       settingsClose.addEventListener("click", () => {
         const p = document.getElementById("settings-panel");
         if (p) p.style.display = "none";
+      });
+    }
+    const secSave = document.getElementById("sec-save");
+    if (secSave) {
+      secSave.addEventListener("click", () => {
+        saveSecretsFromForm().catch(() => {});
+      });
+    }
+    async function refreshInboundUrlStrip() {
+      const el = document.getElementById("sec-inbound-url");
+      if (!el || !window.bitbot.cnInboundStatus) return;
+      try {
+        const st = await window.bitbot.cnInboundStatus();
+        if (!st || !st.listening) {
+          el.textContent =
+            "入站未监听 — Desktop 启动会拉起 :18765；公网用 scripts/cn_inbound_tunnel.sh";
+          return;
+        }
+        const pub = st.public_url || "";
+        const routes = st.routes || {};
+        el.textContent = pub
+          ? "入站公网（贴进钉钉/飞书/企微控制台）: " +
+            pub +
+            " · dingtalk=" +
+            (routes.dingtalk || "") +
+            " · feishu=" +
+            (routes.feishu || "") +
+            " · wecom=" +
+            (routes.wecom || "")
+          : "入站本机 http://127.0.0.1:" +
+            (st.port || 18765) +
+            " — 尚无公网 URL（跑 cn_inbound_tunnel.sh）";
+      } catch (_) {
+        el.textContent = "入站状态读取失败";
+      }
+    }
+
+    const secProbe = document.getElementById("sec-probe");
+    if (secProbe) {
+      secProbe.addEventListener("click", async () => {
+        const secStatus = document.getElementById("sec-status");
+        if (secStatus) secStatus.textContent = "试连中…";
+        try {
+          const r = await window.bitbot.secrets.probeLlm();
+          if (secStatus) {
+            secStatus.textContent = r && r.ok
+              ? "试连成功 · " +
+                ((r.result && r.result.provider_id) || "") +
+                "/" +
+                ((r.result && r.result.model) || "") +
+                " · " +
+                ((r.result && r.result.stdout_prefix) || "").slice(0, 80)
+              : "试连失败 · " +
+                ((r && r.result && r.result.error) ||
+                  (r && r.error) ||
+                  "unknown") +
+                "（不假装成功）";
+          }
+        } catch (e) {
+          if (secStatus) {
+            secStatus.textContent =
+              "试连异常 · " + String(e && e.message ? e.message : e);
+          }
+        }
+      });
+    }
+    const secProbeCn = document.getElementById("sec-probe-cn");
+    if (secProbeCn) {
+      secProbeCn.addEventListener("click", async () => {
+        const secStatus = document.getElementById("sec-status");
+        if (secStatus) secStatus.textContent = "试连国内渠道…";
+        try {
+          const r = await window.bitbot.secrets.probeCnChannels();
+          const parts = ((r && r.channels) || [])
+            .map(function (c) {
+              if (!c.armed) return c.connector + "=draft";
+              return (
+                c.connector +
+                "=" +
+                (c.live_ok ? "live_ok" : "live_fail") +
+                (c.error ? "(" + String(c.error).slice(0, 40) + ")" : "")
+              );
+            })
+            .join(" · ");
+          if (secStatus) {
+            secStatus.textContent = r && r.any_live
+              ? "渠道试连 · 至少一路 live · " + parts
+              : "渠道试连 · 无 live（不假装）· " + parts;
+          }
+          await refreshInboundUrlStrip();
+        } catch (e) {
+          if (secStatus) {
+            secStatus.textContent =
+              "渠道试连异常 · " + String(e && e.message ? e.message : e);
+          }
+        }
+      });
+    }
+    const secOtaCheck = document.getElementById("sec-ota-check");
+    if (secOtaCheck) {
+      secOtaCheck.addEventListener("click", async () => {
+        const secStatus = document.getElementById("sec-status");
+        if (secStatus) secStatus.textContent = "查 OTA…";
+        try {
+          const r = await window.bitbot.ota.check();
+          if (secStatus) {
+            if (r && r.ok && r.update_available) {
+              secStatus.textContent =
+                "有更新 · " +
+                ((r.info && r.info.version) || "?") +
+                "（不自动假装已升级）";
+            } else if (r && r.ok) {
+              secStatus.textContent = "已是最新 / 无新版本元数据";
+            } else {
+              secStatus.textContent =
+                "OTA residual · " +
+                ((r && r.error) || "unknown") +
+                "（不假装完成）";
+            }
+          }
+        } catch (e) {
+          if (secStatus) {
+            secStatus.textContent =
+              "OTA 异常 · " + String(e && e.message ? e.message : e);
+          }
+        }
+      });
+    }
+    const secGate = document.getElementById("sec-gate");
+    if (secGate) {
+      secGate.addEventListener("click", async () => {
+        const secStatus = document.getElementById("sec-status");
+        const out = document.getElementById("sec-gate-out");
+        if (secStatus) secStatus.textContent = "跑验收门禁…";
+        if (out) {
+          out.style.display = "block";
+          out.textContent = "…";
+        }
+        try {
+          const r = await window.bitbot.secrets.runGate();
+          if (out) {
+            out.textContent =
+              (r && r.stdout ? r.stdout : "") +
+              (r && r.stderr ? "\n" + r.stderr : "");
+          }
+          if (secStatus) {
+            secStatus.textContent =
+              r && r.ok
+                ? "门禁 PASS（exit 0）"
+                : "门禁 FAIL（exit " +
+                  String(r && r.exit_code) +
+                  "）— 不假装完成";
+          }
+        } catch (e) {
+          if (secStatus) {
+            secStatus.textContent =
+              "门禁异常 · " + String(e && e.message ? e.message : e);
+          }
+        }
       });
     }
     const agentBit = document.getElementById("agent-bit");
@@ -3546,11 +4400,187 @@
 
     async function boot() {
       try {
+        const hint = document.getElementById("hotkey-hint");
+        if (hint && /Mac|iPhone|iPod|iPad/i.test(navigator.platform || "")) {
+          hint.textContent = "⌘⇧Space";
+        }
+        if (window.bitbot.onLlmStream) {
+          window.bitbot.onLlmStream((chunk) => {
+            if (!chunk) return;
+            if (chunk.phase === "start" || chunk.phase === "provider") {
+              if (!streamEl) {
+                streamEl = document.createElement("div");
+                streamEl.className = "msg assistant";
+                streamEl.dataset.streaming = "1";
+                streamEl.textContent = "";
+                log.appendChild(streamEl);
+              }
+              return;
+            }
+            if (chunk.phase === "delta") {
+              if (!streamEl) {
+                streamEl = document.createElement("div");
+                streamEl.className = "msg assistant";
+                streamEl.dataset.streaming = "1";
+                log.appendChild(streamEl);
+              }
+              streamEl.textContent = chunk.partial || streamEl.textContent + (chunk.text || "");
+              log.scrollTop = log.scrollHeight;
+              return;
+            }
+            if (chunk.phase === "end") {
+              if (streamEl) {
+                streamEl.dataset.streaming = "0";
+                if (chunk.partial) streamEl.textContent = chunk.partial;
+              }
+              return;
+            }
+            if (chunk.phase === "error") {
+              addMsg("assistant", "LLM: " + (chunk.error || "failed"));
+            }
+          });
+        }
+        if (window.bitbot.onSessionsChanged) {
+          window.bitbot.onSessionsChanged((list) => renderSessionList(list));
+        }
+        const newBtn = document.getElementById("sess-new");
+        if (newBtn) {
+          newBtn.addEventListener("click", async () => {
+            const created = await window.bitbot.sessions.create("新对话");
+            if (created && created.ok) {
+              activeSessionId = created.session.id;
+              log.innerHTML = welcomeMarkup("新对话已创建 · 输入消息开始");
+              await refreshSessions();
+              await refreshConfigGate();
+            }
+          });
+        }
+        const toolsBtn = document.getElementById("tools-toggle-btn");
+        if (toolsBtn) {
+          toolsBtn.addEventListener("click", () => {
+            document.body.classList.toggle("tools-open");
+            toolsBtn.classList.toggle(
+              "active",
+              document.body.classList.contains("tools-open"),
+            );
+          });
+        }
+        document.addEventListener("keydown", (ev) => {
+          if (ev.altKey && (ev.key === "d" || ev.key === "D")) {
+            document.body.classList.toggle("debug-json");
+          }
+        });
+        const cnDing = document.getElementById("cn-dingtalk");
+        if (cnDing) {
+          cnDing.addEventListener("click", () => {
+            runUserTurn("reply via dingtalk:cid-desktop :: Bit Bot 钉钉消息", {
+              approved: true,
+            });
+          });
+        }
+        const cnFeishu = document.getElementById("cn-feishu");
+        if (cnFeishu) {
+          cnFeishu.addEventListener("click", () => {
+            runUserTurn("reply via feishu:oc_desktop :: Bit Bot 飞书消息", {
+              approved: true,
+            });
+          });
+        }
+        const cnWecom = document.getElementById("cn-wecom");
+        if (cnWecom) {
+          cnWecom.addEventListener("click", () => {
+            runUserTurn("reply via wecom:BitBotUser :: Bit Bot 企微消息", {
+              approved: true,
+            });
+          });
+        }
+        await refreshSessions();
+        await loadActiveSessionTranscript();
+        if (log.querySelector(".msg")) clearWelcome();
+        try {
+          if (window.bitbot.llmStatus) {
+            const ls = await window.bitbot.llmStatus();
+            const hint = document.querySelector("#welcome .w-hint");
+            if (hint && ls && !ls.key_configured) {
+              hint.textContent =
+                "未配置 BITBOT_LLM_API_KEY — 点右上角「凭证」填写（开放配置，热加载，不写死；默认 " +
+                (ls.model || "deepseek-chat") +
+                "）";
+            } else if (hint && ls && ls.key_configured) {
+              hint.textContent =
+                "大脑就绪 · " +
+                (ls.label || ls.provider_id) +
+                " / " +
+                (ls.model || "") +
+                " · 输入消息开始";
+            }
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          await refreshConfigGate();
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          await refreshInboundUrlStrip();
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          if (window.bitbot.cnStatus) {
+            const cn = await window.bitbot.cnStatus();
+            const meta = document.getElementById("cn-channels-meta");
+            if (meta && cn && Array.isArray(cn.channels)) {
+              let t = cn.channels
+                .map(function (c) {
+                  return (
+                    c.connector +
+                    "=" +
+                    (c.live_ready ? "live" : "draft")
+                  );
+                })
+                .join(" · ");
+              if (cn.inbound && cn.inbound.listening) {
+                t += " · 入站:" + cn.inbound.port;
+              }
+              meta.textContent = t;
+            }
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        try {
+          await refreshModelPicker();
+        } catch (_) {
+          /* ignore */
+        }
         const r = await window.bitbot.boot();
         banner.className = r.ok ? "ok" : "err";
+        let deskExtra = "sessions · tray · hotkey · llm_chat stream";
+        try {
+          if (window.bitbot.autostart) {
+            const a = await window.bitbot.autostart.get();
+            deskExtra +=
+              " · autostart=" + (a && a.openAtLogin ? "on" : "off");
+          }
+          if (window.bitbot.daemon) {
+            const d = await window.bitbot.daemon.ensure();
+            const st = await window.bitbot.daemon.status();
+            deskExtra +=
+              " · daemon=" +
+              (d && d.ok ? "pid:" + (d.pid || d.child_pid || "?") : "off") +
+              (st && st.status && st.status.long_lived ? " long_lived" : "");
+          }
+        } catch (_) {
+          /* ignore */
+        }
         banner.textContent = (r.banner || JSON.stringify(r, null, 2)) +
-          "\n\n[host] target=" + (r.target || "?") + " · " + (r.note || "");
-        const lm = await window.bitbot.turn("ListMachines");
+          "\n\n[host] target=" + (r.target || "?") + " · " + (r.note || "") +
+          "\n[desktop] " + deskExtra;
+        setTimeout(() => banner.classList.add("collapsed"), 2400);
+        const lm = await window.bitbot.turn("ListMachines", { skipSession: true });
         if (lm && lm.machines) renderMachines(lm.machines);
       } catch (e) {
         banner.className = "err";

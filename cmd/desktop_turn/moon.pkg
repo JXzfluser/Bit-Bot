@@ -2,7 +2,7 @@ import {
   "bitbot/bitbot",
   "bitbot/bitbot/agents/cloud",
   "bitbot/bitbot/agents/computer_use",
-  "bitbot/bitbot/agents/task" @task,
+  "bitbot/bitbot/agents/task",
   "bitbot/bitbot/agents/teammates",
   "bitbot/bitbot/box_host",
   "bitbot/bitbot/channels",
@@ -16,7 +16,7 @@ import {
   "bitbot/bitbot/skills",
   "bitbot/bitbot/tools",
   "bitbot/bitbot/ui_protocol",
-  "moonbitlang/core/env" @env,
+  "moonbitlang/core/env",
 }
 
 pkgtype(kind: "executable")

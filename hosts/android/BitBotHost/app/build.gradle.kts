@@ -26,6 +26,38 @@ android {
       }
     }
   }
+  // 国内安卓渠道包 flavors（P4）— APK id 后缀；签名仍需 BITBOT_ANDROID_STORE_*。
+  flavorDimensions += "store"
+  productFlavors {
+    create("universal") {
+      dimension = "store"
+    }
+    create("huawei") {
+      dimension = "store"
+      applicationIdSuffix = ".huawei"
+      resValue("string", "bitbot_store_channel", "huawei")
+    }
+    create("xiaomi") {
+      dimension = "store"
+      applicationIdSuffix = ".xiaomi"
+      resValue("string", "bitbot_store_channel", "xiaomi")
+    }
+    create("honor") {
+      dimension = "store"
+      applicationIdSuffix = ".honor"
+      resValue("string", "bitbot_store_channel", "honor")
+    }
+    create("oppo") {
+      dimension = "store"
+      applicationIdSuffix = ".oppo"
+      resValue("string", "bitbot_store_channel", "oppo")
+    }
+    create("vivo") {
+      dimension = "store"
+      applicationIdSuffix = ".vivo"
+      resValue("string", "bitbot_store_channel", "vivo")
+    }
+  }
   buildTypes {
     getByName("release") {
       signingConfig =

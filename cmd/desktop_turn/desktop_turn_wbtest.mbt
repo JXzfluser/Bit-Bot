@@ -9,6 +9,11 @@ test "desktop_turn_ack_and_json_shape" {
   assert_eq(r.messages[0].role, "user")
   assert_eq(r.messages[0].text, "hello from desktop")
   assert_eq(r.messages[1].role, "assistant")
+  // Product Chat plans Host llm_chat (DeepSeek / BITBOT_LLM_*), not a canned reply.
+  assert_true(r.needs_host_ffi)
+  assert_eq(r.effects.length(), 1)
+  assert_eq(r.effects[0].kind, "llm_chat")
+  assert_eq(r.effects[0].command, "hello from desktop")
   let json = r.to_json_line()
   assert_true(json.contains("\"v\":1"))
   assert_true(json.contains("\"ok\":true"))
@@ -17,7 +22,8 @@ test "desktop_turn_ack_and_json_shape" {
   assert_true(json.contains("\"modules\":["))
   assert_true(json.contains("runtime"))
   assert_true(json.contains("\"machines\":[]"))
-  assert_true(json.contains("\"needs_host_ffi\":false"))
+  assert_true(json.contains("\"needs_host_ffi\":true"))
+  assert_true(json.contains("\"llm_chat\""))
   assert_true(json.contains("\"host_continued\":false"))
 }
 
@@ -479,7 +485,10 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let ch_list = run_desktop_turn("list channels", turn_id="ch-list-1")
   assert_true(ch_list.ok)
   assert_eq(ch_list.intent, "channel_delivery")
-  let ch_create = run_desktop_turn("create channel sales", turn_id="ch-create-1")
+  let ch_create = run_desktop_turn(
+    "create channel sales",
+    turn_id="ch-create-1",
+  )
   assert_true(ch_create.ok)
   assert_eq(ch_create.intent, "channel_delivery")
   let hd_start = run_desktop_turn("start huddle", turn_id="hd-start-1")
@@ -497,6 +506,13 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let md_list = run_desktop_turn("list models", turn_id="md-list-1")
   assert_true(md_list.ok)
   assert_eq(md_list.intent, "open_settings")
+  assert_true(md_list.needs_host_ffi)
+  assert_eq(md_list.effects[0].kind, "llm_list_models")
+  let md_switch = run_desktop_turn("switch model deepseek", turn_id="md-sw-1")
+  assert_true(md_switch.ok)
+  assert_eq(md_switch.intent, "open_settings")
+  assert_eq(md_switch.effects[0].kind, "llm_set_model")
+  assert_eq(md_switch.effects[0].command, "deepseek")
   let blk = run_desktop_turn("block user alice", turn_id="blk-1")
   assert_true(blk.ok)
   assert_eq(blk.intent, "members_panel")
@@ -998,6 +1014,38 @@ test "classify_intent_table" {
     _ => fail("expected HostEffect")
   }
   assert_eq(classify_intent("hi"), Chat)
+  let chat_plan = run_desktop_turn("hi", turn_id="chat-llm-1")
+  assert_true(chat_plan.ok)
+  assert_eq(chat_plan.intent, "chat")
+  assert_true(chat_plan.needs_host_ffi)
+  assert_eq(chat_plan.effects.length(), 1)
+  assert_eq(chat_plan.effects[0].kind, "llm_chat")
+  assert_eq(chat_plan.effects[0].command, "hi")
+  assert_true(
+    chat_plan.messages[chat_plan.messages.length() - 1].text.contains(
+      "llm_chat",
+    ),
+  )
+  let llm_results : Array[DesktopHostResult] = [
+    {
+      kind: "llm_chat",
+      ok: true,
+      command: "hi",
+      stdout: "你好，我是 Bit Bot。",
+      stderr: "",
+      error: "",
+    },
+  ]
+  let llm_cont = continue_after_host_ffi(
+    turn_id="chat-llm-cont",
+    prior_user_text="hi",
+    llm_results,
+  )
+  assert_true(llm_cont.ok)
+  assert_true(llm_cont.host_continued)
+  let llm_last = llm_cont.messages[llm_cont.messages.length() - 1].text
+  assert_eq(llm_last, "你好，我是 Bit Bot。")
+  assert_false(llm_last.contains("Host FFI results applied"))
   assert_eq(classify_intent("list connectors"), ConnectorsStatus)
   match classify_intent("claim inbox zoe") {
     ClaimInbox(local_part~) => assert_eq(local_part, "zoe")

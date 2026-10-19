@@ -20,7 +20,13 @@ bash hosts/ios/stub_attach.sh
 bash scripts/verify_native_shells.sh
 ```
 
+## Product shell (chat-first)
+
+`BitBotHost` ContentView is a Grok-style chat: bubbles + composer; 「能力」sheet for 钉钉/飞书/企微 and device tools. Turns go through `TurnBridge` → `hosts/mobile_host` → MoonBit `llm_chat` (same brain as Desktop).
+
 ## Still open
 
+- **本阶段真机暂缓**（用户：可先不考虑 iOS/Android）；壳与同脑路径保留
 - App Store / TestFlight signing & packaging
+- Device-side build of BitBotHost (needs macOS / Xcode)
 - Python LocalBrain (demoted — not used)

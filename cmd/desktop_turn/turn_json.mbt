@@ -1,6 +1,6 @@
 ///|
 /// Versioned Desktop / Host FFI JSON contract.
-pub const DESKTOP_TURN_JSON_V : Int = 1
+pub const DESKTOP_TURN_JSON_V : Int32 = 1
 
 ///|
 /// One outbound chat line for Desktop host JSON.
@@ -60,7 +60,7 @@ pub(all) enum TurnIntent {
     to_~ : String,
     subject~ : String,
     body~ : String,
-    provider~ : String,
+    provider~ : String
   )
   InstallPlugin(plugin_id~ : String)
   UninstallPlugin(plugin_id~ : String)
@@ -97,7 +97,7 @@ pub(all) enum TurnIntent {
     group_id~ : String,
     section_id~ : String,
     from_agent~ : String,
-    body~ : String,
+    body~ : String
   )
   RoomTurn(room~ : String, body~ : String)
   SendToAgent(to_id~ : String, body~ : String)
@@ -113,7 +113,12 @@ pub(all) enum TurnIntent {
   FinanceCall(tool~ : String)
   FillCredential(domain~ : String)
   ListCredentials
-  ColdMail(to_~ : String, subject~ : String, body~ : String, unsubscribe~ : String)
+  ColdMail(
+    to_~ : String,
+    subject~ : String,
+    body~ : String,
+    unsubscribe~ : String
+  )
   PersonalSlackDm(owner_id~ : String, text~ : String)
   JobSearch(query~ : String)
   LearnFromDemo(title~ : String, steps_csv~ : String)
@@ -320,8 +325,9 @@ fn parse_demo_steps(csv : String) -> Array[@skills.DemoStep] {
       None => (rest, "")
     }
     match split_once(part, ":") {
-      Some((k, d)) => out.push({ kind: k.trim().to_owned(), detail: d.trim().to_owned() })
-      None => out.push({ kind: "step", detail: part.trim().to_owned() })
+      Some((k, d)) =>
+        out.push({ kind: k.trim().to_owned(), detail: d.trim().to_owned(), })
+      None => out.push({ kind: "step", detail: part.trim().to_owned(), })
     }
     rest = more
   }
@@ -353,7 +359,7 @@ pub fn DesktopTurnContext::default() -> DesktopTurnContext {
 ///|
 /// Result of one MoonBit desktop turn (product brain path).
 pub(all) struct DesktopTurnResult {
-  v : Int
+  v : Int32
   ok : Bool
   turn_id : String
   intent : String
@@ -434,17 +440,17 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   let trimmed = user_text.trim().to_owned()
   let low = trimmed.to_lower()
   if low == "listmachines" ||
-      low == "list machines" ||
-      low.has_prefix("listmachines") ||
-      (low.contains("list") && low.contains("machine")) ||
-      low == "machines" ||
-      low == "show machines" {
+    low == "list machines" ||
+    low.has_prefix("listmachines") ||
+    (low.contains("list") && low.contains("machine")) ||
+    low == "machines" ||
+    low == "show machines" {
     return ListMachines
   }
   // remember key=value  |  remember key as value  |  update memory key=value
   if low.has_prefix("remember ") ||
-      low.has_prefix("update memory ") ||
-      low.has_prefix("memory update ") {
+    low.has_prefix("update memory ") ||
+    low.has_prefix("memory update ") {
     let rest = if low.has_prefix("remember ") {
       trimmed[9:].to_owned()
     } else if low.has_prefix("update memory ") {
@@ -458,10 +464,10 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   if low.has_prefix("recall") ||
-      low.has_prefix("remember what") ||
-      low.contains("memory recall") ||
-      low == "what do you remember" ||
-      (low.contains("recall") && low.contains("memory")) {
+    low.has_prefix("remember what") ||
+    low.contains("memory recall") ||
+    low == "what do you remember" ||
+    (low.contains("recall") && low.contains("memory")) {
     let prefix = extract_recall_prefix(trimmed)
     return MemoryRecall(prefix~)
   }
@@ -472,15 +478,15 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   }
   // Connectors / mail product path
   if low == "list connectors" ||
-      low == "connectors" ||
-      low == "connectors status" ||
-      low == "connector status" {
+    low == "connectors" ||
+    low == "connectors status" ||
+    low == "connector status" {
     return ConnectorsStatus
   }
   // Grok Host tools: ListDir / Read / WebFetch → Host FFI effects
   if low.has_prefix("listdir ") ||
-      low.has_prefix("list dir ") ||
-      low.has_prefix("fs list ") {
+    low.has_prefix("list dir ") ||
+    low.has_prefix("fs list ") {
     let p = if low.has_prefix("listdir ") {
       trimmed[8:].trim().to_owned()
     } else if low.has_prefix("list dir ") {
@@ -494,8 +500,8 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   }
   // Mail search/read before generic Host Read (CM-0906/1004).
   if low.has_prefix("search mail ") ||
-      low.has_prefix("search inbox ") ||
-      low.has_prefix("search email ") {
+    low.has_prefix("search inbox ") ||
+    low.has_prefix("search email ") {
     let query = if low.has_prefix("search mail ") {
       trimmed[12:].trim().to_owned()
     } else if low.has_prefix("search inbox ") {
@@ -508,8 +514,8 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   if low.has_prefix("read mail ") ||
-      low.has_prefix("read thread ") ||
-      low.has_prefix("open mail ") {
+    low.has_prefix("read thread ") ||
+    low.has_prefix("open mail ") {
     let thread_id = if low.has_prefix("read mail ") {
       trimmed[10:].trim().to_owned()
     } else if low.has_prefix("read thread ") {
@@ -522,9 +528,9 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   if low.has_prefix("read ") ||
-      low.has_prefix("read file ") ||
-      low.has_prefix("fs read ") ||
-      low.has_prefix("open file ") {
+    low.has_prefix("read file ") ||
+    low.has_prefix("fs read ") ||
+    low.has_prefix("open file ") {
     let p = if low.has_prefix("read file ") {
       trimmed[10:].trim().to_owned()
     } else if low.has_prefix("fs read ") {
@@ -536,21 +542,21 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
     // Do not steal mail/thread/notify utterances into fs_read.
     if p != "" &&
-        !p.has_prefix("http://") &&
-        !p.has_prefix("https://") &&
-        !p.has_prefix("mail ") &&
-        !p.has_prefix("thread ") &&
-        p != "receipts" &&
-        !p.has_prefix("receipts ") {
+      !p.has_prefix("http://") &&
+      !p.has_prefix("https://") &&
+      !p.has_prefix("mail ") &&
+      !p.has_prefix("thread ") &&
+      p != "receipts" &&
+      !p.has_prefix("receipts ") {
       return FsRead(path=p)
     }
   }
   if low.has_prefix("webfetch ") ||
-      low.has_prefix("fetch ") ||
-      low.has_prefix("web fetch ") ||
-      low.has_prefix("browser open ") ||
-      low.has_prefix("open url ") ||
-      low.has_prefix("open browser ") {
+    low.has_prefix("fetch ") ||
+    low.has_prefix("web fetch ") ||
+    low.has_prefix("browser open ") ||
+    low.has_prefix("open url ") ||
+    low.has_prefix("open browser ") {
     let u = if low.has_prefix("webfetch ") {
       trimmed[9:].trim().to_owned()
     } else if low.has_prefix("web fetch ") {
@@ -648,9 +654,9 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   if low.has_prefix("uninstall plugin ") ||
-      low.has_prefix("remove plugin ") ||
-      low.has_prefix("remove connector ") ||
-      low.has_prefix("disable plugin ") {
+    low.has_prefix("remove plugin ") ||
+    low.has_prefix("remove connector ") ||
+    low.has_prefix("disable plugin ") {
     let id = if low.has_prefix("uninstall plugin ") {
       trimmed[17:].trim().to_owned()
     } else if low.has_prefix("remove plugin ") {
@@ -666,19 +672,19 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   }
   // CM-2108 GetPlugin + directory list/search (CM-0904 install funnel).
   if low == "list plugins" ||
-      low == "search plugins" ||
-      low == "mcp list tools" ||
-      low == "list mcp tools" ||
-      low == "mcp tools" ||
-      low == "open plugins" ||
-      low == "plugin marketplace" ||
-      low == "plugins marketplace" ||
-      low == "mcp namespace list" ||
-      low == "list mcp namespaces" ||
-      low == "mcp call tools/list" ||
-      low.has_prefix("list plugins ") ||
-      low.has_prefix("search plugins ") ||
-      low.has_prefix("mcp list tools ") {
+    low == "search plugins" ||
+    low == "mcp list tools" ||
+    low == "list mcp tools" ||
+    low == "mcp tools" ||
+    low == "open plugins" ||
+    low == "plugin marketplace" ||
+    low == "plugins marketplace" ||
+    low == "mcp namespace list" ||
+    low == "list mcp namespaces" ||
+    low == "mcp call tools/list" ||
+    low.has_prefix("list plugins ") ||
+    low.has_prefix("search plugins ") ||
+    low.has_prefix("mcp list tools ") {
     let q = if low.has_prefix("list plugins ") {
       trimmed[13:].trim().to_owned()
     } else if low.has_prefix("search plugins ") {
@@ -691,8 +697,8 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     return ListPlugins(query=q)
   }
   if low.has_prefix("get plugin ") ||
-      low.has_prefix("plugin info ") ||
-      low.has_prefix("configure plugin ") {
+    low.has_prefix("plugin info ") ||
+    low.has_prefix("configure plugin ") {
     let id = if low.has_prefix("get plugin ") {
       trimmed[11:].trim().to_owned()
     } else if low.has_prefix("configure plugin ") {
@@ -705,8 +711,8 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   if low.has_prefix("install plugin ") ||
-      low.has_prefix("add connector ") ||
-      low.has_prefix("enable plugin ") {
+    low.has_prefix("add connector ") ||
+    low.has_prefix("enable plugin ") {
     let id = if low.has_prefix("install plugin ") {
       trimmed[15:].trim().to_owned()
     } else if low.has_prefix("enable plugin ") {
@@ -719,9 +725,9 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   if low == "setup slack" ||
-      low == "set up slack" ||
-      low == "connect slack" ||
-      low == "setupslack" {
+    low == "set up slack" ||
+    low == "connect slack" ||
+    low == "setupslack" {
     return SetupSlack
   }
   if low == "claim inbox" {
@@ -734,10 +740,10 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   if low.has_prefix("draft outlook mail ") ||
-      low.has_prefix("draft mail ") ||
-      low.has_prefix("draft email ") ||
-      low.has_prefix("send mail ") ||
-      low.has_prefix("send email ") {
+    low.has_prefix("draft mail ") ||
+    low.has_prefix("draft email ") ||
+    low.has_prefix("send mail ") ||
+    low.has_prefix("send email ") {
     let (rest, default_provider) = if low.has_prefix("draft outlook mail ") {
       (trimmed[19:].to_owned(), "outlook")
     } else if low.has_prefix("draft mail ") {
@@ -766,13 +772,13 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     return HostEffect(command="echo terminal")
   }
   if low.has_prefix("!") ||
-      low.has_prefix("shell ") ||
-      low.has_prefix("shell:") ||
-      low.has_prefix("run ") ||
-      low.has_prefix("$ ") ||
-      low.has_prefix("exec ") ||
-      low.has_prefix("执行 ") ||
-      low.has_prefix("运行 ") {
+    low.has_prefix("shell ") ||
+    low.has_prefix("shell:") ||
+    low.has_prefix("run ") ||
+    low.has_prefix("$ ") ||
+    low.has_prefix("exec ") ||
+    low.has_prefix("执行 ") ||
+    low.has_prefix("运行 ") {
     let cmd = if low.has_prefix("!") {
       trimmed[1:].trim().to_owned()
     } else if low.has_prefix("$ ") {
@@ -840,9 +846,14 @@ fn parse_channel_intent(trimmed : String, low : String) -> TurnIntent? {
           let full = "channel:" + a
           // If addr already has scheme (slack:/email:/teams:), use as-is
           let inbound_addr = if a.has_prefix("slack:") ||
-              a.has_prefix("email:") ||
-              a.has_prefix("teams:") ||
-              a.has_prefix("voice:") {
+            a.has_prefix("email:") ||
+            a.has_prefix("teams:") ||
+            a.has_prefix("voice:") ||
+            a.has_prefix("dingtalk:") ||
+            a.has_prefix("feishu:") ||
+            a.has_prefix("lark:") ||
+            a.has_prefix("wecom:") ||
+            a.has_prefix("wework:") {
             a
           } else {
             // "channel:slack:C1 body" → rest starts with slack:
@@ -882,61 +893,14 @@ fn extract_kv(rest : String, key : String) -> String? {
       let after = rest[i + marker.length():].to_owned()
       // value runs until next known key= or end.
       let keys = [
-        " inbound=",
-        " outbound=",
-        " body=",
-        " to=",
-        " subject=",
-        " machine=",
-        " src=",
-        " dest=",
-        " box=",
-        " id=",
-        " cron=",
-        " prompt=",
-        " name=",
-        " role=",
-        " item=",
-        " cents=",
-        " title=",
-        " when=",
-        " artifact=",
-        " domain=",
-        " unsubscribe=",
-        " owner=",
-        " text=",
-        " direct=",
-        " steps=",
-        " description=",
-        " date=",
-        " from=",
-        " scope=",
-        " key=",
-        " value=",
-        " group=",
-        " section=",
-        " provider=",
-        " entry=",
-        " anchor=",
-        " agent=",
-        " confirm=",
-        " via=",
-        " pm=",
-        " pkgs=",
-        " packages=",
-        " group=",
-        " hidden=",
-        " assistant=",
-        " toggle=",
-        " enabled=",
-        " confirm=",
-        " kind=",
-        " ns=",
-        " tool=",
-        " detail=",
-        " msg=",
-        " message=",
-        " emoji=",
+        " inbound=", " outbound=", " body=", " to=", " subject=", " machine=", " src=",
+        " dest=", " box=", " id=", " cron=", " prompt=", " name=", " role=", " item=",
+        " cents=", " title=", " when=", " artifact=", " domain=", " unsubscribe=",
+        " owner=", " text=", " direct=", " steps=", " description=", " date=", " from=",
+        " scope=", " key=", " value=", " group=", " section=", " provider=", " entry=",
+        " anchor=", " agent=", " confirm=", " via=", " pm=", " pkgs=", " packages=",
+        " group=", " hidden=", " assistant=", " toggle=", " enabled=", " confirm=",
+        " kind=", " ns=", " tool=", " detail=", " msg=", " message=", " emoji=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -945,7 +909,15 @@ fn extract_kv(rest : String, key : String) -> String? {
           None => ()
         }
       }
-      let v = after[:end].trim().to_owned()
+      let mut v = after[:end].trim().to_owned()
+      // Strip matching single/double quotes so cron='*/1 * * * *' stays a cron expr.
+      if v.length() >= 2 {
+        let a = v[0:1].to_owned()
+        let b = v[v.length() - 1:].to_owned()
+        if (a == "'" && b == "'") || (a == "\"" && b == "\"") {
+          v = v[1:v.length() - 1].trim().to_owned()
+        }
+      }
       if v == "" {
         None
       } else {
@@ -1037,11 +1009,7 @@ fn machine_rows(reg : @box_host.MachineRegistry) -> Array[DesktopMachineRow] {
 fn memory_rows(entries : Array[@memory.MemoryEntry]) -> Array[DesktopMemoryRow] {
   let out : Array[DesktopMemoryRow] = []
   for e in entries {
-    out.push({
-      key: e.key,
-      value: e.value,
-      scope: e.scope.label(),
-    })
+    out.push({ key: e.key, value: e.value, scope: e.scope.label(), })
   }
   out
 }
@@ -1063,8 +1031,8 @@ fn fail_turn(
     turn_id,
     intent: intent.name(),
     messages: [
-      { role: "user", text: user_text },
-      { role: "assistant", text: msg },
+      { role: "user", text: user_text, },
+      { role: "assistant", text: msg, },
     ],
     modules: mods,
     machines: [],
@@ -1097,17 +1065,18 @@ fn deliver_ok(
 ) -> DesktopTurnResult {
   let mods = @bitbot.registered_modules()
   let opened = @runtime.open_turn(turn_id~, text=user_text)
-  let acked = opened.acknowledge(body="收到，正在用 MoonBit 内核处理。")
+  let acked = opened.acknowledge(
+    body="收到，正在用 MoonBit 内核处理。",
+  )
   match acked.deliver_text(body=reply) {
-    Err(e) =>
-      fail_turn(user_text, turn_id, intent, e, ctx)
+    Err(e) => fail_turn(user_text, turn_id, intent, e, ctx)
     Ok(working) => {
       let ended = working.end_turn()
-      let msgs : Array[DesktopMessage] = [{ role: "user", text: user_text }]
+      let msgs : Array[DesktopMessage] = [{ role: "user", text: user_text, }]
       for env in ended.outbound {
         for part in env.parts {
           match part_text(part) {
-            Some(t) => msgs.push({ role: "assistant", text: t })
+            Some(t) => msgs.push({ role: "assistant", text: t, })
             None => ()
           }
         }
@@ -1152,6 +1121,64 @@ pub fn continue_after_host_ffi(
   results : Array[DesktopHostResult],
   ctx~ : DesktopTurnContext = DesktopTurnContext::default(),
 ) -> DesktopTurnResult {
+  // Product Chat path: llm_chat stdout is the assistant reply (not a Host dump).
+  let mut llm_reply = ""
+  let mut llm_fail = ""
+  let mut i_scan = 0
+  while i_scan < results.length() {
+    let r = results[i_scan]
+    if r.kind == "llm_chat" {
+      if r.ok {
+        let out = r.stdout.trim().to_owned()
+        if out != "" {
+          llm_reply = out
+        }
+      } else {
+        let e = if r.error != "" {
+          r.error
+        } else if r.stderr != "" {
+          r.stderr
+        } else {
+          "llm_chat failed"
+        }
+        llm_fail = e
+      }
+    }
+    i_scan = i_scan + 1
+  }
+  if llm_reply != "" {
+    let prior = if prior_user_text == "" {
+      "(host-continue)"
+    } else {
+      prior_user_text
+    }
+    return deliver_ok(
+      prior,
+      turn_id,
+      @ui_protocol.linkify_bare_http_urls(llm_reply),
+      HostContinue,
+      ctx~,
+      host_continued=true,
+    )
+  }
+  if llm_fail != "" {
+    let prior = if prior_user_text == "" {
+      "(host-continue)"
+    } else {
+      prior_user_text
+    }
+    let fail_reply = "LLM 未完成（Host llm_chat）：" +
+      llm_fail +
+      "。请配置 BITBOT_LLM_API_KEY / BITBOT_LLM_BASE_URL（默认 DeepSeek）。"
+    return deliver_ok(
+      prior,
+      turn_id,
+      fail_reply,
+      HostContinue,
+      ctx~,
+      host_continued=true,
+    )
+  }
   let buf = StringBuilder()
   buf.write_string("Host FFI results applied (MoonBit kernel / ADR 0002):\n")
   let mut i = 0
@@ -1203,14 +1230,7 @@ pub fn continue_after_host_ffi(
   } else {
     prior_user_text
   }
-  deliver_ok(
-    prior,
-    turn_id,
-    reply,
-    HostContinue,
-    ctx~,
-    host_continued=true,
-  )
+  deliver_ok(prior, turn_id, reply, HostContinue, ctx~, host_continued=true)
 }
 
 ///|
@@ -1258,10 +1278,12 @@ pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
   }
   let mut start = 1
   if args.length() >= 2 &&
-      (args[0].contains("moon") ||
+    (
+      args[0].contains("moon") ||
       args[0].contains("node") ||
       args[0].has_suffix(".exe") ||
-      args[0].contains("desktop_turn")) {
+      args[0].contains("desktop_turn")
+    ) {
     start = 1
   }
   let parts : Array[String] = []
@@ -1277,11 +1299,11 @@ pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
       continue
     }
     if a == "--seed-memory" ||
-        a == "--session-id" ||
-        a == "--machine-id" ||
-        a == "--machine-kind" ||
-        a == "--channel" ||
-        a == "--turn-id" {
+      a == "--session-id" ||
+      a == "--machine-id" ||
+      a == "--machine-kind" ||
+      a == "--channel" ||
+      a == "--turn-id" {
       i = i + 2
       continue
     }
@@ -1404,13 +1426,7 @@ pub fn run_desktop_turn(
 ) -> DesktopTurnResult {
   let trimmed = user_text.trim().to_owned()
   guard trimmed != "" else {
-    return fail_turn(
-      trimmed,
-      turn_id,
-      Chat,
-      "empty user text",
-      ctx,
-    )
+    return fail_turn(trimmed, turn_id, Chat, "empty user text", ctx)
   }
   let intent = classify_intent(trimmed)
   match intent {
@@ -1422,8 +1438,7 @@ pub fn run_desktop_turn(
         machine_kind=ctx.machine_kind,
       )
       let rows = machine_rows(reg)
-      let reply =
-        "ListMachines: " +
+      let reply = "ListMachines: " +
         rows.length().to_string() +
         " registered (desktop + ios + android). Host kinds via @box_host. Active machine_kind=" +
         ctx.machine_kind +
@@ -1468,19 +1483,14 @@ pub fn run_desktop_turn(
     MemoryUpdate(key~, value~) => {
       let store = @memory.InMemoryStore::new()
       seed_memory_store(store, memory_seeds)
-      store.update(@memory.UpdateOp::{
-        scope: @memory.Profile,
-        key: key,
-        value: value,
-      })
+      store.update(@memory.UpdateOp::{ scope: @memory.Profile, key, value, })
       let entries = store.recall(@memory.RecallQuery::{
         scope: @memory.Profile,
         key_prefix: None,
         limit: 64,
       })
       let rows = memory_rows(entries)
-      let reply =
-        "Memory updated (profile): " +
+      let reply = "Memory updated (profile): " +
         key +
         " = " +
         value +
@@ -1519,8 +1529,7 @@ pub fn run_desktop_turn(
         limit: 64,
       })
       let rows = memory_rows(entries)
-      let reply =
-        "Memory recall (profile): " +
+      let reply = "Memory recall (profile): " +
         rows.length().to_string() +
         " entr(y/ies). Host materializes recall snapshot."
       let effect : DesktopEffect = {
@@ -1539,25 +1548,25 @@ pub fn run_desktop_turn(
         needs_host_ffi=true,
       )
     }
-    HostEffect(command~) => {
-      match gate_consequential(
-        trimmed,
-        turn_id,
-        intent,
-        ctx,
-        @security.Shell,
-        "shell: " + command,
-        irreversible=false,
-      ) {
+    HostEffect(command~) =>
+      match
+        gate_consequential(
+          trimmed,
+          turn_id,
+          intent,
+          ctx,
+          @security.Shell,
+          "shell: " + command,
+          irreversible=false,
+        ) {
         Some(blocked) => blocked
         None => {
           let effect : DesktopEffect = {
             kind: "shell",
-            command: command,
+            command,
             needs_host_ffi: true,
           }
-          let reply =
-            "Host effect planned (shell). Desktop must execute via Host FFI then call continue_after_host_ffi (ADR 0002). Not LocalBrain."
+          let reply = "Host effect planned (shell). Desktop must execute via Host FFI then call continue_after_host_ffi (ADR 0002). Not LocalBrain."
           deliver_ok(
             trimmed,
             turn_id,
@@ -1569,13 +1578,13 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
-    ChannelDelivery(inbound~, outbound~, body~) => {
-      match @channels.plan_channel_reply(
-        inbound_address=inbound,
-        outbound_channel=outbound,
-        body~,
-      ) {
+    ChannelDelivery(inbound~, outbound~, body~) =>
+      match
+        @channels.plan_channel_reply(
+          inbound_address=inbound,
+          outbound_channel=outbound,
+          body~,
+        ) {
         Err(e) =>
           fail_turn(
             trimmed,
@@ -1600,25 +1609,27 @@ pub fn run_desktop_turn(
           // External channel send is a Host effect (delivery), not LocalBrain.
           let effects : Array[DesktopEffect] = match plan {
             @channels.InAppOnly => []
-            @channels.External(channel~) => [
-              {
-                kind: "channel_send",
-                command: channel + " :: " + body,
-                needs_host_ffi: true,
-              },
-            ]
+            @channels.External(channel~) =>
+              [
+                {
+                  kind: "channel_send",
+                  command: channel + " :: " + body,
+                  needs_host_ffi: true,
+                },
+              ]
           }
           let needs = effects.length() > 0
           if needs {
-            match gate_consequential(
-              trimmed,
-              turn_id,
-              intent,
-              ctx,
-              @security.ExternalSend,
-              "channel_send: " + label,
-              irreversible=true,
-            ) {
+            match
+              gate_consequential(
+                trimmed,
+                turn_id,
+                intent,
+                ctx,
+                @security.ExternalSend,
+                "channel_send: " + label,
+                irreversible=true,
+              ) {
               Some(blocked) => blocked
               None =>
                 deliver_ok(
@@ -1644,7 +1655,6 @@ pub fn run_desktop_turn(
           }
         }
       }
-    }
     ConnectorsStatus => {
       let reg = @connectors.PluginRegistry::seed_demo()
       let ready = reg.ready_namespaces()
@@ -1789,8 +1799,7 @@ pub fn run_desktop_turn(
             Some(n) => n
             None => plugin_id
           }
-          let reply =
-            "Installed plugin " +
+          let reply = "Installed plugin " +
             plugin_id +
             " (" +
             skills.length().to_string() +
@@ -1806,7 +1815,8 @@ pub fn run_desktop_turn(
             trimmed,
             turn_id,
             reply,
-            intent, ctx~,
+            intent,
+            ctx~,
             effects=[effect],
             needs_host_ffi=true,
           )
@@ -1886,7 +1896,11 @@ pub fn run_desktop_turn(
     ListPlugins(query~) => {
       let effect : DesktopEffect = {
         kind: "mcp_list_plugins",
-        command: if query == "" { "q=" } else { "q=" + query },
+        command: if query == "" {
+          "q="
+        } else {
+          "q=" + query
+        },
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -1912,8 +1926,7 @@ pub fn run_desktop_turn(
             assistant="SetUpSlack failed: " + e,
           )
         Ok(status) => {
-          let reply =
-            "SetUpSlack: " +
+          let reply = "SetUpSlack: " +
             status.label() +
             " via @channels.SetUpSlackSession (Grok Slack connect path). Live OAuth is Host FFI."
           let effect : DesktopEffect = {
@@ -1925,7 +1938,8 @@ pub fn run_desktop_turn(
             trimmed,
             turn_id,
             reply,
-            intent, ctx~,
+            intent,
+            ctx~,
             effects=[effect],
             needs_host_ffi=true,
           )
@@ -1946,8 +1960,7 @@ pub fn run_desktop_turn(
           )
         Ok(inbox) => {
           let addr = inbox.address()
-          let reply =
-            "Claimed agent inbox " +
+          let reply = "Claimed agent inbox " +
             addr +
             " via @mail.MailService (Grok mail claim path). Host journals claim."
           let effect : DesktopEffect = {
@@ -1970,19 +1983,19 @@ pub fn run_desktop_turn(
     DraftMail(to_~, subject~, body~, provider~) => {
       let card = @mail.DraftEmailCard::new(to_~, subject~, body~)
       let prov = if provider == "" { "gmail" } else { provider }
-      match gate_consequential(
-        trimmed,
-        turn_id,
-        intent,
-        ctx,
-        @security.ExternalSend,
-        "mail_send to=" + to_,
-        irreversible=true,
-      ) {
+      match
+        gate_consequential(
+          trimmed,
+          turn_id,
+          intent,
+          ctx,
+          @security.ExternalSend,
+          "mail_send to=" + to_,
+          irreversible=true,
+        ) {
         Some(blocked) => blocked
         None => {
-          let reply =
-            "Draft mail card ready. provider=" +
+          let reply = "Draft mail card ready. provider=" +
             prov +
             " to=" +
             card.to_ +
@@ -2029,7 +2042,11 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "Routine created: " + id + " cron=" + cron + ". Host registers schedule.",
+            "Routine created: " +
+            id +
+            " cron=" +
+            cron +
+            ". Host registers schedule.",
             intent,
             ctx~,
             effects=[effect],
@@ -2185,11 +2202,7 @@ pub fn run_desktop_turn(
         subject="Invoice #42",
         snippet="Please pay invoice for " + query,
       )
-      gmail.seed_thread(
-        id="t-hello-1",
-        subject="Hello",
-        snippet="Hi there",
-      )
+      gmail.seed_thread(id="t-hello-1", subject="Hello", snippet="Hi there")
       let hits = gmail.search_threads(query~)
       let buf = StringBuilder()
       buf.write_string("Mail search «")
@@ -2213,7 +2226,8 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        buf.to_string() + " (CM-0906/1004). Host executes live Gmail when token present.",
+        buf.to_string() +
+        " (CM-0906/1004). Host executes live Gmail when token present.",
         intent,
         ctx~,
         effects=[effect],
@@ -2296,7 +2310,11 @@ pub fn run_desktop_turn(
       }
       let effect : DesktopEffect = {
         kind: "mcp_discover",
-        command: if namespace_ == "" { "*" } else { namespace_ },
+        command: if namespace_ == "" {
+          "*"
+        } else {
+          namespace_
+        },
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -2313,8 +2331,7 @@ pub fn run_desktop_turn(
       let cat = @tools.DynamicCatalog::seed_example()
       let _ = cat.discover(ns=Some(namespace_))
       // CM-2164: write_result / write_to_file must request Host FS write_to_file.
-      let want_write =
-        name == "write_result" ||
+      let want_write = name == "write_result" ||
         name == "write_to_file" ||
         args_json.to_lower().contains("\"write_to_file\":true") ||
         args_json.to_lower().contains("\"write_to_file\": true")
@@ -2369,7 +2386,8 @@ pub fn run_desktop_turn(
         task,
         allow_shell_escape: false,
       }
-      match @computer_use.dispatch_computer_use("cu-" + turn_id, turn_id, spec) {
+      match
+        @computer_use.dispatch_computer_use("cu-" + turn_id, turn_id, spec) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok((_h, outcome)) => {
           let effect : DesktopEffect = {
@@ -2402,23 +2420,25 @@ pub fn run_desktop_turn(
       }
       match @channels.parse_teams_scope(addr) {
         Ok(ts) =>
-          match @channels.plan_teams_outbound(
-            { scope: ts, message_id: turn_id, sender: "user", body: "" },
-            ts,
-            body~,
-          ) {
+          match
+            @channels.plan_teams_outbound(
+              { scope: ts, message_id: turn_id, sender: "user", body: "", },
+              ts,
+              body~,
+            ) {
             @channels.Rejected(reason~) =>
               fail_turn(trimmed, turn_id, intent, reason, ctx, assistant=reason)
-            @channels.Deliver(scope~, body~) => {
-              match gate_consequential(
-                trimmed,
-                turn_id,
-                intent,
-                ctx,
-                @security.ExternalSend,
-                "teams_send " + scope.to_address(),
-                irreversible=true,
-              ) {
+            @channels.Deliver(scope~, body~) =>
+              match
+                gate_consequential(
+                  trimmed,
+                  turn_id,
+                  intent,
+                  ctx,
+                  @security.ExternalSend,
+                  "teams_send " + scope.to_address(),
+                  irreversible=true,
+                ) {
                 Some(blocked) => blocked
                 None => {
                   let effect : DesktopEffect = {
@@ -2440,9 +2460,8 @@ pub fn run_desktop_turn(
                   )
                 }
               }
-            }
           }
-        Err(_) => {
+        Err(_) =>
           // Host Graph chat-id form (teams:Tsmoke) — still channel_send; not pretend tenant/team.
           if !addr.has_prefix("teams:") || addr == "teams:" {
             fail_turn(
@@ -2454,15 +2473,16 @@ pub fn run_desktop_turn(
               assistant="not a teams: address",
             )
           } else {
-            match gate_consequential(
-              trimmed,
-              turn_id,
-              intent,
-              ctx,
-              @security.ExternalSend,
-              "teams_send " + addr,
-              irreversible=true,
-            ) {
+            match
+              gate_consequential(
+                trimmed,
+                turn_id,
+                intent,
+                ctx,
+                @security.ExternalSend,
+                "teams_send " + addr,
+                irreversible=true,
+              ) {
               Some(blocked) => blocked
               None => {
                 let effect : DesktopEffect = {
@@ -2485,7 +2505,6 @@ pub fn run_desktop_turn(
               }
             }
           }
-        }
       }
     }
     DeviceTools => {
@@ -2594,8 +2613,7 @@ pub fn run_desktop_turn(
       let cat = @skills.ManagedCatalog::seed()
       let runner = @skills.SkillRunner::new(cat)
       let sk = runner.load_for_task(task)
-      let reply =
-        "Skill load for task «" +
+      let reply = "Skill load for task «" +
         task +
         "»: " +
         sk.loaded_count().to_string() +
@@ -2615,7 +2633,7 @@ pub fn run_desktop_turn(
         needs_host_ffi=true,
       )
     }
-    VoiceStart(call_id~) => {
+    VoiceStart(call_id~) =>
       match @skills.VoiceCallSession::start(call_id~) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(session) => {
@@ -2640,8 +2658,7 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
-    VoiceRelay(call_id~, text~) => {
+    VoiceRelay(call_id~, text~) =>
       match @skills.VoiceCallSession::start(call_id~) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(session) =>
@@ -2670,8 +2687,7 @@ pub fn run_desktop_turn(
             }
           }
       }
-    }
-    VoiceEnd(call_id~) => {
+    VoiceEnd(call_id~) =>
       match @skills.VoiceCallSession::start(call_id~) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(session) => {
@@ -2687,10 +2703,7 @@ pub fn run_desktop_turn(
               deliver_ok(
                 trimmed,
                 turn_id,
-                "Voice ended; wrote " +
-                path +
-                ". App summary: " +
-                summary,
+                "Voice ended; wrote " + path + ". App summary: " + summary,
                 intent,
                 ctx~,
                 effects=[effect],
@@ -2700,7 +2713,6 @@ pub fn run_desktop_turn(
           }
         }
       }
-    }
     CreateTeammate(id~, name~, role~) => {
       let dir = @teammates.TeammateDirectory::new()
       match dir.create_agent(id~, name~, role~) {
@@ -2761,13 +2773,7 @@ pub fn run_desktop_turn(
       // Kernel validates isolation shape; Host loads durable group + posts.
       let effect : DesktopEffect = {
         kind: "section_post",
-        command: group_id +
-        "|" +
-        section_id +
-        "|" +
-        from_agent +
-        "|" +
-        body,
+        command: group_id + "|" + section_id + "|" + from_agent + "|" + body,
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -2784,12 +2790,9 @@ pub fn run_desktop_turn(
         needs_host_ffi=true,
       )
     }
-    RoomTurn(room~, body~) => {
-      match @teammates.open_room_turn(
-        room_name=room,
-        speaker_id="user",
-        body~,
-      ) {
+    RoomTurn(room~, body~) =>
+      match
+        @teammates.open_room_turn(room_name=room, speaker_id="user", body~) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(rt) => {
           let effect : DesktopEffect = {
@@ -2812,9 +2815,12 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
-    SendToAgent(to_id~, body~) => {
-      match @teammates.plan_send_to_agent_fanout([to_id], user_explicitly_asked_fanout=false) {
+    SendToAgent(to_id~, body~) =>
+      match
+        @teammates.plan_send_to_agent_fanout(
+          [to_id],
+          user_explicitly_asked_fanout=false,
+        ) {
         @teammates.MustAskUserFirst(reason~, ..) =>
           fail_turn(trimmed, turn_id, intent, reason, ctx, assistant=reason)
         @teammates.ExplicitFanout(..) =>
@@ -2845,7 +2851,6 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
     LaunchCloudAgent(prompt~) => {
       let svc = @cloud.CloudAgentService::new()
       let launch = svc.launch(prompt)
@@ -2871,7 +2876,7 @@ pub fn run_desktop_turn(
         needs_host_ffi=true,
       )
     }
-    DeliverCloudArtifact(artifact~, dest~) => {
+    DeliverCloudArtifact(artifact~, dest~) =>
       // artifact = bc_id; dest = source filename or path under workspace policy.
       match @cloud.deliver_cloud_artifact(artifact, dest) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
@@ -2892,12 +2897,11 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
     ScheduleMeeting(title~, when_desc~) => {
       let req : @skills.SchedulingRequest = {
-        title: title,
+        title,
         timezone: "Asia/Shanghai",
-        when_desc: when_desc,
+        when_desc,
       }
       // Product path: calendar connector typically NeedsAuth until Host OAuth.
       let outcome = @skills.run_scheduling(
@@ -2950,7 +2954,7 @@ pub fn run_desktop_turn(
         }
       }
     }
-    ShopRetail(url_or_host~) => {
+    ShopRetail(url_or_host~) =>
       match @skills.dispatch_shopping_playbook(url_or_host) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(snip) => {
@@ -2975,23 +2979,23 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
-    PurchaseItem(item~, amount_cents~) => {
-      match gate_consequential(
-        trimmed,
-        turn_id,
-        intent,
-        ctx,
-        @security.Purchase,
-        "purchase " + item + " (" + amount_cents.to_string() + " cents)",
-        irreversible=true,
-      ) {
+    PurchaseItem(item~, amount_cents~) =>
+      match
+        gate_consequential(
+          trimmed,
+          turn_id,
+          intent,
+          ctx,
+          @security.Purchase,
+          "purchase " + item + " (" + amount_cents.to_string() + " cents)",
+          irreversible=true,
+        ) {
         Some(gated) => gated
         None => {
           let gate = @commerce.PurchaseGate::new()
           let req : @commerce.PurchaseRequest = {
-            item: item,
-            amount_cents: amount_cents,
+            item,
+            amount_cents,
             payment_credential: "vault:card-token",
           }
           let outcome = gate.attempt_purchase(
@@ -3054,8 +3058,7 @@ pub fn run_desktop_turn(
           }
         }
       }
-    }
-    TravelBook(url_or_host~) => {
+    TravelBook(url_or_host~) =>
       match @skills.dispatch_travel_playbook(url_or_host) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok((vertical, snip)) => {
@@ -3084,8 +3087,7 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
-    OrderFood(url_or_host~) => {
+    OrderFood(url_or_host~) =>
       match @skills.dispatch_food_ordering_playbook(url_or_host) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(snip) => {
@@ -3110,14 +3112,14 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
-    MeetingChat(body~, direct~) => {
-      match @skills.plan_meetings_live_chat_outbound(
-        skill_loaded=true,
-        explicit_allow_direct=direct,
-        is_live_meeting_chat=true,
-        body~,
-      ) {
+    MeetingChat(body~, direct~) =>
+      match
+        @skills.plan_meetings_live_chat_outbound(
+          skill_loaded=true,
+          explicit_allow_direct=direct,
+          is_live_meeting_chat=true,
+          body~,
+        ) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(mode) => {
           let (kind, reply) = match mode {
@@ -3127,7 +3129,7 @@ pub fn run_desktop_turn(
               ("mail_draft", "Meeting chat DraftCard planned (CM-2153).")
           }
           let effect : DesktopEffect = {
-            kind: kind,
+            kind,
             command: "meeting_chat :: " + body,
             needs_host_ffi: true,
           }
@@ -3142,7 +3144,6 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
     FinanceConnect => {
       let fin = @connectors.FinanceConnector::new()
       match fin.authenticate() {
@@ -3180,7 +3181,9 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "Finance tool «" + tool + "» planned (CM-2109). Host executes live call.",
+            "Finance tool «" +
+            tool +
+            "» planned (CM-2109). Host executes live call.",
             intent,
             ctx~,
             effects=[effect],
@@ -3202,7 +3205,7 @@ pub fn run_desktop_turn(
       let json = store.list_credentials_json()
       // Refuse if secret plaintext leaked into list JSON.
       if json.to_lower().contains("vault:secret-ref") ||
-          json.to_lower().contains("password") {
+        json.to_lower().contains("password") {
         fail_turn(
           trimmed,
           turn_id,
@@ -3273,21 +3276,29 @@ pub fn run_desktop_turn(
       )
       match @mail.plan_unsolicited_send(plan, via_card=false) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
-        Ok(msg) => {
-          match gate_consequential(
-            trimmed,
-            turn_id,
-            intent,
-            ctx,
-            @security.ExternalSend,
-            "cold mail to " + to_,
-            irreversible=false,
-          ) {
+        Ok(msg) =>
+          match
+            gate_consequential(
+              trimmed,
+              turn_id,
+              intent,
+              ctx,
+              @security.ExternalSend,
+              "cold mail to " + to_,
+              irreversible=false,
+            ) {
             Some(gated) => gated
             None => {
               let effect : DesktopEffect = {
                 kind: "mail_send",
-                command: "cold|" + to_ + "|" + subject + "|" + body + "|" + unsubscribe,
+                command: "cold|" +
+                to_ +
+                "|" +
+                subject +
+                "|" +
+                body +
+                "|" +
+                unsubscribe,
                 needs_host_ffi: true,
               }
               deliver_ok(
@@ -3301,7 +3312,6 @@ pub fn run_desktop_turn(
               )
             }
           }
-        }
       }
     }
     PersonalSlackDm(owner_id~, text~) => {
@@ -3345,7 +3355,11 @@ pub fn run_desktop_turn(
           // Host also materializes durable job results (CM-1806) — not CU-only.
           let jobs : DesktopEffect = {
             kind: "job_search",
-            command: query + "|" + res.playbook_name + "|" + res.hit_count.to_string(),
+            command: query +
+            "|" +
+            res.playbook_name +
+            "|" +
+            res.hit_count.to_string(),
             needs_host_ffi: true,
           }
           deliver_ok(
@@ -3576,8 +3590,8 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "webhook user-copy planned (CM-0411). Host records copy receipt for " +
-          what +
-          ".",
+        what +
+        ".",
         intent,
         ctx~,
         effects=[effect],
@@ -3616,30 +3630,60 @@ pub fn run_desktop_turn(
         needs_host_ffi=true,
       )
     }
-    OpenSettings(entry~, anchor~) => {
-      let cmd = if anchor.length() > 0 {
-        "entry=" + entry + " anchor=" + anchor
+    OpenSettings(entry~, anchor~) =>
+      // Multi-model product: list/switch go to Host llm_* (DeepSeek catalog), not a blank Settings tab.
+      if anchor == "models" || anchor.has_prefix("model=") {
+        let is_set = anchor.has_prefix("model=")
+        let effect : DesktopEffect = {
+          kind: if is_set {
+            "llm_set_model"
+          } else {
+            "llm_list_models"
+          },
+          command: if is_set {
+            anchor[6:].trim().to_owned()
+          } else {
+            "list"
+          },
+          needs_host_ffi: true,
+        }
+        deliver_ok(
+          trimmed,
+          turn_id,
+          if is_set {
+            "Host effect planned (llm_set_model). Active provider persisted under data/llm/."
+          } else {
+            "Host effect planned (llm_list_models). Providers from data/llm/providers.json + BITBOT_LLM_*."
+          },
+          intent,
+          ctx~,
+          effects=[effect],
+          needs_host_ffi=true,
+        )
       } else {
-        "entry=" + entry
-      }
-      let effect : DesktopEffect = {
-        kind: "settings_open",
-        command: cmd,
-        needs_host_ffi: true,
-      }
-      deliver_ok(
-        trimmed,
-        turn_id,
-        "Settings open planned (CM-1901/1902). Host opens via " +
+        let cmd = if anchor.length() > 0 {
+          "entry=" + entry + " anchor=" + anchor
+        } else {
+          "entry=" + entry
+        }
+        let effect : DesktopEffect = {
+          kind: "settings_open",
+          command: cmd,
+          needs_host_ffi: true,
+        }
+        deliver_ok(
+          trimmed,
+          turn_id,
+          "Settings open planned (CM-1901/1902). Host opens via " +
           entry +
           (if anchor.length() > 0 { " → " + anchor } else { "" }) +
           "; gear/Preferences forbidden.",
-        intent,
-        ctx~,
-        effects=[effect],
-        needs_host_ffi=true,
-      )
-    }
+          intent,
+          ctx~,
+          effects=[effect],
+          needs_host_ffi=true,
+        )
+      }
     OpenAgentInfoPanel(agent_id~) => {
       let effect : DesktopEffect = {
         kind: "agent_info_panel",
@@ -3711,7 +3755,10 @@ pub fn run_desktop_turn(
     HideAgent(agent_id~, hidden~) => {
       let effect : DesktopEffect = {
         kind: "hide_agent",
-        command: "agent=" + agent_id + " hidden=" + (if hidden { "1" } else { "0" }),
+        command: "agent=" +
+        agent_id +
+        " hidden=" +
+        (if hidden { "1" } else { "0" }),
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -3776,11 +3823,11 @@ pub fn run_desktop_turn(
       let effect : DesktopEffect = {
         kind: "set_notify",
         command: "assistant=" +
-          assistant_id +
-          " toggle=" +
-          toggle +
-          " enabled=" +
-          (if enabled { "1" } else { "0" }),
+        assistant_id +
+        " toggle=" +
+        toggle +
+        " enabled=" +
+        (if enabled { "1" } else { "0" }),
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -3828,7 +3875,11 @@ pub fn run_desktop_turn(
     LocalExecution(enabled~) => {
       let effect : DesktopEffect = {
         kind: "local_execution",
-        command: if enabled { "enabled=1" } else { "enabled=0" },
+        command: if enabled {
+          "enabled=1"
+        } else {
+          "enabled=0"
+        },
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -3940,7 +3991,11 @@ pub fn run_desktop_turn(
     BoxChromeProbe(want_bare~) => {
       let effect : DesktopEffect = {
         kind: "box_chrome_probe",
-        command: if want_bare { "bare=1" } else { "probe" },
+        command: if want_bare {
+          "bare=1"
+        } else {
+          "probe"
+        },
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -3963,11 +4018,12 @@ pub fn run_desktop_turn(
       } else {
         "/workspace/" + path
       }
-      match @skills.plan_code_changes(
-        repo_kind=@skills.GithubNative,
-        scope=@skills.BoxWorkspace,
-        paths=[p],
-      ) {
+      match
+        @skills.plan_code_changes(
+          repo_kind=@skills.GithubNative,
+          scope=@skills.BoxWorkspace,
+          paths=[p],
+        ) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(plan) => {
           let effect : DesktopEffect = {
@@ -3991,8 +4047,7 @@ pub fn run_desktop_turn(
     }
     SourceControl(repo_kind~) => {
       let low_kind = repo_kind.to_lower()
-      let kind = if low_kind.contains("origin") &&
-        !low_kind.contains("mirror") {
+      let kind = if low_kind.contains("origin") && !low_kind.contains("mirror") {
         @skills.NativeOrigin
       } else if low_kind.contains("mirror") {
         @skills.GithubMirror
@@ -4036,35 +4091,29 @@ pub fn run_desktop_turn(
       )
     }
     SendOnBehalf(to_~, subject~, body~) => {
-      let tone = @skills.SendOnBehalfToneSession::new(
-        [
-          { id: "s1", preview: "Hey — quick note.", register_: "casual" },
-          { id: "s2", preview: "Hello, following up.", register_: "formal" },
-        ],
-      )
+      let tone = @skills.SendOnBehalfToneSession::new([
+        { id: "s1", preview: "Hey — quick note.", register_: "casual", },
+        { id: "s2", preview: "Hello, following up.", register_: "formal", },
+      ])
       match tone.begin_first_proxy_write() {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(samples) => {
           let _ = tone.pick_sample(sample_id="s1")
-          let sob = @mail.SendOnBehalf::new(
-            [{ id: "acct-1", address: "me@example.com" }],
-          )
-          match gate_consequential(
-            trimmed,
-            turn_id,
-            intent,
-            ctx,
-            @security.ExternalSend,
-            "send on behalf to " + to_,
-          ) {
+          let sob = @mail.SendOnBehalf::new([
+            { id: "acct-1", address: "me@example.com", },
+          ])
+          match
+            gate_consequential(
+              trimmed,
+              turn_id,
+              intent,
+              ctx,
+              @security.ExternalSend,
+              "send on behalf to " + to_,
+            ) {
             Some(gated) => gated
             None =>
-              match sob.send(
-                account_id=Some("acct-1"),
-                to_~,
-                subject~,
-                body~,
-              ) {
+              match sob.send(account_id=Some("acct-1"), to_~, subject~, body~) {
                 Err(e) =>
                   fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
                 Ok(msg) => {
@@ -4211,8 +4260,8 @@ pub fn run_desktop_turn(
     }
     ExportBotTemplate(bot_id~, name~) => {
       let source : @skills.BotExportSource = {
-        bot_id: bot_id,
-        name: name,
+        bot_id,
+        name,
         title: name,
         description: "shareable bot template",
         skill_names: ["scheduling", "shopping"],
@@ -4302,7 +4351,7 @@ pub fn run_desktop_turn(
     TodoWrite(command~) => {
       let effect : DesktopEffect = {
         kind: "todo_write",
-        command: command,
+        command,
         needs_host_ffi: true,
       }
       deliver_ok(
@@ -4377,7 +4426,11 @@ pub fn run_desktop_turn(
     }
     SharedMemoryRead(scope~, key~) => {
       let store = @memory.SharedMemoryStore::new()
-      store.put(scope=@memory.SharedScopeId::new(scope), key~, value="host-seed")
+      store.put(
+        scope=@memory.SharedScopeId::new(scope),
+        key~,
+        value="host-seed",
+      )
       match store.read(scope=@memory.SharedScopeId::new(scope), key~) {
         Err(e) => fail_turn(trimmed, turn_id, intent, e, ctx, assistant=e)
         Ok(v) => {
@@ -4431,21 +4484,32 @@ pub fn run_desktop_turn(
         needs_host_ffi=true,
       )
     }
-    HostContinue => {
+    HostContinue =>
       // Should be invoked via continue_after_host_ffi, not plain chat.
       deliver_ok(
         trimmed,
         turn_id,
         "Host continue requires --apply-host-results (ADR 0002).",
-        intent, ctx~,
+        intent,
+        ctx~,
       )
-    }
     Chat => {
-      let reply =
-        "Bit Bot (MoonBit): 已收到「" +
-        trimmed +
-        "」。本回合由 cmd/desktop_turn 编排，不经 Python LocalBrain。"
-      deliver_ok(trimmed, turn_id, reply, intent, ctx~)
+      // Product brain: plan Host llm_chat (DeepSeek / BITBOT_LLM_*). No canned
+      // reply and no Python LocalBrain — Host executes OpenAI-compatible API.
+      let effect : DesktopEffect = {
+        kind: "llm_chat",
+        command: trimmed,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Host effect planned (llm_chat). Desktop/CLI must complete via BITBOT_LLM_* (DeepSeek default); no LocalBrain.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
     }
   }
 }
@@ -4467,7 +4531,10 @@ fn write_string_array_json(buf : StringBuilder, items : Array[String]) -> Unit {
 }
 
 ///|
-fn write_messages_json(buf : StringBuilder, msgs : Array[DesktopMessage]) -> Unit {
+fn write_messages_json(
+  buf : StringBuilder,
+  msgs : Array[DesktopMessage],
+) -> Unit {
   buf.write_string("[")
   let mut i = 0
   while i < msgs.length() {
@@ -4486,7 +4553,10 @@ fn write_messages_json(buf : StringBuilder, msgs : Array[DesktopMessage]) -> Uni
 }
 
 ///|
-fn write_machines_json(buf : StringBuilder, rows : Array[DesktopMachineRow]) -> Unit {
+fn write_machines_json(
+  buf : StringBuilder,
+  rows : Array[DesktopMachineRow],
+) -> Unit {
   buf.write_string("[")
   let mut i = 0
   while i < rows.length() {
@@ -4509,7 +4579,10 @@ fn write_machines_json(buf : StringBuilder, rows : Array[DesktopMachineRow]) -> 
 }
 
 ///|
-fn write_memory_json(buf : StringBuilder, rows : Array[DesktopMemoryRow]) -> Unit {
+fn write_memory_json(
+  buf : StringBuilder,
+  rows : Array[DesktopMemoryRow],
+) -> Unit {
   buf.write_string("[")
   let mut i = 0
   while i < rows.length() {
@@ -4608,10 +4681,12 @@ pub fn user_text_from_args(args : Array[String]) -> String {
   // Native: [exe, ...user]. JS/moonrun may include node + script.
   let mut start = 1
   if args.length() >= 2 &&
-      (args[0].contains("moon") ||
+    (
+      args[0].contains("moon") ||
       args[0].contains("node") ||
       args[0].has_suffix(".exe") ||
-      args[0].contains("desktop_turn")) {
+      args[0].contains("desktop_turn")
+    ) {
     start = 1
   }
   let parts : Array[String] = []
@@ -4652,16 +4727,14 @@ fn push_host_result(
   stderr : String,
   error : String,
 ) -> Unit {
-  results.push(
-    {
-      kind,
-      ok,
-      command: unescape_host_arg(command),
-      stdout: unescape_host_arg(stdout),
-      stderr: unescape_host_arg(stderr),
-      error: unescape_host_arg(error),
-    },
-  )
+  results.push({
+    kind,
+    ok,
+    command: unescape_host_arg(command),
+    stdout: unescape_host_arg(stdout),
+    stderr: unescape_host_arg(stderr),
+    error: unescape_host_arg(error),
+  })
 }
 
 ///|

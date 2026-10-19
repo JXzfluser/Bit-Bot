@@ -10,11 +10,30 @@ test "acceptance_CM-1101_omit_channel_stays_in_chat" {
   // Explicit external addresses are off-site.
   assert_true(@channels.is_external_hint(Some("slack:C123")))
   assert_true(@channels.is_external_hint(Some("email:a@b.com")))
+  assert_true(@channels.is_external_hint(Some("dingtalk:cid1")))
+  assert_true(@channels.is_external_hint(Some("feishu:oc_1")))
+  assert_true(@channels.is_external_hint(Some("wecom:ZhangSan")))
   assert_false(@channels.is_external_hint(Some("session-local")))
   match @channels.assert_not_external(Some("slack:C1")) {
     Err(_) => ()
     Ok(_) => fail("slack hint must be external")
   }
+}
+
+///|
+/// CN product channels: dingtalk / feishu(lark) / wecom address kinds.
+test "acceptance_cn_channels_dingtalk_feishu_wecom" {
+  let dt = @channels.parse_channel_address("dingtalk:cid-robot-1")
+  assert_eq(dt.kind, @channels.DingTalk)
+  assert_eq(dt.reply_hint(), "dingtalk:cid-robot-1")
+  let fs = @channels.parse_channel_address("feishu:oc_abc")
+  assert_eq(fs.kind, @channels.Feishu)
+  assert_eq(fs.reply_hint(), "feishu:oc_abc")
+  let lk = @channels.parse_channel_address("lark:oc_xyz")
+  assert_eq(lk.kind, @channels.Feishu)
+  let wc = @channels.parse_channel_address("wecom:ZhangSan")
+  assert_eq(wc.kind, @channels.WeCom)
+  assert_eq(wc.reply_hint(), "wecom:ZhangSan")
 }
 
 ///|

@@ -79,8 +79,8 @@ pub fn PersonalSlackBot::try_send(
         Some(TopLevel) | Some(Thread) | None =>
           RefusedSharedChannel(hint=self.share_hint())
       }
-    Chat | Email | Sms | Webhook | Internal | Voice | Teams =>
-      RefusedSharedChannel(hint=self.share_hint())
+    Chat | Email | Sms | Webhook | Internal | Voice | Teams | DingTalk | Feishu |
+    WeCom => RefusedSharedChannel(hint=self.share_hint())
   }
 }
 

@@ -15,6 +15,9 @@ const { promisify } = require("util");
 
 const execFileAsync = promisify(execFile);
 
+/** Shared across createHostFfi instances so Desktop can subscribe once. */
+let sharedLlmStreamHandler = null;
+
 const SHELL_DENY =
   /\brm\s+-rf\s+\/|\bmkfs\b|\bdd\s+if=|:\(\)\s*\{|:;\s*\}|shutdown|reboot|fork\s*bomb/i;
 
@@ -349,7 +352,10 @@ function createHostFfi(repoRoot) {
     );
   }
 
-  function httpJson(url, { method = "GET", headers = {}, body = null } = {}) {
+  function httpJson(
+    url,
+    { method = "GET", headers = {}, body = null, timeoutMs = 20000 } = {},
+  ) {
     return new Promise((resolve) => {
       try {
         const u = new URL(url);
@@ -362,7 +368,7 @@ function createHostFfi(repoRoot) {
             path: u.pathname + u.search,
             method,
             headers,
-            timeout: 20000,
+            timeout: Math.max(1000, Number(timeoutMs) || 20000),
           },
           (res) => {
             let data = "";
@@ -543,6 +549,36 @@ function createHostFfi(repoRoot) {
     const x = probeConnectorToken("x");
     const purchase = probeConnectorToken("purchase");
     const meeting = probeConnectorToken("meeting");
+    const dingtalk = {
+      connector: "dingtalk",
+      connected: Boolean(
+        String(process.env.BITBOT_DINGTALK_WEBHOOK || "").trim() ||
+          String(process.env.BITBOT_DINGTALK_TOKEN || "").trim() ||
+          resolveProviderAccessToken("dingtalk"),
+      ),
+      live_post_armed: process.env.BITBOT_DINGTALK_POST === "1",
+      pretend_connected: false,
+    };
+    const feishu = {
+      connector: "feishu",
+      connected: Boolean(
+        String(process.env.BITBOT_FEISHU_TOKEN || "").trim() ||
+          resolveProviderAccessToken("feishu") ||
+          resolveProviderAccessToken("lark"),
+      ),
+      live_post_armed: process.env.BITBOT_FEISHU_POST === "1",
+      pretend_connected: false,
+    };
+    const wecom = {
+      connector: "wecom",
+      connected: Boolean(
+        String(process.env.BITBOT_WECOM_TOKEN || "").trim() ||
+          resolveProviderAccessToken("wecom") ||
+          resolveProviderAccessToken("wework"),
+      ),
+      live_post_armed: process.env.BITBOT_WECOM_POST === "1",
+      pretend_connected: false,
+    };
     return {
       ok: true,
       connectors: {
@@ -556,6 +592,9 @@ function createHostFfi(repoRoot) {
         job,
         x,
         purchase,
+        dingtalk,
+        feishu,
+        wecom,
       },
       env: {
         SLACK_BOT_TOKEN: Boolean(resolveProviderAccessToken("slack")),
@@ -563,6 +602,9 @@ function createHostFfi(repoRoot) {
         SLACK_DEFAULT_CHANNEL: Boolean(
           String(process.env.SLACK_DEFAULT_CHANNEL || "").trim(),
         ),
+        BITBOT_DINGTALK_POST: process.env.BITBOT_DINGTALK_POST === "1",
+        BITBOT_FEISHU_POST: process.env.BITBOT_FEISHU_POST === "1",
+        BITBOT_WECOM_POST: process.env.BITBOT_WECOM_POST === "1",
       },
       pretend_all_connected: false,
       note: "Host FFI probe; MoonBit owns turn policy (not LocalBrain)",
@@ -2835,6 +2877,246 @@ function createHostFfi(repoRoot) {
       });
     }
 
+    // CN product channels: 钉钉 / 飞书(Lark) / 企微 — live when env+POST gate; else durable draft.
+    if (
+      addr.startsWith("dingtalk:") ||
+      addr.startsWith("feishu:") ||
+      addr.startsWith("lark:") ||
+      addr.startsWith("wecom:") ||
+      addr.startsWith("wework:")
+    ) {
+      const cnScheme = addr.startsWith("dingtalk:")
+        ? "dingtalk"
+        : addr.startsWith("wecom:") || addr.startsWith("wework:")
+          ? "wecom"
+          : "feishu";
+      const target = addr
+        .replace(/^(dingtalk|feishu|lark|wecom|wework):/i, "")
+        .trim();
+      let outboundBody = body;
+      let widgetDegraded = false;
+      if (/\[widget:|type=widget|decision_card/i.test(body)) {
+        outboundBody = body
+          .replace(/\[widget:[^\]]*\]/gi, "")
+          .replace(/type=widget\S*/gi, "")
+          .trim();
+        if (!outboundBody) {
+          outboundBody =
+            "(widget degraded to text — open Desktop chat for choices)";
+        }
+        widgetDegraded = true;
+      }
+
+      async function postCnLive() {
+        if (cnScheme === "dingtalk") {
+          const webhook =
+            String(process.env.BITBOT_DINGTALK_WEBHOOK || "").trim() ||
+            (target.startsWith("http") ? target : "");
+          const token =
+            String(process.env.BITBOT_DINGTALK_TOKEN || "").trim() ||
+            resolveProviderAccessToken("dingtalk");
+          const want = process.env.BITBOT_DINGTALK_POST === "1";
+          if (!want || (!webhook && !token)) {
+            return {
+              attempted: false,
+              ok: false,
+              error: !want
+                ? "BITBOT_DINGTALK_POST!=1"
+                : "missing BITBOT_DINGTALK_WEBHOOK or TOKEN",
+            };
+          }
+          const url =
+            webhook ||
+            `https://oapi.dingtalk.com/robot/send?access_token=${encodeURIComponent(token)}`;
+          const payload = JSON.stringify({
+            msgtype: "text",
+            text: { content: outboundBody },
+          });
+          const resp = await httpJson(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(payload),
+            },
+            body: payload,
+            timeoutMs: 30000,
+          });
+          const errcode =
+            resp.json && typeof resp.json.errcode === "number"
+              ? resp.json.errcode
+              : resp.ok
+                ? 0
+                : -1;
+          return {
+            attempted: true,
+            ok: Boolean(resp.ok) && errcode === 0,
+            http_status: resp.status || 0,
+            error:
+              errcode === 0
+                ? ""
+                : (resp.json && (resp.json.errmsg || resp.json.message)) ||
+                  resp.error ||
+                  `dingtalk_http_${resp.status || 0}`,
+            url: url.replace(/access_token=[^&]+/i, "access_token=***"),
+          };
+        }
+        if (cnScheme === "feishu") {
+          const token =
+            String(process.env.BITBOT_FEISHU_TOKEN || "").trim() ||
+            resolveProviderAccessToken("feishu") ||
+            resolveProviderAccessToken("lark");
+          const want = process.env.BITBOT_FEISHU_POST === "1";
+          const chatId = target || String(process.env.BITBOT_FEISHU_CHAT_ID || "").trim();
+          if (!want || !token || !chatId) {
+            return {
+              attempted: false,
+              ok: false,
+              error: !want
+                ? "BITBOT_FEISHU_POST!=1"
+                : "missing BITBOT_FEISHU_TOKEN or chat id",
+            };
+          }
+          const base = (
+            process.env.BITBOT_FEISHU_API_BASE ||
+            "https://open.feishu.cn/open-apis"
+          ).replace(/\/$/, "");
+          const url = `${base}/im/v1/messages?receive_id_type=chat_id`;
+          const payload = JSON.stringify({
+            receive_id: chatId,
+            msg_type: "text",
+            content: JSON.stringify({ text: outboundBody }),
+          });
+          const resp = await httpJson(url, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(payload),
+            },
+            body: payload,
+            timeoutMs: 30000,
+          });
+          const code =
+            resp.json && typeof resp.json.code === "number"
+              ? resp.json.code
+              : resp.ok
+                ? 0
+                : -1;
+          return {
+            attempted: true,
+            ok: Boolean(resp.ok) && code === 0,
+            http_status: resp.status || 0,
+            error:
+              code === 0
+                ? ""
+                : (resp.json && (resp.json.msg || resp.json.message)) ||
+                  resp.error ||
+                  `feishu_http_${resp.status || 0}`,
+          };
+        }
+        // wecom
+        const token =
+          String(process.env.BITBOT_WECOM_TOKEN || "").trim() ||
+          resolveProviderAccessToken("wecom") ||
+          resolveProviderAccessToken("wework");
+        const agentId = String(process.env.BITBOT_WECOM_AGENT_ID || "").trim();
+        const want = process.env.BITBOT_WECOM_POST === "1";
+        const to = target || String(process.env.BITBOT_WECOM_TOUSER || "").trim();
+        if (!want || !token || !to) {
+          return {
+            attempted: false,
+            ok: false,
+            error: !want
+              ? "BITBOT_WECOM_POST!=1"
+              : "missing BITBOT_WECOM_TOKEN or target",
+          };
+        }
+        const base = (
+          process.env.BITBOT_WECOM_API_BASE ||
+          "https://qyapi.weixin.qq.com/cgi-bin"
+        ).replace(/\/$/, "");
+        const url = `${base}/message/send?access_token=${encodeURIComponent(token)}`;
+        const payloadObj = {
+          msgtype: "text",
+          agentid: agentId ? Number(agentId) || agentId : undefined,
+          text: { content: outboundBody },
+        };
+        if (/^wr/i.test(to) || to.includes("@")) {
+          payloadObj.chatid = to;
+        } else {
+          payloadObj.touser = to;
+        }
+        const payload = JSON.stringify(payloadObj);
+        const resp = await httpJson(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(payload),
+          },
+          body: payload,
+          timeoutMs: 30000,
+        });
+        const errcode =
+          resp.json && typeof resp.json.errcode === "number"
+            ? resp.json.errcode
+            : resp.ok
+              ? 0
+              : -1;
+        return {
+          attempted: true,
+          ok: Boolean(resp.ok) && errcode === 0,
+          http_status: resp.status || 0,
+          error:
+            errcode === 0
+              ? ""
+              : (resp.json && (resp.json.errmsg || resp.json.message)) ||
+                resp.error ||
+                `wecom_http_${resp.status || 0}`,
+        };
+      }
+
+      const live = await postCnLive();
+      if (live.attempted) {
+        const entry = {
+          scheme: cnScheme,
+          address: addr,
+          body: outboundBody,
+          mode: live.ok ? `live_${cnScheme}` : `live_${cnScheme}_failed`,
+          ok: Boolean(live.ok),
+          live_post: Boolean(live.ok),
+          live_channel_residual: !Boolean(live.ok),
+          pretend_live: false,
+          widget_degraded: widgetDegraded,
+          http_status: live.http_status || 0,
+          error: live.error || "",
+          at: stamp,
+        };
+        appendJsonl(outboundPath, entry);
+        return finalizeChannelSend(raw, entry, {
+          outboundPath,
+          ok: Boolean(live.ok),
+          error: live.ok ? "" : live.error || `${cnScheme} post failed`,
+        });
+      }
+      const entry = {
+        scheme: cnScheme,
+        address: addr,
+        body: outboundBody,
+        mode: "cn_channel_draft",
+        ok: true,
+        live_post: false,
+        live_channel_residual: true,
+        pretend_live: false,
+        widget_degraded: widgetDegraded,
+        note:
+          live.error ||
+          `draft only — set BITBOT_${cnScheme.toUpperCase()}_POST=1 + credentials for live`,
+        at: stamp,
+      };
+      appendJsonl(outboundPath, entry);
+      return finalizeChannelSend(raw, entry, { outboundPath });
+    }
+
     const entry = {
       scheme,
       address: addr,
@@ -4461,6 +4743,7 @@ function createHostFfi(repoRoot) {
     "auto-review": "General",
     "auto-review-rules": "General",
     "security-keys": "General",
+    models: "General",
     "local-execution": "Computer",
     computers: "Computer",
     "update-computer": "Computer",
@@ -4474,6 +4757,637 @@ function createHostFfi(repoRoot) {
     "update-channel": "Updates",
     "automatic-updates": "Updates",
   };
+
+  /** Default CN product brain: DeepSeek OpenAI-compatible API (env-key). */
+  const DEFAULT_LLM_PROVIDERS = [
+    {
+      id: "deepseek",
+      label: "DeepSeek",
+      base_url: "https://api.deepseek.com/v1",
+      model: "deepseek-chat",
+      env_key: "BITBOT_LLM_API_KEY",
+      env_base: "BITBOT_LLM_BASE_URL",
+      env_model: "BITBOT_LLM_MODEL",
+    },
+    {
+      id: "qwen",
+      label: "通义千问",
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      model: "qwen-plus",
+      env_key: "BITBOT_LLM_QWEN_API_KEY",
+      env_base: "BITBOT_LLM_QWEN_BASE_URL",
+      env_model: "BITBOT_LLM_QWEN_MODEL",
+    },
+    {
+      id: "moonshot",
+      label: "Kimi / Moonshot",
+      base_url: "https://api.moonshot.cn/v1",
+      model: "moonshot-v1-8k",
+      env_key: "BITBOT_LLM_MOONSHOT_API_KEY",
+      env_base: "BITBOT_LLM_MOONSHOT_BASE_URL",
+      env_model: "BITBOT_LLM_MOONSHOT_MODEL",
+    },
+  ];
+
+  function llmDir() {
+    return path.join(REPO_ROOT, "data", "llm");
+  }
+
+  function llmProvidersPath() {
+    return path.join(llmDir(), "providers.json");
+  }
+
+  function llmActivePath() {
+    return path.join(llmDir(), "active.json");
+  }
+
+  function loadLlmProviders() {
+    fs.mkdirSync(llmDir(), { recursive: true });
+    const p = llmProvidersPath();
+    if (!fs.existsSync(p)) {
+      const seed = {
+        version: 1,
+        default_provider: "deepseek",
+        providers: DEFAULT_LLM_PROVIDERS,
+      };
+      fs.writeFileSync(p, JSON.stringify(seed, null, 2));
+      return seed;
+    }
+    try {
+      const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+      if (!raw || !Array.isArray(raw.providers) || !raw.providers.length) {
+        return {
+          version: 1,
+          default_provider: "deepseek",
+          providers: DEFAULT_LLM_PROVIDERS,
+        };
+      }
+      return raw;
+    } catch {
+      return {
+        version: 1,
+        default_provider: "deepseek",
+        providers: DEFAULT_LLM_PROVIDERS,
+      };
+    }
+  }
+
+  function loadLlmActive() {
+    try {
+      if (fs.existsSync(llmActivePath())) {
+        return JSON.parse(fs.readFileSync(llmActivePath(), "utf8")) || {};
+      }
+    } catch {
+      /* ignore */
+    }
+    return {};
+  }
+
+  function saveLlmActive(active) {
+    fs.mkdirSync(llmDir(), { recursive: true });
+    fs.writeFileSync(llmActivePath(), JSON.stringify(active, null, 2));
+  }
+
+  /**
+   * Resolve active OpenAI-compatible endpoint.
+   * Priority: BITBOT_LLM_* env (product override) → active.json → providers.json default (DeepSeek).
+   */
+  function resolveLlmConfig() {
+    const catalog = loadLlmProviders();
+    const active = loadLlmActive();
+    const wantId = String(
+      process.env.BITBOT_LLM_PROVIDER ||
+        active.provider_id ||
+        catalog.default_provider ||
+        "deepseek",
+    )
+      .trim()
+      .toLowerCase();
+    const providers = catalog.providers || DEFAULT_LLM_PROVIDERS;
+    let provider =
+      providers.find(
+        (p) => String(p.id || "").toLowerCase() === wantId,
+      ) ||
+      providers.find(
+        (p) =>
+          String(p.id || "").toLowerCase() ===
+          String(catalog.default_provider || "deepseek").toLowerCase(),
+      ) ||
+      providers[0] ||
+      DEFAULT_LLM_PROVIDERS[0];
+
+    const envBase = String(
+      process.env.BITBOT_LLM_BASE_URL ||
+        (provider.env_base && process.env[provider.env_base]) ||
+        "",
+    ).trim();
+    const envKey = String(
+      process.env.BITBOT_LLM_API_KEY ||
+        (provider.env_key && process.env[provider.env_key]) ||
+        "",
+    ).trim();
+    const envModel = String(
+      process.env.BITBOT_LLM_MODEL ||
+        (provider.env_model && process.env[provider.env_model]) ||
+        "",
+    ).trim();
+
+    const base_url = (
+      envBase ||
+      active.base_url ||
+      provider.base_url ||
+      "https://api.deepseek.com/v1"
+    ).replace(/\/$/, "");
+    const model =
+      envModel || active.model || provider.model || "deepseek-chat";
+    const api_key = envKey || String(active.api_key || "").trim();
+
+    return {
+      provider_id: provider.id || wantId || "deepseek",
+      label: provider.label || provider.id || "LLM",
+      base_url,
+      model,
+      api_key,
+      key_configured: Boolean(api_key),
+      key_source: envKey
+        ? "env"
+        : active.api_key
+          ? "active.json"
+          : "missing",
+      catalog_path: llmProvidersPath(),
+      active_path: llmActivePath(),
+    };
+  }
+
+  function emitLlmStream(chunk) {
+    if (typeof sharedLlmStreamHandler === "function") {
+      try {
+        sharedLlmStreamHandler(chunk);
+      } catch (_) {
+        /* ignore UI sink errors */
+      }
+    }
+  }
+
+  function httpJsonStream(url, { method = "POST", headers = {}, body = null, timeoutMs = 90000 } = {}) {
+    return new Promise((resolve) => {
+      let text = "";
+      let status = 0;
+      let error = null;
+      try {
+        const u = new URL(url);
+        const lib = u.protocol === "https:" ? https : http;
+        const req = lib.request(
+          {
+            protocol: u.protocol,
+            hostname: u.hostname,
+            port: u.port || (u.protocol === "https:" ? 443 : 80),
+            path: u.pathname + u.search,
+            method,
+            headers,
+            timeout: Math.max(1000, Number(timeoutMs) || 90000),
+          },
+          (res) => {
+            status = res.statusCode || 0;
+            let buf = "";
+            res.setEncoding("utf8");
+            res.on("data", (chunk) => {
+              buf += chunk;
+              const parts = buf.split("\n");
+              buf = parts.pop() || "";
+              for (const line of parts) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith("data:")) continue;
+                const data = trimmed.slice(5).trim();
+                if (!data || data === "[DONE]") continue;
+                try {
+                  const obj = JSON.parse(data);
+                  const delta =
+                    obj &&
+                    obj.choices &&
+                    obj.choices[0] &&
+                    obj.choices[0].delta &&
+                    obj.choices[0].delta.content;
+                  if (delta) {
+                    text += delta;
+                    emitLlmStream({
+                      phase: "delta",
+                      text: delta,
+                      partial: text,
+                    });
+                  }
+                } catch (_) {
+                  /* ignore bad SSE line */
+                }
+              }
+            });
+            res.on("end", () => {
+              emitLlmStream({
+                phase: "end",
+                partial: text,
+                ok: status >= 200 && status < 300 && Boolean(text),
+                status,
+              });
+              resolve({
+                ok: status >= 200 && status < 300 && Boolean(text),
+                status,
+                text,
+                error:
+                  status >= 200 && status < 300
+                    ? text
+                      ? null
+                      : "empty stream"
+                    : error || `llm_http_${status}`,
+              });
+            });
+          },
+        );
+        req.on("error", (err) => {
+          resolve({
+            ok: false,
+            status: 0,
+            text: "",
+            error: err.message,
+          });
+        });
+        req.on("timeout", () => {
+          req.destroy();
+          resolve({ ok: false, status: 0, text: "", error: "timeout" });
+        });
+        if (body) req.write(body);
+        req.end();
+      } catch (err) {
+        resolve({
+          ok: false,
+          status: 0,
+          text: "",
+          error: err.message,
+        });
+      }
+    });
+  }
+
+  async function executeLlmChat(command) {
+    const at = new Date().toISOString();
+    const userText = String(command || "").trim();
+    const cfg = resolveLlmConfig();
+    const dir = path.join(llmDir(), "turns");
+    fs.mkdirSync(dir, { recursive: true });
+    const artifactPath = path.join(
+      dir,
+      `chat-${Date.now().toString(36)}.json`,
+    );
+    const wantStream =
+      process.env.BITBOT_LLM_STREAM !== "0" &&
+      typeof sharedLlmStreamHandler === "function";
+
+    if (!userText) {
+      const artifact = {
+        mode: "host_llm_chat",
+        ok: false,
+        error: "empty user text",
+        provider_id: cfg.provider_id,
+        model: cfg.model,
+        pretend_completion: false,
+        at,
+      };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      return {
+        kind: "llm_chat",
+        ok: false,
+        command: userText,
+        stdout: "",
+        stderr: "",
+        error: "empty user text",
+      };
+    }
+
+    if (!cfg.api_key) {
+      const artifact = {
+        mode: "host_llm_chat",
+        ok: false,
+        error:
+          "BITBOT_LLM_API_KEY (or provider env_key) not set — no LocalBrain fallback on product path",
+        provider_id: cfg.provider_id,
+        base_url: cfg.base_url,
+        model: cfg.model,
+        pretend_completion: false,
+        at,
+      };
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      emitLlmStream({
+        phase: "error",
+        error: artifact.error,
+        provider_id: cfg.provider_id,
+      });
+      return {
+        kind: "llm_chat",
+        ok: false,
+        command: userText,
+        stdout: "",
+        stderr: "",
+        error: artifact.error,
+      };
+    }
+
+    const url = `${cfg.base_url}/chat/completions`;
+    const messages = [
+      {
+        role: "system",
+        content:
+          "你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。",
+      },
+      { role: "user", content: userText },
+    ];
+    const timeoutMs = Number(process.env.BITBOT_LLM_TIMEOUT_MS || 90000);
+
+    let text = "";
+    let finish = null;
+    let httpStatus = 0;
+    let error = null;
+    let streamed = false;
+
+    if (wantStream) {
+      streamed = true;
+      emitLlmStream({
+        phase: "provider",
+        provider_id: cfg.provider_id,
+        model: cfg.model,
+      });
+      const payload = {
+        model: cfg.model,
+        messages,
+        temperature: 0.3,
+        stream: true,
+      };
+      const body = JSON.stringify(payload);
+      const res = await httpJsonStream(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cfg.api_key}`,
+          Accept: "text/event-stream",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        body,
+        timeoutMs,
+      });
+      text = String(res.text || "").trim();
+      httpStatus = res.status || 0;
+      error = res.error;
+    } else {
+      const payload = {
+        model: cfg.model,
+        messages,
+        temperature: 0.3,
+        stream: false,
+      };
+      const body = JSON.stringify(payload);
+      const res = await httpJson(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cfg.api_key}`,
+          Accept: "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        body,
+        timeoutMs,
+      });
+      httpStatus = res.status || 0;
+      const choices =
+        res.json && Array.isArray(res.json.choices) ? res.json.choices : [];
+      if (choices.length) {
+        const msg = choices[0].message || {};
+        text = String(msg.content || "").trim();
+        finish = choices[0].finish_reason || null;
+      }
+      error =
+        res.error ||
+        (res.json &&
+          ((res.json.error && res.json.error.message) || res.json.message)) ||
+        null;
+    }
+
+    let ok = Boolean(text) && (httpStatus === 0 || (httpStatus >= 200 && httpStatus < 300));
+    if (!ok && !error) {
+      error = `llm_http_${httpStatus || 0}` || "empty completion";
+    }
+
+    // P4 content moderation — local gate when armed; never pretend pass.
+    let moderation = {
+      armed: process.env.BITBOT_CONTENT_MODERATION === "1",
+      passed: true,
+      hits: [],
+      residual: process.env.BITBOT_CONTENT_MODERATION !== "1",
+      blocklist_source: null,
+    };
+    if (ok && moderation.armed) {
+      let blocklistRaw = String(process.env.BITBOT_CONTENT_BLOCKLIST || "").trim();
+      let blocklistSource = blocklistRaw ? "env:BITBOT_CONTENT_BLOCKLIST" : null;
+      if (!blocklistRaw) {
+        const blPath = path.join(
+          REPO_ROOT,
+          "data",
+          "compliance",
+          "content-blocklist.txt",
+        );
+        try {
+          if (fs.existsSync(blPath)) {
+            blocklistRaw = fs
+              .readFileSync(blPath, "utf8")
+              .split(/\r?\n/)
+              .map((l) => l.replace(/#.*$/, "").trim())
+              .filter(Boolean)
+              .join(",");
+            blocklistSource = blPath;
+          }
+        } catch (_) {
+          /* fall through */
+        }
+      }
+      if (!blocklistRaw) {
+        blocklistRaw = "制作炸弹,买卖枪支,儿童色情";
+        blocklistSource = "builtin_default";
+      }
+      const blocklist = blocklistRaw
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const hits = blocklist.filter((w) => text.includes(w));
+      if (hits.length) {
+        ok = false;
+        error = "content_moderation_blocked: " + hits.join(",");
+        moderation = {
+          armed: true,
+          passed: false,
+          hits,
+          residual: false,
+          blocklist_source: blocklistSource,
+        };
+        text = "";
+      } else {
+        moderation.blocklist_source = blocklistSource;
+        moderation.residual = false;
+      }
+    }
+
+    const filing = {
+      icp: String(process.env.BITBOT_ICP_FILING || "").trim() || null,
+      algorithm: String(process.env.BITBOT_ALGORITHM_FILING || "").trim() || null,
+      residual: !(
+        process.env.BITBOT_ICP_FILING || process.env.BITBOT_ALGORITHM_FILING
+      ),
+    };
+
+    const artifact = {
+      mode: "host_llm_chat",
+      ok,
+      provider_id: cfg.provider_id,
+      label: cfg.label,
+      base_url: cfg.base_url,
+      model: cfg.model,
+      http_status: httpStatus,
+      finish_reason: finish,
+      streamed,
+      reply_chars: text.length,
+      reply_prefix: text.slice(0, 240),
+      error: ok ? null : error,
+      pretend_completion: false,
+      localbrain: false,
+      moderation,
+      filing,
+      at,
+    };
+    fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+    appendJsonl(path.join(llmDir(), "chats.jsonl"), {
+      ...artifact,
+      path: artifactPath,
+      user_prefix: userText.slice(0, 120),
+    });
+
+    return {
+      kind: "llm_chat",
+      ok,
+      command: userText,
+      stdout: ok ? text : "",
+      stderr: ok ? "" : String(error || ""),
+      error: ok ? "" : String(error || "llm_chat failed"),
+      artifact_path: artifactPath,
+      provider_id: cfg.provider_id,
+      model: cfg.model,
+      streamed,
+    };
+  }
+
+  async function executeLlmListModels(command) {
+    const at = new Date().toISOString();
+    const catalog = loadLlmProviders();
+    const cfg = resolveLlmConfig();
+    const rows = (catalog.providers || []).map((p) => {
+      const id = String(p.id || "");
+      const keyEnv = p.env_key || "BITBOT_LLM_API_KEY";
+      const keyed = Boolean(
+        String(process.env[keyEnv] || "").trim() ||
+          (id === cfg.provider_id && cfg.key_configured),
+      );
+      return {
+        id,
+        label: p.label || id,
+        model: p.model || "",
+        base_url: p.base_url || "",
+        key_env: keyEnv,
+        key_configured: keyed,
+        active: id === cfg.provider_id,
+      };
+    });
+    const dir = llmDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const listPath = path.join(dir, `models-${Date.now().toString(36)}.json`);
+    const artifact = {
+      mode: "host_llm_list_models",
+      active: {
+        provider_id: cfg.provider_id,
+        model: cfg.model,
+        base_url: cfg.base_url,
+        key_configured: cfg.key_configured,
+      },
+      providers: rows,
+      command: String(command || ""),
+      pretend_listed: false,
+      at,
+    };
+    fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
+    const lines = rows
+      .map(
+        (r) =>
+          `${r.active ? "*" : "-"} ${r.id} · ${r.label} · model=${r.model} · key=${r.key_configured ? "set" : "missing (" + r.key_env + ")"}`,
+      )
+      .join("\n");
+    const summary =
+      `LLM providers (${rows.length}); active=${cfg.provider_id}/${cfg.model}\n` +
+      lines;
+    return {
+      kind: "llm_list_models",
+      ok: true,
+      command: String(command || "list"),
+      stdout: summary,
+      stderr: "",
+      artifact_path: listPath,
+    };
+  }
+
+  async function executeLlmSetModel(command) {
+    const at = new Date().toISOString();
+    const raw = String(command || "").trim();
+    let providerId = raw;
+    let modelOverride = "";
+    const m = raw.match(/^(?:provider=)?([^\s|/]+)(?:\s*[|/]\s*model=([^\s]+))?/i);
+    if (m) {
+      providerId = m[1];
+      modelOverride = m[2] || "";
+    }
+    if (raw.includes("=") && !raw.startsWith("provider=")) {
+      const pm = raw.match(/\bprovider=([^\s]+)/i);
+      const mm = raw.match(/\bmodel=([^\s]+)/i);
+      if (pm) providerId = pm[1];
+      if (mm) modelOverride = mm[1];
+    }
+    providerId = String(providerId || "")
+      .trim()
+      .toLowerCase();
+    const catalog = loadLlmProviders();
+    const hit = (catalog.providers || []).find(
+      (p) => String(p.id || "").toLowerCase() === providerId,
+    );
+    if (!hit) {
+      return {
+        kind: "llm_set_model",
+        ok: false,
+        command: raw,
+        stdout: "",
+        stderr: "",
+        error: `unknown provider: ${providerId || "(empty)"}`,
+      };
+    }
+    const active = {
+      provider_id: hit.id,
+      model: modelOverride || hit.model || "",
+      base_url: hit.base_url || "",
+      updated_at: at,
+    };
+    saveLlmActive(active);
+    const summary = `Active LLM → ${active.provider_id} / ${active.model}`;
+    return {
+      kind: "llm_set_model",
+      ok: true,
+      command: raw,
+      stdout: summary,
+      stderr: "",
+      provider_id: active.provider_id,
+      model: active.model,
+    };
+  }
   const INFO_PANEL_SECTIONS = [
     "desktop-preview",
     "routines",
@@ -5778,6 +6692,7 @@ function createHostFfi(repoRoot) {
 
   async function executeCheckUpdates(command) {
     // CM-1906 — Updates tab (update-channel) ≠ Update Computer (update-computer).
+    // P4 OTA: when BITBOT_UPDATE_FEED_URL is set, probe the real feed (no pretend newer).
     const at = new Date().toISOString();
     const dir = settingsDir();
     const opsDir = path.join(dir, "ops");
@@ -5791,6 +6706,21 @@ function createHostFfi(repoRoot) {
     const updatesDeepLink = "grokbot://app/v1/settings?id=" + updatesAnchor;
     const computerDeepLink = "grokbot://app/v1/settings?id=" + computerAnchor;
 
+    const feedUrl = String(process.env.BITBOT_UPDATE_FEED_URL || "").trim();
+    let feedProbe = null;
+    if (feedUrl) {
+      const probeUrl = feedUrl.replace(/\/$/, "") + "/latest.yml";
+      const resp = await httpJson(probeUrl, { method: "GET", timeoutMs: 15000 });
+      feedProbe = {
+        url: probeUrl,
+        ok: Boolean(resp.ok),
+        http_status: resp.status || 0,
+        body_prefix: String(resp.body || "").slice(0, 200),
+        error: resp.error || null,
+        pretend_update_available: false,
+      };
+    }
+
     // Open Settings panel onto Updates / update-channel (not Computer).
     const panelPath = path.join(dir, "panel.json");
     const panel = {
@@ -5802,6 +6732,8 @@ function createHostFfi(repoRoot) {
       tabs: ["General", "Computer", "Vault", "Usage & Billing", "Updates"],
       check_for_updates: true,
       update_track: "stable",
+      feed_url: feedUrl || null,
+      feed_probe: feedProbe,
       at,
     };
     fs.writeFileSync(panelPath, JSON.stringify(panel, null, 2));
@@ -5810,6 +6742,13 @@ function createHostFfi(repoRoot) {
       opsDir,
       `check-updates-${Date.now().toString(36)}.json`,
     );
+    const filing = {
+      icp: String(process.env.BITBOT_ICP_FILING || "").trim() || null,
+      algorithm: String(process.env.BITBOT_ALGORITHM_FILING || "").trim() || null,
+      residual: !(
+        process.env.BITBOT_ICP_FILING || process.env.BITBOT_ALGORITHM_FILING
+      ),
+    };
     const artifact = {
       mode: "host_check_updates",
       pretend_opened: false,
@@ -5820,6 +6759,10 @@ function createHostFfi(repoRoot) {
       updates_deep_link: updatesDeepLink,
       check_for_updates: true,
       update_track: "stable",
+      feed_url: feedUrl || null,
+      feed_probe: feedProbe,
+      feed_residual: !feedUrl,
+      filing,
       // Explicit distinction from Update Computer (box)
       computer_anchor: computerAnchor,
       computer_tab: computerTab,
@@ -12692,27 +13635,65 @@ function createHostFfi(repoRoot) {
     }
   }
 
+  function stripEnvQuotes(s) {
+    let t = String(s || "").trim();
+    if (
+      (t.startsWith("'") && t.endsWith("'")) ||
+      (t.startsWith('"') && t.endsWith('"'))
+    ) {
+      t = t.slice(1, -1).trim();
+    }
+    return t;
+  }
+
+  /** Compute next_due from cron expr (@now/@hourly/@weekly and star-slash-N minute forms). */
+  function nextDueFromCron(cronRaw) {
+    const cron = stripEnvQuotes(cronRaw) || "@daily";
+    if (cron === "@now" || cron === "@once" || /@now|@once/i.test(cron)) {
+      return { cron, nextDue: new Date().toISOString(), dueNow: true };
+    }
+    if (cron === "@hourly" || /^@?hourly$/i.test(cron)) {
+      return {
+        cron,
+        nextDue: new Date(Date.now() + 3600 * 1000).toISOString(),
+        dueNow: false,
+      };
+    }
+    if (cron === "@weekly" || /^@?weekly$/i.test(cron)) {
+      return {
+        cron,
+        nextDue: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+        dueNow: false,
+      };
+    }
+    const everyMin = cron.match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
+    if (everyMin) {
+      const mins = Math.max(1, Number(everyMin[1]) || 1);
+      return {
+        cron,
+        nextDue: new Date(Date.now() + mins * 60 * 1000).toISOString(),
+        dueNow: false,
+      };
+    }
+    return {
+      cron,
+      nextDue: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+      dueNow: false,
+    };
+  }
+
   function executeRoutineEffect(kind, command) {
     const id = String(command || "").split("|")[0];
     if (kind === "routine_schedule") {
       const parts = String(command || "").split("|");
-      const cron = parts[1] || "@daily";
-      // @now / @once → due immediately so routine_tick can fire in the same session.
-      let nextDue = null;
-      if (cron === "@now" || cron === "@once" || /@now|@once/i.test(cron)) {
-        nextDue = new Date().toISOString();
-      } else if (cron === "@hourly" || /hourly/i.test(cron)) {
-        nextDue = new Date(Date.now() + 3600 * 1000).toISOString();
-      } else if (cron === "@weekly" || /weekly/i.test(cron)) {
-        nextDue = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-      } else {
-        nextDue = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-      }
-      const dueNow = cron === "@now" || cron === "@once";
+      const parsed = nextDueFromCron(parts[1] || "@daily");
+      const cron = parsed.cron;
+      const nextDue = parsed.nextDue;
+      const dueNow = parsed.dueNow;
       const row = upsertRoutine({
-        id: parts[0] || "routine-1",
+        id: stripEnvQuotes(parts[0]) || "routine-1",
         cron,
-        prompt: parts.slice(2).join("|") || "",
+        prompt: stripEnvQuotes(parts.slice(2).join("|") || ""),
         enabled: true,
         lifecycle: "active",
         next_due: nextDue,
@@ -21184,6 +22165,18 @@ function createHostFfi(repoRoot) {
         results.push(await executeSettingsOpen(cmd));
         continue;
       }
+      if (kind === "llm_chat") {
+        results.push(await executeLlmChat(cmd));
+        continue;
+      }
+      if (kind === "llm_list_models") {
+        results.push(await executeLlmListModels(cmd));
+        continue;
+      }
+      if (kind === "llm_set_model") {
+        results.push(await executeLlmSetModel(cmd));
+        continue;
+      }
       if (kind === "agent_info_panel") {
         results.push(await executeAgentInfoPanel(cmd));
         continue;
@@ -21443,6 +22436,42 @@ function createHostFfi(repoRoot) {
     return withDelivery;
   }
 
+  function setLlmStreamHandler(fn) {
+    sharedLlmStreamHandler = typeof fn === "function" ? fn : null;
+  }
+
+  /** Catalog for Desktop model picker (honest key_configured; no pretend). */
+  function listLlmCatalog() {
+    const catalog = loadLlmProviders();
+    const cfg = resolveLlmConfig();
+    const providers = (catalog.providers || []).map((p) => {
+      const id = String(p.id || "");
+      const keyEnv = p.env_key || "BITBOT_LLM_API_KEY";
+      const keyed = Boolean(String(process.env[keyEnv] || "").trim());
+      return {
+        id,
+        label: p.label || id,
+        model: p.model || "",
+        base_url: p.base_url || "",
+        key_env: keyEnv,
+        key_configured: keyed,
+        active: id === cfg.provider_id,
+      };
+    });
+    return {
+      ok: true,
+      active: {
+        provider_id: cfg.provider_id,
+        label: cfg.label,
+        model: cfg.model,
+        base_url: cfg.base_url,
+        key_configured: Boolean(cfg.key_configured),
+      },
+      providers,
+      pretend_ready: false,
+    };
+  }
+
   return {
     REPO_ROOT,
     encodeHostArg,
@@ -21452,6 +22481,9 @@ function createHostFfi(repoRoot) {
     executeHostEffects,
     connectorsStatusReport,
     appendHostDeliveryJournal,
+    setLlmStreamHandler,
+    resolveLlmConfig,
+    listLlmCatalog,
   };
 }
 

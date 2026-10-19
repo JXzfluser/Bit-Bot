@@ -38,8 +38,14 @@ cat >"$OUT/meta/store-packaging.json" <<EOF
     "project": "hosts/android/BitBotHost",
     "application_id": "com.bitbot.host",
     "staged": "hosts/dist/mobile/android/BitBotHost",
-    "signing": "REQUIRED_PLAY_UPLOAD_KEYSTORE",
-    "store": "Play Store — open until signed"
+    "signing": "REQUIRED_PLAY_OR_CN_UPLOAD_KEYSTORE",
+    "store": "Play + 国内渠道 — open until signed",
+    "product_flavors": ["universal", "huawei", "xiaomi", "honor", "oppo", "vivo"],
+    "gradle_examples": [
+      "./gradlew :app:assembleHuaweiRelease",
+      "./gradlew :app:assembleXiaomiRelease",
+      "./gradlew :app:assembleHonorRelease"
+    ]
   },
   "verify": "bash scripts/verify_native_shells.sh"
 }
@@ -49,19 +55,30 @@ cat >"$OUT/meta/SIGNING.md" <<'EOF'
 # Mobile store signing (still open)
 
 BitBotHost trees are staged under `hosts/dist/mobile/{ios,android}/`.
+Desktop-first 本阶段可暂缓真机；渠道 flavors 已就绪。
 
 ## iOS
 1. `xcodegen generate` in `BitBotHost` (or open in Xcode).
 2. Set `BITBOT_REPO_ROOT` / embed `mobile_host` + moon runtime for device.
 3. Configure Apple Team + Distribution certificate + App Store Connect app.
-4. Archive → Upload to TestFlight.
+4. Archive → Upload to TestFlight / 公证.
 
-## Android
+## Android（Play + 国内渠道包）
 1. Open `BitBotHost` in Android Studio.
-2. Create upload keystore; set `signingConfigs` in `app/build.gradle.kts`.
-3. `./gradlew :app:bundleRelease` → Play Console.
+2. Create upload keystore; export:
+   - `BITBOT_ANDROID_STORE_FILE`
+   - `BITBOT_ANDROID_STORE_PASSWORD`
+   - `BITBOT_ANDROID_KEY_ALIAS`
+   - `BITBOT_ANDROID_KEY_PASSWORD`
+3. Product flavors（`store` dimension）:
+   - `universal` / `huawei` / `xiaomi` / `honor` / `oppo` / `vivo`
+4. Build examples:
+   - `./gradlew :app:assembleHuaweiRelease`
+   - `./gradlew :app:assembleXiaomiRelease`
+   - `./gradlew :app:bundleUniversalRelease` → Play Console
 
 MoonBit kernel stays the product brain; Host only executes FFI (ADR 0002/0005).
+不假装已签名：无 keystore 时 release 回落 debug，meta 写明 signed=false。
 EOF
 
 # Prove bridge still works after staging

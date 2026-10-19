@@ -8,7 +8,10 @@
   "scripts": {
     "start": "electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
   },
   "build": {
     "appId": "com.bitbot.desktop",
@@ -20,31 +23,60 @@
       "main.js",
       "preload.js",
       "index.html",
+      "sessions.js",
       {
         "from": "../shared",
         "to": "shared",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asar": true,
+    "afterSign": "build/notarize.js",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://updates.bitbot.local/desktop"
+      }
+    ],
     "linux": {
-      "target": ["dir"],
+      "target": [
+        "AppImage",
+        "dir"
+      ],
       "category": "Utility"
     },
     "mac": {
-      "target": ["dir"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false
     },
     "win": {
-      "target": ["dir"],
+      "target": [
+        "zip",
+        "dir"
+      ],
       "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Bit Bot Setup ${version}.${ext}"
     }
   },
   "devDependencies": {
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   }
 }
