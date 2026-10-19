@@ -1613,6 +1613,12 @@ function stripHostAppliedMarker(file) {
     ["list_reminders", "host_routine_list", "routine_list"],
     ["invite_user", "host_members_panel", "members_panel"],
     ["join_room", "host_room_turn", "room_turn"],
+    ["post_to_room", "host_room_turn", "room_turn"],
+    ["post_in_room", "host_room_turn", "room_turn"],
+    ["message_room", "host_room_turn", "room_turn"],
+    ["send_to_room", "host_room_turn", "room_turn"],
+    ["send_room_message", "host_room_turn", "room_turn"],
+    ["send_room", "host_room_turn", "room_turn"],
     ["create_channel", "host_channel_send", "channel_send"],
     ["open_docs", "host_guide_permission", "guide_permission"],
     ["list_models", "host_settings_open", "settings_open"],
@@ -1959,7 +1965,13 @@ function stripHostAppliedMarker(file) {
                                                                                     tool === "unsnooze"
                                                                                   ? '{"name":"alias-rem"}'
                                                                                   : tool === "join_room" ||
-                                                                                      tool === "leave_room"
+                                                                                      tool === "leave_room" ||
+                                                                                      tool === "post_to_room" ||
+                                                                                      tool === "post_in_room" ||
+                                                                                      tool === "message_room" ||
+                                                                                      tool === "send_to_room" ||
+                                                                                      tool === "send_room_message" ||
+                                                                                      tool === "send_room"
                                                                                     ? '{"room":"eng","body":"alias-room"}'
                                                                                     : tool === "create_skill" ||
                                                                                         tool === "edit_skill" ||

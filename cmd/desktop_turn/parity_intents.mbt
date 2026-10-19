@@ -1603,7 +1603,16 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(SectionPost(group_id~, section_id~, from_agent~, body~))
     }
   }
-  if low.has_prefix("room ") || @teammates.has_room_cue(trimmed) {
+  // Product room phrasing: room / post to room / message room / send to room.
+  // Prefer ` :: ` or `: `; else first token = room name, remainder = body.
+  if low.has_prefix("room ") ||
+    low.has_prefix("post to room ") ||
+    low.has_prefix("post in room ") ||
+    low.has_prefix("message room ") ||
+    low.has_prefix("send to room ") ||
+    low.has_prefix("send room message ") ||
+    low.has_prefix("send room ") ||
+    @teammates.has_room_cue(trimmed) {
     if @teammates.has_room_cue(trimmed) {
       match
         @teammates.open_room_turn_from_cue(
@@ -1614,9 +1623,49 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
         Err(_) => ()
       }
     }
-    if low.has_prefix("room ") {
-      let rest = trimmed[5:].to_owned()
+    let rest = if low.has_prefix("post to room ") {
+      trimmed[13:].to_owned()
+    } else if low.has_prefix("post in room ") {
+      trimmed[13:].to_owned()
+    } else if low.has_prefix("message room ") {
+      trimmed[13:].to_owned()
+    } else if low.has_prefix("send to room ") {
+      trimmed[13:].to_owned()
+    } else if low.has_prefix("send room message ") {
+      trimmed[18:].to_owned()
+    } else if low.has_prefix("send room ") {
+      trimmed[10:].to_owned()
+    } else if low.has_prefix("room turn ") {
+      // Optional "room turn <name> …" product alias.
+      trimmed[10:].to_owned()
+    } else if low.has_prefix("room ") {
+      trimmed[5:].to_owned()
+    } else {
+      ""
+    }
+    if rest != "" {
       match split_once(rest, " :: ") {
+        Some((room, body)) => {
+          let r = room.trim().to_owned()
+          let b = body.trim().to_owned()
+          if r != "" && b != "" {
+            return Some(RoomTurn(room=r, body=b))
+          }
+        }
+        None => ()
+      }
+      match split_once(rest, ": ") {
+        Some((room, body)) => {
+          let r = room.trim().to_owned()
+          let b = body.trim().to_owned()
+          // Avoid swallowing URLs / times — require a room token without spaces/colons.
+          if r != "" && b != "" && !r.contains(" ") && !r.contains(":") {
+            return Some(RoomTurn(room=r, body=b))
+          }
+        }
+        None => ()
+      }
+      match split_once(rest.trim().to_owned(), " ") {
         Some((room, body)) => {
           let r = room.trim().to_owned()
           let b = body.trim().to_owned()

@@ -395,6 +395,27 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let rm = run_desktop_turn("room eng :: ship the build", turn_id="rm-1")
   assert_true(rm.ok)
   assert_eq(rm.intent, "room_turn")
+  let rm_post = run_desktop_turn(
+    "post to room eng :: ship from product phrasing",
+    turn_id="rm-post-1",
+  )
+  assert_true(rm_post.ok)
+  assert_eq(rm_post.intent, "room_turn")
+  let rm_msg = run_desktop_turn(
+    "message room eng hello teammates",
+    turn_id="rm-msg-1",
+  )
+  assert_true(rm_msg.ok)
+  assert_eq(rm_msg.intent, "room_turn")
+  let rm_colon = run_desktop_turn("room eng: colon body", turn_id="rm-colon-1")
+  assert_true(rm_colon.ok)
+  assert_eq(rm_colon.intent, "room_turn")
+  let rm_turn = run_desktop_turn(
+    "room turn eng :: alias body",
+    turn_id="rm-turn-1",
+  )
+  assert_true(rm_turn.ok)
+  assert_eq(rm_turn.intent, "room_turn")
   let sa2 = run_desktop_turn(
     "send to agent asst-alpha :: please review",
     turn_id="sta-1",

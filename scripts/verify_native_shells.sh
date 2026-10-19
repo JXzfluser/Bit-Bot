@@ -224,6 +224,7 @@ for needle in (
     "create routine id=desk-r",
     "create teammate id=",
     "room ",
+    "post to room ",
     "deliver cloud artifact artifact=",
     "teams send tsmoke",
     "thread_ts=",

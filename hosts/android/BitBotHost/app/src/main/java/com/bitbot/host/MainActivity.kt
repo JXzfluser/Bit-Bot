@@ -172,6 +172,7 @@ class MainActivity : ComponentActivity() {
       "Create routine" to "create routine id=desk-r cron=@hourly prompt=android tick",
       "Create teammate" to "create teammate id=asst-parity name=MobileMate role=executor",
       "Room" to "room android :: hello teammates from android",
+      "Post to room" to "post to room android :: hello from android post phrasing",
       "Cloud artifact" to "deliver cloud artifact artifact=bc-1 dest=android-report.md",
       "Teams send" to "teams send tsmoke :: hello host chat",
       "Slack thread" to "reply via slack:Candroid thread_ts=1710000000.000001 :: android thread",
