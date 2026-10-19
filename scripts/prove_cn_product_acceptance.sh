@@ -160,6 +160,14 @@ if ls "$ROOT"/hosts/android/BitBotHost/app/build/outputs/apk/*/debug/*.apk >/dev
 else
   note "WARN Android APKs not in tree (may be gitignored build/)"
 fi
+rel_n=$(ls "$ROOT"/hosts/android/BitBotHost/app/build/outputs/apk/*/release/*.apk 2>/dev/null | wc -l | tr -d ' ')
+if [[ "${rel_n:-0}" -ge 6 ]]; then
+  ok "Android CN flavor signed release APKs present ($rel_n) — store upload may still need OEM cert"
+elif [[ -n "${BITBOT_ANDROID_STORE_FILE:-}" && -f "${BITBOT_ANDROID_STORE_FILE}" ]]; then
+  bad "Android keystore present but release APKs missing (run scripts/sign_and_pack.sh android)"
+else
+  note "WARN Android release APKs residual (set BITBOT_ANDROID_STORE_* then sign_and_pack.sh android)"
+fi
 
 note "-- summary: pass=$pass fail=$fail --"
 if [[ "$fail" -gt 0 ]]; then
