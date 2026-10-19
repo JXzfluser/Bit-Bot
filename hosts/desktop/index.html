@@ -1719,6 +1719,7 @@
             "mail_read",
             "workflow_list",
             "x_search",
+            "x_post",
             "job_search",
             "finance_call",
             "copy_to_box",
@@ -2063,6 +2064,24 @@
                         ? " · live_x_residual"
                         : "") +
                       (p.pretend_live === true ? " · pretend!" : "");
+                  }
+                } else if (h.kind === "x_post") {
+                  label =
+                    "x_post:" +
+                    (p.mode || "draft") +
+                    (p.live_x_post_residual === true
+                      ? "/live_x_post_residual"
+                      : "");
+                  types.push("attachment");
+                  const chMeta = document.getElementById("channels-meta");
+                  if (chMeta) {
+                    chMeta.textContent =
+                      "x_post · " +
+                      (p.mode || "?") +
+                      (p.live_x_post_residual === true
+                        ? " · live_x_post_residual"
+                        : "") +
+                      (p.pretend_posted === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "job_search") {
                   label =

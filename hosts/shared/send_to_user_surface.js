@@ -54,6 +54,7 @@ function residualSuffix(p) {
   const keys = [
     "live_mail_residual",
     "live_x_residual",
+    "live_x_post_residual",
     "live_job_residual",
     "live_finance_residual",
     "live_paid_residual",
@@ -308,6 +309,7 @@ function extractDeliveryTypes(turnJsonText) {
           "source_control",
           "workflow_list",
           "x_search",
+          "x_post",
           "job_search",
           "finance_call",
           "copy_to_box",

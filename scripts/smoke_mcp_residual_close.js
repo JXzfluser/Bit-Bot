@@ -1416,6 +1416,9 @@ function stripHostAppliedMarker(file) {
     ["section_post", "host_section_post", "section_post"],
     ["archive_mail", "host_mail_read", "mail_read"],
     ["bug_report", "host_box_doctor", "box_doctor"],
+    ["x_post", "host_x_post", "x_post"],
+    ["post_tweet", "host_x_post", "x_post"],
+    ["mute", "host_set_notify", "set_notify"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
@@ -1489,7 +1492,15 @@ function stripHostAppliedMarker(file) {
                                                               ? '{"thread_id":"t-archive-1"}'
                                                               : tool === "bug_report"
                                                                 ? '{}'
-                                                                : "{}";
+                                                                : tool === "x_post" ||
+                                                                    tool === "post_tweet" ||
+                                                                    tool === "draft_post"
+                                                                  ? '{"text":"Bit Bot Host x_post smoke"}'
+                                                                  : tool === "mute" ||
+                                                                      tool === "focus_mode" ||
+                                                                      tool === "do_not_disturb"
+                                                                    ? '{"toggle":"desktop","enabled":"off"}'
+                                                                    : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);
@@ -1512,6 +1523,13 @@ function stripHostAppliedMarker(file) {
       !((payload.list_skills || {}).count >= 1)
     ) {
       throw new Error(tool + " count: " + JSON.stringify(payload.list_skills || {}).slice(0, 200));
+    }
+    if (
+      (tool === "x_post" || tool === "post_tweet") &&
+      ((payload.x_post || {}).pretend_posted === true ||
+        (payload.x_post || {}).mode !== "sandbox_draft")
+    ) {
+      throw new Error(tool + " draft: " + JSON.stringify(payload.x_post || {}).slice(0, 220));
     }
     console.log("mcp_call alias short-circuit ok", tool, payload.mapped);
   }

@@ -30,7 +30,7 @@ object SendToUserSurface {
     "purchase", "mcp_call", "mcp_discover", "mcp_namespace",
     "credential_list", "code_changes",
     "section_add", "section_post", "source_control", "workflow_list",
-    "x_search", "job_search", "finance_call", "copy_to_box", "copy_from_box",
+    "x_search", "x_post", "job_search", "finance_call", "copy_to_box", "copy_from_box",
     "shared_memory_put", "shared_memory_read", "journal_append", "journal_query",
     "connectors_probe", "device_tools_list", "device_tool",
     "skill_load", "list_skills", "mail_claim_inbox", "cloud_artifact_deliver", "teammate_create",

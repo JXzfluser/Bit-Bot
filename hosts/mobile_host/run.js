@@ -137,6 +137,7 @@ try {
       "voice_end_write",
       "credential_list",
       "x_search",
+      "x_post",
       "approval_card",
       "connectors_probe",
       "generate_image",

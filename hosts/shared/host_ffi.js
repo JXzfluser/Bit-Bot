@@ -7052,6 +7052,10 @@ function createHostFfi(repoRoot) {
         generate_pptx: "host_slides_pptx",
         search_posts: "host_x_search",
         x_search: "host_x_search",
+        x_post: "host_x_post",
+        post_tweet: "host_x_post",
+        draft_post: "host_x_post",
+        create_post: "host_x_post",
         create_draft: "host_mail_draft",
         mail_draft: "host_mail_draft",
         draft_mail: "host_mail_draft",
@@ -7360,6 +7364,9 @@ function createHostFfi(repoRoot) {
         about: "host_check_updates",
         version: "host_check_updates",
         status: "host_box_doctor",
+        mute: "host_set_notify",
+        focus_mode: "host_set_notify",
+        do_not_disturb: "host_set_notify",
         echo_body: "echo_body",
       };
       const mapped = wantWrite
@@ -7443,6 +7450,7 @@ function createHostFfi(repoRoot) {
       if (
         mapped === "host_slides_pptx" ||
         mapped === "host_x_search" ||
+        mapped === "host_x_post" ||
         mapped === "host_mail_draft" ||
         mapped === "host_mail_send" ||
         mapped === "host_mail_read" ||
@@ -11916,44 +11924,100 @@ function createHostFfi(repoRoot) {
             media: mediaPayload,
           });
         }
-        const q = String(
-          args.q || args.query || args.body || "",
-        ).trim() || "(empty)";
-        const xResults = await executeHostEffects([
-          { kind: "x_search", command: q },
-        ]);
-        const xHit = (xResults || []).find((r) => r && r.kind === "x_search");
-        let xPayload = {};
-        try {
-          xPayload = JSON.parse((xHit && xHit.stdout) || "{}");
-        } catch {
-          xPayload = {};
+        if (mapped === "host_x_post") {
+          // Product x_post / post_tweet → Host x_post (draft-first; live gated).
+          const text =
+            String(
+              args.text ||
+                args.body ||
+                args.content ||
+                args.tweet ||
+                args.q ||
+                args.query ||
+                "",
+            ).trim() || "Bit Bot Host x_post";
+          const postResults = await executeHostEffects([
+            { kind: "x_post", command: text },
+          ]);
+          const postHit = (postResults || []).find(
+            (r) => r && r.kind === "x_post",
+          );
+          let postPayload = {};
+          try {
+            postPayload = JSON.parse((postHit && postHit.stdout) || "{}");
+          } catch {
+            postPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "x_post",
+              x_post: {
+                path: postPayload.path || null,
+                mode: postPayload.mode || null,
+                draft_path: postPayload.draft_path || null,
+                live_x_post_residual: postPayload.live_x_post_residual,
+                pretend_posted: postPayload.pretend_posted,
+              },
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(postHit && postHit.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(postHit && postHit.ok),
+            x_post: postPayload,
+          });
         }
-        const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
-          tool: toolName,
-          mapped,
-          host_kind: "x_search",
-          x_search: {
-            path: xPayload.path || null,
-            mode: xPayload.mode || null,
-            hit_count: xPayload.hit_count,
-            live_x_residual: xPayload.live_x_residual,
-          },
-          product_tool_residual: false,
-          pretend_ok: false,
-          ok: Boolean(xHit && xHit.ok),
-          at: shortAt,
-        });
-        return okJson(kind, command, {
-          ...callArtifact,
-          tool: toolName,
-          mapped,
-          product_tool_residual: false,
-          path: snapPath,
-          pretend_ok: false,
-          ok: Boolean(xHit && xHit.ok),
-          x_search: xPayload,
-        });
+        if (mapped === "host_x_search") {
+          const q = String(
+            args.q || args.query || args.body || "",
+          ).trim() || "(empty)";
+          const xResults = await executeHostEffects([
+            { kind: "x_search", command: q },
+          ]);
+          const xHit = (xResults || []).find((r) => r && r.kind === "x_search");
+          let xPayload = {};
+          try {
+            xPayload = JSON.parse((xHit && xHit.stdout) || "{}");
+          } catch {
+            xPayload = {};
+          }
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(command, {
+            tool: toolName,
+            mapped,
+            host_kind: "x_search",
+            x_search: {
+              path: xPayload.path || null,
+              mode: xPayload.mode || null,
+              hit_count: xPayload.hit_count,
+              live_x_residual: xPayload.live_x_residual,
+            },
+            product_tool_residual: false,
+            pretend_ok: false,
+            ok: Boolean(xHit && xHit.ok),
+            at: shortAt,
+          });
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(xHit && xHit.ok),
+            x_search: xPayload,
+          });
+        }
       }
       if (mapped === "echo_body" && args.body == null) {
         args = { body: JSON.stringify(args), source_ref: left };
@@ -19509,6 +19573,94 @@ function createHostFfi(repoRoot) {
       return okJson(kind, cmd, {
         ...artifact,
         path: listPath,
+        send_to_user: delivery,
+        ok: true,
+      });
+    }
+
+    if (kind === "x_post") {
+      // Draft-first X post. Live POST only when BITBOT_X_POST=1 + bearer.
+      // Never pretend_posted.
+      const text = String(command || cmd || "").trim() || "Bit Bot Host x_post";
+      const xDir = path.join(REPO_ROOT, "data", "connectors", "x");
+      const draftDir = path.join(xDir, "drafts");
+      fs.mkdirSync(draftDir, { recursive: true });
+      const bearer = resolveProviderAccessToken("x");
+      const xApiBase = resolveConnectorApiUrl("x", ["BITBOT_X_API_BASE"]);
+      const wantLive =
+        process.env.BITBOT_X_POST === "1" ||
+        process.env.BITBOT_X_POST === "force";
+      let mode = "sandbox_draft";
+      let liveProbe = null;
+      let postedId = null;
+      if (wantLive && bearer) {
+        try {
+          const root = (xApiBase || "https://api.x.com/2").replace(/\/$/, "");
+          const url = `${root}/tweets`;
+          const resp = await httpJson(url, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${bearer}`,
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ text: text.slice(0, 280) }),
+          });
+          const body = resp.json || { raw: String(resp.body || "").slice(0, 400) };
+          liveProbe = {
+            ok: Boolean(resp.ok),
+            http_status: resp.status || 0,
+            error: resp.error || null,
+          };
+          if (resp.ok && body && body.data && body.data.id) {
+            postedId = String(body.data.id);
+            mode = "x_live_post";
+          } else {
+            mode = "x_live_post_failed";
+          }
+        } catch (err) {
+          liveProbe = {
+            ok: false,
+            error: String((err && err.message) || err).slice(0, 200),
+          };
+          mode = "x_live_post_failed";
+        }
+      } else if (wantLive && !bearer) {
+        mode = "x_live_post_needs_token";
+      }
+      const draftPath = path.join(
+        draftDir,
+        `draft-${Date.now().toString(36)}.json`,
+      );
+      const draft = {
+        text: text.slice(0, 280),
+        mode,
+        live_x_post_residual: mode !== "x_live_post",
+        pretend_posted: false,
+        posted_id: postedId,
+        live_probe: liveProbe,
+        at,
+      };
+      fs.writeFileSync(draftPath, JSON.stringify(draft, null, 2));
+      appendJsonl(path.join(xDir, "posts.jsonl"), draft);
+      const delivery = recordSendToUser({
+        type: "attachment",
+        path: draftPath,
+        label: "x_post",
+        source_kind: kind,
+        at,
+      });
+      appendHostDeliveryJournal({
+        kind,
+        command: text.slice(0, 120),
+        path: draftPath,
+        mode,
+        at,
+      });
+      return okJson(kind, text.slice(0, 120), {
+        ...draft,
+        path: draftPath,
+        draft_path: draftPath,
         send_to_user: delivery,
         ok: true,
       });

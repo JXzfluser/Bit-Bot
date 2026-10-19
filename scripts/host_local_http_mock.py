@@ -29,6 +29,7 @@ Endpoints:
             (BITBOT_TEAMS_GRAPH_URL=http://host:port)
   job:      POST /jobs/search  (BITBOT_JOB_API_URL=http://host:port)
   x:        GET  /tweets/search/recent  (BITBOT_X_API_BASE=http://host:port)
+            POST /tweets                (BITBOT_X_POST=1 live create)
   gmail:    POST /users/me/messages/send
             GET  /users/me/messages
             GET  /users/me/threads/<id>
@@ -144,6 +145,7 @@ def main() -> int:
                     and ("/chats/" in path and path.endswith("/messages"))
                 )
                 or (mode == "job" and path == "/jobs/search")
+                or (mode == "x" and (path == "/tweets" or path.endswith("/tweets")))
                 or (mode == "gmail" and path.endswith("/users/me/messages/send"))
                 or (mode == "cloud" and path == "/agents")
                 or (mode == "outlook" and path.endswith("/me/sendMail"))
@@ -316,6 +318,17 @@ def main() -> int:
                                 "company": "Mock Employer",
                             },
                         ],
+                    },
+                )
+            elif mode == "x":
+                text = str(payload.get("text") or "")
+                self._json(
+                    201,
+                    {
+                        "data": {
+                            "id": "x-post-live-1",
+                            "text": text[:280],
+                        },
                     },
                 )
             elif mode == "gmail":

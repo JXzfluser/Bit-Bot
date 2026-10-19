@@ -555,6 +555,7 @@ for needle in (
   'live_calendar_residual',
   'live_mail_residual',
   'live_x_residual',
+  'live_x_post_residual',
   'live_job_residual',
   'live_finance_residual',
   'live_slack_residual',
@@ -680,6 +681,7 @@ for needle in (
   'live_mail_residual',
   'live_mail_claim_residual',
   'live_x_residual',
+  'live_x_post_residual',
   'live_job_residual',
   'live_finance_residual',
   'live_paid_residual',
@@ -728,6 +730,8 @@ assert 'inbound_reaction' in android and 'react_message' in android
 assert 'todo_write' in ios and 'todo_write' in android
 assert 'list_skills' in ios and 'list_skills' in android
 assert '"list_skills"' in shared
+assert 'x_post' in ios and 'x_post' in android
+assert '"x_post"' in shared
 for needle in (
   'gh_pr_create_residual',
   'true_device_os_dialog_residual',
@@ -1120,6 +1124,19 @@ env -u BITBOT_X_BEARER -u BITBOT_X_TOKEN -u BITBOT_X_API_BASE \
 kill "$X_MOCK_PID" >/dev/null 2>&1 || true
 wait "$X_MOCK_PID" 2>/dev/null || true
 python3 -c "import json;d=json.load(open('/tmp/bitbot-x-file-token.json'));h=next(x for x in d['host_results'] if x.get('kind')=='x_search');p=json.loads(h['stdout']);assert p.get('mode')=='x_live';assert p.get('live_x_residual') is False;print('x_search connector token+api_url file ok', p.get('mode'))"
+# Host x_post draft-first + live mock residual close
+rm -f data/connectors/x_token.json
+env -u BITBOT_X_BEARER -u BITBOT_X_TOKEN -u BITBOT_X_API_BASE -u BITBOT_X_POST \
+  node -e 'const {createHostFfi}=require("./hosts/shared/host_ffi.js"); const ffi=createHostFfi(process.cwd()); (async()=>{ const r=await ffi.executeHostEffects([{kind:"x_post",command:"sandbox draft post"}]); require("fs").writeFileSync("/tmp/bitbot-x-post.json", JSON.stringify({host_results:r},null,2)); })().catch(e=>{console.error(e);process.exit(1);});'
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-x-post.json'));h=next(x for x in d['host_results'] if x.get('kind')=='x_post');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='sandbox_draft';assert p.get('live_x_post_residual') is True;assert p.get('pretend_posted') is False;assert p.get('path') and os.path.isfile(p['path']);print('x_post sandbox draft ok', p.get('path'), p.get('mode'))"
+python3 "$ROOT/scripts/host_local_http_mock.py" --port 18773 --mode x --token smoke-xpost >/tmp/bitbot-x-post-mock.log 2>&1 &
+X_POST_MOCK_PID=$!
+sleep 0.4
+BITBOT_X_API_BASE=http://127.0.0.1:18773 BITBOT_X_BEARER=smoke-xpost BITBOT_X_POST=1 \
+  node -e 'const {createHostFfi}=require("./hosts/shared/host_ffi.js"); const ffi=createHostFfi(process.cwd()); (async()=>{ const r=await ffi.executeHostEffects([{kind:"x_post",command:"live post smoke"}]); require("fs").writeFileSync("/tmp/bitbot-x-post-live.json", JSON.stringify({host_results:r},null,2)); })().catch(e=>{console.error(e);process.exit(1);});'
+kill "$X_POST_MOCK_PID" >/dev/null 2>&1 || true
+wait "$X_POST_MOCK_PID" 2>/dev/null || true
+python3 -c "import json;d=json.load(open('/tmp/bitbot-x-post-live.json'));h=next(x for x in d['host_results'] if x.get('kind')=='x_post');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='x_live_post';assert p.get('live_x_post_residual') is False;assert p.get('pretend_posted') is False;assert p.get('posted_id')=='x-post-live-1';print('x_post live mock residual close ok', p.get('mode'), p.get('posted_id'))"
 
 echo "==> Host durable product delivery (voice/teammates/device/subagent/cloud/commerce)"
 # Drop stale STT sidecars so honest voice_session keeps voice_stt_residual open.
