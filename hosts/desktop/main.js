@@ -1046,18 +1046,24 @@ async function ensureCnInbound() {
     cnInbound = createCnInboundServer({
       repoRoot: REPO_ROOT,
       onTurn: async (prompt, meta) => {
-        const sessionId = `cn-${(meta && meta.channel) || "in"}`;
+        const channel = (meta && meta.channel) || "in";
+        const machineKind =
+          (meta && meta.machine_kind) ||
+          (channel === "android" || channel === "ios" ? channel : "desktop");
+        const sessionId =
+          (meta && meta.session_id) || `cn-${channel}`;
         broadcast("bitbot:llm-stream", {
           phase: "start",
           session_id: sessionId,
           user: String(prompt || "").slice(0, 200),
-          channel: meta && meta.channel,
+          channel,
+          machine_kind: machineKind,
         });
         const result = await runner.runTurn(String(prompt || ""), {
           sessionId,
-          machineId: "desk-1",
-          machineKind: "desktop",
-          channel: (meta && meta.channel) || "",
+          machineId: machineKind === "desktop" ? "desk-1" : `${machineKind}-1`,
+          machineKind,
+          channel: channel === "android" || channel === "ios" ? "" : channel,
           approved: true,
         });
         broadcast("bitbot:llm-stream", {

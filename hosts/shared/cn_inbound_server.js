@@ -371,13 +371,61 @@ function createCnInboundServer(opts = {}) {
         }
       }
 
-      if (p === "/health" || p === "/cn/health") {
+      if (p === "/health" || p === "/cn/health" || p === "/v1/status") {
         json(res, 200, {
           ok: true,
           service: "bitbot-cn-inbound",
           listening: state.listening,
           counts: state.counts,
+          turn_api: true,
           pretend_cloud: false,
+        });
+        return;
+      }
+
+      // Shared-brain turn API for iOS/Android product shells (LAN pair to Desktop).
+      // POST /v1/turn { "text": "...", "machine_kind": "android"|"ios", "session_id": "..." }
+      if (p === "/v1/turn" || p === "/turn") {
+        if (req.method !== "POST") {
+          json(res, 405, { ok: false, error: "POST required" });
+          return;
+        }
+        const text =
+          (payload && (payload.text || payload.message || payload.prompt)) ||
+          raw.toString("utf8").trim();
+        const machineKind =
+          (payload && (payload.machine_kind || payload.machineKind)) || "mobile";
+        const sessionId =
+          (payload && (payload.session_id || payload.sessionId)) ||
+          `mobile-${machineKind}`;
+        if (!String(text || "").trim()) {
+          json(res, 400, { ok: false, error: "empty text" });
+          return;
+        }
+        state.counts.other += 1;
+        const enq = await enqueueTurn(machineKind, String(text), {
+          session_id: sessionId,
+          source: "v1_turn",
+          machine_kind: machineKind,
+        });
+        const turn = enq.turnResult || { ok: false, error: "no onTurn handler" };
+        appendJsonl(path.join(logDir, "events.jsonl"), {
+          channel: "v1_turn",
+          machine_kind: machineKind,
+          text_prefix: String(text).slice(0, 120),
+          turn_ok: Boolean(turn && turn.ok),
+          at: new Date().toISOString(),
+        });
+        json(res, 200, {
+          ok: Boolean(turn && turn.ok),
+          machine_kind: machineKind,
+          session_id: sessionId,
+          messages: (turn && turn.messages) || [],
+          host_results: (turn && turn.host_results) || [],
+          stdout: (turn && turn.stdout) || "",
+          error: (turn && turn.error) || null,
+          pretend_turn: false,
+          brain: "shared_desktop_host",
         });
         return;
       }
@@ -401,6 +449,7 @@ function createCnInboundServer(opts = {}) {
           "POST /dingtalk/callback",
           "POST /feishu/event",
           "GET|POST /wecom/callback",
+          "POST /v1/turn",
           "GET /health",
         ],
       });
@@ -456,6 +505,7 @@ function createCnInboundServer(opts = {}) {
         dingtalk: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/dingtalk/callback`,
         feishu: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/feishu/event`,
         wecom: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/wecom/callback`,
+        turn: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/v1/turn`,
       },
       pretend_cloud: false,
       residual: "needs public HTTPS URL + channel app credentials for live cloud",

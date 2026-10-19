@@ -14,7 +14,7 @@ struct ContentView: View {
   @State private var showCapabilities = false
   @State private var delivery = SendToUserSurface.Summary()
   @State private var statusHint =
-    "MoonBit 内核 · DeepSeek Host · 配置 BITBOT_LLM_API_KEY"
+    "MoonBit 内核 · 配对 Desktop BITBOT_HOST_URL · DeepSeek key 在 Desktop Settings"
 
   /// Compact product actions (CN channels + essentials). Full matrix stays on Desktop lab.
   private let productActions: [(label: String, turn: String)] = [

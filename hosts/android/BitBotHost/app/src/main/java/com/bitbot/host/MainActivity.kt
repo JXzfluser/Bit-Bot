@@ -150,7 +150,7 @@ class MainActivity : ComponentActivity() {
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                  "MoonBit → DeepSeek Host · 配置 BITBOT_LLM_API_KEY",
+                  "配对 Desktop BITBOT_HOST_URL（默认模拟器 10.0.2.2:18765）",
                   style = MaterialTheme.typography.labelMedium,
                   color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
