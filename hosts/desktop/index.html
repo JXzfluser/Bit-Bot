@@ -4308,7 +4308,7 @@
             const cn = await window.bitbot.cnStatus();
             const meta = document.getElementById("cn-channels-meta");
             if (meta && cn && Array.isArray(cn.channels)) {
-              meta.textContent = cn.channels
+              let t = cn.channels
                 .map(function (c) {
                   return (
                     c.connector +
@@ -4317,6 +4317,10 @@
                   );
                 })
                 .join(" · ");
+              if (cn.inbound && cn.inbound.listening) {
+                t += " · 入站:" + cn.inbound.port;
+              }
+              meta.textContent = t;
             }
           }
         } catch (_) {
