@@ -1013,6 +1013,9 @@
                     ? ":" + cn.inbound.port
                     : "off"),
               );
+              if (cn.inbound.listening && cn.inbound.routes && cn.inbound.routes.turn) {
+                bits.push("手机配对=/v1/turn");
+              }
             }
           }
         } catch (_) {

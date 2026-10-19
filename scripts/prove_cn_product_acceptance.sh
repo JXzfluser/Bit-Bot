@@ -101,7 +101,11 @@ fi
 
 # CN inbound module present (local HTTP receiver; cloud still needs public URL)
 if [[ -f "$ROOT/hosts/shared/cn_inbound_server.js" ]]; then
-  ok "CN inbound server module present (钉钉/飞书/企微 callback receiver)"
+  if grep -q '/v1/turn' "$ROOT/hosts/shared/cn_inbound_server.js"; then
+    ok "CN inbound + mobile /v1/turn shared-brain API present"
+  else
+    bad "CN inbound missing /v1/turn mobile pair API"
+  fi
 else
   bad "CN inbound server module missing"
 fi
