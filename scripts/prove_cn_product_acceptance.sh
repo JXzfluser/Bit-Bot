@@ -74,6 +74,17 @@ else
   bad "Desktop electron-updater missing"
 fi
 
+# DeepSeek endpoint reachability (network) — 401 without key still proves egress
+DS_BASE="${BITBOT_LLM_BASE_URL:-https://api.deepseek.com/v1}"
+ds_code=$(curl -sS -o /tmp/bitbot-ds-reach.json -w '%{http_code}' \
+  "$DS_BASE/models" -H "Authorization: Bearer reachability-probe" \
+  --connect-timeout 10 --max-time 20 || true)
+if [[ "$ds_code" == "401" || "$ds_code" == "200" ]]; then
+  ok "DeepSeek API reachable (HTTP $ds_code from $DS_BASE)"
+else
+  note "WARN DeepSeek API reachability HTTP ${ds_code:-err} (egress may block)"
+fi
+
 # P0 real model — require configured key AND successful live probe to DeepSeek (or configured base)
 KEY="${BITBOT_LLM_API_KEY:-}"
 BASE="${BITBOT_LLM_BASE_URL:-https://api.deepseek.com/v1}"

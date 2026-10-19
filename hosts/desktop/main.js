@@ -221,6 +221,37 @@ const DAEMON_AUTOSTART =
     ? true
     : process.env.BITBOT_ROUTINE_DAEMON_AUTOSTART === "1";
 
+/** Linux XDG autostart .desktop (Electron setLoginItemSettings is weak on Linux). */
+function applyLinuxXdgAutostart(enabled) {
+  const home = process.env.HOME || "";
+  if (!home) return { ok: false, error: "HOME unset" };
+  const dir = path.join(home, ".config", "autostart");
+  const desk = path.join(dir, "bitbot-desktop.desktop");
+  if (!enabled) {
+    try {
+      if (fs.existsSync(desk)) fs.unlinkSync(desk);
+    } catch (_) {
+      /* ignore */
+    }
+    return { ok: true, openAtLogin: false, path: desk, removed: true };
+  }
+  fs.mkdirSync(dir, { recursive: true });
+  const execLine = process.env.BITBOT_DESKTOP_AUTOSTART_EXEC
+    ? String(process.env.BITBOT_DESKTOP_AUTOSTART_EXEC)
+    : `"${process.execPath}" "${path.join(__dirname)}"`;
+  const body =
+    "[Desktop Entry]\n" +
+    "Type=Application\n" +
+    "Name=Bit Bot\n" +
+    "Comment=Bit Bot Desktop — MoonBit CN assistant\n" +
+    `Exec=${execLine}\n` +
+    "Terminal=false\n" +
+    "X-GNOME-Autostart-enabled=true\n" +
+    "StartupNotify=false\n";
+  fs.writeFileSync(desk, body, { mode: 0o644 });
+  return { ok: true, openAtLogin: true, path: desk, linux_xdg: true };
+}
+
 function applyLoginItem(enabled) {
   try {
     app.setLoginItemSettings({
@@ -232,7 +263,15 @@ function applyLoginItem(enabled) {
           ? String(process.env.BITBOT_DESKTOP_LOGIN_ARGS).split(/\s+/).filter(Boolean)
           : [],
     });
-    return { ok: true, openAtLogin: Boolean(enabled) };
+    let linux = null;
+    if (process.platform === "linux") {
+      linux = applyLinuxXdgAutostart(Boolean(enabled));
+    }
+    return {
+      ok: true,
+      openAtLogin: Boolean(enabled),
+      linux_xdg: linux,
+    };
   } catch (err) {
     return {
       ok: false,
