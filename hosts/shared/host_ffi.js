@@ -20081,12 +20081,10 @@ function createHostFfi(repoRoot) {
           };
         }
         if (cg.auto) {
-          // Background-source queue stays honest: it is decided in the queue UI.
-          surface.appendPendingApproval({
-            source: "chat",
-            kind: (cg.parsed && cg.parsed.patternKind) || "card",
-            command: cmd,
-          });
+          // Chat-source cards auto-run inline (ADR 0002 re-run) — queueing them
+          // here would leave a ghost "pending" entry the moment they auto-approve.
+          // Background sources (routine/teammate) never reach this branch: they
+          // are queued by their own callers and decided in the queue UI.
           return {
             kind,
             ok: true,

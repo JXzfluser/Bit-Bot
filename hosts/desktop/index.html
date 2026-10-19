@@ -6,14 +6,62 @@
 <title>Bit Bot Desktop</title>
 <style>
   :root {
-    --bg0: #0c1210;
-    --bg1: #14201a;
-    --ink: #e7f0ea;
-    --muted: #8aa396;
-    --line: #2a3d34;
-    --accent: #3dba7e;
+    /* Grok-style neutral dark (spec §2.1/§7.3; exact brand hex NOT-CONFIRMED →
+       neutral near-black + white primary, no green console theme) */
+    --bg0: #171717;
+    --bg1: #1d1d1d;
+    --ink: #ececec;
+    --muted: #9a9a9a;
+    --line: #2e2e2e;
+    --accent: #ffffff;
+    --accent-ink: #171717;
+    --accent-soft: #2a2a2a;
     --warn: #d4a017;
-    --side: #0e1612;
+    --side: #111111;
+    --user-bubble: #2a2a2a;
+    --bot-bubble: transparent;
+    --input-bg: #232323;
+    --danger: #c0554d;
+    --warn-bg: #262010; --warn-ink: #e8d9a8; --warn-line: #5a4a2a;
+    --danger-bg: #2a1f1d; --danger-ink: #e8b4b0;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg0: #ffffff;
+      --bg1: #f7f7f7;
+      --ink: #1a1a1a;
+      --muted: #6f6f6f;
+      --line: #e3e3e3;
+      --accent: #1a1a1a;
+      --accent-ink: #ffffff;
+      --accent-soft: #f0f0f0;
+      --warn: #a06a00;
+      --side: #f7f7f7;
+      --user-bubble: #eef0f2;
+      --bot-bubble: transparent;
+      --input-bg: #f2f2f2;
+      --danger: #b3403a;
+      --warn-bg: #fbf4e0; --warn-ink: #6a5312; --warn-line: #e3d2a0;
+      --danger-bg: #fae9e7; --danger-ink: #8f332d;
+    }
+  }
+  body.force-dark {
+    color-scheme: dark;
+    --bg0: #171717; --bg1: #1d1d1d; --ink: #ececec; --muted: #9a9a9a;
+    --line: #2e2e2e; --accent: #ffffff; --accent-ink: #171717; --accent-soft: #2a2a2a;
+    --warn: #d4a017; --side: #111111; --user-bubble: #2a2a2a; --bot-bubble: transparent;
+    --input-bg: #232323; --danger: #c0554d;
+    --warn-bg: #262010; --warn-ink: #e8d9a8; --warn-line: #5a4a2a;
+    --danger-bg: #2a1f1d; --danger-ink: #e8b4b0;
+  }
+  body.force-light {
+    color-scheme: light;
+    --bg0: #ffffff; --bg1: #f7f7f7; --ink: #1a1a1a; --muted: #6f6f6f;
+    --line: #e3e3e3; --accent: #1a1a1a; --accent-ink: #ffffff; --accent-soft: #f0f0f0;
+    --warn: #a06a00; --side: #f7f7f7; --user-bubble: #eef0f2; --bot-bubble: transparent;
+    --input-bg: #f2f2f2; --danger: #b3403a;
+    --warn-bg: #fbf4e0; --warn-ink: #6a5312; --warn-line: #e3d2a0;
+    --danger-bg: #fae9e7; --danger-ink: #8f332d;
   }
   * { box-sizing: border-box; }
   body {
@@ -24,8 +72,8 @@
     color: var(--ink);
     background-color: var(--bg0);
     background-image:
-      radial-gradient(1200px 600px at 10% -10%, #1a3a2c 0%, transparent 55%),
-      radial-gradient(900px 500px at 100% 0%, #1e2a22 0%, transparent 50%),
+      radial-gradient(1200px 600px at 10% -10%, rgba(128,128,128,0.06) 0%, transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, rgba(128,128,128,0.05) 0%, transparent 50%),
       linear-gradient(165deg, var(--bg0), var(--bg1));
     display: grid;
     /* Grok-style default: sessions + chat only; tools rail opt-in */
@@ -42,17 +90,18 @@
   }
   header {
     grid-area: header;
-    padding: 16px 20px 12px;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--line);
+    align-items: center;
   }
   header .brand {
-    font: 700 32px/1.05 "Source Han Serif SC", "Noto Serif SC", "IBM Plex Serif", Georgia, serif;
-    letter-spacing: -0.02em;
+    font: 600 16px/1.2 -apple-system, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+    letter-spacing: 0;
   }
   header .sub {
-    margin-top: 6px;
     color: var(--muted);
-    font-size: 13px;
+    font-size: 12px;
+    margin-top: 1px;
   }
   #header-actions {
     display: flex;
@@ -61,18 +110,19 @@
     flex-shrink: 0;
   }
   #header-actions button {
-    margin-top: 4px;
-    background: #1a2420;
-    color: #b7e0c8;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 8px 12px;
-    font-weight: 600;
+    background: transparent;
+    color: var(--muted);
+    border: 0;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-weight: 500;
+    font-size: 13px;
     cursor: pointer;
   }
+  #header-actions button:hover { background: var(--accent-soft); color: var(--ink); }
   #header-actions button.active {
-    border-color: var(--accent);
-    color: #e7f0ea;
+    border-color: var(--muted);
+    color: var(--ink);
   }
   #model-picker {
     display: flex;
@@ -82,7 +132,7 @@
     margin-top: 4px;
   }
   #model-picker .mp-btn {
-    background: #12201a;
+    background: var(--accent-soft);
     color: var(--muted);
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -92,9 +142,9 @@
     cursor: pointer;
   }
   #model-picker .mp-btn.active {
-    border-color: var(--accent);
-    color: #e7f0ea;
-    background: #1a3026;
+    border-color: var(--muted);
+    color: var(--ink);
+    background: var(--accent-soft);
   }
   #model-picker .mp-btn.nokey {
     opacity: 0.72;
@@ -109,7 +159,7 @@
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 8px 10px;
-    background: #0c1410;
+    background: var(--bg0);
   }
   #agents details.lab > summary {
     cursor: pointer;
@@ -187,9 +237,9 @@
     margin-bottom: 6px;
     border: 1px solid var(--line);
     border-radius: 6px;
-    background: #101a15;
+    background: var(--bg1);
   }
-  .agent-item.active { border-color: #2f6b4c; }
+  .agent-item.active { border-color: var(--line); }
   .agent-item .name, .machine-item .name {
     font-weight: 600;
     font-size: 13px;
@@ -204,7 +254,7 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #b7e0c8;
+    color: var(--ink);
     margin-right: 4px;
   }
   #main {
@@ -219,15 +269,15 @@
     padding: 10px 12px;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: #0f1814cc;
+    background: var(--bg1)cc;
     font: 12px/1.4 ui-monospace, "IBM Plex Mono", monospace;
     white-space: pre-wrap;
     color: var(--muted);
     max-height: 100px;
     overflow: auto;
   }
-  #banner.ok { border-color: #2f6b4c; color: #b7e0c8; }
-  #banner.err { border-color: #8a3a3a; color: #f0b4b4; }
+  #banner.ok { border-color: var(--line); color: var(--ink); }
+  #banner.err { border-color: var(--danger); color: var(--danger-ink); }
   #log {
     flex: 1;
     overflow: auto;
@@ -237,20 +287,49 @@
     gap: 10px;
   }
   .msg {
-    max-width: 100%;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-    background: #101a15;
+    max-width: 760px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 0;
   }
-  .msg.user { align-self: flex-end; border-color: #355646; }
-  .msg .role {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+  /* Grok-style: user = right pill; assistant = left, avatar + plain text, no box */
+  .msg.user {
+    align-self: flex-end;
+    background: var(--user-bubble);
+    color: var(--ink);
+    border-radius: 18px;
+    padding: 10px 16px;
+  }
+  .msg.assistant { align-self: flex-start; display: flex; gap: 10px; }
+  .msg.assistant::before {
+    content: "";
+    flex: 0 0 26px; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent-soft);
+    border: 1px solid var(--line);
+    margin-top: 1px;
+  }
+  .msg .role { display: none; }
+  .msg .body { margin-top: 0; white-space: pre-wrap; word-break: break-word; color: var(--ink); line-height: 1.55; }
+  /* Debug-only bubbles (kernel/ADR/effects/delivery) hidden unless Alt+D */
+  .msg.debug-only { display: none; }
+  body.debug-json .msg.debug-only { display: block; }
+  body.debug-json .msg.debug-only .role { display: block; }
+  .msg.debug-only {
+    align-self: stretch;
+    max-width: 100%;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    background: transparent;
+    padding: 8px 10px;
+    font-size: 12px;
     color: var(--muted);
   }
-  .msg .body { margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+  .msg.debug-only.assistant { display: none; }
+  body.debug-json .msg.debug-only.assistant { display: block; }
+  .msg.debug-only.assistant::before { display: none; }
+  .msg.tool-run { font-size: 13px; color: var(--muted); }
+  .msg.tool-run .body { color: var(--muted); }
   .msg.media .body { white-space: normal; }
   .msg.media .media-label {
     font: 12px/1.4 ui-monospace, "IBM Plex Mono", monospace;
@@ -263,7 +342,7 @@
     max-height: 360px;
     border-radius: 6px;
     border: 1px solid var(--line);
-    background: #0a100e;
+    background: var(--bg0);
   }
   .msg.media audio.delivery-media,
   .msg.media video.delivery-media {
@@ -278,11 +357,11 @@
     margin-top: 4px;
     border: 1px solid var(--line);
     border-radius: 6px;
-    background: #0a100e;
+    background: var(--bg0);
   }
   .msg.media button.open-artifact {
     margin-top: 6px;
-    background: #1a2420;
+    background: var(--accent-soft);
     color: var(--text);
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -291,42 +370,57 @@
     font: 12px/1.3 "IBM Plex Sans", sans-serif;
   }
   .msg.media button.open-artifact:hover {
-    border-color: var(--accent, #3d6b52);
+    border-color: var(--accent, var(--line));
   }
   #composer {
     grid-area: composer;
-    padding: 12px 16px 16px;
-    border-top: 1px solid var(--line);
+    padding: 4px 16px 16px;
     display: flex;
     flex-direction: column;
     gap: 8px;
+    background: transparent;
   }
   #composer .row {
     display: flex;
-    gap: 10px;
+    gap: 8px;
+    align-items: flex-end;
+    background: var(--input-bg);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 8px 8px 8px 16px;
   }
+  #composer .row:focus-within { border-color: var(--muted); }
   #composer input, #composer textarea {
     flex: 1;
-    background: #0e1612;
+    background: transparent;
     color: var(--ink);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 12px 14px;
+    border: 0;
+    padding: 6px 0;
     font: inherit;
     resize: none;
     max-height: 160px;
   }
-  #composer input:focus, #composer textarea:focus { outline: none; border-color: var(--accent); }
-  #composer #attach-btn, #composer #voice-btn { background: #2a4a3a; color: #b7e0c8; padding: 0 12px; }
+  #composer input:focus, #composer textarea:focus { outline: none; }
+  #composer #attach-btn, #composer #voice-btn {
+    background: transparent; color: var(--muted); border: 0;
+    width: 34px; height: 34px; border-radius: 50%; font-size: 15px;
+  }
+  #composer #attach-btn:hover, #composer #voice-btn:hover { background: var(--accent-soft); color: var(--ink); }
+  #composer #send {
+    background: var(--accent); color: var(--accent-ink); border: 0;
+    min-width: 34px; height: 34px; border-radius: 17px; padding: 0 14px;
+    font-weight: 600; font-size: 13px; cursor: pointer;
+  }
+  #composer #send:disabled { opacity: 0.4; }
   .attach-strip { display: flex; flex-wrap: wrap; gap: 6px; }
   .attach-strip .attach-chip {
-    background: #16241c; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--accent-soft); border: 1px solid var(--line); border-radius: 6px;
     padding: 3px 8px; font-size: 11px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center;
   }
-  .attach-strip .attach-chip button { background: none; border: 0; color: #e08a8a; cursor: pointer; padding: 0; font-weight: 700; }
+  .attach-strip .attach-chip button { background: none; border: 0; color: var(--danger); cursor: pointer; padding: 0; font-weight: 700; }
   .composer-menu {
     position: absolute; bottom: 72px; left: 20px; z-index: 40;
-    background: #0f1814; border: 1px solid var(--accent); border-radius: 8px;
+    background: var(--bg1); border: 1px solid var(--muted); border-radius: 8px;
     padding: 6px; max-height: 220px; overflow: auto; min-width: 240px;
     display: flex; flex-direction: column; gap: 4px;
   }
@@ -334,13 +428,13 @@
     background: none; color: var(--ink); border: 0; text-align: left;
     padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px;
   }
-  .composer-menu button:hover { background: #1a2420; }
+  .composer-menu button:hover { background: var(--accent-soft); }
   #composer {
     position: relative;
   }
   #composer button {
     background: var(--accent);
-    color: #062014;
+    color: var(--accent-ink);
     border: 0;
     border-radius: 8px;
     padding: 0 18px;
@@ -366,7 +460,7 @@
     padding: 12px;
     border: 1px solid var(--warn);
     border-radius: 8px;
-    background: #1a1810;
+    background: var(--warn-bg);
   }
   #approval.visible { display: block; }
   #approval .title { font-weight: 700; color: var(--warn); margin-bottom: 6px; }
@@ -379,49 +473,49 @@
     font-weight: 700;
     cursor: pointer;
   }
-  #approve-btn { background: var(--accent); color: #062014; }
-  #allow-always-btn { background: #2a4a3a; color: #b7e0c8; }
-  #deny-btn { background: #3a2a2a; color: #f0b4b4; }
+  #approve-btn { background: var(--accent); color: var(--accent-ink); }
+  #allow-always-btn { background: var(--accent-soft); color: var(--ink); }
+  #deny-btn { background: var(--danger-bg); color: var(--danger-ink); }
   #approval .kv { margin: 2px 0; color: var(--muted); font: 11px/1.5 ui-monospace, monospace; }
   #approval .kv b { color: var(--ink); }
   #approval .secret-hint { margin-top: 8px; color: var(--warn); font-size: 12px; }
   /* Grok Parity Panel (Wave G) */
-  #computer-panel .frame-box { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: #0a1210; padding: 8px; color: var(--muted); font: 12px/1.4 ui-monospace, monospace; }
+  #computer-panel .frame-box { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--input-bg); padding: 8px; color: var(--muted); font: 12px/1.4 ui-monospace, monospace; }
   #computer-panel .frame-box img { max-width: 100%; border-radius: 6px; display: block; }
-  .gp-chip { background: #1a2420; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
-  .gp-chip.active { border-color: var(--accent); color: #b7e0c8; }
+  .gp-chip { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
+  .gp-chip.active { border-color: var(--muted); color: var(--ink); }
   .gp-label { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
   .gp-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .gp-select { background: #0a1210; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  .gp-select { background: var(--input-bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
   /* Take over banner (GP-33/34) */
   #takeover-banner {
     display: none;
     margin: 0 16px 8px;
     padding: 10px 12px;
-    border: 1px solid var(--accent);
+    border: 1px solid var(--muted);
     border-radius: 8px;
-    background: #10231a;
+    background: var(--bg1);
   }
   #takeover-banner.visible { display: block; }
-  #takeover-banner .row1 { font-weight: 700; color: #b7e0c8; }
+  #takeover-banner .row1 { font-weight: 700; color: var(--ink); }
   #takeover-banner .hint { margin-top: 4px; font-size: 12px; color: var(--warn); }
   #takeover-banner .actions { margin-top: 8px; display: flex; gap: 8px; }
   /* Approval queue (GP-23) */
   #approval-queue { margin-top: 8px; }
-  #approval-queue .q-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #0a1210; color: var(--muted); font: 11px/1.4 ui-monospace, monospace; margin-bottom: 4px; flex-wrap: wrap; }
-  #approval-queue .q-expired { border-color: #5a4a2a; }
-  #approval-queue button { background: #1a2420; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px; }
+  #approval-queue .q-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--input-bg); color: var(--muted); font: 11px/1.4 ui-monospace, monospace; margin-bottom: 4px; flex-wrap: wrap; }
+  #approval-queue .q-expired { border-color: var(--warn-line); }
+  #approval-queue button { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px; }
   /* Pending approvals bar (GP-23) */
-  #pending-bar { display: none; margin: 0 16px 8px; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: 8px; background: #1a1810; color: var(--muted); font-size: 12px; }
+  #pending-bar { display: none; margin: 0 16px 8px; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: 8px; background: var(--warn-bg); color: var(--muted); font-size: 12px; }
   #pending-bar.visible { display: block; }
   /* Draft cards (GP-40/41) */
-  .draft-card { border: 1px solid var(--accent); border-radius: 8px; background: #10231a; padding: 10px 12px; margin-top: 8px; }
-  .draft-card .role { color: #b7e0c8; font-weight: 700; font-size: 12px; }
+  .draft-card { border: 1px solid var(--muted); border-radius: 8px; background: var(--bg1); padding: 10px 12px; margin-top: 8px; }
+  .draft-card .role { color: var(--ink); font-weight: 700; font-size: 12px; }
   .draft-card label { display: block; font-size: 11px; color: var(--muted); margin-top: 6px; }
-  .draft-card input, .draft-card textarea { width: 100%; margin-top: 2px; background: #0a1210; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 13px/1.4 inherit; }
+  .draft-card input, .draft-card textarea { width: 100%; margin-top: 2px; background: var(--input-bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 13px/1.4 inherit; }
   .draft-card .actions { margin-top: 8px; display: flex; gap: 8px; }
-  .draft-card .send-btn { background: var(--accent); color: #062014; border: 0; border-radius: 6px; padding: 7px 12px; font-weight: 700; cursor: pointer; }
-  .draft-card .discard-btn { background: #3a2a2a; color: #f0b4b4; border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+  .draft-card .send-btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px; padding: 7px 12px; font-weight: 700; cursor: pointer; }
+  .draft-card .discard-btn { background: var(--danger-bg); color: var(--danger-ink); border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
   .draft-card .draft-status { font-size: 11px; color: var(--muted); align-self: center; }
   .effect-chip {
     display: inline-block;
@@ -430,7 +524,7 @@
     border-radius: 4px;
     border: 1px solid var(--line);
     font: 10px/1.4 ui-monospace, monospace;
-    color: #b7e0c8;
+    color: var(--ink);
   }
   .reaction-pill {
     display: inline-flex;
@@ -439,8 +533,8 @@
     margin-top: 6px;
     padding: 6px 12px;
     border-radius: 999px;
-    border: 1px solid #3d6b52;
-    background: linear-gradient(180deg, #1a2e24, #122018);
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--accent-soft), var(--bg1));
     font: 14px/1 "IBM Plex Sans", sans-serif;
     color: var(--ink);
     animation: reaction-pop 280ms ease-out;
@@ -470,7 +564,7 @@
     padding: 4px 8px;
     border-radius: 999px;
     border: 1px solid var(--line);
-    background: #101a15;
+    background: var(--bg1);
     font-size: 13px;
   }
   @media (max-width: 900px) {
@@ -491,180 +585,182 @@
   <header style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
     <div>
       <div class="brand">Bit Bot</div>
-      <div class="sub">国产多端助手 · DeepSeek 大脑 · <span id="hotkey-hint">Ctrl+Shift+Space</span> 呼出</div>
+      <div class="sub"><span id="hotkey-hint">Ctrl+Shift+Space</span> <span data-i18n="invoke">呼出</span></div>
     </div>
     <div id="header-actions">
       <div id="model-picker" title="国产多模型 · 经 MoonBit llm_set_model" aria-label="LLM model picker">
         <span class="mp-label">模型</span>
       </div>
-      <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板">能力</button>
-      <button type="button" id="cred-settings-btn" title="配置 DeepSeek / 钉钉飞书企微（不写死）">凭证</button>
-      <button type="button" id="gp-panel-btn" title="Computer / 群组 / 后台审批（Grok Parity）">Parity</button>
-      <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton">Account</button>
+      <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板" data-i18n="headerSkills">能力</button>
+      <button type="button" id="cred-settings-btn" title="配置 DeepSeek / 钉钉飞书企微（不写死）" data-i18n="headerCreds">凭证</button>
+      <button type="button" id="gp-panel-btn" title="Computer / 群组 / 后台审批（Grok Parity）" data-i18n="headerParity">面板</button>
+      <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton" data-i18n="headerAccount">账户</button>
     </div>
   </header>
   <aside id="agents">
+    <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" style="width:100%;background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:8px 10px;font-weight:700;cursor:pointer;font-size:13px;margin-bottom:10px" data-i18n="newChat">新建对话</button>
     <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>会话</span>
-      <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px">新建</button>
-    </div>
-    <div id="session-list" aria-label="Chat sessions"></div>
-    <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px">
-      <span>Bots</span>
-      <button type="button" id="bot-new-btn" title="Create new Bot (Name / Job / Description)" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px">New Bot</button>
+      <span data-i18n="bots">Bots</span>
+      <button type="button" id="bot-new-btn" title="Create new Bot (Name / Job / Description)" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px" data-i18n="newBot">New Bot</button>
     </div>
     <div id="bot-list" aria-label="Bots"></div>
-    <details class="lab" id="hidden-bots-lab">
-      <summary>Hidden Bots (<span id="hidden-bots-count">0</span>)</summary>
-      <div id="hidden-bot-list"></div>
-    </details>
-    <div id="bot-create-form" style="display:none;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#0f1814">
-      <div style="font-weight:700;font-size:12px;margin-bottom:6px">Create new Bot</div>
-      <input id="bc-name" type="text" placeholder="Name（短名称，如 Piper）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" />
-      <input id="bc-job" type="text" placeholder="Job（主要职责，如 Product performance）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" />
-      <textarea id="bc-desc" rows="3" placeholder="Description（工作方式/工具/边界，例如 Never change production settings）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px"></textarea>
-      <div style="color:var(--muted);font-size:11px;margin-bottom:6px">模板：
+    <div id="bot-create-form" style="display:none;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg1)">
+      <div style="font-weight:700;font-size:12px;margin-bottom:6px" data-i18n="createBot">Create new Bot</div>
+      <input id="bc-name" type="text" placeholder="Name（短名称，如 Piper）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" data-i18n-ph="bcNamePh" />
+      <input id="bc-job" type="text" placeholder="Job（主要职责，如 Product performance）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" data-i18n-ph="bcJobPh" />
+      <textarea id="bc-desc" rows="3" placeholder="Description（工作方式/工具/边界，例如 Never change production settings）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" data-i18n-ph="bcDescPh"></textarea>
+      <div style="color:var(--muted);font-size:11px;margin-bottom:6px"><span data-i18n="bcTemplates">模板</span>：
         <button type="button" class="bc-template" data-tpl="sales">Sales Outbound</button>
         <button type="button" class="bc-template" data-tpl="scout">Talent Scout</button>
         <button type="button" class="bc-template" data-tpl="expense">Expense Manager</button>
         <button type="button" class="bc-template" data-tpl="bug">Bug Reproduction</button>
       </div>
       <div style="display:flex;gap:6px">
-        <button type="button" id="bc-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer">创建</button>
-        <button type="button" id="bc-cancel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">取消</button>
+        <button type="button" id="bc-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer" data-i18n="bcCreate">创建</button>
+        <button type="button" id="bc-cancel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer" data-i18n="bcCancel">取消</button>
       </div>
     </div>
-    <button type="button" id="connect-apps-btn" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" style="margin-top:10px;width:100%;background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px;cursor:pointer">Connect apps</button>
+    <button type="button" id="connect-apps-btn" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" style="margin-top:10px;width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px;cursor:pointer" data-i18n="connectApps">Connect apps</button>
+    <details class="lab" id="hidden-bots-lab">
+      <summary><span data-i18n="hiddenBots">Hidden Bots</span> (<span id="hidden-bots-count">0</span>)</summary>
+      <div id="hidden-bot-list"></div>
+    </details>
+    <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px">
+      <span data-i18n="chats">会话</span>
+    </div>
+    <div id="session-list" aria-label="Chat sessions"></div>
     <details class="lab" id="agents-lab">
-      <summary>高级 · Agents / Teammates</summary>
+      <summary data-i18n="advanced">高级 · Agents / Teammates</summary>
       <div class="agent-item" id="agents-host-panel" style="margin-top:8px">
         <div class="name">Sidebar agents</div>
         <div class="meta" id="agents-meta">list · hide (CM-1906/1907)</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="ag-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List agents</button>
-          <button type="button" id="ag-hide" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Hide agent research</button>
+          <button type="button" id="ag-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List agents</button>
+          <button type="button" id="ag-hide" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Hide agent research</button>
         </div>
       </div>
       <div class="agent-item" id="teammates-panel">
         <div class="name">Teammates</div>
         <div class="meta" id="teammates-meta">Host durable store</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="tm-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create teammate</button>
-          <button type="button" id="tm-members" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Members panel</button>
-          <button type="button" id="tm-members-group" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Open members group</button>
-          <button type="button" id="tm-room" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Room turn</button>
-          <button type="button" id="tm-room-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Post to room</button>
-          <button type="button" id="tm-room-join" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Join room</button>
-          <button type="button" id="tm-list-members" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List members</button>
-          <button type="button" id="tm-list-channels" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List channels</button>
-          <button type="button" id="tm-open-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open canvas</button>
-          <button type="button" id="tm-list-models" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List models</button>
-          <button type="button" id="tm-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
-          <button type="button" id="tm-subagent" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
+          <button type="button" id="tm-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create teammate</button>
+          <button type="button" id="tm-members" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Members panel</button>
+          <button type="button" id="tm-members-group" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Open members group</button>
+          <button type="button" id="tm-room" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Room turn</button>
+          <button type="button" id="tm-room-post" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Post to room</button>
+          <button type="button" id="tm-room-join" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Join room</button>
+          <button type="button" id="tm-list-members" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List members</button>
+          <button type="button" id="tm-list-channels" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List channels</button>
+          <button type="button" id="tm-open-canvas" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open canvas</button>
+          <button type="button" id="tm-list-models" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List models</button>
+          <button type="button" id="tm-send" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Send to agent</button>
+          <button type="button" id="tm-subagent" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Spawn subagent</button>
         </div>
       </div>
     </details>
+    <button type="button" id="sidebar-settings-btn" title="Settings（General / Computer / Usage & Billing / Updates）" style="margin-top:12px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:6px;padding:8px;cursor:pointer;text-align:left;font-size:13px" data-i18n="settings">设置</button>
   </aside>
   <div id="main">
-    <pre id="banner">booting MoonBit…</pre>
+    <pre id="banner" data-i18n="booting">booting MoonBit…</pre>
     <div id="approval">
-      <div class="title" id="approval-title">Approval required</div>
+      <div class="title" id="approval-title" data-i18n="approvalTitle">Approval required</div>
       <div class="detail" id="approval-detail"></div>
       <div class="actions">
-        <button type="button" id="approve-btn">Allow once</button>
-        <button type="button" id="allow-always-btn">Always allow</button>
-        <button type="button" id="deny-btn">Deny</button>
+        <button type="button" id="approve-btn" data-i18n="allowOnce">Allow once</button>
+        <button type="button" id="allow-always-btn" data-i18n="alwaysAllow">Always allow</button>
+        <button type="button" id="deny-btn" data-i18n="deny">Deny</button>
       </div>
     </div>
     <div id="takeover-banner">
-      <div class="row1" id="takeover-title">Take over — 你正在直接操作本机屏幕</div>
-      <div class="hint">密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。</div>
+      <div class="row1" id="takeover-title" data-i18n="takeoverTitle">Take over — 你正在直接操作本机屏幕</div>
+      <div class="hint" data-i18n="takeoverHint">密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。</div>
       <div class="actions">
-        <button type="button" id="takeover-done-btn" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer">I'm done</button>
+        <button type="button" id="takeover-done-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer" data-i18n="imDone">I'm done</button>
       </div>
     </div>
     <div id="pending-bar">
       <span id="pending-bar-text"></span>
-      <button type="button" id="pending-bar-btn" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer;margin-left:8px">查看</button>
+      <button type="button" id="pending-bar-btn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer;margin-left:8px">查看</button>
     </div>
     <div id="gp-panel" style="display:none;margin:0 16px 8px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <div style="font-weight:700">Grok Parity 面板</div>
+        <div style="font-weight:700" data-i18n="gpPanel">Grok Parity 面板</div>
         <button type="button" class="gp-chip gp-tab active" data-gptab="computer">Computer</button>
-        <button type="button" class="gp-chip gp-tab" data-gptab="group">群组</button>
-        <button type="button" class="gp-chip gp-tab" data-gptab="approvals">后台审批</button>
-        <button type="button" id="gp-panel-close" class="gp-chip">关闭</button>
+        <button type="button" class="gp-chip gp-tab" data-gptab="group" data-i18n="gpGroup">群组</button>
+        <button type="button" class="gp-chip gp-tab" data-gptab="approvals" data-i18n="gpApprovals">后台审批</button>
+        <button type="button" id="gp-panel-close" class="gp-chip" data-i18n="gpClose">关闭</button>
       </div>
       <div id="gp-computer" style="margin-top:8px">
         <div class="gp-row" id="gp-bot-chips"></div>
         <div id="computer-panel" class="frame-box" style="margin-top:8px">
-          <div id="gp-frame-meta" style="margin-bottom:6px">帧预览：每 3s 轮询 Host 真实截屏（无 DISPLAY 时诚实显示 residual）</div>
-          <div id="gp-frame-box" style="color:var(--muted)">（尚无帧）</div>
+          <div id="gp-frame-meta" style="margin-bottom:6px" data-i18n="gpFramePoll">帧预览：每 3s 轮询 Host 真实截屏（无 DISPLAY 时诚实显示 residual）</div>
+          <div id="gp-frame-box" style="color:var(--muted)" data-i18n="gpNoFrame">（尚无帧）</div>
         </div>
         <div class="gp-row" style="margin-top:8px">
-          <button type="button" class="gp-chip" id="gp-takeover-btn">Take over</button>
-          <button type="button" class="gp-chip" id="gp-refresh-frame">刷新帧</button>
-          <button type="button" class="gp-chip" id="gp-recover-btn" style="display:none">Recover Computer</button>
+          <button type="button" class="gp-chip" id="gp-takeover-btn" data-i18n="takeover">Take over</button>
+          <button type="button" class="gp-chip" id="gp-refresh-frame" data-i18n="gpRefreshFrame">刷新帧</button>
+          <button type="button" class="gp-chip" id="gp-recover-btn" style="display:none" data-i18n="gpRecover">Recover Computer</button>
           <select id="gp-computer-state" class="gp-select" style="display:none"></select>
         </div>
         <div id="gp-computer-status" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace"></div>
       </div>
       <div id="gp-group" style="display:none;margin-top:8px">
-        <div class="gp-label">新建群组（选 2–6 个 Bot，名称可改）</div>
+        <div class="gp-label" data-i18n="gpRoomNew">新建群组（选 2–6 个 Bot，名称可改）</div>
         <div class="gp-row">
-          <input id="gp-room-title" type="text" placeholder="群名（可留空自动命名）" style="flex:1;min-width:140px;background:#0a1210;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px" />
-          <button type="button" class="gp-chip" id="gp-room-create">创建群组</button>
+          <input id="gp-room-title" type="text" placeholder="群名（可留空自动命名）" data-i18n-ph="gpRoomPh" style="flex:1;min-width:140px;background:var(--input-bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px" />
+          <button type="button" class="gp-chip" id="gp-room-create" data-i18n="gpRoomCreate">创建群组</button>
         </div>
         <div id="gp-room-members" class="gp-row" style="margin-top:6px"></div>
-        <div class="gp-label">群内消息（@BotName / @everyone / 无 @ 自行决定）</div>
+        <div class="gp-label" data-i18n="gpRoomMsg">群内消息（@BotName / @everyone / 无 @ 自行决定）</div>
         <div class="gp-row">
           <select id="gp-room-pick" class="gp-select"></select>
-          <input id="gp-room-text" type="text" placeholder="room &lt;id&gt; :: @Piper 看一下这个" style="flex:2;min-width:180px;background:#0a1210;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px" />
-          <button type="button" class="gp-chip" id="gp-room-send">发送</button>
+          <input id="gp-room-text" type="text" placeholder="room <id> :: @Piper 看一下这个" data-i18n-ph="gpRoomPh2" style="flex:2;min-width:180px;background:var(--input-bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px" />
+          <button type="button" class="gp-chip" id="gp-room-send" data-i18n="gpRoomSend">发送</button>
         </div>
-        <div style="margin-top:4px;color:var(--muted);font-size:11px">审批 / Secret 请求永远只进对应 Bot 私聊，不进群 transcript（GP-53）。</div>
+        <div style="margin-top:4px;color:var(--muted);font-size:11px" data-i18n="gpRoomNote">审批 / Secret 请求永远只进对应 Bot 私聊，不进群 transcript（GP-53）。</div>
         <div id="gp-group-status" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace"></div>
       </div>
       <div id="gp-approvals" style="display:none;margin-top:8px">
-        <div class="gp-label">后台审批队列（Routine / teammate 来源；~10 分钟过期显示 Expired，仍可 Always allow / Deny）</div>
+        <div class="gp-label" data-i18n="gpQueueNote">后台审批队列（Routine / teammate 来源；~10 分钟过期显示 Expired，仍可 Always allow / Deny）</div>
         <div id="approval-queue"></div>
         <div class="gp-row" style="margin-top:6px">
-          <button type="button" class="gp-chip" id="gp-pending-refresh">刷新</button>
+          <button type="button" class="gp-chip" id="gp-pending-refresh" data-i18n="gpRefresh">刷新</button>
         </div>
       </div>
     </div>
-    <div id="permission" style="display:none;margin:12px 16px;padding:12px;border:1px solid #5a4a2a;background:#2a2418;border-radius:8px">
-      <div class="title" style="font-weight:700;color:#f0d9a0">Device permission</div>
+    <div id="permission" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:8px">
+      <div class="title" style="font-weight:700;color:var(--warn-ink)">Device permission</div>
       <div class="detail" id="permission-detail" style="margin-top:6px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div class="actions" style="margin-top:10px;display:flex;gap:8px">
-        <button type="button" id="permission-dismiss" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">Dismiss card</button>
+        <button type="button" id="permission-dismiss" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">Dismiss card</button>
       </div>
     </div>
-    <div id="settings-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:#0f1814;border-radius:8px">
+    <div id="settings-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="title" style="font-weight:700">Settings</div>
-        <button type="button" id="settings-close" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">Close</button>
+        <div class="title" style="font-weight:700" data-i18n="settings">Settings</div>
+        <button type="button" id="settings-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer" data-i18n="settingsClose">Close</button>
       </div>
       <div id="settings-tabs" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="settings-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div id="settings-anchors" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="waveg-settings" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div style="font-weight:700;margin-bottom:4px">Grok Parity · General（真实生效并持久化）</div>
-        <div class="gp-label">Appearance</div>
+        <div style="font-weight:700;margin-bottom:4px" data-i18n="settingsGeneral">Grok Parity · General（真实生效并持久化）</div>
+        <div class="gp-label" data-i18n="appearance">Appearance</div>
         <div class="gp-row" id="gp-appearance-row">
-          <button type="button" class="gp-chip" data-appearance="system">Follow System</button>
-          <button type="button" class="gp-chip" data-appearance="light">Light</button>
-          <button type="button" class="gp-chip" data-appearance="dark">Dark</button>
+          <button type="button" class="gp-chip" data-appearance="system" data-i18n="followSystem">Follow System</button>
+          <button type="button" class="gp-chip" data-appearance="light" data-i18n="light">Light</button>
+          <button type="button" class="gp-chip" data-appearance="dark" data-i18n="dark">Dark</button>
         </div>
-        <div class="gp-label">Language</div>
+        <div class="gp-label" data-i18n="language">Language</div>
         <div class="gp-row">
           <select id="gp-language" class="gp-select">
+            <option value="system">Follow System · 跟随系统</option>
             <option value="zh-CN">简体中文</option>
             <option value="zh-TW">繁體中文</option>
             <option value="en">English</option>
           </select>
         </div>
-        <div class="gp-label">Bot Timezone（Routines 按此区计算）</div>
+        <div class="gp-label" data-i18n="timezone">Bot Timezone（Routines 按此区计算）</div>
         <div class="gp-row">
           <select id="gp-timezone" class="gp-select">
             <option value="Asia/Shanghai">Asia/Shanghai</option>
@@ -675,17 +771,17 @@
             <option value="Europe/Berlin">Europe/Berlin</option>
           </select>
         </div>
-        <div class="gp-label">Local execution（Computer 权限）</div>
+        <div class="gp-label" data-i18n="locExec">Local execution（Computer 权限）</div>
         <div class="gp-row" id="gp-locexec-row">
-          <button type="button" class="gp-chip" data-locexec="ask">Ask every time</button>
-          <button type="button" class="gp-chip" data-locexec="always">Always allow</button>
-          <button type="button" class="gp-chip" data-locexec="never">Never allow</button>
+          <button type="button" class="gp-chip" data-locexec="ask" data-i18n="askEveryTime">Ask every time</button>
+          <button type="button" class="gp-chip" data-locexec="always" data-i18n="alwaysAllowBtn">Always allow</button>
+          <button type="button" class="gp-chip" data-locexec="never" data-i18n="neverAllow">Never allow</button>
         </div>
-        <div class="gp-label">Route traffic through this computer</div>
+        <div class="gp-label" data-i18n="routeTraffic">Route traffic through this computer</div>
         <div class="gp-row">
           <button type="button" class="gp-chip" id="gp-route-toggle">—</button>
         </div>
-        <div class="gp-label">Auto-review 规则（Ask first 优先于 Allow automatically）</div>
+        <div class="gp-label" data-i18n="autoReview">Auto-review 规则（Ask first 优先于 Allow automatically）</div>
         <div class="gp-row">
           <select id="gp-rule-kind" class="gp-select">
             <option value="shell">shell</option>
@@ -696,58 +792,58 @@
             <option value="computer_use">computer_use</option>
             <option value="delegate_task">delegate_task</option>
           </select>
-          <button type="button" class="gp-chip" id="gp-rule-allow">Allow automatically</button>
-          <button type="button" class="gp-chip" id="gp-rule-ask">Ask first</button>
+          <button type="button" class="gp-chip" id="gp-rule-allow" data-i18n="allowAuto">Allow automatically</button>
+          <button type="button" class="gp-chip" id="gp-rule-ask" data-i18n="askFirst">Ask first</button>
         </div>
         <div id="gp-rules-list" style="margin-top:6px"></div>
-        <div class="gp-label">Usage & Billing（本周真实 LLM 用量；无数据即空态，不造假）</div>
+        <div class="gp-label" data-i18n="usageBilling">Usage & Billing（本周真实 LLM 用量；无数据即空态，不造假）</div>
         <div id="gp-usage" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">读取中…</div>
         <div id="waveg-settings-status" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       </div>
       <div id="secrets-panel" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div style="font-weight:700;margin-bottom:6px">产品凭证 · 开放配置（不写死）</div>
+        <div style="font-weight:700;margin-bottom:6px" data-i18n="credentials">产品凭证 · 开放配置（不写死）</div>
         <div style="color:var(--muted);font-size:12px;margin-bottom:8px">Key / 渠道凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_API_KEY <span id="sec-llm-mask"></span>
-            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-… DeepSeek" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-… DeepSeek" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
           </label>
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_BASE_URL
-            <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
           </label>
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MODEL
-            <input id="sec-llm-model" type="text" placeholder="deepseek-chat" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-llm-model" type="text" placeholder="deepseek-chat" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
           </label>
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_QWEN_API_KEY <span id="sec-qwen-mask"></span>
-            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选 · 通义" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选 · 通义" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
           </label>
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MOONSHOT_API_KEY <span id="sec-moon-mask"></span>
-            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选 · Moonshot/Kimi" style="display:block;width:100%;margin-top:4px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选 · Moonshot/Kimi" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
           </label>
           <label style="font-size:12px;color:var(--muted)">钉钉 webhook（勾选开启 live）
             <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
               <input id="sec-ding-post" type="checkbox" />
-              <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" style="flex:1;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
             </div>
           </label>
           <label style="font-size:12px;color:var(--muted)">飞书 token + chat_id
             <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
               <input id="sec-feishu-post" type="checkbox" />
-              <input id="sec-feishu-token" type="password" placeholder="tenant token" style="flex:1;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
-              <input id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-feishu-token" type="password" placeholder="tenant token" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
             </div>
           </label>
           <label style="font-size:12px;color:var(--muted)">企微 token + agent + touser
             <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
               <input id="sec-wecom-post" type="checkbox" />
-              <input id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
-              <input id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
-              <input id="sec-wecom-to" type="text" placeholder="touser" style="width:100px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-wecom-to" type="text" placeholder="touser" style="width:100px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
             </div>
           </label>
           <label style="font-size:12px;color:var(--muted)">AI 备案号（未填则 residual，不假装已备案）
             <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
-              <input id="sec-icp" type="text" placeholder="BITBOT_ICP_FILING" style="flex:1;min-width:140px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
-              <input id="sec-algo" type="text" placeholder="BITBOT_ALGORITHM_FILING" style="flex:1;min-width:140px;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-icp" type="text" placeholder="BITBOT_ICP_FILING" style="flex:1;min-width:140px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-algo" type="text" placeholder="BITBOT_ALGORITHM_FILING" style="flex:1;min-width:140px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
             </div>
           </label>
           <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px">
@@ -756,63 +852,63 @@
           </label>
           <label style="font-size:12px;color:var(--muted)">OTA feed URL
             <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-              <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" style="flex:1;background:#0a1210;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
-              <button type="button" id="sec-ota-check" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;white-space:nowrap">查更新</button>
+              <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <button type="button" id="sec-ota-check" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;white-space:nowrap">查更新</button>
             </div>
           </label>
           <div id="sec-inbound-url" style="margin-top:4px;padding:8px;border:1px dashed var(--line);border-radius:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button type="button" id="sec-save" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">保存并热加载</button>
-            <button type="button" id="sec-probe" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连大脑</button>
-            <button type="button" id="sec-probe-cn" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连国内渠道</button>
-            <button type="button" id="sec-gate" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 12px;cursor:pointer">跑验收门禁</button>
+            <button type="button" id="sec-save" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">保存并热加载</button>
+            <button type="button" id="sec-probe" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连大脑</button>
+            <button type="button" id="sec-probe-cn" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连国内渠道</button>
+            <button type="button" id="sec-gate" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 12px;cursor:pointer">跑验收门禁</button>
           </div>
           <div id="sec-status" style="color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
-          <pre id="sec-gate-out" style="display:none;margin-top:8px;max-height:180px;overflow:auto;background:#0a1210;border:1px solid var(--line);border-radius:6px;padding:8px;color:var(--muted);font:11px/1.35 ui-monospace,monospace"></pre>
+          <pre id="sec-gate-out" style="display:none;margin-top:8px;max-height:180px;overflow:auto;background:var(--input-bg);border:1px solid var(--line);border-radius:6px;padding:8px;color:var(--muted);font:11px/1.35 ui-monospace,monospace"></pre>
         </div>
       </div>
     </div>
-    <div id="agent-info-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:#0f1814;border-radius:8px">
+    <div id="agent-info-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div class="title" style="font-weight:700" id="agent-info-title">Agent info</div>
         <div style="display:flex;gap:6px">
-          <button type="button" id="agent-delete-btn" style="background:#3a2a2a;color:#f0b4b4;border:0;border-radius:6px;padding:4px 8px;cursor:pointer">Delete…</button>
-          <button type="button" id="agent-info-close" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">Close</button>
+          <button type="button" id="agent-delete-btn" style="background:var(--danger-bg);color:var(--danger-ink);border:0;border-radius:6px;padding:4px 8px;cursor:pointer">Delete…</button>
+          <button type="button" id="agent-info-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">Close</button>
         </div>
       </div>
       <div id="agent-info-sections" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="agent-info-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
-      <div id="agent-delete-confirm" style="display:none;margin-top:10px;padding:8px;border:1px solid #5a3a3a;border-radius:6px;background:#2a1818">
-        <div style="color:#f0b4b4;font-size:13px">Confirm permanent delete (CM-1907 · not Settings)</div>
+      <div id="agent-delete-confirm" style="display:none;margin-top:10px;padding:8px;border:1px solid var(--danger);border-radius:6px;background:var(--danger-bg)">
+        <div style="color:var(--danger-ink);font-size:13px">Confirm permanent delete (CM-1907 · not Settings)</div>
         <div style="margin-top:8px;display:flex;gap:8px">
-          <button type="button" id="agent-delete-confirm-btn" style="background:#8a3030;color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer">Confirm delete</button>
-          <button type="button" id="agent-delete-cancel-btn" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">Cancel</button>
+          <button type="button" id="agent-delete-confirm-btn" style="background:var(--danger);color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer">Confirm delete</button>
+          <button type="button" id="agent-delete-cancel-btn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">Cancel</button>
         </div>
       </div>
     </div>
     <div id="log">
       <div id="welcome">
         <div class="w-brand">Bit Bot</div>
-        <div class="w-line">对标 Grok 的国产桌面助手。<br/>Desktop 优先 · MoonBit → DeepSeek Host。</div>
-        <div class="w-hint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div>
+        <div class="w-line" data-i18n="welcomeLine">桌面 AI 助手 · MoonBit 内核 · DeepSeek 大脑</div>
+        <div class="w-hint" data-i18n="welcomeHint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div>
         <div id="welcome-cfg" style="margin-top:16px;display:none">
-          <button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:#062014;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer">配置 DeepSeek / 渠道凭证</button>
-          <div style="margin-top:8px;color:var(--muted);font-size:12px">密钥开放配置，不写死在安装包里</div>
+          <button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer" data-i18n="welcomeCfg">配置 DeepSeek / 渠道凭证</button>
+          <div style="margin-top:8px;color:var(--muted);font-size:12px" data-i18n="welcomeCfgNote">密钥开放配置，不写死在安装包里</div>
         </div>
       </div>
     </div>
-    <div id="cfg-strip" style="display:none;margin:0 16px 8px;padding:10px 12px;border:1px solid #5a4a2a;background:#1a1810;border-radius:8px;color:#e8d9a8;font-size:13px;flex-shrink:0">
-      <span id="cfg-strip-text">尚未配置大脑 key — 点击「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）</span>
-      <button type="button" id="cfg-strip-btn" style="margin-left:10px;background:var(--accent);color:#062014;border:0;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer">去配置</button>
+    <div id="cfg-strip" style="display:none;margin:0 16px 8px;padding:10px 12px;border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:8px;color:var(--warn-ink);font-size:13px;flex-shrink:0">
+      <span id="cfg-strip-text" data-i18n="cfgStrip">尚未配置大脑 key — 点击「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）</span>
+      <button type="button" id="cfg-strip-btn" style="margin-left:10px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer" data-i18n="cfgGo">去配置</button>
     </div>
   </div>
   <aside id="machines">
-    <div class="panel-title">Machines</div>
+    <div class="panel-title" data-i18n="machines">Machines</div>
     <div class="machine-item">
       <div class="name">Multi-end roster</div>
       <div class="meta" id="machines-meta">Desktop 本阶段 · iOS/Android 暂缓</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mach-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List machines</button>
+        <button type="button" id="mach-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List machines</button>
       </div>
     </div>
     <div id="machine-list">
@@ -823,23 +919,23 @@
       <div class="name">钉钉 / 飞书 / 企微</div>
       <div class="meta" id="cn-channels-meta">读取中…</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cn-dingtalk" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">发钉钉</button>
-        <button type="button" id="cn-feishu" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">发飞书</button>
-        <button type="button" id="cn-wecom" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发企微</button>
+        <button type="button" id="cn-dingtalk" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">发钉钉</button>
+        <button type="button" id="cn-feishu" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">发飞书</button>
+        <button type="button" id="cn-wecom" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发企微</button>
       </div>
     </div>
-    <details class="lab" style="margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#0c1410">
+    <details class="lab" style="margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
       <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外 Connectors（Slack/Gmail · 非本阶段主路径）</summary>
       <div class="machine-item" style="margin-top:8px">
         <div class="name">Slack / Gmail / Outlook</div>
         <div class="meta" id="connectors-meta">降级保留 · 主渠道见上方国内钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="connect-slack" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Slack</button>
-          <button type="button" id="connect-gmail" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
-          <button type="button" id="connect-outlook" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Outlook</button>
-          <button type="button" id="connect-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
-          <button type="button" id="connect-identity" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
-          <button type="button" id="probe-connectors" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
+          <button type="button" id="connect-slack" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Slack</button>
+          <button type="button" id="connect-gmail" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
+          <button type="button" id="connect-outlook" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Outlook</button>
+          <button type="button" id="connect-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
+          <button type="button" id="connect-identity" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
+          <button type="button" id="probe-connectors" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
         </div>
       </div>
     </details>
@@ -848,33 +944,33 @@
       <div class="name">Notify · computer · guide</div>
       <div class="meta" id="prefs-meta">settings Host effects (not pretend)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="pref-notify" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Notify settings</button>
-        <button type="button" id="pref-set-notify" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Set notify off</button>
-        <button type="button" id="pref-guide" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Guide permission</button>
-        <button type="button" id="pref-update" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Update computer</button>
-        <button type="button" id="pref-reset" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Reset computer</button>
-        <button type="button" id="pref-local" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Local execution off</button>
+        <button type="button" id="pref-notify" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Notify settings</button>
+        <button type="button" id="pref-set-notify" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Set notify off</button>
+        <button type="button" id="pref-guide" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Guide permission</button>
+        <button type="button" id="pref-update" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Update computer</button>
+        <button type="button" id="pref-reset" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Reset computer</button>
+        <button type="button" id="pref-local" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Local execution off</button>
       </div>
     </div>
-    <details class="lab" style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#0c1410">
+    <details class="lab" style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
       <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外渠道实验室（Slack/Gmail · 非产品主路径）</summary>
       <div class="machine-item" style="margin-top:8px">
         <div class="name">Slack / Teams outbound + claim</div>
         <div class="meta" id="channels-meta">降级 · 主路径是上方钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="ch-slack-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack draft</button>
-          <button type="button" id="ch-slack-thread" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
-          <button type="button" id="ch-slack-dm" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Personal Slack DM</button>
-          <button type="button" id="ch-slack-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
-          <button type="button" id="ch-teams-draft" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
-          <button type="button" id="ch-teams-send" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams send</button>
-          <button type="button" id="ch-teams-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
-          <button type="button" id="ch-finance" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
-          <button type="button" id="ch-jobs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
-          <button type="button" id="ch-xsearch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
-          <button type="button" id="ch-workflows" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List workflows</button>
-          <button type="button" id="ch-credentials" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List credentials</button>
-          <button type="button" id="ch-cred-fill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fill credential</button>
+          <button type="button" id="ch-slack-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack draft</button>
+          <button type="button" id="ch-slack-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
+          <button type="button" id="ch-slack-dm" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Personal Slack DM</button>
+          <button type="button" id="ch-slack-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
+          <button type="button" id="ch-teams-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
+          <button type="button" id="ch-teams-send" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams send</button>
+          <button type="button" id="ch-teams-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
+          <button type="button" id="ch-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
+          <button type="button" id="ch-jobs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
+          <button type="button" id="ch-xsearch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
+          <button type="button" id="ch-workflows" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List workflows</button>
+          <button type="button" id="ch-credentials" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List credentials</button>
+          <button type="button" id="ch-cred-fill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fill credential</button>
         </div>
       </div>
     </details>
@@ -883,12 +979,12 @@
       <div class="name">MCP plugins (CM-0904 / 2107 / 2108)</div>
       <div class="meta" id="plugins-meta">list · get · install → Ready · uninstall → Unavailable</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="plugin-list" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List plugins</button>
-        <button type="button" id="plugin-get" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Get plugin-slides</button>
-        <button type="button" id="plugin-install" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install plugin-slides</button>
-        <button type="button" id="plugin-uninstall" style="background:#2a1a1a;color:#e0b0b0;border:1px solid #5a3a3a;border-radius:6px;padding:6px 8px;cursor:pointer">Uninstall plugin-slides</button>
-        <button type="button" id="plugin-mcp-discover" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP discover</button>
-        <button type="button" id="plugin-mcp-call" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP call Gmail search</button>
+        <button type="button" id="plugin-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List plugins</button>
+        <button type="button" id="plugin-get" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Get plugin-slides</button>
+        <button type="button" id="plugin-install" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install plugin-slides</button>
+        <button type="button" id="plugin-uninstall" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">Uninstall plugin-slides</button>
+        <button type="button" id="plugin-mcp-discover" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP discover</button>
+        <button type="button" id="plugin-mcp-call" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP call Gmail search</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Webhook</div>
@@ -898,11 +994,11 @@
       <div id="webhook-url" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div id="webhook-key" style="margin-top:4px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="wh-open" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Open webhook panel</button>
-        <button type="button" id="wh-copy-url" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy URL</button>
-        <button type="button" id="wh-copy-key" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy key</button>
-        <button type="button" id="wh-tool-read" style="background:#2a1a1a;color:#e0b0b0;border:1px solid #5a3a3a;border-radius:6px;padding:6px 8px;cursor:pointer">Tool-read key (must refuse)</button>
-        <button type="button" id="wh-wake" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Simulate wake POST</button>
+        <button type="button" id="wh-open" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Open webhook panel</button>
+        <button type="button" id="wh-copy-url" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy URL</button>
+        <button type="button" id="wh-copy-key" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy key</button>
+        <button type="button" id="wh-tool-read" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">Tool-read key (must refuse)</button>
+        <button type="button" id="wh-wake" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Simulate wake POST</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Delivery</div>
@@ -911,24 +1007,24 @@
       <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent · secret-request</div>
       <div id="reaction-tray" aria-label="Reaction pills"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="del-react" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">React message</button>
-        <button type="button" id="del-inbound-react" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Inbound reaction</button>
-        <button type="button" id="del-markdown" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Render markdown</button>
-        <button type="button" id="del-channel-plan" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Channel plan (in-app)</button>
-        <button type="button" id="del-slides" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Make slides</button>
-        <button type="button" id="del-skill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Author skill</button>
-        <button type="button" id="del-export" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export bot template</button>
-        <button type="button" id="del-load-skill" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Load skill</button>
-        <button type="button" id="del-list-skills" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List skills</button>
-        <button type="button" id="del-todo-write" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Todo write</button>
-        <button type="button" id="del-todo-list" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List todos</button>
-        <button type="button" id="del-attach-file" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Attach file</button>
-        <button type="button" id="del-journal-query" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
-        <button type="button" id="del-open-thread" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open thread</button>
-        <button type="button" id="del-x-post" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X post draft</button>
-        <button type="button" id="del-section" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Section post</button>
-        <button type="button" id="del-section-add" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Add section</button>
-        <button type="button" id="del-learn" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Learn from demo</button>
+        <button type="button" id="del-react" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">React message</button>
+        <button type="button" id="del-inbound-react" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Inbound reaction</button>
+        <button type="button" id="del-markdown" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Render markdown</button>
+        <button type="button" id="del-channel-plan" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Channel plan (in-app)</button>
+        <button type="button" id="del-slides" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Make slides</button>
+        <button type="button" id="del-skill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Author skill</button>
+        <button type="button" id="del-export" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export bot template</button>
+        <button type="button" id="del-load-skill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Load skill</button>
+        <button type="button" id="del-list-skills" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List skills</button>
+        <button type="button" id="del-todo-write" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Todo write</button>
+        <button type="button" id="del-todo-list" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List todos</button>
+        <button type="button" id="del-attach-file" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Attach file</button>
+        <button type="button" id="del-journal-query" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
+        <button type="button" id="del-open-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open thread</button>
+        <button type="button" id="del-x-post" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X post draft</button>
+        <button type="button" id="del-section" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Section post</button>
+        <button type="button" id="del-section-add" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Add section</button>
+        <button type="button" id="del-learn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Learn from demo</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Memory</div>
@@ -936,10 +1032,10 @@
       <div class="name">Host session seed</div>
       <div class="meta" id="memory-meta">remember k=v · recall (desktop-host.json)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mem-remember" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Remember</button>
-        <button type="button" id="mem-recall" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Recall</button>
-        <button type="button" id="mem-shared-put" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared put</button>
-        <button type="button" id="mem-shared-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared read</button>
+        <button type="button" id="mem-remember" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Remember</button>
+        <button type="button" id="mem-recall" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Recall</button>
+        <button type="button" id="mem-shared-put" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared put</button>
+        <button type="button" id="mem-shared-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared read</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Tools</div>
@@ -947,31 +1043,31 @@
       <div class="name">Shell / FS (Host FFI)</div>
       <div class="meta" id="tools-meta">shell · listdir · read (ADR 0002)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="tool-shell" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Shell echo</button>
-        <button type="button" id="tool-listdir" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Listdir docs</button>
-        <button type="button" id="tool-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read README</button>
-        <button type="button" id="tool-webfetch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">WebFetch example.com</button>
-        <button type="button" id="tool-device" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Device tools</button>
-        <button type="button" id="tool-take-photo" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Take photo</button>
-        <button type="button" id="tool-record-video" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Record video</button>
-        <button type="button" id="tool-open-terminal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open terminal</button>
-        <button type="button" id="tool-version-info" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Version info</button>
-        <button type="button" id="tool-mute-channel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Mute channel</button>
-        <button type="button" id="tool-toggle-theme" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Toggle theme</button>
-        <button type="button" id="tool-share-screen" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Share screen</button>
-        <button type="button" id="tool-ping-host" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Ping host</button>
-        <button type="button" id="tool-dnd" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Do not disturb</button>
-        <button type="button" id="tool-export-chat" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export chat</button>
-        <button type="button" id="tool-create-canvas" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Create canvas</button>
-        <button type="button" id="tool-edit-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Edit message</button>
-        <button type="button" id="tool-react-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">React message</button>
-        <button type="button" id="tool-pin-message" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Pin message</button>
-        <button type="button" id="tool-clear-chat" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Clear chat</button>
-        <button type="button" id="tool-journal" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
-        <button type="button" id="tool-journal-append" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal append</button>
-        <button type="button" id="tool-pkg" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
-        <button type="button" id="tool-pkg-npm" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install package npm</button>
-        <button type="button" id="tool-journal-range" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Query journal range</button>
+        <button type="button" id="tool-shell" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Shell echo</button>
+        <button type="button" id="tool-listdir" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Listdir docs</button>
+        <button type="button" id="tool-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read README</button>
+        <button type="button" id="tool-webfetch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">WebFetch example.com</button>
+        <button type="button" id="tool-device" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Device tools</button>
+        <button type="button" id="tool-take-photo" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Take photo</button>
+        <button type="button" id="tool-record-video" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Record video</button>
+        <button type="button" id="tool-open-terminal" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open terminal</button>
+        <button type="button" id="tool-version-info" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Version info</button>
+        <button type="button" id="tool-mute-channel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Mute channel</button>
+        <button type="button" id="tool-toggle-theme" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Toggle theme</button>
+        <button type="button" id="tool-share-screen" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Share screen</button>
+        <button type="button" id="tool-ping-host" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Ping host</button>
+        <button type="button" id="tool-dnd" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Do not disturb</button>
+        <button type="button" id="tool-export-chat" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export chat</button>
+        <button type="button" id="tool-create-canvas" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Create canvas</button>
+        <button type="button" id="tool-edit-message" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Edit message</button>
+        <button type="button" id="tool-react-message" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">React message</button>
+        <button type="button" id="tool-pin-message" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Pin message</button>
+        <button type="button" id="tool-clear-chat" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Clear chat</button>
+        <button type="button" id="tool-journal" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal query</button>
+        <button type="button" id="tool-journal-append" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Journal append</button>
+        <button type="button" id="tool-pkg" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Package install</button>
+        <button type="button" id="tool-pkg-npm" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install package npm</button>
+        <button type="button" id="tool-journal-range" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Query journal range</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Computer use</div>
@@ -979,14 +1075,14 @@
       <div class="name">box-chrome CU (CM-0802)</div>
       <div class="meta" id="cu-meta">navigate · act · vision (private CDP)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cu-open" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Open example.com</button>
-        <button type="button" id="cu-native" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Native act click</button>
-        <button type="button" id="cu-ocr" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">OCR pass</button>
-        <button type="button" id="cu-shop" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shop playbook</button>
-        <button type="button" id="cu-travel" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Travel expedia</button>
-        <button type="button" id="cu-flight" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Book flight</button>
-        <button type="button" id="cu-food" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Order food</button>
-        <button type="button" id="cu-paywall" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Payment wall fixture</button>
+        <button type="button" id="cu-open" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Open example.com</button>
+        <button type="button" id="cu-native" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Native act click</button>
+        <button type="button" id="cu-ocr" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">OCR pass</button>
+        <button type="button" id="cu-shop" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shop playbook</button>
+        <button type="button" id="cu-travel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Travel expedia</button>
+        <button type="button" id="cu-flight" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Book flight</button>
+        <button type="button" id="cu-food" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Order food</button>
+        <button type="button" id="cu-paywall" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Payment wall fixture</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Source control</div>
@@ -994,9 +1090,9 @@
       <div class="name">git / PR plan</div>
       <div class="meta" id="source-control-meta">status · plan gated (BITBOT_GH_PR_CREATE)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="sc-status" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Git status</button>
-        <button type="button" id="sc-create-pr" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create PR plan</button>
-        <button type="button" id="sc-code" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Code changes plan</button>
+        <button type="button" id="sc-status" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Git status</button>
+        <button type="button" id="sc-create-pr" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create PR plan</button>
+        <button type="button" id="sc-code" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Code changes plan</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Media</div>
@@ -1004,10 +1100,10 @@
       <div class="name">Image / video / chart (CM-1601–1603 / 2157)</div>
       <div class="meta" id="media-meta">generate · watch · structured chart</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="media-image" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Generate image</button>
-        <button type="button" id="media-video" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Generate video</button>
-        <button type="button" id="media-chart" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Structured chart</button>
-        <button type="button" id="media-watch" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Watch last video</button>
+        <button type="button" id="media-image" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Generate image</button>
+        <button type="button" id="media-video" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Generate video</button>
+        <button type="button" id="media-chart" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Structured chart</button>
+        <button type="button" id="media-watch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Watch last video</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Voice</div>
@@ -1015,11 +1111,11 @@
       <div class="name">Session / relay / end</div>
       <div class="meta" id="voice-meta">start · relay WAV · end write</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="voice-start" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Start voice</button>
-        <button type="button" id="voice-relay" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Voice relay</button>
-        <button type="button" id="voice-end" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End voice</button>
-        <button type="button" id="voice-huddle-start" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Start huddle</button>
-        <button type="button" id="voice-huddle-end" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End huddle</button>
+        <button type="button" id="voice-start" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Start voice</button>
+        <button type="button" id="voice-relay" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Voice relay</button>
+        <button type="button" id="voice-end" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End voice</button>
+        <button type="button" id="voice-huddle-start" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Start huddle</button>
+        <button type="button" id="voice-huddle-end" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End huddle</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Box</div>
@@ -1027,16 +1123,16 @@
       <div class="name">Doctor / env / clock (CM-0607/0608/2175)</div>
       <div class="meta" id="box-meta">self-check · runtime · TZ align</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="box-doctor" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Box doctor</button>
-        <button type="button" id="box-env" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Box env</button>
-        <button type="button" id="box-clock" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Box clock</button>
-        <button type="button" id="box-chrome" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Chrome probe</button>
-        <button type="button" id="box-bare-chrome" style="background:#2a1a1a;color:#e0b0b0;border:1px solid #5a3a3a;border-radius:6px;padding:6px 8px;cursor:pointer">Launch bare chrome (refuse)</button>
-        <button type="button" id="box-screenshot" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Screenshot</button>
-        <button type="button" id="box-check-updates" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Check updates</button>
-        <button type="button" id="box-copy-to" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy to box</button>
-        <button type="button" id="box-copy-from" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy from box</button>
-        <button type="button" id="box-shared-fs" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared box fs</button>
+        <button type="button" id="box-doctor" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Box doctor</button>
+        <button type="button" id="box-env" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Box env</button>
+        <button type="button" id="box-clock" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Box clock</button>
+        <button type="button" id="box-chrome" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Chrome probe</button>
+        <button type="button" id="box-bare-chrome" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">Launch bare chrome (refuse)</button>
+        <button type="button" id="box-screenshot" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Screenshot</button>
+        <button type="button" id="box-check-updates" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Check updates</button>
+        <button type="button" id="box-copy-to" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy to box</button>
+        <button type="button" id="box-copy-from" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy from box</button>
+        <button type="button" id="box-shared-fs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared box fs</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Cloud</div>
@@ -1044,8 +1140,8 @@
       <div class="name">Cursor agent card (CM-2131)</div>
       <div class="meta" id="cloud-meta">local_worker · artifact deliver</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cloud-launch" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Launch cloud agent</button>
-        <button type="button" id="cloud-deliver" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Deliver last artifact</button>
+        <button type="button" id="cloud-launch" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Launch cloud agent</button>
+        <button type="button" id="cloud-deliver" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Deliver last artifact</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Routines</div>
@@ -1053,15 +1149,15 @@
       <div class="name">Schedule · fire · tick</div>
       <div class="meta" id="routines-meta">durable Host wakes (not cron pretend)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="rt-create" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create routine</button>
-        <button type="button" id="rt-reminder" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create reminder</button>
-        <button type="button" id="rt-list-scheduled" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List scheduled</button>
-        <button type="button" id="rt-list" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List routines</button>
-        <button type="button" id="rt-fire" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fire routine</button>
-        <button type="button" id="rt-tick" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Tick routines</button>
-        <button type="button" id="rt-pause" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Pause routine</button>
-        <button type="button" id="rt-resume" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Resume routine</button>
-        <button type="button" id="rt-auto-review" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Auto-review settings</button>
+        <button type="button" id="rt-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create routine</button>
+        <button type="button" id="rt-reminder" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create reminder</button>
+        <button type="button" id="rt-list-scheduled" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List scheduled</button>
+        <button type="button" id="rt-list" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List routines</button>
+        <button type="button" id="rt-fire" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fire routine</button>
+        <button type="button" id="rt-tick" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Tick routines</button>
+        <button type="button" id="rt-pause" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Pause routine</button>
+        <button type="button" id="rt-resume" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Resume routine</button>
+        <button type="button" id="rt-auto-review" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Auto-review settings</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Mail / commerce</div>
@@ -1069,16 +1165,16 @@
       <div class="name">Draft · cold · on-behalf · claim</div>
       <div class="meta" id="mail-meta">sandbox eml · ICS · receipt</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mail-draft" style="background:var(--accent);color:#062014;border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Draft mail</button>
-        <button type="button" id="mail-cold" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Cold mail</button>
-        <button type="button" id="mail-onbehalf" style="background:#2a4a3a;color:#b7e0c8;border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Send on behalf</button>
-        <button type="button" id="mail-claim" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Claim inbox</button>
-        <button type="button" id="mail-schedule" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Schedule meeting</button>
-        <button type="button" id="mail-purchase" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Purchase (sandbox)</button>
-        <button type="button" id="mail-search" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Search mail</button>
-        <button type="button" id="mail-meeting" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Meeting chat</button>
-        <button type="button" id="mail-read" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read mail</button>
-        <button type="button" id="mail-outlook" style="background:#1a2420;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Draft Outlook</button>
+        <button type="button" id="mail-draft" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Draft mail</button>
+        <button type="button" id="mail-cold" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Cold mail</button>
+        <button type="button" id="mail-onbehalf" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Send on behalf</button>
+        <button type="button" id="mail-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Claim inbox</button>
+        <button type="button" id="mail-schedule" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Schedule meeting</button>
+        <button type="button" id="mail-purchase" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Purchase (sandbox)</button>
+        <button type="button" id="mail-search" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Search mail</button>
+        <button type="button" id="mail-meeting" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Meeting chat</button>
+        <button type="button" id="mail-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read mail</button>
+        <button type="button" id="mail-outlook" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Draft Outlook</button>
       </div>
     </div>
   </aside>
@@ -1089,7 +1185,7 @@
       <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…（Shift+Enter 换行）" autocomplete="off" autofocus></textarea>
       <button type="button" id="attach-btn" title="添加附件（≤6 · 文档/图片/音频 25MB · 视频 200MB）">📎</button>
       <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）">🎙</button>
-      <button id="send" type="submit">发送</button>
+      <button id="send" type="submit" data-i18n="send">发送</button>
     </div>
     <div id="composer-menu" class="composer-menu" hidden></div>
   </form>
@@ -1151,9 +1247,9 @@
         btn.textContent = tab;
         btn.style.cssText =
           "background:" +
-          (tab === activeTab ? "var(--accent)" : "#1a2420") +
+          (tab === activeTab ? "var(--accent)" : "var(--accent-soft)") +
           ";color:" +
-          (tab === activeTab ? "#062014" : "var(--muted)") +
+          (tab === activeTab ? "var(--accent-ink)" : "var(--muted)") +
           ";border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px";
         btn.addEventListener("click", () => {
           const first = (SETTINGS_TAB_ANCHORS[tab] || [])[0];
@@ -1172,7 +1268,7 @@
         chip.textContent = id;
         if (payload && payload.anchor === id) {
           chip.style.borderColor = "var(--accent)";
-          chip.style.color = "#b7e0c8";
+          chip.style.color = "var(--ink)";
         }
         chip.style.cursor = "pointer";
         chip.addEventListener("click", () => {
@@ -1298,13 +1394,13 @@
           if (s.kind === "inline_paren") {
             const span = document.createElement("span");
             span.style.cssText =
-              "font-family:IBM Plex Serif,Georgia,serif;color:#b7e0c8;margin-right:6px";
+              "font-family:IBM Plex Serif,Georgia,serif;color:var(--ink);margin-right:6px";
             span.textContent = "\\(" + (s.body || "") + "\\)";
             body.appendChild(span);
           } else {
             const div = document.createElement("div");
             div.style.cssText =
-              "margin:8px 0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#101a15;text-align:center;font-family:IBM Plex Serif,Georgia,serif";
+              "margin:8px 0;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg1);text-align:center;font-family:IBM Plex Serif,Georgia,serif";
             div.textContent = "$$" + (s.body || "") + "$$";
             body.appendChild(div);
           }
@@ -1312,7 +1408,7 @@
         for (const f of payload.mermaid_fences || []) {
           const pre = document.createElement("pre");
           pre.style.cssText =
-            "margin:8px 0;padding:10px;border:1px dashed #3d6b52;border-radius:8px;background:#0e1612;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:#b7e0c8";
+            "margin:8px 0;padding:10px;border:1px dashed var(--line);border-radius:8px;background:var(--side);white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:var(--ink)";
           pre.textContent = f.body || "";
           body.appendChild(pre);
         }
@@ -1370,14 +1466,60 @@
       panel.style.display = "block";
     }
 
-    function addMsg(role, text) {
+    // Kernel/host internal boilerplate is implementation detail, not chat:
+    // visible only in debug mode (Alt+D), like Grok's clean transcript.
+    const DEBUG_LINE_RE =
+      /^(收到，正在用 MoonBit 内核处理。|\[host\] ADR 0002|Host FFI results applied|booting MoonBit|moon run cmd\/|Host effect planned)/;
+
+    // Kernel replies are language-neutral English prose (protocol-level). The
+    // renderer localizes the known reply shapes so the transcript never mixes
+    // languages; unknown replies pass through unchanged (honest, never dropped).
+    const WAVEG_REPLY_MAP = [
+      [/^Create Bot planned \(GP-01\)\..*/i, "rBotCreate"],
+      [/^Pin\/unpin Bot planned \(GP-04\)\..*/i, "rBotPin"],
+      [/^Approval required \((\w+)\): (.*)$/i, "rApproval"],
+      [/^Settings open planned \(CM-\d+\/?\d*\)\..*/i, "rSettingsOpen"],
+      [/^Room turn in (.*) from user\..*/i, "rRoomTurn"],
+      [/^Take over planned \(GP-32\/GP-33\)\..*/i, "rTakeover"],
+      [/^Local execution = Never allow: .*/i, "rNever"],
+      [/^Auto-review 命中（(.+)）：已按 Always-allow 规则自动执行，未再次询问。$/, "rAutoReview"],
+    ];
+    function wavegLocalizeReply(text) {
+      const raw = String(text || "");
+      for (const [re, key] of WAVEG_REPLY_MAP) {
+        const m = raw.match(re);
+        if (!m) continue;
+        const tpl = wavegT(key);
+        if (key === "rApproval") {
+          return tpl
+            .replace("{cls}", m[1])
+            .replace("{why}", wavegLocalizeReason(m[2]));
+        }
+        if (key === "rRoomTurn") return tpl.replace("{room}", m[1]);
+        if (key === "rAutoReview") return tpl.replace("{via}", m[1]);
+        return tpl;
+      }
+      return raw;
+    }
+    function wavegLocalizeReason(why) {
+      const w = String(why || "");
+      const known = {
+        "shell requires approval. Re-run with Host --approved after user confirms.": wavegT("rShellWhy"),
+      };
+      return known[w] || w;
+    }
+
+    function addMsg(role, text, opts) {
       const el = document.createElement("div");
-      el.className = "msg " + role;
+      let cls = "msg " + role;
+      if ((opts && opts.debug) || DEBUG_LINE_RE.test(String(text || ""))) cls += " debug-only";
+      el.className = cls;
       el.innerHTML = '<div class="role"></div><div class="body"></div>';
       el.querySelector(".role").textContent = role;
       el.querySelector(".body").textContent = text;
       log.appendChild(el);
       log.scrollTop = log.scrollHeight;
+      return el;
     }
 
     /** CHARTER Delivery: inline Host media attachment in Desktop transcript. */
@@ -1673,7 +1815,7 @@
       pendingApprovalClass = parsed.cls;
       pendingApprovalSummary = parsed.summary;
       const approvalTitleEl = document.getElementById("approval-title");
-      if (approvalTitleEl) approvalTitleEl.textContent = "Approval required — " + parsed.cls;
+      if (approvalTitleEl) approvalTitleEl.textContent = wavegT("approvalTitle") + " — " + parsed.cls;
       approvalDetail.textContent = "";
       const mk = (label, value) => {
         const row = document.createElement("div");
@@ -1731,7 +1873,7 @@
     function renderWidgetCard(widget, sourceText) {
       if (!widget || !Array.isArray(widget.options)) return;
       const el = document.createElement("div");
-      el.className = "msg assistant";
+      el.className = "msg assistant debug-only";
       el.innerHTML =
         '<div class="role">widget</div><div class="body"></div><div class="widget-actions" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px"></div>';
       el.querySelector(".body").textContent =
@@ -1746,9 +1888,9 @@
           "background:" +
           (opt.style === "Primary" || opt.style === "Danger"
             ? "var(--accent)"
-            : "#1a2420") +
-          ";color:#062014;border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer";
-        if (opt.style === "Danger") btn.style.background = "#8a3030";
+            : "var(--accent-soft)") +
+          ";color:var(--accent-ink);border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer";
+        if (opt.style === "Danger") btn.style.background = "var(--danger)";
         btn.addEventListener("click", () => {
           const choice = String(opt.id || opt.label || "");
           if (choice === "approve" && sourceText) {
@@ -1794,7 +1936,7 @@
     function renderEffects(effects) {
       if (!Array.isArray(effects) || !effects.length) return;
       const el = document.createElement("div");
-      el.className = "msg assistant";
+      el.className = "msg assistant debug-only";
       el.innerHTML = '<div class="role">effects</div><div class="body"></div>';
       const body = el.querySelector(".body");
       for (const e of effects) {
@@ -1827,7 +1969,7 @@
         el.querySelector(".name").textContent = s.title || "对话";
         el.querySelector(".meta").textContent =
           (s.message_count || 0) +
-          " 条 · " +
+          " " + wavegT("msgUnit") + " · " +
           String(s.updated_at || "").slice(0, 16).replace("T", " ");
         el.addEventListener("click", async () => {
           const r = await window.bitbot.sessions.setActive(s.id);
@@ -1937,11 +2079,11 @@
       const secStatus = document.getElementById("sec-status");
       if (secStatus && st.llm) {
         secStatus.textContent =
-          "大脑=" +
+          "brain=" +
           (st.llm.provider_id || "?") +
           "/" +
           (st.llm.model || "?") +
-          (st.llm.key_configured ? " · key 已热加载" : " · 缺 key");
+          (st.llm.key_configured ? " · " + wavegT("keyHot") : " · " + wavegT("missKey"));
       }
     }
 
@@ -2047,13 +2189,15 @@
     }
 
     function welcomeMarkup(hintText) {
-      const hint =
-        hintText ||
-        "输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板";
+      const hint = hintText || wavegT("welcomeHint");
       return (
-        '<div id="welcome"><div class="w-brand">Bit Bot</div><div class="w-line">对标 Grok 的国产桌面助手。<br/>Desktop 优先 · MoonBit → DeepSeek Host。</div><div class="w-hint">' +
-        hint +
-        '</div><div id="welcome-cfg" style="margin-top:16px;display:none"><button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:#062014;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer">配置 DeepSeek / 渠道凭证</button><div style="margin-top:8px;color:var(--muted);font-size:12px">密钥开放配置，不写死在安装包里</div></div></div>'
+        '<div id="welcome"><div class="w-brand">Bit Bot</div>' +
+        '<div class="w-line" data-i18n="welcomeLine">' + wavegT("welcomeLine") + '</div>' +
+        '<div class="w-hint">' + hint + '</div>' +
+        '<div id="welcome-cfg" style="margin-top:16px;display:none">' +
+        '<button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer" data-i18n="welcomeCfg">' + wavegT("welcomeCfg") + '</button>' +
+        '<div style="margin-top:8px;color:var(--muted);font-size:12px" data-i18n="welcomeCfgNote">' + wavegT("welcomeCfgNote") + '</div>' +
+        '</div></div>'
       );
     }
 
@@ -2082,18 +2226,16 @@
           " · " +
           (p.model || "") +
           (p.key_configured
-            ? " · key 已配"
-            : " · 缺 " + (p.key_env || "BITBOT_LLM_API_KEY"));
+            ? " · " + wavegT("keyHot")
+            : " · " + wavegT("missKey") + " " + (p.key_env || "BITBOT_LLM_API_KEY"));
         btn.textContent =
-          (p.label || p.id) + (p.key_configured ? "" : " · 无key");
+          (p.label || p.id) + (p.key_configured ? "" : " · " + wavegT("noKey"));
         btn.addEventListener("click", async () => {
           if (!p.key_configured) {
             openProductCredentials(
-              "模型 " +
-                (p.label || p.id) +
-                " 缺 " +
-                (p.key_env || "key") +
-                " — 请在下方填写（开放配置，不写死）",
+              wavegT("modelMissKey") + " " +
+                (p.label || p.id) + " · " +
+                (p.key_env || "key"),
             );
             return;
           }
@@ -2114,10 +2256,10 @@
           (cat.active.label || cat.active.provider_id || "LLM") +
           " / " +
           (cat.active.model || "") +
-          (cat.active.key_configured ? "" : " · 缺 key") +
+          (cat.active.key_configured ? "" : " · " + wavegT("missKey")) +
           " · <span id=\"hotkey-hint\">" +
           hotTxt +
-          "</span> 呼出";
+          "</span> " + wavegT("invoke");
       }
     }
 
@@ -2149,10 +2291,15 @@
           streamEl.parentNode.removeChild(streamEl);
           streamEl = null;
         }
+        let visibleAssistant = 0;
         if (r && Array.isArray(r.messages)) {
           for (const m of r.messages) {
             if (m.role === "user") continue;
-            addMsg(m.role || "assistant", m.text || "");
+            // Auto-approved turns shouldn't show a stale "Approval required" line.
+            if (r.auto_approved === true && /^Approval required/i.test(String(m.text || "")))
+              continue;
+            const el = addMsg(m.role || "assistant", wavegLocalizeReply(m.text || ""));
+            if (!el.classList.contains("debug-only")) visibleAssistant++;
           }
         } else if (r && r.error) {
           addMsg("assistant", "error: " + r.error);
@@ -2226,16 +2373,31 @@
           !(r.auto_approved === true);
         if (needsApprove) showApproval(text, r.effects);
         else hideApproval();
-        if (r && r.auto_approved === true) {
-          addMsg(
-            "assistant",
-            "Auto-review：命中 " +
-              (r.auto_approved_via || "approval_rule") +
-              " 规则，已自动执行（未再次询问）。",
-          );
-        }
+        // (auto-review notice comes from the kernel-side runner message;
+        // localized via WAVEG_REPLY_MAP — no renderer duplicate here.)
         if (r && r.host_continued) {
           addMsg("assistant", "[host] ADR 0002 continue applied (MoonBit absorbed Host results)");
+        }
+        // Grok-style visible tool-run line: one honest summary per executed Host effect
+        // (raw JSON stays in Alt+D debug).
+        if (r && Array.isArray(r.host_results)) {
+          const EXEC_KINDS = ["shell", "fs_list", "fs_read", "fs_write", "webfetch", "computer_use", "mcp_call"];
+          for (const h of r.host_results) {
+            if (!h || !h.ok || EXEC_KINDS.indexOf(h.kind) < 0) continue;
+            let out = String(h.stdout || "").trim();
+            try {
+              const p = JSON.parse(out);
+              out = String(p.output || p.result || p.text || out).trim();
+            } catch (_) { /* raw stdout */ }
+            const one = out.split("\n").slice(0, 3).join(" ⏎ ").slice(0, 160);
+            const el = addMsg("assistant", wavegT("execDone") + " · " + h.kind + (one ? " → " + one : ""));
+            el.classList.add("tool-run");
+            visibleAssistant++;
+          }
+        }
+        // Every reply line landed in debug mode → confirm the turn honestly.
+        if (r && Array.isArray(r.messages) && !visibleAssistant && !needsApprove && r.auto_approved !== true) {
+          addMsg("assistant", wavegT("turnDone"));
         }
         if (r && Array.isArray(r.host_results)) {
           const approvalHost = r.host_results.find(
@@ -2783,6 +2945,7 @@
           if (attaches.length) {
             const el = document.createElement("div");
             el.className = "msg assistant";
+            el.className += " debug-only";
             el.innerHTML = '<div class="role">delivery</div><div class="body"></div>';
             const body = el.querySelector(".body");
             const types = [];
@@ -4513,10 +4676,16 @@
         runUserTurn("open settings", {});
       });
     }
+    const sidebarSettingsBtn = document.getElementById("sidebar-settings-btn");
+    if (sidebarSettingsBtn) {
+      sidebarSettingsBtn.addEventListener("click", () => {
+        runUserTurn("open settings", {});
+      });
+    }
     const credBtn = document.getElementById("cred-settings-btn");
     if (credBtn) {
       credBtn.addEventListener("click", () => {
-        openProductCredentials("在此填写 DeepSeek / 渠道凭证（不写死）");
+        openProductCredentials(wavegT("credHint"));
       });
     }
     const cfgStripBtn = document.getElementById("cfg-strip-btn");
@@ -4526,7 +4695,7 @@
     document.addEventListener("click", (ev) => {
       const t = ev.target;
       if (t && t.id === "welcome-cfg-btn") {
-        openProductCredentials("在此填写 DeepSeek / 渠道凭证（不写死）");
+        openProductCredentials(wavegT("credHint"));
       }
     });
     const settingsClose = document.getElementById("settings-close");
@@ -5210,9 +5379,10 @@
         if (tzSel) tzSel.value = inner.timezone || "UTC";
         const routeBtn = document.getElementById("gp-route-toggle");
         if (routeBtn) {
-          routeBtn.textContent = inner.route_traffic ? "Route traffic: ON（记录态）" : "Route traffic: OFF";
+          routeBtn.textContent = inner.route_traffic ? wavegT("routeTraffic") + ": ON（记录态）" : wavegT("routeTraffic") + ": OFF";
           routeBtn.classList.toggle("active", Boolean(inner.route_traffic));
         }
+        wavegApplyAppearanceClass(inner.appearance || "system");
         wavegLangApply(inner.language || "zh-CN");
       } catch (_) {
         /* ignore */
@@ -5225,7 +5395,7 @@
           const payload = usage.usage ? usage.usage : usage;
           const rows = payload.rows || [];
           if (!rows.length) {
-            box.textContent = "本周暂无真实 LLM 用量记录（空态，不造假 0）。";
+            box.textContent = wavegT("usageEmpty");
           } else {
             const t = rows.reduce(
               (acc, r) => {
@@ -5237,82 +5407,427 @@
               { p: 0, c: 0, q: 0 },
             );
             box.textContent =
-              "周 " + (payload.week || "?") + " · 请求 " + t.q + " · prompt " + t.p + " tokens · completion " + t.c +
-              " tokens · 来源 llm-usage.json";
+              wavegT("usageWeek") + " " + (payload.week || "?") + " · " + wavegT("usageReq") + " " + t.q +
+              " · prompt " + t.p + " tokens · completion " + t.c + " tokens · " + wavegT("usageSource");
           }
         }
       } catch (_) {
         const box = document.getElementById("gp-usage");
-        if (box) box.textContent = "用量读取失败（Host 未就绪）";
+        if (box) box.textContent = wavegT("usageFail");
       }
       refreshApprovalRules().catch(() => {});
     }
 
-    // GP-71: real renderer language switching for key chrome (kernel 语义不受 UI 语言绑架).
+    // GP-71: full renderer i18n — every chrome label goes through the dict,
+    // so zh/en/zh-TW never mix in one screen (kernel phrases stay language-neutral).
+    let wavegLang = "zh-CN";
     const WAVEG_I18N = {
       "zh-CN": {
-        newBot: "New Bot",
-        hiddenBots: "Hidden Bots",
-        connectApps: "Connect apps",
+        newChat: "新建对话",
+        chats: "会话",
+        bots: "Bots",
+        newBot: "新建 Bot",
+        createBot: "新建 Bot",
+        bcNamePh: "名称（如 Piper）",
+        bcJobPh: "职责（如 Product performance）",
+        bcDescPh: "描述（工作方式 / 工具 / 边界，例如 Never change production settings）",
+        bcTemplates: "模板",
+        bcCreate: "创建",
+        bcCancel: "取消",
+        connectApps: "连接应用",
+        hiddenBots: "已隐藏的 Bot",
+        advanced: "高级 · Agents / Teammates",
+        settings: "设置",
+        settingsGeneral: "常规",
+        settingsClose: "关闭",
+        appearance: "外观",
+        followSystem: "跟随系统",
+        light: "浅色",
+        dark: "深色",
+        language: "语言",
+        timezone: "Bot 时区（定时任务按此区计算）",
+        locExec: "本地执行（Computer 权限）",
+        askEveryTime: "每次询问",
+        alwaysAllowBtn: "总是允许",
+        neverAllow: "从不允许",
+        routeTraffic: "通过本机路由流量",
+        autoReview: "自动审查规则（Ask first 优先于 Allow automatically）",
+        allowAuto: "Allow automatically",
+        askFirst: "Ask first",
+        usageBilling: "用量与账单（本周真实 LLM 用量；无数据即空态，不造假）",
+        credentials: "产品凭证 · 开放配置（不写死）",
+        takeover: "接管",
+        takeoverTitle: "接管 — 你正在直接操作本机屏幕",
+        takeoverHint: "密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。",
+        imDone: "我操作完了",
+        approvalTitle: "需要审批",
+        allowOnce: "本次允许",
+        alwaysAllow: "总是允许",
+        deny: "拒绝",
         send: "发送",
-        allowOnce: "Allow once",
-        alwaysAllow: "Always allow",
-        deny: "Deny",
-        takeover: "Take over",
-        imDone: "I'm done",
-        placeholder: "输入消息…（/ 技能 · @ Bot · Shift+Enter 换行）",
+        placeholder: "给 Bit Bot 发消息…（/ 技能 · @ Bot · Shift+Enter 换行）",
+        headerSkills: "能力",
+        headerCreds: "凭证",
+        headerParity: "面板",
+        headerAccount: "账户",
+        model: "模型",
+        machines: "机器",
+        gpPanel: "Grok Parity 面板",
+        gpComputer: "Computer",
+        gpGroup: "群组",
+        gpApprovals: "后台审批",
+        gpClose: "关闭",
+        gpFramePoll: "帧预览：每 3s 轮询 Host 真实截屏（无 DISPLAY 时诚实显示 residual）",
+        gpNoFrame: "（尚无帧）",
+        gpRefreshFrame: "刷新帧",
+        gpRecover: "Recover Computer",
+        gpRoomNew: "新建群组（选 2–6 个 Bot，名称可改）",
+        gpRoomPh: "群名（可留空自动命名）",
+        gpRoomCreate: "创建群组",
+        gpRoomMsg: "群内消息（@BotName / @everyone / 无 @ 自行决定）",
+        gpRoomPh2: "room <id> :: @Piper 看一下这个",
+        gpRoomSend: "发送",
+        gpRoomNote: "审批 / Secret 请求永远只进对应 Bot 私聊，不进群 transcript（GP-53）。",
+        gpQueueNote: "后台审批队列（Routine / teammate 来源；~10 分钟过期显示 Expired，仍可 Always allow / Deny）",
+        gpRefresh: "刷新",
+        cfgStrip: "尚未配置大脑 key — 点击「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）",
+        cfgGo: "去配置",
+        welcomeCfg: "配置 DeepSeek / 渠道凭证",
+        welcomeCfgNote: "密钥开放配置，不写死在安装包里",
+        draftTo: "收件人",
+        draftChannel: "频道",
+        draftSubject: "主题",
+        draftBody: "正文",
+        draftSend: "发送",
+        draftDiscard: "丢弃",
+        draftStatus: "草稿 — 未发送",
+        slackMsg: "新 Slack 消息",
+        newEmail: "新邮件",
+        usageEmpty: "本周暂无真实 LLM 用量记录（空态，不造假 0）。",
+        usageWeek: "周",
+        usageReq: "请求",
+        usageSource: "来源 llm-usage.json",
+        usageFail: "用量读取失败（Host 未就绪）",
+        booting: "MoonBit 内核启动中…",
+        welcomeHint: "输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板",
+        welcomeLine: "桌面 AI 助手 · MoonBit 内核 · DeepSeek 大脑",
+        hintNoKey: "未配置 BITBOT_LLM_API_KEY — 点「凭证」填写（开放配置，热加载，不写死；默认",
+        hintReady: "大脑就绪 · 输入消息开始",
+        noKey: "无 key",
+        missKey: "缺 key",
+        keyHot: "key 已热加载",
+        invoke: "呼出",
+        msgUnit: "条",
+        modelMissKey: "该模型缺少密钥，请在下方填写（开放配置，不写死）：",
+        credHint: "在此填写 DeepSeek / 渠道凭证（不写死）",
+        execDone: "已执行",
+        turnDone: "已完成。",
+        rBotCreate: "已创建 Bot（名称 / 职责 / 描述已持久化），打开对话即可交办任务。",
+        rBotPin: "已置顶 / 取消置顶，Bots 列表顺序已持久化。",
+        rApproval: "需要审批（{cls}）：{why}",
+        rShellWhy: "该操作需要你的确认。",
+        rSettingsOpen: "已打开设置面板。",
+        rRoomTurn: "群聊 {room}：已投递本条消息，等待 Bot 回应。",
+        rTakeover: "接管中 — 你正在直接操作本机屏幕，完成后点「我操作完了」。",
+        rNever: "本地执行 = 从不允许：该操作被你的设置直接拒绝，未执行。",
+        rAutoReview: "Auto-review：命中 {via} 规则，已自动执行（未再次询问）。",
+        chatCreatedHint: "新会话已创建 · 输入消息开始",
       },
       "zh-TW": {
+        newChat: "新對話",
+        chats: "工作",
+        bots: "Bots",
         newBot: "新建立 Bot",
-        hiddenBots: "已隱藏的 Bot",
+        createBot: "新建立 Bot",
+        bcNamePh: "名稱（如 Piper）",
+        bcJobPh: "職責（如 Product performance）",
+        bcDescPh: "描述（工作方式 / 工具 / 邊界，例如 Never change production settings）",
+        bcTemplates: "範本",
+        bcCreate: "建立",
+        bcCancel: "取消",
         connectApps: "連接應用",
-        send: "傳送",
+        hiddenBots: "已隱藏的 Bot",
+        advanced: "進階 · Agents / Teammates",
+        settings: "設定",
+        settingsGeneral: "一般",
+        settingsClose: "關閉",
+        appearance: "外觀",
+        followSystem: "跟隨系統",
+        light: "淺色",
+        dark: "深色",
+        language: "語言",
+        timezone: "Bot 時區（排程按此區計算）",
+        locExec: "本機執行（Computer 權限）",
+        askEveryTime: "每次詢問",
+        alwaysAllowBtn: "總是允許",
+        neverAllow: "從不允許",
+        routeTraffic: "透過本機路由流量",
+        autoReview: "自動審查規則（Ask first 優先於 Allow automatically）",
+        allowAuto: "Allow automatically",
+        askFirst: "Ask first",
+        usageBilling: "用量與帳單（本週真實 LLM 用量；無資料即空態，不造假）",
+        credentials: "產品憑證 · 開放設定（不寫死）",
+        takeover: "接管",
+        takeoverTitle: "接管 — 你正在直接操作本機螢幕",
+        takeoverHint: "密碼 / 驗證碼 / 2FA 請在本機輸入，不要貼進對話。",
+        imDone: "我操作完了",
+        approvalTitle: "需要審批",
         allowOnce: "本次允許",
         alwaysAllow: "總是允許",
         deny: "拒絕",
-        takeover: "接管",
-        imDone: "我操作完了",
+        send: "傳送",
         placeholder: "輸入訊息…（/ 技能 · @ Bot · Shift+Enter 換行）",
+        headerSkills: "能力",
+        headerCreds: "憑證",
+        headerParity: "面板",
+        headerAccount: "帳戶",
+        model: "模型",
+        machines: "機器",
+        gpPanel: "Grok Parity 面板",
+        gpComputer: "Computer",
+        gpGroup: "群組",
+        gpApprovals: "背景審批",
+        gpClose: "關閉",
+        gpFramePoll: "影格預覽：每 3s 輪詢 Host 真實截屏（無 DISPLAY 時誠實顯示 residual）",
+        gpNoFrame: "（尚無影格）",
+        gpRefreshFrame: "重新整理影格",
+        gpRecover: "Recover Computer",
+        gpRoomNew: "新建立群組（選 2–6 個 Bot，名稱可改）",
+        gpRoomPh: "群名（可留空自動命名）",
+        gpRoomCreate: "建立群組",
+        gpRoomMsg: "群內訊息（@BotName / @everyone / 無 @ 自行決定）",
+        gpRoomPh2: "room <id> :: @Piper 看一下這個",
+        gpRoomSend: "傳送",
+        gpRoomNote: "審批 / Secret 請求永遠只進對應 Bot 私訊，不進群 transcript（GP-53）。",
+        gpQueueNote: "背景審批佇列（Routine / teammate 來源；~10 分鐘過期顯示 Expired，仍可 Always allow / Deny）",
+        gpRefresh: "重新整理",
+        cfgStrip: "尚未設定大腦 key — 點擊「憑證」填寫 BITBOT_LLM_API_KEY（開放設定，不寫死）",
+        cfgGo: "前往設定",
+        welcomeCfg: "設定 DeepSeek / 渠道憑證",
+        welcomeCfgNote: "金鑰開放設定，不寫死在安裝包裡",
+        draftTo: "收件人",
+        draftChannel: "頻道",
+        draftSubject: "主題",
+        draftBody: "內文",
+        draftSend: "傳送",
+        draftDiscard: "丟棄",
+        draftStatus: "草稿 — 未傳送",
+        slackMsg: "新 Slack 訊息",
+        newEmail: "新郵件",
+        usageEmpty: "本週暫無真實 LLM 用量紀錄（空態，不造假 0）。",
+        usageWeek: "週",
+        usageReq: "請求",
+        usageSource: "來源 llm-usage.json",
+        usageFail: "用量讀取失敗（Host 未就緒）",
+        booting: "MoonBit 核心啟動中…",
+        welcomeHint: "輸入訊息開始 · 左側管理工作 · 「能力」開啟渠道與機器面板",
+        welcomeLine: "桌面 AI 助手 · MoonBit 核心 · DeepSeek 大腦",
+        hintNoKey: "尚未設定 BITBOT_LLM_API_KEY — 點「憑證」填寫（開放設定，熱載入，不寫死；預設",
+        hintReady: "大腦就緒 · 輸入訊息開始",
+        noKey: "無 key",
+        missKey: "缺 key",
+        keyHot: "key 已熱載入",
+        invoke: "喚出",
+        msgUnit: "條",
+        modelMissKey: "此模型缺少金鑰，請在下方填寫（開放設定，不寫死）：",
+        credHint: "在此填寫 DeepSeek / 渠道憑證（不寫死）",
+        execDone: "已執行",
+        turnDone: "已完成。",
+        rBotCreate: "已建立 Bot（名稱 / 職責 / 描述已持久化），開啟對話即可交辦任務。",
+        rBotPin: "已釘選 / 取消釘選，Bots 清單順序已持久化。",
+        rApproval: "需要審批（{cls}）：{why}",
+        rShellWhy: "該操作需要你的確認。",
+        rSettingsOpen: "已開啟設定面板。",
+        rRoomTurn: "群聊 {room}：已投遞本則訊息，等待 Bot 回應。",
+        rTakeover: "接管中 — 你正在直接操作本機螢幕，完成後點「我操作完了」。",
+        rNever: "本機執行 = 從不允許：該操作被你的設定直接拒絕，未執行。",
+        rAutoReview: "Auto-review：命中 {via} 規則，已自動執行（未再次詢問）。",
+        chatCreatedHint: "新工作已建立 · 輸入訊息開始",
       },
       en: {
+        newChat: "New chat",
+        chats: "Chats",
+        bots: "Bots",
         newBot: "New Bot",
-        hiddenBots: "Hidden Bots",
+        createBot: "Create new Bot",
+        bcNamePh: "Name (e.g. Piper)",
+        bcJobPh: "Job (e.g. Product performance)",
+        bcDescPh: "Description (how it works / tools / limits, e.g. Never change production settings)",
+        bcTemplates: "Templates",
+        bcCreate: "Create",
+        bcCancel: "Cancel",
         connectApps: "Connect apps",
-        send: "Send",
+        hiddenBots: "Hidden Bots",
+        advanced: "Advanced · Agents / Teammates",
+        settings: "Settings",
+        settingsGeneral: "General",
+        settingsClose: "Close",
+        appearance: "Appearance",
+        followSystem: "Follow System",
+        light: "Light",
+        dark: "Dark",
+        language: "Language",
+        timezone: "Bot Timezone (routines compute in this zone)",
+        locExec: "Local execution (Computer permission)",
+        askEveryTime: "Ask every time",
+        alwaysAllowBtn: "Always allow",
+        neverAllow: "Never allow",
+        routeTraffic: "Route traffic through this computer",
+        autoReview: "Auto-review rules (Ask first wins over Allow automatically)",
+        allowAuto: "Allow automatically",
+        askFirst: "Ask first",
+        usageBilling: "Usage & Billing (real weekly LLM usage; empty state, never faked)",
+        credentials: "Product credentials · open config (never baked in)",
+        takeover: "Take over",
+        takeoverTitle: "Take over — you are controlling this screen directly",
+        takeoverHint: "Type passwords / codes / 2FA on the machine — never paste them into chat.",
+        imDone: "I'm done",
+        approvalTitle: "Approval required",
         allowOnce: "Allow once",
         alwaysAllow: "Always allow",
         deny: "Deny",
-        takeover: "Take over",
-        imDone: "I'm done",
-        placeholder: "Message… (/ skills · @ bots · Shift+Enter newline)",
+        send: "Send",
+        placeholder: "Message Bit Bot… (/ skills · @ bots · Shift+Enter newline)",
+        headerSkills: "Capabilities",
+        headerCreds: "Credentials",
+        headerParity: "Parity",
+        headerAccount: "Account",
+        model: "Model",
+        machines: "Machines",
+        gpPanel: "Grok Parity Panel",
+        gpComputer: "Computer",
+        gpGroup: "Groups",
+        gpApprovals: "Background approvals",
+        gpClose: "Close",
+        gpFramePoll: "Frame preview: polls real Host screenshots every 3s (honest residual when no DISPLAY)",
+        gpNoFrame: "(no frames yet)",
+        gpRefreshFrame: "Refresh frame",
+        gpRecover: "Recover Computer",
+        gpRoomNew: "New group (pick 2–6 bots, name editable)",
+        gpRoomPh: "Group name (blank = auto)",
+        gpRoomCreate: "Create group",
+        gpRoomMsg: "Group message (@BotName / @everyone / no @ = bots decide)",
+        gpRoomPh2: "room <id> :: @Piper take a look",
+        gpRoomSend: "Send",
+        gpRoomNote: "Approvals / secret requests always go to the bot's DM, never the room transcript (GP-53).",
+        gpQueueNote: "Background approval queue (routine / teammate origin; ~10 min expiry shows Expired, Always allow / Deny still work)",
+        gpRefresh: "Refresh",
+        cfgStrip: "No brain key configured yet — open Credentials and set BITBOT_LLM_API_KEY (open config, never baked in)",
+        cfgGo: "Configure",
+        welcomeCfg: "Configure DeepSeek / channel credentials",
+        welcomeCfgNote: "Keys are open-configured, never shipped in the installer",
+        draftTo: "To",
+        draftChannel: "Channel",
+        draftSubject: "Subject",
+        draftBody: "Body",
+        draftSend: "Send",
+        draftDiscard: "Discard",
+        draftStatus: "Draft — not sent",
+        slackMsg: "New Slack Message",
+        newEmail: "New Email",
+        usageEmpty: "No real LLM usage this week (empty state, never a fake 0).",
+        usageWeek: "Week",
+        usageReq: "requests",
+        usageSource: "source: llm-usage.json",
+        usageFail: "Usage read failed (Host not ready)",
+        booting: "booting MoonBit…",
+        welcomeHint: "Type a message to start · chats on the left · 「Capabilities」 opens channels & machines",
+        welcomeLine: "Desktop AI assistant · MoonBit kernel · DeepSeek brain",
+        hintNoKey: "BITBOT_LLM_API_KEY not set — open Credentials to configure (hot-reload, never baked in; default",
+        hintReady: "Brain ready · type a message to start",
+        noKey: "no key",
+        missKey: "key missing",
+        keyHot: "key hot-loaded",
+        invoke: "summon",
+        msgUnit: "messages",
+        modelMissKey: "This model has no key — fill it in below (open config, never baked in):",
+        credHint: "Enter DeepSeek / channel credentials here (never baked in)",
+        execDone: "Executed",
+        turnDone: "Done.",
+        rBotCreate: "Bot created (name / job / description persisted) — open the conversation to assign work.",
+        rBotPin: "Pinned / unpinned — the Bots order is persisted.",
+        rApproval: "Approval required ({cls}): {why}",
+        rShellWhy: "this action needs your confirmation.",
+        rSettingsOpen: "Settings panel opened.",
+        rRoomTurn: "Room {room}: message delivered, waiting for bots.",
+        rTakeover: "Take over — you control this screen; hit 「I'm done」 when finished.",
+        rNever: "Local execution = Never allow: refused by your setting, nothing ran.",
+        rAutoReview: "Auto-review: matched {via} rule, executed without asking again.",
+        chatCreatedHint: "New chat created · type a message to start",
       },
     };
+    function wavegT(key) {
+      const d = WAVEG_I18N[wavegLang] || WAVEG_I18N["zh-CN"];
+      return (d && d[key]) || WAVEG_I18N["zh-CN"][key] || key;
+    }
+    function wavegResolveLang(code) {
+      if (code === "system" || code === "auto" || !code) {
+        const nav = String(navigator.language || "").toLowerCase();
+        if (nav.startsWith("zh-tw") || nav.startsWith("zh-hant")) return "zh-TW";
+        if (nav.startsWith("zh")) return "zh-CN";
+        return "en";
+      }
+      if (WAVEG_I18N[code]) return code;
+      return "zh-CN";
+    }
     function wavegLangApply(code) {
-      const dict = WAVEG_I18N[code] || WAVEG_I18N["zh-CN"];
-      const nb = document.getElementById("bot-new-btn");
-      if (nb) nb.textContent = dict.newBot;
+      wavegLang = wavegResolveLang(code);
+      const $ = (id) => document.getElementById(id);
+      // static sweep: text + placeholders
+      document.querySelectorAll("[data-i18n]").forEach((el) => {
+        const k = el.getAttribute("data-i18n");
+        if (k) el.textContent = wavegT(k);
+      });
+      document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+        const k = el.getAttribute("data-i18n-ph");
+        if (k) el.setAttribute("placeholder", wavegT(k));
+      });
+      // elements with dynamic children keep explicit wiring
       const sum = document.querySelector("#hidden-bots-lab summary");
       if (sum) {
         const cnt = document.getElementById("hidden-bots-count");
-        sum.textContent = dict.hiddenBots + " (";
-        if (cnt) {
-          sum.appendChild(cnt);
-          sum.appendChild(document.createTextNode(")"));
-        }
+        sum.textContent = wavegT("hiddenBots") + " (";
+        if (cnt) { sum.appendChild(cnt); sum.appendChild(document.createTextNode(")")); }
       }
-      const ca = document.getElementById("connect-apps-btn");
-      if (ca) ca.textContent = dict.connectApps;
-      const inp = document.getElementById("text");
-      if (inp) inp.placeholder = dict.placeholder;
-      approveBtn.textContent = dict.allowOnce;
-      if (alwaysAllowBtn) alwaysAllowBtn.textContent = dict.alwaysAllow;
-      denyBtn.textContent = dict.deny;
-      const tk = document.getElementById("gp-takeover-btn");
-      if (tk) tk.textContent = dict.takeover;
-      const td = document.getElementById("takeover-done-btn");
-      if (td) td.textContent = dict.imDone;
-      const sb = document.getElementById("send");
-      if (sb) sb.title = dict.send;
+      const inp = $("text");
+      if (inp) inp.placeholder = wavegT("placeholder");
+      const sb = $("send");
+      if (sb) { sb.textContent = wavegT("send"); sb.title = wavegT("send"); }
+      const at = $("approval-title");
+      if (at) at.textContent = wavegT("approvalTitle");
+      const tk = $("gp-takeover-btn");
+      if (tk) tk.textContent = wavegT("takeover");
+      const tkTitle = $("takeover-title");
+      if (tkTitle) tkTitle.textContent = wavegT("takeoverTitle");
+      const tkHint = document.querySelector("#takeover-banner .hint");
+      if (tkHint) tkHint.textContent = wavegT("takeoverHint");
+      const td = $("takeover-done-btn");
+      if (td) td.textContent = wavegT("imDone");
+      const mp = document.querySelector("#model-picker .mp-label");
+      if (mp) mp.textContent = wavegT("model");
+      const cs = $("cfg-strip-text");
+      if (cs) cs.textContent = wavegT("cfgStrip");
+      const cb = $("cfg-strip-btn");
+      if (cb) cb.textContent = wavegT("cfgGo");
+      const mach = document.querySelector("#machines .panel-title");
+      if (mach) mach.textContent = wavegT("machines");
+      const banner = $("banner");
+      if (banner && /booting MoonBit/.test(banner.textContent)) banner.textContent = wavegT("booting");
+      const langSel = $("gp-language");
+      if (langSel) langSel.value = code || "zh-CN";
+      // dynamic writers that bake language at render time
+      try {
+        if (typeof refreshModelPicker === "function") refreshModelPicker().catch(() => {});
+        if (typeof refreshSessions === "function") refreshSessions().catch(() => {});
+        if (typeof refreshBots === "function") refreshBots().catch(() => {});
+      } catch (_) { /* not booted yet */ }
+    }
+    /** GP-70b: renderer-side theme override follows persisted appearance. */
+    function wavegApplyAppearanceClass(mode) {
+      const b = document.body;
+      b.classList.remove("force-dark", "force-light");
+      if (mode === "dark") b.classList.add("force-dark");
+      else if (mode === "light") b.classList.add("force-light");
     }
 
     function wireWaveGSettingsControls() {
@@ -5544,17 +6059,17 @@
       el.innerHTML =
         '<div class="draft-card"><div class="role">' +
         (provider === "slack"
-          ? "New Slack Message"
-          : "New " + (provider === "outlook" ? "Outlook " : "") + "Email") +
+          ? wavegT("slackMsg")
+          : wavegT("newEmail") + (provider === "outlook" ? " · Outlook" : "")) +
         '</div>' +
-        '<label>' + (provider === "slack" ? "频道" : "收件人") + ' <input class="dc-to" type="text" /></label>' +
+        '<label>' + (provider === "slack" ? wavegT("draftChannel") : wavegT("draftTo")) + ' <input class="dc-to" type="text" /></label>' +
         (provider === "slack"
           ? ""
-          : '<label>主题 <input class="dc-subject" type="text" /></label>') +
-        '<label>正文 <textarea class="dc-body" rows="4"></textarea></label>' +
-        '<div class="actions"><button type="button" class="send-btn">Send</button>' +
-        '<button type="button" class="discard-btn">Discard</button>' +
-        '<span class="draft-status">草稿 — 未发送</span></div></div>';
+          : '<label>' + wavegT("draftSubject") + ' <input class="dc-subject" type="text" /></label>') +
+        '<label>' + wavegT("draftBody") + ' <textarea class="dc-body" rows="4"></textarea></label>' +
+        '<div class="actions"><button type="button" class="send-btn">' + wavegT("draftSend") + '</button>' +
+        '<button type="button" class="discard-btn">' + wavegT("draftDiscard") + '</button>' +
+        '<span class="draft-status">' + wavegT("draftStatus") + '</span></div></div>';
       el.querySelector(".dc-to").value = toAddr || "";
       const subEl = el.querySelector(".dc-subject");
       if (subEl) subEl.value = subject || "";
@@ -5742,10 +6257,10 @@
       }
     }
     async function createNewChatFromUi() {
-      const created = await window.bitbot.sessions.create("新对话");
+      const created = await window.bitbot.sessions.create(wavegT("newChat"));
       if (created && created.ok) {
         activeSessionId = created.session.id;
-        log.innerHTML = welcomeMarkup("新对话已创建 · 输入消息开始");
+        log.innerHTML = welcomeMarkup(wavegT("chatCreatedHint"));
         await refreshSessions();
         await refreshConfigGate();
         const inp = document.getElementById("text");
@@ -5801,7 +6316,7 @@
                 streamEl = document.createElement("div");
                 streamEl.className = "msg assistant";
                 streamEl.dataset.streaming = "1";
-                streamEl.textContent = "";
+                streamEl.innerHTML = '<div class="role">assistant</div><div class="body"></div>';
                 log.appendChild(streamEl);
               }
               return;
@@ -5811,16 +6326,19 @@
                 streamEl = document.createElement("div");
                 streamEl.className = "msg assistant";
                 streamEl.dataset.streaming = "1";
+                streamEl.innerHTML = '<div class="role">assistant</div><div class="body"></div>';
                 log.appendChild(streamEl);
               }
-              streamEl.textContent = chunk.partial || streamEl.textContent + (chunk.text || "");
+              const sbody = streamEl.querySelector(".body");
+              sbody.textContent =
+                chunk.partial || sbody.textContent + (chunk.text || "");
               log.scrollTop = log.scrollHeight;
               return;
             }
             if (chunk.phase === "end") {
               if (streamEl) {
                 streamEl.dataset.streaming = "0";
-                if (chunk.partial) streamEl.textContent = chunk.partial;
+                if (chunk.partial) streamEl.querySelector(".body").textContent = chunk.partial;
               }
               return;
             }
@@ -5835,10 +6353,10 @@
         const newBtn = document.getElementById("sess-new");
         if (newBtn) {
           newBtn.addEventListener("click", async () => {
-            const created = await window.bitbot.sessions.create("新对话");
+            const created = await window.bitbot.sessions.create(wavegT("newChat"));
             if (created && created.ok) {
               activeSessionId = created.session.id;
-              log.innerHTML = welcomeMarkup("新对话已创建 · 输入消息开始");
+              log.innerHTML = welcomeMarkup(wavegT("chatCreatedHint"));
               await refreshSessions();
               await refreshConfigGate();
             }
@@ -5892,7 +6410,11 @@
           const stRes = await window.bitbot.settings.get();
           const st = (stRes && stRes.settings && stRes.settings.settings) || (stRes && stRes.settings) || {};
           if (st.sidebar_collapsed) applySidebarCollapse(true);
-        } catch (_) { /* ignore */ }
+          wavegApplyAppearanceClass(st.appearance || "system");
+          wavegLangApply(st.language || "zh-CN");
+        } catch (_) {
+          /* ignore */
+        }
         wireWaveGSettingsControls();
         wireGpPanel();
         wireAccelerators();
@@ -5907,16 +6429,13 @@
             const hint = document.querySelector("#welcome .w-hint");
             if (hint && ls && !ls.key_configured) {
               hint.textContent =
-                "未配置 BITBOT_LLM_API_KEY — 点右上角「凭证」填写（开放配置，热加载，不写死；默认 " +
-                (ls.model || "deepseek-chat") +
-                "）";
+                wavegT("hintNoKey") + "（" + (ls.model || "deepseek-chat") + "）";
             } else if (hint && ls && ls.key_configured) {
               hint.textContent =
-                "大脑就绪 · " +
+                wavegT("hintReady") + " · " +
                 (ls.label || ls.provider_id) +
                 " / " +
-                (ls.model || "") +
-                " · 输入消息开始";
+                (ls.model || "");
             }
           }
         } catch (_) {

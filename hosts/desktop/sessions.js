@@ -123,7 +123,8 @@ function createSessionStore(repoRoot) {
         at,
       });
     }
-    if (hit.title === "新对话" || hit.title === "对话") {
+    const DEFAULT_TITLES = ["新对话", "对话", "New chat", "新對話", "工作"];
+    if (DEFAULT_TITLES.indexOf(hit.title) >= 0) {
       const firstUser = hit.messages.find((m) => m.role === "user");
       if (firstUser && firstUser.text) {
         hit.title = firstUser.text.trim().slice(0, 28) || hit.title;
