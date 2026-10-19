@@ -369,6 +369,147 @@ function stripHostAppliedMarker(file) {
     delete process.env.BITBOT_MEETING_TOKEN;
     delete process.env.BITBOT_MEETING_POST;
   }
+  // Live Teams / SMS / voice / webhook residual-CLOSE via MCP channel_send (ports 18822–18825)
+  const mcpTeamsMock = startMock(18822, "teams", "smoke-mcp-teams");
+  await sleep(400);
+  try {
+    process.env.BITBOT_TEAMS_GRAPH_URL = "http://127.0.0.1:18822";
+    process.env.BITBOT_TEAMS_TOKEN = "smoke-mcp-teams";
+    process.env.BITBOT_TEAMS_POST = "1";
+    const liveTeams = await ffi.executeHostEffects([
+      { kind: "mcp_call", command: 'user-Gmail.teams_send|{"channel":"Tsmoke","body":"mcp live teams"}' },
+    ]);
+    const liveTeamsHit = liveTeams.find((r) => r && r.kind === "mcp_call");
+    const liveTeamsP = JSON.parse((liveTeamsHit && liveTeamsHit.stdout) || "{}");
+    if (liveTeamsP.mapped !== "host_channel_send" || liveTeamsP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(liveTeamsP).slice(0, 200));
+    }
+    if (
+      (liveTeamsP.channel_send || {}).live_teams_residual !== false ||
+      (liveTeamsP.channel_send || {}).live_post !== true
+    ) {
+      throw new Error(
+        "teams live residual: " + JSON.stringify(liveTeamsP.channel_send || {}).slice(0, 240),
+      );
+    }
+    if ((liveTeamsP.channel_send || {}).pretend_live === true) throw new Error("pretend_live live teams");
+    console.log(
+      "mcp_call teams_send live residual close ok",
+      (liveTeamsP.channel_send || {}).mode,
+      (liveTeamsP.channel_send || {}).live_teams_residual,
+    );
+  } finally {
+    try { mcpTeamsMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_TEAMS_GRAPH_URL;
+    delete process.env.BITBOT_TEAMS_TOKEN;
+    delete process.env.BITBOT_TEAMS_POST;
+  }
+  const mcpSmsMock = startMock(18823, "sms", "smoke-mcp-sms");
+  await sleep(400);
+  try {
+    process.env.BITBOT_SMS_API_URL = "http://127.0.0.1:18823";
+    process.env.BITBOT_SMS_TOKEN = "smoke-mcp-sms";
+    process.env.BITBOT_SMS_POST = "1";
+    const liveSms = await ffi.executeHostEffects([
+      { kind: "mcp_call", command: 'user-Gmail.sms_send|{"to":"+15551212","body":"mcp live sms"}' },
+    ]);
+    const liveSmsHit = liveSms.find((r) => r && r.kind === "mcp_call");
+    const liveSmsP = JSON.parse((liveSmsHit && liveSmsHit.stdout) || "{}");
+    if (liveSmsP.mapped !== "host_channel_send" || liveSmsP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(liveSmsP).slice(0, 200));
+    }
+    if (
+      (liveSmsP.channel_send || {}).live_sms_residual !== false ||
+      (liveSmsP.channel_send || {}).live_post !== true
+    ) {
+      throw new Error(
+        "sms live residual: " + JSON.stringify(liveSmsP.channel_send || {}).slice(0, 240),
+      );
+    }
+    if ((liveSmsP.channel_send || {}).pretend_live === true) throw new Error("pretend_live live sms");
+    console.log(
+      "mcp_call sms_send live residual close ok",
+      (liveSmsP.channel_send || {}).mode,
+      (liveSmsP.channel_send || {}).live_sms_residual,
+    );
+  } finally {
+    try { mcpSmsMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_SMS_API_URL;
+    delete process.env.BITBOT_SMS_TOKEN;
+    delete process.env.BITBOT_SMS_POST;
+  }
+  const mcpVoiceChMock = startMock(18824, "voice", "smoke-mcp-voice-ch");
+  await sleep(400);
+  try {
+    process.env.BITBOT_VOICE_API_URL = "http://127.0.0.1:18824";
+    process.env.BITBOT_VOICE_TOKEN = "smoke-mcp-voice-ch";
+    process.env.BITBOT_VOICE_POST = "1";
+    const liveVoiceCh = await ffi.executeHostEffects([
+      {
+        kind: "mcp_call",
+        command: 'user-Gmail.voice_channel_send|{"to":"call-smoke","body":"mcp live voice ch"}',
+      },
+    ]);
+    const liveVoiceChHit = liveVoiceCh.find((r) => r && r.kind === "mcp_call");
+    const liveVoiceChP = JSON.parse((liveVoiceChHit && liveVoiceChHit.stdout) || "{}");
+    if (liveVoiceChP.mapped !== "host_channel_send" || liveVoiceChP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(liveVoiceChP).slice(0, 200));
+    }
+    if (
+      (liveVoiceChP.channel_send || {}).live_voice_residual !== false ||
+      (liveVoiceChP.channel_send || {}).live_post !== true
+    ) {
+      throw new Error(
+        "voice channel live residual: " +
+          JSON.stringify(liveVoiceChP.channel_send || {}).slice(0, 240),
+      );
+    }
+    if ((liveVoiceChP.channel_send || {}).pretend_live === true) {
+      throw new Error("pretend_live live voice channel");
+    }
+    console.log(
+      "mcp_call voice_channel_send live residual close ok",
+      (liveVoiceChP.channel_send || {}).mode,
+      (liveVoiceChP.channel_send || {}).live_voice_residual,
+    );
+  } finally {
+    try { mcpVoiceChMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_VOICE_API_URL;
+    delete process.env.BITBOT_VOICE_TOKEN;
+    delete process.env.BITBOT_VOICE_POST;
+  }
+  const mcpWhOutMock = startMock(18825, "webhook", "smoke-mcp-wh");
+  await sleep(400);
+  try {
+    process.env.BITBOT_WEBHOOK_OUTBOUND_URL = "http://127.0.0.1:18825/hooks";
+    process.env.BITBOT_WEBHOOK_POST = "1";
+    const liveWh = await ffi.executeHostEffects([
+      { kind: "mcp_call", command: 'user-Gmail.webhook_send|{"body":"mcp live webhook"}' },
+    ]);
+    const liveWhHit = liveWh.find((r) => r && r.kind === "mcp_call");
+    const liveWhP = JSON.parse((liveWhHit && liveWhHit.stdout) || "{}");
+    if (liveWhP.mapped !== "host_channel_send" || liveWhP.product_tool_residual !== false) {
+      throw new Error(JSON.stringify(liveWhP).slice(0, 200));
+    }
+    if (
+      (liveWhP.channel_send || {}).live_webhook_residual !== false ||
+      (liveWhP.channel_send || {}).live_post !== true
+    ) {
+      throw new Error(
+        "webhook live residual: " + JSON.stringify(liveWhP.channel_send || {}).slice(0, 240),
+      );
+    }
+    if ((liveWhP.channel_send || {}).pretend_live === true) throw new Error("pretend_live live webhook");
+    console.log(
+      "mcp_call webhook_send live residual close ok",
+      (liveWhP.channel_send || {}).mode,
+      (liveWhP.channel_send || {}).live_webhook_residual,
+    );
+  } finally {
+    try { mcpWhOutMock.kill(); } catch (_) {}
+    delete process.env.BITBOT_WEBHOOK_OUTBOUND_URL;
+    delete process.env.BITBOT_WEBHOOK_POST;
+  }
   // Skill/export product short-circuit → host_skill_write / host_export_pack (no pretend_shared / secret echo)
   const skills = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.author_skill|{\"name\":\"mcp-author-skill\",\"description\":\"mcp smoke\",\"body\":\"Do the MCP thing.\"}" }]);
   const skh = skills.find((r) => r && r.kind === "mcp_call");
@@ -1459,11 +1600,33 @@ function stripHostAppliedMarker(file) {
     ["snooze", "host_routine_schedule", "routine_schedule"],
     ["add_label", "host_mail_read", "mail_read"],
     ["list_labels", "host_mail_search", "mail_search"],
+    ["webhook_copy", "host_webhook_copy", "webhook_copy"],
+    ["webhook_tool_read_key", "host_webhook_tool_read_key", "webhook_tool_read_key"],
+    ["update_draft", "host_mail_draft", "mail_draft"],
+    ["list_drafts", "host_mail_draft", "mail_draft"],
+    ["get_draft", "host_mail_draft", "mail_draft"],
+    ["reply", "host_mail_send", "mail_send"],
+    ["forward", "host_mail_send", "mail_send"],
+    ["get_thread", "host_mail_read", "mail_read"],
+    ["trash_thread", "host_mail_read", "mail_read"],
+    ["label_thread", "host_mail_read", "mail_read"],
+    ["create_label", "host_mail_search", "mail_search"],
+    ["list_filters", "host_mail_search", "mail_search"],
+    ["update_skill", "host_skill_write", "skill_write"],
+    ["todo_list", "host_todo_write", "todo_write"],
+    ["export_bot", "host_export_pack", "export_pack"],
+    ["mark_todo", "host_todo_write", "todo_write"],
   ];
   for (const [tool, wantMapped, field] of aliasWave) {
     const body =
-      tool === "compose_mail"
+      tool === "compose_mail" ||
+      tool === "update_draft" ||
+      tool === "get_draft" ||
+      tool === "list_drafts" ||
+      tool === "delete_draft"
         ? '{"to":"alias@example.com","subject":"alias","body":"hi"}'
+        : tool === "reply" || tool === "forward"
+          ? '{"to":"alias@example.com","subject":"Re: alias","body":"reply-hi","thread_id":"t-alias-1"}'
         : tool === "dm_send"
           ? '{"scheme":"slack","addr":"UALIAS","body":"alias-dm"}'
           : tool === "add_reaction"
@@ -1482,7 +1645,10 @@ function stripHostAppliedMarker(file) {
                       tool === "clipboard_copy" ||
                       tool === "clipboard_paste"
                     ? '{"tool":"contacts"}'
-                    : tool === "open_todo" || tool === "task_create"
+                    : tool === "open_todo" ||
+                        tool === "task_create" ||
+                        tool === "todo_list" ||
+                        tool === "mark_todo"
                       ? '{"items":[{"id":"a1","title":"alias","status":"pending"}]}'
                       : tool === "paste_from_box"
                         ? '{"path":"README.mbt.md"}'
@@ -1530,7 +1696,8 @@ function stripHostAppliedMarker(file) {
                                                   tool === "share_skill" ||
                                                   tool === "pdf_export" ||
                                                   tool === "print" ||
-                                                  tool === "backup"
+                                                  tool === "backup" ||
+                                                  tool === "export_bot"
                                                 ? '{"name":"smoke-skill"}'
                                                 : tool === "mark_done" ||
                                                     tool === "complete_todo"
@@ -1558,7 +1725,14 @@ function stripHostAppliedMarker(file) {
                                                               tool === "post_section"
                                                             ? '{"group_id":"g-mcp","section_id":"sec-mcp","from":"asst-mcp","body":"hello-section"}'
                                                             : tool === "archive_mail" ||
-                                                                tool === "mark_read"
+                                                                tool === "mark_read" ||
+                                                                tool === "get_thread" ||
+                                                                tool === "trash_thread" ||
+                                                                tool === "untrash_thread" ||
+                                                                tool === "label_thread" ||
+                                                                tool === "unlabel_thread" ||
+                                                                tool === "mark_thread_spam" ||
+                                                                tool === "apply_sensitive_thread_label"
                                                               ? '{"thread_id":"t-archive-1"}'
                                                               : tool === "bug_report" ||
                                                                   tool === "open_docs" ||
@@ -1622,7 +1796,8 @@ function stripHostAppliedMarker(file) {
                                                                                       tool === "leave_room"
                                                                                     ? '{"room":"eng","body":"alias-room"}'
                                                                                     : tool === "create_skill" ||
-                                                                                        tool === "edit_skill"
+                                                                                        tool === "edit_skill" ||
+                                                                                        tool === "update_skill"
                                                                                       ? '{"name":"alias-skill","body":"steps"}'
                                                                                       : tool === "markdown_export"
                                                                                         ? '{"markdown":"# alias"}'
@@ -1658,9 +1833,22 @@ function stripHostAppliedMarker(file) {
                                                                                                           : tool === "add_label" ||
                                                                                                               tool === "remove_label"
                                                                                                             ? '{"thread_id":"t-label-1","label":"alias"}'
-                                                                                                            : tool === "list_labels"
+                                                                                                            : tool === "list_labels" ||
+                                                                                                                tool === "create_label" ||
+                                                                                                                tool === "list_filters" ||
+                                                                                                                tool === "create_filter" ||
+                                                                                                                tool === "delete_label"
                                                                                                               ? '{"q":"label:alias"}'
-                                                                                                              : "{}";
+                                                                                                              : tool === "webhook_copy" ||
+                                                                                                                  tool === "copy_webhook" ||
+                                                                                                                  tool === "copy_webhook_url"
+                                                                                                                ? '{"what":"url"}'
+                                                                                                                : tool === "copy_webhook_key"
+                                                                                                                  ? '{"what":"key"}'
+                                                                                                                  : tool === "webhook_tool_read_key" ||
+                                                                                                                      tool === "read_webhook_key"
+                                                                                                                    ? '{}'
+                                                                                                                    : "{}";
     const runs = await ffi.executeHostEffects([
       { kind: "mcp_call", command: `user-Gmail.${tool}|${body}` },
     ]);
