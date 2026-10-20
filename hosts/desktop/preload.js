@@ -40,6 +40,11 @@ contextBridge.exposeInMainWorld("bitbot", {
     op: (payload) => ipcRenderer.invoke("bitbot:plugins:op", payload),
     toolToggle: (payload) => ipcRenderer.invoke("bitbot:plugins:toolToggle", payload),
   },
+  // Wave M10 — Bot template catalog (GP-02).
+  templates: {
+    list: () => ipcRenderer.invoke("bitbot:templates:list"),
+    create: (payload) => ipcRenderer.invoke("bitbot:templates:create", payload || {}),
+  },
   approvals: {
     rule: (patch) => ipcRenderer.invoke("bitbot:approvals:rule", patch),
     listRules: () => ipcRenderer.invoke("bitbot:approvals:listRules"),

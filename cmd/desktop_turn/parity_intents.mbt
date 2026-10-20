@@ -2209,6 +2209,25 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     }
   }
   // ---- Wave G (Grok desktop parity · docs/grok-desktop-parity/ipc-contract.md §1) ----
+  // GP-02: template catalog lives in the Host store; kernel only plans the read.
+  if low == "list bot templates" || low == "show bot templates" {
+    return Some(ListBotTemplates)
+  }
+  // "create bot from template <id> [name=<n>]" — must precede "create bot ".
+  if low.has_prefix("create bot from template ") {
+    let rest = trimmed[25:].trim().to_owned()
+    let tid = match split_once(rest, " ") {
+      Some((t, _)) => t.trim().to_owned()
+      None => rest.trim().to_owned()
+    }
+    let tname = match extract_kv(rest, "name") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    if tid != "" {
+      return Some(CreateBotFromTemplate(template_id=tid, name=tname))
+    }
+  }
   // Bot lifecycle: create bot <name> job=<job> description=<free text to EOL>
   if low.has_prefix("create bot ") {
     let rest = trimmed[11:].trim().to_owned()

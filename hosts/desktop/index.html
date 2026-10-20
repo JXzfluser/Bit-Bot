@@ -198,6 +198,40 @@
     font-size: 12px;
     opacity: 0.85;
   }
+  /* GP-02: suggested Bot templates in the empty state */
+  #welcome .wt-wrap { margin-top: 22px; text-align: center; }
+  #welcome .wt-title {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  #welcome .wt-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+  }
+  #welcome .wt-btn {
+    background: var(--bg1);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  #welcome .wt-btn:hover { border-color: var(--accent); }
+  #welcome .wt-btn:disabled { opacity: 0.6; cursor: default; }
+  #bc-tpl-btns .bc-tpl-btn {
+    background: var(--bg1);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 2px 7px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  #bc-tpl-btns .bc-tpl-btn:hover { border-color: var(--accent); }
   #machines {
     overflow: hidden;
     opacity: 0;
@@ -679,12 +713,7 @@
       <input id="bc-name" type="text" placeholder="Name（短名称，如 Piper）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" data-i18n-ph="bcNamePh" />
       <input id="bc-job" type="text" placeholder="Job（主要职责，如 Product performance）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" data-i18n-ph="bcJobPh" />
       <textarea id="bc-desc" rows="3" placeholder="Description（工作方式/工具/边界，例如 Never change production settings）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" data-i18n-ph="bcDescPh"></textarea>
-      <div style="color:var(--muted);font-size:11px;margin-bottom:6px"><span data-i18n="bcTemplates">模板</span>：
-        <button type="button" class="bc-template" data-tpl="sales">Sales Outbound</button>
-        <button type="button" class="bc-template" data-tpl="scout">Talent Scout</button>
-        <button type="button" class="bc-template" data-tpl="expense">Expense Manager</button>
-        <button type="button" class="bc-template" data-tpl="bug">Bug Reproduction</button>
-      </div>
+      <div style="color:var(--muted);font-size:11px;margin-bottom:6px"><span data-i18n="bcTemplates">模板</span>：<span id="bc-tpl-btns" style="display:inline-flex;flex-wrap:wrap;gap:4px"></span></div>
       <div style="display:flex;gap:6px">
         <button type="button" id="bc-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer" data-i18n="bcCreate">创建</button>
         <button type="button" id="bc-cancel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer" data-i18n="bcCancel">取消</button>
@@ -1796,6 +1825,8 @@
       [/^Uninstall plugin (\S+) planned \(CM-2107\)\..*/i, "rPluginUninstalled"],
       [/^List\/search plugins planned \(CM-0904 directory\)\..*/i, "rPluginList"],
       [/^GetPlugin (\S+) \((\d+) skill.*$/i, "rPluginGet"],
+      [/^Bot templates listed from the local Host catalog \(GP-02\)\..*/i, "rTplList"],
+      [/^Create Bot from template planned \(GP-02\)\..*/i, "rTplCreate"],
     ];
     function wavegLocalizeReply(text) {
       const raw = String(text || "");
@@ -2802,8 +2833,111 @@
         '<div id="welcome-cfg" style="margin-top:16px;display:none">' +
         '<button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer" data-i18n="welcomeCfg">' + wavegT("welcomeCfg") + '</button>' +
         '<div style="margin-top:8px;color:var(--muted);font-size:12px" data-i18n="welcomeCfgNote">' + wavegT("welcomeCfgNote") + '</div>' +
-        '</div></div>'
+        '</div>' +
+        '<div id="welcome-templates" class="wt-wrap" style="display:none"></div></div>'
       );
+    }
+
+    // GP-02: one-click suggested Bot templates from the local Host catalog.
+    let wtCatalog = null;
+    async function renderWelcomeTemplates() {
+      const box = document.getElementById("welcome-templates");
+      if (!box || !window.bitbot || !window.bitbot.templates) return;
+      try {
+        if (!wtCatalog) {
+          const r = await window.bitbot.templates.list();
+          if (r && r.ok) wtCatalog = r.templates || [];
+        }
+        if (!wtCatalog || !wtCatalog.length) return;
+        box.textContent = "";
+        const title = document.createElement("div");
+        title.className = "wt-title";
+        title.setAttribute("data-i18n", "wtTitle");
+        title.textContent = wavegT("wtTitle");
+        box.appendChild(title);
+        const grid = document.createElement("div");
+        grid.className = "wt-grid";
+        for (const t of wtCatalog) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "wt-btn";
+          btn.dataset.tplId = t.id;
+          btn.title = t.description;
+          btn.textContent = t.job;
+          grid.appendChild(btn);
+        }
+        box.appendChild(grid);
+        box.style.display = "block";
+      } catch (_) {
+        /* empty state stays clean; never fake a catalog */
+      }
+    }
+    async function createBotFromTemplate(tplId, btn) {
+      if (!window.bitbot || !window.bitbot.templates) return;
+      const tpl = (wtCatalog || []).find((t) => t.id === tplId);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = wavegT("wtBusy");
+      }
+      const r = await window.bitbot.templates.create({ templateId: tplId });
+      if (r && r.ok && r.bot) {
+        if (btn) btn.textContent = wavegT("wtCreated").replace("{n}", r.bot.name || "");
+        await refreshBots();
+        selectBotForChat(r.bot);
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = (tpl && tpl.job) || tplId;
+        }
+        addMsg(
+          "assistant",
+          wavegT("wtFailed").replace("{t}", (r && (r.error || r.refused)) ? (r.error || "refused") : "unknown"),
+        );
+      }
+    }
+    function wireWelcomeTemplates() {
+      document.addEventListener("click", (ev) => {
+        const b = ev.target && ev.target.closest ? ev.target.closest(".wt-btn") : null;
+        if (b && !b.disabled) createBotFromTemplate(b.dataset.tplId, b);
+      });
+      // Welcome block is re-injected on new chats — repaint the strip each time.
+      try {
+        new MutationObserver(() => {
+          if (document.getElementById("welcome-templates") && !document.querySelector("#welcome-templates .wt-btn")) {
+            renderWelcomeTemplates().catch(() => {});
+          }
+        }).observe(log, { childList: true });
+      } catch (_) {
+        /* ignore */
+      }
+      // GP-02: create-bot dialog chips come from the same store catalog.
+      const host = document.getElementById("bc-tpl-btns");
+      if (host && window.bitbot && window.bitbot.templates) {
+        (async () => {
+          if (!wtCatalog) {
+            const r = await window.bitbot.templates.list().catch(() => null);
+            if (r && r.ok) wtCatalog = r.templates || [];
+          }
+          if (!wtCatalog || !wtCatalog.length) return;
+          host.textContent = "";
+          for (const t of wtCatalog) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "bc-tpl-btn";
+            btn.dataset.tplId = t.id;
+            btn.title = t.description;
+            btn.textContent = t.job;
+            btn.addEventListener("click", () => {
+              document.getElementById("bc-job").value = t.job;
+              document.getElementById("bc-desc").value = t.description;
+              if (!document.getElementById("bc-name").value) {
+                document.getElementById("bc-name").value = t.default_name || t.job.split(" ")[0];
+              }
+            });
+            host.appendChild(btn);
+          }
+        })().catch(() => {});
+      }
     }
 
     async function refreshModelPicker() {
@@ -5505,12 +5639,8 @@
       });
     }
     /* ---- Wave G Bot sidebar (GP-01…GP-08, GP-A2): real store data source ---- */
-    const BOT_TEMPLATES = {
-      sales: { job: "Sales Outbound", description: "Research accounts, pull contacts, draft outreach in my voice. Leave drafts to approve. Never send without approval." },
-      scout: { job: "Talent Scout", description: "Screen candidates against the role brief, preserve links, separate evidence from hypotheses. Never contact candidates directly." },
-      expense: { job: "Expense Manager", description: "Collect receipts, reconcile against policy, prepare approval lists. Do not submit reimbursements without explicit approval." },
-      bug: { job: "Bug Reproduction", description: "Reproduce reported bugs in the browser on the Bot computer, capture steps and screenshots, file reproduction notes. Never change production settings." },
-    };
+    // GP-02: template catalog moved to the Host store (bot-templates.json);
+    // chips render via wireWelcomeTemplates()/wtCatalog — no const here.
 
     async function refreshBots() {
       if (!window.bitbot || !window.bitbot.bots) return;
@@ -5687,17 +5817,6 @@
         document.getElementById("bc-job").value = "";
         document.getElementById("bc-desc").value = "";
         form.style.display = form.style.display === "none" ? "block" : "none";
-      });
-    }
-    for (const t of document.querySelectorAll(".bc-template")) {
-      t.addEventListener("click", () => {
-        const tpl = BOT_TEMPLATES[t.dataset.tpl];
-        if (!tpl) return;
-        document.getElementById("bc-job").value = tpl.job;
-        document.getElementById("bc-desc").value = tpl.description;
-        if (!document.getElementById("bc-name").value) {
-          document.getElementById("bc-name").value = tpl.job.split(" ")[0];
-        }
       });
     }
     const bcCancel = document.getElementById("bc-cancel");
@@ -6502,6 +6621,8 @@
         rPluginUninstalled: "已发起卸载插件 {p}（Host 将命名空间置为 Unavailable）。",
         rPluginList: "已打开插件目录（Host 返回可用连接器）。",
         rPluginGet: "已读取插件 {p} 元数据。",
+        rTplList: "已从本地模板目录读取 Bot 模板（无需联网）。",
+        rTplCreate: "已按模板创建 Bot（Host 目录解析，未知模板会被拒绝）。",
         "caName.plugin-slides": "幻灯片助手",
         "caName.plugin-calendar": "日历同步",
         "caToolDesc.make_deck": "根据大纲生成幻灯片。",
@@ -6516,6 +6637,10 @@
         fcSave: "保存文件",
         fcOpenOS: "用系统应用打开",
         fcOpenFailed: "打开失败：{t}",
+        wtTitle: "从模板开始：",
+        wtBusy: "创建中…",
+        wtCreated: "已创建 {n}",
+        wtFailed: "模板创建失败：{t}",
         voiceRecHint: "录音中…再点 🎙 或按 Ctrl/Cmd+D 停止",
         voiceChatBtn: "🎧 语音对话",
         voiceChatLive: "语音对话进行中",
@@ -6725,6 +6850,8 @@
         rPluginUninstalled: "已發起解除安裝外掛 {p}（Host 將命名空間設為 Unavailable）。",
         rPluginList: "已開啟外掛目錄（Host 返回可用連線器）。",
         rPluginGet: "已讀取外掛 {p} 中繼資料。",
+        rTplList: "已由本機範本目錄讀取 Bot 範本（無需聯網）。",
+        rTplCreate: "已依範本建立 Bot（Host 目錄解析，未知範本會被拒絕）。",
         "caName.plugin-slides": "投影片助手",
         "caName.plugin-calendar": "行事曆同步",
         "caToolDesc.make_deck": "依大綱產生投影片。",
@@ -6739,6 +6866,10 @@
         fcSave: "儲存檔案",
         fcOpenOS: "以系統應用程式開啟",
         fcOpenFailed: "開啟失敗：{t}",
+        wtTitle: "從範本開始：",
+        wtBusy: "建立中…",
+        wtCreated: "已建立 {n}",
+        wtFailed: "範本建立失敗：{t}",
         voiceRecHint: "錄音中…再點 🎙 或按 Ctrl/Cmd+D 停止",
         voiceChatBtn: "🎧 語音對話",
         voiceChatLive: "語音對話進行中",
@@ -6948,6 +7079,8 @@
         rPluginUninstalled: "Uninstall plugin {p} started (Host sets namespace Unavailable).",
         rPluginList: "Plugin directory opened (Host returns available connectors).",
         rPluginGet: "Plugin {p} metadata read.",
+        rTplList: "Bot templates read from the local catalog (no network needed).",
+        rTplCreate: "Bot created from template (resolved by the Host catalog; unknown templates are refused).",
         "caName.plugin-slides": "Slides helper",
         "caName.plugin-calendar": "Calendar sync",
         "caToolDesc.make_deck": "Render a deck from an outline.",
@@ -6962,6 +7095,10 @@
         fcSave: "Save file",
         fcOpenOS: "Open with system app",
         fcOpenFailed: "Open failed: {t}",
+        wtTitle: "Start from a template:",
+        wtBusy: "Creating…",
+        wtCreated: "Created {n}",
+        wtFailed: "Template create failed: {t}",
         voiceRecHint: "Recording… tap 🎙 again or press Ctrl/Cmd+D to stop",
         voiceChatBtn: "🎧 Voice chat",
         voiceChatLive: "Voice chat in progress",
@@ -7779,6 +7916,7 @@
         wireGpPanel();
         wireAccelerators();
         wireArtifactLightbox();
+        wireWelcomeTemplates();
         wireFocusSession();
         startComputerPolling();
         refreshPendingBar().catch(() => {});

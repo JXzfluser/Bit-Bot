@@ -271,6 +271,41 @@ if(!/ipcMain\.handle\(\"bitbot:saveArtifact\"/.test(main)){console.error('no sav
 if(!main.includes('BITBOT_SAVE_ARTIFACT_DIR')){console.error('no headless save override');process.exit(1)}" && ok "GP-90 文本格式表（main/renderer 一致 + 二进制豁免）" || bad "GP-90 format table"
 rm -rf /tmp/gp91-save agent-tools/skills/gp91-smoke
 
+echo "== G-11 Bot 模板目录（GP-02 · 规格 §2.2 建议模板一键创建）=="
+# 本地目录：删除后由 Host 首次读取自动种入，全程无网络
+rm -f data/desktop/bot-templates.json
+j=$(turn_json "list bot templates")
+echo "$j" | field intent | grep -q list_bot_templates && echo "$j" | field hostKinds | grep -q bot_templates_list:ok && node -e "
+const fs=require('fs');
+const t=JSON.parse(fs.readFileSync('data/desktop/bot-templates.json','utf8')).templates;
+const ids=t.map(x=>x.id);
+const need=['sales-outbound','talent-scout','paid-media','expense-manager','bug-reproduction','chief-of-staff'];
+process.exit(need.every(x=>ids.includes(x)) ? 0:1)" && ok "GP-02 list → 本地目录种入且含官方六模板" || bad "GP-02 seed catalog"
+j=$(turn_json "create bot from template chief-of-staff name=Chiefy")
+echo "$j" | field intent | grep -q create_bot_from_template && echo "$j" | field hostKinds | grep -q bot_create_from_template:ok && node -e "
+const b=require('./data/desktop/bots.json').bots.find(x=>x.name==='Chiefy');
+const t=require('./data/desktop/bot-templates.json').templates.find(x=>x.id==='chief-of-staff');
+process.exit(b && b.job===t.job && b.description===t.description ? 0:1)" && ok "GP-02 一键创建：job/description 与模板逐字一致" || bad "GP-02 create from template"
+j=$(turn_json "create bot from template no-such-template name=Ghost")
+echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='bot_create_from_template');const p=JSON.parse(h.stdout||'{}');process.exit(p.refused===true&&/unknown template/.test(p.error||'')&&p.pretend_created===false?0:1)})" && ! grep -q '"Ghost"' data/desktop/bots.json && ok "GP-02 未知模板诚实拒绝（不凭空造 Bot）" || bad "GP-02 refusal"
+# 模板短语不得落回普通 create bot 匹配器
+j=$(turn_json "create bot from template talent-scout")
+echo "$j" | field intent | grep -q "^create_bot_from_template$" && ok "GP-02 短语优先于 create bot（意图不被吞）" || bad "GP-02 intent precedence"
+# 模板 Bot 持久化进 bots.json（Chiefy 来自上一步真实创建）
+node -e "
+const b=require('./data/desktop/bots.json').bots;
+const hit=b.find(x=>x.name==='Chiefy');
+process.exit(hit && hit.job==='Chief of Staff' && hit.created_at ? 0:1)" && ok "GP-02 模板 Bot 已持久化进 bots.json" || bad "GP-02 persisted"
+# 清理本段创建的模板 Bot，保持双跑幂等
+node -e "
+const fs=require('fs');const p='./data/desktop/bots.json';
+const d=JSON.parse(fs.readFileSync(p,'utf8'));
+d.bots=d.bots.filter(x=>!['Chiefy','Scouty','Sage','Ghost'].includes(x.name));
+fs.writeFileSync(p,JSON.stringify(d,null,2))"
+
+echo
+
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

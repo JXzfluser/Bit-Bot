@@ -9,7 +9,7 @@
 | ID | 状态 | 说明 |
 |----|------|------|
 | GP-01 | 已实现 | create bot → `bot_create` → `bots.json` 落盘（smoke G-1）；renderer 侧边栏 + Cmd/Ctrl+N 新建。 |
-| GP-02 | 未做 | 建议模板一键创建本波未接线（renderer 无模板目录入口）；列入未做清单。 |
+| GP-02 | 已实现 | 模板目录 store 化 `data/desktop/bot-templates.json`（Host 首读种入官方六模板）；空状态一键创建 + 创建对话框 chips 同源；未知模板诚实拒绝。见 Wave M10。 |
 | GP-03 | 已实现 | update bot name/job/description 持久（smoke G-1）；头像无效路径由既有 CM-0202 门拒绝。 |
 | GP-04 | 已实现 | pin 持久（smoke G-1）；renderer 置顶区排序读取 store。 |
 | GP-05 | 已实现 | duplicate → `Smoke copy` 持久（smoke G-1）；不复制对话历史（store 语义仅配置）。 |
@@ -61,7 +61,7 @@
 
 ## 未做清单（后续波次）
 
-- GP-02 `bot-templates.json` store 化 + 模板一键创建的脚本断言。
+- ~~GP-02 `bot-templates.json` store 化 + 模板一键创建的脚本断言~~（M10 已实现，smoke G-11 五断言）。
 - GP-06/GP-07 隐藏不暂停 Routines、删除二次确认的自动化断言。
 - GP-30 同 Bot computer-use 并发拒绝的桌面端专项断言。
 - ~~GP-15/GP-60 真麦克风链路~~（M6 已用 `--use-fake-device-for-media-stream` 实测 getUserMedia→MediaRecorder→落盘全链）。
@@ -148,3 +148,13 @@
 4. **GP-92 全屏查看器**：`#gp92-lightbox` 遮罩（图/视频/音频/`pre.lb-text` 四渲染分支）+ 标题（label · 文件 · 字节）+ 保存/关闭 + Esc/遮罩点击关闭 + 视频卡片双击 `requestFullscreen()`。**关键坑**：lightbox 原 DOM 挂在 body 网格的 `#main` 网格项内，截图中 header 文字绘制在遮罩之上（网格项绘制顺序，`elementsFromPoint` 命中正常、纯 DOM 探针查不出）——`wireArtifactLightbox()` 启动时把节点 `appendChild` 到 body 顶层后遮罩正确压暗 header（brand 区像素亮度 236→29 实测）；重开查看器时保存按钮文案复位（防跨产物残留"已保存到 …"）。
 5. **i18n**：lbSave/lbClose/lbSaved/lbSaveFailed/lbFailed/fcViewFull/fcSave/fcOpenOS/fcOpenFailed ×3 字典（占位 `{p}`/`{t}` 用 replace 填充）。
 6. **验证**：moon 373/373；smoke 新增 G-10 六断言（SKILL.md/ics/eml/export_pack 四类文本产物真实落盘 + headless save 真拷贝 + main/renderer 文本格式表一致），PASS=62 FAIL=0 双跑幂等；CDP 八截图：learn from demo → SKILL.md 文件卡（三按钮中文）→ 点击 snippet 全屏文本 → 保存回执「已保存到 SKILL.md」→ Esc 关闭 → generate image → 图片卡保存按钮 → 点击图片全屏（遮罩压住 header，标题正确）→ 保存 PNG 落 /tmp/saved-artifacts（9181B 实测）→ 关闭恢复。
+
+## Wave M10（空状态与模板，本轮）
+
+规格：官方 §2.2（建议模板 Bot 一键创建；模板目录本地化，无网络也不报错）。
+
+1. **store 化**：Host `loadBotTemplates()` 首读种入 `data/desktop/bot-templates.json`（官方六模板：sales-outbound/talent-scout/paid-media/expense-manager/bug-reproduction/chief-of-staff，含 default_name/job/description）；用户可直接编辑该 JSON，损坏/空列表回落 seed（不静默清空）。renderer 原 `BOT_TEMPLATES` 常量与四个静态 chips 删除——单一事实源进 store。
+2. **kernel（GP-02）**：`ListBotTemplates` / `CreateBotFromTemplate(template_id, name)` 两意图；短语 `list|show bot templates`、`create bot from template <id> [name=<n>]`（匹配器置于 `create bot ` 之前防吞，wbtest 钉住优先级）；effects `bot_templates_list` / `bot_create_from_template`（cmd `template=… name=…`，`template` 已入 parseWaveGCommand kv 白名单）。
+3. **host**：`bot_templates_list` 返回本地目录（`offline_ok:true, pretend_fetched:false`）；`bot_create_from_template` 按 id 解析后走 `surface.createBot`（job/description 逐字取模板），未知 id 诚实 `refused:true, pretend_created:false`，不凭空造 Bot。
+4. **renderer**：空状态（welcome）新增「从模板开始」chips 条（`renderWelcomeTemplates`，MutationObserver 在新建对话后重挂）→ 点击 `bitbot:templates:create` 一键创建（按钮态 创建中…→已创建 {n}）→ `refreshBots()` + `selectBotForChat()` 自动打开 DM；创建对话框模板 chips 改为同一 store 渲染（点击仅预填 Name/Job/Description，仍走原 create 链）；回执 `rTplList/rTplCreate` 与 wt* 键 ×3 字典。
+5. **验证**：moon 373/373（wbtest 新增两意图分类 + turn 断言 `template=bug-reproduction` + 优先级）；smoke G-11 五断言（删目录→首读种入六模板 → chief-of-staff 创建与模板逐字一致 → 未知模板 refused 且 bots.json 无 Ghost → 意图不被 create bot 吞 → 持久化断言 + 自清理），PASS=67 FAIL=0 双跑幂等；CDP：空状态六 chips 截图 → 点 Chief of Staff → bots.json 落 `{name:Chief, job:Chief of Staff}` + 侧栏出现 + Chief·DM 会话自动打开 → 对话框 chips 来自 store 且点击预填 Repro/Bug Reproduction。

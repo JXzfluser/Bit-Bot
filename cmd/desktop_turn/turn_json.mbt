@@ -67,6 +67,8 @@ pub(all) enum TurnIntent {
   GetPlugin(plugin_id~ : String)
   ListPlugins(query~ : String)
   TogglePluginTool(namespace_~ : String, tool~ : String, enabled~ : Bool)
+  ListBotTemplates
+  CreateBotFromTemplate(template_id~ : String, name~ : String)
   SetupSlack
   FsList(path~ : String)
   FsRead(path~ : String)
@@ -221,6 +223,8 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     GetPlugin(_) => "get_plugin"
     ListPlugins(_) => "list_plugins"
     TogglePluginTool(_) => "toggle_plugin_tool"
+    ListBotTemplates => "list_bot_templates"
+    CreateBotFromTemplate(_) => "create_bot_from_template"
     SetupSlack => "setup_slack"
     FsList(_) => "fs_list"
     FsRead(_) => "fs_read"
@@ -4639,6 +4643,41 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Create Bot planned (GP-01). Host persists bots store with name/job/description and opens the conversation.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    ListBotTemplates => {
+      let effect : DesktopEffect = {
+        kind: "bot_templates_list",
+        command: "",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Bot templates listed from the local Host catalog (GP-02). No network needed.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    CreateBotFromTemplate(template_id~, name~) => {
+      let effect : DesktopEffect = {
+        kind: "bot_create_from_template",
+        command: "template=" +
+        encode_field_value(template_id) +
+        " name=" +
+        encode_field_value(name),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Create Bot from template planned (GP-02). Host resolves the catalog row; unknown templates are refused, not invented.",
         intent,
         ctx~,
         effects=[effect],

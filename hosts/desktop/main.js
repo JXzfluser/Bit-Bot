@@ -624,6 +624,63 @@ ipcMain.handle("bitbot:bots:op", async (_e, payload) => {
   }
 });
 
+/** GP-02: local Bot template catalog (list + one-click create). */
+ipcMain.handle("bitbot:templates:list", async () => {
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind: "bot_templates_list", command: "" }],
+      { sessionId: "templates-panel" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === "bot_templates_list");
+    let payload = {};
+    try {
+      payload = JSON.parse((hit && hit.stdout) || "{}");
+    } catch {
+      payload = {};
+    }
+    return {
+      ok: Boolean(hit && hit.ok),
+      templates: Array.isArray(payload.templates) ? payload.templates : [],
+      count: payload.count != null ? payload.count : null,
+      source: payload.source || null,
+      error: hit && !hit.ok ? hit.error || "host_failed" : undefined,
+      pretend_fetched: false,
+    };
+  } catch (err) {
+    return { ok: false, templates: [], error: String(err && err.message ? err.message : err), pretend_fetched: false };
+  }
+});
+
+ipcMain.handle("bitbot:templates:create", async (_e, opts) => {
+  const tplId = String((opts && opts.templateId) || "").trim();
+  const name = String((opts && opts.name) || "").trim();
+  if (!tplId) return { ok: false, error: "empty template id", pretend_created: false };
+  try {
+    const enc = (s) => String(s || "").replace(/\s+/g, "+");
+    const results = await ffi.executeHostEffects(
+      [{ kind: "bot_create_from_template", command: "template=" + enc(tplId) + " name=" + enc(name) }],
+      { sessionId: "templates-panel" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === "bot_create_from_template");
+    let payload = {};
+    try {
+      payload = JSON.parse((hit && hit.stdout) || "{}");
+    } catch {
+      payload = {};
+    }
+    return {
+      ok: Boolean(hit && hit.ok && payload.ok !== false && !payload.refused),
+      refused: payload.refused === true,
+      error: payload.error || (hit && !hit.ok ? hit.error || "host_failed" : undefined),
+      bot: payload.bot || null,
+      template_id: payload.template_id || tplId,
+      pretend_created: false,
+    };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), pretend_created: false };
+  }
+});
+
 function applyAppearance(mode) {
   // Real Electron theme switch — GP-70 (nativeTheme.themeSource is the source of truth).
   if (mode === "light" || mode === "dark" || mode === "system") {

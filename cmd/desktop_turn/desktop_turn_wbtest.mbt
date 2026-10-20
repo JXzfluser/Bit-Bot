@@ -1111,6 +1111,28 @@ test "desktop_turn_install_plugin_and_setup_slack" {
   assert_eq(tt.intent, "toggle_plugin_tool")
   assert_eq(tt.effects[0].kind, "mcp_tool_toggle")
   assert_eq(tt.effects[0].command, "user-Slides|make_deck|off")
+  // GP-02: template catalog intents (store lives Host-side; kernel plans only).
+  match classify_intent("list bot templates") {
+    ListBotTemplates => ()
+    _ => fail("expected ListBotTemplates")
+  }
+  match classify_intent("create bot from template talent-scout name=Scouty") {
+    CreateBotFromTemplate(template_id~, name~) => {
+      assert_eq(template_id, "talent-scout")
+      assert_eq(name, "Scouty")
+    }
+    _ => fail("expected CreateBotFromTemplate")
+  }
+  // Must NOT fall into the plain "create bot " matcher.
+  let cbt = run_desktop_turn("create bot from template bug-reproduction", turn_id="cbt-1")
+  assert_true(cbt.ok)
+  assert_eq(cbt.intent, "create_bot_from_template")
+  assert_eq(cbt.effects[0].kind, "bot_create_from_template")
+  assert_true(cbt.effects[0].command.contains("template=bug-reproduction"))
+  let lt = run_desktop_turn("list bot templates", turn_id="lt-1")
+  assert_true(lt.ok)
+  assert_eq(lt.intent, "list_bot_templates")
+  assert_eq(lt.effects[0].kind, "bot_templates_list")
   let s = run_desktop_turn("setup slack", turn_id="slack-1")
   assert_true(s.ok)
   assert_eq(s.intent, "setup_slack")

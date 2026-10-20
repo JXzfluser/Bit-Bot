@@ -77,7 +77,7 @@ function createHostFfi(repoRoot) {
     const s = String(raw || "");
     const out = {};
     const kvKeys = new Set(["name","job","bot","pinned","mode","code","tz","bots","title",
-      "pattern","decision","source","confirm","reason","ok","id","decision"]);
+      "pattern","decision","source","confirm","reason","ok","id","decision","template"]);
     const eolKeys = new Set(["description","title","text","body"]);
     // Tokenize by spaces, but respect eol-keys
     let i = 0;
@@ -16910,8 +16910,73 @@ function createHostFfi(repoRoot) {
     };
   }
 
-  function readJsonArray(filePath) {
+  // GP-02: local Bot template catalog (spec §2.2 建议模板一键创建). Seeded on
+  // first read so users can edit the JSON; unknown ids are refused upstream.
+  const BOT_TEMPLATE_SEED = [
+    {
+      id: "sales-outbound",
+      default_name: "Ivy",
+      job: "Sales Outbound",
+      description:
+        "Research accounts, pull contacts, draft outreach in my voice. Leave drafts to approve. Never send without approval.",
+    },
+    {
+      id: "talent-scout",
+      default_name: "Sage",
+      job: "Talent Scout",
+      description:
+        "Screen candidates against the role brief, preserve links, separate evidence from hypotheses. Never contact candidates directly.",
+    },
+    {
+      id: "paid-media",
+      default_name: "Ad",
+      job: "Paid Media Buyer",
+      description:
+        "Plan and draft campaign changes across ad managers, keep spend caps explicit, prepare creatives for review. Never launch or change budgets without approval.",
+    },
+    {
+      id: "expense-manager",
+      default_name: "Ledger",
+      job: "Expense Manager",
+      description:
+        "Collect receipts, reconcile against policy, prepare approval lists. Do not submit reimbursements without explicit approval.",
+    },
+    {
+      id: "bug-reproduction",
+      default_name: "Repro",
+      job: "Bug Reproduction",
+      description:
+        "Reproduce reported bugs in the browser on the Bot computer, capture steps and screenshots, file reproduction notes. Never change production settings.",
+    },
+    {
+      id: "chief-of-staff",
+      default_name: "Chief",
+      job: "Chief of Staff",
+      description:
+        "Triage inbox and calendar, draft replies in my voice, keep a daily brief with decisions needed. Never send or commit on my behalf without approval.",
+    },
+  ];
+  function loadBotTemplates() {
+    const p = path.join(REPO_ROOT, "data", "desktop", "bot-templates.json");
     try {
+      if (!fs.existsSync(p)) {
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(
+          p,
+          JSON.stringify({ templates: BOT_TEMPLATE_SEED }, null, 2),
+        );
+        return BOT_TEMPLATE_SEED.slice();
+      }
+      const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+      const list = Array.isArray(raw) ? raw : raw.templates;
+      if (!Array.isArray(list) || !list.length) return BOT_TEMPLATE_SEED.slice();
+      return list.filter((t) => t && t.id && t.job && t.description);
+    } catch (_) {
+      return BOT_TEMPLATE_SEED.slice();
+    }
+  }
+
+  function readJsonArray(filePath) {    try {
       if (!fs.existsSync(filePath)) return [];
       const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
       return Array.isArray(raw) ? raw : [];
@@ -22855,6 +22920,60 @@ function createHostFfi(repoRoot) {
       }
 
       // Wave G: Bot lifecycle effects
+      if (kind === "bot_templates_list") {
+        // GP-02: local catalog, seeded on first read; no network involved.
+        const tpls = loadBotTemplates();
+        results.push(
+          okJson(kind, cmd, {
+            templates: tpls,
+            count: tpls.length,
+            source: "data/desktop/bot-templates.json",
+            offline_ok: true,
+            pretend_fetched: false,
+          }),
+        );
+        continue;
+      }
+      if (kind === "bot_create_from_template") {
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const args = parseWaveGCommand(cmd);
+        const tplId = String(args.template || "").trim();
+        const tpl = loadBotTemplates().find((t) => t.id === tplId);
+        if (!tpl) {
+          results.push(
+            okJson(kind, cmd, {
+              ok: false,
+              refused: true,
+              error: "unknown template: " + (tplId || "(empty)"),
+              pretend_created: false,
+            }),
+          );
+          continue;
+        }
+        const name = String(args.name || "").trim() || tpl.default_name || tpl.job;
+        const res = surface.createBot({
+          name,
+          job: tpl.job,
+          description: tpl.description,
+        });
+        results.push({
+          kind,
+          ok: res.ok,
+          command: cmd,
+          stdout: JSON.stringify({
+            ...res,
+            template_id: tpl.id,
+            template_job: tpl.job,
+            pretend_created: false,
+          }),
+          stderr: "",
+          mode: res.mode,
+        });
+        continue;
+      }
       if (kind === "bot_create") {
         if (!surface) {
           results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
