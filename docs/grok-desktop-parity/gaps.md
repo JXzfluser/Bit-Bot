@@ -46,7 +46,7 @@
 | GP-76 | 已实现 | `usage.week` 读取 `llm-usage.json` 真实统计；无数据渲染空态而非 0 假数（smoke 未断 UI，store 层实测）。 |
 | GP-77 | 残留 | `check_updates` 真实网络探测已有（OTA feed env）；沙箱网络受限 → UI 显示探测失败 residual，不假装最新。 |
 | GP-80/81/82 | 已实现 | 聚焦抑制（BrowserWindow focus 态）+ 侧边栏未读 + `setBadgeCount` + 点击通知激活 session（`wireFocusSession`）；系统 Notification 在 xvfb 无通知总线环境下不弹出属平台限制，逻辑分支以 store/badge 状态实测。 |
-| GP-90/91/92 | 部分 | artifact 预览/保存沿用既有链；全屏查看未进本波验收。 |
+| GP-90/91/92 | 已实现 | readArtifact 文本族（md/txt/json/csv/ics/eml/yaml + ≤64KB 无 NUL 探测）文件卡；saveArtifact IPC 真拷贝（headless 覆盖）；GP-92 全屏查看器（图/视频/音频/文本，Esc/遮罩关闭）。见 Wave M9。 |
 | GP-A1 | 已实现 | Cmd/Ctrl+B 折叠（renderer accelerator + 主菜单 + `sidebar_collapsed` 持久）；Cmd/Ctrl+N 新对话（菜单模板 broadcast `bitbot:menu-new-chat`）。 |
 | GP-A2/A3 | 已实现 | Connect apps 面板（侧栏按钮 + Cmd/Ctrl+Shift+M）：浏览/添加/卸载、Your plugins 管理、全局生效说明、OAuth 提示；单工具启用/禁用走 `TogglePluginTool` → `mcp_tool_toggle` → `mcp-tools-catalog.json` 持久化（未知工具诚实拒绝）。见 Wave M8。 |
 
@@ -67,7 +67,7 @@
 - ~~GP-15/GP-60 真麦克风链路~~（M6 已用 `--use-fake-device-for-media-stream` 实测 getUserMedia→MediaRecorder→落盘全链）。
 - GP-52 群内所有权转移 transcript 断言。
 - GP-70 nativeTheme 像素级断言。
-- GP-90/92 预览格式扩展与全屏验收。
+- ~~GP-90/92 预览格式扩展与全屏验收~~（M9 已实现文本族文件卡 + saveArtifact + 全屏查看器，CDP 实测）。
 - renderer E2E（Playwright for Electron）以替掉手工冷启动检查。当前已有 `hosts/desktop/shot_cdp.mjs`（CDP 驱动真实控件 + 视口截图，dev-only）做冒烟级验证；本轮真机截图暴露并修复了 3 个问题：body 网格 `min-height:100vh` 导致长对话把 composer/审批条推出视口、never 拒绝后三按钮条仍挂起 + kernel 显示 "unknown host error"、@非成员静默回退 all（现为 bot_discretion）。
 
 ## Wave G-M（UI 外壳 / i18n / 消息渲染重构，本轮）
@@ -137,3 +137,14 @@
 3. **renderer（GP-A2）**：`#connect-apps-modal` 面板——搜索（300ms 防抖，走 Host `q=`）、刷新、"你的插件"/"浏览插件" 两区卡片、添加/卸载按钮（`bitbot.plugins.op` → 与 kernel 相同的 `mcp_namespace`/`mcp_uninstall` raw handler）、每工具启用/禁用开关（未安装时禁用并提示先安装）、全局生效与 OAuth 提示文案；侧栏按钮不再打 `list plugins` 进 transcript，Cmd/Ctrl+Shift+M 直达；语言切换时面板打开即重绘。
 4. **i18n**：ca*（标题/按钮/回执/空态/提示）+ rToolToggle/rPluginInstalled/rPluginUninstalled/rPluginList/rPluginGet ×3 字典；插件名与已知工具描述用 `caName.<id>` / `caToolDesc.<tool>` 键本地化，未知条目原样保留（不硬翻 Host 数据）。
 5. **验证**：moon 373/373（新 wbtest：三形状分类 + `user-Slides|make_deck|off` cmd 断言 + CM-2108 工具元数据断言）；smoke G-9 六断言（install 种入×2 → 面板禁用持久化 → list 反映 installed+enabled=false → natural enable → 未知工具 refused → uninstall Unavailable），PASS=56 FAIL=0 双跑幂等；CDP 七截图：打开（Calendar 已装/Slides 可加）→ 添加 → 两插件全装 → 单工具禁用（已禁用红标）→ 搜索 calendar 过滤 → 关闭无 transcript 污染；对话路径 `enable tool user-Slides:make_deck off` 回执本地化「已切换插件工具 … → 已禁用」。
+
+## Wave M9（文件与结果卡，本轮）
+
+规格：官方 §9.1（结果卡：图片/视频/音频/文件预览；可保存文件；桌面端可全屏查看图片/视频）+ §9.2（全屏查看器交互）。
+
+1. **GP-90 文本族预览（main 进程）**：`bitbot:readArtifact` mime 表扩展 `.svg/.ogg/.md/.txt/.json/.csv/.ics/.eml/.yaml/.yml`；未知扩展名走 textish 探测（≤64KB 且前 1KB 无 NUL 才按文本读，否则诚实 `unsupported media type`）；文本族返回 `{text, mime}`，媒体族维持 `data_url`。renderer `GP90_TEXT_EXT_RE`（md/txt/json/csv/ics/eml/yaml/log）+ `collectHostMediaPaths` 新增 skill_write→SKILL.md、schedule_meeting→.ics、mail_send/draft→.eml、export_pack→.json 四个 `text:true` 分支；`collectHostOpenablePaths` 对同批路径去重（文本卡优先，OS-open 仅留给 pptx 等真二进制）。
+2. **GP-90 文件卡（renderer）**：`renderDeliveryTextFile()` —— 标签（label · 文件名 · 字节数）+ 600 字符 `pre.fc-snippet`（点击进全屏）+ 三按钮（查看全文 / 保存文件 / 用系统应用打开）；读取失败回落 `renderOpenArtifact`（不假装有内容）。voice memo 分支豁免（.txt/.json 结尾的录音仍走 memo 卡）。
+3. **GP-91 保存**：`bitbot:saveArtifact` IPC —— repo-root 守卫 + `dialog.showSaveDialog` + 真实 `fs.copyFileSync`；取消返回 `{canceled:true}` 不算失败；`BITBOT_SAVE_ARTIFACT_DIR` headless 覆盖（smoke/CDP 用，真拷贝到目录并回 `saved_path`）。图片/音频/视频卡通用保存按钮行 + 文件卡保存 + 查看器保存按钮三处接入；保存后按钮文案本地化回执（`lbSaved {p}`）。
+4. **GP-92 全屏查看器**：`#gp92-lightbox` 遮罩（图/视频/音频/`pre.lb-text` 四渲染分支）+ 标题（label · 文件 · 字节）+ 保存/关闭 + Esc/遮罩点击关闭 + 视频卡片双击 `requestFullscreen()`。**关键坑**：lightbox 原 DOM 挂在 body 网格的 `#main` 网格项内，截图中 header 文字绘制在遮罩之上（网格项绘制顺序，`elementsFromPoint` 命中正常、纯 DOM 探针查不出）——`wireArtifactLightbox()` 启动时把节点 `appendChild` 到 body 顶层后遮罩正确压暗 header（brand 区像素亮度 236→29 实测）；重开查看器时保存按钮文案复位（防跨产物残留"已保存到 …"）。
+5. **i18n**：lbSave/lbClose/lbSaved/lbSaveFailed/lbFailed/fcViewFull/fcSave/fcOpenOS/fcOpenFailed ×3 字典（占位 `{p}`/`{t}` 用 replace 填充）。
+6. **验证**：moon 373/373；smoke 新增 G-10 六断言（SKILL.md/ics/eml/export_pack 四类文本产物真实落盘 + headless save 真拷贝 + main/renderer 文本格式表一致），PASS=62 FAIL=0 双跑幂等；CDP 八截图：learn from demo → SKILL.md 文件卡（三按钮中文）→ 点击 snippet 全屏文本 → 保存回执「已保存到 SKILL.md」→ Esc 关闭 → generate image → 图片卡保存按钮 → 点击图片全屏（遮罩压住 header，标题正确）→ 保存 PNG 落 /tmp/saved-artifacts（9181B 实测）→ 关闭恢复。

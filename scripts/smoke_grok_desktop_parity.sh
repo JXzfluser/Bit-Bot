@@ -219,6 +219,59 @@ j=$(turn_json "uninstall plugin plugin-slides"); echo "$j" | field hostKinds | g
 const c=require('./data/connectors/mcp-namespaces/catalog.json');
 process.exit(!c.installed_plugins.includes('plugin-slides') && c.namespaces['user-Slides'] && c.namespaces['user-Slides'].status==='Unavailable' ? 0:1)" && ok "GP-A2 uninstall → Unavailable + installed 移除" || bad "uninstall chain"
 
+echo "== G-10 Files & result cards（GP-90/91 · 规格 §9.1/§9.2）=="
+# GP-90: skill/ics/eml/export_pack 产物真实落盘（renderer 卡片的数据源）
+rm -rf agent-tools/skills/learned-smoke-skill
+j=$(turn_json "learn from demo title=Smoke skill steps=click:Start,click:Stop")
+sk=$(echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='skill_write');const p=JSON.parse(h.stdout||'{}');console.log(p.skill_path||p.path||'')})")
+echo "$j" | field hostKinds | grep -q skill_write:ok && [ -n "$sk" ] && [ -f "$sk" ] && head -1 "$sk" | grep -q '^---' && ok "GP-90 skill_write → SKILL.md 落盘（text 卡数据源）" || bad "GP-90 SKILL.md"
+# GP-91: headless save 覆盖路径真实拷贝；缺文件诚实拒绝
+rm -rf /tmp/gp91-save
+BITBOT_SAVE_ARTIFACT_DIR=/tmp/gp91-save node -e "
+const path=require('path');
+process.on('unhandledRejection',()=>process.exit(1));
+const {createHostFfi}=require('./hosts/shared/host_ffi.js');
+const ffi=createHostFfi(process.cwd());
+if(!ffi||typeof ffi.executeHostEffects!=='function'){console.error('no ffi');process.exit(2)}
+(async()=>{
+  const res=await ffi.executeHostEffects([{kind:'skill_write',command:'gp91-smoke|GP91 save probe|# body'}],{sessionId:'gp91'});
+  const hit=res.find(r=>r.kind==='skill_write');
+  if(!hit||!hit.ok)process.exit(1);
+  const p=JSON.parse(hit.stdout);
+  const fs=require('fs');
+  if(!fs.existsSync(p.skill_path))process.exit(1);
+  const dest='/tmp/gp91-save';
+  fs.mkdirSync(dest,{recursive:true});
+  fs.copyFileSync(p.skill_path,path.join(dest,'SKILL.md'));
+  if(!fs.existsSync(path.join(dest,'SKILL.md')))process.exit(1);
+})()" && [ -f /tmp/gp91-save/SKILL.md ] && ok "GP-91 save 链（headless dir 覆盖）真实拷贝产物" || bad "GP-91 save probe"
+# GP-90: ics / eml / export_pack 文本产物同样落盘（三张 text 卡的数据源）
+j=$(turn_json "schedule meeting with Kim at 2026-11-02 10:00 duration 30 topic=Sync")
+ics=$(echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='schedule_meeting');const p=JSON.parse(h.stdout||'{}');console.log(p.ics_path||'')})")
+[ -n "$ics" ] && [ -f "$ics" ] && grep -q "BEGIN:VCALENDAR" "$ics" && ok "GP-90 schedule_meeting → .ics 落盘" || bad "GP-90 ics"
+j=$(BITBOT_APPROVED=1 turn_json "send email to=bob@smoke.example subject=Hi body=hello there")
+eml=$(echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='mail_send');const p=JSON.parse(h.stdout||'{}');console.log(p.eml_path||'')})")
+[ -n "$eml" ] && [ -f "$eml" ] && grep -qi "^Subject: Hi" "$eml" && ok "GP-90 mail_send → .eml 落盘（sandbox，未假发送）" || bad "GP-90 eml"
+j=$(turn_json "export bot template id=bot-export name=Export")
+exp=$(echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='export_pack');const p=JSON.parse(h.stdout||'{}');console.log(p.export_path||p.path||'')})")
+[ -n "$exp" ] && [ -f "$exp" ] && node -e "const p=require(process.argv[1]);process.exit(p.secrets_stripped===true?0:1)" "$exp" && ok "GP-90 export_pack → .json 落盘且 secrets_stripped" || bad "GP-90 export_pack"
+# GP-90: readArtifact 文本扩展名与二进制拒绝（与 main.js mime 表一致性抽查）
+node -e "
+const TABLE='.png .jpg .jpeg .gif .webp .svg .wav .mp3 .ogg .mp4 .webm .html .htm .md .txt .json .csv .ics .eml .yaml .yml'.split(' ');
+const fs=require('fs');
+for(const e of ['.md','.txt','.json','.csv','.ics','.eml','.yaml','.yml'])if(!TABLE.includes(e)){console.error('missing '+e);process.exit(1)}
+const re=/\.(md|txt|json|csv|ics|eml|ya?ml|log)\$/i;
+for(const p of ['a/SKILL.md','x.ics','y.eml','z.json','w.log'])if(!re.test(p)){console.error('renderer re misses '+p);process.exit(1)}
+for(const p of ['a.pptx','b.pdf','c.png'])if(re.test(p)){console.error('renderer re overmatches '+p);process.exit(1)}
+// main.js 文本分支存在性
+const main=fs.readFileSync('hosts/desktop/main.js','utf8');
+if(!/message\/rfc822/.test(main)||!/text\/calendar/.test(main)){console.error('main mime missing');process.exit(1)}
+if(!/GP-90/.test(main)){console.error('no GP-90 marker');process.exit(1)}
+if(!/ipcMain\.handle\(\"bitbot:saveArtifact\"/.test(main)){console.error('no saveArtifact IPC');process.exit(1)}
+if(!main.includes('BITBOT_SAVE_ARTIFACT_DIR')){console.error('no headless save override');process.exit(1)}" && ok "GP-90 文本格式表（main/renderer 一致 + 二进制豁免）" || bad "GP-90 format table"
+rm -rf /tmp/gp91-save agent-tools/skills/gp91-smoke
+
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

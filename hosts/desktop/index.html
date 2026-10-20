@@ -349,6 +349,50 @@
     border-radius: 6px;
     border: 1px solid var(--line);
     background: var(--bg0);
+    cursor: zoom-in;
+  }
+  /* GP-92: fullscreen artifact viewer */
+  #gp92-lightbox img { max-width: 92vw; max-height: 82vh; object-fit: contain; background: var(--bg0); }
+  #gp92-lightbox video { max-width: 92vw; max-height: 82vh; background: #000; }
+  #gp92-lightbox audio { width: min(80vw, 720px); }
+  #gp92-lightbox pre.lb-text {
+    max-width: 92vw;
+    max-height: 82vh;
+    overflow: auto;
+    margin: 0;
+    padding: 16px;
+    background: var(--bg1);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font: 12px/1.5 ui-monospace, "IBM Plex Mono", monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  /* GP-90: text-family file card */
+  .file-card pre.fc-snippet {
+    margin: 4px 0 0;
+    padding: 8px;
+    max-height: 140px;
+    overflow: hidden;
+    background: var(--bg0);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--muted);
+    font: 11px/1.45 ui-monospace, "IBM Plex Mono", monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    cursor: zoom-in;
+  }
+  .fc-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .fc-actions button {
+    background: var(--accent-soft);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 11px;
   }
   .msg.media audio.delivery-media,
   .msg.media video.delivery-media {
@@ -916,6 +960,15 @@
           <pre id="sec-gate-out" style="display:none;margin-top:8px;max-height:180px;overflow:auto;background:var(--input-bg);border:1px solid var(--line);border-radius:6px;padding:8px;color:var(--muted);font:11px/1.35 ui-monospace,monospace"></pre>
         </div>
       </div>
+    </div>
+    <!-- GP-92: fullscreen artifact viewer (image/video/audio/text) -->
+    <div id="gp92-lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:70;align-items:center;justify-content:center;flex-direction:column">
+      <div style="position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;gap:8px;padding:0 16px;z-index:2">
+        <span id="lb-title" style="color:#ddd;font:12px/1.6 ui-monospace,monospace;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button type="button" id="lb-save" style="background:rgba(255,255,255,.12);color:#eee;border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px" data-i18n="lbSave">保存</button>
+        <button type="button" id="lb-close" style="background:rgba(255,255,255,.12);color:#eee;border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px" data-i18n="lbClose">关闭 (Esc)</button>
+      </div>
+      <div id="lb-body" style="max-width:94vw;max-height:88vh;display:flex;align-items:center;justify-content:center;overflow:auto"></div>
     </div>
     <!-- GP-A2/A3: Connect apps panel (spec §2.5 · Cmd/Ctrl+Shift+M) -->
     <div id="connect-apps-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:62;align-items:center;justify-content:center">
@@ -1793,6 +1846,13 @@
     /** CHARTER Delivery: inline Host media attachment in Desktop transcript. */
     async function renderDeliveryMedia(filePath, label, opts) {
       if (!filePath || !window.bitbot || !window.bitbot.readArtifact) return;
+      // GP-90: text-family artifacts get the file-card renderer.
+      if (opts && opts.voice) {
+        /* voice memos keep the memo card even when the leaf is .txt/.json */
+      } else if (opts && (opts.text || gp90IsTextPath(filePath))) {
+        await renderDeliveryTextFile(filePath, label);
+        return;
+      }
       try {
         const art = await window.bitbot.readArtifact(filePath);
         if (!art || !art.ok || !art.data_url) {
@@ -1882,6 +1942,9 @@
           img.className = "delivery-media";
           img.alt = label || "Host media";
           img.src = art.data_url;
+          // GP-92: click → fullscreen viewer.
+          img.style.cursor = "zoom-in";
+          img.addEventListener("click", () => openArtifactLightbox(art, label));
           body.appendChild(img);
         } else if (mime.startsWith("audio/")) {
           const audio = document.createElement("audio");
@@ -1894,9 +1957,32 @@
           video.className = "delivery-media";
           video.controls = true;
           video.src = art.data_url;
+          // GP-92: desktop can go fullscreen (spec §9.1 桌面端可全屏查看图片/视频).
+          video.requestFullscreen &&
+            video.addEventListener("dblclick", () => {
+              video.requestFullscreen().catch(() => {});
+            });
           body.appendChild(video);
         } else {
           lab.textContent += " · preview unsupported";
+        }
+        // GP-91: save control on every media card (spec §9.1 可保存文件).
+        if (
+          window.bitbot.saveArtifact &&
+          (mime.startsWith("image/") || mime.startsWith("audio/") || mime.startsWith("video/"))
+        ) {
+          const saveRow = document.createElement("div");
+          saveRow.className = "fc-actions";
+          const save = document.createElement("button");
+          save.type = "button";
+          save.textContent = wavegT("fcSave");
+          save.addEventListener("click", async () => {
+            const r = await window.bitbot.saveArtifact(filePath);
+            if (r && r.ok) save.textContent = wavegT("lbSaved").replace("{p}", String(filePath).split("/").slice(-1)[0]);
+            else if (r && !r.canceled) save.textContent = wavegT("lbSaveFailed").replace("{t}", (r && r.error) || "unknown");
+          });
+          saveRow.appendChild(save);
+          body.appendChild(saveRow);
         }
         log.appendChild(el);
         log.scrollTop = log.scrollHeight;
@@ -1906,6 +1992,171 @@
           "Attachment preview failed: " +
             String(e && e.message ? e.message : e),
         );
+      }
+    }
+
+    /** GP-92: fullscreen viewer for any readArtifact-supported file. */
+    function openArtifactLightbox(art, titleText) {
+      const box = document.getElementById("gp92-lightbox");
+      const body = document.getElementById("lb-body");
+      const title = document.getElementById("lb-title");
+      if (!box || !body) return;
+      body.textContent = "";
+      const mime = String(art.mime || "");
+      let node = null;
+      if (mime.startsWith("image/")) {
+        node = document.createElement("img");
+        node.src = art.data_url || "";
+        node.alt = titleText || "artifact";
+      } else if (mime.startsWith("video/")) {
+        node = document.createElement("video");
+        node.src = art.data_url || "";
+        node.controls = true;
+        node.autoplay = false;
+      } else if (mime.startsWith("audio/")) {
+        node = document.createElement("audio");
+        node.src = art.data_url || "";
+        node.controls = true;
+      } else if (art.text != null) {
+        node = document.createElement("pre");
+        node.className = "lb-text";
+        node.textContent = art.text;
+      }
+      if (!node) return;
+      body.appendChild(node);
+      if (title) {
+        title.textContent =
+          (titleText || "file") +
+          " · " +
+          String(art.path || "").split("/").slice(-1)[0] +
+          " · " +
+          (art.bytes || 0) +
+          "B";
+        title.dataset.artifactPath = art.path || "";
+      }
+      const save = document.getElementById("lb-save");
+      if (save) {
+        save.dataset.artifactPath = art.path || "";
+        save.textContent = wavegT("lbSave");
+      }
+      box.style.display = "flex";
+    }
+    function closeArtifactLightbox() {
+      const box = document.getElementById("gp92-lightbox");
+      if (box) box.style.display = "none";
+      const body = document.getElementById("lb-body");
+      if (body) {
+        for (const el of body.querySelectorAll("video,audio")) {
+          try { el.pause(); } catch (_) { /* ignore */ }
+        }
+        body.textContent = "";
+      }
+    }
+    async function openArtifactLightboxByPath(filePath, titleText) {
+      if (!window.bitbot || !window.bitbot.readArtifact) return;
+      try {
+        const art = await window.bitbot.readArtifact(filePath);
+        if (art && art.ok) openArtifactLightbox(art, titleText);
+        else
+          addMsg(
+            "assistant",
+            wavegT("lbFailed").replace("{t}", (art && art.error) || "unknown"),
+          );
+      } catch (e) {
+        addMsg("assistant", wavegT("lbFailed").replace("{t}", String(e && e.message ? e.message : e)));
+      }
+    }
+    function wireArtifactLightbox() {
+      const box = document.getElementById("gp92-lightbox");
+      if (!box || box.dataset.wired === "1") return;
+      // GP-92: escape the body grid (#main) so z-index applies at root level.
+      if (box.parentElement !== document.body) document.body.appendChild(box);
+      box.dataset.wired = "1";
+      box.addEventListener("click", (ev) => {
+        if (ev.target === box) closeArtifactLightbox();
+      });
+      const close = document.getElementById("lb-close");
+      if (close) close.addEventListener("click", closeArtifactLightbox);
+      const save = document.getElementById("lb-save");
+      if (save)
+        save.addEventListener("click", async () => {
+          const fp = save.dataset.artifactPath || "";
+          if (!fp || !window.bitbot || !window.bitbot.saveArtifact) return;
+          const r = await window.bitbot.saveArtifact(fp);
+          if (r && r.ok) {
+            save.textContent = wavegT("lbSaved").replace(
+              "{p}",
+              String(r.saved_path || "").split("/").slice(-1)[0],
+            );
+          } else if (r && !r.canceled) {
+            save.textContent = wavegT("lbSaveFailed").replace("{t}", r.error || "unknown");
+          }
+        });
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && box.style.display !== "none") {
+          ev.stopPropagation();
+          closeArtifactLightbox();
+        }
+      });
+    }
+
+    /** GP-90: text-family artifact → file card with snippet + actions. */
+    async function renderDeliveryTextFile(filePath, label) {
+      if (!filePath || !window.bitbot || !window.bitbot.readArtifact) return;
+      try {
+        const art = await window.bitbot.readArtifact(filePath);
+        if (!art || !art.ok || art.text == null) {
+          await renderOpenArtifact(filePath, label);
+          return;
+        }
+        const el = document.createElement("div");
+        el.className = "msg assistant media file-card";
+        el.innerHTML = '<div class="role">attachment</div><div class="body"></div>';
+        const body = el.querySelector(".body");
+        const lab = document.createElement("div");
+        lab.className = "media-label";
+        const fname = String(filePath).split("/").slice(-1)[0];
+        lab.textContent = (label || "file") + " · " + fname + " · " + (art.bytes || 0) + "B";
+        body.appendChild(lab);
+        const pre = document.createElement("pre");
+        pre.className = "fc-snippet";
+        const text = String(art.text);
+        pre.textContent = text.length > 600 ? text.slice(0, 600) + "…" : text;
+        pre.addEventListener("click", () => openArtifactLightbox(art, label));
+        body.appendChild(pre);
+        const actions = document.createElement("div");
+        actions.className = "fc-actions";
+        const view = document.createElement("button");
+        view.type = "button";
+        view.textContent = wavegT("fcViewFull");
+        view.addEventListener("click", () => openArtifactLightbox(art, label));
+        actions.appendChild(view);
+        if (window.bitbot.saveArtifact) {
+          const save = document.createElement("button");
+          save.type = "button";
+          save.textContent = wavegT("fcSave");
+          save.addEventListener("click", async () => {
+            const r = await window.bitbot.saveArtifact(filePath);
+            if (r && r.ok) save.textContent = wavegT("lbSaved").replace("{p}", fname);
+            else if (r && !r.canceled) save.textContent = wavegT("lbSaveFailed").replace("{t}", (r && r.error) || "unknown");
+          });
+          actions.appendChild(save);
+        }
+        if (window.bitbot.openArtifact) {
+          const open = document.createElement("button");
+          open.type = "button";
+          open.textContent = wavegT("fcOpenOS");
+          open.addEventListener("click", async () => {
+            const r = await window.bitbot.openArtifact(filePath);
+            if (!r || !r.ok) open.textContent = wavegT("fcOpenFailed").replace("{t}", (r && r.error) || "unknown");
+          });
+          actions.appendChild(open);
+        }
+        body.appendChild(actions);
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+      } catch (e) {
+        addMsg("assistant", "File card failed: " + String(e && e.message ? e.message : e));
       }
     }
 
@@ -1957,6 +2208,12 @@
       }
     }
 
+    // GP-90: text-family artifacts render as previewable file cards too.
+    const GP90_TEXT_EXT_RE = /\.(md|txt|json|csv|ics|eml|ya?ml|log)$/i;
+    function gp90IsTextPath(fp) {
+      return !!fp && GP90_TEXT_EXT_RE.test(String(fp));
+    }
+
     function collectHostMediaPaths(hostResults) {
       const out = [];
       if (!Array.isArray(hostResults)) return out;
@@ -1997,6 +2254,16 @@
             voice: true,
             duration: typeof voiceChatLastDuration === "string" ? voiceChatLastDuration : "",
           });
+        } else if (kind === "skill_write") {
+          const fp = p.skill_path || p.path;
+          if (fp) out.push({ path: fp, label: "skill_md", text: true });
+        } else if (kind === "schedule_meeting" && p.ics_path) {
+          out.push({ path: p.ics_path, label: "schedule_ics", text: true });
+        } else if ((kind === "mail_send" || kind === "mail_draft") && p.eml_path) {
+          out.push({ path: p.eml_path, label: kind + "_eml", text: true });
+        } else if (kind === "export_pack") {
+          const fp = p.export_path || p.path;
+          if (fp && gp90IsTextPath(fp)) out.push({ path: fp, label: "export_pack", text: true });
         }
       }
       return out;
@@ -2043,16 +2310,17 @@
             out.push({ path: fp, label: "slides_pptx" });
         } else if (kind === "schedule_meeting") {
           const fp = p.ics_path;
-          if (fp) out.push({ path: fp, label: "schedule_ics" });
+          // GP-90: text previews render as cards; OS-open only for non-text.
+          if (fp && !gp90IsTextPath(fp)) out.push({ path: fp, label: "schedule_ics" });
         } else if (kind === "mail_send" || kind === "mail_draft") {
           const fp = p.eml_path;
-          if (fp) out.push({ path: fp, label: kind + "_eml" });
+          if (fp && !gp90IsTextPath(fp)) out.push({ path: fp, label: kind + "_eml" });
         } else if (kind === "skill_write") {
           const fp = p.skill_path || p.path;
-          if (fp) out.push({ path: fp, label: "skill_md" });
+          if (fp && !gp90IsTextPath(fp)) out.push({ path: fp, label: "skill_md" });
         } else if (kind === "export_pack") {
           const fp = p.export_path || p.path;
-          if (fp) out.push({ path: fp, label: "export_pack" });
+          if (fp && !gp90IsTextPath(fp)) out.push({ path: fp, label: "export_pack" });
         }
       }
       return out;
@@ -6239,6 +6507,15 @@
         "caToolDesc.make_deck": "根据大纲生成幻灯片。",
         "caToolDesc.list_templates": "列出可用幻灯片模板。",
         "caToolDesc.list_events": "列出即将到来的日历日程。",
+        lbSave: "保存",
+        lbClose: "关闭",
+        lbSaved: "已保存到 {p}",
+        lbSaveFailed: "保存失败：{t}",
+        lbFailed: "无法读取产物：{t}",
+        fcViewFull: "查看全文",
+        fcSave: "保存文件",
+        fcOpenOS: "用系统应用打开",
+        fcOpenFailed: "打开失败：{t}",
         voiceRecHint: "录音中…再点 🎙 或按 Ctrl/Cmd+D 停止",
         voiceChatBtn: "🎧 语音对话",
         voiceChatLive: "语音对话进行中",
@@ -6453,6 +6730,15 @@
         "caToolDesc.make_deck": "依大綱產生投影片。",
         "caToolDesc.list_templates": "列出可用投影片範本。",
         "caToolDesc.list_events": "列出即將到來的行事曆行程。",
+        lbSave: "儲存",
+        lbClose: "關閉",
+        lbSaved: "已儲存至 {p}",
+        lbSaveFailed: "儲存失敗：{t}",
+        lbFailed: "無法讀取產物：{t}",
+        fcViewFull: "檢視全文",
+        fcSave: "儲存檔案",
+        fcOpenOS: "以系統應用程式開啟",
+        fcOpenFailed: "開啟失敗：{t}",
         voiceRecHint: "錄音中…再點 🎙 或按 Ctrl/Cmd+D 停止",
         voiceChatBtn: "🎧 語音對話",
         voiceChatLive: "語音對話進行中",
@@ -6667,6 +6953,15 @@
         "caToolDesc.make_deck": "Render a deck from an outline.",
         "caToolDesc.list_templates": "List available deck templates.",
         "caToolDesc.list_events": "List upcoming calendar events.",
+        lbSave: "Save",
+        lbClose: "Close",
+        lbSaved: "Saved to {p}",
+        lbSaveFailed: "Save failed: {t}",
+        lbFailed: "Cannot read artifact: {t}",
+        fcViewFull: "View full text",
+        fcSave: "Save file",
+        fcOpenOS: "Open with system app",
+        fcOpenFailed: "Open failed: {t}",
         voiceRecHint: "Recording… tap 🎙 again or press Ctrl/Cmd+D to stop",
         voiceChatBtn: "🎧 Voice chat",
         voiceChatLive: "Voice chat in progress",
@@ -7483,6 +7778,7 @@
         wireWaveGSettingsControls();
         wireGpPanel();
         wireAccelerators();
+        wireArtifactLightbox();
         wireFocusSession();
         startComputerPolling();
         refreshPendingBar().catch(() => {});

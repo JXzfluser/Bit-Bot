@@ -1607,20 +1607,44 @@ ipcMain.handle("bitbot:readArtifact", async (_event, artifactPath) => {
       ".jpeg": "image/jpeg",
       ".gif": "image/gif",
       ".webp": "image/webp",
+      ".svg": "image/svg+xml",
       ".wav": "audio/wav",
       ".mp3": "audio/mpeg",
+      ".ogg": "audio/ogg",
       ".mp4": "video/mp4",
       ".webm": "video/webm",
       ".html": "text/html",
       ".htm": "text/html",
+      ".md": "text/markdown",
+      ".txt": "text/plain",
+      ".json": "application/json",
+      ".csv": "text/csv",
+      ".ics": "text/calendar",
+      ".eml": "message/rfc822",
+      ".yaml": "text/yaml",
+      ".yml": "text/yaml",
     }[ext] || null;
+  // GP-90: unknown extensions preview as text when they look texty (≤64KB).
+  let textish = false;
   if (!mime) {
-    return {
-      ok: false,
-      error: "unsupported media type",
-      path: resolved,
-      pretend_read: false,
-    };
+    const probe = fs.readFileSync(resolved);
+    if (probe.length > 64 * 1024) {
+      return {
+        ok: false,
+        error: "unsupported media type",
+        path: resolved,
+        pretend_read: false,
+      };
+    }
+    if (probe.subarray(0, 1024).includes(0)) {
+      return {
+        ok: false,
+        error: "unsupported media type",
+        path: resolved,
+        pretend_read: false,
+      };
+    }
+    textish = true;
   }
   const buf = fs.readFileSync(resolved);
   // Cap inline preview size (Desktop UI; full file still on disk).
@@ -1644,6 +1668,23 @@ ipcMain.handle("bitbot:readArtifact", async (_event, artifactPath) => {
       pretend_read: false,
     };
   }
+  // GP-90: text-family previews (md/txt/json/csv/ics/eml/yaml + texty unknowns).
+  const asText =
+    textish ||
+    (mime &&
+      (mime.startsWith("text/") ||
+        mime === "application/json" ||
+        mime === "message/rfc822"));
+  if (asText) {
+    return {
+      ok: true,
+      path: resolved,
+      mime: mime || "text/plain",
+      bytes: buf.length,
+      text: buf.toString("utf8"),
+      pretend_read: false,
+    };
+  }
   return {
     ok: true,
     path: resolved,
@@ -1652,6 +1693,65 @@ ipcMain.handle("bitbot:readArtifact", async (_event, artifactPath) => {
     data_url: "data:" + mime + ";base64," + buf.toString("base64"),
     pretend_read: false,
   };
+});
+
+/** GP-91: Save file… — copy a repo artifact to a user-chosen path. */
+ipcMain.handle("bitbot:saveArtifact", async (_event, artifactPath) => {
+  const raw = String(artifactPath || "").trim();
+  if (!raw) return { ok: false, error: "empty path" };
+  let resolved;
+  try {
+    resolved = path.resolve(raw);
+  } catch {
+    return { ok: false, error: "invalid path" };
+  }
+  const root = path.resolve(REPO_ROOT);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    return { ok: false, error: "path outside repo", pretend_saved: false };
+  }
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    return { ok: false, error: "missing file", pretend_saved: false };
+  }
+  try {
+    // Headless smoke override: real copy to a fixed dir (no modal dialog).
+    const dirOverride = String(process.env.BITBOT_SAVE_ARTIFACT_DIR || "").trim();
+    if (dirOverride) {
+      fs.mkdirSync(dirOverride, { recursive: true });
+      const dest = path.join(dirOverride, path.basename(resolved));
+      fs.copyFileSync(resolved, dest);
+      return {
+        ok: true,
+        saved_path: dest,
+        bytes: fs.statSync(resolved).size,
+        headless: true,
+        pretend_saved: false,
+      };
+    }
+    const win = BrowserWindow.getFocusedWindow() || mainWindow;
+    const opts = {
+      defaultPath: path.basename(resolved),
+      properties: ["openFile", "createDirectory"],
+    };
+    const res = win
+      ? await dialog.showSaveDialog(win, opts)
+      : await dialog.showSaveDialog(opts);
+    if (res.canceled || !res.filePath) {
+      return { ok: false, canceled: true, pretend_saved: false };
+    }
+    fs.copyFileSync(resolved, res.filePath);
+    return {
+      ok: true,
+      saved_path: res.filePath,
+      bytes: fs.statSync(resolved).size,
+      pretend_saved: false,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+      pretend_saved: false,
+    };
+  }
 });
 
 /** CHARTER Delivery: open Host attachment with OS handler (pptx/ics/eml/…). */

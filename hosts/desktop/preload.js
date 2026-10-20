@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("bitbot", {
     ipcRenderer.invoke("bitbot:readArtifact", artifactPath),
   openArtifact: (artifactPath) =>
     ipcRenderer.invoke("bitbot:openArtifact", artifactPath),
+  saveArtifact: (artifactPath) =>
+    ipcRenderer.invoke("bitbot:saveArtifact", artifactPath),
   sessions: {
     list: () => ipcRenderer.invoke("bitbot:sessions:list"),
     get: (id) => ipcRenderer.invoke("bitbot:sessions:get", id),
