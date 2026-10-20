@@ -411,6 +411,82 @@ const html=require('fs').readFileSync('hosts/desktop/index.html','utf8');
 process.exit(/computer_use_busy/.test(html) && /rCuBusy/.test(html) && /botId: activeBotId/.test(html) ? 0:1)" && ok "GP-30 renderer：busy 回执进聊天 + 回合携带 activeBotId" || bad "GP-30 renderer wiring"
 rm -f data/desktop/cu-locks/*.json
 
+echo "== G-14 群内任务所有权转移（GP-52 · 规格 §2.5）=="
+# 规格验收信号：Bot→Bot 转交必须写进群 transcript（可见）并把任务投递给承接 Bot；
+# 非成员/未知群一律诚实拒绝，绝不假装转移。
+j=$(turn_json "create bot HoFrom job=probe description=handoff+source")
+hid_a=$(node -e "const b=require('./$DATA/bots.json').bots.filter(x=>x.name==='HoFrom').pop();console.log(b?b.id:'')")
+j=$(turn_json "create bot HoTo job=probe description=handoff+target")
+hid_b=$(node -e "const b=require('./$DATA/bots.json').bots.filter(x=>x.name==='HoTo').pop();console.log(b?b.id:'')")
+j=$(turn_json "create bot HoOut job=probe description=handoff+outsider")
+hid_c=$(node -e "const b=require('./$DATA/bots.json').bots.filter(x=>x.name==='HoOut').pop();console.log(b?b.id:'')")
+[ -n "$hid_a" ] && [ -n "$hid_b" ] && [ -n "$hid_c" ] && ok "G-14 前置：三个探针 Bot（源/目标/外人）" || bad "G-14 probe bots"
+j=$(turn_json "create group chat bots=$hid_a,$hid_b title=Ho+room")
+echo "$j" | field hostKinds | grep -q group_chat:ok || true
+hoid=$(node -e "
+const rs=require('./$DATA/rooms.json').rooms.filter(r=>r.title==='Ho room');
+const mine=rs.filter(r=>(r.members||[]).includes('$hid_b')&&(r.members||[]).includes('$hid_a'));
+console.log((mine[mine.length-1]||{}).id||'')")
+[ -n "$hoid" ] && ok "G-14 前置：群建立（2 成员）" || bad "G-14 room create"
+j=$(turn_json "handoff room $hoid from=$hid_a to=$hid_b task=collect deploy logs")
+echo "$j" | field intent | grep -q handoff_task && echo "$j" | field hostKinds | grep -q handoff_task:ok && ok "GP-52 短语 → handoff_task 意图 + host ok" || bad "GP-52 chain"
+node -e "
+const fs=require('fs');
+const hit=require('./$DATA/rooms.json').rooms.find(r=>r.id==='$hoid')||{};
+const t=(hit.transcript||[]).filter(x=>x.kind==='handoff').pop()||{};
+process.exit(
+  t.to_bot==='$hid_b' && t.from_bot==='$hid_a' &&
+  t.responder_policy==='handoff_target' &&
+  Array.isArray(t.responders) && t.responders.join()==='$hid_b' &&
+  t.task==='collect deploy logs' &&
+  /HoFrom → HoTo :: collect deploy logs/.test(t.text||'') ? 0:1)" && ok "GP-52 群 transcript 落入 handoff 行（成员、任务、承接者逐字对齐）" || bad "GP-52 transcript entry"
+# 承接 Bot 的 inbox 必须真的收到任务（否则 transcript 只是装饰）
+node -e "
+const fs=require('fs');
+const p='data/agents/inbox/$hid_b.jsonl';
+if(!fs.existsSync(p))process.exit(1);
+const rows=fs.readFileSync(p,'utf8').trim().split('\n').filter(Boolean).map(l=>JSON.parse(l));
+const last=rows.filter(r=>r.is_handoff===true).pop()||{};
+process.exit(last.to_id==='$hid_b' && last.from==='$hid_a' && last.room==='$hoid' &&
+  last.body==='collect deploy logs' && last.is_room===true &&
+  last.forbids_private_assumptions===true ? 0:1)" && ok "GP-52 任务写入承接 Bot inbox（is_handoff + 禁私有假设）" || bad "GP-52 inbox delivery"
+node -e "
+const fs=require('fs');
+const d='data/agents/handoffs';
+const files=fs.existsSync(d)?fs.readdirSync(d).filter(f=>f.startsWith('handoff-$hid_b-')):[];
+process.exit(files.length>=1 ? 0:1)" && ok "GP-52 转交存根落盘 data/agents/handoffs/" || bad "GP-52 handoff artifact"
+# 非成员承接 → 诚实拒绝，transcript 不增行
+ho_lines=$(node -e "
+const hit=require('./$DATA/rooms.json').rooms.find(r=>r.id==='$hoid')||{};
+console.log((hit.transcript||[]).filter(x=>x.kind==='handoff').length)")
+j=$(turn_json "handoff room $hoid from=$hid_a to=$hid_c task=steal the task")
+echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='handoff_task');const p=JSON.parse(h.stdout||'{}');process.exit(h.ok===false&&h.refused===true&&p.error==='to_bot_not_member'&&p.pretend_transferred===false&&Array.isArray(p.members)?0:1)})" <<<"$j" && node -e "
+const hit=require('./$DATA/rooms.json').rooms.find(r=>r.id==='$hoid')||{};
+process.exit((hit.transcript||[]).filter(x=>x.kind==='handoff').length===$ho_lines ? 0:1)" && ok "GP-52 非成员承接被拒（to_bot_not_member，不假转交、不写 transcript）" || bad "GP-52 non-member refusal"
+# 未知群 → room_not_found
+j=$(turn_json "handoff room no-such-room-xyz to=$hid_b task=nobody hears this")
+echo "$j" | grep -q "room_not_found" && ! echo "$j" | grep -q "unknown host error" && ok "GP-52 未知群 → room_not_found 拒绝，且拒绝原因透传给内核续跑（非 unknown host error）" || bad "GP-52 unknown room"
+# renderer 接线：转交回执必须本地化进群聊气泡（三语字典 + 占位填充）
+node -e '
+const html=require("fs").readFileSync("hosts/desktop/index.html","utf8");
+const keys=(html.match(/rHandoff:/g)||[]).length;
+const map=html.includes("Task handoff planned") && html.includes("GP-52") && html.includes(String.raw`"rHandoff"`);
+const fill=html.includes(String.raw`key === "rHandoff"`) && html.includes("{from}") && html.includes("{to}") && html.includes("{room}");
+const failBubble=(html.match(/rHandoffFail:/g)||[]).length>=3 && html.includes(String.raw`h.kind === "handoff_task" && !h.ok`);
+process.exit(keys>=3 && map && fill && failBubble ? 0:1)' && ok "GP-52 renderer：三语 rHandoff + GP-52 回执映射与占位填充" || bad "GP-52 renderer wiring"
+# 清理：确认删除三个探针 Bot（<2 成员的群行被级联移除）+ 探针 inbox/存根
+for id in "$hid_a" "$hid_b" "$hid_c"; do
+  turn_json "confirm delete bot $id" >/dev/null
+done
+node -e "
+const fs=require('fs');
+for(const p of ['data/agents/inbox/$hid_a.jsonl','data/agents/inbox/$hid_b.jsonl','data/agents/inbox/$hid_c.jsonl']){try{fs.unlinkSync(p)}catch(e){}}
+const d='data/agents/handoffs';
+if(fs.existsSync(d))for(const f of fs.readdirSync(d))if(/-($hid_a|$hid_b|$hid_c)-/.test(f))fs.unlinkSync(require('path').join(d,f));
+const bs=require('./$DATA/bots.json').bots;
+const rs=require('./$DATA/rooms.json').rooms;
+process.exit(!bs.some(b=>['HoFrom','HoTo','HoOut'].includes(b.name)) && !rs.some(r=>r.id==='$hoid') ? 0:1)" && ok "G-14 清理：探针 Bot/群行/inbox/存根全清（双跑幂等）" || bad "G-14 cleanup"
+
 echo
 
 

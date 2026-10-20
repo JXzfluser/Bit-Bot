@@ -103,6 +103,7 @@ pub(all) enum TurnIntent {
     body~ : String
   )
   RoomTurn(room~ : String, body~ : String)
+  HandoffTask(room~ : String, from_bot~ : String, to_bot~ : String, task~ : String)
   SendToAgent(to_id~ : String, body~ : String)
   LaunchCloudAgent(prompt~ : String)
   DeliverCloudArtifact(artifact~ : String, dest~ : String)
@@ -254,6 +255,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     AddSection(_) => "add_section"
     SectionPost(_) => "section_post"
     RoomTurn(_) => "room_turn"
+    HandoffTask(_) => "handoff_task"
     SendToAgent(_) => "send_to_agent"
     LaunchCloudAgent(_) => "launch_cloud_agent"
     DeliverCloudArtifact(_) => "deliver_cloud_artifact"
@@ -1020,7 +1022,7 @@ fn extract_kv(rest : String, key : String) -> String? {
         " group=", " hidden=", " assistant=", " toggle=", " enabled=", " confirm=",
         " bots=", " job=", " avatar=", " pattern=", " decision=", " mode=", " code=",
         " tz=", " reason=", " kind=", " ns=", " tool=", " detail=", " msg=", " message=",
-        " emoji=",
+        " emoji=", " task=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -2959,6 +2961,39 @@ pub fn run_desktop_turn(
           )
         }
       }
+    HandoffTask(room~, from_bot~, to_bot~, task~) => {
+      // GP-52: Bot→Bot task ownership transfer inside a product room. The
+      // Host appends a visible transcript line AND queues the task into the
+      // target Bot's inbox — no silent reassignment, no invented Bot.
+      let effect : DesktopEffect = {
+        kind: "handoff_task",
+        command: room +
+        "|" +
+        from_bot +
+        "|" +
+        to_bot +
+        "|" +
+        encode_field_value(task),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Task handoff planned (GP-52): " +
+        from_bot +
+        " → " +
+        to_bot +
+        " in «" +
+        room +
+        "». Host writes the transfer into the room transcript and queues the task for " +
+        to_bot +
+        ".",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
     SendToAgent(to_id~, body~) =>
       match
         @teammates.plan_send_to_agent_fanout(

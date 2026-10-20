@@ -34,7 +34,7 @@
 | GP-42 | 已实现 | kernel 判定未变（CM-0306），UI 不代客批准。 |
 | GP-50 | 已实现 | 2 成员建立 / 1 成员拒绝 `members_2_to_6` 实测（smoke G-6）；名称可改持久（rename 走 rooms store）。 |
 | GP-51 | 已实现 | `@BotName`→mentioned_only、`@everyone`→all、无@→bot_discretion 实测（smoke G-6，transcript 落 rooms.json）。 |
-| GP-52 | 部分 | `send_to_agent` 沿用 CM-14xx；群内 reply 定向 UI 有、内核所有权转移断言未进本波。 |
+| GP-52 | 已实现 | `send_to_agent` 沿用 CM-14xx；本轮补齐 Bot→Bot 任务所有权转移：`handoff room <id|title> [from=<bot>] to=<bot> task=<text>` → `handoff_task` 意图 → Host 写群 transcript（回执含 to_bot/responders，规格信号"转交可见于 transcript"）+ 任务投递承接 Bot inbox；非成员/未知群诚实拒绝（`pretend_transferred:false`，不写 transcript）。smoke G-14 十断言。 |
 | GP-53 | 已实现 | `escalations:"dm-only"` 实测出现在 room_turn 结果；审批卡只进 pending 队列/私聊，不进 transcript。 |
 | GP-60/61 | 已实现 | GP-60 Voice chat：composer 为空才可发起（非空/有附件禁用按钮，实测）→ 通话栏（脉冲+计时+监听文案+转述框）+ 侧边栏"语音对话进行中"→ 挂断后对话留 Voice chat 卡（真实麦克风录音优先，含时长）。GP-61 memo 卡：播放/暂停 + 转写展开（relay user_text 回填）。kernel→host 链断言进 smoke G-7（PASS=46）。 |
 | GP-70 | 已实现 | appearance dark 持久实测 + boot 时 `applyAppearance` 读取持久值（smoke G-5）；nativeTheme 像素断言未做（依赖截图基线，未列本波）。 |
@@ -65,7 +65,7 @@
 - ~~GP-06/GP-07 隐藏不暂停 Routines、删除二次确认的自动化断言~~（M11 已实现，smoke G-12 八断言 + 聊天侧确认框接线）。
 - ~~GP-30 同 Bot computer-use 并发拒绝的桌面端专项断言~~（M12 已实现：文件锁 + 拒绝路径 + smoke G-13 七断言）。
 - ~~GP-15/GP-60 真麦克风链路~~（M6 已用 `--use-fake-device-for-media-stream` 实测 getUserMedia→MediaRecorder→落盘全链）。
-- GP-52 群内所有权转移 transcript 断言。
+- ~~GP-52 群内所有权转移 transcript 断言~~（M13 已实现：kernel `handoff_task` 意图 + Host transcript 写入 + inbox 投递 + smoke G-14 十断言）。
 - GP-70 nativeTheme 像素级断言。
 - ~~GP-90/92 预览格式扩展与全屏验收~~（M9 已实现文本族文件卡 + saveArtifact + 全屏查看器，CDP 实测）。
 - renderer E2E（Playwright for Electron）以替掉手工冷启动检查。当前已有 `hosts/desktop/shot_cdp.mjs`（CDP 驱动真实控件 + 视口截图，dev-only）做冒烟级验证；本轮真机截图暴露并修复了 3 个问题：body 网格 `min-height:100vh` 导致长对话把 composer/审批条推出视口、never 拒绝后三按钮条仍挂起 + kernel 显示 "unknown host error"、@非成员静默回退 all（现为 bot_discretion）。
@@ -177,3 +177,13 @@
 3. **Bot 身份贯通**：`runTurn ctx.botId → executeHostEffects({botId})`；renderer `runUserTurn` 携带 `activeBotId`（打开 Bot DM 时设置），`bitbot:turn` IPC 透传；审批放行重放 `runAllowed` 也带 `bot_id`（否则后台放行的 CU 会绕过锁）。CLI `--bot-id`/`BITBOT_BOT_ID` 供 smoke 断言。缺省 `agent-bit`（主会话）。
 4. **renderer 回执**：chip 条只渲染 ok:true，busy 拒绝改由 `postProcessWaveGResults` 直接 `addMsg`（`rCuBusy` ×3 字典，含 `{bot}`/`{task}` 占位）——拒绝可见且绝不伪装成功。**本轮坑**：编辑 kind 链时误把 `else if` 拆成独立 `if` 又删错花括号，renderer 语法错误导致 boot 停在 "booting MoonBit…"；用 `node --check` 抽出 `<script>` 体定位（`new Function` 只报类型不报行号），修复后 boot 正常。教训：改 index.html 脚本后必须先跑 script 体 `node --check` 再启动 Electron。
 5. **验证**：moon 373/373；smoke G-13 七断言（外部进程持锁 → 同 Bot 第二任务 busy/refused/pretend_ran:false 且 held_task 可见 → 拒绝不窃取锁 → 不同 Bot 并行 ok → 释放后同 Bot 可再跑且锁自动清空 → 3 分钟陈旧锁 TTL 接管 → renderer 接线），PASS=82 FAIL=0 双跑幂等；CDP 两场景：agent-bit 被外部持锁时聊天发起 CU → 「agent-bit 正在执行另一个 computer-use 任务（hold: …/task-a）…」；点进 Piper（bot-7ef5d2）聊天发起同一任务 → 正常执行出证据文件，agent-bit 锁全程未被影响。
+
+## Wave M13（群内任务所有权转移，本轮）
+
+规格：spec.md GP-52「Bot 间可传递任务所有权；回执含目标 agent id；任务转交可见于 transcript」。此前桌面端只有 `send_to_agent`（CM-14xx）与 room_turn 定向回复，没有任何"把任务从 A Bot 转给 B Bot 并在群里留痕"的能力——真实现缺口，非断言缺口。
+
+1. **kernel（`cmd/desktop_turn`）**：新意图 `HandoffTask(room, from_bot, to_bot, task)`；短语 `handoff room <id|title> [from=<bot>] to=<bot> task=<text>`（`hand off room` 同义），匹配器置于 join/leave/room-cue 分支**之前**，防任务文本里出现 "room" 时被通用分支劫持（wbtest 钉住该优先级）。`extract_kv` 键表补 `" task="`——否则 `to=bot-x task=…` 会把 task 整段吞进 to 值（本轮实测踩坑）。effect `handoff_task`，command 管道格式 `room|from|to|task(+编码)`。
+2. **Host（`product_surface.js` + `host_ffi.js`）**：`handoffTask()` 按 id 或标题找群，成员校验双向（`to_bot_not_member` / `from_bot_not_member`，from 可为 user），拒绝负载带 `members` 与 `pretend_transferred:false` 且**不写 transcript**；成功则追加 `{kind:"handoff", text:"↪ task handed off: A → B :: <task>", responders:[to], responder_policy:"handoff_target"}` 进 rooms.json（cap 200）。`host_ffi` 执行链再投递承接 Bot inbox（`data/agents/inbox/<to>.jsonl`，`is_handoff:true + forbids_private_assumptions:true`——群内转交不得夹带私聊假设）并落 `data/agents/handoffs/*.json` 存根。
+3. **拒绝原因透传**：`handoff_task` 结果此前只填 `stderr`，内核续跑显示 "unknown host error"（M12 前 CU 拒绝踩过同型坑）。现补 `error:` 字段，聊天与内核 dump 都能看到 `room_not_found` / `to_bot_not_member` 原文。
+4. **renderer**：`WAVEG_REPLY_MAP` 识别 `Task handoff planned (GP-52): A → B in «room»` → `rHandoff`（×3 字典，`{from}/{to}/{room}` 占位填充）；拒绝走 `postProcessWaveGResults` 直接 `addMsg`（chip 条只渲染 ok:true 的既有纪律）→ `rHandoffFail` 组装 `error → to_bot @ room` 明细。
+5. **验证**：moon 373/373（wbtest 增 4 组断言：意图/命令逐字、alias+from 缺省+task 含 "room" 不被劫持、缺 task 不落 handoff、room 短语优先级不变）；smoke G-14 十断言（三探针 Bot + 群 → 转交意图+host ok → transcript 行逐字对齐 → inbox 投递 → 存根落盘 → 非成员被拒不写 transcript → 未知群 room_not_found 且原因透传 → renderer 三语接线 → 级联清理双跑幂等），PASS=92 FAIL=0；CDP 两截图：聊天输入合法 handoff → 「CdpHoFrom 已将任务转交给 CdpHoTo（群「room-mvg7mte4」…）」且 rooms.json 落行、inbox 收到；转给非成员 agent-bit → 成功气泡与「任务转交被拒：to_bot_not_member → agent-bit @ room-…」并存，transcript 仅 1 行、agent-bit 无 inbox——UI 不假装。

@@ -1827,6 +1827,7 @@
       [/^GetPlugin (\S+) \((\d+) skill.*$/i, "rPluginGet"],
       [/^Bot templates listed from the local Host catalog \(GP-02\)\..*/i, "rTplList"],
       [/^Create Bot from template planned \(GP-02\)\..*/i, "rTplCreate"],
+      [/^Task handoff planned \(GP-52\): (.+) → (.+) in «(.+?)»\..*/i, "rHandoff"],
     ];
     function wavegLocalizeReply(text) {
       const raw = String(text || "");
@@ -1840,6 +1841,8 @@
             .replace("{why}", wavegLocalizeReason(m[2]));
         }
         if (key === "rRoomTurn") return tpl.replace("{room}", m[1]);
+        if (key === "rHandoff")
+          return tpl.replace("{from}", m[1]).replace("{to}", m[2]).replace("{room}", m[3]);
         if (key === "rAutoReview") return tpl.replace("{via}", m[1]);
         if (key === "rVoiceStart" || key === "rVoiceEnd") return tpl.replace("{id}", m[1]);
         if (key === "rVoiceRelay") return tpl.replace("{n}", m[2]);
@@ -6217,6 +6220,20 @@
               .replace("{task}", String(p.held_task || "")),
           );
         }
+        // GP-52: a refused handoff (non-member / unknown room) must say so in
+        // the chat, not just sit in the host-results dump.
+        const hoFail = hosts.find((h) => h && h.kind === "handoff_task" && !h.ok);
+        if (hoFail) {
+          let p = {};
+          try { p = JSON.parse(hoFail.stdout || "{}"); } catch (_) { p = {}; }
+          let reason = String(p.error || "handoff_refused");
+          if (p.to_bot) reason += " → " + p.to_bot;
+          if (p.room) reason += " @ " + p.room;
+          addMsg(
+            "assistant",
+            wavegT("rHandoffFail").replace("{reason}", reason),
+          );
+        }
         if (
           hasOk("bot_create") || hasOk("bot_update") || hasOk("bot_duplicate") ||
           hasOk("bot_pin") || hasOk("bot_set_primary") || hasOk("hide_agent") ||
@@ -6581,6 +6598,8 @@
         rShellWhy: "该操作需要你的确认。",
         rSettingsOpen: "已打开设置面板。",
         rRoomTurn: "群聊 {room}：已投递本条消息，等待 Bot 回应。",
+        rHandoff: "{from} 已将任务转交给 {to}（群「{room}」，转交已写入群 transcript）。",
+        rHandoffFail: "任务转交被拒：{reason}（未写入群 transcript，Bot 不会假装接手）。",
         rTakeover: "接管中 — 你正在直接操作本机屏幕，完成后点「我操作完了」。",
         rNever: "本地执行 = 从不允许：该操作被你的设置直接拒绝，未执行。",
         rAutoReview: "Auto-review：命中 {via} 规则，已自动执行（未再次询问）。",
@@ -6811,6 +6830,8 @@
         rShellWhy: "該操作需要你的確認。",
         rSettingsOpen: "已開啟設定面板。",
         rRoomTurn: "群聊 {room}：已投遞本則訊息，等待 Bot 回應。",
+        rHandoff: "{from} 已將任務轉交給 {to}（群「{room}」，轉交已寫入群 transcript）。",
+        rHandoffFail: "任務轉交被拒：{reason}（未寫入群 transcript，Bot 不會假裝接手）。",
         rTakeover: "接管中 — 你正在直接操作本機螢幕，完成後點「我操作完了」。",
         rNever: "本機執行 = 從不允許：該操作被你的設定直接拒絕，未執行。",
         rAutoReview: "Auto-review：命中 {via} 規則，已自動執行（未再次詢問）。",
@@ -7041,6 +7062,8 @@
         rShellWhy: "this action needs your confirmation.",
         rSettingsOpen: "Settings panel opened.",
         rRoomTurn: "Room {room}: message delivered, waiting for bots.",
+        rHandoff: "{from} handed the task off to {to} (room «{room}», transfer written to the room transcript).",
+        rHandoffFail: "Task handoff refused: {reason} (nothing written to the room transcript; no bot pretends to have taken it).",
         rTakeover: "Take over — you control this screen; hit 「I'm done」 when finished.",
         rNever: "Local execution = Never allow: refused by your setting, nothing ran.",
         rAutoReview: "Auto-review: matched {via} rule, executed without asking again.",

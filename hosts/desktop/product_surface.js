@@ -1072,6 +1072,86 @@ function createProductSurface(repoRoot) {
     return { ok: true, mode: "host_room_transcript_append" };
   }
 
+  // GP-52: Bot→Bot task ownership transfer inside a product room. Both sides
+  // must be real room members (or the user), the room must exist — otherwise
+  // refuse honestly instead of inventing a transfer.
+  function handoffTask({ room, from_bot, to_bot, task }) {
+    const roomId = String(room || "").trim();
+    const toId = String(to_bot || "").trim();
+    const fromId = String(from_bot || "user").trim() || "user";
+    const taskText = String(task || "").trim();
+    if (!roomId || !toId || !taskText) {
+      return { ok: false, error: "handoff_needs_room_to_task", mode: "host_handoff_task" };
+    }
+    const rooms = loadRooms();
+    const hit = (rooms.rooms || []).find(r => r.id === roomId || r.title === roomId);
+    if (!hit) {
+      return { ok: false, error: "room_not_found", room: roomId, mode: "host_handoff_task" };
+    }
+    const botsData = loadBots();
+    const resolve = (idOrName) => {
+      const b = (botsData.bots || []).find(x => x.id === idOrName || x.name === idOrName);
+      return b ? b.id : idOrName;
+    };
+    const toResolved = resolve(toId);
+    const fromResolved = fromId === "user" ? "user" : resolve(fromId);
+    const isMember = (id) => (hit.members || []).includes(id);
+    if (!isMember(toResolved)) {
+      return {
+        ok: false,
+        error: "to_bot_not_member",
+        room: hit.id,
+        to_bot: toResolved,
+        members: hit.members || [],
+        mode: "host_handoff_task",
+        pretend_transferred: false
+      };
+    }
+    if (fromResolved !== "user" && !isMember(fromResolved)) {
+      return {
+        ok: false,
+        error: "from_bot_not_member",
+        room: hit.id,
+        from_bot: fromResolved,
+        members: hit.members || [],
+        mode: "host_handoff_task",
+        pretend_transferred: false
+      };
+    }
+    const nameOf = (id) => {
+      const b = (botsData.bots || []).find(x => x.id === id);
+      return b ? b.name : id;
+    };
+    const at = nowIso();
+    const entry = {
+      room_id: hit.id,
+      kind: "handoff",
+      text: `↪ task handed off: ${nameOf(fromResolved)} → ${nameOf(toResolved)} :: ${taskText}`,
+      from_bot: fromResolved,
+      to_bot: toResolved,
+      task: taskText,
+      responders: [toResolved],
+      responder_policy: "handoff_target",
+      at
+    };
+    if (!Array.isArray(hit.transcript)) hit.transcript = [];
+    hit.transcript.push(entry);
+    if (hit.transcript.length > 200) hit.transcript = hit.transcript.slice(-200);
+    saveRooms(rooms);
+    return {
+      ok: true,
+      mode: "host_handoff_task",
+      pretend_transferred: false,
+      room: hit.id,
+      title: hit.title,
+      from_bot: fromResolved,
+      to_bot: toResolved,
+      task: taskText,
+      transcript_entry: entry,
+      at
+    };
+  }
+
   // ===== LLM USAGE =====
   function loadLlmUsage() {
     return readJson(LLM_USAGE_PATH, { version: 1, week: "", rows: [] });
@@ -1327,6 +1407,7 @@ function createProductSurface(repoRoot) {
     // Rooms
     roomCreate,
     roomTurn,
+    handoffTask,
     appendRoomTranscript,
     loadRooms,
     

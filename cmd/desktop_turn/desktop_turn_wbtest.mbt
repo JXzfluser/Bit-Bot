@@ -473,6 +473,39 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let rm_leave = run_desktop_turn("leave room eng", turn_id="rm-leave-1")
   assert_true(rm_leave.ok)
   assert_eq(rm_leave.intent, "room_turn")
+  // GP-52: Bot→Bot task ownership transfer inside a product room.
+  let ho = run_desktop_turn(
+    "handoff room room-abc from=agent-bit to=bot-xyz task=collect deploy logs",
+    turn_id="ho-1",
+  )
+  assert_true(ho.ok)
+  assert_eq(ho.intent, "handoff_task")
+  assert_eq(ho.effects[0].kind, "handoff_task")
+  assert_eq(ho.effects[0].command, "room-abc|agent-bit|bot-xyz|collect+deploy+logs")
+  assert_true(ho.needs_host_ffi)
+  // "hand off room" alias; from defaults to user; task text containing the
+  // word "room" must not hijack classification back to room_turn.
+  let ho2 = run_desktop_turn(
+    "hand off room eng to=bot-x task=check room status",
+    turn_id="ho-2",
+  )
+  assert_true(ho2.ok)
+  assert_eq(ho2.intent, "handoff_task")
+  assert_eq(ho2.effects[0].command, "eng|user|bot-x|check+room+status")
+  // Incomplete handoff (no task) must not become a bogus transfer.
+  let ho_bad = run_desktop_turn(
+    "handoff room x to=bot-9",
+    turn_id="ho-bad-1",
+  )
+  assert_true(ho_bad.ok)
+  assert_true(ho_bad.intent != "handoff_task")
+  // Precedence: the generic room branches still win for plain room phrases.
+  let rm_after_ho = run_desktop_turn(
+    "room eng :: ship the build",
+    turn_id="rm-after-ho-1",
+  )
+  assert_true(rm_after_ho.ok)
+  assert_eq(rm_after_ho.intent, "room_turn")
   let mem_list = run_desktop_turn("list members", turn_id="mem-list-1")
   assert_true(mem_list.ok)
   assert_eq(mem_list.intent, "members_panel")

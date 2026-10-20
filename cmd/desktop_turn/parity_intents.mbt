@@ -2104,6 +2104,36 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       return Some(SectionPost(group_id~, section_id~, from_agent~, body~))
     }
   }
+  // GP-52: Bot→Bot task ownership transfer inside a product room.
+  // `handoff room <id|title> [from=<bot>] to=<bot> task=<text>` — must sit
+  // before the generic room-cue branch so "room" inside the task text can't
+  // hijack classification.
+  if low.has_prefix("handoff room ") || low.has_prefix("hand off room ") {
+    let rest = if low.has_prefix("handoff room ") {
+      trimmed[13:].to_owned()
+    } else {
+      trimmed[14:].to_owned()
+    }
+    let room = match split_once(rest.trim().to_owned(), " ") {
+      Some((r, _)) => r.trim().to_owned()
+      None => rest.trim().to_owned()
+    }
+    let to_bot = match extract_kv(rest, "to") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    let from_bot = match extract_kv(rest, "from") {
+      Some(v) => v.trim().to_owned()
+      None => "user"
+    }
+    let task = match extract_kv(rest, "task") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
+    if room != "" && to_bot != "" && task != "" {
+      return Some(HandoffTask(room~, from_bot~, to_bot~, task~))
+    }
+  }
   // join/leave room <name> → RoomTurn (Host room_turn fanout).
   if low.has_prefix("join room ") {
     let room = trimmed[10:].trim().to_owned()

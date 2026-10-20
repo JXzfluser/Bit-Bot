@@ -22767,6 +22767,75 @@ function createHostFfi(repoRoot) {
         results.push(await executeDevtoolsEffect(kind, cmd));
         continue;
       }
+      if (kind === "handoff_task") {
+        // GP-52: Bot→Bot ownership transfer in a product room. Transcript line
+        // must be visible AND the task queued into the target Bot's inbox —
+        // never a silent reassignment, never a transfer to a non-member.
+        if (!surface || !surface.handoffTask) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const parts = String(cmd || "").split("|");
+        const decode = (s) => String(s || "").replace(/\+/g, " ");
+        const args = {
+          room: decode(parts[0]),
+          from_bot: decode(parts[1]) || "user",
+          to_bot: decode(parts[2]),
+          task: decode(parts.slice(3).join("|")),
+        };
+        const res = surface.handoffTask(args);
+        if (res && res.ok) {
+          let inboxPath = "";
+          try {
+            inboxPath = path.join(
+              AGENT_INBOX_DIR,
+              `${sanitizeSkillName(res.to_bot)}.jsonl`,
+            );
+            appendJsonl(inboxPath, {
+              room: res.room,
+              room_title: res.title,
+              from: res.from_bot,
+              to_id: res.to_bot,
+              body: res.task,
+              is_handoff: true,
+              is_room: true,
+              forbids_private_assumptions: true,
+              at: res.at,
+            });
+          } catch (_) { /* inbox best-effort; transcript already durable */ }
+          const handoffDir = path.join(REPO_ROOT, "data", "agents", "handoffs");
+          fs.mkdirSync(handoffDir, { recursive: true });
+          const handoffPath = path.join(
+            handoffDir,
+            `handoff-${sanitizeSkillName(res.to_bot) || "bot"}-${Date.now().toString(36)}.json`,
+          );
+          fs.writeFileSync(
+            handoffPath,
+            JSON.stringify({ ...res, inbox_path: inboxPath, path: handoffPath }, null, 2),
+          );
+          appendHostDeliveryJournal({
+            kind,
+            command: cmd,
+            room: res.room,
+            from_bot: res.from_bot,
+            to_bot: res.to_bot,
+            task: res.task,
+            path: handoffPath,
+            at: res.at,
+          });
+        }
+        results.push({
+          kind,
+          ok: res.ok === true,
+          command: cmd,
+          stdout: JSON.stringify(res),
+          stderr: res && res.ok ? "" : (res && res.error) || "handoff_refused",
+          error: res && res.ok ? "" : (res && res.error) || "handoff_refused",
+          mode: res.mode || "host_handoff_task",
+          refused: !(res && res.ok),
+        });
+        continue;
+      }
       if (
         kind === "room_turn" ||
         kind === "send_to_agent" ||
