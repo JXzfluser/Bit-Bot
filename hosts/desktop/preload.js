@@ -40,6 +40,13 @@ contextBridge.exposeInMainWorld("bitbot", {
     op: (payload) => ipcRenderer.invoke("bitbot:plugins:op", payload),
     toolToggle: (payload) => ipcRenderer.invoke("bitbot:plugins:toolToggle", payload),
   },
+  // Wave M14 — Account panel (GP-74, local profile only).
+  account: {
+    status: () => ipcRenderer.invoke("bitbot:account:status"),
+    signIn: (label) => ipcRenderer.invoke("bitbot:account:signIn", label),
+    signOut: () => ipcRenderer.invoke("bitbot:account:signOut"),
+    switchTo: (label) => ipcRenderer.invoke("bitbot:account:switch", label),
+  },
   // Wave M10 — Bot template catalog (GP-02).
   templates: {
     list: () => ipcRenderer.invoke("bitbot:templates:list"),
@@ -174,6 +181,7 @@ contextBridge.exposeInMainWorld("bitbot", {
     check: () => ipcRenderer.invoke("bitbot:ota:check"),
     download: () => ipcRenderer.invoke("bitbot:ota:download"),
     restart: () => ipcRenderer.invoke("bitbot:ota:restart"),
+    status: () => ipcRenderer.invoke("bitbot:app:updateStatus"),
   },
   secrets: {
     status: () => ipcRenderer.invoke("bitbot:secrets:status"),

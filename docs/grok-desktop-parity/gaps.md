@@ -41,10 +41,10 @@
 | GP-71 | 已实现 | language 持久 + renderer `wavegLangApply` 关键文案切换（zh-CN/zh-TW/en）。 |
 | GP-72 | 已实现 | timezone 持久 + `process.env.BITBOT_TZ` + 守护进程重启（smoke G-5）。 |
 | GP-73 | 已实现 | 规则 CRUD 持久、团队规则 locked 行不可删（`rule_locked`）。 |
-| GP-74 | 残留 | 显示真实凭证配置态；未配置明确"未登录"，不伪造远端账号。 |
+| GP-74 | 已实现 | Account 面板 + `whoami / sign in <label> / sign out / switch account <label>` 全链：本地 profile store（data/desktop/account-profile.json）+ 真实凭证来源清单（env 与 .env.local 双查，llm/slack/gmail/outlook/dingtalk/feishu/wecom）。未登录明确 "not signed in"，登录态附 backed_by；未知 profile `account_not_found + known[]` 拒绝（`pretend_switched:false`）。smoke G-15 六断言。 |
 | GP-75 | 已实现 | 见 GP-35/37。 |
 | GP-76 | 已实现 | `usage.week` 读取 `llm-usage.json` 真实统计；无数据渲染空态而非 0 假数（smoke 未断 UI，store 层实测）。 |
-| GP-77 | 残留 | `check_updates` 真实网络探测已有（OTA feed env）；沙箱网络受限 → UI 显示探测失败 residual，不假装最新。 |
+| GP-77 | 已实现 | `ota:check` 真实网络探测不变；新增安装态持久化（main boot 写 data/desktop/app-install.json，ota:check 各分支写 ota-state.json）→ `update_status` 意图读真实 version/packaged/residual（未打包 `residual:true, pretend_up_to_date:false`），Updates tab 打开即显示「安装版本 v0.1.0 · 开发运行（未打包）· … · 应用更新不会重置 Computer 文件」；smoke 用 computer.json marker 断言 check_updates/update_status 链全程未改写 Computer 状态。 |
 | GP-80/81/82 | 已实现 | 聚焦抑制（BrowserWindow focus 态）+ 侧边栏未读 + `setBadgeCount` + 点击通知激活 session（`wireFocusSession`）；系统 Notification 在 xvfb 无通知总线环境下不弹出属平台限制，逻辑分支以 store/badge 状态实测。 |
 | GP-90/91/92 | 已实现 | readArtifact 文本族（md/txt/json/csv/ics/eml/yaml + ≤64KB 无 NUL 探测）文件卡；saveArtifact IPC 真拷贝（headless 覆盖）；GP-92 全屏查看器（图/视频/音频/文本，Esc/遮罩关闭）。见 Wave M9。 |
 | GP-A1 | 已实现 | Cmd/Ctrl+B 折叠（renderer accelerator + 主菜单 + `sidebar_collapsed` 持久）；Cmd/Ctrl+N 新对话（菜单模板 broadcast `bitbot:menu-new-chat`）。 |
@@ -187,3 +187,13 @@
 3. **拒绝原因透传**：`handoff_task` 结果此前只填 `stderr`，内核续跑显示 "unknown host error"（M12 前 CU 拒绝踩过同型坑）。现补 `error:` 字段，聊天与内核 dump 都能看到 `room_not_found` / `to_bot_not_member` 原文。
 4. **renderer**：`WAVEG_REPLY_MAP` 识别 `Task handoff planned (GP-52): A → B in «room»` → `rHandoff`（×3 字典，`{from}/{to}/{room}` 占位填充）；拒绝走 `postProcessWaveGResults` 直接 `addMsg`（chip 条只渲染 ok:true 的既有纪律）→ `rHandoffFail` 组装 `error → to_bot @ room` 明细。
 5. **验证**：moon 373/373（wbtest 增 4 组断言：意图/命令逐字、alias+from 缺省+task 含 "room" 不被劫持、缺 task 不落 handoff、room 短语优先级不变）；smoke G-14 十断言（三探针 Bot + 群 → 转交意图+host ok → transcript 行逐字对齐 → inbox 投递 → 存根落盘 → 非成员被拒不写 transcript → 未知群 room_not_found 且原因透传 → renderer 三语接线 → 级联清理双跑幂等），PASS=92 FAIL=0；CDP 两截图：聊天输入合法 handoff → 「CdpHoFrom 已将任务转交给 CdpHoTo（群「room-mvg7mte4」…）」且 rooms.json 落行、inbox 收到；转给非成员 agent-bit → 成功气泡与「任务转交被拒：to_bot_not_member → agent-bit @ room-…」并存，transcript 仅 1 行、agent-bit 无 inbox——UI 不假装。
+
+## Wave M14（账户真实登录态 + 安装态，本轮）
+
+规格：spec.md GP-74「显示真实登录态来源（凭证是否配置）；未配置时明确"未登录"而非假装」+ GP-77「`ota:check` 真实网络探测；安装态显示；断言 Computer 文件不受应用更新影响」。
+
+1. **GP-74 本地 profile 语义**：新 store `data/desktop/account-profile.json`（`{active, accounts:[{label,created_at,last_used_at,backed_by}]}`）。四个意图 `account_status / account_sign_in / account_sign_out / account_switch`（短语 `whoami|account status|am i logged in|sign in`(裸)=查态，`sign in <label>`，`sign out|log out`，`switch account <label>|add account <label>`；`shell whoami` 仍走 shell 链——wbtest 钉住）。关键诚实约束：`remote_verified:false` 恒定（本机没有可连的远端账号，绝不谎称验证过）、登出只清 `active` 且 `credentials_untouched:true`、未知 profile → `account_not_found + known[]` 且 `pretend_switched:false`。
+2. **凭证来源真相**：`credentialSourceTruth()` 同时查 `process.env` 与两级 `.env.local` 文件（CLI smoke 与 Electron main 因此报同一状态），逐项返回 `{name, configured, env_keys, file}`——note 文案随真实配置态在 "backed by …" 与 "NO configured credentials" 间切换，不空口说已登录。
+3. **GP-77 安装态**：main 启动写 `app-install.json`（version/packaged/updater_loaded），`ota:check` 每个分支（含三条 residual 早退与 catch）持久化 `ota-state.json`；新意图 `update_status` 读取两者 + feed env，产出 `residual:true / pretend_up_to_date:false`（未打包开发运行）与 `computer_untouched_by_app_update:true`。Computer 不受应用更新影响用 marker 断言：smoke 往 computer.json 写 `__m14_marker` → 跑 update_status + check_updates 全链 → marker 仍在。
+4. **renderer**：General tab 新增 Account 区块（输入框 + 登录/登出 + profile 下拉，走 `bitbot:account:*` IPC → 同一 Host 链，单一事实源）；Updates tab 打开即显示安装态行（版本/开发运行/上次检查/Computer 安全）。聊天侧：`whoami` 等回合的真实结果由 `postProcessWaveGResults` 从 host payload 出本地化气泡（复用 accountSignedIn/NotSigned/Fail 键），内核 "planned" 文案并入 `DEBUG_LINE_RE`（Alt+D 才显示）——避免"计划中"与"真实结果"两条气泡重复。
+5. **验证**：moon 373/373（wbtest 增 8 组：whoami/裸 sign in/sign in Work/switch my+work 编码/log out/update status 与 check updates 分离/shell whoami 不被吞）；smoke G-15 十断言（未登录诚实态 → 登录落盘 → 凭证来源真相 → 多 profile 切换 → 未知被拒 → 登出保留凭证 → 安装态真实版本+residual → check_updates 链分离 → Computer marker 未被改写 → renderer 三语接线），PASS=102 FAIL=0 双跑幂等；CDP 四截图：General 面板「已登录（本地 profile「Personal」）· 凭证来源：无任何已配置凭证（相关功能保持关闭）」、Updates「安装版本 v0.1.0 · 开发运行（未打包） · 从未检查 · 应用更新不会重置 Computer 文件」、聊天 `whoami` 真实态气泡、`switch account Ghost` → 「账户操作被拒：account_not_found」。

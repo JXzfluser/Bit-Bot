@@ -22,6 +22,7 @@ function createProductSurface(repoRoot) {
   const LLM_USAGE_PATH = path.join(DESKTOP_DIR, "llm-usage.json");
   const ROOMS_PATH = path.join(DESKTOP_DIR, "rooms.json");
   const SESSIONS_PATH = path.join(DESKTOP_DIR, "sessions.json");
+  const ACCOUNT_PROFILE_PATH = path.join(DESKTOP_DIR, "account-profile.json");
   const ROUTINES_DIR = path.join(REPO_ROOT, "data", "routines");
   const WORKSPACE_UPLOADS_DIR = path.join(REPO_ROOT, "data", "workspace", "uploads");
   const VOICE_DIR = path.join(DESKTOP_DIR, "voice");
@@ -1152,6 +1153,179 @@ function createProductSurface(repoRoot) {
     };
   }
 
+  // ===== ACCOUNT (GP-74) =====
+  // Local-profile semantics only: the desktop app has no remote Bit Bot account
+  // to talk to, so "signed in" always means a local profile row plus the real
+  // credential sources that back it. Never fabricate a remote identity.
+  function loadAccountProfile() {
+    const d = readJson(ACCOUNT_PROFILE_PATH, null);
+    if (!d || typeof d !== "object" || !Array.isArray(d.accounts)) {
+      return { version: 1, active: null, accounts: [] };
+    }
+    return d;
+  }
+
+  function saveAccountProfile(data) {
+    atomicWrite(ACCOUNT_PROFILE_PATH, JSON.stringify(data, null, 2));
+  }
+
+  // Truth table of the credential sources that actually exist on this machine.
+  // Checks process.env AND the gitignored .env.local files, so CLI smoke and the
+  // Electron main process report the same configured state.
+  function envFileKeys() {
+    const keys = new Set();
+    for (const f of [
+      path.join(REPO_ROOT, "hosts", "desktop", ".env.local"),
+      path.join(REPO_ROOT, ".env.local"),
+    ]) {
+      try {
+        if (!fs.existsSync(f)) continue;
+        for (const line of fs.readFileSync(f, "utf8").split("\n")) {
+          const m = /^([A-Z0-9_]+)=.+$/.exec(line.trim());
+          if (m) keys.add(m[1]);
+        }
+      } catch (_) { /* unreadable env file counts as unset */ }
+    }
+    return keys;
+  }
+
+  function credentialSourceTruth() {
+    const env = process.env;
+    const fileKeys = envFileKeys();
+    const src = (name, keys, file) => {
+      const fromEnv = keys.map(k => String(env[k] || "").trim()).filter(Boolean);
+      const inFile = keys.some(k => fileKeys.has(k));
+      const onDisk = file ? fs.existsSync(path.join(REPO_ROOT, file)) : false;
+      return { name, configured: fromEnv.length > 0 || inFile || onDisk, env_keys: keys, file: file || null };
+    };
+    return [
+      src("llm", ["BITBOT_LLM_API_KEY"]),
+      src("slack", ["SLACK_BOT_TOKEN", "BITBOT_SLACK_TOKEN"], "data/connectors/slack_token.json"),
+      src("gmail", ["BITBOT_GMAIL_TOKEN"], "data/connectors/gmail_token.json"),
+      src("outlook", ["BITBOT_OUTLOOK_TOKEN"], "data/connectors/outlook_token.json"),
+      src("dingtalk", ["BITBOT_DINGTALK_WEBHOOK", "BITBOT_DINGTALK_TOKEN"]),
+      src("feishu", ["BITBOT_FEISHU_TOKEN"]),
+      src("wecom", ["BITBOT_WECOM_TOKEN"]),
+    ];
+  }
+
+  function accountStatus() {
+    const data = loadAccountProfile();
+    const sources = credentialSourceTruth();
+    const configured = sources.filter(s => s.configured).map(s => s.name);
+    const active = data.active
+      ? (data.accounts || []).find(a => a.label === data.active) || null
+      : null;
+    return {
+      ok: true,
+      mode: "host_account_status",
+      signed_in: Boolean(active),
+      // Honesty flags: we never claim a remote session we cannot verify.
+      pretend_signed_in: false,
+      remote_verified: false,
+      scope: "local-profile",
+      active: active
+        ? {
+            label: active.label,
+            created_at: active.created_at,
+            last_used_at: active.last_used_at,
+            backed_by: active.backed_by || [],
+          }
+        : null,
+      accounts: (data.accounts || []).map(a => ({
+        label: a.label,
+        created_at: a.created_at,
+        last_used_at: a.last_used_at,
+      })),
+      credential_sources: sources,
+      configured_sources: configured,
+      note: active
+        ? configured.length
+          ? "local profile «" + active.label + "» backed by: " + configured.join(", ")
+          : "local profile «" + active.label + "» has NO configured credentials — features needing them stay off"
+        : "not signed in (no local profile); configure credentials under Settings · Credentials",
+      at: nowIso()
+    };
+  }
+
+  function accountSignIn(label) {
+    const name = String(label || "").trim();
+    if (!name) return { ok: false, error: "account_needs_label", mode: "host_account_sign_in" };
+    const data = loadAccountProfile();
+    const at = nowIso();
+    const configured = credentialSourceTruth().filter(s => s.configured).map(s => s.name);
+    let hit = (data.accounts || []).find(a => a.label === name);
+    if (!hit) {
+      hit = { label: name, created_at: at, last_used_at: at, backed_by: configured };
+      data.accounts.push(hit);
+    } else {
+      hit.last_used_at = at;
+      hit.backed_by = configured;
+    }
+    data.active = name;
+    saveAccountProfile(data);
+    return {
+      ok: true,
+      mode: "host_account_sign_in",
+      pretend_remote_login: false,
+      scope: "local-profile",
+      label: name,
+      created: hit.created_at === at,
+      backed_by: configured,
+      credentials_missing: credentialSourceTruth()
+        .filter(s => !s.configured)
+        .map(s => s.name),
+      at
+    };
+  }
+
+  function accountSignOut() {
+    const data = loadAccountProfile();
+    const was = data.active || null;
+    data.active = null;
+    saveAccountProfile(data);
+    return {
+      ok: true,
+      mode: "host_account_sign_out",
+      pretend_remote_signout: false,
+      scope: "local-profile",
+      signed_out: was,
+      // Credentials are env/file-backed on this machine — sign-out never deletes them.
+      credentials_untouched: true,
+      at: nowIso()
+    };
+  }
+
+  function accountSwitch(label) {
+    const name = String(label || "").trim();
+    if (!name) return { ok: false, error: "account_needs_label", mode: "host_account_switch" };
+    const data = loadAccountProfile();
+    const hit = (data.accounts || []).find(
+      a => a.label.toLowerCase() === name.toLowerCase()
+    );
+    if (!hit) {
+      return {
+        ok: false,
+        error: "account_not_found",
+        wanted: name,
+        known: (data.accounts || []).map(a => a.label),
+        mode: "host_account_switch",
+        pretend_switched: false
+      };
+    }
+    data.active = hit.label;
+    hit.last_used_at = nowIso();
+    saveAccountProfile(data);
+    return {
+      ok: true,
+      mode: "host_account_switch",
+      pretend_switched: false,
+      scope: "local-profile",
+      label: hit.label,
+      at: hit.last_used_at
+    };
+  }
+
   // ===== LLM USAGE =====
   function loadLlmUsage() {
     return readJson(LLM_USAGE_PATH, { version: 1, week: "", rows: [] });
@@ -1410,6 +1584,12 @@ function createProductSurface(repoRoot) {
     handoffTask,
     appendRoomTranscript,
     loadRooms,
+
+    // Account (GP-74) — local profile semantics only
+    accountStatus,
+    accountSignIn,
+    accountSignOut,
+    accountSwitch,
     
     // Legacy aliases
     createRoom: roomCreate,

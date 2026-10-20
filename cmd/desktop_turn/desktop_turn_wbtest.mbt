@@ -506,6 +506,41 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   )
   assert_true(rm_after_ho.ok)
   assert_eq(rm_after_ho.intent, "room_turn")
+  // GP-74: Account — local-profile-only intents; bare "sign in" asks for state,
+  // "sign in <label>" creates/activates a profile; unknown switch refuses.
+  let ac_st = run_desktop_turn("whoami", turn_id="ac-1")
+  assert_true(ac_st.ok)
+  assert_eq(ac_st.intent, "account_status")
+  assert_eq(ac_st.effects[0].kind, "account_status")
+  let ac_bare = run_desktop_turn("sign in", turn_id="ac-2")
+  assert_true(ac_bare.ok)
+  assert_eq(ac_bare.intent, "account_status")
+  let ac_in = run_desktop_turn("sign in Work", turn_id="ac-3")
+  assert_true(ac_in.ok)
+  assert_eq(ac_in.intent, "account_sign_in")
+  assert_eq(ac_in.effects[0].command, "Work")
+  let ac_sw = run_desktop_turn(
+    "switch account my work",
+    turn_id="ac-4",
+  )
+  assert_true(ac_sw.ok)
+  assert_eq(ac_sw.intent, "account_switch")
+  assert_eq(ac_sw.effects[0].command, "my+work")
+  let ac_out = run_desktop_turn("log out", turn_id="ac-5")
+  assert_true(ac_out.ok)
+  assert_eq(ac_out.intent, "account_sign_out")
+  // GP-77: install state is its own intent, distinct from opening the Updates tab.
+  let us = run_desktop_turn("update status", turn_id="us-1")
+  assert_true(us.ok)
+  assert_eq(us.intent, "update_status")
+  assert_eq(us.effects[0].kind, "update_status")
+  let cu = run_desktop_turn("check for updates", turn_id="us-2")
+  assert_true(cu.ok)
+  assert_eq(cu.intent, "check_updates")
+  // "shell whoami" must stay a shell action, never the account intent.
+  let sh = run_desktop_turn("shell whoami", turn_id="ac-sh-1")
+  assert_true(sh.ok)
+  assert_true(sh.intent != "account_status")
   let mem_list = run_desktop_turn("list members", turn_id="mem-list-1")
   assert_true(mem_list.ok)
   assert_eq(mem_list.intent, "members_panel")

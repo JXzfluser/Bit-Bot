@@ -964,6 +964,51 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     low == "about" {
     return Some(CheckUpdates)
   }
+  // GP-74: Account — real local sign-in state (configured credentials), never a
+  // fabricated remote account. GP-77: install/update state (distinct from
+  // "check updates", which opens the Updates tab).
+  if low == "whoami" ||
+    low == "who am i" ||
+    low == "account status" ||
+    low == "am i logged in" ||
+    low == "login status" ||
+    low == "signed in" ||
+    low == "am i signed in" ||
+    low == "sign in" ||
+    low == "log in" ||
+    low == "login" {
+    return Some(AccountStatus)
+  }
+  if low == "sign out" || low == "log out" || low == "logout" {
+    return Some(AccountSignOut)
+  }
+  if low.has_prefix("sign in ") || low.has_prefix("log in ") {
+    let rest = if low.has_prefix("sign in ") {
+      trimmed[8:].trim().to_owned()
+    } else {
+      trimmed[7:].trim().to_owned()
+    }
+    if rest != "" {
+      return Some(AccountSignIn(label=rest))
+    }
+    return Some(AccountStatus)
+  }
+  if low.has_prefix("switch account ") || low.has_prefix("add account ") {
+    let rest = if low.has_prefix("switch account ") {
+      trimmed[15:].trim().to_owned()
+    } else {
+      trimmed[12:].trim().to_owned()
+    }
+    if rest != "" {
+      return Some(AccountSwitch(label=rest))
+    }
+  }
+  if low == "update status" ||
+    low == "installed version" ||
+    low == "current version" ||
+    low == "what version am i on" {
+    return Some(UpdateStatus)
+  }
   // CM-1507 product Host auto-review / rules / security-keys Settings anchors.
   if low == "auto review settings" ||
     low == "open auto review" ||

@@ -74,10 +74,56 @@ const otaState = {
   update_downloaded: false,
   error: null,
 };
+
+/**
+ * GP-77: persist install + OTA state so the shared Host (`update_status` kind)
+ * reads the real values even from the CLI process. Read-only for the Computer
+ * stores — app updates never touch data/desktop/computer.json or data/box.
+ */
+function persistAppInstallState() {
+  try {
+    const dir = path.join(REPO_ROOT, "data", "desktop");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "app-install.json"),
+      JSON.stringify(
+        {
+          version: app.getVersion ? app.getVersion() : null,
+          packaged: app.isPackaged,
+          updater_loaded: Boolean(autoUpdater),
+          at: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (_) { /* dev-run without write perms: update_status reports null */ }
+}
+function persistOtaState() {
+  try {
+    const dir = path.join(REPO_ROOT, "data", "desktop");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "ota-state.json"),
+      JSON.stringify(
+        {
+          last_check: otaState.last_check,
+          last_result: otaState.last_result,
+          update_available: otaState.update_available,
+          update_downloaded: otaState.update_downloaded,
+          error: otaState.error,
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (_) { /* same */ }
+}
 if (autoUpdater) {
   autoUpdater.on("update-downloaded", (info) => {
     otaState.update_downloaded = true;
     otaState.last_result = { version: (info && info.version) || null };
+    persistOtaState();
   });
 }
 
@@ -1394,6 +1440,7 @@ ipcMain.handle("bitbot:ota:check", async () => {
   const feed = String(process.env.BITBOT_UPDATE_FEED_URL || "").trim();
   if (!autoUpdater) {
     otaState.error = "electron-updater not installed";
+    persistOtaState();
     return {
       ok: false,
       residual: true,
@@ -1403,6 +1450,7 @@ ipcMain.handle("bitbot:ota:check", async () => {
   }
   if (!feed) {
     otaState.error = "BITBOT_UPDATE_FEED_URL not set";
+    persistOtaState();
     return {
       ok: false,
       residual: true,
@@ -1412,6 +1460,7 @@ ipcMain.handle("bitbot:ota:check", async () => {
   }
   if (!app.isPackaged) {
     otaState.error = "OTA check only in packaged app (npm run dist)";
+    persistOtaState();
     return {
       ok: false,
       residual: true,
@@ -1432,6 +1481,7 @@ ipcMain.handle("bitbot:ota:check", async () => {
       : null;
     otaState.update_available = Boolean(info);
     otaState.error = null;
+    persistOtaState();
     return {
       ok: true,
       residual: false,
@@ -1441,6 +1491,7 @@ ipcMain.handle("bitbot:ota:check", async () => {
     };
   } catch (err) {
     otaState.error = String(err && err.message ? err.message : err);
+    persistOtaState();
     return {
       ok: false,
       residual: true,
@@ -1474,6 +1525,74 @@ ipcMain.handle("bitbot:ota:restart", async () => {
  * GP-A2/A3 — Connect apps panel reads/toggles through the same Host raw
  * handlers the kernel effects use (single durable store, never a fake list).
  */
+/**
+ * GP-74 — Account panel reads/writes the LOCAL profile only (same shared-Host
+ * path the kernel effects use; single durable store, never a fake identity).
+ */
+async function runAccountEffect(kind, command) {
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind, command }],
+      { sessionId: "account-panel" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === kind);
+    let payload = {};
+    try {
+      payload = JSON.parse((hit && hit.stdout) || "{}");
+    } catch {
+      payload = {};
+    }
+    return {
+      ok: Boolean(hit && hit.ok),
+      refused: Boolean(payload.refused),
+      payload,
+      error: payload.error || (hit && !hit.ok ? hit.error || "host_failed" : undefined),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      payload: {},
+      error: String(err && err.message ? err.message : err),
+    };
+  }
+}
+ipcMain.handle("bitbot:account:status", async () =>
+  runAccountEffect("account_status", "whoami"),
+);
+ipcMain.handle("bitbot:account:signIn", async (_e, label) =>
+  runAccountEffect("account_sign_in", String(label || "").trim().replace(/ /g, "+")),
+);
+ipcMain.handle("bitbot:account:signOut", async () =>
+  runAccountEffect("account_sign_out", "local"),
+);
+ipcMain.handle("bitbot:account:switch", async (_e, label) =>
+  runAccountEffect("account_switch", String(label || "").trim().replace(/ /g, "+")),
+);
+/** GP-77: install/update state for the Updates tab (read-only shared-Host kind). */
+ipcMain.handle("bitbot:app:updateStatus", async () => {
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind: "update_status", command: "install" }],
+      { sessionId: "updates-tab" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === "update_status");
+    let payload = {};
+    try {
+      payload = JSON.parse((hit && hit.stdout) || "{}");
+    } catch {
+      payload = {};
+    }
+    return { ok: Boolean(hit && hit.ok), payload, pretend_state: false };
+  } catch (err) {
+    return {
+      ok: false,
+      payload: {},
+      error: String(err && err.message ? err.message : err),
+      pretend_state: false,
+    };
+  }
+});
+
 ipcMain.handle("bitbot:plugins:list", async (_e, opts) => {
   try {
     const query = String((opts && opts.query) || "");
@@ -1893,6 +2012,8 @@ async function ensureCnInbound() {
 }
 
 app.whenReady().then(async () => {
+  // GP-77: install state on disk for the shared Host `update_status` reader.
+  persistAppInstallState();
   if (process.env.BITBOT_DESKTOP_SMOKE_TURN !== undefined) {
     return runSmokeTurnAndExit();
   }

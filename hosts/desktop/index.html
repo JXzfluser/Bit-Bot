@@ -891,6 +891,14 @@
           <button type="button" class="gp-chip" id="gp-rule-ask" data-i18n="askFirst">Ask first</button>
         </div>
         <div id="gp-rules-list" style="margin-top:6px"></div>
+        <div class="gp-label" data-i18n="accountSection">Account（本地 profile · 不伪造远端登录）</div>
+        <div class="gp-row" style="align-items:center">
+          <input id="gp-account-label" type="text" data-i18n-ph="accountLabelPlaceholder" placeholder="profile 名（如 Personal / Work）" style="width:160px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" />
+          <button type="button" class="gp-chip" id="gp-account-signin" data-i18n="accountSignInBtn">Sign in</button>
+          <button type="button" class="gp-chip" id="gp-account-signout" data-i18n="accountSignOutBtn">Sign out</button>
+          <select id="gp-account-switch" class="gp-select" style="max-width:180px"></select>
+        </div>
+        <div id="gp-account-state" style="margin-top:4px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
         <div id="waveg-settings-status" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       </div>
       <div id="st-computer" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
@@ -1460,6 +1468,7 @@
       });
       if (key === "usage") refreshWaveGUsage().catch(() => {});
       if (key === "computer") refreshComputerTabState().catch(() => {});
+      if (key === "general") refreshAccountPanel().catch(() => {});
       if (key === "credentials") {
         refreshSecretsForm().catch(() => {});
         refreshInboundUrlStrip().catch(() => {});
@@ -1534,7 +1543,123 @@
     }
     function refreshUpdatesTabState() {
       const el = document.getElementById("st-updates-state");
-      if (el && !el.textContent) el.textContent = wavegT("updatesIdle");
+      if (!el) return;
+      const paintIdle = () => {
+        if (!el.textContent) el.textContent = wavegT("updatesIdle");
+      };
+      if (!window.bitbot.ota || !window.bitbot.ota.status) {
+        paintIdle();
+        return;
+      }
+      // GP-77: show the REAL install state before any manual check.
+      window
+        .bitbot.ota.status()
+        .then((r) => {
+          const p = (r && r.payload) || {};
+          if (!r || !r.ok || !p.version) {
+            paintIdle();
+            return;
+          }
+          const bits = [
+            wavegT("updatesVersion") + " v" + p.version +
+              (p.packaged ? "" : " · " + wavegT("updatesDevRun")),
+            p.update_downloaded
+              ? wavegT("updatesReadyRestart")
+              : p.update_available
+                ? wavegT("updatesAvailable").replace("{v}", (p.last_result && p.last_result.version) || "?")
+                : p.last_check
+                  ? wavegT("updatesLastCheck") + " " + String(p.last_check).slice(0, 16).replace("T", " ")
+                  : wavegT("updatesNeverChecked"),
+            p.computer_untouched_by_app_update
+              ? wavegT("updatesComputerSafe")
+              : "computer-state?",
+          ];
+          el.textContent = bits.join(" · ");
+        })
+        .catch(paintIdle);
+    }
+    // ----- GP-74 Account panel (local profile only, never a fake remote) -----
+    async function refreshAccountPanel() {
+      const state = document.getElementById("gp-account-state");
+      const sel = document.getElementById("gp-account-switch");
+      const outBtn = document.getElementById("gp-account-signout");
+      if (!state || !sel || !window.bitbot || !window.bitbot.account) return;
+      let r = null;
+      try {
+        r = await window.bitbot.account.status();
+      } catch (_) { /* offline: leave state text honest below */ }
+      const p = (r && r.payload) || {};
+      const srcs = p.credential_sources || [];
+      const on = srcs.filter(s => s.configured).map(s => s.name);
+      const off = srcs.filter(s => !s.configured).map(s => s.name);
+      if (p.signed_in && p.active) {
+        state.textContent =
+          wavegT("accountSignedIn")
+            .replace("{n}", p.active.label)
+            .replace("{src}", on.length ? on.join(", ") : wavegT("accountNoCred"));
+      } else {
+        state.textContent = wavegT("accountNotSigned") +
+          (on.length ? " · " + wavegT("accountCredOn") + ": " + on.join(", ") : "") +
+          (off.length ? " · " + wavegT("accountCredOff") + ": " + off.join(", ") : "");
+      }
+      const accounts = p.accounts || [];
+      sel.innerHTML = "";
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = accounts.length
+        ? wavegT("accountSwitchTo")
+        : wavegT("accountNone");
+      sel.appendChild(placeholder);
+      for (const a of accounts) {
+        const o = document.createElement("option");
+        o.value = a.label;
+        o.textContent = a.label + (p.active && p.active.label === a.label ? " ✓" : "");
+        sel.appendChild(o);
+      }
+      sel.disabled = accounts.length === 0;
+      if (outBtn) outBtn.disabled = !p.signed_in;
+    }
+    const gpAccountSignInBtn = document.getElementById("gp-account-signin");
+    const gpAccountSignOutBtn = document.getElementById("gp-account-signout");
+    const gpAccountSwitchSel = document.getElementById("gp-account-switch");
+    if (gpAccountSignInBtn) {
+      gpAccountSignInBtn.addEventListener("click", () => {
+        const inp = document.getElementById("gp-account-label");
+        const label = String((inp && inp.value) || "").trim();
+        if (!label) {
+          const st = document.getElementById("gp-account-state");
+          if (st) st.textContent = wavegT("accountNeedsLabel");
+          return;
+        }
+        window.bitbot.account.signIn(label).then((r) => {
+          if (!r || !r.ok) {
+            const st = document.getElementById("gp-account-state");
+            if (st) st.textContent = wavegT("accountFail").replace("{e}", (r && r.error) || "?");
+            return;
+          }
+          refreshAccountPanel().catch(() => {});
+        }).catch(() => {});
+      });
+    }
+    if (gpAccountSignOutBtn) {
+      gpAccountSignOutBtn.addEventListener("click", () => {
+        window.bitbot.account.signOut().then(() =>
+          refreshAccountPanel(),
+        ).catch(() => {});
+      });
+    }
+    if (gpAccountSwitchSel) {
+      gpAccountSwitchSel.addEventListener("change", () => {
+        const v = gpAccountSwitchSel.value;
+        if (!v) return;
+        window.bitbot.account.switchTo(v).then((r) => {
+          if (!r || !r.ok) {
+            const st = document.getElementById("gp-account-state");
+            if (st) st.textContent = wavegT("accountFail").replace("{e}", (r && r.error) || "?");
+          }
+          return refreshAccountPanel();
+        }).catch(() => {});
+      });
     }
     async function refreshComputerTabState() {
       const el = document.getElementById("st-computer-state");
@@ -1795,7 +1920,7 @@
     // Kernel/host internal boilerplate is implementation detail, not chat:
     // visible only in debug mode (Alt+D), like Grok's clean transcript.
     const DEBUG_LINE_RE =
-      /^(收到，正在用 MoonBit 内核处理。|\[host\] ADR 0002|Host FFI results applied|booting MoonBit|moon run cmd\/|Host effect planned)/;
+      /^(收到，正在用 MoonBit 内核处理。|\[host\] ADR 0002|Host FFI results applied|booting MoonBit|moon run cmd\/|Host effect planned|(Account status|Sign in|Sign out|Account switch|Update status) planned \()/;
 
     // Kernel replies are language-neutral English prose (protocol-level). The
     // renderer localizes the known reply shapes so the transcript never mixes
@@ -6234,6 +6359,69 @@
             wavegT("rHandoffFail").replace("{reason}", reason),
           );
         }
+        // GP-74: the account answer must come from the Host payload (real local
+        // profile + credential truth), never from the kernel's planning prose.
+        const acctHost = hosts.find((h) => h && h.kind === "account_status" && h.ok);
+        if (acctHost) {
+          let p = {};
+          try { p = JSON.parse(acctHost.stdout || "{}"); } catch (_) { p = {}; }
+          const srcs = p.credential_sources || [];
+          const on = srcs.filter((s) => s.configured).map((s) => s.name);
+          const off = srcs.filter((s) => !s.configured).map((s) => s.name);
+          addMsg(
+            "assistant",
+            (p.signed_in && p.active
+              ? wavegT("accountSignedIn")
+                  .replace("{n}", p.active.label)
+                  .replace("{src}", on.length ? on.join(", ") : wavegT("accountNoCred"))
+              : wavegT("accountNotSigned") +
+                (on.length ? " · " + wavegT("accountCredOn") + ": " + on.join(", ") : "") +
+                (off.length ? " · " + wavegT("accountCredOff") + ": " + off.join(", ") : "")),
+          );
+        }
+        const acctFail = hosts.find((h) => h && String(h.kind || "").startsWith("account_") && !h.ok);
+        if (acctFail) {
+          let p = {};
+          try { p = JSON.parse(acctFail.stdout || "{}"); } catch (_) { p = {}; }
+          addMsg(
+            "assistant",
+            wavegT("accountFail").replace("{e}", String(p.error || "account_refused")),
+          );
+        }
+        for (const h of hosts) {
+          if (!h || h.ok !== true) continue;
+          if (h.kind === "account_sign_in" || h.kind === "account_switch") {
+            let p = {};
+            try { p = JSON.parse(h.stdout || "{}"); } catch (_) { p = {}; }
+            const on = (p.backed_by || []).join(", ");
+            addMsg(
+              "assistant",
+              wavegT("accountSignedIn")
+                .replace("{n}", String(p.label || "?"))
+                .replace("{src}", on || wavegT("accountNoCred")),
+            );
+          } else if (h.kind === "account_sign_out") {
+            let p = {};
+            try { p = JSON.parse(h.stdout || "{}"); } catch (_) { p = {}; }
+            addMsg(
+              "assistant",
+              wavegT("accountSignedOut").replace("{n}", String(p.signed_out || "?")),
+            );
+          }
+        }
+        // GP-77: install state bubble (real version + honest residual).
+        const updHost = hosts.find((h) => h && h.kind === "update_status" && h.ok);
+        if (updHost) {
+          let p = {};
+          try { p = JSON.parse(updHost.stdout || "{}"); } catch (_) { p = {}; }
+          addMsg(
+            "assistant",
+            wavegT("rUpdStatus")
+              .replace("{v}", p.version || "?")
+              .replace("{pkg}", p.packaged ? "packaged" : wavegT("updatesDevRun"))
+              .replace("{safe}", wavegT("updatesComputerSafe")),
+          );
+        }
         if (
           hasOk("bot_create") || hasOk("bot_update") || hasOk("bot_duplicate") ||
           hasOk("bot_pin") || hasOk("bot_set_primary") || hasOk("hide_agent") ||
@@ -6600,6 +6788,21 @@
         rRoomTurn: "群聊 {room}：已投递本条消息，等待 Bot 回应。",
         rHandoff: "{from} 已将任务转交给 {to}（群「{room}」，转交已写入群 transcript）。",
         rHandoffFail: "任务转交被拒：{reason}（未写入群 transcript，Bot 不会假装接手）。",
+        accountSection: "Account（本地 profile · 不伪造远端登录）",
+        accountLabelPlaceholder: "profile 名（如 Personal / Work）",
+        accountSignInBtn: "登录",
+        accountSignOutBtn: "登出",
+        accountSwitchTo: "切换 profile…",
+        accountNone: "暂无本地 profile",
+        accountSignedIn: "已登录（本地 profile「{n}」）· 凭证来源：{src}",
+        accountNoCred: "无任何已配置凭证（相关功能保持关闭）",
+        accountNotSigned: "未登录（本机没有远端账号可连）",
+        accountSignedOut: "已登出本地 profile「{n}」（凭证保留在本机）。",
+        accountCredOn: "已配置",
+        accountCredOff: "未配置",
+        accountNeedsLabel: "请先填写 profile 名再登录。",
+        accountFail: "账户操作被拒：{e}",
+        rUpdStatus: "安装状态：v{v}（{pkg}）· {safe}。",
         rTakeover: "接管中 — 你正在直接操作本机屏幕，完成后点「我操作完了」。",
         rNever: "本地执行 = 从不允许：该操作被你的设置直接拒绝，未执行。",
         rAutoReview: "Auto-review：命中 {via} 规则，已自动执行（未再次询问）。",
@@ -6641,6 +6844,12 @@
         checkUpdatesBtn: "检查更新",
         restartUpdateBtn: "重启并安装",
         updatesIdle: "尚未检查 — 点「检查更新」（沙箱未打包时诚实显示 residual）。",
+        updatesVersion: "安装版本",
+        updatesDevRun: "开发运行（未打包）",
+        updatesReadyRestart: "更新已下载 — 可重启安装",
+        updatesLastCheck: "上次检查",
+        updatesNeverChecked: "从未检查",
+        updatesComputerSafe: "应用更新不会重置 Computer 文件",
         updatesChecking: "检查中…",
         updatesAvailable: "发现新版本 {v} — 下载完成后「重启并安装」可用。",
         updatesLatest: "已是最新版本。",
@@ -6832,6 +7041,21 @@
         rRoomTurn: "群聊 {room}：已投遞本則訊息，等待 Bot 回應。",
         rHandoff: "{from} 已將任務轉交給 {to}（群「{room}」，轉交已寫入群 transcript）。",
         rHandoffFail: "任務轉交被拒：{reason}（未寫入群 transcript，Bot 不會假裝接手）。",
+        accountSection: "Account（本機 profile · 不偽造遠端登入）",
+        accountLabelPlaceholder: "profile 名（如 Personal / Work）",
+        accountSignInBtn: "登入",
+        accountSignOutBtn: "登出",
+        accountSwitchTo: "切換 profile…",
+        accountNone: "尚無本機 profile",
+        accountSignedIn: "已登入（本機 profile「{n}」）· 憑證來源：{src}",
+        accountNoCred: "無任何已設定憑證（相關功能保持關閉）",
+        accountNotSigned: "未登入（本機沒有可連線的遠端帳號）",
+        accountSignedOut: "已登出本機 profile「{n}」（憑證保留在本機）。",
+        accountCredOn: "已設定",
+        accountCredOff: "未設定",
+        accountNeedsLabel: "請先填寫 profile 名再登入。",
+        accountFail: "帳戶操作被拒：{e}",
+        rUpdStatus: "安裝狀態：v{v}（{pkg}）· {safe}。",
         rTakeover: "接管中 — 你正在直接操作本機螢幕，完成後點「我操作完了」。",
         rNever: "本機執行 = 從不允許：該操作被你的設定直接拒絕，未執行。",
         rAutoReview: "Auto-review：命中 {via} 規則，已自動執行（未再次詢問）。",
@@ -6873,6 +7097,12 @@
         checkUpdatesBtn: "檢查更新",
         restartUpdateBtn: "重新啟動並安裝",
         updatesIdle: "尚未檢查 — 點「檢查更新」（沙箱未打包時誠實顯示 residual）。",
+        updatesVersion: "安裝版本",
+        updatesDevRun: "開發執行（未打包）",
+        updatesReadyRestart: "更新已下載 — 可重啟安裝",
+        updatesLastCheck: "上次檢查",
+        updatesNeverChecked: "從未檢查",
+        updatesComputerSafe: "應用更新不會重置 Computer 檔案",
         updatesChecking: "檢查中…",
         updatesAvailable: "發現新版本 {v} — 下載完成後「重新啟動並安裝」可用。",
         updatesLatest: "已是最新版本。",
@@ -7064,6 +7294,21 @@
         rRoomTurn: "Room {room}: message delivered, waiting for bots.",
         rHandoff: "{from} handed the task off to {to} (room «{room}», transfer written to the room transcript).",
         rHandoffFail: "Task handoff refused: {reason} (nothing written to the room transcript; no bot pretends to have taken it).",
+        accountSection: "Account (local profile · never a fabricated remote login)",
+        accountLabelPlaceholder: "profile name (e.g. Personal / Work)",
+        accountSignInBtn: "Sign in",
+        accountSignOutBtn: "Sign out",
+        accountSwitchTo: "Switch profile…",
+        accountNone: "no local profiles yet",
+        accountSignedIn: "Signed in (local profile «{n}») · credential sources: {src}",
+        accountNoCred: "no credentials configured (dependent features stay off)",
+        accountNotSigned: "Not signed in (no remote account exists on this machine)",
+        accountSignedOut: "Signed out of local profile «{n}» (credentials stay on this machine).",
+        accountCredOn: "configured",
+        accountCredOff: "missing",
+        accountNeedsLabel: "Type a profile name before signing in.",
+        accountFail: "Account action refused: {e}",
+        rUpdStatus: "Install state: v{v} ({pkg}) · {safe}.",
         rTakeover: "Take over — you control this screen; hit 「I'm done」 when finished.",
         rNever: "Local execution = Never allow: refused by your setting, nothing ran.",
         rAutoReview: "Auto-review: matched {via} rule, executed without asking again.",
@@ -7105,6 +7350,12 @@
         checkUpdatesBtn: "Check for Updates",
         restartUpdateBtn: "Restart to Update",
         updatesIdle: "Not checked yet — press Check for Updates (honest residual in unpackaged sandbox).",
+        updatesVersion: "installed",
+        updatesDevRun: "dev run (unpackaged)",
+        updatesReadyRestart: "update downloaded — ready to restart",
+        updatesLastCheck: "last check",
+        updatesNeverChecked: "never checked",
+        updatesComputerSafe: "app updates never reset Computer files",
         updatesChecking: "Checking…",
         updatesAvailable: "New version {v} — Restart to Update enables once downloaded.",
         updatesLatest: "You're on the latest version.",

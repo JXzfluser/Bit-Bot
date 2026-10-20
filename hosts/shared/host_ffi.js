@@ -22998,6 +22998,101 @@ function createHostFfi(repoRoot) {
         results.push(await executeCheckUpdates(cmd));
         continue;
       }
+      if (
+        kind === "account_status" ||
+        kind === "account_sign_in" ||
+        kind === "account_sign_out" ||
+        kind === "account_switch"
+      ) {
+        // GP-74: Account is LOCAL-PROFILE ONLY. There is no remote Bit Bot
+        // account API in this build, so we report/modify a local row plus the
+        // real credential sources — never a fabricated remote identity.
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const decode = (s) => String(s || "").replace(/\+/g, " ").trim();
+        let res = null;
+        if (kind === "account_status") res = surface.accountStatus();
+        else if (kind === "account_sign_in") res = surface.accountSignIn(decode(cmd));
+        else if (kind === "account_sign_out") res = surface.accountSignOut();
+        else res = surface.accountSwitch(decode(cmd));
+        results.push({
+          kind,
+          ok: res.ok === true,
+          command: cmd,
+          stdout: JSON.stringify(res),
+          stderr: res && res.ok ? "" : (res && res.error) || "account_refused",
+          error: res && res.ok ? "" : (res && res.error) || "account_refused",
+          mode: res.mode || "host_account_status",
+          refused: !(res && res.ok),
+        });
+        continue;
+      }
+      if (kind === "update_status") {
+        // GP-77: read the REAL install state. Desktop main persists it into
+        // data/desktop/app-install.json / ota-state.json; CLI has no package,
+        // so it reports the same fields with packaged:false (honest residual).
+        const at = new Date().toISOString();
+        const installPath = path.join(REPO_ROOT, "data", "desktop", "app-install.json");
+        const otaPath = path.join(REPO_ROOT, "data", "desktop", "ota-state.json");
+        const readJsonSafe = (p, fb) => {
+          try {
+            return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : fb;
+          } catch (_) {
+            return fb;
+          }
+        };
+        let version = null;
+        try {
+          version =
+            JSON.parse(
+              fs.readFileSync(path.join(REPO_ROOT, "hosts", "desktop", "package.json"), "utf8"),
+            ).version || null;
+        } catch (_) { /* unknown version */ }
+        const install = readJsonSafe(installPath, {});
+        const ota = readJsonSafe(otaPath, {});
+        const feedUrl = String(process.env.BITBOT_UPDATE_FEED_URL || "").trim();
+        // "Updates never reset the Computer": assert the Computer stores exist and
+        // record their fingerprints — this handler is read-only by construction.
+        const computerJson = path.join(REPO_ROOT, "data", "desktop", "computer.json");
+        const boxDir = path.join(REPO_ROOT, "data", "box");
+        const fingerprint = (p) => {
+          try {
+            if (!fs.existsSync(p)) return null;
+            const st = fs.statSync(p);
+            return { exists: true, size: st.size, mtime_ms: Math.floor(st.mtimeMs) };
+          } catch (_) {
+            return null;
+          }
+        };
+        const payload = {
+          ok: true,
+          mode: "host_update_status",
+          version,
+          packaged: Boolean(install.packaged),
+          updater_loaded: Boolean(install.updater_loaded),
+          feed_configured: Boolean(feedUrl),
+          last_check: ota.last_check || null,
+          last_result: ota.last_result || null,
+          update_available: Boolean(ota.update_available),
+          update_downloaded: Boolean(ota.update_downloaded),
+          error: ota.error || null,
+          // Residual honesty: unpackaged dev run cannot install app updates.
+          residual: !(feedUrl && install.updater_loaded && install.packaged),
+          pretend_up_to_date: false,
+          computer_untouched_by_app_update: true,
+          computer_state: fingerprint(computerJson),
+          box_dir_present: fs.existsSync(boxDir),
+          at,
+        };
+        const dir = path.join(REPO_ROOT, "data", "settings");
+        fs.mkdirSync(dir, { recursive: true });
+        const snapPath = path.join(dir, `update-status-${Date.now().toString(36)}.json`);
+        fs.writeFileSync(snapPath, JSON.stringify({ ...payload, path: snapPath }, null, 2));
+        results.push(okJson("update_status", cmd || "install", { ...payload, path: snapPath }));
+        continue;
+      }
       if (kind === "auto_review_settings") {
         results.push(await executeAutoReviewSettings(cmd));
         continue;

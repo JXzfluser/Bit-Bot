@@ -487,6 +487,68 @@ const bs=require('./$DATA/bots.json').bots;
 const rs=require('./$DATA/rooms.json').rooms;
 process.exit(!bs.some(b=>['HoFrom','HoTo','HoOut'].includes(b.name)) && !rs.some(r=>r.id==='$hoid') ? 0:1)" && ok "G-14 清理：探针 Bot/群行/inbox/存根全清（双跑幂等）" || bad "G-14 cleanup"
 
+echo "== G-15 账户真实登录态 + 安装态（GP-74 / GP-77 · 规格 §2.6）=="
+# 规格验收信号：显示真实登录态来源（凭证是否配置）；未配置明确"未登录"而非假装；
+# 应用更新不重置 Computer 文件。
+node -e "require('fs').rmSync('data/desktop/account-profile.json',{force:true})"
+j=$(turn_json "whoami")
+echo "$j" | field hostKinds | grep -q account_status:ok && echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='account_status');const p=JSON.parse(h.stdout||'{}');process.exit(p.signed_in===false&&p.pretend_signed_in===false&&p.remote_verified===false&&p.scope==='local-profile'&&/not signed in/.test(p.note||'')&&Array.isArray(p.credential_sources)?0:1)})" && ok "GP-74 无 profile → 明确未登录（remote_verified:false，不伪造远端账号）" || bad "GP-74 not-signed-in"
+j=$(turn_json "sign in Work")
+echo "$j" | field hostKinds | grep -q account_sign_in:ok && node -e "
+const p=require('./data/desktop/account-profile.json');
+process.exit(p.active==='Work' && p.accounts.length===1 && p.accounts[0].label==='Work' ? 0:1)" && ok "GP-74 sign in → 本地 profile 落盘并激活" || bad "GP-74 sign in persisted"
+j=$(turn_json "whoami")
+echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='account_status');const p=JSON.parse(h.stdout||'{}');const llm=(p.credential_sources||[]).find(s=>s.name==='llm');process.exit(p.signed_in===true&&p.active.label==='Work'&&llm&&typeof llm.configured==='boolean'&&(llm.configured===true?/backed by/.test(p.note):/NO configured credentials/.test(p.note))?0:1)})" && ok "GP-74 登录态附真实凭证来源（llm 配置与否决定 note 文案，不空口说已登录）" || bad "GP-74 credential truth"
+j=$(turn_json "sign in Personal")
+j=$(turn_json "switch account Work")
+echo "$j" | field hostKinds | grep -q account_switch:ok && node -e "
+const p=require('./data/desktop/account-profile.json');
+process.exit(p.active==='Work'&&p.accounts.length===2 ? 0:1)" && ok "GP-74 多 profile 切换持久化" || bad "GP-74 switch"
+j=$(turn_json "switch account Ghost")
+echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='account_switch');const p=JSON.parse(h.stdout||'{}');process.exit(h.ok===false&&h.refused===true&&p.error==='account_not_found'&&p.pretend_switched===false&&p.known.includes('Work')?0:1)})" && ok "GP-74 未知 profile 被拒（account_not_found + known 列表，不假切换）" || bad "GP-74 unknown profile"
+j=$(turn_json "sign out")
+echo "$j" | field hostKinds | grep -q account_sign_out:ok && node -e "
+const p=require('./data/desktop/account-profile.json');
+process.exit(p.active===null&&p.accounts.length===2 ? 0:1)" && ok "GP-74 登出仅清本地激活态（profile 与凭证保留，无 pretend_remote_signout）" || bad "GP-74 sign out"
+# GP-77：安装态真实读取 + 应用更新不触碰 Computer
+node -e "
+const fs=require('fs');const p='data/desktop/computer.json';
+const d=JSON.parse(fs.readFileSync(p,'utf8'));
+d.__m14_marker='keep-'+Date.now();
+fs.writeFileSync(p,JSON.stringify(d,null,2))"
+j=$(turn_json "update status")
+echo "$j" | field hostKinds | grep -q update_status:ok && echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='update_status');const p=JSON.parse(h.stdout||'{}');process.exit(/^\d+\.\d+/.test(p.version||'')&&p.packaged===false&&p.residual===true&&p.pretend_up_to_date===false&&p.computer_untouched_by_app_update===true?0:1)})" && ok "GP-77 update status → 真实版本 + 未打包诚实 residual（不谎称最新）" || bad "GP-77 install state"
+j=$(turn_json "check for updates")
+echo "$j" | field hostKinds | grep -q check_updates:ok && ok "GP-77 check for updates → Updates tab 链 ok（与 update status 分离）" || bad "GP-77 check chain"
+node -e "
+const fs=require('fs');
+const d=JSON.parse(fs.readFileSync('data/desktop/computer.json','utf8'));
+process.exit(d.__m14_marker&&/^keep-/.test(d.__m14_marker) ? 0:1)" && ok "GP-77 应用更新链跑完后 Computer 状态文件未被改写" || bad "GP-77 computer untouched"
+node -e "
+const fs=require('fs');
+const p='data/desktop/computer.json';
+const d=JSON.parse(fs.readFileSync(p,'utf8'));
+delete d.__m14_marker;
+fs.writeFileSync(p,JSON.stringify(d,null,2))"
+# renderer 接线：Account 面板 + Updates 安装态（三语）
+node -e '
+const html=require("fs").readFileSync("hosts/desktop/index.html","utf8");
+const acct=(html.match(/accountSignedIn:/g)||[]).length>=3 &&
+  html.includes("gp-account-state") && html.includes("bitbot.account.status") &&
+  html.includes(String.raw`h.kind === "account_status" && h.ok`) &&
+  (html.match(/accountSignedOut:/g)||[]).length>=3;
+const upd=(html.match(/updatesComputerSafe:/g)||[]).length>=3 &&
+  html.includes("bitbot.ota.status") && html.includes("updatesDevRun");
+const noFake=!/pretend_signed_in: true/.test(html);
+process.exit(acct&&upd&&noFake?0:1)' && ok "GP-74/77 renderer：Account 面板与 Updates 安装态三语接线（无假登录文案）" || bad "GP-74/77 renderer wiring"
+node -e "
+const fs=require('fs');
+for(const p of ['data/desktop/account-profile.json']){try{fs.unlinkSync(p)}catch(e){}}
+for(const p of ['data/desktop/app-install.json','data/desktop/ota-state.json']){try{fs.unlinkSync(p)}catch(e){}}
+const ds=require('fs').readdirSync('data/settings').filter(f=>f.startsWith('update-status-'));
+for(const f of ds){try{fs.unlinkSync('data/settings/'+f)}catch(e){}}"
+echo "  · G-15 清理完成（account-profile / install 快照删除，双跑幂等）"
+
 echo
 
 

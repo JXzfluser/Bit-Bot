@@ -156,6 +156,11 @@ pub(all) enum TurnIntent {
   ReactMessage(message_id~ : String, emoji~ : String)
   Screenshot(agent_id~ : String)
   CheckUpdates
+  AccountStatus
+  AccountSignIn(label~ : String)
+  AccountSignOut
+  AccountSwitch(label~ : String)
+  UpdateStatus
   AutoReviewSettings
   BoxChromeProbe(want_bare~ : Bool)
   CodeChanges(path~ : String)
@@ -303,6 +308,11 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     ReactMessage(_) => "react_message"
     Screenshot(_) => "screenshot"
     CheckUpdates => "check_updates"
+    AccountStatus => "account_status"
+    AccountSignIn(_) => "account_sign_in"
+    AccountSignOut => "account_sign_out"
+    AccountSwitch(_) => "account_switch"
+    UpdateStatus => "update_status"
     AutoReviewSettings => "auto_review_settings"
     BoxChromeProbe(_) => "box_chrome_probe"
     CodeChanges(_) => "code_changes"
@@ -4145,6 +4155,92 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "Check for Updates planned (CM-1906). Host opens Updates tab (update-channel); distinct from Update Computer.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    AccountStatus => {
+      let effect : DesktopEffect = {
+        kind: "account_status",
+        command: "whoami",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Account status planned (GP-74). Host reports the real local sign-in source " +
+        "(which credentials are configured, which are not) — never a fabricated remote account.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    AccountSignIn(label~) => {
+      let effect : DesktopEffect = {
+        kind: "account_sign_in",
+        command: encode_field_value(label),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Sign in planned (GP-74): " + label +
+        ". Host records a LOCAL profile only and says which credential source backs it; " +
+        "no remote account is contacted.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    AccountSignOut => {
+      let effect : DesktopEffect = {
+        kind: "account_sign_out",
+        command: "local",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Sign out planned (GP-74). Host clears the local profile session only — " +
+        "no remote account is contacted, and configured credentials stay on this machine.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    AccountSwitch(label~) => {
+      let effect : DesktopEffect = {
+        kind: "account_switch",
+        command: encode_field_value(label),
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Account switch planned (GP-74): " + label +
+        ". Host switches the local profile; unknown labels are refused, not invented.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    UpdateStatus => {
+      let effect : DesktopEffect = {
+        kind: "update_status",
+        command: "install",
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Update status planned (GP-77). Host reads the real install state (version, packaged, " +
+        "feed, last check) and confirms app updates never touch Computer files.",
         intent,
         ctx~,
         effects=[effect],
