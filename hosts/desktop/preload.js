@@ -1,6 +1,6 @@
 "use strict";
 
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("bitbot", {
   boot: () => ipcRenderer.invoke("bitbot:boot"),
@@ -29,7 +29,20 @@ contextBridge.exposeInMainWorld("bitbot", {
     set: (patch) => ipcRenderer.invoke("bitbot:settings:set", patch),
   },
   attachments: {
-    pick: () => ipcRenderer.invoke("bitbot:attachments:pick"),
+    pick: (existing) => ipcRenderer.invoke("bitbot:attachments:pick", { existing: existing || 0 }),
+    // GP-11: paste / drag-drop carry File objects only in the renderer; the
+    // real path is resolved here with webUtils (Electron 32+ removed
+    // file.path under contextIsolation) before the Host validates & stages.
+    stagePaths: (files, existing = 0) => {
+      const paths = (files || []).map((f) => {
+        try {
+          return webUtils.getPathForFile(f);
+        } catch (_) {
+          return "";
+        }
+      });
+      return ipcRenderer.invoke("bitbot:attachments:stage", { paths, existing });
+    },
   },
   skills: {
     list: () => ipcRenderer.invoke("bitbot:skills:list"),

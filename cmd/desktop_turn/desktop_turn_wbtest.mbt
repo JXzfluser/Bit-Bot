@@ -1369,3 +1369,60 @@ test "desktop_turn_wave_g_legacy_routes_kept" {
   let r4 = run_desktop_turn("update bot computer", turn_id="wg-r4")
   assert_eq(r4.intent, "update_computer")
 }
+
+///|
+/// GP-11 (Wave M16): attachment paths from the composer must map 1:1 to real
+/// copies — never one swallowed "; "-joined path, never a /workspace dest the
+/// Host rejects, and prose containing "attach file" must not trigger a copy.
+test "desktop_turn_attach_files_gp11" {
+  let s1 = run_desktop_turn(
+    "attach file /app/data/workspace/uploads/m16/a.png",
+    turn_id="gp11-s1",
+  )
+  assert_true(s1.ok)
+  assert_eq(s1.intent, "copy_to_box")
+  assert_eq(s1.effects.length(), 1)
+  assert_eq(
+    s1.effects[0].command,
+    "desk-1|/app/data/workspace/uploads/m16/a.png|data/workspace/uploads/a.png",
+  )
+  // prose + "; "-joined (the composer's pick format) → one effect per path
+  let m2 = run_desktop_turn(
+    "看这两个文件\nattach file /u/a.txt; attach file /u/b.txt",
+    turn_id="gp11-m2",
+  )
+  assert_true(m2.ok)
+  assert_eq(m2.intent, "attach_files")
+  assert_eq(m2.effects.length(), 2)
+  assert_eq(m2.effects[0].command, "desk-1|/u/a.txt|data/workspace/uploads/a.txt")
+  assert_eq(m2.effects[1].command, "desk-1|/u/b.txt|data/workspace/uploads/b.txt")
+  // newline-per-attach (paste/drop format)
+  let m3 = run_desktop_turn(
+    "attach file /u/x.png\nattach file /u/y.png",
+    turn_id="gp11-m3",
+  )
+  assert_eq(m3.intent, "attach_files")
+  assert_eq(m3.effects.length(), 2)
+  // duplicates collapse (same path listed twice → one copy)
+  let dup = run_desktop_turn(
+    "attach file /u/a.bin; attach file /u/a.bin",
+    turn_id="gp11-dup",
+  )
+  assert_eq(dup.intent, "copy_to_box")
+  assert_eq(dup.effects.length(), 1)
+  // mid-sentence prose keeps the generic classifier (no accidental copy)
+  let pr = run_desktop_turn(
+    "please attach file notes.txt to the mail",
+    turn_id="gp11-pr",
+  )
+  assert_true(pr.ok)
+  assert_true(pr.intent != "copy_to_box")
+  assert_true(pr.intent != "attach_files")
+  // key=value kv form untouched (copy to box machine=... keeps its route)
+  let kv = run_desktop_turn(
+    "copy to box machine=desk-1 src=README.mbt.md dest=/workspace/uploads/README.mbt.md",
+    turn_id="gp11-kv",
+  )
+  assert_eq(kv.intent, "copy_to_box")
+  assert_eq(kv.effects[0].command, "desk-1|README.mbt.md|/workspace/uploads/README.mbt.md")
+}

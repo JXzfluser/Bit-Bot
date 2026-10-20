@@ -1953,6 +1953,8 @@
       [/^Bot templates listed from the local Host catalog \(GP-02\)\..*/i, "rTplList"],
       [/^Create Bot from template planned \(GP-02\)\..*/i, "rTplCreate"],
       [/^Task handoff planned \(GP-52\): (.+) → (.+) in «(.+?)»\..*/i, "rHandoff"],
+      [/^Attached (\d+) file\(s\) \(GP-11\)\..*/i, "rAttach"],
+      [/^CopyToBox planned for machine=\S+ src=(\S+) → data\/workspace\/uploads\/.*\. Host FFI performs real copy \(CM-0703\)\./i, "rAttachOne"],
     ];
     function wavegLocalizeReply(text) {
       const raw = String(text || "");
@@ -1969,6 +1971,8 @@
         if (key === "rHandoff")
           return tpl.replace("{from}", m[1]).replace("{to}", m[2]).replace("{room}", m[3]);
         if (key === "rAutoReview") return tpl.replace("{via}", m[1]);
+        if (key === "rAttach") return tpl.replace("{n}", m[1]);
+        if (key === "rAttachOne") return tpl.replace("{path}", m[1]);
         if (key === "rVoiceStart" || key === "rVoiceEnd") return tpl.replace("{id}", m[1]);
         if (key === "rVoiceRelay") return tpl.replace("{n}", m[2]);
         if (key === "rPluginInstalled" || key === "rPluginUninstalled" || key === "rPluginGet")
@@ -6788,6 +6792,12 @@
         rRoomTurn: "群聊 {room}：已投递本条消息，等待 Bot 回应。",
         rHandoff: "{from} 已将任务转交给 {to}（群「{room}」，转交已写入群 transcript）。",
         rHandoffFail: "任务转交被拒：{reason}（未写入群 transcript，Bot 不会假装接手）。",
+        attachTooMany: "附件被拒绝：一次最多 6 个（GP-11）。",
+        attachTooLarge: "附件被拒绝：{name} 超过 25MB（文档/图片/音频上限）。",
+        attachTooLargeVideo: "附件被拒绝：{name} 超过 200MB（视频上限）。",
+        attachNoPath: "附件被拒绝：剪贴板内容没有真实磁盘路径（不伪造路径）。",
+        rAttach: "已接收 {n} 个附件，Host 正在把每个真实路径复制进工作区（GP-11）。",
+        rAttachOne: "已接收附件 {path}，Host 正在复制进工作区（GP-11）。",
         accountSection: "Account（本地 profile · 不伪造远端登录）",
         accountLabelPlaceholder: "profile 名（如 Personal / Work）",
         accountSignInBtn: "登录",
@@ -7041,6 +7051,12 @@
         rRoomTurn: "群聊 {room}：已投遞本則訊息，等待 Bot 回應。",
         rHandoff: "{from} 已將任務轉交給 {to}（群「{room}」，轉交已寫入群 transcript）。",
         rHandoffFail: "任務轉交被拒：{reason}（未寫入群 transcript，Bot 不會假裝接手）。",
+        attachTooMany: "附件被拒絕：一次最多 6 個（GP-11）。",
+        attachTooLarge: "附件被拒絕：{name} 超過 25MB（檔案/圖片/音訊上限）。",
+        attachTooLargeVideo: "附件被拒絕：{name} 超過 200MB（影片上限）。",
+        attachNoPath: "附件被拒絕：剪貼板內容沒有真實磁碟路徑（不偽造路徑）。",
+        rAttach: "已接收 {n} 個附件，Host 正把每個真實路徑複製進工作區（GP-11）。",
+        rAttachOne: "已接收附件 {path}，Host 正複製進工作區（GP-11）。",
         accountSection: "Account（本機 profile · 不偽造遠端登入）",
         accountLabelPlaceholder: "profile 名（如 Personal / Work）",
         accountSignInBtn: "登入",
@@ -7294,6 +7310,12 @@
         rRoomTurn: "Room {room}: message delivered, waiting for bots.",
         rHandoff: "{from} handed the task off to {to} (room «{room}», transfer written to the room transcript).",
         rHandoffFail: "Task handoff refused: {reason} (nothing written to the room transcript; no bot pretends to have taken it).",
+        attachTooMany: "Attachment refused: max 6 files per send (GP-11).",
+        attachTooLarge: "Attachment refused: {name} exceeds the 25MB limit (doc/image/audio).",
+        attachTooLargeVideo: "Attachment refused: {name} exceeds the 200MB video limit.",
+        attachNoPath: "Attachment refused: clipboard item has no real disk path (never fabricated).",
+        rAttach: "Accepted {n} attachment(s); Host copies each real path into the workspace (GP-11).",
+        rAttachOne: "Accepted attachment {path}; Host copies it into the workspace (GP-11).",
         accountSection: "Account (local profile · never a fabricated remote login)",
         accountLabelPlaceholder: "profile name (e.g. Personal / Work)",
         accountSignInBtn: "Sign in",
@@ -8389,18 +8411,65 @@
       if (typeof syncVoiceChatAvailability === "function") syncVoiceChatAvailability();
     }
     const attachBtn = document.getElementById("attach-btn");
+    function localizeAttachRefusal(r) {
+      // GP-11: honest refusal copy — never silently drop the reject reason.
+      const code = String((r && (r.code || r.error)) || "");
+      if (code.startsWith("too_many")) return wavegT("attachTooMany");
+      if (code.startsWith("too_large")) {
+        const name = code.slice("too_large:".length) || "?";
+        const kind = String((r && r.kind) || "");
+        return wavegT(kind === "video" ? "attachTooLargeVideo" : "attachTooLarge")
+          .replace("{name}", name);
+      }
+      if (code.startsWith("no_real_path")) return wavegT("attachNoPath");
+      return "附件被拒绝: " + code;
+    }
     if (attachBtn) {
       attachBtn.addEventListener("click", async () => {
         if (!window.bitbot || !window.bitbot.attachments) return;
-        const r = await window.bitbot.attachments.pick();
+        const r = await window.bitbot.attachments.pick(pendingAttachments.length);
         if (r && r.ok && Array.isArray(r.paths)) {
           pendingAttachments = pendingAttachments.concat(r.paths);
           renderAttachmentStrip();
         } else if (r && r.error && !r.canceled) {
-          addMsg("assistant", "附件被拒绝: " + r.error);
+          addMsg("assistant", localizeAttachRefusal(r));
         }
       });
     }
+
+    // GP-11: paste a file (screenshot) or drag files onto the composer.
+    // webUtils.getPathForFile resolves the real disk path; the SAME Host
+    // validator (≤6 / 25MB / 200MB) gates these channels — a clipboard blob
+    // with no file path is refused honestly, never fabricated (CM-0106).
+    async function stageIncomingFiles(list, ev) {
+      if (!window.bitbot || !window.bitbot.attachments) return;
+      const files = Array.from(list || []).filter((f) => f && f.size >= 0);
+      if (!files.length) return;
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      const r = await window.bitbot.attachments.stagePaths(files, pendingAttachments.length);
+      if (r && r.ok && Array.isArray(r.paths)) {
+        pendingAttachments = pendingAttachments.concat(r.paths);
+        renderAttachmentStrip();
+      } else if (r && (r.code || r.error)) {
+        addMsg("assistant", localizeAttachRefusal(r));
+      }
+    }
+    input.addEventListener("paste", (ev) => {
+      const files = ev.clipboardData && ev.clipboardData.files;
+      if (files && files.length) stageIncomingFiles(files, ev);
+    });
+    // Composer is a body-level sibling of #main, so the drop zone is the
+    // whole window (Grok accepts file drops anywhere over the app).
+    const dropZone = document.body;
+    dropZone.addEventListener("dragover", (ev) => {
+      if (ev.dataTransfer && Array.from(ev.dataTransfer.types || []).includes("Files")) {
+        ev.preventDefault();
+      }
+    });
+    dropZone.addEventListener("drop", (ev) => {
+      const files = ev.dataTransfer && ev.dataTransfer.files;
+      if (files && files.length) stageIncomingFiles(files, ev);
+    });
 
     // `/` skills and `@` mention autocomplete (GP-12/13)
     const menuEl = document.getElementById("composer-menu");

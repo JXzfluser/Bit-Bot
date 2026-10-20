@@ -764,7 +764,7 @@ ipcMain.handle("bitbot:settings:set", async (_e, patch) => {
   }
 });
 
-ipcMain.handle("bitbot:attachments:pick", async () => {
+ipcMain.handle("bitbot:attachments:pick", async (_e, payload) => {
   try {
     const win = BrowserWindow.getFocusedWindow() || mainWindow;
     const r = await dialog.showOpenDialog(win, {
@@ -774,8 +774,30 @@ ipcMain.handle("bitbot:attachments:pick", async () => {
     if (r.canceled || !r.filePaths.length) {
       return { ok: false, canceled: true, paths: [] };
     }
-    const staged = surface.stageAttachments(r.filePaths, sessions.activeId() || "desktop");
+    const existing = Number(payload && payload.existing) || 0;
+    const staged = surface.stageAttachments(
+      r.filePaths,
+      sessions.activeId() || "desktop",
+      existing,
+    );
     return staged;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), paths: [] };
+  }
+});
+
+// GP-11: paste / drag-drop arrive as File objects; preload resolves the real
+// paths (webUtils.getPathForFile) and the SAME Host validator stages them —
+// one truth for count/size limits across pick, paste, and drop.
+ipcMain.handle("bitbot:attachments:stage", async (_e, payload) => {
+  try {
+    const paths = Array.isArray(payload && payload.paths) ? payload.paths : [];
+    const existing = Number(payload && payload.existing) || 0;
+    return surface.stageAttachments(
+      paths,
+      sessions.activeId() || "desktop",
+      existing,
+    );
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err), paths: [] };
   }

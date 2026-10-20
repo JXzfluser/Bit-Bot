@@ -1393,12 +1393,18 @@ function createProductSurface(repoRoot) {
   }
 
   // ===== STAGE ATTACHMENTS =====
-  function stageAttachments(paths, sessionId) {
-    if (!Array.isArray(paths) || paths.length > 6) {
+  // GP-11 (official Grok spec §5.5 附件 / desktop limits): ≤6 per send,
+  // doc/image/audio ≤25 MB, video ≤200 MB. existingCount is what the composer
+  // already holds, so repeated picks cannot smuggle past the per-send cap.
+  function stageAttachments(paths, sessionId, existingCount = 0) {
+    const held = Number.isInteger(existingCount) && existingCount > 0 ? existingCount : 0;
+    if (!Array.isArray(paths) || paths.length + held > 6) {
       return {
         ok: false,
         code: "too_many_attachments",
-        error: "too_many_attachments"
+        error: "too_many_attachments",
+        max_per_send: 6,
+        already_staged: held
       };
     }
 
@@ -1408,6 +1414,16 @@ function createProductSurface(repoRoot) {
     fs.mkdirSync(sessionDir, { recursive: true });
 
     for (const srcPath of paths) {
+      if (!srcPath) {
+        // Paste/drop without a real filesystem path (clipboard blob, web view
+        // file): refuse honestly instead of staging a hallucinated path (CM-0106).
+        return {
+          ok: false,
+          code: "no_real_path",
+          error: "no_real_path",
+          note: "附件没有真实磁盘路径，已拒绝（不伪造路径）"
+        };
+      }
       try {
         const stat = fs.statSync(srcPath);
         const basename = path.basename(srcPath);
@@ -1434,7 +1450,10 @@ function createProductSurface(repoRoot) {
           return {
             ok: false,
             code: `too_large:${basename}`,
-            error: `too_large:${basename}`
+            error: `too_large:${basename}`,
+            kind,
+            bytes: stat.size,
+            max_bytes: maxSize
           };
         }
 

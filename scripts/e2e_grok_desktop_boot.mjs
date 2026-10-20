@@ -322,7 +322,143 @@ async function main() {
       ? ok("E2E 账户 store 真写入 active=E2E（local-profile）")
       : bad("E2E 账户 store", JSON.stringify(acct).slice(0, 120));
 
+    /* ---- GP-11 attachment limits through the real IPC bridge ----
+       stagePaths maps File→real path with webUtils in preload, then the SAME
+       Host validator main.js uses gates count/size. From the page we can only
+       hand it pathless pseudo-Files (exactly the paste-blob case), which is
+       what the count/no-path assertions exercise. */
+    const bridge = await boot2.win.evaluate(async () => {
+      const a = window.bitbot && window.bitbot.attachments;
+      const out = { hasBridge: Boolean(a && a.stagePaths && a.pick) };
+      out.refusedPath = await a.stagePaths([{ name: "blob.png" }], 0);
+      out.refusedSix = await a.stagePaths(
+        Array.from({ length: 2 }, (_, i) => ({ name: "f" + i })),
+        5,
+      );
+      return out;
+    });
+    bridge.hasBridge
+      ? ok("E2E GP-11：preload 附件桥（pick(existing)/stagePaths(files,existing)）已暴露")
+      : bad("E2E GP-11 桥缺失", JSON.stringify(bridge));
+    const noPath = bridge.refusedPath || {};
+    noPath.ok === false && String(noPath.code || "") === "no_real_path"
+      ? ok("E2E GP-11：无真实磁盘路径的粘贴/拖拽被诚实拒绝（不伪造路径，CM-0106）")
+      : bad("E2E GP-11 no_real_path", JSON.stringify(noPath).slice(0, 160));
+    const tooMany = bridge.refusedSix || {};
+    tooMany.ok === false &&
+      String(tooMany.code || "") === "too_many_attachments" &&
+      tooMany.max_per_send === 6 &&
+      tooMany.already_staged === 5
+      ? ok("E2E GP-11：已有 5 个再拖 2 个 → too_many_attachments（跨次累计 ≤6）")
+      : bad("E2E GP-11 count cap", JSON.stringify(tooMany).slice(0, 160));
+
+    /* renderer drop wiring: a synthetic File drop over the window must run the
+       stage path and show the LOCALIZED honest refusal (no silent drop). */
+    await boot2.win.evaluate(() => {
+      const file = new File(["hi"], "clip.png", { type: "image/png" });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document.body.dispatchEvent(
+        new DragEvent("drop", { bubbles: true, dataTransfer: dt }),
+      );
+    });
+    await boot2.win.waitForTimeout(1200);
+    await boot2.win
+      .waitForFunction(
+        () => /附件被拒绝|没有真实磁盘路径/.test(document.getElementById("log").innerText),
+        null,
+        { timeout: 10000 },
+      )
+      .then(
+        () => ok("E2E GP-11：拖拽链路进 renderer → 本地化诚实拒绝气泡（无路径不伪造）"),
+        (e) => bad("E2E GP-11 drop refusal UI", e.message),
+      );
+
     await shutdown(boot2.app);
+
+    /* ---- GP-11 size caps + full-chain copy, against the same Host
+       product_surface main.js requires (one validator, three entry points) ---- */
+    {
+      const { execFileSync } = await import("node:child_process");
+      const surfaceMod = createRequire(path.join(REPO, "hosts/desktop/package.json"));
+      const surface = surfaceMod(path.join(REPO, "hosts/desktop/product_surface.js"))
+        .createProductSurface(REPO);
+      const d11 = "/tmp/e2e-gp11";
+      fs.rmSync(d11, { recursive: true, force: true });
+      fs.mkdirSync(d11, { recursive: true });
+      execFileSync("truncate", ["-s", "26M", d11 + "/big.png"]);
+      execFileSync("truncate", ["-s", "201M", d11 + "/big.mp4"]);
+      execFileSync("truncate", ["-s", "24M", d11 + "/ok.png"]);
+      const r26 = surface.stageAttachments([d11 + "/big.png"], "gp11e2e");
+      r26.ok === false &&
+        String(r26.code || "").startsWith("too_large:") &&
+        r26.kind === "image" &&
+        r26.max_bytes === 25 * 1024 * 1024
+        ? ok("E2E GP-11：26MB 图片 → too_large（image 上限 25MB，负载带 kind/max）")
+        : bad("E2E GP-11 25MB cap", JSON.stringify(r26).slice(0, 160));
+      const r201 = surface.stageAttachments([d11 + "/big.mp4"], "gp11e2e");
+      r201.ok === false &&
+        String(r201.code || "").startsWith("too_large:") &&
+        r201.kind === "video" &&
+        r201.max_bytes === 200 * 1024 * 1024
+        ? ok("E2E GP-11：201MB 视频 → too_large（video 上限 200MB）")
+        : bad("E2E GP-11 200MB cap", JSON.stringify(r201).slice(0, 160));
+      const r7 = surface.stageAttachments(
+        Array.from({ length: 7 }, (_, i) => d11 + "/big.png#" + i),
+        "gp11e2e",
+      );
+      r7.ok === false && String(r7.code || "") === "too_many_attachments"
+        ? ok("E2E GP-11：7 个 → too_many_attachments")
+        : bad("E2E GP-11 7-cap", JSON.stringify(r7).slice(0, 160));
+      // Success path: 6 small files stage into data/workspace/uploads.
+      for (let i = 0; i < 6; i++) fs.writeFileSync(d11 + "/s" + i + ".txt", "gp11-" + i);
+      const six = surface.stageAttachments(
+        Array.from({ length: 6 }, (_, i) => d11 + "/s" + i + ".txt"),
+        "gp11e2e",
+      );
+      six.ok && six.paths && six.paths.length === 6
+        ? ok("E2E GP-11：6 个成功暂存 → data/workspace/uploads/gp11e2e/（真实路径回执）")
+        : bad("E2E GP-11 stage6", JSON.stringify(six).slice(0, 160));
+      const underWs = (six.paths || []).every(
+        (p) => p.startsWith(path.join(REPO, "data/workspace/uploads/gp11e2e")),
+      );
+      underWs ? ok("E2E GP-11：暂存路径全部落在 workspace uploads 语义目录") : bad("E2E GP-11 stage dir");
+      // Kernel end of the chain: composer pick format → attach_files intent →
+      // exactly N copy_to_box effects (one per real path, dest = basename).
+      const phrase =
+        "看下这批文件\n" +
+        six.paths.map((p) => "attach file " + p).join("; ");
+      const turn = await new Promise((res, rej) => {
+        const { spawn: spawnChild } = require("node:child_process");
+        const mo =
+          process.env.MOON_BIN || path.join(process.env.HOME || "", ".moon/bin/moon");
+        const p = spawnChild(mo, ["run", "cmd/desktop_turn", "--", phrase], {
+          stdio: ["ignore", "pipe", "pipe"],
+          cwd: REPO,
+        });
+        let out = "";
+        p.stdout.on("data", (d) => (out += d));
+        p.on("error", rej);
+        p.on("close", () =>
+          res(out.trim().split("\n").filter((l) => l.startsWith("{")).pop() || "{}"),
+        );
+      });
+      const tj = JSON.parse(turn);
+      const effs = (tj.effects || []).filter((e) => e.kind === "copy_to_box");
+      tj.intent === "attach_files" && effs.length === 6
+        ? ok("E2E GP-11：内核链 attach_files → 6 条逐路径 copy_to_box 效果（不吞列表）")
+        : bad("E2E GP-11 kernel chain", JSON.stringify({ i: tj.intent, n: effs.length }));
+      const destsOk = effs.every((e, i) =>
+        e.command === "desk-1|" + six.paths[i] + "|data/workspace/uploads/s" + i + ".txt",
+      );
+      destsOk
+        ? ok("E2E GP-11：每条效果 dest=data/workspace/uploads/<basename>（Host 可执行，无幻觉 /workspace）")
+        : bad("E2E GP-11 dest mapping", JSON.stringify(effs[0]).slice(0, 200));
+      fs.rmSync(d11, { recursive: true, force: true });
+      fs.rmSync(path.join(REPO, "data/workspace/uploads/gp11e2e"), { recursive: true, force: true });
+    }
+
+
   } catch (e) {
     bad("E2E 未捕获异常", e.stack || e.message);
   } finally {

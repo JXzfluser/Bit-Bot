@@ -75,6 +75,7 @@ pub(all) enum TurnIntent {
   WebFetch(url~ : String)
   CopyToBox(machine_id~ : String, src~ : String, dest~ : String)
   CopyFromBox(machine_id~ : String, box_path~ : String, dest~ : String)
+  AttachFiles(paths~ : Array[String])
   CreateRoutine(id~ : String, cron~ : String, prompt~ : String)
   ListRoutines
   PauseRoutine(id~ : String)
@@ -237,6 +238,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     WebFetch(_) => "webfetch"
     CopyToBox(_) => "copy_to_box"
     CopyFromBox(_) => "copy_from_box"
+    AttachFiles(_) => "attach_files"
     CreateRoutine(_) => "create_routine"
     ListRoutines => "list_routines"
     PauseRoutine(_) => "pause_routine"
@@ -495,6 +497,68 @@ fn part_text(part : @ui_protocol.MessageKind) -> String? {
 }
 
 ///|
+/// GP-11: last path segment of a staged file path (Windows + POSIX separators).
+fn last_path_segment(p : String) -> String {
+  let norm = p.replace(old = "\\", new = "/")
+  let mut cut = -1
+  let mut i = 0
+  while i < norm.length() {
+    if norm[i:(i + 1)] == "/" {
+      cut = i
+    }
+    i = i + 1
+  }
+  if cut < 0 {
+    norm.trim().to_owned()
+  } else {
+    norm[cut + 1:].to_owned()
+  }
+}
+
+///|
+/// GP-11: the composer sends Host-staged attachment paths as
+/// `[prose\n] attach file <p1>[; attach file <p2] ...` (pick) or
+/// one `attach file <p>` per line (paste/drop). A marker only counts at the
+/// START of a line, so prose like "please attach file notes.txt to the mail"
+/// keeps going to the generic classifier instead of triggering a copy.
+fn extract_attach_paths(text : String) -> Array[String] {
+  let out : Array[String] = []
+  for raw_line in text.split("\n") {
+    let mut line = raw_line.trim().to_owned()
+    while line.length() > 0 {
+      let ll = line.to_lower()
+      let stem = if ll.has_prefix("attach file ") {
+        line[12:].trim().to_owned()
+      } else if ll.has_prefix("upload file ") {
+        line[12:].trim().to_owned()
+      } else {
+        ""
+      }
+      if stem == "" {
+        line = ""
+      } else {
+        // Path runs to ';' or end of line; staged paths never contain spaces.
+        let one = match split_once(stem, ";") {
+          Some((p, more)) => {
+            line = more.trim().to_owned()
+            p.trim().to_owned()
+          }
+          None => {
+            line = ""
+            stem
+          }
+        }
+        let t = one.trim().to_owned()
+        if t != "" && !t.contains("=") && !out.contains(t) {
+          out.push(t)
+        }
+      }
+    }
+  }
+  out
+}
+
+///|
 /// Parse argv/user text into a TurnIntent (discriminated intent over chat default).
 pub fn classify_intent(user_text : String) -> TurnIntent {
   let trimmed = user_text.trim().to_owned()
@@ -635,22 +699,26 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
   }
   // Multi-end file routing (CM-0703/0704) — Host FFI copies real bytes.
-  // Product attach/upload → CopyToBox; download → CopyFromBox.
-  if low.has_prefix("attach file ") ||
-    low.has_prefix("upload file ") ||
-    low.has_prefix("attach ") ||
-    low.has_prefix("upload ") {
-    let src = if low.has_prefix("attach file ") {
-      trimmed[12:].trim().to_owned()
-    } else if low.has_prefix("upload file ") {
-      trimmed[12:].trim().to_owned()
-    } else if low.has_prefix("attach ") {
+  // GP-11 product attach: Host stages files under data/workspace/uploads and
+  // the composer sends their real paths; prose + "; "-joined + newline-joined
+  // "attach file <path>" segments all resolve to one copy per real path.
+  let attach_paths = extract_attach_paths(trimmed)
+  if attach_paths.length() == 1 {
+    let src = attach_paths[0]
+    let dest = "data/workspace/uploads/" + last_path_segment(src)
+    return CopyToBox(machine_id="desk-1", src~, dest~)
+  }
+  if attach_paths.length() > 1 {
+    return AttachFiles(paths=attach_paths)
+  }
+  if low.has_prefix("attach ") || low.has_prefix("upload ") {
+    let src = if low.has_prefix("attach ") {
       trimmed[7:].trim().to_owned()
     } else {
       trimmed[7:].trim().to_owned()
     }
     if src != "" && !src.contains("=") {
-      let dest = "/workspace/uploads/" + src
+      let dest = "data/workspace/uploads/" + last_path_segment(src)
       return CopyToBox(machine_id="desk-1", src~, dest~)
     }
   }
@@ -1888,6 +1956,32 @@ pub fn run_desktop_turn(
         intent,
         ctx~,
         effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    AttachFiles(paths~) => {
+      // GP-11: one real copy per staged path — never one swallowed list.
+      let effects : Array[DesktopEffect] = []
+      for p in paths {
+        effects.push({
+          kind: "copy_to_box",
+          command: "desk-1|" +
+            p +
+            "|data/workspace/uploads/" +
+            last_path_segment(p),
+          needs_host_ffi: true,
+        })
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Attached " +
+        paths.length().to_string() +
+        " file(s) (GP-11). Host copies each staged path into " +
+        "data/workspace/uploads.",
+        intent,
+        ctx~,
+        effects~,
         needs_host_ffi=true,
       )
     }

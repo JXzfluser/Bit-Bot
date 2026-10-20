@@ -575,7 +575,81 @@ else
   echo "  · skip：playwright-core / electron dist 未安装（npm --prefix hosts/desktop i -D playwright-core）"
 fi
 
-
+echo "== G-17 附件上限与多附件真实复制（GP-11 · 官方 spec §5.5：≤6 个/次，文档/图片/音频 ≤25MB，视频 ≤200MB）=="
+# 本波 closure：
+#  1) 单次 ≤6 是「本次选择 + 已暂存」的累计上限，不是只看本次选择；
+#  2) 多附件不再被压成一条 copy_to_box 命令（旧缺陷：整串 src 被当单路径 →
+#     "copy paths must stay under repo root"），kernel 走 AttachFiles，一条意图 N 个 effect；
+#  3) dest 从幻觉的 /workspace/... 改成 Host 真能执行的 data/workspace/uploads/<basename>；
+#  4) 粘贴/拖拽无真实磁盘路径时诚实拒绝（CM-0106 不伪造路径）。
+mkdir -p /tmp/g17
+for i in 1 2 3 4 5 6 7; do echo "g17 doc $i" > /tmp/g17/g17doc$i.txt; done
+truncate -s 26M /tmp/g17/big.png 2>/dev/null
+truncate -s 201M /tmp/g17/big.mp4 2>/dev/null
+node -e '
+const s=require("./hosts/desktop/product_surface.js").createProductSurface(process.cwd());
+const p=(x)=>JSON.stringify(x);
+const a=s.stageAttachments(["/tmp/g17/g17doc1.txt","/tmp/g17/g17doc2.txt","/tmp/g17/g17doc3.txt","/tmp/g17/g17doc4.txt","/tmp/g17/g17doc5.txt","/tmp/g17/g17doc6.txt","/tmp/g17/g17doc7.txt"],"g17",0);
+const b=s.stageAttachments(["/tmp/g17/big.png"],"g17",0);
+const c=s.stageAttachments(["/tmp/g17/big.mp4"],"g17",0);
+const d=s.stageAttachments(["/tmp/g17/g17doc1.txt","/tmp/g17/g17doc2.txt"],"g17",5);
+const e=s.stageAttachments([""],"g17",0);
+process.stdout.write([a.code,a.max_per_send,b.kind,b.bytes+"/"+b.max_bytes,c.kind,c.bytes+"/"+c.max_bytes,d.already_staged,e.code].join("|"));
+process.exit(a.ok||b.ok||c.ok||d.ok||e.ok?1:0)' > /tmp/g17/codes.txt 2>&1
+g17codes=$(cat /tmp/g17/codes.txt 2>/dev/null)
+echo "$g17codes" | grep -q '^too_many_attachments|6|' && ok "G-17 GP-11：7 个附件 → too_many_attachments（max_per_send=6）" || bad "G-17 count cap ($g17codes)"
+echo "$g17codes" | grep -q 'image|27262976/26214400' && ok "G-17 GP-11：26MB 图片 → too_large + kind=image + 真实字节/上限" || bad "G-17 image size cap"
+echo "$g17codes" | grep -q 'video|210763776/209715200' && ok "G-17 GP-11：201MB 视频走 200MB 档（非 25MB）" || bad "G-17 video size cap"
+echo "$g17codes" | grep -q '|5|' && ok "G-17 GP-11：已暂存 5 + 本次 2 → 拒绝（累计口径，非本次口径）" || bad "G-17 cumulative cap ($g17codes)"
+echo "$g17codes" | grep -q 'no_real_path$' && ok "G-17 GP-11：无真实路径 → no_real_path 诚实拒绝（不伪造）" || bad "G-17 no_real_path ($g17codes)"
+# 2 个成功暂存 → 真实落盘 uploads/<session>/
+node -e '
+const s=require("./hosts/desktop/product_surface.js").createProductSurface(process.cwd());
+const r=s.stageAttachments(["/tmp/g17/g17doc1.txt","/tmp/g17/g17doc2.txt"],"g17",0);
+const fs=require("fs");
+process.exit(r.ok && r.paths.length===2 && r.paths.every(p=>fs.existsSync(p))?0:1)' \
+  && ok "G-17 GP-11：2 个附件真实暂存到 data/workspace/uploads/g17/（文件存在）" || bad "G-17 stage ok path"
+# composer 提交格式 → kernel AttachFiles → N 个 copy_to_box effect（旧缺陷回归）
+P1=$(pwd)/data/workspace/uploads/g17/g17doc1.txt
+P2=$(pwd)/data/workspace/uploads/g17/g17doc2.txt
+j=$(turn_json "$(printf '看下这批文件\nattach file %s; attach file %s' "$P1" "$P2")")
+echo "$j" | field intent | grep -q attach_files && ok "G-17 GP-11：多附件 composer 文本 → attach_files 意图" || bad "G-17 attach_files intent"
+node -e '
+let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+const j=JSON.parse(d.trim().split("\n").filter(l=>l.startsWith("{")).pop());
+const e=(j.effects||[]).filter(x=>x.kind==="copy_to_box");
+// 断言 1：一条意图 = 每路径一个 effect（旧版整串塞一条命令 → Host 报 repo root 越界）
+if(e.length!==2) process.exit(1);
+// 断言 2：dest 是 Host 真能执行的 data/workspace/uploads/<basename>，不是幻觉 /workspace/
+for(const x of e){ if(!/^desk-1\|\S+\|data\/workspace\/uploads\/g17doc[12]\.txt$/.test(x.command)) process.exit(1); }
+process.exit(0)})' <<<"$j" \
+  && ok "G-17 GP-11：attach_files 展开 2 条 copy_to_box，dest=data/workspace/uploads/<basename>（非 /workspace）" || bad "G-17 per-path effects"
+j=$(turn_json "$(printf 'attach file %s' "$P1")")
+echo "$j" | field hostKinds | grep -q "^copy_to_box:ok" && ok "G-17 GP-11：单附件 → copy_to_box 真实复制 Host ok" || bad "G-17 single attach host ok"
+[ -f data/workspace/uploads/g17doc1.txt ] && grep -q '"binary_intact": true' data/box-copy/$(ls -t data/box-copy | head -1) && ok "G-17 GP-11：dest 落盘 + Host FFI 记录 sha256 一致/binary_intact" || bad "G-17 real copy artifact"
+# 渲染层三处入口共用同一校验器 + 本地化拒绝
+node -e '
+const fs=require("fs");const h=fs.readFileSync("hosts/desktop/index.html","utf8");
+const pl=fs.readFileSync("hosts/desktop/preload.js","utf8");
+const mj=fs.readFileSync("hosts/desktop/main.js","utf8");
+const need=[
+ /stageIncomingFiles/,           // pick/paste/drop 汇聚到单一校验器
+ /addEventListener\("paste"/,    // 粘贴入口
+ /const dropZone\s*=\s*document\.body/, // 拖拽区（composer 是 #main 的兄弟节点）
+ /localizeAttachRefusal/,        // 拒绝文案本地化
+ /webUtils/,                     // preload 用 getPathForFile 取真实路径
+];
+for(const k of need) if(!k.test(h)&&!k.test(pl)) process.exit(1);
+// i18n：6 个 key × 3 语言（词典定义形式 key: "…"）
+for(const k of ["attachTooMany","attachTooLarge","attachTooLargeVideo","attachNoPath","rAttach","rAttachOne"])
+  if(((h.match(new RegExp(k+":","g"))||[]).length)<3) process.exit(1);
+if(!/bitbot:attachments:stage/.test(pl)||!/bitbot:attachments:stage/.test(mj)) process.exit(1);
+if(!/bitbot:attachments:pick/.test(pl)||!/existing/.test(mj)) process.exit(1);
+process.exit(0)' \
+  && ok "G-17 GP-11：pick/paste/drop 共用校验器 + webUtils 真实路径 + 拒绝文案 i18n×3 + stage IPC 契约" || bad "G-17 renderer/IPC wiring"
+rm -rf /tmp/g17 data/workspace/uploads/g17 data/workspace/uploads/gp17
+rm -f data/workspace/uploads/g17doc1.txt data/workspace/uploads/g17doc2.txt data/workspace/uploads/g17doc3.txt
+echo "  · G-17 清理完成（fixture 与暂存目录删除，双跑幂等）"
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
