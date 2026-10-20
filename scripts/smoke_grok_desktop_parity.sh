@@ -657,6 +657,40 @@ rm -rf /tmp/g17 data/workspace/uploads/g17 data/workspace/uploads/gp17
 rm -f data/workspace/uploads/g17doc1.txt data/workspace/uploads/g17doc2.txt data/workspace/uploads/g17doc3.txt
 echo "  · G-17 清理完成（fixture 与暂存目录删除，双跑幂等）"
 
+echo "== G-18 Reply 回复特定消息（GP-14 · 官方 spec §5.1 + 群聊消息路由：被回复消息 id 必须进 kernel 上下文）=="
+# 规格验收信号：点回复后 kernel 上下文含被回复消息 id。
+# 只看 UI 引用条会是外壳，所以这里跑真实链：store id → kernel --reply-to →
+# Host 解析 id→原文 → 注入 provider 请求体（echo-all stub 在 HTTP 层自证）→
+# artifact/会话行持久化；伪 id 必须 message_not_found，不得静默吞。
+if timeout 300 node scripts/prove_gp14_reply.js > /tmp/g18-probe.log 2>&1; then
+  ok "G-18 GP-14 Reply 全链绿（$(grep -c '✓' /tmp/g18-probe.log) 项，$(tail -1 /tmp/g18-probe.log))"
+else
+  bad "G-18 GP-14 Reply 全链（见 /tmp/g18-probe.log）"
+  tail -12 /tmp/g18-probe.log
+fi
+grep -q "kernel 回显" /tmp/g18-probe.log && grep -q "provider 请求体真含引用行" /tmp/g18-probe.log &&
+  ok "G-18 GP-14：kernel 回显 + provider 请求体两级断言真实执行（非源码字符串检查）" || bad "G-18 GP-14 chain assertions missing"
+grep -q "message_not_found" /tmp/g18-probe.log && grep -q "unresolved" /tmp/g18-probe.log &&
+  ok "G-18 GP-14：伪 id 诚实失败路径被断言（不假装引用成功）" || bad "G-18 GP-14 honest-failure missing"
+node -e '
+const fs=require("fs");
+const t=fs.readFileSync("cmd/desktop_turn/turn_json.mbt","utf8");
+const s=fs.readFileSync("hosts/desktop/sessions.js","utf8");
+// kernel: reply_to 进 struct/argv/serializer；sessions: 每条消息带持久 id
+if(!/reply_to : String/.test(t)||!/--reply-to/.test(t)||t.indexOf("reply_to")<0) process.exit(1);
+if(!/buf.write_string\(escape_json_string\(self.reply_to\)\)/.test(t)) process.exit(1);
+if(!/function newMessageId/.test(s)||!/\"msg-"/.test(s)) process.exit(1);
+if(!/function findMessage/.test(s)||!/message_not_found/.test(s)) process.exit(1);
+process.exit(0)' &&
+  ok "G-18 GP-14：kernel struct/argv/JSON + store 消息 id/findMessage 契约在位" || bad "G-18 GP-14 contract drift"
+node -e '
+const fs=require("fs");
+const st=JSON.parse(fs.existsSync("data/desktop/sessions.json")?fs.readFileSync("data/desktop/sessions.json","utf8"):"{\"sessions\":[]}");
+// 探针自带 store 快照恢复：跑完不得留下 sess-gp14probe 会话（双跑幂等）
+process.exit((st.sessions||[]).some(x=>x.id==="sess-gp14probe")?1:0)' &&
+  ok "G-18 GP-14 探针恢复 sessions.json 快照（无残留会话）" || bad "G-18 GP-14 store residue"
+echo "  · G-18 说明：Reply 目标的 UI 交互（hover 回复按钮 → 引用条 → 切会话重建）由 E2E GP-14 十断言覆盖（G-16 同脚本）"
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -5171,9 +5171,15 @@ function createHostFfi(repoRoot) {
     });
   }
 
-  async function executeLlmChat(command) {
+  async function executeLlmChat(command, llmOpts) {
     const at = new Date().toISOString();
     const userText = String(command || "").trim();
+    // GP-14: kernel echoes the replied-to message id; Host resolves it to the
+    // quoted text and puts that quote into the real provider payload, so
+    // "reply targets this message" is verifiable at the HTTP body level.
+    const replyToId = String((llmOpts && llmOpts.replyTo) || "").trim();
+    const replyQuote = String((llmOpts && llmOpts.replyQuote) || "").trim();
+    const replyRole = String((llmOpts && llmOpts.replyRole) || "assistant").trim();
     const cfg = resolveLlmConfig();
     const dir = path.join(llmDir(), "turns");
     fs.mkdirSync(dir, { recursive: true });
@@ -5202,6 +5208,7 @@ function createHostFfi(repoRoot) {
         command: userText,
         stdout: "",
         stderr: "",
+        reply_to: replyToId || "",
         error: "empty user text",
       };
     }
@@ -5230,6 +5237,7 @@ function createHostFfi(repoRoot) {
         command: userText,
         stdout: "",
         stderr: "",
+        reply_to: replyToId || "",
         error: artifact.error,
       };
     }
@@ -5241,8 +5249,14 @@ function createHostFfi(repoRoot) {
         content:
           "你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。",
       },
-      { role: "user", content: userText },
     ];
+    if (replyToId && replyQuote) {
+      messages.push({
+        role: replyRole === "user" ? "user" : "assistant",
+        content: "[quoted message " + replyToId + "] " + replyQuote,
+      });
+    }
+    messages.push({ role: "user", content: userText });
     const timeoutMs = Number(process.env.BITBOT_LLM_TIMEOUT_MS || 90000);
 
     let text = "";
@@ -5401,6 +5415,11 @@ function createHostFfi(repoRoot) {
       localbrain: false,
       moderation,
       filing,
+      // GP-14: id + quote the turn was aimed at (empty when not a reply).
+      reply_to: replyToId || null,
+      reply_quote_chars: replyQuote.length,
+      reply_quote_source:
+        replyToId && replyQuote ? "session_store" : replyToId ? "unresolved" : null,
       at,
     };
     fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
@@ -5421,6 +5440,8 @@ function createHostFfi(repoRoot) {
       provider_id: cfg.provider_id,
       model: cfg.model,
       streamed,
+      reply_to: replyToId || "",
+      reply_quote_chars: replyQuote.length,
     };
   }
 
@@ -22919,7 +22940,13 @@ function createHostFfi(repoRoot) {
         continue;
       }
       if (kind === "llm_chat") {
-        results.push(await executeLlmChat(cmd));
+        results.push(
+          await executeLlmChat(cmd, {
+            replyTo: (ffiOpts && ffiOpts.replyTo) || "",
+            replyQuote: (ffiOpts && ffiOpts.replyQuote) || "",
+            replyRole: (ffiOpts && ffiOpts.replyRole) || "assistant",
+          }),
+        );
         continue;
       }
       if (kind === "llm_list_models") {

@@ -39,14 +39,26 @@ const server = http.createServer((req, res) => {
       const j = JSON.parse(body || "{}");
       wantStream = Boolean(j.stream);
       const msgs = j.messages || [];
-      user = (msgs[msgs.length - 1] && msgs[msgs.length - 1].content) || "";
+      // GP-14 proof: echo the WHOLE message stack (not just the last user turn)
+      // so a test can assert the quoted reply target actually reached the
+      // provider payload. Off by default to keep normal stub replies verbatim.
+      if (process.env.BITBOT_STUB_ECHO_ALL === "1") {
+        user = msgs.map((m) => m.role + "<" + (m.content || "") + ">").join("|");
+      } else {
+        user = (msgs[msgs.length - 1] && msgs[msgs.length - 1].content) || "";
+      }
     } catch (_) {
       /* ignore */
     }
+    // echo-all 模式下要看得下整条 message stack（引用场景 120 字会截掉 quoted 行）
+    const echoWidth =
+      process.env.BITBOT_STUB_ECHO_ALL === "1"
+        ? Number(process.env.BITBOT_STUB_ECHO_WIDTH || 600)
+        : 120;
     const content =
       mode === "block"
         ? "请勿制作炸弹，这是审核测试回复。"
-        : "Bit Bot stub reply: " + String(user).slice(0, 120);
+        : "Bit Bot stub reply: " + String(user).slice(0, echoWidth);
 
     if (wantStream) {
       res.writeHead(200, {

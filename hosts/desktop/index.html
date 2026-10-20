@@ -656,6 +656,68 @@
     margin-top: 8px;
     min-height: 28px;
   }
+  /* GP-14: Reply affordance + quote chip (hover actions on each message). */
+  .msg { position: relative; }
+  .msg .msg-actions {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    display: none;
+    gap: 4px;
+    z-index: 2;
+  }
+  .msg:hover .msg-actions, .msg .msg-actions:focus-within { display: inline-flex; }
+  .msg .msg-actions button {
+    border: 1px solid var(--line);
+    background: var(--bg1);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .msg .msg-actions button:hover { color: var(--ink); border-color: var(--accent); }
+  .msg-reply-quote {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: 0 6px 6px 0;
+    margin: 0 0 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .reply-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 16px 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    background: var(--bg1);
+    border-radius: 6px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .reply-bar .rb-text {
+    flex: 1;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .reply-bar .rb-x {
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 0 8px;
+    cursor: pointer;
+  }
   #reaction-tray .tray-pill {
     display: inline-flex;
     align-items: center;
@@ -1391,6 +1453,12 @@
         <button type="button" id="vc-relay-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer;font-size:12px" data-i18n="vcRelayBtn">发送</button>
       </div>
     </div>
+    <!-- GP-14: Reply 引用条（点消息上的「回复」出现；发送时被回复消息 id 交给 kernel 上下文） -->
+    <div id="reply-bar" class="reply-bar" style="display:none">
+      <span aria-hidden="true">↩</span>
+      <span id="reply-bar-text" class="rb-text"></span>
+      <button type="button" id="reply-cancel" class="rb-x" data-i18n="replyCancel">取消</button>
+    </div>
     <div class="row">
       <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…（Shift+Enter 换行）" autocomplete="off" autofocus></textarea>
       <button type="button" id="attach-btn" title="添加附件（≤6 · 文档/图片/音频 25MB · 视频 200MB）">📎</button>
@@ -2001,9 +2069,71 @@
       el.innerHTML = '<div class="role"></div><div class="body"></div>';
       el.querySelector(".role").textContent = role;
       el.querySelector(".body").textContent = text;
+      // GP-14: quote chip when this row itself was a reply to another message.
+      if (opts && opts.replyToText) {
+        const q = document.createElement("div");
+        q.className = "msg-reply-quote";
+        q.dataset.mid = String(opts.replyTo || "");
+        q.textContent = wavegT("replyQuoting") + String(opts.replyToText).slice(0, 120);
+        el.insertBefore(q, el.firstChild);
+      }
+      if (opts && opts.mid) el.dataset.mid = String(opts.mid);
+      // GP-14: Reply affordance on every bubble that has a durable store id.
+      if (opts && opts.mid && opts.actions !== false) attachMessageActions(el, role, text);
       log.appendChild(el);
       log.scrollTop = log.scrollHeight;
       return el;
+    }
+
+    // GP-14: "Reply 回复特定消息" — hover actions per message; the target's store
+    // id is what goes to the kernel, not a copy of its text.
+    function attachMessageActions(el, role, text) {
+      const bar = document.createElement("div");
+      bar.className = "msg-actions";
+      const rb = document.createElement("button");
+      rb.type = "button";
+      rb.dataset.i18n = "replyAction";
+      rb.textContent = wavegT("replyAction");
+      rb.addEventListener("click", () => {
+        setReplyTarget({
+          id: el.dataset.mid,
+          role: role,
+          text: String(text || ""),
+        });
+      });
+      bar.appendChild(rb);
+      el.appendChild(bar);
+    }
+
+    let replyTarget = null;
+    function renderReplyBar() {
+      const bar = document.getElementById("reply-bar");
+      const txt = document.getElementById("reply-bar-text");
+      if (!bar || !txt) return;
+      if (!replyTarget) {
+        bar.style.display = "none";
+        txt.textContent = "";
+        return;
+      }
+      bar.style.display = "flex";
+      txt.textContent =
+        wavegT("replyQuoting") + String(replyTarget.text || "").slice(0, 90);
+      txt.title = "id=" + replyTarget.id;
+    }
+    function setReplyTarget(t) {
+      replyTarget = t && t.id ? t : null;
+      renderReplyBar();
+      if (replyTarget) {
+        input.focus();
+        // Keep caret at the end of whatever the user already typed.
+        try {
+          input.setSelectionRange(input.value.length, input.value.length);
+        } catch (_) {}
+      }
+    }
+    function clearReplyTarget() {
+      replyTarget = null;
+      renderReplyBar();
     }
 
     /** CHARTER Delivery: inline Host media attachment in Desktop transcript. */
@@ -2763,9 +2893,16 @@
         refreshConfigGate().catch(() => {});
         return;
       }
+      const byId = {};
+      for (const m of msgs) if (m && m.id) byId[m.id] = m;
       for (const m of msgs) {
         if (!m || !m.text) continue;
-        addMsg(m.role === "user" ? "user" : "assistant", m.text);
+        addMsg(m.role === "user" ? "user" : "assistant", m.text, {
+          // GP-14: durable id + quoted target restored from the session store.
+          mid: m.id || "",
+          replyTo: m.reply_to || "",
+          replyToText: m.reply_to && byId[m.reply_to] ? byId[m.reply_to].text : "",
+        });
       }
     }
 
@@ -3149,7 +3286,13 @@
       clearWelcome();
       // Menu-driven protocol phrases (pin/hide/delete…) stay out of the
       // transcript — Grok's sidebar actions never echo raw commands.
-      if (!(opts && opts.silentUser)) addMsg("user", text + (opts && opts.approved ? " [approved]" : ""));
+      let userEl = null;
+      if (!(opts && opts.silentUser))
+        userEl = addMsg("user", text + (opts && opts.approved ? " [approved]" : ""), {
+          // GP-14: show what this turn replies to (target id, resolved by Host).
+          replyTo: (opts && opts.replyTo) || "",
+          replyToText: (opts && opts.replyQuoteText) || "",
+        });
       sendBtn.disabled = true;
       streamEl = null;
       try {
@@ -3168,13 +3311,32 @@
           streamEl = null;
         }
         let visibleAssistant = 0;
+        // GP-14: after the Host stored the rows, attach their durable ids so
+        // Reply on this message points at a real message (survives reload).
+        const storedIds = (r && r.stored_ids) || null;
+        if (storedIds && userEl && storedIds.user) {
+          userEl.dataset.mid = String(storedIds.user);
+          attachMessageActions(userEl, "user", text);
+        }
+        let assistantCursor = 0;
         if (r && Array.isArray(r.messages)) {
           for (const m of r.messages) {
             if (m.role === "user") continue;
             // Auto-approved turns shouldn't show a stale "Approval required" line.
             if (r.auto_approved === true && /^Approval required/i.test(String(m.text || "")))
               continue;
-            const el = addMsg(m.role || "assistant", wavegLocalizeReply(m.text || ""));
+            const locText = wavegLocalizeReply(m.text || "");
+            const el = addMsg(m.role || "assistant", locText);
+            const aid = storedIds && Array.isArray(storedIds.assistant)
+              ? storedIds.assistant[assistantCursor]
+              : "";
+            assistantCursor++;
+            if (aid) {
+              el.dataset.mid = String(aid);
+              // Quote preview uses the localized line, so a reply never shows
+              // raw kernel English in a Chinese UI.
+              attachMessageActions(el, m.role || "assistant", locText);
+            }
             if (!el.classList.contains("debug-only")) visibleAssistant++;
           }
         } else if (r && r.error) {
@@ -6793,6 +6955,9 @@
         rHandoff: "{from} 已将任务转交给 {to}（群「{room}」，转交已写入群 transcript）。",
         rHandoffFail: "任务转交被拒：{reason}（未写入群 transcript，Bot 不会假装接手）。",
         attachTooMany: "附件被拒绝：一次最多 6 个（GP-11）。",
+        replyAction: "回复",
+        replyQuoting: "回复：",
+        replyCancel: "取消",
         attachTooLarge: "附件被拒绝：{name} 超过 25MB（文档/图片/音频上限）。",
         attachTooLargeVideo: "附件被拒绝：{name} 超过 200MB（视频上限）。",
         attachNoPath: "附件被拒绝：剪贴板内容没有真实磁盘路径（不伪造路径）。",
@@ -7052,6 +7217,9 @@
         rHandoff: "{from} 已將任務轉交給 {to}（群「{room}」，轉交已寫入群 transcript）。",
         rHandoffFail: "任務轉交被拒：{reason}（未寫入群 transcript，Bot 不會假裝接手）。",
         attachTooMany: "附件被拒絕：一次最多 6 個（GP-11）。",
+        replyAction: "回覆",
+        replyQuoting: "回覆：",
+        replyCancel: "取消",
         attachTooLarge: "附件被拒絕：{name} 超過 25MB（檔案/圖片/音訊上限）。",
         attachTooLargeVideo: "附件被拒絕：{name} 超過 200MB（影片上限）。",
         attachNoPath: "附件被拒絕：剪貼板內容沒有真實磁碟路徑（不偽造路徑）。",
@@ -7311,6 +7479,9 @@
         rHandoff: "{from} handed the task off to {to} (room «{room}», transfer written to the room transcript).",
         rHandoffFail: "Task handoff refused: {reason} (nothing written to the room transcript; no bot pretends to have taken it).",
         attachTooMany: "Attachment refused: max 6 files per send (GP-11).",
+        replyAction: "Reply",
+        replyQuoting: "Replying to: ",
+        replyCancel: "Cancel",
         attachTooLarge: "Attachment refused: {name} exceeds the 25MB limit (doc/image/audio).",
         attachTooLargeVideo: "Attachment refused: {name} exceeds the 200MB video limit.",
         attachNoPath: "Attachment refused: clipboard item has no real disk path (never fabricated).",
@@ -8362,7 +8533,14 @@
       input.value = "";
       autoGrow();
       syncVoiceChatAvailability();
-      await runUserTurn(finalText, {});
+      // GP-14: the replied-to message id goes into the turn context; the Host
+      // resolves it to the quoted text for the provider call.
+      const reply = replyTarget;
+      clearReplyTarget();
+      await runUserTurn(finalText, {
+        replyTo: reply ? reply.id : undefined,
+        replyQuoteText: reply ? reply.text : "",
+      });
     });
 
     /* ---- Wave G composer parity (GP-10/11/12/13/15) ---- */
@@ -8409,6 +8587,10 @@
         strip.appendChild(chip);
       }
       if (typeof syncVoiceChatAvailability === "function") syncVoiceChatAvailability();
+    }
+    const replyCancelBtn = document.getElementById("reply-cancel");
+    if (replyCancelBtn) {
+      replyCancelBtn.addEventListener("click", () => clearReplyTarget());
     }
     const attachBtn = document.getElementById("attach-btn");
     function localizeAttachRefusal(r) {

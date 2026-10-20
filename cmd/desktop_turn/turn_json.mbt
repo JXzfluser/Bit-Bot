@@ -405,6 +405,10 @@ pub(all) struct DesktopTurnContext {
   channel : String
   /// Host passed `--approved` after user confirmed an ApprovalGate NeedUser.
   approved : Bool
+  /// GP-14: id of the message the user hit Reply on ("Reply 回复特定消息").
+  /// The kernel carries it so the turn provably knows its target; the Host
+  /// resolves id → quoted text from the session store and feeds it to the LLM.
+  reply_to : String
 } derive(Eq, Debug)
 
 ///|
@@ -415,6 +419,7 @@ pub fn DesktopTurnContext::default() -> DesktopTurnContext {
     machine_kind: "desktop",
     channel: "",
     approved: false,
+    reply_to: "",
   }
 }
 
@@ -439,6 +444,9 @@ pub(all) struct DesktopTurnResult {
   machine_id : String
   machine_kind : String
   channel : String
+  /// GP-14: echoed back so Host/renderer can assert the turn really carried the
+  /// replied-to message id (spec acceptance: 点回复后 kernel 上下文含被回复消息 id).
+  reply_to : String
   error : String?
 } derive(Eq, Debug)
 
@@ -1245,6 +1253,7 @@ fn fail_turn(
     machine_id: ctx.machine_id,
     machine_kind: ctx.machine_kind,
     channel: ctx.channel,
+    reply_to: ctx.reply_to,
     error: Some(err),
   }
 }
@@ -1298,6 +1307,7 @@ fn deliver_ok(
         machine_id: ctx.machine_id,
         machine_kind: ctx.machine_kind,
         channel: ctx.channel,
+        reply_to: ctx.reply_to,
         error: None,
       }
     }
@@ -1503,6 +1513,7 @@ pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
       a == "--machine-id" ||
       a == "--machine-kind" ||
       a == "--channel" ||
+      a == "--reply-to" ||
       a == "--turn-id" {
       i = i + 2
       continue
@@ -1536,8 +1547,22 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         machine_kind: ctx.machine_kind,
         channel: ctx.channel,
         approved: true,
+        reply_to: ctx.reply_to,
       }
       i = i + 1
+      continue
+    }
+    // GP-14: Host passes the replied-to message id (renderer Reply button).
+    if a == "--reply-to" && i + 1 < args.length() {
+      ctx = {
+        session_id: ctx.session_id,
+        machine_id: ctx.machine_id,
+        machine_kind: ctx.machine_kind,
+        channel: ctx.channel,
+        approved: ctx.approved,
+        reply_to: args[i + 1].trim().to_owned(),
+      }
+      i = i + 2
       continue
     }
     if a == "--session-id" && i + 1 < args.length() {
@@ -1547,6 +1572,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         machine_kind: ctx.machine_kind,
         channel: ctx.channel,
         approved: ctx.approved,
+        reply_to: ctx.reply_to,
       }
       i = i + 2
       continue
@@ -1558,6 +1584,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         machine_kind: ctx.machine_kind,
         channel: ctx.channel,
         approved: ctx.approved,
+        reply_to: ctx.reply_to,
       }
       i = i + 2
       continue
@@ -1581,6 +1608,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         machine_kind: kind,
         channel: ctx.channel,
         approved: ctx.approved,
+        reply_to: ctx.reply_to,
       }
       i = i + 2
       continue
@@ -1592,6 +1620,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         machine_kind: ctx.machine_kind,
         channel: args[i + 1],
         approved: ctx.approved,
+        reply_to: ctx.reply_to,
       }
       i = i + 2
       continue
@@ -5360,6 +5389,9 @@ pub fn DesktopTurnResult::to_json_line(self : DesktopTurnResult) -> String {
   buf.write_string(escape_json_string(self.machine_kind))
   buf.write_string("\",\"channel\":\"")
   buf.write_string(escape_json_string(self.channel))
+  buf.write_string("\"")
+  buf.write_string(",\"reply_to\":\"")
+  buf.write_string(escape_json_string(self.reply_to))
   buf.write_string("\"")
   match self.error {
     Some(e) => {

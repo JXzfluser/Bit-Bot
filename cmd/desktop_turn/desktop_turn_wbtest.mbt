@@ -78,6 +78,7 @@ test "desktop_turn_list_machines_android_host_present" {
     machine_kind: "android",
     channel: "",
     approved: false,
+    reply_to: "",
   }
   let r = run_desktop_turn("ListMachines", turn_id="lm-android", ctx~)
   assert_true(r.ok)
@@ -150,6 +151,7 @@ test "desktop_turn_host_effect_needs_ffi" {
     machine_kind: "desktop",
     channel: "",
     approved: true,
+    reply_to: "",
   }
   let r = run_desktop_turn("shell echo hi", turn_id="fx-1", ctx~)
   assert_true(r.ok)
@@ -203,6 +205,7 @@ test "desktop_turn_channel_delivery_external" {
     machine_kind: "desktop",
     channel: "",
     approved: true,
+    reply_to: "",
   }
   let r = run_desktop_turn(
     "reply via slack:C123 :: thanks from desktop",
@@ -249,6 +252,7 @@ test "desktop_turn_fs_webfetch_and_context" {
     machine_kind: "ios",
     channel: "slack:C1",
     approved: false,
+    reply_to: "",
   }
   let r = run_desktop_turn("listdir docs", turn_id="fs-1", ctx~)
   assert_true(r.ok)
@@ -291,6 +295,7 @@ test "desktop_turn_claim_inbox_and_draft_mail" {
     machine_kind: "desktop",
     channel: "",
     approved: true,
+    reply_to: "",
   }
   let d = run_desktop_turn(
     "draft mail to=bob@example.com subject=Hi body=Hello Bob",
@@ -370,6 +375,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
     machine_kind: "ios",
     channel: "",
     approved: false,
+    reply_to: "",
   }
   let dt = run_desktop_turn("device tools", turn_id="dt-1", ctx=ictx)
   assert_true(dt.ok)
@@ -649,6 +655,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
       machine_kind: "desktop",
       channel: "",
       approved: true,
+      reply_to: "",
     },
   )
   assert_true(buy_ok.ok)
@@ -689,6 +696,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
       machine_kind: "desktop",
       channel: "",
       approved: true,
+      reply_to: "",
     },
   )
   assert_true(ts.ok)
@@ -943,6 +951,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
     machine_kind: "ios",
     channel: "",
     approved: false,
+    reply_to: "",
   })
   assert_true(cam.ok)
   assert_eq(cam.intent, "device_tool_invoke")
@@ -953,6 +962,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
     machine_kind: "ios",
     channel: "",
     approved: false,
+    reply_to: "",
   })
   assert_true(take_photo.ok)
   assert_eq(take_photo.intent, "device_tool_invoke")
@@ -1425,4 +1435,49 @@ test "desktop_turn_attach_files_gp11" {
   )
   assert_eq(kv.intent, "copy_to_box")
   assert_eq(kv.effects[0].command, "desk-1|README.mbt.md|/workspace/uploads/README.mbt.md")
+}
+
+///|
+test "desktop_turn_reply_to_context_gp14" {
+  // GP-14「Reply 回复特定消息」验收：被回复消息 id 必须进 kernel 上下文，
+  // 且不得污染用户文本（否则 Host llm_chat 会拿到拼接了 id 的假原文）。
+  // argv[0] is the executable slot (mirrors how Host spawns moon run).
+  let args = ["exe", "--session-id", "s-g14", "--reply-to", "msg-77", "针对这条回复"]
+  let gctx = parse_turn_context(["--session-id", "s-g14", "--reply-to", "msg-77", "针对这条回复"])
+  assert_eq(gctx.session_id, "s-g14")
+  assert_eq(gctx.reply_to, "msg-77")
+  assert_eq(user_text_from_args_skipping_flags(args), "针对这条回复")
+  // 非回复回合：默认空串（Host 因此不会拼引用）
+  assert_eq(parse_turn_context(["no flags here"]).reply_to, "")
+  let ctx : DesktopTurnContext = {
+    session_id: "s",
+    machine_id: "desk-1",
+    machine_kind: "desktop",
+    channel: "",
+    approved: false,
+    reply_to: "msg-77",
+  }
+  let r = run_desktop_turn("针对这条回复", turn_id="g14-1", ctx~)
+  assert_true(r.ok)
+  assert_eq(r.intent, "chat")
+  assert_eq(r.reply_to, "msg-77")
+  assert_eq(r.messages[0].text, "针对这条回复")
+  assert_eq(r.effects[0].command, "针对这条回复")
+  assert_true(r.to_json_line().contains("\"reply_to\":\"msg-77\""))
+  // 回复不改变既有意图路由：mention/shell 等短语仍走原分支
+  let shell_ctx : DesktopTurnContext = {
+    session_id: "s",
+    machine_id: "desk-1",
+    machine_kind: "desktop",
+    channel: "",
+    approved: false,
+    reply_to: "msg-77",
+  }
+  let sh = run_desktop_turn("shell echo hi", turn_id="g14-2", ctx=shell_ctx)
+  assert_eq(sh.intent, "host_effect")
+  assert_eq(sh.reply_to, "msg-77")
+  // 无回复时 JSON 仍带空 reply_to 字段（Host/renderer 可读，不需猜缺省）
+  let plain = run_desktop_turn("普通提问", turn_id="g14-3")
+  assert_true(plain.to_json_line().contains("\"reply_to\":\"\""))
+  assert_eq(plain.reply_to, "")
 }

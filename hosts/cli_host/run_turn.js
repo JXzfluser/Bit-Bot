@@ -5,7 +5,7 @@
  * Multi-end CLI Host — same MoonBit brain + Host FFI as Desktop.
  * Usage:
  *   node hosts/cli_host/run_turn.js [--machine-kind desktop|ios|android] \
- *     [--machine-id id] [--session-id s] [--channel addr] "user text"
+ *     [--machine-id id] [--session-id s] [--channel addr] [--reply-to msg-id] "user text"
  */
 
 const path = require("path");
@@ -21,6 +21,7 @@ async function main() {
   let channel = process.env.BITBOT_CHANNEL || "";
   let turnId = "";
   let botId = process.env.BITBOT_BOT_ID || "";
+  let replyTo = process.env.BITBOT_REPLY_TO || "";
   let approved = process.env.BITBOT_APPROVED === "1";
   const textParts = [];
 
@@ -54,6 +55,10 @@ async function main() {
       botId = argv[++i];
       continue;
     }
+    if (a === "--reply-to" && i + 1 < argv.length) {
+      replyTo = argv[++i];
+      continue;
+    }
     if (a === "--") continue;
     textParts.push(a);
   }
@@ -80,6 +85,8 @@ async function main() {
     turnId: turnId || undefined,
     approved,
     botId: botId || undefined,
+    // GP-14: multi-end CLI carries the same reply target as Desktop.
+    replyTo: replyTo || undefined,
   });
   console.log(JSON.stringify(result));
   if (!result.ok) process.exit(1);

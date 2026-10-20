@@ -34,6 +34,9 @@ const { _electron } = require("playwright-core");
 
 const SETTINGS_PATH = path.join(REPO, "data/desktop/settings.json");
 const ACCOUNT_PATH = path.join(REPO, "data/desktop/account-profile.json");
+// GP-14: the reply chain writes message rows + provider artifacts; snapshot the
+// transcript store too so the whole E2E stays double-run idempotent.
+const SESSIONS_PATH = path.join(REPO, "data/desktop/sessions.json");
 let PASS = 0;
 let FAIL = 0;
 const ok = (name) => {
@@ -83,7 +86,7 @@ function liveDisplay() {
   return process.env.DISPLAY || ":99";
 }
 
-async function launchOnce() {
+async function launchOnce(extraEnv) {
   const electronBinary = path.join(
     REPO,
     "hosts/desktop/node_modules/electron/dist/electron",
@@ -102,6 +105,7 @@ async function launchOnce() {
       ...process.env,
       DISPLAY: liveDisplay(),
       BITBOT_ESPEAK_BIN: process.env.BITBOT_ESPEAK_BIN || "/usr/bin/espeak-ng",
+      ...(extraEnv || {}),
     },
     timeout: 60000,
   });
@@ -110,11 +114,11 @@ async function launchOnce() {
   return { app, win };
 }
 
-async function launch() {
+async function launch(extraEnv) {
   let last;
   for (let i = 1; i <= LAUNCH_RETRIES; i++) {
     try {
-      const boot = await launchOnce();
+      const boot = await launchOnce(extraEnv);
       if (i > 1) console.log("  · boot ok on attempt " + i);
       return boot;
     } catch (e) {
@@ -169,11 +173,16 @@ async function main() {
   const accountBefore = fs.existsSync(ACCOUNT_PATH)
     ? fs.readFileSync(ACCOUNT_PATH)
     : null;
+  const sessionsBefore = fs.existsSync(SESSIONS_PATH)
+    ? fs.readFileSync(SESSIONS_PATH)
+    : null;
   const restoreStores = () => {
     if (settingsBefore) fs.writeFileSync(SETTINGS_PATH, settingsBefore);
     else fs.rmSync(SETTINGS_PATH, { force: true });
     if (accountBefore) fs.writeFileSync(ACCOUNT_PATH, accountBefore);
     else fs.rmSync(ACCOUNT_PATH, { force: true });
+    if (sessionsBefore) fs.writeFileSync(SESSIONS_PATH, sessionsBefore);
+    else fs.rmSync(SESSIONS_PATH, { force: true });
   };
 
   try {
@@ -456,6 +465,238 @@ async function main() {
         : bad("E2E GP-11 dest mapping", JSON.stringify(effs[0]).slice(0, 200));
       fs.rmSync(d11, { recursive: true, force: true });
       fs.rmSync(path.join(REPO, "data/workspace/uploads/gp11e2e"), { recursive: true, force: true });
+    }
+
+    /* ---- GP-14 Reply 回复特定消息：id 必须进 kernel 上下文并变成真引用 ----
+       走真实 UI：第一轮发消息 → hover 助手气泡 → 点「回复」→ 引用条出现 →
+       发第二条。断言三层：kernel 回显 reply_to；Host 把该 id 解析成原文并塞进
+       provider 请求（用 echo-all stub 在 HTTP body 层自证）；store 行带 reply_to
+       且重载后 DOM 有引用条。伪 id 场景必须 resolved:false（不假装引用成功）。*/
+    const stubPort = 8793;
+    const LLM_TURNS_DIR = path.join(REPO, "data/llm/turns");
+    const g14Env = {
+      BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + stubPort + "/v1",
+      BITBOT_LLM_API_KEY: "e2e-stub-key",
+      BITBOT_LLM_MODEL: "e2e-stub",
+      BITBOT_LLM_STREAM: "0",
+    };
+    let stubProc = null;
+    let target = null;
+    try {
+      const { spawn: spawnChild } = require("node:child_process");
+      stubProc = spawnChild(
+        process.execPath,
+        [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")],
+        {
+          cwd: REPO,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            BITBOT_STUB_PORT: String(stubPort),
+            BITBOT_STUB_ECHO_ALL: "1",
+          },
+        },
+      );
+      await new Promise((res, rej) => {
+        const t = setTimeout(() => rej(new Error("stub boot timeout")), 8000);
+        stubProc.stdout.on("data", (d) => {
+          if (String(d).includes("[stub-llm]")) {
+            clearTimeout(t);
+            res();
+          }
+        });
+        stubProc.on("error", rej);
+      });
+
+      const bootG14 = await launch(g14Env);
+      // 干净会话：前面的 boot 已往 active session 写过消息，Reply 目标必须唯一，
+      // 所以这里从「新建对话」开始，而不是在污染的转写里猜。
+      await bootG14.win.evaluate(() => document.getElementById("sess-new").click());
+      await bootG14.win.waitForFunction(
+        () => document.querySelectorAll("#log .msg").length === 0 ||
+          document.getElementById("welcome"),
+        null,
+        { timeout: 15000 },
+      );
+      // 第一条消息（真实键盘 → kernel → Host llm_chat → stub 回执）
+      await bootG14.win.fill("#composer #text", "GP14 原始问题 target-me");
+      await bootG14.win.press("#composer #text", "Enter");
+      // 等到该轮消息真的拿到 store id（乐观渲染的 user 气泡没有 id），
+      // 否则下面的目标选择会读到空集合。
+      await bootG14.win.waitForFunction(
+        () => Array.from(document.querySelectorAll("#log .msg[data-mid]")).some(
+          (el) => /GP14 原始问题/.test(el.textContent || ""),
+        ),
+        null,
+        { timeout: 45000 },
+      );
+      const bubbles = await bootG14.win.evaluate(() =>
+        Array.from(document.querySelectorAll("#log .msg[data-mid]")).map((el) => ({
+          mid: el.dataset.mid,
+          role: el.classList.contains("user") ? "user" : "assistant",
+          text: (el.querySelector(".body") || {}).textContent || "",
+        })),
+      );
+      const candidates = bubbles.filter(
+        (b) => b.mid && /GP14 原始问题/.test(b.text),
+      );
+      // 回复助手回执更贴近 Grok 行为（Reply 一条具体回答）
+      target =
+        candidates.filter((b) => b.role === "assistant").pop() ||
+        candidates.pop() ||
+        null;
+      target
+        ? ok("E2E GP-14：首轮消息带持久 id（" + target.mid + " / " + target.role + "）供回复定位")
+        : bad("E2E GP-14 missing message id", JSON.stringify(bubbles).slice(0, 300));
+
+      // 点该气泡上的「回复」→ composer 上方出现引用条
+      const clicked = await bootG14.win.evaluate((mid) => {
+        if (!mid) return "no-target";
+        const el = document.querySelector('#log .msg[data-mid="' + mid + '"]');
+        const btn = el && el.querySelector(".msg-actions button");
+        if (!btn) return "no-reply-button";
+        btn.click();
+        const bar = document.getElementById("reply-bar");
+        return bar && bar.style.display !== "none"
+          ? (document.getElementById("reply-bar-text") || {}).textContent || ""
+          : "bar-hidden";
+      }, target ? target.mid : "");
+      typeof clicked === "string" && clicked.includes("GP14 原始问题")
+        ? ok("E2E GP-14：Reply 按钮 → 引用条显示被回复消息原文")
+        : bad("E2E GP-14 reply bar", String(clicked).slice(0, 160));
+
+      // 发第二条：id 必须进 kernel（--reply-to）并解析成 provider 请求里的引用
+      await bootG14.win.fill("#composer #text", "GP14 针对引用作答");
+      await bootG14.win.press("#composer #text", "Enter");
+      await bootG14.win.waitForFunction(
+        () => document.querySelectorAll("#log .msg-reply-quote").length >= 1 &&
+          /quoted message/.test(document.getElementById("log").innerText),
+        null,
+        { timeout: 45000 },
+      ).then(
+        () => ok("E2E GP-14：回复回合渲染出带 [quoted message <id>] 的 provider 回执（真引用，非本地拼接）"),
+        (e) => bad("E2E GP-14 quoted reply round-trip", e.message),
+      );
+
+      const newest = fs
+        .readdirSync(LLM_TURNS_DIR)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => [f, fs.statSync(path.join(LLM_TURNS_DIR, f)).mtimeMs])
+        .sort((a, b) => b[1] - a[1])[0];
+      const art = newest
+        ? JSON.parse(fs.readFileSync(path.join(LLM_TURNS_DIR, newest[0]), "utf8"))
+        : {};
+      art.reply_to === target.mid && art.reply_quote_chars > 0 &&
+        art.reply_quote_source === "session_store"
+        ? ok("E2E GP-14：Host 侧 artifact 记录 reply_to=" + art.reply_to + " + 引文来自 session store")
+        : bad("E2E GP-14 llm artifact", JSON.stringify({
+            reply_to: art.reply_to,
+            chars: art.reply_quote_chars,
+            source: art.reply_quote_source,
+            want: target.mid,
+          }));
+
+      // store 行持久化 reply_to + 重新载入会话后引用条仍在（不是只在内存里）
+      const sessState = JSON.parse(fs.readFileSync(SESSIONS_PATH, "utf8"));
+      let storedReply = null;
+      for (const ses of sessState.sessions || []) {
+        for (const m of ses.messages || []) {
+          if (m && m.role === "user" && /GP14 针对引用作答/.test(String(m.text || "")))
+            storedReply = m;
+        }
+      }
+      storedReply && storedReply.reply_to === target.mid
+        ? ok("E2E GP-14：sessions.json 用户行带 reply_to=" + storedReply.reply_to)
+        : bad("E2E GP-14 store row", JSON.stringify(storedReply || null).slice(0, 160));
+      const quoteDom = await bootG14.win.evaluate(() => ({
+        chips: document.querySelectorAll("#log .msg-reply-quote").length,
+        text: (document.querySelector("#log .msg-reply-quote") || {}).textContent || "",
+      }));
+      quoteDom.chips >= 1 && quoteDom.text.includes("GP14 原始问题")
+        ? ok("E2E GP-14：转写里回复气泡上方渲染引用条（" + quoteDom.chips + " 处）")
+        : bad("E2E GP-14 quote chip", JSON.stringify(quoteDom).slice(0, 160));
+      // 侧栏切走再切回 = 从 store 重载，引用必须仍在（不是只在内存里）
+      let reloadSessionId = null;
+      {
+        const st2 = JSON.parse(fs.readFileSync(SESSIONS_PATH, "utf8"));
+        for (const ses of st2.sessions || []) {
+          for (const m of ses.messages || []) {
+            if (m && /GP14 针对引用作答/.test(String(m.text || ""))) reloadSessionId = ses.id;
+          }
+        }
+      }
+      const reload = await bootG14.win.evaluate(async (sid) => {
+        document.getElementById("sess-new").click();
+        await new Promise((r) => setTimeout(r, 1500));
+        const away = document.querySelectorAll("#log .msg-reply-quote").length;
+        const back = document.querySelector('[data-session-id="' + sid + '"]');
+        if (!back) return { sid, away, found: false, chips: -1 };
+        back.click();
+        await new Promise((r) => setTimeout(r, 1500));
+        return {
+          sid,
+          away,
+          found: true,
+          chips: document.querySelectorAll("#log .msg-reply-quote").length,
+          text: (document.querySelector("#log .msg-reply-quote") || {}).textContent || "",
+        };
+      }, reloadSessionId);
+      reload.found && reload.away === 0 && reload.chips > 0 &&
+        reload.text.includes(String(target ? target.text : "GP14").slice(0, 24))
+        ? ok("E2E GP-14：切到新会话引用消失、切回原会话引用从 store 重建（" + reload.chips + " 处）")
+        : bad("E2E GP-14 reload", JSON.stringify(reload).slice(0, 200));
+
+      // 取消按钮：引用条可撤销，撤销后下一条不再带 id
+      const cancelState = await bootG14.win.evaluate(() => {
+        const el = document.querySelector('#log .msg[data-mid] .msg-actions button');
+        if (el) el.click();
+        const shown = document.getElementById("reply-bar").style.display !== "none";
+        document.getElementById("reply-cancel").click();
+        return { shown, hidden: document.getElementById("reply-bar").style.display === "none" };
+      });
+      cancelState.shown && cancelState.hidden
+        ? ok("E2E GP-14：取消回复 → 引用条收起")
+        : bad("E2E GP-14 cancel", JSON.stringify(cancelState));
+      await shutdown(bootG14.app);
+
+      // 伪 id 必须诚实失败（不假装引用成功）— node 侧真实 Host 链
+      Object.assign(process.env, g14Env);
+      const { createTurnRunner } = require(path.join(REPO, "hosts/shared/run_moon_turn.js"));
+      const runnerG14 = createTurnRunner(REPO);
+      const ghost = await runnerG14.runTurn("GP14 幽灵引用", {
+        sessionId: "e2e-gp14-ghost",
+        machineId: "desk-1",
+        machineKind: "desktop",
+        replyTo: "msg-not-real-e2e",
+      });
+      const gq = ghost.reply_quote || {};
+      ghost.reply_to === "msg-not-real-e2e" && gq.resolved === false &&
+        /message_not_found/.test(String(gq.error || ""))
+        ? ok("E2E GP-14：未知消息 id → kernel 仍回显 + Host 报 message_not_found（不静默吞）")
+        : bad("E2E GP-14 ghost id", JSON.stringify({ echo: ghost.reply_to, q: gq }).slice(0, 200));
+      const ghostArt = fs
+        .readdirSync(LLM_TURNS_DIR)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => [f, fs.statSync(path.join(LLM_TURNS_DIR, f)).mtimeMs])
+        .sort((a, b) => b[1] - a[1])[0];
+      const ga = JSON.parse(fs.readFileSync(path.join(LLM_TURNS_DIR, ghostArt[0]), "utf8"));
+      ga.reply_to === "msg-not-real-e2e" && ga.reply_quote_chars === 0 &&
+        ga.reply_quote_source === "unresolved"
+        ? ok("E2E GP-14：未解析引用在 provider artifact 标 unresolved（可审计）")
+        : bad("E2E GP-14 unresolved artifact", JSON.stringify({
+            reply_to: ga.reply_to,
+            chars: ga.reply_quote_chars,
+            source: ga.reply_quote_source,
+          }));
+    } catch (e) {
+      bad("E2E GP-14 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      for (const k of Object.keys(g14Env)) delete process.env[k];
+      if (stubProc) {
+        try {
+          stubProc.kill("SIGKILL");
+        } catch (_) {}
+      }
     }
 
 

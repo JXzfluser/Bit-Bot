@@ -5,11 +5,47 @@
  * Used by Desktop Electron and multi-end CLI host.
  */
 
+const fs = require("fs");
+const path = require("path");
 const { spawn } = require("child_process");
 const { createHostFfi } = require("./host_ffi");
 
+/** GP-14 fallback resolver: read data/desktop/sessions.json straight from disk. */
+function defaultResolveReplyForRoot(repoRoot) {
+  return (id) => {
+    const want = String(id || "").trim();
+    if (!want) return { ok: false, error: "empty message id" };
+    const p = path.join(
+      path.resolve(repoRoot),
+      "data",
+      "desktop",
+      "sessions.json",
+    );
+    let state;
+    try {
+      state = JSON.parse(fs.readFileSync(p, "utf8"));
+    } catch {
+      return { ok: false, error: "session_store_unreadable" };
+    }
+    for (const s of state.sessions || []) {
+      const hit = (s.messages || []).find((m) => m && String(m.id) === want);
+      if (hit) {
+        return {
+          ok: true,
+          id: hit.id,
+          session_id: s.id,
+          role: hit.role,
+          text: String(hit.text || ""),
+        };
+      }
+    }
+    return { ok: false, error: "message_not_found", message_id: want };
+  };
+}
+
 function createTurnRunner(repoRoot, opts = {}) {
   const ffi = createHostFfi(repoRoot);
+  const defaultResolveReply = defaultResolveReplyForRoot(repoRoot);
   const MOON_BIN = opts.moonBin || process.env.MOON_BIN || "moon";
   const MOON_TARGET = opts.moonTarget || process.env.BITBOT_MOON_TARGET || "native";
 
@@ -78,6 +114,8 @@ function createTurnRunner(repoRoot, opts = {}) {
    *   turnId?: string,
    *   approved?: boolean,
    *   botId?: string,
+   *   replyTo?: string,
+   *   resolveReply?: (id: string) => {ok:boolean, text?:string, role?:string},
    * }} ctx
    */
   async function runTurn(userText, ctx = {}) {
@@ -111,6 +149,10 @@ function createTurnRunner(repoRoot, opts = {}) {
     if (ctx.approved) {
       moonArgs.push("--approved");
     }
+    // GP-14: the replied-to message id travels into the kernel context.
+    if (ctx.replyTo) {
+      moonArgs.push("--reply-to", String(ctx.replyTo));
+    }
     moonArgs.push(text);
 
     const { stdout, stderr } = await runMoon(moonArgs);
@@ -131,13 +173,52 @@ function createTurnRunner(repoRoot, opts = {}) {
       ffi.saveSessionMemory(parsed.memory);
     }
 
+    // GP-14: resolve the id the kernel echoed into a real quoted text, then hand
+    // it to llm_chat. An unresolved id is reported as reply_quote.resolved:false
+    // rather than silently dropped (the UI can say "引用消息未找到").
+    // Desktop injects sessions.findMessage; CLI/other hosts fall back to reading
+    // the same store from disk so both ends resolve the identical quote.
+    const resolveReply =
+      typeof ctx.resolveReply === "function"
+        ? ctx.resolveReply
+        : defaultResolveReply;
+    let replyQuote = null;
+    if (parsed && parsed.reply_to && typeof resolveReply === "function") {
+      try {
+        const hit = resolveReply(String(parsed.reply_to)) || {};
+        replyQuote = {
+          message_id: String(parsed.reply_to),
+          resolved: Boolean(hit.ok),
+          role: hit.role || "",
+          text: hit.ok ? String(hit.text || "") : "",
+          error: hit.ok ? "" : String(hit.error || "message_not_found"),
+        };
+      } catch (err) {
+        replyQuote = {
+          message_id: String(parsed.reply_to),
+          resolved: false,
+          text: "",
+          error:
+            "resolve_failed:" + (err && err.message ? err.message : String(err)),
+        };
+      }
+      parsed.reply_quote = replyQuote;
+    }
+
     if (
       parsed &&
       parsed.needs_host_ffi &&
       Array.isArray(parsed.effects) &&
       parsed.effects.length
     ) {
-      const host_results = await ffi.executeHostEffects(parsed.effects, { approved: Boolean(ctx.approved), botId: ctx.botId });
+      const host_results = await ffi.executeHostEffects(parsed.effects, {
+        approved: Boolean(ctx.approved),
+        botId: ctx.botId,
+        replyTo: (replyQuote && replyQuote.message_id) || "",
+        replyQuote:
+          (replyQuote && replyQuote.resolved && replyQuote.text) || "",
+        replyRole: (replyQuote && replyQuote.role) || "assistant",
+      });
       parsed.host_results = host_results;
       try {
         const contArgs = [
@@ -163,6 +244,9 @@ function createTurnRunner(repoRoot, opts = {}) {
         }
         if (ctx.channel) {
           contArgs.push("--channel", String(ctx.channel));
+        }
+        if (ctx.replyTo) {
+          contArgs.push("--reply-to", String(ctx.replyTo));
         }
         for (let i = 0; i < host_results.length; i++) {
           if (i > 0) contArgs.push("--result-next");

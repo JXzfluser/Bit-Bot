@@ -1752,6 +1752,10 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       // GP-30: which Bot owns this turn — the Host's per-Bot computer-use
       // lock keys on it (renderer sets activeBotId when a Bot chat is opened).
       botId: String((opts && opts.botId) || "").trim() || undefined,
+      // GP-14: Reply targets a specific message id; the kernel carries the id
+      // and this resolver turns it into the quoted text for the provider call.
+      replyTo: String((opts && opts.replyTo) || "").trim() || undefined,
+      resolveReply: (id) => sessions.findMessage(id),
     });
     const rawText = String(text || "").trim();
     const skipSession =
@@ -1760,7 +1764,10 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       /^list machines$/i.test(rawText);
     if (!skipSession) {
       const toStore = [];
-      toStore.push({ role: "user", text: String(text || "") });
+      const userRow = { role: "user", text: String(text || "") };
+      // GP-14: persist which message this turn replied to (kernel-echoed id).
+      if (result && result.reply_to) userRow.reply_to = String(result.reply_to);
+      toStore.push(userRow);
       if (result && Array.isArray(result.messages)) {
         for (const m of result.messages) {
           if (m && m.role === "assistant" && m.text) {
@@ -1768,7 +1775,17 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
           }
         }
       }
-      sessions.appendMessages(sessionId, toStore);
+      const appended = sessions.appendMessages(sessionId, toStore);
+      // GP-14: Reply needs the *store* ids, so hand them back in the same order
+      // the renderer draws bubbles (user bubble first, then assistant lines).
+      if (appended && appended.ok && appended.session) {
+        const rows = appended.session.messages || [];
+        const ids = rows.slice(rows.length - toStore.length).map((r) => r.id);
+        result.stored_ids = {
+          user: ids[0] || "",
+          assistant: ids.slice(1),
+        };
+      }
       broadcast("bitbot:sessions-changed", sessions.list());
     }
     broadcast("bitbot:llm-stream", {

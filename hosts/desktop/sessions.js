@@ -32,6 +32,28 @@ function createSessionStore(repoRoot) {
     };
   }
 
+  function newMessageId() {
+    return "msg-" + crypto.randomBytes(4).toString("hex");
+  }
+
+  // GP-14: every stored message needs a stable id so Reply can point at one.
+  // One-shot backfill for rows written before this wave (load is the single
+  // entry point, so both reads and later writes see the same ids).
+  function ensureMessageIds(state) {
+    let changed = false;
+    for (const s of state.sessions || []) {
+      if (!Array.isArray(s.messages)) s.messages = [];
+      for (const m of s.messages) {
+        if (m && !m.id) {
+          m.id = newMessageId();
+          changed = true;
+        }
+      }
+    }
+    if (changed) save(state);
+    return state;
+  }
+
   function load() {
     fs.mkdirSync(dir, { recursive: true });
     if (!fs.existsSync(storePath)) {
@@ -45,7 +67,7 @@ function createSessionStore(repoRoot) {
         return empty();
       }
       if (!raw.active_id) raw.active_id = raw.sessions[0].id;
-      return raw;
+      return ensureMessageIds(raw);
     } catch {
       return empty();
     }
@@ -117,11 +139,16 @@ function createSessionStore(repoRoot) {
     const at = new Date().toISOString();
     for (const m of messages || []) {
       if (!m || !m.role) continue;
-      hit.messages.push({
+      const row = {
+        id: m.id || newMessageId(),
         role: String(m.role),
         text: String(m.text || ""),
         at,
-      });
+      };
+      // GP-14: keep the replied-to id in the transcript row so the quote
+      // survives a reload instead of only living in this turn's memory.
+      if (m.reply_to) row.reply_to = String(m.reply_to);
+      hit.messages.push(row);
     }
     const DEFAULT_TITLES = ["新对话", "对话", "New chat", "新對話", "工作"];
     if (DEFAULT_TITLES.indexOf(hit.title) >= 0) {
@@ -137,6 +164,26 @@ function createSessionStore(repoRoot) {
 
   function activeId() {
     return load().active_id;
+  }
+
+  /** GP-14: resolve a message id (any session) → { id, session_id, role, text }. */
+  function findMessage(messageId) {
+    const want = String(messageId || "").trim();
+    if (!want) return { ok: false, error: "empty message id" };
+    const state = load();
+    for (const s of state.sessions || []) {
+      const hit = (s.messages || []).find((m) => m && String(m.id) === want);
+      if (hit) {
+        return {
+          ok: true,
+          id: hit.id,
+          session_id: s.id,
+          role: hit.role,
+          text: String(hit.text || ""),
+        };
+      }
+    }
+    return { ok: false, error: "message_not_found", message_id: want };
   }
 
   function rename(id, title) {
@@ -175,6 +222,7 @@ function createSessionStore(repoRoot) {
     create,
     setActive,
     appendMessages,
+    findMessage,
     activeId,
     rename,
     remove,
