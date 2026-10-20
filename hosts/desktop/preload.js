@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("bitbot", {
     get: (id) => ipcRenderer.invoke("bitbot:sessions:get", id),
     create: (title) => ipcRenderer.invoke("bitbot:sessions:create", title),
     setActive: (id) => ipcRenderer.invoke("bitbot:sessions:setActive", id),
+    // GP-102: append value-free rows (secret placeholders carry a handle only).
+    append: (id, messages) => ipcRenderer.invoke("bitbot:sessions:append", id, messages || []),
     rename: (id, title) => ipcRenderer.invoke("bitbot:sessions:rename", id, title),
     delete: (id) => ipcRenderer.invoke("bitbot:sessions:delete", id),
   },
@@ -221,5 +223,14 @@ contextBridge.exposeInMainWorld("bitbot", {
     probeCnChannels: () =>
       ipcRenderer.invoke("bitbot:secrets:probeCnChannels"),
     runGate: () => ipcRenderer.invoke("bitbot:secrets:runGate"),
+    // GP-99/100/101/102 (§8.3): the secure card's submit path. The reply is a
+    // handle + mask; the value is never read back.
+    submit: (payload) => ipcRenderer.invoke("bitbot:secrets:submit", payload || {}),
+    vault: () => ipcRenderer.invoke("bitbot:secrets:vault"),
+    remove: (name) => ipcRenderer.invoke("bitbot:secrets:remove", String(name || "")),
+  },
+  // GP-106/107 (§8.5): read-only account-managed privacy status; no setter.
+  privacy: {
+    status: () => ipcRenderer.invoke("bitbot:privacy:status"),
   },
 });

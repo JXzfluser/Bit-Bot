@@ -26,6 +26,8 @@
       "sessions.js",
       "product_surface.js",
       "progress_protocol.js",
+      "secret_protocol.js",
+      "secret_vault.js",
       "link_open.js",
       "link_discipline.js",
       {

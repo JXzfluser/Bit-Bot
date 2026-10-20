@@ -478,6 +478,48 @@
     padding: 10px 14px;
   }
   .msg .role { display: none; }
+  /* GP-103/104/105: §8.4 untrusted data marker — shown above the bubble body so
+     external text can never read as the Bot speaking in its own voice. */
+  .untrusted-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin: 0 0 6px; padding: 3px 8px;
+    border: 1px dashed var(--line); border-radius: 999px;
+    background: var(--accent-soft); color: var(--muted);
+    font-size: 11px; font-weight: 600; line-height: 1.4;
+    align-self: flex-start; max-width: 100%;
+  }
+  .msg.assistant .untrusted-badge { order: -1; }
+  .untrusted-badge .ub-mark { font-size: 12px; opacity: 0.8; }
+  .msg.has-untrusted .body { border-left: 3px solid var(--line); }
+  /* GP-99..102: §8.3 secure secret card. The input is a real password field;
+     the value never reaches the transcript, only `[REDACTED]`. */
+  .secret-card {
+    align-self: flex-start; display: flex; flex-direction: column; gap: 8px;
+    max-width: 82%; padding: 12px 14px; border: 1px solid var(--line);
+    border-radius: 14px; background: var(--bg1);
+  }
+  .secret-card .sc-title { font-weight: 700; font-size: 13px; }
+  .secret-card .sc-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .secret-card .sc-row { display: flex; gap: 6px; align-items: center; }
+  .secret-card input[type="password"], .secret-card input[type="text"] {
+    flex: 1; min-width: 0; background: var(--input-bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+    font: 13px/1.4 ui-monospace, monospace;
+  }
+  .secret-card .sc-btn {
+    border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer;
+    font-weight: 700; font-size: 12px;
+  }
+  .secret-card .sc-submit { background: var(--accent); color: var(--accent-ink); }
+  .secret-card .sc-reveal { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .secret-card .sc-reveal[aria-pressed="true"] { color: var(--text); background: var(--accent-soft); }
+  .secret-card .sc-cancel { background: var(--accent-soft); color: var(--muted); }
+  .secret-card .sc-status { font: 11px/1.5 ui-monospace, monospace; color: var(--muted); }
+  .redacted-pill {
+    display: inline-block; padding: 1px 6px; border-radius: 5px;
+    background: var(--accent-soft); color: var(--muted);
+    font: 12px/1.5 ui-monospace, monospace;
+  }
   /* Grok-parity typing indicator while the model is thinking */
   .msg .typing { display: inline-flex; gap: 4px; align-items: center; height: 18px; }
   .msg .typing i {
@@ -1170,6 +1212,10 @@
           <button type="button" class="gp-chip" id="gp-rule-ask" data-i18n="askFirst">Ask first</button>
         </div>
         <div id="gp-rules-list" style="margin-top:6px"></div>
+        <div class="gp-label" data-i18n="privacyTitle">Privacy Mode（账户侧管理，本机只读）</div>
+        <div class="gp-row">
+          <div id="gp-privacy-state" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">…</div>
+        </div>
         <div class="gp-label" data-i18n="accountSection">Account（本地 profile · 不伪造远端登录）</div>
         <div class="gp-row" style="align-items:center">
           <input id="gp-account-label" type="text" data-i18n-ph="accountLabelPlaceholder" placeholder="profile 名（如 Personal / Work）" style="width:160px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" />
@@ -1713,6 +1759,18 @@
   <script src="./link_discipline.js"></script>
   <!-- GP-96/97: same §5.7 category table the Host emitted progress against. -->
   <script src="./progress_protocol.js"></script>
+  <!-- GP-99/100/101/102: token-shape + `[REDACTED]` constant (same file the Host
+       and the probe load, so masking can never drift). -->
+  <script src="./secret_protocol.js"></script>
+  <!-- GP-103/104/105: §8.4 fence grammar. Dev path is ../shared, packaged build
+       copies hosts/shared → ./shared (electron-builder "files"), so the loader
+       falls back once and never double-loads. -->
+  <script src="../shared/untrusted_fence.js"></script>
+  <script>
+    if (!window.__bitbotUntrusted) {
+      document.write('<script src="./shared/untrusted_fence.js"><\/script>');
+    }
+  </script>
   <script>
     const banner = document.getElementById("banner");
     const log = document.getElementById("log");
@@ -2306,6 +2364,217 @@
       return known[w] || w;
     }
 
+    /* GP-103/104/105 — untrusted content (official spec §8.4).
+       window.__bitbotUntrusted comes from hosts/shared/untrusted_fence.js — the
+       same module the Host uses to fence webfetch/plugin/shell output. The
+       renderer therefore strips exactly the tags the Host wrote, and the badge
+       names the real source (never a guessed one). */
+    function untrustedApi() {
+      return window.__bitbotUntrusted || null;
+    }
+    const UNTRUSTED_LABEL_KEY = "untrustedBadge";
+    function applyUntrustedBodyTo(el, text) {
+      const api = untrustedApi();
+      const raw = String(text == null ? "" : text);
+      if (!api || !api.hasUntrusted(raw)) return raw;
+      const info = api.stripFences(raw);
+      const badge = document.createElement("div");
+      badge.className = "untrusted-badge";
+      badge.dataset.untrusted = "1";
+      badge.dataset.sources = info.sources.join(",");
+      const mark = document.createElement("span");
+      mark.className = "ub-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = "ⓘ";
+      const label = document.createElement("span");
+      label.textContent =
+        wavegT(UNTRUSTED_LABEL_KEY) + " · " + (info.sources.join(", ") || "external");
+      badge.title = wavegT("untrustedHint");
+      badge.appendChild(mark);
+      badge.appendChild(label);
+      el.insertBefore(badge, el.querySelector(".body"));
+      if (el.classList) el.classList.add("has-untrusted");
+      return info.text;
+    }
+
+    /* GP-99/100/101/102 — §8.3 secure secret input.
+       A secret is only ever typed into this card. Submit goes straight to the
+       Host vault over IPC (never through `bitbot:turn`), and the transcript
+       records `[REDACTED]` + the handle — not the value, not even its tail. */
+    function secretApi() {
+      return window.__bitbotSecret || null;
+    }
+    function isSecretish(text) {
+      const api = secretApi();
+      return api ? api.looksLikeToken(text) : false;
+    }
+    function renderSecretRequestCard(opts) {
+      const o = opts || {};
+      const api = secretApi();
+      const redacted = (api && api.REDACTED) || "[REDACTED]";
+      const card = document.createElement("div");
+      card.className = "secret-card";
+      card.id = "secret-request";
+      card.dataset.secretName = String(o.name || "secret");
+      const title = document.createElement("div");
+      title.className = "sc-title";
+      title.textContent = o.title || wavegT("secretCardTitle");
+      const note = document.createElement("div");
+      note.className = "sc-note";
+      note.textContent = o.note || wavegT("secretCardNote");
+      const row = document.createElement("div");
+      row.className = "sc-row";
+      const field = document.createElement("input");
+      // Real masked input: the browser never renders the value, and nothing in
+      // this app reads `.value` outside the submit handler below.
+      field.type = "password";
+      field.id = "secret-request-input";
+      field.autocomplete = "off";
+      field.spellcheck = false;
+      field.placeholder = o.placeholder || "••••••••";
+      const submit = document.createElement("button");
+      submit.type = "button";
+      submit.className = "sc-btn sc-submit";
+      submit.id = "secret-request-submit";
+      submit.textContent = wavegT("secretSubmit");
+      // Show/hide only flips the *input* type. The value still exists solely in
+      // this field until submit; nothing is copied into the transcript.
+      const reveal = document.createElement("button");
+      reveal.type = "button";
+      reveal.className = "sc-btn sc-reveal";
+      reveal.id = "secret-request-reveal";
+      reveal.setAttribute("aria-pressed", "false");
+      reveal.textContent = wavegT("secretReveal");
+      reveal.addEventListener("click", () => {
+        const shown = field.type === "text";
+        field.type = shown ? "password" : "text";
+        reveal.setAttribute("aria-pressed", shown ? "false" : "true");
+        reveal.textContent = shown ? wavegT("secretReveal") : wavegT("secretHide");
+        field.focus();
+      });
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "sc-btn sc-cancel";
+      cancel.id = "secret-request-cancel";
+      cancel.textContent = wavegT("secretCancel");
+      const status = document.createElement("div");
+      status.className = "sc-status";
+      status.id = "secret-request-status";
+      row.appendChild(field);
+      row.appendChild(reveal);
+      row.appendChild(submit);
+      row.appendChild(cancel);
+      card.appendChild(title);
+      card.appendChild(note);
+      card.appendChild(row);
+      card.appendChild(status);
+
+      cancel.addEventListener("click", () => {
+        card.remove();
+        addMsg("assistant", wavegT("secretCancelled"));
+      });
+      submit.addEventListener("click", async () => {
+        const value = field.value;
+        if (!value) {
+          status.textContent = wavegT("secretEmpty");
+          return;
+        }
+        submit.disabled = true;
+        // The value goes to the Host and nowhere else: no composer write, no
+        // runUserTurn, no session row.
+        const res = await window.bitbot.secrets.submit({
+          name: String(card.dataset.secretName || "secret"),
+          label: o.label || "",
+          env_key: o.envKey || "",
+          value,
+        });
+        field.value = "";
+        field.disabled = true;
+        if (!res || !res.ok) {
+          submit.disabled = false;
+          status.textContent = wavegT("secretFailed") + " " + ((res && res.error) || "?");
+          return;
+        }
+        status.textContent = (res.masked || "") + " · " + (res.handle || "");
+        // Transcript row: `[REDACTED]` + handle. Never the value, never last4.
+        const pill = document.createElement("span");
+        pill.className = "redacted-pill";
+        pill.id = "secret-redacted-pill";
+        pill.dataset.handle = String(res.handle || "");
+        pill.textContent = redacted;
+        const line = addMsg("assistant", "");
+        line.classList.add("secret-redacted-row");
+        line.dataset.handle = String(res.handle || "");
+        line.querySelector(".body").appendChild(pill);
+        // Bubble text is exactly `[REDACTED]` — no last4, no prefix. The mask
+        // stays in the card's own status line, which is not the transcript.
+        status.textContent = wavegT("secretStored") + " · " + (res.masked || "");
+        // Persist the placeholder (never the value) so a reload rebuilds it.
+        if (window.bitbot.sessions && window.bitbot.sessions.append) {
+          window.bitbot.sessions.append(activeSessionId, [
+            { role: "assistant", text: redacted, secret_handle: String(res.handle || "") },
+          ]).catch(() => {});
+        }
+        submit.style.display = "none";
+        reveal.style.display = "none";
+        cancel.textContent = wavegT("secretDone");
+      });
+      log.appendChild(card);
+      log.scrollTop = log.scrollHeight;
+      field.focus();
+      // GP-101: Enter submits, so the common path never requires clicking a
+      // button that could copy the value anywhere else.
+      field.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          submit.click();
+        }
+      });
+      return card;
+    }
+
+    /* GP-99: a Host `credential_fill` / `secret-request` delivery renders the
+       same secure card in the transcript. One card per vault handle, so a
+       re-render of host results never stacks duplicate inputs (and never more
+       than one element owns `#secret-request`). */
+    function ensureSecretRequestCard(opts) {
+      const o = opts || {};
+      const handle = String(o.handle || o.name || "secret");
+      const existing = Array.prototype.slice.call(
+        log.querySelectorAll(".secret-card"),
+      );
+      const dup = existing.find((c) => c.dataset.secretHandle === handle);
+      if (dup) {
+        if (typeof dup.scrollIntoView === "function") {
+          dup.scrollIntoView({ block: "nearest" });
+        }
+        return dup;
+      }
+      const card = renderSecretRequestCard(o);
+      card.dataset.secretHandle = handle;
+      existing.forEach((c) => {
+        if (c !== card) c.removeAttribute("id");
+      });
+      return card;
+    }
+
+    /* GP-99/101: a credential pasted into the composer is not a message. The
+       composer refuses it and points at the secure card instead — the kernel
+       rejects the same shapes (`paste_token_into_chat`), so the two agree. */
+    function blockSecretPaste(text) {
+      if (!isSecretish(text)) return false;
+      const api = secretApi();
+      const redacted = (api && api.REDACTED) || "[REDACTED]";
+      input.value = "";
+      autoGrow();
+      addMsg("assistant", wavegT("secretPasteBlocked") + " " + redacted);
+      renderSecretRequestCard({
+        name: "pasted_secret",
+        label: wavegT("secretPastedLabel"),
+      });
+      return true;
+    }
+
     /* GP-93/94/95 — link discipline (official spec §5.6).
        window.__bitbotLinks is loaded from ./link_discipline.js, the same file
        the main process requires for its open route, so the renderer cannot
@@ -2472,10 +2741,14 @@
       el.className = cls;
       el.innerHTML = '<div class="role"></div><div class="body"></div>';
       el.querySelector(".role").textContent = role;
+      // GP-103/104/105 (§8.4): external content arrives fenced. Display it as
+      // plain text with a visible source badge — the tags themselves are never
+      // shown as if they were the model's words.
+      const fenceText = applyUntrustedBodyTo(el, text);
       // GP-93: markdown links from the kernel (CM-0111 guarantees `[label](url)`
       // form) become real anchors; everything else stays literal text — the
       // converter only ever creates text nodes and <a>, never HTML parsing.
-      applyLinkBodyTo(el.querySelector(".body"), text);
+      applyLinkBodyTo(el.querySelector(".body"), fenceText);
       // GP-14: quote chip when this row itself was a reply to another message.
       if (opts && opts.replyToText) {
         const q = document.createElement("div");
@@ -3308,6 +3581,18 @@
       for (const m of msgs) if (m && m.id) byId[m.id] = m;
       for (const m of msgs) {
         if (!m || !m.text) continue;
+        if (m.secret_handle) {
+          // GP-102: a stored secret placeholder is rebuilt as `[REDACTED]`.
+          const row = addMsg("assistant", "", { mid: m.id || "" });
+          row.classList.add("secret-redacted-row");
+          row.dataset.handle = String(m.secret_handle);
+          const p = document.createElement("span");
+          p.className = "redacted-pill";
+          p.dataset.handle = String(m.secret_handle);
+          p.textContent = m.text;
+          row.querySelector(".body").appendChild(p);
+          continue;
+        }
         addMsg(m.role === "user" ? "user" : "assistant", m.text, {
           // GP-14: durable id + quoted target restored from the session store.
           mid: m.id || "",
@@ -4443,6 +4728,16 @@
                   if (p.type === "cursor-agent") {
                     label = "cursor-agent:" + (p.bc_id || "?");
                   }
+                  if (p.type === "secret-request") {
+                    // G-15: same masked card as credential_fill; the Host keeps
+                    // the plaintext, the transcript gets `[REDACTED]` only.
+                    ensureSecretRequestCard({
+                      name: p.name || p.handle || p.vault_id || "secret",
+                      label: p.label || p.name || "",
+                      handle: p.vault_id || p.handle || p.name || "secret",
+                      title: wavegT("secretCardTitle"),
+                    });
+                  }
                   if (p.type === "voice" && p.media_path) {
                     label = "voice:" + String(p.media_path).split("/").slice(-1)[0];
                   }
@@ -5566,6 +5861,8 @@
                       (p.path ? " · snap" : "");
                   }
                 } else if (h.kind === "credential_fill") {
+                  const secretHandle =
+                    p.vault_id || p.fill_handle || p.domain || "vault";
                   label =
                     "secret-request:" +
                     (p.domain || p.vault_id || "vault") +
@@ -5577,6 +5874,14 @@
                       ? "/signin_fill_residual"
                       : "");
                   types.push("secret-request");
+                  // G-15/GP-99: the delivery is a masked input card, not a
+                  // label. The value never enters the composer or the session.
+                  ensureSecretRequestCard({
+                    name: p.domain || p.name || secretHandle,
+                    label: p.domain || p.name || "",
+                    handle: secretHandle,
+                    title: wavegT("secretCardTitle"),
+                  });
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
                     chMeta.textContent =
@@ -7323,6 +7628,33 @@
       }
       refreshWaveGUsage().catch(() => {});
       refreshApprovalRules().catch(() => {});
+      refreshPrivacyStatus().catch(() => {});
+    }
+
+    /* GP-106/107 — §8.5 Privacy Mode. Read-only by design: the switch lives in
+       the account provider, so this row never offers a local toggle and never
+       claims "on" without an account-verified signal. */
+    async function refreshPrivacyStatus() {
+      const el = document.getElementById("gp-privacy-state");
+      if (!el) return;
+      if (!window.bitbot.privacy) {
+        el.textContent = "Privacy Mode: unavailable · managed by account";
+        return;
+      }
+      el.textContent = wavegT("privacyChecking");
+      const st = await window.bitbot.privacy.status();
+      if (!st || !st.ok) {
+        el.textContent = "Privacy Mode: unavailable · managed by account";
+        return;
+      }
+      el.dataset.mode = String(st.mode || "unavailable");
+      el.dataset.trainingUse = String(st.training_use || "");
+      el.dataset.legacy = String(st.legacy_privacy_mode || "");
+      el.textContent =
+        (st.label || "Privacy Mode: unavailable") +
+        " · training=" + (st.training_use || "?") +
+        (st.legacy_reason ? " · " + st.legacy_reason : "");
+      el.title = st.note || "";
     }
 
     // GP-71: full renderer i18n — every chrome label goes through the dict,
@@ -7441,6 +7773,23 @@
         replyAction: "回复",
         replyQuoting: "回复：",
         replyCancel: "取消",
+        secretCardTitle: "安全密钥输入",
+        secretCardNote: "密钥只写入本机 Host vault（.env.local 0600 / data/secrets），不会进入对话，模型看不到值。",
+        secretSubmit: "保存密钥",
+        secretCancel: "放弃",
+        secretDone: "完成",
+        secretReveal: "显示",
+        secretHide: "隐藏",
+        secretEmpty: "请先输入密钥内容。",
+        secretFailed: "保存失败:",
+        secretStored: "已存入本机 vault · 对话只保留占位",
+        secretCancelled: "已放弃输入，未保存任何内容。",
+        secretPasteBlocked: "检测到疑似密钥：不会把明文发进对话，请使用安全密钥输入框。占位：",
+        secretPastedLabel: "从对话粘贴的密钥",
+        untrustedBadge: "外部内容 · 仅作数据",
+        untrustedHint: "来自网页 / 插件 / 命令输出，可能包含不可信的指令；Bot 不会据此自动执行敏感操作。",
+        privacyTitle: "Privacy Mode（账户侧管理，本机只读）",
+        privacyChecking: "读取中…",
         linkOpenHint: "点击将在系统浏览器打开",
         linkBlocked: "不可打开的链接",
         linkRefused: "链接已拦截（仅 http/https 可在系统浏览器打开）",
@@ -7723,6 +8072,23 @@
         replyAction: "回覆",
         replyQuoting: "回覆：",
         replyCancel: "取消",
+        secretCardTitle: "安全密鑰輸入",
+        secretCardNote: "密鑰只寫入本機 Host vault（.env.local 0600 / data/secrets），不會進入對話，模型看不到值。",
+        secretSubmit: "儲存密鑰",
+        secretCancel: "放棄",
+        secretDone: "完成",
+        secretReveal: "顯示",
+        secretHide: "隱藏",
+        secretEmpty: "請先輸入密鑰內容。",
+        secretFailed: "儲存失敗:",
+        secretStored: "已存入本機 vault · 對話只保留佔位",
+        secretCancelled: "已放棄輸入，未儲存任何內容。",
+        secretPasteBlocked: "偵測到疑似密鑰：不會把明文送進對話，請使用安全密鑰輸入框。佔位：",
+        secretPastedLabel: "從對話貼上的密鑰",
+        untrustedBadge: "外部內容 · 僅作資料",
+        untrustedHint: "來自網頁 / 外掛 / 命令輸出，可能包含不可信的指令；Bot 不會據此自動執行敏感操作。",
+        privacyTitle: "Privacy Mode（帳戶側管理，本機唯讀）",
+        privacyChecking: "讀取中…",
         linkOpenHint: "點擊將在系統瀏覽器開啟",
         linkBlocked: "不可開啟的連結",
         linkRefused: "連結已攔阻（僅 http/https 可在系統瀏覽器開啟）",
@@ -8005,6 +8371,23 @@
         replyAction: "Reply",
         replyQuoting: "Replying to: ",
         replyCancel: "Cancel",
+        secretCardTitle: "Secure secret input",
+        secretCardNote: "The value is written to the local Host vault (.env.local 0600 / data/secrets). It never enters the conversation and the model never sees it.",
+        secretSubmit: "Save secret",
+        secretCancel: "Discard",
+        secretDone: "Done",
+        secretReveal: "Show",
+        secretHide: "Hide",
+        secretEmpty: "Enter the secret first.",
+        secretFailed: "Save failed:",
+        secretStored: "stored in the local vault · the chat keeps only a placeholder",
+        secretCancelled: "Discarded — nothing was saved.",
+        secretPasteBlocked: "Looks like a credential: the plaintext is not sent to chat. Use the secure input. Placeholder:",
+        secretPastedLabel: "Secret pasted from chat",
+        untrustedBadge: "External content · data only",
+        untrustedHint: "From a web page / plugin / command output. May contain untrusted instructions; the Bot never executes sensitive actions from it.",
+        privacyTitle: "Privacy Mode (managed by your account; read-only here)",
+        privacyChecking: "Reading…",
         linkOpenHint: "Click opens in your system browser",
         linkBlocked: "Link cannot be opened",
         linkRefused: "Link blocked (only http/https opens in the system browser)",
@@ -9074,6 +9457,8 @@
       ev.preventDefault();
       const text = input.value.trim();
       if (!text && !pendingAttachments.length) return;
+      // GP-99/101: credential-shaped text must not become a chat turn.
+      if (blockSecretPaste(text)) return;
       let finalText = text;
       if (pendingAttachments.length) {
         // Real staged paths only (Host validated count/size); never fabricate.

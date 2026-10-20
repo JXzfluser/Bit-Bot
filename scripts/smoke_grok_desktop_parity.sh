@@ -564,8 +564,14 @@ echo "== G-16 自动化冷启动 + GP-70 像素断言（Playwright-E2E · 规格
 # 截图用零依赖 PNG 解码（scripts/lib_png_pixel.mjs）算 viewport 亮度做可证伪断言。
 if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
   e2e_log=/tmp/e2e-g16.log
-  # M18 起 E2E 含四次真实 boot（GP-70 ×2 + GP-14 + GP-93/94/95），240s 会误杀
-  if timeout 900 node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
+  # M21 起 E2E 含五次真实 boot（GP-70 ×2 + GP-14 + GP-99 + GP-93/94/95）。
+  # 无 live X display 时用 xvfb-run 起一个（DISPLAY 指向不存在的 socket 会让
+  # Electron 在 ozone 里 SIGSEGV，被误判成应用问题）。
+  e2e_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    e2e_xvfb=(xvfb-run -a)
+  fi
+  if timeout 900 "${e2e_xvfb[@]}" node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
     ok "G-16 E2E 冷启动+像素断言全绿（$(grep -c '✓' "$e2e_log") 项，$(tail -1 "$e2e_log"))"
   else
     bad "G-16 E2E 冷启动+像素断言（见 $e2e_log）"
@@ -725,7 +731,7 @@ if(!/shell\.openExternal\(url\)/.test(main)) process.exit(1);
 if(!/setWindowOpenHandler/.test(main)||!/action: "deny"/.test(main)) process.exit(1);
 if(!/will-navigate/.test(main)) process.exit(1);
 // renderer：正文经政策模块、点击 preventDefault、悬停卡 DOM 存在
-if(!/applyLinkBodyTo\(el\.querySelector\("\.body"\), text\)/.test(html)) process.exit(1);
+if(!/applyLinkBodyTo\(el\.querySelector\("\.body"\), (?:text|fenceText)\)/.test(html)) process.exit(1);
 if(!/e\.preventDefault\(\)/.test(html)||!/id="link-preview"/.test(html)) process.exit(1);
 process.exit(0)' &&
   ok "G-19 GP-93/94/95：政策模块无 innerHTML + main IPC/窗口守卫 + renderer 契约在位" || bad "G-19 GP-93/94/95 contract drift"
@@ -758,6 +764,38 @@ grep -q "正文从未通过 innerHTML 写入" /tmp/g20-probe.log 2>/dev/null \
   && ok "G-20 视觉打磨未破坏 GP-93 唯一安全正文渲染路径" \
   || bad "G-20 render-path regression"
 echo "  · G-20 说明：像素级外观由真实 Electron 截图人工比对（scripts/ui_baseline_shot.mjs，属开发工具不入门禁）；门禁只钉可断言的契约，避免把「好看」写成不可验证的声明"
+
+echo
+echo "== G-21 信任面（M21：§8.3 密钥输入 / §8.4 Untrusted Content / §8.5 隐私模式）=="
+if timeout 300 node scripts/prove_m21_trust.js > /tmp/g21-probe.log 2>&1; then
+  ok "G-21 信任面契约全绿（$(grep -c '✓' /tmp/g21-probe.log) 项，$(tail -1 /tmp/g21-probe.log)）"
+else
+  bad "G-21 信任面契约（见 /tmp/g21-probe.log）"
+fi
+grep -q "密钥卡输入框是真实" /tmp/g21-probe.log 2>/dev/null \
+  && ok "G-21 GP-99：密钥卡是真实 <input type=password>，提交走 Host IPC 而非 composer/bitbot:turn" \
+  || bad "G-21 GP-99 secret card contract missing"
+grep -q "落盘为密文" /tmp/g21-probe.log 2>/dev/null \
+  && grep -q "仅 Host 侧可解出明文" /tmp/g21-probe.log 2>/dev/null \
+  && ok "G-21 GP-100：vault 落盘密文 + 只回 ****last4 遮罩（值不出 Host）" \
+  || bad "G-21 GP-100 vault contract missing"
+grep -q "kernel 拒绝" /tmp/g21-probe.log 2>/dev/null \
+  && grep -q "全 data/.*grep 不到明文" /tmp/g21-probe.log 2>/dev/null \
+  && ok "G-21 GP-101/102：粘贴密钥被 kernel 拒绝，data/ 全量 grep 不到明文" \
+  || bad "G-21 GP-101/102 redaction contract missing"
+grep -q "包进 fence 并标注数据来源" /tmp/g21-probe.log 2>/dev/null \
+  && grep -q "伪造闭合标签无法越狱" /tmp/g21-probe.log 2>/dev/null \
+  && ok "G-21 GP-103：外部结果真实进入 fence（含逃逸防护/未闭合 fail-closed）" \
+  || bad "G-21 GP-103 fence contract missing"
+grep -q "伪造 Auto-review" /tmp/g21-probe.log 2>/dev/null \
+  && grep -q "data-untrusted 角标" /tmp/g21-probe.log 2>/dev/null \
+  && ok "G-21 GP-104/105：伪造 Auto-review 仍按数据处置 + UI 有可读来源角标" \
+  || bad "G-21 GP-104/105 contract missing"
+grep -q "managed by account" /tmp/g21-probe.log 2>/dev/null \
+  && grep -q "disabled_by_default" /tmp/g21-probe.log 2>/dev/null \
+  && ok "G-21 GP-106/107：隐私模式只读（账户侧管理），不可验证 → disabled_by_default" \
+  || bad "G-21 GP-106/107 privacy contract missing"
+echo "  · G-21 说明：密钥卡的键入/显示切换与提交后的 [REDACTED] 行由 renderer 契约 + Host vault 双端断言；真实 Electron 交互冒烟见 scripts/e2e_grok_desktop_boot.mjs"
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

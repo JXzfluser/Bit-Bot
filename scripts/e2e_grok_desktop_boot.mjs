@@ -200,6 +200,12 @@ async function main() {
   const sessionsBefore = fs.existsSync(SESSIONS_PATH)
     ? fs.readFileSync(SESSIONS_PATH)
     : null;
+  // GP-99..102: the secret card writes a real Host vault; snapshot it so a
+  // probe run never leaves a credential behind in data/secrets/.
+  const SECRETS_DIR = path.join(REPO, "data/secrets");
+  const secretsBefore = fs.existsSync(path.join(SECRETS_DIR, "vault.json"))
+    ? fs.readFileSync(path.join(SECRETS_DIR, "vault.json"))
+    : null;
   const restoreStores = () => {
     if (settingsBefore) fs.writeFileSync(SETTINGS_PATH, settingsBefore);
     else fs.rmSync(SETTINGS_PATH, { force: true });
@@ -207,6 +213,8 @@ async function main() {
     else fs.rmSync(ACCOUNT_PATH, { force: true });
     if (sessionsBefore) fs.writeFileSync(SESSIONS_PATH, sessionsBefore);
     else fs.rmSync(SESSIONS_PATH, { force: true });
+    if (secretsBefore) fs.writeFileSync(path.join(SECRETS_DIR, "vault.json"), secretsBefore);
+    else fs.rmSync(path.join(SECRETS_DIR, "vault.json"), { force: true });
   };
 
   try {
@@ -725,6 +733,131 @@ async function main() {
           stubProc.kill("SIGKILL");
         } catch (_) {}
       }
+    }
+
+    /* ---- GP-99..102 安全密钥输入（官方 spec §8.3）----
+       真实 UI：打开密钥卡 → 往 <input type=password> 键入 → 点保存。
+       断言：字段确实是 password 类型且不在 composer 里；提交后转写只有
+       [REDACTED]、composer 与 sessions.json 都 grep 不到明文、vault 落盘是
+       密文；再重载窗口，占位符仍在（历史里没有密钥）。*/
+    const g21Secret = "sk-proj-E2EPROBE-0123456789abcdefghijkl";
+    try {
+      const bootG21 = await launch({
+        BITBOT_LLM_STREAM: "0",
+      });
+      await bootG21.win.evaluate(() => document.getElementById("sess-new").click());
+      // Real user path: paste a credential into the composer and press Enter.
+      // The renderer must refuse the message and open the secure card instead.
+      await bootG21.win.fill("#composer #text", g21Secret);
+      await bootG21.win.press("#composer #text", "Enter");
+      await bootG21.win.waitForSelector("#secret-request-input", { timeout: 20000 });
+      const pasteGuard = await bootG21.win.evaluate((secret) => {
+        const bodies = Array.from(document.querySelectorAll("#log .msg .body"))
+          .map((b) => b.textContent || "")
+          .join("\n");
+        return {
+          card: Boolean(document.querySelector("#secret-request-input")),
+          composer: document.getElementById("text").value,
+          plaintextInLog: bodies.indexOf(secret) >= 0,
+          blockedNote: bodies.indexOf("[REDACTED]") >= 0,
+        };
+      }, g21Secret);
+      pasteGuard.card && pasteGuard.composer === "" && !pasteGuard.plaintextInLog && pasteGuard.blockedNote
+        ? ok("E2E GP-101：密钥粘贴被 composer 拦截 → 清空 + 打开安全卡 + 只留 [REDACTED]")
+        : bad("E2E GP-101 paste guard", JSON.stringify(pasteGuard).slice(0, 220));
+
+      const fieldType = await bootG21.win.getAttribute("#secret-request-input", "type");
+      fieldType === "password"
+        ? ok("E2E GP-99：输入框 type=password（浏览器不渲染明文）")
+        : bad("E2E GP-99 field type", String(fieldType));
+
+      await bootG21.win.fill("#secret-request-input", g21Secret);
+      const composerAtType = await bootG21.win.inputValue("#composer #text");
+      composerAtType === ""
+        ? ok("E2E GP-99：键入密钥不经过 composer（composer 仍为空）")
+        : bad("E2E GP-99 composer leak", composerAtType.slice(0, 40));
+
+      await bootG21.win.click("#secret-request-submit");
+      await bootG21.win.waitForFunction(
+        () => {
+          const p = document.querySelector("#secret-redacted-pill");
+          return p && p.textContent === "[REDACTED]";
+        },
+        null,
+        { timeout: 20000 },
+      );
+      const afterSubmit = await bootG21.win.evaluate((secret) => {
+        const pill = document.querySelector("#secret-redacted-pill");
+        const bodyText = Array.from(document.querySelectorAll("#log .msg .body"))
+          .map((b) => b.textContent || "")
+          .join("\n");
+        return {
+          pill: pill ? pill.textContent : "",
+          handle: pill ? pill.dataset.handle : "",
+          fieldValue: document.querySelector("#secret-request-input").value,
+          fieldDisabled: document.querySelector("#secret-request-input").disabled,
+          composer: document.getElementById("text").value,
+          plaintextInLog: bodyText.indexOf(secret) >= 0,
+          tailInLog: bodyText.indexOf(secret.slice(-4)) >= 0,
+          status: (document.getElementById("secret-request-status") || {}).textContent || "",
+        };
+      }, g21Secret);
+      afterSubmit.pill === "[REDACTED]" && afterSubmit.handle.startsWith("sec-")
+        ? ok("E2E GP-101：转写气泡恰为 [REDACTED] + 真实 handle（" + afterSubmit.handle + "）")
+        : bad("E2E GP-101 pill", JSON.stringify(afterSubmit).slice(0, 220));
+      !afterSubmit.plaintextInLog && !afterSubmit.tailInLog && afterSubmit.composer === ""
+        ? ok("E2E GP-101/102：对话正文与 composer 都不含明文/尾 4 位")
+        : bad("E2E GP-101 leak", JSON.stringify(afterSubmit).slice(0, 220));
+      afterSubmit.fieldValue === "" && afterSubmit.fieldDisabled
+        ? ok("E2E GP-99：提交后输入框清空并禁用（值只存在于 Host vault）")
+        : bad("E2E GP-99 field reset", JSON.stringify(afterSubmit).slice(0, 160));
+
+      // Re-open: history must still show the placeholder, never the value.
+      await bootG21.win.reload();
+      await bootG21.win.waitForSelector("#composer #text", { timeout: 30000 });
+      await bootG21.win.waitForTimeout(1200);
+      const afterReload = await bootG21.win.evaluate((secret) => {
+        const bodyText = Array.from(document.querySelectorAll("#log .msg .body"))
+          .map((b) => b.textContent || "")
+          .join("\n");
+        return {
+          redactedRows: document.querySelectorAll(".secret-redacted-row").length,
+          plaintext: bodyText.indexOf(secret) >= 0,
+        };
+      }, g21Secret);
+      afterReload.redactedRows >= 1 && !afterReload.plaintext
+        ? ok("E2E GP-102：重载窗口后历史仍只有 [REDACTED] 行（密钥不进聊天历史）")
+        : bad("E2E GP-102 reload", JSON.stringify(afterReload));
+
+      const storedSessions = fs.existsSync(SESSIONS_PATH)
+        ? fs.readFileSync(SESSIONS_PATH, "utf8")
+        : "";
+      const storedVault = fs.existsSync(path.join(SECRETS_DIR, "vault.json"))
+        ? fs.readFileSync(path.join(SECRETS_DIR, "vault.json"), "utf8")
+        : "";
+      storedSessions.indexOf(g21Secret) < 0
+        ? ok("E2E GP-102：sessions.json 落盘不含明文")
+        : bad("E2E GP-102 sessions leak", "plaintext persisted");
+      storedVault.length > 0 && storedVault.indexOf(g21Secret) < 0
+        ? ok("E2E GP-100：vault.json 落盘为密文（Host 独占解密）")
+        : bad("E2E GP-100 vault at rest", "vault missing or plaintext");
+
+      const hostVaultStatus = await bootG21.win.evaluate(() =>
+        window.bitbot.secrets.vault(),
+      );
+      const e2eEntry =
+        (hostVaultStatus &&
+          hostVaultStatus.entries &&
+          (hostVaultStatus.entries.pasted_secret || hostVaultStatus.entries.e2e_probe)) ||
+        {};
+      e2eEntry.masked === "****" + g21Secret.slice(-4) && e2eEntry.value === null
+        ? ok("E2E GP-100：IPC 读回的 vault 只有 ****last4，value 恒为 null")
+        : bad("E2E GP-100 vault status", JSON.stringify(e2eEntry).slice(0, 200));
+
+      await bootG21.win.evaluate(() => window.bitbot.secrets.remove("pasted_secret"));
+      await shutdown(bootG21.app);
+    } catch (e) {
+      bad("E2E GP-99..102 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
     }
 
     /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----

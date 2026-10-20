@@ -286,7 +286,7 @@ async function main() {
 
     const rendererWire =
       /src="\.\/link_discipline\.js"/.test(html) &&
-      /applyLinkBodyTo\(el\.querySelector\("\.body"\), text\)/.test(html) &&
+      /applyLinkBodyTo\(el\.querySelector\("\.body"\), (?:text|fenceText)\)/.test(html) &&
       /window\.__bitbotLinks/.test(html) &&
       /closest\("a\.msg-link"\)/.test(html) &&
       /e\.preventDefault\(\)/.test(html) &&
@@ -305,7 +305,7 @@ async function main() {
     // 流式 delta 期间仍写 textContent（增量纯文本，成本最低且安全）；
     // 回合结束（phase=end）与 addMsg 必须切到政策模块，否则链接永远是死文字。
     const bodyViaPolicy =
-      /applyLinkBodyTo\(el\.querySelector\("\.body"\), text\)/.test(html) &&
+      /applyLinkBodyTo\(el\.querySelector\("\.body"\), (?:text|fenceText)\)/.test(html) &&
       /applyLinkBodyTo\(streamEl\.querySelector\("\.body"\), chunk\.partial\)/.test(html) &&
       !/\.body"\)\.innerHTML\s*=/.test(html) &&
       policyClean;

@@ -55,7 +55,18 @@ pub fn parse_fenced_output(
       }
       let close_tag = fence_close(marker)
       match find_substr(input[body_start:].to_owned(), close_tag) {
-        None => [Trusted(text=input)]
+        None => {
+          // Fail closed: a truncated fence is still data, never instructions.
+          // (`hosts/shared/untrusted_fence.js` parses it the same way.)
+          let before = input[:open_at].to_owned()
+          let body = input[body_start:].to_owned()
+          let out : Array[ContentSlice] = []
+          if before.length() > 0 {
+            out.push(Trusted(text=before))
+          }
+          out.push(Fenced(fence=UntrustedFence::wrap(source, body)))
+          out
+        }
         Some(rel) => {
           let close_at = body_start + rel
           let before = input[:open_at].to_owned()
@@ -83,4 +94,36 @@ pub fn ContentSlice::must_not_execute(self : ContentSlice) -> Bool {
     Trusted(_) => false
     Fenced(_) => true
   }
+}
+
+///|
+/// GP-103 (official §8.4): effect kinds whose payload comes from outside the
+/// user/Host — web pages, plugin results, command output, screen scraping.
+/// One list, mirrored by `hosts/shared/untrusted_fence.js` (probe asserts both).
+pub fn is_external_source(kind : String) -> Bool {
+  let kinds = [
+    "webfetch", "mcp_call", "mcp_discover", "shell", "computer_use",
+    "browser_open", "web_search", "read_mail_thread", "search_mail", "x_search",
+    "watch_video",
+  ]
+  for k in kinds {
+    if kind == k {
+      break true
+    }
+  } nobreak {
+    false
+  }
+}
+
+///|
+/// Canonical fence text (same grammar `parse_fenced_output` reads). Inner open
+/// or close tags in `body` are escaped so attacker content cannot terminate the
+/// fence early and become instructions.
+pub fn fence_body(source : String, body : String) -> String {
+  let open_tag = fence_open("cursor_untrusted_data")
+  let close_tag = fence_close("cursor_untrusted_data")
+  let safe = body
+    .replace(old=close_tag, new="<\\/cursor_untrusted_data_1337>")
+    .replace(old=open_tag, new="<\\cursor_untrusted_data_1337")
+  open_tag + " source=\"" + source.replace(old="\"", new="") + "\">" + safe + close_tag
 }

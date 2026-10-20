@@ -25,7 +25,7 @@
 | G-8 | Settings 对等（Appearance/Language/Timezone/Local execution/Auto-review 规则/Updates/Usage） | spec.md §8 | Host settings store + nativeTheme + renderer 真控件 |
 | G-9 | 通知与未读（聚焦抑制、系统通知、侧边栏未读、跳转） | spec.md §9 | IPC notifications + renderer badge |
 | G-10 | 文件与交付（文件卡、预览、`/workspace` 路径纪律、保存/打开） | spec.md §10 | `readArtifact/openArtifact` + renderer 预览侧栏 |
-| G-11 | 安全（secret 掩码框不进上下文、untrusted fence、auto-review 独立闸门） | spec.md §6/11 | 既有 kernel fence + Host secret mask store，补 UI 闭环 |
+| G-11 | 安全（secret 掩码框不进上下文、untrusted fence、auto-review 独立闸门、隐私模式只读） | spec.md §6/8.3–8.5/11 | kernel `secret_request`/`security.parse` fence + Host `secret_vault`（AES-GCM）+ `privacy_status` + renderer 密钥卡/`data-untrusted` 角标（wave M21） |
 | G-12 | 侧边栏 chrome（Cmd/Ctrl+B 折叠、置顶区、Hidden Bots、Connect apps、⌘N） | spec.md §2 | renderer + accelerator |
 
 详细验收条目见 `spec.md`；IPC/载荷契约见 `ipc-contract.md`；现状差距审计见 `gaps.md`。

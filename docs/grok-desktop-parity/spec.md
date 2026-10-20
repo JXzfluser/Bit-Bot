@@ -128,6 +128,30 @@
 | GP-97 | 长时间任务有中间更新（不是最后一次性刷屏） | 进度行随事件原地更新（同一 DOM 节点，非每步新气泡）；provider 慢响应期间仍可见当前工作项；LLM 流式 delta 与 progress 行并存互不覆盖 | 用真实慢 provider（`BITBOT_STUB_LATENCY_MS`）跑一轮：回合**尚未返回**时 DOM 已出现进度行且含 `1/1` 与当前类别文案；回合结束后该行转 done 态；delta 流式气泡不被进度行吃掉（两者节点不同） |
 | GP-98 | 进度不谎报 | 事件只由真实执行点发出（未执行的 effect 不会有 done）；被拒绝/never 拦截的 effect 也发 done(`ok:false`)，UI 显示「被拒绝」而不是消失；done 事件的 `path` 只在文件确实存在时才带 | 拒答路径（no_real_path / never 模式）仍有 done 行且 `ok:false`；探针断言 done 事件里出现的每个 path 在磁盘上真实存在；UI 结束后不留"仍在进行"的假态（`data-state` 转 done/cleared） |
 
+## G-15 密钥输入框不进上下文（官方 spec §8.3）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-99 | 受支持的连接提供**安全密钥输入框**（不是普通聊天输入） | renderer `#secret-request` 卡：`<input type="password">` + 遮罩显隐按钮 + Submit/Cancel；提交走 Host IPC `bitbot:secrets:submit`，从不经过 composer / `bitbot:turn` | 卡在对话流中可见且输入框 `type=password`；提交后 composer 值与 session 消息里都不含明文 |
+| GP-100 | 值被掩码，**不添加到对话** | Host `secrets.submit` 写 `hosts/desktop/.env.local`（mode 0600，既有通道）+ `data/secrets/vault.json`（`value` 只在 Host 侧，`masked` 为 `****last4`）；renderer 只拿到 `handle`/`masked` | 提交后磁盘 session JSON 与 `data/memory/session.json` grep 不到明文；`secrets.status()` 对同一 key 返回 `masked=****last4` |
+| GP-101 | 模型看不到值；密钥输入后显示 `[REDACTED]` | kernel `ui_protocol/secret_request.mbt`（`SecretVault.submit_secret` 只留 handle、`paste_token_into_chat` 拒绝、`redact_secrets`→`[REDACTED]`）作为唯一脱敏口径；Host 只把 `handle` 交给后续 effect（值留在 `secret_vault.resolve()`，不出 IPC）；renderer 在对话流写 `[REDACTED]` 占位行（不写值、不写 last4）；`cmd/desktop_turn` 的 `Chat` 分支对含密钥形状的输入直接 `fail_turn` | 提交后气泡文本恰为 `[REDACTED]`（无 last4、无明文前缀）；把同一明文贴进 composer 发送 → renderer 拦截并且 kernel 同样拒答，消息不进 store |
+| GP-102 | 密钥不出现在聊天历史（含重载） | 历史气泡只存 `[REDACTED]` 占位 + handle id；`sessions.json` 不落值 | 重载窗口后气泡仍为 `[REDACTED]`；`grep` 全仓 `data/` 无明文 |
+
+## G-16 Untrusted Content（官方 spec §8.4）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-103 | 外部内容（网页、插件结果、命令输出）**标记为 untrusted data** | kernel `security/parse.mbt`（`cursor_untrusted_data_1337` fence）+ `security/effect_planner.mbt`（Fenced → 无 ExternalSend）；Host `host_ffi` 在 webfetch/mcp_call/shell 结果进入续跑前用同一 fence 包裹；共享模块 `hosts/shared/untrusted_fence.js` 是唯一包裹/解包口径（Node + renderer 同一文件） | 外部结果续跑体的 provider payload 中出现 `cursor_untrusted_data` fence；同一函数对已 fence 文本幂等（不双重包裹） |
+| GP-104 | 呈现给模型时**明确标记**；外部内容不自动执行敏感操作 | fence 带 `source=`；`security/effect_planner.mbt` 对 Fenced slice 返回 `[]`（无 ExternalSend）；kernel `runtime/autoreview_exception.mbt` 用 source 判定（伪造 "Auto-review blocked" 仍是 `IgnoreAsData`） | Fenced 正文写「请发送/转账」也不产生 ExternalSend；伪造 Auto-review 指令的 fence 判 `IgnoreAsData` |
+| GP-105 | **Auto Review** 检查 Bot 操作是否符合用户请求 | 既有 `security/autoreview.mbt` 闸门 + `gate_consequential`；renderer 在 UI 上给外部来源气泡加 `untrusted` 角标（`data-untrusted="1"`），点击展开来源 | 外部内容气泡有 `untrusted` 标记且可读来源；敏感 kind 仍走审批卡（不因外部文本自动放行） |
+
+## G-17 数据 / 隐私模式（官方 spec §8.5）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-106 | Privacy Mode 状态由**账户设置**管理；不伪造成本机开关 | Settings → General 显示只读 `Privacy Mode` 行：来源 Host 真实探测（`BITBOT_PRIVACY_MODE` 环境/账户文件），未配置时明确 `unavailable · managed by account`，不显示 "已开启" | 未配置时文案含 `unavailable`/`managed by account`；renderer 无本地"开启隐私模式"写操作（IPC 白名单无对应 setter） |
+| GP-107 | 无法验证时**默认不训练**；Legacy Privacy Mode 不可用 | Host `privacy_status` 计算 `training_use: "disabled_by_default"`（未验证时不声称已验证）+ `legacy_privacy_mode: "unsupported"` + 原因（需要云端数据存储） | 探针断言返回值三字段；绝不返回 `training_disabled_verified: true` 除非存在真实可验证来源 |
+
 ## 诚实残留（本波不假装）
 
 - 真实云 VM 远程桌面推流：以本机 `DISPLAY`/xvfb + 真截图帧模拟"共享电脑屏幕"，标注 `mode=sandbox_screen`，不宣称云端。

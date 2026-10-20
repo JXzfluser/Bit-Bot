@@ -158,6 +158,9 @@ function createSessionStore(repoRoot) {
       // GP-14: keep the replied-to id in the transcript row so the quote
       // survives a reload instead of only living in this turn's memory.
       if (m.reply_to) row.reply_to = String(m.reply_to);
+      // GP-102: a secret placeholder row keeps only the Host vault handle, so a
+      // reload can rebuild `[REDACTED]` without ever storing the value.
+      if (m.secret_handle) row.secret_handle = String(m.secret_handle);
       hit.messages.push(row);
     }
     const DEFAULT_TITLES = ["新对话", "对话", "New chat", "新對話", "工作"];

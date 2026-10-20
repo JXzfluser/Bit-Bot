@@ -55,6 +55,13 @@ try {
   }
 }
 
+// GP-99/100/101/102 — §8.3 secure secret input. The vault stores values on the
+// Host side only; the renderer sees a handle + `****last4`.
+const { createSecretVault } = require("./secret_vault");
+// GP-103/104 — §8.4 untrusted marking is applied in the kernel (the fence text
+// is written by `continue_after_host_ffi`); the renderer loads the same grammar
+// from hosts/shared/untrusted_fence.js to render the badge.
+
 let createCnInboundServer;
 try {
   createCnInboundServer = require("./shared/cn_inbound_server").createCnInboundServer;
@@ -293,6 +300,14 @@ const sessions = createSessionStore(REPO_ROOT);
 const ffi = createHostFfi(REPO_ROOT);
 /** Wave G stores: bots / settings / approvals / computer / rooms / usage (docs/grok-desktop-parity/ipc-contract.md §2). */
 const surface = createProductSurface(REPO_ROOT);
+/** GP-99/100/101/102 — Host-owned secret vault (§8.3). */
+const secretVault = createSecretVault(REPO_ROOT);
+const secretProtocol = require("./secret_protocol");
+const { computePrivacyStatus } = require(path.join(
+  fs.existsSync(path.join(__dirname, "shared", "privacy_status.js"))
+    ? path.join(__dirname, "shared", "privacy_status.js")
+    : path.join(__dirname, "..", "shared", "privacy_status.js"),
+));
 
 let mainWindow = null;
 let tray = null;
@@ -676,6 +691,26 @@ ipcMain.handle("bitbot:sessions:create", async (_e, title) => {
   const r = sessions.create(title);
   broadcast("bitbot:sessions-changed", sessions.list());
   return r;
+});
+ipcMain.handle("bitbot:sessions:append", async (_e, id, messages) => {
+  // GP-102: the renderer may persist a secret placeholder row (role + text +
+  // secret_handle). Everything here is already value-free by construction.
+  try {
+    const rows = Array.isArray(messages) ? messages : [];
+    const safe = rows
+      .filter((m) => m && typeof m === "object" && m.role)
+      .map((m) => ({
+        role: String(m.role),
+        text: String(m.text || ""),
+        ...(m.secret_handle ? { secret_handle: String(m.secret_handle) } : {}),
+        ...(m.reply_to ? { reply_to: String(m.reply_to) } : {}),
+      }));
+    const res = sessions.appendMessages(String(id || ""), safe);
+    broadcast("bitbot:sessions-changed", sessions.list());
+    return res;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
 });
 ipcMain.handle("bitbot:sessions:setActive", async (_e, id) => {
   const r = sessions.setActive(id);
@@ -1336,6 +1371,84 @@ ipcMain.handle("bitbot:secrets:set", async (_e, patch) => {
   }
 });
 
+/**
+ * GP-99/100/101/102 — §8.3 secure secret input.
+ *
+ * The renderer's secret card posts here; the value never travels through
+ * `bitbot:turn`, is never added to a session, and never comes back. The reply
+ * carries a handle + a `****last4` mask only.
+ */
+ipcMain.handle("bitbot:secrets:submit", async (_e, payload) => {
+  const p = payload && typeof payload === "object" ? payload : {};
+  try {
+    const res = secretVault.submit(p);
+    if (!res.ok) return res;
+    // Optional env-key mirror: only for keys the Settings form already owns,
+    // so a secret card can't smuggle an arbitrary env name into .env.local.
+    if (p.env_key && ALLOWED_SECRET_KEYS.has(String(p.env_key))) {
+      const saved = upsertDesktopEnvLocal({ [String(p.env_key)]: String(p.value || "") });
+      loadEnvLocalFiles({ overwrite: true });
+      res.env_local = saved && saved.ok ? saved.path : null;
+      res.env_local_applied = Boolean(saved && saved.ok);
+    } else if (p.env_key) {
+      res.env_local = null;
+      res.env_local_applied = false;
+      res.env_local_note = "key not in the Settings allow-list; stored in the Host vault only";
+    }
+    // The transcript bubble renders `[REDACTED]`; the handle is what the kernel
+    // and credential-fill path would receive.
+    res.display = secretProtocol.REDACTED;
+    res.value_echoed = false;
+    res.message =
+      "密钥已存入 Host vault（" +
+      (res.masked || "****") +
+      "）。对话与模型只会看到 " +
+      secretProtocol.REDACTED +
+      "。";
+    return res;
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+      value_echoed: false,
+      pretend_saved: false,
+    };
+  }
+});
+ipcMain.handle("bitbot:secrets:vault", async () => {
+  try {
+    return secretVault.status();
+  } catch (err) {
+    return { ok: false, entries: {}, error: String(err && err.message ? err.message : err) };
+  }
+});
+ipcMain.handle("bitbot:secrets:remove", async (_e, name) => {
+  try {
+    return secretVault.remove(name);
+  } catch (err) {
+    return { ok: false, removed: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+/**
+ * GP-106/107 — §8.5 Privacy Mode. Read-only: the real switch lives in the
+ * account provider. We report what we can actually observe and say
+ * "unavailable · managed by account" otherwise (never a fake "on").
+ */
+ipcMain.handle("bitbot:privacy:status", async () => {
+  let account = {};
+  try {
+    const st = await runAccountEffect("account_status", "whoami");
+    const payload = (st && st.payload) || {};
+    account = payload.active || {};
+    // The local profile has no provider-issued privacy claim, so nothing here
+    // can mark the status verified; `privacy_verified` stays undefined.
+  } catch (_) {
+    account = {};
+  }
+  return computePrivacyStatus({ env: process.env, account });
+});
+
 /** Run honest acceptance gate script; never invents PASS. */
 ipcMain.handle("bitbot:secrets:runGate", async () => {
   const script = path.join(REPO_ROOT, "scripts/prove_cn_product_acceptance.sh");
@@ -1844,7 +1957,19 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       /^list machines$/i.test(rawText);
     if (!skipSession) {
       const toStore = [];
-      const userRow = { role: "user", text: String(text || "") };
+      // GP-102: never persist the raw composer text if the kernel refused it as
+      // a pasted credential — the kernel's user row is the redacted form.
+      const kernelUser =
+        result && Array.isArray(result.messages) && result.messages[0] &&
+        result.messages[0].role === "user"
+          ? String(result.messages[0].text || "")
+          : "";
+      const tokenRefused =
+        result && result.ok === false && /token paste rejected/.test(String(result.error || ""));
+      const userRow = {
+        role: "user",
+        text: tokenRefused && kernelUser ? kernelUser : String(text || ""),
+      };
       // GP-14: persist which message this turn replied to (kernel-echoed id).
       if (result && result.reply_to) userRow.reply_to = String(result.reply_to);
       toStore.push(userRow);
