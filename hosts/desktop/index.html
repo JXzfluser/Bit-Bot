@@ -412,6 +412,19 @@
     width: 34px; height: 34px; border-radius: 50%; font-size: 15px;
   }
   #composer #attach-btn:hover, #composer #voice-btn:hover { background: var(--accent-soft); color: var(--ink); }
+  #composer #voicechat-btn {
+    background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line);
+    height: 34px; border-radius: 17px; padding: 0 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  #composer #voicechat-btn:disabled { opacity: 0.35; cursor: default; }
+  #composer #voicechat-btn.on { opacity: 1; background: var(--danger); color: #fff; border-color: var(--danger); }
+  #composer #voice-btn.recording { background: var(--danger); color: #fff; }
+  .vc-pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: vc-pulse 1.2s infinite; display: inline-block; }
+  @keyframes vc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+  .voice-memo-card { border: 1px solid var(--line); border-radius: 10px; background: var(--bg1); padding: 8px 10px; margin-top: 4px; }
+  .voice-memo-card .vm-row { display: flex; align-items: center; gap: 8px; }
+  .voice-memo-card .vm-toggle { background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer; }
+  .voice-memo-card .vm-transcript { margin-top: 6px; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
   #composer #send {
     background: var(--accent); color: var(--accent-ink); border: 0;
     min-width: 34px; height: 34px; border-radius: 17px; padding: 0 14px;
@@ -605,6 +618,11 @@
   </header>
   <aside id="agents">
     <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" style="width:100%;background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:8px 10px;font-weight:700;cursor:pointer;font-size:13px;margin-bottom:10px" data-i18n="newChat">新建对话</button>
+    <!-- GP-60: sidebar in-call indicator -->
+    <div id="vc-sb-indicator" style="display:none;align-items:center;gap:8px;margin:-4px 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg1);font-size:12px;font-weight:700">
+      <span class="vc-pulse"></span>
+      <span data-i18n="voiceChatInProgress">Voice chat in progress</span>
+    </div>
     <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <span data-i18n="bots">Bots</span>
       <button type="button" id="bot-new-btn" title="Create new Bot (Name / Job / Description)" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px" data-i18n="newBot">New Bot</button>
@@ -1223,10 +1241,26 @@
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
     <div id="attachment-strip" class="attach-strip" aria-label="待发送附件"></div>
+    <!-- GP-60: in-call control (composer 为空时启动；结束留 Voice chat 卡) -->
+    <div id="voicechat-bar" style="display:none;margin:0 16px 6px;padding:10px 12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="vc-pulse"></span>
+        <span style="font-weight:700" data-i18n="voiceChatLive">Voice chat</span>
+        <span id="vc-timer" style="color:var(--muted);font:12px ui-monospace,monospace">00:00</span>
+        <span style="flex:1"></span>
+        <button type="button" id="vc-end-btn" style="background:var(--danger);color:#fff;border:0;border-radius:6px;padding:6px 12px;font-weight:700;cursor:pointer" data-i18n="vcEnd">结束通话</button>
+      </div>
+      <div id="vc-caption" style="margin-top:6px;color:var(--muted);font-size:12px"></div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input id="vc-relay-input" type="text" placeholder="转述给 Bot…" style="flex:1;box-sizing:border-box;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px" data-i18n-ph="vcRelayPh" />
+        <button type="button" id="vc-relay-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer;font-size:12px" data-i18n="vcRelayBtn">发送</button>
+      </div>
+    </div>
     <div class="row">
       <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…（Shift+Enter 换行）" autocomplete="off" autofocus></textarea>
       <button type="button" id="attach-btn" title="添加附件（≤6 · 文档/图片/音频 25MB · 视频 200MB）">📎</button>
       <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）">🎙</button>
+      <button type="button" id="voicechat-btn" title="Start voice chat" data-i18n="voiceChatBtn">🎧 Voice chat</button>
       <button id="send" type="submit" data-i18n="send">发送</button>
     </div>
     <div id="composer-menu" class="composer-menu" hidden></div>
@@ -1530,6 +1564,9 @@
       [/^Delete Bot needs confirmation \(GP-07\)\..*/i, "rBotDeleteConfirm"],
       [/^Delete Bot confirmed \(GP-07\)\..*/i, "rBotDeleteGo"],
       [/^Computer preview planned \(GP-31\)\..*/i, "rComputerPreview"],
+      [/^Voice call started at (?:voice:)?([^\s(]+).*/i, "rVoiceStart"],
+      [/^Voice ended; wrote (?:[^\s]*\/)?([\w.-]+?)\.(?:txt|json)\b.*/i, "rVoiceEnd"],
+      [/^Voice relay on (?:voice:)?([^\s(]+) \((\d+) turn\(s\)\)\..*/i, "rVoiceRelay"],
     ];
     function wavegLocalizeReply(text) {
       const raw = String(text || "");
@@ -1544,6 +1581,8 @@
         }
         if (key === "rRoomTurn") return tpl.replace("{room}", m[1]);
         if (key === "rAutoReview") return tpl.replace("{via}", m[1]);
+        if (key === "rVoiceStart" || key === "rVoiceEnd") return tpl.replace("{id}", m[1]);
+        if (key === "rVoiceRelay") return tpl.replace("{n}", m[2]);
         return tpl;
       }
       return raw;
@@ -1570,7 +1609,7 @@
     }
 
     /** CHARTER Delivery: inline Host media attachment in Desktop transcript. */
-    async function renderDeliveryMedia(filePath, label) {
+    async function renderDeliveryMedia(filePath, label, opts) {
       if (!filePath || !window.bitbot || !window.bitbot.readArtifact) return;
       try {
         const art = await window.bitbot.readArtifact(filePath);
@@ -1590,6 +1629,62 @@
         el.innerHTML =
           '<div class="role">attachment</div><div class="body"></div>';
         const body = el.querySelector(".body");
+        const mime = String(art.mime || "");
+        // GP-61: voice memo card — Play/Pause + expandable transcript.
+        if (opts && opts.voice && mime.startsWith("audio/")) {
+          const card = document.createElement("div");
+          card.className = "voice-memo-card";
+          const row = document.createElement("div");
+          row.className = "vm-row";
+          const title = document.createElement("span");
+          title.style.fontWeight = "700";
+          title.style.fontSize = "13px";
+          title.textContent =
+            ((opts && opts.label === "voice_chat") || label === "voice_chat"
+              ? wavegT("voiceChatCard")
+              : wavegT("voiceMemoTitle")) +
+            (opts && opts.duration ? " · " + opts.duration : "");
+          const audio = document.createElement("audio");
+          audio.preload = "metadata";
+          audio.src = art.data_url;
+          const playBtn = document.createElement("button");
+          playBtn.type = "button";
+          playBtn.className = "vm-toggle";
+          playBtn.textContent = wavegT("vmPlay");
+          playBtn.addEventListener("click", () => {
+            if (audio.paused) {
+              audio.play().catch(() => {});
+            } else {
+              audio.pause();
+            }
+          });
+          audio.addEventListener("play", () => { playBtn.textContent = wavegT("vmPause"); });
+          audio.addEventListener("pause", () => { playBtn.textContent = wavegT("vmPlay"); });
+          audio.addEventListener("ended", () => { playBtn.textContent = wavegT("vmPlay"); });
+          const tgl = document.createElement("button");
+          tgl.type = "button";
+          tgl.className = "vm-toggle";
+          tgl.textContent = wavegT("vmShowTranscript");
+          const tr = document.createElement("div");
+          tr.className = "vm-transcript";
+          tr.style.display = "none";
+          tr.textContent =
+            (opts && opts.transcript) || wavegT("vmNoTranscript");
+          tgl.addEventListener("click", () => {
+            const show = tr.style.display === "none";
+            tr.style.display = show ? "block" : "none";
+            tgl.textContent = show ? wavegT("vmHideTranscript") : wavegT("vmShowTranscript");
+          });
+          row.appendChild(title);
+          row.appendChild(playBtn);
+          row.appendChild(tgl);
+          card.appendChild(row);
+          card.appendChild(tr);
+          body.appendChild(card);
+          log.appendChild(el);
+          log.scrollTop = log.scrollHeight;
+          return;
+        }
         const lab = document.createElement("div");
         lab.className = "media-label";
         lab.textContent =
@@ -1600,7 +1695,6 @@
           (art.bytes || 0) +
           "B";
         body.appendChild(lab);
-        const mime = String(art.mime || "");
         if (mime.startsWith("image/")) {
           const img = document.createElement("img");
           img.className = "delivery-media";
@@ -1693,6 +1787,12 @@
           p = {};
         }
         const kind = h.kind || "";
+        let transcript = null;
+        try {
+          transcript = p.stt_ok ? String(p.stt_text || "") : null;
+          if (transcript === null && kind === "voice_relay" && p.user_text_prefix)
+            transcript = String(p.user_text_prefix);
+        } catch (_) { transcript = null; }
         if (kind === "generate_image" || kind === "structured_chart") {
           const mp = p.media_path || p.path;
           if (mp) out.push({ path: mp, label: kind });
@@ -1703,10 +1803,18 @@
         } else if (kind === "screenshot") {
           if (p.has_frame && p.frame_path)
             out.push({ path: p.frame_path, label: "screenshot" });
-        } else if (kind === "voice_relay" && p.reply_media_path) {
-          out.push({ path: p.reply_media_path, label: "voice_relay" });
-        } else if (kind === "voice_session" && p.media_path) {
-          out.push({ path: p.media_path, label: "voice_session" });
+        } else if (kind === "voice_relay" && p.reply_media_path && p.reply_media_ok) {
+          out.push({ path: p.reply_media_path, label: "voice_relay", transcript, voice: true });
+        } else if (kind === "voice_end_write" && p.media_path && p.media_ok) {
+          // GP-60: 有真实麦克风录音时以录音作为结束卡，避免两张 Voice chat 卡。
+          if (typeof voiceChatRealMediaPath !== "undefined" && voiceChatRealMediaPath) continue;
+          out.push({
+            path: p.media_path,
+            label: "voice_chat",
+            transcript,
+            voice: true,
+            duration: typeof voiceChatLastDuration === "string" ? voiceChatLastDuration : "",
+          });
         }
       }
       return out;
@@ -4601,7 +4709,7 @@
           // CHARTER Delivery: inline Host media (image/audio/video) in transcript.
           const mediaItems = collectHostMediaPaths(r.host_results);
           for (const item of mediaItems) {
-            await renderDeliveryMedia(item.path, item.label);
+            await renderDeliveryMedia(item.path, item.label, item);
           }
           // CHARTER Delivery: inline Host HTML attachments (purchase receipt, …).
           const htmlItems = collectHostHtmlPaths(r.host_results);
@@ -5690,6 +5798,29 @@
         crIdle: "空闲（未收到帧）",
         crLeaveNote: "离开预览不影响 Bot 后台任务。",
         rComputerPreview: "已打开 Computer 预览（右侧面板）— 关闭预览不影响后台任务。",
+        voiceRecHint: "录音中…再点 🎙 或按 Ctrl/Cmd+D 停止",
+        voiceChatBtn: "🎧 语音对话",
+        voiceChatLive: "语音对话进行中",
+        vcEnd: "结束通话",
+        vcStartHint: "语音对话已开启 — 说吧，我会像聊天一样回应；随时点“结束通话”。",
+        voiceChatInProgress: "语音对话进行中",
+        voiceChatCard: "语音对话",
+        voiceMemoTitle: "语音备忘",
+        vmPlay: "播放",
+        vmPause: "暂停",
+        vmShowTranscript: "查看转写",
+        vmHideTranscript: "收起转写",
+        vmNoTranscript: "暂无转写文本（Host 未返回 STT）。",
+        rVoiceStart: "语音对话已开始（{id}）— 关闭前请在通话栏结束。",
+        vcListening: "正在监听你的语音…",
+        vcNeedEmpty: "语音对话需在输入框为空时发起 — 先发送或清空当前内容。",
+        vcNoMic: "沙箱无麦克风设备 — 可用下方转述框继续对话。",
+        vcMicDenied: "麦克风被拒绝",
+        vcRelayPh: "转述给 Bot…",
+        vcRelayBtn: "转述",
+
+        rVoiceEnd: "语音对话已结束（{id}），通话录音已存入本对话的 Voice chat 卡。",
+        rVoiceRelay: "通话中已转述 {n} 轮。",
         chatCreatedHint: "新会话已创建 · 输入消息开始",
       },
       "zh-TW": {
@@ -5826,6 +5957,29 @@
         crIdle: "空閒（未收到幀）",
         crLeaveNote: "離開預覽不影響 Bot 背景任務。",
         rComputerPreview: "已開啟 Computer 預覽（右側面板）— 關閉預覽不影響背景任務。",
+        voiceRecHint: "錄音中…再點 🎙 或按 Ctrl/Cmd+D 停止",
+        voiceChatBtn: "🎧 語音對話",
+        voiceChatLive: "語音對話進行中",
+        vcEnd: "結束通話",
+        vcStartHint: "語音對話已開啟 — 請說，我會即時回應；隨時點「結束通話」。",
+        voiceChatInProgress: "語音對話進行中",
+        voiceChatCard: "語音對話",
+        voiceMemoTitle: "語音備忘",
+        vmPlay: "播放",
+        vmPause: "暫停",
+        vmShowTranscript: "查看轉寫",
+        vmHideTranscript: "收起轉寫",
+        vmNoTranscript: "暫無轉寫文字（Host 未回傳 STT）。",
+        rVoiceStart: "語音對話已開始（{id}）— 關閉前請在通話欄結束。",
+        vcListening: "正在聆聽你的語音…",
+        vcNeedEmpty: "語音對話需在輸入框為空時發起 — 先送出或清空目前內容。",
+        vcNoMic: "沙箱無麥克風裝置 — 可用下方轉述框繼續對話。",
+        vcMicDenied: "麥克風被拒絕",
+        vcRelayPh: "轉述給 Bot…",
+        vcRelayBtn: "轉述",
+
+        rVoiceEnd: "語音對話已結束（{id}），通話錄音已存入本對話的 Voice chat 卡。",
+        rVoiceRelay: "通話中已轉述 {n} 輪。",
         chatCreatedHint: "新工作已建立 · 輸入訊息開始",
       },
       en: {
@@ -5962,6 +6116,29 @@
         crIdle: "Idle (no frame)",
         crLeaveNote: "Leaving the preview never pauses background work.",
         rComputerPreview: "Computer preview opened (right panel) — closing it doesn't pause tasks.",
+        voiceRecHint: "Recording… tap 🎙 again or press Ctrl/Cmd+D to stop",
+        voiceChatBtn: "🎧 Voice chat",
+        voiceChatLive: "Voice chat in progress",
+        vcEnd: "End call",
+        vcStartHint: "Voice chat is live — just talk; hit End call whenever you're done.",
+        voiceChatInProgress: "Voice chat in progress",
+        voiceChatCard: "Voice chat",
+        voiceMemoTitle: "Voice memo",
+        vmPlay: "Play",
+        vmPause: "Pause",
+        vmShowTranscript: "Show transcript",
+        vmHideTranscript: "Hide transcript",
+        vmNoTranscript: "No transcript yet (Host returned no STT).",
+        rVoiceStart: "Voice chat started ({id}) — end it from the in-call bar.",
+        vcListening: "Listening for your voice…",
+        vcNeedEmpty: "Voice chat starts only with an empty composer — send or clear it first.",
+        vcNoMic: "No mic device in this sandbox — use the relay box below.",
+        vcMicDenied: "Microphone denied",
+        vcRelayPh: "Relay to the Bot…",
+        vcRelayBtn: "Relay",
+
+        rVoiceEnd: "Voice chat ended ({id}); the call recording is kept in this chat as a Voice chat card.",
+        rVoiceRelay: "Relayed {n} turn(s) on the call.",
         chatCreatedHint: "New chat created · type a message to start",
       },
     };
@@ -6856,6 +7033,7 @@
       }
       input.value = "";
       autoGrow();
+      syncVoiceChatAvailability();
       await runUserTurn(finalText, {});
     });
 
@@ -6867,6 +7045,7 @@
     input.addEventListener("input", () => {
       autoGrow();
       updateComposerMenu();
+      syncVoiceChatAvailability();
     });
     input.addEventListener("keydown", (ev) => {
       // Shift+Enter = newline (textarea default); Enter sends; Ctrl/Cmd+Enter sends.
@@ -6901,6 +7080,7 @@
         chip.appendChild(rm);
         strip.appendChild(chip);
       }
+      if (typeof syncVoiceChatAvailability === "function") syncVoiceChatAvailability();
     }
     const attachBtn = document.getElementById("attach-btn");
     if (attachBtn) {
@@ -6989,6 +7169,7 @@
     let recChunks = [];
     async function startVoiceInput() {
       if (mediaRec && mediaRec.state === "recording") {
+        if (voiceBtn) voiceBtn.classList.remove("recording");
         mediaRec.stop();
         return;
       }
@@ -7002,6 +7183,7 @@
         mediaRec = new MediaRecorder(stream);
         mediaRec.ondataavailable = (e) => recChunks.push(e.data);
         mediaRec.onstop = async () => {
+          if (voiceBtn) voiceBtn.classList.remove("recording");
           stream.getTracks().forEach((t) => t.stop());
           const blob = await new Response(recChunks.length ? new Blob(recChunks, { type: "audio/webm" }) : null).blob().catch(() => null);
           // Blob→base64
@@ -7027,13 +7209,168 @@
           }
         };
         mediaRec.start();
-        addMsg("assistant", "录音中…再点 🎙 或按 Ctrl/Cmd+D 停止");
+        if (voiceBtn) voiceBtn.classList.add("recording");
+        addMsg("assistant", wavegT("voiceRecHint"));
       } catch (e) {
         addMsg("assistant", "麦克风被拒绝: " + (e && e.name));
       }
     }
     const voiceBtn = document.getElementById("voice-btn");
     if (voiceBtn) voiceBtn.addEventListener("click", startVoiceInput);
+
+    /* ---- GP-60 Voice chat (实时语音对话, spec §5.3) ----
+     * composer 为空时才可发起；通话中显示 in-call 控件 + 侧边栏进行中指示；
+     * 结束后对话里留一张 Voice chat 卡（voice_end_write 会话音频，或真实麦克风录音）。 */
+    let voiceChatId = null;
+    let voiceChatTicker = null;
+    let voiceChatStartedAt = 0;
+    let voiceChatRec = null;
+    let voiceChatChunks = [];
+    let voiceChatMicNote = "";
+    let voiceChatRealMediaPath = null;
+    let voiceChatLastDuration = "";
+    const vcBtn = document.getElementById("voicechat-btn");
+    const vcBar = document.getElementById("voicechat-bar");
+    const vcTimerEl = document.getElementById("vc-timer");
+    const vcCaption = document.getElementById("vc-caption");
+    const vcSbIndicator = document.getElementById("vc-sb-indicator");
+    const vcEndBtn = document.getElementById("vc-end-btn");
+    const vcRelayInput = document.getElementById("vc-relay-input");
+    const vcRelayBtn = document.getElementById("vc-relay-btn");
+
+    function vcFmt(ms) {
+      const s = Math.max(0, Math.floor(ms / 1000));
+      const m = Math.floor(s / 60);
+      return String(m).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    }
+    function vcTick() {
+      if (vcTimerEl) vcTimerEl.textContent = vcFmt(Date.now() - voiceChatStartedAt);
+    }
+    function syncVoiceChatAvailability() {
+      if (!vcBtn) return;
+      // GP-60: 非空 composer 禁用发起按钮；通话中改由挂断按钮控制。
+      vcBtn.disabled = Boolean(voiceChatId) || input.value.trim().length > 0 || pendingAttachments.length > 0;
+    }
+    function setVoiceChatUi(on) {
+      if (vcBar) vcBar.style.display = on ? "block" : "none";
+      if (vcSbIndicator) vcSbIndicator.style.display = on ? "flex" : "none";
+      if (vcBtn) vcBtn.classList.toggle("on", Boolean(on));
+      if (on && vcCaption) {
+        vcCaption.textContent =
+          voiceChatMicNote || wavegT("vcListening");
+      }
+    }
+    async function vcStopRecorder() {
+      if (!voiceChatRec || voiceChatRec.state !== "recording") return null;
+      const rec = voiceChatRec;
+      const done = new Promise((resolve) => {
+        rec.onstop = () => resolve(true);
+        try {
+          rec.stop();
+        } catch (_) {
+          resolve(false);
+        }
+      });
+      await done;
+      voiceChatRec = null;
+      try {
+        if (rec.__tracks) rec.__tracks.getTracks().forEach((t) => t.stop());
+      } catch (_) {}
+      const bytes = await new Blob(voiceChatChunks).arrayBuffer();
+      voiceChatChunks = [];
+      if (!bytes.byteLength) return null;
+      const view = new Uint8Array(bytes);
+      let bin = "";
+      for (let i = 0; i < view.length; i += 4096) {
+        bin += String.fromCharCode.apply(null, view.subarray(i, i + 4096));
+      }
+      const r = await window.bitbot.voice
+        .ingest({ wav_b64: btoa(bin), session: activeSessionId })
+        .catch(() => null);
+      return r && r.ok ? r.wav_path : null;
+    }
+    async function startVoiceChat() {
+      if (voiceChatId) return;
+      if (input.value.trim() || pendingAttachments.length) {
+        addMsg("assistant", wavegT("vcNeedEmpty"));
+        return;
+      }
+      const id = "vc-" + Date.now().toString(36);
+      voiceChatId = id;
+      voiceChatStartedAt = Date.now();
+      voiceChatMicNote = "";
+      // Best-effort real mic capture; sandbox without an input device stays honest.
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          voiceChatChunks = [];
+          voiceChatRec = new MediaRecorder(stream);
+          voiceChatRec.ondataavailable = (e) => {
+            if (e && e.data && e.data.size) voiceChatChunks.push(e.data);
+          };
+          voiceChatRec.start();
+          voiceChatRec.__tracks = stream;
+        } else {
+          voiceChatMicNote = wavegT("vcNoMic");
+        }
+      } catch (e) {
+        voiceChatMicNote = wavegT("vcMicDenied") + (e && e.name ? " (" + e.name + ")" : "");
+      }
+      setVoiceChatUi(true);
+      syncVoiceChatAvailability();
+      vcTick();
+      voiceChatTicker = setInterval(vcTick, 1000);
+      await runUserTurn("voice start " + id, { skipSession: true, silentUser: true });
+    }
+    async function endVoiceChat() {
+      if (!voiceChatId) return;
+      const id = voiceChatId;
+      voiceChatId = null;
+      if (voiceChatTicker) {
+        clearInterval(voiceChatTicker);
+        voiceChatTicker = null;
+      }
+      const dur = vcFmt(Date.now() - voiceChatStartedAt);
+      const realPath = await vcStopRecorder();
+      if (realPath) voiceChatRealMediaPath = realPath;
+      if (vcTimerEl) vcTimerEl.textContent = dur;
+      voiceChatLastDuration = dur;
+      setVoiceChatUi(false);
+      syncVoiceChatAvailability();
+      await runUserTurn("voice end " + id, { skipSession: true, silentUser: true });
+      // GP-60: real mic recording (if captured) is kept as an extra memo card.
+      if (voiceChatRealMediaPath) {
+        await renderDeliveryMedia(voiceChatRealMediaPath, "voice_chat", {
+          voice: true,
+          label: "voice_chat",
+          duration: dur,
+        });
+        voiceChatRealMediaPath = null;
+        voiceChatLastDuration = "";
+      }
+    }
+    if (vcBtn) vcBtn.addEventListener("click", startVoiceChat);
+    if (vcEndBtn) vcEndBtn.addEventListener("click", endVoiceChat);
+    async function sendVoiceRelay() {
+      if (!voiceChatId || !vcRelayInput) return;
+      const t = vcRelayInput.value.trim();
+      if (!t) return;
+      vcRelayInput.value = "";
+      await runUserTurn("voice relay " + voiceChatId + " :: " + t, {
+        skipSession: true,
+        silentUser: true,
+      });
+    }
+    if (vcRelayBtn) vcRelayBtn.addEventListener("click", sendVoiceRelay);
+    if (vcRelayInput) {
+      vcRelayInput.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          sendVoiceRelay();
+        }
+      });
+    }
+    syncVoiceChatAvailability();
 
 
     document.getElementById("connect-slack").addEventListener("click", () => {

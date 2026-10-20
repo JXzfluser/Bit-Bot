@@ -160,6 +160,27 @@ j=$(turn_json "room $roomid :: @everyone ping"); echo "$j" | grep -q '"responder
 j=$(turn_json "room $roomid :: 无人点名"); echo "$j" | grep -q bot_discretion && ok "无 @ → bot_discretion" || bad "discretion"
 echo "$j" | grep -q "dm-only" && ok "GP-53 escalations=dm-only（审批不进群）" || bad "dm-only flag"
 
+echo "== G-7 语音（GP-15/60/61）=="
+VOICE_MOCK="$PWD/scripts/host_espeak_mock.sh"
+node -e "try{require('fs').writeFileSync('data/voice/sessions.json','[]')}catch(e){}"
+j=$(BITBOT_ESPEAK_BIN="$VOICE_MOCK" turn_json "voice start uicall7"); echo "$j" | field intent | grep -q voice_start && echo "$j" | field hostKinds | grep -q voice_session:ok && ok "voice start → voice_session host ok" || bad "voice start chain"
+node -e "
+const rows=require('./data/voice/sessions.json');
+const r=rows.find(x=>x&&x.voice_address==='voice:uicall7');
+process.exit(r && r.live===true && r.media_ok===true ? 0:1)" && ok "GP-60 会话 live + 真实媒体落盘" || bad "voice session media"
+j=$(BITBOT_ESPEAK_BIN="$VOICE_MOCK" turn_json "voice relay uicall7 :: 帮我看下今天的日程"); echo "$j" | field hostKinds | grep -q voice_relay:ok && node -e "
+const rows=require('./data/voice/sessions.json');
+const r=rows.find(x=>x&&x.voice_address==='voice:uicall7');
+process.exit(r && (r.relay_log||[]).length>=1 ? 0:1)" && ok "GP-60 通话中转述进入 relay_log" || bad "voice relay"
+j=$(BITBOT_ESPEAK_BIN="$VOICE_MOCK" turn_json "voice end uicall7"); echo "$j" | field hostKinds | grep -q voice_end_write:ok && echo "$j" | grep -q "Voice ended" && ok "voice end → voice_end_write host ok" || bad "voice end chain"
+node -e "
+const fs=require('fs');
+const lines=fs.readFileSync('data/voice/voice-calls/calls.jsonl','utf8').trim().split('\n');
+const last=JSON.parse(lines[lines.length-1]);
+const rows=require('./data/voice/sessions.json');
+const r=rows.find(x=>x&&x.voice_address==='voice:uicall7')||{};
+process.exit(last.matched===true && last.media_ok===true && r.live===false ? 0:1)" && ok "GP-60 结束卡数据就绪：matched + media_ok + live=false" || bad "voice end card data"
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -17,7 +17,7 @@
 | GP-07 | 部分 | delete 级联（bots/sessions/routines）与共享文件保留沿用 CM-1907 既有实现；"先提示改用隐藏" 为 renderer 文案。二次确认脚本断言未进本波。 |
 | GP-08 | 已实现 | set primary 持久（smoke G-1）。X 入站模拟路由沿用既有 CN inbound 测试。 |
 | GP-10/11/12/13/14 | 已实现/部分 | Composer 多行/附件≤6（IPC attachments）/`/`技能/`@`提及已有；GP-13 群内 `@BotName` 路由本轮实测（smoke G-6）。 |
-| GP-15 | 部分 | 语音转写进 composer 依赖真麦克风；沙箱内以 `voice_end_write` 链验收，getUserMedia 未测（残留）。 |
+| GP-15 | 已实现 | 语音输入：🎙 recording 态（红圈）→ MediaRecorder → `bitbot.voice.ingest` 真实落盘 `data/desktop/voice/*.wav`；无 STT 时诚实提示补文字（不伪造转写）。getUserMedia 链已用 `--use-fake-device-for-media-stream` CDP 实测（录音→存盘回执截图）。 |
 | GP-20 | 已实现 | 审批卡结构化：操作/参数/目标 kv 行 + secret 提示；不可映射类别隐藏 Always。 |
 | GP-21 | 已实现 | 三按钮全链实测：基线弹卡→always allow 规则落盘→同 pattern 自动执行（`yes:approval_rule`）；Deny 走 pending 匹配 + `approvals.log.jsonl` 回执。 |
 | GP-22 | 已实现 | ask-first 优先实测（smoke G-3：allow+ask 冲突不自动）。规则持久在 `approval-rules.json`。 |
@@ -36,7 +36,7 @@
 | GP-51 | 已实现 | `@BotName`→mentioned_only、`@everyone`→all、无@→bot_discretion 实测（smoke G-6，transcript 落 rooms.json）。 |
 | GP-52 | 部分 | `send_to_agent` 沿用 CM-14xx；群内 reply 定向 UI 有、内核所有权转移断言未进本波。 |
 | GP-53 | 已实现 | `escalations:"dm-only"` 实测出现在 room_turn 结果；审批卡只进 pending 队列/私聊，不进 transcript。 |
-| GP-60/61 | 部分 | voice_session/relay 链在 `smoke_grok_parity_scenario.sh` 验收；renderer 录音依赖真麦克风（残留）。 |
+| GP-60/61 | 已实现 | GP-60 Voice chat：composer 为空才可发起（非空/有附件禁用按钮，实测）→ 通话栏（脉冲+计时+监听文案+转述框）+ 侧边栏"语音对话进行中"→ 挂断后对话留 Voice chat 卡（真实麦克风录音优先，含时长）。GP-61 memo 卡：播放/暂停 + 转写展开（relay user_text 回填）。kernel→host 链断言进 smoke G-7（PASS=46）。 |
 | GP-70 | 已实现 | appearance dark 持久实测 + boot 时 `applyAppearance` 读取持久值（smoke G-5）；nativeTheme 像素断言未做（依赖截图基线，未列本波）。 |
 | GP-71 | 已实现 | language 持久 + renderer `wavegLangApply` 关键文案切换（zh-CN/zh-TW/en）。 |
 | GP-72 | 已实现 | timezone 持久 + `process.env.BITBOT_TZ` + 守护进程重启（smoke G-5）。 |
@@ -106,3 +106,14 @@
 2. **内核**：`ComputerPreview(bot_id)` → `computer_preview` effect；短语 `open computer|computer preview|show computer|查看电脑|打开电脑预览|open computer for bot <id>`。首轮实现踩中 `trimmed[20:]` 偏移错误（应为 22），smoke 断言 `screens["t"]` 暴露 → wbtest 补 `bot=bot-9` 精确断言防回归。
 3. **UI**：Grok 三栏布局落地——`grid-template-columns` 扩第 4 列（默认 0fr，`body.computer-open` 340px，与 tools-open/sidebar-collapsed 组合全枚举）；`#computer-rail` 含 per-Bot chips、真帧图、meta（status/last_action/时间）、活动流（最近 8 条倒序）、Take over/刷新、群组/后台审批跳转、"离开预览不影响后台"提示。顶栏「面板」按钮改为「Computer」直达 rail；gp-panel 保留 group/approvals 内联。菜单动作轮次 `skipSession` → 协议短语不再污染会话历史（截图验证 take over 仍入库属预期：take over 是对话事件而非菜单静默动作）。
 4. **验证**：moon 373/373；smoke PASS=41 FAIL=0 双跑幂等（G-1b 重建 Smoke 时补 `update name=SmokeRenamed` 修 G-6 mention 路由；G-4 前清 screens 防残留）；CDP 实测：rail 打开显示 Xvfb 真帧（帧内含应用自身菜单栏像素，证明 LiveDisplay 非 fixture）、takeover 横幅 + 活动流落盘 `preview-agent-bit-*.png`。
+
+## Wave M6（语音 UI：GP-15/60/61，本轮）
+
+规格：官方 §5.2（语音转写进 composer 可编辑）、§5.3（Voice chat：空 composer 发起、通话中控件、侧边栏进行中指示、结束留卡）、§5.4（语音备忘 Play/Pause + transcript）。
+
+1. **kernel/host 复用**：voice_start/relay/end 链原本已存在（`VoiceStart/VoiceRelay/VoiceEnd` → `voice_session/voice_relay/voice_end_write` effects → host 真实 WAV/会话 store），本轮补的是 renderer 体验与诚实渲染规则：媒体 `media_ok=false` 不出假音频卡（`collectHostMediaPaths` 加 `media_ok` 门），relay 转写用 `user_text_prefix` 回填 memo 卡。
+2. **GP-60 状态机**：`startVoiceChat()` 仅 composer 空 + 无附件时可用（input/附件变化实时 `syncVoiceChatAvailability`）→ `voice start vc-<ts36>`（silentUser+skipSession，协议短语不进 transcript）→ `#voicechat-bar`（脉冲、计时、监听/无麦诚实文案、转述框 → `voice relay <id> :: <text>`）+ 侧边栏 `#vc-sb-indicator`；挂断 → 停麦、`voice end <id>` → 结束卡（优先真实录音，含时长 `语音对话 · 00:18`；无录音回落 Host 会话 WAV，二者去重只出一张）。
+3. **GP-61 memo 卡**：`renderDeliveryMedia(..., opts)` voice 分支——标题（语音备忘/Voice chat）+ 播放/暂停（同步 audio 事件）+ 查看/收起转写；🎙 语音输入按钮 recording 态红圈（start/stop/onstop 全路径复位）。
+4. **i18n**：voiceChatBtn/voiceChatLive/vcEnd/vcListening/vcNeedEmpty/vcNoMic/vcMicDenied/vcRelayPh/vcRelayBtn/voiceMemoTitle/voiceChatCard/vmPlay/vmPause/vmShowTranscript/vmHideTranscript/vmNoTranscript/voiceRecHint/rVoiceStart/rVoiceEnd/rVoiceRelay ×3 字典；kernel 英文回执 `Voice call started…`/`Voice ended; wrote…`/`Voice relay on…` 经 WAVEG_REPLY_MAP 本地化（含 {id}/{n} 占位）。
+5. **验证**：moon 373/373；smoke 新增 G-7 五断言（PASS=46 FAIL=0 双跑幂等，espeak mock 出真 WAV 断言 media_ok/live/relay_log/matched）；Electron smoke `voice start uicall9` / `voice end uicall9` ok=true；CDP（fake 麦克风）四截图：通话中（侧边栏指示+通话栏）、结束卡（时长+去重）、录音红圈、录音存盘回执（no_stt 诚实文案）。
+6. **环境注意**：Electron 重启前 9223 可能仍被上一进程占用（TIME_WAIT 期 `Cannot start http server for devtools`）——固定用循环等端口释放再启动。
