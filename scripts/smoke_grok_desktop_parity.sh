@@ -564,7 +564,8 @@ echo "== G-16 自动化冷启动 + GP-70 像素断言（Playwright-E2E · 规格
 # 截图用零依赖 PNG 解码（scripts/lib_png_pixel.mjs）算 viewport 亮度做可证伪断言。
 if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
   e2e_log=/tmp/e2e-g16.log
-  if timeout 240 node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
+  # M18 起 E2E 含四次真实 boot（GP-70 ×2 + GP-14 + GP-93/94/95），240s 会误杀
+  if timeout 900 node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
     ok "G-16 E2E 冷启动+像素断言全绿（$(grep -c '✓' "$e2e_log") 项，$(tail -1 "$e2e_log"))"
   else
     bad "G-16 E2E 冷启动+像素断言（见 $e2e_log）"
@@ -690,6 +691,49 @@ const st=JSON.parse(fs.existsSync("data/desktop/sessions.json")?fs.readFileSync(
 process.exit((st.sessions||[]).some(x=>x.id==="sess-gp14probe")?1:0)' &&
   ok "G-18 GP-14 探针恢复 sessions.json 快照（无残留会话）" || bad "G-18 GP-14 store residue"
 echo "  · G-18 说明：Reply 目标的 UI 交互（hover 回复按钮 → 引用条 → 切会话重建）由 E2E GP-14 十断言覆盖（G-16 同脚本）"
+
+echo "== G-19 Markdown/链接纪律（GP-93/94/95 · 官方 spec §5.6：链接可点击打开 / 系统浏览器 / 悬停不自动导航）=="
+# 规格验收信号：链接可点击打开、悬停预览不自动导航。UI 里挂个 <a> 只是外壳，
+# 所以 G-19 跑真实链：provider 裸 URL → kernel CM-0111 markdown 化 → 共享政策
+# 模块渲染成 DOM → link_open 路由（scheme 门 + 审计行）。探针不需要 Electron。
+if timeout 300 node scripts/prove_gp93_links.js > /tmp/g19-probe.log 2>&1; then
+  ok "G-19 GP-93/94/95 全链绿（$(grep -c '✓' /tmp/g19-probe.log) 项，$(tail -1 /tmp/g19-probe.log))"
+else
+  bad "G-19 GP-93/94/95 全链（见 /tmp/g19-probe.log）"
+  tail -12 /tmp/g19-probe.log
+fi
+grep -q "scheme 门表 14 例全对" /tmp/g19-probe.log && grep -q "javascript: refused" /tmp/g19-probe.log &&
+  ok "G-19 GP-94：scheme 门 + 拦截不放行两级断言真实执行" || bad "G-19 GP-94 gate assertions missing"
+grep -q "审计留痕 4 行" /tmp/g19-probe.log && grep -q "opened 字段只反映真实" /tmp/g19-probe.log &&
+  ok "G-19 GP-94：审计留痕（含被拦截尝试）+ opened 语义诚实性被断言" || bad "G-19 GP-94 audit missing"
+grep -q "真实 kernel 回合" /tmp/g19-probe.log && grep -q "投递文本里不存在裸 URL" /tmp/g19-probe.log &&
+  ok "G-19 GP-93：kernel 投递链（CM-0111 之前 markdown 化）被断言，非纯函数单测" || bad "G-19 GP-93 kernel chain missing"
+node -e '
+const fs=require("fs");
+const pol=fs.readFileSync("hosts/desktop/link_discipline.js","utf8");
+const open=fs.readFileSync("hosts/desktop/link_open.js","utf8");
+const main=fs.readFileSync("hosts/desktop/main.js","utf8");
+const html=fs.readFileSync("hosts/desktop/index.html","utf8");
+// 政策模块：只用 createTextNode/createElement，绝不 innerHTML 赋值
+if(/\.innerHTML\s*=/.test(pol)) process.exit(1);
+if(!/parseExternalUrl/.test(pol)||!/OPENABLE_SCHEMES\[parsed\.protocol\]/.test(pol)) process.exit(1);
+// 审计文件默认落 data/desktop/links.jsonl（gitignored），拒绝路径也写行
+if(!/links\.jsonl/.test(open)||!/decision/.test(open)) process.exit(1);
+if(!/appendFileSync/.test(open)) process.exit(1);
+// main：openExternal 只在 scheme 通过后调用；新窗口一律 deny；导航拦截
+if(!/shell\.openExternal\(url\)/.test(main)) process.exit(1);
+if(!/setWindowOpenHandler/.test(main)||!/action: "deny"/.test(main)) process.exit(1);
+if(!/will-navigate/.test(main)) process.exit(1);
+// renderer：正文经政策模块、点击 preventDefault、悬停卡 DOM 存在
+if(!/applyLinkBodyTo\(el\.querySelector\("\.body"\), text\)/.test(html)) process.exit(1);
+if(!/e\.preventDefault\(\)/.test(html)||!/id="link-preview"/.test(html)) process.exit(1);
+process.exit(0)' &&
+  ok "G-19 GP-93/94/95：政策模块无 innerHTML + main IPC/窗口守卫 + renderer 契约在位" || bad "G-19 GP-93/94/95 contract drift"
+node -e '
+const fs=require("fs");
+process.exit(fs.existsSync("data/desktop/gp19-probe-links.jsonl")?1:0)' &&
+  ok "G-19 GP-94 探针清理审计临时文件（双跑幂等，无残留）" || bad "G-19 GP-94 audit residue"
+echo "  · G-19 说明：真实点击/hover/新窗口拦截的 UI 交互由 E2E GP-93/94/95 十四断言覆盖（G-16 同脚本）；Xvfb 下真实浏览器启动抑制为 record-only，审计行 opened:false 并写明原因，不宣称已打开浏览器"
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

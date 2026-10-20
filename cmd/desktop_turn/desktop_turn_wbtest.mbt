@@ -1481,3 +1481,60 @@ test "desktop_turn_reply_to_context_gp14" {
   assert_true(plain.to_json_line().contains("\"reply_to\":\"\""))
   assert_eq(plain.reply_to, "")
 }
+
+///|
+test "desktop_turn_link_discipline_gp93" {
+  // GP-93（官方 spec §5.6 Markdown/链接纪律）kernel 侧契约：provider 或 Host
+  // 回包里出现的裸 http(s) URL 必须在投递前规范化为 [url](url)，否则
+  // CM-0111（runtime/deliver.mbt → ensure_markdown_links）会直接拒绝整条消息，
+  // 桌面端就永远拿不到可点击链接。这里断言的是真实投递链，不是纯函数。
+  let with_bare : Array[DesktopHostResult] = [
+    {
+      kind: "llm_chat",
+      ok: true,
+      command: "查一下文档",
+      stdout: "看这里 https://example.com/docs 和 [官网](https://example.com)。",
+      stderr: "",
+      error: "",
+    },
+  ]
+  let cont = continue_after_host_ffi(
+    turn_id="gp93-llm",
+    prior_user_text="查一下文档",
+    with_bare,
+  )
+  assert_true(cont.ok)
+  let body = cont.messages[cont.messages.length() - 1].text
+  assert_true(
+    body.contains("[https://example.com/docs](https://example.com/docs)"),
+  )
+  // 已是 markdown 链接的片段保持原样（不被二次包装）。
+  assert_true(body.contains("[官网](https://example.com)"))
+  assert_true(@ui_protocol.ensure_markdown_links(body) is Ok(_))
+
+  // Host continue dump（shell stdout 常含 navigate URL）同样要先规范化。
+  let dump : Array[DesktopHostResult] = [
+    {
+      kind: "shell",
+      ok: true,
+      command: "open-url",
+      stdout: "navigate https://login.example.com/oauth?x=1.",
+      stderr: "",
+      error: "",
+    },
+  ]
+  let cont2 = continue_after_host_ffi(
+    turn_id="gp93-dump",
+    prior_user_text="打开登录页",
+    dump,
+  )
+  assert_true(cont2.ok)
+  let body2 = cont2.messages[cont2.messages.length() - 1].text
+  assert_true(@ui_protocol.ensure_markdown_links(body2) is Ok(_))
+  // 句末标点留在链接外，不进 href（点开的地址必须与看到的保持一致）。
+  assert_true(
+    body2.contains(
+      "[https://login.example.com/oauth?x=1](https://login.example.com/oauth?x=1).",
+    ),
+  )
+}

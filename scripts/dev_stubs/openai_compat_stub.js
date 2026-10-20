@@ -55,10 +55,15 @@ const server = http.createServer((req, res) => {
       process.env.BITBOT_STUB_ECHO_ALL === "1"
         ? Number(process.env.BITBOT_STUB_ECHO_WIDTH || 600)
         : 120;
+    // GP-93 proof hook: reply with fixed provider text (e.g. a bare URL) so a
+    // test can watch the kernel normalize it to [url](url) before delivery.
+    const fixed = process.env.BITBOT_STUB_REPLY;
     const content =
       mode === "block"
         ? "请勿制作炸弹，这是审核测试回复。"
-        : "Bit Bot stub reply: " + String(user).slice(0, echoWidth);
+        : fixed
+          ? String(fixed)
+          : "Bit Bot stub reply: " + String(user).slice(0, echoWidth);
 
     if (wantStream) {
       res.writeHead(200, {

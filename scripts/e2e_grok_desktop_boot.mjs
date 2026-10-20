@@ -150,6 +150,30 @@ async function viewportLuma(win, file) {
   return avgLuma(png);
 }
 
+/** Read a JSONL file into rows (missing file → []). */
+function readRows(p) {
+  try {
+    return fs
+      .readFileSync(p, "utf8")
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => JSON.parse(l));
+  } catch {
+    return [];
+  }
+}
+
+/** Poll a Host-side JSONL until the predicate holds (bounded, no fixed sleep). */
+async function pollRows(p, pred, { timeoutMs = 12000 } = {}) {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const rows = readRows(p);
+    if (pred(rows)) return rows;
+    if (Date.now() > until) return rows;
+    await new Promise((r) => setTimeout(r, 120));
+  }
+}
+
 async function main() {
   const outDir = process.env.BITBOT_E2E_OUT || "/tmp/e2e-m15";
   fs.mkdirSync(outDir, { recursive: true });
@@ -599,11 +623,15 @@ async function main() {
       // store 行持久化 reply_to + 重新载入会话后引用条仍在（不是只在内存里）
       const sessState = JSON.parse(fs.readFileSync(SESSIONS_PATH, "utf8"));
       let storedReply = null;
-      for (const ses of sessState.sessions || []) {
-        for (const m of ses.messages || []) {
-          if (m && m.role === "user" && /GP14 针对引用作答/.test(String(m.text || "")))
-            storedReply = m;
-        }
+      // 只看本轮真正写入的那个会话：块开头点了「新建对话」，而前几轮 E2E 的行
+      // 仍在 store 里（快照恢复保存的就是含历史行的文件）。全局搜最后一条匹配
+      // 会命中上一轮的旧行，reply_to 对不上 → 假红。按 target.mid 定位会话。
+      const runSession = (sessState.sessions || []).find(
+        (ses) => (ses.messages || []).some((m) => m && m.id === (target && target.mid)),
+      );
+      for (const m of (runSession && runSession.messages) || []) {
+        if (m && m.role === "user" && /GP14 针对引用作答/.test(String(m.text || "")))
+          storedReply = m;
       }
       storedReply && storedReply.reply_to === target.mid
         ? ok("E2E GP-14：sessions.json 用户行带 reply_to=" + storedReply.reply_to)
@@ -695,6 +723,202 @@ async function main() {
       if (stubProc) {
         try {
           stubProc.kill("SIGKILL");
+        } catch (_) {}
+      }
+    }
+
+    /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----
+       走真实 UI + 真实 IPC：provider 回一句含裸 URL 与 javascript: 链接的话 →
+       kernel CM-0111 规范化为 markdown → renderer 把 markdown 变成真 <a>，
+       不可打开的 scheme 保持纯文本。断言：可点、href 一致、hover 出预览卡且
+       「不自动导航」（悬停期间审计文件零行）、点击走 shell.openExternal 路由
+       （审计行 + record-only 落点）、页面自身绝不导航、window.open 被 deny。
+       诚实边界：record-only 模式抑制真实浏览器启动（Xvfb 下起不来是真环境限制），
+       审计行因此 opened:false + error 说明原因，不谎称"已打开浏览器"。*/
+    const g19Port = 8794;
+    const g19Audit = "/tmp/g19-links-audit.jsonl";
+    const g19Record = "/tmp/g19-links-record.jsonl";
+    const g19Url = "https://example.com/docs?g=19";
+    const g19Env = {
+      BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + g19Port + "/v1",
+      BITBOT_LLM_API_KEY: "e2e-stub-key",
+      BITBOT_LLM_MODEL: "e2e-stub",
+      BITBOT_LLM_STREAM: "0",
+      // 裸 URL 后必须接空格/ASCII 终止符：kernel url_terminator_at 只认 ASCII
+      // 标点，全角「，」会被吞进 URL，href 就不是逐字一致的那条了。
+      BITBOT_STUB_REPLY:
+        "文档在这里 " + g19Url + " 。另有坏链接 [点我](javascript:alert(1)) 与原文 <img src=x onerror=alert(1)> 。",
+      BITBOT_LINKS_AUDIT_PATH: g19Audit,
+      BITBOT_LINKS_RECORD_PATH: g19Record,
+    };
+    let g19Stub = null;
+    try {
+      fs.rmSync(g19Audit, { force: true });
+      fs.rmSync(g19Record, { force: true });
+      const { spawn: spawnChild } = require("node:child_process");
+      g19Stub = spawnChild(
+        process.execPath,
+        [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")],
+        {
+          cwd: REPO,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: { ...process.env, BITBOT_STUB_PORT: String(g19Port), BITBOT_STUB_REPLY: g19Env.BITBOT_STUB_REPLY },
+        },
+      );
+      await new Promise((res, rej) => {
+        const t = setTimeout(() => rej(new Error("g19 stub boot timeout")), 8000);
+        g19Stub.stdout.on("data", (d) => {
+          if (String(d).includes("[stub-llm]")) {
+            clearTimeout(t);
+            res();
+          }
+        });
+        g19Stub.on("error", rej);
+      });
+      const bootG19 = await launch(g19Env);
+      const urlBefore = bootG19.win.url();
+      await bootG19.win.evaluate(() => document.getElementById("sess-new").click());
+      await bootG19.win.fill("#composer #text", "GP19 给我一个链接");
+      await bootG19.win.press("#composer #text", "Enter");
+      await bootG19.win.waitForFunction(
+        (u) => Array.from(document.querySelectorAll("#log .msg a.msg-link")).some(
+          (a) => (a.getAttribute("href") || "") === u,
+        ),
+        g19Url,
+        { timeout: 45000 },
+      );
+
+      const dom = await bootG19.win.evaluate(
+        (u) => {
+          const a = Array.from(document.querySelectorAll("#log .msg a.msg-link")).find(
+            (x) => (x.getAttribute("href") || "") === u,
+          );
+          const bodies = Array.from(document.querySelectorAll("#log .msg .body"));
+          const joined = bodies.map((b) => b.textContent || "").join("\n");
+          return {
+            found: Boolean(a),
+            label: a ? a.textContent : "",
+            rel: a ? a.getAttribute("rel") : null,
+            target: a ? a.getAttribute("target") : null,
+            anchorsTotal: document.querySelectorAll("#log .msg a.msg-link").length,
+            // 坏 scheme 与非链接原文必须仍在文本里，且没有变成元素
+            keepsJsText: joined.includes("[点我](javascript:alert(1))"),
+            keepsRawHtmlText: joined.includes("<img src=x onerror=alert(1)>"),
+            injectedImg: document.querySelectorAll("#log .msg .body img").length,
+            jsAnchor: Array.from(document.querySelectorAll("#log .msg a")).filter(
+              (x) => /javascript:/i.test(x.getAttribute("href") || ""),
+            ).length,
+          };
+        },
+        g19Url,
+      );
+      dom.found
+        ? ok("E2E GP-93：kernel 规范化的 markdown 链接在气泡里是真 <a href>（href 逐字=" + g19Url + "）")
+        : bad("E2E GP-93 anchor", JSON.stringify(dom).slice(0, 240));
+      dom.label.trim() === g19Url && dom.rel === "noopener noreferrer" && !dom.target
+        ? ok("E2E GP-93：链接文案=原文，rel=noopener noreferrer，无 target=_blank（不绕过守卫开新窗）")
+        : bad("E2E GP-93 anchor attrs", JSON.stringify({ label: dom.label, rel: dom.rel, target: dom.target }).slice(0, 220));
+      dom.keepsJsText && dom.keepsRawHtmlText && dom.injectedImg === 0 && dom.jsAnchor === 0
+        ? ok("E2E GP-93：javascript: 链接与 <img> 原文保持纯文本（无 innerHTML 注入面，0 个可点坏链接）")
+        : bad("E2E GP-93 fail-closed", JSON.stringify(dom).slice(0, 260));
+
+      // GP-95：hover 出预览卡；hover 期间不得有任何打开/导航副作用
+      await bootG19.win.hover("#log .msg a.msg-link");
+      const hover = await bootG19.win.evaluate(() => {
+        const lp = document.getElementById("link-preview");
+        return {
+          show: lp ? lp.dataset.show : "missing",
+          host: lp ? (lp.querySelector(".lp-host") || {}).textContent : "",
+          url: lp ? (lp.querySelector(".lp-url") || {}).textContent : "",
+          hintVisible: lp ? getComputedStyle(lp).display !== "none" : false,
+        };
+      });
+      hover.show === "1" && hover.host === "example.com" && hover.url === g19Url && hover.hintVisible
+        ? ok("E2E GP-95：悬停链接卡显示主机名+完整 URL+提示（example.com）")
+        : bad("E2E GP-95 hover card", JSON.stringify(hover).slice(0, 220));
+      // hover 期间给 IPC 一点时间：任何"自动导航"都会在这里留下行或改变 URL
+      await new Promise((r) => setTimeout(r, 400));
+      const auditAfterHover = readRows(g19Audit);
+      auditAfterHover.length === 0 && bootG19.win.url() === urlBefore
+        ? ok("E2E GP-95：悬停不自动导航——审计文件 0 行、页面 URL 未变")
+        : bad("E2E GP-95 hover side effect", JSON.stringify({ rows: auditAfterHover.length, url: bootG19.win.url() }).slice(0, 220));
+      await bootG19.win.mouse.move(2, 2);
+      const hidden = await bootG19.win.evaluate(() => document.getElementById("link-preview").dataset.show);
+      hidden === "0"
+        ? ok("E2E GP-95：离开链接后预览卡收起")
+        : bad("E2E GP-95 hover hide", String(hidden));
+
+      // GP-94：点击 → Host 校验 scheme → openExternal 路由（record-only）→ 审计行
+      await bootG19.win.click("#log .msg a.msg-link");
+      const rows = await pollRows(g19Audit, (r) => r.some((x) => x.decision === "open_external"));
+      const openRow = rows.find((r) => r.decision === "open_external" && r.url === g19Url);
+      openRow && openRow.hostname === "example.com" && openRow.scheme === "https" &&
+        openRow.source === "renderer-link" && openRow.opened === false &&
+        /record-only mode/.test(String(openRow.error || ""))
+        ? ok("E2E GP-94：点击落到 Host openExternal 路由（审计行 scheme/host/source 齐全，opened:false 并写明抑制原因）")
+        : bad("E2E GP-94 audit row", JSON.stringify(rows).slice(0, 300));
+      const rec = fs.existsSync(g19Record)
+        ? fs.readFileSync(g19Record, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l))
+        : [];
+      rec.length === 1 && rec[0].url === g19Url
+        ? ok("E2E GP-94：真实调用到达 shell.openExternal 入口（record-only 落点 URL 逐字一致，未虚构 opened:true）")
+        : bad("E2E GP-94 openExternal entry", JSON.stringify(rec).slice(0, 240));
+      bootG19.win.url() === urlBefore
+        ? ok("E2E GP-94：点击后页面仍在应用内（无 Electron 内导航）")
+        : bad("E2E GP-94 in-app navigation", bootG19.win.url());
+
+      // GP-94 拒绝路径：非 http(s) 走真实 IPC，必须 refused 且留审计行
+      const refuse = await bootG19.win.evaluate(() =>
+        window.bitbot.links.open({ url: "javascript:alert(1)", source: "probe-refuse" }),
+      );
+      refuse && refuse.decision === "refused" && refuse.opened === false &&
+        refuse.error === "scheme_not_allowed"
+        ? ok("E2E GP-94：javascript: 经 IPC 被拒（scheme_not_allowed，不静默打开）")
+        : bad("E2E GP-94 refuse path", JSON.stringify(refuse).slice(0, 220));
+      const rows2 = readRows(g19Audit);
+      rows2.some((r) => r.decision === "refused" && r.source === "probe-refuse")
+        ? ok("E2E GP-94：被拦截的点击同样留痕（审计含 refused 行）")
+        : bad("E2E GP-94 refusal audit", JSON.stringify(rows2.map((r) => r.decision)).slice(0, 200));
+
+      // GP-94 窗口守卫：window.open 必须被 deny（不产生新窗口），但仍走审计
+      const popupBefore = bootG19.app.windows().length;
+      await bootG19.win.evaluate((u) => window.open(u, "_blank"), g19Url);
+      const popupAfter = bootG19.app.windows().length;
+      const rows3 = await pollRows(g19Audit, (r) =>
+        r.some((x) => x.source === "window-open-handler"),
+      );
+      popupAfter === popupBefore &&
+        rows3.some((r) => r.source === "window-open-handler")
+        ? ok("E2E GP-94：setWindowOpenHandler 拦截新窗口（窗口数 " + popupBefore + "→" + popupAfter + "）且路由到系统浏览器审计")
+        : bad("E2E GP-94 window guard", JSON.stringify({ popupBefore, popupAfter, sources: rows3.map((r) => r.source) }).slice(0, 260));
+
+      // 政策与主进程同源：renderer 与 Host 加载同一份 link_discipline.js
+      const shared = await bootG19.win.evaluate(() => ({
+        hasApi: Boolean(window.__bitbotLinks),
+        fns: window.__bitbotLinks
+          ? ["parseExternalUrl", "linkBodyToDom", "applyLinkBody"].filter(
+              (k) => typeof window.__bitbotLinks[k] === "function",
+            ).length
+          : 0,
+      }));
+      shared.hasApi && shared.fns === 3
+        ? ok("E2E GP-93：渲染进程加载的正是主进程同一份 link_discipline.js（policy 无副本）")
+        : bad("E2E GP-93 shared policy", JSON.stringify(shared).slice(0, 160));
+
+      await shutdown(bootG19.app);
+      // openExternal 入口只应被两处触达：那次点击 + 被 deny 后转交的 window.open。
+      // hover 一次都不能触达；javascript: 那次也必须没进来。
+      const recFinal = readRows(g19Record);
+      recFinal.length === 2 && recFinal.every((r) => r.url === g19Url)
+        ? ok("E2E GP-94/95：到达 open 入口的只有那次点击与 window.open 转交（hover 0 次、被拒链接 0 次）")
+        : bad("E2E GP-94 open entry count", JSON.stringify(recFinal).slice(0, 260));
+    } catch (e) {
+      bad("E2E GP-93/94/95 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      for (const k of Object.keys(g19Env)) delete process.env[k];
+      if (g19Stub) {
+        try {
+          g19Stub.kill("SIGKILL");
         } catch (_) {}
       }
     }

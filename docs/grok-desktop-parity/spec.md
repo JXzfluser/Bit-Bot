@@ -112,9 +112,19 @@
 | GP-A2 | 底部 Hidden Bots 入口、Connect apps 入口 | 入口存在且指向真实视图（非死链） |
 | GP-A3 | Connect apps = Plugins 面板：浏览/Add/授权/Your plugins/管理启停 | 安装→可用；启停改变 `mcp_list_plugins` 状态；未授权显示 needsAuth 而非假装已连 |
 
+## G-13 Markdown / 链接纪律（官方 spec §5.6）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-93 | 消息与结果里的链接可点击（`[text](url)`；裸 http(s) 由 kernel CM-0111 先规范化为 `[url](url)`） | 共享政策模块 `hosts/desktop/link_discipline.js`（renderer 以 `<script src>` 加载为 `window.__bitbotLinks`，main 进程 `require` 同一文件 → 政策无副本）；`addMsg` 正文唯一入口 `applyLinkBodyTo()`，只 createTextNode/createElement，全仓无 `.body` innerHTML 赋值 | kernel 回合文本含裸 URL 时投递体为 `[url](url)` 且 CM-0111 放行；气泡内出现 `a.msg-link`，`href` 逐字一致；`javascript:`/`data:`/`file:`/`mailto:`/含空白或控制字符的 URL 0 个成为可点链接，原文照抄留成文字；`<img …>` 原文不变成元素 |
+| GP-94 | 点击链接在**系统浏览器**打开，不在 Electron 内导航 | `hosts/desktop/link_open.js` `createLinkOpen({openExternal})`：scheme 门 → `shell.openExternal` → `data/desktop/links.jsonl` 审计行；IPC `bitbot:links:open`（preload 白名单 `links.open`）；`setWindowOpenHandler` 一律 `deny` 并转交同一路由，`will-navigate` `preventDefault` 后同路 | 真实点击 → 审计行 `decision:"open_external"` + scheme/host/session/原因齐备；`javascript:` 经 IPC → `refused + scheme_not_allowed` 且 openExternal 未被调用；点击/悬停/新窗口三种来源的触达次数可数；页面 `location` 全程不变 |
+| GP-95 | 悬停链接卡片显示预览；悬停不自动导航；批准外部操作/输入凭证前检查目标 | renderer `#link-preview` 卡（主机名为主识别 + 完整 URL + 「在系统浏览器打开」提示，`pointer-events:none`），`mouseover` 显示 / 离开与 Esc 与 blur 收起 | hover 出现卡且主机名=example.com；悬停期间审计文件 0 行、URL 未变、openExternal 触达 0 次；离开后收起；三语文案齐备 |
+
 ## 诚实残留（本波不假装）
 
 - 真实云 VM 远程桌面推流：以本机 `DISPLAY`/xvfb + 真截图帧模拟"共享电脑屏幕"，标注 `mode=sandbox_screen`，不宣称云端。
 - 生产 OAuth IdP / 生产 Slack·Gmail / 商店签名与公证 / 备案字段：沿用仓库既有 residual 口径。
 - `@bot on X`：仅本地入站模拟路由，不调用 X 生产 API。
+- 系统浏览器真启动（GP-94）：沙箱内 `shell.openExternal` 依赖 `xdg-open`/默认浏览器，E2E 用 `BITBOT_LINKS_RECORD_PATH` 记录到达 open 入口的 URL 并保持 `opened:false` + 抑制原因——已证明的是 scheme 门、路由与审计，不宣称真能拉起浏览器（需带桌面环境的机器复核）。
+
 - Teach a task 真录屏转 Skill：本波提供"录制会话→生成 Skill 草稿"的本地实现（键盘/鼠标事件采集在 xvfb 下可用则采集，否则要求用户粘贴步骤），草稿态必须人工确认，符合官方"需手动补决策规则/失败处理/审批边界"。

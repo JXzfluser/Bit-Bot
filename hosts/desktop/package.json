@@ -25,6 +25,8 @@
       "index.html",
       "sessions.js",
       "product_surface.js",
+      "link_open.js",
+      "link_discipline.js",
       {
         "from": "../shared",
         "to": "shared",

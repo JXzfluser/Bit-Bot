@@ -196,6 +196,11 @@ contextBridge.exposeInMainWorld("bitbot", {
     restart: () => ipcRenderer.invoke("bitbot:ota:restart"),
     status: () => ipcRenderer.invoke("bitbot:app:updateStatus"),
   },
+  // GP-94: renderer asks Host to open an external link (system browser only).
+  links: {
+    open: (payload) => ipcRenderer.invoke("bitbot:links:open", payload || {}),
+    auditPath: () => ipcRenderer.invoke("bitbot:links:auditPath"),
+  },
   secrets: {
     status: () => ipcRenderer.invoke("bitbot:secrets:status"),
     set: (patch) => ipcRenderer.invoke("bitbot:secrets:set", patch || {}),

@@ -690,6 +690,45 @@
     text-overflow: ellipsis;
     max-width: 100%;
   }
+  /* GP-93/95: clickable links in message bodies + hover preview card
+     (official Grok spec §5.6 — 链接可点击打开 / 悬停链接卡片显示预览). */
+  .msg .body a.msg-link {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    word-break: break-all;
+  }
+  #link-preview {
+    position: fixed;
+    z-index: 60;
+    max-width: 380px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    background: var(--bg1);
+    color: var(--ink);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    font-size: 12px;
+    line-height: 1.45;
+    pointer-events: none;
+    display: none;
+  }
+  #link-preview[data-show="1"] { display: block; }
+  #link-preview .lp-host {
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    margin-bottom: 2px;
+  }
+  #link-preview .lp-url {
+    color: var(--muted);
+    word-break: break-all;
+  }
+  #link-preview .lp-hint {
+    margin-top: 4px;
+    color: var(--muted);
+  }
   .reply-bar {
     display: flex;
     align-items: center;
@@ -1468,6 +1507,16 @@
     </div>
     <div id="composer-menu" class="composer-menu" hidden></div>
   </form>
+  <!-- GP-95: hover preview card for links (never navigates on hover). -->
+  <div id="link-preview" data-show="0" role="tooltip" aria-hidden="true">
+    <div class="lp-host"></div>
+    <div class="lp-url"></div>
+    <div class="lp-hint" data-i18n="linkOpenHint">在系统浏览器打开</div>
+  </div>
+  <!-- GP-93/94/95: link policy is one file shared with the main process and the
+       smoke probe (sandboxed renderer may not require(), so it is a classic
+       script that publishes window.__bitbotLinks). -->
+  <script src="./link_discipline.js"></script>
   <script>
     const banner = document.getElementById("banner");
     const log = document.getElementById("log");
@@ -2061,6 +2110,92 @@
       return known[w] || w;
     }
 
+    /* GP-93/94/95 — link discipline (official spec §5.6).
+       window.__bitbotLinks is loaded from ./link_discipline.js, the same file
+       the main process requires for its open route, so the renderer cannot
+       drift from the policy that actually gates shell.openExternal. */
+    function linkPolicyApi() {
+      return window.__bitbotLinks || null;
+    }
+    function applyLinkBodyTo(container, text) {
+      const api = linkPolicyApi();
+      if (!api || typeof api.applyLinkBody !== "function") {
+        // Fail closed: no policy module means no anchors, plain text only.
+        container.textContent = String(text == null ? "" : text);
+        return { links: [] };
+      }
+      return api.applyLinkBody(container, text, {
+        createElement: (t) => document.createElement(t),
+        createTextNode: (t) => document.createTextNode(t),
+      });
+    }
+
+    const linkPreview = document.getElementById("link-preview");
+    function showLinkPreview(a) {
+      if (!linkPreview) return;
+      const url = a.getAttribute("href") || "";
+      const api = linkPolicyApi();
+      const info = api ? api.parseExternalUrl(url) : { ok: false, error: "no policy" };
+      linkPreview.querySelector(".lp-host").textContent = info.ok
+        ? info.hostname
+        : wavegT("linkBlocked") + " · " + (info.error || "");
+      linkPreview.querySelector(".lp-url").textContent = url;
+      linkPreview.dataset.show = "1";
+      linkPreview.setAttribute("aria-hidden", "false");
+      const r = a.getBoundingClientRect();
+      const pw = linkPreview.offsetWidth || 320;
+      let left = Math.max(8, Math.min(r.left, window.innerWidth - pw - 10));
+      let top = r.bottom + 6;
+      if (top + linkPreview.offsetHeight > window.innerHeight - 8) {
+        top = Math.max(8, r.top - linkPreview.offsetHeight - 6);
+      }
+      linkPreview.style.left = left + "px";
+      linkPreview.style.top = top + "px";
+    }
+    function hideLinkPreview() {
+      if (!linkPreview) return;
+      linkPreview.dataset.show = "0";
+      linkPreview.setAttribute("aria-hidden", "true");
+    }
+
+    // GP-95: hover shows the card, nothing else. No navigation, no openExternal
+    // call, no network probe on hover — verified by the E2E "hover leaves no
+    // audit row" assertion.
+    document.addEventListener("mouseover", (e) => {
+      const a = e.target && e.target.closest ? e.target.closest("a.msg-link") : null;
+      if (a) showLinkPreview(a);
+      else hideLinkPreview();
+    });
+    document.addEventListener("mouseleave", hideLinkPreview);
+    window.addEventListener("blur", hideLinkPreview);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hideLinkPreview();
+    });
+
+    // GP-94: a click must never navigate the app window. The anchor is rendered
+    // with href for affordance/copy, but the actual route is Host → system browser.
+    document.addEventListener("click", (e) => {
+      const a = e.target && e.target.closest ? e.target.closest("a.msg-link") : null;
+      if (!a) return;
+      e.preventDefault();
+      const url = a.getAttribute("href") || "";
+      if (!window.bitbot || !window.bitbot.links || !window.bitbot.links.open) return;
+      window.bitbot.links
+        .open({ url, source: "renderer-link", sessionId: activeSessionId || "" })
+        .then((res) => {
+          if (!res) return;
+          // res.recorded = the test hook suppressed a real launch; that is not a
+          // user-facing failure, so it stays silent.
+          if (res.decision === "refused") {
+            addMsg("assistant", wavegT("linkRefused") + " · " + (res.error || "") + " · " + url);
+          } else if (!res.ok && !res.recorded) {
+            addMsg("assistant", wavegT("linkOpenFailed") + " · " + (res.error || "") + " · " + url);
+          }
+        })
+        .catch(() => {});
+      hideLinkPreview();
+    });
+
     function addMsg(role, text, opts) {
       const el = document.createElement("div");
       let cls = "msg " + role;
@@ -2068,7 +2203,10 @@
       el.className = cls;
       el.innerHTML = '<div class="role"></div><div class="body"></div>';
       el.querySelector(".role").textContent = role;
-      el.querySelector(".body").textContent = text;
+      // GP-93: markdown links from the kernel (CM-0111 guarantees `[label](url)`
+      // form) become real anchors; everything else stays literal text — the
+      // converter only ever creates text nodes and <a>, never HTML parsing.
+      applyLinkBodyTo(el.querySelector(".body"), text);
       // GP-14: quote chip when this row itself was a reply to another message.
       if (opts && opts.replyToText) {
         const q = document.createElement("div");
@@ -6958,6 +7096,10 @@
         replyAction: "回复",
         replyQuoting: "回复：",
         replyCancel: "取消",
+        linkOpenHint: "点击将在系统浏览器打开",
+        linkBlocked: "不可打开的链接",
+        linkRefused: "链接已拦截（仅 http/https 可在系统浏览器打开）",
+        linkOpenFailed: "无法在系统浏览器打开",
         attachTooLarge: "附件被拒绝：{name} 超过 25MB（文档/图片/音频上限）。",
         attachTooLargeVideo: "附件被拒绝：{name} 超过 200MB（视频上限）。",
         attachNoPath: "附件被拒绝：剪贴板内容没有真实磁盘路径（不伪造路径）。",
@@ -7220,6 +7362,10 @@
         replyAction: "回覆",
         replyQuoting: "回覆：",
         replyCancel: "取消",
+        linkOpenHint: "點擊將在系統瀏覽器開啟",
+        linkBlocked: "不可開啟的連結",
+        linkRefused: "連結已攔阻（僅 http/https 可在系統瀏覽器開啟）",
+        linkOpenFailed: "無法在系統瀏覽器開啟",
         attachTooLarge: "附件被拒絕：{name} 超過 25MB（檔案/圖片/音訊上限）。",
         attachTooLargeVideo: "附件被拒絕：{name} 超過 200MB（影片上限）。",
         attachNoPath: "附件被拒絕：剪貼板內容沒有真實磁碟路徑（不偽造路徑）。",
@@ -7482,6 +7628,10 @@
         replyAction: "Reply",
         replyQuoting: "Replying to: ",
         replyCancel: "Cancel",
+        linkOpenHint: "Click opens in your system browser",
+        linkBlocked: "Link cannot be opened",
+        linkRefused: "Link blocked (only http/https opens in the system browser)",
+        linkOpenFailed: "Could not open in the system browser",
         attachTooLarge: "Attachment refused: {name} exceeds the 25MB limit (doc/image/audio).",
         attachTooLargeVideo: "Attachment refused: {name} exceeds the 200MB video limit.",
         attachNoPath: "Attachment refused: clipboard item has no real disk path (never fabricated).",
@@ -8343,7 +8493,7 @@
             if (chunk.phase === "end") {
               if (streamEl) {
                 streamEl.dataset.streaming = "0";
-                if (chunk.partial) streamEl.querySelector(".body").textContent = chunk.partial;
+                if (chunk.partial) applyLinkBodyTo(streamEl.querySelector(".body"), chunk.partial);
               }
               return;
             }

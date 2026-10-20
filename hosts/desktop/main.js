@@ -29,6 +29,16 @@ try {
 }
 const { createSessionStore } = require("./sessions");
 
+// GP-93/94/95 — Markdown/链接纪律 (official spec §5.6). Policy + open route in
+// one module pair used by both the main process and the smoke probe, so the
+// probe asserts the shipped code rather than a copy of it.
+let createLinkOpen;
+try {
+  createLinkOpen = require("./link_open").createLinkOpen;
+} catch (_e) {
+  createLinkOpen = require("../desktop/link_open").createLinkOpen;
+}
+
 let createProductSurface;
 try {
   createProductSurface = require("./product_surface").createProductSurface;
@@ -522,6 +532,18 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, "index.html"));
+  // GP-94: nothing may leave the app window. New-window requests are denied
+  // outright, and a navigation away from the app shell is blocked and routed
+  // through the same validated open-external path instead.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    links.open(url, { source: "window-open-handler" });
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    if (url === win.webContents.getURL()) return;
+    event.preventDefault();
+    links.open(url, { source: "will-navigate" });
+  });
   win.on("close", (e) => {
     // Grok-style: close hides to tray (quit from tray menu).
     if (app.isQuiting) return;
@@ -602,6 +624,51 @@ function registerHotkey() {
 }
 
 ipcMain.handle("bitbot:boot", async () => runner.bootBanner());
+
+/*
+ * GP-94 — 链接在系统浏览器打开，不在 Electron 内导航（官方 spec §5.6）.
+ * The renderer never touches shell directly: it asks for a URL, and this route
+ * validates the scheme, opens it externally, and appends an audit row to
+ * data/desktop/links.jsonl (including refusals, so a blocked target leaves a
+ * trace). Non-http(s) hrefs are refused, never silently routed anywhere.
+ */
+const links = createLinkOpen({
+  repoRoot: REPO_ROOT,
+  // Tests point the audit at their own file so hover/click row counts are exact;
+  // production keeps data/desktop/links.jsonl.
+  auditPath: process.env.BITBOT_LINKS_AUDIT_PATH || undefined,
+  openExternal: async (url) => {
+    // Test hook (same spirit as BITBOT_SAVE_ARTIFACT_DIR): under Xvfb a real
+    // browser launch is environment-dependent, so a run can record the exact
+    // URL instead. The row still says opened:false with the reason — a recorded
+    // click is never reported as a launched browser.
+    const recordPath = process.env.BITBOT_LINKS_RECORD_PATH;
+    if (recordPath) {
+      try {
+        fs.appendFileSync(
+          path.resolve(recordPath),
+          JSON.stringify({ at: new Date().toISOString(), url }) + "\n",
+        );
+      } catch (_e) {
+        /* recording is best-effort; the audit row already has the URL */
+      }
+      return { ok: false, recorded: true, error: "record-only mode: browser launch suppressed under test" };
+    }
+    try {
+      await shell.openExternal(url);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  },
+});
+
+ipcMain.handle("bitbot:links:open", async (_e, payload) => {
+  const p = payload || {};
+  return links.open(p.url, { source: p.source || "renderer-link", sessionId: p.sessionId });
+});
+
+ipcMain.handle("bitbot:links:auditPath", async () => ({ ok: true, path: links.auditPath }));
 
 ipcMain.handle("bitbot:sessions:list", async () => sessions.list());
 ipcMain.handle("bitbot:sessions:get", async (_e, id) => sessions.get(id));
