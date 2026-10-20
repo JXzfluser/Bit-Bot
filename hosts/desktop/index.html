@@ -3330,6 +3330,20 @@
                 );
               } else if (p.error === "cannot_delete_builtin") {
                 addMsg("assistant", wavegT("rBotDeleteBuiltin"));
+              } else if (p.needs_confirm === true && p.advise_hide_first === true) {
+                // GP-07: chat-initiated "delete bot X" must surface the same
+                // hide-first confirm dialog as the sidebar menu — never delete
+                // silently, and never just a text dead-end.
+                const showConfirmDialog = (botName) =>
+                  openBotDeleteDialog({ id: p.bot_id, name: botName });
+                Promise.resolve()
+                  .then(() => window.bitbot.bots.list())
+                  .then((v) => {
+                    const all = [...((v && v.bots) || []), ...((v && v.hidden_bots) || [])];
+                    const hit = all.find((x) => x && x.id === p.bot_id);
+                    showConfirmDialog(hit ? hit.name || hit.id : String(p.bot_id || ""));
+                  })
+                  .catch(() => showConfirmDialog(String(p.bot_id || "")));
               }
             } catch (_) { /* ignore */ }
           }

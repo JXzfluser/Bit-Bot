@@ -13,8 +13,8 @@
 | GP-03 | 已实现 | update bot name/job/description 持久（smoke G-1）；头像无效路径由既有 CM-0202 门拒绝。 |
 | GP-04 | 已实现 | pin 持久（smoke G-1）；renderer 置顶区排序读取 store。 |
 | GP-05 | 已实现 | duplicate → `Smoke copy` 持久（smoke G-1）；不复制对话历史（store 语义仅配置）。 |
-| GP-06 | 部分 | `hide_agent`/unhide 走既有 CM-0204 链；Hidden Bots 恢复入口在 renderer 存在。Routines 在隐藏后仍触发的断言沿用 CM 既有测试，未进本脚本。 |
-| GP-07 | 部分 | delete 级联（bots/sessions/routines）与共享文件保留沿用 CM-1907 既有实现；"先提示改用隐藏" 为 renderer 文案。二次确认脚本断言未进本波。 |
+| GP-06 | 已实现 | hide/unhide 走 store-backed `bot_hide/bot_unhide`（bots.json 仅置 hidden 标志）；Hidden Bots 恢复入口在 renderer。**行为级**断言：隐藏 Bot 的 routine 在 daemon sweep 与 `tick routines` 短语两条路径下均真实触发（fires.jsonl `fired:true, pretend_fired:false` + last_fired_at 推进），隐藏不暂停 Routines 不再只是行存活。见 Wave M11。 |
+| GP-07 | 已实现 | delete 级联（bots/DM sessions/routines/rooms 成员）+ 共享 Computer 文件保留计数；agent-bit 拒删；未确认 → `needs_confirm + advise_hide_first`（拒绝负载含 bot_id）。聊天侧发起 `delete bot X` 现在同样弹出 hide-first 确认框（取消/改为隐藏/确认删除），不再只有侧栏菜单路径。断言进 smoke G-1b + G-12。 |
 | GP-08 | 已实现 | set primary 持久（smoke G-1）。X 入站模拟路由沿用既有 CN inbound 测试。 |
 | GP-10/11/12/13/14 | 已实现/部分 | Composer 多行/附件≤6（IPC attachments）/`/`技能/`@`提及已有；GP-13 群内 `@BotName` 路由本轮实测（smoke G-6）。 |
 | GP-15 | 已实现 | 语音输入：🎙 recording 态（红圈）→ MediaRecorder → `bitbot.voice.ingest` 真实落盘 `data/desktop/voice/*.wav`；无 STT 时诚实提示补文字（不伪造转写）。getUserMedia 链已用 `--use-fake-device-for-media-stream` CDP 实测（录音→存盘回执截图）。 |
@@ -62,7 +62,7 @@
 ## 未做清单（后续波次）
 
 - ~~GP-02 `bot-templates.json` store 化 + 模板一键创建的脚本断言~~（M10 已实现，smoke G-11 五断言）。
-- GP-06/GP-07 隐藏不暂停 Routines、删除二次确认的自动化断言。
+- ~~GP-06/GP-07 隐藏不暂停 Routines、删除二次确认的自动化断言~~（M11 已实现，smoke G-12 八断言 + 聊天侧确认框接线）。
 - GP-30 同 Bot computer-use 并发拒绝的桌面端专项断言。
 - ~~GP-15/GP-60 真麦克风链路~~（M6 已用 `--use-fake-device-for-media-stream` 实测 getUserMedia→MediaRecorder→落盘全链）。
 - GP-52 群内所有权转移 transcript 断言。
@@ -158,3 +158,12 @@
 3. **host**：`bot_templates_list` 返回本地目录（`offline_ok:true, pretend_fetched:false`）；`bot_create_from_template` 按 id 解析后走 `surface.createBot`（job/description 逐字取模板），未知 id 诚实 `refused:true, pretend_created:false`，不凭空造 Bot。
 4. **renderer**：空状态（welcome）新增「从模板开始」chips 条（`renderWelcomeTemplates`，MutationObserver 在新建对话后重挂）→ 点击 `bitbot:templates:create` 一键创建（按钮态 创建中…→已创建 {n}）→ `refreshBots()` + `selectBotForChat()` 自动打开 DM；创建对话框模板 chips 改为同一 store 渲染（点击仅预填 Name/Job/Description，仍走原 create 链）；回执 `rTplList/rTplCreate` 与 wt* 键 ×3 字典。
 5. **验证**：moon 373/373（wbtest 新增两意图分类 + turn 断言 `template=bug-reproduction` + 优先级）；smoke G-11 五断言（删目录→首读种入六模板 → chief-of-staff 创建与模板逐字一致 → 未知模板 refused 且 bots.json 无 Ghost → 意图不被 create bot 吞 → 持久化断言 + 自清理），PASS=67 FAIL=0 双跑幂等；CDP：空状态六 chips 截图 → 点 Chief of Staff → bots.json 落 `{name:Chief, job:Chief of Staff}` + 侧栏出现 + Chief·DM 会话自动打开 → 对话框 chips 来自 store 且点击预填 Repro/Bug Reproduction。
+
+## Wave M11（隐藏/删除联动，本轮）
+
+规格：官方 §2.2 验收信号「隐藏操作不暂停 Bot 或 Routines」+ GP-07 删除二次确认。
+
+1. **行为级断言（GP-06，本轮核心）**：既有 G-1b 只证明 hide 后 routine **行存活**，本波补上**真的触发**——smoke G-12 建探针 Bot + `create routine … cron=@now`（due_now 入册）→ `hide bot` → 分别走两条调度路径：① `bash scripts/host_routine_daemon.sh` 一次 sweep，② 内核短语 `tick routines` → `routine_tick` effect。断言 `last-tick.json fired_ids` 含该 id、`fires.jsonl` 计数增长且末条 `fired:true / pretend_fired:false`、`host-routines.json` 的 `last_fired_at` **严格推进**（第二次触发比较前值时间戳，防同值假通过），同时 `bots.json` 该 Bot `hidden===true`——即"隐藏中仍在跑"，不是行没被删。结论：sweep 选择器只看 `enabled/next_due`、不读 Bot 状态，行为本就符合规格，故本轮**未改内核/Host 逻辑**，只把可证伪信号补成断言（诚实记录：这是验证性补强，非新实现）。
+2. **新实现（GP-07 聊天侧确认框）**：此前 hide-first 确认框只挂在侧栏右键菜单，用户在聊天里输入 `delete bot X` 只得到一行文案（死胡同）。现 `botsDelete` 未确认拒绝负载补 `bot_id`，renderer `postProcessWaveGResults` 识别 `needs_confirm && advise_hide_first` → 读 store 拿 Bot 名 → 打开同一确认框（取消 / 改为隐藏 / 确认删除）。`postProcessWaveGResults` 是同步函数，故用 Promise 链取名字而非 `await`。
+3. **纪律**：本轮曾给 `HideBot` effect 加 `session=` 透传，核查后发现 tick 路径完全不读 Bot/session，属投机改动，已回退（不留未使用字段）。
+4. **验证**：moon 373/373；smoke G-12 八断言（探针建 Bot → @now 入册 → hide 后 enabled/lifecycle 未暂停 → daemon sweep 真实触发 → 内核 tick 再次触发 → 聊天确认框接线 → 拒绝负载含 bot_id 且 Bot 未删 → 确认删除级联清探针 routine），PASS=75 FAIL=0 双跑幂等；CDP 实测聊天输入 `delete bot bot-663ee4` → 弹出「删除 · M11UI」框（建议改用隐藏 + 不可撤销警告），取消后 Bot 仍在，改为隐藏后转入 hidden_bots，探针最终确认删除清理。

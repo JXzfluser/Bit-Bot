@@ -251,6 +251,7 @@ function createProductSurface(repoRoot) {
         ok: false,
         needs_confirm: true,
         advise_hide_first: true,
+        bot_id,
         mode: "host_delete_bot"
       };
     }

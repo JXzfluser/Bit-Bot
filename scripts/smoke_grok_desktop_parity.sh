@@ -154,7 +154,10 @@ node -e "require('fs').writeFileSync('$DATA/settings.json',JSON.stringify({versi
 echo "== G-6 群组（GP-50/51）=="
 j=$(turn_json "create group chat bots=agent-bit,$smid title=Smoke+room"); echo "$j" | field hostKinds | grep -q group_chat:ok && ok "group chat 建立（2 成员）" || bad "group chat"
 j=$(turn_json "create group chat bots=$smid title=One"); echo "$j" | grep -q members_2_to_6 && ok "<2 成员被拒（GP-50）" || bad "member guard"
-roomid=$(node -e "const r=require('./$DATA/rooms.json').rooms.find(x=>x.title==='Smoke room');console.log(r?r.id:'')")
+roomid=$(node -e "
+const rs=require('./$DATA/rooms.json').rooms.filter(x=>x.title==='Smoke room');
+const mine=rs.filter(r=>((r.bot_ids||r.members||[]).includes('$smid')));
+console.log((mine[mine.length-1]||rs[rs.length-1]||{}).id||'')")
 j=$(turn_json "room $roomid :: @SmokeRenamed ping"); echo "$j" | grep -q mentioned_only && ok "@BotName → mentioned_only 路由" || bad "mention routing"
 j=$(turn_json "room $roomid :: @everyone ping"); echo "$j" | grep -q '"responder_policy": "all"\|all' >/dev/null && echo "$j" | grep -q everyone && ok "@everyone 路由输出存在" || bad "everyone"
 j=$(turn_json "room $roomid :: 无人点名"); echo "$j" | grep -q bot_discretion && ok "无 @ → bot_discretion" || bad "discretion"
@@ -302,6 +305,75 @@ const fs=require('fs');const p='./data/desktop/bots.json';
 const d=JSON.parse(fs.readFileSync(p,'utf8'));
 d.bots=d.bots.filter(x=>!['Chiefy','Scouty','Sage','Ghost'].includes(x.name));
 fs.writeFileSync(p,JSON.stringify(d,null,2))"
+
+echo "== G-12 隐藏不暂停 Routines · 真实触发断言（GP-06 · 规格 §2.2）=="
+# 规格验收信号：隐藏操作不暂停 Bot 或 Routines —— 行为级（真的触发），不只是行存活。
+j=$(turn_json "create bot M11Probe job=probe description=hidden+fire+probe")
+m11id=$(node -e "const b=require('./data/desktop/bots.json').bots.filter(x=>x.name==='M11Probe').pop();console.log(b?b.id:'')")
+[ -n "$m11id" ] && ok "G-12 前置：探针 Bot 创建" || bad "G-12 probe bot"
+j=$(turn_json "create routine id=r-$m11id-m11 cron=@now prompt=m11probe")
+echo "$j" | field hostKinds | grep -q routine_schedule:ok && ok "G-12 routine 到期入册（@now due_now）" || bad "G-12 schedule"
+j=$(turn_json "hide bot $m11id")
+node -e "
+const b=require('./data/desktop/bots.json').bots.find(x=>x.id==='$m11id');
+const rows=JSON.parse(require('fs').readFileSync('data/routines/host-routines.json','utf8'));
+const r=rows.find(x=>x.id==='r-$m11id-m11');
+process.exit(b && b.hidden===true && r && r.enabled!==false && r.lifecycle!=='paused' ? 0:1)" && ok "GP-06 hide 后 routine 行 enabled/lifecycle 未被暂停" || bad "GP-06 not paused"
+# 守护进程 sweep：隐藏期间真实触发
+before_fire=$(node -e "
+const fs=require('fs');
+const p='data/routines/fires.jsonl';
+const lines=fs.existsSync(p)?fs.readFileSync(p,'utf8').trim().split('\n').filter(Boolean):[];
+console.log(lines.filter(l=>l.includes('\"id\":\"r-$m11id-m11\"')).length)")
+bash scripts/host_routine_daemon.sh >/dev/null 2>&1
+node -e "
+const fs=require('fs');
+const t=JSON.parse(fs.readFileSync('data/routines/last-tick.json','utf8'));
+const b=require('./data/desktop/bots.json').bots.find(x=>x.id==='$m11id');
+const fires=fs.readFileSync('data/routines/fires.jsonl','utf8').trim().split('\n').filter(Boolean).map(l=>JSON.parse(l));
+const mine=fires.filter(f=>f.id==='r-$m11id-m11');
+const last=mine[mine.length-1]||{};
+process.exit(
+  (t.fired_ids||[]).includes('r-$m11id-m11') &&
+  b.hidden===true &&
+  last.fired===true && last.pretend_fired===false &&
+  mine.length>$before_fire ? 0:1)" && ok "GP-06 隐藏 Bot 的 routine 在 daemon sweep 中真实触发（非 pretend）" || bad "GP-06 hidden firing (daemon)"
+# 内核短语 tick：第二次到期 → on-demand 触发（kernel phrase → host effect 链）
+before_lfa=$(node -e "
+const rows=JSON.parse(require('fs').readFileSync('data/routines/host-routines.json','utf8'));
+const r=rows.find(x=>x.id==='r-$m11id-m11');console.log(r&&r.last_fired_at||'')")
+j=$(turn_json "create routine id=r-$m11id-m11 cron=@now prompt=m11probe")
+j=$(turn_json "tick routines")
+echo "$j" | field hostKinds | grep -q routine_tick:ok && node -e "
+const j=JSON.parse(require('fs').readFileSync('data/routines/last-tick.json','utf8'));
+const b=require('./data/desktop/bots.json').bots.find(x=>x.id==='$m11id');
+const rows=JSON.parse(require('fs').readFileSync('data/routines/host-routines.json','utf8'));
+const r=rows.find(x=>x.id==='r-$m11id-m11');
+const prev=Date.parse('$before_lfa')||0;
+process.exit((j.fired_ids||[]).includes('r-$m11id-m11') && b.hidden===true && Date.parse(r.last_fired_at)>prev ? 0:1)" && ok "GP-06 'tick routines' 短语 → 隐藏 Bot routine 再次触发且 last_fired_at 推进" || bad "GP-06 hidden firing (kernel tick)"
+# 删除二次确认在聊天链路也必须弹确认框（renderer 断言：拒绝负载带 bot_id 并接线到对话框）
+node -e "
+const fs=require('fs');
+const ps=fs.readFileSync('hosts/desktop/product_surface.js','utf8');
+const html=fs.readFileSync('hosts/desktop/index.html','utf8');
+const gate=/needs_confirm:[\s\S]{0,120}advise_hide_first:[\s\S]{0,80}bot_id,/.test(ps);
+const wire=/p\.needs_confirm === true && p\.advise_hide_first === true/.test(html) &&
+  /openBotDeleteDialog\(\{ id: p\.bot_id/.test(html);
+process.exit(gate && wire ? 0:1)" && ok "GP-07 聊天侧 delete 未确认 → 复用 hide-first 确认框（不静默、不死胡同）" || bad "GP-07 chat confirm wiring"
+j=$(turn_json "delete bot $m11id")
+node -e "
+let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+  const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());
+  const h=(j.host_results||[]).find(x=>x.kind==='bot_delete');
+  const p=JSON.parse(h.stdout||'{}');
+  const b=require('./data/desktop/bots.json').bots.find(x=>x.id==='$m11id');
+  process.exit(p.needs_confirm===true && p.bot_id==='$m11id' && b ? 0:1)})" <<<"$j" && ok "GP-07 未确认拒绝负载含 bot_id 且 Bot 未被删" || bad "GP-07 refusal payload"
+# 清理：确认删除 → 级联移除绑定 routine 行
+j=$(turn_json "confirm delete bot $m11id")
+node -e "
+const b=require('./data/desktop/bots.json').bots.find(x=>x.id==='$m11id');
+const rows=JSON.parse(require('fs').readFileSync('data/routines/host-routines.json','utf8'));
+process.exit(!b && !rows.some(r=>r.id==='r-$m11id-m11') ? 0:1)" && ok "G-12 清理：确认删除级联移除探针 routine（双跑幂等）" || bad "G-12 cleanup"
 
 echo
 
