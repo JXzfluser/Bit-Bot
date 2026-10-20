@@ -83,12 +83,22 @@ function createSessionStore(repoRoot) {
     return {
       ok: true,
       active_id: state.active_id,
-      sessions: state.sessions.map((s) => ({
-        id: s.id,
-        title: s.title || "对话",
-        updated_at: s.updated_at,
-        message_count: Array.isArray(s.messages) ? s.messages.length : 0,
-      })),
+      sessions: state.sessions.map((s) => {
+        // Grok-parity sidebar shows a one-line preview of the latest message.
+        const msgs = Array.isArray(s.messages) ? s.messages : [];
+        let preview = "";
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          const t = String((msgs[i] && msgs[i].text) || "").replace(/\s+/g, " ").trim();
+          if (t) { preview = t.slice(0, 40); break; }
+        }
+        return {
+          id: s.id,
+          title: s.title || "对话",
+          updated_at: s.updated_at,
+          message_count: msgs.length,
+          preview,
+        };
+      }),
       path: storePath,
     };
   }

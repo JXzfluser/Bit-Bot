@@ -19,7 +19,8 @@
     --warn: #d4a017;
     --side: #111111;
     --user-bubble: #2a2a2a;
-    --bot-bubble: transparent;
+    --bot-bubble: #212121;
+    --bot-avatar: #2f9e44;
     --input-bg: #232323;
     --danger: #c0554d;
     --warn-bg: #262010; --warn-ink: #e8d9a8; --warn-line: #5a4a2a;
@@ -37,8 +38,9 @@
       --accent-soft: #f0f0f0;
       --warn: #a06a00;
       --side: #f7f7f7;
-      --user-bubble: #eef0f2;
-      --bot-bubble: transparent;
+      --user-bubble: #eceef0;
+      --bot-bubble: #f4f4f5;
+      --bot-avatar: #2f9e44;
       --input-bg: #f2f2f2;
       --danger: #b3403a;
       --warn-bg: #fbf4e0; --warn-ink: #6a5312; --warn-line: #e3d2a0;
@@ -49,7 +51,7 @@
     color-scheme: dark;
     --bg0: #171717; --bg1: #1d1d1d; --ink: #ececec; --muted: #9a9a9a;
     --line: #2e2e2e; --accent: #ffffff; --accent-ink: #171717; --accent-soft: #2a2a2a;
-    --warn: #d4a017; --side: #111111; --user-bubble: #2a2a2a; --bot-bubble: transparent;
+    --warn: #d4a017; --side: #111111; --user-bubble: #2a2a2a; --bot-bubble: #212121; --bot-avatar: #2f9e44;
     --input-bg: #232323; --danger: #c0554d;
     --warn-bg: #262010; --warn-ink: #e8d9a8; --warn-line: #5a4a2a;
     --danger-bg: #2a1f1d; --danger-ink: #e8b4b0;
@@ -58,7 +60,7 @@
     color-scheme: light;
     --bg0: #ffffff; --bg1: #f7f7f7; --ink: #1a1a1a; --muted: #6f6f6f;
     --line: #e3e3e3; --accent: #1a1a1a; --accent-ink: #ffffff; --accent-soft: #f0f0f0;
-    --warn: #a06a00; --side: #f7f7f7; --user-bubble: #eef0f2; --bot-bubble: transparent;
+    --warn: #a06a00; --side: #f7f7f7; --user-bubble: #eceef0; --bot-bubble: #f4f4f5; --bot-avatar: #2f9e44;
     --input-bg: #f2f2f2; --danger: #b3403a;
     --warn-bg: #fbf4e0; --warn-ink: #6a5312; --warn-line: #e3d2a0;
     --danger-bg: #fae9e7; --danger-ink: #8f332d;
@@ -98,6 +100,7 @@
     grid-area: header;
     padding: 10px 16px;
     border-bottom: 1px solid var(--line);
+    position: relative;
     align-items: center;
   }
   header .brand {
@@ -109,11 +112,43 @@
     font-size: 12px;
     margin-top: 1px;
   }
+  /* Grok-parity: bot identity pill centered in the title bar. It is a normal
+     flex child (brand | pill | actions) instead of an absolutely positioned
+     element so it can never overlap the model picker / header buttons. */
+  #bot-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--bg1);
+    font-size: 13px;
+    color: var(--ink);
+    max-width: 40vw;
+    margin: 0 auto;
+    min-width: 0;
+    justify-self: center;
+  }
+  #bot-pill .bot-pill-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #bot-pill .bot-pill-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--bot-avatar, #2f9e44);
+    flex: 0 0 22px;
+  }
   #header-actions {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+    justify-content: flex-end;
+    white-space: nowrap;
   }
   #header-actions button {
     background: transparent;
@@ -134,8 +169,9 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 4px;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow: hidden;
   }
   #model-picker .mp-btn {
     background: var(--accent-soft);
@@ -280,6 +316,94 @@
     background: var(--bg1);
   }
   .agent-item.active { border-color: var(--line); }
+  /* Grok-parity sidebar row: colored round avatar + name + preview line */
+  .sess-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 10px;
+    padding: 8px 10px;
+  }
+  .sess-row:hover { background: var(--accent-soft); }
+  .sess-row.active { background: var(--accent-soft); border-color: var(--line); }
+  .sess-avatar {
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 15px;
+    user-select: none;
+  }
+  .sess-main { min-width: 0; flex: 1 1 auto; }
+  .sess-main .name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sess-main .meta {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* GP-A2/A3 Grok-parity: plugin cards in a two-column grid */
+  .ca-cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .ca-chip {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .ca-chip:hover { background: var(--accent-soft); color: var(--ink); }
+  .ca-chip.active {
+    background: var(--ink);
+    color: var(--bg0);
+    border-color: var(--ink);
+    font-weight: 600;
+  }
+  .ca-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .ca-icon {
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 16px;
+    user-select: none;
+  }
+  /* GP-80 Grok-parity: blue unread dot on the row's right edge */
+  .unread-dot {
+    flex: 0 0 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #2f7cf6;
+    align-self: center;
+    margin-left: 6px;
+  }
   .agent-item .name, .machine-item .name {
     font-weight: 600;
     font-size: 13px;
@@ -333,7 +457,7 @@
     background: transparent;
     border-radius: 0;
   }
-  /* Grok-style: user = right pill; assistant = left, avatar + plain text, no box */
+  /* Grok-style: user = right pill; assistant = left, avatar + grey rounded bubble */
   .msg.user {
     align-self: flex-end;
     background: var(--user-bubble);
@@ -341,15 +465,32 @@
     border-radius: 18px;
     padding: 10px 16px;
   }
-  .msg.assistant { align-self: flex-start; display: flex; gap: 10px; }
+  .msg.assistant { align-self: flex-start; display: flex; gap: 10px; max-width: 82%; }
   .msg.assistant::before {
     content: "";
     flex: 0 0 26px; width: 26px; height: 26px; border-radius: 50%;
-    background: var(--accent-soft);
-    border: 1px solid var(--line);
-    margin-top: 1px;
+    background: var(--bot-avatar, #2f9e44);
+    margin-top: 2px;
+  }
+  .msg.assistant .body {
+    background: var(--bot-bubble);
+    border-radius: 16px;
+    padding: 10px 14px;
   }
   .msg .role { display: none; }
+  /* Grok-parity typing indicator while the model is thinking */
+  .msg .typing { display: inline-flex; gap: 4px; align-items: center; height: 18px; }
+  .msg .typing i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted);
+    animation: typingPulse 1.2s infinite ease-in-out;
+  }
+  .msg .typing i:nth-child(2) { animation-delay: 0.15s; }
+  .msg .typing i:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes typingPulse {
+    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-2px); }
+  }
   .msg .body { margin-top: 0; white-space: pre-wrap; word-break: break-word; color: var(--ink); line-height: 1.55; }
   /* Debug-only bubbles (kernel/ADR/effects/delivery) hidden unless Alt+D */
   .msg.debug-only { display: none; }
@@ -814,10 +955,15 @@
 </style>
 </head>
 <body>
-  <header style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+  <header style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px">
     <div>
       <div class="brand">Bit Bot</div>
       <div class="sub"><span id="hotkey-hint">Ctrl+Shift+Space</span> <span data-i18n="invoke">呼出</span></div>
+    </div>
+    <!-- Grok-parity: active Bot identity pill, centered in the chat column -->
+    <div id="bot-pill" title="当前 Bot">
+      <span class="bot-pill-avatar"></span>
+      <span class="bot-pill-name">Bit Bot</span>
     </div>
     <div id="header-actions">
       <div id="model-picker" title="国产多模型 · 经 MoonBit llm_set_model" aria-label="LLM model picker">
@@ -1152,11 +1298,20 @@
           <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="Search plugins" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 9px" />
           <button type="button" id="ca-refresh" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer" data-i18n="caRefresh">Refresh</button>
         </div>
+        <!-- Grok-parity: category chips filter the plugin grid -->
+        <div id="ca-cats" class="ca-cats">
+          <button type="button" class="ca-chip active" data-cat="all" data-i18n="caCatAll">全部</button>
+          <button type="button" class="ca-chip" data-cat="password" data-i18n="caCatPassword">密码管理器</button>
+          <button type="button" class="ca-chip" data-cat="productivity" data-i18n="caCatProductivity">效率</button>
+          <button type="button" class="ca-chip" data-cat="communication" data-i18n="caCatCommunication">通信</button>
+          <button type="button" class="ca-chip" data-cat="design" data-i18n="caCatDesign">设计</button>
+          <button type="button" class="ca-chip" data-cat="code" data-i18n="caCatCode">代码</button>
+        </div>
         <div id="ca-meta" style="color:var(--muted);font:11px/1.4 ui-monospace,monospace;margin-top:8px"></div>
         <div style="font-weight:700;font-size:13px;margin-top:12px" data-i18n="caYour">Your plugins</div>
-        <div id="ca-installed" style="margin-top:6px"></div>
+        <div id="ca-installed" class="ca-grid"></div>
         <div style="font-weight:700;font-size:13px;margin-top:14px" data-i18n="caBrowse">Browse plugins</div>
-        <div id="ca-browse" style="margin-top:6px"></div>
+        <div id="ca-browse" class="ca-grid"></div>
         <div style="color:var(--muted);font-size:11px;margin-top:12px" data-i18n="caAuthNote">Some plugins need browser sign-in (OAuth) before their tools work.</div>
       </div>
     </div>
@@ -2296,6 +2451,20 @@
       window.bitbot.onTurnProgress((ev) => applyProgressEvent(ev));
     }
 
+    // Grok-parity: deterministic pastel avatar color per session/bot id (hash →
+    // palette). Same id always maps to the same color, so the sidebar reads as
+    // distinct identities rather than a flat grey list.
+    const AVATAR_PALETTE = [
+      "#e8590c", "#7048e8", "#1098ad", "#d6336c", "#5c940d",
+      "#f59f00", "#4263eb", "#c2255c", "#0ca678", "#9c36b5",
+    ];
+    function avatarColorFor(seed) {
+      const s = String(seed || "");
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+    }
+
     function addMsg(role, text, opts) {
       const el = document.createElement("div");
       let cls = "msg " + role;
@@ -3097,16 +3266,20 @@
       for (const s of rows) {
         const el = document.createElement("div");
         el.className =
-          "agent-item" + (s.id === activeSessionId ? " active" : "");
+          "agent-item sess-row" + (s.id === activeSessionId ? " active" : "");
         el.style.cursor = "pointer";
         el.dataset.sessionId = s.id;
         el.innerHTML =
-          '<div class="name"></div><div class="meta"></div>';
+          '<span class="sess-avatar"></span>' +
+          '<div class="sess-main"><div class="name"></div><div class="meta"></div></div>';
+        const av = el.querySelector(".sess-avatar");
+        av.textContent = String(s.title || "对").trim().slice(0, 1);
+        av.style.background = avatarColorFor(s.id);
         el.querySelector(".name").textContent = s.title || "对话";
+        // Grok-parity: preview line (falls back to count+time when empty).
         el.querySelector(".meta").textContent =
-          (s.message_count || 0) +
-          " " + wavegT("msgUnit") + " · " +
-          String(s.updated_at || "").slice(0, 16).replace("T", " ");
+          s.preview ||
+          (s.message_count || 0) + " " + wavegT("msgUnit");
         el.addEventListener("click", async () => {
           const r = await window.bitbot.sessions.setActive(s.id);
           if (r && r.ok) {
@@ -6216,21 +6389,32 @@
       for (const b of hidden) {
         if (hiddenBox) hiddenBox.appendChild(botRow(b, view.primary_id, true));
       }
+      // Grok-parity: title-bar pill reflects the primary Bot by default.
+      const primary = bots.find((x) => x.id === (view && view.primary_id)) || bots[0];
+      if (primary) updateBotPill(primary.name || primary.id, primary.id || primary.name);
     }
 
     function botRow(b, primaryId, isHidden) {
       const el = document.createElement("div");
-      el.className = "agent-item";
+      el.className = "agent-item sess-row";
       el.style.cursor = "pointer";
       el.dataset.agentId = b.id;
+      const av = document.createElement("span");
+      av.className = "sess-avatar";
+      av.textContent = String(b.name || b.id || "B").trim().slice(0, 1);
+      av.style.background = avatarColorFor(b.id || b.name);
+      const main = document.createElement("div");
+      main.className = "sess-main";
       const name = document.createElement("div");
       name.className = "name";
       name.textContent = (b.pinned ? "★ " : "") + b.name + (b.id === primaryId ? " · primary" : "");
       const meta = document.createElement("div");
       meta.className = "meta";
       meta.textContent = (b.job || "bot") + (isHidden ? " · hidden" : "");
-      el.appendChild(name);
-      el.appendChild(meta);
+      main.appendChild(name);
+      main.appendChild(meta);
+      el.appendChild(av);
+      el.appendChild(main);
       el.addEventListener("click", () => {
         selectBotForChat(b);
       });
@@ -6243,8 +6427,24 @@
 
     // Grok-style: clicking a Bot opens its DM session (session id bot-<id>),
     // sets activeBotId for notifications, and shows the agent info in side panel.
+    function updateBotPill(name, colorSeed) {
+      const pill = document.getElementById("bot-pill");
+      if (!pill) return;
+      const label = pill.querySelector(".bot-pill-name");
+      const av = pill.querySelector(".bot-pill-avatar");
+      if (label) label.textContent = String(name || "Bit Bot");
+      if (colorSeed) {
+        const c = avatarColorFor(colorSeed);
+        av.style.background = c;
+        // Assistant bubbles adopt the same identity color, so the whole
+        // conversation visibly belongs to the Bot shown in the title bar.
+        document.documentElement.style.setProperty("--bot-avatar", c);
+      }
+    }
+
     function selectBotForChat(b) {
       activeBotId = b.id;
+      updateBotPill(b.name || b.id, b.id || b.name);
       const dmTitle = (b.name || b.id) + " · DM";
       (async () => {
         const list = await window.bitbot.sessions.list().catch(() => null);
@@ -6415,23 +6615,36 @@
     function caCard(plugin) {
       const wrap = document.createElement("div");
       wrap.dataset.pluginId = plugin.id || "";
+      // Grok-parity: compact grid card — round icon | name + one-line desc | action.
       wrap.style.cssText =
-        "border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--input-bg)";
+        "display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;" +
+        "padding:10px 12px;background:var(--bg1);min-width:0";
+      const icon = document.createElement("span");
+      icon.className = "ca-icon";
+      icon.textContent = String(plugin.display_name || plugin.id || "?").trim().slice(0, 1).toUpperCase();
+      icon.style.background = avatarColorFor(plugin.id || plugin.display_name);
+      wrap.appendChild(icon);
       const head = document.createElement("div");
-      head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px";
+      head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;flex:1 1 auto;min-width:0";
       const title = document.createElement("div");
-      const nameEl = document.createElement("span");
-      nameEl.style.fontWeight = "700";
+      title.style.cssText = "min-width:0";
+      const nameEl = document.createElement("div");
+      nameEl.style.fontWeight = "600";
+      nameEl.style.cssText = "font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
       const nk = "caName." + (plugin.id || "");
       const nt = wavegT(nk);
       const shownName = nt === nk ? plugin.display_name || plugin.id : nt;
       nameEl.textContent = shownName;
-      const nsEl = document.createElement("span");
-      nsEl.style.cssText = "color:var(--muted);font:11px/1.4 ui-monospace,monospace;margin-left:8px";
-      nsEl.textContent = plugin.mcp_namespace || "";
       title.appendChild(nameEl);
-      title.appendChild(nsEl);
-      head.appendChild(title);
+      // One-line description, ellipsized — the reference shows name + short blurb.
+      const sub = document.createElement("div");
+      sub.style.cssText = "color:var(--muted);font-size:11px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+      const ns = plugin.mcp_namespace ? plugin.mcp_namespace + " · " : "";
+      sub.textContent =
+        ns +
+        (plugin.description ||
+          wavegT("caSkills") + "×" + (plugin.skill_count != null ? plugin.skill_count : (plugin.skills || []).length));
+      title.appendChild(sub);
       const actions = document.createElement("div");
       actions.style.cssText = "display:flex;gap:6px;align-items:center";
       if (plugin.installed) {
@@ -6471,19 +6684,17 @@
         });
         actions.appendChild(add);
       }
+      head.appendChild(title);
       head.appendChild(actions);
       wrap.appendChild(head);
-      const sub = document.createElement("div");
-      sub.style.cssText = "color:var(--muted);font-size:11px;margin-top:2px";
-      sub.textContent =
-        wavegT("caSkills") + "×" + (plugin.skill_count != null ? plugin.skill_count : (plugin.skills || []).length) +
-        (plugin.id === "plugin-calendar" ? " · " + wavegT("caOAuthHint") : "");
-      wrap.appendChild(sub);
       // GP-A3: per-tool enable/disable (only meaningful once installed).
       const tools = Array.isArray(plugin.tools) ? plugin.tools : [];
       if (tools.length) {
         const toolsBox = document.createElement("div");
-        toolsBox.style.cssText = "margin-top:8px;display:flex;flex-direction:column;gap:4px";
+        toolsBox.style.cssText =
+          "flex:1 0 100%;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);" +
+          "display:flex;flex-direction:column;gap:4px";
+        wrap.style.flexWrap = "wrap";
         for (const t of tools) {
           const row = document.createElement("div");
           row.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px";
@@ -6547,13 +6758,33 @@
       }
       return wrap;
     }
+    // GP-A2/A3 Grok-parity: category chips. The Host catalog carries no
+    // category field yet, so classify by id/namespace keywords — an unknown
+    // plugin stays under "all" only (never silently bucketed into a wrong
+    // group), and an empty category shows an honest empty state.
+    const CA_CATEGORY_RULES = [
+      ["password", /password|1password|lastpass|bitwarden|vault/i],
+      ["productivity", /calendar|slides|notion|atlassian|todo|task|meeting/i],
+      ["communication", /mail|email|slack|dingtalk|feishu|wecom|message|chat/i],
+      ["design", /design|figma|image|photo|canvas/i],
+      ["code", /code|git|repo|github|deploy|ide/i],
+    ];
+    function caCategoryOf(plugin) {
+      const hay = [plugin.id, plugin.mcp_namespace, plugin.display_name]
+        .filter(Boolean).join(" ");
+      for (const [cat, re] of CA_CATEGORY_RULES) if (re.test(hay)) return cat;
+      return "";
+    }
+    let caActiveCat = "all";
+
     function renderConnectApps() {
       const inst = document.getElementById("ca-installed");
       const browse = document.getElementById("ca-browse");
       if (inst) inst.textContent = "";
       if (browse) browse.textContent = "";
-      const installed = caPlugins.filter((p) => p && p.installed);
-      const available = caPlugins.filter((p) => p && !p.installed);
+      const inCat = (p) => caActiveCat === "all" || caCategoryOf(p) === caActiveCat;
+      const installed = caPlugins.filter((p) => p && p.installed && inCat(p));
+      const available = caPlugins.filter((p) => p && !p.installed && inCat(p));
       if (inst) {
         if (installed.length) {
           for (const p of installed) inst.appendChild(caCard(p));
@@ -6630,6 +6861,18 @@
       caSearchEl.addEventListener("input", () => {
         clearTimeout(caSearchTimer);
         caSearchTimer = setTimeout(() => refreshConnectApps(), 300);
+      });
+    }
+    const caCatsEl = document.getElementById("ca-cats");
+    if (caCatsEl) {
+      caCatsEl.addEventListener("click", (ev) => {
+        const btn = ev.target && ev.target.closest ? ev.target.closest(".ca-chip") : null;
+        if (!btn) return;
+        caActiveCat = String(btn.dataset.cat || "all");
+        caCatsEl.querySelectorAll(".ca-chip").forEach((b) => {
+          b.classList.toggle("active", b === btn);
+        });
+        renderConnectApps();
       });
     }
 
@@ -7291,6 +7534,12 @@
         caClose: "关闭",
         caGlobal: "插件对这台电脑全局生效 — 安装后所有 Bot 都能使用。",
         caSearchPh: "搜索插件",
+        caCatAll: "全部",
+        caCatPassword: "密码管理器",
+        caCatProductivity: "效率",
+        caCatCommunication: "通信",
+        caCatDesign: "设计",
+        caCatCode: "代码",
         caRefresh: "刷新",
         caYour: "你的插件",
         caBrowse: "浏览插件",
@@ -7567,6 +7816,12 @@
         caClose: "關閉",
         caGlobal: "外掛對這台電腦全域生效 — 安裝後所有 Bot 都能使用。",
         caSearchPh: "搜尋外掛",
+        caCatAll: "全部",
+        caCatPassword: "密碼管理器",
+        caCatProductivity: "效率",
+        caCatCommunication: "通訊",
+        caCatDesign: "設計",
+        caCatCode: "程式碼",
         caRefresh: "重新整理",
         caYour: "你的外掛",
         caBrowse: "瀏覽外掛",
@@ -7843,6 +8098,12 @@
         caClose: "Close",
         caGlobal: "Plugins are global to this computer — every Bot can use them once installed.",
         caSearchPh: "Search plugins",
+        caCatAll: "All",
+        caCatPassword: "Password managers",
+        caCatProductivity: "Productivity",
+        caCatCommunication: "Communication",
+        caCatDesign: "Design",
+        caCatCode: "Code",
         caRefresh: "Refresh",
         caYour: "Your plugins",
         caBrowse: "Browse plugins",
@@ -8499,12 +8760,12 @@
         let dot = el.querySelector(".unread-dot");
         if (n > 0) {
           if (!dot) {
+            // Grok-parity: blue dot pinned to the right edge of the row.
             dot = document.createElement("span");
             dot.className = "unread-dot";
-            dot.style.cssText = "color:var(--accent);font-weight:700;margin-left:6px";
-            el.querySelector(".name").appendChild(dot);
+            el.appendChild(dot);
           }
-          dot.textContent = "●" + n;
+          dot.title = n + " " + wavegT("msgUnit");
         } else if (dot) {
           dot.remove();
         }
@@ -8604,6 +8865,15 @@
                 streamEl.className = "msg assistant";
                 streamEl.dataset.streaming = "1";
                 streamEl.innerHTML = '<div class="role">assistant</div><div class="body"></div>';
+                // Grok-parity: an empty circle while the model is still
+                // thinking reads as a rendering bug; show a typing indicator.
+                // Built with DOM nodes (never innerHTML) so the message body
+                // keeps its single safe render path (GP-93 discipline).
+                const sb = streamEl.querySelector(".body");
+                const typing = document.createElement("span");
+                typing.className = "typing";
+                for (let ti = 0; ti < 3; ti++) typing.appendChild(document.createElement("i"));
+                sb.appendChild(typing);
                 log.appendChild(streamEl);
               }
               return;

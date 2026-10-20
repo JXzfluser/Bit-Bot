@@ -736,5 +736,29 @@ process.exit(fs.existsSync("data/desktop/gp19-probe-links.jsonl")?1:0)' &&
 echo "  · G-19 说明：真实点击/hover/新窗口拦截的 UI 交互由 E2E GP-93/94/95 十四断言覆盖（G-16 同脚本）；Xvfb 下真实浏览器启动抑制为 record-only，审计行 opened:false 并写明原因，不宣称已打开浏览器"
 
 echo
+echo "== G-20 界面体验对标（M20：助手气泡 / 侧栏头像与预览 / 标题栏 Bot pill / 连接应用网格与分类）=="
+if timeout 120 node scripts/prove_m20_ui.js > /tmp/g20-probe.log 2>&1; then
+  ok "G-20 界面契约全绿（$(grep -c '✓' /tmp/g20-probe.log) 项，$(tail -1 /tmp/g20-probe.log)）"
+else
+  bad "G-20 界面契约（见 /tmp/g20-probe.log）"
+fi
+grep -q "助手气泡有真实底色" /tmp/g20-probe.log 2>/dev/null \
+  && ok "G-20 助手气泡实心圆角（非旧的无框纯文本），且三套主题均非 transparent" \
+  || bad "G-20 assistant bubble contract missing"
+grep -q "未读点为蓝色圆点" /tmp/g20-probe.log 2>/dev/null \
+  && ok "G-20 侧栏：确定性头像色 + 预览行省略 + 蓝色未读点挂行右缘" \
+  || bad "G-20 sidebar row contract missing"
+grep -q "三列栅格" /tmp/g20-probe.log 2>/dev/null \
+  && ok "G-20 标题栏 auto|1fr|auto（Bot pill 居中且不与模型选择器重叠）" \
+  || bad "G-20 header grid contract missing"
+grep -q "chips 真实过滤插件" /tmp/g20-probe.log 2>/dev/null \
+  && ok "G-20 连接应用：两列卡片网格 + 圆角图标 + 分类 chips 真实过滤（非装饰）" \
+  || bad "G-20 connect-apps contract missing"
+grep -q "正文从未通过 innerHTML 写入" /tmp/g20-probe.log 2>/dev/null \
+  && ok "G-20 视觉打磨未破坏 GP-93 唯一安全正文渲染路径" \
+  || bad "G-20 render-path regression"
+echo "  · G-20 说明：像素级外观由真实 Electron 截图人工比对（scripts/ui_baseline_shot.mjs，属开发工具不入门禁）；门禁只钉可断言的契约，避免把「好看」写成不可验证的声明"
+
+echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

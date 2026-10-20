@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M19 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=128 FAIL=0；`moon test` 376/376；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 52/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M20 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=134 FAIL=0（双跑幂等）；`moon test` 376/376；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 52/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -273,3 +273,17 @@
    - moon test **376/376**（本轮无内核改动，既有 wbtest 全绿）。
    - 既有探针 `scripts/prove_gp93_links.js` **21/0**、`scripts/prove_gp14_reply.js` **16/0** 双跑幂等。
 7. **本轮踩到并修掉的一个真问题**（留在断言里）：① 慢 provider 断言原本要求"回合返回前有 ≥2 个进度事件"，但纯 chat 回合只有 1 个 effect（llm_chat），只发 start/done/host_continuing 共 3 事件，其中 start 在 42ms、done 和 host_continuing 都在 863ms（等 provider 响应完）——所以"回合返回前可见的事件数"只有 1 个。改成断言"首个事件 <100ms 且末个事件 >500ms"，证明的是 UI 行在 provider 思考期间就可见，这才是 §5.7 的本意。
+
+## Wave M20（界面体验对标 Grok Bot：助手气泡 / 侧栏头像与预览 / 标题栏 Bot 标识 / 连接应用网格，本轮）
+
+背景：用户提供两张 Grok Bot 真实截图，指出「界面差距太远」，要求功能推进同时兼顾 UI 体验。实测基线（`scripts/ui_baseline_shot.mjs` 在 Xvfb 下抓真实 Electron 渲染）确认了四处硬差距：①助手消息是**无框纯文本**（`--bot-bubble: transparent`），参考图是灰底圆角气泡；②侧栏每行只有名字 + 副标题，**没有头像、没有最后一条消息预览、未读是名字后的「●N」文本**；③标题栏右侧按钮挤成竖排，**没有居中的 Bot 身份标识**；④「连接应用」是**单列长列表**，参考图是两列卡片网格 + 圆形图标 + 分类 chips。
+
+本轮按「可断言优先」改造，每条视觉决策都钉到一个可观测契约上（`scripts/prove_m20_ui.js` 21 断言 + smoke G-20 六断言）：
+
+1. **助手气泡实心化**：`--bot-bubble` 从 `transparent` 改为 `#212121`（深色）/`#f4f4f5`（浅色），三套主题块（root / prefers-light / force-dark / force-light）全部改掉——只改一套会在切主题时悄悄退回旧版。`.msg.assistant .body` 加 `border-radius:16px` + padding，`max-width:82%` 防止长回答铺满整行。用户气泡保持 18px 胶囊。
+2. **侧栏身份化**：新增 `AVATAR_PALETTE`（10 色）+ `avatarColorFor(seed)`（字符串哈希 → 固定色），同一 id 永远同色；`sessions.list()` 新增 `preview` 字段（取最后一条非空消息前 40 字），侧栏会话行与 Bot 行统一走 `.sess-row`（圆形头像 + 名称 + 单行省略预览）。未读从「名字后 ●N 文本」改为**行右缘蓝色圆点**（`.unread-dot`，8px，`#2f7cf6`，`title` 带数量）。
+3. **标题栏三列栅格**：`header` 从 `flex space-between` 改为 `grid auto 1fr auto`。**踩到的坑**：先用 `position:absolute; left:50%` 居中 pill，结果直接压在模型选择器上（截图可见）。改成栅格后 pill 是正常流内元素，**结构上不可能重叠**；同时给 `#header-actions` 加 `justify-content:flex-end` + `white-space:nowrap`、给 `#model-picker` 加 `flex-wrap:nowrap`，修掉「能力/凭证/账户」被挤成竖排断字的问题。pill 的颜色随当前 Bot 同步，并写进 `--bot-avatar`，让整段对话的助手头像与标题栏身份一致。
+4. **思考态不再是空圆**：流式 `phase=start` 原先生成一个空 assistant 气泡（只有头像圆没有内容，看起来像渲染 bug）。改为三点动效（`typingPulse`）。**纪律约束**：动效用 `createElement("i")` 构建而**不是 innerHTML**，否则会破坏 GP-93「正文只有一条安全渲染路径」——探针专门断言了这一点。
+5. **连接应用改网格**：`caCard` 从竖排长卡改为 `display:flex` 的紧凑卡（圆角首字母图标 + 名称 + 单行描述省略 + 操作按钮）；容器 `#ca-installed`/`#ca-browse` 改为 `.ca-grid`（`repeat(2, minmax(0,1fr))`）；工具开关行用 `flex:1 0 100%` 落到第二行。新增**分类 chips**（全部/密码管理器/效率/通信/设计/代码，三语文案齐）。**诚实边界**：Host 插件目录目前没有 `category` 字段，所以分类靠 id/namespace 关键字推断（`CA_CATEGORY_RULES`）；**未知插件不会被塞进错误分类**，只出现在「全部」，且空分类显示空态而不是假装有内容——探针断言了这个 fallback。
+6. **验证**：`scripts/prove_m20_ui.js` **21/0**（气泡实心×4 主题、头像色板/圆形/预览省略/preview 生产与消费、未读点位置与颜色、三列栅格、操作区不换行、pill 与 updater、`--bot-avatar` 同步、typing 动效与 DOM 构建、ca-grid/ca-icon/chips 真实过滤/未知分类不误挂、三语 i18n、正文无 innerHTML）；smoke 新增 **G-20 六断言** → **PASS=134 FAIL=0 双跑幂等**；既有 `prove_gp93_links.js` 21/0、`prove_gp96_progress.js` 30/0、`prove_gp14_reply.js` 16/0、E2E **52/0**、`moon test` 376/376 全部保持绿。
+7. **诚实残留**：像素级"像不像 Grok"仍是**人工比对**（`scripts/ui_baseline_shot.mjs` 是开发工具，不入门禁）；门禁只钉可断言的契约，不把"好看"写成不可验证的声明。默认外观仍跟随系统（本次截图因与参考图对比临时设为 light，用户设置本身未被强制修改）。
