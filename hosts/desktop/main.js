@@ -1804,6 +1804,9 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   }
   const sessionId =
     String((opts && opts.sessionId) || sessions.activeId() || "desktop-session");
+  // GP-98: the turn returns its real progress trail so the renderer (and tests)
+  // can distinguish "ran and failed" from "never ran".
+  const progressRows = [];
   try {
     broadcast("bitbot:llm-stream", {
       phase: "start",
@@ -1823,6 +1826,16 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       // and this resolver turns it into the quoted text for the provider call.
       replyTo: String((opts && opts.replyTo) || "").trim() || undefined,
       resolveReply: (id) => sessions.findMessage(id),
+      // GP-96/97 (§5.7 实时进度): every real effect boundary streams here and is
+      // broadcast to the renderer, so the transcript shows work-in-progress
+      // while the turn is still running — not one dump at the end.
+      onProgress: (ev) => {
+        const row = Object.assign({}, ev, {
+          session_id: String((ev && ev.session_id) || sessionId),
+        });
+        progressRows.push(row);
+        broadcast("bitbot:turn-progress", row);
+      },
     });
     const rawText = String(text || "").trim();
     const skipSession =
@@ -1855,6 +1868,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       }
       broadcast("bitbot:sessions-changed", sessions.list());
     }
+    if (result && typeof result === "object") result.progress = progressRows;
     broadcast("bitbot:llm-stream", {
       phase: "end",
       session_id: sessionId,

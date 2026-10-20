@@ -25,6 +25,7 @@
       "index.html",
       "sessions.js",
       "product_surface.js",
+      "progress_protocol.js",
       "link_open.js",
       "link_discipline.js",
       {

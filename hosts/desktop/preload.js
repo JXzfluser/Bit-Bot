@@ -95,6 +95,19 @@ contextBridge.exposeInMainWorld("bitbot", {
   badge: {
     set: (n) => ipcRenderer.invoke("bitbot:badge:set", n),
   },
+  // GP-96 (§5.7): live turn progress events emitted at real Host effect
+  // boundaries (start/done per effect) — observational only, no control surface.
+  onTurnProgress: (cb) => {
+    const handler = (_e, ev) => {
+      try {
+        cb(ev);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:turn-progress", handler);
+    return () => ipcRenderer.removeListener("bitbot:turn-progress", handler);
+  },
   onLlmStream: (cb) => {
     const handler = (_e, chunk) => {
       try {

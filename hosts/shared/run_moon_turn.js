@@ -214,6 +214,11 @@ function createTurnRunner(repoRoot, opts = {}) {
       const host_results = await ffi.executeHostEffects(parsed.effects, {
         approved: Boolean(ctx.approved),
         botId: ctx.botId,
+        // GP-96/97: §5.7 progress events stream out of the real effect
+        // boundaries; hosts pass a listener (Electron broadcast / CLI stderr).
+        onProgress: typeof ctx.onProgress === "function" ? ctx.onProgress : undefined,
+        turnId: String(parsed.turn_id || ctx.turnId || "host-cont"),
+        sessionId: String(ctx.sessionId || ""),
         replyTo: (replyQuote && replyQuote.message_id) || "",
         replyQuote:
           (replyQuote && replyQuote.resolved && replyQuote.text) || "",

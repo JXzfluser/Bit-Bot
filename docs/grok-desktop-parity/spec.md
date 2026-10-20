@@ -120,6 +120,14 @@
 | GP-94 | 点击链接在**系统浏览器**打开，不在 Electron 内导航 | `hosts/desktop/link_open.js` `createLinkOpen({openExternal})`：scheme 门 → `shell.openExternal` → `data/desktop/links.jsonl` 审计行；IPC `bitbot:links:open`（preload 白名单 `links.open`）；`setWindowOpenHandler` 一律 `deny` 并转交同一路由，`will-navigate` `preventDefault` 后同路 | 真实点击 → 审计行 `decision:"open_external"` + scheme/host/session/原因齐备；`javascript:` 经 IPC → `refused + scheme_not_allowed` 且 openExternal 未被调用；点击/悬停/新窗口三种来源的触达次数可数；页面 `location` 全程不变 |
 | GP-95 | 悬停链接卡片显示预览；悬停不自动导航；批准外部操作/输入凭证前检查目标 | renderer `#link-preview` 卡（主机名为主识别 + 完整 URL + 「在系统浏览器打开」提示，`pointer-events:none`），`mouseover` 显示 / 离开与 Esc 与 blur 收起 | hover 出现卡且主机名=example.com；悬停期间审计文件 0 行、URL 未变、openExternal 触达 0 次；离开后收起；三语文案齐备 |
 
+## G-14 进度更新（官方 spec §5.7）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-96 | 对话流实时显示 Bot 工作进度（工具活动 / Computer 使用 / 创建的文件 / 问题 / 审批请求 / 语音消息） | `host_ffi.executeHostEffects` 在**每个 effect 边界**发进度事件（`phase:start/done` + `index/total/kind/category/label/ok/path`），类别按官方六项映射真实 kind；Host 把事件经 `ctx.onProgress` 交上层：Electron main `broadcast("bitbot:turn-progress")` → renderer `#turn-progress` 实时行；CLI `run_turn` 落 stderr（多端同源，不是桌面专有） | 一次多 effect 回合产生 `2×N` 条事件且顺序为 start(1/N)…done(N/N)；`total` 等于 kernel 返回的真实 effect 数（不猜）；`copy_to_box/skill_write/export_pack/slides_pptx/mail_send/schedule_meeting` 的 done 事件带**真实落盘路径**（探针按 fs 校验存在），失败 effect 的 done 带 `ok:false` + error；审批请求 kind 映射到「审批请求」类而非泛用「工具」 |
+| GP-97 | 长时间任务有中间更新（不是最后一次性刷屏） | 进度行随事件原地更新（同一 DOM 节点，非每步新气泡）；provider 慢响应期间仍可见当前工作项；LLM 流式 delta 与 progress 行并存互不覆盖 | 用真实慢 provider（`BITBOT_STUB_LATENCY_MS`）跑一轮：回合**尚未返回**时 DOM 已出现进度行且含 `1/1` 与当前类别文案；回合结束后该行转 done 态；delta 流式气泡不被进度行吃掉（两者节点不同） |
+| GP-98 | 进度不谎报 | 事件只由真实执行点发出（未执行的 effect 不会有 done）；被拒绝/never 拦截的 effect 也发 done(`ok:false`)，UI 显示「被拒绝」而不是消失；done 事件的 `path` 只在文件确实存在时才带 | 拒答路径（no_real_path / never 模式）仍有 done 行且 `ok:false`；探针断言 done 事件里出现的每个 path 在磁盘上真实存在；UI 结束后不留"仍在进行"的假态（`data-state` 转 done/cleared） |
+
 ## 诚实残留（本波不假装）
 
 - 真实云 VM 远程桌面推流：以本机 `DISPLAY`/xvfb + 真截图帧模拟"共享电脑屏幕"，标注 `mode=sandbox_screen`，不宣称云端。

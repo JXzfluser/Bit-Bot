@@ -65,6 +65,22 @@ const server = http.createServer((req, res) => {
           ? String(fixed)
           : "Bit Bot stub reply: " + String(user).slice(0, echoWidth);
 
+    // GP-97 proof hook: hold the provider reply open for N ms so a test can see
+    // the Host's effect-boundary progress events arrive *while* the turn is
+    // still running (a fast provider would resolve before any paint).
+    // Synchronous on purpose: blocking the stub's event loop keeps the HTTP
+    // response header unsent, so the client really does wait.
+    const latency = Number(process.env.BITBOT_STUB_LATENCY_MS || 0);
+    if (latency > 0) {
+      try {
+        require("child_process").execFileSync("sleep", [String(latency / 1000)], {
+          stdio: "ignore",
+        });
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
     if (wantStream) {
       res.writeHead(200, {
         "Content-Type": "text/event-stream",

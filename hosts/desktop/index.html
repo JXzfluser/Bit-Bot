@@ -742,6 +742,38 @@
     font-size: 12px;
     flex-shrink: 0;
   }
+  /* GP-96/97: live progress row (official §5.7 实时显示 Bot 工作进度). */
+  .turn-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 16px 6px;
+    padding: 5px 10px;
+    border: 1px dashed var(--line);
+    border-radius: 6px;
+    background: var(--bg1);
+    color: var(--muted);
+    font-size: 12px;
+    min-height: 26px;
+  }
+  .turn-progress .tp-step {
+    margin-left: auto;
+    font: 11px/1.4 ui-monospace, monospace;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .turn-progress[data-state="running"] .tp-dot,
+  .turn-progress[data-state="awaiting"] .tp-dot {
+    background: var(--accent);
+    animation: tpPulse 1s ease-in-out infinite;
+  }
+  .turn-progress[data-state="failed"] .tp-dot { background: #d66; }
+  .turn-progress[data-state="done"] .tp-dot { background: var(--accent); }
+  .turn-progress .tp-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--line); flex-shrink: 0;
+  }
+  @keyframes tpPulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
   .reply-bar .rb-text {
     flex: 1;
     color: var(--muted);
@@ -1492,6 +1524,13 @@
         <button type="button" id="vc-relay-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer;font-size:12px" data-i18n="vcRelayBtn">发送</button>
       </div>
     </div>
+    <!-- GP-96/97: §5.7 live progress row (updated in place at real Host effect
+         boundaries; never a scripted animation). -->
+    <div id="turn-progress" class="turn-progress" style="display:none" data-state="idle" aria-live="polite">
+      <span class="tp-dot" aria-hidden="true"></span>
+      <span id="turn-progress-text" class="tp-text"></span>
+      <span id="turn-progress-step" class="tp-step"></span>
+    </div>
     <!-- GP-14: Reply 引用条（点消息上的「回复」出现；发送时被回复消息 id 交给 kernel 上下文） -->
     <div id="reply-bar" class="reply-bar" style="display:none">
       <span aria-hidden="true">↩</span>
@@ -1517,6 +1556,8 @@
        smoke probe (sandboxed renderer may not require(), so it is a classic
        script that publishes window.__bitbotLinks). -->
   <script src="./link_discipline.js"></script>
+  <!-- GP-96/97: same §5.7 category table the Host emitted progress against. -->
+  <script src="./progress_protocol.js"></script>
   <script>
     const banner = document.getElementById("banner");
     const log = document.getElementById("log");
@@ -2195,6 +2236,65 @@
         .catch(() => {});
       hideLinkPreview();
     });
+
+    /* GP-96/97 — §5.7 实时进度行.
+       State comes from window.__bitbotProgress (hosts/desktop/progress_protocol.js)
+       — the same module host_ffi.js requires to build the events — so the row
+       cannot show a category the Host did not emit. */
+    const progressEl = document.getElementById("turn-progress");
+    const progressTextEl = document.getElementById("turn-progress-text");
+    const progressStepEl = document.getElementById("turn-progress-step");
+    const progressStore =
+      window.__bitbotProgress && window.__bitbotProgress.createProgressState
+        ? window.__bitbotProgress.createProgressState()
+        : null;
+
+    function progressLabel(st) {
+      // Unknown categories fall back to the generic tool label (never blank).
+      const key = st.label_key || "progTool";
+      const base = wavegT(key);
+      if (st.phase === "awaiting") return base + " · " + wavegT("progAwaiting");
+      if (st.phase === "failed") return base + " · " + (st.error || wavegT("progFailedSuffix"));
+      if (st.phase === "continuing") return wavegT("progContinuing");
+      return base;
+    }
+    function renderProgressRow() {
+      if (!progressEl || !progressStore) return;
+      const st = progressStore.state;
+      if (!st.active && st.doneCount === 0) {
+        progressEl.style.display = "none";
+        return;
+      }
+      progressEl.style.display = "flex";
+      progressEl.dataset.state = st.active ? st.phase : st.doneCount ? "done" : "idle";
+      progressTextEl.textContent = progressLabel(st);
+      // total 是 kernel 真正交回来的 effect 数；不猜、不用固定动画。
+      progressStepEl.textContent =
+        st.total > 0 && st.active ? st.index + "/" + st.total : st.doneCount ? "✓ " + st.doneCount : "";
+    }
+    function applyProgressEvent(ev) {
+      if (!progressStore) return;
+      progressStore.apply(ev);
+      renderProgressRow();
+    }
+    function resetProgressRow() {
+      if (!progressStore) return;
+      progressStore.apply({ phase: "turn_start" });
+      renderProgressRow();
+    }
+    function finishProgressRow() {
+      if (!progressStore) return;
+      progressStore.apply({ phase: "turn_end" });
+      renderProgressRow();
+      // §5.7 is about progress while working; once finished it must not leave a
+      // permanent "still running" impression, so the row retires shortly after.
+      setTimeout(() => {
+        if (progressEl && !progressStore.state.active) progressEl.style.display = "none";
+      }, 2500);
+    }
+    if (window.bitbot && window.bitbot.onTurnProgress) {
+      window.bitbot.onTurnProgress((ev) => applyProgressEvent(ev));
+    }
 
     function addMsg(role, text, opts) {
       const el = document.createElement("div");
@@ -3433,6 +3533,7 @@
         });
       sendBtn.disabled = true;
       streamEl = null;
+      resetProgressRow();
       try {
         const turnOpts = Object.assign({}, opts || {}, {
           sessionId: activeSessionId || undefined,
@@ -5783,6 +5884,7 @@
       } finally {
         sendBtn.disabled = false;
         input.focus();
+        finishProgressRow();
       }
     }
 
@@ -7100,6 +7202,16 @@
         linkBlocked: "不可打开的链接",
         linkRefused: "链接已拦截（仅 http/https 可在系统浏览器打开）",
         linkOpenFailed: "无法在系统浏览器打开",
+        progTool: "正在执行工具调用",
+        progComputer: "正在操作电脑",
+        progFiles: "正在生成文件",
+        progQuestion: "等你补充信息",
+        progApproval: "等你审批",
+        progVoice: "正在处理语音",
+        progModel: "模型正在回复",
+        progAwaiting: "等待你的回应",
+        progFailedSuffix: "未完成",
+        progContinuing: "内核继续下一步",
         attachTooLarge: "附件被拒绝：{name} 超过 25MB（文档/图片/音频上限）。",
         attachTooLargeVideo: "附件被拒绝：{name} 超过 200MB（视频上限）。",
         attachNoPath: "附件被拒绝：剪贴板内容没有真实磁盘路径（不伪造路径）。",
@@ -7366,6 +7478,16 @@
         linkBlocked: "不可開啟的連結",
         linkRefused: "連結已攔阻（僅 http/https 可在系統瀏覽器開啟）",
         linkOpenFailed: "無法在系統瀏覽器開啟",
+        progTool: "正在執行工具呼叫",
+        progComputer: "正在操作電腦",
+        progFiles: "正在產生檔案",
+        progQuestion: "等你補充資訊",
+        progApproval: "等你核准",
+        progVoice: "正在處理語音",
+        progModel: "模型正在回覆",
+        progAwaiting: "等待你的回應",
+        progFailedSuffix: "未完成",
+        progContinuing: "核心繼續下一步",
         attachTooLarge: "附件被拒絕：{name} 超過 25MB（檔案/圖片/音訊上限）。",
         attachTooLargeVideo: "附件被拒絕：{name} 超過 200MB（影片上限）。",
         attachNoPath: "附件被拒絕：剪貼板內容沒有真實磁碟路徑（不偽造路徑）。",
@@ -7632,6 +7754,16 @@
         linkBlocked: "Link cannot be opened",
         linkRefused: "Link blocked (only http/https opens in the system browser)",
         linkOpenFailed: "Could not open in the system browser",
+        progTool: "Running a tool",
+        progComputer: "Controlling the computer",
+        progFiles: "Creating files",
+        progQuestion: "Waiting for your input",
+        progApproval: "Waiting for your approval",
+        progVoice: "Processing voice",
+        progModel: "Model is replying",
+        progAwaiting: "awaiting you",
+        progFailedSuffix: "not completed",
+        progContinuing: "Kernel continuing",
         attachTooLarge: "Attachment refused: {name} exceeds the 25MB limit (doc/image/audio).",
         attachTooLargeVideo: "Attachment refused: {name} exceeds the 200MB video limit.",
         attachNoPath: "Attachment refused: clipboard item has no real disk path (never fabricated).",

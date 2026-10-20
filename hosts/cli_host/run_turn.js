@@ -87,6 +87,22 @@ async function main() {
     botId: botId || undefined,
     // GP-14: multi-end CLI carries the same reply target as Desktop.
     replyTo: replyTo || undefined,
+    // GP-96: parity with Desktop — the CLI prints the same §5.7 progress stream,
+    // on stderr, so stdout stays the single machine-readable JSON line.
+    onProgress:
+      process.env.BITBOT_CLI_PROGRESS === "1"
+        ? (ev) => {
+            if (ev.phase === "start")
+              console.error(`[progress ${ev.index}/${ev.total}] ${ev.kind} (${ev.category}) …`);
+            else if (ev.phase === "done")
+              console.error(
+                `[progress ${ev.index}/${ev.total}] ${ev.kind} ${ev.ok ? "ok" : "fail"}` +
+                  (ev.error ? `: ${String(ev.error).slice(0, 80)}` : ""),
+              );
+            else if (ev.phase === "host_continuing")
+              console.error("[progress] kernel continue (ADR 0002) …");
+          }
+        : undefined,
   });
   console.log(JSON.stringify(result));
   if (!result.ok) process.exit(1);

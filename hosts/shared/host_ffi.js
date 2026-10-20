@@ -13,6 +13,12 @@ const crypto = require("crypto");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 
+// GP-96/97/98 — §5.7 progress events are built by one module, shared with the
+// desktop transport and the CLI host (see hosts/shared/turn_progress.js).
+let _createProgressEmitter;
+try { _createProgressEmitter = require("./turn_progress").createProgressEmitter; }
+catch { try { _createProgressEmitter = require("../shared/turn_progress").createProgressEmitter; } catch { _createProgressEmitter = null; } }
+
 const execFileAsync = promisify(execFile);
 
 // Wave G product surface (dev/packaged dual-path)
@@ -22545,7 +22551,60 @@ function createHostFfi(repoRoot) {
     // GP-21: explicit user approval (Allow once / approved re-run) bypasses the
     // ask-rule gate, but never-mode still hard-refuses local kinds.
     const userApproved = Boolean(ffiOpts && ffiOpts.approved);
-    for (const e of effects || []) {
+
+    /* ---- GP-96/97/98 — §5.7 实时进度 ----
+       Progress must be emitted at the REAL execution boundary, so it is hooked
+       onto the array this function already pushes every result into: the first
+       push for an effect is that effect's `done`. That keeps ~100 existing
+       branches (and their `continue`s) untouched, and makes it impossible to
+       report a step as finished without a result row existing. Without an
+       onProgress listener nothing changes at all. */
+    const effectList = effects || [];
+    const progress = _createProgressEmitter
+      ? _createProgressEmitter({
+          onProgress: ffiOpts && ffiOpts.onProgress,
+          total: effectList.length,
+          turnId: (ffiOpts && ffiOpts.turnId) || "",
+          sessionId: (ffiOpts && ffiOpts.sessionId) || "",
+          repoRoot: REPO_ROOT,
+        })
+      : { start() {}, done() {}, enabled: false };
+    let curEffect = null;
+    let curIndex = 0;
+    let doneForCur = 0;
+    let doneCount = 0;
+    const rawPush = results.push.bind(results);
+    results.push = function (row) {
+      rawPush(row);
+      if (curEffect && doneForCur === 0) {
+        doneForCur = 1;
+        doneCount += 1;
+        progress.done(curIndex, curEffect, row);
+      }
+      return results.length;
+    };
+    function closeDangling() {
+      // An effect that pushed nothing (fell through / threw) must not stay
+      // "in progress" forever — say so honestly instead.
+      if (curEffect && doneForCur === 0) {
+        doneCount += 1;
+        progress.done(curIndex, curEffect, {
+          kind: (curEffect && curEffect.kind) || "",
+          ok: false,
+          command: (curEffect && curEffect.command) || "",
+          error: "no_result_recorded",
+          stdout: "",
+          stderr: "",
+        });
+      }
+    }
+
+    for (const e of effectList) {
+      closeDangling();
+      curEffect = e;
+      curIndex += 1;
+      doneForCur = 0;
+      progress.start(curIndex, e);
       const kind = (e && e.kind) || "";
       const cmd = String((e && e.command) || "");
 
@@ -23557,6 +23616,12 @@ function createHostFfi(repoRoot) {
         });
       }
     }
+    closeDangling();
+    curEffect = null;
+    // GP-97: the kernel continue (a long step of its own) is reported too, so a
+    // multi-step turn never looks stalled between effects and final reply.
+    progress.raw({ phase: "host_continuing", category: "model_reply", label_key: "model" });
+
     // CHARTER Delivery: materialize SendToUser receipts beside Host effects.
     const withDelivery = [];
     for (const res of results) {
