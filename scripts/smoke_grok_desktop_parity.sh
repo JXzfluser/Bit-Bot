@@ -194,6 +194,31 @@ process.exit(s.phase==='awaiting_confirm_2'||s.phase==='updated'||Number(s.confi
 j=$(turn_json "reset computer"); echo "$j" | grep -q "CM-1904\|reset" && ok "CM-1904 reset computer 短语可达（非首选提示）" || bad "reset computer"
 node -e "require('fs').writeFileSync('data/box/update-computer.json',JSON.stringify({confirms:0,guide_preferred:true,session_jar:true},null,2))"
 
+echo "== G-9 Connect apps / Marketplace（GP-A2/A3 · 规格 §2.5）=="
+# 幂等起点：清空命名空间目录与工具目录
+node -e "
+const fs=require('fs');
+fs.mkdirSync('data/connectors/mcp-namespaces',{recursive:true});
+fs.writeFileSync('data/connectors/mcp-namespaces/catalog.json',JSON.stringify({namespaces:{},installed_plugins:[]},null,2));
+try{fs.unlinkSync('data/connectors/mcp-tools-catalog.json')}catch(e){}"
+j=$(turn_json "install plugin plugin-slides"); echo "$j" | field intent | grep -q install_plugin && echo "$j" | field hostKinds | grep -q mcp_namespace:ok && node -e "
+const c=require('./data/connectors/mcp-namespaces/catalog.json');
+const t=require('./data/connectors/mcp-tools-catalog.json');
+process.exit(c.installed_plugins.includes('plugin-slides') && c.namespaces['user-Slides'] && c.namespaces['user-Slides'].status==='Ready' && (t.tools||[]).filter(x=>x.namespace==='user-Slides').length===2 ? 0:1)" && ok "GP-A2 install → catalog Ready + 工具目录种入×2" || bad "install plugin chain"
+j=$(turn_json "disable tool user-Slides:make_deck off"); echo "$j" | field intent | grep -q toggle_plugin_tool && echo "$j" | field hostKinds | grep -q mcp_tool_toggle:ok && node -e "
+const t=require('./data/connectors/mcp-tools-catalog.json');
+const row=(t.tools||[]).find(x=>x.namespace==='user-Slides'&&x.name==='make_deck');
+process.exit(row && row.enabled===false ? 0:1)" && ok "GP-A3 单工具禁用持久化 enabled=false" || bad "tool toggle off"
+j=$(turn_json "list plugins"); echo "$j" | field hostKinds | grep -q mcp_list_plugins:ok && echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='mcp_list_plugins');const p=JSON.parse(h.stdout||'{}');const pl=(p.plugins||[]).find(x=>x.id==='plugin-slides');const td=((pl.tools||[]).find(t=>t.name==='make_deck')||{}).enabled;process.exit(pl.installed===true&&td===false?0:1)})" && ok "GP-A2 list 反映 installed + 禁用状态（同一目录）" || bad "list plugins state"
+j=$(turn_json "enable tool user-Slides:make_deck"); echo "$j" | field hostKinds | grep -q mcp_tool_toggle:ok && node -e "
+const t=require('./data/connectors/mcp-tools-catalog.json');
+const row=(t.tools||[]).find(x=>x.namespace==='user-Slides'&&x.name==='make_deck');
+process.exit(row && row.enabled===true ? 0:1)" && ok "GP-A3 natural enable → enabled=true" || bad "tool toggle on"
+j=$(turn_json "disable tool user-Slides:no_such_tool"); echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='mcp_tool_toggle');const p=JSON.parse(h.stdout||'{}');process.exit(p.refused===true&&/unknown tool/.test(p.error||'')?0:1)})" && ok "GP-A3 未知工具诚实拒绝（不假装开关）" || bad "unknown tool refusal"
+j=$(turn_json "uninstall plugin plugin-slides"); echo "$j" | field hostKinds | grep -q mcp_uninstall:ok && node -e "
+const c=require('./data/connectors/mcp-namespaces/catalog.json');
+process.exit(!c.installed_plugins.includes('plugin-slides') && c.namespaces['user-Slides'] && c.namespaces['user-Slides'].status==='Unavailable' ? 0:1)" && ok "GP-A2 uninstall → Unavailable + installed 移除" || bad "uninstall chain"
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

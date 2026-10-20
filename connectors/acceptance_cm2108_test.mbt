@@ -31,4 +31,19 @@ test "acceptance_CM-2108_get_plugin_metadata_and_skills" {
     Err(msg) => assert_true(msg.contains("unknown"))
     Ok(_) => fail("unknown plugin must Err")
   }
+  // GP-A3: declared MCP tools ride along in metadata.
+  match reg.get_plugin("plugin-slides") {
+    Err(e) => fail(e)
+    Ok(meta) => {
+      let tools = meta.tool_names()
+      assert_true(tools.length() >= 2)
+      let mut saw_deck = false
+      for t in tools {
+        if t == "make_deck" {
+          saw_deck = true
+        }
+      }
+      assert_true(saw_deck)
+    }
+  }
 }

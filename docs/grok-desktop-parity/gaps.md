@@ -48,7 +48,7 @@
 | GP-80/81/82 | 已实现 | 聚焦抑制（BrowserWindow focus 态）+ 侧边栏未读 + `setBadgeCount` + 点击通知激活 session（`wireFocusSession`）；系统 Notification 在 xvfb 无通知总线环境下不弹出属平台限制，逻辑分支以 store/badge 状态实测。 |
 | GP-90/91/92 | 部分 | artifact 预览/保存沿用既有链；全屏查看未进本波验收。 |
 | GP-A1 | 已实现 | Cmd/Ctrl+B 折叠（renderer accelerator + 主菜单 + `sidebar_collapsed` 持久）；Cmd/Ctrl+N 新对话（菜单模板 broadcast `bitbot:menu-new-chat`）。 |
-| GP-A2/A3 | 部分 | Hidden Bots/Connect apps 入口存在；Plugins 启停沿用 `mcp_list_plugins` 既有验收。 |
+| GP-A2/A3 | 已实现 | Connect apps 面板（侧栏按钮 + Cmd/Ctrl+Shift+M）：浏览/添加/卸载、Your plugins 管理、全局生效说明、OAuth 提示；单工具启用/禁用走 `TogglePluginTool` → `mcp_tool_toggle` → `mcp-tools-catalog.json` 持久化（未知工具诚实拒绝）。见 Wave M8。 |
 
 ## 已知坑与纪律（本波实测结论）
 
@@ -127,3 +127,13 @@
 3. **Computer tab**：Update/Reset Bot's Computer 真链（两步确认 phase 落 `data/box/update-computer.json`，不假装完成）；tab 底部展示 `computer.json` 真实状态（state/takeover/last_update_at）。
 4. **transcript 卫生**：设置/账号按钮 `silentUser+skipSession`（协议短语 open settings 不再入对话，修复 M4 遗漏的旧调用）；`Updates · update-channel ≠ Update Computer` 调试行删除（回执已由 WAVEG_REPLY_MAP rCheckUpdates/rUpdateComputer/rResetComputer 本地化）；GP-73 检查链断言进 smoke G-8（PASS=50）。
 5. **验证**：moon 373/373；smoke 双跑幂等；CDP 五截图（通用/Computer/用量/更新/凭证）全 tab 切换 + 更新 residual 真文案 + 无协议短语泄漏。
+
+## Wave M8（Connect apps / Marketplace，本轮）
+
+规格：官方 §2.5（侧栏 Connect apps 或 Cmd/Ctrl+Shift+M；浏览/安装插件；插件全局生效；部分需浏览器 OAuth；支持启用/禁用单个插件工具）+ §7.1（Plugins 不在设置内）。
+
+1. **kernel（GP-A3）**：`TurnIntent::TogglePluginTool(namespace_, tool, enabled)` 新意图——面板短语 `enable tool <ns>:<tool> on|off`、自然短语 `enable|disable tool <ns>.<tool>`（首个 `:`/`.` 分割，尾缀 on/off 覆盖动词）；effect `mcp_tool_toggle` cmd `ns|tool|on|off`；`connectors/plugins.mbt` 新增 `PluginToolSpec` + `PluginBundle.mcp_tools` + `PluginMetadata::tool_names()`（seed_demo：Slides 声明 make_deck/list_templates，Calendar 声明 list_events）。
+2. **host**：`mcp_namespace`（install）按 PLUGIN_NS.tools 种入 `data/connectors/mcp-tools-catalog.json`（重装保留旧 enabled 位）；`mcp_tool_toggle` 只允许切换目录中真实存在且命名空间 Ready 的工具，未知/未装诚实 refused（`pretend_toggled:false`）；`mcp_list_plugins` 返回每插件 tools+enabled（与开关同一目录，单一事实源）；`mcp_get_plugin` 元数据带 tools。
+3. **renderer（GP-A2）**：`#connect-apps-modal` 面板——搜索（300ms 防抖，走 Host `q=`）、刷新、"你的插件"/"浏览插件" 两区卡片、添加/卸载按钮（`bitbot.plugins.op` → 与 kernel 相同的 `mcp_namespace`/`mcp_uninstall` raw handler）、每工具启用/禁用开关（未安装时禁用并提示先安装）、全局生效与 OAuth 提示文案；侧栏按钮不再打 `list plugins` 进 transcript，Cmd/Ctrl+Shift+M 直达；语言切换时面板打开即重绘。
+4. **i18n**：ca*（标题/按钮/回执/空态/提示）+ rToolToggle/rPluginInstalled/rPluginUninstalled/rPluginList/rPluginGet ×3 字典；插件名与已知工具描述用 `caName.<id>` / `caToolDesc.<tool>` 键本地化，未知条目原样保留（不硬翻 Host 数据）。
+5. **验证**：moon 373/373（新 wbtest：三形状分类 + `user-Slides|make_deck|off` cmd 断言 + CM-2108 工具元数据断言）；smoke G-9 六断言（install 种入×2 → 面板禁用持久化 → list 反映 installed+enabled=false → natural enable → 未知工具 refused → uninstall Unavailable），PASS=56 FAIL=0 双跑幂等；CDP 七截图：打开（Calendar 已装/Slides 可加）→ 添加 → 两插件全装 → 单工具禁用（已禁用红标）→ 搜索 calendar 过滤 → 关闭无 transcript 污染；对话路径 `enable tool user-Slides:make_deck off` 回执本地化「已切换插件工具 … → 已禁用」。

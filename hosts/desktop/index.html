@@ -917,6 +917,26 @@
         </div>
       </div>
     </div>
+    <!-- GP-A2/A3: Connect apps panel (spec §2.5 · Cmd/Ctrl+Shift+M) -->
+    <div id="connect-apps-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:62;align-items:center;justify-content:center">
+      <div style="width:min(680px,92vw);max-height:82vh;overflow:auto;background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="font-weight:700;font-size:15px" data-i18n="caTitle">Connect apps</div>
+          <button type="button" id="ca-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer" data-i18n="caClose">Close</button>
+        </div>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="caGlobal">Plugins are global to this computer — every Bot can use them once installed.</div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="Search plugins" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 9px" />
+          <button type="button" id="ca-refresh" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer" data-i18n="caRefresh">Refresh</button>
+        </div>
+        <div id="ca-meta" style="color:var(--muted);font:11px/1.4 ui-monospace,monospace;margin-top:8px"></div>
+        <div style="font-weight:700;font-size:13px;margin-top:12px" data-i18n="caYour">Your plugins</div>
+        <div id="ca-installed" style="margin-top:6px"></div>
+        <div style="font-weight:700;font-size:13px;margin-top:14px" data-i18n="caBrowse">Browse plugins</div>
+        <div id="ca-browse" style="margin-top:6px"></div>
+        <div style="color:var(--muted);font-size:11px;margin-top:12px" data-i18n="caAuthNote">Some plugins need browser sign-in (OAuth) before their tools work.</div>
+      </div>
+    </div>
     <div id="agent-info-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div class="title" style="font-weight:700" id="agent-info-title">Agent info</div>
@@ -1718,6 +1738,11 @@
       [/^Voice call started at (?:voice:)?([^\s(]+).*/i, "rVoiceStart"],
       [/^Voice ended; wrote (?:[^\s]*\/)?([\w.-]+?)\.(?:txt|json)\b.*/i, "rVoiceEnd"],
       [/^Voice relay on (?:voice:)?([^\s(]+) \((\d+) turn\(s\)\)\..*/i, "rVoiceRelay"],
+      [/^Tool toggle planned \(CM-0904 catalog\): (\S+) → (\w+)\..*/i, "rToolToggle"],
+      [/^Installed plugin (\S+) \((\d+) skill.*$/i, "rPluginInstalled"],
+      [/^Uninstall plugin (\S+) planned \(CM-2107\)\..*/i, "rPluginUninstalled"],
+      [/^List\/search plugins planned \(CM-0904 directory\)\..*/i, "rPluginList"],
+      [/^GetPlugin (\S+) \((\d+) skill.*$/i, "rPluginGet"],
     ];
     function wavegLocalizeReply(text) {
       const raw = String(text || "");
@@ -1734,6 +1759,12 @@
         if (key === "rAutoReview") return tpl.replace("{via}", m[1]);
         if (key === "rVoiceStart" || key === "rVoiceEnd") return tpl.replace("{id}", m[1]);
         if (key === "rVoiceRelay") return tpl.replace("{n}", m[2]);
+        if (key === "rPluginInstalled" || key === "rPluginUninstalled" || key === "rPluginGet")
+          return tpl.replace("{p}", m[1]);
+        if (key === "rToolToggle")
+          return tpl
+            .replace("{t}", m[1])
+            .replace("{s}", m[2] === "enabled" ? wavegT("caToolEnabled") : wavegT("caToolDisabled"));
         return tpl;
       }
       return raw;
@@ -3156,6 +3187,7 @@
             "mcp_uninstall",
             "mcp_get_plugin",
             "mcp_list_plugins",
+            "mcp_tool_toggle",
             "export_pack",
             "computer_use",
             "voice_session",
@@ -4233,6 +4265,24 @@
                       (p.status || (p.refused ? "refused" : "?")) +
                       " · skills×" +
                       (p.skill_count != null ? p.skill_count : "?");
+                  }
+                } else if (h.kind === "mcp_tool_toggle") {
+                  label =
+                    "mcp_tool:" +
+                    (p.namespace || "?") +
+                    "." +
+                    (p.tool || "?") +
+                    ":" +
+                    (p.refused ? "REFUSED" : p.enabled ? "on" : "off");
+                  const pluginsMeta = document.getElementById("plugins-meta");
+                  if (pluginsMeta) {
+                    pluginsMeta.textContent =
+                      "tool " +
+                      (p.namespace || "?") +
+                      "." +
+                      (p.tool || "?") +
+                      " · " +
+                      (p.refused ? "refused" : p.enabled ? "enabled" : "disabled");
                   }
                 } else if (h.kind === "mcp_list_plugins") {
                   label =
@@ -5416,10 +5466,232 @@
         }
       });
     }
+    // ── GP-A2/A3 Connect apps panel (spec §2.5) ────────────────────────────
+    // Reads/toggles go through window.bitbot.plugins.* → the same Host raw
+    // handlers the kernel uses; Add/Uninstall write the durable catalogs.
+    let caPlugins = [];
+    function caMsg(text) {
+      const el = document.getElementById("ca-meta");
+      if (el) el.textContent = text || "";
+    }
+    function caCard(plugin) {
+      const wrap = document.createElement("div");
+      wrap.dataset.pluginId = plugin.id || "";
+      wrap.style.cssText =
+        "border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--input-bg)";
+      const head = document.createElement("div");
+      head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px";
+      const title = document.createElement("div");
+      const nameEl = document.createElement("span");
+      nameEl.style.fontWeight = "700";
+      const nk = "caName." + (plugin.id || "");
+      const nt = wavegT(nk);
+      const shownName = nt === nk ? plugin.display_name || plugin.id : nt;
+      nameEl.textContent = shownName;
+      const nsEl = document.createElement("span");
+      nsEl.style.cssText = "color:var(--muted);font:11px/1.4 ui-monospace,monospace;margin-left:8px";
+      nsEl.textContent = plugin.mcp_namespace || "";
+      title.appendChild(nameEl);
+      title.appendChild(nsEl);
+      head.appendChild(title);
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;gap:6px;align-items:center";
+      if (plugin.installed) {
+        const uninstall = document.createElement("button");
+        uninstall.type = "button";
+        uninstall.textContent = wavegT("caUninstall");
+        uninstall.style.cssText =
+          "background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px";
+        uninstall.addEventListener("click", async () => {
+          uninstall.disabled = true;
+          const r = await window.bitbot.plugins.op({ action: "uninstall", plugin_id: plugin.id });
+          uninstall.disabled = false;
+          if (r && r.ok) {
+            caMsg(wavegT("caUninstalled").replace("{p}", shownName));
+            await refreshConnectApps();
+          } else {
+            caMsg(wavegT("caOpFailed") + ": " + ((r && (r.error || r.refused)) || "unknown"));
+          }
+        });
+        actions.appendChild(uninstall);
+      } else {
+        const add = document.createElement("button");
+        add.type = "button";
+        add.textContent = wavegT("caAdd");
+        add.style.cssText =
+          "background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:4px 12px;cursor:pointer;font-weight:700;font-size:12px";
+        add.addEventListener("click", async () => {
+          add.disabled = true;
+          const r = await window.bitbot.plugins.op({ action: "install", plugin_id: plugin.id });
+          add.disabled = false;
+          if (r && r.ok) {
+            caMsg(wavegT("caInstalled").replace("{p}", shownName));
+            await refreshConnectApps();
+          } else {
+            caMsg(wavegT("caOpFailed") + ": " + ((r && (r.error || r.refused)) || "unknown"));
+          }
+        });
+        actions.appendChild(add);
+      }
+      head.appendChild(actions);
+      wrap.appendChild(head);
+      const sub = document.createElement("div");
+      sub.style.cssText = "color:var(--muted);font-size:11px;margin-top:2px";
+      sub.textContent =
+        wavegT("caSkills") + "×" + (plugin.skill_count != null ? plugin.skill_count : (plugin.skills || []).length) +
+        (plugin.id === "plugin-calendar" ? " · " + wavegT("caOAuthHint") : "");
+      wrap.appendChild(sub);
+      // GP-A3: per-tool enable/disable (only meaningful once installed).
+      const tools = Array.isArray(plugin.tools) ? plugin.tools : [];
+      if (tools.length) {
+        const toolsBox = document.createElement("div");
+        toolsBox.style.cssText = "margin-top:8px;display:flex;flex-direction:column;gap:4px";
+        for (const t of tools) {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px";
+          const lab = document.createElement("span");
+          const tn = document.createElement("code");
+          tn.textContent = (plugin.mcp_namespace || "") + "." + t.name;
+          tn.style.cssText = "font:11px/1.4 ui-monospace,monospace";
+          lab.appendChild(tn);
+          if (t.description) {
+            const d = document.createElement("span");
+            d.style.cssText = "color:var(--muted);margin-left:6px";
+            // Known tool descriptions are localized; unknown stay verbatim.
+            const dk = "caToolDesc." + t.name;
+            const dt = wavegT(dk);
+            d.textContent = "— " + (dt === dk ? t.description : dt);
+            lab.appendChild(d);
+          }
+          row.appendChild(lab);
+          const tog = document.createElement("button");
+          tog.type = "button";
+          tog.dataset.toolKey = (plugin.mcp_namespace || "") + "." + t.name;
+          const on = t.enabled !== false;
+          tog.textContent = on ? wavegT("caToolOn") : wavegT("caToolOff");
+          tog.style.cssText =
+            "border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;border:1px solid " +
+            (on ? "var(--line)" : "var(--danger)") +
+            ";background:" + (on ? "var(--accent-soft)" : "var(--danger-bg)") +
+            ";color:" + (on ? "var(--ink)" : "var(--danger-ink)");
+          if (!plugin.installed) {
+            tog.disabled = true;
+            tog.style.opacity = "0.45";
+            tog.title = wavegT("caToolNeedInstall");
+          }
+          tog.addEventListener("click", async () => {
+            tog.disabled = true;
+            const r = await window.bitbot.plugins.toolToggle({
+              namespace: plugin.mcp_namespace,
+              tool: t.name,
+              enabled: !on,
+            });
+            tog.disabled = false;
+            if (r && r.ok) {
+              caMsg(
+                wavegT("caToolToggled") +
+                  " · " +
+                  (r.namespace || plugin.mcp_namespace) +
+                  "." +
+                  (r.tool || t.name) +
+                  " → " +
+                  (r.enabled ? "on" : "off"),
+              );
+              await refreshConnectApps();
+            } else {
+              caMsg(wavegT("caOpFailed") + ": " + ((r && (r.error || r.refused)) || "unknown"));
+            }
+          });
+          row.appendChild(tog);
+          toolsBox.appendChild(row);
+        }
+        wrap.appendChild(toolsBox);
+      }
+      return wrap;
+    }
+    function renderConnectApps() {
+      const inst = document.getElementById("ca-installed");
+      const browse = document.getElementById("ca-browse");
+      if (inst) inst.textContent = "";
+      if (browse) browse.textContent = "";
+      const installed = caPlugins.filter((p) => p && p.installed);
+      const available = caPlugins.filter((p) => p && !p.installed);
+      if (inst) {
+        if (installed.length) {
+          for (const p of installed) inst.appendChild(caCard(p));
+        } else {
+          const empty = document.createElement("div");
+          empty.style.cssText = "color:var(--muted);font-size:12px";
+          empty.textContent = wavegT("caNoneInstalled");
+          inst.appendChild(empty);
+        }
+      }
+      if (browse) {
+        if (available.length) {
+          for (const p of available) browse.appendChild(caCard(p));
+        } else {
+          const empty = document.createElement("div");
+          empty.style.cssText = "color:var(--muted);font-size:12px";
+          empty.textContent = wavegT("caNoneBrowse");
+          browse.appendChild(empty);
+        }
+      }
+    }
+    async function refreshConnectApps() {
+      if (!window.bitbot || !window.bitbot.plugins || !window.bitbot.plugins.list) {
+        caMsg("Host plugins API unavailable");
+        return;
+      }
+      const qEl = document.getElementById("ca-search");
+      const query = (qEl && qEl.value ? String(qEl.value) : "").trim();
+      caMsg(wavegT("caLoading"));
+      const r = await window.bitbot.plugins.list({ query });
+      if (r && r.ok) {
+        caPlugins = Array.isArray(r.plugins) ? r.plugins : [];
+        caMsg(
+          wavegT("caCount") +
+            "×" +
+            (r.count != null ? r.count : caPlugins.length) +
+            (query ? " · q=" + query : ""),
+        );
+      } else {
+        caPlugins = [];
+        caMsg(wavegT("caOpFailed") + ": " + ((r && r.error) || "host_failed"));
+      }
+      renderConnectApps();
+    }
+    function openConnectApps() {
+      const m = document.getElementById("connect-apps-modal");
+      if (!m) return;
+      m.style.display = "flex";
+      refreshConnectApps();
+      const q = document.getElementById("ca-search");
+      if (q) setTimeout(() => q.focus(), 50);
+    }
+    function closeConnectApps() {
+      const m = document.getElementById("connect-apps-modal");
+      if (m) m.style.display = "none";
+    }
     const connectAppsBtn = document.getElementById("connect-apps-btn");
     if (connectAppsBtn) {
-      connectAppsBtn.addEventListener("click", () => {
-        runUserTurn("list plugins", {});
+      connectAppsBtn.addEventListener("click", () => openConnectApps());
+    }
+    const caCloseBtn = document.getElementById("ca-close");
+    if (caCloseBtn) caCloseBtn.addEventListener("click", closeConnectApps);
+    const caModalEl = document.getElementById("connect-apps-modal");
+    if (caModalEl) {
+      caModalEl.addEventListener("click", (ev) => {
+        if (ev.target === caModalEl) closeConnectApps();
+      });
+    }
+    const caRefreshBtn = document.getElementById("ca-refresh");
+    if (caRefreshBtn) caRefreshBtn.addEventListener("click", () => refreshConnectApps());
+    const caSearchEl = document.getElementById("ca-search");
+    if (caSearchEl) {
+      let caSearchTimer = null;
+      caSearchEl.addEventListener("input", () => {
+        clearTimeout(caSearchTimer);
+        caSearchTimer = setTimeout(() => refreshConnectApps(), 300);
       });
     }
 
@@ -5932,6 +6204,41 @@
         rCheckUpdates: "已打开设置 → 更新（update-channel），与「更新 Bot 的 Computer」是两回事。",
         rUpdateComputer: "已发起更新 Bot 的 Computer（两步确认，Host 真实执行）。",
         rResetComputer: "已发起重置 Bot 的 Computer（非首选；会重建云电脑）。",
+        caTitle: "连接应用",
+        caClose: "关闭",
+        caGlobal: "插件对这台电脑全局生效 — 安装后所有 Bot 都能使用。",
+        caSearchPh: "搜索插件",
+        caRefresh: "刷新",
+        caYour: "你的插件",
+        caBrowse: "浏览插件",
+        caAuthNote: "部分插件需要先在浏览器完成登录授权（OAuth）才能使用其工具。",
+        caAdd: "添加",
+        caUninstall: "卸载",
+        caInstalled: "已安装插件 {p}（Host 目录已就绪）。",
+        caUninstalled: "已卸载插件 {p}（命名空间转为不可用）。",
+        caOpFailed: "操作失败",
+        caSkills: "技能",
+        caOAuthHint: "需浏览器授权",
+        caToolOn: "已启用",
+        caToolOff: "已禁用",
+        caToolEnabled: "已启用",
+        caToolDisabled: "已禁用",
+        caToolNeedInstall: "先安装插件后才能启用/禁用工具",
+        caToolToggled: "工具开关已生效",
+        caNoneInstalled: "还没有安装插件。",
+        caNoneBrowse: "没有更多可浏览的插件。",
+        caCount: "插件",
+        caLoading: "读取 Host 插件目录中…",
+        rToolToggle: "已切换插件工具 {t} → {s}（Host 目录持久化）。",
+        rPluginInstalled: "已安装插件 {p}，MCP Live 调用仍需 Host FFI。",
+        rPluginUninstalled: "已发起卸载插件 {p}（Host 将命名空间置为 Unavailable）。",
+        rPluginList: "已打开插件目录（Host 返回可用连接器）。",
+        rPluginGet: "已读取插件 {p} 元数据。",
+        "caName.plugin-slides": "幻灯片助手",
+        "caName.plugin-calendar": "日历同步",
+        "caToolDesc.make_deck": "根据大纲生成幻灯片。",
+        "caToolDesc.list_templates": "列出可用幻灯片模板。",
+        "caToolDesc.list_events": "列出即将到来的日历日程。",
         voiceRecHint: "录音中…再点 🎙 或按 Ctrl/Cmd+D 停止",
         voiceChatBtn: "🎧 语音对话",
         voiceChatLive: "语音对话进行中",
@@ -6111,6 +6418,41 @@
         rCheckUpdates: "已開啟設定 → 更新（update-channel），與「更新 Bot 的 Computer」是兩回事。",
         rUpdateComputer: "已發起更新 Bot 的 Computer（兩步確認，Host 真實執行）。",
         rResetComputer: "已發起重設 Bot 的 Computer（非首選；會重建雲端電腦）。",
+        caTitle: "連接應用",
+        caClose: "關閉",
+        caGlobal: "外掛對這台電腦全域生效 — 安裝後所有 Bot 都能使用。",
+        caSearchPh: "搜尋外掛",
+        caRefresh: "重新整理",
+        caYour: "你的外掛",
+        caBrowse: "瀏覽外掛",
+        caAuthNote: "部分外掛需先在瀏覽器完成登入授權（OAuth）才能使用其工具。",
+        caAdd: "新增",
+        caUninstall: "解除安裝",
+        caInstalled: "已安裝外掛 {p}（Host 目錄已就緒）。",
+        caUninstalled: "已解除安裝外掛 {p}（命名空間轉為不可用）。",
+        caOpFailed: "操作失敗",
+        caSkills: "技能",
+        caOAuthHint: "需瀏覽器授權",
+        caToolOn: "已啟用",
+        caToolOff: "已停用",
+        caToolEnabled: "已啟用",
+        caToolDisabled: "已停用",
+        caToolNeedInstall: "先安裝外掛後才能啟用/停用工具",
+        caToolToggled: "工具開關已生效",
+        caNoneInstalled: "還沒有安裝外掛。",
+        caNoneBrowse: "沒有更多可瀏覽的外掛。",
+        caCount: "外掛",
+        caLoading: "讀取 Host 外掛目錄中…",
+        rToolToggle: "已切換外掛工具 {t} → {s}（Host 目錄持久化）。",
+        rPluginInstalled: "已安裝外掛 {p}，MCP Live 呼叫仍需 Host FFI。",
+        rPluginUninstalled: "已發起解除安裝外掛 {p}（Host 將命名空間設為 Unavailable）。",
+        rPluginList: "已開啟外掛目錄（Host 返回可用連線器）。",
+        rPluginGet: "已讀取外掛 {p} 中繼資料。",
+        "caName.plugin-slides": "投影片助手",
+        "caName.plugin-calendar": "行事曆同步",
+        "caToolDesc.make_deck": "依大綱產生投影片。",
+        "caToolDesc.list_templates": "列出可用投影片範本。",
+        "caToolDesc.list_events": "列出即將到來的行事曆行程。",
         voiceRecHint: "錄音中…再點 🎙 或按 Ctrl/Cmd+D 停止",
         voiceChatBtn: "🎧 語音對話",
         voiceChatLive: "語音對話進行中",
@@ -6290,6 +6632,41 @@
         rCheckUpdates: "Settings → Updates opened (update-channel), separate from Update Bot's Computer.",
         rUpdateComputer: "Update Bot's Computer started (two-step confirm, real Host).",
         rResetComputer: "Reset Bot's Computer started (not preferred; rebuilds the box).",
+        caTitle: "Connect apps",
+        caClose: "Close",
+        caGlobal: "Plugins are global to this computer — every Bot can use them once installed.",
+        caSearchPh: "Search plugins",
+        caRefresh: "Refresh",
+        caYour: "Your plugins",
+        caBrowse: "Browse plugins",
+        caAuthNote: "Some plugins need browser sign-in (OAuth) before their tools work.",
+        caAdd: "Add",
+        caUninstall: "Uninstall",
+        caInstalled: "Installed plugin {p} (Host catalog ready).",
+        caUninstalled: "Uninstalled plugin {p} (namespace now unavailable).",
+        caOpFailed: "Operation failed",
+        caSkills: "Skills",
+        caOAuthHint: "browser auth required",
+        caToolOn: "Enabled",
+        caToolOff: "Disabled",
+        caToolEnabled: "enabled",
+        caToolDisabled: "disabled",
+        caToolNeedInstall: "Install the plugin first to toggle its tools",
+        caToolToggled: "Tool toggle applied",
+        caNoneInstalled: "No plugins installed yet.",
+        caNoneBrowse: "No more plugins to browse.",
+        caCount: "Plugins",
+        caLoading: "Reading Host plugin catalog…",
+        rToolToggle: "Plugin tool {t} → {s} (persisted in Host catalog).",
+        rPluginInstalled: "Installed plugin {p}; MCP Live calls still need Host FFI.",
+        rPluginUninstalled: "Uninstall plugin {p} started (Host sets namespace Unavailable).",
+        rPluginList: "Plugin directory opened (Host returns available connectors).",
+        rPluginGet: "Plugin {p} metadata read.",
+        "caName.plugin-slides": "Slides helper",
+        "caName.plugin-calendar": "Calendar sync",
+        "caToolDesc.make_deck": "Render a deck from an outline.",
+        "caToolDesc.list_templates": "List available deck templates.",
+        "caToolDesc.list_events": "List upcoming calendar events.",
         voiceRecHint: "Recording… tap 🎙 again or press Ctrl/Cmd+D to stop",
         voiceChatBtn: "🎧 Voice chat",
         voiceChatLive: "Voice chat in progress",
@@ -6380,6 +6757,9 @@
         if (typeof refreshModelPicker === "function") refreshModelPicker().catch(() => {});
         if (typeof refreshSessions === "function") refreshSessions().catch(() => {});
         if (typeof refreshBots === "function") refreshBots().catch(() => {});
+        const caModal = document.getElementById("connect-apps-modal");
+        if (caModal && caModal.style.display !== "none" && typeof renderConnectApps === "function")
+          renderConnectApps();
       } catch (_) { /* not booted yet */ }
     }
     /** GP-70b: renderer-side theme override follows persisted appearance. */
@@ -6929,6 +7309,9 @@
         } else if (ev.key === "f" || ev.key === "F") {
           ev.preventDefault();
           openGpPanel("computer");
+        } else if ((ev.key === "m" || ev.key === "M") && ev.shiftKey) {
+          ev.preventDefault();
+          openConnectApps();
         }
       });
       if (window.bitbot.onMenuSidebarToggle) {

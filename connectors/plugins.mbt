@@ -13,12 +13,27 @@ pub extend PluginSkillSpec with Eq::{equal, not_equal}
 pub extend PluginSkillSpec with Debug::{to_repr}
 
 ///|
+/// GP-A3: MCP tool shipped by a plugin (enable/disable per tool, spec §2.5).
+pub(all) struct PluginToolSpec {
+  name : String
+  description : String
+} derive(Eq, Debug)
+
+///|
+pub extend PluginToolSpec with Eq::{equal, not_equal}
+
+///|
+pub extend PluginToolSpec with Debug::{to_repr}
+
+///|
 pub(all) struct PluginBundle {
   id : String
   display_name : String
   skills : Array[PluginSkillSpec]
   /// MCP namespace id exposed after install (CM-0904). Empty = skills-only.
   mcp_namespace : String
+  /// GP-A3: declared MCP tools (catalog surface; enabled flags live Host-side).
+  mcp_tools : Array[PluginToolSpec]
 } derive(Eq, Debug)
 
 ///|
@@ -56,6 +71,16 @@ pub fn PluginRegistry::seed_demo() -> PluginRegistry {
       },
     ],
     mcp_namespace: "user-Slides",
+    mcp_tools: [
+      {
+        name: "make_deck",
+        description: "Render a deck from an outline.",
+      },
+      {
+        name: "list_templates",
+        description: "List available deck templates.",
+      },
+    ],
   })
   reg.available.push({
     id: "plugin-calendar",
@@ -68,6 +93,12 @@ pub fn PluginRegistry::seed_demo() -> PluginRegistry {
       },
     ],
     mcp_namespace: "user-Calendar",
+    mcp_tools: [
+      {
+        name: "list_events",
+        description: "List upcoming calendar events.",
+      },
+    ],
   })
   reg
 }
@@ -222,6 +253,7 @@ pub(all) struct PluginMetadata {
   display_name : String
   skills : Array[PluginSkillSpec]
   mcp_namespace : String
+  mcp_tools : Array[PluginToolSpec]
 } derive(Eq, Debug)
 
 ///|
@@ -242,11 +274,16 @@ pub fn PluginRegistry::get_plugin(
       for s in b.skills {
         skills.push(s)
       }
+      let tools : Array[PluginToolSpec] = []
+      for t in b.mcp_tools {
+        tools.push(t)
+      }
       return Ok({
         id: b.id,
         display_name: b.display_name,
         skills,
         mcp_namespace: b.mcp_namespace,
+        mcp_tools: tools,
       })
     }
   }
@@ -258,6 +295,16 @@ pub fn PluginMetadata::skill_names(self : PluginMetadata) -> Array[String] {
   let out : Array[String] = []
   for s in self.skills {
     out.push(s.name)
+  }
+  out
+}
+
+///|
+/// GP-A3: declared MCP tool names (for panel + toggle honesty checks).
+pub fn PluginMetadata::tool_names(self : PluginMetadata) -> Array[String] {
+  let out : Array[String] = []
+  for t in self.mcp_tools {
+    out.push(t.name)
   }
   out
 }

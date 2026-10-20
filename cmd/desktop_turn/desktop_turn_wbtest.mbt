@@ -1081,6 +1081,36 @@ test "desktop_turn_install_plugin_and_setup_slack" {
   assert_true(lp.ok)
   assert_eq(lp.intent, "list_plugins")
   assert_eq(lp.effects[0].kind, "mcp_list_plugins")
+  // GP-A3: per-tool enable/disable (panel ns:tool on|off + natural ns.tool).
+  match classify_intent("enable tool user-Slides:make_deck off") {
+    TogglePluginTool(namespace_~, tool~, enabled~) => {
+      assert_eq(namespace_, "user-Slides")
+      assert_eq(tool, "make_deck")
+      assert_eq(enabled, false)
+    }
+    _ => fail("expected TogglePluginTool (panel off)")
+  }
+  match classify_intent("disable tool user-Slides:make_deck") {
+    TogglePluginTool(namespace_~, tool~, enabled~) => {
+      assert_eq(namespace_, "user-Slides")
+      assert_eq(tool, "make_deck")
+      assert_eq(enabled, false)
+    }
+    _ => fail("expected TogglePluginTool (natural disable)")
+  }
+  match classify_intent("enable tool user-Calendar.list_events") {
+    TogglePluginTool(namespace_~, tool~, enabled~) => {
+      assert_eq(namespace_, "user-Calendar")
+      assert_eq(tool, "list_events")
+      assert_eq(enabled, true)
+    }
+    _ => fail("expected TogglePluginTool (natural enable)")
+  }
+  let tt = run_desktop_turn("enable tool user-Slides:make_deck off", turn_id="tt-1")
+  assert_true(tt.ok)
+  assert_eq(tt.intent, "toggle_plugin_tool")
+  assert_eq(tt.effects[0].kind, "mcp_tool_toggle")
+  assert_eq(tt.effects[0].command, "user-Slides|make_deck|off")
   let s = run_desktop_turn("setup slack", turn_id="slack-1")
   assert_true(s.ok)
   assert_eq(s.intent, "setup_slack")

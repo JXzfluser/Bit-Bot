@@ -1409,6 +1409,119 @@ ipcMain.handle("bitbot:ota:restart", async () => {
   return { ok: true, residual: false, restarting: true };
 });
 
+/**
+ * GP-A2/A3 — Connect apps panel reads/toggles through the same Host raw
+ * handlers the kernel effects use (single durable store, never a fake list).
+ */
+ipcMain.handle("bitbot:plugins:list", async (_e, opts) => {
+  try {
+    const query = String((opts && opts.query) || "");
+    const results = await ffi.executeHostEffects(
+      [{ kind: "mcp_list_plugins", command: query ? "q=" + query : "q=" }],
+      { sessionId: "plugins-panel" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === "mcp_list_plugins");
+    let payload = {};
+    try {
+      payload = JSON.parse((hit && hit.stdout) || "{}");
+    } catch {
+      payload = {};
+    }
+    return {
+      ok: Boolean(hit && hit.ok),
+      plugins: Array.isArray(payload.plugins) ? payload.plugins : [],
+      count: payload.count != null ? payload.count : null,
+      query: payload.query || query || null,
+      error: hit && !hit.ok ? hit.error || "host_failed" : undefined,
+      pretend_listing: false,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      plugins: [],
+      error: String(err && err.message ? err.message : err),
+      pretend_listing: false,
+    };
+  }
+});
+ipcMain.handle("bitbot:plugins:toolToggle", async (_e, opts) => {
+  const ns = String((opts && opts.namespace) || "").trim();
+  const tool = String((opts && opts.tool) || "").trim();
+  const enabled = Boolean(opts && opts.enabled);
+  if (!ns || !tool) return { ok: false, error: "namespace+tool required" };
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind: "mcp_tool_toggle", command: `${ns}|${tool}|${enabled ? "on" : "off"}` }],
+      { sessionId: "plugins-panel" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === "mcp_tool_toggle");
+    let payload = {};
+    try {
+      payload = JSON.parse((hit && hit.stdout) || "{}");
+    } catch {
+      payload = {};
+    }
+    return {
+      ok: Boolean(hit && hit.ok),
+      refused: Boolean(payload.refused),
+      error: payload.error || (hit && !hit.ok ? hit.error || "host_failed" : undefined),
+      namespace: payload.namespace || ns,
+      tool: payload.tool || tool,
+      enabled: payload.enabled === undefined ? null : Boolean(payload.enabled),
+      pretend_toggled: false,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+      pretend_toggled: false,
+    };
+  }
+});
+/**
+ * GP-A2: Add / Uninstall from the Connect apps panel. Same Host raw handlers
+ * as the kernel InstallPlugin / UninstallPlugin effects (durable stores,
+ * honest refusal for unknown ids; no transcript noise for menu clicks).
+ */
+ipcMain.handle("bitbot:plugins:op", async (_e, opts) => {
+  const action = String((opts && opts.action) || "");
+  const pluginId = String((opts && opts.plugin_id) || "").trim();
+  if (!pluginId || (action !== "install" && action !== "uninstall")) {
+    return { ok: false, error: "action must be install|uninstall with plugin_id" };
+  }
+  const kind = action === "install" ? "mcp_namespace" : "mcp_uninstall";
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind, command: pluginId }],
+      { sessionId: "plugins-panel" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === kind);
+    let payload = {};
+    try {
+      payload = JSON.parse((hit && hit.stdout) || "{}");
+    } catch {
+      payload = {};
+    }
+    return {
+      ok: Boolean(hit && hit.ok),
+      refused: Boolean(payload.refused),
+      error: payload.error || (hit && !hit.ok ? hit.error || "host_failed" : undefined),
+      plugin_id: payload.plugin_id || pluginId,
+      namespace: payload.namespace || null,
+      status: payload.status || null,
+      skills: Array.isArray(payload.skills) ? payload.skills : null,
+      tools: Array.isArray(payload.tools) ? payload.tools : null,
+      pretend_registered: false,
+      pretend_uninstalled: false,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err && err.message ? err.message : err),
+    };
+  }
+});
+
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   // Optional per-turn Host env (e.g. BITBOT_SLACK_CLAIM) — restore after turn.
   const envPatch = (opts && opts.env && typeof opts.env === "object") ? opts.env : null;

@@ -66,6 +66,7 @@ pub(all) enum TurnIntent {
   UninstallPlugin(plugin_id~ : String)
   GetPlugin(plugin_id~ : String)
   ListPlugins(query~ : String)
+  TogglePluginTool(namespace_~ : String, tool~ : String, enabled~ : Bool)
   SetupSlack
   FsList(path~ : String)
   FsRead(path~ : String)
@@ -219,6 +220,7 @@ pub fn TurnIntent::name(self : TurnIntent) -> String {
     UninstallPlugin(_) => "uninstall_plugin"
     GetPlugin(_) => "get_plugin"
     ListPlugins(_) => "list_plugins"
+    TogglePluginTool(_) => "toggle_plugin_tool"
     SetupSlack => "setup_slack"
     FsList(_) => "fs_list"
     FsRead(_) => "fs_read"
@@ -764,6 +766,61 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
     }
     if id != "" {
       return InstallPlugin(plugin_id=id)
+    }
+  }
+  // GP-A3: per-tool enable/disable (spec §2.5 支持启用/禁用单个插件工具).
+  // Panel form: "enable tool <ns>:<tool> on|off"; natural form:
+  // "enable tool <ns>.<tool>" / "disable tool <ns>.<tool>".
+  if low.has_prefix("enable tool ") || low.has_prefix("disable tool ") {
+    let enabling = low.has_prefix("enable tool ")
+    let rest =
+      if enabling {
+        trimmed[12:].trim().to_owned()
+      } else {
+        trimmed[13:].trim().to_owned()
+      }
+    let spec_len =
+      match rest.find(" ") {
+        Some(i) => i
+        None => rest.length()
+      }
+    let spec = rest[:spec_len].trim()
+    let tail =
+      if rest.length() > spec_len { rest[spec_len:].trim() } else {
+        ""
+      }
+    if spec != "" {
+      let eff_on = if tail == "on" {
+        true
+      } else if tail == "off" {
+        false
+      } else {
+        enabling
+      }
+      // ns:tool (panel) or ns.tool (natural) — first separator splits.
+      let col = spec.find(":")
+      let dot = spec.find(".")
+      let cut = match col {
+        Some(c) => {
+          match dot {
+            Some(d) => if c < d { Some(c) } else { Some(d) }
+            None => Some(c)
+          }
+        }
+        None => dot
+      }
+      match cut {
+        Some(i) => {
+          let ns = spec[:i].trim()
+          let tool = spec[i + 1:].trim()
+          if ns != "" && tool != "" {
+            let ns_id = ns.to_owned()
+            let tool_id = tool.to_owned()
+            return TogglePluginTool(namespace_=ns_id, tool=tool_id, enabled=eff_on)
+          }
+        }
+        None => ()
+      }
     }
   }
   if low == "setup slack" ||
@@ -1966,6 +2023,30 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "List/search plugins planned (CM-0904 directory). Host returns available connectors.",
+        intent,
+        ctx~,
+        effects=[effect],
+        needs_host_ffi=true,
+      )
+    }
+    TogglePluginTool(namespace_~, tool~, enabled~) => {
+      let flag = if enabled { "on" } else { "off" }
+      let state_word = if enabled { "enabled" } else { "disabled" }
+      let effect : DesktopEffect = {
+        kind: "mcp_tool_toggle",
+        command: namespace_ + "|" + tool + "|" + flag,
+        needs_host_ffi: true,
+      }
+      deliver_ok(
+        trimmed,
+        turn_id,
+        "Tool toggle planned (CM-0904 catalog): " +
+          namespace_ +
+          "." +
+          tool +
+          " → " +
+          state_word +
+          ". Host refuses unknown tools.",
         intent,
         ctx~,
         effects=[effect],

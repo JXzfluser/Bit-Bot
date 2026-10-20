@@ -21395,12 +21395,14 @@ function createHostFfi(repoRoot) {
           display_name: "Slides helper",
           mcp_namespace: "user-Slides",
           skills: ["slides-quickstart"],
+          tools: ["make_deck", "list_templates"],
         },
         "plugin-calendar": {
           id: "plugin-calendar",
           display_name: "Calendar sync",
           mcp_namespace: "user-Calendar",
           skills: ["calendar-sync"],
+          tools: ["list_events"],
         },
       };
       const meta = PLUGIN_META[pluginId];
@@ -21474,6 +21476,102 @@ function createHostFfi(repoRoot) {
       });
     }
 
+    if (kind === "mcp_tool_toggle") {
+      // GP-A3 — enable/disable a single plugin tool (spec §2.5).
+      // command: namespace|tool|on|off. Durable flags live in
+      // data/connectors/mcp-tools-catalog.json (seeded by mcp_namespace).
+      const nsDir = path.join(REPO_ROOT, "data", "connectors", "mcp-namespaces");
+      fs.mkdirSync(nsDir, { recursive: true });
+      const toolsCatalogPath = path.join(
+        REPO_ROOT,
+        "data",
+        "connectors",
+        "mcp-tools-catalog.json",
+      );
+      const raw = String(cmd || "").trim();
+      const parts = raw.split("|").map((s) => s.trim()).filter(Boolean);
+      const namespace = parts[0] || "";
+      const toolName = parts[1] || "";
+      const enable = parts[2] === "on";
+      const snapPath = path.join(
+        nsDir,
+        `tool-toggle-${(namespace || "ns").replace(/[^\w.-]+/g, "_")}-${(toolName || "t").replace(/[^\w.-]+/g, "_")}-${Date.now().toString(36)}.json`,
+      );
+      const refuse = (error, extra) => {
+        const artifact = {
+          mode: "host_mcp_tool_toggle",
+          ok: false,
+          refused: true,
+          pretend_toggled: false,
+          namespace,
+          tool: toolName,
+          enabled: enable,
+          error,
+          at,
+          ...(extra || {}),
+        };
+        fs.writeFileSync(snapPath, JSON.stringify(artifact, null, 2));
+        return okJson(kind, raw, { ...artifact, path: snapPath });
+      };
+      if (!namespace || !toolName) {
+        return refuse("usage: namespace|tool|on|off");
+      }
+      let toolsCat = null;
+      try {
+        if (fs.existsSync(toolsCatalogPath)) {
+          toolsCat = JSON.parse(fs.readFileSync(toolsCatalogPath, "utf8"));
+        }
+      } catch {
+        toolsCat = null;
+      }
+      const tools = toolsCat && Array.isArray(toolsCat.tools) ? toolsCat.tools : [];
+      const hit = tools.find(
+        (t) => t && (t.namespace || t.namespace_) === namespace && t.name === toolName,
+      );
+      if (!hit) {
+        // Honest refusal — never invent a tool that the catalog has not seen.
+        return refuse("unknown tool: " + namespace + "." + toolName);
+      }
+      const nsCatalogPath = path.join(nsDir, "catalog.json");
+      let nsCatalog = { namespaces: {} };
+      try {
+        if (fs.existsSync(nsCatalogPath)) {
+          nsCatalog = { ...nsCatalog, ...JSON.parse(fs.readFileSync(nsCatalogPath, "utf8")) };
+        }
+      } catch {
+        /* defaults */
+      }
+      const nsEntry = (nsCatalog.namespaces || {})[namespace];
+      if (!nsEntry || nsEntry.status !== "Ready") {
+        return refuse("plugin namespace not installed: " + namespace, {
+          namespace_status: (nsEntry && nsEntry.status) || "Missing",
+        });
+      }
+      hit.enabled = enable;
+      hit.toggled_at = at;
+      toolsCat.tools = tools;
+      toolsCat.updated_at = at;
+      toolsCat.pretend_toggled = false;
+      fs.writeFileSync(toolsCatalogPath, JSON.stringify(toolsCat, null, 2));
+      const entry = {
+        mode: "host_mcp_tool_toggle",
+        pretend_toggled: false,
+        namespace,
+        plugin_id: hit.plugin_id || nsEntry.plugin_id || null,
+        tool: toolName,
+        enabled: enable,
+        tool_enabled: enable,
+        catalog_path: toolsCatalogPath,
+        at,
+      };
+      fs.writeFileSync(snapPath, JSON.stringify(entry, null, 2));
+      appendJsonl(path.join(nsDir, "tool-toggles.jsonl"), {
+        ...entry,
+        path: snapPath,
+      });
+      return okJson(kind, raw, { ...entry, path: snapPath, ok: true });
+    }
+
     if (kind === "mcp_list_plugins") {
       // CM-0904 directory — SearchPlugins / list available connectors.
       const nsDir = path.join(REPO_ROOT, "data", "connectors", "mcp-namespaces");
@@ -21489,12 +21587,25 @@ function createHostFfi(repoRoot) {
           display_name: "Slides helper",
           mcp_namespace: "user-Slides",
           skills: ["slides-quickstart"],
+          tools: [
+            { name: "make_deck", description: "Render a deck from an outline." },
+            {
+              name: "list_templates",
+              description: "List available deck templates.",
+            },
+          ],
         },
         {
           id: "plugin-calendar",
           display_name: "Calendar sync",
           mcp_namespace: "user-Calendar",
           skills: ["calendar-sync"],
+          tools: [
+            {
+              name: "list_events",
+              description: "List upcoming calendar events.",
+            },
+          ],
         },
       ];
       let installed = [];
@@ -21508,6 +21619,26 @@ function createHostFfi(repoRoot) {
       } catch {
         installed = [];
       }
+      // GP-A3: per-tool enabled flags from the durable tools catalog.
+      const toolsEnabled = new Map();
+      try {
+        const tcPath = path.join(
+          REPO_ROOT,
+          "data",
+          "connectors",
+          "mcp-tools-catalog.json",
+        );
+        if (fs.existsSync(tcPath)) {
+          const tc = JSON.parse(fs.readFileSync(tcPath, "utf8"));
+          for (const t of tc.tools || []) {
+            if (!t || !t.name) continue;
+            const ns = t.namespace || t.namespace_ || "";
+            toolsEnabled.set(ns + "." + t.name, t.enabled !== false);
+          }
+        }
+      } catch {
+        /* defaults: enabled */
+      }
       const plugins = ALL.filter((p) => {
         if (!query) return true;
         const hay = (
@@ -21517,13 +21648,24 @@ function createHostFfi(repoRoot) {
           " " +
           p.mcp_namespace +
           " " +
-          p.skills.join(" ")
+          p.skills.join(" ") +
+          " " +
+          p.tools.map((t) => t.name).join(" ")
         ).toLowerCase();
         return hay.includes(query);
       }).map((p) => ({
         ...p,
         installed: installed.includes(p.id),
         skill_count: p.skills.length,
+        tool_count: p.tools.length,
+        tools: p.tools.map((t) => {
+          const key = p.mcp_namespace + "." + t.name;
+          return {
+            ...t,
+            // Catalog flag if seen; otherwise honest default = enabled.
+            enabled: toolsEnabled.has(key) ? toolsEnabled.get(key) === true : true,
+          };
+        }),
       }));
       const snapPath = path.join(
         nsDir,
@@ -21733,23 +21875,27 @@ function createHostFfi(repoRoot) {
           namespace: "user-Slides",
           display_name: "Slides helper",
           skills: ["slides-quickstart"],
+          tools: ["make_deck", "list_templates"],
         },
         "plugin-calendar": {
           namespace: "user-Calendar",
           display_name: "Calendar sync",
           skills: ["calendar-sync"],
+          tools: ["list_events"],
         },
       };
       let pluginId = pluginToken;
       let namespace = nsHint || pluginToken;
       let displayName = pluginToken;
       let skills = [];
+      let toolNames = [];
       const known = PLUGIN_NS[pluginToken];
       if (known) {
         pluginId = pluginToken;
         namespace = nsHint || known.namespace;
         displayName = known.display_name;
         skills = known.skills.slice();
+        toolNames = (known.tools || []).slice();
       } else if (
         pluginToken.startsWith("user-") ||
         pluginToken.startsWith("cursor-") ||
@@ -21807,6 +21953,49 @@ function createHostFfi(repoRoot) {
       catalog.updated_at = at;
       fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2));
 
+      // GP-A3: seed per-tool rows in the durable tools catalog (idempotent;
+      // existing enabled flags are preserved across reinstall).
+      if (pluginId && toolNames.length > 0) {
+        const toolsCatalogPath = path.join(
+          REPO_ROOT,
+          "data",
+          "connectors",
+          "mcp-tools-catalog.json",
+        );
+        let toolsCat = { tools: [] };
+        try {
+          if (fs.existsSync(toolsCatalogPath)) {
+            const parsed = JSON.parse(fs.readFileSync(toolsCatalogPath, "utf8"));
+            if (parsed && Array.isArray(parsed.tools)) toolsCat = parsed;
+          }
+        } catch {
+          /* defaults */
+        }
+        // Preserve previous enabled flags for tools that already existed.
+        const prevEnabled = new Map();
+        for (const t of toolsCat.tools || []) {
+          if (!t || !t.name) continue;
+          const key = (t.namespace || t.namespace_ || "") + "." + t.name;
+          prevEnabled.set(key, t.enabled !== false);
+        }
+        toolsCat.tools = (toolsCat.tools || []).filter(
+          (t) => t && (t.namespace || t.namespace_) !== namespace,
+        );
+        for (const tn of toolNames) {
+          const had = prevEnabled.has(namespace + "." + tn);
+          toolsCat.tools.push({
+            namespace,
+            plugin_id: pluginId,
+            name: tn,
+            enabled: had ? prevEnabled.get(namespace + "." + tn) === true : true,
+            seeded_at: at,
+          });
+        }
+        toolsCat.updated_at = at;
+        toolsCat.pretend_seeded = false;
+        fs.writeFileSync(toolsCatalogPath, JSON.stringify(toolsCat, null, 2));
+      }
+
       const snapPath = path.join(
         nsDir,
         `ns-${(namespace || "ns").replace(/[^\w.-]+/g, "_")}-${Date.now().toString(36)}.json`,
@@ -21819,6 +22008,8 @@ function createHostFfi(repoRoot) {
         display_name: displayName,
         skills,
         skill_count: skills.length,
+        tools: toolNames,
+        tool_count: toolNames.length,
         status: "Ready",
         usable: true,
         namespace_ready: true,

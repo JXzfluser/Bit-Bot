@@ -32,6 +32,12 @@ contextBridge.exposeInMainWorld("bitbot", {
   skills: {
     list: () => ipcRenderer.invoke("bitbot:skills:list"),
   },
+  // Wave M8 — Connect apps / Marketplace panel (GP-A2/A3).
+  plugins: {
+    list: (opts) => ipcRenderer.invoke("bitbot:plugins:list", opts || {}),
+    op: (payload) => ipcRenderer.invoke("bitbot:plugins:op", payload),
+    toolToggle: (payload) => ipcRenderer.invoke("bitbot:plugins:toolToggle", payload),
+  },
   approvals: {
     rule: (patch) => ipcRenderer.invoke("bitbot:approvals:rule", patch),
     listRules: () => ipcRenderer.invoke("bitbot:approvals:listRules"),
