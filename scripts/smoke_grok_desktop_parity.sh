@@ -551,6 +551,30 @@ echo "  · G-15 清理完成（account-profile / install 快照删除，双跑�
 
 echo
 
+echo "== G-16 自动化冷启动 + GP-70 像素断言（Playwright-E2E · 规格 §2.6/§7.3）=="
+# 规格验收信号：Appearance 改动 nativeTheme 实测生效 + 截图/像素断言；重启保持。
+# 本波把「手工启动 Electron + 肉眼看截图」换成 scripts/e2e_grok_desktop_boot.mjs：
+# Playwright _electron.launch 拉起真实 main/preload，settings.set 走真实用户链，
+# 截图用零依赖 PNG 解码（scripts/lib_png_pixel.mjs）算 viewport 亮度做可证伪断言。
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  e2e_log=/tmp/e2e-g16.log
+  if timeout 240 node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
+    ok "G-16 E2E 冷启动+像素断言全绿（$(grep -c '✓' "$e2e_log") 项，$(tail -1 "$e2e_log"))"
+  else
+    bad "G-16 E2E 冷启动+像素断言（见 $e2e_log）"
+    tail -8 "$e2e_log"
+  fi
+  grep -q "E2E 像素断言 dark" "$e2e_log" && grep -q "E2E 像素断言 light" "$e2e_log" && ok "G-16 GP-70：dark/light 两态 viewport 亮度断言真实执行（非 CSS 字符串检查）" || bad "G-16 GP-70 pixel assertions missing"
+  grep -q "重启后 force-dark" "$e2e_log" && ok "G-16 GP-70：重启保持由真实二次 boot 验证" || bad "G-16 restart assertion missing"
+  # E2E 自带 store 快照恢复；settings 必须已回到 G-5 后状态
+  node -e "
+const st=require('./data/desktop/settings.json');
+// E2E 恢复快照 = 运行前内容；G-5 写入的 appearance 仍是三态之一
+process.exit(['dark','light','system'].includes(st.appearance)?0:1)" && ok "G-16 E2E 后 settings.json 完好（快照恢复）" || bad "G-16 settings restore"
+else
+  echo "  · skip：playwright-core / electron dist 未安装（npm --prefix hosts/desktop i -D playwright-core）"
+fi
+
 
 
 echo

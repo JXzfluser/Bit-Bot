@@ -37,7 +37,7 @@
 | GP-52 | 已实现 | `send_to_agent` 沿用 CM-14xx；本轮补齐 Bot→Bot 任务所有权转移：`handoff room <id|title> [from=<bot>] to=<bot> task=<text>` → `handoff_task` 意图 → Host 写群 transcript（回执含 to_bot/responders，规格信号"转交可见于 transcript"）+ 任务投递承接 Bot inbox；非成员/未知群诚实拒绝（`pretend_transferred:false`，不写 transcript）。smoke G-14 十断言。 |
 | GP-53 | 已实现 | `escalations:"dm-only"` 实测出现在 room_turn 结果；审批卡只进 pending 队列/私聊，不进 transcript。 |
 | GP-60/61 | 已实现 | GP-60 Voice chat：composer 为空才可发起（非空/有附件禁用按钮，实测）→ 通话栏（脉冲+计时+监听文案+转述框）+ 侧边栏"语音对话进行中"→ 挂断后对话留 Voice chat 卡（真实麦克风录音优先，含时长）。GP-61 memo 卡：播放/暂停 + 转写展开（relay user_text 回填）。kernel→host 链断言进 smoke G-7（PASS=46）。 |
-| GP-70 | 已实现 | appearance dark 持久实测 + boot 时 `applyAppearance` 读取持久值（smoke G-5）；nativeTheme 像素断言未做（依赖截图基线，未列本波）。 |
+| GP-70 | 已实现 | appearance dark 持久实测 + boot 时 `applyAppearance` 读取持久值（smoke G-5）；M15 补像素断言：Playwright-E2E 走真实 `settings.set → nativeTheme + broadcast → renderer` 链，零依赖 PNG 解码算 viewport 亮度（dark 38.8 / light 238.0 / Δ>120，重启再 boot 仍暗），smoke G-16。诚实残留：Xvfb 下 `themeSource` 不驱动 live `prefers-color-scheme` media query（boot 探测同现），暗色像素由 force-dark token 通道承担，OS live 通道需在带 DE 的机器复核。 |
 | GP-71 | 已实现 | language 持久 + renderer `wavegLangApply` 关键文案切换（zh-CN/zh-TW/en）。 |
 | GP-72 | 已实现 | timezone 持久 + `process.env.BITBOT_TZ` + 守护进程重启（smoke G-5）。 |
 | GP-73 | 已实现 | 规则 CRUD 持久、团队规则 locked 行不可删（`rule_locked`）。 |
@@ -66,9 +66,9 @@
 - ~~GP-30 同 Bot computer-use 并发拒绝的桌面端专项断言~~（M12 已实现：文件锁 + 拒绝路径 + smoke G-13 七断言）。
 - ~~GP-15/GP-60 真麦克风链路~~（M6 已用 `--use-fake-device-for-media-stream` 实测 getUserMedia→MediaRecorder→落盘全链）。
 - ~~GP-52 群内所有权转移 transcript 断言~~（M13 已实现：kernel `handoff_task` 意图 + Host transcript 写入 + inbox 投递 + smoke G-14 十断言）。
-- GP-70 nativeTheme 像素级断言。
+- ~~GP-70 nativeTheme 像素级断言~~（M15 已实现：`scripts/lib_png_pixel.mjs` + `scripts/e2e_grok_desktop_boot.mjs`，smoke G-16；Xvfb live media-query 通道按残留纪律如实标注）。
 - ~~GP-90/92 预览格式扩展与全屏验收~~（M9 已实现文本族文件卡 + saveArtifact + 全屏查看器，CDP 实测）。
-- renderer E2E（Playwright for Electron）以替掉手工冷启动检查。当前已有 `hosts/desktop/shot_cdp.mjs`（CDP 驱动真实控件 + 视口截图，dev-only）做冒烟级验证；本轮真机截图暴露并修复了 3 个问题：body 网格 `min-height:100vh` 导致长对话把 composer/审批条推出视口、never 拒绝后三按钮条仍挂起 + kernel 显示 "unknown host error"、@非成员静默回退 all（现为 bot_discretion）。
+- ~~renderer E2E（Playwright for Electron）以替掉手工冷启动检查~~（M15 已实现：`scripts/e2e_grok_desktop_boot.mjs` 用 playwright-core `_electron.launch` 自动冷启动 + 断言 + 截图，替掉人工启动肉眼检查；`hosts/desktop/shot_cdp.mjs` 保留为交互调试工具。历史：本轮真机截图曾暴露并修复 3 个问题——body 网格 `min-height:100vh` 推出 composer、never 拒绝按钮条挂起 + "unknown host error"、@非成员静默回退 all）。
 
 ## Wave G-M（UI 外壳 / i18n / 消息渲染重构，本轮）
 
@@ -197,3 +197,13 @@
 3. **GP-77 安装态**：main 启动写 `app-install.json`（version/packaged/updater_loaded），`ota:check` 每个分支（含三条 residual 早退与 catch）持久化 `ota-state.json`；新意图 `update_status` 读取两者 + feed env，产出 `residual:true / pretend_up_to_date:false`（未打包开发运行）与 `computer_untouched_by_app_update:true`。Computer 不受应用更新影响用 marker 断言：smoke 往 computer.json 写 `__m14_marker` → 跑 update_status + check_updates 全链 → marker 仍在。
 4. **renderer**：General tab 新增 Account 区块（输入框 + 登录/登出 + profile 下拉，走 `bitbot:account:*` IPC → 同一 Host 链，单一事实源）；Updates tab 打开即显示安装态行（版本/开发运行/上次检查/Computer 安全）。聊天侧：`whoami` 等回合的真实结果由 `postProcessWaveGResults` 从 host payload 出本地化气泡（复用 accountSignedIn/NotSigned/Fail 键），内核 "planned" 文案并入 `DEBUG_LINE_RE`（Alt+D 才显示）——避免"计划中"与"真实结果"两条气泡重复。
 5. **验证**：moon 373/373（wbtest 增 8 组：whoami/裸 sign in/sign in Work/switch my+work 编码/log out/update status 与 check updates 分离/shell whoami 不被吞）；smoke G-15 十断言（未登录诚实态 → 登录落盘 → 凭证来源真相 → 多 profile 切换 → 未知被拒 → 登出保留凭证 → 安装态真实版本+residual → check_updates 链分离 → Computer marker 未被改写 → renderer 三语接线），PASS=102 FAIL=0 双跑幂等；CDP 四截图：General 面板「已登录（本地 profile「Personal」）· 凭证来源：无任何已配置凭证（相关功能保持关闭）」、Updates「安装版本 v0.1.0 · 开发运行（未打包） · 从未检查 · 应用更新不会重置 Computer 文件」、聊天 `whoami` 真实态气泡、`switch account Ghost` → 「账户操作被拒：account_not_found」。
+
+## Wave M15（GP-70 像素级断言 + Playwright-E2E 冷启动，本轮）
+
+规格：spec.md GP-70「`nativeTheme.updated` 实测生效（nativeTheme.themeSource 改变 + 截图/像素断言）；重启保持」+ 未做清单「renderer E2E（Playwright for Electron）替掉手工冷启动」。
+
+1. **零依赖像素通道（`scripts/lib_png_pixel.mjs`）**：纯 Node `zlib` 的 PNG 解码（chunk 遍历、5 种 scanline filter、8-bit RGB/RGBA/G），配 Rec.709 `avgLuma()` 区域亮度与 `pixelAt()` 探针；附 `encodeRgbPng()` 反向生成 fixture。可证伪性先钉解码器自己：E2E 开头 encode(23/255 双色)→decode→亮度必须 23.0/255.0（filter/CRC 全链自证），再用 PIL 独立复核旧截图亮度一致（34.7/22.5 双端逐位相同）。为什么不引 pngjs：验收脚本要能在裸沙箱跑，依赖越少残留越少。
+2. **Playwright-E2E（`scripts/e2e_grok_desktop_boot.mjs`）**：`playwright-core._electron.launch` 拉起真实 `main.js`（`--no-sandbox --disable-gpu`，软件光栅与手工 CDP 同路径，截图保真），`firstWindow` + `#composer #text` 就绪判定替代人工肉眼。断言链：冷启动 → 标题 → system 态无 force 类 → `settings.set(dark)`（**真实用户路径**：IPC → `applyAppearance` 写 `nativeTheme.themeSource` + `settings-changed` 广播 → renderer `wavegApplyAppearanceClass`）→ 主进程 `themeSource/shouldUseDarkColors` 真值 → viewport 像素亮度 <60 → light >200 → Δ>120 → force-dark 解除（bg rgb(255,255,255)）→ 回 system 亮度复位 → 落盘 → **shutdown 后二次 launch** 验重启保持（force-dark + 像素仍暗）→ 真实聊天 `sign in E2E` 键盘输入 → 气泡渲染 + `account-profile.json` `active=="E2E"`。store 快照-恢复包裹全程（双跑幂等）。
+3. **踩坑两处（环境级，非应用缺陷）**：a) 沙箱继承 `DISPLAY=:1` 但 X socket 不存在（Xvfb 在 :99），Electron 在 `ozone_platform_x11` 以 SIGSEGV 形态退出、Playwright 报假 "Process failed to launch!"——修：`liveDisplay()` 按 `/tmp/.X11-unix/X<n>` socket 存活性选 DISPLAY。b) Electron 33 GPU 通道 stderr 刷屏与 pw 等待 `DevTools listening` 的 readline 竞争造成随机启动失败——修：`--disable-gpu` + 有界重试（3 次，退避），并在 gaps 里写明这是宿主 flake 容忍而非降低断言标准。
+4. **诚实残留（运行时自证）**：Xvfb/Chromium 下 `themeSource=dark` 后 renderer `matchMedia('(prefers-color-scheme: dark)')` 不随 live 翻转（boot 与切换两次探测同现 `dark:false`，去 force 类后底色回白）。主进程真值（`shouldUseDarkColors:true`）+ token 通道像素真值都断言了；OS live media-query 通道需带 DE 机器复核，E2E 检测到该情形打印 RESIDUAL 说明而非 pretend 通过。spec GP-70 行已改写为「像素断言已做 + 该残留」。
+5. **验证**：E2E 单跑 PASS=17 FAIL=0；smoke G-16 四断言（全绿、dark+light 像素断言存在、重启断言存在、settings 快照恢复完好）串进 `smoke_grok_desktop_parity` → **PASS=106 FAIL=0 双跑幂等**；moon 373/373；`hosts/desktop/package.json` 增 devDependency `playwright-core@^1.49.1`（无浏览器下载，复用自带 electron dist）。
