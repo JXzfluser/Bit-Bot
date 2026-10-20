@@ -181,6 +181,19 @@ const rows=require('./data/voice/sessions.json');
 const r=rows.find(x=>x&&x.voice_address==='voice:uicall7')||{};
 process.exit(last.matched===true && last.media_ok===true && r.live===false ? 0:1)" && ok "GP-60 结束卡数据就绪：matched + media_ok + live=false" || bad "voice end card data"
 
+echo "== G-8 设置面板 Tab 链（CM-1903/04/06 · GP-73）=="
+j=$(turn_json "check for updates"); echo "$j" | field intent | grep -q check_updates && echo "$j" | field hostKinds | grep -q check_updates:ok && node -e "
+const p=require('./data/settings/panel.json');
+process.exit(p.open===true && p.anchor==='update-channel' && p.tab==='Updates' ? 0:1)" && ok "GP-73 check for updates → Updates tab anchor=update-channel" || bad "check_updates chain"
+j=$(turn_json "update computer"); echo "$j" | field hostKinds | grep -q update_computer:ok && node -e "
+const s=require('./data/box/update-computer.json');
+process.exit(s.phase==='awaiting_confirm_1' ? 0:1)" && ok "CM-1903 update computer → 两步确认 phase1（不假装完成）" || bad "update computer step1"
+j=$(turn_json "update computer confirm"); echo "$j" | field hostKinds | grep -q update_computer:ok && node -e "
+const s=require('./data/box/update-computer.json');
+process.exit(s.phase==='awaiting_confirm_2'||s.phase==='updated'||Number(s.confirms)>=2 ? 0:1)" && ok "CM-1903 update computer 第二步推进" || bad "update computer step2"
+j=$(turn_json "reset computer"); echo "$j" | grep -q "CM-1904\|reset" && ok "CM-1904 reset computer 短语可达（非首选提示）" || bad "reset computer"
+node -e "require('fs').writeFileSync('data/box/update-computer.json',JSON.stringify({confirms:0,guide_preferred:true,session_jar:true},null,2))"
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

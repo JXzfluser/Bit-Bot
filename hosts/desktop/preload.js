@@ -159,6 +159,8 @@ contextBridge.exposeInMainWorld("bitbot", {
   productStatus: () => ipcRenderer.invoke("bitbot:product:status"),
   ota: {
     check: () => ipcRenderer.invoke("bitbot:ota:check"),
+    download: () => ipcRenderer.invoke("bitbot:ota:download"),
+    restart: () => ipcRenderer.invoke("bitbot:ota:restart"),
   },
   secrets: {
     status: () => ipcRenderer.invoke("bitbot:secrets:status"),

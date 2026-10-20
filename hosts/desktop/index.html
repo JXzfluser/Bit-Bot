@@ -417,6 +417,8 @@
     height: 34px; border-radius: 17px; padding: 0 12px; font-size: 12px; font-weight: 600; cursor: pointer;
   }
   #composer #voicechat-btn:disabled { opacity: 0.35; cursor: default; }
+  .settings-tab-btn { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  .settings-tab-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
   #composer #voicechat-btn.on { opacity: 1; background: var(--danger); color: #fff; border-color: var(--danger); }
   #composer #voice-btn.recording { background: var(--danger); color: #fff; }
   .vc-pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: vc-pulse 1.2s infinite; display: inline-block; }
@@ -764,10 +766,16 @@
         <div class="title" style="font-weight:700" data-i18n="settings">Settings</div>
         <button type="button" id="settings-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer" data-i18n="settingsClose">Close</button>
       </div>
-      <div id="settings-tabs" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+      <div id="settings-tabs" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px">
+        <button type="button" class="settings-tab-btn" data-stab="general" data-i18n="tabGeneral">General</button>
+        <button type="button" class="settings-tab-btn" data-stab="computer" data-i18n="tabComputer">Computer</button>
+        <button type="button" class="settings-tab-btn" data-stab="credentials" data-i18n="tabCredentials">Credentials</button>
+        <button type="button" class="settings-tab-btn" data-stab="usage" data-i18n="tabUsage">Usage &amp; Billing</button>
+        <button type="button" class="settings-tab-btn" data-stab="updates" data-i18n="tabUpdates">Updates</button>
+      </div>
       <div id="settings-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
-      <div id="settings-anchors" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
-      <div id="waveg-settings" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+      <div id="settings-anchors" style="margin-top:10px;display:none;flex-wrap:wrap;gap:6px"></div>
+      <div id="st-general" class="settings-tab" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div style="font-weight:700;margin-bottom:4px" data-i18n="settingsGeneral">Grok Parity · General（真实生效并持久化）</div>
         <div class="gp-label" data-i18n="appearance">Appearance</div>
         <div class="gp-row" id="gp-appearance-row">
@@ -795,16 +803,6 @@
             <option value="Europe/Berlin">Europe/Berlin</option>
           </select>
         </div>
-        <div class="gp-label" data-i18n="locExec">Local execution（Computer 权限）</div>
-        <div class="gp-row" id="gp-locexec-row">
-          <button type="button" class="gp-chip" data-locexec="ask" data-i18n="askEveryTime">Ask every time</button>
-          <button type="button" class="gp-chip" data-locexec="always" data-i18n="alwaysAllowBtn">Always allow</button>
-          <button type="button" class="gp-chip" data-locexec="never" data-i18n="neverAllow">Never allow</button>
-        </div>
-        <div class="gp-label" data-i18n="routeTraffic">Route traffic through this computer</div>
-        <div class="gp-row">
-          <button type="button" class="gp-chip" id="gp-route-toggle">—</button>
-        </div>
         <div class="gp-label" data-i18n="autoReview">Auto-review 规则（Ask first 优先于 Allow automatically）</div>
         <div class="gp-row">
           <select id="gp-rule-kind" class="gp-select">
@@ -820,11 +818,38 @@
           <button type="button" class="gp-chip" id="gp-rule-ask" data-i18n="askFirst">Ask first</button>
         </div>
         <div id="gp-rules-list" style="margin-top:6px"></div>
-        <div class="gp-label" data-i18n="usageBilling">Usage & Billing（本周真实 LLM 用量；无数据即空态，不造假）</div>
-        <div id="gp-usage" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">读取中…</div>
         <div id="waveg-settings-status" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       </div>
-      <div id="secrets-panel" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+      <div id="st-computer" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="gp-label" data-i18n="locExec">Local execution（Computer 权限）</div>
+        <div class="gp-row" id="gp-locexec-row">
+          <button type="button" class="gp-chip" data-locexec="ask" data-i18n="askEveryTime">Ask every time</button>
+          <button type="button" class="gp-chip" data-locexec="always" data-i18n="alwaysAllowBtn">Always allow</button>
+          <button type="button" class="gp-chip" data-locexec="never" data-i18n="neverAllow">Never allow</button>
+        </div>
+        <div class="gp-label" data-i18n="routeTraffic">Route traffic through this computer</div>
+        <div class="gp-row">
+          <button type="button" class="gp-chip" id="gp-route-toggle">—</button>
+        </div>
+        <div class="gp-label" data-i18n="botComputer">Update / Reset Bot's Computer</div>
+        <div class="gp-row">
+          <button type="button" class="gp-chip" id="gp-update-computer" data-i18n="updateComputerBtn">Update Bot's Computer</button>
+          <button type="button" class="gp-chip" id="gp-reset-computer" data-i18n="resetComputerBtn">Reset Bot's Computer</button>
+        </div>
+        <div id="st-computer-state" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
+      </div>
+      <div id="st-usage" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="gp-label" data-i18n="usageBilling">Usage & Billing（本周真实 LLM 用量；无数据即空态，不造假）</div>
+        <div id="gp-usage" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">读取中…</div>
+      </div>
+      <div id="st-updates" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="gp-row">
+          <button type="button" class="gp-chip" id="gp-check-updates" data-i18n="checkUpdatesBtn">Check for Updates</button>
+          <button type="button" class="gp-chip" id="gp-restart-update" data-i18n="restartUpdateBtn" disabled>Restart to Update</button>
+        </div>
+        <div id="st-updates-state" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
+      </div>
+      <div id="secrets-panel" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div style="font-weight:700;margin-bottom:6px" data-i18n="credentials">产品凭证 · 开放配置（不写死）</div>
         <div style="color:var(--muted);font-size:12px;margin-bottom:8px">Key / 渠道凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
         <div style="display:flex;flex-direction:column;gap:8px">
@@ -1303,63 +1328,186 @@
       Updates: ["update-status", "update-channel", "automatic-updates"],
     };
 
+    // M7: Grok-spec tabbed settings (General / Computer / Credentials / Usage & Billing / Updates).
+    const SETTINGS_TAB_KEYS = ["general", "computer", "credentials", "usage", "updates"];
+    // Kernel anchor → UI tab (deep links from any entry land on the right tab).
+    const SETTINGS_ANCHOR_TAB = {
+      "appearance": "general", "language": "general", "accent": "general",
+      "auto-review": "general", "notifications": "general", "profile": "general",
+      "local-execution": "computer", "computers": "computer",
+      "update-computer": "computer", "reset-computer": "computer",
+      "route-traffic": "computer", "security-keys": "credentials",
+      "usage": "usage", "plan": "usage", "billing": "usage",
+      "update-status": "updates", "update-channel": "updates", "automatic-updates": "updates",
+    };
+    let settingsActiveTab = "general";
+    function showSettingsTab(key) {
+      if (!SETTINGS_TAB_KEYS.includes(key)) key = "general";
+      settingsActiveTab = key;
+      for (const k of SETTINGS_TAB_KEYS) {
+        const el = document.getElementById("st-" + k) || (k === "credentials" ? document.getElementById("secrets-panel") : null);
+        if (el) el.style.display = k === key ? "block" : "none";
+      }
+      const metaEl = document.getElementById("settings-meta");
+      if (metaEl) {
+        const label = { general: "General", computer: "Computer", credentials: "Credentials", usage: "Usage & Billing", updates: "Updates" }[key];
+        metaEl.textContent = metaEl.textContent.replace(/tab=[^·]*(·|$)/, "tab=" + label + " $1").trim() || "tab=" + label;
+      }
+      document.querySelectorAll("#settings-tabs .settings-tab-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.stab === key);
+      });
+      if (key === "usage") refreshWaveGUsage().catch(() => {});
+      if (key === "computer") refreshComputerTabState().catch(() => {});
+      if (key === "credentials") {
+        refreshSecretsForm().catch(() => {});
+        refreshInboundUrlStrip().catch(() => {});
+      }
+      if (key === "updates") refreshUpdatesTabState();
+    }
+    document.querySelectorAll("#settings-tabs .settings-tab-btn").forEach((b) => {
+      b.addEventListener("click", () => showSettingsTab(b.dataset.stab));
+    });
+    // GP-70 (M7): Computer tab actions go through the real kernel chain.
+    const gpUpdateComputer = document.getElementById("gp-update-computer");
+    if (gpUpdateComputer) {
+      gpUpdateComputer.addEventListener("click", () => {
+        runUserTurn("update computer", { skipSession: true }).then(() => refreshComputerTabState());
+      });
+    }
+    const gpResetComputer = document.getElementById("gp-reset-computer");
+    if (gpResetComputer) {
+      gpResetComputer.addEventListener("click", () => {
+        runUserTurn("reset computer", { skipSession: true });
+      });
+    }
+    // GP-71 (M7): Updates tab — kernel opens Updates anchor, then real OTA check.
+    const gpCheckUpdates = document.getElementById("gp-check-updates");
+    const gpRestartUpdate = document.getElementById("gp-restart-update");
+    const updatesStateEl = () => document.getElementById("st-updates-state");
+    async function runOtaCheck() {
+      const el = updatesStateEl();
+      if (el) el.textContent = wavegT("updatesChecking");
+      let r = null;
+      try {
+        r = await window.bitbot.ota.check();
+      } catch (e) {
+        r = { ok: false, error: String(e && e.message ? e.message : e) };
+      }
+      if (el) {
+        if (r && r.ok && r.update_available) {
+          el.textContent = wavegT("updatesAvailable").replace("{v}", (r.info && r.info.version) || "?");
+          if (window.bitbot.ota.download) {
+            window.bitbot.ota.download().then(async (d) => {
+              if (d && d.ok) {
+                const e2 = updatesStateEl();
+                if (e2) e2.textContent = wavegT("updatesDownloaded");
+                if (gpRestartUpdate) gpRestartUpdate.disabled = false;
+              }
+            }).catch(() => {});
+          }
+        } else if (r && r.ok) {
+          el.textContent = wavegT("updatesLatest");
+        } else {
+          el.textContent = wavegT("updatesResidual").replace("{e}", (r && (r.error || "unknown")) || "unknown");
+        }
+      }
+    }
+    if (gpCheckUpdates) {
+      gpCheckUpdates.addEventListener("click", () => {
+        runUserTurn("check for updates", { skipSession: true, silentUser: true })
+          .then(runOtaCheck)
+          .catch(runOtaCheck);
+      });
+    }
+    if (gpRestartUpdate) {
+      gpRestartUpdate.addEventListener("click", async () => {
+        const el = updatesStateEl();
+        try {
+          const r = await window.bitbot.ota.restart();
+          if (el && r && !r.ok) el.textContent = wavegT("updatesResidual").replace("{e}", r.error || "?");
+        } catch (e) {
+          if (el) el.textContent = wavegT("updatesResidual").replace("{e}", String(e && e.message ? e.message : e));
+        }
+      });
+    }
+    function refreshUpdatesTabState() {
+      const el = document.getElementById("st-updates-state");
+      if (el && !el.textContent) el.textContent = wavegT("updatesIdle");
+    }
+    async function refreshComputerTabState() {
+      const el = document.getElementById("st-computer-state");
+      if (!el || !window.bitbot.computer) return;
+      try {
+        const st = await window.bitbot.computer.state();
+        const c = (st && st.computer) || null;
+        if (!c) { el.textContent = wavegT("crNoComputer"); return; }
+        const bits = [
+          "state=" + (c.state || "?"),
+          "takeover=" + (c.takeover && c.takeover.active ? "active" : "idle"),
+        ];
+        if (c.last_update_at) bits.push("updated=" + String(c.last_update_at).slice(0, 16).replace("T", " "));
+        if (c.last_reset_at) bits.push("reset=" + String(c.last_reset_at).slice(0, 16).replace("T", " "));
+        el.textContent = bits.join(" · ");
+      } catch (_) {
+        el.textContent = wavegT("crNoComputer");
+      }
+    }
+    async function refreshWaveGUsage() {
+      if (!window.bitbot.usage) return;
+      try {
+        const u = await window.bitbot.usage.week();
+        const box = document.getElementById("gp-usage");
+        if (!box) return;
+        const usage = (u && u.usage) || {};
+        const payload = usage.usage ? usage.usage : usage;
+        const rows = payload.rows || [];
+        if (!rows.length) {
+          box.textContent = wavegT("usageEmpty");
+        } else {
+          const t = rows.reduce(
+            (acc, r) => {
+              acc.p += r.prompt_tokens || 0;
+              acc.c += r.completion_tokens || 0;
+              acc.q += r.requests || 0;
+              return acc;
+            },
+            { p: 0, c: 0, q: 0 },
+          );
+          box.textContent =
+            wavegT("usageWeek") + " " + (payload.week || "?") + " · " + wavegT("usageReq") + " " + t.q +
+            " · prompt " + t.p + " tokens · completion " + t.c + " tokens · " + wavegT("usageSource");
+        }
+      } catch (_) {
+        const box = document.getElementById("gp-usage");
+        if (box) box.textContent = wavegT("usageFail");
+      }
+    }
     function renderSettingsPanel(payload) {
       const panel = document.getElementById("settings-panel");
-      const tabsEl = document.getElementById("settings-tabs");
       const meta = document.getElementById("settings-meta");
-      const anchorsEl = document.getElementById("settings-anchors");
-      if (!panel || !tabsEl || !meta || !anchorsEl) return;
+      if (!panel || !meta) return;
       if (payload && payload.refused) {
         meta.textContent = payload.error || "Settings refused";
         panel.style.display = "block";
         return;
       }
-      const tabs = (payload && payload.tabs) || Object.keys(SETTINGS_TAB_ANCHORS);
-      const activeTab = (payload && payload.tab) || "General";
-      tabsEl.innerHTML = "";
-      for (const tab of tabs) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = tab;
-        btn.style.cssText =
-          "background:" +
-          (tab === activeTab ? "var(--accent)" : "var(--accent-soft)") +
-          ";color:" +
-          (tab === activeTab ? "var(--accent-ink)" : "var(--muted)") +
-          ";border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px";
-        btn.addEventListener("click", () => {
-          const first = (SETTINGS_TAB_ANCHORS[tab] || [])[0];
-          if (first) {
-            runUserTurn("open settings entry=sidebar-account-button anchor=" + first, {});
-          } else {
-            meta.textContent = "tab=" + tab + " (no anchors in Vault stub)";
-          }
-        });
-        tabsEl.appendChild(btn);
+      const anchor = (payload && payload.anchor) || "";
+      const tabName = (payload && payload.tab) || "";
+      let key = SETTINGS_ANCHOR_TAB[anchor] || null;
+      if (!key && tabName) {
+        const low = String(tabName).toLowerCase();
+        if (low.startsWith("usage")) key = "usage";
+        else if (low === "updates") key = "updates";
+        else if (low === "computer") key = "computer";
+        else key = "general";
       }
-      anchorsEl.innerHTML = "";
-      for (const id of SETTINGS_TAB_ANCHORS[activeTab] || []) {
-        const chip = document.createElement("span");
-        chip.className = "effect-chip";
-        chip.textContent = id;
-        if (payload && payload.anchor === id) {
-          chip.style.borderColor = "var(--accent)";
-          chip.style.color = "var(--ink)";
-        }
-        chip.style.cursor = "pointer";
-        chip.addEventListener("click", () => {
-          runUserTurn("open settings entry=sidebar-account-button anchor=" + id, {});
-        });
-        anchorsEl.appendChild(chip);
-      }
+      showSettingsTab(key || settingsActiveTab || "general");
       meta.textContent =
         "entry=" +
-        ((payload && payload.entry) || "?") +
+        ((payload && payload.entry) || "sidebar") +
         " · tab=" +
-        activeTab +
-        (payload && payload.deep_link ? " · " + payload.deep_link : "") +
-        " · anchors=" +
-        ((payload && payload.anchors_closed_set_count) || 27);
+        (tabName || (key || "General")) +
+        (payload && payload.deep_link ? " · " + payload.deep_link : "");
       panel.style.display = "block";
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
@@ -1564,6 +1712,9 @@
       [/^Delete Bot needs confirmation \(GP-07\)\..*/i, "rBotDeleteConfirm"],
       [/^Delete Bot confirmed \(GP-07\)\..*/i, "rBotDeleteGo"],
       [/^Computer preview planned \(GP-31\)\..*/i, "rComputerPreview"],
+      [/^Check for Updates planned \(CM-1906\)\..*/i, "rCheckUpdates"],
+      [/^Update Bot's Computer planned \(CM-1903\)\..*/i, "rUpdateComputer"],
+      [/^Reset Bot's Computer planned \(CM-1904\)\..*/i, "rResetComputer"],
       [/^Voice call started at (?:voice:)?([^\s(]+).*/i, "rVoiceStart"],
       [/^Voice ended; wrote (?:[^\s]*\/)?([\w.-]+?)\.(?:txt|json)\b.*/i, "rVoiceEnd"],
       [/^Voice relay on (?:voice:)?([^\s(]+) \((\d+) turn\(s\)\)\..*/i, "rVoiceRelay"],
@@ -2935,19 +3086,8 @@
             (h) => h && h.kind === "check_updates" && h.ok,
           );
           if (cupHost) {
-            try {
-              const p = JSON.parse(cupHost.stdout || "{}");
-              addMsg(
-                "assistant",
-                "Updates · " +
-                  (p.updates_tab || "Updates") +
-                  " / " +
-                  (p.updates_anchor || "update-channel") +
-                  (p.ne_update_computer
-                    ? " ≠ Update Computer"
-                    : ""),
-              );
-            } catch (_) { /* ignore */ }
+            // M7: receipt text comes from the localized kernel reply;
+            // deep-link evidence stays in json-out (debug) only.
           }
           const arsHost = r.host_results.find(
             (h) => h && h.kind === "auto_review_settings" && h.ok,
@@ -4801,6 +4941,7 @@
       const panel = document.getElementById("settings-panel");
       const secrets = document.getElementById("secrets-panel");
       if (panel) panel.style.display = "block";
+      if (typeof showSettingsTab === "function") showSettingsTab("credentials");
       if (secrets) {
         secrets.scrollIntoView({ behavior: "smooth", block: "start" });
         const keyEl = document.getElementById("sec-llm-key");
@@ -4854,13 +4995,13 @@
     const accountBtn = document.getElementById("account-settings-btn");
     if (accountBtn) {
       accountBtn.addEventListener("click", () => {
-        runUserTurn("open settings", {});
+        runUserTurn("open settings", { skipSession: true, silentUser: true });
       });
     }
     const sidebarSettingsBtn = document.getElementById("sidebar-settings-btn");
     if (sidebarSettingsBtn) {
       sidebarSettingsBtn.addEventListener("click", () => {
-        runUserTurn("open settings", {});
+        runUserTurn("open settings", { skipSession: true, silentUser: true });
       });
     }
     const credBtn = document.getElementById("cred-settings-btn");
@@ -5629,34 +5770,7 @@
       } catch (_) {
         /* ignore */
       }
-      try {
-        const u = await window.bitbot.usage.week();
-        const box = document.getElementById("gp-usage");
-        if (box) {
-          const usage = (u && u.usage) || {};
-          const payload = usage.usage ? usage.usage : usage;
-          const rows = payload.rows || [];
-          if (!rows.length) {
-            box.textContent = wavegT("usageEmpty");
-          } else {
-            const t = rows.reduce(
-              (acc, r) => {
-                acc.p += r.prompt_tokens || 0;
-                acc.c += r.completion_tokens || 0;
-                acc.q += r.requests || 0;
-                return acc;
-              },
-              { p: 0, c: 0, q: 0 },
-            );
-            box.textContent =
-              wavegT("usageWeek") + " " + (payload.week || "?") + " · " + wavegT("usageReq") + " " + t.q +
-              " · prompt " + t.p + " tokens · completion " + t.c + " tokens · " + wavegT("usageSource");
-          }
-        }
-      } catch (_) {
-        const box = document.getElementById("gp-usage");
-        if (box) box.textContent = wavegT("usageFail");
-      }
+      refreshWaveGUsage().catch(() => {});
       refreshApprovalRules().catch(() => {});
     }
 
@@ -5798,6 +5912,26 @@
         crIdle: "空闲（未收到帧）",
         crLeaveNote: "离开预览不影响 Bot 后台任务。",
         rComputerPreview: "已打开 Computer 预览（右侧面板）— 关闭预览不影响后台任务。",
+        tabGeneral: "通用",
+        tabComputer: "Computer",
+        tabCredentials: "凭证",
+        tabUsage: "用量与账单",
+        tabUpdates: "更新",
+        botComputer: "Bot 的 Computer（云电脑）",
+        updateComputerBtn: "更新 Bot 的 Computer",
+        resetComputerBtn: "重置 Bot 的 Computer",
+        crNoComputer: "未读取到 Computer 状态。",
+        checkUpdatesBtn: "检查更新",
+        restartUpdateBtn: "重启并安装",
+        updatesIdle: "尚未检查 — 点「检查更新」（沙箱未打包时诚实显示 residual）。",
+        updatesChecking: "检查中…",
+        updatesAvailable: "发现新版本 {v} — 下载完成后「重启并安装」可用。",
+        updatesLatest: "已是最新版本。",
+        updatesResidual: "更新检查不可用：{e}",
+        updatesDownloaded: "更新已下载 — 可重启安装。",
+        rCheckUpdates: "已打开设置 → 更新（update-channel），与「更新 Bot 的 Computer」是两回事。",
+        rUpdateComputer: "已发起更新 Bot 的 Computer（两步确认，Host 真实执行）。",
+        rResetComputer: "已发起重置 Bot 的 Computer（非首选；会重建云电脑）。",
         voiceRecHint: "录音中…再点 🎙 或按 Ctrl/Cmd+D 停止",
         voiceChatBtn: "🎧 语音对话",
         voiceChatLive: "语音对话进行中",
@@ -5957,6 +6091,26 @@
         crIdle: "空閒（未收到幀）",
         crLeaveNote: "離開預覽不影響 Bot 背景任務。",
         rComputerPreview: "已開啟 Computer 預覽（右側面板）— 關閉預覽不影響背景任務。",
+        tabGeneral: "一般",
+        tabComputer: "Computer",
+        tabCredentials: "憑證",
+        tabUsage: "用量與帳單",
+        tabUpdates: "更新",
+        botComputer: "Bot 的 Computer（雲端電腦）",
+        updateComputerBtn: "更新 Bot 的 Computer",
+        resetComputerBtn: "重設 Bot 的 Computer",
+        crNoComputer: "未讀取到 Computer 狀態。",
+        checkUpdatesBtn: "檢查更新",
+        restartUpdateBtn: "重新啟動並安裝",
+        updatesIdle: "尚未檢查 — 點「檢查更新」（沙箱未打包時誠實顯示 residual）。",
+        updatesChecking: "檢查中…",
+        updatesAvailable: "發現新版本 {v} — 下載完成後「重新啟動並安裝」可用。",
+        updatesLatest: "已是最新版本。",
+        updatesResidual: "更新檢查不可用：{e}",
+        updatesDownloaded: "更新已下載 — 可重啟安裝。",
+        rCheckUpdates: "已開啟設定 → 更新（update-channel），與「更新 Bot 的 Computer」是兩回事。",
+        rUpdateComputer: "已發起更新 Bot 的 Computer（兩步確認，Host 真實執行）。",
+        rResetComputer: "已發起重設 Bot 的 Computer（非首選；會重建雲端電腦）。",
         voiceRecHint: "錄音中…再點 🎙 或按 Ctrl/Cmd+D 停止",
         voiceChatBtn: "🎧 語音對話",
         voiceChatLive: "語音對話進行中",
@@ -6116,6 +6270,26 @@
         crIdle: "Idle (no frame)",
         crLeaveNote: "Leaving the preview never pauses background work.",
         rComputerPreview: "Computer preview opened (right panel) — closing it doesn't pause tasks.",
+        tabGeneral: "General",
+        tabComputer: "Computer",
+        tabCredentials: "Credentials",
+        tabUsage: "Usage & Billing",
+        tabUpdates: "Updates",
+        botComputer: "Bot's Computer (cloud box)",
+        updateComputerBtn: "Update Bot's Computer",
+        resetComputerBtn: "Reset Bot's Computer",
+        crNoComputer: "Computer status unavailable.",
+        checkUpdatesBtn: "Check for Updates",
+        restartUpdateBtn: "Restart to Update",
+        updatesIdle: "Not checked yet — press Check for Updates (honest residual in unpackaged sandbox).",
+        updatesChecking: "Checking…",
+        updatesAvailable: "New version {v} — Restart to Update enables once downloaded.",
+        updatesLatest: "You're on the latest version.",
+        updatesResidual: "Update check unavailable: {e}",
+        updatesDownloaded: "Update downloaded — restart to install.",
+        rCheckUpdates: "Settings → Updates opened (update-channel), separate from Update Bot's Computer.",
+        rUpdateComputer: "Update Bot's Computer started (two-step confirm, real Host).",
+        rResetComputer: "Reset Bot's Computer started (not preferred; rebuilds the box).",
         voiceRecHint: "Recording… tap 🎙 again or press Ctrl/Cmd+D to stop",
         voiceChatBtn: "🎧 Voice chat",
         voiceChatLive: "Voice chat in progress",

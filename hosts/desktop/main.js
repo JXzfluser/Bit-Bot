@@ -71,8 +71,15 @@ const otaState = {
   last_check: null,
   last_result: null,
   update_available: false,
+  update_downloaded: false,
   error: null,
 };
+if (autoUpdater) {
+  autoUpdater.on("update-downloaded", (info) => {
+    otaState.update_downloaded = true;
+    otaState.last_result = { version: (info && info.version) || null };
+  });
+}
 
 const DESKTOP_ENV_LOCAL = path.join(__dirname, ".env.local");
 
@@ -1313,6 +1320,7 @@ ipcMain.handle("bitbot:product:status", async () => {
       last_check: otaState.last_check,
       last_result: otaState.last_result,
       update_available: otaState.update_available,
+      update_downloaded: otaState.update_downloaded,
       error: otaState.error,
       residual: !(otaFeed && autoUpdater && app.isPackaged),
     },
@@ -1354,6 +1362,7 @@ ipcMain.handle("bitbot:ota:check", async () => {
   try {
     autoUpdater.setFeedURL({ provider: "generic", url: feed });
     autoUpdater.autoDownload = false;
+    otaState.update_downloaded = false;
     otaState.last_check = new Date().toISOString();
     const result = await autoUpdater.checkForUpdates();
     const info = result && result.updateInfo ? result.updateInfo : null;
@@ -1378,6 +1387,26 @@ ipcMain.handle("bitbot:ota:check", async () => {
       pretend_update: false,
     };
   }
+});
+
+/** GP-73: download + restart-to-update — only ever real (electron-updater). */
+ipcMain.handle("bitbot:ota:download", async () => {
+  if (!autoUpdater || !app.isPackaged || !otaState.update_available) {
+    return { ok: false, residual: true, error: "no update to download", pretend_update: false };
+  }
+  try {
+    await autoUpdater.downloadUpdate();
+    return { ok: true, residual: false, downloading: true };
+  } catch (err) {
+    return { ok: false, residual: true, error: String(err && err.message ? err.message : err) };
+  }
+});
+ipcMain.handle("bitbot:ota:restart", async () => {
+  if (!autoUpdater || !otaState.update_downloaded) {
+    return { ok: false, residual: true, error: "update not downloaded", pretend_update: false };
+  }
+  setImmediate(() => autoUpdater.quitAndInstall(false, true));
+  return { ok: true, residual: false, restarting: true };
 });
 
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {

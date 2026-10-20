@@ -64,7 +64,7 @@
 - GP-02 `bot-templates.json` store 化 + 模板一键创建的脚本断言。
 - GP-06/GP-07 隐藏不暂停 Routines、删除二次确认的自动化断言。
 - GP-30 同 Bot computer-use 并发拒绝的桌面端专项断言。
-- GP-15/GP-60 真麦克风链路。
+- ~~GP-15/GP-60 真麦克风链路~~（M6 已用 `--use-fake-device-for-media-stream` 实测 getUserMedia→MediaRecorder→落盘全链）。
 - GP-52 群内所有权转移 transcript 断言。
 - GP-70 nativeTheme 像素级断言。
 - GP-90/92 预览格式扩展与全屏验收。
@@ -117,3 +117,13 @@
 4. **i18n**：voiceChatBtn/voiceChatLive/vcEnd/vcListening/vcNeedEmpty/vcNoMic/vcMicDenied/vcRelayPh/vcRelayBtn/voiceMemoTitle/voiceChatCard/vmPlay/vmPause/vmShowTranscript/vmHideTranscript/vmNoTranscript/voiceRecHint/rVoiceStart/rVoiceEnd/rVoiceRelay ×3 字典；kernel 英文回执 `Voice call started…`/`Voice ended; wrote…`/`Voice relay on…` 经 WAVEG_REPLY_MAP 本地化（含 {id}/{n} 占位）。
 5. **验证**：moon 373/373；smoke 新增 G-7 五断言（PASS=46 FAIL=0 双跑幂等，espeak mock 出真 WAV 断言 media_ok/live/relay_log/matched）；Electron smoke `voice start uicall9` / `voice end uicall9` ok=true；CDP（fake 麦克风）四截图：通话中（侧边栏指示+通话栏）、结束卡（时长+去重）、录音红圈、录音存盘回执（no_stt 诚实文案）。
 6. **环境注意**：Electron 重启前 9223 可能仍被上一进程占用（TIME_WAIT 期 `Cannot start http server for devtools`）——固定用循环等端口释放再启动。
+
+## Wave M7（Settings tab 化，本轮）
+
+规格：官方 §7.1（General / Computer / Usage & Billing / Updates；Plugins 不在设置内，走侧边栏 Connect apps）。
+
+1. **Tab 结构**：设置面板改为五 tab —— 通用（外观/语言/时区/自动审查）、Computer（本地执行三档 + 路由流量 + Update/Reset Bot's Computer）、凭证（原 secrets，独立 tab，符合"Plugins 非设置项"但凭证保留）、用量与账单（真实周用量，空态不造假）、更新（Check for Updates / Restart to Update）。`showSettingsTab()` 唯一入口；kernel 深链 anchor（update-channel/update-computer/auto-review/usage…）经 `SETTINGS_ANCHOR_TAB` 映射到对应 tab。
+2. **Updates ≠ Update Computer（CM-1906）**：tab 内「检查更新」先走 kernel `check for updates`（Host 写 `data/settings/panel.json` anchor=update-channel），再真实调用 `bitbot.ota.check()`；发现新版 → `ota.download()` → 「重启并安装」仅在 `update-downloaded` 后启用（main.js 新增 `bitbot:ota:download/restart` IPC + autoUpdater `update-downloaded` 事件）。沙箱未打包/无 feed 时诚实显示 residual 原文（截图实测 "BITBOT_UPDATE_FEED_URL not set"）。
+3. **Computer tab**：Update/Reset Bot's Computer 真链（两步确认 phase 落 `data/box/update-computer.json`，不假装完成）；tab 底部展示 `computer.json` 真实状态（state/takeover/last_update_at）。
+4. **transcript 卫生**：设置/账号按钮 `silentUser+skipSession`（协议短语 open settings 不再入对话，修复 M4 遗漏的旧调用）；`Updates · update-channel ≠ Update Computer` 调试行删除（回执已由 WAVEG_REPLY_MAP rCheckUpdates/rUpdateComputer/rResetComputer 本地化）；GP-73 检查链断言进 smoke G-8（PASS=50）。
+5. **验证**：moon 373/373；smoke 双跑幂等；CDP 五截图（通用/Computer/用量/更新/凭证）全 tab 切换 + 更新 residual 真文案 + 无协议短语泄漏。
