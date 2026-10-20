@@ -71,9 +71,14 @@ echo "$j" | field hostKinds | grep -q bot_unhide:ok && node -e "
 const b=require('./$DATA/bots.json').bots.find(x=>x.id==='$smid');
 process.exit(b && b.hidden===false ? 0:1)" && ok "GP-06 unhide 恢复可见" || bad "GP-06 unhide"
 # GP-07 未确认必须拒绝执行
+# 注意：data/desktop/*.json 不入版本库（.gitignore），干净 clone 里该 store 可能
+# 尚不存在——种子写入必须先建目录+建骨架，否则种子静默失败、后续级联断言
+# 在 fresh clone 上直接 MODULE_NOT_FOUND（replay check13 实测踩到）。
+mkdir -p $DATA
 node -e "
 const fs=require('fs');const f='$DATA/sessions.json';
-const s=JSON.parse(fs.readFileSync(f,'utf8'));
+const s=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,'utf8')):{sessions:[]};
+if(!Array.isArray(s.sessions)) s.sessions=[];
 s.sessions.unshift({id:'sess-smoke-dm',title:'SmokeRenamed · DM',created_at:new Date().toISOString(),updated_at:new Date().toISOString(),messages:[{role:'user',text:'hi'}]});
 fs.writeFileSync(f,JSON.stringify(s,null,2))"
 mkdir -p data/workspace && echo "keepme" > data/workspace/smoke-kept.txt
@@ -87,8 +92,9 @@ echo "$j" | field hostKinds | grep -q bot_delete:ok && node -e "
 const b=require('./$DATA/bots.json').bots.find(x=>x.id==='$smid');
 process.exit(!b ? 0:1)" && ok "GP-07 确认后 bots.json 行删除" || bad "GP-07 confirmed delete"
 node -e "
-const s=require('./$DATA/sessions.json');
-process.exit(!s.sessions.some(x=>x.id==='sess-smoke-dm') ? 0:1)" && ok "GP-07 DM 会话已级联删除" || bad "GP-07 session cascade"
+const fs=require('fs');const f='./$DATA/sessions.json';
+const s=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,'utf8')):{sessions:[]};
+process.exit(!(s.sessions||[]).some(x=>x.id==='sess-smoke-dm') ? 0:1)" && ok "GP-07 DM 会话已级联删除" || bad "GP-07 session cascade"
 node -e "
 const rows=JSON.parse(require('fs').readFileSync('data/routines/host-routines.json','utf8'));
 process.exit(!rows.some(r=>r.id==='r-$smid-daily') ? 0:1)" && ok "GP-07 Routines 已级联删除" || bad "GP-07 routine cascade"
