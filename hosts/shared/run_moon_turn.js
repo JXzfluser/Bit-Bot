@@ -77,6 +77,7 @@ function createTurnRunner(repoRoot, opts = {}) {
    *   channel?: string,
    *   turnId?: string,
    *   approved?: boolean,
+   *   botId?: string,
    * }} ctx
    */
   async function runTurn(userText, ctx = {}) {
@@ -136,7 +137,7 @@ function createTurnRunner(repoRoot, opts = {}) {
       Array.isArray(parsed.effects) &&
       parsed.effects.length
     ) {
-      const host_results = await ffi.executeHostEffects(parsed.effects, { approved: Boolean(ctx.approved) });
+      const host_results = await ffi.executeHostEffects(parsed.effects, { approved: Boolean(ctx.approved), botId: ctx.botId });
       parsed.host_results = host_results;
       try {
         const contArgs = [

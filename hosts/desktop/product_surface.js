@@ -713,6 +713,75 @@ function createProductSurface(repoRoot) {
   // GP-31: per-Bot screen state. Host computer-use/screenshot/takeover runs
   // record real frames + actions here so the right-side preview reflects the
   // Bot's actual activity (click / type / navigate / current state).
+  // GP-30: one computer-use task at a time per Bot (spec §2.3). The lock is a
+  // real file so separate Host processes (CLI smoke, Electron main) contend on
+  // the same state; a hold is only trusted while fresh (< TTL) — a crashed
+  // process's lock expires instead of blocking the Bot forever.
+  const CU_LOCK_DIR = path.join(REPO_ROOT, "data", "desktop", "cu-locks");
+  const CU_LOCK_TTL_MS = Number(process.env.BITBOT_CU_LOCK_TTL_MS || 120000);
+
+  function cuLockPath(bot_id) {
+    return path.join(CU_LOCK_DIR, String(bot_id || "agent-bit") + ".json");
+  }
+
+  function cuLockAcquire(bot_id, task) {
+    const id = String(bot_id || "agent-bit");
+    fs.mkdirSync(CU_LOCK_DIR, { recursive: true });
+    const p = cuLockPath(id);
+    const now = Date.now();
+    try {
+      if (fs.existsSync(p)) {
+        const held = JSON.parse(fs.readFileSync(p, "utf8"));
+        const age = now - (Date.parse(held.at || "") || 0);
+        if (Number.isFinite(age) && age < CU_LOCK_TTL_MS) {
+          return {
+            ok: false,
+            busy: true,
+            held_by: id,
+            held_since: held.at,
+            held_task: String(held.task || "").slice(0, 120),
+            age_ms: age,
+            mode: "host_computer_use_lock",
+          };
+        }
+      }
+    } catch {
+      // corrupt lock file — treat as expired and take over
+    }
+    const entry = { bot_id: id, task: String(task || "").slice(0, 200), at: new Date(now).toISOString(), pid: process.pid };
+    atomicWrite(p, JSON.stringify(entry, null, 2));
+    return { ok: true, mode: "host_computer_use_lock", lock_path: p, entry };
+  }
+
+  function cuLockRelease(bot_id) {
+    const p = cuLockPath(bot_id);
+    let released = false;
+    try {
+      if (fs.existsSync(p)) {
+        fs.unlinkSync(p);
+        released = true;
+      }
+    } catch {
+      // best-effort; TTL will expire it
+    }
+    return { ok: true, released, mode: "host_computer_use_lock" };
+  }
+
+  function cuLockStatus() {
+    const out = [];
+    try {
+      if (fs.existsSync(CU_LOCK_DIR)) {
+        for (const f of fs.readdirSync(CU_LOCK_DIR)) {
+          if (!f.endsWith(".json")) continue;
+          try {
+            out.push(JSON.parse(fs.readFileSync(path.join(CU_LOCK_DIR, f), "utf8")));
+          } catch { /* skip corrupt */ }
+        }
+      }
+    } catch { /* no locks dir */ }
+    return { ok: true, holds: out, mode: "host_computer_use_lock" };
+  }
+
   function recordComputerAction({ bot_id, action, detail, frame_path, status }) {
     const id = String(bot_id || "agent-bit");
     const data = loadComputer();
@@ -1236,6 +1305,9 @@ function createProductSurface(repoRoot) {
     // Computer
     computerFrame,
     recordComputerAction,
+    cuLockAcquire,
+    cuLockRelease,
+    cuLockStatus,
     takeoverBegin,
     takeoverEnd,
     recoverComputer,

@@ -3023,6 +3023,9 @@
       try {
         const turnOpts = Object.assign({}, opts || {}, {
           sessionId: activeSessionId || undefined,
+          // GP-30: the Host's computer-use lock is per-Bot; tell it whose chat
+          // this turn belongs to (agent-bit until a Bot DM is opened).
+          botId: activeBotId || undefined,
         });
         const r = await window.bitbot.turn(text, turnOpts);
         jsonOut.textContent = JSON.stringify(r, null, 2);
@@ -6193,6 +6196,27 @@
       const hosts = (r && r.host_results) || [];
       const hasOk = (k) => hosts.some((h) => h && h.kind === k && h.ok);
       try {
+        // GP-30: same-Bot computer-use refusal must be visible in the chat
+        // (the chip strip only renders ok:true results, and we never fake one).
+        const cuBusy = hosts.find((h) => {
+          if (!h || h.kind !== "computer_use" || h.ok) return false;
+          try {
+            const p = JSON.parse(h.stdout || "{}");
+            return p.busy === true || p.error === "computer_use_busy";
+          } catch (_) {
+            return false;
+          }
+        });
+        if (cuBusy) {
+          let p = {};
+          try { p = JSON.parse(cuBusy.stdout || "{}"); } catch (_) { p = {}; }
+          addMsg(
+            "assistant",
+            wavegT("rCuBusy")
+              .replace("{bot}", String(p.bot_id || p.held_by || "agent-bit"))
+              .replace("{task}", String(p.held_task || "")),
+          );
+        }
         if (
           hasOk("bot_create") || hasOk("bot_update") || hasOk("bot_duplicate") ||
           hasOk("bot_pin") || hasOk("bot_set_primary") || hasOk("hide_agent") ||
@@ -6361,7 +6385,7 @@
     async function reRunApprovedKind(kind, command) {
       if (!kind) return;
       try {
-        const results = await window.bitbot.approvals.runAllowed({ kind, command });
+        const results = await window.bitbot.approvals.runAllowed({ kind, command, bot_id: activeBotId || "agent-bit" });
         if (results && results.ok) {
           addMsg("assistant", "后台审批放行后已执行一次：" + kind + (results.summary ? " · " + results.summary : ""));
         } else {
@@ -6562,6 +6586,7 @@
         rAutoReview: "Auto-review：命中 {via} 规则，已自动执行（未再次询问）。",
         rBotHide: "已从侧栏隐藏（可在「已隐藏的 Bot」恢复）；Bot 与定时任务未暂停，仍在运行。",
         rBotUnhide: "已恢复到侧栏。",
+        rCuBusy: "{bot} 正在执行另一个 computer-use 任务（{task}），同一 Bot 同时只跑一个；换其他 Bot 可并行。",
         rBotDeleteConfirm: "删除不可撤销：将一并移除配置、私聊会话与定时任务（共享 Computer 文件保留）。只是嫌乱的话，隐藏更可逆。",
         rBotDeleteGo: "正在删除：配置、会话与定时任务已级联清理（共享 Computer 文件保留）。",
         rBotDeleteDone: "已删除 Bot：会话 {sess} 个、定时任务 {routines} 个已级联清理；共享 Computer 文件保留 {kept} 个。",
@@ -6791,6 +6816,7 @@
         rAutoReview: "Auto-review：命中 {via} 規則，已自動執行（未再次詢問）。",
         rBotHide: "已從側欄隱藏（可在「已隱藏的 Bot」恢復）；Bot 與排程任務未暫停，仍在執行。",
         rBotUnhide: "已恢復到側欄。",
+        rCuBusy: "{bot} 正在執行另一個 computer-use 任務（{task}），同一 Bot 同時只跑一個；換其他 Bot 可並行。",
         rBotDeleteConfirm: "刪除不可撤銷：將一併移除設定、私聊對話與排程任務（共用 Computer 檔案保留）。只是嫌亂的話，隱藏更可逆。",
         rBotDeleteGo: "正在刪除：設定、對話與排程任務已級聯清理（共用 Computer 檔案保留）。",
         rBotDeleteDone: "已刪除 Bot：對話 {sess} 個、排程任務 {routines} 個已級聯清理；共用 Computer 檔案保留 {kept} 個。",
@@ -7020,6 +7046,7 @@
         rAutoReview: "Auto-review: matched {via} rule, executed without asking again.",
         rBotHide: "Hidden from sidebar (restore anytime under Hidden Bots); the Bot and its routines are NOT paused.",
         rBotUnhide: "Restored to the sidebar.",
+        rCuBusy: "{bot} is running another computer-use task ({task}); one task per Bot at a time. Other Bots can run in parallel.",
         rBotDeleteConfirm: "Delete is irreversible: config, DM sessions and routines are removed (shared Computer files are kept). If it's just clutter, Hide is reversible.",
         rBotDeleteGo: "Deleting: config, sessions and routines cascaded (shared Computer files kept).",
         rBotDeleteDone: "Bot deleted: {sess} session(s) and {routines} routine(s) cascaded; {kept} shared Computer file(s) kept.",

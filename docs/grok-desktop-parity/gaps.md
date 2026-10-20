@@ -24,7 +24,7 @@
 | GP-23 | 已实现 | 过期语义实测：expired 后 allow_once 拒绝（`approval_expired`）、always/deny 仍可（smoke G-3）。 |
 | GP-24 | 已实现 | 五类门经 `waveGApprovalCardGate`/`waveGApprovalGate`；Destructive 不可 always-allow（映射为 null，UI 隐藏按钮）。 |
 | GP-25 | 已实现 | secret 提示 + 掩码 store 沿用 `.env.local` 0600 既有验收。 |
-| GP-30 | 已实现 | 每 Bot screen 状态在 `computer.json screens` 呈现（takeover/preview/screenshot/CU 全链路写入）；同 Bot 并发拒绝沿用 CM-06xx 测试，未进本脚本。 |
+| GP-30 | 已实现 | 每 Bot screen 状态在 `computer.json screens` 呈现（takeover/preview/screenshot/CU 全链路写入）；**同 Bot computer-use 并发拒绝**：Host 文件锁 `data/desktop/cu-locks/<bot>.json`（TTL 120s，崩溃不死锁），第二任务 `busy+refused+pretend_ran:false` 并说明占用任务，不同 Bot 并行。断言进 smoke G-13，实测见 Wave M12。 |
 | GP-31 | 已实现 | Grok 式右侧 Computer 预览 rail（`#computer-rail`，3s 帧轮询 + 活动流 + per-Bot chips）；`open computer` → `computer_preview` effect 只读截帧、不暂停后台；screens 落盘断言进 smoke G-4（PASS=41）。沙箱 DISPLAY 真帧已由 Xvfb 截屏验证（preview-*.png 非空且入面板渲染）。 |
 | GP-32/33/34 | 已实现 | `take over` → `takeover.active=true`、`i'm done` → false+handback 实测（smoke G-4）；banner 文案含"密码/验证码/2FA 请在本机输入，不要贴进对话"。 |
 | GP-35 | 已实现 | recover 仅错误态：非 error 时被拒且不假装恢复（smoke G-4 grep）。update/reset 沿用 CM-1903/1904。 |
@@ -63,7 +63,7 @@
 
 - ~~GP-02 `bot-templates.json` store 化 + 模板一键创建的脚本断言~~（M10 已实现，smoke G-11 五断言）。
 - ~~GP-06/GP-07 隐藏不暂停 Routines、删除二次确认的自动化断言~~（M11 已实现，smoke G-12 八断言 + 聊天侧确认框接线）。
-- GP-30 同 Bot computer-use 并发拒绝的桌面端专项断言。
+- ~~GP-30 同 Bot computer-use 并发拒绝的桌面端专项断言~~（M12 已实现：文件锁 + 拒绝路径 + smoke G-13 七断言）。
 - ~~GP-15/GP-60 真麦克风链路~~（M6 已用 `--use-fake-device-for-media-stream` 实测 getUserMedia→MediaRecorder→落盘全链）。
 - GP-52 群内所有权转移 transcript 断言。
 - GP-70 nativeTheme 像素级断言。
@@ -167,3 +167,13 @@
 2. **新实现（GP-07 聊天侧确认框）**：此前 hide-first 确认框只挂在侧栏右键菜单，用户在聊天里输入 `delete bot X` 只得到一行文案（死胡同）。现 `botsDelete` 未确认拒绝负载补 `bot_id`，renderer `postProcessWaveGResults` 识别 `needs_confirm && advise_hide_first` → 读 store 拿 Bot 名 → 打开同一确认框（取消 / 改为隐藏 / 确认删除）。`postProcessWaveGResults` 是同步函数，故用 Promise 链取名字而非 `await`。
 3. **纪律**：本轮曾给 `HideBot` effect 加 `session=` 透传，核查后发现 tick 路径完全不读 Bot/session，属投机改动，已回退（不留未使用字段）。
 4. **验证**：moon 373/373；smoke G-12 八断言（探针建 Bot → @now 入册 → hide 后 enabled/lifecycle 未暂停 → daemon sweep 真实触发 → 内核 tick 再次触发 → 聊天确认框接线 → 拒绝负载含 bot_id 且 Bot 未删 → 确认删除级联清探针 routine），PASS=75 FAIL=0 双跑幂等；CDP 实测聊天输入 `delete bot bot-663ee4` → 弹出「删除 · M11UI」框（建议改用隐藏 + 不可撤销警告），取消后 Bot 仍在，改为隐藏后转入 hidden_bots，探针最终确认删除清理。
+
+## Wave M12（同 Bot computer-use 并发拒绝，本轮）
+
+规格：官方 §2.3 / spec.md GP-30——每 Bot 独立 screen，同 Bot 同时只跑一个 computer-use 任务；不同 Bot 可并行。此前桌面 Host 完全没有该约束（仅 CM-06xx kernel-contract 测试提及），属真实现缺口。
+
+1. **锁实现（product_surface.js）**：`cuLockAcquire/cuLockRelease/cuLockStatus`，锁文件 `data/desktop/cu-locks/<bot>.json`（含 bot_id/task/at/pid）。选择文件锁而非内存态：CLI smoke、Electron main、审批重放是不同进程，必须竞争同一状态；`at` 超 TTL（默认 120s，`BITBOT_CU_LOCK_TTL_MS` 可调）视为进程崩溃残留，直接接管——拒绝"锁泄漏把 Bot 永久卡死"。
+2. **Host 执行链（host_ffi.js）**：`computer_use` kind 先按 `ffiOpts.botId` 取锁；被占 → 结果 `ok:false, busy:true`，stdout `refused:true / pretend_ran:false / held_by / held_since / held_task`（拒绝必须说明被哪个任务占用）；拿到锁则 `try/finally` 包裹执行，成功失败都释放，不泄漏。拒绝路径不窃取原持有者的锁。
+3. **Bot 身份贯通**：`runTurn ctx.botId → executeHostEffects({botId})`；renderer `runUserTurn` 携带 `activeBotId`（打开 Bot DM 时设置），`bitbot:turn` IPC 透传；审批放行重放 `runAllowed` 也带 `bot_id`（否则后台放行的 CU 会绕过锁）。CLI `--bot-id`/`BITBOT_BOT_ID` 供 smoke 断言。缺省 `agent-bit`（主会话）。
+4. **renderer 回执**：chip 条只渲染 ok:true，busy 拒绝改由 `postProcessWaveGResults` 直接 `addMsg`（`rCuBusy` ×3 字典，含 `{bot}`/`{task}` 占位）——拒绝可见且绝不伪装成功。**本轮坑**：编辑 kind 链时误把 `else if` 拆成独立 `if` 又删错花括号，renderer 语法错误导致 boot 停在 "booting MoonBit…"；用 `node --check` 抽出 `<script>` 体定位（`new Function` 只报类型不报行号），修复后 boot 正常。教训：改 index.html 脚本后必须先跑 script 体 `node --check` 再启动 Electron。
+5. **验证**：moon 373/373；smoke G-13 七断言（外部进程持锁 → 同 Bot 第二任务 busy/refused/pretend_ran:false 且 held_task 可见 → 拒绝不窃取锁 → 不同 Bot 并行 ok → 释放后同 Bot 可再跑且锁自动清空 → 3 分钟陈旧锁 TTL 接管 → renderer 接线），PASS=82 FAIL=0 双跑幂等；CDP 两场景：agent-bit 被外部持锁时聊天发起 CU → 「agent-bit 正在执行另一个 computer-use 任务（hold: …/task-a）…」；点进 Piper（bot-7ef5d2）聊天发起同一任务 → 正常执行出证据文件，agent-bit 锁全程未被影响。

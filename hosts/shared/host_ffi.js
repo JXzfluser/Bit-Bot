@@ -22605,7 +22605,50 @@ function createHostFfi(repoRoot) {
         continue;
       }
       if (kind === "computer_use") {
-        const cuRes = await executeComputerUse(cmd);
+        // GP-30 (spec §2.3): one computer-use task at a time per Bot. The lock
+        // is per-Bot and file-backed, so a second task on the same Bot is
+        // refused while a different Bot can still run in parallel.
+        const cuBotId = String((ffiOpts && ffiOpts.botId) || "").trim() || "agent-bit";
+        let cuLock = null;
+        if (surface && surface.cuLockAcquire) {
+          cuLock = surface.cuLockAcquire(cuBotId, cmd);
+          if (cuLock && cuLock.ok === false) {
+            results.push({
+              kind,
+              ok: false,
+              command: cmd,
+              busy: true,
+              bot_id: cuBotId,
+              error: "computer_use_busy",
+              held_by: cuLock.held_by,
+              held_since: cuLock.held_since,
+              held_task: cuLock.held_task,
+              stdout: JSON.stringify({
+                ok: false,
+                refused: true,
+                busy: true,
+                bot_id: cuBotId,
+                error: "computer_use_busy",
+                held_by: cuLock.held_by,
+                held_since: cuLock.held_since,
+                held_task: cuLock.held_task,
+                mode: "host_computer_use_lock",
+                pretend_ran: false,
+              }),
+              stderr: `computer-use already running for ${cuBotId}`,
+              mode: "host_computer_use_lock",
+            });
+            continue;
+          }
+        }
+        let cuRes;
+        try {
+          cuRes = await executeComputerUse(cmd);
+        } finally {
+          if (cuLock && cuLock.ok === true && surface.cuLockRelease) {
+            surface.cuLockRelease(cuBotId);
+          }
+        }
         // GP-31: record what the Bot did (navigate/click/type) for the preview.
         if (surface && surface.recordComputerAction) {
           try {

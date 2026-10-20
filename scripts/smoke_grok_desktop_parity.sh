@@ -375,6 +375,42 @@ const b=require('./data/desktop/bots.json').bots.find(x=>x.id==='$m11id');
 const rows=JSON.parse(require('fs').readFileSync('data/routines/host-routines.json','utf8'));
 process.exit(!b && !rows.some(r=>r.id==='r-$m11id-m11') ? 0:1)" && ok "G-12 清理：确认删除级联移除探针 routine（双跑幂等）" || bad "G-12 cleanup"
 
+echo "== G-13 同 Bot computer-use 并发拒绝（GP-30 · 规格 §2.3）=="
+# 锁是文件（data/desktop/cu-locks/<bot>.json）→ 跨进程真实竞争可断言。
+mkdir -p data/desktop/cu-locks
+node -e "
+const s=require('./hosts/desktop/product_surface.js').createProductSurface(process.cwd());
+const a=s.cuLockAcquire('agent-bit','hold: navigate https://held.example/task-a');
+process.exit(a.ok===true ? 0:1)" && ok "GP-30 前置：外部进程持有 agent-bit 屏幕锁" || bad "GP-30 hold acquire"
+j=$(BITBOT_BOT_ID=agent-bit turn_json "computer use navigate https://example.com")
+echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='computer_use');const p=JSON.parse(h.stdout||'{}');process.exit(h.ok===false&&h.busy===true&&p.refused===true&&p.pretend_ran===false&&p.error==='computer_use_busy'&&/task-a/.test(p.held_task||'')?0:1)})" && ok "GP-30 同 Bot 第二任务被拒（busy + 说明占用任务，不假装执行）" || bad "GP-30 same-bot refusal"
+node -e "
+const fs=require('fs');
+const held=JSON.parse(fs.readFileSync('data/desktop/cu-locks/agent-bit.json','utf8'));
+process.exit(held.task.startsWith('hold:') ? 0:1)" && ok "GP-30 拒绝不窃取锁（原任务持有不变）" || bad "GP-30 lock not stolen"
+# 不同 Bot 可并行：agent-bit 被占用时，另一 Bot 的 CU 正常执行
+j=$(BITBOT_BOT_ID=bot-other-gp30 turn_json "computer use navigate https://example.com")
+echo "$j" | field hostKinds | grep -q computer_use:ok && ok "GP-30 不同 Bot 并行执行（不被他 Bot 的锁阻塞）" || bad "GP-30 other-bot parallel"
+# 释放后同 Bot 恢复可用
+node -e "
+const s=require('./hosts/desktop/product_surface.js').createProductSurface(process.cwd());
+s.cuLockRelease('agent-bit')"
+j=$(BITBOT_BOT_ID=agent-bit turn_json "computer use navigate https://example.com")
+echo "$j" | field hostKinds | grep -q computer_use:ok && node -e "
+const s=require('./hosts/desktop/product_surface.js').createProductSurface(process.cwd());
+process.exit(s.cuLockStatus().holds.length===0 ? 0:1)" && ok "GP-30 释放后同 Bot 可再跑且锁自动清空（无泄漏）" || bad "GP-30 release + rerun"
+# 崩溃锁 TTL 过期：陈旧锁不永久卡死 Bot
+node -e "
+const fs=require('fs');const p='data/desktop/cu-locks/bot-stale-gp30.json';
+fs.writeFileSync(p,JSON.stringify({bot_id:'bot-stale-gp30',task:'crashed task',at:new Date(Date.now()-3*60*1000).toISOString(),pid:999999}))"
+j=$(BITBOT_BOT_ID=bot-stale-gp30 turn_json "computer use navigate https://example.com")
+echo "$j" | field hostKinds | grep -q computer_use:ok && ok "GP-30 崩溃残留锁过期后可接管（TTL，不死锁）" || bad "GP-30 stale TTL"
+# renderer 接线：busy 拒绝必须进聊天（chip 条只渲染 ok:true）
+node -e "
+const html=require('fs').readFileSync('hosts/desktop/index.html','utf8');
+process.exit(/computer_use_busy/.test(html) && /rCuBusy/.test(html) && /botId: activeBotId/.test(html) ? 0:1)" && ok "GP-30 renderer：busy 回执进聊天 + 回合携带 activeBotId" || bad "GP-30 renderer wiring"
+rm -f data/desktop/cu-locks/*.json
+
 echo
 
 

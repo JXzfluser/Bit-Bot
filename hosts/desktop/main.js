@@ -844,7 +844,11 @@ ipcMain.handle("bitbot:approvals:runAllowed", async (_e, info) => {
     if (!ALLOWABLE.includes(kind)) {
       return { ok: false, error: "kind_not_replayable" };
     }
-    const out = await ffi.executeHostEffects([{ kind, command }], { approved: true });
+    const out = await ffi.executeHostEffects([{ kind, command }], {
+      approved: true,
+      // GP-30: replayed computer-use must contend on the same per-Bot lock.
+      botId: String((info && info.bot_id) || "") || undefined,
+    });
     const hr = Array.isArray(out) ? out[0] : null;
     return {
       ok: Boolean(hr && hr.ok),
@@ -1604,6 +1608,9 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       machineKind: "desktop",
       channel: "",
       approved: !!(opts && opts.approved),
+      // GP-30: which Bot owns this turn — the Host's per-Bot computer-use
+      // lock keys on it (renderer sets activeBotId when a Bot chat is opened).
+      botId: String((opts && opts.botId) || "").trim() || undefined,
     });
     const rawText = String(text || "").trim();
     const skipSession =
