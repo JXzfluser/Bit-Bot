@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M31 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=229 FAIL=0；`moon test` 381/381（M26–M31 未改内核）；`scripts/prove_m31_reactions.js` 17/0；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M32 最新，桌面 chrome）：`scripts/smoke_grok_desktop_parity.sh` PASS=220 FAIL=10。这 10 条都是干净沙箱的 store 前置，不是样式回归（无 `agent-bit` 行所以 G-1b 内置拒删与 G-6 `bots=agent-bit` 五条失败；`data/workspace` 为空所以 G-23 共享文件计数为 0；`primary_id=agent-bit` 无行所以 G-26 `is_primary` 缺失，负向对照打开已被清掉的 `desktop-host.json` 得 ENOENT）。与 chrome 相关的门禁全绿：`prove_m20_ui.js` 24/0、`prove_m24_window.js` 29/0、`prove_m25_profile.js` 25/0、`prove_m27_convrail.js` 19/0、`prove_m28_usage.js` 14/0、`prove_m29_roomchat.js` 16/0、`prove_m30_attachpreview.js` 10/0、`prove_m31_reactions.js` 17/0、`e2e_grok_desktop_boot.mjs` 124/0（设置页、右栏、Marketplace、明暗像素）。内核未改。详见 Wave M32。
+> 验收证据（M31 行为基线）：`scripts/smoke_grok_desktop_parity.sh` PASS=229 FAIL=0；`moon test` 381/381（M26–M31 未改内核）；`scripts/prove_m31_reactions.js` 17/0；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -642,3 +643,34 @@
 ### 5) 诚实残留（本波不假装）
 - **反应 picker 只有 6 emoji**：官方 Grok 的 picker 可能有更多 emoji 或自定义 emoji，当前只实现 6 个常用 emoji 的 picker；后续可扩展为完整 emoji 搜索。
 - **反应不通知对方**：当前反应只在本地 store 计数，不触发通知或其他 Bot 的同步；官方 Grok 的反应可能在多端同步，当前实现为单端。
+
+## Wave M32（桌面 chrome 令牌化：同一套壳层，不再按波次各写一套样式）
+
+背景：G-20..G-27 的侧栏、composer、`#log`、右栏、设置和对话框都已经接到真实 Host，但视觉规则散在 `index.html` 的大段 `<style>` 里，另有一段运行时注入的 `<style>` 只管侧栏折叠和 `#computer-rail`。间距、圆角、字号和表面色各波次各写一份，后面的功能容易互相盖掉。本波只收壳层，不改 Host IPC，不改 MoonBit 内核。
+
+### 1) 实现
+- **`hosts/desktop/ui_chrome.css`（新）**：唯一的颜色 / 间距 / 圆角 / 字号 / 壳层宽度 / z-index 表，外加共用组件（`.bb-modal`、`.bb-sheet`、`.bb-btn`、`.bb-field`、banner、card）。暗色在 `:root`，浅色在 `prefers-color-scheme: light`，强制态是 `body.force-dark` / `body.force-light`。`--text` 与 `--ink` 同值（原先被引用但从未定义）。壳层宽度 `--sidebar-w: 260px`、`--tools-w: 280px`、`--rail-w: 340px`。
+- **`hosts/desktop/index.html`**：组件布局继续留在页面 `<style>`，但改吃上面的变量。设置、连接应用、Marketplace、Bot 编辑、会话重命名/删除、Bot 删除共用同一层遮罩；设置从文档流里的卡片改成居中 sheet（`#settings-panel` 仍是原来的 id，打开时 `display:flex`）。侧栏折叠和 Computer 右栏的规则挪进样式表，并补上折叠同时打开 Bot 右栏 / 对话详情时的列宽（原先 `!important` 会把这两列压成 0）。删掉会盖住 composer 里 `.bb-btn` 的通用 `#composer button` 规则。
+- **打包**：`package.json` 的 `build.files` 带上 `ui_chrome.css`。
+- **探针**：`prove_m20_ui.js` 增加令牌表与共用对话框类的断言（21 → 24）。`prove_m24_window.js` 的右栏宽度改为认 token 文件里的 260/280/340，以及 `index.html` 里的 `var(--sidebar-w)` / `var(--rail-w)`。探针锁死的字面量保留：用户气泡 `border-radius: 18px`、未读点 `#2f7cf6`、`.ca-icon` 的 `10px`。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m20_ui.js` **24/0**
+- `node scripts/prove_m24_window.js` **29/0**（在 smoke 已种入 Bot 之后；空 store 上单独跑会缺「两个可见 Bot」）
+- `node scripts/prove_m25_profile.js` **25/0**；`prove_m27_convrail.js` **19/0**；`prove_m28_usage.js` **14/0**；`prove_m29_roomchat.js` **16/0**；`prove_m30_attachpreview.js` **10/0**；`prove_m31_reactions.js` **17/0**
+- `scripts/e2e_grok_desktop_boot.mjs` **124/0**。明暗像素：dark 亮度 35.4、light 239.9、差 204.5。设置 → Usage、Bot 右栏、对话详情、群聊 banner、Marketplace 都在真实 Electron 里点过。
+- `scripts/smoke_grok_desktop_parity.sh` **PASS=220 FAIL=10**。失败清单与原因：
+  1. **GP-07 builtin guard** 与 **G-6 五条**（group chat / mention / everyone / discretion / dm-only）：`data/desktop/bots.json` 在首个 `create bot` 之前已经存在且没有 `agent-bit` 行，`loadBots()` 因此不再种入内置 Bot。`confirm delete bot agent-bit` 得到 `bot_not_found` 而不是 `cannot_delete_builtin`；`create group chat bots=agent-bit,…` 没有这个成员。
+  2. **G-23 两条**：`data/workspace` 在 G-17 清理后是空的，GP-113/GP-114 要求共享文件计数 > 0。smoke 随后 grep 不到「共享传递」那句 ok。
+  3. **G-26 两条**：`primary_id` 仍是 `agent-bit` 但没有这一行，`botDetail` 返回 `bot_not_found`，没有 `is_primary`。负向对照去读已被清掉的 `data/memory/desktop-host.json`，ENOENT。静态 UI 契约（`#bot-rail`、互斥、IPC、i18n）在同一份日志里是绿的。
+- 以上 10 条不碰 `ui_chrome.css` / `index.html` 的样式。G-16、G-20、G-24、G-25、G-27..G-31 全绿。
+
+### 3) NG-001（本波故意不像素对齐）
+复刻的是 spec §2.1 的结构：侧栏、composer、唯一的 `#log`、可选右栏、设置、对话框。颜色是 Bit Bot 中性色，没有 xAI 标志或专有皮肤。欢迎词与标题栏用同一套无衬线，不是另一套衬线字标。设置是居中 sheet，不是 Grok 设置窗口的像素拷贝。
+
+### 4) 诚实残留（留给后续）
+- 高级面板里仍有少量按钮的内联宽度（例如删除确认的 `#fff` / `6px`）。
+- 探针锁死的字面量还在（用户气泡 18px、未读 `#2f7cf6`、`.ca-icon` 10px）；旁边已有同值 token（`--radius-user`、`--unread`、`--radius-lg`）。
+- `@media (max-width: 900px)` 仍会丢掉 computer 网格区（本波之前就这样）。
+- 反应 picker 仍是 6 个 emoji（M31，不在本波范围）。
+- Computer 右栏的内边距在子元素上，不在 `#computer-rail` 自身（保持原先的 opacity 开合，避免改点击行为）。
