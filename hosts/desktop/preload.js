@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld("bitbot", {
       });
       return ipcRenderer.invoke("bitbot:attachments:stage", { paths, existing });
     },
+    // GP-M30: pre-send preview for the composer chips (real bytes, read-only).
+    preview: (p) => ipcRenderer.invoke("bitbot:attachments:preview", { path: p }),
   },
   skills: {
     list: () => ipcRenderer.invoke("bitbot:skills:list"),

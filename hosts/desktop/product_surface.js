@@ -1692,6 +1692,43 @@ function createProductSurface(repoRoot) {
     };
   }
 
+  // GP-M30 (§5.1 附件在发送前可预览): read a staged attachment for the
+  // composer chips. Images ≤2MB get a real data-URL thumbnail; everything
+  // else reports kind/bytes — never a fabricated preview.
+  function attachmentPreview(p) {
+    const src = String(p || "").trim();
+    if (!src) return { ok: false, error: "preview_unavailable" };
+    try {
+      const stat = fs.statSync(src);
+      const ext = path.extname(src).toLowerCase();
+      const name = path.basename(src);
+      let kind = "doc";
+      if ([".mp4", ".mov", ".avi", ".mkv"].includes(ext)) kind = "video";
+      else if ([".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(ext)) kind = "image";
+      else if ([".mp3", ".wav", ".ogg", ".m4a"].includes(ext)) kind = "audio";
+      let dataUrl = null;
+      if (kind === "image" && stat.size <= 2 * 1024 * 1024) {
+        const mime =
+          ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" :
+          ext === ".png" ? "image/png" :
+          ext === ".gif" ? "image/gif" : "image/webp";
+        dataUrl = "data:" + mime + ";base64," + fs.readFileSync(src).toString("base64");
+      }
+      return {
+        ok: true,
+        mode: "host_attachment_preview",
+        name,
+        ext,
+        kind,
+        bytes: stat.size,
+        data_url: dataUrl,
+        residual: kind === "image" && stat.size > 2 * 1024 * 1024 ? "image_too_large_for_preview" : null,
+      };
+    } catch (err) {
+      return { ok: false, error: "preview_unavailable", detail: String(err && err.message || err) };
+    }
+  }
+
   // ===== VOICE INGEST =====
   function voiceIngest({ wav_b64, session, transcript_provider }) {
     try {
@@ -1828,6 +1865,7 @@ function createProductSurface(repoRoot) {
 
     // Attachments
     stageAttachments,
+    attachmentPreview,
 
     // Voice
     voiceIngest

@@ -1154,6 +1154,28 @@ grep -q "负向对照：禁用前缀后 composer 不再路由到群聊" /tmp/g29
   && ok "G-29 负向对照：砍掉 composer 前缀后断言变红（断言非恒真）" \
   || bad "G-29 negative control missing"
 
+echo
+echo "== G-30 附件发送前预览（M30：§5.1 验收信号）=="
+if timeout 900 node scripts/prove_m30_attachpreview.js > /tmp/g30-probe.log 2>&1; then
+  ok "G-30 附件预览契约全绿（$(grep -c '✓' /tmp/g30-probe.log) 项，$(tail -1 /tmp/g30-probe.log)）"
+else
+  bad "G-30 附件预览契约（见 /tmp/g30-probe.log）"
+fi
+grep -q "真实 PNG → kind=image + data:image/png;base64" /tmp/g30-probe.log 2>/dev/null \
+  && ok "G-30 GP-§5.1：图片附件 chip 预览真实字节（缩略图来自磁盘，不造图）" \
+  || bad "G-30 image preview missing"
+grep -q "mp4 → kind=video、data_url=null" /tmp/g30-probe.log 2>/dev/null \
+  && grep -q "缺失路径 → preview_unavailable" /tmp/g30-probe.log 2>/dev/null \
+  && ok "G-30 GP-§5.1：非图片类型+体积徽标，缺失/空路径诚实拒绝" \
+  || bad "G-30 kind badge/refusal missing"
+grep -q "IPC bitbot:attachments:preview + preload" /tmp/g30-probe.log 2>/dev/null \
+  && grep -q "pick 与 paste/drop 两个入口都先渲染 chip" /tmp/g30-probe.log 2>/dev/null \
+  && ok "G-30 GP-§5.1：preview IPC 全链暴露，pick/paste/drop 入口接线" \
+  || bad "G-30 wiring missing"
+grep -q "负向对照：禁用缩略图生成后 data_url 退化 null" /tmp/g30-probe.log 2>/dev/null \
+  && ok "G-30 负向对照：砍掉缩略图生成后断言变红（断言非恒真）" \
+  || bad "G-30 negative control missing"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

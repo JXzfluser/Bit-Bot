@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M29 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=217 FAIL=0；`moon test` 381/381（M26–M29 未改内核）；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M30 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=222 FAIL=0；`moon test` 381/381（M26–M30 未改内核）；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -590,3 +590,28 @@
 - **conv-rail 对群会话仍显示空归属**：群聊回合落在 rooms.json 而不是 sessions.json，对话详情面板（M27）目前只覆盖 DM 命名约定；群聊的详情面板形态候选下一波（需要先定义"当前群聊"的会话锚点）。
 - **群聊 transcript 卡是快照**：打开群聊时渲染最近 8 条；回合进行中不实时追加（回合结束的 assistant 行由既有 turn 渲染负责），重开群聊才重读 rooms.json。
 - **成员名冲突**：最长匹配只在成员名互不为前缀时无歧义；两个成员名互为前缀时取更长者，官方未定义此场景。
+
+## Wave M30（附件发送前预览：官方 spec §5.1 验收信号，本轮）
+
+背景：§5.1 的验收信号清单里「**附件在发送前可预览**」此前没有对应实现——附件 chip 只显示文件名+移除按钮，选了什么图、多大，发送前看不到。GP-11 的校验链路（≤6/25MB/200MB）是完整的，缺的是"看见"这一层。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-26 附件发送前预览`：GP-132（chip 预览真实字节：图片缩略图来自磁盘、非图片 kind+体积徽标、缺失/空路径诚实拒绝）。
+
+### 2) 实现
+- **Host（`product_surface.js` `attachmentPreview`）**：只读真实字节——图片 ≤2MB 生成 data-URL 缩略图（mime 按扩展名），非图片返回 `kind/bytes/ext`（`data_url:null`，不伪造缩略图），>2MB 图片带 `residual:image_too_large_for_preview`，缺失/空路径 `preview_unavailable`。
+- **main/preload**：IPC `bitbot:attachments:preview`；`attachments.preview(path)`。
+- **渲染层（`index.html`）**：`attachPreviews` 缓存（path→info）；pick 与 paste/drop 两个入口先渲染 chip 再等预览回包后重渲染（不阻塞发送）；图片 chip 渲染 34px 缩略图，非图片 chip 加 `video · 2.0KB` 式徽标；移除 chip 同时清缓存。
+
+### 3) 验证（本轮实测）
+- `scripts/prove_m30_attachpreview.js` **10/0**（双跑幂等）：静态层（CSS/接线/IPC/preload）+ 行为层（真实 1x1 PNG → image + base64 data_url 且 bytes 与磁盘一致；mp4 → video 且 data_url=null；txt → doc；缺失/空路径拒绝）+ **负向对照**（砍掉缩略图生成行 → data_url 退化 null，断言变红）。临时文件与 product_surface 在 exit handler 恢复。
+- `scripts/e2e_grok_desktop_boot.mjs` **124/0**（回归，无新增——系统文件选择框在 xvfb 不可自动化为既有残留，粘贴/拖拽无真实磁盘路径在上游就被拒，preview 的行为层证据在 probe）。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-30 五断言**，全量 **PASS=222 FAIL=0**。
+
+### 4) 本轮踩到并修掉的真问题
+1. **probe 恢复顺序又踩一次**（M29 同款）：负向对照的 `psBefore` 声明在 IIFE 里、exit handler 在其后——若 IIFE 先 `process.exit()` 恢复就跳票。这次直接把快照读取与 exit handler 注册都提到 IIFE 之前。
+2. **probe 断言写死 PNG 字节数**：1x1 PNG 的 base64 解码长度按字符串心算不可靠，改成与 `statSync().size` 现场比对。
+
+### 5) 诚实残留（本波不假装）
+- **>2MB 图片无缩略图**：只显示文件名+体积（`residual:image_too_large_for_preview`），不按字节数降低采样率生成"估算缩略图"；后续可接真缩放管线。
+- **音频/视频 chip 无播放预览**：只有 kind+体积徽标；官方 §9.1 的"打开卡片预览"覆盖已交付文件（GP-92 全屏查看器），composer 内嵌播放器未做。

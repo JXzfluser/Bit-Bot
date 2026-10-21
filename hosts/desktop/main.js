@@ -989,6 +989,16 @@ ipcMain.handle("bitbot:attachments:stage", async (_e, payload) => {
   }
 });
 
+// GP-M30 (§5.1 附件在发送前可预览): composer chips show a real thumbnail or
+// kind/bytes from the staged file — read-only over the real bytes.
+ipcMain.handle("bitbot:attachments:preview", async (_e, payload) => {
+  try {
+    return surface.attachmentPreview(payload && payload.path);
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
 ipcMain.handle("bitbot:skills:list", async () => {
   try {
     // Reuse Host product path (no LocalBrain): a real kernel turn plans list_skills.

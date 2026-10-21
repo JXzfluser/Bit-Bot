@@ -879,6 +879,15 @@
     padding: 3px 8px; font-size: 11px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center;
   }
   .attach-strip .attach-chip button { background: none; border: 0; color: var(--danger); cursor: pointer; padding: 0; font-weight: 700; }
+  /* GP-M30 (§5.1 附件在发送前可预览): image chips show the real bytes as a
+     thumbnail; other kinds show an honest kind/size badge. */
+  .attach-strip .attach-chip img.attach-thumb {
+    width: 34px; height: 34px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); display: block;
+  }
+  .attach-strip .attach-chip .attach-kind {
+    background: var(--bg1); border: 1px solid var(--line); border-radius: 4px;
+    padding: 1px 5px; font-size: 10px; color: var(--muted); text-transform: uppercase;
+  }
   .composer-menu {
     position: absolute; bottom: 72px; left: 20px; z-index: 40;
     background: var(--bg1); border: 1px solid var(--muted); border-radius: 8px;
@@ -10964,6 +10973,25 @@
     });
 
     let pendingAttachments = [];
+    // GP-M30: path → {kind, bytes, data_url} from the Host preview IPC, so
+    // chips preview the real staged bytes before send.
+    const attachPreviews = {};
+    function humanBytes(n) {
+      const b = Number(n) || 0;
+      if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + "MB";
+      if (b >= 1024) return Math.round(b / 1024) + "KB";
+      return b + "B";
+    }
+    async function primeAttachmentPreviews(paths) {
+      if (!window.bitbot || !window.bitbot.attachments || !window.bitbot.attachments.preview) return;
+      await Promise.all((paths || []).map(async (p) => {
+        if (attachPreviews[p]) return;
+        try {
+          const r = await window.bitbot.attachments.preview(p);
+          if (r && r.ok) attachPreviews[p] = r;
+        } catch (_) { /* chip falls back to filename only */ }
+      }));
+    }
     function renderAttachmentStrip() {
       const strip = document.getElementById("attachment-strip");
       if (!strip) return;
@@ -10971,16 +10999,31 @@
       for (const p of pendingAttachments) {
         const chip = document.createElement("span");
         chip.className = "attach-chip";
+        const info = attachPreviews[p];
+        if (info && info.kind === "image" && info.data_url) {
+          const img = document.createElement("img");
+          img.className = "attach-thumb";
+          img.src = info.data_url;
+          img.alt = info.name || "";
+          chip.appendChild(img);
+        }
         const label = document.createElement("span");
         label.textContent = String(p).split("/").slice(-1)[0];
+        chip.appendChild(label);
+        if (info && info.kind && info.kind !== "image") {
+          const badge = document.createElement("span");
+          badge.className = "attach-kind";
+          badge.textContent = info.kind + " · " + humanBytes(info.bytes);
+          chip.appendChild(badge);
+        }
         const rm = document.createElement("button");
         rm.type = "button";
         rm.textContent = "×";
         rm.addEventListener("click", () => {
           pendingAttachments = pendingAttachments.filter((x) => x !== p);
+          delete attachPreviews[p];
           renderAttachmentStrip();
         });
-        chip.appendChild(label);
         chip.appendChild(rm);
         strip.appendChild(chip);
       }
@@ -11011,6 +11054,8 @@
         if (r && r.ok && Array.isArray(r.paths)) {
           pendingAttachments = pendingAttachments.concat(r.paths);
           renderAttachmentStrip();
+          await primeAttachmentPreviews(r.paths);
+          renderAttachmentStrip();
         } else if (r && r.error && !r.canceled) {
           addMsg("assistant", localizeAttachRefusal(r));
         }
@@ -11029,6 +11074,8 @@
       const r = await window.bitbot.attachments.stagePaths(files, pendingAttachments.length);
       if (r && r.ok && Array.isArray(r.paths)) {
         pendingAttachments = pendingAttachments.concat(r.paths);
+        renderAttachmentStrip();
+        await primeAttachmentPreviews(r.paths);
         renderAttachmentStrip();
       } else if (r && (r.code || r.error)) {
         addMsg("assistant", localizeAttachRefusal(r));

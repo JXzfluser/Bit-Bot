@@ -228,3 +228,9 @@
 |----|----------|----------|----------|
 | GP-119a | 侧栏群组行点击进入真实群聊（同一 `#log` 消息流，无第二消息面） | `openRoomChat(rm)`：composer 顶部 `#room-banner`（群名 / 成员数 / 路由提示），placeholder 切到群聊措辞；打开时读 `rooms.json` 真实 transcript 渲染最近 8 条（空群明说「还没有消息」，不造历史）；composer 提交自动加既有 `room <id> :: ` 前缀走 kernel RoomTurn；「退出群聊」恢复 DM composer | 点群组行 → banner 打开且标题/成员数与 rooms.json 一致；发消息后 `#log` 出现 `room <id> :: …` 用户行且 rooms.json transcript 真增一行；退出后 placeholder 复原 |
 | GP-119b | `@` 路由语义在入口路径上保持真实 | `roomTurn` 提及解析升级：先按**完整成员名最长匹配**（修复含空格成员名 `@市场 分析员` 被截断成 `@市场` 降级 bot_discretion 的真实缺陷），再回落单 token 形式（`@everyone` / 无空格名不变） | `@Name` → `mentioned_only` 且 responders 精确到被点名 Bot（含空格名）；`@everyone` → `all`；无 @ → `bot_discretion`；未知群 `room_not_found` |
+
+## G-26 附件发送前预览（官方 spec §5.1 验收信号「附件在发送前可预览」）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-132 | 附件在发送前可预览 | composer 附件 chip 预览真实字节：新 IPC `bitbot:attachments:preview` → `surface.attachmentPreview`（图片 ≤2MB → data-URL 缩略图；非图片 → kind 徽标 + 人类可读体积；缺失/空路径 → `preview_unavailable`，不造预览）；pick / paste / drop 三个入口先渲染 chip、预览回包后重渲染（不阻塞发送） | chip 缩略图来自磁盘真实字节（PNG → `data:image/png;base64`）；mp4 显示 `video · 2.0KB` 徽标且无缩略图；移除 chip 同时清预览缓存 |
