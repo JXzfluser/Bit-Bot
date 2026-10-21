@@ -355,9 +355,13 @@ function main() {
   (html.match(/id="log"/g) || []).length === 1
     ? ok("只有一个消息流容器 #log")
     : bad("single stream", (html.match(/id="log"/g) || []).length + " #log containers");
+  const chrome = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
   /body\.tools-open/.test(html) && /body\.computer-open/.test(html) &&
-  /grid-template-columns:\s*260px 1fr 0fr 0fr/.test(html) &&
-  /\.computer-open \{\s*grid-template-columns:\s*260px 1fr 0fr 340px/.test(html)
+  /--sidebar-w:\s*260px/.test(chrome) &&
+  /--tools-w:\s*280px/.test(chrome) &&
+  /--rail-w:\s*340px/.test(chrome) &&
+  /grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr 0fr/.test(html) &&
+  /\.computer-open \{\s*grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr var\(--rail-w\)/.test(html)
     ? ok("右栏开合独立：tools-open / computer-open 各自 280px / 340px，中央始终 1fr")
     : bad("rails", "independent rail layout missing");
 

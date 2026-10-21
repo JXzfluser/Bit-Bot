@@ -25,6 +25,7 @@ const path = require("path");
 
 const REPO = path.resolve(__dirname, "..");
 const HTML = path.join(REPO, "hosts/desktop/index.html");
+const CHROME = path.join(REPO, "hosts/desktop/ui_chrome.css");
 const SESSIONS = path.join(REPO, "hosts/desktop/sessions.js");
 
 let PASS = 0;
@@ -35,6 +36,8 @@ const bad = (n, d) => { FAIL++; console.log("  ✗ " + n + (d ? " — " + String
 function main() {
   console.log("M20 UI parity proof");
   const html = fs.readFileSync(HTML, "utf8");
+  const chrome = fs.readFileSync(CHROME, "utf8");
+  const styled = chrome + "\n" + html;
   const sessions = fs.readFileSync(SESSIONS, "utf8");
 
   /* ---- 1) Assistant bubble is a real painted bubble ---- */
@@ -46,7 +49,7 @@ function main() {
 
   // Both themes must define a non-transparent bot bubble, or switching to
   // light mode silently regresses to the old bare text.
-  const transparentBot = (html.match(/--bot-bubble:\s*transparent/g) || []).length;
+  const transparentBot = (styled.match(/--bot-bubble:\s*transparent/g) || []).length;
   transparentBot === 0
     ? ok("三套主题的 --bot-bubble 均非 transparent（浅色/深色/强制模式都实心）")
     : bad("bot-bubble transparency", transparentBot + " transparent declarations left");
@@ -146,6 +149,34 @@ function main() {
   missing.length === 0
     ? ok("分类文案三语齐备（" + keys.length + " 键 ×3）")
     : bad("ca i18n", missing.join(", "));
+
+  /* ---- 6b) One token layer for later waves ---- */
+  /--sidebar-w:\s*260px/.test(chrome) &&
+    /--tools-w:\s*280px/.test(chrome) &&
+    /--rail-w:\s*340px/.test(chrome) &&
+    /--space-1:\s*4px/.test(chrome) &&
+    /--radius-sm:\s*6px/.test(chrome) &&
+    /--radius-user:\s*18px/.test(chrome) &&
+    /--text-sm:\s*12px/.test(chrome) &&
+    /--bot-bubble:\s*#212121/.test(chrome) &&
+    /--bot-bubble:\s*#f4f4f5/.test(chrome)
+    ? ok("壳层宽度、间距、圆角、字号、气泡色只在 ui_chrome.css 定义")
+    : bad("chrome tokens", "ui_chrome.css scale incomplete");
+
+  /body\.force-dark/.test(chrome) &&
+    /body\.force-light/.test(chrome) &&
+    /prefers-color-scheme:\s*light/.test(chrome) &&
+    /--text:\s*#ececec/.test(chrome) &&
+    /--text:\s*#1a1a1a/.test(chrome)
+    ? ok("暗色 / 浅色 / 强制态共用同一令牌表（--text 不再是未定义变量）")
+    : bad("theme tokens", "light/dark/force channels drifted");
+
+  (html.match(/class="bb-modal/g) || []).length >= 6 &&
+    /\.bb-modal \{/.test(chrome) &&
+    /\.bb-sheet \{/.test(chrome) &&
+    /\.bb-btn \{/.test(chrome)
+    ? ok("对话框共用 bb-modal / bb-sheet / bb-btn，不再各写一套遮罩")
+    : bad("modal chrome", "shared modal classes missing");
 
   /* ---- 7) No regression on the safety render path ---- */
   const bodyInnerHTML = (html.match(/\.body"\)\.innerHTML/g) || []).length;

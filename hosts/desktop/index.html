@@ -4,82 +4,26 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Bit Bot Desktop</title>
+<link rel="stylesheet" href="./ui_chrome.css"/>
 <style>
-  :root {
-    /* Grok-style neutral dark (spec §2.1/§7.3; exact brand hex NOT-CONFIRMED →
-       neutral near-black + white primary, no green console theme) */
-    --bg0: #171717;
-    --bg1: #1d1d1d;
-    --ink: #ececec;
-    --muted: #9a9a9a;
-    --line: #2e2e2e;
-    --accent: #ffffff;
-    --accent-ink: #171717;
-    --accent-soft: #2a2a2a;
-    --warn: #d4a017;
-    --side: #111111;
-    --user-bubble: #2a2a2a;
-    --bot-bubble: #212121;
-    --bot-avatar: #2f9e44;
-    --input-bg: #232323;
-    --danger: #c0554d;
-    --warn-bg: #262010; --warn-ink: #e8d9a8; --warn-line: #5a4a2a;
-    --danger-bg: #2a1f1d; --danger-ink: #e8b4b0;
-  }
-  @media (prefers-color-scheme: light) {
-    :root {
-      --bg0: #ffffff;
-      --bg1: #f7f7f7;
-      --ink: #1a1a1a;
-      --muted: #6f6f6f;
-      --line: #e3e3e3;
-      --accent: #1a1a1a;
-      --accent-ink: #ffffff;
-      --accent-soft: #f0f0f0;
-      --warn: #a06a00;
-      --side: #f7f7f7;
-      --user-bubble: #eceef0;
-      --bot-bubble: #f4f4f5;
-      --bot-avatar: #2f9e44;
-      --input-bg: #f2f2f2;
-      --danger: #b3403a;
-      --warn-bg: #fbf4e0; --warn-ink: #6a5312; --warn-line: #e3d2a0;
-      --danger-bg: #fae9e7; --danger-ink: #8f332d;
-    }
-  }
-  body.force-dark {
-    color-scheme: dark;
-    --bg0: #171717; --bg1: #1d1d1d; --ink: #ececec; --muted: #9a9a9a;
-    --line: #2e2e2e; --accent: #ffffff; --accent-ink: #171717; --accent-soft: #2a2a2a;
-    --warn: #d4a017; --side: #111111; --user-bubble: #2a2a2a; --bot-bubble: #212121; --bot-avatar: #2f9e44;
-    --input-bg: #232323; --danger: #c0554d;
-    --warn-bg: #262010; --warn-ink: #e8d9a8; --warn-line: #5a4a2a;
-    --danger-bg: #2a1f1d; --danger-ink: #e8b4b0;
-  }
-  body.force-light {
-    color-scheme: light;
-    --bg0: #ffffff; --bg1: #f7f7f7; --ink: #1a1a1a; --muted: #6f6f6f;
-    --line: #e3e3e3; --accent: #1a1a1a; --accent-ink: #ffffff; --accent-soft: #f0f0f0;
-    --warn: #a06a00; --side: #f7f7f7; --user-bubble: #eceef0; --bot-bubble: #f4f4f5; --bot-avatar: #2f9e44;
-    --input-bg: #f2f2f2; --danger: #b3403a;
-    --warn-bg: #fbf4e0; --warn-ink: #6a5312; --warn-line: #e3d2a0;
-    --danger-bg: #fae9e7; --danger-ink: #8f332d;
-  }
+  /* Color, space, radius, type, and shell widths live in ui_chrome.css.
+     This block is component layout only. Do not add new hex values here. */
   * { box-sizing: border-box; }
   body {
     margin: 0;
     height: 100vh;
     overflow: hidden;
-    font: 15px/1.45 "Source Han Sans SC", "Noto Sans SC", "IBM Plex Sans", sans-serif;
+    font: var(--text-base)/var(--leading) var(--font-ui);
     color: var(--ink);
     background-color: var(--bg0);
     background-image:
-      radial-gradient(1200px 600px at 10% -10%, rgba(128,128,128,0.06) 0%, transparent 55%),
-      radial-gradient(900px 500px at 100% 0%, rgba(128,128,128,0.05) 0%, transparent 50%),
+      radial-gradient(1200px 600px at 10% -10%, var(--scrim-lite) 0%, transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, var(--scrim-lite-2) 0%, transparent 50%),
       linear-gradient(165deg, var(--bg0), var(--bg1));
     display: grid;
-    /* Grok-style default: sessions + chat only; tools rail opt-in */
-    grid-template-columns: 260px 1fr 0fr 0fr;
+    /* spec §2.1: sessions + chat by default; tools and the right rail opt in.
+       Widths are --sidebar-w / --tools-w / --rail-w (260 / 280 / 340). */
+    grid-template-columns: var(--sidebar-w) 1fr 0fr 0fr;
     grid-template-rows: auto 1fr auto;
     grid-template-areas:
       "header header header header"
@@ -88,51 +32,79 @@
     transition: grid-template-columns 0.25s ease;
   }
   body.tools-open {
-    grid-template-columns: 260px 1fr 280px 0fr;
+    grid-template-columns: var(--sidebar-w) 1fr var(--tools-w) 0fr;
   }
   body.computer-open {
-    grid-template-columns: 260px 1fr 0fr 340px;
+    grid-template-columns: var(--sidebar-w) 1fr 0fr var(--rail-w);
   }
   body.tools-open.computer-open {
-    grid-template-columns: 260px 1fr 280px 340px;
+    grid-template-columns: var(--sidebar-w) 1fr var(--tools-w) var(--rail-w);
   }
   /* G-22: the Bot settings rail shares the optional right-hand column with the
      Computer preview. Both are "the panel", so the two classes are mutually
      exclusive (see openBotRail / toggleComputerRail) and the centre keeps its
      width either way. */
-  #bot-rail {
-    grid-area: computer;
+  /* Optional right column is one surface. Which aside is visible is the
+     body class (computer-open / bot-open / conv-open); they share the rail. */
+  #bot-rail,
+  #conv-rail,
+  #computer-rail {
     border-left: 1px solid var(--line);
     background: var(--side);
-    padding: 12px;
+    color: var(--text);
+  }
+  #bot-rail {
+    grid-area: computer;
+    padding: var(--space-5);
     overflow: auto;
     display: none;
   }
   body.bot-open #bot-rail { display: block; }
-  body.bot-open { grid-template-columns: 260px 1fr 0fr 340px; }
-  body.bot-open.tools-open { grid-template-columns: 260px 1fr 280px 340px; }
+  body.bot-open { grid-template-columns: var(--sidebar-w) 1fr 0fr var(--rail-w); }
+  body.bot-open.tools-open { grid-template-columns: var(--sidebar-w) 1fr var(--tools-w) var(--rail-w); }
   /* G-23: conversation details — the third optional right-panel content, same
      column, three-way mutual exclusion (computer / bot / conv). */
   #conv-rail {
     grid-area: computer;
-    border-left: 1px solid var(--line);
-    background: var(--side);
-    padding: 12px;
+    padding: var(--space-5);
     overflow: auto;
     display: none;
   }
   body.conv-open #conv-rail { display: block; }
-  body.conv-open { grid-template-columns: 260px 1fr 0fr 340px; }
-  body.conv-open.tools-open { grid-template-columns: 260px 1fr 280px 340px; }
-  .cv-title { font-weight: 700; font-size: 14px; word-break: break-word; }
+  body.conv-open { grid-template-columns: var(--sidebar-w) 1fr 0fr var(--rail-w); }
+  body.conv-open.tools-open { grid-template-columns: var(--sidebar-w) 1fr var(--tools-w) var(--rail-w); }
+  /* Collapsed sidebar keeps the optional rails. Previously this lived in a
+     runtime <style> tag and dropped bot-open / conv-open back to 0fr. */
+  body.sidebar-collapsed { grid-template-columns: 0px 1fr 0fr 0fr !important; }
+  body.sidebar-collapsed #agents { display: none; }
+  body.sidebar-collapsed.tools-open { grid-template-columns: 0px 1fr var(--tools-w) 0fr !important; }
+  body.sidebar-collapsed.computer-open,
+  body.sidebar-collapsed.bot-open,
+  body.sidebar-collapsed.conv-open {
+    grid-template-columns: 0px 1fr 0fr var(--rail-w) !important;
+  }
+  body.sidebar-collapsed.tools-open.computer-open,
+  body.sidebar-collapsed.tools-open.bot-open,
+  body.sidebar-collapsed.tools-open.conv-open {
+    grid-template-columns: 0px 1fr var(--tools-w) var(--rail-w) !important;
+  }
+  #computer-rail {
+    grid-area: computer;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--ease);
+  }
+  body.computer-open #computer-rail { opacity: 1; pointer-events: auto; overflow: auto; }
+  .cv-title { font-weight: 700; font-size: var(--text-title); word-break: break-word; }
   .cv-kv {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12px;
+    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: var(--text-sm);
   }
   .cv-kv:last-of-type { border-bottom: 0; }
-  .cv-kv .cv-v { color: var(--muted); font: 11px/1.5 ui-monospace, monospace; text-align: right; word-break: break-all; }
+  .cv-kv .cv-v { color: var(--muted); font: var(--text-xs)/1.5 var(--font-mono); text-align: right; word-break: break-all; }
   .cv-preview {
-    margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--text);
+    margin-top: 6px; font-size: var(--text-sm); line-height: 1.5; color: var(--text);
     max-height: 120px; overflow: auto; white-space: pre-wrap; word-break: break-word;
   }
   .br-head { display: flex; align-items: flex-start; gap: 10px; }
@@ -142,19 +114,19 @@
     font-weight: 700; overflow: hidden; background: var(--bg1); border: 1px solid var(--line);
   }
   .br-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .br-name { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .br-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .br-name { font-weight: 700; font-size: var(--text-title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .br-meta { color: var(--muted); font-size: var(--text-sm); margin-top: 2px; }
   .br-desc {
-    margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--text);
+    margin-top: 6px; font-size: var(--text-sm); line-height: 1.5; color: var(--text);
     white-space: pre-wrap; word-break: break-word;
     max-height: 180px; overflow: auto;
   }
   .br-row {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12px;
+    gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: var(--text-sm);
   }
   .br-row:last-of-type { border-bottom: 0; }
-  .br-stat { color: var(--muted); font: 11px/1.5 ui-monospace, monospace; }
+  .br-stat { color: var(--muted); font: var(--text-xs)/1.5 var(--font-mono); }
   header {
     grid-area: header;
     padding: 10px 16px;
@@ -163,12 +135,12 @@
     align-items: center;
   }
   header .brand {
-    font: 600 16px/1.2 -apple-system, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+    font: 600 var(--text-lg)/1.2 var(--font-display);
     letter-spacing: 0;
   }
   header .sub {
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-sm);
     margin-top: 1px;
   }
   /* Grok-parity: bot identity pill centered in the title bar. It is a normal
@@ -180,9 +152,9 @@
     gap: 8px;
     padding: 6px 14px 6px 8px;
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--bg1);
-    font-size: 13px;
+    font-size: var(--text-md);
     color: var(--ink);
     max-width: 40vw;
     margin: 0 auto;
@@ -204,8 +176,8 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    color: #fff;
-    font-size: 11px;
+    color: var(--on-fill);
+    font-size: var(--text-xs);
     font-weight: 700;
   }
   #bot-pill .bot-pill-avatar img {
@@ -225,10 +197,10 @@
     background: transparent;
     color: var(--muted);
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 6px 10px;
     font-weight: 500;
-    font-size: 13px;
+    font-size: var(--text-md);
     cursor: pointer;
   }
   #header-actions button:hover { background: var(--accent-soft); color: var(--ink); }
@@ -248,9 +220,9 @@
     background: var(--accent-soft);
     color: var(--muted);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
   }
@@ -264,20 +236,20 @@
   }
   #model-picker .mp-label {
     color: var(--muted);
-    font-size: 11px;
+    font-size: var(--text-xs);
     margin-right: 2px;
   }
   #agents details.lab {
     margin-top: 12px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 8px 10px;
     background: var(--bg0);
   }
   #agents details.lab > summary {
     cursor: pointer;
     color: var(--muted);
-    font-size: 11px;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     list-style: none;
@@ -291,24 +263,24 @@
     color: var(--muted);
   }
   #welcome .w-brand {
-    font: 700 40px/1.1 "Source Han Serif SC", "Noto Serif SC", Georgia, serif;
+    font: 700 var(--text-display)/1.1 var(--font-display);
     color: var(--ink);
     letter-spacing: -0.03em;
   }
   #welcome .w-line {
     margin-top: 12px;
-    font-size: 15px;
+    font-size: var(--text-base);
     line-height: 1.5;
   }
   #welcome .w-hint {
     margin-top: 18px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     opacity: 0.85;
   }
   /* GP-02: suggested Bot templates in the empty state */
   #welcome .wt-wrap { margin-top: 22px; text-align: center; }
   #welcome .wt-title {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--muted);
     margin-bottom: 8px;
   }
@@ -322,9 +294,9 @@
     background: var(--bg1);
     color: var(--ink);
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 5px 12px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     cursor: pointer;
   }
   #welcome .wt-btn:hover { border-color: var(--accent); }
@@ -333,9 +305,9 @@
     background: var(--bg1);
     color: var(--ink);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 2px 7px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
   #bc-tpl-btns .bc-tpl-btn:hover { border-color: var(--accent); }
@@ -381,7 +353,7 @@
     top: 0;
     z-index: 3;
     margin-top: 14px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--shadow-sticky);
   }
   #machines {
     grid-area: machines;
@@ -408,7 +380,7 @@
     background: var(--side);
   }
   .panel-title {
-    font-size: 11px;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--muted);
@@ -418,7 +390,7 @@
     padding: 8px 10px;
     margin-bottom: 6px;
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: var(--bg1);
   }
   .agent-item.active { border-color: var(--line); }
@@ -429,7 +401,7 @@
     gap: 10px;
     border: 1px solid transparent;
     background: transparent;
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     padding: 8px 10px;
   }
   .sess-row:hover { background: var(--accent-soft); }
@@ -442,9 +414,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--on-fill);
     font-weight: 700;
-    font-size: 15px;
+    font-size: var(--text-base);
     user-select: none;
   }
   .sess-main { min-width: 0; flex: 1 1 auto; }
@@ -468,7 +440,7 @@
   }
   /* GP-123: session list date groups (今天 / 昨天 / 更早) */
   .sess-group {
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -479,7 +451,7 @@
   .bf-label {
     display: block;
     margin-bottom: 8px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .bf-label > span {
@@ -493,10 +465,10 @@
     background: var(--input-bg);
     color: var(--text);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 7px 9px;
     font: inherit;
-    font-size: 13px;
+    font-size: var(--text-md);
     line-height: 1.4;
     resize: vertical;
   }
@@ -510,7 +482,7 @@
     justify-content: center;
     overflow: hidden;
     background: var(--accent-soft);
-    color: #fff;
+    color: var(--on-fill);
     font-weight: 700;
     font-size: 30px;
   }
@@ -526,9 +498,9 @@
     background: var(--accent-soft);
     color: var(--ink);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 4px 8px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
   /* GP-A2/A3 Grok-parity: plugin cards in a two-column grid */
@@ -542,9 +514,9 @@
     background: transparent;
     color: var(--muted);
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 5px 12px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     cursor: pointer;
   }
   .ca-chip:hover { background: var(--accent-soft); color: var(--ink); }
@@ -568,9 +540,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--on-fill);
     font-weight: 700;
-    font-size: 16px;
+    font-size: var(--text-lg);
     user-select: none;
   }
   /* GP-80 Grok-parity: blue unread dot on the row's right edge */
@@ -585,16 +557,16 @@
   }
   .agent-item .name, .machine-item .name {
     font-weight: 600;
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   .agent-item .meta, .machine-item .meta {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--muted);
     margin-top: 2px;
   }
   .kind-pill {
     display: inline-block;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--ink);
@@ -611,9 +583,9 @@
     margin: 12px 16px 0;
     padding: 10px 12px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--bg1)cc;
-    font: 12px/1.4 ui-monospace, "IBM Plex Mono", monospace;
+    font: var(--text-sm)/1.4 var(--font-mono);
     white-space: pre-wrap;
     color: var(--muted);
     max-height: 100px;
@@ -653,7 +625,7 @@
   }
   .msg.assistant .body {
     background: var(--bot-bubble);
-    border-radius: 16px;
+    border-radius: var(--radius-bubble);
     padding: 10px 14px;
   }
   .msg .role { display: none; }
@@ -662,42 +634,42 @@
   .untrusted-badge {
     display: inline-flex; align-items: center; gap: 6px;
     margin: 0 0 6px; padding: 3px 8px;
-    border: 1px dashed var(--line); border-radius: 999px;
+    border: 1px dashed var(--line); border-radius: var(--radius-pill);
     background: var(--accent-soft); color: var(--muted);
-    font-size: 11px; font-weight: 600; line-height: 1.4;
+    font-size: var(--text-xs); font-weight: 600; line-height: 1.4;
     align-self: flex-start; max-width: 100%;
   }
   .msg.assistant .untrusted-badge { order: -1; }
-  .untrusted-badge .ub-mark { font-size: 12px; opacity: 0.8; }
+  .untrusted-badge .ub-mark { font-size: var(--text-sm); opacity: 0.8; }
   .msg.has-untrusted .body { border-left: 3px solid var(--line); }
   /* GP-99..102: §8.3 secure secret card. The input is a real password field;
      the value never reaches the transcript, only `[REDACTED]`. */
   .secret-card {
     align-self: flex-start; display: flex; flex-direction: column; gap: 8px;
     max-width: 82%; padding: 12px 14px; border: 1px solid var(--line);
-    border-radius: 14px; background: var(--bg1);
+    border-radius: var(--radius-2xl); background: var(--bg1);
   }
-  .secret-card .sc-title { font-weight: 700; font-size: 13px; }
-  .secret-card .sc-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .secret-card .sc-title { font-weight: 700; font-size: var(--text-md); }
+  .secret-card .sc-note { color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
   .secret-card .sc-row { display: flex; gap: 6px; align-items: center; }
   .secret-card input[type="password"], .secret-card input[type="text"] {
     flex: 1; min-width: 0; background: var(--input-bg); color: var(--text);
-    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
-    font: 13px/1.4 ui-monospace, monospace;
+    border: 1px solid var(--line); border-radius: var(--radius-md); padding: 8px 10px;
+    font: var(--text-md)/1.4 var(--font-mono);
   }
   .secret-card .sc-btn {
-    border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer;
-    font-weight: 700; font-size: 12px;
+    border: 0; border-radius: var(--radius-md); padding: 7px 12px; cursor: pointer;
+    font-weight: 700; font-size: var(--text-sm);
   }
   .secret-card .sc-submit { background: var(--accent); color: var(--accent-ink); }
   .secret-card .sc-reveal { background: transparent; color: var(--muted); border: 1px solid var(--line); }
   .secret-card .sc-reveal[aria-pressed="true"] { color: var(--text); background: var(--accent-soft); }
   .secret-card .sc-cancel { background: var(--accent-soft); color: var(--muted); }
-  .secret-card .sc-status { font: 11px/1.5 ui-monospace, monospace; color: var(--muted); }
+  .secret-card .sc-status { font: var(--text-xs)/1.5 var(--font-mono); color: var(--muted); }
   .redacted-pill {
-    display: inline-block; padding: 1px 6px; border-radius: 5px;
+    display: inline-block; padding: 1px 6px; border-radius: var(--radius-xs);
     background: var(--accent-soft); color: var(--muted);
-    font: 12px/1.5 ui-monospace, monospace;
+    font: var(--text-sm)/1.5 var(--font-mono);
   }
   /* Grok-parity typing indicator while the model is thinking */
   .msg .typing { display: inline-flex; gap: 4px; align-items: center; height: 18px; }
@@ -721,20 +693,20 @@
     align-self: stretch;
     max-width: 100%;
     border: 1px dashed var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: transparent;
     padding: 8px 10px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .msg.debug-only.assistant { display: none; }
   body.debug-json .msg.debug-only.assistant { display: block; }
   .msg.debug-only.assistant::before { display: none; }
-  .msg.tool-run { font-size: 13px; color: var(--muted); }
+  .msg.tool-run { font-size: var(--text-md); color: var(--muted); }
   .msg.tool-run .body { color: var(--muted); }
   .msg.media .body { white-space: normal; }
   .msg.media .media-label {
-    font: 12px/1.4 ui-monospace, "IBM Plex Mono", monospace;
+    font: var(--text-sm)/1.4 var(--font-mono);
     color: var(--muted);
     margin-bottom: 8px;
   }
@@ -742,7 +714,7 @@
     display: block;
     max-width: min(100%, 520px);
     max-height: 360px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--line);
     background: var(--bg0);
     cursor: zoom-in;
@@ -760,8 +732,8 @@
     background: var(--bg1);
     color: var(--text);
     border: 1px solid var(--line);
-    border-radius: 8px;
-    font: 12px/1.5 ui-monospace, "IBM Plex Mono", monospace;
+    border-radius: var(--radius-md);
+    font: var(--text-sm)/1.5 var(--font-mono);
     white-space: pre-wrap;
     word-break: break-word;
   }
@@ -773,9 +745,9 @@
     overflow: hidden;
     background: var(--bg0);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: var(--muted);
-    font: 11px/1.45 ui-monospace, "IBM Plex Mono", monospace;
+    font: var(--text-xs)/1.45 var(--font-mono);
     white-space: pre-wrap;
     word-break: break-word;
     cursor: zoom-in;
@@ -785,10 +757,10 @@
     background: var(--accent-soft);
     color: var(--ink);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 4px 8px;
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .msg.media audio.delivery-media,
   .msg.media video.delivery-media {
@@ -802,7 +774,7 @@
     height: 280px;
     margin-top: 4px;
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: var(--bg0);
   }
   .msg.media button.open-artifact {
@@ -810,10 +782,10 @@
     background: var(--accent-soft);
     color: var(--text);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 6px 10px;
     cursor: pointer;
-    font: 12px/1.3 "IBM Plex Sans", sans-serif;
+    font: var(--text-sm)/1.3 var(--font-ui);
   }
   .msg.media button.open-artifact:hover {
     border-color: var(--accent, var(--line));
@@ -832,7 +804,7 @@
     align-items: flex-end;
     background: var(--input-bg);
     border: 1px solid var(--line);
-    border-radius: 22px;
+    border-radius: var(--radius-composer);
     padding: 8px 8px 8px 16px;
   }
   #composer .row:focus-within { border-color: var(--muted); }
@@ -849,74 +821,65 @@
   #composer input:focus, #composer textarea:focus { outline: none; }
   #composer #attach-btn, #composer #voice-btn {
     background: transparent; color: var(--muted); border: 0;
-    width: 34px; height: 34px; border-radius: 50%; font-size: 15px;
+    width: 34px; height: 34px; border-radius: 50%; font-size: var(--text-base);
   }
   #composer #attach-btn:hover, #composer #voice-btn:hover { background: var(--accent-soft); color: var(--ink); }
   #composer #voicechat-btn {
     background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line);
-    height: 34px; border-radius: 17px; padding: 0 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+    height: 34px; border-radius: var(--radius-pill); padding: 0 12px; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
   }
   #composer #voicechat-btn:disabled { opacity: 0.35; cursor: default; }
-  .settings-tab-btn { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  .settings-tab-btn { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; font-size: var(--text-sm); }
   .settings-tab-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
-  #composer #voicechat-btn.on { opacity: 1; background: var(--danger); color: #fff; border-color: var(--danger); }
-  #composer #voice-btn.recording { background: var(--danger); color: #fff; }
+  #composer #voicechat-btn.on { opacity: 1; background: var(--danger); color: var(--on-fill); border-color: var(--danger); }
+  #composer #voice-btn.recording { background: var(--danger); color: var(--on-fill); }
   .vc-pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: vc-pulse 1.2s infinite; display: inline-block; }
   @keyframes vc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
-  .voice-memo-card { border: 1px solid var(--line); border-radius: 10px; background: var(--bg1); padding: 8px 10px; margin-top: 4px; }
+  .voice-memo-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg1); padding: 8px 10px; margin-top: 4px; }
   .voice-memo-card .vm-row { display: flex; align-items: center; gap: 8px; }
-  .voice-memo-card .vm-toggle { background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer; }
-  .voice-memo-card .vm-transcript { margin-top: 6px; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+  .voice-memo-card .vm-toggle { background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px 8px; font-size: var(--text-xs); cursor: pointer; }
+  .voice-memo-card .vm-transcript { margin-top: 6px; color: var(--muted); font-size: var(--text-sm); white-space: pre-wrap; }
   #composer #send {
     background: var(--accent); color: var(--accent-ink); border: 0;
-    min-width: 34px; height: 34px; border-radius: 17px; padding: 0 14px;
-    font-weight: 600; font-size: 13px; cursor: pointer;
+    min-width: 34px; height: 34px; border-radius: var(--radius-pill); padding: 0 14px;
+    font-weight: 600; font-size: var(--text-md); cursor: pointer;
   }
   #composer #send:disabled { opacity: 0.4; }
   .attach-strip { display: flex; flex-wrap: wrap; gap: 6px; }
   .attach-strip .attach-chip {
-    background: var(--accent-soft); border: 1px solid var(--line); border-radius: 6px;
-    padding: 3px 8px; font-size: 11px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center;
+    background: var(--accent-soft); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 3px 8px; font-size: var(--text-xs); color: var(--muted); display: inline-flex; gap: 6px; align-items: center;
   }
   .attach-strip .attach-chip button { background: none; border: 0; color: var(--danger); cursor: pointer; padding: 0; font-weight: 700; }
   /* GP-M30 (§5.1 附件在发送前可预览): image chips show the real bytes as a
      thumbnail; other kinds show an honest kind/size badge. */
   .attach-strip .attach-chip img.attach-thumb {
-    width: 34px; height: 34px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); display: block;
+    width: 34px; height: 34px; object-fit: cover; border-radius: var(--radius-xs); border: 1px solid var(--line); display: block;
   }
   .attach-strip .attach-chip .attach-kind {
-    background: var(--bg1); border: 1px solid var(--line); border-radius: 4px;
-    padding: 1px 5px; font-size: 10px; color: var(--muted); text-transform: uppercase;
+    background: var(--bg1); border: 1px solid var(--line); border-radius: var(--radius-xs);
+    padding: 1px 5px; font-size: var(--text-2xs); color: var(--muted); text-transform: uppercase;
   }
   .composer-menu {
     position: absolute; bottom: 72px; left: 20px; z-index: 40;
-    background: var(--bg1); border: 1px solid var(--muted); border-radius: 8px;
+    background: var(--bg1); border: 1px solid var(--muted); border-radius: var(--radius-md);
     padding: 6px; max-height: 220px; overflow: auto; min-width: 240px;
     display: flex; flex-direction: column; gap: 4px;
   }
   .composer-menu button {
     background: none; color: var(--ink); border: 0; text-align: left;
-    padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px;
+    padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; font: inherit; font-size: var(--text-sm);
   }
   .composer-menu button:hover { background: var(--accent-soft); }
   #composer {
     position: relative;
   }
-  #composer button {
-    background: var(--accent);
-    color: var(--accent-ink);
-    border: 0;
-    border-radius: 8px;
-    padding: 0 18px;
-    font-weight: 700;
-    cursor: pointer;
-  }
-  #composer button:disabled { opacity: 0.5; cursor: wait; }
+  #composer #send:disabled { cursor: wait; }
   #json-out {
     padding: 8px 10px;
     border: 1px dashed var(--line);
-    border-radius: 8px;
-    font: 11px/1.35 ui-monospace, monospace;
+    border-radius: var(--radius-md);
+    font: var(--text-xs)/1.35 var(--font-mono);
     color: var(--warn);
     white-space: pre-wrap;
     max-height: 120px;
@@ -929,16 +892,16 @@
     margin: 0 16px 8px;
     padding: 12px;
     border: 1px solid var(--warn);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--warn-bg);
   }
   #approval.visible { display: block; }
   #approval .title { font-weight: 700; color: var(--warn); margin-bottom: 6px; }
-  #approval .detail { font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+  #approval .detail { font-size: var(--text-sm); color: var(--muted); white-space: pre-wrap; }
   #approval .actions { margin-top: 10px; display: flex; gap: 8px; }
   #approval button {
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 8px 14px;
     font-weight: 700;
     cursor: pointer;
@@ -946,58 +909,58 @@
   #approve-btn { background: var(--accent); color: var(--accent-ink); }
   #allow-always-btn { background: var(--accent-soft); color: var(--ink); }
   #deny-btn { background: var(--danger-bg); color: var(--danger-ink); }
-  #approval .kv { margin: 2px 0; color: var(--muted); font: 11px/1.5 ui-monospace, monospace; }
+  #approval .kv { margin: 2px 0; color: var(--muted); font: var(--text-xs)/1.5 var(--font-mono); }
   #approval .kv b { color: var(--ink); }
-  #approval .secret-hint { margin-top: 8px; color: var(--warn); font-size: 12px; }
+  #approval .secret-hint { margin-top: 8px; color: var(--warn); font-size: var(--text-sm); }
   /* Grok Parity Panel (Wave G) */
-  #computer-panel .frame-box { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--input-bg); padding: 8px; color: var(--muted); font: 12px/1.4 ui-monospace, monospace; }
-  #computer-panel .frame-box img { max-width: 100%; border-radius: 6px; display: block; }
-  .gp-chip { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
+  #computer-panel .frame-box { margin-top: 8px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--input-bg); padding: 8px; color: var(--muted); font: var(--text-sm)/1.4 var(--font-mono); }
+  #computer-panel .frame-box img { max-width: 100%; border-radius: var(--radius-sm); display: block; }
+  .gp-chip { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px 8px; cursor: pointer; font-size: var(--text-sm); }
   .gp-chip.active { border-color: var(--muted); color: var(--ink); }
-  .gp-label { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .gp-label { font-size: var(--text-sm); color: var(--muted); margin: 10px 0 4px; }
   .gp-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .gp-select { background: var(--input-bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  .gp-select { background: var(--input-bg); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px 8px; font-size: var(--text-sm); }
   /* Take over banner (GP-33/34) */
   #takeover-banner {
     display: none;
     margin: 0 16px 8px;
     padding: 10px 12px;
     border: 1px solid var(--muted);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--bg1);
   }
   #takeover-banner.visible { display: block; }
   #takeover-banner .row1 { font-weight: 700; color: var(--ink); }
-  #takeover-banner .hint { margin-top: 4px; font-size: 12px; color: var(--warn); }
+  #takeover-banner .hint { margin-top: 4px; font-size: var(--text-sm); color: var(--warn); }
   #takeover-banner .actions { margin-top: 8px; display: flex; gap: 8px; }
   /* Approval queue (GP-23) */
   #approval-queue { margin-top: 8px; }
-  #approval-queue .q-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--input-bg); color: var(--muted); font: 11px/1.4 ui-monospace, monospace; margin-bottom: 4px; flex-wrap: wrap; }
+  #approval-queue .q-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--input-bg); color: var(--muted); font: var(--text-xs)/1.4 var(--font-mono); margin-bottom: 4px; flex-wrap: wrap; }
   #approval-queue .q-expired { border-color: var(--warn-line); }
-  #approval-queue button { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px; }
+  #approval-queue button { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px 8px; cursor: pointer; font-size: var(--text-xs); }
   /* Pending approvals bar (GP-23) */
-  #pending-bar { display: none; margin: 0 16px 8px; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: 8px; background: var(--warn-bg); color: var(--muted); font-size: 12px; }
+  #pending-bar { display: none; margin: 0 16px 8px; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: var(--radius-md); background: var(--warn-bg); color: var(--muted); font-size: var(--text-sm); }
   #pending-bar.visible { display: block; }
   /* Draft cards (GP-40/41) */
-  .draft-card { border: 1px solid var(--muted); border-radius: 8px; background: var(--bg1); padding: 10px 12px; margin-top: 8px; }
-  .draft-card .role { color: var(--ink); font-weight: 700; font-size: 12px; }
-  .draft-card label { display: block; font-size: 11px; color: var(--muted); margin-top: 6px; }
-  .draft-card input, .draft-card textarea { width: 100%; margin-top: 2px; background: var(--input-bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 13px/1.4 inherit; }
+  .draft-card { border: 1px solid var(--muted); border-radius: var(--radius-md); background: var(--bg1); padding: 10px 12px; margin-top: 8px; }
+  .draft-card .role { color: var(--ink); font-weight: 700; font-size: var(--text-sm); }
+  .draft-card label { display: block; font-size: var(--text-xs); color: var(--muted); margin-top: 6px; }
+  .draft-card input, .draft-card textarea { width: 100%; margin-top: 2px; background: var(--input-bg); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px 8px; font: var(--text-md)/1.4 inherit; }
   .draft-card .actions { margin-top: 8px; display: flex; gap: 8px; }
-  .draft-card .send-btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px; padding: 7px 12px; font-weight: 700; cursor: pointer; }
-  .draft-card .discard-btn { background: var(--danger-bg); color: var(--danger-ink); border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
-  .draft-card .draft-status { font-size: 11px; color: var(--muted); align-self: center; }
+  .draft-card .send-btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: var(--radius-sm); padding: 7px 12px; font-weight: 700; cursor: pointer; }
+  .draft-card .discard-btn { background: var(--danger-bg); color: var(--danger-ink); border: 0; border-radius: var(--radius-sm); padding: 7px 12px; cursor: pointer; }
+  .draft-card .draft-status { font-size: var(--text-xs); color: var(--muted); align-self: center; }
   /* GP-108: prepared routine output — visually a draft, not a done action. */
   .routine-draft { border-style: dashed; }
-  .routine-draft .rd-prompt { margin-top: 6px; font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
-  .routine-draft .rd-boundary { margin-top: 6px; font-size: 11px; color: var(--muted); }
+  .routine-draft .rd-prompt { margin-top: 6px; font: var(--text-md)/1.5 var(--font-mono); white-space: pre-wrap; }
+  .routine-draft .rd-boundary { margin-top: 6px; font-size: var(--text-xs); color: var(--muted); }
   .effect-chip {
     display: inline-block;
     margin: 2px 4px 0 0;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     border: 1px solid var(--line);
-    font: 10px/1.4 ui-monospace, monospace;
+    font: var(--text-2xs)/1.4 var(--font-mono);
     color: var(--ink);
   }
   .reaction-pill {
@@ -1006,16 +969,16 @@
     gap: 6px;
     margin-top: 6px;
     padding: 6px 12px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     border: 1px solid var(--line);
     background: linear-gradient(180deg, var(--accent-soft), var(--bg1));
-    font: 14px/1 "IBM Plex Sans", sans-serif;
+    font: var(--text-title)/1 var(--font-ui);
     color: var(--ink);
     animation: reaction-pop 280ms ease-out;
   }
-  .reaction-pill .emoji { font-size: 18px; line-height: 1; }
+  .reaction-pill .emoji { font-size: var(--text-lg); line-height: 1; }
   .reaction-pill .tag {
-    font: 10px/1 ui-monospace, monospace;
+    font: var(--text-2xs)/1 var(--font-mono);
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -1046,9 +1009,9 @@
     border: 1px solid var(--line);
     background: var(--bg1);
     color: var(--muted);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 1px 6px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
   .msg .msg-actions button:hover { color: var(--ink); border-color: var(--accent); }
@@ -1059,15 +1022,15 @@
   }
   .msg .reaction-chip {
     border: 1px solid var(--line); background: var(--accent-soft); color: var(--ink);
-    border-radius: 999px; padding: 1px 8px; font-size: 11px; cursor: pointer;
+    border-radius: var(--radius-pill); padding: 1px 8px; font-size: var(--text-xs); cursor: pointer;
   }
   .msg .reaction-chip:hover { border-color: var(--accent); }
   .msg .reaction-picker {
     display: inline-flex; gap: 2px; margin-top: 4px;
-    background: var(--bg1); border: 1px solid var(--line); border-radius: 8px; padding: 3px 5px;
+    background: var(--bg1); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 3px 5px;
   }
   .msg .reaction-picker button {
-    border: 0; background: none; font-size: 15px; cursor: pointer; padding: 2px 3px; border-radius: 4px;
+    border: 0; background: none; font-size: var(--text-base); cursor: pointer; padding: 2px 3px; border-radius: var(--radius-xs);
   }
   .msg .reaction-picker button:hover { background: var(--accent-soft); }
   .msg-reply-quote {
@@ -1076,7 +1039,7 @@
     border-radius: 0 6px 6px 0;
     margin: 0 0 4px;
     padding: 3px 8px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
@@ -1099,11 +1062,11 @@
     padding: 8px 10px;
     border: 1px solid var(--line);
     border-left: 3px solid var(--accent);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--bg1);
     color: var(--ink);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-    font-size: 12px;
+    box-shadow: var(--shadow-pop);
+    font-size: var(--text-sm);
     line-height: 1.45;
     pointer-events: none;
     display: none;
@@ -1131,8 +1094,8 @@
     border: 1px solid var(--line);
     border-left: 3px solid var(--accent);
     background: var(--bg1);
-    border-radius: 6px;
-    font-size: 12px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
     flex-shrink: 0;
   }
   /* GP-96/97: live progress row (official §5.7 实时显示 Bot 工作进度). */
@@ -1143,15 +1106,15 @@
     margin: 0 16px 6px;
     padding: 5px 10px;
     border: 1px dashed var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: var(--bg1);
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-sm);
     min-height: 26px;
   }
   .turn-progress .tp-step {
     margin-left: auto;
-    font: 11px/1.4 ui-monospace, monospace;
+    font: var(--text-xs)/1.4 var(--font-mono);
     color: var(--muted);
     white-space: nowrap;
   }
@@ -1160,7 +1123,7 @@
     background: var(--accent);
     animation: tpPulse 1s ease-in-out infinite;
   }
-  .turn-progress[data-state="failed"] .tp-dot { background: #d66; }
+  .turn-progress[data-state="failed"] .tp-dot { background: var(--danger); }
   .turn-progress[data-state="done"] .tp-dot { background: var(--accent); }
   .turn-progress .tp-dot {
     width: 7px; height: 7px; border-radius: 50%;
@@ -1178,7 +1141,7 @@
     border: 1px solid var(--line);
     background: transparent;
     color: var(--muted);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 0 8px;
     cursor: pointer;
   }
@@ -1187,10 +1150,10 @@
     align-items: center;
     gap: 4px;
     padding: 4px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     border: 1px solid var(--line);
     background: var(--bg1);
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   @media (max-width: 900px) {
     body {
@@ -1228,28 +1191,28 @@
     </div>
   </header>
   <aside id="agents">
-    <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" style="width:100%;background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:8px 10px;font-weight:700;cursor:pointer;font-size:13px;margin-bottom:10px" data-i18n="newChat">新建对话</button>
+    <button type="button" id="sess-new" class="bb-btn bb-btn-primary bb-btn-block" title="新对话 (Ctrl/Cmd+N)" data-i18n="newChat">新建对话</button>
     <!-- GP-60: sidebar in-call indicator -->
-    <div id="vc-sb-indicator" style="display:none;align-items:center;gap:8px;margin:-4px 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg1);font-size:12px;font-weight:700">
+    <div id="vc-sb-indicator" class="bb-callout">
       <span class="vc-pulse"></span>
       <span data-i18n="voiceChatInProgress">Voice chat in progress</span>
     </div>
-    <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <div class="panel-title panel-head">
       <span data-i18n="bots">Bots</span>
-      <button type="button" id="bot-new-btn" title="Create new Bot (Name / Job / Description)" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px" data-i18n="newBot">New Bot</button>
+      <button type="button" id="bot-new-btn" class="bb-btn" title="Create new Bot (Name / Job / Description)" data-i18n="newBot">New Bot</button>
     </div>
     <div id="bot-list" aria-label="Bots"></div>
-    <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px">
+    <div class="panel-title panel-head spaced">
       <span data-i18n="rooms">群组</span>
     </div>
     <!-- GP-116 (§2.1): group list lives in the sidebar next to the Bot list,
          sourced from rooms.json — not a separate window. -->
     <div id="room-list" aria-label="Group chats"></div>
-    <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px">
+    <div class="panel-title panel-head spaced">
       <span data-i18n="chats">会话</span>
     </div>
     <!-- GP-123: live search over the real session list (今天 / 昨天 / 更早). -->
-    <input id="session-search" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="Search chats" style="width:100%;box-sizing:border-box;margin:0 0 8px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px" />
+    <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="Search chats" />
     <div id="session-list" aria-label="Chat sessions"></div>
     <details class="lab" id="agents-lab">
       <summary data-i18n="advanced">高级 · Agents / Teammates</summary>
@@ -1287,11 +1250,11 @@
         <summary><span data-i18n="hiddenBots">Hidden Bots</span> (<span id="hidden-bots-count">0</span>)</summary>
         <div id="hidden-bot-list"></div>
       </details>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-        <button type="button" id="connect-apps-btn" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" style="width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:7px 4px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-i18n="connectApps">Connect apps</button>
-        <button type="button" id="marketplace-btn" title="Marketplace · Bot 模板（来自 Host bot-templates.json）" style="width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:7px 4px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-i18n="marketplace">Marketplace</button>
+      <div class="bb-split">
+        <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" data-i18n="connectApps">Connect apps</button>
+        <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="Marketplace · Bot 模板（来自 Host bot-templates.json）" data-i18n="marketplace">Marketplace</button>
       </div>
-      <button type="button" id="sidebar-settings-btn" title="Settings（General / Computer / Usage & Billing / Updates）" style="margin-top:8px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:6px;padding:6px;cursor:pointer;text-align:left;font-size:13px" data-i18n="settings">设置</button>
+      <button type="button" id="sidebar-settings-btn" class="bb-btn bb-btn-ghost bb-btn-block" title="Settings（General / Computer / Usage & Billing / Updates）" data-i18n="settings">设置</button>
     </div>
   </aside>
   <div id="main">
@@ -1341,14 +1304,14 @@
       <div id="gp-group" style="display:none;margin-top:8px">
         <div class="gp-label" data-i18n="gpRoomNew">新建群组（选 2–6 个 Bot，名称可改）</div>
         <div class="gp-row">
-          <input id="gp-room-title" type="text" placeholder="群名（可留空自动命名）" data-i18n-ph="gpRoomPh" style="flex:1;min-width:140px;background:var(--input-bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px" />
+          <input class="bb-control" id="gp-room-title" type="text" placeholder="群名（可留空自动命名）" data-i18n-ph="gpRoomPh" style="flex:1;min-width:140px" />
           <button type="button" class="gp-chip" id="gp-room-create" data-i18n="gpRoomCreate">创建群组</button>
         </div>
         <div id="gp-room-members" class="gp-row" style="margin-top:6px"></div>
         <div class="gp-label" data-i18n="gpRoomMsg">群内消息（@BotName / @everyone / 无 @ 自行决定）</div>
         <div class="gp-row">
           <select id="gp-room-pick" class="gp-select"></select>
-          <input id="gp-room-text" type="text" placeholder="room <id> :: @Piper 看一下这个" data-i18n-ph="gpRoomPh2" style="flex:2;min-width:180px;background:var(--input-bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px" />
+          <input id="gp-room-text" class="bb-control" type="text" placeholder="room <id> :: @Piper 看一下这个" data-i18n-ph="gpRoomPh2" style="flex:2;min-width:180px" />
           <button type="button" class="gp-chip" id="gp-room-send" data-i18n="gpRoomSend">发送</button>
         </div>
         <div style="margin-top:4px;color:var(--muted);font-size:11px" data-i18n="gpRoomNote">审批 / Secret 请求永远只进对应 Bot 私聊，不进群 transcript（GP-53）。</div>
@@ -1369,10 +1332,11 @@
         <button type="button" id="permission-dismiss" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">Dismiss card</button>
       </div>
     </div>
-    <div id="settings-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="title" style="font-weight:700" data-i18n="settings">Settings</div>
-        <button type="button" id="settings-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer" data-i18n="settingsClose">Close</button>
+    <div id="settings-panel" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="bb-sheet" id="settings-sheet">
+      <div class="bb-sheet-head">
+        <div class="bb-sheet-title" id="settings-title" data-i18n="settings">Settings</div>
+        <button type="button" id="settings-close" class="bb-btn" data-i18n="settingsClose">Close</button>
       </div>
       <div id="settings-tabs" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px">
         <button type="button" class="settings-tab-btn" data-stab="general" data-i18n="tabGeneral">General</button>
@@ -1432,7 +1396,7 @@
         </div>
         <div class="gp-label" data-i18n="accountSection">Account（本地 profile · 不伪造远端登录）</div>
         <div class="gp-row" style="align-items:center">
-          <input id="gp-account-label" type="text" data-i18n-ph="accountLabelPlaceholder" placeholder="profile 名（如 Personal / Work）" style="width:160px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" />
+          <input class="bb-control" id="gp-account-label" type="text" data-i18n-ph="accountLabelPlaceholder" placeholder="profile 名（如 Personal / Work）" style="width:160px" />
           <button type="button" class="gp-chip" id="gp-account-signin" data-i18n="accountSignInBtn">Sign in</button>
           <button type="button" class="gp-chip" id="gp-account-signout" data-i18n="accountSignOutBtn">Sign out</button>
           <select id="gp-account-switch" class="gp-select" style="max-width:180px"></select>
@@ -1474,45 +1438,45 @@
         <div style="color:var(--muted);font-size:12px;margin-bottom:8px">Key / 渠道凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_API_KEY <span id="sec-llm-mask"></span>
-            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-… DeepSeek" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-… DeepSeek" class="bb-field" />
           </label>
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_BASE_URL
-            <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" class="bb-field" />
           </label>
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MODEL
-            <input id="sec-llm-model" type="text" placeholder="deepseek-chat" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-llm-model" type="text" placeholder="deepseek-chat" class="bb-field" />
           </label>
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_QWEN_API_KEY <span id="sec-qwen-mask"></span>
-            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选 · 通义" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选 · 通义" class="bb-field" />
           </label>
           <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MOONSHOT_API_KEY <span id="sec-moon-mask"></span>
-            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选 · Moonshot/Kimi" style="display:block;width:100%;margin-top:4px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选 · Moonshot/Kimi" class="bb-field" />
           </label>
           <label style="font-size:12px;color:var(--muted)">钉钉 webhook（勾选开启 live）
             <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
               <input id="sec-ding-post" type="checkbox" />
-              <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
             </div>
           </label>
           <label style="font-size:12px;color:var(--muted)">飞书 token + chat_id
             <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
               <input id="sec-feishu-post" type="checkbox" />
-              <input id="sec-feishu-token" type="password" placeholder="tenant token" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
-              <input id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
+              <input class="bb-control" id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%" />
             </div>
           </label>
           <label style="font-size:12px;color:var(--muted)">企微 token + agent + touser
             <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
               <input id="sec-wecom-post" type="checkbox" />
-              <input id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
-              <input id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
-              <input id="sec-wecom-to" type="text" placeholder="touser" style="width:100px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input class="bb-control" id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px" />
+              <input class="bb-control" id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px" />
+              <input class="bb-control" id="sec-wecom-to" type="text" placeholder="touser" style="width:100px" />
             </div>
           </label>
           <label style="font-size:12px;color:var(--muted)">AI 备案号（未填则 residual，不假装已备案）
             <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
-              <input id="sec-icp" type="text" placeholder="BITBOT_ICP_FILING" style="flex:1;min-width:140px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
-              <input id="sec-algo" type="text" placeholder="BITBOT_ALGORITHM_FILING" style="flex:1;min-width:140px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input class="bb-control" id="sec-icp" type="text" placeholder="BITBOT_ICP_FILING" style="flex:1;min-width:140px" />
+              <input class="bb-control" id="sec-algo" type="text" placeholder="BITBOT_ALGORITHM_FILING" style="flex:1;min-width:140px" />
             </div>
           </label>
           <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px">
@@ -1521,7 +1485,7 @@
           </label>
           <label style="font-size:12px;color:var(--muted)">OTA feed URL
             <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-              <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px" />
+              <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" class="bb-field bb-field-grow" />
               <button type="button" id="sec-ota-check" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;white-space:nowrap">查更新</button>
             </div>
           </label>
@@ -1533,29 +1497,30 @@
             <button type="button" id="sec-gate" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 12px;cursor:pointer">跑验收门禁</button>
           </div>
           <div id="sec-status" style="color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
-          <pre id="sec-gate-out" style="display:none;margin-top:8px;max-height:180px;overflow:auto;background:var(--input-bg);border:1px solid var(--line);border-radius:6px;padding:8px;color:var(--muted);font:11px/1.35 ui-monospace,monospace"></pre>
+          <pre id="sec-gate-out" class="bb-meta bb-control" style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
         </div>
+      </div>
       </div>
     </div>
     <!-- GP-92: fullscreen artifact viewer (image/video/audio/text) -->
-    <div id="gp92-lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:70;align-items:center;justify-content:center;flex-direction:column">
-      <div style="position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;gap:8px;padding:0 16px;z-index:2">
-        <span id="lb-title" style="color:#ddd;font:12px/1.6 ui-monospace,monospace;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-        <button type="button" id="lb-save" style="background:rgba(255,255,255,.12);color:#eee;border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px" data-i18n="lbSave">保存</button>
-        <button type="button" id="lb-close" style="background:rgba(255,255,255,.12);color:#eee;border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px" data-i18n="lbClose">关闭 (Esc)</button>
+    <div id="gp92-lightbox" class="bb-lightbox">
+      <div class="bb-lightbox-bar">
+        <span id="lb-title" class="bb-lightbox-title"></span>
+        <button type="button" id="lb-save" class="bb-lightbox-btn" data-i18n="lbSave">保存</button>
+        <button type="button" id="lb-close" class="bb-lightbox-btn" data-i18n="lbClose">关闭 (Esc)</button>
       </div>
       <div id="lb-body" style="max-width:94vw;max-height:88vh;display:flex;align-items:center;justify-content:center;overflow:auto"></div>
     </div>
     <!-- GP-A2/A3: Connect apps panel (spec §2.5 · Cmd/Ctrl+Shift+M) -->
-    <div id="connect-apps-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:62;align-items:center;justify-content:center">
-      <div style="width:min(680px,92vw);max-height:82vh;overflow:auto;background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div style="font-weight:700;font-size:15px" data-i18n="caTitle">Connect apps</div>
-          <button type="button" id="ca-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer" data-i18n="caClose">Close</button>
+    <div id="connect-apps-modal" class="bb-modal">
+      <div class="bb-sheet bb-sheet-lg">
+        <div class="bb-sheet-head">
+          <div class="bb-sheet-title" data-i18n="caTitle">Connect apps</div>
+          <button type="button" id="ca-close" class="bb-btn" data-i18n="caClose">Close</button>
         </div>
         <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="caGlobal">Plugins are global to this computer — every Bot can use them once installed.</div>
         <div style="display:flex;gap:8px;margin-top:10px">
-          <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="Search plugins" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 9px" />
+          <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="Search plugins" class="bb-field bb-field-grow" />
           <button type="button" id="ca-refresh" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer" data-i18n="caRefresh">Refresh</button>
         </div>
         <!-- Grok-parity: category chips filter the plugin grid -->
@@ -1579,11 +1544,11 @@
          the reference: 名称 / 标签 / 描述 / 头像 (create also asks Job). The
          renderer only collects text — the Host store is written by the kernel's
          `update bot` / `create bot` effect, never by the renderer directly. -->
-    <div id="bot-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:64;align-items:center;justify-content:center">
-      <div style="width:min(620px,92vw);max-height:86vh;overflow:auto;background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div id="bf-title" style="font-weight:700;font-size:15px">Edit Profile</div>
-          <button type="button" id="bf-close" title="Close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer">×</button>
+    <div id="bot-edit-modal" class="bb-modal bb-raise">
+      <div class="bb-sheet bb-sheet-md">
+        <div class="bb-sheet-head">
+          <div id="bf-title" class="bb-sheet-title">Edit Profile</div>
+          <button type="button" id="bf-close" class="bb-btn" title="Close">×</button>
         </div>
         <div style="display:flex;gap:16px;margin-top:14px;align-items:flex-start">
           <div id="bf-avatar-col" style="flex:0 0 96px;text-align:center">
@@ -1609,42 +1574,42 @@
       </div>
     </div>
     <!-- GP-123: session rename / delete dialogs over the existing Host IPC. -->
-    <div id="session-rename-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:64;align-items:center;justify-content:center">
-      <div style="width:min(420px,92vw);background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
-        <div style="font-weight:700;font-size:14px;margin-bottom:10px" data-i18n="sessRenameTitle">重命名会话</div>
+    <div id="session-rename-modal" class="bb-modal bb-raise">
+      <div class="bb-sheet bb-sheet-sm">
+        <div class="bb-sheet-title" data-i18n="sessRenameTitle">重命名会话</div>
         <input id="sr-title" class="bf-input" type="text" autocomplete="off" maxlength="60" />
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
-          <button type="button" id="sr-cancel" class="bf-mini" style="padding:7px 12px" data-i18n="commonCancel">取消</button>
-          <button type="button" id="sr-save" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" data-i18n="commonSave">保存</button>
+        <div class="bb-actions">
+          <button type="button" id="sr-cancel" class="bb-btn" data-i18n="commonCancel">取消</button>
+          <button type="button" id="sr-save" class="bb-btn bb-btn-primary" data-i18n="commonSave">保存</button>
         </div>
       </div>
     </div>
-    <div id="session-delete-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:64;align-items:center;justify-content:center">
-      <div style="width:min(420px,92vw);background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
-        <div style="font-weight:700;font-size:14px;margin-bottom:8px" data-i18n="sessDeleteTitle">删除会话</div>
-        <div id="sd-target" style="font-size:12px;margin-bottom:6px"></div>
-        <div style="color:var(--muted);font-size:12px;line-height:1.5" data-i18n="sessDeleteWarn">删除后不可恢复：该会话的对话记录会从本机移除。</div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
-          <button type="button" id="sd-cancel" class="bf-mini" style="padding:7px 12px" data-i18n="commonCancel">取消</button>
-          <button type="button" id="sd-go" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" data-i18n="commonDelete">删除</button>
+    <div id="session-delete-modal" class="bb-modal bb-raise">
+      <div class="bb-sheet bb-sheet-sm">
+        <div class="bb-sheet-title" data-i18n="sessDeleteTitle">删除会话</div>
+        <div id="sd-target" class="bb-note"></div>
+        <div class="bb-sheet-note" data-i18n="sessDeleteWarn">删除后不可恢复：该会话的对话记录会从本机移除。</div>
+        <div class="bb-actions">
+          <button type="button" id="sd-cancel" class="bb-btn" data-i18n="commonCancel">取消</button>
+          <button type="button" id="sd-go" class="bb-btn bb-btn-danger-soft" data-i18n="commonDelete">删除</button>
         </div>
       </div>
     </div>
     <!-- GP-116 (§2.1): Marketplace panel. The catalog is the Host's real
          bot_templates_list effect (data/desktop/bot-templates.json) — never a
          hardcoded array in the renderer. -->
-    <div id="marketplace-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:63;align-items:center;justify-content:center">
-      <div style="width:min(720px,92vw);max-height:82vh;overflow:auto;background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div style="font-weight:700;font-size:15px" data-i18n="mkTitle">Marketplace · Bot 模板</div>
-          <button type="button" id="mk-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer" data-i18n="settingsClose">关闭</button>
+    <div id="marketplace-modal" class="bb-modal">
+      <div class="bb-sheet bb-sheet-lg">
+        <div class="bb-sheet-head">
+          <div class="bb-sheet-title" data-i18n="mkTitle">Marketplace · Bot 模板</div>
+          <button type="button" id="mk-close" class="bb-btn" data-i18n="settingsClose">关闭</button>
         </div>
-        <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="mkHint">模板来自 Host 的 bot-templates.json 目录，点一个即可创建 Bot。</div>
-        <div id="mk-meta" style="color:var(--muted);font:11px/1.4 ui-monospace,monospace;margin-top:8px"></div>
+        <div class="bb-sheet-note" data-i18n="mkHint">模板来自 Host 的 bot-templates.json 目录，点一个即可创建 Bot。</div>
+        <div id="mk-meta" class="bb-meta" style="margin-top:8px"></div>
         <div id="mk-grid" class="ca-grid" style="margin-top:10px"></div>
       </div>
     </div>
-    <div id="agent-info-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px">
+    <div id="agent-info-panel" class="bb-card bb-inset" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div class="title" style="font-weight:700" id="agent-info-title">Agent info</div>
         <div style="display:flex;gap:6px">
@@ -1663,15 +1628,15 @@
       </div>
     </div>
     <!-- GP-07 store-backed delete dialog (hide-first advisory · irreversible · cascade) -->
-    <div id="bot-delete-dialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;align-items:center;justify-content:center">
-      <div style="width:min(420px,90vw);background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
-        <div id="bot-delete-title" style="font-weight:700;font-size:15px">删除 Bot</div>
-        <div id="bot-delete-advise" style="margin-top:8px;font-size:13px;color:var(--warn-ink);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:8px;padding:8px"></div>
-        <div id="bot-delete-warn" style="margin-top:8px;font-size:13px;color:var(--danger-ink)"></div>
-        <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
-          <button type="button" id="bot-delete-cancel-btn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer"></button>
-          <button type="button" id="bot-delete-hide-btn" style="background:var(--accent-soft);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer"></button>
-          <button type="button" id="bot-delete-go-btn" style="background:var(--danger);color:#fff;border:0;border-radius:8px;padding:6px 12px;cursor:pointer"></button>
+    <div id="bot-delete-dialog" class="bb-modal">
+      <div class="bb-sheet bb-sheet-sm">
+        <div id="bot-delete-title" class="bb-sheet-title">删除 Bot</div>
+        <div id="bot-delete-advise" class="bb-note" style="margin-top:8px;color:var(--warn-ink);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:var(--radius-md);padding:8px"></div>
+        <div id="bot-delete-warn" class="bb-note" style="margin-top:8px;color:var(--danger-ink);font-size:var(--text-md)"></div>
+        <div class="bb-actions">
+          <button type="button" id="bot-delete-cancel-btn" class="bb-btn"></button>
+          <button type="button" id="bot-delete-hide-btn" class="bb-btn"></button>
+          <button type="button" id="bot-delete-go-btn" class="bb-btn bb-btn-danger"></button>
         </div>
       </div>
     </div>
@@ -2035,26 +2000,26 @@
     <!-- M29 (§2.4): sidebar group row → real group chat in the same #log.
          The banner shows which room the composer is aimed at; Exit returns
          to the previous conversation. -->
-    <div id="room-banner" style="display:none;margin:0 16px 6px;padding:8px 12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px;flex-shrink:0;align-items:center;gap:10px">
-      <span id="room-banner-title" style="font-weight:700;font-size:13px"></span>
-      <span id="room-banner-meta" style="color:var(--muted);font-size:12px"></span>
+    <div id="room-banner" class="bb-banner">
+      <span id="room-banner-title" style="font-weight:700;font-size:var(--text-md)"></span>
+      <span id="room-banner-meta" class="bb-note"></span>
       <span style="flex:1"></span>
-      <button type="button" id="room-banner-exit" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px" data-i18n="roomExit">退出群聊</button>
+      <button type="button" id="room-banner-exit" class="bb-btn" data-i18n="roomExit">退出群聊</button>
     </div>
     <div id="attachment-strip" class="attach-strip" aria-label="待发送附件"></div>
     <!-- GP-60: in-call control (composer 为空时启动；结束留 Voice chat 卡) -->
-    <div id="voicechat-bar" style="display:none;margin:0 16px 6px;padding:10px 12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px;flex-shrink:0">
+    <div id="voicechat-bar" class="bb-banner" style="display:none;align-items:stretch;flex-direction:column">
       <div style="display:flex;align-items:center;gap:10px">
         <span class="vc-pulse"></span>
         <span style="font-weight:700" data-i18n="voiceChatLive">Voice chat</span>
         <span id="vc-timer" style="color:var(--muted);font:12px ui-monospace,monospace">00:00</span>
         <span style="flex:1"></span>
-        <button type="button" id="vc-end-btn" style="background:var(--danger);color:#fff;border:0;border-radius:6px;padding:6px 12px;font-weight:700;cursor:pointer" data-i18n="vcEnd">结束通话</button>
+        <button type="button" id="vc-end-btn" class="bb-btn bb-btn-danger" data-i18n="vcEnd">结束通话</button>
       </div>
       <div id="vc-caption" style="margin-top:6px;color:var(--muted);font-size:12px"></div>
       <div style="display:flex;gap:6px;margin-top:8px">
-        <input id="vc-relay-input" type="text" placeholder="转述给 Bot…" style="flex:1;box-sizing:border-box;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px" data-i18n-ph="vcRelayPh" />
-        <button type="button" id="vc-relay-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer;font-size:12px" data-i18n="vcRelayBtn">发送</button>
+        <input class="bb-control" id="vc-relay-input" type="text" placeholder="转述给 Bot…"  data-i18n-ph="vcRelayPh" style="flex:1" />
+        <button type="button" id="vc-relay-btn" class="bb-btn bb-btn-primary" data-i18n="vcRelayBtn">发送</button>
       </div>
     </div>
     <!-- GP-96/97: §5.7 live progress row (updated in place at real Host effect
@@ -2435,7 +2400,7 @@
       if (!panel || !meta) return;
       if (payload && payload.refused) {
         meta.textContent = payload.error || "Settings refused";
-        panel.style.display = "block";
+        panel.style.display = "flex";
         return;
       }
       const anchor = (payload && payload.anchor) || "";
@@ -2455,7 +2420,7 @@
         " · tab=" +
         (tabName || (key || "General")) +
         (payload && payload.deep_link ? " · " + payload.deep_link : "");
-      panel.style.display = "block";
+      panel.style.display = "flex";
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
       // Honest product residuals (brain / CN channels / filing / OTA) — never pretend ready.
@@ -4363,9 +4328,7 @@
       for (const tpl of mkTemplates) {
         const card = document.createElement("div");
         card.dataset.templateId = tpl.id || "";
-        card.style.cssText =
-          "display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;" +
-          "padding:10px 12px;background:var(--bg1);min-width:0";
+        card.className = "ca-card ca-card-stack";
         const head = document.createElement("div");
         head.style.cssText = "display:flex;align-items:center;gap:8px;min-width:0";
         const icon = document.createElement("span");
@@ -7293,21 +7256,12 @@
       hideApproval();
     });
 
-    // ---- Wave G boot wiring (sidebar collapse CSS) ----
-    const styleWaveG = document.createElement("style");
-    styleWaveG.textContent =
-      "body.sidebar-collapsed { grid-template-columns: 0px 1fr 0fr 0fr !important; }" +
-      "body.sidebar-collapsed #agents { display: none; }" +
-      "body.sidebar-collapsed.tools-open { grid-template-columns: 0px 1fr 280px 0fr !important; }" +
-      "body.sidebar-collapsed.computer-open { grid-template-columns: 0px 1fr 0fr 340px !important; }" +
-      "body.sidebar-collapsed.tools-open.computer-open { grid-template-columns: 0px 1fr 280px 340px !important; }" +
-      "#computer-rail { grid-area: computer; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; border-left: 1px solid var(--line); background: var(--side); }" +
-      "body.computer-open #computer-rail { opacity: 1; pointer-events: auto; overflow: auto; }";
-    document.head.appendChild(styleWaveG);
+    // Sidebar collapse and the Computer rail live in the stylesheet
+    // (ui_chrome.css tokens + the component <style>), not a second runtime sheet.
     function openProductCredentials(hint) {
       const panel = document.getElementById("settings-panel");
       const secrets = document.getElementById("secrets-panel");
-      if (panel) panel.style.display = "block";
+      if (panel) panel.style.display = "flex";
       if (typeof showSettingsTab === "function") showSettingsTab("credentials");
       if (secrets) {
         secrets.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -8196,9 +8150,7 @@
       const wrap = document.createElement("div");
       wrap.dataset.pluginId = plugin.id || "";
       // Grok-parity: compact grid card — round icon | name + one-line desc | action.
-      wrap.style.cssText =
-        "display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;" +
-        "padding:10px 12px;background:var(--bg1);min-width:0";
+      wrap.className = "ca-card";
       const icon = document.createElement("span");
       icon.className = "ca-icon";
       icon.textContent = String(plugin.display_name || plugin.id || "?").trim().slice(0, 1).toUpperCase();
