@@ -220,17 +220,19 @@
     overflow: hidden;
   }
   #model-picker .mp-btn {
-    background: var(--accent-soft);
+    background: #ffffff;
     color: var(--muted);
     border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-    padding: 6px 10px;
+    border-radius: var(--radius-md);
+    padding: 6px 12px;
     font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
+  #model-picker .mp-btn:hover { background: var(--accent-soft); }
   #model-picker .mp-btn.active {
-    border-color: var(--muted);
+    border-color: var(--accent);
     color: var(--ink);
     background: var(--accent-soft);
   }
