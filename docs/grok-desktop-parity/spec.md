@@ -197,6 +197,13 @@
 | GP-126 | **每 Bot 独立通知开关**（§4.6）；群聊无独立开关 | 面板内的开关走 Host `botNotifySet(bot_id, on)`（合并写 `settings.notify`，不覆盖其它 Bot）；关掉后 `bitbot:notify:turn` 返回 `reason:"bot_notify_off"` 且不创建系统通知 | 关开关 → `settings.json` 的 `notify.<id>=false`；同一窗口下 `notify:turn` 返回 `shown:false, reason:bot_notify_off`；开回来 → `true` 且响应里不再出现该 reason |
 | GP-127 | Bot 菜单里的操作在设置面板同样可用，且与侧栏同步 | 面板底部动作条：Edit profile（复用 `#bot-edit-modal`）、Pin/Unpin、Hide、Duplicate、Delete（复用既有确认流）；每次动作后 `refreshBots()` + 重新拉 `bots.detail`，删除成功后关闭右栏 | 面板内 Pin 后 `bots.json.pinned=true` 且侧栏置顶；Hide 后侧栏消失；Delete 确认后右栏关闭、Bot 不在任何列表 |
 
+## G-23 对话详情右栏（官方 spec §2.1 右侧面板之「对话详情」）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-128 | 右侧面板第三种内容是**当前对话的详情**；三种内容（对话详情 / Bot 设置 / Computer 预览）互斥，中央消息流不被挤 0 | 新增 `#conv-rail`（`grid-area: computer`，`body.conv-open`），与前两者**三方互斥**（打开一个收起其余两个）；入口 = 会话行右键菜单「对话详情」；显示当前会话标题、归属 Bot、创建/最近更新时间、消息数（user/assistant 分列）、回复数（`reply_to`）、最近一条预览——全部读 `sessions.json` 真实行 | 右键会话 → 详情面板打开且字段与 `sessions.json` 该行逐项相等；再开 Bot 设置/Computer 预览时详情面板自动收起；`#log` 宽度仍 > 200px |
+| GP-129 | 会话详情是**只读呈现 + 既有操作入口**，不发明新状态 | 面板内「重命名」复用 `#session-rename-modal`，动作后详情即时重拉；无编辑型新状态（不假装有云端协作者/共享语义） | 面板内重命名后 `sessions.json` 标题与面板标题同时变；会话不存在（被删）时面板显示未找到而不是残留旧数据 |
+
 ## 诚实残留（本波不假装）
 
 - 真实云 VM 远程桌面推流：以本机 `DISPLAY`/xvfb + 真截图帧模拟"共享电脑屏幕"，标注 `mode=sandbox_screen`，不宣称云端。

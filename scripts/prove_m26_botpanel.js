@@ -36,8 +36,8 @@ const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8"
   ? ok("#bot-rail 与 Computer 预览共用同一右栏列（grid-area: computer）")
   : bad("bot-rail grid placement wrong");
 
-/if \(open\) closeBotRail\(\); \/\/ one optional right panel at a time/.test(html) && /document\.body\.classList\.remove\("computer-open"\);\s*\n?\s*document\.body\.classList\.add\("bot-open"\)/.test(html)
-  ? ok("bot-open 与 computer-open 互斥：打开一个即收起另一个（GP-124）")
+/if \(open\) closeBotRail\(\); \/\/ one optional right panel at a time/.test(html) && /document\.body\.classList\.remove\("computer-open"\);\s*\n?\s*document\.body\.classList\.remove\("conv-open"\);[^\n]*\n\s*document\.body\.classList\.add\("bot-open"\)/.test(html)
+  ? ok("bot-open 与 computer-open 互斥：打开一个即收起另一个（GP-124，M27 起为三方互斥）")
   : bad("mutual exclusion missing");
 
 /\[wavegT\("menuBotSettings"\), \(\) => openBotRail\(bot\.id\)\]/.test(html)

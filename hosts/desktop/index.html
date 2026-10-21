@@ -111,6 +111,30 @@
   body.bot-open #bot-rail { display: block; }
   body.bot-open { grid-template-columns: 260px 1fr 0fr 340px; }
   body.bot-open.tools-open { grid-template-columns: 260px 1fr 280px 340px; }
+  /* G-23: conversation details — the third optional right-panel content, same
+     column, three-way mutual exclusion (computer / bot / conv). */
+  #conv-rail {
+    grid-area: computer;
+    border-left: 1px solid var(--line);
+    background: var(--side);
+    padding: 12px;
+    overflow: auto;
+    display: none;
+  }
+  body.conv-open #conv-rail { display: block; }
+  body.conv-open { grid-template-columns: 260px 1fr 0fr 340px; }
+  body.conv-open.tools-open { grid-template-columns: 260px 1fr 280px 340px; }
+  .cv-title { font-weight: 700; font-size: 14px; word-break: break-word; }
+  .cv-kv {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12px;
+  }
+  .cv-kv:last-of-type { border-bottom: 0; }
+  .cv-kv .cv-v { color: var(--muted); font: 11px/1.5 ui-monospace, monospace; text-align: right; word-break: break-all; }
+  .cv-preview {
+    margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--text);
+    max-height: 120px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  }
   .br-head { display: flex; align-items: flex-start; gap: 10px; }
   .br-avatar {
     width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
@@ -1917,6 +1941,21 @@
     </div>
   </aside>
   <!-- GP-31: Grok-style right-side Computer preview rail (live frames + activity) -->
+  <aside id="conv-rail">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div class="panel-title" style="margin:0" data-i18n="cvTitle">对话详情</div>
+      <button type="button" id="cv-close" class="gp-chip" data-i18n="gpClose">关闭</button>
+    </div>
+    <div class="cv-title" id="cv-name" style="margin-top:10px"></div>
+    <div class="br-meta" id="cv-owner"></div>
+    <div class="panel-title" data-i18n="cvInfo">会话信息</div>
+    <div id="cv-kvs"></div>
+    <div class="panel-title" data-i18n="cvLast">最近一条</div>
+    <div class="cv-preview" id="cv-preview"></div>
+    <div class="panel-title" data-i18n="brActions">操作</div>
+    <div class="gp-row" id="cv-actions"></div>
+    <div style="padding:10px 0 4px;color:var(--muted);font-size:11px" data-i18n="cvNote">详情只读本机会话 store，改动走既有操作。</div>
+  </aside>
   <aside id="bot-rail">
     <div class="br-head">
       <div class="br-avatar" id="br-avatar"></div>
@@ -3957,6 +3996,7 @@
       const items = [
         [wavegT("sessRename"), () => openSessionRename(s)],
         [wavegT("sessDelete"), () => openSessionDelete(s)],
+        [wavegT("cvTitle"), () => openConvRail(s.id)], // G-23: conversation details rail
       ];
       for (const [label, fn] of items) {
         const b = document.createElement("button");
@@ -4005,6 +4045,7 @@
       if (r && r.ok) {
         closeSessionRename();
         await refreshSessions();
+        if (convRailId === id) await refreshConvRail(); // G-23: keep the details rail honest
       }
     }
 
@@ -4037,6 +4078,7 @@
           await loadActiveSessionTranscript();
         }
       }
+      if (convRailId === id) closeConvRail(); // G-23: a deleted chat keeps no details panel
       await refreshSessions();
     }
     const srCancel = document.getElementById("sr-cancel");
@@ -4252,6 +4294,8 @@
           replyToText: m.reply_to && byId[m.reply_to] ? byId[m.reply_to].text : "",
         });
       }
+      // G-23: keep the conversation-details rail in sync with the store.
+      if (convRailId) refreshConvRail().catch(() => {});
     }
 
     async function refreshSecretsForm() {
@@ -7497,6 +7541,7 @@
       if (!id) return;
       botRailId = id;
       document.body.classList.remove("computer-open");
+      document.body.classList.remove("conv-open"); // G-23: three-way mutual exclusion
       document.body.classList.add("bot-open");
       await refreshBotRail();
     }
@@ -7619,6 +7664,100 @@
           addMsg("assistant", wavegT("brNotifySaved") + " · " + (want ? "on" : "off"));
         });
       }
+    })();
+
+    /* G-23 (§2.1): conversation details rail — read-only view over the real
+       session row, same optional right column, third of the mutually exclusive
+       contents (computer / bot / conv). */
+    let convRailId = "";
+    function closeConvRail() {
+      convRailId = "";
+      document.body.classList.remove("conv-open");
+    }
+    async function openConvRail(sessionId) {
+      const id = String(sessionId || "").trim();
+      if (!id) return;
+      convRailId = id;
+      document.body.classList.remove("computer-open");
+      document.body.classList.remove("bot-open");
+      botRailId = "";
+      document.body.classList.add("conv-open");
+      await refreshConvRail();
+    }
+    function cvRow(label, value) {
+      const row = document.createElement("div");
+      row.className = "cv-kv";
+      const k = document.createElement("div");
+      k.textContent = label;
+      const v = document.createElement("div");
+      v.className = "cv-v";
+      v.textContent = value == null || value === "" ? "-" : String(value);
+      row.appendChild(k);
+      row.appendChild(v);
+      return row;
+    }
+    async function refreshConvRail() {
+      if (!convRailId || !window.bitbot || !window.bitbot.sessions) return;
+      let list = null;
+      try {
+        list = await window.bitbot.sessions.list();
+      } catch (_) {
+        list = null;
+      }
+      // list() 只给轻量行（无 messages），完整字段走 get()；get() 对未知 id
+      // 有回退到首个会话的历史行为，所以必须校验 id 一致才算命中。
+      const listHit = list && Array.isArray(list.sessions)
+        ? list.sessions.find((x) => x && x.id === convRailId)
+        : null;
+      let got = null;
+      if (listHit) {
+        try { got = await window.bitbot.sessions.get(convRailId); } catch (_) { got = null; }
+      }
+      const row = got && got.ok && got.session && got.session.id === convRailId ? got.session : null;
+      const nameEl = document.getElementById("cv-name");
+      const ownerEl = document.getElementById("cv-owner");
+      const kvsEl = document.getElementById("cv-kvs");
+      const prevEl = document.getElementById("cv-preview");
+      const actEl = document.getElementById("cv-actions");
+      if (!nameEl || !kvsEl || !actEl) return;
+      nameEl.innerHTML = "";
+      kvsEl.innerHTML = "";
+      actEl.innerHTML = "";
+      if (!row) {
+        nameEl.textContent = wavegT("cvGone");
+        ownerEl.textContent = "";
+        prevEl.textContent = "";
+        return;
+      }
+      nameEl.textContent = row.title || row.id;
+      const msgs = Array.isArray(row.messages) ? row.messages : [];
+      const userMsgs = msgs.filter((m) => m && m.role === "user").length;
+      const botMsgs = msgs.filter((m) => m && m.role === "assistant").length;
+      const replies = msgs.filter((m) => m && m.reply_to).length;
+      ownerEl.textContent = "";
+      const ownerBot = String(row.title || "").replace(/ · DM$/, "");
+      kvsEl.appendChild(cvRow(wavegT("cvOwner"), ownerBot || "-"));
+      kvsEl.appendChild(cvRow(wavegT("cvCreated"), row.created_at || "-"));
+      kvsEl.appendChild(cvRow(wavegT("cvUpdated"), row.updated_at || "-"));
+      kvsEl.appendChild(cvRow(
+        wavegT("cvMessages"),
+        String(msgs.length) + "（" + wavegT("cvUserMsgs") + " " + userMsgs + " / " + wavegT("cvBotMsgs") + " " + botMsgs + "）",
+      ));
+      kvsEl.appendChild(cvRow(wavegT("cvReplies"), replies));
+      const last = msgs.length ? msgs[msgs.length - 1] : null;
+      prevEl.textContent = last
+        ? "[" + (last.role || "?") + "] " + String(last.text || "").slice(0, 400)
+        : wavegT("cvNone");
+      const renameBtn = document.createElement("button");
+      renameBtn.type = "button";
+      renameBtn.className = "gp-chip";
+      renameBtn.textContent = wavegT("sessRename");
+      renameBtn.addEventListener("click", () => openSessionRename(row));
+      actEl.appendChild(renameBtn);
+    }
+    (function wireConvRail() {
+      const close = document.getElementById("cv-close");
+      if (close) close.addEventListener("click", () => closeConvRail());
     })();
 
     let botMenuEl = null;
@@ -8695,6 +8834,19 @@
         avatarInvalid: "头像路径无效（Host 拒绝，未保存头像）",
         botCreatedOpen: "已创建「{n}」并打开对话",
         botCreateFailed: "创建失败",
+        cvTitle: "对话详情",
+        cvInfo: "会话信息",
+        cvLast: "最近一条",
+        cvOwner: "归属 Bot",
+        cvCreated: "创建于",
+        cvUpdated: "最近更新",
+        cvMessages: "消息数",
+        cvUserMsgs: "用户",
+        cvBotMsgs: "Bot",
+        cvReplies: "回复引用",
+        cvNone: "（暂无消息）",
+        cvGone: "会话不存在或已被删除",
+        cvNote: "详情只读本机会话 store，改动走既有操作。",
         menuBotSettings: "Bot 设置",
         brAbout: "工作方式",
         brSettings: "设置",
@@ -9056,6 +9208,19 @@
         avatarInvalid: "頭像路徑無效（Host 拒絕，未儲存頭像）",
         botCreatedOpen: "已建立「{n}」並開啟對話",
         botCreateFailed: "建立失敗",
+        cvTitle: "對話詳情",
+        cvInfo: "工作階段資訊",
+        cvLast: "最近一則",
+        cvOwner: "所屬 Bot",
+        cvCreated: "建立於",
+        cvUpdated: "最近更新",
+        cvMessages: "訊息數",
+        cvUserMsgs: "使用者",
+        cvBotMsgs: "Bot",
+        cvReplies: "回覆引用",
+        cvNone: "（暫無訊息）",
+        cvGone: "工作階段不存在或已刪除",
+        cvNote: "詳情唯讀本機工作階段 store，變更走既有操作。",
         menuBotSettings: "Bot 設定",
         brAbout: "工作方式",
         brSettings: "設定",
@@ -9417,6 +9582,19 @@
         avatarInvalid: "Invalid avatar path (Host refused it; nothing was saved)",
         botCreatedOpen: "Created \"{n}\" and opened its chat",
         botCreateFailed: "Create failed",
+        cvTitle: "Chat details",
+        cvInfo: "Session info",
+        cvLast: "Latest message",
+        cvOwner: "Bot",
+        cvCreated: "Created",
+        cvUpdated: "Updated",
+        cvMessages: "Messages",
+        cvUserMsgs: "User",
+        cvBotMsgs: "Bot",
+        cvReplies: "Reply quotes",
+        cvNone: "(no messages yet)",
+        cvGone: "Chat not found or deleted",
+        cvNote: "Details read the local session store; changes go through the existing actions.",
         menuBotSettings: "Bot settings",
         brAbout: "How it works",
         brSettings: "Settings",
@@ -9995,7 +10173,8 @@
     }
     async function toggleComputerRail(force) {
       const open = force === true ? true : force === false ? false : !computerRailOpen();
-      if (open) closeBotRail(); // one optional right panel at a time (G-22)
+      if (open) closeBotRail(); // one optional right panel at a time (G-22/G-23)
+      document.body.classList.remove("conv-open");
       document.body.classList.toggle("computer-open", open);
       if (open) {
         renderComputerRail();

@@ -1824,6 +1824,193 @@ async function main() {
       if (setM26Before) fs.writeFileSync(SET_M26, setM26Before);
     }
 
+    /* ---- GP-128/129 对话详情右栏（官方 spec §2.1 右栏第三种内容）----
+       新建会话 → 发一条真消息 → 右键会话行「对话详情」→ #conv-rail 字段与
+       sessions.json 该行逐项相等；三方互斥（conv / bot / computer）；面板内
+       重命名真改 store；删除会话后详情面板自动关闭。*/
+    const SESS_M27 = path.join(REPO, "data/desktop/sessions.json");
+    const sessM27Before = fs.existsSync(SESS_M27) ? fs.readFileSync(SESS_M27) : null;
+    try {
+      const bootM27 = await launch({ BITBOT_LLM_STREAM: "0" });
+      const win = bootM27.win;
+      await win.waitForSelector("#composer #text", { timeout: 30000 });
+
+      // 1) A fresh chat with one real turn so the details have real numbers.
+      await win.click("#sess-new");
+      await win.waitForTimeout(400);
+      await win.fill("#composer #text", "M27 详情探针消息");
+      await win.press("#composer #text", "Enter");
+      await win.waitForFunction(
+        () => document.querySelectorAll("#log .msg.assistant").length > 0,
+        null,
+        { timeout: 30000 },
+      ).catch(() => {});
+      await win.waitForTimeout(800);
+      const m27SessionId = await (async () => {
+        try {
+          const st = JSON.parse(fs.readFileSync(SESS_M27, "utf8"));
+          const hit = (st.sessions || []).find((x) => (x.messages || []).some((m) =>
+            m && m.role === "user" && String(m.text || "").includes("M27 详情探针")));
+          return hit ? hit.id : "";
+        } catch (_) { return ""; }
+      })();
+      if (m27SessionId) {
+        const rowSel = '#session-list [data-session-id="' + m27SessionId + '"]';
+        await win.waitForSelector(rowSel, { timeout: 10000 }).catch(() => {});
+
+        // 2) Right-click the row → last menu item = 对话详情 → #conv-rail opens
+        await win.click(rowSel, { button: "right" });
+        await win.waitForSelector(".composer-menu", { timeout: 5000 });
+        await win.locator(".composer-menu button").last().click();
+        await win.waitForFunction(
+          () => document.body.classList.contains("conv-open") &&
+            document.getElementById("conv-rail").getBoundingClientRect().width > 200,
+          null,
+          { timeout: 10000 },
+        ).catch(() => {});
+        // refreshConvRail 是异步取数：等面板真的渲染出标题再断言。
+      await win.waitForFunction(
+        () => ((document.getElementById("cv-name") || {}).textContent || "").length > 0,
+        null,
+        { timeout: 10000 },
+      ).catch(() => {});
+      const convOpened = await win.evaluate(() => ({
+          open: document.body.classList.contains("conv-open"),
+          width: document.getElementById("conv-rail").getBoundingClientRect().width,
+          title: (document.getElementById("cv-name") || {}).textContent || "",
+          kvs: document.querySelectorAll("#cv-kvs .cv-kv").length,
+          preview: (document.getElementById("cv-preview") || {}).textContent || "",
+          logWidth: document.getElementById("log").getBoundingClientRect().width,
+        }));
+        const m27Row = (JSON.parse(fs.readFileSync(SESS_M27, "utf8")).sessions || []).find((x) => x.id === m27SessionId) || {};
+        const m27Msgs = m27Row.messages || [];
+        convOpened.open && convOpened.width > 200
+          ? ok("E2E GP-128：右键会话 → 对话详情右栏打开（真实 #conv-rail）")
+          : bad("E2E GP-128 rail open", JSON.stringify(convOpened).slice(0, 200));
+        convOpened.title === (m27Row.title || "")
+          ? ok("E2E GP-128：面板标题与 sessions.json 一致（" + m27Row.title + "）")
+          : bad("E2E GP-128 title", JSON.stringify({ panel: convOpened.title, store: m27Row.title }));
+        convOpened.kvs === 5 && convOpened.logWidth > 200
+          ? ok("E2E GP-128：信息 5 行（归属/创建/更新/消息数/回复数）且中央消息流仍 > 200px")
+          : bad("E2E GP-128 kvs/geometry", JSON.stringify({ kvs: convOpened.kvs, log: convOpened.logWidth }));
+        const expectPreview = m27Msgs.length
+          ? "[" + m27Msgs[m27Msgs.length - 1].role + "] " + String(m27Msgs[m27Msgs.length - 1].text || "").slice(0, 400)
+          : "";
+        convOpened.preview === expectPreview && m27Msgs.length > 0
+          ? ok("E2E GP-128：「最近一条」与 store 的最后一行逐字一致（" + m27Msgs.length + " 条消息）")
+          : bad("E2E GP-128 preview", JSON.stringify({ panel: convOpened.preview.slice(0, 80), expect: expectPreview.slice(0, 80) }));
+
+        // 3) Three-way exclusion: opening Bot settings closes the details rail.
+        const botIdM27 = await win.evaluate(
+          () => document.querySelector("#bot-list [data-agent-id]").dataset.agentId,
+        );
+        await win.click('#bot-list [data-agent-id="' + botIdM27 + '"]', { button: "right" });
+        await win.waitForSelector(".composer-menu", { timeout: 5000 });
+        await win.locator(".composer-menu button").last().click();
+        await win.waitForFunction(
+          () => document.body.classList.contains("bot-open"),
+          null,
+          { timeout: 10000 },
+        ).catch(() => {});
+        await win.waitForTimeout(300);
+        const excl27 = await win.evaluate(() => ({
+          bot: document.body.classList.contains("bot-open"),
+          conv: document.body.classList.contains("conv-open"),
+        }));
+        excl27.bot && !excl27.conv
+          ? ok("E2E GP-128：打开 Bot 设置自动收起对话详情（同一可选右栏）")
+          : bad("E2E GP-128 exclusion", JSON.stringify(excl27));
+
+        // 4) Rename from the details rail writes the store and refreshes the panel.
+        await win.click(rowSel, { button: "right" });
+        await win.waitForSelector(".composer-menu", { timeout: 5000 });
+        await win.locator(".composer-menu button").last().click();
+        await win.waitForFunction(() => document.body.classList.contains("conv-open"), null, { timeout: 10000 }).catch(() => {});
+        await win.waitForFunction(
+          () => document.querySelectorAll("#cv-actions .gp-chip").length > 0,
+          null,
+          { timeout: 10000 },
+        ).catch(() => {});
+        const renameBtnIdx = await win.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll("#cv-actions .gp-chip"));
+          return btns.findIndex((b) => /重命名|重新命名|Rename/.test(b.textContent || ""));
+        });
+        if (renameBtnIdx >= 0) {
+          await win.evaluate((i) => {
+            document.querySelectorAll("#cv-actions .gp-chip")[i].click();
+          }, renameBtnIdx);
+          await win.waitForSelector("#session-rename-modal", { state: "visible", timeout: 5000 });
+          await win.fill("#sr-title", "M27 重命名后的对话");
+          await win.click("#sr-save");
+          const renamed = await (async () => {
+            const t0 = Date.now();
+            while (Date.now() - t0 < 10000) {
+              try {
+                const rows = JSON.parse(fs.readFileSync(SESS_M27, "utf8")).sessions || [];
+                const hit = rows.find((x) => x.id === m27SessionId);
+                if (hit && hit.title === "M27 重命名后的对话") return true;
+              } catch (_) {}
+              await new Promise((r) => setTimeout(r, 200));
+            }
+            return false;
+          })();
+          // 面板标题随动是异步重拉：等它真的变成新标题。
+          await win.waitForFunction(
+            () => ((document.getElementById("cv-name") || {}).textContent || "") === "M27 重命名后的对话",
+            null,
+            { timeout: 10000 },
+          ).catch(() => {});
+          const panelTitle = await win.evaluate(
+            () => (document.getElementById("cv-name") || {}).textContent || "",
+          );
+          renamed && panelTitle === "M27 重命名后的对话"
+            ? ok("E2E GP-129：详情面板内重命名真写 sessions.json 且面板标题随动")
+            : bad("E2E GP-129 rename", JSON.stringify({ renamed, panelTitle }).slice(0, 200));
+        } else {
+          bad("E2E GP-129 rename button", "no rename button in #cv-actions");
+        }
+
+        // 5) Deleting the chat closes its details rail.
+        await win.click('#session-list [data-session-id="' + m27SessionId + '"]', { button: "right" });
+        await win.waitForSelector(".composer-menu", { timeout: 5000 });
+        const menuBtns = await win.evaluate(() =>
+          Array.from(document.querySelectorAll('.composer-menu[data-session-menu] button')).map((b) => b.textContent || ""),
+        );
+        const delIdx = menuBtns.findIndex((t) => /删除/.test(t));
+        await win.evaluate((i) => {
+          const btns = document.querySelectorAll('.composer-menu[data-session-menu] button');
+          btns[i].click();
+        }, delIdx);
+        await win.waitForSelector("#session-delete-modal", { state: "visible", timeout: 5000 });
+        await win.click("#sd-go");
+        const railClosed = await (async () => {
+          const t0 = Date.now();
+          while (Date.now() - t0 < 10000) {
+            const st = await win.evaluate(() => document.body.classList.contains("conv-open"));
+            if (!st) {
+              try {
+                const rows = JSON.parse(fs.readFileSync(SESS_M27, "utf8")).sessions || [];
+                if (!rows.some((x) => x.id === m27SessionId)) return true;
+              } catch (_) { return true; }
+            }
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          return false;
+        })();
+        railClosed
+          ? ok("E2E GP-129：删除会话后详情面板自动关闭且会话从 store 消失")
+          : bad("E2E GP-129 delete close", "rail still open or session not removed");
+      } else {
+        bad("E2E GP-128 session", "M27 probe session never reached the store");
+      }
+
+      await shutdown(bootM27.app);
+    } catch (e) {
+      bad("E2E GP-128/129 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      if (sessM27Before) fs.writeFileSync(SESS_M27, sessM27Before);
+    }
+
     /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----
        走真实 UI + 真实 IPC：provider 回一句含裸 URL 与 javascript: 链接的话 →
        kernel CM-0111 规范化为 markdown → renderer 把 markdown 变成真 <a>，

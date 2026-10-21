@@ -1050,6 +1050,51 @@ fi
 echo "  · G-26 说明：本块用真实 product_surface botDetail/botNotifySet 打真实 store（bots/settings/memory/sessions），E2E 走真实右键菜单与开关；负向对照为禁用记忆计数后 detail 返回 0"
 
 
+echo "== G-27 对话详情右栏（M27：§2.1 右栏第三种内容）=="
+if timeout 900 node scripts/prove_m27_convrail.js > /tmp/g27-probe.log 2>&1; then
+  ok "G-27 对话详情右栏契约全绿（$(grep -c '✓' /tmp/g27-probe.log) 项，$(tail -1 /tmp/g27-probe.log)）"
+else
+  bad "G-27 对话详情右栏契约（见 /tmp/g27-probe.log）"
+fi
+grep -q "#conv-rail 与 Computer / Bot 设置共用同一可选右栏列" /tmp/g27-probe.log 2>/dev/null \
+  && grep -q "computer / bot / conv 三方互斥" /tmp/g27-probe.log 2>/dev/null \
+  && ok "G-27 GP-128：对话详情作为右栏第三种内容，三方互斥不叠加" \
+  || bad "G-27 GP-128 placement/exclusion missing"
+grep -q "消息数 2（用户 1 / Bot 1）、回复引用 1" /tmp/g27-probe.log 2>/dev/null \
+  && grep -q "「最近一条」取真实最后一行" /tmp/g27-probe.log 2>/dev/null \
+  && ok "G-27 GP-128：详情统计与最近一条全部可从真实会话行算出" \
+  || bad "G-27 GP-128 field math missing"
+grep -q "归属 Bot 按「<name> · DM」约定解析" /tmp/g27-probe.log 2>/dev/null \
+  && grep -q "与删除级联同口径" /tmp/g27-probe.log 2>/dev/null \
+  && ok "G-27 GP-128：归属 Bot 解析与删除级联同一命名约定" \
+  || bad "G-27 GP-128 owner convention missing"
+grep -q "面板内重命名走 sessions.rename 真改 store" /tmp/g27-probe.log 2>/dev/null \
+  && grep -q "删除后会话从 store 消失" /tmp/g27-probe.log 2>/dev/null \
+  && grep -q "未知会话 id 在 list 中找不到" /tmp/g27-probe.log 2>/dev/null \
+  && ok "G-27 GP-129：只读呈现 + 既有操作；被删/未知会话显示「不存在」" \
+  || bad "G-27 GP-129 read-only semantics missing"
+grep -q "负向对照：把回复计数写成 0 后与真实 1 条不符" /tmp/g27-probe.log 2>/dev/null \
+  && ok "G-27 负向对照：砍掉回复引用计数后契约变红（断言非恒真）" \
+  || bad "G-27 negative control missing"
+if [ -f /tmp/e2e-g16.log ]; then
+  grep -q "E2E GP-128：右键会话 → 对话详情右栏打开" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-128：信息 5 行" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-128：「最近一条」与 store 的最后一行逐字一致" /tmp/e2e-g16.log \
+    && ok "G-27 真实 Electron：详情右栏字段与 sessions.json 逐项一致，中央不被挤压" \
+    || bad "G-27 E2E rail fields missing"
+  grep -q "E2E GP-128：打开 Bot 设置自动收起对话详情" /tmp/e2e-g16.log \
+    && ok "G-27 真实 Electron：右栏三方互斥实测（conv → bot 自动收起）" \
+    || bad "G-27 E2E exclusion missing"
+  grep -q "E2E GP-129：详情面板内重命名真写 sessions.json 且面板标题随动" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-129：删除会话后详情面板自动关闭且会话从 store 消失" /tmp/e2e-g16.log \
+    && ok "G-27 真实 Electron：面板内重命名/删除走既有 Host IPC 且面板状态诚实" \
+    || bad "G-27 E2E actions missing"
+else
+  echo "  · skip：/tmp/e2e-g16.log 不存在（E2E 未在本轮运行）"
+fi
+echo "  · G-27 说明：本块用真实 createSessionStore 建会话/发消息/重命名/删除，断言读 sessions.json 真实行；负向对照为把回复引用计数写死为 0"
+
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

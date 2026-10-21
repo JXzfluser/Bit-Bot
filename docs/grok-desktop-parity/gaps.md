@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M26 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=195 FAIL=0；`moon test` 381/381（M26 未改内核）；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 110/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M27 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=204 FAIL=0；`moon test` 381/381（M26/M27 未改内核）；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 117/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -50,6 +50,12 @@
 | GP-121 | 已实现 | §2.3 **创建流程**：`#bot-new-btn` / `Cmd/Ctrl+N` 打开同一表单的创建态（隐藏标签行与头像列，显示模板 chips）；Name 留空 → Host `botsCreate` 落 `New Bot`（官方占位名）；Description 用 textarea 且 `enc()` 只替换空格，换行原样保留；创建成功后读 `host_payload.bot` 调 `selectBotForChat()` **自动打开该 Bot 的对话**。见 Wave M25。 |
 | GP-122 | 已实现 | §4.5 **头像上传**：main 新增 `bitbot:bots:pickAvatar`（`dialog.showOpenDialog` 限图片，`statSync` 拦 >2MB → `avatar_too_large`，成功返回 `{path,data_url}`），preload 暴露 `bots.pickAvatar()`；对话框内预览 + 可清空（`avatar=-`）。E2E 走同一 IPC 写真实路径后 `refreshBots()`，侧栏渲染 `<img>`；坏路径由 Host 拒且旧头像保留。系统选择框本身按残留记（无桌面环境不可自动化）。见 Wave M25。 |
 | GP-123 | 已实现 | 侧栏会话组织补齐官方形态：`sessDayBucket()` 按本地零点分 **今天 / 昨天 / 更早**（`.sess-group` 标题），`#session-search` 按标题+预览实时过滤并在无命中时给空态；行双击 → `#session-rename-modal`（`sessions.rename`），右键 → 重命名/删除，删除走 `#session-delete-modal`（点名会话、明示不可恢复）→ `sessions.delete`，之后重选 active 并重载 transcript。全程走既有 Host IPC，渲染层不直接写 `sessions.json`。见 Wave M25。 |
+| GP-124 | 已实现 | §2.1 可选右栏（Bot 设置）：`#bot-rail` 与 Computer 预览共用同一可选列，打开一个即收起另一个（M27 起升级三方互斥）；面板字段全部来自真实 store。见 Wave M26。 |
+| GP-125 | 已实现 | Bot 设置面板字段逐项来自 bots.json / 记忆槽 / 会话 / rooms / `settings.notify`，未知 id → `bot_not_found` 不造行。见 Wave M26。 |
+| GP-126 | 已实现 | 每 Bot 通知开关合并写 `settings.notify`，关掉后回合通知真实被抑制（`notify:turn` 返回 `shown:false, reason=bot_notify_off`）。见 Wave M26。 |
+| GP-127 | 已实现 | 面板动作与 Bot 菜单同源（编辑/置顶/副本/隐藏/删除复用既有流）；删除确认后右栏自动关闭。见 Wave M26。 |
+| GP-128 | 已实现 | §2.1 对话详情右栏：`#conv-rail`（三方互斥同一可选列），标题/归属/创建/更新/消息数/回复数/最近一条逐项来自真实 sessions.json，中央消息流不被挤 0。见 Wave M27。 |
+| GP-129 | 已实现 | 详情面板内重命名真写 sessions.json 且面板标题随动；删除会话后面板自动关闭且行消失。见 Wave M27。 |
 | GP-37 | 残留 | `route_traffic` 开关持久 + UI 显示真实生效状态；真代理生效不可达 → renderer 显示 honest residual 文案。 |
 | GP-40/41 | 已实现 | 草稿卡（New Email / New Slack Message）可编辑，Send→真实 approved 回合再编码；Discard→不落出站。仅当卡类别为 ExternalSend 时渲染（不从任意文本臆造草稿）。 |
 | GP-42 | 已实现 | kernel 判定未变（CM-0306），UI 不代客批准。 |
@@ -494,6 +500,36 @@
 3. **smoke grep 与断言文案漂移**：改 E2E 文案后 G-26 的一条 grep 变红（PASS=194 FAIL=1），同步修正 grep 后全绿——smoke 的 grep 契约确实在盯文案，这次是它抓住了我。
 
 ### 5) 诚实残留（本波不假装）
-- **「对话详情」右栏未做**：官方 §2.1 的可选右栏三种内容里，本轮做了 Bot 设置与 Computer 预览；「当前对话的详情」（成员/时间线/附件汇总）尚无面板，如实列入下一波候选。
+- **「对话详情」右栏已在本波补齐**：见下方 Wave M27（`#conv-rail`，三方互斥）；M27 的残留清单接管本条的后续口径。
 - **Routines 绑定是字符串约定**：`botDetail` 统计 Routines 用与删除级联相同的「id/prompt 含 bot_id」约定，不是外键；prompt 里恰好提到别的 Bot 名会多计（官方未定义绑定模型，不发明结构）。
 - **面板不显示实时状态**：Bot 是否正在执行 computer-use / 回合进行中没有进右栏（数据在 `computer.json`/会话锁里，后续可加）；目前只显示静态资料与计数。
+
+## Wave M27（对话详情右栏：官方 spec §2.1 右栏第三种内容，本轮）
+
+背景：M26 之后 §2.1 的可选右栏还剩「对话详情」没有界面。M26 的残留清单把它列为本波候选；本波补齐 `#conv-rail`，右栏三种内容（对话详情 / Bot 设置 / Computer 预览）全部落地，且升级为**三方互斥**（同一可选列，打开一个即收起另外两个）。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-23 对话详情右栏`：GP-128（右键会话 → 详情面板打开；标题/归属/创建/更新/消息数/回复数逐项来自真实 sessions.json；面板打开时中央消息流仍 > 200px）、GP-129（面板内重命名真写 sessions.json 且面板标题随动；删除会话后面板自动关闭且行消失）。
+
+### 2) 实现
+- **渲染层（`index.html`）**：新增 `#conv-rail`（`grid-area: computer`，`body.conv-open` 展开），与 `#bot-rail`、`#computer-rail` 三方互斥（`openConvRail` 收起另两个；`toggleComputerRail`/`openBotRail` 同步收起对话详情）。面板内容全部经 `sessions.list()` + `sessions.get(id)` 读取真实会话行：标题、归属 Bot（按既有 `<name> · DM` 命名约定解析）、创建/更新时间、消息数（含用户 x / Bot y 拆分）、回复数（按 `reply_to` 计）、最近一条 `[角色] 文本(≤400字)` 预览。动作条复用既有重命名对话框（`openSessionRename`）；重命名成功后若详情面板正显示该会话则同步刷新面板标题（`saveSessionRename` 接 `refreshConvRail`）；删除确认成功后若面板正显示该会话则自动关闭。回合落库后 `loadActiveSessionTranscript` 末尾同步刷新面板（预览/消息数/更新时间跟着走）。
+- **i18n**：13 个新键（cvTitle / cvInfo / cvLast / cvOwner / cvCreated / cvUpdated / cvMessages / cvUserMsgs / cvBotMsgs / cvReplies / cvNone / cvGone / cvNote）在 zh-CN / zh-TW / en 三套字典补齐。
+
+### 3) 验证（本轮实测）
+- `scripts/prove_m27_convrail.js` **19/0**（新增）：静态层（#conv-rail 结构、三方互斥、菜单入口、cvGone 文案、重命名复用、删除关栏、transcript 同步、13 键三语）+ 行为层（真实 `createSessionStore`：建会话、追加 user/assistant(reply_to) 消息、归属解析、计数数学、最近一条、重命名、删除、未知 id 不在列）。
+- **负向对照**：把渲染层回复计数 marker 改成 `0 &&` → probe 断言与渲染层数学不一致立即变红；html 在 finally 恢复，双跑幂等。
+- `scripts/e2e_grok_desktop_boot.mjs` **117/0**（新增 7 条真实 DOM 断言）：发消息建会话 → 右键行 → 菜单「对话详情」→ `#conv-rail` 打开且宽度 340px、标题与会话行一致、信息 5 行、最近一条与 store 逐字一致、中央消息流 > 200px；打开 Bot 设置自动收起对话详情；面板内重命名真写 `sessions.json` 且面板标题随动；删除会话后面板自动关闭且行消失。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-27 十断言**（1 条全绿汇总 + 4 条 probe grep + 4 条 E2E grep + 1 条 i18n grep），全量 **PASS=204 FAIL=0**。
+
+### 4) 本轮踩到并修掉的真问题
+1. **`sessions.list()` 行没有 `messages`/`created_at`**：面板第一版只靠 list 渲染，预览和时间永远空/错。改成 list 找行 + `sessions.get(id)` 拿全量，且 get 对未知 id 会回落到 `sessions[0]`，必须加 `session.id === convRailId` 身份守卫。
+2. **误删渲染变量**：一次脚本化编辑把 `refreshConvRail` 里 `nameEl/ownerEl/kvsEl/prevEl/actEl` 的声明删掉，面板空白且控制台 `nameEl is not defined`；用活体调试脚本（xvfb 起 Electron，在页面里直接 `openConvRail` 抓 console 错误）定位后恢复。
+3. **归属解析尾部空格**：`slice(0,-4)` 剥「 · DM」会留一个尾空格，与 bots.json 的名字比对恒红；改成 `.replace(/ · DM$/, "")`，probe 与渲染层同口径。
+4. **E2E 读面板早于异步渲染**：cv 字段在 IPC 回包前被断言；补 `waitForFunction`（cv-name 非空 / cv-actions 有按钮 / 重命名后面板标题变化）。
+5. **重命名后面板不随动（GP-129 最后一红）**：根因是 `saveSessionRename` 只刷会话列表没刷详情面板；补 `if (convRailId === id) await refreshConvRail()` 后 E2E 117/0。
+6. **M26 probe 被三方互斥波及**：`openBotRail` 中间插入 `remove("conv-open")` 行后，M26 probe 的相邻行正则失配（smoke 抓到 PASS=26 FAIL=1）；更新 probe 正则以断言三方互斥（含行尾注释的 `[^\n]*\n` 容忍）。
+
+### 5) 诚实残留（本波不假装）
+- **详情面板是只读视图**：官方 §2.1 未定义对话详情的编辑语义，本波只做展示 + 复用既有重命名/删除；附件汇总、成员列表（群聊场景）未做（群会话的归属解析当前只覆盖 DM 命名约定，见下条）。
+- **归属靠命名约定**：`<name> · DM` 是既有删除级联同款约定，不是外键；非 DM 会话（群聊）归属行显示为空。等 §2.4 群聊入口补齐时一并接真。
+- **面板数据不含会话锁/运行态**：回合是否进行中、computer-use 是否占用该会话，没进详情面板（数据在会话锁里，候选后续）。
