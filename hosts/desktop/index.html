@@ -608,12 +608,13 @@
     padding: 10px 12px;
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
-    background: var(--bg1)cc;
+    background: #ffffff;
     font: var(--text-sm)/1.4 var(--font-mono);
     white-space: pre-wrap;
     color: var(--muted);
     max-height: 100px;
     overflow: auto;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   }
   #banner.ok { border-color: var(--line); color: var(--ink); }
   #banner.err { border-color: var(--danger); color: var(--danger-ink); }
@@ -674,8 +675,9 @@
      the value never reaches the transcript, only `[REDACTED]`. */
   .secret-card {
     align-self: flex-start; display: flex; flex-direction: column; gap: 8px;
-    max-width: 82%; padding: 12px 14px; border: 1px solid var(--line);
-    border-radius: var(--radius-2xl); background: var(--bg1);
+    max-width: 82%; padding: 14px 16px; border: 1px solid var(--line);
+    border-radius: var(--radius-2xl); background: #ffffff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
   .secret-card .sc-title { font-weight: 700; font-size: var(--text-md); }
   .secret-card .sc-note { color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
