@@ -874,10 +874,13 @@
   .voice-memo-card .vm-transcript { margin-top: 6px; color: var(--muted); font-size: var(--text-sm); white-space: pre-wrap; }
   #composer #send {
     background: var(--accent); color: var(--accent-ink); border: 0;
-    min-width: 34px; height: 34px; border-radius: var(--radius-pill); padding: 0 14px;
+    min-width: 36px; height: 36px; border-radius: var(--radius-pill); padding: 0 16px;
     font-weight: 600; font-size: var(--text-md); cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: all 0.15s ease;
   }
-  #composer #send:disabled { opacity: 0.4; }
+  #composer #send:hover { background: #333; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
+  #composer #send:disabled { opacity: 0.4; box-shadow: none; }
   .attach-strip { display: flex; flex-wrap: wrap; gap: 8px; }
   .attach-strip .attach-chip {
     background: #ffffff; border: 1px solid var(--line); border-radius: var(--radius-md);
