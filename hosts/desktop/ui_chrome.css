@@ -315,13 +315,20 @@ body.force-light {
   width: 100%;
   box-sizing: border-box;
   margin-top: var(--space-1);
-  background: var(--input-bg);
+  background: #ffffff;
   color: var(--text);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
   font: inherit;
   font-size: var(--text-md);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.bb-field:focus {
+  border-color: var(--muted);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  outline: none;
 }
 
 .bb-field-grow {
@@ -334,11 +341,11 @@ body.force-light {
 
 /* Shared text control. Width/flex stay on the element when the row needs them. */
 .bb-control {
-  background: var(--input-bg);
+  background: #ffffff;
   color: var(--text);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
   font: inherit;
   box-sizing: border-box;
 }
