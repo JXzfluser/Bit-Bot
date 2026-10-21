@@ -79,6 +79,7 @@ test "desktop_turn_list_machines_android_host_present" {
     channel: "",
     approved: false,
     reply_to: "",
+    bot_id: "agent-bit",
   }
   let r = run_desktop_turn("ListMachines", turn_id="lm-android", ctx~)
   assert_true(r.ok)
@@ -139,6 +140,36 @@ test "desktop_turn_session_memory_seeds" {
 }
 
 ///|
+test "desktop_turn_bot_id_scopes_memory" {
+  // GP-111/112 (§4.2): the Host passes `--bot-id`; the kernel must carry it in
+  // the context so the reply/effects are attributable to one Bot slot, and the
+  // flag must never leak into the user text.
+  let args = ["exe", "--bot-id", "researcher", "remember tone=concise"]
+  let ctx = parse_turn_context(args)
+  assert_eq(ctx.bot_id, "researcher")
+  assert_eq(user_text_from_args_skipping_flags(args), "remember tone=concise")
+  // Default slot when the Host says nothing.
+  assert_eq(parse_turn_context(["recall tone"]).bot_id, "agent-bit")
+  // `--approved` must not reset the Bot id (ctx rebuilds copy it forward).
+  let appro = parse_turn_context(["--bot-id", "writer", "--approved"])
+  assert_eq(appro.bot_id, "writer")
+  assert_true(appro.approved)
+  let u = run_desktop_turn(
+    "remember tone=concise",
+    turn_id="bot-mem-u",
+    ctx=ctx,
+  )
+  assert_true(u.ok)
+  assert_eq(u.effects[0].kind, "memory_update")
+  assert_eq(u.effects[0].command, "tone|concise")
+  assert_true(u.to_json_line().contains("bot=researcher"))
+  assert_eq(u.messages[0].text, "remember tone=concise")
+  // The effect command stays bot-free: the Host routes the slot via
+  // `ffiOpts.botId`, so a Bot id can never be confused with a key/value pair.
+  assert_true(!u.effects[0].command.contains("researcher"))
+}
+
+///|
 test "desktop_turn_host_effect_needs_ffi" {
   let gated = run_desktop_turn("shell echo hi", turn_id="fx-gate")
   assert_true(gated.ok)
@@ -152,6 +183,7 @@ test "desktop_turn_host_effect_needs_ffi" {
     channel: "",
     approved: true,
     reply_to: "",
+    bot_id: "agent-bit",
   }
   let r = run_desktop_turn("shell echo hi", turn_id="fx-1", ctx~)
   assert_true(r.ok)
@@ -206,6 +238,7 @@ test "desktop_turn_channel_delivery_external" {
     channel: "",
     approved: true,
     reply_to: "",
+    bot_id: "agent-bit",
   }
   let r = run_desktop_turn(
     "reply via slack:C123 :: thanks from desktop",
@@ -253,6 +286,7 @@ test "desktop_turn_fs_webfetch_and_context" {
     channel: "slack:C1",
     approved: false,
     reply_to: "",
+    bot_id: "agent-bit",
   }
   let r = run_desktop_turn("listdir docs", turn_id="fs-1", ctx~)
   assert_true(r.ok)
@@ -296,6 +330,7 @@ test "desktop_turn_claim_inbox_and_draft_mail" {
     channel: "",
     approved: true,
     reply_to: "",
+    bot_id: "agent-bit",
   }
   let d = run_desktop_turn(
     "draft mail to=bob@example.com subject=Hi body=Hello Bob",
@@ -376,6 +411,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
     channel: "",
     approved: false,
     reply_to: "",
+    bot_id: "agent-bit",
   }
   let dt = run_desktop_turn("device tools", turn_id="dt-1", ctx=ictx)
   assert_true(dt.ok)
@@ -656,6 +692,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
       channel: "",
       approved: true,
       reply_to: "",
+      bot_id: "agent-bit",
     },
   )
   assert_true(buy_ok.ok)
@@ -697,6 +734,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
       channel: "",
       approved: true,
       reply_to: "",
+      bot_id: "agent-bit",
     },
   )
   assert_true(ts.ok)
@@ -952,6 +990,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
     channel: "",
     approved: false,
     reply_to: "",
+    bot_id: "agent-bit",
   })
   assert_true(cam.ok)
   assert_eq(cam.intent, "device_tool_invoke")
@@ -963,6 +1002,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
     channel: "",
     approved: false,
     reply_to: "",
+    bot_id: "agent-bit",
   })
   assert_true(take_photo.ok)
   assert_eq(take_photo.intent, "device_tool_invoke")
@@ -1051,6 +1091,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
     channel: "",
     approved: true,
     reply_to: "",
+    bot_id: "agent-bit",
   }
   let fx = run_desktop_turn(
     "fire routine smoke-r execute=1",
@@ -1486,6 +1527,7 @@ test "desktop_turn_reply_to_context_gp14" {
     channel: "",
     approved: false,
     reply_to: "msg-77",
+    bot_id: "agent-bit",
   }
   let r = run_desktop_turn("针对这条回复", turn_id="g14-1", ctx~)
   assert_true(r.ok)
@@ -1502,6 +1544,7 @@ test "desktop_turn_reply_to_context_gp14" {
     channel: "",
     approved: false,
     reply_to: "msg-77",
+    bot_id: "agent-bit",
   }
   let sh = run_desktop_turn("shell echo hi", turn_id="g14-2", ctx=shell_ctx)
   assert_eq(sh.intent, "host_effect")

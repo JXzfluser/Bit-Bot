@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M22 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=148 FAIL=0；`moon test` 380/380；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 68/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M23 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=155 FAIL=0；`moon test` 381/381；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 73/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -37,6 +37,11 @@
 | GP-108 | 已实现 | §6.4 先读后执行：`fire routine r` 默认**只准备**——Host 写 `data/routines/drafts/routine-*.json`（prompt / prepared_at / `requires_approval:true` / 5 类 `approval_boundary` / `default_action:"draft"`），fire 记录 `mode:host_routine_draft`、`executed:false`、`pretend_executed:false`；`execute=1` 才执行且写入 `executed_at` + `execute_via`（command / routine_config / env）。renderer 在对话流渲染草稿卡（prompt + 边界 + Execute/Discard），`routine_tick` 的 `fired[]` 同样逐个出卡。见 Wave M22。 |
 | GP-109 | 已实现 | 未 approved 的 `fire routine r execute=1` **停在内核审批门**（`ExternalSend`，`approval_card`，Host 零执行记录）；approved 回合才产出 `mode:host_routine_fire_executed`。草稿卡的 Execute = 一次 `approved:true` + `execute=1` 回合；面板 “Fire routine” 按钮不再带 approved（准备 ≠ 执行）。`execute_via=command` 让审计能回答「为什么跑了」。 |
 | GP-110 | 已实现 | 只读不打扰：`list routines / list connectors / list skills / list credentials` 未 approved 下 `ok:true` 且 effects 与 host_results 均为零 `approval_card`；写入类（purchase / draft mail / execute）必停在审批卡，且实测无小票、无 `mail_send`、无 `routine_fire` host 结果。 |
+| GP-111 | 已实现 | §4.2 跨会话记忆：`data/memory/desktop-host.json` 升为 `{version:2, bots:{<id>:{entries:[…]}}}`，每回合按 Bot 取 seeds 以 `--seed-memory` 注入内核（`run_moon_turn.js` → `memorySeedArgs(botId)`），`memory update k=v` 走 `memory_update` 写 `profile-vault.json` 分槽 + 回写 store 分槽；旧扁平数组/对象首读自动迁移到 `agent-bit` 槽（不丢用户数据）。同一 Bot 换 session 仍 recall 得到同一条偏好。见 Wave M23。 |
+| GP-112 | 已实现 | 记忆隔离按 Bot：`loadSessionMemory/saveSessionMemory(botId)`、`readProfileVault/ensureVaultBotSlot`、`dropBotMemory/dropBotProfileVault` 全部以 Bot 为键；内核 `--bot-id` → `DesktopTurnContext.bot_id`（回复文本标注 `bot=<id>`），归属经 Host 的 `ffiOpts.botId` 路由（effect 命令仍是 `key\|value`，不把 Bot id 塞进命令语法）；worker 回合（cloud / voice / teammate / subagent）同样带 Bot 槽。另一 Bot 的 recall 命中 0 条。 |
+| GP-113 | 已实现 | 共享可传递：`shared memory put/read` 仍走 `data/memory/shared-scopes.json`（scope 维度、不按 Bot 分），A 写的 scope 键 B 可读；`data/workspace/**` 无 Bot 目录；群聊 transcript 属房间。 |
+| GP-114 | 已实现 | 删除不连坐：`botsDelete` 级联 sessions/routines/rooms 后调用 `dropBotMemorySlot(bot_id)`，**只**删该 Bot 在 `desktop-host.json` 与 `profile-vault.json` 的槽（回执 `memory_dropped`），其它 Bot 槽与 `workspace_files_kept` 保留。 |
+| GP-115 | 已实现 | 记忆不授权动作：内核 `memory_grants_send()` 恒 `false`（记忆只做上下文），审批/草稿仍由 `gate_consequential` 决定；实测在 Bot 记忆里写 `send=allow all` 后 `purchase` / `channel_send` 仍只出 `approval_card`，无真实 host 执行。 |
 | GP-37 | 残留 | `route_traffic` 开关持久 + UI 显示真实生效状态；真代理生效不可达 → renderer 显示 honest residual 文案。 |
 | GP-40/41 | 已实现 | 草稿卡（New Email / New Slack Message）可编辑，Send→真实 approved 回合再编码；Discard→不落出站。仅当卡类别为 ExternalSend 时渲染（不从任意文本臆造草稿）。 |
 | GP-42 | 已实现 | kernel 判定未变（CM-0306），UI 不代客批准。 |
@@ -354,3 +359,36 @@
 - 草稿「执行」目前仍复用 `routine_fire` 的 effect 通道（`|execute=1`），而不是另开一个 `routine_execute` kind——语义上已两段式、审计上已区分，但 effect 表尚未拆分。
 - Routine 的动作体仍是 Host 侧 prompt 文本（本仓库没有真实 routine runner 去调用模型执行 prompt）；本波证明的是**边界与产物**：准备不越界、执行需批准、来源可审计。
 - `auto_execute:true` 与 `BITBOT_ROUTINE_EXECUTE=1` 两条自动执行通道保留（用于无人值守场景），但它们**不经过**交互审批——这是配置侧的明示选择，已在 `execute_via` 里留痕，门禁断言的是未获准时不会静默执行。
+
+## Wave M23（跨会话记忆：官方 spec §4.2，本轮）
+
+背景：官方 §4.2 要求「对话和学到的上下文每 Bot 独立」，同时「共享文件 / 浏览器会话 / 群聊消息可跨 Bot 传递」。此前 Host 的记忆是**一份扁平数组**（`data/memory/desktop-host.json` 为 `[{key,value,scope}]`），profile vault 也是**一份扁平 entries 映射**——多 Bot 共用一个记忆池，等于把 A 的偏好喂给 B。`--bot-id` 也只用于 computer-use 锁，没有进内核。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-19 跨会话记忆（官方 spec §4.2）`：GP-111（稳定偏好跨对话一致）、GP-112（每 Bot 独立）、GP-113（共享可传递）、GP-114（删 Bot 不连坐）、GP-115（记忆永不授权动作），每行写明「官方行为 → 实现落点 → 验收信号」。
+
+### 2) 实现
+- **Host 存储分槽（`hosts/shared/host_ffi.js`）**：`desktop-host.json` 升为 `{version:2, bots:{<id>:{entries:[…]}}}`，`profile-vault.json` 升为 `{version:2, scope:"profile", bots:{<id>:{entries:{k:{value,updated_at}}}}}`；`readMemoryStore/readProfileVault` 首读把**旧扁平结构迁进 `agent-bit` 槽**（不丢用户数据）。新增 `botMemorySlot/loadSessionMemory/saveSessionMemory/dropBotMemory/dropBotProfileVault/ensureVaultBotSlot`；`memorySeedArgs(botId)` 只吐本槽 seeds 并附 `--bot-id`；`executeJournalSharedInbound(kind, command, botId)` 让 `memory_update`/`memory_recall` 都写读本槽，产物带 `bot_id`。
+- **内核（`cmd/desktop_turn/turn_json.mbt`）**：`DesktopTurnContext` 增 `bot_id`（默认 `agent-bit`），`--bot-id` 由 `parse_turn_context` 解析并从 user text 里剔除；`memory update/recall` 的回复文本标注 `bot=<id>`，便于人读归属。effect 命令**保持** `key|value` 形态——Bot 归属经 `ffiOpts.botId` 路由，避免 Bot id 与 `|` 分隔的 key/value 语法互相污染（这是本轮第一次实现踩到的坑）。
+- **回写条件收紧（`hosts/shared/run_moon_turn.js`）**：只有 `intent === "memory_update"` 才 `saveSessionMemory` 回写。原来「任何带 memory 行的回合都回写」会把 recall 时内核补的 demo 行也存成用户偏好，等于凭空给 Bot 装了一条它没学过的记忆。
+- **Bot 删除级联（`hosts/desktop/product_surface.js`）**：`botsDelete` 在清 sessions/routines/rooms 之后调用 `dropBotMemorySlot(bot_id)`，只删该 Bot 在两个文件里的槽，回执新增 `memory_dropped`；该函数永不抛，坏 JSON 不阻断删除。
+- **worker 回合（cloud / voice / teammate / subagent）**：`runWorkerMoonTurn({…, botId})` 四个调用点都带上 Bot 槽；teammate inbox 的 worker 以**收件 Bot 自己**的槽作答（它在扮演那个 Bot），其余沿用调用方的 Bot。
+
+### 3) 验证（本轮实测）
+- `scripts/prove_m23_memory.js` **26/0**（新增）：同 Bot 换 session 仍 recall 到 `tone=concise`；另一个 Bot 命中 0 条且其回合 `memory` 为空；两个文件都出现 A 的分槽；A 写的 shared scope 键 B 能读；`data/workspace` 文件计数 > 0；删 A 回执 `memory_dropped:true` 且 A 槽从两个文件消失、B 槽与 B 的 recall 完好、`workspace_files_kept>0`；A 记忆里写 `send=allow all` 后 `purchase`/`channel_send` 仍只出 `approval_card`、无真实 host purchase；旧扁平 store/vault 迁移后旧键仍在 `agent-bit` 槽可 recall。
+- **负向对照**：临时把 `botMemorySlot()` 改成恒返回 `agent-bit`（即回到「一个池子」），probe 立刻 7 条变红（GP-111/112×4/114×2）——证明断言真的在测隔离，而不是恒真。
+- `moon test` **381/381**（新增 `desktop_turn_bot_id_scopes_memory`：`--bot-id` 进上下文、默认 `agent-bit`、`--approved` 不重置 Bot id、flag 不进 user text、`memory_update` 命令仍是 `tone|concise` 且回复标注 `bot=researcher`）。
+- `scripts/e2e_grok_desktop_boot.mjs` **73/0**（新增 5 条真实 UI 断言）：真实点侧栏 Bot 行 → 在 A 的私聊 `remember` → 切到 B 的私聊 `recall` 命中 0 条 → 切回 A `recall` 命中 1 条 → 磁盘上该键只在 A 槽。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-23 七断言**，总 **PASS=155 FAIL=0**；既有 M22/M21/M20/GP96/GP93/GP14 探针保持全绿。
+
+### 4) 本轮踩到并修掉的真问题
+1. **Bot id 塞进 effect 命令会污染语法**：先试过 `memory_update` 命令写成 `<bot>|key|value`，但 Host 侧 `key|value` 的切分与既有 `updates.jsonl` 产物都会错位（value 含 `|` 时更糟）。改为 Bot 归属走 `ffiOpts.botId`，命令形态不变。
+2. **recall 会把 demo 行写成用户偏好**：`run_moon_turn.js` 原来对所有带 `memory` 行的成功回合回写。空槽 recall 时内核补一条 `demo.user` 演示行，回写就等于往用户记忆里塞假数据。已收紧为只回写 `memory_update`。
+3. **旧记忆会在升级时静默消失**：直接改成 v2 结构会让已存在的扁平记忆读不到。现在两条读路径都把旧结构迁进 `agent-bit` 槽，并有断言覆盖。
+4. **Bot 删除只清了配置**：原 `botsDelete` 不动 `data/memory/*`，删掉的 Bot 的记忆永远留在盘上（既是垃圾也是隐私问题）。现在只清它自己的槽，并在回执里明示。
+
+### 5) 诚实残留（本波不假装）
+- 记忆的**提取**仍是显式短语（`remember k=v` / `recall p`）与 LLM 侧的 `--seed-memory` 注入；没有做「自动从对话里提炼偏好」的隐式抽取（那需要模型判断，沙箱内无稳定信号，不假装）。
+- Profile vault 与 session store 是**两个文件两条路径**：`memory_update` 同时写两者（同一 Bot 槽），但目前没有一致性修复任务去对齐手工改坏的文件。
+- Bot 槽与 Bot 生命周期靠 **id 字符串**关联（`botsDelete` 传的就是 bot_id）；重命名/复制 Bot 不迁移记忆槽（官方也未描述复制记忆的行为，故不做猜测）。
+- 跨设备同步记忆不在本波：`data/memory/*` 只在单机生效，多端一致性沿用既有 sync residual 口径。

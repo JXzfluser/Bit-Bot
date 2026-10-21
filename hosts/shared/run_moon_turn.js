@@ -129,7 +129,8 @@ function createTurnRunner(repoRoot, opts = {}) {
       "--target",
       MOON_TARGET,
       "--",
-      ...ffi.memorySeedArgs(),
+      // GP-112: seeds (and --bot-id) come from this Bot's slot only.
+      ...ffi.memorySeedArgs(ctx.botId),
     ];
     if (ctx.sessionId) {
       moonArgs.push("--session-id", String(ctx.sessionId));
@@ -169,8 +170,18 @@ function createTurnRunner(repoRoot, opts = {}) {
       };
     }
 
-    if (parsed && parsed.ok && Array.isArray(parsed.memory) && parsed.memory.length) {
-      ffi.saveSessionMemory(parsed.memory);
+    if (
+      parsed &&
+      parsed.ok &&
+      parsed.intent === "memory_update" &&
+      Array.isArray(parsed.memory) &&
+      parsed.memory.length
+    ) {
+      // GP-112: write back into the same Bot slot the seeds came from. Only
+      // `memory_update` persists — a recall returns the profile plus a demo row
+      // when the slot is empty, and writing that back would seed a Bot with a
+      // preference it never learned.
+      ffi.saveSessionMemory(ctx.botId, parsed.memory);
     }
 
     // GP-14: resolve the id the kernel echoed into a real quoted text, then hand

@@ -22,6 +22,9 @@ function createProductSurface(repoRoot) {
   const LLM_USAGE_PATH = path.join(DESKTOP_DIR, "llm-usage.json");
   const ROOMS_PATH = path.join(DESKTOP_DIR, "rooms.json");
   const SESSIONS_PATH = path.join(DESKTOP_DIR, "sessions.json");
+  const MEMORY_DIR = path.join(REPO_ROOT, "data", "memory");
+  const MEMORY_STORE_PATH = path.join(MEMORY_DIR, "desktop-host.json");
+  const PROFILE_VAULT_PATH = path.join(MEMORY_DIR, "profile-vault.json");
   const ACCOUNT_PROFILE_PATH = path.join(DESKTOP_DIR, "account-profile.json");
   const ROUTINES_DIR = path.join(REPO_ROOT, "data", "routines");
   const WORKSPACE_UPLOADS_DIR = path.join(REPO_ROOT, "data", "workspace", "uploads");
@@ -246,6 +249,33 @@ function createProductSurface(repoRoot) {
     };
   }
 
+  /* GP-114: drop one Bot's memory slot from both memory files (store + vault),
+     leaving every other Bot's slot untouched. Never throws: a missing or
+     malformed store must not block the delete cascade. */
+  function dropBotMemorySlot(botId) {
+    const id = String(botId || "").trim();
+    if (!id) return { dropped: false };
+    let storeDropped = false;
+    let vaultDropped = false;
+    try {
+      const store = readJson(MEMORY_STORE_PATH, null);
+      if (store && store.bots && store.bots[id]) {
+        delete store.bots[id];
+        atomicWrite(MEMORY_STORE_PATH, JSON.stringify(store, null, 2));
+        storeDropped = true;
+      }
+    } catch (_) { /* memory store missing or malformed, skip */ }
+    try {
+      const vault = readJson(PROFILE_VAULT_PATH, null);
+      if (vault && vault.bots && vault.bots[id]) {
+        delete vault.bots[id];
+        atomicWrite(PROFILE_VAULT_PATH, JSON.stringify(vault, null, 2));
+        vaultDropped = true;
+      }
+    } catch (_) { /* profile vault missing or malformed, skip */ }
+    return { dropped: storeDropped || vaultDropped, store: storeDropped, vault: vaultDropped };
+  }
+
   function botsDelete(bot_id, confirm) {
     if (confirm !== "yes") {
       return {
@@ -392,12 +422,17 @@ function createProductSurface(repoRoot) {
       // workspace dir missing
     }
 
+    // GP-114 (§4.2): memory is per Bot, so exactly one slot goes away with the
+    // Bot. Other Bots' learned context is not ours to delete.
+    const memory_dropped = dropBotMemorySlot(bot_id).dropped;
+
     return {
       ok: true,
       mode: "host_delete_bot",
       pretend_saved: false,
       sessions_cascaded: sessions_deleted > 0,
       sessions_deleted,
+      memory_dropped,
       routines_deleted,
       rooms_removed,
       primary_reassigned: primaryReassigned,

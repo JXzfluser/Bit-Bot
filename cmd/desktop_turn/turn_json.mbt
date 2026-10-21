@@ -409,6 +409,9 @@ pub(all) struct DesktopTurnContext {
   /// The kernel carries it so the turn provably knows its target; the Host
   /// resolves id → quoted text from the session store and feeds it to the LLM.
   reply_to : String
+  /// GP-111/112 (§4.2): the Bot this turn belongs to. Memory is per-Bot, so the
+  /// effect command carries it and the Host keeps one slot per id.
+  bot_id : String
 } derive(Eq, Debug)
 
 ///|
@@ -420,6 +423,7 @@ pub fn DesktopTurnContext::default() -> DesktopTurnContext {
     channel: "",
     approved: false,
     reply_to: "",
+    bot_id: "agent-bit",
   }
 }
 
@@ -1529,6 +1533,7 @@ pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
       a == "--machine-kind" ||
       a == "--channel" ||
       a == "--reply-to" ||
+      a == "--bot-id" ||
       a == "--turn-id" {
       i = i + 2
       continue
@@ -1563,6 +1568,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         channel: ctx.channel,
         approved: true,
         reply_to: ctx.reply_to,
+        bot_id: ctx.bot_id,
       }
       i = i + 1
       continue
@@ -1576,6 +1582,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         channel: ctx.channel,
         approved: ctx.approved,
         reply_to: args[i + 1].trim().to_owned(),
+        bot_id: ctx.bot_id,
       }
       i = i + 2
       continue
@@ -1588,6 +1595,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         channel: ctx.channel,
         approved: ctx.approved,
         reply_to: ctx.reply_to,
+        bot_id: ctx.bot_id,
       }
       i = i + 2
       continue
@@ -1600,6 +1608,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         channel: ctx.channel,
         approved: ctx.approved,
         reply_to: ctx.reply_to,
+        bot_id: ctx.bot_id,
       }
       i = i + 2
       continue
@@ -1624,6 +1633,7 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         channel: ctx.channel,
         approved: ctx.approved,
         reply_to: ctx.reply_to,
+        bot_id: ctx.bot_id,
       }
       i = i + 2
       continue
@@ -1636,6 +1646,22 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         channel: args[i + 1],
         approved: ctx.approved,
         reply_to: ctx.reply_to,
+        bot_id: ctx.bot_id,
+      }
+      i = i + 2
+      continue
+    }
+    // GP-112 (§4.2): memory is per-Bot; the Host names the owner of this turn.
+    if a == "--bot-id" && i + 1 < args.length() {
+      let bid = args[i + 1].trim().to_owned()
+      ctx = {
+        session_id: ctx.session_id,
+        machine_id: ctx.machine_id,
+        machine_kind: ctx.machine_kind,
+        channel: ctx.channel,
+        approved: ctx.approved,
+        reply_to: ctx.reply_to,
+        bot_id: if bid != "" { bid } else { ctx.bot_id },
       }
       i = i + 2
       continue
@@ -1734,11 +1760,13 @@ pub fn run_desktop_turn(
         limit: 64,
       })
       let rows = memory_rows(entries)
-      let reply = "Memory updated (profile): " +
+      let reply = "Memory updated (profile, bot=" +
+        ctx.bot_id +
+        "): " +
         key +
         " = " +
         value +
-        ". Host journals profile vault."
+        ". Host journals the per-Bot profile slot."
       let effect : DesktopEffect = {
         kind: "memory_update",
         command: key + "|" + value,
@@ -1773,7 +1801,9 @@ pub fn run_desktop_turn(
         limit: 64,
       })
       let rows = memory_rows(entries)
-      let reply = "Memory recall (profile): " +
+      let reply = "Memory recall (profile, bot=" +
+        ctx.bot_id +
+        "): " +
         rows.length().to_string() +
         " entr(y/ies). Host materializes recall snapshot."
       let effect : DesktopEffect = {

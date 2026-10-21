@@ -160,6 +160,16 @@
 | GP-109 | 发送 / 购买 / 删除 / 发布 / 生产变更**需审批** | kernel `gate_consequential` 已覆盖外部发送/购买/删除/发布/生产变更；本轮补齐「草稿→执行」二段式：草稿卡上的「执行」= 一次显式 approved 回合（`--approved`），而不是草稿生成时就执行；审批边界随草稿落盘（`approval_boundary` 字段） | 未 approved 时敏感 kind 只出 `approval_card`（`needs_host_ffi` 且无执行副作用）；approved 后才产生真实执行记录；草稿文件里有 `approval_boundary` 与 `requires_approval:true` |
 | GP-110 | 边界诚实：读取类不打扰，写入类必须停 | kernel 按 kind 分档：`ListRoutines/routine_list/credential_list/connectors_probe` 等只读 intent 不弹审批；写入类（`routine_schedule` 的新建/暂停/恢复、`purchase`、`channel_send`、`delete_bot`）必须经 `gate_consequential` 或 `approval_card` | 只读 intent 在未 approved 下仍 `ok:true` 且零 `approval_card`；写入 intent 在未 approved 下必出审批/草稿，实测 `host_results` 无成功执行记录 |
 
+## G-19 跨会话记忆（官方 spec §4.2）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-111 | 记忆内容 = 稳定偏好 / 角色上下文 / 先前工作总结，跨对话保持一致 | Host 侧 `data/memory/desktop-host.json` 按 **bot_id** 分槽（`{version, bots:{<id>:{entries:[…]}}}`，旧扁平数组自动迁移到 `agent-bit`），每个回合以 `--seed-memory` 注入内核；`memory update k=v` 走 `memory_update` effect 落 `profile-vault.json` 并回写分槽 | 同一 Bot 在两个不同 session 里 `memory recall` 都能看到同一条偏好；另一个 Bot 的会话看不到它 |
+| GP-112 | 记忆隔离：**对话与学到的上下文每 Bot 独立** | `loadSessionMemory(botId)` / `saveSessionMemory(botId, rows)` 以 Bot 为键；内核 `--bot-id` 进 `DesktopTurnContext.bot_id`（回复文本标注 `bot=<id>` 便于人读），effect 命令保持不变、Bot 归属经 Host 侧 `ffiOpts.botId` 路由到槽（避免 Bot id 与 `key|value` 语法混淆）；`memory_update` 写 `profile-vault.json` 的分槽，`memory recall` 只读本槽 | 给 A 写 `tone=concise` 后，B 的 `--seed-memory` 不含该键、`memory_recall` 命中 0 条；A 的 recall 命中 1 条；两槽都在磁盘上 |
+| GP-113 | 共享文件 / 浏览器会话 / 群聊消息 **Bot 间可传递** | 共享事实走既有 `shared memory put scope=… key=… value=…`（`data/memory/shared-scopes.json`，不按 Bot 分）；工作区 `data/workspace/**` 与 `data/box` 不按 Bot 分目录；群聊 transcript 属房间而非 Bot | A 写入的 shared scope 键在 B 的 `shared memory read` 里可见；删除 Bot 后 `data/workspace` 文件仍在（计数 > 0） |
+| GP-114 | 删除 Bot 不删除共享 Computer 文件；**不删除别的 Bot 的记忆** | `botsDelete` 级联 sessions/routines/rooms 时**不动** `data/memory/*` 的其它 Bot 槽，只清理该 Bot 自己的槽 | 删除 A 后：B 的记忆仍在；共享文件仍在；`data/memory/desktop-host.json` 里 `bots.A` 已消失、`bots.B` 保留 |
+| GP-115 | 重要决策应**检查当前数据源**而非依赖记忆 | 记忆条目只做上下文：`memory_grants_send()` 恒 `false`（记忆永不授权发送/购买）；审批/草稿仍走 `gate_consequential`；`memory` 行的 scope 不含 `authoritative` 标记 | 记忆里写 `send=allow all` 后，`purchase item` / `channel_send` 仍弹审批卡；内核 `memory_grants_send` 单测恒 false |
+
 ## 诚实残留（本波不假装）
 
 - 真实云 VM 远程桌面推流：以本机 `DISPLAY`/xvfb + 真截图帧模拟"共享电脑屏幕"，标注 `mode=sandbox_screen`，不宣称云端。

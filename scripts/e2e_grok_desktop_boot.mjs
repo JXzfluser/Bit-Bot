@@ -988,6 +988,150 @@ async function main() {
       }
     }
 
+    /* ---- GP-111/112 跨会话记忆（官方 spec §4.2）----
+       真实 UI：在 Bot A 的私聊里 remember 一条偏好 → 切到 Bot B 的私聊 recall
+       → 再切回 A recall。断言读的是真实落盘产物（desktop-host.json 分槽、
+       profile-vault.json 分槽、recall 快照的 bot_id/count），不是源码字符串。*/
+    const MEM_STORE = path.join(REPO, "data/memory/desktop-host.json");
+    const MEM_VAULT = path.join(REPO, "data/memory/profile-vault.json");
+    const MEM_DIR = path.join(REPO, "data/memory");
+    const memStoreBefore = fs.existsSync(MEM_STORE) ? fs.readFileSync(MEM_STORE) : null;
+    const memVaultBefore = fs.existsSync(MEM_VAULT) ? fs.readFileSync(MEM_VAULT) : null;
+    const memFilesBefore = fs.existsSync(MEM_DIR)
+      ? fs.readdirSync(MEM_DIR).filter((f) => f.endsWith(".json"))
+      : [];
+    try {
+      const botsNow = JSON.parse(
+        fs.readFileSync(path.join(REPO, "data/desktop/bots.json"), "utf8"),
+      ).bots || [];
+      const visible = botsNow.filter((b) => b && b.id && !b.hidden);
+      const botA = (visible.find((b) => b.id !== "agent-bit") || visible[0] || {}).id;
+      const botB = (visible.find((b) => b.id !== botA) || {}).id;
+      if (!botA || !botB) throw new Error("need two visible Bots for the memory probe");
+
+      const memKey = "e2e_mem_" + Date.now().toString(36);
+      const recallsOf = (key) => {
+        const out = [];
+        for (const f of fs.existsSync(MEM_DIR) ? fs.readdirSync(MEM_DIR) : []) {
+          if (!f.startsWith("recall-") || !f.endsWith(".json")) continue;
+          if (memFilesBefore.includes(f)) continue;
+          try {
+            const j = JSON.parse(fs.readFileSync(path.join(MEM_DIR, f), "utf8"));
+            if (j && String(j.prefix || "") === key) out.push(j);
+          } catch (_) {}
+        }
+        return out;
+      };
+      const waitFor = async (fn, ms) => {
+        const t0 = Date.now();
+        while (Date.now() - t0 < ms) {
+          const v = fn();
+          if (v) return v;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        return null;
+      };
+
+      const bootG23 = await launch({ BITBOT_LLM_STREAM: "0" });
+      await bootG23.win.waitForSelector("#bot-list [data-agent-id]", { timeout: 30000 });
+
+      const openBot = async (id) => {
+        await bootG23.win.evaluate((bid) => {
+          const row = document.querySelector(
+            '#bot-list [data-agent-id="' + bid + '"]',
+          );
+          if (row) row.click();
+        }, id);
+        await bootG23.win.waitForTimeout(900);
+      };
+      const send = async (text) => {
+        await bootG23.win.fill("#composer #text", text);
+        await bootG23.win.press("#composer #text", "Enter");
+        await bootG23.win.waitForFunction(
+          (t) => (document.getElementById("log") || {}).innerText?.includes(t),
+          text,
+          { timeout: 45000 },
+        ).catch(() => {});
+      };
+
+      await openBot(botA);
+      await send(`remember ${memKey}=blue`);
+      const wrote = await waitFor(() => {
+        try {
+          const s = JSON.parse(fs.readFileSync(MEM_STORE, "utf8"));
+          const slot = s && s.bots && s.bots[botA];
+          return slot && (slot.entries || []).some((e) => e.key === memKey) ? s : null;
+        } catch (_) {
+          return null;
+        }
+      }, 30000);
+      wrote
+        ? ok("E2E GP-111：在 Bot A 的私聊 remember 后，desktop-host.json 的 A 槽真实落盘")
+        : bad("E2E GP-111 remember", "slot " + botA + " never got the key");
+
+      const vaultA = (() => {
+        try {
+          return JSON.parse(fs.readFileSync(MEM_VAULT, "utf8"));
+        } catch (_) {
+          return {};
+        }
+      })();
+      vaultA && vaultA.bots && vaultA.bots[botA] &&
+        vaultA.bots[botA].entries && vaultA.bots[botA].entries[memKey]
+        ? ok("E2E GP-111：profile-vault.json 同步记在 A 的槽里（两条路径同一归属）")
+        : bad("E2E GP-112 vault slot", JSON.stringify(vaultA && vaultA.bots && Object.keys(vaultA.bots || {})).slice(0, 160));
+
+      await openBot(botB);
+      await send(`recall ${memKey}`);
+      const recallB = await waitFor(() => {
+        const rows = recallsOf(memKey).filter((r) => r.bot_id === botB);
+        return rows.length ? rows[rows.length - 1] : null;
+      }, 30000);
+      recallB && recallB.count === 0
+        ? ok("E2E GP-112：切到 Bot B 后 recall 命中 0 条（另一个 Bot 的上下文不可见）")
+        : bad("E2E GP-112 isolation", JSON.stringify(recallB).slice(0, 200));
+
+      await openBot(botA);
+      await send(`recall ${memKey}`);
+      const recallA = await waitFor(() => {
+        const rows = recallsOf(memKey).filter((r) => r.bot_id === botA);
+        return rows.length ? rows[rows.length - 1] : null;
+      }, 30000);
+      recallA && recallA.count >= 1 &&
+        (recallA.entries || []).some((e) => e.key === memKey && e.value === "blue")
+        ? ok("E2E GP-111：切回 Bot A 仍 recall 到同一条偏好（跨会话一致）")
+        : bad("E2E GP-111 cross-session recall", JSON.stringify(recallA).slice(0, 200));
+
+      const storeAfter = (() => {
+        try {
+          return JSON.parse(fs.readFileSync(MEM_STORE, "utf8"));
+        } catch (_) {
+          return {};
+        }
+      })();
+      const slotA = ((storeAfter.bots || {})[botA] || {}).entries || [];
+      const slotB = ((storeAfter.bots || {})[botB] || {}).entries || [];
+      storeAfter.version === 2 &&
+        slotA.some((e) => e.key === memKey) &&
+        !slotB.some((e) => e.key === memKey)
+        ? ok("E2E GP-112：store v2 里该键只出现在 A 槽、B 槽干净（磁盘层面的隔离）")
+        : bad("E2E GP-112 store isolation", JSON.stringify({ v: storeAfter.version, a: slotA.length, b: slotB.length }).slice(0, 200));
+
+      await shutdown(bootG23.app);
+    } catch (e) {
+      bad("E2E GP-111/112 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      if (memStoreBefore) fs.writeFileSync(MEM_STORE, memStoreBefore);
+      else fs.rmSync(MEM_STORE, { force: true });
+      if (memVaultBefore) fs.writeFileSync(MEM_VAULT, memVaultBefore);
+      else fs.rmSync(MEM_VAULT, { force: true });
+      for (const f of fs.existsSync(MEM_DIR) ? fs.readdirSync(MEM_DIR) : []) {
+        if (f.endsWith(".json") && !memFilesBefore.includes(f)) {
+          fs.rmSync(path.join(MEM_DIR, f), { force: true });
+        }
+      }
+    }
+
     /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----
        走真实 UI + 真实 IPC：provider 回一句含裸 URL 与 javascript: 链接的话 →
        kernel CM-0111 规范化为 markdown → renderer 把 markdown 变成真 <a>，

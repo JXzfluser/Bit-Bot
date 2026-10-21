@@ -357,41 +357,163 @@ function createHostFfi(repoRoot) {
       .replace(/\t/g, "\\t");
   }
 
-  function loadSessionMemory() {
+  /* ---- GP-111/112 (§4.2 跨会话记忆) ----------------------------------
+     Memory is per Bot: "对话和学到的上下文每 Bot 独立". The store therefore
+     holds one slot per bot id, and a legacy flat array (the pre-M23 shape)
+     migrates into the `agent-bit` slot on first read instead of being
+     discarded — losing a user's saved preferences to a schema change would
+     be the worst possible behaviour here. */
+  const DEFAULT_BOT_ID = "agent-bit";
+
+  function emptyMemoryStore() {
+    return { version: 2, bots: {} };
+  }
+
+  function normalizeMemoryEntries(rows) {
+    const seen = new Map();
+    for (const e of Array.isArray(rows) ? rows : []) {
+      if (!e || e.key == null) continue;
+      // Last write wins for a repeated key, so an "update" never duplicates.
+      seen.set(String(e.key), {
+        key: String(e.key),
+        value: String(e.value ?? ""),
+        scope: String(e.scope || "profile"),
+      });
+    }
+    return Array.from(seen.values());
+  }
+
+  function readMemoryStore() {
     try {
-      if (!fs.existsSync(SESSION_MEMORY_PATH)) return [];
+      if (!fs.existsSync(SESSION_MEMORY_PATH)) return emptyMemoryStore();
       const raw = JSON.parse(fs.readFileSync(SESSION_MEMORY_PATH, "utf8"));
-      if (!Array.isArray(raw)) return [];
-      return raw
-        .filter((e) => e && e.key != null && e.value != null)
-        .map((e) => ({ key: String(e.key), value: String(e.value) }));
+      if (Array.isArray(raw)) {
+        // Legacy shape: one shared list, no Bot dimension.
+        const store = emptyMemoryStore();
+        store.bots[DEFAULT_BOT_ID] = { entries: normalizeMemoryEntries(raw) };
+        return store;
+      }
+      const store = emptyMemoryStore();
+      if (raw && raw.bots && typeof raw.bots === "object") {
+        for (const [bid, slot] of Object.entries(raw.bots)) {
+          store.bots[String(bid)] = {
+            entries: normalizeMemoryEntries(slot && slot.entries),
+          };
+        }
+      }
+      return store;
     } catch {
-      return [];
+      return emptyMemoryStore();
     }
   }
 
-  function saveSessionMemory(rows) {
+  function writeMemoryStore(store) {
+    fs.mkdirSync(path.dirname(SESSION_MEMORY_PATH), { recursive: true });
+    fs.writeFileSync(SESSION_MEMORY_PATH, JSON.stringify(store, null, 2));
+  }
+
+  function botMemorySlot(botId) {
+    return String(botId || "").trim() || DEFAULT_BOT_ID;
+  }
+
+  /* Profile vault (`data/memory/profile-vault.json`) mirrors the same
+     per-Bot shape: `{version, bots:{<id>:{entries:{k:{value,updated_at}}}}}`.
+     A pre-M23 vault held a single `entries` map; that becomes the
+     `agent-bit` slot rather than being dropped. */
+  function readProfileVault(vaultPath) {
+    let raw = null;
     try {
-      fs.mkdirSync(path.dirname(SESSION_MEMORY_PATH), { recursive: true });
-      const cleaned = (Array.isArray(rows) ? rows : [])
-        .filter((e) => e && e.key != null)
-        .map((e) => ({
-          key: String(e.key),
-          value: String(e.value ?? ""),
-          scope: String(e.scope || "profile"),
-        }));
-      fs.writeFileSync(SESSION_MEMORY_PATH, JSON.stringify(cleaned, null, 2));
+      if (fs.existsSync(vaultPath)) raw = JSON.parse(fs.readFileSync(vaultPath, "utf8"));
+    } catch (_) {
+      raw = null;
+    }
+    if (!raw || typeof raw !== "object") raw = {};
+    if (raw.bots && typeof raw.bots === "object") {
+      const vault = { version: 2, scope: "profile", bots: {} };
+      for (const [bid, slot] of Object.entries(raw.bots)) {
+        vault.bots[String(bid)] = {
+          entries:
+            slot && typeof slot.entries === "object" && slot.entries
+              ? { ...slot.entries }
+              : {},
+          updated_at: (slot && slot.updated_at) || null,
+        };
+      }
+      return vault;
+    }
+    const legacy = raw.entries && typeof raw.entries === "object" ? { ...raw.entries } : {};
+    return {
+      version: 2,
+      scope: "profile",
+      bots: { [DEFAULT_BOT_ID]: { entries: legacy, updated_at: raw.updated_at || null } },
+    };
+  }
+
+  function ensureVaultBotSlot(vault, botId) {
+    const id = botMemorySlot(botId);
+    if (!vault.bots) vault.bots = {};
+    if (!vault.bots[id] || typeof vault.bots[id] !== "object") {
+      vault.bots[id] = { entries: {}, updated_at: null };
+    }
+    if (!vault.bots[id].entries || typeof vault.bots[id].entries !== "object") {
+      vault.bots[id].entries = {};
+    }
+    return vault.bots[id];
+  }
+
+  /** GP-114: Bot delete drops exactly one slot from each memory file. */
+  function dropBotProfileVault(vaultPath, botId) {
+    try {
+      if (!fs.existsSync(vaultPath)) return { dropped: false };
+      const vault = readProfileVault(vaultPath);
+      const id = botMemorySlot(botId);
+      if (!vault.bots[id]) return { dropped: false };
+      delete vault.bots[id];
+      fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2));
+      return { dropped: true };
+    } catch (_) {
+      return { dropped: false };
+    }
+  }
+
+  function loadSessionMemory(botId) {
+    const store = readMemoryStore();
+    const slot = store.bots[botMemorySlot(botId)];
+    return slot && Array.isArray(slot.entries) ? slot.entries.slice() : [];
+  }
+
+  function saveSessionMemory(botId, rows) {
+    try {
+      const store = readMemoryStore();
+      const id = botMemorySlot(botId);
+      store.bots[id] = { entries: normalizeMemoryEntries(rows) };
+      writeMemoryStore(store);
     } catch (err) {
       console.error("saveSessionMemory failed", err);
     }
   }
 
-  function memorySeedArgs() {
-    const seeds = loadSessionMemory();
+  /** GP-114: drop one Bot's slot on Bot delete, never the other Bots'. */
+  function dropBotMemory(botId) {
+    try {
+      const store = readMemoryStore();
+      const id = botMemorySlot(botId);
+      if (!store.bots[id]) return { ok: true, dropped: false, bot_id: id };
+      delete store.bots[id];
+      writeMemoryStore(store);
+      return { ok: true, dropped: true, bot_id: id };
+    } catch (err) {
+      return { ok: false, dropped: false, error: String(err && err.message) };
+    }
+  }
+
+  function memorySeedArgs(botId) {
+    const seeds = loadSessionMemory(botId);
     const args = [];
     for (const s of seeds) {
       args.push("--seed-memory", encodeHostArg(`${s.key}=${s.value}`));
     }
+    if (botId) args.push("--bot-id", encodeHostArg(botMemorySlot(botId)));
     return args;
   }
 
@@ -14596,7 +14718,10 @@ function createHostFfi(repoRoot) {
     fs.writeFileSync(SHARED_MEMORY_PATH, JSON.stringify(store, null, 2));
   }
 
-  function executeJournalSharedInbound(kind, command) {
+  function executeJournalSharedInbound(kind, command, botId) {
+    // GP-111/112 (§4.2): the profile memory slot is per Bot. Everything that
+    // touches profile memory below uses this id, never the session title.
+    const memBot = botMemorySlot(botId);
     const at = new Date().toISOString();
     if (kind === "journal_append") {
       const parts = String(command || "").split("|");
@@ -14856,16 +14981,10 @@ function createHostFfi(repoRoot) {
       const memDir = path.join(REPO_ROOT, "data", "memory");
       fs.mkdirSync(memDir, { recursive: true });
       const vaultPath = path.join(memDir, "profile-vault.json");
-      let vault = { scope: "profile", entries: {} };
-      try {
-        if (fs.existsSync(vaultPath)) {
-          vault = JSON.parse(fs.readFileSync(vaultPath, "utf8")) || vault;
-        }
-      } catch (_) {
-        vault = { scope: "profile", entries: {} };
-      }
-      if (!vault.entries || typeof vault.entries !== "object") vault.entries = {};
-      vault.entries[key] = { value, updated_at: at };
+      const vault = readProfileVault(vaultPath);
+      const slot = ensureVaultBotSlot(vault, memBot);
+      slot.entries[key] = { value, updated_at: at };
+      slot.updated_at = at;
       vault.updated_at = at;
       fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2));
       const updatePath = path.join(
@@ -14873,6 +14992,7 @@ function createHostFfi(repoRoot) {
         `update-${Date.now().toString(36)}.json`,
       );
       const artifact = {
+        bot_id: memBot,
         key,
         value,
         scope: "profile",
@@ -14912,15 +15032,9 @@ function createHostFfi(repoRoot) {
       const memDir = path.join(REPO_ROOT, "data", "memory");
       fs.mkdirSync(memDir, { recursive: true });
       const vaultPath = path.join(memDir, "profile-vault.json");
-      let vault = { scope: "profile", entries: {} };
-      try {
-        if (fs.existsSync(vaultPath)) {
-          vault = JSON.parse(fs.readFileSync(vaultPath, "utf8")) || vault;
-        }
-      } catch (_) {
-        vault = { scope: "profile", entries: {} };
-      }
-      const entries = Object.entries(vault.entries || {})
+      const vault = readProfileVault(vaultPath);
+      const slot = ensureVaultBotSlot(vault, memBot);
+      const entries = Object.entries(slot.entries || {})
         .filter(([k]) => !prefix || String(k).startsWith(prefix))
         .map(([k, cell]) => ({
           key: k,
@@ -14932,6 +15046,7 @@ function createHostFfi(repoRoot) {
         `recall-${Date.now().toString(36)}.json`,
       );
       const artifact = {
+        bot_id: memBot,
         prefix,
         count: entries.length,
         entries,
@@ -17128,7 +17243,7 @@ function createHostFfi(repoRoot) {
    * Does not re-enter Host effects — caller decides whether to apply effects.
    * BITBOT_NEST_DEPTH>=1 skips spawning to prevent busy-loop nesting (CM-2133).
    */
-  async function runWorkerMoonTurn({ prompt, sessionId, timeoutMs = 90000 }) {
+  async function runWorkerMoonTurn({ prompt, sessionId, botId, timeoutMs = 90000 }) {
     const depth = nestDepth();
     if (depth >= 1) {
       return {
@@ -17149,7 +17264,7 @@ function createHostFfi(repoRoot) {
       "--",
       "--session-id",
       String(sessionId || "worker"),
-      ...memorySeedArgs(),
+      ...memorySeedArgs(botId),
       String(prompt || "").slice(0, 800),
     ];
     try {
@@ -17393,7 +17508,7 @@ function createHostFfi(repoRoot) {
     return p;
   }
 
-  async function executeCloudEffect(kind, command) {
+  async function executeCloudEffect(kind, command, botId) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
 
@@ -17520,9 +17635,11 @@ function createHostFfi(repoRoot) {
       } else {
         session.status = "running";
         writeCloudSession(bcId, session);
+        // GP-111 (§4.2): a worker turn consumes and learns in the same Bot slot.
         worker = await runWorkerMoonTurn({
           prompt: prompt || "cloud agent ping",
           sessionId: `cloud-${sanitizeSkillName(bcId)}`,
+          botId,
         });
         if (worker.needs_host_ffi && worker.effects && worker.effects.length) {
           const prev = process.env.BITBOT_NEST_DEPTH;
@@ -18383,7 +18500,7 @@ function createHostFfi(repoRoot) {
     return null;
   }
 
-  async function executeVoiceRelay(command) {
+  async function executeVoiceRelay(command, botId) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
     const sep = cmd.indexOf(" :: ");
@@ -18468,6 +18585,7 @@ function createHostFfi(repoRoot) {
     const worker = await runWorkerMoonTurn({
       prompt: text || "voice ping",
       sessionId: `voice-${slug || "session"}`,
+      botId,
     });
     const replyText =
       worker.assistant ||
@@ -18576,7 +18694,7 @@ function createHostFfi(repoRoot) {
     });
   }
 
-  async function executeMultiAgentEffect(kind, command) {
+  async function executeMultiAgentEffect(kind, command, botId) {
     const at = new Date().toISOString();
     const cmd = String(command || "");
     const depth = nestDepth();
@@ -18700,6 +18818,9 @@ function createHostFfi(repoRoot) {
         worker = await runWorkerMoonTurn({
           prompt: body || "ping",
           sessionId: `agent-${sanitizeSkillName(toId)}`,
+          // The worker replies *as* the recipient teammate, so its memory slot
+          // is the teammate's own Bot slot, not the sender's.
+          botId: toId,
         });
         reply = worker.assistant || `(acked by ${toId})`;
         // Apply non-nesting host effects from worker if any (nest depth already elevated in child env;
@@ -18852,6 +18973,7 @@ function createHostFfi(repoRoot) {
         worker = await runWorkerMoonTurn({
           prompt: prompt || "summarize",
           sessionId: `subagent-${sanitizeSkillName(id)}`,
+          botId,
         });
         if (worker.needs_host_ffi && worker.effects && worker.effects.length) {
           const prev = process.env.BITBOT_NEST_DEPTH;
@@ -22872,7 +22994,11 @@ function createHostFfi(repoRoot) {
         results.push(await executeMailReadSearch(kind, cmd));
         continue;
       }
-      const memRes = executeJournalSharedInbound(kind, cmd);
+      const memRes = executeJournalSharedInbound(
+        kind,
+        cmd,
+        (ffiOpts && ffiOpts.botId) || DEFAULT_BOT_ID,
+      );
       if (memRes) {
         results.push(memRes);
         continue;
@@ -22903,11 +23029,15 @@ function createHostFfi(repoRoot) {
         continue;
       }
       if (kind === "voice_relay") {
-        results.push(await executeVoiceRelay(cmd));
+        results.push(
+          await executeVoiceRelay(cmd, (ffiOpts && ffiOpts.botId) || DEFAULT_BOT_ID),
+        );
         continue;
       }
       if (kind === "cloud_agent_launch" || kind === "cloud_artifact_deliver") {
-        results.push(await executeCloudEffect(kind, cmd));
+        results.push(
+          await executeCloudEffect(kind, cmd, (ffiOpts && ffiOpts.botId) || DEFAULT_BOT_ID),
+        );
         continue;
       }
       if (kind === "code_changes" || kind === "source_control") {
@@ -23025,7 +23155,9 @@ function createHostFfi(repoRoot) {
             }
           }
         }
-        results.push(await executeMultiAgentEffect(kind, cmd));
+        results.push(
+          await executeMultiAgentEffect(kind, cmd, (ffiOpts && ffiOpts.botId) || DEFAULT_BOT_ID),
+        );
         continue;
       }
       const productRes = await executeProductDeliveryEffect(kind, cmd);
@@ -23760,6 +23892,10 @@ function createHostFfi(repoRoot) {
     loadSessionMemory,
     saveSessionMemory,
     memorySeedArgs,
+    dropBotMemory,
+    dropBotProfileVault,
+    memoryStorePath: SESSION_MEMORY_PATH,
+    botMemorySlot,
     executeHostEffects,
     connectorsStatusReport,
     appendHostDeliveryJournal,

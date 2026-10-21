@@ -830,5 +830,37 @@ grep -q "面板 Fire 按钮不带 approved" /tmp/g22-probe.log 2>/dev/null \
 echo "  · G-22 说明：本块驱动真实 kernel + Host FFI 跑完整回合（CLI host，与 Desktop 同一条 run_moon_turn），断言基于落盘产物与 host_results，不是源码字符串自证"
 
 echo
+echo "== G-23 跨会话记忆（M23：§4.2 每 Bot 独立 / 共享可传递 / 删除不连坐）=="
+if timeout 900 node scripts/prove_m23_memory.js > /tmp/g23-probe.log 2>&1; then
+  ok "G-23 跨会话记忆契约全绿（$(grep -c '✓' /tmp/g23-probe.log) 项，$(tail -1 /tmp/g23-probe.log)）"
+else
+  bad "G-23 跨会话记忆契约（见 /tmp/g23-probe.log）"
+fi
+grep -q "换一个 session 仍能 recall 到同一偏好" /tmp/g23-probe.log 2>/dev/null \
+  && ok "G-23 GP-111：同一 Bot 换会话仍记得稳定偏好（--seed-memory 注入生效）" \
+  || bad "G-23 GP-111 cross-session recall missing"
+grep -q "另一个 Bot 的 recall 命中 0 条" /tmp/g23-probe.log 2>/dev/null \
+  && grep -q "desktop-host.json 是 v2 分槽" /tmp/g23-probe.log 2>/dev/null \
+  && ok "G-23 GP-112：另一 Bot 看不到（0 命中）且两槽真实落盘" \
+  || bad "G-23 GP-112 per-Bot isolation missing"
+grep -q "B 能读到 A 写的共享事实" /tmp/g23-probe.log 2>/dev/null \
+  && grep -q "跨 Bot 共享文件" /tmp/g23-probe.log 2>/dev/null \
+  && ok "G-23 GP-113：共享 scope 与 workspace 文件跨 Bot 可传递" \
+  || bad "G-23 GP-113 shared transfer missing"
+grep -q "memory_dropped=true" /tmp/g23-probe.log 2>/dev/null \
+  && grep -q "B 的 profile 记忆完好" /tmp/g23-probe.log 2>/dev/null \
+  && ok "G-23 GP-114：删除 Bot 只清自己那一槽，别的 Bot 记忆与共享文件保留" \
+  || bad "G-23 GP-114 delete scope missing"
+grep -q "send=allow all" /tmp/g23-probe.log 2>/dev/null \
+  && grep -q "不能放行 channel_send" /tmp/g23-probe.log 2>/dev/null \
+  && ok "G-23 GP-115：记忆条目永不授权发送/购买（仍弹审批卡）" \
+  || bad "G-23 GP-115 memory authority leak"
+grep -q "旧扁平" /tmp/g23-probe.log 2>/dev/null \
+  && ok "G-23 迁移：旧扁平 store/vault 升级后旧键保留在 agent-bit 槽（不丢用户数据）" \
+  || bad "G-23 legacy migration missing"
+echo "  · G-23 说明：本块用真实 CLI Host 跑多 Bot 多 session 回合，断言读的是 desktop-host.json / profile-vault.json / shared-scopes.json 与 host_results 的落盘事实"
+
+
+echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

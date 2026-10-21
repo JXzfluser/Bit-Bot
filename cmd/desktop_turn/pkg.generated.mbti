@@ -80,6 +80,8 @@ pub(all) struct DesktopTurnContext {
   machine_kind : String
   channel : String
   approved : Bool
+  reply_to : String
+  bot_id : String
 } derive(Eq, @debug.Debug)
 pub fn DesktopTurnContext::default() -> Self
 
@@ -100,6 +102,7 @@ pub(all) struct DesktopTurnResult {
   machine_id : String
   machine_kind : String
   channel : String
+  reply_to : String
   error : String?
 } derive(Eq, @debug.Debug)
 pub fn DesktopTurnResult::to_json_line(Self) -> String
@@ -118,12 +121,16 @@ pub(all) enum TurnIntent {
   UninstallPlugin(plugin_id~ : String)
   GetPlugin(plugin_id~ : String)
   ListPlugins(query~ : String)
+  TogglePluginTool(namespace_~ : String, tool~ : String, enabled~ : Bool)
+  ListBotTemplates
+  CreateBotFromTemplate(template_id~ : String, name~ : String)
   SetupSlack
   FsList(path~ : String)
   FsRead(path~ : String)
   WebFetch(url~ : String)
   CopyToBox(machine_id~ : String, src~ : String, dest~ : String)
   CopyFromBox(machine_id~ : String, box_path~ : String, dest~ : String)
+  AttachFiles(paths~ : Array[String])
   CreateRoutine(id~ : String, cron~ : String, prompt~ : String)
   ListRoutines
   PauseRoutine(id~ : String)
@@ -147,6 +154,7 @@ pub(all) enum TurnIntent {
   AddSection(group_id~ : String, section_id~ : String, title~ : String)
   SectionPost(group_id~ : String, section_id~ : String, from_agent~ : String, body~ : String)
   RoomTurn(room~ : String, body~ : String)
+  HandoffTask(room~ : String, from_bot~ : String, to_bot~ : String, task~ : String)
   SendToAgent(to_id~ : String, body~ : String)
   LaunchCloudAgent(prompt~ : String)
   DeliverCloudArtifact(artifact~ : String, dest~ : String)
@@ -194,6 +202,11 @@ pub(all) enum TurnIntent {
   ReactMessage(message_id~ : String, emoji~ : String)
   Screenshot(agent_id~ : String)
   CheckUpdates
+  AccountStatus
+  AccountSignIn(label~ : String)
+  AccountSignOut
+  AccountSwitch(label~ : String)
+  UpdateStatus
   AutoReviewSettings
   BoxChromeProbe(want_bare~ : Bool)
   CodeChanges(path~ : String)
@@ -219,6 +232,9 @@ pub(all) enum TurnIntent {
   DuplicateBot(bot_id~ : String)
   PinBot(bot_id~ : String, pinned~ : Bool)
   PrimaryBot(bot_id~ : String)
+  HideBot(bot_id~ : String, hidden~ : Bool)
+  DeleteBot(bot_id~ : String, confirmed~ : Bool)
+  ComputerPreview(bot_id~ : String)
   TakeOver(reason~ : String)
   TakeoverDone
   RecoverComputer
