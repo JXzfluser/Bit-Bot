@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M21 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=141 FAIL=0；`moon test` 380/380；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 62/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M22 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=148 FAIL=0；`moon test` 380/380；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 68/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -34,6 +34,9 @@
 | GP-99..102 | 已实现 | §8.3 安全密钥输入：对话流真 `<input type=password>` 卡（显示/隐藏、Enter 提交、Cancel），提交只走 `bitbot:secrets:submit`（不经 composer / `bitbot:turn`）；Host vault AES-256-GCM 落盘（`data/secrets/`，0600），只回 `handle + ****last4`，`status()` 恒 `value:null`；气泡恰为 `[REDACTED]` 并以 `secret_handle` 持久化，重载仍在；composer 粘贴密钥被拦截，kernel 同样 `fail_turn` 且被拒回合的 user 行也脱敏；全 `data/` grep 无明文。见 Wave M21（prove 45/0 + E2E 10 断言）。 |
 | GP-103..105 | 已实现 | §8.4 Untrusted Content：内核 `fence_body` 给外部 kind（webfetch/mcp/shell/CU/video…）输出加 `source` fence，未闭合 fence 改为 fail-closed；`hosts/shared/untrusted_fence.js` 与内核同一 grammar（幂等、转义伪造闭合标签）；Fenced slice 不出 ExternalSend，伪造「Auto-review」仍 `IgnoreAsData`；renderer 出 `data-untrusted="1"` 角标并显示真实来源，去标签后仍走 GP-93 唯一安全渲染路径。 |
 | GP-106/107 | 已实现（诚实三态） | §8.5 Privacy Mode 只读：`privacy_status` 返回 `managed_by:account / local_toggle_supported:false`，preload 无 setter；无账户信号 → `unavailable` + `training_use=disabled_by_default`，legacy → `unsupported`，仅在 `privacy_verified` 真实信号下才 `on/disabled_verified`。**残留**：本地无 provider 签发信号，真实运行恒为 unavailable。 |
+| GP-108 | 已实现 | §6.4 先读后执行：`fire routine r` 默认**只准备**——Host 写 `data/routines/drafts/routine-*.json`（prompt / prepared_at / `requires_approval:true` / 5 类 `approval_boundary` / `default_action:"draft"`），fire 记录 `mode:host_routine_draft`、`executed:false`、`pretend_executed:false`；`execute=1` 才执行且写入 `executed_at` + `execute_via`（command / routine_config / env）。renderer 在对话流渲染草稿卡（prompt + 边界 + Execute/Discard），`routine_tick` 的 `fired[]` 同样逐个出卡。见 Wave M22。 |
+| GP-109 | 已实现 | 未 approved 的 `fire routine r execute=1` **停在内核审批门**（`ExternalSend`，`approval_card`，Host 零执行记录）；approved 回合才产出 `mode:host_routine_fire_executed`。草稿卡的 Execute = 一次 `approved:true` + `execute=1` 回合；面板 “Fire routine” 按钮不再带 approved（准备 ≠ 执行）。`execute_via=command` 让审计能回答「为什么跑了」。 |
+| GP-110 | 已实现 | 只读不打扰：`list routines / list connectors / list skills / list credentials` 未 approved 下 `ok:true` 且 effects 与 host_results 均为零 `approval_card`；写入类（purchase / draft mail / execute）必停在审批卡，且实测无小票、无 `mail_send`、无 `routine_fire` host 结果。 |
 | GP-37 | 残留 | `route_traffic` 开关持久 + UI 显示真实生效状态；真代理生效不可达 → renderer 显示 honest residual 文案。 |
 | GP-40/41 | 已实现 | 草稿卡（New Email / New Slack Message）可编辑，Send→真实 approved 回合再编码；Discard→不落出站。仅当卡类别为 ExternalSend 时渲染（不从任意文本臆造草稿）。 |
 | GP-42 | 已实现 | kernel 判定未变（CM-0306），UI 不代客批准。 |
@@ -322,3 +325,32 @@
 - 密钥「显示/隐藏」只切换输入框类型，不做浏览器自动填充（`autocomplete="off"`）。
 - `privacy_status` 的 `verified` 态目前**没有任何可达信号**：本地账户档案没有 provider 签发的隐私声明，所以真实运行永远是 `unavailable · managed by account` + `disabled_by_default`。门禁断言的是「**没有证据就不许声称已开启**」，不是「已接通服务端」。
 - 外部数据 fence 覆盖的是跨回注的外部 kind（webfetch/mcp/shell/CU/video…）；用户在 composer 里自己粘贴的网页文本属于用户输入，不走此路径。
+
+## Wave M22（先读后执行：官方 spec §6.4，本轮）
+
+背景：`spec.md` 里 §6.4「先读后执行」没有对应规格行；Host 的 `routine_fire` 此前是**一枪到底**——一次调用就写 `fired:true` 并投递附件，没有「先准备草稿、再显式执行」的两段式，也没有把审批边界带进产物。这与官方「自动化先产出草稿/推荐，发送/购买/删除/发布/生产变更需审批」的边界不符。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-18 先读后执行（官方 spec §6.4）`：GP-108（准备先于执行）、GP-109（敏感动作需审批 + 草稿→执行二段式）、GP-110（只读不打扰、写入必须停），每行都写明「官方行为 → 实现落点 → 验收信号」。
+
+### 2) 实现
+- **Host 两段式（`hosts/shared/host_ffi.js`）**：`routine_fire` 先写草稿 `data/routines/drafts/routine-*.json`（`routine_id / prompt / cron / prepared_at / requires_approval:true / approval_boundary[5 类] / default_action:"draft"`），再写 fire 记录（`mode:host_routine_draft|host_routine_fire_executed`、`executed`、`executed_at`、`execute_via`、`draft_path`、`pretend_fired:false`、`pretend_executed:false`）；回执同时投递 fire 快照与草稿两份附件。`execute_via` 明确是 `command`（`execute=1`）/ `routine_config`（`auto_execute:true`）/ `env`（`BITBOT_ROUTINE_EXECUTE=1`），审计能回答「为什么这次真跑了」。`routine_tick` 的 `fired[]` 逐条带 `executed / draft_path / requires_approval`。
+- **内核审批门（`cmd/desktop_turn/turn_json.mbt`）**：`FireRoutine` 现在解析并剥离 `execute=1`（支持 `… execute=1` 与 `…|execute=1` 两种写法）；默认 effect 的 command **不含** flag（= 只准备）；带 flag 且未 `--approved` 时走 `gate_consequential(ExternalSend, irreversible=true)`，只出 `approval_card` 并且**不产生 `routine_fire` effect**；approved 时 effect 为 `<id>|execute=1`，回执文案改成「草稿 + 边界，直到你批准 execute」。
+- **Renderer（`hosts/desktop/index.html`）**：新增 `renderRoutineDraftCard(h, p)` —— 虚线草稿卡显示 routine id、prompt（将要做什么）、5 类审批边界、`执行/丢弃` 与状态行；「执行」= 一次 `runUserTurn("fire routine <id> execute=1", {approved:true, silentUser:true})`（显式、可审计），「丢弃」只改状态、不发任何回合。`routine_fire`（`executed !== true`）与 `routine_tick`（逐个 `fired[]`）都在对话流里出卡；routine 元信息标注 `/draft` vs `/executed`。面板 `#rt-fire` 改为 `runUserTurn("fire routine desk-r", {})`，不再预批准。7 个文案键 ×3 语言（`rtDraftTitle/Boundary/Execute/Discard/Status/Executing/Discarded`）。
+
+### 3) 验证（本轮实测）
+- `scripts/prove_m22_readfirst.js` **25/0**（新增）：默认 fire → `mode:host_routine_draft` + 三个 `false` + `draft_path` 真实存在 + 草稿带 5 类 `approval_boundary`；投递只有附件、无 `channel_send/purchase/delete` 行；未 approved 的 `execute=1` 只出 `approval_card` 且 Host 零执行记录；`--approved` 后才 `executed:true` + `executed_at` + `execute_via:"command"` + 独立草稿；被拦下的 `purchase` 不产生小票；四个只读 intent 零审批打扰；草稿卡 Execute 走 approved 回合、面板 Fire 不带 approved；7 个 i18n key ×3 齐全。
+- `moon test` **380/380**（`desktop_turn_wbtest.mbt` 新增 execute=1 的审批门断言：默认 command 无 flag、未批准出 `approval_card`、批准后 effect 为 `smoke-r|execute=1`）。
+- `scripts/e2e_grok_desktop_boot.mjs` **68/0**（新增 6 条 GP-108/109 真实 UI 断言）：点侧栏「Fire routine」→ 对话流出现草稿卡（prompt + 审批边界）→ 此时 `fires.jsonl` 只有 `mode:host_routine_draft / executed:false` → 点卡上「执行」后**才**新增一条 `host_routine_fire_executed`（`execute_via=command`）→ 按钮固化不可重复点；探针结束恢复 routines/fires/drafts 快照。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-22 七断言**；`prove_m21_trust.js` 45/0、`prove_m20_ui.js` 21/0、`prove_gp96_progress.js` 30/0、`prove_gp93_links.js` 21/0、`prove_gp14_reply.js` 16/0 全部保持绿。
+
+### 4) 本轮踩到并修掉的真问题
+1. **`fire routine r execute=1` 的 id 被当成 `r execute=1`**：Host 以 `|` 切分 command，空格写法会把 flag 连同 id 一起当 routine 名（实测 `{"id":"smoke-r execute=1", mode:"host_routine_draft"}`）。内核现在剥离 flag，并以 `|execute=1` 传参，两种写法结果一致。
+2. **`execute=1` 未获批也能直接执行**：原实现只按字符串判 flag，绕过了审批。现在未 `--approved` 的 execute 请求**根本不发 effect**，只出审批卡。
+3. **「为什么跑了」不可回答**：回执原来只有 `executed:true`。新增 `execute_via`（command / routine_config / env），把触发来源写进产物。
+4. **probe 的「写入类」断言会误判**：`list credentials` 的 intent 是 `list_credentials`（不是 effect kind `credential_list`）；`fireBlock` 的 `!/approved/` 又命中了注释里的英文单词。改为断言真实 intent 与 `approved\s*:\s*true`。
+
+### 5) 诚实残留（本波不假装）
+- 草稿「执行」目前仍复用 `routine_fire` 的 effect 通道（`|execute=1`），而不是另开一个 `routine_execute` kind——语义上已两段式、审计上已区分，但 effect 表尚未拆分。
+- Routine 的动作体仍是 Host 侧 prompt 文本（本仓库没有真实 routine runner 去调用模型执行 prompt）；本波证明的是**边界与产物**：准备不越界、执行需批准、来源可审计。
+- `auto_execute:true` 与 `BITBOT_ROUTINE_EXECUTE=1` 两条自动执行通道保留（用于无人值守场景），但它们**不经过**交互审批——这是配置侧的明示选择，已在 `execute_via` 里留痕，门禁断言的是未获准时不会静默执行。

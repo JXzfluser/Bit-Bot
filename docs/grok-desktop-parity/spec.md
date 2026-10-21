@@ -152,6 +152,14 @@
 | GP-106 | Privacy Mode 状态由**账户设置**管理；不伪造成本机开关 | Settings → General 显示只读 `Privacy Mode` 行：来源 Host 真实探测（`BITBOT_PRIVACY_MODE` 环境/账户文件），未配置时明确 `unavailable · managed by account`，不显示 "已开启" | 未配置时文案含 `unavailable`/`managed by account`；renderer 无本地"开启隐私模式"写操作（IPC 白名单无对应 setter） |
 | GP-107 | 无法验证时**默认不训练**；Legacy Privacy Mode 不可用 | Host `privacy_status` 计算 `training_use: "disabled_by_default"`（未验证时不声称已验证）+ `legacy_privacy_mode: "unsupported"` + 原因（需要云端数据存储） | 探针断言返回值三字段；绝不返回 `training_disabled_verified: true` 除非存在真实可验证来源 |
 
+## G-18 先读后执行（官方 spec §6.4）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-108 | 自动化**准备先于执行**：Routine 默认产出草稿/推荐/对账，不直接对外执行 | Host `routine_fire` 走「prepare-then-execute」：默认产出 `draft`（`data/routines/drafts/routine-*.json`，含 prompt/来源/生成时间），并把 `mode=host_routine_draft`、`executed:false` 写进 fire 记录；只有携带 `execute=1`（Routine 明确配置为自动执行，或用户点「执行草稿」）才真正跑动作 | 默认 `fire routine` 返回 `draft_path` 且**没有**出站副作用（无 `channel_send` / 无 `purchase` 记录）；`executed:false` 与 `pretend_executed:false` 同时在回执里 |
+| GP-109 | 发送 / 购买 / 删除 / 发布 / 生产变更**需审批** | kernel `gate_consequential` 已覆盖外部发送/购买/删除/发布/生产变更；本轮补齐「草稿→执行」二段式：草稿卡上的「执行」= 一次显式 approved 回合（`--approved`），而不是草稿生成时就执行；审批边界随草稿落盘（`approval_boundary` 字段） | 未 approved 时敏感 kind 只出 `approval_card`（`needs_host_ffi` 且无执行副作用）；approved 后才产生真实执行记录；草稿文件里有 `approval_boundary` 与 `requires_approval:true` |
+| GP-110 | 边界诚实：读取类不打扰，写入类必须停 | kernel 按 kind 分档：`ListRoutines/routine_list/credential_list/connectors_probe` 等只读 intent 不弹审批；写入类（`routine_schedule` 的新建/暂停/恢复、`purchase`、`channel_send`、`delete_bot`）必须经 `gate_consequential` 或 `approval_card` | 只读 intent 在未 approved 下仍 `ok:true` 且零 `approval_card`；写入 intent 在未 approved 下必出审批/草稿，实测 `host_results` 无成功执行记录 |
+
 ## 诚实残留（本波不假装）
 
 - 真实云 VM 远程桌面推流：以本机 `DISPLAY`/xvfb + 真截图帧模拟"共享电脑屏幕"，标注 `mode=sandbox_screen`，不宣称云端。

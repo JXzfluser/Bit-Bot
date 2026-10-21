@@ -799,6 +799,10 @@
   .draft-card .send-btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px; padding: 7px 12px; font-weight: 700; cursor: pointer; }
   .draft-card .discard-btn { background: var(--danger-bg); color: var(--danger-ink); border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
   .draft-card .draft-status { font-size: 11px; color: var(--muted); align-self: center; }
+  /* GP-108: prepared routine output — visually a draft, not a done action. */
+  .routine-draft { border-style: dashed; }
+  .routine-draft .rd-prompt { margin-top: 6px; font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+  .routine-draft .rd-boundary { margin-top: 6px; font-size: 11px; color: var(--muted); }
   .effect-chip {
     display: inline-block;
     margin: 2px 4px 0 0;
@@ -2531,6 +2535,71 @@
         }
       });
       return card;
+    }
+
+    /* GP-108 (§6.4 先读后执行) — a routine produces a DRAFT first.
+       The card shows what the routine would do and the approval boundary it
+       would cross; pressing Execute runs one explicit `--approved` turn with
+       `execute=1`, so the real action is a separate, auditable step. */
+    function renderRoutineDraftCard(h, p) {
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      el.dataset.routineDraft = String(p.id || "");
+      const card = document.createElement("div");
+      card.className = "draft-card routine-draft";
+      const title = document.createElement("div");
+      title.className = "role";
+      title.textContent = wavegT("rtDraftTitle") + " · " + String(p.id || "routine");
+      const prompt = document.createElement("div");
+      prompt.className = "rd-prompt";
+      prompt.textContent = String(p.prompt || "");
+      const boundary = document.createElement("div");
+      boundary.className = "rd-boundary";
+      boundary.textContent =
+        wavegT("rtDraftBoundary") +
+        ": " +
+        ((p.approval_boundary || []).join(" / ") || "external_send");
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const execBtn = document.createElement("button");
+      execBtn.type = "button";
+      execBtn.className = "send-btn";
+      execBtn.id = "routine-draft-execute";
+      execBtn.textContent = wavegT("rtDraftExecute");
+      const discardBtn = document.createElement("button");
+      discardBtn.type = "button";
+      discardBtn.className = "discard-btn";
+      discardBtn.textContent = wavegT("rtDraftDiscard");
+      const status = document.createElement("span");
+      status.className = "draft-status";
+      status.textContent = wavegT("rtDraftStatus");
+      execBtn.addEventListener("click", () => {
+        status.textContent = wavegT("rtDraftExecuting");
+        execBtn.disabled = true;
+        discardBtn.disabled = true;
+        // One approved turn, execute=1: the routine action is explicit here and
+        // nowhere else. The Host records the execution as its own artifact.
+        runUserTurn("fire routine " + String(p.id || "") + " execute=1", {
+          approved: true,
+          silentUser: true,
+        });
+      });
+      discardBtn.addEventListener("click", () => {
+        status.textContent = wavegT("rtDraftDiscarded");
+        execBtn.disabled = true;
+        discardBtn.disabled = true;
+      });
+      actions.appendChild(execBtn);
+      actions.appendChild(discardBtn);
+      actions.appendChild(status);
+      card.appendChild(title);
+      card.appendChild(prompt);
+      card.appendChild(boundary);
+      card.appendChild(actions);
+      el.appendChild(card);
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+      return el;
     }
 
     /* GP-99: a Host `credential_fill` / `secret-request` delivery renders the
@@ -6098,16 +6167,36 @@
                     h.kind.replace("routine_", "rt:") +
                     ":" +
                     rtId +
+                    (h.kind === "routine_fire"
+                      ? p.executed === true
+                        ? "/executed"
+                        : "/draft"
+                      : "") +
                     (p.path ? "/snap" : "") +
                     (p.long_lived_cron_residual === true
                       ? "/long_lived_cron_residual"
                       : "");
                   types.push("attachment");
+                  // GP-108 (§6.4): a prepared routine output is a DRAFT, not a
+                  // fired action. Show the prompt + boundary and require an
+                  // explicit execute step (which itself runs as an approved turn).
+                  if (h.kind === "routine_fire") {
+                    if (p.executed !== true && p.draft_path) renderRoutineDraftCard(h, p);
+                  } else if (h.kind === "routine_tick") {
+                    (Array.isArray(p.fired) ? p.fired : []).forEach((f) => {
+                      if (f && f.draft_path) renderRoutineDraftCard(h, f);
+                    });
+                  }
                   const rtMeta = document.getElementById("routines-meta");
                   if (rtMeta) {
                     rtMeta.textContent =
                       h.kind.replace("routine_", "") +
                       (rtId ? " · " + rtId : "") +
+                      (h.kind === "routine_fire"
+                        ? p.executed === true
+                          ? " · executed"
+                          : " · draft（需执行才生效）"
+                        : "") +
                       (p.next_due
                         ? " · next " + String(p.next_due).slice(0, 19)
                         : "") +
@@ -7778,6 +7867,13 @@
         secretSubmit: "保存密钥",
         secretCancel: "放弃",
         secretDone: "完成",
+        rtDraftTitle: "Routine 草稿（未执行）",
+        rtDraftBoundary: "执行前需审批的边界",
+        rtDraftExecute: "执行草稿",
+        rtDraftDiscard: "放弃",
+        rtDraftStatus: "准备完成 · 尚未执行任何外部动作",
+        rtDraftExecuting: "已提交执行（走 approved 回合）",
+        rtDraftDiscarded: "已放弃，未执行",
         secretReveal: "显示",
         secretHide: "隐藏",
         secretEmpty: "请先输入密钥内容。",
@@ -8077,6 +8173,13 @@
         secretSubmit: "儲存密鑰",
         secretCancel: "放棄",
         secretDone: "完成",
+        rtDraftTitle: "Routine 草稿（未執行）",
+        rtDraftBoundary: "執行前需審批的邊界",
+        rtDraftExecute: "執行草稿",
+        rtDraftDiscard: "放棄",
+        rtDraftStatus: "準備完成 · 尚未執行任何外部動作",
+        rtDraftExecuting: "已提交執行（走 approved 回合）",
+        rtDraftDiscarded: "已放棄，未執行",
         secretReveal: "顯示",
         secretHide: "隱藏",
         secretEmpty: "請先輸入密鑰內容。",
@@ -8376,6 +8479,13 @@
         secretSubmit: "Save secret",
         secretCancel: "Discard",
         secretDone: "Done",
+        rtDraftTitle: "Routine draft (not executed)",
+        rtDraftBoundary: "Approval boundary before execution",
+        rtDraftExecute: "Execute draft",
+        rtDraftDiscard: "Discard",
+        rtDraftStatus: "prepared · no external action taken yet",
+        rtDraftExecuting: "Execution submitted (approved turn)",
+        rtDraftDiscarded: "Discarded — nothing executed",
         secretReveal: "Show",
         secretHide: "Hide",
         secretEmpty: "Enter the secret first.",
@@ -10168,7 +10278,9 @@
       runUserTurn("list routines", {});
     });
     document.getElementById("rt-fire").addEventListener("click", () => {
-      runUserTurn("fire routine desk-r", { approved: true });
+      // GP-108 (§6.4): firing PREPARES a draft card; the card's Execute button
+      // is the explicit, approved step. The button must not bypass that.
+      runUserTurn("fire routine desk-r", {});
     });
     document.getElementById("rt-tick").addEventListener("click", () => {
       runUserTurn("tick routines", {});

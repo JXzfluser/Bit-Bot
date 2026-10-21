@@ -45,17 +45,56 @@ pub fn SecretVault::new() -> SecretVault {
 }
 
 ///|
+fn is_token_char(c : UInt16) -> Bool {
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') ||
+  (c >= '0' && c <= '9') ||
+  c == '_' ||
+  c == '-'
+}
+
+///|
+/// True when `text` contains `prefix` followed by >= min_body token chars.
+/// Length matters: "task-2136" must not look like an `sk-` key while
+/// "sk-proj-abcdefghijklmnop" must (GP-101).
+fn has_token_shape(text : String, prefix : String, min_body : Int32) -> Bool {
+  let n = text.length()
+  let pn = prefix.length()
+  guard pn > 0 && n >= pn + min_body else { false }
+  let mut i = 0
+  while i + pn <= n {
+    if text[i:i + pn].to_owned() == prefix {
+      let mut j = i + pn
+      while j < n && is_token_char(text[j]) {
+        j = j + 1
+      }
+      if j - (i + pn) >= min_body {
+        return true
+      }
+    }
+    i = i + 1
+  }
+  false
+}
+
+///|
 fn looks_like_token(text : String) -> Bool {
-  let keys = [
-    "BEGIN PRIVATE KEY", "api_key=", "Authorization: Bearer", "cookie=", "sk-", "ghp_",
-    "xoxb-", "xoxp-",
+  let shapes : Array[(String, Int32)] = [
+    ("ghp_", 20), ("gho_", 20), ("ghu_", 20), ("ghs_", 20), ("ghr_", 20),
+    ("github_pat_", 20), ("sk-", 16), ("sk_live_", 10), ("xoxb-", 10),
+    ("xoxp-", 10), ("xoxa-", 10), ("AKIA", 16), ("AIza", 30),
   ]
-  for k in keys {
-    if text.contains(k) {
+  for shape in shapes {
+    if has_token_shape(text, shape.0, shape.1) {
       break true
     }
   } nobreak {
-    false
+    (text.contains("-----BEGIN") && text.contains("PRIVATE KEY-----")) ||
+    text.contains("api_key=") ||
+    text.contains("apikey=") ||
+    text.contains("Authorization: Bearer") ||
+    text.contains("cookie=") ||
+    text.contains("Cookie:")
   }
 }
 

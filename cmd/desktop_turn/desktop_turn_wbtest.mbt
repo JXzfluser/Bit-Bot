@@ -1032,6 +1032,36 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   let fr = run_desktop_turn("fire routine smoke-r", turn_id="fr-1")
   assert_true(fr.ok)
   assert_eq(fr.intent, "fire_routine")
+  // GP-108: preparing a routine fire must not carry execute=1.
+  assert_eq(fr.effects[0].kind, "routine_fire")
+  assert_eq(fr.effects[0].command, "smoke-r")
+  // GP-109: the execute form needs an approved turn; unapproved stops at a card.
+  let fxg = run_desktop_turn(
+    "fire routine smoke-r execute=1",
+    turn_id="fx-gate",
+  )
+  assert_true(fxg.ok)
+  assert_eq(fxg.intent, "fire_routine")
+  assert_eq(fxg.effects[0].kind, "approval_card")
+  assert_true(fxg.effects[0].command.contains("routine execute: smoke-r"))
+  let approved_ctx : DesktopTurnContext = {
+    session_id: "s",
+    machine_id: "desk-1",
+    machine_kind: "desktop",
+    channel: "",
+    approved: true,
+    reply_to: "",
+  }
+  let fx = run_desktop_turn(
+    "fire routine smoke-r execute=1",
+    turn_id="fx-ok",
+    ctx=approved_ctx,
+  )
+  assert_true(fx.ok)
+  assert_eq(fx.intent, "fire_routine")
+  assert_eq(fx.effects[0].kind, "routine_fire")
+  // The id is cleaned of the flag; the Host receives it as a pipe field.
+  assert_eq(fx.effects[0].command, "smoke-r|execute=1")
   let cg = run_desktop_turn("connect gmail", turn_id="cg-1")
   assert_true(cg.ok)
   assert_eq(cg.intent, "connect_gmail")

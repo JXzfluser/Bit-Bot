@@ -2449,6 +2449,16 @@ pub fn run_desktop_turn(
       )
     }
     FireRoutine(id~) => {
+      // GP-108/109 (§6.4): `fire routine r` PREPARES a draft. Only the explicit
+      // `execute=1` form crosses the boundary, and that form needs user approval
+      // — preparing is free, executing is a separate approved turn.
+      let wants_execute = id.has_suffix(" execute=1") ||
+        id.has_suffix("|execute=1")
+      let id = if wants_execute {
+        id[:id.length() - 10].trim().to_owned()
+      } else {
+        id
+      }
       let store = @routines.RoutineStore::empty()
       let spec : @routines.RoutineSpec = {
         id,
@@ -2470,18 +2480,50 @@ pub fn run_desktop_turn(
           ctx,
           assistant="routine not fireable: " + id,
         )
+      } else if wants_execute && !ctx.approved {
+        // Executing a prepared routine crosses the send/buy/delete boundary, so
+        // it stops at the approval card exactly like a direct send would.
+        match
+          gate_consequential(
+            trimmed,
+            turn_id,
+            intent,
+            ctx,
+            @security.ExternalSend,
+            "routine execute: " + id,
+            irreversible=true,
+          ) {
+          Some(blocked) => blocked
+          None =>
+            fail_turn(
+              trimmed,
+              turn_id,
+              intent,
+              "routine execute needs approval",
+              ctx,
+              assistant="routine execute needs approval",
+            )
+        }
       } else {
         let effect : DesktopEffect = {
           kind: "routine_fire",
-          command: id,
+          // `execute=1` travels as a pipe field; the Host treats its absence as
+          // "prepare a draft only" (GP-108).
+          command: if wants_execute { id + "|execute=1" } else { id },
           needs_host_ffi: true,
         }
         deliver_ok(
           trimmed,
           turn_id,
-          "Routine fire planned: " +
-          id +
-          ". Host wakes destination delivery (CM-04).",
+          if wants_execute {
+            "Routine execute approved: " +
+            id +
+            ". Host runs the prepared draft and records it as an execution."
+          } else {
+            "Routine fire planned: " +
+            id +
+            ". Host prepares a draft (prompt + approval boundary); nothing is sent, bought, deleted or published until you approve the execute step (§6.4)."
+          },
           intent,
           ctx~,
           effects=[effect],

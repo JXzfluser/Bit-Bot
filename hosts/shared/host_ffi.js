@@ -14116,15 +14116,69 @@ function createHostFfi(repoRoot) {
         firesDir,
         `fire-${id || "routine"}-${Date.now().toString(36)}.json`,
       );
+      /* GP-108 (§6.4 先读后执行): a routine fire PREPARES before it EXECUTES.
+       * The default outcome is a draft artifact — the prompt, the source, and
+       * the approval boundary — with `executed:false`. Real execution only
+       * happens when the routine is explicitly configured to auto-execute or
+       * the caller asks for it (`execute=1` / BITBOT_ROUTINE_EXECUTE=1), and
+       * even then it is recorded as a separate, auditable step. */
+      const executeVia =
+        /(?:^|\|)execute=1(?:\||$)/.test(String(command || ""))
+          ? "command"
+          : hit && hit.auto_execute === true
+            ? "routine_config"
+            : process.env.BITBOT_ROUTINE_EXECUTE === "1"
+              ? "env"
+              : "";
+      const executeRequested = executeVia !== "";
+      const promptText = (hit && hit.prompt) || "";
+      const draftDir = path.join(firesDir, "drafts");
+      fs.mkdirSync(draftDir, { recursive: true });
+      const draftPath = path.join(
+        draftDir,
+        `routine-${id || "routine"}-${Date.now().toString(36)}.json`,
+      );
+      const draftEntry = {
+        routine_id: id,
+        prompt: promptText,
+        cron,
+        prepared_at: firedAt,
+        // §6.4: sending / buying / deleting / publishing / production changes
+        // are never implied by preparing — the boundary travels with the draft.
+        requires_approval: true,
+        approval_boundary: [
+          "external_send",
+          "purchase",
+          "delete",
+          "publish",
+          "production_change",
+        ],
+        default_action: "draft",
+        mode: "host_routine_draft",
+        pretend_executed: false,
+        pretend_fired: false,
+        routines_path: ROUTINES_PATH,
+      };
+      fs.writeFileSync(draftPath, JSON.stringify(draftEntry, null, 2));
       const fireEntry = {
         id,
         cron,
-        prompt: (hit && hit.prompt) || "",
+        prompt: promptText,
         fired: true,
         at: firedAt,
         next_due: nextDue,
-        mode: "host_routine_fire",
+        mode: executeRequested
+          ? "host_routine_fire_executed"
+          : "host_routine_draft",
+        // Honest two-phase shape: firing prepared output; execution is separate.
+        executed: executeRequested,
+        executed_at: executeRequested ? firedAt : null,
+        execute_via: executeVia,
+        draft_path: draftPath,
+        requires_approval: true,
+        approval_boundary: draftEntry.approval_boundary,
         pretend_fired: false,
+        pretend_executed: false,
         routines_path: ROUTINES_PATH,
       };
       fs.writeFileSync(firePath, JSON.stringify(fireEntry, null, 2));
@@ -14146,10 +14200,19 @@ function createHostFfi(repoRoot) {
         next_due: nextDue,
         at: firedAt,
       });
+      const draftDelivery = recordSendToUser({
+        type: "attachment",
+        path: draftPath,
+        label: "routine_draft",
+        source_kind: kind,
+        at: firedAt,
+      });
       return okJson(kind, command, {
         ...fireEntry,
         path: firePath,
         fires: firesPath,
+        draft_path: draftPath,
+        draft_delivery: draftDelivery,
         send_to_user: delivery,
         ok: true,
       });
@@ -14178,6 +14241,10 @@ function createHostFfi(repoRoot) {
             id: r.id,
             prompt: r.prompt || "",
             next_due: payload.next_due || null,
+            // GP-108: a tick prepares drafts, it does not silently execute.
+            executed: payload.executed === true,
+            draft_path: payload.draft_path || null,
+            requires_approval: true,
           });
         }
       }

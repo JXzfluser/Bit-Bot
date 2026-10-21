@@ -860,6 +860,134 @@ async function main() {
       bad("E2E GP-99..102 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
     }
 
+    /* ---- GP-108/109 先读后执行（官方 spec §6.4）----
+       真实 UI：点侧栏 Routines 的「Fire routine」→ 对话流出现草稿卡（不是执行），
+       卡上带 prompt 与审批边界；点卡上的「执行」→ 第二次回合才真正执行。
+       断言的是 DOM 状态 + 落盘产物，不是源码字符串。*/
+    const ROUTINES_PATH = path.join(REPO, "data/routines/host-routines.json");
+    const FIRES_PATH = path.join(REPO, "data/routines/fires.jsonl");
+    const DRAFTS_DIR = path.join(REPO, "data/routines/drafts");
+    const routinesBefore = fs.existsSync(ROUTINES_PATH)
+      ? fs.readFileSync(ROUTINES_PATH)
+      : null;
+    const firesBefore = fs.existsSync(FIRES_PATH) ? fs.readFileSync(FIRES_PATH) : null;
+    const draftsBefore = fs.existsSync(DRAFTS_DIR) ? fs.readdirSync(DRAFTS_DIR) : [];
+    try {
+      const bootG22 = await launch({ BITBOT_LLM_STREAM: "0" });
+      await bootG22.win.evaluate(() => document.getElementById("sess-new").click());
+      await bootG22.win.evaluate(() => document.getElementById("rt-fire").click());
+      await bootG22.win.waitForSelector(".routine-draft", { timeout: 30000 });
+      await bootG22.win.waitForTimeout(600);
+
+      const draftDom = await bootG22.win.evaluate(() => {
+        const card = document.querySelector(".routine-draft");
+        const exec = document.getElementById("routine-draft-execute");
+        return {
+          cards: document.querySelectorAll(".routine-draft").length,
+          hasPrompt: Boolean(card && card.querySelector(".rd-prompt")),
+          boundary: (card && card.querySelector(".rd-boundary")?.textContent) || "",
+          hasExecute: Boolean(exec),
+          executeEnabled: Boolean(exec && !exec.disabled),
+          firedRows: document.querySelectorAll('[data-routine-draft]').length,
+        };
+      });
+      draftDom.cards === 1 && draftDom.hasPrompt && draftDom.hasExecute && draftDom.executeEnabled
+        ? ok("E2E GP-108：点 Fire 后对话流出现草稿卡（带 prompt + 可点的执行按钮）")
+        : bad("E2E GP-108 draft card", JSON.stringify(draftDom).slice(0, 220));
+
+      /external_send/.test(draftDom.boundary) && /purchase/.test(draftDom.boundary)
+        ? ok("E2E GP-108：卡上写明审批边界（external_send / purchase …），不是一句“已触发”")
+        : bad("E2E GP-108 boundary text", draftDom.boundary.slice(0, 160));
+
+      const draftFiles = fs.existsSync(DRAFTS_DIR) ? fs.readdirSync(DRAFTS_DIR) : [];
+      const newDrafts = draftFiles.filter((f) => !draftsBefore.includes(f));
+      let draftJson = {};
+      try {
+        draftJson = JSON.parse(
+          fs.readFileSync(path.join(DRAFTS_DIR, newDrafts[0]), "utf8"),
+        );
+      } catch (_) {
+        draftJson = {};
+      }
+      newDrafts.length === 1 &&
+        draftJson.requires_approval === true &&
+        draftJson.default_action === "draft" &&
+        Array.isArray(draftJson.approval_boundary)
+        ? ok("E2E GP-108：Host 真落了一份草稿（requires_approval + default_action=draft）")
+        : bad("E2E GP-108 draft artifact", JSON.stringify({ n: newDrafts.length, d: draftJson }).slice(0, 240));
+
+      // Before the user presses Execute there must be no execution record.
+      const firesPre = fs.existsSync(FIRES_PATH) ? fs.readFileSync(FIRES_PATH, "utf8") : "";
+      const firesPreRows = firesPre
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => {
+          try {
+            return JSON.parse(l);
+          } catch (_) {
+            return {};
+          }
+        });
+      const preExecuted = firesPreRows.filter((r) => r && r.executed === true).length;
+      const preFiredButNotExecuted = firesPreRows.filter(
+        (r) => r && r.mode === "host_routine_draft" && r.executed === false,
+      ).length;
+      preFiredButNotExecuted >= 1
+        ? ok("E2E GP-108：准备阶段 fires.jsonl 记 mode=host_routine_draft + executed:false")
+        : bad("E2E GP-108 prepare record", "no draft-mode fire row");
+
+      // Now the explicit execute step.
+      await bootG22.win.evaluate(() => document.getElementById("routine-draft-execute").click());
+      await bootG22.win.waitForFunction(
+        () => {
+          const btn = document.getElementById("routine-draft-execute");
+          return btn && btn.disabled === true;
+        },
+        { timeout: 40000 },
+      );
+      await bootG22.win.waitForTimeout(1500);
+      const afterExec = fs.existsSync(FIRES_PATH) ? fs.readFileSync(FIRES_PATH, "utf8") : "";
+      const execRows = afterExec
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => {
+          try {
+            return JSON.parse(l);
+          } catch (_) {
+            return {};
+          }
+        })
+        .filter((r) => r && r.executed === true);
+      execRows.length === preExecuted + 1 &&
+        execRows[execRows.length - 1].mode === "host_routine_fire_executed" &&
+        execRows[execRows.length - 1].execute_via === "command"
+        ? ok("E2E GP-109：点「执行」后才新增一条 host_routine_fire_executed（execute_via=command）")
+        : bad("E2E GP-109 executed row", JSON.stringify({ pre: preExecuted, post: execRows.length }).slice(0, 200));
+
+      const execDom = await bootG22.win.evaluate(() => {
+        const card = document.querySelector(".routine-draft");
+        return {
+          status: (card && card.querySelector(".draft-status")?.textContent) || "",
+          disabled: Boolean(document.getElementById("routine-draft-execute")?.disabled),
+        };
+      });
+      execDom.disabled && execDom.status.length > 0
+        ? ok("E2E GP-109：执行后卡上按钮固化并显示状态（不可重复点）")
+        : bad("E2E GP-109 card state", JSON.stringify(execDom).slice(0, 160));
+
+      await shutdown(bootG22.app);
+    } catch (e) {
+      bad("E2E GP-108/109 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      if (routinesBefore) fs.writeFileSync(ROUTINES_PATH, routinesBefore);
+      else fs.rmSync(ROUTINES_PATH, { force: true });
+      if (firesBefore) fs.writeFileSync(FIRES_PATH, firesBefore);
+      else fs.rmSync(FIRES_PATH, { force: true });
+      for (const f of fs.existsSync(DRAFTS_DIR) ? fs.readdirSync(DRAFTS_DIR) : []) {
+        if (!draftsBefore.includes(f)) fs.rmSync(path.join(DRAFTS_DIR, f), { force: true });
+      }
+    }
+
     /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----
        走真实 UI + 真实 IPC：provider 回一句含裸 URL 与 javascript: 链接的话 →
        kernel CM-0111 规范化为 markdown → renderer 把 markdown 变成真 <a>，

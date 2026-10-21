@@ -27,5 +27,6 @@
 | G-10 | 文件与交付（文件卡、预览、`/workspace` 路径纪律、保存/打开） | spec.md §10 | `readArtifact/openArtifact` + renderer 预览侧栏 |
 | G-11 | 安全（secret 掩码框不进上下文、untrusted fence、auto-review 独立闸门、隐私模式只读） | spec.md §6/8.3–8.5/11 | kernel `secret_request`/`security.parse` fence + Host `secret_vault`（AES-GCM）+ `privacy_status` + renderer 密钥卡/`data-untrusted` 角标（wave M21） |
 | G-12 | 侧边栏 chrome（Cmd/Ctrl+B 折叠、置顶区、Hidden Bots、Connect apps、⌘N） | spec.md §2 | renderer + accelerator |
+| G-18 | 自动化先读后执行（Routine 默认出草稿、发送/购买/删除/发布/生产变更需审批、只读不打扰） | spec.md §6.4 | Host `routine_fire` 两段式（draft + `executed`/`execute_via`）+ kernel `gate_consequential` + renderer 草稿卡（wave M22） |
 
 详细验收条目见 `spec.md`；IPC/载荷契约见 `ipc-contract.md`；现状差距审计见 `gaps.md`。

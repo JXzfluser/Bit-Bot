@@ -798,5 +798,37 @@ grep -q "managed by account" /tmp/g21-probe.log 2>/dev/null \
 echo "  · G-21 说明：密钥卡的键入/显示切换与提交后的 [REDACTED] 行由 renderer 契约 + Host vault 双端断言；真实 Electron 交互冒烟见 scripts/e2e_grok_desktop_boot.mjs"
 
 echo
+echo "== G-22 先读后执行（M22：§6.4 草稿先行 / execute 需批准 / 只读不打扰）=="
+if timeout 600 node scripts/prove_m22_readfirst.js > /tmp/g22-probe.log 2>&1; then
+  ok "G-22 先读后执行契约全绿（$(grep -c '✓' /tmp/g22-probe.log) 项，$(tail -1 /tmp/g22-probe.log)）"
+else
+  bad "G-22 先读后执行契约（见 /tmp/g22-probe.log）"
+fi
+grep -q "executed/pretend_executed/pretend_fired 全 false" /tmp/g22-probe.log 2>/dev/null \
+  && grep -q "产出草稿文件" /tmp/g22-probe.log 2>/dev/null \
+  && ok "G-22 GP-108：默认 fire 只准备草稿（draft_path 真实存在 + 三个 false 同时成立）" \
+  || bad "G-22 GP-108 draft contract missing"
+grep -q "5 类 approval_boundary" /tmp/g22-probe.log 2>/dev/null \
+  && grep -q "只有附件投递" /tmp/g22-probe.log 2>/dev/null \
+  && ok "G-22 GP-108：草稿随带发送/购买/删除/发布/生产变更审批边界，制备阶段零对外副作用" \
+  || bad "G-22 GP-108 boundary/副作用 assertion missing"
+grep -q "未 approved 的 execute=1 只出 approval_card" /tmp/g22-probe.log 2>/dev/null \
+  && grep -q "approved 后才真实执行" /tmp/g22-probe.log 2>/dev/null \
+  && ok "G-22 GP-109：execute=1 未批准只弹卡且 Host 无执行记录；approved 后 executed:true + executed_at" \
+  || bad "G-22 GP-109 execute gate missing"
+grep -q "execute_via=command" /tmp/g22-probe.log 2>/dev/null \
+  && ok "G-22 GP-109：执行记录写明 execute_via（审计可回答“为什么跑了”）" \
+  || bad "G-22 GP-109 execute_via missing"
+grep -q "四个只读 intent" /tmp/g22-probe.log 2>/dev/null \
+  && grep -q "不产生小票" /tmp/g22-probe.log 2>/dev/null \
+  && ok "G-22 GP-110：只读 intent 零审批打扰；写入类被拦下且无小票/无执行记录" \
+  || bad "G-22 GP-110 read/write split missing"
+grep -q "面板 Fire 按钮不带 approved" /tmp/g22-probe.log 2>/dev/null \
+  && grep -q "草稿卡的“执行”= 一次显式 approved 回合" /tmp/g22-probe.log 2>/dev/null \
+  && ok "G-22 渲染层：Fire 只准备、草稿卡 Execute 才是 approved 回合（准备≠执行）" \
+  || bad "G-22 renderer two-phase wiring missing"
+echo "  · G-22 说明：本块驱动真实 kernel + Host FFI 跑完整回合（CLI host，与 Desktop 同一条 run_moon_turn），断言基于落盘产物与 host_results，不是源码字符串自证"
+
+echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
