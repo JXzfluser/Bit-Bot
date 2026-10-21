@@ -874,9 +874,11 @@
   }
   #composer #attach-btn:hover, #composer #voice-btn:hover { background: var(--accent-soft); color: var(--ink); }
   #composer #voicechat-btn {
-    background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line);
-    height: 34px; border-radius: var(--radius-pill); padding: 0 12px; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+    background: #ffffff; color: var(--ink); border: 1px solid var(--line);
+    height: 36px; border-radius: var(--radius-pill); padding: 0 14px; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
+  #composer #voicechat-btn:hover { background: var(--accent-soft); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
   #composer #voicechat-btn:disabled { opacity: 0.35; cursor: default; }
   .settings-tab-btn { background: #ffffff; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px 12px; cursor: pointer; font-size: var(--text-sm); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
   .settings-tab-btn:hover { background: var(--accent-soft); }
