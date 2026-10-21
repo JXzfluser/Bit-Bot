@@ -477,11 +477,14 @@ body.force-light {
 
 #connect-apps-btn.bb-btn,
 #marketplace-btn.bb-btn {
-  padding: 7px var(--space-1);
+  padding: 8px var(--space-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .bb-lightbox {
