@@ -494,15 +494,21 @@
   .bf-input {
     width: 100%;
     box-sizing: border-box;
-    background: var(--input-bg);
+    background: #ffffff;
     color: var(--text);
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
-    padding: 7px 9px;
+    padding: 8px 12px;
     font: inherit;
     font-size: var(--text-md);
     line-height: 1.4;
     resize: vertical;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .bf-input:focus {
+    border-color: var(--muted);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    outline: none;
   }
   .bf-avatar {
     width: 84px;
