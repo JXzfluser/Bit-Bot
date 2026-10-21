@@ -96,6 +96,41 @@
   body.tools-open.computer-open {
     grid-template-columns: 260px 1fr 280px 340px;
   }
+  /* G-22: the Bot settings rail shares the optional right-hand column with the
+     Computer preview. Both are "the panel", so the two classes are mutually
+     exclusive (see openBotRail / toggleComputerRail) and the centre keeps its
+     width either way. */
+  #bot-rail {
+    grid-area: computer;
+    border-left: 1px solid var(--line);
+    background: var(--side);
+    padding: 12px;
+    overflow: auto;
+    display: none;
+  }
+  body.bot-open #bot-rail { display: block; }
+  body.bot-open { grid-template-columns: 260px 1fr 0fr 340px; }
+  body.bot-open.tools-open { grid-template-columns: 260px 1fr 280px 340px; }
+  .br-head { display: flex; align-items: flex-start; gap: 10px; }
+  .br-avatar {
+    width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; overflow: hidden; background: var(--bg1); border: 1px solid var(--line);
+  }
+  .br-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .br-name { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .br-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .br-desc {
+    margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--text);
+    white-space: pre-wrap; word-break: break-word;
+    max-height: 180px; overflow: auto;
+  }
+  .br-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12px;
+  }
+  .br-row:last-of-type { border-bottom: 0; }
+  .br-stat { color: var(--muted); font: 11px/1.5 ui-monospace, monospace; }
   header {
     grid-area: header;
     padding: 10px 16px;
@@ -1882,6 +1917,31 @@
     </div>
   </aside>
   <!-- GP-31: Grok-style right-side Computer preview rail (live frames + activity) -->
+  <aside id="bot-rail">
+    <div class="br-head">
+      <div class="br-avatar" id="br-avatar"></div>
+      <div style="min-width:0;flex:1">
+        <div class="br-name" id="br-name"></div>
+        <div class="br-meta" id="br-job"></div>
+      </div>
+      <button type="button" id="br-close" class="gp-chip" data-i18n="gpClose">关闭</button>
+    </div>
+    <div class="gp-row" id="br-tags" style="margin-top:8px"></div>
+    <div class="panel-title" data-i18n="brAbout">工作方式</div>
+    <div class="br-desc" id="br-desc"></div>
+    <div class="panel-title" data-i18n="brSettings">设置</div>
+    <div class="br-row">
+      <div style="min-width:0">
+        <div data-i18n="brNotify">通知</div>
+        <div class="br-stat" data-i18n="brNotifyHint">Bot 完成或需要输入时提醒（仅此 Bot）</div>
+      </div>
+      <input type="checkbox" id="br-notify" />
+    </div>
+    <div id="br-stats" class="br-stat" style="padding-top:8px"></div>
+    <div class="panel-title" data-i18n="brActions">操作</div>
+    <div class="gp-row" id="br-actions"></div>
+    <div style="padding:10px 0 4px;color:var(--muted);font-size:11px" data-i18n="brRailNote">设置改动即时写入本地 store，与侧栏同步。</div>
+  </aside>
   <aside id="computer-rail">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 12px 0">
       <div class="panel-title" style="margin:0" data-i18n="computerPreview">Computer 预览</div>
@@ -7420,6 +7480,147 @@
     // Right-click / long-press menu: Edit · Pin · Duplicate · Primary · Hide · Delete (spec §2.2)
     // GP-06/GP-07 route through store-backed "hide bot"/"delete bot" phrases —
     // NOT the legacy CM-0204/CM-1907 agent directory (those don't touch bots.json).
+    /* G-22 (§2.1 right panel, §4.5, §4.6): the Bot settings rail. It shares the
+       optional right-hand column with the Computer preview — only one of the
+       two is ever open — and every value it shows comes from window.bitbot.bots.detail(),
+       i.e. the store that owns it. */
+    let botRailId = "";
+    function botRailOpen() {
+      return document.body.classList.contains("bot-open");
+    }
+    function closeBotRail() {
+      botRailId = "";
+      document.body.classList.remove("bot-open");
+    }
+    async function openBotRail(botId) {
+      const id = String(botId || "").trim();
+      if (!id) return;
+      botRailId = id;
+      document.body.classList.remove("computer-open");
+      document.body.classList.add("bot-open");
+      await refreshBotRail();
+    }
+    function botRailStat(label, value) {
+      const row = document.createElement("div");
+      row.className = "br-row";
+      const k = document.createElement("div");
+      k.textContent = label;
+      const v = document.createElement("div");
+      v.className = "br-stat";
+      v.textContent = String(value);
+      row.appendChild(k);
+      row.appendChild(v);
+      return row;
+    }
+    async function refreshBotRail() {
+      if (!botRailId || !window.bitbot || !window.bitbot.bots || !window.bitbot.bots.detail) return;
+      let d = null;
+      try {
+        d = await window.bitbot.bots.detail(botRailId);
+      } catch (_) {
+        d = null;
+      }
+      const av = document.getElementById("br-avatar");
+      const nameEl = document.getElementById("br-name");
+      const jobEl = document.getElementById("br-job");
+      const tagsEl = document.getElementById("br-tags");
+      const descEl = document.getElementById("br-desc");
+      const statsEl = document.getElementById("br-stats");
+      const actionsEl = document.getElementById("br-actions");
+      const notifyEl = document.getElementById("br-notify");
+      if (!av || !nameEl || !statsEl || !actionsEl) return;
+      av.innerHTML = "";
+      tagsEl.innerHTML = "";
+      statsEl.innerHTML = "";
+      actionsEl.innerHTML = "";
+      if (!d || !d.ok) {
+        nameEl.textContent = wavegT("brUnknown");
+        jobEl.textContent = (d && d.error) || "bot_not_found";
+        descEl.textContent = "";
+        if (notifyEl) { notifyEl.checked = false; notifyEl.disabled = true; }
+        return;
+      }
+      const bot = d.bot || {};
+      if (bot.avatar_data_url) {
+        const img = document.createElement("img");
+        img.alt = "";
+        img.src = bot.avatar_data_url;
+        av.appendChild(img);
+      } else {
+        av.textContent = String(bot.name || bot.id || "B").trim().slice(0, 1);
+        av.style.background = avatarColorFor(bot.id || bot.name);
+      }
+      nameEl.textContent = bot.name || bot.id;
+      nameEl.title = bot.name || bot.id;
+      jobEl.textContent = (bot.job || "bot") + (d.is_primary ? " · " + wavegT("brPrimary") : "");
+      for (const t of (Array.isArray(bot.tags) ? bot.tags : [])) {
+        const chip = document.createElement("span");
+        chip.className = "gp-chip";
+        chip.textContent = "#" + t;
+        tagsEl.appendChild(chip);
+      }
+      descEl.textContent = bot.description || "";
+      if (notifyEl) {
+        notifyEl.disabled = false;
+        notifyEl.checked = d.notifications !== false;
+      }
+      statsEl.appendChild(botRailStat(wavegT("brMemories"), d.memory_entries || 0));
+      statsEl.appendChild(botRailStat(wavegT("brRoutines"), (d.routines_active || 0) + " / " + (d.routines_total || 0)));
+      statsEl.appendChild(botRailStat(wavegT("brSessions"), d.sessions_total || 0));
+      statsEl.appendChild(botRailStat(wavegT("brRooms"), d.rooms_total || 0));
+      const addAction = (label, fn) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "gp-chip";
+        b.textContent = label;
+        b.addEventListener("click", async () => {
+          b.disabled = true;
+          try { await fn(); } finally { b.disabled = false; }
+        });
+        actionsEl.appendChild(b);
+      };
+      addAction(wavegT("menuEdit"), () => openBotEditForm(bot));
+      addAction(bot.pinned ? wavegT("menuUnpin") : wavegT("menuPin"), async () => {
+        await runUserTurn((bot.pinned ? "unpin bot " : "pin bot ") + bot.id, { skipSession: true, silentUser: true });
+        await refreshBots();
+        await refreshBotRail();
+      });
+      addAction(wavegT("menuDuplicate"), async () => {
+        await runUserTurn("duplicate bot " + bot.id, { skipSession: true, silentUser: true });
+        await refreshBots();
+        await refreshBotRail();
+      });
+      addAction(bot.hidden ? wavegT("menuUnhide") : wavegT("menuHide"), async () => {
+        await runUserTurn((bot.hidden ? "unhide bot " : "hide bot ") + bot.id, { skipSession: true, silentUser: true });
+        await refreshBots();
+        await refreshBotRail();
+      });
+      addAction(wavegT("menuDelete"), () => openBotDeleteDialog(bot));
+    }
+    (function wireBotRail() {
+      const close = document.getElementById("br-close");
+      if (close) close.addEventListener("click", () => closeBotRail());
+      const notify = document.getElementById("br-notify");
+      if (notify) {
+        notify.addEventListener("change", async () => {
+          if (!botRailId || !window.bitbot || !window.bitbot.bots || !window.bitbot.bots.notify) return;
+          const want = Boolean(notify.checked);
+          let r = null;
+          try {
+            r = await window.bitbot.bots.notify(botRailId, want);
+          } catch (_) {
+            r = null;
+          }
+          if (!r || !r.ok) {
+            notify.checked = !want;
+            addMsg("assistant", wavegT("brNotifyFailed"));
+            return;
+          }
+          addMsg("assistant", wavegT("brNotifySaved") + " · " + (want ? "on" : "off"));
+        });
+      }
+    })();
+
     let botMenuEl = null;
     function showBotMenu(ev, bot) {
       hideBotMenu();
@@ -7436,6 +7637,7 @@
         [bot.hidden ? wavegT("menuUnhide") : wavegT("menuHide"), () => runUserTurn((bot.hidden ? "unhide bot " : "hide bot ") + bot.id, { skipSession: true, silentUser: true })],
         [wavegT("menuEdit"), () => openBotEditForm(bot)],
         [wavegT("menuDelete"), () => openBotDeleteDialog(bot)],
+        [wavegT("menuBotSettings"), () => openBotRail(bot.id)],
       ];
       for (const [label, fn] of items) {
         const b = document.createElement("button");
@@ -7994,6 +8196,7 @@
         closeBotDeleteDialog();
         if (!id) return;
         await runUserTurn("confirm delete bot " + id, { skipSession: true, silentUser: true });
+        if (botRailId === id) closeBotRail(); // deleted Bot must not keep its settings panel open
         await refreshBots();
         await refreshSessions();
       });
@@ -8492,6 +8695,21 @@
         avatarInvalid: "头像路径无效（Host 拒绝，未保存头像）",
         botCreatedOpen: "已创建「{n}」并打开对话",
         botCreateFailed: "创建失败",
+        menuBotSettings: "Bot 设置",
+        brAbout: "工作方式",
+        brSettings: "设置",
+        brNotify: "通知",
+        brNotifyHint: "Bot 完成或需要输入时提醒（仅此 Bot）",
+        brActions: "操作",
+        brRailNote: "设置改动即时写入本地 store，与侧栏同步。",
+        brMemories: "记忆",
+        brRoutines: "Routines",
+        brSessions: "会话",
+        brRooms: "群组",
+        brPrimary: "主 Bot",
+        brUnknown: "未找到该 Bot",
+        brNotifySaved: "通知设置已保存",
+        brNotifyFailed: "通知设置保存失败",
         advanced: "高级 · Agents / Teammates",
         settings: "设置",
         settingsGeneral: "常规",
@@ -8838,6 +9056,21 @@
         avatarInvalid: "頭像路徑無效（Host 拒絕，未儲存頭像）",
         botCreatedOpen: "已建立「{n}」並開啟對話",
         botCreateFailed: "建立失敗",
+        menuBotSettings: "Bot 設定",
+        brAbout: "工作方式",
+        brSettings: "設定",
+        brNotify: "通知",
+        brNotifyHint: "Bot 完成或需要輸入時提醒（僅此 Bot）",
+        brActions: "操作",
+        brRailNote: "設定改動即時寫入本機 store，與側欄同步。",
+        brMemories: "記憶",
+        brRoutines: "Routines",
+        brSessions: "工作階段",
+        brRooms: "群組",
+        brPrimary: "主 Bot",
+        brUnknown: "找不到該 Bot",
+        brNotifySaved: "通知設定已儲存",
+        brNotifyFailed: "通知設定儲存失敗",
         advanced: "進階 · Agents / Teammates",
         settings: "設定",
         settingsGeneral: "一般",
@@ -9184,6 +9417,21 @@
         avatarInvalid: "Invalid avatar path (Host refused it; nothing was saved)",
         botCreatedOpen: "Created \"{n}\" and opened its chat",
         botCreateFailed: "Create failed",
+        menuBotSettings: "Bot settings",
+        brAbout: "How it works",
+        brSettings: "Settings",
+        brNotify: "Notifications",
+        brNotifyHint: "Ping me when this Bot finishes or needs input",
+        brActions: "Actions",
+        brRailNote: "Changes are written to the local store immediately and stay in sync with the sidebar.",
+        brMemories: "Memories",
+        brRoutines: "Routines",
+        brSessions: "Chats",
+        brRooms: "Groups",
+        brPrimary: "Primary Bot",
+        brUnknown: "Bot not found",
+        brNotifySaved: "Notification preference saved",
+        brNotifyFailed: "Could not save notification preference",
         advanced: "Advanced · Agents / Teammates",
         settings: "Settings",
         settingsGeneral: "General",
@@ -9747,6 +9995,7 @@
     }
     async function toggleComputerRail(force) {
       const open = force === true ? true : force === false ? false : !computerRailOpen();
+      if (open) closeBotRail(); // one optional right panel at a time (G-22)
       document.body.classList.toggle("computer-open", open);
       if (open) {
         renderComputerRail();

@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld("bitbot", {
     op: (payload) => ipcRenderer.invoke("bitbot:bots:op", payload),
     // GP-122: OS image picker; returns {path, data_url} for the Edit Profile dialog.
     pickAvatar: () => ipcRenderer.invoke("bitbot:bots:pickAvatar"),
+    // G-22: Bot settings rail (profile + real counts) and §4.6 per-Bot notify.
+    detail: (id) => ipcRenderer.invoke("bitbot:bots:detail", id),
+    notify: (botId, on) => ipcRenderer.invoke("bitbot:bots:notify", { bot_id: botId, on: on !== false }),
   },
   settings: {
     get: () => ipcRenderer.invoke("bitbot:settings:get"),

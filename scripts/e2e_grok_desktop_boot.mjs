@@ -1637,6 +1637,193 @@ async function main() {
       if (sessM25Before) fs.writeFileSync(SESS_M25, sessM25Before);
     }
 
+    /* ---- GP-124..127 Bot 设置右栏（官方 spec §2.1 右侧面板 / §4.6 通知）----
+       真实 UI 驱动：右键 Bot →「Bot 设置」→ #bot-rail 打开且资料与 bots.json
+       一致；通知开关真写 settings.notify；开关关闭时 notify:turn 不再弹
+       （bot_notify_off / 聚焦抑制都会 shown:false）；Computer 预览与 Bot 设置
+       互斥；面板内 Pin/Unpin 真改 bots.json 且侧栏同步。断言读真实 DOM +
+       真实落盘。*/
+    const BOTS_M26 = path.join(REPO, "data/desktop/bots.json");
+    const SET_M26 = path.join(REPO, "data/desktop/settings.json");
+    const botsM26Before = fs.existsSync(BOTS_M26) ? fs.readFileSync(BOTS_M26) : null;
+    const setM26Before = fs.existsSync(SET_M26) ? fs.readFileSync(SET_M26) : null;
+    try {
+      const bootM26 = await launch({ BITBOT_LLM_STREAM: "0" });
+      const win = bootM26.win;
+      await win.waitForSelector("#bot-list [data-agent-id]", { timeout: 30000 });
+
+      // 1) Right-click first Bot → last menu item = Bot settings → rail opens
+      const m26BotId = await win.evaluate(
+        () => document.querySelector("#bot-list [data-agent-id]").dataset.agentId,
+      );
+      await win.click('#bot-list [data-agent-id="' + m26BotId + '"]', { button: "right" });
+      await win.waitForSelector(".composer-menu", { timeout: 5000 });
+      await win.locator(".composer-menu button").last().click();
+      await win.waitForFunction(
+        () => document.body.classList.contains("bot-open") &&
+          document.getElementById("bot-rail").getBoundingClientRect().width > 200,
+        null,
+        { timeout: 10000 },
+      ).catch(() => {});
+      const railOpened = await win.evaluate(() => ({
+        open: document.body.classList.contains("bot-open"),
+        width: document.getElementById("bot-rail").getBoundingClientRect().width,
+        name: (document.getElementById("br-name") || {}).textContent || "",
+        job: (document.getElementById("br-job") || {}).textContent || "",
+        chips: document.querySelectorAll("#br-tags .gp-chip").length,
+        stats: document.querySelectorAll("#br-stats .br-row").length,
+        actions: document.querySelectorAll("#br-actions .gp-chip").length,
+        notify: document.getElementById("br-notify") ? document.getElementById("br-notify").checked : null,
+        logWidth: document.getElementById("log").getBoundingClientRect().width,
+      }));
+      const m26Row = (JSON.parse(fs.readFileSync(BOTS_M26, "utf8")).bots || []).find((b) => b.id === m26BotId) || {};
+      railOpened.open && railOpened.width > 200
+        ? ok("E2E GP-124：右键菜单打开 Bot 设置右栏（真实 #bot-rail 可见）")
+        : bad("E2E GP-124 rail open", JSON.stringify(railOpened).slice(0, 200));
+      railOpened.name === (m26Row.name || m26BotId) && railOpened.stats === 4 && railOpened.actions >= 4
+        ? ok("E2E GP-125：面板资料与 bots.json 一致，统计 4 行、操作条就位")
+        : bad("E2E GP-125 panel data", JSON.stringify({ rail: railOpened, row: { name: m26Row.name } }).slice(0, 240));
+      railOpened.logWidth > 200
+        ? ok("E2E GP-124：右栏打开后中央消息流仍 > 200px")
+        : bad("E2E GP-124 log squeezed", String(railOpened.logWidth));
+      // 旧行可能没有 tags 字段（M25 之前创建）；Host decorateBot 会补 []。
+      const m26Tags = Array.isArray(m26Row.tags) ? m26Row.tags : [];
+      railOpened.chips === m26Tags.length
+        ? ok("E2E GP-125：标签 chips 数量与 bots.json 一致（" + m26Tags.length + "）")
+        : bad("E2E GP-125 tags chips", JSON.stringify({ chips: railOpened.chips, tags: m26Row.tags }));
+
+      // 2) §4.6 per-Bot notification toggle writes settings.notify, and the
+      //    turn notification really stays hidden while it is off.
+      await win.click("#br-notify");
+      const notifyOff = await (async () => {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 8000) {
+          try {
+            const st = JSON.parse(fs.readFileSync(SET_M26, "utf8"));
+            if (st.notify && st.notify[m26BotId] === false) return true;
+          } catch (_) {}
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        return false;
+      })();
+      notifyOff
+        ? ok("E2E GP-126：关掉面板开关 → settings.json notify." + m26BotId + "=false")
+        : bad("E2E GP-126 notify off", "settings.json never got false");
+      const turnRes = await win.evaluate(
+        (id) => window.bitbot.notify.turn({ bot_id: id, title: "M26", body: "probe", session_id: null }),
+        m26BotId,
+      );
+      turnRes && turnRes.shown === false && (turnRes.reason === "bot_notify_off" || turnRes.reason === "window_focused")
+        ? ok("E2E GP-126：开关关闭后回合通知不再弹出（shown:false, reason=" + turnRes.reason + "）")
+        : bad("E2E GP-126 notify turn", JSON.stringify(turnRes).slice(0, 200));
+      await win.click("#br-notify");
+      const notifyOn = await (async () => {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 8000) {
+          try {
+            const st = JSON.parse(fs.readFileSync(SET_M26, "utf8"));
+            if (!st.notify || st.notify[m26BotId] !== false) return true;
+          } catch (_) {}
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        return false;
+      })();
+      notifyOn
+        ? ok("E2E GP-126：重新打开开关 → settings.notify 恢复")
+        : bad("E2E GP-126 notify on", "settings.json still false");
+
+      // 3) Mutual exclusion: opening the Computer preview closes the Bot rail.
+      await win.click("#gp-panel-btn");
+      await win.waitForFunction(
+        () => document.body.classList.contains("computer-open"),
+        null,
+        { timeout: 10000 },
+      ).catch(() => {});
+      await win.waitForTimeout(300);
+      const excl = await win.evaluate(() => ({
+        computer: document.body.classList.contains("computer-open"),
+        bot: document.body.classList.contains("bot-open"),
+        railW: document.getElementById("computer-rail").getBoundingClientRect().width,
+      }));
+      excl.computer && !excl.bot && excl.railW > 200
+        ? ok("E2E GP-124：打开 Computer 预览自动收起 Bot 设置（同一可选右栏）")
+        : bad("E2E GP-124 mutual exclusion", JSON.stringify(excl));
+      await win.click("#gp-panel-btn");
+      await win.waitForFunction(
+        () => !document.body.classList.contains("computer-open"),
+        null,
+        { timeout: 10000 },
+      ).catch(() => {});
+
+      // 4) Panel actions drive the same Host phrases: Pin → bots.json pinned.
+      // Re-open the rail via the menu (state is deterministic this way).
+      await win.click('#bot-list [data-agent-id="' + m26BotId + '"]', { button: "right" });
+      await win.waitForSelector(".composer-menu", { timeout: 5000 });
+      await win.locator(".composer-menu button").last().click();
+      await win.waitForFunction(
+        () => document.body.classList.contains("bot-open"),
+        null,
+        { timeout: 10000 },
+      ).catch(() => {});
+      // Actions order: Edit / Pin·Unpin / Duplicate / Hide / Delete. The pin
+      // button toggles its label with the current state, so assert on the
+      // toggle relative to the value we read before clicking.
+      const pinnedBefore = Boolean(m26Row.pinned);
+      if (railOpened.actions >= 4) {
+        await win.evaluate(() => {
+          document.querySelectorAll("#br-actions .gp-chip")[1].click();
+        });
+        const toggled = await (async () => {
+          const t0 = Date.now();
+          while (Date.now() - t0 < 15000) {
+            try {
+              const rows = JSON.parse(fs.readFileSync(BOTS_M26, "utf8")).bots || [];
+              const hit = rows.find((b) => b.id === m26BotId);
+              if (hit && Boolean(hit.pinned) === !pinnedBefore) return true;
+            } catch (_) {}
+            await new Promise((r) => setTimeout(r, 300));
+          }
+          return false;
+        })();
+        toggled
+          ? ok("E2E GP-127：面板内置顶按钮真写 bots.json（pinned " + pinnedBefore + " → " + !pinnedBefore + "，与侧栏菜单同一条 Host 短语）")
+          : bad("E2E GP-127 pin toggle", "bots.json pinned never became " + !pinnedBefore);
+        // Toggle back so the store ends where it started.
+        await win.waitForFunction(
+          () => document.body.classList.contains("bot-open"),
+          null,
+          { timeout: 10000 },
+        ).catch(() => {});
+        await win.evaluate(() => {
+          document.querySelectorAll("#br-actions .gp-chip")[1].click();
+        });
+        const reverted = await (async () => {
+          const t0 = Date.now();
+          while (Date.now() - t0 < 15000) {
+            try {
+              const rows = JSON.parse(fs.readFileSync(BOTS_M26, "utf8")).bots || [];
+              const hit = rows.find((b) => b.id === m26BotId);
+              if (hit && Boolean(hit.pinned) === pinnedBefore) return true;
+            } catch (_) {}
+            await new Promise((r) => setTimeout(r, 300));
+          }
+          return false;
+        })();
+        reverted
+          ? ok("E2E GP-127：再点一次恢复原状（面板按钮与侧栏菜单同源）")
+          : bad("E2E GP-127 pin revert", "bots.json pinned never returned to " + pinnedBefore);
+      } else {
+        bad("E2E GP-127 pin button", "no pin button in #br-actions");
+      }
+
+      await shutdown(bootM26.app);
+    } catch (e) {
+      bad("E2E GP-124..127 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      if (botsM26Before) fs.writeFileSync(BOTS_M26, botsM26Before);
+      if (setM26Before) fs.writeFileSync(SET_M26, setM26Before);
+    }
+
     /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----
        走真实 UI + 真实 IPC：provider 回一句含裸 URL 与 javascript: 链接的话 →
        kernel CM-0111 规范化为 markdown → renderer 把 markdown 变成真 <a>，

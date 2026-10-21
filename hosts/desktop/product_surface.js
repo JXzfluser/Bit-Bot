@@ -489,6 +489,98 @@ function createProductSurface(repoRoot) {
     });
   }
 
+  /* GP-124..127 (§2.1 right panel, §4.6 notifications): every field of the Bot
+     settings panel is read from the store that actually owns it — profile from
+     bots.json, memory count from this Bot's memory slot, routines by the same
+     binding convention the delete cascade uses (id/prompt contains bot_id),
+     sessions by the existing "<name> · DM" title convention. Nothing is
+     synthesised: a missing store simply reports 0. */
+  function botDetail(botId) {
+    const id = String(botId || "").trim();
+    if (!id) return { ok: false, error: "bot_not_found", bot_id: id, mode: "host_bot_detail" };
+    const data = loadBots();
+    const bot = (data.bots || []).find((b) => b && b.id === id);
+    if (!bot) return { ok: false, error: "bot_not_found", bot_id: id, mode: "host_bot_detail" };
+
+    let memoryEntries = 0;
+    try {
+      const store = readJson(MEMORY_STORE_PATH, null);
+      const slot = store && store.bots && store.bots[id];
+      if (slot && Array.isArray(slot.entries)) memoryEntries = slot.entries.length;
+    } catch (_) { /* memory store missing → 0 entries */ }
+
+    let routineCount = 0;
+    let routineActive = 0;
+    try {
+      const rows = readJson(path.join(ROUTINES_DIR, "host-routines.json"), null);
+      if (Array.isArray(rows)) {
+        const bound = (r) => r && (String(r.id || "").includes(id) || String(r.prompt || "").includes(id));
+        const hits = rows.filter(bound);
+        routineCount = hits.length;
+        routineActive = hits.filter((r) => r.enabled !== false && r.lifecycle !== "paused").length;
+      }
+    } catch (_) { /* routines store missing → 0 */ }
+
+    let sessionCount = 0;
+    let lastSessionAt = "";
+    try {
+      const store = readJson(SESSIONS_PATH, null);
+      if (store && Array.isArray(store.sessions)) {
+        const titles = new Set([String(bot.name || id) + " · DM", id + " · DM"]);
+        const hits = store.sessions.filter((s) => s && titles.has(String(s.title || "")));
+        sessionCount = hits.length;
+        for (const s of hits) {
+          if (String(s.updated_at || "") > lastSessionAt) lastSessionAt = String(s.updated_at || "");
+        }
+      }
+    } catch (_) { /* sessions store missing → 0 */ }
+
+    let roomCount = 0;
+    try {
+      const rooms = readJson(ROOMS_PATH, null);
+      const rows = Array.isArray(rooms) ? rooms : (rooms && Array.isArray(rooms.rooms) ? rooms.rooms : []);
+      roomCount = rows.filter((r) => Array.isArray(r && r.members) && r.members.includes(id)).length;
+    } catch (_) { /* rooms store missing → 0 */ }
+
+    const settings = loadSettings();
+    const notifyMap = settings && settings.notify && typeof settings.notify === "object" ? settings.notify : {};
+    return {
+      ok: true,
+      mode: "host_bot_detail",
+      bot: decorateBot(bot),
+      primary_id: data.primary_id || "",
+      is_primary: String(data.primary_id || "") === id,
+      notifications: notifyMap[id] !== false,
+      notify_explicit: Object.prototype.hasOwnProperty.call(notifyMap, id),
+      memory_entries: memoryEntries,
+      routines_total: routineCount,
+      routines_active: routineActive,
+      sessions_total: sessionCount,
+      last_session_at: lastSessionAt,
+      rooms_total: roomCount,
+    };
+  }
+
+  /* GP-126: one Bot's notification toggle must not clobber the other Bots'
+     settings, and only a real boolean is accepted. */
+  function botNotifySet(botId, on) {
+    const id = String(botId || "").trim();
+    if (!id) return { ok: false, error: "bot_not_found", mode: "host_bot_notify" };
+    const data = loadBots();
+    if (!(data.bots || []).some((b) => b && b.id === id)) {
+      return { ok: false, error: "bot_not_found", bot_id: id, mode: "host_bot_notify" };
+    }
+    if (typeof on !== "boolean") {
+      return { ok: false, error: "invalid_value", bot_id: id, mode: "host_bot_notify" };
+    }
+    const settings = loadSettings();
+    const notify = settings.notify && typeof settings.notify === "object" ? settings.notify : {};
+    notify[id] = on;
+    settings.notify = notify;
+    saveSettings(settings);
+    return { ok: true, mode: "host_bot_notify", bot_id: id, notifications: on, notify_map: notify };
+  }
+
   function listViews() {
     const data = loadBots();
     const visible = data.bots
@@ -1622,6 +1714,8 @@ function createProductSurface(repoRoot) {
     botsUnhide,
     botsDelete,
     listViews,
+    botDetail,
+    botNotifySet,
     loadBots,
     touchBotActivity,
 

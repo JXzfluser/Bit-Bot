@@ -188,6 +188,15 @@
 | GP-122 | 头像 = **上传自定义头像**（照片选择） | main 新增 IPC `bitbot:bots:pickAvatar`（`dialog.showOpenDialog` 限 png/jpg/jpeg/webp/gif，`statSync` 拦 >2MB → `avatar_too_large`，返回 `{path,data_url}`）；preload 暴露 `bots.pickAvatar()`；对话框预览在 `bf-avatar-preview`，可清空（提交 `avatar=-`） | E2E 直接经 IPC 走同一条 Host 校验路径后 `refreshBots()`，侧栏 `.sess-avatar img` / Bot 胶囊头像出现；无 X 显示环境时不会自动弹系统框（E2E 用 IPC 覆盖，弹框本身按 residual 记） |
 | GP-123 | 侧栏会话组织：**今天 / 昨天 / 更早** 分组；可搜索、重命名、删除会话 | `renderSessionList()` 按 `sessDayBucket(updated_at)`（本地零点）分 `.sess-group`；`#session-search` 过滤标题+预览（空结果给 `sessNoMatch` 空态）；行双击 → `#session-rename-modal`（`sessions.rename`），右键 →「重命名 / 删除」，删除走 `#session-delete-modal`（显式写会话名 + `sessions.delete`），之后重选活动会话并重载 transcript | 分组标题顺序为 今天 → 昨天 → 更早；搜索 `xyz` → 0 行且空态可见，清空恢复原行数；重命名后 `sessions.json` 与侧栏行标题同时变；删除后该 id 从 `sessions.json` 与侧栏同时消失，当前会话回退到剩余会话 |
 
+## G-22 Bot 设置右栏（官方 spec §2.1 右侧面板 + §4.5 头像 + §4.6 通知）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-124 | 右侧面板**可选**，内容是「对话详情 / Bot 设置 / Computer 预览」之一；开合不影响中央消息流 | 新增 `#bot-rail`（`grid-area: computer`，340px），`body.bot-open` 展开；与 `body.computer-open` **互斥**（打开一个即收起另一个），二者共用同一列，不会把中央挤成 0 | 打开 Bot 设置后 `#bot-rail` 可见、`#computer-rail` 隐藏；再打开 Computer 预览则 Bot 右栏自动收起；`#log` 宽度仍 > 200px |
+| GP-125 | Bot 设置显示真实资料与工作量，不伪造状态 | Host 新 `botDetail(bot_id)`：资料行来自 `bots.json`（`decorateBot` 含 tags/avatar_data_url），**记忆条数**读 `data/memory/desktop-host.json` 的该 Bot 槽，**Routines 数**读 `host-routines.json` 中按既有绑定约定（id/prompt 含 bot_id）命中的行，**会话数**按既有 DM 命名约定（`<name> · DM`）统计，**通知开关**读 `settings.notify[bot_id]`；未知 id → `bot_not_found` | 面板字段与 `bots.json`/记忆文件/routines/会话 store 逐项相等；删掉一条记忆后重开面板计数 −1；未知 Bot id 返回 `bot_not_found` 且不建行 |
+| GP-126 | **每 Bot 独立通知开关**（§4.6）；群聊无独立开关 | 面板内的开关走 Host `botNotifySet(bot_id, on)`（合并写 `settings.notify`，不覆盖其它 Bot）；关掉后 `bitbot:notify:turn` 返回 `reason:"bot_notify_off"` 且不创建系统通知 | 关开关 → `settings.json` 的 `notify.<id>=false`；同一窗口下 `notify:turn` 返回 `shown:false, reason:bot_notify_off`；开回来 → `true` 且响应里不再出现该 reason |
+| GP-127 | Bot 菜单里的操作在设置面板同样可用，且与侧栏同步 | 面板底部动作条：Edit profile（复用 `#bot-edit-modal`）、Pin/Unpin、Hide、Duplicate、Delete（复用既有确认流）；每次动作后 `refreshBots()` + 重新拉 `bots.detail`，删除成功后关闭右栏 | 面板内 Pin 后 `bots.json.pinned=true` 且侧栏置顶；Hide 后侧栏消失；Delete 确认后右栏关闭、Bot 不在任何列表 |
+
 ## 诚实残留（本波不假装）
 
 - 真实云 VM 远程桌面推流：以本机 `DISPLAY`/xvfb + 真截图帧模拟"共享电脑屏幕"，标注 `mode=sandbox_screen`，不宣称云端。

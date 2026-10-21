@@ -996,6 +996,60 @@ fi
 echo "  · G-25 说明：本块用真实 CLI 内核 + Host product_surface 跑 create/update bot 与 sessions rename/delete，断言读 bots.json / sessions.json / listViews() 的 avatar_data_url；负向对照为关掉 tags 归一化后 3 条变红"
 
 
+echo "== G-26 Bot 设置右栏（M26：§2.1 右侧面板 / §4.6 每 Bot 通知开关）=="
+if timeout 900 node scripts/prove_m26_botpanel.js > /tmp/g26-probe.log 2>&1; then
+  ok "G-26 Bot 设置右栏契约全绿（$(grep -c '✓' /tmp/g26-probe.log) 项，$(tail -1 /tmp/g26-probe.log)）"
+else
+  bad "G-26 Bot 设置右栏契约（见 /tmp/g26-probe.log）"
+fi
+grep -q "#bot-rail 与 Computer 预览共用同一右栏列" /tmp/g26-probe.log 2>/dev/null \
+  && grep -q "bot-open 与 computer-open 互斥" /tmp/g26-probe.log 2>/dev/null \
+  && ok "G-26 GP-124：Bot 设置与 Computer 预览共用可选右栏且互斥（中央不被挤 0）" \
+  || bad "G-26 GP-124 rail placement/exclusion missing"
+grep -q "botDetail 返回 ok 且资料来自 bots.json" /tmp/g26-probe.log 2>/dev/null \
+  && grep -q "面板资料逐项等于 bots.json" /tmp/g26-probe.log 2>/dev/null \
+  && grep -q "记忆条数 = desktop-host.json 该 Bot 槽真实条数" /tmp/g26-probe.log 2>/dev/null \
+  && ok "G-26 GP-125：面板字段逐项来自真实 store（bots/记忆/会话/通知），未知 id 拒绝" \
+  || bad "G-26 GP-125 detail data missing"
+grep -q "会话数按「<name> · DM」约定统计" /tmp/g26-probe.log 2>/dev/null \
+  && grep -q "与删除级联同口径" /tmp/g26-probe.log 2>/dev/null \
+  && ok "G-26 GP-125：会话计数与删除级联同一命名约定（无第二份口径）" \
+  || bad "G-26 GP-125 session-count convention missing"
+grep -q "botNotifySet(false) 真写 settings.notify" /tmp/g26-probe.log 2>/dev/null \
+  && grep -q "开关是逐 Bot 合并写：另一个 Bot 的设置不被覆盖" /tmp/g26-probe.log 2>/dev/null \
+  && ok "G-26 GP-126：每 Bot 通知开关合并写 settings.notify，不覆盖其它 Bot" \
+  || bad "G-26 GP-126 notify merge missing"
+grep -q "非布尔值被拒绝（invalid_value）" /tmp/g26-probe.log 2>/dev/null \
+  && grep -q "未知 Bot id 的通知开关被拒（bot_not_found）" /tmp/g26-probe.log 2>/dev/null \
+  && ok "G-26 GP-126：非法值 / 未知 id 都被 Host 拒绝（不写脏数据）" \
+  || bad "G-26 GP-126 input validation missing"
+grep -q "负向对照：禁用记忆计数后 detail 返回 0" /tmp/g26-probe.log 2>/dev/null \
+  && ok "G-26 负向对照：砍掉 botDetail 的记忆计数后契约变红（断言非恒真）" \
+  || bad "G-26 negative control missing"
+if [ -f /tmp/e2e-g16.log ]; then
+  grep -q "E2E GP-124：右键菜单打开 Bot 设置右栏" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-124：右栏打开后中央消息流仍 > 200px" /tmp/e2e-g16.log \
+    && ok "G-26 真实 Electron：右键 → Bot 设置右栏打开，中央消息流不被挤压" \
+    || bad "G-26 E2E rail open missing"
+  grep -q "E2E GP-125：面板资料与 bots.json 一致，统计 4 行、操作条就位" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-125：标签 chips 数量与 bots.json 一致" /tmp/e2e-g16.log \
+    && ok "G-26 真实 Electron：面板资料 / 统计 / 标签与 store 逐项一致" \
+    || bad "G-26 E2E panel data missing"
+  grep -q "E2E GP-126：关掉面板开关 → settings.json notify" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-126：开关关闭后回合通知不再弹出" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-126：重新打开开关 → settings.notify 恢复" /tmp/e2e-g16.log \
+    && ok "G-26 真实 Electron：§4.6 通知开关真写盘且回合通知真实被抑制" \
+    || bad "G-26 E2E notify toggle missing"
+  grep -q "E2E GP-124：打开 Computer 预览自动收起 Bot 设置" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-127：面板内置顶按钮真写 bots.json" /tmp/e2e-g16.log \
+    && ok "G-26 真实 Electron：右栏互斥实测；面板内 Pin 走同一条 Host 短语落盘" \
+    || bad "G-26 E2E exclusion/pin missing"
+else
+  echo "  · skip：/tmp/e2e-g16.log 不存在（E2E 未在本轮运行）"
+fi
+echo "  · G-26 说明：本块用真实 product_surface botDetail/botNotifySet 打真实 store（bots/settings/memory/sessions），E2E 走真实右键菜单与开关；负向对照为禁用记忆计数后 detail 返回 0"
+
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

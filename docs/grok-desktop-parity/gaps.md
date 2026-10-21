@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M25 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=184 FAIL=0；`moon test` 381/381；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 100/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M26 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=195 FAIL=0；`moon test` 381/381（M26 未改内核）；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 110/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -467,3 +467,33 @@
 - **系统头像选择框**：`dialog.showOpenDialog` 已接，但沙箱无桌面会话时无法自动点；E2E 走同一 IPC 之后的 Host 校验路径（路径 → 落盘 → `avatar_data_url` → 渲染），不宣称能自动操作系统框。
 - **标签没有团队语义**：本地自由文本（≤8 条、逗号分隔），官方文档也只描述为标识；没有目录同步、权限或跨设备传播。
 - **会话分组只按本地时间**：`sessDayBucket` 用本机零点与 `updated_at`，没有服务端时区换算；跨时区旅行后"今天"会按本机时间重算（与桌面端直觉一致，但不是官方未描述的额外语义）。
+
+## Wave M26（Bot 设置右栏：官方 spec §2.1 右侧面板 + §4.6 通知，本轮）
+
+背景：官方 §2.1 说右侧面板是**可选**的，内容是「对话详情 / Bot 设置 / Computer 预览」之一。此前 Computer 预览占了这条右栏，但 **Bot 设置没有任何界面**——§4.6 的「Bot 菜单 → Bot settings → Notifications」每 Bot 开关在 Host 侧早就有真实语义（`settings.notify[botId]`，GP-80 的聚焦抑制也用它），UI 却只能进全局设置翻找；资料、记忆条数、Routines、会话数更是散落在四个 store 里没有统一入口。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-22 Bot 设置右栏`：GP-124（可选右栏、与 Computer 预览互斥、中央不被挤 0）、GP-125（面板字段逐项来自真实 store，未知 id 拒绝）、GP-126（每 Bot 通知开关合并写、关掉后回合通知真实被抑制）、GP-127（面板动作与 Bot 菜单同源、删除后右栏关闭）。
+
+### 2) 实现
+- **Host（`product_surface.js`）**：新 `botDetail(bot_id)`——资料行来自 `bots.json`（`decorateBot` 补 tags/avatar），记忆条数读 `desktop-host.json` 该 Bot 槽，Routines 按**与删除级联同一绑定约定**（id/prompt 含 bot_id）统计并区分 active，会话按既有 `<name> · DM` 约定计数，群组按成员表计数，通知读 `settings.notify[bot_id]` 并附 `notify_explicit`；未知 id → `bot_not_found`。新 `botNotifySet(bot_id, on)`：**合并写** `notify` map（只动一个键，不覆盖其它 Bot），只接受真布尔值。
+- **main/preload**：IPC `bitbot:bots:detail`、`bitbot:bots:notify`（成功后广播 `bitbot:settings-changed`）；preload `bots.detail` / `bots.notify`。
+- **渲染层（`index.html`）**：新增 `#bot-rail`（`grid-area: computer`，`body.bot-open` 展开），与 `#computer-rail` 共用同一可选列：打开一个即收起另一个（`toggleComputerRail`/`openBotRail` 互斥）。面板含头像/名称/职责/主 Bot 标记、标签 chips、多行描述、通知开关（§4.6 文案）、4 行统计、操作条（编辑资料 / 置顶·取消置顶 / 创建副本 / 隐藏·恢复 / 删除，全部复用既有菜单动作与确认流）。Bot 右键菜单尾部新增「Bot 设置」入口（不改变既有菜单索引，M24/M25 的 E2E 选择器不受影响）；删除确认成功后若右栏正显示该 Bot 则自动关闭。
+- **i18n**：15 个新键（menuBotSettings / brAbout / brSettings / brNotify(+Hint) / brActions / brRailNote / brMemories / brRoutines / brSessions / brRooms / brPrimary / brUnknown / brNotifySaved / brNotifyFailed）在 zh-CN / zh-TW / en 三套字典补齐。
+
+### 3) 验证（本轮实测）
+- `scripts/prove_m26_botpanel.js` **27/0**（新增）：静态层（#bot-rail 结构、互斥 CSS/JS、菜单入口、IPC/preload 接线、未知 Bot 文案、删除关栏接线、15 键三语）+ 行为层（真实 store：资料逐项等于 bots.json、`is_primary` 来自 primary_id、记忆条数等于记忆槽真实条数、会话数按 DM 约定、通知 off/on 往返写盘且**逐 Bot 合并**不覆盖别人、非布尔值 `invalid_value`、未知 id `bot_not_found`）。
+- **负向对照**：把 `botDetail` 的记忆计数砍掉 → detail 返回 0（真实 1 条），断言立即变红；代码与 store 在 finally 恢复，双跑幂等。修这条对照时自己踩了两个坑并写进了脚本注释：store 可能是旧版扁平数组（要先包 v2 再种槽）；`delete require.cache` 后**旧绑定仍指向旧模块闭包**，必须重新 `require` 才能测到被改坏的代码。
+- `scripts/e2e_grok_desktop_boot.mjs` **110/0**（新增 10 条真实 DOM 断言）：右键 → 「Bot 设置」→ `#bot-rail` 打开、资料/统计/chips 与 bots.json 逐项一致、中央消息流 > 200px、通知开关关掉后 `settings.json notify.<id>=false` 且 `notify:turn` 返回 `shown:false, reason=bot_notify_off`、重开恢复、打开 Computer 预览自动收起 Bot 设置、面板内置顶按钮真写 `bots.json` 并可复位。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-26 十一断言**（1 条全绿汇总 + 5 条 probe grep + 4 条 E2E grep）。
+- 截图目检（`/tmp/m26-rail.png`）：340px 右栏，头像/名称/职责/主 Bot、通知开关、统计行、五个操作按钮布局正常，无遮挡换行问题。
+
+### 4) 本轮踩到并修掉的真问题
+1. **E2E 断言读 raw store**：第一版拿 `bots.json` 原始行和面板比 tags，旧行（M25 之前创建）没有 `tags` 字段导致误红；改成与 Host `decorateBot` 同口径（缺省 `[]`）。
+2. **置顶按钮的标签随状态变**：面板动作条复用 `menuPin`/`menuUnpin` 文案，Bot 已置顶时第一版按「置顶」找按钮直接找不到。改成读初始 `pinned` 后按「点击后应变为相反值」断言，再点一次复位。
+3. **smoke grep 与断言文案漂移**：改 E2E 文案后 G-26 的一条 grep 变红（PASS=194 FAIL=1），同步修正 grep 后全绿——smoke 的 grep 契约确实在盯文案，这次是它抓住了我。
+
+### 5) 诚实残留（本波不假装）
+- **「对话详情」右栏未做**：官方 §2.1 的可选右栏三种内容里，本轮做了 Bot 设置与 Computer 预览；「当前对话的详情」（成员/时间线/附件汇总）尚无面板，如实列入下一波候选。
+- **Routines 绑定是字符串约定**：`botDetail` 统计 Routines 用与删除级联相同的「id/prompt 含 bot_id」约定，不是外键；prompt 里恰好提到别的 Bot 名会多计（官方未定义绑定模型，不发明结构）。
+- **面板不显示实时状态**：Bot 是否正在执行 computer-use / 回合进行中没有进右栏（数据在 `computer.json`/会话锁里，后续可加）；目前只显示静态资料与计数。

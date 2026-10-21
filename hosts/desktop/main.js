@@ -820,6 +820,27 @@ ipcMain.handle("bitbot:bots:pickAvatar", async () => {
   }
 });
 
+/** G-22: Bot settings rail — profile + counts all come from their own stores. */
+ipcMain.handle("bitbot:bots:detail", async (_e, botId) => {
+  try {
+    return surface.botDetail(String(botId || ""));
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+/** G-22 / §4.6: per-Bot notification toggle (merges into settings.notify). */
+ipcMain.handle("bitbot:bots:notify", async (_e, payload) => {
+  try {
+    const p = payload || {};
+    const res = surface.botNotifySet(String(p.bot_id || ""), p.on);
+    if (res && res.ok) broadcast("bitbot:settings-changed", { ok: true, settings: surface.getSettings() });
+    return res;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
 /** GP-02: local Bot template catalog (list + one-click create). */
 ipcMain.handle("bitbot:templates:list", async () => {
   try {
