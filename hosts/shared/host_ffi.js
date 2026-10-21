@@ -5234,6 +5234,15 @@ function createHostFfi(repoRoot) {
                 if (!data || data === "[DONE]") continue;
                 try {
                   const obj = JSON.parse(data);
+                  // GP-130: providers that honor stream_options.include_usage
+                  // ship the token accounting in the final chunk — keep it.
+                  if (obj && obj.usage && !streamUsage) {
+                    streamUsage = {
+                      prompt_tokens: Number(obj.usage.prompt_tokens) || 0,
+                      completion_tokens:
+                        Number(obj.usage.completion_tokens) || 0,
+                    };
+                  }
                   const delta =
                     obj &&
                     obj.choices &&
@@ -5389,6 +5398,7 @@ function createHostFfi(repoRoot) {
 
     let text = "";
     let finish = null;
+    let streamUsage = null;
     let httpStatus = 0;
     let error = null;
     let streamed = false;
@@ -5405,6 +5415,10 @@ function createHostFfi(repoRoot) {
         messages,
         temperature: 0.3,
         stream: true,
+        // GP-130: ask the provider to include token accounting in the
+        // final SSE chunk (OpenAI-compatible field; ignored by stubs that
+        // don't implement it).
+        stream_options: { include_usage: true },
       };
       const body = JSON.stringify(payload);
       const res = await httpJsonStream(url, {
@@ -5447,6 +5461,13 @@ function createHostFfi(repoRoot) {
         const msg = choices[0].message || {};
         text = String(msg.content || "").trim();
         finish = choices[0].finish_reason || null;
+      }
+      // GP-130: non-stream responses carry usage on the top-level JSON.
+      if (res.json && res.json.usage && !streamUsage) {
+        streamUsage = {
+          prompt_tokens: Number(res.json.usage.prompt_tokens) || 0,
+          completion_tokens: Number(res.json.usage.completion_tokens) || 0,
+        };
       }
       error =
         res.error ||
@@ -5548,8 +5569,26 @@ function createHostFfi(repoRoot) {
       reply_quote_chars: replyQuote.length,
       reply_quote_source:
         replyToId && replyQuote ? "session_store" : replyToId ? "unresolved" : null,
+      // GP-130: provider-reported token accounting, or null when the
+      // provider did not report it (never invented).
+      usage: streamUsage
+        ? { ...streamUsage, reported: true }
+        : { reported: false, prompt_tokens: 0, completion_tokens: 0 },
       at,
     };
+    fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+    if (ok) {
+      // GP-130: every real, successful model call hits the usage store —
+      // requests always, tokens only when the provider reported them.
+      emitLlmStream({
+        phase: "usage",
+        provider_id: cfg.provider_id,
+        model: cfg.model,
+        prompt_tokens: streamUsage ? streamUsage.prompt_tokens : 0,
+        completion_tokens: streamUsage ? streamUsage.completion_tokens : 0,
+        tokens_reported: Boolean(streamUsage),
+      });
+    }
     fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
     appendJsonl(path.join(llmDir(), "chats.jsonl"), {
       ...artifact,

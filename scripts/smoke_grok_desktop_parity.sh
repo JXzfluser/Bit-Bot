@@ -1094,6 +1094,43 @@ else
 fi
 echo "  · G-27 说明：本块用真实 createSessionStore 建会话/发消息/重命名/删除，断言读 sessions.json 真实行；负向对照为把回复引用计数写死为 0"
 
+echo
+echo "== G-28 Usage & Billing 接真回合（M28：§7.1）=="
+if timeout 900 node scripts/prove_m28_usage.js > /tmp/g28-probe.log 2>&1; then
+  ok "G-28 用量契约全绿（$(grep -c '✓' /tmp/g28-probe.log) 项，$(tail -1 /tmp/g28-probe.log)）"
+else
+  bad "G-28 用量契约（见 /tmp/g28-probe.log）"
+fi
+grep -q "executeLlmChat 双路径提取 usage" /tmp/g28-probe.log 2>/dev/null \
+  && ok "G-28 GP-130：流式/非流式双路径提取 provider usage，成功回合必 emit usage 事件" \
+  || bad "G-28 GP-130 extraction missing"
+grep -q "main.js 把 usage 事件写进 surface.recordUsage" /tmp/g28-probe.log 2>/dev/null \
+  && grep -q "recordUsage 同 provider/model 累加" /tmp/g28-probe.log 2>/dev/null \
+  && ok "G-28 GP-130：usage 事件真写 llm-usage.json，同 provider/model 累加不覆盖" \
+  || bad "G-28 GP-130 store wiring missing"
+grep -q "provider 未上报 → usage 事件 tokens_reported=false" /tmp/g28-probe.log 2>/dev/null \
+  && grep -q "artifact 如实记录 usage.reported=false" /tmp/g28-probe.log 2>/dev/null \
+  && ok "G-28 GP-130：provider 未上报时 requests 真记、tokens 不伪造" \
+  || bad "G-28 GP-130 unreported honesty missing"
+grep -q "面板 per-provider/model 行渲染" /tmp/g28-probe.log 2>/dev/null \
+  && grep -q "三套 i18n 齐全" /tmp/g28-probe.log 2>/dev/null \
+  && ok "G-28 GP-131：Usage & Billing 面板 per-row 明细 + 三语文案（未上报 tokens 如实标注）" \
+  || bad "G-28 GP-131 panel missing"
+grep -q "负向对照：禁用提取后 tokens_reported 翻假" /tmp/g28-probe.log 2>/dev/null \
+  && ok "G-28 负向对照：砍掉 usage 提取后 tokens_reported 翻假（断言非恒真）" \
+  || bad "G-28 negative control missing"
+if [ -f /tmp/e2e-g16.log ]; then
+  grep -q "E2E GP-130：真实回合把 usage 写进 llm-usage.json" /tmp/e2e-g16.log \
+    && ok "G-28 真实 Electron：真回合 → usage 落盘（tokens=stub 上报的 11/7 倍数）" \
+    || bad "G-28 E2E store missing"
+  grep -q "E2E GP-131：Usage & Billing 面板 per-row 行与 store 一致" /tmp/e2e-g16.log \
+    && ok "G-28 真实 Electron：设置 → Usage tab 显示同一真实行" \
+    || bad "G-28 E2E panel missing"
+else
+  echo "  · skip：/tmp/e2e-g16.log 不存在（E2E 未在本轮运行）"
+fi
+echo "  · G-28 说明：probe 用进程内 OpenAI 兼容 stub（带/不带 usage 两种）走真实 executeHostEffects(llm_chat)，store/artifact/env 在 finally 恢复"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

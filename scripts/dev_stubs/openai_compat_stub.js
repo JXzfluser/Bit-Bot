@@ -101,6 +101,18 @@ const server = http.createServer((req, res) => {
           }) +
           "\n\n",
       );
+      // GP-130: final usage chunk (stream_options.include_usage shape) so
+      // the Host's weekly usage store is exercised end to end.
+      res.write(
+        "data: " +
+          JSON.stringify({
+            id: "stub-stream",
+            object: "chat.completion.chunk",
+            choices: [],
+            usage: { prompt_tokens: 11, completion_tokens: 7 },
+          }) +
+          "\n\n",
+      );
       res.write("data: [DONE]\n\n");
       res.end();
       return;
@@ -118,6 +130,7 @@ const server = http.createServer((req, res) => {
             finish_reason: "stop",
           },
         ],
+        usage: { prompt_tokens: 11, completion_tokens: 7 },
       }),
     );
   });

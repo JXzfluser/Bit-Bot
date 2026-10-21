@@ -2011,6 +2011,95 @@ async function main() {
       if (sessM27Before) fs.writeFileSync(SESS_M27, sessM27Before);
     }
 
+    /* ---- GP-130/131 Usage & Billing 接真回合（官方 spec §7.1）----
+       自带 stub（回包带 usage 11/7）跑一回合真消息 → llm-usage.json 出现
+       e2e-stub 行（requests≥1，tokens 为 11/7 的倍数，不伪造）；再开设置 →
+       Usage & Billing tab，面板 per-row 行显示同一 provider/model。*/
+    const USAGE_M28 = path.join(REPO, "data/desktop/llm-usage.json");
+    const usageM28Before = fs.existsSync(USAGE_M28) ? fs.readFileSync(USAGE_M28) : null;
+    const m28Port = 8795;
+    let m28Stub = null;
+    try {
+      const { spawn: spawnChild } = require("node:child_process");
+      m28Stub = spawnChild(
+        process.execPath,
+        [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")],
+        {
+          cwd: REPO,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: { ...process.env, BITBOT_STUB_PORT: String(m28Port) },
+        },
+      );
+      await new Promise((res, rej) => {
+        const t = setTimeout(() => rej(new Error("m28 stub boot timeout")), 8000);
+        m28Stub.stdout.on("data", (d) => {
+          if (String(d).includes("[stub-llm]")) { clearTimeout(t); res(); }
+        });
+        m28Stub.on("error", rej);
+      });
+      const bootM28 = await launch({
+        BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + m28Port + "/v1",
+        BITBOT_LLM_API_KEY: "e2e-stub-key",
+        BITBOT_LLM_MODEL: "e2e-stub",
+        BITBOT_LLM_STREAM: "0",
+      });
+      const win = bootM28.win;
+      await win.waitForSelector("#composer #text", { timeout: 30000 });
+      await win.fill("#composer #text", "M28 usage 探针消息");
+      await win.press("#composer #text", "Enter");
+      await win.waitForFunction(
+        () => document.querySelectorAll("#log .msg.assistant").length > 0,
+        null,
+        { timeout: 45000 },
+      );
+      // usage 落盘是异步事件链（llm-stream → recordUsage），轮询 store。
+      const m28Row = await (async () => {
+        for (let i = 0; i < 30; i++) {
+          try {
+            const st = JSON.parse(fs.readFileSync(USAGE_M28, "utf8"));
+            const row = (st.rows || []).find((r) => r.model === "e2e-stub" && r.requests > 0);
+            if (row) return row;
+          } catch (_) {}
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        return null;
+      })();
+      m28Row && m28Row.prompt_tokens > 0 && m28Row.prompt_tokens % 11 === 0 &&
+        m28Row.completion_tokens > 0 && m28Row.completion_tokens % 7 === 0
+        ? ok("E2E GP-130：真实回合把 usage 写进 llm-usage.json（requests≥1，tokens=11/7 的倍数）")
+        : bad("E2E GP-130 usage store", JSON.stringify(m28Row));
+
+      // GP-131: Settings → Usage & Billing tab shows the same real row.
+      await win.click("#sidebar-settings-btn");
+      await win.waitForSelector("#settings-panel", { timeout: 10000 });
+      await win.evaluate(() => {
+        const btn = document.querySelector('.settings-tab-btn[data-stab="usage"]');
+        if (btn) btn.click();
+      });
+      await win.waitForFunction(
+        () => {
+          const el = document.getElementById("gp-usage");
+          return el && (el.textContent || "").includes("e2e-stub");
+        },
+        null,
+        { timeout: 10000 },
+      ).catch(() => {});
+      const usagePanel = await win.evaluate(() => {
+        const el = document.getElementById("gp-usage");
+        return el ? el.textContent || "" : "";
+      });
+      usagePanel.includes("e2e-stub") && usagePanel.includes("prompt")
+        ? ok("E2E GP-131：Usage & Billing 面板 per-row 行与 store 一致（provider/model/请求/tokens）")
+        : bad("E2E GP-131 usage panel", usagePanel.slice(0, 160));
+      await shutdown(bootM28.app);
+    } catch (e) {
+      bad("E2E GP-130/131 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      if (m28Stub) { try { m28Stub.kill("SIGKILL"); } catch (_) {} }
+      if (usageM28Before) fs.writeFileSync(USAGE_M28, usageM28Before);
+      else fs.rmSync(USAGE_M28, { force: true });
+    }
+
     /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----
        走真实 UI + 真实 IPC：provider 回一句含裸 URL 与 javascript: 链接的话 →
        kernel CM-0111 规范化为 markdown → renderer 把 markdown 变成真 <a>，

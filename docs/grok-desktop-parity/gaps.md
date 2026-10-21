@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M27 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=204 FAIL=0；`moon test` 381/381（M26/M27 未改内核）；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 117/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M28 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=212 FAIL=0；`moon test` 381/381（M26–M28 未改内核）；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 119/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -56,6 +56,8 @@
 | GP-127 | 已实现 | 面板动作与 Bot 菜单同源（编辑/置顶/副本/隐藏/删除复用既有流）；删除确认后右栏自动关闭。见 Wave M26。 |
 | GP-128 | 已实现 | §2.1 对话详情右栏：`#conv-rail`（三方互斥同一可选列），标题/归属/创建/更新/消息数/回复数/最近一条逐项来自真实 sessions.json，中央消息流不被挤 0。见 Wave M27。 |
 | GP-129 | 已实现 | 详情面板内重命名真写 sessions.json 且面板标题随动；删除会话后面板自动关闭且行消失。见 Wave M27。 |
+| GP-130 | 已实现 | §7.1 每次真实模型调用计入用量：`executeLlmChat` 双路径提取 provider usage（流式最终 chunk / 非流式顶层），emit `phase:"usage"` → main.js 写 `recordUsage` → `llm-usage.json` 按周按 provider/model 累加；未上报时 requests 真记、tokens 不伪造。见 Wave M28。 |
+| GP-131 | 已实现 | Usage & Billing 面板 per-provider/model 明细行 + 周合计，读真 store；空态不造 0；未上报 tokens 的行如实标注。见 Wave M28。 |
 | GP-37 | 残留 | `route_traffic` 开关持久 + UI 显示真实生效状态；真代理生效不可达 → renderer 显示 honest residual 文案。 |
 | GP-40/41 | 已实现 | 草稿卡（New Email / New Slack Message）可编辑，Send→真实 approved 回合再编码；Discard→不落出站。仅当卡类别为 ExternalSend 时渲染（不从任意文本臆造草稿）。 |
 | GP-42 | 已实现 | kernel 判定未变（CM-0306），UI 不代客批准。 |
@@ -533,3 +535,31 @@
 - **详情面板是只读视图**：官方 §2.1 未定义对话详情的编辑语义，本波只做展示 + 复用既有重命名/删除；附件汇总、成员列表（群聊场景）未做（群会话的归属解析当前只覆盖 DM 命名约定，见下条）。
 - **归属靠命名约定**：`<name> · DM` 是既有删除级联同款约定，不是外键；非 DM 会话（群聊）归属行显示为空。等 §2.4 群聊入口补齐时一并接真。
 - **面板数据不含会话锁/运行态**：回合是否进行中、computer-use 是否占用该会话，没进详情面板（数据在会话锁里，候选后续）。
+
+## Wave M28（Usage & Billing 接真回合：官方 spec §7.1，本轮）
+
+背景：GP-76 之前标注"已实现"但口径只到「weekView 读真 store」——**store 从来没人喂**：`recordUsage` 是死代码，`executeLlmChat` 里 provider 回包的 `usage` 字段被直接丢弃，E2E 回合跑了几十次，`llm-usage.json` 始终是空的。面板只能显示空态，GP-76 的"已实现"名不副实。本波把链路从头接到尾。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-24 Usage & Billing 接真回合`：GP-130（每次真实模型调用计入用量：tokens 来自 provider 上报，未上报时 requests 真记、tokens 不伪造）、GP-131（面板 per-provider/model 明细行 + 周合计，读真 store，空态不造 0）。
+
+### 2) 实现
+- **Host FFI（`host_ffi.js` `executeLlmChat`）**：非流式路径提取 `res.json.usage`；流式路径请求带 `stream_options.include_usage` 并在 SSE 循环里保留最终 chunk 的 `usage`。两者统一进 artifact + `chats.jsonl`（`usage.reported` 如实区分），成功回合 emit `phase:"usage"` 事件（provider/model/tokens/tokens_reported）。
+- **main.js**：`ffi.setLlmStreamHandler` 里把 usage 事件写进 `surface.recordUsage` → `data/desktop/llm-usage.json`（`getIsoWeek` 按周滚动、按 provider+model 分行累加）；记账异常不打断回合。
+- **渲染层（`index.html`）**：Usage & Billing tab 从"只有一行 totals"升级为 per-provider/model 明细行 + 周合计；tokens 全为 0 的行标注「tokens 未上报」而不是显示假 0；空 store 仍是空态文案。新 i18n 键 `usageTokensUnreported`（zh-CN/zh-TW/en）。
+- **stub（`scripts/dev_stubs/openai_compat_stub.js`）**：非流式顶层与流式最终 chunk 都上报 usage（11/7），让 E2E 从此走的是**与生产同一条**记账链路。
+
+### 3) 验证（本轮实测）
+- `scripts/prove_m28_usage.js` **14/0**（新增，双跑幂等）：静态层（双路径提取、main.js 接线、面板 per-row、三语 i18n、stub 上报）+ 行为层（进程内起带/不带 usage 两种 stub，走真实 `executeHostEffects(llm_chat)`：usage 事件 tokens 逐字一致、artifact `reported` 如实、未上报时 tokens=0）+ store 层（recordUsage 累加/分行、weekView totals）+ **负向对照**（砍掉非流式提取 → `tokens_reported` 翻假，断言变红）。store/artifact/chats.jsonl/env 在 exit handler 全部恢复。
+- `scripts/e2e_grok_desktop_boot.mjs` **119/0**（新增 2 条）：自带 stub 跑一回合真消息 → `llm-usage.json` 出现 e2e-stub 行（requests≥1，tokens 为 11/7 的倍数）；设置 → Usage & Billing tab 面板显示同一真实行。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-28 八断言**，全量 **PASS=212 FAIL=0**。
+
+### 4) 本轮踩到并修掉的真问题
+1. **GP-76 是空心绿**：weekView 读真 store ≠ 链路接通；store 没有写入方，面板永远空态。教训：验收口径必须覆盖"数据从哪来"，只验"读的那层是真的"会漏掉整条上游。
+2. **probe totals 被 smoke 前序块污染**：G-16 的 E2E 跑过后 llm-usage.json 已有真实行（这正是链路接通的副作用），probe 的 totals 断言从非零点出发直接翻红。修法：store 层断言前先清成空 store，从已知零点记账（exit 时仍恢复原内容）。
+3. **流式 usage 的来源**：很多 OpenAI 兼容 provider 默认不在流式里回 usage，必须显式带 `stream_options.include_usage`；stub 的最终 usage chunk 放在 `[DONE]` 之前，SSE 解析器已有的逐行 JSON.parse 直接就能吃到。
+
+### 5) 诚实残留（本波不假装）
+- **成本/账单金额未做**：官方 §7.1 有"用量与账单"，本波只记 requests 与 tokens；单价×用量=金额需要真实 provider 定价表（易过期、易错），沙箱内不引入会过期的价格数据。
+- **tokens 未上报的 provider 显示为 0**：如实标注「tokens 未上报」，不按字数估算（估算会伪装成真数据）。
+- **按需用量（on-demand）与套餐额度**：无真实计费系统，未做。

@@ -33,5 +33,6 @@
 | G-21 | Bot 资料管理与创建流程（Edit Profile 名称/标签/描述/头像；空名 `New Bot`、多行 Description、创建后自动打开对话；会话 今天/昨天/更早 + 搜索 + 重命名/删除） | spec.md §2.2–§2.3、§4.5 | kernel `UpdateBot(tags~)` + Host `normalizeTags`/`avatar_data_url` + `#bot-edit-modal`（Edit/Create 两态）+ `bitbot:bots:pickAvatar` + `sessDayBucket`/`#session-search`/rename/delete（wave M25） |
 | G-22 | Bot 设置右栏（右侧可选面板之一：资料/统计/操作；与 Computer 预览互斥；每 Bot 通知开关；面板动作与菜单同源） | spec.md §2.1、§4.5–§4.6 | Host `botDetail`/`botNotifySet` + IPC `bitbot:bots:detail`/`bitbot:bots:notify` + `#bot-rail`（`body.bot-open`）+ 菜单「Bot 设置」入口（wave M26） |
 | G-23 | 对话详情右栏（右栏第三种内容：标题/归属/创建/更新/消息数/回复数/最近一条；三方互斥；面板内重命名随动；删除会话自动关栏） | spec.md §2.1 | `#conv-rail`（`body.conv-open`，与 bot-rail/computer-rail 三方互斥）+ `sessions.list/get` 真实行渲染 + `saveSessionRename→refreshConvRail` + 删除级联关栏（wave M27） |
+| G-24 | Usage & Billing 接真回合（每次真实模型调用计入用量；per-provider/model 明细 + 周合计；未上报 tokens 如实标注；空态不造 0） | spec.md §7.1 | `executeLlmChat` 双路径提取 usage（`stream_options.include_usage`）+ emit `phase:"usage"` → main.js `recordUsage` → `llm-usage.json` 按周累加 + 面板 per-row 渲染（wave M28） |
 
 详细验收条目见 `spec.md`；IPC/载荷契约见 `ipc-contract.md`；现状差距审计见 `gaps.md`。

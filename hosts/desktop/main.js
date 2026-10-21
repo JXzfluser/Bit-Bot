@@ -475,6 +475,21 @@ function broadcast(channel, payload) {
 
 ffi.setLlmStreamHandler((chunk) => {
   broadcast("bitbot:llm-stream", chunk);
+  // GP-130 (§7.1): every real successful model call lands in the weekly
+  // usage store — requests always, tokens only when the provider reported
+  // them (unreported tokens stay 0 and the panel labels them honestly).
+  if (chunk && chunk.phase === "usage" && chunk.provider_id) {
+    try {
+      surface.recordUsage({
+        provider: String(chunk.provider_id),
+        model: String(chunk.model || ""),
+        prompt_tokens: Number(chunk.prompt_tokens) || 0,
+        completion_tokens: Number(chunk.completion_tokens) || 0,
+      });
+    } catch (_) {
+      /* usage bookkeeping must never break the turn */
+    }
+  }
 });
 
 /** One-shot product-path smoke: Electron Host runs a MoonBit turn then exits. */

@@ -214,3 +214,10 @@
 - Teach a task 真录屏转 Skill：本波提供"录制会话→生成 Skill 草稿"的本地实现（键盘/鼠标事件采集在 xvfb 下可用则采集，否则要求用户粘贴步骤），草稿态必须人工确认，符合官方"需手动补决策规则/失败处理/审批边界"。
 - Bot 头像的**系统文件选择框**：`bitbot:bots:pickAvatar` 已接 `dialog.showOpenDialog`，但无 X/桌面环境时弹框不可自动化；E2E 走同一 IPC 之后的 Host 校验路径（写入路径→`avatar_data_url`）证明的是「选好的路径能被真实校验、落盘与渲染」，不宣称沙箱内能自动点系统框。
 - Bot 资料里的**"标签"是本地自由文本**（`≤8` 条，逗号分隔），没有团队目录/权限语义；官方文档只写明标签用于标识，不假装有多租户含义。
+
+## G-24 Usage & Billing 接真回合（官方 spec §7.1）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-130 | 每次真实模型调用计入用量（请求次数 + token 数） | `executeLlmChat` 从 provider 响应提取 `usage`（非流式 `res.json.usage`；流式收 `stream_options.include_usage` 的最终 chunk），随 artifact/chats.jsonl 落盘，并 emit `phase:"usage"`；main.js 的 llm-stream 处理器把该事件写进 `surface.recordUsage` → `data/desktop/llm-usage.json`（按周滚动、按 provider+model 分行） | 走一回合真实 llm_chat 后 `llm-usage.json` 出现该 provider/model 行、`requests` +1；provider 上报了 tokens 时 prompt/completion 与响应一致 |
+| GP-131 | Usage & Billing 面板展示每周用量明细 | 设置 → Usage & Billing 读 `bitbot:usage:week`：per-provider/model 行（请求数 / prompt / completion tokens）+ 周合计；store 为空时显示空态而不是 0 假数；tokens 未上报的行如实标注 | 面板行与 `llm-usage.json` 逐行一致（provider/model/requests/tokens）；清空 store 后面板显示空态文案，不渲染 0 |

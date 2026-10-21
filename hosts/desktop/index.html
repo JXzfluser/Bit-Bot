@@ -2358,6 +2358,9 @@
         if (!rows.length) {
           box.textContent = wavegT("usageEmpty");
         } else {
+          // GP-131 (§7.1): per-provider/model rows from the real weekly
+          // store, then the week total. Tokens the provider never reported
+          // are labeled as such instead of being shown as a real 0.
           const t = rows.reduce(
             (acc, r) => {
               acc.p += r.prompt_tokens || 0;
@@ -2367,9 +2370,23 @@
             },
             { p: 0, c: 0, q: 0 },
           );
-          box.textContent =
+          const head = document.createElement("div");
+          head.textContent =
             wavegT("usageWeek") + " " + (payload.week || "?") + " · " + wavegT("usageReq") + " " + t.q +
             " · prompt " + t.p + " tokens · completion " + t.c + " tokens · " + wavegT("usageSource");
+          box.textContent = "";
+          box.appendChild(head);
+          for (const r of rows) {
+            const line = document.createElement("div");
+            const unreported = !r.prompt_tokens && !r.completion_tokens;
+            line.textContent =
+              "· " + String(r.provider || "?") + "/" + String(r.model || "?") + ": " +
+              wavegT("usageReq") + " " + (r.requests || 0) +
+              " · prompt " + (r.prompt_tokens || 0) + " · completion " + (r.completion_tokens || 0) +
+              (unreported ? " (" + wavegT("usageTokensUnreported") + ")" : "");
+            line.style.opacity = "0.85";
+            box.appendChild(line);
+          }
         }
       } catch (_) {
         const box = document.getElementById("gp-usage");
@@ -8933,6 +8950,7 @@
         usageWeek: "周",
         usageReq: "请求",
         usageSource: "来源 llm-usage.json",
+        usageTokensUnreported: "tokens 未上报",
         usageFail: "用量读取失败（Host 未就绪）",
         booting: "MoonBit 内核启动中…",
         welcomeHint: "输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板",
@@ -9307,6 +9325,7 @@
         usageWeek: "週",
         usageReq: "請求",
         usageSource: "來源 llm-usage.json",
+        usageTokensUnreported: "tokens 未上報",
         usageFail: "用量讀取失敗（Host 未就緒）",
         booting: "MoonBit 核心啟動中…",
         welcomeHint: "輸入訊息開始 · 左側管理工作 · 「能力」開啟渠道與機器面板",
@@ -9681,6 +9700,7 @@
         usageWeek: "Week",
         usageReq: "requests",
         usageSource: "source: llm-usage.json",
+        usageTokensUnreported: "tokens not reported",
         usageFail: "Usage read failed (Host not ready)",
         booting: "booting MoonBit…",
         welcomeHint: "Type a message to start · chats on the left · 「Capabilities」 opens channels & machines",
