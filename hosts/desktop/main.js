@@ -755,10 +755,25 @@ ipcMain.handle("bitbot:bots:op", async (_e, payload) => {
       approved: p.approved === true,
       skipSession: true,
     });
+    // GP-120/121: the renderer needs the real created/updated row (e.g. to
+    // auto-open a new Bot's chat) without re-deriving it from the list. A
+    // refused Host effect (invalid avatar, unknown Bot) must also read as a
+    // failed op, not as a green turn that silently changed nothing.
+    let hostPayload = null;
+    try {
+      const hit = ((result && result.host_results) || []).find(
+        (h) => h && (h.kind === "bot_create" || h.kind === "bot_update"),
+      );
+      hostPayload = hit && hit.stdout ? JSON.parse(hit.stdout) : null;
+    } catch (_) {
+      hostPayload = null;
+    }
+    const effectOk = !hostPayload || hostPayload.ok !== false;
     return {
-      ok: Boolean(result && result.ok),
+      ok: Boolean(result && result.ok) && effectOk,
       intent: (result && result.intent) || null,
       turn: result,
+      host_payload: hostPayload,
       view: (() => {
         try {
           return surface.listBotsView();
@@ -766,6 +781,39 @@ ipcMain.handle("bitbot:bots:op", async (_e, payload) => {
           return null;
         }
       })(),
+    };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+/** GP-122 (§2.2): OS image picker for the Bot avatar. The Host validates the
+ *  real path on save (`bot_update` rejects missing files); this handler only
+ *  returns the path plus a bounded data URL for the in-dialog preview. */
+ipcMain.handle("bitbot:bots:pickAvatar", async () => {
+  try {
+    const win = BrowserWindow.getFocusedWindow() || mainWindow;
+    const r = await dialog.showOpenDialog(win, {
+      title: "选择 Bot 头像",
+      properties: ["openFile"],
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+    });
+    if (r.canceled || !r.filePaths.length) return { ok: false, canceled: true };
+    const abs = r.filePaths[0];
+    const st = fs.statSync(abs);
+    if (!st.isFile() || st.size > 2 * 1024 * 1024) {
+      return { ok: false, error: "avatar_too_large", path: abs };
+    }
+    const ext = path.extname(abs).toLowerCase();
+    const mime =
+      ext === ".png" ? "image/png"
+        : ext === ".webp" ? "image/webp"
+          : ext === ".gif" ? "image/gif"
+            : "image/jpeg";
+    return {
+      ok: true,
+      path: abs,
+      data_url: "data:" + mime + ";base64," + fs.readFileSync(abs).toString("base64"),
     };
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err) };

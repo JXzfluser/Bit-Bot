@@ -30,5 +30,6 @@
 | G-18 | 自动化先读后执行（Routine 默认出草稿、发送/购买/删除/发布/生产变更需审批、只读不打扰） | spec.md §6.4 | Host `routine_fire` 两段式（draft + `executed`/`execute_via`）+ kernel `gate_consequential` + renderer 草稿卡（wave M22） |
 | G-19 | 跨会话记忆（稳定偏好/角色上下文跨对话一致、**每 Bot 独立**、共享文件与群聊可传递、删 Bot 不连坐、记忆永不授权动作） | spec.md §4.2 | `desktop-host.json`/`profile-vault.json` v2 分槽 + `--bot-id`/`--seed-memory` + `dropBotMemorySlot` 删除级联 + 旧扁平迁移（wave M23） |
 | G-20 | 主窗口结构（侧栏六类入口：Bot/群组/会话 + Hidden/Connect apps/Marketplace/Settings；Bot 按活动排序、置顶优先；隐藏入口在底部；`#log` 单一消息流、右栏独立开合） | spec.md §2.1 | `#room-list`（读 rooms.json）+ `#marketplace-modal`（读 Host 模板目录）+ `touchBotActivity` → `bitbot:bots-changed` 自动重排 + `#sidebar-footer`（wave M24） |
+| G-21 | Bot 资料管理与创建流程（Edit Profile 名称/标签/描述/头像；空名 `New Bot`、多行 Description、创建后自动打开对话；会话 今天/昨天/更早 + 搜索 + 重命名/删除） | spec.md §2.2–§2.3、§4.5 | kernel `UpdateBot(tags~)` + Host `normalizeTags`/`avatar_data_url` + `#bot-edit-modal`（Edit/Create 两态）+ `bitbot:bots:pickAvatar` + `sessDayBucket`/`#session-search`/rename/delete（wave M25） |
 
 详细验收条目见 `spec.md`；IPC/载荷契约见 `ipc-contract.md`；现状差距审计见 `gaps.md`。

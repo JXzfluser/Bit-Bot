@@ -1177,10 +1177,9 @@ async function main() {
             const f = footer.getBoundingClientRect();
             return f.bottom <= a.bottom + 1 && f.top >= a.top - 1;
           })(),
-          listsScroll: ["bot-list", "room-list", "session-list"].some((id) => {
-            const el = q(id);
-            return el && el.scrollHeight > el.clientHeight + 1;
-          }),
+          // GP-123: the sidebar is one scrolling column (like the reference);
+          // long lists make #agents scroll while the sticky footer stays put.
+          listsScroll: agents.scrollHeight > agents.clientHeight + 1,
         };
       });
       shell.order.every((v, i) => v >= 0 && (i === 0 || v > shell.order[i - 1]))
@@ -1190,7 +1189,7 @@ async function main() {
         ? ok("E2E GP-118：#sidebar-footer 是侧栏最后一个块，含 Hidden / Connect apps / Marketplace / Settings")
         : bad("E2E GP-118 footer", JSON.stringify(shell).slice(0, 200));
       shell.footerVisible && shell.listsScroll
-        ? ok("E2E GP-118：长列表（Bots/群组/会话）就地滚动，尾部区块仍在可视区内")
+        ? ok("E2E GP-118：长列表让侧栏整体滚动，sticky 尾部区块仍在可视区内")
         : bad("E2E GP-118 footer geometry", JSON.stringify({ vis: shell.footerVisible, scroll: shell.listsScroll }));
 
       // 2) Marketplace really renders the Host catalog
@@ -1391,6 +1390,251 @@ async function main() {
     } finally {
       if (botsBefore) fs.writeFileSync(BOTS_PATH, botsBefore);
       if (roomsBefore) fs.writeFileSync(ROOMS_PATH, roomsBefore);
+    }
+
+    /* ---- GP-120..123 Bot 资料 / 创建流程 / 会话列表（官方 spec §2.2–§2.3）----
+       真实 UI 驱动：新建对话框（Name 留空）→ Host 落成 "New Bot" 且自动开对话；
+       右键 Bot → 编辑资料 → 改名/加标签 → 侧栏同步；给 Bot 设头像 → 侧栏出现
+       <img>；会话列表按 今天/昨天/更早 分组、搜索框真过滤、重命名/删除走 Host。
+       断言读真实 DOM + 真实落盘，不是源码字符串。*/
+    const BOTS_M25 = path.join(REPO, "data/desktop/bots.json");
+    const SESS_M25 = path.join(REPO, "data/desktop/sessions.json");
+    const botsM25Before = fs.existsSync(BOTS_M25) ? fs.readFileSync(BOTS_M25) : null;
+    const sessM25Before = fs.existsSync(SESS_M25) ? fs.readFileSync(SESS_M25) : null;
+    try {
+      const bootM25 = await launch({ BITBOT_LLM_STREAM: "0" });
+      const win = bootM25.win;
+      await win.waitForSelector("#bot-list [data-agent-id]", { timeout: 30000 });
+
+      // 1) Create via the real dialog: blank Name → "New Bot", multi-line desc
+      await win.click("#bot-new-btn");
+      await win.waitForSelector("#bot-edit-modal", { state: "visible", timeout: 5000 });
+      const createMode = await win.evaluate(() => ({
+        title: document.getElementById("bf-title").textContent,
+        tagsHidden: document.getElementById("bf-tags-row").style.display === "none",
+        avatarHidden: document.getElementById("bf-avatar-col").style.display === "none",
+        name: document.getElementById("bc-name").value,
+      }));
+      createMode.tagsHidden && createMode.avatarHidden && createMode.name === ""
+        ? ok("E2E GP-121：新建对话框只问 Name/Job/Description（标签/头像只在编辑态）")
+        : bad("E2E GP-121 create mode", JSON.stringify(createMode));
+      await win.fill("#bc-job", "QA Probe");
+      await win.fill("#bc-desc", "line one\nline two");
+      await win.click("#bc-create");
+      await win.waitForSelector("#bot-edit-modal", { state: "hidden", timeout: 20000 }).catch(() => {});
+      const createdId = await (async () => {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 20000) {
+          try {
+            const rows = JSON.parse(fs.readFileSync(BOTS_M25, "utf8")).bots || [];
+            const hit = rows.find((b) => b.name === "New Bot" && b.job === "QA Probe");
+            if (hit) return hit.id;
+          } catch (_) {}
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        return "";
+      })();
+      createdId
+        ? ok("E2E GP-121：Name 留空 → Host 真建出 \"New Bot\"（占位名来自 Host，不是假字）")
+        : bad("E2E GP-121 placeholder", "no New Bot in bots.json");
+      const createdRow = createdId
+        ? (JSON.parse(fs.readFileSync(BOTS_M25, "utf8")).bots || []).find((b) => b.id === createdId)
+        : null;
+      createdRow && createdRow.description === "line one\nline two"
+        ? ok("E2E GP-121：多行 Description 原样保存（换行没被压平成空格）")
+        : bad("E2E GP-121 multiline", JSON.stringify(createdRow && createdRow.description));
+      const autoOpened = await win
+        .waitForFunction(
+          () =>
+            String((document.querySelector("#bot-pill .bot-pill-name") || {}).textContent || "").trim() ===
+            "New Bot",
+          null,
+          { timeout: 25000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      autoOpened
+        ? ok("E2E GP-121：创建完成后自动打开该 Bot 的对话（标题 pill = New Bot）")
+        : bad(
+            "E2E GP-121 auto-open",
+            String(await win.evaluate(() => (document.querySelector("#bot-pill .bot-pill-name") || {}).textContent)),
+          );
+
+      // 2) Edit Profile from the real right-click menu: name + tags persist
+      if (createdId) {
+        await win.click('#bot-list [data-agent-id="' + createdId + '"]', { button: "right" });
+        await win.waitForSelector(".composer-menu", { timeout: 5000 });
+        await win.locator(".composer-menu button").nth(4).click(); // Edit Profile
+        await win.waitForSelector("#bot-edit-modal", { state: "visible", timeout: 5000 });
+        const editMode = await win.evaluate(() => ({
+          name: document.getElementById("bc-name").value,
+          tagsVisible: document.getElementById("bf-tags-row").style.display !== "none",
+          avatarVisible: document.getElementById("bf-avatar-col").style.display !== "none",
+          saveLabel: document.getElementById("bc-create").textContent,
+        }));
+        editMode.name === "New Bot" && editMode.tagsVisible && editMode.avatarVisible
+          ? ok("E2E GP-120：编辑资料预填真实名称，并显示 标签 / 头像 字段")
+          : bad("E2E GP-120 edit prefill", JSON.stringify(editMode));
+        await win.fill("#bc-name", "Piper UI");
+        await win.fill("#bc-tags", "perf, research");
+        await win.click("#bc-create");
+        await win.waitForSelector("#bot-edit-modal", { state: "hidden", timeout: 20000 }).catch(() => {});
+        const edited = await (async () => {
+          const t0 = Date.now();
+          while (Date.now() - t0 < 20000) {
+            try {
+              const rows = JSON.parse(fs.readFileSync(BOTS_M25, "utf8")).bots || [];
+              const hit = rows.find((b) => b.id === createdId);
+              if (hit && hit.name === "Piper UI") return hit;
+            } catch (_) {}
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          return null;
+        })();
+        edited && Array.isArray(edited.tags) && edited.tags.join(",") === "perf,research"
+          ? ok("E2E GP-120：改名 + 标签真写进 bots.json（标签不是只显示在表单里）")
+          : bad("E2E GP-120 persist", JSON.stringify(edited && { name: edited.name, tags: edited.tags }));
+        const rowView = await win.evaluate((bid) => {
+          const row = document.querySelector('#bot-list [data-agent-id="' + bid + '"]');
+          return row
+            ? { name: (row.querySelector(".name") || {}).textContent || "", meta: (row.querySelector(".meta") || {}).textContent || "" }
+            : null;
+        }, createdId);
+        rowView && rowView.name.includes("Piper UI") && rowView.meta.includes("#perf") && rowView.meta.includes("#research")
+          ? ok("E2E GP-120：侧栏行立即同步新名称与标签（无需重启）")
+          : bad("E2E GP-120 sidebar", JSON.stringify(rowView));
+
+        // 3) Avatar: real file → data URL → <img> in the sidebar row
+        const avatarPath = path.join(require("os").tmpdir(), "m25-e2e-avatar.png");
+        fs.writeFileSync(
+          avatarPath,
+          Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+            "base64",
+          ),
+        );
+        await win.evaluate(
+          ({ id, p }) =>
+            window.bitbot.bots.op({ phrase: "update bot " + id + " avatar=" + p }),
+          { id: createdId, p: avatarPath },
+        );
+        await win.evaluate(() => refreshBots());
+        const avatarShown = await win
+          .waitForSelector('#bot-list [data-agent-id="' + createdId + '"] .sess-avatar img', {
+            timeout: 10000,
+          })
+          .then(() => true)
+          .catch(() => false);
+        avatarShown
+          ? ok("E2E GP-122：保存的头像被侧栏渲染成真实 <img>（data URL，不依赖 file://）")
+          : bad("E2E GP-122 avatar img", "no img in the Bot row");
+      }
+
+      // 4) Session list: date groups + live search + rename + delete
+      const groups = await win.evaluate(() =>
+        Array.from(document.querySelectorAll("#session-list .sess-group")).map((e) => e.textContent),
+      );
+      const rowsNow = await win.evaluate(
+        () => document.querySelectorAll("#session-list [data-session-id]").length,
+      );
+      groups.length >= 1 && rowsNow >= 1
+        ? ok("E2E GP-123：会话列表按 今天/昨天/更早 分组（" + groups.join(" / ") + "）")
+        : bad("E2E GP-123 groups", JSON.stringify(groups));
+      await win.fill("#session-search", "zzz-no-such-session-xyz");
+      await win.waitForTimeout(250);
+      const filtered = await win.evaluate(() => ({
+        rows: document.querySelectorAll("#session-list [data-session-id]").length,
+        text: String(document.getElementById("session-list").textContent || ""),
+      }));
+      filtered.rows === 0 && filtered.text.trim().length > 0
+        ? ok("E2E GP-123：搜索框实时过滤；无命中时给出空态而不是残留旧行")
+        : bad("E2E GP-123 search", JSON.stringify(filtered).slice(0, 200));
+      await win.fill("#session-search", "");
+      await win.waitForTimeout(250);
+      const rowsBack = await win.evaluate(
+        () => document.querySelectorAll("#session-list [data-session-id]").length,
+      );
+      rowsBack === rowsNow
+        ? ok("E2E GP-123：清空搜索后原会话列表完整恢复")
+        : bad("E2E GP-123 search clear", rowsBack + " vs " + rowsNow);
+
+      const sessFile = JSON.parse(fs.readFileSync(SESS_M25, "utf8"));
+      const dm = (sessFile.sessions || []).find((s) => s.title === "New Bot · DM");
+      if (!dm) {
+        bad("E2E GP-123 rename target", "New Bot · DM session missing");
+      } else {
+        await win.click('#session-list [data-session-id="' + dm.id + '"]', { button: "right" });
+        await win.waitForSelector(".composer-menu", { timeout: 5000 });
+        await win.locator(".composer-menu button").nth(0).click(); // Rename
+        await win.waitForSelector("#session-rename-modal", { state: "visible", timeout: 5000 });
+        const prefill = await win.evaluate(() => document.getElementById("sr-title").value);
+        prefill === "New Bot · DM"
+          ? ok("E2E GP-123：重命名对话框预填当前标题")
+          : bad("E2E GP-123 rename prefill", prefill);
+        await win.fill("#sr-title", "E2E Renamed Chat");
+        await win.click("#sr-save");
+        const renamed = await (async () => {
+          const t0 = Date.now();
+          while (Date.now() - t0 < 15000) {
+            try {
+              const f = JSON.parse(fs.readFileSync(SESS_M25, "utf8"));
+              const hit = (f.sessions || []).find((s) => s.id === dm.id);
+              if (hit && hit.title === "E2E Renamed Chat") return hit;
+            } catch (_) {}
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          return null;
+        })();
+        renamed
+          ? ok("E2E GP-123：重命名真写进 sessions.json（Host IPC，不是本地假改）")
+          : bad("E2E GP-123 rename persist", "title never changed");
+        const rowTitle = await win.evaluate((sid) => {
+          const row = document.querySelector('#session-list [data-session-id="' + sid + '"]');
+          return row ? (row.querySelector(".name") || {}).textContent : null;
+        }, dm.id);
+        rowTitle === "E2E Renamed Chat"
+          ? ok("E2E GP-123：侧栏行同步显示新标题")
+          : bad("E2E GP-123 rename row", String(rowTitle));
+
+        await win.click('#session-list [data-session-id="' + dm.id + '"]', { button: "right" });
+        await win.waitForSelector(".composer-menu", { timeout: 5000 });
+        await win.locator(".composer-menu button").nth(1).click(); // Delete
+        await win.waitForSelector("#session-delete-modal", { state: "visible", timeout: 5000 });
+        const delWarn = await win.evaluate(() => {
+          const m = document.getElementById("session-delete-modal");
+          return { target: String((document.getElementById("sd-target") || {}).textContent || ""), text: String(m.textContent || "") };
+        });
+        delWarn.text.length > 0 && delWarn.target.includes("E2E Renamed Chat")
+          ? ok("E2E GP-123：删除前有确认对话框并点名会话（明示不可恢复）")
+          : bad("E2E GP-123 delete dialog", JSON.stringify(delWarn).slice(0, 200));
+        await win.click("#sd-go");
+        const gone = await (async () => {
+          const t0 = Date.now();
+          while (Date.now() - t0 < 15000) {
+            try {
+              const f = JSON.parse(fs.readFileSync(SESS_M25, "utf8"));
+              if (!(f.sessions || []).some((s) => s.id === dm.id)) return true;
+            } catch (_) {}
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          return false;
+        })();
+        await win.waitForTimeout(300);
+        const rowGone = await win.evaluate(
+          (sid) => !document.querySelector('#session-list [data-session-id="' + sid + '"]'),
+          dm.id,
+        );
+        gone && rowGone
+          ? ok("E2E GP-123：确认删除后会话从 sessions.json 与侧栏一起消失")
+          : bad("E2E GP-123 delete gone", JSON.stringify({ gone, rowGone }));
+      }
+
+      await shutdown(bootM25.app);
+    } catch (e) {
+      bad("E2E GP-120..123 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      if (botsM25Before) fs.writeFileSync(BOTS_M25, botsM25Before);
+      if (sessM25Before) fs.writeFileSync(SESS_M25, sessM25Before);
     }
 
     /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----

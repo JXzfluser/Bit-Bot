@@ -88,7 +88,7 @@ function main() {
     ? ok("右侧操作区右对齐且不换行（不会再竖排断字）")
     : bad("header actions", "actions alignment/wrap regressed");
 
-  /id="bot-pill"/.test(html) && /function updateBotPill\(name, colorSeed\)/.test(html)
+  /id="bot-pill"/.test(html) && /function updateBotPill\(name, colorSeed(?:, avatarDataUrl)?\)/.test(html)
     ? ok("当前 Bot 标识 pill 存在并由 updateBotPill 驱动")
     : bad("bot pill", "missing pill markup or updater");
 

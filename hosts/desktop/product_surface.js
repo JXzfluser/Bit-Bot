@@ -91,14 +91,49 @@ function createProductSurface(repoRoot) {
     atomicWrite(BOTS_PATH, JSON.stringify(data, null, 2));
   }
 
+  /* §2.2 tags: comma-separated in the product phrase, stored as a small array.
+     "-" is the explicit "clear tags" signal (an empty value cannot be sent
+     through key=value phrases without reading as "unchanged"). */
+  function normalizeTags(value) {
+    if (Array.isArray(value)) {
+      return value.map((t) => String(t || "").trim()).filter(Boolean).slice(0, 8);
+    }
+    const raw = String(value == null ? "" : value).trim();
+    if (raw === "-" || raw === "") return [];
+    return raw.split(",").map((t) => t.trim()).filter(Boolean).slice(0, 8);
+  }
+
+  /* §2.2 avatar: a stored path is displayed as a data URL so the renderer never
+     needs file:// access. Unreadable / oversized files are simply not shown. */
+  function avatarDataUrl(bot) {
+    const p = String((bot && bot.avatar) || "").trim();
+    if (!p) return "";
+    try {
+      const abs = path.isAbsolute(p) ? p : path.join(REPO_ROOT, p);
+      const st = fs.statSync(abs);
+      if (!st.isFile() || st.size > 512 * 1024) return "";
+      const ext = path.extname(abs).toLowerCase();
+      const mime =
+        ext === ".png" ? "image/png"
+          : ext === ".webp" ? "image/webp"
+            : ext === ".gif" ? "image/gif"
+              : "image/jpeg";
+      return "data:" + mime + ";base64," + fs.readFileSync(abs).toString("base64");
+    } catch (_) {
+      return "";
+    }
+  }
+
   function botsCreate({ name, job, description }) {
     const data = loadBots();
     const bot = {
       id: generateBotId(),
-      name: String(name || "").trim() || "Unnamed Bot",
+      // §2.3: a skipped name still yields the official "New Bot" placeholder.
+      name: String(name || "").trim() || "New Bot",
       job: String(job || "").trim(),
       description: String(description || "").trim(),
       avatar: "",
+      tags: [],
       hidden: false,
       pinned: false,
       created_at: nowIso(),
@@ -114,22 +149,28 @@ function createProductSurface(repoRoot) {
     };
   }
 
-  function botsUpdate({ bot_id, name, job, description, avatar }) {
+  function botsUpdate({ bot_id, name, job, description, avatar, tags }) {
     const data = loadBots();
     const bot = data.bots.find(b => b.id === bot_id);
     if (!bot) {
       return { ok: false, error: "bot_not_found", mode: "host_bot_update" };
     }
 
-    // Validate avatar if provided
+    // Validate avatar if provided. "-" clears the avatar; empty/undefined
+    // means "leave unchanged" (the kernel omits the field in that case).
     if (avatar !== undefined && avatar !== null && avatar !== "") {
-      const avatarPath = path.isAbsolute(avatar) ? avatar : path.join(REPO_ROOT, avatar);
-      if (!fs.existsSync(avatarPath)) {
-        return { ok: false, error: "invalid_avatar", mode: "host_bot_update" };
+      if (avatar === "-") {
+        bot.avatar = "";
+      } else {
+        const avatarPath = path.isAbsolute(avatar) ? avatar : path.join(REPO_ROOT, avatar);
+        if (!fs.existsSync(avatarPath)) {
+          return { ok: false, error: "invalid_avatar", mode: "host_bot_update" };
+        }
+        bot.avatar = avatar;
       }
-      bot.avatar = avatar;
     }
 
+    if (tags !== undefined) bot.tags = normalizeTags(tags);
     if (name !== undefined) bot.name = String(name || "").trim() || bot.name;
     if (job !== undefined) bot.job = String(job || "").trim();
     if (description !== undefined) bot.description = String(description || "").trim();
@@ -166,6 +207,7 @@ function createProductSurface(repoRoot) {
       job: source.job,
       description: source.description,
       avatar: source.avatar,
+      tags: Array.isArray(source.tags) ? source.tags.slice() : [],
       hidden: false,
       pinned: false,
       created_at: nowIso(),
@@ -440,6 +482,13 @@ function createProductSurface(repoRoot) {
     };
   }
 
+  function decorateBot(bot) {
+    return Object.assign({}, bot, {
+      tags: Array.isArray(bot.tags) ? bot.tags : [],
+      avatar_data_url: avatarDataUrl(bot),
+    });
+  }
+
   function listViews() {
     const data = loadBots();
     const visible = data.bots
@@ -455,8 +504,8 @@ function createProductSurface(repoRoot) {
     const hidden = data.bots.filter(b => b.hidden);
     return {
       ok: true,
-      bots: visible,
-      hidden_bots: hidden,
+      bots: visible.map(decorateBot),
+      hidden_bots: hidden.map(decorateBot),
       primary_id: data.primary_id
     };
   }

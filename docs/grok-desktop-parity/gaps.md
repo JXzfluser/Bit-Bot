@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M24 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=169 FAIL=0；`moon test` 381/381；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 84/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M25 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=184 FAIL=0；`moon test` 381/381；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 100/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -44,8 +44,12 @@
 | GP-115 | 已实现 | 记忆不授权动作：内核 `memory_grants_send()` 恒 `false`（记忆只做上下文），审批/草稿仍由 `gate_consequential` 决定；实测在 Bot 记忆里写 `send=allow all` 后 `purchase` / `channel_send` 仍只出 `approval_card`，无真实 host 执行。 |
 | GP-116 | 已实现 | §2.1 主窗口结构：侧栏六类入口齐全且顺序固定 —— `#bot-list`（Bot）→ `#room-list`（群组，读 `rooms.json`）→ `#session-list`（会话）→ `#sidebar-footer`（Hidden Bots / Connect apps / Marketplace / Settings）。群组列表由新增 `refreshSidebarRooms()` 渲染（行带 `data-room-id` + 成员数，点击把该群设进群组面板并提示消息入口），随 boot、`group_chat/room_turn` 回合与群组面板刷新同步。Marketplace 打开 `#marketplace-modal`，卡片来自 `window.bitbot.templates.list()`（Host `bot_templates_list` 读 `data/desktop/bot-templates.json`），一键创建走 `templates.create` → `bot_create_from_template` 真建 Bot；渲染层**没有**写死的模板数组。新增文案 zh-CN/zh-TW/en 三语齐全。见 Wave M24。 |
 | GP-117 | 已实现 | Bot 列表按**真实活动**排序：`listViews()` 先 `pinned` 后 `updated_at` 降序；`product_surface.touchBotActivity(bot_id)` 在 `bitbot:turn` 成功落盘后由 main 调用（未知 id 返回 `bot_not_found` 且不造行），随后广播 `bitbot:bots-changed` → preload `onBotsChanged` → renderer 重排侧栏，无需手动刷新。见 Wave M24。 |
-| GP-118 | 已实现 | 隐藏 Bot 入口位于侧栏**底部**：`#agents` 改为纵向 flex，`#bot-list`/`#room-list`/`#session-list` 各自就地滚动（`flex:1 1 auto; overflow-y:auto`），`#sidebar-footer`（Hidden Bots / Connect apps / Marketplace / Settings）`flex:0 0 auto` 固定在列尾，DOM 上确为 `#agents` 最后一个块；实测 76 个 Bot / 37 个群组时 footer 仍在视口内（`bottom 715 ≤ 719`）且三个列表 `scrollHeight > clientHeight`。隐藏数量徽标仍由 `bots.list()` 的 `hidden` 长度驱动。见 Wave M24。 |
+| GP-118 | 已实现 | 隐藏 Bot 入口位于侧栏**底部**：`#agents` 是**一整列滚动容器**（`overflow-y:auto`），三个列表保持自然高度（不再各自开滚动条），`#sess-new` `position:sticky; top:0` 常驻列首、`#sidebar-footer`（Hidden Bots / Connect apps / Marketplace / Settings）`position:sticky; bottom:0` 常驻列尾，DOM 上确为 `#agents` 最后一个块；E2E 实测长列表下 `#agents` 自身 `scrollHeight > clientHeight` 且 footer/新对话按钮仍在可视矩形内。隐藏数量徽标仍由 `bots.list()` 的 `hidden` 长度驱动。见 Wave M24/M25。 |
 | GP-119 | 已实现 | 中央 `#log` 是**唯一**消息流：群聊回合走同一条 `runUserTurn("room …")` 落在 `#log`，不另开窗口；右侧 `#machines`（工具）与 `#computer-rail`（Computer 预览）各自被 `body.tools-open` / `body.computer-open` 独立开合，打开 Computer 后中央宽度仍 > 200px（实测 340px 右栏下 `#log` 475px）。见 Wave M24。 |
+| GP-120 | 已实现 | §2.2 **Edit Profile**：侧栏 Bot 行右键 →「Edit Profile」打开 `#bot-edit-modal`（名称/标签/职责/多行描述/头像）。内核 `UpdateBot` 新增可选 `tags~`，为空时**不产出** `tags=` 字段（Host 视为"保持"），`tags=-`/`avatar=-` 是显式清空；Host `botsUpdate` 用 `normalizeTags` 归一化（≤8 条）并把头像路径转 `avatar_data_url`（≤512KB，mime 由扩展名推断），`listViews()` 里 Bot 行同时带 `tags` 与 `avatar_data_url`。侧栏 Bot 行与左下 Bot 胶囊渲染真实 `<img>`，`meta` 追加 `· #tag` chips。Host 拒绝（如 `invalid_avatar`）现在经 `host_payload.ok:false` 让 `bots.op` 返回失败，不再"绿着返回却没保存"。见 Wave M25。 |
+| GP-121 | 已实现 | §2.3 **创建流程**：`#bot-new-btn` / `Cmd/Ctrl+N` 打开同一表单的创建态（隐藏标签行与头像列，显示模板 chips）；Name 留空 → Host `botsCreate` 落 `New Bot`（官方占位名）；Description 用 textarea 且 `enc()` 只替换空格，换行原样保留；创建成功后读 `host_payload.bot` 调 `selectBotForChat()` **自动打开该 Bot 的对话**。见 Wave M25。 |
+| GP-122 | 已实现 | §4.5 **头像上传**：main 新增 `bitbot:bots:pickAvatar`（`dialog.showOpenDialog` 限图片，`statSync` 拦 >2MB → `avatar_too_large`，成功返回 `{path,data_url}`），preload 暴露 `bots.pickAvatar()`；对话框内预览 + 可清空（`avatar=-`）。E2E 走同一 IPC 写真实路径后 `refreshBots()`，侧栏渲染 `<img>`；坏路径由 Host 拒且旧头像保留。系统选择框本身按残留记（无桌面环境不可自动化）。见 Wave M25。 |
+| GP-123 | 已实现 | 侧栏会话组织补齐官方形态：`sessDayBucket()` 按本地零点分 **今天 / 昨天 / 更早**（`.sess-group` 标题），`#session-search` 按标题+预览实时过滤并在无命中时给空态；行双击 → `#session-rename-modal`（`sessions.rename`），右键 → 重命名/删除，删除走 `#session-delete-modal`（点名会话、明示不可恢复）→ `sessions.delete`，之后重选 active 并重载 transcript。全程走既有 Host IPC，渲染层不直接写 `sessions.json`。见 Wave M25。 |
 | GP-37 | 残留 | `route_traffic` 开关持久 + UI 显示真实生效状态；真代理生效不可达 → renderer 显示 honest residual 文案。 |
 | GP-40/41 | 已实现 | 草稿卡（New Email / New Slack Message）可编辑，Send→真实 approved 回合再编码；Discard→不落出站。仅当卡类别为 ExternalSend 时渲染（不从任意文本臆造草稿）。 |
 | GP-42 | 已实现 | kernel 判定未变（CM-0306），UI 不代客批准。 |
@@ -430,3 +434,36 @@
 - **Bot 列表的"活动"粒度是回合级**：`touchBotActivity` 在一次成功回合后打点，不做"正在输入/刚被查看"的更细信号；未落盘的失败回合不算活动（有意为之，避免失败也顶到前面）。
 - **群组行点击只做定位 + 提示**：真正的群聊回合仍由群组面板的消息框发送（`room <id> :: …` 落 `#log`），本波没有做「点群组行切换一个独立群聊会话视图」（官方 §2.1 未要求，且会与 §3 会话模型冲突）。
 - **Marketplace 只有本地目录**：模板来自 `data/desktop/bot-templates.json` 的六个内置模板，没有远程市场/安装量/评分（无远端服务可查，不假装）。
+
+## Wave M25（Bot 资料管理与创建流程：官方 spec §2.2–§2.3，本轮）
+
+背景：官方 §2.2 把 **Edit Profile** 定义为「名称、标签、描述、头像」四项，§2.3 把创建流程定为「Name / Job / 多行 Description」，并给出三条验收信号：空白名要用 `New Bot` 占位、Description 支持多行、创建完**自动打开对话**。此前 Bit Bot 的新建表单只有一个行内输入条（名称 + 职责 + 模板 chips），**没有编辑入口**（改名字只能重新建）、**没有标签**、**没有头像**（侧栏全是纯色首字母圆点），创建完也**不会切到那个 Bot 的会话**。会话列表同时还是平铺的，没有分组/搜索/重命名/删除。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-21 Bot 资料管理与创建流程（官方 spec §2.2–§2.3）`：GP-120（Edit Profile 四项 + 头像在侧栏/对话中显示）、GP-121（占位名 / 多行描述 / 自动打开对话）、GP-122（头像上传链路与 Host 校验）、GP-123（今天/昨天/更早 + 搜索 + 重命名/删除）；同时把 G-20 的 **GP-118** 改写成实际交付的布局（整列滚动 + sticky 首尾），旧行描述的 flex 分栏已不存在。
+
+### 2) 实现
+- **内核（`cmd/desktop_turn`）**：`UpdateBot(bot_id~, name~, job~, description~, avatar~, tags~)`。`tags` 是**可选**参数：空字符串时不追加 `tags=` 字段，Host 才能区分「没改」与「清空」（`tags=-`）；`extract_kv` 键表补 `tags=`；`parity_intents.mbt` 解析并透传。
+- **Host（`hosts/shared/host_ffi.js` + `hosts/desktop/product_surface.js`）**：`bot_update` 分发带上 `tags`；`normalizeTags()`（数组/逗号串 → 去空 → ≤8 条，`-`/空 → `[]`）、`avatarDataUrl()`（`statSync` ≤512KB，按扩展名取 mime，base64 data URL，失败返回 ""）、`decorateBot()`（补 `tags` 与 `avatar_data_url`）用于 `listViews()` 的 `bots`/`hidden_bots`；`botsCreate` 空名 → `New Bot`；`botsUpdate` 支持 `avatar=-` 清空；`botsDuplicate` 复制 tags 浅拷贝。
+- **main/preload**：`bitbot:bots:pickAvatar`（真实 `dialog.showOpenDialog` + 2MB 上限 + data URL 回执）；`bots.op` 现在解析 `host_results` 里的 `bot_create`/`bot_update` 回执，`ok:false` 时整体失败并带回 `host_payload`。
+- **渲染层（`hosts/desktop/index.html`）**：新增 `#bot-edit-modal`（同一表单承担 Edit / Create 两态）、`#session-rename-modal`、`#session-delete-modal`（`z-index:64`）；Bot 行渲染 `avatar_data_url` → `<img>`，`meta` 追加 `· #tag`；会话列表改成 `sessDayBucket()` 分组的 `.sess-group` + `#session-search` 过滤 + 双击重命名 + 右键菜单删除；侧栏布局收成一整列滚动，`#sess-new` 与 `#sidebar-footer` sticky。
+- **i18n**：31 个新键（会话分组/搜索、通用 保存/取消/删除、表单 名称/标签/职责/描述/头像 等）在 zh-CN / zh-TW / en 三套字典里补齐；标签名用 `data-i18n` 同步，避免出现中文标题 + 英文标签的混排。
+
+### 3) 验证（本轮实测）
+- `scripts/prove_m25_profile.js` **25/0**（新增）：对话框字段与两态切换、31 键三语齐全、空名兜底、自动打开接线、textarea、pickAvatar（main + preload）、`avatar_data_url` 渲染、搜索框位于列表之前、`sessDayBucket` 分组、rename/delete IPC 接线；再用**真实 CLI + product_surface** 跑：空白名 → `New Bot`、`create bot New+Bot …`、`update bot … tags=perf,+research` 落盘 name/job/description/tags、多行 Description 保真、头像 → `data:image/png;base64,`、坏路径 `invalid_avatar` 且旧头像保留、`tags=-`/`avatar=-` 清空、duplicate 复制 tags、`sessions.rename/delete` 真改 `sessions.json`、`bots:op` 把 Host 拒绝读成失败。
+- **负向对照**：注释掉 `bot.tags = normalizeTags(tags)` → **22/2**，恢复后 **25/0**（证明「标签落盘」不是恒真断言）。
+- `moon test` **381/381**（新增 `tags` 用例：带 tags / 不带 tags 不产出字段 / `tags=-`）。
+- `scripts/e2e_grok_desktop_boot.mjs` **100/0**（新增 16 条真实 DOM 断言）：空名建 Bot、多行描述、标题 pill = `New Bot`、右键编辑预填、改名+标签落盘并同步侧栏、头像经 IPC 后渲染 `<img>`、分组标题（`今天 / 昨天`）+ 行数、搜索 0 行 + 空态 + 清空恢复、重命名预填/落盘/侧栏同步、删除确认点名 + 双端消失。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-25 十四断言**（1 条全绿汇总 + 9 条 probe grep + 4 条 E2E grep）。
+
+### 4) 本轮踩到并修掉的真问题
+1. **会话列表被压成 40px**：最初给 Bots/群组设了 `max-height: 34vh/18vh`，76 个 Bot 时会话区只剩一行，用户找不到自己的聊天。改为整列滚动 + sticky 首尾：长列表滚，入口不动。
+2. **编辑对话框中英混排**：标题/提示是中文，`Name/Tags/Job/Description` 却是裸英文。补 `bfName/bfTags/bfJob/bfDesc` 四键 + `data-i18n`，同一屏只出现一种语言。
+3. **Host 拒绝被当成成功**：头像路径不存在时 Host 回 `ok:false`，但 `bots.op` 只看 turn 的 `ok`，UI 显示"已保存"而数据没变。现在解析 `host_results` 回执，失败保对话框并显示原因。
+4. **多行描述被压平**：旧的短语拼装用 `+` 编码空格，顺手把换行也当成空白处理。现在 `enc()` 只替换空格，换行原样进 `description=`，Host 落盘为多行字符串。
+5. **`-` 与"省略"语义混淆风险**：如果空 tags 也发 `tags=`，Host 会把用户"没动标签"理解为"清空标签"。改为空字符串直接不产出字段，`-` 才是显式清空——并加了内核单测锁死这个区别。
+
+### 5) 诚实残留（本波不假装）
+- **系统头像选择框**：`dialog.showOpenDialog` 已接，但沙箱无桌面会话时无法自动点；E2E 走同一 IPC 之后的 Host 校验路径（路径 → 落盘 → `avatar_data_url` → 渲染），不宣称能自动操作系统框。
+- **标签没有团队语义**：本地自由文本（≤8 条、逗号分隔），官方文档也只描述为标识；没有目录同步、权限或跨设备传播。
+- **会话分组只按本地时间**：`sessDayBucket` 用本机零点与 `updated_at`，没有服务端时区换算；跨时区旅行后"今天"会按本机时间重算（与桌面端直觉一致，但不是官方未描述的额外语义）。

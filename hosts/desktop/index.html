@@ -141,6 +141,18 @@
     border-radius: 50%;
     background: var(--bot-avatar, #2f9e44);
     flex: 0 0 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  #bot-pill .bot-pill-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
   #header-actions {
     display: flex;
@@ -290,28 +302,27 @@
     grid-area: agents;
     border-right: 1px solid var(--line);
     background: var(--side);
-    padding: 14px 12px;
-    overflow: auto;
-    /* GP-118: sidebar is a column so the footer can pin to the bottom edge
-       while the lists above it scroll independently. */
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    padding: 0 12px;
+    /* GP-123: one scrolling column (like the reference sidebar). Lists keep
+       their natural height, so a sidebar with 3 Bots shows 3 rows instead of
+       reserving empty scroll space; the footer and the New-chat button are
+       sticky so both stay reachable while the body scrolls. */
+    overflow-y: auto;
+    overflow-x: hidden;
   }
   #agents > #bot-list,
   #agents > #room-list,
   #agents > #session-list {
-    flex: 1 1 auto;
-    min-height: 40px;
-    overflow-y: auto;
+    min-height: 0;
+    overflow: visible;
   }
-  #agents > .panel-title,
-  #agents > #sess-new,
-  #agents > #vc-sb-indicator,
-  #agents > #bot-create-form,
-  #agents > #agents-lab,
-  #agents > #sidebar-footer {
-    flex: 0 0 auto;
+  /* GP-123: New chat stays reachable at the top of the scrolling column. */
+  #agents > #sess-new {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    margin-top: 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
   #machines {
     grid-area: machines;
@@ -323,15 +334,18 @@
   }
   /* GP-116: the Bot / group lists can get long (dozens of Bots, many rooms), so
      they scroll in place instead of pushing the rest of the sidebar away. */
-  #bot-list { max-height: 34vh; }
-  #room-list { max-height: 18vh; }
   /* GP-118: the footer is a distinct bottom block, visually separated from the
      lists above it (Grok puts Hidden / Connect apps / Marketplace / Settings
      at the very bottom rather than mixed into the lists). */
   #sidebar-footer {
+    /* GP-123: sticky bottom — the body scrolls behind it, the six-entry footer
+       (Hidden Bots / Connect apps / Marketplace / Settings) never leaves view. */
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
     margin-top: 14px;
     border-top: 1px solid var(--line);
-    padding: 10px 0 4px;
+    padding: 10px 0 8px;
     background: var(--side);
   }
   .panel-title {
@@ -384,6 +398,79 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* GP-120: Bot avatars are real images (data URL from the Host store). */
+  .sess-avatar { overflow: hidden; }
+  .sess-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  /* GP-123: session list date groups (今天 / 昨天 / 更早) */
+  .sess-group {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 8px 10px 3px;
+  }
+  /* GP-120: shared form styling for the Edit Profile / rename dialogs. */
+  .bf-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .bf-label > span {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 3px;
+  }
+  .bf-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--input-bg);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 9px;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    resize: vertical;
+  }
+  .bf-avatar {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: var(--accent-soft);
+    color: #fff;
+    font-weight: 700;
+    font-size: 30px;
+  }
+  .bf-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .bf-mini {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    background: var(--accent-soft);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+    cursor: pointer;
   }
   /* GP-A2/A3 Grok-parity: plugin cards in a two-column grid */
   .ca-cats {
@@ -1066,17 +1153,6 @@
       <button type="button" id="bot-new-btn" title="Create new Bot (Name / Job / Description)" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-weight:700;cursor:pointer;font-size:11px" data-i18n="newBot">New Bot</button>
     </div>
     <div id="bot-list" aria-label="Bots"></div>
-    <div id="bot-create-form" style="display:none;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg1)">
-      <div style="font-weight:700;font-size:12px;margin-bottom:6px" data-i18n="createBot">Create new Bot</div>
-      <input id="bc-name" type="text" placeholder="Name（短名称，如 Piper）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" data-i18n-ph="bcNamePh" />
-      <input id="bc-job" type="text" placeholder="Job（主要职责，如 Product performance）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" data-i18n-ph="bcJobPh" />
-      <textarea id="bc-desc" rows="3" placeholder="Description（工作方式/工具/边界，例如 Never change production settings）" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px" data-i18n-ph="bcDescPh"></textarea>
-      <div style="color:var(--muted);font-size:11px;margin-bottom:6px"><span data-i18n="bcTemplates">模板</span>：<span id="bc-tpl-btns" style="display:inline-flex;flex-wrap:wrap;gap:4px"></span></div>
-      <div style="display:flex;gap:6px">
-        <button type="button" id="bc-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer" data-i18n="bcCreate">创建</button>
-        <button type="button" id="bc-cancel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer" data-i18n="bcCancel">取消</button>
-      </div>
-    </div>
     <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px">
       <span data-i18n="rooms">群组</span>
     </div>
@@ -1086,6 +1162,8 @@
     <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px">
       <span data-i18n="chats">会话</span>
     </div>
+    <!-- GP-123: live search over the real session list (今天 / 昨天 / 更早). -->
+    <input id="session-search" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="Search chats" style="width:100%;box-sizing:border-box;margin:0 0 8px;background:var(--input-bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px" />
     <div id="session-list" aria-label="Chat sessions"></div>
     <details class="lab" id="agents-lab">
       <summary data-i18n="advanced">高级 · Agents / Teammates</summary>
@@ -1123,9 +1201,11 @@
         <summary><span data-i18n="hiddenBots">Hidden Bots</span> (<span id="hidden-bots-count">0</span>)</summary>
         <div id="hidden-bot-list"></div>
       </details>
-      <button type="button" id="connect-apps-btn" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" style="margin-top:10px;width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px;cursor:pointer" data-i18n="connectApps">Connect apps</button>
-      <button type="button" id="marketplace-btn" title="Marketplace · Bot 模板（来自 Host bot-templates.json）" style="margin-top:8px;width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px;cursor:pointer" data-i18n="marketplace">Marketplace</button>
-      <button type="button" id="sidebar-settings-btn" title="Settings（General / Computer / Usage & Billing / Updates）" style="margin-top:8px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:6px;padding:8px;cursor:pointer;text-align:left;font-size:13px" data-i18n="settings">设置</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        <button type="button" id="connect-apps-btn" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" style="width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:7px 4px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-i18n="connectApps">Connect apps</button>
+        <button type="button" id="marketplace-btn" title="Marketplace · Bot 模板（来自 Host bot-templates.json）" style="width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:7px 4px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-i18n="marketplace">Marketplace</button>
+      </div>
+      <button type="button" id="sidebar-settings-btn" title="Settings（General / Computer / Usage & Billing / Updates）" style="margin-top:8px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:6px;padding:6px;cursor:pointer;text-align:left;font-size:13px" data-i18n="settings">设置</button>
     </div>
   </aside>
   <div id="main">
@@ -1407,6 +1487,61 @@
         <div style="font-weight:700;font-size:13px;margin-top:14px" data-i18n="caBrowse">Browse plugins</div>
         <div id="ca-browse" class="ca-grid"></div>
         <div style="color:var(--muted);font-size:11px;margin-top:12px" data-i18n="caAuthNote">Some plugins need browser sign-in (OAuth) before their tools work.</div>
+      </div>
+    </div>
+    <!-- GP-120/121 (§2.2/§2.3): Edit Profile / Create Bot dialog. Fields match
+         the reference: 名称 / 标签 / 描述 / 头像 (create also asks Job). The
+         renderer only collects text — the Host store is written by the kernel's
+         `update bot` / `create bot` effect, never by the renderer directly. -->
+    <div id="bot-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:64;align-items:center;justify-content:center">
+      <div style="width:min(620px,92vw);max-height:86vh;overflow:auto;background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div id="bf-title" style="font-weight:700;font-size:15px">Edit Profile</div>
+          <button type="button" id="bf-close" title="Close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer">×</button>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:14px;align-items:flex-start">
+          <div id="bf-avatar-col" style="flex:0 0 96px;text-align:center">
+            <div id="bf-avatar-preview" class="bf-avatar">B</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px" data-i18n="bfAvatar">头像</div>
+            <button type="button" id="bf-avatar-pick" class="bf-mini" data-i18n="bfPickAvatar">选择图片</button>
+            <button type="button" id="bf-avatar-clear" class="bf-mini" data-i18n="bfClearAvatar">移除头像</button>
+          </div>
+          <div style="flex:1 1 auto;min-width:0">
+            <label class="bf-label"><span data-i18n="bfName">名称</span><input id="bc-name" class="bf-input" type="text" autocomplete="off" placeholder="Name（如 Piper）" data-i18n-ph="bfNamePh" /></label>
+            <label class="bf-label" id="bf-tags-row"><span data-i18n="bfTags">标签</span><input id="bc-tags" class="bf-input" type="text" autocomplete="off" placeholder="perf, research" data-i18n-ph="bfTagsPh" /></label>
+            <label class="bf-label"><span data-i18n="bfJob">职责</span><input id="bc-job" class="bf-input" type="text" autocomplete="off" placeholder="Job（主要职责，如 Product performance）" data-i18n-ph="bcJobPh" /></label>
+            <label class="bf-label"><span data-i18n="bfDesc">描述</span><textarea id="bc-desc" class="bf-input" rows="5" placeholder="Description（工作方式/工具/边界，例如 Never change production settings）" data-i18n-ph="bcDescPh"></textarea></label>
+            <div style="color:var(--muted);font-size:11px;margin:-2px 0 8px" data-i18n="bfDescHint">描述支持多行：工作方式 / 工具 / 输出格式 / 安全边界 / 审批要求。</div>
+            <div id="bc-tpl-row" style="color:var(--muted);font-size:11px;margin-bottom:6px"><span data-i18n="bcTemplates">模板</span>：<span id="bc-tpl-btns" style="display:inline-flex;flex-wrap:wrap;gap:4px"></span></div>
+            <div id="bf-status" style="color:var(--muted);font-size:11px;min-height:14px"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+          <button type="button" id="bc-cancel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer" data-i18n="bcCancel">取消</button>
+          <button type="button" id="bc-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" data-i18n="bcCreate">创建</button>
+        </div>
+      </div>
+    </div>
+    <!-- GP-123: session rename / delete dialogs over the existing Host IPC. -->
+    <div id="session-rename-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:64;align-items:center;justify-content:center">
+      <div style="width:min(420px,92vw);background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
+        <div style="font-weight:700;font-size:14px;margin-bottom:10px" data-i18n="sessRenameTitle">重命名会话</div>
+        <input id="sr-title" class="bf-input" type="text" autocomplete="off" maxlength="60" />
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+          <button type="button" id="sr-cancel" class="bf-mini" style="padding:7px 12px" data-i18n="commonCancel">取消</button>
+          <button type="button" id="sr-save" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" data-i18n="commonSave">保存</button>
+        </div>
+      </div>
+    </div>
+    <div id="session-delete-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:64;align-items:center;justify-content:center">
+      <div style="width:min(420px,92vw);background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px" data-i18n="sessDeleteTitle">删除会话</div>
+        <div id="sd-target" style="font-size:12px;margin-bottom:6px"></div>
+        <div style="color:var(--muted);font-size:12px;line-height:1.5" data-i18n="sessDeleteWarn">删除后不可恢复：该会话的对话记录会从本机移除。</div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+          <button type="button" id="sd-cancel" class="bf-mini" style="padding:7px 12px" data-i18n="commonCancel">取消</button>
+          <button type="button" id="sd-go" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" data-i18n="commonDelete">删除</button>
+        </div>
       </div>
     </div>
     <!-- GP-116 (§2.1): Marketplace panel. The catalog is the Host's real
@@ -3657,40 +3792,229 @@
     let activeSessionId = null;
     let streamEl = null;
 
+    /* GP-123: local-date bucket for the sidebar. "今天 / 昨天 / 更早" is derived
+       from the Host's real updated_at — never from a synthetic index. */
+    function sessDayBucket(iso) {
+      const ts = new Date(iso || 0).getTime();
+      if (!isFinite(ts) || ts <= 0) return "earlier";
+      const now = new Date();
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      if (ts >= startToday) return "today";
+      if (ts >= startToday - 86400000) return "yesterday";
+      return "earlier";
+    }
+
     function renderSessionList(payload) {
       const box = document.getElementById("session-list");
       if (!box) return;
       box.innerHTML = "";
       const rows = (payload && payload.sessions) || [];
       activeSessionId = (payload && payload.active_id) || activeSessionId;
-      for (const s of rows) {
-        const el = document.createElement("div");
-        el.className =
-          "agent-item sess-row" + (s.id === activeSessionId ? " active" : "");
-        el.style.cursor = "pointer";
-        el.dataset.sessionId = s.id;
-        el.innerHTML =
-          '<span class="sess-avatar"></span>' +
-          '<div class="sess-main"><div class="name"></div><div class="meta"></div></div>';
-        const av = el.querySelector(".sess-avatar");
-        av.textContent = String(s.title || "对").trim().slice(0, 1);
-        av.style.background = avatarColorFor(s.id);
-        el.querySelector(".name").textContent = s.title || "对话";
-        // Grok-parity: preview line (falls back to count+time when empty).
-        el.querySelector(".meta").textContent =
-          s.preview ||
-          (s.message_count || 0) + " " + wavegT("msgUnit");
-        el.addEventListener("click", async () => {
-          const r = await window.bitbot.sessions.setActive(s.id);
-          if (r && r.ok) {
-            activeSessionId = s.id;
-            await loadActiveSessionTranscript();
-            const list = await window.bitbot.sessions.list();
-            renderSessionList(list);
-          }
-        });
-        box.appendChild(el);
+      const q = String((document.getElementById("session-search") || {}).value || "")
+        .trim()
+        .toLowerCase();
+      const filtered = q
+        ? rows.filter((s) =>
+            (String(s.title || "") + " " + String(s.preview || "")).toLowerCase().includes(q),
+          )
+        : rows;
+      if (!filtered.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "color:var(--muted);font-size:11px;padding:4px 10px";
+        empty.textContent = wavegT(q ? "sessNoMatch" : "newChat");
+        box.appendChild(empty);
+        return;
       }
+      const groups = [
+        ["today", wavegT("sessToday")],
+        ["yesterday", wavegT("sessYesterday")],
+        ["earlier", wavegT("sessEarlier")],
+      ];
+      for (const [key, label] of groups) {
+        const bucket = filtered.filter((s) => sessDayBucket(s.updated_at) === key);
+        if (!bucket.length) continue;
+        const head = document.createElement("div");
+        head.className = "sess-group";
+        head.textContent = label;
+        box.appendChild(head);
+        for (const s of bucket) {
+          const el = document.createElement("div");
+          el.className =
+            "agent-item sess-row" + (s.id === activeSessionId ? " active" : "");
+          el.style.cursor = "pointer";
+          el.dataset.sessionId = s.id;
+          el.innerHTML =
+            '<span class="sess-avatar"></span>' +
+            '<div class="sess-main"><div class="name"></div><div class="meta"></div></div>';
+          const av = el.querySelector(".sess-avatar");
+          av.textContent = String(s.title || "对").trim().slice(0, 1);
+          av.style.background = avatarColorFor(s.id);
+          el.querySelector(".name").textContent = s.title || "对话";
+          // Grok-parity: preview line (falls back to count+time when empty).
+          el.querySelector(".meta").textContent =
+            s.preview ||
+            (s.message_count || 0) + " " + wavegT("msgUnit");
+          el.addEventListener("click", async () => {
+            const r = await window.bitbot.sessions.setActive(s.id);
+            if (r && r.ok) {
+              activeSessionId = s.id;
+              await loadActiveSessionTranscript();
+              const list = await window.bitbot.sessions.list();
+              renderSessionList(list);
+            }
+          });
+          // GP-123: rename / delete on the real Host IPC (right-click menu).
+          el.addEventListener("contextmenu", (ev) => {
+            ev.preventDefault();
+            showSessionMenu(ev, s);
+          });
+          el.addEventListener("dblclick", (ev) => {
+            ev.preventDefault();
+            openSessionRename(s);
+          });
+          box.appendChild(el);
+        }
+      }
+      renderUnreadMarks();
+    }
+
+    /* GP-123: session context menu. Both actions already exist on the Host
+       (`bitbot:sessions:rename` / `:delete`); this only adds the UI. */
+    let sessMenuEl = null;
+    function hideSessionMenu() {
+      if (sessMenuEl && sessMenuEl.parentNode) sessMenuEl.parentNode.removeChild(sessMenuEl);
+      sessMenuEl = null;
+    }
+    function showSessionMenu(ev, s) {
+      hideSessionMenu();
+      sessMenuEl = document.createElement("div");
+      sessMenuEl.className = "composer-menu";
+      sessMenuEl.dataset.sessionMenu = s.id;
+      sessMenuEl.style.position = "fixed";
+      sessMenuEl.style.left = Math.min(ev.clientX, window.innerWidth - 220) + "px";
+      sessMenuEl.style.top = Math.min(ev.clientY, window.innerHeight - 120) + "px";
+      sessMenuEl.style.bottom = "auto";
+      const items = [
+        [wavegT("sessRename"), () => openSessionRename(s)],
+        [wavegT("sessDelete"), () => openSessionDelete(s)],
+      ];
+      for (const [label, fn] of items) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = label;
+        b.addEventListener("click", () => {
+          hideSessionMenu();
+          fn();
+        });
+        sessMenuEl.appendChild(b);
+      }
+      document.body.appendChild(sessMenuEl);
+      const kill = (e) => {
+        if (sessMenuEl && !sessMenuEl.contains(e.target)) {
+          hideSessionMenu();
+          document.removeEventListener("mousedown", kill);
+        }
+      };
+      setTimeout(() => document.addEventListener("mousedown", kill), 0);
+    }
+
+    let srSessionId = "";
+    function openSessionRename(s) {
+      srSessionId = s.id;
+      const modal = document.getElementById("session-rename-modal");
+      const input = document.getElementById("sr-title");
+      if (!modal || !input) return;
+      input.value = s.title || "";
+      modal.style.display = "flex";
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+    }
+    function closeSessionRename() {
+      const modal = document.getElementById("session-rename-modal");
+      if (modal) modal.style.display = "none";
+      srSessionId = "";
+    }
+    async function saveSessionRename() {
+      const id = srSessionId;
+      const input = document.getElementById("sr-title");
+      const title = String((input && input.value) || "").trim();
+      if (!id || !title) return;
+      const r = await window.bitbot.sessions.rename(id, title).catch(() => null);
+      if (r && r.ok) {
+        closeSessionRename();
+        await refreshSessions();
+      }
+    }
+
+    let sdSessionId = "";
+    function openSessionDelete(s) {
+      sdSessionId = s.id;
+      const modal = document.getElementById("session-delete-modal");
+      const tgt = document.getElementById("sd-target");
+      if (tgt) tgt.textContent = "「" + (s.title || s.id) + "」";
+      if (modal) modal.style.display = "flex";
+    }
+    function closeSessionDelete() {
+      const modal = document.getElementById("session-delete-modal");
+      if (modal) modal.style.display = "none";
+      sdSessionId = "";
+    }
+    async function confirmSessionDelete() {
+      const id = sdSessionId;
+      if (!id) return;
+      const wasActive = id === activeSessionId;
+      const r = await window.bitbot.sessions.delete(id).catch(() => null);
+      closeSessionDelete();
+      if (!r || !r.ok) return;
+      if (wasActive) {
+        const list = await window.bitbot.sessions.list().catch(() => null);
+        const active = (list && list.active_id) || "";
+        if (active) {
+          activeSessionId = active;
+          await window.bitbot.sessions.setActive(active).catch(() => {});
+          await loadActiveSessionTranscript();
+        }
+      }
+      await refreshSessions();
+    }
+    const srCancel = document.getElementById("sr-cancel");
+    if (srCancel) srCancel.addEventListener("click", closeSessionRename);
+    const srSave = document.getElementById("sr-save");
+    if (srSave) srSave.addEventListener("click", () => saveSessionRename().catch(() => {}));
+    const srInput = document.getElementById("sr-title");
+    if (srInput) {
+      srInput.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          saveSessionRename().catch(() => {});
+        } else if (ev.key === "Escape") {
+          closeSessionRename();
+        }
+      });
+    }
+    const sdCancel = document.getElementById("sd-cancel");
+    if (sdCancel) sdCancel.addEventListener("click", closeSessionDelete);
+    const sdGo = document.getElementById("sd-go");
+    if (sdGo) sdGo.addEventListener("click", () => confirmSessionDelete().catch(() => {}));
+    const sessSearch = document.getElementById("session-search");
+    if (sessSearch) {
+      sessSearch.addEventListener("input", () => {
+        window.bitbot.sessions
+          .list()
+          .then((list) => renderSessionList(list))
+          .catch(() => {});
+      });
+      sessSearch.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") {
+          sessSearch.value = "";
+          window.bitbot.sessions
+            .list()
+            .then((list) => renderSessionList(list))
+            .catch(() => {});
+        }
+      });
     }
 
     /* GP-116 (§2.1): the sidebar group list. Grok's left column shows Bots and
@@ -6984,7 +7308,7 @@
       }
       // Grok-parity: title-bar pill reflects the primary Bot by default.
       const primary = bots.find((x) => x.id === (view && view.primary_id)) || bots[0];
-      if (primary) updateBotPill(primary.name || primary.id, primary.id || primary.name);
+      if (primary) updateBotPill(primary.name || primary.id, primary.id || primary.name, primary.avatar_data_url);
     }
 
     function botRow(b, primaryId, isHidden) {
@@ -6994,8 +7318,16 @@
       el.dataset.agentId = b.id;
       const av = document.createElement("span");
       av.className = "sess-avatar";
-      av.textContent = String(b.name || b.id || "B").trim().slice(0, 1);
-      av.style.background = avatarColorFor(b.id || b.name);
+      if (b.avatar_data_url) {
+        // GP-122: real avatar image from the Host store (data URL, no file://).
+        const img = document.createElement("img");
+        img.alt = "";
+        img.src = b.avatar_data_url;
+        av.appendChild(img);
+      } else {
+        av.textContent = String(b.name || b.id || "B").trim().slice(0, 1);
+        av.style.background = avatarColorFor(b.id || b.name);
+      }
       const main = document.createElement("div");
       main.className = "sess-main";
       const name = document.createElement("div");
@@ -7003,7 +7335,12 @@
       name.textContent = (b.pinned ? "★ " : "") + b.name + (b.id === primaryId ? " · primary" : "");
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = (b.job || "bot") + (isHidden ? " · hidden" : "");
+      const tags = Array.isArray(b.tags) ? b.tags : [];
+      meta.textContent =
+        (b.job || "bot") +
+        (tags.length ? " · " + tags.map((t) => "#" + t).join(" ") : "") +
+        (isHidden ? " · hidden" : "");
+      el.title = b.description || "";
       main.appendChild(name);
       main.appendChild(meta);
       el.appendChild(av);
@@ -7020,12 +7357,24 @@
 
     // Grok-style: clicking a Bot opens its DM session (session id bot-<id>),
     // sets activeBotId for notifications, and shows the agent info in side panel.
-    function updateBotPill(name, colorSeed) {
+    function updateBotPill(name, colorSeed, avatarDataUrl) {
       const pill = document.getElementById("bot-pill");
       if (!pill) return;
       const label = pill.querySelector(".bot-pill-name");
       const av = pill.querySelector(".bot-pill-avatar");
       if (label) label.textContent = String(name || "Bit Bot");
+      if (av) {
+        // GP-122: the pill shows the same avatar the sidebar row uses.
+        av.innerHTML = "";
+        if (avatarDataUrl) {
+          const img = document.createElement("img");
+          img.alt = "";
+          img.src = avatarDataUrl;
+          av.appendChild(img);
+        } else {
+          av.textContent = String(name || "B").trim().slice(0, 1);
+        }
+      }
       if (colorSeed) {
         const c = avatarColorFor(colorSeed);
         av.style.background = c;
@@ -7037,7 +7386,7 @@
 
     function selectBotForChat(b) {
       activeBotId = b.id;
-      updateBotPill(b.name || b.id, b.id || b.name);
+      updateBotPill(b.name || b.id, b.id || b.name, b.avatar_data_url);
       const dmTitle = (b.name || b.id) + " · DM";
       (async () => {
         const list = await window.bitbot.sessions.list().catch(() => null);
@@ -7140,60 +7489,187 @@
       pendingDeleteBotId = "";
     }
 
+    /* GP-120/121 (§2.2/§2.3): one dialog for Create and Edit Profile.
+       Edit carries 名称 / 标签 / 描述 / 头像; Create asks Name / Job / Description
+       and, on success, opens the new Bot's chat (official §2.3 signals).
+       The renderer never writes bots.json: it emits the product phrase and the
+       kernel plans the Host effect, same as every other Bot action. */
+    let bfEditingId = "";
+    let bfAvatarPath = "";
+    let bfAvatarDataUrl = "";
+    let bfAvatarDirty = false;
+    let bfOriginalTags = [];
+
+    function bfStatus(text) {
+      const el = document.getElementById("bf-status");
+      if (el) el.textContent = text || "";
+    }
+    function bfRenderAvatar(name) {
+      const box = document.getElementById("bf-avatar-preview");
+      if (!box) return;
+      box.innerHTML = "";
+      if (bfAvatarDataUrl) {
+        const img = document.createElement("img");
+        img.alt = "";
+        img.src = bfAvatarDataUrl;
+        box.appendChild(img);
+      } else {
+        box.style.background = avatarColorFor(name || "bot");
+        box.textContent = String(name || "B").trim().slice(0, 1).toUpperCase() || "B";
+      }
+    }
+    function openBotForm(bot) {
+      const modal = document.getElementById("bot-edit-modal");
+      if (!modal) return;
+      const editing = Boolean(bot && bot.id);
+      bfEditingId = editing ? bot.id : "";
+      bfAvatarPath = editing ? bot.avatar || "" : "";
+      bfAvatarDataUrl = editing ? bot.avatar_data_url || "" : "";
+      bfAvatarDirty = false;
+      bfOriginalTags = editing && Array.isArray(bot.tags) ? bot.tags.slice() : [];
+      document.getElementById("bf-title").textContent = wavegT(editing ? "botEditTitle" : "botCreateTitle");
+      document.getElementById("bc-name").value = editing ? bot.name || "" : "";
+      document.getElementById("bc-tags").value = bfOriginalTags.join(", ");
+      document.getElementById("bc-job").value = editing ? bot.job || "" : "";
+      document.getElementById("bc-desc").value = editing ? bot.description || "" : "";
+      // §2.3: create only asks Name / Job / Description; tags + avatar are profile edits.
+      const tagsRow = document.getElementById("bf-tags-row");
+      const avatarCol = document.getElementById("bf-avatar-col");
+      const tplRow = document.getElementById("bc-tpl-row");
+      if (tagsRow) tagsRow.style.display = editing ? "" : "none";
+      if (avatarCol) avatarCol.style.display = editing ? "" : "none";
+      if (tplRow) tplRow.style.display = editing ? "none" : "";
+      document.getElementById("bc-create").textContent = wavegT(editing ? "commonSave" : "bcCreate");
+      bfStatus("");
+      bfRenderAvatar(editing ? bot.name : "");
+      modal.style.display = "flex";
+      const inp = document.getElementById("bc-name");
+      if (inp) setTimeout(() => inp.focus(), 0);
+    }
     function openBotEditForm(bot) {
-      const form = document.getElementById("bot-create-form");
-      const title = form.querySelector("div");
-      title.textContent = "Edit Bot Profile";
-      document.getElementById("bc-name").value = bot.name || "";
-      document.getElementById("bc-job").value = bot.job || "";
-      document.getElementById("bc-desc").value = bot.description || "";
-      form.dataset.editingBot = bot.id;
-      form.style.display = "block";
+      openBotForm(bot);
+    }
+    function openBotCreateForm() {
+      openBotForm(null);
+    }
+    function closeBotForm() {
+      const modal = document.getElementById("bot-edit-modal");
+      if (modal) modal.style.display = "none";
+      bfEditingId = "";
+      bfAvatarDirty = false;
+    }
+    async function pickBotAvatar() {
+      if (!window.bitbot || !window.bitbot.bots || !window.bitbot.bots.pickAvatar) return;
+      const r = await window.bitbot.bots.pickAvatar().catch(() => null);
+      if (!r || !r.ok) {
+        if (r && !r.canceled) bfStatus(wavegT("avatarInvalid") + ": " + (r.error || "unknown"));
+        return;
+      }
+      bfAvatarPath = r.path || "";
+      bfAvatarDataUrl = r.data_url || "";
+      bfAvatarDirty = true;
+      bfRenderAvatar(document.getElementById("bc-name").value || "B");
+      bfStatus("");
+    }
+    async function saveBotForm() {
+      if (!window.bitbot || !window.bitbot.bots || !window.bitbot.bots.op) return;
+      // §2.3: only spaces become '+' (the Host reverses them). Newlines are
+      // kept so a multi-line Description survives the phrase round-trip.
+      const enc = (s) => String(s || "").replace(/ +/g, "+");
+      const typedName = document.getElementById("bc-name").value.trim();
+      const job = document.getElementById("bc-job").value.trim();
+      const desc = document.getElementById("bc-desc").value.trim();
+      const tagsText = document.getElementById("bc-tags").value.trim();
+      const editing = bfEditingId;
+      // §2.3: a blank name still creates a Bot, named "New Bot" (placeholder).
+      const name = typedName || (editing ? "" : wavegT("defaultBotName"));
+      let phrase;
+      if (editing) {
+        let extra = "";
+        if (tagsText) extra += " tags=" + enc(tagsText);
+        else if (bfOriginalTags.length) extra += " tags=-";
+        if (bfAvatarDirty) extra += " avatar=" + (bfAvatarPath ? enc(bfAvatarPath) : "-");
+        // The kernel reads description to end-of-line, so it must stay last.
+        phrase =
+          "update bot " + editing + " name=" + enc(typedName) + " job=" + enc(job) +
+          extra + " description=" + enc(desc);
+      } else {
+        phrase = "create bot " + enc(name) + " job=" + enc(job) + " description=" + enc(desc);
+      }
+      bfStatus("…");
+      const r = await window.bitbot.bots.op({ phrase }).catch(() => null);
+      if (!r || !r.ok) {
+        const err = (r && (r.error || (r.turn && r.turn.error))) || "unknown";
+        const hint =
+          r && r.host_payload && r.host_payload.error === "invalid_avatar"
+            ? wavegT("avatarInvalid")
+            : err;
+        bfStatus(wavegT("bfFailed") + " · " + hint);
+        addMsg("assistant", wavegT("bfFailed") + ": " + hint);
+        return;
+      }
+      closeBotForm();
+      await refreshBots();
+      if (editing) {
+        addMsg("assistant", wavegT("bfSaved") + " · " + (typedName || name || editing));
+        return;
+      }
+      // §2.3: creating a Bot opens its conversation immediately.
+      const created = (r.host_payload && r.host_payload.bot) || null;
+      let bot = created;
+      if (!bot) {
+        const view = await window.bitbot.bots.list().catch(() => null);
+        const list = (view && view.bots) || [];
+        bot = list.find((x) => x.name === name) || null;
+      }
+      if (bot) {
+        addMsg("assistant", wavegT("botCreatedOpen").replace("{n}", bot.name || name));
+        await selectBotForChat(bot);
+      } else {
+        addMsg("assistant", wavegT("botCreateFailed") + " · " + name);
+      }
     }
 
     const botNewBtn = document.getElementById("bot-new-btn");
     if (botNewBtn) {
-      botNewBtn.addEventListener("click", () => {
-        const form = document.getElementById("bot-create-form");
-        form.dataset.editingBot = "";
-        form.querySelector("div").textContent = "Create new Bot";
-        document.getElementById("bc-name").value = "";
-        document.getElementById("bc-job").value = "";
-        document.getElementById("bc-desc").value = "";
-        form.style.display = form.style.display === "none" ? "block" : "none";
+      botNewBtn.addEventListener("click", () => openBotCreateForm());
+    }
+    const bfClose = document.getElementById("bf-close");
+    if (bfClose) bfClose.addEventListener("click", closeBotForm);
+    const bfModalEl = document.getElementById("bot-edit-modal");
+    if (bfModalEl) {
+      bfModalEl.addEventListener("mousedown", (ev) => {
+        if (ev.target === bfModalEl) closeBotForm();
+      });
+    }
+    const bfAvatarPick = document.getElementById("bf-avatar-pick");
+    if (bfAvatarPick) bfAvatarPick.addEventListener("click", pickBotAvatar);
+    const bfAvatarClear = document.getElementById("bf-avatar-clear");
+    if (bfAvatarClear) {
+      bfAvatarClear.addEventListener("click", () => {
+        bfAvatarPath = "";
+        bfAvatarDataUrl = "";
+        bfAvatarDirty = true;
+        bfRenderAvatar(document.getElementById("bc-name").value || "B");
       });
     }
     const bcCancel = document.getElementById("bc-cancel");
-    if (bcCancel) {
-      bcCancel.addEventListener("click", () => {
-        document.getElementById("bot-create-form").style.display = "none";
-      });
-    }
+    if (bcCancel) bcCancel.addEventListener("click", closeBotForm);
     const bcCreate = document.getElementById("bc-create");
     if (bcCreate) {
-      bcCreate.addEventListener("click", async () => {
-        const name = document.getElementById("bc-name").value.trim();
-        const job = document.getElementById("bc-job").value.trim();
-        const desc = document.getElementById("bc-desc").value.trim();
-        if (!name) {
-          addMsg("assistant", "Bot 需要名称（Name 必填）。");
-          return;
-        }
-        const enc = (s) => String(s || "").replace(/\s+/g, "+");
-        const form = document.getElementById("bot-create-form");
-        const editing = form.dataset.editingBot || "";
-        const phrase = editing
-          ? "update bot " + editing + " name=" + enc(name) + " job=" + enc(job) + " description=" + enc(desc)
-          : "create bot " + enc(name) + " job=" + enc(job) + " description=" + enc(desc);
-        if (!window.bitbot || !window.bitbot.bots || !window.bitbot.bots.op) return;
-        const r = await window.bitbot.bots.op({ phrase });
-        form.style.display = "none";
-        if (r && r.ok) {
-          addMsg("assistant", (editing ? "Bot 已更新（intent=" + r.intent + "）" : "Bot「" + name + "」已创建（intent=" + r.intent + "）· 打开对话即可交办任务"));
-          await refreshBots();
-        } else {
-          const err = (r && (r.error || (r.turn && r.turn.error))) || "unknown";
-          addMsg("assistant", "Bot 操作失败: " + err);
+      bcCreate.addEventListener("click", () => {
+        saveBotForm().catch((e) => bfStatus(String(e && e.message ? e.message : e)));
+      });
+    }
+    const bcName = document.getElementById("bc-name");
+    if (bcName) {
+      bcName.addEventListener("input", () => {
+        if (!bfAvatarDataUrl) bfRenderAvatar(bcName.value || "B");
+      });
+      bcName.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          saveBotForm().catch(() => {});
         }
       });
     }
@@ -7985,6 +8461,37 @@
         mkUse: "使用",
         roomEmpty: "还没有群组。",
         roomMembers: "位成员",
+        sessSearchPh: "搜索会话",
+        sessToday: "今天",
+        sessYesterday: "昨天",
+        sessEarlier: "更早",
+        sessNoMatch: "没有匹配的会话",
+        sessRename: "重命名",
+        sessDelete: "删除",
+        sessRenameTitle: "重命名会话",
+        sessDeleteTitle: "删除会话",
+        sessDeleteWarn: "删除后不可恢复：该会话的对话记录会从本机移除。",
+        commonSave: "保存",
+        commonCancel: "取消",
+        commonDelete: "删除",
+        botEditTitle: "编辑资料",
+        botCreateTitle: "新建 Bot",
+        bfName: "名称",
+        bfTags: "标签",
+        bfJob: "职责",
+        bfDesc: "描述",
+        bfNamePh: "名称（如 Piper）",
+        bfTagsPh: "标签（逗号分隔，如 perf, research）",
+        bfAvatar: "头像",
+        bfPickAvatar: "选择图片",
+        bfClearAvatar: "移除头像",
+        bfDescHint: "描述支持多行：工作方式 / 工具 / 输出格式 / 安全边界 / 审批要求。",
+        bfSaved: "资料已保存",
+        bfFailed: "保存失败",
+        defaultBotName: "New Bot",
+        avatarInvalid: "头像路径无效（Host 拒绝，未保存头像）",
+        botCreatedOpen: "已创建「{n}」并打开对话",
+        botCreateFailed: "创建失败",
         advanced: "高级 · Agents / Teammates",
         settings: "设置",
         settingsGeneral: "常规",
@@ -8300,6 +8807,37 @@
         mkUse: "使用",
         roomEmpty: "還沒有群組。",
         roomMembers: "位成員",
+        sessSearchPh: "搜尋會話",
+        sessToday: "今天",
+        sessYesterday: "昨天",
+        sessEarlier: "更早",
+        sessNoMatch: "沒有符合的會話",
+        sessRename: "重新命名",
+        sessDelete: "刪除",
+        sessRenameTitle: "重新命名會話",
+        sessDeleteTitle: "刪除會話",
+        sessDeleteWarn: "刪除後無法復原：此會話的對話記錄會從本機移除。",
+        commonSave: "儲存",
+        commonCancel: "取消",
+        commonDelete: "刪除",
+        botEditTitle: "編輯資料",
+        botCreateTitle: "新增 Bot",
+        bfName: "名稱",
+        bfTags: "標籤",
+        bfJob: "職責",
+        bfDesc: "描述",
+        bfNamePh: "名稱（如 Piper）",
+        bfTagsPh: "標籤（逗號分隔，如 perf, research）",
+        bfAvatar: "頭像",
+        bfPickAvatar: "選擇圖片",
+        bfClearAvatar: "移除頭像",
+        bfDescHint: "描述支援多行：工作方式 / 工具 / 輸出格式 / 安全邊界 / 審批要求。",
+        bfSaved: "資料已儲存",
+        bfFailed: "儲存失敗",
+        defaultBotName: "New Bot",
+        avatarInvalid: "頭像路徑無效（Host 拒絕，未儲存頭像）",
+        botCreatedOpen: "已建立「{n}」並開啟對話",
+        botCreateFailed: "建立失敗",
         advanced: "進階 · Agents / Teammates",
         settings: "設定",
         settingsGeneral: "一般",
@@ -8615,6 +9153,37 @@
         mkUse: "Use",
         roomEmpty: "No groups yet.",
         roomMembers: "members",
+        sessSearchPh: "Search chats",
+        sessToday: "Today",
+        sessYesterday: "Yesterday",
+        sessEarlier: "Earlier",
+        sessNoMatch: "No matching chats",
+        sessRename: "Rename",
+        sessDelete: "Delete",
+        sessRenameTitle: "Rename chat",
+        sessDeleteTitle: "Delete chat",
+        sessDeleteWarn: "This cannot be undone: the chat transcript is removed from this machine.",
+        commonSave: "Save",
+        commonCancel: "Cancel",
+        commonDelete: "Delete",
+        botEditTitle: "Edit Profile",
+        botCreateTitle: "Create new Bot",
+        bfName: "Name",
+        bfTags: "Tags",
+        bfJob: "Job",
+        bfDesc: "Description",
+        bfNamePh: "Name (e.g. Piper)",
+        bfTagsPh: "Tags (comma separated, e.g. perf, research)",
+        bfAvatar: "Avatar",
+        bfPickAvatar: "Choose image",
+        bfClearAvatar: "Remove avatar",
+        bfDescHint: "Multi-line description: tools / output format / safety boundaries / approvals.",
+        bfSaved: "Profile saved",
+        bfFailed: "Save failed",
+        defaultBotName: "New Bot",
+        avatarInvalid: "Invalid avatar path (Host refused it; nothing was saved)",
+        botCreatedOpen: "Created \"{n}\" and opened its chat",
+        botCreateFailed: "Create failed",
         advanced: "Advanced · Agents / Teammates",
         settings: "Settings",
         settingsGeneral: "General",

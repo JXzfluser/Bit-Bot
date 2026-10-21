@@ -928,6 +928,74 @@ fi
 echo "  · G-24 说明：本块用真实 CLI Host + product_surface 建/删 Bot 与群组，断言读的是 DM 顺序、rooms.json、bot-templates.json 与 host_results，另加一条负向对照（关掉 saveBots 后活动排序断言变红）"
 
 
+echo "== G-25 Bot 资料管理与创建流程（M25：§2.2 Edit Profile / §2.3 创建流程 / 会话列表）=="
+if timeout 900 node scripts/prove_m25_profile.js > /tmp/g25-probe.log 2>&1; then
+  ok "G-25 Bot 资料与创建流程契约全绿（$(grep -c '✓' /tmp/g25-probe.log) 项，$(tail -1 /tmp/g25-probe.log)）"
+else
+  bad "G-25 Bot 资料与创建流程契约（见 /tmp/g25-probe.log）"
+fi
+grep -q "新增 31 个文案在 zh-CN / zh-TW / en 三套 i18n 里齐全" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 i18n：Edit/Create 对话框与会话分组文案三语齐全（同一屏不混语言）" \
+  || bad "G-25 i18n keys missing"
+grep -q "渲染层短语 \`create bot New+Bot" /tmp/g25-probe.log 2>/dev/null \
+  && grep -q "内核 → Host 建出 \"New Bot\"" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 GP-121：空名创建经内核 → Host 落成 \"New Bot\"（占位名不是渲染层假字）" \
+  || bad "G-25 GP-121 placeholder missing"
+grep -q "Description 多行文本原样落盘（换行不丢）" /tmp/g25-probe.log 2>/dev/null \
+  && grep -q "Description 是多行 textarea" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 GP-121：Description 多行输入与多行落盘（换行不被压平）" \
+  || bad "G-25 GP-121 multiline missing"
+grep -q "\`update bot … tags=…\` 真写进 bots.json（名称/职责/描述/标签）" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 GP-120：Edit Profile 的 名称/标签/描述 经内核 tags= → Host 真落盘" \
+  || bad "G-25 GP-120 update persist missing"
+grep -q "\`tags=-\` / \`avatar=-\` 明确清空（与省略字段=保持不变区分开）" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 GP-120：省略字段 = 保持不变，\`-\` = 显式清空（两种语义不混）" \
+  || bad "G-25 GP-120 clear-vs-omit missing"
+grep -q "头像路径存在 → 保存并把图片读回 data URL（GP-122）" /tmp/g25-probe.log 2>/dev/null \
+  && grep -q "不存在的头像路径被 Host 拒绝（invalid_avatar），旧头像保持不变" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 GP-122：头像路径 → data URL 渲染；坏路径被 Host 拒且旧头像保留" \
+  || bad "G-25 GP-122 avatar validation missing"
+grep -q "侧栏 Bot 行 / 标题 pill 使用真实头像图" /tmp/g25-probe.log 2>/dev/null \
+  && grep -q "创建成功后自动打开该 Bot 的对话" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 GP-121/122：头像在侧栏与标题 pill 显示；创建后自动进入该 Bot 对话" \
+  || bad "G-25 GP-121/122 avatar-render/auto-open missing"
+grep -q "会话按 updated_at 分 今天 / 昨天 / 更早（不是假分组）" /tmp/g25-probe.log 2>/dev/null \
+  && grep -q "重命名 / 删除接到已存在的 Host IPC" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 GP-123：今天/昨天/更早分组 + 搜索 + 重命名/删除走既有 Host IPC" \
+  || bad "G-25 GP-123 session list missing"
+grep -q "bots:op 把 Host 的拒绝也算作失败（不会绿着返回却没保存）" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 GP-120：Host 拒绝的 effect 让 bots.op 返回 ok:false（不假装保存成功）" \
+  || bad "G-25 GP-120 refused-effect masking"
+grep -q "sessions.rename 真改标题" /tmp/g25-probe.log 2>/dev/null \
+  && grep -q "sessions.delete 真删会话并要求 Host 重选 active" /tmp/g25-probe.log 2>/dev/null \
+  && ok "G-25 GP-123：rename/delete 改动落在 sessions.json（active 由 Host 重选）" \
+  || bad "G-25 GP-123 session store missing"
+if [ -f /tmp/e2e-g16.log ]; then
+  grep -q "E2E GP-121：Name 留空 → Host 真建出 \"New Bot\"" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-121：多行 Description 原样保存" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-121：创建完成后自动打开该 Bot 的对话" /tmp/e2e-g16.log \
+    && ok "G-25 真实 Electron：空名 → \"New Bot\"、多行 Description 保真、创建后自动打开对话" \
+    || bad "G-25 E2E create flow missing"
+  grep -q "E2E GP-120：编辑资料预填真实名称，并显示 标签 / 头像 字段" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-120：改名 + 标签真写进 bots.json" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-120：侧栏行立即同步新名称与标签" /tmp/e2e-g16.log \
+    && ok "G-25 真实 Electron：Edit Profile 预填 → 改名+标签落盘 → 侧栏立即同步" \
+    || bad "G-25 E2E edit profile missing"
+  grep -q "E2E GP-122：保存的头像被侧栏渲染成真实 <img>" /tmp/e2e-g16.log \
+    && ok "G-25 真实 Electron：保存的头像在侧栏渲染为真实 <img>（data URL）" \
+    || bad "G-25 E2E avatar img missing"
+  grep -q "E2E GP-123：会话列表按 今天/昨天/更早 分组" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-123：搜索框实时过滤" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-123：重命名真写进 sessions.json" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-123：确认删除后会话从 sessions.json 与侧栏一起消失" /tmp/e2e-g16.log \
+    && ok "G-25 真实 Electron：分组/搜索/重命名/删除全部打到真实 store 与 DOM" \
+    || bad "G-25 E2E session list missing"
+else
+  echo "  · skip：/tmp/e2e-g16.log 不存在（E2E 未在本轮运行）"
+fi
+echo "  · G-25 说明：本块用真实 CLI 内核 + Host product_surface 跑 create/update bot 与 sessions rename/delete，断言读 bots.json / sessions.json / listViews() 的 avatar_data_url；负向对照为关掉 tags 归一化后 3 条变红"
+
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

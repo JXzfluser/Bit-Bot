@@ -23482,7 +23482,7 @@ function createHostFfi(repoRoot) {
           continue;
         }
         const args = parseWaveGCommand(cmd);
-        const res = surface.updateBot({ bot_id: args.bot, name: args.name, job: args.job, description: args.description, avatar: args.avatar });
+        const res = surface.updateBot({ bot_id: args.bot, name: args.name, job: args.job, description: args.description, avatar: args.avatar, tags: args.tags });
         results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
         continue;
       }

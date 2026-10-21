@@ -1323,12 +1323,25 @@ test "desktop_turn_wave_g_bot_lifecycle_kinds" {
   )
 
   let r2 = run_desktop_turn(
-    "update bot bot-1 name=Piper+Jr job=Perf description=Keep+voice",
+    "update bot bot-1 name=Piper+Jr job=Perf tags=perf,+research avatar=/tmp/a.png description=Keep+voice",
     turn_id="wg-2",
   )
   assert_eq(r2.intent, "update_bot")
   assert_eq(r2.effects[0].kind, "bot_update")
   assert_true(r2.effects[0].command.contains("bot=bot-1"))
+  assert_true(r2.effects[0].command.contains("tags=perf,+research"))
+  assert_true(r2.effects[0].command.contains("avatar=/tmp/a.png"))
+  // Omitting tags must not emit an empty `tags=` field (Host keeps them).
+  let r2b = run_desktop_turn(
+    "update bot bot-1 name=Piper+Jr job=Perf description=Keep+voice",
+    turn_id="wg-2b",
+  )
+  assert_true(r2b.effects[0].command.contains("job=Perf"))
+  assert_true(r2b.effects[0].command.contains("description=Keep+voice"))
+  assert_false(r2b.effects[0].command.contains("tags="))
+  // `tags=-` is the explicit "clear tags" signal.
+  let r2c = run_desktop_turn("update bot bot-1 tags=-", turn_id="wg-2c")
+  assert_true(r2c.effects[0].command.contains("tags=-"))
 
   let r3 = run_desktop_turn("duplicate bot bot-1", turn_id="wg-3")
   assert_eq(r3.intent, "duplicate_bot")

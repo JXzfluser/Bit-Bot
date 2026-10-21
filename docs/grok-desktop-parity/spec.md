@@ -176,8 +176,17 @@
 |----|----------|----------|----------|
 | GP-116 | 左侧边栏 = **Bot 列表 + 群组列表 + 隐藏 Bot 入口 + Connect apps + Marketplace + Settings** | `#agents` 内：`#bot-list`（Bot）、`#room-list`（群组，读 `rooms.json`）、`#hidden-bots-lab`、`#connect-apps-btn`、`#marketplace-btn`（Bot 模板市场，读 `bot_templates_list`）、`#sidebar-settings-btn`；底部顺序固定（列表 → Hidden → Connect apps → Marketplace → Settings） | 六类入口都在 DOM 中且顺序正确；点 Marketplace 打开模板市场面板，模板来自 Host 目录而不是写死数组 |
 | GP-117 | Bot 列表**按活动排序**，置顶 Bot 固定在最上方 | `listViews()` 排序：`pinned` 优先，其次 `updated_at` 降序；`product_surface.touchBotActivity(bot_id)` 在每次真实回合落盘后刷新该 Bot 的 `updated_at`（未知 id 拒绝、不造行），随后 main 广播 `bitbot:bots-changed` 让侧栏即时重排 | 给 A/B 各发一条消息后，最近活跃的排在前；置顶的 Bot 永远在最上面，即使它很旧；未知 bot id → `bot_not_found` 且不新增行 |
-| GP-118 | 隐藏 Bot 入口位于侧边栏**底部** | `#agents` 为纵向 flex：`#bot-list`/`#room-list`/`#session-list` 各自就地滚动（`flex:1 1 auto; overflow-y:auto`），`#sidebar-footer`（Hidden Bots / Connect apps / Marketplace / Settings）`flex:0 0 auto` 固定在列尾，不夹在列表中间 | 侧边栏尾部区块的 DOM 顺序断言；**70+ Bot / 30+ 群组时 footer 仍在可视区内**（`footer.bottom <= agents.bottom`）且三个列表 `scrollHeight > clientHeight`；隐藏数量徽标随 `bot_hide/unhide` 更新 |
+| GP-118 | 隐藏 Bot 入口位于侧边栏**底部** | `#agents` 是**一整列滚动容器**（`overflow-y:auto; padding:0 12px`），Bot/群组/会话三个列表保持自然高度（`min-height:0; overflow:visible`，不再各开滚动条）；`#sess-new`（新对话）`position:sticky; top:0` 常驻列首，`#sidebar-footer`（Hidden Bots / Connect apps / Marketplace / Settings）`position:sticky; bottom:0` 常驻列尾，不随列表滚走 | 侧边栏尾部区块的 DOM 顺序断言；**长列表（70+ Bot / 30+ 群组）时 `#agents` 自身 `scrollHeight > clientHeight`，footer 与「新对话」按钮仍各自贴住列尾/列首且在 `#agents` 可视矩形内**；隐藏数量徽标随 `bot_hide/unhide` 更新 |
 | GP-119 | 中央区域是当前**对话/群聊**消息流；右侧面板可选（对话详情 / Bot 设置 / Computer 预览） | `#log` 是唯一消息流容器；群聊回合在同一 `#log` 渲染（房间 transcript 卡）；右侧 `#machines`（工具）与 `#computer-rail`（Computer 预览）互不遮挡，`body.tools-open` / `body.computer-open` 各自独立开合 | 打开 Computer 预览后中央消息流宽度不被挤为 0；群聊回合落进 `#log` 而不是另开窗口 |
+
+## G-21 Bot 资料管理与创建流程（官方 spec §2.2–§2.3）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-120 | **Edit Profile** 编辑 名称 / 标签 / 描述 / 头像；头像在侧边栏与对话中显示 | 侧栏 Bot 行右键菜单 →「Edit Profile」→ `#bot-edit-modal`（`bc-name` / `bc-tags` / `bc-job` / `bc-desc` 多行 / `bf-avatar-pick`）；保存时拼 `update bot <id> name=… job=…[ tags=…][ avatar=…] description=…`，空格编码为 `+`。内核 `UpdateBot(bot_id~, name~, job~, description~, avatar~, tags~)` **可选 tags**：为空不产出 `tags=` 字段（Host 理解为「不改」），`tags=-` / `avatar=-` 为显式清空；Host `botsUpdate` 归一化 `normalizeTags`（≤8 条）并把头像路径转 `avatar_data_url`（≤512KB，按扩展名取 mime，失败返回 ""） | `bots.json` 落盘 name/job/description/tags；重开对话框字段回填；侧栏行 `.name`/`.meta`（`· #tag` chips）即刻更新；`avatar_data_url` 以 `data:image/…;base64,` 出现在 `listViews()` 且侧栏/左下 Bot 胶囊渲染 `<img>`；不存在/超大路径 → Host 拒 `invalid_avatar`，旧头像保留 |
+| GP-121 | 创建 Bot：Name / Job / Description（多行，含工具、输出格式、安全边界、审批要求）；**创建后自动生成 "New Bot" 占位名**；**创建完成后自动打开对话** | `#bot-new-btn` / `Cmd/Ctrl+N` → `#bot-edit-modal` 创建态（隐藏 Tags 行与头像列、显示模板 chips）；名称为空 → Host `botsCreate` 用 `New Bot`；`description` 原样透传（`enc()` 只把空格换成 `+`，换行保留）；成功后读 `host_payload.bot` 立即 `refreshBots()` 并 `selectBotForChat(created)` 切到该 Bot 的会话 | 空名创建 → `bots.json` 名称 `New Bot`；多行 Description 原样落盘（含 `\n`）；创建后 `#bot-pill .bot-pill-name` = 新 Bot 名且会话已切到它；Host 拒绝时（`ok:false`）对话框保持打开并显示失败原因，不当成功 |
+| GP-122 | 头像 = **上传自定义头像**（照片选择） | main 新增 IPC `bitbot:bots:pickAvatar`（`dialog.showOpenDialog` 限 png/jpg/jpeg/webp/gif，`statSync` 拦 >2MB → `avatar_too_large`，返回 `{path,data_url}`）；preload 暴露 `bots.pickAvatar()`；对话框预览在 `bf-avatar-preview`，可清空（提交 `avatar=-`） | E2E 直接经 IPC 走同一条 Host 校验路径后 `refreshBots()`，侧栏 `.sess-avatar img` / Bot 胶囊头像出现；无 X 显示环境时不会自动弹系统框（E2E 用 IPC 覆盖，弹框本身按 residual 记） |
+| GP-123 | 侧栏会话组织：**今天 / 昨天 / 更早** 分组；可搜索、重命名、删除会话 | `renderSessionList()` 按 `sessDayBucket(updated_at)`（本地零点）分 `.sess-group`；`#session-search` 过滤标题+预览（空结果给 `sessNoMatch` 空态）；行双击 → `#session-rename-modal`（`sessions.rename`），右键 →「重命名 / 删除」，删除走 `#session-delete-modal`（显式写会话名 + `sessions.delete`），之后重选活动会话并重载 transcript | 分组标题顺序为 今天 → 昨天 → 更早；搜索 `xyz` → 0 行且空态可见，清空恢复原行数；重命名后 `sessions.json` 与侧栏行标题同时变；删除后该 id 从 `sessions.json` 与侧栏同时消失，当前会话回退到剩余会话 |
 
 ## 诚实残留（本波不假装）
 
@@ -187,3 +196,5 @@
 - 系统浏览器真启动（GP-94）：沙箱内 `shell.openExternal` 依赖 `xdg-open`/默认浏览器，E2E 用 `BITBOT_LINKS_RECORD_PATH` 记录到达 open 入口的 URL 并保持 `opened:false` + 抑制原因——已证明的是 scheme 门、路由与审计，不宣称真能拉起浏览器（需带桌面环境的机器复核）。
 
 - Teach a task 真录屏转 Skill：本波提供"录制会话→生成 Skill 草稿"的本地实现（键盘/鼠标事件采集在 xvfb 下可用则采集，否则要求用户粘贴步骤），草稿态必须人工确认，符合官方"需手动补决策规则/失败处理/审批边界"。
+- Bot 头像的**系统文件选择框**：`bitbot:bots:pickAvatar` 已接 `dialog.showOpenDialog`，但无 X/桌面环境时弹框不可自动化；E2E 走同一 IPC 之后的 Host 校验路径（写入路径→`avatar_data_url`）证明的是「选好的路径能被真实校验、落盘与渲染」，不宣称沙箱内能自动点系统框。
+- Bot 资料里的**"标签"是本地自由文本**（`≤8` 条，逗号分隔），没有团队目录/权限语义；官方文档只写明标签用于标识，不假装有多租户含义。

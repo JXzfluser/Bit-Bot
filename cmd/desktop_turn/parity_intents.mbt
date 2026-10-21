@@ -2353,8 +2353,12 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
       Some(v) => v.trim().to_owned()
       None => ""
     }
+    let tags = match extract_kv(rest, "tags") {
+      Some(v) => v.trim().to_owned()
+      None => ""
+    }
     if bot_id != "" {
-      return Some(UpdateBot(bot_id~, name~, job~, description~, avatar~))
+      return Some(UpdateBot(bot_id~, name~, job~, description~, avatar~, tags~))
     }
   }
   if low.has_prefix("duplicate bot ") {

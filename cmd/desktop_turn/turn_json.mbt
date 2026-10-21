@@ -193,7 +193,8 @@ pub(all) enum TurnIntent {
     name~ : String,
     job~ : String,
     description~ : String,
-    avatar~ : String
+    avatar~ : String,
+    tags~ : String
   )
   DuplicateBot(bot_id~ : String)
   PinBot(bot_id~ : String, pinned~ : Bool)
@@ -1110,7 +1111,7 @@ fn extract_kv(rest : String, key : String) -> String? {
         " scope=", " key=", " value=", " group=", " section=", " provider=", " entry=",
         " anchor=", " agent=", " confirm=", " via=", " pm=", " pkgs=", " packages=",
         " group=", " hidden=", " assistant=", " toggle=", " enabled=", " confirm=",
-        " bots=", " job=", " avatar=", " pattern=", " decision=", " mode=", " code=",
+        " bots=", " job=", " avatar=", " tags=", " pattern=", " decision=", " mode=", " code=",
         " tz=", " reason=", " kind=", " ns=", " tool=", " detail=", " msg=", " message=",
         " emoji=", " task=",
       ]
@@ -5025,7 +5026,15 @@ pub fn run_desktop_turn(
         needs_host_ffi=true,
       )
     }
-    UpdateBot(bot_id~, name~, job~, description~, avatar~) => {
+    UpdateBot(bot_id~, name~, job~, description~, avatar~, tags~) => {
+      // §2.2 Edit Profile carries 名称 / 标签 / 描述 / 头像. Tags are optional:
+      // omitting them (empty string) must not emit a stray `tags=` field, so the
+      // Host can distinguish "leave unchanged" from "clear" (tags=-).
+      let tags_cmd = if tags == "" {
+        ""
+      } else {
+        " tags=" + encode_field_value(tags)
+      }
       let effect : DesktopEffect = {
         kind: "bot_update",
         command: "bot=" +
@@ -5036,6 +5045,7 @@ pub fn run_desktop_turn(
         encode_field_value(job) +
         " avatar=" +
         avatar +
+        tags_cmd +
         " description=" +
         encode_field_value(description),
         needs_host_ffi: true,
