@@ -1176,6 +1176,34 @@ grep -q "负向对照：禁用缩略图生成后 data_url 退化 null" /tmp/g30-
   && ok "G-30 负向对照：砍掉缩略图生成后断言变红（断言非恒真）" \
   || bad "G-30 negative control missing"
 
+echo "== G-31 消息反应 React（M31：§5.1 验收信号）=="
+if timeout 900 node scripts/prove_m31_reactions.js > /tmp/g31-probe.log 2>&1; then
+  ok "G-31 消息反应契约全绿（$(grep -c '✓' /tmp/g31-probe.log) 项，$(tail -1 /tmp/g31-probe.log)）"
+else
+  bad "G-31 消息反应契约（见 /tmp/g31-probe.log）"
+fi
+grep -q "hover「反应」按钮 + 6 emoji picker" /tmp/g31-probe.log 2>/dev/null \
+  && ok "G-31 GP-§5.1：hover 反应按钮 + 6 emoji picker（与 Reply 同一条 msg-actions）" \
+  || bad "G-31 react affordance missing"
+grep -q "chips 从 store 行渲染" /tmp/g31-probe.log 2>/dev/null \
+  && ok "G-31 GP-§5.1：chips 从 store 行渲染，点击 chip 走同一 IPC 撤销" \
+  || bad "G-31 reaction chips missing"
+grep -q "transcript 重载把 reactions 传给 addMsg" /tmp/g31-probe.log 2>/dev/null \
+  && ok "G-31 GP-§5.1：transcript 重载把 reactions 传给 addMsg（重载不丢反应）" \
+  || bad "G-31 transcript passthrough missing"
+grep -q "IPC bitbot:sessions:react + preload sessions.react" /tmp/g31-probe.log 2>/dev/null \
+  && ok "G-31 GP-§5.1：IPC bitbot:sessions:react + preload 全链暴露" \
+  || bad "G-31 IPC wiring missing"
+grep -q "reactAction 文案在 zh-CN / zh-TW / en 三套 i18n 齐全" /tmp/g31-probe.log 2>/dev/null \
+  && ok "G-31 GP-§5.1：reactAction 三语 i18n 齐全" \
+  || bad "G-31 i18n missing"
+grep -q "sessions.react 落在 sessions store" /tmp/g31-probe.log 2>/dev/null \
+  && ok "G-31 GP-§5.1：sessions.react 落在 sessions store（单一事实源）" \
+  || bad "G-31 store react missing"
+grep -q "负向对照：禁用 save 后反应不落盘" /tmp/g31-probe.log 2>/dev/null \
+  && ok "G-31 负向对照：砍掉 save(state) 后反应不落盘（断言非恒真）" \
+  || bad "G-31 negative control missing"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

@@ -742,6 +742,15 @@ ipcMain.handle("bitbot:sessions:delete", async (_e, id) => {
   broadcast("bitbot:sessions-changed", sessions.list());
   return r;
 });
+// GP-M31 (§5.1 消息反应): toggle a reaction on a stored message. No
+// sessions-changed broadcast — the renderer applies the returned reactions
+// in place, and a reload reads the same store rows.
+ipcMain.handle("bitbot:sessions:react", async (_e, payload) => {
+  const p = payload || {};
+  return sessions.react
+    ? sessions.react(p.session_id, p.message_id, p.emoji, p.on)
+    : { ok: false, error: "react unsupported" };
+});
 
 /* ------------------------------------------------------------------ *
  * Wave G — Grok desktop parity product surface IPC.

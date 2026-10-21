@@ -1052,6 +1052,24 @@
     cursor: pointer;
   }
   .msg .msg-actions button:hover { color: var(--ink); border-color: var(--accent); }
+  /* GP-M31 (§5.1 消息反应): chips under the bubble come from the store row;
+     the picker is a fixed 6-emoji set (no emoji-picker dependency). */
+  .msg .msg-reactions {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+  }
+  .msg .reaction-chip {
+    border: 1px solid var(--line); background: var(--accent-soft); color: var(--ink);
+    border-radius: 999px; padding: 1px 8px; font-size: 11px; cursor: pointer;
+  }
+  .msg .reaction-chip:hover { border-color: var(--accent); }
+  .msg .reaction-picker {
+    display: inline-flex; gap: 2px; margin-top: 4px;
+    background: var(--bg1); border: 1px solid var(--line); border-radius: 8px; padding: 3px 5px;
+  }
+  .msg .reaction-picker button {
+    border: 0; background: none; font-size: 15px; cursor: pointer; padding: 2px 3px; border-radius: 4px;
+  }
+  .msg .reaction-picker button:hover { background: var(--accent-soft); }
   .msg-reply-quote {
     border-left: 3px solid var(--accent);
     background: var(--accent-soft);
@@ -3154,6 +3172,8 @@
         el.insertBefore(q, el.firstChild);
       }
       if (opts && opts.mid) el.dataset.mid = String(opts.mid);
+      // GP-M31: reactions restored from the store row (reload-safe).
+      if (opts && opts.reactions) renderReactions(el, opts.reactions);
       // GP-14: Reply affordance on every bubble that has a durable store id.
       if (opts && opts.mid && opts.actions !== false) attachMessageActions(el, role, text);
       log.appendChild(el);
@@ -3163,6 +3183,39 @@
 
     // GP-14: "Reply 回复特定消息" — hover actions per message; the target's store
     // id is what goes to the kernel, not a copy of its text.
+    // GP-M31 (§5.1 消息反应): chips come from the store rows (per-emoji
+    // counter); clicking a chip removes one reaction via the same IPC.
+    function renderReactions(el, reactions) {
+      const old = el.querySelector(".msg-reactions");
+      if (old) old.remove();
+      const entries = Object.entries(reactions || {}).filter(
+        ([e, n]) => e && Number(n) > 0,
+      );
+      if (!entries.length) return;
+      const row = document.createElement("div");
+      row.className = "msg-reactions";
+      for (const [emo, n] of entries) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "reaction-chip";
+        chip.textContent = emo + " " + n;
+        chip.addEventListener("click", () => {
+          toggleMessageReaction(el, emo, false).catch(() => {});
+        });
+        row.appendChild(chip);
+      }
+      const bar = el.querySelector(".msg-actions");
+      if (bar) el.insertBefore(row, bar);
+      else el.appendChild(row);
+    }
+    async function toggleMessageReaction(el, emoji, on) {
+      const mid = String(el.dataset.mid || "");
+      if (!mid || !window.bitbot || !window.bitbot.sessions || !window.bitbot.sessions.react) return;
+      const r = await window.bitbot.sessions
+        .react(activeSessionId, mid, emoji, on)
+        .catch(() => null);
+      if (r && r.ok) renderReactions(el, r.reactions);
+    }
     function attachMessageActions(el, role, text) {
       const bar = document.createElement("div");
       bar.className = "msg-actions";
@@ -3178,6 +3231,32 @@
         });
       });
       bar.appendChild(rb);
+      // GP-M31: react affordance next to Reply on every durable bubble.
+      const rct = document.createElement("button");
+      rct.type = "button";
+      rct.dataset.i18n = "reactAction";
+      rct.textContent = wavegT("reactAction");
+      rct.addEventListener("click", () => {
+        const existing = el.querySelector(".reaction-picker");
+        if (existing) {
+          existing.remove();
+          return;
+        }
+        const picker = document.createElement("span");
+        picker.className = "reaction-picker";
+        for (const emo of ["👍", "❤️", "😂", "🎉", "😮", "😢"]) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = emo;
+          b.addEventListener("click", () => {
+            picker.remove();
+            toggleMessageReaction(el, emo, true).catch(() => {});
+          });
+          picker.appendChild(b);
+        }
+        el.appendChild(picker);
+      });
+      bar.appendChild(rct);
       el.appendChild(bar);
     }
 
@@ -4381,6 +4460,8 @@
           mid: m.id || "",
           replyTo: m.reply_to || "",
           replyToText: m.reply_to && byId[m.reply_to] ? byId[m.reply_to].text : "",
+          // GP-M31: reactions restored from the same store row.
+          reactions: m.reactions || null,
         });
       }
       // G-23: keep the conversation-details rail in sync with the store.
@@ -9053,6 +9134,7 @@
         rHandoffFail: "任务转交被拒：{reason}（未写入群 transcript，Bot 不会假装接手）。",
         attachTooMany: "附件被拒绝：一次最多 6 个（GP-11）。",
         replyAction: "回复",
+        reactAction: "反应",
         replyQuoting: "回复：",
         replyCancel: "取消",
         secretCardTitle: "安全密钥输入",
@@ -9433,6 +9515,7 @@
         rHandoffFail: "任務轉交被拒：{reason}（未寫入群 transcript，Bot 不會假裝接手）。",
         attachTooMany: "附件被拒絕：一次最多 6 個（GP-11）。",
         replyAction: "回覆",
+        reactAction: "反應",
         replyQuoting: "回覆：",
         replyCancel: "取消",
         secretCardTitle: "安全密鑰輸入",
@@ -9813,6 +9896,7 @@
         rHandoffFail: "Task handoff refused: {reason} (nothing written to the room transcript; no bot pretends to have taken it).",
         attachTooMany: "Attachment refused: max 6 files per send (GP-11).",
         replyAction: "Reply",
+        reactAction: "React",
         replyQuoting: "Replying to: ",
         replyCancel: "Cancel",
         secretCardTitle: "Secure secret input",

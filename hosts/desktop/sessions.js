@@ -228,6 +228,32 @@ function createSessionStore(repoRoot) {
     return { ok: true, active_id: state.active_id, removed: want };
   }
 
+  // GP-M31 (§5.1 消息反应): toggle a reaction on a stored message. The store
+  // is the single source of truth (single-user desktop → per-emoji counter);
+  // reload renders the same chips from these rows.
+  function react(sessionId, messageId, emoji, on) {
+    const sid = String(sessionId || "").trim();
+    const mid = String(messageId || "").trim();
+    const emo = String(emoji || "").trim();
+    if (!sid || !mid || !emo) return { ok: false, error: "invalid_reaction" };
+    if (Array.from(emo).length > 8) return { ok: false, error: "invalid_reaction" };
+    const want = on !== false;
+    const state = load();
+    const sess = (state.sessions || []).find((s) => s && s.id === sid);
+    if (!sess) return { ok: false, error: "session_not_found", session_id: sid };
+    const hit = (sess.messages || []).find((m) => m && String(m.id) === mid);
+    if (!hit) return { ok: false, error: "message_not_found", message_id: mid };
+    if (!hit.reactions || typeof hit.reactions !== "object" || Array.isArray(hit.reactions)) {
+      hit.reactions = {};
+    }
+    const cur = Number(hit.reactions[emo]) || 0;
+    const next = cur + (want ? 1 : -1);
+    if (next > 0) hit.reactions[emo] = next;
+    else delete hit.reactions[emo];
+    save(state);
+    return { ok: true, id: mid, session_id: sid, reactions: hit.reactions };
+  }
+
   return {
     storePath,
     list,
@@ -239,6 +265,7 @@ function createSessionStore(repoRoot) {
     activeId,
     rename,
     remove,
+    react,
   };
 }
 

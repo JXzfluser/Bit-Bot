@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M30 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=222 FAIL=0；`moon test` 381/381（M26–M30 未改内核）；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M31 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=229 FAIL=0；`moon test` 381/381（M26–M31 未改内核）；`scripts/prove_m31_reactions.js` 17/0；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -58,6 +58,8 @@
 | GP-129 | 已实现 | 详情面板内重命名真写 sessions.json 且面板标题随动；删除会话后面板自动关闭且行消失。见 Wave M27。 |
 | GP-130 | 已实现 | §7.1 每次真实模型调用计入用量：`executeLlmChat` 双路径提取 provider usage（流式最终 chunk / 非流式顶层），emit `phase:"usage"` → main.js 写 `recordUsage` → `llm-usage.json` 按周按 provider/model 累加；未上报时 requests 真记、tokens 不伪造。见 Wave M28。 |
 | GP-131 | 已实现 | Usage & Billing 面板 per-provider/model 明细行 + 周合计，读真 store；空态不造 0；未上报 tokens 的行如实标注。见 Wave M28。 |
+| GP-132 | 已实现 | §5.1 附件发送前预览：chip 预览真实字节——图片缩略图来自磁盘（data-URL base64）、非图片 kind+体积徽标、缺失/空路径诚实拒绝。见 Wave M30。 |
+| GP-133 | 已实现 | §5.1 消息反应 (React)：hover 反应按钮 + 6 emoji picker（👍❤️😂🎉😮😢），chips 从 store 行渲染，点击 chip 走同一 IPC 撤销；transcript 重载把 reactions 传给 addMsg；IPC `bitbot:sessions:react` + preload `sessions.react` 全链暴露；sessions store `react(sessionId, messageId, emoji, on)` 单一事实源。见 Wave M31。 |
 | GP-37 | 残留 | `route_traffic` 开关持久 + UI 显示真实生效状态；真代理生效不可达 → renderer 显示 honest residual 文案。 |
 | GP-40/41 | 已实现 | 草稿卡（New Email / New Slack Message）可编辑，Send→真实 approved 回合再编码；Discard→不落出站。仅当卡类别为 ExternalSend 时渲染（不从任意文本臆造草稿）。 |
 | GP-42 | 已实现 | kernel 判定未变（CM-0306），UI 不代客批准。 |
@@ -615,3 +617,28 @@
 ### 5) 诚实残留（本波不假装）
 - **>2MB 图片无缩略图**：只显示文件名+体积（`residual:image_too_large_for_preview`），不按字节数降低采样率生成"估算缩略图"；后续可接真缩放管线。
 - **音频/视频 chip 无播放预览**：只有 kind+体积徽标；官方 §9.1 的"打开卡片预览"覆盖已交付文件（GP-92 全屏查看器），composer 内嵌播放器未做。
+
+## Wave M31（消息反应 React：官方 spec §5.1，本轮）
+
+背景：§5.1 的验收信号清单里「**消息反应 (React)**」此前没有对应实现——消息只有 hover「回复」按钮，没有反应入口。Grok Bot 的消息支持 hover 出反应按钮、弹出 emoji picker、已反应的消息显示 chips 并可点击撤销。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-27 消息反应`：GP-133（hover 反应按钮 + 6 emoji picker，chips 从 store 行渲染，点击 chip 走同一 IPC 撤销；transcript 重载不丢反应）。
+
+### 2) 实现
+- **Store（`sessions.js` `react(sessionId, messageId, emoji, on)`）**：单一事实源——`hit.reactions` 按 emoji 为键的计数器，`on=true` 加 1、`on=false` 减 1，减到 0 删键（不残留 0 假计数）；未知会话/消息/空 emoji 返回 `{ok:false, error}`。
+- **main/preload**：IPC `bitbot:sessions:react`；`sessions.react(sessionId, messageId, emoji, on)`。
+- **渲染层（`index.html`）**：`renderReactions(el, reactions)` 渲染 chips（emoji + 计数），`toggleMessageReaction(el, emoji, on)` 走同一 IPC；`attachMessageActions` 加「反应」按钮，hover 弹出 6 emoji picker（👍❤️😂🎉😮😢）；`addMsg` 传 `opts.reactions`，transcript 重载传 `reactions: m.reactions || null`；CSS `.msg-reactions`/`.reaction-chip`/`.reaction-picker`；`reactAction` i18n 三语。
+
+### 3) 验证（本轮实测）
+- `scripts/prove_m31_reactions.js` **17/0**（双跑幂等）：静态层（hover 按钮 + 6 emoji picker、chips 渲染/撤销、transcript 重载带回 reactions、IPC + preload 接线、reactAction 三语、store react 函数）+ 行为层（加反应→计数 1、同 emoji 再加→2、不同 emoji 分键互不覆盖、撤销→回落 1、减到 0→键删除、未知消息/会话拒绝、空 emoji 拒绝、重载 get(id) 读到同一 reactions）+ **负向对照**（砍掉 react 的 `save(state)` → 计数不落盘，断言变红）。sessions.json 与 sessions.js 在 exit handler 恢复。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-31 七断言**，全量 **PASS=229 FAIL=0**。
+- `scripts/e2e_grok_desktop_boot.mjs` **124/0**（回归，无新增——反应行为在 probe 覆盖）。
+
+### 4) 本轮踩到并修掉的真问题
+1. **sessions.js sabotage 不恢复**（M29/M30 同款教训的第三次）：负向对照砍掉 `save(state)` 行后，exit handler 只恢复 sessions.json 不恢复 sessions.js 源码——第二次跑直接 12/5。这次 exit handler 同时覆盖 sessions.js。
+2. **exit handler 注册顺序**（M29 同款教训的第三次）：`process.exit()` 在同步 IIFE 里触发时，注册在 IIFE 之后的 exit handler 不会被调用——必须把 exit handler 放在 IIFE 之前。
+
+### 5) 诚实残留（本波不假装）
+- **反应 picker 只有 6 emoji**：官方 Grok 的 picker 可能有更多 emoji 或自定义 emoji，当前只实现 6 个常用 emoji 的 picker；后续可扩展为完整 emoji 搜索。
+- **反应不通知对方**：当前反应只在本地 store 计数，不触发通知或其他 Bot 的同步；官方 Grok 的反应可能在多端同步，当前实现为单端。

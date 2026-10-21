@@ -36,5 +36,6 @@
 | G-24 | Usage & Billing 接真回合（每次真实模型调用计入用量；per-provider/model 明细 + 周合计；未上报 tokens 如实标注；空态不造 0） | spec.md §7.1 | `executeLlmChat` 双路径提取 usage（`stream_options.include_usage`）+ emit `phase:"usage"` → main.js `recordUsage` → `llm-usage.json` 按周累加 + 面板 per-row 渲染（wave M28） |
 | G-25 | 群聊入口（侧栏群组行 → 同一 #log 的真实群聊：banner + rooms.json transcript 卡 + composer `room <id> ::` 前缀；@ 路由含空格成员名修复） | spec.md §2.4 | `openRoomChat`/`#room-banner`/`exitRoomChat` + `roomTurn` 最长匹配提及解析 + 既有 kernel RoomTurn 短语（wave M29） |
 | G-26 | 附件发送前预览（图片 chip 真实字节缩略图；非图片 kind+体积徽标；缺失/空路径诚实拒绝；pick/paste/drop 三入口接线） | spec.md §5.1 | `surface.attachmentPreview` + IPC `bitbot:attachments:preview` + `attachments.preview` + chip 缩略图/徽标渲染（wave M30） |
+| G-27 | 消息反应 React（hover 反应按钮 + 6 emoji picker；chips 从 store 行渲染，点击撤销；transcript 重载不丢反应；sessions.react 单一事实源） | spec.md §5.1 | `sessions.react` + IPC `bitbot:sessions:react` + preload `sessions.react` + hover 按钮/picker/chips 渲染（wave M31） |
 
 详细验收条目见 `spec.md`；IPC/载荷契约见 `ipc-contract.md`；现状差距审计见 `gaps.md`。

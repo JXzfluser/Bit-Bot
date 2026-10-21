@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld("bitbot", {
     append: (id, messages) => ipcRenderer.invoke("bitbot:sessions:append", id, messages || []),
     rename: (id, title) => ipcRenderer.invoke("bitbot:sessions:rename", id, title),
     delete: (id) => ipcRenderer.invoke("bitbot:sessions:delete", id),
+    // GP-M31 (§5.1 消息反应): toggle a reaction on a stored message.
+    react: (sessionId, messageId, emoji, on) =>
+      ipcRenderer.invoke("bitbot:sessions:react", { session_id: sessionId, message_id: messageId, emoji, on: on !== false }),
   },
   // Wave G — Grok desktop parity (docs/grok-desktop-parity/ipc-contract.md §4).
   bots: {

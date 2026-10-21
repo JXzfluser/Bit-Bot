@@ -234,3 +234,9 @@
 | ID | 官方行为 | 实现落点 | 验收信号 |
 |----|----------|----------|----------|
 | GP-132 | 附件在发送前可预览 | composer 附件 chip 预览真实字节：新 IPC `bitbot:attachments:preview` → `surface.attachmentPreview`（图片 ≤2MB → data-URL 缩略图；非图片 → kind 徽标 + 人类可读体积；缺失/空路径 → `preview_unavailable`，不造预览）；pick / paste / drop 三个入口先渲染 chip、预览回包后重渲染（不阻塞发送） | chip 缩略图来自磁盘真实字节（PNG → `data:image/png;base64`）；mp4 显示 `video · 2.0KB` 徽标且无缩略图；移除 chip 同时清预览缓存 |
+
+## G-27 消息反应 React（官方 spec §5.1 验收信号「消息反应 (React)」）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-133 | 消息反应 (React) | hover 消息出「反应」按钮（与「回复」同一条 msg-actions），点击弹出 6 emoji picker（👍❤️😂🎉😮😢）；选 emoji 后 `sessions.react(sid, mid, emoji, true)` 加计数；已反应的消息渲染 chips（emoji + 计数），点击 chip 走同一 IPC `sessions.react(sid, mid, emoji, false)` 撤销；transcript 重载把 `m.reactions` 传给 `addMsg`（重载不丢反应） | hover 出反应按钮 + picker；选 👍 后 chip 显示 `👍 1`，再选一次变 `👍 2`；点击 chip 撤销回 `👍 1`，再点一次 chip 消失；切会话再切回，chips 仍在；负向对照砍掉 `save(state)` 后反应不落盘 |
