@@ -297,15 +297,17 @@
     justify-content: center;
   }
   #welcome .wt-btn {
-    background: var(--bg1);
+    background: #ffffff;
     color: var(--ink);
     border: 1px solid var(--line);
     border-radius: var(--radius-pill);
-    padding: 5px 12px;
+    padding: 6px 14px;
     font-size: var(--text-sm);
+    font-weight: 500;
     cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
-  #welcome .wt-btn:hover { border-color: var(--accent); }
+  #welcome .wt-btn:hover { border-color: var(--muted); background: var(--accent-soft); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
   #welcome .wt-btn:disabled { opacity: 0.6; cursor: default; }
   #bc-tpl-btns .bc-tpl-btn {
     background: var(--bg1);
