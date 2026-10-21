@@ -301,6 +301,10 @@ body.force-light {
   color: var(--ink);
   border: 0;
   text-align: left;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+.bb-btn-ghost:hover { background: var(--accent-soft); }
 }
 
 .bb-btn-block {
