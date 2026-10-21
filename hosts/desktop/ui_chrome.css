@@ -212,12 +212,12 @@ body.force-light {
   width: min(var(--sheet-w), 92vw);
   max-height: min(82vh, 860px);
   overflow: auto;
-  background: var(--bg1);
+  background: #ffffff;
   color: var(--ink);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   padding: var(--space-7);
-  box-shadow: var(--shadow-modal);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15);
 }
 
 .bb-sheet-sm { --sheet-w: 420px; }
@@ -516,6 +516,10 @@ body.force-light {
 #settings-sheet {
   width: min(760px, 94vw);
   max-height: 86vh;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15);
 }
 
 #secrets-panel label,
