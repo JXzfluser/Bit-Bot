@@ -336,7 +336,7 @@
     grid-area: agents;
     border-right: 1px solid var(--line);
     background: var(--side);
-    padding: 0 12px;
+    padding: 0 14px;
     /* GP-123: one scrolling column (like the reference sidebar). Lists keep
        their natural height, so a sidebar with 3 Bots shows 3 rows instead of
        reserving empty scroll space; the footer and the New-chat button are
@@ -437,14 +437,22 @@
   }
   .sess-main { min-width: 0; flex: 1 1 auto; }
   .sess-main .name {
+    font-weight: 600;
+    font-size: var(--text-md);
+    color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    line-height: 1.3;
   }
   .sess-main .meta {
+    font-size: var(--text-sm);
+    color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    line-height: 1.4;
+    margin-top: 2px;
   }
   /* GP-120: Bot avatars are real images (data URL from the Host store). */
   .sess-avatar { overflow: hidden; }
