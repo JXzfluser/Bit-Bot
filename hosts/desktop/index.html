@@ -1022,8 +1022,8 @@
   .msg { position: relative; }
   .msg .msg-actions {
     position: absolute;
-    top: 2px;
-    right: 4px;
+    top: 4px;
+    right: 6px;
     display: none;
     gap: 4px;
     z-index: 2;
@@ -1031,30 +1031,34 @@
   .msg:hover .msg-actions, .msg .msg-actions:focus-within { display: inline-flex; }
   .msg .msg-actions button {
     border: 1px solid var(--line);
-    background: var(--bg1);
+    background: #ffffff;
     color: var(--muted);
-    border-radius: var(--radius-sm);
-    padding: 1px 6px;
+    border-radius: var(--radius-md);
+    padding: 3px 8px;
     font-size: var(--text-xs);
+    font-weight: 500;
     cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
-  .msg .msg-actions button:hover { color: var(--ink); border-color: var(--accent); }
+  .msg .msg-actions button:hover { color: var(--ink); border-color: var(--muted); box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
   /* GP-M31 (§5.1 消息反应): chips under the bubble come from the store row;
      the picker is a fixed 6-emoji set (no emoji-picker dependency). */
   .msg .msg-reactions {
-    display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;
   }
   .msg .reaction-chip {
-    border: 1px solid var(--line); background: var(--accent-soft); color: var(--ink);
-    border-radius: var(--radius-pill); padding: 1px 8px; font-size: var(--text-xs); cursor: pointer;
+    border: 1px solid var(--line); background: #ffffff; color: var(--ink);
+    border-radius: var(--radius-pill); padding: 2px 10px; font-size: var(--text-sm); cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
   }
-  .msg .reaction-chip:hover { border-color: var(--accent); }
+  .msg .reaction-chip:hover { border-color: var(--muted); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
   .msg .reaction-picker {
-    display: inline-flex; gap: 2px; margin-top: 4px;
-    background: var(--bg1); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 3px 5px;
+    display: inline-flex; gap: 4px; margin-top: 6px;
+    background: #ffffff; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 6px 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
   }
   .msg .reaction-picker button {
-    border: 0; background: none; font-size: var(--text-base); cursor: pointer; padding: 2px 3px; border-radius: var(--radius-xs);
+    border: 0; background: none; font-size: var(--text-lg); cursor: pointer; padding: 4px 6px; border-radius: var(--radius-md);
   }
   .msg .reaction-picker button:hover { background: var(--accent-soft); }
   .msg-reply-quote {
