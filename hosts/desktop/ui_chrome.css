@@ -49,7 +49,7 @@
   --lightbox-line: rgba(255, 255, 255, 0.25);
 
   /* spec §2.1 shell widths */
-  --sidebar-w: 260px;
+  --sidebar-w: 280px;
   --tools-w: 280px;
   --rail-w: 340px;
   --content-max: 760px;
