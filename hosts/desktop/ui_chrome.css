@@ -462,9 +462,10 @@ body.force-light {
 }
 
 #sidebar-settings-btn.bb-btn {
-  margin-top: var(--space-3);
-  padding: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   font-size: var(--text-md);
+  border-radius: var(--radius-lg);
 }
 
 #bot-new-btn.bb-btn {
