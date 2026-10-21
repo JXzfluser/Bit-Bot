@@ -2100,6 +2100,114 @@ async function main() {
       else fs.rmSync(USAGE_M28, { force: true });
     }
 
+    /* ---- GP-119/M29 群聊入口（官方 spec §2.4）----
+       预置一个真实群（成员取 bots.json 前两个 Bot）→ 启动后点侧栏群组行 →
+       #room-banner 打开 + rooms.json transcript 卡进 #log（空群明说没有历史）
+       → composer 发消息自动加 `room <id> :: ` 前缀 → rooms.json transcript
+       真增一行 → 退出群聊 banner 收起。*/
+    const ROOMS_M29 = path.join(REPO, "data/desktop/rooms.json");
+    const BOTS_M29 = path.join(REPO, "data/desktop/bots.json");
+    const roomsM29Before = fs.existsSync(ROOMS_M29) ? fs.readFileSync(ROOMS_M29) : null;
+    const botsM29Before = fs.existsSync(BOTS_M29) ? fs.readFileSync(BOTS_M29) : null;
+    try {
+      const botsM29 = JSON.parse(fs.readFileSync(BOTS_M29, "utf8"));
+      const botList = Array.isArray(botsM29) ? botsM29 : botsM29.bots || [];
+      const m29Ids = botList.map((b) => b.id).filter(Boolean).slice(0, 2);
+      if (m29Ids.length === 2) {
+        const m29Room = {
+          id: "room-m29e2e",
+          title: "M29 E2E 群聊探针",
+          members: m29Ids,
+          created_at: new Date().toISOString(),
+          transcript: [],
+        };
+        const roomsSeed = roomsM29Before
+          ? JSON.parse(roomsM29Before.toString())
+          : { version: 1, rooms: [] };
+        const seedRooms = Array.isArray(roomsSeed) ? { version: 1, rooms: roomsSeed } : roomsSeed;
+        seedRooms.rooms = (seedRooms.rooms || []).filter((r) => r && r.id !== "room-m29e2e");
+        seedRooms.rooms.push(m29Room);
+        fs.writeFileSync(ROOMS_M29, JSON.stringify(seedRooms, null, 2));
+        const bootM29 = await launch({});
+        const win = bootM29.win;
+        await win.waitForSelector("#room-list .agent-item[data-room-id]", { timeout: 30000 });
+        await win.click('#room-list .agent-item[data-room-id="room-m29e2e"]');
+        await win.waitForFunction(
+          () => {
+            const b = document.getElementById("room-banner");
+            return b && b.style.display !== "none";
+          },
+          null,
+          { timeout: 10000 },
+        ).catch(() => {});
+        const banner = await win.evaluate(() => {
+          const b = document.getElementById("room-banner");
+          if (!b || b.style.display === "none") return null;
+          return {
+            title: document.getElementById("room-banner-title").textContent,
+            meta: document.getElementById("room-banner-meta").textContent,
+            ph: document.querySelector("#composer #text").placeholder,
+          };
+        });
+        banner && banner.title === "M29 E2E 群聊探针" && banner.ph.includes("@Name")
+          ? ok("E2E GP-119/M29：点侧栏群组行 → 群聊 banner 打开（标题/路由提示/placeholder 切换）")
+          : bad("E2E GP-119 room banner", JSON.stringify(banner));
+        await win.waitForFunction(
+          () => (document.getElementById("log").textContent || "").includes("还没有任何消息"),
+          null,
+          { timeout: 10000 },
+        ).catch(() => {});
+        (await win.evaluate(() => document.getElementById("log").textContent || "")).includes("还没有任何消息")
+          ? ok("E2E GP-119/M29：空群明说「还没有任何消息」（不造历史）")
+          : bad("E2E GP-119 empty transcript", "honest empty state missing");
+        await win.fill("#composer #text", "@everyone M29 群聊探针消息");
+        await win.press("#composer #text", "Enter");
+        await win.waitForFunction(
+          (rid) => (document.getElementById("log").textContent || "").includes("room " + rid + " :: "),
+          "room-m29e2e",
+          { timeout: 45000 },
+        ).catch(() => {});
+        const logText = await win.evaluate(() => document.getElementById("log").textContent || "");
+        logText.includes("room room-m29e2e :: @everyone M29 群聊探针消息")
+          ? ok("E2E GP-119/M29：composer 消息带 room 前缀进 #log（同一消息流）")
+          : bad("E2E GP-119 room turn", "prefix not visible in #log");
+        // The kernel RoomTurn persists into rooms.json — poll for the row.
+        let m29Grew = false;
+        for (let i = 0; i < 30; i++) {
+          try {
+            const st = JSON.parse(fs.readFileSync(ROOMS_M29, "utf8"));
+            const row = (st.rooms || []).find((r) => r && r.id === "room-m29e2e");
+            if (row && Array.isArray(row.transcript) &&
+                row.transcript.some((e) => String(e.text || "").includes("@everyone M29 群聊探针消息"))) {
+              m29Grew = true;
+              break;
+            }
+          } catch (_) {}
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        m29Grew
+          ? ok("E2E GP-119/M29：群聊回合真写 rooms.json transcript（@everyone 路由）")
+          : bad("E2E GP-119 transcript write", "rooms.json never gained the entry");
+        await win.evaluate(() => document.getElementById("room-banner-exit").click());
+        const afterExit = await win.evaluate(() => ({
+          hidden: document.getElementById("room-banner").style.display === "none",
+          ph: document.querySelector("#composer #text").placeholder,
+        }));
+        afterExit.hidden && afterExit.ph.includes("Shift+Enter")
+          ? ok("E2E GP-119/M29：退出群聊恢复 DM composer（banner 收起 + placeholder 复原）")
+          : bad("E2E GP-119 exit room", JSON.stringify(afterExit));
+        await shutdown(bootM29.app);
+      } else {
+        bad("E2E GP-119 seed", "bots.json needs at least 2 bots");
+      }
+    } catch (e) {
+      bad("E2E GP-119/M29 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      if (roomsM29Before) fs.writeFileSync(ROOMS_M29, roomsM29Before);
+      else fs.rmSync(ROOMS_M29, { force: true });
+      if (botsM29Before) fs.writeFileSync(BOTS_M29, botsM29Before);
+    }
+
     /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----
        走真实 UI + 真实 IPC：provider 回一句含裸 URL 与 javascript: 链接的话 →
        kernel CM-0111 规范化为 markdown → renderer 把 markdown 变成真 <a>，

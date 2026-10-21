@@ -2005,6 +2005,15 @@
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
+    <!-- M29 (§2.4): sidebar group row → real group chat in the same #log.
+         The banner shows which room the composer is aimed at; Exit returns
+         to the previous conversation. -->
+    <div id="room-banner" style="display:none;margin:0 16px 6px;padding:8px 12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px;flex-shrink:0;align-items:center;gap:10px">
+      <span id="room-banner-title" style="font-weight:700;font-size:13px"></span>
+      <span id="room-banner-meta" style="color:var(--muted);font-size:12px"></span>
+      <span style="flex:1"></span>
+      <button type="button" id="room-banner-exit" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px" data-i18n="roomExit">退出群聊</button>
+    </div>
     <div id="attachment-strip" class="attach-strip" aria-label="待发送附件"></div>
     <!-- GP-60: in-call control (composer 为空时启动；结束留 Voice chat 卡) -->
     <div id="voicechat-bar" style="display:none;margin:0 16px 6px;padding:10px 12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px;flex-shrink:0">
@@ -4174,21 +4183,75 @@
         el.querySelector(".meta").textContent = n + " " + wavegT("roomMembers");
         el.title = (rm.members || []).join(", ");
         el.addEventListener("click", () => {
+          // M29 (§2.4): a group row opens the real group chat — the composer
+          // is aimed at the room (kernel RoomTurn: @Name 定向 / @everyone 全体 /
+          // 无 @ bot_discretion) and the room's durable transcript is shown
+          // in the same #log. No second message surface, no copied state.
           const pick = document.getElementById("gp-room-pick");
           if (pick) {
             const has = Array.from(pick.options || []).some((o) => o.value === rm.id);
             if (has) pick.value = rm.id;
           }
-          const txt = document.getElementById("gp-room-text");
-          if (txt) txt.focus();
-          addMsg(
-            "assistant",
-            "群组「" + (rm.title || rm.id) + "」· " + n + " " + wavegT("roomMembers") +
-              "。消息会进 #log（room " + rm.id + " :: …）。",
-          );
+          openRoomChat(rm);
         });
         box.appendChild(el);
       }
+    }
+
+    /* ---- M29 (§2.4) group chat entry ---- */
+    const COMPOSER_PLACEHOLDER_DEFAULT = "给 Bit Bot 发消息…（Shift+Enter 换行）";
+    let composerRoom = null;
+    function roomBannerBits(rm) {
+      const n = (rm.members || []).length;
+      return {
+        title: rm.title || rm.id,
+        meta: n + " " + wavegT("roomMembers") + " · " + wavegT("roomRouteHint"),
+      };
+    }
+    async function openRoomChat(rm) {
+      if (!rm || !rm.id) return;
+      composerRoom = { id: rm.id, title: rm.title || rm.id };
+      const banner = document.getElementById("room-banner");
+      if (banner) {
+        const bits = roomBannerBits(rm);
+        banner.style.display = "flex";
+        const t = document.getElementById("room-banner-title");
+        const m = document.getElementById("room-banner-meta");
+        if (t) t.textContent = bits.title;
+        if (m) m.textContent = bits.meta;
+      }
+      const input2 = document.getElementById("composer") ? document.querySelector("#composer #text") : null;
+      if (input2) input2.placeholder = wavegT("roomComposerPh");
+      clearWelcome();
+      // Show the room's durable transcript (rooms.json) — honest read, and
+      // an empty room says so instead of inventing history.
+      let entries = [];
+      try {
+        const res = await window.bitbot.rooms.list();
+        const payload = (res && res.rooms) || {};
+        const found = (Array.isArray(payload) ? payload : payload.rooms || [])
+          .find((x) => x && x.id === rm.id);
+        entries = found && Array.isArray(found.transcript) ? found.transcript : [];
+      } catch (_) {
+        entries = [];
+      }
+      if (!entries.length) {
+        addMsg("assistant", wavegT("roomTranscriptEmpty"));
+        return;
+      }
+      const lines = entries.slice(-8).map((e) => {
+        const who = Array.isArray(e.responders) && e.responders.length
+          ? "@" + e.responders.join(",@") : "·";
+        return "[" + String(e.at || "").slice(0, 16).replace("T", " ") + "] " + who + " " + String(e.text || "");
+      });
+      addMsg("assistant", wavegT("roomTranscriptHead").replace("{n}", String(entries.length)) + "\n" + lines.join("\n"));
+    }
+    function exitRoomChat() {
+      composerRoom = null;
+      const banner = document.getElementById("room-banner");
+      if (banner) banner.style.display = "none";
+      const input2 = document.querySelector("#composer #text");
+      if (input2) input2.placeholder = COMPOSER_PLACEHOLDER_DEFAULT;
     }
 
     /* GP-116 (§2.1): Marketplace = the Host's Bot template catalog. Same list
@@ -8820,6 +8883,11 @@
         mkUse: "使用",
         roomEmpty: "还没有群组。",
         roomMembers: "位成员",
+        roomExit: "退出群聊",
+        roomRouteHint: "@Name 定向 · @everyone 全体 · 无 @ 由 Bot 自行决定",
+        roomComposerPh: "在群里发消息…（@Name 定向）",
+        roomTranscriptEmpty: "这是群聊的开始——还没有任何消息。",
+        roomTranscriptHead: "群聊记录（最近 {n} 条，来自 rooms.json）：",
         sessSearchPh: "搜索会话",
         sessToday: "今天",
         sessYesterday: "昨天",
@@ -9195,6 +9263,11 @@
         mkUse: "使用",
         roomEmpty: "還沒有群組。",
         roomMembers: "位成員",
+        roomExit: "退出群聊",
+        roomRouteHint: "@Name 定向 · @everyone 全體 · 無 @ 由 Bot 自行決定",
+        roomComposerPh: "在群裡發消息…（@Name 定向）",
+        roomTranscriptEmpty: "這是群聊的開始——還沒有任何消息。",
+        roomTranscriptHead: "群聊記錄（最近 {n} 條，來自 rooms.json）：",
         sessSearchPh: "搜尋會話",
         sessToday: "今天",
         sessYesterday: "昨天",
@@ -9570,6 +9643,11 @@
         mkUse: "Use",
         roomEmpty: "No groups yet.",
         roomMembers: "members",
+        roomExit: "Leave group",
+        roomRouteHint: "@Name directed · @everyone all · no @ = bots decide",
+        roomComposerPh: "Message the group… (@Name to direct)",
+        roomTranscriptEmpty: "This is the start of the group — no messages yet.",
+        roomTranscriptHead: "Group transcript (last {n}, from rooms.json):",
         sessSearchPh: "Search chats",
         sessToday: "Today",
         sessYesterday: "Yesterday",
@@ -10175,6 +10253,9 @@
       if (roomCreateBtn) roomCreateBtn.addEventListener("click", createRoomFromUi);
       const roomSend = document.getElementById("gp-room-send");
       if (roomSend) roomSend.addEventListener("click", sendRoomMessage);
+      // M29 (§2.4): leaving the group chat restores the DM composer.
+      const roomExitBtn = document.getElementById("room-banner-exit");
+      if (roomExitBtn) roomExitBtn.addEventListener("click", exitRoomChat);
     }
     function gpVisible() {
       const panel = document.getElementById("gp-panel");
@@ -10836,6 +10917,10 @@
       // GP-99/101: credential-shaped text must not become a chat turn.
       if (blockSecretPaste(text)) return;
       let finalText = text;
+      // M29 (§2.4): when the composer is aimed at a group, the phrase goes
+      // through the same kernel RoomTurn routing as the legacy test widgets
+      // (@Name 定向 / @everyone 全体 / 无 @ bot_discretion) — not a new path.
+      if (composerRoom) finalText = "room " + composerRoom.id + " :: " + finalText;
       if (pendingAttachments.length) {
         // Real staged paths only (Host validated count/size); never fabricate.
         const refs = pendingAttachments.map((p) => "attach file " + p).join("; ");

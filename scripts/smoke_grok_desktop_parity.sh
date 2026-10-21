@@ -1131,6 +1131,29 @@ else
 fi
 echo "  · G-28 说明：probe 用进程内 OpenAI 兼容 stub（带/不带 usage 两种）走真实 executeHostEffects(llm_chat)，store/artifact/env 在 finally 恢复"
 
+echo
+echo "== G-29 群聊入口（M29：§2.4）=="
+if timeout 900 node scripts/prove_m29_roomchat.js > /tmp/g29-probe.log 2>&1; then
+  ok "G-29 群聊入口契约全绿（$(grep -c '✓' /tmp/g29-probe.log) 项，$(tail -1 /tmp/g29-probe.log)）"
+else
+  bad "G-29 群聊入口契约（见 /tmp/g29-probe.log）"
+fi
+grep -q "composer 提交走既有 kernel RoomTurn 短语" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 GP-119：群组行 → composer 对准群聊，提交走既有 room <id> :: 短语（无第二消息面）" \
+  || bad "G-29 GP-119 composer prefix missing"
+grep -q "@Name → mentioned_only 且 responders 精确" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "@everyone → all" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "无 @ → bot_discretion" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 GP-51：入口沿用真实路由语义（含含空格成员名的最长匹配修复）" \
+  || bad "G-29 GP-51 routing missing"
+grep -q "rooms.json transcript 与 roomTurn 逐字一致" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "空群明说" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 GP-119：打开群聊读 rooms.json 真实 transcript，空群不造历史" \
+  || bad "G-29 GP-119 transcript missing"
+grep -q "负向对照：禁用前缀后 composer 不再路由到群聊" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 负向对照：砍掉 composer 前缀后断言变红（断言非恒真）" \
+  || bad "G-29 negative control missing"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

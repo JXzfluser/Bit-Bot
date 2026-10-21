@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M28 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=212 FAIL=0；`moon test` 381/381（M26–M28 未改内核）；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 119/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M29 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=217 FAIL=0；`moon test` 381/381（M26–M29 未改内核）；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -563,3 +563,30 @@
 - **成本/账单金额未做**：官方 §7.1 有"用量与账单"，本波只记 requests 与 tokens；单价×用量=金额需要真实 provider 定价表（易过期、易错），沙箱内不引入会过期的价格数据。
 - **tokens 未上报的 provider 显示为 0**：如实标注「tokens 未上报」，不按字数估算（估算会伪装成真数据）。
 - **按需用量（on-demand）与套餐额度**：无真实计费系统，未做。
+
+## Wave M29（群聊入口：官方 spec §2.4，本轮）
+
+背景：侧栏群组行（GP-116）此前点击只会聚焦一个遗留测试输入框并**加一条伪造的 assistant 提示**（「消息会进 #log（room …）」）——群聊的真实入口不存在，§2.4 的群组语义（@Name/@everyone/无 @）只能靠在 composer 手打 `room <id> ::` 短语或 gp 测试面板触达。M27 残留清单指名本波补齐。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-25 群聊入口`：GP-119a（群组行 → 同一 `#log` 的真实群聊：banner + transcript 卡 + composer 前缀，无第二消息面）、GP-119b（`@` 路由语义在入口路径上保持真实——含空格成员名修复）。
+
+### 2) 实现
+- **渲染层（`index.html`）**：侧栏群组行点击 → `openRoomChat(rm)`——composer 顶部 `#room-banner`（群名 / N 位成员 / 「@Name 定向 · @everyone 全体 · 无 @ 由 Bot 自行决定」提示），placeholder 切到群聊措辞；打开时经 `rooms.list()` 读 rooms.json 真实 transcript，最近 8 条渲染进 `#log`（空群明说「还没有任何消息」）；composer 提交自动加既有 `room <id> :: ` 前缀（与 gp 测试面板同一 kernel RoomTurn 短语，不是新路径）；「退出群聊」收 banner 并复原 DM placeholder。
+- **Host（`product_surface.js` `roomTurn`）**：提及解析升级为**完整成员名最长匹配优先**（修复含空格成员名 `@市场 分析员` 被截成 `@市场` 而降级 bot_discretion 的真实缺陷），回落单 token 形式保持 `@everyone`/无空格名语义不变。
+- **i18n**：5 个新键（roomExit / roomRouteHint / roomComposerPh / roomTranscriptEmpty / roomTranscriptHead）×3 语言。
+
+### 3) 验证（本轮实测）
+- `scripts/probe` **prove_m29_roomchat.js 16/0**（双跑幂等）：静态层（banner 结构、入口接线、前缀、退出复原、空群诚实、5 键三语）+ 行为层（真实 store：2–6 门、@Name→mentioned_only 且 responders 精确（含空格名）、@everyone→all、无@→bot_discretion、未知群拒绝、transcript 逐字落 rooms.json）+ 负向对照（砍掉 composer 前缀 → 断言变红）。stores/html 在 exit handler 恢复。
+- `scripts/e2e_grok_desktop_boot.mjs` **124/0**（新增 5 条）：预置真实群 → 点侧栏群组行 → banner 打开（标题/路由提示/placeholder 切换）→ 空群诚实空态 → composer 发消息带 `room <id> :: ` 前缀进 `#log` → rooms.json transcript 真增一行（@everyone 路由）→ 退出复原。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-29 五断言**，全量 **PASS=217 FAIL=0**；`moon test` 381/381。
+
+### 4) 本轮踩到并修掉的真问题
+1. **probe 负向对照毁了工作文件**：probe 的 IIFE 全同步且第一句就 `process.exit()`，而恢复用的 `process.on("exit")` 注册在其后——注册代码永远没跑，`index.html` 被砍了前缀。手动恢复 + 修 probe 顺序（先注册 exit handler 再跑断言）；这条进 probe 注释。
+2. **@mention 解析不支持含空格的成员名**：probe 用「M29 探针甲」作成员名，`@M29 探针甲` 被 `/^@(\S+)\s/` 截成 `@M29` → 降级 bot_discretion。这是真实产品缺陷（botsCreate 允许空格名），在 `roomTurn` 里改成完整成员名最长匹配优先，probe 对两种路由都断言。
+3. **伪造的群组点击提示**：旧点击行为会 `addMsg("assistant", "群组「X」· N 位成员。消息会进 #log…")`——预告功能而不是实现功能，本波替换为真实入口。
+
+### 5) 诚实残留（本波不假装）
+- **conv-rail 对群会话仍显示空归属**：群聊回合落在 rooms.json 而不是 sessions.json，对话详情面板（M27）目前只覆盖 DM 命名约定；群聊的详情面板形态候选下一波（需要先定义"当前群聊"的会话锚点）。
+- **群聊 transcript 卡是快照**：打开群聊时渲染最近 8 条；回合进行中不实时追加（回合结束的 assistant 行由既有 turn 渲染负责），重开群聊才重读 rooms.json。
+- **成员名冲突**：最长匹配只在成员名互不为前缀时无歧义；两个成员名互为前缀时取更长者，官方未定义此场景。

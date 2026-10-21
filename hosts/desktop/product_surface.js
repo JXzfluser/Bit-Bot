@@ -1213,8 +1213,20 @@ function createProductSurface(repoRoot) {
 
     // Parse mentions
     let responders = members;
-    let responder_policy = "all";
-    const mentionMatch = text.match(/^@(\S+)\s/);
+    let responder_policy = "bot_discretion";
+    let mentionMatch = null;
+    if (/^@/.test(text)) {
+      // Member names may contain spaces ("市场 分析员") — try full member
+      // names first (longest match wins), then fall back to the single-token
+      // form so "@everyone" and space-free names keep their GP-51 semantics.
+      const after = text.slice(1);
+      const named = members
+        .filter((m) => m.name && after.startsWith(m.name))
+        .sort((a, b) => String(b.name).length - String(a.name).length)[0];
+      const token = after.match(/^(\S+)\s/);
+      const hit = named || (token ? { name: token[1] } : null);
+      if (hit) mentionMatch = [null, hit.name];
+    }
     if (mentionMatch) {
       const mention = mentionMatch[1];
       if (mention === "everyone") {

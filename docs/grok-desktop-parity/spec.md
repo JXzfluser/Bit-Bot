@@ -221,3 +221,10 @@
 |----|----------|----------|----------|
 | GP-130 | 每次真实模型调用计入用量（请求次数 + token 数） | `executeLlmChat` 从 provider 响应提取 `usage`（非流式 `res.json.usage`；流式收 `stream_options.include_usage` 的最终 chunk），随 artifact/chats.jsonl 落盘，并 emit `phase:"usage"`；main.js 的 llm-stream 处理器把该事件写进 `surface.recordUsage` → `data/desktop/llm-usage.json`（按周滚动、按 provider+model 分行） | 走一回合真实 llm_chat 后 `llm-usage.json` 出现该 provider/model 行、`requests` +1；provider 上报了 tokens 时 prompt/completion 与响应一致 |
 | GP-131 | Usage & Billing 面板展示每周用量明细 | 设置 → Usage & Billing 读 `bitbot:usage:week`：per-provider/model 行（请求数 / prompt / completion tokens）+ 周合计；store 为空时显示空态而不是 0 假数；tokens 未上报的行如实标注 | 面板行与 `llm-usage.json` 逐行一致（provider/model/requests/tokens）；清空 store 后面板显示空态文案，不渲染 0 |
+
+## G-25 群聊入口（官方 spec §2.4 / §2.1 群组行）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-119a | 侧栏群组行点击进入真实群聊（同一 `#log` 消息流，无第二消息面） | `openRoomChat(rm)`：composer 顶部 `#room-banner`（群名 / 成员数 / 路由提示），placeholder 切到群聊措辞；打开时读 `rooms.json` 真实 transcript 渲染最近 8 条（空群明说「还没有消息」，不造历史）；composer 提交自动加既有 `room <id> :: ` 前缀走 kernel RoomTurn；「退出群聊」恢复 DM composer | 点群组行 → banner 打开且标题/成员数与 rooms.json 一致；发消息后 `#log` 出现 `room <id> :: …` 用户行且 rooms.json transcript 真增一行；退出后 placeholder 复原 |
+| GP-119b | `@` 路由语义在入口路径上保持真实 | `roomTurn` 提及解析升级：先按**完整成员名最长匹配**（修复含空格成员名 `@市场 分析员` 被截断成 `@市场` 降级 bot_discretion 的真实缺陷），再回落单 token 形式（`@everyone` / 无空格名不变） | `@Name` → `mentioned_only` 且 responders 精确到被点名 Bot（含空格名）；`@everyone` → `all`；无 @ → `bot_discretion`；未知群 `room_not_found` |
