@@ -766,22 +766,23 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
   /* GP-92: fullscreen artifact viewer */
-  #gp92-lightbox img { max-width: 92vw; max-height: 82vh; object-fit: contain; background: var(--bg0); }
-  #gp92-lightbox video { max-width: 92vw; max-height: 82vh; background: #000; }
+  #gp92-lightbox img { max-width: 92vw; max-height: 82vh; object-fit: contain; background: #ffffff; border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+  #gp92-lightbox video { max-width: 92vw; max-height: 82vh; background: #000; border-radius: var(--radius-lg); }
   #gp92-lightbox audio { width: min(80vw, 720px); }
   #gp92-lightbox pre.lb-text {
     max-width: 92vw;
     max-height: 82vh;
     overflow: auto;
     margin: 0;
-    padding: 16px;
-    background: var(--bg1);
+    padding: 20px;
+    background: #ffffff;
     color: var(--text);
     border: 1px solid var(--line);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     font: var(--text-sm)/1.5 var(--font-mono);
     white-space: pre-wrap;
     word-break: break-word;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
   }
   /* GP-90: text-family file card */
   .file-card pre.fc-snippet {
