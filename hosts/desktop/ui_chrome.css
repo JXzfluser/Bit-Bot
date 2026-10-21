@@ -11,39 +11,39 @@
  */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* surfaces */
-  --bg0: #171717;
-  --bg1: #1d1d1d;
-  --side: #111111;
-  --input-bg: #232323;
-  --ink: #ececec;
-  --text: #ececec;
-  --muted: #9a9a9a;
-  --line: #2e2e2e;
-  --accent: #ffffff;
-  --accent-ink: #171717;
-  --accent-soft: #2a2a2a;
-  --user-bubble: #2a2a2a;
-  --bot-bubble: #212121;
+  /* surfaces — Grok-style light default */
+  --bg0: #ffffff;
+  --bg1: #f7f7f8;
+  --side: #f7f7f8;
+  --input-bg: #ffffff;
+  --ink: #1a1a1a;
+  --text: #1a1a1a;
+  --muted: #6f6f6f;
+  --line: #e3e3e6;
+  --accent: #1a1a1a;
+  --accent-ink: #ffffff;
+  --accent-soft: #f0f0f2;
+  --user-bubble: #eceef0;
+  --bot-bubble: #f4f4f5;
   --bot-avatar: #2f9e44;
   --unread: #2f7cf6;
   --on-fill: #ffffff;
-  --warn: #d4a017;
-  --warn-bg: #262010;
-  --warn-ink: #e8d9a8;
-  --warn-line: #5a4a2a;
-  --danger: #c0554d;
-  --danger-bg: #2a1f1d;
-  --danger-ink: #e8b4b0;
-  --overlay: rgba(0, 0, 0, 0.45);
+  --warn: #a06a00;
+  --warn-bg: #fbf4e0;
+  --warn-ink: #6a5312;
+  --warn-line: #e3d2a0;
+  --danger: #b3403a;
+  --danger-bg: #fae9e7;
+  --danger-ink: #8f332d;
+  --overlay: rgba(0, 0, 0, 0.35);
   --overlay-strong: rgba(0, 0, 0, 0.88);
   --scrim-lite: rgba(128, 128, 128, 0.06);
   --scrim-lite-2: rgba(128, 128, 128, 0.05);
-  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.4);
-  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --shadow-sticky: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-sticky: 0 1px 0 var(--line);
   --lightbox-ink: #eee;
   --lightbox-btn: rgba(255, 255, 255, 0.12);
   --lightbox-line: rgba(255, 255, 255, 0.25);
