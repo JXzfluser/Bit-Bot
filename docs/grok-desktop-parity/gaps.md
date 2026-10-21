@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M32 最新，桌面 chrome）：`scripts/smoke_grok_desktop_parity.sh` PASS=220 FAIL=10。这 10 条都是干净沙箱的 store 前置，不是样式回归（无 `agent-bit` 行所以 G-1b 内置拒删与 G-6 `bots=agent-bit` 五条失败；`data/workspace` 为空所以 G-23 共享文件计数为 0；`primary_id=agent-bit` 无行所以 G-26 `is_primary` 缺失，负向对照打开已被清掉的 `desktop-host.json` 得 ENOENT）。与 chrome 相关的门禁全绿：`prove_m20_ui.js` 24/0、`prove_m24_window.js` 29/0、`prove_m25_profile.js` 25/0、`prove_m27_convrail.js` 19/0、`prove_m28_usage.js` 14/0、`prove_m29_roomchat.js` 16/0、`prove_m30_attachpreview.js` 10/0、`prove_m31_reactions.js` 17/0、`e2e_grok_desktop_boot.mjs` 124/0（设置页、右栏、Marketplace、明暗像素）。内核未改。详见 Wave M32。
+> 验收证据（M32 最新）：干净 store（`bots.json` 已存在但没有 `agent-bit` 行、`data/workspace` 空、`desktop-host.json` 不存在）上 `scripts/smoke_grok_desktop_parity.sh` **PASS=230 FAIL=0**。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m20_ui.js` 24/0；`prove_m23_memory.js` 26/0；`prove_m24_window.js` 29/0；`prove_m26_botpanel.js` 27/0。内核未改。详见 Wave M32。
 > 验收证据（M31 行为基线）：`scripts/smoke_grok_desktop_parity.sh` PASS=229 FAIL=0；`moon test` 381/381（M26–M31 未改内核）；`scripts/prove_m31_reactions.js` 17/0；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
@@ -659,11 +659,10 @@
 - `node scripts/prove_m24_window.js` **29/0**（在 smoke 已种入 Bot 之后；空 store 上单独跑会缺「两个可见 Bot」）
 - `node scripts/prove_m25_profile.js` **25/0**；`prove_m27_convrail.js` **19/0**；`prove_m28_usage.js` **14/0**；`prove_m29_roomchat.js` **16/0**；`prove_m30_attachpreview.js` **10/0**；`prove_m31_reactions.js` **17/0**
 - `scripts/e2e_grok_desktop_boot.mjs` **124/0**。明暗像素：dark 亮度 35.4、light 239.9、差 204.5。设置 → Usage、Bot 右栏、对话详情、群聊 banner、Marketplace 都在真实 Electron 里点过。
-- `scripts/smoke_grok_desktop_parity.sh` **PASS=220 FAIL=10**。失败清单与原因：
-  1. **GP-07 builtin guard** 与 **G-6 五条**（group chat / mention / everyone / discretion / dm-only）：`data/desktop/bots.json` 在首个 `create bot` 之前已经存在且没有 `agent-bit` 行，`loadBots()` 因此不再种入内置 Bot。`confirm delete bot agent-bit` 得到 `bot_not_found` 而不是 `cannot_delete_builtin`；`create group chat bots=agent-bit,…` 没有这个成员。
-  2. **G-23 两条**：`data/workspace` 在 G-17 清理后是空的，GP-113/GP-114 要求共享文件计数 > 0。smoke 随后 grep 不到「共享传递」那句 ok。
-  3. **G-26 两条**：`primary_id` 仍是 `agent-bit` 但没有这一行，`botDetail` 返回 `bot_not_found`，没有 `is_primary`。负向对照去读已被清掉的 `data/memory/desktop-host.json`，ENOENT。静态 UI 契约（`#bot-rail`、互斥、IPC、i18n）在同一份日志里是绿的。
-- 以上 10 条不碰 `ui_chrome.css` / `index.html` 的样式。G-16、G-20、G-24、G-25、G-27..G-31 全绿。
+- 干净 store 复跑 `scripts/smoke_grok_desktop_parity.sh` **PASS=230 FAIL=0**（起点：`bots.json` 已存在但 `bots:[]`、没有 `agent-bit`；`data/workspace` 整目录删除；`desktop-host.json` 不存在）。G-16 E2E 仍是 **124/0**。此前那 10 条红是 store 前置，不是样式回归，修法如下，chrome 令牌未回退：
+  1. **`loadBots()`** 在文件缺失或已有文件缺 `agent-bit` 行时都写入内置 Bot。smoke 在 G-1、G-1b、G-6、G-26 前再调一次 `ensure_agent_bit`。`confirm delete bot agent-bit` 得到 `cannot_delete_builtin`，群聊 `bots=agent-bit,…` 找得到成员。
+  2. **G-17 清理之后**写回 `data/workspace/m23-shared-keep.txt`。`prove_m23_memory.js` 自己也会放同一份文件再按快照恢复，所以 GP-113/114 的共享文件计数不靠历史残留。单独跑该探针 **26/0**。
+  3. **G-26 负向对照**在 `desktop-host.json` 为 ENOENT 时从空的 v2 store 种一条记忆，不再抛错。`prove_m26_botpanel.js` **27/0**，`is_primary` 为布尔。
 
 ### 3) NG-001（本波故意不像素对齐）
 复刻的是 spec §2.1 的结构：侧栏、composer、唯一的 `#log`、可选右栏、设置、对话框。颜色是 Bit Bot 中性色，没有 xAI 标志或专有皮肤。欢迎词与标题栏用同一套无衬线，不是另一套衬线字标。设置是居中 sheet，不是 Grok 设置窗口的像素拷贝。
