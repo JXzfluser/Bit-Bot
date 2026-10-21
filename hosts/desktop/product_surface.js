@@ -62,28 +62,48 @@ function createProductSurface(repoRoot) {
   }
 
   // ===== BOTS STORE =====
+  function builtinAgentBit(now) {
+    return {
+      id: "agent-bit",
+      name: "Bit Bot",
+      job: "General assistant",
+      description: "Default Bit Bot agent",
+      avatar: "",
+      hidden: false,
+      pinned: true,
+      created_at: now,
+      updated_at: now,
+    };
+  }
+
   function loadBots() {
-    const data = readJson(BOTS_PATH, null);
-    if (!data) {
-      // Seed with built-in agent-bit
-      const seeded = {
-        version: 1,
-        primary_id: "agent-bit",
-        bots: [{
-          id: "agent-bit",
-          name: "Bit Bot",
-          job: "General assistant",
-          description: "Default Bit Bot agent",
-          avatar: "",
-          hidden: false,
-          pinned: true,
-          created_at: nowIso(),
-          updated_at: nowIso()
-        }]
-      };
-      atomicWrite(BOTS_PATH, JSON.stringify(seeded, null, 2));
-      return seeded;
+    // Missing file AND a half-written file (bots present, builtin row absent)
+    // both have to come back with agent-bit. G-1b / G-6 / G-26 address that
+    // id directly; seeding only when the file is absent leaves the row out
+    // as soon as anything else creates bots.json first.
+    let data = readJson(BOTS_PATH, null);
+    let dirty = false;
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      data = { version: 1, primary_id: "agent-bit", bots: [] };
+      dirty = true;
     }
+    if (!Array.isArray(data.bots)) {
+      data.bots = [];
+      dirty = true;
+    }
+    if (!data.bots.some((b) => b && b.id === "agent-bit")) {
+      data.bots.unshift(builtinAgentBit(nowIso()));
+      dirty = true;
+    }
+    if (!data.primary_id) {
+      data.primary_id = "agent-bit";
+      dirty = true;
+    }
+    if (!data.version) {
+      data.version = 1;
+      dirty = true;
+    }
+    if (dirty) atomicWrite(BOTS_PATH, JSON.stringify(data, null, 2));
     return data;
   }
 

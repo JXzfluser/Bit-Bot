@@ -28,7 +28,19 @@ const fs=require('fs');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
   }catch(e){ console.log('parse-error'); }
 });" "$1"; }
 
+# Builtin row. loadBots() repairs a missing file and a half-written bots.json.
+# Call this before any assertion that addresses agent-bit by id (G-1b, G-6, G-26).
+ensure_agent_bit() {
+  node -e "
+const s=require('./hosts/desktop/product_surface.js').createProductSurface(process.cwd());
+s.listViews();
+const rows=(require('./$DATA/bots.json').bots)||[];
+if(!rows.some(b=>b&&b.id==='agent-bit')){console.error('agent-bit missing after seed');process.exit(1);}
+"
+}
+
 echo "== G-1/G-2 Bot lifecycle =="
+ensure_agent_bit
 before=$(cat $DATA/bots.json 2>/dev/null | md5sum)
 j=$(turn_json "create bot Smoke job=verify description=Wave+G+smoke+bot")
 echo "$j" | field intent | grep -q create_bot && echo "$j" | field hostKinds | grep -q bot_create:ok && ok "create bot → create_bot → host ok" || bad "create bot chain"
@@ -40,6 +52,7 @@ j=$(turn_json "set primary bot $smid"); echo "$j" | field hostKinds | grep -q bo
 j=$(turn_json "update bot $smid name=SmokeRenamed"); echo "$j" | field hostKinds | grep -q bot_update:ok && grep -q SmokeRenamed $DATA/bots.json && ok "update bot persisted" || bad "update bot"
 
 echo "== G-1b Hide/Unhide/Delete（GP-06 / GP-07 store-backed）=="
+ensure_agent_bit
 # GP-06 hide 不删数据、不暂停：bots.json 行仍在，仅 hidden=true
 j=$(turn_json "hide bot $smid")
 echo "$j" | field hostKinds | grep -q bot_hide:ok && ok "hide bot → bot_hide host ok" || bad "hide bot chain"
@@ -158,6 +171,7 @@ j=$(turn_json "local execution always"); grep -q '"local_execution": "always"' $
 node -e "require('fs').writeFileSync('$DATA/settings.json',JSON.stringify({version:1,appearance:'dark',language:'zh-CN',timezone:'Asia/Shanghai',local_execution:'ask',route_traffic:false,notify:{},unread:{},sidebar_collapsed:false},null,2))"
 
 echo "== G-6 群组（GP-50/51）=="
+ensure_agent_bit
 j=$(turn_json "create group chat bots=agent-bit,$smid title=Smoke+room"); echo "$j" | field hostKinds | grep -q group_chat:ok && ok "group chat 建立（2 成员）" || bad "group chat"
 j=$(turn_json "create group chat bots=$smid title=One"); echo "$j" | grep -q members_2_to_6 && ok "<2 成员被拒（GP-50）" || bad "member guard"
 roomid=$(node -e "
@@ -663,7 +677,12 @@ process.exit(0)' \
   && ok "G-17 GP-11：pick/paste/drop 共用校验器 + webUtils 真实路径 + 拒绝文案 i18n×3 + stage IPC 契约" || bad "G-17 renderer/IPC wiring"
 rm -rf /tmp/g17 data/workspace/uploads/g17 data/workspace/uploads/gp17
 rm -f data/workspace/uploads/g17doc1.txt data/workspace/uploads/g17doc2.txt data/workspace/uploads/g17doc3.txt
-echo "  · G-17 清理完成（fixture 与暂存目录删除，双跑幂等）"
+# G-17 is allowed to remove the only files a clean tree had under data/workspace.
+# GP-113/114 count real shared files there, so put one deterministic file back
+# instead of hoping an earlier wave left something behind.
+mkdir -p data/workspace
+printf 'shared-across-bots\n' > data/workspace/m23-shared-keep.txt
+echo "  · G-17 清理完成（fixture 与暂存目录删除，双跑幂等；共享文件夹具已放回）"
 
 echo "== G-18 Reply 回复特定消息（GP-14 · 官方 spec §5.1 + 群聊消息路由：被回复消息 id 必须进 kernel 上下文）=="
 # 规格验收信号：点回复后 kernel 上下文含被回复消息 id。
@@ -997,6 +1016,7 @@ echo "  · G-25 说明：本块用真实 CLI 内核 + Host product_surface 跑 c
 
 
 echo "== G-26 Bot 设置右栏（M26：§2.1 右侧面板 / §4.6 每 Bot 通知开关）=="
+ensure_agent_bit
 if timeout 900 node scripts/prove_m26_botpanel.js > /tmp/g26-probe.log 2>&1; then
   ok "G-26 Bot 设置右栏契约全绿（$(grep -c '✓' /tmp/g26-probe.log) 项，$(tail -1 /tmp/g26-probe.log)）"
 else
