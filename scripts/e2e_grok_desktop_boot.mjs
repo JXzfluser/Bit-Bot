@@ -1132,6 +1132,267 @@ async function main() {
       }
     }
 
+    /* ---- GP-116..119 主窗口结构（官方 spec §2.1）----
+       真实 UI：数侧边栏六个入口的 DOM 顺序、点 Marketplace 看模板是否来自
+       Host 目录、在群组面板真建一个群 → #room-list 出现该行、给两个 Bot 各发
+       一条消息看侧栏是否按真实活动重排、打开 Computer 右栏看 #log 是否被挤没。
+       断言读的是真实 DOM 几何 + Host 落盘，不是源码字符串。*/
+    const BOTS_PATH = path.join(REPO, "data/desktop/bots.json");
+    const ROOMS_PATH = path.join(REPO, "data/desktop/rooms.json");
+    const botsBefore = fs.existsSync(BOTS_PATH) ? fs.readFileSync(BOTS_PATH) : null;
+    const roomsBefore = fs.existsSync(ROOMS_PATH) ? fs.readFileSync(ROOMS_PATH) : null;
+    try {
+      const bootG24 = await launch({ BITBOT_LLM_STREAM: "0" });
+      const win = bootG24.win;
+      await win.waitForSelector("#bot-list [data-agent-id]", { timeout: 30000 });
+
+      // 1) six entries, in order, footer last
+      const shell = await win.evaluate(() => {
+        const agents = document.getElementById("agents");
+        const q = (id) => document.getElementById(id);
+        const pos = (el) => {
+          let n = 0;
+          let p = el;
+          while (p && p !== agents) {
+            p = p.previousElementSibling;
+            if (p) n++;
+          }
+          return n;
+        };
+        const footer = q("sidebar-footer");
+        const order = ["bot-list", "room-list", "session-list", "sidebar-footer"].map((id) =>
+          q(id) ? pos(q(id)) : -1,
+        );
+        return {
+          order,
+          footerIsLast: Boolean(footer) && footer.lastElementChild !== null &&
+            agents.lastElementChild === footer,
+          footerIds: ["hidden-bots-lab", "connect-apps-btn", "marketplace-btn", "sidebar-settings-btn"]
+            .map((id) => Boolean(q(id))),
+          hiddenBadge: (q("hidden-bots-count") || {}).textContent || "",
+          // GP-118 geometry: with 70+ Bots / 30+ rooms in the store the footer
+          // must still be on screen — lists scroll in place, footer never pushed out.
+          footerVisible: Boolean(footer) && (() => {
+            const a = agents.getBoundingClientRect();
+            const f = footer.getBoundingClientRect();
+            return f.bottom <= a.bottom + 1 && f.top >= a.top - 1;
+          })(),
+          listsScroll: ["bot-list", "room-list", "session-list"].some((id) => {
+            const el = q(id);
+            return el && el.scrollHeight > el.clientHeight + 1;
+          }),
+        };
+      });
+      shell.order.every((v, i) => v >= 0 && (i === 0 || v > shell.order[i - 1]))
+        ? ok("E2E GP-116：侧边栏顺序 = Bot 列表 → 群组列表 → 会话列表 → 尾部区块")
+        : bad("E2E GP-116 sidebar order", JSON.stringify(shell.order));
+      shell.footerIsLast && shell.footerIds.every(Boolean)
+        ? ok("E2E GP-118：#sidebar-footer 是侧栏最后一个块，含 Hidden / Connect apps / Marketplace / Settings")
+        : bad("E2E GP-118 footer", JSON.stringify(shell).slice(0, 200));
+      shell.footerVisible && shell.listsScroll
+        ? ok("E2E GP-118：长列表（Bots/群组/会话）就地滚动，尾部区块仍在可视区内")
+        : bad("E2E GP-118 footer geometry", JSON.stringify({ vis: shell.footerVisible, scroll: shell.listsScroll }));
+
+      // 2) Marketplace really renders the Host catalog
+      const tplFile = JSON.parse(
+        fs.readFileSync(path.join(REPO, "data/desktop/bot-templates.json"), "utf8"),
+      );
+      const tplCount = ((tplFile.templates || tplFile) || []).length;
+      await win.click("#marketplace-btn");
+      await win.waitForFunction(
+        () => {
+          const m = document.getElementById("marketplace-modal");
+          return m && getComputedStyle(m).display !== "none" &&
+            document.querySelectorAll("#mk-grid [data-template-id]").length > 0;
+        },
+        null,
+        { timeout: 20000 },
+      );
+      const mk = await win.evaluate(() => ({
+        cards: document.querySelectorAll("#mk-grid [data-template-id]").length,
+        ids: Array.from(document.querySelectorAll("#mk-grid [data-template-id]")).map(
+          (el) => el.dataset.templateId,
+        ),
+        meta: (document.getElementById("mk-meta") || {}).textContent || "",
+      }));
+      mk.cards === tplCount && mk.ids.length === tplCount
+        ? ok("E2E GP-116：点 Marketplace 打开模板市场，卡片数 = Host 目录（" + tplCount + "）")
+        : bad("E2E GP-116 marketplace", JSON.stringify(mk).slice(0, 220));
+      await win.click("#mk-close");
+
+      // 3) create a real group through the group panel → #room-list row
+      const ids = await win.evaluate(() =>
+        Array.from(document.querySelectorAll("#bot-list [data-agent-id]"))
+          .map((el) => el.dataset.agentId)
+          .slice(0, 2),
+      );
+      if (ids.length < 2) {
+        bad("E2E GP-116 group list", "need two visible Bots");
+      } else {
+        const roomTitle = "E2E room " + Date.now().toString(36);
+        await win.evaluate(() => {
+          const panel = document.getElementById("gp-panel");
+          if (panel) panel.style.display = "block";
+          const tab = document.querySelector('[data-gptab="group"]');
+          if (tab) tab.click();
+        });
+        await win.waitForSelector("#gp-room-members .gp-chip", { timeout: 10000 });
+        await win.evaluate((memberIds) => {
+          for (const id of memberIds) {
+            const chip = Array.from(document.querySelectorAll("#gp-room-members .gp-chip")).find(
+              (c) => c.textContent.trim() === id,
+            );
+            if (chip && !chip.classList.contains("active")) chip.click();
+          }
+        }, ids);
+        // Chips show Bot names, so select by clicking the first two unselected chips.
+        await win.evaluate(() => {
+          const chips = Array.from(document.querySelectorAll("#gp-room-members .gp-chip"));
+          let picked = 0;
+          for (const c of chips) {
+            if (picked >= 2) break;
+            if (!c.classList.contains("active")) {
+              c.click();
+              picked++;
+            }
+          }
+        });
+        await win.fill("#gp-room-title", roomTitle);
+        await win.click("#gp-room-create");
+        await win.waitForFunction(
+          (t) => {
+            const box = document.getElementById("room-list");
+            return box && Array.from(box.querySelectorAll("[data-room-id]")).some(
+              (el) => (el.textContent || "").includes(t),
+            );
+          },
+          roomTitle,
+          { timeout: 45000 },
+        ).catch(() => {});
+        const roomRow = await win.evaluate((t) => {
+          const box = document.getElementById("room-list");
+          const rows = Array.from(box ? box.querySelectorAll("[data-room-id]") : []);
+          const hit = rows.find((el) => (el.textContent || "").includes(t));
+          return { count: rows.length, hit: Boolean(hit), meta: hit ? hit.querySelector(".meta").textContent : "" };
+        }, roomTitle);
+        roomRow.hit
+          ? ok("E2E GP-116：新建群组后侧栏 #room-list 出现该群（" + roomRow.meta + "）")
+          : bad("E2E GP-116 room row", JSON.stringify(roomRow).slice(0, 200));
+        const roomsDisk = JSON.parse(fs.readFileSync(ROOMS_PATH, "utf8"));
+        (roomsDisk.rooms || []).some((r) => r.title === roomTitle && (r.members || []).length >= 2)
+          ? ok("E2E GP-116：该群真的落进 data/desktop/rooms.json（侧栏读同一份数据）")
+          : bad("E2E GP-116 room disk", JSON.stringify(roomsDisk).slice(0, 200));
+      }
+
+      // 4) activity ordering: messaging a Bot moves it up the list
+      const before = JSON.parse(fs.readFileSync(BOTS_PATH, "utf8")).bots || [];
+      const visible = before.filter((b) => b && !b.hidden);
+      const orderBefore = await win.evaluate(() =>
+        Array.from(document.querySelectorAll("#bot-list [data-agent-id]")).map(
+          (el) => el.dataset.agentId,
+        ),
+      );
+      const target = visible.slice().reverse().find((b) => !b.pinned && orderBefore.includes(b.id));
+      if (!target) {
+        bad("E2E GP-117 order", "no unpinned Bot to message");
+      } else {
+        await win.evaluate((bid) => {
+          const row = document.querySelector('#bot-list [data-agent-id="' + bid + '"]');
+          if (row) row.click();
+        }, target.id);
+        await win.waitForTimeout(800);
+        await win.fill("#composer #text", "ping activity ordering");
+        await win.press("#composer #text", "Enter");
+        await win.waitForFunction(
+          () => (document.getElementById("log") || {}).innerText?.includes("ping activity ordering"),
+          null,
+          { timeout: 45000 },
+        ).catch(() => {});
+        const bumped = await (async () => {
+          const t0 = Date.now();
+          while (Date.now() - t0 < 30000) {
+            try {
+              const rows = JSON.parse(fs.readFileSync(BOTS_PATH, "utf8")).bots || [];
+              const row = rows.find((b) => b.id === target.id);
+              if (row && String(row.updated_at) > String(
+                (before.find((b) => b.id === target.id) || {}).updated_at || "",
+              )) return row;
+            } catch (_) {}
+            await new Promise((r) => setTimeout(r, 250));
+          }
+          return null;
+        })();
+        bumped
+          ? ok("E2E GP-117：私聊里发一条消息 → 该 Bot 的 updated_at 被真实刷新")
+          : bad("E2E GP-117 activity stamp", "updated_at never moved for " + target.id);
+        await win.waitForFunction(
+          (bid) => {
+            const rows = Array.from(document.querySelectorAll("#bot-list [data-agent-id]"));
+            const pos = rows.findIndex((el) => el.dataset.agentId === bid);
+            const firstUnpinned = rows.findIndex((el) => !/★/.test(el.textContent || ""));
+            return pos >= 0 && pos <= firstUnpinned + 1;
+          },
+          target.id,
+          { timeout: 20000 },
+        ).then(() => true).catch(() => false)
+          ? ok("E2E GP-117：侧栏无需手动刷新就把它排到未置顶 Bot 的最前面")
+          : bad("E2E GP-117 reorder", "sidebar did not move " + target.id + " up");
+        const pinnedFirst = await win.evaluate(() =>
+          Array.from(document.querySelectorAll("#bot-list [data-agent-id]")).map((el) => ({
+            id: el.dataset.agentId,
+            pinned: /★/.test(el.textContent || ""),
+          })),
+        );
+        const seenUnpinned = pinnedFirst.findIndex((r) => !r.pinned);
+        pinnedFirst.every((r, i) => (seenUnpinned < 0 ? true : i < seenUnpinned ? r.pinned : !r.pinned))
+          ? ok("E2E GP-117：置顶 Bot 始终在未置顶 Bot 之前（pinned 优先于活动时间）")
+          : bad("E2E GP-117 pinned block", JSON.stringify(pinnedFirst.slice(0, 6)));
+      }
+
+      // 5) Computer rail open must not squeeze the message stream to zero
+      const widths = await win.evaluate(() => ({
+        main: document.getElementById("main").getBoundingClientRect().width,
+        log: document.getElementById("log").getBoundingClientRect().width,
+        machines: document.getElementById("machines").getBoundingClientRect().width,
+      }));
+      await win.click("#gp-panel-btn");
+      await win.waitForFunction(
+        () => document.body.classList.contains("computer-open"),
+        null,
+        { timeout: 10000 },
+      ).catch(() => {});
+      await win.waitForTimeout(400);
+      const widthsOpen = await win.evaluate(() => ({
+        main: document.getElementById("main").getBoundingClientRect().width,
+        log: document.getElementById("log").getBoundingClientRect().width,
+        rail: document.getElementById("computer-rail").getBoundingClientRect().width,
+        machines: document.getElementById("machines").getBoundingClientRect().width,
+        toolsOpen: document.body.classList.contains("tools-open"),
+      }));
+      widthsOpen.rail > 200 && widthsOpen.log > 200 && widthsOpen.main > 200
+        ? ok("E2E GP-119：打开 Computer 右栏后中央消息流仍 > 200px（不被挤为 0）")
+        : bad("E2E GP-119 rail squeeze", JSON.stringify({ before: widths, open: widthsOpen }).slice(0, 240));
+      // The tools rail stays at its 0fr track, so only padding+border remain
+      // (< 40px). Asserting "exactly 0" would just re-test the box model.
+      widthsOpen.machines < 40 && !widthsOpen.toolsOpen &&
+      widthsOpen.machines < widthsOpen.rail / 4
+        ? ok("E2E GP-119：Computer 与工具右栏互不搭车（tools 仍关闭，只剩自身 padding）")
+        : bad("E2E GP-119 rails coupled", JSON.stringify(widthsOpen).slice(0, 200));
+      await win.click("#gp-panel-btn");
+      await win.waitForFunction(
+        () => !document.body.classList.contains("computer-open"),
+        null,
+        { timeout: 10000 },
+      ).catch(() => {});
+
+      await shutdown(bootG24.app);
+    } catch (e) {
+      bad("E2E GP-116..119 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+    } finally {
+      if (botsBefore) fs.writeFileSync(BOTS_PATH, botsBefore);
+      if (roomsBefore) fs.writeFileSync(ROOMS_PATH, roomsBefore);
+    }
+
     /* ---- GP-93/94/95 Markdown/链接纪律（官方 spec §5.6）----
        走真实 UI + 真实 IPC：provider 回一句含裸 URL 与 javascript: 链接的话 →
        kernel CM-0111 规范化为 markdown → renderer 把 markdown 变成真 <a>，

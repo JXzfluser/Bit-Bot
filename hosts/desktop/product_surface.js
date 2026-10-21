@@ -445,7 +445,8 @@ function createProductSurface(repoRoot) {
     const visible = data.bots
       .filter(b => !b.hidden)
       .sort((a, b) => {
-        // Pinned first
+        // GP-117 (§2.1): pinned Bots are fixed at the top regardless of age,
+        // then the list is ordered by real activity (updated_at).
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
         // Then by updated_at desc
@@ -458,6 +459,20 @@ function createProductSurface(repoRoot) {
       hidden_bots: hidden,
       primary_id: data.primary_id
     };
+  }
+
+  /* GP-117: a Bot's position in the list comes from real activity, so the Host
+     stamps updated_at whenever a turn belongs to that Bot. Cheap and idempotent:
+     an unknown id is ignored rather than inventing a row. */
+  function touchBotActivity(botId) {
+    const id = String(botId || "").trim();
+    if (!id) return { ok: false, error: "empty bot id" };
+    const data = loadBots();
+    const bot = (data.bots || []).find((b) => b && b.id === id);
+    if (!bot) return { ok: false, error: "bot_not_found", bot_id: id };
+    bot.updated_at = nowIso();
+    saveBots(data);
+    return { ok: true, bot_id: id, updated_at: bot.updated_at };
   }
 
   // ===== APPROVAL RULES =====
@@ -1559,6 +1574,7 @@ function createProductSurface(repoRoot) {
     botsDelete,
     listViews,
     loadBots,
+    touchBotActivity,
 
     // Bots (legacy aliases for host_ffi.js)
     createBot: botsCreate,

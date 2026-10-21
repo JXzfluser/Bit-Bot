@@ -564,14 +564,15 @@ echo "== G-16 自动化冷启动 + GP-70 像素断言（Playwright-E2E · 规格
 # 截图用零依赖 PNG 解码（scripts/lib_png_pixel.mjs）算 viewport 亮度做可证伪断言。
 if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
   e2e_log=/tmp/e2e-g16.log
-  # M21 起 E2E 含五次真实 boot（GP-70 ×2 + GP-14 + GP-99 + GP-93/94/95）。
+  # M21 起 E2E 含六次真实 boot（GP-70 ×2 + GP-14 + GP-99 + GP-108/109 + GP-111/112
+  # + GP-116..119 + GP-93/94/95），单个 boot 冷启一次约 20–40s，故给足 1500s。
   # 无 live X display 时用 xvfb-run 起一个（DISPLAY 指向不存在的 socket 会让
   # Electron 在 ozone 里 SIGSEGV，被误判成应用问题）。
   e2e_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     e2e_xvfb=(xvfb-run -a)
   fi
-  if timeout 900 "${e2e_xvfb[@]}" node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
+  if timeout 1500 "${e2e_xvfb[@]}" node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
     ok "G-16 E2E 冷启动+像素断言全绿（$(grep -c '✓' "$e2e_log") 项，$(tail -1 "$e2e_log"))"
   else
     bad "G-16 E2E 冷启动+像素断言（见 $e2e_log）"
@@ -859,6 +860,72 @@ grep -q "旧扁平" /tmp/g23-probe.log 2>/dev/null \
   && ok "G-23 迁移：旧扁平 store/vault 升级后旧键保留在 agent-bit 槽（不丢用户数据）" \
   || bad "G-23 legacy migration missing"
 echo "  · G-23 说明：本块用真实 CLI Host 跑多 Bot 多 session 回合，断言读的是 desktop-host.json / profile-vault.json / shared-scopes.json 与 host_results 的落盘事实"
+
+echo "== G-24 主窗口结构（M24：§2.1 六类入口 / 活动排序 / 尾部区块 / 单一消息流）=="
+if timeout 900 node scripts/prove_m24_window.js > /tmp/g24-probe.log 2>&1; then
+  ok "G-24 主窗口结构契约全绿（$(grep -c '✓' /tmp/g24-probe.log) 项，$(tail -1 /tmp/g24-probe.log)）"
+else
+  bad "G-24 主窗口结构契约（见 /tmp/g24-probe.log）"
+fi
+grep -q "侧边栏顺序 = Bot 列表 → 群组列表 → 会话列表 → 尾部区块" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "六类入口都在 DOM 中" /tmp/g24-probe.log 2>/dev/null \
+  && ok "G-24 GP-116：Bot/群组/会话列表与 Hidden/Connect apps/Marketplace/Settings 六类入口齐全且顺序正确" \
+  || bad "G-24 GP-116 sidebar entries missing"
+grep -q "Marketplace 面板调用 Host templates.list" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "Host bot_templates_list 返回真实目录" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "渲染层没有写死模板数组" /tmp/g24-probe.log 2>/dev/null \
+  && ok "G-24 GP-116：Marketplace 模板来自 Host 目录（渲染层无写死数组，无第二份真相）" \
+  || bad "G-24 GP-116 marketplace not Host-sourced"
+grep -q "Marketplace 一键创建 → Host 真建 Bot" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "新建的 Bot 真的落进 data/desktop/bots.json" /tmp/g24-probe.log 2>/dev/null \
+  && ok "G-24 GP-116：市场卡片一键创建是真建 Bot（模板 job/description 落盘）" \
+  || bad "G-24 GP-116 template create fake"
+grep -q "给旧 Bot 跑一轮 → 它跳到新 Bot 之前" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "很旧但置顶的 Bot 仍然排在所有未置顶 Bot 之前" /tmp/g24-probe.log 2>/dev/null \
+  && ok "G-24 GP-117：按真实活动排序，置顶永远压过活动时间" \
+  || bad "G-24 GP-117 activity ordering missing"
+grep -q "未知 bot id 被拒绝且不会凭空造行" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "回合结束后 Host 广播 bots-changed" /tmp/g24-probe.log 2>/dev/null \
+  && ok "G-24 GP-117：未知 id 不造行；回合结束广播 → 侧栏自动重排" \
+  || bad "G-24 GP-117 unknown-id/broadcast missing"
+grep -q "#sidebar-footer 位于侧边栏最末尾" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "尾部区块顺序 = Hidden Bots → Connect apps → Marketplace → Settings" /tmp/g24-probe.log 2>/dev/null \
+  && ok "G-24 GP-118：隐藏入口在侧栏底部尾部区块（不在两个列表之间）" \
+  || bad "G-24 GP-118 footer placement missing"
+grep -q "群组落进 data/desktop/rooms.json" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "侧栏群组列表读 rooms.list()" /tmp/g24-probe.log 2>/dev/null \
+  && ok "G-24 GP-116：侧栏群组列表读 rooms.json（与群组面板同源）" \
+  || bad "G-24 GP-116 sidebar room list missing"
+grep -q "群聊消息走同一条 runUserTurn → #log" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "只有一个消息流容器 #log" /tmp/g24-probe.log 2>/dev/null \
+  && grep -q "右栏开合独立" /tmp/g24-probe.log 2>/dev/null \
+  && ok "G-24 GP-119：#log 单一消息流；Computer 与工具右栏独立开合" \
+  || bad "G-24 GP-119 single-stream/rails missing"
+grep -q "新增侧边栏文案在 zh-CN / zh-TW / en 三套 i18n 里齐全" /tmp/g24-probe.log 2>/dev/null \
+  && ok "G-24 i18n：新增入口文案三语齐全（不会露出原始 key）" \
+  || bad "G-24 i18n keys missing"
+if [ -f /tmp/e2e-g16.log ]; then
+  grep -q "E2E GP-116：侧边栏顺序" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-118：#sidebar-footer 是侧栏最后一个块" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-118：长列表" /tmp/e2e-g16.log \
+    && ok "G-24 真实 Electron：侧边栏六类入口顺序、尾部区块落位、长列表就地滚动（DOM 实测）" \
+    || bad "G-24 E2E sidebar DOM missing"
+  grep -q "E2E GP-116：点 Marketplace 打开模板市场" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-116：新建群组后侧栏 #room-list 出现该群" /tmp/e2e-g16.log \
+    && ok "G-24 真实 Electron：Marketplace 卡片数 = Host 目录；新建群组立即出现在 #room-list" \
+    || bad "G-24 E2E marketplace/room-list missing"
+  grep -q "E2E GP-117：侧栏无需手动刷新就把它排到未置顶 Bot 的最前面" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-117：置顶 Bot 始终在未置顶 Bot 之前" /tmp/e2e-g16.log \
+    && ok "G-24 真实 Electron：发消息后侧栏真重排，置顶块不动" \
+    || bad "G-24 E2E reorder missing"
+  grep -q "E2E GP-119：打开 Computer 右栏后中央消息流仍 > 200px" /tmp/e2e-g16.log \
+    && grep -q "E2E GP-119：Computer 与工具右栏互不搭车" /tmp/e2e-g16.log \
+    && ok "G-24 真实 Electron：Computer 右栏打开后中央消息流不被挤为 0，两右栏独立" \
+    || bad "G-24 E2E rail geometry missing"
+else
+  echo "  · skip：/tmp/e2e-g16.log 不存在（E2E 未在本轮运行）"
+fi
+echo "  · G-24 说明：本块用真实 CLI Host + product_surface 建/删 Bot 与群组，断言读的是 DM 顺序、rooms.json、bot-templates.json 与 host_results，另加一条负向对照（关掉 saveBots 后活动排序断言变红）"
 
 
 echo

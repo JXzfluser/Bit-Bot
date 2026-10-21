@@ -170,6 +170,15 @@
 | GP-114 | 删除 Bot 不删除共享 Computer 文件；**不删除别的 Bot 的记忆** | `botsDelete` 级联 sessions/routines/rooms 时**不动** `data/memory/*` 的其它 Bot 槽，只清理该 Bot 自己的槽 | 删除 A 后：B 的记忆仍在；共享文件仍在；`data/memory/desktop-host.json` 里 `bots.A` 已消失、`bots.B` 保留 |
 | GP-115 | 重要决策应**检查当前数据源**而非依赖记忆 | 记忆条目只做上下文：`memory_grants_send()` 恒 `false`（记忆永不授权发送/购买）；审批/草稿仍走 `gate_consequential`；`memory` 行的 scope 不含 `authoritative` 标记 | 记忆里写 `send=allow all` 后，`purchase item` / `channel_send` 仍弹审批卡；内核 `memory_grants_send` 单测恒 false |
 
+## G-20 主窗口结构（官方 spec §2.1）
+
+| ID | 官方行为 | 实现落点 | 验收信号 |
+|----|----------|----------|----------|
+| GP-116 | 左侧边栏 = **Bot 列表 + 群组列表 + 隐藏 Bot 入口 + Connect apps + Marketplace + Settings** | `#agents` 内：`#bot-list`（Bot）、`#room-list`（群组，读 `rooms.json`）、`#hidden-bots-lab`、`#connect-apps-btn`、`#marketplace-btn`（Bot 模板市场，读 `bot_templates_list`）、`#sidebar-settings-btn`；底部顺序固定（列表 → Hidden → Connect apps → Marketplace → Settings） | 六类入口都在 DOM 中且顺序正确；点 Marketplace 打开模板市场面板，模板来自 Host 目录而不是写死数组 |
+| GP-117 | Bot 列表**按活动排序**，置顶 Bot 固定在最上方 | `listViews()` 排序：`pinned` 优先，其次 `updated_at` 降序；`product_surface.touchBotActivity(bot_id)` 在每次真实回合落盘后刷新该 Bot 的 `updated_at`（未知 id 拒绝、不造行），随后 main 广播 `bitbot:bots-changed` 让侧栏即时重排 | 给 A/B 各发一条消息后，最近活跃的排在前；置顶的 Bot 永远在最上面，即使它很旧；未知 bot id → `bot_not_found` 且不新增行 |
+| GP-118 | 隐藏 Bot 入口位于侧边栏**底部** | `#agents` 为纵向 flex：`#bot-list`/`#room-list`/`#session-list` 各自就地滚动（`flex:1 1 auto; overflow-y:auto`），`#sidebar-footer`（Hidden Bots / Connect apps / Marketplace / Settings）`flex:0 0 auto` 固定在列尾，不夹在列表中间 | 侧边栏尾部区块的 DOM 顺序断言；**70+ Bot / 30+ 群组时 footer 仍在可视区内**（`footer.bottom <= agents.bottom`）且三个列表 `scrollHeight > clientHeight`；隐藏数量徽标随 `bot_hide/unhide` 更新 |
+| GP-119 | 中央区域是当前**对话/群聊**消息流；右侧面板可选（对话详情 / Bot 设置 / Computer 预览） | `#log` 是唯一消息流容器；群聊回合在同一 `#log` 渲染（房间 transcript 卡）；右侧 `#machines`（工具）与 `#computer-rail`（Computer 预览）互不遮挡，`body.tools-open` / `body.computer-open` 各自独立开合 | 打开 Computer 预览后中央消息流宽度不被挤为 0；群聊回合落进 `#log` 而不是另开窗口 |
+
 ## 诚实残留（本波不假装）
 
 - 真实云 VM 远程桌面推流：以本机 `DISPLAY`/xvfb + 真截图帧模拟"共享电脑屏幕"，标注 `mode=sandbox_screen`，不宣称云端。

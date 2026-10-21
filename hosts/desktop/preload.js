@@ -145,6 +145,17 @@ contextBridge.exposeInMainWorld("bitbot", {
     return () =>
       ipcRenderer.removeListener("bitbot:settings-changed", handler);
   },
+  onBotsChanged: (cb) => {
+    const handler = (_e, view) => {
+      try {
+        cb(view);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:bots-changed", handler);
+    return () => ipcRenderer.removeListener("bitbot:bots-changed", handler);
+  },
   onFocusSession: (cb) => {
     const handler = (_e, payload) => {
       try {

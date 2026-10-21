@@ -1994,6 +1994,22 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       broadcast("bitbot:sessions-changed", sessions.list());
     }
     if (result && typeof result === "object") result.progress = progressRows;
+    // GP-117 (§2.1): a turn that belongs to a Bot is real activity, so the
+    // sidebar can order Bots by when they were last used. Unknown ids are
+    // ignored by the surface (it never invents a row).
+    let botActivity = null;
+    if (!skipSession) {
+      const touchedId = String((opts && opts.botId) || "").trim() || "agent-bit";
+      try {
+        botActivity = surface.touchBotActivity(touchedId);
+        if (botActivity && botActivity.ok) {
+          broadcast("bitbot:bots-changed", surface.listViews());
+        }
+      } catch (_) {
+        botActivity = { ok: false, error: "touch_failed" };
+      }
+    }
+    if (result && typeof result === "object") result.bot_activity = botActivity;
     broadcast("bitbot:llm-stream", {
       phase: "end",
       session_id: sessionId,

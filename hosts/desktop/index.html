@@ -292,6 +292,26 @@
     background: var(--side);
     padding: 14px 12px;
     overflow: auto;
+    /* GP-118: sidebar is a column so the footer can pin to the bottom edge
+       while the lists above it scroll independently. */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #agents > #bot-list,
+  #agents > #room-list,
+  #agents > #session-list {
+    flex: 1 1 auto;
+    min-height: 40px;
+    overflow-y: auto;
+  }
+  #agents > .panel-title,
+  #agents > #sess-new,
+  #agents > #vc-sb-indicator,
+  #agents > #bot-create-form,
+  #agents > #agents-lab,
+  #agents > #sidebar-footer {
+    flex: 0 0 auto;
   }
   #machines {
     grid-area: machines;
@@ -300,6 +320,19 @@
     padding: 14px 12px;
     overflow: auto;
     /* visibility toggled via body.tools-open (see rules above) */
+  }
+  /* GP-116: the Bot / group lists can get long (dozens of Bots, many rooms), so
+     they scroll in place instead of pushing the rest of the sidebar away. */
+  #bot-list { max-height: 34vh; }
+  #room-list { max-height: 18vh; }
+  /* GP-118: the footer is a distinct bottom block, visually separated from the
+     lists above it (Grok puts Hidden / Connect apps / Marketplace / Settings
+     at the very bottom rather than mixed into the lists). */
+  #sidebar-footer {
+    margin-top: 14px;
+    border-top: 1px solid var(--line);
+    padding: 10px 0 4px;
+    background: var(--side);
   }
   .panel-title {
     font-size: 11px;
@@ -1044,11 +1077,12 @@
         <button type="button" id="bc-cancel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer" data-i18n="bcCancel">取消</button>
       </div>
     </div>
-    <button type="button" id="connect-apps-btn" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" style="margin-top:10px;width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px;cursor:pointer" data-i18n="connectApps">Connect apps</button>
-    <details class="lab" id="hidden-bots-lab">
-      <summary><span data-i18n="hiddenBots">Hidden Bots</span> (<span id="hidden-bots-count">0</span>)</summary>
-      <div id="hidden-bot-list"></div>
-    </details>
+    <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px">
+      <span data-i18n="rooms">群组</span>
+    </div>
+    <!-- GP-116 (§2.1): group list lives in the sidebar next to the Bot list,
+         sourced from rooms.json — not a separate window. -->
+    <div id="room-list" aria-label="Group chats"></div>
     <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px">
       <span data-i18n="chats">会话</span>
     </div>
@@ -1082,7 +1116,17 @@
         </div>
       </div>
     </details>
-    <button type="button" id="sidebar-settings-btn" title="Settings（General / Computer / Usage & Billing / Updates）" style="margin-top:12px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:6px;padding:8px;cursor:pointer;text-align:left;font-size:13px" data-i18n="settings">设置</button>
+    <!-- GP-118 (§2.1): sidebar footer — Hidden Bots entry sits at the BOTTOM,
+         with Connect apps / Marketplace / Settings, not between the lists. -->
+    <div id="sidebar-footer">
+      <details class="lab" id="hidden-bots-lab">
+        <summary><span data-i18n="hiddenBots">Hidden Bots</span> (<span id="hidden-bots-count">0</span>)</summary>
+        <div id="hidden-bot-list"></div>
+      </details>
+      <button type="button" id="connect-apps-btn" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" style="margin-top:10px;width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px;cursor:pointer" data-i18n="connectApps">Connect apps</button>
+      <button type="button" id="marketplace-btn" title="Marketplace · Bot 模板（来自 Host bot-templates.json）" style="margin-top:8px;width:100%;background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px;cursor:pointer" data-i18n="marketplace">Marketplace</button>
+      <button type="button" id="sidebar-settings-btn" title="Settings（General / Computer / Usage & Billing / Updates）" style="margin-top:8px;width:100%;background:transparent;color:var(--ink);border:0;border-radius:6px;padding:8px;cursor:pointer;text-align:left;font-size:13px" data-i18n="settings">设置</button>
+    </div>
   </aside>
   <div id="main">
     <pre id="banner" data-i18n="booting">booting MoonBit…</pre>
@@ -1363,6 +1407,20 @@
         <div style="font-weight:700;font-size:13px;margin-top:14px" data-i18n="caBrowse">Browse plugins</div>
         <div id="ca-browse" class="ca-grid"></div>
         <div style="color:var(--muted);font-size:11px;margin-top:12px" data-i18n="caAuthNote">Some plugins need browser sign-in (OAuth) before their tools work.</div>
+      </div>
+    </div>
+    <!-- GP-116 (§2.1): Marketplace panel. The catalog is the Host's real
+         bot_templates_list effect (data/desktop/bot-templates.json) — never a
+         hardcoded array in the renderer. -->
+    <div id="marketplace-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:63;align-items:center;justify-content:center">
+      <div style="width:min(720px,92vw);max-height:82vh;overflow:auto;background:var(--bg1);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="font-weight:700;font-size:15px" data-i18n="mkTitle">Marketplace · Bot 模板</div>
+          <button type="button" id="mk-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer" data-i18n="settingsClose">关闭</button>
+        </div>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="mkHint">模板来自 Host 的 bot-templates.json 目录，点一个即可创建 Bot。</div>
+        <div id="mk-meta" style="color:var(--muted);font:11px/1.4 ui-monospace,monospace;margin-top:8px"></div>
+        <div id="mk-grid" class="ca-grid" style="margin-top:10px"></div>
       </div>
     </div>
     <div id="agent-info-panel" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--line);background:var(--bg1);border-radius:8px">
@@ -3633,6 +3691,147 @@
         });
         box.appendChild(el);
       }
+    }
+
+    /* GP-116 (§2.1): the sidebar group list. Grok's left column shows Bots and
+       Groups side by side, so this renders from the Host's rooms.json through
+       `rooms.list()` — the renderer never keeps its own copy of room state. */
+    async function refreshSidebarRooms() {
+      const box = document.getElementById("room-list");
+      if (!box || !window.bitbot || !window.bitbot.rooms) return;
+      let rows = [];
+      try {
+        const res = await window.bitbot.rooms.list();
+        const payload = (res && res.rooms) || {};
+        rows = Array.isArray(payload) ? payload : payload.rooms || [];
+      } catch (_) {
+        rows = [];
+      }
+      box.innerHTML = "";
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "color:var(--muted);font-size:11px;padding:2px 0 4px";
+        empty.textContent = wavegT("roomEmpty");
+        box.appendChild(empty);
+        return;
+      }
+      for (const rm of rows) {
+        const el = document.createElement("div");
+        el.className = "agent-item sess-row";
+        el.style.cursor = "pointer";
+        el.dataset.roomId = rm.id;
+        el.innerHTML =
+          '<span class="sess-avatar"></span>' +
+          '<div class="sess-main"><div class="name"></div><div class="meta"></div></div>';
+        const av = el.querySelector(".sess-avatar");
+        av.textContent = String(rm.title || rm.id || "G").trim().slice(0, 1);
+        av.style.background = avatarColorFor(rm.id || rm.title);
+        el.querySelector(".name").textContent = rm.title || rm.id;
+        const n = (rm.members || []).length;
+        el.querySelector(".meta").textContent = n + " " + wavegT("roomMembers");
+        el.title = (rm.members || []).join(", ");
+        el.addEventListener("click", () => {
+          const pick = document.getElementById("gp-room-pick");
+          if (pick) {
+            const has = Array.from(pick.options || []).some((o) => o.value === rm.id);
+            if (has) pick.value = rm.id;
+          }
+          const txt = document.getElementById("gp-room-text");
+          if (txt) txt.focus();
+          addMsg(
+            "assistant",
+            "群组「" + (rm.title || rm.id) + "」· " + n + " " + wavegT("roomMembers") +
+              "。消息会进 #log（room " + rm.id + " :: …）。",
+          );
+        });
+        box.appendChild(el);
+      }
+    }
+
+    /* GP-116 (§2.1): Marketplace = the Host's Bot template catalog. Same list
+       the create-Bot form uses, surfaced as a browsable panel. */
+    let mkTemplates = [];
+    function mkMsg(text) {
+      const el = document.getElementById("mk-meta");
+      if (el) el.textContent = text;
+    }
+    function renderMarketplace() {
+      const grid = document.getElementById("mk-grid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      if (!mkTemplates.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "color:var(--muted);font-size:12px";
+        empty.textContent = wavegT("mkEmpty");
+        grid.appendChild(empty);
+        return;
+      }
+      for (const tpl of mkTemplates) {
+        const card = document.createElement("div");
+        card.dataset.templateId = tpl.id || "";
+        card.style.cssText =
+          "display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;" +
+          "padding:10px 12px;background:var(--bg1);min-width:0";
+        const head = document.createElement("div");
+        head.style.cssText = "display:flex;align-items:center;gap:8px;min-width:0";
+        const icon = document.createElement("span");
+        icon.className = "ca-icon";
+        icon.textContent = String(tpl.default_name || tpl.job || "?").trim().slice(0, 1).toUpperCase();
+        icon.style.background = avatarColorFor(tpl.id || tpl.default_name);
+        head.appendChild(icon);
+        const title = document.createElement("div");
+        title.style.cssText = "min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+        title.textContent = (tpl.default_name ? tpl.default_name + " · " : "") + (tpl.job || tpl.id);
+        head.appendChild(title);
+        card.appendChild(head);
+        const desc = document.createElement("div");
+        desc.style.cssText = "color:var(--muted);font-size:11px;line-height:1.4";
+        desc.textContent = tpl.description || "";
+        card.appendChild(desc);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = wavegT("mkCreate");
+        btn.style.cssText =
+          "align-self:flex-start;background:var(--accent);color:var(--accent-ink);border:0;" +
+          "border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;font-size:12px";
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          const r = await window.bitbot.templates.create({ templateId: tpl.id, name: tpl.default_name || "" });
+          btn.disabled = false;
+          if (r && r.ok && r.bot) {
+            mkMsg((tpl.job || tpl.id) + " → " + (r.bot.name || r.bot.id));
+            await refreshBots();
+            await refreshSidebarRooms();
+          } else {
+            mkMsg("创建失败：" + ((r && (r.error || r.refused)) || "host_failed"));
+          }
+        });
+        card.appendChild(btn);
+        grid.appendChild(card);
+      }
+    }
+    async function refreshMarketplace() {
+      if (!window.bitbot || !window.bitbot.templates) {
+        mkMsg("Host templates API unavailable");
+        return;
+      }
+      const r = await window.bitbot.templates.list();
+      mkTemplates = (r && Array.isArray(r.templates)) ? r.templates : [];
+      mkMsg(
+        (r && r.ok ? "templates × " + mkTemplates.length : "failed: " + ((r && r.error) || "?")) +
+          (r && r.source ? " · " + r.source : ""),
+      );
+      renderMarketplace();
+    }
+    function openMarketplace() {
+      const m = document.getElementById("marketplace-modal");
+      if (!m) return;
+      m.style.display = "flex";
+      refreshMarketplace().catch(() => {});
+    }
+    function closeMarketplace() {
+      const m = document.getElementById("marketplace-modal");
+      if (m) m.style.display = "none";
     }
 
     async function loadActiveSessionTranscript() {
@@ -7239,6 +7438,18 @@
     if (connectAppsBtn) {
       connectAppsBtn.addEventListener("click", () => openConnectApps());
     }
+    const marketplaceBtn = document.getElementById("marketplace-btn");
+    if (marketplaceBtn) {
+      marketplaceBtn.addEventListener("click", () => openMarketplace());
+    }
+    const mkCloseBtn = document.getElementById("mk-close");
+    if (mkCloseBtn) mkCloseBtn.addEventListener("click", closeMarketplace);
+    const mkModalEl = document.getElementById("marketplace-modal");
+    if (mkModalEl) {
+      mkModalEl.addEventListener("click", (ev) => {
+        if (ev.target === mkModalEl) closeMarketplace();
+      });
+    }
     const caCloseBtn = document.getElementById("ca-close");
     if (caCloseBtn) caCloseBtn.addEventListener("click", closeConnectApps);
     const caModalEl = document.getElementById("connect-apps-modal");
@@ -7489,6 +7700,7 @@
         }
         if (hasOk("group_chat") || hasOk("room_turn")) {
           refreshRooms().catch(() => {});
+          refreshSidebarRooms().catch(() => {});
         }
         // GP-33: takeover guidance is honest — bot input pauses while user drives.
         const tk = hosts.find((h) => h && h.kind === "take_over" && h.ok);
@@ -7764,6 +7976,15 @@
         bcCancel: "取消",
         connectApps: "连接应用",
         hiddenBots: "已隐藏的 Bot",
+        rooms: "群组",
+        marketplace: "Marketplace",
+        mkTitle: "Marketplace · Bot 模板",
+        mkHint: "模板来自 Host 的 bot-templates.json 目录，点一个即可创建 Bot。",
+        mkEmpty: "Host 没有可用模板。",
+        mkCreate: "创建",
+        mkUse: "使用",
+        roomEmpty: "还没有群组。",
+        roomMembers: "位成员",
         advanced: "高级 · Agents / Teammates",
         settings: "设置",
         settingsGeneral: "常规",
@@ -8070,6 +8291,15 @@
         bcCancel: "取消",
         connectApps: "連接應用",
         hiddenBots: "已隱藏的 Bot",
+        rooms: "群組",
+        marketplace: "Marketplace",
+        mkTitle: "Marketplace · Bot 模板",
+        mkHint: "模板來自 Host 的 bot-templates.json 目錄，點一個即可建立 Bot。",
+        mkEmpty: "Host 沒有可用模板。",
+        mkCreate: "建立",
+        mkUse: "使用",
+        roomEmpty: "還沒有群組。",
+        roomMembers: "位成員",
         advanced: "進階 · Agents / Teammates",
         settings: "設定",
         settingsGeneral: "一般",
@@ -8376,6 +8606,15 @@
         bcCancel: "Cancel",
         connectApps: "Connect apps",
         hiddenBots: "Hidden Bots",
+        rooms: "Groups",
+        marketplace: "Marketplace",
+        mkTitle: "Marketplace · Bot templates",
+        mkHint: "Templates come from the Host bot-templates.json catalog — click one to create a Bot.",
+        mkEmpty: "The Host has no templates.",
+        mkCreate: "Create",
+        mkUse: "Use",
+        roomEmpty: "No groups yet.",
+        roomMembers: "members",
         advanced: "Advanced · Agents / Teammates",
         settings: "Settings",
         settingsGeneral: "General",
@@ -9185,6 +9424,8 @@
           pick.appendChild(o);
         }
       }
+      // GP-116: the sidebar group list shares the same source of truth.
+      refreshSidebarRooms().catch(() => {});
     }
     async function createRoomFromUi() {
       const status = document.getElementById("gp-group-status");
@@ -9400,6 +9641,13 @@
         if (window.bitbot.onSessionsChanged) {
           window.bitbot.onSessionsChanged((list) => renderSessionList(list));
         }
+        // GP-117 (§2.1): the Host stamps a Bot's updated_at after each of its
+        // turns, so the sidebar re-sorts by real activity without a reload.
+        if (window.bitbot.onBotsChanged) {
+          window.bitbot.onBotsChanged(() => {
+            refreshBots().catch(() => {});
+          });
+        }
         const newBtn = document.getElementById("sess-new");
         if (newBtn) {
           newBtn.addEventListener("click", async () => {
@@ -9475,6 +9723,7 @@
         refreshPendingBar().catch(() => {});
         refreshApprovalQueue().catch(() => {});
         refreshRooms().catch(() => {});
+        refreshSidebarRooms().catch(() => {});
         try {
           if (window.bitbot.llmStatus) {
             const ls = await window.bitbot.llmStatus();

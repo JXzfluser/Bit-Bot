@@ -1,7 +1,7 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M23 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=155 FAIL=0；`moon test` 381/381；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 73/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M24 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=169 FAIL=0；`moon test` 381/381；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 84/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -42,6 +42,10 @@
 | GP-113 | 已实现 | 共享可传递：`shared memory put/read` 仍走 `data/memory/shared-scopes.json`（scope 维度、不按 Bot 分），A 写的 scope 键 B 可读；`data/workspace/**` 无 Bot 目录；群聊 transcript 属房间。 |
 | GP-114 | 已实现 | 删除不连坐：`botsDelete` 级联 sessions/routines/rooms 后调用 `dropBotMemorySlot(bot_id)`，**只**删该 Bot 在 `desktop-host.json` 与 `profile-vault.json` 的槽（回执 `memory_dropped`），其它 Bot 槽与 `workspace_files_kept` 保留。 |
 | GP-115 | 已实现 | 记忆不授权动作：内核 `memory_grants_send()` 恒 `false`（记忆只做上下文），审批/草稿仍由 `gate_consequential` 决定；实测在 Bot 记忆里写 `send=allow all` 后 `purchase` / `channel_send` 仍只出 `approval_card`，无真实 host 执行。 |
+| GP-116 | 已实现 | §2.1 主窗口结构：侧栏六类入口齐全且顺序固定 —— `#bot-list`（Bot）→ `#room-list`（群组，读 `rooms.json`）→ `#session-list`（会话）→ `#sidebar-footer`（Hidden Bots / Connect apps / Marketplace / Settings）。群组列表由新增 `refreshSidebarRooms()` 渲染（行带 `data-room-id` + 成员数，点击把该群设进群组面板并提示消息入口），随 boot、`group_chat/room_turn` 回合与群组面板刷新同步。Marketplace 打开 `#marketplace-modal`，卡片来自 `window.bitbot.templates.list()`（Host `bot_templates_list` 读 `data/desktop/bot-templates.json`），一键创建走 `templates.create` → `bot_create_from_template` 真建 Bot；渲染层**没有**写死的模板数组。新增文案 zh-CN/zh-TW/en 三语齐全。见 Wave M24。 |
+| GP-117 | 已实现 | Bot 列表按**真实活动**排序：`listViews()` 先 `pinned` 后 `updated_at` 降序；`product_surface.touchBotActivity(bot_id)` 在 `bitbot:turn` 成功落盘后由 main 调用（未知 id 返回 `bot_not_found` 且不造行），随后广播 `bitbot:bots-changed` → preload `onBotsChanged` → renderer 重排侧栏，无需手动刷新。见 Wave M24。 |
+| GP-118 | 已实现 | 隐藏 Bot 入口位于侧栏**底部**：`#agents` 改为纵向 flex，`#bot-list`/`#room-list`/`#session-list` 各自就地滚动（`flex:1 1 auto; overflow-y:auto`），`#sidebar-footer`（Hidden Bots / Connect apps / Marketplace / Settings）`flex:0 0 auto` 固定在列尾，DOM 上确为 `#agents` 最后一个块；实测 76 个 Bot / 37 个群组时 footer 仍在视口内（`bottom 715 ≤ 719`）且三个列表 `scrollHeight > clientHeight`。隐藏数量徽标仍由 `bots.list()` 的 `hidden` 长度驱动。见 Wave M24。 |
+| GP-119 | 已实现 | 中央 `#log` 是**唯一**消息流：群聊回合走同一条 `runUserTurn("room …")` 落在 `#log`，不另开窗口；右侧 `#machines`（工具）与 `#computer-rail`（Computer 预览）各自被 `body.tools-open` / `body.computer-open` 独立开合，打开 Computer 后中央宽度仍 > 200px（实测 340px 右栏下 `#log` 475px）。见 Wave M24。 |
 | GP-37 | 残留 | `route_traffic` 开关持久 + UI 显示真实生效状态；真代理生效不可达 → renderer 显示 honest residual 文案。 |
 | GP-40/41 | 已实现 | 草稿卡（New Email / New Slack Message）可编辑，Send→真实 approved 回合再编码；Discard→不落出站。仅当卡类别为 ExternalSend 时渲染（不从任意文本臆造草稿）。 |
 | GP-42 | 已实现 | kernel 判定未变（CM-0306），UI 不代客批准。 |
@@ -392,3 +396,37 @@
 - Profile vault 与 session store 是**两个文件两条路径**：`memory_update` 同时写两者（同一 Bot 槽），但目前没有一致性修复任务去对齐手工改坏的文件。
 - Bot 槽与 Bot 生命周期靠 **id 字符串**关联（`botsDelete` 传的就是 bot_id）；重命名/复制 Bot 不迁移记忆槽（官方也未描述复制记忆的行为，故不做猜测）。
 - 跨设备同步记忆不在本波：`data/memory/*` 只在单机生效，多端一致性沿用既有 sync residual 口径。
+
+## Wave M24（主窗口结构：官方 spec §2.1，本轮）
+
+背景：官方 §2.1 描述的是**窗口骨架**——左侧栏列出 Bot / 群组 / 隐藏入口 / Connect apps / Marketplace / Settings，Bot 列表按活动排序，隐藏入口在底部，中央只有一条消息流，右侧面板可选。此前 Bit Bot 的侧栏只有 Bot 列表与会话列表：**没有群组列表**（群组只能从隐藏的 "Grok Parity 面板" 里建，建完侧栏看不到），**没有 Marketplace 入口**（虽然 Host 早就有 `bot_templates_list` 目录，只有新建 Bot 表单里能看到），Hidden Bots 夹在会话列表与高级面板之间，而 `listViews()` 虽然写了 `updated_at` 排序，**没有任何代码在活动后刷新它**——等于排序键永远不变。
+
+### 1) 规格先行（`docs/grok-desktop-parity/spec.md`）
+新增 `G-20 主窗口结构（官方 spec §2.1）`：GP-116（六类入口 + Marketplace 真目录）、GP-117（活动排序 + 置顶优先）、GP-118（隐藏入口在底部）、GP-119（单一消息流 + 右栏独立），每行都写明可证伪的验收信号（DOM 顺序、模板卡数 = Host 目录、旧置顶压过新活跃、中央宽度 > 0）。
+
+### 2) 实现
+- **侧栏结构（`hosts/desktop/index.html`）**：Bot 列表之后插入「群组」分区 + `#room-list`；把 `#hidden-bots-lab`、`#connect-apps-btn`、新增 `#marketplace-btn`、`#sidebar-settings-btn` 一起包进新建的 `#sidebar-footer`，作为 `#agents` 的最后一个块。新增 `#marketplace-modal` 面板（标题/说明/`#mk-meta` 计数/`#mk-grid` 卡片网格）。
+- **群组列表（`refreshSidebarRooms()`）**：读 `window.bitbot.rooms.list()`（`rooms.json`），行带 `data-room-id`、圆形头像、标题 + 「N 位成员」；空态显示 `roomEmpty`。点击把该群设进群组面板的下拉并聚焦消息框，同时在 `#log` 说明「消息会进 #log」。刷新点：boot、`refreshRooms()` 末尾（群组面板打开/创建后）、`group_chat`/`room_turn` 回合成事后。
+- **Marketplace（`refreshMarketplace()` / `renderMarketplace()`）**：调 `window.bitbot.templates.list()` → main 的 `bitbot:templates:list` → Host `bot_templates_list`（读 `data/desktop/bot-templates.json`）；卡片显示默认名 · 职责 · 描述 + 「创建」按钮，按钮走 `templates.create` → `bot_create_from_template`，成功后 `refreshBots()` 让新 Bot 立刻出现在侧栏。渲染层**没有任何模板 id**。
+- **活动排序（`product_surface.js` + `main.js` + `preload.js`）**：新增 `touchBotActivity(botId)`（未知 id → `bot_not_found`，不造行）并导出；`bitbot:turn` 在会话写盘之后调用它（`opts.botId || "agent-bit"`），成功后 `broadcast("bitbot:bots-changed", surface.listViews())`；preload 新增 `onBotsChanged`，renderer 收到后 `refreshBots()`。`skipSession` 的回合（菜单类短语）不计活动，避免把「点一下菜单」当成「用了这个 Bot」。
+- **i18n**：`rooms / marketplace / mkTitle / mkHint / mkEmpty / mkCreate / mkUse / roomEmpty / roomMembers` 九键在 zh-CN / zh-TW / en 三套字典里补齐，避免新入口露出原始 key。
+
+### 3) 验证（本轮实测）
+- `scripts/prove_m24_window.js` **29/0**（新增）：侧栏 DOM 顺序（Bot → 群组 → 会话 → 尾部区块）、`#sidebar-footer` 通过 div 深度扫描确认是 `#agents` 最后一块、尾部四入口顺序、隐藏徽标由 `hidden` 长度驱动、六类入口存在、九键三语齐全、Marketplace 走 `templates.list()` 且渲染层无模板 id、Host `bot_templates_list` 返回 6 个模板且与 `bot-templates.json` 集合一致、一键创建真建 Bot 并落盘、`touchBotActivity` 排序（默认按 `updated_at`、旧 Bot 跑一轮后跳到前面、置顶压过活跃、未知 id 拒绝）、main/preload/renderer 广播链闭合、群组真实创建/落盘/`@everyone` 路由/侧栏读同源、`#log` 唯一且群聊走同一 `runUserTurn`、右栏布局各自独立。
+- **负向对照**：把 `touchBotActivity` 里的 `saveBots(data)` 删掉（等于「排序键不更新」），probe 立刻 1 条变红（活动重排），恢复后 29/0——证明该断言真的在看活动时间，不是恒真。
+- `moon test` **381/381**（本波未改内核；确认无回归）。
+- `scripts/e2e_grok_desktop_boot.mjs` **84/0**（新增 11 条真实 UI 断言）：真实 DOM 几何数侧栏顺序与尾部块、**76 Bot/37 群组下尾部区块仍在视口内**、点 `#marketplace-btn` 看卡片数 = 6、在群组面板真实选两个 Bot 建群后 `#room-list` 立刻出现该行且 `rooms.json` 落盘、给一个未置顶 Bot 发消息后 `updated_at` 真实推进且侧栏自动把它排到未置顶最前、置顶块始终在前、打开 Computer 右栏后 `#log`/`#main` 仍 > 200px 且工具栏保持关闭。
+- `scripts/smoke_grok_desktop_parity.sh` 新增 **G-24 十四断言**（1 条全绿汇总 + 9 条 probe grep + 4 条 E2E grep），总 **PASS=169 FAIL=0**；并把 E2E 超时从 900s 提到 1500s（本波起 E2E 已是 8 次真实 boot）。
+
+### 4) 本轮踩到并修掉的真问题
+1. **排序键从不更新**：`listViews()` 早写了 `pinned` + `updated_at`，但没有任何写路径刷新 `updated_at`，"按活动排序"是个空承诺。现在回合落盘后由 Host 打时间戳并广播。
+2. **群组建完侧栏看不见**：群组只能在隐藏面板里操作，侧栏没有列表，与新 Bot 并列的「群组」概念缺失。现在 `#room-list` 与面板同源。
+3. **Marketplace 只是文档里的名词**：Host 早就有目录与一键创建 effect，但只有新建 Bot 表单的 chips 用到。现在有独立入口与卡片网格，且卡片数受 Host 目录约束。
+4. **探测脚本误判 footer 位置**：第一版用「footer 后第一个 `</div>`」判断结尾，把 footer 内部第一个 div 的闭合当成结束，导致恒红。改成从 footer 开标签后开始做 div 深度扫描，才是真实的块边界。
+5. **长列表把底部入口挤出屏幕**：侧栏原本 `overflow:auto` 整列滚动，76 个 Bot 时 `#sidebar-footer` 落在 y=3900，用户根本看不到 Hidden/Connect apps/Marketplace/Settings——「在底部」在 DOM 里成立、在屏幕上不成立。改成纵向 flex，三个列表各自滚动、footer 固定在列尾，E2E 加了 `footer.bottom <= agents.bottom` 的几何断言。
+
+### 5) 诚实残留（本波不假装）
+- **像素级"像 Grok"**不作自动断言：本波断言的是结构（DOM 顺序、宽度、数据来源）与真实交互，配色/圆角/间距仍靠人工目检（M20 的像素断言只覆盖明暗主题）。
+- **Bot 列表的"活动"粒度是回合级**：`touchBotActivity` 在一次成功回合后打点，不做"正在输入/刚被查看"的更细信号；未落盘的失败回合不算活动（有意为之，避免失败也顶到前面）。
+- **群组行点击只做定位 + 提示**：真正的群聊回合仍由群组面板的消息框发送（`room <id> :: …` 落 `#log`），本波没有做「点群组行切换一个独立群聊会话视图」（官方 §2.1 未要求，且会与 §3 会话模型冲突）。
+- **Marketplace 只有本地目录**：模板来自 `data/desktop/bot-templates.json` 的六个内置模板，没有远程市场/安装量/评分（无远端服务可查，不假装）。
