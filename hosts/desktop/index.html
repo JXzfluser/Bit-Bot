@@ -601,10 +601,10 @@
   #log {
     flex: 1;
     overflow: auto;
-    padding: 16px;
+    padding: 20px 24px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 16px;
   }
   .msg {
     max-width: 760px;
@@ -874,13 +874,14 @@
   }
   .composer-menu {
     position: absolute; bottom: 72px; left: 20px; z-index: 40;
-    background: var(--bg1); border: 1px solid var(--muted); border-radius: var(--radius-md);
-    padding: 6px; max-height: 220px; overflow: auto; min-width: 240px;
+    background: #ffffff; border: 1px solid var(--line); border-radius: var(--radius-lg);
+    padding: 8px; max-height: 280px; overflow: auto; min-width: 260px;
     display: flex; flex-direction: column; gap: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
   }
   .composer-menu button {
     background: none; color: var(--ink); border: 0; text-align: left;
-    padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; font: inherit; font-size: var(--text-sm);
+    padding: 8px 12px; border-radius: var(--radius-md); cursor: pointer; font: inherit; font-size: var(--text-md);
   }
   .composer-menu button:hover { background: var(--accent-soft); }
   #composer {
