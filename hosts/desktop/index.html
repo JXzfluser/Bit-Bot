@@ -11002,6 +11002,10 @@
         } else if (ev.key === "f" || ev.key === "F") {
           ev.preventDefault();
           openGpPanel("computer");
+        } else if (ev.key === "d" || ev.key === "D") {
+          /* Wave M36: Cmd/Ctrl+D → 语音输入开关（复用 startVoiceInput，与 🎙 同一入口）。 */
+          ev.preventDefault();
+          if (typeof startVoiceInput === "function") startVoiceInput();
         } else if ((ev.key === "m" || ev.key === "M") && ev.shiftKey) {
           ev.preventDefault();
           openConnectApps();

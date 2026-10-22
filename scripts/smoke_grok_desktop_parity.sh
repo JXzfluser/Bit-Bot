@@ -1299,6 +1299,25 @@ grep -q "负向对照：抹掉 openHotkeysSheet" /tmp/g35-probe.log 2>/dev/null 
   && ok "G-35 负向对照：抹掉 openHotkeysSheet 调用 → 断言翻假（非恒真）" \
   || bad "G-35 negative control"
 
+echo "== G-36 Cmd/Ctrl+D 语音绑定（M36：单一录音入口）=="
+if timeout 900 node scripts/prove_m36_voicehotkey.js > /tmp/g36-probe.log 2>&1; then
+  ok "G-36 语音快捷键契约全绿（$(grep -c '✓' /tmp/g36-probe.log) 项，$(tail -1 /tmp/g36-probe.log)）"
+else
+  bad "G-36 语音快捷键契约（见 /tmp/g36-probe.log）"
+fi
+grep -q "wireAccelerators：Cmd/Ctrl+D 分支调用 startVoiceInput" /tmp/g36-probe.log 2>/dev/null \
+  && ok "G-36 GP-M36：Cmd/Ctrl+D 与 🎙 按钮共用 startVoiceInput 单一入口" \
+  || bad "G-36 voice hotkey missing"
+grep -q "键盘分支使用 typeof guard" /tmp/g36-probe.log 2>/dev/null \
+  && ok "G-36 GP-M36：typeof guard 保护前向引用，不重复实现" \
+  || bad "G-36 guard missing"
+grep -q "HOTKEYS hkVoice 项与按钮 title 一致" /tmp/g36-probe.log 2>/dev/null \
+  && ok "G-36 GP-M36：hkVoice 面板项与按钮 title 对齐（语音输入 / Cmd+D）" \
+  || bad "G-36 label drift"
+grep -q "负向对照：抹掉 startVoiceInput" /tmp/g36-probe.log 2>/dev/null \
+  && ok "G-36 负向对照：抹掉 startVoiceInput() 调用 → 分支断言翻假（非恒真）" \
+  || bad "G-36 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

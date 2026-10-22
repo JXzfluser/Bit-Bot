@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M35 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=247 FAIL=0**。新增 `prove_m35_hotkeys.js` 6/0（Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键面板，DOM 建、三语齐、复用 bb-modal / bb-sheet、含负向对照）。M33 / M34 契约保持。详见 Wave M35。
+> 验收证据（M36 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=252 FAIL=0**。新增 `prove_m36_voicehotkey.js` 5/0（Cmd/Ctrl+D 语音绑定与 🎙 按钮共用 startVoiceInput 单一入口，含 typeof guard 与负向对照）。M33 / M34 / M35 契约保持。详见 Wave M36。
+> 验收证据（M35）：`scripts/smoke_grok_desktop_parity.sh` **PASS=247 FAIL=0**。新增 `prove_m35_hotkeys.js` 6/0（Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键面板，DOM 建、三语齐、复用 bb-modal / bb-sheet、含负向对照）。M33 / M34 契约保持。详见 Wave M35。
 > 验收证据（M34）：`scripts/smoke_grok_desktop_parity.sh` **PASS=241 FAIL=0**。新增 `prove_m34_account_actions.js` 5/0（账户弹层入口落地：三项走 open settings anchor、三项走中文占位 callout、handler 都收 popup；含负向对照）；`prove_m33_grokchrome.js` 8/0（新增 Composer 圆形 ↑ 发送按钮断言）；其余 M33 契约保持。详见 Wave M34。
 > 验收证据（M33）：`scripts/smoke_grok_desktop_parity.sh` **PASS=234 FAIL=0**。新增 `prove_m33_grokchrome.js` 7/0（侧栏图标工具栏、账户弹层、送达状态、typing indicator、CN/EN 分离、语言下拉原生名、负向对照）；`prove_m20_ui.js` 24/0（sidebar 宽度契约更新为 280px 以匹配 Grok 视觉密度）；`prove_m24_window.js` 29/0。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m23_memory.js` 26/0；`prove_m26_botpanel.js` 27/0；其余探针与 M32 一致。内核未改。详见 Wave M33。
 > 验收证据（M32）：干净 store（`bots.json` 已存在但没有 `agent-bit` 行、`data/workspace` 空、`desktop-host.json` 不存在）上 `scripts/smoke_grok_desktop_parity.sh` **PASS=230 FAIL=0**。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m20_ui.js` 24/0；`prove_m23_memory.js` 26/0；`prove_m24_window.js` 29/0；`prove_m26_botpanel.js` 27/0。内核未改。详见 Wave M32。
@@ -762,3 +763,25 @@
 - `⌘D`（语音）目前只在面板里出现，实际录音绑定仍在 `voice-btn` 的 click handler；全局 `keydown` 分支留给下一波。
 - 面板不列出 `⌘⇧Space`（全局呼出）——那是 OS 级别的 Electron Tray 绑定，不属于窗口内。
 - Enter / Shift+Enter 目前走 `#composer textarea` 默认行为，没有显式 handler；面板把它列出是为了让用户读到时不用去试。若未来加 Enter 发送可发现性配置，这里也一并更新。
+
+## Wave M36（Cmd/Ctrl+D 语音输入：快捷键与按钮单一入口）
+
+背景：M35 快捷键面板列出了 9 条绑定，其中 `Cmd/Ctrl+D → 语音输入` 只在面板里出现，实际的 `wireAccelerators` 尚未接住这个键；🎙 按钮走 `startVoiceInput`，但键盘走另一条 —— 这在探测层看是"面板诚实、实现没跟上"。本波把 D 键接进 wireAccelerators，并复用同一个 `startVoiceInput`，避免第二份录音状态。
+
+### 1) 实现
+- **`hosts/desktop/index.html`**：`wireAccelerators` 加一条 `else if (ev.key === "d" || ev.key === "D")` 分支，`ev.preventDefault()` 后走 `if (typeof startVoiceInput === "function") startVoiceInput()`。`startVoiceInput` 是文件后段的 `async function` 声明，函数声明会 hoist，但仍加 `typeof` guard 明确依赖形态；如果未来改成 `const startVoiceInput = async () => {…}`，guard 会立即退化而不是 ReferenceError。
+- 🎙 按钮继续走 `voiceBtn.addEventListener("click", startVoiceInput)` —— 键盘与鼠标同一入口，录音状态只有一份。
+- HOTKEYS 面板 `["Cmd / Ctrl + D", "hkVoice"]` 与按钮 title「语音输入（Ctrl/Cmd+D）」文案对齐（hkVoice 三语已在 M35 就位）。
+- 与既有 `Alt+D` debug-json 切换不冲突：那条走 `ev.altKey` 且不看 `meta`。
+- **新增 `scripts/prove_m36_voicehotkey.js`（5 项 + 1 负向）**：静态层断言 D 分支接入、guard 存在、按钮与快捷键共用同一入口、面板与 title 文案对齐；负向对照抹掉 `startVoiceInput()` 调用 → 第 1 项应变红。smoke 里作为 G-36 接线。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m36_voicehotkey.js` **PASS=5 FAIL=0**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=252 FAIL=0**（247 → +5 G-36）
+
+### 3) NG-001（本波故意不像素对齐）
+只补 D 键绑定，不引入 Grok 的声波可视化或录音中动效（那是波 M37 的候选）。
+
+### 4) 诚实残留
+- 录音中再按一次 D 是否等价"停止"目前取决于 `startVoiceInput` 内部 toggle；本波不重编该函数，只保证快捷键与按钮走同一入口。若后续 toggle 语义变化（比如加确认），面板与实现同步改。
+- Windows/Linux 用 `Ctrl+D` 触发的是"发送 EOF"的 shell 习惯 —— Electron 里在窗口内被 `preventDefault` 拦下，不会误发；若焦点跳出主窗口到子进程终端，需要 tray 层的处理，本波不管。
