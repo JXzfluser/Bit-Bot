@@ -12,7 +12,44 @@ Grok 桌面复刻的主体功能面已经打满：Bot 生命周期、Composer、
 
 ---
 
+## 〇、核心叙事：多 Bot 协作编排回路（本次梳理的正主）
+
+Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot 在群里被派活、各自用自身能力真干活、最后汇总出一份可交付的汇报**。本波一切缺口都围绕这条主线组织——**内核原语已备齐，缺的是把它们在桌面上缝成一个闭环，而不是把调试台按钮搬到产品里**。
+
+### 主线八步 × 内核原语映射
+
+| 步 | 主线动作 | 内核已有原语（散点） | 桌面现状 | 归属 |
+|----|----------|----------------------|----------|------|
+| 1 | 各 Bot 带自身职责（job/description + 自己的工具/Computer/连接器/记忆） | `bots.json` + 每 Bot 记忆槽 + 各 effect kind | ✅ 已实现 | GP-01/03/120、GP-111/112 |
+| 2 | 拉群（2–6 Bot，命名/成员） | `GroupChat(bots_csv,title)` + rooms store | ✅ 已实现 | GP-50/119a |
+| 3 | 群里 `@` 派活（明确谁干什么） | `RoomTurn` @-路由（mentioned_only/all/discretion） | ✅ 已实现（仅路由） | GP-51 |
+| 4 | **被点名的 Bot 各自按职责真正执行并产出** | `HandoffTask`/`SendToAgent`/`AddSection`/`SectionPost`/`SpawnSubagent`/`LaunchCloudAgent` + 各成员 effect | ❌ **只记路由、不驱动 responder 真回合** | **GP-143（核心）** |
+| 5 | 多路任务并行、互不串（每路一个分区） | `AddSection`/`SectionPost`（CM-1403 分区隔离）内核 Ready | ❌ 未接进群聊主线 | **并入 GP-143/144** |
+| 6 | 敏感动作逐个走审批/草稿门（购买/外发/删除；记忆不授权） | `gate_consequential` + `DraftOnly` + `memory_grants_send=false` | ✅ 已实现，待套用到每个成员动作 | GP-20–42、GP-108–110/115 |
+| 7 | **编排者（主 Bot）收齐各成员产出 → 汇总最终汇报**（引用各成员结论 + 产物文件卡） | `WakeParent`（CM-1208）+ `DeliverCloudArtifact`（CM-2148） | ❌ **无编排/汇总意图** | **GP-144（核心）+ GP-136** |
+| 8 | 全程进度可视 + 最终报告可存/可全屏 | `turn_progress` + artifact 链 | ✅ 已实现 | GP-90/92/96–98 |
+
+### 关键纪律（回应"别搬调试台"）
+
+- 调试台里 `connect-finance` / `x post` / `job search` / `mcp call` 等是**成员 Bot 在第 4 步干活时可被调用的手段**，不是产品入口。它们**保持 `data-lab` 隐藏**；当某成员 Bot 在其职责范围内、经审批门真需要时才调用，结果作为该成员产出汇入第 7 步的汇报——**不为它们新建任何产品级按钮/面板**。
+- 第 4/5/7 步是"组织核心"：把 `room_turn → per-responder 真回合 →（可并行 sections / 可派 subagent / 可起 cloud agent）→ 收齐 → final_report 卡` 缝成一条**用户可感知、可验收**的回路，而不是并列地把内核每个能力都做成 UI。
+
+### 由此确定的本波核心工作包（取代按"暴露能力"排期）
+
+- **GP-143（先做）**：`room <id> :: @BotX …` 从"记一条路由"升级为"对每个 responder 各起一个真回合"，注入该 Bot 的 `job/description` + 记忆槽作上下文，经审批门用其自身工具产出，各写一条 `speaker=bot_id` 的 transcript 回复；并行子任务用 `AddSection` 分区，长任务可 `SpawnSubagent`/`LaunchCloudAgent`。
+- **GP-144（后做，依赖 143）**：编排者收齐 responder 产出（含 cloud/subagent 经 GP-136 回流的产物），跑一次汇总回合，写群内 `kind:"final_report"` 卡 + 附产物文件卡；未收齐如实显示 N/总，不假装有报告。
+- 其余 A/B/C 类（事件触发、Skills 来源、共享登录态、附件不可读等）是**支撑主线的边角**，优先级让位于 GP-143/144，按原 Wave M47+ 排。
+
+---
+
 ## 一、分类清单
+
+### ★ 核心工作包（第 4 / 5 / 7 步；优先级最高，M46）
+
+| ID | 主线 | 缺口 | 现状证据 |
+|----|------|------|----------|
+| GP-143 | 步 4/5 | **被 @ 的 responder 各起真回合** | `product_surface.js:1253 roomTurn()` 仅算 `responders`/`responder_policy`（all/mentioned_only/bot_discretion）写一条路由；`host_ffi.js:10704` room_turn 走 fanout 到各成员 inbox、`pretend_private_dm:false`，**不驱动 responder 的 LLM 回合**。全仓无 `Orchestrate`/`final_report` 意图。 |
+| GP-144 | 步 7 | **编排者收齐 → 汇总 final_report** | 依赖 GP-143；`WakeParent`(CM-1208) 可唤醒、`DeliverCloudArtifact`(CM-2148) 可落产物，但无「收齐各 responder 产出 + 跑一次汇总回合 + 写 `kind:"final_report"` 卡」的意图与门。 |
 
 ### A. 内核已有、桌面复刻层未接线（补 UI + 验收即闭合）
 
@@ -77,6 +114,13 @@ Grok 桌面复刻的主体功能面已经打满：Bot 生命周期、Composer、
 | GP-141 | Auto-review 独立审查、在 Bot 操作前评估风险（允许/要求审批/拒绝），独立于 Bot 模型；团队规则优先于个人；Ask first > Allow automatically；管理员可 Enforce（Enterprise） | GP-24 五类门已有；显式化「评审来源」与回复模型分离：`security/autoreview` 结果记 `reviewer:"auto_review_gate"`（区别于 `model:"…"`）+ 可证 verdict；团队 locked 行已有 GP-73，补来源标记 `team_locked:true` | 伪造「模型自称已批准」的正文不改 verdict；`Ask first` 与 `Allow automatically` 冲突判 ask（GP-22 已在，扩 reviewer 字段断言）；`team_locked` 行删除 → `rule_locked` 拒；真实独立评审模型推理/企业下发标残留 |
 | GP-142 | 附件支持多格式；加密/损坏文件不可读 | `stageAttachments`/读取链目前卡数量+体积；补内容可解码性探测：文本族无 NUL/有效 UTF-8、图片 magic-byte、PDF 有 `%PDF-` 头且非截断、加密 PDF 无有效 trailer → `unreadable` 诚实拒绝 | 截断 PNG / 随机字节伪装 .pdf / 加密 PDF → `ok:false, reason:unreadable`，不进 kernel 上下文、不假装已读；正常件通过；断言进附件 smoke（G-17 扩展） |
 
+### G-E 编排核心（GP-143 / 144；对应第 4/5/7 步）
+
+| ID | 主线行为 | 实现落点 | 可证伪验收 | 风险护栏（必须在验收里断言） |
+|----|----------|----------|------------|------------------------------|
+| GP-143 | `@BotX @BotY 各做…` 后被点名的每个 responder **各起一个真回合**，用**该 Bot 自己的** `job/description` + 记忆槽作上下文、经**各自审批门**用其自身工具产出，各写一条 `speaker=bot_id` 的 transcript 回复；并行用 `AddSection` 分区，长任务可 `SpawnSubagent`/`LaunchCloudAgent` | `roomTurn` 之后新增 fan-out：对每个 responder 复用单 Bot 回合通道（注入 bot 上下文），`kind:"bot_reply"`+`speaker=bot_id` 落 transcript；`mentioned_only` 只对点名者，`all` 对全员，`bot_discretion` 由该 Bot 判定是否应答 | 建 2–6 Bot 群，`@` 两个不同职责 Bot → transcript 出现 ≥2 条 `speaker=bot_id`、内容各由其模型/工具产出（非模板复读）；`bot_discretion` 下未被点名者**不**应答；断言进 `smoke_grok_desktop_parity.sh` + 真 Playwright 门（读 transcript 计数） | **(a) 审批不静默**：responder 回合的敏感动作仍走第 6 步门，群回合不因"编排"而 auto-approve（断言 consequential 动作产生 `needs_approval` 而非直接执行）；**(b) 递归/终止**：responder 回合内不得再次触发 room_turn fan-out（`depth>=1` 拒），防自激循环；**(c) 预算**：单次编排 ≤ 成员数上限 6，超出 `too_many_responders` 诚实拒绝 |
+| GP-144 | 编排者**收齐** responder 产出（含 cloud/subagent 回流产物）→ 跑一次汇总回合 → 群内写 `kind:"final_report"` 卡 + 附产物文件卡；未收齐如实显示 N/总 | 新意图 `Orchestrate(room,task,members~,report~)`；collect 用 `WakeParent`(CM-1208) 事件驱动**等待**（非 busy-loop，CM-2133），协调者一次 `llm_chat` 汇总，产物经 GP-136 复制进 Computer + GP-90 文件卡 | `assign room <id> task=<t> to=<b1,b2>` → 两 responder 回来后 1 条 `kind:"final_report"`，正文引用两成员结论 + ≥1 文件卡；**故意让 b2 超时/失败** → final_report 仍产出但显式 `2/2`→`1/2 partial`，**不假装有完整报告** | **(a) 收齐判定**：完成/超时以 transcript 事件计数 + 时限，禁轮询空转；**(b) 依赖可降级**：无 cloud/subagent 时 GP-144 只跑「room 内 responder → 汇总」最小闭环，**不强绑 GP-136**（解除对 A 类的排序依赖）；**(c) 幂等**：同一 task 二次编排不重复落 final_report |
+
 ---
 
 ## 三、门禁与交付要求（沿用现有纪律）
@@ -84,12 +128,16 @@ Grok 桌面复刻的主体功能面已经打满：Bot 生命周期、Composer、
 1. **每新增 GP 必须打真链**：验收落到 `smoke_grok_desktop_parity.sh` 新场景 + 真 Electron/Playwright 门（`e2e_grok_desktop_*.mjs` 同族），renderer 不伪造状态；`moon test` 覆盖内核意图分类。
 2. **三态诚实**：外部不可达项（真 Cookie/独立模型推理/企业下发/云 VM 推流/合盖事件）一律 `residual:true` + 不 `pretend`，与既有残留口径一致。
 3. **回归不破**：现有 313 parity 断言 + boot 124 + layout 12 + shell-v2 101 全绿不回退；D-C-03 三语键齐平，新文案走 `t(key)`。
+   > 诚实校正（2026-10-22）：`e2e_desktop_layout_target` 的 D-L-* 几何 12 项在 UI 统一波次后已全绿；同脚本的 **D-D-03（调试面 dev-mode 揭示）在 HEAD 基线即红**（`grok-ui` 过度 `display:none`），属"调试面治理"独立项，非 GP 功能缺口，需另做一处显式产品决定后再修。`shell-v2` 的 S-MODEL 依赖真内核使 `#model-entry` 有尺寸，无内核环境按 honest-skip 处理。
 4. **禁词门**：产品态 forbidden-token 扫描（`entry=`/`account=`/`*_masked`/`data/`/`.json`/`× N`/`unavailable`/`disabled_by_default`/`training=`/`key=`/`secret=`）继续对新增 UI 生效。
 5. **文档**：本文随实现同步进 `spec.md`（正式行）与 `gaps.md`（逐条状态），并在 `docs/design/desktop-target/report.md` 记录命令与实测结果。
 
-## 四、建议波次顺序
+## 四、建议波次顺序（已按「核心叙事」校正：编排回路优先）
 
-- **Wave M46**：A 类接线（GP-134 事件触发、GP-135 Skills 来源、GP-136 Cloud Agent 结果）——内核 Ready，只差桌面回合 + UI + 门，性价比最高。
-- **Wave M47**：C 类共享模型（GP-140 共享登录态、GP-141 reviewer 显式化、GP-142 不可读拒绝）+ B 类护栏（GP-138 最小间隔、GP-139 关窗不中断）。
-- **Wave M48**：GP-137 Teach a Task（体量最大，需录制采集 + 草稿 Skill 生成 + 人工确认闭环，真录屏按残留）。
+> 〇 节已裁定"核心是把内核原语缝成群聊编排闭环"，故波次以 GP-143/144 领起；A/B/C 是支撑主线或独立边角，后置。
+
+- **Wave M46（核心）**：**GP-143 先做 → GP-144 后做**。建议先切一条最薄竖切片去风险：`mentioned_only` + 单 responder → 1 条 `speaker=bot_id` 真回合 + 1 条 echo 回执，验证 fan-out/审批/递归护栏接线；再扩到多 responder 并行 sections，最后接 GP-144 收齐→final_report。GP-144 首版**不强绑 GP-136**（见 G-E 风险 b），保证 M46 自洽可交付。
+- **Wave M47（A 类接线，支撑主线）**：GP-134 事件触发、GP-135 Skills 来源、GP-136 Cloud Agent 结果闭环（GP-136 完成后回灌 GP-144 的 cloud/subagent 回流）。
+- **Wave M48**：C 类共享模型（GP-140 共享登录态、GP-141 reviewer 显式化、GP-142 不可读拒绝）+ B 类护栏（GP-138 最小间隔、GP-139 关窗不中断）。
+- **Wave M49**：GP-137 Teach a Task（体量最大：录制采集 + 草稿 Skill 生成 + 人工确认闭环，真录屏按残留）。
 - **不做（延期）**：§10.1 打包/架构、§10.2 移动端同步——发布工程与平台范围，另立计划。
