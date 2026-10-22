@@ -2220,7 +2220,7 @@
     <div class="panel-title" style="margin-top:16px">云服务</div>
     <div class="machine-item">
       <div class="name">Cursor 代理卡（CM-2131）</div>
-      <div class="meta" id="cloud-meta">local_worker · 交付产物</div>
+      <div class="meta" id="cloud-meta">本地代理 · 交付产物</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="cloud-launch" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">启动云端代理</button>
         <button type="button" id="cloud-deliver" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">投递上一个产物</button>
@@ -6164,7 +6164,7 @@
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
-                    chMeta.textContent = "workflows · " + (p.count || 0);
+                    chMeta.textContent = "工作流 · " + (p.count || 0);
                   }
                 } else if (h.kind === "x_search") {
                   label =
@@ -6731,7 +6731,7 @@
                   types.push("attachment");
                   const boxMeta = document.getElementById("box-meta");
                   if (boxMeta) {
-                    boxMeta.textContent = "env · " + (p.runtime || "?");
+                    boxMeta.textContent = "运行环境 · " + (p.runtime || "?");
                   }
                 } else if (h.kind === "box_clock") {
                   label =
@@ -6803,7 +6803,7 @@
                     (p.path ? "/snap" : "");
                   types.push("attachment");
                   const meta = document.getElementById("webhook-meta");
-                  if (meta) meta.textContent = "copied " + (p.what || "");
+                  if (meta) meta.textContent = "已复制 " + (p.what || "");
                 } else if (h.kind === "webhook_tool_read_key") {
                   label =
                     "webhook_tool_read:" +
@@ -7553,7 +7553,7 @@
             }
             const dmeta = document.getElementById("delivery-meta");
             if (dmeta && types.length) {
-              dmeta.textContent = "last: " + [...new Set(types)].join(" · ");
+              dmeta.textContent = "最近： " + [...new Set(types)].join(" · ");
             }
             log.appendChild(el);
             log.scrollTop = log.scrollHeight;

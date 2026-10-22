@@ -1429,6 +1429,28 @@ grep -q "负向对照：抹掉 :focus-visible 规则" /tmp/g40-probe.log 2>/dev/
   && ok "G-40 负向对照：抹掉 :focus-visible → 焦点环断言翻假（非恒真）" \
   || bad "G-40 negative control"
 
+echo "== G-41 中英混排收尾（M41：动态 meta 前缀 + 内部枚举外泄）=="
+if timeout 900 node scripts/prove_m41_cn.js > /tmp/g41-probe.log 2>&1; then
+  ok "G-41 M41 中英收尾契约全绿（$(grep -c '✓' /tmp/g41-probe.log) 项，$(tail -1 /tmp/g41-probe.log)）"
+else
+  bad "G-41 M41 中英收尾契约（见 /tmp/g41-probe.log）"
+fi
+grep -q "channels-meta 前缀本地化" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 GP-M41：channels-meta workflows · → 工作流 ·" \
+  || bad "G-41 channels meta"
+grep -q "box-meta 前缀本地化" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 GP-M41：box-meta env · → 运行环境 ·" \
+  || bad "G-41 box meta"
+grep -q "cloud-meta 默认值不再外泄内部枚举" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 GP-M41：cloud-meta local_worker → 本地代理（枚举不外泄）" \
+  || bad "G-41 cloud-meta leak"
+grep -q "技术引用保留：ADR 0002 / ICS" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 GP-M41：技术引用保留 ADR 0002 / ICS（符合扫描排除规则）" \
+  || bad "G-41 technical ref drift"
+grep -q "负向对照：塞回 workflows ·" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 负向对照：塞回 workflows · → 本地化断言翻假（非恒真）" \
+  || bad "G-41 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

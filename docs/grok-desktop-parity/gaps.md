@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M40 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=283 FAIL=0**。新增 `prove_m40_a11y.js` 8/0（`:focus{outline:none}` + `:focus-visible` 2px accent 键盘焦点环；`@media (prefers-reduced-motion: reduce)` 全局压平 transition/animation，并归零 composer / sess-row / msg-actions 的 transform；M39 淡入契约回归检查）。M33–M39 契约保持。详见 Wave M40。
+> 验收证据（M41 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=289 FAIL=0**。新增 `prove_m41_cn.js` 7/0（收尾中英混排：channels-meta `workflows ·`→`工作流 ·`、box-meta `env ·`→`运行环境 ·`、webhook `copied`→`已复制`、delivery `last:`→`最近：`、cloud-meta 内部枚举 `local_worker`→`本地代理` 不外泄；ADR 0002 / ICS 等技术引用按扫描规则保留）。M33–M40 契约保持。详见 Wave M41。
+> 验收证据（M40）：`scripts/smoke_grok_desktop_parity.sh` **PASS=283 FAIL=0**。新增 `prove_m40_a11y.js` 8/0（`:focus{outline:none}` + `:focus-visible` 2px accent 键盘焦点环；`@media (prefers-reduced-motion: reduce)` 全局压平 transition/animation，并归零 composer / sess-row / msg-actions 的 transform；M39 淡入契约回归检查）。M33–M39 契约保持。详见 Wave M40。
 > 验收证据（M39）：`scripts/smoke_grok_desktop_parity.sh` **PASS=277 FAIL=0**。新增 `prove_m39_micro.js` 10/0（`.msg-actions` 淡入用 opacity + pointer-events 而非 display 硬切；按钮 `:active scale(0.96)`；`sess-row:hover translateX(1px)` + `:active scale(0.995)`；composer send/attach/voice `:active scale(0.94)`；M38 契约不破）。M33–M38 契约保持。详见 Wave M39。
 > 验收证据（M38）：`scripts/smoke_grok_desktop_parity.sh` **PASS=269 FAIL=0**。新增 `prove_m38_copy.js` 8/0（消息悬浮 Copy 按钮 + clipboard/execCommand 双通道、pill 工具条 + backdrop-filter、welcome .w-brand 渐变、三语 copy* 齐备、含负向对照）。M33 / M34 / M35 / M36 / M37 契约保持。详见 Wave M38。
 > 验收证据（M37）：`scripts/smoke_grok_desktop_parity.sh` **PASS=263 FAIL=0**。新增 `prove_m37_layout.js` 13/0（全局 `[hidden] { display: none !important }` 兜底；`#account-popup` 改 `position: fixed` + `z-index: 45`；`setAccountPopup(open)` 单一真源同步 `hidden` 与 `aria-expanded`；Escape 关闭；侧栏 280px；M37 batch 1/2 CN/EN 清扫覆盖 gpQueueNote / autoReview / accountSection / accountLabelPlaceholder / aria New chat / settings-tab map / composer placeholder）。M33 / M34 / M35 / M36 契约保持。详见 Wave M37。
@@ -1003,3 +1004,32 @@ M38 加了 Copy 与 pill 工具条后，交互反馈仍是"硬切 display + 无�
 - **焦点环对比度**：`--accent: #1a1a1a` 叠在浅底 `#f5f5f7` 上对比足够；但深色块（如 `#send` 黑底）上 `outline-offset: 2px` 落在白底，仍清晰；未逐一截图核 WCAG 2.4.11 焦点可见性，留待无障碍专项。
 - **`:focus-visible` 在旧 Electron 内核**：Chromium 86+ 支持；当前 Electron 41 无虞，但若有低版本打包目标需回退 `:focus`。本波不做 polyfill。
 - **动画类不止 transform**：`vc-pulse`（录音脉冲关键帧）靠全局 `animation-duration` 压平，但视觉"停止闪烁"依赖 0.001ms 近似冻结，非真 `animation: none`；极端动效敏感场景可再显式 `.vc-pulse { animation: none }`，本波先用全局兜底。
+
+---
+
+## Wave M41（中英混排收尾：动态 meta 前缀 + 内部枚举外泄）
+
+扫描清单 m37-scan.md 里 M37 batch 1/2 未覆盖的低频可见英文，本波收干净；技术引用（规范名、文件扩展名）按扫描排除规则保留，不强译。
+
+### 1) 实现
+- `channels-meta`：`workflows · N` → `工作流 · N`；
+- `box-meta`：`env · <runtime>` → `运行环境 · <runtime>`；
+- `webhook-meta`：`copied <what>` → `已复制 <what>`；
+- `delivery-meta`：`last: <types>` → `最近： <types>`；
+- `cloud-meta` 默认值：`local_worker · 交付产物` → `本地代理 · 交付产物`（内部枚举值不再外泄给用户；运行时 `p.mode || "local_worker"` 的逻辑判断保持不变，只改可见标签）。
+
+保留（不译）：`ADR 0002`、`ICS`、`example.com`、`@Name` / `@everyone` 语法示例、`kernel RoomTurn` 协议名 —— 属扫描备注里明确排除的技术引用 / 协议短语。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m41_cn.js` **PASS=7 FAIL=0**
+  - 5 项本地化前缀 + 1 项技术引用保留（反向：确认没被误译）+ 1 负向对照。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=289 FAIL=0**（283 → +6 G-41）。
+- M33–M40 契约全部保持。
+
+### 3) NG-001
+本波只处理"可见英文前缀 / 枚举"，不改任何运行时逻辑；`p.mode` 的判定值仍是 `local_worker`，仅显示层中文化。
+
+### 4) 诚实残留
+- `已复制 <what>` / `最近： <types>` 里的 `<what>` / `<types>` 仍是后端返回的英文类型名（如 `screenshot`、`file`）。真正彻底本地化需要 Host 侧回传 i18n key 或前端维护一张 type→中文映射表；本波先统一前缀，类型名保留原样以免与后端契约脱钩。
+- 扫描清单里 `git / PR 计划`、`shell · 列目录` 等：`git`/`PR`/`shell` 是工具 / 命令专名，按排除规则保留，非"混搭"缺陷。
