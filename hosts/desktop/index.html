@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Bit Bot Desktop</title>
+<title>Bit Bot 桌面版</title>
 <link rel="stylesheet" href="./ui_chrome.css"/>
 <style>
   /* Color, space, radius, type, and shell widths live in ui_chrome.css.
@@ -1481,7 +1481,7 @@
       </div>
     </div>
     <div id="takeover-banner">
-      <div class="row1" id="takeover-title" data-i18n="takeoverTitle">Take over — 你正在直接操作本机屏幕</div>
+      <div class="row1" id="takeover-title" data-i18n="takeoverTitle">接管 — 你正在直接操作本机屏幕</div>
       <div class="hint" data-i18n="takeoverHint">密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。</div>
       <div class="actions">
         <button type="button" id="takeover-done-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer" data-i18n="imDone">I'm done</button>
@@ -1493,7 +1493,7 @@
     </div>
     <div id="gp-panel" style="display:none;margin:0 16px 8px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <div style="font-weight:700" data-i18n="gpPanel">Grok Parity 面板</div>
+        <div style="font-weight:700" data-i18n="gpPanel">对齐面板</div>
         <button type="button" class="gp-chip gp-tab active" data-gptab="computer">电脑</button>
         <button type="button" class="gp-chip gp-tab" data-gptab="group" data-i18n="gpGroup">群组</button>
         <button type="button" class="gp-chip gp-tab" data-gptab="approvals" data-i18n="gpApprovals">后台审批</button>
@@ -1560,7 +1560,7 @@
       <div id="settings-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div id="settings-anchors" style="margin-top:10px;display:none;flex-wrap:wrap;gap:6px"></div>
       <div id="st-general" class="settings-tab" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div style="font-weight:700;margin-bottom:4px" data-i18n="settingsGeneral">Grok Parity · General（真实生效并持久化）</div>
+        <div style="font-weight:700;margin-bottom:4px" data-i18n="settingsGeneral">对齐 · 常规（真实生效并持久化）</div>
         <div class="gp-label" data-i18n="appearance">外观</div>
         <div class="gp-row" id="gp-appearance-row">
           <button type="button" class="gp-chip" data-appearance="system" data-i18n="followSystem">跟随系统</button>
@@ -1570,7 +1570,7 @@
         <div class="gp-label" data-i18n="language">语言</div>
         <div class="gp-row">
           <select id="gp-language" class="gp-select">
-            <option value="system">Follow System · 跟随系统</option>
+            <option value="system">跟随系统 · 跟随系统</option>
             <option value="zh-CN">简体中文</option>
             <option value="zh-TW">繁體中文</option>
             <option value="en">English</option>
@@ -1602,7 +1602,7 @@
           <button type="button" class="gp-chip" id="gp-rule-ask" data-i18n="askFirst">先询问</button>
         </div>
         <div id="gp-rules-list" style="margin-top:6px"></div>
-        <div class="gp-label" data-i18n="privacyTitle">Privacy Mode（账户侧管理，本机只读）</div>
+        <div class="gp-label" data-i18n="privacyTitle">隐私模式（账户侧管理，本机只读）</div>
         <div class="gp-row">
           <div id="gp-privacy-state" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">…</div>
         </div>
@@ -1695,7 +1695,7 @@
             <input id="sec-moderation" type="checkbox" />
             内容审核门 BITBOT_CONTENT_MODERATION=1（拦截违禁词输出）
           </label>
-          <label style="font-size:12px;color:var(--muted)">OTA feed URL
+          <label style="font-size:12px;color:var(--muted)">更新源 URL
             <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
               <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" class="bb-field bb-field-grow" />
               <button type="button" id="sec-ota-check" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;white-space:nowrap">查更新</button>
@@ -1728,9 +1728,9 @@
       <div class="bb-sheet bb-sheet-lg">
         <div class="bb-sheet-head">
           <div class="bb-sheet-title" data-i18n="caTitle">连接应用</div>
-          <button type="button" id="ca-close" class="bb-btn" data-i18n="caClose">Close</button>
+          <button type="button" id="ca-close" class="bb-btn" data-i18n="caClose">关闭</button>
         </div>
-        <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="caGlobal">Plugins are global to this computer — every Bot can use them once installed.</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="caGlobal">插件对本机全局生效，安装后所有 Bot 都可使用。</div>
         <div style="display:flex;gap:8px;margin-top:10px">
           <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="Search plugins" class="bb-field bb-field-grow" />
           <button type="button" id="ca-refresh" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer" data-i18n="caRefresh">刷新</button>
@@ -1749,7 +1749,7 @@
         <div id="ca-installed" class="ca-grid"></div>
         <div style="font-weight:700;font-size:13px;margin-top:14px" data-i18n="caBrowse">浏览插件</div>
         <div id="ca-browse" class="ca-grid"></div>
-        <div style="color:var(--muted);font-size:11px;margin-top:12px" data-i18n="caAuthNote">Some plugins need browser sign-in (OAuth) before their tools work.</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:12px" data-i18n="caAuthNote">部分插件需先在浏览器完成 OAuth 登录才能调用其工具。</div>
       </div>
     </div>
     <!-- GP-120/121 (§2.2/§2.3): Edit Profile / Create Bot dialog. Fields match
@@ -1813,7 +1813,7 @@
     <div id="marketplace-modal" class="bb-modal">
       <div class="bb-sheet bb-sheet-lg">
         <div class="bb-sheet-head">
-          <div class="bb-sheet-title" data-i18n="mkTitle">Marketplace · Bot 模板</div>
+          <div class="bb-sheet-title" data-i18n="mkTitle">模板市场 · Bot 模板</div>
           <button type="button" id="mk-close" class="bb-btn" data-i18n="settingsClose">关闭</button>
         </div>
         <div class="bb-sheet-note" data-i18n="mkHint">模板来自 Host 的 bot-templates.json 目录，点一个即可创建 Bot。</div>
@@ -1826,13 +1826,13 @@
         <div class="title" style="font-weight:700" id="agent-info-title">代理信息</div>
         <div style="display:flex;gap:6px">
           <button type="button" id="agent-delete-btn" style="background:var(--danger-bg);color:var(--danger-ink);border:0;border-radius:6px;padding:4px 8px;cursor:pointer">Delete…</button>
-          <button type="button" id="agent-info-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">Close</button>
+          <button type="button" id="agent-info-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">关闭</button>
         </div>
       </div>
       <div id="agent-info-sections" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="agent-info-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div id="agent-delete-confirm" style="display:none;margin-top:10px;padding:8px;border:1px solid var(--danger);border-radius:6px;background:var(--danger-bg)">
-        <div style="color:var(--danger-ink);font-size:13px">Confirm permanent delete (CM-1907 · not Settings)</div>
+        <div style="color:var(--danger-ink);font-size:13px">确认永久删除（CM-1907 · 非设置项）</div>
         <div style="margin-top:8px;display:flex;gap:8px">
           <button type="button" id="agent-delete-confirm-btn" style="background:var(--danger);color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer">确认删除</button>
           <button type="button" id="agent-delete-cancel-btn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">取消</button>
@@ -1872,7 +1872,7 @@
     <div class="panel-title" data-i18n="machines">机器</div>
     <div class="machine-item">
       <div class="name">Multi-end roster</div>
-      <div class="meta" id="machines-meta">Desktop 本阶段 · iOS/Android 暂缓</div>
+      <div class="meta" id="machines-meta">桌面 · 本阶段，iOS/Android 暂缓</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="mach-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">列出机器</button>
       </div>
@@ -1907,7 +1907,7 @@
     </details>
     <div class="panel-title" style="margin-top:16px">本机偏好</div>
     <div class="machine-item">
-      <div class="name">Notify · computer · guide</div>
+      <div class="name">通知 · 电脑 · 引导</div>
       <div class="meta" id="prefs-meta">settings Host effects (not pretend)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="pref-notify" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">通知设置</button>
@@ -1927,10 +1927,10 @@
           <button type="button" id="ch-slack-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack 草稿</button>
           <button type="button" id="ch-slack-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack 讨论串</button>
           <button type="button" id="ch-slack-dm" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">私聊 Slack</button>
-          <button type="button" id="ch-slack-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
+          <button type="button" id="ch-slack-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack 认领（沙盒）</button>
           <button type="button" id="ch-teams-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams 草稿</button>
           <button type="button" id="ch-teams-send" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams 发送</button>
-          <button type="button" id="ch-teams-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
+          <button type="button" id="ch-teams-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams 认领（沙盒）</button>
           <button type="button" id="ch-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">财务调用</button>
           <button type="button" id="ch-jobs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">求职搜索</button>
           <button type="button" id="ch-xsearch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
@@ -1942,21 +1942,21 @@
     </details>
     <div class="panel-title" style="margin-top:16px">插件</div>
     <div class="machine-item">
-      <div class="name">MCP plugins (CM-0904 / 2107 / 2108)</div>
+      <div class="name">MCP 插件 (CM-0904 / 2107 / 2108)</div>
       <div class="meta" id="plugins-meta">list · get · install → Ready · uninstall → Unavailable</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="plugin-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">列出插件</button>
         <button type="button" id="plugin-get" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Get plugin-slides</button>
-        <button type="button" id="plugin-install" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install plugin-slides</button>
-        <button type="button" id="plugin-uninstall" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">Uninstall plugin-slides</button>
+        <button type="button" id="plugin-install" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">安装 plugin-slides</button>
+        <button type="button" id="plugin-uninstall" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">卸载 plugin-slides</button>
         <button type="button" id="plugin-mcp-discover" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发现 MCP</button>
         <button type="button" id="plugin-mcp-call" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">调用 MCP · Gmail 搜索</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Webhook 回调</div>
     <div class="machine-item" id="webhook-panel" role="region" aria-label="Webhook trigger panel">
-      <div class="name">Routine trigger (CM-0411)</div>
-      <div class="meta" id="webhook-meta">Open panel · user copy URL/key · key opaque to tools</div>
+      <div class="name">定时任务触发 (CM-0411)</div>
+      <div class="meta" id="webhook-meta">打开面板 · 用户复制 URL/密钥 · 工具不可见密钥</div>
       <div id="webhook-url" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div id="webhook-key" style="margin-top:4px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
@@ -1976,7 +1976,7 @@
         <button type="button" id="del-react" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">消息表态</button>
         <button type="button" id="del-inbound-react" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">接收方表态</button>
         <button type="button" id="del-markdown" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">渲染 Markdown</button>
-        <button type="button" id="del-channel-plan" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Channel plan (in-app)</button>
+        <button type="button" id="del-channel-plan" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">渠道套餐（应用内）</button>
         <button type="button" id="del-slides" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">生成幻灯片</button>
         <button type="button" id="del-skill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">编写技能</button>
         <button type="button" id="del-export" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">导出 Bot 模板</button>
@@ -2074,7 +2074,7 @@
     </div>
     <div class="panel-title" style="margin-top:16px">语音</div>
     <div class="machine-item">
-      <div class="name">Session / relay / end</div>
+      <div class="name">会话 / 中继 / 结束</div>
       <div class="meta" id="voice-meta">start · relay WAV · end write</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="voice-start" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">开始语音</button>
@@ -2086,14 +2086,14 @@
     </div>
     <div class="panel-title" style="margin-top:16px">云端盒子</div>
     <div class="machine-item">
-      <div class="name">Doctor / env / clock (CM-0607/0608/2175)</div>
+      <div class="name">诊断 / 环境 / 时钟 (CM-0607/0608/2175)</div>
       <div class="meta" id="box-meta">self-check · runtime · TZ align</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="box-doctor" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">盒子诊断</button>
         <button type="button" id="box-env" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">盒子环境</button>
         <button type="button" id="box-clock" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">盒子时钟</button>
-        <button type="button" id="box-chrome" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Chrome 探测</button>
-        <button type="button" id="box-bare-chrome" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">Launch bare chrome (refuse)</button>
+        <button type="button" id="box-chrome" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">浏览器探测</button>
+        <button type="button" id="box-bare-chrome" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">启动裸 Chrome（拒绝）</button>
         <button type="button" id="box-screenshot" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">截屏</button>
         <button type="button" id="box-check-updates" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">检查更新</button>
         <button type="button" id="box-copy-to" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">拷贝到盒子</button>
@@ -2103,7 +2103,7 @@
     </div>
     <div class="panel-title" style="margin-top:16px">云服务</div>
     <div class="machine-item">
-      <div class="name">Cursor agent card (CM-2131)</div>
+      <div class="name">Cursor 代理卡（CM-2131）</div>
       <div class="meta" id="cloud-meta">local_worker · artifact deliver</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="cloud-launch" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">启动云端代理</button>
@@ -2112,7 +2112,7 @@
     </div>
     <div class="panel-title" style="margin-top:16px">定时任务</div>
     <div class="machine-item">
-      <div class="name">Schedule · fire · tick</div>
+      <div class="name">排程 · 触发 · 心跳</div>
       <div class="meta" id="routines-meta">durable Host wakes (not cron pretend)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="rt-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">创建定时任务</button>
@@ -2136,7 +2136,7 @@
         <button type="button" id="mail-onbehalf" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">代为发送</button>
         <button type="button" id="mail-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">认领收件箱</button>
         <button type="button" id="mail-schedule" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">安排会议</button>
-        <button type="button" id="mail-purchase" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Purchase (sandbox)</button>
+        <button type="button" id="mail-purchase" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">下单（沙盒）</button>
         <button type="button" id="mail-search" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">搜索邮件</button>
         <button type="button" id="mail-meeting" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">会议纪要</button>
         <button type="button" id="mail-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">读邮件</button>
@@ -2187,7 +2187,7 @@
   </aside>
   <aside id="computer-rail">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 12px 0">
-      <div class="panel-title" style="margin:0" data-i18n="computerPreview">Computer 预览</div>
+      <div class="panel-title" style="margin:0" data-i18n="computerPreview">电脑预览</div>
       <div style="display:flex;gap:6px">
         <button type="button" id="cr-open-group" class="gp-chip" data-i18n="gpGroup">群组</button>
         <button type="button" id="cr-open-approvals" class="gp-chip" data-i18n="gpApprovals">后台审批</button>
