@@ -587,9 +587,10 @@
     padding: 8px 10px;
     margin-bottom: 1px;
     cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease;
+    transition: background 0.12s ease, border-color 0.12s ease, transform 0.10s ease;
   }
-  .sess-row:hover { background: var(--accent-soft); }
+  .sess-row:hover { background: var(--accent-soft); transform: translateX(1px); }
+  .sess-row:active { transform: translateX(1px) scale(0.995); }
   .sess-row.active {
     background: var(--accent-soft);
     border-color: var(--line);
@@ -1098,7 +1099,9 @@
     transition: all 0.15s ease;
   }
   #composer #send:hover { background: #333; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
+  #composer #send:active { transform: scale(0.94); box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
   #composer #send:disabled { opacity: 0.4; box-shadow: none; }
+  #composer #attach-btn:active, #composer #voice-btn:active { transform: scale(0.94); }
   .attach-strip { display: flex; flex-wrap: wrap; gap: 8px; }
   .attach-strip .attach-chip {
     background: #ffffff; border: 1px solid var(--line); border-radius: var(--radius-md);
@@ -1260,7 +1263,7 @@
     position: absolute;
     top: 4px;
     right: 6px;
-    display: none;
+    display: inline-flex;
     gap: 4px;
     z-index: 2;
     padding: 3px;
@@ -1269,8 +1272,13 @@
     border-radius: 999px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     backdrop-filter: blur(4px);
+    /* Wave M39: opacity-based fade so transitions actually fire. */
+    opacity: 0;
+    transform: translateY(-2px);
+    pointer-events: none;
+    transition: opacity 0.14s ease, transform 0.14s ease;
   }
-  .msg:hover .msg-actions, .msg .msg-actions:focus-within { display: inline-flex; }
+  .msg:hover .msg-actions, .msg .msg-actions:focus-within { opacity: 1; transform: translateY(0); pointer-events: auto; }
   .msg .msg-actions button {
     border: 0;
     background: transparent;
@@ -1280,9 +1288,10 @@
     font-size: var(--text-xs);
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease;
+    transition: background 0.12s ease, color 0.12s ease, transform 0.06s ease;
   }
   .msg .msg-actions button:hover { color: var(--ink); background: var(--accent-soft); }
+  .msg .msg-actions button:active { transform: scale(0.96); }
   /* GP-M31 (§5.1 消息反应): chips under the bubble come from the store row;
      the picker is a fixed 6-emoji set (no emoji-picker dependency). */
   .msg .msg-reactions {

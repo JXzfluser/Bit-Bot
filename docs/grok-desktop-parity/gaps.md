@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M38 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=269 FAIL=0**。新增 `prove_m38_copy.js` 8/0（消息悬浮 Copy 按钮 + clipboard/execCommand 双通道、pill 工具条 + backdrop-filter、welcome .w-brand 渐变、三语 copy* 齐备、含负向对照）。M33 / M34 / M35 / M36 / M37 契约保持。详见 Wave M38。
+> 验收证据（M39 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=277 FAIL=0**。新增 `prove_m39_micro.js` 10/0（`.msg-actions` 淡入用 opacity + pointer-events 而非 display 硬切；按钮 `:active scale(0.96)`；`sess-row:hover translateX(1px)` + `:active scale(0.995)`；composer send/attach/voice `:active scale(0.94)`；M38 契约不破）。M33–M38 契约保持。详见 Wave M39。
+> 验收证据（M38）：`scripts/smoke_grok_desktop_parity.sh` **PASS=269 FAIL=0**。新增 `prove_m38_copy.js` 8/0（消息悬浮 Copy 按钮 + clipboard/execCommand 双通道、pill 工具条 + backdrop-filter、welcome .w-brand 渐变、三语 copy* 齐备、含负向对照）。M33 / M34 / M35 / M36 / M37 契约保持。详见 Wave M38。
 > 验收证据（M37）：`scripts/smoke_grok_desktop_parity.sh` **PASS=263 FAIL=0**。新增 `prove_m37_layout.js` 13/0（全局 `[hidden] { display: none !important }` 兜底；`#account-popup` 改 `position: fixed` + `z-index: 45`；`setAccountPopup(open)` 单一真源同步 `hidden` 与 `aria-expanded`；Escape 关闭；侧栏 280px；M37 batch 1/2 CN/EN 清扫覆盖 gpQueueNote / autoReview / accountSection / accountLabelPlaceholder / aria New chat / settings-tab map / composer placeholder）。M33 / M34 / M35 / M36 契约保持。详见 Wave M37。
 > 验收证据（M36）：`scripts/smoke_grok_desktop_parity.sh` **PASS=252 FAIL=0**。新增 `prove_m36_voicehotkey.js` 5/0（Cmd/Ctrl+D 语音绑定与 🎙 按钮共用 startVoiceInput 单一入口，含 typeof guard 与负向对照）。M33 / M34 / M35 契约保持。详见 Wave M36。
 > 验收证据（M35）：`scripts/smoke_grok_desktop_parity.sh` **PASS=247 FAIL=0**。新增 `prove_m35_hotkeys.js` 6/0（Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键面板，DOM 建、三语齐、复用 bb-modal / bb-sheet、含负向对照）。M33 / M34 契约保持。详见 Wave M35。
@@ -910,3 +911,51 @@
 - **execCommand 回退已弃用但仍有需要**：Chromium 1088+ 会在非 HTTPS / file:// 场景静默拒绝 clipboard.writeText；textarea + `document.execCommand` 是当前 Electron 41 唯一稳定的回退，长期需要迁移到 `navigator.permissions.query({name:'clipboard-write'})` + 明确失败态；本波只保证不 throw。
 - **Copy 后 1200ms 恢复原文案是 setTimeout 硬编码**：与语言 / 用户节奏无关联；如果做 i18n 反馈扩展（如 `已复制 · 1.2 秒后恢复`），需要一并调整。
 - **welcome 只做了 w-brand 渐变**：`w-line` / `w-hint` / `wt-grid` 仍是普通文本 + chip；本波不重塑整块 hero，若用户希望 Grok 那种"居中巨字 + 引导短语"，需要 M39+ 承接。
+
+---
+
+## Wave M39（微交互精修：淡入悬浮条 / 按压反馈 / 侧栏行 hover）
+
+M38 加了 Copy 与 pill 工具条后，交互反馈仍是"硬切 display + 无按压"，缺一层手感。本波补上过渡与 :active 反馈，让桌面端"手感"更接近 Grok。
+
+### 1) 实现
+
+**a. `.msg-actions` 淡入**
+- 之前：`display: none` → `display: inline-flex`（hover 硬切）；
+- `display: none` 会阻断 transition（浏览器无法插值 display 属性）—— 常见坑；
+- 现在：常驻 `display: inline-flex` + `opacity: 0 / pointer-events: none`，hover / focus-within 切 `opacity: 1 / pointer-events: auto` + `transform: translateY(-2px) → translateY(0)`，140ms 缓动。
+
+**b. 按压反馈（scale）**
+- `.msg-actions button:active` → `scale(0.96)`（悬浮条三个小按钮）；
+- `.msg-actions button` transition 补 `transform 0.06s`，让 scale 有缓动；
+- `#composer #send:active` → `scale(0.94)` + 阴影收缩；
+- `#composer #attach-btn:active, #composer #voice-btn:active` → 同款 `scale(0.94)`，composer 三个键反馈节奏一致；
+- `.sess-row:active` → `translateX(1px) scale(0.995)`（侧栏行极轻按压，避免视觉噪声）。
+
+**c. 侧栏行 hover**
+- `.sess-row:hover` 补 `transform: translateX(1px)`，transition 加 `transform 0.10s` —— 行"滑出"1px，指向可点击，同时不破坏左侧 inset rail 的对齐（inset rail 在 `.active` 才出现）。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m39_micro.js` **PASS=10 FAIL=0**
+  - 1) `.msg-actions` 淡入（display 常驻 + opacity + pointer-events + transform transition）；
+  - 2) hover / focus-within 展开态 opacity 1 + pointer-events auto；
+  - 3) `.msg-actions button:active` scale(0.96)；
+  - 4) button transition 含 transform；
+  - 5) `.sess-row:hover` translateX(1px)；
+  - 6) `.sess-row:active` scale(0.995)；
+  - 7) `#send:active` scale(0.94)；
+  - 8) attach / voice `:active` 同款 scale(0.94)；
+  - 9) M38 Copy 装配 + welcome 渐变契约保持（回归检查）；
+  - 10) 负向对照：抹掉 opacity:0 → 淡入断言翻假。
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=277 FAIL=0**（269 → +8 G-39）。
+- M33–M38 契约全部保持。
+
+### 3) NG-001（本波故意不像素对齐）
+- scale 数值（0.94 / 0.96 / 0.995）是经验手感值，非 Grok 官方测量；本波只保证"有反馈"，不追求与某个具体参考帧像素一致。
+- translateX(1px) 是刻意保守 —— 更大幅度（2–3px）在长会话列表里会造成视觉漂移感。
+- 不做 spring / bouncy 缓动（`cubic-bezier`），只用 ease，避免与 Electron 默认渲染节奏冲突。
+
+### 4) 诚实残留
+- **无键盘可达性回归**：`:focus-within` 已覆盖，但 Tab 到某条消息时悬浮条淡入是否打断焦点顺序，本波未在真实键盘流下测；如果无障碍要求变高，需要 `:focus-visible` 精修。
+- **prefers-reduced-motion 未处理**：所有 transition / scale 对动效敏感用户不友好。后续波应加 `@media (prefers-reduced-motion: reduce) { transition: none; transform: none; }`。
+- **translateX 与 inset rail 的层叠**：`.sess-row.active` 用 `box-shadow: inset 2px 0 0` 做左侧竖条；hover 的 translateX 不会移动 inset（inset 属于元素自身），实测不错位，但没有专门断言 —— 属于"看起来对，但没证明对"的灰色地带。

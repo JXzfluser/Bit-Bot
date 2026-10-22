@@ -1379,6 +1379,34 @@ grep -q "负向对照：抹掉 bar.appendChild(cp)" /tmp/g38-probe.log 2>/dev/nu
   && ok "G-38 负向对照：抹掉 bar.appendChild(cp) → Copy 装配断言翻假（非恒真）" \
   || bad "G-38 negative control"
 
+echo "== G-39 微交互精修（M39：淡入悬浮条 / 按压反馈 / 侧栏行 hover）=="
+if timeout 900 node scripts/prove_m39_micro.js > /tmp/g39-probe.log 2>&1; then
+  ok "G-39 M39 微交互契约全绿（$(grep -c '✓' /tmp/g39-probe.log) 项，$(tail -1 /tmp/g39-probe.log)）"
+else
+  bad "G-39 M39 微交互契约（见 /tmp/g39-probe.log）"
+fi
+grep -q "msg-actions：改用 opacity + pointer-events 淡入" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：msg-actions 淡入（display 常驻，transition 生效）" \
+  || bad "G-39 fade transition missing"
+grep -q "msg-actions button:active → scale" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：msg-actions button :active scale(0.96) 按压反馈" \
+  || bad "G-39 button press missing"
+grep -q "sess-row:hover translateX" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：sess-row hover translateX(1px) 微滑" \
+  || bad "G-39 sess-row hover missing"
+grep -q "sess-row:active scale" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：sess-row active scale(0.995) 极轻按压" \
+  || bad "G-39 sess-row press missing"
+grep -q "#send:active scale" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：#send :active scale(0.94) 发送键反馈" \
+  || bad "G-39 send press missing"
+grep -q "M38 Copy 装配 + welcome 渐变契约保持" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 M38 回归不破：Copy 装配 + welcome 渐变仍在" \
+  || bad "G-39 M38 regression"
+grep -q "负向对照：抹掉 opacity:0" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 负向对照：抹掉 opacity:0 → 淡入断言翻假（非恒真）" \
+  || bad "G-39 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
