@@ -7580,6 +7580,38 @@
         }
       });
     }
+    /* Wave M34: 账户弹层 6 项 → 真实落点（复用 open settings anchor / OTA 短语 /
+       占位 callout），避免"看起来能用其实什么都不做"。 */
+    const accountPopupTargets = [
+      ["ap-update", "open settings entry=account anchor=update-status", "usage"],
+      ["ap-usage", "open settings entry=account anchor=usage", "usage"],
+      ["ap-add-account", "open settings entry=account anchor=profile", "general"],
+    ];
+    for (const [apId, phrase] of accountPopupTargets) {
+      const b = document.getElementById(apId);
+      if (!b) continue;
+      b.addEventListener("click", () => {
+        document.getElementById("account-popup").hidden = true;
+        runUserTurn(phrase, { skipSession: true, silentUser: true });
+      });
+    }
+    /* 移动版 / 支持 / 退出登录 —— 目前只有本地占位：用 callout 明确告诉用户"该入口
+       已挂，具体能力在后续波次接入"，而不是静默 no-op。*/
+    const accountPlaceholder = (msg) => {
+      addMsg("assistant", msg, { debugOnly: false });
+      const popup = document.getElementById("account-popup");
+      if (popup) popup.hidden = true;
+    };
+    const apMobile = document.getElementById("ap-mobile");
+    if (apMobile) apMobile.addEventListener("click", () =>
+      accountPlaceholder("Bit Bot 移动版目前处于内测，链接稍后会通过 OTA 推送。"));
+    const apSupport = document.getElementById("ap-support");
+    if (apSupport) apSupport.addEventListener("click", () =>
+      accountPlaceholder("支持：在 GitHub 仓库 JXzfluser/Bit-Bot 提交 Issue，或在对话里直接说「诊断」。"));
+    const apSignout = document.getElementById("ap-signout");
+    if (apSignout) apSignout.addEventListener("click", () => {
+      accountPlaceholder("本地单账户版本暂不支持登出；如需清空请从设置 → 凭证删除密钥。");
+    });
     const credBtn = document.getElementById("cred-settings-btn");
     if (credBtn) {
       credBtn.addEventListener("click", () => {

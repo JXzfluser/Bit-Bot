@@ -1255,6 +1255,28 @@ grep -q "负向对照：砍掉 read 绿色样式" /tmp/g33-probe.log 2>/dev/null
   && ok "G-33 负向对照：砍掉 read 样式 → 送达状态断言翻假（非恒真）" \
   || bad "G-33 negative control missing"
 
+echo "== G-34 账户弹层入口落地（M34：对标 Grok Bot 桌面外观）=="
+if timeout 900 node scripts/prove_m34_account_actions.js > /tmp/g34-probe.log 2>&1; then
+  ok "G-34 账户弹层入口契约全绿（$(grep -c '✓' /tmp/g34-probe.log) 项，$(tail -1 /tmp/g34-probe.log)）"
+else
+  bad "G-34 账户弹层入口契约（见 /tmp/g34-probe.log）"
+fi
+grep -q "三项（更新 / 用量 / 添加账户）通过 open settings anchor" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：三项真实落点（更新→update-status / 用量→usage / 添加账户→profile）" \
+  || bad "G-34 anchor wiring missing"
+grep -q "update-status / usage / profile 三个锚点在 SETTINGS_ANCHOR_TAB 已注册" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：锚点在 SETTINGS_ANCHOR_TAB 已注册" \
+  || bad "G-34 anchor registry missing"
+grep -q "移动版 / 支持 / 退出登录 三项：中文占位文案" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：三项走本地化 callout（非静默 no-op）" \
+  || bad "G-34 placeholder missing"
+grep -q "handler 都收口：先关 popup 再走短语" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：handler 都关 popup，不挡设置页" \
+  || bad "G-34 popup close missing"
+grep -q "负向对照：抹掉 anchor=usage 短语" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 负向对照：抹掉 anchor 短语 → 断言翻假（非恒真）" \
+  || bad "G-34 negative control missing"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
