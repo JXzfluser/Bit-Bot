@@ -832,7 +832,8 @@ body.force-light {
    not an xAI brand skin. Scoped under body.grok-ui so dev/legacy layouts are
    untouched; !important guarantees it wins over the inline component styles.
    =========================================================================== */
-body.grok-ui { --sidebar-w: 248px; }
+/* Geometry unified to layout-contract §3 (sidebar 280 / header 56).
+   No per-mode override: --sidebar-w/--header-h have a single source in :root. */
 
 /* header → minimal top bar (drop the wordmark / bot pill / dev badge) */
 body.grok-ui #brand-block,
@@ -840,7 +841,7 @@ body.grok-ui #bot-pill,
 body.grok-ui #devmode-badge,
 body.grok-ui #vc-sb-indicator { display: none !important; }
 body.grok-ui header {
-  height: 52px !important;
+  height: var(--header-h) !important;
   background: var(--surface) !important;
   border-bottom: 1px solid var(--line) !important;
 }
@@ -939,7 +940,7 @@ body.grok-ui #sidebar-toolbar #sess-new {
 /* Header: keep only a quiet model chip; drop the dev panel buttons (电脑 / 能力). */
 body.grok-ui #gp-panel-btn,
 body.grok-ui #tools-toggle-btn { display: none !important; }
-body.grok-ui header { height: 48px !important; }
+/* (header height consolidated once at the top; no per-round override) */
 body.grok-ui #header-actions { gap: 4px !important; }
 body.grok-ui #model-entry {
   background: transparent !important; border: 1px solid transparent !important;
@@ -1000,7 +1001,7 @@ body.grok-ui #composer .row {
 body.grok-ui header {
   display: flex !important;
   align-items: center !important;
-  height: 52px !important;
+  height: var(--header-h) !important;
   padding: 0 16px 0 84px !important;
   background: var(--surface) !important;
   border-bottom: 0 !important;
@@ -1124,18 +1125,10 @@ body.grok-ui .acct-chevron::before {
    header floats above the chat column as an invisible drag strip, so content
    starts at the window top edge (Grok behavior). The sidebar's own toolbar is
    its drag handle. */
-body.grok-ui { --header-h: 0px; }
-body.grok-ui header {
-  position: fixed !important;
-  top: 0; left: var(--sidebar-w); right: 0;
-  height: 40px !important;
-  padding: 0 !important;
-  background: transparent !important;
-  border: 0 !important;
-  display: block !important;
-  z-index: 60;
-  -webkit-app-region: drag;
-}
+/* Header is a normal in-flow grid row at --header-h (see consolidated rule
+   above). The former position:fixed;height:40px improvisation and the
+   --header-h:0 override violated layout-contract §3 (region overlap + fixed
+   chrome outside modal/lightbox/toast) and are removed for single-source. */
 body.grok-ui #sidebar-toolbar { -webkit-app-region: drag; }
 body.grok-ui #sidebar-toolbar > button { -webkit-app-region: no-drag; }
 
@@ -1280,33 +1273,42 @@ body.grok-ui #room-list { color: var(--muted) !important; font-size: 12px !impor
 
 /* ===== Round 10: unified Grok spec — tokens, type scale, settings left-nav ===== */
 
-/* -- 10.1 Global tokens & type scale (applies to EVERY page) ------------- */
+/* -- 10.1 Global tokens & type scale (applies to EVERY page) -------------
+   Single semantic source for the newer (Grok) family. The --g-* names are
+   now thin aliases of the role tokens below; values are unchanged from the
+   previous literal block (behaviour-preserving). */
 body.grok-ui {
-  --g-ink: #1a1a1a;
-  --g-sub: #75757a;
-  --g-line: #e8e8ea;
-  --g-soft: #f4f4f5;
-  --g-card: #ffffff;
-  --g-pill: #ebebee;
+  --text-ink: #1a1a1a;
+  --text-sub: #75757a;
+  --ui-border: #e8e8ea;
+  --ui-fill: #f4f4f5;
+  --ui-card: #ffffff;
+  --ui-pill: #ebebee;
+  --g-ink: var(--text-ink);
+  --g-sub: var(--text-sub);
+  --g-line: var(--ui-border);
+  --g-soft: var(--ui-fill);
+  --g-card: var(--ui-card);
+  --g-pill: var(--ui-pill);
 }
 /* dark mode: system-following (no force class) or explicit force-dark */
 @media (prefers-color-scheme: dark) {
   body.grok-ui:not(.force-light) {
-    --g-ink: #ececee;
-    --g-sub: #98989f;
-    --g-line: #3f3f44;
-    --g-soft: #2e2e33;
-    --g-card: #2a2a2e;
-    --g-pill: #3a3a40;
+    --text-ink: #ececee;
+    --text-sub: #98989f;
+    --ui-border: #3f3f44;
+    --ui-fill: #2e2e33;
+    --ui-card: #2a2a2e;
+    --ui-pill: #3a3a40;
   }
 }
 body.grok-ui.force-dark {
-  --g-ink: #ececee;
-  --g-sub: #98989f;
-  --g-line: #3f3f44;
-  --g-soft: #2e2e33;
-  --g-card: #2a2a2e;
-  --g-pill: #3a3a40;
+  --text-ink: #ececee;
+  --text-sub: #98989f;
+  --ui-border: #3f3f44;
+  --ui-fill: #2e2e33;
+  --ui-card: #2a2a2e;
+  --ui-pill: #3a3a40;
 }
 body.grok-ui,
 body.grok-ui button,
