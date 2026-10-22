@@ -1438,7 +1438,7 @@
       <span class="bot-pill-name">Bit Bot</span>
     </div>
     <div id="header-actions">
-      <div id="model-picker" title="国产多模型 · 经 MoonBit llm_set_model" aria-label="LLM model picker">
+      <div id="model-picker" title="国产多模型 · 经 MoonBit llm_set_model" aria-label="模型选择">
         <span class="mp-label">模型</span>
       </div>
       <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板" data-i18n="headerSkills">能力</button>
@@ -1451,7 +1451,7 @@
     <!-- Grok-style icon toolbar: search + new chat as compact icon buttons -->
     <div id="sidebar-toolbar">
       <button type="button" id="sidebar-search-toggle" title="搜索会话 (Ctrl/Cmd+K)" aria-label="Search">⌕</button>
-      <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="New chat">+</button>
+      <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话">+</button>
     </div>
     <!-- GP-60: sidebar in-call indicator -->
     <div id="vc-sb-indicator" class="bb-callout">
@@ -1462,19 +1462,19 @@
       <span data-i18n="bots">Bot 列表</span>
       <button type="button" id="bot-new-btn" class="bb-btn" title="新建 Bot（名称 / 职责 / 描述）" data-i18n="newBot">新建 Bot</button>
     </div>
-    <div id="bot-list" aria-label="Bots"></div>
+    <div id="bot-list" aria-label="Bot 列表"></div>
     <div class="panel-title panel-head spaced">
       <span data-i18n="rooms">群组</span>
     </div>
     <!-- GP-116 (§2.1): group list lives in the sidebar next to the Bot list,
          sourced from rooms.json — not a separate window. -->
-    <div id="room-list" aria-label="Group chats"></div>
+    <div id="room-list" aria-label="群组会话"></div>
     <div class="panel-title panel-head spaced">
       <span data-i18n="chats">会话</span>
     </div>
     <!-- GP-123: live search over the real session list (今天 / 昨天 / 更早). -->
-    <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="Search chats" hidden />
-    <div id="session-list" aria-label="Chat sessions"></div>
+    <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
+    <div id="session-list" aria-label="会话列表"></div>
     <details class="lab" id="agents-lab">
       <summary data-i18n="advanced">高级 · 代理 / 队友</summary>
       <div class="agent-item" id="agents-host-panel" style="margin-top:8px">
@@ -1537,7 +1537,7 @@
     </div>
   </aside>
   <div id="main">
-    <pre id="banner" data-i18n="booting">booting MoonBit…</pre>
+    <pre id="banner" data-i18n="booting">正在启动 MoonBit…</pre>
     <div id="approval">
       <div class="title" id="approval-title" data-i18n="approvalTitle">需要审批</div>
       <div class="detail" id="approval-detail"></div>
@@ -1551,7 +1551,7 @@
       <div class="row1" id="takeover-title" data-i18n="takeoverTitle">接管 — 你正在直接操作本机屏幕</div>
       <div class="hint" data-i18n="takeoverHint">密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。</div>
       <div class="actions">
-        <button type="button" id="takeover-done-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer" data-i18n="imDone">I'm done</button>
+        <button type="button" id="takeover-done-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer" data-i18n="imDone">我完成了</button>
       </div>
     </div>
     <div id="pending-bar">
@@ -1597,7 +1597,7 @@
         <div id="gp-group-status" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace"></div>
       </div>
       <div id="gp-approvals" style="display:none;margin-top:8px">
-        <div class="gp-label" data-i18n="gpQueueNote">后台审批队列（Routine / teammate 来源；~10 分钟过期显示 Expired，仍可 Always allow / Deny）</div>
+        <div class="gp-label" data-i18n="gpQueueNote">后台审批队列（Routine / teammate 来源；~10 分钟过期显示「已过期」，仍可「总是允许」/「拒绝」）</div>
         <div id="approval-queue"></div>
         <div class="gp-row" style="margin-top:6px">
           <button type="button" class="gp-chip" id="gp-pending-refresh" data-i18n="gpRefresh">刷新</button>
@@ -1654,7 +1654,7 @@
             <option value="Europe/Berlin">Europe/Berlin</option>
           </select>
         </div>
-        <div class="gp-label" data-i18n="autoReview">Auto-review 规则（Ask first 优先于 Allow automatically）</div>
+        <div class="gp-label" data-i18n="autoReview">自动复核规则（「先询问」优先于「自动允许」）</div>
         <div class="gp-row">
           <select id="gp-rule-kind" class="gp-select">
             <option value="shell">shell</option>
@@ -1673,9 +1673,9 @@
         <div class="gp-row">
           <div id="gp-privacy-state" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">…</div>
         </div>
-        <div class="gp-label" data-i18n="accountSection">Account（本地 profile · 不伪造远端登录）</div>
+        <div class="gp-label" data-i18n="accountSection">账户（本地 profile · 不伪造远端登录）</div>
         <div class="gp-row" style="align-items:center">
-          <input class="bb-control" id="gp-account-label" type="text" data-i18n-ph="accountLabelPlaceholder" placeholder="profile 名（如 Personal / Work）" style="width:160px" />
+          <input class="bb-control" id="gp-account-label" type="text" data-i18n-ph="accountLabelPlaceholder" placeholder="配置名（如「个人」「工作」）" style="width:160px" />
           <button type="button" class="gp-chip" id="gp-account-signin" data-i18n="accountSignInBtn">登录</button>
           <button type="button" class="gp-chip" id="gp-account-signout" data-i18n="accountSignOutBtn">退出登录</button>
           <select id="gp-account-switch" class="gp-select" style="max-width:180px"></select>
@@ -1799,7 +1799,7 @@
         </div>
         <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="caGlobal">插件对本机全局生效，安装后所有 Bot 都可使用。</div>
         <div style="display:flex;gap:8px;margin-top:10px">
-          <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="Search plugins" class="bb-field bb-field-grow" />
+          <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="搜索插件" class="bb-field bb-field-grow" />
           <button type="button" id="ca-refresh" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer" data-i18n="caRefresh">刷新</button>
         </div>
         <!-- Grok-parity: category chips filter the plugin grid -->
@@ -1839,8 +1839,8 @@
           <div style="flex:1 1 auto;min-width:0">
             <label class="bf-label"><span data-i18n="bfName">名称</span><input id="bc-name" class="bf-input" type="text" autocomplete="off" placeholder="Name（如 Piper）" data-i18n-ph="bfNamePh" /></label>
             <label class="bf-label" id="bf-tags-row"><span data-i18n="bfTags">标签</span><input id="bc-tags" class="bf-input" type="text" autocomplete="off" placeholder="perf, research" data-i18n-ph="bfTagsPh" /></label>
-            <label class="bf-label"><span data-i18n="bfJob">职责</span><input id="bc-job" class="bf-input" type="text" autocomplete="off" placeholder="Job（主要职责，如 Product performance）" data-i18n-ph="bcJobPh" /></label>
-            <label class="bf-label"><span data-i18n="bfDesc">描述</span><textarea id="bc-desc" class="bf-input" rows="5" placeholder="Description（工作方式/工具/边界，例如 Never change production settings）" data-i18n-ph="bcDescPh"></textarea></label>
+            <label class="bf-label"><span data-i18n="bfJob">职责</span><input id="bc-job" class="bf-input" type="text" autocomplete="off" placeholder="职责（如「产品性能」）" data-i18n-ph="bcJobPh" /></label>
+            <label class="bf-label"><span data-i18n="bfDesc">描述</span><textarea id="bc-desc" class="bf-input" rows="5" placeholder="描述（工作方式 / 工具 / 边界，例如「不得改动生产配置」）" data-i18n-ph="bcDescPh"></textarea></label>
             <div style="color:var(--muted);font-size:11px;margin:-2px 0 8px" data-i18n="bfDescHint">描述支持多行：工作方式 / 工具 / 输出格式 / 安全边界 / 审批要求。</div>
             <div id="bc-tpl-row" style="color:var(--muted);font-size:11px;margin-bottom:6px"><span data-i18n="bcTemplates">模板</span>：<span id="bc-tpl-btns" style="display:inline-flex;flex-wrap:wrap;gap:4px"></span></div>
             <div id="bf-status" style="color:var(--muted);font-size:11px;min-height:14px"></div>
@@ -1892,7 +1892,7 @@
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div class="title" style="font-weight:700" id="agent-info-title">代理信息</div>
         <div style="display:flex;gap:6px">
-          <button type="button" id="agent-delete-btn" style="background:var(--danger-bg);color:var(--danger-ink);border:0;border-radius:6px;padding:4px 8px;cursor:pointer">Delete…</button>
+          <button type="button" id="agent-delete-btn" style="background:var(--danger-bg);color:var(--danger-ink);border:0;border-radius:6px;padding:4px 8px;cursor:pointer">删除…</button>
           <button type="button" id="agent-info-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">关闭</button>
         </div>
       </div>
@@ -1938,7 +1938,7 @@
   <aside id="machines">
     <div class="panel-title" data-i18n="machines">机器</div>
     <div class="machine-item">
-      <div class="name">Multi-end roster</div>
+      <div class="name">多端花名册</div>
       <div class="meta" id="machines-meta">桌面 · 本阶段，iOS/Android 暂缓</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="mach-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">列出机器</button>
@@ -1960,7 +1960,7 @@
     <details class="lab" style="margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
       <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外 Connectors（Slack/Gmail · 非本阶段主路径）</summary>
       <div class="machine-item" style="margin-top:8px">
-        <div class="name">Slack / Gmail / Outlook</div>
+        <div class="name">Slack / Gmail / Outlook 连接器</div>
         <div class="meta" id="connectors-meta">降级保留 · 主渠道见上方国内钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
           <button type="button" id="connect-slack" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">连接 Slack</button>
@@ -1975,7 +1975,7 @@
     <div class="panel-title" style="margin-top:16px">本机偏好</div>
     <div class="machine-item">
       <div class="name">通知 · 电脑 · 引导</div>
-      <div class="meta" id="prefs-meta">settings Host effects (not pretend)</div>
+      <div class="meta" id="prefs-meta">设置走 Host 效果（不假装）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="pref-notify" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">通知设置</button>
         <button type="button" id="pref-set-notify" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">关闭通知</button>
@@ -1988,7 +1988,7 @@
     <details class="lab" style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
       <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外渠道实验室（Slack/Gmail · 非产品主路径）</summary>
       <div class="machine-item" style="margin-top:8px">
-        <div class="name">Slack / Teams outbound + claim</div>
+        <div class="name">Slack / Teams 出站 + 认领</div>
         <div class="meta" id="channels-meta">降级 · 主路径是上方钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
           <button type="button" id="ch-slack-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack 草稿</button>
@@ -2000,7 +2000,7 @@
           <button type="button" id="ch-teams-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams 认领（沙盒）</button>
           <button type="button" id="ch-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">财务调用</button>
           <button type="button" id="ch-jobs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">求职搜索</button>
-          <button type="button" id="ch-xsearch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
+          <button type="button" id="ch-xsearch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X 搜索</button>
           <button type="button" id="ch-workflows" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出工作流</button>
           <button type="button" id="ch-credentials" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出凭证</button>
           <button type="button" id="ch-cred-fill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">填写凭证</button>
@@ -2010,10 +2010,10 @@
     <div class="panel-title" style="margin-top:16px">插件</div>
     <div class="machine-item">
       <div class="name">MCP 插件 (CM-0904 / 2107 / 2108)</div>
-      <div class="meta" id="plugins-meta">list · get · install → Ready · uninstall → Unavailable</div>
+      <div class="meta" id="plugins-meta">列出 · 获取 · 安装 → 就绪 · 卸载 → 不可用</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="plugin-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">列出插件</button>
-        <button type="button" id="plugin-get" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Get plugin-slides</button>
+        <button type="button" id="plugin-get" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">获取 plugin-slides</button>
         <button type="button" id="plugin-install" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">安装 plugin-slides</button>
         <button type="button" id="plugin-uninstall" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">卸载 plugin-slides</button>
         <button type="button" id="plugin-mcp-discover" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发现 MCP</button>
@@ -2021,7 +2021,7 @@
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Webhook 回调</div>
-    <div class="machine-item" id="webhook-panel" role="region" aria-label="Webhook trigger panel">
+    <div class="machine-item" id="webhook-panel" role="region" aria-label="Webhook 触发面板">
       <div class="name">定时任务触发 (CM-0411)</div>
       <div class="meta" id="webhook-meta">打开面板 · 用户复制 URL/密钥 · 工具不可见密钥</div>
       <div id="webhook-url" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
@@ -2030,15 +2030,15 @@
         <button type="button" id="wh-open" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">打开回调面板</button>
         <button type="button" id="wh-copy-url" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">复制链接</button>
         <button type="button" id="wh-copy-key" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">拷贝密钥</button>
-        <button type="button" id="wh-tool-read" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">Tool-read key (must refuse)</button>
+        <button type="button" id="wh-tool-read" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">工具读取密钥（必须拒绝）</button>
         <button type="button" id="wh-wake" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">模拟唤醒回调</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">投递</div>
     <div class="machine-item">
       <div class="name">发给用户</div>
-      <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent · secret-request</div>
-      <div id="reaction-tray" aria-label="Reaction pills"></div>
+      <div class="meta" id="delivery-meta">文本 · 小组件 · 附件 · 语音 · 反应 · 讨论串 · 光标代理 · 密钥请求</div>
+      <div id="reaction-tray" aria-label="消息反应"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="del-react" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">消息表态</button>
         <button type="button" id="del-inbound-react" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">接收方表态</button>
@@ -2054,7 +2054,7 @@
         <button type="button" id="del-attach-file" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">添加附件</button>
         <button type="button" id="del-journal-query" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">查询日志</button>
         <button type="button" id="del-open-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">打开讨论串</button>
-        <button type="button" id="del-x-post" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X post draft</button>
+        <button type="button" id="del-x-post" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发布 X 草稿</button>
         <button type="button" id="del-section" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">段落发布</button>
         <button type="button" id="del-section-add" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">添加段落</button>
         <button type="button" id="del-learn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">从演示学习</button>
@@ -2063,7 +2063,7 @@
     <div class="panel-title" style="margin-top:16px">记忆</div>
     <div class="machine-item">
       <div class="name">本机会话种子</div>
-      <div class="meta" id="memory-meta">remember k=v · recall (desktop-host.json)</div>
+      <div class="meta" id="memory-meta">记忆 k=v · 回忆（desktop-host.json）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="mem-remember" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">记住</button>
         <button type="button" id="mem-recall" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">回忆</button>
@@ -2073,7 +2073,7 @@
     </div>
     <div class="panel-title" style="margin-top:16px">工具</div>
     <div class="machine-item">
-      <div class="name">Shell / FS (Host FFI)</div>
+      <div class="name">命令行 / 文件系统（Host FFI）</div>
       <div class="meta" id="tools-meta">shell · 列目录 · 读取 (ADR 0002)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="tool-shell" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Shell 回显</button>
@@ -2105,7 +2105,7 @@
     </div>
     <div class="panel-title" style="margin-top:16px">电脑操作</div>
     <div class="machine-item">
-      <div class="name">box-chrome CU (CM-0802)</div>
+      <div class="name">云端 Chrome CU（CM-0802）</div>
       <div class="meta" id="cu-meta">导航 · 操作 · 视觉（私有 CDP）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="cu-open" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">打开 example.com</button>
@@ -2120,8 +2120,8 @@
     </div>
     <div class="panel-title" style="margin-top:16px">源码管理</div>
     <div class="machine-item">
-      <div class="name">git / PR plan</div>
-      <div class="meta" id="source-control-meta">status · plan gated (BITBOT_GH_PR_CREATE)</div>
+      <div class="name">git / PR 计划</div>
+      <div class="meta" id="source-control-meta">状态 · 计划门控（BITBOT_GH_PR_CREATE）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="sc-status" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Git 状态</button>
         <button type="button" id="sc-create-pr" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">创建 PR 计划</button>
@@ -2130,8 +2130,8 @@
     </div>
     <div class="panel-title" style="margin-top:16px">媒体</div>
     <div class="machine-item">
-      <div class="name">Image / video / chart (CM-1601–1603 / 2157)</div>
-      <div class="meta" id="media-meta">generate · watch · structured chart</div>
+      <div class="name">图片 / 视频 / 图表（CM-1601–1603 / 2157）</div>
+      <div class="meta" id="media-meta">生成 · 观察 · 结构化图表</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="media-image" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">生成图片</button>
         <button type="button" id="media-video" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">生成视频</button>
@@ -2142,7 +2142,7 @@
     <div class="panel-title" style="margin-top:16px">语音</div>
     <div class="machine-item">
       <div class="name">会话 / 中继 / 结束</div>
-      <div class="meta" id="voice-meta">start · relay WAV · end write</div>
+      <div class="meta" id="voice-meta">开始 · 中继 WAV · 结束写入</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="voice-start" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">开始语音</button>
         <button type="button" id="voice-relay" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">语音中继</button>
@@ -2154,7 +2154,7 @@
     <div class="panel-title" style="margin-top:16px">云端盒子</div>
     <div class="machine-item">
       <div class="name">诊断 / 环境 / 时钟 (CM-0607/0608/2175)</div>
-      <div class="meta" id="box-meta">self-check · runtime · TZ align</div>
+      <div class="meta" id="box-meta">自检 · 运行时 · 时区对齐</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="box-doctor" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">盒子诊断</button>
         <button type="button" id="box-env" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">盒子环境</button>
@@ -2171,7 +2171,7 @@
     <div class="panel-title" style="margin-top:16px">云服务</div>
     <div class="machine-item">
       <div class="name">Cursor 代理卡（CM-2131）</div>
-      <div class="meta" id="cloud-meta">local_worker · artifact deliver</div>
+      <div class="meta" id="cloud-meta">local_worker · 交付产物</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="cloud-launch" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">启动云端代理</button>
         <button type="button" id="cloud-deliver" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">投递上一个产物</button>
@@ -2180,7 +2180,7 @@
     <div class="panel-title" style="margin-top:16px">定时任务</div>
     <div class="machine-item">
       <div class="name">排程 · 触发 · 心跳</div>
-      <div class="meta" id="routines-meta">durable Host wakes (not cron pretend)</div>
+      <div class="meta" id="routines-meta">持久 Host 唤醒（非 cron 假装）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="rt-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">创建定时任务</button>
         <button type="button" id="rt-reminder" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">创建提醒</button>
@@ -2190,13 +2190,13 @@
         <button type="button" id="rt-tick" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">触发定时任务</button>
         <button type="button" id="rt-pause" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">暂停定时任务</button>
         <button type="button" id="rt-resume" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">恢复定时任务</button>
-        <button type="button" id="rt-auto-review" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Auto-review settings</button>
+        <button type="button" id="rt-auto-review" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">自动审批设置</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">邮件 / 商务</div>
     <div class="machine-item">
-      <div class="name">Draft · cold · on-behalf · claim</div>
-      <div class="meta" id="mail-meta">sandbox eml · ICS · receipt</div>
+      <div class="name">草稿 · 冷启 · 代理 · 认领</div>
+      <div class="meta" id="mail-meta">沙盒 eml · ICS · 回执</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="mail-draft" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">起草邮件</button>
         <button type="button" id="mail-cold" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">冷启动邮件</button>
@@ -2407,7 +2407,7 @@
       }
       const metaEl = document.getElementById("settings-meta");
       if (metaEl) {
-        const label = { general: "General", computer: "Computer", credentials: "Credentials", usage: "Usage & Billing", updates: "Updates" }[key];
+        const label = { general: "常规", computer: "电脑", credentials: "凭证", usage: "用量与账单", updates: "更新" }[key];
         metaEl.textContent = metaEl.textContent.replace(/tab=[^·]*(·|$)/, "tab=" + label + " $1").trim() || "tab=" + label;
       }
       document.querySelectorAll("#settings-tabs .settings-tab-btn").forEach((b) => {
@@ -2855,7 +2855,7 @@
       if (!panel || !sectionsEl || !meta) return;
       const agentId = (payload && payload.agent_id) || "agent-bit";
       pendingDeleteAgentId = agentId;
-      if (title) title.textContent = "Agent · " + agentId;
+      if (title) title.textContent = "代理 · " + agentId;
       sectionsEl.innerHTML = "";
       const sections =
         (payload && payload.sections) || [
@@ -4040,7 +4040,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "open-artifact";
-      btn.textContent = "Open with OS";
+      btn.textContent = "用系统程序打开";
       btn.addEventListener("click", async () => {
         try {
           const r = await window.bitbot.openArtifact(filePath);
@@ -4228,7 +4228,7 @@
         a.href = card.open_url;
         a.target = "_blank";
         a.rel = "noopener noreferrer";
-        a.textContent = "Open cloud agent";
+        a.textContent = "打开云端代理";
         a.style.cssText = "display:inline-block;margin-top:6px;color:var(--accent)";
         body.appendChild(document.createElement("br"));
         body.appendChild(a);
@@ -6714,10 +6714,10 @@
                       "open · opaque_to_tools=" +
                       String(p.opaque_to_tools !== false);
                   }
-                  if (urlEl) urlEl.textContent = "URL: " + (p.url || "");
+                  if (urlEl) urlEl.textContent = "回调地址：" + (p.url || "");
                   if (keyEl) {
                     keyEl.textContent =
-                      "Key (user only): " + (p.key || p.key_masked || "");
+                      "密钥（仅用户可见）：" + (p.key || p.key_masked || "");
                   }
                 } else if (h.kind === "webhook_copy") {
                   label =
@@ -9117,7 +9117,7 @@
         row.appendChild(info);
         if (it.status !== "expired") {
           const bOnce = document.createElement("button");
-          bOnce.textContent = "Allow once";
+          bOnce.textContent = "本次允许";
           bOnce.addEventListener("click", async () => {
             const r = await window.bitbot.approvals.decide(it.id, "allow_once");
             info.textContent = (r && r.ok ? "已单次放行 " : "失败:" + (r && r.error) + " ") + info.textContent;
@@ -9127,7 +9127,7 @@
           row.appendChild(bOnce);
         }
         const bAlways = document.createElement("button");
-        bAlways.textContent = "Always allow";
+        bAlways.textContent = "总是允许";
         bAlways.addEventListener("click", async () => {
           const r = await window.bitbot.approvals.decide(it.id, "always");
           if (r && r.ok) {
@@ -9142,7 +9142,7 @@
         });
         row.appendChild(bAlways);
         const bDeny = document.createElement("button");
-        bDeny.textContent = "Deny";
+        bDeny.textContent = "拒绝";
         bDeny.addEventListener("click", async () => {
           const r = await window.bitbot.approvals.decide(it.id, "deny");
           info.textContent = (r && r.ok ? "[denied] " : "[deny failed] ") + info.textContent;
@@ -9253,13 +9253,13 @@
       const el = document.getElementById("gp-privacy-state");
       if (!el) return;
       if (!window.bitbot.privacy) {
-        el.textContent = "Privacy Mode: unavailable · managed by account";
+        el.textContent = "隐私模式：不可用 · 由账户侧管理";
         return;
       }
       el.textContent = wavegT("privacyChecking");
       const st = await window.bitbot.privacy.status();
       if (!st || !st.ok) {
-        el.textContent = "Privacy Mode: unavailable · managed by account";
+        el.textContent = "隐私模式：不可用 · 由账户侧管理";
         return;
       }
       el.dataset.mode = String(st.mode || "unavailable");
@@ -9283,8 +9283,8 @@
         newBot: "新建 Bot",
         createBot: "新建 Bot",
         bcNamePh: "名称（如 Piper）",
-        bcJobPh: "职责（如 Product performance）",
-        bcDescPh: "描述（工作方式 / 工具 / 边界，例如 Never change production settings）",
+        bcJobPh: "职责（如「产品性能」）",
+        bcDescPh: "描述（工作方式 / 工具 / 边界，例如「不得改动生产配置」）",
         bcTemplates: "模板",
         bcCreate: "创建",
         bcCancel: "取消",
@@ -9324,7 +9324,7 @@
         bfJob: "职责",
         bfDesc: "描述",
         bfNamePh: "名称（如 Piper）",
-        bfTagsPh: "标签（逗号分隔，如 perf, research）",
+        bfTagsPh: "标签（逗号分隔，如 性能, 研究）",
         bfAvatar: "头像",
         bfPickAvatar: "选择图片",
         bfClearAvatar: "移除头像",
@@ -9378,7 +9378,7 @@
         alwaysAllowBtn: "总是允许",
         neverAllow: "从不允许",
         routeTraffic: "通过本机路由流量",
-        autoReview: "自动审查规则（Ask first 优先于 Allow automatically）",
+        autoReview: "自动审批规则（「先询问」优先于「自动允许」）",
         allowAuto: "自动允许",
         askFirst: "先询问",
         usageBilling: "用量与账单（本周真实 LLM 用量；无数据即空态，不造假）",
@@ -9414,7 +9414,7 @@
         hkSend: "发送消息",
         hkNewline: "插入换行",
         hkOpenSheet: "打开本表",
-        gpFramePoll: "帧预览：每 3s 轮询 Host 真实截屏（无 DISPLAY 时诚实显示 residual）",
+        gpFramePoll: "帧预览：每 3 秒轮询 Host 真实截屏（无显示环境时诚实标注 residual）",
         gpNoFrame: "（尚无帧）",
         gpRefreshFrame: "刷新帧",
         gpRecover: "恢复云端电脑",
@@ -9425,7 +9425,7 @@
         gpRoomPh2: "room <id> :: @Piper 看一下这个",
         gpRoomSend: "发送",
         gpRoomNote: "审批 / Secret 请求永远只进对应 Bot 私聊，不进群 transcript（GP-53）。",
-        gpQueueNote: "后台审批队列（Routine / teammate 来源；~10 分钟过期显示 Expired，仍可 Always allow / Deny）",
+        gpQueueNote: "后台审批队列（来自定时任务 / 队友；约 10 分钟过期，仍可「总是允许」或「拒绝」）",
         gpRefresh: "刷新",
         cfgStrip: "尚未配置大脑 key — 点击「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）",
         cfgGo: "去配置",
@@ -9495,7 +9495,7 @@
         secretPastedLabel: "从对话粘贴的密钥",
         untrustedBadge: "外部内容 · 仅作数据",
         untrustedHint: "来自网页 / 插件 / 命令输出，可能包含不可信的指令；Bot 不会据此自动执行敏感操作。",
-        privacyTitle: "Privacy Mode（账户侧管理，本机只读）",
+        privacyTitle: "隐私模式（账户侧管理，本机只读）",
         privacyChecking: "读取中…",
         linkOpenHint: "点击将在系统浏览器打开",
         linkBlocked: "不可打开的链接",
@@ -9516,8 +9516,8 @@
         attachNoPath: "附件被拒绝：剪贴板内容没有真实磁盘路径（不伪造路径）。",
         rAttach: "已接收 {n} 个附件，Host 正在把每个真实路径复制进工作区（GP-11）。",
         rAttachOne: "已接收附件 {path}，Host 正在复制进工作区（GP-11）。",
-        accountSection: "Account（本地 profile · 不伪造远端登录）",
-        accountLabelPlaceholder: "profile 名（如 Personal / Work）",
+        accountSection: "账户（本地 profile · 不伪造远端登录）",
+        accountLabelPlaceholder: "配置名（如「个人」「工作」）",
         accountSignInBtn: "登录",
         accountSignOutBtn: "登出",
         accountSwitchTo: "切换 profile…",
@@ -9533,7 +9533,7 @@
         rUpdStatus: "安装状态：v{v}（{pkg}）· {safe}。",
         rTakeover: "接管中 — 你正在直接操作本机屏幕，完成后点「我操作完了」。",
         rNever: "本地执行 = 从不允许：该操作被你的设置直接拒绝，未执行。",
-        rAutoReview: "Auto-review：命中 {via} 规则，已自动执行（未再次询问）。",
+        rAutoReview: "自动审批：命中 {via} 规则，已自动执行（未再次询问）。",
         rBotHide: "已从侧栏隐藏（可在「已隐藏的 Bot」恢复）；Bot 与定时任务未暂停，仍在运行。",
         rBotUnhide: "已恢复到侧栏。",
         rCuBusy: "{bot} 正在执行另一个 computer-use 任务（{task}），同一 Bot 同时只跑一个；换其他 Bot 可并行。",
@@ -9674,8 +9674,8 @@
         newBot: "新建立 Bot",
         createBot: "新建立 Bot",
         bcNamePh: "名稱（如 Piper）",
-        bcJobPh: "職責（如 Product performance）",
-        bcDescPh: "描述（工作方式 / 工具 / 邊界，例如 Never change production settings）",
+        bcJobPh: "職責（如「產品效能」）",
+        bcDescPh: "描述（工作方式 / 工具 / 邊界，例如「不得改動生產配置」）",
         bcTemplates: "範本",
         bcCreate: "建立",
         bcCancel: "取消",
@@ -9715,7 +9715,7 @@
         bfJob: "職責",
         bfDesc: "描述",
         bfNamePh: "名稱（如 Piper）",
-        bfTagsPh: "標籤（逗號分隔，如 perf, research）",
+        bfTagsPh: "標籤（逗號分隔，如 效能, 研究）",
         bfAvatar: "頭像",
         bfPickAvatar: "選擇圖片",
         bfClearAvatar: "移除頭像",
@@ -9754,7 +9754,7 @@
         brUnknown: "找不到該 Bot",
         brNotifySaved: "通知設定已儲存",
         brNotifyFailed: "通知設定儲存失敗",
-        advanced: "進階 · Agents / Teammates",
+        advanced: "進階 · 代理 / 隊友",
         settings: "設定",
         settingsGeneral: "一般",
         settingsClose: "關閉",
@@ -9769,7 +9769,7 @@
         alwaysAllowBtn: "總是允許",
         neverAllow: "從不允許",
         routeTraffic: "透過本機路由流量",
-        autoReview: "自動審查規則（Ask first 優先於 Allow automatically）",
+        autoReview: "自動審批規則（「先詢問」優先於「自動允許」）",
         allowAuto: "自動允許",
         askFirst: "先詢問",
         usageBilling: "用量與帳單（本週真實 LLM 用量；無資料即空態，不造假）",
@@ -9805,7 +9805,7 @@
         hkSend: "送出訊息",
         hkNewline: "插入換行",
         hkOpenSheet: "開啟本表",
-        gpFramePoll: "影格預覽：每 3s 輪詢 Host 真實截屏（無 DISPLAY 時誠實顯示 residual）",
+        gpFramePoll: "影格預覽：每 3 秒輪詢 Host 真實截屏（無顯示環境時誠實標註 residual）",
         gpNoFrame: "（尚無影格）",
         gpRefreshFrame: "重新整理影格",
         gpRecover: "復原雲端電腦",
@@ -9816,7 +9816,7 @@
         gpRoomPh2: "room <id> :: @Piper 看一下這個",
         gpRoomSend: "傳送",
         gpRoomNote: "審批 / Secret 請求永遠只進對應 Bot 私訊，不進群 transcript（GP-53）。",
-        gpQueueNote: "背景審批佇列（Routine / teammate 來源；~10 分鐘過期顯示 Expired，仍可 Always allow / Deny）",
+        gpQueueNote: "背景審批佇列（來自排程任務 / 隊友；約 10 分鐘過期，仍可「總是允許」或「拒絕」）",
         gpRefresh: "重新整理",
         cfgStrip: "尚未設定大腦 key — 點擊「憑證」填寫 BITBOT_LLM_API_KEY（開放設定，不寫死）",
         cfgGo: "前往設定",
@@ -9886,7 +9886,7 @@
         secretPastedLabel: "從對話貼上的密鑰",
         untrustedBadge: "外部內容 · 僅作資料",
         untrustedHint: "來自網頁 / 外掛 / 命令輸出，可能包含不可信的指令；Bot 不會據此自動執行敏感操作。",
-        privacyTitle: "Privacy Mode（帳戶側管理，本機唯讀）",
+        privacyTitle: "隱私模式（帳戶側管理，本機唯讀）",
         privacyChecking: "讀取中…",
         linkOpenHint: "點擊將在系統瀏覽器開啟",
         linkBlocked: "不可開啟的連結",
@@ -9907,8 +9907,8 @@
         attachNoPath: "附件被拒絕：剪貼板內容沒有真實磁碟路徑（不偽造路徑）。",
         rAttach: "已接收 {n} 個附件，Host 正把每個真實路徑複製進工作區（GP-11）。",
         rAttachOne: "已接收附件 {path}，Host 正複製進工作區（GP-11）。",
-        accountSection: "Account（本機 profile · 不偽造遠端登入）",
-        accountLabelPlaceholder: "profile 名（如 Personal / Work）",
+        accountSection: "帳戶（本機 profile · 不偽造遠端登入）",
+        accountLabelPlaceholder: "配置名（如「个人」「工作」）",
         accountSignInBtn: "登入",
         accountSignOutBtn: "登出",
         accountSwitchTo: "切換 profile…",
@@ -9924,7 +9924,7 @@
         rUpdStatus: "安裝狀態：v{v}（{pkg}）· {safe}。",
         rTakeover: "接管中 — 你正在直接操作本機螢幕，完成後點「我操作完了」。",
         rNever: "本機執行 = 從不允許：該操作被你的設定直接拒絕，未執行。",
-        rAutoReview: "Auto-review：命中 {via} 規則，已自動執行（未再次詢問）。",
+        rAutoReview: "自動審批：命中 {via} 規則，已自動執行（未再次詢問）。",
         rBotHide: "已從側欄隱藏（可在「已隱藏的 Bot」恢復）；Bot 與排程任務未暫停，仍在執行。",
         rBotUnhide: "已恢復到側欄。",
         rCuBusy: "{bot} 正在執行另一個 computer-use 任務（{task}），同一 Bot 同時只跑一個；換其他 Bot 可並行。",
@@ -10174,7 +10174,7 @@
         alwaysAllow: "Always allow",
         deny: "Deny",
         send: "Send",
-        placeholder: "Message Bit Bot… (/ skills · @ bots · Shift+Enter newline)",
+        placeholder: "给 Bit Bot 发消息…（/ 唤起技能 · @ 提及 Bot · Shift+Enter 换行）",
         headerSkills: "Capabilities",
         headerCreds: "Credentials",
         headerParity: "Parity",
@@ -10907,12 +10907,12 @@
           provider === "slack"
             ? "reply via " + t + " :: " + b
             : "send mail provider=" + (provider || "gmail") + " to=" + t + " subject=" + s + " body=" + b;
-        status.textContent = "已提交 Send → kernel gate";
+        status.textContent = "已提交 · 进入内核闸门";
         hideApproval();
         runUserTurn(phrase, { approved: true });
       });
       el.querySelector(".discard-btn").addEventListener("click", () => {
-        status.textContent = "Discarded（无出站；draft 保留在 Host 供审计）";
+        status.textContent = "已丢弃（无出站；草稿保留在 Host 供审计）";
         el.querySelectorAll("input,textarea,button").forEach((n) => (n.disabled = true));
         hideApproval();
       });
