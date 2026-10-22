@@ -1566,17 +1566,27 @@ async function main() {
         ? ok("E2E GP-123：清空搜索后原会话列表完整恢复")
         : bad("E2E GP-123 search clear", rowsBack + " vs " + rowsNow);
 
+      // The DM session title follows the "<bot name> · DM" convention, so the
+      // name is whatever the Host actually created (localized defaultBotName:
+      // "新 Bot" under zh-CN). Derive from the created bot, never assume English.
+      const createdName = (() => {
+        try {
+          const b = (JSON.parse(fs.readFileSync(BOTS_M25, "utf8")).bots || []).find((x) => x.id === createdId);
+          return b ? b.name : "New Bot";
+        } catch (_) { return "New Bot"; }
+      })();
+      const dmTitle = createdName + " · DM";
       const sessFile = JSON.parse(fs.readFileSync(SESS_M25, "utf8"));
-      const dm = (sessFile.sessions || []).find((s) => s.title === "New Bot · DM");
+      const dm = (sessFile.sessions || []).find((s) => s.title === dmTitle);
       if (!dm) {
-        bad("E2E GP-123 rename target", "New Bot · DM session missing");
+        bad("E2E GP-123 rename target", dmTitle + " session missing");
       } else {
         await win.click('#session-list [data-session-id="' + dm.id + '"]', { button: "right" });
         await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
         await win.locator(".composer-menu:not([hidden]) button").nth(0).click(); // Rename
         await win.waitForSelector("#session-rename-modal", { state: "visible", timeout: 5000 });
         const prefill = await win.evaluate(() => document.getElementById("sr-title").value);
-        prefill === "New Bot · DM"
+        prefill === dmTitle
           ? ok("E2E GP-123：重命名对话框预填当前标题")
           : bad("E2E GP-123 rename prefill", prefill);
         await win.fill("#sr-title", "E2E Renamed Chat");
