@@ -87,6 +87,14 @@ if (/\.msg \.typing i \{[^}]*animation:\s*typingPulse/.test(html)
   bad("typing indicator", "3-dot pulse missing");
 }
 
+/* ---------- 4b) Composer 发送按钮：圆形 ↑ 图标（Grok parity） ---------- */
+if (/<button id="send" type="submit" title="[^"]*Enter[^"]*"[^>]*>↑<\/button>/.test(html)
+  && /#composer #send \{[^}]*width:\s*36px[^}]*height:\s*36px[^}]*border-radius:\s*50%/.test(html)) {
+  ok("Composer 发送按钮：36px 圆形 ↑ 图标 + Enter 提示（Grok 视觉密度）");
+} else {
+  bad("composer send", "circular ↑ send button missing");
+}
+
 /* ---------- 5) 中英混排清理：i18n 段 & 默认 HTML 文本 ---------- */
 const forbiddenKeys = [
   ["gpPanel", "Grok Parity 面板"],

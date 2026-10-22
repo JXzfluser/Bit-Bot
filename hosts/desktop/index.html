@@ -1019,8 +1019,9 @@
   .voice-memo-card .vm-transcript { margin-top: 6px; color: var(--muted); font-size: var(--text-sm); white-space: pre-wrap; }
   #composer #send {
     background: var(--accent); color: var(--accent-ink); border: 0;
-    min-width: 36px; height: 36px; border-radius: var(--radius-pill); padding: 0 16px;
-    font-weight: 600; font-size: var(--text-md); cursor: pointer;
+    width: 36px; height: 36px; border-radius: 50%; padding: 0;
+    font-weight: 700; font-size: 18px; line-height: 1; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
     box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     transition: all 0.15s ease;
   }
@@ -2252,7 +2253,7 @@
       <button type="button" id="attach-btn" title="添加附件（≤6 · 文档/图片/音频 25MB · 视频 200MB）">📎</button>
       <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）">🎙</button>
       <button type="button" id="voicechat-btn" title="开始语音对话" data-i18n="voiceChatBtn">🎧 语音对话</button>
-      <button id="send" type="submit" data-i18n="send">发送</button>
+      <button id="send" type="submit" title="发送 (Enter)" aria-label="Send">↑</button>
     </div>
     <div id="composer-menu" class="composer-menu" hidden></div>
   </form>
