@@ -1407,6 +1407,28 @@ grep -q "负向对照：抹掉 opacity:0" /tmp/g39-probe.log 2>/dev/null \
   && ok "G-39 负向对照：抹掉 opacity:0 → 淡入断言翻假（非恒真）" \
   || bad "G-39 negative control"
 
+echo "== G-40 无障碍（M40：键盘焦点环 + prefers-reduced-motion）=="
+if timeout 900 node scripts/prove_m40_a11y.js > /tmp/g40-probe.log 2>&1; then
+  ok "G-40 M40 无障碍契约全绿（$(grep -c '✓' /tmp/g40-probe.log) 项，$(tail -1 /tmp/g40-probe.log)）"
+else
+  bad "G-40 M40 无障碍契约（见 /tmp/g40-probe.log）"
+fi
+grep -q ":focus-visible 焦点环：2px solid accent" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 GP-M40：:focus-visible 键盘焦点环（2px solid accent，仅键盘可见）" \
+  || bad "G-40 focus-visible missing"
+grep -q "prefers-reduced-motion: reduce)：全局 transition/animation" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 GP-M40：prefers-reduced-motion 全局压平 transition/animation" \
+  || bad "G-40 reduced-motion missing"
+grep -q "reduced-motion 下 composer send:active transform 归零" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 GP-M40：reduced-motion 下 composer 按压位移归零" \
+  || bad "G-40 rm composer missing"
+grep -q "M39 msg-actions 淡入契约仍在" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 M39 回归不破：msg-actions 淡入仍在" \
+  || bad "G-40 M39 regression"
+grep -q "负向对照：抹掉 :focus-visible 规则" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 负向对照：抹掉 :focus-visible → 焦点环断言翻假（非恒真）" \
+  || bad "G-40 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

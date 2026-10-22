@@ -1446,6 +1446,33 @@
     }
     #agents, #machines { max-height: 140px; border: 0; border-bottom: 1px solid var(--line); }
   }
+  /* Wave M40 — accessibility: keyboard focus rings only for keyboard users
+     (:focus-visible), and honor prefers-reduced-motion by stripping the M39
+     fades / presses. Placed last so it overrides component rules without
+     shadowing their primary selectors. */
+  :focus { outline: none; }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+    .msg .msg-actions,
+    .msg:hover .msg-actions,
+    .msg .msg-actions:focus-within { transform: none; }
+    .msg .msg-actions button:active,
+    #composer #send:active,
+    #composer #attach-btn:active,
+    #composer #voice-btn:active,
+    .sess-row:active,
+    .sess-row:hover { transform: none; }
+  }
 </style>
 </head>
 <body>

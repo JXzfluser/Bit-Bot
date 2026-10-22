@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M39 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=277 FAIL=0**。新增 `prove_m39_micro.js` 10/0（`.msg-actions` 淡入用 opacity + pointer-events 而非 display 硬切；按钮 `:active scale(0.96)`；`sess-row:hover translateX(1px)` + `:active scale(0.995)`；composer send/attach/voice `:active scale(0.94)`；M38 契约不破）。M33–M38 契约保持。详见 Wave M39。
+> 验收证据（M40 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=283 FAIL=0**。新增 `prove_m40_a11y.js` 8/0（`:focus{outline:none}` + `:focus-visible` 2px accent 键盘焦点环；`@media (prefers-reduced-motion: reduce)` 全局压平 transition/animation，并归零 composer / sess-row / msg-actions 的 transform；M39 淡入契约回归检查）。M33–M39 契约保持。详见 Wave M40。
+> 验收证据（M39）：`scripts/smoke_grok_desktop_parity.sh` **PASS=277 FAIL=0**。新增 `prove_m39_micro.js` 10/0（`.msg-actions` 淡入用 opacity + pointer-events 而非 display 硬切；按钮 `:active scale(0.96)`；`sess-row:hover translateX(1px)` + `:active scale(0.995)`；composer send/attach/voice `:active scale(0.94)`；M38 契约不破）。M33–M38 契约保持。详见 Wave M39。
 > 验收证据（M38）：`scripts/smoke_grok_desktop_parity.sh` **PASS=269 FAIL=0**。新增 `prove_m38_copy.js` 8/0（消息悬浮 Copy 按钮 + clipboard/execCommand 双通道、pill 工具条 + backdrop-filter、welcome .w-brand 渐变、三语 copy* 齐备、含负向对照）。M33 / M34 / M35 / M36 / M37 契约保持。详见 Wave M38。
 > 验收证据（M37）：`scripts/smoke_grok_desktop_parity.sh` **PASS=263 FAIL=0**。新增 `prove_m37_layout.js` 13/0（全局 `[hidden] { display: none !important }` 兜底；`#account-popup` 改 `position: fixed` + `z-index: 45`；`setAccountPopup(open)` 单一真源同步 `hidden` 与 `aria-expanded`；Escape 关闭；侧栏 280px；M37 batch 1/2 CN/EN 清扫覆盖 gpQueueNote / autoReview / accountSection / accountLabelPlaceholder / aria New chat / settings-tab map / composer placeholder）。M33 / M34 / M35 / M36 契约保持。详见 Wave M37。
 > 验收证据（M36）：`scripts/smoke_grok_desktop_parity.sh` **PASS=252 FAIL=0**。新增 `prove_m36_voicehotkey.js` 5/0（Cmd/Ctrl+D 语音绑定与 🎙 按钮共用 startVoiceInput 单一入口，含 typeof guard 与负向对照）。M33 / M34 / M35 契约保持。详见 Wave M36。
@@ -959,3 +960,46 @@ M38 加了 Copy 与 pill 工具条后，交互反馈仍是"硬切 display + 无�
 - **无键盘可达性回归**：`:focus-within` 已覆盖，但 Tab 到某条消息时悬浮条淡入是否打断焦点顺序，本波未在真实键盘流下测；如果无障碍要求变高，需要 `:focus-visible` 精修。
 - **prefers-reduced-motion 未处理**：所有 transition / scale 对动效敏感用户不友好。后续波应加 `@media (prefers-reduced-motion: reduce) { transition: none; transform: none; }`。
 - **translateX 与 inset rail 的层叠**：`.sess-row.active` 用 `box-shadow: inset 2px 0 0` 做左侧竖条；hover 的 translateX 不会移动 inset（inset 属于元素自身），实测不错位，但没有专门断言 —— 属于"看起来对，但没证明对"的灰色地带。
+
+---
+
+## Wave M40（无障碍：键盘焦点环 + prefers-reduced-motion）
+
+直接收掉 M39 段列出的两条诚实残留：动效敏感用户与键盘可达性。
+
+### 1) 实现
+
+**a. 键盘焦点环（`:focus-visible`）**
+- `:focus { outline: none }` 去掉浏览器默认蓝环；
+- `:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm) }` —— 只有键盘 Tab 出来的元素才有清晰焦点环，鼠标点击不闪环；
+- 复用设计令牌（`--accent` / `--radius-sm`），不新增颜色值。
+
+**b. `prefers-reduced-motion`**
+- 全局 `@media (prefers-reduced-motion: reduce)` 把 `*` 的 `animation-duration` / `transition-duration` 压到 `0.001ms !important`，`animation-iteration-count: 1`，`scroll-behavior: auto`；
+- 针对 M39 的位移单独归零：`.msg-actions`（淡入不再有 translateY）、`#composer #send/attach/voice :active` 与 `.sess-row:hover/:active`（scale/translateX 归零），保留颜色 / 背景状态变化，只去掉运动。
+
+**c. 顺序纪律**
+- 无障碍块放在主组件样式**之后**、`</style>` 之前。放前面会遮蔽 `.msg .msg-actions { position: absolute; opacity: 0; ... }` 主选择器（`.match()` 会先命中短覆盖块），导致 M39 淡入断言误判为红。已在探针补一条"块位置在主规则之后"的顺序断言防回归。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m40_a11y.js` **PASS=8 FAIL=0**
+  - 1) `:focus { outline: none }`；
+  - 2) `:focus-visible` 2px accent 环 + offset 2px；
+  - 3) reduced-motion 全局 duration 压平；
+  - 4) reduced-motion 下 composer send:active transform 归零；
+  - 5) reduced-motion 下 sess-row:hover transform 归零；
+  - 6) M39 msg-actions 淡入契约仍在（回归检查）；
+  - 7) reduced-motion 块位于主 .msg-actions 之后（顺序检查）；
+  - 8) 负向对照：抹掉 `:focus-visible` → 焦点环断言翻假。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=283 FAIL=0**（277 → +6 G-40）。
+- M33–M39 契约全部保持。
+
+### 3) NG-001（本波故意不像素对齐）
+- 焦点环用 `2px solid accent` 而非 Grok 官方环宽；本波只求"键盘用户有可见焦点"，不追环宽像素一致。
+- reduced-motion 只做"关运动"，不做"降级为淡入淡出"这一档中间策略（规范要求要么动要么不动，本波取"不动")。
+
+### 4) 诚实残留
+- **焦点环对比度**：`--accent: #1a1a1a` 叠在浅底 `#f5f5f7` 上对比足够；但深色块（如 `#send` 黑底）上 `outline-offset: 2px` 落在白底，仍清晰；未逐一截图核 WCAG 2.4.11 焦点可见性，留待无障碍专项。
+- **`:focus-visible` 在旧 Electron 内核**：Chromium 86+ 支持；当前 Electron 41 无虞，但若有低版本打包目标需回退 `:focus`。本波不做 polyfill。
+- **动画类不止 transform**：`vc-pulse`（录音脉冲关键帧）靠全局 `animation-duration` 压平，但视觉"停止闪烁"依赖 0.001ms 近似冻结，非真 `animation: none`；极端动效敏感场景可再显式 `.vc-pulse { animation: none }`，本波先用全局兜底。
