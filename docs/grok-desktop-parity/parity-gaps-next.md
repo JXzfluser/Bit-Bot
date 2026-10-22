@@ -78,6 +78,8 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 | GP-141 | 8.1 | **Auto-review「独立于 Bot」评审通道** + 团队「Enforce Auto-review」锁定优先级 | 可证：评审判定来源与 Bot 回复模型分离、团队规则优先于个人、Ask first > Allow automatically；残留：真实独立评审模型推理与企业强制下发属外部依赖。 |
 | GP-142 | 5.5 | **加密/损坏附件不可读诚实拒绝**：官方验收「加密/损坏文件不可读」。附件校验链目前只卡数量/体积，未卡内容可解码性。 | 可证：给一个截断/加密 PDF → `unreadable` 诚实拒绝、不进上下文、不假装已读。 |
 
+> **实施状态（M48，已验证）**：`product_surface.stageAttachments` 已在数量/体积后补内容可解码性探测——图片 magic-byte、PDF `%PDF-` 头 + `%%EOF` + 无 `/Encrypt`、文本族 NUL/无效 UTF-8 判定；命中返回 `ok:false, error:"unreadable", reason:<code>` 且不落盘不进上下文；未知二进制保守放行。`scripts/prove_gp142_unreadable.js` **PASS=10 FAIL=0**（合法 PNG/PDF/文本/`.docx` 通过；伪 PNG/伪 PDF/加密 PDF/截断 PDF/NUL 文本/坏 UTF-8 各自诚实拒绝）。真链非回归：Boot e2e 全跑 GP-11 附件检查 0 FAIL。
+
 ### D. 明确延期（不列入本轮功能复刻硬门）
 
 | 官方 § | 项 | 定性 |

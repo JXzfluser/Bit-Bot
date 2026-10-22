@@ -1756,6 +1756,56 @@ function createProductSurface(repoRoot) {
   // GP-11 (official Grok spec §5.5 附件 / desktop limits): ≤6 per send,
   // doc/image/audio ≤25 MB, video ≤200 MB. existingCount is what the composer
   // already holds, so repeated picks cannot smuggle past the per-send cap.
+  // GP-142 (§5.5): encrypted/corrupt attachments must be rejected honestly as
+  // `unreadable` — never staged or fed to the kernel as if readable. Checks are
+  // conservative: only definitively-bad content is rejected (image magic bytes,
+  // PDF header/Encrypt/EOF, text NUL/invalid-UTF8); unknown binaries pass.
+  function _readProbe(file, headLen = 8192, tailLen = 2048) {
+    const fd = fs.openSync(file, "r");
+    try {
+      const size = fs.fstatSync(fd).size;
+      const head = Buffer.alloc(Math.min(headLen, size));
+      if (head.length) fs.readSync(fd, head, 0, head.length, 0);
+      let tail = Buffer.alloc(0);
+      if (size > head.length) {
+        const tlen = Math.min(tailLen, size - head.length);
+        tail = Buffer.alloc(tlen);
+        fs.readSync(fd, tail, 0, tlen, size - tlen);
+      }
+      return { size, head, tail };
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+  function _unreadableReason(file, ext, kind) {
+    let p;
+    try { p = _readProbe(file); } catch (_) { return "io_unreadable"; }
+    if (p.size === 0) return "empty_file";
+    const h = p.head;
+    if (kind === "image") {
+      const png = h.length >= 8 && h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47;
+      const jpg = h.length >= 3 && h[0] === 0xff && h[1] === 0xd8 && h[2] === 0xff;
+      const gif = h.length >= 4 && h.slice(0, 4).toString("latin1") === "GIF8";
+      const webp = h.length >= 12 && h.slice(0, 4).toString("latin1") === "RIFF" && h.slice(8, 12).toString("latin1") === "WEBP";
+      return (png || jpg || gif || webp) ? null : "not_a_valid_image";
+    }
+    if (ext === ".pdf") {
+      if (h.length < 5 || h.slice(0, 5).toString("latin1") !== "%PDF-") return "not_a_pdf";
+      if (Buffer.concat([h, p.tail]).includes(Buffer.from("/Encrypt"))) return "encrypted_pdf";
+      if (!p.tail.includes(Buffer.from("%%EOF")) && !h.includes(Buffer.from("%%EOF"))) return "truncated_pdf";
+      return null;
+    }
+    if (kind === "doc") {
+      const TEXT = [".txt", ".md", ".markdown", ".json", ".csv", ".tsv", ".log", ".js", ".mjs", ".cjs", ".ts", ".html", ".htm", ".css", ".xml", ".yaml", ".yml", ".toml", ".ini", ".sh", ".py"];
+      if (TEXT.includes(ext)) {
+        if (h.includes(0x00)) return "binary_not_text";
+        try { new TextDecoder("utf-8", { fatal: true }).decode(h, { stream: true }); }
+        catch (_) { return "invalid_utf8"; }
+      }
+    }
+    return null;
+  }
+
   function stageAttachments(paths, sessionId, existingCount = 0) {
     const held = Number.isInteger(existingCount) && existingCount > 0 ? existingCount : 0;
     if (!Array.isArray(paths) || paths.length + held > 6) {
@@ -1814,6 +1864,19 @@ function createProductSurface(repoRoot) {
             kind,
             bytes: stat.size,
             max_bytes: maxSize
+          };
+        }
+
+        // GP-142: reject encrypted/corrupt content honestly (never stage it).
+        const unreadable = _unreadableReason(srcPath, ext, kind);
+        if (unreadable) {
+          return {
+            ok: false,
+            code: `unreadable:${basename}`,
+            error: "unreadable",
+            reason: unreadable,
+            kind,
+            note: "文件不可解码（加密/损坏），已诚实拒绝，未进入上下文"
           };
         }
 
