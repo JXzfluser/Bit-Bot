@@ -1277,6 +1277,28 @@ grep -q "负向对照：抹掉 anchor=usage 短语" /tmp/g34-probe.log 2>/dev/nu
   && ok "G-34 负向对照：抹掉 anchor 短语 → 断言翻假（非恒真）" \
   || bad "G-34 negative control missing"
 
+echo "== G-35 键盘快捷键面板（M35：Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键表）=="
+if timeout 900 node scripts/prove_m35_hotkeys.js > /tmp/g35-probe.log 2>&1; then
+  ok "G-35 快捷键契约全绿（$(grep -c '✓' /tmp/g35-probe.log) 项，$(tail -1 /tmp/g35-probe.log)）"
+else
+  bad "G-35 快捷键契约（见 /tmp/g35-probe.log）"
+fi
+grep -q "wireAccelerators：新增 Cmd/Ctrl+K（搜索）与 Cmd/Ctrl+/（快捷键表）" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 GP-M35：wireAccelerators 接入 K / 两条新绑定" \
+  || bad "G-35 accelerators missing"
+grep -q "走既有 #session-search 输入" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 GP-M35：Cmd/Ctrl+K 复用既有搜索输入，不造第二份状态" \
+  || bad "G-35 shared search missing"
+grep -q "bb-modal + bb-sheet 复用；DOM 建" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 GP-M35：快捷键面板走 bb-modal / bb-sheet，DOM 建（GP-93 纪律）" \
+  || bad "G-35 sheet build"
+grep -q "HOTKEYS 9 项 + 面板标题共 10 个 key 在 zh-CN / zh-TW / en 全部齐备" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 GP-M35：10 个 hk key 三语齐备" \
+  || bad "G-35 i18n coverage"
+grep -q "负向对照：抹掉 openHotkeysSheet" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 负向对照：抹掉 openHotkeysSheet 调用 → 断言翻假（非恒真）" \
+  || bad "G-35 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

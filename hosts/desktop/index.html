@@ -4428,6 +4428,14 @@
         }
       });
     }
+    /* Wave M35: shared shortcut entry point — button + Cmd/Ctrl+K do the same thing. */
+    function toggleSessionSearchFromShortcut() {
+      const el = document.getElementById("session-search");
+      if (!el) return;
+      el.hidden = false;
+      el.focus();
+      el.select && el.select();
+    }
 
     /* GP-116 (§2.1): the sidebar group list. Grok's left column shows Bots and
        Groups side by side, so this renders from the Host's rooms.json through
@@ -9317,6 +9325,16 @@
         gpGroup: "群组",
         gpApprovals: "后台审批",
         gpClose: "关闭",
+        hotkeysTitle: "键盘快捷键",
+        hkNewChat: "新建对话",
+        hkSearch: "搜索会话",
+        hkToggleSidebar: "折叠 / 展开侧栏",
+        hkComputer: "打开 Computer 面板",
+        hkConnectApps: "打开连接应用",
+        hkVoice: "语音输入（录音中再按一次停止）",
+        hkSend: "发送消息",
+        hkNewline: "插入换行",
+        hkOpenSheet: "打开本表",
         gpFramePoll: "帧预览：每 3s 轮询 Host 真实截屏（无 DISPLAY 时诚实显示 residual）",
         gpNoFrame: "（尚无帧）",
         gpRefreshFrame: "刷新帧",
@@ -9698,6 +9716,16 @@
         gpGroup: "群組",
         gpApprovals: "背景審批",
         gpClose: "關閉",
+        hotkeysTitle: "鍵盤快捷鍵",
+        hkNewChat: "新增對話",
+        hkSearch: "搜尋會話",
+        hkToggleSidebar: "折疊 / 展開側欄",
+        hkComputer: "開啟 Computer 面板",
+        hkConnectApps: "開啟連線應用",
+        hkVoice: "語音輸入（錄音中再按一次停止）",
+        hkSend: "送出訊息",
+        hkNewline: "插入換行",
+        hkOpenSheet: "開啟本表",
         gpFramePoll: "影格預覽：每 3s 輪詢 Host 真實截屏（無 DISPLAY 時誠實顯示 residual）",
         gpNoFrame: "（尚無影格）",
         gpRefreshFrame: "重新整理影格",
@@ -10079,6 +10107,16 @@
         gpGroup: "Groups",
         gpApprovals: "Background approvals",
         gpClose: "Close",
+        hotkeysTitle: "Keyboard Shortcuts",
+        hkNewChat: "New chat",
+        hkSearch: "Search chats",
+        hkToggleSidebar: "Toggle sidebar",
+        hkComputer: "Open Computer panel",
+        hkConnectApps: "Open Connect apps",
+        hkVoice: "Voice input (press again to stop)",
+        hkSend: "Send message",
+        hkNewline: "Insert newline",
+        hkOpenSheet: "Open this sheet",
         gpFramePoll: "Frame preview: polls real Host screenshots every 3s (honest residual when no DISPLAY)",
         gpNoFrame: "(no frames yet)",
         gpRefreshFrame: "Refresh frame",
@@ -10953,6 +10991,14 @@
         } else if (ev.key === "n" || ev.key === "N") {
           ev.preventDefault();
           createNewChatFromUi();
+        } else if (ev.key === "k" || ev.key === "K") {
+          /* Wave M35: Cmd/Ctrl+K → focus sidebar session search (Grok parity). */
+          ev.preventDefault();
+          toggleSessionSearchFromShortcut();
+        } else if (ev.key === "/") {
+          /* Wave M35: Cmd/Ctrl+/ → open the keyboard-shortcut sheet. */
+          ev.preventDefault();
+          openHotkeysSheet();
         } else if (ev.key === "f" || ev.key === "F") {
           ev.preventDefault();
           openGpPanel("computer");
@@ -10967,6 +11013,74 @@
       if (window.bitbot.onMenuNewChat) {
         window.bitbot.onMenuNewChat(() => createNewChatFromUi());
       }
+    }
+    /* Wave M35: 键盘快捷键面板（Cmd/Ctrl+/）—— Grok-style 单张 sheet，列出本波
+       已接入的所有绑定；文案走 WAVEG_I18N，三语齐全。用 bb-modal / bb-sheet 复用
+       既有对话框层。DOM 建，不用 innerHTML，避免 GP-93 纪律破口。 */
+    const HOTKEYS = [
+      ["Cmd / Ctrl + N", "hkNewChat"],
+      ["Cmd / Ctrl + K", "hkSearch"],
+      ["Cmd / Ctrl + B", "hkToggleSidebar"],
+      ["Cmd / Ctrl + F", "hkComputer"],
+      ["Cmd / Ctrl + Shift + M", "hkConnectApps"],
+      ["Cmd / Ctrl + D", "hkVoice"],
+      ["Enter", "hkSend"],
+      ["Shift + Enter", "hkNewline"],
+      ["Cmd / Ctrl + /", "hkOpenSheet"],
+    ];
+    function openHotkeysSheet() {
+      let modal = document.getElementById("hotkeys-modal");
+      if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "hotkeys-modal";
+        modal.className = "bb-modal";
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+        const sheet = document.createElement("div");
+        sheet.className = "bb-sheet bb-sheet-sm";
+        const head = document.createElement("div");
+        head.className = "bb-sheet-head";
+        const title = document.createElement("div");
+        title.className = "bb-sheet-title";
+        title.dataset.i18n = "hotkeysTitle";
+        title.textContent = wavegT("hotkeysTitle");
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "bb-btn";
+        closeBtn.dataset.i18n = "gpClose";
+        closeBtn.textContent = wavegT("gpClose");
+        closeBtn.addEventListener("click", () => { modal.style.display = "none"; });
+        head.appendChild(title);
+        head.appendChild(closeBtn);
+        const list = document.createElement("div");
+        list.className = "hk-list";
+        for (const [kbd, key] of HOTKEYS) {
+          const row = document.createElement("div");
+          row.className = "hk-row";
+          const k = document.createElement("kbd");
+          k.textContent = kbd;
+          const d = document.createElement("div");
+          d.className = "hk-desc";
+          d.dataset.i18n = key;
+          d.textContent = wavegT(key);
+          row.appendChild(k);
+          row.appendChild(d);
+          list.appendChild(row);
+        }
+        sheet.appendChild(head);
+        sheet.appendChild(list);
+        modal.appendChild(sheet);
+        modal.addEventListener("click", (ev) => {
+          if (ev.target === modal) modal.style.display = "none";
+        });
+        document.body.appendChild(modal);
+      } else {
+        // Re-localize on open (language may have switched since first render).
+        modal.querySelectorAll("[data-i18n]").forEach((el) => {
+          el.textContent = wavegT(el.dataset.i18n);
+        });
+      }
+      modal.style.display = "flex";
     }
     async function createNewChatFromUi() {
       const created = await window.bitbot.sessions.create(wavegT("newChat"));

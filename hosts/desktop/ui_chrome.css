@@ -542,6 +542,36 @@ body.force-light {
   z-index: var(--z-modal);
 }
 
+/* Wave M35: 键盘快捷键 sheet —— 复用 .bb-modal / .bb-sheet 层，行样式独立，DOM 建。 */
+#hotkeys-modal .hk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--space-5);
+}
+#hotkeys-modal .hk-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 168px) 1fr;
+  gap: var(--space-4);
+  align-items: center;
+  padding: 4px 0;
+}
+#hotkeys-modal .hk-row kbd {
+  background: #f7f7f8;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font: 600 var(--text-xs)/1 var(--font-mono);
+  display: inline-block;
+  white-space: nowrap;
+}
+#hotkeys-modal .hk-desc {
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
 #settings-sheet {
   width: min(760px, 94vw);
   max-height: 86vh;
