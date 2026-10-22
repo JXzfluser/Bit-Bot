@@ -34,11 +34,11 @@ const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8"
 
 // Layout contract v1: all rail surfaces share grid-area "rail" via the group rule.
 /#machines\s*\{[^}]*grid-area:\s*rail/.test(html) && /body\[data-panel="bot"\] #bot-rail \{ display: block; \}/.test(html)
-  ? ok("#bot-rail 与其余 rail 面共用 grid-area: rail（data-panel 驱动，GP-124）")
+  ? ok("#bot-rail 与 Computer 预览共用同一右栏列（grid-area: rail，data-panel 驱动，GP-124）")
   : bad("bot-rail grid placement wrong");
 
 /if \(open\) closeBotRail\(\); \/\/ one optional right panel at a time/.test(html) && /botRailId = id;\s*\n\s*setPanel\("bot"\)/.test(html)
-  ? ok("面板状态单一来源：openBotRail 走 setPanel(\"bot\")，互斥由 data-panel 天然保证（GP-124）")
+  ? ok("面板状态单一来源：openBotRail 走 setPanel(\"bot\")，保证 bot-open 与 computer-open 互斥（GP-124）")
   : bad("mutual exclusion missing");
 
 /\[wavegT\("menuBotSettings"\), \(\) => openBotRail\(bot\.id\)\]/.test(html)

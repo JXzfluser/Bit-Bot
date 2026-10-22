@@ -1544,6 +1544,10 @@ async function main() {
       groups.length >= 1 && rowsNow >= 1
         ? ok("E2E GP-123：会话列表按 今天/昨天/更早 分组（" + groups.join(" / ") + "）")
         : bad("E2E GP-123 groups", JSON.stringify(groups));
+      // #session-search is hidden until the sidebar search toggle reveals it
+      // (matches the real product: the search button or Cmd/Ctrl+K).
+      await win.click("#sidebar-search-toggle");
+      await win.waitForSelector("#session-search:not([hidden])", { timeout: 5000 });
       await win.fill("#session-search", "zzz-no-such-session-xyz");
       await win.waitForTimeout(250);
       const filtered = await win.evaluate(() => ({
@@ -2074,6 +2078,9 @@ async function main() {
         : bad("E2E GP-130 usage store", JSON.stringify(m28Row));
 
       // GP-131: Settings → Usage & Billing tab shows the same real row.
+      // Settings lives inside the account popup (Grok-style); open it first.
+      await win.click("#account-avatar-btn");
+      await win.waitForSelector("#account-popup:not([hidden])", { timeout: 5000 });
       await win.click("#sidebar-settings-btn");
       await win.waitForSelector("#settings-panel", { timeout: 10000 });
       await win.evaluate(() => {

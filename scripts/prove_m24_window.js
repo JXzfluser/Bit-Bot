@@ -364,7 +364,7 @@ function main() {
   /grid-template-columns:\s*var\(--sidebar-w\) minmax\(0, 1fr\) var\(--panel-w\)/.test(html) &&
   /body\[data-panel="tools"\]/.test(html) &&
   !/grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr 0fr/.test(html)
-    ? ok("单 grid：sidebar|main|rail 三列，rail 宽由 data-panel 切换（280/340，旧 4 列 0fr 已退役）")
+    ? ok("右栏开合独立：单 grid sidebar|main|rail 三列，rail 宽由 data-panel 单值切换（280/340，旧 4 列 0fr 已退役）")
     : bad("rails", "contract-v1 single-grid layout missing");
 
   finish();

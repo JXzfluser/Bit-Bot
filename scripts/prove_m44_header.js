@@ -67,7 +67,7 @@ if (/#header-actions \{[^}]*justify-content:\s*flex-end/.test(html)) {
    sync point syncHeaderRailButtons() called from setPanel(). */
 if (/function syncHeaderRailButtons\(val\)[\s\S]{0,300}toolsBtn\.classList\.toggle\("active", val === "tools"\)[\s\S]{0,120}gpBtn\.classList\.toggle\("active", val === "computer"\)/.test(html) &&
     /setPanel\(open \? "computer" : "none"\)/.test(html)) {
-  ok("rail 状态经 setPanel→syncHeaderRailButtons 回写 gp-panel-btn / tools-toggle-btn 的 active（单一写点）");
+  ok("把 rail open 状态回写 gp-panel-btn.active（CSS+JS 双端闭合，单一写点 syncHeaderRailButtons 同时覆盖 tools-toggle-btn）");
 } else {
   bad("rail active sync", "header buttons not driven by setPanel state");
 }

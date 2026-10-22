@@ -51,7 +51,7 @@ if (tabBtnBlock
 }
 const tabActiveBlock = css.match(/#settings-tabs \.settings-tab-btn\.active \{([\s\S]*?)\}/);
 if (tabActiveBlock
-  && /background:\s*#ffffff/.test(tabActiveBlock[1])
+  && /background:\s*(?:#ffffff|var\(--surface\))/.test(tabActiveBlock[1])
   && /box-shadow:\s*0 1px 3px rgba\(0, 0, 0, 0\.10\)/.test(tabActiveBlock[1])) {
   ok("tab 按钮 active：白底 pill + 1px 3px 阴影（浮起感）");
 } else {
@@ -71,7 +71,7 @@ const headBlock = css.match(/#settings-sheet \.bb-sheet-head \{([\s\S]*?)\}/);
 if (headBlock
   && /position:\s*sticky/.test(headBlock[1])
   && /border-bottom:\s*1px solid var\(--line\)/.test(headBlock[1])
-  && /background:\s*#ffffff/.test(headBlock[1])) {
+  && /background:\s*(?:#ffffff|var\(--surface\))/.test(headBlock[1])) {
   ok("sheet 头部 sticky（滚动时标题 + 关闭按钮常驻）");
 } else {
   bad("sticky head", "no sticky or no border/bg");

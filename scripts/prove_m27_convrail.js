@@ -34,12 +34,12 @@ const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8"
 // Layout contract v1: shared grid-area "rail"; exclusion is inherent to the
 // single data-panel state written via setPanel().
 /#machines\s*\{[^}]*grid-area:\s*rail/.test(html) && /body\[data-panel="conv"\] #conv-rail \{ display: block; \}/.test(html)
-  ? ok("#conv-rail 与 Computer / Bot 设置共用 grid-area: rail（data-panel 驱动）")
+  ? ok("#conv-rail 与 Computer / Bot 设置共用同一可选右栏列（grid-area: rail，data-panel 驱动）")
   : bad("conv-rail grid placement wrong");
 
 /convRailId = id;\s*\n\s*setPanel\("conv"\)/.test(html) &&
   /setPanel\(open \? "computer" : "none"\)/.test(html)
-  ? ok("computer / bot / conv 互斥：单一状态源 setPanel，一个值只有一个面板（GP-128）")
+  ? ok("computer / bot / conv 三方互斥：单一状态源 setPanel，一个值只有一个面板（GP-128）")
   : bad("three-way exclusion missing");
 
 /\[wavegT\("cvTitle"\), \(\) => openConvRail\(s\.id\)\]/.test(html)
