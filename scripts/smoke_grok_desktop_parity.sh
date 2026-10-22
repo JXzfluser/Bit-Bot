@@ -1451,6 +1451,31 @@ grep -q "负向对照：塞回 workflows ·" /tmp/g41-probe.log 2>/dev/null \
   && ok "G-41 负向对照：塞回 workflows · → 本地化断言翻假（非恒真）" \
   || bad "G-41 negative control"
 
+echo "== G-42 消息流排版（M42：居中列 + 气泡尾角 + 连续回合分组）=="
+if timeout 900 node scripts/prove_m42_stream.js > /tmp/g42-probe.log 2>&1; then
+  ok "G-42 M42 消息流排版契约全绿（$(grep -c '✓' /tmp/g42-probe.log) 项，$(tail -1 /tmp/g42-probe.log)）"
+else
+  bad "G-42 M42 消息流排版契约（见 /tmp/g42-probe.log）"
+fi
+grep -q "#log 单列居中" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：#log 单列居中，user/assistant 对齐同一列" \
+  || bad "G-42 log center missing"
+grep -q "user 气泡：保留 18px 圆角" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：user 气泡 18px 圆角（M20）+ 右下尾角" \
+  || bad "G-42 user tail missing"
+grep -q "assistant 气泡：var(--bot-bubble)" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：assistant 气泡 bot-bubble + 左上尾角" \
+  || bad "G-42 assistant tail missing"
+grep -q "连续 assistant 行隐藏重复头像" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：连续 assistant 回合隐藏重复头像 + 收紧行距" \
+  || bad "G-42 grouping missing"
+grep -q "M20 用户胶囊正则仍匹配" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 M20 回归护栏：用户胶囊正则仍匹配" \
+  || bad "G-42 M20 regression"
+grep -q "负向对照：抹掉 #log max-width" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 负向对照：抹掉 #log max-width → 居中列断言翻假（非恒真）" \
+  || bad "G-42 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

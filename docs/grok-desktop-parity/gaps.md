@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M41 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=289 FAIL=0**。新增 `prove_m41_cn.js` 7/0（收尾中英混排：channels-meta `workflows ·`→`工作流 ·`、box-meta `env ·`→`运行环境 ·`、webhook `copied`→`已复制`、delivery `last:`→`最近：`、cloud-meta 内部枚举 `local_worker`→`本地代理` 不外泄；ADR 0002 / ICS 等技术引用按扫描规则保留）。M33–M40 契约保持。详见 Wave M41。
+> 验收证据（M42 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=296 FAIL=0**。新增 `prove_m42_stream.js` 7/0（#log 单列居中 max-width 820 + margin auto，修 user 贴右视口 / assistant 止于 760 的左右不对称；user 气泡保留 18px（M20）+ 右下 6px 尾角；assistant 卡片 bot-bubble + 左上 8px 尾角；连续 assistant 行隐藏重复头像 + margin-top 收紧；M20 用户胶囊正则回归护栏）。M33–M41 契约保持。详见 Wave M42。
+> 验收证据（M41）：`scripts/smoke_grok_desktop_parity.sh` **PASS=289 FAIL=0**。新增 `prove_m41_cn.js` 7/0（收尾中英混排：channels-meta `workflows ·`→`工作流 ·`、box-meta `env ·`→`运行环境 ·`、webhook `copied`→`已复制`、delivery `last:`→`最近：`、cloud-meta 内部枚举 `local_worker`→`本地代理` 不外泄；ADR 0002 / ICS 等技术引用按扫描规则保留）。M33–M40 契约保持。详见 Wave M41。
 > 验收证据（M40）：`scripts/smoke_grok_desktop_parity.sh` **PASS=283 FAIL=0**。新增 `prove_m40_a11y.js` 8/0（`:focus{outline:none}` + `:focus-visible` 2px accent 键盘焦点环；`@media (prefers-reduced-motion: reduce)` 全局压平 transition/animation，并归零 composer / sess-row / msg-actions 的 transform；M39 淡入契约回归检查）。M33–M39 契约保持。详见 Wave M40。
 > 验收证据（M39）：`scripts/smoke_grok_desktop_parity.sh` **PASS=277 FAIL=0**。新增 `prove_m39_micro.js` 10/0（`.msg-actions` 淡入用 opacity + pointer-events 而非 display 硬切；按钮 `:active scale(0.96)`；`sess-row:hover translateX(1px)` + `:active scale(0.995)`；composer send/attach/voice `:active scale(0.94)`；M38 契约不破）。M33–M38 契约保持。详见 Wave M39。
 > 验收证据（M38）：`scripts/smoke_grok_desktop_parity.sh` **PASS=269 FAIL=0**。新增 `prove_m38_copy.js` 8/0（消息悬浮 Copy 按钮 + clipboard/execCommand 双通道、pill 工具条 + backdrop-filter、welcome .w-brand 渐变、三语 copy* 齐备、含负向对照）。M33 / M34 / M35 / M36 / M37 契约保持。详见 Wave M38。
@@ -1033,3 +1034,39 @@ M38 加了 Copy 与 pill 工具条后，交互反馈仍是"硬切 display + 无�
 ### 4) 诚实残留
 - `已复制 <what>` / `最近： <types>` 里的 `<what>` / `<types>` 仍是后端返回的英文类型名（如 `screenshot`、`file`）。真正彻底本地化需要 Host 侧回传 i18n key 或前端维护一张 type→中文映射表；本波先统一前缀，类型名保留原样以免与后端契约脱钩。
 - 扫描清单里 `git / PR 计划`、`shell · 列目录` 等：`git`/`PR`/`shell` 是工具 / 命令专名，按排除规则保留，非"混搭"缺陷。
+
+---
+
+## Wave M42（消息流排版：居中对齐 + 气泡尾角 + 连续回合分组）
+
+核心聊天区的"设计感"最直接影响观感。本波修一个真实不对称 bug，并补齐 Grok 风格气泡尾角与连续回合节奏。
+
+### 1) 实现
+**a. #log 单列居中（真实 bug 修复）**
+- 之前：`#log` 全宽 flex column，`.msg.user { align-self: flex-end }` 贴到视口右边缘，而 `.msg.assistant` 卡片 `max-width` 到 760/85% 为止 —— 两者不在同一列，宽屏下 user 气泡飘在最右、assistant 卡偏左，视觉割裂；
+- 之后：`#log { max-width: 820px; margin-left/right: auto }` 把整条流收进居中的单列，user 与 assistant 对齐同一左右边界。
+
+**b. 气泡尾角（Grok 风格）**
+- `.msg.user`：保留 `border-radius: 18px`（M20 契约硬约束）+ 新增 `border-bottom-right-radius: 6px`，右下角收平朝向发送方；
+- `.msg.assistant .body`：保留 `var(--bot-bubble)` + `border-radius: var(--radius-xl)`（M20 契约）+ 新增 `border-top-left-radius: 8px`，左上角收平朝向头像。
+
+**c. 连续 assistant 回合分组**
+- `#log { row-gap: 16px }` 显式化行距；
+- `.msg.assistant + .msg.assistant { margin-top: -6px }` —— 同一 Bot 连续多回合收紧行距，读起来像一条线程；
+- `.msg.assistant + .msg.assistant::before { visibility: hidden }` —— 隐藏重复头像，但保留 32px 占位，卡片仍左对齐不错位。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m42_stream.js` **PASS=7 FAIL=0**
+  - #log 居中列 + user 尾角(含18px护栏) + assistant 尾角(含bot-bubble护栏) + 连续头像隐藏 + margin 收紧 + M20 正则回归 + 负向对照。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=296 FAIL=0**（289 → +7 G-42）。
+- M20 / M33–M41 契约全部保持（尾角改动专门验证未破 M20 用户胶囊正则）。
+
+### 3) NG-001
+- 尾角 6px / 8px 是经验值，非 Grok 官方测量；本波只求"有朝向感"，不追像素一致。
+- 居中列取 820px（含左右 padding 24×2）—— 与 assistant 卡 max-width 760 不是硬绑定，宽屏下 user 气泡不再越界即可。
+
+### 4) 诚实残留
+- **相邻选择器只看直接前驱**：`A + A` 只在两条 assistant 紧贴时生效。若两条 assistant 之间夹了 `.msg.user` / `.secret-card` / `.msg.tool-run`，分组链断裂（符合预期：换了发言方就该重新显示头像）。但"工具调用回合是否算打断线程"存疑：若一个回合的 assistant 输出被 tool-run 气泡分隔，本波会重复显示头像。彻底方案需要渲染层给同一回合的多气泡打同一 group-id，用 `[data-group]` 选择器分组 —— 属渲染改造，本波不做。
+- **居中列在超窄窗**：<868px 时 `max-width: 820` 不触发，退回原有 padding 行为，无横向溢出，但未专门测 320px 极窄（Electron 最小宽一般 ≥ 800）。
+- **margin-top: -6px 与淡入 transform 叠加**：msg-actions 的 translateY(-2px) 在 hover 时不影响文档流（transform 不占位），与负 margin 无冲突，实测不抖动，但无专项断言。

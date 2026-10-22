@@ -806,6 +806,13 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    /* Wave M42: center the whole stream in one 820px column so the user pill
+       (right) and the assistant card (left) align to the same edges — before
+       this, user bubbles hugged the viewport while cards stopped at 760px. */
+    max-width: 820px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
   }
   .msg {
     max-width: 760px;
@@ -823,6 +830,9 @@
     padding: 12px 18px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.06);
     position: relative;
+    /* Wave M42: flatten the bottom-right corner into a subtle tail toward the
+       sender side, keeping the 18px radius contract for the other corners. */
+    border-bottom-right-radius: 6px;
   }
   .msg-status {
     display: inline-flex;
@@ -852,12 +862,20 @@
     margin-top: 2px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   }
+  /* Wave M42: consecutive assistant turns collapse into one conversation
+     thread — the repeated avatar becomes an invisible spacer so cards stay
+     left-aligned, and the row gap tightens for a denser rhythm. */
+  #log { row-gap: 16px; }
+  .msg.assistant + .msg.assistant { margin-top: -6px; }
+  .msg.assistant + .msg.assistant::before { visibility: hidden; }
   .msg.assistant .body {
     background: var(--bot-bubble);
     border: 1px solid var(--line);
     border-radius: var(--radius-xl);
     padding: 14px 18px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    /* Wave M42: flatten top-left toward the avatar for a Grok-style tail. */
+    border-top-left-radius: 8px;
   }
   .msg .role { display: none; }
   /* GP-103/104/105: §8.4 untrusted data marker — shown above the bubble body so
