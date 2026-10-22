@@ -1328,6 +1328,111 @@ function createProductSurface(repoRoot) {
     return { ok: true, mode: "host_room_transcript_append" };
   }
 
+  // GP-143/144: orchestrate one task across room responders, then aggregate a
+  // `final_report`. The per-responder LLM turn is *injected* (`deps.runResponderTurn`)
+  // because in production it is executed by the MoonBit turn runner; this engine
+  // owns routing, guards, the transcript schema and honest N/总 aggregation so it
+  // is unit-testable without a kernel. Guards (per plan G-E): membership, budget
+  // ≤6, recursion depth (a responder turn must not re-enter orchestration),
+  // idempotency (one final_report per task), per-responder timeout.
+  const _orchInflight = new Set();
+  function orchestrateRoom(input) {
+    const opts = input || {};
+    const deps = opts.deps || {};
+    const roomKey = String(opts.room || "").trim();
+    const task = String(opts.task || "").trim();
+    if (!roomKey || !task) {
+      return { ok: false, error: "orchestrate_needs_room_and_task", mode: "host_orchestrate_room" };
+    }
+    const rooms = loadRooms();
+    const room = (rooms.rooms || []).find(r => r.id === roomKey || r.title === roomKey);
+    if (!room) return { ok: false, error: "room_not_found", room: roomKey, mode: "host_orchestrate_room" };
+
+    const bots = (loadBots().bots) || [];
+    const resolve = (idOrName) => {
+      const b = bots.find(x => x.id === idOrName || x.name === idOrName);
+      return b ? { id: b.id, name: b.name, job: b.job || "", description: b.description || "" } : null;
+    };
+    const memberIds = room.members || [];
+    const toList = Array.isArray(opts.to)
+      ? opts.to
+      : String(opts.to || "").split(",").map(s => s.trim()).filter(Boolean);
+    let responders;
+    if (toList.length) {
+      responders = [];
+      for (const t of toList) {
+        const r = resolve(t);
+        if (!r) return { ok: false, error: "responder_not_found", responder: t, mode: "host_orchestrate_room" };
+        if (!memberIds.includes(r.id)) return { ok: false, error: "responder_not_member", responder: r.id, mode: "host_orchestrate_room" };
+        if (!responders.some(x => x.id === r.id)) responders.push(r);
+      }
+    } else {
+      responders = memberIds.map(resolve).filter(Boolean);
+    }
+    if (responders.length < 1) return { ok: false, error: "no_responders", mode: "host_orchestrate_room" };
+    if (responders.length > 6) return { ok: false, error: "too_many_responders", count: responders.length, max: 6, mode: "host_orchestrate_room" };
+
+    const taskSig = room.id + "|" + task.toLowerCase();
+    if (_orchInflight.has(taskSig)) {
+      return { ok: false, error: "orchestrate_recursion", depth: 1, mode: "host_orchestrate_room" };
+    }
+    const prior = (room.transcript || []).find(e => e && e.kind === "final_report" && e.task_sig === taskSig);
+    if (prior && !opts.force) {
+      return { ok: true, mode: "host_orchestrate_room", deduped: true, returned: prior.returned, total: prior.total, partial: prior.partial, final_report: prior };
+    }
+    if (typeof deps.runResponderTurn !== "function") {
+      return {
+        ok: false, error: "responder_runner_required", mode: "host_orchestrate_room",
+        note: "GP-143 responder turn is run by the MoonBit runner; inject deps.runResponderTurn",
+      };
+    }
+
+    const timeoutMs = Number(deps.timeoutMs || 120000);
+    const at = nowIso();
+    const withTimeout = (p) => Promise.race([
+      Promise.resolve(p),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("responder_timeout")), timeoutMs)),
+    ]);
+
+    _orchInflight.add(taskSig);
+    return (async () => {
+      const settled = await Promise.allSettled(responders.map(async (r) => {
+        const ctx = { room: room.id, bot_id: r.id, name: r.name, job: r.job, description: r.description };
+        try {
+          const out = await withTimeout(deps.runResponderTurn(r.id, task, ctx));
+          return { bot_id: r.id, name: r.name, ok: !!(out && out.ok !== false), text: String((out && out.text) || ""), artifacts: (out && out.artifacts) || [], error: (out && out.error) || null };
+        } catch (e) {
+          return { bot_id: r.id, name: r.name, ok: false, text: "", artifacts: [], error: String((e && e.message) || e) };
+        }
+      }));
+      const sections = settled.map((res, i) => res.status === "fulfilled" ? res.value : { bot_id: responders[i].id, name: responders[i].name, ok: false, text: "", artifacts: [], error: String(res.reason || "unknown") });
+      for (const s of sections) {
+        appendRoomTranscript(room.id, {
+          kind: s.ok ? "bot_reply" : "bot_reply_error",
+          room_id: room.id, speaker: s.bot_id, bot_id: s.bot_id, name: s.name,
+          text: s.text, error: s.error || undefined, at,
+        });
+      }
+      const returned = sections.filter(s => s.ok).length;
+      const total = sections.length;
+      const final_report = {
+        kind: "final_report", room_id: room.id, task, task_sig: taskSig,
+        task_title: String(opts.report || task).trim() || task,
+        responders: responders.map(r => r.id), total, returned,
+        partial: returned < total,
+        sections: sections.map(s => ({ bot_id: s.bot_id, name: s.name, ok: s.ok, summary: s.ok ? s.text : `(${s.error || "no reply"})`, artifacts: s.artifacts })),
+        artifacts: sections.flatMap(s => s.artifacts || []),
+        at,
+      };
+      appendRoomTranscript(room.id, final_report);
+      _orchInflight.delete(taskSig);
+      return { ok: true, mode: "host_orchestrate_room", returned, total, partial: final_report.partial, final_report };
+    })().catch((e) => {
+      _orchInflight.delete(taskSig);
+      return { ok: false, error: "orchestrate_failed", detail: String((e && e.message) || e), mode: "host_orchestrate_room" };
+    });
+  }
+
   // GP-52: Bot→Bot task ownership transfer inside a product room. Both sides
   // must be real room members (or the user), the room must exist — otherwise
   // refuse honestly instead of inventing a transfer.
@@ -1895,6 +2000,7 @@ function createProductSurface(repoRoot) {
     // Rooms
     roomCreate,
     roomTurn,
+    orchestrateRoom,
     handoffTask,
     appendRoomTranscript,
     loadRooms,

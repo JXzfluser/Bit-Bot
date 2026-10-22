@@ -51,6 +51,9 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 | GP-143 | 步 4/5 | **被 @ 的 responder 各起真回合** | `product_surface.js:1253 roomTurn()` 仅算 `responders`/`responder_policy`（all/mentioned_only/bot_discretion）写一条路由；`host_ffi.js:10704` room_turn 走 fanout 到各成员 inbox、`pretend_private_dm:false`，**不驱动 responder 的 LLM 回合**。全仓无 `Orchestrate`/`final_report` 意图。 |
 | GP-144 | 步 7 | **编排者收齐 → 汇总 final_report** | 依赖 GP-143；`WakeParent`(CM-1208) 可唤醒、`DeliverCloudArtifact`(CM-2148) 可落产物，但无「收齐各 responder 产出 + 跑一次汇总回合 + 写 `kind:"final_report"` 卡」的意图与门。 |
 
+> **实施状态（M46 首切片，已验证）**：`product_surface.orchestrateRoom` 编排引擎已实现——成员校验、预算 ≤6、递归护栏、幂等、per-responder 超时、`bot_reply`/`bot_reply_error` + `final_report` transcript schema、N/总如实（partial）。`scripts/prove_gp143_orchestration.js` **PASS=8 FAIL=0**（部分收齐 1/2、幂等、递归、非成员、无 runner、单 responder）。
+> **残余（需具备 `moon` 的环境）**：① 真实 per-responder LLM 回合由 MoonBit runner 执行，本沙箱无 `moon`，引擎以注入的 `runResponderTurn` 解耦；② kernel `Orchestrate` 意图 + 把 runner（main.js）注入 host 产品 turn 路径 + `moon test`；③ UI 渲染 `final_report` 卡/文件卡。以上均**未在此环境伪验证**。
+
 ### A. 内核已有、桌面复刻层未接线（补 UI + 验收即闭合）
 
 | ID | 官方 § | 缺口 | 现状证据 |
