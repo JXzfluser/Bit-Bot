@@ -251,7 +251,12 @@ async function main() {
     }
     const { app, win } = boot;
 
-    const title = await win.title();
+    // Native window title lives on BrowserWindow: win.title() mirrors the
+    // document <title>, so assert the real shell title via the main process.
+    const title = await app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      return w ? w.getTitle() : "";
+    });
     title.includes("Bit Bot Desktop")
       ? ok("E2E 窗口标题真实（" + title + "）")
       : bad("E2E 窗口标题", title);
@@ -1427,7 +1432,7 @@ async function main() {
         while (Date.now() - t0 < 20000) {
           try {
             const rows = JSON.parse(fs.readFileSync(BOTS_M25, "utf8")).bots || [];
-            const hit = rows.find((b) => b.name === "New Bot" && b.job === "QA Probe");
+            const hit = rows.find((b) => (b.name === "新 Bot" || b.name === "New Bot") && b.job === "QA Probe");
             if (hit) return hit.id;
           } catch (_) {}
           await new Promise((r) => setTimeout(r, 200));
@@ -1446,8 +1451,7 @@ async function main() {
       const autoOpened = await win
         .waitForFunction(
           () =>
-            String((document.querySelector("#bot-pill .bot-pill-name") || {}).textContent || "").trim() ===
-            "New Bot",
+            ["新 Bot", "New Bot"].includes(String((document.querySelector("#bot-pill .bot-pill-name") || {}).textContent || "").trim()),
           null,
           { timeout: 25000 },
         )
@@ -1463,8 +1467,8 @@ async function main() {
       // 2) Edit Profile from the real right-click menu: name + tags persist
       if (createdId) {
         await win.click('#bot-list [data-agent-id="' + createdId + '"]', { button: "right" });
-        await win.waitForSelector(".composer-menu", { timeout: 5000 });
-        await win.locator(".composer-menu button").nth(4).click(); // Edit Profile
+        await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
+        await win.locator(".composer-menu:not([hidden]) button").nth(4).click(); // Edit Profile
         await win.waitForSelector("#bot-edit-modal", { state: "visible", timeout: 5000 });
         const editMode = await win.evaluate(() => ({
           name: document.getElementById("bc-name").value,
@@ -1472,7 +1476,7 @@ async function main() {
           avatarVisible: document.getElementById("bf-avatar-col").style.display !== "none",
           saveLabel: document.getElementById("bc-create").textContent,
         }));
-        editMode.name === "New Bot" && editMode.tagsVisible && editMode.avatarVisible
+        ["新 Bot", "New Bot"].includes(editMode.name) && editMode.tagsVisible && editMode.avatarVisible
           ? ok("E2E GP-120：编辑资料预填真实名称，并显示 标签 / 头像 字段")
           : bad("E2E GP-120 edit prefill", JSON.stringify(editMode));
         await win.fill("#bc-name", "Piper UI");
@@ -1564,8 +1568,8 @@ async function main() {
         bad("E2E GP-123 rename target", "New Bot · DM session missing");
       } else {
         await win.click('#session-list [data-session-id="' + dm.id + '"]', { button: "right" });
-        await win.waitForSelector(".composer-menu", { timeout: 5000 });
-        await win.locator(".composer-menu button").nth(0).click(); // Rename
+        await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
+        await win.locator(".composer-menu:not([hidden]) button").nth(0).click(); // Rename
         await win.waitForSelector("#session-rename-modal", { state: "visible", timeout: 5000 });
         const prefill = await win.evaluate(() => document.getElementById("sr-title").value);
         prefill === "New Bot · DM"
@@ -1597,8 +1601,8 @@ async function main() {
           : bad("E2E GP-123 rename row", String(rowTitle));
 
         await win.click('#session-list [data-session-id="' + dm.id + '"]', { button: "right" });
-        await win.waitForSelector(".composer-menu", { timeout: 5000 });
-        await win.locator(".composer-menu button").nth(1).click(); // Delete
+        await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
+        await win.locator(".composer-menu:not([hidden]) button").nth(1).click(); // Delete
         await win.waitForSelector("#session-delete-modal", { state: "visible", timeout: 5000 });
         const delWarn = await win.evaluate(() => {
           const m = document.getElementById("session-delete-modal");
@@ -1657,8 +1661,8 @@ async function main() {
         () => document.querySelector("#bot-list [data-agent-id]").dataset.agentId,
       );
       await win.click('#bot-list [data-agent-id="' + m26BotId + '"]', { button: "right" });
-      await win.waitForSelector(".composer-menu", { timeout: 5000 });
-      await win.locator(".composer-menu button").last().click();
+      await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
+      await win.locator(".composer-menu:not([hidden]) button").last().click();
       await win.waitForFunction(
         () => document.body.classList.contains("bot-open") &&
           document.getElementById("bot-rail").getBoundingClientRect().width > 200,
@@ -1758,8 +1762,8 @@ async function main() {
       // 4) Panel actions drive the same Host phrases: Pin → bots.json pinned.
       // Re-open the rail via the menu (state is deterministic this way).
       await win.click('#bot-list [data-agent-id="' + m26BotId + '"]', { button: "right" });
-      await win.waitForSelector(".composer-menu", { timeout: 5000 });
-      await win.locator(".composer-menu button").last().click();
+      await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
+      await win.locator(".composer-menu:not([hidden]) button").last().click();
       await win.waitForFunction(
         () => document.body.classList.contains("bot-open"),
         null,
@@ -1860,8 +1864,8 @@ async function main() {
 
         // 2) Right-click the row → last menu item = 对话详情 → #conv-rail opens
         await win.click(rowSel, { button: "right" });
-        await win.waitForSelector(".composer-menu", { timeout: 5000 });
-        await win.locator(".composer-menu button").last().click();
+        await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
+        await win.locator(".composer-menu:not([hidden]) button").last().click();
         await win.waitForFunction(
           () => document.body.classList.contains("conv-open") &&
             document.getElementById("conv-rail").getBoundingClientRect().width > 200,
@@ -1905,8 +1909,8 @@ async function main() {
           () => document.querySelector("#bot-list [data-agent-id]").dataset.agentId,
         );
         await win.click('#bot-list [data-agent-id="' + botIdM27 + '"]', { button: "right" });
-        await win.waitForSelector(".composer-menu", { timeout: 5000 });
-        await win.locator(".composer-menu button").last().click();
+        await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
+        await win.locator(".composer-menu:not([hidden]) button").last().click();
         await win.waitForFunction(
           () => document.body.classList.contains("bot-open"),
           null,
@@ -1923,8 +1927,8 @@ async function main() {
 
         // 4) Rename from the details rail writes the store and refreshes the panel.
         await win.click(rowSel, { button: "right" });
-        await win.waitForSelector(".composer-menu", { timeout: 5000 });
-        await win.locator(".composer-menu button").last().click();
+        await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
+        await win.locator(".composer-menu:not([hidden]) button").last().click();
         await win.waitForFunction(() => document.body.classList.contains("conv-open"), null, { timeout: 10000 }).catch(() => {});
         await win.waitForFunction(
           () => document.querySelectorAll("#cv-actions .gp-chip").length > 0,
@@ -1972,7 +1976,7 @@ async function main() {
 
         // 5) Deleting the chat closes its details rail.
         await win.click('#session-list [data-session-id="' + m27SessionId + '"]', { button: "right" });
-        await win.waitForSelector(".composer-menu", { timeout: 5000 });
+        await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
         const menuBtns = await win.evaluate(() =>
           Array.from(document.querySelectorAll('.composer-menu[data-session-menu] button')).map((b) => b.textContent || ""),
         );
