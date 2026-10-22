@@ -1377,7 +1377,7 @@
       </div>
       <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板" data-i18n="headerSkills">能力</button>
       <button type="button" id="cred-settings-btn" title="配置 DeepSeek / 钉钉飞书企微（不写死）" data-i18n="headerCreds">凭证</button>
-      <button type="button" id="gp-panel-btn" title="Computer 预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer">Computer</button>
+      <button type="button" id="gp-panel-btn" title="电脑预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer">电脑</button>
       <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton" data-i18n="headerAccount">账户</button>
     </div>
   </header>
@@ -1394,7 +1394,7 @@
     </div>
     <div class="panel-title panel-head">
       <span data-i18n="bots">Bots</span>
-      <button type="button" id="bot-new-btn" class="bb-btn" title="Create new Bot (Name / Job / Description)" data-i18n="newBot">New Bot</button>
+      <button type="button" id="bot-new-btn" class="bb-btn" title="新建 Bot（名称 / 职责 / 描述）" data-i18n="newBot">新建 Bot</button>
     </div>
     <div id="bot-list" aria-label="Bots"></div>
     <div class="panel-title panel-head spaced">
@@ -1410,7 +1410,7 @@
     <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="Search chats" hidden />
     <div id="session-list" aria-label="Chat sessions"></div>
     <details class="lab" id="agents-lab">
-      <summary data-i18n="advanced">高级 · Agents / Teammates</summary>
+      <summary data-i18n="advanced">高级 · 代理 / 队友</summary>
       <div class="agent-item" id="agents-host-panel" style="margin-top:8px">
         <div class="name">Sidebar agents</div>
         <div class="meta" id="agents-meta">list · hide (CM-1906/1907)</div>
@@ -1442,12 +1442,12 @@
          with Connect apps / Marketplace / Settings, not between the lists. -->
     <div id="sidebar-footer">
       <details class="lab" id="hidden-bots-lab">
-        <summary><span data-i18n="hiddenBots">Hidden Bots</span> (<span id="hidden-bots-count">0</span>)</summary>
+        <summary><span data-i18n="hiddenBots">已隐藏的 Bot</span> (<span id="hidden-bots-count">0</span>)</summary>
         <div id="hidden-bot-list"></div>
       </details>
       <div class="bb-split">
-        <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" data-i18n="connectApps">Connect apps</button>
-        <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="Marketplace · Bot 模板（来自 Host bot-templates.json）" data-i18n="marketplace">Marketplace</button>
+        <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="连接应用 · 插件（Cmd/Ctrl+Shift+M）" data-i18n="connectApps">连接应用</button>
+        <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板（来自本机 bot-templates.json）" data-i18n="marketplace">模板市场</button>
       </div>
       <!-- Grok-style user account row with popup menu -->
       <div id="account-bar">
@@ -1494,7 +1494,7 @@
     <div id="gp-panel" style="display:none;margin:0 16px 8px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="font-weight:700" data-i18n="gpPanel">Grok Parity 面板</div>
-        <button type="button" class="gp-chip gp-tab active" data-gptab="computer">Computer</button>
+        <button type="button" class="gp-chip gp-tab active" data-gptab="computer">电脑</button>
         <button type="button" class="gp-chip gp-tab" data-gptab="group" data-i18n="gpGroup">群组</button>
         <button type="button" class="gp-chip gp-tab" data-gptab="approvals" data-i18n="gpApprovals">后台审批</button>
         <button type="button" id="gp-panel-close" class="gp-chip" data-i18n="gpClose">关闭</button>
@@ -1508,7 +1508,7 @@
         <div class="gp-row" style="margin-top:8px">
           <button type="button" class="gp-chip" id="gp-takeover-btn" data-i18n="takeover">Take over</button>
           <button type="button" class="gp-chip" id="gp-refresh-frame" data-i18n="gpRefreshFrame">刷新帧</button>
-          <button type="button" class="gp-chip" id="gp-recover-btn" style="display:none" data-i18n="gpRecover">Recover Computer</button>
+          <button type="button" class="gp-chip" id="gp-recover-btn" style="display:none" data-i18n="gpRecover">恢复云端电脑</button>
           <select id="gp-computer-state" class="gp-select" style="display:none"></select>
         </div>
         <div id="gp-computer-status" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace"></div>
@@ -1552,7 +1552,7 @@
       </div>
       <div id="settings-tabs" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px">
         <button type="button" class="settings-tab-btn" data-stab="general" data-i18n="tabGeneral">General</button>
-        <button type="button" class="settings-tab-btn" data-stab="computer" data-i18n="tabComputer">Computer</button>
+        <button type="button" class="settings-tab-btn" data-stab="computer" data-i18n="tabComputer">电脑</button>
         <button type="button" class="settings-tab-btn" data-stab="credentials" data-i18n="tabCredentials">Credentials</button>
         <button type="button" class="settings-tab-btn" data-stab="usage" data-i18n="tabUsage">Usage &amp; Billing</button>
         <button type="button" class="settings-tab-btn" data-stab="updates" data-i18n="tabUpdates">Updates</button>
@@ -1617,7 +1617,7 @@
         <div id="waveg-settings-status" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       </div>
       <div id="st-computer" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div class="gp-label" data-i18n="locExec">Local execution（Computer 权限）</div>
+        <div class="gp-label" data-i18n="locExec">本地执行（电脑权限）</div>
         <div class="gp-row" id="gp-locexec-row">
           <button type="button" class="gp-chip" data-locexec="ask" data-i18n="askEveryTime">Ask every time</button>
           <button type="button" class="gp-chip" data-locexec="always" data-i18n="alwaysAllowBtn">Always allow</button>
@@ -1627,10 +1627,10 @@
         <div class="gp-row">
           <button type="button" class="gp-chip" id="gp-route-toggle">—</button>
         </div>
-        <div class="gp-label" data-i18n="botComputer">Update / Reset Bot's Computer</div>
+        <div class="gp-label" data-i18n="botComputer">Bot 的云端电脑</div>
         <div class="gp-row">
-          <button type="button" class="gp-chip" id="gp-update-computer" data-i18n="updateComputerBtn">Update Bot's Computer</button>
-          <button type="button" class="gp-chip" id="gp-reset-computer" data-i18n="resetComputerBtn">Reset Bot's Computer</button>
+          <button type="button" class="gp-chip" id="gp-update-computer" data-i18n="updateComputerBtn">更新云端电脑</button>
+          <button type="button" class="gp-chip" id="gp-reset-computer" data-i18n="resetComputerBtn">重置云端电脑</button>
         </div>
         <div id="st-computer-state" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
       </div>
@@ -9171,10 +9171,10 @@
         connectApps: "连接应用",
         hiddenBots: "已隐藏的 Bot",
         rooms: "群组",
-        marketplace: "Marketplace",
-        mkTitle: "Marketplace · Bot 模板",
-        mkHint: "模板来自 Host 的 bot-templates.json 目录，点一个即可创建 Bot。",
-        mkEmpty: "Host 没有可用模板。",
+        marketplace: "模板市场",
+        mkTitle: "模板市场 · Bot 模板",
+        mkHint: "模板来自本机的 bot-templates.json 目录，点一个即可创建 Bot。",
+        mkEmpty: "本机没有可用模板。",
         mkCreate: "创建",
         mkUse: "使用",
         roomEmpty: "还没有群组。",
@@ -9211,8 +9211,8 @@
         bfDescHint: "描述支持多行：工作方式 / 工具 / 输出格式 / 安全边界 / 审批要求。",
         bfSaved: "资料已保存",
         bfFailed: "保存失败",
-        defaultBotName: "New Bot",
-        avatarInvalid: "头像路径无效（Host 拒绝，未保存头像）",
+        defaultBotName: "新 Bot",
+        avatarInvalid: "头像路径无效（已拒绝，未保存头像）",
         botCreatedOpen: "已创建「{n}」并打开对话",
         botCreateFailed: "创建失败",
         cvTitle: "对话详情",
@@ -9243,7 +9243,7 @@
         brUnknown: "未找到该 Bot",
         brNotifySaved: "通知设置已保存",
         brNotifyFailed: "通知设置保存失败",
-        advanced: "高级 · Agents / Teammates",
+        advanced: "高级 · 代理 / 队友",
         settings: "设置",
         settingsGeneral: "常规",
         settingsClose: "关闭",
@@ -9253,7 +9253,7 @@
         dark: "深色",
         language: "语言",
         timezone: "Bot 时区（定时任务按此区计算）",
-        locExec: "本地执行（Computer 权限）",
+        locExec: "本地执行（电脑权限）",
         askEveryTime: "每次询问",
         alwaysAllowBtn: "总是允许",
         neverAllow: "从不允许",
@@ -9279,15 +9279,15 @@
         headerAccount: "账户",
         model: "模型",
         machines: "机器",
-        gpPanel: "Grok Parity 面板",
-        gpComputer: "Computer",
+        gpPanel: "对齐面板",
+        gpComputer: "电脑",
         gpGroup: "群组",
         gpApprovals: "后台审批",
         gpClose: "关闭",
         gpFramePoll: "帧预览：每 3s 轮询 Host 真实截屏（无 DISPLAY 时诚实显示 residual）",
         gpNoFrame: "（尚无帧）",
         gpRefreshFrame: "刷新帧",
-        gpRecover: "Recover Computer",
+        gpRecover: "恢复云端电脑",
         gpRoomNew: "新建群组（选 2–6 个 Bot，名称可改）",
         gpRoomPh: "群名（可留空自动命名）",
         gpRoomCreate: "创建群组",
@@ -9429,16 +9429,16 @@
         crNoActivity: "暂无活动记录 — Bot 执行 computer-use / 截图后自动出现。",
         crIdle: "空闲（未收到帧）",
         crLeaveNote: "离开预览不影响 Bot 后台任务。",
-        rComputerPreview: "已打开 Computer 预览（右侧面板）— 关闭预览不影响后台任务。",
+        rComputerPreview: "已打开电脑预览（右侧面板）— 关闭预览不影响后台任务。",
         tabGeneral: "通用",
-        tabComputer: "Computer",
+        tabComputer: "电脑",
         tabCredentials: "凭证",
         tabUsage: "用量与账单",
         tabUpdates: "更新",
-        botComputer: "Bot 的 Computer（云电脑）",
-        updateComputerBtn: "更新 Bot 的 Computer",
-        resetComputerBtn: "重置 Bot 的 Computer",
-        crNoComputer: "未读取到 Computer 状态。",
+        botComputer: "Bot 的云端电脑",
+        updateComputerBtn: "更新云端电脑",
+        resetComputerBtn: "重置云端电脑",
+        crNoComputer: "未读取到云端电脑状态。",
         checkUpdatesBtn: "检查更新",
         restartUpdateBtn: "重启并安装",
         updatesIdle: "尚未检查 — 点「检查更新」（沙箱未打包时诚实显示 residual）。",
@@ -9668,7 +9668,7 @@
         gpFramePoll: "影格預覽：每 3s 輪詢 Host 真實截屏（無 DISPLAY 時誠實顯示 residual）",
         gpNoFrame: "（尚無影格）",
         gpRefreshFrame: "重新整理影格",
-        gpRecover: "Recover Computer",
+        gpRecover: "復原雲端電腦",
         gpRoomNew: "新建立群組（選 2–6 個 Bot，名稱可改）",
         gpRoomPh: "群名（可留空自動命名）",
         gpRoomCreate: "建立群組",
