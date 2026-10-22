@@ -193,6 +193,10 @@ body.force-light {
 
 /* ---- shared chrome ------------------------------------------------------- */
 
+/* UA 默认 `[hidden]{display:none}` 会被 .bb-field 之类 display:block 顶掉；
+   Wave M37 起统一走 `!important` 复位，任何带 hidden 属性的元素真的收起。 */
+[hidden] { display: none !important; }
+
 .bb-modal {
   display: none;
   position: fixed;
