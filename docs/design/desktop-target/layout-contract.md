@@ -66,6 +66,12 @@ grid-template-areas:
 - 默认 DOM：以下选择器 0 可见命中：`details.lab`、`#probe-*`、`#tool-webfetch`、`#tool-device`、`#cu-open`、`#gp-panel` 内非产品行、raw JSON dump 节点、`.msg.kernel/.msg.adr/.msg.effect`（以 audit.md 清单为准）。
 - dev-mode（`body[data-devmode="on"]`，来源 = 设置→开发选项持久化 或 启动参数 `--bitbot-devmode`）：上述选择器出现且可见，并显示"开发模式"标记（可断言节点 `#devmode-badge`）。
 - 归位映射（终版在 audit.md 处置表）：`#machines`→rail(tools)；`#computer-rail` 保持 rail(computer)；试连大脑/国内渠道→设置→凭证 tab；`#account-bar`/Hidden Bots/Connect apps/Marketplace/Settings→`#sidebar-footer` 常驻；审批队列/自动复核规则→产品面（审批卡、设置→通用）。
+- 落地补充（实现时确认的边界）：
+  - rail(tools) 与 `#tools-toggle-btn` 整体视为 dev 面：`setPanel("tools")` 在非 dev-mode 被拒绝，能力按钮带 `data-lab`。
+  - `#hidden-bots-lab` 是产品入口（GP-118），保留 disclosure 形态、**不**入 dev-mode；`#agents-lab`（列出代理/队友 stub）才是 dev 面。
+  - `#gp-panel`（群组创建 / 后台审批队列 / Computer 旧行）维持产品面；其 Computer tab 与 rail(computer) 重复的部分随后续波次收敛。
+  - `#agent-info-panel`（raw 代理 dump）由 JS 直接拒绝在非 dev-mode 渲染（inline style 无法被样式表压制，走逻辑门）。
+  - raw JSON overlay（`.debug-json` / Alt+D）只在 dev-mode 下可切换。
 
 ## 7. 渲染门编号（`e2e_desktop_layout_target.mjs`）
 

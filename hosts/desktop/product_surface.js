@@ -886,7 +886,7 @@ function createProductSurface(repoRoot) {
 
   function settingsPatch(patch) {
     const data = loadSettings();
-    const allowed = new Set(["appearance", "language", "timezone", "local_execution", "route_traffic", "notify", "unread", "sidebar_collapsed"]);
+    const allowed = new Set(["appearance", "language", "timezone", "local_execution", "route_traffic", "notify", "unread", "sidebar_collapsed", "dev_mode"]);
     const ignored = [];
     
     for (const key of Object.keys(patch)) {

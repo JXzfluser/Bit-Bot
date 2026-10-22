@@ -74,12 +74,11 @@
   body[data-sidebar="collapsed"] { grid-template-columns: 0px minmax(0, 1fr) var(--panel-w); }
   body[data-sidebar="collapsed"] #agents { display: none; }
   #computer-rail {
-    overflow: hidden;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--ease);
+    display: none;
+    padding: var(--space-6);
+    overflow: auto;
   }
-  body[data-panel="computer"] #computer-rail { opacity: 1; pointer-events: auto; overflow: auto; }
+  body[data-panel="computer"] #computer-rail { display: block; }
   .cv-title { font-weight: 700; font-size: var(--text-title); word-break: break-word; }
   .cv-kv {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
@@ -1465,6 +1464,21 @@
     body[data-sidebar="collapsed"] { grid-template-columns: 1fr; }
     #agents { max-height: 140px; border: 0; border-bottom: 1px solid var(--line); }
   }
+  /* Layout contract v1 §6 — debug-surface governance.
+     [data-lab] surfaces are absent from the product UI by default and only
+     reveal under body[data-devmode="on"] (settings.dev_mode or the
+     --bitbot-devmode launch flag). Kept above the a11y block on purpose:
+     Wave M40 must stay the final override layer. */
+  body:not([data-devmode="on"]) [data-lab] { display: none; }
+  #devmode-badge {
+    align-self: center; justify-self: center;
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--warn-bg); color: var(--warn-ink);
+    border: 1px solid var(--warn-line); border-radius: var(--radius-pill);
+    padding: 2px 10px; font-size: var(--text-xs); font-weight: 600;
+  }
+  #devmode-badge[hidden] { display: none; }
+
   /* Wave M40 — accessibility: keyboard focus rings only for keyboard users
      (:focus-visible), and honor prefers-reduced-motion by stripping the M39
      fades / presses. Placed last so it overrides component rules without
@@ -1506,11 +1520,12 @@
       <span class="bot-pill-avatar"></span>
       <span class="bot-pill-name">Bit Bot</span>
     </div>
-    <div id="header-actions">
+    <span id="devmode-badge" data-i18n="devBadge">开发模式</span>
+      <div id="header-actions">
       <div id="model-picker" title="国产多模型 · 经 MoonBit llm_set_model" aria-label="模型选择">
         <span class="mp-label">模型</span>
       </div>
-      <button type="button" id="tools-toggle-btn" title="机器 / 渠道 / 能力面板" data-i18n="headerSkills">能力</button>
+      <button type="button" id="tools-toggle-btn" data-lab title="机器 / 渠道 / 能力面板" data-i18n="headerSkills">能力</button>
       <button type="button" id="cred-settings-btn" title="配置 DeepSeek / 钉钉飞书企微（不写死）" data-i18n="headerCreds">凭证</button>
       <button type="button" id="gp-panel-btn" title="电脑预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer">电脑</button>
       <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton" data-i18n="headerAccount">账户</button>
@@ -1544,7 +1559,7 @@
     <!-- GP-123: live search over the real session list (今天 / 昨天 / 更早). -->
     <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
     <div id="session-list" aria-label="会话列表"></div>
-    <details class="lab" id="agents-lab">
+    <details class="lab" data-lab id="agents-lab">
       <summary data-i18n="advanced">高级 · 代理 / 队友</summary>
       <div class="agent-item" id="agents-host-panel" style="margin-top:8px">
         <div class="name">侧栏代理</div>
@@ -1722,6 +1737,11 @@
             <option value="America/Los_Angeles">America/Los_Angeles</option>
             <option value="Europe/Berlin">Europe/Berlin</option>
           </select>
+        </div>
+        <div class="gp-label" data-i18n="devModeLabel">开发选项（调试面与工具面板）</div>
+        <div class="gp-row" id="gp-devmode-row">
+          <button type="button" class="gp-chip" data-devmode="on" data-i18n="devOn">开</button>
+          <button type="button" class="gp-chip" data-devmode="off" data-i18n="devOff">关</button>
         </div>
         <div class="gp-label" data-i18n="autoReview">自动复核规则（「先询问」优先于「自动允许」）</div>
         <div class="gp-row">
@@ -2026,7 +2046,7 @@
         <button type="button" id="cn-wecom" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发企微</button>
       </div>
     </div>
-    <details class="lab" style="margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
+    <details class="lab" data-lab style="margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
       <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外 Connectors（Slack/Gmail · 非本阶段主路径）</summary>
       <div class="machine-item" style="margin-top:8px">
         <div class="name">Slack / Gmail / Outlook 连接器</div>
@@ -2054,7 +2074,7 @@
         <button type="button" id="pref-local" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">关闭本地执行</button>
       </div>
     </div>
-    <details class="lab" style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
+    <details class="lab" data-lab style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
       <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外渠道实验室（Slack/Gmail · 非产品主路径）</summary>
       <div class="machine-item" style="margin-top:8px">
         <div class="name">Slack / Teams 出站 + 认领</div>
@@ -2917,6 +2937,7 @@
     }
 
     function renderAgentInfoPanel(payload) {
+      if (!devModeOn()) return; // governance: raw agent dump is dev-mode only
       const panel = document.getElementById("agent-info-panel");
       const sectionsEl = document.getElementById("agent-info-sections");
       const meta = document.getElementById("agent-info-meta");
@@ -8126,7 +8147,17 @@
        existing e2e GP-* gates keep passing during migration; the CSS no longer
        reads them. setSidebarCollapsed owns data-sidebar the same way. */
     const PANEL_LEGACY_CLASS = { none: "", bot: "bot-open", conv: "conv-open", computer: "computer-open", tools: "tools-open" };
+    /* Debug-surface governance (layout-contract §6): dev-mode is persisted
+       via settings.dev_mode or requested at launch (--bitbot-devmode). The
+       badge in the header makes the mode unmistakable. */
+    function devModeOn() { return document.body.dataset.devmode === "on"; }
+    function applyDevMode(on) {
+      document.body.dataset.devmode = on ? "on" : "off";
+      const badge = document.getElementById("devmode-badge");
+      if (badge) badge.hidden = !on;
+    }
     function setPanel(next) {
+      if (next === "tools" && !devModeOn()) next = "none"; // tools rail is dev-mode only
       const cur = document.body.dataset.panel || "none";
       if (cur !== "none" && PANEL_LEGACY_CLASS[cur]) document.body.classList.remove(PANEL_LEGACY_CLASS[cur]);
       const val = PANEL_LEGACY_CLASS[next] === undefined ? "none" : next;
@@ -9593,6 +9624,11 @@
         attachTooMany: "附件被拒绝：一次最多 6 个（GP-11）。",
         replyAction: "回复",
         reactAction: "反应",
+        devBadge: "开发模式",
+        devStatusSet: "开发模式已{{state}}",
+        devModeLabel: "开发选项（调试面与工具面板）",
+        devOn: "开",
+        devOff: "关",
         copyAction: "复制",
         copyDone: "已复制",
         copyFailed: "复制失败",
@@ -9987,6 +10023,11 @@
         attachTooMany: "附件被拒絕：一次最多 6 個（GP-11）。",
         replyAction: "回覆",
         reactAction: "反應",
+        devBadge: "開發模式",
+        devStatusSet: "開發模式已{{state}}",
+        devModeLabel: "開發選項（調試面與工具面板）",
+        devOn: "開",
+        devOff: "關",
         copyAction: "複製",
         copyDone: "已複製",
         copyFailed: "複製失敗",
@@ -10381,6 +10422,11 @@
         attachTooMany: "Attachment refused: max 6 files per send (GP-11).",
         replyAction: "Reply",
         reactAction: "React",
+        devBadge: "Dev mode",
+        devStatusSet: "Dev mode {{state}}",
+        devModeLabel: "Developer options (debug surfaces & tools rail)",
+        devOn: "On",
+        devOff: "Off",
         copyAction: "Copy",
         copyDone: "Copied",
         copyFailed: "Copy failed",
@@ -10585,6 +10631,19 @@
       const d = WAVEG_I18N[wavegLang] || WAVEG_I18N["zh-CN"];
       return (d && d[key]) || WAVEG_I18N["zh-CN"][key] || key;
     }
+    /* Copy contract v1 §1: t() is the single source for ALL visible copy,
+       including dynamic strings. Interpolation accepts {{name}} (contract
+       form) and {name} (legacy dictionary form). */
+    function t(key, params) {
+      let s = wavegT(key);
+      if (params) {
+        s = s.replace(/\{\{\s*(\w+)\s*\}\}|\{\s*(\w+)\s*\}/g, (m, a, b) => {
+          const k = a || b;
+          return Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : m;
+        });
+      }
+      return s;
+    }
     function wavegResolveLang(code) {
       if (code === "system" || code === "auto" || !code) {
         const nav = String(navigator.language || "").toLowerCase();
@@ -10606,6 +10665,15 @@
       document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
         const k = el.getAttribute("data-i18n-ph");
         if (k) el.setAttribute("placeholder", wavegT(k));
+      });
+      // Copy contract v1 §6.2: title / aria-label ride the same sweep.
+      document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+        const k = el.getAttribute("data-i18n-title");
+        if (k) el.setAttribute("title", t(k));
+      });
+      document.querySelectorAll("[data-i18n-aria]").forEach((el) => {
+        const k = el.getAttribute("data-i18n-aria");
+        if (k) el.setAttribute("aria-label", t(k));
       });
       // elements with dynamic children keep explicit wiring
       const sum = document.querySelector("#hidden-bots-lab summary");
@@ -10666,6 +10734,14 @@
           if (res && res.ok) gpStatus("waveg-settings-status", "Appearance → " + mode + "（nativeTheme.themeSource 已生效并持久化）");
           refreshWaveGSettings();
           runUserTurn("set appearance " + mode, { skipSession: true }).catch(() => {});
+        });
+      });
+      document.querySelectorAll("#gp-devmode-row .gp-chip").forEach((b) => {
+        b.addEventListener("click", async () => {
+          const on = b.dataset.devmode === "on";
+          const res = await window.bitbot.settings.set({ dev_mode: on });
+          if (res && res.ok) applyDevMode(on);
+          gpStatus("waveg-settings-status", t("devStatusSet", { state: on ? t("devOn") : t("devOff") }));
         });
       });
       document.querySelectorAll("#gp-locexec-row .gp-chip").forEach((b) => {
@@ -11426,7 +11502,8 @@
           });
         }
         document.addEventListener("keydown", (ev) => {
-          if (ev.altKey && (ev.key === "d" || ev.key === "D")) {
+          // governance: the raw-JSON overlay is only available in dev mode
+          if (ev.altKey && (ev.key === "d" || ev.key === "D") && devModeOn()) {
             document.body.classList.toggle("debug-json");
           }
         });
@@ -11462,6 +11539,7 @@
         try {
           const stRes = await window.bitbot.settings.get();
           const st = (stRes && stRes.settings && stRes.settings.settings) || (stRes && stRes.settings) || {};
+          applyDevMode(!!(st.dev_mode || (stRes && stRes.devmode_launch)));
           if (st.sidebar_collapsed) applySidebarCollapse(true);
           wavegApplyAppearanceClass(st.appearance || "system");
           wavegLangApply(st.language || "zh-CN");

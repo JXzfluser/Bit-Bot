@@ -79,6 +79,11 @@ try {
 /** CN inbound HTTP server (钉钉/飞书/企微 callbacks). */
 let cnInbound = null;
 
+/* Layout contract v1 §6: dev-mode may also be requested at launch. This is
+   the ONLY way dev surfaces appear without the Settings switch, and the
+   renderer badge makes the mode visible either way. */
+const DEV_MODE_LAUNCH = process.argv.includes("--bitbot-devmode") || process.env.BITBOT_DEVMODE === "1";
+
 const REPO_ROOT = process.env.BITBOT_REPO_ROOT
   ? path.resolve(process.env.BITBOT_REPO_ROOT)
   : path.resolve(__dirname, "../..");
@@ -943,7 +948,7 @@ function applyAppearance(mode) {
 ipcMain.handle("bitbot:settings:get", async () => {
   try {
     const st = surface.getSettings();
-    return { ok: true, settings: st, theme_source: nativeTheme.themeSource };
+    return { ok: true, settings: st, theme_source: nativeTheme.themeSource, devmode_launch: DEV_MODE_LAUNCH };
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err) };
   }

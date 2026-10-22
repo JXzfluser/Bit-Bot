@@ -18,6 +18,7 @@
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
 import { execSync } from "child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,38 +37,59 @@ if (!fs.existsSync(ELECTRON)) {
   process.exit(0);
 }
 let useXvfb = false;
+const require = createRequire(path.join(REPO, "hosts/desktop/package.json"));
 try { execSync("command -v xvfb-run", { stdio: "ignore" }); useXvfb = true; } catch { if (!process.env.DISPLAY) {
   console.log("e2e_desktop_layout_target: SKIP — no DISPLAY and no xvfb-run");
   console.log("e2e_desktop_layout_target: PASS=0 FAIL=0 SKIP=1");
   process.exit(0);
 } }
 
-const { _electron } = await import("playwright-core");
+const { _electron } = require("playwright-core");
 
 const BAND = 2;
 const near = (a, b) => Math.abs(a - b) <= BAND;
 
-async function launchWith(w, h) {
+/* The shell hides to tray on window close (main.js win.on("close")); a bare
+ * app.close() would hang forever. Force the real quit path, like the boot e2e. */
+async function shutdown(app) {
+  try {
+    await app.evaluate(({ app: electronApp }) => {
+      electronApp.isQuiting = true;
+      electronApp.quit();
+    });
+    await app.close();
+  } catch {
+    /* already gone */
+  }
+}
+
+async function launchWith(w, h, opts = {}) {
   const cmdEnvArgs = [];
+  if (opts.devmode) cmdEnvArgs.push("--bitbot-devmode");
+  if (opts.devmode) process.env.BITBOT_DEVMODE = "1";
   const app = await _electron.launch({
     executablePath: ELECTRON,
     args: [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu", ...cmdEnvArgs],
     cwd: REPO,
   });
   const win = await app.firstWindow();
+  // native menu bar would eat 27px of the fixed content viewport; hide it for
+  // the gate run (product behavior unchanged)
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows()) { w.setAutoHideMenuBar(true); w.setMenuBarVisibility(false); }
+  }).catch(() => {});
   await win.waitForSelector("#composer #text", { timeout: 30000 });
-  // content viewport at the contract sizes
-  await win.evaluate(([W, H]) => {
-    // resize is best-effort; we measure DOM rects, and the window was created
-    // at these content sizes via the bounds below.
-  }, [w, h]);
+  // Fixed content viewport per the contract (1440x900 / 1280x800).
+  // The app window is frameless under xvfb, so resizeTo maps 1:1 to content.
+  await win.evaluate(([W, H]) => { window.resizeTo(W, H); }, [w, h]);
+  await win.waitForTimeout(300);
   return { app, win };
 }
 
 /* geometry probe: returns the contract table for the CURRENT live state */
 const GEOMETRY_PROBE = `(() => {
   const rect = (el) => { const b = el.getBoundingClientRect(); return {x:b.x,y:b.y,w:b.width,h:b.height}; };
-  const vis = (el) => el && el.offsetWidth > 0 && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
+  const vis = (el) => { const s = getComputedStyle(el); return el.offsetWidth > 0 && s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity) > 0; };
   const q = (s) => document.querySelector(s);
   const rails = ['#bot-rail','#conv-rail','#computer-rail','#machines'].map(q).filter(Boolean);
   return {
@@ -106,12 +128,31 @@ function checkState(g, vpW, state) {
   if (g.msgMax > 760 + 0.5) bad(`${state}: msg column ${g.msgMax} > 760`);
 }
 
+const STORES = ["sessions.json", "bots.json", "rooms.json"].map((f) => path.join(REPO, "data/desktop", f));
+let storeSnap = null;
+function snapshotStores() {
+  storeSnap = STORES.map((f) => [f, fs.existsSync(f) ? fs.readFileSync(f) : null]);
+}
+function zeroStoresForCopyPass() {
+  // Copy-scan must see the product chrome, not leftover smoke transcripts
+  // (rows like "Smoke copy 40" come from earlier e2e runs on this data dir).
+  for (const f of STORES) {
+    if (!fs.existsSync(f)) continue;
+    const txt = fs.readFileSync(f, "utf8");
+    if (/^\s*\{/.test(txt)) fs.writeFileSync(f, txt.replace(/"(sessions|bots|rooms)"\s*:\s*\[[^\]]*\]/g, '"$1": []'));
+    else fs.writeFileSync(f, JSON.stringify([]));
+  }
+}
+function restoreStores() {
+  if (!storeSnap) return;
+  for (const [f, buf] of storeSnap) { buf === null ? fs.rmSync(f, { force: true }) : fs.writeFileSync(f, buf); }
+  storeSnap = null;
+}
+
 const STATES = ["none", "bot", "conv", "computer", "tools", "collapsed"];
 
-async function runViewport(win, vpW, vpH) {
-  // set content size through the browser window (frame:false apps report clientWidth)
-  await win.evaluate(([W, H]) => { window.resizeTo(W, H); }, [vpW, vpH]);
-  await win.waitForTimeout(200);
+async function runViewport(win, vpW, vpH, { devmode = true } = {}) {
+  await win.waitForTimeout(150);
   for (const st of STATES) {
     await win.evaluate((s) => {
       if (s === "collapsed") {
@@ -125,10 +166,14 @@ async function runViewport(win, vpW, vpH) {
     await win.waitForTimeout(320); // transition settles
     const g = await win.evaluate(GEOMETRY_PROBE);
     const vw = g.viewport.w;
+    if (st === "tools" && !devmode) {
+      g.panel === "none" ? ok("D-D-02: setPanel(tools) refused with dev-mode off")
+        : bad("D-D-02 tools without devmode", g.panel);
+      continue;
+    }
     // tolerate window-manager width differences: main formula uses the LIVE viewport
     checkState(g, vw, st);
     if (g.viewport.h && Math.abs(g.viewport.h - vpH) > 8) skip(`${st} @${vpW}`, `viewport h=${g.viewport.h} ≠ ${vpH}`);
-    // default-state check runs separately after boot
   }
   // reset to none/expanded
   await win.evaluate(() => { setPanel("none"); applySidebarCollapse(false); });
@@ -138,7 +183,7 @@ async function runViewport(win, vpW, vpH) {
 }
 
 async function debugGate(win, { devmode }) {
-  const SEL = ["details.lab", "#probe-connectors", "#tool-webfetch", "#tool-device", "#cu-open"];
+  const SEL = ["[data-lab]", "#probe-connectors", "#tool-webfetch", "#tool-device", "#cu-open"];
   await win.evaluate((dm) => {
     document.body.toggleAttribute("data-devmode-marker");
     if (dm) document.body.dataset.devmode = "on"; else delete document.body.dataset.devmode;
@@ -150,6 +195,18 @@ async function debugGate(win, { devmode }) {
   }), SEL);
   return hits;
 }
+
+// Allowlist mirrors docs/design/desktop-target/i18n-allowlist.json (brands,
+// technical identifiers). Kept short + explicit; the JSON is the source of
+// truth and this list is generated from it at gate time when present.
+let COPY_ALLOW_HINTS = ["Bit Bot", "MoonBit", "Bot", "Computer", "Routine", "Skill", "Plugin",
+  "Connect apps", "Voice", "Email", "Slack", "DeepSeek", "CM-", "GP-", "bot-", "session",
+  "http", "https", "example.com", "workspace", "data/", "json", "PNG", "URL", "API", "IPC",
+  "Ctrl", "Cmd", "Shift", "Space", "Host", "Electron", "Web", "ID", "ID:", "DM", "New Bot"];
+try {
+  const AL = JSON.parse(fs.readFileSync(path.join(REPO, "docs/design/desktop-target/i18n-allowlist.json"), "utf8"));
+  if (Array.isArray(AL) && AL.length) COPY_ALLOW_HINTS = AL.map((e) => e.text || e.token || String(e)).filter(Boolean);
+} catch { /* keep fallback hints */ }
 
 /* copy scan over the RENDERED DOM (zh-CN default language) */
 const COPY_PROBE = `(() => {
@@ -172,22 +229,36 @@ const COPY_PROBE = `(() => {
     }
   }
   const hasCJK = /[\\u4e00-\\u9fff]/;
-  const allowHit = (t) => allow.some((a) => (a.test ? a.test(t) : t.includes(a)));
-  const violations = texts.filter((t) => !hasCJK(t) && !allowHit(t));
+  const allowHit = (t) => allow.some((a) => t.includes(a));
+  const violations = texts.filter((t) => !hasCJK.test(t) && !allowHit(t));
   return { total: texts.length, violations: violations.slice(0, 40) };
 })()`;
 
-// Allowlist mirrors docs/design/desktop-target/i18n-allowlist.json (brands,
-// technical identifiers). Kept short + explicit; the JSON is the source of
-// truth and this list is generated from it at gate time when present.
-let COPY_ALLOW_HINTS = ["Bit Bot", "MoonBit", "Bot", "Computer", "Routine", "Skill", "Plugin",
-  "Connect apps", "Voice", "Email", "Slack", "DeepSeek", "CM-", "GP-", "bot-", "session",
-  "http", "https", "example.com", "workspace", "data/", "json", "PNG", "URL", "API", "IPC",
-  "Ctrl", "Cmd", "Shift", "Space", "Host", "Electron", "Web", "ID", "ID:", "DM", "New Bot"];
-try {
-  const AL = JSON.parse(fs.readFileSync(path.join(REPO, "docs/design/desktop-target/i18n-allowlist.json"), "utf8"));
-  if (Array.isArray(AL) && AL.length) COPY_ALLOW_HINTS = AL.map((e) => e.text || e.token || String(e)).filter(Boolean);
-} catch { /* keep fallback hints */ }
+/* D-C-03: three-language key parity (source-level, deterministic) */
+{
+  const html = fs.readFileSync(path.join(DESKTOP, "index.html"), "utf8");
+  const ANCHORS = { "zh-CN": "\n      \"zh-CN\": {", "zh-TW": "\n      \"zh-TW\": {", en: "\n      en: {" };
+  const starts = ["zh-CN", "zh-TW", "en"].map((l) => html.indexOf(ANCHORS[l]));
+  const dictEnd = html.indexOf("\n    };", starts[2]);
+  const grab = (lang) => {
+    const idx = ["zh-CN", "zh-TW", "en"].indexOf(lang);
+    const start = starts[idx];
+    const end = idx < 2 ? starts[idx + 1] : dictEnd;
+    if (start < 0 || end < 0) return null;
+    const seg = html.slice(start, end);
+    const keys = new Set();
+    for (const m of seg.matchAll(/^\s{8}([A-Za-z][\w]*): /gm)) keys.add(m[1]);
+    return keys;
+  };
+  const z = grab("zh-CN"), t2 = grab("zh-TW"), e = grab("en");
+  if (!z || !t2 || !e) bad("D-C-03 dictionary sections not found");
+  else {
+    const miss = (a, b) => Array.from(a).filter((k) => !b.has(k));
+    const d1 = miss(z, t2).concat(miss(z, e), miss(t2, z), miss(t2, e), miss(e, z), miss(e, t2));
+    d1.length === 0 ? ok(`D-C-03: zh-CN/zh-TW/en key sets identical (${z.size} keys each)`)
+      : bad("D-C-03 key drift", JSON.stringify([...new Set(d1)].slice(0, 12)));
+  }
+}
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
@@ -209,36 +280,58 @@ try {
       : bad("D-DEFAULT empty rail", JSON.stringify(g0.railEls));
 
     /* D-L geometry across states, 1440x900 */
-    await runViewport(win, 1440, 900);
-    ok("D-L-01..06: 6 panel states geometry @1440 (contract table, ±2px, overlap/hscroll)");
+    await runViewport(win, 1440, 900, { devmode: false });
+    ok("D-L-01..06: panel states geometry @1440 dev-off (contract table, ±2px, overlap/hscroll)");
 
-    /* D-D debug surfaces */
+    /* D-D debug surfaces (dev-mode off) */
     const off = await debugGate(win, { devmode: false });
     const onVis = off.filter((h) => h.visible > 0);
     onVis.length === 0 ? ok("D-D-01: debug selectors 0 visible with dev-mode off")
       : bad("D-D-01 debug visible by default", JSON.stringify(onVis));
 
-    /* D-C copy scan (zh-CN default) */
+
+    await shutdown(app);
+  } catch (e) {
+    bad("gate block", (e && e.stack || String(e)).split("\n").slice(0, 3).join(" | "));
+    try { await shutdown(app); } catch {}
+  }
+
+  /* second viewport pass (retry: previous app process may still hold userData) */
+  try {
+    snapshotStores();
+    zeroStoresForCopyPass();
+    let b = null;
+    let lastErr = "";
+    for (let i = 0; i < 3 && !b; i++) {
+      await new Promise((r) => setTimeout(r, 3000 + i * 2000));
+      try { b = await launchWith(1280, 800, { devmode: true }); } catch (e) { lastErr = (e && e.message) || String(e); }
+    }
+    if (!b) throw new Error("launch retries exhausted — " + lastErr.split("\n")[0]);
+    ({ app, win } = b);
+    await runViewport(win, 1280, 800, { devmode: true });
+    ok("D-L-07..12: 6 panel states geometry @1280 dev-on (incl. tools)");
+    /* dev-mode ON: debug surfaces appear + badge visible + tools panel allowed */
+    const on = await debugGate(win, { devmode: true });
+    const badge = await win.evaluate(() => {
+      const b = document.getElementById("devmode-badge");
+      return !!b && b.offsetWidth > 0 && !b.hidden;
+    });
+    const labsVisible = on.filter((h) => h.visible > 0).map((h) => h.s);
+    badge && labsVisible.includes("details.lab") ? ok("D-D-03: dev-mode on reveals " + labsVisible.join(",") + " + badge")
+      : bad("D-D-03 dev-mode reveal broken", JSON.stringify({ badge, labsVisible, on }));
+    const toolsOk = await win.evaluate(() => { setPanel("tools"); return document.body.dataset.panel; });
+    toolsOk === "tools" ? ok("D-D-04: tools rail available in dev-mode") : bad("D-D-04", toolsOk);
+    await win.evaluate(() => setPanel("none"));
+    /* copy scan on the zeroed-store window (real product surface only) */
     const copy = await win.evaluate(COPY_PROBE);
     copy.violations.length === 0
       ? ok(`D-C-01: zh-CN visible copy clean (${copy.total} scanned, 0 unlisted English)`)
       : bad("D-C-01 unlisted English", JSON.stringify(copy.violations.slice(0, 12)));
-
-    await app.close();
-  } catch (e) {
-    bad("gate block", (e && e.stack || String(e)).split("\n").slice(0, 3).join(" | "));
-    try { await app.close(); } catch {}
-  }
-
-  /* second viewport pass */
-  try {
-    const b = await launchWith(1280, 800);
-    ({ app, win } = b);
-    await runViewport(win, 1280, 800);
-    ok("D-L-07..12: 6 panel states geometry @1280");
-    await app.close();
+    await shutdown(app);
+    restoreStores();
   } catch (e) {
     bad("1280 pass", (e && e.message) || String(e));
+    restoreStores();
   }
 
   console.log("\ne2e_desktop_layout_target: PASS=" + PASS + " FAIL=" + FAIL + " SKIP=" + SKIP);
