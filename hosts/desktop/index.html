@@ -15,83 +15,71 @@
     overflow: hidden;
     font: var(--text-base)/var(--leading) var(--font-ui);
     color: var(--ink);
-    background-color: #f5f5f7;
+    background-color: var(--page-bg);
     display: grid;
-    /* spec §2.1: sessions + chat by default; tools and the right rail opt in.
-       Widths are --sidebar-w / --tools-w / --rail-w (260 / 280 / 340). */
-    grid-template-columns: var(--sidebar-w) 1fr 0fr 0fr;
-    grid-template-rows: auto 1fr auto;
+    /* Layout contract v1 (§1/§2): ONE grid — sidebar | main | optional rail.
+       The right panel has a single state source: body[data-panel] =
+       none | bot | conv | computer | tools. --panel-w switches with it, so
+       there is no 4th column, no 0fr placeholder, and no class-combination
+       matrix. The legacy *-open body classes are kept ONLY as JS state mirrors
+       for the existing e2e GP-* gates and are removed once those read
+       data-panel. */
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--panel-w);
+    grid-template-rows: var(--header-h) minmax(0, 1fr) auto;
     grid-template-areas:
-      "header header header header"
-      "agents main machines computer"
-      "agents composer machines computer";
-    transition: grid-template-columns 0.25s ease;
+      "header header header"
+      "agents main   rail"
+      "agents composer rail";
+    transition: grid-template-columns 0.2s ease;
   }
-  body.tools-open {
-    grid-template-columns: var(--sidebar-w) 1fr var(--tools-w) 0fr;
-  }
-  body.computer-open {
-    grid-template-columns: var(--sidebar-w) 1fr 0fr var(--rail-w);
-  }
-  body.tools-open.computer-open {
-    grid-template-columns: var(--sidebar-w) 1fr var(--tools-w) var(--rail-w);
-  }
-  /* G-22: the Bot settings rail shares the optional right-hand column with the
-     Computer preview. Both are "the panel", so the two classes are mutually
-     exclusive (see openBotRail / toggleComputerRail) and the centre keeps its
-     width either way. */
-  /* Optional right column is one surface. Which aside is visible is the
-     body class (computer-open / bot-open / conv-open); they share the rail. */
+  /* Contract sizes: sidebar 280, rail 340, header 56, stream column 760. */
+  body { --panel-w: 0px; }
+  body[data-panel="bot"],
+  body[data-panel="conv"],
+  body[data-panel="computer"],
+  body[data-panel="tools"] { --panel-w: var(--rail-w); }
+  /* All four rail surfaces share grid-area "rail"; exactly one is displayed.
+     #machines (tools) joins the same column — the old 280px 4th column is
+     retired; --tools-w is no longer referenced by the shell. */
   #bot-rail,
   #conv-rail,
-  #computer-rail {
+  #computer-rail,
+  #machines {
+    grid-area: rail;
     border-left: 1px solid var(--line);
-    background: #ffffff;
+    background: var(--surface);
     color: var(--text);
   }
+  body[data-panel="none"] #bot-rail,
+  body[data-panel="none"] #conv-rail,
+  body[data-panel="none"] #computer-rail,
+  body[data-panel="none"] #machines { border-left: 0; }
   #bot-rail {
-    grid-area: computer;
     padding: var(--space-6);
     overflow: auto;
     display: none;
   }
-  body.bot-open #bot-rail { display: block; }
-  body.bot-open { grid-template-columns: var(--sidebar-w) 1fr 0fr var(--rail-w); }
-  body.bot-open.tools-open { grid-template-columns: var(--sidebar-w) 1fr var(--tools-w) var(--rail-w); }
-  /* G-23: conversation details — the third optional right-panel content, same
-     column, three-way mutual exclusion (computer / bot / conv). */
+  body[data-panel="bot"] #bot-rail { display: block; }
+  /* G-23: conversation details — third optional right-panel content, same
+     column; mutual exclusion is inherent: data-panel holds one value. */
   #conv-rail {
-    grid-area: computer;
     padding: var(--space-6);
     overflow: auto;
     display: none;
   }
-  body.conv-open #conv-rail { display: block; }
-  body.conv-open { grid-template-columns: var(--sidebar-w) 1fr 0fr var(--rail-w); }
-  body.conv-open.tools-open { grid-template-columns: var(--sidebar-w) 1fr var(--tools-w) var(--rail-w); }
-  /* Collapsed sidebar keeps the optional rails. Previously this lived in a
-     runtime <style> tag and dropped bot-open / conv-open back to 0fr. */
-  body.sidebar-collapsed { grid-template-columns: 0px 1fr 0fr 0fr !important; }
-  body.sidebar-collapsed #agents { display: none; }
-  body.sidebar-collapsed.tools-open { grid-template-columns: 0px 1fr var(--tools-w) 0fr !important; }
-  body.sidebar-collapsed.computer-open,
-  body.sidebar-collapsed.bot-open,
-  body.sidebar-collapsed.conv-open {
-    grid-template-columns: 0px 1fr 0fr var(--rail-w) !important;
-  }
-  body.sidebar-collapsed.tools-open.computer-open,
-  body.sidebar-collapsed.tools-open.bot-open,
-  body.sidebar-collapsed.tools-open.conv-open {
-    grid-template-columns: 0px 1fr var(--tools-w) var(--rail-w) !important;
-  }
+  body[data-panel="conv"] #conv-rail { display: block; }
+  /* Sidebar collapse is orthogonal to the panel state: same grid, first
+     column goes to 0. No !important needed — the attribute selector is as
+     specific as the base rule and wins by source order. */
+  body[data-sidebar="collapsed"] { grid-template-columns: 0px minmax(0, 1fr) var(--panel-w); }
+  body[data-sidebar="collapsed"] #agents { display: none; }
   #computer-rail {
-    grid-area: computer;
     overflow: hidden;
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--ease);
   }
-  body.computer-open #computer-rail { opacity: 1; pointer-events: auto; overflow: auto; }
+  body[data-panel="computer"] #computer-rail { opacity: 1; pointer-events: auto; overflow: auto; }
   .cv-title { font-weight: 700; font-size: var(--text-title); word-break: break-word; }
   .cv-kv {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
@@ -125,20 +113,22 @@
   .br-stat { color: var(--muted); font: var(--text-xs)/1.5 var(--font-mono); }
   header {
     grid-area: header;
-    padding: 12px 20px;
+    /* Contract §3: header row is exactly --header-h (56px). Brand and the
+       hotkey hint sit on one baseline so the row fits without growing. */
+    padding: 0 20px;
     border-bottom: 1px solid var(--line);
     position: relative;
     align-items: center;
-    background: #ffffff;
+    background: var(--surface);
   }
   header .brand {
     font: 600 var(--text-lg)/1.2 var(--font-display);
     letter-spacing: 0;
   }
+  #brand-block { display: flex; align-items: baseline; gap: 8px; }
   header .sub {
     color: var(--muted);
     font-size: var(--text-sm);
-    margin-top: 1px;
   }
   /* Grok-parity: bot identity pill centered in the title bar. It is a normal
      flex child (brand | pill | actions) instead of an absolutely positioned
@@ -150,7 +140,7 @@
     padding: 8px 16px 8px 10px;
     border: 1px solid var(--line);
     border-radius: var(--radius-pill);
-    background: #ffffff;
+    background: var(--surface);
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     font-size: var(--text-md);
     font-weight: 500;
@@ -225,7 +215,7 @@
     overflow: hidden;
   }
   #model-picker .mp-btn {
-    background: #ffffff;
+    background: var(--surface);
     color: var(--muted);
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
@@ -254,7 +244,7 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     padding: 10px 12px;
-    background: #ffffff;
+    background: var(--surface);
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
   #agents details.lab > summary {
@@ -309,7 +299,7 @@
     justify-content: center;
   }
   #welcome .wt-btn {
-    background: #ffffff;
+    background: var(--surface);
     color: var(--ink);
     border: 1px solid var(--line);
     border-radius: var(--radius-pill);
@@ -322,7 +312,7 @@
   #welcome .wt-btn:hover { border-color: var(--muted); background: var(--accent-soft); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
   #welcome .wt-btn:disabled { opacity: 0.6; cursor: default; }
   #bc-tpl-btns .bc-tpl-btn {
-    background: #ffffff;
+    background: var(--surface);
     color: var(--ink);
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
@@ -336,11 +326,15 @@
     overflow: hidden;
     opacity: 0;
     pointer-events: none;
+    display: none;
     transition: opacity 0.2s ease;
   }
-  body.tools-open #machines {
+  body[data-panel="tools"] #machines {
+    display: block;
     opacity: 1;
     pointer-events: auto;
+    padding: 16px 14px;
+    overflow: auto;
   }
   #banner.collapsed {
     max-height: 0;
@@ -385,7 +379,7 @@
     height: 30px;
     border-radius: 50%;
     border: 1px solid var(--line);
-    background: #ffffff;
+    background: var(--surface);
     color: var(--muted);
     font-size: 15px;
     font-weight: 600;
@@ -409,12 +403,10 @@
     color: var(--ink);
   }
   #machines {
-    grid-area: machines;
+    /* visual skin only; grid-area / display / padding come from the
+       contract-v1 rail rules at the top of this block */
     border-left: 1px solid var(--line);
-    background: #ffffff;
-    padding: 16px 14px;
-    overflow: auto;
-    /* visibility toggled via body.tools-open (see rules above) */
+    background: var(--surface);
   }
   /* GP-116: the Bot / group lists can get long (dozens of Bots, many rooms), so
      they scroll in place instead of pushing the rest of the sidebar away. */
@@ -491,7 +483,7 @@
     right: 12px;
     max-width: 260px;
     bottom: 68px;
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     padding: 6px;
@@ -579,7 +571,7 @@
     margin-bottom: 8px;
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
-    background: #ffffff;
+    background: var(--surface);
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
   .agent-item:hover, .machine-item:hover { border-color: var(--muted); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
@@ -669,7 +661,7 @@
   .bf-input {
     width: 100%;
     box-sizing: border-box;
-    background: #ffffff;
+    background: var(--surface);
     color: var(--text);
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
@@ -797,7 +789,7 @@
     padding: 10px 12px;
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
-    background: #ffffff;
+    background: var(--surface);
     font: var(--text-sm)/1.4 var(--font-mono);
     white-space: pre-wrap;
     color: var(--muted);
@@ -814,10 +806,10 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    /* Wave M42: center the whole stream in one 820px column so the user pill
-       (right) and the assistant card (left) align to the same edges — before
-       this, user bubbles hugged the viewport while cards stopped at 760px. */
-    max-width: 820px;
+    /* Layout contract v1 §3: one centered --content-max (760px) column for
+       the whole stream — user pill (right) and assistant card (left) align to
+       the same edges. (Was 820px pre-contract.) */
+    max-width: var(--content-max);
     width: 100%;
     margin-left: auto;
     margin-right: auto;
@@ -904,14 +896,14 @@
   .secret-card {
     align-self: flex-start; display: flex; flex-direction: column; gap: 8px;
     max-width: 82%; padding: 14px 16px; border: 1px solid var(--line);
-    border-radius: var(--radius-2xl); background: #ffffff;
+    border-radius: var(--radius-2xl); background: var(--surface);
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
   .secret-card .sc-title { font-weight: 700; font-size: var(--text-md); }
   .secret-card .sc-note { color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
   .secret-card .sc-row { display: flex; gap: 6px; align-items: center; }
   .secret-card input[type="password"], .secret-card input[type="text"] {
-    flex: 1; min-width: 0; background: #ffffff; color: var(--text);
+    flex: 1; min-width: 0; background: var(--surface); color: var(--text);
     border: 1px solid var(--line); border-radius: var(--radius-md); padding: 8px 12px;
     font: var(--text-md)/1.4 var(--font-mono);
     box-shadow: 0 1px 2px rgba(0,0,0,0.04);
@@ -925,10 +917,10 @@
   }
   .secret-card .sc-submit { background: var(--accent); color: var(--accent-ink); box-shadow: 0 2px 4px rgba(0,0,0,0.12); }
   .secret-card .sc-submit:hover { background: #333; box-shadow: 0 3px 6px rgba(0,0,0,0.18); }
-  .secret-card .sc-reveal { background: #ffffff; color: var(--muted); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .secret-card .sc-reveal { background: var(--surface); color: var(--muted); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
   .secret-card .sc-reveal:hover { background: var(--accent-soft); }
   .secret-card .sc-reveal[aria-pressed="true"] { color: var(--text); background: var(--accent-soft); }
-  .secret-card .sc-cancel { background: #ffffff; color: var(--muted); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .secret-card .sc-cancel { background: var(--surface); color: var(--muted); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
   .secret-card .sc-status { font: var(--text-xs)/1.5 var(--font-mono); color: var(--muted); }
   .redacted-pill {
     display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm);
@@ -981,12 +973,12 @@
     max-height: 360px;
     border-radius: var(--radius-md);
     border: 1px solid var(--line);
-    background: #ffffff;
+    background: var(--surface);
     cursor: zoom-in;
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
   /* GP-92: fullscreen artifact viewer */
-  #gp92-lightbox img { max-width: 92vw; max-height: 82vh; object-fit: contain; background: #ffffff; border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+  #gp92-lightbox img { max-width: 92vw; max-height: 82vh; object-fit: contain; background: var(--surface); border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
   #gp92-lightbox video { max-width: 92vw; max-height: 82vh; background: #000; border-radius: var(--radius-lg); }
   #gp92-lightbox audio { width: min(80vw, 720px); }
   #gp92-lightbox pre.lb-text {
@@ -995,7 +987,7 @@
     overflow: auto;
     margin: 0;
     padding: 20px;
-    background: #ffffff;
+    background: var(--surface);
     color: var(--text);
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
@@ -1069,7 +1061,7 @@
     display: flex;
     gap: 6px;
     align-items: flex-end;
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--radius-composer);
     padding: 8px 8px 8px 16px;
@@ -1099,22 +1091,22 @@
   }
   #composer #attach-btn:hover, #composer #voice-btn:hover { background: var(--accent-soft); color: var(--ink); }
   #composer #voicechat-btn {
-    background: #ffffff; color: var(--ink); border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); border: 1px solid var(--line);
     height: 36px; border-radius: var(--radius-pill); padding: 0 14px; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
   #composer #voicechat-btn:hover { background: var(--accent-soft); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
   #composer #voicechat-btn:disabled { opacity: 0.35; cursor: default; }
-  .settings-tab-btn { background: #ffffff; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px 12px; cursor: pointer; font-size: var(--text-sm); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .settings-tab-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px 12px; cursor: pointer; font-size: var(--text-sm); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
   .settings-tab-btn:hover { background: var(--accent-soft); }
   .settings-tab-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
   #composer #voicechat-btn.on { opacity: 1; background: var(--danger); color: var(--on-fill); border-color: var(--danger); }
   #composer #voice-btn.recording { background: var(--danger); color: var(--on-fill); }
   .vc-pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: vc-pulse 1.2s infinite; display: inline-block; }
   @keyframes vc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
-  .voice-memo-card { border: 1px solid var(--line); border-radius: var(--radius-xl); background: #ffffff; padding: 10px 12px; margin-top: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .voice-memo-card { border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); padding: 10px 12px; margin-top: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   .voice-memo-card .vm-row { display: flex; align-items: center; gap: 8px; }
-  .voice-memo-card .vm-toggle { background: #ffffff; color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 4px 10px; font-size: var(--text-xs); cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .voice-memo-card .vm-toggle { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 4px 10px; font-size: var(--text-xs); cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
   .voice-memo-card .vm-transcript { margin-top: 6px; color: var(--muted); font-size: var(--text-sm); white-space: pre-wrap; }
   #composer #send {
     background: var(--accent); color: var(--accent-ink); border: 0;
@@ -1130,7 +1122,7 @@
   #composer #attach-btn:active, #composer #voice-btn:active { transform: scale(0.94); }
   .attach-strip { display: flex; flex-wrap: wrap; gap: 8px; }
   .attach-strip .attach-chip {
-    background: #ffffff; border: 1px solid var(--line); border-radius: var(--radius-md);
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
     padding: 4px 10px; font-size: var(--text-xs); color: var(--muted); display: inline-flex; gap: 6px; align-items: center;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
@@ -1146,7 +1138,7 @@
   }
   .composer-menu {
     position: absolute; bottom: 72px; left: 20px; z-index: 40;
-    background: #ffffff; border: 1px solid var(--line); border-radius: var(--radius-lg);
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
     padding: 8px; max-height: 280px; overflow: auto; min-width: 260px;
     display: flex; flex-direction: column; gap: 4px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.12);
@@ -1195,7 +1187,7 @@
   }
   #approval button:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.12); }
   #approve-btn { background: var(--accent); color: var(--accent-ink); }
-  #allow-always-btn { background: #ffffff; color: var(--ink); border: 1px solid var(--line); }
+  #allow-always-btn { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
   #deny-btn { background: var(--danger-bg); color: var(--danger-ink); border: 1px solid var(--danger); }
   #approval .kv { margin: 2px 0; color: var(--muted); font: var(--text-xs)/1.5 var(--font-mono); }
   #approval .kv b { color: var(--ink); }
@@ -1203,12 +1195,12 @@
   /* Grok Parity Panel (Wave G) */
   #computer-panel .frame-box { margin-top: 8px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--input-bg); padding: 8px; color: var(--muted); font: var(--text-sm)/1.4 var(--font-mono); }
   #computer-panel .frame-box img { max-width: 100%; border-radius: var(--radius-sm); display: block; }
-  .gp-chip { background: #ffffff; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 5px 10px; cursor: pointer; font-size: var(--text-sm); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .gp-chip { background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 5px 10px; cursor: pointer; font-size: var(--text-sm); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
   .gp-chip:hover { background: var(--accent-soft); }
   .gp-chip.active { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
   .gp-label { font-size: var(--text-sm); color: var(--muted); margin: 10px 0 4px; }
   .gp-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .gp-select { background: #ffffff; color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px 10px; font-size: var(--text-sm); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .gp-select { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px 10px; font-size: var(--text-sm); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
   /* Take over banner (GP-33/34) */
   #takeover-banner {
     display: none;
@@ -1324,14 +1316,14 @@
     display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;
   }
   .msg .reaction-chip {
-    border: 1px solid var(--line); background: #ffffff; color: var(--ink);
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
     border-radius: var(--radius-pill); padding: 2px 10px; font-size: var(--text-sm); cursor: pointer;
     box-shadow: 0 1px 2px rgba(0,0,0,0.06);
   }
   .msg .reaction-chip:hover { border-color: var(--muted); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
   .msg .reaction-picker {
     display: inline-flex; gap: 4px; margin-top: 6px;
-    background: #ffffff; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 6px 8px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 6px 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.12);
   }
   .msg .reaction-picker button {
@@ -1466,11 +1458,12 @@
       grid-template-areas:
         "header"
         "agents"
-        "machines"
         "main"
-        "composer";
+        "composer"
+        "rail";
     }
-    #agents, #machines { max-height: 140px; border: 0; border-bottom: 1px solid var(--line); }
+    body[data-sidebar="collapsed"] { grid-template-columns: 1fr; }
+    #agents { max-height: 140px; border: 0; border-bottom: 1px solid var(--line); }
   }
   /* Wave M40 — accessibility: keyboard focus rings only for keyboard users
      (:focus-visible), and honor prefers-reduced-motion by stripping the M39
@@ -1504,9 +1497,9 @@
 </head>
 <body>
   <header style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px">
-    <div>
-      <div class="brand">Bit Bot</div>
-      <div class="sub"><span id="hotkey-hint">Ctrl+Shift+Space</span> <span data-i18n="invoke">呼出</span></div>
+    <div id="brand-block">
+      <span class="brand">Bit Bot</span>
+      <span class="sub"><span id="hotkey-hint">Ctrl+Shift+Space</span> <span data-i18n="invoke">呼出</span></span>
     </div>
     <!-- Grok-parity: active Bot identity pill, centered in the chat column -->
     <div id="bot-pill" title="当前 Bot">
@@ -8126,25 +8119,52 @@
     // Right-click / long-press menu: Edit · Pin · Duplicate · Primary · Hide · Delete (spec §2.2)
     // GP-06/GP-07 route through store-backed "hide bot"/"delete bot" phrases —
     // NOT the legacy CM-0204/CM-1907 agent directory (those don't touch bots.json).
+    /* Layout contract v1 §2 — single panel state source.
+       setPanel(next) is the ONLY writer of the right-rail state:
+       body[data-panel] = none | bot | conv | computer | tools.
+       The legacy *-open body classes are mirrored here (and ONLY here) so the
+       existing e2e GP-* gates keep passing during migration; the CSS no longer
+       reads them. setSidebarCollapsed owns data-sidebar the same way. */
+    const PANEL_LEGACY_CLASS = { none: "", bot: "bot-open", conv: "conv-open", computer: "computer-open", tools: "tools-open" };
+    function setPanel(next) {
+      const cur = document.body.dataset.panel || "none";
+      if (cur !== "none" && PANEL_LEGACY_CLASS[cur]) document.body.classList.remove(PANEL_LEGACY_CLASS[cur]);
+      const val = PANEL_LEGACY_CLASS[next] === undefined ? "none" : next;
+      document.body.dataset.panel = val;
+      if (PANEL_LEGACY_CLASS[val]) document.body.classList.add(PANEL_LEGACY_CLASS[val]);
+      syncHeaderRailButtons(val);
+      return val;
+    }
+    function panelValue() { return document.body.dataset.panel || "none"; }
+    function syncHeaderRailButtons(val) {
+      const toolsBtn = document.getElementById("tools-toggle-btn");
+      if (toolsBtn) toolsBtn.classList.toggle("active", val === "tools");
+      const gpBtn = document.getElementById("gp-panel-btn");
+      if (gpBtn) gpBtn.classList.toggle("active", val === "computer");
+    }
+    function setSidebarCollapsed(collapsed) {
+      if (collapsed) document.body.dataset.sidebar = "collapsed";
+      else document.body.dataset.sidebar = "expanded";
+      document.body.classList.toggle("sidebar-collapsed", collapsed); // mirror for e2e
+      return collapsed;
+    }
     /* G-22 (§2.1 right panel, §4.5, §4.6): the Bot settings rail. It shares the
        optional right-hand column with the Computer preview — only one of the
        two is ever open — and every value it shows comes from window.bitbot.bots.detail(),
        i.e. the store that owns it. */
     let botRailId = "";
     function botRailOpen() {
-      return document.body.classList.contains("bot-open");
+      return panelValue() === "bot";
     }
     function closeBotRail() {
       botRailId = "";
-      document.body.classList.remove("bot-open");
+      if (panelValue() === "bot") setPanel("none");
     }
     async function openBotRail(botId) {
       const id = String(botId || "").trim();
       if (!id) return;
       botRailId = id;
-      document.body.classList.remove("computer-open");
-      document.body.classList.remove("conv-open"); // G-23: three-way mutual exclusion
-      document.body.classList.add("bot-open");
+      setPanel("bot");
       await refreshBotRail();
     }
     function botRailStat(label, value) {
@@ -8274,16 +8294,14 @@
     let convRailId = "";
     function closeConvRail() {
       convRailId = "";
-      document.body.classList.remove("conv-open");
+      if (panelValue() === "conv") setPanel("none");
     }
     async function openConvRail(sessionId) {
       const id = String(sessionId || "").trim();
       if (!id) return;
       convRailId = id;
-      document.body.classList.remove("computer-open");
-      document.body.classList.remove("bot-open");
+      setPanel("conv");
       botRailId = "";
-      document.body.classList.add("conv-open");
       await refreshConvRail();
     }
     function cvRow(label, value) {
@@ -10832,17 +10850,12 @@
 
     // GP-31: right-side Computer preview rail (Grok layout).
     function computerRailOpen() {
-      return document.body.classList.contains("computer-open");
+      return panelValue() === "computer";
     }
     async function toggleComputerRail(force) {
       const open = force === true ? true : force === false ? false : !computerRailOpen();
       if (open) closeBotRail(); // one optional right panel at a time (G-22/G-23)
-      document.body.classList.remove("conv-open");
-      document.body.classList.toggle("computer-open", open);
-      // Wave M44: reflect the rail state on the header toggle so the new
-      // visible .active fill actually lights up (previously never toggled).
-      const gpBtn = document.getElementById("gp-panel-btn");
-      if (gpBtn) gpBtn.classList.toggle("active", open);
+      setPanel(open ? "computer" : "none");
       if (open) {
         renderComputerRail();
         pollComputerFrame(true);
@@ -11174,7 +11187,7 @@
     let sidebarCollapsed = false;
     function applySidebarCollapse(collapsed) {
       sidebarCollapsed = collapsed;
-      document.body.classList.toggle("sidebar-collapsed", collapsed);
+      setSidebarCollapsed(collapsed);
       window.bitbot.settings.set({ sidebar_collapsed: collapsed }).catch(() => {});
     }
     function wireAccelerators() {
@@ -11407,11 +11420,9 @@
         const toolsBtn = document.getElementById("tools-toggle-btn");
         if (toolsBtn) {
           toolsBtn.addEventListener("click", () => {
-            document.body.classList.toggle("tools-open");
-            toolsBtn.classList.toggle(
-              "active",
-              document.body.classList.contains("tools-open"),
-            );
+            // Layout contract v1 §2: single write path — setPanel owns the
+            // rail state and the header .active mirror (syncHeaderRailButtons).
+            setPanel(panelValue() === "tools" ? "none" : "tools");
           });
         }
         document.addEventListener("keydown", (ev) => {

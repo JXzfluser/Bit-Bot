@@ -6,7 +6,10 @@ const { app, BrowserWindow } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
-const [W, H, OUT] = [Number(process.argv[2] || 1440), Number(process.argv[3] || 900), process.argv[4] || "."];
+// Electron puts its own flags before user args and argv[1] may be a flag,
+// so slice after our own script path instead of trusting fixed indices.
+const argv = process.argv.slice(process.argv.findIndex((a) => a.endsWith("proto-main.cjs")) + 1);
+const [W, H, OUT] = [Number(argv[0] || 1440), Number(argv[1] || 900), argv[2] || "."];
 const PROTO = path.resolve(__dirname, "../docs/design/desktop-target/prototype.html");
 
 const STATES = [
@@ -36,21 +39,33 @@ async function probe(win) {
   })()`);
 }
 
+process.on("unhandledRejection", (e) => { console.error("UNHANDLED:", e && e.stack ? e.stack.slice(0,500) : String(e)); });
 app.whenReady().then(async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const results = [];
+  const win = new BrowserWindow({
+    width: W, height: H, show: true, frame: false, webSecurity: true,
+    x: 0, y: 0, useContentSize: true,
+  });
   for (const st of STATES) {
-    const win = new BrowserWindow({
-      width: W, height: H, show: true, frame: false, webSecurity: true,
-      x: 0, y: 0, useContentSize: true,
-    });
-    await win.loadURL("file://" + PROTO + st.qs);
-    await new Promise((r) => setTimeout(r, 350));
-    const geo = await probe(win);
-    const img = await win.webContents.capturePage();
-    fs.writeFileSync(path.join(OUT, `proto-${W}x${H}-${st.name}.png`), img.toPNG());
-    results.push({ state: st.name, ...geo });
-    win.destroy();
+    const url = "file://" + PROTO + st.qs;
+    try {
+      await win.loadURL(url);
+    } catch (e) {
+      // file:// + query occasionally reports ERR_FAILED while rendering fine;
+      // verify by probing the loaded document instead of trusting the event.
+      const cur = await win.webContents.executeJavaScript("location.href").catch(() => "");
+      if (!String(cur).includes("prototype.html")) { console.error("load fail:", url, String(e).slice(0, 120)); continue; }
+    }
+    await new Promise((r) => setTimeout(r, 400));
+    try {
+      const geo = await probe(win);
+      const img = await win.webContents.capturePage();
+      fs.writeFileSync(path.join(OUT, `proto-${W}x${H}-${st.name}.png`), img.toPNG());
+      results.push({ state: st.name, ...geo });
+    } catch (e) {
+      console.error("probe fail:", st.name, String(e).slice(0, 160));
+    }
   }
   fs.writeFileSync(path.join(OUT, `proto-geometry-${W}x${H}.json`), JSON.stringify(results, null, 2));
   console.log("proto-main: done " + results.length + " states @ " + W + "x" + H);

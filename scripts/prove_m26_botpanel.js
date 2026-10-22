@@ -32,12 +32,13 @@ const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8"
   ? ok("面板含 资料 / 工作方式 / 通知开关 / 统计 / 操作 全部区块（GP-125/126/127）")
   : bad("bot-rail sections missing");
 
-/#bot-rail \{[^}]*grid-area:\s*computer/.test(html) && /body\.bot-open #bot-rail \{ display: block; \}/.test(html)
-  ? ok("#bot-rail 与 Computer 预览共用同一右栏列（grid-area: computer）")
+// Layout contract v1: all rail surfaces share grid-area "rail" via the group rule.
+/#machines\s*\{[^}]*grid-area:\s*rail/.test(html) && /body\[data-panel="bot"\] #bot-rail \{ display: block; \}/.test(html)
+  ? ok("#bot-rail 与其余 rail 面共用 grid-area: rail（data-panel 驱动，GP-124）")
   : bad("bot-rail grid placement wrong");
 
-/if \(open\) closeBotRail\(\); \/\/ one optional right panel at a time/.test(html) && /document\.body\.classList\.remove\("computer-open"\);\s*\n?\s*document\.body\.classList\.remove\("conv-open"\);[^\n]*\n\s*document\.body\.classList\.add\("bot-open"\)/.test(html)
-  ? ok("bot-open 与 computer-open 互斥：打开一个即收起另一个（GP-124，M27 起为三方互斥）")
+/if \(open\) closeBotRail\(\); \/\/ one optional right panel at a time/.test(html) && /botRailId = id;\s*\n\s*setPanel\("bot"\)/.test(html)
+  ? ok("面板状态单一来源：openBotRail 走 setPanel(\"bot\")，互斥由 data-panel 天然保证（GP-124）")
   : bad("mutual exclusion missing");
 
 /\[wavegT\("menuBotSettings"\), \(\) => openBotRail\(bot\.id\)\]/.test(html)

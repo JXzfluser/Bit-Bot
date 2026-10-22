@@ -356,14 +356,16 @@ function main() {
     ? ok("只有一个消息流容器 #log")
     : bad("single stream", (html.match(/id="log"/g) || []).length + " #log containers");
   const chrome = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
-  /body\.tools-open/.test(html) && /body\.computer-open/.test(html) &&
+  // Layout contract v1 (§1/§3): single 3-column grid; rail width switches
+  // with body[data-panel]; sidebar stays 280, rail 340. The old 4-column
+  // (0fr placeholder) rules must be gone.
   /--sidebar-w:\s*280px/.test(chrome) &&
-  /--tools-w:\s*280px/.test(chrome) &&
   /--rail-w:\s*340px/.test(chrome) &&
-  /grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr 0fr/.test(html) &&
-  /\.computer-open \{\s*grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr var\(--rail-w\)/.test(html)
-    ? ok("右栏开合独立：tools-open / computer-open 各自 280px / 340px，中央始终 1fr")
-    : bad("rails", "independent rail layout missing");
+  /grid-template-columns:\s*var\(--sidebar-w\) minmax\(0, 1fr\) var\(--panel-w\)/.test(html) &&
+  /body\[data-panel="tools"\]/.test(html) &&
+  !/grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr 0fr/.test(html)
+    ? ok("单 grid：sidebar|main|rail 三列，rail 宽由 data-panel 切换（280/340，旧 4 列 0fr 已退役）")
+    : bad("rails", "contract-v1 single-grid layout missing");
 
   finish();
 }

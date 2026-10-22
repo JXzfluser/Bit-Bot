@@ -5,7 +5,7 @@
  * prove_m42_stream — Wave M42「消息流排版：居中对齐 + 气泡尾角 + 连续回合分组」
  *
  * 断言：
- *   1) #log 单列居中（max-width 820 + margin auto），修 user 贴右视口、
+ *   1) #log 单列居中（max-width var(--content-max)=760 + margin auto），修 user 贴右视口、
  *      assistant 卡片止于 760 的左右不对称；
  *   2) user 气泡保留 `border-radius: 18px`（M20 契约）且新增
  *      `border-bottom-right-radius: 6px` 尾角；
@@ -32,10 +32,10 @@ const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8"
 /* ---------- 1) #log 居中列 ---------- */
 const logBlock = html.match(/#log \{([\s\S]*?)\}/);
 if (logBlock
-  && /max-width:\s*820px/.test(logBlock[1])
+  && /max-width:\s*var\(--content-max\)/.test(logBlock[1])
   && /margin-left:\s*auto/.test(logBlock[1])
   && /margin-right:\s*auto/.test(logBlock[1])) {
-  ok("#log 单列居中（max-width 820 + margin auto）—— user/assistant 对齐同一列");
+  ok("#log 单列居中（max-width var(--content-max)=760 + margin auto）—— user/assistant 对齐同一列");
 } else {
   bad("#log center", "not centered single column");
 }
@@ -79,8 +79,8 @@ if (m20) ok("M20 用户胶囊正则仍匹配（本波未破历史验收）");
 else bad("M20 regression", "user pill regex broken by M42");
 
 /* ---------- 6) 负向对照：抹掉 max-width ---------- */
-const broken = html.replace("max-width: 820px;", "/* no width */");
-if (!/#log \{[^}]*max-width:\s*820px/.test(broken)) {
+const broken = html.replace("max-width: var(--content-max);", "/* no width */");
+if (!/#log \{[^}]*max-width:\s*var\(--content-max\)/.test(broken)) {
   ok("负向对照：抹掉 #log max-width → 居中列断言翻假（非恒真）");
 } else {
   bad("negative control", "max-width survived strip");

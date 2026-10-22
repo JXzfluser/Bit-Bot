@@ -17,6 +17,13 @@
   --bg0: #ffffff;
   --bg1: #f7f7f8;
   --side: #f7f7f8;
+  /* raised surface for cards/chips/rails — token, not a literal, so
+     force-dark repaints every surface (real-render GP-70 caught 45
+     hard-coded #ffffff shells staying bright in dark mode) */
+  --surface: #ffffff;
+  /* shell page background — themeable token (was a hard-coded #f5f5f7 on body,
+     which made force-dark keep a light viewport) */
+  --page-bg: #f5f5f7;
   --input-bg: #ffffff;
   --ink: #1a1a1a;
   --text: #1a1a1a;
@@ -53,6 +60,8 @@
   --tools-w: 280px;
   --rail-w: 340px;
   --content-max: 760px;
+  /* Layout contract v1: fixed header row height (±2px band). */
+  --header-h: 56px;
   --sheet-w: 560px;
 
   /* space */
@@ -135,6 +144,8 @@
 
 body.force-dark {
   color-scheme: dark;
+  --page-bg: #151515;
+  --surface: #1f1f1f;
   --bg0: #171717;
   --bg1: #1d1d1d;
   --side: #111111;
@@ -164,6 +175,8 @@ body.force-dark {
 
 body.force-light {
   color-scheme: light;
+  --page-bg: #f5f5f7;
+  --surface: #ffffff;
   --bg0: #ffffff;
   --bg1: #f7f7f7;
   --side: #f7f7f7;
@@ -216,7 +229,7 @@ body.force-light {
   width: min(var(--sheet-w), 92vw);
   max-height: min(82vh, 860px);
   overflow: auto;
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -256,7 +269,7 @@ body.force-light {
 }
 
 .bb-btn {
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -328,7 +341,7 @@ body.force-light {
   width: 100%;
   box-sizing: border-box;
   margin-top: var(--space-1);
-  background: #ffffff;
+  background: var(--surface);
   color: var(--text);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -354,7 +367,7 @@ body.force-light {
 
 /* Shared text control. Width/flex stay on the element when the row needs them. */
 .bb-control {
-  background: #ffffff;
+  background: var(--surface);
   color: var(--text);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -365,7 +378,7 @@ body.force-light {
 
 .bb-card {
   border: 1px solid var(--line);
-  background: #ffffff;
+  background: var(--surface);
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   color: var(--ink);
@@ -383,7 +396,7 @@ body.force-light {
   margin: 0 var(--space-7) var(--space-2);
   padding: var(--space-4) var(--space-6);
   border: 1px solid var(--line);
-  background: #ffffff;
+  background: var(--surface);
   border-radius: var(--radius-lg);
   flex-shrink: 0;
   color: var(--ink);
@@ -398,7 +411,7 @@ body.force-light {
   padding: var(--space-3) var(--space-5);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: #ffffff;
+  background: var(--surface);
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   font-size: var(--text-sm);
   font-weight: 700;
@@ -440,7 +453,7 @@ body.force-light {
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   padding: var(--space-5) var(--space-6);
-  background: #ffffff;
+  background: var(--surface);
   min-width: 0;
   color: var(--ink);
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
@@ -457,7 +470,7 @@ body.force-light {
   padding: var(--space-3) var(--space-4);
   font-size: var(--text-md);
   border-radius: var(--radius-lg);
-  background: #ffffff;
+  background: var(--surface);
   border: 1px solid var(--line);
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
@@ -496,7 +509,7 @@ body.force-light {
   text-overflow: ellipsis;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: #ffffff;
+  background: var(--surface);
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
@@ -573,7 +586,7 @@ body.force-light {
   color: var(--ink);
 }
 #settings-tabs .settings-tab-btn.active {
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   border: 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
@@ -583,7 +596,7 @@ body.force-light {
   top: calc(-1 * var(--space-7));
   padding: var(--space-7) var(--space-7) 12px;
   margin: calc(-1 * var(--space-7)) calc(-1 * var(--space-7)) 0;
-  background: #ffffff;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
   z-index: 2;
 }
@@ -626,7 +639,7 @@ body.force-light {
 #settings-sheet {
   width: min(760px, 94vw);
   max-height: 86vh;
-  background: #ffffff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   box-shadow: 0 12px 40px rgba(0,0,0,0.15);

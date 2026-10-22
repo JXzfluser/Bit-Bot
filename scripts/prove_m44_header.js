@@ -62,17 +62,19 @@ if (/#header-actions \{[^}]*justify-content:\s*flex-end/.test(html)) {
   bad("M20 regression", "header actions alignment drifted");
 }
 
-/* ---------- 4b) JS 真的把 gp-panel-btn 的 active 回写 ---------- */
-if (/const gpBtn = document\.getElementById\("gp-panel-btn"\);[\s\S]{0,80}gpBtn\.classList\.toggle\("active", open\)/.test(html)) {
-  ok("toggleComputerRail：把 rail open 状态回写 gp-panel-btn.classList active（CSS 高亮才有效）");
+/* ---------- 4b) JS 真的把 rail 状态回写到两个 header 按钮 ---------- */
+/* Layout contract v1: both header rail toggles are now driven by the single
+   sync point syncHeaderRailButtons() called from setPanel(). */
+if (/function syncHeaderRailButtons\(val\)[\s\S]{0,300}toolsBtn\.classList\.toggle\("active", val === "tools"\)[\s\S]{0,120}gpBtn\.classList\.toggle\("active", val === "computer"\)/.test(html) &&
+    /setPanel\(open \? "computer" : "none"\)/.test(html)) {
+  ok("rail 状态经 setPanel→syncHeaderRailButtons 回写 gp-panel-btn / tools-toggle-btn 的 active（单一写点）");
 } else {
-  bad("gp active sync", "toggleComputerRail does not reflect state on header button");
+  bad("rail active sync", "header buttons not driven by setPanel state");
 }
-/* tools 按钮本就在 click 里 toggle active —— 确认可见填充有对应 JS */
-if (/toolsBtn\.classList\.toggle\(\s*"active",\s*document\.body\.classList\.contains\("tools-open"\)/.test(html)) {
-  ok("tools-toggle-btn：active 由 tools-open 驱动（实心填充有 JS 触发）");
+if (/setPanel\(panelValue\(\) === "tools" \? "none" : "tools"\)/.test(html)) {
+  ok("tools-toggle-btn：点击走 setPanel 单一状态源（实心填充有 JS 触发）");
 } else {
-  bad("tools active sync", "tools button not toggled");
+  bad("tools active sync", "tools button not toggled via setPanel");
 }
 
 /* ---------- 5) 负向对照 ---------- */

@@ -562,6 +562,15 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, "index.html"));
+  // The window chrome name is the product name set here — the renderer's
+  // <title> ("Bit Bot 桌面版") is a document label, not a title-bar owner.
+  // Without this, Chromium's page-title-updated overwrite made win.title()
+  // locale-dependent (real-render e2e caught it on first live boot).
+  win.setTitle("Bit Bot Desktop");
+  win.webContents.on("page-title-updated", (e) => {
+    e.preventDefault();
+    win.setTitle("Bit Bot Desktop");
+  });
   // GP-94: nothing may leave the app window. New-window requests are denied
   // outright, and a navigation away from the app shell is blocked and routed
   // through the same validated open-external path instead.
