@@ -48,6 +48,18 @@ const bad = (name, detail) => {
   console.log("  ✗ " + name + (detail ? " — " + String(detail).slice(0, 200) : ""));
 };
 
+// target-v2: under grok-ui the header 电脑/能力 buttons are intentionally
+// hidden (body.grok-ui #gp-panel-btn { display:none }). The Computer rail's
+// real user entry is Cmd/Ctrl+F (see the keydown handler) and it closes from
+// the rail's own × — drive those instead of the hidden legacy button.
+async function openComputerRail(win) {
+  await win.keyboard.press(process.platform === "darwin" ? "Meta+f" : "Control+f");
+}
+async function closeComputerRail(win) {
+  await win.waitForSelector("#computer-rail-close", { state: "visible", timeout: 5000 });
+  await win.click("#computer-rail-close");
+}
+
 function readSettings() {
   try {
     return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8"));
@@ -1202,7 +1214,11 @@ async function main() {
         fs.readFileSync(path.join(REPO, "data/desktop/bot-templates.json"), "utf8"),
       );
       const tplCount = ((tplFile.templates || tplFile) || []).length;
-      await win.click("#marketplace-btn");
+      // target-v2: Marketplace lives in the account popup (the footer #sb-more
+      // is display:none under grok-ui). Drive the real user path.
+      await win.click("#account-avatar-btn");
+      await win.waitForSelector("#ap-market", { state: "visible", timeout: 5000 });
+      await win.click("#ap-market");
       await win.waitForFunction(
         () => {
           const m = document.getElementById("marketplace-modal");
@@ -1359,7 +1375,7 @@ async function main() {
         log: document.getElementById("log").getBoundingClientRect().width,
         machines: document.getElementById("machines").getBoundingClientRect().width,
       }));
-      await win.click("#gp-panel-btn");
+      await openComputerRail(win);
       await win.waitForFunction(
         () => document.body.classList.contains("computer-open"),
         null,
@@ -1382,7 +1398,7 @@ async function main() {
       widthsOpen.machines < widthsOpen.rail / 4
         ? ok("E2E GP-119：Computer 与工具右栏互不搭车（tools 仍关闭，只剩自身 padding）")
         : bad("E2E GP-119 rails coupled", JSON.stringify(widthsOpen).slice(0, 200));
-      await win.click("#gp-panel-btn");
+      await closeComputerRail(win);
       await win.waitForFunction(
         () => !document.body.classList.contains("computer-open"),
         null,
@@ -1748,7 +1764,7 @@ async function main() {
         : bad("E2E GP-126 notify on", "settings.json still false");
 
       // 3) Mutual exclusion: opening the Computer preview closes the Bot rail.
-      await win.click("#gp-panel-btn");
+      await openComputerRail(win);
       await win.waitForFunction(
         () => document.body.classList.contains("computer-open"),
         null,
@@ -1763,7 +1779,7 @@ async function main() {
       excl.computer && !excl.bot && excl.railW > 200
         ? ok("E2E GP-124：打开 Computer 预览自动收起 Bot 设置（同一可选右栏）")
         : bad("E2E GP-124 mutual exclusion", JSON.stringify(excl));
-      await win.click("#gp-panel-btn");
+      await closeComputerRail(win);
       await win.waitForFunction(
         () => !document.body.classList.contains("computer-open"),
         null,
@@ -2085,11 +2101,11 @@ async function main() {
         : bad("E2E GP-130 usage store", JSON.stringify(m28Row));
 
       // GP-131: Settings → Usage & Billing tab shows the same real row.
-      // target-v2 moved Settings to a pinned sidebar-bottom entry (no longer
-      // nested inside the account popup), so open it directly. Close the popup
-      // first so it cannot overlay the footer row.
-      await win.evaluate(() => { if (typeof setAccountPopup === "function") setAccountPopup(false); });
-      await win.click("#sidebar-settings-btn");
+      // Under grok-ui the footer Settings row is hidden; the real entry is the
+      // account popup → 设置, so drive that.
+      await win.click("#account-avatar-btn");
+      await win.waitForSelector("#ap-settings", { state: "visible", timeout: 5000 });
+      await win.click("#ap-settings");
       await win.waitForSelector("#settings-panel", { timeout: 10000 });
       await win.evaluate(() => {
         const btn = document.querySelector('.settings-tab-btn[data-stab="usage"]');

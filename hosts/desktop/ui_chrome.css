@@ -527,6 +527,41 @@ body.force-light {
   gap: var(--space-2);
 }
 
+/* GP-135: section label inside Connect apps (skills by source). Text sizes
+   come from the type scale, not inline styles. */
+.ca-section-title {
+  font-weight: 700;
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+.ca-skill-group {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: var(--space-1);
+}
+.ca-skill-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: var(--text-sm);
+}
+.ca-skill-code {
+  font: var(--text-2xs)/1.4 var(--font-mono);
+}
+.ca-skill-desc {
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ca-skill-empty {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
 #session-search.bb-field {
   margin: 0 0 var(--space-4);
   padding: var(--space-3) var(--space-4);
@@ -1083,6 +1118,10 @@ body.grok-ui:not([data-sidebar="collapsed"]) #agents {
   display: flex !important;
   flex-direction: column !important;
 }
+/* Sidebar sections must keep their natural height inside the flex column:
+   with default flex-shrink they collapse to 0 once Bot/session lists grow,
+   pushing rows far below the scrollport where they can never be clicked. */
+body.grok-ui #agents > * { flex-shrink: 0; }
 body.grok-ui #sidebar-footer {
   margin-top: auto !important;
   padding: 6px 0 8px !important;
@@ -1099,6 +1138,13 @@ body.grok-ui #hidden-bots-lab { display: none !important; }
 body.grok-ui:has(#grok-adv-toggle:checked) #sb-more,
 body.grok-ui:has(#grok-adv-toggle:checked) #agents-lab,
 body.grok-ui:has(#grok-adv-toggle:checked) #hidden-bots-lab { display: none !important; }
+
+/* Layout-contract §6: the product chrome hides debug surfaces by default, but
+   an explicit dev-mode opt-in (settings.dev_mode / --bitbot-devmode) must make
+   the mode reachable again — the badge identifies it and 能力 opens the
+   dev-only tools rail. Without this the flag would be a no-op under grok-ui. */
+body.grok-ui[data-devmode="on"] #devmode-badge,
+body.grok-ui[data-devmode="on"] #tools-toggle-btn { display: inline-flex !important; }
 
 /* Account row chevron: replace the glyph "▲" with a crisp CSS chevron
    (theme-colored, points up since the popup opens above). */
@@ -1253,7 +1299,10 @@ body.grok-ui #bot-new-btn { right: 36px !important; top: 4px !important; }
 
 /* Sidebar: kill the duplicated search row, quiet the section labels,
    flatten the bot cards. */
-body.grok-ui #session-search { display: none !important; }
+body.grok-ui #session-search { display: none; }
+/* Ctrl/Cmd+K and the toolbar search button promise search; reveal the real
+   input instead of silently no-oping with the row hidden. */
+body.grok-ui.session-search-open #session-search { display: block; }
 body.grok-ui .panel-title.panel-head {
   font-size: 11px !important;
   font-weight: 600 !important;

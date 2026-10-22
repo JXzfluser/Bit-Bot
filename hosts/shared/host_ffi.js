@@ -225,6 +225,29 @@ function createHostFfi(repoRoot) {
   );
   const CONNECTORS_DIR = path.join(REPO_ROOT, "data", "connectors");
   const ROUTINES_PATH = path.join(REPO_ROOT, "data", "routines", "host-routines.json");
+  // GP-135 (§6.3): skill sources surfaced to the `/` menu and Connect apps.
+  // MANAGED mirrors the kernel's ManagedCatalog::seed (skills/catalog.mbt);
+  // user/learned skills live under agent-tools/skills; plugin skills ship with
+  // an installed Connect app. Priority follows SkillSource (User > Plugin > Managed).
+  const MANAGED_SKILLS = [
+    {
+      name: "agent-email",
+      description: "Claim and manage Grok Bot email inboxes; draft and search mail.",
+    },
+    {
+      name: "routines",
+      description: "Create and manage scheduled routines with cron and timezone.",
+    },
+    {
+      name: "source-control",
+      description: "Git commit, branch, and pull-request workflows on the box.",
+    },
+  ];
+  const PLUGIN_SKILLS = {
+    "plugin-slides": { display_name: "Slides helper", skills: ["slides-quickstart"] },
+    "plugin-calendar": { display_name: "Calendar sync", skills: ["calendar-sync"] },
+  };
+  const SKILL_SOURCE_PRIORITY = { user: 3, plugin: 2, managed: 1 };
   const JOURNAL_EVENTS_PATH = path.join(
     REPO_ROOT,
     "data",
@@ -10354,6 +10377,7 @@ function createHostFfi(repoRoot) {
                 mode: listPayload.mode || null,
                 count: listPayload.count,
                 query: listPayload.query || null,
+                source_counts: listPayload.source_counts || null,
                 pretend_listing: listPayload.pretend_listing,
               },
               product_tool_residual: false,
@@ -14039,11 +14063,90 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  // GP-138 (§6.2): return a violation descriptor when a recurring cron fires
+  // more often than every 5 minutes. One-shots (@now/@once) are allowed; named
+  // presets (@hourly/@daily/…) are all ≥ 5 min. Unknown shapes pass through to
+  // the kernel's ValidateCron so this guard never invents rejections.
+  function routineIntervalViolation(cronRaw) {
+    const cron = stripEnvQuotes(cronRaw).trim();
+    if (!cron || cron.startsWith("@")) return null;
+    const fields = cron.split(/\s+/);
+    if (fields.length < 5) return null;
+    const expand = (spec, max) => {
+      const out = new Set();
+      for (const part of String(spec || "").split(",")) {
+        const m = part.match(/^(\*|\d+)(?:-(\d+))?(?:\/(\d+))?$/);
+        if (!m) return null;
+        const step = m[3] ? Number(m[3]) : 1;
+        if (!(step > 0)) return null;
+        let lo;
+        let hi;
+        if (m[1] === "*") {
+          lo = 0;
+          hi = max;
+        } else {
+          lo = Number(m[1]);
+          hi = m[2] != null ? Number(m[2]) : m[3] ? max : lo;
+        }
+        if (lo > hi) return null;
+        for (let v = lo; v <= hi; v += step) out.add(v);
+      }
+      return out;
+    };
+    const mins = expand(fields[0], 59);
+    if (!mins) return null;
+    const hours = expand(fields[1], 23);
+    if (!hours) return null;
+    // Any hour restriction means consecutive fires are at least an hour apart.
+    if (hours.size < 24) return null;
+    const sorted = Array.from(mins).sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    let minGap = 60 - sorted[sorted.length - 1] + sorted[0];
+    for (let i = 1; i < sorted.length; i += 1) {
+      minGap = Math.min(minGap, sorted[i] - sorted[i - 1]);
+    }
+    return minGap < 5 ? { minute_gap: minGap } : null;
+  }
+
   function executeRoutineEffect(kind, command) {
     const id = String(command || "").split("|")[0];
     if (kind === "routine_schedule") {
       const parts = String(command || "").split("|");
       const parsed = nextDueFromCron(parts[1] || "@daily");
+      // GP-138 (§6.2): official Routines enforce an interval of at least
+      // 5 minutes. The kernel validates cron shape; this is the durable
+      // persistence point, so reject sub-5-minute recurrence honestly instead
+      // of writing a row the daemon would hammer.
+      const tooFrequent = routineIntervalViolation(parsed.cron);
+      if (tooFrequent) {
+        const refuseDir = path.join(REPO_ROOT, "data", "routines");
+        fs.mkdirSync(refuseDir, { recursive: true });
+        const refusePath = path.join(
+          refuseDir,
+          `refuse-${id || "routine"}-${Date.now().toString(36)}.json`,
+        );
+        const refusal = {
+          mode: "host_routine_schedule",
+          stored: false,
+          error: "interval_too_short",
+          id,
+          cron: parsed.cron,
+          min_interval_minutes: 5,
+          observed_gap_minutes: tooFrequent.minute_gap,
+          note: "Routine 间隔至少 5 分钟；未写入调度（不假装已建）。",
+          at: new Date().toISOString(),
+          path: refusePath,
+        };
+        fs.writeFileSync(refusePath, JSON.stringify(refusal, null, 2));
+        return {
+          kind,
+          ok: false,
+          command,
+          error: "interval_too_short",
+          stdout: JSON.stringify(refusal, null, 2),
+          stderr: "routine interval must be >= 5 minutes",
+        };
+      }
       const cron = parsed.cron;
       const nextDue = parsed.nextDue;
       const dueNow = parsed.dueNow;
@@ -19232,6 +19335,9 @@ function createHostFfi(repoRoot) {
 
     if (kind === "list_skills") {
       // CM skill directory — list agent-tools/skills (never pretend_listing).
+      // GP-135: enumerate all three sources (User > Plugin > Managed) so the
+      // `/` menu and Connect apps can group by origin and guide "missing skill
+      // → install the plugin"; dedupe by name keeping the highest priority.
       const raw = String(command || "");
       let query = "";
       const qm = raw.match(/\bq=([^\n]*)/i);
@@ -19251,17 +19357,98 @@ function createHostFfi(repoRoot) {
       } catch {
         names = [];
       }
-      const skills = names
-        .filter((n) => !query || n.toLowerCase().includes(query))
-        .map((n) => {
-          const skillMd = path.join(skillsRoot, n, "SKILL.md");
-          return {
-            id: n,
-            name: n,
-            path: path.join(skillsRoot, n),
-            has_skill_md: fs.existsSync(skillMd),
-          };
+      const byName = new Map();
+      const consider = (entry) => {
+        const prev = byName.get(entry.name);
+        if (
+          !prev ||
+          (SKILL_SOURCE_PRIORITY[entry.source] || 0) >
+            (SKILL_SOURCE_PRIORITY[prev.source] || 0)
+        ) {
+          if (prev) entry.also_in = [].concat(prev.also_in || [], prev.source);
+          byName.set(entry.name, entry);
+        } else {
+          prev.also_in = [].concat(prev.also_in || [], entry.source);
+        }
+      };
+      for (const m of MANAGED_SKILLS) {
+        consider({
+          id: m.name,
+          name: m.name,
+          description: m.description,
+          source: "managed",
+          priority: SKILL_SOURCE_PRIORITY.managed,
         });
+      }
+      let installedPlugins = [];
+      try {
+        const catPath = path.join(
+          REPO_ROOT,
+          "data",
+          "connectors",
+          "mcp-namespaces",
+          "catalog.json",
+        );
+        if (fs.existsSync(catPath)) {
+          const cat = JSON.parse(fs.readFileSync(catPath, "utf8"));
+          installedPlugins = Array.isArray(cat.installed_plugins)
+            ? cat.installed_plugins
+            : [];
+        }
+      } catch (_) {
+        installedPlugins = [];
+      }
+      for (const pid of installedPlugins) {
+        const meta = PLUGIN_SKILLS[pid];
+        if (!meta) continue;
+        for (const sname of meta.skills || []) {
+          consider({
+            id: sname,
+            name: sname,
+            description: `${meta.display_name} (${pid})`,
+            source: "plugin",
+            priority: SKILL_SOURCE_PRIORITY.plugin,
+            plugin_id: pid,
+          });
+        }
+      }
+      for (const n of names) {
+        const skillMd = path.join(skillsRoot, n, "SKILL.md");
+        const hasMd = fs.existsSync(skillMd);
+        let desc = "";
+        if (hasMd) {
+          try {
+            const md = fs.readFileSync(skillMd, "utf8");
+            const dm = md.match(/^---[\s\S]*?\ndescription:\s*(.+)$/m);
+            if (dm) desc = String(dm[1] || "").trim();
+          } catch (_) {
+            desc = "";
+          }
+        }
+        consider({
+          id: n,
+          name: n,
+          path: path.join(skillsRoot, n),
+          has_skill_md: hasMd,
+          description: desc,
+          source: "user",
+          priority: SKILL_SOURCE_PRIORITY.user,
+        });
+      }
+      const all = Array.from(byName.values()).sort((a, b) =>
+        String(a.name).localeCompare(String(b.name)),
+      );
+      const skills = all.filter((s) => {
+        if (!query) return true;
+        return (
+          String(s.name || "").toLowerCase().includes(query) ||
+          String(s.description || "").toLowerCase().includes(query)
+        );
+      });
+      const sourceCounts = { managed: 0, user: 0, plugin: 0 };
+      for (const s of all) {
+        if (sourceCounts[s.source] != null) sourceCounts[s.source] += 1;
+      }
       const dir = path.join(REPO_ROOT, "data", "skills");
       fs.mkdirSync(dir, { recursive: true });
       const listPath = path.join(
@@ -19273,6 +19460,8 @@ function createHostFfi(repoRoot) {
         pretend_listing: false,
         query: query || null,
         count: skills.length,
+        sources: ["managed", "user", "plugin"],
+        source_counts: sourceCounts,
         skills,
         at,
       };
@@ -22974,6 +23163,39 @@ function createHostFfi(repoRoot) {
           } catch (_) { /* best-effort preview state */ }
         }
         results.push(cuRes);
+        continue;
+      }
+      if (kind === "computer_shared_session") {
+        // GP-140 (§3.1): one Computer browser profile shared across Bots.
+        // `record|<bot>|<site>|<signed_in>|<detail>` writes the login marker into
+        // computer.json; `read|<bot>` lets any Bot see what the others signed into.
+        if (!surface) {
+          results.push({ kind, ok: false, error: "product_surface_unavailable", command: cmd });
+          continue;
+        }
+        const parts = String(cmd || "").split("|");
+        const op = String(parts[0] || "read").trim().toLowerCase();
+        const botId = String(parts[1] || "agent-bit").trim() || "agent-bit";
+        let sharedRes;
+        if (op === "record") {
+          sharedRes = surface.recordSharedBrowserSession({
+            bot_id: botId,
+            site: parts[2] || "",
+            signed_in: String(parts[3] || "1") !== "0",
+            detail: parts.slice(4).join("|"),
+          });
+        } else {
+          sharedRes = surface.readSharedBrowserSession({ bot_id: botId });
+        }
+        results.push({
+          kind,
+          ok: sharedRes.ok === true,
+          command: cmd,
+          stdout: JSON.stringify(sharedRes),
+          stderr: sharedRes.ok ? "" : sharedRes.error || "shared_session_refused",
+          mode: "host_computer_shared_session",
+          error: sharedRes.ok ? "" : sharedRes.error || "shared_session_refused",
+        });
         continue;
       }
       if (kind === "computer_preview") {

@@ -80,6 +80,14 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 
 > **实施状态（M48，已验证）**：`product_surface.stageAttachments` 已在数量/体积后补内容可解码性探测——图片 magic-byte、PDF `%PDF-` 头 + `%%EOF` + 无 `/Encrypt`、文本族 NUL/无效 UTF-8 判定；命中返回 `ok:false, error:"unreadable", reason:<code>` 且不落盘不进上下文；未知二进制保守放行。`scripts/prove_gp142_unreadable.js` **PASS=10 FAIL=0**（合法 PNG/PDF/文本/`.docx` 通过；伪 PNG/伪 PDF/加密 PDF/截断 PDF/NUL 文本/坏 UTF-8 各自诚实拒绝）。真链非回归：Boot e2e 全跑 GP-11 附件检查 0 FAIL。
 
+> **实施状态（M47/M48，已验证）**：
+> - **GP-135 已完成（桌面层）**：Host `list_skills` 枚举 Managed/User/Plugin 三来源，按 `SkillSource` 优先级（User 3 > Plugin 2 > Managed 1）去重并记 `also_in`；插件技能带 `plugin_id`，输出版 `source_counts`。`/` 菜单按来源分组、无匹配给出「去连接应用安装带技能的插件」引导；Connect apps 新增「技能（按来源）」区。`scripts/prove_gp135_skill_sources.js` **PASS=14 FAIL=0**。残留：内核 `SkillSource` 枚举仍只存在于内核目录，Host 侧为镜像常量（`MANAGED_SKILLS`/`PLUGIN_SKILLS`），后续应改由内核 payload 直供。
+> - **GP-138 已完成（Host 持久化点）**：`routine_schedule` 在落库前校验 cron 触发间隔；每小时都触发且相邻分钟间隔 <5 → `ok:false, error:"interval_too_short"`，写 `refuse-*.json` 审计，**不写** `host-routines.json`；`@now/@once/@hourly` 与 `*/5`、`0,5` 等放行。`scripts/prove_gp138_routine_interval.js` **PASS=15 FAIL=0**。残留：既有历史行不做回溯清理；内核 `CreateRoutine` 文案未同步提示 5 分钟下限（需 `moon`）。
+> - **GP-140 已完成（本地可证部分）**：Computer 浏览器 profile 固定为同一持久 `data/connectors/identity/chrome-user-data`；Bot A 的登录标记写入 `computer.json.shared_browser.sites`，Bot B 读取 `visible_to_bots:"all"` 可见。Host 新增 `computer_shared_session`（`record|<bot>|<site>|<signed_in>|<detail>` / `read|<bot>`），缺站点 `site_required` 拒绝。`scripts/prove_gp140_shared_computer.js` **PASS=11 FAIL=0**。残留：真实 Cookie 内容、云 microVM 与真登录沙箱不可达（`pretend_cookies:false`, `real_cloud_vm:false`, `cookie_sandbox_residual:true`）；内核回合尚无对应意图（需 `moon`）。
+> - **GP-139 未做（阻塞）**：断言脚本需真实 `moon run` 的 `routine_tick`；本沙箱无 MoonBit 工具链，不能伪造 PASS。
+
+> **真渲染门修复（target-v2 对齐，已验证）**：e2e 原先直接点击 grok-ui 下**有意隐藏**的入口（header 的电脑/模型、footer 的市场/连接应用/设置、`#sb-more`），必然假失败。已改为真实用户路径——账户弹层（`#ap-market`/`#ap-connect`/`#ap-settings`）、Cmd/Ctrl+F 开 Computer 右栏、Cmd/Ctrl+K 开搜索。过程中修掉两处**真实缺陷**：① `#agents` 是 flex 列，子项默认 `flex-shrink:1`，Bot/会话多时列表被压成 0 高、行落在滚动区外不可点 → `body.grok-ui #agents > * { flex-shrink:0 }`；② Round 9 把搜索行设为 `display:none` 但 Ctrl+K/工具栏按钮仍承诺搜索 → `body.grok-ui.session-search-open` 显式揭示（无 `!important`）。`e2e_desktop_shell_v2` **PASS=89 FAIL=0**。
+
 ### D. 明确延期（不列入本轮功能复刻硬门）
 
 | 官方 § | 项 | 定性 |
@@ -133,7 +141,7 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 1. **每新增 GP 必须打真链**：验收落到 `smoke_grok_desktop_parity.sh` 新场景 + 真 Electron/Playwright 门（`e2e_grok_desktop_*.mjs` 同族），renderer 不伪造状态；`moon test` 覆盖内核意图分类。
 2. **三态诚实**：外部不可达项（真 Cookie/独立模型推理/企业下发/云 VM 推流/合盖事件）一律 `residual:true` + 不 `pretend`，与既有残留口径一致。
 3. **回归不破**：现有 313 parity 断言 + boot 124 + layout 12 + shell-v2 101 全绿不回退；D-C-03 三语键齐平，新文案走 `t(key)`。
-   > 诚实校正（2026-10-22）：`e2e_desktop_layout_target` 的 D-L-* 几何 12 项在 UI 统一波次后已全绿；同脚本的 **D-D-03（调试面 dev-mode 揭示）在 HEAD 基线即红**（`grok-ui` 过度 `display:none`），属"调试面治理"独立项，非 GP 功能缺口，需另做一处显式产品决定后再修。`shell-v2` 的 S-MODEL 依赖真内核使 `#model-entry` 有尺寸，无内核环境按 honest-skip 处理。
+   > 诚实校正（2026-10-22）：`e2e_desktop_layout_target` 的 D-L-* 几何 12 项在 UI 统一波次后已全绿。D-D-03（调试面 dev-mode 揭示）曾因 `grok-ui` 把 `#devmode-badge`/`#tools-toggle-btn` 一并 `display:none !important` 而在 HEAD 基线即红——这是真实的**产品缺陷**（`--bitbot-devmode` / `settings.dev_mode` 在产品态成为 no-op），不是过期门。已补 `body.grok-ui[data-devmode="on"]` 显式揭示（badge + 能力入口，仍不含 `#sb-more`），gate **PASS=12 FAIL=0**。`shell-v2` 的 S-MODEL 已改为真实入口（账户弹层 → 设置 → 凭证），与本轮同测 **PASS=89 FAIL=0**。
 4. **禁词门**：产品态 forbidden-token 扫描（`entry=`/`account=`/`*_masked`/`data/`/`.json`/`× N`/`unavailable`/`disabled_by_default`/`training=`/`key=`/`secret=`）继续对新增 UI 生效。
 5. **文档**：本文随实现同步进 `spec.md`（正式行）与 `gaps.md`（逐条状态），并在 `docs/design/desktop-target/report.md` 记录命令与实测结果。
 

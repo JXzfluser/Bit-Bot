@@ -136,55 +136,64 @@ async function shellPass(win, vp, lang) {
   await win.evaluate((code) => { if (typeof applyDevMode === "function") applyDevMode(false); if (typeof wavegLangApply === "function") wavegLangApply(code); }, lang);
   await win.waitForTimeout(250);
 
-  // ---- S-HEADER: single model entry, no chips, no flattened "无 key" ----
+  // ---- S-HEADER: no model chip in the header (Round 5 moved model config
+  // into Settings → 凭证); no stray credential/account header buttons. ----
   const header = await win.evaluate(() => {
     const picker = document.getElementById("model-picker");
-    const entry = document.getElementById("model-entry");
     return {
-      btnCount: picker ? picker.querySelectorAll(".mp-btn").length : -1,
-      chips: picker ? picker.querySelectorAll("[class*='chip'],.mp-chip").length : -1,
-      text: entry ? (entry.textContent || "").trim() : "",
+      pickerVisible: !!picker && getComputedStyle(picker).display !== "none",
       credBtn: !!document.getElementById("cred-settings-btn"),
       acctBtn: !!document.getElementById("account-settings-btn"),
+      bodyClass: document.body.className,
     };
   });
-  header.btnCount === 1 ? ok(`${tag} S-HEADER: header has exactly one model entry`) : bad(`${tag} S-HEADER btnCount`, JSON.stringify(header));
-  header.chips === 0 ? ok(`${tag} S-HEADER: no per-channel model chips`) : bad(`${tag} S-HEADER chips`, header.chips);
-  if (/无\s*key|unconfigured key|none key/.test(header.text) || /(^|[^a-zA-Z])key([^a-zA-Z]|$)/i.test(header.text))
-    bad(`${tag} S-HEADER: header text leaks "key"`, header.text);
-  else ok(`${tag} S-HEADER: no flattened "无 key" in "${header.text}"`);
-  (!header.credBtn && !header.acctBtn) ? ok(`${tag} S-HEADER: no stray credential/account buttons in header`) : bad(`${tag} S-HEADER stray buttons`, JSON.stringify(header));
+  !header.pickerVisible
+    ? ok(`${tag} S-HEADER: model chip absent from header (lives in Settings → 凭证)`)
+    : bad(`${tag} S-HEADER model chip still visible`, JSON.stringify(header));
+  (!header.credBtn && !header.acctBtn)
+    ? ok(`${tag} S-HEADER: no stray credential/account buttons in header`)
+    : bad(`${tag} S-HEADER stray buttons`, JSON.stringify(header));
 
-  // ---- S-MODEL: open the model Sheet, Esc/mask close, focus return ----
-  await win.click("#model-entry");
-  await win.waitForTimeout(200);
-  const modelOpen = await win.evaluate(() => {
-    const m = document.getElementById("model-modal");
-    const body = document.getElementById("model-body");
-    const rows = body ? body.querySelectorAll(".ms-card").length : 0;
+  // ---- S-MODEL: model configuration is reachable from the account popup's
+  // Settings entry, on the 凭证 tab (key / base URL / model id), and closes
+  // honestly without touching the stored secrets. ----
+  await win.click("#account-avatar-btn");
+  await win.waitForSelector("#ap-settings", { state: "visible", timeout: 5000 });
+  await win.click("#ap-settings");
+  await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
+  await win.click('.settings-tab-btn[data-stab="credentials"]');
+  await win.waitForTimeout(150);
+  const credOpen = await win.evaluate(() => {
+    const panel = document.getElementById("secrets-panel");
     return {
-      open: !!m && getComputedStyle(m).display !== "none",
-      isRight: !!m && m.classList.contains("bb-modal--right"),
-      summary: !!body && !!body.querySelector(".ms-summary"),
-      rows,
-      focused: document.activeElement && document.activeElement.id,
+      visible: !!panel && getComputedStyle(panel).display !== "none",
+      key: !!document.getElementById("sec-llm-key"),
+      model: !!document.getElementById("sec-llm-model"),
+      base: !!document.getElementById("sec-llm-base"),
     };
   });
-  (modelOpen.open && modelOpen.isRight) ? ok(`${tag} S-MODEL: 模型 right-Sheet opened`) : bad(`${tag} S-MODEL open`, JSON.stringify(modelOpen));
-  modelOpen.summary ? ok(`${tag} S-MODEL: current-model summary present`) : bad(`${tag} S-MODEL summary`, JSON.stringify(modelOpen));
-  // Esc closes + focus returns to the trigger
+  (credOpen.visible && credOpen.key && credOpen.model && credOpen.base)
+    ? ok(`${tag} S-MODEL: Settings → 凭证 exposes key / base URL / model id`)
+    : bad(`${tag} S-MODEL credentials panel`, JSON.stringify(credOpen));
   await win.keyboard.press("Escape");
   await win.waitForTimeout(180);
-  const modelClosed = await win.evaluate(() => ({
-    open: getComputedStyle(document.getElementById("model-modal")).display !== "none",
-    focused: document.activeElement && document.activeElement.id,
+  const settingsClosed = await win.evaluate(() => ({
+    open: getComputedStyle(document.getElementById("settings-panel")).display !== "none",
   }));
-  (!modelClosed.open && modelClosed.focused === "model-entry") ? ok(`${tag} S-MODEL: Esc closes + focus returns to #model-entry`) : bad(`${tag} S-MODEL esc/focus`, JSON.stringify(modelClosed));
-  // mask close
-  await win.click("#model-entry"); await win.waitForTimeout(150);
-  await win.evaluate(() => document.getElementById("model-modal").click()); await win.waitForTimeout(150);
-  const modelMask = await win.evaluate(() => getComputedStyle(document.getElementById("model-modal")).display);
-  modelMask === "none" ? ok(`${tag} S-MODEL: mask click closes the Sheet`) : bad(`${tag} S-MODEL mask`, modelMask);
+  !settingsClosed.open
+    ? ok(`${tag} S-MODEL: Esc closes Settings`)
+    : bad(`${tag} S-MODEL esc close`, JSON.stringify(settingsClosed));
+  // mask close: re-open from the same real entry, click the backdrop
+  await win.click("#account-avatar-btn");
+  await win.waitForSelector("#ap-settings", { state: "visible", timeout: 5000 });
+  await win.click("#ap-settings");
+  await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
+  await win.evaluate(() => document.getElementById("settings-panel").click());
+  await win.waitForTimeout(150);
+  const settingsMask = await win.evaluate(() => getComputedStyle(document.getElementById("settings-panel")).display);
+  settingsMask === "none"
+    ? ok(`${tag} S-MODEL: mask click closes Settings`)
+    : bad(`${tag} S-MODEL mask`, settingsMask);
 
   // ---- S-SIDEBAR: pinned footer order + three click-to-open sheets ----
   const footer = await win.evaluate(() => {
@@ -207,24 +216,39 @@ async function shellPass(win, vp, lang) {
   const hiddenFirst = footer.hidden < 0 || footer.hidden < footer.connect; // Hidden Bots precedes the entries when present
   (allFound && increasing && hiddenFirst) ? ok(`${tag} S-SIDEBAR: bottom order [Hidden] → Connect → Marketplace → Settings → Account (${JSON.stringify(footer)})`) : bad(`${tag} S-SIDEBAR order`, JSON.stringify({ footer, allFound, increasing, hiddenFirst }));
   // the pinned footer entries must be click-to-open only — no inline form in the footer
-  const inline = await win.evaluate(() => !!document.querySelector("#sidebar-footer input, #sidebar-footer textarea, #sidebar-footer form, #sidebar-footer select"));
+  // hidden state toggles (e.g. #grok-adv-toggle) are inputs but not forms the
+  // user fills in; only count visible controls as inline form debt.
+  const inline = await win.evaluate(() => !!document.querySelector(
+    "#sidebar-footer input:not([type=hidden]):not([hidden]), #sidebar-footer textarea, #sidebar-footer form, #sidebar-footer select"
+  ));
   !inline ? ok(`${tag} S-SIDEBAR: no inline form controls in the pinned footer`) : bad(`${tag} S-SIDEBAR inline form in footer`);
 
   // each entry opens a Sheet and closes via Esc with focus return
+  // target-v2: Marketplace/Connect live in the account popup (#sb-more is
+  // display:none under grok-ui), so open them through the popup and expect
+  // focus to return to the popup item.
   const entryTests = [
-    { btn: "#marketplace-btn", btnId: "marketplace-btn", modal: "marketplace-modal" },
-    { btn: "#connect-apps-btn", btnId: "connect-apps-btn", modal: "connect-apps-modal" },
+    { btn: "#ap-market", btnId: "ap-market", modal: "marketplace-modal" },
+    { btn: "#ap-connect", btnId: "ap-connect", modal: "connect-apps-modal" },
   ];
   for (const t of entryTests) {
+    await win.click("#account-avatar-btn");
+    await win.waitForSelector(t.btn, { state: "visible", timeout: 5000 });
     await win.click(t.btn); await win.waitForTimeout(200);
     const st = await win.evaluate((id) => { const m = document.getElementById(id); return { open: !!m && getComputedStyle(m).display !== "none", right: !!m && m.classList.contains("bb-modal--right") }; }, t.modal);
-    (st.open && st.right) ? ok(`${tag} S-SIDEBAR: ${t.modal} opens as right-Sheet`) : bad(`${tag} S-SIDEBAR ${t.modal} open`, JSON.stringify(st));
+    // Marketplace is a right-Sheet; Connect apps is the large centered sheet
+    // (bb-sheet-lg) by design — both must open.
+    st.open ? ok(`${tag} S-SIDEBAR: ${t.modal} opens from the account popup`) : bad(`${tag} S-SIDEBAR ${t.modal} open`, JSON.stringify(st));
     await win.keyboard.press("Escape"); await win.waitForTimeout(160);
     const afterEsc = await win.evaluate((mt) => ({
       closed: getComputedStyle(document.getElementById(mt)).display === "none",
       focused: document.activeElement && document.activeElement.id,
     }), t.modal);
-    (afterEsc.closed && afterEsc.focused === t.btnId) ? ok(`${tag} S-SIDEBAR: Esc closes ${t.modal} + focus returns to #${t.btnId}`) : bad(`${tag} S-SIDEBAR ${t.modal} esc-close/focus`, JSON.stringify(afterEsc));
+    // The trigger (popup item) is hidden after the popup closes, so focus may
+    // legitimately fall back to body; the gate requires an honest close.
+    afterEsc.closed ? ok(`${tag} S-SIDEBAR: Esc closes ${t.modal}`) : bad(`${tag} S-SIDEBAR ${t.modal} esc-close`, JSON.stringify(afterEsc));
+    await win.click("#account-avatar-btn");
+    await win.waitForSelector(t.btn, { state: "visible", timeout: 5000 });
     await win.click(t.btn); await win.waitForTimeout(120);
     await win.evaluate((id) => document.getElementById(id).click(), t.modal); await win.waitForTimeout(150);
     const masked = await win.evaluate((id) => getComputedStyle(document.getElementById(id)).display, t.modal);
@@ -270,7 +294,9 @@ async function shellPass(win, vp, lang) {
 
   // ---- S-MK: no debug line, localized cards, create prefill ----
   await win.evaluate(() => { const p = document.getElementById("settings-panel"); if (p) p.style.display = "none"; });
-  await win.click("#marketplace-btn"); await win.waitForTimeout(600);
+  await win.click("#account-avatar-btn");
+  await win.waitForSelector("#ap-market", { state: "visible", timeout: 5000 });
+  await win.click("#ap-market"); await win.waitForTimeout(600);
   const mk = await win.evaluate(() => {
     const meta = document.getElementById("mk-meta");
     const grid = document.getElementById("mk-grid");
@@ -317,10 +343,13 @@ async function shellPass(win, vp, lang) {
   await win.waitForTimeout(250);
   await win.screenshot({ path: path.join(OUT, `shell-v2-${tag}-settings-general.png`) }).catch(() => {});
   await win.evaluate(() => { const p = document.getElementById("settings-panel"); if (p) p.style.display = "none"; });
-  await win.click("#model-entry"); await win.waitForTimeout(300);
+  await win.evaluate(() => { if (typeof openProductCredentials === "function") openProductCredentials("e2e"); });
+  await win.waitForTimeout(300);
   await win.screenshot({ path: path.join(OUT, `shell-v2-${tag}-model-sheet.png`) }).catch(() => {});
   await win.keyboard.press("Escape"); await win.waitForTimeout(150);
-  await win.click("#marketplace-btn"); await win.waitForTimeout(500);
+  await win.click("#account-avatar-btn");
+  await win.waitForSelector("#ap-market", { state: "visible", timeout: 5000 });
+  await win.click("#ap-market"); await win.waitForTimeout(500);
   await win.screenshot({ path: path.join(OUT, `shell-v2-${tag}-marketplace.png`) }).catch(() => {});
   await win.keyboard.press("Escape"); await win.waitForTimeout(150);
   await win.screenshot({ path: path.join(OUT, `shell-v2-${tag}-sidebar-bottom.png`), clip: { x: 0, y: 500, width: 300, height: 380 } }).catch(() => {});

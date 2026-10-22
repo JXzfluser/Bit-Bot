@@ -1052,6 +1052,84 @@ function createProductSurface(repoRoot) {
     return { ok: true, mode: "host_computer_screen_record", screen: data.screens[id] };
   }
 
+  // GP-140 (§3.1): the Computer's browser profile is ONE durable user-data-dir
+  // shared by every Bot (official: a site a Bot signed into stays available to
+  // the others). Login *markers* live in computer.json so any Bot can read
+  // them; real cookie contents / cloud microVM remain external (honest residual).
+  function sharedBrowserState() {
+    const data = loadComputer();
+    const sb =
+      data.shared_browser && typeof data.shared_browser === "object"
+        ? data.shared_browser
+        : {};
+    const profileDir = path.join(
+      REPO_ROOT,
+      "data",
+      "connectors",
+      "identity",
+      "chrome-user-data",
+    );
+    return {
+      data,
+      shared_browser: {
+        user_data_dir: sb.user_data_dir || profileDir,
+        shared_across_bots: true,
+        sites: sb.sites && typeof sb.sites === "object" ? sb.sites : {},
+      },
+    };
+  }
+
+  function recordSharedBrowserSession({ bot_id, site, signed_in = true, detail }) {
+    const name = String(site || "").trim();
+    if (!name) return { ok: false, error: "site_required", mode: "host_computer_shared_session" };
+    const id = String(bot_id || "agent-bit");
+    const at = nowIso();
+    const { data, shared_browser } = sharedBrowserState();
+    try {
+      fs.mkdirSync(shared_browser.user_data_dir, { recursive: true });
+    } catch (_) {
+      /* profile dir is best-effort on read-only hosts */
+    }
+    shared_browser.sites[name] = {
+      signed_in: signed_in !== false,
+      by_bot: id,
+      at,
+      detail: String(detail || "").slice(0, 160),
+    };
+    data.shared_browser = shared_browser;
+    saveComputer(data);
+    return {
+      ok: true,
+      mode: "host_computer_shared_session",
+      site: name,
+      by_bot: id,
+      shared_browser,
+      visible_to_bots: "all",
+      pretend_cookies: false,
+      real_cloud_vm: false,
+      at,
+    };
+  }
+
+  function readSharedBrowserSession({ bot_id } = {}) {
+    const { shared_browser } = sharedBrowserState();
+    const sites = shared_browser.sites;
+    return {
+      ok: true,
+      mode: "host_computer_shared_session",
+      asker_bot: String(bot_id || "agent-bit"),
+      shared_across_bots: true,
+      user_data_dir: shared_browser.user_data_dir,
+      sites,
+      signed_in_sites: Object.keys(sites).filter((s) => sites[s] && sites[s].signed_in),
+      visible_to_bots: "all",
+      pretend_cookies: false,
+      real_cloud_vm: false,
+      cookie_sandbox_residual: true,
+      note: "共享登录标记可跨 Bot 读取；真实 Cookie/云 microVM 属外部依赖（诚实残留）。",
+    };
+  }
+
   function computerFrame(botId) {
     // Look for latest frame for this bot
     try {
@@ -2041,6 +2119,8 @@ function createProductSurface(repoRoot) {
     // Computer
     computerFrame,
     recordComputerAction,
+    recordSharedBrowserSession,
+    readSharedBrowserSession,
     cuLockAcquire,
     cuLockRelease,
     cuLockStatus,
