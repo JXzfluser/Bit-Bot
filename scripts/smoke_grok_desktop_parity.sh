@@ -1318,6 +1318,43 @@ grep -q "负向对照：抹掉 startVoiceInput" /tmp/g36-probe.log 2>/dev/null \
   && ok "G-36 负向对照：抹掉 startVoiceInput() 调用 → 分支断言翻假（非恒真）" \
   || bad "G-36 negative control"
 
+echo "== G-37 M37 布局修复 + CN/EN 清扫（侧栏账户弹层 / 全局 [hidden] / i18n 字典）=="
+if timeout 900 node scripts/prove_m37_layout.js > /tmp/g37-probe.log 2>&1; then
+  ok "G-37 M37 布局与中英清扫契约全绿（$(grep -c '✓' /tmp/g37-probe.log) 项，$(tail -1 /tmp/g37-probe.log)）"
+else
+  bad "G-37 M37 布局契约（见 /tmp/g37-probe.log）"
+fi
+grep -q "全局 \[hidden\] { display: none !important" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：全局 [hidden] !important，防 UA 语义被 display:flex 顶掉" \
+  || bad "G-37 global hidden reset missing"
+grep -q "#account-popup 使用 position: fixed" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：账户弹层 position: fixed + z-index: 4x（不被 #agents 裁剪）" \
+  || bad "G-37 popup stacking missing"
+grep -q "setAccountPopup(open)：hidden 属性 + aria-expanded 同步" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：setAccountPopup 单一真源（hidden 属性 + aria-expanded）" \
+  || bad "G-37 popup single-source missing"
+grep -q 'Escape 键 → setAccountPopup(false)' /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：Escape 关闭弹层" \
+  || bad "G-37 escape close missing"
+grep -q "gpQueueNote.*已本地化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：gpQueueNote 已本地化（后台审批队列）" \
+  || bad "G-37 gpQueueNote CN leak"
+grep -q "autoReview.*已本地化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：autoReview 已本地化（自动复核规则）" \
+  || bad "G-37 autoReview CN leak"
+grep -q "accountSection.*已本地化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：accountSection 已本地化（账户 · 本地 profile）" \
+  || bad "G-37 accountSection CN leak"
+grep -q "settings-tab 动态标签 map 已中文化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：settings-tab 动态标签 map（常规 / 电脑 / 凭证）" \
+  || bad "G-37 settings-tab map missing"
+grep -q "composer placeholder 已中文化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：composer placeholder 已中文化（给 Bit Bot 发消息…）" \
+  || bad "G-37 composer placeholder missing"
+grep -q "负向对照：抹掉 removeAttribute" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 负向对照：抹掉 removeAttribute → 断言翻假（非恒真）" \
+  || bad "G-37 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

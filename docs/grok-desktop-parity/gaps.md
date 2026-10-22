@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M36 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=252 FAIL=0**。新增 `prove_m36_voicehotkey.js` 5/0（Cmd/Ctrl+D 语音绑定与 🎙 按钮共用 startVoiceInput 单一入口，含 typeof guard 与负向对照）。M33 / M34 / M35 契约保持。详见 Wave M36。
+> 验收证据（M37 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=263 FAIL=0**。新增 `prove_m37_layout.js` 13/0（全局 `[hidden] { display: none !important }` 兜底；`#account-popup` 改 `position: fixed` + `z-index: 45`；`setAccountPopup(open)` 单一真源同步 `hidden` 与 `aria-expanded`；Escape 关闭；侧栏 280px；M37 batch 1/2 CN/EN 清扫覆盖 gpQueueNote / autoReview / accountSection / accountLabelPlaceholder / aria New chat / settings-tab map / composer placeholder）。M33 / M34 / M35 / M36 契约保持。详见 Wave M37。
+> 验收证据（M36）：`scripts/smoke_grok_desktop_parity.sh` **PASS=252 FAIL=0**。新增 `prove_m36_voicehotkey.js` 5/0（Cmd/Ctrl+D 语音绑定与 🎙 按钮共用 startVoiceInput 单一入口，含 typeof guard 与负向对照）。M33 / M34 / M35 契约保持。详见 Wave M36。
 > 验收证据（M35）：`scripts/smoke_grok_desktop_parity.sh` **PASS=247 FAIL=0**。新增 `prove_m35_hotkeys.js` 6/0（Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键面板，DOM 建、三语齐、复用 bb-modal / bb-sheet、含负向对照）。M33 / M34 契约保持。详见 Wave M35。
 > 验收证据（M34）：`scripts/smoke_grok_desktop_parity.sh` **PASS=241 FAIL=0**。新增 `prove_m34_account_actions.js` 5/0（账户弹层入口落地：三项走 open settings anchor、三项走中文占位 callout、handler 都收 popup；含负向对照）；`prove_m33_grokchrome.js` 8/0（新增 Composer 圆形 ↑ 发送按钮断言）；其余 M33 契约保持。详见 Wave M34。
 > 验收证据（M33）：`scripts/smoke_grok_desktop_parity.sh` **PASS=234 FAIL=0**。新增 `prove_m33_grokchrome.js` 7/0（侧栏图标工具栏、账户弹层、送达状态、typing indicator、CN/EN 分离、语言下拉原生名、负向对照）；`prove_m20_ui.js` 24/0（sidebar 宽度契约更新为 280px 以匹配 Grok 视觉密度）；`prove_m24_window.js` 29/0。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m23_memory.js` 26/0；`prove_m26_botpanel.js` 27/0；其余探针与 M32 一致。内核未改。详见 Wave M33。
@@ -785,3 +786,72 @@
 ### 4) 诚实残留
 - 录音中再按一次 D 是否等价"停止"目前取决于 `startVoiceInput` 内部 toggle；本波不重编该函数，只保证快捷键与按钮走同一入口。若后续 toggle 语义变化（比如加确认），面板与实现同步改。
 - Windows/Linux 用 `Ctrl+D` 触发的是"发送 EOF"的 shell 习惯 —— Electron 里在窗口内被 `preventDefault` 拦下，不会误发；若焦点跳出主窗口到子进程终端，需要 tray 层的处理，本波不管。
+
+---
+
+## Wave M37（左侧账户弹层修复 + 全局 `[hidden]` 兜底 + CN/EN 中英混排清扫）
+
+用户直接反馈："界面的显示各种中英文混搭的情况。完全没办法使用。左侧底部怎么点击显示和隐藏？" — 本波针对性解决三个可用性问题。
+
+### 1) 实现
+
+**a. 左侧账户弹层"点了没反应"根因修复**
+- 症状：`#account-bar` 点击后 popup 不出现，或出现后关不掉。
+- 根因：作者 CSS `#account-popup { display: flex; ... }` 覆盖了 UA `[hidden] { display: none }`。`hidden` 属性只影响 UA 样式，被同层/更高特异性的作者 `display` 顶掉后完全失效。
+- 修复：
+  - `ui_chrome.css:198` 加全局 `[hidden] { display: none !important; }` 兜底，杜绝同类 bug 复发；
+  - `#account-popup` 改 `position: fixed; left: 12; right: 12; max-width: 260; bottom: 68; z-index: 45`，脱离 `#agents { overflow: auto }` 裁剪；
+  - `#account-popup[hidden] { display: none !important; opacity: 0; pointer-events: none }` 与 `:not([hidden]) { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto }` 用带过渡的两态；
+  - `setAccountPopup(open)` 单一真源（`index.html:~7622`）：`removeAttribute` / `setAttribute("hidden","")` + `aria-expanded="true|false"` 同步；
+  - 所有 M34 handler 都走 `setAccountPopup(false)` 再 dispatch，Escape 键关闭。
+
+**b. 侧栏视觉层次与密度**
+- `--sidebar-w: 260 → 280px`（对齐 Grok 桌面）；
+- `.panel-title` 大写化 + `letter-spacing`；
+- `.sess-row` 36px 头像 + active 左侧 inset rail；
+- `#sidebar-toolbar` 图标按钮重排（搜索 / 新对话）；
+- `#account-bar` 头像改渐变圆；
+- `#account-popup .ap-item` 分 `.ap-ic` + `.ap-tx`；
+- `.msg.user` 圆角 `18px` 硬编码（保 M20 契约）；
+- `.msg.assistant .body` 背景 `var(--bot-bubble)`（M20 契约）；
+- Composer 发送按钮 → 36px 圆形 ↑；两层阴影；
+- `#ap-settings` → `#sidebar-settings-btn`，M24 六项入口契约不破。
+
+**c. CN/EN 中英混排清扫（batch 1 + batch 2）**
+- **Batch 1**（27 项 raw HTML）：`Multi-end roster → 多端花名册`、`X search → X 搜索`、`Delete… → 删除…`、`booting MoonBit… → 正在启动 MoonBit…`、`I'm done → 我完成了`、`Slack / Teams outbound + claim → Slack / Teams 出站 + 认领`、plugins-meta / delivery-meta / memory-meta / shell/FS / git/PR plan / Image/video/chart / voice-meta / box-meta / cloud-meta / routines-meta / Auto-review settings / Draft · cold · on-behalf · claim / sandbox eml 等；
+- **Batch 2**（49 项，其中 5 项二次修正后全绿）：
+  - aria-label：`New chat → 新对话` 等；
+  - settings-tab 动态标签 map：`{ general: "常规", computer: "电脑", credentials: "凭证", usage: "用量与账单", updates: "更新" }`；
+  - 动态字符串：`Open with OS → 用系统程序打开`、`Allow once → 本次允许`、`Always allow → 总是允许`、`Deny → 拒绝`、`Privacy Mode: unavailable → 隐私模式：不可用 · 由账户侧管理`、`Discarded → 已丢弃`、`Agent ·` 前缀本地化；
+  - Composer placeholder：`给 Bit Bot 发消息…（/ 唤起技能 · @ 提及 Bot · Shift+Enter 换行）`；
+  - i18n zh-CN + zh-TW 值：`gpQueueNote`、`autoReview`、`accountSection`、`tabUsage`、`accountLabelPlaceholder`；
+  - HTML `#gp-account-label` placeholder 从 `profile 名（如 Personal / Work）` → `配置名（如「个人」「工作」）`；
+  - 关键 `gp-label`（`gpQueueNote` / `autoReview` / `accountSection`）从 `hint` → `gp-label` 类，DOM 契约与新 CSS 层次匹配。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m37_layout.js` **PASS=13 FAIL=0**
+  - 1) 全局 `[hidden] { display: none !important }` 兜底；
+  - 2) `#account-popup` `position: fixed` + `z-index: 4x`；
+  - 3) `setAccountPopup(open)` 单一真源（`hidden` 属性 + `aria-expanded`）；
+  - 4) Escape → `setAccountPopup(false)`；
+  - 5) `--sidebar-w: 280px`；
+  - 6) gpQueueNote / autoReview / accountSection / accountLabelPlaceholder 已本地化；
+  - 7) `aria-label="新对话"`；
+  - 8) settings-tab 动态标签 map；
+  - 9) composer placeholder；
+  - 10) 负向对照：抹掉 `removeAttribute` → setAccountPopup 断言翻假。
+- `node --check /tmp/r.js`（inline JS 抽出后） **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=263 FAIL=0**（252 → +11 G-37）
+- M33 / M34 / M35 / M36 契约保持，未破坏历史验收。
+
+### 3) NG-001（本波故意不像素对齐）
+- 侧栏宽度取 280 而非 Grok 官方测量值（不同版本 275–285 浮动，280 是本波选定的稳定中间值）；
+- 消息气泡圆角 18 而非 Grok 的精确值（M20 契约锁死）；
+- 不做深色主题 / 不做用户可自定义 accent color —— 本波专注浅色 Grok parity；
+- Composer 发送按钮 36px 而非 Grok 44px 触摸尺寸（桌面端优先）。
+
+### 4) 诚实残留
+- **中英混排仍存 5–10 处稀有路径**：本次扫描（`docs/grok-desktop-parity/m37-scan.md`）列 52 条；batch 1/2 已覆盖高频 70 余条；剩余多为深度设置项（例如 `Usage & Billing` 段内文），本波未做完整清扫，留 M38。
+- **动态 `data-i18n="booting"` 全量 sweep**：目前只对 MoonBit / kernel 常见 boot 消息做了 CN；`booting <unknown>` 兜底字符串未做通用替换。若未来 boot 消息源增多，需 `wavegT` 前加模板匹配。
+- **hover actions bar**（消息悬浮工具栏 / 空态插画 / welcome screen / 设置 sheet 精修）本波不做，只是把 popup 修好、sidebar 层级拉齐、composer 焦点态补齐；后续 UI 精修波 M38+ 承接。
+- **zh-TW 与 zh-CN 分叉**：本波 20 项 i18n 双值同步；若某 key 只在 zh-CN 补 CN，zh-TW 保持原样，未来扫描应加"两侧同 CN 覆盖"断言。
