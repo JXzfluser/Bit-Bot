@@ -151,7 +151,7 @@ function main() {
     : bad("ca i18n", missing.join(", "));
 
   /* ---- 6b) One token layer for later waves ---- */
-  /--sidebar-w:\s*260px/.test(chrome) &&
+  /--sidebar-w:\s*280px/.test(chrome) &&
     /--tools-w:\s*280px/.test(chrome) &&
     /--rail-w:\s*340px/.test(chrome) &&
     /--space-1:\s*4px/.test(chrome) &&
