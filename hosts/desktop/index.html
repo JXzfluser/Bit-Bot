@@ -204,10 +204,18 @@
     cursor: pointer;
   }
   #header-actions button:hover { background: var(--accent-soft); color: var(--ink); }
-  #header-actions button.active {
-    border-color: var(--muted);
-    color: var(--ink);
+  #header-actions button:active { transform: scale(0.96); }
+  #header-actions button {
+    transition: background 0.12s ease, color 0.12s ease, transform 0.06s ease;
   }
+  /* Wave M44: button has border:0, so the old `border-color` active rule was
+     dead — the open panel had no highlighted toggle. Give active a real fill. */
+  #header-actions button.active {
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  #header-actions button.active:hover { background: #333; }
   #model-picker {
     display: flex;
     align-items: center;
@@ -1488,6 +1496,7 @@
     #composer #send:active,
     #composer #attach-btn:active,
     #composer #voice-btn:active,
+    #header-actions button:active,
     .sess-row:active,
     .sess-row:hover { transform: none; }
   }
@@ -10830,6 +10839,10 @@
       if (open) closeBotRail(); // one optional right panel at a time (G-22/G-23)
       document.body.classList.remove("conv-open");
       document.body.classList.toggle("computer-open", open);
+      // Wave M44: reflect the rail state on the header toggle so the new
+      // visible .active fill actually lights up (previously never toggled).
+      const gpBtn = document.getElementById("gp-panel-btn");
+      if (gpBtn) gpBtn.classList.toggle("active", open);
       if (open) {
         renderComputerRail();
         pollComputerFrame(true);

@@ -1498,6 +1498,31 @@ grep -q "负向对照：抹掉分段样式" /tmp/g43-probe.log 2>/dev/null \
   && ok "G-43 负向对照：抹掉分段样式 → 容器断言翻假（非恒真）" \
   || bad "G-43 negative control"
 
+echo "== G-44 Header active 高亮修复（M44：dead border-color → 实心填充）=="
+if timeout 900 node scripts/prove_m44_header.js > /tmp/g44-probe.log 2>&1; then
+  ok "G-44 M44 header 契约全绿（$(grep -c '✓' /tmp/g44-probe.log) 项，$(tail -1 /tmp/g44-probe.log)）"
+else
+  bad "G-44 M44 header 契约（见 /tmp/g44-probe.log）"
+fi
+grep -q "实心 accent 填充" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 GP-M44：header 按钮 active 改实心 accent 填充（修 dead border-color）" \
+  || bad "G-44 active fill missing"
+grep -q "#header-actions button:active scale(0.96)" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 GP-M44：header 按钮 :active scale(0.96) 与 composer 节奏一致" \
+  || bad "G-44 header press missing"
+grep -q "reduced-motion 下 #header-actions" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 GP-M44：reduced-motion 归零 header 按压位移" \
+  || bad "G-44 rm header missing"
+grep -q "把 rail open 状态回写 gp-panel-btn" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 GP-M44：toggleComputerRail 把 open 状态回写 gp-panel-btn.active（CSS+JS 双端闭合）" \
+  || bad "G-44 gp active sync missing"
+grep -q "M20 回归护栏：#header-actions 仍 justify-content: flex-end" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 M20 回归护栏：header-actions 对齐不破" \
+  || bad "G-44 M20 regression"
+grep -q "负向对照：塞回 dead border-color" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 负向对照：塞回 dead border-color → active 断言翻假（非恒真）" \
+  || bad "G-44 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

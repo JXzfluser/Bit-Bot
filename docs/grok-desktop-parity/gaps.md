@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M43 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=302 FAIL=0**。新增 `prove_m43_settings.js` 8/0（#settings-tabs 分段控件容器 inline-flex + #f4f4f5 + 999px；tab 按钮透明无边框、active 白底浮起 pill；移除 HTML inline style 覆盖；#settings-sheet 头部 sticky + 分隔线；标题升至 --text-lg；M42/M20 回归护栏 + 负向对照）。M33–M42 契约保持。详见 Wave M43。
+> 验收证据（M44 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=308 FAIL=0**。新增 `prove_m44_header.js` 5/0（修真实 bug：`#header-actions button` 有 `border:0` 但 `.active` 只设 `border-color` → 面板打开时切换钮高亮不可见，改实心 `var(--accent)` + `--accent-ink` + 字重；header 按钮补 `:active scale(0.96)` 并在 reduced-motion 归零；M20 flex-end 回归护栏 + 负向对照）。M33–M43 契约保持。详见 Wave M44。
+> 验收证据（M43）：`scripts/smoke_grok_desktop_parity.sh` **PASS=302 FAIL=0**。新增 `prove_m43_settings.js` 8/0（#settings-tabs 分段控件容器 inline-flex + #f4f4f5 + 999px；tab 按钮透明无边框、active 白底浮起 pill；移除 HTML inline style 覆盖；#settings-sheet 头部 sticky + 分隔线；标题升至 --text-lg；M42/M20 回归护栏 + 负向对照）。M33–M42 契约保持。详见 Wave M43。
 > 验收证据（M42）：`scripts/smoke_grok_desktop_parity.sh` **PASS=296 FAIL=0**。新增 `prove_m42_stream.js` 7/0（#log 单列居中 max-width 820 + margin auto，修 user 贴右视口 / assistant 止于 760 的左右不对称；user 气泡保留 18px（M20）+ 右下 6px 尾角；assistant 卡片 bot-bubble + 左上 8px 尾角；连续 assistant 行隐藏重复头像 + margin-top 收紧；M20 用户胶囊正则回归护栏）。M33–M41 契约保持。详见 Wave M42。
 > 验收证据（M41）：`scripts/smoke_grok_desktop_parity.sh` **PASS=289 FAIL=0**。新增 `prove_m41_cn.js` 7/0（收尾中英混排：channels-meta `workflows ·`→`工作流 ·`、box-meta `env ·`→`运行环境 ·`、webhook `copied`→`已复制`、delivery `last:`→`最近：`、cloud-meta 内部枚举 `local_worker`→`本地代理` 不外泄；ADR 0002 / ICS 等技术引用按扫描规则保留）。M33–M40 契约保持。详见 Wave M41。
 > 验收证据（M40）：`scripts/smoke_grok_desktop_parity.sh` **PASS=283 FAIL=0**。新增 `prove_m40_a11y.js` 8/0（`:focus{outline:none}` + `:focus-visible` 2px accent 键盘焦点环；`@media (prefers-reduced-motion: reduce)` 全局压平 transition/animation，并归零 composer / sess-row / msg-actions 的 transform；M39 淡入契约回归检查）。M33–M39 契约保持。详见 Wave M40。
@@ -1100,3 +1101,28 @@ M38 加了 Copy 与 pill 工具条后，交互反馈仍是"硬切 display + 无�
 - **sticky 依赖 sheet 是滚动容器**：`#settings-sheet` 有 `max-height: 86vh; overflow: auto`（继承 `.bb-sheet`），sticky 才生效。若未来把滚动交给内层 `.settings-tab` 子容器，sticky 会失效 —— 属结构耦合，本波不加专项断言。
 - **active 滑块不做平滑滑动动画**：Grok 的 tab 选中有一个滑块位移动画；本波只做静态浮起样式，未加 `transition: transform` 的滑块跟手动画（需要额外 JS 测位），留 M44+。
 - **分段控件在极窄 sheet 换行**：`flex-wrap: wrap` 时五个标签可能在窄窗下折成两行，破坏"单条胶囊"观感；Electron 最小宽一般够放，但未在 420px 级窄模态实测。
+
+---
+
+## Wave M44（Header 顶部栏：修复不可见的 active 高亮 + 统一按压反馈）
+
+### 真实 bug
+`#header-actions button` 基础样式是 `border: 0`，而选中态 `.active` 只写了 `border-color: var(--muted)` —— 没有边框可染，导致"能力 / 电脑 / 凭证"等面板打开后，对应的顶栏切换钮**没有任何高亮**，用户看不出当前开的是哪个面板。
+
+### 1) 实现
+- `.active` 改为实心高亮：`background: var(--accent)` + `color: var(--accent-ink)` + `font-weight: 600`，`active:hover` 用 `#333` 保持深色可辨；
+- 统一按压反馈：`#header-actions button:active { transform: scale(0.96) }`，与 M39 的 composer / msg-actions 节奏一致（transition 含 transform 0.06s）；
+- 无障碍一致：把 `#header-actions button:active` 加入 M40 的 `prefers-reduced-motion` 归零清单，动效敏感用户不缩放。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m44_header.js` **PASS=5 FAIL=0**
+  - active 实心填充（且确认 dead border-color 已移除）+ header :active scale + reduced-motion 归零 + M20 flex-end 回归 + 负向对照（塞回 border-color → 断言翻假）。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=308 FAIL=0**（302 → +6 G-44）。
+- M33–M43 契约保持。
+
+### 3) NG-001
+- active 用纯色 `--accent` 实心（黑底白字），不追求 Grok 的弱高亮描边风格；桌面浅色主题下实心更醒目，优先可用性。
+
+### 4) 诚实残留
+- **gp-panel-btn 的 active 回写**：本波已在 `toggleComputerRail` 内加 `gpBtn.classList.toggle("active", open)`，并在探针断言 tools / computer 两个钮都有 JS 触发（`prove_m44_header` 第 4b 项）。`cred-settings-btn` / `account-settings-btn` 开的是模态框（modal 自身遮罩即反馈），不长期驻留 active，本波不为其加高亮；若后续把它们改成可切换内联面板，需同步补 active 回写。

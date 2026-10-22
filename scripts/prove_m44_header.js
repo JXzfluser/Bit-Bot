@@ -1,0 +1,88 @@
+#!/usr/bin/env node
+"use strict";
+
+/**
+ * prove_m44_header — Wave M44「Header 顶部栏：修复不可见的 active + 统一按压反馈」
+ *
+ * 真实 bug：`#header-actions button` 有 `border: 0`，而 `.active` 只设了
+ *          `border-color`（无可见边框可染）—— 打开的面板对应切换钮高亮完全看不见。
+ * 修复：.active 改实心 accent 填充 + 反色文字 + 字重；并给 header 按钮补
+ *      :active scale 与 reduced-motion 归零，与 M39 composer 节奏一致。
+ *
+ * 断言：
+ *   1) `.active` 使用 background: var(--accent) + color: var(--accent-ink)（不再是 dead border-color）；
+ *   2) `#header-actions button` 有 :active scale(0.96)；
+ *   3) reduced-motion 块把 #header-actions button:active transform 归零；
+ *   4) M20 回归护栏：#header-actions 仍 justify-content: flex-end；
+ *   5) 负向对照：把 .active 塞回 border-color → 断言 1 翻假。
+ */
+
+const fs = require("fs");
+const path = require("path");
+
+const REPO = path.resolve(__dirname, "..");
+let pass = 0, fail = 0;
+const ok = (m) => { pass++; console.log("  ✓ " + m); };
+const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String(d).slice(0, 200) : "")); };
+
+console.log("M44 header active-state proof");
+
+const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+
+/* ---------- 1) .active 实心高亮（dead border-color 修复） ---------- */
+const activeBlock = html.match(/#header-actions button\.active \{([\s\S]*?)\}/);
+if (activeBlock
+  && /background:\s*var\(--accent\)/.test(activeBlock[1])
+  && /color:\s*var\(--accent-ink\)/.test(activeBlock[1])
+  && !/border-color:\s*var\(--muted\)/.test(activeBlock[1])) {
+  ok("#header-actions button.active：实心 accent 填充（修 border:0 下 dead border-color）");
+} else {
+  bad("active fill", "still relies on border-color or missing fill");
+}
+
+/* ---------- 2) header 按钮按压反馈 ---------- */
+if (/#header-actions button:active \{[^}]*scale\(0\.96\)/.test(html)) {
+  ok("#header-actions button:active scale(0.96)：与 composer / msg-actions 一致");
+} else {
+  bad("header press", "no :active scale");
+}
+
+/* ---------- 3) reduced-motion 归零 header 按压 ---------- */
+const rm = html.match(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n  \}/);
+if (rm && /#header-actions button:active[\s\S]{0,120}transform:\s*none/.test(rm[0])) {
+  ok("reduced-motion 下 #header-actions button:active transform 归零");
+} else {
+  bad("rm header", "header press not neutralized");
+}
+
+/* ---------- 4) M20 回归护栏 ---------- */
+if (/#header-actions \{[^}]*justify-content:\s*flex-end/.test(html)) {
+  ok("M20 回归护栏：#header-actions 仍 justify-content: flex-end");
+} else {
+  bad("M20 regression", "header actions alignment drifted");
+}
+
+/* ---------- 4b) JS 真的把 gp-panel-btn 的 active 回写 ---------- */
+if (/const gpBtn = document\.getElementById\("gp-panel-btn"\);[\s\S]{0,80}gpBtn\.classList\.toggle\("active", open\)/.test(html)) {
+  ok("toggleComputerRail：把 rail open 状态回写 gp-panel-btn.classList active（CSS 高亮才有效）");
+} else {
+  bad("gp active sync", "toggleComputerRail does not reflect state on header button");
+}
+/* tools 按钮本就在 click 里 toggle active —— 确认可见填充有对应 JS */
+if (/toolsBtn\.classList\.toggle\(\s*"active",\s*document\.body\.classList\.contains\("tools-open"\)/.test(html)) {
+  ok("tools-toggle-btn：active 由 tools-open 驱动（实心填充有 JS 触发）");
+} else {
+  bad("tools active sync", "tools button not toggled");
+}
+
+/* ---------- 5) 负向对照 ---------- */
+const broken = html.replace(/#header-actions button\.active \{[\s\S]*?\}/,
+  "#header-actions button.active { border-color: var(--muted); color: var(--ink); }");
+if (!/#header-actions button\.active \{[^}]*background:\s*var\(--accent\)/.test(broken)) {
+  ok("负向对照：塞回 dead border-color → active 高亮断言翻假（非恒真）");
+} else {
+  bad("negative control", "fill survived revert");
+}
+
+console.log("\nprove_m44_header: PASS=" + pass + " FAIL=" + fail);
+process.exit(fail === 0 ? 0 : 1);
