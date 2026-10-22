@@ -1476,6 +1476,28 @@ grep -q "负向对照：抹掉 #log max-width" /tmp/g42-probe.log 2>/dev/null \
   && ok "G-42 负向对照：抹掉 #log max-width → 居中列断言翻假（非恒真）" \
   || bad "G-42 negative control"
 
+echo "== G-43 Settings 面板精修（M43：分段 tab 条 + sticky 头部）=="
+if timeout 900 node scripts/prove_m43_settings.js > /tmp/g43-probe.log 2>&1; then
+  ok "G-43 M43 设置面板契约全绿（$(grep -c '✓' /tmp/g43-probe.log) 项，$(tail -1 /tmp/g43-probe.log)）"
+else
+  bad "G-43 M43 设置面板契约（见 /tmp/g43-probe.log）"
+fi
+grep -q "#settings-tabs 分段控件容器" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 GP-M43：#settings-tabs 分段控件（inline-flex + 浅底 + 999px）" \
+  || bad "G-43 segmented tabs missing"
+grep -q "sheet 头部 sticky" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 GP-M43：sheet 头部 sticky（滚动时标题常驻）" \
+  || bad "G-43 sticky head missing"
+grep -q "HTML #settings-tabs 无 inline style" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 GP-M43：HTML 无 inline style，CSS 分段控件不被覆盖" \
+  || bad "G-43 inline style leak"
+grep -q "M42 消息流分组 + M20 用户胶囊契约保持" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 回归护栏：M42 分组 + M20 用户胶囊契约保持" \
+  || bad "G-43 regression"
+grep -q "负向对照：抹掉分段样式" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 负向对照：抹掉分段样式 → 容器断言翻假（非恒真）" \
+  || bad "G-43 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M42 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=296 FAIL=0**。新增 `prove_m42_stream.js` 7/0（#log 单列居中 max-width 820 + margin auto，修 user 贴右视口 / assistant 止于 760 的左右不对称；user 气泡保留 18px（M20）+ 右下 6px 尾角；assistant 卡片 bot-bubble + 左上 8px 尾角；连续 assistant 行隐藏重复头像 + margin-top 收紧；M20 用户胶囊正则回归护栏）。M33–M41 契约保持。详见 Wave M42。
+> 验收证据（M43 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=302 FAIL=0**。新增 `prove_m43_settings.js` 8/0（#settings-tabs 分段控件容器 inline-flex + #f4f4f5 + 999px；tab 按钮透明无边框、active 白底浮起 pill；移除 HTML inline style 覆盖；#settings-sheet 头部 sticky + 分隔线；标题升至 --text-lg；M42/M20 回归护栏 + 负向对照）。M33–M42 契约保持。详见 Wave M43。
+> 验收证据（M42）：`scripts/smoke_grok_desktop_parity.sh` **PASS=296 FAIL=0**。新增 `prove_m42_stream.js` 7/0（#log 单列居中 max-width 820 + margin auto，修 user 贴右视口 / assistant 止于 760 的左右不对称；user 气泡保留 18px（M20）+ 右下 6px 尾角；assistant 卡片 bot-bubble + 左上 8px 尾角；连续 assistant 行隐藏重复头像 + margin-top 收紧；M20 用户胶囊正则回归护栏）。M33–M41 契约保持。详见 Wave M42。
 > 验收证据（M41）：`scripts/smoke_grok_desktop_parity.sh` **PASS=289 FAIL=0**。新增 `prove_m41_cn.js` 7/0（收尾中英混排：channels-meta `workflows ·`→`工作流 ·`、box-meta `env ·`→`运行环境 ·`、webhook `copied`→`已复制`、delivery `last:`→`最近：`、cloud-meta 内部枚举 `local_worker`→`本地代理` 不外泄；ADR 0002 / ICS 等技术引用按扫描规则保留）。M33–M40 契约保持。详见 Wave M41。
 > 验收证据（M40）：`scripts/smoke_grok_desktop_parity.sh` **PASS=283 FAIL=0**。新增 `prove_m40_a11y.js` 8/0（`:focus{outline:none}` + `:focus-visible` 2px accent 键盘焦点环；`@media (prefers-reduced-motion: reduce)` 全局压平 transition/animation，并归零 composer / sess-row / msg-actions 的 transform；M39 淡入契约回归检查）。M33–M39 契约保持。详见 Wave M40。
 > 验收证据（M39）：`scripts/smoke_grok_desktop_parity.sh` **PASS=277 FAIL=0**。新增 `prove_m39_micro.js` 10/0（`.msg-actions` 淡入用 opacity + pointer-events 而非 display 硬切；按钮 `:active scale(0.96)`；`sess-row:hover translateX(1px)` + `:active scale(0.995)`；composer send/attach/voice `:active scale(0.94)`；M38 契约不破）。M33–M38 契约保持。详见 Wave M39。
@@ -1070,3 +1071,32 @@ M38 加了 Copy 与 pill 工具条后，交互反馈仍是"硬切 display + 无�
 - **相邻选择器只看直接前驱**：`A + A` 只在两条 assistant 紧贴时生效。若两条 assistant 之间夹了 `.msg.user` / `.secret-card` / `.msg.tool-run`，分组链断裂（符合预期：换了发言方就该重新显示头像）。但"工具调用回合是否算打断线程"存疑：若一个回合的 assistant 输出被 tool-run 气泡分隔，本波会重复显示头像。彻底方案需要渲染层给同一回合的多气泡打同一 group-id，用 `[data-group]` 选择器分组 —— 属渲染改造，本波不做。
 - **居中列在超窄窗**：<868px 时 `max-width: 820` 不触发，退回原有 padding 行为，无横向溢出，但未专门测 320px 极窄（Electron 最小宽一般 ≥ 800）。
 - **margin-top: -6px 与淡入 transform 叠加**：msg-actions 的 translateY(-2px) 在 hover 时不影响文档流（transform 不占位），与负 margin 无冲突，实测不抖动，但无专项断言。
+
+---
+
+## Wave M43（Settings 面板精修：分段控件 tab 条 + sticky 头部）
+
+设置面板是"配置一次、看很多次"的界面，本波把它从"平铺 chip + 会滚走的标题"升级为分段控件 + 常驻头部。
+
+### 1) 实现（`ui_chrome.css`，仅新增覆盖，不改原 .settings-tab-btn 基础样式）
+- **分段控件**：`#settings-tabs` 改 `inline-flex` 容器，`#f4f4f5` 浅底 + `1px --line` + `border-radius: 999px` + `gap: 2px`，把五个标签收进一条胶囊轨道；
+- **标签态**：`#settings-tabs .settings-tab-btn` 去边框 / 去阴影 / 透明底 / 999px；`hover` 半透白；`.active` 纯白 + `0 1px 3px rgba(0,0,0,0.10)` 浮起（选中项像"凸起的滑块"）；
+- **HTML 修正**：`<div id="settings-tabs">` 原有 inline `style="display:flex;..."` 会以行内优先级顶掉 CSS 的 `inline-flex`，本波移除该行内样式，让分段控件生效（探针第 3 条专测无 inline style）；
+- **sticky 头部**：`#settings-sheet .bb-sheet-head` `position: sticky` + 下分隔线 + 白底，负 margin 抵消 sheet padding，长设置页滚动时"设置"标题与关闭按钮常驻；
+- **标题层级**：`.bb-sheet-title` 升至 `--text-lg` + `letter-spacing: -0.01em`，与下方内容拉开层级。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m43_settings.js` **PASS=8 FAIL=0**
+  - 分段容器 / tab 默认态 / tab active 浮起 / HTML 无 inline style / sticky head / 标题 --text-lg / M42+M20 回归 / 负向对照。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=302 FAIL=0**（296 → +6 G-43）。
+- M33–M42 契约全部保持。
+
+### 3) NG-001
+- 分段控件底色 `#f4f4f5` 与 Grok 官方轨道色不做像素比对；本波只求"分段感 + 选中浮起"。
+- sticky 头部只在 `#settings-sheet` 内生效，其他 `.bb-sheet`（marketplace / bot-edit / hotkeys）不改，避免一次改动波及多个模态；若要全站统一 sticky，后续波单开。
+
+### 4) 诚实残留
+- **sticky 依赖 sheet 是滚动容器**：`#settings-sheet` 有 `max-height: 86vh; overflow: auto`（继承 `.bb-sheet`），sticky 才生效。若未来把滚动交给内层 `.settings-tab` 子容器，sticky 会失效 —— 属结构耦合，本波不加专项断言。
+- **active 滑块不做平滑滑动动画**：Grok 的 tab 选中有一个滑块位移动画；本波只做静态浮起样式，未加 `transition: transform` 的滑块跟手动画（需要额外 JS 测位），留 M44+。
+- **分段控件在极窄 sheet 换行**：`flex-wrap: wrap` 时五个标签可能在窄窗下折成两行，破坏"单条胶囊"观感；Electron 最小宽一般够放，但未在 420px 级窄模态实测。

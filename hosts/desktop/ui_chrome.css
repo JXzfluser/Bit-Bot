@@ -546,6 +546,53 @@ body.force-light {
   z-index: var(--z-modal);
 }
 
+/* Wave M43: settings sheet — segmented tab bar + sticky header +
+   refined chip active state, so opening Settings no longer feels flat. */
+#settings-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  background: #f4f4f5;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  margin-top: 10px;
+}
+#settings-tabs .settings-tab-btn {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+#settings-tabs .settings-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+}
+#settings-tabs .settings-tab-btn.active {
+  background: #ffffff;
+  color: var(--ink);
+  border: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
+}
+#settings-sheet .bb-sheet-head {
+  position: sticky;
+  top: calc(-1 * var(--space-7));
+  padding: var(--space-7) var(--space-7) 12px;
+  margin: calc(-1 * var(--space-7)) calc(-1 * var(--space-7)) 0;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+  z-index: 2;
+}
+#settings-sheet .bb-sheet-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
 /* Wave M35: 键盘快捷键 sheet —— 复用 .bb-modal / .bb-sheet 层，行样式独立，DOM 建。 */
 #hotkeys-modal .hk-list {
   display: flex;
