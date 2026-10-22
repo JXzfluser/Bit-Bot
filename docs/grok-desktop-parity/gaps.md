@@ -1,7 +1,20 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M31 最新）：`scripts/smoke_grok_desktop_parity.sh` PASS=229 FAIL=0；`moon test` 381/381（M26–M31 未改内核）；`scripts/prove_m31_reactions.js` 17/0；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
+> 验收证据（M44 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=308 FAIL=0**。新增 `prove_m44_header.js` 5/0（修真实 bug：`#header-actions button` 有 `border:0` 但 `.active` 只设 `border-color` → 面板打开时切换钮高亮不可见，改实心 `var(--accent)` + `--accent-ink` + 字重；header 按钮补 `:active scale(0.96)` 并在 reduced-motion 归零；M20 flex-end 回归护栏 + 负向对照）。M33–M43 契约保持。详见 Wave M44。
+> 验收证据（M43）：`scripts/smoke_grok_desktop_parity.sh` **PASS=302 FAIL=0**。新增 `prove_m43_settings.js` 8/0（#settings-tabs 分段控件容器 inline-flex + #f4f4f5 + 999px；tab 按钮透明无边框、active 白底浮起 pill；移除 HTML inline style 覆盖；#settings-sheet 头部 sticky + 分隔线；标题升至 --text-lg；M42/M20 回归护栏 + 负向对照）。M33–M42 契约保持。详见 Wave M43。
+> 验收证据（M42）：`scripts/smoke_grok_desktop_parity.sh` **PASS=296 FAIL=0**。新增 `prove_m42_stream.js` 7/0（#log 单列居中 max-width 820 + margin auto，修 user 贴右视口 / assistant 止于 760 的左右不对称；user 气泡保留 18px（M20）+ 右下 6px 尾角；assistant 卡片 bot-bubble + 左上 8px 尾角；连续 assistant 行隐藏重复头像 + margin-top 收紧；M20 用户胶囊正则回归护栏）。M33–M41 契约保持。详见 Wave M42。
+> 验收证据（M41）：`scripts/smoke_grok_desktop_parity.sh` **PASS=289 FAIL=0**。新增 `prove_m41_cn.js` 7/0（收尾中英混排：channels-meta `workflows ·`→`工作流 ·`、box-meta `env ·`→`运行环境 ·`、webhook `copied`→`已复制`、delivery `last:`→`最近：`、cloud-meta 内部枚举 `local_worker`→`本地代理` 不外泄；ADR 0002 / ICS 等技术引用按扫描规则保留）。M33–M40 契约保持。详见 Wave M41。
+> 验收证据（M40）：`scripts/smoke_grok_desktop_parity.sh` **PASS=283 FAIL=0**。新增 `prove_m40_a11y.js` 8/0（`:focus{outline:none}` + `:focus-visible` 2px accent 键盘焦点环；`@media (prefers-reduced-motion: reduce)` 全局压平 transition/animation，并归零 composer / sess-row / msg-actions 的 transform；M39 淡入契约回归检查）。M33–M39 契约保持。详见 Wave M40。
+> 验收证据（M39）：`scripts/smoke_grok_desktop_parity.sh` **PASS=277 FAIL=0**。新增 `prove_m39_micro.js` 10/0（`.msg-actions` 淡入用 opacity + pointer-events 而非 display 硬切；按钮 `:active scale(0.96)`；`sess-row:hover translateX(1px)` + `:active scale(0.995)`；composer send/attach/voice `:active scale(0.94)`；M38 契约不破）。M33–M38 契约保持。详见 Wave M39。
+> 验收证据（M38）：`scripts/smoke_grok_desktop_parity.sh` **PASS=269 FAIL=0**。新增 `prove_m38_copy.js` 8/0（消息悬浮 Copy 按钮 + clipboard/execCommand 双通道、pill 工具条 + backdrop-filter、welcome .w-brand 渐变、三语 copy* 齐备、含负向对照）。M33 / M34 / M35 / M36 / M37 契约保持。详见 Wave M38。
+> 验收证据（M37）：`scripts/smoke_grok_desktop_parity.sh` **PASS=263 FAIL=0**。新增 `prove_m37_layout.js` 13/0（全局 `[hidden] { display: none !important }` 兜底；`#account-popup` 改 `position: fixed` + `z-index: 45`；`setAccountPopup(open)` 单一真源同步 `hidden` 与 `aria-expanded`；Escape 关闭；侧栏 280px；M37 batch 1/2 CN/EN 清扫覆盖 gpQueueNote / autoReview / accountSection / accountLabelPlaceholder / aria New chat / settings-tab map / composer placeholder）。M33 / M34 / M35 / M36 契约保持。详见 Wave M37。
+> 验收证据（M36）：`scripts/smoke_grok_desktop_parity.sh` **PASS=252 FAIL=0**。新增 `prove_m36_voicehotkey.js` 5/0（Cmd/Ctrl+D 语音绑定与 🎙 按钮共用 startVoiceInput 单一入口，含 typeof guard 与负向对照）。M33 / M34 / M35 契约保持。详见 Wave M36。
+> 验收证据（M35）：`scripts/smoke_grok_desktop_parity.sh` **PASS=247 FAIL=0**。新增 `prove_m35_hotkeys.js` 6/0（Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键面板，DOM 建、三语齐、复用 bb-modal / bb-sheet、含负向对照）。M33 / M34 契约保持。详见 Wave M35。
+> 验收证据（M34）：`scripts/smoke_grok_desktop_parity.sh` **PASS=241 FAIL=0**。新增 `prove_m34_account_actions.js` 5/0（账户弹层入口落地：三项走 open settings anchor、三项走中文占位 callout、handler 都收 popup；含负向对照）；`prove_m33_grokchrome.js` 8/0（新增 Composer 圆形 ↑ 发送按钮断言）；其余 M33 契约保持。详见 Wave M34。
+> 验收证据（M33）：`scripts/smoke_grok_desktop_parity.sh` **PASS=234 FAIL=0**。新增 `prove_m33_grokchrome.js` 7/0（侧栏图标工具栏、账户弹层、送达状态、typing indicator、CN/EN 分离、语言下拉原生名、负向对照）；`prove_m20_ui.js` 24/0（sidebar 宽度契约更新为 280px 以匹配 Grok 视觉密度）；`prove_m24_window.js` 29/0。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m23_memory.js` 26/0；`prove_m26_botpanel.js` 27/0；其余探针与 M32 一致。内核未改。详见 Wave M33。
+> 验收证据（M32）：干净 store（`bots.json` 已存在但没有 `agent-bit` 行、`data/workspace` 空、`desktop-host.json` 不存在）上 `scripts/smoke_grok_desktop_parity.sh` **PASS=230 FAIL=0**。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m20_ui.js` 24/0；`prove_m23_memory.js` 26/0；`prove_m24_window.js` 29/0；`prove_m26_botpanel.js` 27/0。内核未改。详见 Wave M32。
+> 验收证据（M31 行为基线）：`scripts/smoke_grok_desktop_parity.sh` PASS=229 FAIL=0；`moon test` 381/381（M26–M31 未改内核）；`scripts/prove_m31_reactions.js` 17/0；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
 ## 逐条状态
@@ -642,3 +655,474 @@
 ### 5) 诚实残留（本波不假装）
 - **反应 picker 只有 6 emoji**：官方 Grok 的 picker 可能有更多 emoji 或自定义 emoji，当前只实现 6 个常用 emoji 的 picker；后续可扩展为完整 emoji 搜索。
 - **反应不通知对方**：当前反应只在本地 store 计数，不触发通知或其他 Bot 的同步；官方 Grok 的反应可能在多端同步，当前实现为单端。
+
+## Wave M32（桌面 chrome 令牌化：同一套壳层，不再按波次各写一套样式）
+
+背景：G-20..G-27 的侧栏、composer、`#log`、右栏、设置和对话框都已经接到真实 Host，但视觉规则散在 `index.html` 的大段 `<style>` 里，另有一段运行时注入的 `<style>` 只管侧栏折叠和 `#computer-rail`。间距、圆角、字号和表面色各波次各写一份，后面的功能容易互相盖掉。本波只收壳层，不改 Host IPC，不改 MoonBit 内核。
+
+### 1) 实现
+- **`hosts/desktop/ui_chrome.css`（新）**：唯一的颜色 / 间距 / 圆角 / 字号 / 壳层宽度 / z-index 表，外加共用组件（`.bb-modal`、`.bb-sheet`、`.bb-btn`、`.bb-field`、banner、card）。暗色在 `:root`，浅色在 `prefers-color-scheme: light`，强制态是 `body.force-dark` / `body.force-light`。`--text` 与 `--ink` 同值（原先被引用但从未定义）。壳层宽度 `--sidebar-w: 260px`、`--tools-w: 280px`、`--rail-w: 340px`。
+- **`hosts/desktop/index.html`**：组件布局继续留在页面 `<style>`，但改吃上面的变量。设置、连接应用、Marketplace、Bot 编辑、会话重命名/删除、Bot 删除共用同一层遮罩；设置从文档流里的卡片改成居中 sheet（`#settings-panel` 仍是原来的 id，打开时 `display:flex`）。侧栏折叠和 Computer 右栏的规则挪进样式表，并补上折叠同时打开 Bot 右栏 / 对话详情时的列宽（原先 `!important` 会把这两列压成 0）。删掉会盖住 composer 里 `.bb-btn` 的通用 `#composer button` 规则。
+- **打包**：`package.json` 的 `build.files` 带上 `ui_chrome.css`。
+- **探针**：`prove_m20_ui.js` 增加令牌表与共用对话框类的断言（21 → 24）。`prove_m24_window.js` 的右栏宽度改为认 token 文件里的 260/280/340，以及 `index.html` 里的 `var(--sidebar-w)` / `var(--rail-w)`。探针锁死的字面量保留：用户气泡 `border-radius: 18px`、未读点 `#2f7cf6`、`.ca-icon` 的 `10px`。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m20_ui.js` **24/0**
+- `node scripts/prove_m24_window.js` **29/0**（在 smoke 已种入 Bot 之后；空 store 上单独跑会缺「两个可见 Bot」）
+- `node scripts/prove_m25_profile.js` **25/0**；`prove_m27_convrail.js` **19/0**；`prove_m28_usage.js` **14/0**；`prove_m29_roomchat.js` **16/0**；`prove_m30_attachpreview.js` **10/0**；`prove_m31_reactions.js` **17/0**
+- `scripts/e2e_grok_desktop_boot.mjs` **124/0**。明暗像素：dark 亮度 35.4、light 239.9、差 204.5。设置 → Usage、Bot 右栏、对话详情、群聊 banner、Marketplace 都在真实 Electron 里点过。
+- 干净 store 复跑 `scripts/smoke_grok_desktop_parity.sh` **PASS=230 FAIL=0**（起点：`bots.json` 已存在但 `bots:[]`、没有 `agent-bit`；`data/workspace` 整目录删除；`desktop-host.json` 不存在）。G-16 E2E 仍是 **124/0**。此前那 10 条红是 store 前置，不是样式回归，修法如下，chrome 令牌未回退：
+  1. **`loadBots()`** 在文件缺失或已有文件缺 `agent-bit` 行时都写入内置 Bot。smoke 在 G-1、G-1b、G-6、G-26 前再调一次 `ensure_agent_bit`。`confirm delete bot agent-bit` 得到 `cannot_delete_builtin`，群聊 `bots=agent-bit,…` 找得到成员。
+  2. **G-17 清理之后**写回 `data/workspace/m23-shared-keep.txt`。`prove_m23_memory.js` 自己也会放同一份文件再按快照恢复，所以 GP-113/114 的共享文件计数不靠历史残留。单独跑该探针 **26/0**。
+  3. **G-26 负向对照**在 `desktop-host.json` 为 ENOENT 时从空的 v2 store 种一条记忆，不再抛错。`prove_m26_botpanel.js` **27/0**，`is_primary` 为布尔。
+
+### 3) NG-001（本波故意不像素对齐）
+复刻的是 spec §2.1 的结构：侧栏、composer、唯一的 `#log`、可选右栏、设置、对话框。颜色是 Bit Bot 中性色，没有 xAI 标志或专有皮肤。欢迎词与标题栏用同一套无衬线，不是另一套衬线字标。设置是居中 sheet，不是 Grok 设置窗口的像素拷贝。
+
+### 4) 诚实残留（留给后续）
+- 高级面板里仍有少量按钮的内联宽度（例如删除确认的 `#fff` / `6px`）。
+- 探针锁死的字面量还在（用户气泡 18px、未读 `#2f7cf6`、`.ca-icon` 10px）；旁边已有同值 token（`--radius-user`、`--unread`、`--radius-lg`）。
+- `@media (max-width: 900px)` 仍会丢掉 computer 网格区（本波之前就这样）。
+- 反应 picker 仍是 6 个 emoji（M31，不在本波范围）。
+- Computer 右栏的内边距在子元素上，不在 `#computer-rail` 自身（保持原先的 opacity 开合，避免改点击行为）。
+
+## Wave M33（对标 Grok Bot 桌面外观：浅色令牌 / 侧栏结构 / 送达指示 / 中英分离）
+
+背景：M32 完成后功能已完整，但视觉密度和 Grok 桌面版仍有几处可见差距 —— 侧栏顶部是一整条「+ 新对话」按钮（Grok 是 ⌕ + 两枚紧凑圆钮）、底部只有 Settings 按钮（Grok 是账户头像 + popup）、用户气泡右下角无送达状态（Grok 是 ✓ → ✓✓）、助手首帧前是空圆（Grok 是三点跳动）。此外侧栏和标签里中英混排明显（「Computer」「Marketplace」「Bots」直接暴露在中文界面）。本波只收视觉与文案，Host IPC、MoonBit 内核、探针行为契约均不变。
+
+### 1) 实现
+- **`hosts/desktop/ui_chrome.css`**：`:root` 默认切到 Grok 浅色表面（`--bg0: #ffffff` / `--ink: #1a1a1a` / `--line: #e3e3e6` / `--accent: #1a1a1a`），暗色保留在 `body.force-dark`（`--bot-bubble: #212121`），浅色在 `prefers-color-scheme: light`（`--bot-bubble: #f4f4f5`）。壳层宽度 `--sidebar-w` 从 260px 提到 280px（更接近 Grok 侧栏密度，`--tools-w` / `--rail-w` 不变）。
+- **`hosts/desktop/index.html`**：
+  - **侧栏顶部图标工具栏**（替换 `#sess-new` 全宽按钮）：`#sidebar-toolbar` sticky 列首，两枚 30px 圆钮：⌕ 搜索会话 (Ctrl/Cmd+K)、+ 新对话 (Ctrl/Cmd+N)；hover 才填色。
+  - **侧栏底部账户条**（Grok 风格）：`#account-bar` sticky 列尾，圆形字母头像 + Bit Bot 名 + 上弹 `#account-popup`。popup 内 8 项按官方分组：发现新版本 / 每周用量 / 获取移动版 Bit Bot → 分隔 → 支持 / 设置 → 分隔 → 添加账户 / 退出登录（红色）。Settings 项 id 保留 `sidebar-settings-btn`，M24 契约不破。
+  - **消息送达状态**：用户气泡右下角新增 `.msg-status`；`runUserTurn` 拿到 `stored_ids.user` 后加 `.read`（绿 ✓），finally 块把文本升到 ✓✓。CSS：`.msg-status .ms-check.read { color: #22c55e; font-weight: 700; }`。
+  - **助手 typing indicator**：`onLlmStream` 在 `phase === "start" | "provider"` 时给 `streamEl .body` 挂三个 `<i>` 的 `.typing` 胶囊（`@keyframes typingPulse`），首个 delta 覆盖为文本；只用 DOM 节点，GP-93 innerHTML 单一安全渲染路径不破。
+  - **中英分离**：`WAVEG_I18N` 三语段的常见英文标签全部本地化 —— `gpPanel`→「对齐面板」/「對齊面板」、`tabComputer`→「电脑」/「電腦」、`botComputer`→「Bot 的云端电脑」、`updateComputerBtn`/`resetComputerBtn`→「更新/重置云端电脑」、`gpRecover`→「恢复云端电脑」、`marketplace`→「模板市场」、`defaultBotName`→「新 Bot」、`advanced`→「高级 · 代理 / 队友」、`locExec`→「本地执行（电脑权限）」、`allowAuto`→「自动允许」、`askFirst`→「先询问」、`bots`→「Bot 列表」。同一批文案在 `index.html` 里的原始 HTML 默认值同步替换（101 个 debug-lab 按钮、composer 语音对话、审批卡按钮、外观 chips、语言标签、tab 按钮、Settings sheet 标题等），确保 i18n 兜底也不中英混。品牌词保留：Bit Bot / Bot / Gmail / Slack / Teams / MCP / Chrome / Cursor。语言下拉保留各语言原生名（English / 简体中文 / 繁體中文）。
+- **探针契约更新**：
+  - `prove_m20_ui.js`：`--sidebar-w` 由 260px 改认 280px（Grok 视觉密度是新契约）。用户胶囊 `border-radius: 18px` 与 `--bot-bubble: #212121 / #f4f4f5` 断言不变，index.html 侧改用 `background: var(--bot-bubble)` + `border-radius: 18px` 满足。
+  - `prove_m24_window.js`：`--sidebar-w` 同步到 280px；footer 顺序断言的 label 更新为「Settings（账号弹层内）」，DOM 检查逻辑不变（`#sidebar-settings-btn` 仍在 `#sidebar-footer` 内、顺序在 `#marketplace-btn` 之后）。
+- **新增 `scripts/prove_m33_grokchrome.js`（7 项 + 1 负向）**：静态层断言上面 5 类改动确实存在于 `index.html`，负向对照砍掉 `.msg-status .ms-check.read` 样式后送达断言翻假。smoke 中作为 G-33 段接线。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m33_grokchrome.js` **PASS=7 FAIL=0**
+- `node scripts/prove_m20_ui.js` **24/0**；`prove_m24_window.js` **29/0**；`prove_m31_reactions.js` **17/0**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=234 FAIL=0**（230 → +4 G-33 断言；其余探针无退步）
+- 中英混排扫描：`hosts/desktop/index.html` 中原始 HTML 剩余英文可见文本仅两处：`>Bit Bot<`（品牌名，正确）与 `<option value="en">English</option>`（语言下拉的原生名，正确）。`data-i18n` / `data-i18n-ph` 属性覆盖已完整。
+
+### 3) NG-001（本波故意不像素对齐）
+外观对齐 Grok 桌面版的密度与层次 —— 不是复制 xAI 品牌皮肤、不引用 Grok 官方图标、不复刻像素级字标。颜色是 Bit Bot 中性色（白 / 灰 / 黑 + 送达绿），头像字母「B」和「Bit Bot」占位账户，不是任何真实账号信息。
+
+### 4) 诚实残留（留给后续）
+- 账户 popup 目前 8 项按钮里，除「设置」外其余是占位（发现新版本 / 每周用量 / 移动版 / 支持 / 添加账户 / 退出登录）；Host IPC 后续接入真实 OTA / usage / 登出流程再落。
+- 送达状态 ✓/✓✓ 走本地回合边界（stored / turn end），不接多端同步；官方 Grok 的读回执在跨端场景下由服务端推送，Bit Bot 单机版仅本地语义。
+- 侧栏 `#sidebar-toolbar` 与 `#account-bar` 的 sticky 位置在窗口极窄时会与 popup 打架，尚未加媒体查询；`--sidebar-w` 280px 是最短安全宽度，后续如需继续压缩再补折叠态图标条。
+- 中英分离仅覆盖 `index.html` 里的可见 UI 文本；`data-i18n` 之外的内核短语（`runUserTurn("update computer", …)`）仍是英文关键词，属于「协议词」而非「用户可见文案」，不在本波范围。
+
+## Wave M34（账户弹层入口全部落地：不静默、有去处）
+
+背景：M33 侧栏底部加入了 Grok 风格的账户条与 8 项 popup，但只有 Settings 项接了真实动作，其余 5 项（发现新版本 / 每周用量 / 移动版 / 支持 / 添加账户 / 退出登录）都是"看得见、点了没反应"，这在功能上比没有更糟——违反「不做假 UI」的纪律。本波把 6 项都接到明确落点。
+
+### 1) 实现
+- **`hosts/desktop/index.html`**：
+  - `ap-update` → `runUserTurn("open settings entry=account anchor=update-status", { skipSession, silentUser })`，落到「设置 → 更新」tab。
+  - `ap-usage` → 同短语，`anchor=usage`，落到「设置 → 用量与账单」tab（M28 的 Usage & Billing 面板复用）。
+  - `ap-add-account` → `anchor=profile`，落到「设置 → 常规」tab 里的 profile 面板。
+  - `ap-mobile` / `ap-support` / `ap-signout` → `accountPlaceholder(msg)`：向对话流 append 一条中文助手气泡，明说"内测中 / 提 Issue 位置 / 单账户版本暂不支持登出"。不是弹窗、不是 toast，走 `#log`，与 Grok 的 chat-first 交互一致。
+  - 每个 handler 首行 `document.getElementById("account-popup").hidden = true`；popup 不会盖住展开后的 sheet。
+  - 锚点 `update-status` / `usage` / `profile` 早在 `SETTINGS_ANCHOR_TAB` 里已注册（M7），本波只是新增入口消费它们，内核与 Host 未改。
+- **新增 `scripts/prove_m34_account_actions.js`（5 项 + 1 负向）**：静态层断言三项短语、锚点注册表、三项占位 callout 都带中文、每个 handler 关 popup；负向对照抹掉 `anchor=usage` 短语，第 1 项断言应变红。smoke 里作为 G-34 接线。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m34_account_actions.js` **PASS=5 FAIL=0**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=241 FAIL=0**（235 → +6 G-34 断言）
+
+### 3) NG-001（本波故意不像素对齐）
+弹层菜单本身仍是 Bit Bot 中性色 + 「B」字母占位头像；未复刻 Grok 品牌图标、颜色、账户信息。三项"占位 callout"故意留在对话流，不假装是 Grok 官方移动版链接 —— 等 OTA / 支持渠道真实接入再升级为深链。
+
+### 4) 诚实残留
+- `ap-mobile` / `ap-support` 目前只出本地 callout，没有 `shell.openExternal` IPC 到真实仓库 / 商店页；官方 Grok 会跳 App Store。本波先做「有反馈不假绿」，下一波接 IPC 出口。
+- `ap-signout` 未真清 store；本地版本 profile 就是单条 default，"登出"目前语义上等价「删数据」，与用户直觉不符，故意只做提示。若后续引入多 profile，把这里改成 `switch profile -`。
+- `ap-add-account` 目前落到 General tab 的 profile 面板；Grok 是打开一张独立的 add-account modal。本波先复用现成 tab，未来再拆出。
+
+## Wave M35（键盘快捷键面板 + Cmd/Ctrl+K 搜索：Grok 桌面键盘可发现性）
+
+背景：Grok 桌面版把键盘绑定当作第一公民 —— `⌘K` 搜会话、`⌘/` 弹快捷键表，用户不用鼠标也能全流程。Bit Bot M34 之前只有 `⌘N`（新对话）/ `⌘B`（折叠侧栏）/ `⌘F`（Computer 面板）/ `⌘⇧M`（连接应用）四条接入 `wireAccelerators`，`⌘K` 只在按钮 `title` 里出现（点了没反应）、`⌘D` 语音在按钮 `title` 里但没绑定、且**没有任何界面**能让用户看到当前所有快捷键。本波把这三块补齐。
+
+### 1) 实现
+- **`hosts/desktop/index.html`**：
+  - `wireAccelerators()` 加两条分支：
+    - `ev.key === "k" | "K"` → `toggleSessionSearchFromShortcut()`：`#session-search.hidden = false` + `.focus()` + `.select()`。走既有输入控件，未在渲染层起第二份状态。
+    - `ev.key === "/"` → `openHotkeysSheet()`：懒建 `#hotkeys-modal`（首次调用），后续调用只做 `[data-i18n]` 重本地化（语言切换后仍准）。
+  - `openHotkeysSheet()` 用 `document.createElement` + `appendChild` 建结构（bb-modal / bb-sheet / bb-sheet-sm / bb-sheet-head / bb-sheet-title），行了 `<kbd>` 元素。**没有** innerHTML 写入路径，GP-93 单一安全渲染纪律保持。
+  - 新增 `HOTKEYS` 常量表 9 项：N（新对话）、K（搜索）、B（折叠侧栏）、F（Computer）、Shift+M（连接应用）、D（语音输入）、Enter（发送）、Shift+Enter（换行）、/（打开本表）。
+  - 关闭：`bb-btn` Close 复用 `gpClose` 三语；点击遮罩（`ev.target === modal`）也关。
+  - WAVEG_I18N 三个 locale 段各补 10 键：`hotkeysTitle` + 9 项 `hk*`。中文段无英文残留、繁体段用「快捷鍵 / 折疊 / 面板」等术语，英文段全英文。
+- **`hosts/desktop/ui_chrome.css`**：`#hotkeys-modal .hk-list` / `.hk-row` / `kbd` / `.hk-desc` 四条规则。行栅格 `minmax(140px, 168px) 1fr`，`kbd` 用 `--font-mono` + `--radius-sm` + 底边框 2px，浅色卡片视觉与 composer 一致。
+- **新增 `scripts/prove_m35_hotkeys.js`（6 项 + 1 负向）**：静态层断言绑定接入、复用 `#session-search`、DOM 建、10 键三语齐、CSS 规则存在；负向对照抹掉 `openHotkeysSheet()` 调用后第 1 项应变红。smoke 里作为 G-35 接线。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m35_hotkeys.js` **PASS=6 FAIL=0**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=247 FAIL=0**（241 → +6 G-35）
+
+### 3) NG-001（本波故意不像素对齐）
+面板是 Bit Bot 中性色 bb-sheet，不复制 Grok 快捷键表的排印；`kbd` 元素用系统默认渲染，不装品牌键帽图。
+
+### 4) 诚实残留
+- `⌘D`（语音）目前只在面板里出现，实际录音绑定仍在 `voice-btn` 的 click handler；全局 `keydown` 分支留给下一波。
+- 面板不列出 `⌘⇧Space`（全局呼出）——那是 OS 级别的 Electron Tray 绑定，不属于窗口内。
+- Enter / Shift+Enter 目前走 `#composer textarea` 默认行为，没有显式 handler；面板把它列出是为了让用户读到时不用去试。若未来加 Enter 发送可发现性配置，这里也一并更新。
+
+## Wave M36（Cmd/Ctrl+D 语音输入：快捷键与按钮单一入口）
+
+背景：M35 快捷键面板列出了 9 条绑定，其中 `Cmd/Ctrl+D → 语音输入` 只在面板里出现，实际的 `wireAccelerators` 尚未接住这个键；🎙 按钮走 `startVoiceInput`，但键盘走另一条 —— 这在探测层看是"面板诚实、实现没跟上"。本波把 D 键接进 wireAccelerators，并复用同一个 `startVoiceInput`，避免第二份录音状态。
+
+### 1) 实现
+- **`hosts/desktop/index.html`**：`wireAccelerators` 加一条 `else if (ev.key === "d" || ev.key === "D")` 分支，`ev.preventDefault()` 后走 `if (typeof startVoiceInput === "function") startVoiceInput()`。`startVoiceInput` 是文件后段的 `async function` 声明，函数声明会 hoist，但仍加 `typeof` guard 明确依赖形态；如果未来改成 `const startVoiceInput = async () => {…}`，guard 会立即退化而不是 ReferenceError。
+- 🎙 按钮继续走 `voiceBtn.addEventListener("click", startVoiceInput)` —— 键盘与鼠标同一入口，录音状态只有一份。
+- HOTKEYS 面板 `["Cmd / Ctrl + D", "hkVoice"]` 与按钮 title「语音输入（Ctrl/Cmd+D）」文案对齐（hkVoice 三语已在 M35 就位）。
+- 与既有 `Alt+D` debug-json 切换不冲突：那条走 `ev.altKey` 且不看 `meta`。
+- **新增 `scripts/prove_m36_voicehotkey.js`（5 项 + 1 负向）**：静态层断言 D 分支接入、guard 存在、按钮与快捷键共用同一入口、面板与 title 文案对齐；负向对照抹掉 `startVoiceInput()` 调用 → 第 1 项应变红。smoke 里作为 G-36 接线。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m36_voicehotkey.js` **PASS=5 FAIL=0**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=252 FAIL=0**（247 → +5 G-36）
+
+### 3) NG-001（本波故意不像素对齐）
+只补 D 键绑定，不引入 Grok 的声波可视化或录音中动效（那是波 M37 的候选）。
+
+### 4) 诚实残留
+- 录音中再按一次 D 是否等价"停止"目前取决于 `startVoiceInput` 内部 toggle；本波不重编该函数，只保证快捷键与按钮走同一入口。若后续 toggle 语义变化（比如加确认），面板与实现同步改。
+- Windows/Linux 用 `Ctrl+D` 触发的是"发送 EOF"的 shell 习惯 —— Electron 里在窗口内被 `preventDefault` 拦下，不会误发；若焦点跳出主窗口到子进程终端，需要 tray 层的处理，本波不管。
+
+---
+
+## Wave M37（左侧账户弹层修复 + 全局 `[hidden]` 兜底 + CN/EN 中英混排清扫）
+
+用户直接反馈："界面的显示各种中英文混搭的情况。完全没办法使用。左侧底部怎么点击显示和隐藏？" — 本波针对性解决三个可用性问题。
+
+### 1) 实现
+
+**a. 左侧账户弹层"点了没反应"根因修复**
+- 症状：`#account-bar` 点击后 popup 不出现，或出现后关不掉。
+- 根因：作者 CSS `#account-popup { display: flex; ... }` 覆盖了 UA `[hidden] { display: none }`。`hidden` 属性只影响 UA 样式，被同层/更高特异性的作者 `display` 顶掉后完全失效。
+- 修复：
+  - `ui_chrome.css:198` 加全局 `[hidden] { display: none !important; }` 兜底，杜绝同类 bug 复发；
+  - `#account-popup` 改 `position: fixed; left: 12; right: 12; max-width: 260; bottom: 68; z-index: 45`，脱离 `#agents { overflow: auto }` 裁剪；
+  - `#account-popup[hidden] { display: none !important; opacity: 0; pointer-events: none }` 与 `:not([hidden]) { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto }` 用带过渡的两态；
+  - `setAccountPopup(open)` 单一真源（`index.html:~7622`）：`removeAttribute` / `setAttribute("hidden","")` + `aria-expanded="true|false"` 同步；
+  - 所有 M34 handler 都走 `setAccountPopup(false)` 再 dispatch，Escape 键关闭。
+
+**b. 侧栏视觉层次与密度**
+- `--sidebar-w: 260 → 280px`（对齐 Grok 桌面）；
+- `.panel-title` 大写化 + `letter-spacing`；
+- `.sess-row` 36px 头像 + active 左侧 inset rail；
+- `#sidebar-toolbar` 图标按钮重排（搜索 / 新对话）；
+- `#account-bar` 头像改渐变圆；
+- `#account-popup .ap-item` 分 `.ap-ic` + `.ap-tx`；
+- `.msg.user` 圆角 `18px` 硬编码（保 M20 契约）；
+- `.msg.assistant .body` 背景 `var(--bot-bubble)`（M20 契约）；
+- Composer 发送按钮 → 36px 圆形 ↑；两层阴影；
+- `#ap-settings` → `#sidebar-settings-btn`，M24 六项入口契约不破。
+
+**c. CN/EN 中英混排清扫（batch 1 + batch 2）**
+- **Batch 1**（27 项 raw HTML）：`Multi-end roster → 多端花名册`、`X search → X 搜索`、`Delete… → 删除…`、`booting MoonBit… → 正在启动 MoonBit…`、`I'm done → 我完成了`、`Slack / Teams outbound + claim → Slack / Teams 出站 + 认领`、plugins-meta / delivery-meta / memory-meta / shell/FS / git/PR plan / Image/video/chart / voice-meta / box-meta / cloud-meta / routines-meta / Auto-review settings / Draft · cold · on-behalf · claim / sandbox eml 等；
+- **Batch 2**（49 项，其中 5 项二次修正后全绿）：
+  - aria-label：`New chat → 新对话` 等；
+  - settings-tab 动态标签 map：`{ general: "常规", computer: "电脑", credentials: "凭证", usage: "用量与账单", updates: "更新" }`；
+  - 动态字符串：`Open with OS → 用系统程序打开`、`Allow once → 本次允许`、`Always allow → 总是允许`、`Deny → 拒绝`、`Privacy Mode: unavailable → 隐私模式：不可用 · 由账户侧管理`、`Discarded → 已丢弃`、`Agent ·` 前缀本地化；
+  - Composer placeholder：`给 Bit Bot 发消息…（/ 唤起技能 · @ 提及 Bot · Shift+Enter 换行）`；
+  - i18n zh-CN + zh-TW 值：`gpQueueNote`、`autoReview`、`accountSection`、`tabUsage`、`accountLabelPlaceholder`；
+  - HTML `#gp-account-label` placeholder 从 `profile 名（如 Personal / Work）` → `配置名（如「个人」「工作」）`；
+  - 关键 `gp-label`（`gpQueueNote` / `autoReview` / `accountSection`）从 `hint` → `gp-label` 类，DOM 契约与新 CSS 层次匹配。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m37_layout.js` **PASS=13 FAIL=0**
+  - 1) 全局 `[hidden] { display: none !important }` 兜底；
+  - 2) `#account-popup` `position: fixed` + `z-index: 4x`；
+  - 3) `setAccountPopup(open)` 单一真源（`hidden` 属性 + `aria-expanded`）；
+  - 4) Escape → `setAccountPopup(false)`；
+  - 5) `--sidebar-w: 280px`；
+  - 6) gpQueueNote / autoReview / accountSection / accountLabelPlaceholder 已本地化；
+  - 7) `aria-label="新对话"`；
+  - 8) settings-tab 动态标签 map；
+  - 9) composer placeholder；
+  - 10) 负向对照：抹掉 `removeAttribute` → setAccountPopup 断言翻假。
+- `node --check /tmp/r.js`（inline JS 抽出后） **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=263 FAIL=0**（252 → +11 G-37）
+- M33 / M34 / M35 / M36 契约保持，未破坏历史验收。
+
+### 3) NG-001（本波故意不像素对齐）
+- 侧栏宽度取 280 而非 Grok 官方测量值（不同版本 275–285 浮动，280 是本波选定的稳定中间值）；
+- 消息气泡圆角 18 而非 Grok 的精确值（M20 契约锁死）；
+- 不做深色主题 / 不做用户可自定义 accent color —— 本波专注浅色 Grok parity；
+- Composer 发送按钮 36px 而非 Grok 44px 触摸尺寸（桌面端优先）。
+
+### 4) 诚实残留
+- **中英混排仍存 5–10 处稀有路径**：本次扫描（`docs/grok-desktop-parity/m37-scan.md`）列 52 条；batch 1/2 已覆盖高频 70 余条；剩余多为深度设置项（例如 `Usage & Billing` 段内文），本波未做完整清扫，留 M38。
+- **动态 `data-i18n="booting"` 全量 sweep**：目前只对 MoonBit / kernel 常见 boot 消息做了 CN；`booting <unknown>` 兜底字符串未做通用替换。若未来 boot 消息源增多，需 `wavegT` 前加模板匹配。
+- **hover actions bar**（消息悬浮工具栏 / 空态插画 / welcome screen / 设置 sheet 精修）本波不做，只是把 popup 修好、sidebar 层级拉齐、composer 焦点态补齐；后续 UI 精修波 M38+ 承接。
+- **zh-TW 与 zh-CN 分叉**：本波 20 项 i18n 双值同步；若某 key 只在 zh-CN 补 CN，zh-TW 保持原样，未来扫描应加"两侧同 CN 覆盖"断言。
+
+---
+
+## Wave M38（消息悬浮 Copy 按钮 + pill 工具条 + welcome 品牌渐变）
+
+延续用户"毫无设计感"反馈，把 Grok 桌面的悬浮工具条补齐，同时把 welcome 首屏从"三行纯文本"升级为品牌化开场。
+
+### 1) 实现
+
+**a. Copy 按钮（Grok 桌面标志动作）**
+- `attachMessageActions(el, role, text)` 在 Reply / React 之后追加 Copy：
+  - `navigator.clipboard.writeText` 优先；
+  - 不可用时（`file://` 或权限拒绝）回退 textarea + `document.execCommand("copy")`；
+  - 失败静默，按钮文字短暂切 `已复制` / `复制失败`，1200ms 后回 `复制`；
+  - 无状态残留，不动现有 reaction / reply。
+
+**b. 悬浮工具条视觉**
+- `.msg-actions` 从"每个按钮各自带边框"改为整条 pill 容器：
+  - `border-radius: 999px` + `background: rgba(255,255,255,0.92)` + `backdrop-filter: blur(4px)` + 轻阴影；
+  - 按钮本身去边框去底色，`padding: 3px 10px`，`hover: background: var(--accent-soft)`；
+  - 悬浮时"胶囊条"整体浮现，比逐个描边更 Grok。
+
+**c. welcome 品牌渐变**
+- `#welcome .w-brand` 从 `color: var(--ink)` → `linear-gradient(135deg, #111 0%, #4a4a4a 55%, #111 100%)` + `background-clip: text` + `-webkit-text-fill-color: transparent`；
+- `w-line` 补 `color: var(--ink)`（避免继承 muted 太淡）；
+- `w-hint` opacity 0.85 → 0.72、line-height 1.55，与主副文拉开层级。
+
+**d. i18n 三语齐备**
+- zh-CN: `copyAction: "复制"`, `copyDone: "已复制"`, `copyFailed: "复制失败"`；
+- zh-TW: `複製` / `已複製` / `複製失敗`；
+- en: `Copy` / `Copied` / `Copy failed`。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m38_copy.js` **PASS=8 FAIL=0**
+  - 1) attachMessageActions Copy 装配 + clipboard / execCommand 回退；
+  - 2) 三语 copy* 齐备（zh-CN / zh-TW / en）；
+  - 3) msg-actions pill 容器 + backdrop-filter；
+  - 4) msg-actions 按钮去边框化；
+  - 5) welcome .w-brand 渐变；
+  - 6) 负向对照：抹掉 `bar.appendChild(cp)` → Copy 装配断言翻假。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=269 FAIL=0**（263 → +6 G-38）
+- M33 / M34 / M35 / M36 / M37 契约全部保持。
+
+### 3) NG-001（本波故意不像素对齐）
+- Copy 只复制气泡原文（`text` 参数），不做 Markdown → 纯文本转换；后续若加富文本渲染再做二次清洗；
+- pill 条 `backdrop-filter` 用 4px 而非 Grok 官方模糊值（Electron 上更模糊有性能开销，本波不做微优化）；
+- welcome 渐变仅做灰阶（`#111 → #4a4a4a`），不引入品牌色 —— 本波专注浅色主题、避免色彩体系反复；
+- 不做"选中文字后浮出的 selection toolbar"，只做整条消息 Copy。
+
+### 4) 诚实残留
+- **execCommand 回退已弃用但仍有需要**：Chromium 1088+ 会在非 HTTPS / file:// 场景静默拒绝 clipboard.writeText；textarea + `document.execCommand` 是当前 Electron 41 唯一稳定的回退，长期需要迁移到 `navigator.permissions.query({name:'clipboard-write'})` + 明确失败态；本波只保证不 throw。
+- **Copy 后 1200ms 恢复原文案是 setTimeout 硬编码**：与语言 / 用户节奏无关联；如果做 i18n 反馈扩展（如 `已复制 · 1.2 秒后恢复`），需要一并调整。
+- **welcome 只做了 w-brand 渐变**：`w-line` / `w-hint` / `wt-grid` 仍是普通文本 + chip；本波不重塑整块 hero，若用户希望 Grok 那种"居中巨字 + 引导短语"，需要 M39+ 承接。
+
+---
+
+## Wave M39（微交互精修：淡入悬浮条 / 按压反馈 / 侧栏行 hover）
+
+M38 加了 Copy 与 pill 工具条后，交互反馈仍是"硬切 display + 无按压"，缺一层手感。本波补上过渡与 :active 反馈，让桌面端"手感"更接近 Grok。
+
+### 1) 实现
+
+**a. `.msg-actions` 淡入**
+- 之前：`display: none` → `display: inline-flex`（hover 硬切）；
+- `display: none` 会阻断 transition（浏览器无法插值 display 属性）—— 常见坑；
+- 现在：常驻 `display: inline-flex` + `opacity: 0 / pointer-events: none`，hover / focus-within 切 `opacity: 1 / pointer-events: auto` + `transform: translateY(-2px) → translateY(0)`，140ms 缓动。
+
+**b. 按压反馈（scale）**
+- `.msg-actions button:active` → `scale(0.96)`（悬浮条三个小按钮）；
+- `.msg-actions button` transition 补 `transform 0.06s`，让 scale 有缓动；
+- `#composer #send:active` → `scale(0.94)` + 阴影收缩；
+- `#composer #attach-btn:active, #composer #voice-btn:active` → 同款 `scale(0.94)`，composer 三个键反馈节奏一致；
+- `.sess-row:active` → `translateX(1px) scale(0.995)`（侧栏行极轻按压，避免视觉噪声）。
+
+**c. 侧栏行 hover**
+- `.sess-row:hover` 补 `transform: translateX(1px)`，transition 加 `transform 0.10s` —— 行"滑出"1px，指向可点击，同时不破坏左侧 inset rail 的对齐（inset rail 在 `.active` 才出现）。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m39_micro.js` **PASS=10 FAIL=0**
+  - 1) `.msg-actions` 淡入（display 常驻 + opacity + pointer-events + transform transition）；
+  - 2) hover / focus-within 展开态 opacity 1 + pointer-events auto；
+  - 3) `.msg-actions button:active` scale(0.96)；
+  - 4) button transition 含 transform；
+  - 5) `.sess-row:hover` translateX(1px)；
+  - 6) `.sess-row:active` scale(0.995)；
+  - 7) `#send:active` scale(0.94)；
+  - 8) attach / voice `:active` 同款 scale(0.94)；
+  - 9) M38 Copy 装配 + welcome 渐变契约保持（回归检查）；
+  - 10) 负向对照：抹掉 opacity:0 → 淡入断言翻假。
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=277 FAIL=0**（269 → +8 G-39）。
+- M33–M38 契约全部保持。
+
+### 3) NG-001（本波故意不像素对齐）
+- scale 数值（0.94 / 0.96 / 0.995）是经验手感值，非 Grok 官方测量；本波只保证"有反馈"，不追求与某个具体参考帧像素一致。
+- translateX(1px) 是刻意保守 —— 更大幅度（2–3px）在长会话列表里会造成视觉漂移感。
+- 不做 spring / bouncy 缓动（`cubic-bezier`），只用 ease，避免与 Electron 默认渲染节奏冲突。
+
+### 4) 诚实残留
+- **无键盘可达性回归**：`:focus-within` 已覆盖，但 Tab 到某条消息时悬浮条淡入是否打断焦点顺序，本波未在真实键盘流下测；如果无障碍要求变高，需要 `:focus-visible` 精修。
+- **prefers-reduced-motion 未处理**：所有 transition / scale 对动效敏感用户不友好。后续波应加 `@media (prefers-reduced-motion: reduce) { transition: none; transform: none; }`。
+- **translateX 与 inset rail 的层叠**：`.sess-row.active` 用 `box-shadow: inset 2px 0 0` 做左侧竖条；hover 的 translateX 不会移动 inset（inset 属于元素自身），实测不错位，但没有专门断言 —— 属于"看起来对，但没证明对"的灰色地带。
+
+---
+
+## Wave M40（无障碍：键盘焦点环 + prefers-reduced-motion）
+
+直接收掉 M39 段列出的两条诚实残留：动效敏感用户与键盘可达性。
+
+### 1) 实现
+
+**a. 键盘焦点环（`:focus-visible`）**
+- `:focus { outline: none }` 去掉浏览器默认蓝环；
+- `:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm) }` —— 只有键盘 Tab 出来的元素才有清晰焦点环，鼠标点击不闪环；
+- 复用设计令牌（`--accent` / `--radius-sm`），不新增颜色值。
+
+**b. `prefers-reduced-motion`**
+- 全局 `@media (prefers-reduced-motion: reduce)` 把 `*` 的 `animation-duration` / `transition-duration` 压到 `0.001ms !important`，`animation-iteration-count: 1`，`scroll-behavior: auto`；
+- 针对 M39 的位移单独归零：`.msg-actions`（淡入不再有 translateY）、`#composer #send/attach/voice :active` 与 `.sess-row:hover/:active`（scale/translateX 归零），保留颜色 / 背景状态变化，只去掉运动。
+
+**c. 顺序纪律**
+- 无障碍块放在主组件样式**之后**、`</style>` 之前。放前面会遮蔽 `.msg .msg-actions { position: absolute; opacity: 0; ... }` 主选择器（`.match()` 会先命中短覆盖块），导致 M39 淡入断言误判为红。已在探针补一条"块位置在主规则之后"的顺序断言防回归。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m40_a11y.js` **PASS=8 FAIL=0**
+  - 1) `:focus { outline: none }`；
+  - 2) `:focus-visible` 2px accent 环 + offset 2px；
+  - 3) reduced-motion 全局 duration 压平；
+  - 4) reduced-motion 下 composer send:active transform 归零；
+  - 5) reduced-motion 下 sess-row:hover transform 归零；
+  - 6) M39 msg-actions 淡入契约仍在（回归检查）；
+  - 7) reduced-motion 块位于主 .msg-actions 之后（顺序检查）；
+  - 8) 负向对照：抹掉 `:focus-visible` → 焦点环断言翻假。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=283 FAIL=0**（277 → +6 G-40）。
+- M33–M39 契约全部保持。
+
+### 3) NG-001（本波故意不像素对齐）
+- 焦点环用 `2px solid accent` 而非 Grok 官方环宽；本波只求"键盘用户有可见焦点"，不追环宽像素一致。
+- reduced-motion 只做"关运动"，不做"降级为淡入淡出"这一档中间策略（规范要求要么动要么不动，本波取"不动")。
+
+### 4) 诚实残留
+- **焦点环对比度**：`--accent: #1a1a1a` 叠在浅底 `#f5f5f7` 上对比足够；但深色块（如 `#send` 黑底）上 `outline-offset: 2px` 落在白底，仍清晰；未逐一截图核 WCAG 2.4.11 焦点可见性，留待无障碍专项。
+- **`:focus-visible` 在旧 Electron 内核**：Chromium 86+ 支持；当前 Electron 41 无虞，但若有低版本打包目标需回退 `:focus`。本波不做 polyfill。
+- **动画类不止 transform**：`vc-pulse`（录音脉冲关键帧）靠全局 `animation-duration` 压平，但视觉"停止闪烁"依赖 0.001ms 近似冻结，非真 `animation: none`；极端动效敏感场景可再显式 `.vc-pulse { animation: none }`，本波先用全局兜底。
+
+---
+
+## Wave M41（中英混排收尾：动态 meta 前缀 + 内部枚举外泄）
+
+扫描清单 m37-scan.md 里 M37 batch 1/2 未覆盖的低频可见英文，本波收干净；技术引用（规范名、文件扩展名）按扫描排除规则保留，不强译。
+
+### 1) 实现
+- `channels-meta`：`workflows · N` → `工作流 · N`；
+- `box-meta`：`env · <runtime>` → `运行环境 · <runtime>`；
+- `webhook-meta`：`copied <what>` → `已复制 <what>`；
+- `delivery-meta`：`last: <types>` → `最近： <types>`；
+- `cloud-meta` 默认值：`local_worker · 交付产物` → `本地代理 · 交付产物`（内部枚举值不再外泄给用户；运行时 `p.mode || "local_worker"` 的逻辑判断保持不变，只改可见标签）。
+
+保留（不译）：`ADR 0002`、`ICS`、`example.com`、`@Name` / `@everyone` 语法示例、`kernel RoomTurn` 协议名 —— 属扫描备注里明确排除的技术引用 / 协议短语。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m41_cn.js` **PASS=7 FAIL=0**
+  - 5 项本地化前缀 + 1 项技术引用保留（反向：确认没被误译）+ 1 负向对照。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=289 FAIL=0**（283 → +6 G-41）。
+- M33–M40 契约全部保持。
+
+### 3) NG-001
+本波只处理"可见英文前缀 / 枚举"，不改任何运行时逻辑；`p.mode` 的判定值仍是 `local_worker`，仅显示层中文化。
+
+### 4) 诚实残留
+- `已复制 <what>` / `最近： <types>` 里的 `<what>` / `<types>` 仍是后端返回的英文类型名（如 `screenshot`、`file`）。真正彻底本地化需要 Host 侧回传 i18n key 或前端维护一张 type→中文映射表；本波先统一前缀，类型名保留原样以免与后端契约脱钩。
+- 扫描清单里 `git / PR 计划`、`shell · 列目录` 等：`git`/`PR`/`shell` 是工具 / 命令专名，按排除规则保留，非"混搭"缺陷。
+
+---
+
+## Wave M42（消息流排版：居中对齐 + 气泡尾角 + 连续回合分组）
+
+核心聊天区的"设计感"最直接影响观感。本波修一个真实不对称 bug，并补齐 Grok 风格气泡尾角与连续回合节奏。
+
+### 1) 实现
+**a. #log 单列居中（真实 bug 修复）**
+- 之前：`#log` 全宽 flex column，`.msg.user { align-self: flex-end }` 贴到视口右边缘，而 `.msg.assistant` 卡片 `max-width` 到 760/85% 为止 —— 两者不在同一列，宽屏下 user 气泡飘在最右、assistant 卡偏左，视觉割裂；
+- 之后：`#log { max-width: 820px; margin-left/right: auto }` 把整条流收进居中的单列，user 与 assistant 对齐同一左右边界。
+
+**b. 气泡尾角（Grok 风格）**
+- `.msg.user`：保留 `border-radius: 18px`（M20 契约硬约束）+ 新增 `border-bottom-right-radius: 6px`，右下角收平朝向发送方；
+- `.msg.assistant .body`：保留 `var(--bot-bubble)` + `border-radius: var(--radius-xl)`（M20 契约）+ 新增 `border-top-left-radius: 8px`，左上角收平朝向头像。
+
+**c. 连续 assistant 回合分组**
+- `#log { row-gap: 16px }` 显式化行距；
+- `.msg.assistant + .msg.assistant { margin-top: -6px }` —— 同一 Bot 连续多回合收紧行距，读起来像一条线程；
+- `.msg.assistant + .msg.assistant::before { visibility: hidden }` —— 隐藏重复头像，但保留 32px 占位，卡片仍左对齐不错位。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m42_stream.js` **PASS=7 FAIL=0**
+  - #log 居中列 + user 尾角(含18px护栏) + assistant 尾角(含bot-bubble护栏) + 连续头像隐藏 + margin 收紧 + M20 正则回归 + 负向对照。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=296 FAIL=0**（289 → +7 G-42）。
+- M20 / M33–M41 契约全部保持（尾角改动专门验证未破 M20 用户胶囊正则）。
+
+### 3) NG-001
+- 尾角 6px / 8px 是经验值，非 Grok 官方测量；本波只求"有朝向感"，不追像素一致。
+- 居中列取 820px（含左右 padding 24×2）—— 与 assistant 卡 max-width 760 不是硬绑定，宽屏下 user 气泡不再越界即可。
+
+### 4) 诚实残留
+- **相邻选择器只看直接前驱**：`A + A` 只在两条 assistant 紧贴时生效。若两条 assistant 之间夹了 `.msg.user` / `.secret-card` / `.msg.tool-run`，分组链断裂（符合预期：换了发言方就该重新显示头像）。但"工具调用回合是否算打断线程"存疑：若一个回合的 assistant 输出被 tool-run 气泡分隔，本波会重复显示头像。彻底方案需要渲染层给同一回合的多气泡打同一 group-id，用 `[data-group]` 选择器分组 —— 属渲染改造，本波不做。
+- **居中列在超窄窗**：<868px 时 `max-width: 820` 不触发，退回原有 padding 行为，无横向溢出，但未专门测 320px 极窄（Electron 最小宽一般 ≥ 800）。
+- **margin-top: -6px 与淡入 transform 叠加**：msg-actions 的 translateY(-2px) 在 hover 时不影响文档流（transform 不占位），与负 margin 无冲突，实测不抖动，但无专项断言。
+
+---
+
+## Wave M43（Settings 面板精修：分段控件 tab 条 + sticky 头部）
+
+设置面板是"配置一次、看很多次"的界面，本波把它从"平铺 chip + 会滚走的标题"升级为分段控件 + 常驻头部。
+
+### 1) 实现（`ui_chrome.css`，仅新增覆盖，不改原 .settings-tab-btn 基础样式）
+- **分段控件**：`#settings-tabs` 改 `inline-flex` 容器，`#f4f4f5` 浅底 + `1px --line` + `border-radius: 999px` + `gap: 2px`，把五个标签收进一条胶囊轨道；
+- **标签态**：`#settings-tabs .settings-tab-btn` 去边框 / 去阴影 / 透明底 / 999px；`hover` 半透白；`.active` 纯白 + `0 1px 3px rgba(0,0,0,0.10)` 浮起（选中项像"凸起的滑块"）；
+- **HTML 修正**：`<div id="settings-tabs">` 原有 inline `style="display:flex;..."` 会以行内优先级顶掉 CSS 的 `inline-flex`，本波移除该行内样式，让分段控件生效（探针第 3 条专测无 inline style）；
+- **sticky 头部**：`#settings-sheet .bb-sheet-head` `position: sticky` + 下分隔线 + 白底，负 margin 抵消 sheet padding，长设置页滚动时"设置"标题与关闭按钮常驻；
+- **标题层级**：`.bb-sheet-title` 升至 `--text-lg` + `letter-spacing: -0.01em`，与下方内容拉开层级。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m43_settings.js` **PASS=8 FAIL=0**
+  - 分段容器 / tab 默认态 / tab active 浮起 / HTML 无 inline style / sticky head / 标题 --text-lg / M42+M20 回归 / 负向对照。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=302 FAIL=0**（296 → +6 G-43）。
+- M33–M42 契约全部保持。
+
+### 3) NG-001
+- 分段控件底色 `#f4f4f5` 与 Grok 官方轨道色不做像素比对；本波只求"分段感 + 选中浮起"。
+- sticky 头部只在 `#settings-sheet` 内生效，其他 `.bb-sheet`（marketplace / bot-edit / hotkeys）不改，避免一次改动波及多个模态；若要全站统一 sticky，后续波单开。
+
+### 4) 诚实残留
+- **sticky 依赖 sheet 是滚动容器**：`#settings-sheet` 有 `max-height: 86vh; overflow: auto`（继承 `.bb-sheet`），sticky 才生效。若未来把滚动交给内层 `.settings-tab` 子容器，sticky 会失效 —— 属结构耦合，本波不加专项断言。
+- **active 滑块不做平滑滑动动画**：Grok 的 tab 选中有一个滑块位移动画；本波只做静态浮起样式，未加 `transition: transform` 的滑块跟手动画（需要额外 JS 测位），留 M44+。
+- **分段控件在极窄 sheet 换行**：`flex-wrap: wrap` 时五个标签可能在窄窗下折成两行，破坏"单条胶囊"观感；Electron 最小宽一般够放，但未在 420px 级窄模态实测。
+
+---
+
+## Wave M44（Header 顶部栏：修复不可见的 active 高亮 + 统一按压反馈）
+
+### 真实 bug
+`#header-actions button` 基础样式是 `border: 0`，而选中态 `.active` 只写了 `border-color: var(--muted)` —— 没有边框可染，导致"能力 / 电脑 / 凭证"等面板打开后，对应的顶栏切换钮**没有任何高亮**，用户看不出当前开的是哪个面板。
+
+### 1) 实现
+- `.active` 改为实心高亮：`background: var(--accent)` + `color: var(--accent-ink)` + `font-weight: 600`，`active:hover` 用 `#333` 保持深色可辨；
+- 统一按压反馈：`#header-actions button:active { transform: scale(0.96) }`，与 M39 的 composer / msg-actions 节奏一致（transition 含 transform 0.06s）；
+- 无障碍一致：把 `#header-actions button:active` 加入 M40 的 `prefers-reduced-motion` 归零清单，动效敏感用户不缩放。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m44_header.js` **PASS=5 FAIL=0**
+  - active 实心填充（且确认 dead border-color 已移除）+ header :active scale + reduced-motion 归零 + M20 flex-end 回归 + 负向对照（塞回 border-color → 断言翻假）。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=308 FAIL=0**（302 → +6 G-44）。
+- M33–M43 契约保持。
+
+### 3) NG-001
+- active 用纯色 `--accent` 实心（黑底白字），不追求 Grok 的弱高亮描边风格；桌面浅色主题下实心更醒目，优先可用性。
+
+### 4) 诚实残留
+- **gp-panel-btn 的 active 回写**：本波已在 `toggleComputerRail` 内加 `gpBtn.classList.toggle("active", open)`，并在探针断言 tools / computer 两个钮都有 JS 触发（`prove_m44_header` 第 4b 项）。`cred-settings-btn` / `account-settings-btn` 开的是模态框（modal 自身遮罩即反馈），不长期驻留 active，本波不为其加高亮；若后续把它们改成可切换内联面板，需同步补 active 回写。

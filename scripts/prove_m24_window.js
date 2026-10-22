@@ -137,7 +137,7 @@ function main() {
   const footerIds = ["hidden-bots-lab", "connect-apps-btn", "marketplace-btn", "sidebar-settings-btn"];
   const fidx = footerIds.map((id) => agents.indexOf('id="' + id + '"'));
   fidx.every((i) => i >= 0) && fidx.every((v, i) => i === 0 || v > fidx[i - 1])
-    ? ok("尾部区块顺序 = Hidden Bots → Connect apps → Marketplace → Settings")
+    ? ok("尾部区块顺序 = Hidden Bots → Connect apps → Marketplace → Settings（账号弹层内）")
     : bad("footer order", JSON.stringify(footerIds.map((id, i) => [id, fidx[i]])));
 
   /id="hidden-bots-count"/.test(agents) && /hiddenCount\.textContent = String\(hidden\.length\)/.test(html)
@@ -355,9 +355,13 @@ function main() {
   (html.match(/id="log"/g) || []).length === 1
     ? ok("只有一个消息流容器 #log")
     : bad("single stream", (html.match(/id="log"/g) || []).length + " #log containers");
+  const chrome = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
   /body\.tools-open/.test(html) && /body\.computer-open/.test(html) &&
-  /grid-template-columns:\s*260px 1fr 0fr 0fr/.test(html) &&
-  /\.computer-open \{\s*grid-template-columns:\s*260px 1fr 0fr 340px/.test(html)
+  /--sidebar-w:\s*280px/.test(chrome) &&
+  /--tools-w:\s*280px/.test(chrome) &&
+  /--rail-w:\s*340px/.test(chrome) &&
+  /grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr 0fr/.test(html) &&
+  /\.computer-open \{\s*grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr var\(--rail-w\)/.test(html)
     ? ok("右栏开合独立：tools-open / computer-open 各自 280px / 340px，中央始终 1fr")
     : bad("rails", "independent rail layout missing");
 

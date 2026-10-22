@@ -125,6 +125,7 @@ const before = {
   rooms: snap(ROOMS),
   memFiles: dirFiles(MEM_DIR),
   sharedReads: dirFiles(path.join(MEM_DIR, "shared-reads")),
+  sharedKeep: snap(path.join(WORKSPACE, "m23-shared-keep.txt")),
 };
 
 function restore() {
@@ -139,6 +140,7 @@ function restore() {
   put(SESSIONS, before.sessions);
   put(ROUTINES, before.routines);
   put(ROOMS, before.rooms);
+  put(path.join(WORKSPACE, "m23-shared-keep.txt"), before.sharedKeep);
   for (const f of dirFiles(MEM_DIR)) {
     if (!before.memFiles.includes(f)) fs.rmSync(path.join(MEM_DIR, f), { force: true });
   }
@@ -227,6 +229,12 @@ async function main() {
       ? ok("GP-113 B 能读到 A 写的共享事实（共享不按 Bot 分）")
       : bad("GP-113 shared read", JSON.stringify(readP).slice(0, 240));
 
+    // Clean smoke deletes G-17's uploads, which used to be the only files
+    // under data/workspace. Recreate one shared file so the count does not
+    // depend on leftovers. Restore puts the previous bytes (or absence) back.
+    const sharedKeep = path.join(WORKSPACE, "m23-shared-keep.txt");
+    fs.mkdirSync(WORKSPACE, { recursive: true });
+    fs.writeFileSync(sharedKeep, "shared-across-bots\n");
     const wsCount = (() => {
       const walk = (d) =>
         fs.existsSync(d)

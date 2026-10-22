@@ -28,7 +28,19 @@ const fs=require('fs');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
   }catch(e){ console.log('parse-error'); }
 });" "$1"; }
 
+# Builtin row. loadBots() repairs a missing file and a half-written bots.json.
+# Call this before any assertion that addresses agent-bit by id (G-1b, G-6, G-26).
+ensure_agent_bit() {
+  node -e "
+const s=require('./hosts/desktop/product_surface.js').createProductSurface(process.cwd());
+s.listViews();
+const rows=(require('./$DATA/bots.json').bots)||[];
+if(!rows.some(b=>b&&b.id==='agent-bit')){console.error('agent-bit missing after seed');process.exit(1);}
+"
+}
+
 echo "== G-1/G-2 Bot lifecycle =="
+ensure_agent_bit
 before=$(cat $DATA/bots.json 2>/dev/null | md5sum)
 j=$(turn_json "create bot Smoke job=verify description=Wave+G+smoke+bot")
 echo "$j" | field intent | grep -q create_bot && echo "$j" | field hostKinds | grep -q bot_create:ok && ok "create bot → create_bot → host ok" || bad "create bot chain"
@@ -40,6 +52,7 @@ j=$(turn_json "set primary bot $smid"); echo "$j" | field hostKinds | grep -q bo
 j=$(turn_json "update bot $smid name=SmokeRenamed"); echo "$j" | field hostKinds | grep -q bot_update:ok && grep -q SmokeRenamed $DATA/bots.json && ok "update bot persisted" || bad "update bot"
 
 echo "== G-1b Hide/Unhide/Delete（GP-06 / GP-07 store-backed）=="
+ensure_agent_bit
 # GP-06 hide 不删数据、不暂停：bots.json 行仍在，仅 hidden=true
 j=$(turn_json "hide bot $smid")
 echo "$j" | field hostKinds | grep -q bot_hide:ok && ok "hide bot → bot_hide host ok" || bad "hide bot chain"
@@ -158,6 +171,7 @@ j=$(turn_json "local execution always"); grep -q '"local_execution": "always"' $
 node -e "require('fs').writeFileSync('$DATA/settings.json',JSON.stringify({version:1,appearance:'dark',language:'zh-CN',timezone:'Asia/Shanghai',local_execution:'ask',route_traffic:false,notify:{},unread:{},sidebar_collapsed:false},null,2))"
 
 echo "== G-6 群组（GP-50/51）=="
+ensure_agent_bit
 j=$(turn_json "create group chat bots=agent-bit,$smid title=Smoke+room"); echo "$j" | field hostKinds | grep -q group_chat:ok && ok "group chat 建立（2 成员）" || bad "group chat"
 j=$(turn_json "create group chat bots=$smid title=One"); echo "$j" | grep -q members_2_to_6 && ok "<2 成员被拒（GP-50）" || bad "member guard"
 roomid=$(node -e "
@@ -663,7 +677,12 @@ process.exit(0)' \
   && ok "G-17 GP-11：pick/paste/drop 共用校验器 + webUtils 真实路径 + 拒绝文案 i18n×3 + stage IPC 契约" || bad "G-17 renderer/IPC wiring"
 rm -rf /tmp/g17 data/workspace/uploads/g17 data/workspace/uploads/gp17
 rm -f data/workspace/uploads/g17doc1.txt data/workspace/uploads/g17doc2.txt data/workspace/uploads/g17doc3.txt
-echo "  · G-17 清理完成（fixture 与暂存目录删除，双跑幂等）"
+# G-17 is allowed to remove the only files a clean tree had under data/workspace.
+# GP-113/114 count real shared files there, so put one deterministic file back
+# instead of hoping an earlier wave left something behind.
+mkdir -p data/workspace
+printf 'shared-across-bots\n' > data/workspace/m23-shared-keep.txt
+echo "  · G-17 清理完成（fixture 与暂存目录删除，双跑幂等；共享文件夹具已放回）"
 
 echo "== G-18 Reply 回复特定消息（GP-14 · 官方 spec §5.1 + 群聊消息路由：被回复消息 id 必须进 kernel 上下文）=="
 # 规格验收信号：点回复后 kernel 上下文含被回复消息 id。
@@ -997,6 +1016,7 @@ echo "  · G-25 说明：本块用真实 CLI 内核 + Host product_surface 跑 c
 
 
 echo "== G-26 Bot 设置右栏（M26：§2.1 右侧面板 / §4.6 每 Bot 通知开关）=="
+ensure_agent_bit
 if timeout 900 node scripts/prove_m26_botpanel.js > /tmp/g26-probe.log 2>&1; then
   ok "G-26 Bot 设置右栏契约全绿（$(grep -c '✓' /tmp/g26-probe.log) 项，$(tail -1 /tmp/g26-probe.log)）"
 else
@@ -1203,6 +1223,305 @@ grep -q "sessions.react 落在 sessions store" /tmp/g31-probe.log 2>/dev/null \
 grep -q "负向对照：禁用 save 后反应不落盘" /tmp/g31-probe.log 2>/dev/null \
   && ok "G-31 负向对照：砍掉 save(state) 后反应不落盘（断言非恒真）" \
   || bad "G-31 negative control missing"
+
+echo "== G-33 Grok 桌面外观（M33：对标 Grok Bot UI）=="
+if timeout 900 node scripts/prove_m33_grokchrome.js > /tmp/g33-probe.log 2>&1; then
+  ok "G-33 Grok 桌面外观契约全绿（$(grep -c '✓' /tmp/g33-probe.log) 项，$(tail -1 /tmp/g33-probe.log)）"
+else
+  bad "G-33 Grok 桌面外观契约（见 /tmp/g33-probe.log）"
+fi
+grep -q "侧栏顶部图标工具栏" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：侧栏顶部图标工具栏（search + new-chat）" \
+  || bad "G-33 sidebar toolbar missing"
+grep -q "账户条包含 8 项弹层" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：底部账户条 → 8 项 popup（含 Settings 复用 sidebar-settings-btn）" \
+  || bad "G-33 account popup missing"
+grep -q "送达状态：存储 → ✓、回合收尾 → ✓✓ 绿色" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：用户气泡送达状态 ✓ → ✓✓ 绿色" \
+  || bad "G-33 delivery status missing"
+grep -q "首个 delta 前显示三点动效" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：助手思考三点 typing indicator（DOM 节点，非 innerHTML）" \
+  || bad "G-33 typing indicator missing"
+grep -q "Composer 发送按钮：36px 圆形" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：Composer 发送按钮 → 36px 圆形 ↑ 图标" \
+  || bad "G-33 composer send missing"
+grep -q "10 个常见英文标签已全部本地化" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：中英混排清理（10 项 i18n key）" \
+  || bad "G-33 CN/EN separation missing"
+grep -q "语言选择器保留各语言原生名" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：语言下拉保留原生名（English / 简体中文 / 繁體中文）" \
+  || bad "G-33 language dropdown missing"
+grep -q "负向对照：砍掉 read 绿色样式" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 负向对照：砍掉 read 样式 → 送达状态断言翻假（非恒真）" \
+  || bad "G-33 negative control missing"
+
+echo "== G-34 账户弹层入口落地（M34：对标 Grok Bot 桌面外观）=="
+if timeout 900 node scripts/prove_m34_account_actions.js > /tmp/g34-probe.log 2>&1; then
+  ok "G-34 账户弹层入口契约全绿（$(grep -c '✓' /tmp/g34-probe.log) 项，$(tail -1 /tmp/g34-probe.log)）"
+else
+  bad "G-34 账户弹层入口契约（见 /tmp/g34-probe.log）"
+fi
+grep -q "三项（更新 / 用量 / 添加账户）通过 open settings anchor" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：三项真实落点（更新→update-status / 用量→usage / 添加账户→profile）" \
+  || bad "G-34 anchor wiring missing"
+grep -q "update-status / usage / profile 三个锚点在 SETTINGS_ANCHOR_TAB 已注册" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：锚点在 SETTINGS_ANCHOR_TAB 已注册" \
+  || bad "G-34 anchor registry missing"
+grep -q "移动版 / 支持 / 退出登录 三项：中文占位文案" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：三项走本地化 callout（非静默 no-op）" \
+  || bad "G-34 placeholder missing"
+grep -q "handler 都收口：先关 popup 再走短语" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：handler 都关 popup，不挡设置页" \
+  || bad "G-34 popup close missing"
+grep -q "负向对照：抹掉 anchor=usage 短语" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 负向对照：抹掉 anchor 短语 → 断言翻假（非恒真）" \
+  || bad "G-34 negative control missing"
+
+echo "== G-35 键盘快捷键面板（M35：Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键表）=="
+if timeout 900 node scripts/prove_m35_hotkeys.js > /tmp/g35-probe.log 2>&1; then
+  ok "G-35 快捷键契约全绿（$(grep -c '✓' /tmp/g35-probe.log) 项，$(tail -1 /tmp/g35-probe.log)）"
+else
+  bad "G-35 快捷键契约（见 /tmp/g35-probe.log）"
+fi
+grep -q "wireAccelerators：新增 Cmd/Ctrl+K（搜索）与 Cmd/Ctrl+/（快捷键表）" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 GP-M35：wireAccelerators 接入 K / 两条新绑定" \
+  || bad "G-35 accelerators missing"
+grep -q "走既有 #session-search 输入" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 GP-M35：Cmd/Ctrl+K 复用既有搜索输入，不造第二份状态" \
+  || bad "G-35 shared search missing"
+grep -q "bb-modal + bb-sheet 复用；DOM 建" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 GP-M35：快捷键面板走 bb-modal / bb-sheet，DOM 建（GP-93 纪律）" \
+  || bad "G-35 sheet build"
+grep -q "HOTKEYS 9 项 + 面板标题共 10 个 key 在 zh-CN / zh-TW / en 全部齐备" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 GP-M35：10 个 hk key 三语齐备" \
+  || bad "G-35 i18n coverage"
+grep -q "负向对照：抹掉 openHotkeysSheet" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 负向对照：抹掉 openHotkeysSheet 调用 → 断言翻假（非恒真）" \
+  || bad "G-35 negative control"
+
+echo "== G-36 Cmd/Ctrl+D 语音绑定（M36：单一录音入口）=="
+if timeout 900 node scripts/prove_m36_voicehotkey.js > /tmp/g36-probe.log 2>&1; then
+  ok "G-36 语音快捷键契约全绿（$(grep -c '✓' /tmp/g36-probe.log) 项，$(tail -1 /tmp/g36-probe.log)）"
+else
+  bad "G-36 语音快捷键契约（见 /tmp/g36-probe.log）"
+fi
+grep -q "wireAccelerators：Cmd/Ctrl+D 分支调用 startVoiceInput" /tmp/g36-probe.log 2>/dev/null \
+  && ok "G-36 GP-M36：Cmd/Ctrl+D 与 🎙 按钮共用 startVoiceInput 单一入口" \
+  || bad "G-36 voice hotkey missing"
+grep -q "键盘分支使用 typeof guard" /tmp/g36-probe.log 2>/dev/null \
+  && ok "G-36 GP-M36：typeof guard 保护前向引用，不重复实现" \
+  || bad "G-36 guard missing"
+grep -q "HOTKEYS hkVoice 项与按钮 title 一致" /tmp/g36-probe.log 2>/dev/null \
+  && ok "G-36 GP-M36：hkVoice 面板项与按钮 title 对齐（语音输入 / Cmd+D）" \
+  || bad "G-36 label drift"
+grep -q "负向对照：抹掉 startVoiceInput" /tmp/g36-probe.log 2>/dev/null \
+  && ok "G-36 负向对照：抹掉 startVoiceInput() 调用 → 分支断言翻假（非恒真）" \
+  || bad "G-36 negative control"
+
+echo "== G-37 M37 布局修复 + CN/EN 清扫（侧栏账户弹层 / 全局 [hidden] / i18n 字典）=="
+if timeout 900 node scripts/prove_m37_layout.js > /tmp/g37-probe.log 2>&1; then
+  ok "G-37 M37 布局与中英清扫契约全绿（$(grep -c '✓' /tmp/g37-probe.log) 项，$(tail -1 /tmp/g37-probe.log)）"
+else
+  bad "G-37 M37 布局契约（见 /tmp/g37-probe.log）"
+fi
+grep -q "全局 \[hidden\] { display: none !important" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：全局 [hidden] !important，防 UA 语义被 display:flex 顶掉" \
+  || bad "G-37 global hidden reset missing"
+grep -q "#account-popup 使用 position: fixed" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：账户弹层 position: fixed + z-index: 4x（不被 #agents 裁剪）" \
+  || bad "G-37 popup stacking missing"
+grep -q "setAccountPopup(open)：hidden 属性 + aria-expanded 同步" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：setAccountPopup 单一真源（hidden 属性 + aria-expanded）" \
+  || bad "G-37 popup single-source missing"
+grep -q 'Escape 键 → setAccountPopup(false)' /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：Escape 关闭弹层" \
+  || bad "G-37 escape close missing"
+grep -q "gpQueueNote.*已本地化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：gpQueueNote 已本地化（后台审批队列）" \
+  || bad "G-37 gpQueueNote CN leak"
+grep -q "autoReview.*已本地化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：autoReview 已本地化（自动复核规则）" \
+  || bad "G-37 autoReview CN leak"
+grep -q "accountSection.*已本地化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：accountSection 已本地化（账户 · 本地 profile）" \
+  || bad "G-37 accountSection CN leak"
+grep -q "settings-tab 动态标签 map 已中文化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：settings-tab 动态标签 map（常规 / 电脑 / 凭证）" \
+  || bad "G-37 settings-tab map missing"
+grep -q "composer placeholder 已中文化" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：composer placeholder 已中文化（给 Bit Bot 发消息…）" \
+  || bad "G-37 composer placeholder missing"
+grep -q "负向对照：抹掉 removeAttribute" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 负向对照：抹掉 removeAttribute → 断言翻假（非恒真）" \
+  || bad "G-37 negative control"
+
+echo "== G-38 复制按钮 + 悬浮 pill 工具条 + welcome 品牌渐变（M38）=="
+if timeout 900 node scripts/prove_m38_copy.js > /tmp/g38-probe.log 2>&1; then
+  ok "G-38 M38 复制契约全绿（$(grep -c '✓' /tmp/g38-probe.log) 项，$(tail -1 /tmp/g38-probe.log)）"
+else
+  bad "G-38 M38 复制契约（见 /tmp/g38-probe.log）"
+fi
+grep -q "attachMessageActions：Reply / React 后追加 Copy" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：Copy 按钮接入悬浮工具条，含 clipboard / execCommand 回退" \
+  || bad "G-38 copy wiring missing"
+grep -q "i18n zh-CN：copyAction" /tmp/g38-probe.log 2>/dev/null \
+  && grep -q "i18n zh-TW：copyAction" /tmp/g38-probe.log 2>/dev/null \
+  && grep -q "i18n en：Copy" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：三语 copyAction / copyDone / copyFailed 齐备" \
+  || bad "G-38 i18n coverage"
+grep -q "msg-actions：pill 容器 + backdrop-filter" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：pill 容器 + backdrop-filter blur(4px)" \
+  || bad "G-38 pill bar missing"
+grep -q "welcome .w-brand：linear-gradient" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：welcome .w-brand 使用 linear-gradient + background-clip: text" \
+  || bad "G-38 welcome gradient missing"
+grep -q "负向对照：抹掉 bar.appendChild(cp)" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 负向对照：抹掉 bar.appendChild(cp) → Copy 装配断言翻假（非恒真）" \
+  || bad "G-38 negative control"
+
+echo "== G-39 微交互精修（M39：淡入悬浮条 / 按压反馈 / 侧栏行 hover）=="
+if timeout 900 node scripts/prove_m39_micro.js > /tmp/g39-probe.log 2>&1; then
+  ok "G-39 M39 微交互契约全绿（$(grep -c '✓' /tmp/g39-probe.log) 项，$(tail -1 /tmp/g39-probe.log)）"
+else
+  bad "G-39 M39 微交互契约（见 /tmp/g39-probe.log）"
+fi
+grep -q "msg-actions：改用 opacity + pointer-events 淡入" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：msg-actions 淡入（display 常驻，transition 生效）" \
+  || bad "G-39 fade transition missing"
+grep -q "msg-actions button:active → scale" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：msg-actions button :active scale(0.96) 按压反馈" \
+  || bad "G-39 button press missing"
+grep -q "sess-row:hover translateX" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：sess-row hover translateX(1px) 微滑" \
+  || bad "G-39 sess-row hover missing"
+grep -q "sess-row:active scale" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：sess-row active scale(0.995) 极轻按压" \
+  || bad "G-39 sess-row press missing"
+grep -q "#send:active scale" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：#send :active scale(0.94) 发送键反馈" \
+  || bad "G-39 send press missing"
+grep -q "M38 Copy 装配 + welcome 渐变契约保持" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 M38 回归不破：Copy 装配 + welcome 渐变仍在" \
+  || bad "G-39 M38 regression"
+grep -q "负向对照：抹掉 opacity:0" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 负向对照：抹掉 opacity:0 → 淡入断言翻假（非恒真）" \
+  || bad "G-39 negative control"
+
+echo "== G-40 无障碍（M40：键盘焦点环 + prefers-reduced-motion）=="
+if timeout 900 node scripts/prove_m40_a11y.js > /tmp/g40-probe.log 2>&1; then
+  ok "G-40 M40 无障碍契约全绿（$(grep -c '✓' /tmp/g40-probe.log) 项，$(tail -1 /tmp/g40-probe.log)）"
+else
+  bad "G-40 M40 无障碍契约（见 /tmp/g40-probe.log）"
+fi
+grep -q ":focus-visible 焦点环：2px solid accent" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 GP-M40：:focus-visible 键盘焦点环（2px solid accent，仅键盘可见）" \
+  || bad "G-40 focus-visible missing"
+grep -q "prefers-reduced-motion: reduce)：全局 transition/animation" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 GP-M40：prefers-reduced-motion 全局压平 transition/animation" \
+  || bad "G-40 reduced-motion missing"
+grep -q "reduced-motion 下 composer send:active transform 归零" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 GP-M40：reduced-motion 下 composer 按压位移归零" \
+  || bad "G-40 rm composer missing"
+grep -q "M39 msg-actions 淡入契约仍在" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 M39 回归不破：msg-actions 淡入仍在" \
+  || bad "G-40 M39 regression"
+grep -q "负向对照：抹掉 :focus-visible 规则" /tmp/g40-probe.log 2>/dev/null \
+  && ok "G-40 负向对照：抹掉 :focus-visible → 焦点环断言翻假（非恒真）" \
+  || bad "G-40 negative control"
+
+echo "== G-41 中英混排收尾（M41：动态 meta 前缀 + 内部枚举外泄）=="
+if timeout 900 node scripts/prove_m41_cn.js > /tmp/g41-probe.log 2>&1; then
+  ok "G-41 M41 中英收尾契约全绿（$(grep -c '✓' /tmp/g41-probe.log) 项，$(tail -1 /tmp/g41-probe.log)）"
+else
+  bad "G-41 M41 中英收尾契约（见 /tmp/g41-probe.log）"
+fi
+grep -q "channels-meta 前缀本地化" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 GP-M41：channels-meta workflows · → 工作流 ·" \
+  || bad "G-41 channels meta"
+grep -q "box-meta 前缀本地化" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 GP-M41：box-meta env · → 运行环境 ·" \
+  || bad "G-41 box meta"
+grep -q "cloud-meta 默认值不再外泄内部枚举" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 GP-M41：cloud-meta local_worker → 本地代理（枚举不外泄）" \
+  || bad "G-41 cloud-meta leak"
+grep -q "技术引用保留：ADR 0002 / ICS" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 GP-M41：技术引用保留 ADR 0002 / ICS（符合扫描排除规则）" \
+  || bad "G-41 technical ref drift"
+grep -q "负向对照：塞回 workflows ·" /tmp/g41-probe.log 2>/dev/null \
+  && ok "G-41 负向对照：塞回 workflows · → 本地化断言翻假（非恒真）" \
+  || bad "G-41 negative control"
+
+echo "== G-42 消息流排版（M42：居中列 + 气泡尾角 + 连续回合分组）=="
+if timeout 900 node scripts/prove_m42_stream.js > /tmp/g42-probe.log 2>&1; then
+  ok "G-42 M42 消息流排版契约全绿（$(grep -c '✓' /tmp/g42-probe.log) 项，$(tail -1 /tmp/g42-probe.log)）"
+else
+  bad "G-42 M42 消息流排版契约（见 /tmp/g42-probe.log）"
+fi
+grep -q "#log 单列居中" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：#log 单列居中，user/assistant 对齐同一列" \
+  || bad "G-42 log center missing"
+grep -q "user 气泡：保留 18px 圆角" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：user 气泡 18px 圆角（M20）+ 右下尾角" \
+  || bad "G-42 user tail missing"
+grep -q "assistant 气泡：var(--bot-bubble)" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：assistant 气泡 bot-bubble + 左上尾角" \
+  || bad "G-42 assistant tail missing"
+grep -q "连续 assistant 行隐藏重复头像" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：连续 assistant 回合隐藏重复头像 + 收紧行距" \
+  || bad "G-42 grouping missing"
+grep -q "M20 用户胶囊正则仍匹配" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 M20 回归护栏：用户胶囊正则仍匹配" \
+  || bad "G-42 M20 regression"
+grep -q "负向对照：抹掉 #log max-width" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 负向对照：抹掉 #log max-width → 居中列断言翻假（非恒真）" \
+  || bad "G-42 negative control"
+
+echo "== G-43 Settings 面板精修（M43：分段 tab 条 + sticky 头部）=="
+if timeout 900 node scripts/prove_m43_settings.js > /tmp/g43-probe.log 2>&1; then
+  ok "G-43 M43 设置面板契约全绿（$(grep -c '✓' /tmp/g43-probe.log) 项，$(tail -1 /tmp/g43-probe.log)）"
+else
+  bad "G-43 M43 设置面板契约（见 /tmp/g43-probe.log）"
+fi
+grep -q "#settings-tabs 分段控件容器" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 GP-M43：#settings-tabs 分段控件（inline-flex + 浅底 + 999px）" \
+  || bad "G-43 segmented tabs missing"
+grep -q "sheet 头部 sticky" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 GP-M43：sheet 头部 sticky（滚动时标题常驻）" \
+  || bad "G-43 sticky head missing"
+grep -q "HTML #settings-tabs 无 inline style" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 GP-M43：HTML 无 inline style，CSS 分段控件不被覆盖" \
+  || bad "G-43 inline style leak"
+grep -q "M42 消息流分组 + M20 用户胶囊契约保持" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 回归护栏：M42 分组 + M20 用户胶囊契约保持" \
+  || bad "G-43 regression"
+grep -q "负向对照：抹掉分段样式" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 负向对照：抹掉分段样式 → 容器断言翻假（非恒真）" \
+  || bad "G-43 negative control"
+
+echo "== G-44 Header active 高亮修复（M44：dead border-color → 实心填充）=="
+if timeout 900 node scripts/prove_m44_header.js > /tmp/g44-probe.log 2>&1; then
+  ok "G-44 M44 header 契约全绿（$(grep -c '✓' /tmp/g44-probe.log) 项，$(tail -1 /tmp/g44-probe.log)）"
+else
+  bad "G-44 M44 header 契约（见 /tmp/g44-probe.log）"
+fi
+grep -q "实心 accent 填充" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 GP-M44：header 按钮 active 改实心 accent 填充（修 dead border-color）" \
+  || bad "G-44 active fill missing"
+grep -q "#header-actions button:active scale(0.96)" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 GP-M44：header 按钮 :active scale(0.96) 与 composer 节奏一致" \
+  || bad "G-44 header press missing"
+grep -q "reduced-motion 下 #header-actions" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 GP-M44：reduced-motion 归零 header 按压位移" \
+  || bad "G-44 rm header missing"
+grep -q "把 rail open 状态回写 gp-panel-btn" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 GP-M44：toggleComputerRail 把 open 状态回写 gp-panel-btn.active（CSS+JS 双端闭合）" \
+  || bad "G-44 gp active sync missing"
+grep -q "M20 回归护栏：#header-actions 仍 justify-content: flex-end" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 M20 回归护栏：header-actions 对齐不破" \
+  || bad "G-44 M20 regression"
+grep -q "负向对照：塞回 dead border-color" /tmp/g44-probe.log 2>/dev/null \
+  && ok "G-44 负向对照：塞回 dead border-color → active 断言翻假（非恒真）" \
+  || bad "G-44 negative control"
 
 
 echo

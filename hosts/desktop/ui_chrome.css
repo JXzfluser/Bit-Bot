@@ -1,0 +1,639 @@
+/*
+ * Bit Bot desktop chrome tokens and shared components.
+ *
+ * NG-001: this is the product shell's layout structure (sidebar, composer,
+ * message stream, optional right rails, settings, modals). Colors are Bit Bot
+ * neutrals — not an xAI brand skin, and not a claim of pixel identity.
+ *
+ * Later feature waves should consume these variables instead of new hex
+ * values or one-off radii. Theme overrides touch color tokens only; the
+ * space / radius / type / shell-width scales stay on :root.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* surfaces — Grok-style light default */
+  --bg0: #ffffff;
+  --bg1: #f7f7f8;
+  --side: #f7f7f8;
+  --input-bg: #ffffff;
+  --ink: #1a1a1a;
+  --text: #1a1a1a;
+  --muted: #6f6f6f;
+  --line: #e3e3e6;
+  --accent: #1a1a1a;
+  --accent-ink: #ffffff;
+  --accent-soft: #f0f0f2;
+  --user-bubble: #eceef0;
+  --bot-bubble: #f4f4f5;
+  --bot-avatar: #2f9e44;
+  --unread: #2f7cf6;
+  --on-fill: #ffffff;
+  --warn: #a06a00;
+  --warn-bg: #fbf4e0;
+  --warn-ink: #6a5312;
+  --warn-line: #e3d2a0;
+  --danger: #b3403a;
+  --danger-bg: #fae9e7;
+  --danger-ink: #8f332d;
+  --overlay: rgba(0, 0, 0, 0.35);
+  --overlay-strong: rgba(0, 0, 0, 0.88);
+  --scrim-lite: rgba(128, 128, 128, 0.06);
+  --scrim-lite-2: rgba(128, 128, 128, 0.05);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-sticky: 0 1px 0 var(--line);
+  --lightbox-ink: #eee;
+  --lightbox-btn: rgba(255, 255, 255, 0.12);
+  --lightbox-line: rgba(255, 255, 255, 0.25);
+
+  /* spec §2.1 shell widths */
+  --sidebar-w: 280px;
+  --tools-w: 280px;
+  --rail-w: 340px;
+  --content-max: 760px;
+  --sheet-w: 560px;
+
+  /* space */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 18px;
+  --space-9: 24px;
+
+  /* radius */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+  --radius-bubble: 16px;
+  --radius-user: 18px;
+  --radius-composer: 22px;
+  --radius-pill: 999px;
+
+  /* type */
+  --font-ui: "Source Han Sans SC", "Noto Sans SC", "IBM Plex Sans", "PingFang SC", sans-serif;
+  --font-display: -apple-system, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "IBM Plex Mono", monospace;
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-title: 14px;
+  --text-base: 15px;
+  --text-lg: 16px;
+  --text-display: 32px;
+  --leading: 1.45;
+
+  /* stack */
+  --z-raise: 2;
+  --z-sticky: 3;
+  --z-menu: 40;
+  --z-modal: 60;
+  --z-modal-2: 64;
+  --z-lightbox: 70;
+
+  --ease: 0.2s ease;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg0: #ffffff;
+    --bg1: #f7f7f7;
+    --side: #f7f7f7;
+    --input-bg: #f2f2f2;
+    --ink: #1a1a1a;
+    --text: #1a1a1a;
+    --muted: #6f6f6f;
+    --line: #e3e3e3;
+    --accent: #1a1a1a;
+    --accent-ink: #ffffff;
+    --accent-soft: #f0f0f0;
+    --user-bubble: #eceef0;
+    --bot-bubble: #f4f4f5;
+    --warn: #a06a00;
+    --warn-bg: #fbf4e0;
+    --warn-ink: #6a5312;
+    --warn-line: #e3d2a0;
+    --danger: #b3403a;
+    --danger-bg: #fae9e7;
+    --danger-ink: #8f332d;
+    --overlay: rgba(0, 0, 0, 0.35);
+    --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
+    --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-sticky: 0 1px 0 var(--line);
+  }
+}
+
+body.force-dark {
+  color-scheme: dark;
+  --bg0: #171717;
+  --bg1: #1d1d1d;
+  --side: #111111;
+  --input-bg: #232323;
+  --ink: #ececec;
+  --text: #ececec;
+  --muted: #9a9a9a;
+  --line: #2e2e2e;
+  --accent: #ffffff;
+  --accent-ink: #171717;
+  --accent-soft: #2a2a2a;
+  --user-bubble: #2a2a2a;
+  --bot-bubble: #212121;
+  --bot-avatar: #2f9e44;
+  --warn: #d4a017;
+  --warn-bg: #262010;
+  --warn-ink: #e8d9a8;
+  --warn-line: #5a4a2a;
+  --danger: #c0554d;
+  --danger-bg: #2a1f1d;
+  --danger-ink: #e8b4b0;
+  --overlay: rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-sticky: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+body.force-light {
+  color-scheme: light;
+  --bg0: #ffffff;
+  --bg1: #f7f7f7;
+  --side: #f7f7f7;
+  --input-bg: #f2f2f2;
+  --ink: #1a1a1a;
+  --text: #1a1a1a;
+  --muted: #6f6f6f;
+  --line: #e3e3e3;
+  --accent: #1a1a1a;
+  --accent-ink: #ffffff;
+  --accent-soft: #f0f0f0;
+  --user-bubble: #eceef0;
+  --bot-bubble: #f4f4f5;
+  --bot-avatar: #2f9e44;
+  --warn: #a06a00;
+  --warn-bg: #fbf4e0;
+  --warn-ink: #6a5312;
+  --warn-line: #e3d2a0;
+  --danger: #b3403a;
+  --danger-bg: #fae9e7;
+  --danger-ink: #8f332d;
+  --overlay: rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-sticky: 0 1px 0 var(--line);
+}
+
+/* ---- shared chrome ------------------------------------------------------- */
+
+/* UA 默认 `[hidden]{display:none}` 会被 .bb-field 之类 display:block 顶掉；
+   Wave M37 起统一走 `!important` 复位，任何带 hidden 属性的元素真的收起。 */
+[hidden] { display: none !important; }
+
+.bb-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--overlay);
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-7);
+}
+
+.bb-modal.bb-raise {
+  z-index: var(--z-modal-2);
+}
+
+.bb-sheet {
+  width: min(var(--sheet-w), 92vw);
+  max-height: min(82vh, 860px);
+  overflow: auto;
+  background: #ffffff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  padding: var(--space-7);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+}
+
+.bb-sheet-sm { --sheet-w: 420px; }
+.bb-sheet-md { --sheet-w: 620px; max-height: 86vh; }
+.bb-sheet-lg { --sheet-w: 720px; }
+
+.bb-sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.bb-sheet-title {
+  font-weight: 700;
+  font-size: var(--text-base);
+}
+
+.bb-sheet-note {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  margin-top: var(--space-2);
+  line-height: 1.5;
+}
+
+.bb-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.bb-btn {
+  background: #ffffff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  transition: all 0.15s ease;
+}
+
+.bb-btn:hover { border-color: var(--muted); background: var(--accent-soft); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+.bb-btn:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+
+.bb-btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+.bb-btn-primary:hover { background: #333; box-shadow: 0 3px 8px rgba(0,0,0,0.18); }
+
+.bb-btn-danger {
+  background: var(--danger);
+  color: var(--on-fill);
+  border: 0;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+}
+.bb-btn-danger:hover { background: #a03a34; box-shadow: 0 3px 6px rgba(0,0,0,0.18); }
+
+.bb-btn-danger-soft {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  border: 1px solid var(--danger);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.bb-btn-danger-soft:hover { background: #f5ddd9; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+}
+
+.bb-btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  text-align: left;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+.bb-btn-ghost:hover { background: var(--accent-soft); }
+}
+
+.bb-btn-block {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.bb-btn:focus-visible,
+.bb-field:focus-visible {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+
+.bb-field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: var(--space-1);
+  background: #ffffff;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  font-size: var(--text-md);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.bb-field:focus {
+  border-color: var(--muted);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  outline: none;
+}
+
+.bb-field-grow {
+  display: block;
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+/* Shared text control. Width/flex stay on the element when the row needs them. */
+.bb-control {
+  background: #ffffff;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.bb-card {
+  border: 1px solid var(--line);
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.bb-inset {
+  margin: var(--space-5) var(--space-7);
+}
+
+.bb-banner {
+  display: none;
+  align-items: center;
+  gap: var(--space-4);
+  margin: 0 var(--space-7) var(--space-2);
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--line);
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  flex-shrink: 0;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.bb-callout {
+  display: none;
+  align-items: center;
+  gap: var(--space-3);
+  margin: calc(var(--space-1) * -1) 0 var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.bb-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.bb-meta {
+  color: var(--muted);
+  font: var(--text-sm)/1.45 var(--font-mono);
+}
+
+.bb-note {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.panel-head.spaced {
+  margin-top: var(--space-5);
+}
+
+.ca-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+  background: #ffffff;
+  min-width: 0;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.ca-card-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+#session-search.bb-field {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-md);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+#session-search.bb-field:focus {
+  border-color: var(--muted);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  outline: none;
+}
+
+#sess-new.bb-btn {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+}
+
+#sidebar-settings-btn.bb-btn {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-md);
+  border-radius: var(--radius-lg);
+}
+
+#bot-new-btn.bb-btn {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: var(--radius-md);
+}
+
+#connect-apps-btn.bb-btn,
+#marketplace-btn.bb-btn {
+  padding: 8px var(--space-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.bb-lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-lightbox);
+  background: var(--overlay-strong);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.bb-lightbox-bar {
+  position: absolute;
+  top: var(--space-4);
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-7);
+  z-index: var(--z-raise);
+}
+
+.bb-lightbox-title {
+  color: var(--lightbox-ink);
+  font: var(--text-sm)/1.6 var(--font-mono);
+  max-width: 60vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bb-lightbox-btn {
+  background: var(--lightbox-btn);
+  color: var(--lightbox-ink);
+  border: 1px solid var(--lightbox-line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-4);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+#settings-panel.bb-modal {
+  z-index: var(--z-modal);
+}
+
+/* Wave M43: settings sheet — segmented tab bar + sticky header +
+   refined chip active state, so opening Settings no longer feels flat. */
+#settings-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  background: #f4f4f5;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  margin-top: 10px;
+}
+#settings-tabs .settings-tab-btn {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+#settings-tabs .settings-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+}
+#settings-tabs .settings-tab-btn.active {
+  background: #ffffff;
+  color: var(--ink);
+  border: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
+}
+#settings-sheet .bb-sheet-head {
+  position: sticky;
+  top: calc(-1 * var(--space-7));
+  padding: var(--space-7) var(--space-7) 12px;
+  margin: calc(-1 * var(--space-7)) calc(-1 * var(--space-7)) 0;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+  z-index: 2;
+}
+#settings-sheet .bb-sheet-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Wave M35: 键盘快捷键 sheet —— 复用 .bb-modal / .bb-sheet 层，行样式独立，DOM 建。 */
+#hotkeys-modal .hk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--space-5);
+}
+#hotkeys-modal .hk-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 168px) 1fr;
+  gap: var(--space-4);
+  align-items: center;
+  padding: 4px 0;
+}
+#hotkeys-modal .hk-row kbd {
+  background: #f7f7f8;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font: 600 var(--text-xs)/1 var(--font-mono);
+  display: inline-block;
+  white-space: nowrap;
+}
+#hotkeys-modal .hk-desc {
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+#settings-sheet {
+  width: min(760px, 94vw);
+  max-height: 86vh;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+}
+
+#secrets-panel label,
+#settings-panel .gp-label {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}

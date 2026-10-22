@@ -192,10 +192,20 @@ if (original.includes(probeMarker)) {
     // 负向对照用确定性的记忆槽：无论 store 现在是什么格式/内容，都先在
     // 该 Bot 槽种恰好 1 条（旧版扁平数组先包成 v2），结束统一恢复 memBefore。
     const memPath = path.join(REPO, "data/memory/desktop-host.json");
-    const raw = JSON.parse(fs.readFileSync(memPath, "utf8"));
-    const store = Array.isArray(raw) ? { version: 2, bots: {} } : raw;
-    store.bots = store.bots || {};
+    // A clean run has no desktop-host.json (G-23 restores a missing store by
+    // deleting the file). Start from an empty v2 document instead of throwing.
+    let raw;
+    try {
+      raw = JSON.parse(fs.readFileSync(memPath, "utf8"));
+    } catch (e) {
+      if (!e || e.code !== "ENOENT") throw e;
+      raw = { version: 2, bots: {} };
+    }
+    const store = Array.isArray(raw) ? { version: 2, bots: {} } : (raw || { version: 2, bots: {} });
+    if (!store.bots || typeof store.bots !== "object" || Array.isArray(store.bots)) store.bots = {};
+    store.version = 2;
     store.bots[probeBot.id] = { entries: [{ key: "m26-probe", value: "x", at: new Date().toISOString() }] };
+    fs.mkdirSync(path.dirname(memPath), { recursive: true });
     fs.writeFileSync(memPath, JSON.stringify(store, null, 2));
     const healthy = surface.botDetail(probeBot.id);
     healthy.memory_entries === 1

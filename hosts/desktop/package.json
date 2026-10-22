@@ -23,6 +23,7 @@
       "main.js",
       "preload.js",
       "index.html",
+      "ui_chrome.css",
       "sessions.js",
       "product_surface.js",
       "progress_protocol.js",
