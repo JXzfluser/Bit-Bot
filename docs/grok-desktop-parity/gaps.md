@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M33 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=234 FAIL=0**。新增 `prove_m33_grokchrome.js` 7/0（侧栏图标工具栏、账户弹层、送达状态、typing indicator、CN/EN 分离、语言下拉原生名、负向对照）；`prove_m20_ui.js` 24/0（sidebar 宽度契约更新为 280px 以匹配 Grok 视觉密度）；`prove_m24_window.js` 29/0。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m23_memory.js` 26/0；`prove_m26_botpanel.js` 27/0；其余探针与 M32 一致。内核未改。详见 Wave M33。
+> 验收证据（M34 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=241 FAIL=0**。新增 `prove_m34_account_actions.js` 5/0（账户弹层入口落地：三项走 open settings anchor、三项走中文占位 callout、handler 都收 popup；含负向对照）；`prove_m33_grokchrome.js` 8/0（新增 Composer 圆形 ↑ 发送按钮断言）；其余 M33 契约保持。详见 Wave M34。
+> 验收证据（M33）：`scripts/smoke_grok_desktop_parity.sh` **PASS=234 FAIL=0**。新增 `prove_m33_grokchrome.js` 7/0（侧栏图标工具栏、账户弹层、送达状态、typing indicator、CN/EN 分离、语言下拉原生名、负向对照）；`prove_m20_ui.js` 24/0（sidebar 宽度契约更新为 280px 以匹配 Grok 视觉密度）；`prove_m24_window.js` 29/0。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m23_memory.js` 26/0；`prove_m26_botpanel.js` 27/0；其余探针与 M32 一致。内核未改。详见 Wave M33。
 > 验收证据（M32）：干净 store（`bots.json` 已存在但没有 `agent-bit` 行、`data/workspace` 空、`desktop-host.json` 不存在）上 `scripts/smoke_grok_desktop_parity.sh` **PASS=230 FAIL=0**。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m20_ui.js` 24/0；`prove_m23_memory.js` 26/0；`prove_m24_window.js` 29/0；`prove_m26_botpanel.js` 27/0。内核未改。详见 Wave M32。
 > 验收证据（M31 行为基线）：`scripts/smoke_grok_desktop_parity.sh` PASS=229 FAIL=0；`moon test` 381/381（M26–M31 未改内核）；`scripts/prove_m31_reactions.js` 17/0；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
@@ -706,3 +707,29 @@
 - 送达状态 ✓/✓✓ 走本地回合边界（stored / turn end），不接多端同步；官方 Grok 的读回执在跨端场景下由服务端推送，Bit Bot 单机版仅本地语义。
 - 侧栏 `#sidebar-toolbar` 与 `#account-bar` 的 sticky 位置在窗口极窄时会与 popup 打架，尚未加媒体查询；`--sidebar-w` 280px 是最短安全宽度，后续如需继续压缩再补折叠态图标条。
 - 中英分离仅覆盖 `index.html` 里的可见 UI 文本；`data-i18n` 之外的内核短语（`runUserTurn("update computer", …)`）仍是英文关键词，属于「协议词」而非「用户可见文案」，不在本波范围。
+
+## Wave M34（账户弹层入口全部落地：不静默、有去处）
+
+背景：M33 侧栏底部加入了 Grok 风格的账户条与 8 项 popup，但只有 Settings 项接了真实动作，其余 5 项（发现新版本 / 每周用量 / 移动版 / 支持 / 添加账户 / 退出登录）都是"看得见、点了没反应"，这在功能上比没有更糟——违反「不做假 UI」的纪律。本波把 6 项都接到明确落点。
+
+### 1) 实现
+- **`hosts/desktop/index.html`**：
+  - `ap-update` → `runUserTurn("open settings entry=account anchor=update-status", { skipSession, silentUser })`，落到「设置 → 更新」tab。
+  - `ap-usage` → 同短语，`anchor=usage`，落到「设置 → 用量与账单」tab（M28 的 Usage & Billing 面板复用）。
+  - `ap-add-account` → `anchor=profile`，落到「设置 → 常规」tab 里的 profile 面板。
+  - `ap-mobile` / `ap-support` / `ap-signout` → `accountPlaceholder(msg)`：向对话流 append 一条中文助手气泡，明说"内测中 / 提 Issue 位置 / 单账户版本暂不支持登出"。不是弹窗、不是 toast，走 `#log`，与 Grok 的 chat-first 交互一致。
+  - 每个 handler 首行 `document.getElementById("account-popup").hidden = true`；popup 不会盖住展开后的 sheet。
+  - 锚点 `update-status` / `usage` / `profile` 早在 `SETTINGS_ANCHOR_TAB` 里已注册（M7），本波只是新增入口消费它们，内核与 Host 未改。
+- **新增 `scripts/prove_m34_account_actions.js`（5 项 + 1 负向）**：静态层断言三项短语、锚点注册表、三项占位 callout 都带中文、每个 handler 关 popup；负向对照抹掉 `anchor=usage` 短语，第 1 项断言应变红。smoke 里作为 G-34 接线。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m34_account_actions.js` **PASS=5 FAIL=0**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=241 FAIL=0**（235 → +6 G-34 断言）
+
+### 3) NG-001（本波故意不像素对齐）
+弹层菜单本身仍是 Bit Bot 中性色 + 「B」字母占位头像；未复刻 Grok 品牌图标、颜色、账户信息。三项"占位 callout"故意留在对话流，不假装是 Grok 官方移动版链接 —— 等 OTA / 支持渠道真实接入再升级为深链。
+
+### 4) 诚实残留
+- `ap-mobile` / `ap-support` 目前只出本地 callout，没有 `shell.openExternal` IPC 到真实仓库 / 商店页；官方 Grok 会跳 App Store。本波先做「有反馈不假绿」，下一波接 IPC 出口。
+- `ap-signout` 未真清 store；本地版本 profile 就是单条 default，"登出"目前语义上等价「删数据」，与用户直觉不符，故意只做提示。若后续引入多 profile，把这里改成 `switch profile -`。
+- `ap-add-account` 目前落到 General tab 的 profile 面板；Grok 是打开一张独立的 add-account modal。本波先复用现成 tab，未来再拆出。
