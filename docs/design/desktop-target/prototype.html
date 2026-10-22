@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<title>Bit Bot Desktop — Target v1 Prototype</title>
+<!--
+  Phase 0 prototype for docs/design/desktop-target (Grok-inspired, Bit Bot-owned).
+  Implements layout-contract.md §1-§4 exactly: single grid, --panel-w switch,
+  data-panel state source, header 56 / sidebar 280 / rail 340 / stream 760.
+  Render via e2e prototype shot script; states:
+    ?panel=none|bot|conv|computer|tools&sidebar=collapsed&width=1440&height=900
+  Tokens mirror hosts/desktop/ui_chrome.css (kept in sync manually at Phase 0).
+-->
+<style>
+  :root {
+    --bg0:#ffffff; --bg1:#f7f7f8; --side:#f7f7f8; --ink:#1a1a1a; --text:#1a1a1a;
+    --muted:#6f6f6f; --line:#e3e3e6; --accent:#1a1a1a; --accent-ink:#ffffff;
+    --accent-soft:#f0f0f2; --user-bubble:#eceef0; --bot-bubble:#f4f4f5;
+    --sidebar-w:280px; --header-h:56px; --content-max:760px; --radius-sm:6px;
+    --radius-bubble:16px; --radius-user:18px; --radius-composer:22px; --radius-pill:999px;
+    --space-7:16px; --text-sm:12px; --text-md:13px; --text-base:15px; --text-title:14px;
+    --font-ui:"Source Han Sans SC","Noto Sans SC","PingFang SC",sans-serif;
+    --font-mono:ui-monospace,monospace; --ease:0.2s ease;
+    --panel-w:0px; /* switch: rail width by state */
+  }
+  [hidden] { display:none !important; }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; height:100vh; overflow:hidden;
+    font:var(--text-base)/1.45 var(--font-ui); color:var(--text);
+    background-color:#f5f5f7;
+    display:grid;
+    grid-template-columns:var(--sidebar-w) minmax(0,1fr) var(--panel-w);
+    grid-template-rows:var(--header-h) minmax(0,1fr) auto;
+    grid-template-areas:
+      "header header header"
+      "agents main   rail"
+      "agents composer rail";
+    transition:grid-template-columns var(--ease);
+  }
+  body[data-panel="bot"], body[data-panel="conv"],
+  body[data-panel="computer"], body[data-panel="tools"] { --panel-w:340px; }
+  body[data-sidebar="collapsed"] { grid-template-columns:0px minmax(0,1fr) var(--panel-w); }
+  body[data-sidebar="collapsed"] > aside { display:none; }
+
+  header {
+    grid-area:header; display:grid;
+    grid-template-columns:auto 1fr auto; align-items:center; gap:12px;
+    padding:0 var(--space-7); background:var(--bg0); border-bottom:1px solid var(--line);
+  }
+  .brand { font-weight:700; letter-spacing:-0.01em; }
+  #bot-pill { justify-self:center; display:flex; gap:8px; align-items:center;
+    background:var(--accent-soft); border-radius:var(--radius-pill); padding:6px 14px; font-size:var(--text-md); }
+  #header-actions { display:flex; gap:6px; }
+  #header-actions button { border:1px solid var(--line); background:var(--bg0); color:var(--text);
+    border-radius:var(--radius-sm); padding:6px 10px; font-size:var(--text-sm); cursor:pointer; }
+  #header-actions button.active { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+
+  aside {
+    grid-area:agents; background:var(--side); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; overflow-y:auto; padding:0 12px; min-height:0;
+  }
+  #sidebar-toolbar { position:sticky; top:0; background:var(--side); padding:10px 0 6px; z-index:2; }
+  .sec-title { font-size:var(--text-sm); color:var(--muted); margin:12px 0 6px; font-weight:600; }
+  .sess-row { display:flex; align-items:center; gap:8px; padding:8px; border-radius:var(--radius-sm);
+    font-size:var(--text-md); cursor:pointer; }
+  .sess-row:hover { background:rgba(0,0,0,0.04); }
+  .sess-row.active { background:var(--accent-soft); font-weight:600; }
+  .sess-avatar { width:22px; height:22px; border-radius:50%; background:#2f9e44; color:#fff;
+    font-size:11px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  #sidebar-footer { position:sticky; bottom:0; background:var(--side); padding:8px 0 10px; border-top:1px solid var(--line); }
+  #account-bar { display:flex; align-items:center; gap:8px; padding:8px; border-radius:var(--radius-sm); cursor:pointer; }
+  #account-bar:hover { background:rgba(0,0,0,0.05); }
+  .acct-circle { width:24px; height:24px; border-radius:50%; background:var(--accent); color:var(--accent-ink);
+    display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+
+  #main { grid-area:main; min-width:0; min-height:0; overflow:auto; display:flex; }
+  #log { flex:1; display:flex; flex-direction:column; gap:16px;
+    max-width:var(--content-max); width:100%; margin-inline:auto; padding:20px var(--space-7); }
+  .msg { font-size:var(--text-base); line-height:1.5; }
+  .msg.user { align-self:flex-end; background:var(--user-bubble); border-radius:var(--radius-user) var(--radius-user) var(--radius-sm) var(--radius-user);
+    border-bottom-right-radius:6px; padding:10px 14px; max-width:760px; }
+  .msg.assistant { align-self:flex-start; background:var(--bot-bubble); border-radius:var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) var(--radius-sm);
+    border-top-left-radius:8px; padding:12px 16px; max-width:760px; width:100%; }
+  .msg.user + .msg.user { margin-top:-6px; }
+
+  #composer { grid-area:composer; background:var(--bg0); border-top:1px solid var(--line); padding:12px var(--space-7); }
+  #composer-inner { max-width:var(--content-max); margin-inline:auto; display:flex; gap:8px; align-items:flex-end;
+    background:var(--bg0); border:1px solid var(--line); border-radius:var(--radius-composer); padding:10px 12px; }
+  #composer textarea { flex:1; border:0; outline:0; resize:none; font:inherit; background:transparent; }
+  #send { background:var(--accent); color:var(--accent-ink); border:0; border-radius:var(--radius-pill);
+    padding:8px 16px; font-weight:600; cursor:pointer; }
+
+  #rail { grid-area:rail; min-width:0; background:var(--bg0); border-left:1px solid var(--line); overflow:hidden; }
+  body[data-panel="none"] #rail { border-left:0; }
+  .rail-view { display:none; height:100%; overflow:auto; padding:var(--space-7); }
+  body[data-panel="bot"]      .rail-view.bot { display:block; }
+  body[data-panel="conv"]     .rail-view.conv { display:block; }
+  body[data-panel="computer"] .rail-view.computer { display:block; }
+  body[data-panel="tools"]    .rail-view.tools { display:block; }
+  .rail-title { font-weight:700; font-size:var(--text-title); margin-bottom:10px; }
+  .kv { display:flex; justify-content:space-between; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); font-size:var(--text-sm); }
+  .kv b { font-weight:500; } .kv span { color:var(--muted); font-family:var(--font-mono); font-size:11px; }
+  .frame-box { border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--bg1);
+    height:180px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:var(--text-sm); }
+</style>
+</head>
+<body data-panel="none">
+<header>
+  <div class="brand">Bit Bot</div>
+  <div id="bot-pill"><span class="sess-avatar">P</span><span>Piper · 研究代理</span></div>
+  <div id="header-actions">
+    <button id="btn-tools" data-target="tools">能力</button>
+    <button id="btn-computer" data-target="computer">电脑</button>
+    <button id="btn-sidebar" title="折叠侧栏">侧栏</button>
+  </div>
+</header>
+<aside>
+  <div id="sidebar-toolbar"><b>＋ 新对话</b></div>
+  <div class="sec-title">Bot 列表</div>
+  <div class="sess-row active"><span class="sess-avatar">P</span>Piper</div>
+  <div class="sess-row"><span class="sess-avatar" style="background:#1971c2">M</span>Market Scout</div>
+  <div class="sec-title">群组</div>
+  <div class="sess-row"><span class="sess-avatar" style="background:#e8590c">周</span>周报群</div>
+  <div class="sec-title">会话</div>
+  <div class="sess-row">今天 · 竞品扫描</div>
+  <div class="sess-row">今天 · 费用整理</div>
+  <div class="sess-row">昨天 · 会议准备</div>
+  <div id="sidebar-footer">
+    <div class="sec-title" style="margin:0 0 6px">隐藏的 Bot · 2</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px"><span class="frame-box" style="height:auto;padding:6px 10px;flex:1">连接应用</span><span class="frame-box" style="height:auto;padding:6px 10px;flex:1">模板市场</span></div>
+    <div id="account-bar"><span class="acct-circle">B</span><span>Bit Bot</span><span style="margin-left:auto;color:var(--muted)">▲</span></div>
+  </div>
+</aside>
+<div id="main"><div id="log">
+  <div class="msg user">帮我扫描本周竞品动态，输出要点</div>
+  <div class="msg assistant">好的。我会分三步：1) 拉取已连接渠道的本周更新；2) 按竞品归类；3) 输出要点清单并标注来源。开始前先确认：只读扫描，不触发任何对外发送。</div>
+  <div class="msg assistant">本周共发现 4 条值得关注的动态，已按「功能 / 定价 / 市场」分类，来源链接附在每条之后。</div>
+  <div class="msg user">整理成周报草稿</div>
+  <div class="msg assistant">草稿已生成（未发送）。要点 4 条 + 风险 1 条；你可以直接改标题和收件人。</div>
+</div></div>
+<div id="composer"><div id="composer-inner">
+  <textarea rows="1" placeholder="给 Piper 发消息…"></textarea>
+  <button id="send">发送</button>
+</div></div>
+<div id="rail" aria-label="可选右栏">
+  <div class="rail-view bot"><div class="rail-title">Bot 设置 · Piper</div>
+    <div class="kv"><b>职责</b><span>research</span></div>
+    <div class="kv"><b>记忆条目</b><span>12</span></div>
+    <div class="kv"><b>Routines</b><span>3</span></div>
+    <div class="kv"><b>会话数</b><span>8</span></div>
+    <div class="kv"><b>通知</b><span>开</span></div>
+  </div>
+  <div class="rail-view conv"><div class="rail-title">对话详情</div>
+    <div class="kv"><b>标题</b><span>竞品扫描</span></div>
+    <div class="kv"><b>归属 Bot</b><span>Piper</span></div>
+    <div class="kv"><b>消息数</b><span>4 (u2/a2)</span></div>
+    <div class="kv"><b>最近更新</b><span>2026-10-22</span></div>
+  </div>
+  <div class="rail-view computer"><div class="rail-title">Computer 预览</div>
+    <div class="frame-box">帧预览 · 每 3s 轮询</div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="kv" style="border:0">接管</button><button class="kv" style="border:0">刷新帧</button></div>
+  </div>
+  <div class="rail-view tools"><div class="rail-title">能力 / 渠道</div>
+    <div class="kv"><b>MCP 插件</b><span>4 已启用</span></div>
+    <div class="kv"><b>连接器</b><span>2 需授权</span></div>
+    <div class="kv"><b>技能</b><span>7</span></div>
+  </div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const panel = q.get("panel") || "none";
+  document.body.dataset.panel = ["none","bot","conv","computer","tools"].includes(panel) ? panel : "none";
+  if (q.get("sidebar") === "collapsed") document.body.dataset.sidebar = "collapsed";
+  function sync(){ const p = document.body.dataset.panel;
+    for (const b of document.querySelectorAll("#header-actions [data-target]"))
+      b.classList.toggle("active", b.dataset.target === p); }
+  sync();
+  document.querySelectorAll("#header-actions [data-target]").forEach(b =>
+    b.addEventListener("click", () => {
+      const t = b.dataset.target;
+      document.body.dataset.panel = (document.body.dataset.panel === t) ? "none" : t;
+      sync(); }));
+  document.getElementById("btn-sidebar").addEventListener("click", () => {
+    document.body.dataset.sidebar = document.body.dataset.sidebar === "collapsed" ? "expanded" : "collapsed"; });
+</script>
+</body>
+</html>

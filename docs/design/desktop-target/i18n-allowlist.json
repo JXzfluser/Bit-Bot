@@ -1,0 +1,817 @@
+[
+  {
+    "text": "Bit Bot",
+    "where": "header, bot-pill, welcome, sidebar",
+    "reason": "brand name"
+  },
+  {
+    "text": "MoonBit",
+    "where": "welcome, banner",
+    "reason": "technology brand / kernel name"
+  },
+  {
+    "text": "DeepSeek",
+    "where": "welcome, settings credentials",
+    "reason": "LLM provider brand"
+  },
+  {
+    "text": "Bot",
+    "where": "throughout UI",
+    "reason": "product concept name (not translated to 机器人)"
+  },
+  {
+    "text": "Ctrl+Shift+Space",
+    "where": "header hotkey-hint",
+    "reason": "keyboard shortcut (platform-specific)"
+  },
+  {
+    "text": "Cmd+Shift+Space",
+    "where": "JS hotkey detection",
+    "reason": "keyboard shortcut (macOS)"
+  },
+  {
+    "text": "Ctrl+N",
+    "where": "JS hotkey detection",
+    "reason": "keyboard shortcut"
+  },
+  {
+    "text": "Cmd+N",
+    "where": "JS hotkey detection",
+    "reason": "keyboard shortcut (macOS)"
+  },
+  {
+    "text": "Ctrl+K",
+    "where": "JS hotkey detection",
+    "reason": "keyboard shortcut"
+  },
+  {
+    "text": "Cmd+K",
+    "where": "JS hotkey detection",
+    "reason": "keyboard shortcut (macOS)"
+  },
+  {
+    "text": "Ctrl+D",
+    "where": "voice input hotkey",
+    "reason": "keyboard shortcut"
+  },
+  {
+    "text": "Cmd+D",
+    "where": "voice input hotkey",
+    "reason": "keyboard shortcut (macOS)"
+  },
+  {
+    "text": "Alt+D",
+    "where": "debug mode toggle",
+    "reason": "keyboard shortcut"
+  },
+  {
+    "text": "Esc",
+    "where": "lightbox close hint",
+    "reason": "keyboard key name"
+  },
+  {
+    "text": "Enter",
+    "where": "send button title",
+    "reason": "keyboard key name"
+  },
+  {
+    "text": "Shift+Enter",
+    "where": "composer placeholder",
+    "reason": "keyboard shortcut"
+  },
+  {
+    "text": "BITBOT_LLM_API_KEY",
+    "where": "settings credentials",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_LLM_BASE_URL",
+    "where": "settings credentials",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_LLM_MODEL",
+    "where": "settings credentials",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_LLM_QWEN_API_KEY",
+    "where": "settings credentials",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_LLM_MOONSHOT_API_KEY",
+    "where": "settings credentials",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_ICP_FILING",
+    "where": "settings credentials",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_ALGORITHM_FILING",
+    "where": "settings credentials",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_CONTENT_MODERATION",
+    "where": "settings credentials",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_UPDATE_FEED_URL",
+    "where": "settings credentials",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_CU_NATIVE_ACT",
+    "where": "JS computer-use env",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_CU_OCR",
+    "where": "JS computer-use env",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_CU_ALLOW_LOCAL",
+    "where": "JS computer-use env",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "BITBOT_GH_PR_CREATE",
+    "where": "source control meta",
+    "reason": "environment variable name"
+  },
+  {
+    "text": "deepseek-chat",
+    "where": "settings credentials placeholder",
+    "reason": "model identifier"
+  },
+  {
+    "text": "https://api.deepseek.com/v1",
+    "where": "settings credentials placeholder",
+    "reason": "API endpoint URL"
+  },
+  {
+    "text": "https://platform.deepseek.com/api_keys",
+    "where": "settings credentials link",
+    "reason": "URL"
+  },
+  {
+    "text": "https://oapi.dingtalk.com/robot/send?access_token=…",
+    "where": "settings credentials placeholder",
+    "reason": "webhook URL pattern"
+  },
+  {
+    "text": "sk-…",
+    "where": "settings credentials placeholder",
+    "reason": "API key format"
+  },
+  {
+    "text": "Asia/Shanghai",
+    "where": "settings timezone select",
+    "reason": "IANA timezone identifier"
+  },
+  {
+    "text": "Asia/Hong_Kong",
+    "where": "settings timezone select",
+    "reason": "IANA timezone identifier"
+  },
+  {
+    "text": "Asia/Taipei",
+    "where": "settings timezone select",
+    "reason": "IANA timezone identifier"
+  },
+  {
+    "text": "UTC",
+    "where": "settings timezone select",
+    "reason": "timezone standard"
+  },
+  {
+    "text": "America/Los_Angeles",
+    "where": "settings timezone select",
+    "reason": "IANA timezone identifier"
+  },
+  {
+    "text": "Europe/Berlin",
+    "where": "settings timezone select",
+    "reason": "IANA timezone identifier"
+  },
+  {
+    "text": "shell",
+    "where": "settings auto-review rule kind",
+    "reason": "technical rule type identifier"
+  },
+  {
+    "text": "channel_send",
+    "where": "settings auto-review rule kind",
+    "reason": "technical rule type identifier"
+  },
+  {
+    "text": "mail_send",
+    "where": "settings auto-review rule kind",
+    "reason": "technical rule type identifier"
+  },
+  {
+    "text": "purchase_item",
+    "where": "settings auto-review rule kind",
+    "reason": "technical rule type identifier"
+  },
+  {
+    "text": "mcp_call",
+    "where": "settings auto-review rule kind",
+    "reason": "technical rule type identifier"
+  },
+  {
+    "text": "computer_use",
+    "where": "settings auto-review rule kind",
+    "reason": "technical rule type identifier"
+  },
+  {
+    "text": "delegate_task",
+    "where": "settings auto-review rule kind",
+    "reason": "technical rule type identifier"
+  },
+  {
+    "text": "webhook",
+    "where": "settings credentials label",
+    "reason": "technical term (protocol name)"
+  },
+  {
+    "text": "token",
+    "where": "settings credentials label",
+    "reason": "technical term (auth concept)"
+  },
+  {
+    "text": "chat_id",
+    "where": "settings credentials placeholder",
+    "reason": "technical field name"
+  },
+  {
+    "text": "agentid",
+    "where": "settings credentials placeholder",
+    "reason": "technical field name"
+  },
+  {
+    "text": "touser",
+    "where": "settings credentials placeholder",
+    "reason": "technical field name"
+  },
+  {
+    "text": "access_token",
+    "where": "settings credentials placeholder",
+    "reason": "technical field name"
+  },
+  {
+    "text": "tenant token",
+    "where": "settings credentials placeholder",
+    "reason": "technical field name"
+  },
+  {
+    "text": "URL",
+    "where": "settings credentials label",
+    "reason": "technical acronym"
+  },
+  {
+    "text": "Key",
+    "where": "settings credentials label",
+    "reason": "technical term (API key)"
+  },
+  {
+    "text": "OAuth",
+    "where": "connect apps modal",
+    "reason": "technical protocol name"
+  },
+  {
+    "text": "MCP",
+    "where": "machines rail plugins",
+    "reason": "technical protocol name (Model Context Protocol)"
+  },
+  {
+    "text": "CDP",
+    "where": "computer-use meta",
+    "reason": "technical protocol name (Chrome DevTools Protocol)"
+  },
+  {
+    "text": "OCR",
+    "where": "computer-use button",
+    "reason": "technical acronym (Optical Character Recognition)"
+  },
+  {
+    "text": "STT",
+    "where": "voice memo transcript",
+    "reason": "technical acronym (Speech-to-Text)"
+  },
+  {
+    "text": "API",
+    "where": "credentials labels",
+    "reason": "technical acronym"
+  },
+  {
+    "text": "LLM",
+    "where": "usage billing",
+    "reason": "technical acronym (Large Language Model)"
+  },
+  {
+    "text": "ICS",
+    "where": "mail meta",
+    "reason": "technical format name (iCalendar)"
+  },
+  {
+    "text": "eml",
+    "where": "mail meta",
+    "reason": "technical file format"
+  },
+  {
+    "text": "npm",
+    "where": "tool button",
+    "reason": "package manager name"
+  },
+  {
+    "text": "git",
+    "where": "source control panel",
+    "reason": "version control system name"
+  },
+  {
+    "text": "PR",
+    "where": "source control button",
+    "reason": "technical acronym (Pull Request)"
+  },
+  {
+    "text": "Slack",
+    "where": "machines rail connectors",
+    "reason": "product/brand name"
+  },
+  {
+    "text": "Gmail",
+    "where": "machines rail connectors",
+    "reason": "product/brand name"
+  },
+  {
+    "text": "Outlook",
+    "where": "machines rail connectors",
+    "reason": "product/brand name"
+  },
+  {
+    "text": "Teams",
+    "where": "machines rail channels",
+    "reason": "product/brand name (Microsoft Teams)"
+  },
+  {
+    "text": "Chrome",
+    "where": "computer-use buttons",
+    "reason": "product/brand name"
+  },
+  {
+    "text": "example.com",
+    "where": "tool buttons, computer-use",
+    "reason": "example domain (RFC 2606)"
+  },
+  {
+    "text": "target.com",
+    "where": "computer-use shop button",
+    "reason": "example e-commerce domain"
+  },
+  {
+    "text": "expedia.com",
+    "where": "computer-use travel button",
+    "reason": "example travel domain"
+  },
+  {
+    "text": "doordash.com",
+    "where": "computer-use food button",
+    "reason": "example food delivery domain"
+  },
+  {
+    "text": "google.com/flights",
+    "where": "computer-use flight button",
+    "reason": "example flight booking URL"
+  },
+  {
+    "text": "127.0.0.1:18780",
+    "where": "computer-use paywall button",
+    "reason": "localhost address (dev/test)"
+  },
+  {
+    "text": "plugin-slides",
+    "where": "machines rail plugin buttons",
+    "reason": "plugin identifier"
+  },
+  {
+    "text": "plugin-calendar",
+    "where": "i18n key caName.plugin-calendar",
+    "reason": "plugin identifier"
+  },
+  {
+    "text": "make_deck",
+    "where": "i18n key caToolDesc.make_deck",
+    "reason": "tool identifier"
+  },
+  {
+    "text": "list_templates",
+    "where": "i18n key caToolDesc.list_templates",
+    "reason": "tool identifier"
+  },
+  {
+    "text": "list_events",
+    "where": "i18n key caToolDesc.list_events",
+    "reason": "tool identifier"
+  },
+  {
+    "text": "README.mbt.md",
+    "where": "tool button, code changes",
+    "reason": "file path"
+  },
+  {
+    "text": "docs",
+    "where": "tool button (listdir)",
+    "reason": "directory name"
+  },
+  {
+    "text": "left-pad@1.3.0",
+    "where": "tool button (npm install)",
+    "reason": "package name + version"
+  },
+  {
+    "text": "cowsay",
+    "where": "tool button (package install)",
+    "reason": "package name"
+  },
+  {
+    "text": "desktop_panel=ready",
+    "where": "memory button",
+    "reason": "key=value pair (technical)"
+  },
+  {
+    "text": "scope=desk key=panel value=1",
+    "where": "memory button",
+    "reason": "technical parameters"
+  },
+  {
+    "text": "Invoice",
+    "where": "mail search button",
+    "reason": "example search query"
+  },
+  {
+    "text": "t-invoice-1",
+    "where": "mail read button",
+    "reason": "example thread ID"
+  },
+  {
+    "text": "DesktopSync",
+    "where": "mail schedule button",
+    "reason": "example meeting title"
+  },
+  {
+    "text": "tomorrow-3pm",
+    "where": "mail schedule button",
+    "reason": "example time expression"
+  },
+  {
+    "text": "DesktopWidget",
+    "where": "mail purchase button",
+    "reason": "example product name"
+  },
+  {
+    "text": "499",
+    "where": "mail purchase button (cents=499)",
+    "reason": "example price"
+  },
+  {
+    "text": "desktop@example.com",
+    "where": "mail draft button",
+    "reason": "example email address"
+  },
+  {
+    "text": "prospect@example.com",
+    "where": "mail cold button",
+    "reason": "example email address"
+  },
+  {
+    "text": "boss@example.com",
+    "where": "mail onbehalf button",
+    "reason": "example email address"
+  },
+  {
+    "text": "bob@example.com",
+    "where": "mail outlook button",
+    "reason": "example email address"
+  },
+  {
+    "text": "alpha",
+    "where": "mail claim button (claim inbox alpha)",
+    "reason": "example inbox name"
+  },
+  {
+    "text": "stand-up",
+    "where": "mail meeting button (body=stand-up)",
+    "reason": "example meeting topic"
+  },
+  {
+    "text": "Hi",
+    "where": "mail draft button (subject=Hi)",
+    "reason": "example subject"
+  },
+  {
+    "text": "Hello",
+    "where": "mail cold button (subject=Hello)",
+    "reason": "example subject"
+  },
+  {
+    "text": "Update",
+    "where": "mail onbehalf button (subject=Update)",
+    "reason": "example subject"
+  },
+  {
+    "text": "hi",
+    "where": "mail outlook button (subject=hi)",
+    "reason": "example subject"
+  },
+  {
+    "text": "hello",
+    "where": "mail outlook button (body=hello)",
+    "reason": "example body"
+  },
+  {
+    "text": "Desktop draft",
+    "where": "mail draft button (body=Desktop draft)",
+    "reason": "example body"
+  },
+  {
+    "text": "Desktop cold",
+    "where": "mail cold button (body=Desktop cold)",
+    "reason": "example body"
+  },
+  {
+    "text": "Desktop on-behalf",
+    "where": "mail onbehalf button (body=Desktop on-behalf)",
+    "reason": "example body"
+  },
+  {
+    "text": "mailto:unsub@example.com",
+    "where": "mail cold button (unsubscribe=...)",
+    "reason": "example unsubscribe URL"
+  },
+  {
+    "text": "click:40,40",
+    "where": "computer-use buttons",
+    "reason": "coordinate syntax (technical)"
+  },
+  {
+    "text": "shop cart checkout buy",
+    "where": "computer-use paywall button",
+    "reason": "command sequence (technical)"
+  },
+  {
+    "text": "2026-10-17",
+    "where": "journal append button",
+    "reason": "example date (ISO 8601)"
+  },
+  {
+    "text": "e1",
+    "where": "journal append button (id=e1)",
+    "reason": "example event ID"
+  },
+  {
+    "text": "hello journal",
+    "where": "journal append button (body=...)",
+    "reason": "example journal entry"
+  },
+  {
+    "text": "2026-10-01",
+    "where": "journal range button (from=...)",
+    "reason": "example date (ISO 8601)"
+  },
+  {
+    "text": "2026-10-31",
+    "where": "journal range button (to=...)",
+    "reason": "example date (ISO 8601)"
+  },
+  {
+    "text": "hello",
+    "where": "journal query button (query hello)",
+    "reason": "example search query"
+  },
+  {
+    "text": "⌕",
+    "where": "sidebar search toggle",
+    "reason": "icon character (search symbol)"
+  },
+  {
+    "text": "+",
+    "where": "sidebar new chat button",
+    "reason": "icon character (plus symbol)"
+  },
+  {
+    "text": "×",
+    "where": "bot edit modal close, reply cancel",
+    "reason": "icon character (close symbol)"
+  },
+  {
+    "text": "↑",
+    "where": "send button",
+    "reason": "icon character (up arrow)"
+  },
+  {
+    "text": "📎",
+    "where": "attach button",
+    "reason": "emoji icon (paperclip)"
+  },
+  {
+    "text": "🎙",
+    "where": "voice button",
+    "reason": "emoji icon (microphone)"
+  },
+  {
+    "text": "🎧",
+    "where": "voicechat button",
+    "reason": "emoji icon (headphones)"
+  },
+  {
+    "text": "ⓘ",
+    "where": "JS info mark",
+    "reason": "icon character (info symbol)"
+  },
+  {
+    "text": "✓✓",
+    "where": "JS message status",
+    "reason": "icon character (double check mark)"
+  },
+  {
+    "text": "▲",
+    "where": "account popup chevron",
+    "reason": "icon character (up triangle)"
+  },
+  {
+    "text": "↻",
+    "where": "account popup update icon",
+    "reason": "icon character (refresh symbol)"
+  },
+  {
+    "text": "▤",
+    "where": "account popup usage icon",
+    "reason": "icon character (chart symbol)"
+  },
+  {
+    "text": "◐",
+    "where": "account popup mobile icon",
+    "reason": "icon character (mobile symbol)"
+  },
+  {
+    "text": "?",
+    "where": "account popup support icon",
+    "reason": "icon character (question mark)"
+  },
+  {
+    "text": "⚙",
+    "where": "account popup settings icon",
+    "reason": "icon character (gear symbol)"
+  },
+  {
+    "text": "＋",
+    "where": "account popup add account icon",
+    "reason": "icon character (plus symbol)"
+  },
+  {
+    "text": "⎋",
+    "where": "account popup signout icon",
+    "reason": "icon character (escape symbol)"
+  },
+  {
+    "text": "↩",
+    "where": "reply bar icon",
+    "reason": "icon character (reply arrow)"
+  },
+  {
+    "text": "⌘⇧Space",
+    "where": "JS hotkey hint",
+    "reason": "keyboard shortcut (macOS symbols)"
+  },
+  {
+    "text": "#",
+    "where": "JS tag chip prefix",
+    "reason": "technical prefix (hashtag)"
+  },
+  {
+    "text": "@",
+    "where": "JS bot mention prefix",
+    "reason": "technical prefix (mention symbol)"
+  },
+  {
+    "text": "[REDACTED]",
+    "where": "secret protocol",
+    "reason": "technical constant (secret masking)"
+  },
+  {
+    "text": "bitbot:*",
+    "where": "IPC protocol",
+    "reason": "IPC channel prefix (technical)"
+  },
+  {
+    "text": "agent-bit",
+    "where": "built-in bot ID",
+    "reason": "system identifier"
+  },
+  {
+    "text": "GP-11",
+    "where": "attachment error messages",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "GP-50",
+    "where": "group creation validation",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "GP-53",
+    "where": "room transcript note",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-1906",
+    "where": "agents meta",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-1907",
+    "where": "agent delete confirm",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "ADR 0002",
+    "where": "tools meta, JS ADR message",
+    "reason": "architecture decision record reference"
+  },
+  {
+    "text": "CM-0904",
+    "where": "plugins panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-2107",
+    "where": "plugins panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-2108",
+    "where": "plugins panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-0411",
+    "where": "webhook panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-1601",
+    "where": "media panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-1602",
+    "where": "media panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-1603",
+    "where": "media panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-2157",
+    "where": "media panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-0802",
+    "where": "computer-use panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-0607",
+    "where": "cloud box panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-0608",
+    "where": "cloud box panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-2175",
+    "where": "cloud box panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-2131",
+    "where": "cloud services panel",
+    "reason": "spec reference code"
+  },
+  {
+    "text": "CM-1901",
+    "where": "account button title",
+    "reason": "spec reference code"
+  }
+]
