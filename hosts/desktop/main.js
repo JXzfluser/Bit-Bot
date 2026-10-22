@@ -84,9 +84,43 @@ let cnInbound = null;
    renderer badge makes the mode visible either way. */
 const DEV_MODE_LAUNCH = process.argv.includes("--bitbot-devmode") || process.env.BITBOT_DEVMODE === "1";
 
-const REPO_ROOT = process.env.BITBOT_REPO_ROOT
-  ? path.resolve(process.env.BITBOT_REPO_ROOT)
-  : path.resolve(__dirname, "../..");
+/**
+ * Resolve the Bit Bot repo root — the directory that owns moon.mod.json and
+ * cmd/desktop_turn. In dev, hosts/desktop/main.js sits two levels under the
+ * repo. When packaged (asar:false) into Bit Bot.app, __dirname is
+ * <app>/Contents/Resources/app, whose ../.. is the .app bundle, which has NO
+ * moon project. LSEnvironment is NOT injected for ad-hoc/unsigned builds, so
+ * BITBOT_REPO_ROOT is normally absent at runtime; we fall back to well-known
+ * local paths and an upward walk so `moon run cmd/desktop_turn` always
+ * resolves. (Fixes the "failed to resolve path cmd/desktop_turn / moon exited
+ * 255" the desktop showed on first real message turn.)
+ */
+function resolveRepoRoot() {
+  const probes = [];
+  if (process.env.BITBOT_REPO_ROOT) probes.push(process.env.BITBOT_REPO_ROOT);
+  probes.push(path.resolve(__dirname, "../..")); // dev layout: hosts/desktop -> repo
+  if (process.env.HOME) probes.push(path.join(process.env.HOME, "Downloads", "bitbot"));
+  probes.push("/Users/zfl/Downloads/bitbot"); // local deploy path
+  for (const c of probes) {
+    const p = path.resolve(c);
+    if (
+      fs.existsSync(path.join(p, "moon.mod.json")) ||
+      fs.existsSync(path.join(p, "cmd", "desktop_turn", "main.mbt"))
+    ) {
+      return p;
+    }
+  }
+  // last resort: walk up from __dirname looking for the moon project
+  let dir = __dirname;
+  for (let i = 0; i < 10; i++) {
+    if (fs.existsSync(path.join(dir, "moon.mod.json"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(__dirname, "../..");
+}
+const REPO_ROOT = resolveRepoRoot();
 
 /** Last OTA check result — honest residual until feed + packaged app. */
 const otaState = {
@@ -568,6 +602,9 @@ function createWindow() {
     width: 1100,
     height: 760,
     title: "Bit Bot Desktop",
+    // Grok-parity chrome: no native title bar; traffic lights float inset over
+    // the top strip (the in-app header stays as the drag region).
+    titleBarStyle: "hiddenInset",
     show: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

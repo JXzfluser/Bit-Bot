@@ -1,0 +1,27 @@
+# Bit Bot Host routine daemon — systemd unit scaffold (install optional).
+# Product brain stays MoonBit; this only drives Host FFI routine_tick sweeps.
+#
+# Install (optional, long-lived residual close):
+#   sudo cp scripts/bitbot-routine-daemon.service.example /etc/systemd/system/bitbot-routine-daemon.service
+#   # edit WorkingDirectory / ExecStart paths if needed
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bitbot-routine-daemon.service
+#
+# Without installing this unit, `host_routine_daemon.sh --long-lived` still loops
+# in-process (long_lived=true, systemd_unit=false) — honest residual until unit is active.
+
+[Unit]
+Description=Bit Bot Host routine tick daemon
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/Users/zfl/Downloads/bitbot
+Environment=BITBOT_ROUTINE_DAEMON=1
+Environment=BITBOT_ROUTINE_LONG_LIVED=1
+ExecStart=/bin/bash /Users/zfl/Downloads/bitbot/scripts/host_routine_daemon.sh --long-lived --interval-ms 60000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -55,3 +55,11 @@ h3-cross-agent-shared.txt
 .env.local
 **/.env.local
 /tools/cloudflared
+
+# WorkBuddy session data & local caches
+.workbuddy/
+.electron_cache/
+.bitbot_sandbox/
+
+# voice temp recordings
+data/desktop/voice/

@@ -13,29 +13,30 @@
 :root {
   color-scheme: light;
 
-  /* surfaces — Grok-style light default */
+  /* surfaces — Grok-style light default: clean white field, near-black ink,
+     single blue accent. Not an xAI brand skin; a neutral, original chat look. */
   --bg0: #ffffff;
   --bg1: #f7f7f8;
-  --side: #f7f7f8;
+  --side: #ffffff;
   /* raised surface for cards/chips/rails — token, not a literal, so
      force-dark repaints every surface (real-render GP-70 caught 45
      hard-coded #ffffff shells staying bright in dark mode) */
   --surface: #ffffff;
-  /* shell page background — themeable token (was a hard-coded #f5f5f7 on body,
-     which made force-dark keep a light viewport) */
-  --page-bg: #f5f5f7;
+  /* shell page background — Grok uses a clean white field */
+  --page-bg: #ffffff;
   --input-bg: #ffffff;
-  --ink: #1a1a1a;
-  --text: #1a1a1a;
-  --muted: #6f6f6f;
-  --line: #e3e3e6;
-  --accent: #1a1a1a;
+  --ink: #141414;
+  --text: #141414;
+  --muted: #6b6b6b;
+  --line: #e6e6e9;
+  /* Grok signature accent — one clean blue */
+  --accent: #1e86fc;
   --accent-ink: #ffffff;
-  --accent-soft: #f0f0f2;
-  --user-bubble: #eceef0;
-  --bot-bubble: #f4f4f5;
-  --bot-avatar: #2f9e44;
-  --unread: #2f7cf6;
+  --accent-soft: #e9f2fd;
+  --user-bubble: #f4f4f5;
+  --bot-bubble: #f6f6f7;
+  --bot-avatar: #1e86fc;
+  --unread: #1e86fc;
   --on-fill: #ffffff;
   --warn: #a06a00;
   --warn-bg: #fbf4e0;
@@ -139,6 +140,42 @@
     --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
     --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
     --shadow-sticky: 0 1px 0 var(--line);
+  }
+}
+
+/* GP-70 fix: appearance=system must actually follow the OS. Root previously
+   hardcoded light; now system-dark gets the dark palette (body.force-dark /
+   body.force-light still override, body beats :root in the cascade). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page-bg: #151515;
+    --surface: #1f1f1f;
+    --bg0: #171717;
+    --bg1: #1d1d1d;
+    --side: #111111;
+    --input-bg: #232323;
+    --ink: #ececec;
+    --text: #ececec;
+    --muted: #9a9a9a;
+    --line: #2e2e2e;
+    --accent: #ffffff;
+    --accent-ink: #171717;
+    --accent-soft: #2a2a2a;
+    --user-bubble: #2a2a2a;
+    --bot-bubble: #212121;
+    --bot-avatar: #2f9e44;
+    --warn: #d4a017;
+    --warn-bg: #262010;
+    --warn-ink: #e8d9a8;
+    --warn-line: #5a4a2a;
+    --danger: #c0554d;
+    --danger-bg: #2a1f1d;
+    --danger-ink: #e8b4b0;
+    --overlay: rgba(0, 0, 0, 0.45);
+    --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.4);
+    --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --shadow-sticky: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
 }
 
@@ -292,7 +329,32 @@ body.force-light {
   font-weight: 600;
   box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
-.bb-btn-primary:hover { background: #333; box-shadow: 0 3px 8px rgba(0,0,0,0.18); }
+.bb-btn-primary:hover { background: #1570d8; box-shadow: 0 3px 8px rgba(30,134,252,0.28); }
+
+/* Grok-style flattened sidebar: advanced panels (Bot 列表 / 群组 / 更多)
+   collapse by default so the first screen reads like a clean chat client.
+   The engine still populates #bot-list / #room-list — they are simply hidden
+   until the disclosure is opened. */
+.sb-adv { margin: 2px 0; }
+.sb-adv > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  padding: 7px 8px;
+  border-radius: var(--radius-md);
+  user-select: none;
+}
+.sb-adv > summary::-webkit-details-marker { display: none; }
+.sb-adv > summary:hover { background: var(--accent-soft); color: var(--ink); }
+.sb-adv[open] > summary { color: var(--ink); }
+.sb-adv-caret { transition: transform 0.15s ease; font-size: 11px; }
+.sb-adv[open] > summary .sb-adv-caret { transform: rotate(90deg); }
 
 .bb-btn-danger {
   background: var(--danger);
@@ -764,3 +826,760 @@ body.force-light {
   font-size: var(--text-sm);
   color: var(--muted);
 }
+
+/* ===========================================================================
+   Grok-style UI mode (body.grok-ui). An original, neutral chat-client look —
+   not an xAI brand skin. Scoped under body.grok-ui so dev/legacy layouts are
+   untouched; !important guarantees it wins over the inline component styles.
+   =========================================================================== */
+body.grok-ui { --sidebar-w: 248px; }
+
+/* header → minimal top bar (drop the wordmark / bot pill / dev badge) */
+body.grok-ui #brand-block,
+body.grok-ui #bot-pill,
+body.grok-ui #devmode-badge,
+body.grok-ui #vc-sb-indicator { display: none !important; }
+body.grok-ui header {
+  height: 52px !important;
+  background: var(--surface) !important;
+  border-bottom: 1px solid var(--line) !important;
+}
+body.grok-ui #header-actions { gap: 4px !important; }
+body.grok-ui #header-actions > button,
+body.grok-ui #model-entry {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--muted) !important;
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  font-size: var(--text-sm) !important;
+  font-weight: 500 !important;
+}
+body.grok-ui #header-actions > button:hover,
+body.grok-ui #model-entry:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
+
+/* sidebar → clean flat list */
+body.grok-ui #agents {
+  background: var(--side) !important;
+  border-right: 1px solid var(--line) !important;
+  padding: 10px 10px 0 !important;
+  gap: 4px !important;
+}
+body.grok-ui #sidebar-toolbar { margin-bottom: 6px !important; display: flex !important; gap: 8px !important; }
+body.grok-ui #sidebar-toolbar button {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--accent-soft) !important; color: var(--ink) !important;
+  border: 1px solid var(--line) !important; font-size: 18px; line-height: 1;
+}
+body.grok-ui #sidebar-toolbar #sess-new { background: var(--accent) !important; color: var(--accent-ink) !important; border: 0 !important; }
+body.grok-ui .panel-title.panel-head {
+  color: var(--muted) !important; font-size: var(--text-xs) !important;
+  font-weight: 600 !important; letter-spacing: .03em; margin-top: 10px !important;
+}
+body.grok-ui #session-list { margin-top: 4px !important; }
+
+/* advanced panels hidden by default, revealed via the "管理" toggle */
+body.grok-ui #sb-bots-rooms,
+body.grok-ui #sb-more,
+body.grok-ui #agents-lab,
+body.grok-ui #hidden-bots-lab { display: none !important; }
+body.grok-ui:has(#grok-adv-toggle:checked) #sb-bots-rooms,
+body.grok-ui:has(#grok-adv-toggle:checked) #sb-more,
+body.grok-ui:has(#grok-adv-toggle:checked) #agents-lab,
+body.grok-ui:has(#grok-adv-toggle:checked) #hidden-bots-lab { display: block !important; }
+.grok-adv-label {
+  display: block; text-align: center; cursor: pointer;
+  color: var(--muted); font-size: var(--text-xs);
+  padding: 8px; margin: 8px 0;
+  border: 1px dashed var(--line); border-radius: 8px;
+}
+.grok-adv-label:hover { background: var(--accent-soft); color: var(--ink); }
+
+/* chat area → centered, white, Grok spacing */
+body.grok-ui #main { background: var(--bg0) !important; padding: 0 !important; }
+body.grok-ui #log { max-width: 760px; margin: 0 auto !important; padding: 28px 16px 12px !important; }
+body.grok-ui #composer {
+  max-width: 760px; margin: 0 auto !important; justify-self: center !important;
+  background: var(--g-soft) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+  padding: 8px 12px !important;
+}
+
+/* ===== Round 3: remove the remaining "console" chrome for Grok parity ===== */
+
+/* Sidebar toolbar was a full-width var(--side) (#f7f7f7) bar — on the white
+   grok-ui sidebar it read as an empty gray box. Make it transparent + left
+   aligned with compact icon buttons (search + new chat), Grok-style. */
+body.grok-ui #sidebar-toolbar {
+  background: transparent !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 2px 6px !important;
+}
+body.grok-ui #sidebar-toolbar > button {
+  flex: 0 0 36px !important;
+  width: 36px !important; height: 36px !important;
+  min-width: 36px !important; max-width: 36px !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--line) !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+  box-shadow: none !important;
+  font-size: 17px !important;
+}
+body.grok-ui #sidebar-toolbar > button:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
+body.grok-ui #sidebar-toolbar #sess-new {
+  background: var(--accent) !important; color: var(--accent-ink) !important;
+  border-color: transparent !important; font-weight: 600 !important;
+}
+
+/* Header: keep only a quiet model chip; drop the dev panel buttons (电脑 / 能力). */
+body.grok-ui #gp-panel-btn,
+body.grok-ui #tools-toggle-btn { display: none !important; }
+body.grok-ui header { height: 48px !important; }
+body.grok-ui #header-actions { gap: 4px !important; }
+body.grok-ui #model-entry {
+  background: transparent !important; border: 1px solid transparent !important;
+  color: var(--muted) !important; font-size: var(--text-sm) !important;
+  padding: 6px 10px !important; border-radius: 8px !important;
+}
+body.grok-ui #model-entry:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
+
+/* "管理 Bot / 应用" reveal control: quiet text link, no dashed box. */
+body.grok-ui .grok-adv-label {
+  border: 0 !important; border-radius: 0 !important;
+  text-align: left !important; padding: 6px 6px !important;
+  margin: 6px 0 !important; background: transparent !important;
+  color: var(--muted) !important; font-size: 12px !important;
+}
+body.grok-ui .grok-adv-label:hover { background: transparent !important; color: var(--ink) !important; }
+
+/* Settings entry: ghost row, not a boxed button. */
+body.grok-ui #sidebar-settings-btn {
+  background: transparent !important; border: 0 !important; box-shadow: none !important;
+  color: var(--muted) !important; font-weight: 500 !important;
+  justify-content: flex-start !important; text-align: left !important;
+  padding: 8px 6px !important;
+}
+body.grok-ui #sidebar-settings-btn:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
+
+/* No-key warning: slim neutral inline notice instead of a big tan callout. */
+body.grok-ui #cfg-strip {
+  margin: 0 auto 10px !important; max-width: 760px !important;
+  background: #f8f8f8 !important; border: 1px solid var(--line) !important;
+  border-radius: 10px !important; color: var(--muted) !important;
+  font-size: 12.5px !important; padding: 8px 12px !important; text-align: center !important;
+}
+body.grok-ui #cfg-strip-btn {
+  background: var(--accent) !important; color: var(--accent-ink) !important;
+  border-radius: 8px !important; font-weight: 600 !important; box-shadow: none !important;
+}
+
+/* Kernel progress chip: subtle centered muted line, no dashed pill. */
+body.grok-ui #turn-progress {
+  max-width: 760px !important; margin: 0 auto 6px !important;
+  background: transparent !important; border: 0 !important;
+  color: var(--muted) !important; font-size: 12px !important; padding: 2px 4px !important;
+  box-shadow: none !important;
+}
+body.grok-ui #turn-progress .tp-dot { background: var(--ink) !important; }
+
+/* Composer: flatten the inner row so the whole composer reads as one rounded pill. */
+body.grok-ui #composer .row {
+  background: transparent !important; border: 0 !important; box-shadow: none !important;
+}
+
+/* ===== Round 4: measured against the real local Grok Bot window ===== */
+
+/* Header becomes the drag strip for the hiddenInset traffic lights:
+   transparent, content starts at the window top like Grok, only a quiet
+   model chip remains on the right. Interactive children must opt out. */
+body.grok-ui header {
+  display: flex !important;
+  align-items: center !important;
+  height: 52px !important;
+  padding: 0 16px 0 84px !important;
+  background: var(--surface) !important;
+  border-bottom: 0 !important;
+  -webkit-app-region: drag;
+}
+body.grok-ui header button,
+body.grok-ui header a,
+body.grok-ui header input { -webkit-app-region: no-drag; }
+body.grok-ui #header-actions { margin-left: auto !important; display: flex !important; align-items: center !important; }
+
+/* Chat: left-aligned column starting at the sidebar edge (Grok's feed look),
+   not a narrow centered column floating mid-window. */
+body.grok-ui #log {
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 16px 24px 12px !important;
+}
+body.grok-ui #cfg-strip {
+  max-width: none !important;
+  margin: 0 24px 10px !important;
+  text-align: left !important;
+}
+body.grok-ui #turn-progress {
+  max-width: none !important;
+  margin: 0 24px 6px !important;
+}
+
+/* Composer: one clean pill, full width with side margins, no nested input box. */
+body.grok-ui #composer {
+  max-width: none !important;
+  margin: 0 24px 16px !important;
+}
+body.grok-ui #composer .row textarea,
+body.grok-ui #composer .row input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+body.grok-ui #voicechat-btn { display: none !important; }
+
+/* Sidebar top icons right-aligned like Grok. */
+body.grok-ui #sidebar-toolbar { justify-content: flex-end !important; }
+
+/* Sidebar footer: Grok keeps a flat, flush account row at the bottom —
+   no floating gray card around 管理/设置/账户. */
+body.grok-ui #sidebar-footer {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ===== Round 4b: fix regressions reported from live render ===== */
+
+/* The footer is a sticky overlay (base CSS position:sticky + z-index) that
+   masks session rows scrolling beneath it. Round-4's transparent background
+   let those rows bleed through — restore an opaque white mask instead. */
+body.grok-ui #sidebar-footer {
+  background: var(--side) !important;
+  border-top: 0 !important;
+}
+
+/* The composer must span the chat column. Round-2 set justify-self:center
+   (paired with max-width:760); Round-4 removed the max-width, which turned
+   the composer into a shrink-to-fit floating box. Stretch it instead. */
+body.grok-ui #composer {
+  justify-self: stretch !important;
+}
+
+/* ===== Round 5: Grok sidebar behavior ===== */
+
+/* Model chip leaves the header — model/credential config lives in
+   Settings → 凭证. Header becomes a pure drag strip. */
+body.grok-ui #model-picker { display: none !important; }
+
+/* 管理 Bot / 应用 + 设置 collapse into the account popup (click avatar). */
+body.grok-ui .grok-adv-label,
+body.grok-ui #sidebar-settings-btn { display: none !important; }
+
+/* Pin the footer (account row) to the bottom edge of the sidebar. */
+body.grok-ui:not([data-sidebar="collapsed"]) #agents {
+  display: flex !important;
+  flex-direction: column !important;
+}
+body.grok-ui #sidebar-footer {
+  margin-top: auto !important;
+  padding: 6px 0 8px !important;
+}
+
+/* ===== Round 6: advanced clutter fully collapsed into the account popup ===== */
+
+/* 高级·代理/队友, 已隐藏的 BOT, 更多(连接应用/模板市场) live as popup actions
+   now — never as sidebar rows, in either toggle state. Only the Bot/room
+   management block (#sb-bots-rooms) is revealed by 管理 Bot / 应用. */
+body.grok-ui #sb-more,
+body.grok-ui #agents-lab,
+body.grok-ui #hidden-bots-lab { display: none !important; }
+body.grok-ui:has(#grok-adv-toggle:checked) #sb-more,
+body.grok-ui:has(#grok-adv-toggle:checked) #agents-lab,
+body.grok-ui:has(#grok-adv-toggle:checked) #hidden-bots-lab { display: none !important; }
+
+/* Account row chevron: replace the glyph "▲" with a crisp CSS chevron
+   (theme-colored, points up since the popup opens above). */
+body.grok-ui .acct-chevron {
+  font-size: 0 !important;
+  width: 16px; height: 16px;
+  display: inline-flex !important;
+  align-items: center; justify-content: center;
+}
+body.grok-ui .acct-chevron::before {
+  content: "";
+  width: 7px; height: 7px;
+  border-top: 1.6px solid var(--muted);
+  border-right: 1.6px solid var(--muted);
+  transform: rotate(-45deg) translate(1px, 1px);
+}
+#account-avatar-btn:hover .acct-chevron::before { border-color: var(--ink); }
+
+/* ===== Round 7: vertical rhythm + defaults ===== */
+
+/* Header no longer reserves a blank band: the grid row collapses to 0 and the
+   header floats above the chat column as an invisible drag strip, so content
+   starts at the window top edge (Grok behavior). The sidebar's own toolbar is
+   its drag handle. */
+body.grok-ui { --header-h: 0px; }
+body.grok-ui header {
+  position: fixed !important;
+  top: 0; left: var(--sidebar-w); right: 0;
+  height: 40px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  display: block !important;
+  z-index: 60;
+  -webkit-app-region: drag;
+}
+body.grok-ui #sidebar-toolbar { -webkit-app-region: drag; }
+body.grok-ui #sidebar-toolbar > button { -webkit-app-region: no-drag; }
+
+/* Bot management block shows by default (管理 toggle keeps working for it). */
+body.grok-ui #sb-bots-rooms { display: block !important; }
+
+/* Session rows tighter — the session list shouldn't dominate the sidebar. */
+body.grok-ui .sess-row { padding: 5px 8px !important; gap: 8px !important; }
+body.grok-ui .sess-avatar {
+  flex: 0 0 30px !important;
+  width: 30px !important;
+  height: 30px !important;
+}
+
+/* 新建 Bot: compact ghost pill instead of a full-width boxed button. */
+body.grok-ui #bot-new-btn {
+  width: auto !important;
+  padding: 3px 10px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  background: transparent !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 999px !important;
+  color: var(--muted) !important;
+  box-shadow: none !important;
+}
+body.grok-ui #bot-new-btn:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
+
+/* ===== Round 8: sidebar IA redesign + WorkBuddy-style composer ===== */
+
+/* Search becomes a full-width ghost field; "+" stays the compact primary. */
+body.grok-ui #sidebar-search-toggle {
+  flex: 1 1 auto !important;
+  width: auto !important; min-width: 0 !important; max-width: none !important;
+  height: 34px !important;
+  justify-content: flex-start !important;
+  padding: 0 12px !important;
+  font-size: 13px !important;
+  color: var(--muted) !important;
+  background: var(--g-soft) !important;
+  border: 1px solid transparent !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+body.grok-ui #sidebar-search-toggle:hover { background: var(--g-soft) !important; color: var(--ink) !important; }
+body.grok-ui #sess-new {
+  flex: 0 0 34px !important;
+  width: 34px !important; height: 34px !important;
+}
+
+/* 新建 Bot docks into the Bot 列表 header row (right of the title, left of caret). */
+body.grok-ui #sb-bots-rooms { position: relative !important; }
+body.grok-ui #sb-bots-rooms > summary { padding-right: 88px !important; }
+body.grok-ui #bot-new-btn {
+  position: absolute !important;
+  top: 3px !important; right: 30px !important;
+  margin: 0 !important; padding: 2px 9px !important;
+  width: auto !important;
+}
+
+/* Composer: WorkBuddy-style — one rounded container, text on top,
+   controls on the bottom row (attach left, mic + round send right). */
+body.grok-ui #composer {
+  border-radius: 24px !important;
+  padding: 12px 14px 10px !important;
+  gap: 2px !important;
+}
+body.grok-ui #composer .row {
+  flex-wrap: wrap !important;
+  gap: 4px !important;
+  padding: 0 !important;
+  align-items: center !important;
+}
+body.grok-ui #composer .row textarea {
+  flex: 1 1 100% !important;
+  padding: 2px 6px 10px !important;
+}
+body.grok-ui #voice-btn { margin-left: auto !important; }
+body.grok-ui #send {
+  min-width: 0 !important;
+  width: 34px !important; height: 34px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  font-size: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+body.grok-ui #send::before { content: "↑"; font-size: 18px; font-weight: 600; line-height: 1; }
+
+/* ===== Round 8b: specificity + traffic-light clearance fixes ===== */
+
+/* Round-3's `#sidebar-toolbar > button` (2 elements) out-specificed the
+   Round-8 search rules (1 element), pinning the field to 36px and wrapping
+   its label vertically over the traffic lights. Re-state with 2 ids. */
+body.grok-ui #sidebar-toolbar #sidebar-search-toggle {
+  flex: 1 1 auto !important;
+  width: auto !important; min-width: 0 !important; max-width: none !important;
+  height: 34px !important;
+  justify-content: flex-start !important;
+  padding: 0 12px !important;
+  font-size: 13px !important;
+  color: var(--muted) !important;
+  background: var(--g-soft) !important;
+  border: 1px solid transparent !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  white-space: nowrap !important;
+}
+body.grok-ui #sidebar-toolbar #sidebar-search-toggle:hover { background: var(--g-soft) !important; color: var(--ink) !important; }
+body.grok-ui #sidebar-toolbar #sess-new {
+  flex: 0 0 34px !important;
+  width: 34px !important; height: 34px !important;
+}
+/* keep the field clear of the inset traffic lights */
+body.grok-ui #sidebar-toolbar {
+  padding-left: 76px !important;
+  padding-right: 10px !important;
+}
+/* nudge 新建 Bot fully clear of the summary caret */
+body.grok-ui #bot-new-btn { right: 36px !important; top: 4px !important; }
+
+/* ===== Round 9: settings sheet redesign + sidebar polish ===== */
+
+/* Sidebar: kill the duplicated search row, quiet the section labels,
+   flatten the bot cards. */
+body.grok-ui #session-search { display: none !important; }
+body.grok-ui .panel-title.panel-head {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--muted) !important;
+  letter-spacing: .04em !important;
+}
+body.grok-ui #bot-list > * {
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 12px !important;
+  padding: 8px 10px !important;
+}
+body.grok-ui #bot-list > *:hover { background: var(--g-soft) !important; }
+body.grok-ui #room-list { color: var(--muted) !important; font-size: 12px !important; }
+
+/* ===== Round 10: unified Grok spec — tokens, type scale, settings left-nav ===== */
+
+/* -- 10.1 Global tokens & type scale (applies to EVERY page) ------------- */
+body.grok-ui {
+  --g-ink: #1a1a1a;
+  --g-sub: #75757a;
+  --g-line: #e8e8ea;
+  --g-soft: #f4f4f5;
+  --g-card: #ffffff;
+  --g-pill: #ebebee;
+}
+/* dark mode: system-following (no force class) or explicit force-dark */
+@media (prefers-color-scheme: dark) {
+  body.grok-ui:not(.force-light) {
+    --g-ink: #ececee;
+    --g-sub: #98989f;
+    --g-line: #3f3f44;
+    --g-soft: #2e2e33;
+    --g-card: #2a2a2e;
+    --g-pill: #3a3a40;
+  }
+}
+body.grok-ui.force-dark {
+  --g-ink: #ececee;
+  --g-sub: #98989f;
+  --g-line: #3f3f44;
+  --g-soft: #2e2e33;
+  --g-card: #2a2a2e;
+  --g-pill: #3a3a40;
+}
+body.grok-ui,
+body.grok-ui button,
+body.grok-ui input,
+body.grok-ui select,
+body.grok-ui textarea,
+body.grok-ui label {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif !important;
+}
+body.grok-ui pre, body.grok-ui code, body.grok-ui kbd {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace !important;
+}
+
+/* every sheet/modal shares one chrome */
+body.grok-ui .bb-sheet {
+  border-radius: 16px !important;
+  border-color: var(--g-line) !important;
+  box-shadow: 0 24px 64px rgba(0,0,0,.18) !important;
+}
+body.grok-ui .bb-sheet .bb-sheet-title {
+  font-size: 21px !important; font-weight: 600 !important;
+  letter-spacing: -0.01em !important; color: var(--g-ink) !important;
+}
+body.grok-ui .bb-sheet .bb-sheet-note { font-size: 13px !important; color: var(--g-sub) !important; }
+
+/* -- 10.2 Settings sheet → Grok left-nav layout --------------------------- */
+body.grok-ui #settings-sheet {
+  display: grid !important;
+  grid-template-columns: 216px 1fr !important;
+  grid-template-rows: 54px 1fr !important;
+  grid-template-areas: "head head" "nav content" !important;
+  width: min(880px, 92vw) !important;
+  height: min(680px, 88vh) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+body.grok-ui #settings-sheet .bb-sheet-head {
+  grid-area: head;
+  position: static !important;
+  margin: 0 !important;
+  padding: 0 14px 0 20px !important;
+  border-bottom: 0 !important;
+  background: transparent !important;
+  justify-content: flex-end !important;
+}
+body.grok-ui #settings-sheet .bb-sheet-title { display: none !important; }
+body.grok-ui #settings-close {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: 0 !important;
+  color: var(--g-sub) !important;
+  padding: 6px !important;
+}
+body.grok-ui #settings-close::before {
+  content: "×" !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+}
+body.grok-ui #settings-close:hover { color: var(--g-ink) !important; }
+/* all sheet close buttons share the × ghost style */
+body.grok-ui #ca-close,
+body.grok-ui #model-close,
+body.grok-ui #mk-close,
+body.grok-ui #bf-close {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: 0 !important;
+  color: var(--g-sub) !important;
+  padding: 6px !important;
+}
+body.grok-ui #ca-close::before,
+body.grok-ui #model-close::before,
+body.grok-ui #mk-close::before,
+body.grok-ui #bf-close::before {
+  content: "×" !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+}
+body.grok-ui #ca-close:hover,
+body.grok-ui #model-close:hover,
+body.grok-ui #mk-close:hover,
+body.grok-ui #bf-close:hover { color: var(--g-ink) !important; }
+body.grok-ui #settings-tabs {
+  grid-area: nav;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 4px 12px !important;
+  margin: 0 !important;
+}
+body.grok-ui .settings-tab-btn {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  width: 100% !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--g-ink) !important;
+  text-align: left !important;
+  padding: 9px 12px !important;
+  border-radius: 10px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+body.grok-ui .settings-tab-btn:hover { background: var(--g-soft) !important; color: var(--g-ink) !important; }
+body.grok-ui .settings-tab-btn.active { background: var(--g-pill) !important; box-shadow: none !important; }
+body.grok-ui .settings-tab-btn::before {
+  content: "" !important;
+  width: 17px; height: 17px; flex: 0 0 17px;
+  background-color: currentColor !important;
+  -webkit-mask: var(--g-ic) center / contain no-repeat;
+          mask: var(--g-ic) center / contain no-repeat;
+}
+body.grok-ui .settings-tab-btn[data-stab="general"] {
+  --g-ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'/%3E%3C/svg%3E");
+}
+body.grok-ui .settings-tab-btn[data-stab="computer"] {
+  --g-ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='3' width='20' height='14' rx='2' ry='2'/%3E%3Cline x1='8' y1='21' x2='16' y2='21'/%3E%3Cline x1='12' y1='17' x2='12' y2='21'/%3E%3C/svg%3E");
+}
+body.grok-ui .settings-tab-btn[data-stab="credentials"] {
+  --g-ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4'/%3E%3C/svg%3E");
+}
+body.grok-ui .settings-tab-btn[data-stab="usage"] {
+  --g-ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='20' x2='18' y2='10'/%3E%3Cline x1='12' y1='20' x2='12' y2='4'/%3E%3Cline x1='6' y1='20' x2='6' y2='14'/%3E%3C/svg%3E");
+}
+body.grok-ui .settings-tab-btn[data-stab="updates"] {
+  --g-ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='23 4 23 10 17 10'/%3E%3Cpolyline points='1 20 1 14 7 14'/%3E%3Cpath d='M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15'/%3E%3C/svg%3E");
+}
+body.grok-ui #settings-meta { display: none !important; }
+body.grok-ui #settings-anchors { display: none !important; }
+
+body.grok-ui .settings-tab {
+  grid-area: content;
+  margin: 0 !important;
+  padding: 4px 36px 32px 6px !important;
+  border-top: 0 !important;
+  overflow-y: auto !important;
+}
+body.grok-ui .settings-tab .st-title {
+  font-size: 21px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  color: var(--g-ink) !important;
+  margin: 0 0 18px !important;
+}
+body.grok-ui .settings-tab .st-note {
+  font-size: 13px !important;
+  color: var(--g-sub) !important;
+  margin: -10px 0 16px !important;
+  line-height: 1.5 !important;
+}
+
+/* -- 10.3 GLOBAL design primitives (every sheet / dialog inherits) --------
+   One set of tokens for ALL pages: settings, connect-apps, model picker,
+   template market, bot editor, rename/delete dialogs. No per-page rules. */
+
+/* base type inside every sheet */
+body.grok-ui .bb-sheet { font-size: 14px !important; line-height: 1.5 !important; color: var(--g-ink) !important; }
+
+/* group captions: .gp-label (settings) + .bf-label (bot editor) */
+body.grok-ui .gp-label,
+body.grok-ui .bf-label {
+  font-size: 13px !important;
+  color: var(--g-sub) !important;
+}
+body.grok-ui .bb-sheet .gp-label { margin: 18px 0 8px !important; }
+body.grok-ui .bf-label > span {
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  color: var(--g-ink) !important;
+}
+
+/* text controls: every input/select/control class shares one skin */
+body.grok-ui .bb-field,
+body.grok-ui .bb-control,
+body.grok-ui .bf-input,
+body.grok-ui .gp-select {
+  background: var(--g-card) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  color: var(--g-ink) !important;
+  box-shadow: none !important;
+}
+body.grok-ui .bb-field:focus,
+body.grok-ui .bb-control:focus,
+body.grok-ui .bf-input:focus,
+body.grok-ui .gp-select:focus {
+  border-color: var(--g-sub) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* chips: category filter (connect apps), option chips (settings), mini actions */
+body.grok-ui .gp-chip,
+body.grok-ui .ca-chip,
+body.grok-ui .bf-mini {
+  background: var(--g-card) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 999px !important;
+  padding: 6px 14px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--g-ink) !important;
+  box-shadow: none !important;
+}
+body.grok-ui .gp-chip:hover,
+body.grok-ui .ca-chip:hover,
+body.grok-ui .bf-mini:hover { background: var(--g-soft) !important; color: var(--g-ink) !important; }
+body.grok-ui .gp-chip.active,
+body.grok-ui .ca-chip.active {
+  background: var(--g-ink) !important;
+  border-color: var(--g-ink) !important;
+  color: var(--g-card) !important;
+}
+
+/* every button inside a sheet: one shape & type scale; inline colors preserved */
+body.grok-ui .bb-sheet button {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  border-radius: 999px !important;
+}
+
+/* normalize stray inline 11/12px note text up to the 13px caption level */
+body.grok-ui .bb-sheet [style*="font-size:11px"],
+body.grok-ui .bb-sheet [style*="font-size:12px"],
+body.grok-ui .bb-sheet [style*="font:11px"],
+body.grok-ui .bb-sheet [style*="font:12px"] {
+  font-size: 13px !important;
+}
+/* inline bold section captions → quiet Grok group captions */
+body.grok-ui .bb-sheet div[style*="font-weight:700;font-size:13px"] {
+  color: var(--g-sub) !important;
+  font-weight: 500 !important;
+}
+
+/* -- 10.4 Content cards: grouped white cards inside sheets (Grok rhythm) --- */
+body.grok-ui .st-card {
+  border: 1px solid var(--g-line) !important;
+  border-radius: 12px !important;
+  padding: 16px 18px !important;
+  margin: 0 0 14px !important;
+  background: var(--g-card) !important;
+}
+body.grok-ui .st-card-title {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: var(--g-ink) !important;
+  margin: 0 0 12px !important;
+}
+body.grok-ui .st-field { display: block !important; margin: 0 0 14px !important; }
+body.grok-ui .st-field:last-child { margin-bottom: 0 !important; }
+body.grok-ui .st-field-name {
+  display: block !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--g-ink) !important;
+  margin: 0 0 6px !important;
+}
+body.grok-ui .st-field-name span { font-weight: 400 !important; color: var(--g-sub) !important; }
+
+/* 国内渠道 card inside connect-apps sheet (token-skinned) */
+body.grok-ui #ca-cn-channels {
+  background: var(--g-card) !important;
+  border: 1px solid var(--g-line) !important;
+}
+
+/* 连接应用 modal: the migrated 国内渠道 block reads as a section card. */
+body.grok-ui #ca-cn-channels > label { margin: 0 !important; }

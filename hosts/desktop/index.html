@@ -1509,7 +1509,7 @@
   }
 </style>
 </head>
-<body>
+<body class="grok-ui">
   <header style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px">
     <div id="brand-block">
       <span class="brand">Bit Bot</span>
@@ -1532,7 +1532,7 @@
   <aside id="agents">
     <!-- Grok-style icon toolbar: search + new chat as compact icon buttons -->
     <div id="sidebar-toolbar">
-      <button type="button" id="sidebar-search-toggle" title="搜索会话 (Ctrl/Cmd+K)" aria-label="Search" data-i18n-aria="searchAria">⌕</button>
+      <button type="button" id="sidebar-search-toggle" title="搜索会话 (Ctrl/Cmd+K)" aria-label="Search" data-i18n-aria="searchAria">⌕ 搜索会话</button>
       <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话">+</button>
     </div>
     <!-- GP-60: sidebar in-call indicator -->
@@ -1540,17 +1540,22 @@
       <span class="vc-pulse"></span>
       <span data-i18n="voiceChatInProgress">语音通话中</span>
     </div>
-    <div class="panel-title panel-head">
-      <span data-i18n="bots">Bot 列表</span>
-      <button type="button" id="bot-new-btn" class="bb-btn" title="新建 Bot（名称 / 职责 / 描述）" data-i18n="newBot">新建 Bot</button>
-    </div>
-    <div id="bot-list" aria-label="Bot 列表"></div>
-    <div class="panel-title panel-head spaced">
-      <span data-i18n="rooms">群组</span>
-    </div>
-    <!-- GP-116 (§2.1): group list lives in the sidebar next to the Bot list,
-         sourced from rooms.json — not a separate window. -->
-    <div id="room-list" aria-label="群组会话"></div>
+    <details class="sb-adv" id="sb-bots-rooms" open>
+      <summary class="panel-head sb-adv-sum">
+        <span data-i18n="bots">Bot 列表</span>
+        <span class="sb-adv-caret" aria-hidden="true">▸</span>
+      </summary>
+      <div style="padding:2px 4px 4px">
+        <button type="button" id="bot-new-btn" class="bb-btn" title="新建 Bot（名称 / 职责 / 描述）" data-i18n="newBot">新建 Bot</button>
+        <div id="bot-list" aria-label="Bot 列表"></div>
+        <div class="panel-title panel-head spaced">
+          <span data-i18n="rooms">群组</span>
+        </div>
+        <!-- GP-116 (§2.1): group list lives in the sidebar next to the Bot list,
+             sourced from rooms.json — not a separate window. -->
+        <div id="room-list" aria-label="群组会话"></div>
+      </div>
+    </details>
     <div class="panel-title panel-head spaced">
       <span data-i18n="chats">会话</span>
     </div>
@@ -1589,14 +1594,19 @@
     <!-- GP-118 (§2.1): sidebar footer — Hidden Bots entry sits at the BOTTOM,
          with Connect apps / Marketplace / Settings, not between the lists. -->
     <div id="sidebar-footer">
+      <input type="checkbox" id="grok-adv-toggle" hidden />
+      <label for="grok-adv-toggle" class="grok-adv-label">管理 Bot / 应用</label>
       <details class="lab" id="hidden-bots-lab">
         <summary><span data-i18n="hiddenBots">已隐藏的 Bot</span> (<span id="hidden-bots-count">0</span>)</summary>
         <div id="hidden-bot-list"></div>
       </details>
-      <div class="bb-split">
-        <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="连接应用 · 插件（Cmd/Ctrl+Shift+M）" data-i18n="connectApps">连接应用</button>
-        <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板" data-i18n="marketplace">模板市场</button>
-      </div>
+      <details class="sb-adv" id="sb-more">
+        <summary class="sb-adv-sum">更多<span class="sb-adv-caret" aria-hidden="true">▸</span></summary>
+        <div class="bb-split" style="margin-top:8px">
+          <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="连接应用 · 插件（Cmd/Ctrl+Shift+M）" data-i18n="connectApps">连接应用</button>
+          <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板" data-i18n="marketplace">模板市场</button>
+        </div>
+      </details>
       <!-- Settings is a pinned sidebar-bottom entry (before the account row),
            click opens the Settings Sheet. Kept out of the account popup so it
            is not a duplicated entry. -->
@@ -1611,6 +1621,14 @@
           <span class="acct-chevron" aria-hidden="true">▲</span>
         </button>
         <div id="account-popup" hidden role="menu">
+          <!-- Grok-parity round 5: 管理/设置 live behind the account click,
+               not as always-visible sidebar rows. -->
+          <button type="button" class="ap-item" id="ap-manage"><span class="ap-ic" aria-hidden="true">⚙</span><span class="ap-tx">管理 Bot / 应用</span></button>
+          <button type="button" class="ap-item" id="ap-settings"><span class="ap-ic" aria-hidden="true">▤</span><span class="ap-tx" data-i18n="settings">设置</span></button>
+          <div class="ap-sep"></div>
+          <button type="button" class="ap-item" id="ap-connect"><span class="ap-ic" aria-hidden="true">⧉</span><span class="ap-tx" data-i18n="connectApps">连接应用</span></button>
+          <button type="button" class="ap-item" id="ap-market"><span class="ap-ic" aria-hidden="true">▦</span><span class="ap-tx" data-i18n="marketplace">模板市场</span></button>
+          <div class="ap-sep"></div>
           <button type="button" class="ap-item" id="ap-update" ><span class="ap-ic" aria-hidden="true">↻</span><span class="ap-tx" data-i18n="apUpdate">发现新版本</span></button>
           <button type="button" class="ap-item" id="ap-usage" ><span class="ap-ic" aria-hidden="true">▤</span><span class="ap-tx" data-i18n="apUsage">每周用量</span></button>
           <button type="button" class="ap-item" id="ap-mobile" ><span class="ap-ic" aria-hidden="true">◐</span><span class="ap-tx" data-i18n="apMobile">获取移动版 Bit Bot</span></button>
@@ -1714,7 +1732,7 @@
       <div id="settings-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div id="settings-anchors" style="margin-top:10px;display:none;flex-wrap:wrap;gap:6px"></div>
       <div id="st-general" class="settings-tab" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div style="font-weight:700;margin-bottom:4px" data-i18n="settingsGeneral">对齐 · 常规（真实生效并持久化）</div>
+        <div class="st-title" data-i18n="settingsGeneral">常规</div>
         <div class="gp-label" data-i18n="appearance">外观</div>
         <div class="gp-row" id="gp-appearance-row">
           <button type="button" class="gp-chip" data-appearance="system" data-i18n="followSystem">跟随系统</button>
@@ -1776,6 +1794,7 @@
         <div id="waveg-settings-status" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       </div>
       <div id="st-computer" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="st-title" data-i18n="tabComputer">电脑</div>
         <div class="gp-label" data-i18n="locExec">本地执行（电脑权限）</div>
         <div class="gp-row" id="gp-locexec-row">
           <button type="button" class="gp-chip" data-locexec="ask" data-i18n="askEveryTime">每次询问</button>
@@ -1794,10 +1813,12 @@
         <div id="st-computer-state" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
       </div>
       <div id="st-usage" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div class="gp-label" data-i18n="usageBilling">Usage & Billing（本周真实 LLM 用量；无数据即空态，不造假）</div>
+        <div class="st-title" data-i18n="tabUsage">用量与账单</div>
+        <div class="st-note">本周真实 LLM 用量；无数据即空态，不造假</div>
         <div id="gp-usage" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">读取中…</div>
       </div>
       <div id="st-updates" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="st-title" data-i18n="tabUpdates">更新</div>
         <div class="gp-row">
           <button type="button" class="gp-chip" id="gp-check-updates" data-i18n="checkUpdatesBtn">检查更新</button>
           <button type="button" class="gp-chip" id="gp-restart-update" data-i18n="restartUpdateBtn" disabled>重启并安装</button>
@@ -1805,71 +1826,57 @@
         <div id="st-updates-state" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
       </div>
       <div id="secrets-panel" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div style="font-weight:700;margin-bottom:6px" data-i18n="credentials">产品凭证 · 开放配置（不写死）</div>
-        <div style="color:var(--muted);font-size:12px;margin-bottom:8px">Key / 渠道凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_API_KEY <span id="sec-llm-mask"></span>
-            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-… DeepSeek" class="bb-field" />
+        <div class="st-title" data-i18n="credentials">模型与密钥</div>
+        <div class="st-note">Key 与凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
+        <div class="st-card">
+          <div class="st-card-title">模型</div>
+          <label class="st-field"><span class="st-field-name">DeepSeek API Key <span id="sec-llm-mask"></span></span>
+            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
           </label>
-          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_BASE_URL
+          <label class="st-field"><span class="st-field-name">API Base URL</span>
             <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" class="bb-field" />
           </label>
-          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MODEL
+          <label class="st-field"><span class="st-field-name">模型 ID</span>
             <input id="sec-llm-model" type="text" placeholder="deepseek-chat" class="bb-field" />
           </label>
-          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_QWEN_API_KEY <span id="sec-qwen-mask"></span>
-            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选 · 通义" class="bb-field" />
+          <label class="st-field"><span class="st-field-name">通义千问 API Key <span id="sec-qwen-mask"></span></span>
+            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
           </label>
-          <label style="font-size:12px;color:var(--muted)">BITBOT_LLM_MOONSHOT_API_KEY <span id="sec-moon-mask"></span>
-            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选 · Moonshot/Kimi" class="bb-field" />
+          <label class="st-field"><span class="st-field-name">Moonshot / Kimi API Key <span id="sec-moon-mask"></span></span>
+            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
           </label>
-          <label style="font-size:12px;color:var(--muted)">钉钉 webhook（勾选开启 live）
-            <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
-              <input id="sec-ding-post" type="checkbox" />
-              <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
-            </div>
-          </label>
-          <label style="font-size:12px;color:var(--muted)">飞书 token + chat_id
-            <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
-              <input id="sec-feishu-post" type="checkbox" />
-              <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
-              <input class="bb-control" id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%" />
-            </div>
-          </label>
-          <label style="font-size:12px;color:var(--muted)">企微 token + agent + touser
-            <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
-              <input id="sec-wecom-post" type="checkbox" />
-              <input class="bb-control" id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px" />
-              <input class="bb-control" id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px" />
-              <input class="bb-control" id="sec-wecom-to" type="text" placeholder="touser" style="width:100px" />
-            </div>
-          </label>
-          <label style="font-size:12px;color:var(--muted)">AI 备案号（未填则 residual，不假装已备案）
-            <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
-              <input class="bb-control" id="sec-icp" type="text" placeholder="BITBOT_ICP_FILING" style="flex:1;min-width:140px" />
-              <input class="bb-control" id="sec-algo" type="text" placeholder="BITBOT_ALGORITHM_FILING" style="flex:1;min-width:140px" />
-            </div>
-          </label>
-          <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px">
-            <input id="sec-moderation" type="checkbox" />
-            内容审核门 BITBOT_CONTENT_MODERATION=1（拦截违禁词输出）
-          </label>
-          <label style="font-size:12px;color:var(--muted)">更新源 URL
-            <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-              <input id="sec-ota" type="text" placeholder="BITBOT_UPDATE_FEED_URL（目录下需 latest.yml）" class="bb-field bb-field-grow" />
-              <button type="button" id="sec-ota-check" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;white-space:nowrap">查更新</button>
-            </div>
-          </label>
-          <div id="sec-inbound-url" style="margin-top:4px;padding:8px;border:1px dashed var(--line);border-radius:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button type="button" id="sec-save" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">保存并热加载</button>
-            <button type="button" id="sec-probe" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连大脑</button>
-            <button type="button" id="sec-probe-cn" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:8px 12px;cursor:pointer">试连国内渠道</button>
-            <button type="button" id="sec-gate" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:8px 12px;cursor:pointer">跑验收门禁</button>
-          </div>
-          <div id="sec-status" style="color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
-          <pre id="sec-gate-out" class="bb-meta bb-control" style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
         </div>
+        <div class="st-card">
+          <div class="st-card-title">合规与安全</div>
+          <label class="st-field"><span class="st-field-name">AI 备案号</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input class="bb-control" id="sec-icp" type="text" placeholder="ICP 备案号" style="flex:1;min-width:140px" />
+              <input class="bb-control" id="sec-algo" type="text" placeholder="算法备案号" style="flex:1;min-width:140px" />
+            </div>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;margin:0">
+            <input id="sec-moderation" type="checkbox" />
+            <span style="font-size:13px;font-weight:500;color:var(--g-ink)">内容审核门（拦截违禁词输出）</span>
+          </label>
+        </div>
+        <div class="st-card">
+          <div class="st-card-title">更新</div>
+          <label class="st-field"><span class="st-field-name">更新源 URL</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="sec-ota" type="text" placeholder="目录下需 latest.yml" class="bb-field bb-field-grow" />
+              <button type="button" id="sec-ota-check" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);padding:8px 14px;cursor:pointer;white-space:nowrap">查更新</button>
+            </div>
+          </label>
+          <div id="sec-inbound-url" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" id="sec-save" style="background:var(--accent);color:var(--accent-ink);border:0;padding:8px 16px;font-weight:600;cursor:pointer">保存并热加载</button>
+          <button type="button" id="sec-probe" style="background:var(--accent-soft);color:var(--ink);border:0;padding:8px 14px;cursor:pointer">试连大脑</button>
+          <button type="button" id="sec-probe-cn" style="background:var(--accent-soft);color:var(--ink);border:0;padding:8px 14px;cursor:pointer">试连国内渠道</button>
+          <button type="button" id="sec-gate" style="background:transparent;color:var(--muted);border:1px solid var(--line);padding:8px 14px;cursor:pointer">跑验收门禁</button>
+        </div>
+        <div id="sec-status" style="margin-top:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
+        <pre id="sec-gate-out" class="bb-meta bb-control" style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
       </div>
       </div>
     </div>
@@ -1883,7 +1890,7 @@
       <div id="lb-body" style="max-width:94vw;max-height:88vh;display:flex;align-items:center;justify-content:center;overflow:auto"></div>
     </div>
     <!-- GP-A2/A3: Connect apps panel (spec §2.5 · Cmd/Ctrl+Shift+M) -->
-    <div id="connect-apps-modal" class="bb-modal bb-modal--right">
+    <div id="connect-apps-modal" class="bb-modal">
       <div class="bb-sheet bb-sheet-lg">
         <div class="bb-sheet-head">
           <div class="bb-sheet-title" data-i18n="caTitle">连接应用</div>
@@ -1902,6 +1909,31 @@
           <button type="button" class="ca-chip" data-cat="communication" data-i18n="caCatCommunication">通信</button>
           <button type="button" class="ca-chip" data-cat="design" data-i18n="caCatDesign">设计</button>
           <button type="button" class="ca-chip" data-cat="code" data-i18n="caCatCode">代码</button>
+        </div>
+        <!-- 国内渠道（钉钉/飞书/企微）凭证：归入「通信」分类，全部/通信 时可见 -->
+        <div id="ca-cn-channels" data-cat="communication" style="display:none;flex-direction:column;margin-top:12px;padding:14px 16px;border-radius:12px">
+          <div style="font-weight:600;font-size:15px;color:var(--g-ink);margin-bottom:12px">国内通信渠道 · 钉钉 / 飞书 / 企微</div>
+          <label class="st-field"><span class="st-field-name">钉钉 Webhook（勾选开启推送）</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="sec-ding-post" type="checkbox" />
+              <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
+            </div>
+          </label>
+          <label class="st-field"><span class="st-field-name">飞书 token + chat_id</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="sec-feishu-post" type="checkbox" />
+              <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
+              <input class="bb-control" id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%" />
+            </div>
+          </label>
+          <label class="st-field"><span class="st-field-name">企微 token + agent + touser</span>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input id="sec-wecom-post" type="checkbox" />
+              <input class="bb-control" id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px" />
+              <input class="bb-control" id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px" />
+              <input class="bb-control" id="sec-wecom-to" type="text" placeholder="touser" style="width:100px" />
+            </div>
+          </label>
         </div>
         <div id="ca-meta" style="color:var(--muted);font:11px/1.4 ui-monospace,monospace;margin-top:8px"></div>
         <div style="font-weight:700;font-size:13px;margin-top:12px" data-i18n="caYour">已安装的插件</div>
@@ -2422,8 +2454,8 @@
     </div>
     <div class="row">
       <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…（Shift+Enter 换行）" autocomplete="off" autofocus></textarea>
-      <button type="button" id="attach-btn" title="添加附件（≤6 · 文档/图片/音频 25MB · 视频 200MB）">📎</button>
-      <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）">🎙</button>
+      <button type="button" id="attach-btn" title="添加附件（≤6 · 文档/图片/音频 25MB · 视频 200MB）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+      <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><path d="M12 18v4"/><path d="M8 22h8"/></svg></button>
       <button type="button" id="voicechat-btn" title="开始语音对话" data-i18n="voiceChatBtn">🎧 语音对话</button>
       <button id="send" type="submit" title="发送 (Enter)" aria-label="Send" data-i18n-aria="send">↑</button>
     </div>
@@ -2452,6 +2484,37 @@
     if (!window.__bitbotUntrusted) {
       document.write('<script src="./shared/untrusted_fence.js"><\/script>');
     }
+  </script>
+  <script>
+    /* Grok-parity round 5: 管理/设置 collapsed into the account popup.
+       Forward clicks to the (visually hidden) sidebar controls so the engine
+       keeps a single binding source. */
+    (function () {
+      var apManage = document.getElementById("ap-manage");
+      var apSettings = document.getElementById("ap-settings");
+      if (apManage) apManage.addEventListener("click", function () {
+        var t = document.getElementById("grok-adv-toggle");
+        if (!t) return;
+        t.checked = !t.checked;
+        t.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      if (apSettings) apSettings.addEventListener("click", function () {
+        var b = document.getElementById("sidebar-settings-btn");
+        if (b) b.click();
+      });
+      var apConnect = document.getElementById("ap-connect");
+      if (apConnect) apConnect.addEventListener("click", function () {
+        var b = document.getElementById("connect-apps-btn");
+        if (b) b.click();
+      });
+      var apMarket = document.getElementById("ap-market");
+      if (apMarket) apMarket.addEventListener("click", function () {
+        var b = document.getElementById("marketplace-btn");
+        if (b) b.click();
+      });
+      /* Round 10b: 钉钉/飞书/企微凭证已静态内置于 连接应用（#ca-cn-channels，
+         归入「通信」分类）。旧的启动迁移脚本删除——id 不变，引擎绑定仍有效。 */
+    })();
   </script>
   <script>
     const banner = document.getElementById("banner");
@@ -7973,14 +8036,9 @@
             t.textContent =
               "尚未配置大脑 key — 点「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）";
           }
-        } else if (!anyCn) {
-          strip.style.display = "block";
-          const t = document.getElementById("cfg-strip-text");
-          if (t) {
-            t.textContent =
-              "大脑已配 · 国内渠道仍为 draft — 可在「凭证」勾选钉钉/飞书/企微 live";
-          }
         } else {
+          /* round 7: brain key is configured — CN-channel draft state is not a
+             user-facing blocker, keep the config strip quiet. */
           strip.style.display = "none";
         }
       }
@@ -9189,6 +9247,10 @@
       m.style.display = "flex";
       bbSheetOpened("connect-apps-modal", triggerEl);
       refreshConnectApps();
+      const cnCard0 = document.getElementById("ca-cn-channels");
+      if (cnCard0) {
+        cnCard0.style.display = (caActiveCat === "all" || caActiveCat === "communication") ? "flex" : "none";
+      }
       const q = document.getElementById("ca-search");
       if (q) setTimeout(() => q.focus(), 50);
     }
@@ -9247,6 +9309,10 @@
         caCatsEl.querySelectorAll(".ca-chip").forEach((b) => {
           b.classList.toggle("active", b === btn);
         });
+        const cnCard = document.getElementById("ca-cn-channels");
+        if (cnCard) {
+          cnCard.style.display = (caActiveCat === "all" || caActiveCat === "communication") ? "flex" : "none";
+        }
         renderConnectApps();
       });
     }
@@ -9937,7 +10003,7 @@
         allowAuto: "自动允许",
         askFirst: "先询问",
         usageBilling: "用量与账单（本周真实 LLM 用量；无数据即空态，不造假）",
-        credentials: "产品凭证 · 开放配置（不写死）",
+        credentials: "模型与密钥",
         takeover: "接管",
         takeoverTitle: "接管 — 你正在直接操作本机屏幕",
         takeoverHint: "密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。",

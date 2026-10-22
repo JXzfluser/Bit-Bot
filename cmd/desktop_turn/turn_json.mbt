@@ -1761,7 +1761,7 @@ pub fn run_desktop_turn(
         limit: 64,
       })
       let rows = memory_rows(entries)
-      let reply = "Memory updated (profile, bot=" +
+      let reply = "记忆已更新（profile，bot=" +
         ctx.bot_id +
         "): " +
         key +
@@ -1841,7 +1841,7 @@ pub fn run_desktop_turn(
             command,
             needs_host_ffi: true,
           }
-          let reply = "Host effect planned (shell). Desktop must execute via Host FFI then call continue_after_host_ffi (ADR 0002). Not LocalBrain."
+          let reply = "已计划 Host 效果（shell）。桌面端需经 Host FFI 执行，再回调 continue_after_host_ffi（ADR 0002）；非 LocalBrain。"
           deliver_ok(
             trimmed,
             turn_id,
@@ -1867,7 +1867,7 @@ pub fn run_desktop_turn(
             intent,
             e,
             ctx,
-            assistant="Channel delivery refused: " + e,
+            assistant="渠道投递被拒绝：" + e,
           )
         Ok(plan) => {
           let label = channel_delivery_label(plan)
@@ -1878,7 +1878,7 @@ pub fn run_desktop_turn(
             @channels.External(channel~) =>
               "Channel plan: external delivery to " +
               channel +
-              ". Host must send via channel FFI; MoonBit planned reply. Body: " +
+              "。Host 需经渠道 FFI 发送；MoonBit 已计划回复。正文：" +
               body
           }
           // External channel send is a Host effect (delivery), not LocalBrain.
@@ -1968,7 +1968,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Host effect planned (fs_list). Desktop/CLI must ListDir via Host FFI.",
+        "已计划 Host 效果（fs_list）。桌面/CLI 需经 Host FFI 执行 ListDir。",
         intent,
         ctx~,
         effects=[effect],
@@ -1984,7 +1984,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Host effect planned (fs_read). Desktop/CLI must Read via Host FFI.",
+        "已计划 Host 效果（fs_read）。桌面/CLI 需经 Host FFI 执行 Read。",
         intent,
         ctx~,
         effects=[effect],
@@ -2000,7 +2000,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Host effect planned (webfetch). Desktop/CLI must WebFetch via Host FFI.",
+        "已计划 Host 效果（webfetch）。桌面/CLI 需经 Host FFI 执行 WebFetch。",
         intent,
         ctx~,
         effects=[effect],
@@ -2021,7 +2021,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "CopyToBox planned for machine=" +
+        "已计划 CopyToBox，machine=" +
         machine_id +
         " src=" +
         src +
@@ -2069,7 +2069,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "CopyFromBox planned for machine=" +
+        "已计划 CopyFromBox，machine=" +
         machine_id +
         " box=" +
         box_path +
@@ -2147,7 +2147,7 @@ pub fn run_desktop_turn(
             turn_id,
             "Uninstall plugin " +
             plugin_id +
-            " planned (CM-2107). Host drops namespace " +
+            " 已计划（CM-2107）。Host 移除命名空间 " +
             ns +
             " to Unavailable.",
             intent,
@@ -2185,7 +2185,7 @@ pub fn run_desktop_turn(
             meta.skills.length().to_string() +
             " skill(s), ns=" +
             meta.mcp_namespace +
-            ") planned (CM-2108).",
+            "）已计划（CM-2108）。",
             intent,
             ctx~,
             effects=[effect],
@@ -2207,7 +2207,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "List/search plugins planned (CM-0904 directory). Host returns available connectors.",
+        "已计划列出/搜索插件（CM-0904 目录）。Host 返回可用连接器。",
         intent,
         ctx~,
         effects=[effect],
@@ -2225,7 +2225,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Tool toggle planned (CM-0904 catalog): " +
+        "已计划工具开关（CM-0904 目录）：" +
           namespace_ +
           "." +
           tool +
@@ -2472,7 +2472,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Routine wake tick planned — Host fires due routines (next_due).",
+        "已计划例行唤醒 — Host 触发到期例行任务（next_due）。",
         intent,
         ctx~,
         effects=[effect],
@@ -2551,7 +2551,7 @@ pub fn run_desktop_turn(
             id +
             ". Host runs the prepared draft and records it as an execution."
           } else {
-            "Routine fire planned: " +
+            "已计划例行触发：" +
             id +
             ". Host prepares a draft (prompt + approval boundary); nothing is sent, bought, deleted or published until you approve the execute step (§6.4)."
           },
@@ -2739,7 +2739,7 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "MCP call planned/mock: " + output + ". Host executes live MCP.",
+            "已计划/模拟 MCP 调用：" + output + "。Host 执行真实 MCP 调用。",
             intent,
             ctx~,
             effects=[effect],
@@ -2816,7 +2816,7 @@ pub fn run_desktop_turn(
                   deliver_ok(
                     trimmed,
                     turn_id,
-                    "Teams outbound planned to " +
+                    "已计划 Teams 外发至 " +
                     scope.to_address() +
                     ". Host channel FFI delivers.",
                     intent,
@@ -2860,7 +2860,7 @@ pub fn run_desktop_turn(
                 deliver_ok(
                   trimmed,
                   turn_id,
-                  "Teams Host chat outbound planned to " +
+                  "已计划经 Host 的 Teams 群聊外发至 " +
                   addr +
                   " (Graph chat id). Host channel FFI delivers.",
                   intent,
@@ -3146,7 +3146,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Section post planned for " +
+        "已计划发帖，目标 " +
         section_id +
         " in group " +
         group_id +
@@ -3200,7 +3200,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Task handoff planned (GP-52): " +
+        "已计划任务交接（GP-52）：" +
         from_bot +
         " → " +
         to_bot +
@@ -3241,7 +3241,7 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "SendToAgent planned → " +
+            "已计划 SendToAgent → " +
             to_id +
             ". Host routes teammate inbox (CM-1402).",
             intent,
@@ -3524,9 +3524,9 @@ pub fn run_desktop_turn(
         Ok(mode) => {
           let (kind, reply) = match mode {
             @channels.DirectSend =>
-              ("channel_send", "Meeting chat DirectSend planned (CM-2153).")
+              ("channel_send", "已计划会议群聊直发（CM-2153）。")
             @channels.DraftCard =>
-              ("mail_draft", "Meeting chat DraftCard planned (CM-2153).")
+              ("mail_draft", "已计划会议群聊草稿卡（CM-2153）。")
           }
           let effect : DesktopEffect = {
             kind,
@@ -3583,7 +3583,7 @@ pub fn run_desktop_turn(
             turn_id,
             "Finance tool «" +
             tool +
-            "» planned (CM-2109). Host executes live call.",
+            "» 已计划（CM-2109）。Host 执行真实调用。",
             intent,
             ctx~,
             effects=[effect],
@@ -3612,7 +3612,7 @@ pub fn run_desktop_turn(
           intent,
           "list_credentials leaked secret plaintext",
           ctx,
-          assistant="ListCredentials refused: secret must stay vault-only (CM-2130).",
+          assistant="ListCredentials 已拒绝：密钥只保留在保险库（CM-2130）。",
         )
       } else {
         let effect : DesktopEffect = {
@@ -3654,7 +3654,7 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "Credential fill planned for " +
+            "已计划填充凭证，目标 " +
             fill.domain +
             " handle=" +
             fill.fill_handle +
@@ -3729,7 +3729,7 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "Personal Slack DM planned to owner (CM-1103).",
+            "已计划给所有者发 Slack 私信（CM-1103）。",
             intent,
             ctx~,
             effects=[effect],
@@ -3822,7 +3822,7 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "Slides pptx planned at " +
+            "已计划生成 Slides pptx：" +
             art.path +
             " (CM-1807). Host materializes openable file.",
             intent,
@@ -3843,7 +3843,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "GenerateImage planned at " +
+        "已计划生成图片：" +
         out +
         " (CM-1601). Host materializes PNG attachment.",
         intent,
@@ -3862,7 +3862,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "GenerateVideo planned at " +
+        "已计划生成视频：" +
         out +
         " (CM-1602). Host encodes short mp4 + notify.",
         intent,
@@ -3888,7 +3888,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "watchVideo planned for " +
+        "已计划观看视频：" +
         vp +
         " (CM-1603). Host extracts frame PNG for grounded answer.",
         intent,
@@ -3907,7 +3907,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "StructuredChart planned at " +
+        "已计划生成结构化图表：" +
         out +
         " (CM-2157). Host renders PNG from series.",
         intent,
@@ -3925,7 +3925,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "box-doctor planned (CM-0607). Host runs real probe or honest FS residual.",
+        "已计划 box-doctor（CM-0607）。Host 运行真实探测或如实报告 FS 残留。",
         intent,
         ctx~,
         effects=[effect],
@@ -3941,7 +3941,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "box env detect planned (CM-0608). Host probes /.dockerenv vs hosted-anyrun.",
+        "已计划 box 环境检测（CM-0608）。Host 探测 /.dockerenv 与 hosted-anyrun。",
         intent,
         ctx~,
         effects=[effect],
@@ -3957,7 +3957,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "box clock planned (CM-2175). Host aligns date to user timezone.",
+        "已计划 box 时钟（CM-2175）。Host 将日期对齐用户时区。",
         intent,
         ctx~,
         effects=[effect],
@@ -3973,7 +3973,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "webhook panel planned (CM-0411). Host creates opaque URL/key for user copy.",
+        "已计划 webhook 面板（CM-0411）。Host 生成不透明 URL/密钥供用户复制。",
         intent,
         ctx~,
         effects=[effect],
@@ -3989,7 +3989,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "webhook user-copy planned (CM-0411). Host records copy receipt for " +
+        "已计划 webhook 用户复制（CM-0411）。Host 记录复制回执，对象 " +
         what +
         ".",
         intent,
@@ -4007,7 +4007,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "webhook tool-read key planned (CM-0411). Host must refuse; key stays opaque.",
+        "已计划 webhook 工具读取密钥（CM-0411）。Host 必须拒绝；密钥保持不透明。",
         intent,
         ctx~,
         effects=[effect],
@@ -4023,7 +4023,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "webhook wake planned (CM-0411). Host emits <webhook_event> without key leak.",
+        "已计划 webhook 唤醒（CM-0411）。Host 发出 <webhook_event> 且不泄露密钥。",
         intent,
         ctx~,
         effects=[effect],
@@ -4051,9 +4051,9 @@ pub fn run_desktop_turn(
           trimmed,
           turn_id,
           if is_set {
-            "Host effect planned (llm_set_model). Active provider persisted under data/llm/."
+            "已计划 Host 效果（llm_set_model）。当前提供方持久化在 data/llm/。"
           } else {
-            "Host effect planned (llm_list_models). Providers from data/llm/providers.json + BITBOT_LLM_*."
+            "已计划 Host 效果（llm_list_models）。提供方来自 data/llm/providers.json 与 BITBOT_LLM_*。"
           },
           intent,
           ctx~,
@@ -4074,7 +4074,7 @@ pub fn run_desktop_turn(
         deliver_ok(
           trimmed,
           turn_id,
-          "Settings open planned (CM-1901/1902). Host opens via " +
+          "已计划打开设置（CM-1901/1902）。Host 打开方式：" +
           entry +
           (if anchor.length() > 0 { " → " + anchor } else { "" }) +
           "; gear/Preferences forbidden.",
@@ -4093,7 +4093,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Per-agent info panel planned (CM-0205). Host surfaces desktop-preview/Routines/Channels/Members/gear-settings.",
+        "已计划打开 Bot 信息面板（CM-0205）。Host 呈现桌面预览/例行/渠道/成员/偏好设置。",
         intent,
         ctx~,
         effects=[effect],
@@ -4113,7 +4113,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Delete agent planned (CM-1907). Host requires sidebar confirm; not Settings.",
+        "已计划删除代理（CM-1907）。Host 需在侧栏二次确认，而非设置面板。",
         intent,
         ctx~,
         effects=[effect],
@@ -4129,7 +4129,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Box package install planned (CM-2158). Host must run via Shell only; refuse non-Shell.",
+        "已计划安装 Box 包（CM-2158）。Host 仅可经 Shell 执行；拒绝其他通道。",
         intent,
         ctx~,
         effects=[effect],
@@ -4145,7 +4145,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Cross-agent shared box FS planned (CM-2174). Host: shared FS + distinct desktops.",
+        "已计划跨代理共享 box 文件系统（CM-2174）。Host：共享 FS + 独立桌面。",
         intent,
         ctx~,
         effects=[effect],
@@ -4164,7 +4164,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Hide/unhide agent planned (CM-0204). Host drops hidden from main sidebar; still addressable.",
+        "已计划隐藏/取消隐藏代理（CM-0204）。Host 将隐藏项移出主侧栏；仍可寻址。",
         intent,
         ctx~,
         effects=[effect],
@@ -4180,7 +4180,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "List agents sidebar planned (CM-0204). Host returns main-sidebar ids only.",
+        "已计划列出侧栏代理（CM-0204）。Host 仅返回主侧栏 id。",
         intent,
         ctx~,
         effects=[effect],
@@ -4196,7 +4196,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Members panel planned (CM-1405). Host lists teammates under info-panel members anchor.",
+        "已计划成员面板（CM-1405）。Host 在信息面板成员锚点下列出队友。",
         intent,
         ctx~,
         effects=[effect],
@@ -4212,7 +4212,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Notify settings planned (CM-0206). Host returns per-assistant desktop/sound/mentions toggles.",
+        "已计划通知设置（CM-0206）。Host 返回各助手的桌面/声音/提及开关。",
         intent,
         ctx~,
         effects=[effect],
@@ -4233,7 +4233,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Set notify planned (CM-0206). Host updates assistant-scoped toggle only.",
+        "已计划写入通知设置（CM-0206）。Host 仅更新对应助手的开关。",
         intent,
         ctx~,
         effects=[effect],
@@ -4249,7 +4249,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Update Bot's Computer planned (CM-1903). Host requires two-step confirm; prefer guide over Reset.",
+        "已计划更新 Bot 的电脑（CM-1903）。Host 需两步确认；优先引导而非重置。",
         intent,
         ctx~,
         effects=[effect],
@@ -4265,7 +4265,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Reset Bot's Computer planned (CM-1904). Host marks not preferred vs Update Computer.",
+        "已计划重置 Bot 的电脑（CM-1904）。Host 将其标记为次选，推荐改用更新电脑。",
         intent,
         ctx~,
         effects=[effect],
@@ -4285,7 +4285,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Local execution setting planned (CM-1905). Host persists switch; off rejects machine use.",
+        "已计划本机执行设置（CM-1905）。Host 持久化开关；关闭时拒绝机器操作。",
         intent,
         ctx~,
         effects=[effect],
@@ -4301,7 +4301,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Missing-permission Settings guide planned (CM-2178). Host must not pretend connected.",
+        "已计划缺权限设置指引（CM-2178）。Host 不得假装已连接。",
         intent,
         ctx~,
         effects=[effect],
@@ -4317,7 +4317,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Markdown math/mermaid render planned (CM-2103). Host parses \\( \\)/$$ and mermaid fences.",
+        "已计划 Markdown 公式/mermaid 渲染（CM-2103）。Host 解析 \\( \\)/$$ and mermaid fences.",
         intent,
         ctx~,
         effects=[effect],
@@ -4333,7 +4333,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "ReactToMessage planned (CM-2101/2128). Host toggles visible emoji pill; may end turn.",
+        "已计划消息表态（CM-2101/2128）。Host 切换可见表情；可能结束回合。",
         intent,
         ctx~,
         effects=[effect],
@@ -4349,7 +4349,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Screenshot planned (CM-0605). Host captures read-only frame when DISPLAY/tools available; never pretends Live.",
+        "已计划截屏（CM-0605）。Host 在显示/工具可用时捕获只读画面；绝不假装实时。",
         intent,
         ctx~,
         effects=[effect],
@@ -4365,7 +4365,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Check for Updates planned (CM-1906). Host opens Updates tab (update-channel); distinct from Update Computer.",
+        "已计划检查更新（CM-1906）。Host 打开更新页签（更新渠道）；与更新电脑不同。",
         intent,
         ctx~,
         effects=[effect],
@@ -4381,7 +4381,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Account status planned (GP-74). Host reports the real local sign-in source " +
+        "已计划账户状态（GP-74）。Host 报告真实本地登录来源 " +
         "(which credentials are configured, which are not) — never a fabricated remote account.",
         intent,
         ctx~,
@@ -4398,7 +4398,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Sign in planned (GP-74): " + label +
+        "已计划登录（GP-74）：" + label +
         ". Host records a LOCAL profile only and says which credential source backs it; " +
         "no remote account is contacted.",
         intent,
@@ -4416,7 +4416,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Sign out planned (GP-74). Host clears the local profile session only — " +
+        "已计划退出登录（GP-74）。Host 仅清除本地档案会话 — " +
         "no remote account is contacted, and configured credentials stay on this machine.",
         intent,
         ctx~,
@@ -4433,8 +4433,8 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Account switch planned (GP-74): " + label +
-        ". Host switches the local profile; unknown labels are refused, not invented.",
+        "已计划切换账户（GP-74）：" + label +
+        "。Host 切换本地档案；未知标签将被拒绝，不会虚构。",
         intent,
         ctx~,
         effects=[effect],
@@ -4450,7 +4450,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Update status planned (GP-77). Host reads the real install state (version, packaged, " +
+        "已计划更新状态（GP-77）。Host 读取真实安装状态（版本、打包方式，" +
         "feed, last check) and confirms app updates never touch Computer files.",
         intent,
         ctx~,
@@ -4467,7 +4467,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Auto-review Settings deeplinks planned (CM-1507). Host opens General anchors; closed-set only.",
+        "已计划自动审查设置深链（CM-1507）。Host 打开通用页锚点；仅限闭合集合。",
         intent,
         ctx~,
         effects=[effect],
@@ -4490,7 +4490,7 @@ pub fn run_desktop_turn(
         if want_bare {
           "Bare chrome launch requested (CM-0802). Host must refuse; use box-chrome."
         } else {
-          "box-chrome launcher probe planned (CM-0802). Host rejects bare chrome; private CDP; shared 9223 untouched."
+          "已计划 box-chrome 启动探测（CM-0802）。Host 拒绝裸 chrome；私有 CDP；共享 9223 不动。"
         },
         intent,
         ctx~,
@@ -4520,7 +4520,7 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "Code-changes planned on box via " +
+            "已计划在 box 上改代码，经由 " +
             plan.sc_backend.mcp_namespace() +
             " (CM-1810). Host applies scoped edit.",
             intent,
@@ -4713,7 +4713,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "X post planned (draft-first). Host persists draft; live only when BITBOT_X_POST=1 + bearer (never pretend_posted).",
+        "已计划发 X（草稿优先）。Host 持久化草稿；仅当 BITBOT_X_POST=1 且有 bearer 时真实发布（绝不假装已发布）。",
         intent,
         ctx~,
         effects=[effect],
@@ -4786,7 +4786,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Gmail connect planned. Host runs sandbox IdP OAuth → Connected/Ready (CM-0906).",
+        "已计划连接 Gmail。Host 走沙箱 IdP OAuth → 已连接/就绪（CM-0906）。",
         intent,
         ctx~,
         effects=[effect],
@@ -4802,7 +4802,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Outlook connect planned. Host runs sandbox IdP OAuth → Connected/Ready (CM-2120).",
+        "已计划连接 Outlook。Host 走沙箱 IdP OAuth → 已连接/就绪（CM-2120）。",
         intent,
         ctx~,
         effects=[effect],
@@ -4843,7 +4843,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Todo write planned (CM-0112). Host upserts durable checklist; never invents done.",
+        "已计划写入待办（CM-0112）。Host 持久化清单；绝不虚构完成。",
         intent,
         ctx~,
         effects=[effect],
@@ -4860,7 +4860,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "List skills planned. Host enumerates agent-tools/skills (never pretend_listing).",
+        "已计划列出技能。Host 枚举 agent-tools/skills（绝不假装列表）。",
         intent,
         ctx~,
         effects=[effect],
@@ -4984,7 +4984,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Create Bot planned (GP-01). Host persists bots store with name/job/description and opens the conversation.",
+        "已计划创建 Bot（GP-01）。Host 持久化 bots 存储（名称/职责/描述）并打开会话。",
         intent,
         ctx~,
         effects=[effect],
@@ -5019,7 +5019,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Create Bot from template planned (GP-02). Host resolves the catalog row; unknown templates are refused, not invented.",
+        "已计划从模板创建 Bot（GP-02）。Host 解析目录行；未知模板会被拒绝而非虚构。",
         intent,
         ctx~,
         effects=[effect],
@@ -5053,7 +5053,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Edit Bot profile planned (GP-03). Host updates the store row; invalid avatar paths are rejected, not faked.",
+        "已计划编辑 Bot 资料（GP-03）。Host 更新存储行；无效头像路径会被拒绝而非伪造。",
         intent,
         ctx~,
         effects=[effect],
@@ -5069,7 +5069,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Duplicate Bot planned (GP-05). Host copies config to \"<name> copy\" without messages or learned memory.",
+        "已计划复制 Bot（GP-05）。Host 将配置复制为 \"<name> copy\" ，不含消息与学习记忆。",
         intent,
         ctx~,
         effects=[effect],
@@ -5085,7 +5085,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Pin/unpin Bot planned (GP-04). Host persists the flag so pinned Bots stay at the sidebar top.",
+        "已计划置顶/取消置顶 Bot（GP-04）。Host 持久化标记，置顶 Bot 保持侧栏顶部。",
         intent,
         ctx~,
         effects=[effect],
@@ -5101,7 +5101,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Primary Bot planned (GP-08). Host routes @bot inbound to the persisted primary id.",
+        "已计划设置主 Bot（GP-08）。Host 将 @bot 入站路由到持久化的主 id。",
         intent,
         ctx~,
         effects=[effect],
@@ -5118,9 +5118,9 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         if hidden {
-          "Hide Bot planned (GP-06). Host moves the Bot into Hidden Bots; the Bot is not paused and its Routines keep running."
+          "已计划隐藏 Bot（GP-06）。Host 将 Bot 移入已隐藏列表；Bot 不暂停，例行任务继续。"
         } else {
-          "Unhide Bot planned (GP-06). Host restores the Bot from Hidden Bots back to the sidebar."
+          "已计划取消隐藏 Bot（GP-06）。Host 将 Bot 从已隐藏列表恢复到侧栏。"
         },
         intent,
         ctx~,
@@ -5157,7 +5157,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Computer preview planned (GP-31). Host opens the right-side panel with live frames; leaving the preview never pauses background work.",
+        "已计划电脑预览（GP-31）。Host 打开右侧实时画面面板；离开预览不会暂停后台工作。",
         intent,
         ctx~,
         effects=[effect],
@@ -5173,7 +5173,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Take over planned (GP-32/GP-33). Host marks the shared screen handed to the user and shows the \u5bc6\u7801/\u9a8c\u8bc1\u7801 don't-paste-in-chat guidance.",
+        "已计划接管（GP-32/GP-33）。Host 将共享屏幕交给用户，并展示\u5bc6\u7801/\u9a8c\u8bc1\u7801 的指引（请勿粘贴到会话）。",
         intent,
         ctx~,
         effects=[effect],
@@ -5189,7 +5189,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Hand back control planned (GP-33). Host closes the takeover window so the Bot can continue from the current page.",
+        "已计划交回控制（GP-33）。Host 关闭接管窗口，Bot 从当前页面继续。",
         intent,
         ctx~,
         effects=[effect],
@@ -5205,7 +5205,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Recover Bot's Computer planned (GP-35). Host may only run it from an error state; persistent files and logins are kept.",
+        "已计划恢复 Bot 的电脑（GP-35）。Host 仅允许从错误状态执行；持久文件与登录保留。",
         intent,
         ctx~,
         effects=[effect],
@@ -5224,7 +5224,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Approval rule planned (GP-21/GP-22). Host persists the rule; ask-first wins over allow-automatically.",
+        "已计划审批规则（GP-21/GP-22）。Host 持久化规则；先询问优先于自动允许。",
         intent,
         ctx~,
         effects=[effect],
@@ -5240,7 +5240,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Appearance planned (GP-70). Host persists system|light|dark and applies the native theme immediately.",
+        "已计划外观设置（GP-70）。Host 持久化 system|light|dark 并立即应用原生主题。",
         intent,
         ctx~,
         effects=[effect],
@@ -5256,7 +5256,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Language planned (GP-71). Host persists the UI locale (zh-CN / zh-TW / en / ...).",
+        "已计划语言设置（GP-71）。Host 持久化界面语言（zh-CN / zh-TW / en 等）。",
         intent,
         ctx~,
         effects=[effect],
@@ -5272,7 +5272,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Timezone planned (GP-72). Host persists the IANA zone used by Routines (CM-0402).",
+        "已计划时区设置（GP-72）。Host 持久化例行任务使用的 IANA 时区（CM-0402）。",
         intent,
         ctx~,
         effects=[effect],
@@ -5288,7 +5288,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Local execution policy planned (GP-36). Host enforces ask|always|never for local effects.",
+        "已计划本机执行策略（GP-36）。Host 对本地效果强制 ask|always|never。",
         intent,
         ctx~,
         effects=[effect],
@@ -5304,7 +5304,7 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "Group chat planned (GP-50). Host requires 2\u20136 real Bot members; approvals and secret requests never appear in the room.",
+        "已计划群聊（GP-50）。Host 要求 2\u20136 个真实 Bot 成员；审批与密钥请求绝不进群。",
         intent,
         ctx~,
         effects=[effect],
@@ -5350,7 +5350,7 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "Host effect planned (llm_chat). Desktop/CLI must complete via BITBOT_LLM_* (DeepSeek default); no LocalBrain.",
+            "已计划 Host 效果（llm_chat）。桌面/CLI 需经 BITBOT_LLM_* 完成（默认 DeepSeek）；非 LocalBrain。",
             intent,
             ctx~,
             effects=[effect],

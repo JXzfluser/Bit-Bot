@@ -17164,44 +17164,44 @@ function createHostFfi(repoRoot) {
     {
       id: "sales-outbound",
       default_name: "Ivy",
-      job: "Sales Outbound",
+      job: "销售外呼",
       description:
-        "Research accounts, pull contacts, draft outreach in my voice. Leave drafts to approve. Never send without approval.",
+        "调研客户、整理联系人、按我的语气起草外联信息；草稿需经我批准，未经批准绝不发送。",
     },
     {
       id: "talent-scout",
       default_name: "Sage",
-      job: "Talent Scout",
+      job: "人才搜寻",
       description:
-        "Screen candidates against the role brief, preserve links, separate evidence from hypotheses. Never contact candidates directly.",
+        "按岗位要求筛选候选人、保留原文链接、区分证据与推测；绝不直接联系候选人。",
     },
     {
       id: "paid-media",
       default_name: "Ad",
-      job: "Paid Media Buyer",
+      job: "广告投放",
       description:
-        "Plan and draft campaign changes across ad managers, keep spend caps explicit, prepare creatives for review. Never launch or change budgets without approval.",
+        "规划并起草投放调整方案，明确预算上限，素材先送审；未经批准不上线、不改预算。",
     },
     {
       id: "expense-manager",
       default_name: "Ledger",
-      job: "Expense Manager",
+      job: "费用管理",
       description:
-        "Collect receipts, reconcile against policy, prepare approval lists. Do not submit reimbursements without explicit approval.",
+        "收集票据、按制度对账、整理待审批清单；未经明确批准不提交报销。",
     },
     {
       id: "bug-reproduction",
       default_name: "Repro",
-      job: "Bug Reproduction",
+      job: "Bug 复现",
       description:
-        "Reproduce reported bugs in the browser on the Bot computer, capture steps and screenshots, file reproduction notes. Never change production settings.",
+        "在 Bot 电脑的浏览器中复现问题、记录步骤与截图、输出复现说明；不改动生产配置。",
     },
     {
       id: "chief-of-staff",
       default_name: "Chief",
-      job: "Chief of Staff",
+      job: "幕僚长",
       description:
-        "Triage inbox and calendar, draft replies in my voice, keep a daily brief with decisions needed. Never send or commit on my behalf without approval.",
+        "分诊收件箱与日程、按我的语气起草回复、每日简报标注待决策事项；未经批准不代发、不提交。",
     },
   ];
   function loadBotTemplates() {
