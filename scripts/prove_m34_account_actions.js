@@ -60,8 +60,8 @@ for (const id of placeholderIds) {
 if (allPlace) ok("移动版 / 支持 / 退出登录 三项：中文占位文案 + addMsg，不静默");
 
 /* ---------- 3) 每个 handler 关闭 popup ---------- */
-if (/document\.getElementById\("account-popup"\)\.hidden = true;[\s\S]{0,120}runUserTurn\(phrase/.test(html)
-  && /accountPlaceholder = \(msg\) => \{[\s\S]{0,200}popup\.hidden = true/.test(html)) {
+if (/setAccountPopup\(false\);[\s\S]{0,120}runUserTurn\(phrase/.test(html)
+  && /accountPlaceholder = \(msg\) => \{[\s\S]{0,200}setAccountPopup\(false\)/.test(html)) {
   ok("handler 都收口：先关 popup 再走短语 / callout，菜单不会挡住设置页");
 } else {
   bad("popup close", "one handler misses close");

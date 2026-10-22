@@ -427,20 +427,21 @@
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
-    border: 0;
+    border: 1px solid transparent;
     border-radius: var(--radius-lg);
     background: transparent;
     cursor: pointer;
     width: 100%;
     text-align: left;
-    transition: background 0.12s ease;
+    transition: background 0.12s ease, border-color 0.12s ease;
   }
-  #account-avatar-btn:hover { background: var(--accent-soft); }
+  #account-avatar-btn:hover { background: var(--accent-soft); border-color: var(--line); }
+  #account-avatar-btn[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--line); }
   #account-avatar-circle {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, #4b4b4b 100%);
     color: var(--accent-ink);
     display: inline-flex;
     align-items: center;
@@ -448,47 +449,89 @@
     font-size: 13px;
     font-weight: 700;
     flex-shrink: 0;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+    letter-spacing: 0.02em;
   }
   #account-name-label {
+    flex: 1 1 auto;
+    min-width: 0;
     font-size: var(--text-md);
-    font-weight: 500;
+    font-weight: 600;
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  #account-avatar-btn .acct-chevron {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+  }
+  #account-avatar-btn[aria-expanded="true"] .acct-chevron { transform: rotate(180deg); }
   #account-popup {
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    right: 0;
-    margin-bottom: 6px;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    max-width: 260px;
+    bottom: 68px;
     background: #ffffff;
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     padding: 6px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
     display: flex;
     flex-direction: column;
     gap: 2px;
-    z-index: 10;
+    z-index: 45;
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
   }
+  /* `hidden` 属性优先级：显式规则覆盖 display:flex，弹层默认收起，点击才展开。 */
+  #account-popup[hidden] { display: none !important; opacity: 0; pointer-events: none; }
+  #account-popup:not([hidden]) { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
   #account-popup .ap-item {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     width: 100%;
     text-align: left;
     border: 0;
     background: transparent;
-    padding: 8px 12px;
+    padding: 8px 10px;
     border-radius: var(--radius-md);
     font-size: var(--text-md);
     color: var(--ink);
     cursor: pointer;
-    transition: background 0.1s ease;
+    transition: background 0.1s ease, color 0.1s ease;
+  }
+  #account-popup .ap-item .ap-ic {
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1;
+  }
+  #account-popup .ap-item .ap-tx {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   #account-popup .ap-item:hover { background: var(--accent-soft); }
+  #account-popup .ap-item:hover .ap-ic { color: var(--ink); }
   #account-popup .ap-danger { color: var(--danger); }
+  #account-popup .ap-danger .ap-ic { color: var(--danger); }
+  #account-popup .ap-danger:hover { background: var(--danger-bg); color: var(--danger-ink); }
+  #account-popup .ap-danger:hover .ap-ic { color: var(--danger-ink); }
   #account-popup .ap-sep {
     height: 1px;
     background: var(--line);
@@ -1452,20 +1495,21 @@
       </div>
       <!-- Grok-style user account row with popup menu -->
       <div id="account-bar">
-        <button type="button" id="account-avatar-btn" title="账户" aria-label="Account">
+        <button type="button" id="account-avatar-btn" title="账户" aria-label="Account" aria-expanded="false" aria-controls="account-popup">
           <span id="account-avatar-circle">B</span>
           <span id="account-name-label">Bit Bot</span>
+          <span class="acct-chevron" aria-hidden="true">▲</span>
         </button>
-        <div id="account-popup" hidden>
-          <button type="button" class="ap-item" id="ap-update" data-i18n="apUpdate">发现新版本</button>
-          <button type="button" class="ap-item" id="ap-usage" data-i18n="apUsage">每周用量</button>
-          <button type="button" class="ap-item" id="ap-mobile" data-i18n="apMobile">获取移动版 Bit Bot</button>
+        <div id="account-popup" hidden role="menu">
+          <button type="button" class="ap-item" id="ap-update" data-i18n="apUpdate"><span class="ap-ic" aria-hidden="true">↻</span><span class="ap-tx">发现新版本</span></button>
+          <button type="button" class="ap-item" id="ap-usage" data-i18n="apUsage"><span class="ap-ic" aria-hidden="true">▤</span><span class="ap-tx">每周用量</span></button>
+          <button type="button" class="ap-item" id="ap-mobile" data-i18n="apMobile"><span class="ap-ic" aria-hidden="true">◐</span><span class="ap-tx">获取移动版 Bit Bot</span></button>
           <div class="ap-sep"></div>
-          <button type="button" class="ap-item" id="ap-support" data-i18n="apSupport">支持</button>
-          <button type="button" class="ap-item" id="sidebar-settings-btn" data-i18n="settings">设置</button>
+          <button type="button" class="ap-item" id="ap-support" data-i18n="apSupport"><span class="ap-ic" aria-hidden="true">?</span><span class="ap-tx">支持</span></button>
+          <button type="button" class="ap-item" id="sidebar-settings-btn" data-i18n="settings"><span class="ap-ic" aria-hidden="true">⚙</span><span class="ap-tx">设置</span></button>
           <div class="ap-sep"></div>
-          <button type="button" class="ap-item" id="ap-add-account" data-i18n="apAddAccount">添加账户</button>
-          <button type="button" class="ap-item ap-danger" id="ap-signout" data-i18n="apSignOut">退出登录</button>
+          <button type="button" class="ap-item" id="ap-add-account" data-i18n="apAddAccount"><span class="ap-ic" aria-hidden="true">＋</span><span class="ap-tx">添加账户</span></button>
+          <button type="button" class="ap-item ap-danger" id="ap-signout" data-i18n="apSignOut"><span class="ap-ic" aria-hidden="true">⎋</span><span class="ap-tx">退出登录</span></button>
         </div>
       </div>
     </div>
@@ -7570,21 +7614,35 @@
     if (sidebarSettingsBtn) {
       sidebarSettingsBtn.addEventListener("click", () => {
         runUserTurn("open settings", { skipSession: true, silentUser: true });
-        document.getElementById("account-popup").hidden = true;
+        setAccountPopup(false);
       });
     }
     /* Grok-style account popup toggle */
     const acctBtn = document.getElementById("account-avatar-btn");
+    function setAccountPopup(open) {
+      const popup = document.getElementById("account-popup");
+      if (!popup) return;
+      if (open) popup.removeAttribute("hidden");
+      else popup.setAttribute("hidden", "");
+      if (acctBtn) acctBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
     if (acctBtn) {
       acctBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const popup = document.getElementById("account-popup");
-        if (popup) popup.hidden = !popup.hidden;
+        const isOpen = popup && !popup.hidden;
+        setAccountPopup(!isOpen);
       });
       document.addEventListener("click", (ev) => {
         const popup = document.getElementById("account-popup");
         if (popup && !popup.hidden && !ev.target.closest("#account-bar")) {
-          popup.hidden = true;
+          setAccountPopup(false);
+        }
+      });
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") {
+          const popup = document.getElementById("account-popup");
+          if (popup && !popup.hidden) setAccountPopup(false);
         }
       });
     }
@@ -7599,7 +7657,7 @@
       const b = document.getElementById(apId);
       if (!b) continue;
       b.addEventListener("click", () => {
-        document.getElementById("account-popup").hidden = true;
+        setAccountPopup(false);
         runUserTurn(phrase, { skipSession: true, silentUser: true });
       });
     }
@@ -7607,8 +7665,7 @@
        已挂，具体能力在后续波次接入"，而不是静默 no-op。*/
     const accountPlaceholder = (msg) => {
       addMsg("assistant", msg, { debugOnly: false });
-      const popup = document.getElementById("account-popup");
-      if (popup) popup.hidden = true;
+      setAccountPopup(false);
     };
     const apMobile = document.getElementById("ap-mobile");
     if (apMobile) apMobile.addEventListener("click", () =>
