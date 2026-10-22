@@ -1538,7 +1538,7 @@
       </div>
     </div>
     <div id="permission" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:8px">
-      <div class="title" style="font-weight:700;color:var(--warn-ink)">Device permission</div>
+      <div class="title" style="font-weight:700;color:var(--warn-ink)">设备权限</div>
       <div class="detail" id="permission-detail" style="margin-top:6px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div class="actions" style="margin-top:10px;display:flex;gap:8px">
         <button type="button" id="permission-dismiss" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">关闭卡片</button>
@@ -1733,7 +1733,7 @@
         <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="caGlobal">Plugins are global to this computer — every Bot can use them once installed.</div>
         <div style="display:flex;gap:8px;margin-top:10px">
           <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="Search plugins" class="bb-field bb-field-grow" />
-          <button type="button" id="ca-refresh" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer" data-i18n="caRefresh">Refresh</button>
+          <button type="button" id="ca-refresh" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer" data-i18n="caRefresh">刷新</button>
         </div>
         <!-- Grok-parity: category chips filter the plugin grid -->
         <div id="ca-cats" class="ca-cats">
@@ -1759,7 +1759,7 @@
     <div id="bot-edit-modal" class="bb-modal bb-raise">
       <div class="bb-sheet bb-sheet-md">
         <div class="bb-sheet-head">
-          <div id="bf-title" class="bb-sheet-title">Edit Profile</div>
+          <div id="bf-title" class="bb-sheet-title">编辑资料</div>
           <button type="button" id="bf-close" class="bb-btn" title="Close">×</button>
         </div>
         <div style="display:flex;gap:16px;margin-top:14px;align-items:flex-start">
@@ -1823,7 +1823,7 @@
     </div>
     <div id="agent-info-panel" class="bb-card bb-inset" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="title" style="font-weight:700" id="agent-info-title">Agent info</div>
+        <div class="title" style="font-weight:700" id="agent-info-title">代理信息</div>
         <div style="display:flex;gap:6px">
           <button type="button" id="agent-delete-btn" style="background:var(--danger-bg);color:var(--danger-ink);border:0;border-radius:6px;padding:4px 8px;cursor:pointer">Delete…</button>
           <button type="button" id="agent-info-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">Close</button>
@@ -1834,8 +1834,8 @@
       <div id="agent-delete-confirm" style="display:none;margin-top:10px;padding:8px;border:1px solid var(--danger);border-radius:6px;background:var(--danger-bg)">
         <div style="color:var(--danger-ink);font-size:13px">Confirm permanent delete (CM-1907 · not Settings)</div>
         <div style="margin-top:8px;display:flex;gap:8px">
-          <button type="button" id="agent-delete-confirm-btn" style="background:var(--danger);color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer">Confirm delete</button>
-          <button type="button" id="agent-delete-cancel-btn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">Cancel</button>
+          <button type="button" id="agent-delete-confirm-btn" style="background:var(--danger);color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer">确认删除</button>
+          <button type="button" id="agent-delete-cancel-btn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">取消</button>
         </div>
       </div>
     </div>
@@ -1874,11 +1874,11 @@
       <div class="name">Multi-end roster</div>
       <div class="meta" id="machines-meta">Desktop 本阶段 · iOS/Android 暂缓</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mach-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List machines</button>
+        <button type="button" id="mach-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">列出机器</button>
       </div>
     </div>
     <div id="machine-list">
-      <div class="machine-item"><div class="meta">Ask ListMachines to refresh</div></div>
+      <div class="machine-item"><div class="meta">请求刷新机器列表</div></div>
     </div>
     <div class="panel-title" style="margin-top:16px">国内渠道</div>
     <div class="machine-item">
@@ -1896,12 +1896,12 @@
         <div class="name">Slack / Gmail / Outlook</div>
         <div class="meta" id="connectors-meta">降级保留 · 主渠道见上方国内钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="connect-slack" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Slack</button>
-          <button type="button" id="connect-gmail" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Gmail</button>
-          <button type="button" id="connect-outlook" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect Outlook</button>
-          <button type="button" id="connect-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Connect finance</button>
-          <button type="button" id="connect-identity" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Identity browser</button>
-          <button type="button" id="probe-connectors" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List connectors</button>
+          <button type="button" id="connect-slack" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">连接 Slack</button>
+          <button type="button" id="connect-gmail" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">连接 Gmail</button>
+          <button type="button" id="connect-outlook" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">连接 Outlook</button>
+          <button type="button" id="connect-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">连接财务</button>
+          <button type="button" id="connect-identity" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">身份浏览器</button>
+          <button type="button" id="probe-connectors" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出连接器</button>
         </div>
       </div>
     </details>
@@ -1910,12 +1910,12 @@
       <div class="name">Notify · computer · guide</div>
       <div class="meta" id="prefs-meta">settings Host effects (not pretend)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="pref-notify" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Notify settings</button>
-        <button type="button" id="pref-set-notify" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Set notify off</button>
-        <button type="button" id="pref-guide" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Guide permission</button>
-        <button type="button" id="pref-update" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Update computer</button>
-        <button type="button" id="pref-reset" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Reset computer</button>
-        <button type="button" id="pref-local" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Local execution off</button>
+        <button type="button" id="pref-notify" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">通知设置</button>
+        <button type="button" id="pref-set-notify" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">关闭通知</button>
+        <button type="button" id="pref-guide" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">引导授权</button>
+        <button type="button" id="pref-update" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">更新电脑</button>
+        <button type="button" id="pref-reset" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">重置电脑</button>
+        <button type="button" id="pref-local" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">关闭本地执行</button>
       </div>
     </div>
     <details class="lab" style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
@@ -1924,19 +1924,19 @@
         <div class="name">Slack / Teams outbound + claim</div>
         <div class="meta" id="channels-meta">降级 · 主路径是上方钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="ch-slack-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack draft</button>
-          <button type="button" id="ch-slack-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack thread</button>
-          <button type="button" id="ch-slack-dm" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Personal Slack DM</button>
+          <button type="button" id="ch-slack-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack 草稿</button>
+          <button type="button" id="ch-slack-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack 讨论串</button>
+          <button type="button" id="ch-slack-dm" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">私聊 Slack</button>
           <button type="button" id="ch-slack-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack claim (sandbox)</button>
-          <button type="button" id="ch-teams-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams draft</button>
-          <button type="button" id="ch-teams-send" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams send</button>
+          <button type="button" id="ch-teams-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams 草稿</button>
+          <button type="button" id="ch-teams-send" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams 发送</button>
           <button type="button" id="ch-teams-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams claim (sandbox)</button>
-          <button type="button" id="ch-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Finance call</button>
-          <button type="button" id="ch-jobs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Job search</button>
+          <button type="button" id="ch-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">财务调用</button>
+          <button type="button" id="ch-jobs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">求职搜索</button>
           <button type="button" id="ch-xsearch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X search</button>
-          <button type="button" id="ch-workflows" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List workflows</button>
-          <button type="button" id="ch-credentials" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List credentials</button>
-          <button type="button" id="ch-cred-fill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fill credential</button>
+          <button type="button" id="ch-workflows" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出工作流</button>
+          <button type="button" id="ch-credentials" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出凭证</button>
+          <button type="button" id="ch-cred-fill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">填写凭证</button>
         </div>
       </div>
     </details>
@@ -1945,12 +1945,12 @@
       <div class="name">MCP plugins (CM-0904 / 2107 / 2108)</div>
       <div class="meta" id="plugins-meta">list · get · install → Ready · uninstall → Unavailable</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="plugin-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">List plugins</button>
+        <button type="button" id="plugin-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">列出插件</button>
         <button type="button" id="plugin-get" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Get plugin-slides</button>
         <button type="button" id="plugin-install" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Install plugin-slides</button>
         <button type="button" id="plugin-uninstall" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">Uninstall plugin-slides</button>
-        <button type="button" id="plugin-mcp-discover" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP discover</button>
-        <button type="button" id="plugin-mcp-call" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">MCP call Gmail search</button>
+        <button type="button" id="plugin-mcp-discover" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发现 MCP</button>
+        <button type="button" id="plugin-mcp-call" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">调用 MCP · Gmail 搜索</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Webhook 回调</div>
@@ -1960,48 +1960,48 @@
       <div id="webhook-url" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div id="webhook-key" style="margin-top:4px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="wh-open" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Open webhook panel</button>
-        <button type="button" id="wh-copy-url" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy URL</button>
-        <button type="button" id="wh-copy-key" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy key</button>
+        <button type="button" id="wh-open" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">打开回调面板</button>
+        <button type="button" id="wh-copy-url" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">复制链接</button>
+        <button type="button" id="wh-copy-key" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">拷贝密钥</button>
         <button type="button" id="wh-tool-read" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">Tool-read key (must refuse)</button>
-        <button type="button" id="wh-wake" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Simulate wake POST</button>
+        <button type="button" id="wh-wake" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">模拟唤醒回调</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">投递</div>
     <div class="machine-item">
-      <div class="name">SendToUser</div>
+      <div class="name">发给用户</div>
       <div class="meta" id="delivery-meta">text · widget · attachment · voice · reaction · thread · cursor-agent · secret-request</div>
       <div id="reaction-tray" aria-label="Reaction pills"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="del-react" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">消息表态</button>
-        <button type="button" id="del-inbound-react" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Inbound reaction</button>
-        <button type="button" id="del-markdown" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Render markdown</button>
+        <button type="button" id="del-inbound-react" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">接收方表态</button>
+        <button type="button" id="del-markdown" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">渲染 Markdown</button>
         <button type="button" id="del-channel-plan" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Channel plan (in-app)</button>
-        <button type="button" id="del-slides" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Make slides</button>
-        <button type="button" id="del-skill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Author skill</button>
-        <button type="button" id="del-export" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Export bot template</button>
-        <button type="button" id="del-load-skill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Load skill</button>
-        <button type="button" id="del-list-skills" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List skills</button>
-        <button type="button" id="del-todo-write" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Todo write</button>
-        <button type="button" id="del-todo-list" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">List todos</button>
-        <button type="button" id="del-attach-file" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Attach file</button>
+        <button type="button" id="del-slides" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">生成幻灯片</button>
+        <button type="button" id="del-skill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">编写技能</button>
+        <button type="button" id="del-export" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">导出 Bot 模板</button>
+        <button type="button" id="del-load-skill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">加载技能</button>
+        <button type="button" id="del-list-skills" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出技能</button>
+        <button type="button" id="del-todo-write" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">写待办</button>
+        <button type="button" id="del-todo-list" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出待办</button>
+        <button type="button" id="del-attach-file" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">添加附件</button>
         <button type="button" id="del-journal-query" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">查询日志</button>
-        <button type="button" id="del-open-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Open thread</button>
+        <button type="button" id="del-open-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">打开讨论串</button>
         <button type="button" id="del-x-post" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X post draft</button>
-        <button type="button" id="del-section" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Section post</button>
-        <button type="button" id="del-section-add" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Add section</button>
-        <button type="button" id="del-learn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Learn from demo</button>
+        <button type="button" id="del-section" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">段落发布</button>
+        <button type="button" id="del-section-add" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">添加段落</button>
+        <button type="button" id="del-learn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">从演示学习</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">记忆</div>
     <div class="machine-item">
-      <div class="name">Host session seed</div>
+      <div class="name">本机会话种子</div>
       <div class="meta" id="memory-meta">remember k=v · recall (desktop-host.json)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mem-remember" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Remember</button>
-        <button type="button" id="mem-recall" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Recall</button>
-        <button type="button" id="mem-shared-put" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared put</button>
-        <button type="button" id="mem-shared-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared read</button>
+        <button type="button" id="mem-remember" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">记住</button>
+        <button type="button" id="mem-recall" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">回忆</button>
+        <button type="button" id="mem-shared-put" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">共享写入</button>
+        <button type="button" id="mem-shared-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">共享读取</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">工具</div>
@@ -2046,9 +2046,9 @@
         <button type="button" id="cu-ocr" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">OCR 一遍</button>
         <button type="button" id="cu-shop" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">购物剧本</button>
         <button type="button" id="cu-travel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">旅游 expedia</button>
-        <button type="button" id="cu-flight" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Book flight</button>
-        <button type="button" id="cu-food" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Order food</button>
-        <button type="button" id="cu-paywall" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Payment wall fixture</button>
+        <button type="button" id="cu-flight" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">预订航班</button>
+        <button type="button" id="cu-food" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">点餐</button>
+        <button type="button" id="cu-paywall" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">付费墙测试</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">源码管理</div>
@@ -2056,9 +2056,9 @@
       <div class="name">git / PR plan</div>
       <div class="meta" id="source-control-meta">status · plan gated (BITBOT_GH_PR_CREATE)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="sc-status" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Git status</button>
-        <button type="button" id="sc-create-pr" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create PR plan</button>
-        <button type="button" id="sc-code" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Code changes plan</button>
+        <button type="button" id="sc-status" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Git 状态</button>
+        <button type="button" id="sc-create-pr" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">创建 PR 计划</button>
+        <button type="button" id="sc-code" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">代码改动计划</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">媒体</div>
@@ -2066,10 +2066,10 @@
       <div class="name">Image / video / chart (CM-1601–1603 / 2157)</div>
       <div class="meta" id="media-meta">generate · watch · structured chart</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="media-image" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Generate image</button>
-        <button type="button" id="media-video" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Generate video</button>
-        <button type="button" id="media-chart" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Structured chart</button>
-        <button type="button" id="media-watch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Watch last video</button>
+        <button type="button" id="media-image" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">生成图片</button>
+        <button type="button" id="media-video" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">生成视频</button>
+        <button type="button" id="media-chart" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">结构化图表</button>
+        <button type="button" id="media-watch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">观看最新视频</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">语音</div>
@@ -2077,11 +2077,11 @@
       <div class="name">Session / relay / end</div>
       <div class="meta" id="voice-meta">start · relay WAV · end write</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="voice-start" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Start voice</button>
-        <button type="button" id="voice-relay" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Voice relay</button>
-        <button type="button" id="voice-end" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End voice</button>
-        <button type="button" id="voice-huddle-start" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Start huddle</button>
-        <button type="button" id="voice-huddle-end" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">End huddle</button>
+        <button type="button" id="voice-start" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">开始语音</button>
+        <button type="button" id="voice-relay" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">语音中继</button>
+        <button type="button" id="voice-end" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">结束语音</button>
+        <button type="button" id="voice-huddle-start" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">开始临时会议</button>
+        <button type="button" id="voice-huddle-end" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">结束会议</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">云端盒子</div>
@@ -2089,16 +2089,16 @@
       <div class="name">Doctor / env / clock (CM-0607/0608/2175)</div>
       <div class="meta" id="box-meta">self-check · runtime · TZ align</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="box-doctor" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Box doctor</button>
-        <button type="button" id="box-env" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Box env</button>
-        <button type="button" id="box-clock" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Box clock</button>
-        <button type="button" id="box-chrome" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Chrome probe</button>
+        <button type="button" id="box-doctor" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">盒子诊断</button>
+        <button type="button" id="box-env" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">盒子环境</button>
+        <button type="button" id="box-clock" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">盒子时钟</button>
+        <button type="button" id="box-chrome" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Chrome 探测</button>
         <button type="button" id="box-bare-chrome" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">Launch bare chrome (refuse)</button>
-        <button type="button" id="box-screenshot" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Screenshot</button>
-        <button type="button" id="box-check-updates" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Check updates</button>
-        <button type="button" id="box-copy-to" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy to box</button>
-        <button type="button" id="box-copy-from" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Copy from box</button>
-        <button type="button" id="box-shared-fs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Shared box fs</button>
+        <button type="button" id="box-screenshot" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">截屏</button>
+        <button type="button" id="box-check-updates" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">检查更新</button>
+        <button type="button" id="box-copy-to" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">拷贝到盒子</button>
+        <button type="button" id="box-copy-from" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">从盒子拷贝</button>
+        <button type="button" id="box-shared-fs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">共享盒子文件系统</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">云服务</div>
@@ -2106,8 +2106,8 @@
       <div class="name">Cursor agent card (CM-2131)</div>
       <div class="meta" id="cloud-meta">local_worker · artifact deliver</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cloud-launch" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Launch cloud agent</button>
-        <button type="button" id="cloud-deliver" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Deliver last artifact</button>
+        <button type="button" id="cloud-launch" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">启动云端代理</button>
+        <button type="button" id="cloud-deliver" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">投递上一个产物</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">定时任务</div>
@@ -2115,14 +2115,14 @@
       <div class="name">Schedule · fire · tick</div>
       <div class="meta" id="routines-meta">durable Host wakes (not cron pretend)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="rt-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Create routine</button>
-        <button type="button" id="rt-reminder" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Create reminder</button>
-        <button type="button" id="rt-list-scheduled" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List scheduled</button>
-        <button type="button" id="rt-list" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">List routines</button>
-        <button type="button" id="rt-fire" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Fire routine</button>
-        <button type="button" id="rt-tick" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Tick routines</button>
-        <button type="button" id="rt-pause" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Pause routine</button>
-        <button type="button" id="rt-resume" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Resume routine</button>
+        <button type="button" id="rt-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">创建定时任务</button>
+        <button type="button" id="rt-reminder" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">创建提醒</button>
+        <button type="button" id="rt-list-scheduled" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">列出已计划</button>
+        <button type="button" id="rt-list" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">列出定时任务</button>
+        <button type="button" id="rt-fire" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">触发定时任务</button>
+        <button type="button" id="rt-tick" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">触发定时任务</button>
+        <button type="button" id="rt-pause" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">暂停定时任务</button>
+        <button type="button" id="rt-resume" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">恢复定时任务</button>
         <button type="button" id="rt-auto-review" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Auto-review settings</button>
       </div>
     </div>
@@ -2131,16 +2131,16 @@
       <div class="name">Draft · cold · on-behalf · claim</div>
       <div class="meta" id="mail-meta">sandbox eml · ICS · receipt</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mail-draft" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Draft mail</button>
-        <button type="button" id="mail-cold" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Cold mail</button>
-        <button type="button" id="mail-onbehalf" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">Send on behalf</button>
-        <button type="button" id="mail-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Claim inbox</button>
-        <button type="button" id="mail-schedule" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Schedule meeting</button>
+        <button type="button" id="mail-draft" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">起草邮件</button>
+        <button type="button" id="mail-cold" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">冷启动邮件</button>
+        <button type="button" id="mail-onbehalf" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">代为发送</button>
+        <button type="button" id="mail-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">认领收件箱</button>
+        <button type="button" id="mail-schedule" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">安排会议</button>
         <button type="button" id="mail-purchase" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Purchase (sandbox)</button>
-        <button type="button" id="mail-search" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Search mail</button>
-        <button type="button" id="mail-meeting" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Meeting chat</button>
-        <button type="button" id="mail-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Read mail</button>
-        <button type="button" id="mail-outlook" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Draft Outlook</button>
+        <button type="button" id="mail-search" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">搜索邮件</button>
+        <button type="button" id="mail-meeting" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">会议纪要</button>
+        <button type="button" id="mail-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">读邮件</button>
+        <button type="button" id="mail-outlook" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Outlook 草稿</button>
       </div>
     </div>
   </aside>
@@ -2223,7 +2223,7 @@
     <div id="voicechat-bar" class="bb-banner" style="display:none;align-items:stretch;flex-direction:column">
       <div style="display:flex;align-items:center;gap:10px">
         <span class="vc-pulse"></span>
-        <span style="font-weight:700" data-i18n="voiceChatLive">Voice chat</span>
+        <span style="font-weight:700" data-i18n="voiceChatLive">语音对话</span>
         <span id="vc-timer" style="color:var(--muted);font:12px ui-monospace,monospace">00:00</span>
         <span style="flex:1"></span>
         <button type="button" id="vc-end-btn" class="bb-btn bb-btn-danger" data-i18n="vcEnd">结束通话</button>
