@@ -1,8 +1,9 @@
 # Bit Bot Desktop — 布局目标 + 中英文混排 + 调试面治理 · 验收报告 (Grok-inspired, Bit Bot-owned)
 
 分支：`cursor/desktop-layout-target-v1`（基线 `cursor/desktop-chrome-tokens-a7d0`）。
-所有提交仅本地，**未推送**。合同细节见同目录 `target-v1.md` / `layout-contract.md` /
-`copy-contract.md`；控件清单见 `audit.md`；逐项豁免见 `i18n-allowlist.json`。
+v1 与 target-v2 二次改造均直接提交到该分支并推送 origin。合同细节见同目录 `target-v1.md` /
+**`target-v2.md`** / `layout-contract.md` / `copy-contract.md`；控件清单见 `audit.md`；
+逐项豁免见 `i18n-allowlist.json`。
 
 诚实性约定：真实渲染门全部走真 Electron + xvfb + Playwright；缺失内核/依赖时按
 honest SKIP 处理，绝不伪造 PASS。`prove_*.js` 为源码级正则 lint（LINT ONLY），
@@ -180,3 +181,85 @@ G-16 / G-24 / G-25 / G-26 / G-27 / G-28 这些“grep e2e 成功串”的段在 
 - 内核缺失（MoonBit）时相关 gate 走 honest SKIP；截图 mask/负向红（D-L-DIF）在具备
   稳定基线后再补。
 - 不做像素级 Grok 对比；所有资产 Bit Bot 自有（NG-001）。
+
+---
+
+## 7. Target v2 —— 桌面 UI 二次改造（本波，直接提交到 `cursor/desktop-layout-target-v1`）
+
+合同见 `target-v2.md`。本波在 v1 外壳 / 文案 / 治理基线上修复 7 个问题：Header 单模型入口、
+设置去诊断化、语言去重、时区默认系统、隐私全中文、模板市场去调试串并本地化、连接应用 / 模板市场
+固定到侧栏底部点击打开右 Sheet。
+
+### 7.1 关键实现点
+
+- Header：`#model-picker` 仅一个 `#model-entry`，文案「当前模型名 · 状态」（`DeepSeek · 已连接`
+  / `未配置模型`），删除逐通道 chip 与“无 key”压平串；点击打开 `#model-modal`（右侧 Sheet，
+  `bb-modal bb-modal--right`），按供应商分组，未配置可填/存/测/清（Key 永不回显明文），
+  「设为当前模型」走 `switch model <id>` + `llmCatalog`，与设置→凭证同源双向同步。
+- 侧栏底部：`#sidebar-footer` 固定顺序 Hidden Bots（仅 hidden>0 可见）→ Connect apps → Marketplace
+  → Settings（可见行，移出账户弹层）→ account-bar。新增统一 Sheet 管理器：`window.__bbSheetStack` +
+  全局 `Escape` 关栈顶 + `bbBindSheetMask` 点遮罩关 + `bbSheetClosed` 焦点回触发器；侧栏底部无内联表单。
+- 设置产品态去诊断：`renderSettingsPanel` / 残留位块 / 凭证 / 入站串按 `devModeOn()` 分支——dev on 显原文，
+  dev off 走 `wavegT` 中文或空。`#gp-devmode-row`、`devModeLabel`、`#tools-toggle-btn`（能力）均带 `data-lab`，
+  由治理 CSS 在 dev off 时隐藏；`#json-out` 默认 `display:none`。语言行复用 `followSystem`（无重复）。
+  隐私行 `隐私模式：…` 全中文，内部枚举只留 `dataset`。审批规则中文标签、原 `pattern→decision` 入 `title`。
+- 时区：`product_surface.systemTimezone()`（BITBOT_TZ→Intl→TZ→UTC）默认；仅把“未显式选择且遗留 UTC/null”
+  重播种，`timezone_explicit===true` 的 UTC 永不覆盖；`settingsPatch` 白名单加入 `timezone_explicit`/`dev_mode`；
+  `main.js` 无 `BITBOT_TZ` 时按系统时区补种以驱动 routine daemon。
+- 模板市场：删除 `templates × N · path` 调试串；空/加载/错误态中文；卡片按当前语言显示 name/job/desc。
+  渲染层保留显示层本地化映射 `TPL_COPY`（按模板 id 键，值仅 name/job/desc，lang key 用 `zh_cn`/`zh_tw`
+  避免与 i18n 字典锚点冲突），后端 id/语义不变；「创建」按当前语言预填既有 Bot 创建流程。
+- i18n：新增 65 键 ×3（zh-CN/zh-TW/en 全对齐，D-C-03：464 键 ×3）。CSS：`ui_chrome.css` 新增
+  `.bb-modal--right` 满高右贴边抽屉 + `.ms-*` 模型 Sheet 行样式。
+
+### 7.2 门禁 / 断言的受控变更（非放水，语义收紧或对齐新设计）
+
+- `prove_m24_window.js` GP-116：原断言“渲染层不含任何模板 id 字符串”与本波“按 id 的显示层本地化映射”冲突。
+  收紧为“禁止渲染层写死后端模板结构（`default_name` / 英文 job/description 原句）”，保留真实卡片来自
+  `templates.list()` 的核心不变式；ok 文案仍含 `渲染层没有写死模板数组` 以兼容 `smoke_grok_desktop_parity.sh` 的 G-24 grep。
+- `e2e_grok_desktop_boot.mjs` GP-131：Settings 已从账户弹层迁到侧栏底部固定入口，改为关弹层后直接点
+  `#sidebar-settings-btn`（旧“先开账户弹层再点”会让弹层遮挡底部行导致点击不可达）；Usage 面板真断言不变。
+
+### 7.3 真实渲染验收（本机一次，逐条实跑）
+
+命令：
+
+```
+node --check hosts/desktop/main.js hosts/desktop/product_surface.js
+# 抽取内联 <script> 后 node --check（内联脚本 460550 字符）
+node --check scripts/e2e_desktop_shell_v2.mjs scripts/prove_m24_window.js
+xvfb-run -a node scripts/e2e_desktop_layout_target.mjs      # 单独跑
+xvfb-run -a node scripts/e2e_grok_desktop_boot.mjs          # 单独跑
+xvfb-run -a node scripts/e2e_desktop_shell_v2.mjs           # 新增门，单独跑
+bash scripts/smoke_grok_desktop_parity.sh                  # 全量，单独跑
+for s in validate_proto_geometry prove_m2{0,1,2,3,4,5,6,7,8,9}_* prove_m3{3,4,7}_* prove_m4{0,1,2,3,4}_*; do node scripts/$s.js; done
+```
+
+实测结果（真实 Electron v33 + xvfb + playwright-core，非 SKIP）：
+
+| 门 | 结果 |
+| --- | --- |
+| `validate_proto_geometry.js` | PASS=3 / FAIL=0 |
+| `e2e_desktop_layout_target.mjs` | PASS=12 / FAIL=0（D-C-03 三语 464 键全等；D-C-01 zh-CN 可见文案 31 节点 0 未豁免英文） |
+| `e2e_grok_desktop_boot.mjs` | PASS=124 / FAIL=0（含修复后的 GP-130/131） |
+| **`e2e_desktop_shell_v2.mjs`（新增）** | PASS=101 / FAIL=0 / SKIP=0（1440x900、1280x800 各 × zh-CN/zh-TW；S-HEADER/S-MODEL/S-SIDEBAR/S-CLEAN/S-LANG/S-PRIV/S-MK/S-DEV/S-TZ） |
+| `smoke_grok_desktop_parity.sh` | PASS=313 / FAIL=0 |
+| prove lint 全量 | m20 24·m21 45·m22 25·m23 26·m24 29·m25 25·m26 27·m27 19·m28 14·m29 16·m33 8·m34 5·m37 13·m40 8·m41 7·m42 7·m43 8·m44 7 全绿 |
+
+新增门关键实测串（zh-CN @1440）：header `"DeepSeek · 已连接"` 单入口无 chip、模型 Sheet 右抽屉开合 +
+Esc 焦点回 `#model-entry`、侧栏底部 `[29→32→33→34→35]` 顺序、设置产品态诊断 token 命中 0、
+语言 `"跟随系统"` 单值、隐私 `"隐私模式：不可用（由账户侧管理，训练数据默认关闭）"`、模板市场 meta 空
+无 `× / path`、6 卡片中文、创建预填 `name="Ivy"`、dev off 隐藏开发选项/能力/raw JSON；
+S-TZ：设 `BITBOT_TZ=Asia/Shanghai` 且清 store → 时区选择器落 `"Asia/Shanghai"`（非 UTC）。
+
+### 7.4 截图归档（`reference/shell-v2-*`，真实渲染）
+
+每档视口 × 语言各 4 张：`*-settings-general.png`、`*-model-sheet.png`、`*-marketplace.png`、
+`*-sidebar-bottom.png`（1440x900 / 1280x800 × zh-CN / zh-TW，共 16 张）。
+
+### 7.5 本波残留
+
+- 产品态语言选择器 option 文案（简体中文 / 繁體中文 / English）为语言自称（endonym），维持不译；
+  时区选择器展示 IANA 名按 allowlist 豁免。
+- `TPL_COPY` 只覆盖官方 6 模板的 zh-CN/zh-TW 显示；新增模板未登记时回落 Host 原始英文元数据
+  （显示层，非状态源），后续波次可迁移为本地化 Host 目录。

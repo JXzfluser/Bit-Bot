@@ -2085,9 +2085,10 @@ async function main() {
         : bad("E2E GP-130 usage store", JSON.stringify(m28Row));
 
       // GP-131: Settings → Usage & Billing tab shows the same real row.
-      // Settings lives inside the account popup (Grok-style); open it first.
-      await win.click("#account-avatar-btn");
-      await win.waitForSelector("#account-popup:not([hidden])", { timeout: 5000 });
+      // target-v2 moved Settings to a pinned sidebar-bottom entry (no longer
+      // nested inside the account popup), so open it directly. Close the popup
+      // first so it cannot overlay the footer row.
+      await win.evaluate(() => { if (typeof setAccountPopup === "function") setAccountPopup(false); });
       await win.click("#sidebar-settings-btn");
       await win.waitForSelector("#settings-panel", { timeout: 10000 });
       await win.evaluate(() => {

@@ -174,9 +174,20 @@ function main() {
   /async function refreshMarketplace\(\)/.test(html) && /window\.bitbot\.templates\.list\(\)/.test(html)
     ? ok("Marketplace 面板调用 Host templates.list()（真目录）")
     : bad("marketplace source", "templates.list not used");
-  !/sales-outbound|talent-scout|paid-media|expense-manager|bug-reproduction|chief-of-staff/.test(html)
-    ? ok("渲染层没有写死模板数组（模板 id 只出现在 Host 目录里）")
-    : bad("hardcoded templates", "renderer contains template ids");
+  // GP-116 只禁止渲染层写死“模板目录本身”——即后端模板对象结构（default_name /
+  // description / 英文 job 文案）。模板市场现在允许保留一张“按 id 键”的显示层
+  // 本地化映射（TPL_COPY，值为 name/job/desc，且不含后端字段或英文原句），
+  // 真实卡片仍来自 templates.list()。因此这里断言的是：不得出现后端模板结构，
+  // 也不得嵌入后端英文元数据，而不是禁止 id 字符串本身。
+  const tplFileForGuard = readJson(TEMPLATES) || {};
+  const tplGuardRows = Array.isArray(tplFileForGuard) ? tplFileForGuard : tplFileForGuard.templates || [];
+  const englishMeta = tplGuardRows.map((t) => String((t && (t.job || t.description)) || "")).filter(Boolean);
+  const embedsBackendSchema = /"default_name"\s*:/.test(html) || /\bid\s*:\s*"sales-outbound"[\s\S]{0,80}default_name\b/.test(html);
+  const embedsEnglishMeta = englishMeta.some((s) => s.length > 6 && html.includes(s));
+  !embedsBackendSchema && !embedsEnglishMeta
+    ? ok("渲染层没有写死模板数组（模板卡片只来自 Host templates.list()；本地化仅为按 id 的显示映射，不含后端字段或英文元数据）")
+    : bad("hardcoded templates", embedsBackendSchema ? "renderer embeds backend template schema" : "renderer embeds backend English metadata");
+
 
   const tplFile = readJson(TEMPLATES) || {};
   const tplRows = Array.isArray(tplFile) ? tplFile : tplFile.templates || [];

@@ -197,6 +197,16 @@ function loadEnvLocalFiles(opts = {}) {
   }
 }
 loadEnvLocalFiles();
+// Bot timezone default = system timezone (never hardcoded UTC). Seed BITBOT_TZ
+// once so the routine daemon + product_surface agree; a real user override or a
+// value already in .env.local takes precedence.
+if (!String(process.env.BITBOT_TZ || "").trim()) {
+  let sysTz = "UTC";
+  try {
+    sysTz = Intl.DateTimeFormat().resolvedOptions().timeZone || process.env.TZ || "UTC";
+  } catch (_) { /* ignore */ }
+  process.env.BITBOT_TZ = sysTz;
+}
 // Product default: content moderation armed unless explicitly disabled.
 if (process.env.BITBOT_CONTENT_MODERATION === undefined) {
   process.env.BITBOT_CONTENT_MODERATION = "1";

@@ -1522,13 +1522,11 @@
     </div>
     <span id="devmode-badge" data-i18n="devBadge">开发模式</span>
       <div id="header-actions">
-      <div id="model-picker" title="国产多模型 · 经 MoonBit llm_set_model" aria-label="模型选择">
-        <span class="mp-label">模型</span>
+      <div id="model-picker" title="国产多模型配置" aria-label="模型">
+        <button type="button" id="model-entry" class="mp-btn"><span class="mp-label">模型</span></button>
       </div>
       <button type="button" id="tools-toggle-btn" data-lab title="机器 / 渠道 / 能力面板" data-i18n="headerSkills">能力</button>
-      <button type="button" id="cred-settings-btn" title="配置 DeepSeek / 钉钉飞书企微（不写死）" data-i18n="headerCreds">凭证</button>
       <button type="button" id="gp-panel-btn" title="电脑预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer">电脑</button>
-      <button type="button" id="account-settings-btn" title="CM-1901 SidebarAccountButton" data-i18n="headerAccount">账户</button>
     </div>
   </header>
   <aside id="agents">
@@ -1597,7 +1595,13 @@
       </details>
       <div class="bb-split">
         <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="连接应用 · 插件（Cmd/Ctrl+Shift+M）" data-i18n="connectApps">连接应用</button>
-        <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板（来自本机 bot-templates.json）" data-i18n="marketplace">模板市场</button>
+        <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板" data-i18n="marketplace">模板市场</button>
+      </div>
+      <!-- Settings is a pinned sidebar-bottom entry (before the account row),
+           click opens the Settings Sheet. Kept out of the account popup so it
+           is not a duplicated entry. -->
+      <div class="bb-split">
+        <button type="button" id="sidebar-settings-btn" class="bb-btn bb-btn-block" title="设置" data-i18n="settings">设置</button>
       </div>
       <!-- Grok-style user account row with popup menu -->
       <div id="account-bar">
@@ -1612,7 +1616,6 @@
           <button type="button" class="ap-item" id="ap-mobile" ><span class="ap-ic" aria-hidden="true">◐</span><span class="ap-tx" data-i18n="apMobile">获取移动版 Bit Bot</span></button>
           <div class="ap-sep"></div>
           <button type="button" class="ap-item" id="ap-support" ><span class="ap-ic" aria-hidden="true">?</span><span class="ap-tx" data-i18n="apSupport">支持</span></button>
-          <button type="button" class="ap-item" id="sidebar-settings-btn"><span class="ap-ic" aria-hidden="true">⚙</span><span class="ap-tx" data-i18n="settings">设置</span></button>
           <div class="ap-sep"></div>
           <button type="button" class="ap-item" id="ap-add-account" ><span class="ap-ic" aria-hidden="true">＋</span><span class="ap-tx" data-i18n="apAddAccount">添加账户</span></button>
           <button type="button" class="ap-item ap-danger" id="ap-signout" ><span class="ap-ic" aria-hidden="true">⎋</span><span class="ap-tx" data-i18n="apSignOut">退出登录</span></button>
@@ -1721,7 +1724,7 @@
         <div class="gp-label" data-i18n="language">语言</div>
         <div class="gp-row">
           <select id="gp-language" class="gp-select">
-            <option value="system">跟随系统 · 跟随系统</option>
+            <option value="system" data-i18n="followSystem">跟随系统</option>
             <option value="zh-CN">简体中文</option>
             <option value="zh-TW">繁體中文</option>
             <option value="en">English</option>
@@ -1738,21 +1741,21 @@
             <option value="Europe/Berlin">Europe/Berlin</option>
           </select>
         </div>
-        <div class="gp-label" data-i18n="devModeLabel">开发选项（调试面与工具面板）</div>
-        <div class="gp-row" id="gp-devmode-row">
+        <div class="gp-label" data-lab data-i18n="devModeLabel">开发选项（调试面与工具面板）</div>
+        <div class="gp-row" id="gp-devmode-row" data-lab>
           <button type="button" class="gp-chip" data-devmode="on" data-i18n="devOn">开</button>
           <button type="button" class="gp-chip" data-devmode="off" data-i18n="devOff">关</button>
         </div>
         <div class="gp-label" data-i18n="autoReview">自动复核规则（「先询问」优先于「自动允许」）</div>
         <div class="gp-row">
           <select id="gp-rule-kind" class="gp-select">
-            <option value="shell">shell</option>
-            <option value="channel_send">channel_send</option>
-            <option value="mail_send">mail_send</option>
-            <option value="purchase_item">purchase_item</option>
-            <option value="mcp_call">mcp_call</option>
-            <option value="computer_use">computer_use</option>
-            <option value="delegate_task">delegate_task</option>
+            <option value="shell">执行命令</option>
+            <option value="channel_send">发送消息</option>
+            <option value="mail_send">发送邮件</option>
+            <option value="purchase_item">发起购买</option>
+            <option value="mcp_call">调用工具</option>
+            <option value="computer_use">操作电脑</option>
+            <option value="delegate_task">委派任务</option>
           </select>
           <button type="button" class="gp-chip" id="gp-rule-allow" data-i18n="allowAuto">自动允许</button>
           <button type="button" class="gp-chip" id="gp-rule-ask" data-i18n="askFirst">先询问</button>
@@ -1880,7 +1883,7 @@
       <div id="lb-body" style="max-width:94vw;max-height:88vh;display:flex;align-items:center;justify-content:center;overflow:auto"></div>
     </div>
     <!-- GP-A2/A3: Connect apps panel (spec §2.5 · Cmd/Ctrl+Shift+M) -->
-    <div id="connect-apps-modal" class="bb-modal">
+    <div id="connect-apps-modal" class="bb-modal bb-modal--right">
       <div class="bb-sheet bb-sheet-lg">
         <div class="bb-sheet-head">
           <div class="bb-sheet-title" data-i18n="caTitle">连接应用</div>
@@ -1963,16 +1966,30 @@
         </div>
       </div>
     </div>
+    <!-- Layout/copy contract v1: the "模型" Sheet. Single header entry opens
+         this right-side drawer; per-vendor rows share the Host llmCatalog +
+         secrets source with 设置→凭证. Keys are never echoed in plaintext. -->
+    <div id="model-modal" class="bb-modal bb-modal--right" role="dialog" aria-modal="true" aria-labelledby="model-title">
+      <div class="bb-sheet bb-sheet-lg">
+        <div class="bb-sheet-head">
+          <div class="bb-sheet-title" id="model-title" data-i18n="modelTitle">模型</div>
+          <button type="button" id="model-close" class="bb-btn" data-i18n="settingsClose">关闭</button>
+        </div>
+        <div class="bb-sheet-note" data-i18n="modelHint">选择一个模型供应商，填写密钥后即可设为当前模型。</div>
+        <div id="model-status" class="bb-meta" style="margin-top:8px"></div>
+        <div id="model-body" style="margin-top:10px"></div>
+      </div>
+    </div>
     <!-- GP-116 (§2.1): Marketplace panel. The catalog is the Host's real
          bot_templates_list effect (data/desktop/bot-templates.json) — never a
          hardcoded array in the renderer. -->
-    <div id="marketplace-modal" class="bb-modal">
+    <div id="marketplace-modal" class="bb-modal bb-modal--right">
       <div class="bb-sheet bb-sheet-lg">
         <div class="bb-sheet-head">
           <div class="bb-sheet-title" data-i18n="mkTitle">模板市场 · Bot 模板</div>
           <button type="button" id="mk-close" class="bb-btn" data-i18n="settingsClose">关闭</button>
         </div>
-        <div class="bb-sheet-note" data-i18n="mkHint">模板来自 Host 的 bot-templates.json 目录，点一个即可创建 Bot。</div>
+        <div class="bb-sheet-note" data-i18n="mkHint">选择一个模板即可快速创建 Bot。</div>
         <div id="mk-meta" class="bb-meta" style="margin-top:8px"></div>
         <div id="mk-grid" class="ca-grid" style="margin-top:10px"></div>
       </div>
@@ -2767,7 +2784,10 @@
       const meta = document.getElementById("settings-meta");
       if (!panel || !meta) return;
       if (payload && payload.refused) {
-        meta.textContent = payload.error || "Settings refused";
+        // Product mode: no raw routing error strings — a single friendly line.
+        meta.textContent = devModeOn()
+          ? "Settings refused · " + (payload.error || "")
+          : wavegT("settingsRefused");
         panel.style.display = "flex";
         return;
       }
@@ -2782,17 +2802,27 @@
         else key = "general";
       }
       showSettingsTab(key || settingsActiveTab || "general");
-      meta.textContent =
-        "entry=" +
-        ((payload && payload.entry) || "sidebar") +
-        " · tab=" +
-        (tabName || (key || "General")) +
-        (payload && payload.deep_link ? " · " + payload.deep_link : "");
+      // Layout/copy contract: raw routing diagnostics are dev-mode only.
+      if (devModeOn()) {
+        meta.textContent =
+          "entry=" +
+          ((payload && payload.entry) || "sidebar") +
+          " · tab=" +
+          (tabName || (key || "General")) +
+          (payload && payload.deep_link ? " · " + payload.deep_link : "");
+      } else {
+        meta.textContent = "";
+      }
       panel.style.display = "flex";
+      bbSheetOpened("settings-panel", window.__bbPendingSettingsTrigger);
+      window.__bbPendingSettingsTrigger = null;
+      const mClose = document.getElementById("settings-close");
+      if (mClose) setTimeout(() => mClose.focus(), 40);
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
       // Honest product residuals (brain / CN channels / filing / OTA) — never pretend ready.
-      (async () => {
+      // Dev-mode only: these carry internal enum tokens (live/draft/armed/residual).
+      if (devModeOn()) (async () => {
         const bits = [];
         try {
           if (window.bitbot.productStatus) {
@@ -4737,6 +4767,44 @@
       const el = document.getElementById("mk-meta");
       if (el) el.textContent = text;
     }
+    // Display-only localization for the English template metadata. The backend
+    // ids / job / description in the Host catalog are NEVER changed — this is a
+    // pure view map keyed by id, so marketplace cards and the prefilled create
+    // form read in the current UI language. Lang keys use zh_cn / zh_tw (not the
+    // quoted "zh-CN"/"zh-TW" dict anchors) so this map can never be mistaken for
+    // an i18n dictionary by the structural gates.
+    const TPL_COPY = {
+      "sales-outbound": {
+        zh_cn: { name: "Ivy", job: "外呼销售", desc: "调研目标客户、整理联系人，并以我的口吻起草外呼内容，草稿需审批。未经批准绝不发送。" },
+        zh_tw: { name: "Ivy", job: "外呼業務開發", desc: "調研目標客戶、整理聯絡人，並以我的口吻起草外呼內容，草稿需審批。未經批准絕不發送。" },
+      },
+      "talent-scout": {
+        zh_cn: { name: "Sage", job: "人才搜寻", desc: "按岗位要求筛选候选人、保留链接、区分证据与推测。绝不直接联系候选人。" },
+        zh_tw: { name: "Sage", job: "人才搜尋", desc: "依崗位要求篩選候選人、保留連結、區分證據與推測。絕不直接聯絡候選人。" },
+      },
+      "paid-media": {
+        zh_cn: { name: "Ad", job: "付费投放", desc: "在各投放平台规划并起草投放调整，明确预算上限，准备素材供审阅。未经批准绝不上线或改预算。" },
+        zh_tw: { name: "Ad", job: "付費投放", desc: "在各投放平台規劃並起草投放調整，明確預算上限，準備素材供審閱。未經批准絕不上線或改預算。" },
+      },
+      "expense-manager": {
+        zh_cn: { name: "Ledger", job: "报销管理", desc: "收集票据、对照政策核对、准备审批清单。未经明确批准绝不提交报销。" },
+        zh_tw: { name: "Ledger", job: "報銷管理", desc: "收集票據、對照政策核對、準備審批清單。未經明確批准絕不提交報銷。" },
+      },
+      "bug-reproduction": {
+        zh_cn: { name: "Repro", job: "缺陷复现", desc: "在 Bot 电脑的浏览器里复现所报缺陷，捕获步骤与截图，撰写复现说明。绝不改动生产设置。" },
+        zh_tw: { name: "Repro", job: "缺陷重現", desc: "在 Bot 電腦的瀏覽器裡重現所報缺陷，捕獲步驟與截圖，撰寫重現說明。絕不改動生產設定。" },
+      },
+      "chief-of-staff": {
+        zh_cn: { name: "Chief", job: "幕僚长", desc: "梳理收件箱与日历，以我的口吻起草回复，维护含待决策项的每日简报。未经批准绝不代发或提交。" },
+        zh_tw: { name: "Chief", job: "幕僚長", desc: "梳理收件匣與日曆，以我的口吻起草回覆，維護含待決策項的每日簡報。未經批准絕不代發或提交。" },
+      },
+    };
+    function tplCopy(tpl) {
+      const id = tpl && tpl.id;
+      const code = wavegLang === "zh-CN" ? "zh_cn" : wavegLang === "zh-TW" ? "zh_tw" : null;
+      const map = code && id && TPL_COPY[id] ? TPL_COPY[id][code] : null;
+      return map || { name: (tpl && tpl.default_name) || "", job: (tpl && tpl.job) || "", desc: (tpl && tpl.description) || "" };
+    }
     function renderMarketplace() {
       const grid = document.getElementById("mk-grid");
       if (!grid) return;
@@ -4744,11 +4812,12 @@
       if (!mkTemplates.length) {
         const empty = document.createElement("div");
         empty.style.cssText = "color:var(--muted);font-size:12px";
-        empty.textContent = wavegT("mkEmpty");
+        empty.textContent = wavegT(_mkError ? "mkError" : "mkEmpty");
         grid.appendChild(empty);
         return;
       }
       for (const tpl of mkTemplates) {
+        const c = tplCopy(tpl);
         const card = document.createElement("div");
         card.dataset.templateId = tpl.id || "";
         card.className = "ca-card ca-card-stack";
@@ -4756,17 +4825,17 @@
         head.style.cssText = "display:flex;align-items:center;gap:8px;min-width:0";
         const icon = document.createElement("span");
         icon.className = "ca-icon";
-        icon.textContent = String(tpl.default_name || tpl.job || "?").trim().slice(0, 1).toUpperCase();
+        icon.textContent = String(c.name || c.job || "?").trim().slice(0, 1).toUpperCase();
         icon.style.background = avatarColorFor(tpl.id || tpl.default_name);
         head.appendChild(icon);
         const title = document.createElement("div");
         title.style.cssText = "min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
-        title.textContent = (tpl.default_name ? tpl.default_name + " · " : "") + (tpl.job || tpl.id);
+        title.textContent = c.name ? (c.name + (c.job ? " · " + c.job : "")) : (c.job || tpl.id);
         head.appendChild(title);
         card.appendChild(head);
         const desc = document.createElement("div");
         desc.style.cssText = "color:var(--muted);font-size:11px;line-height:1.4";
-        desc.textContent = tpl.description || "";
+        desc.textContent = c.desc || "";
         card.appendChild(desc);
         const btn = document.createElement("button");
         btn.type = "button";
@@ -4774,44 +4843,53 @@
         btn.style.cssText =
           "align-self:flex-start;background:var(--accent);color:var(--accent-ink);border:0;" +
           "border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;font-size:12px";
-        btn.addEventListener("click", async () => {
-          btn.disabled = true;
-          const r = await window.bitbot.templates.create({ templateId: tpl.id, name: tpl.default_name || "" });
-          btn.disabled = false;
-          if (r && r.ok && r.bot) {
-            mkMsg((tpl.job || tpl.id) + " → " + (r.bot.name || r.bot.id));
-            await refreshBots();
-            await refreshSidebarRooms();
-          } else {
-            mkMsg("创建失败：" + ((r && (r.error || r.refused)) || "host_failed"));
-          }
-        });
+        btn.addEventListener("click", () => openBotFormFromTemplate(tpl));
         card.appendChild(btn);
         grid.appendChild(card);
       }
     }
+    // "创建" opens the EXISTING Bot-creation flow, prefilled from the template
+    // (localized display), instead of creating silently. Backend ids untouched.
+    function openBotFormFromTemplate(tpl) {
+      const c = tplCopy(tpl);
+      closeMarketplace();
+      if (typeof openBotForm !== "function") return;
+      openBotForm(null);
+      const n = document.getElementById("bc-name");
+      const j = document.getElementById("bc-job");
+      const d = document.getElementById("bc-desc");
+      if (n) n.value = c.name || "";
+      if (j) j.value = c.job || "";
+      if (d) d.value = c.desc || "";
+    }
+    let _mkError = false;
     async function refreshMarketplace() {
+      _mkError = false;
       if (!window.bitbot || !window.bitbot.templates) {
-        mkMsg("Host templates API unavailable");
+        _mkError = true;
+        mkMsg("");
+        renderMarketplace();
         return;
       }
       const r = await window.bitbot.templates.list();
       mkTemplates = (r && Array.isArray(r.templates)) ? r.templates : [];
-      mkMsg(
-        (r && r.ok ? "templates × " + mkTemplates.length : "failed: " + ((r && r.error) || "?")) +
-          (r && r.source ? " · " + r.source : ""),
-      );
+      // No debug line: the product sheet never shows "templates × N · <path>".
+      _mkError = !(r && r.ok);
+      mkMsg("");
       renderMarketplace();
     }
-    function openMarketplace() {
+    function openMarketplace(triggerEl) {
       const m = document.getElementById("marketplace-modal");
       if (!m) return;
       m.style.display = "flex";
+      bbSheetOpened("marketplace-modal", triggerEl);
+      mkMsg(wavegT("mkLoading"));
       refreshMarketplace().catch(() => {});
     }
     function closeMarketplace() {
       const m = document.getElementById("marketplace-modal");
       if (m) m.style.display = "none";
+      bbSheetClosed("marketplace-modal");
     }
 
     async function loadActiveSessionTranscript() {
@@ -4931,12 +5009,13 @@
       }
       const secStatus = document.getElementById("sec-status");
       if (secStatus && st.llm) {
-        secStatus.textContent =
-          "brain=" +
-          (st.llm.provider_id || "?") +
-          "/" +
-          (st.llm.model || "?") +
-          (st.llm.key_configured ? " · " + wavegT("keyHot") : " · " + wavegT("missKey"));
+        // Product mode: friendly Chinese status, no "brain=" raw token. The
+        // provider / model identifiers are technical (allowlisted) only.
+        secStatus.textContent = devModeOn()
+          ? "brain=" + (st.llm.provider_id || "?") + "/" + (st.llm.model || "?") +
+            (st.llm.key_configured ? " · " + wavegT("keyHot") : " · " + wavegT("missKey"))
+          : wavegT("secStatusModel") + "：" + (st.llm.provider_id || "?") + "/" + (st.llm.model || "?") +
+            " · " + (st.llm.key_configured ? wavegT("modelConnected") : wavegT("modelUnconfigured"));
       }
     }
 
@@ -4998,10 +5077,14 @@
       const r = await window.bitbot.secrets.set(patch);
       const secStatus = document.getElementById("sec-status");
       if (secStatus) {
-        secStatus.textContent = r && r.ok
-          ? "已保存 " + (r.applied || []).join(",") + " → " + (r.path || ".env.local") +
-            (r.llm && r.llm.key_configured ? " · 大脑 key 就绪" : " · 大脑仍缺 key")
-          : "保存失败: " + ((r && r.error) || "?");
+        if (r && r.ok) {
+          secStatus.textContent = devModeOn()
+            ? "已保存 " + (r.applied || []).join(",") + " → " + (r.path || "") +
+              (r.llm && r.llm.key_configured ? " · 大脑 key 就绪" : " · 大脑仍缺 key")
+            : wavegT("secSavedOk") + " · " + (r.llm && r.llm.key_configured ? wavegT("modelConnected") : wavegT("modelUnconfigured"));
+        } else {
+          secStatus.textContent = wavegT("secSavedFail");
+        }
       }
       if (keyEl) keyEl.value = "";
       if (qwenEl) qwenEl.value = "";
@@ -5157,66 +5240,225 @@
       }
     }
 
+    // Layout/copy contract v1: the header keeps a SINGLE model entry
+    // ("当前模型名 + 状态"). Per-channel chips were removed — they crammed the
+    // header and duplicated 设置→凭证. All configuration now lives in the
+    // "模型" Sheet, which reads the SAME Host source (llmCatalog + secrets) as
+    // the credentials tab, so the two stay two-way in sync.
+    let _modelCatalog = null;
     async function refreshModelPicker() {
-      const box = document.getElementById("model-picker");
-      if (!box || !window.bitbot.llmCatalog) return;
-      const cat = await window.bitbot.llmCatalog();
-      if (!cat || !cat.ok) return;
-      const label = box.querySelector(".mp-label");
-      box.innerHTML = "";
-      const lab = document.createElement("span");
-      lab.className = "mp-label";
-      lab.textContent = label ? label.textContent : "模型";
-      box.appendChild(lab);
-      const providers = cat.providers || [];
-      for (const p of providers) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className =
-          "mp-btn" +
-          (p.active ? " active" : "") +
-          (p.key_configured ? "" : " nokey");
-        btn.dataset.providerId = p.id;
-        btn.title =
-          (p.label || p.id) +
-          " · " +
-          (p.model || "") +
-          (p.key_configured
-            ? " · " + wavegT("keyHot")
-            : " · " + wavegT("missKey") + " " + (p.key_env || "BITBOT_LLM_API_KEY"));
-        btn.textContent =
-          (p.label || p.id) + (p.key_configured ? "" : " · " + wavegT("noKey"));
-        btn.addEventListener("click", async () => {
-          if (!p.key_configured) {
-            openProductCredentials(
-              wavegT("modelMissKey") + " " +
-                (p.label || p.id) + " · " +
-                (p.key_env || "key"),
-            );
-            return;
-          }
-          await runUserTurn("switch model " + p.id, { skipSession: true });
+      const entry = document.getElementById("model-entry");
+      if (!entry || !window.bitbot.llmCatalog) return;
+      try {
+        const cat = await window.bitbot.llmCatalog();
+        _modelCatalog = cat && cat.ok ? cat : null;
+      } catch (_) {
+        _modelCatalog = null;
+      }
+      renderModelEntry();
+      if (typeof renderModelSheetBody === "function" && _modelSheetOpen) {
+        renderModelSheetBody();
+      }
+    }
+    function renderModelEntry() {
+      const entry = document.getElementById("model-entry");
+      if (!entry) return;
+      const a = (_modelCatalog && _modelCatalog.active) || {};
+      let txt;
+      if (a.provider_id) {
+        const lab = a.label || a.provider_id;
+        txt = lab + " · " + (a.key_configured ? wavegT("modelConnected") : wavegT("modelUnconfigured"));
+      } else {
+        txt = wavegT("modelNone");
+      }
+      entry.textContent = txt;
+      entry.title = txt;
+    }
+
+    // --- Model Sheet -------------------------------------------------------
+    let _modelSheetOpen = false;
+    let _modelSheetTrigger = null;
+    function openModelSheet(triggerEl) {
+      const m = document.getElementById("model-modal");
+      if (!m) return;
+      _modelSheetOpen = true;
+      _modelSheetTrigger = triggerEl || document.getElementById("model-entry") || null;
+      m.style.display = "flex";
+      bbSheetOpened("model-modal", _modelSheetTrigger);
+      renderModelSheetBody();
+      const close = document.getElementById("model-close");
+      if (close) setTimeout(() => close.focus(), 40);
+    }
+    function closeModelSheet() {
+      const m = document.getElementById("model-modal");
+      if (m) m.style.display = "none";
+      _modelSheetOpen = false;
+      bbSheetClosed("model-modal");
+      _modelSheetTrigger = null;
+    }
+    function modelStatusBadge(p) {
+      const b = document.createElement("span");
+      b.className = "ms-badge";
+      if (p.active) {
+        b.classList.add("is-current");
+        b.textContent = wavegT("modelCurrentBadge");
+      } else if (p.key_configured) {
+        b.classList.add("is-ready");
+        b.textContent = wavegT("modelConnected");
+      } else {
+        b.classList.add("is-unset");
+        b.textContent = wavegT("modelUnconfigured");
+      }
+      return b;
+    }
+    function modelVendorName(p) {
+      return p.label || p.id || wavegT("modelLabel");
+    }
+    async function modelSetStatus(providerId, msg, kind) {
+      const bar = document.getElementById("model-status");
+      if (!bar) return;
+      bar.textContent = msg;
+      bar.dataset.kind = kind || "info";
+    }
+    function renderModelSheetBody() {
+      const body = document.getElementById("model-body");
+      if (!body) return;
+      body.innerHTML = "";
+      const cat = _modelCatalog;
+      const providers = (cat && cat.providers) || [];
+      const a = (cat && cat.active) || {};
+      const sum = document.createElement("div");
+      sum.className = "ms-summary";
+      sum.textContent = a.provider_id
+        ? wavegT("modelCurrent") + "：" + modelVendorName(a) + " · " + (a.model || "") +
+          " · " + (a.key_configured ? wavegT("modelConnected") : wavegT("modelUnconfigured"))
+        : wavegT("modelCurrent") + "：" + wavegT("modelNone");
+      body.appendChild(sum);
+      if (!providers.length) {
+        const e = document.createElement("div");
+        e.className = "ms-empty";
+        e.textContent = wavegT("modelEmpty");
+        body.appendChild(e);
+        return;
+      }
+      for (const p of providers) body.appendChild(modelProviderRow(p));
+    }
+    function modelProviderRow(p) {
+      const row = document.createElement("div");
+      row.className = "ms-card";
+      row.dataset.providerId = p.id || "";
+      const head = document.createElement("div");
+      head.className = "ms-card-head";
+      const name = document.createElement("span");
+      name.className = "ms-name";
+      name.textContent = modelVendorName(p);
+      head.appendChild(name);
+      head.appendChild(modelStatusBadge(p));
+      row.appendChild(head);
+      if (p.model) {
+        const mdl = document.createElement("div");
+        mdl.className = "ms-model";
+        mdl.textContent = p.model;
+        row.appendChild(mdl);
+      }
+      const actions = document.createElement("div");
+      actions.className = "ms-actions";
+      if (!p.key_configured) {
+        const key = document.createElement("input");
+        key.type = "password";
+        key.className = "bb-field ms-key";
+        key.autocomplete = "off";
+        key.placeholder = wavegT("modelKeyPh");
+        row.appendChild(key);
+        const save = document.createElement("button");
+        save.type = "button";
+        save.className = "bb-btn ms-save";
+        save.textContent = wavegT("modelSave");
+        save.addEventListener("click", async () => {
+          const v = (key.value || "").trim();
+          if (!v) { await modelSetStatus(p.id, wavegT("modelNoKeyYet"), "warn"); key.focus(); return; }
+          save.disabled = true;
+          await modelSetStatus(p.id, wavegT("modelSaving"), "info");
           try {
-            await refreshModelPicker();
-          } catch (_) {
-            /* ignore */
+            const r = await window.bitbot.secrets.set({ [p.key_env || "BITBOT_LLM_API_KEY"]: v });
+            if (r && r.ok) {
+              key.value = "";
+              await modelSetStatus(p.id, wavegT("modelSaved"), "ok");
+              await refreshModelPicker();
+              if (window.bitbot.secrets) refreshSecretsForm().catch(() => {});
+            } else {
+              await modelSetStatus(p.id, wavegT("modelSaveFail") + "：" + ((r && r.error) || ""), "err");
+            }
+          } catch (e) {
+            await modelSetStatus(p.id, wavegT("modelSaveFail"), "err");
+          } finally {
+            save.disabled = false;
           }
         });
-        box.appendChild(btn);
+        actions.appendChild(save);
+        row.appendChild(actions);
+      } else {
+        if (!p.active) {
+          const use = document.createElement("button");
+          use.type = "button";
+          use.className = "bb-btn ms-use";
+          use.textContent = wavegT("modelSetCurrent");
+          use.addEventListener("click", async () => {
+            use.disabled = true;
+            try {
+              await runUserTurn("switch model " + p.id, { skipSession: true });
+              await refreshModelPicker();
+              await modelSetStatus(p.id, wavegT("modelSetCurrentOk"), "ok");
+            } finally { use.disabled = false; }
+          });
+          actions.appendChild(use);
+        }
+        const test = document.createElement("button");
+        test.type = "button";
+        test.className = "bb-btn ms-test";
+        test.textContent = wavegT("modelTest");
+        test.addEventListener("click", async () => {
+          test.disabled = true;
+          await modelSetStatus(p.id, wavegT("modelTesting"), "info");
+          try {
+            if (!p.active) await runUserTurn("switch model " + p.id, { skipSession: true });
+            const r = await window.bitbot.secrets.probeLlm();
+            if (r && r.ok) {
+              await modelSetStatus(p.id, wavegT("modelTestOk"), "ok");
+            } else {
+              const err = (r && r.result && r.result.error) || (r && r.error) || "";
+              await modelSetStatus(p.id, wavegT("modelTestFail") + "：" + String(err).slice(0, 80), "err");
+            }
+            await refreshModelPicker();
+          } catch (e) {
+            await modelSetStatus(p.id, wavegT("modelTestFail"), "err");
+          } finally { test.disabled = false; }
+        });
+        actions.appendChild(test);
+        const clr = document.createElement("button");
+        clr.type = "button";
+        clr.className = "bb-btn ms-clear";
+        clr.textContent = wavegT("modelClear");
+        clr.addEventListener("click", async () => {
+          clr.disabled = true;
+          try {
+            const r = await window.bitbot.secrets.remove(p.key_env || "BITBOT_LLM_API_KEY");
+            if (r && r.ok) {
+              await modelSetStatus(p.id, wavegT("modelCleared"), "ok");
+              await refreshModelPicker();
+              if (window.bitbot.secrets) refreshSecretsForm().catch(() => {});
+            } else {
+              await modelSetStatus(p.id, wavegT("modelClearFail"), "err");
+            }
+          } finally { clr.disabled = false; }
+        });
+        actions.appendChild(clr);
+        row.appendChild(actions);
       }
-      const sub = document.querySelector("header .sub");
-      if (sub && cat.active) {
-        const hot = document.getElementById("hotkey-hint");
-        const hotTxt = hot ? hot.textContent : "Ctrl+Shift+Space";
-        sub.innerHTML =
-          (cat.active.label || cat.active.provider_id || "LLM") +
-          " / " +
-          (cat.active.model || "") +
-          (cat.active.key_configured ? "" : " · " + wavegT("missKey")) +
-          " · <span id=\"hotkey-hint\">" +
-          hotTxt +
-          "</span> " + wavegT("invoke");
-      }
+      return row;
+    }
+    function bbReturnFocus(el) {
+      try { if (el && typeof el.focus === "function" && document.contains(el)) el.focus(); } catch (_) {}
     }
 
     async function refreshSessions() {
@@ -7693,6 +7935,7 @@
       const panel = document.getElementById("settings-panel");
       const secrets = document.getElementById("secrets-panel");
       if (panel) panel.style.display = "flex";
+      bbSheetOpened("settings-panel", document.activeElement);
       if (typeof showSettingsTab === "function") showSettingsTab("credentials");
       if (secrets) {
         secrets.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -7752,7 +7995,9 @@
     }
     const sidebarSettingsBtn = document.getElementById("sidebar-settings-btn");
     if (sidebarSettingsBtn) {
-      sidebarSettingsBtn.addEventListener("click", () => {
+      sidebarSettingsBtn.addEventListener("click", (ev) => {
+        // Remember the trigger so closing the Settings Sheet returns focus.
+        window.__bbPendingSettingsTrigger = ev.currentTarget;
         runUserTurn("open settings", { skipSession: true, silentUser: true });
         setAccountPopup(false);
       });
@@ -7797,6 +8042,7 @@
       const b = document.getElementById(apId);
       if (!b) continue;
       b.addEventListener("click", () => {
+        window.__bbPendingSettingsTrigger = b;
         setAccountPopup(false);
         runUserTurn(phrase, { skipSession: true, silentUser: true });
       });
@@ -7835,10 +8081,7 @@
     });
     const settingsClose = document.getElementById("settings-close");
     if (settingsClose) {
-      settingsClose.addEventListener("click", () => {
-        const p = document.getElementById("settings-panel");
-        if (p) p.style.display = "none";
-      });
+      settingsClose.addEventListener("click", () => closeSettingsPanel());
     }
     const secSave = document.getElementById("sec-save");
     if (secSave) {
@@ -7852,12 +8095,18 @@
       try {
         const st = await window.bitbot.cnInboundStatus();
         if (!st || !st.listening) {
-          el.textContent =
-            "入站未监听 — Desktop 启动会拉起 :18765；公网用 scripts/cn_inbound_tunnel.sh";
+          el.textContent = devModeOn()
+            ? "入站未监听 — Desktop 启动会拉起 :18765；公网用 scripts/cn_inbound_tunnel.sh"
+            : wavegT("inboundNotListening");
           return;
         }
         const pub = st.public_url || "";
         const routes = st.routes || {};
+        // Product mode: one Chinese line, no port / path / connector= tokens.
+        if (!devModeOn()) {
+          el.textContent = pub ? wavegT("inboundPublicReady") : wavegT("inboundLocalOnly");
+          return;
+        }
         el.textContent = pub
           ? "入站公网（贴进钉钉/飞书/企微控制台）: " +
             pub +
@@ -7871,7 +8120,7 @@
             (st.port || 18765) +
             " — 尚无公网 URL（跑 cn_inbound_tunnel.sh）";
       } catch (_) {
-        el.textContent = "入站状态读取失败";
+        el.textContent = wavegT("inboundReadFail");
       }
     }
 
@@ -7879,27 +8128,27 @@
     if (secProbe) {
       secProbe.addEventListener("click", async () => {
         const secStatus = document.getElementById("sec-status");
-        if (secStatus) secStatus.textContent = "试连中…";
+        if (secStatus) secStatus.textContent = wavegT("probing");
         try {
           const r = await window.bitbot.secrets.probeLlm();
           if (secStatus) {
-            secStatus.textContent = r && r.ok
-              ? "试连成功 · " +
-                ((r.result && r.result.provider_id) || "") +
-                "/" +
-                ((r.result && r.result.model) || "") +
-                " · " +
-                ((r.result && r.result.stdout_prefix) || "").slice(0, 80)
-              : "试连失败 · " +
-                ((r && r.result && r.result.error) ||
-                  (r && r.error) ||
-                  "unknown") +
-                "（不假装成功）";
+            if (r && r.ok) {
+              secStatus.textContent = devModeOn()
+                ? "试连成功 · " + ((r.result && r.result.provider_id) || "") + "/" +
+                  ((r.result && r.result.model) || "") + " · " + ((r.result && r.result.stdout_prefix) || "").slice(0, 80)
+                : wavegT("probeOk");
+            } else {
+              const err = (r && r.result && r.result.error) || (r && r.error) || "";
+              secStatus.textContent = devModeOn()
+                ? "试连失败 · " + err + "（不假装成功）"
+                : wavegT("probeFail");
+            }
           }
         } catch (e) {
           if (secStatus) {
-            secStatus.textContent =
-              "试连异常 · " + String(e && e.message ? e.message : e);
+            secStatus.textContent = devModeOn()
+              ? "试连异常 · " + String(e && e.message ? e.message : e)
+              : wavegT("probeErr");
           }
         }
       });
@@ -7908,7 +8157,7 @@
     if (secProbeCn) {
       secProbeCn.addEventListener("click", async () => {
         const secStatus = document.getElementById("sec-status");
-        if (secStatus) secStatus.textContent = "试连国内渠道…";
+        if (secStatus) secStatus.textContent = wavegT("cnProbing");
         try {
           const r = await window.bitbot.secrets.probeCnChannels();
           const parts = ((r && r.channels) || [])
@@ -7923,15 +8172,17 @@
             })
             .join(" · ");
           if (secStatus) {
-            secStatus.textContent = r && r.any_live
-              ? "渠道试连 · 至少一路 live · " + parts
-              : "渠道试连 · 无 live（不假装）· " + parts;
+            const live = r && r.any_live;
+            secStatus.textContent = devModeOn()
+              ? "渠道试连 · " + (live ? "至少一路 live" : "无 live（不假装）") + " · " + parts
+              : wavegT(live ? "cnProbeOk" : "cnProbeNone");
           }
           await refreshInboundUrlStrip();
         } catch (e) {
           if (secStatus) {
-            secStatus.textContent =
-              "渠道试连异常 · " + String(e && e.message ? e.message : e);
+            secStatus.textContent = devModeOn()
+              ? "渠道试连异常 · " + String(e && e.message ? e.message : e)
+              : wavegT("cnProbeErr");
           }
         }
       });
@@ -8020,6 +8271,9 @@
       const bots = (view && view.bots) || [];
       const hidden = (view && view.hidden_bots) || [];
       if (hiddenCount) hiddenCount.textContent = String(hidden.length);
+      // Sidebar-bottom contract: the Hidden Bots entry shows only when count > 0.
+      const hiddenLab = document.getElementById("hidden-bots-lab");
+      if (hiddenLab) hiddenLab.style.display = hidden.length ? "" : "none";
       for (const b of bots) {
         box.appendChild(botRow(b, view.primary_id, false));
       }
@@ -8888,10 +9142,52 @@
       }
       renderConnectApps();
     }
-    function openConnectApps() {
+    // ---- Sheet manager: unified open/close stack, Esc + mask close, focus
+    // return to the trigger. Used by the pinned sidebar-bottom entries and the
+    // header model entry so behavior is identical everywhere. ----
+    const BB_SHEET_CLOSE = {
+      "model-modal": () => closeModelSheet(),
+      "marketplace-modal": () => closeMarketplace(),
+      "connect-apps-modal": () => closeConnectApps(),
+      "settings-panel": () => closeSettingsPanel(),
+    };
+    window.__bbSheetStack = window.__bbSheetStack || [];
+    function bbSheetOpened(id, triggerEl) {
+      const stack = window.__bbSheetStack;
+      for (let i = 0; i < stack.length; i++) { if (stack[i].id === id) { stack.splice(i, 1); break; } }
+      stack.push({ id, trigger: triggerEl || document.activeElement || null });
+    }
+    function bbSheetClosed(id) {
+      const stack = window.__bbSheetStack;
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].id === id) { const it = stack.splice(i, 1)[0]; bbReturnFocus(it.trigger); return; }
+      }
+    }
+    function closeSettingsPanel() {
+      const p = document.getElementById("settings-panel");
+      if (p) p.style.display = "none";
+      bbSheetClosed("settings-panel");
+    }
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      const stack = window.__bbSheetStack;
+      if (!stack.length) return;
+      const top = stack[stack.length - 1];
+      const fn = BB_SHEET_CLOSE[top.id];
+      if (fn) { ev.preventDefault(); fn(); }
+    });
+    function bbBindSheetMask(modalId) {
+      const m = document.getElementById(modalId);
+      if (!m) return;
+      m.addEventListener("click", (ev) => {
+        if (ev.target === m) { const fn = BB_SHEET_CLOSE[modalId]; if (fn) fn(); }
+      });
+    }
+    function openConnectApps(triggerEl) {
       const m = document.getElementById("connect-apps-modal");
       if (!m) return;
       m.style.display = "flex";
+      bbSheetOpened("connect-apps-modal", triggerEl);
       refreshConnectApps();
       const q = document.getElementById("ca-search");
       if (q) setTimeout(() => q.focus(), 50);
@@ -8899,14 +9195,15 @@
     function closeConnectApps() {
       const m = document.getElementById("connect-apps-modal");
       if (m) m.style.display = "none";
+      bbSheetClosed("connect-apps-modal");
     }
     const connectAppsBtn = document.getElementById("connect-apps-btn");
     if (connectAppsBtn) {
-      connectAppsBtn.addEventListener("click", () => openConnectApps());
+      connectAppsBtn.addEventListener("click", (ev) => openConnectApps(ev.currentTarget));
     }
     const marketplaceBtn = document.getElementById("marketplace-btn");
     if (marketplaceBtn) {
-      marketplaceBtn.addEventListener("click", () => openMarketplace());
+      marketplaceBtn.addEventListener("click", (ev) => openMarketplace(ev.currentTarget));
     }
     const mkCloseBtn = document.getElementById("mk-close");
     if (mkCloseBtn) mkCloseBtn.addEventListener("click", closeMarketplace);
@@ -8924,6 +9221,13 @@
         if (ev.target === caModalEl) closeConnectApps();
       });
     }
+    // Header model entry → "模型" Sheet (single entry, no per-channel chips).
+    const modelEntry = document.getElementById("model-entry");
+    if (modelEntry) modelEntry.addEventListener("click", (ev) => openModelSheet(ev.currentTarget));
+    const modelCloseBtn = document.getElementById("model-close");
+    if (modelCloseBtn) modelCloseBtn.addEventListener("click", closeModelSheet);
+    bbBindSheetMask("model-modal");
+    bbBindSheetMask("settings-panel");
     const caRefreshBtn = document.getElementById("ca-refresh");
     if (caRefreshBtn) caRefreshBtn.addEventListener("click", () => refreshConnectApps());
     const caSearchEl = document.getElementById("ca-search");
@@ -9332,10 +9636,16 @@
       } catch (_) {
         /* ignore */
       }
+      const KIND_LABEL = {
+        shell: "执行命令", channel_send: "发送消息", mail_send: "发送邮件",
+        purchase_item: "发起购买", mcp_call: "调用工具", computer_use: "操作电脑",
+        delegate_task: "委派任务",
+      };
+      const kindLabel = (p) => KIND_LABEL[String(p || "").split(":")[0]] || String(p || "");
       box.innerHTML = "";
       const rules = (res && res.rules) || [];
       if (!rules.length) {
-        box.innerHTML = '<div style="color:var(--muted);font-size:12px">暂无个人规则（默认全部 Ask）</div>';
+        box.innerHTML = '<div style="color:var(--muted);font-size:12px">' + wavegT("rulesEmpty") + "</div>";
         return;
       }
       for (const rl of rules) {
@@ -9343,22 +9653,26 @@
         row.className = "kv";
         row.style.cssText = "display:flex;gap:8px;align-items:center;margin:2px 0";
         const label = document.createElement("span");
-        label.style.cssText = "color:var(--muted);font:11px/1.4 ui-monospace,monospace";
+        label.style.cssText = "color:var(--muted);font-size:12px";
+        // Readable Chinese title; the raw pattern/enum stays only as a tooltip
+        // (advanced info), never as the visible label in product mode.
         label.textContent =
-          rl.pattern + " → " + (rl.decision === "ask" ? "Ask first" : "Allow automatically") +
-          (rl.source === "team" ? " · 团队规则（锁定）" : "");
+          kindLabel(rl.pattern) + " · " +
+          (rl.decision === "ask" ? wavegT("askFirst") : wavegT("allowAuto")) +
+          (rl.source === "team" ? " · " + wavegT("ruleTeamLocked") : "");
+        label.title = rl.pattern + " → " + rl.decision;
         row.appendChild(label);
         const btn = document.createElement("button");
         if (rl.locked) {
-          btn.textContent = "锁定";
+          btn.textContent = wavegT("ruleLocked");
           btn.disabled = true;
           btn.style.opacity = "0.4";
         } else {
-          btn.textContent = "删除";
+          btn.textContent = wavegT("ruleDelete");
           btn.addEventListener("click", async () => {
             const r = await window.bitbot.approvals.removeRule(rl.pattern);
             if (r && r.ok) refreshApprovalRules();
-            else gpStatus("waveg-settings-status", "删除失败: " + (r && r.error));
+            else gpStatus("waveg-settings-status", wavegT("ruleDeleteFail"));
           });
         }
         btn.className = "gp-chip";
@@ -9366,6 +9680,17 @@
         row.appendChild(btn);
         box.appendChild(row);
       }
+    }
+
+    // If the (system-defaulted) timezone isn't in the fixed option list, add it
+    // so the select can actually show the current value.
+    function ensureTzOption(sel, tz) {
+      if (!sel || !tz) return;
+      for (const o of sel.options) { if (o.value === tz) return; }
+      const opt = document.createElement("option");
+      opt.value = tz;
+      opt.textContent = tz;
+      sel.insertBefore(opt, sel.firstChild);
     }
 
     async function refreshWaveGSettings() {
@@ -9383,7 +9708,12 @@
         const langSel = document.getElementById("gp-language");
         if (langSel) langSel.value = inner.language || "zh-CN";
         const tzSel = document.getElementById("gp-timezone");
-        if (tzSel) tzSel.value = inner.timezone || "UTC";
+        if (tzSel) {
+          const tz = inner.timezone || (typeof Intl !== "undefined" && Intl.DateTimeFormat
+            ? (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC") : "UTC");
+          ensureTzOption(tzSel, tz);
+          tzSel.value = tz;
+        }
         const routeBtn = document.getElementById("gp-route-toggle");
         if (routeBtn) {
           routeBtn.textContent = inner.route_traffic ? wavegT("routeTraffic") + ": ON（记录态）" : wavegT("routeTraffic") + ": OFF";
@@ -9405,24 +9735,31 @@
     async function refreshPrivacyStatus() {
       const el = document.getElementById("gp-privacy-state");
       if (!el) return;
+      const setZh = (stateKey, noteKey) => {
+        el.textContent = wavegT("privacyPrefix") + "：" + wavegT(stateKey);
+        el.title = wavegT(noteKey);
+      };
       if (!window.bitbot.privacy) {
-        el.textContent = "隐私模式：不可用 · 由账户侧管理";
+        // Dataset stays for any dev-only consumer, but the visible line is zh.
+        el.dataset.mode = "unavailable";
+        setZh("privacyStateUnavailable", "privacyNoteUnavailable");
         return;
       }
       el.textContent = wavegT("privacyChecking");
       const st = await window.bitbot.privacy.status();
       if (!st || !st.ok) {
-        el.textContent = "隐私模式：不可用 · 由账户侧管理";
+        setZh("privacyStateUnavailable", "privacyNoteUnavailable");
         return;
       }
-      el.dataset.mode = String(st.mode || "unavailable");
+      const mode = String(st.mode || "unavailable");
+      el.dataset.mode = mode;
       el.dataset.trainingUse = String(st.training_use || "");
       el.dataset.legacy = String(st.legacy_privacy_mode || "");
-      el.textContent =
-        (st.label || "Privacy Mode: unavailable") +
-        " · training=" + (st.training_use || "?") +
-        (st.legacy_reason ? " · " + st.legacy_reason : "");
-      el.title = st.note || "";
+      // Map the internal enum to fully-localized copy — no raw label, no
+      // "training=", no "disabled_by_default" in the product UI.
+      if (mode === "on") setZh("privacyStateOn", "privacyNoteOn");
+      else if (mode === "legacy") setZh("privacyStateLegacy", "privacyNoteLegacy");
+      else setZh("privacyStateUnavailable", "privacyNoteUnavailable");
     }
 
     // GP-71: full renderer i18n — every chrome label goes through the dict,
@@ -9446,7 +9783,72 @@
         rooms: "群组",
         marketplace: "模板市场",
         mkTitle: "模板市场 · Bot 模板",
-        mkHint: "模板来自本机的 bot-templates.json 目录，点一个即可创建 Bot。",
+        mkHint: "选择一个模板即可快速创建 Bot。",
+        mkLoading: "加载模板中…",
+        mkError: "模板目录读取失败",
+        modelLabel: "模型",
+        modelTitle: "模型",
+        modelHint: "选择一个模型供应商，填写密钥后即可设为当前模型。",
+        modelConnected: "已连接",
+        modelUnconfigured: "未配置",
+        modelNone: "未配置模型",
+        modelCurrentBadge: "当前",
+        modelCurrent: "当前模型",
+        modelEmpty: "暂无可用模型目录",
+        modelKeyPh: "填写密钥（保存后不会明文回显）",
+        modelSave: "保存",
+        modelSaving: "保存中…",
+        modelSaved: "已保存",
+        modelSaveFail: "保存失败",
+        modelNoKeyYet: "请先填写密钥",
+        modelSetCurrent: "设为当前模型",
+        modelSetCurrentOk: "已切换为当前模型",
+        modelTest: "测试",
+        modelTesting: "测试中…",
+        modelTestOk: "试连成功",
+        modelTestFail: "试连失败",
+        modelClear: "清除",
+        modelCleared: "已清除该密钥",
+        modelClearFail: "清除失败",
+        statusAppearance: "外观已设为：{v}",
+        statusLocexec: "本地执行已设为：{v}",
+        statusLanguage: "语言已设为：{v}",
+        statusTimezone: "时区已设为：{v}",
+        statusRoute: "路由流量开关已设为：{v}",
+        onWord: "开",
+        offWord: "关",
+        statusRule: "已写入规则：{v}",
+        statusRuleFail: "规则写入失败",
+        ruleAllowLabel: "自动允许",
+        ruleAskLabel: "先询问",
+        rulesEmpty: "暂无个人规则（默认全部先询问）",
+        ruleTeamLocked: "团队规则（锁定）",
+        ruleLocked: "锁定",
+        ruleDelete: "删除",
+        ruleDeleteFail: "删除失败",
+        secStatusModel: "当前模型",
+        secSavedOk: "已保存",
+        secSavedFail: "保存失败",
+        inboundNotListening: "入站监听尚未启动",
+        inboundPublicReady: "已配置入站公网地址",
+        inboundLocalOnly: "入站监听已启动（尚未配置公网地址）",
+        inboundReadFail: "入站状态读取失败",
+        probing: "试连中…",
+        probeOk: "试连成功",
+        probeFail: "试连失败（不假装成功）",
+        probeErr: "试连异常",
+        cnProbing: "试连国内渠道…",
+        cnProbeOk: "渠道试连 · 至少一路可用",
+        cnProbeNone: "渠道试连 · 暂不可用（不假装）",
+        cnProbeErr: "渠道试连异常",
+        privacyPrefix: "隐私模式",
+        privacyStateOn: "已开启（由账户验证）",
+        privacyStateUnavailable: "不可用（由账户侧管理，训练数据默认关闭）",
+        privacyStateLegacy: "旧版隐私模式不受本客户端支持",
+        privacyNoteOn: "训练数据不会被用于模型改进。",
+        privacyNoteUnavailable: "隐私模式由账户侧统一管理，本机无法开关；训练数据默认不用于模型改进。",
+        privacyNoteLegacy: "旧版隐私模式需要云存储，当前客户端不支持。",
+        settingsRefused: "设置暂时无法打开",
         mkEmpty: "本机没有可用模板。",
         mkCreate: "创建",
         mkUse: "使用",
@@ -9853,7 +10255,72 @@
         rooms: "群組",
         marketplace: "Marketplace",
         mkTitle: "Marketplace · Bot 模板",
-        mkHint: "模板來自 Host 的 bot-templates.json 目錄，點一個即可建立 Bot。",
+        mkHint: "選擇一個模板即可快速建立 Bot。",
+        mkLoading: "載入模板中…",
+        mkError: "模板目錄讀取失敗",
+        modelLabel: "模型",
+        modelTitle: "模型",
+        modelHint: "選擇一個模型供應商，填寫金鑰後即可設為目前模型。",
+        modelConnected: "已連線",
+        modelUnconfigured: "未設定",
+        modelNone: "未設定模型",
+        modelCurrentBadge: "目前",
+        modelCurrent: "目前模型",
+        modelEmpty: "暫無可用模型目錄",
+        modelKeyPh: "填寫金鑰（儲存後不會明文回顯）",
+        modelSave: "儲存",
+        modelSaving: "儲存中…",
+        modelSaved: "已儲存",
+        modelSaveFail: "儲存失敗",
+        modelNoKeyYet: "請先填寫金鑰",
+        modelSetCurrent: "設為目前模型",
+        modelSetCurrentOk: "已切換為目前模型",
+        modelTest: "測試",
+        modelTesting: "測試中…",
+        modelTestOk: "試連成功",
+        modelTestFail: "試連失敗",
+        modelClear: "清除",
+        modelCleared: "已清除該金鑰",
+        modelClearFail: "清除失敗",
+        statusAppearance: "外觀已設為：{v}",
+        statusLocexec: "本地執行已設為：{v}",
+        statusLanguage: "語言已設為：{v}",
+        statusTimezone: "時區已設為：{v}",
+        statusRoute: "路由流量開關已設為：{v}",
+        onWord: "開",
+        offWord: "關",
+        statusRule: "已寫入規則：{v}",
+        statusRuleFail: "規則寫入失敗",
+        ruleAllowLabel: "自動允許",
+        ruleAskLabel: "先詢問",
+        rulesEmpty: "暫無個人規則（預設全部先詢問）",
+        ruleTeamLocked: "團隊規則（鎖定）",
+        ruleLocked: "鎖定",
+        ruleDelete: "刪除",
+        ruleDeleteFail: "刪除失敗",
+        secStatusModel: "目前模型",
+        secSavedOk: "已儲存",
+        secSavedFail: "儲存失敗",
+        inboundNotListening: "入站監聽尚未啟動",
+        inboundPublicReady: "已設定入站公網位址",
+        inboundLocalOnly: "入站監聽已啟動（尚未設定公網位址）",
+        inboundReadFail: "入站狀態讀取失敗",
+        probing: "試連中…",
+        probeOk: "試連成功",
+        probeFail: "試連失敗（不假裝成功）",
+        probeErr: "試連異常",
+        cnProbing: "試連國內通路…",
+        cnProbeOk: "通路試連 · 至少一路可用",
+        cnProbeNone: "通路試連 · 暫不可用（不假裝）",
+        cnProbeErr: "通路試連異常",
+        privacyPrefix: "隱私模式",
+        privacyStateOn: "已開啟（由帳戶驗證）",
+        privacyStateUnavailable: "不可用（由帳戶側管理，訓練資料預設關閉）",
+        privacyStateLegacy: "舊版隱私模式不受本用戶端支援",
+        privacyNoteOn: "訓練資料不會被用於模型改進。",
+        privacyNoteUnavailable: "隱私模式由帳戶側統一管理，本機無法開關；訓練資料預設不用於模型改進。",
+        privacyNoteLegacy: "舊版隱私模式需要雲儲存，目前用戶端不支援。",
+        settingsRefused: "設定暫時無法開啟",
         mkEmpty: "Host 沒有可用模板。",
         mkCreate: "建立",
         mkUse: "使用",
@@ -10260,7 +10727,72 @@
         rooms: "Groups",
         marketplace: "Marketplace",
         mkTitle: "Marketplace · Bot templates",
-        mkHint: "Templates come from the Host bot-templates.json catalog — click one to create a Bot.",
+        mkHint: "Pick a template to create a Bot in one click.",
+        mkLoading: "Loading templates…",
+        mkError: "Failed to read the template catalog",
+        modelLabel: "Model",
+        modelTitle: "Model",
+        modelHint: "Choose a model provider and enter its key to set it as the current model.",
+        modelConnected: "Connected",
+        modelUnconfigured: "Not configured",
+        modelNone: "No model configured",
+        modelCurrentBadge: "Current",
+        modelCurrent: "Current model",
+        modelEmpty: "No model catalog available",
+        modelKeyPh: "Enter key (never shown in plaintext after saving)",
+        modelSave: "Save",
+        modelSaving: "Saving…",
+        modelSaved: "Saved",
+        modelSaveFail: "Save failed",
+        modelNoKeyYet: "Enter a key first",
+        modelSetCurrent: "Set as current model",
+        modelSetCurrentOk: "Switched to current model",
+        modelTest: "Test",
+        modelTesting: "Testing…",
+        modelTestOk: "Connection OK",
+        modelTestFail: "Connection failed",
+        modelClear: "Clear",
+        modelCleared: "Key cleared",
+        modelClearFail: "Clear failed",
+        statusAppearance: "Appearance set to: {v}",
+        statusLocexec: "Local execution set to: {v}",
+        statusLanguage: "Language set to: {v}",
+        statusTimezone: "Timezone set to: {v}",
+        statusRoute: "Traffic routing set to: {v}",
+        onWord: "on",
+        offWord: "off",
+        statusRule: "Rule saved: {v}",
+        statusRuleFail: "Failed to save rule",
+        ruleAllowLabel: "Auto-allow",
+        ruleAskLabel: "Ask first",
+        rulesEmpty: "No personal rules (ask first by default)",
+        ruleTeamLocked: "Team rule (locked)",
+        ruleLocked: "Locked",
+        ruleDelete: "Delete",
+        ruleDeleteFail: "Delete failed",
+        secStatusModel: "Current model",
+        secSavedOk: "Saved",
+        secSavedFail: "Save failed",
+        inboundNotListening: "Inbound listener not started",
+        inboundPublicReady: "Inbound public URL configured",
+        inboundLocalOnly: "Inbound listener started (no public URL yet)",
+        inboundReadFail: "Failed to read inbound status",
+        probing: "Testing connection…",
+        probeOk: "Connection OK",
+        probeFail: "Connection failed (not faked)",
+        probeErr: "Connection error",
+        cnProbing: "Testing domestic channels…",
+        cnProbeOk: "Channel test · at least one available",
+        cnProbeNone: "Channel test · unavailable (not faked)",
+        cnProbeErr: "Channel test error",
+        privacyPrefix: "Privacy Mode",
+        privacyStateOn: "Enabled (verified by account)",
+        privacyStateUnavailable: "Unavailable (managed by account; training data off by default)",
+        privacyStateLegacy: "Legacy privacy mode is not supported by this client",
+        privacyNoteOn: "Training data is not used to improve models.",
+        privacyNoteUnavailable: "Privacy mode is managed by your account and cannot be toggled here; training data is not used to improve models by default.",
+        privacyNoteLegacy: "Legacy privacy mode requires cloud storage, which this client does not support.",
+        settingsRefused: "Settings cannot be opened right now",
         mkEmpty: "The Host has no templates.",
         mkCreate: "Create",
         mkUse: "Use",
@@ -10721,7 +11253,8 @@
       const td = $("takeover-done-btn");
       if (td) td.textContent = wavegT("imDone");
       const mp = document.querySelector("#model-picker .mp-label");
-      if (mp) mp.textContent = wavegT("model");
+      if (mp) mp.textContent = wavegT("modelLabel");
+      try { if (typeof renderModelEntry === "function") renderModelEntry(); } catch (_) {}
       const cs = $("cfg-strip-text");
       if (cs) cs.textContent = wavegT("cfgStrip");
       const cb = $("cfg-strip-btn");
@@ -10755,7 +11288,7 @@
         b.addEventListener("click", async () => {
           const mode = b.dataset.appearance;
           const res = await window.bitbot.settings.set({ appearance: mode });
-          if (res && res.ok) gpStatus("waveg-settings-status", "Appearance → " + mode + "（nativeTheme.themeSource 已生效并持久化）");
+          if (res && res.ok) gpStatus("waveg-settings-status", t("statusAppearance", { v: (b.textContent || "").trim() }));
           refreshWaveGSettings();
           runUserTurn("set appearance " + mode, { skipSession: true }).catch(() => {});
         });
@@ -10772,7 +11305,7 @@
         b.addEventListener("click", async () => {
           const mode = b.dataset.locexec;
           const res = await window.bitbot.settings.set({ local_execution: mode });
-          if (res && res.ok) gpStatus("waveg-settings-status", "Local execution → " + mode + "（Host 执行前判定已生效）");
+          if (res && res.ok) gpStatus("waveg-settings-status", t("statusLocexec", { v: (b.textContent || "").trim() }));
           refreshWaveGSettings();
           runUserTurn("local execution " + mode, { skipSession: true }).catch(() => {});
         });
@@ -10784,7 +11317,7 @@
           const res = await window.bitbot.settings.set({ language: code });
           if (res && res.ok) {
             wavegLangApply(code);
-            gpStatus("waveg-settings-status", "Language → " + code);
+            gpStatus("waveg-settings-status", t("statusLanguage", { v: (langSel.selectedOptions && langSel.selectedOptions[0] ? langSel.selectedOptions[0].textContent : code).trim() }));
           }
           runUserTurn("set language " + code, { skipSession: true }).catch(() => {});
         });
@@ -10793,8 +11326,8 @@
       if (tzSel) {
         tzSel.addEventListener("change", async () => {
           const tz = tzSel.value;
-          const res = await window.bitbot.settings.set({ timezone: tz });
-          if (res && res.ok) gpStatus("waveg-settings-status", "Timezone → " + tz + "（daemon 经 BITBOT_TZ 生效）");
+          const res = await window.bitbot.settings.set({ timezone: tz, timezone_explicit: true });
+          if (res && res.ok) gpStatus("waveg-settings-status", t("statusTimezone", { v: tz }));
           runUserTurn("set timezone " + tz, { skipSession: true }).catch(() => {});
         });
       }
@@ -10809,9 +11342,8 @@
           } catch (_) { /* ignore */ }
           const res2 = await window.bitbot.settings.set({ route_traffic: !cur });
           if (res2 && res2.ok) {
-            gpStatus("waveg-settings-status", !cur ?
-              "Route traffic 开关已持久化=on（真实代理生效为 residual：本机未起代理）" :
-              "Route traffic 开关已持久化=off");
+            gpStatus("waveg-settings-status",
+              t("statusRoute", { v: !cur ? wavegT("onWord") : wavegT("offWord") }));
           }
           refreshWaveGSettings();
         });
@@ -10824,8 +11356,8 @@
         const pattern = ruleKind.value + ":*";
         const phrase = (decision === "allow" ? "always allow pattern=" : "ask first pattern=") + pattern;
         const res = await window.bitbot.bots.op({ phrase });
-        if (res && res.ok) gpStatus("waveg-settings-status", "规则已写入：" + pattern + " → " + decision);
-        else gpStatus("waveg-settings-status", "规则写入失败：" + (res && res.error ? res.error : "unknown"));
+        if (res && res.ok) gpStatus("waveg-settings-status", t("statusRule", { v: decision === "allow" ? wavegT("ruleAllowLabel") : wavegT("ruleAskLabel") }));
+        else gpStatus("waveg-settings-status", wavegT("statusRuleFail"));
         refreshApprovalRules();
       };
       if (ruleAllow) ruleAllow.addEventListener("click", () => addRule("allow"));

@@ -862,18 +862,50 @@ function createProductSurface(repoRoot) {
   }
 
   // ===== SETTINGS =====
+  // Timezone default = SYSTEM timezone (not hardcoded UTC). Priority:
+  //   1. BITBOT_TZ (explicit, also drives the routine daemon)
+  //   2. Intl resolved zone (Node/OS)
+  //   3. TZ env
+  //   4. "UTC" only as a last resort when the system really reports UTC.
+  function systemTimezone() {
+    try {
+      const explicit = String(process.env.BITBOT_TZ || "").trim();
+      if (explicit) return explicit;
+      if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (tz) return tz;
+      }
+      const tzEnv = String(process.env.TZ || "").trim();
+      if (tzEnv) return tzEnv;
+    } catch (_) { /* ignore */ }
+    return "UTC";
+  }
+
   function loadSettings() {
-    return readJson(SETTINGS_PATH, {
+    const data = readJson(SETTINGS_PATH, {
       version: 1,
       appearance: "system",
       language: "zh-CN",
-      timezone: "UTC",
+      timezone: systemTimezone(),
+      timezone_explicit: false,
       local_execution: "ask",
       route_traffic: false,
       sidebar_collapsed: false,
       notify: {},
       unread: {}
     });
+    // Migration: a legacy store that never had an explicit choice but shows the
+    // old hardcoded "UTC" default is re-seeded to the system timezone. A UTC the
+    // user actually picked (timezone_explicit === true) is preserved untouched.
+    if (
+      data &&
+      (data.timezone === "UTC" || data.timezone == null) &&
+      data.timezone_explicit !== true
+    ) {
+      data.timezone = systemTimezone();
+      if (data.timezone_explicit === undefined) data.timezone_explicit = false;
+    }
+    return data;
   }
 
   function saveSettings(data) {
@@ -886,7 +918,7 @@ function createProductSurface(repoRoot) {
 
   function settingsPatch(patch) {
     const data = loadSettings();
-    const allowed = new Set(["appearance", "language", "timezone", "local_execution", "route_traffic", "notify", "unread", "sidebar_collapsed", "dev_mode"]);
+    const allowed = new Set(["appearance", "language", "timezone", "timezone_explicit", "local_execution", "route_traffic", "notify", "unread", "sidebar_collapsed", "dev_mode"]);
     const ignored = [];
     
     for (const key of Object.keys(patch)) {
