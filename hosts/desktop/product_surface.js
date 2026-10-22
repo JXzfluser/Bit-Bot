@@ -66,8 +66,8 @@ function createProductSurface(repoRoot) {
     return {
       id: "agent-bit",
       name: "Bit Bot",
-      job: "General assistant",
-      description: "Default Bit Bot agent",
+      job: "通用助手",
+      description: "Bit Bot 默认智能体",
       avatar: "",
       hidden: false,
       pinned: true,

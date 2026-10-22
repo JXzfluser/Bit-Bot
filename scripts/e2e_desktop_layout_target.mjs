@@ -208,21 +208,29 @@ try {
   if (Array.isArray(AL) && AL.length) COPY_ALLOW_HINTS = AL.map((e) => e.text || e.token || String(e)).filter(Boolean);
 } catch { /* keep fallback hints */ }
 
-/* copy scan over the RENDERED DOM (zh-CN default language) */
+/* copy scan over the RENDERED DOM (zh-CN default language).
+ * Contract copy-contract.md §4: violation = VISIBLE node without CJK and
+ * not per-item allowlisted (docs/design/desktop-target/i18n-allowlist.json).
+ * Mixed-language visible strings are counted separately (advisory metric for
+ * report.md: dynamic-copy migration progress), never a silent pass. */
 const COPY_PROBE = `(() => {
   const allow = ${JSON.stringify(COPY_ALLOW_HINTS)};
+  const visible = (el) => { for (let p = el; p && p !== document.body; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || p.hidden) return false; } return el.offsetParent !== null || el.getClientRects().length > 0; };
   const texts = [];
   const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let n; const seen = new Set();
+  const hasCJKg = /[\\u4e00-\\u9fff]/g;
   while ((n = walk.nextNode())) {
     const t = (n.textContent || "").trim();
     if (t.length > 3 && /[A-Za-z][A-Za-z][A-Za-z]+/.test(t)) {
       const tag = n.parentElement && n.parentElement.tagName;
       if (tag === "SCRIPT" || tag === "STYLE") continue;
+      if (!visible(n.parentElement)) continue;
       if (!seen.has(t)) { seen.add(t); texts.push(t.slice(0, 80)); }
     }
   }
   for (const el of document.querySelectorAll('[placeholder],[title],[aria-label]')) {
+    if (!visible(el)) continue;
     for (const attr of ['placeholder','title','aria-label']) {
       const v = (el.getAttribute(attr) || '').trim();
       if (v.length > 3 && /[A-Za-z][A-Za-z][A-Za-z]+/.test(v) && !seen.has(v)) { seen.add(v); texts.push(v.slice(0, 80)); }
@@ -231,7 +239,8 @@ const COPY_PROBE = `(() => {
   const hasCJK = /[\\u4e00-\\u9fff]/;
   const allowHit = (t) => allow.some((a) => t.includes(a));
   const violations = texts.filter((t) => !hasCJK.test(t) && !allowHit(t));
-  return { total: texts.length, violations: violations.slice(0, 40) };
+  const mixed = texts.filter((t) => hasCJK.test(t) && (t.replace(hasCJKg, " ").match(/[A-Za-z]{4,}/g) || []).length >= 2);
+  return { total: texts.length, violations: violations.slice(0, 40), mixedCount: mixed.length, mixedSample: mixed.slice(0, 8) };
 })()`;
 
 /* D-C-03: three-language key parity (source-level, deterministic) */
@@ -317,7 +326,7 @@ const COPY_PROBE = `(() => {
       return !!b && b.offsetWidth > 0 && !b.hidden;
     });
     const labsVisible = on.filter((h) => h.visible > 0).map((h) => h.s);
-    badge && labsVisible.includes("details.lab") ? ok("D-D-03: dev-mode on reveals " + labsVisible.join(",") + " + badge")
+    badge && labsVisible.includes("[data-lab]") ? ok("D-D-03: dev-mode on reveals " + labsVisible.join(",") + " + badge")
       : bad("D-D-03 dev-mode reveal broken", JSON.stringify({ badge, labsVisible, on }));
     const toolsOk = await win.evaluate(() => { setPanel("tools"); return document.body.dataset.panel; });
     toolsOk === "tools" ? ok("D-D-04: tools rail available in dev-mode") : bad("D-D-04", toolsOk);
@@ -325,8 +334,9 @@ const COPY_PROBE = `(() => {
     /* copy scan on the zeroed-store window (real product surface only) */
     const copy = await win.evaluate(COPY_PROBE);
     copy.violations.length === 0
-      ? ok(`D-C-01: zh-CN visible copy clean (${copy.total} scanned, 0 unlisted English)`)
-      : bad("D-C-01 unlisted English", JSON.stringify(copy.violations.slice(0, 12)));
+      ? ok(`D-C-01: zh-CN visible copy clean (${copy.total} visible nodes, 0 unlisted English)`)
+      : bad("D-C-01 unlisted English", JSON.stringify(copy.violations.slice(0, 20)));
+    console.log("  · D-C-04 advisory: mixed-language visible nodes=" + copy.mixedCount + " " + JSON.stringify(copy.mixedSample));
     await shutdown(app);
     restoreStores();
   } catch (e) {

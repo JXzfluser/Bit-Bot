@@ -813,5 +813,120 @@
     "text": "CM-1901",
     "where": "account button title",
     "reason": "spec reference code"
+  },
+  {
+    "text": ".env.local",
+    "where": "settings credentials note; save toast path",
+    "reason": "File path identifier (data-level, kept raw)"
+  },
+  {
+    "text": "platform.deepseek.com/api_keys",
+    "where": "credentials DeepSeek application link label",
+    "reason": "URL label (data-level identifier)"
+  },
+  {
+    "text": "Privacy Mode: unavailable",
+    "where": "privacy status fallback (kernel label, index.html renderPrivacy)",
+    "reason": "Kernel-provided data label; UI fallback line is zh"
+  },
+  {
+    "text": "General assistant",
+    "where": "agent-bit seed job (product_surface.js builtinAgentBit)",
+    "reason": "Seed data-level value; localized seed pending wave M46"
+  },
+  {
+    "text": "Sales Outbound",
+    "where": "marketplace template job (host_ffi.js template stubs)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Talent Scout",
+    "where": "marketplace template job",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Paid Media Buyer",
+    "where": "marketplace template job",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Expense Manager",
+    "where": "marketplace template job",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Bug Reproduction",
+    "where": "marketplace template job",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "English",
+    "where": "language option label in Settings 语言",
+    "reason": "Endonym convention — language names shown in their own language"
+  },
+  {
+    "text": "Chief of Staff",
+    "where": "marketplace template default_name/job (host_ffi.js)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Ivy",
+    "where": "marketplace template default_name/job (host_ffi.js)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Sage",
+    "where": "marketplace template default_name/job (host_ffi.js)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Ad",
+    "where": "marketplace template default_name/job (host_ffi.js)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Ledger",
+    "where": "marketplace template default_name/job (host_ffi.js)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Repro",
+    "where": "marketplace template default_name/job (host_ffi.js)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Research accounts",
+    "where": "marketplace template description prefix (host_ffi.js BOT_TEMPLATE_SEED)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Screen candidates",
+    "where": "marketplace template description prefix (host_ffi.js BOT_TEMPLATE_SEED)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Plan and draft",
+    "where": "marketplace template description prefix (host_ffi.js BOT_TEMPLATE_SEED)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Collect receipts",
+    "where": "marketplace template description prefix (host_ffi.js BOT_TEMPLATE_SEED)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Reproduce reported bugs",
+    "where": "marketplace template description prefix (host_ffi.js BOT_TEMPLATE_SEED)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Triage inbox",
+    "where": "marketplace template description prefix (host_ffi.js BOT_TEMPLATE_SEED)",
+    "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "Chief",
+    "where": "marketplace template description prefix (host_ffi.js BOT_TEMPLATE_SEED)",
+    "reason": "Kernel/marketplace data-level template catalog"
   }
 ]

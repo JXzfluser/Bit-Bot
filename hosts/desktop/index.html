@@ -1534,7 +1534,7 @@
   <aside id="agents">
     <!-- Grok-style icon toolbar: search + new chat as compact icon buttons -->
     <div id="sidebar-toolbar">
-      <button type="button" id="sidebar-search-toggle" title="搜索会话 (Ctrl/Cmd+K)" aria-label="Search">⌕</button>
+      <button type="button" id="sidebar-search-toggle" title="搜索会话 (Ctrl/Cmd+K)" aria-label="Search" data-i18n-aria="searchAria">⌕</button>
       <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话">+</button>
     </div>
     <!-- GP-60: sidebar in-call indicator -->
@@ -1601,21 +1601,21 @@
       </div>
       <!-- Grok-style user account row with popup menu -->
       <div id="account-bar">
-        <button type="button" id="account-avatar-btn" title="账户" aria-label="Account" aria-expanded="false" aria-controls="account-popup">
+        <button type="button" id="account-avatar-btn" title="账户" aria-label="Account" data-i18n-aria="accountAria" aria-expanded="false" aria-controls="account-popup">
           <span id="account-avatar-circle">B</span>
           <span id="account-name-label">Bit Bot</span>
           <span class="acct-chevron" aria-hidden="true">▲</span>
         </button>
         <div id="account-popup" hidden role="menu">
-          <button type="button" class="ap-item" id="ap-update" data-i18n="apUpdate"><span class="ap-ic" aria-hidden="true">↻</span><span class="ap-tx">发现新版本</span></button>
-          <button type="button" class="ap-item" id="ap-usage" data-i18n="apUsage"><span class="ap-ic" aria-hidden="true">▤</span><span class="ap-tx">每周用量</span></button>
-          <button type="button" class="ap-item" id="ap-mobile" data-i18n="apMobile"><span class="ap-ic" aria-hidden="true">◐</span><span class="ap-tx">获取移动版 Bit Bot</span></button>
+          <button type="button" class="ap-item" id="ap-update" ><span class="ap-ic" aria-hidden="true">↻</span><span class="ap-tx" data-i18n="apUpdate">发现新版本</span></button>
+          <button type="button" class="ap-item" id="ap-usage" ><span class="ap-ic" aria-hidden="true">▤</span><span class="ap-tx" data-i18n="apUsage">每周用量</span></button>
+          <button type="button" class="ap-item" id="ap-mobile" ><span class="ap-ic" aria-hidden="true">◐</span><span class="ap-tx" data-i18n="apMobile">获取移动版 Bit Bot</span></button>
           <div class="ap-sep"></div>
-          <button type="button" class="ap-item" id="ap-support" data-i18n="apSupport"><span class="ap-ic" aria-hidden="true">?</span><span class="ap-tx">支持</span></button>
-          <button type="button" class="ap-item" id="sidebar-settings-btn" data-i18n="settings"><span class="ap-ic" aria-hidden="true">⚙</span><span class="ap-tx">设置</span></button>
+          <button type="button" class="ap-item" id="ap-support" ><span class="ap-ic" aria-hidden="true">?</span><span class="ap-tx" data-i18n="apSupport">支持</span></button>
+          <button type="button" class="ap-item" id="sidebar-settings-btn"><span class="ap-ic" aria-hidden="true">⚙</span><span class="ap-tx" data-i18n="settings">设置</span></button>
           <div class="ap-sep"></div>
-          <button type="button" class="ap-item" id="ap-add-account" data-i18n="apAddAccount"><span class="ap-ic" aria-hidden="true">＋</span><span class="ap-tx">添加账户</span></button>
-          <button type="button" class="ap-item ap-danger" id="ap-signout" data-i18n="apSignOut"><span class="ap-ic" aria-hidden="true">⎋</span><span class="ap-tx">退出登录</span></button>
+          <button type="button" class="ap-item" id="ap-add-account" ><span class="ap-ic" aria-hidden="true">＋</span><span class="ap-tx" data-i18n="apAddAccount">添加账户</span></button>
+          <button type="button" class="ap-item ap-danger" id="ap-signout" ><span class="ap-ic" aria-hidden="true">⎋</span><span class="ap-tx" data-i18n="apSignOut">退出登录</span></button>
         </div>
       </div>
     </div>
@@ -2408,7 +2408,7 @@
       <button type="button" id="attach-btn" title="添加附件（≤6 · 文档/图片/音频 25MB · 视频 200MB）">📎</button>
       <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）">🎙</button>
       <button type="button" id="voicechat-btn" title="开始语音对话" data-i18n="voiceChatBtn">🎧 语音对话</button>
-      <button id="send" type="submit" title="发送 (Enter)" aria-label="Send">↑</button>
+      <button id="send" type="submit" title="发送 (Enter)" aria-label="Send" data-i18n-aria="send">↑</button>
     </div>
     <div id="composer-menu" class="composer-menu" hidden></div>
   </form>
@@ -9629,6 +9629,14 @@
         devModeLabel: "开发选项（调试面与工具面板）",
         devOn: "开",
         devOff: "关",
+        apUpdate: "发现新版本",
+        apUsage: "每周用量",
+        apMobile: "获取移动版 Bit Bot",
+        apSupport: "支持",
+        apAddAccount: "添加账户",
+        apSignOut: "退出登录",
+        searchAria: "搜索",
+        accountAria: "账户",
         copyAction: "复制",
         copyDone: "已复制",
         copyFailed: "复制失败",
@@ -10028,6 +10036,14 @@
         devModeLabel: "開發選項（調試面與工具面板）",
         devOn: "開",
         devOff: "關",
+        apUpdate: "發現新版本",
+        apUsage: "每週用量",
+        apMobile: "取得行動版 Bit Bot",
+        apSupport: "支援",
+        apAddAccount: "新增帳戶",
+        apSignOut: "登出",
+        searchAria: "搜尋",
+        accountAria: "帳戶",
         copyAction: "複製",
         copyDone: "已複製",
         copyFailed: "複製失敗",
@@ -10427,6 +10443,14 @@
         devModeLabel: "Developer options (debug surfaces & tools rail)",
         devOn: "On",
         devOff: "Off",
+        apUpdate: "New version available",
+        apUsage: "Weekly usage",
+        apMobile: "Get the mobile app",
+        apSupport: "Support",
+        apAddAccount: "Add account",
+        apSignOut: "Sign out",
+        searchAria: "Search",
+        accountAria: "Account",
         copyAction: "Copy",
         copyDone: "Copied",
         copyFailed: "Copy failed",
