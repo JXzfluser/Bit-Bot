@@ -840,11 +840,9 @@ body.grok-ui #brand-block,
 body.grok-ui #bot-pill,
 body.grok-ui #devmode-badge,
 body.grok-ui #vc-sb-indicator { display: none !important; }
-body.grok-ui header {
-  height: var(--header-h) !important;
-  background: var(--surface) !important;
-  border-bottom: 1px solid var(--line) !important;
-}
+/* header chrome is defined once in the consolidated `body.grok-ui header`
+   block below (P2: removed this fully-shadowed duplicate height/background/
+   border-bottom block — behaviour unchanged, -3 !important). */
 body.grok-ui #header-actions { gap: 4px !important; }
 body.grok-ui #header-actions > button,
 body.grok-ui #model-entry {

@@ -169,14 +169,17 @@ layout-contract §3 已被 `e2e_desktop_layout_target.mjs` 的 **D-L-* 渲染门
 ## 10. 实施状态（本次波次，gate-verified）
 
 **已完成并跑通门禁：**
-- **几何单一源（§5 裁定落地）**：删除 `body.grok-ui{--sidebar-w:248}`、`--header-h:0` 与 `header{position:fixed;height:40px}` 这三处违反合同的"浮层 header"即兴实现——它们正是 layout-contract §3（header 属网格行、`position:fixed` 仅限 modal/lightbox/toast、区域矩形不重叠）被破坏、以及 `body.grok-ui header` 被写了 4 遍（52/48/flex-52/fixed-40 互相覆盖）的"乱"源头。现 `--sidebar-w`/`--header-h` 各仅在 `:root` 定义一次 = **280 / 56**。
-  - 真实渲染门 `e2e_desktop_layout_target.mjs`：FAIL **41 → 1**（D-L 全部几何/重叠/主区宽断言转绿）。
-- **Round-10 `--g-*` 家族单一源**：`--g-ink/--g-sub/--g-line/--g-soft/--g-card/--g-pill` 改为语义 token（`--text-ink/--text-sub/--ui-border/--ui-fill/--ui-card/--ui-pill`）的别名，三档（浅/暗/force-dark）取值与旧字面量**逐位相等**（行为不变），`!important` 418→411。
-- **门禁冻结**：新增 `scripts/prove_ui_tokens.js`（LINT ONLY，ratchet 高水位：T-1 `!important`≤411、T-2 原始色值 css141/html28、T-3 行内 font-size≤25、T-4 `[style*=]`补丁≤5、T-5 几何单一源=280/56 且显式拦截 248/0 复发）。当前 **PASS=8 FAIL=0**；收敛后只许下调基线数字。
+- **几何单一源（§5 裁定落地）**：删除 `body.grok-ui{--sidebar-w:248}`、`--header-h:0` 与 `header{position:fixed;height:40px}` 这三处违反合同的"浮层 header"即兴实现——它们正是 layout-contract §3（header 属网格行、`position:fixed` 仅限 modal/lightbox/toast、区域矩形不重叠）被破坏、以及 `body.grok-ui header` 被写了 4 遍（52/48/flex-52/fixed-40 互相覆盖）的"乱"源头。现 `--sidebar-w`/`--header-h` 各仅在 `:root` 定义一次 = **280 / 56**，`body.grok-ui header` 收敛为 **1 条**。
+  - 真实渲染门 `e2e_desktop_layout_target.mjs`：FAIL **41 → 3**（D-L 几何/重叠/主区宽 40 项转绿）。
+- **Round-10 `--g-*` 家族单一源**：`--g-ink/--g-sub/--g-line/--g-soft/--g-card/--g-pill` 改为语义 token（`--text-ink/--text-sub/--ui-border/--ui-fill/--ui-card/--ui-pill`）的别名，三档（浅/暗/force-dark）取值与旧字面量**逐位相等**（行为不变）。
+- **门禁冻结**：新增 `scripts/prove_ui_tokens.js`（LINT ONLY，ratchet 高水位：T-1 `!important`≤409、T-2 原始色值 css141/html28、T-3 行内 font-size≤25、T-4 `[style*=]`补丁≤5、T-5 几何单一源=280/56 且显式拦截 248/0 复发）。当前 **PASS=8 FAIL=0**；收敛后只许下调基线数字。
+- **P2 首切片（已落地）**：删除被后置规则 100% 遮蔽的重复 `body.grok-ui header` 块（-2 `!important`，几何零变化，经渲染门复核 header 仍 56）；`!important` 418→**409**。
 
 **非回归验证（本沙箱，真 Electron+xvfb+Playwright）：**
 - 静态 lint：`prove_m37/m33/m40/m42/m43/m44/m26/m27` 全绿。
-- 渲染门：layout 仅剩 **D-D-03**（`body.grok-ui` 用 `display:none` 过度隐藏 `#agents-lab`/`#tools-toggle-btn`，导致 dev-mode 也无法揭示调试面）——**HEAD 基线即红、属"调试面治理"非本次样式范围**，未擅自改动产品对调试面的揭示策略。
+- 渲染门：layout 稳定 FAIL=3，三项均为 **HEAD 既有、非本改动引入**（已在干净 HEAD stash 复核复现同 3 项）：
+  1. **D-D-03**（调试面 dev-mode 揭示）：`grok-ui` 用 `display:none` 过度隐藏 `#agents-lab`/`#tools-toggle-btn`，属"调试面治理"独立项；
+  2. & 3. **msg column 796/1034 > 760**（none / collapsed）：`body.grok-ui #log{max-width:none!important}`（"全宽 feed、非窄居中列"的既存设计）与 layout-contract §3 的 stream≤760 相冲突。非 bug、是设计分歧，需一处显式裁定（收窄贴合同 / 或改合同+门），**未擅自收窄用户 feed**。
 - `e2e_grok_desktop_boot.mjs`：0 FAIL。
 - `e2e_desktop_shell_v2.mjs` S-MODEL 点击超时：`#model-entry` 在**干净 HEAD 同为 0×0**（本沙箱无 MoonBit 内核 → 模型芯片空文案、无尺寸），属环境性/honest-skip 类，**非本次改动引入**。
 
