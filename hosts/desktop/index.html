@@ -269,16 +269,23 @@
     font: 700 var(--text-display)/1.1 var(--font-display);
     color: var(--ink);
     letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #111 0%, #4a4a4a 55%, #111 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
   }
   #welcome .w-line {
     margin-top: 12px;
     font-size: var(--text-base);
     line-height: 1.5;
+    color: var(--ink);
   }
   #welcome .w-hint {
     margin-top: 18px;
     font-size: var(--text-sm);
-    opacity: 0.85;
+    opacity: 0.72;
+    line-height: 1.55;
   }
   /* GP-02: suggested Bot templates in the empty state */
   #welcome .wt-wrap { margin-top: 22px; text-align: center; }
@@ -1256,20 +1263,26 @@
     display: none;
     gap: 4px;
     z-index: 2;
+    padding: 3px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    backdrop-filter: blur(4px);
   }
   .msg:hover .msg-actions, .msg .msg-actions:focus-within { display: inline-flex; }
   .msg .msg-actions button {
-    border: 1px solid var(--line);
-    background: #ffffff;
+    border: 0;
+    background: transparent;
     color: var(--muted);
-    border-radius: var(--radius-md);
-    padding: 3px 8px;
+    border-radius: 999px;
+    padding: 3px 10px;
     font-size: var(--text-xs);
     font-weight: 500;
     cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    transition: background 0.12s ease, color 0.12s ease;
   }
-  .msg .msg-actions button:hover { color: var(--ink); border-color: var(--muted); box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+  .msg .msg-actions button:hover { color: var(--ink); background: var(--accent-soft); }
   /* GP-M31 (§5.1 消息反应): chips under the bubble come from the store row;
      the picker is a fixed 6-emoji set (no emoji-picker dependency). */
   .msg .msg-reactions {
@@ -3508,6 +3521,34 @@
         el.appendChild(picker);
       });
       bar.appendChild(rct);
+      // Wave M38: Grok-style Copy on hover bar (single-shot, no state).
+      const cp = document.createElement("button");
+      cp.type = "button";
+      cp.dataset.i18n = "copyAction";
+      cp.textContent = wavegT("copyAction");
+      cp.addEventListener("click", async () => {
+        const payload = String(text || "");
+        let ok = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(payload);
+            ok = true;
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = payload;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            ok = document.execCommand("copy");
+            ta.remove();
+          }
+        } catch (_) { ok = false; }
+        cp.textContent = wavegT(ok ? "copyDone" : "copyFailed");
+        setTimeout(() => { cp.textContent = wavegT("copyAction"); }, 1200);
+      });
+      bar.appendChild(cp);
       el.appendChild(bar);
     }
 
@@ -9471,6 +9512,9 @@
         attachTooMany: "附件被拒绝：一次最多 6 个（GP-11）。",
         replyAction: "回复",
         reactAction: "反应",
+        copyAction: "复制",
+        copyDone: "已复制",
+        copyFailed: "复制失败",
         replyQuoting: "回复：",
         replyCancel: "取消",
         secretCardTitle: "安全密钥输入",
@@ -9862,6 +9906,9 @@
         attachTooMany: "附件被拒絕：一次最多 6 個（GP-11）。",
         replyAction: "回覆",
         reactAction: "反應",
+        copyAction: "複製",
+        copyDone: "已複製",
+        copyFailed: "複製失敗",
         replyQuoting: "回覆：",
         replyCancel: "取消",
         secretCardTitle: "安全密鑰輸入",
@@ -10253,6 +10300,9 @@
         attachTooMany: "Attachment refused: max 6 files per send (GP-11).",
         replyAction: "Reply",
         reactAction: "React",
+        copyAction: "Copy",
+        copyDone: "Copied",
+        copyFailed: "Copy failed",
         replyQuoting: "Replying to: ",
         replyCancel: "Cancel",
         secretCardTitle: "Secure secret input",

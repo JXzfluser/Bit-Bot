@@ -1355,6 +1355,30 @@ grep -q "负向对照：抹掉 removeAttribute" /tmp/g37-probe.log 2>/dev/null \
   && ok "G-37 负向对照：抹掉 removeAttribute → 断言翻假（非恒真）" \
   || bad "G-37 negative control"
 
+echo "== G-38 复制按钮 + 悬浮 pill 工具条 + welcome 品牌渐变（M38）=="
+if timeout 900 node scripts/prove_m38_copy.js > /tmp/g38-probe.log 2>&1; then
+  ok "G-38 M38 复制契约全绿（$(grep -c '✓' /tmp/g38-probe.log) 项，$(tail -1 /tmp/g38-probe.log)）"
+else
+  bad "G-38 M38 复制契约（见 /tmp/g38-probe.log）"
+fi
+grep -q "attachMessageActions：Reply / React 后追加 Copy" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：Copy 按钮接入悬浮工具条，含 clipboard / execCommand 回退" \
+  || bad "G-38 copy wiring missing"
+grep -q "i18n zh-CN：copyAction" /tmp/g38-probe.log 2>/dev/null \
+  && grep -q "i18n zh-TW：copyAction" /tmp/g38-probe.log 2>/dev/null \
+  && grep -q "i18n en：Copy" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：三语 copyAction / copyDone / copyFailed 齐备" \
+  || bad "G-38 i18n coverage"
+grep -q "msg-actions：pill 容器 + backdrop-filter" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：pill 容器 + backdrop-filter blur(4px)" \
+  || bad "G-38 pill bar missing"
+grep -q "welcome .w-brand：linear-gradient" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：welcome .w-brand 使用 linear-gradient + background-clip: text" \
+  || bad "G-38 welcome gradient missing"
+grep -q "负向对照：抹掉 bar.appendChild(cp)" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 负向对照：抹掉 bar.appendChild(cp) → Copy 装配断言翻假（非恒真）" \
+  || bad "G-38 negative control"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

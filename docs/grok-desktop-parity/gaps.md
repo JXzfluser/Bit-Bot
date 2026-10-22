@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M37 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=263 FAIL=0**。新增 `prove_m37_layout.js` 13/0（全局 `[hidden] { display: none !important }` 兜底；`#account-popup` 改 `position: fixed` + `z-index: 45`；`setAccountPopup(open)` 单一真源同步 `hidden` 与 `aria-expanded`；Escape 关闭；侧栏 280px；M37 batch 1/2 CN/EN 清扫覆盖 gpQueueNote / autoReview / accountSection / accountLabelPlaceholder / aria New chat / settings-tab map / composer placeholder）。M33 / M34 / M35 / M36 契约保持。详见 Wave M37。
+> 验收证据（M38 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=269 FAIL=0**。新增 `prove_m38_copy.js` 8/0（消息悬浮 Copy 按钮 + clipboard/execCommand 双通道、pill 工具条 + backdrop-filter、welcome .w-brand 渐变、三语 copy* 齐备、含负向对照）。M33 / M34 / M35 / M36 / M37 契约保持。详见 Wave M38。
+> 验收证据（M37）：`scripts/smoke_grok_desktop_parity.sh` **PASS=263 FAIL=0**。新增 `prove_m37_layout.js` 13/0（全局 `[hidden] { display: none !important }` 兜底；`#account-popup` 改 `position: fixed` + `z-index: 45`；`setAccountPopup(open)` 单一真源同步 `hidden` 与 `aria-expanded`；Escape 关闭；侧栏 280px；M37 batch 1/2 CN/EN 清扫覆盖 gpQueueNote / autoReview / accountSection / accountLabelPlaceholder / aria New chat / settings-tab map / composer placeholder）。M33 / M34 / M35 / M36 契约保持。详见 Wave M37。
 > 验收证据（M36）：`scripts/smoke_grok_desktop_parity.sh` **PASS=252 FAIL=0**。新增 `prove_m36_voicehotkey.js` 5/0（Cmd/Ctrl+D 语音绑定与 🎙 按钮共用 startVoiceInput 单一入口，含 typeof guard 与负向对照）。M33 / M34 / M35 契约保持。详见 Wave M36。
 > 验收证据（M35）：`scripts/smoke_grok_desktop_parity.sh` **PASS=247 FAIL=0**。新增 `prove_m35_hotkeys.js` 6/0（Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键面板，DOM 建、三语齐、复用 bb-modal / bb-sheet、含负向对照）。M33 / M34 契约保持。详见 Wave M35。
 > 验收证据（M34）：`scripts/smoke_grok_desktop_parity.sh` **PASS=241 FAIL=0**。新增 `prove_m34_account_actions.js` 5/0（账户弹层入口落地：三项走 open settings anchor、三项走中文占位 callout、handler 都收 popup；含负向对照）；`prove_m33_grokchrome.js` 8/0（新增 Composer 圆形 ↑ 发送按钮断言）；其余 M33 契约保持。详见 Wave M34。
@@ -855,3 +856,57 @@
 - **动态 `data-i18n="booting"` 全量 sweep**：目前只对 MoonBit / kernel 常见 boot 消息做了 CN；`booting <unknown>` 兜底字符串未做通用替换。若未来 boot 消息源增多，需 `wavegT` 前加模板匹配。
 - **hover actions bar**（消息悬浮工具栏 / 空态插画 / welcome screen / 设置 sheet 精修）本波不做，只是把 popup 修好、sidebar 层级拉齐、composer 焦点态补齐；后续 UI 精修波 M38+ 承接。
 - **zh-TW 与 zh-CN 分叉**：本波 20 项 i18n 双值同步；若某 key 只在 zh-CN 补 CN，zh-TW 保持原样，未来扫描应加"两侧同 CN 覆盖"断言。
+
+---
+
+## Wave M38（消息悬浮 Copy 按钮 + pill 工具条 + welcome 品牌渐变）
+
+延续用户"毫无设计感"反馈，把 Grok 桌面的悬浮工具条补齐，同时把 welcome 首屏从"三行纯文本"升级为品牌化开场。
+
+### 1) 实现
+
+**a. Copy 按钮（Grok 桌面标志动作）**
+- `attachMessageActions(el, role, text)` 在 Reply / React 之后追加 Copy：
+  - `navigator.clipboard.writeText` 优先；
+  - 不可用时（`file://` 或权限拒绝）回退 textarea + `document.execCommand("copy")`；
+  - 失败静默，按钮文字短暂切 `已复制` / `复制失败`，1200ms 后回 `复制`；
+  - 无状态残留，不动现有 reaction / reply。
+
+**b. 悬浮工具条视觉**
+- `.msg-actions` 从"每个按钮各自带边框"改为整条 pill 容器：
+  - `border-radius: 999px` + `background: rgba(255,255,255,0.92)` + `backdrop-filter: blur(4px)` + 轻阴影；
+  - 按钮本身去边框去底色，`padding: 3px 10px`，`hover: background: var(--accent-soft)`；
+  - 悬浮时"胶囊条"整体浮现，比逐个描边更 Grok。
+
+**c. welcome 品牌渐变**
+- `#welcome .w-brand` 从 `color: var(--ink)` → `linear-gradient(135deg, #111 0%, #4a4a4a 55%, #111 100%)` + `background-clip: text` + `-webkit-text-fill-color: transparent`；
+- `w-line` 补 `color: var(--ink)`（避免继承 muted 太淡）；
+- `w-hint` opacity 0.85 → 0.72、line-height 1.55，与主副文拉开层级。
+
+**d. i18n 三语齐备**
+- zh-CN: `copyAction: "复制"`, `copyDone: "已复制"`, `copyFailed: "复制失败"`；
+- zh-TW: `複製` / `已複製` / `複製失敗`；
+- en: `Copy` / `Copied` / `Copy failed`。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m38_copy.js` **PASS=8 FAIL=0**
+  - 1) attachMessageActions Copy 装配 + clipboard / execCommand 回退；
+  - 2) 三语 copy* 齐备（zh-CN / zh-TW / en）；
+  - 3) msg-actions pill 容器 + backdrop-filter；
+  - 4) msg-actions 按钮去边框化；
+  - 5) welcome .w-brand 渐变；
+  - 6) 负向对照：抹掉 `bar.appendChild(cp)` → Copy 装配断言翻假。
+- `node --check /tmp/r.js` **SYNTAX_OK**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=269 FAIL=0**（263 → +6 G-38）
+- M33 / M34 / M35 / M36 / M37 契约全部保持。
+
+### 3) NG-001（本波故意不像素对齐）
+- Copy 只复制气泡原文（`text` 参数），不做 Markdown → 纯文本转换；后续若加富文本渲染再做二次清洗；
+- pill 条 `backdrop-filter` 用 4px 而非 Grok 官方模糊值（Electron 上更模糊有性能开销，本波不做微优化）；
+- welcome 渐变仅做灰阶（`#111 → #4a4a4a`），不引入品牌色 —— 本波专注浅色主题、避免色彩体系反复；
+- 不做"选中文字后浮出的 selection toolbar"，只做整条消息 Copy。
+
+### 4) 诚实残留
+- **execCommand 回退已弃用但仍有需要**：Chromium 1088+ 会在非 HTTPS / file:// 场景静默拒绝 clipboard.writeText；textarea + `document.execCommand` 是当前 Electron 41 唯一稳定的回退，长期需要迁移到 `navigator.permissions.query({name:'clipboard-write'})` + 明确失败态；本波只保证不 throw。
+- **Copy 后 1200ms 恢复原文案是 setTimeout 硬编码**：与语言 / 用户节奏无关联；如果做 i18n 反馈扩展（如 `已复制 · 1.2 秒后恢复`），需要一并调整。
+- **welcome 只做了 w-brand 渐变**：`w-line` / `w-hint` / `wt-grid` 仍是普通文本 + chip；本波不重塑整块 hero，若用户希望 Grok 那种"居中巨字 + 引导短语"，需要 M39+ 承接。
