@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M34 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=241 FAIL=0**。新增 `prove_m34_account_actions.js` 5/0（账户弹层入口落地：三项走 open settings anchor、三项走中文占位 callout、handler 都收 popup；含负向对照）；`prove_m33_grokchrome.js` 8/0（新增 Composer 圆形 ↑ 发送按钮断言）；其余 M33 契约保持。详见 Wave M34。
+> 验收证据（M35 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=247 FAIL=0**。新增 `prove_m35_hotkeys.js` 6/0（Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键面板，DOM 建、三语齐、复用 bb-modal / bb-sheet、含负向对照）。M33 / M34 契约保持。详见 Wave M35。
+> 验收证据（M34）：`scripts/smoke_grok_desktop_parity.sh` **PASS=241 FAIL=0**。新增 `prove_m34_account_actions.js` 5/0（账户弹层入口落地：三项走 open settings anchor、三项走中文占位 callout、handler 都收 popup；含负向对照）；`prove_m33_grokchrome.js` 8/0（新增 Composer 圆形 ↑ 发送按钮断言）；其余 M33 契约保持。详见 Wave M34。
 > 验收证据（M33）：`scripts/smoke_grok_desktop_parity.sh` **PASS=234 FAIL=0**。新增 `prove_m33_grokchrome.js` 7/0（侧栏图标工具栏、账户弹层、送达状态、typing indicator、CN/EN 分离、语言下拉原生名、负向对照）；`prove_m20_ui.js` 24/0（sidebar 宽度契约更新为 280px 以匹配 Grok 视觉密度）；`prove_m24_window.js` 29/0。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m23_memory.js` 26/0；`prove_m26_botpanel.js` 27/0；其余探针与 M32 一致。内核未改。详见 Wave M33。
 > 验收证据（M32）：干净 store（`bots.json` 已存在但没有 `agent-bit` 行、`data/workspace` 空、`desktop-host.json` 不存在）上 `scripts/smoke_grok_desktop_parity.sh` **PASS=230 FAIL=0**。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m20_ui.js` 24/0；`prove_m23_memory.js` 26/0；`prove_m24_window.js` 29/0；`prove_m26_botpanel.js` 27/0。内核未改。详见 Wave M32。
 > 验收证据（M31 行为基线）：`scripts/smoke_grok_desktop_parity.sh` PASS=229 FAIL=0；`moon test` 381/381（M26–M31 未改内核）；`scripts/prove_m31_reactions.js` 17/0；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
@@ -733,3 +734,31 @@
 - `ap-mobile` / `ap-support` 目前只出本地 callout，没有 `shell.openExternal` IPC 到真实仓库 / 商店页；官方 Grok 会跳 App Store。本波先做「有反馈不假绿」，下一波接 IPC 出口。
 - `ap-signout` 未真清 store；本地版本 profile 就是单条 default，"登出"目前语义上等价「删数据」，与用户直觉不符，故意只做提示。若后续引入多 profile，把这里改成 `switch profile -`。
 - `ap-add-account` 目前落到 General tab 的 profile 面板；Grok 是打开一张独立的 add-account modal。本波先复用现成 tab，未来再拆出。
+
+## Wave M35（键盘快捷键面板 + Cmd/Ctrl+K 搜索：Grok 桌面键盘可发现性）
+
+背景：Grok 桌面版把键盘绑定当作第一公民 —— `⌘K` 搜会话、`⌘/` 弹快捷键表，用户不用鼠标也能全流程。Bit Bot M34 之前只有 `⌘N`（新对话）/ `⌘B`（折叠侧栏）/ `⌘F`（Computer 面板）/ `⌘⇧M`（连接应用）四条接入 `wireAccelerators`，`⌘K` 只在按钮 `title` 里出现（点了没反应）、`⌘D` 语音在按钮 `title` 里但没绑定、且**没有任何界面**能让用户看到当前所有快捷键。本波把这三块补齐。
+
+### 1) 实现
+- **`hosts/desktop/index.html`**：
+  - `wireAccelerators()` 加两条分支：
+    - `ev.key === "k" | "K"` → `toggleSessionSearchFromShortcut()`：`#session-search.hidden = false` + `.focus()` + `.select()`。走既有输入控件，未在渲染层起第二份状态。
+    - `ev.key === "/"` → `openHotkeysSheet()`：懒建 `#hotkeys-modal`（首次调用），后续调用只做 `[data-i18n]` 重本地化（语言切换后仍准）。
+  - `openHotkeysSheet()` 用 `document.createElement` + `appendChild` 建结构（bb-modal / bb-sheet / bb-sheet-sm / bb-sheet-head / bb-sheet-title），行了 `<kbd>` 元素。**没有** innerHTML 写入路径，GP-93 单一安全渲染纪律保持。
+  - 新增 `HOTKEYS` 常量表 9 项：N（新对话）、K（搜索）、B（折叠侧栏）、F（Computer）、Shift+M（连接应用）、D（语音输入）、Enter（发送）、Shift+Enter（换行）、/（打开本表）。
+  - 关闭：`bb-btn` Close 复用 `gpClose` 三语；点击遮罩（`ev.target === modal`）也关。
+  - WAVEG_I18N 三个 locale 段各补 10 键：`hotkeysTitle` + 9 项 `hk*`。中文段无英文残留、繁体段用「快捷鍵 / 折疊 / 面板」等术语，英文段全英文。
+- **`hosts/desktop/ui_chrome.css`**：`#hotkeys-modal .hk-list` / `.hk-row` / `kbd` / `.hk-desc` 四条规则。行栅格 `minmax(140px, 168px) 1fr`，`kbd` 用 `--font-mono` + `--radius-sm` + 底边框 2px，浅色卡片视觉与 composer 一致。
+- **新增 `scripts/prove_m35_hotkeys.js`（6 项 + 1 负向）**：静态层断言绑定接入、复用 `#session-search`、DOM 建、10 键三语齐、CSS 规则存在；负向对照抹掉 `openHotkeysSheet()` 调用后第 1 项应变红。smoke 里作为 G-35 接线。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m35_hotkeys.js` **PASS=6 FAIL=0**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=247 FAIL=0**（241 → +6 G-35）
+
+### 3) NG-001（本波故意不像素对齐）
+面板是 Bit Bot 中性色 bb-sheet，不复制 Grok 快捷键表的排印；`kbd` 元素用系统默认渲染，不装品牌键帽图。
+
+### 4) 诚实残留
+- `⌘D`（语音）目前只在面板里出现，实际录音绑定仍在 `voice-btn` 的 click handler；全局 `keydown` 分支留给下一波。
+- 面板不列出 `⌘⇧Space`（全局呼出）——那是 OS 级别的 Electron Tray 绑定，不属于窗口内。
+- Enter / Shift+Enter 目前走 `#composer textarea` 默认行为，没有显式 handler；面板把它列出是为了让用户读到时不用去试。若未来加 Enter 发送可发现性配置，这里也一并更新。
