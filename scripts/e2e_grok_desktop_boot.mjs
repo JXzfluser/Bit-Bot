@@ -1569,13 +1569,10 @@ async function main() {
       // The DM session title follows the "<bot name> · DM" convention, so the
       // name is whatever the Host actually created (localized defaultBotName:
       // "新 Bot" under zh-CN). Derive from the created bot, never assume English.
-      const createdName = (() => {
-        try {
-          const b = (JSON.parse(fs.readFileSync(BOTS_M25, "utf8")).bots || []).find((x) => x.id === createdId);
-          return b ? b.name : "New Bot";
-        } catch (_) { return "New Bot"; }
-      })();
-      const dmTitle = createdName + " · DM";
+      // Use the name captured at CREATION time (createdRow), not a fresh
+      // bots.json read: GP-120 renames the Bot afterwards, but the DM session
+      // keeps its creation-time "<name> · DM" title (sessions don't cascade).
+      const dmTitle = ((createdRow && createdRow.name) || "New Bot") + " · DM";
       const sessFile = JSON.parse(fs.readFileSync(SESS_M25, "utf8"));
       const dm = (sessFile.sessions || []).find((s) => s.title === dmTitle);
       if (!dm) {
