@@ -353,21 +353,45 @@
     min-height: 0;
     overflow: visible;
   }
-  /* GP-123: New chat stays reachable at the top of the scrolling column. */
-  #agents > #sess-new {
+  /* Grok-style icon toolbar: compact icon-only buttons for search + new chat */
+  #sidebar-toolbar {
     position: sticky;
     top: 0;
     z-index: 3;
-    margin-top: 12px;
-    margin-bottom: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    border-radius: var(--radius-lg);
-    padding: 10px 14px;
-    font-size: var(--text-md);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 10px 0 6px;
+    background: var(--side);
+  }
+  #sidebar-toolbar button {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: #ffffff;
+    color: var(--muted);
+    font-size: 15px;
     font-weight: 600;
-    background: var(--accent);
-    color: var(--accent-ink);
-    border: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+    line-height: 1;
+    padding: 0;
+  }
+  #sidebar-toolbar button:hover {
+    background: var(--accent-soft);
+    border-color: var(--muted);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    color: var(--ink);
+  }
+  #sidebar-toolbar #sess-new {
+    font-size: 18px;
+    color: var(--ink);
   }
   #machines {
     grid-area: machines;
@@ -392,6 +416,83 @@
     border-top: 1px solid var(--line);
     padding: 12px 0 10px;
     background: var(--side);
+  }
+  /* Grok-style account bar: user avatar + popup menu at sidebar bottom */
+  #account-bar {
+    position: relative;
+    margin-top: 10px;
+  }
+  #account-avatar-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    transition: background 0.12s ease;
+  }
+  #account-avatar-btn:hover { background: var(--accent-soft); }
+  #account-avatar-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  }
+  #account-name-label {
+    font-size: var(--text-md);
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #account-popup {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin-bottom: 6px;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 10;
+  }
+  #account-popup .ap-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    font-size: var(--text-md);
+    color: var(--ink);
+    cursor: pointer;
+    transition: background 0.1s ease;
+  }
+  #account-popup .ap-item:hover { background: var(--accent-soft); }
+  #account-popup .ap-danger { color: var(--danger); }
+  #account-popup .ap-sep {
+    height: 1px;
+    background: var(--line);
+    margin: 4px 6px;
   }
   .panel-title {
     font-size: var(--text-2xs);
@@ -652,7 +753,28 @@
     border-radius: var(--radius-user);
     padding: 12px 18px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    position: relative;
   }
+  .msg-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    margin-top: 4px;
+    color: var(--muted);
+    justify-content: flex-end;
+  }
+  .msg-status .ms-check {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    border-radius: 50%;
+    font-size: 10px;
+    color: #aaa;
+  }
+  .msg-status .ms-check.read { color: #22c55e; font-weight: 700; }
   .msg.assistant { align-self: flex-start; display: flex; gap: 12px; max-width: 85%; }
   .msg.assistant::before {
     content: "";
@@ -1260,7 +1382,11 @@
     </div>
   </header>
   <aside id="agents">
-    <button type="button" id="sess-new" class="bb-btn bb-btn-primary bb-btn-block" title="新对话 (Ctrl/Cmd+N)" data-i18n="newChat">新建对话</button>
+    <!-- Grok-style icon toolbar: search + new chat as compact icon buttons -->
+    <div id="sidebar-toolbar">
+      <button type="button" id="sidebar-search-toggle" title="搜索会话 (Ctrl/Cmd+K)" aria-label="Search">⌕</button>
+      <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="New chat">+</button>
+    </div>
     <!-- GP-60: sidebar in-call indicator -->
     <div id="vc-sb-indicator" class="bb-callout">
       <span class="vc-pulse"></span>
@@ -1281,7 +1407,7 @@
       <span data-i18n="chats">会话</span>
     </div>
     <!-- GP-123: live search over the real session list (今天 / 昨天 / 更早). -->
-    <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="Search chats" />
+    <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="Search chats" hidden />
     <div id="session-list" aria-label="Chat sessions"></div>
     <details class="lab" id="agents-lab">
       <summary data-i18n="advanced">高级 · Agents / Teammates</summary>
@@ -1323,7 +1449,24 @@
         <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="Connect apps · Plugins（Cmd/Ctrl+Shift+M）" data-i18n="connectApps">Connect apps</button>
         <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="Marketplace · Bot 模板（来自 Host bot-templates.json）" data-i18n="marketplace">Marketplace</button>
       </div>
-      <button type="button" id="sidebar-settings-btn" class="bb-btn bb-btn-ghost bb-btn-block" title="Settings（General / Computer / Usage & Billing / Updates）" data-i18n="settings">设置</button>
+      <!-- Grok-style user account row with popup menu -->
+      <div id="account-bar">
+        <button type="button" id="account-avatar-btn" title="账户" aria-label="Account">
+          <span id="account-avatar-circle">B</span>
+          <span id="account-name-label">Bit Bot</span>
+        </button>
+        <div id="account-popup" hidden>
+          <button type="button" class="ap-item" id="ap-update" data-i18n="apUpdate">发现新版本</button>
+          <button type="button" class="ap-item" id="ap-usage" data-i18n="apUsage">每周用量</button>
+          <button type="button" class="ap-item" id="ap-mobile" data-i18n="apMobile">获取移动版 Bit Bot</button>
+          <div class="ap-sep"></div>
+          <button type="button" class="ap-item" id="ap-support" data-i18n="apSupport">支持</button>
+          <button type="button" class="ap-item" id="ap-settings" data-i18n="settings">设置</button>
+          <div class="ap-sep"></div>
+          <button type="button" class="ap-item" id="ap-add-account" data-i18n="apAddAccount">添加账户</button>
+          <button type="button" class="ap-item ap-danger" id="ap-signout" data-i18n="apSignOut">退出登录</button>
+        </div>
+      </div>
     </div>
   </aside>
   <div id="main">
@@ -3210,6 +3353,13 @@
       if (opts && opts.reactions) renderReactions(el, opts.reactions);
       // GP-14: Reply affordance on every bubble that has a durable store id.
       if (opts && opts.mid && opts.actions !== false) attachMessageActions(el, role, text);
+      // Grok-style: delivery status indicator for user messages
+      if (role === "user") {
+        const st = document.createElement("div");
+        st.className = "msg-status";
+        st.innerHTML = '<span class="ms-check">✓</span>';
+        el.appendChild(st);
+      }
       log.appendChild(el);
       log.scrollTop = log.scrollHeight;
       return el;
@@ -4266,6 +4416,17 @@
         }
       });
     }
+    /* Grok-style: toggle session search via sidebar toolbar search icon */
+    const sidebarSearchToggle = document.getElementById("sidebar-search-toggle");
+    if (sidebarSearchToggle) {
+      const sessSearchEl = document.getElementById("session-search");
+      sidebarSearchToggle.addEventListener("click", () => {
+        if (sessSearchEl) {
+          sessSearchEl.hidden = !sessSearchEl.hidden;
+          if (!sessSearchEl.hidden) sessSearchEl.focus();
+        }
+      });
+    }
 
     /* GP-116 (§2.1): the sidebar group list. Grok's left column shows Bots and
        Groups side by side, so this renders from the Host's rooms.json through
@@ -4912,6 +5073,9 @@
         if (storedIds && userEl && storedIds.user) {
           userEl.dataset.mid = String(storedIds.user);
           attachMessageActions(userEl, "user", text);
+          /* Grok-style: mark delivery (green ✓) once stored */
+          const dSt = userEl.querySelector(".msg-status .ms-check");
+          if (dSt && !dSt.classList.contains("read")) dSt.classList.add("read");
         }
         let assistantCursor = 0;
         if (r && Array.isArray(r.messages)) {
@@ -7281,6 +7445,11 @@
         sendBtn.disabled = false;
         input.focus();
         finishProgressRow();
+        /* Grok-style: mark user message delivery as read (green ✓✓) */
+        if (userEl) {
+          const st = userEl.querySelector(".msg-status .ms-check");
+          if (st) { st.textContent = "✓✓"; st.classList.add("read"); }
+        }
       }
     }
 
@@ -7388,10 +7557,26 @@
         runUserTurn("open settings", { skipSession: true, silentUser: true });
       });
     }
-    const sidebarSettingsBtn = document.getElementById("sidebar-settings-btn");
+    const sidebarSettingsBtn = document.getElementById("ap-settings");
     if (sidebarSettingsBtn) {
       sidebarSettingsBtn.addEventListener("click", () => {
         runUserTurn("open settings", { skipSession: true, silentUser: true });
+        document.getElementById("account-popup").hidden = true;
+      });
+    }
+    /* Grok-style account popup toggle */
+    const acctBtn = document.getElementById("account-avatar-btn");
+    if (acctBtn) {
+      acctBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const popup = document.getElementById("account-popup");
+        if (popup) popup.hidden = !popup.hidden;
+      });
+      document.addEventListener("click", (ev) => {
+        const popup = document.getElementById("account-popup");
+        if (popup && !popup.hidden && !ev.target.closest("#account-bar")) {
+          popup.hidden = true;
+        }
       });
     }
     const credBtn = document.getElementById("cred-settings-btn");
