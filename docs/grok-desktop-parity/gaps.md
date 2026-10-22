@@ -1,7 +1,8 @@
 # Grok Bot 桌面端对等 — 现状差距审计（Wave G 验收后）
 
 > 口径：**已实现 = 有可证伪验收信号且本轮实测通过**；**残留 = 行为真实存在但依赖本沙箱不可达的外部条件（按诚实残留纪律标注，不 pretend）**；**未做 = 本波范围内尚未接线，如实列出**。
-> 验收证据（M32 最新）：干净 store（`bots.json` 已存在但没有 `agent-bit` 行、`data/workspace` 空、`desktop-host.json` 不存在）上 `scripts/smoke_grok_desktop_parity.sh` **PASS=230 FAIL=0**。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m20_ui.js` 24/0；`prove_m23_memory.js` 26/0；`prove_m24_window.js` 29/0；`prove_m26_botpanel.js` 27/0。内核未改。详见 Wave M32。
+> 验收证据（M33 最新）：`scripts/smoke_grok_desktop_parity.sh` **PASS=234 FAIL=0**。新增 `prove_m33_grokchrome.js` 7/0（侧栏图标工具栏、账户弹层、送达状态、typing indicator、CN/EN 分离、语言下拉原生名、负向对照）；`prove_m20_ui.js` 24/0（sidebar 宽度契约更新为 280px 以匹配 Grok 视觉密度）；`prove_m24_window.js` 29/0。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m23_memory.js` 26/0；`prove_m26_botpanel.js` 27/0；其余探针与 M32 一致。内核未改。详见 Wave M33。
+> 验收证据（M32）：干净 store（`bots.json` 已存在但没有 `agent-bit` 行、`data/workspace` 空、`desktop-host.json` 不存在）上 `scripts/smoke_grok_desktop_parity.sh` **PASS=230 FAIL=0**。`e2e_grok_desktop_boot.mjs` 124/0；`prove_m20_ui.js` 24/0；`prove_m23_memory.js` 26/0；`prove_m24_window.js` 29/0；`prove_m26_botpanel.js` 27/0。内核未改。详见 Wave M32。
 > 验收证据（M31 行为基线）：`scripts/smoke_grok_desktop_parity.sh` PASS=229 FAIL=0；`moon test` 381/381（M26–M31 未改内核）；`scripts/prove_m31_reactions.js` 17/0；`scripts/prove_m30_attachpreview.js` 10/0；`scripts/prove_m29_roomchat.js` 16/0；`scripts/prove_m28_usage.js` 14/0；`scripts/prove_m27_convrail.js` 19/0；`scripts/prove_m26_botpanel.js` 27/0；`scripts/prove_m25_profile.js` 25/0；`scripts/prove_m24_window.js` 29/0；`scripts/prove_m23_memory.js` 26/0；`scripts/prove_m22_readfirst.js` 25/0；`scripts/prove_m21_trust.js` 45/0；`scripts/prove_m20_ui.js` 21/0；`scripts/prove_gp96_progress.js` 30/0；`scripts/prove_gp93_links.js` 21/0；`scripts/prove_gp14_reply.js` 16/0；`scripts/e2e_grok_desktop_boot.mjs` 124/0；Electron 冒烟 `BITBOT_DESKTOP_SMOKE_TURN="create bot Piper job=scout description=Watch+the+market" xvfb-run npm start` 退出码 0 且 `bots.json` 出现 Piper；renderer 冷启动（xvfb + ELECTRON_ENABLE_LOGGING）console 无 JS 错误。
 > 基线：`cursor/grok-bot-parity-desktop-v2`，kernel Wave G 提交 `3f49b4b` + Host/Desktop 对等提交。
 
@@ -673,3 +674,35 @@
 - `@media (max-width: 900px)` 仍会丢掉 computer 网格区（本波之前就这样）。
 - 反应 picker 仍是 6 个 emoji（M31，不在本波范围）。
 - Computer 右栏的内边距在子元素上，不在 `#computer-rail` 自身（保持原先的 opacity 开合，避免改点击行为）。
+
+## Wave M33（对标 Grok Bot 桌面外观：浅色令牌 / 侧栏结构 / 送达指示 / 中英分离）
+
+背景：M32 完成后功能已完整，但视觉密度和 Grok 桌面版仍有几处可见差距 —— 侧栏顶部是一整条「+ 新对话」按钮（Grok 是 ⌕ + 两枚紧凑圆钮）、底部只有 Settings 按钮（Grok 是账户头像 + popup）、用户气泡右下角无送达状态（Grok 是 ✓ → ✓✓）、助手首帧前是空圆（Grok 是三点跳动）。此外侧栏和标签里中英混排明显（「Computer」「Marketplace」「Bots」直接暴露在中文界面）。本波只收视觉与文案，Host IPC、MoonBit 内核、探针行为契约均不变。
+
+### 1) 实现
+- **`hosts/desktop/ui_chrome.css`**：`:root` 默认切到 Grok 浅色表面（`--bg0: #ffffff` / `--ink: #1a1a1a` / `--line: #e3e3e6` / `--accent: #1a1a1a`），暗色保留在 `body.force-dark`（`--bot-bubble: #212121`），浅色在 `prefers-color-scheme: light`（`--bot-bubble: #f4f4f5`）。壳层宽度 `--sidebar-w` 从 260px 提到 280px（更接近 Grok 侧栏密度，`--tools-w` / `--rail-w` 不变）。
+- **`hosts/desktop/index.html`**：
+  - **侧栏顶部图标工具栏**（替换 `#sess-new` 全宽按钮）：`#sidebar-toolbar` sticky 列首，两枚 30px 圆钮：⌕ 搜索会话 (Ctrl/Cmd+K)、+ 新对话 (Ctrl/Cmd+N)；hover 才填色。
+  - **侧栏底部账户条**（Grok 风格）：`#account-bar` sticky 列尾，圆形字母头像 + Bit Bot 名 + 上弹 `#account-popup`。popup 内 8 项按官方分组：发现新版本 / 每周用量 / 获取移动版 Bit Bot → 分隔 → 支持 / 设置 → 分隔 → 添加账户 / 退出登录（红色）。Settings 项 id 保留 `sidebar-settings-btn`，M24 契约不破。
+  - **消息送达状态**：用户气泡右下角新增 `.msg-status`；`runUserTurn` 拿到 `stored_ids.user` 后加 `.read`（绿 ✓），finally 块把文本升到 ✓✓。CSS：`.msg-status .ms-check.read { color: #22c55e; font-weight: 700; }`。
+  - **助手 typing indicator**：`onLlmStream` 在 `phase === "start" | "provider"` 时给 `streamEl .body` 挂三个 `<i>` 的 `.typing` 胶囊（`@keyframes typingPulse`），首个 delta 覆盖为文本；只用 DOM 节点，GP-93 innerHTML 单一安全渲染路径不破。
+  - **中英分离**：`WAVEG_I18N` 三语段的常见英文标签全部本地化 —— `gpPanel`→「对齐面板」/「對齊面板」、`tabComputer`→「电脑」/「電腦」、`botComputer`→「Bot 的云端电脑」、`updateComputerBtn`/`resetComputerBtn`→「更新/重置云端电脑」、`gpRecover`→「恢复云端电脑」、`marketplace`→「模板市场」、`defaultBotName`→「新 Bot」、`advanced`→「高级 · 代理 / 队友」、`locExec`→「本地执行（电脑权限）」、`allowAuto`→「自动允许」、`askFirst`→「先询问」、`bots`→「Bot 列表」。同一批文案在 `index.html` 里的原始 HTML 默认值同步替换（101 个 debug-lab 按钮、composer 语音对话、审批卡按钮、外观 chips、语言标签、tab 按钮、Settings sheet 标题等），确保 i18n 兜底也不中英混。品牌词保留：Bit Bot / Bot / Gmail / Slack / Teams / MCP / Chrome / Cursor。语言下拉保留各语言原生名（English / 简体中文 / 繁體中文）。
+- **探针契约更新**：
+  - `prove_m20_ui.js`：`--sidebar-w` 由 260px 改认 280px（Grok 视觉密度是新契约）。用户胶囊 `border-radius: 18px` 与 `--bot-bubble: #212121 / #f4f4f5` 断言不变，index.html 侧改用 `background: var(--bot-bubble)` + `border-radius: 18px` 满足。
+  - `prove_m24_window.js`：`--sidebar-w` 同步到 280px；footer 顺序断言的 label 更新为「Settings（账号弹层内）」，DOM 检查逻辑不变（`#sidebar-settings-btn` 仍在 `#sidebar-footer` 内、顺序在 `#marketplace-btn` 之后）。
+- **新增 `scripts/prove_m33_grokchrome.js`（7 项 + 1 负向）**：静态层断言上面 5 类改动确实存在于 `index.html`，负向对照砍掉 `.msg-status .ms-check.read` 样式后送达断言翻假。smoke 中作为 G-33 段接线。
+
+### 2) 验证（本轮实测）
+- `node scripts/prove_m33_grokchrome.js` **PASS=7 FAIL=0**
+- `node scripts/prove_m20_ui.js` **24/0**；`prove_m24_window.js` **29/0**；`prove_m31_reactions.js` **17/0**
+- `bash scripts/smoke_grok_desktop_parity.sh` **PASS=234 FAIL=0**（230 → +4 G-33 断言；其余探针无退步）
+- 中英混排扫描：`hosts/desktop/index.html` 中原始 HTML 剩余英文可见文本仅两处：`>Bit Bot<`（品牌名，正确）与 `<option value="en">English</option>`（语言下拉的原生名，正确）。`data-i18n` / `data-i18n-ph` 属性覆盖已完整。
+
+### 3) NG-001（本波故意不像素对齐）
+外观对齐 Grok 桌面版的密度与层次 —— 不是复制 xAI 品牌皮肤、不引用 Grok 官方图标、不复刻像素级字标。颜色是 Bit Bot 中性色（白 / 灰 / 黑 + 送达绿），头像字母「B」和「Bit Bot」占位账户，不是任何真实账号信息。
+
+### 4) 诚实残留（留给后续）
+- 账户 popup 目前 8 项按钮里，除「设置」外其余是占位（发现新版本 / 每周用量 / 移动版 / 支持 / 添加账户 / 退出登录）；Host IPC 后续接入真实 OTA / usage / 登出流程再落。
+- 送达状态 ✓/✓✓ 走本地回合边界（stored / turn end），不接多端同步；官方 Grok 的读回执在跨端场景下由服务端推送，Bit Bot 单机版仅本地语义。
+- 侧栏 `#sidebar-toolbar` 与 `#account-bar` 的 sticky 位置在窗口极窄时会与 popup 打架，尚未加媒体查询；`--sidebar-w` 280px 是最短安全宽度，后续如需继续压缩再补折叠态图标条。
+- 中英分离仅覆盖 `index.html` 里的可见 UI 文本；`data-i18n` 之外的内核短语（`runUserTurn("update computer", …)`）仍是英文关键词，属于「协议词」而非「用户可见文案」，不在本波范围。

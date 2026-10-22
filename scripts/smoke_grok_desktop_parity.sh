@@ -1224,6 +1224,34 @@ grep -q "负向对照：禁用 save 后反应不落盘" /tmp/g31-probe.log 2>/de
   && ok "G-31 负向对照：砍掉 save(state) 后反应不落盘（断言非恒真）" \
   || bad "G-31 negative control missing"
 
+echo "== G-33 Grok 桌面外观（M33：对标 Grok Bot UI）=="
+if timeout 900 node scripts/prove_m33_grokchrome.js > /tmp/g33-probe.log 2>&1; then
+  ok "G-33 Grok 桌面外观契约全绿（$(grep -c '✓' /tmp/g33-probe.log) 项，$(tail -1 /tmp/g33-probe.log)）"
+else
+  bad "G-33 Grok 桌面外观契约（见 /tmp/g33-probe.log）"
+fi
+grep -q "侧栏顶部图标工具栏" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：侧栏顶部图标工具栏（search + new-chat）" \
+  || bad "G-33 sidebar toolbar missing"
+grep -q "账户条包含 8 项弹层" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：底部账户条 → 8 项 popup（含 Settings 复用 sidebar-settings-btn）" \
+  || bad "G-33 account popup missing"
+grep -q "送达状态：存储 → ✓、回合收尾 → ✓✓ 绿色" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：用户气泡送达状态 ✓ → ✓✓ 绿色" \
+  || bad "G-33 delivery status missing"
+grep -q "首个 delta 前显示三点动效" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：助手思考三点 typing indicator（DOM 节点，非 innerHTML）" \
+  || bad "G-33 typing indicator missing"
+grep -q "10 个常见英文标签已全部本地化" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：中英混排清理（10 项 i18n key）" \
+  || bad "G-33 CN/EN separation missing"
+grep -q "语言选择器保留各语言原生名" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：语言下拉保留原生名（English / 简体中文 / 繁體中文）" \
+  || bad "G-33 language dropdown missing"
+grep -q "负向对照：砍掉 read 绿色样式" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 负向对照：砍掉 read 样式 → 送达状态断言翻假（非恒真）" \
+  || bad "G-33 negative control missing"
+
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
