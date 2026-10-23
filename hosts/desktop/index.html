@@ -5174,8 +5174,9 @@
       if (unreadable) {
         // GP-146：列表读不到 ≠ 一个群都没有，别把存储故障演成「我的群没了」。
         const bad = document.createElement("div");
-        bad.className = "room-list-readfail";
-        bad.className = "sess-empty";
+        // 两行分开写会把前一个 class 覆盖掉（= 侧栏的「读不到」节点没有任何
+        // 可寻址的钩子，样式和门禁都抓不到它）。一个元素两个 class，一次写完。
+        bad.className = "room-list-readfail sess-empty";
         bad.textContent = wavegT("roomListReadFail");
         box.appendChild(bad);
         return;
