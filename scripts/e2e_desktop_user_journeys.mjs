@@ -337,6 +337,59 @@ const forbiddenHit = (text) => {
     }, null, { timeout: 30000 });
   };
 
+  /**
+   * 取证兜底：J2（中文自然语言建房）在修复前必然是红的。如果 J3/J4 就此中止，
+   * 群上下文 / 汇总 / provider 这三组断言就一条证据都留不下。这里退回「内核本来
+   * 就支持的英文指令」把夹具房先建出来，让后面的断言继续测各自要测的东西；
+   * J2 的失败已由 PH1/PH2/PH3 单独记录，不会因此被掩盖。
+   */
+  const seedRoomByCommand = async (title, memberIds) => {
+    const encTitle = (s) => String(s || "").replace(/\+/g, "%2B").replace(/\s+/g, "+").trim();
+    await useMainComposer();
+    await sendComposer("create group chat bots=" + memberIds.join(",") + " title=" + encTitle(title));
+    return await waitUntil(async () => Boolean(roomRow(title)), 45000);
+  };
+
+  /**
+   * 产品态打开设置：头像 → 账户弹层 → 设置。
+   * #sidebar-settings-btn 在 body.grok-ui 下是 display:none（ui_chrome.css:1114，
+   * Round 5/6 把「管理/设置」收进账户弹层），直接点它不是用户路径；
+   * 用户点的是头像弹层里的 #ap-settings，由它转发到那颗按钮。
+   */
+  const openSettings = async (stab) => {
+    await win.click("#account-avatar-btn", { timeout: 20000 });
+    await win.waitForSelector("#ap-settings", { state: "visible", timeout: 20000 });
+    await win.click("#ap-settings", { timeout: 20000 });
+    await win.waitForSelector("#settings-panel", { state: "visible", timeout: 20000 });
+    if (stab) await win.click('.settings-tab-btn[data-stab="' + stab + '"]', { timeout: 10000 });
+    await new Promise((r) => setTimeout(r, 300));
+  };
+
+  /**
+   * 产品态进入「模型 / 供应商」面板。修复前这里就是真红：openModelSheet 只绑在
+   * 被 grok-ui 隐藏的表头 chip 上（ui_chrome.css:1110，且 e2e_desktop_shell_v2
+   * S-HEADER 要求它不可见），设置里没有任何入口能打开 #model-modal，
+   * 于是「切换 provider」「密钥输入框高度」这两条用户根本走不到。
+   * 返回 false = 面板不可达；调用方按「前置没走通」报红，而不是量到 -1px 冒充缺陷。
+   */
+  const openModelSheet = async () => {
+    await openSettings("credentials");
+    const via = await win.evaluate(() => {
+      const b = document.getElementById("sec-model-open");
+      if (b && b.offsetParent !== null) { b.click(); return "settings-credentials"; }
+      const h = document.getElementById("model-entry");
+      if (h && h.offsetParent !== null) { h.click(); return "header-chip"; }
+      return "";
+    });
+    if (!via) return false;
+    await win.waitForSelector("#model-modal .ms-card", { timeout: 20000 }).catch(() => {});
+    const okSheet = await win.evaluate(() => {
+      const m = document.getElementById("model-modal");
+      return Boolean(m && getComputedStyle(m).display !== "none");
+    });
+    return okSheet ? via : false;
+  };
+
   try {
     stubMain = await startStub({ port: P_MAIN, record: REC_MAIN, failContains: "名字：" + F.name });
     stubQwen = await startStub({ port: P_QWEN, record: REC_QWEN, reply: "UJQWEN-PROVIDER-REPLY 已收到" });
@@ -479,9 +532,12 @@ const forbiddenHit = (text) => {
       const visBad = await lastAssistantVisible();
       const noRoom = !roomRow(T4);
       const roomsUnchanged = (readJson(ROOMS, { rooms: [] }).rooms || []).length === beforeBad;
-      answered && noRoom && roomsUnchanged && /UJGhostone/.test(visBad)
+      // stub 会把用户原话整段回显，所以「回复里出现 UJGhostone」本身不算证据；
+      // 必须同时出现「没找到」这类明确的失败措辞，才算产品真的认出了这个名字。
+      const saysNotFound = /没找到|未找到|不存在|找不到|没有叫|查无/.test(visBad);
+      answered && noRoom && roomsUnchanged && /UJGhostone/.test(visBad) && saysNotFound
         ? ok("名字不存在时点名告知 UJGhostone 未找到，且一个群都没新建")
-        : bad("负例不诚实或建了残群", JSON.stringify({ answered, noRoom, roomsUnchanged, tail: visBad.slice(0, 260) }));
+        : bad("负例不诚实或建了残群", JSON.stringify({ answered, noRoom, roomsUnchanged, saysNotFound, tail: visBad.slice(0, 260) }));
       !/已创建|创建成功|已经建好|建好了/.test(visBad)
         ? ok("失败路径的回复没有假装成功的文案")
         : bad("失败路径假装成功", visBad.slice(0, 260));
@@ -495,13 +551,20 @@ const forbiddenHit = (text) => {
       }).length;
       const roomsBeforeDup = (readJson(ROOMS, { rooms: [] }).rooms || []).length;
       const dupBefore = sameSet();
+      const recBeforeDup = readRecords(REC_MAIN).length;
       await sendComposer(PH1);
-      await new Promise((r) => setTimeout(r, 12000));
+      // 等这一句真过了 provider（回合结束）再数群：固定 sleep 在慢机器上会假绿。
+      await waitUntil(() => readRecords(REC_MAIN).length > recBeforeDup, 45000);
+      await new Promise((r) => setTimeout(r, 3000));
       const dupAfter = sameSet();
-      dupBefore === 1 && dupAfter === 1 &&
-        (readJson(ROOMS, { rooms: [] }).rooms || []).length === roomsBeforeDup
-        ? ok("重复同一句不产生重复群（同成员同群名仍只有 1 个 " + T1 + "）")
-        : bad("重复建群", JSON.stringify({ dupBefore, dupAfter, total: (readJson(ROOMS, { rooms: [] }).rooms || []).length }));
+      const dupTotal = (readJson(ROOMS, { rooms: [] }).rooms || []).length;
+      if (dupBefore !== 1) {
+        bad("幂等无法取证", JSON.stringify({ dupBefore, note: "重复句之前 " + T1 + " 就不止 0/1 个（建房本身已失败，见 PH1）" }));
+      } else if (dupAfter === 1 && dupTotal === roomsBeforeDup) {
+        ok("重复同一句不产生重复群（同成员同群名仍只有 1 个 " + T1 + "）");
+      } else {
+        bad("重复同一句后群变多", JSON.stringify({ dupBefore, dupAfter, total: dupTotal, totalBefore: roomsBeforeDup }));
+      }
       evidence.j2 = {
         room_ids: { [T1]: (roomRow(T1) || {}).id, [T2]: (roomRow(T2) || {}).id, [T3]: (roomRow(T3) || {}).id },
         [T4]: roomRow(T4) ? roomRow(T4).id : null,
@@ -512,7 +575,13 @@ const forbiddenHit = (text) => {
     /* ================= J3 ================= */
     console.log("\n— J3 群内多 Bot 各用各的职责 —");
     try {
-      if (!roomRow(T1)) throw new Error("J2 没能建出 " + T1 + "，J3 无从开始");
+      if (!roomRow(T1)) {
+        console.log("  · [取证兜底] J2 没建出 " + T1 + "（红色已记录于 J2），改用内核已支持的英文指令建房，"
+          + "让 J3/J4 的群上下文、汇总、provider 断言照样取证");
+        if (!(await seedRoomByCommand(T1, [idX, idY, idZ].filter(Boolean)))) {
+          throw new Error("兜底建房也没建出 " + T1 + "，J3 无从开始");
+        }
+      }
       await reopenRoom(T1);
       const recBefore3 = readRecords(REC_MAIN).length;
       await sendComposer("@" + X.name + " @" + Y.name + " 各自说明你负责什么，并给本周计划");
@@ -567,14 +636,20 @@ const forbiddenHit = (text) => {
       dmAgain && dmSys.includes(X.job) && !/当前群聊：|群成员：/.test(dmSys)
         ? ok("群聊过后回到该 Bot 私聊：上下文不含群名/成员（DM 与 room 会话隔离）")
         : bad("DM 仍带群上下文", dmSys.slice(0, 320));
-      const sessDump = JSON.stringify(readJson(SESSIONS, { sessions: [] }).sessions || []);
-      !/"kind":"(bot_reply|final_report)"/.test(sessDump) && !sessDump.includes(T1 + " 群")
-        ? ok("群回合与汇报没有落进 sessions（两路消息面互不污染）")
-        : bad("群回合漏进 DM 会话", sessDump.slice(0, 200));
-      const roomSessKeys = JSON.stringify(readJson(SESSIONS, { sessions: [] }).sessions || []).match(/room-/g) || [];
-      roomSessKeys.length === 0
-        ? ok("sessions 里没有 room-* 会话（群会话不与 DM 混用同一 id 空间）")
-        : bad("sessions 出现 room- 会话", String(roomSessKeys.length));
+      /* 会话隔离：Host 契约（main.js:1217）是「群回合用独立 sessionId
+         room-<roomId>-<botId>，永不写进 Bot 的 DM 会话」。所以真正要断言的是
+         隔离，而不是 sessions.json 里必须零个 room- 前缀。 */
+      const sessAll = readJson(SESSIONS, { sessions: [] }).sessions || [];
+      const dmText = JSON.stringify(sessAll.filter((s) => / · DM$/.test(String((s && s.title) || ""))));
+      !dmText.includes("各自说明你负责什么") && !/"kind":"(bot_reply|final_report)"/.test(dmText)
+        ? ok("群回合与汇报没有落进任何 DM 会话")
+        : bad("群回合漏进 DM 会话", dmText.slice(0, 200));
+      const roomSess = sessAll.filter((s) => /^room-/.test(String((s && s.id) || "")));
+      const listed = await win.evaluate(() => Array.from(
+        document.querySelectorAll("#session-list .agent-item")).map((el) => el.getAttribute("data-session-id") || ""));
+      roomSess.every((s) => !listed.includes(s.id))
+        ? ok("room-* 会话（" + roomSess.length + " 条）都不出现在 DM 会话列表里（" + listed.length + " 条列表项）")
+        : bad("DM 会话列表混入 room-* 会话", JSON.stringify({ roomIds: roomSess.slice(0, 3).map((s) => s.id), listed: listed.slice(0, 5) }));
       evidence.j3 = {
         bot_reply_rows: rowsOf(T1, "bot_reply").length,
         responder_sys_head: sysRC.slice(0, 500),
@@ -606,7 +681,10 @@ const forbiddenHit = (text) => {
       await useMainComposer();
       await sendComposer(PHPART);
       const madeP = await waitUntil(async () => Boolean(roomRow(TP)), 45000);
-      if (!madeP) throw new Error("partial 用的群没建出来（" + TP + "）");
+      if (!madeP) {
+        console.log("  · [取证兜底] " + TP + " 没被中文指令建出来（红色已记录于 J2 同型路径），改用英文指令建房继续取证 partial");
+        if (!(await seedRoomByCommand(TP, [idX, idF].filter(Boolean)))) throw new Error("partial 用的群没建出来（" + TP + "）");
+      }
       await reopenRoom(TP);
       await sendComposer("@" + X.name + " @" + F.name + " 各自说明你负责什么");
       const gotPartial = await waitUntil(() => reportsOf(TP).length >= 1, 200000);
@@ -650,35 +728,44 @@ const forbiddenHit = (text) => {
       const anyDebugClass = await win.evaluate(() => document.querySelectorAll("#log .msg.debug-only").length);
       ok("可见调试卡（.debug-only 且未隐藏）由 dev 模式控制：计数 " + anyDebugClass + "（产品态默认隐藏，持久层已过滤）");
 
-      /* 模型密钥输入框高度 + 横向溢出 */
+      /* 模型密钥输入框高度 + 横向溢出。先确认面板在产品态可达：可达性本身是一条
+         独立断言，不能拿「量不到元素」冒充「高度 220px 的缺陷」。 */
+      const sheetVia = await openModelSheet();
+      sheetVia
+        ? ok("产品态能打开模型/供应商面板（入口：" + sheetVia + "）")
+        : bad("产品态打不开模型/供应商面板", "设置→凭证 没有通往 #model-modal 的入口，表头 chip 又被 grok-ui 隐藏 —— P1-5/P1-6 的用户前置");
       for (const vp of [{ width: 1280, height: 800 }, { width: 1440, height: 900 }]) {
         await win.setViewportSize(vp);
         await new Promise((r) => setTimeout(r, 300));
-        await win.click("#model-entry", { timeout: 20000 }).catch(() => {});
-        await win.waitForSelector("#model-modal .ms-card", { timeout: 20000 }).catch(() => {});
+        if (sheetVia) await openModelSheet();
         const m = await win.evaluate(() => {
           const key = document.querySelector("#model-modal .ms-key");
           const h = key ? Math.round(key.getBoundingClientRect().height) : -1;
           const over = document.documentElement.scrollWidth - window.innerWidth;
-          return { h, over, sheetOver: Boolean(key && key.getBoundingClientRect().width < 80) };
+          return { h, over, shown: Boolean(key) };
         });
-        m.h >= 32 && m.h <= 48
-          ? ok(vp.width + "×" + vp.height + " 密钥输入框高度 " + m.h + "px（32–48 合同内）")
-          : bad(vp.width + "×" + vp.height + " 密钥输入框高度异常", m.h + "px（要求 32–48）");
+        if (!sheetVia) {
+          bad(vp.width + "×" + vp.height + " 密钥输入框高度无法取证", "面板不可达（见上一条红色），不是高度缺陷");
+        } else {
+          m.h >= 32 && m.h <= 48
+            ? ok(vp.width + "×" + vp.height + " 密钥输入框高度 " + m.h + "px（32–48 合同内）")
+            : bad(vp.width + "×" + vp.height + " 密钥输入框高度异常", m.h + "px（要求 32–48）");
+        }
         m.over <= 0
           ? ok(vp.width + "×" + vp.height + " 无横向溢出")
           : bad(vp.width + "×" + vp.height + " 横向溢出", "scrollWidth+" + m.over);
         await win.screenshot({ path: path.join(ART, "uj-j4-key-input-" + vp.width + ".png") });
+        await win.keyboard.press("Escape").catch(() => {});
         await win.click("#model-close", { timeout: 10000 }).catch(() => {});
+        await win.click("#settings-close", { timeout: 10000 }).catch(() => {});
       }
     } catch (e) { bad("J4（final_report/partial/卫生/尺寸）崩溃", String((e && e.message) || e)); }
 
     /* zh-TW 真生效 + 语言在 reload 后保持 */
     try {
       await win.setViewportSize({ width: 1280, height: 800 });
-      await win.click("#sidebar-settings-btn", { timeout: 20000 });
-      await win.waitForSelector("#settings-panel #gp-language", { timeout: 20000 });
-      await win.click('.settings-tab-btn[data-stab="general"]', { timeout: 10000 }).catch(() => {});
+      await openSettings("general");
+      await win.waitForSelector("#settings-panel #gp-language", { state: "visible", timeout: 20000 });
       await win.selectOption("#gp-language", "zh-TW", { timeout: 20000 });
       const applied = await waitUntil(async () => {
         const st = readJson(SETTINGS, {});
@@ -695,15 +782,19 @@ const forbiddenHit = (text) => {
         follow: (document.body.innerText || "").split("跟隨系統").length - 1,
         followCn: (document.body.innerText || "").split("跟随系统").length - 1,
       }));
-      /設定/.test(tw.panel) && /語言/.test(tw.panel)
-        ? ok("zh-TW 下设置页是繁体（設定/語言）")
+      /語言/.test(tw.panel) && /一般/.test(tw.panel)
+        ? ok("zh-TW 下设置页签与语言区是繁体（一般／語言）")
         : bad("设置页未转繁体", tw.panel.slice(0, 220));
-      !/Marketplace|Settings|Language|General|Sign in/i.test(tw.body)
-        ? ok("页面无英文残留串（Marketplace/Settings/…）")
-        : bad("zh-TW 残留英文", (tw.body.match(/Marketplace|Settings|Language|General|Sign in/gi) || []).join(","));
-      !/设置|语言|时区|隐私|群组|市集/.test(tw.panel)
-        ? ok("设置页无简体残留（设置/语言/时区/隐私/群组）")
-        : bad("zh-TW 残留简体", (tw.panel.match(/设置|语言|时区|隐私|群组/g) || []).join(","));
+      // 英文残留只看我们知道的界面 chrome 词，且区分大小写，
+      // 免得把 <code>language</code> 这类标识符误判成文案缺陷。
+      const enHits = (tw.body.match(/General|Computer|Credentials|Marketplace|Settings|Sign in|Updates|Usage/g) || []).filter((v, i, a) => a.indexOf(v) === i);
+      enHits.length === 0
+        ? ok("界面无英文 chrome 残留（General/Computer/Marketplace/…）")
+        : bad("zh-TW 残留英文", enHits.join(","));
+      const cnHits = (tw.panel.match(/设置|语言|时区|隐私|群组|外观|审批|执行命令|发送消息|发起购买|调用工具|操作电脑|委派/g) || []).filter((v, i, a) => a.indexOf(v) === i);
+      cnHits.length === 0
+        ? ok("设置页无简体残留")
+        : bad("zh-TW 残留简体", cnHits.join(","));
       tw.follow === 1
         ? ok("「跟隨系統」文案只出现 1 次（没有重复标签）")
         : bad("「跟隨系統」重复/缺失", JSON.stringify({ tw: tw.follow, cn: tw.followCn }));
@@ -712,13 +803,13 @@ const forbiddenHit = (text) => {
 
       await win.reload({ timeout: 90000 });
       await win.waitForSelector("#composer #text", { timeout: 60000 });
-      await win.click("#sidebar-settings-btn", { timeout: 20000 });
-      await win.waitForSelector("#settings-panel #gp-language", { timeout: 20000 });
+      await openSettings("general");
+      await win.waitForSelector("#settings-panel #gp-language", { state: "visible", timeout: 20000 });
       const afterReload = await win.evaluate(() => ({
         sel: (document.getElementById("gp-language") || {}).value || "",
         panel: (document.getElementById("settings-panel") || {}).innerText || "",
       }));
-      afterReload.sel === "zh-TW" && /設定/.test(afterReload.panel)
+      afterReload.sel === "zh-TW" && /語言/.test(afterReload.panel) && /一般/.test(afterReload.panel)
         ? ok("reload 后仍是繁体（下拉与画面一致）")
         : bad("reload 后语言被覆盖", JSON.stringify(afterReload).slice(0, 240));
       await win.screenshot({ path: path.join(ART, "uj-j4-zhtw-after-reload.png") });
@@ -728,7 +819,7 @@ const forbiddenHit = (text) => {
     /* provider 切换：真打到的 Base URL / Authorization 必须跟着当前 provider 走 */
     try {
       const useProvider = async (pid) => {
-        await win.click("#model-entry", { timeout: 20000 });
+        if (!(await openModelSheet())) throw new Error("模型/供应商面板在产品态打不开，provider 切换无从下手");
         const sel = '#model-modal .ms-card[data-provider-id="' + pid + '"] .ms-use';
         await win.waitForSelector(sel, { timeout: 20000 });
         await win.click(sel, { timeout: 20000 });
@@ -737,9 +828,10 @@ const forbiddenHit = (text) => {
           return Boolean(card && card.querySelector(".ms-badge.is-ready"));
         }, pid), 60000);
         await win.click("#model-close", { timeout: 10000 }).catch(() => {});
+        await win.click("#settings-close", { timeout: 10000 }).catch(() => {});
       };
 
-      await win.click("#model-entry", { timeout: 20000 });
+      if (!(await openModelSheet())) throw new Error("模型/供应商面板在产品态打不开（provider 旅程前置）");
       await win.waitForSelector('#model-modal .ms-card[data-provider-id="qwen"]', { timeout: 20000 });
       const useBtn = '#model-modal .ms-card[data-provider-id="qwen"] .ms-use';
       const hasUse = await win.evaluate((sel) => Boolean(document.querySelector(sel)), useBtn);
@@ -806,14 +898,15 @@ const forbiddenHit = (text) => {
     try {
       await quitApp();
       await newWindow();
-      await win.click("#sidebar-settings-btn", { timeout: 20000 });
-      await win.waitForSelector("#settings-panel #gp-language", { timeout: 20000 });
+      await win.setViewportSize({ width: 1280, height: 800 });
+      await openSettings("general");
+      await win.waitForSelector("#settings-panel #gp-language", { state: "visible", timeout: 20000 });
       await new Promise((r) => setTimeout(r, 1200));
       const afterRestart = await win.evaluate(() => ({
         sel: (document.getElementById("gp-language") || {}).value || "",
         panel: (document.getElementById("settings-panel") || {}).innerText || "",
       }));
-      afterRestart.sel === "zh-TW" && /設定/.test(afterRestart.panel)
+      afterRestart.sel === "zh-TW" && /語言/.test(afterRestart.panel) && /一般/.test(afterRestart.panel)
         ? ok("重启后仍是繁体（语言不被启动流程覆盖回简体）")
         : bad("重启后语言被覆盖", JSON.stringify(afterRestart).slice(0, 240));
       await win.screenshot({ path: path.join(ART, "uj-j4-zhtw-after-restart.png") });
