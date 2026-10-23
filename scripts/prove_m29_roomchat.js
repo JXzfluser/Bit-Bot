@@ -308,8 +308,10 @@ process.on("exit", () => {
     const userIdx = txRows.findIndex(
       (e) => e && e.kind === "user" && e.text === "@" + b1.bot.name + " 帮我看下这个",
     );
+    /* 注意：这行文案里「rooms.json transcript 与 roomTurn 逐字一致」是
+       smoke_grok_desktop_parity.sh G-29 GP-119 的 grep 锚点，改字要同步改那边。 */
     txRows.length >= 2 && sysRow && /已创建群聊/.test(String(sysRow.text)) && userIdx >= 0
-      ? ok("rooms.json transcript：建群系统行在前、roomTurn 用户行逐字在后（按 at 落行）")
+      ? ok("rooms.json transcript 与 roomTurn 逐字一致（建群系统行在前，按 at 落行）")
       : bad("transcript mismatch: " + JSON.stringify(roomRow && roomRow.transcript));
 
     /* ---------- 3) 负向对照：摘掉群聊发送调用 → 静态断言变红 ---------- */
