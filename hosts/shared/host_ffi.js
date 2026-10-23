@@ -5145,7 +5145,15 @@ function createHostFfi(repoRoot) {
 
   /**
    * Resolve active OpenAI-compatible endpoint.
-   * Priority: BITBOT_LLM_* env (product override) → active.json → providers.json default (DeepSeek).
+   * GP-148 §1-J4（P1-6）优先级（从高到低）：
+   *   1) 当前 provider 自己的 env（providers.json 的 env_base/env_key/env_model，
+   *      例如 BITBOT_LLM_QWEN_*）——切了 provider 就用这一组；
+   *   2) active.json —— 用户在「设置 → 模型/凭证」里真实选中的 provider 与模型；
+   *   3) 全局 BITBOT_LLM_* —— 旧的整机覆盖（deepseek 的 env_* 本来就是这组名字，
+   *      所以既有门禁行为不变）；
+   *   4) providers.json 目录默认值。
+   * 原来 3 排在 1/2 前面，结果是「界面上切到 qwen，请求体的 Base URL 和
+   * Authorization 还是全局 DeepSeek」——用户以为换了，实际没换。
    */
   function resolveLlmConfig() {
     const catalog = loadLlmProviders();
@@ -5171,21 +5179,22 @@ function createHostFfi(repoRoot) {
       providers[0] ||
       DEFAULT_LLM_PROVIDERS[0];
 
-    const envBase = String(
-      process.env.BITBOT_LLM_BASE_URL ||
-        (provider.env_base && process.env[provider.env_base]) ||
-        "",
-    ).trim();
-    const envKey = String(
-      process.env.BITBOT_LLM_API_KEY ||
-        (provider.env_key && process.env[provider.env_key]) ||
-        "",
-    ).trim();
-    const envModel = String(
-      process.env.BITBOT_LLM_MODEL ||
-        (provider.env_model && process.env[provider.env_model]) ||
-        "",
-    ).trim();
+    // GP-148（P1-6）：一个 provider 只要声明了自己的变量名（例如 qwen 用
+    // BITBOT_LLM_QWEN_*），全局 BITBOT_LLM_* 就不能再盖住它——否则界面上切了
+    // provider，请求还是发给全局 DeepSeek。deepseek 的 env_* 本来就是全局那组
+    // 名字，所以既有测试与 CLI 行为不变。
+    const scopedEnv = (slot, globalName) => {
+      const nm = provider && provider[slot] ? String(provider[slot]) : "";
+      if (nm) {
+        const own = String(process.env[nm] || "").trim();
+        if (own) return own;
+        if (nm !== globalName) return "";
+      }
+      return String(process.env[globalName] || "").trim();
+    };
+    const envBase = scopedEnv("env_base", "BITBOT_LLM_BASE_URL");
+    const envKey = scopedEnv("env_key", "BITBOT_LLM_API_KEY");
+    const envModel = scopedEnv("env_model", "BITBOT_LLM_MODEL");
 
     const base_url = (
       envBase ||
