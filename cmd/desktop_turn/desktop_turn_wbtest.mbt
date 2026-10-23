@@ -1706,3 +1706,41 @@ test "desktop_turn_link_discipline_gp93" {
     ),
   )
 }
+
+///|
+/// GP-152 §1-J4（P0-3 复发面）：内核约 50 个意图都会以「已计划…（GP-xx/CM-xxxx）
+/// Host …」的句式返回施工说明。GP-148 只把 llm_chat / group_chat 两类改成
+/// plan_only，其它意图仍然会把施工说明当成回复写进 messages（截图里那条
+/// 「已计划打开 Bot 信息面板（CM-0205）…」就是第三个意图）。
+/// 这条测试故意覆盖多个意图，锁住「施工说明一律不进 messages」的通用契约。
+fn construction_note_leak(r : DesktopTurnResult) -> String {
+  let mut leaked = ""
+  for m in r.messages {
+    if m.role == "assistant" && m.text.has_prefix("已计划") {
+      if leaked == "" { leaked = m.text }
+    }
+  }
+  leaked
+}
+
+///|
+test "desktop_turn_construction_notes_never_in_messages" {
+  let cases : Array[(String, String)] = [
+    ("open agent info agent=bot-9bf9bd", "gp152-info"),
+    ("list skills", "gp152-skills"),
+    ("webfetch https://example.com", "gp152-webfetch"),
+    ("shell echo hi", "gp152-shell"),
+    ("open settings account", "gp152-settings"),
+    ("notify settings agent-bit off", "gp152-notify"),
+    ("ListMachines", "gp152-machines"),
+  ]
+  for (text, tid) in cases {
+    let r = run_desktop_turn(text, turn_id=tid)
+    if !r.ok { continue }
+    assert_eq(construction_note_leak(r), "")
+    // 施工说明仍然可以从 plan 字段读到（CLI/调试不丢信息）。
+    if r.plan.has_prefix("已计划") {
+      assert_true(r.plan.length() > 0)
+    }
+  }
+}

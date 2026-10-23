@@ -1225,7 +1225,7 @@ ipcMain.handle("bitbot:rooms:list", async () => {
  * DEBUG_LINE_RE, plus paths/protocol keys). Token-shaped text is redacted with
  * the very rule set the composer and the kernel use. */
 const ROOM_DEBUG_RE =
-  /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|Host FFI|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|entry=|account=|masked=|token_refused|needs_host_ffi|"kind"\s*:\s*"|__bb|data\/(desktop|llm|workspace)\/|\/Users\/[^\s]+)/;
+  /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|Host FFI|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|entry=|account=|masked=|token_refused|needs_host_ffi|"kind"\s*:\s*"|__bb|data\/(desktop|llm|workspace)\/|\/Users\/[^\s]+)|^已计划[^\n]*(Host |GP-|CM-|BITBOT_)/;
 
 /**
  * GP-148 §1-J4（P0-3）：内核的「已计划…」施工说明和环境变量名属于 Host 内部
@@ -1235,9 +1235,14 @@ const ROOM_DEBUG_RE =
  *     result.debug_messages —— 不删、不改写上已有历史（§0），只是不新增；
  *   - 显示：渲染层把这种行标 debug-only（Alt+D 仍可见）。
  * 只匹配已知形状，用户/模型正常发言不会被吞。
+ * GP-152：内核 ~50 个意图都用「已计划…（GP-xx/CM-xxxx）。Host …」句式，逐个
+ * 列会漏（截图里漏的是 CM-0205 那条）。这里改成按句式匹配：assistant 行必须以
+ * 「已计划」开头，且带 Host 内部标记（Host 句子 / GP- / CM- / 环境变量名），
+ * 与内核 is_construction_note 保持同一口径 —— 内核已经不产出这种行，这里只是
+ * 兜住历史版本与 Host 侧的残余。
  */
 const PRODUCT_DEBUG_RE =
-  /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|token_refused|needs_host_ffi|__bb)/;
+  /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|token_refused|needs_host_ffi|__bb)|^已计划[^\n]*(Host |GP-|CM-|BITBOT_)/;
 
 function roomSafeText(raw) {
   let s = String(raw == null ? "" : raw);

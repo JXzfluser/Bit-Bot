@@ -3130,8 +3130,11 @@
     // 答复写进 sessions.json。修好后新回合不再产生这种行（plan_only），但已经存
     // 在的历史行不能删（§0：不改写用户数据）。所以这里只把它们标成 debug-only：
     // 按形状精确匹配，用户自己打出「我已经计划好了」不会被误伤。
+    // GP-152：施工说明是 ~50 个意图共用的句式（「已计划…（GP-xx/CM-xxxx）。Host
+    // …」），逐条列举会漏（截图里漏的是 CM-0205）。改成按行首 + Host 内部标记
+    // 匹配，与 main.js 的 PRODUCT_DEBUG_RE、内核 is_construction_note 同口径。
     const DEBUG_HINT_RE =
-      /(已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|Host 需经渠道 FFI 发送)/;
+      /(已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|Host 需经渠道 FFI 发送)|^已计划[^\n]*(Host |GP-|CM-|BITBOT_)/m;
 
     // Kernel replies are language-neutral English prose (protocol-level). The
     // renderer localizes the known reply shapes so the transcript never mixes

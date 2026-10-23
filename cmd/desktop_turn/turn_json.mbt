@@ -1270,6 +1270,21 @@ fn fail_turn(
 }
 
 ///|
+/// GP-152 §1-J4（P0-3 通用面）：内核约 50 个意图用「已计划…（GP-xx/CM-xxxx）。
+/// Host …」句式返回施工说明。GP-148 只在 llm_chat / group_chat 两处显式置
+/// plan_only，其余意图仍然会把施工说明当回复写进 messages。这里给出按句式
+/// 的通用判定：必须以「已计划」开头，并且带 Host 内部标记（Host 句子 /
+/// GP-CM 编号 / 环境变量名）。判定刻意保守，模型或用户正常发言里出现
+/// 「我已经计划好了」不会被吞。
+fn is_construction_note(text : String) -> Bool {
+  if !text.has_prefix("已计划") {
+    return false
+  }
+  text.contains("Host ") || text.contains("GP-") || text.contains("CM-") ||
+    text.contains("BITBOT_")
+}
+
+///|
 fn deliver_ok(
   user_text : String,
   turn_id : String,
@@ -1296,15 +1311,22 @@ fn deliver_ok(
     Ok(working) => {
       let ended = working.end_turn()
       let msgs : Array[DesktopMessage] = [{ role: "user", text: user_text, }]
+      // GP-152：施工说明统一挪进 plan，产品可见区（messages）只留真实回复。
+      let mut plan_text = if plan_only {
+        reply
+      } else {
+        ""
+      }
       for env in ended.outbound {
         for part in env.parts {
           match part_text(part) {
             // GP-148：plan_only 时这句「待执行」只写进 result.plan，不进 messages。
+            // GP-152：其它意图的施工说明同样只进 plan。
             // ack 行保持原样 —— 它已经有既有的内核合同测试
             // （desktop_turn_ack_and_json_shape），而且渲染层早就把它当调试行。
             Some(t) =>
-              if plan_only && t == reply {
-                ()
+              if (plan_only && t == reply) || is_construction_note(t) {
+                if plan_text == "" { plan_text = t }
               } else {
                 msgs.push({ role: "assistant", text: t, })
               }
@@ -1330,11 +1352,7 @@ fn deliver_ok(
         machine_kind: ctx.machine_kind,
         channel: ctx.channel,
         reply_to: ctx.reply_to,
-        plan: if plan_only {
-          reply
-        } else {
-          ""
-        },
+        plan: plan_text,
         error: None,
       }
     }
