@@ -1488,6 +1488,113 @@ ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
   }
 });
 
+/* GP-154「定时任务在群内部」— 群资料面板的定时任务读写口。
+ * 两个设计约束：
+ *  1) 写侧不新造调度语义。添加按钮只是把「每天9点…」这类自然语言交给内核，
+ *     由内核产出 routine_schedule 效果，再走 executeHostEffects —— 与聊天里
+ *     说一句话建的定时任务是同一条路，排程/5 分钟下限/诚实拒绝全都共用。
+ *  2) room_id 是可选新字段，只加在 Host 侧的 routine 行上；老行不动，
+ *     内核的 effect 三元组（id|cron|prompt）与 IPC 既有契约都不改。 */
+ipcMain.handle("bitbot:routines:list", async (_e, payload) => {
+  const roomId = String((payload && payload.roomId) || "");
+  try {
+    return ffi.listRoomRoutines(roomId);
+  } catch (err) {
+    return {
+      ok: false,
+      error: String((err && err.message) || err),
+      room_id: roomId,
+      routines: [],
+    };
+  }
+});
+
+ipcMain.handle("bitbot:routines:op", async (_e, payload) => {
+  const text = String((payload && payload.text) || "").trim();
+  const roomId = String((payload && payload.roomId) || "");
+  if (!text) return { ok: false, error: "empty_request", reply: "" };
+  if (!roomId) return { ok: false, error: "room_required", reply: "" };
+  const startedAt = Date.now();
+  // 先记住这个群现在有哪些定时任务：回执之后要用「真落盘了吗」来判，
+  // 而不是照抄内核那句乐观回执（GP-153 的拒绝路径就长在这里）。
+  let baseline = null;
+  try {
+    const pre = ffi.listRoomRoutines(roomId);
+    baseline = new Map(
+      ((pre && pre.routines) || []).map((r) => [String(r.id || ""), String(r.updated_at || "")]),
+    );
+  } catch (_) {
+    baseline = null;
+  }
+  let turn;
+  try {
+    turn = await runner.runTurn(text, {
+      botId: String((payload && payload.botId) || ""),
+      sessionId: String((payload && payload.sessionId) || "room-" + roomId),
+      roomId,
+    });
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err), reply: "" };
+  }
+  const msgs = (turn && Array.isArray(turn.messages)) ? turn.messages : [];
+  // 施工说明与环境变量名不进面板：与落库/渲染同一形状规则（GP-148）。
+  const assistantText = msgs
+    .filter((m) => m && m.role === "assistant" && !PRODUCT_DEBUG_RE.test(String(m.text || "")))
+    .map((m) => String(m.text));
+  const failed = turn && turn.ok === false;
+  // 没建成时不能回一句「已建定时任务」——内核的回执是乐观文案，Host 被
+  // GP-138/GP-153 拒绝时行根本不存在。真值只认落盘：新增行，或已有行的
+  // updated_at 被这次写入推前了。
+  let stored = null;
+  try {
+    const listed = ffi.listRoomRoutines(roomId);
+    const rowsNow = (listed && listed.routines) || [];
+    if (baseline) {
+      stored =
+        rowsNow.find((r) => {
+          const key = String(r && r.id || "");
+          if (!baseline.has(key)) return true;
+          return String((r && r.updated_at) || "") !== String(baseline.get(key) || "");
+        }) || null;
+    }
+    // 读不到基线时不能用「有行」当证据 —— 那些行可能本来就在。
+  } catch (_) {
+    stored = null;
+  }
+  // 被拒时把 Host 自己写下的 refuse 快照原因带回去，渲染层据此说人话。
+  let refuseError = "";
+  if (!stored && !failed) {
+    try {
+      const dir = path.join(REPO_ROOT, "data", "routines");
+      const recent = fs
+        .readdirSync(dir)
+        .filter((f) => /^refuse-.*\.json$/.test(f))
+        .map((f) => ({ f, m: fs.statSync(path.join(dir, f)).mtimeMs }))
+        .sort((a, b) => b.m - a.m)[0];
+      if (recent && recent.m >= startedAt) {
+        const j = JSON.parse(fs.readFileSync(path.join(dir, recent.f), "utf8"));
+        refuseError = String((j && j.error) || "");
+      }
+    } catch (_) {
+      /* 读不到 refuse 快照就只报 not_stored，不猜原因 */
+    }
+  }
+  const reply = failed || !stored ? "" : assistantText.join("\n");
+  broadcast("bitbot:routines-changed", { ok: true, room_id: roomId });
+  return {
+    ok: Boolean(stored),
+    scheduled: Boolean(stored),
+    reply,
+    routine: stored || null,
+    room_id: roomId,
+    error: failed
+      ? String((turn && turn.error) || "turn_failed")
+      : stored
+        ? null
+        : refuseError || "not_stored",
+  };
+});
+
 ipcMain.handle("bitbot:computer:state", async () => {
   try {
     return { ok: true, computer: surface.loadComputer() };

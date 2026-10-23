@@ -142,6 +142,25 @@ contextBridge.exposeInMainWorld("bitbot", {
       return () => ipcRenderer.removeListener("bitbot:rooms-changed", handler);
     },
   },
+  // GP-154「定时任务在群内部」: the group-info panel reads and writes the
+  // routines owned by one room. Write side goes through the same kernel turn a
+  // chat message uses, so scheduling rules (5-minute floor, honest refusal)
+  // are not duplicated here.
+  routines: {
+    list: (payload) => ipcRenderer.invoke("bitbot:routines:list", payload || {}),
+    op: (payload) => ipcRenderer.invoke("bitbot:routines:op", payload || {}),
+    onChanged: (cb) => {
+      const handler = (_e, ev) => {
+        try {
+          cb(ev);
+        } catch (_) {
+          /* ignore */
+        }
+      };
+      ipcRenderer.on("bitbot:routines-changed", handler);
+      return () => ipcRenderer.removeListener("bitbot:routines-changed", handler);
+    },
+  },
   usage: {
     week: () => ipcRenderer.invoke("bitbot:usage:week"),
   },

@@ -249,6 +249,9 @@ function createTurnRunner(repoRoot, opts = {}) {
         // GP-148 §1-J3：群上下文是 Host 侧事实（rooms.json + bots.json + 本轮路由），
         // 内核不参与拼装，只负责把这个对象原样转交给 llm_chat 效果。DM 不传 → null。
         roomContext: ctx.roomContext || null,
+        // GP-154「定时任务在群内部」：回合来自哪个群就归给哪个群（可选，
+        // DM 不传 → 空串，效果与改之前完全一致）。
+        roomId: String(ctx.roomId || ""),
         replyTo: (replyQuote && replyQuote.message_id) || "",
         replyQuote:
           (replyQuote && replyQuote.resolved && replyQuote.text) || "",

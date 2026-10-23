@@ -8387,6 +8387,12 @@ function createHostFfi(repoRoot) {
       updated_at: new Date().toISOString(),
     };
     if (partial.next_due != null) next.next_due = String(partial.next_due);
+    // GP-154: optional group ownership (`room_id`). Absent for every routine
+    // created before the group-info panel existed, and stays absent when the
+    // caller passes no room — the row is not rewritten.
+    if (partial.room_id != null && String(partial.room_id) !== "") {
+      next.room_id = String(partial.room_id);
+    }
     if (partial.last_fired_at != null) {
       next.last_fired_at = String(partial.last_fired_at);
     }
@@ -8394,6 +8400,52 @@ function createHostFfi(repoRoot) {
     else rows.push(next);
     saveRoutines(rows);
     return next;
+  }
+
+  /** GP-154: 「10月24日 周六 09:00」 in the Bot timezone (Intl only). */
+  function wallClockLabel(iso, tz) {
+    try {
+      const fmt = new Intl.DateTimeFormat("zh-CN", {
+        timeZone: tz,
+        month: "numeric",
+        day: "numeric",
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      return fmt.format(new Date(iso));
+    } catch (_) {
+      return String(iso);
+    }
+  }
+
+  /**
+   * GP-154「定时任务在群内部」— the group-info panel needs the routines that
+   * belong to one group. Read-only: rows without `room_id` (everything created
+   * before this panel, plus DM-created routines) simply do not show up.
+   * `next_due_label` is computed in the Bot timezone so 「每天 09:00」 reads the
+   * way the schedule actually fires, not the way UTC would suggest.
+   */
+  function listRoomRoutines(roomId) {
+    const want = String(roomId || "");
+    if (!want) return { ok: true, room_id: want, routines: [], timezone: routineTimezone() };
+    const tz = routineTimezone();
+    const routines = loadRoutines()
+      .filter((r) => r && String(r.room_id || "") === want)
+      .map((r) => ({
+        id: r.id,
+        cron: r.cron,
+        prompt: r.prompt || "",
+        enabled: r.enabled !== false,
+        lifecycle: r.lifecycle || "active",
+        next_due: r.next_due || null,
+        updated_at: r.updated_at || null,
+        last_fired_at: r.last_fired_at || null,
+        schedule_error: r.schedule_error || null,
+        next_due_label: r.next_due ? wallClockLabel(r.next_due, tz) : null,
+      }));
+    return { ok: true, room_id: want, routines, timezone: tz };
   }
 
   function expandMcpFileArgs(value, meta) {
@@ -14627,8 +14679,11 @@ function createHostFfi(repoRoot) {
     return minGap < 5 ? { minute_gap: minGap } : null;
   }
 
-  function executeRoutineEffect(kind, command) {
+  function executeRoutineEffect(kind, command, effectOpts) {
     const id = String(command || "").split("|")[0];
+    // Optional room association (group-info panel 「定时任务」). Empty = the
+    // routine is not owned by any group; nothing else about the row changes.
+    const roomId = String((effectOpts && effectOpts.roomId) || "");
     if (kind === "routine_schedule") {
       const parts = String(command || "").split("|");
       const parsed = nextDueFromCron(parts[1] || "@daily");
@@ -14710,6 +14765,7 @@ function createHostFfi(repoRoot) {
         enabled: true,
         lifecycle: "active",
         next_due: nextDue,
+        room_id: roomId,
       });
       const atSched = new Date().toISOString();
       const dir = path.join(REPO_ROOT, "data", "routines");
@@ -14764,6 +14820,8 @@ function createHostFfi(repoRoot) {
         cron: row.cron,
         prompt: row.prompt || "",
         next_due: row.next_due || nextDue,
+        room_id: row.room_id || "",
+        timezone: parsed.tz || routineTimezone(),
         due_now: dueNow,
         lifecycle: row.lifecycle || "active",
         enabled: row.enabled !== false,
@@ -23807,7 +23865,11 @@ function createHostFfi(repoRoot) {
         });
         continue;
       }
-      const routineRes = executeRoutineEffect(kind, cmd);
+      // 「定时任务在群内部」：这一回合来自哪个群，就跟着哪个群。可选字段，
+      // 不传（DM / 无群）时行为与原来完全一致。
+      const routineRes = executeRoutineEffect(kind, cmd, {
+        roomId: (ffiOpts && ffiOpts.roomId) || "",
+      });
       if (routineRes) {
         results.push(routineRes);
         continue;
@@ -24758,6 +24820,7 @@ function createHostFfi(repoRoot) {
     memoryStorePath: SESSION_MEMORY_PATH,
     botMemorySlot,
     executeHostEffects,
+    listRoomRoutines,
     connectorsStatusReport,
     appendHostDeliveryJournal,
     setLlmStreamHandler,

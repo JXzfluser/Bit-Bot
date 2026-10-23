@@ -2409,11 +2409,11 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "Routine created: " +
+            "已建定时任务 " +
             id +
-            " cron=" +
+            "（排程 " +
             cron +
-            ". Host registers schedule.",
+            "）；触发时刻按 Bot 时区计算，落盘后可在群资料 → 定时任务里查看。",
             intent,
             ctx~,
             effects=[effect],

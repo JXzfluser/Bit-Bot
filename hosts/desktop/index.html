@@ -37,6 +37,7 @@
   body[data-panel="bot"],
   body[data-panel="conv"],
   body[data-panel="computer"],
+  body[data-panel="room"],
   body[data-panel="tools"] { --panel-w: var(--rail-w); }
   /* All four rail surfaces share grid-area "rail"; exactly one is displayed.
      #machines (tools) joins the same column — the old 280px 4th column is
@@ -44,6 +45,7 @@
   #bot-rail,
   #conv-rail,
   #computer-rail,
+  #room-rail,
   #machines {
     grid-area: rail;
     border-left: 1px solid var(--line);
@@ -53,6 +55,7 @@
   body[data-panel="none"] #bot-rail,
   body[data-panel="none"] #conv-rail,
   body[data-panel="none"] #computer-rail,
+  body[data-panel="none"] #room-rail,
   body[data-panel="none"] #machines { border-left: 0; }
   #bot-rail {
     padding: var(--space-6);
@@ -79,6 +82,45 @@
     overflow: auto;
   }
   body[data-panel="computer"] #computer-rail { display: block; }
+  /* GP-154「定时任务在群内部」: 群资料 rail 与其余 rail 共用同一列、同一状态源。 */
+  #room-rail {
+    display: none;
+    padding: var(--space-6);
+    overflow: auto;
+  }
+  body[data-panel="room"] #room-rail { display: block; }
+  .ri-limit {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    margin: 0 0 var(--space-4);
+  }
+  .ri-empty {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    padding: var(--space-3) 0;
+  }
+  .ri-item {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    margin-bottom: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .ri-item-off { opacity: 0.55; }
+  .ri-prompt { font-size: var(--text-sm); word-break: break-word; }
+  .ri-meta { color: var(--muted); font-size: var(--text-sm); }
+  .ri-err { color: var(--warn); font-size: var(--text-sm); word-break: break-word; }
+  .ri-row { display: flex; align-items: center; gap: var(--space-2); }
+  .ri-form { display: none; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+  body[data-room-form="open"] .ri-form { display: flex; }
+  .ri-form textarea { min-height: 64px; resize: vertical; font-family: inherit; }
+  .ri-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+  .ri-member { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+  .ri-member:last-child { border-bottom: 0; }
+  .ri-name { font-size: var(--text-sm); word-break: break-word; }
+  .ri-job { color: var(--muted); font-size: var(--text-sm); text-align: right; word-break: break-word; }
   .cv-title { font-weight: 700; font-size: var(--text-title); word-break: break-word; }
   .cv-kv {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
@@ -2505,6 +2547,32 @@
     </div>
     <div style="padding:0 12px 14px;color:var(--muted);font-size:11px" data-i18n="crLeaveNote">离开预览不影响 Bot 后台任务。</div>
   </aside>
+  <!-- GP-154 群资料面板（对标 Grok 群信息）：成员 → 人数上限说明 → 定时任务。
+       成员与定时任务都只渲染真实 store 数据；读不到就说读不到，不填空壳。 -->
+  <aside id="room-rail" aria-label="群资料">
+    <div class="ri-head">
+      <div class="cv-title" id="ri-title"></div>
+      <button type="button" id="ri-close" class="gp-chip" data-i18n="gpClose">关闭</button>
+    </div>
+    <div class="panel-title" data-i18n="riMembers">成员</div>
+    <div id="ri-member-list"></div>
+    <div class="ri-limit" id="ri-limit-note"></div>
+    <div class="panel-title" data-i18n="riRoutines">定时任务</div>
+    <div id="ri-routine-list" aria-live="polite"></div>
+    <div class="gp-row">
+      <button type="button" id="ri-routine-add" class="gp-chip" data-i18n="riAdd">＋ 添加定时任务</button>
+    </div>
+    <div class="ri-form" id="ri-form">
+      <textarea id="ri-text" class="bb-control" rows="3" data-i18n-ph="riFormPh" placeholder="例如：每天早上9点把审核通过的稿子发到我的邮箱"></textarea>
+      <div class="ri-meta" data-i18n="riFormHint">按群内 Bot 的说法写时间和要做的事，确认后就出现在上面的列表里。</div>
+      <div id="ri-form-msg" class="ri-err" role="status"></div>
+      <div class="ri-row">
+        <button type="button" id="ri-form-save" class="bb-btn bb-btn-primary" data-i18n="riFormSave">添加</button>
+        <button type="button" id="ri-form-cancel" class="bb-btn" data-i18n="riFormCancel">取消</button>
+      </div>
+    </div>
+    <div class="ri-meta" id="ri-tz-note"></div>
+  </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
     <!-- M29 (§2.4): sidebar group row → real group chat in the same #log.
@@ -2514,6 +2582,7 @@
       <span id="room-banner-title" style="font-weight:700;font-size:var(--text-md)"></span>
       <span id="room-banner-meta" class="bb-note"></span>
       <span style="flex:1"></span>
+      <button type="button" id="room-banner-info" class="bb-btn" data-i18n="roomInfo">群资料</button>
       <button type="button" id="room-banner-exit" class="bb-btn" data-i18n="roomExit">退出群聊</button>
     </div>
     <div id="attachment-strip" class="attach-strip" aria-label="待发送附件"></div>
@@ -5510,7 +5579,181 @@
       // 真实、持久的群 transcript（rooms.json）——空群如实说「还没有消息」，不造历史。
       await loadRoomBotNames();
       await renderRoomTranscript(rm.id);
+      if (panelValue() === "room") refreshRoomRail().catch(() => {});
     }
+    /* ---- GP-154「定时任务在群内部」（对标 Grok 群资料面板）----
+       成员 → 「群聊最多可有 6 位成员。」→ 定时任务 → 「暂无定时任务」+
+       「＋ 添加定时任务」。三块内容都来自真实 store：
+         · 成员 = rooms.json 的 members + bots.json 的 name/job；
+         · 定时任务 = data/routines/host-routines.json 里 room_id 命中本群的行；
+       读不到时明说读不到，绝不渲染空壳冒充「没有」。 */
+    const ROOM_MEMBER_MAX = 6;
+    let roomRailId = "";
+    let roomRailRoutines = null; // null = 还没读到；[] = 真的没有
+    function roomRailOpen() { return panelValue() === "room"; }
+    async function openRoomRail() {
+      // 群资料面板只跟着当前打开的群；没有群就没有可管理的东西（面板本身
+      // 也只在群聊 banner 出现时才有入口），这里静默返回而不是弹一句废话。
+      if (!composerRoom || !composerRoom.id) return;
+      roomRailId = composerRoom.id;
+      setPanel("room");
+      await refreshRoomRail();
+    }
+    function closeRoomRail() {
+      roomRailId = "";
+      setRoomFormOpen(false);
+      if (panelValue() === "room") setPanel("none");
+    }
+    function setRoomFormOpen(open) {
+      document.body.dataset.roomForm = open ? "open" : "closed";
+      const msg = document.getElementById("ri-form-msg");
+      if (msg && open) msg.textContent = "";
+    }
+    function routineFailCopy(err) {
+      const code = String(err || "");
+      if (code.indexOf("interval_too_short") >= 0) return wavegT("riIntervalShort");
+      // Host 的拒绝话术形如 `cron not schedulable: cron_unsupported (99 99 …)`，
+      // 只把里面的排程原文交给文案，不把协议串整体端给用户。
+      const m = code.match(/\(([^\n]*)\)\s*$/);
+      const cron = m ? m[1] : code;
+      if (code.indexOf("cron_unreachable") >= 0) return t("riCronUnreachable", { c: cron });
+      if (code.indexOf("cron_unsupported") >= 0) return t("riCronError", { c: cron });
+      return roomOpFailReason(code);
+    }
+    async function refreshRoomRail() {
+      if (!roomRailId) return;
+      await renderRoomRailMembers();
+      await renderRoomRailRoutines();
+    }
+    async function renderRoomRailMembers() {
+      const host = document.getElementById("ri-member-list");
+      const limit = document.getElementById("ri-limit-note");
+      const title = document.getElementById("ri-title");
+      if (!host) return;
+      let room = null;
+      try {
+        const view = await window.bitbot.rooms.list();
+        if (!view || view.ok === false) throw new Error((view && view.error) || "rooms_store_unreadable");
+        const list = (view.rooms && view.rooms.rooms) || view.rooms || [];
+        room = (Array.isArray(list) ? list : []).find((x) => x && x.id === roomRailId) || null;
+      } catch (err) {
+        host.textContent = wavegT("riMembersUnknown");
+        if (limit) limit.textContent = "";
+        return;
+      }
+      if (!room) {
+        host.textContent = wavegT("riMembersUnknown");
+        if (limit) limit.textContent = "";
+        return;
+      }
+      if (title) title.textContent = room.title || room.id;
+      const members = Array.isArray(room.members) ? room.members : [];
+      host.textContent = "";
+      for (const id of members) {
+        const row = document.createElement("div");
+        row.className = "ri-member";
+        const nm = document.createElement("div");
+        nm.className = "ri-name";
+        nm.textContent = roomBotNames[id] || id;
+        const job = document.createElement("div");
+        job.className = "ri-job";
+        job.textContent = "—";
+        row.appendChild(nm);
+        row.appendChild(job);
+        host.appendChild(row);
+        try {
+          const d = await window.bitbot.bots.detail(id);
+          const b = (d && (d.bot || d)) || {};
+          job.textContent = String(b.job || b.description || "");
+        } catch (_) {
+          job.textContent = "";
+        }
+      }
+      if (limit) limit.textContent = t("riLimitNote", { n: ROOM_MEMBER_MAX });
+    }
+    async function renderRoomRailRoutines() {
+      const host = document.getElementById("ri-routine-list");
+      const tzNote = document.getElementById("ri-tz-note");
+      if (!host) return;
+      let res = null;
+      try {
+        res = await window.bitbot.routines.list({ roomId: roomRailId });
+      } catch (_) {
+        res = null;
+      }
+      if (!res || res.ok === false) {
+        roomRailRoutines = null;
+        host.textContent = wavegT("riRoutinesUnreadable");
+        if (tzNote) tzNote.textContent = "";
+        return;
+      }
+      const rows = Array.isArray(res.routines) ? res.routines : [];
+      roomRailRoutines = rows;
+      host.textContent = "";
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "ri-empty";
+        empty.textContent = wavegT("riRoutinesEmpty");
+        host.appendChild(empty);
+      }
+      for (const r of rows) {
+        const item = document.createElement("div");
+        item.className = "ri-item" + (r.enabled === false ? " ri-item-off" : "");
+        const prompt = document.createElement("div");
+        prompt.className = "ri-prompt";
+        prompt.textContent = r.prompt || r.id;
+        item.appendChild(prompt);
+        const meta = document.createElement("div");
+        meta.className = "ri-meta";
+        meta.textContent = r.next_due_label
+          ? t("riNextDue", { t: r.next_due_label })
+          : wavegT("riNever");
+        item.appendChild(meta);
+        if (r.schedule_error) {
+          const err = document.createElement("div");
+          err.className = "ri-err";
+          err.textContent = routineFailCopy(r.schedule_error);
+          item.appendChild(err);
+        }
+        if (r.enabled === false) {
+          const off = document.createElement("div");
+          off.className = "ri-meta";
+          off.textContent = wavegT("riOff");
+          item.appendChild(off);
+        }
+        host.appendChild(item);
+      }
+      if (tzNote && res.timezone) tzNote.textContent = t("riTzNote", { tz: res.timezone });
+    }
+    async function submitRoomRoutine(text) {
+      const msg = document.getElementById("ri-form-msg");
+      if (!roomRailId) {
+        if (msg) msg.textContent = wavegT("riNoRoom");
+        return;
+      }
+      if (msg) msg.textContent = wavegT("riFormWorking");
+      let res = null;
+      try {
+        res = await window.bitbot.routines.op({
+          roomId: roomRailId,
+          text: String(text || ""),
+          botId: composerRoom && composerRoom.botId ? composerRoom.botId : "",
+        });
+      } catch (err) {
+        res = { ok: false, error: String((err && err.message) || err) };
+      }
+      if (res && res.ok) {
+        setRoomFormOpen(false);
+        const ta = document.getElementById("ri-text");
+        if (ta) ta.value = "";
+        if (msg) msg.textContent = "";
+        await renderRoomRailRoutines();
+        return;
+      }
+      if (msg) msg.textContent = t("riFormFailed", { e: routineFailCopy(res && res.error) });
+      await renderRoomRailRoutines();
+    }
+
     // 编排面的一次发送只出一张「结果说明」卡：拒绝 / 幂等命中 / IPC 抛错。
     // 它必须在整表重绘之后落位——重绘会清空 .room-thread，先画再清空等于
     // 「错误一闪就没」，用户只会看到自己的消息像没被处理。
@@ -5565,6 +5808,11 @@
       roomThread = null;
       const banner = document.getElementById("room-banner");
       if (banner) banner.style.display = "none";
+      // 群没了，群资料面板也就没有内容可显示了：一起关掉，并复位表单，
+      // 免得下次开别的群时还残留上一群的输入。
+      closeRoomRail();
+      const ta = document.getElementById("ri-text");
+      if (ta) ta.value = "";
       const input2 = document.querySelector("#composer #text");
       if (input2) input2.placeholder = COMPOSER_PLACEHOLDER_DEFAULT;
     }
@@ -9270,11 +9518,11 @@
     // NOT the legacy CM-0204/CM-1907 agent directory (those don't touch bots.json).
     /* Layout contract v1 §2 — single panel state source.
        setPanel(next) is the ONLY writer of the right-rail state:
-       body[data-panel] = none | bot | conv | computer | tools.
+       body[data-panel] = none | bot | conv | computer | room | tools.
        The legacy *-open body classes are mirrored here (and ONLY here) so the
        existing e2e GP-* gates keep passing during migration; the CSS no longer
        reads them. setSidebarCollapsed owns data-sidebar the same way. */
-    const PANEL_LEGACY_CLASS = { none: "", bot: "bot-open", conv: "conv-open", computer: "computer-open", tools: "tools-open" };
+    const PANEL_LEGACY_CLASS = { none: "", bot: "bot-open", conv: "conv-open", computer: "computer-open", room: "room-open", tools: "tools-open" };
     /* Debug-surface governance (layout-contract §6): dev-mode is persisted
        via settings.dev_mode or requested at launch (--bitbot-devmode). The
        badge in the header makes the mode unmistakable. */
@@ -10806,6 +11054,7 @@
         roomListReadFail: "群组列表暂时读不到（存储不可读）—— 这不是没有群，恢复后列表仍在。",
         roomMembers: "位成员",
         roomExit: "退出群聊",
+        roomInfo: "群资料",
         roomRouteHint: "@Name 定向 · @everyone 全体 · 无 @ 由 Bot 自行决定",
         roomComposerPh: "在群里发消息…（@Name 定向）",
         roomTranscriptEmpty: "这是群聊的开始——还没有任何消息。",
@@ -10964,6 +11213,28 @@
         gpRefreshFrame: "刷新帧",
         gpRecover: "恢复云端电脑",
         gpRoomNew: "新建群组（选 2–6 个 Bot，名称可改）",
+        riMembers: "成员",
+        riLimitNote: "群聊最多可有 {n} 位成员。",
+        riRoutines: "定时任务",
+        riRoutinesEmpty: "暂无定时任务",
+        riRoutinesUnreadable: "读不到定时任务（存储不可用），没有当成「没有」。",
+        riAdd: "＋ 添加定时任务",
+        riFormPh: "例如：每天早上9点把审核通过的稿子发到我的邮箱",
+        riFormHint: "按群内 Bot 的说法写时间和要做的事，确认后就出现在上面的列表里。",
+        riFormSave: "添加",
+        riFormCancel: "取消",
+        riFormWorking: "正在安排…",
+        riFormFailed: "没建成：{e}",
+        riFormEmpty: "先写下要定时做的事，再点添加。",
+        riNextDue: "下次 {t}",
+        riNever: "还没排上",
+        riOff: "已暂停",
+        riTzNote: "触发时刻按 Bot 时区 {tz} 计算。",
+        riCronError: "排程无法解析：{c}",
+        riCronUnreachable: "这个排程在未来没有触发时刻：{c}",
+        riIntervalShort: "间隔至少 5 分钟，未写入调度。",
+        riNoRoom: "先打开一个群聊再管理定时任务。",
+        riMembersUnknown: "成员名单读不到",
         gpRoomPh: "群名（可留空自动命名）",
         gpRoomCreate: "创建群组",
         gpRoomMsg: "群内消息（@BotName / @everyone / 无 @ 自行决定）",
@@ -11331,6 +11602,7 @@
         roomListReadFail: "群組清單暫時讀不到（儲存不可讀）—— 這不是沒有群，恢復後清單仍在。",
         roomMembers: "位成員",
         roomExit: "退出群聊",
+        roomInfo: "群資料",
         roomRouteHint: "@Name 定向 · @everyone 全體 · 無 @ 由 Bot 自行決定",
         roomComposerPh: "在群裡發消息…（@Name 定向）",
         roomTranscriptEmpty: "這是群聊的開始——還沒有任何消息。",
@@ -11489,6 +11761,28 @@
         gpRefreshFrame: "重新整理影格",
         gpRecover: "復原雲端電腦",
         gpRoomNew: "新建立群組（選 2–6 個 Bot，名稱可改）",
+        riMembers: "成員",
+        riLimitNote: "群聊最多可有 {n} 位成員。",
+        riRoutines: "定時任務",
+        riRoutinesEmpty: "暫無定時任務",
+        riRoutinesUnreadable: "讀不到定時任務（儲存不可用），沒有當成「沒有」。",
+        riAdd: "＋ 新增定時任務",
+        riFormPh: "例如：每天早上9點把審核通過的稿子發到我的信箱",
+        riFormHint: "按群內 Bot 的說法寫時間和要做的事，確認後就出現在上面的清單裡。",
+        riFormSave: "新增",
+        riFormCancel: "取消",
+        riFormWorking: "正在安排…",
+        riFormFailed: "沒建成：{e}",
+        riFormEmpty: "先寫下要定時做的事，再點新增。",
+        riNextDue: "下次 {t}",
+        riNever: "還沒排上",
+        riOff: "已暫停",
+        riTzNote: "觸發時刻按 Bot 時區 {tz} 計算。",
+        riCronError: "排程無法解析：{c}",
+        riCronUnreachable: "這個排程在未來沒有觸發時刻：{c}",
+        riIntervalShort: "間隔至少 5 分鐘，未寫入排程。",
+        riNoRoom: "先打開一個群聊再管理定時任務。",
+        riMembersUnknown: "成員名單讀不到",
         gpRoomPh: "群名（可留空自動命名）",
         gpRoomCreate: "建立群組",
         gpRoomMsg: "群內訊息（@BotName / @everyone / 無 @ 自行決定）",
@@ -11856,6 +12150,7 @@
         roomListReadFail: "Group list is unreadable right now (store unavailable) — these groups are not gone; the list returns when it recovers.",
         roomMembers: "members",
         roomExit: "Leave group",
+        roomInfo: "Group info",
         roomRouteHint: "@Name directed · @everyone all · no @ = bots decide",
         roomComposerPh: "Message the group… (@Name to direct)",
         roomTranscriptEmpty: "This is the start of the group — no messages yet.",
@@ -12014,6 +12309,28 @@
         gpRefreshFrame: "Refresh frame",
         gpRecover: "Recover Computer",
         gpRoomNew: "New group (pick 2–6 bots, name editable)",
+        riMembers: "Members",
+        riLimitNote: "Group chats can have up to {n} members.",
+        riRoutines: "Scheduled tasks",
+        riRoutinesEmpty: "No scheduled tasks yet",
+        riRoutinesUnreadable: "Scheduled tasks could not be read (store unavailable) — not treated as empty.",
+        riAdd: "+ Add scheduled task",
+        riFormPh: "e.g. Every day at 9am email the approved drafts to me",
+        riFormHint: "Write the time and the job in plain words; it shows up in the list above once added.",
+        riFormSave: "Add",
+        riFormCancel: "Cancel",
+        riFormWorking: "Scheduling…",
+        riFormFailed: "Not created: {e}",
+        riFormEmpty: "Write what should happen on a schedule first, then press Add.",
+        riNextDue: "Next {t}",
+        riNever: "Not scheduled yet",
+        riOff: "Paused",
+        riTzNote: "Fire times use the bot timezone {tz}.",
+        riCronError: "Cron cannot be parsed: {c}",
+        riCronUnreachable: "This schedule never fires in the future: {c}",
+        riIntervalShort: "Intervals must be at least 5 minutes; nothing was stored.",
+        riNoRoom: "Open a group chat first to manage its scheduled tasks.",
+        riMembersUnknown: "Member list could not be read",
         gpRoomPh: "Group name (blank = auto)",
         gpRoomCreate: "Create group",
         gpRoomMsg: "Group message (@BotName / @everyone / no @ = bots decide)",
@@ -12577,6 +12894,34 @@
       // M29 (§2.4): leaving the group chat restores the DM composer.
       const roomExitBtn = document.getElementById("room-banner-exit");
       if (roomExitBtn) roomExitBtn.addEventListener("click", exitRoomChat);
+      // GP-154 群资料面板入口与表单按钮（对标 Grok：群信息里管定时任务）。
+      const roomInfoBtn = document.getElementById("room-banner-info");
+      if (roomInfoBtn) roomInfoBtn.addEventListener("click", () => { openRoomRail(); });
+      const riClose = document.getElementById("ri-close");
+      if (riClose) riClose.addEventListener("click", closeRoomRail);
+      const riAdd = document.getElementById("ri-routine-add");
+      if (riAdd) riAdd.addEventListener("click", () => {
+        setRoomFormOpen(true);
+        const ta = document.getElementById("ri-text");
+        if (ta) ta.focus();
+      });
+      const riCancel = document.getElementById("ri-form-cancel");
+      if (riCancel) riCancel.addEventListener("click", () => {
+        setRoomFormOpen(false);
+        const ta = document.getElementById("ri-text");
+        if (ta) ta.value = "";
+      });
+      const riSave = document.getElementById("ri-form-save");
+      if (riSave) riSave.addEventListener("click", () => {
+        const ta = document.getElementById("ri-text");
+        const v = String((ta && ta.value) || "").trim();
+        if (!v) {
+          const msg = document.getElementById("ri-form-msg");
+          if (msg) msg.textContent = wavegT("riFormEmpty");
+          return;
+        }
+        submitRoomRoutine(v);
+      });
     }
     function gpVisible() {
       const panel = document.getElementById("gp-panel");
