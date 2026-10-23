@@ -316,7 +316,9 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 3px 8px;
-    font-size: var(--text-xs);
+    /* P2: obey the 13px sheet type scale so the legacy
+       `body.grok-ui .bb-sheet button` override no longer needs !important. */
+    font-size: 13px;
     cursor: pointer;
     box-shadow: 0 1px 2px rgba(0,0,0,0.04);
   }
@@ -1720,7 +1722,7 @@
       <div class="bb-sheet" id="settings-sheet">
       <div class="bb-sheet-head">
         <div class="bb-sheet-title" id="settings-title" data-i18n="settings">设置</div>
-        <button type="button" id="settings-close" class="bb-btn" data-i18n="settingsClose">关闭</button>
+        <button type="button" id="settings-close" class="bb-btn bb-close" data-i18n="settingsClose">关闭</button>
       </div>
       <div id="settings-tabs">
         <button type="button" class="settings-tab-btn" data-stab="general" data-i18n="tabGeneral">常规</button>
@@ -1894,7 +1896,7 @@
       <div class="bb-sheet bb-sheet-lg">
         <div class="bb-sheet-head">
           <div class="bb-sheet-title" data-i18n="caTitle">连接应用</div>
-          <button type="button" id="ca-close" class="bb-btn" data-i18n="caClose">关闭</button>
+          <button type="button" id="ca-close" class="bb-btn bb-close" data-i18n="caClose">关闭</button>
         </div>
         <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="caGlobal">插件对本机全局生效，安装后所有 Bot 都可使用。</div>
         <div style="display:flex;gap:8px;margin-top:10px">
@@ -1956,7 +1958,7 @@
       <div class="bb-sheet bb-sheet-md">
         <div class="bb-sheet-head">
           <div id="bf-title" class="bb-sheet-title">编辑资料</div>
-          <button type="button" id="bf-close" class="bb-btn" title="Close">×</button>
+          <button type="button" id="bf-close" class="bb-btn bb-close" title="Close">×</button>
         </div>
         <div style="display:flex;gap:16px;margin-top:14px;align-items:flex-start">
           <div id="bf-avatar-col" style="flex:0 0 96px;text-align:center">
@@ -2010,7 +2012,7 @@
       <div class="bb-sheet bb-sheet-lg">
         <div class="bb-sheet-head">
           <div class="bb-sheet-title" id="model-title" data-i18n="modelTitle">模型</div>
-          <button type="button" id="model-close" class="bb-btn" data-i18n="settingsClose">关闭</button>
+          <button type="button" id="model-close" class="bb-btn bb-close" data-i18n="settingsClose">关闭</button>
         </div>
         <div class="bb-sheet-note" data-i18n="modelHint">选择一个模型供应商，填写密钥后即可设为当前模型。</div>
         <div id="model-status" class="bb-meta" style="margin-top:8px"></div>
@@ -2024,7 +2026,7 @@
       <div class="bb-sheet bb-sheet-lg">
         <div class="bb-sheet-head">
           <div class="bb-sheet-title" data-i18n="mkTitle">模板市场 · Bot 模板</div>
-          <button type="button" id="mk-close" class="bb-btn" data-i18n="settingsClose">关闭</button>
+          <button type="button" id="mk-close" class="bb-btn bb-close" data-i18n="settingsClose">关闭</button>
         </div>
         <div class="bb-sheet-note" data-i18n="mkHint">选择一个模板即可快速创建 Bot。</div>
         <div id="mk-meta" class="bb-meta" style="margin-top:8px"></div>

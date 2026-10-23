@@ -172,18 +172,16 @@ layout-contract §3 已被 `e2e_desktop_layout_target.mjs` 的 **D-L-* 渲染门
 - **几何单一源（§5 裁定落地）**：删除 `body.grok-ui{--sidebar-w:248}`、`--header-h:0` 与 `header{position:fixed;height:40px}` 这三处违反合同的"浮层 header"即兴实现——它们正是 layout-contract §3（header 属网格行、`position:fixed` 仅限 modal/lightbox/toast、区域矩形不重叠）被破坏、以及 `body.grok-ui header` 被写了 4 遍（52/48/flex-52/fixed-40 互相覆盖）的"乱"源头。现 `--sidebar-w`/`--header-h` 各仅在 `:root` 定义一次 = **280 / 56**，`body.grok-ui header` 收敛为 **1 条**。
   - 真实渲染门 `e2e_desktop_layout_target.mjs`：FAIL **41 → 3**（D-L 几何/重叠/主区宽 40 项转绿）。
 - **Round-10 `--g-*` 家族单一源**：`--g-ink/--g-sub/--g-line/--g-soft/--g-card/--g-pill` 改为语义 token（`--text-ink/--text-sub/--ui-border/--ui-fill/--ui-card/--ui-pill`）的别名，三档（浅/暗/force-dark）取值与旧字面量**逐位相等**（行为不变）。
-- **门禁冻结**：新增 `scripts/prove_ui_tokens.js`（LINT ONLY，ratchet 高水位：T-1 `!important`≤409、T-2 原始色值 css141/html28、T-3 行内 font-size≤25、T-4 `[style*=]`补丁≤5、T-5 几何单一源=280/56 且显式拦截 248/0 复发）。当前 **PASS=8 FAIL=0**；收敛后只许下调基线数字。
+- **门禁冻结**：`scripts/prove_ui_tokens.js`（LINT ONLY，ratchet 高水位：T-1 `!important`≤**385**、T-2 原始色值 css141/html28、T-3 行内 font-size≤25、T-4 `[style*=]`补丁≤5、T-5 几何单一源=280/56 且显式拦截 248/0 复发）。当前 **PASS=8 FAIL=0**；收敛后只许下调基线数字。另新增**真渲染计算样式门** `scripts/e2e_modal_computed.mjs`（D-ST）：五个 sheet 的关闭钮/容器/头部分别断言 ghost ×（透明/0 边框/0 字号/6px/24px 字形）、同一颜色、sheet 圆角与尺寸、头右对齐无边框，并逐一实点关闭。**PASS=17 FAIL=0**。
 - **P2 首切片（已落地）**：删除被后置规则 100% 遮蔽的重复 `body.grok-ui header` 块（-2 `!important`，几何零变化，经渲染门复核 header 仍 56）；`!important` 418→**409**。
+- **P2 第二切片（已落地，D-ST 证明等价）**：`#settings-close/#ca-close/#model-close/#mk-close/#bf-close` 五套 per-id 规则合并为一条 `body.grok-ui .bb-sheet .bb-close` 基类（markup 挂 `.bb-close`），删除 20 处 `!important`；`body.grok-ui .bb-sheet button` 的 `font-size` 去掉 `!important`，改为在 `.bc-tpl-btn` 自己的规则里对齐 13px sheet 字阶（原先靠 `!important` 压 11px）。`!important` 出现次数 409→**385**（行数 338→319）。改动前后 `e2e_modal_computed` 快照**逐字段相同**（PASS=17），layout 12/0、boot 124/0、shell-v2 89/0。
 
 **非回归验证（本沙箱，真 Electron+xvfb+Playwright）：**
 - 静态 lint：`prove_m37/m33/m40/m42/m43/m44/m26/m27` 全绿。
-- 渲染门：layout 稳定 FAIL=3，三项均为 **HEAD 既有、非本改动引入**（已在干净 HEAD stash 复核复现同 3 项）：
-  1. **D-D-03**（调试面 dev-mode 揭示）：`grok-ui` 用 `display:none` 过度隐藏 `#agents-lab`/`#tools-toggle-btn`，属"调试面治理"独立项；
-  2. & 3. **msg column 796/1034 > 760**（none / collapsed）：`body.grok-ui #log{max-width:none!important}`（"全宽 feed、非窄居中列"的既存设计）与 layout-contract §3 的 stream≤760 相冲突。非 bug、是设计分歧，需一处显式裁定（收窄贴合同 / 或改合同+门），**未擅自收窄用户 feed**。
-- `e2e_grok_desktop_boot.mjs`：0 FAIL。
-- `e2e_desktop_shell_v2.mjs` S-MODEL 点击超时：`#model-entry` 在**干净 HEAD 同为 0×0**（本沙箱无 MoonBit 内核 → 模型芯片空文案、无尺寸），属环境性/honest-skip 类，**非本次改动引入**。
+- 渲染门：`e2e_desktop_layout_target.mjs` **PASS=12 FAIL=0**。原 D-D-03 已定性为**真实产品缺陷**并修复（`--bitbot-devmode`/`settings.dev_mode` 在产品态曾是 no-op，现仅 dev-mode 显现 badge + 能力入口）；msg 列在 feed 保持全宽的前提下**单条消息**已收在 760 内，D-L 全绿。
+- `e2e_grok_desktop_boot.mjs`：**124/0**；`e2e_desktop_shell_v2.mjs`：**89/0**（S-MODEL 已改走账户弹层 → 设置 → 凭证真实入口，不再依赖无内核环境下的模型芯片尺寸）。
 
 **待办（P2，需逐项渲染验证，勿盲改）：**
-- 把 Round-10 段 148→（现≈141）`!important` 下沉为 §4 基类正常样式，并删 index.html 中被其压制的内联 `style="…font-size/color/…"`；`#ca-close/#model-close/#mk-close/#bf-close/#settings-close` 合并为 `.bb-close`。
+- 把 Round-10 段剩余 `!important` 下沉为 §4 基类正常样式（`!important` 现 385，Round-10 段仍占大头：sheet 内联半径/字重、settings tabs、header/sidebar 的 `!important` 形状），并删 index.html 中被其压制的内联 `style="…font-size/color/…"`。
 - 旧 token 家族（`--bg0/--surface/--page-bg/--muted/--line/--radius-sm`）并入语义 token；`--accent` 蓝/墨漂移归一（此项跨明暗主题、影响面大，必须配 `D-ST-*` computed-style 门后再动）。
 - 建议：修复 D-D-03 需就"dev-mode 应揭示哪些调试面"做一处显式产品决定，再改 CSS，勿顺手放开。

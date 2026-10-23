@@ -1402,44 +1402,24 @@ body.grok-ui #settings-sheet .bb-sheet-head {
   justify-content: flex-end !important;
 }
 body.grok-ui #settings-sheet .bb-sheet-title { display: none !important; }
-body.grok-ui #settings-close {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  font-size: 0 !important;
-  color: var(--g-sub) !important;
-  padding: 6px !important;
+/* P2: ALL sheet close buttons are ONE base-class rule (was 5 per-id rule sets
+   with 20 !important). Registry lives in the markup (.bb-close), so a new sheet
+   inherits the ghost × without another selector. Computed-style gate:
+   scripts/e2e_modal_computed.mjs (D-ST). */
+body.grok-ui .bb-sheet .bb-close {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  font-size: 0;
+  color: var(--g-sub);
+  padding: 6px;
 }
-body.grok-ui #settings-close::before {
-  content: "×" !important;
-  font-size: 24px !important;
-  line-height: 1 !important;
+body.grok-ui .bb-sheet .bb-close::before {
+  content: "×";
+  font-size: 24px;
+  line-height: 1;
 }
-body.grok-ui #settings-close:hover { color: var(--g-ink) !important; }
-/* all sheet close buttons share the × ghost style */
-body.grok-ui #ca-close,
-body.grok-ui #model-close,
-body.grok-ui #mk-close,
-body.grok-ui #bf-close {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  font-size: 0 !important;
-  color: var(--g-sub) !important;
-  padding: 6px !important;
-}
-body.grok-ui #ca-close::before,
-body.grok-ui #model-close::before,
-body.grok-ui #mk-close::before,
-body.grok-ui #bf-close::before {
-  content: "×" !important;
-  font-size: 24px !important;
-  line-height: 1 !important;
-}
-body.grok-ui #ca-close:hover,
-body.grok-ui #model-close:hover,
-body.grok-ui #mk-close:hover,
-body.grok-ui #bf-close:hover { color: var(--g-ink) !important; }
+body.grok-ui .bb-sheet .bb-close:hover { color: var(--g-ink); }
 body.grok-ui #settings-tabs {
   grid-area: nav;
   display: flex !important;
@@ -1579,9 +1559,12 @@ body.grok-ui .ca-chip.active {
   color: var(--g-card) !important;
 }
 
-/* every button inside a sheet: one shape & type scale; inline colors preserved */
+/* every button inside a sheet: one shape & type scale; inline colors preserved.
+   P2: font-size lost its !important — no sheet button carries an inline
+   font-size, so the class rule still wins; only inline radii/weights need the
+   legacy override (a separate, tracked debt). */
 body.grok-ui .bb-sheet button {
-  font-size: 13px !important;
+  font-size: 13px;
   font-weight: 500 !important;
   border-radius: 999px !important;
 }

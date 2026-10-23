@@ -87,6 +87,7 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 > - **GP-139 未做（阻塞）**：断言脚本需真实 `moon run` 的 `routine_tick`；本沙箱无 MoonBit 工具链，不能伪造 PASS。
 
 > **真渲染门修复（target-v2 对齐，已验证）**：e2e 原先直接点击 grok-ui 下**有意隐藏**的入口（header 的电脑/模型、footer 的市场/连接应用/设置、`#sb-more`），必然假失败。已改为真实用户路径——账户弹层（`#ap-market`/`#ap-connect`/`#ap-settings`）、Cmd/Ctrl+F 开 Computer 右栏、Cmd/Ctrl+K 开搜索。过程中修掉两处**真实缺陷**：① `#agents` 是 flex 列，子项默认 `flex-shrink:1`，Bot/会话多时列表被压成 0 高、行落在滚动区外不可点 → `body.grok-ui #agents > * { flex-shrink:0 }`；② Round 9 把搜索行设为 `display:none` 但 Ctrl+K/工具栏按钮仍承诺搜索 → `body.grok-ui.session-search-open` 显式揭示（无 `!important`）。`e2e_desktop_shell_v2` **PASS=89 FAIL=0**。
+> **P2 第二切片（D-ST 计算样式门，已验证）**：五个 sheet 关闭钮由 5 套 per-id 规则（20 处 `!important`）合并为一条 `body.grok-ui .bb-sheet .bb-close` 基类；`body.grok-ui .bb-sheet button` 的 `font-size` 去掉 `!important`，改为在 `.bc-tpl-btn` 自身规则对齐 13px sheet 字阶。`!important` 409→**385**；新增 `scripts/e2e_modal_computed.mjs`（D-ST，**PASS=17**）在改动前后读取五个 sheet 的真实 computed style，快照**逐字段相同**；layout 12/0、boot 124/0、shell-v2 89/0。
 
 ### D. 明确延期（不列入本轮功能复刻硬门）
 

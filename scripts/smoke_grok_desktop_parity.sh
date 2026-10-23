@@ -317,8 +317,9 @@ echo "$j" | field intent | grep -q "^create_bot_from_template$" && ok "GP-02 短
 # 模板 Bot 持久化进 bots.json（Chiefy 来自上一步真实创建）
 node -e "
 const b=require('./data/desktop/bots.json').bots;
+const t=require('./data/desktop/bot-templates.json').templates.find(x=>x.id==='chief-of-staff');
 const hit=b.find(x=>x.name==='Chiefy');
-process.exit(hit && hit.job==='Chief of Staff' && hit.created_at ? 0:1)" && ok "GP-02 模板 Bot 已持久化进 bots.json" || bad "GP-02 persisted"
+process.exit(hit && hit.job===t.job && hit.created_at ? 0:1)" && ok "GP-02 模板 Bot 已持久化进 bots.json（job 对齐模板单一源，不写死英文）" || bad "GP-02 persisted"
 # 清理本段创建的模板 Bot，保持双跑幂等
 node -e "
 const fs=require('fs');const p='./data/desktop/bots.json';
