@@ -12,6 +12,12 @@
  *   D. 成员校验：@ 非成员 → responder_not_member（不伪造路由）。
  *   E. 无 runner：未注入 runResponderTurn → responder_runner_required，且不写 transcript。
  *   F. 单 responder：to=b1 → total=1。
+ *   G. @only：to=[b2] 只跑 b2。
+ *   H. @everyone：无 to → 全员 2/2，收齐才写 partial=false。
+ *   I. 预算：7 成员 → too_many_responders 且不写 transcript。
+ *   J. 上下文隔离：每个 responder 用自己的 bot_id/name/job。
+ *   K. 失败：1/2 partial + bot_reply_error 带原因，不伪造正文。
+ *   L. 超时：per-responder timeoutMs 生效，原因=responder_timeout。
  *
  * 注：真实 per-responder LLM 回合由 MoonBit runner 执行（本沙箱无 moon），
  * 此处注入 fake runResponderTurn 证明编排逻辑本身。
@@ -131,6 +137,133 @@ const count = (arr, k) => arr.filter(e => e && e.kind === k).length;
     (r && r.ok === true && r.total === 1 && r.returned === 1)
       ? ok("F 单 responder：total=1 returned=1")
       : bad("F single responder", JSON.stringify(r && { returned: r.returned, total: r.total }));
+  }
+
+  /* ---------- G. @only：只跑点名的那一个 ---------- */
+  {
+    const { surface } = mkSurface();
+    const seen = [];
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "only b2", to: ["b2"],
+      deps: { runResponderTurn: async (botId) => { seen.push(botId); return { ok: true, text: "b2 done" }; } },
+    });
+    (r && r.ok && r.total === 1 && r.returned === 1 && seen.length === 1 && seen[0] === "b2")
+      ? ok("G @only：to=[b2] 只运行 b2，b1 未被唤醒（total=1）")
+      : bad("G mention only", JSON.stringify({ seen, r: r && { total: r.total, returned: r.returned } }));
+  }
+
+  /* ---------- H. @everyone：不给 to → 全体成员 ---------- */
+  {
+    const { surface } = mkSurface();
+    const seen = [];
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "everyone works",
+      deps: { runResponderTurn: async (botId) => { seen.push(botId); return { ok: true, text: "ok" }; } },
+    });
+    (r && r.ok && r.total === 2 && r.returned === 2 && r.partial === false && seen.length === 2)
+      ? ok("H @everyone：无 to 时全员执行，2/2 且 partial=false")
+      : bad("H all members", JSON.stringify({ seen, r: r && { total: r.total, returned: r.returned, partial: r.partial } }));
+    const fr = tx(surface).find((e) => e && e.kind === "final_report");
+    (fr && fr.partial === false && fr.returned === 2 && fr.total === 2)
+      ? ok("H final_report 收齐时如实 2/2 partial=false（只有未收齐才写 partial）")
+      : bad("H complete report", JSON.stringify(fr && { returned: fr.returned, total: fr.total, partial: fr.partial }));
+  }
+
+  /* ---------- I. 预算护栏：>6 个 responder 直接拒绝 ---------- */
+  {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "gp143-"));
+    const dir = path.join(root, "data", "desktop");
+    fs.mkdirSync(dir, { recursive: true });
+    const many = { version: 1, primary_id: "m1", bots: [] };
+    for (let i = 1; i <= 7; i++) many.bots.push({ id: "m" + i, name: "M" + i, job: "j", description: "d", hidden: false });
+    fs.writeFileSync(path.join(dir, "bots.json"), JSON.stringify(many));
+    fs.writeFileSync(path.join(dir, "rooms.json"), JSON.stringify({
+      version: 1,
+      rooms: [{ id: "room-big", title: "Seven", members: many.bots.map((b) => b.id), created_at: "t", transcript: [] }],
+    }));
+    const surface = createProductSurface(root);
+    const r = await surface.orchestrateRoom({
+      room: "room-big", task: "seven at once",
+      deps: { runResponderTurn: async () => ({ ok: true, text: "x" }) },
+    });
+    (r && r.ok === false && r.error === "too_many_responders" && r.count === 7 && r.max === 6 && tx(surface, "room-big").length === 0)
+      ? ok("I 预算护栏：7 成员 → too_many_responders，且一条 transcript 都不写（不静默截断）")
+      : bad("I budget guard", JSON.stringify({ err: r && r.error, count: r && r.count, tx: tx(surface, "room-big").length }));
+  }
+
+  /* ---------- J. responder 上下文各自独立（不共用主 Bot）---------- */
+  {
+    const { surface } = mkSurface();
+    const calls = [];
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "context isolation", to: "b1,b2",
+      deps: {
+        runResponderTurn: async (botId, task, ctx) => {
+          calls.push({ botId, task, ctx });
+          return { ok: true, text: botId + " reply" };
+        },
+      },
+    });
+    const byId = {};
+    for (const c of calls) byId[c.botId] = c;
+    const okShape = r && r.ok && calls.length === 2 &&
+      byId.b1 && byId.b2 &&
+      byId.b1.ctx.bot_id === "b1" && byId.b1.ctx.job === "research" && byId.b1.ctx.name === "Researcher" &&
+      byId.b2.ctx.bot_id === "b2" && byId.b2.ctx.job === "write" && byId.b2.ctx.name === "Writer" &&
+      byId.b1.ctx.room === "room-t" && byId.b2.ctx.room === "room-t";
+    okShape
+      ? ok("J 上下文隔离：每个 responder 收到自己的 bot_id/name/job，不复用主 Bot 上下文")
+      : bad("J per-responder ctx", JSON.stringify(calls.map((c) => ({ id: c.botId, job: c.ctx && c.ctx.job }))));
+  }
+
+  /* ---------- K. 失败回执如实带原因，不伪造正文 ---------- */
+  {
+    const { surface } = mkSurface();
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "one fails", to: "b1,b2",
+      deps: {
+        runResponderTurn: async (botId) =>
+          botId === "b1"
+            ? { ok: true, text: "b1 finished", artifacts: [{ name: "report.md" }] }
+            : { ok: false, error: "BITBOT_LLM_API_KEY not set", text: "", artifacts: [] },
+      },
+    });
+    (r && r.ok && r.returned === 1 && r.total === 2 && r.partial === true)
+      ? ok("K 缺 key 的 responder → 1/2 partial（失败不算成功）")
+      : bad("K failure honesty", JSON.stringify(r && { returned: r.returned, total: r.total, partial: r.partial }));
+    const err = tx(surface).find((e) => e && e.kind === "bot_reply_error");
+    (err && err.bot_id === "b2" && err.speaker === "b2" && err.text === "" &&
+      String(err.error).includes("BITBOT_LLM_API_KEY"))
+      ? ok("K bot_reply_error：speaker=b2、正文为空、原因原样保留（不伪造回复）")
+      : bad("K error row", JSON.stringify(err));
+    const fr = tx(surface).find((e) => e && e.kind === "final_report");
+    const s2 = fr && fr.sections.find((x) => x.bot_id === "b2");
+    (s2 && s2.ok === false && String(s2.summary).includes("BITBOT_LLM_API_KEY"))
+      ? ok("K final_report.sections 带失败原因，产物只收成功侧（report.md）")
+      : bad("K sections", JSON.stringify(fr && fr.sections));
+  }
+
+  /* ---------- L. 超时护栏按 responder 生效 ---------- */
+  {
+    const { surface } = mkSurface();
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "slow one", to: "b1,b2",
+      deps: {
+        timeoutMs: 200,
+        runResponderTurn: (botId) =>
+          botId === "b1"
+            ? Promise.resolve({ ok: true, text: "fast" })
+            : new Promise(() => {}), // b2 never settles → engine timeout
+      },
+    });
+    const out = await r;
+    (out && out.returned === 1 && out.total === 2 && out.partial === true)
+      ? ok("L 超时护栏：b2 悬挂 → 200ms 后如实 1/2 partial，整轮不吊死")
+      : bad("L per-responder timeout", JSON.stringify(out && { returned: out.returned, total: out.total, partial: out.partial }));
+    const err = tx(surface).find((e) => e && e.kind === "bot_reply_error");
+    (err && err.bot_id === "b2" && String(err.error).includes("responder_timeout"))
+      ? ok("L 超时原因写进 bot_reply_error（responder_timeout），不是静默丢失")
+      : bad("L timeout reason", JSON.stringify(err));
   }
 
   console.log(`\nprove_gp143_orchestration: PASS=${pass} FAIL=${fail}`);

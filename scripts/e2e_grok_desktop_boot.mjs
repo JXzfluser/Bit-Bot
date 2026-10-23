@@ -600,19 +600,24 @@ async function main() {
 
       // 点该气泡上的「回复」→ composer 上方出现引用条
       const clicked = await bootG14.win.evaluate((mid) => {
-        if (!mid) return "no-target";
+        if (!mid) return { bar: "no-target", title: "" };
         const el = document.querySelector('#log .msg[data-mid="' + mid + '"]');
         const btn = el && el.querySelector(".msg-actions button");
-        if (!btn) return "no-reply-button";
+        if (!btn) return { bar: "no-reply-button", title: "" };
         btn.click();
         const bar = document.getElementById("reply-bar");
+        const txt = document.getElementById("reply-bar-text") || {};
         return bar && bar.style.display !== "none"
-          ? (document.getElementById("reply-bar-text") || {}).textContent || ""
-          : "bar-hidden";
+          ? { bar: txt.textContent || "", title: txt.title || "" }
+          : { bar: "bar-hidden", title: "" };
       }, target ? target.mid : "");
-      typeof clicked === "string" && clicked.includes("GP14 原始问题")
-        ? ok("E2E GP-14：Reply 按钮 → 引用条显示被回复消息原文")
-        : bad("E2E GP-14 reply bar", String(clicked).slice(0, 160));
+      // 引用条合同 = 「被回复那条消息正文的前缀」+ 指向那条消息的持久 id。
+      // （正文按 90 字截断，所以不能要求某个中段词一定出现——那是截断合同，不是丢内容。）
+      const barBody = String(clicked.bar || "").replace(/^回复：/, "");
+      barBody.length > 0 && target && target.text.startsWith(barBody) &&
+        clicked.title === "id=" + (target ? target.mid : "")
+        ? ok("E2E GP-14：Reply 按钮 → 引用条显示被回复消息原文（前缀 + id 指向同一条）")
+        : bad("E2E GP-14 reply bar", JSON.stringify(clicked).slice(0, 200));
 
       // 发第二条：id 必须进 kernel（--reply-to）并解析成 provider 请求里的引用
       await bootG14.win.fill("#composer #text", "GP14 针对引用作答");
@@ -661,13 +666,19 @@ async function main() {
       storedReply && storedReply.reply_to === target.mid
         ? ok("E2E GP-14：sessions.json 用户行带 reply_to=" + storedReply.reply_to)
         : bad("E2E GP-14 store row", JSON.stringify(storedReply || null).slice(0, 160));
-      const quoteDom = await bootG14.win.evaluate(() => ({
-        chips: document.querySelectorAll("#log .msg-reply-quote").length,
-        text: (document.querySelector("#log .msg-reply-quote") || {}).textContent || "",
-      }));
-      quoteDom.chips >= 1 && quoteDom.text.includes("GP14 原始问题")
-        ? ok("E2E GP-14：转写里回复气泡上方渲染引用条（" + quoteDom.chips + " 处）")
-        : bad("E2E GP-14 quote chip", JSON.stringify(quoteDom).slice(0, 160));
+      const quoteDom = await bootG14.win.evaluate(() => {
+        const q = document.querySelector("#log .msg-reply-quote");
+        return {
+          chips: document.querySelectorAll("#log .msg-reply-quote").length,
+          text: q ? (q.textContent || "") : "",
+          mid: q ? (q.dataset.mid || "") : "",
+        };
+      });
+      const chipBody = String(quoteDom.text || "").replace(/^回复：/, "");
+      quoteDom.chips >= 1 && chipBody.length > 0 && target && target.text.startsWith(chipBody) &&
+        quoteDom.mid === target.mid
+        ? ok("E2E GP-14：转写里回复气泡上方渲染引用条（" + quoteDom.chips + " 处，指向 " + quoteDom.mid + "）")
+        : bad("E2E GP-14 quote chip", JSON.stringify(quoteDom).slice(0, 200));
       // 侧栏切走再切回 = 从 store 重载，引用必须仍在（不是只在内存里）
       let reloadSessionId = null;
       {
@@ -2135,15 +2146,18 @@ async function main() {
       else fs.rmSync(USAGE_M28, { force: true });
     }
 
-    /* ---- GP-119/M29 群聊入口（官方 spec §2.4）----
+    /* ---- GP-119/M29 群聊入口 + GP-143 真回合（官方 spec §2.4）----
        预置一个真实群（成员取 bots.json 前两个 Bot）→ 启动后点侧栏群组行 →
-       #room-banner 打开 + rooms.json transcript 卡进 #log（空群明说没有历史）
-       → composer 发消息自动加 `room <id> :: ` 前缀 → rooms.json transcript
-       真增一行 → 退出群聊 banner 收起。*/
+       #room-banner 打开 + 空群如实说没有历史 → composer 发消息走 Host
+       rooms.orchestrate IPC（Host RoomTurn 路由 + responder 扇出）→
+       rooms.json 真落 kind=user / bot_reply / final_report → 群线程按条目
+       渲染出 2 张回复卡 + 1 张汇总卡 → 退出群聊 banner 收起。
+       LLM 用本地 OpenAI 兼容 stub：回执是真的 HTTP 往返，不依赖外部服务。 */
     const ROOMS_M29 = path.join(REPO, "data/desktop/rooms.json");
     const BOTS_M29 = path.join(REPO, "data/desktop/bots.json");
     const roomsM29Before = fs.existsSync(ROOMS_M29) ? fs.readFileSync(ROOMS_M29) : null;
     const botsM29Before = fs.existsSync(BOTS_M29) ? fs.readFileSync(BOTS_M29) : null;
+    let stubM29 = null;
     try {
       const botsM29 = JSON.parse(fs.readFileSync(BOTS_M29, "utf8"));
       const botList = Array.isArray(botsM29) ? botsM29 : botsM29.bots || [];
@@ -2163,7 +2177,32 @@ async function main() {
         seedRooms.rooms = (seedRooms.rooms || []).filter((r) => r && r.id !== "room-m29e2e");
         seedRooms.rooms.push(m29Room);
         fs.writeFileSync(ROOMS_M29, JSON.stringify(seedRooms, null, 2));
-        const bootM29 = await launch({});
+        const stubM29Port = 8799;
+        const { spawn: spawnM29 } = require("node:child_process");
+        stubM29 = spawnM29(
+          process.execPath,
+          [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")],
+          {
+            cwd: REPO,
+            stdio: ["ignore", "pipe", "pipe"],
+            env: { ...process.env, BITBOT_STUB_PORT: String(stubM29Port) },
+          },
+        );
+        await new Promise((res, rej) => {
+          const t = setTimeout(() => rej(new Error("M29 stub boot timeout")), 8000);
+          stubM29.stdout.on("data", (d) => {
+            if (String(d).includes("[stub-llm]")) { clearTimeout(t); res(); }
+          });
+          stubM29.on("error", rej);
+        }).catch(() => {});
+        const bootM29 = await launch({
+          BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + stubM29Port + "/v1",
+          BITBOT_LLM_API_KEY: "e2e-stub-key",
+          BITBOT_LLM_MODEL: "e2e-stub",
+          BITBOT_LLM_STREAM: "0",
+          // 群回合走真内核 + 真 HTTP：给足单次 responder 的时间预算。
+          BITBOT_ROOM_RESPONDER_TIMEOUT_MS: process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || "120000",
+        });
         const win = bootM29.win;
         await win.waitForSelector("#room-list .agent-item[data-room-id]", { timeout: 30000 });
         await win.click('#room-list .agent-item[data-room-id="room-m29e2e"]');
@@ -2197,23 +2236,28 @@ async function main() {
           : bad("E2E GP-119 empty transcript", "honest empty state missing");
         await win.fill("#composer #text", "@everyone M29 群聊探针消息");
         await win.press("#composer #text", "Enter");
+        // GP-143: the composer row is the plain message — the kernel phrase is
+        // gone, so the transcript has exactly one writer.
         await win.waitForFunction(
-          (rid) => (document.getElementById("log").textContent || "").includes("room " + rid + " :: "),
-          "room-m29e2e",
-          { timeout: 45000 },
+          () => Array.from(document.querySelectorAll("#log .msg.room-user .body")).some(
+            (el) => /@everyone M29 群聊探针消息/.test(el.textContent || ""),
+          ),
+          null,
+          { timeout: 20000 },
         ).catch(() => {});
         const logText = await win.evaluate(() => document.getElementById("log").textContent || "");
-        logText.includes("room room-m29e2e :: @everyone M29 群聊探针消息")
-          ? ok("E2E GP-119/M29：composer 消息带 room 前缀进 #log（同一消息流）")
-          : bad("E2E GP-119 room turn", "prefix not visible in #log");
-        // The kernel RoomTurn persists into rooms.json — poll for the row.
+        logText.includes("@everyone M29 群聊探针消息") && !/room room-m29e2e :: /.test(logText)
+          ? ok("E2E GP-119/143：composer 消息原样进群线程（用户行卡），不再拼 room <id> :: 短语")
+          : bad("E2E GP-119 room turn", JSON.stringify(logText.slice(0, 200)));
+        // The Host persists the routed user row into rooms.json — poll for it.
         let m29Grew = false;
         for (let i = 0; i < 30; i++) {
           try {
             const st = JSON.parse(fs.readFileSync(ROOMS_M29, "utf8"));
             const row = (st.rooms || []).find((r) => r && r.id === "room-m29e2e");
             if (row && Array.isArray(row.transcript) &&
-                row.transcript.some((e) => String(e.text || "").includes("@everyone M29 群聊探针消息"))) {
+                row.transcript.some((e) => e && e.kind === "user" &&
+                  String(e.text || "").includes("@everyone M29 群聊探针消息"))) {
               m29Grew = true;
               break;
             }
@@ -2221,15 +2265,65 @@ async function main() {
           await new Promise((r) => setTimeout(r, 300));
         }
         m29Grew
-          ? ok("E2E GP-119/M29：群聊回合真写 rooms.json transcript（@everyone 路由）")
-          : bad("E2E GP-119 transcript write", "rooms.json never gained the entry");
+          ? ok("E2E GP-143：群聊回合真写 rooms.json（kind=user 行 + @everyone 路由）")
+          : bad("E2E GP-143 transcript write", "rooms.json never gained the user row");
+        // GP-143 real turns: both members answer through kernel + stub provider,
+        // then the engine aggregates a final_report. Poll the durable store.
+        let m29Report = null;
+        for (let i = 0; i < 160; i++) {
+          try {
+            const st = JSON.parse(fs.readFileSync(ROOMS_M29, "utf8"));
+            const row = (st.rooms || []).find((r) => r && r.id === "room-m29e2e");
+            const fr = row && (row.transcript || []).find((e) => e && e.kind === "final_report");
+            if (fr) { m29Report = fr; break; }
+          } catch (_) {}
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        m29Report && m29Report.total === 2 && m29Report.returned === 2 && m29Report.partial === false
+          ? ok("E2E GP-143：两个 responder 真回合收齐 2/2（partial=false，真 HTTP 回执）")
+          : bad("E2E GP-143 real turns", JSON.stringify(m29Report && {
+              returned: m29Report.returned, total: m29Report.total, partial: m29Report.partial,
+              sections: (m29Report.sections || []).map((s) => ({ id: s.bot_id, ok: s.ok, err: s.summary })),
+            }));
+        await win.waitForFunction(
+          () => document.querySelectorAll("#log .msg.room-reply").length >= 2 &&
+            document.querySelectorAll("#log .msg.room-report").length >= 1,
+          null,
+          { timeout: 20000 },
+        ).catch(() => {});
+        const cards = await win.evaluate(() => ({
+          replies: Array.from(document.querySelectorAll("#log .msg.room-reply")).map(
+            (el) => ({
+              speaker: (el.querySelector(".rs-name") || {}).textContent || "",
+              text: (el.querySelector(".body") || {}).textContent || "",
+            }),
+          ),
+          reports: Array.from(document.querySelectorAll("#log .msg.room-report")).map(
+            (el) => ({
+              cls: el.className,
+              count: ((el.querySelector(".rr-count") || {}).textContent || ""),
+              text: (el.querySelector(".body") || {}).textContent || "",
+            }),
+          ),
+          errors: document.querySelectorAll("#log .msg.room-error").length,
+        }));
+        const distinctSpeakers = new Set(cards.replies.map((r) => r.speaker)).size;
+        cards.replies.length >= 2 && distinctSpeakers >= 2 &&
+          cards.replies.every((r) => r.text.replace(r.speaker, "").trim().length > 0)
+          ? ok("E2E GP-146：群线程按条目渲染 ≥2 张 bot 回复卡（各有说话人 + 正文）")
+          : bad("E2E GP-146 reply cards", JSON.stringify(cards.replies).slice(0, 300));
+        cards.reports.length >= 1 && /2\/2/.test(cards.reports[0].count) &&
+          !/room-partial/.test(cards.reports[0].cls) && cards.errors === 0
+          ? ok("E2E GP-146：final_report 卡显示 2/2 且无 partial 标记（收齐才写完成）")
+          : bad("E2E GP-146 report card", JSON.stringify(cards.reports).slice(0, 300));
         await win.evaluate(() => document.getElementById("room-banner-exit").click());
         const afterExit = await win.evaluate(() => ({
           hidden: document.getElementById("room-banner").style.display === "none",
           ph: document.querySelector("#composer #text").placeholder,
+          thread: document.querySelectorAll(".room-thread").length,
         }));
-        afterExit.hidden && afterExit.ph.includes("Shift+Enter")
-          ? ok("E2E GP-119/M29：退出群聊恢复 DM composer（banner 收起 + placeholder 复原）")
+        afterExit.hidden && afterExit.ph.includes("Shift+Enter") && afterExit.thread === 0
+          ? ok("E2E GP-119/M29：退出群聊恢复 DM composer（banner 收起 + placeholder 复原 + 群线程移除）")
           : bad("E2E GP-119 exit room", JSON.stringify(afterExit));
         await shutdown(bootM29.app);
       } else {
@@ -2238,6 +2332,7 @@ async function main() {
     } catch (e) {
       bad("E2E GP-119/M29 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
     } finally {
+      if (stubM29) { try { stubM29.kill("SIGKILL"); } catch (_) {} }
       if (roomsM29Before) fs.writeFileSync(ROOMS_M29, roomsM29Before);
       else fs.rmSync(ROOMS_M29, { force: true });
       if (botsM29Before) fs.writeFileSync(BOTS_M29, botsM29Before);

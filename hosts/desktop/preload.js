@@ -94,6 +94,35 @@ contextBridge.exposeInMainWorld("bitbot", {
   },
   rooms: {
     list: () => ipcRenderer.invoke("bitbot:rooms:list"),
+    // GP-143/144: route + fan out the task to the room's responders on the Host
+    // product path — the renderer no longer builds a kernel phrase, so nothing
+    // writes the transcript twice.
+    orchestrate: (payload) => ipcRenderer.invoke("bitbot:rooms:orchestrate", payload || {}),
+    // GP-146: group turns are async on the Host; (a) says which responders are
+    // working now, (b) says the durable transcript gained rows. Observational
+    // only — the renderer never keeps its own copy of room state.
+    onRoomOrchestrating: (cb) => {
+      const handler = (_e, ev) => {
+        try {
+          cb(ev);
+        } catch (_) {
+          /* ignore */
+        }
+      };
+      ipcRenderer.on("bitbot:room-orchestrating", handler);
+      return () => ipcRenderer.removeListener("bitbot:room-orchestrating", handler);
+    },
+    onRoomUpdated: (cb) => {
+      const handler = (_e, ev) => {
+        try {
+          cb(ev);
+        } catch (_) {
+          /* ignore */
+        }
+      };
+      ipcRenderer.on("bitbot:room-updated", handler);
+      return () => ipcRenderer.removeListener("bitbot:room-updated", handler);
+    },
   },
   usage: {
     week: () => ipcRenderer.invoke("bitbot:usage:week"),

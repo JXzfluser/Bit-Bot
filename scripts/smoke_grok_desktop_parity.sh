@@ -1159,21 +1159,47 @@ if timeout 900 node scripts/prove_m29_roomchat.js > /tmp/g29-probe.log 2>&1; the
 else
   bad "G-29 群聊入口契约（见 /tmp/g29-probe.log）"
 fi
-grep -q "composer 提交走既有 kernel RoomTurn 短语" /tmp/g29-probe.log 2>/dev/null \
-  && ok "G-29 GP-119：群组行 → composer 对准群聊，提交走既有 room <id> :: 短语（无第二消息面）" \
-  || bad "G-29 GP-119 composer prefix missing"
+grep -q "composer 群聊提交走 Host rooms.orchestrate IPC" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 GP-119/143：群组行 → composer 对准群聊，提交走 Host rooms.orchestrate（roomTurn 单一写入点）" \
+  || bad "G-29 GP-119 composer orchestrate missing"
+grep -q "Host IPC 真接线：roomTurn → appendRoomTranscript → orchestrateRoom" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "responder 回合用自己的 botId" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "preload 暴露 rooms.orchestrate" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 GP-143：真回合接线落地（每 responder 自己的 botId/记忆/persona，独立 room session）" \
+  || bad "G-29 GP-143 responder wiring missing"
+grep -q "群 transcript 按条目渲染" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "运行中为每个 responder 显示「工作中」卡" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 GP-146：按条目渲染 + 运行中状态（不再拼一段纯文本）" \
+  || bad "G-29 GP-146 rendering missing"
 grep -q "@Name → mentioned_only 且 responders 精确" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "@A @B → mentioned_only 且只跑点名的 2 个成员" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "@everyone → all" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "无 @ → bot_discretion" /tmp/g29-probe.log 2>/dev/null \
-  && ok "G-29 GP-51：入口沿用真实路由语义（含含空格成员名的最长匹配修复）" \
+  && ok "G-29 GP-51/144：入口沿用真实路由语义（含多点名 @A @B 与含空格成员名）" \
   || bad "G-29 GP-51 routing missing"
 grep -q "rooms.json transcript 与 roomTurn 逐字一致" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "空群明说" /tmp/g29-probe.log 2>/dev/null \
   && ok "G-29 GP-119：打开群聊读 rooms.json 真实 transcript，空群不造历史" \
   || bad "G-29 GP-119 transcript missing"
-grep -q "负向对照：禁用前缀后 composer 不再路由到群聊" /tmp/g29-probe.log 2>/dev/null \
-  && ok "G-29 负向对照：砍掉 composer 前缀后断言变红（断言非恒真）" \
+grep -q "负向对照：禁用群聊发送调用后 composer 不再路由到群聊" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 负向对照：摘掉群聊发送调用后断言变红（断言非恒真）" \
   || bad "G-29 negative control missing"
+if timeout 300 node scripts/prove_gp143_orchestration.js > /tmp/g29-orch.log 2>&1; then
+  ok "G-29 GP-143/144：编排引擎契约全绿（$(grep -c '✓' /tmp/g29-orch.log) 项，$(tail -1 /tmp/g29-orch.log)）"
+else
+  bad "G-29 GP-143/144 编排引擎契约（见 /tmp/g29-orch.log）"
+fi
+grep -q "@only：to=\[b2\] 只运行 b2" /tmp/g29-orch.log 2>/dev/null \
+  && grep -q "@everyone：无 to 时全员执行" /tmp/g29-orch.log 2>/dev/null \
+  && grep -q "预算护栏：7 成员 → too_many_responders" /tmp/g29-orch.log 2>/dev/null \
+  && grep -q "超时护栏：b2 悬挂" /tmp/g29-orch.log 2>/dev/null \
+  && grep -q "上下文隔离：每个 responder 收到自己的 bot_id/name/job" /tmp/g29-orch.log 2>/dev/null \
+  && ok "G-29 GP-143/144：@only/@everyone/预算/超时/递归/幂等/非成员/上下文隔离全绿" \
+  || bad "G-29 GP-143 guards missing"
+grep -q "失败回执如实带原因\|缺 key 的 responder → 1/2 partial" /tmp/g29-orch.log 2>/dev/null \
+  && grep -q "收齐时如实 2/2 partial=false" /tmp/g29-orch.log 2>/dev/null \
+  && ok "G-29 诚实性：失败算 partial、收齐才算完成（不伪造 final_report）" \
+  || bad "G-29 honesty missing"
 
 echo
 echo "== G-30 附件发送前预览（M30：§5.1 验收信号）=="

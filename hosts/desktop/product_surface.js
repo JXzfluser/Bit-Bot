@@ -1341,43 +1341,51 @@ function createProductSurface(repoRoot) {
       return bot ? { id: bot.id, name: bot.name } : { id, name: id };
     });
 
-    // Parse mentions
+    // Parse mentions — GP-51 semantics kept (@Name directed / @everyone all /
+    // no @ = members decide), GP-144 extends it to several leading mentions so
+    // "@A @B task" runs exactly the named members. Member names may contain
+    // spaces ("市场 分析员") — at each position the longest member name wins,
+    // then the single-token form, so both spellings keep routing.
     let responders = members;
     let responder_policy = "bot_discretion";
-    let mentionMatch = null;
-    if (/^@/.test(text)) {
-      // Member names may contain spaces ("市场 分析员") — try full member
-      // names first (longest match wins), then fall back to the single-token
-      // form so "@everyone" and space-free names keep their GP-51 semantics.
-      const after = text.slice(1);
-      const named = members
+    const namedResponders = [];
+    let wantsAll = false;
+    let rest = String(text || "");
+    while (/^@/.test(rest)) {
+      const after = rest.slice(1);
+      const hitMember = members
         .filter((m) => m.name && after.startsWith(m.name))
         .sort((a, b) => String(b.name).length - String(a.name).length)[0];
-      const token = after.match(/^(\S+)\s/);
-      const hit = named || (token ? { name: token[1] } : null);
-      if (hit) mentionMatch = [null, hit.name];
-    }
-    if (mentionMatch) {
-      const mention = mentionMatch[1];
-      if (mention === "everyone") {
-        responder_policy = "all";
-      } else {
-        // Find specific bot
-        const target = members.find(m => m.name === mention || m.id === mention);
-        if (target) {
-          responders = [target];
-          responder_policy = "mentioned_only";
-        } else {
-          // Mention doesn't resolve to a room member — don't fake a directed
-          // route; let members decide (GP-51 no-mention semantics).
-          responder_policy = "bot_discretion";
-        }
+      const tokenMatch = after.match(/^[^\s]+/);
+      const token = tokenMatch ? tokenMatch[0] : "";
+      if (!hitMember && token === "everyone") {
+        wantsAll = true;
+        rest = after.slice(token.length).replace(/^\s*/, "");
+        continue;
       }
-    } else {
-      responder_policy = "bot_discretion";
+      const name = hitMember ? hitMember.name : token;
+      if (!name) break;
+      const target = members.find((m) => m.name === name || m.id === name);
+      if (target && !namedResponders.some((x) => x.id === target.id)) {
+        namedResponders.push(target);
+      }
+      rest = after.slice(name.length).replace(/^\s*/, "");
     }
+    if (wantsAll) {
+      responder_policy = "all";
+    } else if (namedResponders.length) {
+      responders = namedResponders;
+      responder_policy = "mentioned_only";
+    }
+    // A typed mention that resolves to no member leaves the GP-51 default
+    // untouched: members decide, the Host never invents a directed route.
 
     const transcript_entry = {
+      // GP-146: the durable transcript now renders per entry, so a user row is
+      // explicitly typed. Rows written before this have no `kind` — the renderer
+      // keeps showing them as user lines instead of dropping them.
+      kind: "user",
+      speaker: "user",
       room_id,
       text,
       responders: responders.map(r => r.id),

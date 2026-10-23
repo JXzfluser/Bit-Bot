@@ -5331,6 +5331,36 @@ function createHostFfi(repoRoot) {
     });
   }
 
+  // GP-145: per-Bot persona. The kernel only carries `--bot-id` (its memory slot);
+  // name/job/description live in the Host's bots.json, so the Host is the only
+  // place that can put them into the real provider payload. Read fresh per call:
+  // an edit in the Bot detail takes effect on the very next turn, and a responder
+  // turn never inherits another Bot's persona (group fan-out passes its own botId).
+  function botPersona(botId) {
+    const id = String(botId || "").trim();
+    if (!id || !surface || typeof surface.loadBots !== "function") return "";
+    try {
+      const b = (surface.loadBots().bots || []).find((x) => x && x.id === id);
+      if (!b) return "";
+      const bits = [];
+      if (b.name) bits.push("名字：" + b.name);
+      if (b.job) bits.push("职责：" + b.job);
+      if (b.description) bits.push("简介：" + b.description);
+      return bits.join("；");
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function llmSystemPrompt(botId) {
+    const base =
+      "你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。";
+    const persona = botPersona(botId);
+    return persona
+      ? base + "\n你正在以专属 Bot 的身份回答。" + persona + "。请只以该身份作答，不要自称其他 Bot。"
+      : base;
+  }
+
   async function executeLlmChat(command, llmOpts) {
     const at = new Date().toISOString();
     const userText = String(command || "").trim();
@@ -5406,8 +5436,7 @@ function createHostFfi(repoRoot) {
     const messages = [
       {
         role: "system",
-        content:
-          "你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。",
+        content: llmSystemPrompt(llmOpts && llmOpts.botId),
       },
     ];
     if (replyToId && replyQuote) {
@@ -23464,6 +23493,9 @@ function createHostFfi(repoRoot) {
             replyTo: (ffiOpts && ffiOpts.replyTo) || "",
             replyQuote: (ffiOpts && ffiOpts.replyQuote) || "",
             replyRole: (ffiOpts && ffiOpts.replyRole) || "assistant",
+            // GP-145: whose turn this is → the Host reads that Bot's job /
+            // description fresh from bots.json and puts it in the system message.
+            botId: (ffiOpts && ffiOpts.botId) || "",
           }),
         );
         continue;

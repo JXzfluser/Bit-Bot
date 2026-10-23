@@ -263,3 +263,94 @@ S-TZ：设 `BITBOT_TZ=Asia/Shanghai` 且清 store → 时区选择器落 `"Asia/
   时区选择器展示 IANA 名按 allowlist 豁免。
 - `TPL_COPY` 只覆盖官方 6 模板的 zh-CN/zh-TW 显示；新增模板未登记时回落 Host 原始英文元数据
   （显示层，非状态源），后续波次可迁移为本地化 Host 目录。
+
+---
+
+## 8. M49 —— 群 Bot 协作 + Bot 私聊的用户级闭环（Host 产品路径）
+
+范围：把「引擎 + 单测」升级为用户可感知的完整回路（GP-143/144 主线 + GP-145 私聊上下文 +
+GP-146 群渲染）。**口径先钉住**：这是 **Host 产品路径**的闭环，内核 `Orchestrate` /
+`final_report` 意图等价**没有做**，本文与验收都不声称与内核原语同构。
+
+### 8.1 真回合接线
+
+- `hosts/desktop/main.js:1240 runRoomResponderTurn(botId, task, ctx)`：在既有
+  `runner.runTurn(text, { botId, … })` 通道上为**每个 responder 各起一个真回合**，
+  用该 Bot 自己的 job/description/记忆槽/工具；persona 由
+  `hosts/shared/host_ffi.js` 的 `llmSystemPrompt(botId)` 在 provider 边界**现读**
+  `bots.json` 注入（`名字：X；职责：Y；简介：Z`），因此改完资料下一回合即生效。
+- `hosts/desktop/main.js:1297` 新 IPC `bitbot:rooms:orchestrate`：先 `roomTurn`
+  （算路由 + 落 user 行，**单一写入点**），再
+  `surface.orchestrateRoom({ room, task, to: responders, deps: { runRoomResponderTurn } })`
+  （`hosts/desktop/product_surface.js:1425`）。`preload.js:100` 暴露 `rooms.orchestrate`。
+- `index.html` 群 composer 不再发 `room <id> :: …` 协议短语，改走该 IPC。
+- 路由语义保持：`@A @B`→只跑点名者（`mentioned_only`）、`@everyone`→`all`、无 `@`→`bot_discretion`；
+  成员校验 / 预算 ≤6（`too_many_responders`）/ 递归（`depth>=1` 拒）/ 幂等（`deduped:true`）/
+  per-responder 超时（`BITBOT_ROOM_RESPONDER_TIMEOUT_MS`）全部保留。
+
+### 8.2 群渲染（GP-146）与私聊隔离（GP-145）
+
+- 逐条渲染：`.msg.room-user` / `.msg.room-reply`（头像 + 说话人 + 正文 + 产物）/
+  `.msg.room-error`（带原因）/ `.msg.room-report`（`收齐 N/总` + `.room-partial` +
+  分区 + 产物）/ `.msg.room-working`（运行中每 responder 一张，收齐即清零）。
+- 诚实性合同：未收齐永远是「未收齐（部分完成）」，与「已全部收齐」互斥；旧无 `kind`
+  的行按用户行降级，不崩。
+- 群行只落 `rooms.json`；`sessions.json` 不出现群卡片行 → 两个消息面互不污染。
+- 文案全走 `t(key)`：D-C-03 三语键集合逐语言一致（本轮实测 **487 键 ×3**）。
+
+### 8.3 本轮修掉的两个真产品缺陷
+
+1. **群 composer 不独占**：点开 Bot 私聊或切换会话后，`composerRoom` 仍在，用户以为在跟
+   这个人说话、实际又发进群。修复：`selectBotForChat()` 与会话行点击都先 `exitRoomChat()`
+   （同一条 composer 独占合同）。
+2. **群卡片颜色写死十六进制**：破 `prove_ui_tokens` T-2（html 裸 hex 基线 28）且暗色主题不正确。
+   修复：改用 `--danger / --danger-ink / --warn / --warn-line / --warn-ink`。
+
+### 8.4 安全与转录卫生
+
+- responder 回合的敏感动作仍走原审批门：`runRoomResponderTurn` 固定 `approved: false`，
+  路径里不出现 `approvals.decide` / `auto_approved` / `approveAll`（静态断言进
+  `scripts/prove_m29_roomchat.js`）。**没有**因为「在编排」而自动放行。
+- 缺 key / 超时 / 失败一律如实 `bot_reply_error` + `N/总 partial`，不编造产出。
+- 转录卫生在 Host 侧收口：`roomSafeText` + `secret_protocol.TOKEN_RULES` + `REDACTED`，
+  并以 `ROOM_DEBUG_RE` 断言可见文本不含 `entry=` / `account=` / `masked` / 内部路径。
+
+### 8.5 命令与实测结果（真 Electron + xvfb + 真 `moon` + 本地 OpenAI 兼容 stub）
+
+```
+pkill -9 -f "dist/electron"; pkill -9 -f openai_compat_stub      # 清残留，避免 EADDRINUSE 9223/8801
+node --check hosts/desktop/main.js hosts/desktop/product_surface.js hosts/desktop/preload.js
+ELECTRON_DISABLE_SANDBOX=1 GP145_SHOT_DIR=/tmp/gp145-shots \
+  xvfb-run -a node scripts/e2e_desktop_room_orchestration.mjs     # 真渲染门（本波新增）
+xvfb-run -a node scripts/e2e_grok_desktop_boot.mjs
+xvfb-run -a node scripts/e2e_desktop_layout_target.mjs
+xvfb-run -a node scripts/e2e_desktop_shell_v2.mjs
+node scripts/prove_gp143_orchestration.js
+node scripts/prove_m29_roomchat.js
+node scripts/prove_ui_tokens.js
+ELECTRON_DISABLE_SANDBOX=1 bash scripts/smoke_grok_desktop_parity.sh
+```
+
+| 门 | 实测 | 关键内容 |
+| --- | --- | --- |
+| `e2e_desktop_room_orchestration.mjs`（新） | **PASS=36 / FAIL=0 / SKIP=0** | 三夹具 Bot（不同 job/description）+ 群经产品 IPC 建立（沿用 UI 的 `+` 编码合同）；S1 seed → S2 `@A @B` 且故意让 B 失败 → `total=2/returned=1/partial=true`、A 的正文含 `简介：/职责：` 而不含 B/C、B 分区 `ok:false` 带原因、UI `收齐 1/2` + `未收齐` 且不含 `已全部收齐`、错误卡点名 `GP145Fail` → S3 `@A @C` 2/2 全部收齐 + persona 严格互斥 → S4 `@A` `mentioned_only` 且工作中卡清零 → S5 重开窗口 DOM 计数 == `rooms.json` 持久计数（`user3/reply4/error1/report3`）→ S6 旧无 `kind` 行 → S7 `.room-thread` 可见文本卫生 → S8 DM persona + `sessions.json` 无群行 → S9 幂等 + IPC 输入护栏（`room_and_text_required` / `room_not_found`，拒了不写行） |
+| `e2e_grok_desktop_boot.mjs` | **PASS=127 / FAIL=0** | 含 GP-143/146 真链段（composer 不再出现 `room <id> ::`、`kind:"user"` 落盘、2 个真 responder、≥2 回复卡、2/2 报告无 partial、退出恢复私聊）；GP-14 两条断言改为「前缀 + 消息 id」合同（persona 注入把原文挤出 90/120 字符截断窗口，属合同写错，非放宽） |
+| `e2e_desktop_layout_target.mjs` | **PASS=12 / FAIL=0** | D-C-03 三语 487 键一致；D-C-01 可见文案 0 未豁免英文；`#log .msg` ≤760 合同保持 |
+| `e2e_desktop_shell_v2.mjs` | **PASS=89 / FAIL=0** | 外壳波回归不破 |
+| `prove_gp143_orchestration.js` | **PASS=18 / FAIL=0** | 2 responder 成功、1 失败 → 1/2 partial、@only、@everyone、递归、幂等、非成员、超时、预算 ≤6、上下文隔离（每 responder 收到自己的 bot_id/name/job） |
+| `prove_m29_roomchat.js` | **PASS=27 / FAIL=0** | 新增：群 composer 走 `rooms.orchestrate`、responder 用自己的 botId、preload 暴露、按条目渲染 + 工作中卡、`approved:false` 不自动放行、转录卫生 Host 侧收口、点开私聊退出群 composer |
+| `prove_ui_tokens.js` | **PASS=8 / FAIL=0** | T-1 `!important` 346、T-2 html 裸 hex 28 基线未涨 |
+| `smoke_grok_desktop_parity.sh` | **PASS=318 / FAIL=0** | G-29 群聊段扩到 10 条（编排引擎契约 + 诚实性断言）；G-16 内部跑 boot e2e 127 全绿 |
+
+证据：`/tmp/gp145-shots/gp145-1-room-empty.png`…`gp145-6-dm-persona.png`（工作中卡、`1/2 未收齐`、
+`2/2 已全部收齐`、重开一致、DM persona）与 `gp145-rooms-evidence.json`（持久行原文摘录）。
+
+### 8.6 诚实残留
+
+- 内核 `Orchestrate` / `final_report` 意图与 `moon test` 等价未做；本轮只在 Host 产品路径闭环。
+- `data/approvals/pending-approvals.jsonl` 的行**不带 `bot_id`**，因此「审批/密钥请求只出现在
+  归属 Bot 的 DM」尚未成立；本轮可证的只有「群回合不因编排而放行」（`approved:false`）。
+- cloud/subagent 回流产物汇入汇报仍待 GP-136。
+- DM 面既有协议码（`CM-0205`、boot banner 行）属 `.debug-only` 隐藏层，本波未越界清理。
+- 真实云 provider / Slack / Cookie / microVM 沿用既有残留口径；门在缺 electron、缺 `DISPLAY`
+  且无 `xvfb-run`、缺 `moon` 时走诚实 SKIP，不 fake PASS。

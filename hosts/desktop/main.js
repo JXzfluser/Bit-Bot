@@ -1202,6 +1202,146 @@ ipcMain.handle("bitbot:rooms:list", async () => {
   }
 });
 
+/* GP-143/144/145/146 — 群 Bot 协作真回合（Host 产品路径）。
+ *
+ * engine（product_surface.orchestrateRoom）owns 路由/护栏/聚合与 transcript schema;
+ * 这里提供它缺的那一块 —— 每个 responder 的真实回合：
+ *   - 自己的 botId → 自己的记忆槽（memorySeedArgs）、自己的 persona
+ *     （host_ffi 每回合现读 bots.json 的 job/description）、自己的审批/Computer 作用域；
+ *   - 独立 sessionId（room-<roomId>-<botId>）→ 群回合永不写进 Bot 的 DM 会话；
+ *   - 缺 key / 内核失败 / provider 失败 → 如实返回 ok:false，engine 记
+ *     bot_reply_error 并把 final_report 聚合成 N/总 partial，不伪造回执。
+ * 审批与 Secret 仍走各自 Bot 的原通道（pending approval store + 私聊提醒），
+ * 群 transcript 只落 sanitizer 处理过的回复正文，不落内部结构串。
+ */
+/* Kernel planning chatter and Host internals are not chat content — the shared
+ * transcript must never carry them (same shapes the renderer hides behind
+ * DEBUG_LINE_RE, plus paths/protocol keys). Token-shaped text is redacted with
+ * the very rule set the composer and the kernel use. */
+const ROOM_DEBUG_RE =
+  /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|Host FFI|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|entry=|account=|masked=|token_refused|needs_host_ffi|"kind"\s*:\s*"|__bb|data\/(desktop|llm|workspace)\/|\/Users\/[^\s]+)/;
+
+function roomSafeText(raw) {
+  let s = String(raw == null ? "" : raw);
+  // token-shaped text never enters a shared transcript (same rule set the
+  // composer and the kernel use, so group rows cannot be more permissive).
+  if (secretProtocol && Array.isArray(secretProtocol.TOKEN_RULES)) {
+    for (const rule of secretProtocol.TOKEN_RULES) {
+      if (rule && rule.re) s = s.replace(new RegExp(rule.re.source, "g"), secretProtocol.REDACTED);
+    }
+  }
+  return s
+    .split("\n")
+    .filter((line) => !ROOM_DEBUG_RE.test(line))
+    .join("\n")
+    .trim();
+}
+
+async function runRoomResponderTurn(botId, task, ctx) {
+  const id = String(botId || "").trim();
+  if (!id) return { ok: false, error: "responder_missing" };
+  const bots = (surface.loadBots().bots) || [];
+  const bot = bots.find((b) => b && b.id === id);
+  if (!bot) return { ok: false, error: "bot_not_found" };
+  const sessionId = "room-" + String((ctx && ctx.room) || "room") + "-" + id;
+  const rows = [];
+  try {
+    const result = await runner.runTurn(String(task || ""), {
+      sessionId,
+      machineId: "desk-1",
+      machineKind: "desktop",
+      channel: "",
+      // 编排不改变审批语义：群回合同样必须过原审批门。
+      approved: false,
+      botId: id,
+      onProgress: (ev) => {
+        const row = Object.assign({}, ev, { bot_id: id, room_id: (ctx && ctx.room) || "" });
+        rows.push(row);
+        broadcast("bitbot:room-turn-progress", row);
+      },
+    });
+    const host = (result && Array.isArray(result.host_results)) ? result.host_results : [];
+    const failed = host.filter((h) => h && h.ok === false);
+    const assistants = ((result && result.messages) || [])
+      .filter((m) => m && m.role === "assistant" && m.text)
+      .map((m) => roomSafeText(m.text))
+      .filter(Boolean);
+    const artifacts = host
+      .filter((h) => h && h.ok !== false && h.artifact_path)
+      .map((h) => ({ name: path.basename(String(h.artifact_path)), path: String(h.artifact_path) }));
+    if (result && result.ok === false) {
+      return {
+        ok: false,
+        error: roomSafeText((result && result.error) || (failed[0] && failed[0].error) || "turn_failed"),
+        text: assistants.join("\n"),
+        artifacts,
+      };
+    }
+    if (failed.length) {
+      const f = failed.find((h) => h.kind === "llm_chat") || failed[0];
+      return { ok: false, error: roomSafeText(f.error || "host_effect_failed"), text: assistants.join("\n"), artifacts };
+    }
+    if (!assistants.length) return { ok: false, error: "no_reply", text: "", artifacts };
+    try {
+      surface.touchBotActivity(id);
+      broadcast("bitbot:bots-changed", surface.listViews());
+    } catch (_) {
+      /* activity stamp is best effort */
+    }
+    return { ok: true, text: assistants.join("\n"), artifacts, progress: rows.length };
+  } catch (err) {
+    return { ok: false, error: roomSafeText((err && err.message) || String(err)), text: "", artifacts: [] };
+  }
+}
+
+ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
+  const roomId = String((payload && payload.room_id) || "").trim();
+  const text = String((payload && payload.text) || "").trim();
+  if (!roomId || !text) return { ok: false, error: "room_and_text_required" };
+  try {
+    // 1) 真实路由 + 用户消息落 transcript（单一写入点：内核 room_turn 不再双写）
+    const routed = surface.roomTurn(roomId, text, new Date().toISOString());
+    if (!routed || !routed.ok) {
+      return { ok: false, error: (routed && routed.error) || "route_failed", room_id: roomId };
+    }
+    surface.appendRoomTranscript(roomId, routed.transcript_entry);
+    // 2) 扇出到点名的 responder，收齐后聚合 final_report（N/总 如实）。
+    //    预算护栏交给引擎（>6 → too_many_responders），这里不静默截断。
+    const to = routed.transcript_entry.responders || [];
+    const roomRow = (surface.loadRooms().rooms || []).find((r) => r && r.id === roomId) || {};
+    broadcast("bitbot:room-orchestrating", {
+      room_id: roomId,
+      task: text,
+      responders: to.map((rid) => {
+        const b = ((surface.loadBots().bots) || []).find((x) => x && x.id === rid);
+        return { id: rid, name: (b && b.name) || rid };
+      }),
+      member_count: (roomRow.members || []).length,
+      policy: routed.transcript_entry.responder_policy,
+      at: new Date().toISOString(),
+    });
+    const timeoutMs = Number(process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || 120000);
+    const res = await surface.orchestrateRoom({
+      room: roomId,
+      task: text,
+      to,
+      deps: { runResponderTurn: runRoomResponderTurn, timeoutMs },
+    });
+    broadcast("bitbot:room-updated", {
+      room_id: roomId,
+      ok: Boolean(res && res.ok),
+      returned: res && res.returned,
+      total: res && res.total,
+      partial: Boolean(res && res.partial),
+      error: res && res.ok ? undefined : (res && res.error) || "orchestrate_failed",
+    });
+    broadcast("bitbot:rooms-changed", surface.loadRooms());
+    return res;
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err), room_id: roomId };
+  }
+});
+
 ipcMain.handle("bitbot:computer:state", async () => {
   try {
     return { ok: true, computer: surface.loadComputer() };

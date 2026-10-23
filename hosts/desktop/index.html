@@ -881,6 +881,42 @@
     border-top-left-radius: 8px;
   }
   .msg .role { display: none; }
+  /* GP-146: 群 transcript 按条目渲染。说话人行 / 失败态 / 运行中 / 协作汇总卡
+     都长在既有 .msg 气泡上，因此布局合同（§3 列宽）继续成立，不新增消息面。 */
+  .room-speaker {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin: 0 0 6px; font-size: var(--text-xs); color: var(--muted);
+  }
+  .room-speaker .rs-name { color: var(--ink); font-weight: 600; font-size: var(--text-sm); }
+  .room-speaker .rs-time { font-variant-numeric: tabular-nums; }
+  .room-speaker .rs-policy { font-size: var(--text-xs); }
+  .msg.room-error .body { border-color: var(--danger); }
+  .msg.room-error .room-speaker .rs-state { color: var(--danger-ink); font-weight: 600; }
+  .msg.room-working .body { color: var(--muted); }
+  .msg.room-working .rw-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--warn); margin-right: 6px; vertical-align: middle;
+  }
+  .room-report .rr-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .room-report .rr-title { font-weight: 600; color: var(--ink); }
+  .room-report .rr-count {
+    font-size: var(--text-xs); border: 1px solid var(--line);
+    border-radius: var(--radius-pill); padding: 2px 8px; color: var(--muted);
+  }
+  .room-report.room-partial .rr-count { border-color: var(--warn-line); color: var(--warn-ink); font-weight: 600; }
+  .room-report .rr-task { color: var(--muted); font-size: var(--text-sm); margin-bottom: 6px; }
+  .room-report .rr-sec {
+    display: flex; gap: 6px; align-items: baseline;
+    padding: 4px 0; border-top: 1px dashed var(--line); font-size: var(--text-sm);
+  }
+  .room-report .rr-sec-name { font-weight: 600; color: var(--ink); flex: 0 0 auto; }
+  .room-report .rr-sec-text { color: var(--muted); word-break: break-word; }
+  .room-report .rr-arts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .room-report .rr-art {
+    font-size: var(--text-xs); border: 1px solid var(--line);
+    border-radius: var(--radius-pill); padding: 2px 8px; color: var(--muted);
+  }
+  .room-report .rr-arts-label { font-size: var(--text-xs); color: var(--muted); margin-top: 8px; }
   /* GP-103/104/105: §8.4 untrusted data marker — shown above the bubble body so
      external text can never read as the Bot speaking in its own voice. */
   .untrusted-badge {
@@ -4539,6 +4575,9 @@
             s.preview ||
             (s.message_count || 0) + " " + wavegT("msgUnit");
           el.addEventListener("click", async () => {
+            // 群聊 composer 是独占态：点开任何私聊会话都要先退出群模式，
+            // 否则用户以为在跟这个人说话，实际又发进了群。
+            if (composerRoom) exitRoomChat();
             const r = await window.bitbot.sessions.setActive(s.id);
             if (r && r.ok) {
               activeSessionId = s.id;
@@ -4796,6 +4835,260 @@
         meta: n + " " + wavegT("roomMembers") + " · " + wavegT("roomRouteHint"),
       };
     }
+    /* ---- GP-146: 群 transcript 按条目渲染 ----
+       一行一条：用户消息 / bot_reply（说话人 + 正文 + 产物）/ bot_reply_error
+       （如实失败）/ final_report（N/总、partial、分节、产物）。旧 rows 没有
+       kind，按用户行显示，不崩、不丢。群内容长在 #log 里的一条群线程上，
+       因此布局合同（.msg 列宽 ≤ --content-max）继续成立。 */
+    const ROOM_RENDER_CAP = 60;
+    let roomThread = null;
+    const roomWorking = new Map();
+    let roomBotNames = {};
+    async function loadRoomBotNames() {
+      try {
+        const view = await window.bitbot.bots.list();
+        const raw = (view && (view.bots || view.views || view)) || [];
+        const list = Array.isArray(raw) ? raw : [];
+        const map = {};
+        for (const b of list) if (b && b.id) map[b.id] = b.name || b.id;
+        roomBotNames = map;
+      } catch (_) {
+        /* 名字查不到就退回 id —— 如实，不编造显示名 */
+      }
+    }
+    function roomSpeakerName(id) {
+      return roomBotNames[id] || String(id || "");
+    }
+    function roomTime(at) {
+      return String(at || "").slice(0, 16).replace("T", " ");
+    }
+    function roomPolicyLabel(p) {
+      if (p === "all") return wavegT("roomPolicyAll");
+      if (p === "mentioned_only") return wavegT("roomPolicyMentioned");
+      if (p === "bot_discretion") return wavegT("roomPolicyDiscretion");
+      return "";
+    }
+    function roomSpeakerRow(opts) {
+      const head = document.createElement("div");
+      head.className = "room-speaker";
+      const nm = document.createElement("span");
+      nm.className = "rs-name";
+      nm.textContent = opts.name;
+      head.appendChild(nm);
+      if (opts.state) {
+        const st = document.createElement("span");
+        st.className = "rs-state";
+        st.textContent = opts.state;
+        head.appendChild(st);
+      }
+      if (opts.time) {
+        const tm = document.createElement("span");
+        tm.className = "rs-time";
+        tm.textContent = opts.time;
+        head.appendChild(tm);
+      }
+      if (opts.policy) {
+        const pl = document.createElement("span");
+        pl.className = "rs-policy";
+        pl.textContent = opts.policy;
+        head.appendChild(pl);
+      }
+      return head;
+    }
+    function roomArtifacts(body, artifacts) {
+      const list = Array.isArray(artifacts) ? artifacts.filter((a) => a && a.name) : [];
+      if (!list.length) return;
+      const label = document.createElement("div");
+      label.className = "rr-arts-label";
+      label.textContent = wavegT("roomArtifactsLabel");
+      body.appendChild(label);
+      const row = document.createElement("div");
+      row.className = "rr-arts";
+      for (const a of list) {
+        const chip = document.createElement("span");
+        chip.className = "rr-art";
+        chip.textContent = a.name;
+        row.appendChild(chip);
+      }
+      body.appendChild(row);
+    }
+    function roomThreadEl() {
+      if (roomThread && document.contains(roomThread)) return roomThread;
+      const box = document.createElement("div");
+      box.className = "room-thread";
+      box.style.cssText =
+        "display:flex;flex-direction:column;gap:16px;width:100%;max-width:var(--content-max)";
+      log.appendChild(box);
+      roomThread = box;
+      return box;
+    }
+    function roomAppend(el) {
+      const box = roomThreadEl();
+      box.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+      return el;
+    }
+    function renderRoomUser(e) {
+      const el = addMsg("user", String(e.text || ""), { actions: false });
+      el.classList.add("room-user");
+      el.parentNode.removeChild(el);
+      roomAppend(el);
+      el.querySelector(".body").prepend(
+        roomSpeakerRow({
+          name: wavegT("roomMe"),
+          time: roomTime(e.at),
+          policy: roomPolicyLabel(e.responder_policy),
+        }),
+      );
+      return el;
+    }
+    function renderRoomBotReply(e, isError) {
+      const bodyText = isError ? "" : String(e.text || "");
+      const el = addMsg("assistant", bodyText, { actions: false });
+      el.classList.add(isError ? "room-error" : "room-reply");
+      el.style.setProperty("--bot-avatar", avatarColorFor(e.bot_id || e.speaker || ""));
+      el.parentNode.removeChild(el);
+      roomAppend(el);
+      const body = el.querySelector(".body");
+      body.prepend(
+        roomSpeakerRow({
+          name: e.name || roomSpeakerName(e.bot_id),
+          time: roomTime(e.at),
+          state: isError ? wavegT("roomReplyFailed") : "",
+        }),
+      );
+      if (isError) {
+        const why = document.createElement("div");
+        why.className = "rr-sec-text";
+        why.textContent = String(e.error || wavegT("roomNoReason"));
+        body.appendChild(why);
+      } else {
+        roomArtifacts(body, e.artifacts);
+      }
+      return el;
+    }
+    function renderRoomFinalReport(e) {
+      const el = document.createElement("div");
+      const partial = Boolean(e.partial);
+      el.className = "msg assistant room-report" + (partial ? " room-partial" : "");
+      const body = document.createElement("div");
+      body.className = "body";
+      el.appendChild(body);
+      const head = document.createElement("div");
+      head.className = "rr-head";
+      const title = document.createElement("span");
+      title.className = "rr-title";
+      title.textContent = wavegT("roomReportHead");
+      head.appendChild(title);
+      const count = document.createElement("span");
+      count.className = "rr-count";
+      count.textContent = wavegT("roomReportCount")
+        .replace("{r}", String(e.returned == null ? "?" : e.returned))
+        .replace("{t}", String(e.total == null ? "?" : e.total));
+      head.appendChild(count);
+      const state = document.createElement("span");
+      state.className = "rr-sec-text";
+      // 未收齐永远显示 partial，不写「全部完成」（诚实性合同）。
+      state.textContent = partial ? wavegT("roomReportPartial") : wavegT("roomReportComplete");
+      head.appendChild(state);
+      if (e.at) {
+        const tm = document.createElement("span");
+        tm.className = "rs-time";
+        tm.textContent = roomTime(e.at);
+        head.appendChild(tm);
+      }
+      body.appendChild(head);
+      if (e.task_title || e.task) {
+        const task = document.createElement("div");
+        task.className = "rr-task";
+        task.textContent = wavegT("roomReportTask") + String(e.task_title || e.task);
+        body.appendChild(task);
+      }
+      for (const s of Array.isArray(e.sections) ? e.sections : []) {
+        const row = document.createElement("div");
+        row.className = "rr-sec" + (s && s.ok ? "" : " bad");
+        const nm = document.createElement("span");
+        nm.className = "rr-sec-name";
+        nm.textContent = (s && s.name) || roomSpeakerName(s && s.bot_id);
+        row.appendChild(nm);
+        const txt = document.createElement("span");
+        txt.className = "rr-sec-text";
+        txt.textContent = s && s.ok
+          ? String(s.summary || "")
+          : String((s && s.summary) || wavegT("roomNoReason"));
+        row.appendChild(txt);
+        body.appendChild(row);
+      }
+      roomArtifacts(body, e.artifacts);
+      return roomAppend(el);
+    }
+    function clearRoomWorking() {
+      roomWorking.forEach((el) => {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      });
+      roomWorking.clear();
+    }
+    function renderRoomWorking(ev) {
+      const roomId = String((ev && ev.room_id) || "");
+      if (!composerRoom || composerRoom.id !== roomId) return;
+      clearRoomWorking();
+      for (const r of Array.isArray(ev.responders) ? ev.responders : []) {
+        const el = document.createElement("div");
+        el.className = "msg assistant room-working";
+        el.style.setProperty("--bot-avatar", avatarColorFor(r.id));
+        el.dataset.roomBot = roomId + "|" + r.id;
+        const body = document.createElement("div");
+        body.className = "body";
+        const dot = document.createElement("span");
+        dot.className = "rw-dot";
+        body.appendChild(dot);
+        const txt = document.createElement("span");
+        txt.textContent = (r.name || roomSpeakerName(r.id)) + " · " + wavegT("roomWorking");
+        body.appendChild(txt);
+        el.appendChild(body);
+        roomAppend(el);
+        roomWorking.set(roomId + "|" + r.id, el);
+      }
+    }
+    async function renderRoomTranscript(roomId) {
+      clearRoomWorking();
+      const box = roomThreadEl();
+      box.innerHTML = "";
+      const entries = await readRoomTranscript(roomId);
+      if (!entries.length) {
+        const empty = document.createElement("div");
+        empty.className = "room-thread-empty";
+        empty.style.cssText = "color:var(--muted);font-size:var(--text-sm);padding:4px 0";
+        empty.textContent = wavegT("roomTranscriptEmpty");
+        box.appendChild(empty);
+        return entries;
+      }
+      const shown = entries.slice(-ROOM_RENDER_CAP);
+      const note = document.createElement("div");
+      note.className = "room-thread-head";
+      note.style.cssText = "color:var(--muted);font-size:var(--text-xs);padding:2px 0 4px";
+      note.textContent = wavegT("roomTranscriptHead").replace("{n}", String(shown.length));
+      box.appendChild(note);
+      for (const e of shown) {
+        const kind = String((e && e.kind) || "");
+        if (kind === "final_report") renderRoomFinalReport(e);
+        else if (kind === "bot_reply") renderRoomBotReply(e, false);
+        else if (kind === "bot_reply_error") renderRoomBotReply(e, true);
+        else renderRoomUser(e); // kind:"user" 与旧式无 kind rows 同为「用户行」
+      }
+      return entries;
+    }
+    async function readRoomTranscript(roomId) {
+      try {
+        const res = await window.bitbot.rooms.list();
+        const payload = (res && res.rooms) || {};
+        const found = (Array.isArray(payload) ? payload : payload.rooms || [])
+          .find((x) => x && x.id === roomId);
+        return found && Array.isArray(found.transcript) ? found.transcript : [];
+      } catch (_) {
+        return [];
+      }
+    }
     async function openRoomChat(rm) {
       if (!rm || !rm.id) return;
       composerRoom = { id: rm.id, title: rm.title || rm.id };
@@ -4811,35 +5104,68 @@
       const input2 = document.getElementById("composer") ? document.querySelector("#composer #text") : null;
       if (input2) input2.placeholder = wavegT("roomComposerPh");
       clearWelcome();
-      // Show the room's durable transcript (rooms.json) — honest read, and
-      // an empty room says so instead of inventing history.
-      let entries = [];
+      // 真实、持久的群 transcript（rooms.json）——空群如实说「还没有消息」，不造历史。
+      await loadRoomBotNames();
+      await renderRoomTranscript(rm.id);
+    }
+    async function sendRoomTurn(text) {
+      const roomId = composerRoom ? composerRoom.id : "";
+      if (!roomId) return;
+      sendBtn.disabled = true;
       try {
-        const res = await window.bitbot.rooms.list();
-        const payload = (res && res.rooms) || {};
-        const found = (Array.isArray(payload) ? payload : payload.rooms || [])
-          .find((x) => x && x.id === rm.id);
-        entries = found && Array.isArray(found.transcript) ? found.transcript : [];
-      } catch (_) {
-        entries = [];
+        renderRoomUser({ kind: "user", text, at: new Date().toISOString() });
+        const res = await window.bitbot.rooms.orchestrate({ room_id: roomId, text });
+        if (!res || !res.ok) {
+          const el = document.createElement("div");
+          el.className = "msg assistant room-error";
+          const body = document.createElement("div");
+          body.className = "body";
+          const head = roomSpeakerRow({
+            name: wavegT("roomReplyFailed"),
+            state: wavegT("roomStartFailed"),
+          });
+          body.appendChild(head);
+          const why = document.createElement("div");
+          why.className = "rr-sec-text";
+          // 产品态只说人话；原始协议码只在 dev-mode 显示（无调试面合同）。
+          why.textContent = devModeOn()
+            ? String((res && res.error) || "orchestrate_failed")
+            : wavegT("roomStartFailedHint");
+          body.appendChild(why);
+          el.appendChild(body);
+          roomAppend(el);
+        }
+      } catch (err) {
+        addMsg("assistant", devModeOn() ? String((err && err.message) || err) : wavegT("roomStartFailedHint"));
+      } finally {
+        clearRoomWorking();
+        sendBtn.disabled = false;
+        await renderRoomTranscript(roomId);
       }
-      if (!entries.length) {
-        addMsg("assistant", wavegT("roomTranscriptEmpty"));
-        return;
-      }
-      const lines = entries.slice(-8).map((e) => {
-        const who = Array.isArray(e.responders) && e.responders.length
-          ? "@" + e.responders.join(",@") : "·";
-        return "[" + String(e.at || "").slice(0, 16).replace("T", " ") + "] " + who + " " + String(e.text || "");
-      });
-      addMsg("assistant", wavegT("roomTranscriptHead").replace("{n}", String(entries.length)) + "\n" + lines.join("\n"));
     }
     function exitRoomChat() {
       composerRoom = null;
+      clearRoomWorking();
+      if (roomThread && roomThread.parentNode) roomThread.parentNode.removeChild(roomThread);
+      roomThread = null;
       const banner = document.getElementById("room-banner");
       if (banner) banner.style.display = "none";
       const input2 = document.querySelector("#composer #text");
       if (input2) input2.placeholder = COMPOSER_PLACEHOLDER_DEFAULT;
+    }
+    // 群回合是 Host 异步链：running 状态与「有新行可读」都由 Host 事件驱动，
+    // 渲染层不自己拼状态，避免和 rooms.json 漂移。
+    if (window.bitbot && window.bitbot.rooms) {
+      if (window.bitbot.rooms.onRoomOrchestrating) {
+        window.bitbot.rooms.onRoomOrchestrating((ev) => renderRoomWorking(ev));
+      }
+      if (window.bitbot.rooms.onRoomUpdated) {
+        window.bitbot.rooms.onRoomUpdated((ev) => {
+          if (composerRoom && ev && ev.room_id === composerRoom.id) {
+            renderRoomTranscript(composerRoom.id).catch(() => {});
+          }
+        });
+      }
     }
 
     /* GP-116 (§2.1): Marketplace = the Host's Bot template catalog. Same list
@@ -8437,6 +8763,8 @@
 
     function selectBotForChat(b) {
       activeBotId = b.id;
+      // 点开一个 Bot 就是回到私聊面：群 composer 必须先让位（同 sess-row 合同）。
+      if (composerRoom) exitRoomChat();
       updateBotPill(b.name || b.id, b.id || b.name, b.avatar_data_url);
       const dmTitle = (b.name || b.id) + " · DM";
       (async () => {
@@ -9995,7 +10323,22 @@
         roomRouteHint: "@Name 定向 · @everyone 全体 · 无 @ 由 Bot 自行决定",
         roomComposerPh: "在群里发消息…（@Name 定向）",
         roomTranscriptEmpty: "这是群聊的开始——还没有任何消息。",
-        roomTranscriptHead: "群聊记录（最近 {n} 条，来自 rooms.json）：",
+        roomTranscriptHead: "群聊记录（最近 {n} 条）：",
+        roomMe: "我",
+        roomWorking: "工作中…",
+        roomReplyFailed: "回复失败",
+        roomNoReason: "未返回原因",
+        roomReportHead: "群协作汇总",
+        roomReportCount: "收齐 {r}/{t}",
+        roomReportPartial: "未收齐（部分完成）",
+        roomReportComplete: "已全部收齐",
+        roomReportTask: "任务：",
+        roomArtifactsLabel: "产物",
+        roomPolicyMentioned: "点名成员",
+        roomPolicyAll: "全体成员",
+        roomPolicyDiscretion: "由 Bot 自行决定",
+        roomStartFailed: "未启动",
+        roomStartFailedHint: "这次群协作没有启动，成员没有收到任务。",
         sessSearchPh: "搜索会话",
         sessToday: "今天",
         sessYesterday: "昨天",
@@ -10475,7 +10818,22 @@
         roomRouteHint: "@Name 定向 · @everyone 全體 · 無 @ 由 Bot 自行決定",
         roomComposerPh: "在群裡發消息…（@Name 定向）",
         roomTranscriptEmpty: "這是群聊的開始——還沒有任何消息。",
-        roomTranscriptHead: "群聊記錄（最近 {n} 條，來自 rooms.json）：",
+        roomTranscriptHead: "群聊記錄（最近 {n} 條）：",
+        roomMe: "我",
+        roomWorking: "工作中…",
+        roomReplyFailed: "回覆失敗",
+        roomNoReason: "未回報原因",
+        roomReportHead: "群協作彙總",
+        roomReportCount: "收齊 {r}/{t}",
+        roomReportPartial: "未收齊（部分完成）",
+        roomReportComplete: "已全部收齊",
+        roomReportTask: "任務：",
+        roomArtifactsLabel: "產物",
+        roomPolicyMentioned: "點名成員",
+        roomPolicyAll: "全體成員",
+        roomPolicyDiscretion: "由 Bot 自行決定",
+        roomStartFailed: "未啟動",
+        roomStartFailedHint: "這次群協作沒有啟動，成員沒有收到任務。",
         sessSearchPh: "搜尋會話",
         sessToday: "今天",
         sessYesterday: "昨天",
@@ -10955,7 +11313,22 @@
         roomRouteHint: "@Name directed · @everyone all · no @ = bots decide",
         roomComposerPh: "Message the group… (@Name to direct)",
         roomTranscriptEmpty: "This is the start of the group — no messages yet.",
-        roomTranscriptHead: "Group transcript (last {n}, from rooms.json):",
+        roomTranscriptHead: "Group transcript (last {n}):",
+        roomMe: "Me",
+        roomWorking: "working…",
+        roomReplyFailed: "reply failed",
+        roomNoReason: "no reason returned",
+        roomReportHead: "Group report",
+        roomReportCount: "collected {r}/{t}",
+        roomReportPartial: "incomplete (partial)",
+        roomReportComplete: "all collected",
+        roomReportTask: "Task: ",
+        roomArtifactsLabel: "artifacts",
+        roomPolicyMentioned: "named members",
+        roomPolicyAll: "all members",
+        roomPolicyDiscretion: "bots decide",
+        roomStartFailed: "not started",
+        roomStartFailedHint: "This group run never started — no member received the task.",
         sessSearchPh: "Search chats",
         sessToday: "Today",
         sessYesterday: "Yesterday",
@@ -12369,10 +12742,24 @@
       // GP-99/101: credential-shaped text must not become a chat turn.
       if (blockSecretPaste(text)) return;
       let finalText = text;
-      // M29 (§2.4): when the composer is aimed at a group, the phrase goes
-      // through the same kernel RoomTurn routing as the legacy test widgets
-      // (@Name 定向 / @everyone 全体 / 无 @ bot_discretion) — not a new path.
-      if (composerRoom) finalText = "room " + composerRoom.id + " :: " + finalText;
+      // M29/GP-143: when the composer is aimed at a group, the message goes to
+      // the Host room orchestration IPC — it runs the same real RoomTurn routing
+      // (@Name 定向 / @everyone 全体 / 无 @ bot_discretion, GP-51) and then the
+      // responder fan-out. The kernel phrase is NOT sent here, so the transcript
+      // has exactly one writer.
+      if (composerRoom) {
+        if (pendingAttachments.length) {
+          const refs = pendingAttachments.map((p) => "attach file " + p).join("; ");
+          finalText = (text ? text + "\n" : "") + refs;
+          pendingAttachments = [];
+          renderAttachmentStrip();
+        }
+        input.value = "";
+        autoGrow();
+        syncVoiceChatAvailability();
+        await sendRoomTurn(finalText);
+        return;
+      }
       if (pendingAttachments.length) {
         // Real staged paths only (Host validated count/size); never fabricate.
         const refs = pendingAttachments.map((p) => "attach file " + p).join("; ");

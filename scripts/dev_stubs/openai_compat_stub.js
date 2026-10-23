@@ -33,6 +33,17 @@ const server = http.createServer((req, res) => {
       res.end("not found");
       return;
     }
+    // GP-143 acceptance hook: fail exactly the requests that carry a marker in
+    // the payload (e.g. one Bot's persona name), so a group run can be shown to
+    // degrade to an honest partial instead of a fabricated reply. Test-only.
+    const failMarker = String(process.env.BITBOT_STUB_FAIL_CONTAINS || "");
+    if (failMarker && body.includes(failMarker)) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({ error: { message: "stub provider failure for " + failMarker } }),
+      );
+      return;
+    }
     let user = "";
     let wantStream = false;
     try {
