@@ -144,6 +144,10 @@ const readRecords = (file) => {
 };
 /** provider 载荷里的 system 全文（人设/群上下文断言都打在它上面）。 */
 const sysText = (rec) => (rec.messages || []).filter((m) => m.role === "system").map((m) => m.content).join("\n");
+/* GP-152：system 载荷 = 人设段 + "\n当前群聊：…" 群上下文段。群上下文按 §1 J3
+ * 本来就必须列出全体成员的职责，所以「A 的载荷里不该出现 B 的职责」这条只能在
+ * 人设段上断言；整段比较会把共享名单误判成串味（上一轮的假红）。 */
+const personaText = (rec) => sysText(rec).split("\n当前群聊：")[0];
 
 async function waitUntil(fn, ms = 60000, step = 400) {
   const deadline = Date.now() + ms;
@@ -357,9 +361,20 @@ const forbiddenHit = (text) => {
    * 用户点的是头像弹层里的 #ap-settings，由它转发到那颗按钮。
    */
   const openSettings = async (stab) => {
-    await win.click("#account-avatar-btn", { timeout: 20000 });
-    await win.waitForSelector("#ap-settings", { state: "visible", timeout: 20000 });
-    await win.click("#ap-settings", { timeout: 20000 });
+    // GP-152：设置面板已经开着时直接切页签，别再走 #account-avatar-btn ——
+    // 面板展开时盖住头像按钮，Playwright 的 actionability 检查会一直等不到
+    // 稳定（上一轮 provider 旅程就是这么超时的：前置检查只关了模型面板，
+    // 没关设置面板，下一次 openSettings 就被自己的面板挡住）。
+    const alreadyOpen = await win.evaluate(() => {
+      const p = document.getElementById("settings-panel");
+      // .bb-modal 是 position:fixed，offsetParent 恒为 null，只能看 computed display。
+      return Boolean(p && getComputedStyle(p).display !== "none");
+    });
+    if (!alreadyOpen) {
+      await win.click("#account-avatar-btn", { timeout: 20000 });
+      await win.waitForSelector("#ap-settings", { state: "visible", timeout: 20000 });
+      await win.click("#ap-settings", { timeout: 20000 });
+    }
     await win.waitForSelector("#settings-panel", { state: "visible", timeout: 20000 });
     if (stab) await win.click('.settings-tab-btn[data-stab="' + stab + '"]', { timeout: 10000 });
     await new Promise((r) => setTimeout(r, 300));
@@ -373,6 +388,16 @@ const forbiddenHit = (text) => {
    * 返回 false = 面板不可达；调用方按「前置没走通」报红，而不是量到 -1px 冒充缺陷。
    */
   const openModelSheet = async () => {
+    // 幂等保护（我的门禁 bug，不是产品 bug）：面板已经开着时不要再走
+    // openSettings → #account-avatar-btn —— #model-modal 是全屏遮罩，按钮被盖住，
+    // Playwright 会卡在 "waiting for locator('#account-avatar-btn')" 上，
+    // 把后面每个断言连带判成假红（上一轮 J4 的三个 FAIL + "重启后语言被覆盖"
+    // 就是这么来的）。已开则直接复用。
+    const already = await win.evaluate(() => {
+      const m = document.getElementById("model-modal");
+      return Boolean(m && getComputedStyle(m).display !== "none");
+    });
+    if (already) return "already-open";
     await openSettings("credentials");
     const via = await win.evaluate(() => {
       const b = document.getElementById("sec-model-open");
@@ -589,9 +614,14 @@ const forbiddenHit = (text) => {
       const reps = rowsOf(T1, "bot_reply");
       const rx = reps.filter((r) => r && r.bot_id === idX).map((r) => String(r.text || "")).join("\n");
       const ry = reps.filter((r) => r && r.bot_id === idY).map((r) => String(r.text || "")).join("\n");
-      twoReplies && rx.includes(X.job) && !rx.includes(Y.job) && ry.includes(Y.job) && !ry.includes(X.job)
-        ? ok("两条 bot_reply 各按各职责，互不串味")
-        : bad("群内职责串味", JSON.stringify({ twoReplies, x: rx.slice(0, 160), y: ry.slice(0, 160) }));
+      /* GP-152 修正我这版门禁的口径：stub 用 ECHO_ALL 时，bot_reply 的正文就是整份
+         载荷的回显，里面必然带着共享的群成员名单（名单含全员职责，§1 J3 要求）。
+         所以「行级」只能断言正面（各人确实带着自己的职责发言），互不串味的反面
+         放到载荷的人设段上验（见下面 responder 人设互串）。真实模型不会有这种
+         回显，但用回显做证据时就必须按这个边界断言，否则断言在构造上永假。 */
+      twoReplies && rx.includes(X.job) && ry.includes(Y.job)
+        ? ok("两条 bot_reply 各自带上了自己的职责（反面在人设段验）")
+        : bad("群内职责缺失", JSON.stringify({ twoReplies, x: rx.slice(0, 160), y: ry.slice(0, 160) }));
       const roomRecs = readRecords(REC_MAIN).slice(recBefore3);
       const responderRecs = roomRecs.filter((r) => /名字：/ .test(sysText(r)) && /当前群聊：/.test(sysText(r)));
       responderRecs.length >= 2
@@ -610,9 +640,10 @@ const forbiddenHit = (text) => {
         : bad("本轮被 @ 缺失", sysRC.slice(0, 320));
       const rX = responderRecs.find((r) => sysText(r).includes("名字：" + X.name)) || null;
       const rY = responderRecs.find((r) => sysText(r).includes("名字：" + Y.name)) || null;
-      rX && rY && sysText(rX).includes(X.job) && !sysText(rY).includes(X.job)
-        ? ok("两个 responder 的 system 各自只带自己的职责（同群也不共享人设）")
-        : bad("responder 人设互串", JSON.stringify({ x: rX && sysText(rX).slice(0, 160), y: rY && sysText(rY).slice(0, 160) }));
+      rX && rY && personaText(rX).includes(X.job) && !personaText(rX).includes(Y.job)
+        && personaText(rY).includes(Y.job) && !personaText(rY).includes(X.job)
+        ? ok("两个 responder 的 system 人设段各自只带自己的职责（同群也不共享人设）")
+        : bad("responder 人设互串", JSON.stringify({ x: rX && personaText(rX).slice(0, 160), y: rY && personaText(rY).slice(0, 160) }));
       await win.screenshot({ path: path.join(ART, "uj-j3-group-two-replies.png") });
 
       // 成员列表可见性：不再回答「我无法查看群成员列表」
@@ -710,10 +741,38 @@ const forbiddenHit = (text) => {
         : bad("UI 汇总卡未点名", (cardP && cardP.text || "").slice(0, 200));
       await win.screenshot({ path: path.join(ART, "uj-j4-partial.png") });
 
-      /* 全程调试行扫描：DOM + 会话持久层 + rooms.json 本轮新增行 */
-      const visAll = await logAll();
-      const hitVis = forbiddenHit(visAll);
-      !hitVis ? ok("DOM #log 全程无调试串") : bad("DOM 残留调试串", hitVis);
+      /* 全程调试行扫描：DOM + 会话持久层 + rooms.json 本轮新增行。
+         这里上一轮用错了口径（我的门禁 bug）：logAll() 取的是 #log 的完整
+         textContent，连 .debug-only 一起算，等于要求「隐藏层里也不许出现」——
+         而 §0 明确允许旧调试行只在渲染层隐藏/过滤、不改写文件。改成两层断言：
+           1) 产品可见区（logVisible，已排除 .debug-only）必须零命中 —— 这才是
+              用户能否走通的标准；
+           2) 原始 textContent 里若还有命中，必须逐条落在 .debug-only 行内，
+              出现「命中但在可见行」即判红。 */
+      const visOnly = await logVisible();
+      const hitVis = forbiddenHit(visOnly);
+      !hitVis ? ok("DOM 产品可见区全程无调试串") : bad("DOM 可见区残留调试串", hitVis);
+      const audit = await win.evaluate((needles) => {
+        const box = document.getElementById("log");
+        const rows = box ? Array.from(box.querySelectorAll(".msg")) : [];
+        const hidden = rows.filter((el) => el.classList.contains("debug-only"));
+        const visible = rows.filter((el) => !el.classList.contains("debug-only"));
+        const hiddenText = hidden.map((el) => el.innerText || "").join("\n");
+        const visibleText = visible.map((el) => el.innerText || "").join("\n");
+        const raw = box ? (box.textContent || "") : "";
+        const hits = needles.filter((n) => raw.includes(n));
+        return {
+          rawHits: hits,
+          stillVisible: hits.filter((n) => visibleText.includes(n)),
+          covered: hits.filter((n) => hiddenText.includes(n)).length,
+          hiddenRows: hidden.length,
+          totalRows: rows.length,
+        };
+      }, FORBIDDEN);
+      audit.stillVisible.length === 0
+        ? ok("原始 DOM 命中全部在 .debug-only 内（可见 " + audit.totalRows + " 行 / 调试 " +
+             audit.hiddenRows + " 行，命中 " + audit.rawHits.join(",") + "）")
+        : bad("有调试串出现在非 debug-only 行", audit.stillVisible.join(","));
       const sessRows = (readJson(SESSIONS, { sessions: [] }).sessions || [])
         .filter((s) => s && Array.isArray(s.messages))
         .flatMap((s) => s.messages.map((m) => String((m && m.text) || "")));
@@ -725,8 +784,6 @@ const forbiddenHit = (text) => {
       const ujTx = JSON.stringify(ujRooms.map((r) => r.transcript || []));
       const hitTx = forbiddenHit(ujTx);
       !hitTx ? ok("rooms.json 本轮新增行无调试串") : bad("rooms.json 残留调试串", hitTx);
-      const anyDebugClass = await win.evaluate(() => document.querySelectorAll("#log .msg.debug-only").length);
-      ok("可见调试卡（.debug-only 且未隐藏）由 dev 模式控制：计数 " + anyDebugClass + "（产品态默认隐藏，持久层已过滤）");
 
       /* 模型密钥输入框高度 + 横向溢出。先确认面板在产品态可达：可达性本身是一条
          独立断言，不能拿「量不到元素」冒充「高度 220px 的缺陷」。 */
@@ -787,11 +844,24 @@ const forbiddenHit = (text) => {
         : bad("设置页未转繁体", tw.panel.slice(0, 220));
       // 英文残留只看我们知道的界面 chrome 词，且区分大小写，
       // 免得把 <code>language</code> 这类标识符误判成文案缺陷。
-      const enHits = (tw.body.match(/General|Computer|Credentials|Marketplace|Settings|Sign in|Updates|Usage/g) || []).filter((v, i, a) => a.indexOf(v) === i);
+      // GP-152 修正我这版门禁的口径：body 级扫描会把「用户自己的 Bot 数据」
+      // 也算进去 —— 默认 Bit Bot 的 job 是用户数据 "General assistant"（§0
+      // 不许改写），界面如实显示它不是 chrome 残留。所以先把 bots.json 里的
+      // 名称/职责/简介从文本里剔除，再查 chrome 词。
+      const userBotTexts = (readJson(BOTS, { bots: [] }).bots || [])
+        .flatMap((b) => [b && b.name, b && b.job, b && b.description])
+        .filter((s) => s && String(s).trim());
+      const chromeText = userBotTexts.reduce(
+        (acc, s) => acc.split(String(s)).join(""),
+        tw.panel + "\n" + tw.modelPanel + "\n" + tw.body,
+      );
+      const enHits = (chromeText.match(/General|Computer|Credentials|Marketplace|Settings|Sign in|Updates|Usage/g) || []).filter((v, i, a) => a.indexOf(v) === i);
       enHits.length === 0
-        ? ok("界面无英文 chrome 残留（General/Computer/Marketplace/…）")
+        ? ok("界面无英文 chrome 残留（General/Computer/Marketplace/…；用户 Bot 数据除外）")
         : bad("zh-TW 残留英文", enHits.join(","));
-      const cnHits = (tw.panel.match(/设置|语言|时区|隐私|群组|外观|审批|执行命令|发送消息|发起购买|调用工具|操作电脑|委派/g) || []).filter((v, i, a) => a.indexOf(v) === i);
+      /* 委派 两字简繁同形（繁体也是「委派任務」），单独出现不能当简体证据；
+         要抓就抓简体专属的 委派任务（vs 繁体 委派任務）。 */
+      const cnHits = (tw.panel.match(/设置|语言|时区|隐私|群组|外观|审批|执行命令|发送消息|发起购买|调用工具|操作电脑|委派任务/g) || []).filter((v, i, a) => a.indexOf(v) === i);
       cnHits.length === 0
         ? ok("设置页无简体残留")
         : bad("zh-TW 残留简体", cnHits.join(","));
@@ -836,6 +906,7 @@ const forbiddenHit = (text) => {
       const useBtn = '#model-modal .ms-card[data-provider-id="qwen"] .ms-use';
       const hasUse = await win.evaluate((sel) => Boolean(document.querySelector(sel)), useBtn);
       await win.click("#model-close", { timeout: 10000 }).catch(() => {});
+      await win.click("#settings-close", { timeout: 10000 }).catch(() => {});
       hasUse
         ? ok("qwen 卡片出现「设为当前模型」按钮（provider 级密钥已配置且非当前）")
         : bad("qwen 无设为当前按钮", "provider 目录没把 provider 级 env 当已配置");
