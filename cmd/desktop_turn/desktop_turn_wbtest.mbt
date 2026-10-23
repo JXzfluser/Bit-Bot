@@ -1744,3 +1744,47 @@ test "desktop_turn_construction_notes_never_in_messages" {
     }
   }
 }
+
+///|
+/// 场景验收（自媒体博主日更流水线）· 第一步复现测试。
+/// 用户真实说法是中文带时间的句子，但内核只有英文 kv 入口
+/// （`create routine id=… cron=… prompt=…`，parity_intents.mbt:1992），
+/// 所以「每天早上9点把审核通过的稿子发到我的邮箱」今天会掉进普通聊天，
+/// 定时任务根本不存在 —— 场景在第一步就断。这里先把契约写成测试（先红）。
+test "desktop_turn_cn_routine_phrasings" {
+  let morning = run_desktop_turn(
+    "每天早上9点把审核通过的稿子发到我的邮箱",
+    turn_id="cnrt-1",
+  )
+  assert_true(morning.ok)
+  assert_eq(morning.intent, "create_routine")
+  assert_eq(morning.effects[0].kind, "routine_schedule")
+  assert_true(morning.effects[0].command.contains("|0 9 * * *|"))
+  // 原话必须整句留在 prompt 里，不能被时间短语吃掉。
+  assert_true(morning.effects[0].command.contains("审核通过的稿子"))
+
+  let evening = run_desktop_turn(
+    "每天下午6点提醒我检查今天的稿件",
+    turn_id="cnrt-2",
+  )
+  assert_true(evening.ok)
+  assert_eq(evening.intent, "create_routine")
+  assert_true(evening.effects[0].command.contains("|0 18 * * *|"))
+
+  let every30 = run_desktop_turn(
+    "每30分钟搜集一次热点新闻",
+    turn_id="cnrt-3",
+  )
+  assert_true(every30.ok)
+  assert_eq(every30.intent, "create_routine")
+  assert_true(every30.effects[0].command.contains("|*/30 * * * *|"))
+
+  // 负向：普通提问不能被误判成定时任务。
+  let plain = run_desktop_turn("今天天气怎么样", turn_id="cnrt-4")
+  assert_true(plain.ok)
+  assert_true(plain.intent != "create_routine")
+  // 负向：没有时间词的「把稿子发到邮箱」是一次性动作，不是排程。
+  let once = run_desktop_turn("把这篇稿子发到我的邮箱", turn_id="cnrt-5")
+  assert_true(once.ok)
+  assert_true(once.intent != "create_routine")
+}

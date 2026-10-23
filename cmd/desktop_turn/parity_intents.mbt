@@ -92,6 +92,160 @@ pub fn decode_cn_group_chat(raw : String) -> (String, String)? {
 }
 
 ///|
+/// 从 start 起读一段 ASCII 数字，返回 (值, 结束下标)；没有数字返回 None。
+fn cn_read_int(cs : Array[Char], start : Int) -> (Int, Int)? {
+  let n = cs.length()
+  let mut i = start
+  let mut v = 0
+  let mut seen = false
+  while i < n {
+    let d = cs[i].to_int() - 48
+    if d >= 0 && d <= 9 {
+      v = v * 10 + d
+      seen = true
+      i = i + 1
+    } else {
+      break
+    }
+  }
+  if seen {
+    Some((v, i))
+  } else {
+    None
+  }
+}
+
+///|
+/// 句子里有没有「要反复做一件事」的动作。没有时间词时这也不足以单独成立，
+/// 只是用来把「今天天气怎么样」这类纯提问先挡在门外。
+fn cn_routine_verb(text : String) -> Bool {
+  for
+    v in [
+      "提醒", "通知", "推送", "发到", "送到", "发送", "发布", "播报", "汇报",
+      "搜集", "收集", "汇总", "整理", "检查", "审核", "生成", "同步", "执行",
+      "跑一次", "推给",
+    ] {
+    if text.contains(v) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// 「N点[半|M分]」+ 时段词 → (minute, hour) 24 小时制。
+/// 只认阿拉伯数字：「九点」这类中文数字今天不解析，解析不了就落回普通聊天，
+/// 不猜一个时间糊弄用户（宁可不建，也不建错）。
+fn cn_daily_time(text : String) -> (Int, Int)? {
+  let cs = text.to_array()
+  let n = cs.length()
+  let mut i = 0
+  while i < n {
+    match cn_read_int(cs, i) {
+      None => i = i + 1
+      Some((num, after)) => {
+        let unit = if after < n { cs[after] } else { ' ' }
+        if (unit == '点' || unit == '时' || unit == '時') && num >= 0 && num <= 23 {
+          let pm =
+            text.contains("下午") || text.contains("晚上") || text.contains("傍晚") ||
+              text.contains("夜里") || text.contains("夜晚") || text.contains("晚")
+          let mut hour = num
+          if num >= 1 && num <= 11 && pm {
+            hour = num + 12
+          }
+          let mut minute = 0
+          let k = after + 1
+          if k < n && cs[k] == '半' {
+            minute = 30
+          } else {
+            match cn_read_int(cs, k) {
+              None => ()
+              Some((m, k2)) =>
+                if k2 < n && cs[k2] == '分' && m >= 0 && m <= 59 {
+                  minute = m
+                }
+            }
+          }
+          return Some((minute, hour))
+        }
+        i = if after > i { after } else { i + 1 }
+      }
+    }
+  }
+  None
+}
+
+///|
+/// 场景验收（自媒体博主日更流水线）：中文排程说法 → (cron, 原话)。
+/// 内核原本只有英文 kv 入口 `create routine id=… cron=… prompt=…`，所以
+/// 「每天早上9点把审核通过的稿子发到我的邮箱」这类真实说法会掉进普通聊天，
+/// 定时任务根本不会被创建 —— 日更场景在第一步就断。
+/// 覆盖：每N分钟 / 每隔N分钟 / 每半小时 / 每小时 / 每天|每日|每晚[+钟点] /
+/// 每个工作日+钟点。不覆盖（如实落回普通聊天）：中文数字钟点、每周、每月。
+pub fn decode_cn_routine(raw : String) -> (String, String)? {
+  let t = raw.trim().to_owned()
+  if t == "" || !cn_routine_verb(t) {
+    return None
+  }
+  let cs = t.to_array()
+  let n = cs.length()
+  let mut i = 0
+  while i < n {
+    if cs[i] == '每' {
+      let mut j = i + 1
+      if j < n && cs[j] == '隔' {
+        j = j + 1
+      }
+      match cn_read_int(cs, j) {
+        None => ()
+        Some((num, after)) =>
+          if after < n && cs[after] == '分' && num > 0 && num < 60 {
+            return Some(("*/" + num.to_string() + " * * * *", t))
+          }
+      }
+      if j < n && cs[j] == '半' {
+        return Some(("*/30 * * * *", t))
+      }
+      if j < n && (cs[j] == '小' || cs[j] == '時' || cs[j] == '时') {
+        return Some(("0 * * * *", t))
+      }
+    }
+    i = i + 1
+  }
+  let weekday = t.contains("每个工作日") || t.contains("工作日")
+  let daily =
+    t.contains("每天") || t.contains("每日") || t.contains("每晚") || t.contains("天天")
+  if !daily && !weekday {
+    return None
+  }
+  match cn_daily_time(t) {
+    None =>
+      // 「每天提醒我写稿件」这种没给钟点的：按内核既有的 @daily 默认，不自己编时间。
+      // 工作日必须给钟点，否则等价于每天，不如实说明就不建。
+      if weekday {
+        None
+      } else {
+        Some(("@daily", t))
+      }
+    Some((m, h)) => {
+      let dow = if weekday { "1-5" } else { "*" }
+      Some((m.to_string() + " " + h.to_string() + " * * " + dow, t))
+    }
+  }
+}
+
+///|
+/// 由原话推出稳定 id：同一句话重复排程会 upsert 到同一行（幂等），
+/// 不同句子不会互相覆盖。id 只用 ASCII，避免进文件名时出中文路径。
+fn cn_routine_id(text : String) -> String {
+  let mut acc = 7
+  for ch in text.to_array() {
+    acc = (acc * 31 + ch.to_int()) % 1000000
+  }
+  "routine-cn-" + acc.to_string()
+}
+
+///|
 /// 「一个 T 的群」「T 群」「T 子群」→ T；没有「群」字就不是建房说法。
 fn cn_room_title(seg : String) -> String {
   let s = seg.trim().to_owned()
@@ -2738,6 +2892,16 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     Some((bots_csv, title)) =>
       if bots_csv != "" {
         return Some(GroupChat(bots_csv~, title~))
+      }
+  }
+  // 场景验收（自媒体日更）：中文排程说法 → 定时任务。同样放在英文指令之后，
+  // 既有 `create routine id=… cron=… prompt=…` 合同与测试原样不动。
+  match decode_cn_routine(trimmed) {
+    None => ()
+    Some((cron, prompt)) =>
+      if cron != "" && prompt != "" {
+        let id = cn_routine_id(prompt)
+        return Some(CreateRoutine(id~, cron~, prompt~))
       }
   }
   None
