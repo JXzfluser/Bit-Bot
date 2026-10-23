@@ -29,7 +29,7 @@ const HTML = path.join(REPO, "hosts/desktop/index.html");
 
 /* ---- 高水位基线（收敛后请下调这些数字，禁止上调）---- */
 const BASE = {
-  cssImportant: 385,
+  cssImportant: 346,
   cssHex: 141,
   htmlHex: 28,
   htmlInlineFont: 25,

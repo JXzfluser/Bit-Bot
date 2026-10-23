@@ -1369,17 +1369,21 @@ body.grok-ui pre, body.grok-ui code, body.grok-ui kbd {
   font-family: ui-monospace, "SF Mono", Menlo, monospace !important;
 }
 
-/* every sheet/modal shares one chrome */
+/* every sheet/modal shares one chrome. P2: the base `.bb-sheet` rules are
+   lower-specificity, so these win without !important (verified by D-ST). */
 body.grok-ui .bb-sheet {
-  border-radius: 16px !important;
-  border-color: var(--g-line) !important;
-  box-shadow: 0 24px 64px rgba(0,0,0,.18) !important;
+  border-radius: 16px;
+  border-color: var(--g-line);
+  box-shadow: 0 24px 64px rgba(0,0,0,.18);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--g-ink);
 }
 body.grok-ui .bb-sheet .bb-sheet-title {
-  font-size: 21px !important; font-weight: 600 !important;
-  letter-spacing: -0.01em !important; color: var(--g-ink) !important;
+  font-size: 21px; font-weight: 600;
+  letter-spacing: -0.01em; color: var(--g-ink);
 }
-body.grok-ui .bb-sheet .bb-sheet-note { font-size: 13px !important; color: var(--g-sub) !important; }
+body.grok-ui .bb-sheet .bb-sheet-note { font-size: 13px; color: var(--g-sub); }
 
 /* -- 10.2 Settings sheet → Grok left-nav layout --------------------------- */
 body.grok-ui #settings-sheet {
@@ -1391,6 +1395,17 @@ body.grok-ui #settings-sheet {
   height: min(680px, 88vh) !important;
   padding: 0 !important;
   overflow: hidden !important;
+  /* The id-scoped base `#settings-sheet` rules outrank the shared
+     `body.grok-ui .bb-sheet` skin, so restate the chrome here. */
+  border-radius: 16px;
+  border-color: var(--g-line);
+  box-shadow: 0 24px 64px rgba(0,0,0,.18);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--g-ink);
+}
+body.grok-ui #settings-sheet .bb-sheet-title {
+  font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--g-ink);
 }
 body.grok-ui #settings-sheet .bb-sheet-head {
   grid-area: head;
@@ -1420,38 +1435,41 @@ body.grok-ui .bb-sheet .bb-close::before {
   line-height: 1;
 }
 body.grok-ui .bb-sheet .bb-close:hover { color: var(--g-ink); }
+/* P2: settings nav lives under #settings-tabs so it outranks the base
+   `#settings-tabs .settings-tab-btn` rules by specificity instead of by
+   !important. Computed equivalence is enforced by e2e_modal_computed (D-ST). */
 body.grok-ui #settings-tabs {
   grid-area: nav;
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 2px !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  padding: 4px 12px !important;
-  margin: 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 4px 12px;
+  margin: 0;
 }
-body.grok-ui .settings-tab-btn {
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  width: 100% !important;
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  color: var(--g-ink) !important;
-  text-align: left !important;
-  padding: 9px 12px !important;
-  border-radius: 10px !important;
-  font-size: 14px !important;
-  font-weight: 500 !important;
+body.grok-ui #settings-tabs .settings-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--g-ink);
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
 }
-body.grok-ui .settings-tab-btn:hover { background: var(--g-soft) !important; color: var(--g-ink) !important; }
-body.grok-ui .settings-tab-btn.active { background: var(--g-pill) !important; box-shadow: none !important; }
-body.grok-ui .settings-tab-btn::before {
-  content: "" !important;
+body.grok-ui #settings-tabs .settings-tab-btn:hover { background: var(--g-soft); color: var(--g-ink); }
+body.grok-ui #settings-tabs .settings-tab-btn.active { background: var(--g-pill); box-shadow: none; }
+body.grok-ui #settings-tabs .settings-tab-btn::before {
+  content: "";
   width: 17px; height: 17px; flex: 0 0 17px;
-  background-color: currentColor !important;
+  background-color: currentColor;
   -webkit-mask: var(--g-ic) center / contain no-repeat;
           mask: var(--g-ic) center / contain no-repeat;
 }
@@ -1499,8 +1517,6 @@ body.grok-ui .settings-tab .st-note {
    template market, bot editor, rename/delete dialogs. No per-page rules. */
 
 /* base type inside every sheet */
-body.grok-ui .bb-sheet { font-size: 14px !important; line-height: 1.5 !important; color: var(--g-ink) !important; }
-
 /* group captions: .gp-label (settings) + .bf-label (bot editor) */
 body.grok-ui .gp-label,
 body.grok-ui .bf-label {

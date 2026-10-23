@@ -115,7 +115,17 @@ async function shutdown(app) {
       await win.waitForTimeout(250);
       const close = await win.evaluate(CLOSE_PROBE.replace("CLOSE_SEL", JSON.stringify(s.close)));
       const root = await win.evaluate(ROOT_PROBE.replace("ROOT_SEL", JSON.stringify(s.root)));
-      snapshot[s.name] = { close, root };
+      const type = await win.evaluate((sel) => {
+        const pick = (q) => {
+          const el = document.querySelector(sel + " " + q);
+          if (!el) return null;
+          const st = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return { text: (el.textContent || "").trim().slice(0, 12), fontSize: st.fontSize, fontWeight: st.fontWeight, letterSpacing: st.letterSpacing, color: st.color, margin: st.margin, visible: r.width > 0 && r.height > 0 };
+        };
+        return { title: pick(".bb-sheet-title"), note: pick(".bb-sheet-note") };
+      }, s.root.replace(" .bb-sheet", ""));
+      snapshot[s.name] = { close, root, type };
       if (s.head) {
         snapshot[s.name].head = await win.evaluate((sel) => {
           const el = document.querySelector(sel);
@@ -123,6 +133,63 @@ async function shutdown(app) {
           const st = getComputedStyle(el);
           return { display: st.display, justifyContent: st.justifyContent, borderBottomWidth: st.borderBottomWidth, background: st.backgroundColor };
         }, s.head);
+      }
+      if (s.name === "settings") {
+        // P2: settings nav/tabs are their own style layer; snapshot the whole
+        // row so a de-!important rewrite can be diffed field by field.
+        snapshot.settings.tabsChrome = await win.evaluate(() => {
+          const nav = document.getElementById("settings-tabs");
+          const ns = getComputedStyle(nav);
+          const tabs = [...nav.querySelectorAll(".settings-tab-btn")].map((b) => {
+            const st = getComputedStyle(b);
+            const pb = getComputedStyle(b, "::before");
+            const r = b.getBoundingClientRect();
+            return {
+              stab: b.dataset.stab,
+              active: b.classList.contains("active"),
+              display: st.display,
+              background: st.backgroundColor,
+              color: st.color,
+              padding: st.padding,
+              borderRadius: st.borderRadius,
+              fontSize: st.fontSize,
+              fontWeight: st.fontWeight,
+              width: Math.round(r.width),
+              height: Math.round(r.height),
+              iconContent: pb.content,
+              iconW: pb.width,
+              iconH: pb.height,
+              iconMask: (pb.maskImage || pb.webkitMaskImage || "").slice(0, 12),
+            };
+          });
+          return {
+            nav: {
+              display: ns.display,
+              direction: ns.flexDirection,
+              gap: ns.gap,
+              background: ns.backgroundColor,
+              borderWidth: ns.borderTopWidth,
+              borderRadius: ns.borderRadius,
+              padding: ns.padding,
+            },
+            tabs,
+          };
+        });
+        const tc = snapshot.settings.tabsChrome;
+        const navOk = tc.nav.display === "flex" && tc.nav.direction === "column" &&
+          tc.nav.background === "rgba(0, 0, 0, 0)" && tc.nav.borderWidth === "0px";
+        navOk ? ok(`settings: nav is a transparent column (gap ${tc.nav.gap}, padding ${tc.nav.padding})`)
+          : bad("settings: nav chrome drifted", JSON.stringify(tc.nav));
+        const tabsOk = tc.tabs.length === 5 && tc.tabs.every((t) =>
+          t.display === "flex" && t.width > 0 && t.height > 0 && t.fontSize === "14px" &&
+          t.borderRadius === "999px" && t.padding === "9px 12px" &&
+          t.iconContent === '""' && t.iconW === "17px" && t.iconH === "17px");
+        tabsOk ? ok("settings: 5 tab rows share one 14px/pill skin with 17px icon masks")
+          : bad("settings: tab skin drifted", JSON.stringify(tc.tabs.map((t) => [t.stab, t.fontSize, t.borderRadius, t.padding, t.iconW, t.width])));
+        const act = tc.tabs.find((t) => t.active);
+        act && act.background !== "rgba(0, 0, 0, 0)" && act.background !== tc.tabs.find((t) => !t.active).background
+          ? ok(`settings: active tab keeps its pill background ${act.background}`)
+          : bad("settings: active pill lost", JSON.stringify(act));
       }
 
       if (close.missing) bad(`${s.name}: close button ${s.close} missing`);
@@ -147,6 +214,21 @@ async function shutdown(app) {
         const sheet = root.display !== "none" && root.w > 0 && root.h > 0 && parseFloat(root.borderRadius) > 0;
         sheet ? ok(`${s.name}: sheet visible ${root.w}x${root.h}, radius ${root.borderRadius}, bg ${root.backgroundColor}`)
           : bad(`${s.name}: sheet geometry/radius lost`, JSON.stringify(root));
+      }
+      const ty = snapshot[s.name].type;
+      if (ty.title && ty.title.visible) {
+        const t = ty.title;
+        t.fontSize === "21px" && t.fontWeight === "600" && t.letterSpacing === "-0.21px"
+          ? ok(`${s.name}: sheet title is 21px/600 with tight tracking`)
+          : bad(`${s.name}: sheet title type drifted`, JSON.stringify(t));
+      } else if (ty.title) {
+        ok(`${s.name}: sheet title intentionally hidden (display-only chrome)`);
+      }
+      if (ty.note && ty.note.visible) {
+        const n = ty.note;
+        n.fontSize === "13px"
+          ? ok(`${s.name}: sheet note stays 13px caption`)
+          : bad(`${s.name}: sheet note type drifted`, JSON.stringify(n));
       }
       if (s.head) {
         const h = snapshot[s.name].head;

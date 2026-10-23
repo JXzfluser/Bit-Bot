@@ -855,7 +855,9 @@
     color: #aaa;
   }
   .msg-status .ms-check.read { color: #22c55e; font-weight: 700; }
-  .msg.assistant { align-self: flex-start; display: flex; gap: 12px; max-width: 85%; }
+  /* Layout contract §3: the stream column is capped at --content-max, so the
+     85% bubble must not outgrow it on wide windows (was 1047px at 1440). */
+  .msg.assistant { align-self: flex-start; display: flex; gap: 12px; max-width: min(85%, var(--content-max)); }
   .msg.assistant::before {
     content: "";
     flex: 0 0 32px; width: 32px; height: 32px; border-radius: 50%;
