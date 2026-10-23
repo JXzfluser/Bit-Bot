@@ -8566,6 +8566,27 @@ function createHostFfi(repoRoot) {
     return String(text || "").replace(/\|/g, "｜").replace(/\r\n/g, "\n").trim();
   }
 
+  /**
+   * GP-159：定时任务排出来的批准，有效期跟着它自己的排程走。
+   *
+   * 产品面的 10 分钟默认是给「聊天里当场问一句」设计的——人就坐在屏幕前。定时
+   * 任务是另一件事的节奏：早上 9 点的日更，用户往往 10 点才打开应用，而 GP-23
+   * 的口径是过期后不能再「本次允许」。按默认 10 分钟过期，等于「定时发到邮箱」
+   * 这条链必然在第二步悄悄断掉，界面上只剩一条看不懂的「已过期待批准」。
+   *
+   * 这里只用 appendPendingApproval 已有的可选参数 expires_at，行的形状和
+   * 过期语义都不动。下限 1 小时（每半小时的摘要也该有喝口水的工夫），
+   * 上限 48 小时（再久就不是「这一轮」了）；一次性任务没有下一轮，直接给上限。
+   */
+  function routineApprovalExpiry(nextDueIso) {
+    const now = Date.now();
+    const floor = now + 60 * 60 * 1000;
+    const cap = now + 48 * 60 * 60 * 1000;
+    const due = nextDueIso ? Date.parse(nextDueIso) : NaN;
+    const until = Number.isFinite(due) ? Math.min(Math.max(due, floor), cap) : cap;
+    return new Date(until).toISOString();
+  }
+
   function expandMcpFileArgs(value, meta) {
     // CM-2163: expand $file:/abs/or/repo/rel paths from Host FS into arg values.
     // Plain strings without $file: are left unchanged (caller may refuse separately).
@@ -15190,6 +15211,8 @@ function createHostFfi(repoRoot) {
             source: "routine",
             kind: "mail_send",
             command: ["gmail", mailTo, mailSubject, mailBody].join("|"),
+            // GP-159：窗口跟着这条任务自己的排程，不吃 10 分钟默认。
+            expires_at: routineApprovalExpiry(nextDue),
           });
         } catch (_) {
           queuedApproval = null;
