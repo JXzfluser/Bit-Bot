@@ -752,7 +752,13 @@ if(!/shell\.openExternal\(url\)/.test(main)) process.exit(1);
 if(!/setWindowOpenHandler/.test(main)||!/action: "deny"/.test(main)) process.exit(1);
 if(!/will-navigate/.test(main)) process.exit(1);
 // renderer：正文经政策模块、点击 preventDefault、悬停卡 DOM 存在
-if(!/applyLinkBodyTo\(el\.querySelector\("\.body"\), (?:text|fenceText)\)/.test(html)) process.exit(1);
+// renderer：正文经政策模块、点击 preventDefault、悬停卡 DOM 存在。
+// 锚的是今天的真实调用形状：先取 .body 再把节点交给政策模块（850259e 之后
+// 这里改成了两步局部变量，旧锚点写死 `applyLinkBodyTo(el.querySelector(".body"), …)`
+// 于是常年红——那是锚点过期，不是产品退化）。两步都要在，少一步判假。
+if(!/const bodyEl = el\.querySelector\("\.body"\)/.test(html)) process.exit(1);
+if(!/applyLinkBodyTo\(bodyEl, fenceText\)/.test(html)) process.exit(1);
+if(!/applyLinkBodyTo\(streamEl\.querySelector\("\.body"\), chunk\.partial\)/.test(html)) process.exit(1);
 if(!/e\.preventDefault\(\)/.test(html)||!/id="link-preview"/.test(html)) process.exit(1);
 process.exit(0)' &&
   ok "G-19 GP-93/94/95：政策模块无 innerHTML + main IPC/窗口守卫 + renderer 契约在位" || bad "G-19 GP-93/94/95 contract drift"
@@ -1511,9 +1517,14 @@ grep -q "user 气泡：保留 18px 圆角" /tmp/g42-probe.log 2>/dev/null \
 grep -q "assistant 气泡：var(--bot-bubble)" /tmp/g42-probe.log 2>/dev/null \
   && ok "G-42 GP-M42：assistant 气泡 bot-bubble + 左上尾角" \
   || bad "G-42 assistant tail missing"
-grep -q "连续 assistant 行隐藏重复头像" /tmp/g42-probe.log 2>/dev/null \
-  && ok "G-42 GP-M42：连续 assistant 回合隐藏重复头像 + 收紧行距" \
+grep -q "连续 assistant 行 margin-top 收紧" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：连续 assistant 回合收紧行距，形成同一条对话流节奏" \
   || bad "G-42 grouping missing"
+# 头像这一项原本也在 G-42 的同一句话里；按参考图重锚（850259e）后探针把它拆成
+# 独立断言，锚点必须跟着拆，否则这句话永远查不到、门禁常年假红。
+grep -q "assistant 头像圆点已移除" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：assistant 头像圆点按参考图移除（原「隐藏重复头像」的现役等价断言）" \
+  || bad "G-42 avatar removal anchor missing"
 grep -q "M20 用户胶囊正则仍匹配" /tmp/g42-probe.log 2>/dev/null \
   && ok "G-42 M20 回归护栏：用户胶囊正则仍匹配" \
   || bad "G-42 M20 regression"
@@ -1536,8 +1547,8 @@ grep -q "sheet 头部 sticky" /tmp/g43-probe.log 2>/dev/null \
 grep -q "HTML #settings-tabs 无 inline style" /tmp/g43-probe.log 2>/dev/null \
   && ok "G-43 GP-M43：HTML 无 inline style，CSS 分段控件不被覆盖" \
   || bad "G-43 inline style leak"
-grep -q "M42 消息流分组 + M20 用户胶囊契约保持" /tmp/g43-probe.log 2>/dev/null \
-  && ok "G-43 回归护栏：M42 分组 + M20 用户胶囊契约保持" \
+grep -q "M42 消息流满列宽 + M20 用户胶囊契约保持" /tmp/g43-probe.log 2>/dev/null \
+  && ok "G-43 回归护栏：M42 满列宽 + M20 用户胶囊契约保持" \
   || bad "G-43 regression"
 grep -q "负向对照：抹掉分段样式" /tmp/g43-probe.log 2>/dev/null \
   && ok "G-43 负向对照：抹掉分段样式 → 容器断言翻假（非恒真）" \
