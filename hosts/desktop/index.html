@@ -2560,6 +2560,10 @@
     <div class="ri-limit" id="ri-limit-note"></div>
     <div class="panel-title" data-i18n="riRoutines">定时任务</div>
     <div id="ri-routine-list" aria-live="polite"></div>
+    <!-- GP-161：暂停 / 删除这类「按下去之后必须看得见结果」的话术不能只写进
+         .ri-form 里的 ri-form-msg —— 表单收起时那是 display:none，失败等于没说。
+         这一行常驻列表下方，成功与拒绝都写这里。 -->
+    <div id="ri-rail-status" class="ri-err" role="status"></div>
     <div class="gp-row">
       <button type="button" id="ri-routine-add" class="gp-chip" data-i18n="riAdd">＋ 添加定时任务</button>
     </div>
@@ -5622,6 +5626,11 @@
       if (code.indexOf("not_found") >= 0) return wavegT("riErrNotFound");
       if (code.indexOf("action_unsupported") >= 0) return wavegT("riErrAction");
       if (code.indexOf("not_reflected") >= 0) return wavegT("riErrNotReflected");
+      // GP-161：删除留底写不出来时 Host 拒绝动手，任务原样还在——这话要说明白，
+      // 不能让用户以为「删除失败」等于「已经删了但界面没刷新」。
+      if (code.indexOf("artifact_failed") >= 0) {
+        return devModeOn() ? wavegT("riErrArtifact") + " · " + code : wavegT("riErrArtifact");
+      }
       if (code.indexOf("effect_failed") >= 0) {
         return devModeOn() ? wavegT("riErrEffect") + " · " + code : wavegT("riErrEffect");
       }
@@ -5688,6 +5697,9 @@
       const host = document.getElementById("ri-routine-list");
       const tzNote = document.getElementById("ri-tz-note");
       if (!host) return;
+      // GP-161：重绘会重建所有按钮，武装状态必须跟着作废——不然「点了一下武装 →
+      // 列表被别的广播刷新 → 再点一次」会变成一次点击就删掉一条日更。
+      disarmRoomRoutineRemoval();
       let res = null;
       try {
         res = await window.bitbot.routines.list({ roomId: roomRailId });
@@ -5745,9 +5757,11 @@
         }
         // GP-158：面板要真的能按。已触发完的一次性任务没有「下一次」，
         // 不给它一个按下去毫无反应的暂停键。
+        // GP-161：但「删除」对这种行依然成立——跑完的一次性任务正是面板里
+        // 最该能清掉的一类（否则历史条目永远堆在群资料里）。
+        const actRow = document.createElement("div");
+        actRow.className = "ri-row";
         if (r.once_done !== true) {
-          const actRow = document.createElement("div");
-          actRow.className = "ri-row";
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "bb-btn ri-toggle";
@@ -5758,14 +5772,20 @@
             toggleRoomRoutine(r.id, paused ? "resume" : "pause", btn);
           });
           actRow.appendChild(btn);
-          item.appendChild(actRow);
         }
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "bb-btn bb-btn-danger-soft ri-remove";
+        del.textContent = wavegT("riRemove");
+        del.title = wavegT("riRemoveHint");
+        del.addEventListener("click", () => { armRoomRoutineRemoval(r.id, del); });
+        actRow.appendChild(del);
+        item.appendChild(actRow);
         host.appendChild(item);
       }
       if (tzNote && res.timezone) tzNote.textContent = t("riTzNote", { tz: res.timezone });
     }
     async function toggleRoomRoutine(id, action, btn) {
-      const msg = document.getElementById("ri-form-msg");
       if (!roomRailId || !id) return;
       if (btn) btn.disabled = true;
       let res = null;
@@ -5775,12 +5795,72 @@
         res = { ok: false, error: String((err && err.message) || err) };
       }
       if (res && res.ok) {
-        if (msg) msg.textContent = "";
+        railRoutineStatus("");
         // 广播已带回重绘；这里再画一次，保证「按下去没反应」不是渲染时机问题。
         await renderRoomRailRoutines();
         return;
       }
-      if (msg) msg.textContent = t("riToggleFailed", { e: routineFailCopy(res && res.error) });
+      railRoutineStatus(t("riToggleFailed", { e: routineFailCopy(res && res.error) }));
+      if (btn) btn.disabled = false;
+      await renderRoomRailRoutines();
+    }
+    /* GP-161「删除定时任务」——不可逆动作在界面上必须两下才动手：
+     * 第一下只把按钮武装成「确认删除」（亮红 + 换文案），4 秒内没有第二下就自己
+     * 退回「删除」；面板任何一次重绘都清掉武装状态，因此「先武装、等它刷新、
+     * 再顺手点一下」不可能一次就删掉一条日更。 */
+    const RI_REMOVE_ARM_MS = 4000;
+    let riRemoveArmed = null;
+    function railRoutineStatus(text) {
+      const el = document.getElementById("ri-rail-status");
+      if (el) el.textContent = text || "";
+    }
+    function setRemoveButtonMode(btn, armed) {
+      if (!btn) return;
+      btn.classList.toggle("ri-remove-armed", armed === true);
+      btn.classList.toggle("bb-btn-danger", armed === true);
+      btn.classList.toggle("bb-btn-danger-soft", armed !== true);
+      btn.textContent = armed ? wavegT("riRemoveConfirm") : wavegT("riRemove");
+    }
+    function disarmRoomRoutineRemoval() {
+      if (!riRemoveArmed) return;
+      if (riRemoveArmed.timer) clearTimeout(riRemoveArmed.timer);
+      setRemoveButtonMode(riRemoveArmed.btn, false);
+      riRemoveArmed = null;
+    }
+    function armRoomRoutineRemoval(id, btn) {
+      if (!roomRailId || !id || !btn) return;
+      railRoutineStatus("");
+      // 同一个 id、同一颗没被重绘替换掉的按钮，第二下才是确认删除。
+      if (riRemoveArmed && riRemoveArmed.id === id && riRemoveArmed.btn === btn) {
+        removeRoomRoutine(id, btn);
+        return;
+      }
+      disarmRoomRoutineRemoval();
+      setRemoveButtonMode(btn, true);
+      const entry = { id: id, btn: btn, timer: 0 };
+      entry.timer = setTimeout(disarmRoomRoutineRemoval, RI_REMOVE_ARM_MS);
+      riRemoveArmed = entry;
+    }
+    async function removeRoomRoutine(id, btn) {
+      if (!roomRailId || !id) return;
+      disarmRoomRoutineRemoval();
+      if (btn) btn.disabled = true;
+      let res = null;
+      try {
+        res = await window.bitbot.routines.lifecycle({ roomId: roomRailId, id, action: "remove" });
+      } catch (err) {
+        res = { ok: false, error: String((err && err.message) || err) };
+      }
+      if (res && res.ok) {
+        const kept = (res && res.history_kept) || {};
+        railRoutineStatus(t("riRemoved", {
+          n: Number(kept.drafts || 0),
+          m: Number(kept.fire_lines || 0),
+        }));
+        await renderRoomRailRoutines();
+        return;
+      }
+      railRoutineStatus(t("riRemoveFailed", { e: routineFailCopy(res && res.error) }));
       if (btn) btn.disabled = false;
       await renderRoomRailRoutines();
     }
@@ -11364,9 +11444,15 @@
         riToggleFailed: "改状态失败：{e}",
         riErrNotFound: "这条定时任务已经不在了",
         riErrRoomMismatch: "这条定时任务不属于本群，不能在这里改",
-        riErrAction: "只支持暂停或继续",
+        riErrAction: "这个操作在群资料里做不了",
         riErrNotReflected: "改完没生效，请重新打开群资料再看",
         riErrEffect: "这次改动没有被接受",
+        riErrArtifact: "这条没能删掉：删除留底写不出来，任务原样保留",
+        riRemove: "删除",
+        riRemoveConfirm: "确认删除",
+        riRemoveHint: "删除这条定时任务；要按两下确认，历史草稿和触发记录不会跟着销毁",
+        riRemoved: "已删除这条定时任务；它的 {n} 份历史草稿、{m} 行触发记录仍保留着",
+        riRemoveFailed: "删除失败：{e}",
         riOff: "已暂停",
         riTzNote: "触发时刻按 Bot 时区 {tz} 计算。",
         riCronError: "排程无法解析：{c}",
@@ -11952,9 +12038,15 @@
         riToggleFailed: "改狀態失敗：{e}",
         riErrNotFound: "這條定時任務已經不在了",
         riErrRoomMismatch: "這條定時任務不屬於本群，不能在這裡改",
-        riErrAction: "只支援暫停或繼續",
+        riErrAction: "這個操作在群資料裡做不了",
         riErrNotReflected: "改完沒生效，請重新開啟群資料再看",
         riErrEffect: "這次改動沒有被接受",
+        riErrArtifact: "這條沒能刪掉：刪除留底寫不出來，任務原樣保留",
+        riRemove: "刪除",
+        riRemoveConfirm: "確認刪除",
+        riRemoveHint: "刪除這條定時任務；要按兩下確認，歷史草稿和觸發記錄不會跟著銷毀",
+        riRemoved: "已刪除這條定時任務；它的 {n} 份歷史草稿、{m} 行觸發記錄仍保留著",
+        riRemoveFailed: "刪除失敗：{e}",
         riOff: "已暫停",
         riTzNote: "觸發時刻按 Bot 時區 {tz} 計算。",
         riCronError: "排程無法解析：{c}",
@@ -12540,9 +12632,15 @@
         riToggleFailed: "Could not update: {e}",
         riErrNotFound: "This scheduled task no longer exists",
         riErrRoomMismatch: "This task belongs to another group; it cannot be changed here",
-        riErrAction: "Only pause or resume is supported",
+        riErrAction: "That action is not available from the group panel",
         riErrNotReflected: "The change did not persist; reopen the group info to check",
         riErrEffect: "The change was not accepted",
+        riErrArtifact: "Nothing was deleted: the removal record could not be written, so the schedule stays as it is",
+        riRemove: "Delete",
+        riRemoveConfirm: "Confirm delete",
+        riRemoveHint: "Delete this schedule; it takes two clicks, and drafts and fire history are kept",
+        riRemoved: "Schedule deleted; its {n} draft(s) and {m} fire record(s) are still kept",
+        riRemoveFailed: "Could not delete: {e}",
         riOff: "Paused",
         riTzNote: "Fire times use the bot timezone {tz}.",
         riCronError: "Cron cannot be parsed: {c}",

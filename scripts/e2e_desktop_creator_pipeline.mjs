@@ -20,6 +20,10 @@
  *   P9 面板的「暂停 / 继续」真能按（GP-158）：点一下 store 里 enabled 翻下去、
  *      面板显示「已暂停」、而且 cron 一个字符都不许变；再点回来必须重新排上
  *      下一次（按了继续却永远不再跑，等于开关是装饰）。
+ *   P10 面板的「删除」两下才删（GP-161）：第一下只武装成「确认删除」且 store 不动，
+ *      超过确认窗口自己退回；两下之后行真的消失、面板回到空态、留底工件带齐
+ *      cron/原话/归属群，而这条任务的历史草稿一份不少（删任务 ≠ 毁档案）。
+ *      结果话术必须落在常驻的 #ri-rail-status 上——表单收起时 ri-form-msg 是隐藏的。
  *
  * 缺 electron / xvfb / moon 时诚实 SKIP（exit 0 + SKIP 计数），不伪造 PASS。
  * 用法：ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_desktop_creator_pipeline.mjs
@@ -438,6 +442,71 @@ function startStub() {
         ? ok("P9 按「" + labelPaused + "」恢复回 active，并重新排上下一次（" +
           String(wcP9.hour).padStart(2, "0") + ":" + String(wcP9.minute).padStart(2, "0") + " " + TZ + "）")
         : bad("P9 恢复后没有重新可运行", JSON.stringify({ labelPaused, row: resumed && { e: resumed.enabled, l: resumed.lifecycle, n: resumed.next_due, c: resumed.cron } }).slice(0, 500));
+
+      /* ---------- P10: 面板上的「删除」两下才删，且删了不毁历史（GP-161） ---------- */
+      const removeSel = "#ri-routine-list .ri-item .ri-remove";
+      const draftsNow = () => listFiles(DRAFT_DIR, ".json").filter(
+        (f) => f.startsWith("routine-" + routineId + "-") && f.endsWith(".json")).length;
+      const removeArts = () => listFiles(ROUTINE_DIR, ".json").filter((f) => /^remove-/.test(f));
+      const btnState = () => win.evaluate((sel) => {
+        const b = document.querySelector(sel);
+        return {
+          label: b ? String(b.innerText || "").trim() : "",
+          armed: !!b && b.classList.contains("ri-remove-armed"),
+          items: document.querySelectorAll("#ri-routine-list .ri-item").length,
+          list: (document.getElementById("ri-routine-list") || {}).innerText || "",
+          status: (document.getElementById("ri-rail-status") || {}).innerText || "",
+        };
+      }, removeSel).catch(() => ({ label: "", armed: false, items: -1, list: "", status: "" }));
+      await win.waitForSelector(removeSel, { timeout: 15000 }).catch(() => {});
+      const artsBeforeR = removeArts().length;
+      const draftsBeforeR = draftsNow();
+      const st0 = await btnState();
+      await win.click(removeSel).catch(() => {});
+      await new Promise((r) => setTimeout(r, 800));
+      const st1 = await btnState();
+      const rowAfter1 = rowNow();
+      const stillRowText = rowAfter1 ? String(rowAfter1.prompt || "") : "";
+      st1.armed && rowAfter1 !== null && /确认|確認|Confirm/i.test(st1.label) &&
+        !/确认|確認|Confirm/.test(st0.label) && stillRowText.includes(MAIL_TO)
+        ? ok("P10 第一下只是武装：按钮「" + st0.label + "」→「" + st1.label + "」，store 里这条还在（单点不删）")
+        : bad("P10 单点即删，或武装态没有在界面上显示", JSON.stringify({ st0, st1, row: rowAfter1 && { e: rowAfter1.enabled, c: rowAfter1.cron } }).slice(0, 400));
+      /* 武装窗口到期必须自己退回「删除」：不然下次顺手一点就是一条日更没了 */
+      await new Promise((r) => setTimeout(r, 4600));
+      const st2 = await btnState();
+      st2.armed === false && rowNow() !== null && /删除|刪除|Delete/.test(st2.label) &&
+        !/确认|確認|Confirm/.test(st2.label)
+        ? ok("P10 只点一下、等超过确认窗口：按钮自己退回「" + st2.label + "」，任务原样还在")
+        : bad("P10 武装状态没有超时退回（迟早误删一条日更）", JSON.stringify({ st2, row: rowNow() && rowNow().id }).slice(0, 300));
+      await win.click(removeSel).catch(() => {});
+      await new Promise((r) => setTimeout(r, 400));
+      await win.click(removeSel).catch(() => {});
+      let gone = rowNow();
+      for (let i = 0; i < 40 && gone !== null; i += 1) {
+        gone = rowNow();
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const st3 = await btnState();
+      const artsAfterR = removeArts();
+      const removeMine = artsAfterR.filter((f) => f.startsWith("remove-" + routineId + "-"));
+      const art = removeMine.length ? readJson(path.join(ROUTINE_DIR, removeMine[0]), {}) : {};
+      gone === null && st3.items === 0 && /暂无|沒有|没有|No scheduled/.test(st3.list)
+        ? ok("P10 两下之后真的删掉了：store 里这条没了，面板回到「暂无定时任务」空态（不是隐藏）")
+        : bad("P10 确认删除没有真的生效", JSON.stringify({ row: gone && { e: gone.enabled, c: gone.cron }, st3 }).slice(0, 400));
+      const draftsAfterR = draftsNow();
+      artsAfterR.length === artsBeforeR + 1 && removeMine.length === 1 &&
+        art.cron === "0 9 * * *" && String(art.prompt || "").includes(MAIL_TO) &&
+        art.room_id === roomId && draftsAfterR === draftsBeforeR && draftsAfterR >= 1
+        ? ok("P10 删除留底 " + removeMine[0] + "（cron/prompt/room_id 齐，能照着重建）；这条任务的历史草稿 " +
+          draftsAfterR + " 份一份没动（删任务不毁档案）")
+        : bad("P10 删除没有留底，或者顺手清了历史", JSON.stringify({
+          added: artsAfterR.length - artsBeforeR, removeMine, art: { cron: art.cron, prompt: art.prompt, room_id: art.room_id },
+          drafts: [draftsBeforeR, draftsAfterR],
+        }).slice(0, 400));
+      /已删除|已刪|deleted/i.test(st3.status) && /保留|keep/i.test(st3.status)
+        ? ok("P10 面板把结果说给人看了：「" + st3.status.trim().replace(/\s+/g, " ").slice(0, 70) + "」")
+        : bad("P10 删除结果只改了数据，界面上没有回执（表单收起时 ri-form-msg 是隐藏的，那不算看得见）",
+          JSON.stringify({ status: st3.status }).slice(0, 300));
     }
   } catch (e) {
     bad("gate block", (e && e.stack || String(e)).split("\n").slice(0, 3).join(" | "));

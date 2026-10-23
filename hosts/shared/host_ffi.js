@@ -8463,6 +8463,7 @@ function createHostFfi(repoRoot) {
 
   /**
    * GP-158「群里的定时任务管得了」— 面板上的暂停 / 继续。
+   * GP-161 同一个入口多接受一个 action:"remove"（删除见 removeRoomRoutine）。
    *
    * 内核和 Host 早就有 routine_pause / routine_resume（聊天里说
    * `pause routine <id>` 走的就是它们），缺的只是「从群资料面板按下去」这一段：
@@ -8479,7 +8480,7 @@ function createHostFfi(repoRoot) {
    * 避免恢复的瞬间补发一封用户根本没等着的邮件。
    *
    * error ∈ room_required | not_found | room_mismatch | action_unsupported |
-   *         effect_failed | not_reflected
+   *         effect_failed | not_reflected | artifact_failed
    */
   function routineLifecycle(opts) {
     const want = String((opts && opts.roomId) || "");
@@ -8487,11 +8488,14 @@ function createHostFfi(repoRoot) {
     const act = String((opts && opts.action) || "");
     if (!want) return { ok: false, error: "room_required" };
     if (!rid) return { ok: false, error: "not_found" };
-    if (act !== "pause" && act !== "resume") return { ok: false, error: "action_unsupported" };
+    if (act !== "pause" && act !== "resume" && act !== "remove") {
+      return { ok: false, error: "action_unsupported" };
+    }
     const before = loadRoutines();
     const row = before.find((r) => r && String(r.id) === rid);
     if (!row) return { ok: false, error: "not_found" };
     if (String(row.room_id || "") !== want) return { ok: false, error: "room_mismatch" };
+    if (act === "remove") return removeRoomRoutine(want, rid, row);
     const kind = act === "pause" ? "routine_pause" : "routine_resume";
     const res = executeRoutineEffect(kind, rid);
     if (!res || res.ok !== true) {
@@ -8529,6 +8533,76 @@ function createHostFfi(repoRoot) {
     }
     const fresh = ((listRoomRoutines(want).routines) || []).find((r) => r && String(r.id) === rid) || mapped;
     return { ok: true, action: act, room_id: want, routine: fresh, rearmed };
+  }
+
+  /**
+   * GP-161「建错的定时任务要能真的删掉」— 面板上的删除。
+   *
+   * 内核根本没有 RemoveRoutine 意图（聊天里说「删除定时任务」今天不被解码），Host
+   * 的 routine_schedule 也只写不删，所以面板越堆越长、建错的那条永远停在里面。
+   * 这里删的只是 Host 自己那行库：不新增一个没人发的 kernel effect kind，也不碰
+   * data/routines/drafts/ 与 fires.jsonl —— 撤销一条排程，不等于把这条排程已经
+   * 跑出来的稿子和触发记录一起销毁（§0：不清用户数据）。
+   *
+   * 不可逆动作的补偿是「可回看」+「先留证据再动手」：删除先落一份
+   * remove-<id>-<ts>.json，里面是被删掉的整行（cron / 原话 / 归属群 / 上次触发），
+   * 用户可以照着重建；工件写失败就如实不删，而不是删完才发现没留底。
+   *
+   * error ∈ not_found | artifact_failed | not_reflected
+   */
+  function removeRoomRoutine(want, rid, row) {
+    const dir = path.join(REPO_ROOT, "data", "routines");
+    const at = new Date().toISOString();
+    // 文件名里的 id 走白名单：面板 id 来自任务原话，`../` 不能把工件写到目录外。
+    const slug = String(rid).replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64);
+    // 历史留在原地，但把数量写进工件，让「删了任务、档案还在」这件事可核对。
+    let history = { drafts: 0, fire_lines: 0 };
+    try {
+      history.drafts = fs
+        .readdirSync(path.join(dir, "drafts"))
+        .filter((f) => f.startsWith(`routine-${slug}-`) && f.endsWith(".json")).length;
+    } catch { /* 没有草稿目录 = 0 份，不是失败 */ }
+    try {
+      history.fire_lines = fs
+        .readFileSync(path.join(dir, "fires.jsonl"), "utf8")
+        .split("\n")
+        .filter((l) => l.includes('"' + rid + '"')).length;
+    } catch { /* 还没触发过 */ }
+    const keep = Object.assign({}, row, {
+      mode: "host_routine_remove",
+      removed_at: at,
+      room_id: want,
+      history_kept: history,
+    });
+    const removePath = path.join(dir, `remove-${slug}-${Date.now().toString(36)}.json`);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(removePath, JSON.stringify(keep, null, 2));
+    } catch (err) {
+      return {
+        ok: false,
+        error: "artifact_failed",
+        detail: String((err && err.message) || err),
+        room_id: want,
+        id: rid,
+      };
+    }
+    const rows = loadRoutines();
+    const rest = rows.filter((r) => r && String(r.id) !== rid);
+    saveRoutines(rest);
+    // 回读确认，不拿写盘当已删（GP-158 同一条纪律）；留底工件已经在磁盘上，
+    // 所以这里即便拒绝，用户也没有丢东西。
+    const still = ((listRoomRoutines(want).routines) || []).some((r) => String(r.id) === rid);
+    if (still) return { ok: false, error: "not_reflected", room_id: want, id: rid, artifact: removePath };
+    return {
+      ok: true,
+      action: "remove",
+      room_id: want,
+      id: rid,
+      artifact: removePath,
+      removed: keep,
+      history_kept: history,
+    };
   }
 
   /* GP-156「定时 → 待批准 → 批准 → 真发」辅助。
