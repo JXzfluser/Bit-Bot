@@ -1570,5 +1570,36 @@ grep -q "负向对照：塞回 dead border-color" /tmp/g44-probe.log 2>/dev/null
 
 
 echo
+echo "== G-45 定时任务排程引擎（GP-153：「每天9点」必须真的落在 9 点）=="
+if timeout 600 node scripts/prove_gp153_cron_next_due.js > /tmp/g45-probe.log 2>&1; then
+  ok "G-45 排程引擎契约全绿（$(grep -c '✓' /tmp/g45-probe.log) 项，$(tail -1 /tmp/g45-probe.log)）"
+else
+  bad "G-45 排程引擎契约（见 /tmp/g45-probe.log）"
+fi
+grep -q "0 9 \* \* \*.*落在 Asia/Shanghai 的 09:00" /tmp/g45-probe.log \
+  && grep -q "0 18 \* \* 1-5.*下一个工作日 18:00" /tmp/g45-probe.log \
+  && ok "G-45 GP-153：5 字段 cron 按墙钟触发（每天 09:00 / 工作日 18:00），不再是 now+24h 兜底" \
+  || bad "G-45 wall-clock scheduling missing"
+grep -q "两个时区各自落在本地 09:00" /tmp/g45-probe.log \
+  && ok "G-45 GP-153：排程读设置里的 Bot 时区（换时区 → UTC 时刻不同）" \
+  || bad "G-45 timezone missing"
+grep -q "cron_unsupported" /tmp/g45-probe.log \
+  && grep -q "cron_unreachable" /tmp/g45-probe.log \
+  && grep -q "无法解析的 cron 被如实拒绝" /tmp/g45-probe.log \
+  && ok "G-45 GP-153 诚实拒绝：解析不了/永不触发的排程不落假 next_due（不假装已建）" \
+  || bad "G-45 honest refusal missing"
+grep -q "@every 30m" /tmp/g45-probe.log \
+  && grep -q "CRON_TZ= 前缀按表达式自己的时区排程" /tmp/g45-probe.log \
+  && ok "G-45 GP-153：跟上内核 CM-0402 的 @every / CRON_TZ= 写法" \
+  || bad "G-45 kernel cron dialect missing"
+grep -q "每 1 分钟仍被拒（interval_too_short）" /tmp/g45-probe.log \
+  && ok "G-45 GP-138 回归：新解析没绕过 5 分钟下限" \
+  || bad "G-45 GP-138 regression"
+grep -q "负向对照：now+24h 兜底落在" /tmp/g45-probe.log \
+  && ok "G-45 负向对照：now+24h 兜底会被 09:00 断言判假（断言非恒真）" \
+  || bad "G-45 negative control missing"
+
+
+echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

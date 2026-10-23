@@ -136,6 +136,51 @@ const rows = () => {
     ? ok("每 1 分钟仍被拒（interval_too_short），且不落盘")
     : bad("5 分钟下限被绕过", JSON.stringify({ ok: r6 && r6.ok, error: r6 && r6.error, 落盘: Boolean(row6) }));
 
+  // 6) 负向对照（证明断言非恒真）：把排程退回「now + 24h」，09:00 断言必须翻假
+  {
+    const naive = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    const w = wallClock(naive, TZ);
+    const naiveWouldPass = w.hour === 9 && w.minute === 0;
+    naiveWouldPass
+      ? bad("负向对照失效：now+24h 恰好落在 09:00，本轮 09:00 断言无区分度（换时段重跑）")
+      : ok("负向对照：now+24h 兜底落在 " + String(w.hour).padStart(2, "0") + ":" + String(w.minute).padStart(2, "0") + "，断言能区分「真排程」与「假排程」");
+  }
+
+  // 7) 诚实拒绝：解析不了的 cron 不再偷偷写一个「24 小时后」
+  const r7 = await schedule("gp153-bogus", "99 99 99 99 99");
+  const row7 = rows().find((r) => r.id === "gp153-bogus");
+  r7 && r7.ok === false && String(r7.error).includes("cron_unsupported") && !row7
+    ? ok("无法解析的 cron 被如实拒绝（cron_unsupported），且不落盘")
+    : bad("无法解析的 cron 被假装排好了", JSON.stringify({ ok: r7 && r7.ok, error: r7 && r7.error, 落盘: Boolean(row7) }));
+
+  // 8) 永不触发的排程（2 月 30 日）也要拒绝，不能落一个假 next_due
+  const r8 = await schedule("gp153-feb30", "0 0 30 2 *");
+  const row8 = rows().find((r) => r.id === "gp153-feb30");
+  r8 && r8.ok === false && !row8
+    ? ok("未来 400 天内无触发时刻被拒绝（" + String(r8.error) + "），不落盘")
+    : bad("不可能的排程被落盘", JSON.stringify({ ok: r8 && r8.ok, error: r8 && r8.error, next_due: row8 && row8.next_due }));
+
+  // 9) 内核 CM-0402 认可的两种写法：@every 与 CRON_TZ= 前缀
+  const r9 = await schedule("gp153-every", "@every 30m", "每 30 分钟汇总一次热点");
+  const row9 = rows().find((r) => r.id === "gp153-every");
+  const ahead9 = row9 ? (Date.parse(row9.next_due) - Date.now()) / 60000 : -1;
+  r9 && r9.ok && row9 && ahead9 > 29 && ahead9 <= 30.5
+    ? ok("`@every 30m` → 30 分钟后触发（" + ahead9.toFixed(1) + " 分）")
+    : bad("`@every 30m` 没按间隔排程", JSON.stringify({ ok: r9 && r9.ok, error: r9 && r9.error, 分: +ahead9.toFixed(1) }));
+
+  try { setTz("Asia/Shanghai"); } catch (_) {}
+  const r10 = await schedule("gp153-crontz", "CRON_TZ=America/Los_Angeles 0 9 * * *");
+  const row10 = rows().find((r) => r.id === "gp153-crontz");
+  if (!r10 || !r10.ok || !row10) {
+    bad("CRON_TZ= 前缀被拒绝（内核 CM-0402 认可它）", JSON.stringify({ ok: r10 && r10.ok, error: r10 && r10.error, stderr: r10 && r10.stderr }));
+  } else {
+    const w10 = wallClock(row10.next_due, "America/Los_Angeles");
+    const w10sh = wallClock(row10.next_due, "Asia/Shanghai");
+    w10.hour === 9 && w10.minute === 0 && w10sh.hour !== 9
+      ? ok("CRON_TZ= 前缀按表达式自己的时区排程（洛杉矶 09:00，非上海 09:00）")
+      : bad("CRON_TZ= 前缀没生效", JSON.stringify({ next_due: row10.next_due, LA: w10, SH: w10sh }));
+  }
+
   console.log("\nprove_gp153_cron_next_due: PASS=" + pass + " FAIL=" + fail);
   process.exit(fail ? 1 : 0);
 })();

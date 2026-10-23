@@ -14218,40 +14218,368 @@ function createHostFfi(repoRoot) {
     return t;
   }
 
-  /** Compute next_due from cron expr (@now/@hourly/@weekly and star-slash-N minute forms). */
+  // GP-153: real cron → next_due. The previous version only understood
+  // @now/@hourly/@weekly and star-slash-N minutes; **every** 5-field cron
+  // (including the 「每天早上9点」 form the kernel now emits, `0 9 * * *`)
+  // fell through to `now + 24h`, so a user-visible "daily at 09:00" fired at
+  // an arbitrary wall clock and the Bot timezone in Settings was ignored
+  // entirely. That is the "looks fixed" failure this engine exists to remove.
+  //
+  // Supported shapes: `*`, `?`, `n`, `a-b`, `*/n`, `a-b/n`, comma lists,
+  // 3-letter month / day names, dow 7 → 0, and the @yearly…@hourly aliases.
+  // Everything is evaluated against the Bot timezone (settings → system → UTC),
+  // so `0 9 * * *` means 09:00 in that zone, DST transitions included.
+
+  const CRON_MONTHS = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+  };
+  const CRON_DOW = {
+    sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+  };
+  const CRON_ALIASES = {
+    "@yearly": "0 0 1 1 *",
+    "@annually": "0 0 1 1 *",
+    "@monthly": "0 0 1 * *",
+    "@weekly": "0 0 * * 0",
+    "@daily": "0 0 * * *",
+    "@midnight": "0 0 * * *",
+    "@hourly": "0 * * * *",
+  };
+
+  /** Expand one cron field into a sorted set of allowed values, or null. */
+  function cronFieldSet(spec, max, names, isDow) {
+    const out = new Set();
+    const token = (raw) => {
+      const t = String(raw).trim().toLowerCase();
+      if (names && Object.prototype.hasOwnProperty.call(names, t)) return names[t];
+      if (/^\d+$/.test(t)) return Number(t);
+      return null;
+    };
+    for (const part of String(spec).split(",")) {
+      if (!part) return null;
+      const m = part.match(/^([^/]+)(?:\/(\d+))?$/);
+      if (!m) return null;
+      const step = m[2] == null ? 1 : Number(m[2]);
+      if (!(step >= 1)) return null;
+      const body = m[1];
+      let lo;
+      let hi;
+      if (body === "*" || body === "?") {
+        lo = 0;
+        hi = max;
+      } else {
+        const range = body.match(/^(.+)-(.+)$/);
+        if (range) {
+          lo = token(range[1]);
+          hi = token(range[2]);
+        } else {
+          lo = token(body);
+          hi = m[2] == null ? lo : max;
+        }
+      }
+      if (lo == null || hi == null || lo < 0 || hi > max || lo > hi) return null;
+      if (isDow && lo === 7 && hi !== 7) return null; // "7-x" is not a range
+      if (isDow && lo === 7) lo = 0;
+      for (let v = lo; v <= hi; v += step) out.add(isDow && v === 7 ? 0 : v);
+    }
+    return out.size ? out : null;
+  }
+
+  /** Parse a 5-field cron (or alias). Returns null for anything unsupported. */
+  function parseCron(cronRaw) {
+    const raw = String(cronRaw || "").trim().toLowerCase();
+    if (!raw) return null;
+    const expanded = CRON_ALIASES[raw] || raw;
+    if (expanded.startsWith("@")) return null;
+    const fields = expanded.split(/\s+/).filter(Boolean);
+    if (fields.length !== 5) return null;
+    const minute = cronFieldSet(fields[0], 59);
+    const hour = cronFieldSet(fields[1], 23);
+    const dom = cronFieldSet(fields[2], 31);
+    const month = cronFieldSet(fields[3], 12, CRON_MONTHS);
+    const dow = cronFieldSet(fields[4], 7, CRON_DOW, true);
+    if (!minute || !hour || !dom || !month || !dow) return null;
+    // Standard cron: when *both* day-of-month and day-of-week are restricted,
+    // the day matches if either one matches. `*`/`?` on either side → AND.
+    const domAll = fields[2] === "*" || fields[2] === "?";
+    const dowAll = fields[4] === "*" || fields[4] === "?";
+    return {
+      minute,
+      hour,
+      dom,
+      month,
+      dow,
+      dayOr: !(domAll || dowAll),
+    };
+  }
+
+  /** The timezone the user picked in Settings → 一般 → Bot 时区. */
+  function routineTimezone() {
+    try {
+      const st = surface.loadSettings();
+      const tz = st && st.timezone;
+      if (typeof tz === "string" && tz.trim()) return tz.trim();
+    } catch (_) {
+      /* settings unreadable → fall back below */
+    }
+    try {
+      const sys = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (sys) return sys;
+    } catch (_) {
+      /* no Intl tz */
+    }
+    return "UTC";
+  }
+
+  const tzFormatters = new Map();
+  function tzPartsFormatter(tz) {
+    let fmt = tzFormatters.get(tz);
+    if (!fmt) {
+      fmt = new Intl.DateTimeFormat("en-GB", {
+        timeZone: tz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+      tzFormatters.set(tz, fmt);
+    }
+    return fmt;
+  }
+
+  /** UTC ms → the tz's offset at that instant (minutes, +8:00 → 480). */
+  function tzOffsetMs(tz, utcMs) {
+    const p = {};
+    for (const part of tzPartsFormatter(tz).formatToParts(new Date(utcMs))) {
+      p[part.type] = part.value;
+    }
+    const hour = Number(p.hour === "24" ? "0" : p.hour);
+    const asUtc = Date.UTC(
+      Number(p.year),
+      Number(p.month) - 1,
+      Number(p.day),
+      hour,
+      Number(p.minute),
+      Number(p.second),
+    );
+    return asUtc - utcMs;
+  }
+
+  function ymdHm(y, mo, d, h, mi) {
+    return { y, mo, d, h, mi };
+  }
+
+  /**
+   * Local wall clock in `tz` → UTC ms, or null when the wall clock does not
+   * exist (spring-forward gap). Iterate utc = wall − offset(tz, utc): the
+   * first pass is exact outside DST days and the second settles the ±1h
+   * shadow a transition casts on the guessed instant.
+   */
+  function localMinuteToUtc(ym, tz) {
+    const wall = Date.UTC(ym.y, ym.mo - 1, ym.d, ym.h, ym.mi);
+    let utc = wall - tzOffsetMs(tz, wall);
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const next = wall - tzOffsetMs(tz, utc);
+      if (next === utc) break;
+      utc = next;
+    }
+    const p = {};
+    for (const part of tzPartsFormatter(tz).formatToParts(new Date(utc))) {
+      p[part.type] = part.value;
+    }
+    const hour = Number(p.hour === "24" ? "0" : p.hour);
+    const same =
+      Number(p.year) === ym.y &&
+      Number(p.month) === ym.mo &&
+      Number(p.day) === ym.d &&
+      hour === ym.h &&
+      Number(p.minute) === ym.mi;
+    return same ? utc : null;
+  }
+
+  /**
+   * Next instant at or after `fromMs` (evaluated in `tz`) that matches `spec`.
+   * Field-skip walk, so a "0 9 * * *" lookup costs a handful of iterations.
+   */
+  function nextDueUtc(spec, tz, fromMs) {
+    const first = tzPartsFormatter(tz).formatToParts(new Date(fromMs));
+    const fp = {};
+    for (const part of first) fp[part.type] = part.value;
+    let y = Number(fp.year);
+    let mo = Number(fp.month);
+    let d = Number(fp.day);
+    let h = Number(fp.hour === "24" ? "0" : fp.hour);
+    let mi = Number(fp.minute);
+    // Start at the next whole minute strictly after `fromMs`: a schedule must
+    // not fire twice for the same minute.
+    mi += 1;
+    if (mi >= 60) {
+      mi = 0;
+      h += 1;
+    }
+    if (h >= 24) {
+      h = 0;
+      d += 1;
+    }
+    let guard = 0;
+    const horizonMs = fromMs + 400 * 24 * 3600 * 1000;
+    while (guard < 20000) {
+      guard += 1;
+      if (!spec.month.has(mo)) {
+        mo += 1;
+        d = 1;
+        h = 0;
+        mi = 0;
+        if (mo > 12) {
+          mo = 1;
+          y += 1;
+        }
+        continue;
+      }
+      const domsInMonth = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+      if (d > domsInMonth) {
+        d = 1;
+        h = 0;
+        mi = 0;
+        mo += 1;
+        if (mo > 12) {
+          mo = 1;
+          y += 1;
+        }
+        continue;
+      }
+      const dowNum = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
+      const domOk = spec.dom.has(d);
+      const dowOk = spec.dow.has(dowNum);
+      const dayOk = spec.dayOr ? domOk || dowOk : domOk && dowOk;
+      if (!dayOk) {
+        d += 1;
+        h = 0;
+        mi = 0;
+        if (d > domsInMonth) {
+          d = 1;
+          mo += 1;
+          if (mo > 12) {
+            mo = 1;
+            y += 1;
+          }
+        }
+        continue;
+      }
+      if (!spec.hour.has(h)) {
+        h += 1;
+        mi = 0;
+        if (h >= 24) {
+          h = 0;
+          d += 1;
+          if (d > domsInMonth) {
+            d = 1;
+            mo += 1;
+            if (mo > 12) {
+              mo = 1;
+              y += 1;
+            }
+          }
+        }
+        continue;
+      }
+      if (!spec.minute.has(mi)) {
+        mi += 1;
+        if (mi >= 60) {
+          mi = 0;
+          h += 1;
+        }
+        continue;
+      }
+      const utc = localMinuteToUtc(ymdHm(y, mo, d, h, mi), tz);
+      if (utc == null) {
+        // DST gap for this exact minute — advance one minute and retry.
+        mi += 1;
+        if (mi >= 60) {
+          mi = 0;
+          h += 1;
+        }
+        if (h >= 24) {
+          h = 0;
+          d += 1;
+        }
+        continue;
+      }
+      if (utc > horizonMs) return null;
+      if (utc >= fromMs) return utc;
+      mi += 1;
+      if (mi >= 60) {
+        mi = 0;
+        h += 1;
+      }
+      if (h >= 24) {
+        h = 0;
+        d += 1;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Split the kernel's optional `CRON_TZ=<iana> ` prefix (CM-0402) so the Host
+   * honours the same per-expression override the kernel validates.
+   */
+  function splitCronTzPrefix(cronRaw) {
+    const raw = String(cronRaw || "").trim();
+    if (!raw.toUpperCase().startsWith("CRON_TZ=")) return { tz: null, body: raw };
+    const rest = raw.slice(8);
+    const m = rest.match(/^(\S+)\s+([\s\S]*)$/);
+    if (!m) return { tz: null, body: raw };
+    return { tz: m[1], body: m[2].trim() };
+  }
+
+  /**
+   * Compute next_due for a stored cron. Returns `{cron, nextDue, dueNow, tz}`
+   * or `{cron, error, tz}` when the expression is not schedulable — callers
+   * MUST refuse to store in that case rather than invent a due time.
+   */
   function nextDueFromCron(cronRaw) {
     const cron = stripEnvQuotes(cronRaw) || "@daily";
     if (cron === "@now" || cron === "@once" || /@now|@once/i.test(cron)) {
       return { cron, nextDue: new Date().toISOString(), dueNow: true };
     }
-    if (cron === "@hourly" || /^@?hourly$/i.test(cron)) {
-      return {
-        cron,
-        nextDue: new Date(Date.now() + 3600 * 1000).toISOString(),
-        dueNow: false,
-      };
+    // Kernel contract CM-0402 also allows `@every 30m` / `@every 2h` — plain
+    // intervals, so now + N is the honest reading (no wall-clock alignment).
+    const every = cron.match(/^@every\s+(\d+)([mh])$/i);
+    if (every) {
+      const n = Number(every[1]);
+      const ms = every[2].toLowerCase() === "h" ? n * 3600000 : n * 60000;
+      if (n >= 1 && ms >= 60000) {
+        return {
+          cron,
+          nextDue: new Date(Date.now() + ms).toISOString(),
+          dueNow: false,
+          tz: routineTimezone(),
+        };
+      }
+      return { cron, error: "cron_unsupported", tz: routineTimezone() };
     }
-    if (cron === "@weekly" || /^@?weekly$/i.test(cron)) {
-      return {
-        cron,
-        nextDue: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
-        dueNow: false,
-      };
+    const prefixed = splitCronTzPrefix(cron);
+    const tz = prefixed.tz || routineTimezone();
+    let spec = null;
+    try {
+      spec = parseCron(prefixed.body);
+    } catch (_) {
+      spec = null;
     }
-    const everyMin = cron.match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
-    if (everyMin) {
-      const mins = Math.max(1, Number(everyMin[1]) || 1);
-      return {
-        cron,
-        nextDue: new Date(Date.now() + mins * 60 * 1000).toISOString(),
-        dueNow: false,
-      };
+    if (!spec) return { cron, error: "cron_unsupported", tz };
+    let next = null;
+    try {
+      next = nextDueUtc(spec, tz, Date.now());
+    } catch (_) {
+      return { cron, error: "cron_unsupported", tz }; // e.g. bogus CRON_TZ zone
     }
-    return {
-      cron,
-      nextDue: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-      dueNow: false,
-    };
+    if (next == null) return { cron, error: "cron_unreachable", tz };
+    return { cron, nextDue: new Date(next).toISOString(), dueNow: false, tz };
   }
 
   // GP-138 (§6.2): return a violation descriptor when a recurring cron fires
@@ -14336,6 +14664,40 @@ function createHostFfi(repoRoot) {
           error: "interval_too_short",
           stdout: JSON.stringify(refusal, null, 2),
           stderr: "routine interval must be >= 5 minutes",
+        };
+      }
+      // GP-153: an expression this Host cannot schedule is refused, not silently
+      // turned into "sometime in 24 hours". Refusing keeps the user's contract;
+      // inventing a due time is exactly the "looks fixed" failure.
+      if (parsed.error) {
+        const refuseDir = path.join(REPO_ROOT, "data", "routines");
+        fs.mkdirSync(refuseDir, { recursive: true });
+        const refusePath = path.join(
+          refuseDir,
+          `refuse-${id || "routine"}-${Date.now().toString(36)}.json`,
+        );
+        const refusal = {
+          mode: "host_routine_schedule",
+          stored: false,
+          error: parsed.error,
+          id,
+          cron: parsed.cron,
+          timezone: parsed.tz || null,
+          note:
+            parsed.error === "cron_unreachable"
+              ? "这个排程在未来 400 天内没有触发时刻（例如 2 月 30 日）；未写入调度。"
+              : "Host 无法解析这个 cron 表达式；未写入调度（不假装已建）。",
+          at: new Date().toISOString(),
+          path: refusePath,
+        };
+        fs.writeFileSync(refusePath, JSON.stringify(refusal, null, 2));
+        return {
+          kind,
+          ok: false,
+          command,
+          error: parsed.error,
+          stdout: JSON.stringify(refusal, null, 2),
+          stderr: `cron not schedulable: ${parsed.error} (${parsed.cron})`,
         };
       }
       const cron = parsed.cron;
@@ -14552,16 +14914,21 @@ function createHostFfi(repoRoot) {
       }
       const firedAt = new Date().toISOString();
       const cron = (hit && hit.cron) || "@daily";
-      let nextDueMs = Date.now() + 24 * 3600 * 1000;
-      if (cron === "@hourly" || /hourly/i.test(cron)) {
-        nextDueMs = Date.now() + 3600 * 1000;
-      } else if (cron === "@weekly" || /weekly/i.test(cron)) {
-        nextDueMs = Date.now() + 7 * 24 * 3600 * 1000;
-      }
-      const nextDue = new Date(nextDueMs).toISOString();
+      // GP-153: the reschedule after a fire used the same `now + 24h` fallback,
+      // so even a correctly stored `0 9 * * *` drifted to the fire instant +
+      // 24h. Recompute through the real cron engine; if the stored expression
+      // cannot be scheduled, say so on the row instead of inventing a time.
+      const reparsed = nextDueFromCron(cron);
+      const nextDue = reparsed.error ? null : reparsed.nextDue;
       if (hit) {
         hit.last_fired_at = firedAt;
-        hit.next_due = nextDue;
+        if (nextDue) {
+          hit.next_due = nextDue;
+          delete hit.schedule_error;
+        } else {
+          hit.next_due = null;
+          hit.schedule_error = reparsed.error;
+        }
         saveRoutines(rows);
       }
       const firesDir = path.join(REPO_ROOT, "data", "routines");
@@ -14678,6 +15045,9 @@ function createHostFfi(repoRoot) {
       const now = Date.now();
       const due = rows.filter((r) => {
         if (!r || r.enabled === false) return false;
+        // GP-153: a row that explicitly failed to reschedule stays parked
+        // instead of hammering the fire path on every sweep.
+        if (!r.next_due && r.schedule_error) return false;
         if (!r.next_due && !r.last_fired_at) return true;
         if (!r.next_due) return true;
         return Date.parse(r.next_due) <= now;
