@@ -8448,6 +8448,41 @@ function createHostFfi(repoRoot) {
     return { ok: true, room_id: want, routines, timezone: tz };
   }
 
+  /* GP-156「定时 → 待批准 → 批准 → 真发」辅助。
+   * 到这一步之前，一次触发只在磁盘上留一个 draft 文件——用户点不到，日更场景
+   * 就断在这里。收件人只从任务原话里解析（解析不到就如实不外发，绝不编地址），
+   * 正文优先取本群最近一次成稿回执（final_report），取不到就退回任务原话本身。 */
+  function pickMailRecipient(text) {
+    const m = String(text || "").match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/);
+    return m ? m[0] : "";
+  }
+
+  function roomLatestReport(roomId) {
+    const want = String(roomId || "");
+    if (!want) return "";
+    try {
+      const j = JSON.parse(
+        fs.readFileSync(path.join(REPO_ROOT, "data", "desktop", "rooms.json"), "utf8"),
+      );
+      const list = Array.isArray(j) ? j : (j.rooms || []);
+      const hit = list.find((r) => r && String(r.id) === want);
+      const tx = (hit && hit.transcript) || [];
+      for (let i = tx.length - 1; i >= 0; i -= 1) {
+        const e = tx[i];
+        if (e && e.kind === "final_report") {
+          const t = String(e.text || e.content || "").trim();
+          if (t) return t;
+        }
+      }
+    } catch (_) { /* 读不到就退回原话，不把猜测当稿件 */ }
+    return "";
+  }
+
+  /** mail_send 的 command 用 | 分字段，正文里的 | 必须先换全角，否则会被截断。 */
+  function mailFieldSafe(text) {
+    return String(text || "").replace(/\|/g, "｜").replace(/\r\n/g, "\n").trim();
+  }
+
   function expandMcpFileArgs(value, meta) {
     // CM-2163: expand $file:/abs/or/repo/rel paths from Host FS into arg values.
     // Plain strings without $file: are left unchanged (caller may refuse separately).
@@ -15040,6 +15075,32 @@ function createHostFfi(repoRoot) {
         routines_path: ROUTINES_PATH,
       };
       fs.writeFileSync(draftPath, JSON.stringify(draftEntry, null, 2));
+      // GP-156：草稿之外再挂一条**待批准**动作进既有审批队列（source=routine）。
+      // 这一步只排队，不发送——批准之后由 UI 走 approvals.runAllowed 复用同一条
+      // mail_send 命令真发（data/mail/sends/）。任务原话里没有可解析的邮箱地址时
+      // 就只留草稿，如实在工件里写 mail_to:null，不编一个收件人出来。
+      const mailTo = pickMailRecipient(promptText);
+      const reportBody = roomLatestReport(hit && hit.room_id);
+      const mailSubject = mailFieldSafe(
+        (reportBody ? String(reportBody.split("\n")[0]).slice(0, 48) : "定时稿件推送") +
+          " · " + firedAt.slice(0, 10),
+      );
+      const mailBody = mailFieldSafe(
+        reportBody ||
+          "（本群暂无可读到的成稿回执，以下为定时任务原话）\n" + promptText,
+      );
+      let queuedApproval = null;
+      if (mailTo) {
+        try {
+          queuedApproval = surface.appendPendingApproval({
+            source: "routine",
+            kind: "mail_send",
+            command: ["gmail", mailTo, mailSubject, mailBody].join("|"),
+          });
+        } catch (_) {
+          queuedApproval = null;
+        }
+      }
       const fireEntry = {
         id,
         cron,
@@ -15047,6 +15108,10 @@ function createHostFfi(repoRoot) {
         fired: true,
         at: firedAt,
         next_due: nextDue,
+        // GP-156 可选新字段（旧读取方按缺省处理即可，不改既有形状）。
+        mail_to: mailTo || null,
+        queued_approval: Boolean(queuedApproval && queuedApproval.ok),
+        approval_id: queuedApproval && queuedApproval.ok ? queuedApproval.id : null,
         mode: executeRequested
           ? "host_routine_fire_executed"
           : "host_routine_draft",
@@ -15128,6 +15193,10 @@ function createHostFfi(repoRoot) {
             executed: payload.executed === true,
             draft_path: payload.draft_path || null,
             requires_approval: true,
+            // GP-156: 排队情况跟着上报，界面上才说得出「已备好，等你批准」。
+            mail_to: payload.mail_to || null,
+            queued_approval: payload.queued_approval === true,
+            approval_id: payload.approval_id || null,
           });
         }
       }

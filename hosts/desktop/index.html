@@ -1316,6 +1316,7 @@
   #approval-queue { margin-top: 8px; }
   #approval-queue .q-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--input-bg); color: var(--muted); font: var(--text-xs)/1.4 var(--font-mono); margin-bottom: 4px; flex-wrap: wrap; }
   #approval-queue .q-expired { border-color: var(--warn-line); }
+  #approval-queue .q-empty { color: var(--muted); font: var(--text-xs)/1.4 var(--font-sans); }
   #approval-queue button { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px 8px; cursor: pointer; font-size: var(--text-xs); }
   /* Pending approvals bar (GP-23) */
   #pending-bar { display: none; margin: 0 16px 8px; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: var(--radius-md); background: var(--warn-bg); color: var(--muted); font-size: var(--text-sm); }
@@ -10705,7 +10706,7 @@
         );
         if (queued.length) {
           await window.bitbot.approvals.decide(queued[queued.length - 1].id, "deny");
-          addMsg("assistant", "已拒绝（Deny）并写入 approvals.log：" + item.kind + " — 该操作未执行。");
+          addMsg("assistant", t("apDeniedOk", { k: approvalKindLabel(item.kind) }));
           return;
         }
       } catch (_) { /* fall through to receipt */ }
@@ -10714,11 +10715,11 @@
         addMsg(
           "assistant",
           r && r.ok
-            ? "已拒绝（Deny）：" + item.kind + " — 该操作未执行，回执已写入 approvals.log.jsonl。"
-            : "已拒绝（Deny）：" + item.kind + " — 该操作未执行（回执写入失败：" + (r && r.error) + "）。",
+            ? t("apDeniedOk", { k: approvalKindLabel(item.kind) })
+            : t("apDeniedFail", { k: approvalKindLabel(item.kind), e: (r && r.error) || "-" }),
         );
       } catch (_) {
-        addMsg("assistant", "已拒绝（Deny）：" + item.kind + " — 该操作未执行。");
+        addMsg("assistant", t("apDeniedPlain", { k: approvalKindLabel(item.kind) }));
       }
     }
 
@@ -10738,7 +10739,7 @@
         }
         const exp = open.filter((it) => it.status === "expired").length;
         txt.textContent =
-          "待处理后台审批 " + open.length + " 项" + (exp ? "（含 " + exp + " 项已过期 Expired）" : "");
+          t("pendingBarNote", { n: open.length }) + (exp ? t("pendingBarExpired", { n: exp }) : "");
         bar.classList.add("visible");
         const fresh = open.filter((it) => !pendingApprovalIdsSeen.has(it.id));
         for (const it of fresh) pendingApprovalIdsSeen.add(it.id);
@@ -10755,6 +10756,27 @@
       }
     }
 
+    /* GP-156：审批队列是产品面。旧写法把「source · kind · 原始指令」直接吐在界面
+       上（routine · mail_send · gmail|news@example.com|…），中文界面里夹着协议串，
+       切到繁體/English 又整块留在简体。这里只给人看得懂的种类 + 收件人，原始
+       kind/command 挪到 title（仅开发模式），信息一项不少。 */
+    function approvalKindLabel(kind) {
+      const MAP = {
+        mail_send: "kindMailSend", channel_send: "kindChannelSend", shell: "kindShell",
+        computer_use: "kindComputer", mcp_call: "kindMcp", purchase_item: "kindPurchase",
+        delegate_task: "kindDelegate",
+      };
+      return t(MAP[String(kind || "")] || "kindOther");
+    }
+    function approvalSourceLabel(source) {
+      const MAP = { routine: "apSourceRoutine", chat: "apSourceChat", teammate: "apSourceTeammate" };
+      return t(MAP[String(source || "")] || "kindOther");
+    }
+    function approvalSummary(kind, command) {
+      const parts = String(command || "").split("|");
+      if (kind === "mail_send") return parts[1] ? t("apMailTo", { to: parts[1] }) : "";
+      return String(parts[0] || "").slice(0, 48);
+    }
     async function refreshApprovalQueue() {
       const box = document.getElementById("approval-queue");
       if (!box) return;
@@ -10763,42 +10785,50 @@
       try {
         res = await window.bitbot.approvals.listPending();
       } catch (_) {
-        box.textContent = "读取失败";
+        box.textContent = t("apQueueFail");
         return;
       }
       const items = ((res && res.pending) || []).filter((it) => it.status !== "decided");
       if (!items.length) {
-        box.innerHTML = '<div style="color:var(--muted);font-size:12px">队列为空（真实状态，非占位）</div>';
+        const empty = document.createElement("div");
+        empty.className = "q-empty";
+        empty.textContent = t("apQueueEmpty");
+        box.appendChild(empty);
         return;
       }
       for (const it of items) {
         const row = document.createElement("div");
         row.className = "q-item" + (it.status === "expired" ? " q-expired" : "");
         const info = document.createElement("span");
+        const kindLab = approvalKindLabel(it.kind);
+        const sum = approvalSummary(it.kind, it.command);
         info.textContent =
-          (it.status === "expired" ? "[Expired] " : "") +
-          it.source + " · " + it.kind + " · " + String(it.command || "").slice(0, 70);
+          (it.status === "expired" ? t("apExpiredTag") + " · " : "") +
+          approvalSourceLabel(it.source) + " · " + kindLab + (sum ? " · " + sum : "");
+        if (devModeOn()) info.title = String(it.kind || "") + " · " + String(it.command || "");
         row.appendChild(info);
         if (it.status !== "expired") {
           const bOnce = document.createElement("button");
-          bOnce.textContent = "本次允许";
+          bOnce.textContent = t("allowOnce");
           bOnce.addEventListener("click", async () => {
             const r = await window.bitbot.approvals.decide(it.id, "allow_once");
-            info.textContent = (r && r.ok ? "已单次放行 " : "失败:" + (r && r.error) + " ") + info.textContent;
+            info.textContent = (r && r.ok
+              ? t("apAllowedOnce") + " "
+              : t("apRanFail", { e: (r && r.error) || "-", k: kindLab }) + " ") + info.textContent;
             refreshApprovalQueue();
             refreshPendingBar();
           });
           row.appendChild(bOnce);
         }
         const bAlways = document.createElement("button");
-        bAlways.textContent = "总是允许";
+        bAlways.textContent = t("alwaysAllow");
         bAlways.addEventListener("click", async () => {
           const r = await window.bitbot.approvals.decide(it.id, "always");
           if (r && r.ok) {
-            info.textContent = "[always→" + (r.persisted_pattern || "?") + "] " + info.textContent;
+            info.textContent = t("apAlwaysTag", { p: r.persisted_pattern || "?" }) + " " + info.textContent;
             reRunApprovedKind(r.kind, r.command);
           } else {
-            info.textContent = "失败:" + (r && r.error) + " " + info.textContent;
+            info.textContent = t("apRanFail", { e: (r && r.error) || "-", k: kindLab }) + " " + info.textContent;
           }
           refreshApprovalQueue();
           refreshApprovalRules();
@@ -10806,10 +10836,10 @@
         });
         row.appendChild(bAlways);
         const bDeny = document.createElement("button");
-        bDeny.textContent = "拒绝";
+        bDeny.textContent = t("deny");
         bDeny.addEventListener("click", async () => {
           const r = await window.bitbot.approvals.decide(it.id, "deny");
-          info.textContent = (r && r.ok ? "[denied] " : "[deny failed] ") + info.textContent;
+          info.textContent = (r && r.ok ? t("apDeniedTag") + " " : t("apDenyFailTag") + " ") + info.textContent;
           refreshApprovalQueue();
           refreshPendingBar();
         });
@@ -10825,12 +10855,12 @@
       try {
         const results = await window.bitbot.approvals.runAllowed({ kind, command, bot_id: activeBotId || "agent-bit" });
         if (results && results.ok) {
-          addMsg("assistant", "后台审批放行后已执行一次：" + kind + (results.summary ? " · " + results.summary : ""));
+          addMsg("assistant", t("apRanOnce", { k: approvalKindLabel(kind) }) + (results.summary ? " · " + results.summary : ""));
         } else {
-          addMsg("assistant", "放行后执行失败：" + (results && results.error ? results.error : "host refused") + "（" + kind + "）");
+          addMsg("assistant", t("apRanFail", { e: results && results.error ? results.error : "host refused", k: approvalKindLabel(kind) }));
         }
       } catch (_) {
-        addMsg("assistant", "规则已保存（" + kind + "）。本次后台动作未能即时重放，将在下次触发时按新规则执行。");
+        addMsg("assistant", t("apRanSaved", { k: approvalKindLabel(kind) }));
       }
     }
 
@@ -11197,6 +11227,34 @@
         allowOnce: "本次允许",
         alwaysAllow: "总是允许",
         deny: "拒绝",
+        apAlwaysTag: "已设为总是允许（规则 {p}）",
+        apQueueEmpty: "队列为空（真实状态，非占位）",
+        apQueueFail: "读取失败",
+        apExpiredTag: "已过期",
+        apDeniedTag: "已拒绝",
+        apDenyFailTag: "拒绝未生效",
+        apAllowedOnce: "已单次放行",
+        apRanOnce: "已按批准执行一次：{k}",
+        apRanFail: "放行后执行失败：{e}（{k}）",
+        apRanSaved: "规则已保存（{k}）。本次后台动作未能即时重放，将在下次触发时按新规则执行。",
+        apDeniedOk: "已拒绝：{k} — 该操作未执行，回执已写入审批日志。",
+        apDeniedFail: "已拒绝：{k} — 该操作未执行（回执写入失败：{e}）。",
+        apDeniedPlain: "已拒绝：{k} — 该操作未执行。",
+        pendingBarNote: "待处理后台审批 {n} 项",
+        pendingBarExpired: "（含 {n} 项已过期）",
+        kindMailSend: "发送邮件",
+        kindChannelSend: "渠道消息",
+        kindShell: "本地命令",
+        kindComputer: "电脑操作",
+        kindMcp: "工具调用",
+        kindPurchase: "购买操作",
+        kindDelegate: "子任务",
+        kindOther: "后台动作",
+        apMailTo: "发给 {to}",
+        apRawCommand: "原始指令",
+        apSourceRoutine: "定时任务",
+        apSourceChat: "对话",
+        apSourceTeammate: "队友",
         send: "发送",
         placeholder: "给 Bit Bot 发消息…",
         headerSkills: "能力",
@@ -11745,6 +11803,34 @@
         allowOnce: "本次允許",
         alwaysAllow: "總是允許",
         deny: "拒絕",
+        apAlwaysTag: "已設為總是允許（規則 {p}）",
+        apQueueEmpty: "佇列為空（真實狀態，非佔位）",
+        apQueueFail: "讀取失敗",
+        apExpiredTag: "已過期",
+        apDeniedTag: "已拒絕",
+        apDenyFailTag: "拒絕未生效",
+        apAllowedOnce: "已單次放行",
+        apRanOnce: "已按批准執行一次：{k}",
+        apRanFail: "放行後執行失敗：{e}（{k}）",
+        apRanSaved: "規則已儲存（{k}）。本次後台動作未能即時重播，將在下次觸發時依新規則執行。",
+        apDeniedOk: "已拒絕：{k} — 該操作未執行，回執已寫入審批日誌。",
+        apDeniedFail: "已拒絕：{k} — 該操作未執行（回執寫入失敗：{e}）。",
+        apDeniedPlain: "已拒絕：{k} — 該操作未執行。",
+        pendingBarNote: "待處理後台審批 {n} 項",
+        pendingBarExpired: "（含 {n} 項已過期）",
+        kindMailSend: "傳送郵件",
+        kindChannelSend: "渠道訊息",
+        kindShell: "本機命令",
+        kindComputer: "電腦操作",
+        kindMcp: "工具呼叫",
+        kindPurchase: "購買操作",
+        kindDelegate: "子任務",
+        kindOther: "後台動作",
+        apMailTo: "發給 {to}",
+        apRawCommand: "原始指令",
+        apSourceRoutine: "定時任務",
+        apSourceChat: "對話",
+        apSourceTeammate: "隊友",
         send: "傳送",
         placeholder: "給 Bit Bot 發訊息…",
         headerSkills: "能力",
@@ -12293,6 +12379,34 @@
         allowOnce: "Allow once",
         alwaysAllow: "Always allow",
         deny: "Deny",
+        apAlwaysTag: "Always allow saved (rule {p})",
+        apQueueEmpty: "Queue is empty (real state, not a placeholder)",
+        apQueueFail: "Failed to read the queue",
+        apExpiredTag: "Expired",
+        apDeniedTag: "Denied",
+        apDenyFailTag: "Deny failed",
+        apAllowedOnce: "Allowed once",
+        apRanOnce: "Ran once as approved: {k}",
+        apRanFail: "Failed to run after approval: {e} ({k})",
+        apRanSaved: "Rule saved ({k}). This background action could not be replayed right away; it will run on the next trigger under the new rule.",
+        apDeniedOk: "Denied: {k} — nothing was executed; a receipt was written to the approval log.",
+        apDeniedFail: "Denied: {k} — nothing was executed (receipt failed: {e}).",
+        apDeniedPlain: "Denied: {k} — nothing was executed.",
+        pendingBarNote: "{n} background approval(s) waiting",
+        pendingBarExpired: " ({n} expired)",
+        kindMailSend: "Send email",
+        kindChannelSend: "Channel message",
+        kindShell: "Local command",
+        kindComputer: "Computer use",
+        kindMcp: "Tool call",
+        kindPurchase: "Purchase",
+        kindDelegate: "Subtask",
+        kindOther: "Background action",
+        apMailTo: "To {to}",
+        apRawCommand: "Raw command",
+        apSourceRoutine: "Scheduled task",
+        apSourceChat: "Chat",
+        apSourceTeammate: "Teammate",
         send: "Send",
         placeholder: "Message Bit Bot…",
         headerSkills: "Capabilities",
