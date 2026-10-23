@@ -6383,7 +6383,18 @@
       const chipLabel = document.getElementById("active-model-label");
       if (chipLabel) {
         const mid = String(a.model || a.provider_id || "").trim();
-        if (mid) chipLabel.textContent = mid;
+        // D-C-01：这颗芯片在 composer 上，是产品面。原始模型 id（deepseek-chat，
+        // 或自建 provider 的任意 id）不能裸着当可见文案甩进中文界面。芯片显示
+        // provider 品牌（i18n 白名单里的东西），精确型号挪到 title 和「模型」面板
+        // ——信息一项不少，只是回到它该在的层级。
+        const brand = String(a.label || a.provider_id || "").trim();
+        if (brand) {
+          chipLabel.textContent = brand;
+        } else if (mid) {
+          chipLabel.textContent = wavegT("modelLabel");
+        }
+        const chip = document.getElementById("model-switch-chip");
+        if (chip) chip.title = mid ? wavegT("modelCurrent") + "：" + mid : wavegT("modelNone");
       }
       const entry = document.getElementById("model-entry");
       if (!entry) return;
