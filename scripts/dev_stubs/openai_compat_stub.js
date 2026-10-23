@@ -1,8 +1,52 @@
 #!/usr/bin/env node
 /** Local OpenAI-compatible stub for Host llm_chat pipe proof (NOT product DeepSeek). */
 const http = require("http");
+const fs = require("fs");
+const crypto = require("crypto");
 const port = Number(process.env.BITBOT_STUB_PORT || 8787);
 const mode = process.env.BITBOT_STUB_MODE || "ok"; // ok | block | authfail
+
+/* 用户旅程验收（J1–J4）需要的证据面：把 provider 真收到的请求如实记下来。
+   BITBOT_STUB_RECORD=<jsonl 路径> 时开启，默认关闭（不影响任何现有门禁）。
+   记的是「能力是否真到 provider」的证据，不是密钥：Authorization 只留
+   scheme / 长度 / sha256 前缀，正文里的密钥形状串在落盘前先打码。 */
+const RECORD_PATH = String(process.env.BITBOT_STUB_RECORD || "").trim();
+const SECRET_SHAPE_RE = /sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}/g;
+let recordSeq = 0;
+function record(entry) {
+  if (!RECORD_PATH) return;
+  try {
+    fs.appendFileSync(RECORD_PATH, JSON.stringify(entry) + "\n");
+  } catch (_) {
+    /* 记录失败绝不能影响 stub 应答（证据缺了如实报，不能假造） */
+  }
+}
+function recordRequest(req, body, auth) {
+  let parsed = null;
+  try { parsed = JSON.parse(body || "{}"); } catch (_) { parsed = null; }
+  const scheme = /^Bearer(\s|$)/i.test(auth) ? "Bearer" : (auth ? "other" : "none");
+  record({
+    seq: ++recordSeq,
+    at: new Date().toISOString(),
+    port,
+    method: req.method,
+    url: String(req.url || ""),
+    auth_scheme: scheme,
+    auth_len: auth.length,
+    auth_sha256: crypto.createHash("sha256").update(auth).digest("hex").slice(0, 16),
+    model: parsed && parsed.model ? String(parsed.model) : "",
+    stream: Boolean(parsed && parsed.stream),
+    messages: parsed && Array.isArray(parsed.messages)
+      ? parsed.messages.map((m) => ({
+          role: String((m && m.role) || ""),
+          chars: String((m && m.content) || "").length,
+          // 打码后仍保留人设/群上下文等证据串，断言直接写在正文上
+          content: String((m && m.content) || "").replace(SECRET_SHAPE_RE, "[redacted-secret]"),
+        }))
+      : [],
+    raw_chars: String(body || "").length,
+  });
+}
 
 function sseChunk(delta) {
   return (
@@ -21,6 +65,8 @@ const server = http.createServer((req, res) => {
   req.on("data", (c) => (body += c));
   req.on("end", () => {
     const auth = String(req.headers.authorization || "");
+    // 先记账再判定：401 / 500 这些「真到过 provider」的痕同样是旅程证据。
+    recordRequest(req, body, auth);
     if (mode === "authfail" || !auth.includes("Bearer")) {
       res.writeHead(401, { "Content-Type": "application/json" });
       res.end(
