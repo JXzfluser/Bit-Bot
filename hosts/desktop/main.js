@@ -1225,7 +1225,19 @@ ipcMain.handle("bitbot:rooms:list", async () => {
  * DEBUG_LINE_RE, plus paths/protocol keys). Token-shaped text is redacted with
  * the very rule set the composer and the kernel use. */
 const ROOM_DEBUG_RE =
-  /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|Host FFI|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|entry=|account=|masked=|token_refused|needs_host_ffi|"kind"\s*:\s*"|__bb|data\/(desktop|llm|workspace)\/|\/Users\/[^\s]+)/;
+  /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|Host FFI|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|entry=|account=|masked=|token_refused|needs_host_ffi|"kind"\s*:\s*"|__bb|data\/(desktop|llm|workspace)\/|\/Users\/[^\s]+)/;
+
+/**
+ * GP-148 §1-J4（P0-3）：内核的「已计划…」施工说明和环境变量名属于 Host 内部
+ * 细节，不该进用户的历史。修法是分层且透明的：
+ *   - 源头：内核这两类意图改为 plan_only（文本进 result.plan，不进 messages）；
+ *   - 落库：这里只按形状跳过仍带调试口径的 assistant 行，并把原文放进
+ *     result.debug_messages —— 不删、不改写上已有历史（§0），只是不新增；
+ *   - 显示：渲染层把这种行标 debug-only（Alt+D 仍可见）。
+ * 只匹配已知形状，用户/模型正常发言不会被吞。
+ */
+const PRODUCT_DEBUG_RE =
+  /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|token_refused|needs_host_ffi|__bb)/;
 
 function roomSafeText(raw) {
   let s = String(raw == null ? "" : raw);
@@ -2426,10 +2438,20 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       if (result && result.reply_to) userRow.reply_to = String(result.reply_to);
       toStore.push(userRow);
       if (result && Array.isArray(result.messages)) {
+        const withheld = [];
         for (const m of result.messages) {
           if (m && m.role === "assistant" && m.text) {
+            // GP-148 §1-J4：调试口径不写进用户历史，但原文留在 debug_messages，
+            // 不假装它没发生。
+            if (PRODUCT_DEBUG_RE.test(String(m.text))) {
+              withheld.push(String(m.text));
+              continue;
+            }
             toStore.push({ role: "assistant", text: m.text });
           }
+        }
+        if (withheld.length && result && typeof result === "object") {
+          result.debug_messages = withheld;
         }
       }
       const appended = sessions.appendMessages(sessionId, toStore);

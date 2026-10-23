@@ -3116,6 +3116,13 @@
     const DEBUG_LINE_RE =
       /^(收到，正在用 MoonBit 内核处理。|\[host\] ADR 0002|Host FFI results applied|booting MoonBit|moon run cmd\/|Host effect planned|(Account status|Sign in|Sign out|Account switch|Update status) planned \()/;
 
+    // GP-148 §1-J2/J4：内核历史版本会把「已计划 Host 效果…」这类施工说明当成回
+    // 答复写进 sessions.json。修好后新回合不再产生这种行（plan_only），但已经存
+    // 在的历史行不能删（§0：不改写用户数据）。所以这里只把它们标成 debug-only：
+    // 按形状精确匹配，用户自己打出「我已经计划好了」不会被误伤。
+    const DEBUG_HINT_RE =
+      /(已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|Host 需经渠道 FFI 发送)/;
+
     // Kernel replies are language-neutral English prose (protocol-level). The
     // renderer localizes the known reply shapes so the transcript never mixes
     // languages; unknown replies pass through unchanged (honest, never dropped).
@@ -3625,7 +3632,10 @@
     function addMsg(role, text, opts) {
       const el = document.createElement("div");
       let cls = "msg " + role;
-      if ((opts && opts.debug) || DEBUG_LINE_RE.test(String(text || ""))) cls += " debug-only";
+      // GP-148：形状匹配只用于模型/内核侧的行；用户自己说的话永远照原样显示，
+      // 哪怕里面出现了调试词（不能把用户的输入藏掉）。
+      const hint = role !== "user" && DEBUG_HINT_RE.test(String(text || ""));
+      if ((opts && opts.debug) || hint || DEBUG_LINE_RE.test(String(text || ""))) cls += " debug-only";
       el.className = cls;
       el.innerHTML = '<div class="role"></div><div class="body"></div>';
       el.querySelector(".role").textContent = role;

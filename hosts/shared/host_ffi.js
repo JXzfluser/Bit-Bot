@@ -5442,8 +5442,12 @@ function createHostFfi(repoRoot) {
       const artifact = {
         mode: "host_llm_chat",
         ok: false,
+        // GP-148 §1-J4：这句话会进 sessions.json / rooms.json 的失败原因，所以
+        // 只写用户能照做的产品入口，不再写环境变量名（Host 内部细节）。
+        // 机器可判定靠下面新增的 error_code，不靠措辞。
         error:
-          "BITBOT_LLM_API_KEY (or provider env_key) not set — no LocalBrain fallback on product path",
+          "当前供应商的密钥还没配置：请在「设置 → 凭证」里填好密钥再试一次（本轮没有用本地兜底假装回答）",
+        error_code: "api_key_not_configured",
         provider_id: cfg.provider_id,
         base_url: cfg.base_url,
         model: cfg.model,

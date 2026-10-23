@@ -1170,11 +1170,13 @@ test "classify_intent_table" {
   assert_eq(chat_plan.effects.length(), 1)
   assert_eq(chat_plan.effects[0].kind, "llm_chat")
   assert_eq(chat_plan.effects[0].command, "hi")
-  assert_true(
-    chat_plan.messages[chat_plan.messages.length() - 1].text.contains(
-      "llm_chat",
-    ),
-  )
+  // GP-148 §1-J1（契约变更，逐条说明）：这句「待执行 llm_chat」原来同时出现在
+  // messages 里，于是被 Host 当成正经回复写进 sessions.json，用户在私聊里看到的
+  // 是施工说明而不是 Bot 的回答。现在它只留在新增的可选字段 `plan`（CLI/调试仍可
+  // 读）；ack 行与 messages 的既有形状不变（desktop_turn_ack_and_json_shape 仍然
+  // 按原合同通过）。
+  assert_true(chat_plan.plan.contains("llm_chat"))
+  assert_false(plan_leaked_to_messages(chat_plan, "llm_chat"))
   let llm_results : Array[DesktopHostResult] = [
     {
       kind: "llm_chat",
@@ -1446,6 +1448,19 @@ test "desktop_turn_wave_g_rules_settings_group" {
 }
 
 ///|
+/// GP-148 §1-J1/J2：判断「施工说明」有没有又漏回产品通道。messages 是 Host 会
+/// 显示并写进 sessions.json 的那一份，所以计划文本只能待在新增的 plan 字段里。
+fn plan_leaked_to_messages(r : DesktopTurnResult, needle : String) -> Bool {
+  let mut hit = false
+  for m in r.messages {
+    if m.role == "assistant" && m.text.contains(needle) {
+      hit = true
+    }
+  }
+  hit
+}
+
+///|
 /// GP-148 §1-J2：中文自然语言建房。内核只把「说法」解成 bots CSV + title，
 /// 成员是否存在 / 2–6 人 / 幂等由 Host 判，所以这里断言的是解码合同本身。
 /// 英文指令的合同（上一条）保持原样，中文只是新增入口。
@@ -1456,6 +1471,10 @@ test "desktop_turn_cn_group_chat_phrasings" {
   )
   assert_eq(r1.intent, "group_chat")
   assert_eq(r1.effects[0].command, "bots=UJXxx,UJYyy,UJZkkk title=UJAbc")
+  // GP-148 §1-J2：建房的「已计划…」是施工说明，只进 plan，不再当成回复进
+  // messages —— 否则用户看到的一句计划文本，群到底有没有建出来完全不知道。
+  assert_true(r1.plan.contains("已计划群聊"))
+  assert_false(plan_leaked_to_messages(r1, "已计划群聊"))
 
   let r2 = run_desktop_turn(
     "建个群叫 UJAbc2，把 UJXxx、UJYyy、UJZkkk 拉进来",

@@ -452,6 +452,11 @@ pub(all) struct DesktopTurnResult {
   /// GP-14: echoed back so Host/renderer can assert the turn really carried the
   /// replied-to message id (spec acceptance: 点回复后 kernel 上下文含被回复消息 id).
   reply_to : String
+  /// GP-148 (§1 J1/J2)：内核的「已计划 Host 效果…」属于施工说明，不是产品回答。
+  /// 置 `plan_only=true` 时这句话只进这个字段（调试/CLI 仍可读到），不再混进
+  /// `messages` —— 用户看到的是 Host 真正做完之后给出的回执。既有字段与顺序不变，
+  /// 纯新增可选字段。
+  plan : String
   error : String?
 } derive(Eq, Debug)
 
@@ -1259,6 +1264,7 @@ fn fail_turn(
     machine_kind: ctx.machine_kind,
     channel: ctx.channel,
     reply_to: ctx.reply_to,
+    plan: "",
     error: Some(err),
   }
 }
@@ -1276,6 +1282,9 @@ fn deliver_ok(
   needs_host_ffi~ : Bool = false,
   host_continued~ : Bool = false,
   channel_delivery~ : String = "",
+  /// GP-148：true = 这句 reply 是「Host 待执行」的施工说明，只写进 `plan` 字段，
+  /// 不进 `messages`（产品可见区/会话存储都不该出现调试口径）。
+  plan_only~ : Bool = false,
 ) -> DesktopTurnResult {
   let mods = @bitbot.registered_modules()
   let opened = @runtime.open_turn(turn_id~, text=user_text)
@@ -1290,7 +1299,15 @@ fn deliver_ok(
       for env in ended.outbound {
         for part in env.parts {
           match part_text(part) {
-            Some(t) => msgs.push({ role: "assistant", text: t, })
+            // GP-148：plan_only 时这句「待执行」只写进 result.plan，不进 messages。
+            // ack 行保持原样 —— 它已经有既有的内核合同测试
+            // （desktop_turn_ack_and_json_shape），而且渲染层早就把它当调试行。
+            Some(t) =>
+              if plan_only && t == reply {
+                ()
+              } else {
+                msgs.push({ role: "assistant", text: t, })
+              }
             None => ()
           }
         }
@@ -1313,6 +1330,11 @@ fn deliver_ok(
         machine_kind: ctx.machine_kind,
         channel: ctx.channel,
         reply_to: ctx.reply_to,
+        plan: if plan_only {
+          reply
+        } else {
+          ""
+        },
         error: None,
       }
     }
@@ -1382,9 +1404,11 @@ pub fn continue_after_host_ffi(
     } else {
       prior_user_text
     }
-    let fail_reply = "LLM 未完成（Host llm_chat）：" +
+    // GP-148 §1-J4：失败要如实说，但不能把环境变量名这类 Host 内部细节写进
+    // 用户的产品对话（这行会进 sessions.json / rooms.json）。指路到产品入口。
+    let fail_reply = "这次没有完成对话（Host 未拿到供应商回复）：" +
       llm_fail +
-      "。请配置 BITBOT_LLM_API_KEY / BITBOT_LLM_BASE_URL（默认 DeepSeek）。"
+      "。请在「设置 → 凭证」确认当前供应商与密钥后重试；本轮没有用本地兜底假装回答。"
     return deliver_ok(
       prior,
       turn_id,
@@ -5309,6 +5333,9 @@ pub fn run_desktop_turn(
         ctx~,
         effects=[effect],
         needs_host_ffi=true,
+        // GP-148 §1-J2：建房由 Host 真做，回执由 Host 写。这句施工说明只留档，
+        // 不再当成产品回答显示给用户（历史上它让用户以为「只是计划了一下」）。
+        plan_only=true,
       )
     }
     HostContinue =>
@@ -5350,11 +5377,15 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "已计划 Host 效果（llm_chat）。桌面/CLI 需经 BITBOT_LLM_* 完成（默认 DeepSeek）；非 LocalBrain。",
+            "Host 待执行 llm_chat：按当前供应商完成本次对话（产品路径不经本地兜底）。",
             intent,
             ctx~,
             effects=[effect],
             needs_host_ffi=true,
+            // GP-148 §1-J1：私聊的一轮里，用户只该看到 Bot 的答复本身。
+            // 这句留档文本原来带着「已计划 / BITBOT_LLM_* / 非 LocalBrain」，
+            // 既污染可见区，也把环境变量名写进了会话历史。
+            plan_only=true,
           )
         }
       }
@@ -5510,6 +5541,9 @@ pub fn DesktopTurnResult::to_json_line(self : DesktopTurnResult) -> String {
   buf.write_string("\"")
   buf.write_string(",\"reply_to\":\"")
   buf.write_string(escape_json_string(self.reply_to))
+  buf.write_string("\"")
+  buf.write_string(",\"plan\":\"")
+  buf.write_string(escape_json_string(self.plan))
   buf.write_string("\"")
   match self.error {
     Some(e) => {
