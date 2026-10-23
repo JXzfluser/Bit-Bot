@@ -236,10 +236,22 @@ process.on("exit", () => {
       ? ok("两个成员 Bot 真实落 bots.json")
       : bad("botsCreate failed: " + JSON.stringify([b1 && b1.error, b2 && b2.error]));
 
-    const tooFew = surface.createRoom("solo-bot", "独角戏");
-    tooFew && tooFew.error === "members_2_to_6"
+    /* GP-152：入口路径现在先解析名字，再查 2–6。
+       - 只给一个「真实存在」的 Bot → 仍然必须撞 members_2_to_6（原断言的意图）；
+       - 给一个不存在的名字 → 必须点名 names_not_found，且不落任何半成品群
+         （§1 J2 负向：说清没找到谁，不假装成功）。两条分开测，谁也不替代谁。 */
+    const oneReal = surface.createRoom(b1.bot.id, "独角戏");
+    oneReal && oneReal.error === "members_2_to_6"
       ? ok("成员 <2 被拒（members_2_to_6 门仍在入口路径上）")
-      : bad("2-6 gate missing: " + JSON.stringify(tooFew));
+      : bad("2-6 gate missing: " + JSON.stringify(oneReal));
+
+    const ghostName = surface.createRoom("solo-bot", "独角戏");
+    const ghostRooms = (surface.loadRooms().rooms || []).filter((r) => r && r.title === "独角戏");
+    ghostName && ghostName.ok === false && ghostName.error === "names_not_found" &&
+      Array.isArray(ghostName.names_not_found) && ghostName.names_not_found.includes("solo-bot") &&
+      ghostRooms.length === 0
+      ? ok("不存在的名字被点名（names_not_found），且没有落半成品群")
+      : bad("names_not_found 路径不对: " + JSON.stringify(ghostName));
 
     const created = surface.createRoom(
       [b1.bot.id, b2.bot.id].join(","),
@@ -288,9 +300,16 @@ process.on("exit", () => {
       : bad("appendRoomTranscript failed");
     const view = surface.loadRooms();
     const roomRow = (view.rooms || []).find((r) => r.id === roomId);
-    Array.isArray(roomRow.transcript) && roomRow.transcript.length >= 1 &&
-      roomRow.transcript[0].text === "@" + b1.bot.name + " 帮我看下这个"
-      ? ok("rooms.json transcript 与 roomTurn 逐字一致（按 at 时间落行）")
+    /* GP-152：建房本身会先落一条 kind:"system" 的建群行（§1 J2 要求转录里能看到
+       「这个群是这一轮建起来的」）。原来的「逐字一致」断言不能因此被削弱，所以
+       改成：系统行在最前 + roomTurn 那条用户行按原文一字不差紧随其后。 */
+    const txRows = Array.isArray(roomRow.transcript) ? roomRow.transcript : [];
+    const sysRow = txRows.find((e) => e && e.kind === "system");
+    const userIdx = txRows.findIndex(
+      (e) => e && e.kind === "user" && e.text === "@" + b1.bot.name + " 帮我看下这个",
+    );
+    txRows.length >= 2 && sysRow && /已创建群聊/.test(String(sysRow.text)) && userIdx >= 0
+      ? ok("rooms.json transcript：建群系统行在前、roomTurn 用户行逐字在后（按 at 落行）")
       : bad("transcript mismatch: " + JSON.stringify(roomRow && roomRow.transcript));
 
     /* ---------- 3) 负向对照：摘掉群聊发送调用 → 静态断言变红 ---------- */
