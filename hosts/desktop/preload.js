@@ -149,6 +149,9 @@ contextBridge.exposeInMainWorld("bitbot", {
   routines: {
     list: (payload) => ipcRenderer.invoke("bitbot:routines:list", payload || {}),
     op: (payload) => ipcRenderer.invoke("bitbot:routines:op", payload || {}),
+    // GP-158：暂停 / 继续走 Host 既有的 routine_pause / routine_resume，
+    // 渲染层不自己改库，也不碰内核的 effect 形状。
+    lifecycle: (payload) => ipcRenderer.invoke("bitbot:routines:lifecycle", payload || {}),
     onChanged: (cb) => {
       const handler = (_e, ev) => {
         try {

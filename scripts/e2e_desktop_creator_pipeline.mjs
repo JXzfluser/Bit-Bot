@@ -17,6 +17,9 @@
  *   P7 批准之后才真发：待批准里出现「定时任务」来源的 mail_send，
  *      批准后 data/mail/sends/send-*.json 真出现，内容带收件人和稿件正文。
  *   P8 卫生：本轮新落的行里没有内核/Host 调试串。
+ *   P9 面板的「暂停 / 继续」真能按（GP-158）：点一下 store 里 enabled 翻下去、
+ *      面板显示「已暂停」、而且 cron 一个字符都不许变；再点回来必须重新排上
+ *      下一次（按了继续却永远不再跑，等于开关是装饰）。
  *
  * 缺 electron / xvfb / moon 时诚实 SKIP（exit 0 + SKIP 计数），不伪造 PASS。
  * 用法：ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_desktop_creator_pipeline.mjs
@@ -393,6 +396,48 @@ function startStub() {
       dirty.length === 0
         ? ok("P8 群转录尾部 " + Math.min(12, tx.length) + " 行无内核/Host 调试串")
         : bad("P8 转录漏调试串", JSON.stringify(dirty));
+
+      /* ---------- P9: 面板上的「暂停 / 继续」真能按（GP-158） ---------- */
+      const toggleSel = "#ri-routine-list .ri-item .ri-toggle";
+      const rowNow = () => {
+        const rj = readJson(ROUTINES, []);
+        const arr = Array.isArray(rj) ? rj : rj.routines || [];
+        return arr.find((r) => r && r.id === routineId) || null;
+      };
+      const snapP9 = rowNow();
+      const cronBefore = snapP9 ? String(snapP9.cron) : "";
+      await win.waitForSelector(toggleSel, { timeout: 15000 }).catch(() => {});
+      const labelBefore = await win.evaluate(
+        (sel) => { const b = document.querySelector(sel); return b ? String(b.innerText || "").trim() : ""; },
+        toggleSel,
+      );
+      await win.click(toggleSel).catch(() => {});
+      let paused = null;
+      for (let i = 0; i < 40 && !(paused && paused.enabled === false); i += 1) {
+        paused = rowNow();
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const panelP9 = await win.evaluate(() => ({
+        text: (document.getElementById("ri-routine-list") || {}).innerText || "",
+        label: (() => { const b = document.querySelector("#ri-routine-list .ri-item .ri-toggle"); return b ? String(b.innerText || "").trim() : ""; })(),
+        msg: (document.getElementById("ri-form-msg") || {}).innerText || "",
+      }));
+      paused && paused.enabled === false && /已暂停/.test(panelP9.text) && paused.cron === cronBefore
+        ? ok("P9 按「" + labelBefore + "」真的停了：store enabled=false、面板显示「已暂停」、cron 仍是 " + paused.cron)
+        : bad("P9 面板的暂停按钮没有真的管住这条任务", JSON.stringify({ labelBefore, row: paused && { e: paused.enabled, cron: paused.cron }, panel: panelP9 }).slice(0, 500));
+      const labelPaused = panelP9.label;
+      await win.click(toggleSel).catch(() => {});
+      let resumed = null;
+      for (let i = 0; i < 40 && !(resumed && resumed.enabled === true); i += 1) {
+        resumed = rowNow();
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const wcP9 = resumed && resumed.next_due ? wallClock(resumed.next_due, TZ) : null;
+      resumed && resumed.enabled === true && resumed.lifecycle === "active" &&
+        resumed.cron === cronBefore && resumed.next_due && Date.parse(resumed.next_due) > Date.now()
+        ? ok("P9 按「" + labelPaused + "」恢复回 active，并重新排上下一次（" +
+          String(wcP9.hour).padStart(2, "0") + ":" + String(wcP9.minute).padStart(2, "0") + " " + TZ + "）")
+        : bad("P9 恢复后没有重新可运行", JSON.stringify({ labelPaused, row: resumed && { e: resumed.enabled, l: resumed.lifecycle, n: resumed.next_due, c: resumed.cron } }).slice(0, 500));
     }
   } catch (e) {
     bad("gate block", (e && e.stack || String(e)).split("\n").slice(0, 3).join(" | "));

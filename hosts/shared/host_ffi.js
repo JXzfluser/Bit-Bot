@@ -8378,14 +8378,23 @@ function createHostFfi(repoRoot) {
     const rows = loadRoutines();
     const id = String(partial.id || "");
     const idx = rows.findIndex((r) => r && r.id === id);
+    // GP-158: `@daily` 只能是「新建时没给 cron」的兜底。暂停 / 恢复是不带 cron
+    // 的局部更新，旧实现无条件把 cron 写进 next，于是按一下「暂停」再把「继续」
+    // 按回来，「每天早上9点」已经被悄悄改成「每天凌晨0点」——用户根本没改时间。
+    // 已有行的 cron 一律原样保留，只有新建才允许兜底。
+    const cronGiven = partial.cron != null && String(partial.cron) !== "";
+    const promptGiven = partial.prompt != null;
     const next = {
       id,
-      cron: String(partial.cron || "@daily"),
-      prompt: String(partial.prompt || ""),
       enabled: partial.enabled !== false,
       lifecycle: String(partial.lifecycle || "active"),
       updated_at: new Date().toISOString(),
     };
+    if (cronGiven) next.cron = String(partial.cron);
+    else if (idx < 0) next.cron = "@daily";
+    // prompt 同理：调用方明确写了才覆盖，没写就保留原句（暂停不是改稿）。
+    if (promptGiven) next.prompt = String(partial.prompt);
+    else if (idx < 0) next.prompt = "";
     if (partial.next_due != null) next.next_due = String(partial.next_due);
     // GP-154: optional group ownership (`room_id`). Absent for every routine
     // created before the group-info panel existed, and stays absent when the
@@ -8450,6 +8459,76 @@ function createHostFfi(repoRoot) {
         last_fired_label: r.last_fired_at ? wallClockLabel(r.last_fired_at, tz) : null,
       }));
     return { ok: true, room_id: want, routines, timezone: tz };
+  }
+
+  /**
+   * GP-158「群里的定时任务管得了」— 面板上的暂停 / 继续。
+   *
+   * 内核和 Host 早就有 routine_pause / routine_resume（聊天里说
+   * `pause routine <id>` 走的就是它们），缺的只是「从群资料面板按下去」这一段：
+   * 面板标题写着定时任务，实际只能添加，用户说「最近先别发」时无处可点。
+   *
+   * 这里不新造第二条改库路径，只做四件事：
+   *   1. 校验这行确实属于这个群 —— 隔着群管别人的任务是越权；
+   *   2. 校验它存在 —— 绝不能借 upsert 的顺手兜底凭空造出一条幽灵任务；
+   *   3. 走既有 executeRoutineEffect；
+   *   4. 用「库里的真值」回执，而不是照抄 effect 的乐观 summary。
+   *
+   * 恢复时若这一行既没排上次、又不是「已经跑完的一次性任务」，按 cron 重新排一次；
+   * 停在 next_due=null 上等于按了「继续」却永远不再跑。已过期的 next_due 同样重排，
+   * 避免恢复的瞬间补发一封用户根本没等着的邮件。
+   *
+   * error ∈ room_required | not_found | room_mismatch | action_unsupported |
+   *         effect_failed | not_reflected
+   */
+  function routineLifecycle(opts) {
+    const want = String((opts && opts.roomId) || "");
+    const rid = String((opts && opts.id) || "");
+    const act = String((opts && opts.action) || "");
+    if (!want) return { ok: false, error: "room_required" };
+    if (!rid) return { ok: false, error: "not_found" };
+    if (act !== "pause" && act !== "resume") return { ok: false, error: "action_unsupported" };
+    const before = loadRoutines();
+    const row = before.find((r) => r && String(r.id) === rid);
+    if (!row) return { ok: false, error: "not_found" };
+    if (String(row.room_id || "") !== want) return { ok: false, error: "room_mismatch" };
+    const kind = act === "pause" ? "routine_pause" : "routine_resume";
+    const res = executeRoutineEffect(kind, rid);
+    if (!res || res.ok !== true) {
+      return {
+        ok: false,
+        error: "effect_failed",
+        detail: String((res && (res.error || res.stderr)) || ""),
+      };
+    }
+    const listed = listRoomRoutines(want);
+    const mapped = ((listed && listed.routines) || []).find((r) => r && String(r.id) === rid) || null;
+    const expectEnabled = act === "resume";
+    if (!mapped || mapped.enabled !== expectEnabled) {
+      return { ok: false, error: "not_reflected", routine: mapped };
+    }
+    let rearmed = false;
+    if (act === "resume" && mapped.once_done !== true) {
+      const stale = !mapped.next_due || Date.parse(mapped.next_due) <= Date.now();
+      if (stale) {
+        const rows = loadRoutines();
+        const hit = rows.find((r) => r && String(r.id) === rid);
+        if (hit) {
+          const reparsed = nextDueFromCron(hit.cron || "@daily");
+          if (reparsed.error) {
+            hit.next_due = null;
+            hit.schedule_error = reparsed.error;
+          } else if (!reparsed.dueNow && reparsed.nextDue) {
+            hit.next_due = reparsed.nextDue;
+            delete hit.schedule_error;
+            rearmed = true;
+          }
+          saveRoutines(rows);
+        }
+      }
+    }
+    const fresh = ((listRoomRoutines(want).routines) || []).find((r) => r && String(r.id) === rid) || mapped;
+    return { ok: true, action: act, room_id: want, routine: fresh, rearmed };
   }
 
   /* GP-156「定时 → 待批准 → 批准 → 真发」辅助。
@@ -24909,6 +24988,7 @@ function createHostFfi(repoRoot) {
     botMemorySlot,
     executeHostEffects,
     listRoomRoutines,
+    routineLifecycle,
     connectorsStatusReport,
     appendHostDeliveryJournal,
     setLlmStreamHandler,

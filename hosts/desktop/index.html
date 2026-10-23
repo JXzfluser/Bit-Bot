@@ -5614,6 +5614,17 @@
     function routineFailCopy(err) {
       const code = String(err || "");
       if (code.indexOf("interval_too_short") >= 0) return wavegT("riIntervalShort");
+      // GP-158：暂停 / 继续的拒绝码。这些是 Host 侧的事实，不能落到
+      // roomOpFailReason 的「发起失败」兜底上——那是编排面话术，会把
+      // 「这条任务不属于本群」说成一句含糊的失败。
+      if (code.indexOf("room_required") >= 0) return wavegT("riNoRoom");
+      if (code.indexOf("room_mismatch") >= 0) return wavegT("riErrRoomMismatch");
+      if (code.indexOf("not_found") >= 0) return wavegT("riErrNotFound");
+      if (code.indexOf("action_unsupported") >= 0) return wavegT("riErrAction");
+      if (code.indexOf("not_reflected") >= 0) return wavegT("riErrNotReflected");
+      if (code.indexOf("effect_failed") >= 0) {
+        return devModeOn() ? wavegT("riErrEffect") + " · " + code : wavegT("riErrEffect");
+      }
       // Host 的拒绝话术形如 `cron not schedulable: cron_unsupported (99 99 …)`，
       // 只把里面的排程原文交给文案，不把协议串整体端给用户。
       const m = code.match(/\(([^\n]*)\)\s*$/);
@@ -5732,9 +5743,46 @@
           off.textContent = wavegT("riOff");
           item.appendChild(off);
         }
+        // GP-158：面板要真的能按。已触发完的一次性任务没有「下一次」，
+        // 不给它一个按下去毫无反应的暂停键。
+        if (r.once_done !== true) {
+          const actRow = document.createElement("div");
+          actRow.className = "ri-row";
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "bb-btn ri-toggle";
+          const paused = r.enabled === false;
+          btn.textContent = paused ? wavegT("riResume") : wavegT("riPause");
+          btn.title = paused ? wavegT("riResumeHint") : wavegT("riPauseHint");
+          btn.addEventListener("click", () => {
+            toggleRoomRoutine(r.id, paused ? "resume" : "pause", btn);
+          });
+          actRow.appendChild(btn);
+          item.appendChild(actRow);
+        }
         host.appendChild(item);
       }
       if (tzNote && res.timezone) tzNote.textContent = t("riTzNote", { tz: res.timezone });
+    }
+    async function toggleRoomRoutine(id, action, btn) {
+      const msg = document.getElementById("ri-form-msg");
+      if (!roomRailId || !id) return;
+      if (btn) btn.disabled = true;
+      let res = null;
+      try {
+        res = await window.bitbot.routines.lifecycle({ roomId: roomRailId, id, action });
+      } catch (err) {
+        res = { ok: false, error: String((err && err.message) || err) };
+      }
+      if (res && res.ok) {
+        if (msg) msg.textContent = "";
+        // 广播已带回重绘；这里再画一次，保证「按下去没反应」不是渲染时机问题。
+        await renderRoomRailRoutines();
+        return;
+      }
+      if (msg) msg.textContent = t("riToggleFailed", { e: routineFailCopy(res && res.error) });
+      if (btn) btn.disabled = false;
+      await renderRoomRailRoutines();
     }
     async function submitRoomRoutine(text) {
       const msg = document.getElementById("ri-form-msg");
@@ -11309,6 +11357,16 @@
         riNever: "还没排上",
         riDoneAt: "已于 {t} 触发",
         riDone: "已触发过一次",
+        riPause: "暂停",
+        riResume: "继续",
+        riPauseHint: "先停掉这个定时任务，时间不变",
+        riResumeHint: "恢复它，并按原时间重新排下一次",
+        riToggleFailed: "改状态失败：{e}",
+        riErrNotFound: "这条定时任务已经不在了",
+        riErrRoomMismatch: "这条定时任务不属于本群，不能在这里改",
+        riErrAction: "只支持暂停或继续",
+        riErrNotReflected: "改完没生效，请重新打开群资料再看",
+        riErrEffect: "这次改动没有被接受",
         riOff: "已暂停",
         riTzNote: "触发时刻按 Bot 时区 {tz} 计算。",
         riCronError: "排程无法解析：{c}",
@@ -11887,6 +11945,16 @@
         riNever: "還沒排上",
         riDoneAt: "已於 {t} 觸發",
         riDone: "已觸發過一次",
+        riPause: "暫停",
+        riResume: "繼續",
+        riPauseHint: "先停掉這個定時任務，時間不變",
+        riResumeHint: "恢復它，並按原時間重新排下一次",
+        riToggleFailed: "改狀態失敗：{e}",
+        riErrNotFound: "這條定時任務已經不在了",
+        riErrRoomMismatch: "這條定時任務不屬於本群，不能在這裡改",
+        riErrAction: "只支援暫停或繼續",
+        riErrNotReflected: "改完沒生效，請重新開啟群資料再看",
+        riErrEffect: "這次改動沒有被接受",
         riOff: "已暫停",
         riTzNote: "觸發時刻按 Bot 時區 {tz} 計算。",
         riCronError: "排程無法解析：{c}",
@@ -12465,6 +12533,16 @@
         riNever: "Not scheduled yet",
         riDoneAt: "Fired at {t}",
         riDone: "Already fired once",
+        riPause: "Pause",
+        riResume: "Resume",
+        riPauseHint: "Stop this schedule for now; the time stays the same",
+        riResumeHint: "Resume it and re-arm the next fire at the original time",
+        riToggleFailed: "Could not update: {e}",
+        riErrNotFound: "This scheduled task no longer exists",
+        riErrRoomMismatch: "This task belongs to another group; it cannot be changed here",
+        riErrAction: "Only pause or resume is supported",
+        riErrNotReflected: "The change did not persist; reopen the group info to check",
+        riErrEffect: "The change was not accepted",
         riOff: "Paused",
         riTzNote: "Fire times use the bot timezone {tz}.",
         riCronError: "Cron cannot be parsed: {c}",

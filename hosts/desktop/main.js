@@ -1595,6 +1595,23 @@ ipcMain.handle("bitbot:routines:op", async (_e, payload) => {
   };
 });
 
+/* GP-158：群资料面板的「暂停 / 继续」。
+ * 只把 Host 已有的 routine_pause / routine_resume 能力接到界面，不新建第二条
+ * 改库路径：归属校验、存在性校验、真值回执都在 ffi.routineLifecycle 里做。
+ * 成功才广播 routines-changed —— 失败时重绘只会把「已暂停」显示成没发生。 */
+ipcMain.handle("bitbot:routines:lifecycle", async (_e, payload) => {
+  const roomId = String((payload && payload.roomId) || "");
+  const id = String((payload && payload.id) || "");
+  const action = String((payload && payload.action) || "");
+  try {
+    const res = ffi.routineLifecycle({ roomId, id, action });
+    if (res && res.ok) broadcast("bitbot:routines-changed", { ok: true, room_id: roomId });
+    return res;
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err), room_id: roomId };
+  }
+});
+
 ipcMain.handle("bitbot:computer:state", async () => {
   try {
     return { ok: true, computer: surface.loadComputer() };
