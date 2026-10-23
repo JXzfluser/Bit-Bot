@@ -18,6 +18,8 @@ pub fn classify_parity_intent(String, String) -> TurnIntent?
 
 pub fn continue_after_host_ffi(turn_id~ : String, prior_user_text~ : String, Array[DesktopHostResult], ctx? : DesktopTurnContext) -> DesktopTurnResult
 
+pub fn decode_cn_group_chat(String) -> (String, String)?
+
 pub fn gate_consequential(String, String, TurnIntent, DesktopTurnContext, @security.ApprovalClass, String, irreversible? : Bool) -> DesktopTurnResult?
 
 pub fn parse_host_continue_args(Array[String]) -> (String, String, Array[DesktopHostResult])
@@ -228,7 +230,7 @@ pub(all) enum TurnIntent {
   ListSkills(query~ : String)
   XPost(text~ : String)
   CreateBot(name~ : String, job~ : String, description~ : String)
-  UpdateBot(bot_id~ : String, name~ : String, job~ : String, description~ : String, avatar~ : String)
+  UpdateBot(bot_id~ : String, name~ : String, job~ : String, description~ : String, avatar~ : String, tags~ : String)
   DuplicateBot(bot_id~ : String)
   PinBot(bot_id~ : String, pinned~ : Bool)
   PrimaryBot(bot_id~ : String)

@@ -1446,6 +1446,69 @@ test "desktop_turn_wave_g_rules_settings_group" {
 }
 
 ///|
+/// GP-148 §1-J2：中文自然语言建房。内核只把「说法」解成 bots CSV + title，
+/// 成员是否存在 / 2–6 人 / 幂等由 Host 判，所以这里断言的是解码合同本身。
+/// 英文指令的合同（上一条）保持原样，中文只是新增入口。
+test "desktop_turn_cn_group_chat_phrasings" {
+  let r1 = run_desktop_turn(
+    "把 UJXxx UJYyy UJZkkk 创建到一个 UJAbc 的群",
+    turn_id="cn-g1",
+  )
+  assert_eq(r1.intent, "group_chat")
+  assert_eq(r1.effects[0].command, "bots=UJXxx,UJYyy,UJZkkk title=UJAbc")
+
+  let r2 = run_desktop_turn(
+    "建个群叫 UJAbc2，把 UJXxx、UJYyy、UJZkkk 拉进来",
+    turn_id="cn-g2",
+  )
+  assert_eq(r2.intent, "group_chat")
+  assert_eq(r2.effects[0].command, "bots=UJXxx,UJYyy,UJZkkk title=UJAbc2")
+
+  // 两人也算建群
+  let r3 = run_desktop_turn("把 UJXxx 和 UJYyy 拉到 UJAbc3 群", turn_id="cn-g3")
+  assert_eq(r3.intent, "group_chat")
+  assert_eq(r3.effects[0].command, "bots=UJXxx,UJYyy title=UJAbc3")
+
+  // 名字不存在也要原样交给 Host，内核不许自己吞掉或改写名字
+  let r4 = run_desktop_turn("把 UJXxx、UJGhostone 拉到 UJAbc4 群", turn_id="cn-g4")
+  assert_eq(r4.intent, "group_chat")
+  assert_eq(r4.effects[0].command, "bots=UJXxx,UJGhostone title=UJAbc4")
+
+  // 群名带空格沿用既有 encode_field_value 的 '+' 合同
+  let r5 = run_desktop_turn(
+    "把 UJXxx UJYyy 创建到一个 双十一 复盘 的群",
+    turn_id="cn-g5",
+  )
+  assert_eq(r5.intent, "group_chat")
+  assert_eq(r5.effects[0].command, "bots=UJXxx,UJYyy title=双十一+复盘")
+
+  // 繁体说法同样要认
+  let r6 = run_desktop_turn("把 UJXxx、UJYyy 拉進 UJAbc5 群", turn_id="cn-g6")
+  assert_eq(r6.intent, "group_chat")
+  assert_eq(r6.effects[0].command, "bots=UJXxx,UJYyy title=UJAbc5")
+
+  // 重复名字只算一次（同成员同群名交给 Host 做幂等，内核先不送重复项）
+  let r7 = run_desktop_turn("把 UJXxx、UJXxx 拉到 UJAbc6 群", turn_id="cn-g7")
+  assert_eq(r7.effects[0].command, "bots=UJXxx title=UJAbc6")
+}
+
+///|
+/// GP-148 负例：这些说法必须继续走普通聊天，不能被误判成建房。
+test "desktop_turn_cn_group_chat_non_triggers" {
+  let n1 = run_desktop_turn("把这份周报发给客户", turn_id="cn-n1")
+  assert_eq(n1.intent, "chat")
+  let n2 = run_desktop_turn("这个群的会议纪要帮我整理一下", turn_id="cn-n2")
+  assert_eq(n2.intent, "chat")
+  let n3 = run_desktop_turn("帮我把灯光调暗一点", turn_id="cn-n3")
+  assert_eq(n3.intent, "chat")
+  let n4 = run_desktop_turn("加入群讨论的议程先发我看看", turn_id="cn-n4")
+  assert_eq(n4.intent, "chat")
+  // 只有「群」字、没有名单也没有群名 → 不是建房
+  let n5 = run_desktop_turn("把 UJXxx 拉到群里再说", turn_id="cn-n5")
+  assert_eq(n5.intent, "chat")
+}
+
+///|
 /// Regression safety: legacy Grok phrases keep their CM routes (Wave G must
 /// not steal "dark mode" from CM-1902 settings anchor).
 test "desktop_turn_wave_g_legacy_routes_kept" {

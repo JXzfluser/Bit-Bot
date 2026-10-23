@@ -27,6 +27,234 @@ fn parse_nonneg_i32(s : String) -> Int32 {
 }
 
 ///|
+/// GP-148 §1-J2：中文自然语言建房。内核只负责把「说法」解成 (成员名 CSV, 群名)，
+/// 成员是否真存在、2–6 人、同成员同群名的短窗幂等一律由 Host 判（内核看不到
+/// bots.json，也不该假装知道）。三个句式之外的说法一律不触发，普通聊天不误建群。
+/// 局限（如实记录）：成员名里的空格会被既有的 `bots=` CSV 语义吃掉
+/// （Host 侧 `replace(" ","")`），与英文指令的既有合同一致，本轮不扩契约。
+pub fn decode_cn_group_chat(raw : String) -> (String, String)? {
+  let t = raw.trim().to_owned()
+  // 句式一：把 A B C 创建到一个 T 的群
+  if t.contains("创建到") || t.contains("創建到") {
+    let marker = if t.contains("創建到") { "創建到" } else { "创建到" }
+    match t.find(marker) {
+      None => ()
+      Some(i) => {
+        let names = cn_member_names(t[:i].to_owned())
+        let title = cn_room_title(t[i + marker.length():].to_owned())
+        if names.length() >= 1 && title != "" {
+          return Some((cn_join_names(names), title))
+        }
+      }
+    }
+  }
+  // 句式二：建个群叫 T，把 A、B、C 拉进来
+  for
+    opener in [
+      "建个群叫", "建個群叫", "建一个群叫", "建一個群叫", "建群叫",
+    ] {
+    if t.contains(opener) {
+      match t.find(opener) {
+        None => ()
+        Some(i) => {
+          let after = t[i + opener.length():].to_owned()
+          let title = cn_cut_first(after, [
+            "，", ",", "；", ";", "把", "將", "将",
+          ])
+          let rest = cn_after_lead_verb(after)
+          let names = cn_member_names(rest)
+          if title != "" && names.length() >= 1 {
+            return Some((cn_join_names(names), title))
+          }
+        }
+      }
+    }
+  }
+  // 句式三：把 A 和 B 拉到 T 群 / 把 A、B 拉进 T 群
+  for
+    marker in [
+      "拉到", "拉进", "拉進", "加进", "加進", "加入", "拉去",
+    ] {
+    if t.contains(marker) && (t.contains("群") || t.contains("房间")) {
+      match t.find(marker) {
+        None => ()
+        Some(i) => {
+          let names = cn_member_names(t[:i].to_owned())
+          let title = cn_room_title(t[i + marker.length():].to_owned())
+          if names.length() >= 1 && title != "" {
+            return Some((cn_join_names(names), title))
+          }
+        }
+      }
+    }
+  }
+  None
+}
+
+///|
+/// 「一个 T 的群」「T 群」「T 子群」→ T；没有「群」字就不是建房说法。
+fn cn_room_title(seg : String) -> String {
+  let s = seg.trim().to_owned()
+  let boundary = ["的群", "的房间", "的房間", "群", "房间", "房間"]
+  let mut out = ""
+  let mut found = false
+  for b in boundary {
+    if !found && s.contains(b) {
+      match s.find(b) {
+        None => ()
+        Some(i) => {
+          out = s[:i].to_owned()
+          found = true
+        }
+      }
+    }
+  }
+  if !found {
+    return ""
+  }
+  let mut t2 = out.trim().to_owned()
+  for
+    pre in [
+      "一个", "一個", "名叫", "名为", "名為", "叫做", "叫", "到", "进",
+      "進",
+    ] {
+    if t2.has_prefix(pre) {
+      t2 = t2[pre.length():].trim().to_owned()
+    }
+  }
+  for p in ["，", ",", "。", "、", ";", "；"] {
+    if t2.has_suffix(p) {
+      t2 = t2[:t2.length() - p.length()].trim().to_owned()
+    }
+  }
+  t2
+}
+
+///|
+/// 取段首到第一个分隔标记之前的子串（没有标记就整段返回）。
+fn cn_cut_first(seg : String, marks : Array[String]) -> String {
+  let s = seg.trim().to_owned()
+  let mut cut = s.length()
+  let mut best = -1
+  for m in marks {
+    match s.find(m) {
+      None => ()
+      Some(i) => if best < 0 || i < best { best = i }
+    }
+  }
+  if best >= 0 {
+    cut = best
+  }
+  s[:cut].trim().to_owned()
+}
+
+///|
+/// 「…，把 A、B 拉进来」→「A、B 拉进来」：从最后一个把/將 之后开始取名单。
+fn cn_after_lead_verb(seg : String) -> String {
+  let s = seg.trim().to_owned()
+  let mut idx = -1
+  let mut at = 0
+  while at < s.length() {
+    let rest = s[at:]
+    if rest.has_prefix("把") ||
+      rest.has_prefix("將") ||
+      rest.has_prefix("将") {
+      idx = at
+    }
+    at = at + 1
+  }
+  if idx < 0 {
+    s
+  } else {
+    s[idx + "把".length():].trim().to_owned()
+  }
+}
+
+///|
+/// 去掉句首的礼貌词与「把/将」，并去掉句尾的「拉进来/进群」这类连接词。
+fn cn_strip_lead(seg : String) -> String {
+  let mut out = seg.trim().to_owned()
+  let leads = [
+    "麻烦", "麻煩", "帮我", "幫我", "请", "請", "我们", "我們", "把",
+    "將", "将",
+  ]
+  let mut round = 0
+  let mut changed = true
+  while changed && round < 6 {
+    changed = false
+    round = round + 1
+    for w in leads {
+      if out.has_prefix(w) {
+        out = out[w.length():].trim().to_owned()
+        changed = true
+      }
+    }
+  }
+  let tails = [
+    "一起拉进群", "拉进群", "拉進群", "加进群", "加進群", "拉进来",
+    "拉進來", "加进来", "加進來", "进群", "进群", "進來", "进来",
+  ]
+  for w in tails {
+    if out.has_suffix(w) {
+      out = out[:out.length() - w.length()].trim().to_owned()
+    }
+  }
+  out
+}
+
+///|
+/// 本版 MoonBit 的 String.replace(old=,new=) 只换第一处，名单里常有多个顿号，
+/// 所以分隔符归一必须自己写全量替换（split 再拼）。
+fn cn_replace_all(s : String, old : String, new_sep : String) -> String {
+  if old.length() == 0 {
+    return s
+  }
+  let mut acc = ""
+  let mut first = true
+  for part in s.split(old) {
+    if !first {
+      acc = acc + new_sep
+    }
+    acc = acc + part.to_owned()
+    first = false
+  }
+  acc
+}
+
+///|
+/// 名单段 → 去重后的名字数组。分隔符覆盖顿号/逗号/「和、与、及、以及」与空格
+/// （「以及」必须先于「及」替换，否则会把「以及」切成两半）。
+fn cn_member_names(seg : String) -> Array[String] {
+  let mut s = cn_strip_lead(seg)
+  for
+    sep in ["以及", "、", "，", ",", "。", "和", "与", "及", "／", "/"] {
+    s = cn_replace_all(s, sep, " ")
+  }
+  let out : Array[String] = []
+  for p in s.split(" ") {
+    let name = p.trim().to_owned()
+    if name != "" && !out.any(el => el == name) {
+      out.push(name)
+    }
+  }
+  out
+}
+
+///|
+fn cn_join_names(names : Array[String]) -> String {
+  let mut acc = ""
+  let mut i = 0
+  while i < names.length() {
+    if i > 0 {
+      acc = acc + ","
+    }
+    acc = acc + names[i]
+    i = i + 1
+  }
+  acc
+}
+
+///|
 /// Extra Grok-parity intent classification (routines/agents/MCP/Teams/device).
 pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
   if low == "list routines" ||
@@ -2502,6 +2730,15 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
     if bots_csv != "" {
       return Some(GroupChat(bots_csv~, title~))
     }
+  }
+  // GP-148：中文自然语言建房（句式见 decode_cn_group_chat）。放在英文指令之后，
+  // 保证既有「create group chat bots=… title=…」合同与测试原样不动。
+  match decode_cn_group_chat(trimmed) {
+    None => ()
+    Some((bots_csv, title)) =>
+      if bots_csv != "" {
+        return Some(GroupChat(bots_csv~, title~))
+      }
   }
   None
 }
