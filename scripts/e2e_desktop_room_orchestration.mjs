@@ -14,6 +14,13 @@
  *   S8 Bot 私聊：问 A「你的职责是什么」→ 回执带 Host 注入的人设标记（简介：…），
  *      不含 B/C 的人设；群回合不落进 sessions.json（DM 会话不被污染）。
  *   S9 幂等：同一条群任务再走 IPC → deduped，final_report 不重复落盘。
+ *   S10 细节面：转录逐字段有界；失败卡在产品面说人话（本地化），磁盘仍留可审计原因。
+ *   S11 幂等经 composer：不闪「工作中」卡，幂等说明卡在整表重绘后仍在（不一闪就没）。
+ *   S12 点名不在群里的人：Host 记 unknown_mentions 并按未点名处理，界面如实告知。
+ *   S13 rooms.json 坏掉：转录与侧栏如实报「读不到」（不演成空群/没有群），恢复后
+ *       按原文件重建卡片；坏存储上的运行被拒绝且绝不落空目录覆盖历史。
+ *   S14 群被移出目录（成员掉到 2 人以下被丢弃的等价场景）：渲染层收到目录事件后
+ *       必须自动退出群聊，不留「看着像群、其实群已不存在」的空壳会话。
  *
  * 缺 electron / xvfb / moon 时诚实 SKIP（exit 0 + SKIP 计数），不伪造 PASS。
  * 用法：ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_desktop_room_orchestration.mjs
@@ -496,6 +503,223 @@ const DOM_COUNTS = () => ({
         : bad("idempotency over IPC", JSON.stringify({ res, before, after }));
     }
 
+    /* ---------- S10: 有界字段 / 本地化失败原因 / 汇报带路由语义 ---------- */
+    {
+      await openRoom();
+      const all = txOf(roomId);
+      const over = {
+        text: all.filter((e) => e && e.kind === "bot_reply" && String(e.text || "").length > 4001).length,
+        error: all.filter((e) => e && e.kind === "bot_reply_error" && String(e.error || "").length > 201).length,
+        summary: all.filter((e) => e && e.kind === "final_report" &&
+          (e.sections || []).some((s) => String((s && s.summary) || "").length > 241)).length,
+        task: all.filter((e) => e && e.kind === "final_report" && String(e.task || "").length > 241).length,
+      };
+      Object.values(over).every((n) => n === 0)
+        ? ok("共享转录逐字段有界（正文 ≤4001 / 原因 ≤201 / 摘要与任务 ≤241）")
+        : bad("bounded transcript", JSON.stringify(over));
+      const reports = all.filter((e) => e && e.kind === "final_report");
+      reports.length > 0 && reports.every((e) => !!e.responder_policy)
+        ? ok("每张汇报卡都持久带 responder_policy（重开窗口仍能说明这次谁该答）")
+        : bad("final_report policy missing", JSON.stringify(reports.map((r) => r.responder_policy)));
+      // 产品面说人话，磁盘留原因：两边缺任何一边都不算诚实。
+      const cardText = await win.evaluate(() => {
+        const el = document.querySelector("#log .msg.room-error .body");
+        return el ? (el.innerText || "") : "";
+      });
+      const durableReason = String((all.find((e) => e && e.kind === "bot_reply_error") || {}).error || "");
+      /模型或服务返回失败/.test(cardText) && !/stub provider failure/.test(cardText)
+        ? ok("失败卡用本地化文案，不把上游原文摊在产品面")
+        : bad("localized failure copy", JSON.stringify(cardText).slice(0, 300));
+      /stub provider failure/.test(durableReason)
+        ? ok("磁盘上的失败原因仍然保留（可审计），只是不进产品面")
+        : bad("durable reason lost", JSON.stringify(durableReason).slice(0, 200));
+    }
+
+    /* ---------- S11: 同任务经 composer 重发 → 不闪运行态、说明卡不被重绘吞掉 ---------- */
+    {
+      await openRoom();
+      await win.evaluate(() => {
+        window.__gp145WorkingAdded = 0;
+        if (window.__gp145Obs) window.__gp145Obs.disconnect();
+        const box = document.querySelector("#log .room-thread");
+        if (!box) return;
+        window.__gp145Obs = new MutationObserver((muts) => {
+          for (const mu of muts) {
+            for (const n of mu.addedNodes) {
+              if (n && n.classList && n.classList.contains("room-working")) window.__gp145WorkingAdded += 1;
+            }
+          }
+        });
+        window.__gp145Obs.observe(box, { childList: true, subtree: true });
+      });
+      const before11 = reportsOf(roomId).length;
+      await sendText(task3);
+      await win.waitForFunction(
+        () => document.querySelectorAll("#log .msg.room-deduped").length >= 1, null, { timeout: 25000 }).catch(() => {});
+      const seen11 = await win.evaluate(() => ({
+        workingAdded: typeof window.__gp145WorkingAdded === "number" ? window.__gp145WorkingAdded : -1,
+        notes: Array.from(document.querySelectorAll("#log .msg.room-deduped .body")).map((e) => e.innerText || ""),
+        reports: document.querySelectorAll("#log .msg.room-report").length,
+      }));
+      const after11 = reportsOf(roomId).length;
+      seen11.workingAdded === 0 && after11 === before11
+        ? ok("同任务重发：不闪「工作中」卡、不新增汇报（运行态与真相同步）")
+        : bad("dedupe through composer", JSON.stringify({ seen11, before11, after11 }));
+      /已经汇报过/.test(seen11.notes.join("|"))
+        ? ok("幂等说明卡在整表重绘后仍在（拒绝/说明卡不能一闪就没）")
+        : bad("outcome card swallowed by re-render", JSON.stringify(seen11).slice(0, 300));
+      await win.screenshot({ path: path.join(SHOT_DIR, "gp145-7-room-deduped.png") });
+    }
+
+    /* ---------- S12: 点名不在群里的人 —— 不假装定向成功 ---------- */
+    {
+      const ghostTask = "@GhostNotInRoom 请说明你的职责";
+      const before12 = reportsOf(roomId).length;
+      await sendText(ghostTask);
+      await waitForReportCount(roomId, before12 + 1);
+      const users = rowsOf(roomId, "user");
+      const last = users[users.length - 1] || {};
+      const note12 = await win.evaluate(() => {
+        const els = Array.from(document.querySelectorAll("#log .room-mention-note"));
+        return els.length ? (els[els.length - 1].innerText || "") : "";
+      });
+      Array.isArray(last.unknown_mentions) && last.unknown_mentions[0] === "GhostNotInRoom" &&
+        last.responder_policy === "bot_discretion"
+        ? ok("Host 记下未命中的点名并按「未点名」处理（不伪造定向给谁）")
+        : bad("unknown mention durable", JSON.stringify({ u: last.unknown_mentions, p: last.responder_policy }));
+      /GhostNotInRoom/.test(note12) && /不在本群成员里/.test(note12)
+        ? ok("界面把「点名未命中」如实告诉用户（不静默改成全员应答）")
+        : bad("unknown mention notice", JSON.stringify(note12).slice(0, 300));
+      await win.screenshot({ path: path.join(SHOT_DIR, "gp145-8-unknown-mention.png") });
+    }
+
+    /* ---------- S13: 读不到群记录时，不能说「还没有消息」 ---------- */
+    {
+      const backup = fs.readFileSync(ROOMS);
+      // 崩溃前的画面就是「用户已看到的历史」。注意 DOM 计数可以高于持久行数：
+      // 拒绝/幂等说明卡（room-error / room-deduped）本来就只活在会话面里，
+      // 所以恢复合同要和「崩溃前的画面」比，而不是和 rooms.json 比。
+      const beforeDom = await win.evaluate(DOM_COUNTS);
+      // 坏 JSON：Host 现在如实报 ok:false（loadRooms 的静默空回落只留给旧调用点）。
+      // 空态与读取失败必须区分开，否则一次存储故障在用户眼里就成了「我们的历史没了」。
+      fs.writeFileSync(ROOMS, String(backup).slice(0, Math.floor(backup.length / 2)) + "\n{\"broken\"", { encoding: "utf8" });
+      await win.evaluate(() => refreshSidebarRooms());
+      await new Promise((r) => setTimeout(r, 500));
+      const readFail = await win.evaluate(() => ({
+        text: (document.querySelector("#log .room-thread") || {}).innerText || "",
+        msgs: document.querySelectorAll("#log .msg").length,
+      }));
+      fs.writeFileSync(ROOMS, backup);
+      await win.screenshot({ path: path.join(SHOT_DIR, "gp145-9-store-readfail.png") });
+      const durR = {
+        user: rowsOf(roomId, "user").length + txOf(roomId).filter((e) => e && !e.kind).length,
+        reply: rowsOf(roomId, "bot_reply").length,
+        error: rowsOf(roomId, "bot_reply_error").length,
+        report: rowsOf(roomId, "final_report").length,
+      };
+      await win.evaluate(() => refreshSidebarRooms());
+      await win.waitForFunction(
+        (want) => document.querySelectorAll("#log .msg.room-report").length >= want,
+        durR.report, { timeout: 25000 }).catch(() => {});
+      const restored = await win.evaluate(DOM_COUNTS);
+      await win.screenshot({ path: path.join(SHOT_DIR, "gp145-9-store-recovered.png") });
+      /读取|失败/.test(readFail.text) && !/还没有任何消息/.test(readFail.text)
+        ? ok("存储读取失败如实报「读不到」，不伪装成空群（旧行不会在崩溃时凭空变没）")
+        : bad("read-failure honesty", JSON.stringify(readFail).slice(0, 400));
+      const same = ["user", "reply", "error", "report"].every((k) => restored[k] === beforeDom[k]);
+      same && restored.reply >= durR.reply && restored.report >= durR.report
+        ? ok("崩溃前画面 == 恢复后画面（" + JSON.stringify(beforeDom) + " → 持久 " +
+          JSON.stringify({ reply: durR.reply, report: durR.report }) + "，一次存储故障不丢可见历史）")
+        : bad("rebuild after store recovery", JSON.stringify({ before: beforeDom, dom: restored, durable: durR }));
+
+      /* 目录侧栏 + 写侧：坏存储既不能说「没有群」，也不能被一次运行覆盖成空目录。 */
+      const corrupt2 = String(backup).slice(0, 60) + "\n{\"broken\":true";
+      fs.writeFileSync(ROOMS, corrupt2, { encoding: "utf8" });
+      const ipcThrew = await win.evaluate(async (task) => {
+        try {
+          const r = await window.bitbot.rooms.orchestrate({ room_id: "__probe__", text: task });
+          return { threw: false, ok: Boolean(r && r.ok), error: (r && r.error) || "" };
+        } catch (e) {
+          return { threw: true, error: String((e && e.message) || e).slice(0, 120) };
+        }
+      }, "存储故障探针任务").catch(() => ({ threw: true, error: "evaluate crashed" }));
+      await win.evaluate(() => refreshSidebarRooms());
+      await new Promise((r) => setTimeout(r, 800));
+      const sidebar = await win.evaluate(() => ({
+        readfail: (document.querySelector("#room-list .room-list-readfail") || {}).innerText || "",
+        items: document.querySelectorAll("#room-list .agent-item[data-room-id]").length,
+      }));
+      const stillCorrupt = fs.readFileSync(ROOMS, "utf8");
+      fs.writeFileSync(ROOMS, backup, { encoding: "utf8" });
+      await win.evaluate(() => document.getElementById("room-banner-exit").click());
+      await new Promise((r) => setTimeout(r, 300));
+      await openRoom();
+      await new Promise((r) => setTimeout(r, 700));
+      const sidebarBack = await win.evaluate(() =>
+        document.querySelectorAll("#room-list .agent-item[data-room-id]").length);
+      /读不到|unreadable/.test(sidebar.readfail) && sidebar.items === 0
+        ? ok("侧栏把存储故障说成「读不到」，不演成「一个群都没有」")
+        : bad("sidebar hid store failure", JSON.stringify(sidebar).slice(0, 300));
+      (ipcThrew.threw || ipcThrew.ok === false) && stillCorrupt.includes("broken") &&
+        txOf(roomId).filter((e) => e && e.text === "存储故障探针任务").length === 0
+        ? ok("坏存储上的运行被拒绝且没落任何行（不覆盖、不假装跑完）")
+        : bad("write-side fail closed", JSON.stringify({ ipcThrew, tail: stillCorrupt.slice(-24) }));
+      sidebarBack >= 1
+        ? ok("恢复后侧栏重新列得出群（" + sidebarBack + " 个），历史不是被重写出来的")
+        : bad("sidebar did not recover", String(sidebarBack));
+    }
+
+    /* ---------- S14: 群在目录里消失时必须退出，不留空壳会话 ---------- */
+    {
+      const backup = fs.readFileSync(ROOMS);
+      const other = {
+        id: "room-ghost-sibling", title: "Ghost Sibling",
+        members: [evidence.bot_ids.A, evidence.bot_ids.B], created_at: "s14",
+        transcript: [{ kind: "user", room_id: "room-ghost-sibling", speaker: "user", text: "占位", at: "2026-10-23T00:00:00.000Z" }],
+      };
+      const data = JSON.parse(String(backup));
+      data.rooms.push(other);
+      fs.writeFileSync(ROOMS, JSON.stringify(data, null, 2), { encoding: "utf8" });
+      await openRoom();               // 当前群重新打开（composer 对准它）
+      const beforeExit = await win.evaluate(() => ({
+        banner: getComputedStyle(document.getElementById("room-banner")).display,
+        cards: document.querySelectorAll("#log .msg").length,
+      }));
+      // 外部把「我正在看的那个群」从目录里删掉（成员掉到 2 人以下被丢弃的等价场景），
+      // sibling 群留着：只有真跑完的编排才会广播目录变化，渲染层要据此发现
+      // 「我正在看的那个群已经不存在了」。
+      const dropped = JSON.parse(String(backup));
+      dropped.rooms = (dropped.rooms || []).concat([other]).filter((r) => r && r.id !== roomId);
+      fs.writeFileSync(ROOMS, JSON.stringify(dropped, null, 2), { encoding: "utf8" });
+      const orch14 = await win.evaluate(async () => {
+        // 走一次 sibling 群的真实编排：只有真跑完的编排才会广播目录变化，
+        // 渲染层必须据此发现「我正在看的那个群已经不在目录里了」。
+        try {
+          const r = await window.bitbot.rooms.orchestrate({
+            room_id: "room-ghost-sibling", text: "目录变化探针（当前群已被移出）", to: [],
+          });
+          return { threw: false, ok: Boolean(r && r.ok), error: (r && r.error) || "" };
+        } catch (e) { return { threw: true, error: String((e && e.message) || e).slice(0, 160) }; }
+      }).catch((e) => ({ threw: true, error: "evaluate crashed " + String((e && e.message) || e).slice(0, 120) }));
+      await win.waitForFunction(() =>
+        document.getElementById("room-banner").style.display === "none",
+        null, { timeout: 45000 }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 500));
+      const afterExit = await win.evaluate(() => ({
+        banner: getComputedStyle(document.getElementById("room-banner")).display,
+        inline: document.getElementById("room-banner").style.display,
+        thread: Boolean(document.querySelector("#log .room-thread")),
+        ph: (document.querySelector("#composer #text") || {}).placeholder || "",
+      }));
+      fs.writeFileSync(ROOMS, backup, { encoding: "utf8" });
+      beforeExit.banner !== "none" && beforeExit.cards > 0
+        ? ok("S14 前置：当前群确实在会话中（banner 可见 + " + beforeExit.cards + " 张卡）")
+        : bad("S14 precondition", JSON.stringify(beforeExit));
+      afterExit.banner === "none" && afterExit.thread === false && !/群聊/.test(afterExit.ph)
+        ? ok("群被移出目录后自动退出（不留空壳会话，占位回到私聊）")
+        : bad("phantom room session", JSON.stringify({ orch: orch14, after: afterExit }));
+    }
+
     /* ---------- IPC 面守卫：坏输入如实拒绝，且不留下任何卡片行 ---------- */
     {
       const res = await win.evaluate(async ([rid]) => {
@@ -537,6 +761,6 @@ const DOM_COUNTS = () => ({
     if (botsBefore) fs.writeFileSync(path.join(REPO, "data/desktop/bots.json"), botsBefore);
   }
   console.log("\ne2e_desktop_room_orchestration: PASS=" + PASS + " FAIL=" + FAIL + " SKIP=0");
-  console.log("evidence: " + path.join(SHOT_DIR, "gp145-1-room-empty.png") + " … gp145-6-dm-persona.png + gp145-rooms-evidence.json");
+  console.log("evidence: " + path.join(SHOT_DIR, "gp145-1-room-empty.png") + " … gp145-8-unknown-mention.png + gp145-rooms-evidence.json");
   process.exit(FAIL > 0 ? 1 : 0);
 })();

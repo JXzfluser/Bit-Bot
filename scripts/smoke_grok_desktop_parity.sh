@@ -1171,6 +1171,15 @@ grep -q "群 transcript 按条目渲染" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "运行中为每个 responder 显示「工作中」卡" /tmp/g29-probe.log 2>/dev/null \
   && ok "G-29 GP-146：按条目渲染 + 运行中状态（不再拼一段纯文本）" \
   || bad "G-29 GP-146 rendering missing"
+grep -q "房间转录字段落盘前统一截断" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "「工作中」态在 engine 真扇出时才发" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 GP-146：共享转录有界 + 运行态只在真扇出时发（幂等/拒绝不闪假状态）" \
+  || bad "G-29 GP-146 bounded/fanout guard missing"
+grep -q "群聊失败卡走本地化语义" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "渲染层把「提及不在本群」如实说给用户" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "幂等命中时如实说明" /tmp/g29-probe.log 2>/dev/null \
+  && ok "G-29 GP-146：产品态文案诚实（失败说人话 / 点名未命中不装成功 / 幂等不装重跑）" \
+  || bad "G-29 GP-146 honest copy missing"
 grep -q "@Name → mentioned_only 且 responders 精确" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "@A @B → mentioned_only 且只跑点名的 2 个成员" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "@everyone → all" /tmp/g29-probe.log 2>/dev/null \
@@ -1200,6 +1209,15 @@ grep -q "失败回执如实带原因\|缺 key 的 responder → 1/2 partial" /tm
   && grep -q "收齐时如实 2/2 partial=false" /tmp/g29-orch.log 2>/dev/null \
   && ok "G-29 诚实性：失败算 partial、收齐才算完成（不伪造 final_report）" \
   || bad "G-29 honesty missing"
+grep -q "rooms.json 坏掉时写侧 fail closed" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "渲染层区分「空群」与「读不到」" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "rooms:list 与 rooms-changed 都带 ok 标志" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "三个群回合事件" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "内核 effect 循环同样 fail closed" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "目录里群已消失" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "坏存储：roomsStoreStatus 如实报 unreadable" /tmp/g29-orch.log 2>/dev/null \
+  && ok "G-29 GP-146：存储故障诚实（读不到≠没有群 / 坏存储上写侧拒绝，不覆盖历史）" \
+  || bad "G-29 GP-146 store-honesty missing"
 
 echo
 echo "== G-30 附件发送前预览（M30：§5.1 验收信号）=="

@@ -23350,7 +23350,14 @@ function createHostFfi(repoRoot) {
           to_bot: decode(parts[2]),
           task: decode(parts.slice(3).join("|")),
         };
-        const res = surface.handoffTask(args);
+        let res = null;
+        try {
+          res = surface.handoffTask(args);
+        } catch (e) {
+          // GP-146：rooms.json 坏掉时写侧 fail closed（宁可拒绝，不可用空目录
+          // 覆盖用户历史）。内核侧要如实报错，不能让异常把整批 effect 炸掉。
+          res = { ok: false, error: "rooms_store_unreadable", detail: String((e && e.message) || e), mode: "host_handoff_task" };
+        }
         if (res && res.ok) {
           let inboxPath = "";
           try {
@@ -23422,10 +23429,21 @@ function createHostFfi(repoRoot) {
             hitRoom = null;
           }
           if (hitRoom) {
-            const res = surface.roomTurn(hitRoom.id, body, new Date().toISOString());
+            let res = null;
+            try {
+              res = surface.roomTurn(hitRoom.id, body, new Date().toISOString());
+            } catch (e) {
+              res = { ok: false, error: "rooms_store_unreadable", detail: String((e && e.message) || e) };
+            }
             if (res && res.ok) {
               // Persist product transcript line (rooms.json entry keeps last 200).
-              surface.appendRoomTranscript(hitRoom.id, res.transcript_entry);
+              try {
+                surface.appendRoomTranscript(hitRoom.id, res.transcript_entry);
+              } catch (e) {
+                res = { ok: false, error: "rooms_store_unreadable", detail: String((e && e.message) || e) };
+              }
+            }
+            if (res && res.ok) {
               results.push({
                 kind,
                 ok: true,

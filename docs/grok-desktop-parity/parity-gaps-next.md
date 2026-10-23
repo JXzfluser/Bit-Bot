@@ -53,10 +53,11 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 | GP-145 | 步 3/4 用户面 | **Bot 私聊与群协作上下文不串** | DM 保持 `activeBotId` 的 job/description/记忆，群回合不得污染 DM 会话；审批/密钥请求留在归属 Bot 的 DM。 |
 | GP-146 | 步 4/7 用户面 | **群 transcript 按条目渲染 + 运行中状态** | `index.html` 把 `rooms.json` 行拼成一段纯文本，用户看不出谁在说话、谁在跑、报告是否收齐；无 per-Bot「工作中」态，失败无 `bot_reply_error` 呈现。 |
 
-> **实施状态（M49 · GP-143/144/145/146 用户级闭环，Host 产品路径，已验证）**：
+> **实施状态（M49 · GP-143/144/145/146/147 用户级闭环 + 诚实性细节波，Host 产品路径，已验证）**：
 > - **真回合接线**：`main.js` `runRoomResponderTurn` 在 `runner.runTurn(text,{botId,…})` 上跑每个 responder 的独立回合（该 Bot 的 job/description/记忆槽/工具，persona 由 `host_ffi.llmSystemPrompt(botId)` 在 provider 边界现读注入）；群 composer 走专用 IPC `bitbot:rooms:orchestrate` = `roomTurn`（路由 + 落 user 行，单一写入点）→ `orchestrateRoom({room,task,to:responders,deps:{runResponderTurn}})`，`preload` 暴露 `rooms.orchestrate`。`@A @B`→只跑点名者、`@everyone`→全员、无 `@`→`bot_discretion`；成员/预算 ≤6/递归/幂等/超时护栏保持。
 > - **诚实口径**：这是 **Host 产品路径**闭环，内核 `Orchestrate`/`final_report` 意图等价**未做**，不声称与内核原语同构。
-> - **门（本沙箱实跑）**：真渲染 `scripts/e2e_desktop_room_orchestration.mjs` **PASS=36 FAIL=0 SKIP=0**（真 Electron + 真 `moon` + 本地 OpenAI 兼容 provider；含 2 responder 成功、故意失败 1 个 → `1/2 未收齐（部分完成）`、`@` 点名、`@everyone`、递归、幂等、非成员、超时、reopen 后 DOM↔`rooms.json` 逐类相等、旧无 `kind` 行不崩、转录卫生、DM persona 归属、`sessions.json` 无群行）；`prove_gp143_orchestration` **PASS=18 FAIL=0**、`prove_m29_roomchat` **PASS=27 FAIL=0**、`e2e_grok_desktop_boot` **PASS=127 FAIL=0**、`smoke_grok_desktop_parity` **PASS=318 FAIL=0**。
+> - **门（本沙箱实跑，细节波后复跑）**：真渲染 `scripts/e2e_desktop_room_orchestration.mjs` **PASS=51 FAIL=0 SKIP=0**（真 Electron + 真 `moon` + 本地 OpenAI 兼容 provider；S1–S9 含 2 responder 成功、故意失败 1 个 → `1/2 未收齐（部分完成）`、`@` 点名、`@everyone`、递归、幂等、非成员、超时、reopen 后 DOM↔`rooms.json` 逐类相等、旧无 `kind` 行不崩、转录卫生、DM persona 归属、`sessions.json` 无群行；S10–S14 为细节波新增：持久面有界、幂等不闪运行态、未命中点名如实告知、坏 `rooms.json` 读侧如实 + 写侧拒绝 + 恢复后画面与崩溃前一致、群被移出目录自动退出）；`prove_gp143_orchestration` **PASS=36 FAIL=0**、`prove_m29_roomchat` **PASS=40 FAIL=0**、`e2e_grok_desktop_boot` **PASS=127 FAIL=0**、`smoke_grok_desktop_parity` **PASS=321 FAIL=0**、D-C-03 三语 **502** 键。
+> - **同轮细节波（GP-147）修掉 5 个会让人误判事实的缺陷**：拒绝/幂等说明卡被整表重绘吃掉（一闪就没）、未真扇出就闪「工作中」、共享转录逐字段无界、失败原因把协议码/上游原文摊到产品面、**坏 `rooms.json` 被演成「历史没了」且会被下一次写原子覆盖成空目录**（现：读侧 `roomsStoreStatus` 如实报 `unreadable`、写侧 `requireWritableRooms` fail closed 拒绝落盘、`rooms:list`/`rooms-changed` 带 `ok`、渲染层区分「空群」与「读不到」、群被移出目录自动退出、内核 effect 层 try-catch 不炸批）。
 > - **顺带修掉两个真产品缺陷**：① 群 composer 不独占——点 Bot 私聊/切会话后仍把消息发进群（现 `selectBotForChat` 与会话行点击均 `exitRoomChat()`）；② 群聊卡片色写死十六进制，破 `prove_ui_tokens` T-2 ratchet 且暗色不正确（改 `--danger/--danger-ink/--warn/--warn-line/--warn-ink`）。
 > - **残留（如实，不伪造）**：① 内核 `Orchestrate` 意图 + `moon test` 等价未做；② `pending-approvals.jsonl` 行不带 `bot_id`，因此「审批只出现在归属 Bot 的 DM」尚未成立——现由「群回合固定 `approved:false`、不新增自动放行」保证不被编排放行，路由归属待审批行加 `bot_id`；③ cloud/subagent 回流产物进汇报仍依赖 GP-136；④ 真实外部 provider/云 VM/Cookie 仍为既有残留。
 
@@ -134,7 +135,7 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 | GP-141 | Auto-review 独立审查、在 Bot 操作前评估风险（允许/要求审批/拒绝），独立于 Bot 模型；团队规则优先于个人；Ask first > Allow automatically；管理员可 Enforce（Enterprise） | GP-24 五类门已有；显式化「评审来源」与回复模型分离：`security/autoreview` 结果记 `reviewer:"auto_review_gate"`（区别于 `model:"…"`）+ 可证 verdict；团队 locked 行已有 GP-73，补来源标记 `team_locked:true` | 伪造「模型自称已批准」的正文不改 verdict；`Ask first` 与 `Allow automatically` 冲突判 ask（GP-22 已在，扩 reviewer 字段断言）；`team_locked` 行删除 → `rule_locked` 拒；真实独立评审模型推理/企业下发标残留 |
 | GP-142 | 附件支持多格式；加密/损坏文件不可读 | `stageAttachments`/读取链目前卡数量+体积；补内容可解码性探测：文本族无 NUL/有效 UTF-8、图片 magic-byte、PDF 有 `%PDF-` 头且非截断、加密 PDF 无有效 trailer → `unreadable` 诚实拒绝 | 截断 PNG / 随机字节伪装 .pdf / 加密 PDF → `ok:false, reason:unreadable`，不进 kernel 上下文、不假装已读；正常件通过；断言进附件 smoke（G-17 扩展） |
 
-### G-E 编排核心（GP-143 / 144 / 145 / 146；对应第 4/5/7 步 + 用户面）
+### G-E 编排核心（GP-143 / 144 / 145 / 146 / 147；对应第 4/5/7 步 + 用户面）
 
 | ID | 主线行为 | 实现落点 | 可证伪验收 | 风险护栏（必须在验收里断言） |
 |----|----------|----------|------------|------------------------------|
@@ -142,6 +143,7 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 | GP-144 | 编排者**收齐** responder 产出（含 cloud/subagent 回流产物）→ 跑一次汇总回合 → 群内写 `kind:"final_report"` 卡 + 附产物文件卡；未收齐如实显示 N/总 | 新意图 `Orchestrate(room,task,members~,report~)`；collect 用 `WakeParent`(CM-1208) 事件驱动**等待**（非 busy-loop，CM-2133），协调者一次 `llm_chat` 汇总，产物经 GP-136 复制进 Computer + GP-90 文件卡 | `assign room <id> task=<t> to=<b1,b2>` → 两 responder 回来后 1 条 `kind:"final_report"`，正文引用两成员结论 + ≥1 文件卡；**故意让 b2 超时/失败** → final_report 仍产出但显式 `2/2`→`1/2 partial`，**不假装有完整报告** | **(a) 收齐判定**：完成/超时以 transcript 事件计数 + 时限，禁轮询空转；**(b) 依赖可降级**：无 cloud/subagent 时 GP-144 只跑「room 内 responder → 汇总」最小闭环，**不强绑 GP-136**（解除对 A 类的排序依赖）；**(c) 幂等**：同一 task 二次编排不重复落 final_report |
 | GP-145 | DM 保持 `activeBotId` 的 `job/description` + 记忆槽；群回合不得往 DM 会话写行；对 Bot 资料的编辑下一次回合即生效（现读）；审批/密钥请求留在归属 Bot 的 DM | 回合上下文按 `activeBotId` 取，persona 在 provider 边界现读 `bots.json`；群 `final_report`/`bot_reply` 只落 `rooms.json`，不进 `sessions.json` | 真渲染实测：`你的职责是什么？` 回复含该 Bot 的 `名字：/简介：/职责：` 且不含他 Bot 字段；`sessions.json` 群行计数 0，reopen 后 DOM 与 `rooms.json` 逐类相等 | **残留**：`pending-approvals.jsonl` 行不带 `bot_id`，「审批只进归属 Bot 的 DM」尚未成立；本轮可证的是群回合固定 `approved:false`（编排不额外放行） |
 | GP-146 | 群 transcript 按条目渲染（user 行 / `bot_reply` 带头像+名+正文+产物 / `final_report` 卡带 N/总、partial、分区、产物）；运行中每 responder 一张「工作中」卡；失败出 `bot_reply_error`；未收齐显式 `1/2 partial`，绝不显示「全部完成」；旧无 `kind` 行不崩 | renderer 逐行分派，不复用「拼一段纯文本」路径；全部文案 `t(key)` 三语 | 真渲染实测：`.room-user/.room-reply/.room-error/.room-report/.room-working` 五类计数与持久行一致，partial 卡含「未收齐」且不含「已全部收齐」，错误卡点名失败 Bot | 不新增调试面板；DM 面残留的既有协议码（`CM-0205`、boot banner）不属本包范围 |
+| GP-147（细节波，同轮二次审计） | 群聊产品面的**诚实性收口**：拒绝/幂等说明卡必须在整表重绘后仍可见；「工作中」态只在真扇出时出现；共享转录逐字段有界；失败原因说人话（协议码只进 dev-mode）；点名未命中不装成功；**`rooms.json` 故障不得演成「历史没了」，也不得被一次写入覆盖** | `sendRoomTurn` 说明卡延后落位；`orchestrateRoom` 的 `deps.onFanout` 拥有运行态；`clipRoomText` + `*_truncated`；`roomFailReason`/`roomOpFailReason`；`unknown_mentions`；`roomsStoreStatus()`（读侧）+ `requireWritableRooms()`（写侧 fail closed，6 个写入点）+ `rooms:list`/`rooms-changed` 带 `ok` + `rooms.onRoomsChanged` 自动退出 + `host_ffi` effect 层 try/catch | 真渲染 S10–S14（有界 / 幂等不闪态 / 未命中点名 / 坏 JSON 如实报「读不到」且恢复后按原文件重建 / 群被移出目录自动退出）+ `prove_gp143` Q 块（坏存储读写面）+ `prove_m29` 静态面 + smoke G-29 新增一条 | 不声称内核 `Orchestrate` 等价；坏存储时**拒绝写**而非重建空目录，用户历史优先于「功能可用」；说明卡用本地化文案，内部路径/协议码不进产品面 |
 
 ---
 
@@ -150,7 +152,7 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 1. **每新增 GP 必须打真链**：验收落到 `smoke_grok_desktop_parity.sh` 新场景 + 真 Electron/Playwright 门（`e2e_grok_desktop_*.mjs` 同族），renderer 不伪造状态；`moon test` 覆盖内核意图分类。
 2. **三态诚实**：外部不可达项（真 Cookie/独立模型推理/企业下发/云 VM 推流/合盖事件）一律 `residual:true` + 不 `pretend`，与既有残留口径一致。
 3. **回归不破**：现有 parity 断言 + boot + layout + shell-v2 全绿不回退；D-C-03 三语键齐平，新文案走 `t(key)`。
-   > M49 实测基线（真 Electron + xvfb + 真 `moon`，无外部服务）：`smoke_grok_desktop_parity` **PASS=318 FAIL=0**、`e2e_grok_desktop_boot` **PASS=127 FAIL=0**（含群协作真链段）、`e2e_desktop_layout_target` **PASS=12 FAIL=0**、`e2e_desktop_shell_v2` **PASS=89 FAIL=0**、新门 `e2e_desktop_room_orchestration` **PASS=36 FAIL=0 SKIP=0**、`prove_gp143_orchestration` **18/0**、`prove_m29_roomchat` **27/0**、`prove_ui_tokens` **8/0**。
+   > M49 实测基线（真 Electron + xvfb + 真 `moon`，无外部服务；细节波复跑后）：`smoke_grok_desktop_parity` **PASS=321 FAIL=0**、`e2e_grok_desktop_boot` **PASS=127 FAIL=0**（含群协作真链段）、`e2e_desktop_layout_target` **PASS=12 FAIL=0**（D-C-03 三语 **502** 键一致）、`e2e_desktop_shell_v2` **PASS=89 FAIL=0**、`e2e_desktop_room_orchestration` **PASS=51 FAIL=0 SKIP=0**（S1–S14）、`prove_gp143_orchestration` **36/0**、`prove_m29_roomchat` **40/0**、`prove_ui_tokens` **8/0**。
    > 诚实校正（2026-10-22）：`e2e_desktop_layout_target` 的 D-L-* 几何 12 项在 UI 统一波次后已全绿。D-D-03（调试面 dev-mode 揭示）曾因 `grok-ui` 把 `#devmode-badge`/`#tools-toggle-btn` 一并 `display:none !important` 而在 HEAD 基线即红——这是真实的**产品缺陷**（`--bitbot-devmode` / `settings.dev_mode` 在产品态成为 no-op），不是过期门。已补 `body.grok-ui[data-devmode="on"]` 显式揭示（badge + 能力入口，仍不含 `#sb-more`），gate **PASS=12 FAIL=0**。`shell-v2` 的 S-MODEL 已改为真实入口（账户弹层 → 设置 → 凭证），与本轮同测 **PASS=89 FAIL=0**。
 4. **禁词门**：产品态 forbidden-token 扫描（`entry=`/`account=`/`*_masked`/`data/`/`.json`/`× N`/`unavailable`/`disabled_by_default`/`training=`/`key=`/`secret=`）继续对新增 UI 生效。
 5. **文档**：本文随实现同步进 `spec.md`（正式行）与 `gaps.md`（逐条状态），并在 `docs/design/desktop-target/report.md` 记录命令与实测结果。
@@ -159,7 +161,7 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 
 > 〇 节已裁定"核心是把内核原语缝成群聊编排闭环"，故波次以 GP-143/144 领起；A/B/C 是支撑主线或独立边角，后置。
 
-- **Wave M46（核心）→ M49 已交付**：**GP-143 先做 → GP-144 后做** 的切片计划已按序走完（M46 引擎切片 → M49 真回合 + UI + 私聊上下文 + 真渲染门）。M49 首版**不强绑 GP-136**（见 G-E 风险 b），因此 cloud/subagent 回流产物仍是 GP-144 的后续增量，不计入本轮已完成范围。
+- **Wave M46（核心）→ M49 已交付（含同轮细节波 GP-147）**：**GP-143 先做 → GP-144 后做** 的切片计划已按序走完（M46 引擎切片 → M49 真回合 + UI + 私聊上下文 + 真渲染门）。M49 首版**不强绑 GP-136**（见 G-E 风险 b），因此 cloud/subagent 回流产物仍是 GP-144 的后续增量，不计入本轮已完成范围。
 - **Wave M47（A 类接线，支撑主线）**：GP-134 事件触发、GP-135 Skills 来源、GP-136 Cloud Agent 结果闭环（GP-136 完成后回灌 GP-144 的 cloud/subagent 回流）。
 - **Wave M48**：C 类共享模型（GP-140 共享登录态、GP-141 reviewer 显式化、GP-142 不可读拒绝）+ B 类护栏（GP-138 最小间隔、GP-139 关窗不中断）。
 - **Wave M49**：GP-137 Teach a Task（体量最大：录制采集 + 草稿 Skill 生成 + 人工确认闭环，真录屏按残留）。

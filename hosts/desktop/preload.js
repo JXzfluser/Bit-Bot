@@ -123,6 +123,20 @@ contextBridge.exposeInMainWorld("bitbot", {
       ipcRenderer.on("bitbot:room-updated", handler);
       return () => ipcRenderer.removeListener("bitbot:room-updated", handler);
     },
+    // GP-146: the directory itself (not just one room's transcript) changed —
+    // e.g. a room dropped below 2 members. Payload carries ok:false when the
+    // store is unreadable, so the renderer can say so instead of "no groups".
+    onRoomsChanged: (cb) => {
+      const handler = (_e, ev) => {
+        try {
+          cb(ev);
+        } catch (_) {
+          /* ignore */
+        }
+      };
+      ipcRenderer.on("bitbot:rooms-changed", handler);
+      return () => ipcRenderer.removeListener("bitbot:rooms-changed", handler);
+    },
   },
   usage: {
     week: () => ipcRenderer.invoke("bitbot:usage:week"),

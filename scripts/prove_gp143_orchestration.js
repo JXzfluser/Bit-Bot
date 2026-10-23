@@ -266,6 +266,150 @@ const count = (arr, k) => arr.filter(e => e && e.kind === k).length;
       : bad("L timeout reason", JSON.stringify(err));
   }
 
+  /* ---------- M. 共享转录有界（GP-146 持久层卫生） ---------- */
+  {
+    const { surface } = mkSurface();
+    const long = "长".repeat(6000);
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "写一份" + "很".repeat(600) + "长的任务", to: "b1",
+      deps: { runResponderTurn: async () => ({ ok: true, text: long }), timeoutMs: 500 },
+    });
+    const out = await r;
+    const reply = tx(surface).find((e) => e && e.kind === "bot_reply");
+    const fr = tx(surface).find((e) => e && e.kind === "final_report");
+    (out && out.ok === true && reply && reply.text.length <= 4001 && reply.text_truncated === true)
+      ? ok(`M 回复正文有界：durable text=${reply ? reply.text.length : "-"} ≤ 4001 且标 text_truncated`)
+      : bad("M bounded reply text", JSON.stringify({ len: reply && reply.text.length, trunc: reply && reply.text_truncated }));
+    (fr && fr.sections[0] && fr.sections[0].summary.length <= 241 && fr.sections[0].summary_truncated === true)
+      ? ok(`M final_report 分区只留摘要：summary=${fr.sections[0].summary.length} ≤ 241（全文仍在 bot_reply 行）`)
+      : bad("M bounded section summary", JSON.stringify({ len: fr && fr.sections[0] && fr.sections[0].summary.length }));
+    (fr && fr.task.length <= 241 && fr.task_title.length <= 241)
+      ? ok("M final_report.task/task_title 同样有界（不把整条任务抄第二遍）")
+      : bad("M bounded task", JSON.stringify({ task: fr && fr.task.length, title: fr && fr.task_title && fr.task_title.length }));
+    (fr && String(fr.task_sig).length > 241)
+      ? ok("M 幂等标识仍按完整任务文本比对（截断只发生在展示字段，不改身份）")
+      : bad("M task_sig must stay exact", JSON.stringify({ sig: fr && fr.task_sig && fr.task_sig.length }));
+  }
+
+  /* ---------- N. 失败原因有界，不把 provider 负载整段落盘 ---------- */
+  {
+    const { surface } = mkSurface();
+    const dump = "provider 502 upstream body=" + "x".repeat(1200);
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "boom reason", to: "b1,b2",
+      deps: {
+        timeoutMs: 500,
+        runResponderTurn: async (botId) => (botId === "b1" ? { ok: true, text: "fine" } : { ok: false, text: "", error: dump }),
+      },
+    });
+    const out = await r;
+    const err = tx(surface).find((e) => e && e.kind === "bot_reply_error");
+    (out && out.partial === true && err && String(err.error).length <= 201 && err.error_truncated === true)
+      ? ok(`N 失败原因截断到 ${err ? String(err.error).length : "-"}/201，不再把上游响应体抄进共享转录`)
+      : bad("N bounded error reason", JSON.stringify({ len: err && String(err.error).length, trunc: err && err.error_truncated }));
+    const fr = tx(surface).find((e) => e && e.kind === "final_report");
+    (fr && fr.sections[1] && fr.sections[1].ok === false && fr.sections[1].summary.length <= 241)
+      ? ok("N 汇报失败分区同样有界（用户看到摘要 + 完整原因在回复行）")
+      : bad("N bounded failed section", JSON.stringify({ len: fr && fr.sections[1] && fr.sections[1].summary.length }));
+  }
+
+  /* ---------- O. 「工作中」态只在真扇出时给出 ---------- */
+  {
+    const { surface } = mkSurface();
+    let fanouts = 0;
+    let last = null;
+    const deps = {
+      timeoutMs: 500,
+      runResponderTurn: async () => ({ ok: true, text: "done" }),
+      onFanout: (ev) => { fanouts += 1; last = ev; },
+    };
+    const first = await surface.orchestrateRoom({ room: "room-t", task: "同一任务", to: "b1,b2", policy: "mentioned_only", deps });
+    await first;
+    (fanouts === 1 && last && last.room === "room-t" && last.policy === "mentioned_only" &&
+      last.member_count === 2 && Array.isArray(last.responders) && last.responders.length === 2)
+      ? ok("O 新鲜编排：engine 回调 onFanout 一次，载荷带 room/task/policy/成员数/responder 名单")
+      : bad("O fanout payload", JSON.stringify({ fanouts, last }));
+    const dup = await surface.orchestrateRoom({ room: "room-t", task: "同一任务", to: "b1,b2", policy: "mentioned_only", deps });
+    (dup && dup.ok === true && dup.deduped === true && fanouts === 1)
+      ? ok("O 幂等命中：不再扇出、不再发「工作中」态（不闪假运行状态）")
+      : bad("O dedupe must not fan out", JSON.stringify({ deduped: dup && dup.deduped, fanouts }));
+    const refused = await surface.orchestrateRoom({ room: "room-t", task: "别的任务", to: ["ghost"], deps });
+    (refused && refused.ok === false && fanouts === 1)
+      ? ok("O 护栏拒绝（非成员）同样不发运行态：拒绝不该显示「在跑」")
+      : bad("O guard must not fan out", JSON.stringify({ err: refused && refused.error, fanouts }));
+    const fr = tx(surface).find((e) => e && e.kind === "final_report");
+    (fr && fr.responder_policy === "mentioned_only")
+      ? ok("O final_report 落 responder_policy：重开窗口仍能如实说明这次是谁该答")
+      : bad("O policy persisted", JSON.stringify({ p: fr && fr.responder_policy }));
+  }
+
+  /* ---------- P. 提及不存在的成员：不假装定向成功 ---------- */
+  {
+    const { surface } = mkSurface();
+    const r = surface.roomTurn("room-t", "@GhostBot 帮我核对数字", "2026-10-23T00:00:00.000Z");
+    const e = r && r.transcript_entry;
+    (e && e.responder_policy === "bot_discretion" && Array.isArray(e.unknown_mentions) &&
+      e.unknown_mentions[0] === "GhostBot" && e.responders.length === 2)
+      ? ok("P @非成员：记 unknown_mentions + 按未点名处理（成员自行判断），不伪造定向")
+      : bad("P unknown mention", JSON.stringify(e && { p: e.responder_policy, u: e.unknown_mentions, n: e.responders.length }));
+    const clean = surface.roomTurn("room-t", "@Researcher 帮我核对数字", "2026-10-23T00:00:01.000Z");
+    const ce = clean && clean.transcript_entry;
+    (ce && ce.responder_policy === "mentioned_only" && ce.unknown_mentions === undefined)
+      ? ok("P 正常点名不带 unknown_mentions（不制造多余噪声字段）")
+      : bad("P clean mention", JSON.stringify(ce && { p: ce.responder_policy, u: ce.unknown_mentions }));
+    const many = surface.roomTurn("room-t", "@a @b @c @d @e @f 任务", "2026-10-23T00:00:02.000Z");
+    const me = many && many.transcript_entry;
+    (me && Array.isArray(me.unknown_mentions) && me.unknown_mentions.length <= 5)
+      ? ok(`P 未知提及上限 5 条（本次 ${me.unknown_mentions.length}）：错误提示本身也不能无界`)
+      : bad("P unknown mention cap", JSON.stringify(me && me.unknown_mentions));
+  }
+
+  /* ---------- Q. rooms.json 坏掉：读侧如实报、写侧 fail closed ---------- */
+  {
+    const { surface, root } = mkSurface();
+    const roomsPath = path.join(root, "data", "desktop", "rooms.json");
+    const before = fs.readFileSync(roomsPath, "utf8");
+    fs.writeFileSync(roomsPath, String(before).slice(0, 40) + '{"broken"', "utf8");
+
+    const st = surface.roomsStoreStatus();
+    (st && st.ok === false && /rooms_store_unreadable/.test(st.error || ""))
+      ? ok("Q 坏存储：roomsStoreStatus 如实报 unreadable（渲染层才敢区分「读不到」与「没有群」）")
+      : bad("Q store status", JSON.stringify(st));
+
+    let created = null, thrown = null;
+    try { created = surface.roomCreate("b1,b3", "Should Not Persist"); }
+    catch (e) { thrown = String((e && e.message) || e); }
+    const onDisk = fs.readFileSync(roomsPath, "utf8");
+    (thrown || (created && created.ok === false)) && onDisk.includes("broken")
+      ? ok("Q 写侧 fail closed：建群被拒且不落空目录（一次存储故障不会覆盖用户全部群聊历史）")
+      : bad("Q fail closed write", JSON.stringify({ thrown, created, tail: onDisk.slice(-24) }));
+
+    let orch = null, orchErr = "";
+    try {
+      orch = await surface.orchestrateRoom({
+        room: "room-t", task: "坏存储下的编排",
+        deps: { runResponderTurn: async () => ({ ok: true, text: "x" }) },
+      });
+    } catch (e) { orchErr = String((e && e.message) || e); }
+    const orchDump = orchErr || JSON.stringify(orch);
+    ((orch && orch.ok === false) || Boolean(orchErr)) && /rooms_store_unreadable/.test(orchDump)
+      ? ok("Q 编排拒绝而不是在坏目录上「假装跑完」（" + (orchErr ? "同步拒绝" : "结构化拒绝") + "）")
+      : bad("Q orchestrate on corrupt store", String(orchDump).slice(0, 220));
+
+    fs.writeFileSync(roomsPath, before, "utf8");
+    const st2 = surface.roomsStoreStatus();
+    (st2 && st2.ok === true && Array.isArray(st2.rooms.rooms) && st2.rooms.rooms.length === 1)
+      ? ok("Q 恢复后按原文件重建（历史仍在，不是重新生成的空壳）")
+      : bad("Q recovery", JSON.stringify(st2).slice(0, 200));
+
+    const missing = fs.mkdtempSync(path.join(os.tmpdir(), "gp143-none-"));
+    fs.mkdirSync(path.join(missing, "data", "desktop"), { recursive: true });
+    const st3 = createProductSurface(missing).roomsStoreStatus();
+    (st3 && st3.ok === true && st3.rooms.rooms.length === 0)
+      ? ok("Q 文件不存在 ≠ 存储故障：如实当作「还没有群」的空目录")
+      : bad("Q missing file", JSON.stringify(st3).slice(0, 200));
+  }
+
   console.log(`\nprove_gp143_orchestration: PASS=${pass} FAIL=${fail}`);
   process.exit(fail > 0 ? 1 : 0);
 })().catch((e) => { console.log("FATAL " + (e && e.stack || e)); process.exit(1); });

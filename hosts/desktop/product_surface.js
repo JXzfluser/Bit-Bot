@@ -441,7 +441,7 @@ function createProductSurface(repoRoot) {
     // GP-07: remove the bot from rooms; drop rooms that fall below 2 members.
     let rooms_removed = 0;
     try {
-      const rooms = loadRooms();
+      const rooms = requireWritableRooms();
       if (Array.isArray(rooms.rooms)) {
         for (const r of rooms.rooms) {
           if (Array.isArray(r.bot_ids)) r.bot_ids = r.bot_ids.filter((x) => x !== bot_id);
@@ -1269,6 +1269,36 @@ function createProductSurface(repoRoot) {
     return readJson(ROOMS_PATH, { version: 1, rooms: [] });
   }
 
+  // GP-146：rooms.json 坏掉时 readJson 会静默回落成「空目录」。读侧把这种状态
+  // 如实报出来（渲染层才能区分「群里没消息」和「我读不到」）；写侧必须 fail
+  // closed —— 落一次空目录就把用户全部群聊历史覆盖没了，这是数据丢失，不是降级。
+  const ROOMS_UNREADABLE = "rooms_store_unreadable";
+  function parseRoomsRaw() {
+    let raw;
+    try { raw = fs.readFileSync(ROOMS_PATH, "utf8"); }
+    catch (e) { return { unreadable: true, reason: "rooms_file_unreadable" }; }
+    let data;
+    try { data = JSON.parse(raw); }
+    catch (e) { return { unreadable: true, reason: "rooms_json_parse_failed" }; }
+    if (!data || typeof data !== "object" || !Array.isArray(data.rooms)) {
+      return { unreadable: true, reason: "rooms_shape_invalid" };
+    }
+    return { data, unreadable: false, reason: "" };
+  }
+  function roomsStoreStatus() {
+    if (!fs.existsSync(ROOMS_PATH)) return { ok: true, rooms: { version: 1, rooms: [] } };
+    const hit = parseRoomsRaw();
+    if (hit.unreadable) return { ok: false, error: ROOMS_UNREADABLE + ":" + hit.reason };
+    return { ok: true, rooms: hit.data };
+  }
+  // 只给「要落盘」的路径用：文件不存在可以当空目录开（还没有群），坏文件不行。
+  function requireWritableRooms() {
+    if (!fs.existsSync(ROOMS_PATH)) return { version: 1, rooms: [] };
+    const hit = parseRoomsRaw();
+    if (hit.unreadable) { const err = new Error(ROOMS_UNREADABLE + ":" + hit.reason); err.code = ROOMS_UNREADABLE; throw err; }
+    return hit.data;
+  }
+
   function saveRooms(data) {
     atomicWrite(ROOMS_PATH, JSON.stringify(data, null, 2));
   }
@@ -1310,7 +1340,7 @@ function createProductSurface(repoRoot) {
       title = `Group · ${names[0]} + ${names[1]}`;
     }
 
-    const rooms = loadRooms();
+    const rooms = requireWritableRooms();
     const room = {
       id: "room-" + Date.now().toString(36),
       title: title.trim(),
@@ -1329,7 +1359,7 @@ function createProductSurface(repoRoot) {
   }
 
   function roomTurn(room_id, text, now) {
-    const rooms = loadRooms();
+    const rooms = requireWritableRooms();
     const room = rooms.rooms.find(r => r.id === room_id);
     if (!room) {
       return { ok: false, error: "room_not_found", mode: "host_room_turn" };
@@ -1349,6 +1379,7 @@ function createProductSurface(repoRoot) {
     let responders = members;
     let responder_policy = "bot_discretion";
     const namedResponders = [];
+    const unknownMentions = [];
     let wantsAll = false;
     let rest = String(text || "");
     while (/^@/.test(rest)) {
@@ -1368,6 +1399,9 @@ function createProductSurface(repoRoot) {
       const target = members.find((m) => m.name === name || m.id === name);
       if (target && !namedResponders.some((x) => x.id === target.id)) {
         namedResponders.push(target);
+      } else if (!target && !wantsAll && unknownMentions.length < 5) {
+        // 打错了 / 不在本群：不能假装定向成功，渲染层要如实说明「按未点名处理」。
+        unknownMentions.push(String(name).slice(0, 40));
       }
       rest = after.slice(name.length).replace(/^\s*/, "");
     }
@@ -1390,6 +1424,7 @@ function createProductSurface(repoRoot) {
       text,
       responders: responders.map(r => r.id),
       responder_policy,
+      unknown_mentions: unknownMentions.length ? unknownMentions : undefined,
       at: now || nowIso()
     };
 
@@ -1404,7 +1439,7 @@ function createProductSurface(repoRoot) {
 
   // GP-51/52: persist the routed line into the room's durable transcript (capped at 200).
   function appendRoomTranscript(room_id, entry) {
-    const rooms = loadRooms();
+    const rooms = requireWritableRooms();
     const room = rooms.rooms.find(r => r.id === room_id);
     if (!room) return { ok: false, error: "room_not_found" };
     if (!Array.isArray(room.transcript)) room.transcript = [];
@@ -1422,6 +1457,20 @@ function createProductSurface(repoRoot) {
   // ≤6, recursion depth (a responder turn must not re-enter orchestration),
   // idempotency (one final_report per task), per-responder timeout.
   const _orchInflight = new Set();
+
+  // GP-146 持久层有界合同：房间转录是共享面，任何一行都不能无界增长——完整正文
+  // 已经由那条 bot_reply 行承载，final_report 的分区/任务只留摘要，失败原因截断。
+  // 上限可由环境收紧（默认与渲染合同一致，渲染层不再自己裁长度）。
+  const ROOM_TEXT_MAX = Math.max(200, Number(process.env.BITBOT_ROOM_TEXT_MAX || 4000));
+  const ROOM_SUMMARY_MAX = 240;
+  const ROOM_REASON_MAX = 200;
+  const ROOM_TASK_MAX = 240;
+  function clipRoomText(raw, max) {
+    const s = String(raw == null ? "" : raw);
+    const limit = Number(max) > 0 ? Number(max) : ROOM_TEXT_MAX;
+    if (s.length <= limit) return { text: s, truncated: false };
+    return { text: s.slice(0, limit) + "…", truncated: true };
+  }
   function orchestrateRoom(input) {
     const opts = input || {};
     const deps = opts.deps || {};
@@ -1430,7 +1479,7 @@ function createProductSurface(repoRoot) {
     if (!roomKey || !task) {
       return { ok: false, error: "orchestrate_needs_room_and_task", mode: "host_orchestrate_room" };
     }
-    const rooms = loadRooms();
+    const rooms = requireWritableRooms();
     const room = (rooms.rooms || []).find(r => r.id === roomKey || r.title === roomKey);
     if (!room) return { ok: false, error: "room_not_found", room: roomKey, mode: "host_orchestrate_room" };
 
@@ -1457,6 +1506,7 @@ function createProductSurface(repoRoot) {
     }
     if (responders.length < 1) return { ok: false, error: "no_responders", mode: "host_orchestrate_room" };
     if (responders.length > 6) return { ok: false, error: "too_many_responders", count: responders.length, max: 6, mode: "host_orchestrate_room" };
+    const responderPolicy = String(opts.policy || (toList.length ? "mentioned_only" : "bot_discretion")).trim();
 
     const taskSig = room.id + "|" + task.toLowerCase();
     if (_orchInflight.has(taskSig)) {
@@ -1464,13 +1514,31 @@ function createProductSurface(repoRoot) {
     }
     const prior = (room.transcript || []).find(e => e && e.kind === "final_report" && e.task_sig === taskSig);
     if (prior && !opts.force) {
-      return { ok: true, mode: "host_orchestrate_room", deduped: true, returned: prior.returned, total: prior.total, partial: prior.partial, final_report: prior };
+      // 幂等命中：不扇出、不起新回合，只回既有汇报。渲染层据此说明「未重复执行」，
+      // 不能让人以为刚刚又跑了一遍。
+      return {
+        ok: true, mode: "host_orchestrate_room", deduped: true,
+        returned: prior.returned, total: prior.total, partial: prior.partial,
+        responder_policy: prior.responder_policy || opts.policy || "", final_report: prior,
+      };
     }
     if (typeof deps.runResponderTurn !== "function") {
       return {
         ok: false, error: "responder_runner_required", mode: "host_orchestrate_room",
         note: "GP-143 responder turn is run by the MoonBit runner; inject deps.runResponderTurn",
       };
+    }
+    // 「工作中」态只在真的扇出时给出（dedupe / 护栏拒绝的分支不会闪一下假状态）。
+    if (typeof deps.onFanout === "function") {
+      try {
+        deps.onFanout({
+          room: room.id, task, responders,
+          policy: responderPolicy,
+          member_count: memberIds.length,
+        });
+      } catch (_) {
+        /* 进度提示是 best effort，不能拖垮编排 */
+      }
     }
 
     const timeoutMs = Number(deps.timeoutMs || 120000);
@@ -1493,20 +1561,39 @@ function createProductSurface(repoRoot) {
       }));
       const sections = settled.map((res, i) => res.status === "fulfilled" ? res.value : { bot_id: responders[i].id, name: responders[i].name, ok: false, text: "", artifacts: [], error: String(res.reason || "unknown") });
       for (const s of sections) {
-        appendRoomTranscript(room.id, {
+        // 共享转录的每一行都有界：正文由 bot_reply 行承载，汇报里只留摘要；
+        // 失败原因截断后再落盘，不把整段 provider 负载抄进 rooms.json。
+        const body = clipRoomText(s.text, ROOM_TEXT_MAX);
+        const entry = {
           kind: s.ok ? "bot_reply" : "bot_reply_error",
           room_id: room.id, speaker: s.bot_id, bot_id: s.bot_id, name: s.name,
-          text: s.text, error: s.error || undefined, at,
-        });
+          text: body.text, at,
+        };
+        if (body.truncated) entry.text_truncated = true;
+        if (!s.ok) {
+          const why = clipRoomText(s.error || "no_reply", ROOM_REASON_MAX);
+          entry.error = why.text;
+          if (why.truncated) entry.error_truncated = true;
+        }
+        appendRoomTranscript(room.id, entry);
       }
       const returned = sections.filter(s => s.ok).length;
       const total = sections.length;
       const final_report = {
-        kind: "final_report", room_id: room.id, task, task_sig: taskSig,
-        task_title: String(opts.report || task).trim() || task,
+        kind: "final_report", room_id: room.id, responder_policy: responderPolicy,
+        task: clipRoomText(task, ROOM_TASK_MAX).text,
+        task_sig: taskSig,
+        task_title: clipRoomText(String(opts.report || task).trim() || task, ROOM_TASK_MAX).text,
         responders: responders.map(r => r.id), total, returned,
         partial: returned < total,
-        sections: sections.map(s => ({ bot_id: s.bot_id, name: s.name, ok: s.ok, summary: s.ok ? s.text : `(${s.error || "no reply"})`, artifacts: s.artifacts })),
+        sections: sections.map(s => {
+          const sum = clipRoomText(s.ok ? s.text : `(${s.error || "no reply"})`, ROOM_SUMMARY_MAX);
+          return {
+            bot_id: s.bot_id, name: s.name, ok: s.ok,
+            summary: sum.text, summary_truncated: sum.truncated || undefined,
+            artifacts: s.artifacts,
+          };
+        }),
         artifacts: sections.flatMap(s => s.artifacts || []),
         at,
       };
@@ -1530,7 +1617,7 @@ function createProductSurface(repoRoot) {
     if (!roomId || !toId || !taskText) {
       return { ok: false, error: "handoff_needs_room_to_task", mode: "host_handoff_task" };
     }
-    const rooms = loadRooms();
+    const rooms = requireWritableRooms();
     const hit = (rooms.rooms || []).find(r => r.id === roomId || r.title === roomId);
     if (!hit) {
       return { ok: false, error: "room_not_found", room: roomId, mode: "host_handoff_task" };
@@ -2155,6 +2242,7 @@ function createProductSurface(repoRoot) {
     handoffTask,
     appendRoomTranscript,
     loadRooms,
+    roomsStoreStatus,
 
     // Account (GP-74) — local profile semantics only
     accountStatus,

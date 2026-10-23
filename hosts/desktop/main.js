@@ -1196,9 +1196,15 @@ ipcMain.handle("bitbot:approvals:runAllowed", async (_e, info) => {
 
 ipcMain.handle("bitbot:rooms:list", async () => {
   try {
-    return { ok: true, rooms: surface.loadRooms() };
+    // GP-146：坏掉的 rooms.json 不能报成「一个群都没有」——那会让用户以为历史
+    // 没了。读不到就说读不到，渲染层负责显示可恢复的失败态。
+    const st = surface.roomsStoreStatus();
+    if (!st || !st.ok) {
+      return { ok: false, error: (st && st.error) || "rooms_store_unreadable", rooms: { version: 1, rooms: [] } };
+    }
+    return { ok: true, rooms: st.rooms };
   } catch (err) {
-    return { ok: false, error: String(err && err.message ? err.message : err), rooms: [] };
+    return { ok: false, error: String(err && err.message ? err.message : err), rooms: { version: 1, rooms: [] } };
   }
 });
 
@@ -1307,25 +1313,32 @@ ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
     surface.appendRoomTranscript(roomId, routed.transcript_entry);
     // 2) 扇出到点名的 responder，收齐后聚合 final_report（N/总 如实）。
     //    预算护栏交给引擎（>6 → too_many_responders），这里不静默截断。
+    //    「工作中」态由 engine 在真正扇出时才回调发：幂等命中/护栏拒绝不得闪假态。
     const to = routed.transcript_entry.responders || [];
-    const roomRow = (surface.loadRooms().rooms || []).find((r) => r && r.id === roomId) || {};
-    broadcast("bitbot:room-orchestrating", {
-      room_id: roomId,
-      task: text,
-      responders: to.map((rid) => {
-        const b = ((surface.loadBots().bots) || []).find((x) => x && x.id === rid);
-        return { id: rid, name: (b && b.name) || rid };
-      }),
-      member_count: (roomRow.members || []).length,
-      policy: routed.transcript_entry.responder_policy,
-      at: new Date().toISOString(),
-    });
     const timeoutMs = Number(process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || 120000);
     const res = await surface.orchestrateRoom({
       room: roomId,
       task: text,
       to,
-      deps: { runResponderTurn: runRoomResponderTurn, timeoutMs },
+      policy: routed.transcript_entry.responder_policy,
+      deps: {
+        runResponderTurn: runRoomResponderTurn,
+        timeoutMs,
+        onFanout: (ev) => {
+          const bots = (surface.loadBots().bots) || [];
+          broadcast("bitbot:room-orchestrating", {
+            room_id: roomId,
+            task: (ev && ev.task) || text,
+            responders: ((ev && ev.responders) || []).map((r) => ({
+              id: r.id,
+              name: (bots.find((b) => b && b.id === r.id) || {}).name || r.name || r.id,
+            })),
+            member_count: (ev && ev.member_count) || 0,
+            policy: (ev && ev.policy) || routed.transcript_entry.responder_policy,
+            at: new Date().toISOString(),
+          });
+        },
+      },
     });
     broadcast("bitbot:room-updated", {
       room_id: roomId,
@@ -1335,7 +1348,10 @@ ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
       partial: Boolean(res && res.partial),
       error: res && res.ok ? undefined : (res && res.error) || "orchestrate_failed",
     });
-    broadcast("bitbot:rooms-changed", surface.loadRooms());
+    // GP-146：广播的是「读得到的目录」，读不到时带 ok:false，渲染层才不会把
+    // 存储故障演成「群都消失了」。
+    const st = surface.roomsStoreStatus();
+    broadcast("bitbot:rooms-changed", st.ok ? { ok: true, rooms: st.rooms } : { ok: false, error: st.error });
     return res;
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err), room_id: roomId };

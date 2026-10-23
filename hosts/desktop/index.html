@@ -893,6 +893,8 @@
   .msg.room-error .body { border-color: var(--danger); }
   .msg.room-error .room-speaker .rs-state { color: var(--danger-ink); font-weight: 600; }
   .msg.room-working .body { color: var(--muted); }
+  /* 幂等提示与「提及未命中」说明都是次要信息：同一 muted 层级，不抢正文视觉。 */
+  .msg.room-deduped .body, .room-mention-note, .room-thread-readfail, .room-list-readfail { color: var(--muted); }
   .msg.room-working .rw-dot {
     display: inline-block; width: 8px; height: 8px; border-radius: 50%;
     background: var(--warn); margin-right: 6px; vertical-align: middle;
@@ -4779,14 +4781,26 @@
       const box = document.getElementById("room-list");
       if (!box || !window.bitbot || !window.bitbot.rooms) return;
       let rows = [];
+      let unreadable = false;
       try {
         const res = await window.bitbot.rooms.list();
+        unreadable = Boolean(res && res.ok === false);
         const payload = (res && res.rooms) || {};
         rows = Array.isArray(payload) ? payload : payload.rooms || [];
       } catch (_) {
         rows = [];
+        unreadable = true;
       }
       box.innerHTML = "";
+      if (unreadable) {
+        // GP-146：列表读不到 ≠ 一个群都没有，别把存储故障演成「我的群没了」。
+        const bad = document.createElement("div");
+        bad.className = "room-list-readfail";
+        bad.style.cssText = "color:var(--muted);font-size:var(--text-xs);padding:2px 0 4px";
+        bad.textContent = wavegT("roomListReadFail");
+        box.appendChild(bad);
+        return;
+      }
       if (!rows.length) {
         const empty = document.createElement("div");
         empty.style.cssText = "color:var(--muted);font-size:11px;padding:2px 0 4px";
@@ -4912,6 +4926,37 @@
       }
       body.appendChild(row);
     }
+    // 群聊失败原因：durable 行仍保留截断后的原始 reason（可审计），聊天卡默认只说
+    // 人话——协议码/上游文案只在 dev-mode 追加，和产品态其它错误卡同一纪律。
+    function roomFailReason(raw) {
+      const s = String(raw == null ? "" : raw).trim();
+      let key = "roomFailProvider";
+      if (/timeout/i.test(s)) key = "roomFailTimeout";
+      else if (/runner_required/i.test(s)) key = "roomFailRunner";
+      else if (/no_reply|no reply/i.test(s)) key = "roomFailNoReply";
+      else if (/not_found/i.test(s)) key = "roomFailNotFound";
+      const label = wavegT(key);
+      if (!s) return wavegT("roomNoReason");
+      return devModeOn() ? label + " · " + s : label;
+    }
+    function roomOpFailReason(raw) {
+      const s = String(raw == null ? "" : raw).trim();
+      let key = "roomStartFailedHint";
+      if (/too_many_responders/i.test(s)) key = "roomFailTooMany";
+      else if (/responder_not_member|responder_not_found/i.test(s)) key = "roomFailNotMember";
+      else if (/room_not_found/i.test(s)) key = "roomFailRoomGone";
+      else if (/room_and_text_required/i.test(s)) key = "roomFailEmpty";
+      else if (/orchestrate_recursion/i.test(s)) key = "roomFailBusy";
+      return devModeOn() && s ? wavegT(key) + " · " + s : wavegT(key);
+    }
+    // 失败分区落盘形如 "(原因)"：展示时去壳再本地化，不留英文括号协议味。
+    function roomStripParen(s) {
+      const v = String(s == null ? "" : s).trim();
+      return v.startsWith("(") && v.endsWith(")") ? v.slice(1, -1) : v;
+    }
+    function roomClipNote() {
+      return wavegT("roomTextClipped");
+    }
     function roomThreadEl() {
       if (roomThread && document.contains(roomThread)) return roomThread;
       const box = document.createElement("div");
@@ -4940,6 +4985,16 @@
           policy: roomPolicyLabel(e.responder_policy),
         }),
       );
+      // 点名点到了不在群里的人：不能让用户以为已经定向成功（Host 记 unknown_mentions）。
+      if (Array.isArray(e.unknown_mentions) && e.unknown_mentions.length) {
+        const note = document.createElement("div");
+        note.className = "rr-sec-text room-mention-note";
+        note.textContent = wavegT("roomUnknownMention").replace(
+          "{n}",
+          e.unknown_mentions.slice(0, 5).map((m) => "@" + m).join("、"),
+        );
+        el.querySelector(".body").appendChild(note);
+      }
       return el;
     }
     function renderRoomBotReply(e, isError) {
@@ -4960,9 +5015,15 @@
       if (isError) {
         const why = document.createElement("div");
         why.className = "rr-sec-text";
-        why.textContent = String(e.error || wavegT("roomNoReason"));
+        why.textContent = roomFailReason(e.error || "");
         body.appendChild(why);
       } else {
+        if (e.text_truncated) {
+          const clip = document.createElement("div");
+          clip.className = "rr-sec-text";
+          clip.textContent = roomClipNote();
+          body.appendChild(clip);
+        }
         roomArtifacts(body, e.artifacts);
       }
       return el;
@@ -5013,9 +5074,10 @@
         row.appendChild(nm);
         const txt = document.createElement("span");
         txt.className = "rr-sec-text";
-        txt.textContent = s && s.ok
-          ? String(s.summary || "")
-          : String((s && s.summary) || wavegT("roomNoReason"));
+        const rawSum = String((s && s.summary) || "");
+        txt.textContent = (s && s.ok)
+          ? rawSum + (s.summary_truncated ? roomClipNote() : "")
+          : roomFailReason(roomStripParen(rawSum)) + (s.summary_truncated ? roomClipNote() : "");
         row.appendChild(txt);
         body.appendChild(row);
       }
@@ -5055,6 +5117,14 @@
       const box = roomThreadEl();
       box.innerHTML = "";
       const entries = await readRoomTranscript(roomId);
+      if (entries === null) {
+        const bad = document.createElement("div");
+        bad.className = "room-thread-readfail";
+        bad.style.cssText = "color:var(--muted);font-size:var(--text-sm);padding:4px 0";
+        bad.textContent = wavegT("roomTranscriptReadFail");
+        box.appendChild(bad);
+        return null;
+      }
       if (!entries.length) {
         const empty = document.createElement("div");
         empty.className = "room-thread-empty";
@@ -5081,12 +5151,15 @@
     async function readRoomTranscript(roomId) {
       try {
         const res = await window.bitbot.rooms.list();
+        // GP-146：rooms.json 读不到时 IPC 如实报 ok:false。返回 null（≠ 空数组），
+        // 否则一次存储故障在用户眼里就成了「我们的群聊历史没了」。
+        if (res && res.ok === false) return null;
         const payload = (res && res.rooms) || {};
         const found = (Array.isArray(payload) ? payload : payload.rooms || [])
           .find((x) => x && x.id === roomId);
         return found && Array.isArray(found.transcript) ? found.transcript : [];
       } catch (_) {
-        return [];
+        return null;
       }
     }
     async function openRoomChat(rm) {
@@ -5108,39 +5181,51 @@
       await loadRoomBotNames();
       await renderRoomTranscript(rm.id);
     }
+    // 编排面的一次发送只出一张「结果说明」卡：拒绝 / 幂等命中 / IPC 抛错。
+    // 它必须在整表重绘之后落位——重绘会清空 .room-thread，先画再清空等于
+    // 「错误一闪就没」，用户只会看到自己的消息像没被处理。
+    function roomOutcomeCard(o) {
+      const el = document.createElement("div");
+      el.className = "msg assistant " + (o.kind === "error" ? "room-error" : "room-deduped");
+      const body = document.createElement("div");
+      body.className = "body";
+      if (o.kind === "error") {
+        body.appendChild(roomSpeakerRow({
+          name: wavegT("roomReplyFailed"),
+          state: wavegT("roomStartFailed"),
+        }));
+        const why = document.createElement("div");
+        why.className = "rr-sec-text";
+        // roomOpFailReason 已按 dev-mode 决定是否追加原始协议码，这里不再拼第二遍。
+        why.textContent = o.reason;
+        body.appendChild(why);
+      } else {
+        body.textContent = o.text;
+      }
+      el.appendChild(body);
+      return el;
+    }
     async function sendRoomTurn(text) {
       const roomId = composerRoom ? composerRoom.id : "";
       if (!roomId) return;
       sendBtn.disabled = true;
+      let outcome = null;
       try {
         renderRoomUser({ kind: "user", text, at: new Date().toISOString() });
         const res = await window.bitbot.rooms.orchestrate({ room_id: roomId, text });
         if (!res || !res.ok) {
-          const el = document.createElement("div");
-          el.className = "msg assistant room-error";
-          const body = document.createElement("div");
-          body.className = "body";
-          const head = roomSpeakerRow({
-            name: wavegT("roomReplyFailed"),
-            state: wavegT("roomStartFailed"),
-          });
-          body.appendChild(head);
-          const why = document.createElement("div");
-          why.className = "rr-sec-text";
-          // 产品态只说人话；原始协议码只在 dev-mode 显示（无调试面合同）。
-          why.textContent = devModeOn()
-            ? String((res && res.error) || "orchestrate_failed")
-            : wavegT("roomStartFailedHint");
-          body.appendChild(why);
-          el.appendChild(body);
-          roomAppend(el);
+          outcome = { kind: "error", reason: roomOpFailReason(res && res.error) };
+        } else if (res.deduped) {
+          // 同一任务的汇报已存在：如实说明「没有重复跑」，不能让人以为又执行了一遍。
+          outcome = { kind: "deduped", text: wavegT("roomReportDeduped") };
         }
       } catch (err) {
-        addMsg("assistant", devModeOn() ? String((err && err.message) || err) : wavegT("roomStartFailedHint"));
+        outcome = { kind: "error", reason: roomOpFailReason(err && err.message) };
       } finally {
         clearRoomWorking();
         sendBtn.disabled = false;
         await renderRoomTranscript(roomId);
+        if (outcome) roomAppend(roomOutcomeCard(outcome));
       }
     }
     function exitRoomChat() {
@@ -5164,6 +5249,17 @@
           if (composerRoom && ev && ev.room_id === composerRoom.id) {
             renderRoomTranscript(composerRoom.id).catch(() => {});
           }
+        });
+      }
+      if (window.bitbot.rooms.onRoomsChanged) {
+        window.bitbot.rooms.onRoomsChanged((ev) => {
+          refreshSidebarRooms().catch(() => {});
+          // 群已经不在目录里了（例如成员掉到 2 人以下被丢弃）：诚实退出，
+          // 不要留一个空壳会话让用户以为还在群里。
+          if (!composerRoom || !ev || ev.ok === false) return;
+          const payload = ev.rooms || {};
+          const list = Array.isArray(payload) ? payload : payload.rooms || [];
+          if (!list.some((x) => x && x.id === composerRoom.id)) exitRoomChat();
         });
       }
     }
@@ -10318,6 +10414,7 @@
         mkCreate: "创建",
         mkUse: "使用",
         roomEmpty: "还没有群组。",
+        roomListReadFail: "群组列表暂时读不到（存储不可读）—— 这不是没有群，恢复后列表仍在。",
         roomMembers: "位成员",
         roomExit: "退出群聊",
         roomRouteHint: "@Name 定向 · @everyone 全体 · 无 @ 由 Bot 自行决定",
@@ -10328,6 +10425,20 @@
         roomWorking: "工作中…",
         roomReplyFailed: "回复失败",
         roomNoReason: "未返回原因",
+        roomFailTimeout: "成员回合超时，这一路没有拿到结果。",
+        roomFailNoReply: "成员这一轮没有返回内容。",
+        roomFailRunner: "成员执行器未就绪，本轮未产出。",
+        roomFailNotFound: "找不到对应的 Bot（可能已被删除或改名）。",
+        roomFailProvider: "模型或服务返回失败，未取得该成员的产出。",
+        roomFailTooMany: "应答成员超过 6 个上限，本次没有执行。",
+        roomFailNotMember: "被点名的 Bot 不是本群成员，本次没有执行。",
+        roomFailRoomGone: "这个群聊已不存在（可能随成员删除被一起清理）。",
+        roomFailEmpty: "先写出要让成员做的事，再发到群里。",
+        roomFailBusy: "同样的任务正在执行中，本次没有重复发起。",
+        roomTextClipped: "（内容较长，这里只保留开头，完整正文见上方该成员的回复）",
+        roomUnknownMention: "{n} 不在本群成员里，已按未点名处理（由成员自行判断是否应答）。",
+        roomReportDeduped: "这件事已经汇报过了：同一任务不会重复执行成员回合。",
+        roomTranscriptReadFail: "群聊记录暂时读不到（存储不可读）—— 这不代表群里没有消息，恢复后历史仍在。",
         roomReportHead: "群协作汇总",
         roomReportCount: "收齐 {r}/{t}",
         roomReportPartial: "未收齐（部分完成）",
@@ -10813,6 +10924,7 @@
         mkCreate: "建立",
         mkUse: "使用",
         roomEmpty: "還沒有群組。",
+        roomListReadFail: "群組清單暫時讀不到（儲存不可讀）—— 這不是沒有群，恢復後清單仍在。",
         roomMembers: "位成員",
         roomExit: "退出群聊",
         roomRouteHint: "@Name 定向 · @everyone 全體 · 無 @ 由 Bot 自行決定",
@@ -10823,6 +10935,20 @@
         roomWorking: "工作中…",
         roomReplyFailed: "回覆失敗",
         roomNoReason: "未回報原因",
+        roomFailTimeout: "成員回合逾時，這一路沒有取得結果。",
+        roomFailNoReply: "成員這輪沒有返回內容。",
+        roomFailRunner: "成員執行器未就緒，本輪未產出。",
+        roomFailNotFound: "找不到對應的 Bot（可能已被刪除或改名）。",
+        roomFailProvider: "模型或服務返回失敗，未取得該成員的產出。",
+        roomFailTooMany: "應答成員超過 6 個上限，本次沒有執行。",
+        roomFailNotMember: "被點名的 Bot 不是本群成員，本次沒有執行。",
+        roomFailRoomGone: "這個群聊已不存在（可能隨成員刪除被一起清理）。",
+        roomFailEmpty: "先寫出要讓成員做的事，再發到群裡。",
+        roomFailBusy: "同樣的任務正在執行中，本次沒有重複發起。",
+        roomTextClipped: "（內容較長，這裡只保留開頭，完整正文見上方該成員的回覆）",
+        roomUnknownMention: "{n} 不在本群成員裡，已按未點名處理（由成員自行判斷是否應答）。",
+        roomReportDeduped: "這件事已經匯報過了：同一任務不會重複執行成員回合。",
+        roomTranscriptReadFail: "群聊記錄暫時讀不到（儲存不可讀）—— 這不代表群裡沒有訊息，恢復後歷史仍在。",
         roomReportHead: "群協作彙總",
         roomReportCount: "收齊 {r}/{t}",
         roomReportPartial: "未收齊（部分完成）",
@@ -11308,6 +11434,7 @@
         mkCreate: "Create",
         mkUse: "Use",
         roomEmpty: "No groups yet.",
+        roomListReadFail: "Group list is unreadable right now (store unavailable) — these groups are not gone; the list returns when it recovers.",
         roomMembers: "members",
         roomExit: "Leave group",
         roomRouteHint: "@Name directed · @everyone all · no @ = bots decide",
@@ -11318,6 +11445,20 @@
         roomWorking: "working…",
         roomReplyFailed: "reply failed",
         roomNoReason: "no reason returned",
+        roomFailTimeout: "That member's turn timed out with no result.",
+        roomFailNoReply: "That member returned nothing this turn.",
+        roomFailRunner: "The member runner is not ready; nothing was produced.",
+        roomFailNotFound: "That Bot cannot be found (it may have been deleted or renamed).",
+        roomFailProvider: "The model or service failed, so this member produced nothing.",
+        roomFailTooMany: "More than 6 members were addressed, so nothing ran this time.",
+        roomFailNotMember: "The addressed Bot is not in this group, so nothing ran.",
+        roomFailRoomGone: "This group chat no longer exists (it may have been removed with its members).",
+        roomFailEmpty: "Write what the members should do before sending it to the group.",
+        roomFailBusy: "The same task is already running, so it was not started twice.",
+        roomTextClipped: " (long content truncated here; the member's reply above keeps the full text)",
+        roomUnknownMention: "{n} is not a member of this group, so this was treated as unaddressed (members decide whether to reply).",
+        roomReportDeduped: "Already reported: the same task does not run member turns twice.",
+        roomTranscriptReadFail: "Room history is unreadable right now (store unavailable) — that does not mean the room is empty; the messages come back when it recovers.",
         roomReportHead: "Group report",
         roomReportCount: "collected {r}/{t}",
         roomReportPartial: "incomplete (partial)",

@@ -53,7 +53,7 @@ const preloadSrc = fs.readFileSync(path.join(REPO, "hosts/desktop/preload.js"), 
   /surface\.roomTurn\(roomId, text/.test(mainSrc) &&
   /surface\.appendRoomTranscript\(roomId, routed\.transcript_entry\)/.test(mainSrc) &&
   /surface\.orchestrateRoom\(\{/.test(mainSrc) &&
-  /deps: \{ runResponderTurn: runRoomResponderTurn/.test(mainSrc)
+  /deps: \{\s*runResponderTurn: runRoomResponderTurn/.test(mainSrc)
   ? ok("Host IPC 真接线：roomTurn → appendRoomTranscript → orchestrateRoom(runResponderTurn)")
   : bad("Host orchestrate IPC wiring missing");
 /function runRoomResponderTurn\(botId, task, ctx\)[\s\S]{0,1600}runner\.runTurn\(String\(task \|\| ""\), \{[\s\S]{0,400}botId: id/.test(mainSrc) &&
@@ -82,9 +82,89 @@ const roomFn = roomFnStart < 0 ? "" : mainSrc.slice(roomFnStart, mainSrc.indexOf
   ? ok("点开 Bot 私聊或切会话时退出群 composer（消息不会误发进群）")
   : bad("room composer does not yield to DM surfaces");
 /orchestrate: \(payload\) => ipcRenderer\.invoke\("bitbot:rooms:orchestrate"/.test(preloadSrc) &&
-  /onRoomOrchestrating:/.test(preloadSrc) && /onRoomUpdated:/.test(preloadSrc)
-  ? ok("preload 暴露 rooms.orchestrate + 两个群回合事件（渲染层不自己拼状态）")
+  /onRoomOrchestrating:/.test(preloadSrc) && /onRoomUpdated:/.test(preloadSrc) &&
+  /onRoomsChanged:/.test(preloadSrc) && /"bitbot:rooms-changed"/.test(preloadSrc)
+  ? ok("preload 暴露 rooms.orchestrate + 三个群回合事件（运行态/新行/目录变化，渲染层不自己拼状态）")
   : bad("preload rooms API missing");
+
+/* GP-146 持久层有界：共享转录的每个字段都要有上限，长内容不得重复落盘。 */
+const surfSrc = fs.readFileSync(path.join(REPO, "hosts/desktop/product_surface.js"), "utf8");
+/const ROOM_TEXT_MAX = Math\.max\(/.test(surfSrc) &&
+  /ROOM_SUMMARY_MAX = 240/.test(surfSrc) && /ROOM_REASON_MAX = 200/.test(surfSrc) &&
+  /function clipRoomText\(raw, max\)/.test(surfSrc) &&
+  /entry\.text_truncated = true/.test(surfSrc) && /entry\.error_truncated = true/.test(surfSrc)
+  ? ok("房间转录字段落盘前统一截断（正文/摘要/原因各自有界 + 如实标 truncated）")
+  : bad("bounded transcript contract missing");
+{
+  const engStart = surfSrc.indexOf("function orchestrateRoom(");
+  const eng = engStart < 0 ? "" : surfSrc.slice(engStart, surfSrc.indexOf("\n  }", engStart) + 4);
+  const dedupeAt = eng.indexOf("deduped: true");
+  const fanoutAt = eng.indexOf("deps.onFanout");
+  dedupeAt >= 0 && fanoutAt >= 0 && fanoutAt > dedupeAt
+    ? ok("「工作中」态在 engine 真扇出时才发（幂等命中/护栏拒绝不闪假运行态）")
+    : bad("onFanout is not emitted strictly after the dedupe guard");
+  /responder_policy: responderPolicy/.test(eng)
+    ? ok("final_report 落 responder_policy（重开窗口仍能说明这次谁该答）")
+    : bad("final_report loses responder_policy");
+}
+{
+  const bcast = (mainSrc.match(/bitbot:room-orchestrating/g) || []).length;
+  bcast === 1 && /onFanout: \(ev\) => \{[\s\S]{0,240}broadcast\("bitbot:room-orchestrating"/.test(mainSrc)
+    ? ok("main 只在 onFanout 回调里发运行态（IPC 里没有第二条广播路径）")
+    : bad("room-orchestrating broadcast not single-sourced: " + bcast);
+}
+
+/* GP-146 存储故障诚实：坏掉的 rooms.json 既不能演成「一个群都没有」，也不能
+ * 被一次写入覆盖成空目录（那是数据丢失，不是降级）。读侧如实报，写侧 fail closed。 */
+/function requireWritableRooms\(\)/.test(surfSrc) && /rooms_store_unreadable/.test(surfSrc) &&
+  /function roomsStoreStatus\(\)/.test(surfSrc) &&
+  (surfSrc.match(/const rooms = requireWritableRooms\(\);/g) || []).length >= 5 &&
+  !/const rooms = loadRooms\(\);/.test(surfSrc)
+  ? ok("rooms.json 坏掉时写侧 fail closed（建群/回合/编排/转录都拒，不落空目录覆盖历史）")
+  : bad("rooms store not fail-closed on corruption");
+/roomsStoreStatus\(\)/.test(mainSrc) &&
+  /rooms_store_unreadable/.test(mainSrc) &&
+  !/return \{ ok: true, rooms: surface\.loadRooms\(\) \}/.test(mainSrc) &&
+  /broadcast\("bitbot:rooms-changed", st\.ok \?/.test(mainSrc)
+  ? ok("rooms:list 与 rooms-changed 都带 ok 标志：读不到就说读不到，不报「空目录」")
+  : bad("rooms IPC still hides store failures");
+/if \(res && res\.ok === false\) return null;/.test(html) &&
+  /if \(entries === null\)/.test(html) && /roomTranscriptReadFail/.test(html) &&
+  /room-list-readfail/.test(html) && /roomListReadFail/.test(html)
+  ? ok("渲染层区分「空群」与「读不到」：转录与侧栏都不把存储故障演成历史消失")
+  : bad("renderer conflates empty room with unreadable store");
+const ffiSrc = fs.readFileSync(path.join(REPO, "hosts/shared/host_ffi.js"), "utf8");
+/res = surface\.roomTurn\(hitRoom\.id/.test(ffiSrc) &&
+  /surface\.appendRoomTranscript\(hitRoom\.id, res\.transcript_entry\)/.test(ffiSrc) &&
+  (ffiSrc.match(/rooms_store_unreadable/g) || []).length >= 3
+  ? ok("内核 effect 循环同样 fail closed：坏存储报错跳过，不让异常炸掉整批回合")
+  : bad("host_ffi room effects not guarded against unreadable rooms store");
+/window\.bitbot\.rooms\.onRoomsChanged/.test(html) &&
+  /if \(!list\.some\(\(x\) => x && x\.id === composerRoom\.id\)\) exitRoomChat\(\);/.test(html) &&
+  /onRoomsChanged\(\(ev\) => \{[\s\S]{0,700}exitRoomChat\(\);/.test(html)
+  ? ok("目录里群已消失（成员掉到 2 人以下被丢弃）时诚实退出，不留空壳会话")
+  : bad("renderer keeps a phantom room session after directory change");
+
+/* GP-143/146：点名点到非成员 —— 不假装定向成功，如实告知处理方式。 */
+/unknownMentions\.push\(/.test(surfSrc) && /unknown_mentions: unknownMentions\.length/.test(surfSrc)
+  ? ok("roomTurn 记 unknown_mentions（Host 侧留痕，渲染层据此说明）")
+  : bad("unknown_mentions not recorded in roomTurn");
+/e\.unknown_mentions/.test(html) && /roomUnknownMention/.test(html)
+  ? ok("渲染层把「提及不在本群」如实说给用户（不静默改判成全员应答）")
+  : bad("renderer does not surface unknown mentions");
+
+/* GP-146 产品态文案：失败原因说人话，协议码只在 dev-mode 追加；结果说明卡
+ * 必须在整表重绘之后落位（重绘会清空 .room-thread，先画就等于「一闪就没」）。 */
+/function roomFailReason\(raw\)/.test(html) && /function roomOpFailReason\(raw\)/.test(html) &&
+  /return devModeOn\(\) \? label \+ " · " \+ s : label;/.test(html) &&
+  /outcome = \{ kind: "error", reason: roomOpFailReason\(res && res\.error\) \}/.test(html) &&
+  /await renderRoomTranscript\(roomId\);\s*\n\s*if \(outcome\) roomAppend\(roomOutcomeCard\(outcome\)\);/.test(html) &&
+  !/why\.textContent = devModeOn\(\)/.test(html)
+  ? ok("群聊失败卡走本地化语义，原始码仅 dev-mode 可见，且说明卡在重绘后落位")
+  : bad("room failure copy not localized / outcome card not persisted");
+/res\.deduped/.test(html) && /roomReportDeduped/.test(html)
+  ? ok("幂等命中时如实说明「同一任务未重复执行」，不让人以为又跑了一遍")
+  : bad("dedupe notice missing");
 
 /* GP-146: transcript renders per entry, not one concatenated text blob. */
 /async function renderRoomTranscript\(roomId\)/.test(html) &&
@@ -117,9 +197,13 @@ const roomFn = roomFnStart < 0 ? "" : mainSrc.slice(roomFnStart, mainSrc.indexOf
   "roomMe", "roomWorking", "roomReplyFailed", "roomNoReason", "roomReportHead",
   "roomReportCount", "roomReportPartial", "roomReportComplete", "roomReportTask",
   "roomArtifactsLabel", "roomPolicyMentioned", "roomPolicyAll", "roomPolicyDiscretion",
-  "roomStartFailed", "roomStartFailedHint"]
+  "roomStartFailed", "roomStartFailedHint", "roomFailTimeout", "roomFailNoReply",
+  "roomFailRunner", "roomFailNotFound", "roomFailProvider", "roomFailTooMany",
+  "roomFailNotMember", "roomFailRoomGone", "roomFailEmpty", "roomFailBusy",
+  "roomTextClipped", "roomUnknownMention", "roomReportDeduped",
+  "roomTranscriptReadFail", "roomListReadFail"]
   .every((k) => new RegExp(k + ': "').test(html))
-  ? ok("20 个群聊文案在 zh-CN / zh-TW / en 三套 i18n 齐全")
+  ? ok("35 个群聊文案在 zh-CN / zh-TW / en 三套 i18n 齐全")
   : bad("i18n keys missing in some locale");
 
 /* ---------- 2) 行为层：真实 rooms store ---------- */

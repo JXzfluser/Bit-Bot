@@ -306,7 +306,40 @@ GP-146 群渲染）。**口径先钉住**：这是 **Host 产品路径**的闭�
 2. **群卡片颜色写死十六进制**：破 `prove_ui_tokens` T-2（html 裸 hex 基线 28）且暗色主题不正确。
    修复：改用 `--danger / --danger-ink / --warn / --warn-line / --warn-ink`。
 
-### 8.4 安全与转录卫生
+### 8.4 细节波（同轮二次审计修掉的 5 个真产品缺陷）
+
+用户面闭环跑通后再审一遍，找到并修掉的都不是「锦上添花」，而是会让人误判事实的缺陷：
+
+1. **结果说明卡被整表重绘吃掉**：`sendRoomTurn` 先画失败/幂等说明卡，再 `renderRoomTranscript()`
+   重绘 —— 重绘第一行就 `innerHTML = ""`，所以拒绝原因在用户屏幕上**一闪就没**，看起来像「发出去
+   了但没反应」。修复：把说明卡延到重绘之后落位（`await renderRoomTranscript(roomId)` →
+   `if (outcome) roomAppend(roomOutcomeCard(outcome))`）。
+2. **幂等命中/护栏拒绝闪假「工作中」态**：运行态广播原先在 IPC 入口无条件发，等于「还没扇出就
+   宣布在跑」。修复：改由 engine 在真正扇出时回调 `deps.onFanout`，幂等命中与非成员拒绝零广播。
+3. **共享转录无界**：`bot_reply.text`、`final_report.sections[].summary`、失败原因都曾是上游全文
+   落 `rooms.json`（一条回复可撑爆整个群面）。修复：`clipRoomText` 统一截断（正文 ≤4000、摘要/任务
+   ≤240、原因 ≤200）并如实带 `text_truncated` / `summary_truncated` / `error_truncated`；
+   `task_sig` 保持原文，幂等身份不能模糊。
+4. **产品态把协议码/上游原文摊给用户**：失败卡曾直接显示 `(responder_timeout)` 一类内部串。修复：
+   `roomFailReason` / `roomOpFailReason` 走本地化语义（协议码只在 dev-mode 追加），磁盘仍保留可审计
+   原文；点名点到非成员时记 `unknown_mentions` 并按「未点名」处理，界面如实说明「不在本群成员里」，
+   不静默改判成全员应答。
+5. **存储故障被演成「历史没了」**（本小波新增，风险最高的一类）：`readJson` 对坏 `rooms.json` 静默
+   回落空目录，于是（a）`rooms:list` 报 `ok:true` + 空列表，用户看到「还没有任何消息 / 一个群都没有」；
+   （b）任何一次写（建群 / 群回合 / 编排 / 追加转录）都会把空目录**原子覆盖**回磁盘 —— 一次故障就
+   永久抹掉全部群聊历史。修复分三层：
+   - `product_surface.js`：新增 `roomsStoreStatus()`（读侧如实标 unreadable）与
+     `requireWritableRooms()`（写侧 fail closed，坏文件直接拒绝，绝不落空目录）；6 个写入点全部改用后者。
+   - `main.js` / `preload.js`：`bitbot:rooms:list` 与 `bitbot:rooms-changed` 都带 `ok` 标志；
+     新增 `rooms.onRoomsChanged`，渲染层据此刷新侧栏并在「当前群已不在目录里」时自动 `exitRoomChat()`
+     （不留空壳会话）。
+   - `host_ffi.js`：内核 `room_turn` / `appendRoomTranscript` / `handoff_task` effect 包 try/catch，
+     坏存储如实回 `rooms_store_unreadable` 并继续处理其余命令，不让异常炸掉整批回合。
+   - 渲染层区分「空群」与「读不到」：`readRoomTranscript` 读失败返回 `null`（≠ `[]`），
+     `.room-thread-readfail` / `.room-list-readfail` 用 `roomTranscriptReadFail` / `roomListReadFail`
+     说明「这不代表群里没有消息」，恢复后按原文件重建卡片。
+
+### 8.5 安全与转录卫生
 
 - responder 回合的敏感动作仍走原审批门：`runRoomResponderTurn` 固定 `approved: false`，
   路径里不出现 `approvals.decide` / `auto_approved` / `approveAll`（静态断言进
@@ -315,13 +348,14 @@ GP-146 群渲染）。**口径先钉住**：这是 **Host 产品路径**的闭�
 - 转录卫生在 Host 侧收口：`roomSafeText` + `secret_protocol.TOKEN_RULES` + `REDACTED`，
   并以 `ROOM_DEBUG_RE` 断言可见文本不含 `entry=` / `account=` / `masked` / 内部路径。
 
-### 8.5 命令与实测结果（真 Electron + xvfb + 真 `moon` + 本地 OpenAI 兼容 stub）
+### 8.6 命令与实测结果（真 Electron + xvfb + 真 `moon` + 本地 OpenAI 兼容 stub）
 
 ```
 pkill -9 -f "dist/electron"; pkill -9 -f openai_compat_stub      # 清残留，避免 EADDRINUSE 9223/8801
 node --check hosts/desktop/main.js hosts/desktop/product_surface.js hosts/desktop/preload.js
+node --check hosts/shared/host_ffi.js
 ELECTRON_DISABLE_SANDBOX=1 GP145_SHOT_DIR=/tmp/gp145-shots \
-  xvfb-run -a node scripts/e2e_desktop_room_orchestration.mjs     # 真渲染门（本波新增）
+  xvfb-run -a node scripts/e2e_desktop_room_orchestration.mjs     # 真渲染门 S1–S14（细节波后复跑）
 xvfb-run -a node scripts/e2e_grok_desktop_boot.mjs
 xvfb-run -a node scripts/e2e_desktop_layout_target.mjs
 xvfb-run -a node scripts/e2e_desktop_shell_v2.mjs
@@ -333,19 +367,30 @@ ELECTRON_DISABLE_SANDBOX=1 bash scripts/smoke_grok_desktop_parity.sh
 
 | 门 | 实测 | 关键内容 |
 | --- | --- | --- |
-| `e2e_desktop_room_orchestration.mjs`（新） | **PASS=36 / FAIL=0 / SKIP=0** | 三夹具 Bot（不同 job/description）+ 群经产品 IPC 建立（沿用 UI 的 `+` 编码合同）；S1 seed → S2 `@A @B` 且故意让 B 失败 → `total=2/returned=1/partial=true`、A 的正文含 `简介：/职责：` 而不含 B/C、B 分区 `ok:false` 带原因、UI `收齐 1/2` + `未收齐` 且不含 `已全部收齐`、错误卡点名 `GP145Fail` → S3 `@A @C` 2/2 全部收齐 + persona 严格互斥 → S4 `@A` `mentioned_only` 且工作中卡清零 → S5 重开窗口 DOM 计数 == `rooms.json` 持久计数（`user3/reply4/error1/report3`）→ S6 旧无 `kind` 行 → S7 `.room-thread` 可见文本卫生 → S8 DM persona + `sessions.json` 无群行 → S9 幂等 + IPC 输入护栏（`room_and_text_required` / `room_not_found`，拒了不写行） |
+| `e2e_desktop_room_orchestration.mjs`（新） | **PASS=51 / FAIL=0 / SKIP=0** | 三夹具 Bot（不同 job/description）+ 群经产品 IPC 建立（沿用 UI 的 `+` 编码合同）；S1 seed → S2 `@A @B` 且故意让 B 失败 → `total=2/returned=1/partial=true`、A 的正文含 `简介：/职责：` 而不含 B/C、B 分区 `ok:false` 带原因、UI `收齐 1/2` + `未收齐` 且不含 `已全部收齐`、错误卡点名 `GP145Fail` → S3 `@A @C` 2/2 全部收齐 + persona 严格互斥 → S4 `@A` `mentioned_only` 且工作中卡清零 → S5 重开窗口 DOM 计数 == `rooms.json` 持久计数（`user3/reply4/error1/report3`）→ S6 旧无 `kind` 行 → S7 `.room-thread` 可见文本卫生 → S8 DM persona + `sessions.json` 无群行 → S9 幂等 + IPC 输入护栏（`room_and_text_required` / `room_not_found`，拒了不写行）→
+  S10 持久面逐字段有界（正文 ≤4001 / 原因 ≤201 / 摘要与任务 ≤241）+ 每卡持久 `responder_policy`
+  + 产品面无上游原文、磁盘仍可审计 → S11 composer 重发同任务：`workingAdded=0` 且说明卡在重绘后仍在 →
+  S12 `@GhostNotInRoom` → `unknown_mentions` + `bot_discretion` + 界面如实告知 → S13 半路把
+  `rooms.json` 截断：转录与侧栏都显示「读不到」而非空态，**崩溃前画面 == 恢复后画面**
+  （`{user14/reply12/error4/report8}`，其中说明卡本就只活在会话面），坏存储上的运行被拒绝且磁盘不被覆盖 →
+  S14 群被移出目录后 composer 自动退出（banner 收起、群线程移除、占位回私聊） |
 | `e2e_grok_desktop_boot.mjs` | **PASS=127 / FAIL=0** | 含 GP-143/146 真链段（composer 不再出现 `room <id> ::`、`kind:"user"` 落盘、2 个真 responder、≥2 回复卡、2/2 报告无 partial、退出恢复私聊）；GP-14 两条断言改为「前缀 + 消息 id」合同（persona 注入把原文挤出 90/120 字符截断窗口，属合同写错，非放宽） |
-| `e2e_desktop_layout_target.mjs` | **PASS=12 / FAIL=0** | D-C-03 三语 487 键一致；D-C-01 可见文案 0 未豁免英文；`#log .msg` ≤760 合同保持 |
+| `e2e_desktop_layout_target.mjs` | **PASS=12 / FAIL=0** | D-C-03 三语 502 键一致；D-C-01 可见文案 0 未豁免英文；`#log .msg` ≤760 合同保持 |
 | `e2e_desktop_shell_v2.mjs` | **PASS=89 / FAIL=0** | 外壳波回归不破 |
-| `prove_gp143_orchestration.js` | **PASS=18 / FAIL=0** | 2 responder 成功、1 失败 → 1/2 partial、@only、@everyone、递归、幂等、非成员、超时、预算 ≤6、上下文隔离（每 responder 收到自己的 bot_id/name/job） |
-| `prove_m29_roomchat.js` | **PASS=27 / FAIL=0** | 新增：群 composer 走 `rooms.orchestrate`、responder 用自己的 botId、preload 暴露、按条目渲染 + 工作中卡、`approved:false` 不自动放行、转录卫生 Host 侧收口、点开私聊退出群 composer |
+| `prove_gp143_orchestration.js` | **PASS=36 / FAIL=0** | 2 responder 成功、1 失败 → 1/2 partial、@only、@everyone、递归、幂等、非成员、超时、预算 ≤6、上下文隔离（每 responder 收到自己的 bot_id/name/job）+ M/N 有界转录 + O `onFanout` 只在真扇出时一次 + P `unknown_mentions` 上限 5 + **Q 坏存储读写面（`roomsStoreStatus` 如实报、`roomCreate`/`orchestrateRoom` 拒绝且不覆盖、文件缺失 ≠ 故障）** |
+| `prove_m29_roomchat.js` | **PASS=40 / FAIL=0** | 新增：群 composer 走 `rooms.orchestrate`、responder 用自己的 botId、preload 暴露、按条目渲染 + 工作中卡、`approved:false` 不自动放行、转录卫生 Host 侧收口、点开私聊退出群 composer、**存储故障诚实面**（写侧 fail closed / IPC 带 `ok` / 渲染层区分空群与读不到 / 目录消失自动退出 / 内核 effect 层 try-catch）、35 个群聊文案三语齐平 |
 | `prove_ui_tokens.js` | **PASS=8 / FAIL=0** | T-1 `!important` 346、T-2 html 裸 hex 28 基线未涨 |
-| `smoke_grok_desktop_parity.sh` | **PASS=318 / FAIL=0** | G-29 群聊段扩到 10 条（编排引擎契约 + 诚实性断言）；G-16 内部跑 boot e2e 127 全绿 |
+| `smoke_grok_desktop_parity.sh` | **PASS=321 / FAIL=0** | G-29 群聊段扩到 11 条（编排引擎契约 + 诚实性 + 新增「存储故障诚实」一条）；G-16 内部跑 boot e2e 127 全绿 |
 
-证据：`/tmp/gp145-shots/gp145-1-room-empty.png`…`gp145-6-dm-persona.png`（工作中卡、`1/2 未收齐`、
-`2/2 已全部收齐`、重开一致、DM persona）与 `gp145-rooms-evidence.json`（持久行原文摘录）。
+证据：`/tmp/gp145-shots/gp145-1-room-empty.png`…`gp145-9-store-recovered.png`（工作中卡、`1/2 未收齐`、
+`2/2 已全部收齐`、重开一致、DM persona、幂等说明卡、未命中点名、存储读不到、恢复后重建）与
+`gp145-rooms-evidence.json`（持久行原文摘录）。
 
-### 8.6 诚实残留
+> 细节波复跑口径：`e2e_grok_desktop_boot` / `e2e_desktop_layout_target` / `e2e_desktop_shell_v2` 与
+> 全量 `smoke` 都在渲染层最终态之后重跑（`127/0`、`12/0`、`89/0`、`321/0`，D-C-03 实测 502 键），
+> 不是沿用改动前的数字。
+
+### 8.7 诚实残留
 
 - 内核 `Orchestrate` / `final_report` 意图与 `moon test` 等价未做；本轮只在 Host 产品路径闭环。
 - `data/approvals/pending-approvals.jsonl` 的行**不带 `bot_id`**，因此「审批/密钥请求只出现在
