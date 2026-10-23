@@ -5352,13 +5352,48 @@ function createHostFfi(repoRoot) {
     }
   }
 
-  function llmSystemPrompt(botId) {
+  /**
+   * GP-148 §1-J3：群上下文 → system 文本块。只渲染 Host 已经清洗过的四类事实
+   * （群名 / 成员名字+职责+简介 / 本轮被 @ / 自己），不读记忆、不拼路径、
+   * 不带协议字段；DM 传 null 时返回空串，所以「私聊里没有群名单」是结构保证，
+   * 不是靠提示词叮嘱。
+   */
+  function llmRoomContextBlock(rc) {
+    if (!rc || typeof rc !== "object") return "";
+    const members = Array.isArray(rc.members) ? rc.members : [];
+    const rows = [];
+    for (const m of members) {
+      const name = String((m && m.name) || "").trim();
+      if (!name) continue;
+      const bits = [];
+      if (m.job) bits.push("职责：" + m.job);
+      if (m.description) bits.push("简介：" + m.description);
+      rows.push("· " + name + (bits.length ? "（" + bits.join("；") + "）" : ""));
+    }
+    if (!rows.length) return "";
+    const mentioned = (Array.isArray(rc.mentioned) ? rc.mentioned : [])
+      .map((s) => String(s || "").trim())
+      .filter(Boolean);
+    const self = String(rc.self || "").trim();
+    const head = "当前群聊：" + String(rc.title || "").trim();
+    const at = "本轮被 @：" + (mentioned.length ? mentioned.join("、") : self || "（无）");
+    return (
+      "\n" + head +
+      "\n群成员：\n" + rows.join("\n") +
+      "\n" + at +
+      "\n发言纪律：只以自己的职责发言，不要替别的成员宣布他们的职责；" +
+      "被问到成员或名单时按上面的群成员如实列出，不得声称自己看不到群成员列表。"
+    );
+  }
+
+  function llmSystemPrompt(botId, roomContext) {
     const base =
       "你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。";
     const persona = botPersona(botId);
-    return persona
+    const lead = persona
       ? base + "\n你正在以专属 Bot 的身份回答。" + persona + "。请只以该身份作答，不要自称其他 Bot。"
       : base;
+    return lead + llmRoomContextBlock(roomContext);
   }
 
   async function executeLlmChat(command, llmOpts) {
@@ -5436,7 +5471,12 @@ function createHostFfi(repoRoot) {
     const messages = [
       {
         role: "system",
-        content: llmSystemPrompt(llmOpts && llmOpts.botId),
+        // GP-148: roomContext is only ever set on a group turn — a DM passes
+        // nothing, so the room's member list can't leak into a private chat.
+        content: llmSystemPrompt(
+          llmOpts && llmOpts.botId,
+          llmOpts && llmOpts.roomContext,
+        ),
       },
     ];
     if (replyToId && replyQuote) {
@@ -23514,6 +23554,9 @@ function createHostFfi(repoRoot) {
             // GP-145: whose turn this is → the Host reads that Bot's job /
             // description fresh from bots.json and puts it in the system message.
             botId: (ffiOpts && ffiOpts.botId) || "",
+            // GP-148 (P0-1):群名 + 成员名单 + 本轮被 @ 的人,由 Host 组装后
+            // 一路带到 provider 的请求体里。DM 永远是 null。
+            roomContext: (ffiOpts && ffiOpts.roomContext) || null,
           }),
         );
         continue;
@@ -23992,7 +24035,20 @@ function createHostFfi(repoRoot) {
         }
         const args = parseWaveGCommand(cmd);
         const res = surface.createRoom(args.bots, args.title);
-        results.push({ kind, ok: res.ok, command: cmd, stdout: JSON.stringify(res), stderr: "", mode: res.mode });
+        results.push({
+          kind,
+          ok: res.ok,
+          command: cmd,
+          stdout: JSON.stringify(res),
+          stderr: "",
+          mode: res.mode,
+          // GP-148：建房结果要能被主进程转成「用户看得见的回执」，所以把结构化
+          // 事实（真建出来的 room / 没认出来的名字）原样带出来，措辞留给 Host。
+          error: res.error || "",
+          room: res.room || null,
+          names_not_found: Array.isArray(res.names_not_found) ? res.names_not_found : [],
+          existing: Boolean(res.existing),
+        });
         continue;
       }
 

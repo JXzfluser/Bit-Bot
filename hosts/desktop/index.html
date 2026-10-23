@@ -4973,6 +4973,25 @@
       log.scrollTop = log.scrollHeight;
       return el;
     }
+    function renderRoomSystem(e) {
+      // GP-148 §1-J2：建房回执是事实行，不是某个 Bot 说的话——所以不走气泡、
+      // 不带头像，只标「系统 + 时间 + 原文」。文案由 Host 写死，这里不改写。
+      const el = document.createElement("div");
+      el.className = "room-system";
+      el.style.cssText =
+        "display:flex;flex-direction:column;gap:2px;padding:4px 0;color:var(--muted);font-size:var(--text-sm)";
+      el.appendChild(
+        roomSpeakerRow({
+          name: wavegT("roomSystemSpeaker"),
+          time: roomTime(e.at),
+        }),
+      );
+      const txt = document.createElement("div");
+      txt.className = "rs-sec-text room-system-text";
+      txt.textContent = String(e.text || "");
+      el.appendChild(txt);
+      return roomAppend(el);
+    }
     function renderRoomUser(e) {
       const el = addMsg("user", String(e.text || ""), { actions: false });
       el.classList.add("room-user");
@@ -5144,6 +5163,7 @@
         if (kind === "final_report") renderRoomFinalReport(e);
         else if (kind === "bot_reply") renderRoomBotReply(e, false);
         else if (kind === "bot_reply_error") renderRoomBotReply(e, true);
+        else if (kind === "system") renderRoomSystem(e); // GP-148：建房回执
         else renderRoomUser(e); // kind:"user" 与旧式无 kind rows 同为「用户行」
       }
       return entries;
@@ -10421,6 +10441,7 @@
         roomComposerPh: "在群里发消息…（@Name 定向）",
         roomTranscriptEmpty: "这是群聊的开始——还没有任何消息。",
         roomTranscriptHead: "群聊记录（最近 {n} 条）：",
+        roomSystemSpeaker: "系统",
         roomMe: "我",
         roomWorking: "工作中…",
         roomReplyFailed: "回复失败",
@@ -10931,6 +10952,7 @@
         roomComposerPh: "在群裡發消息…（@Name 定向）",
         roomTranscriptEmpty: "這是群聊的開始——還沒有任何消息。",
         roomTranscriptHead: "群聊記錄（最近 {n} 條）：",
+        roomSystemSpeaker: "系統",
         roomMe: "我",
         roomWorking: "工作中…",
         roomReplyFailed: "回覆失敗",
@@ -11441,6 +11463,7 @@
         roomComposerPh: "Message the group… (@Name to direct)",
         roomTranscriptEmpty: "This is the start of the group — no messages yet.",
         roomTranscriptHead: "Group transcript (last {n}):",
+        roomSystemSpeaker: "System",
         roomMe: "Me",
         roomWorking: "working…",
         roomReplyFailed: "reply failed",

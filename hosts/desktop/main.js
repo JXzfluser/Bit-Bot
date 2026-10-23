@@ -1243,6 +1243,111 @@ function roomSafeText(raw) {
     .trim();
 }
 
+/**
+ * GP-148 §1-J3：群回合的 provider 上下文。P0-1 的根因是 responder 回合走的是
+ * 普通 DM 路径，system 里只有 persona，没有群名/成员名单/本轮被 @，所以两个 Bot
+ * 都答不出「这个群有谁」，还会互相冒充。这里只组装被 §3 允许的四类事实：
+ * 群名、成员（名字/职责/简介）、本轮被 @ 的人、自己的名字——
+ * 不带记忆、路径、协议字段、密钥，且逐字段清洗 + 截断（群名/名字是用户可写文本）。
+ * 私聊路径不调用它（DM 传 null），因此 DM 永远不会带出群名单。
+ */
+function buildRoomContext(roomId, botId, ctx) {
+  const rid = String(roomId || "").trim();
+  if (!rid) return null;
+  let room = null;
+  try {
+    const st = surface.roomsStoreStatus();
+    if (!st || !st.ok) return null;
+    room = ((st.rooms && st.rooms.rooms) || []).find((r) => r && r.id === rid) || null;
+  } catch (_) {
+    return null;
+  }
+  if (!room) return null;
+  const bots = (surface.loadBots().bots) || [];
+  const maxField = 80;
+  const maxTotal = Number(process.env.BITBOT_ROOM_TEXT_MAX || 1200);
+  const clip = (v) => String(v == null ? "" : v)
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[ \u0000-\u001f]+/g, " ")
+    .trim()
+    .slice(0, maxField);
+  const members = (room.members || []).map((id) => {
+    const b = bots.find((x) => x && x.id === id) || {};
+    return { name: clip(b.name || id), job: clip(b.job || ""), description: clip(b.description || "") };
+  });
+  const mentioned = ((ctx && ctx.mentioned_names) || []).map(clip).filter(Boolean);
+  const self = clip((bots.find((b) => b && b.id === botId) || {}).name || (ctx && ctx.name) || "");
+  let out = {
+    room_id: rid,
+    title: clip(room.title || ""),
+    members,
+    mentioned,
+    self,
+    chars: 0,
+  };
+  // 总量护栏：成员很多时按顺序截断，宁可少带几个名字，也不把整段塞成无界 prompt。
+  const budget = Number.isFinite(maxTotal) && maxTotal > 0 ? maxTotal : 1200;
+  const kept = [];
+  let used = out.title.length + out.mentioned.join(",").length + out.self.length;
+  for (const m of out.members) {
+    const cost = m.name.length + m.job.length + m.description.length + 4;
+    if (used + cost > budget) break;
+    kept.push(m);
+    used += cost;
+  }
+  out.members = kept;
+  out.chars = used;
+  return out;
+}
+
+/**
+ * GP-148 §1-J2：建房回执由 Host 写，不让内核替用户宣布成功。
+ * 内核这条意图历史上只会回一句「已计划群聊（GP-50）…」——那是给开发者看的调试
+ * 口径，用户读完不知道群到底建没建。这里按 host_results 里的真实结果生成一句
+ * 确定回执：真建出来了就报名单，没建出来就点名是谁没找到，绝不粉饰。
+ * 返回 "" 表示本轮没有建房效果。
+ */
+function groupChatReceiptText(result) {
+  const host = (result && Array.isArray(result.host_results)) ? result.host_results : [];
+  const hit = host.find((h) => h && h.kind === "group_chat");
+  if (!hit) return "";
+  const room = hit.room || null;
+  const names = room && Array.isArray(room.members)
+    ? room.members.map((id) => {
+        const b = ((surface.loadBots().bots) || []).find((x) => x && x.id === id);
+        return String((b && b.name) || id);
+      })
+    : [];
+  if (hit.ok && room && names.length) {
+    const title = String(room.title || "").trim() || "（未命名）";
+    const head = hit.existing
+      ? `群聊「${title}」刚刚已经建好了，这一句没有重复建第二个。`
+      : `已创建群聊「${title}」。`;
+    return head + `成员 ${names.length} 人：${names.join("、")}。侧栏已打开这个群。`;
+  }
+  if (!hit.ok && hit.error === "names_not_found") {
+    const missing = (Array.isArray(hit.names_not_found) ? hit.names_not_found : [])
+      .map((s) => String(s || "").trim()).filter(Boolean);
+    const known = (Array.isArray(hit.resolved_names) ? hit.resolved_names : [])
+      .map((s) => String(s || "").trim()).filter(Boolean);
+    return (
+      (missing.length ? `没找到 ${missing.join("、")}，` : "") +
+      "所以这个群没有创建。" +
+      (known.length ? `认出的人只有 ${known.join("、")}。` : "") +
+      "群聊需要 2–6 个真实存在的 Bot，名字对上以后再试一次。"
+    );
+  }
+  if (!hit.ok && hit.error === "members_2_to_6") {
+    const n = Number(hit.resolved_count);
+    return (
+      "这个群没有创建：" +
+      (Number.isFinite(n) ? `只认出 ${n} 个成员，` : "") +
+      "群聊需要 2–6 个真实存在的 Bot。"
+    );
+  }
+  return "这个群没有创建（Host 拒绝了这次建房请求），没有假装成功。";
+}
+
 async function runRoomResponderTurn(botId, task, ctx) {
   const id = String(botId || "").trim();
   if (!id) return { ok: false, error: "responder_missing" };
@@ -1260,6 +1365,9 @@ async function runRoomResponderTurn(botId, task, ctx) {
       // 编排不改变审批语义：群回合同样必须过原审批门。
       approved: false,
       botId: id,
+      // GP-148 §1-J3：群回合带群上下文进 provider；DM 路径不会走到这里，
+      // 所以「私聊不许出现群名单」是由调用点保证的，不是靠 prompt 里叮嘱。
+      roomContext: buildRoomContext((ctx && ctx.room) || "", id, ctx),
       onProgress: (ev) => {
         const row = Object.assign({}, ev, { bot_id: id, room_id: (ctx && ctx.room) || "" });
         rows.push(row);
@@ -2271,6 +2379,30 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       },
     });
     const rawText = String(text || "").trim();
+    // GP-148 §1-J2：把 Host 的建房事实变成用户看得见的一句回执，并让侧栏立刻
+    // 刷新。回执走的是 result.messages 这条既有通道（可选新增一条 assistant
+    // 行），所以既进 transcript，也进 session 存储，渲染层不需要新契约。
+    let roomReceipt = "";
+    try {
+      roomReceipt = groupChatReceiptText(result);
+    } catch (_) {
+      roomReceipt = "";
+    }
+    if (roomReceipt) {
+      if (result && Array.isArray(result.messages)) {
+        result.messages.push({ role: "assistant", text: roomReceipt });
+      }
+      const touched = ((result && result.host_results) || [])
+        .find((h) => h && h.kind === "group_chat");
+      if (touched && touched.ok) {
+        try {
+          const st = surface.roomsStoreStatus();
+          broadcast("bitbot:rooms-changed", st && st.ok ? { ok: true, rooms: st.rooms } : { ok: false, error: (st && st.error) || "rooms_unavailable" });
+        } catch (_) {
+          broadcast("bitbot:rooms-changed", { ok: false, error: "rooms_unavailable" });
+        }
+      }
+    }
     const skipSession =
       !!(opts && opts.skipSession) ||
       /^listmachines$/i.test(rawText) ||

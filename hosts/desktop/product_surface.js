@@ -1303,49 +1303,117 @@ function createProductSurface(repoRoot) {
     atomicWrite(ROOMS_PATH, JSON.stringify(data, null, 2));
   }
 
+  /**
+   * GP-148 §1-J2：自然语言建房的 Host 落点。三条硬要求：
+   *  1) 名字认不出来就点名返回 names_not_found，绝不建「少一个人的残群」，
+   *     也绝不返回 ok:true 假装成功；
+   *  2) 同成员 + 同群名在短窗内重复 → 返回既有群（幂等），不新建第二个；
+   *  3) 建房成功时在 transcript 落一条确定的 kind:"system" 回执行（带群名与
+   *     成员名单），用户在同一次回合里就能看见「群真的建出来了」，侧栏也有成员数。
+   * 既有返回形状 {ok,mode,pretend_saved,room} 不变，只新增可选字段。
+   */
+  const ROOM_DUP_WINDOW_MS = Number(process.env.BITBOT_ROOM_DUP_WINDOW_MS || 10 * 60 * 1000);
   function roomCreate(bots_csv, title) {
     const data = loadBots();
     const botsList = data.bots;
+    const nameOf = (id) => {
+      const b = botsList.find(x => x && x.id === id);
+      return b ? String(b.name || b.id) : String(id);
+    };
 
     // Parse bots_csv
     const memberIds = String(bots_csv || "").split(",").map(s => s.trim()).filter(Boolean);
 
     // Resolve member IDs/names
     const resolved = [];
+    const names_not_found = [];
     for (const idOrName of memberIds) {
       // Accept "bit" as alias for "agent-bit"
       if (idOrName === "bit" || idOrName === "agent-bit") {
         const bot = botsList.find(b => b.id === "agent-bit");
-        if (bot) resolved.push(bot.id);
+        if (bot) {
+          if (!resolved.includes(bot.id)) resolved.push(bot.id);
+        } else if (!names_not_found.includes(idOrName)) {
+          names_not_found.push(idOrName);
+        }
         continue;
       }
       const bot = botsList.find(b => b.id === idOrName || b.name === idOrName);
-      if (bot) resolved.push(bot.id);
+      if (bot) {
+        if (!resolved.includes(bot.id)) resolved.push(bot.id);
+      } else if (!names_not_found.includes(idOrName)) {
+        names_not_found.push(idOrName);
+      }
+    }
+
+    // 负例优先：只要有一个点名说不出来，就不建残群（哪怕剩下的人数已经够 2 个）。
+    if (names_not_found.length) {
+      return {
+        ok: false,
+        error: "names_not_found",
+        names_not_found,
+        resolved_names: resolved.map(nameOf),
+        mode: "host_group_chat",
+        pretend_saved: false
+      };
     }
 
     if (resolved.length < 2 || resolved.length > 6) {
       return {
         ok: false,
         error: "members_2_to_6",
-        mode: "host_group_chat"
+        resolved_count: resolved.length,
+        names_not_found: [],
+        mode: "host_group_chat",
+        pretend_saved: false
       };
     }
 
     // Generate title if empty
     if (!title || !title.trim()) {
-      const names = resolved.map(id => {
-        const bot = botsList.find(b => b.id === id);
-        return bot ? bot.name : id;
-      });
+      const names = resolved.map(nameOf);
       title = `Group · ${names[0]} + ${names[1]}`;
     }
+    const finalTitle = title.trim();
+    const setKey = resolved.slice().sort().join(",");
 
     const rooms = requireWritableRooms();
+
+    // 幂等：同成员同群名在短窗内重复 → 直接把既有群还给调用方，不新建。
+    const dupMs = Number.isFinite(ROOM_DUP_WINDOW_MS) && ROOM_DUP_WINDOW_MS > 0
+      ? ROOM_DUP_WINDOW_MS : 10 * 60 * 1000;
+    const existing = (rooms.rooms || []).find(r => {
+      if (!r || String(r.title || "") !== finalTitle) return false;
+      if ((r.members || []).slice().sort().join(",") !== setKey) return false;
+      const at = Date.parse(String(r.created_at || ""));
+      return Number.isNaN(at) ? false : Date.now() - at <= dupMs;
+    });
+    if (existing) {
+      return {
+        ok: true,
+        mode: "host_group_chat",
+        existing: true,
+        pretend_saved: false,
+        room: existing
+      };
+    }
+
+    const at = nowIso();
+    const names = resolved.map(nameOf);
+    const roomId = "room-" + Date.now().toString(36);
     const room = {
-      id: "room-" + Date.now().toString(36),
-      title: title.trim(),
+      id: roomId,
+      title: finalTitle,
       members: resolved,
-      created_at: nowIso()
+      created_at: at,
+      // 确定的建房回执：内核不参与措辞，Host 一次写好，渲染层按 kind 渲染。
+      transcript: [{
+        kind: "system",
+        room_id: roomId,
+        speaker: "system",
+        text: `已创建群聊「${finalTitle}」，成员 ${names.length} 人：${names.join("、")}。`,
+        at
+      }]
     };
     rooms.rooms.push(room);
     saveRooms(rooms);
@@ -1551,7 +1619,16 @@ function createProductSurface(repoRoot) {
     _orchInflight.add(taskSig);
     return (async () => {
       const settled = await Promise.allSettled(responders.map(async (r) => {
-        const ctx = { room: room.id, bot_id: r.id, name: r.name, job: r.job, description: r.description };
+        // GP-148 §1-J3：除身份之外，把「本轮被 @ 的是谁」也带给 Host —— 这是
+        // provider 群上下文里唯一无法从 rooms.json 反推的事实（路由已经算好了）。
+        const ctx = {
+          room: room.id,
+          bot_id: r.id,
+          name: r.name,
+          job: r.job,
+          description: r.description,
+          mentioned_names: responders.map((x) => String((x && x.name) || "")).filter(Boolean),
+        };
         try {
           const out = await withTimeout(deps.runResponderTurn(r.id, task, ctx));
           return { bot_id: r.id, name: r.name, ok: !!(out && out.ok !== false), text: String((out && out.text) || ""), artifacts: (out && out.artifacts) || [], error: (out && out.error) || null };

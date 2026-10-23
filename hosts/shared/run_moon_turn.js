@@ -230,6 +230,9 @@ function createTurnRunner(repoRoot, opts = {}) {
         onProgress: typeof ctx.onProgress === "function" ? ctx.onProgress : undefined,
         turnId: String(parsed.turn_id || ctx.turnId || "host-cont"),
         sessionId: String(ctx.sessionId || ""),
+        // GP-148 §1-J3：群上下文是 Host 侧事实（rooms.json + bots.json + 本轮路由），
+        // 内核不参与拼装，只负责把这个对象原样转交给 llm_chat 效果。DM 不传 → null。
+        roomContext: ctx.roomContext || null,
         replyTo: (replyQuote && replyQuote.message_id) || "",
         replyQuote:
           (replyQuote && replyQuote.resolved && replyQuote.text) || "",
