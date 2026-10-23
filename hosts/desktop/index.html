@@ -1777,7 +1777,9 @@
         <div class="st-title" data-i18n="settingsGeneral">常规</div>
         <div class="gp-label" data-i18n="appearance">外观</div>
         <div class="gp-row" id="gp-appearance-row">
-          <button type="button" class="gp-chip" data-appearance="system" data-i18n="followSystem">跟随系统</button>
+          <!-- GP-148 §1-J4：外观的「跟随系统」和语言的「跟随系统」原来共用一个 key，
+               繁體界面里同一句出现两次，用户分不清在跟什么。外观这颗改成「系統預設」。 -->
+          <button type="button" class="gp-chip" data-appearance="system" data-i18n="appearanceFollow">系统默认</button>
           <button type="button" class="gp-chip" data-appearance="light" data-i18n="light">浅色</button>
           <button type="button" class="gp-chip" data-appearance="dark" data-i18n="dark">深色</button>
         </div>
@@ -1808,14 +1810,16 @@
         </div>
         <div class="gp-label" data-i18n="autoReview">自动复核规则（「先询问」优先于「自动允许」）</div>
         <div class="gp-row">
+          <!-- GP-148 §1-J4：这些选项原来是硬编码简体，切到繁體后设置页里就混进
+               简体词。改成走 i18n（三语各一份），和页面其它文案同一套合同。 -->
           <select id="gp-rule-kind" class="gp-select">
-            <option value="shell">执行命令</option>
-            <option value="channel_send">发送消息</option>
-            <option value="mail_send">发送邮件</option>
-            <option value="purchase_item">发起购买</option>
-            <option value="mcp_call">调用工具</option>
-            <option value="computer_use">操作电脑</option>
-            <option value="delegate_task">委派任务</option>
+            <option value="shell" data-i18n="ruleShell">执行命令</option>
+            <option value="channel_send" data-i18n="ruleChannelSend">发送消息</option>
+            <option value="mail_send" data-i18n="ruleMailSend">发送邮件</option>
+            <option value="purchase_item" data-i18n="rulePurchase">发起购买</option>
+            <option value="mcp_call" data-i18n="ruleMcpCall">调用工具</option>
+            <option value="computer_use" data-i18n="ruleComputerUse">操作电脑</option>
+            <option value="delegate_task" data-i18n="ruleDelegate">委派任务</option>
           </select>
           <button type="button" class="gp-chip" id="gp-rule-allow" data-i18n="allowAuto">自动允许</button>
           <button type="button" class="gp-chip" id="gp-rule-ask" data-i18n="askFirst">先询问</button>
@@ -1872,6 +1876,12 @@
         <div class="st-note">Key 与凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
         <div class="st-card">
           <div class="st-card-title">模型</div>
+          <!-- GP-148 §1-J4：产品态的模型/供应商面板入口。表头那颗芯片在精简外壳里
+               是隐藏的（shell_v2 S-HEADER 要求），所以这里给一个正经入口，和密钥表单
+               读同一个 Host 数据源（llmCatalog + secrets）。 -->
+          <div class="gp-row" style="margin-bottom:8px">
+            <button type="button" class="gp-chip" id="sec-model-open" data-i18n="secModelOpen">模型与供应商</button>
+          </div>
           <label class="st-field"><span class="st-field-name">DeepSeek API Key <span id="sec-llm-mask"></span></span>
             <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
           </label>
@@ -9811,6 +9821,9 @@
     // Header model entry → "模型" Sheet (single entry, no per-channel chips).
     const modelEntry = document.getElementById("model-entry");
     if (modelEntry) modelEntry.addEventListener("click", (ev) => openModelSheet(ev.currentTarget));
+    // GP-148 §1-J4：Settings → 凭证 里的产品入口（表头芯片在精简外壳下是隐藏的）。
+    const secModelOpen = document.getElementById("sec-model-open");
+    if (secModelOpen) secModelOpen.addEventListener("click", (ev) => openModelSheet(ev.currentTarget));
     const modelCloseBtn = document.getElementById("model-close");
     if (modelCloseBtn) modelCloseBtn.addEventListener("click", closeModelSheet);
     bbBindSheetMask("model-modal");
@@ -10227,10 +10240,13 @@
       } catch (_) {
         /* ignore */
       }
+      // GP-148 §1-J4：规则种类的名字以前是硬编码简体，切到繁體后这里也会露出简体。
+      // 改用和下拉框同一组 i18n key，两处显示永远一致。
       const KIND_LABEL = {
-        shell: "执行命令", channel_send: "发送消息", mail_send: "发送邮件",
-        purchase_item: "发起购买", mcp_call: "调用工具", computer_use: "操作电脑",
-        delegate_task: "委派任务",
+        shell: wavegT("ruleShell"), channel_send: wavegT("ruleChannelSend"),
+        mail_send: wavegT("ruleMailSend"), purchase_item: wavegT("rulePurchase"),
+        mcp_call: wavegT("ruleMcpCall"), computer_use: wavegT("ruleComputerUse"),
+        delegate_task: wavegT("ruleDelegate"),
       };
       const kindLabel = (p) => KIND_LABEL[String(p || "").split(":")[0]] || String(p || "");
       box.innerHTML = "";
@@ -10546,6 +10562,14 @@
         settingsClose: "关闭",
         appearance: "外观",
         followSystem: "跟随系统",
+        appearanceFollow: "系统默认",
+        ruleShell: "执行命令",
+        ruleChannelSend: "发送消息",
+        ruleMailSend: "发送邮件",
+        rulePurchase: "发起购买",
+        ruleMcpCall: "调用工具",
+        ruleComputerUse: "操作电脑",
+        ruleDelegate: "委派任务",
         light: "浅色",
         dark: "深色",
         language: "语言",
@@ -10560,6 +10584,7 @@
         askFirst: "先询问",
         usageBilling: "用量与账单（本周真实 LLM 用量；无数据即空态，不造假）",
         credentials: "模型与密钥",
+        secModelOpen: "模型与供应商",
         takeover: "接管",
         takeoverTitle: "接管 — 你正在直接操作本机屏幕",
         takeoverHint: "密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。",
@@ -10883,8 +10908,8 @@
         connectApps: "連接應用",
         hiddenBots: "已隱藏的 Bot",
         rooms: "群組",
-        marketplace: "Marketplace",
-        mkTitle: "Marketplace · Bot 模板",
+        marketplace: "範本市集",
+        mkTitle: "範本市集 · Bot 模板",
         mkHint: "選擇一個模板即可快速建立 Bot。",
         mkLoading: "載入模板中…",
         mkError: "模板目錄讀取失敗",
@@ -11057,11 +11082,19 @@
         settingsClose: "關閉",
         appearance: "外觀",
         followSystem: "跟隨系統",
+        appearanceFollow: "系統預設",
+        ruleShell: "執行命令",
+        ruleChannelSend: "發送訊息",
+        ruleMailSend: "發送郵件",
+        rulePurchase: "發起購買",
+        ruleMcpCall: "呼叫工具",
+        ruleComputerUse: "操作電腦",
+        ruleDelegate: "委派任務",
         light: "淺色",
         dark: "深色",
         language: "語言",
         timezone: "Bot 時區（排程按此區計算）",
-        locExec: "本機執行（Computer 權限）",
+        locExec: "本機執行（電腦權限）",
         askEveryTime: "每次詢問",
         alwaysAllowBtn: "總是允許",
         neverAllow: "從不允許",
@@ -11071,6 +11104,7 @@
         askFirst: "先詢問",
         usageBilling: "用量與帳單（本週真實 LLM 用量；無資料即空態，不造假）",
         credentials: "產品憑證 · 開放設定（不寫死）",
+        secModelOpen: "模型與供應商",
         takeover: "接管",
         takeoverTitle: "接管 — 你正在直接操作本機螢幕",
         takeoverHint: "密碼 / 驗證碼 / 2FA 請在本機輸入，不要貼進對話。",
@@ -11088,7 +11122,7 @@
         model: "模型",
         machines: "機器",
         gpPanel: "Grok Parity 面板",
-        gpComputer: "Computer",
+        gpComputer: "電腦",
         gpGroup: "群組",
         gpApprovals: "背景審批",
         gpClose: "關閉",
@@ -11096,7 +11130,7 @@
         hkNewChat: "新增對話",
         hkSearch: "搜尋會話",
         hkToggleSidebar: "折疊 / 展開側欄",
-        hkComputer: "開啟 Computer 面板",
+        hkComputer: "開啟電腦面板",
         hkConnectApps: "開啟連線應用",
         hkVoice: "語音輸入（錄音中再按一次停止）",
         hkSend: "送出訊息",
@@ -11241,9 +11275,9 @@
         rBotHide: "已從側欄隱藏（可在「已隱藏的 Bot」恢復）；Bot 與排程任務未暫停，仍在執行。",
         rBotUnhide: "已恢復到側欄。",
         rCuBusy: "{bot} 正在執行另一個 computer-use 任務（{task}），同一 Bot 同時只跑一個；換其他 Bot 可並行。",
-        rBotDeleteConfirm: "刪除不可撤銷：將一併移除設定、私聊對話與排程任務（共用 Computer 檔案保留）。只是嫌亂的話，隱藏更可逆。",
-        rBotDeleteGo: "正在刪除：設定、對話與排程任務已級聯清理（共用 Computer 檔案保留）。",
-        rBotDeleteDone: "已刪除 Bot：對話 {sess} 個、排程任務 {routines} 個已級聯清理；共用 Computer 檔案保留 {kept} 個。",
+        rBotDeleteConfirm: "刪除不可撤銷：將一併移除設定、私聊對話與排程任務（共用電腦檔案保留）。只是嫌亂的話，隱藏更可逆。",
+        rBotDeleteGo: "正在刪除：設定、對話與排程任務已級聯清理（共用電腦檔案保留）。",
+        rBotDeleteDone: "已刪除 Bot：對話 {sess} 個、排程任務 {routines} 個已級聯清理；共用電腦檔案保留 {kept} 個。",
         rBotDeleteBuiltin: "內建 Bit Bot（agent-bit）不可刪除。",
         menuPin: "釘選",
         menuUnpin: "取消釘選",
@@ -11254,25 +11288,25 @@
         menuEdit: "編輯設定檔…",
         menuDelete: "刪除…",
         deleteAdvise: "建議改用隱藏：隱藏不刪資料、隨時可恢復。",
-        deleteWarn: "刪除不可撤銷，將級聯移除該 Bot 的對話與排程任務（共用 Computer 檔案保留）。",
+        deleteWarn: "刪除不可撤銷，將級聯移除該 Bot 的對話與排程任務（共用電腦檔案保留）。",
         deleteConfirmBtn: "確認刪除",
         deleteHideBtn: "改為隱藏",
         deleteCancelBtn: "取消",
-        computerPreview: "Computer 預覽",
+        computerPreview: "電腦預覽",
         crActivity: "Bot 活動（點擊 / 輸入 / 導覽 / 狀態）",
         crNoActivity: "暫無活動記錄 — Bot 執行 computer-use / 截圖後自動出現。",
         crIdle: "空閒（未收到幀）",
         crLeaveNote: "離開預覽不影響 Bot 背景任務。",
-        rComputerPreview: "已開啟 Computer 預覽（右側面板）— 關閉預覽不影響背景任務。",
+        rComputerPreview: "已開啟電腦預覽（右側面板）— 關閉預覽不影響背景任務。",
         tabGeneral: "一般",
-        tabComputer: "Computer",
+        tabComputer: "電腦",
         tabCredentials: "憑證",
         tabUsage: "用量與帳單",
         tabUpdates: "更新",
-        botComputer: "Bot 的 Computer（雲端電腦）",
-        updateComputerBtn: "更新 Bot 的 Computer",
-        resetComputerBtn: "重設 Bot 的 Computer",
-        crNoComputer: "未讀取到 Computer 狀態。",
+        botComputer: "Bot 的雲端電腦",
+        updateComputerBtn: "更新 Bot 的電腦",
+        resetComputerBtn: "重設 Bot 的電腦",
+        crNoComputer: "未讀取到電腦狀態。",
         checkUpdatesBtn: "檢查更新",
         restartUpdateBtn: "重新啟動並安裝",
         updatesIdle: "尚未檢查 — 點「檢查更新」（沙箱未打包時誠實顯示 residual）。",
@@ -11281,15 +11315,15 @@
         updatesReadyRestart: "更新已下載 — 可重啟安裝",
         updatesLastCheck: "上次檢查",
         updatesNeverChecked: "從未檢查",
-        updatesComputerSafe: "應用更新不會重置 Computer 檔案",
+        updatesComputerSafe: "應用更新不會重置電腦檔案",
         updatesChecking: "檢查中…",
         updatesAvailable: "發現新版本 {v} — 下載完成後「重新啟動並安裝」可用。",
         updatesLatest: "已是最新版本。",
         updatesResidual: "更新檢查不可用：{e}",
         updatesDownloaded: "更新已下載 — 可重啟安裝。",
-        rCheckUpdates: "已開啟設定 → 更新（update-channel），與「更新 Bot 的 Computer」是兩回事。",
-        rUpdateComputer: "已發起更新 Bot 的 Computer（兩步確認，Host 真實執行）。",
-        rResetComputer: "已發起重設 Bot 的 Computer（非首選；會重建雲端電腦）。",
+        rCheckUpdates: "已開啟設定 → 更新（update-channel），與「更新 Bot 的電腦」是兩回事。",
+        rUpdateComputer: "已發起更新 Bot 的電腦（兩步確認，Host 真實執行）。",
+        rResetComputer: "已發起重設 Bot 的電腦（非首選；會重建雲端電腦）。",
         caTitle: "連接應用",
         caClose: "關閉",
         caGlobal: "外掛對這台電腦全域生效 — 安裝後所有 Bot 都能使用。",
@@ -11568,6 +11602,14 @@
         settingsClose: "Close",
         appearance: "Appearance",
         followSystem: "Follow System",
+        appearanceFollow: "System default",
+        ruleShell: "Run commands",
+        ruleChannelSend: "Send messages",
+        ruleMailSend: "Send mail",
+        rulePurchase: "Start a purchase",
+        ruleMcpCall: "Call a tool",
+        ruleComputerUse: "Control computer",
+        ruleDelegate: "Delegate a task",
         light: "Light",
         dark: "Dark",
         language: "Language",
@@ -11582,6 +11624,7 @@
         askFirst: "Ask first",
         usageBilling: "Usage & Billing (real weekly LLM usage; empty state, never faked)",
         credentials: "Product credentials · open config (never baked in)",
+        secModelOpen: "Model & provider",
         takeover: "Take over",
         takeoverTitle: "Take over — you are controlling this screen directly",
         takeoverHint: "Type passwords / codes / 2FA on the machine — never paste them into chat.",
