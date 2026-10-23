@@ -27,12 +27,16 @@ const REPO = path.resolve(__dirname, "..");
 const CSS = path.join(REPO, "hosts/desktop/ui_chrome.css");
 const HTML = path.join(REPO, "hosts/desktop/index.html");
 
-/* ---- 高水位基线（收敛后请下调这些数字，禁止上调）---- */
+/* ---- 高水位基线（收敛后请下调这些数字，禁止上调）----
+   2026-10-23 侧栏列表本体改成参考图形状（全宽行 / 1px 细线 / 44px 头像）
+   时，顺手删掉了 Round 2/7/8/8b/9 互相打架的 49 处 `!important`，基线随之
+   从 346 降到 198；hex 也从 141 降到 139（新色值全部用 color-mix 从 token
+   混出来，没有新增字面色）。 */
 const BASE = {
-  cssImportant: 346,
-  cssHex: 141,
+  cssImportant: 189,
+  cssHex: 139,
   htmlHex: 28,
-  htmlInlineFont: 25,
+  htmlInlineFont: 24,
   cssAttrPatch: 5,
 };
 

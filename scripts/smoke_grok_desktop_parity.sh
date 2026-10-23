@@ -1436,12 +1436,12 @@ grep -q "msg-actions：改用 opacity + pointer-events 淡入" /tmp/g39-probe.lo
 grep -q "msg-actions button:active → scale" /tmp/g39-probe.log 2>/dev/null \
   && ok "G-39 GP-M39：msg-actions button :active scale(0.96) 按压反馈" \
   || bad "G-39 button press missing"
-grep -q "sess-row:hover translateX" /tmp/g39-probe.log 2>/dev/null \
-  && ok "G-39 GP-M39：sess-row hover translateX(1px) 微滑" \
+grep -q "sess-row:hover 背景色带" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：sess-row hover 整行色带（参考图无位移）" \
   || bad "G-39 sess-row hover missing"
-grep -q "sess-row:active scale" /tmp/g39-probe.log 2>/dev/null \
-  && ok "G-39 GP-M39：sess-row active scale(0.995) 极轻按压" \
-  || bad "G-39 sess-row press missing"
+grep -q "sess-row 是圆角色带、行间无分隔线" /tmp/g39-probe.log 2>/dev/null \
+  && ok "G-39 GP-M39：sess-row 圆角色带、行间无分隔线（参考图形状）" \
+  || bad "G-39 sess-row shape missing"
 grep -q "#send:active scale" /tmp/g39-probe.log 2>/dev/null \
   && ok "G-39 GP-M39：#send :active scale(0.94) 发送键反馈" \
   || bad "G-39 send press missing"

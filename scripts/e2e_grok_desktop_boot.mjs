@@ -26,6 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { decodePng, avgLuma, pixelAt, encodeRgbPng } from "./lib_png_pixel.mjs";
+import { resolveElectronBinary } from "./electron_bin.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..");
@@ -37,6 +38,59 @@ const ACCOUNT_PATH = path.join(REPO, "data/desktop/account-profile.json");
 // GP-14: the reply chain writes message rows + provider artifacts; snapshot the
 // transcript store too so the whole E2E stays double-run idempotent.
 const SESSIONS_PATH = path.join(REPO, "data/desktop/sessions.json");
+const BOTS_PATH = path.join(REPO, "data/desktop/bots.json");
+
+/* 多 Bot 用例（群聊 / 记忆 / 排序 / GP-119）需要「≥2 个可见 Bot，且至少一个未固定」。
+   以前它们直接 bad("…need two visible Bots")，于是在单人开发机（store 里只有
+   agent-bit）上永远是红的 —— 红在数据前置上，不是红在代码上，反而挡住真回归。
+   这里在跑之前补足探针 Bot，进程退出时按快照还原；已经是多 Bot 的环境不动。 */
+function ensureProbeBots() {
+  let raw;
+  try {
+    raw = fs.readFileSync(BOTS_PATH, "utf8");
+  } catch (_) {
+    return () => {};
+  }
+  const parsed = JSON.parse(raw);
+  const bots = Array.isArray(parsed.bots) ? parsed.bots : [];
+  const visible = () => bots.filter((b) => b && b.id && !b.hidden);
+  const probe = (n) => {
+    // 用极早的时间戳：侧栏按 updated_at 排序，探针必须排在真实 Bot 之后，
+    // 否则「第一行是哪个 Bot」会变，依赖行序的用例（GP-127 置顶）会换靶子。
+    const t = "2000-01-01T00:00:00.000Z";
+    return {
+      id: "e2e-probe-bot-" + n,
+      name: "E2E 探针 " + n,
+      job: "e2e fixture",
+      description: "temporary fixture created by e2e_grok_desktop_boot (restored on exit)",
+      avatar: "",
+      hidden: false,
+      pinned: false,
+      created_at: t,
+      updated_at: t,
+    };
+  };
+  let added = 0;
+  while (visible().length < 2) bots.push(probe(++added));
+  if (!visible().some((b) => !b.pinned)) bots.push(probe(++added));
+  if (!added) return () => {};
+  parsed.bots = bots;
+  fs.writeFileSync(BOTS_PATH, JSON.stringify(parsed, null, 2));
+  let restored = false;
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    try {
+      fs.writeFileSync(BOTS_PATH, raw);
+    } catch (_) {
+      /* ignore */
+    }
+  };
+  process.on("exit", restore);
+  console.log("  · 已补 " + added + " 个探针 Bot（退出时还原 bots.json）");
+  return restore;
+}
+
 let PASS = 0;
 let FAIL = 0;
 const ok = (name) => {
@@ -99,10 +153,7 @@ function liveDisplay() {
 }
 
 async function launchOnce(extraEnv) {
-  const electronBinary = path.join(
-    REPO,
-    "hosts/desktop/node_modules/electron/dist/electron",
-  );
+  const electronBinary = resolveElectronBinary(path.join(REPO, "hosts/desktop"));
   const app = await _electron.launch({
     executablePath: electronBinary,
     args: [
@@ -187,6 +238,7 @@ async function pollRows(p, pred, { timeoutMs = 12000 } = {}) {
 }
 
 async function main() {
+  ensureProbeBots();
   const outDir = process.env.BITBOT_E2E_OUT || "/tmp/e2e-m15";
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -705,8 +757,11 @@ async function main() {
           text: (document.querySelector("#log .msg-reply-quote") || {}).textContent || "",
         };
       }, reloadSessionId);
+      // 引用条正文会被折叠空白并截断，所以两边都先归一化再比对——
+      // 否则原文末尾一个换行就会让 includes 假红（不是产品问题）。
+      const norm = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
       reload.found && reload.away === 0 && reload.chips > 0 &&
-        reload.text.includes(String(target ? target.text : "GP14").slice(0, 24))
+        norm(reload.text).includes(norm(target ? target.text : "GP14").slice(0, 24))
         ? ok("E2E GP-14：切到新会话引用消失、切回原会话引用从 store 重建（" + reload.chips + " 处）")
         : bad("E2E GP-14 reload", JSON.stringify(reload).slice(0, 200));
 
@@ -1836,6 +1891,17 @@ async function main() {
           null,
           { timeout: 10000 },
         ).catch(() => {});
+        // 置顶按钮在一轮 Host 回合里是 disabled 的（防连点）。第一次点击后
+        // bots.json 会先变，但面板要等 runUserTurn + refreshBots + refreshBotRail
+        // 全跑完才会重新可用；不等就点，点到的是已禁用的旧按钮，等于没点。
+        await win.waitForFunction(
+          () => {
+            const b = document.querySelectorAll("#br-actions .gp-chip")[1];
+            return Boolean(b) && !b.disabled;
+          },
+          null,
+          { timeout: 30000 },
+        ).catch(() => {});
         await win.evaluate(() => {
           document.querySelectorAll("#br-actions .gp-chip")[1].click();
         });
@@ -2322,7 +2388,9 @@ async function main() {
           ph: document.querySelector("#composer #text").placeholder,
           thread: document.querySelectorAll(".room-thread").length,
         }));
-        afterExit.hidden && afterExit.ph.includes("Shift+Enter") && afterExit.thread === 0
+        // 占位文案本身会变（Grok 单行胶囊里塞不下「Shift+Enter 换行」，那类提示
+        // 已经移到 title 上）；这里只断言「回到了 DM 语境」，不锁死某一句话。
+        afterExit.hidden && afterExit.ph.length > 0 && !afterExit.ph.includes("群") && afterExit.thread === 0
           ? ok("E2E GP-119/M29：退出群聊恢复 DM composer（banner 收起 + placeholder 复原 + 群线程移除）")
           : bad("E2E GP-119 exit room", JSON.stringify(afterExit));
         await shutdown(bootM29.app);

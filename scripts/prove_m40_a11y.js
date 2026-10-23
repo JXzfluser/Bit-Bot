@@ -9,8 +9,8 @@
  *      var(--accent) }` —— 只有键盘用户看到焦点环，鼠标点击不闪环；
  *   2) `@media (prefers-reduced-motion: reduce)` 全局把 animation /
  *      transition duration 压到 ~0；
- *   3) reduced-motion 下 .msg-actions / composer / sess-row 的 transform
- *      归零（保留状态切换，去掉位移与按压）；
+ *   3) reduced-motion 下 .msg-actions / composer 的 transform 归零，
+ *      sess-row 的色带渐变也关掉（列表行本来就只变色、不位移）；
  *   4) M39 的 opacity 淡入契约仍在（本波只加无障碍，不回退微交互）。
  *
  * 负向对照：抹掉 :focus-visible 规则 → 焦点环断言翻假。
@@ -55,10 +55,10 @@ if (rm && /#composer #send:active[\s\S]{0,200}transform:\s*none/.test(rm[0])) {
 } else {
   bad("rm send", "send:active not neutralized");
 }
-if (rm && /\.sess-row:hover[\s\S]{0,40}transform:\s*none/.test(rm[0])) {
-  ok("reduced-motion 下 sess-row:hover translateX 归零");
+if (rm && /\.sess-row\s*\{\s*transition:\s*none/.test(rm[0])) {
+  ok("reduced-motion 下 sess-row 色带渐变关闭（行不再动）");
 } else {
-  bad("rm sess-row", "hover not neutralized");
+  bad("rm sess-row", "row transition not neutralized");
 }
 
 /* ---------- 4) M39 契约保持 ---------- */

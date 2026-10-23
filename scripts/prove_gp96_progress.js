@@ -192,12 +192,15 @@ async function main() {
 
   // GP-97 slow provider: the FIRST progress event must arrive well before the
   // turn resolves. The stub holds the HTTP response for 800ms; if progress
-  // only fired after delivery, all wall times would be >=800ms. The first
-  // event at <100ms proves the UI row is visible while the provider is still
-  // thinking — the whole point of §5.7.
+  // only fired after delivery, all wall times would be >=800ms. The point of
+  // §5.7 is that the UI row is visible while the provider is still thinking.
+  //
+  // 判据从"绝对 100ms"改成"至少比回合结束早一半（且本身在 400ms 内）"：
+  // 绝对阈值卡的是机器负载，不是行为。并行跑 33 个门禁时首个事件会到
+  // 101~149ms，断言就红，而 149ms / 976ms 的回合其实完全满足"边想边显示"。
   const firstWall = turnEvents.length > 0 ? turnEvents[0].wall : Infinity;
   const lastWall = turnEvents.length > 0 ? turnEvents[turnEvents.length - 1].wall : 0;
-  firstWall < 100 && lastWall > 500
+  firstWall < 400 && firstWall * 2 < lastWall && lastWall > 500
     ? ok("GP-97 慢 provider 下首个进度事件在 " + firstWall + "ms 可见 (回合 " + lastWall + "ms 才结束)")
     : bad("GP-97 slow provider", JSON.stringify({ first: firstWall, last: lastWall }));
 

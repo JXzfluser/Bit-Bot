@@ -86,9 +86,11 @@ if (titleBlock && /font-size:\s*var\(--text-lg\)/.test(titleBlock[1])) {
 }
 
 /* ---------- 6) M42 / M20 回归护栏 ---------- */
-if (/\.msg\.assistant \+ \.msg\.assistant::before \{[\s\S]*?visibility:\s*hidden/.test(html)
+/* M42 的分组契约以前靠「连续 assistant 隐藏重复头像」来断言；头像按参考图
+   移除后，改用「assistant 满列宽」作为同等强度的分组证据。 */
+if (/\.msg\.assistant \{[\s\S]*?max-width:\s*100%/.test(html)
   && /\.msg\.user \{[^}]*background:\s*var\(--user-bubble\)[^}]*border-radius:\s*18px/.test(html)) {
-  ok("M42 消息流分组 + M20 用户胶囊契约保持");
+  ok("M42 消息流满列宽 + M20 用户胶囊契约保持");
 } else {
   bad("regression", "M42 or M20 broken");
 }

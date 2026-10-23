@@ -29,7 +29,7 @@ console.log("M38 copy / hover-bar / welcome proof");
 const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
 
 /* ---------- 1) attachMessageActions 加 Copy 按钮 ---------- */
-const fn = html.match(/function\s+attachMessageActions[\s\S]{0,3000}?\n\s{4}\}/);
+const fn = html.match(/function\s+attachMessageActions[\s\S]{0,8000}?\n\s{4}\}/);
 if (fn
   && /cp\.dataset\.i18n\s*=\s*"copyAction"/.test(fn[0])
   && /navigator\.clipboard\s*&&\s*navigator\.clipboard\.writeText/.test(fn[0])

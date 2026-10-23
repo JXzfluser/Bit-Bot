@@ -9,7 +9,7 @@
  *      让 transition 真正生效（`display: none` 阻断过渡是常见坑）；
  *   2) `.msg .msg-actions button:active` scale(0.96)，`.msg-actions button`
  *      transition 中包含 `transform 0.06s`；
- *   3) `.sess-row:hover` translateX(1px)、`.sess-row:active` 微缩放；
+ *   3) `.sess-row:hover` 整行背景色带、行间 1px 细线（参考图形状）；
  *   4) `#composer #send:active` scale(0.94)，attach / voice 按钮同样反馈；
  *   5) 上一波 M38 pill / Copy / gradient 契约不破。
  *
@@ -57,16 +57,21 @@ if (/\.msg \.msg-actions button \{[^}]*transition:[^}]*transform[^}]*\}/.test(ht
   bad("button transition", "transform not in transition");
 }
 
-/* ---------- 3) sess-row hover / active ---------- */
-if (/\.sess-row:hover \{[^}]*transform:\s*translateX\(1px\)/.test(html)) {
-  ok("sess-row:hover translateX(1px) —— 侧栏行微滑，指向可点击");
+/* ---------- 3) sess-row hover / 形状 ----------
+   参考图（replica/screens/grok-composer.png）的行是**内缩圆角色带**：
+   行高 58、无描边、**行与行之间没有分隔线**，选中/悬停是 12px 圆角的色带。
+   此前这里钉的是 translateX(1px) / scale(0.995) —— 那是在给一个带描边的
+   卡片行做微交互，形状本身是错的，所以断言跟着形状一起改。 */
+if (/\.sess-row:hover \{[^}]*background:\s*var\(--nav-row-hover\)/.test(html)) {
+  ok("sess-row:hover 背景色带（参考图无位移，整行变色）");
 } else {
-  bad("sess-row hover", "no translateX feedback");
+  bad("sess-row hover", "no hover tint on the list row");
 }
-if (/\.sess-row:active \{[^}]*scale\(0\.995\)/.test(html)) {
-  ok("sess-row:active scale(0.995) —— 极轻按压，避免视觉噪声");
+if (/\.sess-row \{[\s\S]{0,400}?border-radius:\s*var\(--radius-xl\)/.test(html)
+  && !/\.sess-row \+ \.sess-row/.test(html)) {
+  ok("sess-row 是圆角色带、行间无分隔线（参考图实测：行间距为 0）");
 } else {
-  bad("sess-row active", "no scale feedback");
+  bad("sess-row shape", "row is not an inset rounded band without separators");
 }
 
 /* ---------- 4) composer send press ---------- */

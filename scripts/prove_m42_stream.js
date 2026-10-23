@@ -51,22 +51,36 @@ if (userBlock
   bad("user tail", "radius contract or tail missing");
 }
 
-/* ---------- 3) assistant 气泡尾角 + bot-bubble ---------- */
+/* ---------- 3) assistant 气泡：Grok 的平面块（无描边 / 无投影 / 满列宽） ----------
+   原断言要求 `border-top-left-radius: 8px`（朝 32px 头像的尾角）。参考图
+   replica/screens/grok-composer.png 里 assistant 是**无头像、无描边、无阴影**的
+   整列平面块，尾角是因为有头像才存在的东西；头像没了，尾角一起删。 */
 const botBlock = html.match(/\.msg\.assistant \.body \{([\s\S]*?)\}/);
 if (botBlock
   && /background:\s*var\(--bot-bubble\)/.test(botBlock[1])
-  && /border-top-left-radius:\s*8px/.test(botBlock[1])) {
-  ok("assistant 气泡：var(--bot-bubble) + 左上 8px 尾角（朝头像）");
+  && /border:\s*0/.test(botBlock[1])
+  && /box-shadow:\s*none/.test(botBlock[1])
+  && /border-radius:\s*var\(--radius-xl\)/.test(botBlock[1])) {
+  ok("assistant 气泡：var(--bot-bubble) 平面块（无描边、无投影、统一圆角）");
 } else {
-  bad("assistant tail", "bot-bubble or tail radius missing");
+  bad("assistant flat", "bot-bubble / border:0 / box-shadow:none / radius missing");
 }
 
-/* ---------- 4) 连续 assistant 分组 ---------- */
-if (/\.msg\.assistant \+ \.msg\.assistant::before \{\s*visibility:\s*hidden\s*;?\s*\}/.test(html)) {
-  ok("连续 assistant 行隐藏重复头像（相邻选择器）");
+/* ---------- 4) 满列宽 + 无头像 + 连续行收紧 ---------- */
+const asstBlock = html.match(/\.msg\.assistant \{([\s\S]*?)\}/);
+if (asstBlock && /width:\s*100%/.test(asstBlock[1]) && /max-width:\s*100%/.test(asstBlock[1])) {
+  ok("assistant 满列宽（旧的 85% 上限已去掉，与参考图一致）");
 } else {
-  bad("grouping avatar", "consecutive assistant ::before not hidden");
+  bad("assistant width", "assistant not full column");
 }
+
+/* 头像圆点是旧的「卡片」语言；参考图没有。负向断言，防止它被某个轮次加回来。 */
+if (!/\.msg\.assistant::before \{[\s\S]*?border-radius:\s*50%/.test(html)) {
+  ok("assistant 头像圆点已移除（Grok 参考图无头像）");
+} else {
+  bad("assistant avatar", "avatar dot painted again");
+}
+
 if (/\.msg\.assistant \+ \.msg\.assistant \{\s*margin-top:\s*-6px\s*;?\s*\}/.test(html)) {
   ok("连续 assistant 行 margin-top 收紧（-6px）形成同一条对话流节奏");
 } else {

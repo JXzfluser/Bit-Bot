@@ -69,3 +69,6 @@ docs/design/desktop-target/reference/modal-computed.json
 
 # 用户旅程门禁证据（截图 + provider 请求记录），不入仓
 /artifacts/
+
+# 聊天附件落盘目录（按会话 id 生成，属运行时数据，不入仓）
+/data/workspace/uploads/

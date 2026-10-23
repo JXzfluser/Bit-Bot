@@ -348,7 +348,7 @@ async function main() {
     : bad("GP-105 badge source", "source list not shown");
 
   /const fenceText = applyUntrustedBodyTo\(el, text\);/.test(html) &&
-    /applyLinkBodyTo\(el\.querySelector\("\.body"\), fenceText\)/.test(html)
+    /applyLinkBodyTo\(\s*(?:el\.querySelector\("\.body"\)|bodyEl)\s*,\s*fenceText\s*\)/.test(html)
     ? ok("GP-105 去标签后的文本仍走 GP-93 唯一安全渲染路径")
     : bad("GP-105 render path", "fenced text bypasses applyLinkBodyTo");
 

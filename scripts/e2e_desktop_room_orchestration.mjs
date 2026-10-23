@@ -32,10 +32,11 @@ import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import { execSync, spawn } from "child_process";
 
+import { resolveElectronBinary } from "./electron_bin.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
-const ELECTRON = path.join(DESKTOP, "node_modules/electron/dist/electron");
+const ELECTRON = resolveElectronBinary(DESKTOP);
 const ROOMS = path.join(REPO, "data/desktop/rooms.json");
 const SESSIONS = path.join(REPO, "data/desktop/sessions.json");
 // 证据目录：默认写进 reference/（.png 约定上不入仓），可用 GP145_SHOT_DIR 覆盖。

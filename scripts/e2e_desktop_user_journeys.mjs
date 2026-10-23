@@ -32,10 +32,11 @@ import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import { execSync, spawn } from "child_process";
 
+import { resolveElectronBinary } from "./electron_bin.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
-const ELECTRON = path.join(DESKTOP, "node_modules/electron/dist/electron");
+const ELECTRON = resolveElectronBinary(DESKTOP);
 const DATA = path.join(REPO, "data/desktop");
 const ROOMS = path.join(DATA, "rooms.json");
 const SESSIONS = path.join(DATA, "sessions.json");

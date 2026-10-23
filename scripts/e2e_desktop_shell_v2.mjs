@@ -37,10 +37,11 @@ import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import { execSync } from "child_process";
 
+import { resolveElectronBinary } from "./electron_bin.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
-const ELECTRON = path.join(DESKTOP, "node_modules/electron/dist/electron");
+const ELECTRON = resolveElectronBinary(DESKTOP);
 const SETTINGS_JSON = path.join(REPO, "data/desktop/settings.json");
 const OUT = path.join(REPO, "docs/design/desktop-target/reference");
 let PASS = 0, FAIL = 0, SKIP = 0;
