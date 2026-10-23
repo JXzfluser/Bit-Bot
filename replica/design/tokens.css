@@ -1,0 +1,71 @@
+/* replica/design/tokens.css
+ * Bit Bot Grok 缺口设计 token（replica-design 产出，落地点草稿）
+ * 严格对齐 docs/design/desktop-target/ui-unified-spec.md §2 单一源。
+ * 作用域：body.grok-ui（治理 M-5）。缺口侧仅新增 --code-bg 一个角色。
+ * 落地方式：合并进 hosts/desktop/ui_chrome.css 顶部唯一 token 块，不新建第二套皮肤。
+ * 消费方：replica-build 落地的 5 个缺口组件（markdown / 代码块 / 重新生成 / composer 控件 / 语音）。
+ */
+
+body.grok-ui {
+  /* —— 颜色（语义，对齐 ui-unified-spec §2.1） —— */
+  --bg: #f5f5f7;
+  --bg-elev: #ffffff;
+  --text: #1a1a1a;
+  --text-muted: #6b6b6b;
+  --border: #e6e6e9;
+  --fill: #f4f4f5;
+  --fill-strong: #ebebee;
+  --accent: #1a1a1a;
+  --accent-ink: #ffffff;
+  --danger: #c62f2f;
+  --success: #1f7a4d;
+  /* 缺口新增：markdown 代码块底色（仅此一处新角色） */
+  --code-bg: #f6f8fa;
+
+  /* —— 字体族（§2.2，只在 token 定义一处） —— */
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* —— 类型阶（§2.3） —— */
+  --fs-caption: 13px;     --fs-caption-weight: 500; --fs-caption-lh: 1.4;
+  --fs-body: 14px;        --fs-body-weight: 400;    --fs-body-lh: 1.5;
+  --fs-card-title: 15px;  --fs-card-title-weight: 600; --fs-card-title-lh: 1.4;
+  --fs-display: 21px;     --fs-display-weight: 600; --fs-display-lh: 1.25;
+
+  /* —— 间距阶（§2.4，4px 基） —— */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px;
+
+  /* —— 圆角阶（§2.5） —— */
+  --r-control: 10px;
+  --r-card: 12px;
+  --r-sheet: 16px;
+  --r-pill: 999px;
+
+  /* —— 阴影（§2.6） —— */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .10);
+  --shadow-sheet: 0 24px 64px rgba(0, 0, 0, .18);
+
+  /* —— 动效（governance S-1，150–250ms） —— */
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
+  --motion-ease: cubic-bezier(.2, .8, .2, 1);
+
+  /* —— 缺口组件专用几何（不新增全局几何，仅组件内消费） —— */
+  --codeblock-max-h: 420px;
+}
+
+/* 设计侧映射快照（replica/design/tokens.json ↔ ui-unified-spec，便于双向追溯，不消费） */
+body.grok-ui {
+  --replica-surface: var(--bg-elev);
+  --replica-md: var(--text-muted);
+  --replica-code-bg: var(--code-bg);
+}
+
+/* 动效归零（governance S-1） */
+@media (prefers-reduced-motion: reduce) {
+  body.grok-ui {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
+}

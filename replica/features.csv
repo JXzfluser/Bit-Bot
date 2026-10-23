@@ -1,0 +1,14 @@
+﻿feature,area,priority,original,clone,notes
+消息 Markdown 渲染(标题/列表/表格/加粗/链接),对话UX,must,Grok 完整渲染,no,已 grep 核实：代码无 marked.js / DOMPurify / renderMarkdown，回复为纯文本
+代码块语法高亮(语言标签+复制),对话UX,must,Grok 完整(highlight.js),no,无 hljs；与 markdown 同一条渲染管线
+消息重生成(regenerate),对话UX,must,Grok 有 hover 重生成钮,no,仅「编辑消息」存在(#tool-edit-message)，无 regenerate
+用户消息内联编辑,对话UX,should,Grok 就地编辑重发,partial,#tool-edit-message 已存在并接线(index.html:2280/13856)
+联网搜索开关(DeepSearch 等效),对话/工具,must,Grok composer 内 toggle + 来源引用,no,代码无 web search UI/工具；仅模板提示「无需联网」
+模型即时切换(composer 内下拉),对话UX,should,Grok composer 内即时切换,partial,「模型」Sheet(#model-picker)设置级已存在；缺 composer 内即时下拉
+模型推理档(Think/深度模式),对话UX,could,Grok Think/DeepSearch 档,no,设置仅基础模型 ID，无推理档切换
+语音对话(STT 实时语音输入),语音,should,Grok 实时语音对话,partial,#voicechat-btn 被 display:none 故意隐藏；转写依赖外部二进制，默认不可用
+语音消息 relay(发送语音),语音,could,Grok 语音消息,partial,progress_protocol CATEGORY_VOICE + preload voice.ingest 已有(非本次缺口，记录)
+附件多格式预览(图片/PDF/代码),对话UX,should,Grok 全格式预览,partial,GP-90 文件卡 + 全屏查看器基础有
+Canvas 可编辑创作(文档/代码),创作,could,Grok Canvas 可编辑产物,partial,产物文件卡/全屏查看器有，无独立可编辑画布
+搜索结果来源引用呈现,对话UX,should,Grok 引用来源列出,no,依赖联网搜索开关落地后才可做
+消息复制/赞踩操作,对话UX,could,Grok 有复制+反馈,no,index 未见复制钮；需核实(低优先)
