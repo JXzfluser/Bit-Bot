@@ -5707,9 +5707,18 @@
         item.appendChild(prompt);
         const meta = document.createElement("div");
         meta.className = "ri-meta";
-        meta.textContent = r.next_due_label
-          ? t("riNextDue", { t: r.next_due_label })
-          : wavegT("riNever");
+        // GP-157: 一次性任务跑完就停车（next_due 为空）。这种行不能再说
+        // 「还没排上」——那是把「已经做完」显示成「还没开始」，用户会以为
+        // 定时发文没生效，再建一条，于是同一段内容发两次。
+        if (r.next_due_label) {
+          meta.textContent = t("riNextDue", { t: r.next_due_label });
+        } else if (r.once_done && r.last_fired_label) {
+          meta.textContent = t("riDoneAt", { t: r.last_fired_label });
+        } else if (r.once_done) {
+          meta.textContent = wavegT("riDone");
+        } else {
+          meta.textContent = wavegT("riNever");
+        }
         item.appendChild(meta);
         if (r.schedule_error) {
           const err = document.createElement("div");
@@ -11298,6 +11307,8 @@
         riFormEmpty: "先写下要定时做的事，再点添加。",
         riNextDue: "下次 {t}",
         riNever: "还没排上",
+        riDoneAt: "已于 {t} 触发",
+        riDone: "已触发过一次",
         riOff: "已暂停",
         riTzNote: "触发时刻按 Bot 时区 {tz} 计算。",
         riCronError: "排程无法解析：{c}",
@@ -11874,6 +11885,8 @@
         riFormEmpty: "先寫下要定時做的事，再點新增。",
         riNextDue: "下次 {t}",
         riNever: "還沒排上",
+        riDoneAt: "已於 {t} 觸發",
+        riDone: "已觸發過一次",
         riOff: "已暫停",
         riTzNote: "觸發時刻按 Bot 時區 {tz} 計算。",
         riCronError: "排程無法解析：{c}",
@@ -12450,6 +12463,8 @@
         riFormEmpty: "Write what should happen on a schedule first, then press Add.",
         riNextDue: "Next {t}",
         riNever: "Not scheduled yet",
+        riDoneAt: "Fired at {t}",
+        riDone: "Already fired once",
         riOff: "Paused",
         riTzNote: "Fire times use the bot timezone {tz}.",
         riCronError: "Cron cannot be parsed: {c}",

@@ -8443,7 +8443,11 @@ function createHostFfi(repoRoot) {
         updated_at: r.updated_at || null,
         last_fired_at: r.last_fired_at || null,
         schedule_error: r.schedule_error || null,
+        // GP-157: 一次性任务跑完后 next_due 为空，界面不能再报「还没排上」，
+        // 要如实说「已于 … 触发」。可选新字段，旧读取方按缺省处理。
+        once_done: r.once_done === true,
         next_due_label: r.next_due ? wallClockLabel(r.next_due, tz) : null,
+        last_fired_label: r.last_fired_at ? wallClockLabel(r.last_fired_at, tz) : null,
       }));
     return { ok: true, room_id: want, routines, timezone: tz };
   }
@@ -15012,11 +15016,22 @@ function createHostFfi(repoRoot) {
       // 24h. Recompute through the real cron engine; if the stored expression
       // cannot be scheduled, say so on the row instead of inventing a time.
       const reparsed = nextDueFromCron(cron);
-      const nextDue = reparsed.error ? null : reparsed.nextDue;
+      // GP-157: `@now` / `@once` 的「到期」就是现在，它只能被排一次。旧代码把
+      // nextDueFromCron 返回的「现在」又原样写回 next_due，于是每一次 sweep 都
+      // 认为它还没跑 —— 一次性的任务每轮重复触发（实测 70 份草稿 vs 2 份）。
+      // 一次性任务跑完就停车：next_due 置空 + once_done 标记，由 UI 说人话。
+      const oneShot = reparsed.dueNow === true;
+      const nextDue = reparsed.error || oneShot ? null : reparsed.nextDue;
       if (hit) {
         hit.last_fired_at = firedAt;
-        if (nextDue) {
+        if (oneShot) {
+          hit.next_due = null;
+          hit.once_done = true;
+          delete hit.schedule_error;
+        } else if (nextDue) {
           hit.next_due = nextDue;
+          // 重新排上的循环任务要清掉一次性标记，否则「已触发」文案会骗人。
+          delete hit.once_done;
           delete hit.schedule_error;
         } else {
           hit.next_due = null;
@@ -15171,8 +15186,12 @@ function createHostFfi(repoRoot) {
         // GP-153: a row that explicitly failed to reschedule stays parked
         // instead of hammering the fire path on every sweep.
         if (!r.next_due && r.schedule_error) return false;
+        // 从没排上次的旧行：第一次仍要被认领（不把历史饿死）。
         if (!r.next_due && !r.last_fired_at) return true;
-        if (!r.next_due) return true;
+        // GP-157: 「没有 next_due」不等于「现在就该跑」——那正是每轮 sweep 重复
+        // 触发的根因：一次性任务跑完把 next_due 停成 null，下一次 sweep 又把它
+        // 当成到期。停过车（有 last_fired_at）又没有下次时间的行就是不再跑了。
+        if (!r.next_due) return false;
         return Date.parse(r.next_due) <= now;
       });
       const fired = [];
