@@ -830,8 +830,12 @@ body.force-light {
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+/* GP-152 §1-J4（P1-5，实测 220px 高的根因）：.ms-card 是纵向 flex
+ * （flex-direction:column），这里原来的 flex: 1 1 220px 是横向布局的写法，
+ * 在纵向容器里 flex-basis 变成了高度 —— 密钥输入框被拉成 220px 高。
+ * 卡片是单列，正确写法就是占满整行、高度交给 .bb-field。 */
 .ms-key {
-  flex: 1 1 220px;
+  width: 100%;
   min-width: 0;
 }
 .ms-save, .ms-use, .ms-test, .ms-clear {
