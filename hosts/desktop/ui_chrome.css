@@ -45,6 +45,8 @@
   --danger: #b3403a;
   --danger-bg: #fae9e7;
   --danger-ink: #8f332d;
+  --code-bg: var(--bot-bubble);
+  --fill: var(--user-bubble);
   --overlay: rgba(0, 0, 0, 0.35);
   --overlay-strong: rgba(0, 0, 0, 0.88);
   --scrim-lite: rgba(128, 128, 128, 0.06);
@@ -172,6 +174,8 @@
     --danger: #c0554d;
     --danger-bg: #2a1f1d;
     --danger-ink: #e8b4b0;
+    --code-bg: var(--bot-bubble);
+    --fill: var(--user-bubble);
     --overlay: rgba(0, 0, 0, 0.45);
     --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.4);
     --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -204,6 +208,8 @@ body.force-dark {
   --danger: #c0554d;
   --danger-bg: #2a1f1d;
   --danger-ink: #e8b4b0;
+    --code-bg: var(--bot-bubble);
+    --fill: var(--user-bubble);
   --overlay: rgba(0, 0, 0, 0.45);
   --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.4);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -235,6 +241,8 @@ body.force-light {
   --danger: #b3403a;
   --danger-bg: #fae9e7;
   --danger-ink: #8f332d;
+  --code-bg: var(--bot-bubble);
+  --fill: var(--user-bubble);
   --overlay: rgba(0, 0, 0, 0.35);
   --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -896,25 +904,10 @@ body.grok-ui #model-entry {
 body.grok-ui #header-actions > button:hover,
 body.grok-ui #model-entry:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
 
-/* sidebar → clean flat list */
-body.grok-ui #agents {
-  background: var(--side) !important;
-  border-right: 1px solid var(--line) !important;
-  padding: 10px 10px 0 !important;
-  gap: 4px !important;
-}
-body.grok-ui #sidebar-toolbar { margin-bottom: 6px !important; display: flex !important; gap: 8px !important; }
-body.grok-ui #sidebar-toolbar button {
-  width: 36px; height: 36px; border-radius: 10px;
-  background: var(--accent-soft) !important; color: var(--ink) !important;
-  border: 1px solid var(--line) !important; font-size: 18px; line-height: 1;
-}
-body.grok-ui #sidebar-toolbar #sess-new { background: var(--accent) !important; color: var(--accent-ink) !important; border: 0 !important; }
-body.grok-ui .panel-title.panel-head {
-  color: var(--muted) !important; font-size: var(--text-xs) !important;
-  font-weight: 600 !important; letter-spacing: .03em; margin-top: 10px !important;
-}
-body.grok-ui #session-list { margin-top: 4px !important; }
+/* sidebar → clean flat list.  The sidebar's own padding / row shape / section
+   labels are declared ONCE in the sidebar parity block at the end of this
+   file — Round 2, Round 7 and Round 9 each wrote them here with `!important`,
+   so the survivor was whichever round came last, not the reference. */
 
 /* advanced panels hidden by default, revealed via the "管理" toggle */
 body.grok-ui #sb-bots-rooms,
@@ -936,43 +929,22 @@ body.grok-ui:has(#grok-adv-toggle:checked) #hidden-bots-lab { display: block !im
 /* chat area → centered, white, Grok spacing */
 body.grok-ui #main { background: var(--bg0) !important; padding: 0 !important; }
 body.grok-ui #log { max-width: 760px; margin: 0 auto !important; padding: 28px 16px 12px !important; }
-body.grok-ui #composer {
-  max-width: 760px; margin: 0 auto !important; justify-self: center !important;
-  background: var(--g-soft) !important;
-  border: 1px solid var(--line) !important;
-  border-radius: 22px !important;
-  box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
-  padding: 8px 12px !important;
-}
+/* The composer's box (background / radius / border / shadow) is declared ONCE
+   in the parity block at the end of this file. Round 2 declared it here with
+   --g-soft + 22px, Round 4 re-declared margins, Round 8 re-declared radius and
+   padding as a "WorkBuddy-style" two-row box — five writers, one box, last
+   `!important` wins. Do not add a sixth. */
 
 /* ===== Round 3: remove the remaining "console" chrome for Grok parity ===== */
 
-/* Sidebar toolbar was a full-width var(--side) (#f7f7f7) bar — on the white
-   grok-ui sidebar it read as an empty gray box. Make it transparent + left
-   aligned with compact icon buttons (search + new chat), Grok-style. */
-body.grok-ui #sidebar-toolbar {
-  background: transparent !important;
-  justify-content: flex-start !important;
-  align-items: center !important;
-  gap: 8px !important;
-  padding: 8px 2px 6px !important;
-}
-body.grok-ui #sidebar-toolbar > button {
-  flex: 0 0 36px !important;
-  width: 36px !important; height: 36px !important;
-  min-width: 36px !important; max-width: 36px !important;
-  border-radius: 10px !important;
-  border: 1px solid var(--line) !important;
-  background: transparent !important;
-  color: var(--muted) !important;
-  box-shadow: none !important;
-  font-size: 17px !important;
-}
-body.grok-ui #sidebar-toolbar > button:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
-body.grok-ui #sidebar-toolbar #sess-new {
-  background: var(--accent) !important; color: var(--accent-ink) !important;
-  border-color: transparent !important; font-weight: 600 !important;
-}
+/* Sidebar top row (#sidebar-toolbar) used to be re-styled here in four
+   successive rounds — left-aligned, then right-aligned, then a full-width
+   search field, then a blue filled "+", then 32px again. Each round had to
+   out-`!important` the previous one, and the survivor was the *wrong* look:
+   the reference (replica/screens/grok-composer.png) is two 32px circular
+   ghost buttons, right-aligned, above the list — nothing else.
+   The single source now lives in index.html (`#sidebar-toolbar` base rules)
+   plus ONE parity block at the end of this file. Do not patch it here. */
 
 /* Header: keep only a quiet model chip; drop the dev panel buttons (电脑 / 能力). */
 body.grok-ui #gp-panel-btn,
@@ -1025,10 +997,11 @@ body.grok-ui #turn-progress {
 }
 body.grok-ui #turn-progress .tp-dot { background: var(--ink) !important; }
 
-/* Composer: flatten the inner row so the whole composer reads as one rounded pill. */
-body.grok-ui #composer .row {
-  background: transparent !important; border: 0 !important; box-shadow: none !important;
-}
+/* Composer pill host: the visible pill is `.row`, NOT `#composer`. Round 3
+   moved the pill up to `#composer` and flattened `.row`, which dragged
+   `#turn-progress` (a real turn-state line) *inside* the pill and made it a
+   two-row box. Keeping the pill on `.row` leaves the progress line above it,
+   where Grok puts status text. */
 
 /* ===== Round 4: measured against the real local Grok Bot window ===== */
 
@@ -1049,28 +1022,23 @@ body.grok-ui header a,
 body.grok-ui header input { -webkit-app-region: no-drag; }
 body.grok-ui #header-actions { margin-left: auto !important; display: flex !important; align-items: center !important; }
 
-/* Chat: left-aligned column starting at the sidebar edge (Grok's feed look),
-   not a narrow centered column floating mid-window. */
+/* Chat column: ONE 760px reading column, centred. Layout contract §3 and the
+   M42 gate both require `max-width: var(--content-max)` + auto margins here.
+   Round 4 removed the cap for a "left-aligned feed", which produced 770px
+   reply lines — wider than the reference and outside the contract. */
 body.grok-ui #log {
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 16px 24px 12px !important;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 20px 16px 8px;
 }
-body.grok-ui #cfg-strip {
-  max-width: none !important;
-  margin: 0 24px 10px !important;
-  text-align: left !important;
-}
+/* Notices ride the same column as the bubbles so their left edge agrees. */
+body.grok-ui #cfg-strip,
 body.grok-ui #turn-progress {
-  max-width: none !important;
-  margin: 0 24px 6px !important;
+  max-width: var(--content-max);
+  margin: 0 auto 8px;
 }
 
-/* Composer: one clean pill, full width with side margins, no nested input box. */
-body.grok-ui #composer {
-  max-width: none !important;
-  margin: 0 24px 16px !important;
-}
+/* Composer geometry (width / margins) is declared in the parity block at EOF. */
 body.grok-ui #composer .row textarea,
 body.grok-ui #composer .row input {
   background: transparent !important;
@@ -1079,33 +1047,23 @@ body.grok-ui #composer .row input {
 }
 body.grok-ui #voicechat-btn { display: none !important; }
 
-/* Sidebar top icons right-aligned like Grok. */
-body.grok-ui #sidebar-toolbar { justify-content: flex-end !important; }
+/* Sidebar top icons: alignment is set once in the parity block at EOF. */
 
-/* Sidebar footer: Grok keeps a flat, flush account row at the bottom —
-   no floating gray card around 管理/设置/账户. */
-body.grok-ui #sidebar-footer {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-}
+/* Sidebar footer (sticky bottom, opaque mask, full-bleed divider, pill-shaped
+   account row) had FOUR writers here — Round 4 twice, Round 4b, Round 5 — each
+   with `!important`, so the last one won and the mask/divider/padding kept
+   contradicting each other. Declared once now in the sidebar parity block at
+   EOF. Do not patch it here. */
 
 /* ===== Round 4b: fix regressions reported from live render ===== */
 
 /* The footer is a sticky overlay (base CSS position:sticky + z-index) that
-   masks session rows scrolling beneath it. Round-4's transparent background
-   let those rows bleed through — restore an opaque white mask instead. */
-body.grok-ui #sidebar-footer {
-  background: var(--side) !important;
-  border-top: 0 !important;
-}
+   masks session rows scrolling beneath it — it must stay opaque. That mask,
+   the full-bleed divider and the account pill are one declaration set now,
+   in the sidebar parity block at EOF. */
 
-/* The composer must span the chat column. Round-2 set justify-self:center
-   (paired with max-width:760); Round-4 removed the max-width, which turned
-   the composer into a shrink-to-fit floating box. Stretch it instead. */
-body.grok-ui #composer {
-  justify-self: stretch !important;
-}
+/* The composer spans the chat column — settled in the parity block at EOF
+   (it needs max-width + justify-self together, declared once). */
 
 /* ===== Round 5: Grok sidebar behavior ===== */
 
@@ -1117,19 +1075,14 @@ body.grok-ui #model-picker { display: none !important; }
 body.grok-ui .grok-adv-label,
 body.grok-ui #sidebar-settings-btn { display: none !important; }
 
-/* Pin the footer (account row) to the bottom edge of the sidebar. */
+/* Pin the footer (account row) to the bottom edge of the sidebar.
+   #agents is a flex column; children keep natural height (a shrink-to-0 list
+   would push rows below the scrollport where they can never be clicked). */
 body.grok-ui:not([data-sidebar="collapsed"]) #agents {
-  display: flex !important;
-  flex-direction: column !important;
+  display: flex;
+  flex-direction: column;
 }
-/* Sidebar sections must keep their natural height inside the flex column:
-   with default flex-shrink they collapse to 0 once Bot/session lists grow,
-   pushing rows far below the scrollport where they can never be clicked. */
 body.grok-ui #agents > * { flex-shrink: 0; }
-body.grok-ui #sidebar-footer {
-  margin-top: auto !important;
-  padding: 6px 0 8px !important;
-}
 
 /* ===== Round 6: advanced clutter fully collapsed into the account popup ===== */
 
@@ -1177,84 +1130,32 @@ body.grok-ui .acct-chevron::before {
    above). The former position:fixed;height:40px improvisation and the
    --header-h:0 override violated layout-contract §3 (region overlap + fixed
    chrome outside modal/lightbox/toast) and are removed for single-source. */
-body.grok-ui #sidebar-toolbar { -webkit-app-region: drag; }
-body.grok-ui #sidebar-toolbar > button { -webkit-app-region: no-drag; }
+/* app-region for the sidebar top row is declared in the parity block at EOF. */
 
 /* Bot management block shows by default (管理 toggle keeps working for it). */
 body.grok-ui #sb-bots-rooms { display: block !important; }
 
-/* Session rows tighter — the session list shouldn't dominate the sidebar. */
-body.grok-ui .sess-row { padding: 5px 8px !important; gap: 8px !important; }
-body.grok-ui .sess-avatar {
-  flex: 0 0 30px !important;
-  width: 30px !important;
-  height: 30px !important;
-}
+/* Session row density: the row is a full-bleed list item (44px disc, 15px
+   title, 13px preview). Geometry lives in index.html (`.sess-row` /
+   `.sess-avatar`); see the sidebar parity block at EOF. */
 
-/* 新建 Bot: compact ghost pill instead of a full-width boxed button. */
-body.grok-ui #bot-new-btn {
-  width: auto !important;
-  padding: 3px 10px !important;
-  font-size: 12px !important;
-  font-weight: 500 !important;
-  background: transparent !important;
-  border: 1px solid var(--line) !important;
-  border-radius: 999px !important;
-  color: var(--muted) !important;
-  box-shadow: none !important;
-}
-body.grok-ui #bot-new-btn:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
+/* 新建 Bot: declared once in the sidebar parity block at EOF. */
 
-/* ===== Round 8: sidebar IA redesign + WorkBuddy-style composer ===== */
+/* ===== Round 8: sidebar IA redesign + single-pill composer ===== */
 
-/* Search becomes a full-width ghost field; "+" stays the compact primary. */
-body.grok-ui #sidebar-search-toggle {
-  flex: 1 1 auto !important;
-  width: auto !important; min-width: 0 !important; max-width: none !important;
-  height: 34px !important;
-  justify-content: flex-start !important;
-  padding: 0 12px !important;
-  font-size: 13px !important;
-  color: var(--muted) !important;
-  background: var(--g-soft) !important;
-  border: 1px solid transparent !important;
-  border-radius: 10px !important;
-  box-shadow: none !important;
-}
-body.grok-ui #sidebar-search-toggle:hover { background: var(--g-soft) !important; color: var(--ink) !important; }
-body.grok-ui #sess-new {
-  flex: 0 0 34px !important;
-  width: 34px !important; height: 34px !important;
-}
+/* The sidebar search used to be blown up into a full-width ghost field here
+   (flex 1 1 auto, 34px, 10px radius) with the "+" kept as a filled primary.
+   Grok has no field in the resting state — just a 32px search icon that opens
+   find. That override is gone; see the parity block at the end of the file. */
 
-/* 新建 Bot docks into the Bot 列表 header row (right of the title, left of caret). */
-body.grok-ui #sb-bots-rooms { position: relative !important; }
-body.grok-ui #sb-bots-rooms > summary { padding-right: 88px !important; }
-body.grok-ui #bot-new-btn {
-  position: absolute !important;
-  top: 3px !important; right: 30px !important;
-  margin: 0 !important; padding: 2px 9px !important;
-  width: auto !important;
-}
+/* 新建 Bot used to be absolutely positioned over the "Bot 列表" summary here.
+   That is a WorkBuddy artifact with no Grok counterpart, and it overlapped the
+   section head. It is now a plain list row; see the sidebar parity block at EOF. */
 
-/* Composer: WorkBuddy-style — one rounded container, text on top,
-   controls on the bottom row (attach left, mic + round send right). */
-body.grok-ui #composer {
-  border-radius: 24px !important;
-  padding: 12px 14px 10px !important;
-  gap: 2px !important;
-}
-body.grok-ui #composer .row {
-  flex-wrap: wrap !important;
-  gap: 4px !important;
-  padding: 0 !important;
-  align-items: center !important;
-}
-body.grok-ui #composer .row textarea {
-  flex: 1 1 100% !important;
-  padding: 2px 6px 10px !important;
-}
-body.grok-ui #voice-btn { margin-left: auto !important; }
+/* Composer inner layout used to be turned into a "WorkBuddy-style" two-row box
+   here: textarea at flex 1 1 100% on its own line, controls beneath, 12px/14px
+   padding. That is the layout that stopped matching Grok's single pill. The
+   one-row layout now lives in the parity block at EOF. */
 body.grok-ui #send {
   min-width: 0 !important;
   width: 34px !important; height: 34px !important;
@@ -1267,60 +1168,22 @@ body.grok-ui #send {
 }
 body.grok-ui #send::before { content: "↑"; font-size: 18px; font-weight: 600; line-height: 1; }
 
-/* ===== Round 8b: specificity + traffic-light clearance fixes ===== */
+/* ===== Round 8b: traffic-light clearance ===== */
 
-/* Round-3's `#sidebar-toolbar > button` (2 elements) out-specificed the
-   Round-8 search rules (1 element), pinning the field to 36px and wrapping
-   its label vertically over the traffic lights. Re-state with 2 ids. */
-body.grok-ui #sidebar-toolbar #sidebar-search-toggle {
-  flex: 1 1 auto !important;
-  width: auto !important; min-width: 0 !important; max-width: none !important;
-  height: 34px !important;
-  justify-content: flex-start !important;
-  padding: 0 12px !important;
-  font-size: 13px !important;
-  color: var(--muted) !important;
-  background: var(--g-soft) !important;
-  border: 1px solid transparent !important;
-  border-radius: 10px !important;
-  box-shadow: none !important;
-  white-space: nowrap !important;
-}
-body.grok-ui #sidebar-toolbar #sidebar-search-toggle:hover { background: var(--g-soft) !important; color: var(--ink) !important; }
-body.grok-ui #sidebar-toolbar #sess-new {
-  flex: 0 0 34px !important;
-  width: 34px !important; height: 34px !important;
-}
-/* keep the field clear of the inset traffic lights */
-body.grok-ui #sidebar-toolbar {
-  padding-left: 76px !important;
-  padding-right: 10px !important;
-}
-/* nudge 新建 Bot fully clear of the summary caret */
-body.grok-ui #bot-new-btn { right: 36px !important; top: 4px !important; }
+/* Round-3 and Round-8 fought over the search control's width here (36px →
+   full-width field → 36px again), and the last writer won by having two ids.
+   The width AND the traffic-light clearance (left 64px / right 0) are one
+   declaration now, in the parity block at the end of this file. */
 
 /* ===== Round 9: settings sheet redesign + sidebar polish ===== */
 
-/* Sidebar: kill the duplicated search row, quiet the section labels,
-   flatten the bot cards. */
+/* Sidebar: kill the duplicated resting search row (Ctrl/Cmd+K and the toolbar
+   icon reveal the real input). Section labels and row shape are declared once
+   in the sidebar parity block at EOF. */
 body.grok-ui #session-search { display: none; }
 /* Ctrl/Cmd+K and the toolbar search button promise search; reveal the real
    input instead of silently no-oping with the row hidden. */
 body.grok-ui.session-search-open #session-search { display: block; }
-body.grok-ui .panel-title.panel-head {
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  color: var(--muted) !important;
-  letter-spacing: .04em !important;
-}
-body.grok-ui #bot-list > * {
-  border: 0 !important;
-  background: transparent !important;
-  border-radius: 12px !important;
-  padding: 8px 10px !important;
-}
-body.grok-ui #bot-list > *:hover { background: var(--g-soft) !important; }
-body.grok-ui #room-list { color: var(--muted) !important; font-size: 12px !important; }
 
 /* ===== Round 10: unified Grok spec — tokens, type scale, settings left-nav ===== */
 
@@ -1635,3 +1498,471 @@ body.grok-ui #ca-cn-channels {
 
 /* 连接应用 modal: the migrated 国内渠道 block reads as a section card. */
 body.grok-ui #ca-cn-channels > label { margin: 0 !important; }
+
+/* ============================================================
+   Replica C1–C6 component styles (Bit Bot Grok parity)
+   Token-only, no !important, scoped under body.grok-ui.
+   ============================================================ */
+
+/* C1 · markdown body */
+body.grok-ui .bb-md {
+  font-size: var(--text-title);
+  line-height: var(--leading);
+  color: var(--text);
+  word-break: break-word;
+}
+body.grok-ui .bb-md > :first-child { margin-top: 0; }
+body.grok-ui .bb-md > :last-child { margin-bottom: 0; }
+body.grok-ui .bb-md p { margin: 0 0 var(--space-5); }
+body.grok-ui .bb-md h1,
+body.grok-ui .bb-md h2,
+body.grok-ui .bb-md h3 {
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.3;
+  margin: var(--space-6) 0 var(--space-4);
+  color: var(--text);
+}
+body.grok-ui .bb-md ul,
+body.grok-ui .bb-md ol { margin: 0 0 var(--space-5); padding-left: var(--space-8); }
+body.grok-ui .bb-md li { margin: 2px 0; }
+body.grok-ui .bb-md blockquote {
+  margin: var(--space-4) 0;
+  padding-left: var(--space-5);
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+body.grok-ui .bb-md a { color: var(--accent); text-decoration: underline; }
+body.grok-ui .bb-md code {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+}
+body.grok-ui .bb-md pre { margin: var(--space-5) 0; }
+body.grok-ui .bb-md table { border-collapse: collapse; margin: var(--space-5) 0; }
+body.grok-ui .bb-md th,
+body.grok-ui .bb-md td { border: 1px solid var(--line); padding: var(--space-3) var(--space-5); }
+body.grok-ui .bb-md th { background: var(--fill); }
+
+/* C2 · fenced code block */
+body.grok-ui .bb-codeblock {
+  position: relative;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  padding: var(--space-5);
+  /* 顶部留一条 24px 的“工具条”：语言标签在左、复制钮在右，两者绝不压字 */
+  padding-top: var(--space-9);
+  margin: var(--space-5) 0;
+  overflow: auto;
+  max-height: 420px;
+}
+body.grok-ui .bb-codeblock code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+body.grok-ui .bb-codeblock-lang {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-4);
+  right: auto;
+  color: var(--muted);
+  font-size: var(--text-md);
+  pointer-events: none;
+}
+body.grok-ui .bb-codeblock-copy {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+}
+
+/* ghost action button (C2 copy / C3 regenerate) */
+body.grok-ui .bb-btn--ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: var(--text-md);
+  font-family: var(--font-ui);
+  padding: 2px var(--space-4);
+  cursor: pointer;
+}
+body.grok-ui .bb-btn--ghost:hover { background: var(--fill); color: var(--text); }
+body.grok-ui .bb-btn--ghost:disabled { opacity: 0.6; cursor: default; }
+
+/* C3 · message actions bar (extends existing .msg-actions hover reveal) */
+body.grok-ui .msg-actions { gap: var(--space-2); }
+body.grok-ui .msg-actions [data-act="regenerate"] { color: var(--accent); }
+
+/* C3 修正：assistant 的操作条原来绝对定位在卡片右上角，会压住第一行末尾的文字
+   （再加上「重新生成」后更长）。改成落到气泡下方一行，和 Grok 一致，也不再遮字。 */
+body.grok-ui .msg.assistant { flex-wrap: wrap; }
+body.grok-ui .msg.assistant .msg-actions {
+  position: static;
+  order: 3;
+  flex: 0 0 auto;
+  /* 头像已按 Grok 移除，操作条改为与正文内边距（18px）对齐，不再预留 32px 头像位 */
+  margin-left: 0;
+  padding-left: 18px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  transform: none;
+}
+
+/* C4 · composer controls — 现在住在 #composer .row 里（单条胶囊），
+   不再单独占一行，所以左右内边距归零，靠 textarea 的 flex:1 顶到右侧。 */
+body.grok-ui .bb-composer-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  flex: 0 0 auto;
+}
+body.grok-ui .bb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--fill);
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-md);
+  font-family: var(--font-ui);
+  padding: 4px var(--space-4);
+  cursor: pointer;
+  /* chip 是标签不是段落：窄窗下换行会把「联网搜索」拆成竖排 */
+  white-space: nowrap;
+}
+body.grok-ui .bb-chip:hover { background: var(--accent-soft); }
+body.grok-ui .bb-chip[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+body.grok-ui .bb-chip--toggle[aria-pressed="true"]::before { content: "\2713 "; }
+body.grok-ui .bb-chip:disabled { opacity: 0.5; cursor: default; }
+
+/* C5 · voice recording state (bar visibility is JS feature-detected) */
+body.grok-ui #voicechat-btn[data-state="recording"] {
+  color: var(--danger);
+  animation: bb-pulse 1.2s ease-in-out infinite;
+}
+@keyframes bb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) {
+  body.grok-ui #voicechat-btn[data-state="recording"] { animation: none; }
+}
+
+/* C6 · citations */
+body.grok-ui .bb-cite {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+/* 命中 .bb-md a（正文链接色）之后仍要压回中性灰：来源 chip 不是正文链接，
+   不需要强调色，也不该带下划线（Grok 的来源区是灰 chip）。 */
+body.grok-ui .bb-md a.bb-cite-item,
+body.grok-ui .bb-cite-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: var(--text-md);
+  padding: 2px var(--space-4);
+  text-decoration: none;
+}
+body.grok-ui .bb-cite-item:hover { background: var(--fill); }
+
+/* ============================================================================
+   Grok parity block — 侧栏顶部 / 输入框 / 消息气泡 的唯一真源
+   ============================================================================
+
+   背景：这三个面此前被 Round 2 / 3 / 4 / 4b / 5 / 8 / 8b / 9 反复改皮，每一轮
+   都必须靠 `!important` + 提高选择器权重才能盖住上一轮，最后活下来的形态是
+   **WorkBuddy 的**（宽搜索框、蓝色填充「＋」、两行输入框、带边框和阴影的回复卡），
+   而不是参考图（replica/screens/grok-composer.png）里的 Grok 形态。
+   这就是「对着 Grok 做却没复刻出来」的根因：不是没写规则，是后来的轮次把
+   正确的规则压掉了，而且没有任何一处是单一真源。
+
+   本块规则：全部走正常层叠（零 `!important`），并且放在文件最后；
+   靠后的轮次若再想改这三处，请改这里，不要在中间插新的覆盖层。
+   ========================================================================== */
+
+/* --- 侧栏顶部：两个 32px 圆形幽灵按钮，右对齐 ---------------------------- */
+body.grok-ui #sidebar-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  padding: 6px 2px 8px 76px; /* 左边 76px 让开内嵌的红黄绿交通灯 */
+  background: transparent;
+  -webkit-app-region: drag;
+}
+body.grok-ui #sidebar-toolbar > button {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  -webkit-app-region: no-drag;
+}
+body.grok-ui #sidebar-toolbar > button:hover { background: var(--accent-soft); }
+/* 搜索图标按下时下方才出现真正的输入行（#session-search），按钮自身给一个激活态 */
+body.grok-ui.session-search-open #sidebar-toolbar #sidebar-search-toggle {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* --- 输入框：单条胶囊，一行装完 [+][输入][chips][麦克][↑] ---------------- */
+body.grok-ui #composer {
+  /* 注意：grid item 上写 `margin: 0 auto` 会让 justify-self:stretch 失效，
+     盒子退化成 fit-content（实测宽度只剩 499px，气泡 760、输入框 499，
+     一眼就错位）。所以用 width:100% + center 来对齐 #log 的同一列。
+     这里只是承载器（透明），真正的胶囊是下面的 .row。 */
+  width: 100%;
+  max-width: var(--content-max);
+  justify-self: center;
+  margin: 0 0 14px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  gap: 6px;
+}
+body.grok-ui #composer .row {
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: var(--space-1);
+  padding: 5px 8px 5px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+body.grok-ui #composer .row textarea,
+body.grok-ui #composer .row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 38px;
+  max-height: 168px;
+  padding: 9px 4px;
+  line-height: 1.5;
+}
+/* Grok 的「＋」在最左边；DOM 里附件按钮仍排在输入框之后，读屏顺序不变。 */
+body.grok-ui #composer #attach-btn { order: -1; }
+body.grok-ui #composer #voice-btn { margin-left: 0; }
+
+/* chips 是胶囊里的行内元信息，不是第二行工具栏 */
+body.grok-ui #composer .bb-chip {
+  padding: 3px var(--space-3);
+  font-size: var(--text-sm);
+  background: transparent;
+  border: 1px solid var(--line);
+}
+body.grok-ui #composer .bb-chip:hover { background: var(--accent-soft); }
+/* 上面这条 #composer .bb-chip 比 .bb-chip[aria-pressed] 权重高，激活态要重述一次 */
+body.grok-ui #composer .bb-chip[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- 状态提示：降级成一行居中灰字，不做告警卡片 ------------------------- */
+/* JS 用 style.display = "block" 控制显隐，所以这里只做文字样式；
+   display 由内联样式负责，避免和显隐逻辑打架。 */
+body.grok-ui .bb-notice {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-align: center;
+  padding: 0 var(--space-2) var(--space-2);
+  line-height: 1.5;
+}
+body.grok-ui .bb-notice-act {
+  background: transparent;
+  color: var(--accent);
+  border: 0;
+  padding: 0 var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+body.grok-ui .bb-notice-act:hover { color: var(--ink); }
+
+/* 主区与输入区必须是同一张纸：body 用 --page-bg(#f5f5f7)、#main 用 --bg0(#fff)，
+   输入框那一行会露出一道灰带（截图可见 y≈560 处长缝）。 */
+body.grok-ui { background: var(--bg0); }
+
+/* 只有等待「…」的思考行不该撑满整列变成一条空灰条（截图里像一个空消息）。
+   有正文的 assistant 仍然满列宽。 */
+body.grok-ui .msg.assistant:has(.typing) { width: auto; align-self: flex-start; }
+body.grok-ui .msg.assistant:has(.typing) .body { flex: 0 0 auto; }
+
+/* 用户气泡原来一行字撑到 86px：送达状态是块级第二行把气泡拉高了。
+   收紧上下内边距，状态行贴住正文右对齐。 */
+body.grok-ui .msg.user { padding: 10px 16px 6px; }
+body.grok-ui .msg.user .msg-status { display: flex; justify-content: flex-end; margin-top: 2px; }
+
+/* ============================================================================
+   Grok parity block 2 — 侧栏列表本体（会话 / Bot / 群组的行、标题、底部账户）
+   ============================================================================
+
+   为什么单独一块：上面第一块只处理了侧栏「顶部两个圆钮」，列表本体一直是
+   WorkBuddy 的形状 —— 每行是一张 12px 圆角的白色小卡（1px 描边 + 阴影），
+   头像 30px 饱和色圆点配白色字母，标题 13px、预览 11px、日期分组 10px，
+   三个区块标题三种字号。参考图（replica/screens/grok-composer.png）里：
+   行是全宽的、没有卡片、只有 1px 细线分隔，头像 44px 浅底彩色字形，
+   标题 15px/600、预览 13px 灰色单行、分组标签 13px 淡灰，选中行是整行色带。
+
+   所以这里不是"再美化一次"，而是把形状换成参考图的形状。
+   规则零 `!important`，只靠 `body.grok-ui` 前缀的选择器权重覆盖基类；
+   Round 2 / 7 / 8 / 8b / 9 里那几处互相打架的 `#agents` / `.sess-row` /
+   `#bot-new-btn` / `.panel-title.panel-head` 覆盖块已经删除。
+   ========================================================================== */
+
+/* 三个色值都不是新硬编码：用 ink/side/muted 混合出来，深浅色模式自动跟随，
+   也不会给「原始色值总量」上加负债。 */
+body.grok-ui {
+  --nav-row-hover: color-mix(in srgb, var(--ink) 4%, transparent);
+  --nav-row-active: color-mix(in srgb, var(--ink) 8%, var(--side));
+  --nav-label: color-mix(in srgb, var(--muted) 55%, var(--side));
+}
+
+/* 侧栏是可滚动的面。像素实测：行是内缩 12px 的圆角色带，所以容器留 12px
+   水平内边距；行与行之间没有分隔线，行高 58px 全靠行内 padding 撑。 */
+body.grok-ui #agents {
+  background: var(--side);
+  border-right: 1px solid var(--line);
+  padding: 0 12px;
+  gap: 0;
+}
+body.grok-ui #sidebar-toolbar { padding: 6px 0 8px 64px; }
+
+/* --- 区块标题：Bot 列表 / 群组 / 会话 一种待遇 --------------------------- */
+body.grok-ui .panel-title,
+body.grok-ui .panel-title.panel-head,
+body.grok-ui .panel-title.spaced {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 16px 0 2px;
+  padding: 0 12px;
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--nav-label);
+  text-transform: none;
+}
+body.grok-ui #agents .panel-title > span:first-child {
+  color: var(--nav-label);
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+/* 「Bot 列表」是 <details><summary>，形状要跟上面三条完全一致 */
+body.grok-ui #sb-bots-rooms > summary {
+  margin: 16px 0 2px;
+  padding: 0 12px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--nav-label);
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+body.grok-ui #sb-bots-rooms > summary:hover { background: transparent; color: var(--ink); }
+body.grok-ui #sb-bots-rooms[open] > summary { color: var(--nav-label); }
+body.grok-ui .sb-adv-caret { font-size: 10px; color: var(--nav-label); }
+
+/* --- 行：形状与状态都由 index.html 的 .sess-row 一处声明 --------------- */
+/* 这里只清掉列表容器自身的 margin/padding，避免基类把行挤离边缘。 */
+body.grok-ui #bot-list,
+body.grok-ui #room-list,
+body.grok-ui #session-list { margin: 0; padding: 0; }
+
+/* --- 新建 Bot：一行动作，不再是压在标题上的浮块 ------------------------- */
+body.grok-ui #bot-new-btn {
+  position: static;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  margin: 0;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: var(--text-md);
+  font-weight: 500;
+  text-align: left;
+}
+body.grok-ui #bot-new-btn:hover { background: var(--nav-row-hover); color: var(--ink); }
+/* 加号不是文案，是动作标记：避免它读起来像又一个小标题 */
+body.grok-ui #bot-new-btn::before {
+  content: "+";
+  margin-right: var(--space-3);
+  font-weight: 400;
+  color: var(--nav-label);
+}
+
+/* --- 底部：账户是一枚胶囊，不是一条裸文字 ------------------------------- */
+/* #agents 是 flex 列且带 12px 内边距：`margin: auto -12px 0` 同时做到
+   「贴底」和「分隔线通栏」，胶囊再靠内边距回到 12px。 */
+body.grok-ui #sidebar-footer {
+  margin: auto -12px 0;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--line);
+  box-shadow: none;
+  background: var(--side);
+}
+/* 「管理 Bot / 应用」「设置」两行在 Round 5 就收进了账户弹层（display:none），
+   所以底部只剩账户胶囊一条，不再给它们写样式。 */
+body.grok-ui #account-bar { margin: 6px 0 0; }
+body.grok-ui #account-avatar-btn {
+  gap: var(--space-3);
+  padding: 5px 12px 5px 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+body.grok-ui #account-avatar-btn:hover,
+body.grok-ui #account-avatar-btn[aria-expanded="true"] {
+  background: var(--surface);
+  border-color: var(--muted);
+}
+body.grok-ui #account-avatar-circle {
+  width: 30px;
+  height: 30px;
+  font-size: var(--text-sm);
+  background: var(--nav-row-active);
+  color: var(--ink);
+  box-shadow: none;
+}

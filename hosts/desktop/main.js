@@ -253,6 +253,11 @@ const ALLOWED_SECRET_KEYS = new Set([
   "BITBOT_LLM_PROVIDER",
   "BITBOT_LLM_QWEN_API_KEY",
   "BITBOT_LLM_MOONSHOT_API_KEY",
+  // Replica C6: real web search (Tavily / Brave). Same open-config rule —
+  // the user owns the key, it lands in gitignored .env.local and hot reloads.
+  "BITBOT_SEARCH_PROVIDER",
+  "BITBOT_SEARCH_API_KEY",
+  "BITBOT_SEARCH_API_BASE",
   "BITBOT_DINGTALK_POST",
   "BITBOT_DINGTALK_WEBHOOK",
   "BITBOT_DINGTALK_TOKEN",
@@ -1733,6 +1738,9 @@ ipcMain.handle("bitbot:secrets:status", async () => {
     "BITBOT_LLM_MODEL",
     "BITBOT_LLM_QWEN_API_KEY",
     "BITBOT_LLM_MOONSHOT_API_KEY",
+    "BITBOT_SEARCH_PROVIDER",
+    "BITBOT_SEARCH_API_KEY",
+    "BITBOT_SEARCH_API_BASE",
     "BITBOT_DINGTALK_POST",
     "BITBOT_DINGTALK_WEBHOOK",
     "BITBOT_DINGTALK_TOKEN",
@@ -1756,7 +1764,7 @@ ipcMain.handle("bitbot:secrets:status", async () => {
       masked: m.masked,
       // Non-secret toggles / urls may show value when short and non-key-like
       value:
-        /_POST$|_MODEL$|_BASE_URL$|_CHAT_ID$|_AGENT_ID$|_TOUSER$|_FILING$|_FEED_URL$/.test(
+        /_POST$|_MODEL$|_BASE_URL$|_CHAT_ID$|_AGENT_ID$|_TOUSER$|_FILING$|_FEED_URL$|_PROVIDER$|_API_BASE$/.test(
           k,
         ) && !/_TOKEN$|_KEY$|_WEBHOOK$/.test(k)
           ? String(process.env[k] || "")
@@ -2377,6 +2385,8 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       machineKind: "desktop",
       channel: "",
       approved: !!(opts && opts.approved),
+      // Replica C4/C6: composer web-search toggle for this turn.
+      search: !!(opts && opts.webSearch),
       // GP-30: which Bot owns this turn — the Host's per-Bot computer-use
       // lock keys on it (renderer sets activeBotId when a Bot chat is opened).
       botId: String((opts && opts.botId) || "").trim() || undefined,
@@ -2395,6 +2405,25 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
         broadcast("bitbot:turn-progress", row);
       },
     });
+    // Replica C6: surface real search sources on the final assistant line so the
+    // renderer can draw citations; a missing key degrades honestly (a note).
+    if (result && result.search) {
+      const srch = result.search;
+      if (srch.ok && Array.isArray(srch.sources) && srch.sources.length) {
+        const arr = Array.isArray(result.messages) ? result.messages : [];
+        for (let i = arr.length - 1; i >= 0; i--) {
+          if (arr[i] && arr[i].role === "assistant") {
+            arr[i] = Object.assign({}, arr[i], { sources: srch.sources });
+            break;
+          }
+        }
+      } else if (srch.error === "search_key_not_configured" && Array.isArray(result.messages)) {
+        result.messages.push({
+          role: "assistant",
+          text: "联网搜索未启用：还没有配置搜索密钥（设置 → 凭证 → 联网搜索 里填 Tavily/Brave key）。本轮按普通对话处理，没有假装查过。",
+        });
+      }
+    }
     const rawText = String(text || "").trim();
     // GP-148 §1-J2：把 Host 的建房事实变成用户看得见的一句回执，并让侧栏立刻
     // 刷新。回执走的是 result.messages 这条既有通道（可选新增一条 assistant
@@ -2503,6 +2532,60 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       }
     }
   }
+});
+
+/** Replica C3: regenerate an assistant reply. Removes the old entry, re-runs the
+ *  preceding user prompt through the same turn pipeline, and stores only the new
+ *  assistant rows (so the user bubble is never duplicated). */
+ipcMain.handle("bitbot:msg:regenerate", async (_e, payload) => {
+  const p = payload || {};
+  const sessionId = String(p.sessionId || sessions.activeId() || "").trim();
+  const entryId = String(p.entryId || "").trim();
+  if (!sessionId || !entryId) return { ok: false, error: "invalid_request" };
+  const got = sessions.get(sessionId);
+  if (!got || !got.ok || !got.session) return { ok: false, error: "session_not_found" };
+  const msgs = Array.isArray(got.session.messages) ? got.session.messages : [];
+  let idx = -1;
+  for (let i = 0; i < msgs.length; i++) {
+    if (msgs[i] && String(msgs[i].id) === entryId) { idx = i; break; }
+  }
+  if (idx < 0) return { ok: false, error: "message_not_found" };
+  if (msgs[idx].role !== "assistant") return { ok: false, error: "not_assistant" };
+  let prompt = "";
+  for (let i = idx - 1; i >= 0; i--) {
+    if (msgs[i] && msgs[i].role === "user") { prompt = String(msgs[i].text || ""); break; }
+  }
+  if (!prompt) return { ok: false, error: "no_prompt" };
+  const rm = sessions.removeMessage(sessionId, entryId);
+  if (rm && rm.ok === false) return { ok: false, error: rm.error || "remove_failed" };
+  const result = await runner.runTurn(prompt, {
+    sessionId,
+    machineId: "desk-1",
+    machineKind: "desktop",
+    channel: "",
+    approved: false,
+  });
+  const toStore = [];
+  if (result && Array.isArray(result.messages)) {
+    for (const m of result.messages) {
+      if (m && m.role === "assistant" && m.text && !PRODUCT_DEBUG_RE.test(String(m.text))) {
+        toStore.push({ role: "assistant", text: m.text });
+      }
+    }
+  }
+  const appended = sessions.appendMessages(sessionId, toStore);
+  let assistantIds = [];
+  if (appended && appended.ok && appended.session) {
+    const rows = appended.session.messages || [];
+    assistantIds = rows.slice(rows.length - toStore.length).map((r) => r.id);
+  }
+  broadcast("bitbot:sessions-changed", sessions.list());
+  return {
+    ok: Boolean(result && result.ok !== false),
+    messages: toStore.map((r) => r.text),
+    stored_ids: { assistant: assistantIds },
+    error: result && result.ok === false ? String(result.error || "") : "",
+  };
 });
 
 /** CHARTER Delivery: read Host artifact under repo for inline Desktop preview. */

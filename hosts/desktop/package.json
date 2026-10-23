@@ -24,6 +24,7 @@
       "preload.js",
       "index.html",
       "ui_chrome.css",
+      "vendor/**/*",
       "sessions.js",
       "product_surface.js",
       "progress_protocol.js",

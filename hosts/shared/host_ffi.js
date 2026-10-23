@@ -24,7 +24,12 @@ const execFileAsync = promisify(execFile);
 // Wave G product surface (dev/packaged dual-path)
 let _ProductSurface;
 try { _ProductSurface = require("../desktop/product_surface"); }
-catch { try { _ProductSurface = require("../../hosts/desktop/product_surface"); } catch { _ProductSurface = null; } }
+catch { try { _ProductSurface = require("../../hosts/desktop/product_surface"); }
+catch {
+  // Flat packaged bundle: <app>/shared/host_ffi.js with <app>/product_surface.js
+  try { _ProductSurface = require("../product_surface"); }
+  catch { _ProductSurface = null; }
+} }
 
 /** Shared across createHostFfi instances so Desktop can subscribe once. */
 let sharedLlmStreamHandler = null;
@@ -5405,6 +5410,94 @@ function createHostFfi(repoRoot) {
     return lead + llmRoomContextBlock(roomContext);
   }
 
+  // Replica C6: real web search (Tavily / Brave) with user-supplied key.
+  // Resolution order: process env → hosts/desktop/.env.local → <repo>/.env.local.
+  // Those are the two exact places Desktop's Settings writes / documents, so the
+  // CLI and the packaged app agree on one source of truth. Read-only; never
+  // mutates process.env.
+  function resolveSearchConfig() {
+    let provider = String(process.env.BITBOT_SEARCH_PROVIDER || "").trim().toLowerCase();
+    let key = String(process.env.BITBOT_SEARCH_API_KEY || "").trim();
+    let base = String(process.env.BITBOT_SEARCH_API_BASE || "").trim();
+    if (!provider || !key) {
+      const envFiles = [
+        path.join(REPO_ROOT, "hosts", "desktop", ".env.local"),
+        path.join(REPO_ROOT, ".env.local"),
+      ];
+      for (const file of envFiles) {
+        if (provider && key) break;
+        try {
+          const raw = fs.readFileSync(file, "utf8");
+          for (const line of raw.split(/\r?\n/)) {
+            const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/);
+            if (!m) continue;
+            const k = m[1];
+            const v = String(m[2] || "").replace(/^["']|["']$/g, "");
+            if (k === "BITBOT_SEARCH_PROVIDER" && !provider) provider = v.trim().toLowerCase();
+            if (k === "BITBOT_SEARCH_API_KEY" && !key) key = v.trim();
+            if (k === "BITBOT_SEARCH_API_BASE" && !base) base = v.trim();
+          }
+        } catch (_) {}
+      }
+    }
+    if (!provider) provider = "tavily";
+    return { provider, key, base };
+  }
+
+  async function webSearch(query, opts = {}) {
+    const q = String(query || "").trim();
+    if (!q) return { ok: false, error: "empty_query", sources: [] };
+    const cfg = resolveSearchConfig();
+    if (!cfg.key) {
+      return { ok: false, provider: cfg.provider, error: "search_key_not_configured", sources: [] };
+    }
+    const topN = Math.min(5, Math.max(1, Number(opts.topN) || 5));
+    try {
+      if (cfg.provider === "brave") {
+        const base = (cfg.base || "https://api.search.brave.com").replace(/\/$/, "");
+        const url = `${base}/res/v1/web/search?q=${encodeURIComponent(q)}&count=${topN}`;
+        const res = await httpJson(url, {
+          method: "GET",
+          headers: { Accept: "application/json", "X-Subscription-Token": cfg.key },
+          timeoutMs: 15000,
+        });
+        if (!res.ok) return { ok: false, provider: "brave", error: res.error || `http_${res.status}`, sources: [] };
+        const items = res.json && res.json.web && Array.isArray(res.json.web.results) ? res.json.web.results : [];
+        return {
+          ok: true,
+          provider: "brave",
+          sources: items.slice(0, topN).map((r) => ({
+            title: String(r.title || ""),
+            url: String(r.url || ""),
+            snippet: String(r.description || ""),
+          })),
+        };
+      }
+      // default: tavily
+      const base = (cfg.base || "https://api.tavily.com").replace(/\/$/, "");
+      const body = JSON.stringify({ api_key: cfg.key, query: q, max_results: topN, include_answer: false });
+      const res = await httpJson(`${base}/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+        body,
+        timeoutMs: 15000,
+      });
+      if (!res.ok) return { ok: false, provider: "tavily", error: res.error || `http_${res.status}`, sources: [] };
+      const items = res.json && Array.isArray(res.json.results) ? res.json.results : [];
+      return {
+        ok: true,
+        provider: "tavily",
+        sources: items.slice(0, topN).map((r) => ({
+          title: String(r.title || ""),
+          url: String(r.url || ""),
+          snippet: String(r.content || ""),
+        })),
+      };
+    } catch (err) {
+      return { ok: false, provider: cfg.provider, error: err.message || String(err), sources: [] };
+    }
+  }
+
   async function executeLlmChat(command, llmOpts) {
     const at = new Date().toISOString();
     const userText = String(command || "").trim();
@@ -5496,6 +5589,22 @@ function createHostFfi(repoRoot) {
       messages.push({
         role: replyRole === "user" ? "user" : "assistant",
         content: "[quoted message " + replyToId + "] " + replyQuote,
+      });
+    }
+    // Replica C6: real search results ride into the provider payload as a system
+    // block so the model can cite them (and is told not to invent sources).
+    const _srch = Array.isArray(llmOpts && llmOpts.searchSources)
+      ? llmOpts.searchSources.filter((s) => s && s.url)
+      : [];
+    if (_srch.length) {
+      const block = _srch
+        .slice(0, 5)
+        .map((s, i) => `[${i + 1}] ${s.title || s.url}\n${s.url}\n${String(s.snippet || "").slice(0, 300)}`)
+        .join("\n\n");
+      messages.splice(1, 0, {
+        role: "system",
+        content:
+          "联网搜索结果（这些是真实来源。回答时如引用请使用下列 URL，不要编造来源）：\n\n" + block,
       });
     }
     messages.push({ role: "user", content: userText });
@@ -23570,6 +23679,8 @@ function createHostFfi(repoRoot) {
             // GP-148 (P0-1):群名 + 成员名单 + 本轮被 @ 的人,由 Host 组装后
             // 一路带到 provider 的请求体里。DM 永远是 null。
             roomContext: (ffiOpts && ffiOpts.roomContext) || null,
+            // Replica C6: real web-search sources injected into the system turn.
+            searchSources: (ffiOpts && ffiOpts.searchSources) || null,
           }),
         );
         continue;
@@ -24282,6 +24393,7 @@ function createHostFfi(repoRoot) {
     setLlmStreamHandler,
     resolveLlmConfig,
     listLlmCatalog,
+    webSearch,
   };
 }
 

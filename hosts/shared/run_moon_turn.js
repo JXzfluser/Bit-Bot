@@ -222,6 +222,22 @@ function createTurnRunner(repoRoot, opts = {}) {
       Array.isArray(parsed.effects) &&
       parsed.effects.length
     ) {
+      // Replica C6: when this turn asked for web search, resolve real sources
+      // first so they ride into llm_chat's context and get cited in the reply.
+      let searchPayload = null;
+      if (ctx.search && parsed.effects.some((e) => e && e.kind === "llm_chat")) {
+        try {
+          const sr = await ffi.webSearch(text, { topN: 5 });
+          if (sr && sr.ok && Array.isArray(sr.sources) && sr.sources.length) {
+            searchPayload = { enabled: true, ok: true, provider: sr.provider, sources: sr.sources };
+          } else if (sr) {
+            searchPayload = { enabled: true, ok: false, error: sr.error || "search_failed", sources: [] };
+          }
+        } catch (err) {
+          searchPayload = { enabled: true, ok: false, error: err.message || String(err), sources: [] };
+        }
+        if (searchPayload) parsed.search = searchPayload;
+      }
       const host_results = await ffi.executeHostEffects(parsed.effects, {
         approved: Boolean(ctx.approved),
         botId: ctx.botId,
@@ -237,6 +253,10 @@ function createTurnRunner(repoRoot, opts = {}) {
         replyQuote:
           (replyQuote && replyQuote.resolved && replyQuote.text) || "",
         replyRole: (replyQuote && replyQuote.role) || "assistant",
+        searchSources:
+          searchPayload && searchPayload.ok && searchPayload.sources.length
+            ? searchPayload.sources
+            : null,
       });
       parsed.host_results = host_results;
       try {

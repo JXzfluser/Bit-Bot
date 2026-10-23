@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld("bitbot", {
     react: (sessionId, messageId, emoji, on) =>
       ipcRenderer.invoke("bitbot:sessions:react", { session_id: sessionId, message_id: messageId, emoji, on: on !== false }),
   },
+  // Replica C3: regenerate an assistant reply (atomic replace-in-place).
+  messages: {
+    regenerate: (payload) => ipcRenderer.invoke("bitbot:msg:regenerate", payload || {}),
+  },
   // Wave G — Grok desktop parity (docs/grok-desktop-parity/ipc-contract.md §4).
   bots: {
     list: () => ipcRenderer.invoke("bitbot:bots:list"),

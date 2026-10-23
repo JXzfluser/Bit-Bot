@@ -560,13 +560,10 @@
   }
   .panel-title.panel-head { justify-content: space-between; }
   .panel-title.spaced { margin-top: 22px; }
-  /* 侧栏三大区块标题（Bot / 群组 / 会话）视觉一致，弱化 uppercase 让中文更耐看。 */
-  #agents > .panel-title > span:first-child {
-    color: var(--ink);
-    font-weight: 600;
-    font-size: var(--text-sm);
-    letter-spacing: 0.01em;
-  }
+  /* 侧栏三个区块标题（Bot 列表 / 群组 / 会话）必须是同一种弱化小标题。
+     这里曾经单独把第一个 span 提成 ink + 更大字号，导致「Bot 列表 / 会话」
+     是深色 12px、「群组」是灰色 11px —— 三个标题三种待遇。
+     单一真源：ui_chrome.css 末尾的侧栏 parity 块（body.grok-ui .panel-title）。 */
   .agent-item, .machine-item {
     padding: 10px 12px;
     margin-bottom: 8px;
@@ -577,74 +574,89 @@
   }
   .agent-item:hover, .machine-item:hover { border-color: var(--muted); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
   .agent-item.active { border-color: var(--line); }
-  /* Grok-parity sidebar row: colored round avatar + name + preview line */
+  /* Grok-parity sidebar row: an inset rounded band, not a bordered card.
+     Pixel-measured off replica/screens/grok-composer.png (2x DPR, so all
+     numbers below are device px / 2):
+       · 行高 58、行间距 0 —— 行与行之间**没有分隔线**，靠留白分开
+       · 选中行是内缩 12px 的圆角色带（半径 ≈12px、亮度 ≈90%），不是通栏
+       · 图标 32px 左右、左缘 x≈24；标题左缘 x≈66 → 行内 padding 12 + gap 10
+     前几轮把它做成了 12px 圆角白卡 + 1px 描边 + 投影 + 通栏选中条，
+     这正是左侧一直"不像 Grok"的直接原因。 */
   .sess-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    border: 1px solid transparent;
+    border: 0;
     background: transparent;
     border-radius: var(--radius-xl);
-    padding: 8px 10px;
-    margin-bottom: 1px;
+    padding: 9px 12px;
+    margin: 0;
+    box-shadow: none;
     cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease, transform 0.10s ease;
+    transition: background 0.12s ease;
   }
-  .sess-row:hover { background: var(--accent-soft); transform: translateX(1px); }
-  .sess-row:active { transform: translateX(1px) scale(0.995); }
-  .sess-row.active {
-    background: var(--accent-soft);
-    border-color: var(--line);
-    box-shadow: inset 2px 0 0 var(--bot-avatar, var(--accent));
-  }
+  .sess-row:hover { background: var(--nav-row-hover); }
+  .sess-row.active { background: var(--nav-row-active); }
+  /* 图标是浅底 + 饱和字形：参考图用的是插画图标（彩色实心块），
+     我们没有人手一张的插画，用"同色系浅底 + 同色字形"近似，
+     比原来的白字实心圆更接近参考图的明度。 */
   .sess-avatar {
-    flex: 0 0 36px;
-    width: 36px;
-    height: 36px;
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--on-fill);
-    font-weight: 700;
-    font-size: var(--text-md);
+    background: color-mix(in srgb, var(--av, var(--muted)) 14%, transparent);
+    color: var(--av, var(--ink));
+    font-weight: 600;
+    font-size: var(--text-base);
     user-select: none;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    overflow: hidden; /* GP-120: uploaded avatars are real images */
+    box-shadow: none;
   }
   .sess-main { min-width: 0; flex: 1 1 auto; }
-  .sess-main .name {
+  .sess-row .sess-main .name {
     font-weight: 600;
-    font-size: var(--text-md);
+    font-size: var(--text-base);
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: 1.3;
+    line-height: 1.35;
   }
-  .sess-main .meta {
-    font-size: var(--text-sm);
+  .sess-row .sess-main .meta {
+    font-size: var(--text-md);
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.4;
-    margin-top: 2px;
+    margin-top: 1px;
   }
   /* GP-120: Bot avatars are real images (data URL from the Host store). */
-  .sess-avatar { overflow: hidden; }
   .sess-avatar img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
   }
-  /* GP-123: session list date groups (今天 / 昨天 / 更早) */
-  .sess-group {
-    font-size: var(--text-2xs);
-    font-weight: 600;
-    letter-spacing: 0.04em;
+  /* 列表空状态 / 读失败提示：跟行同样的左边距，不能贴着侧栏边缘被切掉 */
+  .sess-empty {
     color: var(--muted);
-    padding: 10px 10px 4px;
+    font-size: var(--text-md);
+    line-height: 1.45;
+    padding: 8px 12px;
+  }
+  /* GP-123: session list date groups (今天 / 昨天 / 更早). 参考图里分组标签
+     与图标左缘对齐、比标题更淡，不吃行高。 */
+  .sess-group {
+    font-size: var(--text-md);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--nav-label, var(--muted));
+    padding: 12px 12px 2px;
     text-transform: none;
   }
   /* GP-120: shared form styling for the Edit Profile / rename dialogs. */
@@ -751,15 +763,15 @@
     font-size: var(--text-lg);
     user-select: none;
   }
-  /* GP-80 Grok-parity: blue unread dot on the row's right edge */
+  /* GP-80 Grok-parity: blue unread dot on the row's right edge (reference: 9px) */
   .unread-dot {
-    flex: 0 0 8px;
-    width: 8px;
-    height: 8px;
+    flex: 0 0 9px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     background: #2f7cf6;
     align-self: center;
-    margin-left: 6px;
+    margin-left: 4px;
   }
   .agent-item .name, .machine-item .name {
     font-weight: 600;
@@ -822,14 +834,15 @@
     background: transparent;
     border-radius: 0;
   }
-  /* Grok-style: user = right pill; assistant = left, avatar + white card bubble */
+  /* Grok parity (replica/screens/grok-composer.png): BOTH roles are flat,
+     borderless blocks — no stroke, no drop shadow. Colour is the only
+     separator between a turn and the page. */
   .msg.user {
     align-self: flex-end;
     background: var(--user-bubble);
     color: var(--ink);
     border-radius: 18px;
     padding: 12px 18px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
     position: relative;
     /* Wave M42: flatten the bottom-right corner into a subtle tail toward the
        sender side, keeping the 18px radius contract for the other corners. */
@@ -857,28 +870,31 @@
   .msg-status .ms-check.read { color: #22c55e; font-weight: 700; }
   /* Layout contract §3: the stream column is capped at --content-max, so the
      85% bubble must not outgrow it on wide windows (was 1047px at 1440). */
-  .msg.assistant { align-self: flex-start; display: flex; gap: 12px; max-width: min(85%, var(--content-max)); }
-  .msg.assistant::before {
-    content: "";
-    flex: 0 0 32px; width: 32px; height: 32px; border-radius: 50%;
-    background: var(--bot-avatar, #2f9e44);
-    margin-top: 2px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  /* Grok parity: an assistant turn is a flat, avatar-less block that fills the
+     whole 760px column. The previous version painted it as a "card" — a 32px
+     avatar dot, a 1px stroke, a 4px drop shadow, an 85% width cap and one
+     flattened corner. None of the four exist in the reference
+     (replica/screens/grok-composer.png: flat #f6f6f6 block, full column).
+     Together they are what made every reply read as a WorkBuddy card instead
+     of a Grok answer. */
+  .msg.assistant {
+    align-self: stretch;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    width: 100%;
+    max-width: 100%;
   }
-  /* Wave M42: consecutive assistant turns collapse into one conversation
-     thread — the repeated avatar becomes an invisible spacer so cards stay
-     left-aligned, and the row gap tightens for a denser rhythm. */
   #log { row-gap: 16px; }
   .msg.assistant + .msg.assistant { margin-top: -6px; }
-  .msg.assistant + .msg.assistant::before { visibility: hidden; }
   .msg.assistant .body {
     background: var(--bot-bubble);
-    border: 1px solid var(--line);
+    border: 0;
     border-radius: var(--radius-xl);
     padding: 14px 18px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    /* Wave M42: flatten top-left toward the avatar for a Grok-style tail. */
-    border-top-left-radius: 8px;
+    box-shadow: none;
+    flex: 1 1 100%;
+    min-width: 0;
   }
   .msg .role { display: none; }
   /* GP-146: 群 transcript 按条目渲染。说话人行 / 失败态 / 运行中 / 协作汇总卡
@@ -999,7 +1015,6 @@
   }
   .msg.debug-only.assistant { display: none; }
   body.debug-json .msg.debug-only.assistant { display: block; }
-  .msg.debug-only.assistant::before { display: none; }
   .msg.tool-run { font-size: var(--text-md); color: var(--muted); }
   .msg.tool-run .body { color: var(--muted); }
   .msg.media .body { white-space: normal; }
@@ -1545,9 +1560,9 @@
     #composer #send:active,
     #composer #attach-btn:active,
     #composer #voice-btn:active,
-    #header-actions button:active,
-    .sess-row:active,
-    .sess-row:hover { transform: none; }
+    #header-actions button:active { transform: none; }
+    /* 列表行不做位移（参考图只有背景色带），减弱动效时连色带渐变也去掉 */
+    .sess-row { transition: none; }
   }
 </style>
 </head>
@@ -1572,9 +1587,11 @@
     </div>
   </header>
   <aside id="agents">
-    <!-- Grok-style icon toolbar: search + new chat as compact icon buttons -->
+    <!-- Grok parity: two 32px circular ghost buttons, right-aligned. Search is
+         an icon, not a full-width field — the real input row (#session-search)
+         is revealed below when the icon is pressed. -->
     <div id="sidebar-toolbar">
-      <button type="button" id="sidebar-search-toggle" title="搜索会话 (Ctrl/Cmd+K)" aria-label="Search" data-i18n-aria="searchAria">⌕ 搜索会话</button>
+      <button type="button" id="sidebar-search-toggle" title="搜索会话 (Ctrl/Cmd+K)" aria-label="Search" data-i18n-aria="searchAria"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6L21 21"/></svg></button>
       <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话">+</button>
     </div>
     <!-- GP-60: sidebar in-call indicator -->
@@ -1587,16 +1604,15 @@
         <span data-i18n="bots">Bot 列表</span>
         <span class="sb-adv-caret" aria-hidden="true">▸</span>
       </summary>
-      <div style="padding:2px 4px 4px">
-        <button type="button" id="bot-new-btn" class="bb-btn" title="新建 Bot（名称 / 职责 / 描述）" data-i18n="newBot">新建 Bot</button>
-        <div id="bot-list" aria-label="Bot 列表"></div>
-        <div class="panel-title panel-head spaced">
-          <span data-i18n="rooms">群组</span>
-        </div>
-        <!-- GP-116 (§2.1): group list lives in the sidebar next to the Bot list,
-             sourced from rooms.json — not a separate window. -->
-        <div id="room-list" aria-label="群组会话"></div>
+      <!-- 新建 Bot 读作列表里的一行动作，不再绝对定位压在标题上。 -->
+      <button type="button" id="bot-new-btn" class="bb-btn" title="新建 Bot（名称 / 职责 / 描述）" data-i18n="newBot">新建 Bot</button>
+      <div id="bot-list" aria-label="Bot 列表"></div>
+      <div class="panel-title panel-head spaced">
+        <span data-i18n="rooms">群组</span>
       </div>
+      <!-- GP-116 (§2.1): group list lives in the sidebar next to the Bot list,
+           sourced from rooms.json — not a separate window. -->
+      <div id="room-list" aria-label="群组会话"></div>
     </details>
     <div class="panel-title panel-head spaced">
       <span data-i18n="chats">会话</span>
@@ -1899,6 +1915,24 @@
           </label>
         </div>
         <div class="st-card">
+          <div class="st-card-title">联网搜索</div>
+          <!-- Replica C6：真实搜索 + 引用。key 走和大脑 key 同一条开放配置链路
+               （写进 gitignored .env.local 并热加载），不内置、不写死。 -->
+          <label class="st-field"><span class="st-field-name">搜索服务</span>
+            <select id="sec-search-provider" class="bb-field">
+              <option value="tavily">Tavily（有免费额度）</option>
+              <option value="brave">Brave Search</option>
+            </select>
+          </label>
+          <label class="st-field"><span class="st-field-name">搜索 API Key <span id="sec-search-mask"></span></span>
+            <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field" />
+          </label>
+          <label class="st-field"><span class="st-field-name">API Base（可选）</span>
+            <input id="sec-search-base" type="text" placeholder="自建或代理地址；留空走官方" class="bb-field" />
+          </label>
+          <div class="st-note">不填也能用，只是不会联网：回答里不会出现编造的来源。</div>
+        </div>
+        <div class="st-card">
           <div class="st-card-title">合规与安全</div>
           <label class="st-field"><span class="st-field-name">AI 备案号</span>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2125,9 +2159,11 @@
         </div>
       </div>
     </div>
-    <div id="cfg-strip" style="display:none;margin:0 16px 8px;padding:10px 12px;border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:8px;color:var(--warn-ink);font-size:13px;flex-shrink:0">
+    <!-- 未配大脑 key 是「状态说明」，不是告警卡片：Grok 的聊天区里没有横幅，
+         这里降级成一行居中的灰色小字 + 下划线动作，视觉上不抢对话。 -->
+    <div id="cfg-strip" class="bb-notice" style="display:none;flex-shrink:0">
       <span id="cfg-strip-text" data-i18n="cfgStrip">尚未配置大脑 key — 点击「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）</span>
-      <button type="button" id="cfg-strip-btn" style="margin-left:10px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer" data-i18n="cfgGo">去配置</button>
+      <button type="button" id="cfg-strip-btn" class="bb-notice-act" data-i18n="cfgGo">去配置</button>
     </div>
   </div>
   <aside id="machines">
@@ -2510,7 +2546,14 @@
       <button type="button" id="reply-cancel" class="rb-x" data-i18n="replyCancel">取消</button>
     </div>
     <div class="row">
-      <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…（Shift+Enter 换行）" autocomplete="off" autofocus></textarea>
+      <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…" title="Enter 发送 · Shift+Enter 换行 · ↑ 调出上一条" autocomplete="off" autofocus></textarea>
+      <!-- Replica C4: composer controls — web search toggle + inline model switch.
+           They live INSIDE .row so the composer stays the single pill Grok has:
+           [+] [input] [chips] [mic] [↑] — one row, no second toolbar. -->
+      <div class="bb-composer-controls" id="composer-controls">
+        <button type="button" class="bb-chip bb-chip--toggle" id="web-search-toggle" aria-pressed="false" title="联网搜索（本轮是否会真的检索网页）"><span data-i18n="webSearch">联网搜索</span></button>
+        <button type="button" class="bb-chip" id="model-switch-chip" aria-haspopup="listbox" title="切换模型" aria-label="切换模型"><span id="active-model-label">默认</span></button>
+      </div>
       <button type="button" id="attach-btn" title="添加附件（≤6 · 文档/图片/音频 25MB · 视频 200MB）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
       <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><path d="M12 18v4"/><path d="M8 22h8"/></svg></button>
       <button type="button" id="voicechat-btn" title="开始语音对话" data-i18n="voiceChatBtn">🎧 语音对话</button>
@@ -2537,6 +2580,9 @@
        copies hosts/shared → ./shared (electron-builder "files"), so the loader
        falls back once and never double-loads. -->
   <script src="../shared/untrusted_fence.js"></script>
+  <!-- Replica C1/C2: markdown rendering + XSS sanitizer (vendored, UMD globals) -->
+  <script src="./vendor/marked.umd.js"></script>
+  <script src="./vendor/dompurify.umd.js"></script>
   <script>
     if (!window.__bitbotUntrusted) {
       document.write('<script src="./shared/untrusted_fence.js"><\/script>');
@@ -2580,6 +2626,50 @@
     const form = document.getElementById("composer");
     const input = document.getElementById("text");
     const sendBtn = document.getElementById("send");
+
+    // Replica C4: composer controls — web search toggle + inline model switch.
+    // (C5 voice already ships via startVoiceInput/startVoiceChat; not rebuilt.)
+    let composerWebSearch = false;
+    (function wireComposerControls() {
+      const wst = document.getElementById("web-search-toggle");
+      if (wst) {
+        wst.addEventListener("click", function () {
+          composerWebSearch = !composerWebSearch;
+          wst.setAttribute("aria-pressed", composerWebSearch ? "true" : "false");
+          try {
+            if (window.bitbot && window.bitbot.settings && window.bitbot.settings.set) {
+              window.bitbot.settings.set({ search_default: composerWebSearch });
+            }
+          } catch (_) {}
+        });
+      }
+      const msc = document.getElementById("model-switch-chip");
+      if (msc) {
+        msc.addEventListener("click", function () {
+          if (typeof openModelSheet === "function") openModelSheet(msc);
+        });
+      }
+      // Hydrate the persisted search default (best-effort; never blocks boot).
+      // settings.get() 现在套了两层壳：main 的 { ok, settings } → surface 的
+      // { ok, mode, settings }，真字段在第二层。两层都兜住，别写死一层。
+      // The model label is painted by renderModelEntry() from the real catalog,
+      // not here — there is exactly one source for it.
+      try {
+        if (window.bitbot && window.bitbot.settings && window.bitbot.settings.get) {
+          window.bitbot.settings.get().then(function (raw) {
+            const s =
+              (raw && raw.settings && raw.settings.settings) ||
+              (raw && raw.settings) ||
+              raw ||
+              {};
+            if (s.search_default === true && wst) {
+              composerWebSearch = true;
+              wst.setAttribute("aria-pressed", "true");
+            }
+          }).catch(function () {});
+        }
+      } catch (_) {}
+    })();
     const machineList = document.getElementById("machine-list");
     const approval = document.getElementById("approval");
     const approvalDetail = document.getElementById("approval-detail");
@@ -3656,10 +3746,16 @@
       // plain text with a visible source badge — the tags themselves are never
       // shown as if they were the model's words.
       const fenceText = applyUntrustedBodyTo(el, text);
-      // GP-93: markdown links from the kernel (CM-0111 guarantees `[label](url)`
-      // form) become real anchors; everything else stays literal text — the
-      // converter only ever creates text nodes and <a>, never HTML parsing.
-      applyLinkBodyTo(el.querySelector(".body"), fenceText);
+      const bodyEl = el.querySelector(".body");
+      // GP-93/Replica C1: untrusted (fenced external) content stays plain text +
+      // linkify only (keeps the source-badge semantics); normal model replies get
+      // full markdown through marked + DOMPurify (XSS-safe, never raw innerHTML).
+      if (el.classList.contains("has-untrusted")) {
+        applyLinkBodyTo(bodyEl, fenceText);
+      } else {
+        bodyEl.classList.add("bb-md");
+        renderMarkdownBody(bodyEl, fenceText);
+      }
       // GP-14: quote chip when this row itself was a reply to another message.
       if (opts && opts.replyToText) {
         const q = document.createElement("div");
@@ -3683,6 +3779,149 @@
       log.appendChild(el);
       log.scrollTop = log.scrollHeight;
       return el;
+    }
+
+    // Replica C1/C2: safe markdown rendering for model replies.
+    // GP-93 fail-closed 在 markdown 世界里怎么落地：
+    //   * 模型写的原始 HTML 一律当**文字**显示，不生成元素 —— 否则
+    //     `<img src=x onerror=…>` 会变成真节点（C6 引入 markdown 后这条契约被打破过）；
+    //   * markdown 图片语法同样降级成文字 —— 正文一旦真渲染 <img>，渲染进程就会去拉
+    //     远端资源，等于把用户 IP 交给模型随手写的一个 URL（像素追踪）；
+    //   * 非 http(s)/mailto 的链接目标（javascript: / data: / vbscript: …）保留成原文，
+    //     不生成锚点。
+    // 围栏代码和行内代码里的字符原样保留：那是给人看的源码，不能再被转义一次。
+    const MD_SAFE_SCHEME = /^(?:https?:|mailto:)/i;
+    function defangMarkdownSegment(seg) {
+      return seg
+        .replace(/<(?=[a-zA-Z\/!?])/g, "&lt;")
+        .replace(/!\[([^\]\n]*)\]\(([^)\n]*)\)/g, function (_m, alt, url) {
+          return "!\\[" + alt + "\\](" + url + ")";
+        })
+        .replace(
+          /\[([^\]\n]*)\]\(\s*([a-zA-Z][a-zA-Z0-9+.\-]*:[^)\n]*)\)/g,
+          function (m, label, url) {
+            return MD_SAFE_SCHEME.test(url) ? m : "\\[" + label + "\\](" + url + ")";
+          },
+        );
+    }
+    function defangMarkdown(raw) {
+      // 第 0/2/4… 段是正文，第 1/3/5… 段是代码（围栏或行内），代码段原样返回
+      const segs = String(raw == null ? "" : raw).split(
+        /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/,
+      );
+      return segs
+        .map(function (seg, i) {
+          return i % 2 === 1 ? seg : defangMarkdownSegment(seg);
+        })
+        .join("");
+    }
+    function renderMarkdownBody(container, text) {
+      const raw = String(text == null ? "" : text);
+      let mdHtml;
+      try {
+        if (window.marked && typeof window.marked.parse === "function") {
+          mdHtml = window.marked.parse(defangMarkdown(raw), { gfm: true, breaks: true });
+        } else {
+          container.textContent = raw;
+          return;
+        }
+        if (window.DOMPurify && typeof window.DOMPurify.sanitize === "function") {
+          // 兜底：即便上面漏了某个写法，sanitize 后也不允许出现能发请求 / 能执行的面
+          mdHtml = window.DOMPurify.sanitize(mdHtml, {
+            ADD_ATTR: ["rel"],
+            FORBID_TAGS: ["img", "iframe", "object", "embed", "style", "link", "meta", "form"],
+          });
+        }
+        container.innerHTML = mdHtml;
+      } catch (_) {
+        container.textContent = raw;
+        return;
+      }
+      // 复用产品链接政策：锚点只加 class / rel，**不加 target=_blank**
+      //（GP-93 契约：导航由 Host 拥有，渲染进程不许自己开新窗）。
+      container.querySelectorAll("a").forEach(function (a) {
+        a.classList.add("msg-link");
+        a.removeAttribute("target");
+        a.setAttribute("rel", "noopener noreferrer");
+      });
+      // C2: decorate fenced code blocks with a copy button + language label.
+      container.querySelectorAll("pre").forEach(decorateCodeblock);
+    }
+    function decorateCodeblock(pre) {
+      const code = pre.querySelector("code");
+      if (!code) return;
+      pre.classList.add("bb-codeblock");
+      const m = (code.className || "").match(/language-([\w-]+)/);
+      const lang = m ? m[1] : "";
+      if (lang) {
+        const lab = document.createElement("span");
+        lab.className = "bb-codeblock-lang";
+        lab.textContent = lang;
+        pre.appendChild(lab);
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "bb-btn bb-btn--ghost bb-codeblock-copy";
+      btn.dataset.act = "copy-code";
+      btn.textContent = wavegT("copyAction");
+      btn.addEventListener("click", function () {
+        const payload = code.textContent || "";
+        let ok = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(payload);
+            ok = true;
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = payload;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            ok = document.execCommand("copy");
+            ta.remove();
+          }
+        } catch (_) {
+          ok = false;
+        }
+        btn.textContent = wavegT(ok ? "copyDone" : "copyFailed");
+        setTimeout(function () {
+          btn.textContent = wavegT("copyAction");
+        }, 1200);
+      });
+      pre.appendChild(btn);
+    }
+
+    // Replica C6: web-search citations under an assistant bubble.
+    function renderCitations(el, sources) {
+      if (!el || !Array.isArray(sources) || !sources.length) return;
+      // .msg.assistant 是「头像 + 正文」的 flex 行；引用必须落在正文卡片里，
+      // 挂在消息根上会变成 flex 的第三个兄弟，被挤成卡片右侧的一竖列。
+      const hostEl = (el.querySelector && el.querySelector(".body")) || el;
+      const wrap = document.createElement("div");
+      wrap.className = "bb-cite";
+      for (const s of sources) {
+        if (!s) continue;
+        const url = String(s.url || "");
+        const title = String(s.title || url || "来源");
+        let host = "";
+        try { host = url ? new URL(url).hostname.replace(/^www\./, "") : ""; } catch (_) { host = ""; }
+        const item = url ? document.createElement("a") : document.createElement("span");
+        item.className = "bb-cite-item";
+        if (url) {
+          item.href = url;
+          item.classList.add("msg-link");
+          item.setAttribute("target", "_blank");
+          item.setAttribute("rel", "noopener noreferrer");
+        }
+        const label = host
+          ? (title.length > 40 ? title.slice(0, 40) + "…" : title) + " · " + host
+          : title;
+        item.textContent = label;
+        wrap.appendChild(item);
+      }
+      if (wrap.childNodes.length) hostEl.appendChild(wrap);
     }
 
     // GP-14: "Reply 回复特定消息" — hover actions per message; the target's store
@@ -3788,8 +4027,54 @@
         cp.textContent = wavegT(ok ? "copyDone" : "copyFailed");
         setTimeout(() => { cp.textContent = wavegT("copyAction"); }, 1200);
       });
+      // Replica C3: regenerate the assistant reply (idempotent, replaces in place).
+      if (role === "assistant" && el.dataset.mid) {
+        const rg = document.createElement("button");
+        rg.type = "button";
+        rg.dataset.i18n = "regenerateAction";
+        rg.dataset.act = "regenerate";
+        rg.textContent = wavegT("regenerateAction");
+        rg.addEventListener("click", function () {
+          regenerateAssistantReply(el, el.dataset.mid);
+        });
+        bar.appendChild(rg);
+      }
       bar.appendChild(cp);
       el.appendChild(bar);
+    }
+
+    async function regenerateAssistantReply(el, mid) {
+      if (!window.bitbot || !window.bitbot.messages || !window.bitbot.messages.regenerate) return;
+      if (el.dataset.regenerating === "1") return;
+      el.dataset.regenerating = "1";
+      const btn = el.querySelector('[data-act="regenerate"]');
+      const original = btn ? btn.textContent : "";
+      if (btn) { btn.disabled = true; btn.textContent = wavegT("regenerating"); }
+      try {
+        const r = await window.bitbot.messages.regenerate({ sessionId: activeSessionId, entryId: mid });
+        if (r && r.ok) {
+          const texts = Array.isArray(r.messages) ? r.messages : [];
+          const ids = (r.stored_ids && r.stored_ids.assistant) || [];
+          if (el.parentNode) el.parentNode.removeChild(el);
+          let cursor = 0;
+          for (const t of texts) {
+            const loc = typeof wavegLocalizeReply === "function" ? wavegLocalizeReply(t) : String(t || "");
+            const nel = addMsg("assistant", loc);
+            const aid = ids[cursor++] || "";
+            if (aid) {
+              nel.dataset.mid = String(aid);
+              attachMessageActions(nel, "assistant", loc);
+            }
+          }
+        } else {
+          if (btn) { btn.disabled = false; btn.textContent = original; }
+          addMsg("assistant", wavegT("regenerateFailed") + " · " + ((r && r.error) || "unknown"));
+        }
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = original; }
+        addMsg("assistant", wavegT("regenerateFailed") + " · " + String(e && e.message ? e.message : e));
+      }
+      if (el && el.dataset) delete el.dataset.regenerating;
     }
 
     let replyTarget = null;
@@ -4565,7 +4850,7 @@
         : rows;
       if (!filtered.length) {
         const empty = document.createElement("div");
-        empty.style.cssText = "color:var(--muted);font-size:11px;padding:4px 10px";
+        empty.className = "sess-empty";
         empty.textContent = wavegT(q ? "sessNoMatch" : "newChat");
         box.appendChild(empty);
         return;
@@ -4593,7 +4878,9 @@
             '<div class="sess-main"><div class="name"></div><div class="meta"></div></div>';
           const av = el.querySelector(".sess-avatar");
           av.textContent = String(s.title || "对").trim().slice(0, 1);
-          av.style.background = avatarColorFor(s.id);
+          // 身份色走 CSS 变量，由样式表决定形态（浅底 + 饱和字形），
+          // 行内只负责"这个会话是什么颜色"。
+          av.style.setProperty("--av", avatarColorFor(s.id));
           el.querySelector(".name").textContent = s.title || "对话";
           // Grok-parity: preview line (falls back to count+time when empty).
           el.querySelector(".meta").textContent =
@@ -4819,14 +5106,14 @@
         // GP-146：列表读不到 ≠ 一个群都没有，别把存储故障演成「我的群没了」。
         const bad = document.createElement("div");
         bad.className = "room-list-readfail";
-        bad.style.cssText = "color:var(--muted);font-size:var(--text-xs);padding:2px 0 4px";
+        bad.className = "sess-empty";
         bad.textContent = wavegT("roomListReadFail");
         box.appendChild(bad);
         return;
       }
       if (!rows.length) {
         const empty = document.createElement("div");
-        empty.style.cssText = "color:var(--muted);font-size:11px;padding:2px 0 4px";
+        empty.className = "sess-empty";
         empty.textContent = wavegT("roomEmpty");
         box.appendChild(empty);
         return;
@@ -4841,7 +5128,7 @@
           '<div class="sess-main"><div class="name"></div><div class="meta"></div></div>';
         const av = el.querySelector(".sess-avatar");
         av.textContent = String(rm.title || rm.id || "G").trim().slice(0, 1);
-        av.style.background = avatarColorFor(rm.id || rm.title);
+        av.style.setProperty("--av", avatarColorFor(rm.id || rm.title));
         el.querySelector(".name").textContent = rm.title || rm.id;
         const n = (rm.members || []).length;
         el.querySelector(".meta").textContent = n + " " + wavegT("roomMembers");
@@ -4863,7 +5150,7 @@
     }
 
     /* ---- M29 (§2.4) group chat entry ---- */
-    const COMPOSER_PLACEHOLDER_DEFAULT = "给 Bit Bot 发消息…（Shift+Enter 换行）";
+    const COMPOSER_PLACEHOLDER_DEFAULT = "给 Bit Bot 发消息…";
     let composerRoom = null;
     function roomBannerBits(rm) {
       const n = (rm.members || []).length;
@@ -5508,6 +5795,24 @@
       if (base && f.BITBOT_LLM_BASE_URL && f.BITBOT_LLM_BASE_URL.value !== undefined) {
         base.value = f.BITBOT_LLM_BASE_URL.value || base.placeholder;
       }
+      // Replica C6: search credential mirrors the brain credential (masked key,
+      // plain provider/base). Absent key just means "no web search".
+      const searchMask = document.getElementById("sec-search-mask");
+      if (searchMask) {
+        searchMask.textContent =
+          f.BITBOT_SEARCH_API_KEY && f.BITBOT_SEARCH_API_KEY.present
+            ? "（已配置 " + f.BITBOT_SEARCH_API_KEY.masked + "）"
+            : "（未配置）";
+      }
+      const searchProv = document.getElementById("sec-search-provider");
+      if (searchProv && f.BITBOT_SEARCH_PROVIDER && f.BITBOT_SEARCH_PROVIDER.value !== undefined) {
+        const pv = String(f.BITBOT_SEARCH_PROVIDER.value || "").trim().toLowerCase();
+        if (pv === "tavily" || pv === "brave") searchProv.value = pv;
+      }
+      const searchBase = document.getElementById("sec-search-base");
+      if (searchBase && f.BITBOT_SEARCH_API_BASE && f.BITBOT_SEARCH_API_BASE.value !== undefined) {
+        searchBase.value = f.BITBOT_SEARCH_API_BASE.value || "";
+      }
       const model = document.getElementById("sec-llm-model");
       if (model && f.BITBOT_LLM_MODEL && f.BITBOT_LLM_MODEL.value !== undefined) {
         model.value = f.BITBOT_LLM_MODEL.value || model.placeholder;
@@ -5584,6 +5889,18 @@
       const moonEl = document.getElementById("sec-moon-key");
       const moonVal = moonEl && moonEl.value ? moonEl.value.trim() : "";
       if (moonVal) patch.BITBOT_LLM_MOONSHOT_API_KEY = moonVal;
+      // Replica C6：搜索配置。provider/base 每次都提交（这样切回默认也能生效），
+      // key 只在用户真的输入时提交，避免把已有的 key 覆盖成空。
+      const searchProvEl = document.getElementById("sec-search-provider");
+      if (searchProvEl) {
+        patch.BITBOT_SEARCH_PROVIDER =
+          String(searchProvEl.value || "").trim().toLowerCase() || "tavily";
+      }
+      const searchBaseEl = document.getElementById("sec-search-base");
+      if (searchBaseEl) patch.BITBOT_SEARCH_API_BASE = searchBaseEl.value.trim();
+      const searchKeyEl = document.getElementById("sec-search-key");
+      const searchKeyVal = searchKeyEl && searchKeyEl.value ? searchKeyEl.value.trim() : "";
+      if (searchKeyVal) patch.BITBOT_SEARCH_API_KEY = searchKeyVal;
       patch.BITBOT_DINGTALK_POST = document.getElementById("sec-ding-post") &&
         document.getElementById("sec-ding-post").checked
         ? "1"
@@ -5636,6 +5953,7 @@
       if (keyEl) keyEl.value = "";
       if (qwenEl) qwenEl.value = "";
       if (moonEl) moonEl.value = "";
+      if (searchKeyEl) searchKeyEl.value = "";
       if (ft) ft.value = "";
       if (wt) wt.value = "";
       await refreshSecretsForm();
@@ -5808,9 +6126,18 @@
       }
     }
     function renderModelEntry() {
+      const a = (_modelCatalog && _modelCatalog.active) || {};
+      // Replica C4: the composer chip shows the same active model as the header
+      // entry, painted from the one catalog read — so a switch in the sheet
+      // updates both, and nothing can drift. Done before the entry early-return
+      // because the slim shell hides #model-entry but keeps the composer.
+      const chipLabel = document.getElementById("active-model-label");
+      if (chipLabel) {
+        const mid = String(a.model || a.provider_id || "").trim();
+        if (mid) chipLabel.textContent = mid;
+      }
       const entry = document.getElementById("model-entry");
       if (!entry) return;
-      const a = (_modelCatalog && _modelCatalog.active) || {};
       let txt;
       if (a.provider_id) {
         const lab = a.label || a.provider_id;
@@ -6039,6 +6366,8 @@
           // GP-30: the Host's computer-use lock is per-Bot; tell it whose chat
           // this turn belongs to (agent-bit until a Bot DM is opened).
           botId: activeBotId || undefined,
+          // Replica C4: composer web-search toggle rides this turn.
+          webSearch: !!composerWebSearch,
         });
         const r = await window.bitbot.turn(text, turnOpts);
         jsonOut.textContent = JSON.stringify(r, null, 2);
@@ -6068,6 +6397,7 @@
               continue;
             const locText = wavegLocalizeReply(m.text || "");
             const el = addMsg(m.role || "assistant", locText);
+            if (m && Array.isArray(m.sources)) renderCitations(el, m.sources);
             const aid = storedIds && Array.isArray(storedIds.assistant)
               ? storedIds.assistant[assistantCursor]
               : "";
@@ -8842,7 +9172,7 @@
         av.appendChild(img);
       } else {
         av.textContent = String(b.name || b.id || "B").trim().slice(0, 1);
-        av.style.background = avatarColorFor(b.id || b.name);
+        av.style.setProperty("--av", avatarColorFor(b.id || b.name));
       }
       const main = document.createElement("div");
       main.className = "sess-main";
@@ -9077,7 +9407,17 @@
       };
       addAction(wavegT("menuEdit"), () => openBotEditForm(bot));
       addAction(bot.pinned ? wavegT("menuUnpin") : wavegT("menuPin"), async () => {
-        await runUserTurn((bot.pinned ? "unpin bot " : "pin bot ") + bot.id, { skipSession: true, silentUser: true });
+        // 别用渲染时的 bot.pinned 快照：refreshBotRail() 是异步的，连点两次时
+        // 第二次拿到的还是旧快照，会再执行一次「取消置顶」，状态永远回不去
+        //（e2e GP-127 在多 Bot 环境下就是这样翻红的）。点的时候现读一次。
+        let nowPinned = Boolean(bot.pinned);
+        try {
+          const fresh = await window.bitbot.bots.detail(bot.id);
+          if (fresh && fresh.ok && fresh.bot) nowPinned = Boolean(fresh.bot.pinned);
+        } catch (_) {
+          /* 读不到就退回快照，不阻断操作 */
+        }
+        await runUserTurn((nowPinned ? "unpin bot " : "pin bot ") + bot.id, { skipSession: true, silentUser: true });
         await refreshBots();
         await refreshBotRail();
       });
@@ -10597,7 +10937,7 @@
         alwaysAllow: "总是允许",
         deny: "拒绝",
         send: "发送",
-        placeholder: "给 Bit Bot 发消息…（/ 技能 · @ Bot · Shift+Enter 换行）",
+        placeholder: "给 Bit Bot 发消息…",
         headerSkills: "能力",
         headerCreds: "凭证",
         headerParity: "面板",
@@ -10692,6 +11032,11 @@
         copyAction: "复制",
         copyDone: "已复制",
         copyFailed: "复制失败",
+        regenerateAction: "重新生成",
+        webSearch: "联网搜索",
+        modelSwitch: "模型",
+        regenerating: "重新生成中…",
+        regenerateFailed: "重新生成失败",
         replyQuoting: "回复：",
         replyCancel: "取消",
         secretCardTitle: "安全密钥输入",
@@ -11117,7 +11462,7 @@
         alwaysAllow: "總是允許",
         deny: "拒絕",
         send: "傳送",
-        placeholder: "輸入訊息…（/ 技能 · @ Bot · Shift+Enter 換行）",
+        placeholder: "給 Bit Bot 發訊息…",
         headerSkills: "能力",
         headerCreds: "憑證",
         headerParity: "面板",
@@ -11212,6 +11557,11 @@
         copyAction: "複製",
         copyDone: "已複製",
         copyFailed: "複製失敗",
+        regenerateAction: "重新產生",
+        webSearch: "聯網搜尋",
+        modelSwitch: "模型",
+        regenerating: "重新產生中…",
+        regenerateFailed: "重新產生失敗",
         replyQuoting: "回覆：",
         replyCancel: "取消",
         secretCardTitle: "安全密鑰輸入",
@@ -11637,7 +11987,7 @@
         alwaysAllow: "Always allow",
         deny: "Deny",
         send: "Send",
-        placeholder: "给 Bit Bot 发消息…（/ 唤起技能 · @ 提及 Bot · Shift+Enter 换行）",
+        placeholder: "Message Bit Bot…",
         headerSkills: "Capabilities",
         headerCreds: "Credentials",
         headerParity: "Parity",
@@ -11732,6 +12082,11 @@
         copyAction: "Copy",
         copyDone: "Copied",
         copyFailed: "Copy failed",
+        regenerateAction: "Regenerate",
+        webSearch: "Web search",
+        modelSwitch: "Model",
+        regenerating: "Regenerating…",
+        regenerateFailed: "Regenerate failed",
         replyQuoting: "Replying to: ",
         replyCancel: "Cancel",
         secretCardTitle: "Secure secret input",

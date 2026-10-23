@@ -254,6 +254,25 @@ function createSessionStore(repoRoot) {
     return { ok: true, id: mid, session_id: sid, reactions: hit.reactions };
   }
 
+  // Replica C3: delete a single stored message so a regenerated reply can
+  // replace the old one atomically (reload never shows duplicates).
+  function removeMessage(sessionId, messageId) {
+    const sid = String(sessionId || "").trim();
+    const mid = String(messageId || "").trim();
+    if (!sid || !mid) return { ok: false, error: "invalid_message" };
+    const state = load();
+    const sess = (state.sessions || []).find((s) => s && s.id === sid);
+    if (!sess) return { ok: false, error: "session_not_found", session_id: sid };
+    const before = (sess.messages || []).length;
+    sess.messages = (sess.messages || []).filter((m) => !(m && String(m.id) === mid));
+    if (sess.messages.length === before) {
+      return { ok: false, error: "message_not_found", message_id: mid };
+    }
+    sess.updated_at = new Date().toISOString();
+    save(state);
+    return { ok: true, session_id: sid, removed: mid };
+  }
+
   return {
     storePath,
     list,
@@ -266,6 +285,7 @@ function createSessionStore(repoRoot) {
     rename,
     remove,
     react,
+    removeMessage,
   };
 }
 

@@ -82,6 +82,7 @@ Host 判定顺序（GP-22）：`ask` 规则命中 → 需审批；否则 `allow`
 | `bitbot:badge:set` | `n:int` | – | `app.setBadgeCount`（Linux/mac）；renderer 未读变化时调用 |
 | `bitbot:sessions:rename/delete` | id(,title) | store 回执 | 会话重命名/删除 |
 | `bitbot:sidebar:toggle` | – | – | Cmd/Ctrl+B 也由 accelerator 触发 |
+| `bitbot:msg:regenerate` | `{sessionId, entryId}` | `{ok, messages[], stored_ids.assistant[]}` | Replica C3：删旧 assistant 条 → 复用前置 user prompt 重跑同一回合管线 → 仅存新 assistant 行（不重复 user 气泡，reload 无重复） |
 
 已存在不动：`bitbot:turn / boot / sessions:* / llm* / secrets:* / cn* / ota / autostart / daemon / readArtifact / openArtifact / product:status`。
 

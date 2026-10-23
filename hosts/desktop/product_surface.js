@@ -918,7 +918,9 @@ function createProductSurface(repoRoot) {
 
   function settingsPatch(patch) {
     const data = loadSettings();
-    const allowed = new Set(["appearance", "language", "timezone", "timezone_explicit", "local_execution", "route_traffic", "notify", "unread", "sidebar_collapsed", "dev_mode"]);
+    // Replica C4: search_default 是 composer「联网搜索」开关的持久位。不在白名单里
+    // 会被静默 ignored —— 开关点了能亮、重启就忘。
+    const allowed = new Set(["appearance", "language", "timezone", "timezone_explicit", "local_execution", "route_traffic", "notify", "unread", "sidebar_collapsed", "dev_mode", "search_default"]);
     const ignored = [];
     
     for (const key of Object.keys(patch)) {
