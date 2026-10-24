@@ -6987,7 +6987,12 @@
             if (r.auto_approved === true && /^Approval required/i.test(String(m.text || "")))
               continue;
             const locText = wavegLocalizeReply(m.text || "");
-            const el = addMsg(m.role || "assistant", locText);
+            // G-28: the final reply render is the one that sticks (the streaming
+            // bubble is removed right after the turn). So the Grok-style avatar +
+            // sender-name header goes here, on every assistant reply.
+            const el = addMsg(m.role || "assistant", locText, {
+              speaker: (m.role || "assistant") === "assistant" ? dmBotInfo() : undefined,
+            });
             if (m && Array.isArray(m.sources)) renderCitations(el, m.sources);
             const aid = storedIds && Array.isArray(storedIds.assistant)
               ? storedIds.assistant[assistantCursor]
