@@ -225,6 +225,7 @@ const forbiddenHit = (text) => {
     PATH: (process.env.HOME || "") + "/.moon/bin:" + (process.env.PATH || ""),
     MOON_BIN: process.env.MOON_BIN || path.join(os.homedir(), ".moon/bin/moon"),
     BITBOT_REPO_ROOT: REPO,
+    BITBOT_NO_SECRET_SYNC: "1",
     BITBOT_DESKTOP_AUTOSTART: "0",
     BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + P_MAIN + "/v1",
     BITBOT_LLM_API_KEY: KEY_MAIN,

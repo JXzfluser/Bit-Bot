@@ -277,14 +277,24 @@ const ALLOWED_SECRET_KEYS = new Set([
 /**
  * If Cloud Agent / shell injected BITBOT_* into process.env but .env.local
  * lacks them, persist for Settings + acceptance gate (never write stubs).
+ *
+ * 两个闸门（都是实测踩出来的）：
+ * 1. BITBOT_NO_SECRET_SYNC=1：门禁隔离了 data/，但 .env.local 是固定路径
+ *    （不在 REPO_ROOT 下），门禁注入的假 key 会被这里同步进用户的真文件。
+ *    门禁一律带这个开关。
+ * 2. stub 值识别：门禁的假值长 "e2e-stub-key" / "e2e-stub" 这样——只认
+ *    /^stub/i 拦不住它们（实测漏过，把用户 .env.local 里的真实 key 顶掉了）。
  */
 function syncInjectedSecretsToEnvLocal() {
+  if (process.env.BITBOT_NO_SECRET_SYNC === "1") {
+    return { ok: true, synced: [], skipped: "BITBOT_NO_SECRET_SYNC=1" };
+  }
   const current = parseEnvFile(DESKTOP_ENV_LOCAL);
   const patch = {};
   for (const k of ALLOWED_SECRET_KEYS) {
     const v = String(process.env[k] || "").trim();
     if (!v) continue;
-    if (/^stub/i.test(v) || v === "test" || v === "changeme") continue;
+    if (/^(e2e[-_])?(stub|dummy|placeholder)/i.test(v) || v === "test" || v === "changeme") continue;
     if (current[k]) continue;
     patch[k] = v;
   }

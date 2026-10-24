@@ -197,6 +197,7 @@ function startStub() {
         PATH: (process.env.HOME || "") + "/.moon/bin:" + (process.env.PATH || ""),
         MOON_BIN: process.env.MOON_BIN || path.join(os.homedir(), ".moon/bin/moon"),
         BITBOT_REPO_ROOT: REPO,
+        BITBOT_NO_SECRET_SYNC: "1",
         // 门禁不该改用户 macOS 的开机自启设置（app 启动时默认 applyLoginItem(true)）
         BITBOT_DESKTOP_AUTOSTART: "0",
         // 排程必须按可验证的时区算，不能跟着沙箱的 UTC 漂走。

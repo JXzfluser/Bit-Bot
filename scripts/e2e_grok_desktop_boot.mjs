@@ -169,6 +169,7 @@ async function launchOnce(extraEnv) {
       DISPLAY: liveDisplay(),
       BITBOT_ESPEAK_BIN: process.env.BITBOT_ESPEAK_BIN || "/usr/bin/espeak-ng",
       BITBOT_DESKTOP_AUTOSTART: "0",
+      BITBOT_NO_SECRET_SYNC: "1",
       ...(extraEnv || {}),
     }),
     timeout: 60000,

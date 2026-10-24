@@ -124,6 +124,10 @@ export function gateAppEnv(root, extra) {
     BITBOT_REPO_ROOT: root,
     BITBOT_ROUTINE_DAEMON_AUTOSTART: "0",
     BITBOT_DESKTOP_AUTOSTART: "0",
+    /* .env.local 是固定路径（hosts/desktop/.env.local），不在 REPO_ROOT 隔离
+       范围内。app 启动时会把 env 注入的"密钥"同步进它——不关掉的话，门禁的
+       假 key 会写进用户的真文件（实测发生过：真实 LLM 配置被 e2e-stub 顶掉）。 */
+    BITBOT_NO_SECRET_SYNC: "1",
     ...(extra || {}),
   };
 }
