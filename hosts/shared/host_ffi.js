@@ -5226,7 +5226,10 @@ function createHostFfi(repoRoot) {
     ).replace(/\/$/, "");
     const model =
       envModel || active.model || provider.model || "deepseek-chat";
-    const api_key = envKey || String(active.api_key || "").trim();
+    // ADR 0008 / SK-D7: the mobile host process does not hold or spend the
+    // Desktop model key, even if env or active.json still has a copy.
+    const mobileHost = String(process.env.BITBOT_MOBILE_HOST || "") === "1";
+    const api_key = mobileHost ? "" : (envKey || String(active.api_key || "").trim());
 
     return {
       provider_id: provider.id || wantId || "deepseek",
@@ -5235,11 +5238,13 @@ function createHostFfi(repoRoot) {
       model,
       api_key,
       key_configured: Boolean(api_key),
-      key_source: envKey
-        ? "env"
-        : active.api_key
-          ? "active.json"
-          : "missing",
+      key_source: mobileHost
+        ? "mobile_host_does_not_hold_llm_key"
+        : envKey
+          ? "env"
+          : active.api_key
+            ? "active.json"
+            : "missing",
       catalog_path: llmProvidersPath(),
       active_path: llmActivePath(),
     };
@@ -5969,10 +5974,12 @@ function createHostFfi(repoRoot) {
     const rows = (catalog.providers || []).map((p) => {
       const id = String(p.id || "");
       const keyEnv = p.env_key || "BITBOT_LLM_API_KEY";
-      const keyed = Boolean(
-        String(process.env[keyEnv] || "").trim() ||
-          (id === cfg.provider_id && cfg.key_configured),
-      );
+      const keyed = String(process.env.BITBOT_MOBILE_HOST || "") === "1"
+        ? false
+        : Boolean(
+            String(process.env[keyEnv] || "").trim() ||
+              (id === cfg.provider_id && cfg.key_configured),
+          );
       return {
         id,
         label: p.label || id,
@@ -25088,8 +25095,11 @@ function createHostFfi(repoRoot) {
         results.push({
           kind: "shell",
           ok: false,
-          command: shellCmd,
+          command: p0.scrubSecrets(shellCmd),
           error: "refused: irreversible/dangerous shell (Host gate)",
+          stdout: "",
+          stderr: "",
+          ran: false,
         });
         continue;
       }
@@ -25292,7 +25302,9 @@ function createHostFfi(repoRoot) {
     const providers = (catalog.providers || []).map((p) => {
       const id = String(p.id || "");
       const keyEnv = p.env_key || "BITBOT_LLM_API_KEY";
-      const keyed = Boolean(String(process.env[keyEnv] || "").trim());
+      const keyed = String(process.env.BITBOT_MOBILE_HOST || "") === "1"
+        ? false
+        : Boolean(String(process.env[keyEnv] || "").trim());
       return {
         id,
         label: p.label || id,

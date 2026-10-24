@@ -68,8 +68,11 @@ iOS `TurnBridge` 与 Android `TurnBridge` 从「凭证」或 `BITBOT_TURN_TOKEN`
 
 ## 验收命令
 
+P0、AU、SK 是三道门。过一道不算另外一道。P0 的 host-checks 旁证不算 SK residual 已关。
+
 ```bash
 bash scripts/prove_p0_inbound_security.sh
+bash scripts/prove_sandbox_secrets.sh
 ```
 
-对照 `docs/qa/p0-security-gates.md`。
+入站 curl 对照 `docs/qa/p0-security-gates.md`。沙箱与密钥对照 `docs/agent-core/05-security-sandbox-secrets.md`（SK1–SK8）。两条都不关 AR-15，都不升 I。
