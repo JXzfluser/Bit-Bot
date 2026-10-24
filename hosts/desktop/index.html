@@ -3836,6 +3836,29 @@
       window.bitbot.onTurnProgress((ev) => applyProgressEvent(ev));
     }
 
+    function resetAgentStepRow() {
+      const prev = document.getElementById("agent-step-live");
+      if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
+    }
+    function projectAgentStepRow(step) {
+      if (!step || (step.kind !== "entry" && step.kind !== "op")) return;
+      let row = document.getElementById("agent-step-live");
+      if (!row) {
+        row = document.createElement("div");
+        row.id = "agent-step-live";
+        row.dataset.agentSteps = "live";
+        log.appendChild(row);
+      }
+      const el = document.createElement("div");
+      el.className = "bb-note";
+      el.dataset.agentStep = step.kind === "entry" ? "entry" : String(step.op || "");
+      el.textContent = step.kind === "entry" ? "AgentLoop::run" : String(step.op || "");
+      row.appendChild(el);
+    }
+    if (window.bitbot && window.bitbot.onAgentLoop) {
+      window.bitbot.onAgentLoop((step) => projectAgentStepRow(step));
+    }
+
     // Grok-parity: deterministic pastel avatar color per session/bot id (hash →
     // palette). Same id always maps to the same color, so the sidebar reads as
     // distinct identities rather than a flat grey list.
@@ -7082,6 +7105,7 @@
       sendBtn.disabled = true;
       streamEl = null;
       resetProgressRow();
+      resetAgentStepRow();
       try {
         const turnOpts = Object.assign({}, opts || {}, {
           sessionId: activeSessionId || undefined,
@@ -7092,6 +7116,8 @@
           webSearch: !!composerWebSearch,
         });
         const r = await window.bitbot.turn(text, turnOpts);
+        const stepRow = document.getElementById("agent-step-live");
+        if (stepRow) stepRow.dataset.agentSteps = "done";
         jsonOut.textContent = JSON.stringify(r, null, 2);
         if (r && Array.isArray(r.machines)) renderMachines(r.machines);
         // Prefer final assistant lines; streaming bubble already showed deltas.

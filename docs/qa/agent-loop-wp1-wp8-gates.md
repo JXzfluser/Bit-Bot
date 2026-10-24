@@ -49,3 +49,13 @@ parser 白盒：`Total tests: 2, passed: 2, failed: 0.`
 Shell 执行是审批后的记录标记 `[product-shell]`，不在这条路径上启动真实 shell。Read 优先用 `BITBOT_LOOP_READ_JSON`，否则只读仓库根目录内的相对路径。
 
 未升 I。未改 capability matrix。未关 AR-15。本页不把结果写成 Desktop Agent Loop MVP 完成声明：WP1–WP3 的 live 证据已过，产品级 MVP 仍留给 Bit 验证裁决。
+
+## Electron / Chat GUI residual
+
+上表是 `createTurnRunner.runTurn` 的 live 证据，不是 Desktop Electron composer。composer mid-run 的边界与证据另记，WP1–WP8 裁决不变：
+
+- `docs/agent-core/01-agent-loop-electron-midrun.md`
+- `docs/qa/electron-chat-agent-loop-gates.md`
+- `bash scripts/prove_electron_chat_agent_loop.sh`
+
+该命令通过也不关闭 AR 状态列，也不宣称 MVP。

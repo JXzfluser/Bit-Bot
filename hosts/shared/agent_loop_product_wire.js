@@ -114,9 +114,38 @@ function legacyGuardedRerunEnabled(env) {
   return String((env || process.env).BITBOT_LEGACY_GUARDED_RERUN || "") === "1";
 }
 
+/**
+ * Project one kernel loop line into an AgentStep.
+ * The kernel owns the loop. Callers may display this object; they must not
+ * start another model or tool loop from it.
+ */
+function projectAgentStep(line) {
+  const text = String(line || "").trim();
+  if (text === "BITBOT_LOOP entry=AgentLoop::run") {
+    return {
+      kind: "entry",
+      entry: "AgentLoop::run",
+      agent_entry: "open_turn",
+    };
+  }
+  const prefix = "BITBOT_LOOP op=";
+  if (!text.startsWith(prefix)) return null;
+  const op = text.slice(prefix.length).trim();
+  if (
+    op !== "llm_chat" &&
+    op !== "exec_tool" &&
+    op !== "request_approval" &&
+    op !== "deliver"
+  ) {
+    return null;
+  }
+  return { kind: "op", op };
+}
+
 module.exports = {
   createProductSession,
   execProductTool,
   decideApproval,
   legacyGuardedRerunEnabled,
+  projectAgentStep,
 };

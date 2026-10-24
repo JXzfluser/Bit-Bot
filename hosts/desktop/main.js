@@ -20,12 +20,15 @@ const { spawn } = require("child_process");
 // Dev: hosts/shared; packaged: hosts/desktop/shared (copied by electron-builder).
 let createTurnRunner;
 let createHostFfi;
+let projectAgentStep;
 try {
   createTurnRunner = require("./shared/run_moon_turn").createTurnRunner;
   createHostFfi = require("./shared/host_ffi").createHostFfi;
+  projectAgentStep = require("./shared/agent_loop_product_wire").projectAgentStep;
 } catch (_e) {
   createTurnRunner = require("../shared/run_moon_turn").createTurnRunner;
   createHostFfi = require("../shared/host_ffi").createHostFfi;
+  projectAgentStep = require("../shared/agent_loop_product_wire").projectAgentStep;
 }
 const { createSessionStore } = require("./sessions");
 
@@ -2595,6 +2598,25 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
         });
         progressRows.push(row);
         broadcast("bitbot:turn-progress", row);
+      },
+      // Kernel AgentLoop lines, forwarded as AgentStep. The renderer only
+      // displays them. This handler does not call the model again.
+      onLoop: (line) => {
+        const step = projectAgentStep(line);
+        if (!step) return;
+        const row = Object.assign(
+          { session_id: sessionId, at: Date.now() },
+          step,
+        );
+        broadcast("bitbot:agent-loop", row);
+        const tracePath = process.env.BITBOT_AGENT_LOOP_TRACE;
+        if (tracePath) {
+          try {
+            fs.appendFileSync(tracePath, JSON.stringify(row) + "\n");
+          } catch (_) {
+            /* evidence file is optional */
+          }
+        }
       },
     });
     // Replica C6: surface real search sources on the final assistant line so the

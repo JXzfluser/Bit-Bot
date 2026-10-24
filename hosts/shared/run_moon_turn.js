@@ -109,7 +109,9 @@ function createTurnRunner(repoRoot, opts = {}) {
   /**
    * Read one kernel FFI request, write one JSON response. Line splitting only.
    */
-  function pumpMoonFfi(args, onFfi, { timeoutMs = 180000 } = {}) {
+  function pumpMoonFfi(args, onFfi, opts = {}) {
+    const timeoutMs = opts.timeoutMs || 180000;
+    const onLoop = typeof opts.onLoop === "function" ? opts.onLoop : null;
     return new Promise((resolve, reject) => {
       const child = spawn(MOON_BIN, args, {
         cwd: ffi.REPO_ROOT,
@@ -123,7 +125,24 @@ function createTurnRunner(repoRoot, opts = {}) {
       let stdout = "";
       let stderr = "";
       let buf = "";
+      let stderrCarry = "";
       let chain = Promise.resolve();
+      const emitLoopLines = (chunk) => {
+        stderrCarry += chunk;
+        let nl = stderrCarry.indexOf("\n");
+        while (nl >= 0) {
+          const line = stderrCarry.slice(0, nl).replace(/\r$/, "").trim();
+          stderrCarry = stderrCarry.slice(nl + 1);
+          if (onLoop && line.startsWith("BITBOT_LOOP ")) {
+            try {
+              onLoop(line);
+            } catch (_) {
+              /* projection must not break the kernel exchange */
+            }
+          }
+          nl = stderrCarry.indexOf("\n");
+        }
+      };
       const timer = setTimeout(() => {
         child.kill("SIGKILL");
         reject(new Error(`moon timed out after ${timeoutMs}ms`));
@@ -163,7 +182,9 @@ function createTurnRunner(repoRoot, opts = {}) {
         }
       });
       child.stderr.on("data", (chunk) => {
-        stderr += chunk.toString();
+        const text = chunk.toString();
+        stderr += text;
+        emitLoopLines(text);
       });
       child.on("error", (err) => {
         clearTimeout(timer);
@@ -267,7 +288,10 @@ function createTurnRunner(repoRoot, opts = {}) {
         nodeOps.push(String((req && req.op) || ""));
         return productWire.dispatch(req);
       },
-      { timeoutMs: ctx.timeoutMs || 180000 },
+      {
+        timeoutMs: ctx.timeoutMs || 180000,
+        onLoop: ctx.onLoop,
+      },
     );
     const { stdout, stderr } = session;
     const raw = lastJsonLine(stdout || stderr);

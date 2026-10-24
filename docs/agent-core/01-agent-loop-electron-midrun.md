@@ -1,0 +1,36 @@
+# Electron / Chat GUI：Agent Loop mid-run
+
+状态：Accepted。这是接线边界，不是 I，不关 AR 状态列，不改 capability matrix，不碰 AR-15 / H4，不倒裁 WP1–WP8，不宣称 Agent Loop MVP 或 Desktop Agent Loop MVP。
+
+本页在本工作区原先不存在。内容按 `01-agent-loop-product-path.md` 写死 Electron composer 这一段，供本轮实现与证据对齐。
+
+## 路径
+
+1. Desktop Chat composer（`#composer #text` → `runUserTurn` → `bitbot:turn` → `runner.runTurn`）与 cmd 共用入口：`open_turn` → `AgentLoop::run`。`max_steps` 仍强制 64。
+2. Host 仍只回答内核吐出的一行 `BITBOT_FFI`：`llm_chat` / `exec_tool` / `request_approval` / `deliver`。`llm_chat` 走现有 `executeLlmChat`。Node 不根据 `tool_calls` 再叫一次模型。
+3. Renderer 不拥有第二套 loop。它只投影内核 `BITBOT_LOOP` 行变成的 `AgentStep`（`bitbot:agent-loop`）。投影函数不得调用 `turn` 或 `executeLlmChat`。
+4. `AgentStep` 形状只描述内核已经走出的步：`{ kind: "entry", entry: "AgentLoop::run", agent_entry: "open_turn" }` 或 `{ kind: "op", op }`，`op` 仅限上述四个操作。
+5. 非 Chat（例如启动时的 `ListMachines`）仍不进 Agent Loop。
+6. `--legacy-chat-effect` / `BITBOT_LEGACY_CHAT_EFFECT=1` 才回到单次 effect。默认 composer 不走这条。
+7. Shell 仍须本回合 `request_approval` 的 allow。本轮不改审批 UI，不改 `bitbot:approvals:runAllowed` 与 cn-probe 里既有的 `approved: true`。
+
+## 验收
+
+EG1–EG3 是关掉 Electron/Chat GUI residual 的最低条。EG4–EG6 一起跑。通过这些门不关闭 AR-01/02/03 的状态列，也不把结果写成 MVP。
+
+| ID | 最低条 | 期望 |
+|---|---|---|
+| EG1 | 是 | 真实 Electron composer 回合还在飞（最终助手句尚未出现在 `#log`）时，trace 与 DOM 已有 `entry=AgentLoop::run` / `agent_entry=open_turn`。源码字面量或单独的 cmd stub 不算 |
+| EG2 | 是 | 同一飞行窗口里内核已走出 `llm_chat` 与 `exec_tool`。生产 `executeLlmChat` 已收到第一次请求且带 tools。第二次 provider 请求是内核又要了一次 `llm_chat`，不是 Host 自转 |
+| EG3 | 是 | `node_ops` 与 `kernel_ops` 一致；provider 次数等于内核 `llm_chat` 次数。`bitbot:turn` 与 renderer 投影函数里没有第二套模型循环 |
+| EG4 | 否 | 飞行中 `#log [data-agent-step]` 只显示已投影的 AgentStep（entry、`llm_chat`、`exec_tool`），且当时还没有 `deliver` |
+| EG5 | 否 | 第二次 provider body 含工具观察（`<cursor_untrusted_data` 与 `see b.txt`）。回合结束后可见助手文本是 `saw file`。默认未设 `BITBOT_LEGACY_CHAT_EFFECT` |
+| EG6 | 否 | 本轮 Read 路径不出现审批放行。composer 不传 `approved: true`。不改 AR-15、H4、capability matrix |
+
+## evidence_cmd
+
+```bash
+bash scripts/prove_electron_chat_agent_loop.sh
+```
+
+脚本拉起真实 `hosts/desktop/main.js`，向 `#composer #text` 提交一句 Chat，在第二次模型完成返回之前读 trace、DOM 和 loopback provider 记录。缺 Electron、显示或 moon 时失败退出，不把缺工具链写成 PASS。
