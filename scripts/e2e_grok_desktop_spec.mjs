@@ -159,6 +159,35 @@ async function setTheme(win, mode) {
         : bad("Bot list pushed down — header blocks grew", sidebar.firstRowTop);
     }
 
+    // S5 — 会话入口：Grok 底部是「胶囊 + 两个图标」。会话列表必须真的能从
+    //      那个图标打开（不能只是把入口藏掉导致功能失踪）。
+    const sessPopup = await win.evaluate(async () => {
+      const btn = document.getElementById("ab-sessions-btn");
+      const popup = document.getElementById("sessions-popup");
+      if (!btn || !popup) return { missing: true };
+      btn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const rect = popup.getBoundingClientRect();
+      const out = {
+        shown: !popup.hidden && rect.height > 0 && rect.width > 0,
+        rows: popup.querySelectorAll(".sess-row").length,
+        inAccountBar: !!popup.closest("#account-bar"),
+        leftStandaloneSection: !!document.getElementById("sb-sessions"),
+      };
+      btn.click(); // 收回去，别影响后续截图/断言
+      return out;
+    });
+    snapshot.sessPopup = sessPopup;
+    if (sessPopup.missing) bad("sessions popup wiring missing");
+    else {
+      sessPopup.shown && sessPopup.inAccountBar
+        ? ok(`会话入口在账户条图标里，点开显示 ${sessPopup.rows} 条会话`)
+        : bad("sessions popup does not open from the account-bar icon", JSON.stringify(sessPopup));
+      !sessPopup.leftStandaloneSection
+        ? ok("侧栏主体已无独立「会话」区块（对齐 Grok：只有 Bot / 群 Bot）")
+        : bad("standalone sidebar sessions section still present");
+    }
+
     // A1/A2 — accent token in both themes (via the send button, the ground truth)
     await setTheme(win, "light");
     const sendLight = await win.evaluate(() => getComputedStyle(document.getElementById("send")).backgroundColor);

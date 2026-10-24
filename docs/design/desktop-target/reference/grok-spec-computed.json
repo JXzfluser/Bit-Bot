@@ -27,8 +27,8 @@
       "top": 0
     },
     "sessionTitleTop": null,
-    "sessionListTop": 825,
-    "chatTitleY": 792,
+    "sessionListTop": 0,
+    "chatTitleY": 0,
     "firstRowTop": 140,
     "rowH": 61,
     "avW": 36,
@@ -38,6 +38,12 @@
       "昨天",
       "更早"
     ]
+  },
+  "sessPopup": {
+    "shown": true,
+    "rows": 11,
+    "inAccountBar": true,
+    "leftStandaloneSection": false
   },
   "accent": {
     "sendLight": "rgb(124, 58, 237)",

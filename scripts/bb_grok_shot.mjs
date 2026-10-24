@@ -72,7 +72,14 @@ await win.waitForTimeout(250);
 if (await comp.count()) await comp.screenshot({ path: "/tmp/grok_composer_menu.png" }).catch(() => {});
 // 弹层在 composer 上方，元素截图会裁顶 → 整窗再补一张看完整菜单
 await win.screenshot({ path: "/tmp/grok_menu_window.png" }).catch(() => {});
+await win.click("#attach-btn").catch(() => {}); // 收起，别挡后面的侧栏状态
 
-console.log("shots saved: /tmp/grok_window.png /tmp/grok_main.png /tmp/grok_sidebar.png /tmp/grok_composer_closed.png /tmp/grok_composer_menu.png");
+// G-28: 侧栏底部「会话」图标弹出面板（Grok 底部图标对的位置）
+await win.click("#ab-sessions-btn").catch(() => {});
+await win.waitForTimeout(350);
+await win.screenshot({ path: "/tmp/grok_sessions_popup.png" }).catch(() => {});
+await win.click("#ab-sessions-btn").catch(() => {});
+
+console.log("shots saved: /tmp/grok_window.png /tmp/grok_main.png /tmp/grok_sidebar.png /tmp/grok_composer_closed.png /tmp/grok_composer_menu.png /tmp/grok_sessions_popup.png");
 fs.rmSync(ud, { recursive: true, force: true });
 process.exit(0);

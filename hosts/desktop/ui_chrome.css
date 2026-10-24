@@ -2076,8 +2076,16 @@ body.grok-ui #sidebar-footer {
 }
 /* 「管理 Bot / 应用」「设置」两行在 Round 5 就收进了账户弹层（display:none），
    所以底部只剩账户胶囊一条，不再给它们写样式。 */
-body.grok-ui #account-bar { margin: 6px 0 0; }
+body.grok-ui #account-bar {
+  margin: 6px 0 0;
+  /* G-28 · Grok 底部是「账户胶囊 + 两个图标」并排一行 */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 body.grok-ui #account-avatar-btn {
+  flex: 1 1 auto;
+  min-width: 0;
   gap: var(--space-3);
   /* Grok 真源底部是一个浮起的白色胶囊（无明显描边、靠极轻阴影分开），
      高度约 44。我方原来是 1px 描边的扁条，观感偏"表单控件"。 */
@@ -2101,3 +2109,35 @@ body.grok-ui #account-avatar-circle {
   color: var(--ink);
   box-shadow: none;
 }
+/* G-28 · 账户胶囊右侧的两个图标（会话 / 设置），对齐 Grok 底部的图标对 */
+body.grok-ui .ab-icon-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+body.grok-ui .ab-icon-btn:hover { background: var(--accent-soft); color: var(--ink); }
+/* 会话面板：从账户条向上弹出，取代原来那行「会话 ▸」折叠 */
+body.grok-ui #sessions-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  max-height: 52vh;
+  overflow: auto;
+}
+body.grok-ui #sessions-popup[hidden] { display: none; }

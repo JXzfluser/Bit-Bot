@@ -1717,18 +1717,10 @@
           <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板" data-i18n="marketplace">模板市场</button>
         </div>
       </details>
-      <!-- Settings is a pinned sidebar-bottom entry (before the account row),
-           click opens the Settings Sheet. Kept out of the account popup so it
-           is not a duplicated entry. -->
-      <!-- G-28 · 侧栏结构对齐 Grok Bot：Grok 左侧只有「Bot」和「群 Bot」，
-           没有独立的会话区块（会话属于某个 Bot，点进去才有）。历史会话列表
-           因此从侧栏主体移到 footer 折叠区，默认收起；仍然可达，功能不丢。 -->
-      <details class="sb-adv" id="sb-sessions">
-        <summary class="sb-adv-sum"><span data-i18n="chats">会话</span><span class="sb-adv-caret" aria-hidden="true">▸</span></summary>
-        <!-- GP-123: live search over the real session list (今天 / 昨天 / 更早). -->
-        <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
-        <div id="session-list" aria-label="会话列表"></div>
-      </details>
+      <!-- G-28 · 侧栏对齐 Grok Bot：Grok 左侧只有「Bot」和「群 Bot」，
+           会话属于某个 Bot、不占侧栏；底部是一条「账户胶囊 + 两个图标」。
+           所以会话列表不再占侧栏主体，收进账户条右侧图标弹出的面板
+           （#sessions-popup）。功能不丢，位置与 Grok 一致。 -->
       <div class="bb-split">
         <button type="button" id="sidebar-settings-btn" class="bb-btn bb-btn-block" title="设置" data-i18n="settings">设置</button>
       </div>
@@ -1739,6 +1731,18 @@
           <span id="account-name-label">Bit Bot</span>
           <span class="acct-chevron" aria-hidden="true">▲</span>
         </button>
+        <!-- G-28 · Grok 底部是「胶囊 + 两个图标」。会话与设置各占一个图标，
+             原来那行「会话 ▸」折叠和隐藏的设置按钮都不再需要。 -->
+        <button type="button" id="ab-sessions-btn" class="ab-icon-btn" title="会话" aria-label="会话" aria-expanded="false" aria-controls="sessions-popup">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-8.5 8.5H8L3.5 23l1.3-4.6A8.5 8.5 0 1 1 20.5 12z"/></svg>
+        </button>
+        <button type="button" id="ab-settings-btn" class="ab-icon-btn" title="设置" aria-label="设置">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/></svg>
+        </button>
+        <div id="sessions-popup" hidden>
+          <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
+          <div id="session-list" aria-label="会话列表"></div>
+        </div>
         <div id="account-popup" hidden role="menu">
           <!-- Grok-parity round 5: 管理/设置 live behind the account click,
                not as always-visible sidebar rows. -->
@@ -3850,6 +3854,38 @@
       return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
     }
 
+    // G-28: Grok 的 Bot 头像内部是**白色图形**，不是首字母。逐像素看真源，
+    // 那些"blob"其实= 彩色实心圆 + 内部白色 logo。这里用 6 个简单的几何
+    // 字形代替插画（我们没有人手一张的品牌图形），按 id 稳定分配。
+    // 全部 fill=currentColor，颜色由 .sess-avatar 的 color 决定。
+    const AVATAR_GLYPHS = [
+      // 四瓣花
+      '<circle cx="12" cy="8.5" r="3.8"/><circle cx="12" cy="15.5" r="3.8"/><circle cx="8.5" cy="12" r="3.8"/><circle cx="15.5" cy="12" r="3.8"/>',
+      // 对话气泡
+      '<path d="M6.5 4.5h11A3.5 3.5 0 0 1 21 8v5a3.5 3.5 0 0 1-3.5 3.5H12l-4.2 3.2a.6.6 0 0 1-.9-.5v-2.7H6.5A3.5 3.5 0 0 1 3 13V8a3.5 3.5 0 0 1 3.5-3.5z"/>',
+      // 六边形
+      '<path d="M12 3.2l7.6 4.4v8.8L12 20.8 4.4 16.4V7.6z"/>',
+      // 星芒
+      '<path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"/>',
+      // 圆环
+      '<path d="M12 3.2a8.8 8.8 0 1 1 0 17.6 8.8 8.8 0 0 1 0-17.6zm0 4.1a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4z"/>',
+      // 菱形
+      '<path d="M12 3.4l8.6 8.6-8.6 8.6L3.4 12z"/>',
+    ];
+    function avatarGlyphFor(seed) {
+      const s = String(seed || "");
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
+      return AVATAR_GLYPHS[h % AVATAR_GLYPHS.length];
+    }
+    // 把白色字形装进一个 span.sess-avatar（或同款头像位）
+    function fillAvatarGlyph(el, seed) {
+      el.innerHTML =
+        '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="currentColor">' +
+        avatarGlyphFor(seed) +
+        "</svg>";
+    }
+
     // G-28: build a Grok-style circular avatar for a bot identity. Uses the
     // real avatar image when present, otherwise a colored initial (same
     // palette as the sidebar, via the --av custom prop — no hardcoded hex so
@@ -5231,10 +5267,10 @@
       document.body.classList.toggle("session-search-open", !!open);
       const el = document.getElementById("session-search");
       if (!el) return;
-      // G-28: 会话列表默认收在 #sb-sessions 折叠里，搜索必须先把它展开，
-      // 否则输入框被折叠隐藏、focus 也落不到可见元素上。
-      const fold = document.getElementById("sb-sessions");
-      if (open && fold) fold.open = true;
+      // G-28: 会话列表现在收在账户条右侧图标弹出的 #sessions-popup 里，
+      // 搜索必须先把它展开，否则输入框被隐藏、focus 落不到可见元素上。
+      const fold = document.getElementById("sessions-popup");
+      if (open && fold) fold.hidden = false;
       el.hidden = !open;
       if (open) {
         el.focus();
@@ -5249,6 +5285,45 @@
           !document.body.classList.contains("session-search-open"),
         );
       });
+    }
+    /* G-28 · 账户胶囊右侧的两个图标（Grok 底部的图标对）。
+       会话图标向上弹出 #sessions-popup，设置图标走既有的设置入口。 */
+    {
+      const abSessions = document.getElementById("ab-sessions-btn");
+      const sessPopup = document.getElementById("sessions-popup");
+      if (abSessions && sessPopup) {
+        const closePopup = () => {
+          sessPopup.hidden = true;
+          abSessions.setAttribute("aria-expanded", "false");
+        };
+        abSessions.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const willOpen = sessPopup.hidden;
+          sessPopup.hidden = !willOpen;
+          abSessions.setAttribute("aria-expanded", String(willOpen));
+          if (willOpen) {
+            setSessionSearchOpen(false);
+            window.bitbot.sessions
+              .list()
+              .then((list) => renderSessionList(list))
+              .catch(() => {});
+          }
+        });
+        document.addEventListener("click", (ev) => {
+          if (!sessPopup.hidden && !ev.target.closest("#account-bar")) closePopup();
+        });
+        // 选中某个会话后自动收起面板，回到对话面。
+        sessPopup.addEventListener("click", (ev) => {
+          if (ev.target.closest(".sess-row")) closePopup();
+        });
+      }
+      const abSettings = document.getElementById("ab-settings-btn");
+      if (abSettings) {
+        abSettings.addEventListener("click", () => {
+          const real = document.getElementById("sidebar-settings-btn");
+          if (real) real.click();
+        });
+      }
     }
     /* Wave M35: shared shortcut entry point — button + Cmd/Ctrl+K do the same thing. */
     function toggleSessionSearchFromShortcut() {
@@ -9841,14 +9916,15 @@
         img.src = b.avatar_data_url;
         av.appendChild(img);
       } else {
-        av.textContent = String(b.name || b.id || "B").trim().slice(0, 1);
         av.style.setProperty("--av", avatarColorFor(b.id || b.name));
+        // G-28: 白色字形代替首字母（Grok 的头像是彩色圆 + 白色 logo）
+        fillAvatarGlyph(av, b.id || b.name);
       }
       const main = document.createElement("div");
       main.className = "sess-main";
       const name = document.createElement("div");
       name.className = "name";
-      name.textContent = (b.pinned ? "★ " : "") + b.name + (b.id === primaryId ? " · primary" : "");
+      name.textContent = (b.pinned ? "★ " : "") + b.name;
       const meta = document.createElement("div");
       meta.className = "meta";
       const tags = Array.isArray(b.tags) ? b.tags : [];
