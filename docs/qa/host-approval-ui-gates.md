@@ -26,4 +26,8 @@ WP SoT 在同一条命令里再跑，不编号为 AU。
 
 ## 本地结果
 
-待 `bash scripts/prove_host_approval_ui.sh` 跑完后写入 pass/fail。
+`bash scripts/prove_host_approval_ui.sh`
+
+`prove_host_approval_ui pass=69 fail=0`
+
+其中 `prove_agent_loop_product_wire pass` 为 fail=0，moon `failed: 0`。这一行不是 AU，也不改 WP1–WP8 的裁决。P0-3 仍是 U。AR-15 未关。
