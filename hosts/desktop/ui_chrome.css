@@ -1819,6 +1819,56 @@ body.grok-ui #composer .bb-chip[aria-pressed="true"] {
   color: var(--accent);
 }
 
+/* G-28: Grok 极简 composer 的「＋」弹层 —— 附件 / 联网搜索 / 模型 / 语音对话。
+   把原来挤在胶囊里的 chip 收进这里，composer 表面回到 [＋][输入][麦][↑]，
+   对齐 replica/screens/grok-composer-controls.png。位置相对 #composer（已 relative）。 */
+.composer-more {
+  position: absolute;
+  bottom: 72px;
+  left: 16px;
+  z-index: 50;
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.composer-more[hidden] { display: none; }
+.composer-more button {
+  background: none;
+  border: 0;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+.composer-more button:hover { background: var(--accent-soft); }
+/* 菜单里的 chip / 语音对话当「菜单行」用：去掉行内胶囊的边框底色（ID 权重覆盖） */
+body.grok-ui #composer-more .bb-chip,
+body.grok-ui #composer-more #voicechat-btn {
+  justify-content: flex-start;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  text-align: left;
+}
+body.grok-ui #composer-more .bb-chip:hover,
+body.grok-ui #composer-more #voicechat-btn:hover { background: var(--accent-soft); }
+body.grok-ui #composer-more .bb-chip[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* --- 状态提示：降级成一行居中灰字，不做告警卡片 ------------------------- */
 /* JS 用 style.display = "block" 控制显隐，所以这里只做文字样式；
    display 由内联样式负责，避免和显隐逻辑打架。 */

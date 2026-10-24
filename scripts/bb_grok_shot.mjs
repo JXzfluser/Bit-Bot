@@ -64,6 +64,15 @@ if (await log.count()) await log.screenshot({ path: "/tmp/grok_main.png" }).catc
 const sb = win.locator("#sidebar");
 if (await sb.count()) await sb.screenshot({ path: "/tmp/grok_sidebar.png" }).catch(() => {});
 
-console.log("shots saved: /tmp/grok_window.png /tmp/grok_main.png /tmp/grok_sidebar.png");
+// G-28: composer 关闭态 + 「＋」弹层打开态
+const comp = win.locator("#composer");
+if (await comp.count()) await comp.screenshot({ path: "/tmp/grok_composer_closed.png" }).catch(() => {});
+await win.click("#attach-btn").catch(() => {});
+await win.waitForTimeout(250);
+if (await comp.count()) await comp.screenshot({ path: "/tmp/grok_composer_menu.png" }).catch(() => {});
+// 弹层在 composer 上方，元素截图会裁顶 → 整窗再补一张看完整菜单
+await win.screenshot({ path: "/tmp/grok_menu_window.png" }).catch(() => {});
+
+console.log("shots saved: /tmp/grok_window.png /tmp/grok_main.png /tmp/grok_sidebar.png /tmp/grok_composer_closed.png /tmp/grok_composer_menu.png");
 fs.rmSync(ud, { recursive: true, force: true });
 process.exit(0);
