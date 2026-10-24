@@ -226,8 +226,8 @@ async function setTheme(win, mode) {
     snapshot.bubble = bubble;
     if (bubble.missing) bad("#log missing for bubble probe");
     else {
-      (bubble.borderTopWidth === "0px" && bubble.boxShadow === "none" && bubble.radius > 0 && bubble.w > 0)
-        ? ok(`assistant bubble is a flat block (0 border, no shadow, radius ${bubble.radius}px)`)
+      (bubble.borderTopWidth === "0px" && bubble.boxShadow === "none" && bubble.radius === 16 && bubble.w > 0)
+        ? ok(`assistant bubble is a flat block (0 border, no shadow, radius ${bubble.radius}px = --radius-bubble)`)
         : bad("assistant bubble chrome drifted", JSON.stringify(bubble));
     }
 

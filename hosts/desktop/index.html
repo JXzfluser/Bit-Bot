@@ -883,7 +883,7 @@
     align-self: flex-end;
     background: var(--user-bubble);
     color: var(--ink);
-    border-radius: 18px;
+    border-radius: var(--radius-user);
     padding: 12px 18px;
     position: relative;
     /* Wave M42: flatten the bottom-right corner into a subtle tail toward the
@@ -935,7 +935,10 @@
   .msg.assistant .body {
     background: var(--bot-bubble);
     border: 0;
-    border-radius: var(--radius-xl);
+    /* G-28: 用专用的气泡圆角 token（16px，对齐 replica/screens/OBSERVATIONS.md
+       实测的「圆角 ~16」），而不是通用 --radius-xl(12) —— 12px 在 700px+ 宽的
+       整列气泡上显得偏方，和 Grok 的观感差一档。 */
+    border-radius: var(--radius-bubble);
     padding: 14px 18px;
     box-shadow: none;
     flex: 1 1 100%;
@@ -4108,6 +4111,10 @@
       if (r && r.ok) renderReactions(el, r.reactions);
     }
     function attachMessageActions(el, role, text) {
+      // G-28: 同一个 isHostNotice 判据也管操作条。失败/配置提示不是 Bot 说的话，
+      // 若还挂着「回复 / 反应 / 重新生成」，等于让用户对一条系统告警做语义操作，
+      // 与「不冒充 Bot」相矛盾。头像与操作条必须一起收。
+      if (role !== "user" && isHostNotice(text)) return;
       const bar = document.createElement("div");
       bar.className = "msg-actions";
       const rb = document.createElement("button");
