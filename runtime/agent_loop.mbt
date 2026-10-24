@@ -35,6 +35,7 @@ pub extend ToolCallReq with Debug::{to_repr}
 pub(all) struct LlmChatReply {
   content : String
   tool_calls : Array[ToolCallReq]
+  cancelled : Bool
 } derive(Eq, Debug)
 
 ///|
@@ -140,13 +141,13 @@ pub impl AgentLoopHost for MockAgentHost with fn llm_chat(self, messages) {
   let i = self.reply_i
   self.reply_i = i + 1
   if self.replies.length() == 0 {
-    { content: "", tool_calls: [], }
+    { content: "", tool_calls: [], cancelled: false, }
   } else if i < self.replies.length() {
     self.replies[i]
   } else if self.repeat_last {
     self.replies[self.replies.length() - 1]
   } else {
-    { content: "", tool_calls: [], }
+    { content: "", tool_calls: [], cancelled: false, }
   }
 }
 
@@ -263,6 +264,18 @@ pub fn[H : AgentLoopHost] AgentLoop::run(
   while steps < AGENT_LOOP_MAX_STEPS {
     steps = steps + 1
     let reply = host.llm_chat(messages)
+    if reply.cancelled {
+      return finish_run(
+        ctx,
+        Cancelled,
+        steps,
+        exec_count,
+        llm_count,
+        approval_count,
+        "",
+        observations,
+      )
+    }
     llm_count = llm_count + 1
     if reply.tool_calls.length() == 0 {
       host.deliver(reply.content)

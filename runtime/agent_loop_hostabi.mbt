@@ -71,13 +71,13 @@ pub impl AgentLoopHost for LoopHostAbi with fn llm_chat(self, messages) {
   let i = self.reply_i
   self.reply_i = i + 1
   if self.replies.length() == 0 {
-    { content: "", tool_calls: [], }
+    { content: "", tool_calls: [], cancelled: false, }
   } else if i < self.replies.length() {
     self.replies[i]
   } else if self.repeat_last {
     self.replies[self.replies.length() - 1]
   } else {
-    { content: "", tool_calls: [], }
+    { content: "", tool_calls: [], cancelled: false, }
   }
 }
 

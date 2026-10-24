@@ -7,6 +7,16 @@ test "product ffi reply keeps a tool call" {
   assert_eq(reply.tool_calls[0].name, "Read")
   assert_eq(reply.tool_calls[0].arguments_json, "{\"path\":\"a.txt\"}")
   assert_eq(reply.tool_calls[0].id, "c1")
+  assert_false(reply.cancelled)
+}
+
+///|
+test "product ffi cancel reply carries no further tool call" {
+  let raw = "{\"cancel\":true,\"content\":\"saw file\",\"calls\":[{\"id\":\"c\",\"name\":\"Read\",\"arguments\":\"{}\"}]}"
+  let reply = parse_product_llm_reply(raw)
+  assert_true(reply.cancelled)
+  assert_eq(reply.content, "")
+  assert_eq(reply.tool_calls.length(), 0)
 }
 
 ///|

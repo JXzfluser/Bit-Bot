@@ -22,14 +22,18 @@ fn habi_shell() -> @tools.ToolSpec {
 
 ///|
 fn habi_call(name : String, args : String) -> @runtime.LlmChatReply {
-  { content: "", tool_calls: [{ id: "h", name, arguments_json: args, }], }
+  {
+    content: "",
+    tool_calls: [{ id: "h", name, arguments_json: args, }],
+    cancelled: false,
+  }
 }
 
 ///|
 test "HABI-1 open_turn LoopHostAbi delivers final" {
   let ctx = @runtime.open_turn(turn_id="h1", text="hi")
   let host = @runtime.LoopHostAbi::scripted([
-    { content: "abi final", tool_calls: [], },
+    { content: "abi final", tool_calls: [], cancelled: false, },
   ])
   let run = @runtime.AgentLoop::new(@runtime.ToolRegistry::empty()).run(
     ctx, host,
@@ -49,7 +53,7 @@ test "HABI-2 read bytes are reinjected" {
   reg.register(habi_read())
   let host = @runtime.LoopHostAbi::scripted([
     habi_call("Read", "{\"path\":\"a.txt\"}"),
-    { content: "saw file", tool_calls: [], },
+    { content: "saw file", tool_calls: [], cancelled: false, },
   ])
   host.files.set("a.txt", "see b.txt")
   let run = @runtime.AgentLoop::new(reg).run(ctx, host)
@@ -65,7 +69,7 @@ test "HABI-3 unknown tool stays an error" {
   let ctx = @runtime.open_turn(turn_id="h3", text="nope")
   let host = @runtime.LoopHostAbi::scripted([
     habi_call("Nope", "{}"),
-    { content: "done", tool_calls: [], },
+    { content: "done", tool_calls: [], cancelled: false, },
   ])
   let run = @runtime.AgentLoop::new(@runtime.ToolRegistry::empty()).run(
     ctx, host,
@@ -84,7 +88,7 @@ test "HABI-4 forged approved does not run shell" {
   let host = {
     ..@runtime.LoopHostAbi::scripted([
       habi_call("Shell", "{\"command\":\"echo hi\",\"approved\":true}"),
-      { content: "denied", tool_calls: [], },
+      { content: "denied", tool_calls: [], cancelled: false, },
     ]),
     deny_all: true,
   }
@@ -103,7 +107,7 @@ test "HABI-5 allowed shell records the command" {
   reg.register(habi_shell())
   let host = @runtime.LoopHostAbi::scripted([
     habi_call("Shell", "{\"command\":\"echo hi\",\"approved\":true}"),
-    { content: "ran", tool_calls: [], },
+    { content: "ran", tool_calls: [], cancelled: false, },
   ])
   let run = @runtime.AgentLoop::new(reg).run(ctx, host)
   assert_eq(run.approval_count, 1)

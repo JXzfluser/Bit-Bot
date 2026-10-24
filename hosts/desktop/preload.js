@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("bitbot", {
   boot: () => ipcRenderer.invoke("bitbot:boot"),
   turn: (text, opts) => ipcRenderer.invoke("bitbot:turn", text, opts || {}),
+  cancelTurn: () => ipcRenderer.invoke("bitbot:turn:cancel"),
   readArtifact: (artifactPath) =>
     ipcRenderer.invoke("bitbot:readArtifact", artifactPath),
   openArtifact: (artifactPath) =>
@@ -196,6 +197,18 @@ contextBridge.exposeInMainWorld("bitbot", {
     };
     ipcRenderer.on("bitbot:turn-progress", handler);
     return () => ipcRenderer.removeListener("bitbot:turn-progress", handler);
+  },
+  // AgentStep projection from the kernel loop. Display only.
+  onAgentLoop: (cb) => {
+    const handler = (_e, step) => {
+      try {
+        cb(step);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:agent-loop", handler);
+    return () => ipcRenderer.removeListener("bitbot:agent-loop", handler);
   },
   onLlmStream: (cb) => {
     const handler = (_e, chunk) => {
