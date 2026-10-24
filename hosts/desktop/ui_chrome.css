@@ -2079,19 +2079,23 @@ body.grok-ui #sidebar-footer {
 body.grok-ui #account-bar { margin: 6px 0 0; }
 body.grok-ui #account-avatar-btn {
   gap: var(--space-3);
-  padding: 5px 12px 5px 5px;
-  border: 1px solid var(--line);
+  /* Grok 真源底部是一个浮起的白色胶囊（无明显描边、靠极轻阴影分开），
+     高度约 44。我方原来是 1px 描边的扁条，观感偏"表单控件"。 */
+  padding: 6px 12px 6px 6px;
+  min-height: 44px;
+  border: 0;
   border-radius: var(--radius-pill);
   background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 body.grok-ui #account-avatar-btn:hover,
 body.grok-ui #account-avatar-btn[aria-expanded="true"] {
   background: var(--surface);
-  border-color: var(--muted);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 body.grok-ui #account-avatar-circle {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   font-size: var(--text-sm);
   background: var(--nav-row-active);
   color: var(--ink);

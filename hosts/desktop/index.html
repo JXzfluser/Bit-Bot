@@ -659,7 +659,8 @@
     border: 0;
     background: transparent;
     border-radius: var(--radius-xl);
-    padding: 9px 12px;
+    /* 头像 36 + 上下 11 = 58，对齐 Grok 实测行高 58 */
+    padding: 11px 12px;
     margin: 0;
     box-shadow: none;
     cursor: pointer;
@@ -671,15 +672,20 @@
      我们没有人手一张的插画，用"同色系浅底 + 同色字形"近似，
      比原来的白字实心圆更接近参考图的明度。 */
   .sess-avatar {
-    flex: 0 0 40px;
-    width: 40px;
-    height: 40px;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: color-mix(in srgb, var(--av, var(--muted)) 14%, transparent);
-    color: var(--av, var(--ink));
+    /* G-28 像素实测（replica/screens/grok-composer.png 2080x1520=1040x760）：
+       Grok 的 Bot 头像是**饱和彩色实心底 + 内部白色图形**（绿/橙/紫/棕/粉，
+       具体色值见下方 AVATAR_PALETTE），不是浅色底 + 彩色字母。
+       之前用 14% 透明度的浅底，观感是"淡色圆环里一个彩色字"，和 Grok 的
+       实心彩色圆差一整个档次。 */
+    background: var(--av, var(--muted));
+    color: var(--accent-ink);
     font-weight: 600;
     font-size: 15px;
     user-select: none;
@@ -3829,9 +3835,13 @@
     // Grok-parity: deterministic pastel avatar color per session/bot id (hash →
     // palette). Same id always maps to the same color, so the sidebar reads as
     // distinct identities rather than a flat grey list.
+    // G-28: 色板对齐 Grok Bot 的 Bot 头像实拍色（前 5 个是从
+    // replica/screens/grok-composer.png 逐像素采样得到的主色：绿 / 橙 / 紫 /
+    // 棕 / 粉，色值见数组本身），后面补足到 10 个以免分布过于集中。
+    // 数量与替换前一致，token 门禁的 hex 计数不受影响。
     const AVATAR_PALETTE = [
-      "#e8590c", "#7048e8", "#1098ad", "#d6336c", "#5c940d",
-      "#f59f00", "#4263eb", "#c2255c", "#0ca678", "#9c36b5",
+      "#18c272", "#fd6d17", "#915cf9", "#a16d3c", "#f9399a",
+      "#2f8df5", "#17b8c9", "#e5484d", "#f5a623", "#7c5cff",
     ];
     function avatarColorFor(seed) {
       const s = String(seed || "");
@@ -9775,21 +9785,49 @@
       for (const b of bots) botInfoById[b.id] = { id: b.id, name: b.name || b.id, avatar: b.avatar_data_url || "" };
       const hidden = (view && view.hidden_bots) || [];
       if (hiddenCount) hiddenCount.textContent = String(hidden.length);
+      // G-28 · 对齐 Grok Bot 侧栏：Grok 的 Bot 行次要行是「该 Bot 最近一次
+      // 对话的摘要」（例如 "要把 PR #9 合并进 cursor/grok…"），不是职责标签。
+      // 关联方式沿用 selectBotForChat 的既有规则：DM 会话 title ===
+      // "<Bot 名> · DM"。sessions.list() 只带元数据，正文要按 id 再 get 一次，
+      // 所以只对实际存在的 Bot 逐个取（通常 2-5 个），不做全表扫描。
+      let botLast = {};
+      try {
+        const sv = await window.bitbot.sessions.list();
+        const arr = (sv && sv.sessions) || [];
+        for (const b of bots) {
+          const dmTitle = (b.name || b.id) + " · DM";
+          const hit = (Array.isArray(arr) ? arr : []).find((s) => s && s.title === dmTitle);
+          if (!hit) continue;
+          const got = await window.bitbot.sessions.get(hit.id).catch(() => null);
+          const msgs = (got && got.ok && got.session && got.session.messages) || [];
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            const txt = msgs[i] && msgs[i].text;
+            if (!txt) continue;
+            // 失败/配置告警不适合当"最近在做什么"展示（侧栏会变成一排报错），
+            // 跳过它们继续往前找真实内容。
+            if (isHostNotice(txt)) continue;
+            botLast[b.id] = String(txt).replace(/\s+/g, " ").trim();
+            break;
+          }
+        }
+      } catch (_) {
+        botLast = {};
+      }
       // Sidebar-bottom contract: the Hidden Bots entry shows only when count > 0.
       const hiddenLab = document.getElementById("hidden-bots-lab");
       if (hiddenLab) hiddenLab.style.display = hidden.length ? "" : "none";
       for (const b of bots) {
-        box.appendChild(botRow(b, view.primary_id, false));
+        box.appendChild(botRow(b, view.primary_id, false, botLast[b.id]));
       }
       for (const b of hidden) {
-        if (hiddenBox) hiddenBox.appendChild(botRow(b, view.primary_id, true));
+        if (hiddenBox) hiddenBox.appendChild(botRow(b, view.primary_id, true, botLast[b.id]));
       }
       // Grok-parity: title-bar pill reflects the primary Bot by default.
       const primary = bots.find((x) => x.id === (view && view.primary_id)) || bots[0];
       if (primary) updateBotPill(primary.name || primary.id, primary.id || primary.name, primary.avatar_data_url);
     }
 
-    function botRow(b, primaryId, isHidden) {
+    function botRow(b, primaryId, isHidden, lastText) {
       const el = document.createElement("div");
       el.className = "agent-item sess-row";
       el.style.cursor = "pointer";
@@ -9814,10 +9852,13 @@
       const meta = document.createElement("div");
       meta.className = "meta";
       const tags = Array.isArray(b.tags) ? b.tags : [];
-      meta.textContent =
+      // G-28: 优先显示最近一次对话摘要（Grok 的做法），没有对话史才退回职责。
+      const roleLine =
         (b.job || "bot") +
         (tags.length ? " · " + tags.map((t) => "#" + t).join(" ") : "") +
         (isHidden ? " · hidden" : "");
+      meta.textContent = lastText ? String(lastText).slice(0, 80) : roleLine;
+      if (lastText) el.title = roleLine;
       el.title = b.description || "";
       main.appendChild(name);
       main.appendChild(meta);

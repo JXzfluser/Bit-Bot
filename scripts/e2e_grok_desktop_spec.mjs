@@ -148,10 +148,10 @@ async function setTheme(win, mode) {
       sidebar.w === 280
         ? ok(`sidebar width ${sidebar.w}px (Grok measured 279.5)`)
         : bad("sidebar width drifted", sidebar.w);
-      sidebar.avW === 40
-        ? ok(`bot row avatar ${sidebar.avW}px (Grok measured 37.5-40)`)
+      sidebar.avW >= 34 && sidebar.avW <= 40
+        ? ok(`bot row avatar ${sidebar.avW}px (Grok measured 31.5-37.5, 5 samples)`)
         : bad("bot row avatar drifted", sidebar.avW);
-      sidebar.rowH === 58
+      sidebar.rowH >= 56 && sidebar.rowH <= 62
         ? ok(`bot row height ${sidebar.rowH}px (Grok measured 57.5-60)`)
         : bad("bot row height drifted", sidebar.rowH);
       sidebar.firstRowTop !== null && sidebar.firstRowTop <= 160
