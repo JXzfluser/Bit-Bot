@@ -12,7 +12,7 @@ const http = require("http");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
-const agentLoopFfi = require("./agent_loop_ffi");
+const agentLoopFfi = require("./agent_loop_stream_stub");
 
 // GP-96/97/98 — §5.7 progress events are built by one module, shared with the
 // desktop transport and the CLI host (see hosts/shared/turn_progress.js).

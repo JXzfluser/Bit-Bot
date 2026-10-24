@@ -293,6 +293,25 @@ pub fn LlmChatReply::equal(Self, Self) -> Bool
 pub fn LlmChatReply::not_equal(Self, Self) -> Bool
 pub fn LlmChatReply::to_repr(Self) -> @debug.Repr
 
+pub(all) struct LoopHostAbi {
+  replies : Array[LlmChatReply]
+  mut reply_i : Int32
+  repeat_last : Bool
+  files : Map[String, String]
+  execs : Array[String]
+  approvals : Array[String]
+  deliveries : Array[String]
+  llm_seen : Array[String]
+  deny_all : Bool
+  cancel_on_approval : Bool
+}
+pub fn LoopHostAbi::deliver(Self, String) -> Unit
+pub fn LoopHostAbi::exec_tool(Self, String, String) -> String
+pub fn LoopHostAbi::llm_chat(Self, Array[LoopMessage]) -> LlmChatReply
+pub fn LoopHostAbi::request_approval(Self, String, String) -> ApprovalVerdict
+pub fn LoopHostAbi::scripted(Array[LlmChatReply]) -> Self
+pub impl AgentLoopHost for LoopHostAbi
+
 pub(all) struct LoopMessage {
   role : String
   content : String

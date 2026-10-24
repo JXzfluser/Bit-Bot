@@ -16,6 +16,7 @@ const path = require("path");
 const ROOT = path.resolve(__dirname, "..");
 const { createHostFfi } = require(path.join(ROOT, "hosts/shared/host_ffi"));
 const agentLoopFfi = require(path.join(ROOT, "hosts/shared/agent_loop_ffi"));
+const streamStub = require(path.join(ROOT, "hosts/shared/agent_loop_stream_stub"));
 
 let pass = 0;
 let fail = 0;
@@ -190,6 +191,62 @@ async function main() {
   check(
     agentLoopFfi.HOST_FFI_OPS.join(",") === "exec_tool,request_approval,deliver,llm_chat",
     "A7 host FFI ops are exec_tool/request_approval/deliver/llm_chat",
+  );
+  const stubSrc = fs.readFileSync(
+    path.join(ROOT, "hosts/shared/agent_loop_stream_stub.js"),
+    "utf8",
+  );
+  check(streamStub.failClosed === false, "A7 stream stub is not fail-closed");
+  check(
+    !stubSrc.includes('error: "tool_calls_fail_closed"') &&
+      !stubSrc.includes("error: 'tool_calls_fail_closed'"),
+    "A7 stub source does not return the fail-closed error",
+  );
+  const sseLine = (obj) => "data: " + JSON.stringify(obj);
+  const splitSse = [
+    sseLine({
+      choices: [
+        {
+          delta: {
+            content: "Hi",
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_1",
+                type: "function",
+                function: { name: "Read", arguments: '{"pa' },
+              },
+            ],
+          },
+        },
+      ],
+    }),
+    sseLine({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              { index: 0, function: { arguments: 'th":"a.txt"}' } },
+            ],
+          },
+        },
+      ],
+    }),
+    "data: [DONE]",
+  ].join("\n");
+  const parsed = streamStub.parseLlmStream(splitSse);
+  check(
+    parsed &&
+      parsed.fail_closed === false &&
+      parsed.ok === true &&
+      parsed.content === "Hi" &&
+      parsed.tool_calls &&
+      parsed.tool_calls[0] &&
+      parsed.tool_calls[0].name === "Read" &&
+      parsed.tool_calls[0].arguments === '{"path":"a.txt"}' &&
+      parsed.error !== streamStub.FAIL_CLOSED_SENTINEL,
+    "A7 stub parse keeps split tool_calls",
+    JSON.stringify(parsed),
   );
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-a7-"));
