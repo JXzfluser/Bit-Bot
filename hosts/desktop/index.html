@@ -2586,6 +2586,9 @@
     <div class="ri-limit" id="ri-limit-note"></div>
     <div class="panel-title" data-i18n="riRoutines">定时任务</div>
     <div id="ri-routine-list" aria-live="polite"></div>
+    <!-- 时区说明讲的是「定时任务什么时候触发」——它必须跟着定时任务，
+         不能被资料库区块隔到下面去。 -->
+    <div class="ri-meta" id="ri-tz-note"></div>
     <!-- GP-161：暂停 / 删除这类「按下去之后必须看得见结果」的话术不能只写进
          .ri-form 里的 ri-form-msg —— 表单收起时那是 display:none，失败等于没说。
          这一行常驻列表下方，成功与拒绝都写这里。 -->
@@ -2607,7 +2610,6 @@
         <button type="button" id="ri-form-cancel" class="bb-btn" data-i18n="riFormCancel">取消</button>
       </div>
     </div>
-    <div class="ri-meta" id="ri-tz-note"></div>
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
@@ -5828,38 +5830,51 @@
     async function renderRoomRailLibrary() {
       const host = document.getElementById("ri-lib-list");
       if (!host) return;
-      let room = null;
-      try {
-        const view = await window.bitbot.rooms.list();
-        if (!view || view.ok === false) throw new Error((view && view.error) || "rooms_store_unreadable");
-        const list = (view.rooms && view.rooms.rooms) || view.rooms || [];
-        room = (Array.isArray(list) ? list : []).find((x) => x && x.id === roomRailId) || null;
-      } catch (err) {
-        host.textContent = "";
+      let items = null;
+      let unreadable = false;
+      const api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.library;
+      if (api && typeof api.list === "function") {
+        let res = null;
+        try {
+          res = await api.list({ roomId: roomRailId });
+        } catch (_) {
+          res = null;
+        }
+        if (res && res.ok === false) {
+          unreadable = true;
+        } else if (res && Array.isArray(res.items)) {
+          items = res.items;
+        }
+      } else {
+        // 旧 preload 没有这个 API 时回退到直接读房间条目 —— 旧安装不白屏。
+        try {
+          const view = await window.bitbot.rooms.list();
+          if (!view || view.ok === false) throw new Error((view && view.error) || "rooms_store_unreadable");
+          const list = (view.rooms && view.rooms.rooms) || view.rooms || [];
+          const room = (Array.isArray(list) ? list : []).find((x) => x && x.id === roomRailId) || null;
+          items = room && Array.isArray(room.library) ? room.library : [];
+        } catch (_) {
+          unreadable = true;
+        }
+      }
+      host.textContent = "";
+      if (unreadable) {
         const bad = document.createElement("div");
         bad.className = "ri-empty";
         bad.textContent = wavegT("riLibUnreadable");
         host.appendChild(bad);
         return;
       }
-      if (!room) {
-        host.textContent = "";
-        const empty = document.createElement("div");
-        empty.className = "ri-empty";
-        empty.textContent = wavegT("riLibEmpty");
-        host.appendChild(empty);
-        return;
-      }
-      const items = Array.isArray(room.library) ? room.library : [];
+      const rows = Array.isArray(items) ? items : [];
       host.textContent = "";
-      if (!items.length) {
+      if (!rows.length) {
         const empty = document.createElement("div");
         empty.className = "ri-empty";
         empty.textContent = wavegT("riLibEmpty");
         host.appendChild(empty);
         return;
       }
-      for (const it of items) {
+      for (const it of rows) {
         const name = String(it && it.title ? it.title : it && it.id ? it.id : "未命名");
         const kind = String((it && it.kind) || "");
         const row = document.createElement("div");
@@ -5880,8 +5895,27 @@
         openBtn.type = "button";
         openBtn.className = "bb-btn";
         openBtn.textContent = wavegT("riLibOpen");
-        openBtn.addEventListener("click", () => {
-          runUserTurn("open library item " + name + " in group " + (room.title || room.id), {});
+        openBtn.addEventListener("click", async () => {
+          const st = document.getElementById("ri-rail-status");
+          const p = String((it && it.path) || "");
+          if (p) {
+            // 资料库里存的是真文件（Host 校验过在 repo 内）→ 直接开。
+            let r = null;
+            try {
+              r = await window.bitbot.openArtifact(p);
+            } catch (err) {
+              r = { ok: false, error: String((err && err.message) || err) };
+            }
+            if (st) {
+              st.textContent = r && r.ok
+                ? wavegT("riLibOpened")
+                : wavegT("riLibOpenFail") + ": " + ((r && r.error) || "unknown");
+            }
+            return;
+          }
+          // 没有磁盘路径的条目（纯文字资料）→ 交给 kernel 去读。
+          const rname = (composerRoom && composerRoom.title) || roomRailId || "";
+          runUserTurn("open library item " + name + " in group " + rname, {});
         });
         act.appendChild(openBtn);
         row.appendChild(act);
@@ -11548,6 +11582,13 @@
         riLibOpen: "打开",
         riLibUpload: "＋ 上传到资料库",
         riLibKind: "类型：{k}",
+        riLibOpened: "已打开",
+        riLibOpenFail: "打不开",
+        riLibNoRoom: "先打开一个群，再往它的资料库里放东西。",
+        riLibUnsupported: "这个版本的 Host 还不能写资料库（重启桌面端即可更新）。",
+        riLibPickFail: "没选中文件",
+        riLibAdded: "已放进资料库",
+        riLibAddFail: "没能放进资料库",
         riFormWorking: "正在安排…",
         riFormFailed: "没建成：{e}",
         riFormEmpty: "先写下要定时做的事，再点添加。",
@@ -12151,6 +12192,13 @@
         riLibOpen: "開啟",
         riLibUpload: "＋ 上傳到資料庫",
         riLibKind: "類型：{k}",
+        riLibOpened: "已開啟",
+        riLibOpenFail: "打不開",
+        riLibNoRoom: "先開啟一個群，再往它的資料庫裡放東西。",
+        riLibUnsupported: "這個版本的 Host 還不能寫資料庫（重啟桌面端即可更新）。",
+        riLibPickFail: "沒選中檔案",
+        riLibAdded: "已放進資料庫",
+        riLibAddFail: "沒能放進資料庫",
         riFormWorking: "正在安排…",
         riFormFailed: "沒建成：{e}",
         riFormEmpty: "先寫下要定時做的事，再點新增。",
@@ -12754,6 +12802,13 @@
         riLibOpen: "Open",
         riLibUpload: "+ Add to library",
         riLibKind: "Type: {k}",
+        riLibOpened: "Opened",
+        riLibOpenFail: "Could not open",
+        riLibNoRoom: "Open a group first, then add to its library.",
+        riLibUnsupported: "This Host build cannot write the library yet (restart the desktop app to update).",
+        riLibPickFail: "No file selected",
+        riLibAdded: "Added to the library",
+        riLibAddFail: "Could not add to the library",
         riFormWorking: "Scheduling…",
         riFormFailed: "Not created: {e}",
         riFormEmpty: "Write what should happen on a schedule first, then press Add.",
@@ -13377,10 +13432,52 @@
         submitRoomRoutine(v);
       });
       const riLibUpload = document.getElementById("ri-lib-upload");
-      if (riLibUpload) riLibUpload.addEventListener("click", () => {
+      if (riLibUpload) riLibUpload.addEventListener("click", async () => {
         const rid = roomRailId || (composerRoom && composerRoom.id) || "";
-        const rname = (composerRoom && composerRoom.title) || rid;
-        runUserTurn("add a file to this group's library" + (rname ? " (" + rname + ")" : ""), {});
+        const st = document.getElementById("ri-rail-status");
+        if (!rid) {
+          if (st) st.textContent = wavegT("riLibNoRoom");
+          return;
+        }
+        const api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.library;
+        if (!api || typeof api.add !== "function") {
+          if (st) st.textContent = wavegT("riLibUnsupported");
+          return;
+        }
+        // 走系统文件选择器：Host 复制进 repo 内的 uploads 目录后才登记，
+        // 所以资料库里的每一条都真的点得开。
+        let picked = null;
+        try {
+          picked = await window.bitbot.attachments.pick(0);
+        } catch (err) {
+          picked = { ok: false, error: String((err && err.message) || err) };
+        }
+        if (!picked || picked.canceled) return; // 用户取消 = 什么都不做
+        if (!picked.ok || !Array.isArray(picked.paths) || !picked.paths.length) {
+          if (st) st.textContent = wavegT("riLibPickFail") + ": " + ((picked && picked.error) || "unknown");
+          return;
+        }
+        const staged = Array.isArray(picked.staged) ? picked.staged : [];
+        const items = picked.paths.map((p) => {
+          const s = staged.find((x) => x && x.dst === p) || {};
+          return {
+            title: String(s.dst || p).split(/[\\/]/).pop() || String(p),
+            kind: String(s.kind || "doc"),
+            path: String(p),
+          };
+        });
+        let res = null;
+        try {
+          res = await api.add({ roomId: rid, items });
+        } catch (err) {
+          res = { ok: false, error: String((err && err.message) || err) };
+        }
+        if (st) {
+          st.textContent = res && res.ok
+            ? wavegT("riLibAdded")
+            : wavegT("riLibAddFail") + ": " + ((res && res.error) || "unknown");
+        }
+        if (res && res.ok) refreshRoomRail();
       });
     }
     function gpVisible() {

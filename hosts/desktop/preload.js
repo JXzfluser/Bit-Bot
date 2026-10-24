@@ -98,6 +98,12 @@ contextBridge.exposeInMainWorld("bitbot", {
   },
   rooms: {
     list: () => ipcRenderer.invoke("bitbot:rooms:list"),
+    // 群资料库：读 / 加条目。写侧只碰 rooms.json 的 room.library，
+    // 并且只收 repo 内的路径 —— 渲染层不自己开文件、不自己改库。
+    library: {
+      list: (payload) => ipcRenderer.invoke("bitbot:rooms:library:list", payload || {}),
+      add: (payload) => ipcRenderer.invoke("bitbot:rooms:library:add", payload || {}),
+    },
     // GP-143/144: route + fan out the task to the room's responders on the Host
     // product path — the renderer no longer builds a kernel phrase, so nothing
     // writes the transcript twice.

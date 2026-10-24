@@ -54,7 +54,7 @@ Host 判定顺序（GP-22）：`ask` 规则命中 → 需审批；否则 `allow`
 
 3.3 `host_take_over` / `host_takeover_done`：take_over → `computer.json` takeover.active=true，抓一帧真截屏（复用现有 screenshot 链，DISPLAY 可用时）写入 `data/desktop/frames/`，结果含 `frame_path, guidance:"密码/验证码请在本机输入，不要贴进对话"`；done → active=false + 结束帧 + `handback_at`。无 DISPLAY 时 `mode:"takeover_sandbox"`、`frame_path:null`、`residual:"no DISPLAY"`，不假装有帧。
 
-3.4 `host_group_chat`：校验 2–6 成员（bots.json 中真实 id/名）→ 建 `data/desktop/rooms.json` 条目 `{id,title,members:[bot_id...],created_at}`；`host_room_turn` 路由：`mention=<bot名>`→仅该成员；`mention=everyone`→全部成员；无 mention→**全部成员各自可响应，但审批/Secret 卡只进对应 Bot 私聊，不进群 transcript**（GP-53：room_turn 返回 `escalations:"dm-only"`，并从群 transcript 剔除）。
+3.4 `host_group_chat`：校验 2–6 成员（bots.json 中真实 id/名）→ 建 `data/desktop/rooms.json` 条目 `{id,title,members:[bot_id...],created_at}`（可选 `library:[{id,title,kind,path?,added_at}]` = 群资料库；`path` 只允许落在 repo 内，与 `openArtifact` 同一把尺子，写侧 fail closed）；`host_room_turn` 路由：`mention=<bot名>`→仅该成员；`mention=everyone`→全部成员；无 mention→**全部成员各自可响应，但审批/Secret 卡只进对应 Bot 私聊，不进群 transcript**（GP-53：room_turn 返回 `escalations:"dm-only"`，并从群 transcript 剔除）。
 
 3.5 `host_approval_rule`：upsert 规则；pattern 语法 `kind:*`、`kind:prefix*`、精确 command 前缀。命中 allow 时 `executeHostEffects` 对 gated kinds（`shell, channel_send, mail_send, purchase_item, computer_use 写操作, mcp_call`）免弹卡直放。
 
@@ -71,6 +71,8 @@ Host 判定顺序（GP-22）：`ask` 规则命中 → 需审批；否则 `allow`
 | `bitbot:bots:list` | – | bots.json 视图 | 侧边栏数据源（渲染层优先用 turn 结果，此 IPC 兜底/刷新） |
 | `bitbot:settings:get/set` | patch{} | settings.json | main 应用 `nativeTheme.themeSource`（light/dark/system）与语言（app badge/菜单文案 zh/en）立即生效 |
 | `bitbot:attachments:pick` | – | `{ok,paths[],residual?}` | `dialog.showOpenDialog` + §3.8 限额校验 + 落 `data/workspace/uploads/`；renderer 把返回路径注入下一条消息 |
+| `bitbot:rooms:library:list` | `{roomId}` | `{ok,items[]}` | 群资料面板读资料库条目；rooms.json 读不到就返回 `ok:false`（不演成「没有资料」） |
+| `bitbot:rooms:library:add` | `{roomId, items[]}` | `{ok,added,items[]}` | 往群里加资料库条目；只收 repo 内路径（否则 `path_outside_repo`），群不存在 → `room_not_found` |
 | `bitbot:skills:list` | – | skills 目录 | `/` 自动完成数据源（复用 `list_skills` host 逻辑） |
 | `bitbot:approvals:rule` | `{pattern,decision}` | rule | Always allow 用 |
 | `bitbot:approvals:listPending` | – | pending+expired | 后台审批队列视图 |

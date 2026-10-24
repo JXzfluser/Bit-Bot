@@ -1230,6 +1230,29 @@ ipcMain.handle("bitbot:rooms:list", async () => {
   }
 });
 
+/* 群资料库（room.library）—— 群资料面板里那份「文件 / 知识库」。
+   写侧只碰 rooms.json 的 room.library，且只收 repo 内的路径（与 openArtifact
+   同一把尺子）；读不到 rooms.json 就如实报错，不把「读不到」演成「没有资料」。 */
+ipcMain.handle("bitbot:rooms:library:list", async (_e, payload) => {
+  try {
+    return surface.roomLibraryList(payload && payload.roomId);
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), items: [] };
+  }
+});
+
+ipcMain.handle("bitbot:rooms:library:add", async (_e, payload) => {
+  try {
+    const res = surface.roomLibraryAdd(payload && payload.roomId, payload && payload.items);
+    if (res && res.ok && res.added) {
+      broadcast("bitbot:rooms-changed", { ok: true });
+    }
+    return res;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), items: [] };
+  }
+});
+
 /* GP-143/144/145/146 — 群 Bot 协作真回合（Host 产品路径）。
  *
  * engine（product_surface.orchestrateRoom）owns 路由/护栏/聚合与 transcript schema;

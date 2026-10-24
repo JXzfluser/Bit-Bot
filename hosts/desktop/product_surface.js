@@ -1267,6 +1267,82 @@ function createProductSurface(repoRoot) {
   }
 
   // ===== ROOMS =====
+  /* 群资料库（room.library）——
+     条目 = {id, title, kind, path?, added_at}。path 只允许落在 repo 内
+     （与 openArtifact 同一把尺子），所以资料库里存的路径永远真的能打开。
+     写侧 fail closed：rooms.json 读不出来就不写，绝不把用户的群聊历史覆盖成空。 */
+  const ROOM_LIBRARY_MAX = 50;
+  function roomLibraryItems(room) {
+    const raw = room && Array.isArray(room.library) ? room.library : [];
+    return raw
+      .filter((x) => x && typeof x === "object" && String(x.title || "").trim())
+      .map((x) => ({
+        id: String(x.id || ""),
+        title: String(x.title || "").trim(),
+        kind: String(x.kind || "doc"),
+        path: String(x.path || ""),
+        added_at: String(x.added_at || ""),
+      }));
+  }
+  function roomLibraryList(roomId) {
+    const rid = String(roomId || "").trim();
+    if (!rid) return { ok: false, error: "room_id_required", items: [] };
+    const hit = parseRoomsRaw();
+    if (hit.unreadable) return { ok: false, error: ROOMS_UNREADABLE + ":" + hit.reason, items: [] };
+    const rooms = Array.isArray(hit.data.rooms) ? hit.data.rooms : [];
+    const room = rooms.find((r) => r && String(r.id) === rid);
+    if (!room) return { ok: false, error: "room_not_found", items: [] };
+    return { ok: true, room_id: rid, items: roomLibraryItems(room) };
+  }
+  function roomLibraryAdd(roomId, entries) {
+    const rid = String(roomId || "").trim();
+    if (!rid) return { ok: false, error: "room_id_required", items: [] };
+    const list = Array.isArray(entries) ? entries : [];
+    if (!list.length) return { ok: false, error: "no_entries", items: [] };
+    let data = null;
+    try {
+      data = requireWritableRooms(); // 坏文件直接抛，绝不写成空目录
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err), items: [] };
+    }
+    const rooms = Array.isArray(data.rooms) ? data.rooms : [];
+    const room = rooms.find((r) => r && String(r.id) === rid);
+    if (!room) return { ok: false, error: "room_not_found", items: [] };
+    const items = roomLibraryItems(room);
+    const seen = new Set(items.map((x) => x.path).filter(Boolean));
+    const added = [];
+    for (const e of list) {
+      const title = String((e && e.title) || "").trim();
+      if (!title) continue;
+      const p = String((e && e.path) || "").trim();
+      if (p) {
+        // 路径必须在 repo 内 —— 与 openArtifact 同一把尺子，否则资料库里会
+        // 出现「点了打不开」的条目。
+        const resolved = path.resolve(p);
+        const root = path.resolve(REPO_ROOT);
+        if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+          return { ok: false, error: "path_outside_repo", items: items.concat(added) };
+        }
+        if (seen.has(resolved)) continue;
+        seen.add(resolved);
+      }
+      if (items.length + added.length >= ROOM_LIBRARY_MAX) {
+        return { ok: false, error: "library_full", max: ROOM_LIBRARY_MAX, items: items.concat(added) };
+      }
+      added.push({
+        id: "lib-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
+        title,
+        kind: String((e && e.kind) || "doc"),
+        path: p,
+        added_at: nowIso(),
+      });
+    }
+    if (!added.length) return { ok: true, added: 0, items };
+    room.library = items.concat(added);
+    saveRooms(data);
+    return { ok: true, added: added.length, items: roomLibraryItems(room) };
+  }
+
   function loadRooms() {
     return readJson(ROOMS_PATH, { version: 1, rooms: [] });
   }
@@ -2322,6 +2398,8 @@ function createProductSurface(repoRoot) {
     appendRoomTranscript,
     loadRooms,
     roomsStoreStatus,
+    roomLibraryList,
+    roomLibraryAdd,
 
     // Account (GP-74) — local profile semantics only
     accountStatus,
