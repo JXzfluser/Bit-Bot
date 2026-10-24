@@ -8,11 +8,11 @@
     },
     "botSection": {
       "top": 108,
-      "h": 180
+      "h": 148
     },
     "botList": {
-      "top": 173,
-      "h": 115
+      "top": 140,
+      "h": 116
     },
     "roomList": {
       "top": 0,
@@ -26,12 +26,12 @@
       "h": 0,
       "top": 0
     },
-    "sessionTitleTop": 298,
-    "sessionListTop": 352,
-    "chatTitleY": 319,
-    "firstRowTop": 173,
-    "rowH": 57,
-    "avW": 32,
+    "sessionTitleTop": null,
+    "sessionListTop": 827,
+    "chatTitleY": 794,
+    "firstRowTop": 140,
+    "rowH": 58,
+    "avW": 40,
     "avRadius": "50%",
     "labels": [
       "今天",

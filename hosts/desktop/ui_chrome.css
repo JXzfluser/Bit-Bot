@@ -1985,6 +1985,42 @@ body.grok-ui #sb-bots-rooms > summary:hover { background: transparent; color: va
 body.grok-ui #sb-bots-rooms[open] > summary { color: var(--nav-label); }
 body.grok-ui .sb-adv-caret { font-size: 10px; color: var(--nav-label); }
 
+/* G-28 · 侧栏结构对齐 Grok Bot（像素实测 replica/screens/grok-composer.png）：
+   Grok 侧栏是「一行 12px 灰色 workspace 小字 → 直接就是 Bot 列表」，没有大
+   标题、也没有「新建 Bot」整行（那一行 44px 把我方 Bot 列表整体往下推了）。
+   这里把标题降到 12px/500，＋ 收进标题行右侧。 */
+body.grok-ui #sb-bots-rooms > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+/* 标题文字不许被右侧的 ＋ / 折角挤到换行（之前被压成 "Bot" / "列表" 两行） */
+body.grok-ui #sb-bots-rooms > summary > span:first-child {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+body.grok-ui .sb-add-btn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--nav-label);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+body.grok-ui .sb-add-btn:hover { background: var(--accent-soft); color: var(--ink); }
+body.grok-ui #sb-bots-rooms > summary .sb-adv-caret { margin-left: auto; }
+
 /* --- 行：形状与状态都由 index.html 的 .sess-row 一处声明 --------------- */
 /* 这里只清掉列表容器自身的 margin/padding，避免基类把行挤离边缘。 */
 body.grok-ui #bot-list,

@@ -671,9 +671,9 @@
      我们没有人手一张的插画，用"同色系浅底 + 同色字形"近似，
      比原来的白字实心圆更接近参考图的明度。 */
   .sess-avatar {
-    flex: 0 0 32px;
-    width: 32px;
-    height: 32px;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
@@ -681,7 +681,7 @@
     background: color-mix(in srgb, var(--av, var(--muted)) 14%, transparent);
     color: var(--av, var(--ink));
     font-weight: 600;
-    font-size: var(--text-base);
+    font-size: 15px;
     user-select: none;
     overflow: hidden; /* GP-120: uploaded avatars are real images */
     box-shadow: none;
@@ -1653,10 +1653,11 @@
     <details class="sb-adv" id="sb-bots-rooms" open>
       <summary class="panel-head sb-adv-sum">
         <span data-i18n="bots">Bot 列表</span>
+        <!-- G-28 · Grok Bot 的侧栏没有「新建 Bot」整行（它占 44px，把 Bot 列表
+             整体往下推）。收成标题右侧一个 ＋，形状对齐 Grok 的图标按钮。 -->
+        <button type="button" id="bot-new-btn" class="sb-add-btn" title="新建 Bot（名称 / 职责 / 描述）" aria-label="新建 Bot" data-i18n-aria="newBot">＋</button>
         <span class="sb-adv-caret" aria-hidden="true">▸</span>
       </summary>
-      <!-- 新建 Bot 读作列表里的一行动作，不再绝对定位压在标题上。 -->
-      <button type="button" id="bot-new-btn" class="bb-btn" title="新建 Bot（名称 / 职责 / 描述）" data-i18n="newBot">新建 Bot</button>
       <div id="bot-list" aria-label="Bot 列表"></div>
       <div class="panel-title panel-head spaced">
         <span data-i18n="rooms">群组</span>
@@ -1665,12 +1666,6 @@
            sourced from rooms.json — not a separate window. -->
       <div id="room-list" aria-label="群组会话"></div>
     </details>
-    <div class="panel-title panel-head spaced">
-      <span data-i18n="chats">会话</span>
-    </div>
-    <!-- GP-123: live search over the real session list (今天 / 昨天 / 更早). -->
-    <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
-    <div id="session-list" aria-label="会话列表"></div>
     <details class="lab" data-lab id="agents-lab">
       <summary data-i18n="advanced">高级 · 代理 / 队友</summary>
       <div class="agent-item" id="agents-host-panel" style="margin-top:8px">
@@ -1719,6 +1714,15 @@
       <!-- Settings is a pinned sidebar-bottom entry (before the account row),
            click opens the Settings Sheet. Kept out of the account popup so it
            is not a duplicated entry. -->
+      <!-- G-28 · 侧栏结构对齐 Grok Bot：Grok 左侧只有「Bot」和「群 Bot」，
+           没有独立的会话区块（会话属于某个 Bot，点进去才有）。历史会话列表
+           因此从侧栏主体移到 footer 折叠区，默认收起；仍然可达，功能不丢。 -->
+      <details class="sb-adv" id="sb-sessions">
+        <summary class="sb-adv-sum"><span data-i18n="chats">会话</span><span class="sb-adv-caret" aria-hidden="true">▸</span></summary>
+        <!-- GP-123: live search over the real session list (今天 / 昨天 / 更早). -->
+        <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
+        <div id="session-list" aria-label="会话列表"></div>
+      </details>
       <div class="bb-split">
         <button type="button" id="sidebar-settings-btn" class="bb-btn bb-btn-block" title="设置" data-i18n="settings">设置</button>
       </div>
@@ -5217,6 +5221,10 @@
       document.body.classList.toggle("session-search-open", !!open);
       const el = document.getElementById("session-search");
       if (!el) return;
+      // G-28: 会话列表默认收在 #sb-sessions 折叠里，搜索必须先把它展开，
+      // 否则输入框被折叠隐藏、focus 也落不到可见元素上。
+      const fold = document.getElementById("sb-sessions");
+      if (open && fold) fold.open = true;
       el.hidden = !open;
       if (open) {
         el.focus();
@@ -10386,7 +10394,13 @@
 
     const botNewBtn = document.getElementById("bot-new-btn");
     if (botNewBtn) {
-      botNewBtn.addEventListener("click", () => openBotCreateForm());
+      botNewBtn.addEventListener("click", (e) => {
+        // G-28: 按钮现在住在 <summary> 里（Grok 侧栏没有"新建 Bot"整行，
+        // 收成标题右侧一个 ＋），必须阻止冒泡，否则点 ＋ 会连带折叠 Bot 列表。
+        e.preventDefault();
+        e.stopPropagation();
+        openBotCreateForm();
+      });
     }
     const bfClose = document.getElementById("bf-close");
     if (bfClose) bfClose.addEventListener("click", closeBotForm);

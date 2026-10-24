@@ -138,6 +138,27 @@ async function setTheme(win, mode) {
     snapshot.sidebar = sidebar;
     console.log("  · sidebar", JSON.stringify(sidebar));
 
+    // S1-S4 — 侧栏几何对齐 Grok Bot（像素实测 replica/screens/grok-composer.png：
+    //         2080x1520 = 1040x760 逻辑点；右边界 x=559/2=279.5，头像 37.5-40，
+    //         行间距 57.5-60，第一个 bot 行 y≈106）。
+    //         这 4 条就是"左侧又跑偏了"的报警器 —— 之前侧栏零断言，被推下 80px
+    //         都没人知道。
+    if (sidebar.missing) bad("#agents sidebar missing");
+    else {
+      sidebar.w === 280
+        ? ok(`sidebar width ${sidebar.w}px (Grok measured 279.5)`)
+        : bad("sidebar width drifted", sidebar.w);
+      sidebar.avW === 40
+        ? ok(`bot row avatar ${sidebar.avW}px (Grok measured 37.5-40)`)
+        : bad("bot row avatar drifted", sidebar.avW);
+      sidebar.rowH === 58
+        ? ok(`bot row height ${sidebar.rowH}px (Grok measured 57.5-60)`)
+        : bad("bot row height drifted", sidebar.rowH);
+      sidebar.firstRowTop !== null && sidebar.firstRowTop <= 160
+        ? ok(`first bot row starts at y=${sidebar.firstRowTop} (guard: <=160)`)
+        : bad("Bot list pushed down — header blocks grew", sidebar.firstRowTop);
+    }
+
     // A1/A2 — accent token in both themes (via the send button, the ground truth)
     await setTheme(win, "light");
     const sendLight = await win.evaluate(() => getComputedStyle(document.getElementById("send")).backgroundColor);
