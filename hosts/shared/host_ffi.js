@@ -5583,6 +5583,71 @@ function createHostFfi(repoRoot) {
     ];
   }
 
+  function providerEndpoint(base) {
+    const raw = String(base || "").trim();
+    const withProto = raw.includes("://") ? raw : "https://" + raw;
+    const u = new URL(withProto);
+    return { host: u.hostname.toLowerCase(), protocol: u.protocol };
+  }
+
+  function isProviderLoopback(host) {
+    const h = String(host || "").toLowerCase();
+    return (
+      h === "127.0.0.1" ||
+      h === "localhost" ||
+      h === "::1" ||
+      h === "[::1]" ||
+      h === "0.0.0.0"
+    );
+  }
+
+  /**
+   * Redacted witness of one production provider HTTP call.
+   * Authorization is never the key. BITBOT_LLM_HTTP_TRACE, when set, receives
+   * one JSON line of this object after secret scrub.
+   */
+  function providerHttpWitness(cfg, payload) {
+    let host = "";
+    try {
+      host = providerEndpoint(cfg && cfg.base_url).host;
+    } catch (_) {
+      host = "";
+    }
+    const messages = Array.isArray(payload && payload.messages)
+      ? payload.messages
+      : [];
+    let blob = "";
+    for (const m of messages) {
+      blob += String(m && m.content != null ? m.content : "");
+    }
+    return {
+      attempted: true,
+      base_url: cfg && cfg.base_url ? cfg.base_url : "",
+      host,
+      path: "/chat/completions",
+      tools: Array.isArray(payload && payload.tools) ? payload.tools.length : 0,
+      fence:
+        blob.includes("cursor_untrusted_data") || blob.includes("untrusted"),
+      authorization: "Bearer [redacted]",
+      loopback: isProviderLoopback(host),
+    };
+  }
+
+  function appendProviderHttpTrace(witness) {
+    const tracePath = String(process.env.BITBOT_LLM_HTTP_TRACE || "").trim();
+    if (!tracePath || !witness) return;
+    const line = p0.scrubSecrets(
+      JSON.stringify({ event: "provider_http", ...witness }),
+    );
+    if (/Bearer\s+(?!\[redacted\])\S+/i.test(line)) return;
+    fs.mkdirSync(path.dirname(tracePath), { recursive: true });
+    fs.appendFileSync(tracePath, line + "\n");
+  }
+
+  function writeScrubbedJson(file, value) {
+    fs.writeFileSync(file, p0.scrubSecrets(JSON.stringify(value, null, 2)));
+  }
+
   async function executeLlmChat(command, llmOpts) {
     const at = new Date().toISOString();
     const userText = String(command || "").trim();
@@ -5613,7 +5678,7 @@ function createHostFfi(repoRoot) {
         pretend_completion: false,
         at,
       };
-      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      writeScrubbedJson(artifactPath, artifact);
       return {
         kind: "llm_chat",
         ok: false,
@@ -5641,7 +5706,7 @@ function createHostFfi(repoRoot) {
         pretend_completion: false,
         at,
       };
-      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+      writeScrubbedJson(artifactPath, artifact);
       emitLlmStream({
         phase: "error",
         error: artifact.error,
@@ -5741,6 +5806,11 @@ function createHostFfi(repoRoot) {
     let httpStatus = 0;
     let error = null;
     let streamed = false;
+    let providerHttp = null;
+    const noteProviderHttp = (payload) => {
+      providerHttp = providerHttpWitness(cfg, payload);
+      appendProviderHttpTrace(providerHttp);
+    };
 
     if (wantStream) {
       streamed = true;
@@ -5762,6 +5832,7 @@ function createHostFfi(repoRoot) {
       if (llmOpts && llmOpts.agentLoopTools === true) {
         payload.tools = agentLoopToolSchema();
       }
+      noteProviderHttp(payload);
       const body = JSON.stringify(payload);
       const res = await httpJsonStream(url, {
         method: "POST",
@@ -5789,6 +5860,7 @@ function createHostFfi(repoRoot) {
       if (llmOpts && llmOpts.agentLoopTools === true) {
         payload.tools = agentLoopToolSchema();
       }
+      noteProviderHttp(payload);
       const body = JSON.stringify(payload);
       const res = await httpJson(url, {
         method: "POST",
@@ -5928,9 +6000,13 @@ function createHostFfi(repoRoot) {
       usage: streamUsage
         ? { ...streamUsage, reported: true }
         : { reported: false, prompt_tokens: 0, completion_tokens: 0 },
+      provider_http: providerHttp || {
+        attempted: false,
+        authorization: "Bearer [redacted]",
+      },
       at,
     };
-    fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+    writeScrubbedJson(artifactPath, artifact);
     if (ok) {
       // GP-130: every real, successful model call hits the usage store —
       // requests always, tokens only when the provider reported them.
@@ -5943,27 +6019,45 @@ function createHostFfi(repoRoot) {
         tokens_reported: Boolean(streamUsage),
       });
     }
-    fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
-    appendJsonl(path.join(llmDir(), "chats.jsonl"), {
-      ...artifact,
-      path: artifactPath,
-      user_prefix: userText.slice(0, 120),
-    });
+    writeScrubbedJson(artifactPath, artifact);
+    appendJsonl(
+      path.join(llmDir(), "chats.jsonl"),
+      JSON.parse(
+        p0.scrubSecrets(
+          JSON.stringify({
+            ...artifact,
+            path: artifactPath,
+            user_prefix: userText.slice(0, 120),
+          }),
+        ),
+      ),
+    );
 
+    const safeText = p0.scrubSecrets(text);
+    const safeError = ok ? "" : p0.scrubSecrets(String(error || "llm_chat failed"));
+    const safeCalls = (ok ? toolCalls : []).map((c) => {
+      if (!c || typeof c !== "object") return c;
+      const copy = { ...c };
+      if (copy.arguments != null) copy.arguments = p0.scrubSecrets(String(copy.arguments));
+      if (copy.arguments_json != null) {
+        copy.arguments_json = p0.scrubSecrets(String(copy.arguments_json));
+      }
+      return copy;
+    });
     return {
       kind: "llm_chat",
       ok,
       command: userText,
-      stdout: ok ? text : "",
-      stderr: ok ? "" : String(error || ""),
-      error: ok ? "" : String(error || "llm_chat failed"),
+      stdout: ok ? safeText : "",
+      stderr: ok ? "" : safeError,
+      error: safeError,
       artifact_path: artifactPath,
       provider_id: cfg.provider_id,
       model: cfg.model,
       streamed,
       reply_to: replyToId || "",
       reply_quote_chars: replyQuote.length,
-      tool_calls: ok ? toolCalls : [],
+      tool_calls: safeCalls,
     };
   }
 

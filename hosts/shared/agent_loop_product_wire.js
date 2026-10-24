@@ -129,6 +129,9 @@ function createProductSession(ffi, llmOpts) {
     async dispatch(req) {
       const op = String((req && req.op) || "");
       if (op === "llm_chat") {
+        // Production Chat: one kernel llm_chat becomes one executeLlmChat.
+        // The URL is catalog / BITBOT_LLM_* (default DeepSeek). This file does
+        // not substitute a loopback stub and does not call the model again.
         const res = await ffi.executeLlmChat("agent-loop", {
           ...chatOpts,
           messages: Array.isArray(req.messages) ? req.messages : [],
