@@ -56,4 +56,6 @@ bash scripts/prove_p0_inbound_security.sh
 
 Host 检查（不是 I）：默认 bind `127.0.0.1`；`BITBOT_BIND_LAN=1` → `0.0.0.0` 且 `warn`；入站 `onTurn` 不再固定 `approved:true`；无审批 shell 不创建标记文件；`cwd=/etc` 拒绝；已审批 shell 能 `echo`，子进程环境与产物都不含 `BITBOT_LLM_API_KEY`。
 
+这些 host-checks 是 P0 旁证，不是 SK。它们变绿不算 `docs/agent-core/05-security-sandbox-secrets.md` 的 residual 已关。SK 只认 `bash scripts/prove_sandbox_secrets.sh`。
+
 P0-3 未升 I。没有改 `docs/qa/artifacts/h6-matrix-i/`。

@@ -198,7 +198,7 @@ struct ContentView: View {
       let summary = SendToUserSurface.extract(fromTurnJSON: json)
       delivery = summary
       let assistant = TurnBridge.assistantText(fromTurnJSON: json)
-        ?? "(empty assistant — check BITBOT_LLM_API_KEY for Chat)"
+        ?? "(empty assistant — model credential stays on Desktop)"
       lines.append(ChatLine(role: "assistant", text: assistant))
       if trimmed.lowercased() == "listmachines" {
         statusHint = "MachineKind=ios · shared MoonBit HostAbi"

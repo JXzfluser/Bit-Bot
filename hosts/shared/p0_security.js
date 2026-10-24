@@ -17,7 +17,11 @@ const SHELL_TIMEOUT_MS = 30 * 1000;
 const SHELL_MAX_BUFFER = 256 * 1024;
 const SHELL_OUTPUT_CAP = 8000;
 
-/** Child env for /bin/bash -lc. Secrets never cross this list. */
+/**
+ * Child env for /bin/bash -lc. Secrets never cross this list.
+ * `LC_*` is allowed by prefix (LC_ALL and LC_CTYPE are the common names).
+ * A name that matches the secret suffix is dropped even if it is listed.
+ */
 const SHELL_ENV_ALLOW = [
   "PATH",
   "HOME",
@@ -34,6 +38,8 @@ const SHELL_ENV_ALLOW = [
 ];
 
 const SECRET_KEY_RE = /(?:_KEY|_TOKEN|_SECRET|_PASSWORD|_WEBHOOK)$/i;
+const LC_ENV_RE = /^LC_[A-Z0-9_]+$/;
+const MOBILE_LLM_KEY_RE = /^BITBOT_LLM_.+(?:_KEY|_TOKEN|_SECRET)$/i;
 
 function isLoopbackHost(host) {
   const h = String(host || "").trim().toLowerCase();
@@ -286,25 +292,63 @@ function verifyWecomSignature(req, urlObj, token, raw) {
   return { ok: true };
 }
 
+function shellEnvKeyAllowed(name) {
+  const k = String(name || "");
+  if (!k || SECRET_KEY_RE.test(k) || k === "BITBOT_LLM_API_KEY") return false;
+  if (SHELL_ENV_ALLOW.includes(k)) return true;
+  return LC_ENV_RE.test(k);
+}
+
 function shellChildEnv(env = process.env) {
   const source = env || {};
   const out = {};
-  for (const k of SHELL_ENV_ALLOW) {
+  const names = new Set([...SHELL_ENV_ALLOW, ...Object.keys(source)]);
+  for (const k of names) {
+    if (!shellEnvKeyAllowed(k)) continue;
     if (source[k] == null || String(source[k]) === "") continue;
-    if (SECRET_KEY_RE.test(k) || k === "BITBOT_LLM_API_KEY") continue;
     out[k] = String(source[k]);
   }
   if (!out.PATH) out.PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
   return out;
 }
 
+/** Phone / mobile host must not carry the Desktop model credential. */
+function isMobileLlmKey(name) {
+  const k = String(name || "");
+  return k === "BITBOT_LLM_API_KEY" || MOBILE_LLM_KEY_RE.test(k);
+}
+
+function dropMobileLlmKeys(env) {
+  const target = env && typeof env === "object" ? env : {};
+  for (const k of Object.keys(target)) {
+    if (isMobileLlmKey(k)) delete target[k];
+  }
+  return target;
+}
+
+function mobileHostEnv(env = process.env) {
+  const source = env || {};
+  const out = {};
+  for (const [k, v] of Object.entries(source)) {
+    if (isMobileLlmKey(k)) continue;
+    out[k] = v;
+  }
+  out.BITBOT_MOBILE_HOST = "1";
+  return out;
+}
+
+function pathIsInside(root, target) {
+  return target === root || target.startsWith(root + path.sep);
+}
+
 function cwdAllowed(cwd, allowRoots) {
-  let resolved;
+  let lexical;
   try {
-    resolved = path.resolve(String(cwd || ""));
+    lexical = path.resolve(String(cwd || ""));
   } catch (_) {
     return { ok: false, error: "bad_cwd" };
   }
+  if (!lexical) return { ok: false, error: "bad_cwd" };
   const roots = (Array.isArray(allowRoots) ? allowRoots : [])
     .map((r) => {
       try {
@@ -315,12 +359,25 @@ function cwdAllowed(cwd, allowRoots) {
     })
     .filter(Boolean);
   if (!roots.length) return { ok: false, error: "cwd_allowlist_empty" };
-  for (const root of roots) {
-    if (resolved === root || resolved.startsWith(root + path.sep)) {
-      return { ok: true, cwd: resolved };
-    }
+  const lexicalOk = roots.some((root) => pathIsInside(root, lexical));
+  if (!lexicalOk) return { ok: false, error: "cwd_not_allowlisted" };
+  let real = "";
+  try {
+    real = fs.realpathSync(lexical);
+  } catch (_) {
+    return { ok: false, error: "bad_cwd" };
   }
-  return { ok: false, error: "cwd_not_allowlisted" };
+  const realRoots = roots.map((root) => {
+    try {
+      return fs.realpathSync(root);
+    } catch (_) {
+      return root;
+    }
+  });
+  if (!realRoots.some((root) => pathIsInside(root, real))) {
+    return { ok: false, error: "cwd_not_allowlisted" };
+  }
+  return { ok: true, cwd: real };
 }
 
 function runSandboxedShell(command, opts = {}) {
@@ -368,6 +425,7 @@ module.exports = {
   DEFAULT_MAX_BODY_BYTES,
   SHELL_TIMEOUT_MS,
   SHELL_MAX_BUFFER,
+  SHELL_OUTPUT_CAP,
   SHELL_ENV_ALLOW,
   isLoopbackHost,
   resolveInboundBind,
@@ -382,7 +440,11 @@ module.exports = {
   verifyDingTalkSignature,
   verifyFeishuSignature,
   verifyWecomSignature,
+  shellEnvKeyAllowed,
   shellChildEnv,
+  isMobileLlmKey,
+  dropMobileLlmKeys,
+  mobileHostEnv,
   cwdAllowed,
   runSandboxedShell,
 };

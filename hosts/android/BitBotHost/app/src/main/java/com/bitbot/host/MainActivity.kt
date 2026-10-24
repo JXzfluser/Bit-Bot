@@ -114,7 +114,7 @@ class MainActivity : ComponentActivity() {
             val assistant =
               TurnBridge.assistantText(body)
                 ?: if (body.startsWith("!")) body
-                else "(empty assistant — check BITBOT_LLM_API_KEY for Chat)"
+                else "(empty assistant — model credential stays on Desktop)"
             lines.add(ChatLine("assistant", assistant))
             busy = false
           }

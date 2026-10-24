@@ -407,6 +407,7 @@
 | `docs/grok-desktop-parity/gaps.md:431` | 记忆自动抽取未做 |
 | `hosts/shared/cn_inbound_server.js` + `hosts/shared/p0_security.js` | ADR 0008：默认 `127.0.0.1`，无 Bearer 401，坏签名 401，body 413。不是 I，不关 AR-15 |
 | `hosts/shared/host_ffi.js` shell | 无审批不执行；cwd 允许列表；子进程最小 env。P0-3 仍是 U |
+| `docs/agent-core/05-security-sandbox-secrets.md` | SK1–SK8。不是 P0，不是 AU，不关 AR-15，不升 I |
 | `docs/capability-matrix.md` | 234 CM / I-PASS；合同面 |
 | `docs/qa/gaps.md` | 验收与 residual 口径 |
 
@@ -414,3 +415,5 @@
 
 - 2026-10-24：初版。基于 agent core 审计、群 Bot 路径追踪、P0 安全审计、打包/数据审计整理。
 - 2026-10-24：入站重新接上 `p0_security`（Bearer 401、坏签名 401、body 413、默认 loopback、入站不固定 `approved:true`、shell 最小 env）。P0-3 维持内核 U，不升 I。AR-15 不关。不宣称 MVP。
+- 2026-10-24：SK1–SK8 沙箱与密钥立证（allowlist env、审批不放开密钥、cwd、超时/缓冲、scrub、手机不持模型密钥）。不是 P0，不是 AU。P0 host-checks 不算本 residual 已关。不关 AR-15，不升 I，不宣称 MVP。
+- 2026-10-24：`prove_sandbox_secrets` 的 `ok SK1`…`ok SK8` 改与 `05-security-sandbox-secrets.md` §4 逐字同构。SK3 是产物，SK4 是 cwd，SK5 是 scrub，SK6 是超时加缓冲，SK7 是 health/401/413 响应体不泄漏 turn token 与 LLM API key，SK8 是 P0 绿、P0-3 仍 U、AU 不倒裁。phone host 不是 SK7。danger/echo 不是 SK8。不关 AR-15，不宣称 residual 已关，不升 I。

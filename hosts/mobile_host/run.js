@@ -16,10 +16,14 @@ const {
   extractDeliveryTypes,
   formatDeliveryStrip,
 } = require("../shared/send_to_user_surface");
+const p0 = require("../shared/p0_security");
 
 const root = path.resolve(__dirname, "../..");
 
-/** Load Desktop/repo .env.local so mobile shares BITBOT_LLM_* / CN channel env. */
+/**
+ * Load Desktop/repo .env.local for non-model host env (channel flags, host URL).
+ * SK-D7: never copy the Desktop model key into the mobile host process.
+ */
 function loadEnvLocalFiles() {
   const candidates = [
     path.join(root, "hosts/desktop/.env.local"),
@@ -41,6 +45,7 @@ function loadEnvLocalFiles() {
         ) {
           v = v.slice(1, -1);
         }
+        if (k && p0.isMobileLlmKey(k)) continue;
         if (k && process.env[k] === undefined) process.env[k] = v;
       }
     } catch (_) {
@@ -49,6 +54,8 @@ function loadEnvLocalFiles() {
   }
 }
 loadEnvLocalFiles();
+p0.dropMobileLlmKeys(process.env);
+process.env.BITBOT_MOBILE_HOST = "1";
 
 const args = process.argv.slice(2);
 if (!args.includes("--machine-kind")) {
@@ -58,7 +65,7 @@ if (!args.includes("--machine-kind")) {
 const r = spawnSync(
   process.execPath,
   [path.join(root, "hosts/cli_host/run_turn.js"), ...args],
-  { cwd: root, encoding: "utf8", env: process.env },
+  { cwd: root, encoding: "utf8", env: p0.mobileHostEnv(process.env) },
 );
 if (r.stdout) {
   process.stdout.write(r.stdout);
