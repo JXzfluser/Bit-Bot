@@ -1,0 +1,37 @@
+{
+  "accent": {
+    "sendLight": "rgb(124, 58, 237)",
+    "sendDark": "rgb(168, 85, 247)"
+  },
+  "composer": {
+    "rowDisplay": "flex",
+    "rowWrap": "nowrap",
+    "rowRadius": 24,
+    "sendRadius": "50%",
+    "sendW": 34,
+    "sendH": 34,
+    "rowChips": 0,
+    "attachOrder": "-1"
+  },
+  "menu": {
+    "hidden": true,
+    "hasSearch": true,
+    "hasModel": true,
+    "hasVoice": true,
+    "hasAttach": true
+  },
+  "head": {
+    "avatarW": 28,
+    "avatarH": 28,
+    "avatarRadius": "50%",
+    "nameColor": "rgb(124, 58, 237)",
+    "nameWeight": "600"
+  },
+  "bubble": {
+    "borderTopWidth": "0px",
+    "boxShadow": "none",
+    "radius": 12,
+    "bg": "rgb(244, 244, 245)",
+    "w": 728
+  }
+}
