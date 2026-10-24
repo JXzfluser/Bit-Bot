@@ -429,7 +429,9 @@ async function main() {
     if (!midCancel) {
       bad("EG3 cancel button mid-run", fs.readFileSync(trace, "utf8").slice(-800));
     } else {
-      check(true, "EG3 cancel button visible after llm_chat and exec_tool");
+      const cancelLabel = await win.locator("#turn-cancel").innerText();
+      check(midCancel.llm >= 2 && midCancel.exec >= 1, "EG3 mid-run already has llm_chat and exec_tool", JSON.stringify(midCancel));
+      check(String(cancelLabel).includes("取消"), "EG3 visible control is Cancel", cancelLabel);
       await win.click("#turn-cancel");
       const cancelled = await poll(async () => {
         const raw = await win.locator("#json-out").textContent();

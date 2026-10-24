@@ -28,9 +28,11 @@ bash scripts/prove_agent_loop_electron_midrun.sh
 bash scripts/prove_agent_loop_electron_midrun.sh
 ```
 
-`prove_agent_loop_electron_midrun pass=61 fail=0`。
+`prove_agent_loop_electron_midrun pass=62 fail=0`。
 
-EG3 是另一次飞行中的回合：`#turn-cancel` 可见，且当时已有 `llm_chat` 与 `exec_tool`。点该按钮后 turn JSON 为 `agent_stop=Cancelled`。取消之后 `llm_chat` 次数、`exec_tool` 次数和 provider 请求数都没有增加，也没有 `deliver`。`kernel_ops` 与 `node_ops` 对齐仍有检查，但不编号为 EG3。
+这是本地证据，不是 Bit 复跑结论。EG1–EG3 在 Bit验证再次 PASS 之前，不把 Electron/Chat GUI residual 写成已关。
+
+EG3 是另一次飞行中的回合：按钮「取消」（`#turn-cancel`）可见，且当时已有 `llm_chat` 与 `exec_tool`。点该按钮后 turn JSON 为 `agent_stop=Cancelled`。取消之后 `llm_chat` 次数、`exec_tool` 次数和 provider 请求数都没有增加，也没有 `deliver`。`kernel_ops` 与 `node_ops` 对齐仍有检查，编号不是 EG3。
 
 EG6 含 `prove_agent_loop_product_wire pass=49 fail=0`，以及 moon test `failed: 0`。`moon test -p runtime` 为 54/54（含取消回复不再执行下一步工具）。WP PASS 不是 EG1–EG5。
 
