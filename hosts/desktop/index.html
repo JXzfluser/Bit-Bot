@@ -779,40 +779,12 @@
     height: 100%;
     object-fit: cover;
   }
-  .bf-mini {
-    display: block;
-    width: 100%;
-    margin-top: 6px;
-    background: var(--accent-soft);
-    color: var(--ink);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-    padding: 4px 8px;
-    font-size: var(--text-xs);
-    cursor: pointer;
-  }
   /* GP-A2/A3 Grok-parity: plugin cards in a two-column grid */
   .ca-cats {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     margin-top: 10px;
-  }
-  .ca-chip {
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-pill);
-    padding: 5px 12px;
-    font-size: var(--text-sm);
-    cursor: pointer;
-  }
-  .ca-chip:hover { background: var(--accent-soft); color: var(--ink); }
-  .ca-chip.active {
-    background: var(--ink);
-    color: var(--bg0);
-    border-color: var(--ink);
-    font-weight: 600;
   }
   .ca-grid {
     display: grid;
@@ -1303,27 +1275,12 @@
   #approval .title { font-weight: 700; color: var(--warn); margin-bottom: 8px; }
   #approval .detail { font-size: var(--text-sm); color: var(--muted); white-space: pre-wrap; }
   #approval .actions { margin-top: 12px; display: flex; gap: 8px; }
-  #approval button {
-    border: 0;
-    border-radius: var(--radius-md);
-    padding: 8px 16px;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-  }
-  #approval button:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.12); }
-  #approve-btn { background: var(--accent); color: var(--accent-ink); }
-  #allow-always-btn { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
-  #deny-btn { background: var(--danger-bg); color: var(--danger-ink); border: 1px solid var(--danger); }
   #approval .kv { margin: 2px 0; color: var(--muted); font: var(--text-xs)/1.5 var(--font-mono); }
   #approval .kv b { color: var(--ink); }
   #approval .secret-hint { margin-top: 8px; color: var(--warn); font-size: var(--text-sm); }
   /* Grok Parity Panel (Wave G) */
   #computer-panel .frame-box { margin-top: 8px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--input-bg); padding: 8px; color: var(--muted); font: var(--text-sm)/1.4 var(--font-mono); }
   #computer-panel .frame-box img { max-width: 100%; border-radius: var(--radius-sm); display: block; }
-  .gp-chip { background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 5px 10px; cursor: pointer; font-size: var(--text-sm); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-  .gp-chip:hover { background: var(--accent-soft); }
-  .gp-chip.active { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
   .gp-label { font-size: var(--text-sm); color: var(--muted); margin: 10px 0 4px; }
   .gp-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .gp-select { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px 10px; font-size: var(--text-sm); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
@@ -1779,9 +1736,9 @@
       <div class="title" id="approval-title" data-i18n="approvalTitle">需要审批</div>
       <div class="detail" id="approval-detail"></div>
       <div class="actions">
-        <button type="button" id="approve-btn" data-i18n="allowOnce">本次允许</button>
-        <button type="button" id="allow-always-btn" data-i18n="alwaysAllow">总是允许</button>
-        <button type="button" id="deny-btn" data-i18n="deny">拒绝</button>
+        <button type="button" id="approve-btn" class="bb-btn bb-btn-primary" data-i18n="allowOnce">本次允许</button>
+        <button type="button" id="allow-always-btn" class="bb-btn" data-i18n="alwaysAllow">总是允许</button>
+        <button type="button" id="deny-btn" class="bb-btn bb-btn-danger-soft" data-i18n="deny">拒绝</button>
       </div>
     </div>
     <div id="takeover-banner">
@@ -1801,7 +1758,7 @@
         <button type="button" class="gp-chip gp-tab active" data-gptab="computer">电脑</button>
         <button type="button" class="gp-chip gp-tab" data-gptab="group" data-i18n="gpGroup">群组</button>
         <button type="button" class="gp-chip gp-tab" data-gptab="approvals" data-i18n="gpApprovals">后台审批</button>
-        <button type="button" id="gp-panel-close" class="gp-chip" data-i18n="gpClose">关闭</button>
+        <button type="button" id="gp-panel-close" class="bb-btn bb-btn-sm" data-i18n="gpClose">关闭</button>
       </div>
       <div id="gp-computer" style="margin-top:8px">
         <div class="gp-row" id="gp-bot-chips"></div>
@@ -1810,9 +1767,9 @@
           <div id="gp-frame-box" style="color:var(--muted)" data-i18n="gpNoFrame">（尚无帧）</div>
         </div>
         <div class="gp-row" style="margin-top:8px">
-          <button type="button" class="gp-chip" id="gp-takeover-btn" data-i18n="takeover">接管</button>
-          <button type="button" class="gp-chip" id="gp-refresh-frame" data-i18n="gpRefreshFrame">刷新帧</button>
-          <button type="button" class="gp-chip" id="gp-recover-btn" style="display:none" data-i18n="gpRecover">恢复云端电脑</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-takeover-btn" data-i18n="takeover">接管</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-refresh-frame" data-i18n="gpRefreshFrame">刷新帧</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-recover-btn" style="display:none" data-i18n="gpRecover">恢复云端电脑</button>
           <select id="gp-computer-state" class="gp-select" style="display:none"></select>
         </div>
         <div id="gp-computer-status" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace"></div>
@@ -1821,14 +1778,14 @@
         <div class="gp-label" data-i18n="gpRoomNew">新建群组（选 2–6 个 Bot，名称可改）</div>
         <div class="gp-row">
           <input class="bb-control" id="gp-room-title" type="text" placeholder="群名（可留空自动命名）" data-i18n-ph="gpRoomPh" style="flex:1;min-width:140px" />
-          <button type="button" class="gp-chip" id="gp-room-create" data-i18n="gpRoomCreate">创建群组</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-room-create" data-i18n="gpRoomCreate">创建群组</button>
         </div>
         <div id="gp-room-members" class="gp-row" style="margin-top:6px"></div>
         <div class="gp-label" data-i18n="gpRoomMsg">群内消息（@BotName / @everyone / 无 @ 自行决定）</div>
         <div class="gp-row">
           <select id="gp-room-pick" class="gp-select"></select>
           <input id="gp-room-text" class="bb-control" type="text" placeholder="room <id> :: @Piper 看一下这个" data-i18n-ph="gpRoomPh2" style="flex:2;min-width:180px" />
-          <button type="button" class="gp-chip" id="gp-room-send" data-i18n="gpRoomSend">发送</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-room-send" data-i18n="gpRoomSend">发送</button>
         </div>
         <div style="margin-top:4px;color:var(--muted);font-size:11px" data-i18n="gpRoomNote">审批 / Secret 请求永远只进对应 Bot 私聊，不进群 transcript（GP-53）。</div>
         <div id="gp-group-status" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace"></div>
@@ -1837,7 +1794,7 @@
         <div class="gp-label" data-i18n="gpQueueNote">后台审批队列（Routine / teammate 来源；~10 分钟过期显示「已过期」，仍可「总是允许」/「拒绝」）</div>
         <div id="approval-queue"></div>
         <div class="gp-row" style="margin-top:6px">
-          <button type="button" class="gp-chip" id="gp-pending-refresh" data-i18n="gpRefresh">刷新</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-pending-refresh" data-i18n="gpRefresh">刷新</button>
         </div>
       </div>
     </div>
@@ -1911,8 +1868,8 @@
             <option value="computer_use" data-i18n="ruleComputerUse">操作电脑</option>
             <option value="delegate_task" data-i18n="ruleDelegate">委派任务</option>
           </select>
-          <button type="button" class="gp-chip" id="gp-rule-allow" data-i18n="allowAuto">自动允许</button>
-          <button type="button" class="gp-chip" id="gp-rule-ask" data-i18n="askFirst">先询问</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-rule-allow" data-i18n="allowAuto">自动允许</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-rule-ask" data-i18n="askFirst">先询问</button>
         </div>
         <div id="gp-rules-list" style="margin-top:6px"></div>
         <div class="gp-label" data-i18n="privacyTitle">隐私模式（账户侧管理，本机只读）</div>
@@ -1922,8 +1879,8 @@
         <div class="gp-label" data-i18n="accountSection">账户（本地 profile · 不伪造远端登录）</div>
         <div class="gp-row" style="align-items:center">
           <input class="bb-control" id="gp-account-label" type="text" data-i18n-ph="accountLabelPlaceholder" placeholder="配置名（如「个人」「工作」）" style="width:160px" />
-          <button type="button" class="gp-chip" id="gp-account-signin" data-i18n="accountSignInBtn">登录</button>
-          <button type="button" class="gp-chip" id="gp-account-signout" data-i18n="accountSignOutBtn">退出登录</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-account-signin" data-i18n="accountSignInBtn">登录</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-account-signout" data-i18n="accountSignOutBtn">退出登录</button>
           <select id="gp-account-switch" class="gp-select" style="max-width:180px"></select>
         </div>
         <div id="gp-account-state" style="margin-top:4px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
@@ -1939,12 +1896,12 @@
         </div>
         <div class="gp-label" data-i18n="routeTraffic">让 Bot 的云端流量经本机路由</div>
         <div class="gp-row">
-          <button type="button" class="gp-chip" id="gp-route-toggle">—</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-route-toggle">—</button>
         </div>
         <div class="gp-label" data-i18n="botComputer">Bot 的云端电脑</div>
         <div class="gp-row">
-          <button type="button" class="gp-chip" id="gp-update-computer" data-i18n="updateComputerBtn">更新云端电脑</button>
-          <button type="button" class="gp-chip" id="gp-reset-computer" data-i18n="resetComputerBtn">重置云端电脑</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-update-computer" data-i18n="updateComputerBtn">更新云端电脑</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-reset-computer" data-i18n="resetComputerBtn">重置云端电脑</button>
         </div>
         <div id="st-computer-state" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
       </div>
@@ -1956,8 +1913,8 @@
       <div id="st-updates" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="tabUpdates">更新</div>
         <div class="gp-row">
-          <button type="button" class="gp-chip" id="gp-check-updates" data-i18n="checkUpdatesBtn">检查更新</button>
-          <button type="button" class="gp-chip" id="gp-restart-update" data-i18n="restartUpdateBtn" disabled>重启并安装</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-check-updates" data-i18n="checkUpdatesBtn">检查更新</button>
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-restart-update" data-i18n="restartUpdateBtn" disabled>重启并安装</button>
         </div>
         <div id="st-updates-state" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
       </div>
@@ -1970,7 +1927,7 @@
                是隐藏的（shell_v2 S-HEADER 要求），所以这里给一个正经入口，和密钥表单
                读同一个 Host 数据源（llmCatalog + secrets）。 -->
           <div class="gp-row" style="margin-bottom:8px">
-            <button type="button" class="gp-chip" id="sec-model-open" data-i18n="secModelOpen">模型与供应商</button>
+            <button type="button" class="bb-btn bb-btn-sm" id="sec-model-open" data-i18n="secModelOpen">模型与供应商</button>
           </div>
           <label class="st-field"><span class="st-field-name">DeepSeek API Key <span id="sec-llm-mask"></span></span>
             <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
@@ -2122,8 +2079,8 @@
           <div id="bf-avatar-col" style="flex:0 0 96px;text-align:center">
             <div id="bf-avatar-preview" class="bf-avatar">B</div>
             <div style="font-size:11px;color:var(--muted);margin-top:6px" data-i18n="bfAvatar">头像</div>
-            <button type="button" id="bf-avatar-pick" class="bf-mini" data-i18n="bfPickAvatar">选择图片</button>
-            <button type="button" id="bf-avatar-clear" class="bf-mini" data-i18n="bfClearAvatar">移除头像</button>
+            <button type="button" id="bf-avatar-pick" class="bb-btn bb-btn-sm bb-btn-block" data-i18n="bfPickAvatar">选择图片</button>
+            <button type="button" id="bf-avatar-clear" class="bb-btn bb-btn-sm bb-btn-block" data-i18n="bfClearAvatar">移除头像</button>
           </div>
           <div style="flex:1 1 auto;min-width:0">
             <label class="bf-label"><span data-i18n="bfName">名称</span><input id="bc-name" class="bf-input" type="text" autocomplete="off" placeholder="Name（如 Piper）" data-i18n-ph="bfNamePh" /></label>
@@ -2520,7 +2477,7 @@
   <aside id="conv-rail">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div class="panel-title" style="margin:0" data-i18n="cvTitle">对话详情</div>
-      <button type="button" id="cv-close" class="gp-chip" data-i18n="gpClose">关闭</button>
+      <button type="button" id="cv-close" class="bb-btn bb-btn-sm" data-i18n="gpClose">关闭</button>
     </div>
     <div class="cv-title" id="cv-name" style="margin-top:10px"></div>
     <div class="br-meta" id="cv-owner"></div>
@@ -2539,7 +2496,7 @@
         <div class="br-name" id="br-name"></div>
         <div class="br-meta" id="br-job"></div>
       </div>
-      <button type="button" id="br-close" class="gp-chip" data-i18n="gpClose">关闭</button>
+      <button type="button" id="br-close" class="bb-btn bb-btn-sm" data-i18n="gpClose">关闭</button>
     </div>
     <div class="gp-row" id="br-tags" style="margin-top:8px"></div>
     <div class="panel-title" data-i18n="brAbout">工作方式</div>
@@ -2561,9 +2518,9 @@
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 12px 0">
       <div class="panel-title" style="margin:0" data-i18n="computerPreview">电脑预览</div>
       <div style="display:flex;gap:6px">
-        <button type="button" id="cr-open-group" class="gp-chip" data-i18n="gpGroup">群组</button>
-        <button type="button" id="cr-open-approvals" class="gp-chip" data-i18n="gpApprovals">后台审批</button>
-        <button type="button" id="computer-rail-close" class="gp-chip" data-i18n="gpClose">关闭</button>
+        <button type="button" id="cr-open-group" class="bb-btn bb-btn-sm" data-i18n="gpGroup">群组</button>
+        <button type="button" id="cr-open-approvals" class="bb-btn bb-btn-sm" data-i18n="gpApprovals">后台审批</button>
+        <button type="button" id="computer-rail-close" class="bb-btn bb-btn-sm" data-i18n="gpClose">关闭</button>
       </div>
     </div>
     <div class="gp-row" id="cr-bot-chips" style="padding:8px 12px 0"></div>
@@ -2574,8 +2531,8 @@
     <div class="panel-title" style="margin:12px 12px 0" data-i18n="crActivity">Bot 活动（点击 / 输入 / 导航 / 状态）</div>
     <div id="cr-activity" style="padding:6px 12px;color:var(--muted);font:11px/1.5 ui-monospace,monospace"></div>
     <div class="gp-row" style="padding:8px 12px 12px">
-      <button type="button" class="gp-chip" id="cr-takeover-btn" data-i18n="takeover">接管</button>
-      <button type="button" class="gp-chip" id="cr-refresh-btn" data-i18n="gpRefreshFrame">刷新帧</button>
+      <button type="button" class="bb-btn bb-btn-sm" id="cr-takeover-btn" data-i18n="takeover">接管</button>
+      <button type="button" class="bb-btn bb-btn-sm" id="cr-refresh-btn" data-i18n="gpRefreshFrame">刷新帧</button>
     </div>
     <div style="padding:0 12px 14px;color:var(--muted);font-size:11px" data-i18n="crLeaveNote">离开预览不影响 Bot 后台任务。</div>
   </aside>
@@ -2584,7 +2541,7 @@
   <aside id="room-rail" aria-label="群资料">
     <div class="ri-head">
       <div class="cv-title" id="ri-title"></div>
-      <button type="button" id="ri-close" class="gp-chip" data-i18n="gpClose">关闭</button>
+      <button type="button" id="ri-close" class="bb-btn bb-btn-sm" data-i18n="gpClose">关闭</button>
     </div>
     <!-- 团队详情抽屉（设计稿 bitbot-team-ui）：分段 tab 代替线性平铺。
          稿子三段是 详情/资料库/成员；真产品这里的内容是 成员/定时任务/资料库，
@@ -2605,7 +2562,7 @@
            不能被资料库区块隔到下面去。 -->
       <div class="ri-meta" id="ri-tz-note"></div>
       <div class="gp-row">
-        <button type="button" id="ri-routine-add" class="gp-chip" data-i18n="riAdd">＋ 添加定时任务</button>
+        <button type="button" id="ri-routine-add" class="bb-btn bb-btn-sm" data-i18n="riAdd">＋ 添加定时任务</button>
       </div>
       <div class="ri-form" id="ri-form">
         <textarea id="ri-text" class="bb-control" rows="3" data-i18n-ph="riFormPh" placeholder="例如：每天早上9点把审核通过的稿子发到我的邮箱"></textarea>
@@ -2620,7 +2577,7 @@
     <div class="ri-panel" id="ri-panel-library" data-panel="library" role="tabpanel" aria-labelledby="ri-tab-library" hidden>
       <div id="ri-lib-list"></div>
       <div class="gp-row" style="margin-top:6px">
-        <button type="button" id="ri-lib-upload" class="gp-chip" data-i18n="riLibUpload">＋ 上传到资料库</button>
+        <button type="button" id="ri-lib-upload" class="bb-btn bb-btn-sm" data-i18n="riLibUpload">＋ 上传到资料库</button>
       </div>
     </div>
     <!-- GP-161：暂停 / 删除这类「按下去之后必须看得见结果」的话术不能只写进
@@ -9967,7 +9924,7 @@
       const addAction = (label, fn) => {
         const b = document.createElement("button");
         b.type = "button";
-        b.className = "gp-chip";
+        b.className = "bb-btn bb-btn-sm";
         b.textContent = label;
         b.addEventListener("click", async () => {
           b.disabled = true;
@@ -10109,7 +10066,7 @@
         : wavegT("cvNone");
       const renameBtn = document.createElement("button");
       renameBtn.type = "button";
-      renameBtn.className = "gp-chip";
+      renameBtn.className = "bb-btn bb-btn-sm";
       renameBtn.textContent = wavegT("sessRename");
       renameBtn.addEventListener("click", () => openSessionRename(row));
       actEl.appendChild(renameBtn);
@@ -11231,9 +11188,8 @@
             else gpStatus("waveg-settings-status", wavegT("ruleDeleteFail"));
           });
         }
-        btn.className = "gp-chip";
-        btn.style.padding = "2px 8px";
-        row.appendChild(btn);
+        btn.className = "bb-btn bb-btn-sm bb-btn-danger-soft";
+                row.appendChild(btn);
         box.appendChild(row);
       }
     }

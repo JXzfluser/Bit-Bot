@@ -1771,7 +1771,7 @@ async function main() {
         job: (document.getElementById("br-job") || {}).textContent || "",
         chips: document.querySelectorAll("#br-tags .gp-chip").length,
         stats: document.querySelectorAll("#br-stats .br-row").length,
-        actions: document.querySelectorAll("#br-actions .gp-chip").length,
+        actions: document.querySelectorAll("#br-actions .bb-btn").length,
         notify: document.getElementById("br-notify") ? document.getElementById("br-notify").checked : null,
         logWidth: document.getElementById("log").getBoundingClientRect().width,
       }));
@@ -1870,7 +1870,7 @@ async function main() {
       const pinnedBefore = Boolean(m26Row.pinned);
       if (railOpened.actions >= 4) {
         await win.evaluate(() => {
-          document.querySelectorAll("#br-actions .gp-chip")[1].click();
+          document.querySelectorAll("#br-actions .bb-btn")[1].click();
         });
         const toggled = await (async () => {
           const t0 = Date.now();
@@ -1898,14 +1898,14 @@ async function main() {
         // 全跑完才会重新可用；不等就点，点到的是已禁用的旧按钮，等于没点。
         await win.waitForFunction(
           () => {
-            const b = document.querySelectorAll("#br-actions .gp-chip")[1];
+            const b = document.querySelectorAll("#br-actions .bb-btn")[1];
             return Boolean(b) && !b.disabled;
           },
           null,
           { timeout: 30000 },
         ).catch(() => {});
         await win.evaluate(() => {
-          document.querySelectorAll("#br-actions .gp-chip")[1].click();
+          document.querySelectorAll("#br-actions .bb-btn")[1].click();
         });
         const reverted = await (async () => {
           const t0 = Date.now();
@@ -2037,17 +2037,17 @@ async function main() {
         await win.locator(".composer-menu:not([hidden]) button").last().click();
         await win.waitForFunction(() => document.body.classList.contains("conv-open"), null, { timeout: 10000 }).catch(() => {});
         await win.waitForFunction(
-          () => document.querySelectorAll("#cv-actions .gp-chip").length > 0,
+          () => document.querySelectorAll("#cv-actions .bb-btn").length > 0,
           null,
           { timeout: 10000 },
         ).catch(() => {});
         const renameBtnIdx = await win.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll("#cv-actions .gp-chip"));
+          const btns = Array.from(document.querySelectorAll("#cv-actions .bb-btn"));
           return btns.findIndex((b) => /重命名|重新命名|Rename/.test(b.textContent || ""));
         });
         if (renameBtnIdx >= 0) {
           await win.evaluate((i) => {
-            document.querySelectorAll("#cv-actions .gp-chip")[i].click();
+            document.querySelectorAll("#cv-actions .bb-btn")[i].click();
           }, renameBtnIdx);
           await win.waitForSelector("#session-rename-modal", { state: "visible", timeout: 5000 });
           await win.fill("#sr-title", "M27 重命名后的对话");

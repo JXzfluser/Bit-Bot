@@ -30,7 +30,7 @@ await win.waitForTimeout(2500);
 
 const report = await win.evaluate(() => {
   const gs = (el) => getComputedStyle(el);
-  const out = { btnSm: [], primary: [], danger: [], leftovers: [] };
+  const out = { btnSm: [], primary: [], danger: [], leftovers: [], chips: [], chipViolations: [], approval: [] };
 
   for (const el of document.querySelectorAll(".bb-btn-sm")) {
     const s = gs(el);
@@ -44,6 +44,20 @@ const report = await win.evaluate(() => {
   for (const el of document.querySelectorAll("button:not([class])")) {
     const st = el.getAttribute("style") || "";
     if (/background|border|padding/.test(st)) out.leftovers.push({ id: el.id, style: st.slice(0, 60) });
+  }
+  // chip 家族（选项/过滤语义）：形状唯一；按钮型 chip 必须带 data-* 选项属性
+  for (const el of document.querySelectorAll(".gp-chip, .ca-chip")) {
+    const s = gs(el);
+    out.chips.push({ tag: el.tagName, pad: s.padding, r: s.borderRadius, fs: s.fontSize });
+    if (el.tagName === "BUTTON") {
+      const hasData = [...el.attributes].some((a) => a.name.startsWith("data-"));
+      if (!hasData) out.chipViolations.push({ id: el.id || "(dynamic)", text: el.textContent.trim().slice(0, 12) });
+    }
+  }
+  // 审批卡三按钮走 bb-btn 体系
+  for (const id of ["approve-btn", "allow-always-btn", "deny-btn"]) {
+    const el = document.getElementById(id);
+    if (el) out.approval.push({ id, hasBtn: el.classList.contains("bb-btn") });
   }
   return out;
 });
@@ -64,7 +78,17 @@ for (const bg of bgGroups) {
   const s = new Set(g.map(b => `${b.pad}|${b.r}|${b.fs}`));
   console.log(`  bg=${bg} n=${g.length} shapes=${s.size}${s.size > 1 ? " ← 不一致!" : ""}`);
 }
-const ok = shapes.size === 1 && report.leftovers.length === 0;
+// chip 预算：静态 11（gp-tab/appearance/devmode/locexec，带 data-*）+ ca-chip 6
+// + 动态选择器 3（bot 屏选 / 建群成员选）+ 渲染时机余量。超预算 = 有人新加了
+// 动作型 gp-chip —— 动作按钮应该用 .bb-btn.bb-btn-sm。
+const CHIP_BUDGET = 20;
+const chipButtons = report.chips.filter((c) => c.tag === "BUTTON").length;
+const ok = shapes.size === 1 && report.leftovers.length === 0
+  && chipButtons <= CHIP_BUDGET
+  && report.approval.every((a) => a.hasBtn);
 console.log(`unclassed styled buttons: ${report.leftovers.length}`);
+console.log(`chips: n=${report.chips.length} buttons=${chipButtons} (budget ${CHIP_BUDGET}) distinct-forms=${new Set(report.chips.map((c) => c.pad + "|" + c.r + "|" + c.fs)).size}`);
+if (report.chipViolations.length) console.log("  chip without data-* (must be a selector/picker):", JSON.stringify(report.chipViolations));
+console.log(`approval bb-btn: ${report.approval.map((a) => a.id + "=" + a.hasBtn).join(", ")}`);
 console.log(ok ? "AUDIT PASS" : "AUDIT FAIL");
 process.exit(0);

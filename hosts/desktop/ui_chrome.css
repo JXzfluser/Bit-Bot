@@ -403,6 +403,33 @@ body.force-light {
 }
 .bb-btn-sm:hover { box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
 
+/* option chips — segmented choice / filter semantics (appearance, devmode,
+   locexec, gp-tab, connect-apps categories, bot pickers, tag labels).
+   One geometry for the whole chip family; active = ink fill (Grok language,
+   matches the grok-ui theme override further below). Definitions moved here
+   from index.html <style> so the chrome has a single source (GP chip audit). */
+.gp-chip,
+.ca-chip {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  font-family: inherit;
+}
+.gp-chip:hover,
+.ca-chip:hover { background: var(--accent-soft); color: var(--ink); }
+.gp-chip.active,
+.ca-chip.active {
+  background: var(--ink);
+  color: var(--surface);
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
 .bb-btn-block {
   display: block;
   width: 100%;
@@ -592,13 +619,6 @@ body.force-light {
   border-color: var(--muted);
   box-shadow: 0 2px 6px rgba(0,0,0,0.1);
   outline: none;
-}
-
-#sess-new.bb-btn {
-  margin-bottom: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  font-size: var(--text-md);
 }
 
 #sidebar-settings-btn.bb-btn {
@@ -1428,10 +1448,9 @@ body.grok-ui .gp-select:focus {
   box-shadow: none !important;
 }
 
-/* chips: category filter (connect apps), option chips (settings), mini actions */
+/* chips: category filter (connect apps), option chips (settings) */
 body.grok-ui .gp-chip,
-body.grok-ui .ca-chip,
-body.grok-ui .bf-mini {
+body.grok-ui .ca-chip {
   background: var(--g-card) !important;
   border: 1px solid var(--g-line) !important;
   border-radius: 999px !important;
@@ -1442,8 +1461,7 @@ body.grok-ui .bf-mini {
   box-shadow: none !important;
 }
 body.grok-ui .gp-chip:hover,
-body.grok-ui .ca-chip:hover,
-body.grok-ui .bf-mini:hover { background: var(--g-soft) !important; color: var(--g-ink) !important; }
+body.grok-ui .ca-chip:hover { background: var(--g-soft) !important; color: var(--g-ink) !important; }
 body.grok-ui .gp-chip.active,
 body.grok-ui .ca-chip.active {
   background: var(--g-ink) !important;
