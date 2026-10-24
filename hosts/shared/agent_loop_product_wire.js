@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { canonicalAction } = require("./host_approval_gate");
 
 /**
  * One Host FFI op for the kernel AgentLoop.
@@ -48,10 +49,15 @@ function execProductTool(req, state) {
     args = {};
   }
   if (name === "Shell" || name === "shell") {
-    if (!state.shellAllowed) {
+    const action = canonicalAction(name, argsJson);
+    const granted =
+      state.shellAllowed &&
+      (state.pendingShellAction === "*" || state.pendingShellAction === action);
+    if (!granted) {
       return { output: "shell refused: no approval grant" };
     }
     state.shellAllowed = false;
+    state.pendingShellAction = "";
     return { output: "[product-shell] " + String(args.command || "") };
   }
   if (name === "Read" || name === "read" || name === "fs_read") {
@@ -63,21 +69,68 @@ function execProductTool(req, state) {
   return { output: "exec refused: " + name };
 }
 
-function decideApproval(state) {
+async function decideApproval(state, req, opts) {
+  const options = opts || {};
+  const name = String((req && req.name) || "");
+  const argsJson = String((req && req.arguments) || "");
+  if (typeof options.requestApproval === "function") {
+    let verdict = "deny";
+    try {
+      const answered = await options.requestApproval({
+        name,
+        arguments: argsJson,
+        turnId: state.turnId,
+      });
+      const v = answered && answered.verdict;
+      if (v === "allow" || v === "cancel" || v === "deny") verdict = v;
+    } catch (_) {
+      verdict = "deny";
+    }
+    if (verdict === "allow") {
+      state.shellAllowed = true;
+      state.pendingShellAction = canonicalAction(name, argsJson);
+    }
+    return { verdict };
+  }
+  if (options.cliApproved === true) {
+    state.shellAllowed = true;
+    state.pendingShellAction = canonicalAction(name, argsJson);
+    if (options.approvalGate && state.turnId) {
+      options.approvalGate.record({
+        turnId: state.turnId,
+        action: state.pendingShellAction,
+        source: "cli",
+      });
+    }
+    return { verdict: "allow" };
+  }
   const verdict = approvalMode();
-  if (verdict === "allow") state.shellAllowed = true;
+  if (verdict === "allow") {
+    state.shellAllowed = true;
+    state.pendingShellAction = "*";
+  }
   return { verdict };
 }
 
 function createProductSession(ffi, llmOpts) {
-  const state = { shellAllowed: false, delivered: "", ffi };
+  const opts = llmOpts || {};
+  const chatOpts = {};
+  if (opts.botId) chatOpts.botId = opts.botId;
+  if (opts.roomContext) chatOpts.roomContext = opts.roomContext;
+  const state = {
+    shellAllowed: false,
+    pendingShellAction: "",
+    delivered: "",
+    ffi,
+    turnId: String(opts.turnId || ""),
+  };
   return {
     state,
     async dispatch(req) {
       const op = String((req && req.op) || "");
       if (op === "llm_chat") {
         const res = await ffi.executeLlmChat("agent-loop", {
-          ...(llmOpts || {}),
+          ...chatOpts,
           messages: Array.isArray(req.messages) ? req.messages : [],
           agentLoopTools: true,
         });
@@ -94,7 +147,7 @@ function createProductSession(ffi, llmOpts) {
         };
       }
       if (op === "exec_tool") return execProductTool(req, state);
-      if (op === "request_approval") return decideApproval(state);
+      if (op === "request_approval") return decideApproval(state, req, opts);
       if (op === "deliver") {
         state.delivered = String((req && req.text) || "");
         return { ok: true };

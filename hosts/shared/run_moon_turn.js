@@ -281,6 +281,10 @@ function createTurnRunner(repoRoot, opts = {}) {
     const productWire = createProductSession(ffi, {
       botId: ctx.botId,
       roomContext: ctx.roomContext || null,
+      turnId: String(ctx.turnId || ""),
+      cliApproved: ctx.cliApproved === true,
+      approvalGate: ctx.approvalGate || null,
+      requestApproval: ctx.requestApproval,
     });
     const session = await pumpMoonFfi(
       moonArgs,

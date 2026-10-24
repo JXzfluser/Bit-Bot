@@ -84,6 +84,7 @@ async function main() {
     channel,
     turnId: turnId || undefined,
     approved,
+    cliApproved: approved === true,
     botId: botId || undefined,
     // GP-14: multi-end CLI carries the same reply target as Desktop.
     replyTo: replyTo || undefined,
