@@ -5,7 +5,8 @@
  * 这个门禁启动真 app（hosts/desktop/main.js），用真键鼠事件驱动，然后断言：
  *   T-01  侧栏群组行显示群名与成员数（数据源 = 真的 rooms.json）。
  *   T-02  点群行 → 进入该群，banner 标题是群名。
- *   T-03  点「群资料」→ rail 真的可见；资料库区块列出条目与类型。
+ *   T-03  点「群资料」→ rail 真的可见；分段 tab 默认「成员」；切「资料库」
+ *         后条目与类型可见（设计稿三段式：成员/定时任务/资料库）。
  *   T-04  输入 @ → 提及浮层出现，候选 = 全体 + 本群成员。
  *   T-05  浮层落在输入框正上方、左边缘对齐（不是盖在消息上）。
  *   T-06  ↑↓ + 回车 → 插入 "@<成员名> "，浮层收起，而且**消息没有被误发出去**。
@@ -208,33 +209,54 @@ async function shutdown(app) {
       ? ok("T-02 点群行进入该群（banner = " + banner.title + "）")
       : bad("T-02 没进群", JSON.stringify(banner));
 
-    /* T-03 群资料 rail + 资料库 */
+    /* T-03 群资料 rail + 分段 tab + 资料库 */
     await win.click("#room-banner-info");
     await win.waitForTimeout(1200);
     const rail = await win.evaluate(() => {
       const railEl = document.getElementById("room-rail");
+      return {
+        visible: getComputedStyle(railEl).display !== "none",
+        panel: document.body.dataset.panel,
+        activeTab: (document.querySelector('#room-rail .ri-tab[aria-selected="true"]') || {}).dataset
+          ? document.querySelector('#room-rail .ri-tab[aria-selected="true"]').dataset.tab
+          : null,
+        membersShown: !document.getElementById("ri-panel-members").hidden,
+      };
+    });
+    rail.visible && rail.panel === "room"
+      ? ok("T-03a 群资料 rail 真的可见（panel=" + rail.panel + "）")
+      : bad("T-03a 群资料 rail 没打开", JSON.stringify({ visible: rail.visible, panel: rail.panel }));
+    rail.activeTab === "members" && rail.membersShown
+      ? ok("T-03c 打开时默认停在「成员」段")
+      : bad("T-03c 默认段不对", JSON.stringify(rail));
+
+    /* 切到资料库段（设计稿三段式：成员/定时任务/资料库） */
+    await win.click('#room-rail .ri-tab[data-tab="library"]');
+    await win.waitForTimeout(400);
+    const libTab = await win.evaluate(() => {
+      const libPanel = document.getElementById("ri-panel-library");
       const items = Array.from(document.querySelectorAll("#ri-lib-list .ri-item")).map((el) => ({
         name: (el.querySelector(".ri-name") || {}).textContent || "",
         meta: (el.querySelector(".ri-meta") || {}).textContent || "",
         hasOpen: !!el.querySelector(".bb-btn"),
       }));
       return {
-        visible: getComputedStyle(railEl).display !== "none",
-        panel: document.body.dataset.panel,
+        libShown: !libPanel.hidden,
+        membersHidden: document.getElementById("ri-panel-members").hidden,
         items,
         empty: (document.getElementById("ri-lib-list") || {}).innerText || "",
       };
     });
-    rail.visible && rail.panel === "room"
-      ? ok("T-03a 群资料 rail 真的可见（panel=" + rail.panel + "）")
-      : bad("T-03a 群资料 rail 没打开", JSON.stringify({ visible: rail.visible, panel: rail.panel }));
-    rail.items.length === 2 &&
-    rail.items[0].name === "品牌口径手册 v3" &&
-    rail.items[0].meta === "类型：手册" &&
-    rail.items[1].name === "竞品拆解表" &&
-    rail.items.every((i) => i.hasOpen)
+    libTab.libShown && libTab.membersHidden
+      ? ok("T-03d 点「资料库」段真的切过去（成员段收起）")
+      : bad("T-03d 资料库段没切开", JSON.stringify({ libShown: libTab.libShown, membersHidden: libTab.membersHidden }));
+    libTab.items.length === 2 &&
+    libTab.items[0].name === "品牌口径手册 v3" &&
+    libTab.items[0].meta === "类型：手册" &&
+    libTab.items[1].name === "竞品拆解表" &&
+    libTab.items.every((i) => i.hasOpen)
       ? ok("T-03b 资料库列出 2 条（标题 + 类型 + 打开按钮）")
-      : bad("T-03b 资料库条目不对", JSON.stringify(rail.items));
+      : bad("T-03b 资料库条目不对", JSON.stringify(libTab.items));
 
     /* T-04 / T-05 @ 提及浮层 */
     await win.focus("#composer #text");

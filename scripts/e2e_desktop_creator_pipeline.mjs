@@ -275,19 +275,30 @@ function startStub() {
       ? ok("P2 一次布置、三个 Bot 分工跑完并出成稿回执（群转录有 final_report）")
       : bad("P2 群协作未跑通", JSON.stringify({ orch, gotReport }));
 
-    /* ---------- P3: 群资料面板（成员 / 上限 / 定时任务空态） ---------- */
+    /* ---------- P3: 群资料面板（分段 tab：成员默认段 / 任务段空态） ----------
+       面板照团队详情抽屉设计稿改成了 分段 tab（成员/定时任务/资料库），
+       内容不再同时可见——成员断言在默认段，任务相关先切到任务段。 */
     await win.click("#room-banner-info");
     await win.waitForFunction(() => document.body.dataset.panel === "room", null, { timeout: 15000 });
-    const rail = await win.evaluate(() => ({
+    const railMembers = await win.evaluate(() => ({
+      tab: (document.querySelector('#room-rail .ri-tab[aria-selected="true"]') || { dataset: {} }).dataset.tab,
       members: document.querySelectorAll("#ri-member-list .ri-member").length,
       limit: (document.getElementById("ri-limit-note") || {}).innerText || "",
+    }));
+    railMembers.tab === "members" && railMembers.members === 3 && /6/.test(railMembers.limit)
+      ? ok("P3 群资料默认停在「成员」段：3 位成员 + 「最多 6 位」如实上限")
+      : bad("P3 群资料成员段", JSON.stringify(railMembers).slice(0, 300));
+    await win.evaluate(() => setRoomRailTab("routines"));
+    await win.waitForTimeout(200);
+    const railTasks = await win.evaluate(() => ({
+      shown: !document.getElementById("ri-panel-routines").hidden,
       empty: (document.getElementById("ri-routine-list") || {}).innerText || "",
       addVisible: !!document.getElementById("ri-routine-add") &&
         document.getElementById("ri-routine-add").offsetWidth > 0,
     }));
-    rail.members === 3 && /6/.test(rail.limit) && /暂无|沒有|没有/.test(rail.empty) && rail.addVisible
-      ? ok("P3 群资料显示 3 位成员 + 「最多 6 位」如实上限 + 「暂无定时任务」空态 + 添加入口")
-      : bad("P3 群资料面板", JSON.stringify(rail).slice(0, 300));
+    railTasks.shown && /暂无|沒有|没有/.test(railTasks.empty) && railTasks.addVisible
+      ? ok("P3 切到「定时任务」段：「暂无定时任务」空态 + 添加入口可见")
+      : bad("P3 群资料任务段", JSON.stringify(railTasks).slice(0, 300));
 
     /* ---------- P4: 中文排程原话 → 落 store + 墙钟 09:00 + 面板同步 ---------- */
     await win.click("#ri-routine-add");

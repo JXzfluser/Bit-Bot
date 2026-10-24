@@ -140,6 +140,11 @@
   body[data-room-form="open"] .ri-form { display: flex; }
   .ri-form textarea { min-height: 64px; resize: vertical; font-family: inherit; }
   .ri-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+  /* 群资料分段 tab（照团队详情抽屉设计稿：灰轨 + 白色 active 胶囊，radius 999）。
+     轨道色不引入新字面量——--user-bubble 本就是 #f4f4f5，与稿子的灰轨同值。 */
+  .ri-tabs { display: flex; gap: 2px; padding: 3px; background: var(--user-bubble); border-radius: 999px; margin: 0 0 var(--space-4); }
+  .ri-tab { flex: 1; border: 0; background: transparent; border-radius: 999px; padding: 5px 8px; font: inherit; font-size: var(--text-sm); color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .ri-tab[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
   .ri-member { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
   .ri-member:last-child { border-bottom: 0; }
   .ri-name { font-size: var(--text-sm); word-break: break-word; }
@@ -2581,35 +2586,48 @@
       <div class="cv-title" id="ri-title"></div>
       <button type="button" id="ri-close" class="gp-chip" data-i18n="gpClose">关闭</button>
     </div>
-    <div class="panel-title" data-i18n="riMembers">成员</div>
-    <div id="ri-member-list"></div>
-    <div class="ri-limit" id="ri-limit-note"></div>
-    <div class="panel-title" data-i18n="riRoutines">定时任务</div>
-    <div id="ri-routine-list" aria-live="polite"></div>
-    <!-- 时区说明讲的是「定时任务什么时候触发」——它必须跟着定时任务，
-         不能被资料库区块隔到下面去。 -->
-    <div class="ri-meta" id="ri-tz-note"></div>
-    <!-- GP-161：暂停 / 删除这类「按下去之后必须看得见结果」的话术不能只写进
-         .ri-form 里的 ri-form-msg —— 表单收起时那是 display:none，失败等于没说。
-         这一行常驻列表下方，成功与拒绝都写这里。 -->
-    <div id="ri-rail-status" class="ri-err" role="status"></div>
-    <div class="gp-row">
-      <button type="button" id="ri-routine-add" class="gp-chip" data-i18n="riAdd">＋ 添加定时任务</button>
+    <!-- 团队详情抽屉（设计稿 bitbot-team-ui）：分段 tab 代替线性平铺。
+         稿子三段是 详情/资料库/成员；真产品这里的内容是 成员/定时任务/资料库，
+         「详情」的内容就是上面的 ri-head（群名 + 关闭），所以 tab 取这三段，
+         顺序沿用稿子（资料库第三）也沿用现有 rail 的自上而下顺序。 -->
+    <div class="ri-tabs" role="tablist" aria-label="群资料分区">
+      <button type="button" class="ri-tab" role="tab" data-tab="members" aria-controls="ri-panel-members" aria-selected="true" data-i18n="riMembers">成员</button>
+      <button type="button" class="ri-tab" role="tab" data-tab="routines" aria-controls="ri-panel-routines" aria-selected="false" data-i18n="riRoutines">定时任务</button>
+      <button type="button" class="ri-tab" role="tab" data-tab="library" aria-controls="ri-panel-library" aria-selected="false" data-i18n="riLibrary">资料库</button>
     </div>
-    <div class="panel-title" data-i18n="riLibrary">资料库</div>
-    <div id="ri-lib-list"></div>
-    <div class="gp-row" style="margin-top:6px">
-      <button type="button" id="ri-lib-upload" class="gp-chip" data-i18n="riLibUpload">＋ 上传到资料库</button>
+    <div class="ri-panel" id="ri-panel-members" data-panel="members" role="tabpanel" aria-labelledby="ri-tab-members">
+      <div id="ri-member-list"></div>
+      <div class="ri-limit" id="ri-limit-note"></div>
     </div>
-    <div class="ri-form" id="ri-form">
-      <textarea id="ri-text" class="bb-control" rows="3" data-i18n-ph="riFormPh" placeholder="例如：每天早上9点把审核通过的稿子发到我的邮箱"></textarea>
-      <div class="ri-meta" data-i18n="riFormHint">按群内 Bot 的说法写时间和要做的事，确认后就出现在上面的列表里。</div>
-      <div id="ri-form-msg" class="ri-err" role="status"></div>
-      <div class="ri-row">
-        <button type="button" id="ri-form-save" class="bb-btn bb-btn-primary" data-i18n="riFormSave">添加</button>
-        <button type="button" id="ri-form-cancel" class="bb-btn" data-i18n="riFormCancel">取消</button>
+    <div class="ri-panel" id="ri-panel-routines" data-panel="routines" role="tabpanel" aria-labelledby="ri-tab-routines" hidden>
+      <div id="ri-routine-list" aria-live="polite"></div>
+      <!-- 时区说明讲的是「定时任务什么时候触发」——它必须跟着定时任务，
+           不能被资料库区块隔到下面去。 -->
+      <div class="ri-meta" id="ri-tz-note"></div>
+      <div class="gp-row">
+        <button type="button" id="ri-routine-add" class="gp-chip" data-i18n="riAdd">＋ 添加定时任务</button>
+      </div>
+      <div class="ri-form" id="ri-form">
+        <textarea id="ri-text" class="bb-control" rows="3" data-i18n-ph="riFormPh" placeholder="例如：每天早上9点把审核通过的稿子发到我的邮箱"></textarea>
+        <div class="ri-meta" data-i18n="riFormHint">按群内 Bot 的说法写时间和要做的事，确认后就出现在上面的列表里。</div>
+        <div id="ri-form-msg" class="ri-err" role="status"></div>
+        <div class="ri-row">
+          <button type="button" id="ri-form-save" class="bb-btn bb-btn-primary" data-i18n="riFormSave">添加</button>
+          <button type="button" id="ri-form-cancel" class="bb-btn" data-i18n="riFormCancel">取消</button>
+        </div>
       </div>
     </div>
+    <div class="ri-panel" id="ri-panel-library" data-panel="library" role="tabpanel" aria-labelledby="ri-tab-library" hidden>
+      <div id="ri-lib-list"></div>
+      <div class="gp-row" style="margin-top:6px">
+        <button type="button" id="ri-lib-upload" class="gp-chip" data-i18n="riLibUpload">＋ 上传到资料库</button>
+      </div>
+    </div>
+    <!-- GP-161：暂停 / 删除这类「按下去之后必须看得见结果」的话术不能只写进
+         .ri-form 里的 ri-form-msg —— 表单收起时那是 display:none，失败等于没说。
+         这一行常驻 rail 底部（在 tab 面板之外），定时任务和资料库的操作反馈
+         都写这里——不然在资料库 tab 点「打开」，结果却写在隐藏的任务面板里。 -->
+    <div id="ri-rail-status" class="ri-err" role="status"></div>
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
@@ -5631,10 +5649,27 @@
     let roomRailId = "";
     let roomRailRoutines = null; // null = 还没读到；[] = 真的没有
     function roomRailOpen() { return panelValue() === "room"; }
+    /* 团队详情抽屉的分段 tab（成员/定时任务/资料库）。
+       只切可见性，不重渲染——三个面板的内容都由 refreshRoomRail 各自维护。 */
+    function setRoomRailTab(name) {
+      const tabs = document.querySelectorAll("#room-rail .ri-tab");
+      let hit = false;
+      for (const b of tabs) if (b.dataset.tab === name) hit = true;
+      if (!hit) name = "members";
+      for (const b of tabs) b.setAttribute("aria-selected", b.dataset.tab === name ? "true" : "false");
+      for (const p of document.querySelectorAll("#room-rail .ri-panel")) {
+        p.hidden = p.dataset.panel !== name;
+      }
+    }
+    function roomRailTab() {
+      const on = document.querySelector('#room-rail .ri-tab[aria-selected="true"]');
+      return (on && on.dataset.tab) || "members";
+    }
     async function openRoomRail() {
       // 群资料面板只跟着当前打开的群；没有群就没有可管理的东西（面板本身
       // 也只在群聊 banner 出现时才有入口），这里静默返回而不是弹一句废话。
       if (!composerRoom || !composerRoom.id) return;
+      if (roomRailId !== composerRoom.id) setRoomRailTab("members"); // 换个群回到第一段
       roomRailId = composerRoom.id;
       setPanel("room");
       await refreshRoomRail();
@@ -13408,6 +13443,23 @@
       if (roomInfoBtn) roomInfoBtn.addEventListener("click", () => { openRoomRail(); });
       const riClose = document.getElementById("ri-close");
       if (riClose) riClose.addEventListener("click", closeRoomRail);
+      // 团队详情抽屉的分段 tab：点击切换；←→ 在 tab 间移动（标准 tabs 键盘模型）。
+      const riTablist = document.querySelector("#room-rail .ri-tabs");
+      if (riTablist) {
+        riTablist.addEventListener("click", (ev) => {
+          const b = ev.target && ev.target.closest ? ev.target.closest(".ri-tab") : null;
+          if (b) setRoomRailTab(b.dataset.tab);
+        });
+        riTablist.addEventListener("keydown", (ev) => {
+          if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+          const order = Array.from(riTablist.querySelectorAll(".ri-tab"));
+          const cur = order.findIndex((b) => b.getAttribute("aria-selected") === "true");
+          const next = order[(cur + (ev.key === "ArrowRight" ? 1 : order.length - 1)) % order.length];
+          setRoomRailTab(next.dataset.tab);
+          next.focus();
+          ev.preventDefault();
+        });
+      }
       const riAdd = document.getElementById("ri-routine-add");
       if (riAdd) riAdd.addEventListener("click", () => {
         setRoomFormOpen(true);
