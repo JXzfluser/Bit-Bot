@@ -40,13 +40,15 @@ bash scripts/prove_sandbox_secrets.sh
 
 ## 实测
 
-2026-10-24，标签改与本节 §4 同构之后，复跑：
+2026-10-24，标签改与本节 §4 同构之后：
 
 ```bash
 bash scripts/prove_sandbox_secrets.sh
 ```
 
-结果待本分支复跑写入。P0 host-checks 不是本页的关闭证据。
+`prove_sandbox_secrets pass=8 fail=0`。`ok SK1` … `ok SK8` 与 §4 八行逐字相同。phone host 与 danger/echo 只出现在 `note` 行，不是 SK7 / SK8。
+
+同一命令里的 SK8 复跑了 `bash scripts/prove_p0_inbound_security.sh`，输出含 `prove_p0_inbound_security pass=8 fail=0`。那条 host-checks 不是本页的关闭证据。
 
 P0-3 未升 I。AR-15 未关。residual 未关。没有改 capability matrix。
 
