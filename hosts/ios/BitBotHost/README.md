@@ -16,12 +16,14 @@ Native iOS Host shell for Bit Bot. **MoonBit** (`cmd/desktop_turn`) remains the 
 真机 / Simulator 优先走 Desktop 共享大脑 HTTP：
 
 ```bash
-# Desktop 已启动（入站 :18765）时：
-export BITBOT_HOST_URL=http://<desk-lan-ip>:18765
-# Simulator 默认 127.0.0.1:18765；物理机填局域网 IP。
+# Desktop 已启动。默认只听 127.0.0.1:18765（ADR 0008）。
+# 物理机要先在 Desktop 上显式打开局域网：BITBOT_BIND_LAN=1
+export BITBOT_HOST_URL=http://127.0.0.1:18765
+export BITBOT_TURN_TOKEN=...   # 与 Desktop data/host/turn-token 或环境变量相同
+# Simulator 默认 127.0.0.1:18765；物理机填局域网 IP，并在「凭证」写入同一个 token。
 ```
 
-`TurnBridge` → `POST /v1/turn`（与 Android 同脑）。DeepSeek key 只配在 Desktop Settings。
+`TurnBridge` → `POST /v1/turn`，带 `Authorization: Bearer <BITBOT_TURN_TOKEN>`。没有这个头 Desktop 返回 401，不会跑回合。DeepSeek key 只配在 Desktop Settings。
 
 ## Local attach (dev checkout)
 

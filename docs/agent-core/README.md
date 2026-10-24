@@ -309,7 +309,7 @@
 | D03 | `docs/agent-core/02-tool-calling.md` | reference | 未建 | P1 | 新建 | ToolSpec schema、`tool_calls`、observation、untrusted、错误模型 |
 | D04 | `docs/agent-core/03-context-and-memory.md` | reference | 未建 | P1 | 新建 | transcript、token budget、压缩、memory 注入、隐私、resume |
 | D05 | `docs/agent-core/04-multi-agent.md` | reference | 未建 | P1 | 新建 | 角色、路由、共享上下文、handoff、orchestrator、synthesis、预算 |
-| D06 | `docs/agent-core/05-security.md` | reference | 未建 | **P0** | 新建 | 威胁模型、认证、bind、沙箱、审批、secret、webhook、CSRF |
+| D06 | `docs/agent-core/05-security.md` | reference | 已建 | **P0** | 已建 | 威胁模型、认证、bind、沙箱、审批、secret、webhook、CSRF |
 | D07 | `docs/agent-core/06-observability-eval.md` | reference | 未建 | P2 | 新建 | trace、metrics、eval 场景、CI 门槛、回放 |
 | D08 | `docs/agent-core/07-release-ops.md` | reference | 未建 | P3 | 新建 | bundle、data dir、签名、更新、单实例、CSP、回滚 |
 | D09 | `docs/agent-core/08-acceptance.md` | reference | 未建 | P1 | 新建 | 每个 AR 的验收用例/命令/期望 |
@@ -325,7 +325,7 @@
 | D19 | `docs/grok-desktop-parity/gaps.md` | reference | 已有 | P2 | 更新 | 记忆自动抽取/上下文残留 |
 | D20 | `docs/adr/0006-agent-loop-and-tool-calling.md` | ADR | 未建 | P1 | 新建 | 为什么 loop 在 Kernel、执行在 Host |
 | D21 | `docs/adr/0007-group-orchestrator-and-handoff.md` | ADR | 未建 | P1 | 新建 | orchestrator 归属、handoff 执行语义、预算 |
-| D22 | `docs/adr/0008-remote-turn-auth-and-sandbox.md` | ADR | 未建 | **P0** | 新建 | `/v1/turn` 认证、bind、shell 沙箱、审批不可伪造 |
+| D22 | `docs/adr/0008-remote-turn-auth-and-sandbox.md` | ADR | 已建 | **P0** | 已建 | `/v1/turn` 认证、bind、shell 沙箱、审批不可伪造 |
 | D23 | `docs/adr/0009-kernel-host-single-path.md` | ADR | 未建 | P1 | 新建 | 群 composer 单一路径；Kernel 合同 vs Host 产品路径 |
 
 ### 6.1 文档写作顺序
@@ -405,11 +405,12 @@
 | `hosts/shared/host_ffi.js:18336` | `runWorkerMoonTurn` 一次性 worker |
 | `docs/design/desktop-target/report.md` §8 | 自认 Host 产品路径；内核 `Orchestrate`/`final_report` 未做 |
 | `docs/grok-desktop-parity/gaps.md:431` | 记忆自动抽取未做 |
-| `hosts/shared/cn_inbound_server.js:31,250-251` | `readBody` / `0.0.0.0:18765` |
-| `hosts/shared/host_ffi.js:23916-23918,24964` | approved 绕过 + `/bin/bash` |
+| `hosts/shared/cn_inbound_server.js` + `hosts/shared/p0_security.js` | ADR 0008：默认 `127.0.0.1`，无 Bearer 401，坏签名 401，body 413。不是 I，不关 AR-15 |
+| `hosts/shared/host_ffi.js` shell | 无审批不执行；cwd 允许列表；子进程最小 env。P0-3 仍是 U |
 | `docs/capability-matrix.md` | 234 CM / I-PASS；合同面 |
 | `docs/qa/gaps.md` | 验收与 residual 口径 |
 
 ## 12. 变更记录
 
 - 2026-10-24：初版。基于 agent core 审计、群 Bot 路径追踪、P0 安全审计、打包/数据审计整理。
+- 2026-10-24：入站重新接上 `p0_security`（Bearer 401、坏签名 401、body 413、默认 loopback、入站不固定 `approved:true`、shell 最小 env）。P0-3 维持内核 U，不升 I。AR-15 不关。不宣称 MVP。
