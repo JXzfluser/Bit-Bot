@@ -1316,6 +1316,9 @@
   #approval-queue { margin-top: 8px; }
   #approval-queue .q-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--input-bg); color: var(--muted); font: var(--text-xs)/1.4 var(--font-mono); margin-bottom: 4px; flex-wrap: wrap; }
   #approval-queue .q-expired { border-color: var(--warn-line); }
+  /* GP-162：来源定时任务已被删除的批准行。只是描边 + 加一句来路说明，
+     行仍然显示、仍然可批准 / 拒绝 —— 不藏、不替用户决定。 */
+  #approval-queue .q-orphan { border-color: var(--danger); }
   #approval-queue .q-empty { color: var(--muted); font: var(--text-xs)/1.4 var(--font-sans); }
   #approval-queue button { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px 8px; cursor: pointer; font-size: var(--text-xs); }
   /* Pending approvals bar (GP-23) */
@@ -10936,10 +10939,17 @@
       for (const it of items) {
         const row = document.createElement("div");
         row.className = "q-item" + (it.status === "expired" ? " q-expired" : "");
+        // GP-162：来源任务被删掉了，这一行仍然有效（批准了仍会发出这一封），
+        // 但来路必须写在脸上——否则用户会照着一条已经不存在的排程点「本次允许」。
+        if (it.routine_gone === true) {
+          row.classList.add("q-orphan");
+          row.title = t("apOwnerGoneHint");
+        }
         const info = document.createElement("span");
         const kindLab = approvalKindLabel(it.kind);
         const sum = approvalSummary(it.kind, it.command);
         info.textContent =
+          (it.routine_gone === true ? t("apOwnerGone") + " · " : "") +
           (it.status === "expired" ? t("apExpiredTag") + " · " : "") +
           approvalSourceLabel(it.source) + " · " + kindLab + (sum ? " · " + sum : "");
         if (devModeOn()) info.title = String(it.kind || "") + " · " + String(it.command || "");
@@ -11368,6 +11378,8 @@
         apQueueEmpty: "队列为空（真实状态，非占位）",
         apQueueFail: "读取失败",
         apExpiredTag: "已过期",
+        apOwnerGone: "来源任务已删除",
+        apOwnerGoneHint: "挂出这条批准的定时任务已经被删除。批准仍会发出这一封，要不要发由你决定。",
         apDeniedTag: "已拒绝",
         apDenyFailTag: "拒绝未生效",
         apAllowedOnce: "已单次放行",
@@ -11962,6 +11974,8 @@
         apQueueEmpty: "佇列為空（真實狀態，非佔位）",
         apQueueFail: "讀取失敗",
         apExpiredTag: "已過期",
+        apOwnerGone: "來源任務已刪除",
+        apOwnerGoneHint: "掛出這條批准的定時任務已經被刪除。批准仍會發出這一封，要不要發由你決定。",
         apDeniedTag: "已拒絕",
         apDenyFailTag: "拒絕未生效",
         apAllowedOnce: "已單次放行",
@@ -12556,6 +12570,8 @@
         apQueueEmpty: "Queue is empty (real state, not a placeholder)",
         apQueueFail: "Failed to read the queue",
         apExpiredTag: "Expired",
+        apOwnerGone: "Source task deleted",
+        apOwnerGoneHint: "The scheduled task that raised this approval has been deleted. Allowing it still sends this one message; the choice is yours.",
         apDeniedTag: "Denied",
         apDenyFailTag: "Deny failed",
         apAllowedOnce: "Allowed once",

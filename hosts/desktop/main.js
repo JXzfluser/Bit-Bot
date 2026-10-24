@@ -1144,7 +1144,24 @@ ipcMain.handle("bitbot:approvals:match", async (_e, info) => {
 
 ipcMain.handle("bitbot:approvals:listPending", async () => {
   try {
-    return surface.listPendingApprovals();
+    const res = surface.listPendingApprovals();
+    // GP-162：任务被删掉之后，它挂出来的待批准行仍然在队列里（发不发是用户的
+    // 决定，Host 不代做），但必须看得见来路。待批准行本身不带任务 id —— 既有
+    // 行形状不动，这里用 Host 已有的触发历史派生，只给 source=routine 的行加
+    // 一个可选新字段 routine_gone。
+    if (res && Array.isArray(res.pending)) {
+      let owners = null;
+      try { owners = (ffi.routineApprovalOwners && ffi.routineApprovalOwners()) || null; } catch { owners = null; }
+      const map = owners && owners.by_approval;
+      if (map) {
+        for (const it of res.pending) {
+          if (!it || it.source !== "routine") continue;
+          const hit = map[String(it.id)];
+          if (hit && hit.alive === false) it.routine_gone = true;
+        }
+      }
+    }
+    return res;
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err), items: [] };
   }

@@ -24,6 +24,9 @@
  *      超过确认窗口自己退回；两下之后行真的消失、面板回到空态、留底工件带齐
  *      cron/原话/归属群，而这条任务的历史草稿一份不少（删任务 ≠ 毁档案）。
  *      结果话术必须落在常驻的 #ri-rail-status 上——表单收起时 ri-form-msg 是隐藏的。
+ *   P11 删掉的任务，它挂出来的待批准邮件在审批队列里要看得见来路（GP-162）：
+ *      任务还在时不贴标记（不误报）→ 删掉后那一行仍显示、仍可决定（不藏、不替用户
+ *      拒绝），但写明「来源任务已删除」，悬停说明讲清「批准仍会发出这一封」。
  *
  * 缺 electron / xvfb / moon 时诚实 SKIP（exit 0 + SKIP 计数），不伪造 PASS。
  * 用法：ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_desktop_creator_pipeline.mjs
@@ -459,7 +462,7 @@ function startStub() {
         };
       }, removeSel).catch(() => ({ label: "", armed: false, items: -1, list: "", status: "" }));
       await win.waitForSelector(removeSel, { timeout: 15000 }).catch(() => {});
-      const artsBeforeR = removeArts().length;
+      const artsBeforeR = new Set(removeArts());
       const draftsBeforeR = draftsNow();
       const st0 = await btnState();
       await win.click(removeSel).catch(() => {});
@@ -487,26 +490,122 @@ function startStub() {
         await new Promise((r) => setTimeout(r, 250));
       }
       const st3 = await btnState();
-      const artsAfterR = removeArts();
-      const removeMine = artsAfterR.filter((f) => f.startsWith("remove-" + routineId + "-"));
-      const art = removeMine.length ? readJson(path.join(ROUTINE_DIR, removeMine[0]), {}) : {};
+      // 只看本轮新增的那一份留底：任务 id 由原话推导，是稳定的，跑第二遍时目录里
+      // 已经躺着一份同前缀的旧留底 —— 按前缀数文件会把上一轮的也算进来（双跑不幂等）。
+      const removeMine = removeArts().filter((f) => !artsBeforeR.has(f));
+      const art = removeMine.length === 1 ? readJson(path.join(ROUTINE_DIR, removeMine[0]), {}) : {};
       gone === null && st3.items === 0 && /暂无|沒有|没有|No scheduled/.test(st3.list)
         ? ok("P10 两下之后真的删掉了：store 里这条没了，面板回到「暂无定时任务」空态（不是隐藏）")
         : bad("P10 确认删除没有真的生效", JSON.stringify({ row: gone && { e: gone.enabled, c: gone.cron }, st3 }).slice(0, 400));
       const draftsAfterR = draftsNow();
-      artsAfterR.length === artsBeforeR + 1 && removeMine.length === 1 &&
+      removeMine.length === 1 && removeMine[0].startsWith("remove-" + routineId + "-") &&
         art.cron === "0 9 * * *" && String(art.prompt || "").includes(MAIL_TO) &&
         art.room_id === roomId && draftsAfterR === draftsBeforeR && draftsAfterR >= 1
         ? ok("P10 删除留底 " + removeMine[0] + "（cron/prompt/room_id 齐，能照着重建）；这条任务的历史草稿 " +
           draftsAfterR + " 份一份没动（删任务不毁档案）")
-        : bad("P10 删除没有留底，或者顺手清了历史", JSON.stringify({
-          added: artsAfterR.length - artsBeforeR, removeMine, art: { cron: art.cron, prompt: art.prompt, room_id: art.room_id },
+        : bad("P10 删除没有留下一份可回看的留底，或者顺手清了历史", JSON.stringify({
+          added: removeMine, art: { cron: art.cron, prompt: art.prompt, room_id: art.room_id },
           drafts: [draftsBeforeR, draftsAfterR],
         }).slice(0, 400));
       /已删除|已刪|deleted/i.test(st3.status) && /保留|keep/i.test(st3.status)
         ? ok("P10 面板把结果说给人看了：「" + st3.status.trim().replace(/\s+/g, " ").slice(0, 70) + "」")
         : bad("P10 删除结果只改了数据，界面上没有回执（表单收起时 ri-form-msg 是隐藏的，那不算看得见）",
           JSON.stringify({ status: st3.status }).slice(0, 300));
+
+      /* ---------- P11: 删掉的任务，它挂着的待批准邮件在队列里说清来路（GP-162） ---------- */
+      const PEND = D("desktop/pending-approvals.jsonl");
+      const pendAll = () => {
+        try {
+          return fs.readFileSync(PEND, "utf8").split("\n").filter((l) => l.trim()).map((l) => {
+            try { return JSON.parse(l); } catch { return null; }
+          }).filter(Boolean);
+        } catch { return []; }
+      };
+      const myQueueRows = () => pendAll().filter((e) => e && e.source === "routine" &&
+        String(e.command || "").includes(MAIL_TO) && e.status === "pending");
+      // 重新建一条（面板真点击），触发一次挂出待批准，再把它删掉。
+      await win.click("#ri-routine-add").catch(() => {});
+      await win.waitForFunction(() => document.body.dataset.roomForm === "open", null, { timeout: 10000 }).catch(() => {});
+      await win.fill("#ri-text", ROUTINE_TEXT);
+      await win.click("#ri-form-save");
+      await win.waitForFunction(() => document.querySelectorAll("#ri-routine-list .ri-item").length === 1,
+        null, { timeout: 60000 }).catch(() => {});
+      const rows11 = routineRows().filter((r) => r && String(r.room_id || "") === roomId);
+      const id11 = rows11.length ? String(rows11[rows11.length - 1].id) : "";
+      if (!id11) {
+        bad("P11 重建的定时任务没有落 store，测不到孤立批准", JSON.stringify(rows11).slice(0, 200));
+      } else {
+        const rj11 = readJson(ROUTINES, []);
+        const arr11 = Array.isArray(rj11) ? rj11 : rj11.routines || [];
+        const hit11 = arr11.find((r) => r && String(r.id) === id11);
+        if (hit11) {
+          hit11.next_due = new Date(Date.now() - 60000).toISOString();
+          fs.writeFileSync(ROUTINES, JSON.stringify(Array.isArray(rj11) ? arr11 : rj11, null, 2));
+        }
+        await win.evaluate(async () => { await window.bitbot.turn("tick routines", {}); }).catch(() => {});
+        let row11 = null;
+        for (let i = 0; i < 30 && !row11; i += 1) {
+          row11 = myQueueRows().find((e) => Number(Date.parse(e.requested_at || "")) >= Date.now() - 90000) || null;
+          if (!row11) await new Promise((r) => setTimeout(r, 500));
+        }
+        await win.evaluate(() => refreshApprovalQueue()).catch(() => {});
+        await new Promise((r) => setTimeout(r, 900));
+        const queueBefore = await win.evaluate(() => {
+          const box = document.getElementById("approval-queue");
+          return { text: box ? String(box.innerText || "") : "", buttons: box ? box.querySelectorAll("button").length : 0 };
+        });
+        row11 && !/来源任务已删除|來源任務已刪除|Source task deleted/.test(queueBefore.text) &&
+          queueBefore.text.includes(MAIL_TO)
+          ? ok("P11 任务还在的时候，队列行不带「来源任务已删除」——这个标记不会因为别的理由乱贴")
+          : bad("P11 未删除就出现孤立标记，或本轮没挂出待批准", JSON.stringify({ row11: row11 && row11.id, queueBefore: queueBefore.text.slice(0, 160) }).slice(0, 400));
+        /* 面板两下删掉这条任务 */
+        await win.click(removeSel).catch(() => {});
+        await new Promise((r) => setTimeout(r, 400));
+        await win.click(removeSel).catch(() => {});
+        let gone11 = null;
+        for (let i = 0; i < 40 && gone11 === null; i += 1) {
+          const rr = routineRows().find((r) => r && String(r.id) === id11);
+          gone11 = rr ? null : { gone: true };
+          if (!gone11) await new Promise((r) => setTimeout(r, 250));
+        }
+        const rowStill11 = pendAll().find((e) => e && e.id === (row11 && row11.id)) || null;
+        await win.evaluate(() => refreshApprovalQueue()).catch(() => {});
+        await new Promise((r) => setTimeout(r, 900));
+        const queueAfter = await win.evaluate(() => {
+          const box = document.getElementById("approval-queue");
+          return {
+            text: box ? String(box.innerText || "") : "",
+            buttons: box ? box.querySelectorAll("button").length : 0,
+            orphanRows: box ? box.querySelectorAll(".q-item.q-orphan").length : 0,
+            orphanTitle: box && box.querySelector(".q-item.q-orphan") ? String(box.querySelector(".q-item.q-orphan").title || "") : "",
+          };
+        });
+        gone11 && rowStill11 && rowStill11.status === "pending" &&
+          /来源任务已删除|來源任務已刪除|Source task deleted/.test(queueAfter.text) &&
+          queueAfter.orphanRows >= 1 && queueAfter.text.includes(MAIL_TO)
+          ? ok("P11 删掉任务后，队列那一行仍显示（没有被藏、也没有被替用户拒掉），但来路写明了「来源任务已删除」")
+          : bad("P11 孤立批准行的界面来路没有说清", JSON.stringify({
+            gone: Boolean(gone11), still: rowStill11 && rowStill11.status, after: queueAfter.text.slice(0, 200),
+            orphanRows: queueAfter.orphanRows,
+          }).slice(0, 400));
+        /批准仍会发出|批准仍會發出|still sends/.test(queueAfter.orphanTitle)
+          ? ok("P11 悬停说明把后果讲明白了：「" + queueAfter.orphanTitle.slice(0, 46) + "」")
+          : bad("P11 只贴标签没讲清批准仍然会发信", JSON.stringify({ title: queueAfter.orphanTitle }).slice(0, 250));
+        /* 决定权仍在用户手上：这里用 deny 收尾（既不留在队列里吓人，也不是 Host 代做的） */
+        const decided11 = row11
+          ? await win.evaluate((id) => window.bitbot.approvals.decide(id, "deny"), row11.id).catch(() => ({ ok: false, error: "ipc_fail" }))
+          : { ok: false, error: "no_row" };
+        await win.evaluate(() => refreshApprovalQueue()).catch(() => {});
+        await new Promise((r) => setTimeout(r, 800));
+        const queueFinal = await win.evaluate(() => {
+          const box = document.getElementById("approval-queue");
+          return { text: box ? String(box.innerText || "") : "", orphanRows: box ? box.querySelectorAll(".q-item.q-orphan").length : 0 };
+        });
+        decided11 && decided11.ok === true && queueFinal.orphanRows === 0 &&
+          !queueFinal.text.includes(MAIL_TO)
+          ? ok("P11 用户自己点「拒绝」就能收掉这一行（拒绝后队列回到 0 行孤立项）")
+          : bad("P11 孤立批准行无法被用户决定", JSON.stringify({ decided11, queueFinal: queueFinal.text.slice(0, 160) }).slice(0, 400));
+      }
     }
   } catch (e) {
     bad("gate block", (e && e.stack || String(e)).split("\n").slice(0, 3).join(" | "));

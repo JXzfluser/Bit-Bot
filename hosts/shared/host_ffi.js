@@ -8605,6 +8605,36 @@ function createHostFfi(repoRoot) {
     };
   }
 
+  /**
+   * GP-162「删掉的任务，它挂着的待批准邮件要看得见」— 只读的派生索引。
+   *
+   * 待批准行本身不知道自己做的是哪条任务（既有形状 {id,source,kind,command,…}
+   * 不能改），但每次触发都往 fires.jsonl 写了 approval_id —— 顺着这条既有线索
+   * 反查「这条批准来自哪个定时任务」，再用 host-routines.json 判那个任务还在不在。
+   *
+   * 为什么不在删除时顺手把批准 deny 掉：发出去是外部动作，收不回；替用户做这个
+   * 决定（今天的稿子也许仍然要发）比留着它更危险。Host 只负责把事实摆出来，
+   * 批准与拒绝仍然是用户的。
+   */
+  function routineApprovalOwners() {
+    const alive = new Set(loadRoutines().filter((r) => r).map((r) => String(r.id)));
+    const byApproval = {};
+    let lines = [];
+    try {
+      lines = fs
+        .readFileSync(path.join(REPO_ROOT, "data", "routines", "fires.jsonl"), "utf8")
+        .split("\n")
+        .filter(Boolean);
+    } catch { /* 还没触发过任何任务 */ }
+    for (const l of lines) {
+      let e = null;
+      try { e = JSON.parse(l); } catch { continue; }
+      if (!e || !e.approval_id || !e.id) continue;
+      byApproval[String(e.approval_id)] = { routine_id: String(e.id), alive: alive.has(String(e.id)) };
+    }
+    return { ok: true, count: Object.keys(byApproval).length, by_approval: byApproval };
+  }
+
   /* GP-156「定时 → 待批准 → 批准 → 真发」辅助。
    * 到这一步之前，一次触发只在磁盘上留一个 draft 文件——用户点不到，日更场景
    * 就断在这里。收件人只从任务原话里解析（解析不到就如实不外发，绝不编地址），
@@ -25086,6 +25116,7 @@ function createHostFfi(repoRoot) {
     executeHostEffects,
     listRoomRoutines,
     routineLifecycle,
+    routineApprovalOwners,
     connectorsStatusReport,
     appendHostDeliveryJournal,
     setLlmStreamHandler,
