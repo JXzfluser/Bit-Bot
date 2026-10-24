@@ -21,14 +21,30 @@ const { spawn } = require("child_process");
 let createTurnRunner;
 let createHostFfi;
 let projectAgentStep;
+let createApprovalGate;
+let canonicalAction;
+let actionFromKind;
+let stripApproved;
 try {
   createTurnRunner = require("./shared/run_moon_turn").createTurnRunner;
   createHostFfi = require("./shared/host_ffi").createHostFfi;
   projectAgentStep = require("./shared/agent_loop_product_wire").projectAgentStep;
+  ({
+    createApprovalGate,
+    canonicalAction,
+    actionFromKind,
+    stripApproved,
+  } = require("./shared/host_approval_gate"));
 } catch (_e) {
   createTurnRunner = require("../shared/run_moon_turn").createTurnRunner;
   createHostFfi = require("../shared/host_ffi").createHostFfi;
   projectAgentStep = require("../shared/agent_loop_product_wire").projectAgentStep;
+  ({
+    createApprovalGate,
+    canonicalAction,
+    actionFromKind,
+    stripApproved,
+  } = require("../shared/host_approval_gate"));
 }
 const { createSessionStore } = require("./sessions");
 
@@ -364,6 +380,8 @@ syncInjectedSecretsToEnvLocal();
 
 const runner = createTurnRunner(REPO_ROOT);
 let releaseActiveTurnCancel = null;
+const approvalGate = createApprovalGate();
+let liveLoopApproval = null;
 const sessions = createSessionStore(REPO_ROOT);
 const ffi = createHostFfi(REPO_ROOT);
 /** Wave G stores: bots / settings / approvals / computer / rooms / usage (docs/grok-desktop-parity/ipc-contract.md §2). */
@@ -1198,6 +1216,15 @@ ipcMain.handle("bitbot:approvals:listPending", async () => {
 ipcMain.handle("bitbot:approvals:decide", async (_e, id, decision) => {
   try {
     const res = surface.decideApproval(id, String(decision || ""), new Date().toISOString());
+    if (res && res.ok && (res.decision === "allow_once" || res.decision === "always")) {
+      const turnId = String((res.item && res.item.turn_id) || ("pending:" + res.id));
+      const grant = approvalGate.record({
+        turnId,
+        action: actionFromKind(res.kind, res.command),
+        source: "ui",
+      });
+      if (grant) res.grant_turn_id = grant.turnId;
+    }
     if (res && res.ok && res.decision === "always") {
       // Always allow → also run the originally blocked action once, via kernel re-run.
       broadcast("bitbot:approval-always-allow", { id, kind: res.kind || null });
@@ -1220,6 +1247,103 @@ ipcMain.handle("bitbot:approvals:denyReceipt", async (_e, info) => {
   }
 });
 
+function savedLoopDecision(kind, command) {
+  let decision = null;
+  try {
+    decision = surface.approvalRuleMatch(kind, command);
+  } catch (_) {
+    decision = null;
+  }
+  if (!decision && (kind === "shell" || kind === "computer_use")) {
+    try {
+      const wrap = surface.getSettings();
+      const st = (wrap && wrap.settings) || wrap || {};
+      if (st.local_execution === "always") decision = "allow";
+      if (st.local_execution === "never") decision = "deny";
+    } catch (_) {
+      /* keep the ask */
+    }
+  }
+  return decision;
+}
+
+function finishLiveLoopApproval(verdict) {
+  const pending = liveLoopApproval;
+  if (!pending || pending.settled) return null;
+  pending.settled = true;
+  liveLoopApproval = null;
+  const next = verdict === "allow" ? "allow" : verdict === "cancel" ? "cancel" : "deny";
+  try {
+    pending.resolve({ verdict: next });
+  } catch (_) {
+    /* already settled */
+  }
+  broadcast("bitbot:loop-approval", { id: pending.id, clear: true });
+  return pending;
+}
+
+async function resolveProductApproval(req, turnId) {
+  const name = String((req && req.name) || "");
+  const argsJson = String((req && req.arguments) || "");
+  let parsed = {};
+  try {
+    parsed = JSON.parse(argsJson || "{}");
+  } catch (_) {
+    parsed = {};
+  }
+  const shown = stripApproved(parsed);
+  const action = canonicalAction(name, argsJson);
+  const kind = name === "Shell" || name === "shell" ? "shell" : String(name || "").toLowerCase();
+  const command = String(shown.command || shown.cmd || "");
+  const saved = savedLoopDecision(kind, command);
+  if (saved === "allow") {
+    approvalGate.record({ turnId, action, source: "saved_rule" });
+    return { verdict: "allow" };
+  }
+  if (saved === "deny") return { verdict: "deny" };
+  const id = "loop-approval-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  const answered = await new Promise((resolve) => {
+    liveLoopApproval = { id, turnId, action, name, settled: false, resolve };
+    broadcast("bitbot:loop-approval", {
+      id,
+      turnId,
+      name,
+      arguments: JSON.stringify(shown),
+      raw_arguments: argsJson,
+      action,
+    });
+  });
+  if (answered && answered.verdict === "allow") {
+    approvalGate.record({ turnId, action, source: "ui" });
+  }
+  return {
+    verdict: answered && (answered.verdict === "allow" || answered.verdict === "cancel")
+      ? answered.verdict
+      : "deny",
+  };
+}
+
+ipcMain.handle("bitbot:loop-approval:answer", async (_e, info) => {
+  const id = String((info && info.id) || "");
+  const decision = String((info && info.decision) || "");
+  if (!liveLoopApproval || liveLoopApproval.settled || liveLoopApproval.id !== id) {
+    return { ok: false, error: "no_card", granted: false };
+  }
+  if (decision !== "allow" && decision !== "deny") {
+    return { ok: false, error: "bad_decision", granted: false };
+  }
+  const turnId = liveLoopApproval.turnId;
+  const action = liveLoopApproval.action;
+  const pending = finishLiveLoopApproval(decision);
+  return {
+    ok: Boolean(pending),
+    decision,
+    turnId,
+    action,
+    granted: Boolean(pending) && decision === "allow",
+  };
+});
+
 ipcMain.handle("bitbot:approvals:runAllowed", async (_e, info) => {
   try {
     const kind = String((info && info.kind) || "");
@@ -1227,6 +1351,11 @@ ipcMain.handle("bitbot:approvals:runAllowed", async (_e, info) => {
     const ALLOWABLE = ["shell", "channel_send", "mail_send", "mcp_call", "computer_use"];
     if (!ALLOWABLE.includes(kind)) {
       return { ok: false, error: "kind_not_replayable" };
+    }
+    const turnId = String((info && (info.turn_id || info.turnId)) || "");
+    const grant = approvalGate.consume(turnId, actionFromKind(kind, command));
+    if (!grant) {
+      return { ok: false, error: "no_grant", granted: false };
     }
     const out = await ffi.executeHostEffects([{ kind, command }], {
       approved: true,
@@ -2590,12 +2719,16 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       };
     });
     releaseActiveTurnCancel = releaseCancel;
+    const hostTurnId = "desktop-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
     const result = await runner.runTurn(String(text || ""), {
       sessionId,
       machineId: "desk-1",
       machineKind: "desktop",
       channel: "",
+      turnId: hostTurnId,
       approved: !!(opts && opts.approved),
+      cliApproved: false,
+      requestApproval: (req) => resolveProductApproval(req, hostTurnId),
       // Replica C4/C6: composer web-search toggle for this turn.
       search: !!(opts && opts.webSearch),
       // GP-30: which Bot owns this turn — the Host's per-Bot computer-use
@@ -2757,6 +2890,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
     });
     return result;
   } finally {
+    finishLiveLoopApproval("deny");
     releaseActiveTurnCancel = null;
     if (envPatch) {
       for (const [k, v] of Object.entries(prev)) {
@@ -3053,7 +3187,7 @@ async function ensureCnInbound() {
           machineId: machineKind === "desktop" ? "desk-1" : `${machineKind}-1`,
           machineKind,
           channel: channel === "android" || channel === "ios" ? "" : channel,
-          approved: true,
+          approved: false,
         });
         broadcast("bitbot:llm-stream", {
           phase: "end",

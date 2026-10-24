@@ -64,7 +64,7 @@ function createProductOnTurn(repoRoot) {
         machineKind === "desktop" ? "desk-1" : `${machineKind}-inbound`,
       machineKind,
       channel: useChannel,
-      approved: true,
+      approved: false,
     });
   };
 }

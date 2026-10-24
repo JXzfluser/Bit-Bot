@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld("bitbot", {
     denyReceipt: (info) => ipcRenderer.invoke("bitbot:approvals:denyReceipt", info),
     runAllowed: (info) => ipcRenderer.invoke("bitbot:approvals:runAllowed", info),
   },
+  answerLoopApproval: (info) => ipcRenderer.invoke("bitbot:loop-approval:answer", info || {}),
   computer: {
     frame: (opts) => ipcRenderer.invoke("bitbot:computer:frame", opts || {}),
     takeover: (opts) => ipcRenderer.invoke("bitbot:computer:takeover", opts),
@@ -209,6 +210,17 @@ contextBridge.exposeInMainWorld("bitbot", {
     };
     ipcRenderer.on("bitbot:agent-loop", handler);
     return () => ipcRenderer.removeListener("bitbot:agent-loop", handler);
+  },
+  onLoopApproval: (cb) => {
+    const handler = (_e, card) => {
+      try {
+        cb(card);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:loop-approval", handler);
+    return () => ipcRenderer.removeListener("bitbot:loop-approval", handler);
   },
   onLlmStream: (cb) => {
     const handler = (_e, chunk) => {
