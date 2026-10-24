@@ -617,6 +617,7 @@ function createWindow() {
     width: 1100,
     height: 760,
     title: "Bit Bot Desktop",
+    icon: path.join(__dirname, "build", "icon.png"),
     // Grok-parity chrome: no native title bar; traffic lights float inset over
     // the top strip (the in-app header stays as the drag region).
     titleBarStyle: "hiddenInset",
@@ -884,6 +885,19 @@ ipcMain.handle("bitbot:bots:op", async (_e, payload) => {
     };
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+/** G-28 · Bot 分组：展示偏好的直写通道（不经 kernel 意图链，同 settings）。
+ *  返回与 listBotsView 相同形状的全量视图，渲染器据此重排侧栏分组。 */
+ipcMain.handle("bitbot:bots:setGroup", async (_e, payload) => {
+  const p = payload || {};
+  try {
+    const r = surface.botsSetGroup({ bot_id: p.bot_id, group: p.group });
+    if (r && r.ok) broadcast("bitbot:bots-changed", surface.listViews());
+    return r;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), mode: "host_bot_group" };
   }
 });
 
@@ -3015,6 +3029,11 @@ async function ensureCnInbound() {
 app.whenReady().then(async () => {
   // GP-77: install state on disk for the shared Host `update_status` reader.
   persistAppInstallState();
+  if (process.platform === "darwin" && app.dock) {
+    try {
+      app.dock.setIcon(path.join(__dirname, "build", "icon.png"));
+    } catch (_) { /* keep the default if the bundled icon is unavailable */ }
+  }
   if (process.env.BITBOT_DESKTOP_SMOKE_TURN !== undefined) {
     return runSmokeTurnAndExit();
   }

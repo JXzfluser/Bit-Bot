@@ -34,7 +34,8 @@ const HTML = path.join(REPO, "hosts/desktop/index.html");
    混出来，没有新增字面色）。 */
 const BASE = {
   cssImportant: 189,
-  cssHex: 139,
+  /* 2026-10-24 W0 落地后重锚：0a 调色去重 + 0b 折第二套家族，css hex 139 → 57（82 个预算槽供 W1-W5 消费） */
+  cssHex: 57,
   htmlHex: 28,
   htmlInlineFont: 24,
   cssAttrPatch: 5,
@@ -74,6 +75,18 @@ const count = (s, re) => (s.match(re) || []).length;
   else bad(`T-2 css hex ${cn} > 基线 ${BASE.cssHex}`, "新增硬编码色值，须走 var(--token)");
   if (hn <= BASE.htmlHex) ok(`T-2 html hex ${hn} ≤ 基线 ${BASE.htmlHex}`);
   else bad(`T-2 html hex ${hn} > 基线 ${BASE.htmlHex}`, "内联/内联样式新增原始色值");
+}
+
+/* ---------- T-2b  调色块纪律（W0-0a 起）：原语块外不得出现字面色值 ---------- */
+{
+  // 调色区 = 文件头到「shared chrome」分隔线；其中只有 --p-* 原语块允许 hex
+  const cut = css.indexOf("/* ---- shared chrome");
+  const palette = cssCode.slice(0, cut > 0 ? cut : undefined);
+  const primBlocks = [...palette.matchAll(/--p-(?:lt|dk)-[\w-]+:\s*([^;]+);/g)].map((m) => m[1]).join(";");
+  const rest = palette.replace(/--p-(?:lt|dk)-[\w-]+:\s*[^;]+;/g, "");
+  const leaked = (rest.match(/#[0-9a-fA-F]{3,8}\b/g) || []).length;
+  if (leaked === 0) ok(`T-2b 调色区字面色值只存在于 --p-* 原语（${(primBlocks.match(/#/g) || []).length} 处）`);
+  else bad(`T-2b 调色区泄漏 ${leaked} 处字面色值`, "新颜色必须先进 --p-* 原语块，调色块只做 var() 映射");
 }
 
 /* ---------- T-3  行内 font-size ratchet ---------- */

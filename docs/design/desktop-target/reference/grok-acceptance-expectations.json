@@ -1,0 +1,373 @@
+{
+  "_source": "docs/design/desktop-target/reference/grok-real-spec.json（CDP 实测，禁止再手写常量）",
+  "_generatedBy": "scripts/grok_acceptance_expectations.mjs",
+  "_measuredAt": {
+    "url": "file:///Applications/Grok%20Bot.app/Contents/Resources/app.asar/dist/renderer/index.html",
+    "viewport": {
+      "width": 1040,
+      "height": 760,
+      "dpr": 2
+    },
+    "title": "Grok Bot",
+    "capturedAt": "2026-10-24T10:56:53.369Z",
+    "source": "Grok Bot.app (CDP :9224, live renderer)",
+    "script": "scripts/grok_real_spec_capture.mjs"
+  },
+  "sidebar": {
+    "width": {
+      "eq": 280,
+      "min": 280,
+      "max": 280,
+      "measured": 280
+    },
+    "background": "rgb(245, 245, 245)",
+    "rightBorder": "0.5px solid rgba(28, 28, 28, 0.08)",
+    "sessionRow": {
+      "height": {
+        "eq": 54,
+        "min": 52,
+        "max": 56,
+        "measured": 54
+      },
+      "width": {
+        "eq": 255.5,
+        "min": 253.5,
+        "max": 257.5,
+        "measured": 255.5
+      },
+      "borderRadius": {
+        "eq": 10,
+        "min": 10,
+        "max": 10,
+        "measured": 10
+      },
+      "padding": "8px 8px 8px 8px",
+      "gap": "8px",
+      "pitch": 58,
+      "interRowGap": 4,
+      "titleFontSize": {
+        "eq": 16,
+        "min": 16,
+        "max": 16,
+        "measured": 16
+      },
+      "titleFontWeight": "420",
+      "previewFontSize": {
+        "eq": 13,
+        "min": 13,
+        "max": 13,
+        "measured": 13
+      },
+      "previewColor": "rgba(28, 28, 28, 0.68)"
+    },
+    "avatar": {
+      "size": {
+        "eq": 36,
+        "min": 34,
+        "max": 38,
+        "measured": 36
+      },
+      "wrapperRadius": "0px"
+    },
+    "interaction": {
+      "idle": "rgba(0, 0, 0, 0)",
+      "hover": "rgba(28, 28, 28, 0.06)",
+      "selected": "rgba(28, 28, 28, 0.08)",
+      "selectedMarker": "aria-current（不是靠底色加深）"
+    }
+  },
+  "composer": {
+    "width": {
+      "eq": 728,
+      "min": 726,
+      "max": 730,
+      "measured": 728
+    },
+    "height": {
+      "eq": 44,
+      "min": 42,
+      "max": 46,
+      "measured": 44
+    },
+    "borderRadius": {
+      "eq": 22,
+      "min": 22,
+      "max": 22,
+      "measured": 22
+    },
+    "border": "0.5px solid rgba(28, 28, 28, 0.12)",
+    "boxShadow": "rgba(0, 0, 0, 0.05) 0px 2px 8px -1px, rgba(0, 0, 0, 0.03) 0px 1px 2px 0px, rgba(228, 228, 228, 0.04) 0px 0px 0px 1px",
+    "fieldFontSize": {
+      "eq": 14,
+      "min": 14,
+      "max": 14,
+      "measured": 14
+    },
+    "fieldLeftInset": {
+      "eq": 44.5,
+      "min": 42.5,
+      "max": 46.5,
+      "measured": 44.5
+    },
+    "frameWidthVsPane": 0.958
+  },
+  "roundButtons": {
+    "attach": {
+      "size": {
+        "eq": 28,
+        "min": 27,
+        "max": 29,
+        "measured": 28
+      },
+      "radius": "9999px",
+      "background": "rgba(28, 28, 28, 0.06)"
+    },
+    "mic": {
+      "size": {
+        "eq": 28,
+        "min": 27,
+        "max": 29,
+        "measured": 28
+      },
+      "radius": "9999px"
+    },
+    "send": {
+      "size": {
+        "eq": 28,
+        "min": 27,
+        "max": 29,
+        "measured": 28
+      },
+      "radius": "9999px",
+      "emptyBackground": "rgb(28, 28, 28)",
+      "note": "空态即实心近黑，不像我方只降 opacity"
+    }
+  },
+  "bubble": {
+    "borderRadius": {
+      "eq": 18,
+      "min": 18,
+      "max": 18,
+      "measured": 18
+    },
+    "padding": "7px 12px 7px 12px",
+    "fontSize": {
+      "eq": 14,
+      "min": 14,
+      "max": 14,
+      "measured": 14
+    },
+    "lineHeight": "22px",
+    "assistantBackground": "rgba(28, 28, 28, 0.06)",
+    "userBackground": "rgb(28, 28, 28)",
+    "userColor": "rgb(255, 255, 255)",
+    "insetHighlight": "rgba(255, 255, 255, 0.16) 0px 0.5px 0px 0px inset, rgba(255, 255, 255, 0.16) 0px -0.5px 0px 0px inset, rgba(28, 28, 28, 0.06) 0px 0px 0px 0.5px inset",
+    "authorName": {
+      "fontSize": "12px",
+      "fontWeight": "420",
+      "color": "rgba(28, 28, 28, 0.68)",
+      "notMeasured": [
+        "perAuthorColored"
+      ]
+    },
+    "inStreamAvatar": {
+      "size": {
+        "eq": 22,
+        "min": 21,
+        "max": 23,
+        "measured": 22
+      },
+      "radius": "0px",
+      "position": "气泡左下（.sand-author-run__gutter，与作者名同柱，不是气泡上方）"
+    },
+    "maxWidth": {
+      "eq": 558.4,
+      "min": 556.4,
+      "max": 560.4,
+      "measured": 558.4
+    },
+    "codeBlockWidth": {
+      "eq": 534.4,
+      "min": 532.4,
+      "max": 536.4,
+      "measured": 534.4
+    }
+  },
+  "accountPopup": {
+    "width": {
+      "eq": 228,
+      "min": 226,
+      "max": 230,
+      "measured": 228
+    },
+    "height": {
+      "eq": 212.5,
+      "min": 210.5,
+      "max": 214.5,
+      "measured": 212.5
+    },
+    "borderRadius": {
+      "eq": 12,
+      "min": 12,
+      "max": 12,
+      "measured": 12
+    },
+    "boxShadow": "none",
+    "border": "0px none",
+    "itemHeight": {
+      "eq": 30,
+      "min": 29,
+      "max": 31,
+      "measured": 30
+    },
+    "itemPadding": "6px 8px",
+    "itemRadius": {
+      "eq": 6,
+      "min": 6,
+      "max": 6,
+      "measured": 6
+    },
+    "fontSize": "13px",
+    "fontWeight": "420",
+    "iconSize": 14,
+    "sectionCount": 2,
+    "separator": "0.5px solid rgba(28, 28, 28, 0.12)",
+    "items": [
+      "每周用量7% 已用",
+      "获取移动版 Grok Bot",
+      "支持",
+      "设置",
+      "添加账户",
+      "退出登录"
+    ]
+  },
+  "plusMenu": {
+    "width": {
+      "eq": 200,
+      "min": 198,
+      "max": 202,
+      "measured": 200
+    },
+    "borderRadius": {
+      "eq": 12,
+      "min": 12,
+      "max": 12,
+      "measured": 12
+    },
+    "boxShadow": "none",
+    "items": [
+      "添加附件",
+      "教它做一项任务"
+    ]
+  },
+  "connectApps": {
+    "width": {
+      "eq": 800,
+      "min": 798,
+      "max": 802,
+      "measured": 800
+    },
+    "height": {
+      "eq": 666,
+      "min": 664,
+      "max": 668,
+      "measured": 666
+    },
+    "borderRadius": {
+      "eq": 14,
+      "min": 14,
+      "max": 14,
+      "measured": 14
+    },
+    "boxShadow": "none",
+    "titleFont": "17px/500",
+    "closeRadius": "9999px",
+    "chipHeight": {
+      "eq": 28,
+      "min": 27,
+      "max": 29,
+      "measured": 28
+    },
+    "rowHeight": {
+      "eq": 40,
+      "min": 39,
+      "max": 41,
+      "measured": 40
+    },
+    "headingCount": 13,
+    "gridColumns": "375px 375px"
+  },
+  "tokens": {
+    "accent": "#1c1c1c",
+    "ink": "#1c1c1c",
+    "secondaryText": "#1c1c1cad",
+    "weakFill": "#1c1c1c0f",
+    "onlineAccent": "#14c16f",
+    "unread": "rgb(11, 109, 211)",
+    "unreadSize": {
+      "eq": 8,
+      "min": 8,
+      "max": 8,
+      "measured": 8
+    }
+  },
+  "_gateConflicts": [
+    {
+      "field": "accent",
+      "grokWants": "#1c1c1c",
+      "ourCurrent": "(见 bb-real-spec tokens)",
+      "blockers": [
+        "scripts/e2e_grok_desktop_spec.mjs:34-35 手写 ACCENT_LIGHT/DARK",
+        "docs/design/desktop-target/ui-unified-spec.md §2.1 权威值 #7c3aed",
+        "replica/design/tokens.css|json 写 --accent:#1a1a1a（第三套值）"
+      ]
+    },
+    {
+      "field": "sendButton.size",
+      "grokWants": "28px",
+      "ourCurrent": "34px(50%)",
+      "blockers": [
+        "ui_chrome.css #send 34px !important",
+        "scripts/prove_m33_grokchrome.js:91-92 要求 index.html 出现字面 width:36px",
+        "scripts/smoke_grok_desktop_parity.sh:1296 grep 文案「36px 圆形」"
+      ]
+    },
+    {
+      "field": "bubble.borderRadius",
+      "grokWants": "18px",
+      "ourCurrent": "16px",
+      "blockers": [
+        "e2e_grok_desktop_spec A10 断言 === 16",
+        "--radius-bubble: 16px",
+        "smoke_grok_desktop_parity.sh:780 合同文案"
+      ]
+    },
+    {
+      "field": "composer.borderRadius",
+      "grokWants": "22px",
+      "ourCurrent": "24px",
+      "blockers": [
+        "css 硬写 24（覆盖 --radius-composer: 22）",
+        "e2e A5 只断言 radius>=20（放不住精确值）"
+      ]
+    },
+    {
+      "field": "sessionRow.height",
+      "grokWants": "54px",
+      "ourCurrent": "58",
+      "blockers": [
+        "e2e S3 断言区间 56-62",
+        "layout-contract.md §3 合同行高"
+      ]
+    },
+    {
+      "field": "字阶 12/16px",
+      "grokWants": "分组/作者名 12px、行标题 16px（weight 420）",
+      "ourCurrent": "13.5px / 13px",
+      "blockers": [
+        "ui-unified-spec §2.3 禁 11/12px",
+        "prove_ui_tokens.js 字号白名单（T-3 行内 font-size 23<=24）"
+      ]
+    }
+  ]
+}

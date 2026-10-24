@@ -4,6 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Bit Bot 桌面版</title>
+<link rel="icon" type="image/png" href="./build/icon.png"/>
 <link rel="stylesheet" href="./ui_chrome.css"/>
 <style>
   /* Color, space, radius, type, and shell widths live in ui_chrome.css.
@@ -1657,12 +1658,11 @@
       <span data-i18n="voiceChatInProgress">语音通话中</span>
     </div>
     <details class="sb-adv" id="sb-bots-rooms" open>
-      <summary class="panel-head sb-adv-sum">
-        <span data-i18n="bots">Bot 列表</span>
-        <!-- G-28 · Grok Bot 的侧栏没有「新建 Bot」整行（它占 44px，把 Bot 列表
-             整体往下推）。收成标题右侧一个 ＋，形状对齐 Grok 的图标按钮。 -->
-        <button type="button" id="bot-new-btn" class="sb-add-btn" title="新建 Bot（名称 / 职责 / 描述）" aria-label="新建 Bot" data-i18n-aria="newBot">＋</button>
-        <span class="sb-adv-caret" aria-hidden="true">▸</span>
+      <!-- G-28 · Grok 的侧栏第一行是 workspace 名（灰色 13px 小字），不是
+           「Bot 列表」标题，更没有行内 ＋（加号在右上角工具栏，点了建 Bot）。
+           summary 保留 details 语义但阻止折叠——Grok 的 workspace 名不可点。 -->
+      <summary class="panel-head sb-adv-sum" onclick="event.preventDefault()">
+        <span id="sb-ws-name">BitBot</span>
       </summary>
       <div id="bot-list" aria-label="Bot 列表"></div>
       <div class="panel-title panel-head spaced">
@@ -3878,6 +3878,15 @@
       for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
       return AVATAR_GLYPHS[h % AVATAR_GLYPHS.length];
     }
+    // G-28: blob 形状变体（.blob-0..4，CSS 侧五组不规则圆角），按同款种子
+    // 稳定分配 —— Grok 的头像每只形状略不同，正圆一眼假。
+    function avatarBlobClass(seed) {
+      const s = String(seed || "");
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
+      const k = h % 5;
+      return k ? "blob-" + k : "";
+    }
     // 把白色字形装进一个 span.sess-avatar（或同款头像位）
     function fillAvatarGlyph(el, seed) {
       el.innerHTML =
@@ -5280,7 +5289,11 @@
     window.__bbSetSessionSearchOpen = setSessionSearchOpen;
     const sidebarSearchToggle = document.getElementById("sidebar-search-toggle");
     if (sidebarSearchToggle) {
-      sidebarSearchToggle.addEventListener("click", () => {
+      sidebarSearchToggle.addEventListener("click", (ev) => {
+        // 不 stopPropagation 的话，这同一次点击会冒泡到 document 级的
+        // 「点外部关闭」监听（#account-bar 之外），把刚展开的弹层立刻关掉
+        // —— 搜索图标按下去永远打不开（GP-123 门禁 15 次读到 hidden 的根因）。
+        ev.stopPropagation();
         setSessionSearchOpen(
           !document.body.classList.contains("session-search-open"),
         );
@@ -9891,8 +9904,34 @@
       // Sidebar-bottom contract: the Hidden Bots entry shows only when count > 0.
       const hiddenLab = document.getElementById("hidden-bots-lab");
       if (hiddenLab) hiddenLab.style.display = hidden.length ? "" : "none";
+      // G-28 · 分组渲染：未分组平铺在 workspace 名下（对齐真源顶部无标题区），
+      // 命名分组各成「组名 N」一节（左灰字右数量，Grok 真源同款）。空组不渲染。
+      const groups = new Map();
+      const flat = [];
       for (const b of bots) {
+        const g = typeof b.group === "string" ? b.group.trim() : "";
+        if (g) {
+          if (!groups.has(g)) groups.set(g, []);
+          groups.get(g).push(b);
+        } else {
+          flat.push(b);
+        }
+      }
+      for (const b of flat) {
         box.appendChild(botRow(b, view.primary_id, false, botLast[b.id]));
+      }
+      for (const [g, list] of groups) {
+        const head = document.createElement("div");
+        head.className = "bot-group-head";
+        const label = document.createElement("span");
+        label.textContent = g;
+        const cnt = document.createElement("span");
+        cnt.className = "cnt";
+        cnt.textContent = String(list.length);
+        head.appendChild(label);
+        head.appendChild(cnt);
+        box.appendChild(head);
+        for (const b of list) box.appendChild(botRow(b, view.primary_id, false, botLast[b.id]));
       }
       for (const b of hidden) {
         if (hiddenBox) hiddenBox.appendChild(botRow(b, view.primary_id, true, botLast[b.id]));
@@ -9909,6 +9948,9 @@
       el.dataset.agentId = b.id;
       const av = document.createElement("span");
       av.className = "sess-avatar";
+      // G-28: blob 形状变体（真源头像是有机圆团，不是正圆）
+      const blobCls = avatarBlobClass(b.id || b.name);
+      if (blobCls) av.classList.add(blobCls);
       if (b.avatar_data_url) {
         // GP-122: real avatar image from the Host store (data URL, no file://).
         const img = document.createElement("img");
@@ -10313,6 +10355,8 @@
         [wavegT("menuPrimary"), () => runUserTurn("set primary bot " + bot.id, { skipSession: true, silentUser: true })],
         [bot.hidden ? wavegT("menuUnhide") : wavegT("menuHide"), () => runUserTurn((bot.hidden ? "unhide bot " : "hide bot ") + bot.id, { skipSession: true, silentUser: true })],
         [wavegT("menuEdit"), () => openBotEditForm(bot)],
+        // G-28 · 分组是展示偏好，走 Host 直写通道（不走 kernel 意图链）
+        ["移动到分组…", (ev) => openGroupPrompt(bot, ev)],
         [wavegT("menuDelete"), () => openBotDeleteDialog(bot)],
         [wavegT("menuBotSettings"), () => openBotRail(bot.id)],
       ];
@@ -10320,9 +10364,9 @@
         const b = document.createElement("button");
         b.type = "button";
         b.textContent = label;
-        b.addEventListener("click", async () => {
+        b.addEventListener("click", async (ev) => {
           hideBotMenu();
-          await fn();
+          await fn(ev);
           await refreshBots();
         });
         botMenuEl.appendChild(b);
@@ -10339,6 +10383,72 @@
     function hideBotMenu() {
       if (botMenuEl && botMenuEl.parentNode) botMenuEl.parentNode.removeChild(botMenuEl);
       botMenuEl = null;
+    }
+
+    /* G-28 · 「移动到分组…」小输入弹层。分组名写入 bots.json 的 group 字段
+       （Host 直写），空值/清除 = 未分组。样式复用 .composer-menu。 */
+    function openGroupPrompt(bot, ev) {
+      const pop = document.createElement("div");
+      pop.className = "composer-menu";
+      pop.style.position = "fixed";
+      const px = ev && ev.clientX ? ev.clientX : window.innerWidth / 2 - 130;
+      const py = ev && ev.clientY ? ev.clientY : window.innerHeight / 2 - 60;
+      pop.style.left = Math.max(8, Math.min(px, window.innerWidth - 280)) + "px";
+      pop.style.top = Math.max(8, Math.min(py, window.innerHeight - 180)) + "px";
+      pop.style.bottom = "auto";
+      const tip = document.createElement("div");
+      tip.textContent = "移动到分组（" + (bot.name || bot.id) + "）";
+      tip.style.cssText = "font-size:12px;color:var(--muted);padding:2px 4px 8px;white-space:nowrap;";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = typeof bot.group === "string" ? bot.group : "";
+      input.placeholder = "输入分组名，留空 = 未分组";
+      input.style.cssText = "width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;font-size:13px;margin-bottom:8px;";
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:6px;";
+      const mkBtn = (label, cls, fn) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = label;
+        btn.className = cls;
+        btn.style.cssText = "flex:1;padding:7px 0;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink);";
+        if (cls === "primary") {
+          btn.style.background = "var(--accent)";
+          btn.style.color = "var(--accent-ink)";
+          btn.style.borderColor = "transparent";
+          btn.style.fontWeight = "600";
+        }
+        btn.addEventListener("click", fn);
+        return btn;
+      };
+      const done = async (group) => {
+        pop.remove();
+        document.removeEventListener("mousedown", outside, true);
+        try {
+          await window.bitbot.bots.setGroup(bot.id, group);
+        } catch (_) { /* 存储失败时下次 refresh 可见未生效，不弹错打扰 */ }
+        await refreshBots();
+      };
+      row.appendChild(mkBtn("清除分组", "", () => done("-")));
+      row.appendChild(mkBtn("取消", "", () => { pop.remove(); document.removeEventListener("mousedown", outside, true); }));
+      row.appendChild(mkBtn("移动", "primary", () => done(input.value)));
+      pop.appendChild(tip);
+      pop.appendChild(input);
+      pop.appendChild(row);
+      const outside = (e) => {
+        if (!pop.contains(e.target)) {
+          pop.remove();
+          document.removeEventListener("mousedown", outside, true);
+        }
+      };
+      document.body.appendChild(pop);
+      input.focus();
+      input.select();
+      setTimeout(() => document.addEventListener("mousedown", outside, true), 0);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") done(input.value);
+        if (e.key === "Escape") { pop.remove(); document.removeEventListener("mousedown", outside, true); }
+      });
     }
 
     // GP-07 delete dialog: hide-first advisory + irreversible cascade warning.
@@ -14289,15 +14399,29 @@
           });
         }
         const newBtn = document.getElementById("sess-new");
+        // G-28: 「开启空白会话」不再是侧栏 ＋ 的职责（Grok 没有这个入口，
+        // 会话是点进 Bot 之后才有的产物），但作为程序化能力保留——E2E 门禁
+        // 的"干净会话"夹具走这里，不再占用 UI 按钮。
+        const startBlankSession = async () => {
+          const created = await window.bitbot.sessions.create(wavegT("newChat"));
+          if (created && created.ok) {
+            activeSessionId = created.session.id;
+            log.innerHTML = welcomeMarkup(wavegT("chatCreatedHint"));
+            await refreshSessions();
+            await refreshConfigGate();
+          }
+          return created;
+        };
+        window.bbUi = Object.assign(window.bbUi || {}, { newSession: startBlankSession });
         if (newBtn) {
           newBtn.addEventListener("click", async () => {
-            const created = await window.bitbot.sessions.create(wavegT("newChat"));
-            if (created && created.ok) {
-              activeSessionId = created.session.id;
-              log.innerHTML = welcomeMarkup(wavegT("chatCreatedHint"));
-              await refreshSessions();
-              await refreshConfigGate();
+            // G-28 · 对齐 Grok Bot：Grok 顶部的 ＋ 是「新建 Bot」，不是新对话
+            // —— Grok 没有独立的"会话"概念，会话是点进某个 Bot 之后才有的产物。
+            if (document.body.classList.contains("grok-ui")) {
+              openBotCreateForm();
+              return;
             }
+            await startBlankSession();
           });
         }
         const toolsBtn = document.getElementById("tools-toggle-btn");

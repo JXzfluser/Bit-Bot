@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld("bitbot", {
     // G-22: Bot settings rail (profile + real counts) and §4.6 per-Bot notify.
     detail: (id) => ipcRenderer.invoke("bitbot:bots:detail", id),
     notify: (botId, on) => ipcRenderer.invoke("bitbot:bots:notify", { bot_id: botId, on: on !== false }),
+    // G-28: 分组是展示偏好，Host 存储直写（不走 kernel 意图链）。
+    setGroup: (botId, group) => ipcRenderer.invoke("bitbot:bots:setGroup", { bot_id: botId, group }),
   },
   settings: {
     get: () => ipcRenderer.invoke("bitbot:settings:get"),

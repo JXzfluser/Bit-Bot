@@ -38,3 +38,7 @@ Host-integration（内核收口后）：
 
 - [host-integration-roadmap.md](host-integration-roadmap.md)
 - [host-integration-interface-gaps.md](host-integration-interface-gaps.md)
+
+Agent core & 多智能体（2026-10-24）：
+
+- [agent-core/README.md](agent-core/README.md) — 现状、主流差距、P0–P3 优先级、波次计划、文档清单

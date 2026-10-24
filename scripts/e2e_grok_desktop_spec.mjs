@@ -188,6 +188,50 @@ async function setTheme(win, mode) {
         : bad("standalone sidebar sessions section still present");
     }
 
+    // S6 — Bot 分组：Grok 侧栏支持把 Bot 归组（「组名 N」一节）。走真实
+    //      Host 直写通道 setGroup，断言后**必须还原**（门禁不污染用户数据）。
+    const grp = await win.evaluate(async () => {
+      const view = await window.bitbot.bots.list();
+      const first = (view.bots || [])[0];
+      if (!first) return { missing: true };
+      const before = typeof first.group === "string" ? first.group : "";
+      const set = await window.bitbot.bots.setGroup(first.id, "核心");
+      if (!set || set.ok !== true) return { setFailed: JSON.stringify(set || {}).slice(0, 200) };
+      // bots-changed 广播会触发侧栏重渲染；兜底再等一拍
+      await new Promise((r) => setTimeout(r, 600));
+      const heads = Array.from(document.querySelectorAll("#bot-list .bot-group-head"));
+      const mine = heads.find((h) => (h.textContent || "").includes("核心"));
+      const rowsUnder = mine
+        ? (() => {
+            let n = 0, el = mine.nextElementSibling;
+            while (el && !el.classList.contains("bot-group-head")) { n += el.classList.contains("sess-row") ? 1 : 0; el = el.nextElementSibling; }
+            return n;
+          })()
+        : 0;
+      return { before, headShown: !!mine, cnt: mine ? (mine.querySelector(".cnt") || {}).textContent : "", rowsUnder };
+    });
+    snapshot.botGroup = grp;
+    try {
+      if (grp.missing) bad("no bots to group (store empty)");
+      else if (grp.setFailed) bad("bots.setGroup failed", grp.setFailed);
+      else {
+        grp.headShown && Number(grp.cnt) === grp.rowsUnder && grp.rowsUnder >= 1
+          ? ok(`Bot 分组渲染：出现「核心 ${grp.cnt}」节，其下 ${grp.rowsUnder} 行`)
+          : bad("bot group header not rendered as 组名 N", JSON.stringify(grp));
+      }
+    } finally {
+      // 还原：把第一个 Bot 的分组放回原值（通常是未分组）。Playwright 的
+      // evaluate 只收一个参数，多值要包成对象。
+      const firstId = await win.evaluate(async () => {
+        const v = await window.bitbot.bots.list();
+        return ((v.bots || [])[0] || {}).id || "";
+      });
+      if (firstId) {
+        await win.evaluate(async ({ id, g }) => { await window.bitbot.bots.setGroup(id, g); },
+          { id: firstId, g: grp.before || "" });
+      }
+    }
+
     // A1/A2 — accent token in both themes (via the send button, the ground truth)
     await setTheme(win, "light");
     const sendLight = await win.evaluate(() => getComputedStyle(document.getElementById("send")).backgroundColor);

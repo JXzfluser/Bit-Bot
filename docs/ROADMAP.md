@@ -1,5 +1,8 @@
 # Bit Bot Roadmap（全量，非 Demo）
 
+> Agent core / 多智能体缺口与优先级见 [`agent-core/README.md`](agent-core/README.md)
+> （P0 安全 → P1 群聊真实性 + Agent Loop → P1 上下文/群编排 → P2 工具/评测 → P3 发布）。
+
 ## M0 — Foundation
 - [x] MoonBit toolchain
 - [x] `moon new` 仓库
@@ -67,6 +70,27 @@
 - [x] 回归套件与文档同步（moon CI + H6 sweep soft）
 - [x] Host I：41 行库存 open=0；全矩阵 I-PASS=234
 - [ ] phone residual 仍待真机（非矩阵 I 阻塞）
+
+## M8 — Agent Core（P1，见 `agent-core/README.md`）
+
+> 目标：从 L1「预定义单步效果」升到 L2/L3「模型选工具 → 观察回注 → 多步循环」。
+> 不把 `CM-*` PASS 当作 agent runtime 已对标。
+
+- [ ] **P0** 安全止血：`/v1/turn` 认证、默认 loopback、去掉 fixed `approved:true`、shell 沙箱、webhook 签名、body limit、env 清洗
+- [ ] Agent Loop MVP：`ToolSpec` + `tool_calls` + Host 执行 + observation 回注 + max steps + 取消 + trace
+- [ ] 上下文：transcript 持久化、token budget、摘要压缩、session resume
+- [ ] 记忆：recall 注入 provider prompt、来源标注、隐私边界
+- [ ] 观测/评测：turn→step→tool trace、20 个固定场景、CI 门槛
+
+## M9 — 群 Bot 多智能体（P1，见 `agent-core/README.md`）
+
+> 目标：从「并行多 Bot 应答」升到「分工 + 共享上下文 + handoff + 汇总」。
+> 先修真实性，再上 orchestrator；不要在 Agent Loop 之前继续加 Bot。
+
+- [ ] 群聊真实性：无 @ 语义、`mentioned_names`、最近转录、handoff 真执行
+- [ ] 群编排：orchestrator 拆任务/分配/收集/汇总；共享 room state；预算/取消
+- [ ] 共享工作区/task board；群级 trace
+- [ ] 群协作 eval：任务完成率、重复劳动率、handoff 完成率
 
 ## Non-goal — Python product deploy（demoted）
 

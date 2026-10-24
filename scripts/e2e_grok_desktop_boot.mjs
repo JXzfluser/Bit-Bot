@@ -41,6 +41,20 @@ const ACCOUNT_PATH = path.join(REPO, "data/desktop/account-profile.json");
 const SESSIONS_PATH = path.join(REPO, "data/desktop/sessions.json");
 const BOTS_PATH = path.join(REPO, "data/desktop/bots.json");
 
+/** G-28: 会话列表收在账户条 #sessions-popup 里（侧栏主体没有会话区块）。
+ *  任何对会话行的右键/点击前都必须先走真实用户路径把弹层打开：点账户条
+ *  右侧的会话图标。 */
+async function openSessionsPopup(win) {
+  await win.evaluate(() => {
+    const p = document.getElementById("sessions-popup");
+    if (p && p.hidden) {
+      const b = document.getElementById("ab-sessions-btn");
+      if (b) b.click();
+    }
+  });
+  await win.waitForSelector("#sessions-popup:not([hidden])", { timeout: 5000 });
+}
+
 /* 多 Bot 用例（群聊 / 记忆 / 排序 / GP-119）需要「≥2 个可见 Bot，且至少一个未固定」。
    以前它们直接 bad("…need two visible Bots")，于是在单人开发机（store 里只有
    agent-bit）上永远是红的 —— 红在数据前置上，不是红在代码上，反而挡住真回归。
@@ -614,7 +628,7 @@ async function main() {
       const bootG14 = await launch(g14Env);
       // 干净会话：前面的 boot 已往 active session 写过消息，Reply 目标必须唯一，
       // 所以这里从「新建对话」开始，而不是在污染的转写里猜。
-      await bootG14.win.evaluate(() => document.getElementById("sess-new").click());
+      await bootG14.win.evaluate(() => window.bbUi.newSession());
       await bootG14.win.waitForFunction(
         () => document.querySelectorAll("#log .msg").length === 0 ||
           document.getElementById("welcome"),
@@ -744,7 +758,7 @@ async function main() {
         }
       }
       const reload = await bootG14.win.evaluate(async (sid) => {
-        document.getElementById("sess-new").click();
+        await window.bbUi.newSession();
         await new Promise((r) => setTimeout(r, 1500));
         const away = document.querySelectorAll("#log .msg-reply-quote").length;
         const back = document.querySelector('[data-session-id="' + sid + '"]');
@@ -830,7 +844,7 @@ async function main() {
       const bootG21 = await launch({
         BITBOT_LLM_STREAM: "0",
       });
-      await bootG21.win.evaluate(() => document.getElementById("sess-new").click());
+      await bootG21.win.evaluate(() => window.bbUi.newSession());
       // Real user path: paste a credential into the composer and press Enter.
       // The renderer must refuse the message and open the secure card instead.
       await bootG21.win.fill("#composer #text", g21Secret);
@@ -959,7 +973,7 @@ async function main() {
     const draftsBefore = fs.existsSync(DRAFTS_DIR) ? fs.readdirSync(DRAFTS_DIR) : [];
     try {
       const bootG22 = await launch({ BITBOT_LLM_STREAM: "0" });
-      await bootG22.win.evaluate(() => document.getElementById("sess-new").click());
+      await bootG22.win.evaluate(() => window.bbUi.newSession());
       await bootG22.win.evaluate(() => document.getElementById("rt-fire").click());
       await bootG22.win.waitForSelector(".routine-draft", { timeout: 30000 });
       await bootG22.win.waitForTimeout(600);
@@ -1226,6 +1240,22 @@ async function main() {
     const ROOMS_PATH = path.join(REPO, "data/desktop/rooms.json");
     const botsBefore = fs.existsSync(BOTS_PATH) ? fs.readFileSync(BOTS_PATH) : null;
     const roomsBefore = fs.existsSync(ROOMS_PATH) ? fs.readFileSync(ROOMS_PATH) : null;
+    // GP-118 几何断言需要长列表：以前这条 pass 是靠上一轮测试留在 bots.json
+    // 里的几十个 Bot 撑的（数据污染当夹具）。现在种子自己种——临时扩 80 个
+    // Bot，finally 里用 botsBefore 原样还原，门禁不再依赖外部残留数据。
+    try {
+      const seed = botsBefore ? JSON.parse(botsBefore) : { version: 1, primary_id: "", bots: [] };
+      if (!Array.isArray(seed.bots)) seed.bots = [];
+      for (let i = 0; i < 80; i++) {
+        const ts = new Date().toISOString();
+        seed.bots.push({
+          id: "e2e-seed-" + i, name: "SeedBot " + i, job: "gate seed", description: "",
+          group: "", avatar: "", tags: [], hidden: false, pinned: false,
+          created_at: ts, updated_at: ts,
+        });
+      }
+      fs.writeFileSync(BOTS_PATH, JSON.stringify(seed, null, 2));
+    } catch (_) { /* 种子失败时 listsScroll 如实失败，不掩盖 */ }
     try {
       const bootG24 = await launch({ BITBOT_LLM_STREAM: "0" });
       const win = bootG24.win;
@@ -1245,11 +1275,14 @@ async function main() {
           return n;
         };
         const footer = q("sidebar-footer");
-        const order = ["bot-list", "room-list", "session-list", "sidebar-footer"].map((id) =>
+        const order = ["bot-list", "room-list", "sidebar-footer"].map((id) =>
           q(id) ? pos(q(id)) : -1,
         );
+        const sess = q("session-list");
         return {
           order,
+          sessionsInPopup: Boolean(sess && sess.closest("#sessions-popup")),
+          sessionsStandalone: Boolean(sess && !sess.closest("#sessions-popup") && sess.closest("#agents") === agents),
           footerIsLast: Boolean(footer) && footer.lastElementChild !== null &&
             agents.lastElementChild === footer,
           footerIds: ["hidden-bots-lab", "connect-apps-btn", "marketplace-btn", "sidebar-settings-btn"]
@@ -1268,8 +1301,14 @@ async function main() {
         };
       });
       shell.order.every((v, i) => v >= 0 && (i === 0 || v > shell.order[i - 1]))
-        ? ok("E2E GP-116：侧边栏顺序 = Bot 列表 → 群组列表 → 会话列表 → 尾部区块")
+        ? ok("E2E GP-116：侧边栏顺序 = Bot 列表 → 群组列表 → 尾部区块")
         : bad("E2E GP-116 sidebar order", JSON.stringify(shell.order));
+      // G-28 契约更新：侧栏没有独立「会话」区块（用户口径：入口只有
+      // Bot / 群 Bot）。会话列表必须在账户条弹层 #sessions-popup 里，且不是
+      // #agents 的直属列表。
+      shell.sessionsInPopup && !shell.sessionsStandalone
+        ? ok("E2E GP-116：会话列表收在账户条 #sessions-popup（侧栏无会话区块）")
+        : bad("E2E GP-116 sessions popup", JSON.stringify({ in: shell.sessionsInPopup, standalone: shell.sessionsStandalone }));
       shell.footerIsLast && shell.footerIds.every(Boolean)
         ? ok("E2E GP-118：#sidebar-footer 是侧栏最后一个块，含 Hidden / Connect apps / Marketplace / Settings")
         : bad("E2E GP-118 footer", JSON.stringify(shell).slice(0, 200));
@@ -1496,7 +1535,7 @@ async function main() {
       await win.waitForSelector("#bot-list [data-agent-id]", { timeout: 30000 });
 
       // 1) Create via the real dialog: blank Name → "New Bot", multi-line desc
-      await win.click("#bot-new-btn");
+      await win.click("#sess-new");
       await win.waitForSelector("#bot-edit-modal", { state: "visible", timeout: 5000 });
       const createMode = await win.evaluate(() => ({
         title: document.getElementById("bf-title").textContent,
@@ -1662,7 +1701,8 @@ async function main() {
       if (!dm) {
         bad("E2E GP-123 rename target", dmTitle + " session missing");
       } else {
-        await win.click('#session-list [data-session-id="' + dm.id + '"]', { button: "right" });
+        await openSessionsPopup(win);
+      await win.click('#session-list [data-session-id="' + dm.id + '"]', { button: "right" });
         await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
         await win.locator(".composer-menu:not([hidden]) button").nth(0).click(); // Rename
         await win.waitForSelector("#session-rename-modal", { state: "visible", timeout: 5000 });
@@ -1695,7 +1735,8 @@ async function main() {
           ? ok("E2E GP-123：侧栏行同步显示新标题")
           : bad("E2E GP-123 rename row", String(rowTitle));
 
-        await win.click('#session-list [data-session-id="' + dm.id + '"]', { button: "right" });
+        await openSessionsPopup(win);
+      await win.click('#session-list [data-session-id="' + dm.id + '"]', { button: "right" });
         await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
         await win.locator(".composer-menu:not([hidden]) button").nth(1).click(); // Delete
         await win.waitForSelector("#session-delete-modal", { state: "visible", timeout: 5000 });
@@ -1940,13 +1981,38 @@ async function main() {
        重命名真改 store；删除会话后详情面板自动关闭。*/
     const SESS_M27 = path.join(REPO, "data/desktop/sessions.json");
     const sessM27Before = fs.existsSync(SESS_M27) ? fs.readFileSync(SESS_M27) : null;
+    // M27 原来裸跑真 LLM：无外网/无 key 时回合静默失败 → "probe session never
+    // reached the store"。照 GP-14 的模式自带 echo stub，门禁不再依赖环境。
+    let m27Stub = null;
     try {
-      const bootM27 = await launch({ BITBOT_LLM_STREAM: "0" });
+      const { spawn: spawnChild } = require("node:child_process");
+      m27Stub = spawnChild(
+        process.execPath,
+        [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")],
+        {
+          cwd: REPO,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: { ...process.env, BITBOT_STUB_PORT: "8796", BITBOT_STUB_ECHO_ALL: "1" },
+        },
+      );
+      await new Promise((res, rej) => {
+        const t = setTimeout(() => rej(new Error("stub boot timeout")), 8000);
+        m27Stub.stdout.on("data", (d) => {
+          if (String(d).includes("[stub-llm]")) { clearTimeout(t); res(); }
+        });
+        m27Stub.on("error", rej);
+      });
+      const bootM27 = await launch({
+        BITBOT_LLM_STREAM: "0",
+        BITBOT_LLM_BASE_URL: "http://127.0.0.1:8796/v1",
+        BITBOT_LLM_API_KEY: "e2e-stub-key",
+        BITBOT_LLM_MODEL: "e2e-stub",
+      });
       const win = bootM27.win;
       await win.waitForSelector("#composer #text", { timeout: 30000 });
 
       // 1) A fresh chat with one real turn so the details have real numbers.
-      await win.click("#sess-new");
+      await win.evaluate(() => window.bbUi.newSession());
       await win.waitForTimeout(400);
       await win.fill("#composer #text", "M27 详情探针消息");
       await win.press("#composer #text", "Enter");
@@ -1969,6 +2035,7 @@ async function main() {
         await win.waitForSelector(rowSel, { timeout: 10000 }).catch(() => {});
 
         // 2) Right-click the row → last menu item = 对话详情 → #conv-rail opens
+        await openSessionsPopup(win);
         await win.click(rowSel, { button: "right" });
         await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
         await win.locator(".composer-menu:not([hidden]) button").last().click();
@@ -2032,6 +2099,7 @@ async function main() {
           : bad("E2E GP-128 exclusion", JSON.stringify(excl27));
 
         // 4) Rename from the details rail writes the store and refreshes the panel.
+        await openSessionsPopup(win);
         await win.click(rowSel, { button: "right" });
         await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
         await win.locator(".composer-menu:not([hidden]) button").last().click();
@@ -2081,6 +2149,7 @@ async function main() {
         }
 
         // 5) Deleting the chat closes its details rail.
+        await openSessionsPopup(win);
         await win.click('#session-list [data-session-id="' + m27SessionId + '"]', { button: "right" });
         await win.waitForSelector(".composer-menu:not([hidden])", { timeout: 5000 });
         const menuBtns = await win.evaluate(() =>
@@ -2118,6 +2187,9 @@ async function main() {
     } catch (e) {
       bad("E2E GP-128/129 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
     } finally {
+      if (m27Stub) {
+        try { m27Stub.kill("SIGKILL"); } catch (_) {}
+      }
       if (sessM27Before) fs.writeFileSync(SESS_M27, sessM27Before);
     }
 
@@ -2458,7 +2530,7 @@ async function main() {
       });
       const bootG19 = await launch(g19Env);
       const urlBefore = bootG19.win.url();
-      await bootG19.win.evaluate(() => document.getElementById("sess-new").click());
+      await bootG19.win.evaluate(() => window.bbUi.newSession());
       await bootG19.win.fill("#composer #text", "GP19 给我一个链接");
       await bootG19.win.press("#composer #text", "Enter");
       await bootG19.win.waitForFunction(

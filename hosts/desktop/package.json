@@ -32,6 +32,7 @@
       "secret_vault.js",
       "link_open.js",
       "link_discipline.js",
+      "build/icon.png",
       {
         "from": "../shared",
         "to": "shared",
@@ -53,7 +54,8 @@
         "AppImage",
         "dir"
       ],
-      "category": "Utility"
+      "category": "Utility",
+      "icon": "build/icons"
     },
     "mac": {
       "target": [
@@ -61,6 +63,7 @@
         "zip"
       ],
       "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -72,11 +75,15 @@
         "zip",
         "dir"
       ],
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "artifactName": "Bit Bot Setup ${version}.${ext}"
     }
   },

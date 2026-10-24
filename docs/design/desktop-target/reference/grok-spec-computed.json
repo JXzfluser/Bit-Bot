@@ -1,18 +1,18 @@
 {
   "sidebar": {
     "w": 280,
-    "rows": 13,
+    "rows": 31,
     "toolbar": {
       "top": 56,
-      "h": 46
+      "h": 48
     },
     "botSection": {
-      "top": 108,
-      "h": 155
+      "top": 110,
+      "h": 474
     },
     "botList": {
-      "top": 140,
-      "h": 123
+      "top": 143,
+      "h": 441
     },
     "roomList": {
       "top": 0,
@@ -29,11 +29,12 @@
     "sessionTitleTop": null,
     "sessionListTop": 0,
     "chatTitleY": 0,
-    "firstRowTop": 140,
-    "rowH": 61,
+    "firstRowTop": 143,
+    "rowH": 58,
     "avW": 36,
-    "avRadius": "50%",
+    "avRadius": "46% 54% 48% 52% / 52% 46% 54% 48%",
     "labels": [
+      "k'k'k1",
       "今天",
       "昨天",
       "更早"
@@ -41,9 +42,15 @@
   },
   "sessPopup": {
     "shown": true,
-    "rows": 11,
+    "rows": 24,
     "inAccountBar": true,
     "leftStandaloneSection": false
+  },
+  "botGroup": {
+    "before": "",
+    "headShown": true,
+    "cnt": "1",
+    "rowsUnder": 1
   },
   "accent": {
     "sendLight": "rgb(124, 58, 237)",
@@ -77,18 +84,18 @@
     "rects": {
       "msg": [
         496,
-        473,
+        651,
         728
       ],
       "head": [
         496,
-        473,
+        651,
         728,
         28
       ],
       "body": [
         496,
-        507,
+        685,
         728,
         52
       ]

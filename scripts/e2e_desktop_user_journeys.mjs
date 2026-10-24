@@ -292,7 +292,7 @@ const forbiddenHit = (text) => {
 
   /** UI 建 Bot：走真实对话框（新建按钮 → 名称/职责/描述 → 创建）。 */
   const uiCreateBot = async (b) => {
-    await win.click("#bot-new-btn", { timeout: 20000 });
+    await win.click("#sess-new", { timeout: 20000 });
     await win.waitForSelector("#bot-edit-modal #bc-name", { state: "visible", timeout: 20000 });
     await win.fill("#bc-name", b.name);
     await win.fill("#bc-job", b.job);

@@ -123,6 +123,16 @@ function createProductSurface(repoRoot) {
     return raw.split(",").map((t) => t.trim()).filter(Boolean).slice(0, 8);
   }
 
+  /* G-28 · Bot 分组（Grok Bot 的侧栏把 Bot 按分组折叠，右侧显示数量）。
+     分组只是**展示归属**，不是产品策略：不参与权限、审批、记忆与回合路由，
+     所以它和 settings 一样由 Host 存储直写，不走 kernel 意图链。
+     空字符串 = 未分组（侧栏渲染成「未分组」一节）。 */
+  function normalizeGroup(value) {
+    const raw = String(value == null ? "" : value).replace(/\s+/g, " ").trim();
+    if (raw === "-") return "";
+    return raw.slice(0, 24);
+  }
+
   /* §2.2 avatar: a stored path is displayed as a data URL so the renderer never
      needs file:// access. Unreadable / oversized files are simply not shown. */
   function avatarDataUrl(bot) {
@@ -144,7 +154,7 @@ function createProductSurface(repoRoot) {
     }
   }
 
-  function botsCreate({ name, job, description }) {
+  function botsCreate({ name, job, description, group }) {
     const data = loadBots();
     const bot = {
       id: generateBotId(),
@@ -152,6 +162,7 @@ function createProductSurface(repoRoot) {
       name: String(name || "").trim() || "New Bot",
       job: String(job || "").trim(),
       description: String(description || "").trim(),
+      group: normalizeGroup(group),
       avatar: "",
       tags: [],
       hidden: false,
@@ -169,7 +180,7 @@ function createProductSurface(repoRoot) {
     };
   }
 
-  function botsUpdate({ bot_id, name, job, description, avatar, tags }) {
+  function botsUpdate({ bot_id, name, job, description, avatar, tags, group }) {
     const data = loadBots();
     const bot = data.bots.find(b => b.id === bot_id);
     if (!bot) {
@@ -191,6 +202,8 @@ function createProductSurface(repoRoot) {
     }
 
     if (tags !== undefined) bot.tags = normalizeTags(tags);
+    // G-28: 分组走 "-"=清空 / 未提供=不变 的同一约定（kernel 省略字段时不动）。
+    if (group !== undefined) bot.group = normalizeGroup(group);
     if (name !== undefined) bot.name = String(name || "").trim() || bot.name;
     if (job !== undefined) bot.job = String(job || "").trim();
     if (description !== undefined) bot.description = String(description || "").trim();
@@ -205,13 +218,36 @@ function createProductSurface(repoRoot) {
     };
   }
 
+  /* G-28 · 分组直写通道（渲染器右键菜单「移动到分组」）。分组是展示偏好，
+     不经过 kernel 意图链——与 settings 一样的存储级 UI 状态。 */
+  function botsSetGroup({ bot_id, group }) {
+    const id = String(bot_id || "").trim();
+    if (!id) return { ok: false, error: "bot_not_found", mode: "host_bot_group" };
+    const data = loadBots();
+    const bot = data.bots.find(b => b && b.id === id);
+    if (!bot) return { ok: false, error: "bot_not_found", mode: "host_bot_group" };
+    bot.group = normalizeGroup(group);
+    bot.updated_at = nowIso();
+    saveBots(data);
+    const visible = (data.bots || []).filter(b => b && !b.hidden);
+    const hidden = (data.bots || []).filter(b => b && b.hidden);
+    return {
+      ok: true,
+      mode: "host_bot_group",
+      pretend_saved: false,
+      bot: decorateBot(bot),
+      bots: visible.map(decorateBot),
+      hidden_bots: hidden.map(decorateBot),
+      primary_id: data.primary_id || (visible[0] && visible[0].id) || ""
+    };
+  }
+
   function botsDuplicate(bot_id) {
     const data = loadBots();
     const source = data.bots.find(b => b.id === bot_id);
     if (!source) {
       return { ok: false, error: "bot_not_found", mode: "host_bot_duplicate" };
     }
-
     // Generate unique name: "<name> copy", "<name> copy 2", etc.
     let baseName = source.name;
     let newName = baseName + " copy";
@@ -505,6 +541,7 @@ function createProductSurface(repoRoot) {
   function decorateBot(bot) {
     return Object.assign({}, bot, {
       tags: Array.isArray(bot.tags) ? bot.tags : [],
+      group: typeof bot.group === "string" ? bot.group : "",
       avatar_data_url: avatarDataUrl(bot),
     });
   }
@@ -2304,6 +2341,7 @@ function createProductSurface(repoRoot) {
     // Bots (new API names)
     botsCreate,
     botsUpdate,
+    botsSetGroup,
     botsDuplicate,
     botsPin,
     botsSetPrimary,

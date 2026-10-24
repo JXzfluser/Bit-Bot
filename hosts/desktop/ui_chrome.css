@@ -11,51 +11,117 @@
  * space / radius / type / shell-width scales stay on :root.
  */
 
+/* ---- W0-0a 调色原语：每个色值全仓只写一次（scripts/w0_palette_consolidate.mjs --land 生成）----
+ * 规则：调色块内不得再出现字面色值，新增颜色先进这里。 */
+:root {
+  --p-lt-bg0: #ffffff;
+  --p-dk-bg0: #171717;
+  --p-lt-bg1: #f7f7f7;
+  --p-dk-bg1: #1d1d1d;
+  --p-lt-side: #f7f7f7;
+  --p-dk-side: #111111;
+  --p-lt-input-bg: #f2f2f2;
+  --p-dk-input-bg: #232323;
+  --p-lt-ink: #1a1a1a;
+  --p-dk-ink: #ececec;
+  --p-lt-text: #1a1a1a;
+  --p-dk-text: #ececec;
+  --p-lt-muted: #6f6f6f;
+  --p-dk-muted: #9a9a9a;
+  --p-lt-line: #e3e3e3;
+  --p-dk-line: #2e2e2e;
+  --p-lt-accent: #7c3aed;
+  --p-dk-accent: #a855f7;
+  --p-lt-accent-ink: #ffffff;
+  --p-dk-accent-ink: #ffffff;
+  --p-lt-accent-soft: #f3e8fd;
+  --p-dk-accent-soft: #3b0764;
+  --p-lt-user-bubble: #eceef0;
+  --p-dk-user-bubble: #2a2a2a;
+  --p-lt-bot-bubble: #f4f4f5;
+  --p-dk-bot-bubble: #212121;
+  --p-lt-warn: #a06a00;
+  --p-dk-warn: #d4a017;
+  --p-lt-warn-bg: #fbf4e0;
+  --p-dk-warn-bg: #262010;
+  --p-lt-warn-ink: #6a5312;
+  --p-dk-warn-ink: #e8d9a8;
+  --p-lt-warn-line: #e3d2a0;
+  --p-dk-warn-line: #5a4a2a;
+  --p-lt-danger: #b3403a;
+  --p-dk-danger: #c0554d;
+  --p-lt-danger-bg: #fae9e7;
+  --p-dk-danger-bg: #2a1f1d;
+  --p-lt-danger-ink: #8f332d;
+  --p-dk-danger-ink: #e8b4b0;
+  --p-lt-overlay: rgba(0, 0, 0, 0.35);
+  --p-dk-overlay: rgba(0, 0, 0, 0.45);
+  --p-lt-shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --p-dk-shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.4);
+  --p-lt-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --p-dk-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --p-lt-shadow-sticky: 0 1px 0 var(--line);
+  --p-dk-shadow-sticky: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --p-dk-page-bg: #151515;
+  --p-dk-surface: #1f1f1f;
+  --p-dk-bot-avatar: #2f9e44;
+  /* 根块/fLt 独有色值（0a 残余收敛，2026-10-24） */
+  --p-lt-surface: #ffffff;
+  --p-lt-page-bg: #ffffff;
+  --p-lt-page-bg-force: #f5f5f7;
+  --p-lt-bot-avatar: #1e86fc;
+  --p-lt-bot-avatar-force: #2f9e44;
+  --p-lt-unread: #1e86fc;
+  --p-lt-on-fill: #ffffff;
+  --p-lt-lightbox-ink: #eee;
+}
+
+
 :root {
   color-scheme: light;
 
   /* surfaces — Grok-style light default: clean white field, near-black ink,
      purple/magenta accent (G-28 aligns to the Grok Bot app reference). */
-  --bg0: #ffffff;
-  --bg1: #f7f7f8;
-  --side: #ffffff;
+  --bg0: var(--p-lt-bg0);
+  --bg1: var(--p-lt-bg1);
+  --side: var(--p-lt-side);
   /* raised surface for cards/chips/rails — token, not a literal, so
      force-dark repaints every surface (real-render GP-70 caught 45
      hard-coded #ffffff shells staying bright in dark mode) */
-  --surface: #ffffff;
+  --surface: var(--p-lt-surface);
   /* shell page background — Grok uses a clean white field */
-  --page-bg: #ffffff;
-  --input-bg: #ffffff;
-  --ink: #141414;
-  --text: #141414;
-  --muted: #6b6b6b;
-  --line: #e6e6e9;
+  --page-bg: var(--p-lt-page-bg);
+  --input-bg: var(--p-lt-input-bg);
+  --ink: var(--p-lt-ink);
+  --text: var(--p-lt-text);
+  --muted: var(--p-lt-muted);
+  --line: var(--p-lt-line);
   /* Grok signature accent — purple (light) / magenta (dark) */
-  --accent: #7c3aed;
-  --accent-ink: #ffffff;
-  --accent-soft: #f3e8fd;
-  --user-bubble: #f4f4f5;
-  --bot-bubble: #f6f6f7;
-  --bot-avatar: #1e86fc;
-  --unread: #1e86fc;
-  --on-fill: #ffffff;
-  --warn: #a06a00;
-  --warn-bg: #fbf4e0;
-  --warn-ink: #6a5312;
-  --warn-line: #e3d2a0;
-  --danger: #b3403a;
-  --danger-bg: #fae9e7;
-  --danger-ink: #8f332d;
+  --accent: var(--p-lt-accent);
+  --accent-ink: var(--p-lt-accent-ink);
+  --accent-soft: var(--p-lt-accent-soft);
+  --user-bubble: var(--p-lt-user-bubble);
+  --bot-bubble: var(--p-lt-bot-bubble);
+  --bot-avatar: var(--p-lt-bot-avatar);
+  --unread: var(--p-lt-unread);
+  --on-fill: var(--p-lt-on-fill);
+  --warn: var(--p-lt-warn);
+  --warn-bg: var(--p-lt-warn-bg);
+  --warn-ink: var(--p-lt-warn-ink);
+  --warn-line: var(--p-lt-warn-line);
+  --danger: var(--p-lt-danger);
+  --danger-bg: var(--p-lt-danger-bg);
+  --danger-ink: var(--p-lt-danger-ink);
   --code-bg: var(--bot-bubble);
   --fill: var(--user-bubble);
-  --overlay: rgba(0, 0, 0, 0.35);
+  --overlay: var(--p-lt-overlay);
   --overlay-strong: rgba(0, 0, 0, 0.88);
   --scrim-lite: rgba(128, 128, 128, 0.06);
   --scrim-lite-2: rgba(128, 128, 128, 0.05);
-  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
-  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
-  --shadow-sticky: 0 1px 0 var(--line);
-  --lightbox-ink: #eee;
+  --shadow-modal: var(--p-lt-shadow-modal);
+  --shadow-pop: var(--p-lt-shadow-pop);
+  --shadow-sticky: var(--p-lt-shadow-sticky);
+  --lightbox-ink: var(--p-lt-lightbox-ink);
   --lightbox-btn: rgba(255, 255, 255, 0.12);
   --lightbox-line: rgba(255, 255, 255, 0.25);
 
@@ -119,30 +185,30 @@
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --bg0: #ffffff;
-    --bg1: #f7f7f7;
-    --side: #f7f7f7;
-    --input-bg: #f2f2f2;
-    --ink: #1a1a1a;
-    --text: #1a1a1a;
-    --muted: #6f6f6f;
-    --line: #e3e3e3;
-    --accent: #7c3aed;
-    --accent-ink: #ffffff;
-    --accent-soft: #f3e8fd;
-    --user-bubble: #eceef0;
-    --bot-bubble: #f4f4f5;
-    --warn: #a06a00;
-    --warn-bg: #fbf4e0;
-    --warn-ink: #6a5312;
-    --warn-line: #e3d2a0;
-    --danger: #b3403a;
-    --danger-bg: #fae9e7;
-    --danger-ink: #8f332d;
-    --overlay: rgba(0, 0, 0, 0.35);
-    --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
-    --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
-    --shadow-sticky: 0 1px 0 var(--line);
+    --bg0: var(--p-lt-bg0);
+    --bg1: var(--p-lt-bg1);
+    --side: var(--p-lt-side);
+    --input-bg: var(--p-lt-input-bg);
+    --ink: var(--p-lt-ink);
+    --text: var(--p-lt-text);
+    --muted: var(--p-lt-muted);
+    --line: var(--p-lt-line);
+    --accent: var(--p-lt-accent);
+    --accent-ink: var(--p-lt-accent-ink);
+    --accent-soft: var(--p-lt-accent-soft);
+    --user-bubble: var(--p-lt-user-bubble);
+    --bot-bubble: var(--p-lt-bot-bubble);
+    --warn: var(--p-lt-warn);
+    --warn-bg: var(--p-lt-warn-bg);
+    --warn-ink: var(--p-lt-warn-ink);
+    --warn-line: var(--p-lt-warn-line);
+    --danger: var(--p-lt-danger);
+    --danger-bg: var(--p-lt-danger-bg);
+    --danger-ink: var(--p-lt-danger-ink);
+    --overlay: var(--p-lt-overlay);
+    --shadow-modal: var(--p-lt-shadow-modal);
+    --shadow-pop: var(--p-lt-shadow-pop);
+    --shadow-sticky: var(--p-lt-shadow-sticky);
   }
 }
 
@@ -152,102 +218,102 @@
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --page-bg: #151515;
-    --surface: #1f1f1f;
-    --bg0: #171717;
-    --bg1: #1d1d1d;
-    --side: #111111;
-    --input-bg: #232323;
-    --ink: #ececec;
-    --text: #ececec;
-    --muted: #9a9a9a;
-    --line: #2e2e2e;
-    --accent: #a855f7;
-    --accent-ink: #ffffff;
-    --accent-soft: #3b0764;
-    --user-bubble: #2a2a2a;
-    --bot-bubble: #212121;
-    --bot-avatar: #2f9e44;
-    --warn: #d4a017;
-    --warn-bg: #262010;
-    --warn-ink: #e8d9a8;
-    --warn-line: #5a4a2a;
-    --danger: #c0554d;
-    --danger-bg: #2a1f1d;
-    --danger-ink: #e8b4b0;
+    --page-bg: var(--p-dk-page-bg);
+    --surface: var(--p-dk-surface);
+    --bg0: var(--p-dk-bg0);
+    --bg1: var(--p-dk-bg1);
+    --side: var(--p-dk-side);
+    --input-bg: var(--p-dk-input-bg);
+    --ink: var(--p-dk-ink);
+    --text: var(--p-dk-text);
+    --muted: var(--p-dk-muted);
+    --line: var(--p-dk-line);
+    --accent: var(--p-dk-accent);
+    --accent-ink: var(--p-dk-accent-ink);
+    --accent-soft: var(--p-dk-accent-soft);
+    --user-bubble: var(--p-dk-user-bubble);
+    --bot-bubble: var(--p-dk-bot-bubble);
+    --bot-avatar: var(--p-dk-bot-avatar);
+    --warn: var(--p-dk-warn);
+    --warn-bg: var(--p-dk-warn-bg);
+    --warn-ink: var(--p-dk-warn-ink);
+    --warn-line: var(--p-dk-warn-line);
+    --danger: var(--p-dk-danger);
+    --danger-bg: var(--p-dk-danger-bg);
+    --danger-ink: var(--p-dk-danger-ink);
     --code-bg: var(--bot-bubble);
     --fill: var(--user-bubble);
-    --overlay: rgba(0, 0, 0, 0.45);
-    --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.4);
-    --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
-    --shadow-sticky: 0 2px 8px rgba(0, 0, 0, 0.25);
+    --overlay: var(--p-dk-overlay);
+    --shadow-modal: var(--p-dk-shadow-modal);
+    --shadow-pop: var(--p-dk-shadow-pop);
+    --shadow-sticky: var(--p-dk-shadow-sticky);
   }
 }
 
 body.force-dark {
   color-scheme: dark;
-  --page-bg: #151515;
-  --surface: #1f1f1f;
-  --bg0: #171717;
-  --bg1: #1d1d1d;
-  --side: #111111;
-  --input-bg: #232323;
-  --ink: #ececec;
-  --text: #ececec;
-  --muted: #9a9a9a;
-  --line: #2e2e2e;
-  --accent: #a855f7;
-  --accent-ink: #ffffff;
-  --accent-soft: #3b0764;
-  --user-bubble: #2a2a2a;
-  --bot-bubble: #212121;
-  --bot-avatar: #2f9e44;
-  --warn: #d4a017;
-  --warn-bg: #262010;
-  --warn-ink: #e8d9a8;
-  --warn-line: #5a4a2a;
-  --danger: #c0554d;
-  --danger-bg: #2a1f1d;
-  --danger-ink: #e8b4b0;
+  --page-bg: var(--p-dk-page-bg);
+  --surface: var(--p-dk-surface);
+  --bg0: var(--p-dk-bg0);
+  --bg1: var(--p-dk-bg1);
+  --side: var(--p-dk-side);
+  --input-bg: var(--p-dk-input-bg);
+  --ink: var(--p-dk-ink);
+  --text: var(--p-dk-text);
+  --muted: var(--p-dk-muted);
+  --line: var(--p-dk-line);
+  --accent: var(--p-dk-accent);
+  --accent-ink: var(--p-dk-accent-ink);
+  --accent-soft: var(--p-dk-accent-soft);
+  --user-bubble: var(--p-dk-user-bubble);
+  --bot-bubble: var(--p-dk-bot-bubble);
+  --bot-avatar: var(--p-dk-bot-avatar);
+  --warn: var(--p-dk-warn);
+  --warn-bg: var(--p-dk-warn-bg);
+  --warn-ink: var(--p-dk-warn-ink);
+  --warn-line: var(--p-dk-warn-line);
+  --danger: var(--p-dk-danger);
+  --danger-bg: var(--p-dk-danger-bg);
+  --danger-ink: var(--p-dk-danger-ink);
     --code-bg: var(--bot-bubble);
     --fill: var(--user-bubble);
-  --overlay: rgba(0, 0, 0, 0.45);
-  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.4);
-  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --shadow-sticky: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --overlay: var(--p-dk-overlay);
+  --shadow-modal: var(--p-dk-shadow-modal);
+  --shadow-pop: var(--p-dk-shadow-pop);
+  --shadow-sticky: var(--p-dk-shadow-sticky);
 }
 
 body.force-light {
   color-scheme: light;
-  --page-bg: #f5f5f7;
-  --surface: #ffffff;
-  --bg0: #ffffff;
-  --bg1: #f7f7f7;
-  --side: #f7f7f7;
-  --input-bg: #f2f2f2;
-  --ink: #1a1a1a;
-  --text: #1a1a1a;
-  --muted: #6f6f6f;
-  --line: #e3e3e3;
-  --accent: #7c3aed;
-  --accent-ink: #ffffff;
-  --accent-soft: #f3e8fd;
-  --user-bubble: #eceef0;
-  --bot-bubble: #f4f4f5;
-  --bot-avatar: #2f9e44;
-  --warn: #a06a00;
-  --warn-bg: #fbf4e0;
-  --warn-ink: #6a5312;
-  --warn-line: #e3d2a0;
-  --danger: #b3403a;
-  --danger-bg: #fae9e7;
-  --danger-ink: #8f332d;
+  --page-bg: var(--p-lt-page-bg-force);
+  --surface: var(--p-lt-surface);
+  --bg0: var(--p-lt-bg0);
+  --bg1: var(--p-lt-bg1);
+  --side: var(--p-lt-side);
+  --input-bg: var(--p-lt-input-bg);
+  --ink: var(--p-lt-ink);
+  --text: var(--p-lt-text);
+  --muted: var(--p-lt-muted);
+  --line: var(--p-lt-line);
+  --accent: var(--p-lt-accent);
+  --accent-ink: var(--p-lt-accent-ink);
+  --accent-soft: var(--p-lt-accent-soft);
+  --user-bubble: var(--p-lt-user-bubble);
+  --bot-bubble: var(--p-lt-bot-bubble);
+  --bot-avatar: var(--p-lt-bot-avatar-force);
+  --warn: var(--p-lt-warn);
+  --warn-bg: var(--p-lt-warn-bg);
+  --warn-ink: var(--p-lt-warn-ink);
+  --warn-line: var(--p-lt-warn-line);
+  --danger: var(--p-lt-danger);
+  --danger-bg: var(--p-lt-danger-bg);
+  --danger-ink: var(--p-lt-danger-ink);
   --code-bg: var(--bot-bubble);
   --fill: var(--user-bubble);
-  --overlay: rgba(0, 0, 0, 0.35);
-  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
-  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
-  --shadow-sticky: 0 1px 0 var(--line);
+  --overlay: var(--p-lt-overlay);
+  --shadow-modal: var(--p-lt-shadow-modal);
+  --shadow-pop: var(--p-lt-shadow-pop);
+  --shadow-sticky: var(--p-lt-shadow-sticky);
 }
 
 /* ---- shared chrome ------------------------------------------------------- */
@@ -1218,41 +1284,25 @@ body.grok-ui.session-search-open #session-search { display: block; }
 /* ===== Round 10: unified Grok spec — tokens, type scale, settings left-nav ===== */
 
 /* -- 10.1 Global tokens & type scale (applies to EVERY page) -------------
-   Single semantic source for the newer (Grok) family. The --g-* names are
-   now thin aliases of the role tokens below; values are unchanged from the
-   previous literal block (behaviour-preserving). */
+   Single semantic source for the newer (Grok) family. W0-0b (2026-10-24):
+   the second token family is folded onto the canonical :root tokens —
+   --ui-*/--text-ink/--text-sub no longer carry their own literals, the
+   dark blocks are gone, theming follows --text/--muted/--line/--fill/
+   --surface/--user-bubble. Small gray shifts accepted (see
+   alignment-delta-v1.md §7 W0). */
 body.grok-ui {
-  --text-ink: #1a1a1a;
-  --text-sub: #75757a;
-  --ui-border: #e8e8ea;
-  --ui-fill: #f4f4f5;
-  --ui-card: #ffffff;
-  --ui-pill: #ebebee;
+  --text-ink: var(--text);
+  --text-sub: var(--muted);
+  --ui-border: var(--line);
+  --ui-fill: var(--fill);
+  --ui-card: var(--surface);
+  --ui-pill: var(--user-bubble);
   --g-ink: var(--text-ink);
   --g-sub: var(--text-sub);
   --g-line: var(--ui-border);
   --g-soft: var(--ui-fill);
   --g-card: var(--ui-card);
   --g-pill: var(--ui-pill);
-}
-/* dark mode: system-following (no force class) or explicit force-dark */
-@media (prefers-color-scheme: dark) {
-  body.grok-ui:not(.force-light) {
-    --text-ink: #ececee;
-    --text-sub: #98989f;
-    --ui-border: #3f3f44;
-    --ui-fill: #2e2e33;
-    --ui-card: #2a2a2e;
-    --ui-pill: #3a3a40;
-  }
-}
-body.grok-ui.force-dark {
-  --text-ink: #ececee;
-  --text-sub: #98989f;
-  --ui-border: #3f3f44;
-  --ui-fill: #2e2e33;
-  --ui-card: #2a2a2e;
-  --ui-pill: #3a3a40;
 }
 body.grok-ui,
 body.grok-ui button,
@@ -1946,7 +1996,19 @@ body.grok-ui #agents {
   padding: 0 12px;
   gap: 0;
 }
-body.grok-ui #sidebar-toolbar { padding: 6px 0 8px 64px; }
+/* G-28 实测：顶部两个圆形按钮 34px、白底无描边（靠 1px 阴影浮起）、
+   间距 10、距右缘 18（容器 12 + 工具栏 6）、距顶 13。 */
+body.grok-ui #sidebar-toolbar { padding: 6px 6px 8px 64px; gap: 10px; }
+body.grok-ui #sidebar-toolbar > button {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  max-width: 34px;
+  border: 0;
+  font-size: 17px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07);
+}
 
 /* --- 区块标题：Bot 列表 / 群组 / 会话 一种待遇 --------------------------- */
 body.grok-ui .panel-title,
@@ -1989,37 +2051,20 @@ body.grok-ui .sb-adv-caret { font-size: 10px; color: var(--nav-label); }
    Grok 侧栏是「一行 12px 灰色 workspace 小字 → 直接就是 Bot 列表」，没有大
    标题、也没有「新建 Bot」整行（那一行 44px 把我方 Bot 列表整体往下推了）。
    这里把标题降到 12px/500，＋ 收进标题行右侧。 */
+/* G-28 第三轮（2080x1520 真源 /2 实测）：workspace 名是 13px 灰字，左缘 21、
+   顶部按钮下沿 47 → 文字上缘 75.5（间距 28）。summary 只剩这一个 span。 */
 body.grok-ui #sb-bots-rooms > summary {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  margin: 10px 0 4px;
+  padding: 0 9px;
+  font-size: 13px;
   font-weight: 500;
-}
-/* 标题文字不许被右侧的 ＋ / 折角挤到换行（之前被压成 "Bot" / "列表" 两行） */
-body.grok-ui #sb-bots-rooms > summary > span:first-child {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-body.grok-ui .sb-add-btn {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 4px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
+  letter-spacing: 0.01em;
   color: var(--nav-label);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
+  cursor: default;
 }
-body.grok-ui .sb-add-btn:hover { background: var(--accent-soft); color: var(--ink); }
-body.grok-ui #sb-bots-rooms > summary .sb-adv-caret { margin-left: auto; }
+body.grok-ui #sb-bots-rooms > summary:hover { color: var(--nav-label); }
 
 /* --- 行：形状与状态都由 index.html 的 .sess-row 一处声明 --------------- */
 /* 这里只清掉列表容器自身的 margin/padding，避免基类把行挤离边缘。 */
@@ -2037,32 +2082,43 @@ body.grok-ui #session-list { margin: 0; padding: 0; }
    开关由 refreshSidebarRooms 决定（它同时知道"空"和"读不到"两种状态，
    读不到时要保留标题来承载故障提示，所以不能用纯 CSS 判空）。 */
 
-/* --- 新建 Bot：一行动作，不再是压在标题上的浮块 ------------------------- */
-body.grok-ui #bot-new-btn {
-  position: static;
+/* --- 新建 Bot：Grok 只有一个 ＋，在右上角工具栏（#sess-new，点击建 Bot）。
+     标题行内的整行 #bot-new-btn 已随标记一起删除。 ------------------------- */
+
+/* --- G-28 · 分组头：左灰字 + 右数量（实测：左 20.5 / 右 21.5 / 13px 灰） ---
+   未分组行直接平铺在 workspace 名下（对应真源顶部无标题区），命名分组才
+   出现「组名 N」一节。空组不渲染（沿用 refreshSidebarRooms 判空原则）。 */
+body.grok-ui .bot-group-head {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  width: 100%;
-  margin: 0;
-  padding: 9px 12px;
-  border: 0;
-  border-radius: var(--radius-xl);
-  background: transparent;
-  box-shadow: none;
-  color: var(--muted);
-  font-size: var(--text-md);
+  justify-content: space-between;
+  gap: 8px;
+  margin: 14px 0 2px;
+  padding: 0 9px;
+  font-size: 13px;
   font-weight: 500;
-  text-align: left;
-}
-body.grok-ui #bot-new-btn:hover { background: var(--nav-row-hover); color: var(--ink); }
-/* 加号不是文案，是动作标记：避免它读起来像又一个小标题 */
-body.grok-ui #bot-new-btn::before {
-  content: "+";
-  margin-right: var(--space-3);
-  font-weight: 400;
   color: var(--nav-label);
+  cursor: default;
 }
+body.grok-ui .bot-group-head .cnt { flex: 0 0 auto; opacity: 0.85; }
+
+/* --- 行内几何（实测：头像左缘 18 → 文字左缘 65，行高 58）----------------
+   容器 #agents 已有 12px 内边距，所以行内左 6 + 头像 36 + gap 11 = 65；
+   右缘留 9（容器 12 + 9 = 21，与真源未读点右缘一致）。 */
+body.grok-ui .sess-row { padding: 11px 9px 11px 6px; gap: 11px; }
+/* 文字两行的节距实测 20pt：名称 13.5/深、摘要 13/灰。行内节距 18 保证
+   两行文字 36px 恰好等于头像高度 —— 行高才锁得住 58（20+20=40 会把行撑到 62） */
+body.grok-ui .sess-row .sess-main .name { font-size: 13.5px; font-weight: 600; line-height: 18px; }
+body.grok-ui .sess-row .sess-main .meta { font-size: 13px; line-height: 18px; margin-top: 0; }
+
+/* --- 头像：Grok 用的是**不规则有机圆团**（blob），不是正圆。五组圆角
+   变体按 Bot id 哈希分配（fillAvatarGlyph 同款种子），重现"每只 Bot
+   形状略不同"的手感；纯 CSS，不加图片负债。 */
+body.grok-ui .sess-avatar { border-radius: 46% 54% 48% 52% / 52% 46% 54% 48%; }
+body.grok-ui .sess-avatar.blob-1 { border-radius: 56% 44% 52% 48% / 44% 56% 46% 54%; }
+body.grok-ui .sess-avatar.blob-2 { border-radius: 42% 58% 55% 45% / 55% 45% 58% 42%; }
+body.grok-ui .sess-avatar.blob-3 { border-radius: 52% 48% 44% 56% / 48% 52% 44% 56%; }
+body.grok-ui .sess-avatar.blob-4 { border-radius: 48% 52% 58% 42% / 42% 58% 50% 50%; }
 
 /* --- 底部：账户是一枚胶囊，不是一条裸文字 ------------------------------- */
 /* #agents 是 flex 列且带 12px 内边距：`margin: auto -12px 0` 同时做到

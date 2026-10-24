@@ -81,5 +81,8 @@ await win.screenshot({ path: "/tmp/grok_sessions_popup.png" }).catch(() => {});
 await win.click("#ab-sessions-btn").catch(() => {});
 
 console.log("shots saved: /tmp/grok_window.png /tmp/grok_main.png /tmp/grok_sidebar.png /tmp/grok_composer_closed.png /tmp/grok_composer_menu.png /tmp/grok_sessions_popup.png");
+// 先真正退出 Electron 再退自己：直接 process.exit 会让 app 变孤儿进程
+// （每次跑这个脚本就漏一个 Electron 实例挂在后台）。
+try { await app.close(); } catch (_) { try { app.process().kill("SIGKILL"); } catch (_) {} }
 fs.rmSync(ud, { recursive: true, force: true });
 process.exit(0);
