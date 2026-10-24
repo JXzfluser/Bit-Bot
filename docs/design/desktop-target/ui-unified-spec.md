@@ -4,6 +4,7 @@
 > 适用：`hosts/desktop/index.html` + `hosts/desktop/ui_chrome.css`（Electron 渲染层）。
 > 交叉合同：`layout-contract.md`（几何/面板状态/渲染门 D-L-*、文案 D-C-*、调试面 D-D-*）。本规范管**样式与 token**，几何以 layout-contract 为准绳。
 > 状态口径：现状实测基线 → 目标单一源 → 分阶段收敛 → 门禁冻结。
+> **方向修正（2026-10-24，supersedes 原 NG-001）**：本仓库 UI 目标现为**对标 Grok Bot 应用**的皮肤——视觉密度、配色、圆角、组件形态向 Grok 官方规格对齐，而不只是内部一致性收敛。原"主聊天界面不动 / 像素属宿主"的临时口径作废。本规范是落地的**单一视觉真源**，token 与组件以 Grok 视觉规格为准；Grok 官方规格截图/几何为验收基准（D-ST-UI 渲染门）。
 
 ---
 

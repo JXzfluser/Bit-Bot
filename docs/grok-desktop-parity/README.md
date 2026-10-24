@@ -1,7 +1,7 @@
 # Grok Bot 桌面端复刻 — 产品对等规格（Wave G）
 
 > 依据：xAI Grok Bot 官方文档 17 页全文（存档 `/app/grokspec/grok-bot-spec.md`，抓取 2026-10-19）
-> 交叉合同：`docs/capability-matrix.md`（234 CM）、`docs/00-vision-and-non-negotiables.md`、`docs/non-goals.md`（NG-001：复刻行为与协议，不做像素皮肤）。
+> 交叉合同：`docs/capability-matrix.md`（234 CM）、`docs/00-vision-and-non-negotiables.md`、`docs/non-goals.md`（NG-001 已于 2026-10-24 撤销：UI 皮肤对标 Grok 转为**明确要做**，不再以"像素属宿主"为由排除）。
 > 基线分支：`cursor/cn-product-brain-deepseek-2004` → 本分支 `cursor/grok-bot-parity-desktop-v2`。
 > 范围：**Desktop-first**（Electron 宿主 `hosts/desktop`）。iOS/Android 保持 `MachineKind` 注册，不在本波。
 
@@ -10,6 +10,7 @@
 - **Grok 行为 = 规格**：每条能力写「官方行为 → Bit 实现落点（kernel intent / Host FFI kind / IPC / renderer）→ 可证伪验收」。
 - **真功能，不是 UI 外壳**：验收必须打到 MoonBit 内核回合（`cmd/desktop_turn` JSON `v:1`）与 Host 真实执行（文件、进程、HTTP、掩码存储），renderer 只做呈现与输入，不伪造状态。
 - **诚实残留**：真机不可达的项（如生产 OAuth IdP、商店签名、真实云 VM 远程桌面流）按仓库既有口径标 residual，永不 pretend。
+- **UI 皮肤对标（2026-10-24 起，supersedes 原 NG-001）**：在行为/协议对等之上新增**视觉皮肤对标**——布局密度、配色、圆角、组件形态、主聊天界面与所有面板向 Grok 官方规格对齐（WP **G-28**）。验收以 Grok 规格截图/几何为准，不再以"像素属宿主"排除 UI 工作；"不碰主界面"的临时口径一并作废。
 
 ## 工作包
 
@@ -37,5 +38,6 @@
 | G-25 | 群聊入口（侧栏群组行 → 同一 #log 的真实群聊：banner + rooms.json transcript 卡 + composer `room <id> ::` 前缀；@ 路由含空格成员名修复） | spec.md §2.4 | `openRoomChat`/`#room-banner`/`exitRoomChat` + `roomTurn` 最长匹配提及解析 + 既有 kernel RoomTurn 短语（wave M29） |
 | G-26 | 附件发送前预览（图片 chip 真实字节缩略图；非图片 kind+体积徽标；缺失/空路径诚实拒绝；pick/paste/drop 三入口接线） | spec.md §5.1 | `surface.attachmentPreview` + IPC `bitbot:attachments:preview` + `attachments.preview` + chip 缩略图/徽标渲染（wave M30） |
 | G-27 | 消息反应 React（hover 反应按钮 + 6 emoji picker；chips 从 store 行渲染，点击撤销；transcript 重载不丢反应；sessions.react 单一事实源） | spec.md §5.1 | `sessions.react` + IPC `bitbot:sessions:react` + preload `sessions.react` + hover 按钮/picker/chips 渲染（wave M31） |
+| G-28 | UI 皮肤对标 Grok（布局密度 / 配色 / 圆角 / 组件形态向 Grok 官方规格对齐；含主聊天界面与所有面板；撤销原 NG-001 封锁） | spec.md 全局 + Grok 官方视觉规格 | 以 Grok 规格为单一视觉真源重写 `ui_chrome.css` token 与 `index.html` 组件；新增 **D-ST-UI** 渲染门对关键界面断言 computed 几何 / 配色 / 圆角命中 Grok 规格；主聊天界面在首批范围 |
 
 详细验收条目见 `spec.md`；IPC/载荷契约见 `ipc-contract.md`；现状差距审计见 `gaps.md`。

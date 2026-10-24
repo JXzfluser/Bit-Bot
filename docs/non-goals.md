@@ -34,7 +34,7 @@
 
 | ID | 非目标 | 理由 | 矩阵交叉 |
 |----|--------|------|----------|
-| `NG-001` | 复刻 Grok Bot 闭源宿主 UI 像素级皮肤 | 协议与行为优先；像素属宿主 | `CM-19xx` 标 Host UI；深链与引导语义仍要对等 |
+| `NG-001` | **已撤销（2026-10-24）**：原"复刻 Grok Bot 闭源宿主 UI 像素级皮肤 = 非目标"已撤销。现产品方向为 **UI 皮肤对标 Grok Bot 应用**（布局密度 / 配色 / 圆角 / 组件形态向 Grok 官方规格对齐，含主聊天界面与所有面板），转为**明确要做**。视觉真源见 `grok-desktop-parity/README.md` G-28 与 `design/desktop-target/ui-unified-spec.md`。深链与引导语义对等仍保留。 | — | — |
 | `NG-002` | 在 WASM/MoonBit 内核内直接做真实 OS/网络/GUI | 必须经 Host ABI | `CM-0601` 等；见 architecture Host 边界 |
 | `NG-003` | 把用户私有业务流水线（如某公众号团队 workflows）做成 Bit 产品必交能力 | 用户技能运行时可用 ≠ 产品合同 | `CM-2118`；raw 用户 workflows 列表 |
 | `NG-004` | 对标 pstack 等第三方插件技能全家桶为「原生必交」 | 插件生态可安装，非 Grok 原生内核 | raw 待证实/非目标；矩阵不强制 CM 行 |
