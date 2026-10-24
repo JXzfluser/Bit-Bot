@@ -20,3 +20,11 @@ import {
 }
 
 pkgtype(kind: "executable")
+
+options(
+  targets: {
+    "agent_loop_product_native.mbt": [ "native", "llvm" ],
+    "agent_loop_product_wasm.mbt": [ "wasm", "wasm-gc" ],
+  },
+  "native-stub": [ "bitbot_ffi_stub.c" ],
+)

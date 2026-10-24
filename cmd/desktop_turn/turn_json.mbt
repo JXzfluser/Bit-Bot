@@ -104,7 +104,12 @@ pub(all) enum TurnIntent {
     body~ : String
   )
   RoomTurn(room~ : String, body~ : String)
-  HandoffTask(room~ : String, from_bot~ : String, to_bot~ : String, task~ : String)
+  HandoffTask(
+    room~ : String,
+    from_bot~ : String,
+    to_bot~ : String,
+    task~ : String
+  )
   SendToAgent(to_id~ : String, body~ : String)
   LaunchCloudAgent(prompt~ : String)
   DeliverCloudArtifact(artifact~ : String, dest~ : String)
@@ -458,6 +463,15 @@ pub(all) struct DesktopTurnResult {
   /// 纯新增可选字段。
   plan : String
   error : String?
+  /// Product chat entry. False on the legacy single-effect plan.
+  agent_loop : Bool
+  /// `open_turn` when this turn entered `AgentLoop::run`.
+  agent_entry : String
+  agent_stop : String
+  agent_steps : Int32
+  agent_llm : Int32
+  agent_exec : Int32
+  agent_approval : Int32
 } derive(Eq, Debug)
 
 ///|
@@ -517,11 +531,11 @@ fn part_text(part : @ui_protocol.MessageKind) -> String? {
 ///|
 /// GP-11: last path segment of a staged file path (Windows + POSIX separators).
 fn last_path_segment(p : String) -> String {
-  let norm = p.replace(old = "\\", new = "/")
+  let norm = p.replace(old="\\", new="/")
   let mut cut = -1
   let mut i = 0
   while i < norm.length() {
-    if norm[i:(i + 1)] == "/" {
+    if norm[i:i + 1] == "/" {
       cut = i
     }
     i = i + 1
@@ -875,22 +889,21 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
   // "enable tool <ns>.<tool>" / "disable tool <ns>.<tool>".
   if low.has_prefix("enable tool ") || low.has_prefix("disable tool ") {
     let enabling = low.has_prefix("enable tool ")
-    let rest =
-      if enabling {
-        trimmed[12:].trim().to_owned()
-      } else {
-        trimmed[13:].trim().to_owned()
-      }
-    let spec_len =
-      match rest.find(" ") {
-        Some(i) => i
-        None => rest.length()
-      }
+    let rest = if enabling {
+      trimmed[12:].trim().to_owned()
+    } else {
+      trimmed[13:].trim().to_owned()
+    }
+    let spec_len = match rest.find(" ") {
+      Some(i) => i
+      None => rest.length()
+    }
     let spec = rest[:spec_len].trim()
-    let tail =
-      if rest.length() > spec_len { rest[spec_len:].trim() } else {
-        ""
-      }
+    let tail = if rest.length() > spec_len {
+      rest[spec_len:].trim()
+    } else {
+      ""
+    }
     if spec != "" {
       let eff_on = if tail == "on" {
         true
@@ -903,12 +916,11 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
       let col = spec.find(":")
       let dot = spec.find(".")
       let cut = match col {
-        Some(c) => {
+        Some(c) =>
           match dot {
             Some(d) => if c < d { Some(c) } else { Some(d) }
             None => Some(c)
           }
-        }
         None => dot
       }
       match cut {
@@ -918,7 +930,11 @@ pub fn classify_intent(user_text : String) -> TurnIntent {
           if ns != "" && tool != "" {
             let ns_id = ns.to_owned()
             let tool_id = tool.to_owned()
-            return TogglePluginTool(namespace_=ns_id, tool=tool_id, enabled=eff_on)
+            return TogglePluginTool(
+              namespace_=ns_id,
+              tool=tool_id,
+              enabled=eff_on,
+            )
           }
         }
         None => ()
@@ -1116,9 +1132,9 @@ fn extract_kv(rest : String, key : String) -> String? {
         " scope=", " key=", " value=", " group=", " section=", " provider=", " entry=",
         " anchor=", " agent=", " confirm=", " via=", " pm=", " pkgs=", " packages=",
         " group=", " hidden=", " assistant=", " toggle=", " enabled=", " confirm=",
-        " bots=", " job=", " avatar=", " tags=", " pattern=", " decision=", " mode=", " code=",
-        " tz=", " reason=", " kind=", " ns=", " tool=", " detail=", " msg=", " message=",
-        " emoji=", " task=",
+        " bots=", " job=", " avatar=", " tags=", " pattern=", " decision=", " mode=",
+        " code=", " tz=", " reason=", " kind=", " ns=", " tool=", " detail=", " msg=",
+        " message=", " emoji=", " task=",
       ]
       let mut end = after.length()
       for k in keys {
@@ -1266,6 +1282,13 @@ fn fail_turn(
     reply_to: ctx.reply_to,
     plan: "",
     error: Some(err),
+    agent_loop: false,
+    agent_entry: "",
+    agent_stop: "",
+    agent_steps: 0,
+    agent_llm: 0,
+    agent_exec: 0,
+    agent_approval: 0,
   }
 }
 
@@ -1280,8 +1303,10 @@ fn is_construction_note(text : String) -> Bool {
   if !text.has_prefix("已计划") {
     return false
   }
-  text.contains("Host ") || text.contains("GP-") || text.contains("CM-") ||
-    text.contains("BITBOT_")
+  text.contains("Host ") ||
+  text.contains("GP-") ||
+  text.contains("CM-") ||
+  text.contains("BITBOT_")
 }
 
 ///|
@@ -1312,11 +1337,7 @@ fn deliver_ok(
       let ended = working.end_turn()
       let msgs : Array[DesktopMessage] = [{ role: "user", text: user_text, }]
       // GP-152：施工说明统一挪进 plan，产品可见区（messages）只留真实回复。
-      let mut plan_text = if plan_only {
-        reply
-      } else {
-        ""
-      }
+      let mut plan_text = if plan_only { reply } else { "" }
       for env in ended.outbound {
         for part in env.parts {
           match part_text(part) {
@@ -1326,7 +1347,9 @@ fn deliver_ok(
             // （desktop_turn_ack_and_json_shape），而且渲染层早就把它当调试行。
             Some(t) =>
               if (plan_only && t == reply) || is_construction_note(t) {
-                if plan_text == "" { plan_text = t }
+                if plan_text == "" {
+                  plan_text = t
+                }
               } else {
                 msgs.push({ role: "assistant", text: t, })
               }
@@ -1354,6 +1377,13 @@ fn deliver_ok(
         reply_to: ctx.reply_to,
         plan: plan_text,
         error: None,
+        agent_loop: false,
+        agent_entry: "",
+        agent_stop: "",
+        agent_steps: 0,
+        agent_llm: 0,
+        agent_exec: 0,
+        agent_approval: 0,
       }
     }
   }
@@ -1704,7 +1734,11 @@ pub fn parse_turn_context(args : Array[String]) -> DesktopTurnContext {
         channel: ctx.channel,
         approved: ctx.approved,
         reply_to: ctx.reply_to,
-        bot_id: if bid != "" { bid } else { ctx.bot_id },
+        bot_id: if bid != "" {
+          bid
+        } else {
+          ctx.bot_id
+        },
       }
       i = i + 2
       continue
@@ -2083,9 +2117,9 @@ pub fn run_desktop_turn(
         effects.push({
           kind: "copy_to_box",
           command: "desk-1|" +
-            p +
-            "|data/workspace/uploads/" +
-            last_path_segment(p),
+          p +
+          "|data/workspace/uploads/" +
+          last_path_segment(p),
           needs_host_ffi: true,
         })
       }
@@ -2268,12 +2302,12 @@ pub fn run_desktop_turn(
         trimmed,
         turn_id,
         "已计划工具开关（CM-0904 目录）：" +
-          namespace_ +
-          "." +
-          tool +
-          " → " +
-          state_word +
-          ". Host refuses unknown tools.",
+        namespace_ +
+        "." +
+        tool +
+        " → " +
+        state_word +
+        ". Host refuses unknown tools.",
         intent,
         ctx~,
         effects=[effect],
@@ -2582,7 +2616,11 @@ pub fn run_desktop_turn(
           kind: "routine_fire",
           // `execute=1` travels as a pipe field; the Host treats its absence as
           // "prepare a draft only" (GP-108).
-          command: if wants_execute { id + "|execute=1" } else { id },
+          command: if wants_execute {
+            id + "|execute=1"
+          } else {
+            id
+          },
           needs_host_ffi: true,
         }
         deliver_ok(
@@ -2781,7 +2819,9 @@ pub fn run_desktop_turn(
           deliver_ok(
             trimmed,
             turn_id,
-            "已计划/模拟 MCP 调用：" + output + "。Host 执行真实 MCP 调用。",
+            "已计划/模拟 MCP 调用：" +
+            output +
+            "。Host 执行真实 MCP 调用。",
             intent,
             ctx~,
             effects=[effect],
@@ -4440,7 +4480,8 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "已计划登录（GP-74）：" + label +
+        "已计划登录（GP-74）：" +
+        label +
         ". Host records a LOCAL profile only and says which credential source backs it; " +
         "no remote account is contacted.",
         intent,
@@ -4475,7 +4516,8 @@ pub fn run_desktop_turn(
       deliver_ok(
         trimmed,
         turn_id,
-        "已计划切换账户（GP-74）：" + label +
+        "已计划切换账户（GP-74）：" +
+        label +
         "。Host 切换本地档案；未知标签将被拒绝，不会虚构。",
         intent,
         ctx~,
@@ -5152,7 +5194,11 @@ pub fn run_desktop_turn(
     }
     HideBot(bot_id~, hidden~) => {
       let effect : DesktopEffect = {
-        kind: if hidden { "bot_hide" } else { "bot_unhide" },
+        kind: if hidden {
+          "bot_hide"
+        } else {
+          "bot_unhide"
+        },
         command: "bot=" + bot_id,
         needs_host_ffi: true,
       }
@@ -5365,7 +5411,7 @@ pub fn run_desktop_turn(
         intent,
         ctx~,
       )
-    Chat => {
+    Chat =>
       // CM-1106 / GP-101 (§8.3): a credential pasted into chat is not a turn.
       // The renderer blocks the same shapes; this is the kernel-side backstop so
       // a CLI/API caller cannot smuggle a token into the transcript either.
@@ -5381,8 +5427,8 @@ pub fn run_desktop_turn(
             reason,
             ctx,
             assistant="拒绝在对话中粘贴密钥（CM-1106）。请使用 Host 的安全密钥输入框；对话与模型只会看到 " +
-            @ui_protocol.redact_secrets(trimmed) +
-            "。",
+              @ui_protocol.redact_secrets(trimmed) +
+              "。",
           )
         Ok(_) => {
           // Product brain: plan Host llm_chat (DeepSeek / BITBOT_LLM_*). No canned
@@ -5407,7 +5453,6 @@ pub fn run_desktop_turn(
           )
         }
       }
-    }
   }
 }
 
@@ -5571,6 +5616,20 @@ pub fn DesktopTurnResult::to_json_line(self : DesktopTurnResult) -> String {
     }
     None => ()
   }
+  buf.write_string(",\"agent_loop\":")
+  buf.write_string(if self.agent_loop { "true" } else { "false" })
+  buf.write_string(",\"agent_entry\":\"")
+  buf.write_string(escape_json_string(self.agent_entry))
+  buf.write_string("\",\"agent_stop\":\"")
+  buf.write_string(escape_json_string(self.agent_stop))
+  buf.write_string("\",\"agent_steps\":")
+  buf.write_string(self.agent_steps.to_string())
+  buf.write_string(",\"agent_llm\":")
+  buf.write_string(self.agent_llm.to_string())
+  buf.write_string(",\"agent_exec\":")
+  buf.write_string(self.agent_exec.to_string())
+  buf.write_string(",\"agent_approval\":")
+  buf.write_string(self.agent_approval.to_string())
   buf.write_string("}")
   buf.to_string()
 }

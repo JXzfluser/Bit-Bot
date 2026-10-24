@@ -90,7 +90,7 @@ pub extend AgentRun with Debug::{to_repr}
 
 ///|
 /// Four Host operations. No fifth "run the model again" method.
-pub trait AgentLoopHost {
+pub(open) trait AgentLoopHost {
   fn llm_chat(Self, Array[LoopMessage]) -> LlmChatReply
   fn exec_tool(Self, String, String) -> String
   fn request_approval(Self, String, String) -> ApprovalVerdict

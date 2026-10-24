@@ -569,7 +569,7 @@ pub fn VoiceMemoDelivery::to_repr(Self) -> @debug.Repr
 // Type aliases
 
 // Traits
-pub trait AgentLoopHost {
+pub(open) trait AgentLoopHost {
   fn llm_chat(Self, Array[LoopMessage]) -> LlmChatReply
   fn exec_tool(Self, String, String) -> String
   fn request_approval(Self, String, String) -> ApprovalVerdict

@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const { createHostFfi } = require("./host_ffi");
+const { createProductSession, legacyGuardedRerunEnabled } = require("./agent_loop_product_wire");
 
 /** GP-14 fallback resolver: read data/desktop/sessions.json straight from disk. */
 function defaultResolveReplyForRoot(repoRoot) {
@@ -56,6 +57,8 @@ function createTurnRunner(repoRoot, opts = {}) {
         env: {
           ...process.env,
           PATH: `${process.env.HOME || ""}/.moon/bin:${process.env.PATH || ""}`,
+          // Product FFI is a C stub. The LLVM native backend does not link it.
+          MOONBIT_NEW_NATIVE: "0",
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -86,6 +89,103 @@ function createTurnRunner(repoRoot, opts = {}) {
           return;
         }
         resolve({ stdout, stderr });
+      });
+    });
+  }
+
+  function kernelLoopTrace(stderr) {
+    const kernelOps = [];
+    let entry = false;
+    for (const raw of String(stderr || "").split(/\r?\n/)) {
+      const line = raw.trim();
+      if (line === "BITBOT_LOOP entry=AgentLoop::run") entry = true;
+      if (line.startsWith("BITBOT_LOOP op=")) {
+        kernelOps.push(line.slice("BITBOT_LOOP op=".length).trim());
+      }
+    }
+    return { entry, kernelOps };
+  }
+
+  /**
+   * Read one kernel FFI request, write one JSON response. Line splitting only.
+   */
+  function pumpMoonFfi(args, onFfi, { timeoutMs = 180000 } = {}) {
+    return new Promise((resolve, reject) => {
+      const child = spawn(MOON_BIN, args, {
+        cwd: ffi.REPO_ROOT,
+        env: {
+          ...process.env,
+          PATH: `${process.env.HOME || ""}/.moon/bin:${process.env.PATH || ""}`,
+          MOONBIT_NEW_NATIVE: "0",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      let buf = "";
+      let chain = Promise.resolve();
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error(`moon timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      const takeLine = (line) => {
+        if (line.startsWith("BITBOT_FFI ")) {
+          const payload = line.slice("BITBOT_FFI ".length);
+          chain = chain.then(async () => {
+            let res;
+            try {
+              res = await onFfi(JSON.parse(payload));
+            } catch (err) {
+              res = {
+                content: "",
+                calls: [],
+                output: "",
+                verdict: "deny",
+                error: String((err && err.message) || err),
+              };
+            }
+            if (child.stdin && !child.stdin.destroyed) {
+              child.stdin.write(JSON.stringify(res) + "\n");
+            }
+          });
+          return;
+        }
+        stdout += line + "\n";
+      };
+      child.stdout.on("data", (chunk) => {
+        buf += chunk.toString();
+        let nl = buf.indexOf("\n");
+        while (nl >= 0) {
+          const line = buf.slice(0, nl).replace(/\r$/, "");
+          buf = buf.slice(nl + 1);
+          takeLine(line);
+          nl = buf.indexOf("\n");
+        }
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString();
+      });
+      child.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on("close", (code) => {
+        chain.then(() => {
+          clearTimeout(timer);
+          if (buf.trim()) stdout += buf + "\n";
+          if (code !== 0) {
+            reject(
+              new Error(
+                `moon exited ${code}\n${stderr || stdout || "(no output)"}`.trim(),
+              ),
+            );
+            return;
+          }
+          resolve({ stdout, stderr, ...kernelLoopTrace(stderr) });
+        }).catch((err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
       });
     });
   }
@@ -156,7 +256,20 @@ function createTurnRunner(repoRoot, opts = {}) {
     }
     moonArgs.push(text);
 
-    const { stdout, stderr } = await runMoon(moonArgs);
+    const nodeOps = [];
+    const productWire = createProductSession(ffi, {
+      botId: ctx.botId,
+      roomContext: ctx.roomContext || null,
+    });
+    const session = await pumpMoonFfi(
+      moonArgs,
+      async (req) => {
+        nodeOps.push(String((req && req.op) || ""));
+        return productWire.dispatch(req);
+      },
+      { timeoutMs: ctx.timeoutMs || 180000 },
+    );
+    const { stdout, stderr } = session;
     const raw = lastJsonLine(stdout || stderr);
     let parsed;
     try {
@@ -169,6 +282,11 @@ function createTurnRunner(repoRoot, opts = {}) {
         stderr: stderr.trim(),
       };
     }
+    parsed.loop_trace = {
+      entry: Boolean(session.entry),
+      kernel_ops: session.kernelOps || [],
+      node_ops: nodeOps,
+    };
 
     if (
       parsed &&
@@ -359,9 +477,9 @@ function createTurnRunner(repoRoot, opts = {}) {
       }
     }
 
-    // Wave G GP-21/GP-36: kernel asked, Host auto-review says allow → execute
-    // the original request once with --approved (one guarded re-run, no loops).
+    // Non-default. The product chat path does not re-enter the model from here.
     if (
+      legacyGuardedRerunEnabled() &&
       parsed &&
       parsed.ok &&
       !ctx.approved &&
