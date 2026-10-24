@@ -165,12 +165,24 @@ async function setTheme(win, mode) {
       const av = el.querySelector(".msg-grok-avatar");
       const nm = el.querySelector(".msg-grok-name");
       const ra = av.getBoundingClientRect();
+      const csMsg = getComputedStyle(el);
+      const rh = el.querySelector(".msg-grok-head").getBoundingClientRect();
+      const rb = el.querySelector(".body").getBoundingClientRect();
       const out = {
         avatarW: Math.round(ra.width),
         avatarH: Math.round(ra.height),
         avatarRadius: getComputedStyle(av).borderRadius,
         nameColor: getComputedStyle(nm).color,
         nameWeight: getComputedStyle(nm).fontWeight,
+        // Stacked (Grok) = name row ABOVE the bubble, both flush left.
+        dir: csMsg.flexDirection,
+        stacked: rb.top >= rh.bottom - 1 && Math.abs(rb.left - rh.left) < 2,
+        rects: {
+          msg: [Math.round(el.getBoundingClientRect().left), Math.round(el.getBoundingClientRect().top), Math.round(el.getBoundingClientRect().width)],
+          head: [Math.round(rh.left), Math.round(rh.top), Math.round(rh.width), Math.round(rh.height)],
+          body: [Math.round(rb.left), Math.round(rb.top), Math.round(rb.width), Math.round(rb.height)],
+        },
+        bodyMargin: getComputedStyle(el.querySelector(".body")).marginLeft + " / " + getComputedStyle(el.querySelector(".body")).alignSelf,
       };
       el.remove();
       return out;
@@ -185,6 +197,9 @@ async function setTheme(win, mode) {
       head.nameColor === ACCENT_LIGHT
         ? ok(`DM reply sender name uses accent (${head.nameColor})`)
         : bad("DM reply sender name colour drifted", head.nameColor);
+      head.stacked && head.dir === "column"
+        ? ok("head sits ABOVE the bubble, both flush left (Grok stacking)")
+        : bad("head/bubble layout drifted from Grok stacking", JSON.stringify({ dir: head.dir, stacked: head.stacked }));
     }
 
     // A10 — assistant bubble is a flat block (0 border, no shadow, radius > 0)

@@ -25,7 +25,29 @@
     "avatarH": 28,
     "avatarRadius": "50%",
     "nameColor": "rgb(124, 58, 237)",
-    "nameWeight": "600"
+    "nameWeight": "600",
+    "dir": "column",
+    "stacked": true,
+    "rects": {
+      "msg": [
+        496,
+        842,
+        728
+      ],
+      "head": [
+        496,
+        842,
+        728,
+        28
+      ],
+      "body": [
+        496,
+        876,
+        728,
+        52
+      ]
+    },
+    "bodyMargin": "0px / auto"
   },
   "bubble": {
     "borderTopWidth": "0px",

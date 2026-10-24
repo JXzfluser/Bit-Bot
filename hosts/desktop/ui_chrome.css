@@ -1630,8 +1630,15 @@ body.grok-ui .msg-actions { gap: var(--space-2); }
 body.grok-ui .msg-actions [data-act="regenerate"] { color: var(--accent); }
 
 /* C3 修正：assistant 的操作条原来绝对定位在卡片右上角，会压住第一行末尾的文字
-   （再加上「重新生成」后更长）。改成落到气泡下方一行，和 Grok 一致，也不再遮字。 */
-body.grok-ui .msg.assistant { flex-wrap: wrap; }
+   （再加上「重新生成」后更长）。改成落到气泡下方一行，和 Grok 一致，也不再遮字。
+
+   G-28 修正：这里原本是 flex-wrap: wrap —— 当时 .msg.assistant 还是 row 布局，
+   靠 wrap 把操作条推到下一行。后来 .msg.assistant 改成 column（名称行在上、
+   气泡在下），这条 wrap 就变成了有害的：column + wrap 在容器高度装不下
+   「head(28) + gap + body」时，会横向换列把 head 和 body 挤成左右两栏
+   （实测 head 在 x=496、body 在 x=863，各占一半宽），头像+名就和气泡并排了。
+   column 布局下换行不是我们想要的，操作条改用 order: 3 自然沉到最下方。 */
+body.grok-ui .msg.assistant { flex-wrap: nowrap; }
 body.grok-ui .msg.assistant .msg-actions {
   position: static;
   order: 3;
