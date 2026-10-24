@@ -15001,6 +15001,41 @@ function createHostFfi(repoRoot) {
       const cron = parsed.cron;
       const nextDue = parsed.nextDue;
       const dueNow = parsed.dueNow;
+      // GP-163：任务 id 由原话推导，所以「同一句话说两遍」命中的是同一行。
+      // 同一个群重排 = 改自己的任务（允许）；别的群来排 = 不能静默把归属抢走，
+      // 否则前一个群的用户只会看到自己的定时任务凭空消失，连条删除记录都没有。
+      // 还没有归属的行（DM / CLI / daemon 建的）谁先来话就归谁 —— 认领不是抢。
+      const prior = loadRoutines().find((r) => r && String(r.id) === (stripEnvQuotes(parts[0]) || "routine-1"));
+      const priorRoom = prior ? String(prior.room_id || "") : "";
+      if (roomId && prior && priorRoom && priorRoom !== roomId) {
+        const refuseDir = path.join(REPO_ROOT, "data", "routines");
+        fs.mkdirSync(refuseDir, { recursive: true });
+        const refusePath = path.join(
+          refuseDir,
+          `refuse-${id || "routine"}-${Date.now().toString(36)}.json`,
+        );
+        const refusal = {
+          mode: "host_routine_schedule",
+          stored: false,
+          error: "room_taken",
+          id,
+          cron,
+          room_id: roomId,
+          owner_room_id: priorRoom,
+          at: new Date().toISOString(),
+          note: "这条定时任务已经属于另一个群；不在这里改写它的归属，也没有改动它的内容。",
+          path: refusePath,
+        };
+        fs.writeFileSync(refusePath, JSON.stringify(refusal, null, 2));
+        return {
+          kind,
+          ok: false,
+          command,
+          error: "room_taken",
+          stdout: JSON.stringify(refusal, null, 2),
+          stderr: "routine already owned by another room: " + priorRoom,
+        };
+      }
       const row = upsertRoutine({
         id: stripEnvQuotes(parts[0]) || "routine-1",
         cron,

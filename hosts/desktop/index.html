@@ -5626,6 +5626,9 @@
       // 「这条任务不属于本群」说成一句含糊的失败。
       if (code.indexOf("room_required") >= 0) return wavegT("riNoRoom");
       if (code.indexOf("room_mismatch") >= 0) return wavegT("riErrRoomMismatch");
+      // GP-163：另一个群已经拥有这条排程。这既不是「发起失败」，也不是「已经建好」，
+      // 得说清是谁的东西、为什么不动它 —— 否则用户以为自己的话被答应了。
+      if (code.indexOf("room_taken") >= 0) return wavegT("riErrTaken");
       if (code.indexOf("not_found") >= 0) return wavegT("riErrNotFound");
       if (code.indexOf("action_unsupported") >= 0) return wavegT("riErrAction");
       if (code.indexOf("not_reflected") >= 0) return wavegT("riErrNotReflected");
@@ -11456,6 +11459,7 @@
         riToggleFailed: "改状态失败：{e}",
         riErrNotFound: "这条定时任务已经不在了",
         riErrRoomMismatch: "这条定时任务不属于本群，不能在这里改",
+        riErrTaken: "这句排程对应的定时任务已经属于别的群，不能在这里改写它的归属",
         riErrAction: "这个操作在群资料里做不了",
         riErrNotReflected: "改完没生效，请重新打开群资料再看",
         riErrEffect: "这次改动没有被接受",
@@ -12052,6 +12056,7 @@
         riToggleFailed: "改狀態失敗：{e}",
         riErrNotFound: "這條定時任務已經不在了",
         riErrRoomMismatch: "這條定時任務不屬於本群，不能在這裡改",
+        riErrTaken: "這句排程對應的定時任務已經屬於別的群，不能在這裡改寫它的歸屬",
         riErrAction: "這個操作在群資料裡做不了",
         riErrNotReflected: "改完沒生效，請重新開啟群資料再看",
         riErrEffect: "這次改動沒有被接受",
@@ -12648,6 +12653,7 @@
         riToggleFailed: "Could not update: {e}",
         riErrNotFound: "This scheduled task no longer exists",
         riErrRoomMismatch: "This task belongs to another group; it cannot be changed here",
+        riErrTaken: "That schedule already belongs to another group; its ownership cannot be rewritten here",
         riErrAction: "That action is not available from the group panel",
         riErrNotReflected: "The change did not persist; reopen the group info to check",
         riErrEffect: "The change was not accepted",

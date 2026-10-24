@@ -27,6 +27,9 @@
  *   P11 删掉的任务，它挂出来的待批准邮件在审批队列里要看得见来路（GP-162）：
  *      任务还在时不贴标记（不误报）→ 删掉后那一行仍显示、仍可决定（不藏、不替用户
  *      拒绝），但写明「来源任务已删除」，悬停说明讲清「批准仍会发出这一封」。
+ *   P12 在群里直接发一句话排程（不走面板表单）也必须归本群（GP-163）：行的 room_id
+ *      就是本群、墙钟 22:00、面板列得到，而且「暂停」按得下去 —— 群回合不把 room 交给
+ *      效果执行的话，这条任务会按时发信却在任何面板里不存在，谁也管不着。
  *
  * 缺 electron / xvfb / moon 时诚实 SKIP（exit 0 + SKIP 计数），不伪造 PASS。
  * 用法：ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_desktop_creator_pipeline.mjs
@@ -605,6 +608,51 @@ function startStub() {
           !queueFinal.text.includes(MAIL_TO)
           ? ok("P11 用户自己点「拒绝」就能收掉这一行（拒绝后队列回到 0 行孤立项）")
           : bad("P11 孤立批准行无法被用户决定", JSON.stringify({ decided11, queueFinal: queueFinal.text.slice(0, 160) }).slice(0, 400));
+      }
+
+      /* ---------- P12: 在群里直接说一句话排程，也要归本群管得了（GP-163） ---------- */
+      const before12 = new Set(routineRows().map((r) => String(r && r.id || "")));
+      const CHAT_SENTENCE = "@" + seeded.bc.id + " 每天晚上10点把当天的热点汇总发到 " + MAIL_TO;
+      const orch12 = await win.evaluate(async ([rid, text]) => {
+        const r = await window.bitbot.rooms.orchestrate({ room_id: rid, text });
+        return { ok: Boolean(r && r.ok), error: (r && r.error) || "" };
+      }, [roomId, CHAT_SENTENCE]).catch((e) => ({ ok: false, error: String((e && e.message) || e) }));
+      let chatRow = null;
+      for (let i = 0; i < 60 && !chatRow; i += 1) {
+        chatRow = routineRows().find((r) => r && !before12.has(String(r.id || "")) &&
+          String((r && r.prompt) || "").includes(MAIL_TO)) || null;
+        if (!chatRow) await new Promise((r) => setTimeout(r, 1000));
+      }
+      const wc12 = chatRow && chatRow.next_due ? wallClock(chatRow.next_due, TZ) : null;
+      chatRow && String(chatRow.room_id || "") === roomId && chatRow.cron === "0 22 * * *" &&
+        wc12 && wc12.hour === 22 && wc12.minute === 0
+        ? ok("P12 群里发一句话（" + CHAT_SENTENCE.slice(0, 12) + "…）真的建成 cron=" + chatRow.cron +
+          "、墙钟 " + String(wc12.hour).padStart(2, "0") + ":" + String(wc12.minute).padStart(2, "0") +
+          " 的任务，并且归属就是本群（room_id=" + chatRow.room_id + "）")
+        : bad("P12 群里说出来的排程没有归到本群（面板看不见、也管不着）", JSON.stringify({
+          orch12,
+          found: chatRow && { id: chatRow.id, c: chatRow.cron, r: chatRow.room_id, n: chatRow.next_due, p: String(chatRow.prompt || "").slice(0, 40) },
+          newRows: routineRows().filter((r) => !before12.has(String(r.id || ""))).map((r) => ({ id: r.id, c: r.cron, r: r.room_id || "" })),
+        }).slice(0, 500));
+      if (chatRow) {
+        await win.evaluate(() => renderRoomRailRoutines()).catch(() => {});
+        await new Promise((r) => setTimeout(r, 1200));
+        const panel12 = await win.evaluate(() => ({
+          items: document.querySelectorAll("#ri-routine-list .ri-item").length,
+          text: (document.getElementById("ri-routine-list") || {}).innerText || "",
+        }));
+        panel12.items >= 1 && /22:00/.test(panel12.text)
+          ? ok("P12 群资料面板列得出这条，下次触发显示 22:00 —— 不是只落了盘而已")
+          : bad("P12 面板仍然看不见群里说出来的任务", JSON.stringify(panel12).slice(0, 300));
+        await win.click("#ri-routine-list .ri-item .ri-toggle").catch(() => {});
+        let paused12 = null;
+        for (let i = 0; i < 40 && !(paused12 && paused12.enabled === false); i += 1) {
+          paused12 = routineRows().find((r) => r && String(r.id) === String(chatRow.id)) || null;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        paused12 && paused12.enabled === false
+          ? ok("P12 这条任务在面板里按「暂停」真的停得下来（管得住，不是看得见而已）")
+          : bad("P12 面板管不住这条任务", JSON.stringify(paused12 && { e: paused12.enabled, l: paused12.lifecycle }).slice(0, 250));
       }
     }
   } catch (e) {

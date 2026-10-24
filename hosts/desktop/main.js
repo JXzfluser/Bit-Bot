@@ -1404,6 +1404,10 @@ async function runRoomResponderTurn(botId, task, ctx) {
       // 编排不改变审批语义：群回合同样必须过原审批门。
       approved: false,
       botId: id,
+      // GP-163「群里说出来的排程要归这个群管」：回合来自哪个群就交给效果执行，
+      // 否则群里一句话建出来的定时任务落得了盘却不属于任何群 —— 面板按 room_id
+      // 过滤列不到，暂停 / 删除又要求 roomId，等于一条谁都管不着的活任务在按时发信。
+      roomId: String((ctx && ctx.room) || ""),
       // GP-148 §1-J3：群回合带群上下文进 provider；DM 路径不会走到这里，
       // 所以「私聊不许出现群名单」是由调用点保证的，不是靠 prompt 里叮嘱。
       roomContext: buildRoomContext((ctx && ctx.room) || "", id, ctx),
