@@ -10,7 +10,9 @@ import {
 }
 
 // Values
-pub const STYLE_GUIDE_MAX_ACK_CHARS : Int = 120
+pub const AGENT_LOOP_MAX_STEPS : Int32 = 64
+
+pub const STYLE_GUIDE_MAX_ACK_CHARS : Int32 = 120
 
 pub fn answer_missing_data(available~ : String?, question~ : String, real_path~ : String) -> HonestyAnswer
 
@@ -125,10 +127,35 @@ pub fn user_timezone() -> @core.TimeZone
 // Types and methods
 pub(all) struct AgentLoop {
   registry : ToolRegistry
-  max_steps : Int
+  max_steps : Int32
 }
 pub fn AgentLoop::boot(Self, TurnContext) -> String
 pub fn AgentLoop::new(ToolRegistry) -> Self
+pub fn[H : AgentLoopHost] AgentLoop::run(Self, TurnContext, H) -> AgentRun
+
+pub(all) struct AgentRun {
+  turn_id : String
+  stop : LoopStop
+  steps : Int32
+  max_steps : Int32
+  exec_count : Int32
+  llm_count : Int32
+  approval_count : Int32
+  delivered : String
+  observations : Array[String]
+} derive(Eq, @debug.Debug)
+pub fn AgentRun::equal(Self, Self) -> Bool
+pub fn AgentRun::not_equal(Self, Self) -> Bool
+pub fn AgentRun::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ApprovalVerdict {
+  ApprovalAllow
+  ApprovalDeny
+  ApprovalCancel
+} derive(Eq, @debug.Debug)
+pub fn ApprovalVerdict::equal(Self, Self) -> Bool
+pub fn ApprovalVerdict::not_equal(Self, Self) -> Bool
+pub fn ApprovalVerdict::to_repr(Self) -> @debug.Repr
 
 pub(all) enum AskLanguage {
   Zh
@@ -258,6 +285,31 @@ pub fn InstructionPolicy::equal(Self, Self) -> Bool
 pub fn InstructionPolicy::not_equal(Self, Self) -> Bool
 pub fn InstructionPolicy::to_repr(Self) -> @debug.Repr
 
+pub(all) struct LlmChatReply {
+  content : String
+  tool_calls : Array[ToolCallReq]
+} derive(Eq, @debug.Debug)
+pub fn LlmChatReply::equal(Self, Self) -> Bool
+pub fn LlmChatReply::not_equal(Self, Self) -> Bool
+pub fn LlmChatReply::to_repr(Self) -> @debug.Repr
+
+pub(all) struct LoopMessage {
+  role : String
+  content : String
+} derive(Eq, @debug.Debug)
+pub fn LoopMessage::equal(Self, Self) -> Bool
+pub fn LoopMessage::not_equal(Self, Self) -> Bool
+pub fn LoopMessage::to_repr(Self) -> @debug.Repr
+
+pub(all) enum LoopStop {
+  Final
+  MaxSteps
+  Cancelled
+} derive(Eq, @debug.Debug)
+pub fn LoopStop::equal(Self, Self) -> Bool
+pub fn LoopStop::not_equal(Self, Self) -> Bool
+pub fn LoopStop::to_repr(Self) -> @debug.Repr
+
 pub(all) struct MachineDefaultSession {
   mut last_message_machine : String?
 }
@@ -265,6 +317,26 @@ pub fn MachineDefaultSession::default_machine(Self) -> String?
 pub fn MachineDefaultSession::ingest(Self, InboundMachineNote) -> String?
 pub fn MachineDefaultSession::new() -> Self
 pub fn MachineDefaultSession::resolve_machine_id(Self, String?) -> String?
+
+pub(all) struct MockAgentHost {
+  replies : Array[LlmChatReply]
+  mut reply_i : Int32
+  repeat_last : Bool
+  exec_results : Array[String]
+  mut exec_i : Int32
+  execs : Array[String]
+  approvals : Array[String]
+  deliveries : Array[String]
+  llm_seen : Array[String]
+  deny_all : Bool
+  cancel_on_approval : Bool
+}
+pub fn MockAgentHost::deliver(Self, String) -> Unit
+pub fn MockAgentHost::exec_tool(Self, String, String) -> String
+pub fn MockAgentHost::llm_chat(Self, Array[LoopMessage]) -> LlmChatReply
+pub fn MockAgentHost::request_approval(Self, String, String) -> ApprovalVerdict
+pub fn MockAgentHost::scripts(Array[LlmChatReply]) -> Self
+pub impl AgentLoopHost for MockAgentHost
 
 pub(all) struct ParallelToolPlan {
   parallel_batches : Array[Array[PlannedToolEmit]]
@@ -320,7 +392,7 @@ pub(all) struct StepEffectBatch {
   effects : Array[@tools.Effect]
 } derive(Eq, @debug.Debug)
 pub fn StepEffectBatch::equal(Self, Self) -> Bool
-pub fn StepEffectBatch::len(Self) -> Int
+pub fn StepEffectBatch::len(Self) -> Int32
 pub fn StepEffectBatch::not_equal(Self, Self) -> Bool
 pub fn StepEffectBatch::to_repr(Self) -> @debug.Repr
 
@@ -344,6 +416,15 @@ pub fn TodoItem::is_pending(Self) -> Bool
 pub fn TodoItem::not_equal(Self, Self) -> Bool
 pub fn TodoItem::to_repr(Self) -> @debug.Repr
 
+pub(all) struct ToolCallReq {
+  id : String
+  name : String
+  arguments_json : String
+} derive(Eq, @debug.Debug)
+pub fn ToolCallReq::equal(Self, Self) -> Bool
+pub fn ToolCallReq::not_equal(Self, Self) -> Bool
+pub fn ToolCallReq::to_repr(Self) -> @debug.Repr
+
 pub(all) struct ToolCallTrace {
   tool_name : String
   args_json : String
@@ -365,7 +446,7 @@ pub(all) struct ToolRegistry {
   specs : Array[@tools.ToolSpec]
 }
 pub fn ToolRegistry::empty() -> Self
-pub fn ToolRegistry::len(Self) -> Int
+pub fn ToolRegistry::len(Self) -> Int32
 pub fn ToolRegistry::register(Self, @tools.ToolSpec) -> Unit
 pub fn ToolRegistry::seed_builtins() -> Self
 
@@ -427,7 +508,7 @@ pub fn TurnContext::deliver_text(Self, body~ : String, channel_hint? : String?) 
 pub fn TurnContext::deliver_text_to_inbound(Self, body~ : String, inbound_address~ : String) -> Result[Self, String]
 pub fn TurnContext::deliver_voice_memo(Self, spoken_text~ : String, audio_path? : String) -> Result[(Self, VoiceMemoDelivery), String]
 pub fn TurnContext::deliver_widget(Self, widget_id~ : String, spec~ : @ui_protocol.WidgetSpec) -> Result[Self, String]
-pub fn TurnContext::done_todo_count(Self) -> Int
+pub fn TurnContext::done_todo_count(Self) -> Int32
 pub fn TurnContext::end_turn(Self) -> Self
 pub fn TurnContext::equal(Self, Self) -> Bool
 pub fn TurnContext::finalize_text(Self, body~ : String) -> Result[Self, String]
@@ -443,7 +524,7 @@ pub fn TurnContext::should_ack_user(Self) -> Bool
 pub fn TurnContext::to_repr(Self) -> @debug.Repr
 pub fn TurnContext::todo_write(Self, Array[TodoItem]) -> Result[Self, String]
 pub fn TurnContext::visible_todos(Self) -> Array[TodoItem]
-pub fn TurnContext::voice_memo_count(Self) -> Int
+pub fn TurnContext::voice_memo_count(Self) -> Int32
 
 pub(all) enum TurnPhase {
   Opened
@@ -469,3 +550,9 @@ pub fn VoiceMemoDelivery::to_repr(Self) -> @debug.Repr
 // Type aliases
 
 // Traits
+pub trait AgentLoopHost {
+  fn llm_chat(Self, Array[LoopMessage]) -> LlmChatReply
+  fn exec_tool(Self, String, String) -> String
+  fn request_approval(Self, String, String) -> ApprovalVerdict
+  fn deliver(Self, String) -> Unit
+}
