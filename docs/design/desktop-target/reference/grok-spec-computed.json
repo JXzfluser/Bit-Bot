@@ -1,4 +1,44 @@
 {
+  "sidebar": {
+    "w": 280,
+    "rows": 13,
+    "toolbar": {
+      "top": 56,
+      "h": 46
+    },
+    "botSection": {
+      "top": 108,
+      "h": 180
+    },
+    "botList": {
+      "top": 173,
+      "h": 115
+    },
+    "roomList": {
+      "top": 0,
+      "h": 0
+    },
+    "roomEmptyShown": true,
+    "roomListPrev": {
+      "tag": "DIV",
+      "cls": "panel-title panel-head spaced",
+      "display": "none",
+      "h": 0,
+      "top": 0
+    },
+    "sessionTitleTop": 298,
+    "sessionListTop": 352,
+    "chatTitleY": 319,
+    "firstRowTop": 173,
+    "rowH": 57,
+    "avW": 32,
+    "avRadius": "50%",
+    "labels": [
+      "今天",
+      "昨天",
+      "更早"
+    ]
+  },
   "accent": {
     "sendLight": "rgb(124, 58, 237)",
     "sendDark": "rgb(168, 85, 247)"

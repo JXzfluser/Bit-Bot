@@ -1956,7 +1956,7 @@ body.grok-ui .panel-title.spaced {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin: 16px 0 2px;
+  margin: 8px 0 2px;
   padding: 0 12px;
   font-size: var(--text-md);
   font-weight: 600;
@@ -1972,7 +1972,7 @@ body.grok-ui #agents .panel-title > span:first-child {
 }
 /* 「Bot 列表」是 <details><summary>，形状要跟上面三条完全一致 */
 body.grok-ui #sb-bots-rooms > summary {
-  margin: 16px 0 2px;
+  margin: 8px 0 2px;
   padding: 0 12px;
   border-radius: 0;
   background: transparent;
@@ -1990,6 +1990,16 @@ body.grok-ui .sb-adv-caret { font-size: 10px; color: var(--nav-label); }
 body.grok-ui #bot-list,
 body.grok-ui #room-list,
 body.grok-ui #session-list { margin: 0; padding: 0; }
+
+/* --- G-28 侧栏对齐（第二轮）：无群组时整块不渲染 ------------------------
+   Grok 真源是「toolbar + workspace 名 → 立刻接会话列表」，实测第一行在
+   y≈100（视口 760）。我方实测会话列表起点在 y=440（视口 844）—— 超过一半
+   屏幕被头部吃掉，这是"左侧一直不像 Grok"的最大来源。
+
+   其中纯占位的部分：「群组」标题（含 22px 上 margin）约 60px + 空态提示
+   35px，没有任何信息量。没有群组时这两个节点都不该存在。
+   开关由 refreshSidebarRooms 决定（它同时知道"空"和"读不到"两种状态，
+   读不到时要保留标题来承载故障提示，所以不能用纯 CSS 判空）。 */
 
 /* --- 新建 Bot：一行动作，不再是压在标题上的浮块 ------------------------- */
 body.grok-ui #bot-new-btn {

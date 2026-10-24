@@ -5257,6 +5257,16 @@
         unreadable = true;
       }
       box.innerHTML = "";
+      // G-28 侧栏对齐：空群组不占位。Grok 侧栏在 workspace 名下面直接就是会话
+      // 列表，而「群组」标题 + 空态提示会白占约 95px，把会话列表推到屏幕中线。
+      // 两种状态要保留展示：有群组；或读取失败（那是有信息量的故障提示）。
+      // 只有"确实一个群都没有"时才连标题一起收起。
+      {
+        const head = box.previousElementSibling;
+        const showRooms = unreadable || rows.length > 0;
+        if (head && head.classList.contains("panel-title")) head.hidden = !showRooms;
+        box.hidden = !showRooms;
+      }
       if (unreadable) {
         // GP-146：列表读不到 ≠ 一个群都没有，别把存储故障演成「我的群没了」。
         const bad = document.createElement("div");

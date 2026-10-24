@@ -83,6 +83,61 @@ async function setTheme(win, mode) {
     const hasGrok = await win.evaluate(() => document.body.classList.contains("grok-ui"));
     hasGrok ? ok("body carries .grok-ui (Grok shell skin active)") : bad("body missing .grok-ui");
 
+    // S — sidebar geometry (Grok reference, measured off replica/screens/grok-composer.png
+    //     at 2080px = 1040 logical points => sidebar ~240 logical, 40px blob avatar,
+    //     near-flat list with tiny group labels).
+    const sidebar = await win.evaluate(() => {
+      const sb = document.getElementById("agents");
+      if (!sb) return { missing: true };
+      const r = sb.getBoundingClientRect();
+      const rows = [...sb.querySelectorAll(".sess-row")];
+      const row = rows[0] || null;
+      const av = row && row.querySelector(".sess-avatar");
+      const rr = row && row.getBoundingClientRect();
+      const ar = av && av.getBoundingClientRect();
+      const labels = [...sb.querySelectorAll('[class*="group"],[class*="section-title"],.nav-title')]
+        .map((g) => (g.textContent || "").trim())
+        .filter((t) => t && t.length < 12);
+      // 分解头部高度：用户看到的「列表起点」是会话列表第一行，
+      // 而不是 bot 列表第一行 —— 两者差着整个 Bot/群组区块。
+      const box = (sel) => {
+        const n = sb.querySelector(sel);
+        if (!n) return null;
+        const q = n.getBoundingClientRect();
+        return { top: Math.round(q.top), h: Math.round(q.height) };
+      };
+      const firstOf = (sel) => {
+        const n = sb.querySelector(sel + " .sess-row");
+        return n ? Math.round(n.getBoundingClientRect().top) : null;
+      };
+      return {
+        w: Math.round(r.width),
+        rows: rows.length,
+        toolbar: box("#sidebar-toolbar"),
+        botSection: box("#sb-bots-rooms"),
+        botList: box("#bot-list"),
+        roomList: box("#room-list"),
+        roomEmptyShown: !!sb.querySelector("#room-list .sess-empty"),
+        roomListPrev: (() => {
+          const rl = sb.querySelector("#room-list");
+          const p = rl && rl.previousElementSibling;
+          if (!p) return null;
+          const s = getComputedStyle(p);
+          return { tag: p.tagName, cls: p.className, display: s.display, h: Math.round(p.getBoundingClientRect().height), top: Math.round(p.getBoundingClientRect().top) };
+        })(),
+        sessionTitleTop: box("#agents > .panel-title") ? box("#agents > .panel-title").top : null,
+        sessionListTop: firstOf("#session-list"),
+        chatTitleY: box("#session-list") ? box("#session-list").top : null,
+        firstRowTop: rr ? Math.round(rr.top) : null,
+        rowH: rr ? Math.round(rr.height) : null,
+        avW: ar ? Math.round(ar.width) : null,
+        avRadius: av ? getComputedStyle(av).borderRadius : null,
+        labels: [...new Set(labels)].slice(0, 10),
+      };
+    });
+    snapshot.sidebar = sidebar;
+    console.log("  · sidebar", JSON.stringify(sidebar));
+
     // A1/A2 — accent token in both themes (via the send button, the ground truth)
     await setTheme(win, "light");
     const sendLight = await win.evaluate(() => getComputedStyle(document.getElementById("send")).backgroundColor);
