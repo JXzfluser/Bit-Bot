@@ -12,6 +12,7 @@ const http = require("http");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+const agentLoopFfi = require("./agent_loop_stream_stub");
 
 // GP-96/97/98 — §5.7 progress events are built by one module, shared with the
 // desktop transport and the CLI host (see hosts/shared/turn_progress.js).
@@ -5243,6 +5244,8 @@ function createHostFfi(repoRoot) {
       let text = "";
       let status = 0;
       let error = null;
+      const acc = agentLoopFfi.createAccumulator();
+      let usage = null;
       try {
         const u = new URL(url);
         const lib = u.protocol === "https:" ? https : http;
@@ -5270,24 +5273,21 @@ function createHostFfi(repoRoot) {
                 const data = trimmed.slice(5).trim();
                 if (!data || data === "[DONE]") continue;
                 try {
-                  const obj = JSON.parse(data);
-                  // GP-130: providers that honor stream_options.include_usage
-                  // ship the token accounting in the final chunk — keep it.
-                  if (obj && obj.usage && !streamUsage) {
-                    streamUsage = {
-                      prompt_tokens: Number(obj.usage.prompt_tokens) || 0,
+                  // Keep delta.content AND delta.tool_calls. Reading only
+                  // content drops tool_calls (A7).
+                  const before = acc.snapshot().content;
+                  const meta = agentLoopFfi.consumeSseDataLine(data, acc);
+                  if (meta && meta.usage && !usage) {
+                    usage = {
+                      prompt_tokens: Number(meta.usage.prompt_tokens) || 0,
                       completion_tokens:
-                        Number(obj.usage.completion_tokens) || 0,
+                        Number(meta.usage.completion_tokens) || 0,
                     };
                   }
-                  const delta =
-                    obj &&
-                    obj.choices &&
-                    obj.choices[0] &&
-                    obj.choices[0].delta &&
-                    obj.choices[0].delta.content;
+                  const now = acc.snapshot().content;
+                  const delta = now.slice(before.length);
                   if (delta) {
-                    text += delta;
+                    text = now;
                     emitLlmStream({
                       phase: "delta",
                       text: delta,
@@ -5300,19 +5300,43 @@ function createHostFfi(repoRoot) {
               }
             });
             res.on("end", () => {
+              const trailing = buf.trim();
+              if (trailing.startsWith("data:")) {
+                const data = trailing.slice(5).trim();
+                if (data && data !== "[DONE]") {
+                  try {
+                    const meta = agentLoopFfi.consumeSseDataLine(data, acc);
+                    if (meta && meta.usage && !usage) {
+                      usage = {
+                        prompt_tokens: Number(meta.usage.prompt_tokens) || 0,
+                        completion_tokens:
+                          Number(meta.usage.completion_tokens) || 0,
+                      };
+                    }
+                  } catch (_) {
+                    /* ignore trailing partial */
+                  }
+                }
+              }
+              const snap = acc.snapshot();
+              text = snap.content;
+              const toolCalls = snap.tool_calls;
+              const hasPayload = Boolean(text) || toolCalls.length > 0;
               emitLlmStream({
                 phase: "end",
                 partial: text,
-                ok: status >= 200 && status < 300 && Boolean(text),
+                ok: status >= 200 && status < 300 && hasPayload,
                 status,
               });
               resolve({
-                ok: status >= 200 && status < 300 && Boolean(text),
+                ok: status >= 200 && status < 300 && hasPayload,
                 status,
                 text,
+                tool_calls: toolCalls,
+                usage,
                 error:
                   status >= 200 && status < 300
-                    ? text
+                    ? hasPayload
                       ? null
                       : "empty stream"
                     : error || `llm_http_${status}`,
@@ -5325,12 +5349,21 @@ function createHostFfi(repoRoot) {
             ok: false,
             status: 0,
             text: "",
+            tool_calls: [],
+            usage: null,
             error: err.message,
           });
         });
         req.on("timeout", () => {
           req.destroy();
-          resolve({ ok: false, status: 0, text: "", error: "timeout" });
+          resolve({
+            ok: false,
+            status: 0,
+            text: "",
+            tool_calls: [],
+            usage: null,
+            error: "timeout",
+          });
         });
         if (body) req.write(body);
         req.end();
@@ -5339,6 +5372,8 @@ function createHostFfi(repoRoot) {
           ok: false,
           status: 0,
           text: "",
+          tool_calls: [],
+          usage: null,
           error: err.message,
         });
       }
@@ -5611,6 +5646,7 @@ function createHostFfi(repoRoot) {
     const timeoutMs = Number(process.env.BITBOT_LLM_TIMEOUT_MS || 90000);
 
     let text = "";
+    let toolCalls = [];
     let finish = null;
     let streamUsage = null;
     let httpStatus = 0;
@@ -5647,8 +5683,10 @@ function createHostFfi(repoRoot) {
         timeoutMs,
       });
       text = String(res.text || "").trim();
+      toolCalls = Array.isArray(res.tool_calls) ? res.tool_calls : [];
       httpStatus = res.status || 0;
       error = res.error;
+      if (res.usage && !streamUsage) streamUsage = res.usage;
     } else {
       const payload = {
         model: cfg.model,
@@ -5672,8 +5710,9 @@ function createHostFfi(repoRoot) {
       const choices =
         res.json && Array.isArray(res.json.choices) ? res.json.choices : [];
       if (choices.length) {
-        const msg = choices[0].message || {};
-        text = String(msg.content || "").trim();
+        const parsed = agentLoopFfi.parseCompletionJson(res.json || {});
+        text = String(parsed.content || "").trim();
+        toolCalls = Array.isArray(parsed.tool_calls) ? parsed.tool_calls : [];
         finish = choices[0].finish_reason || null;
       }
       // GP-130: non-stream responses carry usage on the top-level JSON.
@@ -5690,7 +5729,10 @@ function createHostFfi(repoRoot) {
         null;
     }
 
-    let ok = Boolean(text) && (httpStatus === 0 || (httpStatus >= 200 && httpStatus < 300));
+    const hasTools = toolCalls.length > 0;
+    let ok =
+      (Boolean(text) || hasTools) &&
+      (httpStatus === 0 || (httpStatus >= 200 && httpStatus < 300));
     if (!ok && !error) {
       error = `llm_http_${httpStatus || 0}` || "empty completion";
     }
@@ -5747,6 +5789,7 @@ function createHostFfi(repoRoot) {
           blocklist_source: blocklistSource,
         };
         text = "";
+        toolCalls = [];
       } else {
         moderation.blocklist_source = blocklistSource;
         moderation.residual = false;
@@ -5773,6 +5816,8 @@ function createHostFfi(repoRoot) {
       streamed,
       reply_chars: text.length,
       reply_prefix: text.slice(0, 240),
+      tool_call_count: toolCalls.length,
+      tool_names: toolCalls.map((c) => c && c.name).filter(Boolean),
       error: ok ? null : error,
       pretend_completion: false,
       localbrain: false,
@@ -5823,6 +5868,7 @@ function createHostFfi(repoRoot) {
       streamed,
       reply_to: replyToId || "",
       reply_quote_chars: replyQuote.length,
+      tool_calls: ok ? toolCalls : [],
     };
   }
 

@@ -278,7 +278,15 @@ pub fn schema_required_keys(schema_json : String) -> Array[String] {
   let keys : Array[String] = []
   let parts = inner.split(",").to_array()
   for p in parts {
-    let s = p.to_owned().replace(old="\"", new="").replace(old=" ", new="")
+    // String::replace drops a single match. `"path"` must become path, not path".
+    let mut s = p.to_owned().replace(old=" ", new="")
+    while s.contains("\"") {
+      let next = s.replace(old="\"", new="")
+      if next == s {
+        break
+      }
+      s = next
+    }
     if s.length() > 0 {
       keys.push(s)
     }
