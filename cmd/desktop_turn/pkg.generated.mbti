@@ -3,6 +3,7 @@ package "bitbot/bitbot/cmd/desktop_turn"
 
 import {
   "bitbot/bitbot/memory",
+  "bitbot/bitbot/runtime",
   "bitbot/bitbot/security",
   "moonbitlang/core/debug",
 }
@@ -20,11 +21,19 @@ pub fn continue_after_host_ffi(turn_id~ : String, prior_user_text~ : String, Arr
 
 pub fn decode_cn_group_chat(String) -> (String, String)?
 
+pub fn decode_cn_routine(String) -> (String, String)?
+
 pub fn gate_consequential(String, String, TurnIntent, DesktopTurnContext, @security.ApprovalClass, String, irreversible? : Bool) -> DesktopTurnResult?
 
 pub fn parse_host_continue_args(Array[String]) -> (String, String, Array[DesktopHostResult])
 
 pub fn parse_memory_seeds(Array[String]) -> Array[(String, String)]
+
+pub fn parse_product_llm_reply(String) -> @runtime.LlmChatReply
+
+pub fn parse_product_output(String) -> String
+
+pub fn parse_product_verdict(String) -> @runtime.ApprovalVerdict
 
 pub fn parse_turn_context(Array[String]) -> DesktopTurnContext
 
@@ -105,7 +114,15 @@ pub(all) struct DesktopTurnResult {
   machine_kind : String
   channel : String
   reply_to : String
+  plan : String
   error : String?
+  agent_loop : Bool
+  agent_entry : String
+  agent_stop : String
+  agent_steps : Int32
+  agent_llm : Int32
+  agent_exec : Int32
+  agent_approval : Int32
 } derive(Eq, @debug.Debug)
 pub fn DesktopTurnResult::to_json_line(Self) -> String
 

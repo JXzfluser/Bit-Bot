@@ -5533,6 +5533,35 @@ function createHostFfi(repoRoot) {
     }
   }
 
+  function agentLoopToolSchema() {
+    return [
+      {
+        type: "function",
+        function: {
+          name: "Read",
+          description: "Read a file",
+          parameters: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "Shell",
+          description: "Run a shell command",
+          parameters: {
+            type: "object",
+            properties: { command: { type: "string" } },
+            required: ["command"],
+          },
+        },
+      },
+    ];
+  }
+
   async function executeLlmChat(command, llmOpts) {
     const at = new Date().toISOString();
     const userText = String(command || "").trim();
@@ -5609,7 +5638,7 @@ function createHostFfi(repoRoot) {
     }
 
     const url = `${cfg.base_url}/chat/completions`;
-    const messages = [
+    let messages = [
       {
         role: "system",
         // GP-148: roomContext is only ever set on a group turn — a DM passes
@@ -5643,6 +5672,45 @@ function createHostFfi(repoRoot) {
       });
     }
     messages.push({ role: "user", content: userText });
+    const overrideMessages =
+      llmOpts && Array.isArray(llmOpts.messages) ? llmOpts.messages : null;
+    if (overrideMessages) {
+      const rebuilt = [
+        {
+          role: "system",
+          content: llmSystemPrompt(
+            llmOpts && llmOpts.botId,
+            llmOpts && llmOpts.roomContext,
+          ),
+        },
+      ];
+      if (replyToId && replyQuote) {
+        rebuilt.push({
+          role: replyRole === "user" ? "user" : "assistant",
+          content: "[quoted message " + replyToId + "] " + replyQuote,
+        });
+      }
+      if (_srch.length) {
+        const block = _srch
+          .slice(0, 5)
+          .map((s, i) => `[${i + 1}] ${s.title || s.url}\n${s.url}\n${String(s.snippet || "").slice(0, 300)}`)
+          .join("\n\n");
+        rebuilt.push({
+          role: "system",
+          content:
+            "联网搜索结果（这些是真实来源。回答时如引用请使用下列 URL，不要编造来源）：\n\n" +
+            block,
+        });
+      }
+      for (const m of overrideMessages) {
+        if (!m || typeof m !== "object") continue;
+        rebuilt.push({
+          role: String(m.role || "user"),
+          content: String(m.content == null ? "" : m.content),
+        });
+      }
+      messages = rebuilt;
+    }
     const timeoutMs = Number(process.env.BITBOT_LLM_TIMEOUT_MS || 90000);
 
     let text = "";
@@ -5670,6 +5738,9 @@ function createHostFfi(repoRoot) {
         // don't implement it).
         stream_options: { include_usage: true },
       };
+      if (llmOpts && llmOpts.agentLoopTools === true) {
+        payload.tools = agentLoopToolSchema();
+      }
       const body = JSON.stringify(payload);
       const res = await httpJsonStream(url, {
         method: "POST",
@@ -5694,6 +5765,9 @@ function createHostFfi(repoRoot) {
         temperature: 0.3,
         stream: false,
       };
+      if (llmOpts && llmOpts.agentLoopTools === true) {
+        payload.tools = agentLoopToolSchema();
+      }
       const body = JSON.stringify(payload);
       const res = await httpJson(url, {
         method: "POST",
@@ -25195,6 +25269,7 @@ function createHostFfi(repoRoot) {
     memoryStorePath: SESSION_MEMORY_PATH,
     botMemorySlot,
     executeHostEffects,
+    executeLlmChat,
     listRoomRoutines,
     routineLifecycle,
     routineApprovalOwners,
