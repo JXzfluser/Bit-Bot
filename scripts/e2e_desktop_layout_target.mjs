@@ -169,14 +169,13 @@ const ISO_ROOT = isolatedRepoRoot(REPO, "layout-target", {
   "rooms.json": { version: 1, rooms: [] },
 });
 
-/* 隔离要可自证。但断言得针对**因果**：本门禁的泄漏形态是"把用户 store 的数组
- * 清空"（旧代码就是把真仓库的 sessions/bots/rooms 清空成 [] 再还原，还原输给
- * app 落盘就是用户的聊天记录被清空）。所以只要判断"现在这个内容 == 我要把
- * 数组清空后的样子"即可。
- * 直接比"运行前后字节一致"会被别的并发门禁误伤（仓库里另有几个门禁按真实
- * REPO_ROOT 跑，会写 data/desktop）—— 那不是本门禁的锅。 */
-const emptiedForm = (buf) =>
-  buf === null ? null : buf.toString().replace(/"(sessions|bots|rooms)"\s*:\s*\[[^\]]*\]/g, '"$1": []');
+/* 隔离要可自证。但断言得针对**因果**：本门禁的旧代码的泄漏形态是"把用户 store
+ * 的数组清空成 [] 再还原，还原输给 app 落盘"——危害特征是**我开跑时还有内容
+ * 的数组，现在空了**。
+ * 不比字符串：同样"数组空了"，JSON 缩进/键序一变字符串就对不上，判据会漏。
+ * 直接比语义（解析后比较数组长度）。
+ * 也不比"运行前后字节一致"：仓库里另有几个门禁按真实 REPO_ROOT 跑，会写
+ * data/desktop，比字节会被它们误伤——那不是本门禁的锅。 */
 const REAL_STORES = ["sessions.json", "bots.json", "rooms.json"].map((f) =>
   path.join(REPO, "data/desktop", f)
 );
@@ -186,7 +185,21 @@ const realLeak = () => {
     if (buf === null) continue;
     const now = fs.existsSync(f) ? fs.readFileSync(f) : null;
     if (now === null) continue;
-    if (now.toString() === emptiedForm(buf)) return { file: f, how: "emptied" };
+    let pre, post;
+    try {
+      pre = JSON.parse(buf.toString());
+      post = JSON.parse(now.toString());
+    } catch {
+      continue; // 文件已不是合法 JSON（更糟），但不是"数组被清空"这一形态
+    }
+    for (const k of ["sessions", "bots", "rooms"]) {
+      const before = pre && pre[k];
+      const after = post && post[k];
+      if (!Array.isArray(before) || !Array.isArray(after)) continue;
+      if (before.length > 0 && after.length === 0) {
+        return { file: f, key: k, before: before.length, after: after.length };
+      }
+    }
   }
   return null;
 };
