@@ -16,3 +16,5 @@
 原生后端必须是 C（`MOONBIT_NEW_NATIVE=0`），因为交换一行 stdin/stdout 的实现是 `cmd/desktop_turn/bitbot_ffi_stub.c`。
 
 未过 WP1–WP3 的 live 证据，不得宣称 Desktop Agent Loop MVP。
+
+生产供应商证据（外部 `base_url`，不是本页 loopback stub）见 `docs/agent-core/01-agent-loop-production-provider.md`。那一页不关 AR-01/02/03/15，不升 I，不宣称 Desktop Agent Loop MVP。

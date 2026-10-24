@@ -11,6 +11,26 @@ const { spawn } = require("child_process");
 const { createHostFfi } = require("./host_ffi");
 const { createProductSession, legacyGuardedRerunEnabled } = require("./agent_loop_product_wire");
 
+/** Kernel child does not need the model key. HTTP stays in the Node host. */
+function moonProcessEnv(source) {
+  const base = source || process.env;
+  const env = { ...base };
+  for (const key of Object.keys(env)) {
+    if (
+      key === "BITBOT_LLM_API_KEY" ||
+      /^BITBOT_LLM_.+(?:_KEY|_TOKEN|_SECRET)$/i.test(key)
+    ) {
+      delete env[key];
+    }
+  }
+  const home = base.HOME || process.env.HOME || "";
+  const pathEnv = base.PATH || process.env.PATH || "";
+  env.PATH = `${home}/.moon/bin:${pathEnv}`;
+  // Product FFI is a C stub. The LLVM native backend does not link it.
+  env.MOONBIT_NEW_NATIVE = "0";
+  return env;
+}
+
 /** GP-14 fallback resolver: read data/desktop/sessions.json straight from disk. */
 function defaultResolveReplyForRoot(repoRoot) {
   return (id) => {
@@ -54,12 +74,7 @@ function createTurnRunner(repoRoot, opts = {}) {
     return new Promise((resolve, reject) => {
       const child = spawn(MOON_BIN, args, {
         cwd: ffi.REPO_ROOT,
-        env: {
-          ...process.env,
-          PATH: `${process.env.HOME || ""}/.moon/bin:${process.env.PATH || ""}`,
-          // Product FFI is a C stub. The LLVM native backend does not link it.
-          MOONBIT_NEW_NATIVE: "0",
-        },
+        env: moonProcessEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
       let stdout = "";
@@ -115,11 +130,7 @@ function createTurnRunner(repoRoot, opts = {}) {
     return new Promise((resolve, reject) => {
       const child = spawn(MOON_BIN, args, {
         cwd: ffi.REPO_ROOT,
-        env: {
-          ...process.env,
-          PATH: `${process.env.HOME || ""}/.moon/bin:${process.env.PATH || ""}`,
-          MOONBIT_NEW_NATIVE: "0",
-        },
+        env: moonProcessEnv(),
         stdio: ["pipe", "pipe", "pipe"],
       });
       let stdout = "";
@@ -336,6 +347,10 @@ function createTurnRunner(repoRoot, opts = {}) {
       kernel_ops: session.kernelOps || [],
       node_ops: nodeOps,
     };
+    // Prove-only. Product Desktop does not set this, so kernel stderr stays off the UI.
+    if (String(process.env.BITBOT_PP_CAPTURE_STDERR || "") === "1") {
+      parsed.loop_trace.stderr = stderr;
+    }
 
     if (
       parsed &&
@@ -597,4 +612,4 @@ function createTurnRunner(repoRoot, opts = {}) {
   return { runTurn, bootBanner, ffi, runMoon, lastJsonLine, MOON_TARGET };
 }
 
-module.exports = { createTurnRunner };
+module.exports = { createTurnRunner, moonProcessEnv };
