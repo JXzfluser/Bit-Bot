@@ -33,6 +33,7 @@ import { createRequire } from "module";
 import { execSync, spawn } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
+import { electronLaunchEnv, hasDisplay } from "./electron_env.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
@@ -58,8 +59,7 @@ function honestSkip(reason) {
   process.exit(0);
 }
 if (!fs.existsSync(ELECTRON)) honestSkip("electron dist missing (" + ELECTRON + ")");
-try { execSync("command -v xvfb-run", { stdio: "ignore" }); }
-catch { if (!process.env.DISPLAY) honestSkip("no DISPLAY and no xvfb-run"); }
+if (!hasDisplay()) honestSkip("no DISPLAY and no xvfb-run");
 let moonOk = false;
 try { execSync("moon --version", { stdio: "ignore" }); moonOk = true; }
 catch {
@@ -220,12 +220,12 @@ const forbiddenHit = (text) => {
     key_lengths: { main: KEY_MAIN.length, qwen: KEY_QWEN.length },
   };
 
-  const launchEnv = (extra) => ({
-    ...process.env,
+  const launchEnv = (extra) => electronLaunchEnv({
     DISPLAY: process.env.DISPLAY || "",
     PATH: (process.env.HOME || "") + "/.moon/bin:" + (process.env.PATH || ""),
     MOON_BIN: process.env.MOON_BIN || path.join(os.homedir(), ".moon/bin/moon"),
     BITBOT_REPO_ROOT: REPO,
+    BITBOT_DESKTOP_AUTOSTART: "0",
     BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + P_MAIN + "/v1",
     BITBOT_LLM_API_KEY: KEY_MAIN,
     BITBOT_LLM_MODEL: "uj-deepseek",

@@ -8,11 +8,15 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { resolveElectronBinary } from "./electron_bin.mjs";
+import { electronLaunchEnv } from "./electron_env.mjs";
 const require = createRequire(import.meta.url);
 const { _electron } = require(path.join(process.cwd(), "hosts/desktop/node_modules/playwright-core"));
 
 const REPO = process.cwd();
-const electronBinary = path.join(REPO, "hosts/desktop/node_modules/electron/dist/electron");
+/* dist/electron 是 Linux/Windows 的布局；macOS 上是 dist/Electron.app/...。
+   用仓库既有的单一真源，别再写死。 */
+const electronBinary = resolveElectronBinary(path.join(REPO, "hosts/desktop"));
 const OUT = process.env.OUT || "/tmp/bitbot-ui-baseline.png";
 
 function liveDisplay() {
@@ -24,7 +28,7 @@ async function main() {
     executablePath: electronBinary,
     args: [path.join(REPO, "hosts/desktop/main.js"), "--no-sandbox", "--disable-gpu"],
     cwd: REPO,
-    env: { ...process.env, DISPLAY: liveDisplay() },
+    env: electronLaunchEnv({ DISPLAY: liveDisplay(), BITBOT_DESKTOP_AUTOSTART: "0" }),
     timeout: 60000,
   });
   const win = await app.firstWindow({ timeout: 60000 });

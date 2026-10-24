@@ -42,6 +42,7 @@ import { createRequire } from "module";
 import { execSync } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
+import { electronLaunchEnv, hasDisplay } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -70,8 +71,7 @@ function honestSkip(reason) {
   process.exit(0);
 }
 if (!fs.existsSync(ELECTRON)) honestSkip("electron dist missing (" + ELECTRON + ")");
-try { execSync("command -v xvfb-run", { stdio: "ignore" }); }
-catch { if (!process.env.DISPLAY) honestSkip("no DISPLAY and no xvfb-run"); }
+if (!hasDisplay()) honestSkip("no DISPLAY and no xvfb-run");
 let moonOk = false;
 try { execSync("moon --version", { stdio: "ignore" }); moonOk = true; }
 catch {
@@ -192,12 +192,13 @@ function startStub() {
       executablePath: ELECTRON,
       args: [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu"],
       cwd: REPO,
-      env: {
-        ...process.env,
+      env: electronLaunchEnv({
         DISPLAY: process.env.DISPLAY || "",
         PATH: (process.env.HOME || "") + "/.moon/bin:" + (process.env.PATH || ""),
         MOON_BIN: process.env.MOON_BIN || path.join(os.homedir(), ".moon/bin/moon"),
         BITBOT_REPO_ROOT: REPO,
+        // 门禁不该改用户 macOS 的开机自启设置（app 启动时默认 applyLoginItem(true)）
+        BITBOT_DESKTOP_AUTOSTART: "0",
         // 排程必须按可验证的时区算，不能跟着沙箱的 UTC 漂走。
         TZ,
         BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + STUB_PORT + "/v1",
@@ -205,7 +206,7 @@ function startStub() {
         BITBOT_LLM_MODEL: "e2e-stub",
         BITBOT_LLM_STREAM: "0",
         BITBOT_ROOM_RESPONDER_TIMEOUT_MS: process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || "150000",
-      },
+      }),
       timeout: 90000,
     });
     const win = await app.firstWindow({ timeout: 60000 });

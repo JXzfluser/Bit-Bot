@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { decodePng, avgLuma, pixelAt, encodeRgbPng } from "./lib_png_pixel.mjs";
 import { resolveElectronBinary } from "./electron_bin.mjs";
+import { electronLaunchEnv } from "./electron_env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..");
@@ -164,12 +165,12 @@ async function launchOnce(extraEnv) {
       "--use-fake-device-for-media-stream",
     ],
     cwd: REPO,
-    env: {
-      ...process.env,
+    env: electronLaunchEnv({
       DISPLAY: liveDisplay(),
       BITBOT_ESPEAK_BIN: process.env.BITBOT_ESPEAK_BIN || "/usr/bin/espeak-ng",
+      BITBOT_DESKTOP_AUTOSTART: "0",
       ...(extraEnv || {}),
-    },
+    }),
     timeout: 60000,
   });
   const win = await app.firstWindow({ timeout: 60000 });

@@ -22,6 +22,7 @@ import { createRequire } from "module";
 import { execSync } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
+import { electronLaunchEnv, electronUserDataDir, isolatedRepoRoot, gateAppEnv } from "./electron_env.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
@@ -37,13 +38,25 @@ if (!fs.existsSync(ELECTRON)) {
   console.log("e2e_desktop_layout_target: PASS=0 FAIL=0 SKIP=1");
   process.exit(0);
 }
-let useXvfb = false;
+/* 只有 Linux 才需要 X server。macOS / Windows 自带窗口系统，没有 DISPLAY 是
+ * 正常的 —— 初版把跳过条件写成"没有 xvfb-run 且没有 DISPLAY"，于是 macOS 上
+ * 这个门禁永远在第一行就 SKIP，一次都没真跑过。假跳过不是 PASS。
+ * （同类问题 electron_bin.mjs 的头注释已经提过一次。） */
+if (process.platform === "linux" && !process.env.DISPLAY) {
+  let hasXvfb = false;
+  try {
+    execSync("command -v xvfb-run", { stdio: "ignore" });
+    hasXvfb = true;
+  } catch {
+    /* none */
+  }
+  if (!hasXvfb) {
+    console.log("e2e_desktop_layout_target: SKIP — no DISPLAY and no xvfb-run");
+    console.log("e2e_desktop_layout_target: PASS=0 FAIL=0 SKIP=1");
+    process.exit(0);
+  }
+}
 const require = createRequire(path.join(REPO, "hosts/desktop/package.json"));
-try { execSync("command -v xvfb-run", { stdio: "ignore" }); useXvfb = true; } catch { if (!process.env.DISPLAY) {
-  console.log("e2e_desktop_layout_target: SKIP — no DISPLAY and no xvfb-run");
-  console.log("e2e_desktop_layout_target: PASS=0 FAIL=0 SKIP=1");
-  process.exit(0);
-} }
 
 const { _electron } = require("playwright-core");
 
@@ -64,14 +77,27 @@ async function shutdown(app) {
   }
 }
 
+let launchSeq = 0;
 async function launchWith(w, h, opts = {}) {
   const cmdEnvArgs = [];
   if (opts.devmode) cmdEnvArgs.push("--bitbot-devmode");
   if (opts.devmode) process.env.BITBOT_DEVMODE = "1";
   const app = await _electron.launch({
     executablePath: ELECTRON,
-    args: [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu", ...cmdEnvArgs],
+    args: [
+      path.join(DESKTOP, "main.js"),
+      "--no-sandbox",
+      "--disable-gpu",
+      ...cmdEnvArgs,
+      /* 独立 user data 目录：Chromium 的单例锁会和正在运行的 app 抢同一个目录，
+         抢输的那个实例直接退出，门禁就变成"随机启动失败"。 */
+      "--user-data-dir=" + electronUserDataDir("layout-target-" + ++launchSeq),
+    ],
     cwd: REPO,
+    /* ELECTRON_RUN_AS_NODE=1 会让 electron 退化成纯 node（ipcMain 是 undefined），
+       这里显式剔除。BITBOT_REPO_ROOT 把应用数据指向隔离目录；
+       BITBOT_DESKTOP_AUTOSTART=0 不去改用户 macOS 的开机自启设置。 */
+    env: electronLaunchEnv(gateAppEnv(ISO_ROOT)),
   });
   const win = await app.firstWindow();
   // native menu bar would eat 27px of the fixed content viewport; hide it for
@@ -129,31 +155,47 @@ function checkState(g, vpW, state) {
   if (g.msgMax > 760 + 0.5) bad(`${state}: msg column ${g.msgMax} > 760`);
 }
 
-const STORES = ["sessions.json", "bots.json", "rooms.json"].map((f) => path.join(REPO, "data/desktop", f));
-let storeSnap = null;
-function snapshotStores() {
-  storeSnap = STORES.map((f) => [f, fs.existsSync(f) ? fs.readFileSync(f) : null]);
-}
-function zeroStoresForCopyPass() {
-  // Copy-scan must see the product chrome, not leftover smoke transcripts
-  // (rows like "Smoke copy 40" come from earlier e2e runs on this data dir).
-  for (const f of STORES) {
-    if (!fs.existsSync(f)) continue;
-    const txt = fs.readFileSync(f, "utf8");
-    if (/^\s*\{/.test(txt)) fs.writeFileSync(f, txt.replace(/"(sessions|bots|rooms)"\s*:\s*\[[^\]]*\]/g, '"$1": []'));
-    else fs.writeFileSync(f, JSON.stringify([]));
+/* 门禁的应用数据一律指向隔离的临时根目录，不碰真仓库的 data/desktop。
+ *
+ * 初版是把真仓库的 sessions/bots/rooms 清空（为了让 copy-scan 只看产品外壳，
+ * 不看别的 e2e 跑剩的会话），跑完再还原回去。清空的是**用户真实的聊天历史**，
+ * 而"跑完再还原"会输给 app 退出时的落盘 —— 还原输了就是用户的会话被清空。
+ * 现在改成：整个 app 跑在 BITBOT_REPO_ROOT 指向的临时根目录里，store 天然是空的，
+ * 真仓库一个字节都不动，最后还断言这一点。
+ */
+const ISO_ROOT = isolatedRepoRoot(REPO, "layout-target", {
+  "sessions.json": { version: 1, active_id: "", sessions: [] },
+  "bots.json": { version: 1, primary_id: "agent-bit", bots: [] },
+  "rooms.json": { version: 1, rooms: [] },
+});
+
+/* 隔离要可自证。但断言得针对**因果**：本门禁的泄漏形态是"把用户 store 的数组
+ * 清空"（旧代码就是把真仓库的 sessions/bots/rooms 清空成 [] 再还原，还原输给
+ * app 落盘就是用户的聊天记录被清空）。所以只要判断"现在这个内容 == 我要把
+ * 数组清空后的样子"即可。
+ * 直接比"运行前后字节一致"会被别的并发门禁误伤（仓库里另有几个门禁按真实
+ * REPO_ROOT 跑，会写 data/desktop）—— 那不是本门禁的锅。 */
+const emptiedForm = (buf) =>
+  buf === null ? null : buf.toString().replace(/"(sessions|bots|rooms)"\s*:\s*\[[^\]]*\]/g, '"$1": []');
+const REAL_STORES = ["sessions.json", "bots.json", "rooms.json"].map((f) =>
+  path.join(REPO, "data/desktop", f)
+);
+const realSnap = REAL_STORES.map((f) => [f, fs.existsSync(f) ? fs.readFileSync(f) : null]);
+const realLeak = () => {
+  for (const [f, buf] of realSnap) {
+    if (buf === null) continue;
+    const now = fs.existsSync(f) ? fs.readFileSync(f) : null;
+    if (now === null) continue;
+    if (now.toString() === emptiedForm(buf)) return { file: f, how: "emptied" };
   }
-}
-function restoreStores() {
-  if (!storeSnap) return;
-  for (const [f, buf] of storeSnap) { buf === null ? fs.rmSync(f, { force: true }) : fs.writeFileSync(f, buf); }
-  storeSnap = null;
-}
+  return null;
+};
 
 const STATES = ["none", "bot", "conv", "computer", "tools", "collapsed"];
 
 async function runViewport(win, vpW, vpH, { devmode = true } = {}) {
   await win.waitForTimeout(150);
+  let measured = null;
   for (const st of STATES) {
     await win.evaluate((s) => {
       if (s === "collapsed") {
@@ -167,6 +209,7 @@ async function runViewport(win, vpW, vpH, { devmode = true } = {}) {
     await win.waitForTimeout(320); // transition settles
     const g = await win.evaluate(GEOMETRY_PROBE);
     const vw = g.viewport.w;
+    measured = measured || { w: g.viewport.w, h: g.viewport.h };
     if (st === "tools" && !devmode) {
       g.panel === "none" ? ok("D-D-02: setPanel(tools) refused with dev-mode off")
         : bad("D-D-02 tools without devmode", g.panel);
@@ -181,6 +224,10 @@ async function runViewport(win, vpW, vpH, { devmode = true } = {}) {
   await win.waitForTimeout(250);
   const shot = await win.screenshot({ type: "png" });
   fs.writeFileSync(path.join(OUT, `live-${vpW}x${vpH}-none.png`), shot);
+  /* 结论里写**实测**视口，不写请求值。窗口高度会被系统按可用屏幕高度钳住
+   * （本机 availHeight=858，1440x900 那档实际量到的是 1440x858），
+   * 汇总行若写 "@1440" 会让人以为 1440x900 已被覆盖。 */
+  return measured;
 }
 
 async function debugGate(win, { devmode }) {
@@ -290,8 +337,8 @@ const COPY_PROBE = `(() => {
       : bad("D-DEFAULT empty rail", JSON.stringify(g0.railEls));
 
     /* D-L geometry across states, 1440x900 */
-    await runViewport(win, 1440, 900, { devmode: false });
-    ok("D-L-01..06: panel states geometry @1440 dev-off (contract table, ±2px, overlap/hscroll)");
+    const m1440 = await runViewport(win, 1440, 900, { devmode: false });
+    ok(`D-L-01..06: panel states geometry @${m1440.w}x${m1440.h} dev-off (contract table, ±2px, overlap/hscroll)`);
 
     /* D-D debug surfaces (dev-mode off) */
     const off = await debugGate(win, { devmode: false });
@@ -308,8 +355,6 @@ const COPY_PROBE = `(() => {
 
   /* second viewport pass (retry: previous app process may still hold userData) */
   try {
-    snapshotStores();
-    zeroStoresForCopyPass();
     let b = null;
     let lastErr = "";
     for (let i = 0; i < 3 && !b; i++) {
@@ -318,8 +363,8 @@ const COPY_PROBE = `(() => {
     }
     if (!b) throw new Error("launch retries exhausted — " + lastErr.split("\n")[0]);
     ({ app, win } = b);
-    await runViewport(win, 1280, 800, { devmode: true });
-    ok("D-L-07..12: 6 panel states geometry @1280 dev-on (incl. tools)");
+    const m1280 = await runViewport(win, 1280, 800, { devmode: true });
+    ok(`D-L-07..12: 6 panel states geometry @${m1280.w}x${m1280.h} dev-on (incl. tools)`);
     /* dev-mode ON: debug surfaces appear + badge visible + tools panel allowed */
     const on = await debugGate(win, { devmode: true });
     const badge = await win.evaluate(() => {
@@ -339,11 +384,16 @@ const COPY_PROBE = `(() => {
       : bad("D-C-01 unlisted English", JSON.stringify(copy.violations.slice(0, 20)));
     console.log("  · D-C-04 advisory: mixed-language visible nodes=" + copy.mixedCount + " " + JSON.stringify(copy.mixedSample));
     await shutdown(app);
-    restoreStores();
   } catch (e) {
     bad("1280 pass", (e && e.message) || String(e));
-    restoreStores();
   }
+
+  /* 门禁自己不能污染用户数据 —— 隔离要可自证 */
+  const leak = realLeak();
+  !leak
+    ? ok("D-S-01: 用户的 data/desktop 没有被本门禁清空（门禁跑在隔离根目录里）")
+    : bad("D-S-01 真仓库的 data/desktop 被本门禁改了", JSON.stringify(leak));
+  try { fs.rmSync(ISO_ROOT, { recursive: true, force: true }); } catch { /* 残留不影响判定 */ }
 
   console.log("\ne2e_desktop_layout_target: PASS=" + PASS + " FAIL=" + FAIL + " SKIP=" + SKIP);
   process.exit(FAIL ? 1 : 0);

@@ -38,6 +38,7 @@ import { createRequire } from "module";
 import { execSync } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
+import { electronLaunchEnv, hasDisplay } from "./electron_env.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
@@ -54,14 +55,14 @@ if (!fs.existsSync(ELECTRON)) {
   console.log("e2e_desktop_shell_v2: PASS=0 FAIL=0 SKIP=1");
   process.exit(0);
 }
-let useXvfb = false;
-const require = createRequire(path.join(REPO, "hosts/desktop/package.json"));
-try { execSync("command -v xvfb-run", { stdio: "ignore" }); useXvfb = true; }
-catch { if (!process.env.DISPLAY) {
+/* 只有 Linux 需要 X server；macOS/Windows 没有 DISPLAY 是正常的。
+   初版把条件写成"没有 xvfb-run 且没有 DISPLAY"，在 macOS 上永远跳过。 */
+if (!hasDisplay()) {
   console.log("e2e_desktop_shell_v2: SKIP — no DISPLAY and no xvfb-run");
   console.log("e2e_desktop_shell_v2: PASS=0 FAIL=0 SKIP=1");
   process.exit(0);
-} }
+}
+const require = createRequire(path.join(REPO, "hosts/desktop/package.json"));
 
 const { _electron } = require("playwright-core");
 
@@ -75,7 +76,14 @@ async function shutdown(app) {
 async function launchWith(w, h, opts = {}) {
   const args = [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu"];
   if (opts.env) for (const [k, v] of Object.entries(opts.env)) process.env[k] = v;
-  const app = await _electron.launch({ executablePath: ELECTRON, args, cwd: REPO });
+  const app = await _electron.launch({
+    executablePath: ELECTRON,
+    args,
+    cwd: REPO,
+    /* ELECTRON_RUN_AS_NODE=1 会让 electron 退化成纯 node（ipcMain undefined），
+       这里显式剔除；门禁也不该改用户 macOS 的开机自启设置。 */
+    env: electronLaunchEnv({ BITBOT_DESKTOP_AUTOSTART: "0" }),
+  });
   const win = await app.firstWindow();
   await app.evaluate(({ BrowserWindow }) => {
     for (const win of BrowserWindow.getAllWindows()) { win.setAutoHideMenuBar(true); win.setMenuBarVisibility(false); }

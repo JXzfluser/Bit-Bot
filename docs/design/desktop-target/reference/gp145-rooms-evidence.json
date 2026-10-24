@@ -1,0 +1,452 @@
+{
+  "started_at": "2026-10-24T03:29:05.571Z",
+  "env": {
+    "stub_port": 8801,
+    "moon": "real kernel + local stub provider"
+  },
+  "room_id": "room-mvluavwn",
+  "bot_ids": {
+    "A": "bot-bae52b",
+    "B": "bot-221f7a",
+    "C": "bot-993fb2"
+  },
+  "s2": {
+    "final_report": {
+      "kind": "final_report",
+      "room_id": "room-mvluavwn",
+      "responder_policy": "mentioned_only",
+      "task": "@GP145Alpha @GP145Fail 一起给出本季竞品结论与一段长文草稿",
+      "task_sig": "room-mvluavwn|@gp145alpha @gp145fail 一起给出本季竞品结论与一段长文草稿",
+      "task_title": "@GP145Alpha @GP145Fail 一起给出本季竞品结论与一段长文草稿",
+      "responders": [
+        "bot-bae52b",
+        "bot-221f7a"
+      ],
+      "total": 2,
+      "returned": 1,
+      "partial": true,
+      "sections": [
+        {
+          "bot_id": "bot-bae52b",
+          "name": "GP145Alpha",
+          "ok": true,
+          "summary": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA …",
+          "summary_truncated": true,
+          "artifacts": [
+            {
+              "name": "chat-mvluawmn.json",
+              "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluawmn.json"
+            }
+          ]
+        },
+        {
+          "bot_id": "bot-221f7a",
+          "name": "GP145Fail",
+          "ok": false,
+          "summary": "(stub provider failure for 名字：GP145Fail)",
+          "artifacts": []
+        }
+      ],
+      "artifacts": [
+        {
+          "name": "chat-mvluawmn.json",
+          "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluawmn.json"
+        }
+      ],
+      "at": "2026-10-24T03:29:09.149Z"
+    }
+  },
+  "s5": {
+    "dom": {
+      "user": 3,
+      "reply": 4,
+      "error": 1,
+      "report": 3,
+      "working": 0
+    },
+    "durable": {
+      "user": 3,
+      "reply": 4,
+      "error": 1,
+      "report": 3
+    }
+  },
+  "s8": {
+    "dm_session_title": "GP145Alpha · DM",
+    "dm_messages": [
+      {
+        "id": "msg-a6868b24",
+        "role": "user",
+        "text": "你的职责是什么？",
+        "at": "2026-10-24T03:29:12.701Z"
+      },
+      {
+        "id": "msg-235b9d97",
+        "role": "assistant",
+        "text": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。>|user<你的职责是什么？>",
+        "at": "2026-10-24T03:29:12.701Z"
+      }
+    ]
+  },
+  "transcript": [
+    {
+      "room_id": "room-mvluavwn",
+      "text": "旧式无kind历史行 的历史行",
+      "responders": [
+        "bot-bae52b"
+      ],
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "kind": "system",
+      "room_id": "room-mvluavwn",
+      "speaker": "system",
+      "text": "已创建群聊「GP145 协作验收群」，成员 3 人：GP145Alpha、GP145Fail、GP145Gamma。",
+      "at": "2026-10-24T03:29:08.615Z"
+    },
+    {
+      "kind": "user",
+      "speaker": "user",
+      "room_id": "room-mvluavwn",
+      "text": "@GP145Alpha @GP145Fail 一起给出本季竞品结论与一段长文草稿",
+      "responders": [
+        "bot-bae52b",
+        "bot-221f7a"
+      ],
+      "responder_policy": "mentioned_only",
+      "at": "2026-10-24T03:29:09.146Z"
+    },
+    {
+      "kind": "bot_reply",
+      "room_id": "room-mvluavwn",
+      "speaker": "bot-bae52b",
+      "bot_id": "bot-bae52b",
+      "name": "GP145Alpha",
+      "text": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据）\n· GP145Fail（职责：GP145JOBFAIL 长文写作；简介：GP145DESCB 草稿需审批）\n· GP145Gamma（职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对）\n本轮被 @：GP145Alpha、GP145Fail\n发言纪律：只以自己的职责发言，不要替别的成员宣布他们的职责；被问到成员或名单时按上面的群成员如实列出，不要推说名单不可得。>|user<@GP145Alpha @GP145Fail 一起给出本季竞品结论与一段长文草稿>",
+      "at": "2026-10-24T03:29:09.149Z"
+    },
+    {
+      "kind": "bot_reply_error",
+      "room_id": "room-mvluavwn",
+      "speaker": "bot-221f7a",
+      "bot_id": "bot-221f7a",
+      "name": "GP145Fail",
+      "text": "这次没有完成对话（Host 未拿到供应商回复）：stub provider failure for 名字：GP145Fail。请在「设置 → 凭证」确认当前供应商与密钥后重试；本轮没有用本地兜底假装回答。",
+      "at": "2026-10-24T03:29:09.149Z",
+      "error": "stub provider failure for 名字：GP145Fail"
+    },
+    {
+      "kind": "final_report",
+      "room_id": "room-mvluavwn",
+      "responder_policy": "mentioned_only",
+      "task": "@GP145Alpha @GP145Fail 一起给出本季竞品结论与一段长文草稿",
+      "task_sig": "room-mvluavwn|@gp145alpha @gp145fail 一起给出本季竞品结论与一段长文草稿",
+      "task_title": "@GP145Alpha @GP145Fail 一起给出本季竞品结论与一段长文草稿",
+      "responders": [
+        "bot-bae52b",
+        "bot-221f7a"
+      ],
+      "total": 2,
+      "returned": 1,
+      "partial": true,
+      "sections": [
+        {
+          "bot_id": "bot-bae52b",
+          "name": "GP145Alpha",
+          "ok": true,
+          "summary": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA …",
+          "summary_truncated": true,
+          "artifacts": [
+            {
+              "name": "chat-mvluawmn.json",
+              "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluawmn.json"
+            }
+          ]
+        },
+        {
+          "bot_id": "bot-221f7a",
+          "name": "GP145Fail",
+          "ok": false,
+          "summary": "(stub provider failure for 名字：GP145Fail)",
+          "artifacts": []
+        }
+      ],
+      "artifacts": [
+        {
+          "name": "chat-mvluawmn.json",
+          "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluawmn.json"
+        }
+      ],
+      "at": "2026-10-24T03:29:09.149Z"
+    },
+    {
+      "kind": "user",
+      "speaker": "user",
+      "room_id": "room-mvluavwn",
+      "text": "@GP145Alpha @GP145Gamma 分别给出自己的职责范围",
+      "responders": [
+        "bot-bae52b",
+        "bot-993fb2"
+      ],
+      "responder_policy": "mentioned_only",
+      "at": "2026-10-24T03:29:10.561Z"
+    },
+    {
+      "kind": "bot_reply",
+      "room_id": "room-mvluavwn",
+      "speaker": "bot-bae52b",
+      "bot_id": "bot-bae52b",
+      "name": "GP145Alpha",
+      "text": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据）\n· GP145Fail（职责：GP145JOBFAIL 长文写作；简介：GP145DESCB 草稿需审批）\n· GP145Gamma（职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对）\n本轮被 @：GP145Alpha、GP145Gamma\n发言纪律：只以自己的职责发言，不要替别的成员宣布他们的职责；被问到成员或名单时按上面的群成员如实列出，不要推说名单不可得。>|user<@GP145Alpha @GP145Gamma 分别给出自己的职责范围>",
+      "at": "2026-10-24T03:29:10.562Z"
+    },
+    {
+      "kind": "bot_reply",
+      "room_id": "room-mvluavwn",
+      "speaker": "bot-993fb2",
+      "bot_id": "bot-993fb2",
+      "name": "GP145Gamma",
+      "text": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Gamma；职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据）\n· GP145Fail（职责：GP145JOBFAIL 长文写作；简介：GP145DESCB 草稿需审批）\n· GP145Gamma（职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对）\n本轮被 @：GP145Alpha、GP145Gamma\n发言纪律：只以自己的职责发言，不要替别的成员宣布他们的职责；被问到成员或名单时按上面的群成员如实列出，不要推说名单不可得。>|user<@GP145Alpha @GP145Gamma 分别给出自己的职责范围>",
+      "at": "2026-10-24T03:29:10.562Z"
+    },
+    {
+      "kind": "final_report",
+      "room_id": "room-mvluavwn",
+      "responder_policy": "mentioned_only",
+      "task": "@GP145Alpha @GP145Gamma 分别给出自己的职责范围",
+      "task_sig": "room-mvluavwn|@gp145alpha @gp145gamma 分别给出自己的职责范围",
+      "task_title": "@GP145Alpha @GP145Gamma 分别给出自己的职责范围",
+      "responders": [
+        "bot-bae52b",
+        "bot-993fb2"
+      ],
+      "total": 2,
+      "returned": 2,
+      "partial": false,
+      "sections": [
+        {
+          "bot_id": "bot-bae52b",
+          "name": "GP145Alpha",
+          "ok": true,
+          "summary": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA …",
+          "summary_truncated": true,
+          "artifacts": [
+            {
+              "name": "chat-mvluaxi3.json",
+              "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluaxi3.json"
+            }
+          ]
+        },
+        {
+          "bot_id": "bot-993fb2",
+          "name": "GP145Gamma",
+          "ok": true,
+          "summary": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Gamma；职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只…",
+          "summary_truncated": true,
+          "artifacts": [
+            {
+              "name": "chat-mvluaxje.json",
+              "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluaxje.json"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "name": "chat-mvluaxi3.json",
+          "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluaxi3.json"
+        },
+        {
+          "name": "chat-mvluaxje.json",
+          "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluaxje.json"
+        }
+      ],
+      "at": "2026-10-24T03:29:10.562Z"
+    },
+    {
+      "kind": "user",
+      "speaker": "user",
+      "room_id": "room-mvluavwn",
+      "text": "@GP145Alpha 只做竞品结论这一件事",
+      "responders": [
+        "bot-bae52b"
+      ],
+      "responder_policy": "mentioned_only",
+      "at": "2026-10-24T03:29:11.310Z"
+    },
+    {
+      "kind": "bot_reply",
+      "room_id": "room-mvluavwn",
+      "speaker": "bot-bae52b",
+      "bot_id": "bot-bae52b",
+      "name": "GP145Alpha",
+      "text": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据）\n· GP145Fail（职责：GP145JOBFAIL 长文写作；简介：GP145DESCB 草稿需审批）\n· GP145Gamma（职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对）\n本轮被 @：GP145Alpha\n发言纪律：只以自己的职责发言，不要替别的成员宣布他们的职责；被问到成员或名单时按上面的群成员如实列出，不要推说名单不可得。>|user<@GP145Alpha 只做竞品结论这一件事>",
+      "at": "2026-10-24T03:29:11.311Z"
+    },
+    {
+      "kind": "final_report",
+      "room_id": "room-mvluavwn",
+      "responder_policy": "mentioned_only",
+      "task": "@GP145Alpha 只做竞品结论这一件事",
+      "task_sig": "room-mvluavwn|@gp145alpha 只做竞品结论这一件事",
+      "task_title": "@GP145Alpha 只做竞品结论这一件事",
+      "responders": [
+        "bot-bae52b"
+      ],
+      "total": 1,
+      "returned": 1,
+      "partial": false,
+      "sections": [
+        {
+          "bot_id": "bot-bae52b",
+          "name": "GP145Alpha",
+          "ok": true,
+          "summary": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA …",
+          "summary_truncated": true,
+          "artifacts": [
+            {
+              "name": "chat-mvluay2r.json",
+              "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluay2r.json"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "name": "chat-mvluay2r.json",
+          "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluay2r.json"
+        }
+      ],
+      "at": "2026-10-24T03:29:11.311Z"
+    },
+    {
+      "kind": "user",
+      "speaker": "user",
+      "room_id": "room-mvluavwn",
+      "text": "@GP145Alpha 只做竞品结论这一件事",
+      "responders": [
+        "bot-bae52b"
+      ],
+      "responder_policy": "mentioned_only",
+      "at": "2026-10-24T03:29:13.189Z"
+    },
+    {
+      "kind": "user",
+      "speaker": "user",
+      "room_id": "room-mvluavwn",
+      "text": "@GP145Alpha 只做竞品结论这一件事",
+      "responders": [
+        "bot-bae52b"
+      ],
+      "responder_policy": "mentioned_only",
+      "at": "2026-10-24T03:29:13.338Z"
+    },
+    {
+      "kind": "user",
+      "speaker": "user",
+      "room_id": "room-mvluavwn",
+      "text": "@GhostNotInRoom 请说明你的职责",
+      "responders": [
+        "bot-bae52b",
+        "bot-221f7a",
+        "bot-993fb2"
+      ],
+      "responder_policy": "bot_discretion",
+      "unknown_mentions": [
+        "GhostNotInRoom"
+      ],
+      "at": "2026-10-24T03:29:13.605Z"
+    },
+    {
+      "kind": "bot_reply",
+      "room_id": "room-mvluavwn",
+      "speaker": "bot-bae52b",
+      "bot_id": "bot-bae52b",
+      "name": "GP145Alpha",
+      "text": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据）\n· GP145Fail（职责：GP145JOBFAIL 长文写作；简介：GP145DESCB 草稿需审批）\n· GP145Gamma（职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对）\n本轮被 @：GP145Alpha、GP145Fail、GP145Gamma\n发言纪律：只以自己的职责发言，不要替别的成员宣布他们的职责；被问到成员或名单时按上面的群成员如实列出，不要推说名单不可得。>|user<@GhostNotInRoom 请说明你的职责>",
+      "at": "2026-10-24T03:29:13.606Z"
+    },
+    {
+      "kind": "bot_reply_error",
+      "room_id": "room-mvluavwn",
+      "speaker": "bot-221f7a",
+      "bot_id": "bot-221f7a",
+      "name": "GP145Fail",
+      "text": "这次没有完成对话（Host 未拿到供应商回复）：stub provider failure for 名字：GP145Fail。请在「设置 → 凭证」确认当前供应商与密钥后重试；本轮没有用本地兜底假装回答。",
+      "at": "2026-10-24T03:29:13.606Z",
+      "error": "stub provider failure for 名字：GP145Fail"
+    },
+    {
+      "kind": "bot_reply",
+      "room_id": "room-mvluavwn",
+      "speaker": "bot-993fb2",
+      "bot_id": "bot-993fb2",
+      "name": "GP145Gamma",
+      "text": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Gamma；职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据）\n· GP145Fail（职责：GP145JOBFAIL 长文写作；简介：GP145DESCB 草稿需审批）\n· GP145Gamma（职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对）\n本轮被 @：GP145Alpha、GP145Fail、GP145Gamma\n发言纪律：只以自己的职责发言，不要替别的成员宣布他们的职责；被问到成员或名单时按上面的群成员如实列出，不要推说名单不可得。>|user<@GhostNotInRoom 请说明你的职责>",
+      "at": "2026-10-24T03:29:13.606Z"
+    },
+    {
+      "kind": "final_report",
+      "room_id": "room-mvluavwn",
+      "responder_policy": "bot_discretion",
+      "task": "@GhostNotInRoom 请说明你的职责",
+      "task_sig": "room-mvluavwn|@ghostnotinroom 请说明你的职责",
+      "task_title": "@GhostNotInRoom 请说明你的职责",
+      "responders": [
+        "bot-bae52b",
+        "bot-221f7a",
+        "bot-993fb2"
+      ],
+      "total": 3,
+      "returned": 2,
+      "partial": true,
+      "sections": [
+        {
+          "bot_id": "bot-bae52b",
+          "name": "GP145Alpha",
+          "ok": true,
+          "summary": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Alpha；职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只收集证据。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA …",
+          "summary_truncated": true,
+          "artifacts": [
+            {
+              "name": "chat-mvluazxq.json",
+              "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluazxq.json"
+            }
+          ]
+        },
+        {
+          "bot_id": "bot-221f7a",
+          "name": "GP145Fail",
+          "ok": false,
+          "summary": "(stub provider failure for 名字：GP145Fail)",
+          "artifacts": []
+        },
+        {
+          "bot_id": "bot-993fb2",
+          "name": "GP145Gamma",
+          "ok": true,
+          "summary": "Bit Bot stub reply: system<你是 Bit Bot，国产多端 AI 助手。回答简洁、可执行；不要冒充已执行 Host 工具。\n你正在以专属 Bot 的身份回答。名字：GP145Gamma；职责：GP145JOBGAMMA 数据核对；简介：GP145DESCC 只做核对。请只以该身份作答，不要自称其他 Bot。\n当前群聊：GP145 协作验收群\n群成员：\n· GP145Alpha（职责：GP145JOBALPHA 市场调研；简介：GP145DESCA 只…",
+          "summary_truncated": true,
+          "artifacts": [
+            {
+              "name": "chat-mvluazuu.json",
+              "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluazuu.json"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "name": "chat-mvluazxq.json",
+          "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluazxq.json"
+        },
+        {
+          "name": "chat-mvluazuu.json",
+          "path": "/Users/zfl/Downloads/bitbot/data/llm/turns/chat-mvluazuu.json"
+        }
+      ],
+      "at": "2026-10-24T03:29:13.606Z"
+    }
+  ],
+  "finished_at": "2026-10-24T03:29:18.227Z"
+}
