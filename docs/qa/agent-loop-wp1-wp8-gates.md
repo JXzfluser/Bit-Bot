@@ -56,6 +56,6 @@ Shell 执行是审批后的记录标记 `[product-shell]`，不在这条路径�
 
 - `docs/agent-core/01-agent-loop-electron-midrun.md`
 - `docs/qa/electron-chat-agent-loop-gates.md`
-- `bash scripts/prove_electron_chat_agent_loop.sh`
+- `bash scripts/prove_agent_loop_electron_midrun.sh`
 
 该命令通过也不关闭 AR 状态列，也不宣称 MVP。

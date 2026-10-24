@@ -8,7 +8,7 @@
 
 1. Desktop Chat composer（`#composer #text` → `runUserTurn` → `bitbot:turn` → `runner.runTurn`）与 cmd 共用入口：`open_turn` → `AgentLoop::run`。`max_steps` 仍强制 64。
 2. Host 仍只回答内核吐出的一行 `BITBOT_FFI`：`llm_chat` / `exec_tool` / `request_approval` / `deliver`。`llm_chat` 走现有 `executeLlmChat`。Node 不根据 `tool_calls` 再叫一次模型。
-3. Renderer 不拥有第二套 loop。它只投影内核 `BITBOT_LOOP` 行变成的 `AgentStep`（`bitbot:agent-loop`）。投影函数不得调用 `turn` 或 `executeLlmChat`。
+3. Renderer 不拥有第二套 loop，也不另开状态机。它只投影内核 `AgentLoop::run` 已经走出的 `BITBOT_LOOP` 行（`bitbot:agent-loop`）。投影函数不得调用 `turn` 或 `executeLlmChat`。Host 与 GUI 禁止 `while` 再调用 `llm_chat`。模型循环只留在 `AgentLoop::run`。
 4. `AgentStep` 形状只描述内核已经走出的步：`{ kind: "entry", entry: "AgentLoop::run", agent_entry: "open_turn" }` 或 `{ kind: "op", op }`，`op` 仅限上述四个操作。
 5. 非 Chat（例如启动时的 `ListMachines`）仍不进 Agent Loop。
 6. `--legacy-chat-effect` / `BITBOT_LEGACY_CHAT_EFFECT=1` 才回到单次 effect。默认 composer 不走这条。
@@ -25,12 +25,12 @@ EG1–EG3 是关掉 Electron/Chat GUI residual 的最低条。EG4–EG6 一起�
 | EG3 | 是 | `node_ops` 与 `kernel_ops` 一致；provider 次数等于内核 `llm_chat` 次数。`bitbot:turn` 与 renderer 投影函数里没有第二套模型循环 |
 | EG4 | 否 | 飞行中 `#log [data-agent-step]` 只显示已投影的 AgentStep（entry、`llm_chat`、`exec_tool`），且当时还没有 `deliver` |
 | EG5 | 否 | 第二次 provider body 含工具观察（`<cursor_untrusted_data` 与 `see b.txt`）。回合结束后可见助手文本是 `saw file`。默认未设 `BITBOT_LEGACY_CHAT_EFFECT` |
-| EG6 | 否 | 本轮 Read 路径不出现审批放行。composer 不传 `approved: true`。不改 AR-15、H4、capability matrix |
+| EG6 | 否 | 本轮 Read 路径不出现审批放行。composer 不传 `approved: true`。不改 AR-15、H4、capability matrix。同一条 evidence_cmd 再跑 WP SoT `bash scripts/prove_agent_loop_product_wire.sh`，必须 fail=0。WP1–WP8 PASS 本身不是 EG1–EG5 |
 
 ## evidence_cmd
 
 ```bash
-bash scripts/prove_electron_chat_agent_loop.sh
+bash scripts/prove_agent_loop_electron_midrun.sh
 ```
 
-脚本拉起真实 `hosts/desktop/main.js`，向 `#composer #text` 提交一句 Chat，在第二次模型完成返回之前读 trace、DOM 和 loopback provider 记录。缺 Electron、显示或 moon 时失败退出，不把缺工具链写成 PASS。
+脚本拉起真实 `hosts/desktop/main.js`，向 `#composer #text` 提交一句 Chat，在第二次模型完成返回之前读 trace、DOM 和 loopback provider 记录，然后跑 WP SoT。缺 Electron、显示或 moon 时失败退出，不把缺工具链写成 PASS。WP PASS 不等于本页的 EG。

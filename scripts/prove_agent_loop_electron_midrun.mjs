@@ -3,7 +3,9 @@
  * A missing Electron, display, or moon toolchain fails the script.
  * This does not close the AR status column and does not claim MVP.
  *
- * Usage: bash scripts/prove_electron_chat_agent_loop.sh
+ * Usage: bash scripts/prove_agent_loop_electron_midrun.sh
+ * EG6 also runs scripts/prove_agent_loop_product_wire.sh and requires it green.
+ * WP PASS is not EG1–EG5.
  */
 import fs from "fs";
 import os from "os";
@@ -220,10 +222,48 @@ function staticChecks() {
   check(allowed.includes("approved: true"), "runAllowed approval site unchanged");
   check(probe.includes('sessionId: "cn-probe"') && probe.includes("approved: true"), "cn-probe approval site unchanged");
   check(!handler.includes("approved: true"), "composer turn handler adds no approved:true");
+  const runUser = sliceBetween(read("hosts/desktop/index.html"), "async function runUserTurn", "function postProcessWaveGResults");
+  const hostGui = [wire, pump, renderer, handler, runUser];
+  check(
+    hostGui.every((src) => !(/\bwhile\s*\(/.test(src) && /llm_chat\s*\(/.test(src))),
+    "Host/GUI has no while+llm_chat",
+  );
+  const kernel = read("runtime/agent_loop.mbt");
+  check(
+    /pub fn\[H : AgentLoopHost\] AgentLoop::run/.test(kernel) &&
+      /while steps < AGENT_LOOP_MAX_STEPS/.test(kernel) &&
+      /host\.llm_chat\(messages\)/.test(kernel),
+    "kernel AgentLoop::run remains the only model loop",
+  );
   const dirty = execSync("git status --porcelain", { cwd: REPO, encoding: "utf8" });
   check(!/capability-matrix\.md/.test(dirty), "capability matrix untouched");
   check(!/h6-matrix-i/.test(dirty), "H4 matrix artifacts untouched");
+  check(!/^runtime\//m.test(dirty) && !/^cmd\//m.test(dirty), "kernel sources unchanged for the GUI");
   check(read("docs/qa/agent-loop-wp1-wp8-gates.md").includes("| WP1 | live PASS |"), "WP1 ruling unchanged");
+}
+
+function eg6WpSot() {
+  let out = "";
+  try {
+    out = execSync("bash scripts/prove_agent_loop_product_wire.sh", {
+      cwd: REPO,
+      encoding: "utf8",
+      timeout: 300000,
+      env: {
+        ...process.env,
+        PATH: `${process.env.HOME || ""}/.moon/bin:${process.env.PATH || ""}`,
+        MOONBIT_NEW_NATIVE: "0",
+      },
+    });
+  } catch (err) {
+    out = `${err.stdout || ""}\n${err.stderr || ""}`;
+    bad("EG6 WP SoT", out.slice(-800));
+    return;
+  }
+  const summary = out.match(/prove_agent_loop_product_wire pass=(\d+) fail=(\d+)/);
+  check(Boolean(summary) && summary[2] === "0" && Number(summary[1]) > 0, "EG6 WP SoT fail=0", summary && summary[0]);
+  check(out.includes("prove_agent_loop_product_wire done"), "EG6 product wire script finished");
+  check(/failed: 0/.test(out) && !/failed: [1-9]/.test(out), "EG6 moon tests failed: 0");
 }
 
 async function main() {
@@ -241,7 +281,7 @@ async function main() {
   }
   if (!moonOk) bad("moon toolchain", "moon --version failed");
   if (fail) {
-    console.log(`prove_electron_chat_agent_loop pass=${pass} fail=${fail}`);
+    console.log(`prove_agent_loop_electron_midrun pass=${pass} fail=${fail}`);
     process.exit(1);
   }
 
@@ -395,16 +435,17 @@ async function main() {
     }
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(userData, { recursive: true, force: true });
+    eg6WpSot();
   }
 }
 
 main()
   .then(() => {
-    console.log(`prove_electron_chat_agent_loop pass=${pass} fail=${fail}`);
+    console.log(`prove_agent_loop_electron_midrun pass=${pass} fail=${fail}`);
     process.exit(fail ? 1 : 0);
   })
   .catch((err) => {
     console.error("FAIL harness", err && err.stack ? err.stack : err);
-    console.log(`prove_electron_chat_agent_loop pass=${pass} fail=${fail + 1}`);
+    console.log(`prove_agent_loop_electron_midrun pass=${pass} fail=${fail + 1}`);
     process.exit(1);
   });
