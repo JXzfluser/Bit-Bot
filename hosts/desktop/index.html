@@ -3867,6 +3867,12 @@
     function dmBotInfo() {
       return botInfoById[activeBotId] || { id: activeBotId, name: "Bit Bot", avatar: "" };
     }
+    // G-28: Host 生成的失败/配置提示（内核 turn_json.mbt 的「这次没有完成对话」、
+    // main.js 的「联网搜索未启用」）不是 Bot 在说话，不该戴 Bot 头像+发送者名。
+    // 这两类是内核写死的前缀，可枚举；其余真实回复/「已完成」确认仍带头像。
+    function isHostNotice(t) {
+      return /^(这次没有完成对话|联网搜索未启用)/.test(String(t || ""));
+    }
 
     function addMsg(role, text, opts) {
       const el = document.createElement("div");
@@ -6333,8 +6339,9 @@
         }
         addMsg(m.role === "user" ? "user" : "assistant", m.text, {
           // G-28: every restored DM bot reply gets the same Grok-style avatar
-          // + sender name as a live reply, so history and streaming match.
-          speaker: m.role === "user" ? undefined : dmBotInfo(),
+          // + sender name as a live reply, so history and streaming match —
+          // except host failure/config notices (not the Bot speaking).
+          speaker: m.role === "user" || isHostNotice(m.text) ? undefined : dmBotInfo(),
           // GP-14: durable id + quoted target restored from the session store.
           mid: m.id || "",
           replyTo: m.reply_to || "",
@@ -6990,9 +6997,11 @@
             const locText = wavegLocalizeReply(m.text || "");
             // G-28: the final reply render is the one that sticks (the streaming
             // bubble is removed right after the turn). So the Grok-style avatar +
-            // sender-name header goes here, on every assistant reply.
-            const el = addMsg(m.role || "assistant", locText, {
-              speaker: (m.role || "assistant") === "assistant" ? dmBotInfo() : undefined,
+            // sender-name header goes here, on every assistant reply — except
+            // host failure/config notices, which must not wear the bot identity.
+            const replyRole = m.role || "assistant";
+            const el = addMsg(replyRole, locText, {
+              speaker: replyRole === "assistant" && !isHostNotice(locText) ? dmBotInfo() : undefined,
             });
             if (m && Array.isArray(m.sources)) renderCitations(el, m.sources);
             const aid = storedIds && Array.isArray(storedIds.assistant)
