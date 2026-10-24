@@ -11,6 +11,10 @@ Native Android Host shell for Bit Bot. **MoonBit** (`cmd/desktop_turn`) remains 
 - `app/src/main/java/com/bitbot/host/` — Compose UI + `TurnBridge`
 - Gradle Kotlin DSL (`settings.gradle.kts`, `app/build.gradle.kts`)
 
+## Shared Desktop brain (ADR 0008)
+
+`TurnBridge` posts to Desktop `POST /v1/turn` with `Authorization: Bearer <BITBOT_TURN_TOKEN>` (prefs key or env). Desktop listens on `127.0.0.1:18765` unless `BITBOT_BIND_LAN=1`. The emulator uses `http://10.0.2.2:18765` and still needs the same token. A missing bearer is HTTP 401 and does not start a turn. The DeepSeek key stays on Desktop.
+
 ## Local attach (no Play Store yet)
 
 ```bash

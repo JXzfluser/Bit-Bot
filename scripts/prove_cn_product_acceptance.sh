@@ -163,16 +163,21 @@ else
 fi
 # Live local inbound must not be the echo stub
 if curl -fsS "http://127.0.0.1:${BITBOT_CN_INBOUND_PORT:-18765}/health" >/dev/null 2>&1; then
-  probe=$(curl -sS -X POST "http://127.0.0.1:${BITBOT_CN_INBOUND_PORT:-18765}/v1/turn" \
+  # ADR 0008: an unauthenticated turn must be 401, not a tunnel echo and not a wake.
+  probe_code=$(curl -sS -o /tmp/bitbot-cn-turn-probe.json -w '%{http_code}' \
+    -X POST "http://127.0.0.1:${BITBOT_CN_INBOUND_PORT:-18765}/v1/turn" \
     -H 'Content-Type: application/json' \
     -d '{"text":"ListMachines","machine_kind":"desktop","session_id":"gate-probe"}' \
-    --connect-timeout 5 --max-time 90 || true)
+    --connect-timeout 5 --max-time 20 || true)
+  probe=$(cat /tmp/bitbot-cn-turn-probe.json 2>/dev/null || true)
   if echo "$probe" | grep -q '\[tunnel-echo\]'; then
     bad "CN inbound :18765 is tunnel-echo stub — not product Host"
-  elif echo "$probe" | grep -q '"brain":"shared_desktop_host"\|"ok":true\|ListMachines\|machine'; then
+  elif [[ "$probe_code" == "401" ]]; then
+    ok "CN inbound /v1/turn rejects unauthenticated calls (ADR 0008, HTTP 401)"
+  elif echo "$probe" | grep -q '"brain":"shared_desktop_host"'; then
     ok "CN inbound /v1/turn product Host responds (not echo)"
   else
-    note "WARN CN inbound listening but probe inconclusive (may need LLM key for full turn)"
+    note "WARN CN inbound listening but probe inconclusive (HTTP ${probe_code:-err})"
   fi
 fi
 # Open-config UX (keys never hardcoded)

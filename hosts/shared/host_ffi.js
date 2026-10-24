@@ -12,6 +12,7 @@ const http = require("http");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+const p0 = require("./p0_security");
 
 // GP-96/97/98 — §5.7 progress events are built by one module, shared with the
 // desktop transport and the CLI host (see hosts/shared/turn_progress.js).
@@ -153,6 +154,21 @@ function createHostFfi(repoRoot) {
     if (mode === "never") return { proceed: false, refused: "local_execution_never" };
     if (mode === "always") return { proceed: true, auto_allowed: true };
     return { proceed: true };
+  }
+
+  // ADR 0008: a bare effect field named approved is not a user action.
+  // Shell runs only for this turn's host-process approval, a saved allow
+  // rule, or local_execution=always. No rule and no approval → refuse.
+  function shellTurnAuthorized(ffiOpts) {
+    if (ffiOpts && ffiOpts.approved === true) return { ok: true, via: "turn_approved" };
+    let gate = null;
+    let local = null;
+    try { gate = waveGApprovalGate("shell"); } catch { gate = null; }
+    try { local = waveGLocalExecGate(); } catch { local = null; }
+    if (local && local.refused) return { ok: false, error: "local_execution_never" };
+    if (gate && gate.auto_allowed) return { ok: true, via: "approval_rule" };
+    if (local && local.auto_allowed) return { ok: true, via: "local_execution_always" };
+    return { ok: false, error: "shell_approval_required" };
   }
 
   // Wave G GP-21/GP-36: map a kernel approval_card command ("Class :: summary :: reason")
@@ -8061,7 +8077,8 @@ function createHostFfi(repoRoot) {
           cwd: sandbox,
           timeout: 120000,
           maxBuffer: 2 * 1024 * 1024,
-          env: process.env,
+          // ADR 0008: package-install bash must not inherit API keys.
+          env: p0.shellChildEnv(process.env),
         },
       );
       stdout = String(so || "").slice(0, 8000);
@@ -8769,7 +8786,7 @@ function createHostFfi(repoRoot) {
     return { snapPath, artifact };
   }
 
-  async function executeMcp(kind, command) {
+  async function executeMcp(kind, command, ffiOpts) {
     fs.mkdirSync(MCP_TMP, { recursive: true });
     const stamp = Date.now();
     const reqPath = path.join(MCP_TMP, `mcp-req-${stamp}.json`);
@@ -12506,12 +12523,8 @@ function createHostFfi(repoRoot) {
           const shellCmd = String(
             args.command || args.cmd || args.body || args.q || "",
           ).trim();
-          const shellApproved =
-            args.approved === true ||
-            args.approved === "true" ||
-            args.approved === 1 ||
-            args.approved === "1";
-          // Honesty: mcp product short-circuit does not mint approval; refuse unless args.approved.
+          // ADR 0008: args.approved in the effect payload cannot mint approval.
+          const shellApproved = Boolean(ffiOpts && ffiOpts.approved === true);
           if (!shellApproved) {
             const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
               command,
@@ -12552,9 +12565,10 @@ function createHostFfi(repoRoot) {
               },
             });
           }
-          const shellResults = await executeHostEffects([
-            { kind: "shell", command: shellCmd },
-          ]);
+          const shellResults = await executeHostEffects(
+            [{ kind: "shell", command: shellCmd }],
+            { approved: shellApproved },
+          );
           const shellHit = (shellResults || []).find(
             (r) => r && r.kind === "shell",
           );
@@ -24042,7 +24056,7 @@ function createHostFfi(repoRoot) {
         continue;
       }
       if (kind === "mcp_discover" || kind === "mcp_call") {
-        results.push(await executeMcp(kind, cmd));
+        results.push(await executeMcp(kind, cmd, ffiOpts));
         continue;
       }
       if (kind === "oauth") {
@@ -24959,17 +24973,63 @@ function createHostFfi(repoRoot) {
         });
         continue;
       }
+      const shellAuth = shellTurnAuthorized(ffiOpts);
+      if (!shellAuth.ok) {
+        let approval_id = null;
+        if (surface && shellAuth.error === "shell_approval_required") {
+          try {
+            const pend = surface.appendPendingApproval({
+              source: "chat",
+              kind: "shell",
+              command: shellCmd,
+            });
+            approval_id = pend && pend.id;
+          } catch (_) {
+            /* queue is best-effort; refusal still stands */
+          }
+        }
+        results.push({
+          kind: "shell",
+          ok: false,
+          command: p0.scrubSecrets(shellCmd),
+          needs_approval: shellAuth.error !== "local_execution_never",
+          refused: shellAuth.error === "local_execution_never" ? shellAuth.error : undefined,
+          approval_id,
+          error: shellAuth.error,
+          stdout: "",
+          stderr: "",
+          ran: false,
+        });
+        continue;
+      }
+      const cwdCheck = p0.cwdAllowed((ffiOpts && ffiOpts.cwd) || REPO_ROOT, [REPO_ROOT]);
+      if (!cwdCheck.ok) {
+        results.push({
+          kind: "shell",
+          ok: false,
+          command: p0.scrubSecrets(shellCmd),
+          error: "cwd_not_allowlisted",
+          stdout: "",
+          stderr: "",
+          ran: false,
+        });
+        continue;
+      }
+      const shellLogged = p0.scrubSecrets(shellCmd);
       try {
-        const { stdout, stderr } = await execFileAsync(
-          "/bin/bash",
-          ["-lc", shellCmd],
-          {
-            cwd: REPO_ROOT,
-            timeout: 30000,
-            maxBuffer: 1024 * 1024,
-            env: process.env,
-          },
-        );
+        const ran = await p0.runSandboxedShell(shellCmd, {
+          cwd: cwdCheck.cwd,
+          allowRoots: [REPO_ROOT],
+          env: process.env,
+        });
+        if (!ran.ok) {
+          const err = new Error(ran.error || "shell_failed");
+          err.stdout = ran.stdout || "";
+          err.stderr = ran.stderr || "";
+          throw err;
+        }
+        const stdout = ran.stdout;
+        const stderr = ran.stderr;
         const outText = String(stdout || "").slice(0, 8000);
         const errText = String(stderr || "").slice(0, 2000);
         const shellDir = path.join(REPO_ROOT, "data", "host-tools", "shell");
@@ -24980,7 +25040,7 @@ function createHostFfi(repoRoot) {
           `run-${Date.now().toString(36)}.json`,
         );
         const shellArtifact = {
-          command: shellCmd,
+          command: shellLogged,
           ok: true,
           stdout_prefix: outText.slice(0, 400),
           stderr_prefix: errText.slice(0, 200),
@@ -25002,7 +25062,7 @@ function createHostFfi(repoRoot) {
         });
         appendHostDeliveryJournal({
           kind: "shell",
-          command: shellCmd,
+          command: shellLogged,
           path: shellPath,
           ok: true,
           at: shellAt,
@@ -25010,7 +25070,7 @@ function createHostFfi(repoRoot) {
         results.push({
           kind: "shell",
           ok: true,
-          command: shellCmd,
+          command: shellLogged,
           // Keep raw stdout for ADR 0002 --apply-host-results reinjection.
           stdout: outText,
           stderr: errText,
@@ -25028,7 +25088,7 @@ function createHostFfi(repoRoot) {
           `run-fail-${Date.now().toString(36)}.json`,
         );
         const failArtifact = {
-          command: shellCmd,
+          command: shellLogged,
           ok: false,
           error: err.message || String(err),
           stdout_prefix: err.stdout
@@ -25048,7 +25108,7 @@ function createHostFfi(repoRoot) {
         });
         appendHostDeliveryJournal({
           kind: "shell",
-          command: shellCmd,
+          command: shellLogged,
           path: failPath,
           ok: false,
           at: failAt,
@@ -25056,8 +25116,8 @@ function createHostFfi(repoRoot) {
         results.push({
           kind: "shell",
           ok: false,
-          command: shellCmd,
-          error: err.message || String(err),
+          command: shellLogged,
+          error: p0.scrubSecrets(err.message || String(err)),
           // Keep raw stdout/stderr for ADR reinjection; path is snap-only.
           stdout: err.stdout ? String(err.stdout).slice(0, 4000) : "",
           stderr: err.stderr ? String(err.stderr).slice(0, 2000) : "",

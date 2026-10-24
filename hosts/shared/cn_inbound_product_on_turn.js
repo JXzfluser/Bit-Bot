@@ -64,7 +64,8 @@ function createProductOnTurn(repoRoot) {
         machineKind === "desktop" ? "desk-1" : `${machineKind}-inbound`,
       machineKind,
       channel: useChannel,
-      approved: true,
+      // ADR 0008: a remote/mobile turn is not a desktop Allow click.
+      approved: false,
     });
   };
 }

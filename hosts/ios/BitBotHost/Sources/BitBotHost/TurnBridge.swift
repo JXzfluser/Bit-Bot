@@ -6,6 +6,7 @@ import Foundation
 /// Dev fallback: `node hosts/mobile_host/run.js` when repo is present on Mac.
 enum TurnBridge {
   private static let hostUrlDefaultsKey = "BITBOT_HOST_URL"
+  private static let turnTokenDefaultsKey = "BITBOT_TURN_TOKEN"
 
   struct BridgeError: Error, LocalizedError {
     let message: String
@@ -46,6 +47,25 @@ enum TurnBridge {
     return try await runTurnLocal(text: text, machineKind: machineKind)
   }
 
+  /// ADR 0008: Desktop `/v1/turn` rejects requests with no bearer.
+  static func turnToken() -> String? {
+    let prefs = UserDefaults.standard.string(forKey: turnTokenDefaultsKey)?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !prefs.isEmpty { return prefs }
+    let env = ProcessInfo.processInfo.environment["BITBOT_TURN_TOKEN"]?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return env.isEmpty ? nil : env
+  }
+
+  static func setTurnToken(_ token: String?) {
+    let trimmed = (token ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      UserDefaults.standard.removeObject(forKey: turnTokenDefaultsKey)
+    } else {
+      UserDefaults.standard.set(trimmed, forKey: turnTokenDefaultsKey)
+    }
+  }
+
   private static func hostBaseURLFromEnv() -> String? {
     if let env = ProcessInfo.processInfo.environment["BITBOT_HOST_URL"], !env.isEmpty {
       return env
@@ -72,6 +92,9 @@ enum TurnBridge {
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    if let token = turnToken() {
+      req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
     req.timeoutInterval = 120
     let body: [String: Any] = [
       "text": text,

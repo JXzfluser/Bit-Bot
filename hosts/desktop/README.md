@@ -27,6 +27,10 @@ export BITBOT_LLM_MODEL=deepseek-chat                    # default
 # BITBOT_LLM_STREAM=0 to disable SSE streaming into the Desktop UI
 ```
 
+### Inbound turn auth (ADR 0008)
+
+CN / mobile `POST /v1/turn` requires `Authorization: Bearer $BITBOT_TURN_TOKEN`. The listener defaults to `127.0.0.1:18765`. Set `BITBOT_BIND_LAN=1` only when a phone on the LAN should connect, and put the same token in the phone's 凭证. DingTalk / Feishu / WeCom callbacks are rejected with 401 until their signing secrets are set (`BITBOT_DINGTALK_APP_SECRET`, `BITBOT_FEISHU_ENCRYPT_KEY`, `BITBOT_WECOM_CALLBACK_TOKEN`).
+
 ### Desktop product shell (P1)
 
 - **会话列表**：左侧「会话」+ 新建；持久化 `data/desktop/sessions.json`

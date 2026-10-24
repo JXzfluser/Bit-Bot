@@ -18,6 +18,7 @@ import java.net.URL
 object TurnBridge {
   private const val PREFS = "bitbot_host"
   private const val KEY_HOST_URL = "BITBOT_HOST_URL"
+  private const val KEY_TURN_TOKEN = "BITBOT_TURN_TOKEN"
 
   @Volatile private var appContext: Context? = null
 
@@ -83,6 +84,24 @@ object TurnBridge {
     }.getOrNull()
   }
 
+  /** ADR 0008: Desktop `/v1/turn` rejects requests with no bearer. */
+  fun turnToken(): String? {
+    val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val fromPrefs = prefs?.getString(KEY_TURN_TOKEN, null)?.trim().orEmpty()
+    if (fromPrefs.isNotEmpty()) return fromPrefs
+    val env = System.getenv("BITBOT_TURN_TOKEN")?.trim().orEmpty()
+    return env.ifEmpty { null }
+  }
+
+  fun setTurnToken(token: String?) {
+    val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return
+    val trimmed = token?.trim().orEmpty()
+    prefs.edit().apply {
+      if (trimmed.isEmpty()) remove(KEY_TURN_TOKEN) else putString(KEY_TURN_TOKEN, trimmed)
+      apply()
+    }
+  }
+
   private fun defaultHostUrl(): String? {
     // Emulator loopback to host machine Desktop inbound
     val props = System.getProperties()
@@ -107,6 +126,7 @@ object TurnBridge {
       readTimeout = 120000
       doOutput = true
       setRequestProperty("Content-Type", "application/json; charset=utf-8")
+      turnToken()?.let { setRequestProperty("Authorization", "Bearer $it") }
     }
     OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body) }
     val code = conn.responseCode

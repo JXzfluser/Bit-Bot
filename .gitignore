@@ -27,6 +27,7 @@ agent-tools/
 *.bitbot-applied.json
 /data/voice/media/
 /data/secrets/
+/data/host/turn-token
 /data/desktop/frames/
 !/data/**/.gitkeep
 /data/journal/computer-use/
