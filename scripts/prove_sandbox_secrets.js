@@ -1,18 +1,22 @@
 "use strict";
 
 /**
- * SK1–SK8. Sandbox and secret-leak evidence for ADR 0008.
+ * SK1–SK8. Labels are isomorphic with
+ * docs/agent-core/05-security-sandbox-secrets.md §4.
  * This is not P0, not AU, and not an I promotion.
  * prove_p0_inbound_host_checks.js does not close this residual.
  * Does not close AR-15 and does not claim MVP.
+ * phone host is not SK7. danger/echo is not SK8.
  */
 
 const fs = require("fs");
+const http = require("http");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const p0 = require("../hosts/shared/p0_security");
 const { createHostFfi } = require("../hosts/shared/host_ffi");
+const { createCnInboundServer } = require("../hosts/shared/cn_inbound_server");
 
 const ROOT = path.resolve(__dirname, "..");
 const SECRET = "sk-sandbox-SECRETVALUE123456";
@@ -21,9 +25,21 @@ const OTHER_SECRET = "example-secret-value-123456";
 const OTHER_PASSWORD = "example-password-value-123";
 const OTHER_WEBHOOK = "https://hooks.example/secret-value";
 
+const BINDING = [
+  ["SK1", "allowlist env keeps LC_* PATH HOME BITBOT_TZ and drops secrets"],
+  ["SK2", "approval does not release secrets"],
+  ["SK3", "shell artifacts do not contain the model key or turn token"],
+  ["SK4", "cwd stays inside the allow root"],
+  ["SK5", "scrub removes secret values from stdout stderr and inbound logs"],
+  ["SK6", "shell timeout kills the child and the buffer cap fail-closes"],
+  ["SK7", "health 401 and 413 bodies do not leak the turn token or LLM API key"],
+  ["SK8", "regression P0 prove is green, P0-3 stays U, AU is not overturned"],
+];
+
 let pass = 0;
 let fail = 0;
 const seen = new Set();
+let section4 = "";
 
 function ok(line) {
   pass += 1;
@@ -37,9 +53,20 @@ function bad(line) {
   seen.add(id);
   process.stdout.write("FAIL " + line + "\n");
 }
+function note(line) {
+  process.stdout.write("note " + line + "\n");
+}
 
 function assert(cond, message) {
   if (!cond) throw new Error(message || "assertion failed");
+}
+
+function bindingLine(id) {
+  const row = BINDING.find((item) => item[0] === id);
+  const phrase = row[1];
+  const line = id + " " + phrase;
+  if (!section4.includes(line)) throw new Error("Binding §4 missing " + line);
+  return line;
 }
 
 async function withEnv(extra, fn) {
@@ -97,7 +124,47 @@ function markerAlive(marker) {
   return out.split("\n").some((line) => line.includes(marker) && !line.includes("prove_sandbox_secrets"));
 }
 
+function httpCall(port, method, urlPath, headers, body) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        method,
+        path: urlPath,
+        headers: headers || {},
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          resolve({
+            status: res.statusCode,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      },
+    );
+    req.on("error", reject);
+    if (body != null) req.write(body);
+    req.end();
+  });
+}
+
+function bodyLeaks(text) {
+  return text.includes(SECRET) || text.includes(TURN);
+}
+
 async function main() {
+  const bindingDoc = fs.readFileSync(
+    path.join(ROOT, "docs/agent-core/05-security-sandbox-secrets.md"),
+    "utf8",
+  );
+  const secAt = bindingDoc.indexOf("## 4. Binding");
+  const secEnd = bindingDoc.indexOf("\n## ", secAt + 4);
+  section4 = bindingDoc.slice(secAt, secEnd === -1 ? undefined : secEnd);
+  assert(secAt >= 0 && section4.includes("SK8 "), "Binding §4 missing");
+
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-sk-"));
   const sub = path.join(root, "sub");
   fs.mkdirSync(sub, { recursive: true });
@@ -156,7 +223,7 @@ async function main() {
         assert(!JSON.stringify(live).includes("not-allowlisted"), "unknown env leaked");
       },
     );
-    ok("SK1 allowlist env keeps LC_* PATH HOME BITBOT_TZ and drops secrets");
+    ok(bindingLine("SK1"));
   } catch (err) {
     bad("SK1 " + (err && err.message ? err.message : err));
   }
@@ -179,12 +246,30 @@ async function main() {
       assert(row.ok === true && row.ran === true, "approved shell did not run");
       assert(String(row.stdout) === "|", "approved stdout was " + JSON.stringify(row.stdout));
       assert(!blob.includes(SECRET) && !blob.includes(TURN), "approved result released a secret");
-      const artifacts = readTree(path.join(root, "data", "host-tools", "shell"));
-      assert(!artifacts.includes(SECRET) && !artifacts.includes(TURN), "approved artifacts released a secret");
     });
-    ok("SK2 approval does not release secrets");
+    ok(bindingLine("SK2"));
   } catch (err) {
     bad("SK2 " + (err && err.message ? err.message : err));
+  }
+
+  try {
+    await withEnv({ BITBOT_LLM_API_KEY: SECRET, BITBOT_TURN_TOKEN: TURN }, async () => {
+      const row = shellRow(
+        await ffi.executeHostEffects(
+          [{ kind: "shell", command: "printf '%s' '" + SECRET + "|" + TURN + "'" }],
+          { approved: true },
+        ),
+      );
+      assert(row.ok === true && row.ran === true && row.path, "artifact probe did not write a file");
+      const artifacts = readTree(path.join(root, "data", "host-tools", "shell"));
+      assert(artifacts.length > 0, "shell artifacts were empty");
+      assert(fs.existsSync(row.path), "artifact path missing on disk");
+      assert(!artifacts.includes(SECRET) && !artifacts.includes(TURN), "shell artifacts released a secret");
+      assert(artifacts.includes("[redacted]"), "shell artifacts were not scrubbed");
+    });
+    ok(bindingLine("SK3"));
+  } catch (err) {
+    bad("SK3 " + (err && err.message ? err.message : err));
   }
 
   try {
@@ -215,57 +300,9 @@ async function main() {
       escaped.ok === false && escaped.ran === false && escaped.error === "cwd_not_allowlisted",
       "symlink cwd " + JSON.stringify(escaped),
     );
-    ok("SK3 cwd stays inside the allow root");
-  } catch (err) {
-    bad("SK3 " + (err && err.message ? err.message : err));
-  }
-
-  try {
-    assert(p0.SHELL_TIMEOUT_MS === 30000, "default timeout is " + p0.SHELL_TIMEOUT_MS);
-    const callAt = hostSrc.indexOf("await p0.runSandboxedShell");
-    assert(callAt >= 0, "host shell does not call runSandboxedShell");
-    const call = hostSrc.slice(callAt, callAt + 220);
-    assert(!call.includes("timeoutMs"), "host shell overrides the timeout");
-    const marker = "sk4-sleep-" + process.pid + "-" + Date.now();
-    const started = Date.now();
-    const timed = await p0.runSandboxedShell("sleep 30 #" + marker, {
-      cwd: root,
-      allowRoots: [root],
-      timeoutMs: 1000,
-      env: process.env,
-    });
-    const elapsed = Date.now() - started;
-    assert(timed.ok === false && timed.ran === true, "timeout result " + JSON.stringify(timed));
-    assert(elapsed < 8000, "timeout took " + elapsed + "ms");
-    await new Promise((r) => setTimeout(r, 200));
-    assert(!markerAlive(marker), "timed-out sleep is still running");
-    ok("SK4 shell timeout kills the child");
+    ok(bindingLine("SK4"));
   } catch (err) {
     bad("SK4 " + (err && err.message ? err.message : err));
-  }
-
-  try {
-    assert(p0.SHELL_MAX_BUFFER === 256 * 1024, "default buffer is " + p0.SHELL_MAX_BUFFER);
-    assert(p0.SHELL_OUTPUT_CAP === 8000, "output cap is " + p0.SHELL_OUTPUT_CAP);
-    const callAt = hostSrc.indexOf("await p0.runSandboxedShell");
-    const call = hostSrc.slice(callAt, callAt + 220);
-    assert(!call.includes("maxBuffer"), "host shell overrides the buffer");
-    const capped = await p0.runSandboxedShell(
-      "python3 -c 'import sys; sys.stdout.write(\"Y\"*9000)'",
-      { cwd: root, allowRoots: [root], env: process.env },
-    );
-    assert(capped.ok === true, "cap probe failed " + JSON.stringify(capped).slice(0, 300));
-    assert(capped.stdout.length === 8000 && capped.stdout === "Y".repeat(8000), "stdout cap " + capped.stdout.length);
-    const overflow = await p0.runSandboxedShell(
-      "python3 -c 'import sys; sys.stdout.write(\"Z\"*4000)'",
-      { cwd: root, allowRoots: [root], maxBuffer: 500, env: process.env },
-    );
-    assert(overflow.ok === false && overflow.ran === true, "buffer probe " + JSON.stringify(overflow).slice(0, 300));
-    assert(String(overflow.error).includes("maxBuffer"), "buffer error " + overflow.error);
-    assert(String(overflow.stdout).length <= 8000, "overflow stdout was not capped");
-    ok("SK5 shell buffer and output cap");
-  } catch (err) {
-    bad("SK5 " + (err && err.message ? err.message : err));
   }
 
   try {
@@ -276,7 +313,7 @@ async function main() {
     assert(!JSON.stringify(scrubbed).includes(SECRET), "scrubDeep kept the secret");
     assert(JSON.stringify(scrubbed).includes("[redacted]"), "scrubDeep did not redact");
     assert(inboundSrc.includes("p0.scrubDeep"), "inbound log path does not scrub");
-    await withEnv({ BITBOT_LLM_API_KEY: SECRET }, async () => {
+    await withEnv({ BITBOT_LLM_API_KEY: SECRET, BITBOT_TURN_TOKEN: TURN }, async () => {
       const row = shellRow(
         await ffi.executeHostEffects(
           [{ kind: "shell", command: "printf '%s' '" + SECRET + "'" }],
@@ -295,12 +332,140 @@ async function main() {
       assert(failed.ok === false, "stderr probe did not fail");
       assert(!JSON.stringify(failed).includes(SECRET), "stderr result kept the secret");
       assert(String(failed.stderr).includes("[redacted]"), "stderr was not redacted");
-      const artifacts = readTree(path.join(root, "data", "host-tools", "shell"));
-      assert(!artifacts.includes(SECRET), "shell artifacts kept the secret");
     });
-    ok("SK6 scrub removes secret values from results and artifacts");
+    ok(bindingLine("SK5"));
+  } catch (err) {
+    bad("SK5 " + (err && err.message ? err.message : err));
+  }
+
+  try {
+    assert(p0.SHELL_TIMEOUT_MS === 30000, "default timeout is " + p0.SHELL_TIMEOUT_MS);
+    assert(p0.SHELL_MAX_BUFFER === 256 * 1024, "default buffer is " + p0.SHELL_MAX_BUFFER);
+    assert(p0.SHELL_OUTPUT_CAP === 8000, "output cap is " + p0.SHELL_OUTPUT_CAP);
+    const callAt = hostSrc.indexOf("await p0.runSandboxedShell");
+    assert(callAt >= 0, "host shell does not call runSandboxedShell");
+    const call = hostSrc.slice(callAt, callAt + 220);
+    assert(!call.includes("timeoutMs"), "host shell overrides the timeout");
+    assert(!call.includes("maxBuffer"), "host shell overrides the buffer");
+    const marker = "sk6-sleep-" + process.pid + "-" + Date.now();
+    const started = Date.now();
+    const timed = await p0.runSandboxedShell("sleep 30 #" + marker, {
+      cwd: root,
+      allowRoots: [root],
+      timeoutMs: 1000,
+      env: process.env,
+    });
+    const elapsed = Date.now() - started;
+    assert(timed.ok === false && timed.ran === true, "timeout result " + JSON.stringify(timed));
+    assert(elapsed < 8000, "timeout took " + elapsed + "ms");
+    await new Promise((r) => setTimeout(r, 200));
+    assert(!markerAlive(marker), "timed-out sleep is still running");
+    const capped = await p0.runSandboxedShell(
+      "python3 -c 'import sys; sys.stdout.write(\"Y\"*9000)'",
+      { cwd: root, allowRoots: [root], env: process.env },
+    );
+    assert(capped.ok === true, "cap probe failed " + JSON.stringify(capped).slice(0, 300));
+    assert(capped.stdout.length === 8000 && capped.stdout === "Y".repeat(8000), "stdout cap " + capped.stdout.length);
+    const overflow = await p0.runSandboxedShell(
+      "python3 -c 'import sys; sys.stdout.write(\"Z\"*4000)'",
+      { cwd: root, allowRoots: [root], maxBuffer: 500, env: process.env },
+    );
+    assert(overflow.ok === false && overflow.ran === true, "buffer probe " + JSON.stringify(overflow).slice(0, 300));
+    assert(String(overflow.error).includes("maxBuffer"), "buffer error " + overflow.error);
+    assert(String(overflow.stdout).length <= 8000, "overflow stdout was not capped");
+    ok(bindingLine("SK6"));
   } catch (err) {
     bad("SK6 " + (err && err.message ? err.message : err));
+  }
+
+  try {
+    const inboundRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-sk7-"));
+    let wakes = 0;
+    await withEnv({ BITBOT_LLM_API_KEY: SECRET, BITBOT_TURN_TOKEN: TURN }, async () => {
+      const server = createCnInboundServer({
+        repoRoot: inboundRoot,
+        port: 0,
+        host: "127.0.0.1",
+        turnToken: TURN,
+        onTurn: async () => {
+          wakes += 1;
+          return { ok: true, messages: [], stdout: "" };
+        },
+      });
+      try {
+        const started = await server.start();
+        const port = started.port;
+        const health = await httpCall(port, "GET", "/health", {}, null);
+        const denied = await httpCall(
+          port,
+          "POST",
+          "/v1/turn",
+          { "Content-Type": "application/json", "Content-Length": Buffer.byteLength('{"text":"hi"}') },
+          '{"text":"hi"}',
+        );
+        const bulky = Buffer.alloc(p0.DEFAULT_MAX_BODY_BYTES + 1, 0x61);
+        const tooBig = await httpCall(
+          port,
+          "POST",
+          "/v1/turn",
+          {
+            "Content-Type": "application/json",
+            "Content-Length": String(bulky.length),
+            Authorization: "Bearer " + TURN,
+          },
+          bulky,
+        );
+        assert(health.status === 200, "health status " + health.status + " " + health.body);
+        assert(denied.status === 401, "401 status " + denied.status + " " + denied.body);
+        assert(tooBig.status === 413, "413 status " + tooBig.status + " " + tooBig.body);
+        assert(!bodyLeaks(health.body), "health body leaked a secret");
+        assert(!bodyLeaks(denied.body), "401 body leaked a secret");
+        assert(!bodyLeaks(tooBig.body), "413 body leaked a secret");
+        assert(wakes === 0, "401 or 413 woke a turn");
+      } finally {
+        await server.stop();
+      }
+    });
+    ok(bindingLine("SK7"));
+  } catch (err) {
+    bad("SK7 " + (err && err.message ? err.message : err));
+  }
+
+  try {
+    const p0Gates = fs.readFileSync(path.join(ROOT, "docs/qa/p0-security-gates.md"), "utf8");
+    const p0Line = p0Gates.split("\n").find((line) => line.includes("| P0-3 |"));
+    assert(p0Line && p0Line.includes("U 已绿，不升 I") && p0Line.includes("U only"), "P0-3 row is not U only");
+    const cm0702 = path.join(ROOT, "docs/qa/artifacts/h6-matrix-i/cm-0702/evidence.json");
+    if (fs.existsSync(cm0702)) {
+      const evidence = JSON.parse(fs.readFileSync(cm0702, "utf8"));
+      assert(evidence.i_claimed === false, "CM-0702 i_claimed was flipped");
+    }
+    const auDoc = fs.readFileSync(path.join(ROOT, "docs/qa/host-approval-ui-gates.md"), "utf8");
+    assert(auDoc.includes("prove_host_approval_ui pass=69 fail=0"), "AU prove count was overturned");
+    assert(auDoc.includes("不关 AR-15"), "AU page closed AR-15");
+    const au7 = auDoc.split("\n").find((line) => line.includes("| AU7 |"));
+    assert(au7 && au7.includes("approved: false"), "AU7 inbound approval was overturned");
+    const mainJs = fs.readFileSync(path.join(ROOT, "hosts/desktop/main.js"), "utf8");
+    const ensureAt = mainJs.indexOf("async function ensureCnInbound");
+    const ensureSlice = mainJs.slice(ensureAt, ensureAt + 1200);
+    assert(ensureSlice.includes("approved: false"), "ensureCnInbound lost approved: false");
+    assert(!ensureSlice.includes("approved: true"), "ensureCnInbound gained approved: true");
+    const product = fs.readFileSync(path.join(ROOT, "hosts/shared/cn_inbound_product_on_turn.js"), "utf8");
+    assert(product.includes("approved: false"), "product onTurn lost approved: false");
+    assert(!product.includes("approved: true"), "product onTurn gained approved: true");
+    const proved = execFileSync("bash", ["scripts/prove_p0_inbound_security.sh"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      timeout: 180000,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    assert(
+      proved.includes("prove_p0_inbound_security pass=8 fail=0"),
+      "P0 prove was not green",
+    );
+    ok(bindingLine("SK8"));
+  } catch (err) {
+    bad("SK8 " + (err && err.message ? err.message : err));
   }
 
   try {
@@ -349,9 +514,9 @@ async function main() {
       const catalog = ffi.listLlmCatalog();
       assert(catalog.providers.every((p) => p.key_configured === false), "catalog still shows a phone-held key");
     });
-    ok("SK7 phone host does not hold the LLM key");
+    note("phone-host remains a side check");
   } catch (err) {
-    bad("SK7 " + (err && err.message ? err.message : err));
+    bad("phone-host " + (err && err.message ? err.message : err));
   }
 
   try {
@@ -373,24 +538,23 @@ async function main() {
       ),
     );
     assert(echo.ok === true && String(echo.stdout).includes("sandbox-ok"), "approved echo failed");
-    ok("SK8 approved echo still runs and the danger table still refuses");
+    note("shell-control remains a side check");
   } catch (err) {
-    bad("SK8 " + (err && err.message ? err.message : err));
+    bad("shell-control " + (err && err.message ? err.message : err));
   }
 }
 
 main()
   .then(() => {
-    const ids = ["SK1", "SK2", "SK3", "SK4", "SK5", "SK6", "SK7", "SK8"];
-    for (const id of ids) {
-      if (!seen.has(id)) {
+    for (const row of BINDING) {
+      if (!seen.has(row[0])) {
         fail += 1;
-        process.stdout.write("FAIL " + id + " missing\n");
+        process.stdout.write("FAIL " + row[0] + " missing\n");
       }
     }
     process.stdout.write(
       "SK is not P0 and not AU. prove_p0 host-checks do not close this residual. " +
-        "AR-15 stays open. P0-3 stays U. not I. not MVP.\n",
+        "AR-15 stays open. P0-3 stays U. not I. not MVP. residual stays open.\n",
     );
     process.stdout.write("prove_sandbox_secrets pass=" + pass + " fail=" + fail + "\n");
     process.exit(fail === 0 ? 0 : 1);
