@@ -912,18 +912,21 @@
   .msg-status .ms-check.read { color: #22c55e; font-weight: 700; }
   /* Layout contract §3: the stream column is capped at --content-max, so the
      85% bubble must not outgrow it on wide windows (was 1047px at 1440). */
-  /* Grok parity: an assistant turn is a flat, avatar-less block that fills the
+  /* Grok parity (G-28): an assistant turn is a flat block that fills the
      whole 760px column. The previous version painted it as a "card" — a 32px
      avatar dot, a 1px stroke, a 4px drop shadow, an 85% width cap and one
-     flattened corner. None of the four exist in the reference
+     flattened corner. None of those exist in the reference
      (replica/screens/grok-composer.png: flat #f6f6f6 block, full column).
-     Together they are what made every reply read as a WorkBuddy card instead
-     of a Grok answer. */
+     G-28 adds a Grok-style circular avatar + sender name above DM bot replies,
+     matching replica/screens/grok-team-conv.png (the sender name is the
+     pink/magenta --accent). Room replies keep their own roomSpeakerRow, so
+     this head is added only on the DM streaming + history paths. */
   .msg.assistant {
     align-self: stretch;
     display: flex;
-    flex-wrap: wrap;
-    gap: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
     width: 100%;
     max-width: 100%;
   }
@@ -938,6 +941,20 @@
     flex: 1 1 100%;
     min-width: 0;
   }
+  /* G-28: Grok-style DM bot identity header (avatar left, sender name right).
+     Only attached on the DM streaming + history reply paths; room replies use
+     roomSpeakerRow inside .body and never get this head. */
+  .msg-grok-head { display: flex; align-items: center; gap: 8px; order: 0; }
+  .msg-grok-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    overflow: hidden; flex: 0 0 auto;
+    background: color-mix(in srgb, var(--av, var(--bot-avatar, var(--muted))) 16%, transparent);
+    color: var(--av, var(--bot-avatar, var(--ink)));
+    font-weight: 700; font-size: 13px; line-height: 1;
+  }
+  .msg-grok-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .msg-grok-name { color: var(--accent); font-weight: 600; font-size: var(--text-sm); }
   .msg .role { display: none; }
   /* GP-146: 群 transcript 按条目渲染。说话人行 / 失败态 / 运行中 / 协作汇总卡
      都长在既有 .msg 气泡上，因此布局合同（§3 列宽）继续成立，不新增消息面。 */
@@ -3815,6 +3832,41 @@
       return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
     }
 
+    // G-28: build a Grok-style circular avatar for a bot identity. Uses the
+    // real avatar image when present, otherwise a colored initial (same
+    // palette as the sidebar, via the --av custom prop — no hardcoded hex so
+    // the token ratchet stays clean). avatarDataUrl is a data URL (no file://).
+    function botAvatarEl(info) {
+      const av = document.createElement("span");
+      av.className = "msg-grok-avatar";
+      const seed = (info && (info.id || info.name)) || activeBotId || "B";
+      const name = (info && info.name) || String(seed || "B");
+      if (info && info.avatar) {
+        const img = document.createElement("img");
+        img.alt = "";
+        img.src = info.avatar;
+        av.appendChild(img);
+      } else {
+        av.textContent = name.trim().slice(0, 1);
+        av.style.setProperty("--av", avatarColorFor(seed));
+      }
+      return av;
+    }
+    // G-28: header row = avatar + sender name, matching grok-team-conv.png.
+    function botSpeakerHead(info) {
+      const head = document.createElement("div");
+      head.className = "msg-grok-head";
+      head.appendChild(botAvatarEl(info));
+      const nm = document.createElement("span");
+      nm.className = "msg-grok-name";
+      nm.textContent = (info && info.name) || "Bit Bot";
+      head.appendChild(nm);
+      return head;
+    }
+    function dmBotInfo() {
+      return botInfoById[activeBotId] || { id: activeBotId, name: "Bit Bot", avatar: "" };
+    }
+
     function addMsg(role, text, opts) {
       const el = document.createElement("div");
       let cls = "msg " + role;
@@ -3825,6 +3877,12 @@
       el.className = cls;
       el.innerHTML = '<div class="role"></div><div class="body"></div>';
       el.querySelector(".role").textContent = role;
+      // G-28: a bot reply (streaming/history) carries a Grok-style avatar +
+      // sender-name header. System/error assistant notices pass no speaker and
+      // stay header-less, so they don't read as the bot speaking.
+      if (role === "assistant" && opts && opts.speaker) {
+        el.insertBefore(botSpeakerHead(opts.speaker), el.querySelector(".body"));
+      }
       // GP-103/104/105 (§8.4): external content arrives fenced. Display it as
       // plain text with a visible source badge — the tags themselves are never
       // shown as if they were the model's words.
@@ -5252,6 +5310,9 @@
     let roomThread = null;
     const roomWorking = new Map();
     let roomBotNames = {};
+    // G-28: bot id → { name, avatar } cache, used by the DM reply head
+    // (avatar + sender name). Populated in refreshBots alongside roomBotNames.
+    let botInfoById = {};
     async function loadRoomBotNames() {
       try {
         const view = await window.bitbot.bots.list();
@@ -6270,6 +6331,9 @@
           continue;
         }
         addMsg(m.role === "user" ? "user" : "assistant", m.text, {
+          // G-28: every restored DM bot reply gets the same Grok-style avatar
+          // + sender name as a live reply, so history and streaming match.
+          speaker: m.role === "user" ? undefined : dmBotInfo(),
           // GP-14: durable id + quoted target restored from the session store.
           mid: m.id || "",
           replyTo: m.reply_to || "",
@@ -9668,6 +9732,7 @@
       box.innerHTML = "";
       if (hiddenBox) hiddenBox.innerHTML = "";
       const bots = (view && view.bots) || [];
+      for (const b of bots) botInfoById[b.id] = { id: b.id, name: b.name || b.id, avatar: b.avatar_data_url || "" };
       const hidden = (view && view.hidden_bots) || [];
       if (hiddenCount) hiddenCount.textContent = String(hidden.length);
       // Sidebar-bottom contract: the Hidden Bots entry shows only when count > 0.
@@ -14007,6 +14072,8 @@
                 streamEl.className = "msg assistant";
                 streamEl.dataset.streaming = "1";
                 streamEl.innerHTML = '<div class="role">assistant</div><div class="body"></div>';
+                // G-28: Grok-style avatar + sender name above the reply.
+                streamEl.insertBefore(botSpeakerHead(dmBotInfo()), streamEl.querySelector(".body"));
                 // Grok-parity: an empty circle while the model is still
                 // thinking reads as a rendering bug; show a typing indicator.
                 // Built with DOM nodes (never innerHTML) so the message body
@@ -14026,6 +14093,8 @@
                 streamEl.className = "msg assistant";
                 streamEl.dataset.streaming = "1";
                 streamEl.innerHTML = '<div class="role">assistant</div><div class="body"></div>';
+                // G-28: Grok-style avatar + sender name above the reply.
+                streamEl.insertBefore(botSpeakerHead(dmBotInfo()), streamEl.querySelector(".body"));
                 log.appendChild(streamEl);
               }
               const sbody = streamEl.querySelector(".body");

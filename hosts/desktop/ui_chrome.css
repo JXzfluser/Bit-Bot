@@ -1,9 +1,10 @@
 /*
  * Bit Bot desktop chrome tokens and shared components.
  *
- * NG-001: this is the product shell's layout structure (sidebar, composer,
- * message stream, optional right rails, settings, modals). Colors are Bit Bot
- * neutrals — not an xAI brand skin, and not a claim of pixel identity.
+ * G-28 (supersedes NG-001): this is the product shell's layout structure
+ * (sidebar, composer, message stream, optional right rails, settings,
+ * modals). Colors now track the Grok Bot app as the visual reference
+ * (purple/magenta accent, neutral surface field) — see ui-unified-spec.md.
  *
  * Later feature waves should consume these variables instead of new hex
  * values or one-off radii. Theme overrides touch color tokens only; the
@@ -14,7 +15,7 @@
   color-scheme: light;
 
   /* surfaces — Grok-style light default: clean white field, near-black ink,
-     single blue accent. Not an xAI brand skin; a neutral, original chat look. */
+     purple/magenta accent (G-28 aligns to the Grok Bot app reference). */
   --bg0: #ffffff;
   --bg1: #f7f7f8;
   --side: #ffffff;
@@ -29,10 +30,10 @@
   --text: #141414;
   --muted: #6b6b6b;
   --line: #e6e6e9;
-  /* Grok signature accent — one clean blue */
-  --accent: #1e86fc;
+  /* Grok signature accent — purple (light) / magenta (dark) */
+  --accent: #7c3aed;
   --accent-ink: #ffffff;
-  --accent-soft: #e9f2fd;
+  --accent-soft: #f3e8fd;
   --user-bubble: #f4f4f5;
   --bot-bubble: #f6f6f7;
   --bot-avatar: #1e86fc;
@@ -126,9 +127,9 @@
     --text: #1a1a1a;
     --muted: #6f6f6f;
     --line: #e3e3e3;
-    --accent: #1a1a1a;
+    --accent: #7c3aed;
     --accent-ink: #ffffff;
-    --accent-soft: #f0f0f0;
+    --accent-soft: #f3e8fd;
     --user-bubble: #eceef0;
     --bot-bubble: #f4f4f5;
     --warn: #a06a00;
@@ -161,9 +162,9 @@
     --text: #ececec;
     --muted: #9a9a9a;
     --line: #2e2e2e;
-    --accent: #ffffff;
-    --accent-ink: #171717;
-    --accent-soft: #2a2a2a;
+    --accent: #a855f7;
+    --accent-ink: #ffffff;
+    --accent-soft: #3b0764;
     --user-bubble: #2a2a2a;
     --bot-bubble: #212121;
     --bot-avatar: #2f9e44;
@@ -195,9 +196,9 @@ body.force-dark {
   --text: #ececec;
   --muted: #9a9a9a;
   --line: #2e2e2e;
-  --accent: #ffffff;
-  --accent-ink: #171717;
-  --accent-soft: #2a2a2a;
+  --accent: #a855f7;
+  --accent-ink: #ffffff;
+  --accent-soft: #3b0764;
   --user-bubble: #2a2a2a;
   --bot-bubble: #212121;
   --bot-avatar: #2f9e44;
@@ -228,9 +229,9 @@ body.force-light {
   --text: #1a1a1a;
   --muted: #6f6f6f;
   --line: #e3e3e3;
-  --accent: #1a1a1a;
+  --accent: #7c3aed;
   --accent-ink: #ffffff;
-  --accent-soft: #f0f0f0;
+  --accent-soft: #f3e8fd;
   --user-bubble: #eceef0;
   --bot-bubble: #f4f4f5;
   --bot-avatar: #2f9e44;

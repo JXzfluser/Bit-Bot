@@ -46,9 +46,11 @@
 | `--border` | 分隔线/描边 | `#e6e6e9` | `#2e2e2e` | `--line`/`--g-line` |
 | `--fill` | 弱填充/hover 底 | `#f4f4f5` | `#2e2e33` | `--g-soft` |
 | `--fill-strong` | 选中底/active pill | `#ebebee` | `#3a3a40` | `--g-pill` |
-| `--accent` | 操作强调（唯一受控值，默认近黑） | `#1a1a1a` | `#ffffff` | 语义统一，消除蓝/墨漂移 |
+| `--accent` | 操作强调（唯一受控值，Grok 紫/洋红，G-28 起对标真源） | `#7c3aed` | `#a855f7` | 语义统一，消除蓝/墨漂移；2026-10-24 由近黑改为紫（replica/screens 真源） |
 | `--accent-ink` | accent 上的文字 | `#ffffff` | `#1a1a1a` | 保留现有 |
 | `--danger` | 拒绝/危险态 | 需定义一处 | — | 取代散落红值 |
+
+> **G-28 消息流规则（2026-10-24 起）**：DM 私聊的 bot 回复（`onLlmStream` 流式 + 历史回放 `loadActiveSessionTranscript`）在灰底块上方渲染 **Grok 风格头像 + 发送者名**：左侧圆形头像（有 `avatar_data_url` 用真图，否则取 `AVATAR_PALETTE` 首字母 + `--av`），发送者名用 `--accent`（紫/洋红）小字，对齐 `replica/screens/grok-team-conv.png`。群聊回复沿用自带 `roomSpeakerRow`，**不**叠加此 head（避免双重名字）。系统/错误类 `assistant` 提示不传 `speaker`，保持无头像。头像底色走 `color-mix(... var(--av) …)` + `var(--av)` 文字，禁止新硬编码 hex（token ratchet T-2）。
 
 ### 2.2 字体（族）
 
