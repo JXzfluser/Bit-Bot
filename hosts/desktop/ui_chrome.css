@@ -381,7 +381,6 @@ body.force-light {
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 .bb-btn-danger-soft:hover { background: #f5ddd9; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
-}
 
 .bb-btn-ghost {
   background: transparent;
@@ -392,7 +391,17 @@ body.force-light {
   padding: var(--space-3) var(--space-4);
 }
 .bb-btn-ghost:hover { background: var(--accent-soft); }
+
+/* compact size variant — dense tool/debug panels and inline actions.
+   Same shape family as .bb-btn (white surface + line border), just smaller.
+   Replaces the 169 hand-written inline button skins (GP button audit). */
+.bb-btn-sm {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  box-shadow: none;
 }
+.bb-btn-sm:hover { box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
 
 .bb-btn-block {
   display: block;
@@ -1443,10 +1452,10 @@ body.grok-ui .ca-chip.active {
 }
 
 /* every button inside a sheet: one shape & type scale; inline colors preserved.
-   P2: font-size lost its !important — no sheet button carries an inline
-   font-size, so the class rule still wins; only inline radii/weights need the
-   legacy override (a separate, tracked debt). */
-body.grok-ui .bb-sheet button {
+   GP button audit: buttons carrying the .bb-btn system keep their own shape
+   (the functional variant wins over the sheet-wide pill) — the wildcard now
+   only backstops legacy buttons with no class. */
+body.grok-ui .bb-sheet button:not(.bb-btn):not(.bb-close) {
   font-size: 13px;
   font-weight: 500 !important;
   border-radius: 999px !important;

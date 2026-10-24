@@ -1700,26 +1700,26 @@
         <div class="name">侧栏代理</div>
         <div class="meta" id="agents-meta">列表 · 隐藏 (CM-1906/1907)</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="ag-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">列出代理</button>
-          <button type="button" id="ag-hide" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">隐藏研究代理</button>
+          <button type="button" id="ag-list" class="bb-btn bb-btn-sm bb-btn-primary">列出代理</button>
+          <button type="button" id="ag-hide" class="bb-btn bb-btn-sm">隐藏研究代理</button>
         </div>
       </div>
       <div class="agent-item" id="teammates-panel">
         <div class="name">队友</div>
         <div class="meta" id="teammates-meta">本机的持久化存储</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="tm-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">新建队友</button>
-          <button type="button" id="tm-members" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">成员面板</button>
-          <button type="button" id="tm-members-group" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">打开成员群组</button>
-          <button type="button" id="tm-room" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">群聊回合</button>
-          <button type="button" id="tm-room-post" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发送到群聊</button>
-          <button type="button" id="tm-room-join" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">加入群聊</button>
-          <button type="button" id="tm-list-members" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出成员</button>
-          <button type="button" id="tm-list-channels" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出频道</button>
-          <button type="button" id="tm-open-canvas" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">打开放画板</button>
-          <button type="button" id="tm-list-models" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出模型</button>
-          <button type="button" id="tm-send" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发送到代理</button>
-          <button type="button" id="tm-subagent" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">派生子代理</button>
+          <button type="button" id="tm-create" class="bb-btn bb-btn-sm bb-btn-primary">新建队友</button>
+          <button type="button" id="tm-members" class="bb-btn bb-btn-sm">成员面板</button>
+          <button type="button" id="tm-members-group" class="bb-btn bb-btn-sm">打开成员群组</button>
+          <button type="button" id="tm-room" class="bb-btn bb-btn-sm">群聊回合</button>
+          <button type="button" id="tm-room-post" class="bb-btn bb-btn-sm">发送到群聊</button>
+          <button type="button" id="tm-room-join" class="bb-btn bb-btn-sm">加入群聊</button>
+          <button type="button" id="tm-list-members" class="bb-btn bb-btn-sm">列出成员</button>
+          <button type="button" id="tm-list-channels" class="bb-btn bb-btn-sm">列出频道</button>
+          <button type="button" id="tm-open-canvas" class="bb-btn bb-btn-sm">打开放画板</button>
+          <button type="button" id="tm-list-models" class="bb-btn bb-btn-sm">列出模型</button>
+          <button type="button" id="tm-send" class="bb-btn bb-btn-sm">发送到代理</button>
+          <button type="button" id="tm-subagent" class="bb-btn bb-btn-sm">派生子代理</button>
         </div>
       </div>
     </details>
@@ -1788,12 +1788,12 @@
       <div class="row1" id="takeover-title" data-i18n="takeoverTitle">接管 — 你正在直接操作本机屏幕</div>
       <div class="hint" data-i18n="takeoverHint">密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。</div>
       <div class="actions">
-        <button type="button" id="takeover-done-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer" data-i18n="imDone">我完成了</button>
+        <button type="button" id="takeover-done-btn" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="imDone">我完成了</button>
       </div>
     </div>
     <div id="pending-bar">
       <span id="pending-bar-text"></span>
-      <button type="button" id="pending-bar-btn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer;margin-left:8px">查看</button>
+      <button type="button" id="pending-bar-btn" class="bb-btn bb-btn-sm" style="margin-left:8px">查看</button>
     </div>
     <div id="gp-panel" style="display:none;margin:0 16px 8px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -1845,7 +1845,7 @@
       <div class="title" style="font-weight:700;color:var(--warn-ink)">设备权限</div>
       <div class="detail" id="permission-detail" style="margin-top:6px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div class="actions" style="margin-top:10px;display:flex;gap:8px">
-        <button type="button" id="permission-dismiss" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">关闭卡片</button>
+        <button type="button" id="permission-dismiss" class="bb-btn bb-btn-sm">关闭卡片</button>
       </div>
     </div>
     <div id="settings-panel" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -2024,16 +2024,16 @@
           <label class="st-field"><span class="st-field-name">更新源 URL</span>
             <div style="display:flex;gap:8px;align-items:center">
               <input id="sec-ota" type="text" placeholder="目录下需 latest.yml" class="bb-field bb-field-grow" />
-              <button type="button" id="sec-ota-check" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);padding:8px 14px;cursor:pointer;white-space:nowrap">查更新</button>
+              <button type="button" id="sec-ota-check" class="bb-btn bb-btn-sm" style="white-space:nowrap">查更新</button>
             </div>
           </label>
           <div id="sec-inbound-url" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button type="button" id="sec-save" style="background:var(--accent);color:var(--accent-ink);border:0;padding:8px 16px;font-weight:600;cursor:pointer">保存并热加载</button>
-          <button type="button" id="sec-probe" style="background:var(--accent-soft);color:var(--ink);border:0;padding:8px 14px;cursor:pointer">试连大脑</button>
-          <button type="button" id="sec-probe-cn" style="background:var(--accent-soft);color:var(--ink);border:0;padding:8px 14px;cursor:pointer">试连国内渠道</button>
-          <button type="button" id="sec-gate" style="background:transparent;color:var(--muted);border:1px solid var(--line);padding:8px 14px;cursor:pointer">跑验收门禁</button>
+          <button type="button" id="sec-save" class="bb-btn bb-btn-primary">保存并热加载</button>
+          <button type="button" id="sec-probe" class="bb-btn bb-btn-sm">试连大脑</button>
+          <button type="button" id="sec-probe-cn" class="bb-btn bb-btn-sm">试连国内渠道</button>
+          <button type="button" id="sec-gate" class="bb-btn bb-btn-sm">跑验收门禁</button>
         </div>
         <div id="sec-status" style="margin-top:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
         <pre id="sec-gate-out" class="bb-meta bb-control" style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
@@ -2059,7 +2059,7 @@
         <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="caGlobal">插件对本机全局生效，安装后所有 Bot 都可使用。</div>
         <div style="display:flex;gap:8px;margin-top:10px">
           <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="搜索插件" class="bb-field bb-field-grow" />
-          <button type="button" id="ca-refresh" style="background:var(--accent-soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer" data-i18n="caRefresh">刷新</button>
+          <button type="button" id="ca-refresh" class="bb-btn bb-btn-sm" data-i18n="caRefresh">刷新</button>
         </div>
         <!-- Grok-parity: category chips filter the plugin grid -->
         <div id="ca-cats" class="ca-cats">
@@ -2136,8 +2136,8 @@
           </div>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
-          <button type="button" id="bc-cancel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer" data-i18n="bcCancel">取消</button>
-          <button type="button" id="bc-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" data-i18n="bcCreate">创建</button>
+          <button type="button" id="bc-cancel" class="bb-btn bb-btn-sm" data-i18n="bcCancel">取消</button>
+          <button type="button" id="bc-create" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="bcCreate">创建</button>
         </div>
       </div>
     </div>
@@ -2195,8 +2195,8 @@
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div class="title" style="font-weight:700" id="agent-info-title">代理信息</div>
         <div style="display:flex;gap:6px">
-          <button type="button" id="agent-delete-btn" style="background:var(--danger-bg);color:var(--danger-ink);border:0;border-radius:6px;padding:4px 8px;cursor:pointer">删除…</button>
-          <button type="button" id="agent-info-close" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer">关闭</button>
+          <button type="button" id="agent-delete-btn" class="bb-btn bb-btn-sm bb-btn-danger-soft">删除…</button>
+          <button type="button" id="agent-info-close" class="bb-btn bb-btn-sm">关闭</button>
         </div>
       </div>
       <div id="agent-info-sections" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
@@ -2204,8 +2204,8 @@
       <div id="agent-delete-confirm" style="display:none;margin-top:10px;padding:8px;border:1px solid var(--danger);border-radius:6px;background:var(--danger-bg)">
         <div style="color:var(--danger-ink);font-size:13px">确认永久删除（CM-1907 · 非设置项）</div>
         <div style="margin-top:8px;display:flex;gap:8px">
-          <button type="button" id="agent-delete-confirm-btn" style="background:var(--danger);color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer">确认删除</button>
-          <button type="button" id="agent-delete-cancel-btn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer">取消</button>
+          <button type="button" id="agent-delete-confirm-btn" class="bb-btn bb-btn-sm bb-btn-danger">确认删除</button>
+          <button type="button" id="agent-delete-cancel-btn" class="bb-btn bb-btn-sm">取消</button>
         </div>
       </div>
     </div>
@@ -2228,7 +2228,7 @@
         <div class="w-line" data-i18n="welcomeLine">桌面 AI 助手 · MoonBit 内核 · DeepSeek 大脑</div>
         <div class="w-hint" data-i18n="welcomeHint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div>
         <div id="welcome-cfg" style="margin-top:16px;display:none">
-          <button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer" data-i18n="welcomeCfg">配置 DeepSeek / 渠道凭证</button>
+          <button type="button" id="welcome-cfg-btn" class="bb-btn bb-btn-primary" data-i18n="welcomeCfg">配置 DeepSeek / 渠道凭证</button>
           <div style="margin-top:8px;color:var(--muted);font-size:12px" data-i18n="welcomeCfgNote">密钥开放配置，不写死在安装包里</div>
         </div>
       </div>
@@ -2246,7 +2246,7 @@
       <div class="name">多端花名册</div>
       <div class="meta" id="machines-meta">桌面 · 本阶段，iOS/Android 暂缓</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mach-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">列出机器</button>
+        <button type="button" id="mach-list" class="bb-btn bb-btn-sm bb-btn-primary">列出机器</button>
       </div>
     </div>
     <div id="machine-list">
@@ -2257,9 +2257,9 @@
       <div class="name">钉钉 / 飞书 / 企微</div>
       <div class="meta" id="cn-channels-meta">读取中…</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cn-dingtalk" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">发钉钉</button>
-        <button type="button" id="cn-feishu" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">发飞书</button>
-        <button type="button" id="cn-wecom" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发企微</button>
+        <button type="button" id="cn-dingtalk" class="bb-btn bb-btn-sm bb-btn-primary">发钉钉</button>
+        <button type="button" id="cn-feishu" class="bb-btn bb-btn-sm">发飞书</button>
+        <button type="button" id="cn-wecom" class="bb-btn bb-btn-sm">发企微</button>
       </div>
     </div>
     <details class="lab" data-lab style="margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
@@ -2268,12 +2268,12 @@
         <div class="name">Slack / Gmail / Outlook 连接器</div>
         <div class="meta" id="connectors-meta">降级保留 · 主渠道见上方国内钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="connect-slack" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">连接 Slack</button>
-          <button type="button" id="connect-gmail" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">连接 Gmail</button>
-          <button type="button" id="connect-outlook" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">连接 Outlook</button>
-          <button type="button" id="connect-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">连接财务</button>
-          <button type="button" id="connect-identity" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">身份浏览器</button>
-          <button type="button" id="probe-connectors" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出连接器</button>
+          <button type="button" id="connect-slack" class="bb-btn bb-btn-sm">连接 Slack</button>
+          <button type="button" id="connect-gmail" class="bb-btn bb-btn-sm">连接 Gmail</button>
+          <button type="button" id="connect-outlook" class="bb-btn bb-btn-sm">连接 Outlook</button>
+          <button type="button" id="connect-finance" class="bb-btn bb-btn-sm">连接财务</button>
+          <button type="button" id="connect-identity" class="bb-btn bb-btn-sm">身份浏览器</button>
+          <button type="button" id="probe-connectors" class="bb-btn bb-btn-sm">列出连接器</button>
         </div>
       </div>
     </details>
@@ -2282,12 +2282,12 @@
       <div class="name">通知 · 电脑 · 引导</div>
       <div class="meta" id="prefs-meta">设置走 Host 效果（不假装）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="pref-notify" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">通知设置</button>
-        <button type="button" id="pref-set-notify" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">关闭通知</button>
-        <button type="button" id="pref-guide" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">引导授权</button>
-        <button type="button" id="pref-update" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">更新电脑</button>
-        <button type="button" id="pref-reset" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">重置电脑</button>
-        <button type="button" id="pref-local" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">关闭本地执行</button>
+        <button type="button" id="pref-notify" class="bb-btn bb-btn-sm bb-btn-primary">通知设置</button>
+        <button type="button" id="pref-set-notify" class="bb-btn bb-btn-sm">关闭通知</button>
+        <button type="button" id="pref-guide" class="bb-btn bb-btn-sm">引导授权</button>
+        <button type="button" id="pref-update" class="bb-btn bb-btn-sm">更新电脑</button>
+        <button type="button" id="pref-reset" class="bb-btn bb-btn-sm">重置电脑</button>
+        <button type="button" id="pref-local" class="bb-btn bb-btn-sm">关闭本地执行</button>
       </div>
     </div>
     <details class="lab" data-lab style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
@@ -2296,19 +2296,19 @@
         <div class="name">Slack / Teams 出站 + 认领</div>
         <div class="meta" id="channels-meta">降级 · 主路径是上方钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="ch-slack-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack 草稿</button>
-          <button type="button" id="ch-slack-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack 讨论串</button>
-          <button type="button" id="ch-slack-dm" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">私聊 Slack</button>
-          <button type="button" id="ch-slack-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Slack 认领（沙盒）</button>
-          <button type="button" id="ch-teams-draft" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams 草稿</button>
-          <button type="button" id="ch-teams-send" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams 发送</button>
-          <button type="button" id="ch-teams-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Teams 认领（沙盒）</button>
-          <button type="button" id="ch-finance" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">财务调用</button>
-          <button type="button" id="ch-jobs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">求职搜索</button>
-          <button type="button" id="ch-xsearch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">X 搜索</button>
-          <button type="button" id="ch-workflows" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出工作流</button>
-          <button type="button" id="ch-credentials" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出凭证</button>
-          <button type="button" id="ch-cred-fill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">填写凭证</button>
+          <button type="button" id="ch-slack-draft" class="bb-btn bb-btn-sm">Slack 草稿</button>
+          <button type="button" id="ch-slack-thread" class="bb-btn bb-btn-sm">Slack 讨论串</button>
+          <button type="button" id="ch-slack-dm" class="bb-btn bb-btn-sm">私聊 Slack</button>
+          <button type="button" id="ch-slack-claim" class="bb-btn bb-btn-sm">Slack 认领（沙盒）</button>
+          <button type="button" id="ch-teams-draft" class="bb-btn bb-btn-sm">Teams 草稿</button>
+          <button type="button" id="ch-teams-send" class="bb-btn bb-btn-sm">Teams 发送</button>
+          <button type="button" id="ch-teams-claim" class="bb-btn bb-btn-sm">Teams 认领（沙盒）</button>
+          <button type="button" id="ch-finance" class="bb-btn bb-btn-sm">财务调用</button>
+          <button type="button" id="ch-jobs" class="bb-btn bb-btn-sm">求职搜索</button>
+          <button type="button" id="ch-xsearch" class="bb-btn bb-btn-sm">X 搜索</button>
+          <button type="button" id="ch-workflows" class="bb-btn bb-btn-sm">列出工作流</button>
+          <button type="button" id="ch-credentials" class="bb-btn bb-btn-sm">列出凭证</button>
+          <button type="button" id="ch-cred-fill" class="bb-btn bb-btn-sm">填写凭证</button>
         </div>
       </div>
     </details>
@@ -2317,12 +2317,12 @@
       <div class="name">MCP 插件 (CM-0904 / 2107 / 2108)</div>
       <div class="meta" id="plugins-meta">列出 · 获取 · 安装 → 就绪 · 卸载 → 不可用</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="plugin-list" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">列出插件</button>
-        <button type="button" id="plugin-get" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">获取 plugin-slides</button>
-        <button type="button" id="plugin-install" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">安装 plugin-slides</button>
-        <button type="button" id="plugin-uninstall" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">卸载 plugin-slides</button>
-        <button type="button" id="plugin-mcp-discover" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发现 MCP</button>
-        <button type="button" id="plugin-mcp-call" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">调用 MCP · Gmail 搜索</button>
+        <button type="button" id="plugin-list" class="bb-btn bb-btn-sm bb-btn-primary">列出插件</button>
+        <button type="button" id="plugin-get" class="bb-btn bb-btn-sm">获取 plugin-slides</button>
+        <button type="button" id="plugin-install" class="bb-btn bb-btn-sm">安装 plugin-slides</button>
+        <button type="button" id="plugin-uninstall" class="bb-btn bb-btn-sm bb-btn-danger-soft">卸载 plugin-slides</button>
+        <button type="button" id="plugin-mcp-discover" class="bb-btn bb-btn-sm">发现 MCP</button>
+        <button type="button" id="plugin-mcp-call" class="bb-btn bb-btn-sm">调用 MCP · Gmail 搜索</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Webhook 回调</div>
@@ -2332,11 +2332,11 @@
       <div id="webhook-url" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div id="webhook-key" style="margin-top:4px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="wh-open" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">打开回调面板</button>
-        <button type="button" id="wh-copy-url" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">复制链接</button>
-        <button type="button" id="wh-copy-key" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">拷贝密钥</button>
-        <button type="button" id="wh-tool-read" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">工具读取密钥（必须拒绝）</button>
-        <button type="button" id="wh-wake" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">模拟唤醒回调</button>
+        <button type="button" id="wh-open" class="bb-btn bb-btn-sm bb-btn-primary">打开回调面板</button>
+        <button type="button" id="wh-copy-url" class="bb-btn bb-btn-sm">复制链接</button>
+        <button type="button" id="wh-copy-key" class="bb-btn bb-btn-sm">拷贝密钥</button>
+        <button type="button" id="wh-tool-read" class="bb-btn bb-btn-sm bb-btn-danger-soft">工具读取密钥（必须拒绝）</button>
+        <button type="button" id="wh-wake" class="bb-btn bb-btn-sm">模拟唤醒回调</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">投递</div>
@@ -2345,24 +2345,24 @@
       <div class="meta" id="delivery-meta">文本 · 小组件 · 附件 · 语音 · 反应 · 讨论串 · 光标代理 · 密钥请求</div>
       <div id="reaction-tray" aria-label="消息反应"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="del-react" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">消息表态</button>
-        <button type="button" id="del-inbound-react" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">接收方表态</button>
-        <button type="button" id="del-markdown" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">渲染 Markdown</button>
-        <button type="button" id="del-channel-plan" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">渠道套餐（应用内）</button>
-        <button type="button" id="del-slides" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">生成幻灯片</button>
-        <button type="button" id="del-skill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">编写技能</button>
-        <button type="button" id="del-export" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">导出 Bot 模板</button>
-        <button type="button" id="del-load-skill" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">加载技能</button>
-        <button type="button" id="del-list-skills" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出技能</button>
-        <button type="button" id="del-todo-write" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">写待办</button>
-        <button type="button" id="del-todo-list" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">列出待办</button>
-        <button type="button" id="del-attach-file" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">添加附件</button>
-        <button type="button" id="del-journal-query" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">查询日志</button>
-        <button type="button" id="del-open-thread" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">打开讨论串</button>
-        <button type="button" id="del-x-post" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">发布 X 草稿</button>
-        <button type="button" id="del-section" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">段落发布</button>
-        <button type="button" id="del-section-add" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">添加段落</button>
-        <button type="button" id="del-learn" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">从演示学习</button>
+        <button type="button" id="del-react" class="bb-btn bb-btn-sm bb-btn-primary">消息表态</button>
+        <button type="button" id="del-inbound-react" class="bb-btn bb-btn-sm">接收方表态</button>
+        <button type="button" id="del-markdown" class="bb-btn bb-btn-sm">渲染 Markdown</button>
+        <button type="button" id="del-channel-plan" class="bb-btn bb-btn-sm">渠道套餐（应用内）</button>
+        <button type="button" id="del-slides" class="bb-btn bb-btn-sm">生成幻灯片</button>
+        <button type="button" id="del-skill" class="bb-btn bb-btn-sm">编写技能</button>
+        <button type="button" id="del-export" class="bb-btn bb-btn-sm">导出 Bot 模板</button>
+        <button type="button" id="del-load-skill" class="bb-btn bb-btn-sm">加载技能</button>
+        <button type="button" id="del-list-skills" class="bb-btn bb-btn-sm">列出技能</button>
+        <button type="button" id="del-todo-write" class="bb-btn bb-btn-sm">写待办</button>
+        <button type="button" id="del-todo-list" class="bb-btn bb-btn-sm">列出待办</button>
+        <button type="button" id="del-attach-file" class="bb-btn bb-btn-sm">添加附件</button>
+        <button type="button" id="del-journal-query" class="bb-btn bb-btn-sm">查询日志</button>
+        <button type="button" id="del-open-thread" class="bb-btn bb-btn-sm">打开讨论串</button>
+        <button type="button" id="del-x-post" class="bb-btn bb-btn-sm">发布 X 草稿</button>
+        <button type="button" id="del-section" class="bb-btn bb-btn-sm">段落发布</button>
+        <button type="button" id="del-section-add" class="bb-btn bb-btn-sm">添加段落</button>
+        <button type="button" id="del-learn" class="bb-btn bb-btn-sm">从演示学习</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">记忆</div>
@@ -2370,10 +2370,10 @@
       <div class="name">本机会话种子</div>
       <div class="meta" id="memory-meta">记忆 k=v · 回忆（desktop-host.json）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mem-remember" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">记住</button>
-        <button type="button" id="mem-recall" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">回忆</button>
-        <button type="button" id="mem-shared-put" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">共享写入</button>
-        <button type="button" id="mem-shared-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">共享读取</button>
+        <button type="button" id="mem-remember" class="bb-btn bb-btn-sm bb-btn-primary">记住</button>
+        <button type="button" id="mem-recall" class="bb-btn bb-btn-sm">回忆</button>
+        <button type="button" id="mem-shared-put" class="bb-btn bb-btn-sm">共享写入</button>
+        <button type="button" id="mem-shared-read" class="bb-btn bb-btn-sm">共享读取</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">工具</div>
@@ -2381,31 +2381,31 @@
       <div class="name">命令行 / 文件系统（Host FFI）</div>
       <div class="meta" id="tools-meta">shell · 列目录 · 读取 (ADR 0002)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="tool-shell" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">Shell 回显</button>
-        <button type="button" id="tool-listdir" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">列目录 docs</button>
-        <button type="button" id="tool-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">读取 README</button>
-        <button type="button" id="tool-webfetch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">抓取 example.com</button>
-        <button type="button" id="tool-device" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">设备工具</button>
-        <button type="button" id="tool-take-photo" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">拍照</button>
-        <button type="button" id="tool-record-video" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">录制视频</button>
-        <button type="button" id="tool-open-terminal" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">打开终端</button>
-        <button type="button" id="tool-version-info" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">版本信息</button>
-        <button type="button" id="tool-mute-channel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">频道静音</button>
-        <button type="button" id="tool-toggle-theme" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">切换主题</button>
-        <button type="button" id="tool-share-screen" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">共享屏幕</button>
-        <button type="button" id="tool-ping-host" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">本机连通性</button>
-        <button type="button" id="tool-dnd" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">免打扰</button>
-        <button type="button" id="tool-export-chat" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">导出会话</button>
-        <button type="button" id="tool-create-canvas" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">新建画板</button>
-        <button type="button" id="tool-edit-message" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">编辑消息</button>
-        <button type="button" id="tool-react-message" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">消息表态</button>
-        <button type="button" id="tool-pin-message" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">钉住消息</button>
-        <button type="button" id="tool-clear-chat" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">清空会话</button>
-        <button type="button" id="tool-journal" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">查询日志</button>
-        <button type="button" id="tool-journal-append" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">追加日志</button>
-        <button type="button" id="tool-pkg" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">安装软件包</button>
-        <button type="button" id="tool-pkg-npm" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">npm 安装</button>
-        <button type="button" id="tool-journal-range" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">范围查询日志</button>
+        <button type="button" id="tool-shell" class="bb-btn bb-btn-sm bb-btn-primary">Shell 回显</button>
+        <button type="button" id="tool-listdir" class="bb-btn bb-btn-sm">列目录 docs</button>
+        <button type="button" id="tool-read" class="bb-btn bb-btn-sm">读取 README</button>
+        <button type="button" id="tool-webfetch" class="bb-btn bb-btn-sm">抓取 example.com</button>
+        <button type="button" id="tool-device" class="bb-btn bb-btn-sm">设备工具</button>
+        <button type="button" id="tool-take-photo" class="bb-btn bb-btn-sm">拍照</button>
+        <button type="button" id="tool-record-video" class="bb-btn bb-btn-sm">录制视频</button>
+        <button type="button" id="tool-open-terminal" class="bb-btn bb-btn-sm">打开终端</button>
+        <button type="button" id="tool-version-info" class="bb-btn bb-btn-sm">版本信息</button>
+        <button type="button" id="tool-mute-channel" class="bb-btn bb-btn-sm">频道静音</button>
+        <button type="button" id="tool-toggle-theme" class="bb-btn bb-btn-sm">切换主题</button>
+        <button type="button" id="tool-share-screen" class="bb-btn bb-btn-sm">共享屏幕</button>
+        <button type="button" id="tool-ping-host" class="bb-btn bb-btn-sm">本机连通性</button>
+        <button type="button" id="tool-dnd" class="bb-btn bb-btn-sm">免打扰</button>
+        <button type="button" id="tool-export-chat" class="bb-btn bb-btn-sm">导出会话</button>
+        <button type="button" id="tool-create-canvas" class="bb-btn bb-btn-sm">新建画板</button>
+        <button type="button" id="tool-edit-message" class="bb-btn bb-btn-sm">编辑消息</button>
+        <button type="button" id="tool-react-message" class="bb-btn bb-btn-sm">消息表态</button>
+        <button type="button" id="tool-pin-message" class="bb-btn bb-btn-sm">钉住消息</button>
+        <button type="button" id="tool-clear-chat" class="bb-btn bb-btn-sm">清空会话</button>
+        <button type="button" id="tool-journal" class="bb-btn bb-btn-sm">查询日志</button>
+        <button type="button" id="tool-journal-append" class="bb-btn bb-btn-sm">追加日志</button>
+        <button type="button" id="tool-pkg" class="bb-btn bb-btn-sm">安装软件包</button>
+        <button type="button" id="tool-pkg-npm" class="bb-btn bb-btn-sm">npm 安装</button>
+        <button type="button" id="tool-journal-range" class="bb-btn bb-btn-sm">范围查询日志</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">电脑操作</div>
@@ -2413,14 +2413,14 @@
       <div class="name">云端 Chrome CU（CM-0802）</div>
       <div class="meta" id="cu-meta">导航 · 操作 · 视觉（私有 CDP）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cu-open" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">打开 example.com</button>
-        <button type="button" id="cu-native" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">本地点击</button>
-        <button type="button" id="cu-ocr" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">OCR 一遍</button>
-        <button type="button" id="cu-shop" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">购物剧本</button>
-        <button type="button" id="cu-travel" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">旅游 expedia</button>
-        <button type="button" id="cu-flight" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">预订航班</button>
-        <button type="button" id="cu-food" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">点餐</button>
-        <button type="button" id="cu-paywall" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">付费墙测试</button>
+        <button type="button" id="cu-open" class="bb-btn bb-btn-sm bb-btn-primary">打开 example.com</button>
+        <button type="button" id="cu-native" class="bb-btn bb-btn-sm">本地点击</button>
+        <button type="button" id="cu-ocr" class="bb-btn bb-btn-sm">OCR 一遍</button>
+        <button type="button" id="cu-shop" class="bb-btn bb-btn-sm">购物剧本</button>
+        <button type="button" id="cu-travel" class="bb-btn bb-btn-sm">旅游 expedia</button>
+        <button type="button" id="cu-flight" class="bb-btn bb-btn-sm">预订航班</button>
+        <button type="button" id="cu-food" class="bb-btn bb-btn-sm">点餐</button>
+        <button type="button" id="cu-paywall" class="bb-btn bb-btn-sm">付费墙测试</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">源码管理</div>
@@ -2428,9 +2428,9 @@
       <div class="name">git / PR 计划</div>
       <div class="meta" id="source-control-meta">状态 · 计划门控（BITBOT_GH_PR_CREATE）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="sc-status" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Git 状态</button>
-        <button type="button" id="sc-create-pr" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">创建 PR 计划</button>
-        <button type="button" id="sc-code" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">代码改动计划</button>
+        <button type="button" id="sc-status" class="bb-btn bb-btn-sm">Git 状态</button>
+        <button type="button" id="sc-create-pr" class="bb-btn bb-btn-sm">创建 PR 计划</button>
+        <button type="button" id="sc-code" class="bb-btn bb-btn-sm">代码改动计划</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">媒体</div>
@@ -2438,10 +2438,10 @@
       <div class="name">图片 / 视频 / 图表（CM-1601–1603 / 2157）</div>
       <div class="meta" id="media-meta">生成 · 观察 · 结构化图表</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="media-image" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">生成图片</button>
-        <button type="button" id="media-video" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">生成视频</button>
-        <button type="button" id="media-chart" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">结构化图表</button>
-        <button type="button" id="media-watch" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">观看最新视频</button>
+        <button type="button" id="media-image" class="bb-btn bb-btn-sm bb-btn-primary">生成图片</button>
+        <button type="button" id="media-video" class="bb-btn bb-btn-sm">生成视频</button>
+        <button type="button" id="media-chart" class="bb-btn bb-btn-sm">结构化图表</button>
+        <button type="button" id="media-watch" class="bb-btn bb-btn-sm">观看最新视频</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">语音</div>
@@ -2449,11 +2449,11 @@
       <div class="name">会话 / 中继 / 结束</div>
       <div class="meta" id="voice-meta">开始 · 中继 WAV · 结束写入</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="voice-start" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">开始语音</button>
-        <button type="button" id="voice-relay" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">语音中继</button>
-        <button type="button" id="voice-end" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">结束语音</button>
-        <button type="button" id="voice-huddle-start" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">开始临时会议</button>
-        <button type="button" id="voice-huddle-end" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">结束会议</button>
+        <button type="button" id="voice-start" class="bb-btn bb-btn-sm bb-btn-primary">开始语音</button>
+        <button type="button" id="voice-relay" class="bb-btn bb-btn-sm">语音中继</button>
+        <button type="button" id="voice-end" class="bb-btn bb-btn-sm">结束语音</button>
+        <button type="button" id="voice-huddle-start" class="bb-btn bb-btn-sm">开始临时会议</button>
+        <button type="button" id="voice-huddle-end" class="bb-btn bb-btn-sm">结束会议</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">云端盒子</div>
@@ -2461,16 +2461,16 @@
       <div class="name">诊断 / 环境 / 时钟 (CM-0607/0608/2175)</div>
       <div class="meta" id="box-meta">自检 · 运行时 · 时区对齐</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="box-doctor" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">盒子诊断</button>
-        <button type="button" id="box-env" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">盒子环境</button>
-        <button type="button" id="box-clock" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">盒子时钟</button>
-        <button type="button" id="box-chrome" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">浏览器探测</button>
-        <button type="button" id="box-bare-chrome" style="background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:6px 8px;cursor:pointer">启动裸 Chrome（拒绝）</button>
-        <button type="button" id="box-screenshot" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">截屏</button>
-        <button type="button" id="box-check-updates" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">检查更新</button>
-        <button type="button" id="box-copy-to" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">拷贝到盒子</button>
-        <button type="button" id="box-copy-from" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">从盒子拷贝</button>
-        <button type="button" id="box-shared-fs" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">共享盒子文件系统</button>
+        <button type="button" id="box-doctor" class="bb-btn bb-btn-sm bb-btn-primary">盒子诊断</button>
+        <button type="button" id="box-env" class="bb-btn bb-btn-sm">盒子环境</button>
+        <button type="button" id="box-clock" class="bb-btn bb-btn-sm">盒子时钟</button>
+        <button type="button" id="box-chrome" class="bb-btn bb-btn-sm">浏览器探测</button>
+        <button type="button" id="box-bare-chrome" class="bb-btn bb-btn-sm bb-btn-danger-soft">启动裸 Chrome（拒绝）</button>
+        <button type="button" id="box-screenshot" class="bb-btn bb-btn-sm">截屏</button>
+        <button type="button" id="box-check-updates" class="bb-btn bb-btn-sm">检查更新</button>
+        <button type="button" id="box-copy-to" class="bb-btn bb-btn-sm">拷贝到盒子</button>
+        <button type="button" id="box-copy-from" class="bb-btn bb-btn-sm">从盒子拷贝</button>
+        <button type="button" id="box-shared-fs" class="bb-btn bb-btn-sm">共享盒子文件系统</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">云服务</div>
@@ -2478,8 +2478,8 @@
       <div class="name">Cursor 代理卡（CM-2131）</div>
       <div class="meta" id="cloud-meta">本地代理 · 交付产物</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cloud-launch" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">启动云端代理</button>
-        <button type="button" id="cloud-deliver" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">投递上一个产物</button>
+        <button type="button" id="cloud-launch" class="bb-btn bb-btn-sm bb-btn-primary">启动云端代理</button>
+        <button type="button" id="cloud-deliver" class="bb-btn bb-btn-sm">投递上一个产物</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">定时任务</div>
@@ -2487,15 +2487,15 @@
       <div class="name">排程 · 触发 · 心跳</div>
       <div class="meta" id="routines-meta">持久 Host 唤醒（非 cron 假装）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="rt-create" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">创建定时任务</button>
-        <button type="button" id="rt-reminder" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">创建提醒</button>
-        <button type="button" id="rt-list-scheduled" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">列出已计划</button>
-        <button type="button" id="rt-list" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">列出定时任务</button>
-        <button type="button" id="rt-fire" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">触发定时任务</button>
-        <button type="button" id="rt-tick" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">触发定时任务</button>
-        <button type="button" id="rt-pause" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">暂停定时任务</button>
-        <button type="button" id="rt-resume" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">恢复定时任务</button>
-        <button type="button" id="rt-auto-review" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">自动审批设置</button>
+        <button type="button" id="rt-create" class="bb-btn bb-btn-sm bb-btn-primary">创建定时任务</button>
+        <button type="button" id="rt-reminder" class="bb-btn bb-btn-sm">创建提醒</button>
+        <button type="button" id="rt-list-scheduled" class="bb-btn bb-btn-sm">列出已计划</button>
+        <button type="button" id="rt-list" class="bb-btn bb-btn-sm">列出定时任务</button>
+        <button type="button" id="rt-fire" class="bb-btn bb-btn-sm">触发定时任务</button>
+        <button type="button" id="rt-tick" class="bb-btn bb-btn-sm">触发定时任务</button>
+        <button type="button" id="rt-pause" class="bb-btn bb-btn-sm">暂停定时任务</button>
+        <button type="button" id="rt-resume" class="bb-btn bb-btn-sm">恢复定时任务</button>
+        <button type="button" id="rt-auto-review" class="bb-btn bb-btn-sm">自动审批设置</button>
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">邮件 / 商务</div>
@@ -2503,16 +2503,16 @@
       <div class="name">草稿 · 冷启 · 代理 · 认领</div>
       <div class="meta" id="mail-meta">沙盒 eml · ICS · 回执</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mail-draft" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:6px 8px;font-weight:700;cursor:pointer">起草邮件</button>
-        <button type="button" id="mail-cold" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">冷启动邮件</button>
-        <button type="button" id="mail-onbehalf" style="background:var(--accent-soft);color:var(--ink);border:0;border-radius:6px;padding:6px 8px;cursor:pointer">代为发送</button>
-        <button type="button" id="mail-claim" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">认领收件箱</button>
-        <button type="button" id="mail-schedule" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">安排会议</button>
-        <button type="button" id="mail-purchase" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">下单（沙盒）</button>
-        <button type="button" id="mail-search" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">搜索邮件</button>
-        <button type="button" id="mail-meeting" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">会议纪要</button>
-        <button type="button" id="mail-read" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">读邮件</button>
-        <button type="button" id="mail-outlook" style="background:var(--accent-soft);color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer">Outlook 草稿</button>
+        <button type="button" id="mail-draft" class="bb-btn bb-btn-sm bb-btn-primary">起草邮件</button>
+        <button type="button" id="mail-cold" class="bb-btn bb-btn-sm">冷启动邮件</button>
+        <button type="button" id="mail-onbehalf" class="bb-btn bb-btn-sm">代为发送</button>
+        <button type="button" id="mail-claim" class="bb-btn bb-btn-sm">认领收件箱</button>
+        <button type="button" id="mail-schedule" class="bb-btn bb-btn-sm">安排会议</button>
+        <button type="button" id="mail-purchase" class="bb-btn bb-btn-sm">下单（沙盒）</button>
+        <button type="button" id="mail-search" class="bb-btn bb-btn-sm">搜索邮件</button>
+        <button type="button" id="mail-meeting" class="bb-btn bb-btn-sm">会议纪要</button>
+        <button type="button" id="mail-read" class="bb-btn bb-btn-sm">读邮件</button>
+        <button type="button" id="mail-outlook" class="bb-btn bb-btn-sm">Outlook 草稿</button>
       </div>
     </div>
   </aside>
@@ -6555,7 +6555,7 @@
         '<div class="w-line" data-i18n="welcomeLine">' + wavegT("welcomeLine") + '</div>' +
         '<div class="w-hint">' + hint + '</div>' +
         '<div id="welcome-cfg" style="margin-top:16px;display:none">' +
-        '<button type="button" id="welcome-cfg-btn" style="background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer" data-i18n="welcomeCfg">' + wavegT("welcomeCfg") + '</button>' +
+        '<button type="button" id="welcome-cfg-btn" class="bb-btn bb-btn-primary" data-i18n="welcomeCfg">' + wavegT("welcomeCfg") + '</button>' +
         '<div style="margin-top:8px;color:var(--muted);font-size:12px" data-i18n="welcomeCfgNote">' + wavegT("welcomeCfgNote") + '</div>' +
         '</div>' +
         '<div id="welcome-templates" class="wt-wrap" style="display:none"></div></div>'
