@@ -261,11 +261,16 @@ const ALLOWED_SECRET_KEYS = new Set([
   "BITBOT_DINGTALK_POST",
   "BITBOT_DINGTALK_WEBHOOK",
   "BITBOT_DINGTALK_TOKEN",
+  "BITBOT_DINGTALK_APP_SECRET",
+  "BITBOT_TURN_TOKEN",
   "BITBOT_FEISHU_POST",
   "BITBOT_FEISHU_TOKEN",
+  "BITBOT_FEISHU_ENCRYPT_KEY",
+  "BITBOT_FEISHU_VERIFICATION_TOKEN",
   "BITBOT_FEISHU_CHAT_ID",
   "BITBOT_WECOM_POST",
   "BITBOT_WECOM_TOKEN",
+  "BITBOT_WECOM_CALLBACK_TOKEN",
   "BITBOT_WECOM_AGENT_ID",
   "BITBOT_WECOM_TOUSER",
   "BITBOT_CONTENT_MODERATION",
@@ -3012,7 +3017,8 @@ async function ensureCnInbound() {
           machineId: machineKind === "desktop" ? "desk-1" : `${machineKind}-1`,
           machineKind,
           channel: channel === "android" || channel === "ios" ? "" : channel,
-          approved: true,
+          // ADR 0008: inbound/mobile turns do not carry a fixed approval.
+          approved: false,
         });
         broadcast("bitbot:llm-stream", {
           phase: "end",

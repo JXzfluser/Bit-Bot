@@ -11,8 +11,8 @@ const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
 const { URL } = require("url");
+const p0 = require("./p0_security");
 
 function defaultRepoRoot() {
   return path.resolve(__dirname, "../..");
@@ -25,16 +25,9 @@ function ensureDir(p) {
 
 function appendJsonl(file, row) {
   ensureDir(path.dirname(file));
-  fs.appendFileSync(file, JSON.stringify(row) + "\n");
-}
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
+  // ADR 0008: logs must not persist BITBOT_LLM_API_KEY and other secrets.
+  const safe = p0.scrubDeep(row, process.env);
+  fs.appendFileSync(file, JSON.stringify(safe) + "\n");
 }
 
 function json(res, code, obj) {
@@ -247,8 +240,19 @@ async function maybeReplyCnChannel(channel, turnResult, meta) {
  */
 function createCnInboundServer(opts = {}) {
   const repoRoot = opts.repoRoot || defaultRepoRoot();
-  const port = Number(opts.port || process.env.BITBOT_CN_INBOUND_PORT || 18765);
-  const host = opts.host || process.env.BITBOT_CN_INBOUND_HOST || "0.0.0.0";
+  // `port: 0` is a real request (ephemeral). `||` would collapse it to 18765.
+  const port =
+    opts.port != null && opts.port !== ""
+      ? Number(opts.port)
+      : Number(process.env.BITBOT_CN_INBOUND_PORT || 18765);
+  const bind = p0.resolveInboundBind(opts, process.env);
+  const host = bind.host;
+  const turnAuth = p0.resolveTurnToken(repoRoot, process.env, opts);
+  const turnToken = turnAuth.token;
+  const maxBody = Number(
+    opts.maxBodyBytes || process.env.BITBOT_INBOUND_MAX_BODY || p0.DEFAULT_MAX_BODY_BYTES,
+  );
+  const nonceStore = p0.createNonceStore();
   const logDir = ensureDir(path.join(repoRoot, "data", "routines", "webhooks", "cn-inbound"));
   const pendingPath = path.join(
     repoRoot,
@@ -322,22 +326,21 @@ function createCnInboundServer(opts = {}) {
   }
 
   async function handleDingTalk(req, res, raw, payload) {
-    state.counts.dingtalk += 1;
-    // Optional sign check when token configured
-    const token = String(process.env.BITBOT_DINGTALK_APP_SECRET || "").trim();
-    const ts = String(req.headers["timestamp"] || "");
-    const sign = String(req.headers["sign"] || "");
-    if (token && ts && sign) {
-      const stringToSign = ts + "\n" + token;
-      const expected = crypto
-        .createHmac("sha256", token)
-        .update(stringToSign)
-        .digest("base64");
-      if (expected !== sign) {
-        json(res, 401, { errcode: 401, errmsg: "invalid sign" });
-        return;
-      }
+    // ADR 0008: signature is mandatory. Missing secret or a bad sign does not wake.
+    const secret = String(
+      (opts.dingtalkSecret != null ? opts.dingtalkSecret : process.env.BITBOT_DINGTALK_APP_SECRET) || "",
+    ).trim();
+    const verdict = p0.verifyDingTalkSignature(req, secret);
+    if (!verdict.ok) {
+      json(res, 401, {
+        ok: false,
+        error: verdict.error,
+        errcode: 401,
+        errmsg: verdict.error,
+      });
+      return;
     }
+    state.counts.dingtalk += 1;
     const text = extractDingTalkText(payload);
     const enq = await enqueueTurn("dingtalk", text, {
       msgId: payload.msgId,
@@ -362,6 +365,16 @@ function createCnInboundServer(opts = {}) {
   }
 
   async function handleFeishu(req, res, raw, payload) {
+    const secret = String(
+      (opts.feishuSecret != null
+        ? opts.feishuSecret
+        : process.env.BITBOT_FEISHU_ENCRYPT_KEY || process.env.BITBOT_FEISHU_VERIFICATION_TOKEN) || "",
+    ).trim();
+    const verdict = p0.verifyFeishuSignature(req, raw, secret);
+    if (!verdict.ok) {
+      json(res, 401, { ok: false, error: verdict.error });
+      return;
+    }
     state.counts.feishu += 1;
     // URL verification challenge
     if (payload && payload.type === "url_verification" && payload.challenge) {
@@ -402,8 +415,18 @@ function createCnInboundServer(opts = {}) {
   }
 
   async function handleWecom(req, res, raw, payload, urlObj) {
+    const secret = String(
+      (opts.wecomSecret != null
+        ? opts.wecomSecret
+        : process.env.BITBOT_WECOM_CALLBACK_TOKEN || process.env.BITBOT_WECOM_TOKEN) || "",
+    ).trim();
+    const verdict = p0.verifyWecomSignature(req, urlObj, secret, raw);
+    if (!verdict.ok) {
+      json(res, 401, { ok: false, error: verdict.error, errcode: 401 });
+      return;
+    }
     state.counts.wecom += 1;
-    // GET verify: echostr
+    // GET verify: echostr only after the signature matches.
     if (req.method === "GET") {
       const echo = urlObj.searchParams.get("echostr") || "";
       res.writeHead(200, { "Content-Type": "text/plain" });
@@ -436,7 +459,16 @@ function createCnInboundServer(opts = {}) {
     try {
       const urlObj = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
       const p = urlObj.pathname.replace(/\/+$/, "") || "/";
-      const raw = await readBody(req);
+      let raw;
+      try {
+        raw = await p0.readBodyLimited(req, maxBody);
+      } catch (err) {
+        if (err && (err.status === 413 || err.error === "payload_too_large")) {
+          json(res, 413, { ok: false, error: "payload_too_large" });
+          return;
+        }
+        throw err;
+      }
       let payload = null;
       const ct = String(req.headers["content-type"] || "");
       if (raw.length && ct.includes("json")) {
@@ -481,6 +513,21 @@ function createCnInboundServer(opts = {}) {
       if (p === "/v1/turn" || p === "/turn") {
         if (req.method !== "POST") {
           json(res, 405, { ok: false, error: "POST required" });
+          return;
+        }
+        // ADR 0008: no Authorization and no valid signature → 401, no wake.
+        const auth = p0.verifyTurnAuth(req, raw, turnToken, nonceStore);
+        if (!auth.ok) {
+          const error =
+            auth.error === "invalid_token" ||
+            auth.error === "bad_signature" ||
+            auth.error === "missing_signature" ||
+            auth.error === "stale_timestamp" ||
+            auth.error === "nonce_reused" ||
+            auth.error === "turn_token_unconfigured"
+              ? auth.error
+              : "unauthorized";
+          json(res, 401, { ok: false, error });
           return;
         }
         const text =
@@ -549,7 +596,7 @@ function createCnInboundServer(opts = {}) {
     } catch (err) {
       json(res, 500, {
         ok: false,
-        error: String(err && err.message ? err.message : err),
+        error: p0.scrubSecrets(String(err && err.message ? err.message : err), process.env),
       });
     }
   });
@@ -562,11 +609,19 @@ function createCnInboundServer(opts = {}) {
       }
       server.once("error", reject);
       server.listen(port, host, () => {
+        const addr = server.address();
+        if (addr && typeof addr === "object" && addr.port) state.port = addr.port;
         state.listening = true;
         state.started_at = new Date().toISOString();
         process.stdout.write(
-          `[cn-inbound] http://${host}:${port} /dingtalk|/feishu|/wecom (product; cloud residual until public URL)\n`,
+          `[cn-inbound] http://${host}:${state.port} /dingtalk|/feishu|/wecom (product; cloud residual until public URL)\n`,
         );
+        if (bind.warn) {
+          process.stderr.write(
+            `[cn-inbound] WARNING: bind ${host} is not loopback. /v1/turn requires a bearer token. ` +
+              "Set BITBOT_BIND_LAN=1 only when LAN pairing is intentional.\n",
+          );
+        }
         resolve(status());
       });
     });
@@ -604,6 +659,7 @@ function createCnInboundServer(opts = {}) {
       /* ignore */
     }
     const localHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+    const shownPort = state.port || port;
     return {
       ok: true,
       listening: state.listening,
@@ -614,12 +670,17 @@ function createCnInboundServer(opts = {}) {
       counts: { ...state.counts },
       public_url: publicUrl,
       routes: {
-        dingtalk: `${publicUrl || `http://${localHost}:${port}`}/dingtalk/callback`,
-        feishu: `${publicUrl || `http://${localHost}:${port}`}/feishu/event`,
-        wecom: `${publicUrl || `http://${localHost}:${port}`}/wecom/callback`,
-        turn: `${publicUrl || `http://${localHost}:${port}`}/v1/turn`,
+        dingtalk: `${publicUrl || `http://${localHost}:${shownPort}`}/dingtalk/callback`,
+        feishu: `${publicUrl || `http://${localHost}:${shownPort}`}/feishu/event`,
+        wecom: `${publicUrl || `http://${localHost}:${shownPort}`}/wecom/callback`,
+        turn: `${publicUrl || `http://${localHost}:${shownPort}`}/v1/turn`,
       },
       pretend_cloud: false,
+      bind_source: bind.source,
+      lan: bind.lan,
+      turn_auth: "bearer",
+      turn_token_source: turnAuth.source,
+      max_body_bytes: maxBody,
       residual: publicUrl
         ? "public tunnel up — still need BITBOT_*_POST=1 + channel console config"
         : "needs public HTTPS URL (scripts/cn_inbound_tunnel.sh) + channel app credentials",
