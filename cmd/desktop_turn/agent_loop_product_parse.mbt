@@ -142,11 +142,14 @@ fn parse_product_calls(raw : String) -> Array[@runtime.ToolCallReq] {
 
 ///|
 pub fn parse_product_llm_reply(raw : String) -> @runtime.LlmChatReply {
+  if raw.contains("\"cancel\":true") {
+    return { content: "", tool_calls: [], cancelled: true, }
+  }
   let content = match json_string_value(raw, "content") {
     Some(s) => s
     None => ""
   }
-  { content, tool_calls: parse_product_calls(raw), }
+  { content, tool_calls: parse_product_calls(raw), cancelled: false, }
 }
 
 ///|

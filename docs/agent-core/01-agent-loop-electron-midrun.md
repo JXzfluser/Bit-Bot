@@ -22,7 +22,7 @@ EG1–EG3 是关掉 Electron/Chat GUI residual 的最低条。EG4–EG6 一起�
 |---|---|---|
 | EG1 | 是 | 真实 Electron composer 回合还在飞（最终助手句尚未出现在 `#log`）时，trace 与 DOM 已有 `entry=AgentLoop::run` / `agent_entry=open_turn`。源码字面量或单独的 cmd stub 不算 |
 | EG2 | 是 | 同一飞行窗口里内核已走出 `llm_chat` 与 `exec_tool`。生产 `executeLlmChat` 已收到第一次请求且带 tools。第二次 provider 请求是内核又要了一次 `llm_chat`，不是 Host 自转 |
-| EG3 | 是 | `node_ops` 与 `kernel_ops` 一致；provider 次数等于内核 `llm_chat` 次数。`bitbot:turn` 与 renderer 投影函数里没有第二套模型循环 |
+| EG3 | 是 | 飞行中的 GUI 取消按钮把取消信号交给 Host，内核 `AgentLoop::run` 以 `Cancelled` 停下。停下之后没有新的 `llm_chat` 或 `exec_tool`。`kernel_ops` 与 `node_ops` 对齐不是这一条 |
 | EG4 | 否 | 飞行中 `#log [data-agent-step]` 只显示已投影的 AgentStep（entry、`llm_chat`、`exec_tool`），且当时还没有 `deliver` |
 | EG5 | 否 | 第二次 provider body 含工具观察（`<cursor_untrusted_data` 与 `see b.txt`）。回合结束后可见助手文本是 `saw file`。默认未设 `BITBOT_LEGACY_CHAT_EFFECT` |
 | EG6 | 否 | 本轮 Read 路径不出现审批放行。composer 不传 `approved: true`。不改 AR-15、H4、capability matrix。同一条 evidence_cmd 再跑 WP SoT `bash scripts/prove_agent_loop_product_wire.sh`，必须 fail=0。WP1–WP8 PASS 本身不是 EG1–EG5 |
@@ -33,4 +33,4 @@ EG1–EG3 是关掉 Electron/Chat GUI residual 的最低条。EG4–EG6 一起�
 bash scripts/prove_agent_loop_electron_midrun.sh
 ```
 
-脚本拉起真实 `hosts/desktop/main.js`，向 `#composer #text` 提交一句 Chat，在第二次模型完成返回之前读 trace、DOM 和 loopback provider 记录，然后跑 WP SoT。缺 Electron、显示或 moon 时失败退出，不把缺工具链写成 PASS。WP PASS 不等于本页的 EG。
+脚本拉起真实 `hosts/desktop/main.js`。EG1/EG2/EG4/EG5 在一次 Chat 的第二次模型完成返回之前读 trace、DOM 和 loopback provider。EG3 另起一次飞行中的回合，点 `#turn-cancel`，断言内核 `Cancelled` 且没有新的 `llm_chat` / `exec_tool`。然后跑 WP SoT。缺 Electron、显示或 moon 时失败退出，不把缺工具链写成 PASS。WP PASS 不等于本页的 EG。ops 对齐不编号为 EG3。

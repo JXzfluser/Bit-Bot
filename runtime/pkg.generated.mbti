@@ -288,6 +288,7 @@ pub fn InstructionPolicy::to_repr(Self) -> @debug.Repr
 pub(all) struct LlmChatReply {
   content : String
   tool_calls : Array[ToolCallReq]
+  cancelled : Bool
 } derive(Eq, @debug.Debug)
 pub fn LlmChatReply::equal(Self, Self) -> Bool
 pub fn LlmChatReply::not_equal(Self, Self) -> Bool

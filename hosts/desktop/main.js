@@ -363,6 +363,7 @@ function upsertDesktopEnvLocal(patch) {
 syncInjectedSecretsToEnvLocal();
 
 const runner = createTurnRunner(REPO_ROOT);
+let releaseActiveTurnCancel = null;
 const sessions = createSessionStore(REPO_ROOT);
 const ffi = createHostFfi(REPO_ROOT);
 /** Wave G stores: bots / settings / approvals / computer / rooms / usage (docs/grok-desktop-parity/ipc-contract.md §2). */
@@ -2552,6 +2553,11 @@ ipcMain.handle("bitbot:plugins:op", async (_e, opts) => {
   }
 });
 
+ipcMain.handle("bitbot:turn:cancel", async () => {
+  if (typeof releaseActiveTurnCancel === "function") releaseActiveTurnCancel();
+  return { ok: true };
+});
+
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   // Optional per-turn Host env (e.g. BITBOT_SLACK_CLAIM) — restore after turn.
   const envPatch = (opts && opts.env && typeof opts.env === "object") ? opts.env : null;
@@ -2574,6 +2580,16 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       session_id: sessionId,
       user: String(text || "").slice(0, 200),
     });
+    let releaseCancel = () => {};
+    const cancelState = { requested: false };
+    const cancelPromise = new Promise((resolve) => {
+      releaseCancel = () => {
+        if (cancelState.requested) return;
+        cancelState.requested = true;
+        resolve();
+      };
+    });
+    releaseActiveTurnCancel = releaseCancel;
     const result = await runner.runTurn(String(text || ""), {
       sessionId,
       machineId: "desk-1",
@@ -2618,6 +2634,8 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
           }
         }
       },
+      isCancelled: () => cancelState.requested,
+      cancelPromise,
     });
     // Replica C6: surface real search sources on the final assistant line so the
     // renderer can draw citations; a missing key degrades honestly (a note).
@@ -2739,6 +2757,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
     });
     return result;
   } finally {
+    releaseActiveTurnCancel = null;
     if (envPatch) {
       for (const [k, v] of Object.entries(prev)) {
         if (v === undefined) delete process.env[k];

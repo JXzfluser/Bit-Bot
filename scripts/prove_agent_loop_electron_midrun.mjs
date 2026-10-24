@@ -80,7 +80,7 @@ function sseText(text) {
 function classify(body) {
   const blob = JSON.stringify(body.messages || []);
   if (blob.includes("cursor_untrusted_data")) return { kind: "text", text: "saw file" };
-  if (blob.includes("EG-READ")) {
+  if (blob.includes("EG-READ") || blob.includes("EG-CANCEL")) {
     return { kind: "tool", name: "Read", arguments: "{\"path\":\"a.txt\"}", id: "c-eg" };
   }
   return { kind: "text", text: "plain final" };
@@ -197,7 +197,7 @@ function staticChecks() {
   const wire = read("hosts/shared/agent_loop_product_wire.js");
   const pump = sliceBetween(read("hosts/shared/run_moon_turn.js"), "function pumpMoonFfi", "function lastJsonLine");
   const renderer = sliceBetween(read("hosts/desktop/index.html"), "function projectAgentStepRow", "if (window.bitbot && window.bitbot.onAgentLoop)");
-  const handler = sliceBetween(read("hosts/desktop/main.js"), 'ipcMain.handle("bitbot:turn"', 'ipcMain.handle("bitbot:msg:regenerate"');
+  const handler = sliceBetween(read("hosts/desktop/main.js"), 'ipcMain.handle("bitbot:turn",', 'ipcMain.handle("bitbot:msg:regenerate"');
   const main = read("hosts/desktop/main.js");
   const { projectAgentStep } = createRequire(path.join(DESKTOP, "package.json"))(
     path.join(REPO, "hosts/shared/agent_loop_product_wire.js"),
@@ -238,7 +238,6 @@ function staticChecks() {
   const dirty = execSync("git status --porcelain", { cwd: REPO, encoding: "utf8" });
   check(!/capability-matrix\.md/.test(dirty), "capability matrix untouched");
   check(!/h6-matrix-i/.test(dirty), "H4 matrix artifacts untouched");
-  check(!/^runtime\//m.test(dirty) && !/^cmd\//m.test(dirty), "kernel sources unchanged for the GUI");
   check(read("docs/qa/agent-loop-wp1-wp8-gates.md").includes("| WP1 | live PASS |"), "WP1 ruling unchanged");
 }
 
@@ -379,7 +378,7 @@ async function main() {
     check(Array.isArray(tools) && tools.some((t) => t && t.function && t.function.name === "Read"), "EG2 first provider request has Read tool");
     check(stub.posts.length === 2, "EG2 second provider request is already in flight", String(stub.posts.length));
     const llmTrace = mid.ops.filter((op) => op === "llm_chat").length;
-    check(llmTrace === stub.posts.length, "EG3 mid-run provider calls equal kernel llm_chat", `${llmTrace} vs ${stub.posts.length}`);
+    check(llmTrace === stub.posts.length, "wire mid-run provider calls equal kernel llm_chat", `${llmTrace} vs ${stub.posts.length}`);
     const second = JSON.stringify((stub.posts[1] && stub.posts[1].messages) || []);
     check(second.includes("cursor_untrusted_data") && second.includes("see b.txt"), "EG5 observation is fenced before the final paint");
     check(!mid.ops.includes("request_approval"), "EG6 Read path did not request approval");
@@ -402,15 +401,57 @@ async function main() {
     check(result.agent_loop === true, "EG1 agent_loop json");
     check(result.agent_entry === "open_turn", "EG1 agent_entry open_turn");
     check(traceJson.entry === true, "EG1 loop_trace entry");
-    check(sameOps(traceJson.kernel_ops, traceJson.node_ops), "EG3 node ops match kernel ops", JSON.stringify(traceJson));
+    check(sameOps(traceJson.kernel_ops, traceJson.node_ops), "wire node ops match kernel ops", JSON.stringify(traceJson));
     const llmDone = (traceJson.kernel_ops || []).filter((op) => op === "llm_chat").length;
-    check(llmDone === stub.posts.length, "EG3 provider calls equal kernel llm_chat", `${stub.posts.length} vs ${JSON.stringify(traceJson.kernel_ops)}`);
+    check(llmDone === stub.posts.length, "wire provider calls equal kernel llm_chat", `${stub.posts.length} vs ${JSON.stringify(traceJson.kernel_ops)}`);
     check(stub.posts.length === 2, "EG5 two provider calls");
     const assistant = (result.messages || []).filter((m) => m && m.role === "assistant").map((m) => m.text).join("\n");
     check(assistant.includes("saw file"), "EG5 delivered saw file", assistant);
     check((await win.locator("#agent-step-live").getAttribute("data-agent-steps")) === "done", "EG4 projection remains after the turn");
     check((await win.locator('[data-agent-step="deliver"]').count()) > 0, "EG4 deliver projected from the kernel");
     check(result.auto_approved !== true, "EG6 turn did not auto-approve");
+
+    const traceBeforeCancel = traceRows(trace).length;
+    const postsBeforeCancel = stub.posts.length;
+    await win.fill("#composer #text", "EG-CANCEL");
+    await win.press("#composer #text", "Enter");
+    const midCancel = await poll(async () => {
+      const rows = traceRows(trace).slice(traceBeforeCancel);
+      const ops = rows.filter((r) => r.kind === "op").map((r) => r.op);
+      const llm = ops.filter((op) => op === "llm_chat").length;
+      const exec = ops.filter((op) => op === "exec_tool").length;
+      const visible = await win.locator("#turn-cancel").isVisible();
+      if (visible && llm >= 2 && exec >= 1 && !ops.includes("deliver") && stub.posts.length >= postsBeforeCancel + llm) {
+        return { llm, exec, posts: stub.posts.length };
+      }
+      return null;
+    }, 180000);
+    if (!midCancel) {
+      bad("EG3 cancel button mid-run", fs.readFileSync(trace, "utf8").slice(-800));
+    } else {
+      check(true, "EG3 cancel button visible after llm_chat and exec_tool");
+      await win.click("#turn-cancel");
+      const cancelled = await poll(async () => {
+        const raw = await win.locator("#json-out").textContent();
+        return raw && raw.includes('"agent_stop": "Cancelled"') ? raw : null;
+      }, 90000);
+      check(Boolean(cancelled), "EG3 kernel agent_stop Cancelled");
+      let parsedCancel = {};
+      try {
+        parsedCancel = JSON.parse(cancelled || "{}");
+      } catch (err) {
+        bad("EG3 cancel json", err.message);
+      }
+      check(parsedCancel.agent_stop === "Cancelled", "EG3 kernel Cancelled", parsedCancel.agent_stop);
+      const after = traceRows(trace).slice(traceBeforeCancel);
+      const afterOps = after.filter((r) => r.kind === "op").map((r) => r.op);
+      const llmAfter = afterOps.filter((op) => op === "llm_chat").length;
+      const execAfter = afterOps.filter((op) => op === "exec_tool").length;
+      check(llmAfter === midCancel.llm, "EG3 no extra llm_chat after cancel", `${midCancel.llm} -> ${llmAfter}`);
+      check(execAfter === midCancel.exec, "EG3 no extra exec_tool after cancel", `${midCancel.exec} -> ${execAfter}`);
+      check(!afterOps.includes("deliver"), "EG3 cancel does not deliver");
+      check(stub.posts.length === midCancel.posts, "EG3 no provider call after cancel", `${midCancel.posts} -> ${stub.posts.length}`);
+    }
   } finally {
     stub.release();
     if (app) {

@@ -285,8 +285,29 @@ function createTurnRunner(repoRoot, opts = {}) {
     const session = await pumpMoonFfi(
       moonArgs,
       async (req) => {
-        nodeOps.push(String((req && req.op) || ""));
-        return productWire.dispatch(req);
+        const op = String((req && req.op) || "");
+        nodeOps.push(op);
+        if (typeof ctx.isCancelled === "function" && ctx.isCancelled()) {
+          return { cancel: true, content: "", calls: [], output: "", verdict: "deny" };
+        }
+        const pending = productWire.dispatch(req);
+        const guarded = pending.catch((err) => {
+          if (typeof ctx.isCancelled === "function" && ctx.isCancelled()) {
+            return { cancel: true, content: "", calls: [], output: "", verdict: "deny" };
+          }
+          throw err;
+        });
+        if (!ctx.cancelPromise) return guarded;
+        return Promise.race([
+          guarded,
+          ctx.cancelPromise.then(() => ({
+            cancel: true,
+            content: "",
+            calls: [],
+            output: "",
+            verdict: "deny",
+          })),
+        ]);
       },
       {
         timeoutMs: ctx.timeoutMs || 180000,

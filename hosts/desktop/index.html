@@ -2666,6 +2666,7 @@
       <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…" title="Enter 发送 · Shift+Enter 换行 · ↑ 调出上一条" autocomplete="off" autofocus></textarea>
       <button type="button" id="attach-btn" title="更多：附件 / 联网搜索 / 模型 / 语音对话"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><path d="M12 18v4"/><path d="M8 22h8"/></svg></button>
+      <button type="button" id="turn-cancel" class="bb-btn" hidden>停止</button>
       <button id="send" type="submit" title="发送 (Enter)" aria-label="Send" data-i18n-aria="send">↑</button>
     </div>
     <!-- G-28: Grok 极简 composer —— 联网搜索 / 模型 / 语音对话收进左侧「＋」弹层，
@@ -2744,6 +2745,12 @@
     const form = document.getElementById("composer");
     const input = document.getElementById("text");
     const sendBtn = document.getElementById("send");
+    const turnCancelBtn = document.getElementById("turn-cancel");
+    if (turnCancelBtn) {
+      turnCancelBtn.addEventListener("click", () => {
+        if (window.bitbot && window.bitbot.cancelTurn) window.bitbot.cancelTurn();
+      });
+    }
 
     // Replica C4: composer controls — web search toggle + inline model switch.
     // (C5 voice already ships via startVoiceInput/startVoiceChat; not rebuilt.)
@@ -7103,6 +7110,7 @@
           replyToText: (opts && opts.replyQuoteText) || "",
         });
       sendBtn.disabled = true;
+      if (turnCancelBtn) turnCancelBtn.hidden = false;
       streamEl = null;
       resetProgressRow();
       resetAgentStepRow();
@@ -9510,6 +9518,7 @@
         addMsg("assistant", msg);
       } finally {
         sendBtn.disabled = false;
+        if (turnCancelBtn) turnCancelBtn.hidden = true;
         input.focus();
         finishProgressRow();
         /* Grok-style: mark user message delivery as read (green ✓✓) */

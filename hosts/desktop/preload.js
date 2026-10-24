@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("bitbot", {
   boot: () => ipcRenderer.invoke("bitbot:boot"),
   turn: (text, opts) => ipcRenderer.invoke("bitbot:turn", text, opts || {}),
+  cancelTurn: () => ipcRenderer.invoke("bitbot:turn:cancel"),
   readArtifact: (artifactPath) =>
     ipcRenderer.invoke("bitbot:readArtifact", artifactPath),
   openArtifact: (artifactPath) =>
