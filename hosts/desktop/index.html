@@ -11522,6 +11522,10 @@
               : t("apRanFail", { e: (r && r.error) || "-", k: kindLab }) + " ") + info.textContent;
             refreshApprovalQueue();
             refreshPendingBar();
+            // GP-165：点了「本次允许」就得真的执行这一次。批准本身只落决定，
+            // 真正执行要走 Host 执行器；grant 由 decide 发回（一次性），
+            // 不带 grant 的 runAllowed 现在会被 Host 拒绝。
+            if (r && r.ok) reRunApprovedKind(r.kind, r.command, r.grant_turn_id);
           });
           row.appendChild(bOnce);
         }

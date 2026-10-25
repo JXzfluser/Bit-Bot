@@ -347,6 +347,21 @@ function createTurnRunner(repoRoot, opts = {}) {
       kernel_ops: session.kernelOps || [],
       node_ops: nodeOps,
     };
+    // GP-165：AgentLoop 的出口诚实化。内核的 stop 只有 Final / MaxSteps /
+    // Cancelled，没有「Host 模型调用失败」这一档；失败时它只是 Final 地把空
+    // 文本收尾。Host 知道真实原因，就在这里把 ok 改回 false 并带上原因 ——
+    // 否则一次 provider 500 会被下游（尤其群协作）当成一次成功回复。
+    if (
+      parsed &&
+      parsed.agent_loop === true &&
+      productWire &&
+      productWire.state &&
+      productWire.state.llmError
+    ) {
+      parsed.ok = false;
+      parsed.error = String(productWire.state.llmError);
+      parsed.host_llm_failed = true;
+    }
     // Prove-only. Product Desktop does not set this, so kernel stderr stays off the UI.
     if (String(process.env.BITBOT_PP_CAPTURE_STDERR || "") === "1") {
       parsed.loop_trace.stderr = stderr;

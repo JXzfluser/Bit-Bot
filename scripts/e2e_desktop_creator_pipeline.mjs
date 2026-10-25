@@ -400,16 +400,42 @@ function startStub() {
       const target = mine[0] || null;
       if (!target) bad("P7 无待批准项可放行", "依赖 P6");
       else {
-        await win.evaluate((id) => window.bitbot.approvals.decide(id, "allow_once"), target.id);
-        const res = await win.evaluate((it) => window.bitbot.approvals.runAllowed({
+        // GP-165 两道门都要看见：
+        //   1) 没批准的 runAllowed 不放行（Host 的一次性 grant 是真的）；
+        //   2) 用户真会走的那条路 —— 在队列行上点「本次允许」，由界面把这一次执行完。
+        const ungranted = await win.evaluate((it) => window.bitbot.approvals.runAllowed({
           kind: it.kind, command: it.command, bot_id: "agent-bit",
         }), target).catch((e) => ({ ok: false, error: String((e && e.message) || e) }));
-        const sendsNow = listFiles(SEND_DIR, ".json").filter((f) => !sendsBefore.has(f));
+        const noGrantSends = listFiles(SEND_DIR, ".json").filter((f) => !sendsBefore.has(f));
+        ungranted && ungranted.ok === false && ungranted.error === "no_grant" && noGrantSends.length === 0
+          ? ok("P7 没批准的 runAllowed 被 Host 拒了（no_grant），且没有偷偷发出一封")
+          : bad("P7 未批准的 runAllowed 竟然放行", JSON.stringify({ ungranted, noGrantSends }).slice(0, 300));
+
+        const clicked = await win.evaluate((to) => {
+          const box = document.getElementById("approval-queue");
+          if (!box) return false;
+          const row = Array.from(box.querySelectorAll(".q-item")).find((r) =>
+            String(r.innerText || "").includes(to));
+          if (!row) return false;
+          const b = row.querySelector("button");
+          if (!b) return false;
+          b.click();
+          return true;
+        }, MAIL_TO);
+        clicked
+          ? ok("P7 队列行上点得到「本次允许」按钮（用户真的点得动，不是只有 IPC）")
+          : bad("P7 队列行上找不到可点的「本次允许」", String(queueRow).slice(0, 200));
+        let sendsNow = [];
+        for (let i = 0; i < 40; i += 1) {
+          sendsNow = listFiles(SEND_DIR, ".json").filter((f) => !sendsBefore.has(f));
+          if (sendsNow.length) break;
+          await new Promise((r) => setTimeout(r, 500));
+        }
         const sent = sendsNow.length ? readJson(path.join(SEND_DIR, sendsNow[0]), {}) : {};
         const raw = sendsNow.length ? fs.readFileSync(path.join(SEND_DIR, sendsNow[0]), "utf8") : "";
-        res && res.ok && sendsNow.length >= 1 && raw.includes(MAIL_TO) && String(sent.to || "").includes(MAIL_TO)
+        clicked && sendsNow.length >= 1 && raw.includes(MAIL_TO) && String(sent.to || "").includes(MAIL_TO)
           ? ok("P7 批准后真的发出：data/mail/sends/" + sendsNow[0] + "（收件人 " + MAIL_TO + "）")
-          : bad("P7 批准后没有真发", JSON.stringify({ res, sendsNow, sent }).slice(0, 500));
+          : bad("P7 批准后没有真发", JSON.stringify({ clicked, sendsNow, sent }).slice(0, 500));
       }
 
       /* ---------- P8: 卫生 —— 本轮新行不吐调试串 ---------- */

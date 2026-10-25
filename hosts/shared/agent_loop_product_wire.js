@@ -121,6 +121,8 @@ function createProductSession(ffi, llmOpts) {
     shellAllowed: false,
     pendingShellAction: "",
     delivered: "",
+    // GP-165: first failing llm_chat reason for this turn ("" until one fails).
+    llmError: "",
     ffi,
     turnId: String(opts.turnId || ""),
   };
@@ -138,10 +140,16 @@ function createProductSession(ffi, llmOpts) {
           agentLoopTools: true,
         });
         const calls = Array.isArray(res.tool_calls) ? res.tool_calls : [];
+        if (!res.ok) {
+          // GP-165：上游模型失败不是「模型说的话」。以前把 error 原文塞进
+          // content，内核就会把它当成 assistant 正文 deliver 出去，群协作也
+          // 会把这一票算成「成功回复」。这里只留原因、正文留空，交给 Host
+          // 出口按 ok:false 报出去。
+          state.llmError = String(res.error || res.stderr || "llm_chat_failed");
+          return { content: "", calls: [], error: state.llmError };
+        }
         return {
-          content: res.ok
-            ? String(res.stdout || "")
-            : String(res.error || res.stderr || ""),
+          content: String(res.stdout || ""),
           calls: calls.map((c) => ({
             id: String((c && c.id) || ""),
             name: String((c && c.name) || ""),
