@@ -10,9 +10,10 @@ const path = require("path");
 const https = require("https");
 const http = require("http");
 const crypto = require("crypto");
-const { execFile } = require("child_process");
+const { execFile, spawn } = require("child_process");
 const { promisify } = require("util");
 const agentLoopFfi = require("./agent_loop_stream_stub");
+const { createProductSession } = require("./agent_loop_product_wire");
 const p0 = require("./p0_security");
 
 // GP-96/97/98 — §5.7 progress events are built by one module, shared with the
@@ -18564,6 +18565,83 @@ function createHostFfi(repoRoot) {
   }
 
   /**
+   * GP-165：嵌套 worker 回合也是产品回合。内核默认进 AgentLoop，会通过 stdout
+   * 上的 BITBOT_FFI 行向 Host 要模型 / 工具结果；旧写法只等进程退出，没人应答
+   * stdin，于是「语音中转」这类嵌套回合会一直挂住（moon 也退不出去）。这里用
+   * 同一套 product wire 应答，行为和主回合一致：模型失败只留原因、正文留空。
+   */
+  function runNestedKernelTurn(moonBin, args, { timeoutMs, env } = {}) {
+    return new Promise((resolve, reject) => {
+      const child = spawn(moonBin, args, {
+        cwd: REPO_ROOT,
+        env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const wire = createProductSession(
+        { REPO_ROOT, executeLlmChat: (cmd, opts) => executeLlmChat(cmd, opts) },
+        { botId: null, turnId: "" },
+      );
+      let stdout = "";
+      let stderr = "";
+      let buf = "";
+      let chain = Promise.resolve();
+      const timer = setTimeout(() => {
+        try { child.kill("SIGKILL"); } catch (_) { /* already gone */ }
+        const err = new Error("nested_kernel_timeout");
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+      }, Math.max(1000, Number(timeoutMs) || 90000));
+      const takeLine = (line) => {
+        if (!line.startsWith("BITBOT_FFI ")) {
+          stdout += line + "\n";
+          return;
+        }
+        let req = null;
+        try { req = JSON.parse(line.slice("BITBOT_FFI ".length)); } catch (_) { req = null; }
+        chain = chain.then(async () => {
+          let res;
+          try {
+            res = req
+              ? await wire.dispatch(req)
+              : { error: "bad ffi json", content: "", calls: [] };
+          } catch (err) {
+            res = {
+              error: String((err && err.message) || err),
+              content: "",
+              calls: [],
+              output: "",
+              verdict: "deny",
+            };
+          }
+          if (child.stdin && !child.stdin.destroyed) {
+            child.stdin.write(JSON.stringify(res) + "\n");
+          }
+        });
+      };
+      child.stdout.on("data", (chunk) => {
+        buf += chunk.toString();
+        let nl = buf.indexOf("\n");
+        while (nl >= 0) {
+          const line = buf.slice(0, nl).replace(/\r$/, "");
+          buf = buf.slice(nl + 1);
+          takeLine(line);
+          nl = buf.indexOf("\n");
+        }
+      });
+      child.stderr.on("data", (c) => { stderr += c.toString(); });
+      child.on("error", (err) => { clearTimeout(timer); reject(err); });
+      child.on("close", (code) => {
+        chain.then(() => {
+          clearTimeout(timer);
+          if (buf.trim()) stdout += buf + "\n";
+          resolve({ stdout, stderr, code, llmError: wire.state.llmError || "" });
+        });
+      });
+    });
+  }
+
+  /**
    * Bounded MoonBit worker turn for teammate/subagent wakes (Host FFI only).
    * Does not re-enter Host effects — caller decides whether to apply effects.
    * BITBOT_NEST_DEPTH>=1 skips spawning to prevent busy-loop nesting (CM-2133).
@@ -18593,10 +18671,8 @@ function createHostFfi(repoRoot) {
       String(prompt || "").slice(0, 800),
     ];
     try {
-      const { stdout, stderr } = await execFileAsync(moonBin, args, {
-        cwd: REPO_ROOT,
-        timeout: timeoutMs,
-        maxBuffer: 2 * 1024 * 1024,
+      const { stdout, stderr, llmError } = await runNestedKernelTurn(moonBin, args, {
+        timeoutMs,
         env: {
           ...process.env,
           BITBOT_NEST_DEPTH: String(depth + 1),
@@ -18613,9 +18689,10 @@ function createHostFfi(repoRoot) {
         assistant = parts.join("\n").trim();
       }
       return {
-        ok: Boolean(parsed.ok !== false),
+        ok: Boolean(parsed.ok !== false) && !llmError,
         nested_skipped: false,
         assistant: assistant.slice(0, 2000),
+        error: llmError || undefined,
         intent: parsed.intent || "",
         turn_id: parsed.turn_id || "",
         effects: Array.isArray(parsed.effects) ? parsed.effects : [],

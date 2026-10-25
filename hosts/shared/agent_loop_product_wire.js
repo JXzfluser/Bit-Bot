@@ -117,6 +117,13 @@ function createProductSession(ffi, llmOpts) {
   const chatOpts = {};
   if (opts.botId) chatOpts.botId = opts.botId;
   if (opts.roomContext) chatOpts.roomContext = opts.roomContext;
+  // GP-14：回合内第一跳就要看见被引用的原文，所以引用在 kernel 启动前解析，
+  // 这里原样带给 executeLlmChat（它负责把 [quoted message <id>] 行放进请求体）。
+  if (opts.replyTo) {
+    chatOpts.replyTo = String(opts.replyTo);
+    chatOpts.replyQuote = String(opts.replyQuote || "");
+    chatOpts.replyRole = String(opts.replyRole || "assistant");
+  }
   const state = {
     shellAllowed: false,
     pendingShellAction: "",

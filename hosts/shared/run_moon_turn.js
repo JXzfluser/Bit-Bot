@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const { createHostFfi } = require("./host_ffi");
-const { createProductSession, legacyGuardedRerunEnabled } = require("./agent_loop_product_wire");
+const { createProductSession } = require("./agent_loop_product_wire");
 
 /** Kernel child does not need the model key. HTTP stays in the Node host. */
 function moonProcessEnv(source) {
@@ -289,6 +289,31 @@ function createTurnRunner(repoRoot, opts = {}) {
     moonArgs.push(text);
 
     const nodeOps = [];
+    // GP-14：AgentLoop 在回合内（第一跳）就要把被引用的原文带给模型，所以回复
+    // 目标必须在 kernel 启动前解析；回合结束后不再重复解析同一份。
+    const preResolveReply =
+      typeof ctx.resolveReply === "function" ? ctx.resolveReply : defaultResolveReply;
+    let preReplyQuote = null;
+    if (ctx.replyTo) {
+      try {
+        const hit = preResolveReply(String(ctx.replyTo)) || {};
+        preReplyQuote = {
+          message_id: String(ctx.replyTo),
+          resolved: Boolean(hit.ok),
+          role: hit.role || "",
+          text: hit.ok ? String(hit.text || "") : "",
+          error: hit.ok ? "" : String(hit.error || "message_not_found"),
+        };
+      } catch (err) {
+        preReplyQuote = {
+          message_id: String(ctx.replyTo),
+          resolved: false,
+          role: "",
+          text: "",
+          error: "resolve_failed:" + (err && err.message ? err.message : String(err)),
+        };
+      }
+    }
     const productWire = createProductSession(ffi, {
       botId: ctx.botId,
       roomContext: ctx.roomContext || null,
@@ -296,6 +321,9 @@ function createTurnRunner(repoRoot, opts = {}) {
       cliApproved: ctx.cliApproved === true,
       approvalGate: ctx.approvalGate || null,
       requestApproval: ctx.requestApproval,
+      replyTo: String(ctx.replyTo || ""),
+      replyQuote: (preReplyQuote && preReplyQuote.resolved && preReplyQuote.text) || "",
+      replyRole: (preReplyQuote && preReplyQuote.role) || "assistant",
     });
     const session = await pumpMoonFfi(
       moonArgs,
@@ -390,8 +418,8 @@ function createTurnRunner(repoRoot, opts = {}) {
       typeof ctx.resolveReply === "function"
         ? ctx.resolveReply
         : defaultResolveReply;
-    let replyQuote = null;
-    if (parsed && parsed.reply_to && typeof resolveReply === "function") {
+    let replyQuote = preReplyQuote;
+    if (!replyQuote && parsed && parsed.reply_to && typeof resolveReply === "function") {
       try {
         const hit = resolveReply(String(parsed.reply_to)) || {};
         replyQuote = {
@@ -410,8 +438,8 @@ function createTurnRunner(repoRoot, opts = {}) {
             "resolve_failed:" + (err && err.message ? err.message : String(err)),
         };
       }
-      parsed.reply_quote = replyQuote;
     }
+    if (replyQuote && parsed) parsed.reply_quote = replyQuote;
 
     if (
       parsed &&
@@ -556,10 +584,14 @@ function createTurnRunner(repoRoot, opts = {}) {
       }
     }
 
-    // Non-default. The product chat path does not re-enter the model from here.
+    // GP-21/GP-36：只有 legacy 单效果计划需要这一次「守卫式重跑」——always-allow
+    // 之后要把同一个 pattern 真的执行掉。AgentLoop 回合的审批在它自己的循环里
+    // 完成，绝不从这里再进模型（那会把一次审批变成第二次推理）。
+    // （BITBOT_LEGACY_GUARDED_RERUN 开关从 PR 链带进来时默认关闭，直接套用会让
+    //  Always allow 只记决定不执行；这里按计划类型判定，不再门控于该环境变量。）
     if (
-      legacyGuardedRerunEnabled() &&
       parsed &&
+      parsed.agent_loop !== true &&
       parsed.ok &&
       !ctx.approved &&
       Array.isArray(parsed.host_results) &&

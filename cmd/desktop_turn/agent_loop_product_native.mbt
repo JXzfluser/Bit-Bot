@@ -136,6 +136,22 @@ fn run_agent_loop_chat(
   turn_id : String,
   ctx : DesktopTurnContext,
 ) -> DesktopTurnResult {
+  // CM-1106 / GP-101（§8.3）：粘贴密钥不是一次回合。旧 chat 分支的这道内核
+  // 兜底必须同样挡在 AgentLoop 入口前，否则 CLI/API 调用方能把明文塞进历史。
+  match @ui_protocol.paste_token_into_chat(text) {
+    Err(reason) =>
+      return fail_turn(
+        @ui_protocol.redact_secrets(text),
+        turn_id,
+        Chat,
+        reason,
+        ctx,
+        assistant="拒绝在对话中粘贴密钥（CM-1106）。请使用 Host 的安全密钥输入框；对话与模型只会看到 " +
+          @ui_protocol.redact_secrets(text) +
+          "。",
+      )
+    Ok(_) => ()
+  }
   let opened = @runtime.open_turn(turn_id~, text~)
   bitbot_ffi_trace("entry=AgentLoop::run")
   let host = ProductFfiHost::new()
@@ -146,6 +162,8 @@ fn run_agent_loop_chat(
   } else {
     None
   }
+  // GP-93：产品可见的链接统一走同一套 linkify，AgentLoop 的交付也不例外。
+  let delivered = @ui_protocol.linkify_bare_http_urls(run.delivered)
   {
     v: DESKTOP_TURN_JSON_V,
     ok,
@@ -153,7 +171,7 @@ fn run_agent_loop_chat(
     intent: "chat",
     messages: [
       { role: "user", text, },
-      { role: "assistant", text: run.delivered, },
+      { role: "assistant", text: delivered, },
     ],
     modules: @bitbot.registered_modules(),
     machines: [],
