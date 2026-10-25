@@ -24,10 +24,9 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
-import { execSync } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, electronUserDataDir, isolatedRepoRoot, gateAppEnv, hasDisplay } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, isolatedRepoRoot, gateAppEnv, hasDisplay, countAppMains, countAllGateProcs, killGateProcs } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -111,14 +110,14 @@ async function waitExit(proc, ms) {
   return { gone: false, code: proc.exitCode, signal: proc.signalCode };
 }
 
-/** 这个 user-data-dir 下还有几个活着的进程？（退出后应为 0） */
+/** 这个 user-data-dir 下还有几个活着的「应用主进程」？（退出后应为 0）
+ *  和 single_instance 用同一把尺子：只数带 main.js + UD 的主进程。
+ *  Chromium 辅助进程（gpu / renderer / network）命令行里带 UD 但不带 main.js，
+ *  主进程退出后它们会自行解体；把它们算成"残留实例"会永远多算，且不是用户
+ *  看到的「退不掉」现象。旧的 execSync("pgrep -f UD") 更糟——它把承载 pgrep 的
+ *  `sh -c`（命令行同样含 UD）也算进去，实测稳定多 1。 */
 function liveInstances() {
-  try {
-    const out = execSync("pgrep -f " + JSON.stringify(UD), { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    return out.split(/\s+/).map((s) => Number(s.trim())).filter(Boolean).length;
-  } catch {
-    return 0; // pgrep 退出码 1 = 没有匹配
-  }
+  return countAppMains(UD);
 }
 
 let app = null;
@@ -200,8 +199,14 @@ let app = null;
       await sleep(500);
       const left = liveInstances();
       left === 0
-        ? ok("Q-03 退出后没有残留实例（user-data-dir 下 0 个进程）")
+        ? ok("Q-03 退出后没有残留应用主进程（user-data-dir 下 0 个 main.js 实例）")
         : bad("Q-03 leftover instances after quit", left + " process(es) still match " + UD);
+      /* 辅助进程单独看一眼：主进程退了但 gpu/renderer/network 还挂着，是真泄漏。
+         不当成 Q-03 的红（用户看到的「退不掉」是主进程），但必须如实打印出来。 */
+      const helpers = countAllGateProcs(UD) - left;
+      if (helpers > 0) {
+        console.log("  · RESIDUAL（如实）：退出后仍有 " + helpers + " 个 Chromium 辅助进程匹配该 user-data-dir（主进程已退出，未计入 Q-03）");
+      }
 
       /* ---------- Q-04 同一个 userData 能再启动：说明锁释放干净了 ---------- */
       let app2 = null;

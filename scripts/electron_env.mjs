@@ -21,7 +21,75 @@
 import os from "os";
 import path from "path";
 import fs from "fs";
-import { execSync } from "child_process";
+import { execSync, spawnSync } from "child_process";
+
+/* --------------------------------------------------------------------------
+ * 进程计数（单一真源）—— 门禁里「有几个实例」「退出后有没有残留」都走这里。
+ *
+ * 为什么要单独写：`execSync("pgrep -f <pat>")` 会先起一个
+ * `/bin/sh -c pgrep -f <pat>`，这个 shell 自己的命令行里就带着 <pat>，
+ * 于是 pgrep 永远多算 1 个。实测后果不是数字难看，而是**假红**：
+ *   - 单实例门禁把「1 个实例」读成 2 → 判「锁没生效」；
+ *   - 退出门禁把「0 残留」读成 1 → 判「退不干净」。
+ * 两条都是红在产品里并不存在的行为上（同 UD 第二实例确实自己退了，
+ * app.quit() 后主进程确实 code=0 退出，锁也确实能再次启动）。
+ *
+ * 这里直接 spawnSync 调 pgrep（没有中间 shell），再用 ps 逐 pid 取命令行精确
+ * 过滤：只数「带 main.js + 该 user-data-dir 的应用主进程」。Chromium 的
+ * gpu / renderer / network 辅助进程命令行里没有 main.js，不计入实例数。
+ * ------------------------------------------------------------------------ */
+
+/** 按命令行子串匹配进程（无中间 shell）。返回 pid 数组。 */
+export function pgrepPids(pattern) {
+  const res = spawnSync("pgrep", ["-f", pattern], { encoding: "utf8" });
+  if (res.status !== 0) return []; // status=1 → 没有匹配
+  return String(res.stdout || "")
+    .split(/\s+/)
+    .map((s) => Number(s.trim()))
+    .filter((p) => p && p !== process.pid && p !== process.ppid);
+}
+
+/** 取某个 pid 的命令行（mac/linux 通用）。取不到返回空串。 */
+function cmdlineOf(pid) {
+  const res = spawnSync("ps", ["-p", String(pid), "-o", "args="], { encoding: "utf8" });
+  return res.status === 0 ? String(res.stdout || "").trim() : "";
+}
+
+/**
+ * 某个 user-data-dir 下还活着几个「应用主进程」。
+ * @param {string} ud 门禁的临时 user-data-dir
+ * @returns {number} 主进程数（命令行同时含 main.js 与该 ud）
+ */
+export function countAppMains(ud) {
+  return pgrepPids(ud).filter((pid) => {
+    const cmd = cmdlineOf(pid);
+    return cmd.includes("main.js") && cmd.includes(ud);
+  }).length;
+}
+
+/**
+ * 某个 user-data-dir 下的全部相关进程数（含 Chromium 辅助进程）。
+ * 用作「退出后有没有残留」的第二双眼睛：主进程没了但辅助进程还挂着，
+ * 是真泄漏，得如实报出来，而不是被实例计数糊过去。
+ */
+export function countAllGateProcs(ud) {
+  return pgrepPids(ud).length;
+}
+
+/**
+ * 清掉某个 user-data-dir 下的门禁进程（兜底清场用）。
+ * 同样不能用 `execSync("pkill -f <ud>")`：那个 `sh -c` 自己的命令行里带着
+ * <ud>，pkill 会把承载它的 shell 一起杀了，execSync 于是抛错（被 catch 吞掉，
+ * 看起来"清场成功"，实际剩下的进程没杀干净）。
+ * @returns {number} 发过 SIGKILL 的进程数
+ */
+export function killGateProcs(ud) {
+  const pids = pgrepPids(ud);
+  for (const pid of pids) {
+    try { process.kill(pid, "SIGKILL"); } catch { /* 已退出，忽略 */ }
+  }
+  return pids.length;
+}
 
 /* 必须剔除的环境变量。ELECTRON_RUN_AS_NODE 是元凶，其余是"会污染结果但不会报错"的。 */
 const DROP = [
@@ -74,23 +142,13 @@ export function electronUserDataDir(tag) {
  */
 export function killStaleGateInstances() {
   if (process.platform === "win32") return; // 门禁只在 mac/linux 跑，且 ps 语法不同
-  try {
-    const out = execSync("pgrep -f bitbot-e2e-ud", {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    const self = process.pid;
-    const pids = out
-      .split(/\s+/)
-      .map((s) => Number(s.trim()))
-      .filter((p) => p && p !== self && p !== process.ppid);
-    for (const pid of pids) {
-      try { process.kill(pid, "SIGKILL"); } catch { /* 已退出，忽略 */ }
-    }
-    if (pids.length) execSync("sleep 1", { stdio: "ignore" });
-  } catch {
-    /* pgrep 退出码 1 = 没有匹配进程 = 没有残留，正常，无需处理 */
+  // 走 pgrepPids：不再用 execSync("pgrep -f …")，否则这个调用会顺手把自己
+  // 所在的 `/bin/sh -c` 杀掉（表现为偶发的 execSync 报错 + 少杀一个真残留）。
+  const pids = pgrepPids("bitbot-e2e-ud");
+  for (const pid of pids) {
+    try { process.kill(pid, "SIGKILL"); } catch { /* 已退出，忽略 */ }
   }
+  if (pids.length) execSync("sleep 1", { stdio: "ignore" });
 }
 
 /**

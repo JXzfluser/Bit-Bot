@@ -16,10 +16,10 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
-import { execSync, spawn } from "child_process";
+import { spawn } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, electronUserDataDir, isolatedRepoRoot, gateAppEnv, hasDisplay } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, isolatedRepoRoot, gateAppEnv, hasDisplay, countAppMains, killGateProcs } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -88,15 +88,10 @@ function launch(ud) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* 只数「主进程」：Electron 的辅助进程（GPU / 渲染）命令行里不含 main.js，
- * 但会带 --user-data-dir。用 main.js + ud 组合，滤掉辅助进程，才能数清楚「几个实例」。 */
-function liveMain(ud) {
-  try {
-    const out = execSync("pgrep -f " + JSON.stringify("main.js.*" + ud), { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    return out.split(/\s+/).map((s) => Number(s.trim())).filter(Boolean).length;
-  } catch {
-    return 0;
-  }
-}
+ * 但会带 --user-data-dir。用 main.js + ud 组合，滤掉辅助进程，才能数清楚「几个实例」。
+ * 计数走 electron_env.countAppMains（无中间 shell）——旧的 execSync("pgrep -f …")
+ * 会把 `sh -c` 自己也算进去，永远多 1，实测把 1 个实例读成 2（假红）。 */
+const liveMain = (ud) => countAppMains(ud);
 
 let appA = null;
 let appB = null;
@@ -187,11 +182,7 @@ let appC = null;
       if (a) await a.close().catch(() => {});
     }
     // 兜底清场，避免门禁之间互相污染
-    try {
-      execSync("pkill -9 -f " + JSON.stringify(UD_A), { stdio: "ignore" });
-      execSync("pkill -9 -f " + JSON.stringify(UD_B), { stdio: "ignore" });
-    } catch {
-      /* ignore */
-    }
+    killGateProcs(UD_A);
+    killGateProcs(UD_B);
   }
 })();

@@ -1611,6 +1611,70 @@ grep -q "负向对照：now+24h 兜底落在" /tmp/g45-probe.log \
   || bad "G-45 negative control missing"
 
 
+echo "== G-46 Target v2 桌面行为门禁（单实例 / 干净退出 / 侧栏自适应 / 命令通道 / 群菜单 / token 对齐）=="
+# 这一组是 a652416 带进来的六个真实 Electron 门禁。它们此前只被 report.md 提到、
+# 不在任何聚合门禁里 —— 不在矩阵里的门禁等于没有门禁（下一轮改动没人会再跑它）。
+# 先自证尺子（秒级，无 Electron），再逐个串行跑真实渲染，最后带一次负向对照。
+if timeout 120 node scripts/prove_gate_proc_count.mjs > /tmp/g46-ruler.log 2>&1; then
+  ok "G-46 尺子自证：实例/残留计数不被 pgrep 的 sh -c 污染（$(tail -1 /tmp/g46-ruler.log)）"
+else
+  bad "G-46 尺子自证（见 /tmp/g46-ruler.log）"
+fi
+grep -q "旧 execSync(pgrep -f UD) 数到" /tmp/g46-ruler.log \
+  && ok "G-46 尺子负向对照：旧写法确实多算（修复前红，证明断言非恒真）" \
+  || bad "G-46 ruler negative control missing"
+
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g46_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g46_xvfb=(xvfb-run -a)
+  fi
+  for g in single_instance sidebar_adapt quit command_channel bot_group_menu token_parity; do
+    log=/tmp/g46-$g.log
+    pkill -9 -f "dist/[e]lectron" 2>/dev/null
+    sleep 1
+    if timeout 900 "${g46_xvfb[@]}" node "scripts/e2e_desktop_$g.mjs" >"$log" 2>&1; then
+      ok "G-46 e2e_desktop_$g 全绿（$(grep -c '✓' "$log") 项，$(tail -1 "$log")）"
+    else
+      bad "G-46 e2e_desktop_$g（见 $log；$(tail -1 "$log")）"
+    fi
+  done
+  grep -q "S-02 同 UD 只活着一个主进程" /tmp/g46-single_instance.log 2>/dev/null \
+    && grep -q "S-03 第一个实例窗口仍在前台" /tmp/g46-single_instance.log 2>/dev/null \
+    && ok "G-46 单实例：同 UD 第二实例被锁挡住并唤起已有窗口（用户双击两次只开一个）" \
+    || bad "G-46 single-instance contract missing"
+  grep -q "Q-01 进程仍在运行" /tmp/g46-quit.log 2>/dev/null \
+    && grep -q "Q-02 app.quit() 后进程真的退出" /tmp/g46-quit.log 2>/dev/null \
+    && grep -q "Q-04 同一 user-data-dir 能再次启动" /tmp/g46-quit.log 2>/dev/null \
+    && ok "G-46 退出：红叉仍收进托盘（产品意图），quit 真退出且锁释放可再启动" \
+    || bad "G-46 quit contract missing"
+  grep -q "C-09" /tmp/g46-command_channel.log 2>/dev/null \
+    && grep -q "C-10" /tmp/g46-command_channel.log 2>/dev/null \
+    && grep -q "C-11" /tmp/g46-command_channel.log 2>/dev/null \
+    && ok "G-46 命令通道：静默操作不进气泡 / 一句话组队建群 / 回执说人话" \
+    || bad "G-46 command-channel contract missing"
+  grep -q "R-02 窄窗" /tmp/g46-sidebar_adapt.log 2>/dev/null \
+    && grep -q "R-04 手动收起后" /tmp/g46-sidebar_adapt.log 2>/dev/null \
+    && ok "G-46 侧栏自适应：≤768 自动收起、放宽自动展开、手动收起后尊重用户意图" \
+    || bad "G-46 sidebar adaptation missing"
+  # 负向对照：关掉单实例锁，门禁必须翻红（否则这一组是恒真的装饰品）
+  log=/tmp/g46-neg-single.log
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if NEG_CONTROL=1 timeout 900 "${g46_xvfb[@]}" node scripts/e2e_desktop_single_instance.mjs >"$log" 2>&1; then
+    bad "G-46 负向对照失效：关掉单实例锁后门禁仍全绿（恒真断言）"
+  else
+    grep -q "S-02 同 UD 出现多个主进程" "$log" \
+      && ok "G-46 负向对照：BITBOT_DISABLE_SINGLE_INSTANCE=1 → 门禁真的翻红（非恒真）" \
+      || bad "G-46 负向对照跑红了，但红的不是 S-02（见 $log）"
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+else
+  echo "  · skip：playwright-core / electron dist 缺失，G-46 的六个真实门禁未跑（SKIP ≠ PASS）"
+fi
+echo "  · G-46 说明：六个门禁均为真实 Electron（Xvfb）渲染断言；串行执行并逐个清场，避免并发 profile 互撞"
+
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
