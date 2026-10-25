@@ -40,13 +40,22 @@ if (/else if \(ev\.key === "k" \|\| ev\.key === "K"\) \{[\s\S]{0,200}toggleSessi
 }
 
 /* ---------- 2) 共享搜索入口，不造第二份状态 ---------- */
-/* P2/M45: the search row lives behind one helper (setSessionSearchOpen) so the
-   grok-ui body class and the input's hidden flag can never diverge; the button,
-   Cmd/Ctrl+K and Escape all go through it. */
-if (/function setSessionSearchOpen\(open\)[\s\S]{0,320}getElementById\("session-search"\)[\s\S]{0,160}el\.hidden = !open/.test(html)
-  && /function toggleSessionSearchFromShortcut\(\)[\s\S]{0,200}setSessionSearchOpen\(/.test(html)
-  && /sidebarSearchToggle\.addEventListener\("click"[\s\S]{0,240}setSessionSearchOpen\(/.test(html)) {
-  ok("Cmd/Ctrl+K 走既有 #session-search 输入（setSessionSearchOpen 单一入口：hidden/body class/focus 同源），无重复状态");
+/* P2/M45 + G-28: the search row lives behind one helper
+   (setSessionSearchOpen) so the grok-ui body class, the #sessions-popup fold
+   and the input's hidden flag can never diverge; the button, Cmd/Ctrl+K and
+   Escape all go through it. 先按函数体切片再断言，避免窗口宽度把新增的
+   弹层展开逻辑挤出去（旧窗口 160 字，G-28 之后必然越界）。 */
+const searchFn =
+  (html.match(/function setSessionSearchOpen\(open\) \{[\s\S]*?\n    \}/) || [""])[0];
+const searchOk =
+  /session-search-open/.test(searchFn) &&
+  /getElementById\("session-search"\)/.test(searchFn) &&
+  /sessions-popup/.test(searchFn) &&
+  /el\.hidden = !open/.test(searchFn) &&
+  /function toggleSessionSearchFromShortcut\(\)[\s\S]{0,200}setSessionSearchOpen\(/.test(html) &&
+  /sidebarSearchToggle\.addEventListener\("click"[\s\S]{0,240}setSessionSearchOpen\(/.test(html);
+if (searchOk) {
+  ok("Cmd/Ctrl+K 走既有 #session-search 输入（setSessionSearchOpen 单一入口：hidden/body class/弹层/focus 同源），无重复状态");
 } else {
   bad("shared search", "search row not reached through the single setSessionSearchOpen entry");
 }

@@ -45,8 +45,11 @@ const stubJs = fs.readFileSync(path.join(REPO, "scripts/dev_stubs/openai_compat_
   ? ok("main.js 把 usage 事件写进 surface.recordUsage（真实 llm-usage.json）")
   : bad("main.js usage wiring missing");
 
+/* 流式 usage 现在由 SSE 累加器返回的 meta 承载（agentLoopFfi.consumeSseDataLine），
+   不再是旧的手写 chunk 对象；非流式仍是顶层 res.json.usage。两边都只在第一次
+   拿到时落 streamUsage，且都必须走到 phase:"usage" 事件。 */
 /stream_options: \{ include_usage: true \}/.test(ffiJs) &&
-  /obj\.usage && !streamUsage/.test(ffiJs) &&
+  /meta && meta\.usage && !usage/.test(ffiJs) &&
   /res\.json\.usage && !streamUsage/.test(ffiJs) &&
   /phase: "usage"/.test(ffiJs)
   ? ok("executeLlmChat 双路径提取 usage（流式最终 chunk / 非流式顶层）并 emit usage 事件（GP-130）")

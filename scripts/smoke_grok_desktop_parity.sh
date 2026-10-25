@@ -893,7 +893,7 @@ if timeout 900 node scripts/prove_m24_window.js > /tmp/g24-probe.log 2>&1; then
 else
   bad "G-24 主窗口结构契约（见 /tmp/g24-probe.log）"
 fi
-grep -q "侧边栏顺序 = Bot 列表 → 群组列表 → 会话列表 → 尾部区块" /tmp/g24-probe.log 2>/dev/null \
+grep -q "侧边栏顺序 = Bot 列表 → 群组列表 → 尾部区块" /tmp/g24-probe.log 2>/dev/null \
   && grep -q "六类入口都在 DOM 中" /tmp/g24-probe.log 2>/dev/null \
   && ok "G-24 GP-116：Bot/群组/会话列表与 Hidden/Connect apps/Marketplace/Settings 六类入口齐全且顺序正确" \
   || bad "G-24 GP-116 sidebar entries missing"

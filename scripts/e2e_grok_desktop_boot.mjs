@@ -681,8 +681,11 @@ async function main() {
       }, target ? target.mid : "");
       // 引用条合同 = 「被回复那条消息正文的前缀」+ 指向那条消息的持久 id。
       // （正文按 90 字截断，所以不能要求某个中段词一定出现——那是截断合同，不是丢内容。）
+      // 气泡正文走 marked({breaks:true})，换行变 <br>（textContent 里不再有换行符），
+      // 所以前缀比较前两边统一去掉空白：比较的是可见文字，不是源码排版。
+      const stripWs = (s) => String(s || "").replace(/\s+/g, "");
       const barBody = String(clicked.bar || "").replace(/^回复：/, "");
-      barBody.length > 0 && target && target.text.startsWith(barBody) &&
+      barBody.length > 0 && target && stripWs(target.text).startsWith(stripWs(barBody)) &&
         clicked.title === "id=" + (target ? target.mid : "")
         ? ok("E2E GP-14：Reply 按钮 → 引用条显示被回复消息原文（前缀 + id 指向同一条）")
         : bad("E2E GP-14 reply bar", JSON.stringify(clicked).slice(0, 200));
@@ -743,7 +746,8 @@ async function main() {
         };
       });
       const chipBody = String(quoteDom.text || "").replace(/^回复：/, "");
-      quoteDom.chips >= 1 && chipBody.length > 0 && target && target.text.startsWith(chipBody) &&
+      quoteDom.chips >= 1 && chipBody.length > 0 &&
+        target && stripWs(target.text).startsWith(stripWs(chipBody)) &&
         quoteDom.mid === target.mid
         ? ok("E2E GP-14：转写里回复气泡上方渲染引用条（" + quoteDom.chips + " 处，指向 " + quoteDom.mid + "）")
         : bad("E2E GP-14 quote chip", JSON.stringify(quoteDom).slice(0, 200));

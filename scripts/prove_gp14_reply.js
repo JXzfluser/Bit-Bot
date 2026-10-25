@@ -151,10 +151,38 @@ async function main() {
       ? ok("GP-14 Host 解析：id → store 原文（role/text 都对得上，非伪造）")
       : bad("GP-14 Host 解析", JSON.stringify(q));
 
+    // 两条产品路径都要有同一份证据：legacy 计划把 llm_chat 作为 Host 效果
+    // （host_results 行），AgentLoop 在回合内直接调模型（没有 effects 行）。
+    // 后者认 provider artifact：reply_to / 引文字节数 / 来源=session_store。
+    const art = newestArtifact(TURNS_DIR);
     const llm = (r.host_results || []).find((h) => h.kind === "llm_chat");
-    llm && llm.ok && llm.reply_to === QUOTE_ID && llm.reply_quote_chars === QUOTE_TEXT.length
-      ? ok("GP-14 llm_chat 结果带 reply_to + 引文字节数（" + llm.reply_quote_chars + "）")
-      : bad("GP-14 llm_chat 结果", JSON.stringify(llm || null).slice(0, 200));
+    const legacyHit = Boolean(
+      llm && llm.ok && llm.reply_to === QUOTE_ID && llm.reply_quote_chars === QUOTE_TEXT.length,
+    );
+    const loopHit = Boolean(
+      r.agent_loop === true &&
+        Number(r.agent_llm) >= 1 &&
+        art &&
+        art.reply_to === QUOTE_ID &&
+        art.reply_quote_chars === QUOTE_TEXT.length &&
+        art.reply_quote_source === "session_store",
+    );
+    legacyHit || loopHit
+      ? ok(
+          "GP-14 llm 调用带 reply_to + 引文字节数（" +
+            (legacyHit
+              ? "legacy host_results," + llm.reply_quote_chars
+              : "AgentLoop provider artifact," + art.reply_quote_chars) +
+            "）",
+        )
+      : bad(
+          "GP-14 llm 调用缺引用证据",
+          JSON.stringify({
+            legacy: llm || null,
+            loop: r.agent_loop === true ? Number(r.agent_llm) : null,
+            art: art && { reply_to: art.reply_to, chars: art.reply_quote_chars, source: art.reply_quote_source },
+          }).slice(0, 260),
+        );
 
     // 4) the quote actually reached the provider request body
     const echoed = JSON.stringify((r.messages || []).map((m) => m.text).join(" "));
@@ -162,7 +190,6 @@ async function main() {
       ? ok("GP-14 provider 请求体真含引用行（stub 回显 [quoted message <id>] <原文>）")
       : bad("GP-14 provider 请求体", echoed.slice(0, 220));
 
-    const art = newestArtifact(TURNS_DIR);
     art && art.reply_to === QUOTE_ID && art.reply_quote_source === "session_store"
       ? ok("GP-14 artifact 记录 reply_to + 引用来源=session_store（可审计）")
       : bad("GP-14 artifact", JSON.stringify(art && { reply_to: art.reply_to, source: art.reply_quote_source }));

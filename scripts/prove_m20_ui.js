@@ -54,9 +54,12 @@ function main() {
     ? ok("三套主题的 --bot-bubble 均非 transparent（浅色/深色/强制模式都实心）")
     : bad("bot-bubble transparency", transparentBot + " transparent declarations left");
 
-  // User bubble keeps its own pill.
-  /\.msg\.user \{[^}]*background:\s*var\(--user-bubble\)[^}]*border-radius:\s*18px/.test(html)
-    ? ok("用户气泡保持右侧 18px 圆角胶囊")
+  // User bubble keeps its own pill. 18px 不是字面量而是 --radius-user 令牌
+  // （唯一真源在 ui_chrome.css）；M42 只把右下角压成 6px 尾巴，其余三角不变。
+  /\.msg\.user \{[^}]*background:\s*var\(--user-bubble\)[^}]*border-radius:\s*var\(--radius-user\)/.test(html) &&
+    /\.msg\.user \{[^}]*border-bottom-right-radius:\s*6px/.test(html) &&
+    /--radius-user:\s*18px/.test(chrome)
+    ? ok("用户气泡保持右侧 18px 圆角胶囊（令牌 + M42 右下尾巴）")
     : bad("user bubble", "user pill styling lost");
 
   /* ---- 2) Sidebar: avatar color, preview, unread dot ---- */
@@ -151,6 +154,9 @@ function main() {
     : bad("ca i18n", missing.join(", "));
 
   /* ---- 6b) One token layer for later waves ---- */
+  /* 气泡色现在走「调色板字面量 + 语义令牌」两层：--p-{lt,dk}-bot-bubble 是
+     唯一字面量真源，--bot-bubble 只是按通道指向它。断言两层都在，比原来只
+     认字面量更严：既钉住颜色值，也钉住主题切换真的换了那一层。 */
   /--sidebar-w:\s*280px/.test(chrome) &&
     /--tools-w:\s*280px/.test(chrome) &&
     /--rail-w:\s*340px/.test(chrome) &&
@@ -158,16 +164,19 @@ function main() {
     /--radius-sm:\s*6px/.test(chrome) &&
     /--radius-user:\s*18px/.test(chrome) &&
     /--text-sm:\s*12px/.test(chrome) &&
-    /--bot-bubble:\s*#212121/.test(chrome) &&
-    /--bot-bubble:\s*#f4f4f5/.test(chrome)
+    /--p-dk-bot-bubble:\s*#212121/.test(chrome) &&
+    /--p-lt-bot-bubble:\s*#f4f4f5/.test(chrome) &&
+    /--bot-bubble:\s*var\(--p-lt-bot-bubble\)/.test(chrome) &&
+    /--bot-bubble:\s*var\(--p-dk-bot-bubble\)/.test(chrome)
     ? ok("壳层宽度、间距、圆角、字号、气泡色只在 ui_chrome.css 定义")
     : bad("chrome tokens", "ui_chrome.css scale incomplete");
 
-  /body\.force-dark/.test(chrome) &&
-    /body\.force-light/.test(chrome) &&
-    /prefers-color-scheme:\s*light/.test(chrome) &&
-    /--text:\s*#ececec/.test(chrome) &&
-    /--text:\s*#1a1a1a/.test(chrome)
+  /body\.force-dark \{[\s\S]*?--text:\s*var\(--p-dk-text\)/.test(chrome) &&
+    /body\.force-light \{[\s\S]*?--text:\s*var\(--p-lt-text\)/.test(chrome) &&
+    /@media \(prefers-color-scheme:\s*light\)[\s\S]*?--text:\s*var\(--p-lt-text\)/.test(chrome) &&
+    /@media \(prefers-color-scheme:\s*dark\)[\s\S]*?--text:\s*var\(--p-dk-text\)/.test(chrome) &&
+    /--p-dk-text:\s*#ececec/.test(chrome) &&
+    /--p-lt-text:\s*#1a1a1a/.test(chrome)
     ? ok("暗色 / 浅色 / 强制态共用同一令牌表（--text 不再是未定义变量）")
     : bad("theme tokens", "light/dark/force channels drifted");
 

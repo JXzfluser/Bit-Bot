@@ -28,6 +28,7 @@ const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String
 console.log("M42 message-stream layout proof");
 
 const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+const chrome = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
 
 /* ---------- 1) #log 居中列 ---------- */
 const logBlock = html.match(/#log \{([\s\S]*?)\}/);
@@ -42,11 +43,13 @@ if (logBlock
 
 /* ---------- 2) user 气泡尾角 + M20 契约 ---------- */
 const userBlock = html.match(/\.msg\.user \{([\s\S]*?)\}/);
+/* 18px 走 --radius-user 令牌（字面量只在 ui_chrome.css 出现一次）。 */
 if (userBlock
   && /background:\s*var\(--user-bubble\)/.test(userBlock[1])
-  && /border-radius:\s*18px/.test(userBlock[1])
-  && /border-bottom-right-radius:\s*6px/.test(userBlock[1])) {
-  ok("user 气泡：保留 18px 圆角（M20）+ 新增右下 6px 尾角");
+  && /border-radius:\s*var\(--radius-user\)/.test(userBlock[1])
+  && /border-bottom-right-radius:\s*6px/.test(userBlock[1])
+  && /--radius-user:\s*18px/.test(chrome)) {
+  ok("user 气泡：保留 18px 圆角（M20 令牌）+ 新增右下 6px 尾角");
 } else {
   bad("user tail", "radius contract or tail missing");
 }
@@ -60,8 +63,9 @@ if (botBlock
   && /background:\s*var\(--bot-bubble\)/.test(botBlock[1])
   && /border:\s*0/.test(botBlock[1])
   && /box-shadow:\s*none/.test(botBlock[1])
-  && /border-radius:\s*var\(--radius-xl\)/.test(botBlock[1])) {
-  ok("assistant 气泡：var(--bot-bubble) 平面块（无描边、无投影、统一圆角）");
+  && /border-radius:\s*var\(--radius-bubble\)/.test(botBlock[1])
+  && /--radius-bubble:\s*16px/.test(chrome)) {
+  ok("assistant 气泡：var(--bot-bubble) 平面块（无描边、无投影、16px 专用圆角）");
 } else {
   bad("assistant flat", "bot-bubble / border:0 / box-shadow:none / radius missing");
 }
@@ -88,7 +92,8 @@ if (/\.msg\.assistant \+ \.msg\.assistant \{\s*margin-top:\s*-6px\s*;?\s*\}/.tes
 }
 
 /* ---------- 5) M20 用户胶囊正则护栏 ---------- */
-const m20 = /\.msg\.user \{[^}]*background:\s*var\(--user-bubble\)[^}]*border-radius:\s*18px/.test(html);
+const m20 = /\.msg\.user \{[^}]*background:\s*var\(--user-bubble\)[^}]*border-radius:\s*var\(--radius-user\)/.test(html)
+  && /--radius-user:\s*18px/.test(chrome);
 if (m20) ok("M20 用户胶囊正则仍匹配（本波未破历史验收）");
 else bad("M20 regression", "user pill regex broken by M42");
 

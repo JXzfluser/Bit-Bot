@@ -99,11 +99,22 @@ function main() {
     : bad("#agents", "aside not found");
   const agents = html.slice(agentsStart, agentsEnd);
 
-  const orderIds = ["bot-list", "room-list", "session-list", "sidebar-footer"];
-  const idx = orderIds.map((id) => agents.indexOf('id="' + id + '"'));
-  idx.every((i) => i >= 0) && idx.every((v, i) => i === 0 || v > idx[i - 1])
-    ? ok("侧边栏顺序 = Bot 列表 → 群组列表 → 会话列表 → 尾部区块（GP-116/118）")
-    : bad("sidebar order", JSON.stringify(orderIds.map((id, i) => [id, idx[i]])));
+  /* GP-116/118 + G-28：Grok 布局把「会话列表」收进账户条的 #sessions-popup
+     （点 #ab-sessions-btn 才展开），侧栏主体只剩 Bot → 群组两块，尾部区块压底。
+     顺序合同因此是 bot → room → footer，且 session-list 必须嵌在 footer 内的
+     sessions-popup 里 —— 不许回到主体里当第三个常驻块。 */
+  const orderIdx = {
+    bot: agents.indexOf('id="bot-list"'),
+    room: agents.indexOf('id="room-list"'),
+    footer: agents.indexOf('id="sidebar-footer"'),
+    popup: agents.indexOf('id="sessions-popup"'),
+    sessions: agents.indexOf('id="session-list"'),
+  };
+  orderIdx.bot >= 0 && orderIdx.room > orderIdx.bot &&
+    orderIdx.footer > orderIdx.room &&
+    orderIdx.popup > orderIdx.footer && orderIdx.sessions > orderIdx.popup
+    ? ok("侧边栏顺序 = Bot 列表 → 群组列表 → 尾部区块（会话列表在账户条弹层内，GP-116/118 + G-28）")
+    : bad("sidebar order", JSON.stringify(orderIdx));
 
   // GP-118: the footer block must be the LAST thing in #agents. Walk the div
   // depth starting *inside* the footer's own opening tag, so inner wrappers
