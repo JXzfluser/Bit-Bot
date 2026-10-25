@@ -42,12 +42,15 @@ if (/\[hidden\]\s*\{\s*display:\s*none\s*!important\s*;?\s*\}/.test(css)) {
   bad("global [hidden]", "no !important reset in ui_chrome.css");
 }
 
-/* ---------- 2) 账户弹层 fixed + z-index（内联 <style> 在 html 里）---------- */
-if (/#account-popup\s*\{[^}]*position:\s*fixed[^}]*\}/.test(html)
+/* ---------- 2) 账户弹层定位 + z-index（内联 <style> 在 html 里）---------- */
+/* 与真源 §4.5-6b 对齐后：弹层是锚在账户胶囊**上方的 absolute 面板**（228 宽、
+   底边距 footer 2px），不再是固定贴底。关键是它仍要压住 #agents 的 overflow，
+   所以 z-index 必须在 4x。 */
+if (/#account-popup\s*\{[^}]*position:\s*absolute[^}]*\}/.test(html)
   && /#account-popup\s*\{[^}]*z-index:\s*4\d[^}]*\}/.test(html)) {
-  ok("#account-popup 使用 position: fixed + z-index: 4x，不被 #agents overflow 裁剪");
+  ok("#account-popup 锚在触发元素上方（absolute）+ z-index: 4x，不被 #agents overflow 裁剪");
 } else {
-  bad("popup stacking", "popup not fixed-positioned or missing z-index");
+  bad("popup stacking", "popup not anchored or missing z-index");
 }
 
 /* ---------- 3) setAccountPopup 单一真源 ---------- */

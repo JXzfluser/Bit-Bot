@@ -8,16 +8,21 @@
 用户消息入站
   → channels.normalize_inbound → InboundMessage
   → runtime.open_turn → phase=Opened
-  → 首条 acknowledge(SendToUser) → Acknowledged
-  → Working：模型/策略选 Effect
-       ├─ ToolCall → ApprovalGate → Host.exec_tool → ToolResult
-       │     └─ untrusted=true → fence 后再进入上下文
+  → 默认 Chat：AgentLoop::run（内核拥有 loop）
+       → Host llm_chat → tool_calls?
+            ├─ 无 → deliver(Final) → end_turn
+            └─ 有 → ApprovalGate? → Host exec_tool
+                       → untrusted fence → 下一次 llm_chat
+       → 最多 64 步；Cancelled / MaxSteps 停止
+  → 非 Chat / legacy：模型/策略选 Effect（旧单计划路径）
        ├─ SpawnSubagent → handle 登记 → 并行 Running
        ├─ Memory/Skill 读写
        └─ MilestoneUpdate（长任务）
   → Finalizing：面向用户的最终答复
   → end_turn → Ended
 ```
+
+> 默认 Chat 只走 Host 四操作 `llm_chat` / `exec_tool` / `request_approval` / `deliver`；工具结果 fence 后回注本回合。非 Chat 与 `BITBOT_LEGACY_CHAT_EFFECT=1` 才保留旧 Effect 路径。群 `rooms.orchestrate` 仍是 Host 产品路径，不在本图内。
 
 ## 相位不变量
 

@@ -390,14 +390,23 @@
     "top": 708,
     "width": 279.5,
     "height": "52px",
-    "padding": "0px 16px 16px 16px",
+    "padding": "0px 16px 16px",
     "margin": "0px 0px 0px 0px",
     "gap": "2px",
     "backgroundColor": "rgba(0, 0, 0, 0)",
+    "row": {
+      "left": 16,
+      "top": 708,
+      "width": 247.5,
+      "height": 36,
+      "gap": "8px",
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "padding": "0px"
+    },
     "accountButton": {
       "left": 16,
       "top": 708,
-      "width": 171.5,
+      "width": 159.5,
       "height": 36,
       "backgroundColor": "rgb(255, 255, 255)",
       "borderRadius": "9999px",
@@ -406,7 +415,8 @@
       "padding": "0px 17px 0px 0px",
       "boxShadow": "none",
       "borderTopWidth": "0px",
-      "borderTopColor": "rgb(0, 0, 0)"
+      "borderTopColor": "rgb(0, 0, 0)",
+      "gap": "36px normal"
     },
     "accountAvatar": {
       "left": 16,
@@ -418,22 +428,44 @@
     "emailText": {
       "left": 60,
       "top": 716,
-      "width": 110.5,
+      "width": 98.5,
       "height": 20,
       "fontSize": "14px",
       "fontWeight": "500",
-      "color": "rgb(28, 28, 28)"
+      "color": "rgb(28, 28, 28)",
+      "lineHeight": "20px"
     },
     "connectAppsButton": {
-      "left": 195.5,
+      "left": 183.5,
       "top": 708,
-      "width": 68,
+      "width": 36,
       "height": 36,
       "backgroundColor": "rgb(255, 255, 255)",
       "borderRadius": "9999px",
       "fontSize": "14px",
       "color": "rgb(28, 28, 28)",
-      "gap": "0px"
+      "padding": "0px 8px",
+      "gap": "0px",
+      "borderTopWidth": "1px",
+      "borderTopColor": "rgba(28, 28, 28, 0.08)",
+      "boxShadow": "none",
+      "aria": "连接应用",
+      "labelWidth": 0
+    },
+    "updateButton": {
+      "left": 227.5,
+      "top": 708,
+      "width": 36,
+      "height": 36,
+      "backgroundColor": "rgb(22, 128, 243)",
+      "borderRadius": "9999px",
+      "fontSize": "14px",
+      "color": "rgb(255, 255, 255)",
+      "padding": "8px 9px",
+      "borderTopWidth": "0px",
+      "borderTopColor": "rgb(0, 0, 0)",
+      "boxShadow": "none",
+      "aria": "更新：有新版本可用"
     }
   },
   "chatHeader": {
@@ -539,7 +571,12 @@
     "title": "Grok Bot",
     "capturedAt": "2026-10-24T10:56:53.369Z",
     "source": "Grok Bot.app (CDP :9224, live renderer)",
-    "script": "scripts/grok_real_spec_capture.mjs"
+    "script": "scripts/grok_real_spec_capture.mjs",
+    "accountBarNotes": {
+      "layout": "0.75.5 底部 = 52px footer（padding 0 16 16）+ 248×36 行（gap 8）+ 账户胶囊 + 36 连接应用 + 36 更新钮。",
+      "dynamic": "有更新时第二颗是 36 蓝底（rgb(22,128,243)）更新钮；2026-10-24 无更新钮的抓取里是账户胶囊 171.5 + 68 的「连接应用」文字胶囊。",
+      "divergence": "我方按 D-1 用 accent 反色代替蓝色，且第一颗圆钮保留会话入口（Grok 的会话属于 Bot、不占侧栏）。"
+    }
   },
   "accountPopup": {
     "label": "账户",

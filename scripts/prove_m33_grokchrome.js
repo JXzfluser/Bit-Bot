@@ -47,21 +47,23 @@ if (/<div id="sidebar-toolbar">/.test(html)
 }
 
 /* ---------- 2) 侧栏底部账户条（Grok-style） ---------- */
+/* 与真源的唯一有意偏离：Grok 弹层首行是「发现新版本」，我方把版本更新收敛到
+   「设置 → 更新」一处入口，所以 ap-update 不在弹层里（这条断言随之移除）。 */
 if (/<div id="account-bar">/.test(html)
   && /id="account-avatar-btn"/.test(html)
   && /id="account-avatar-circle"/.test(html)
   && /id="account-name-label"/.test(html)
   && /id="account-popup"/.test(html)
-  && /id="ap-update"/.test(html)
   && /id="ap-usage"/.test(html)
   && /id="ap-mobile"/.test(html)
   && /id="ap-support"/.test(html)
   && /id="sidebar-settings-btn"/.test(html)
   && /id="ap-add-account"/.test(html)
   && /id="ap-signout"/.test(html)
+  && !/id="ap-update"/.test(html)
   && /#account-bar \{/.test(html)
   && /#account-popup \{/.test(html)) {
-  ok("账户条包含 8 项弹层（更新 / 用量 / 移动版 / 支持 / 设置 / 加账户 / 登出 + 分割线）");
+  ok("账户条包含 7 项弹层（用量 / 移动版 / 支持 / 设置 / 加账户 / 登出 + 分割线），版本更新只在设置里");
 } else {
   bad("account-bar", "Grok-style footer popup missing");
 }
@@ -87,10 +89,13 @@ if (/\.msg \.typing i \{[^}]*animation:\s*typingPulse/.test(html)
   bad("typing indicator", "3-dot pulse missing");
 }
 
-/* ---------- 4b) Composer 发送按钮：圆形 ↑ 图标（Grok parity） ---------- */
-if (/<button id="send" type="submit" title="[^"]*Enter[^"]*"[^>]*>↑<\/button>/.test(html)
-  && /#composer #send \{[^}]*width:\s*36px[^}]*height:\s*36px[^}]*border-radius:\s*50%/.test(html)) {
-  ok("Composer 发送按钮：36px 圆形 ↑ 图标 + Enter 提示（Grok 视觉密度）");
+/* ---------- 4b) Composer 发送按钮：圆形 ↑ 图标（Grok parity，§4.3 = 28px） ---------- */
+/* 发送键的字形从 `↑`（U+2191 字符，靠字体描出来，字号一变就糊）换成了内联
+   SVG 上箭头：同一条 28px 圆钮外观，但几何/粗细/对齐由自己定，且任意 DPI 清晰。
+   旧断言要求按钮里是文本 ↑，已随之更新（仍要求 Enter 提示与 28px 圆钮）。 */
+if (/<button id="send" type="submit" title="[^"]*Enter[^"]*"[^>]*>\s*<svg[\s\S]*?<\/svg>\s*<\/button>/.test(html)
+  && /#composer #send \{[^}]*width:\s*28px[^}]*height:\s*28px[^}]*border-radius:\s*var\(--radius-pill\)/.test(html)) {
+  ok("Composer 发送按钮：28px 圆形 + 内联 SVG 上箭头 + Enter 提示（Grok 视觉密度）");
 } else {
   bad("composer send", "circular ↑ send button missing");
 }

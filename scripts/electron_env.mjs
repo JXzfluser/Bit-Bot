@@ -51,10 +51,46 @@ export function electronLaunchEnv(extra) {
  * @param {string} tag 用途标签，不同门禁互不干扰
  */
 export function electronUserDataDir(tag) {
+  // 启动新的之前，先把上一轮残留下来的旧实例清掉——否则机器上越积越多
+  // （实测一次积到 4 个孤儿）。详见 killStaleGateInstances。
+  killStaleGateInstances();
   const dir = path.join(os.tmpdir(), "bitbot-e2e-ud-" + (tag || "run"));
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/**
+ * 清掉上一次门禁留下的孤儿 Electron 实例。
+ *
+ * 为什么会有孤儿：门禁进程被 SIGKILL（超时、会话被打断）时，脚本 finally 里的
+ * app.quit() 没机会跑，它拉起的 Electron 就成了孤儿——**下一次门禁又启动新实例，
+ * 旧的却还挂着**，机器上于是越积越多。这正是"为什么能启动这么多、而不是先移除旧的"
+ * 的根因。
+ *
+ * 匹配特征是命令行里带 `--user-data-dir=…bitbot-e2e-ud-…`：只有门禁会带这个标记，
+ * 用户真实运行的应用（默认 profile / 自己的 userData）永远不会被误伤。
+ * 杀完等 1s 让端口/单例锁释放，避免下一次 launch 撞锁。
+ */
+export function killStaleGateInstances() {
+  if (process.platform === "win32") return; // 门禁只在 mac/linux 跑，且 ps 语法不同
+  try {
+    const out = execSync("pgrep -f bitbot-e2e-ud", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const self = process.pid;
+    const pids = out
+      .split(/\s+/)
+      .map((s) => Number(s.trim()))
+      .filter((p) => p && p !== self && p !== process.ppid);
+    for (const pid of pids) {
+      try { process.kill(pid, "SIGKILL"); } catch { /* 已退出，忽略 */ }
+    }
+    if (pids.length) execSync("sleep 1", { stdio: "ignore" });
+  } catch {
+    /* pgrep 退出码 1 = 没有匹配进程 = 没有残留，正常，无需处理 */
+  }
 }
 
 /**

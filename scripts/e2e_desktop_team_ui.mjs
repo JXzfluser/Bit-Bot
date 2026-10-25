@@ -11,6 +11,10 @@
  *   T-05  浮层落在输入框正上方、左边缘对齐（不是盖在消息上）。
  *   T-06  ↑↓ + 回车 → 插入 "@<成员名> "，浮层收起，而且**消息没有被误发出去**。
  *   T-07  Esc → 浮层关闭。
+ *   T-09  团队详情是 460 浮层（G-28 #4）：position:fixed、宽 460、贴 header 下沿、
+ *         不占网格第三列（--panel-w:0）。
+ *   T-10  成员管理真写：从 Bot 库加人 → 移除 → 2 人下限保护 → rooms.json 落盘
+ *         （成员回到原状，进/出各留一条 system 行）。
  *
  * 跑之前把 data/desktop/{bots,rooms}.json 换成夹具，跑完原样还原
  * （和 e2e_desktop_layout_target.mjs 同一套手法）。electron / 显示环境
@@ -123,7 +127,12 @@ const FIXTURE_FILES = {
   "bots.json": {
     version: 1,
     primary_id: "bot-a",
-    bots: [bot("bot-a", "情报侦察员", "搜集素材", true), bot("bot-b", "内容主笔", "写稿", false)],
+    bots: [
+      bot("bot-a", "情报侦察员", "搜集素材", true),
+      bot("bot-b", "内容主笔", "写稿", false),
+      /* bot-c 故意不在群里 —— G-28 #4 的「从 Bot 库添加」需要一个真的可加对象。 */
+      bot("bot-c", "视觉设计师", "配图", false),
+    ],
   },
   "rooms.json": {
     version: 1,
@@ -229,6 +238,103 @@ async function shutdown(app) {
     rail.activeTab === "members" && rail.membersShown
       ? ok("T-03c 打开时默认停在「成员」段")
       : bad("T-03c 默认段不对", JSON.stringify(rail));
+
+    /* T-09 团队详情 = 460 浮层（G-28 #4）
+       它不再占网格第三列：位置是 fixed，宽度 460，主列不缩宽。 */
+    const railBox = await win.evaluate(() => {
+      const el = document.getElementById("room-rail");
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      const panelW = getComputedStyle(document.body).getPropertyValue("--panel-w").trim();
+      return {
+        position: cs.position,
+        width: Math.round(r.width),
+        right: Math.round(window.innerWidth - r.right),
+        top: Math.round(r.top),
+        headerH: Math.round(
+          parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--header-h")) || 0,
+        ),
+        panelW,
+      };
+    });
+    railBox.position === "fixed" && railBox.width === 460 && railBox.right === 0
+      ? ok("T-09a 团队详情是 460 宽浮层（fixed · w=" + railBox.width + " · right=" + railBox.right + "）")
+      : bad("T-09a 浮层定位/宽度不对", JSON.stringify(railBox));
+    railBox.top === railBox.headerH && railBox.panelW === "0px"
+      ? ok("T-09b 浮层贴着 header 下沿、不占网格列（top=" + railBox.top + " · --panel-w=" + railBox.panelW + "）")
+      : bad("T-09b 浮层位置或列宽不对", JSON.stringify(railBox));
+
+    /* T-10 成员管理：加人 → 移除 → 下限保护（真写 rooms.json） */
+    const members0 = await win.evaluate(() => ({
+      rows: document.querySelectorAll("#ri-member-list .ri-member").length,
+      delDisabled: Array.from(document.querySelectorAll("#ri-member-list .ri-member-del")).map((b) => b.disabled),
+      hasAvatar: Array.from(document.querySelectorAll("#ri-member-list .ri-member .ri-av svg")).length,
+    }));
+    members0.rows === 2 && members0.hasAvatar === 2 && members0.delDisabled.every(Boolean)
+      ? ok("T-10a 成员段列出 2 位成员（各带头像）；2 人是下限 → 移除按钮置灰")
+      : bad("T-10a 成员行渲染不对", JSON.stringify(members0));
+
+    await win.click("#ri-member-add");
+    await win.waitForTimeout(300);
+    const picker = await win.evaluate(() => {
+      const p = document.getElementById("ri-member-picker");
+      const items = Array.from(p.querySelectorAll(".ri-pick")).map((b) => ({
+        name: b.querySelector(".ri-pick-name") ? b.querySelector(".ri-pick-name").textContent : "",
+        id: b.dataset.botId,
+      }));
+      return { hidden: p.hidden, items };
+    });
+    const pickC = picker.items.find((i) => i.id === "bot-c");
+    !picker.hidden &&
+    pickC &&
+    pickC.name === "视觉设计师" &&
+    !picker.items.some((i) => i.id === "bot-a" || i.id === "bot-b")
+      ? ok("T-10b 「＋ 添加成员」只列出不在群里的 Bot（" + picker.items.map((i) => i.name).join(" / ") + "）")
+      : bad("T-10b 选人表不对", JSON.stringify(picker));
+
+    await win.click('#ri-member-picker .ri-pick[data-bot-id="bot-c"]');
+    await win.waitForTimeout(900);
+    const afterAdd = await win.evaluate(() => ({
+      rows: document.querySelectorAll("#ri-member-list .ri-member").length,
+      names: Array.from(document.querySelectorAll("#ri-member-list .ri-name")).map((n) => n.textContent),
+      delDisabled: Array.from(document.querySelectorAll("#ri-member-list .ri-member-del")).map((b) => b.disabled),
+      pickerHidden: document.getElementById("ri-member-picker").hidden,
+      msg: (document.getElementById("ri-member-msg") || {}).textContent || "",
+    }));
+    afterAdd.rows === 3 && afterAdd.names.indexOf("视觉设计师") >= 0 && afterAdd.pickerHidden
+      ? ok("T-10c 加人成功：成员 3 人、选人表收起")
+      : bad("T-10c 加人没生效", JSON.stringify(afterAdd));
+    afterAdd.delDisabled.every((d) => d === false)
+      ? ok("T-10d 3 人时移除按钮全部可用")
+      : bad("T-10d 移除按钮状态没跟着人数变", JSON.stringify(afterAdd.delDisabled));
+
+    await win.click('#ri-member-list .ri-member[data-bot-id="bot-c"] .ri-member-del');
+    await win.waitForTimeout(900);
+    const afterRemove = await win.evaluate(() => ({
+      rows: document.querySelectorAll("#ri-member-list .ri-member").length,
+      names: Array.from(document.querySelectorAll("#ri-member-list .ri-name")).map((n) => n.textContent),
+      delDisabled: Array.from(document.querySelectorAll("#ri-member-list .ri-member-del")).map((b) => b.disabled),
+      msg: (document.getElementById("ri-member-msg") || {}).textContent || "",
+    }));
+    afterRemove.rows === 2 && afterRemove.names.indexOf("视觉设计师") < 0 && afterRemove.delDisabled.every(Boolean)
+      ? ok("T-10e 移除成功：回到 2 人，移除按钮重新置灰")
+      : bad("T-10e 移除没生效", JSON.stringify(afterRemove));
+
+    /* 真落盘：隔离根里的 rooms.json 必须有成员变更 + 对应的 system 行。 */
+    let roomStore = null;
+    try {
+      roomStore = JSON.parse(fs.readFileSync(path.join(root, "data/desktop/rooms.json"), "utf8"));
+    } catch (e) {
+      roomStore = null;
+    }
+    const storeRoom = roomStore && (roomStore.rooms || []).find((r) => r.id === "room-e2e");
+    const sysLines = storeRoom ? (storeRoom.transcript || []).filter((e) => e.kind === "system") : [];
+    storeRoom &&
+    JSON.stringify(storeRoom.members) === JSON.stringify(["bot-a", "bot-b"]) &&
+    sysLines.some((e) => /视觉设计师.*加入/.test(e.text)) &&
+    sysLines.some((e) => /视觉设计师.*离开/.test(e.text))
+      ? ok("T-10f 改动真落了 rooms.json（成员回到 2 人，进/出各留一条 system 行）")
+      : bad("T-10f store 里没有预期的成员变更", JSON.stringify({ members: storeRoom && storeRoom.members, sys: sysLines.map((e) => e.text) }));
 
     /* 切到资料库段（设计稿三段式：成员/定时任务/资料库） */
     await win.click('#room-rail .ri-tab[data-tab="library"]');

@@ -41,17 +41,17 @@ if (logBlock
   bad("#log center", "not centered single column");
 }
 
-/* ---------- 2) user 气泡尾角 + M20 契约 ---------- */
+/* ---------- 2) user 气泡四角 18px（§4.4：真源没有尾巴） ---------- */
 const userBlock = html.match(/\.msg\.user \{([\s\S]*?)\}/);
 /* 18px 走 --radius-user 令牌（字面量只在 ui_chrome.css 出现一次）。 */
 if (userBlock
   && /background:\s*var\(--user-bubble\)/.test(userBlock[1])
   && /border-radius:\s*var\(--radius-user\)/.test(userBlock[1])
-  && /border-bottom-right-radius:\s*6px/.test(userBlock[1])
+  && !/border-bottom-right-radius/.test(userBlock[1])
   && /--radius-user:\s*18px/.test(chrome)) {
-  ok("user 气泡：保留 18px 圆角（M20 令牌）+ 新增右下 6px 尾角");
+  ok("user 气泡：四角同值 18px（--radius-user），无尾巴");
 } else {
-  bad("user tail", "radius contract or tail missing");
+  bad("user radius", "radius contract drifted");
 }
 
 /* ---------- 3) assistant 气泡：Grok 的平面块（无描边 / 无投影 / 满列宽） ----------
@@ -64,8 +64,8 @@ if (botBlock
   && /border:\s*0/.test(botBlock[1])
   && /box-shadow:\s*none/.test(botBlock[1])
   && /border-radius:\s*var\(--radius-bubble\)/.test(botBlock[1])
-  && /--radius-bubble:\s*16px/.test(chrome)) {
-  ok("assistant 气泡：var(--bot-bubble) 平面块（无描边、无投影、16px 专用圆角）");
+  && /--radius-bubble:\s*18px/.test(chrome)) {
+  ok("assistant 气泡：var(--bot-bubble) 平面块（无描边、无投影、18px 专用圆角）");
 } else {
   bad("assistant flat", "bot-bubble / border:0 / box-shadow:none / radius missing");
 }

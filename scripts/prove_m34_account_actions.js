@@ -28,9 +28,9 @@ console.log("M34 account-popup wiring proof");
 
 const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
 
-/* ---------- 1) 三项 → open settings anchor ---------- */
+/* ---------- 1) 每项 → open settings anchor ---------- */
+/* ap-update 已下线：版本更新只保留「设置 → 更新」一处入口，弹层不再有这一行。 */
 const anchorPhrases = [
-  ["ap-update", "anchor=update-status"],
   ["ap-usage", "anchor=usage"],
   ["ap-add-account", "anchor=profile"],
 ];
@@ -39,7 +39,7 @@ for (const [id, phrase] of anchorPhrases) {
   const re = new RegExp('\\["' + id + '",\\s*"open settings[^"]*' + phrase);
   if (!re.test(html)) { allAnchors = false; bad("account anchor " + id, phrase + " missing"); }
 }
-if (allAnchors) ok("三项（更新 / 用量 / 添加账户）通过 open settings anchor=… 进入真实 tab");
+if (allAnchors) ok("两项（用量 / 添加账户）通过 open settings anchor=… 进入真实 tab");
 
 /* ---------- 1b) 锚点必须存在于 SETTINGS_ANCHOR_TAB ---------- */
 if (/SETTINGS_ANCHOR_TAB = \{[\s\S]*?"update-status":\s*"updates"/.test(html)

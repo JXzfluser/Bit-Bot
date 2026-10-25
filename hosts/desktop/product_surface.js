@@ -1418,6 +1418,82 @@ function createProductSurface(repoRoot) {
     atomicWrite(ROOMS_PATH, JSON.stringify(data, null, 2));
   }
 
+  /* G-28 #4「团队详情抽屉 · 成员管理」的 Host 落点。
+     群成员是 2–6 人的硬边界（与 roomCreate 同一条尺子），所以两侧都先验后写：
+       · 加人 —— Bot 必须真实存在于 bots.json，且还不在群里，加完不超过 6；
+       · 移人 —— 必须是当前成员，移完不少于 2。
+     拒绝时点名返回原因（room_not_found / bot_not_found / already_member /
+     not_member / members_2_to_6），ok:true 只代表 store 真落了盘。
+     成功时追加一条 kind:"system" transcript —— 群里看得见「谁进谁出」，
+     而不是 members 数组在背后悄悄变了。 */
+  const ROOM_MEMBERS_MIN = 2;
+  const ROOM_MEMBERS_MAX = 6;
+  function roomBotName(botId) {
+    try {
+      const data = loadBots();
+      const b = (data.bots || []).find(x => x && x.id === botId);
+      return b ? String(b.name || b.id) : String(botId);
+    } catch (_) { return String(botId); }
+  }
+  function roomMembersUpdate(input) {
+    const opts = input || {};
+    const roomKey = String(opts.room || "").trim();
+    const botId = String(opts.bot_id || "").trim();
+    const act = String(opts.action || "").trim();
+    if (!roomKey || !botId) return { ok: false, error: "members_need_room_and_bot" };
+    if (act !== "add" && act !== "remove") return { ok: false, error: "action_unsupported" };
+    let rooms;
+    try { rooms = requireWritableRooms(); }
+    catch (err) { return { ok: false, error: String((err && err.code) || "rooms_store_unreadable") }; }
+    const hit = (rooms.rooms || []).find(r => r && (r.id === roomKey || r.title === roomKey));
+    if (!hit) return { ok: false, error: "room_not_found", room: roomKey };
+    if (!Array.isArray(hit.members)) hit.members = [];
+    const isMember = hit.members.indexOf(botId) >= 0;
+    if (act === "add") {
+      let known;
+      try {
+        const bots = loadBots();
+        known = (bots.bots || []).some(x => x && x.id === botId);
+      } catch (_) {
+        return { ok: false, error: "bots_store_unreadable" };
+      }
+      if (!known) return { ok: false, error: "bot_not_found", bot: botId };
+      if (isMember) return { ok: false, error: "already_member", bot: botId, members: hit.members.slice() };
+      if (hit.members.length + 1 > ROOM_MEMBERS_MAX) {
+        return { ok: false, error: "members_2_to_6", max: ROOM_MEMBERS_MAX, members: hit.members.slice() };
+      }
+      hit.members.push(botId);
+    } else {
+      if (!isMember) return { ok: false, error: "not_member", bot: botId, members: hit.members.slice() };
+      if (hit.members.length - 1 < ROOM_MEMBERS_MIN) {
+        return { ok: false, error: "members_2_to_6", min: ROOM_MEMBERS_MIN, members: hit.members.slice() };
+      }
+      hit.members = hit.members.filter(x => x !== botId);
+    }
+    const name = roomBotName(botId);
+    const at = nowIso();
+    if (!Array.isArray(hit.transcript)) hit.transcript = [];
+    hit.transcript.push({
+      kind: "system",
+      room_id: hit.id,
+      speaker: "system",
+      text: act === "add" ? `＋ ${name} 加入了群聊。` : `－ ${name} 离开了群聊。`,
+      at
+    });
+    if (hit.transcript.length > 200) hit.transcript = hit.transcript.slice(-200);
+    saveRooms(rooms);
+    return {
+      ok: true,
+      mode: "host_room_members_update",
+      action: act,
+      room: hit.id,
+      title: hit.title,
+      bot: botId,
+      members: hit.members.slice(),
+      at
+    };
+  }
+
   /**
    * GP-148 §1-J2：自然语言建房的 Host 落点。三条硬要求：
    *  1) 名字认不出来就点名返回 names_not_found，绝不建「少一个人的残群」，
@@ -1610,6 +1686,9 @@ function createProductSurface(repoRoot) {
       unknown_mentions: unknownMentions.length ? unknownMentions : undefined,
       at: now || nowIso()
     };
+    // AR-08：无 @ 时 responders 是候选池，不是已确定的发言者；真正的选择由
+    // 每个 Bot 的 discretion 回合决定，final_report.responders 才是结果。
+    if (responder_policy === "bot_discretion") transcript_entry.responders_are_candidates = true;
 
     return {
       ok: true,
@@ -1711,29 +1790,103 @@ function createProductSurface(repoRoot) {
         note: "GP-143 responder turn is run by the MoonBit runner; inject deps.runResponderTurn",
       };
     }
-    // 「工作中」态只在真的扇出时给出（dedupe / 护栏拒绝的分支不会闪一下假状态）。
-    if (typeof deps.onFanout === "function") {
-      try {
-        deps.onFanout({
-          room: room.id, task, responders,
-          policy: responderPolicy,
-          member_count: memberIds.length,
-        });
-      } catch (_) {
-        /* 进度提示是 best effort，不能拖垮编排 */
-      }
+    if (responderPolicy === "bot_discretion" && typeof deps.selectResponders !== "function") {
+      return {
+        ok: false, error: "discretion_selector_required", mode: "host_orchestrate_room",
+        note: "bot_discretion must be a real per-member decision; inject deps.selectResponders",
+      };
     }
 
     const timeoutMs = Number(deps.timeoutMs || 120000);
+    const decisionTimeoutMs = Number(deps.discretionTimeoutMs || Math.min(timeoutMs, 30000));
     const at = nowIso();
-    const withTimeout = (p) => Promise.race([
-      Promise.resolve(p),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("responder_timeout")), timeoutMs)),
-    ]);
+    const withTimeout = (promise, ms) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("responder_timeout")), ms);
+      Promise.resolve(promise).then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (err) => { clearTimeout(timer); reject(err); },
+      );
+    });
+    const candidates = responders.slice();
+    const cleanDecisions = (list) => {
+      if (!Array.isArray(list)) return undefined;
+      return list.slice(0, 6).map((d) => {
+        const id = String((d && d.bot_id) || "").trim();
+        if (!id) return null;
+        const out = {
+          bot_id: id,
+          name: clipRoomText((d && d.name) || "", 80).text,
+          respond: Boolean(d && d.respond),
+        };
+        if (d && d.fail_open) out.fail_open = true;
+        if (d && d.error) out.error = clipRoomText(d.error, ROOM_REASON_MAX).text;
+        return out;
+      }).filter(Boolean);
+    };
 
     _orchInflight.add(taskSig);
     return (async () => {
-      const settled = await Promise.allSettled(responders.map(async (r) => {
+      let selected = candidates;
+      let discretion;
+      if (responderPolicy === "bot_discretion") {
+        let picked;
+        try {
+          picked = await withTimeout(deps.selectResponders({
+            room: room.id,
+            task,
+            candidates: candidates.map((r) => Object.assign({}, r)),
+            member_count: memberIds.length,
+          }), decisionTimeoutMs);
+        } catch (e) {
+          return {
+            ok: false, error: "discretion_failed",
+            detail: String((e && e.message) || e), mode: "host_orchestrate_room",
+          };
+        }
+        if (!picked || picked.ok === false) {
+          return {
+            ok: false, error: (picked && picked.error) || "discretion_failed",
+            mode: "host_orchestrate_room",
+          };
+        }
+        if (!Array.isArray(picked.responders)) {
+          return { ok: false, error: "discretion_result_invalid", mode: "host_orchestrate_room" };
+        }
+        const ids = new Set(picked.responders.map((id) => String(id)));
+        selected = candidates.filter((r) => ids.has(r.id));
+        discretion = cleanDecisions(picked.decisions);
+      }
+      const discretionFailOpen = Array.isArray(discretion)
+        ? discretion.filter((d) => d && d.fail_open).length
+        : 0;
+      if (!selected.length) {
+        const final_report = {
+          kind: "final_report", room_id: room.id, responder_policy: responderPolicy,
+          task: clipRoomText(task, ROOM_TASK_MAX).text,
+          task_sig: taskSig,
+          task_title: clipRoomText(String(opts.report || task).trim() || task, ROOM_TASK_MAX).text,
+          responders: [], total: 0, returned: 0, partial: false, skipped: true,
+          sections: [], artifacts: [], discretion,
+          discretion_fail_open: discretionFailOpen || undefined, at,
+        };
+        appendRoomTranscript(room.id, final_report);
+        return {
+          ok: true, mode: "host_orchestrate_room", skipped: true,
+          returned: 0, total: 0, partial: false, final_report,
+        };
+      }
+      // 「工作中」态只在真的扇出时给出（dedupe / 护栏拒绝 / 全员弃权都不会闪假状态）。
+      if (typeof deps.onFanout === "function") {
+        try {
+          deps.onFanout({
+            room: room.id, task, responders: selected, candidates,
+            policy: responderPolicy, member_count: memberIds.length, discretion,
+          });
+        } catch (_) {
+          /* 进度提示是 best effort，不能拖垮编排 */
+        }
+      }
+      const settled = await Promise.allSettled(selected.map(async (r) => {
         // GP-148 §1-J3：除身份之外，把「本轮被 @ 的是谁」也带给 Host —— 这是
         // provider 群上下文里唯一无法从 rooms.json 反推的事实（路由已经算好了）。
         const ctx = {
@@ -1742,16 +1895,18 @@ function createProductSurface(repoRoot) {
           name: r.name,
           job: r.job,
           description: r.description,
-          mentioned_names: responders.map((x) => String((x && x.name) || "")).filter(Boolean),
+          mentioned_names: responderPolicy === "bot_discretion"
+            ? []
+            : selected.map((x) => String((x && x.name) || "")).filter(Boolean),
         };
         try {
-          const out = await withTimeout(deps.runResponderTurn(r.id, task, ctx));
+          const out = await withTimeout(deps.runResponderTurn(r.id, task, ctx), timeoutMs);
           return { bot_id: r.id, name: r.name, ok: !!(out && out.ok !== false), text: String((out && out.text) || ""), artifacts: (out && out.artifacts) || [], error: (out && out.error) || null };
         } catch (e) {
           return { bot_id: r.id, name: r.name, ok: false, text: "", artifacts: [], error: String((e && e.message) || e) };
         }
       }));
-      const sections = settled.map((res, i) => res.status === "fulfilled" ? res.value : { bot_id: responders[i].id, name: responders[i].name, ok: false, text: "", artifacts: [], error: String(res.reason || "unknown") });
+      const sections = settled.map((res, i) => res.status === "fulfilled" ? res.value : { bot_id: selected[i].id, name: selected[i].name, ok: false, text: "", artifacts: [], error: String(res.reason || "unknown") });
       for (const s of sections) {
         // 共享转录的每一行都有界：正文由 bot_reply 行承载，汇报里只留摘要；
         // 失败原因截断后再落盘，不把整段 provider 负载抄进 rooms.json。
@@ -1776,7 +1931,7 @@ function createProductSurface(repoRoot) {
         task: clipRoomText(task, ROOM_TASK_MAX).text,
         task_sig: taskSig,
         task_title: clipRoomText(String(opts.report || task).trim() || task, ROOM_TASK_MAX).text,
-        responders: responders.map(r => r.id), total, returned,
+        responders: selected.map(r => r.id), total, returned,
         partial: returned < total,
         sections: sections.map(s => {
           const sum = clipRoomText(s.ok ? s.text : `(${s.error || "no reply"})`, ROOM_SUMMARY_MAX);
@@ -1787,14 +1942,16 @@ function createProductSurface(repoRoot) {
           };
         }),
         artifacts: sections.flatMap(s => s.artifacts || []),
+        discretion,
+        discretion_fail_open: discretionFailOpen || undefined,
         at,
       };
       appendRoomTranscript(room.id, final_report);
-      _orchInflight.delete(taskSig);
       return { ok: true, mode: "host_orchestrate_room", returned, total, partial: final_report.partial, final_report };
     })().catch((e) => {
-      _orchInflight.delete(taskSig);
       return { ok: false, error: "orchestrate_failed", detail: String((e && e.message) || e), mode: "host_orchestrate_room" };
+    }).finally(() => {
+      _orchInflight.delete(taskSig);
     });
   }
 
@@ -2438,6 +2595,7 @@ function createProductSurface(repoRoot) {
     roomsStoreStatus,
     roomLibraryList,
     roomLibraryAdd,
+    roomMembersUpdate,
 
     // Account (GP-74) — local profile semantics only
     accountStatus,

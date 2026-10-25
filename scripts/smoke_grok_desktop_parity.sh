@@ -1293,8 +1293,8 @@ grep -q "送达状态：存储 → ✓、回合收尾 → ✓✓ 绿色" /tmp/g3
 grep -q "首个 delta 前显示三点动效" /tmp/g33-probe.log 2>/dev/null \
   && ok "G-33 GP-M33：助手思考三点 typing indicator（DOM 节点，非 innerHTML）" \
   || bad "G-33 typing indicator missing"
-grep -q "Composer 发送按钮：36px 圆形" /tmp/g33-probe.log 2>/dev/null \
-  && ok "G-33 GP-M33：Composer 发送按钮 → 36px 圆形 ↑ 图标" \
+grep -q "Composer 发送按钮：28px 圆形" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：Composer 发送按钮 → 28px 圆形 ↑ 图标" \
   || bad "G-33 composer send missing"
 grep -q "10 个常见英文标签已全部本地化" /tmp/g33-probe.log 2>/dev/null \
   && ok "G-33 GP-M33：中英混排清理（10 项 i18n key）" \

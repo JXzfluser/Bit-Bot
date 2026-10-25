@@ -17,6 +17,24 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 
+// 单实例锁：同一个 user-data-dir 只允许一个 Electron 进程常驻。
+// 没有这把锁时，双击第二次会起一个全新进程，于是出现「两个应用同时跑」。
+// 这里在最早的位置拿锁：拿不到就直接退出，并把已有的窗口唤到前台。
+const GOT_INSTANCE_LOCK = process.env.BITBOT_DISABLE_SINGLE_INSTANCE
+  ? true // 负向对照用：关掉锁，模拟修复前「能起两个」的状态
+  : app.requestSingleInstanceLock();
+if (!GOT_INSTANCE_LOCK) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
+}
+
 // Dev: hosts/shared; packaged: hosts/desktop/shared (copied by electron-builder).
 let createTurnRunner;
 let createHostFfi;
@@ -47,6 +65,8 @@ try {
   } = require("../shared/host_approval_gate"));
 }
 const { createSessionStore } = require("./sessions");
+const { buildRoomContext: buildRoomContextData } = require("./room_context");
+const { buildDiscretionPrompt, parseDiscretionReply } = require("./room_discretion");
 
 // GP-93/94/95 — Markdown/链接纪律 (official spec §5.6). Policy + open route in
 // one module pair used by both the main process and the smoke probe, so the
@@ -403,6 +423,11 @@ const { computePrivacyStatus } = require(path.join(
 let mainWindow = null;
 let tray = null;
 let routineDaemonChild = null;
+/* 「用户真的要退出」这一件事必须有一个明确来源。窗口的 close 事件无法区分
+ * 「用户点了红叉」和「退出流程正在关窗」—— 两者都是 close。没有这个标志，
+ * 下面 close 里的 preventDefault 就会把 Cmd+Q / 菜单退出一起取消掉，
+ * 窗口只是 hide()，进程留在后台（这正是「手动退出不了」的成因）。 */
+let quitRequested = false;
 const HOTKEY =
   process.env.BITBOT_DESKTOP_HOTKEY ||
   (process.platform === "darwin" ? "Command+Shift+Space" : "Control+Shift+Space");
@@ -639,10 +664,37 @@ async function runSmokeTurnAndExit() {
   }
 }
 
+/** 关掉常驻 routine daemon。SIGTERM 优先（给它收尾的机会），SIGKILL 兜底。
+ *  历史上 daemon 有过不响应 SIGTERM 的情况（--long-lived 里的 trap），
+ *  所以退出流程要分两次调用：before-quit 发 SIGTERM，will-quit 发 SIGKILL。 */
+function stopRoutineDaemon(signal) {
+  const child = routineDaemonChild;
+  if (!child || child.killed) return;
+  // child.killed 只表示「信号已发出」，不代表进程还活着；这里看真实退出码。
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  try {
+    child.kill(signal || "SIGTERM");
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+/** 唯一的退出入口：托盘菜单、应用菜单的 role:"quit" 最终都落到 before-quit，
+ *  这个函数只是给「代码里主动要求退出」的地方用，保证标志与 quit 同源。 */
+function requestQuit() {
+  quitRequested = true;
+  /* 曾经这里还有一个 app.isQuiting 标志，用来给 close 判断。它不是 Electron 的
+     API（拼写也差一个 t），而且只在托盘菜单一处被设过 —— 正是"Cmd+Q 退不掉"
+     的成因。现在统一成上面的 quitRequested，这个字段不再需要。 */
+  app.quit();
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100,
     height: 760,
+    minWidth: 480,
+    minHeight: 420,
     title: "Bit Bot Desktop",
     icon: path.join(__dirname, "build", "icon.png"),
     // Grok-parity chrome: no native title bar; traffic lights float inset over
@@ -679,8 +731,10 @@ function createWindow() {
     links.open(url, { source: "will-navigate" });
   });
   win.on("close", (e) => {
-    // Grok-style: close hides to tray (quit from tray menu).
-    if (app.isQuiting) return;
+    // Grok-style: 点红叉只是收进托盘（退出从菜单 / 托盘 / Cmd+Q 发起）。
+    // 但「退出流程」也在关这个窗口 —— 用 quitRequested 把两种 close 区分开，
+    // 否则 preventDefault 会把退出一起吃掉。
+    if (quitRequested) return;
     e.preventDefault();
     win.hide();
   });
@@ -729,10 +783,7 @@ function createTray() {
     { type: "separator" },
     {
       label: "退出",
-      click: () => {
-        app.isQuiting = true;
-        app.quit();
-      },
+      click: () => requestQuit(),
     },
   ]);
   tray.setContextMenu(menu);
@@ -1403,15 +1454,40 @@ ipcMain.handle("bitbot:rooms:library:list", async (_e, payload) => {
   }
 });
 
+/* 群目录变更的广播必须带 rooms 快照 —— 渲染层靠这份快照判断「当前群是不是还在
+   目录里」，只看 {ok:true} 会把 list 解析成空数组，进而把用户从群聊里踢出去。
+   （G-28 #4 加成员时踩到的就是这个：面板刚写完成员，群聊就被 exitRoomChat 关了。） */
+function broadcastRoomsChanged() {
+  let st = null;
+  try { st = surface.roomsStoreStatus(); } catch (_) { st = null; }
+  broadcast(
+    "bitbot:rooms-changed",
+    st && st.ok ? { ok: true, rooms: st.rooms } : { ok: false, error: (st && st.error) || "rooms_unavailable" },
+  );
+}
+
 ipcMain.handle("bitbot:rooms:library:add", async (_e, payload) => {
   try {
     const res = surface.roomLibraryAdd(payload && payload.roomId, payload && payload.items);
     if (res && res.ok && res.added) {
-      broadcast("bitbot:rooms-changed", { ok: true });
+      broadcastRoomsChanged();
     }
     return res;
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err), items: [] };
+  }
+});
+
+/* G-28 #4：群成员增删（团队详情抽屉里的「移除 / 从 Bot 库添加」）。
+   边界由 engine 守（2–6 人、Bot 必须存在、不能重复），这里只做转发与广播：
+   写成功后发 rooms-changed，侧栏成员数与群 transcript 同时跟着刷新。 */
+ipcMain.handle("bitbot:rooms:members:update", async (_e, payload) => {
+  try {
+    const res = surface.roomMembersUpdate(payload || {});
+    if (res && res.ok) broadcastRoomsChanged();
+    return res;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
   }
 });
 
@@ -1468,14 +1544,12 @@ function roomSafeText(raw) {
 }
 
 /**
- * GP-148 §1-J3：群回合的 provider 上下文。P0-1 的根因是 responder 回合走的是
- * 普通 DM 路径，system 里只有 persona，没有群名/成员名单/本轮被 @，所以两个 Bot
- * 都答不出「这个群有谁」，还会互相冒充。这里只组装被 §3 允许的四类事实：
- * 群名、成员（名字/职责/简介）、本轮被 @ 的人、自己的名字——
- * 不带记忆、路径、协议字段、密钥，且逐字段清洗 + 截断（群名/名字是用户可写文本）。
- * 私聊路径不调用它（DM 传 null），因此 DM 永远不会带出群名单。
+ * GP-148 §1-J3 / AR-07：群回合的 provider 上下文。除群名、成员、本轮被 @、
+ * 自己之外，带上最近 N 条共享转录（user/bot_reply/bot_reply_error/final_report）。
+ * 仍然不带记忆、路径、协议字段、密钥；逐字段清洗 + 截断，总量有预算。
+ * 私聊路径不调用它（DM 传 null），因此 DM 永远不会带出群名单/群历史。
  */
-function buildRoomContext(roomId, botId, ctx) {
+function buildRoomContext(roomId, botId, ctx, task) {
   const rid = String(roomId || "").trim();
   if (!rid) return null;
   let room = null;
@@ -1488,40 +1562,19 @@ function buildRoomContext(roomId, botId, ctx) {
   }
   if (!room) return null;
   const bots = (surface.loadBots().bots) || [];
-  const maxField = 80;
-  const maxTotal = Number(process.env.BITBOT_ROOM_TEXT_MAX || 1200);
-  const clip = (v) => String(v == null ? "" : v)
-    .replace(/[\r\n\t]+/g, " ")
-    .replace(/[ \u0000-\u001f]+/g, " ")
-    .trim()
-    .slice(0, maxField);
-  const members = (room.members || []).map((id) => {
-    const b = bots.find((x) => x && x.id === id) || {};
-    return { name: clip(b.name || id), job: clip(b.job || ""), description: clip(b.description || "") };
+  return buildRoomContextData({
+    room,
+    bots,
+    botId,
+    mentionedNames: (ctx && ctx.mentioned_names) || [],
+    selfName: (ctx && ctx.name) || "",
+    currentTask: task,
+    sanitize: roomSafeText,
+    maxField: 80,
+    maxTotal: Number(process.env.BITBOT_ROOM_CONTEXT_MAX || 4000),
+    maxRecent: Number(process.env.BITBOT_ROOM_RECENT_MAX || 6),
+    maxLine: Number(process.env.BITBOT_ROOM_RECENT_LINE_MAX || 320),
   });
-  const mentioned = ((ctx && ctx.mentioned_names) || []).map(clip).filter(Boolean);
-  const self = clip((bots.find((b) => b && b.id === botId) || {}).name || (ctx && ctx.name) || "");
-  let out = {
-    room_id: rid,
-    title: clip(room.title || ""),
-    members,
-    mentioned,
-    self,
-    chars: 0,
-  };
-  // 总量护栏：成员很多时按顺序截断，宁可少带几个名字，也不把整段塞成无界 prompt。
-  const budget = Number.isFinite(maxTotal) && maxTotal > 0 ? maxTotal : 1200;
-  const kept = [];
-  let used = out.title.length + out.mentioned.join(",").length + out.self.length;
-  for (const m of out.members) {
-    const cost = m.name.length + m.job.length + m.description.length + 4;
-    if (used + cost > budget) break;
-    kept.push(m);
-    used += cost;
-  }
-  out.members = kept;
-  out.chars = used;
-  return out;
 }
 
 /**
@@ -1595,7 +1648,7 @@ async function runRoomResponderTurn(botId, task, ctx) {
       roomId: String((ctx && ctx.room) || ""),
       // GP-148 §1-J3：群回合带群上下文进 provider；DM 路径不会走到这里，
       // 所以「私聊不许出现群名单」是由调用点保证的，不是靠 prompt 里叮嘱。
-      roomContext: buildRoomContext((ctx && ctx.room) || "", id, ctx),
+      roomContext: buildRoomContext((ctx && ctx.room) || "", id, ctx, task),
       onProgress: (ev) => {
         const row = Object.assign({}, ev, { bot_id: id, room_id: (ctx && ctx.room) || "" });
         rows.push(row);
@@ -1636,6 +1689,94 @@ async function runRoomResponderTurn(botId, task, ctx) {
   }
 }
 
+async function runRoomDiscretionTurn(botId, task, ctx) {
+  const id = String(botId || "").trim();
+  if (!id) return { ok: false, error: "responder_missing" };
+  const bots = (surface.loadBots().bots) || [];
+  const bot = bots.find((b) => b && b.id === id);
+  if (!bot) return { ok: false, error: "bot_not_found" };
+  const roomId = String((ctx && ctx.room) || "room");
+  const decisionCtx = Object.assign({}, ctx, { mentioned_names: [] });
+  try {
+    const result = await runner.runTurn(buildDiscretionPrompt({ bot, task }), {
+      sessionId: "room-" + roomId + "-" + id + "-discretion",
+      machineId: "desk-1",
+      machineKind: "desktop",
+      channel: "",
+      approved: false,
+      botId: id,
+      roomId,
+      roomContext: buildRoomContext(roomId, id, decisionCtx, task),
+    });
+    if (!result || result.ok === false) {
+      return {
+        ok: false,
+        error: roomSafeText((result && result.error) || "discretion_turn_failed"),
+        text: "",
+      };
+    }
+    const text = ((result.messages || [])
+      .filter((m) => m && m.role === "assistant" && m.text)
+      .map((m) => String(m.text))
+      .join("\n"));
+    const respond = parseDiscretionReply(text);
+    if (respond === null) {
+      return { ok: false, error: "discretion_unclear", text: roomSafeText(text).slice(0, 200) };
+    }
+    return { ok: true, respond, text: roomSafeText(text).slice(0, 200) };
+  } catch (err) {
+    return { ok: false, error: roomSafeText((err && err.message) || String(err)), text: "" };
+  }
+}
+
+async function selectRoomResponders({ room, task, candidates }) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const timeoutMs = Number(process.env.BITBOT_ROOM_DISCRETION_TIMEOUT_MS || 30000);
+  const withTimeout = (promise, ms) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("discretion_timeout")), ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+  const decisions = await Promise.all(list.map(async (candidate) => {
+    const ctx = {
+      room,
+      bot_id: candidate.id,
+      name: candidate.name,
+      job: candidate.job,
+      description: candidate.description,
+      mentioned_names: [],
+    };
+    try {
+      const out = await withTimeout(runRoomDiscretionTurn(candidate.id, task, ctx), timeoutMs);
+      if (out && out.ok && typeof out.respond === "boolean") {
+        return { bot_id: candidate.id, name: candidate.name, respond: out.respond };
+      }
+      return {
+        bot_id: candidate.id,
+        name: candidate.name,
+        respond: true,
+        fail_open: true,
+        error: roomSafeText((out && out.error) || "discretion_failed"),
+      };
+    } catch (err) {
+      return {
+        bot_id: candidate.id,
+        name: candidate.name,
+        respond: true,
+        fail_open: true,
+        error: roomSafeText((err && err.message) || String(err)),
+      };
+    }
+  }));
+  return {
+    ok: true,
+    responders: decisions.filter((d) => d.respond).map((d) => d.bot_id),
+    decisions,
+  };
+}
+
 ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
   const roomId = String((payload && payload.room_id) || "").trim();
   const text = String((payload && payload.text) || "").trim();
@@ -1659,6 +1800,7 @@ ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
       policy: routed.transcript_entry.responder_policy,
       deps: {
         runResponderTurn: runRoomResponderTurn,
+        selectResponders: selectRoomResponders,
         timeoutMs,
         onFanout: (ev) => {
           const bots = (surface.loadBots().bots) || [];
@@ -2066,6 +2208,9 @@ ipcMain.handle("bitbot:secrets:status", async () => {
     "BITBOT_LLM_API_KEY",
     "BITBOT_LLM_BASE_URL",
     "BITBOT_LLM_MODEL",
+    // 凭证页的「接入方式」用 provider_id + base 反推下拉框，
+    // 所以这个键要在 status 里回读（写路径本来就在 ALLOWED_SECRET_KEYS 里）。
+    "BITBOT_LLM_PROVIDER",
     "BITBOT_LLM_QWEN_API_KEY",
     "BITBOT_LLM_MOONSHOT_API_KEY",
     "BITBOT_SEARCH_PROVIDER",
@@ -3289,22 +3434,39 @@ app.whenReady().then(async () => {
   });
 });
 
+/* Cmd+Q / 应用菜单的 role:"quit" / Dock「退出」/ 系统关机，全都从这里进来。
+ * 这一句晚于 createWindow 也没关系（before-quit 只在退出时触发），但必须在
+ * 任何一次 quit 之前注册 —— 所以放在 app.whenReady 之后的顶层，而不是
+ * createWindow 里面。 */
+app.on("before-quit", () => {
+  quitRequested = true;
+  // 早点发 SIGTERM，给 daemon 收尾的时间；will-quit 里再兜底 SIGKILL。
+  stopRoutineDaemon("SIGTERM");
+});
+
 app.on("will-quit", () => {
   try {
     globalShortcut.unregisterAll();
   } catch (_) {
     /* ignore */
   }
-  if (routineDaemonChild && !routineDaemonChild.killed) {
+  // 走到这里说明窗口已经真的关掉了。SIGTERM 若被 daemon 吃掉，
+  // 这里补一记 SIGKILL —— 否则主进程一退，daemon 就成了孤儿进程，
+  // 下一次启动时还会撞上「旧实例没清干净」。
+  stopRoutineDaemon("SIGKILL");
+  if (tray) {
     try {
-      routineDaemonChild.kill("SIGTERM");
+      tray.destroy();
     } catch (_) {
       /* ignore */
     }
+    tray = null;
   }
 });
 
 app.on("window-all-closed", () => {
   if (process.env.BITBOT_DESKTOP_SMOKE_TURN !== undefined) return;
-  // Stay alive for tray / global hotkey (Grok-style resident).
+  // 常驻托盘 + 全局热键是产品意图（Grok-style），所以「窗口关完」不等于退出。
+  // 注意这只作用于「用户关窗」；quit 流程里 Electron 不会 emit 这个事件，
+  // 所以它不会挡住 Cmd+Q。
 });

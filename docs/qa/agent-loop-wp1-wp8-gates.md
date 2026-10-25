@@ -13,7 +13,7 @@
 | WP5 | live PASS | 一直 tool call 时 `agent_exec=64`、`agent_llm=64`、`agent_stop=MaxSteps`，provider 调用 64 次 | 同上 |
 | WP6 | live PASS | 无 tool call 时 deliver 最终助手文本，`agent_exec=0` | 同上 |
 | WP7 | live PASS | `ListMachines` 不进 Agent Loop、不打 provider、不自动 `auto_approved`。guarded re-run 默认关，`BITBOT_LEGACY_GUARDED_RERUN=1` 才开 | 同上 |
-| WP8 | runtime PASS | `moon test -p runtime` 53/53。解析器白盒 2/2。A7 脚本本波复跑仍绿 | 同上 + `node scripts/prove_agent_loop_a7_a8.js` |
+| WP8 | runtime PASS | `moon test -p runtime` 54/54。解析器白盒 3/3。A7 脚本本波复跑仍绿 | 同上 + `node scripts/prove_agent_loop_a7_a8.js` |
 
 全桌面 `smoke_desktop_turn.sh` / `smoke_grok_desktop_parity.sh` **没有**在本波重跑。
 
@@ -32,7 +32,7 @@ bash scripts/prove_agent_loop_product_wire.sh
 
 ## 实测
 
-2026-10-24，本工作区：
+2026-10-25，本工作区：
 
 ```bash
 node scripts/prove_agent_loop_product_wire.js
@@ -42,8 +42,8 @@ node scripts/prove_agent_loop_a7_a8.js
 ```
 
 `prove_agent_loop_product_wire pass=49 fail=0`。  
-`moon test -p runtime`：`Total tests: 53, passed: 53, failed: 0.`  
-parser 白盒：`Total tests: 2, passed: 2, failed: 0.`  
+`moon test -p runtime`：`Total tests: 54, passed: 54, failed: 0.`<br>
+parser 白盒：`Total tests: 3, passed: 3, failed: 0.`<br>
 `prove_agent_loop_a7_a8 pass=23 fail=0`。
 
 Shell 执行是审批后的记录标记 `[product-shell]`，不在这条路径上启动真实 shell。Read 优先用 `BITBOT_LOOP_READ_JSON`，否则只读仓库根目录内的相对路径。

@@ -285,9 +285,11 @@ process.on("exit", () => {
       ? ok("roomTurn 落的用户行带 kind=user（按条目渲染的前提）")
       : bad("user row kind missing: " + JSON.stringify(multi && multi.transcript_entry));
     const discretion = surface.roomTurn(roomId, "随便聊聊", at);
-    discretion.ok && discretion.transcript_entry.responder_policy === "bot_discretion"
-      ? ok("无 @ → bot_discretion")
-      : bad("discretion route wrong");
+    discretion.ok && discretion.transcript_entry.responder_policy === "bot_discretion" &&
+      discretion.transcript_entry.responders_are_candidates === true &&
+      discretion.transcript_entry.responders.length === 2
+      ? ok("无 @ → bot_discretion，responders 是候选池（不是已确定发言者）")
+      : bad("discretion route wrong: " + JSON.stringify(discretion && discretion.transcript_entry));
     const unknownRoom = surface.roomTurn("room-nope", "@x hi", at);
     unknownRoom && unknownRoom.error === "room_not_found"
       ? ok("未知群组 room_not_found（不造 transcript）")

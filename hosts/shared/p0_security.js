@@ -359,14 +359,16 @@ function cwdAllowed(cwd, allowRoots) {
     })
     .filter(Boolean);
   if (!roots.length) return { ok: false, error: "cwd_allowlist_empty" };
-  const lexicalOk = roots.some((root) => pathIsInside(root, lexical));
-  if (!lexicalOk) return { ok: false, error: "cwd_not_allowlisted" };
   let real = "";
   try {
     real = fs.realpathSync(lexical);
   } catch (_) {
     return { ok: false, error: "bad_cwd" };
   }
+  // Compare canonical paths only. A lexical prefix check would reject a
+  // legitimate cwd under a symlinked root (macOS /var -> /private/var) and
+  // would also accept a symlink that escapes the root. realpath on both sides
+  // handles both cases.
   const realRoots = roots.map((root) => {
     try {
       return fs.realpathSync(root);

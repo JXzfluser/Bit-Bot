@@ -41,21 +41,45 @@ if (/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--accent\)[^}]*outline-of
 }
 
 /* ---------- 2) reduced-motion global ---------- */
-const rm = html.match(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n  \}/);
-if (rm && /transition-duration:\s*0\.001ms\s*!important/.test(rm[1])
-  && /animation-duration:\s*0\.001ms\s*!important/.test(rm[1])) {
+/* 页面里现在有多个 prefers-reduced-motion 块：组件旁边就近写的小块（如
+   #room-rail 关掉进场动画）和本波 M40 的全局块。断言针对全局块，所以按
+   「内容特征 + 括号配平」定位，不能取第一个出现的位置。 */
+function atRulesWith(src, needle) {
+  const out = [];
+  let i = src.indexOf(needle);
+  while (i >= 0) {
+    let depth = 0;
+    let j = src.indexOf("{", i);
+    for (; j < src.length; j++) {
+      if (src[j] === "{") depth++;
+      else if (src[j] === "}") {
+        depth--;
+        if (depth === 0) { j++; break; }
+      }
+    }
+    out.push({ idx: i, text: src.slice(i, j) });
+    i = src.indexOf(needle, j);
+  }
+  return out;
+}
+const rmBlocks = atRulesWith(html, "@media (prefers-reduced-motion: reduce)");
+const rmGlobal = rmBlocks.find(
+  (b) => /transition-duration:\s*0\.001ms\s*!important/.test(b.text) &&
+    /animation-duration:\s*0\.001ms\s*!important/.test(b.text),
+);
+if (rmGlobal) {
   ok("@media (prefers-reduced-motion: reduce)：全局 transition/animation duration 压到 ~0");
 } else {
   bad("reduced-motion", "global block missing or not forcing duration");
 }
 
 /* ---------- 3) transform 归零覆盖 ---------- */
-if (rm && /#composer #send:active[\s\S]{0,200}transform:\s*none/.test(rm[0])) {
+if (rmGlobal && /#composer #send:active[\s\S]{0,260}transform:\s*none/.test(rmGlobal.text)) {
   ok("reduced-motion 下 composer send:active transform 归零（保留颜色反馈）");
 } else {
   bad("rm send", "send:active not neutralized");
 }
-if (rm && /\.sess-row\s*\{\s*transition:\s*none/.test(rm[0])) {
+if (rmGlobal && /\.sess-row\s*\{\s*transition:\s*none/.test(rmGlobal.text)) {
   ok("reduced-motion 下 sess-row 色带渐变关闭（行不再动）");
 } else {
   bad("rm sess-row", "row transition not neutralized");
@@ -71,13 +95,13 @@ if (actionsBlock
   bad("M39 regression", "fade contract lost");
 }
 
-/* ---------- 5) 顺序正确：M40 块在主样式之后、</style> 之前 ---------- */
+/* ---------- 5) 顺序正确：M40 全局块在主样式之后、</style> 之前 ---------- */
 const mainActionsIdx = html.indexOf(".msg .msg-actions {\n    position: absolute");
-const rmIdx = html.indexOf("@media (prefers-reduced-motion: reduce)");
+const rmIdx = rmGlobal ? rmGlobal.idx : -1;
 if (mainActionsIdx > 0 && rmIdx > mainActionsIdx) {
-  ok("reduced-motion 块位于主 .msg-actions 规则之后（不遮蔽主选择器）");
+  ok("reduced-motion 全局块位于主 .msg-actions 规则之后（不遮蔽主选择器）");
 } else {
-  bad("ordering", "reduced-motion placed before main rules");
+  bad("ordering", "reduced-motion global block placed before main rules");
 }
 
 /* ---------- 6) 负向对照 ---------- */

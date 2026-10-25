@@ -4,7 +4,7 @@
  * G-28 (supersedes NG-001): this is the product shell's layout structure
  * (sidebar, composer, message stream, optional right rails, settings,
  * modals). Colors now track the Grok Bot app as the visual reference
- * (purple/magenta accent, neutral surface field) — see ui-unified-spec.md.
+ * (near-black accent, neutral surface field) — see ui-unified-spec.md.
  *
  * Later feature waves should consume these variables instead of new hex
  * values or one-off radii. Theme overrides touch color tokens only; the
@@ -14,32 +14,37 @@
 /* ---- W0-0a 调色原语：每个色值全仓只写一次（scripts/w0_palette_consolidate.mjs --land 生成）----
  * 规则：调色块内不得再出现字面色值，新增颜色先进这里。 */
 :root {
-  --p-lt-bg0: #ffffff;
-  --p-dk-bg0: #171717;
-  --p-lt-bg1: #f7f7f7;
+  --p-lt-bg0: #fcfcfc;
+  --p-dk-bg0: #121212;
+  --p-lt-bg1: #f5f5f5;
   --p-dk-bg1: #1d1d1d;
-  --p-lt-side: #f7f7f7;
-  --p-dk-side: #111111;
+  --p-lt-side: #f5f5f5;
+  --p-dk-side: #0e0e0e;
   --p-lt-input-bg: #f2f2f2;
   --p-dk-input-bg: #232323;
-  --p-lt-ink: #1a1a1a;
-  --p-dk-ink: #ececec;
-  --p-lt-text: #1a1a1a;
-  --p-dk-text: #ececec;
-  --p-lt-muted: #6f6f6f;
-  --p-dk-muted: #9a9a9a;
-  --p-lt-line: #e3e3e3;
-  --p-dk-line: #2e2e2e;
-  --p-lt-accent: #7c3aed;
-  --p-dk-accent: #a855f7;
-  --p-lt-accent-ink: #ffffff;
-  --p-dk-accent-ink: #ffffff;
-  --p-lt-accent-soft: #f3e8fd;
-  --p-dk-accent-soft: #3b0764;
-  --p-lt-user-bubble: #eceef0;
-  --p-dk-user-bubble: #2a2a2a;
-  --p-lt-bot-bubble: #f4f4f5;
-  --p-dk-bot-bubble: #212121;
+  --p-lt-ink: #1c1c1c;
+  --p-dk-ink: #f5f5f5;
+  --p-lt-text: #1c1c1c;
+  --p-dk-text: #f5f5f5;
+  --p-lt-muted: rgba(28, 28, 28, 0.68);
+  --p-dk-muted: rgba(245, 245, 245, 0.66);
+  --p-lt-line: rgba(28, 28, 28, 0.08);
+  --p-dk-line: rgba(245, 245, 245, 0.06);
+  /* D-1：主操作 = 近黑（暗色反白），取自 Grok 实测 sendButton / --sand-bg-primary */
+  --p-lt-accent: #1c1c1c;
+  --p-dk-accent: #f5f5f5;
+  --p-lt-accent-ink: #fcfcfc;
+  --p-dk-accent-ink: #121212;
+  --p-lt-accent-soft: rgba(28, 28, 28, 0.06);
+  --p-dk-accent-soft: rgba(245, 245, 245, 0.08);
+  /* §4.4 实测：用户气泡浅色近黑、暗色绿；助手气泡是墨/纸 6% 的 alpha。
+     --fill 必须独立：它是表格头 / ghost hover 的底，不能跟着用户气泡反转。 */
+  --p-lt-user-bubble: #1c1c1c;
+  --p-dk-user-bubble: #0e9f5a;
+  --p-lt-bot-bubble: #1c1c1c0f;
+  --p-dk-bot-bubble: #f5f5f50f;
+  --p-lt-fill: #1c1c1c0f;
+  --p-dk-fill: #f5f5f50f;
   --p-lt-warn: #a06a00;
   --p-dk-warn: #d4a017;
   --p-lt-warn-bg: #fbf4e0;
@@ -62,16 +67,16 @@
   --p-dk-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
   --p-lt-shadow-sticky: 0 1px 0 var(--line);
   --p-dk-shadow-sticky: 0 2px 8px rgba(0, 0, 0, 0.25);
-  --p-dk-page-bg: #151515;
+  --p-dk-page-bg: #121212;
   --p-dk-surface: #1f1f1f;
   --p-dk-bot-avatar: #2f9e44;
   /* 根块/fLt 独有色值（0a 残余收敛，2026-10-24） */
   --p-lt-surface: #ffffff;
-  --p-lt-page-bg: #ffffff;
-  --p-lt-page-bg-force: #f5f5f7;
+  --p-lt-page-bg: #fcfcfc;
+  --p-lt-page-bg-force: #fcfcfc;
   --p-lt-bot-avatar: #1e86fc;
   --p-lt-bot-avatar-force: #2f9e44;
-  --p-lt-unread: #1e86fc;
+  --p-lt-unread: #0b6dd3;
   --p-lt-on-fill: #ffffff;
   --p-lt-lightbox-ink: #eee;
 }
@@ -80,8 +85,8 @@
 :root {
   color-scheme: light;
 
-  /* surfaces — Grok-style light default: clean white field, near-black ink,
-     purple/magenta accent (G-28 aligns to the Grok Bot app reference). */
+  /* surfaces — Grok-style light default: #fcfcfc field, #f5f5f5 sidebar,
+     near-black ink + accent (G-28 aligns to the Grok Bot app reference). */
   --bg0: var(--p-lt-bg0);
   --bg1: var(--p-lt-bg1);
   --side: var(--p-lt-side);
@@ -96,7 +101,7 @@
   --text: var(--p-lt-text);
   --muted: var(--p-lt-muted);
   --line: var(--p-lt-line);
-  /* Grok signature accent — purple (light) / magenta (dark) */
+  /* Grok accent — near-black (light) / inverted to paper white (dark), D-1 */
   --accent: var(--p-lt-accent);
   --accent-ink: var(--p-lt-accent-ink);
   --accent-soft: var(--p-lt-accent-soft);
@@ -113,7 +118,7 @@
   --danger-bg: var(--p-lt-danger-bg);
   --danger-ink: var(--p-lt-danger-ink);
   --code-bg: var(--bot-bubble);
-  --fill: var(--user-bubble);
+  --fill: var(--p-lt-fill);
   --overlay: var(--p-lt-overlay);
   --overlay-strong: rgba(0, 0, 0, 0.88);
   --scrim-lite: rgba(128, 128, 128, 0.06);
@@ -152,13 +157,15 @@
   --radius-lg: 10px;
   --radius-xl: 12px;
   --radius-2xl: 14px;
-  --radius-bubble: 16px;
+  --radius-bubble: 18px;
   --radius-user: 18px;
   --radius-composer: 22px;
   --radius-pill: 999px;
 
   /* type */
-  --font-ui: "Source Han Sans SC", "Noto Sans SC", "IBM Plex Sans", "PingFang SC", sans-serif;
+  /* Grok 真源实测 fontFamily: -apple-system, "system-ui", "Segoe UI", sans-serif。
+     系统字体放最前，CJK 才落到后面的中文字体 —— 否则拉丁字母也走思源，字宽/字重都不对。 */
+  --font-ui: -apple-system, "system-ui", "Segoe UI", "Source Han Sans SC", "Noto Sans SC", "PingFang SC", sans-serif;
   --font-display: -apple-system, "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "IBM Plex Mono", monospace;
   --text-2xs: 10px;
@@ -242,7 +249,7 @@
     --danger-bg: var(--p-dk-danger-bg);
     --danger-ink: var(--p-dk-danger-ink);
     --code-bg: var(--bot-bubble);
-    --fill: var(--user-bubble);
+    --fill: var(--p-dk-fill);
     --overlay: var(--p-dk-overlay);
     --shadow-modal: var(--p-dk-shadow-modal);
     --shadow-pop: var(--p-dk-shadow-pop);
@@ -276,7 +283,7 @@ body.force-dark {
   --danger-bg: var(--p-dk-danger-bg);
   --danger-ink: var(--p-dk-danger-ink);
     --code-bg: var(--bot-bubble);
-    --fill: var(--user-bubble);
+    --fill: var(--p-dk-fill);
   --overlay: var(--p-dk-overlay);
   --shadow-modal: var(--p-dk-shadow-modal);
   --shadow-pop: var(--p-dk-shadow-pop);
@@ -309,7 +316,7 @@ body.force-light {
   --danger-bg: var(--p-lt-danger-bg);
   --danger-ink: var(--p-lt-danger-ink);
   --code-bg: var(--bot-bubble);
-  --fill: var(--user-bubble);
+  --fill: var(--p-lt-fill);
   --overlay: var(--p-lt-overlay);
   --shadow-modal: var(--p-lt-shadow-modal);
   --shadow-pop: var(--p-lt-shadow-pop);
@@ -1104,14 +1111,25 @@ body.grok-ui #turn-progress .tp-dot { background: var(--ink) !important; }
 /* Header becomes the drag strip for the hiddenInset traffic lights:
    transparent, content starts at the window top like Grok, only a quiet
    model chip remains on the right. Interactive children must opt out. */
-body.grok-ui header {
+  body.grok-ui header {
   display: flex !important;
   align-items: center !important;
   height: var(--header-h) !important;
-  padding: 0 16px 0 84px !important;
+  /* 顶栏现在只压在聊天列（及右侧栏）上方，不再覆盖左上交通灯区
+     （交通灯在侧栏首列），所以去掉原来预留的 84px 左内边距。 */
+  padding: 0 16px 0 12px !important;
   background: var(--surface) !important;
   border-bottom: 0 !important;
   -webkit-app-region: drag;
+}
+/* G-28 #37 · grok-ui 首行 header 结构对齐：真源侧栏从窗口顶开始，顶栏只压聊天列
+   上方。默认网格 header 占满全宽一行，把侧栏下推了 56px（firstRowTop=143，真源约 95）。
+   改为 agents 占满首列三行、header 只压 main+rail，侧栏即从 y=0 起，对齐真源。 */
+body.grok-ui {
+  grid-template-areas:
+    "agents header header"
+    "agents main   rail"
+    "agents composer rail";
 }
 body.grok-ui header button,
 body.grok-ui header a,
@@ -1199,23 +1217,6 @@ body.grok-ui:has(#grok-adv-toggle:checked) #hidden-bots-lab { display: none !imp
 body.grok-ui[data-devmode="on"] #devmode-badge,
 body.grok-ui[data-devmode="on"] #tools-toggle-btn { display: inline-flex !important; }
 
-/* Account row chevron: replace the glyph "▲" with a crisp CSS chevron
-   (theme-colored, points up since the popup opens above). */
-body.grok-ui .acct-chevron {
-  font-size: 0 !important;
-  width: 16px; height: 16px;
-  display: inline-flex !important;
-  align-items: center; justify-content: center;
-}
-body.grok-ui .acct-chevron::before {
-  content: "";
-  width: 7px; height: 7px;
-  border-top: 1.6px solid var(--muted);
-  border-right: 1.6px solid var(--muted);
-  transform: rotate(-45deg) translate(1px, 1px);
-}
-#account-avatar-btn:hover .acct-chevron::before { border-color: var(--ink); }
-
 /* ===== Round 7: vertical rhythm + defaults ===== */
 
 /* Header no longer reserves a blank band: the grid row collapses to 0 and the
@@ -1230,6 +1231,21 @@ body.grok-ui .acct-chevron::before {
 
 /* Bot management block shows by default (管理 toggle keeps working for it). */
 body.grok-ui #sb-bots-rooms { display: block !important; }
+/* G-28 #2 · 默认折叠成头像条：collapsed 时只显示头像条、隐藏完整列表；
+   展开（点摘要里的折叠按钮）后反之。对齐真源——Grok 侧栏没有整列 Bot 列表。 */
+body.grok-ui #sb-bots-rooms.collapsed #bot-list { display: none; }
+body.grok-ui #sb-bots-rooms:not(.collapsed) #bot-strip { display: none; }
+body.grok-ui .bot-strip { display: flex; gap: 8px; padding: 4px 8px 8px; overflow-x: auto; }
+body.grok-ui .bot-strip .strip-av {
+  flex: 0 0 auto; width: 36px; height: 36px; padding: 0; border: 0; background: transparent;
+  border-radius: 40% 60% 58% 42% / 52% 44% 56% 48%; cursor: pointer; display: grid; place-items: center;
+}
+body.grok-ui .bot-strip .strip-av:hover { background: var(--accent-soft); }
+body.grok-ui .sb-caret-btn {
+  margin-left: auto; border: 0; background: transparent; color: var(--muted);
+  cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 4px;
+}
+body.grok-ui #sb-bots-rooms.collapsed .sb-caret-btn { transform: rotate(-90deg); }
 
 /* Session row density: the row is a full-bleed list item (44px disc, 15px
    title, 13px preview). Geometry lives in index.html (`.sess-row` /
@@ -1251,18 +1267,17 @@ body.grok-ui #sb-bots-rooms { display: block !important; }
 /* Composer inner layout used to be turned into a "WorkBuddy-style" two-row box
    here: textarea at flex 1 1 100% on its own line, controls beneath, 12px/14px
    padding. That is the layout that stopped matching Grok's single pill. The
-   one-row layout now lives in the parity block at EOF. */
+   one-row layout now lives in the parity block at EOF.
+   这里末尾原来还有一条 `#send { width:34px !important }`：它既是 34px 的
+   唯一来源，也让 §4.3 的 28px 改不动。尺寸/圆角回归 parity 块，只剩字形修正。 */
+/* 发送按钮的字形：原来靠 `::before { content:"↑" }` 拼出来，字号 16 的 U+2191
+   在 28px 圆里既不对齐也会随字体替换成别的手感（截图里看着像一团噪点）。
+   现在图标是按钮内的内联 SVG（stroke=currentColor），几何/方向/粗细都自己定，
+   任意 DPI 都清晰；这里不再生成任何伪元素字形。 */
 body.grok-ui #send {
-  min-width: 0 !important;
-  width: 34px !important; height: 34px !important;
-  border-radius: 50% !important;
-  padding: 0 !important;
-  font-size: 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  min-width: 0;
 }
-body.grok-ui #send::before { content: "↑"; font-size: 18px; font-weight: 600; line-height: 1; }
+body.grok-ui #send svg { display: block; }
 
 /* ===== Round 8b: traffic-light clearance ===== */
 
@@ -1286,7 +1301,7 @@ body.grok-ui.session-search-open #session-search { display: block; }
 /* -- 10.1 Global tokens & type scale (applies to EVERY page) -------------
    Single semantic source for the newer (Grok) family. W0-0b (2026-10-24):
    the second token family is folded onto the canonical :root tokens —
-   --ui-*/--text-ink/--text-sub no longer carry their own literals, the
+   --ui-* / --text-ink / --text-sub no longer carry their own literals, the
    dark blocks are gone, theming follows --text/--muted/--line/--fill/
    --surface/--user-bubble. Small gray shifts accepted (see
    alignment-delta-v1.md §7 W0). */
@@ -1303,6 +1318,10 @@ body.grok-ui {
   --g-soft: var(--ui-fill);
   --g-card: var(--ui-card);
   --g-pill: var(--ui-pill);
+  /* 选中的导航行是「实心胶囊」：底色就是用户气泡色（浅色近黑 / 暗色绿），
+     文字必须跟着反色。原来只是把 background 换成 --g-pill 而 color 仍继承
+     --g-ink，于是浅色主题下是黑底黑字——选中项整条看不见（真渲染实测）。 */
+  --g-pill-ink: var(--accent-ink);
 }
 body.grok-ui,
 body.grok-ui button,
@@ -1319,16 +1338,16 @@ body.grok-ui pre, body.grok-ui code, body.grok-ui kbd {
 /* every sheet/modal shares one chrome. P2: the base `.bb-sheet` rules are
    lower-specificity, so these win without !important (verified by D-ST). */
 body.grok-ui .bb-sheet {
-  border-radius: 16px;
-  border-color: var(--g-line);
-  box-shadow: 0 24px 64px rgba(0,0,0,.18);
+  border-radius: var(--radius-2xl);
+  border-color: color-mix(in srgb, var(--ink) 12%, transparent);
+  box-shadow: none;
   font-size: 14px;
   line-height: 1.5;
   color: var(--g-ink);
 }
 body.grok-ui .bb-sheet .bb-sheet-title {
-  font-size: 21px; font-weight: 600;
-  letter-spacing: -0.01em; color: var(--g-ink);
+  font-size: 17px; font-weight: 500;
+  line-height: 24px; letter-spacing: 0; color: var(--g-ink);
 }
 body.grok-ui .bb-sheet .bb-sheet-note { font-size: 13px; color: var(--g-sub); }
 
@@ -1344,15 +1363,15 @@ body.grok-ui #settings-sheet {
   overflow: hidden !important;
   /* The id-scoped base `#settings-sheet` rules outrank the shared
      `body.grok-ui .bb-sheet` skin, so restate the chrome here. */
-  border-radius: 16px;
-  border-color: var(--g-line);
-  box-shadow: 0 24px 64px rgba(0,0,0,.18);
+  border-radius: var(--radius-2xl);
+  border-color: color-mix(in srgb, var(--ink) 12%, transparent);
+  box-shadow: none;
   font-size: 14px;
   line-height: 1.5;
   color: var(--g-ink);
 }
 body.grok-ui #settings-sheet .bb-sheet-title {
-  font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--g-ink);
+  font-size: 17px; font-weight: 500; line-height: 24px; letter-spacing: 0; color: var(--g-ink);
 }
 body.grok-ui #settings-sheet .bb-sheet-head {
   grid-area: head;
@@ -1369,19 +1388,28 @@ body.grok-ui #settings-sheet .bb-sheet-title { display: none !important; }
    inherits the ghost × without another selector. Computed-style gate:
    scripts/e2e_modal_computed.mjs (D-ST). */
 body.grok-ui .bb-sheet .bb-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   background: transparent;
   border: 0;
+  border-radius: var(--radius-pill);
   box-shadow: none;
   font-size: 0;
   color: var(--g-sub);
-  padding: 6px;
 }
 body.grok-ui .bb-sheet .bb-close::before {
   content: "×";
-  font-size: 24px;
+  font-size: 18px;
   line-height: 1;
 }
-body.grok-ui .bb-sheet .bb-close:hover { color: var(--g-ink); }
+body.grok-ui .bb-sheet .bb-close:hover {
+  color: var(--g-ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
 /* P2: settings nav lives under #settings-tabs so it outranks the base
    `#settings-tabs .settings-tab-btn` rules by specificity instead of by
    !important. Computed equivalence is enforced by e2e_modal_computed (D-ST). */
@@ -1412,7 +1440,7 @@ body.grok-ui #settings-tabs .settings-tab-btn {
   font-weight: 500;
 }
 body.grok-ui #settings-tabs .settings-tab-btn:hover { background: var(--g-soft); color: var(--g-ink); }
-body.grok-ui #settings-tabs .settings-tab-btn.active { background: var(--g-pill); box-shadow: none; }
+body.grok-ui #settings-tabs .settings-tab-btn.active { background: var(--g-pill); color: var(--g-pill-ink); box-shadow: none; }
 body.grok-ui #settings-tabs .settings-tab-btn::before {
   content: "";
   width: 17px; height: 17px; flex: 0 0 17px;
@@ -1435,7 +1463,10 @@ body.grok-ui .settings-tab-btn[data-stab="usage"] {
 body.grok-ui .settings-tab-btn[data-stab="updates"] {
   --g-ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='23 4 23 10 17 10'/%3E%3Cpolyline points='1 20 1 14 7 14'/%3E%3Cpath d='M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15'/%3E%3C/svg%3E");
 }
-body.grok-ui #settings-meta { display: none !important; }
+/* §4.5 6a②：这里原来是 display:none!important —— 宿主拒绝 Settings 深链时
+   把回执写进 #settings-meta，而这条规则把它整个藏掉，于是用户只看到「设置
+   打开了但停在通用页」。回执必须可见；只在真正有内容时占一行。 */
+body.grok-ui #settings-meta:empty { display: none; }
 body.grok-ui #settings-anchors { display: none !important; }
 
 body.grok-ui .settings-tab {
@@ -1499,9 +1530,8 @@ body.grok-ui .gp-select:focus {
   box-shadow: none !important;
 }
 
-/* chips: category filter (connect apps), option chips (settings) */
-body.grok-ui .gp-chip,
-body.grok-ui .ca-chip {
+/* option chips (settings) — same shape as the reference's control chips */
+body.grok-ui .gp-chip {
   background: var(--g-card) !important;
   border: 1px solid var(--g-line) !important;
   border-radius: 999px !important;
@@ -1511,20 +1541,34 @@ body.grok-ui .ca-chip {
   color: var(--g-ink) !important;
   box-shadow: none !important;
 }
-body.grok-ui .gp-chip:hover,
-body.grok-ui .ca-chip:hover { background: var(--g-soft) !important; color: var(--g-ink) !important; }
-body.grok-ui .gp-chip.active,
-body.grok-ui .ca-chip.active {
+body.grok-ui .gp-chip:hover { background: var(--g-soft) !important; color: var(--g-ink) !important; }
+body.grok-ui .gp-chip.active {
   background: var(--g-ink) !important;
   border-color: var(--g-ink) !important;
   color: var(--g-card) !important;
 }
+/* category chips (connect apps): h28, borderless, ink-6% wash; active = ink */
+body.grok-ui .ca-chip {
+  height: 28px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border: 0;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 420;
+  line-height: 28px;
+  color: var(--ink);
+  box-shadow: none;
+}
+body.grok-ui .ca-chip:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+body.grok-ui .ca-chip.active { background: var(--ink); color: var(--surface); }
+body.grok-ui .ca-chip.ca-more.expanded { background: color-mix(in srgb, var(--ink) 10%, transparent); }
 
 /* every button inside a sheet: one shape & type scale; inline colors preserved.
    GP button audit: buttons carrying the .bb-btn system keep their own shape
    (the functional variant wins over the sheet-wide pill) — the wildcard now
    only backstops legacy buttons with no class. */
-body.grok-ui .bb-sheet button:not(.bb-btn):not(.bb-close) {
+body.grok-ui .bb-sheet:not(.ca-dialog) button:not(.bb-btn):not(.bb-close) {
   font-size: 13px;
   font-weight: 500 !important;
   border-radius: 999px !important;
@@ -1568,13 +1612,8 @@ body.grok-ui .st-field-name {
 }
 body.grok-ui .st-field-name span { font-weight: 400 !important; color: var(--g-sub) !important; }
 
-/* 国内渠道 card inside connect-apps sheet (token-skinned) */
-body.grok-ui #ca-cn-channels {
-  background: var(--g-card) !important;
-  border: 1px solid var(--g-line) !important;
-}
-
-/* 连接应用 modal: the migrated 国内渠道 block reads as a section card. */
+/* 国内渠道 block inside connect-apps sheet: quiet section, not a hero card */
+body.grok-ui #ca-cn-channels { background: transparent; border: 0; }
 body.grok-ui #ca-cn-channels > label { margin: 0 !important; }
 
 /* ============================================================
@@ -1822,44 +1861,110 @@ body.grok-ui.session-search-open #sidebar-toolbar #sidebar-search-toggle {
   border-color: var(--accent);
 }
 
-/* --- 输入框：单条胶囊，一行装完 [+][输入][chips][麦克][↑] ---------------- */
+/* --- §4.3 输入框：白 pill 728 × 44 ---------------------------------------
+   真源构造：容器 padding 0，三枚 28px 圆钮**绝对定位**浮在胶囊内侧
+   （＋ left 12、麦 right 40、发送 right 8），输入区从 44.5 起。
+   所以先清 padding，按钮尺寸才有意义；#composer 自身左右各 16 让 row 落在 728。 */
 body.grok-ui #composer {
   /* 注意：grid item 上写 `margin: 0 auto` 会让 justify-self:stretch 失效，
-     盒子退化成 fit-content（实测宽度只剩 499px，气泡 760、输入框 499，
-     一眼就错位）。所以用 width:100% + center 来对齐 #log 的同一列。
-     这里只是承载器（透明），真正的胶囊是下面的 .row。 */
+     盒子退化成 fit-content（实测宽度只剩 499px）。用 width:100% + center。 */
   width: 100%;
   max-width: var(--content-max);
   justify-self: center;
-  margin: 0 0 14px;
-  padding: 0;
+  margin: 0;
+  padding: 0 16px 16px;
   background: transparent;
   border: 0;
   box-shadow: none;
   gap: 6px;
 }
 body.grok-ui #composer .row {
+  position: relative;
   flex-wrap: nowrap;
-  align-items: flex-end;
-  gap: var(--space-1);
-  padding: 5px 8px 5px 10px;
+  align-items: center;
+  gap: 0;
+  min-height: 44px;
+  /* 左 44 = ＋ 12 + 28 + 4（真源 fieldLeftInset 44.5）；
+     右 76 = 发送 8 + 28 + 4 + 麦 28 + 8，文字不会钻到按钮底下。 */
+  padding: 0 76px 0 44px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border: 0.5px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: var(--radius-composer);
+  box-shadow:
+    0 2px 8px -1px rgba(0, 0, 0, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.03),
+    0 0 0 1px rgba(228, 228, 228, 0.04);
+}
+body.grok-ui #composer .row:focus-within {
+  border-color: color-mix(in srgb, var(--ink) 12%, transparent);
+  box-shadow:
+    0 2px 8px -1px rgba(0, 0, 0, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.03),
+    0 0 0 1px rgba(228, 228, 228, 0.04);
 }
 body.grok-ui #composer .row textarea,
 body.grok-ui #composer .row input {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 38px;
+  height: 20px;
+  min-height: 20px;
   max-height: 168px;
-  padding: 9px 4px;
-  line-height: 1.5;
+  padding: 0;
+  font-size: var(--text-title);
+  font-weight: 420;
+  line-height: 20px;
+  color: var(--ink);
 }
-/* Grok 的「＋」在最左边；DOM 里附件按钮仍排在输入框之后，读屏顺序不变。 */
-body.grok-ui #composer #attach-btn { order: -1; }
-body.grok-ui #composer #voice-btn { margin-left: 0; }
+/* 三枚圆钮都脱离行流：28×28、顶上 8（(44-28)/2）。 */
+body.grok-ui #composer #attach-btn,
+body.grok-ui #composer #voice-btn,
+body.grok-ui #composer #send {
+  position: absolute;
+  top: 8px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+body.grok-ui #composer #attach-btn,
+body.grok-ui #composer #voice-btn {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 8%, transparent) inset;
+  font-size: var(--text-lg);
+}
+body.grok-ui #composer #attach-btn { left: 12px; }
+body.grok-ui #composer #voice-btn { right: 40px; }
+body.grok-ui #composer #attach-btn:hover,
+body.grok-ui #composer #voice-btn:hover { background: var(--accent-soft); color: var(--ink); }
+body.grok-ui #composer .row svg { width: 16px; height: 16px; }
+body.grok-ui #composer #send {
+  right: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 16px;
+  font-weight: 500;
+  box-shadow: none;
+}
+body.grok-ui #composer #send:hover { background: var(--accent); opacity: 0.9; }
+body.grok-ui #composer #send:active { transform: scale(0.94); opacity: 1; }
+/* 真源空态也是实心深色圆（没有「变浅」的禁用态），只把光标降成等待/默认。 */
+body.grok-ui #composer #send:disabled { opacity: 1; cursor: default; }
+/* 回合进行中「取消」顶替麦克风的位置，而不是再挤一枚到输入区。 */
+body.grok-ui #composer .row:has(#turn-cancel:not([hidden])) #voice-btn { display: none; }
+body.grok-ui #composer #turn-cancel {
+  position: absolute;
+  right: 40px;
+  top: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+}
 
 /* chips 是胶囊里的行内元信息，不是第二行工具栏 */
 body.grok-ui #composer .bb-chip {
@@ -1983,13 +2088,15 @@ body.grok-ui .msg.user .msg-status { display: flex; justify-content: flex-end; m
 /* 三个色值都不是新硬编码：用 ink/side/muted 混合出来，深浅色模式自动跟随，
    也不会给「原始色值总量」上加负债。 */
 body.grok-ui {
-  --nav-row-hover: color-mix(in srgb, var(--ink) 4%, transparent);
-  --nav-row-active: color-mix(in srgb, var(--ink) 8%, var(--side));
+  /* §4.2 三态实测：hover = 墨 6% 洗、选中 = 墨 8% 洗，都是 alpha 浮在任意底上。
+     旧写法 active 用 var(--side) 作混合基色，合成了不透明灰（暗色下刺眼）。 */
+  --nav-row-hover: color-mix(in srgb, var(--ink) 6%, transparent);
+  --nav-row-active: color-mix(in srgb, var(--ink) 8%, transparent);
   --nav-label: color-mix(in srgb, var(--muted) 55%, var(--side));
 }
 
-/* 侧栏是可滚动的面。像素实测：行是内缩 12px 的圆角色带，所以容器留 12px
-   水平内边距；行与行之间没有分隔线，行高 58px 全靠行内 padding 撑。 */
+/* 侧栏是可滚动的面。§4.2：行是内缩 12px 的圆角色带，容器留 12px 水平内边距；
+   行与行之间没有分隔线，行高 54 靠行内 padding 撑，行间距 4 由相邻行补。 */
 body.grok-ui #agents {
   background: var(--side);
   border-right: 1px solid var(--line);
@@ -2085,31 +2192,44 @@ body.grok-ui #session-list { margin: 0; padding: 0; }
 /* --- 新建 Bot：Grok 只有一个 ＋，在右上角工具栏（#sess-new，点击建 Bot）。
      标题行内的整行 #bot-new-btn 已随标记一起删除。 ------------------------- */
 
-/* --- G-28 · 分组头：左灰字 + 右数量（实测：左 20.5 / 右 21.5 / 13px 灰） ---
-   未分组行直接平铺在 workspace 名下（对应真源顶部无标题区），命名分组才
-   出现「组名 N」一节。空组不渲染（沿用 refreshSidebarRooms 判空原则）。 */
-body.grok-ui .bot-group-head {
+/* --- §4.2 分组头：容器高 30、字号 13/420，文字实测 12/420/墨 .68/lh16 -------
+   真源把留白放在 padding（8/8/6/8）、margin 0；我们原来放在 margin，容器只有
+   18.84 高。日期分组（今天/昨天）用同一形状，左侧才只有一种分组头。 */
+body.grok-ui .bot-group-head,
+body.grok-ui .sess-group {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin: 14px 0 2px;
-  padding: 0 9px;
+  margin: 0;
+  padding: 8px 8px 6px;
   font-size: 13px;
-  font-weight: 500;
-  color: var(--nav-label);
+  font-weight: 420;
+  line-height: 16px;
+  color: var(--muted);
   cursor: default;
+}
+body.grok-ui .bot-group-head > span,
+body.grok-ui .sess-group {
+  font-size: 12px;
+  font-weight: 420;
+  line-height: 16px;
+  letter-spacing: 0;
 }
 body.grok-ui .bot-group-head .cnt { flex: 0 0 auto; opacity: 0.85; }
 
-/* --- 行内几何（实测：头像左缘 18 → 文字左缘 65，行高 58）----------------
-   容器 #agents 已有 12px 内边距，所以行内左 6 + 头像 36 + gap 11 = 65；
-   右缘留 9（容器 12 + 9 = 21，与真源未读点右缘一致）。 */
-body.grok-ui .sess-row { padding: 11px 9px 11px 6px; gap: 11px; }
-/* 文字两行的节距实测 20pt：名称 13.5/深、摘要 13/灰。行内节距 18 保证
-   两行文字 36px 恰好等于头像高度 —— 行高才锁得住 58（20+20=40 会把行撑到 62） */
-body.grok-ui .sess-row .sess-main .name { font-size: 13.5px; font-weight: 600; line-height: 18px; }
-body.grok-ui .sess-row .sess-main .meta { font-size: 13px; line-height: 18px; margin-top: 0; }
+/* --- §4.2 行内几何（行高 54 = padding 8+8 + 标题 20 + 预览 18）------------
+   容器 #agents 已有 12px 内边距：12 + 行左 8 + 头像 36 + gap 8 = 文字左缘 64。 */
+body.grok-ui .sess-row {
+  padding: 8px;
+  gap: 8px;
+  border-radius: var(--radius-lg);
+}
+/* 行间距 4 只加在相邻行之间：日期/组标题本身已有 6px 下留白，不再叠一层。 */
+body.grok-ui .sess-row + .sess-row { margin-top: 4px; }
+/* 标题 16/420/lh20，预览 13/420/lh18 —— 两行 38 + 上下 16 = 54。 */
+body.grok-ui .sess-row .sess-main .name { font-size: 16px; font-weight: 420; line-height: 20px; }
+body.grok-ui .sess-row .sess-main .meta { font-size: 13px; font-weight: 420; line-height: 18px; margin-top: 0; color: var(--muted); }
 
 /* --- 头像：Grok 用的是**不规则有机圆团**（blob），不是正圆。五组圆角
    变体按 Bot id 哈希分配（fillAvatarGlyph 同款种子），重现"每只 Bot
@@ -2121,66 +2241,84 @@ body.grok-ui .sess-avatar.blob-3 { border-radius: 52% 48% 44% 56% / 48% 52% 44% 
 body.grok-ui .sess-avatar.blob-4 { border-radius: 48% 52% 58% 42% / 42% 58% 50% 50%; }
 
 /* --- 底部：账户是一枚胶囊，不是一条裸文字 ------------------------------- */
-/* #agents 是 flex 列且带 12px 内边距：`margin: auto -12px 0` 同时做到
-   「贴底」和「分隔线通栏」，胶囊再靠内边距回到 12px。 */
+/* 真源实测：footer 280×52，无分隔线、无阴影，padding `0 16 16`；
+   #agents 已带 12px 内边距，`margin: auto -12px 0` 让 footer 通栏贴底，
+   再靠 16px 内边距把行宽收到 248（与 Grok 完全一致）。 */
 body.grok-ui #sidebar-footer {
   margin: auto -12px 0;
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--line);
+  padding: 0 16px 16px;
+  border-top: 0;
   box-shadow: none;
   background: var(--side);
 }
-/* 「管理 Bot / 应用」「设置」两行在 Round 5 就收进了账户弹层（display:none），
-   所以底部只剩账户胶囊一条，不再给它们写样式。 */
+/* 「管理 Bot / 应用」「设置」两行在 Round 5 就收进了账户弹层（display:none）。
+   外层 .bb-split 仍带 10px 上边距，会把 footer 顶到 62 —— 整行不占位，
+   footer 回到真源的 52（36 行 + 16 底距）。 */
+body.grok-ui #sidebar-footer > .bb-split { display: none; }
 body.grok-ui #account-bar {
-  margin: 6px 0 0;
-  /* G-28 · Grok 底部是「账户胶囊 + 两个图标」并排一行 */
+  margin: 0;
+  /* G-28 · Grok 底部是「账户胶囊 + 两个 36px 圆钮」并排一行，gap 8。 */
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 body.grok-ui #account-avatar-btn {
   flex: 1 1 auto;
   min-width: 0;
-  gap: var(--space-3);
-  /* Grok 真源底部是一个浮起的白色胶囊（无明显描边、靠极轻阴影分开），
-     高度约 44。我方原来是 1px 描边的扁条，观感偏"表单控件"。 */
-  padding: 6px 12px 6px 6px;
-  min-height: 44px;
+  gap: 8px;
+  /* 真源：160×36 白色胶囊，radius 9999，padding `0 17 0 0`，无阴影、无描边。
+     头像 36 后留 8px，邮箱/名称从胶囊左缘 44 起步。 */
+  height: 36px;
+  min-height: 36px;
+  padding: 0 17px 0 0;
   border: 0;
   border-radius: var(--radius-pill);
   background: var(--surface);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: none;
 }
 body.grok-ui #account-avatar-btn:hover,
 body.grok-ui #account-avatar-btn[aria-expanded="true"] {
-  background: var(--surface);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-body.grok-ui #account-avatar-circle {
-  width: 32px;
-  height: 32px;
-  font-size: var(--text-sm);
-  background: var(--nav-row-active);
-  color: var(--ink);
+  background: var(--accent-soft);
   box-shadow: none;
 }
-/* G-28 · 账户胶囊右侧的两个图标（会话 / 设置），对齐 Grok 底部的图标对 */
+body.grok-ui #account-avatar-circle {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+  font-weight: 600;
+  /* 真源头像是「实心彩色圆 + 白色字形」；我方沿用主操作色（D-1 近黑/反白），
+     不再用 8% 灰圈 —— 灰圈在 #f5f5f5 底上几乎看不见字形。 */
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+body.grok-ui #account-name-label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+/* G-28 · 账户胶囊右侧的两颗 36 圆钮：真源是白底 + 8% 描边，
+   16px 字形落在 20px 图标槽里（内缩 10）。OTA 真有新版本时第二颗整颗反色。 */
 body.grok-ui .ab-icon-btn {
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
 }
 body.grok-ui .ab-icon-btn:hover { background: var(--accent-soft); color: var(--ink); }
+body.grok-ui .ab-icon-btn.has-update {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
 /* 会话面板：从账户条向上弹出，取代原来那行「会话 ▸」折叠 */
 body.grok-ui #sessions-popup {
   position: absolute;
@@ -2197,3 +2335,473 @@ body.grok-ui #sessions-popup {
   overflow: auto;
 }
 body.grok-ui #sessions-popup[hidden] { display: none; }
+
+/* ============================================================================
+   W5 · 消息流（§4.4 实测）
+   ----------------------------------------------------------------------------
+   面板 760 → 行 728（#log 两侧各 16）→ 文字列 558.4（≈ 行的 76.7%）。
+   气泡 18 圆角、padding 7/12、正文 14/420/20；助手底是墨 6% alpha，
+   用户底近黑 + 白字 + 0.5px 内高光（暗色用户气泡是绿底，token 已分主题）。
+   ========================================================================== */
+body.grok-ui .msg.assistant .body {
+  align-self: flex-start;
+  width: 100%;
+  max-width: 558.4px;
+  padding: 7px 12px;
+  border-radius: var(--radius-bubble);
+  background: var(--bot-bubble);
+  font-size: 14px;
+  font-weight: 420;
+  line-height: 20px;
+}
+/* 作者行：12px/420 灰字；流内头像 22px（真源同名元素实测）。 */
+body.grok-ui .msg-grok-avatar {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  font-size: 11px;
+}
+body.grok-ui .msg-grok-name {
+  color: var(--muted);
+  font-weight: 420;
+  font-size: 12px;
+}
+body.grok-ui .msg.user {
+  max-width: 558.4px;
+  padding: 7px 12px;
+  border-radius: var(--radius-user);
+  background: var(--user-bubble);
+  color: var(--on-fill);
+  font-size: 14px;
+  font-weight: 420;
+  line-height: 20px;
+  box-shadow:
+    0 0.5px 0 inset rgba(255, 255, 255, 0.16),
+    0 -0.5px 0 inset rgba(255, 255, 255, 0.16),
+    0 0 0 0.5px inset color-mix(in srgb, var(--ink) 6%, transparent);
+}
+body.grok-ui .msg.user .body {
+  color: var(--on-fill);
+  background: transparent;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 420;
+  line-height: 20px;
+}
+body.grok-ui .msg.user .msg-status { color: color-mix(in srgb, var(--on-fill) 70%, transparent); }
+/* 代码块：真源无底、无框、圆角 0（随文字列宽 534.4 = 558.4 − 24）。 */
+body.grok-ui .bb-codeblock {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+/* ===== W6c: connect-apps dialog — Grok 实测 800×666 / radius 14 / 无阴影
+   / 标题 17-500 / 关闭圆钮 28 / chip 高 28。容器形态本轮只到这一层；
+   大卡→40px 紧凑行、13 段分组属功能面重写，另批（见 delta §8-6）。 */
+body.grok-ui #connect-apps-modal .bb-sheet {
+  width: 800px;
+  max-width: min(800px, 92vw);
+  height: 666px;
+  max-height: min(666px, 92vh);
+}
+
+/* ===== W6d: connect-apps content — Grok .ui-dialog inner layout =====
+   Measured 2026-10-25: title at 53/33 with the close pinned 11/11 and the
+   count on the title line; borderless 14px search row + 32px Bot 模板 pill;
+   7 chips h28; 14/500 section headings h34; 2×375 grids (gap 2/8) of 64px
+   cards (padding 12, radius 16) with 40px rows (gap 10), add pill 80×26 r13,
+   已添加 marker 12px ink 56%. */
+body.grok-ui #connect-apps-modal .bb-sheet.ca-dialog {
+  position: relative;
+  padding: 48px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+body.grok-ui .ca-dialog .bb-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+}
+body.grok-ui .ca-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 20px 16px;
+}
+body.grok-ui .ca-top { padding: 0 12px; }
+body.grok-ui .ca-head {
+  position: relative;
+  height: 24px;
+  margin: 0 0 18px;
+}
+body.grok-ui .ca-head .bb-sheet-title {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 24px;
+  letter-spacing: 0;
+}
+/* installed cluster: logo stack + "已连接 N 个" + chevron, 28px tall at the
+   title row's right edge (measured 164×28 r8, pad 4/8/4/4, gap 8) */
+body.grok-ui .ca-connected {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+  font-size: 12px;
+  font-weight: 420;
+  line-height: 16px;
+  cursor: pointer;
+}
+body.grok-ui .ca-connected:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+body.grok-ui .ca-connected[aria-pressed="true"] { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+body.grok-ui .ca-stack { display: inline-flex; align-items: center; }
+body.grok-ui .ca-stack-ic {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--surface);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+}
+body.grok-ui .ca-stack-ic + .ca-stack-ic { margin-left: -6px; }
+body.grok-ui .ca-connected-txt { white-space: nowrap; }
+body.grok-ui .ca-chev { flex: 0 0 12px; color: color-mix(in srgb, var(--ink) 56%, transparent); }
+/* search row: 612.6×32 pill (0.5px ink8, pad 0 8 0 12, gap 6) + 113×32 Bot
+   模板 pill (mark 18 + label + ↗ 16, pad 0 10 0 6), 8px apart */
+body.grok-ui .ca-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+body.grok-ui .ca-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px 0 12px;
+  border: 0.5px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  border-radius: 999px;
+  background: var(--surface);
+}
+body.grok-ui .ca-search-ic {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+}
+body.grok-ui .ca-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 420;
+  line-height: 20px;
+  color: var(--ink);
+}
+body.grok-ui .ca-search-input::placeholder { color: color-mix(in srgb, var(--ink) 48%, transparent); }
+body.grok-ui .ca-template-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px 0 6px;
+  border: 0.5px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 420;
+  line-height: 18px;
+  cursor: pointer;
+}
+body.grok-ui .ca-template-btn:hover { background: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
+body.grok-ui .ca-tpl-mark {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  color: var(--ink);
+}
+body.grok-ui .ca-tpl-go { flex: 0 0 16px; color: color-mix(in srgb, var(--ink) 56%, transparent); }
+body.grok-ui #ca-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+body.grok-ui #ca-sections { margin-top: 20px; }
+body.grok-ui .ca-section { margin: 0 0 24px; }
+body.grok-ui .ca-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  margin: 0 0 8px;
+  padding-right: 4px;
+}
+body.grok-ui .ca-section-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--ink);
+}
+body.grok-ui .ca-section-action {
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+  font-size: 12px;
+  font-weight: 420;
+  line-height: 20px;
+  cursor: pointer;
+}
+body.grok-ui .ca-section-action:hover { color: var(--ink); }
+body.grok-ui .ca-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 8px;
+  margin: 0;
+}
+body.grok-ui .ca-app {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 16px;
+}
+body.grok-ui .ca-app:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+body.grok-ui .ca-app.is-installed > .ca-app-row { cursor: pointer; }
+body.grok-ui .ca-app-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+}
+body.grok-ui .ca-app .ca-icon {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  font-size: 15px;
+  border-radius: 11px;
+  box-shadow: none;
+}
+body.grok-ui .ca-app-main { flex: 1 1 auto; min-width: 0; }
+body.grok-ui .ca-app-name {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.grok-ui .ca-app-sub {
+  font-size: 13px;
+  font-weight: 420;
+  line-height: 18px;
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.grok-ui .ca-add {
+  flex: 0 0 auto;
+  height: 26px;
+  min-width: 80px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 420;
+  cursor: pointer;
+}
+body.grok-ui .ca-add:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+body.grok-ui .ca-add:disabled { cursor: default; opacity: 0.6; }
+body.grok-ui .ca-added {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  height: 20px;
+  line-height: 20px;
+  font-size: 12px;
+  font-weight: 420;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  border-radius: var(--radius-pill);
+}
+body.grok-ui .ca-app-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 0.5px solid color-mix(in srgb, var(--ink) 10%, transparent);
+}
+body.grok-ui .ca-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 12px;
+}
+body.grok-ui .ca-tool-name {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+}
+body.grok-ui .ca-tool-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.grok-ui .ca-tool-btn {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+  font-size: 11px;
+  font-weight: 420;
+  cursor: pointer;
+}
+body.grok-ui .ca-tool-btn.on {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+body.grok-ui .ca-app-foot { display: flex; justify-content: flex-end; margin-top: 2px; }
+body.grok-ui .ca-uninstall {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 420;
+  cursor: pointer;
+}
+body.grok-ui .ca-uninstall:hover { background: var(--danger-bg); }
+body.grok-ui .ca-empty {
+  padding: 24px 0;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  font-size: 13px;
+}
+body.grok-ui .ca-skills-block { margin-top: 0; }
+body.grok-ui .ca-skills-block + .ca-auth { margin-top: 24px; }
+body.grok-ui .ca-skill-group {
+  margin: 8px 0 2px;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  font-size: 12px;
+  font-weight: 420;
+  letter-spacing: 0;
+  text-transform: none;
+}
+body.grok-ui .ca-skill-row {
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+body.grok-ui .ca-skill-row:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+body.grok-ui .ca-skill-code { font-size: 12px; color: var(--ink); }
+body.grok-ui .ca-skill-desc { color: color-mix(in srgb, var(--ink) 56%, transparent); }
+body.grok-ui .ca-auth {
+  margin-top: 14px;
+  color: color-mix(in srgb, var(--ink) 48%, transparent);
+  font-size: 11px;
+  line-height: 16px;
+}
+/* 国内渠道: same section rhythm as the app groups, input rows compressed */
+body.grok-ui .ca-cn { margin-top: 24px; }
+body.grok-ui .ca-cn-hint {
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  font-size: 12px;
+  font-weight: 420;
+}
+body.grok-ui .ca-cn .st-field { margin: 0 0 8px !important; }
+body.grok-ui .ca-cn .st-field-name {
+  display: block;
+  margin: 0 0 6px !important;
+  font-size: 12px !important;
+  font-weight: 420 !important;
+  color: color-mix(in srgb, var(--ink) 68%, transparent) !important;
+}
+body.grok-ui .ca-cn .bb-field,
+body.grok-ui .ca-cn .bb-control {
+  height: 32px;
+  font-size: 13px;
+}
+body.grok-ui .ca-meta {
+  padding: 0 21px 12px;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  font-size: 11px;
+  line-height: 16px;
+}
+body.grok-ui .ca-meta:empty { display: none; }
+
+/* ---- G-28 #12 命令回执（#cmd-toast）------------------------------------
+   控制命令不再进消息流（见 index.html 里 isControlCommand 的说明），但
+   「设置生效了」这件事必须有回执，否则用户会觉得点了没反应。
+   形状取气泡反色：浅色主题深底浅字，暗色主题浅底深字，两种主题共用一套
+   令牌，不再单独配一套颜色。 */
+.cmd-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 92px;
+  transform: translateX(-50%);
+  z-index: 70;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  font-weight: 500;
+  text-align: center;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.16);
+  pointer-events: none;
+  animation: cmdToastIn 0.16s ease-out;
+}
+.cmd-toast[hidden] { display: none; }
+.cmd-toast.warn {
+  background: var(--danger);
+  color: #fff;
+}
+@keyframes cmdToastIn {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}

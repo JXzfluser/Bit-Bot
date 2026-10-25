@@ -41,7 +41,10 @@ const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8"
   ? ok("面板状态单一来源：openBotRail 走 setPanel(\"bot\")，保证 bot-open 与 computer-open 互斥（GP-124）")
   : bad("mutual exclusion missing");
 
-/\[wavegT\("menuBotSettings"\), \(\) => openBotRail\(bot\.id\)\]/.test(html)
+// 菜单项现在是 [label, menuId, fn] 三元组：menuId 写进 data-menu，供门禁稳定寻址
+// （菜单瘦身后不能再靠「第 N 项 / 最后一项」定位）。
+/\[wavegT\("menuBotSettings"\), "settings", \(\) => openBotRail\(bot\.id\)\]/.test(html) &&
+  /b\.dataset\.menu = menuId/.test(html)
   ? ok("Bot 右键菜单有「Bot 设置」入口（复用既有菜单，不新增第二份菜单）")
   : bad("menu entry missing");
 

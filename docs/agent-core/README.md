@@ -1,17 +1,36 @@
 # Agent Core & 多智能体路线图
 
-> 状态：draft · 2026-10-24  
-> 范围：Kernel agent runtime + Host 群 Bot 多智能体；不含 UI 像素对齐、垂直 skills、商店上架。  
-> 证据口径：以当前工作树代码为准；`file:line` 会漂移，引用时以函数名/文件为主。  
-> 一句话：`CM-*` 234/234 与 385 tests 证明“能力合同/产品面”很完整，但不能证明“模型驱动的 agent runtime”或“协作多智能体”。
+> 状态：draft · 2026-10-25（按最新工作树复核）<br>
+> 范围：Kernel agent runtime + Host 群 Bot 多智能体；不含 UI 像素对齐、垂直 skills、商店上架。<br>
+> 证据口径：以当前工作树代码为准；`file:line` 会漂移，引用时以函数名/文件为主。<br>
+> 一句话：`CM-*` 234/234 与 385 tests 证明“能力合同/产品面”很完整；Agent Loop 已接到产品 Chat，但生产 provider live 与 AR 升裁未完成；群 Bot 仍是“并行多 Bot 应答”。
 
 ## 0. TL;DR
 
 - **已经有的**：Turn 生命周期、Host FFI、审批门、per-bot persona/session、群 Bot 并行扇出、部分聚合、会话隔离、记忆分槽、Routines、Skills、有限 stdio MCP、桌面打包。
-- **真正缺的**：模型工具循环、tool schema/`tool_calls`、观察回注、会话上下文、规划/反思、群共享上下文、委派/handoff 执行、orchestrator/汇总、团队预算、真实 MCP client、评测。
-- **当前定位**：Agent core ≈ **L1**（预定义单步工具）；Group bot ≈ **并行多 Bot 应答**，不是协作多智能体；主流 agent ≈ **L3–L4**（多步工具/规划/长任务）。
-- **优先级**：`P0 安全` → `P1 群聊真实性 + Agent Loop MVP` → `P1 上下文/记忆` → `P1 群编排` → `P2 工具/MCP/评测` → `P3 发布/运维`。
+- **新接上的**：默认 Desktop/cmd Chat 走 Kernel `AgentLoop::run`；Host 只做 `llm_chat` / `exec_tool` / `request_approval` / `deliver`；Read/Shell 由模型选，工具观察回注，64 步上限，GUI 可取消。
+- **仍未关闭**：通用 ToolSpec/工具目录、会话上下文与压缩、memory 注入、规划/反思、群共享任务板/跨成员中间状态、群路由真实性、handoff 执行、orchestrator/汇总、团队预算、真实 MCP client、agent eval。
+- **安全**：P0 入站认证、默认 loopback、审批不可伪造、shell 沙箱、webhook 签名、body limit 已落；P0-3 仍是内核 U，按现有升裁口径 **AR-15 未关**。
+- **当前定位**：Agent core 在默认 Chat 路径上到 **L2**（模型选工具 + 观察回注）；没有规划/长任务，未到 L3。Group bot 仍是 **并行多 Bot 应答**，不是协作多智能体。
+- **优先级**：`P0 安全收口` → `P1 群聊真实性 + Agent Loop 产品级验收` → `P1 上下文/记忆` → `P1 群编排` → `P2 工具/MCP/评测` → `P3 发布/运维`。
 - **两条主线并行**：Kernel 负责 loop/tool/context；Host 负责 group/orchestrator/security。不要合成一个巨型 PR。
+
+## 0.1 最新核对（2026-10-25）
+
+| 门 | 最新结果 | 结论 |
+|---|---|---|
+| `bash scripts/prove_agent_loop_product_wire.sh` | `pass=49 fail=0`；`moon test -p runtime` 54/54；parser 3/3 | 默认 Desktop/cmd Chat 进 Kernel AgentLoop；Read/Shell、观察回注、max steps、取消、审批边界已立 |
+| `bash scripts/prove_agent_loop_electron_midrun.sh` | `pass=62 fail=0` | 真实 Electron composer mid-run 投影 `AgentLoop::run`；取消停在内核 `Cancelled` |
+| `bash scripts/prove_host_approval_ui.sh` | `pass=69 fail=0` | 审批卡 Allow/Deny、runAllowed 一次性、`args.approved` 不可伪造 |
+| `bash scripts/prove_p0_inbound_security.sh` | `pass=8 fail=0`；host-checks 11/0 | 401/401/413、默认 loopback、入站不固定 `approved:true`、shell 最小 env |
+| `bash scripts/prove_sandbox_secrets.sh` | `pass=8 fail=0` | SK1–SK8；cwd、env、artifact、scrub、timeout/buffer |
+| `bash scripts/prove_production_provider.sh` | `NEEDS_LIVE`（exit 2）；PP6 子进程 exit 2/3 | 无生产密钥，PP1–PP4 未跑 live；不抄成 PASS |
+| `node scripts/prove_agent_loop_a7_a8.js` | `pass=23 fail=0` | 流式/非流式 `tool_calls` 解析与拆分保留 |
+| `node scripts/prove_room_context.js` | `pass=15 fail=0` | AR-07：最近转录、预算、脱敏、失败只带状态、DM null |
+| `node scripts/prove_room_discretion.js` | `pass=15 fail=0` | AR-08：YES/NO 解析、prompt、接线、打包、skipped/fail-open UI |
+| `node scripts/e2e_desktop_room_orchestration.mjs` | `PASS=53 FAIL=0 SKIP=0` | 真 Electron + 真内核；第二轮 provider 载荷含上一轮群转录 |
+
+> 本轮审计发现一个 macOS 真实路径问题：`/var` 是 `/private/var` 的符号链接，旧 `cwdAllowed` 先做词法前缀检查，导致临时根下的合法 cwd 被误拒。已改为只比较 canonical path；P0 host-checks 从 9/2 恢复到 11/0，SK 从 2/7 恢复到 8/0。产品仓库在 `/Users` 下不受影响，但这是跨平台正确性修复。
 
 ## 1. 口径先钉住
 
@@ -20,7 +39,7 @@
 | 层级 | 定义 | 当前 BitBot |
 |---|---|---|
 | 并行多 Bot | 同一个任务广播给多个独立 Bot，各自回答，最后聚合 | **已实现**，真实并行、真隔离、真部分失败 |
-| 协作多 Agent | 有分工、共享上下文、互相消息、handoff、汇总/复核 | **只有壳**：handoff 写 inbox，不执行；无共享上下文；无汇总者 |
+| 协作多 Agent | 有分工、共享上下文、互相消息、handoff、汇总/复核 | **部分**：最近 N 条群转录已进 responder prompt；handoff 仍只写 inbox，不执行；无共享任务板/汇总者 |
 | 多 Agent Runtime | 调度、隔离、预算、取消、工具循环、追踪、评测 | **未实现**：内核无 `Orchestrate`，Host 是产品层编排 |
 
 ### 1.2 Agent 自主性分级
@@ -28,21 +47,21 @@
 | 级别 | 能力 | 当前 |
 |---|---|---|
 | L0 | 单轮聊天，模型只回文本 | 已超过 |
-| L1 | 预定义单步工具/效果，模型不选工具 | **当前 agent core** |
-| L2 | 模型选工具，工具结果回注，可多步 | 目标 MVP |
+| L1 | 预定义单步工具/效果，模型不选工具 | 旧 Chat / 非 Chat 路径仍可能在此 |
+| L2 | 模型选工具，工具结果回注，可多步 | **默认 Chat 已到**；只 Read/Shell，64 步，无规划 |
 | L3 | 多步循环 + 规划 + 失败恢复 | 目标 V1 |
 | L4 | 长任务 + 记忆 + 多 Agent + 评测 | 目标 V2 |
 
-> 结论：BitBot 的产品面/合同面接近“全量”，agent runtime 核心仍在 L1。`CM-*` PASS 不能当作 agent 能力评测。
+> 结论：默认 Chat 的 agent runtime 已从 L1 走到 **L2**，但只覆盖 `Read`/`Shell`、没有会话历史/规划；`CM-*` PASS 仍不能当作 agent 能力评测。WP/EG 绿也不等于 AR-01/02/03 已升裁：生产 provider live 未跑，AR-15 仍开。
 
 ### 1.3 为什么群 Bot 现在还不算“协作多智能体”
 
 1. **同一任务广播**：`orchestrateRoom` 给每个 responder 的 `task` 是同一个，没有拆解/分工。
-2. **互相看不见**：`buildRoomContext` 只带群名、成员、被 @ 的人、自己；没有最近转录，也没有其他 Bot 的回复。
+2. **只能看见已落盘的历史**：`buildRoomContext` 已带最近 N 条 `user` / `bot_reply` / `final_report`，失败只带“本轮未成功”状态；但同一轮并行 responder 互相看不到本轮刚生成的回复，也没有共享任务板/中间状态。
 3. **没有汇总者**：`final_report` 是把每个 section 拼起来，不是 lead agent 综合判断后的答案。
-4. **无 @ 实际全员**：`roomTurn` 设 `responder_policy="bot_discretion"`，但 `orchestrateRoom` 仍对全部 responders 扇出；`mentioned_names` 也等于全部 responders。
+4. **无 @ 的选择是独立判断，不是团队协商**：`roomTurn` 支持 `@A` / `@A @B` 定向；无 @ 时 `responder_policy="bot_discretion"` 现在由每个候选 Bot 独立跑 YES/NO 回合，只扇出选中者（`mentioned_names=[]`），全员弃权落 `skipped`。但每个 Bot 只看任务+已有转录，没有互相提名/分工；selector 失败还走 fail-open。
 5. **handoff 不执行**：`handoffTask` 只写群转录 + 目标 inbox，不触发目标 Bot 回合。
-6. **每个 responder 仍是单轮聊天**：`runRoomResponderTurn` 最终是一次 `llm_chat`，没有工具循环。
+6. **responder 可走 AgentLoop，但群编排仍是 Host 单轮扇出**：单 Bot 若 intent=Chat 会进内核 `AgentLoop::run`，但群回合没有共享任务板/团队预算/本轮实时跨成员观察（只有上一轮及更早的转录）；`approved:false` 也意味着群内 Shell 不能绕过审批。
 7. **群 composer 绕过内核**：主路径是 `rooms.orchestrate`；内核 `Orchestrate` / `final_report` 没有做。文档自己已承认这是 Host 产品路径。
 
 ## 2. 现有能力清单
@@ -51,28 +70,34 @@
 
 | 能力 | 证据 | 边界 |
 |---|---|---|
-| Turn 生命周期 | `runtime/turn.mbt`；`cmd/desktop_turn/turn_json.mbt` | 单轮回注，不是 loop |
-| Host effect 执行 | `hosts/shared/host_ffi.js`；`hosts/shared/run_moon_turn.js` | 每轮 spawn 一次 `moon` |
-| 审批门 | `runtime` ApprovalGate；Desktop Approval UI | 存在 fixed `approved:true` 绕过，见 P0 |
+| Turn 生命周期 | `runtime/turn.mbt`；`runtime/agent_loop.mbt`；`cmd/desktop_turn/agent_loop_product_native.mbt` | `open_turn → AgentLoop::run`；64 步上限；取消/最大步数可停 |
+| Host effect 执行 | `hosts/shared/host_ffi.js`；`hosts/shared/run_moon_turn.js` | 一次回合 spawn `moon`；FFI 逐行 pump；Host 只做四个单次操作 |
+| 审批门 | `runtime` ApprovalGate；Desktop `approvals:runAllowed` | 入站不再固定 `approved:true`；审批卡授权一次性；P0-3 仍 U |
 | per-bot persona | `host_ffi.js llmSystemPrompt(botId)` | 只注入名字/职责/简介 |
 | per-bot session | `room-<roomId>-<botId>` | 群回合不写 DM |
 | 群 Bot 并行 | `product_surface.js orchestrateRoom` + `Promise.allSettled` | 最多 6，per-responder timeout |
+| 群定向路由 | `product_surface.js roomTurn` + `main.js selectRoomResponders` | `@A` / `@A @B` 真定向；`@everyone` 全员；无 @ 的 responders 是候选池，逐 Bot YES/NO 选择 |
 | 部分失败聚合 | `final_report.partial` / `returned/total` | 诚实，但不综合 |
 | 群转录隔离/脱敏 | `product_surface.js` room transcript | 有长度/字符清洗 |
+| 群共享转录 | `room_context.js buildRoomContext`；`host_ffi.js llmRoomContextBlock` | 最近 N 条 `user`/`bot_reply`/`final_report`；失败只带状态；预算/截断/脱敏；同轮并行不可见 |
 | 记忆分槽 | `host_ffi.js memorySeedArgs(botId)` | kernel seed；provider prompt 不带 memory |
 | Routines | `agents/routines` + Host durable store | 非长驻 daemon |
 | Skills | `skills/` catalog + load | 模型不能自主选 |
 | 有限 MCP | `mcp_discover` / `mcp_call` + `host_h4_mcp_stdio.py` | 测试 server，不是通用 client |
 | Subagent worker | `host_ffi.js runWorkerMoonTurn` | 一次性，prompt 截 800，不回注工具结果 |
 | 桌面打包 | `scripts/pack-desktop.sh` / electron-builder | 内核未进 bundle，见发布项 |
+| 模型工具调用 | `host_ffi.js` SSE/非 SSE 保留 `tool_calls`；A7/A8 23/0 | 仅 Read/Shell；通用工具目录未做 |
+| observation 回注 | `runtime/agent_loop.mbt`：tool 结果 fence 后进下一次 `llm_chat` | 只在本回合内；不持久化 |
+| 群 responder 的 AgentLoop | `runRoomResponderTurn → runner.runTurn` | intent=Chat 时可走内核 loop；最近转录已进 prompt；群预算/任务板仍不共享 |
 
-### 2.2 只有合同/内存态的能力
+### 2.2 已接线但未升裁 / 仍是壳的能力
 
 | 能力 | 现状 | 缺什么 |
 |---|---|---|
-| `AgentLoop` | `runtime/types.mbt` 注释即 “Skeleton”；`boot` 只拼字符串；`max_steps=64` 未用 | 真正的 model→tool→observe→repeat |
-| `ToolRegistry` | 仅 `bitbot.mbt:21` 和测试引用 | 注册、发现、权限、执行接线 |
-| `ToolCallTrace` | `runtime/transcript.mbt` 审计记录 | 不是模型 tool call |
+| `AgentLoop` | 产品默认 Chat 已走 `runtime/agent_loop.mbt`；Read/Shell、observation、64 步、取消、审批边界已通 | 无会话历史/压缩、无规划/反思、通用 ToolRegistry 弱 |
+| `ToolRegistry` | `product_tool_registry` 注册 Read/Shell；boot registry 仍把 schema 写成 `{}` | 注册、发现、权限、通用 schema、执行接线 |
+| `ToolCallTrace` | `runtime/transcript.mbt` 审计记录 | 持久化 `AgentStep` trace：model/tool/args/result/duration/error |
+| `RoomOrchestrator` | Host `orchestrateRoom` 可扇出/聚合 | 无拆解/共享任务板/lead 综合（最近转录已接）；Kernel `Orchestrate` 未做 |
 | `spawn_parallel_executors` | `agents/task/parallel_spawn.mbt` 内存 handle | 无真实调度/隔离 |
 | Cloud lifecycle | `agents/cloud/lifecycle.mbt` fake bc | 无真实远端生命周期 |
 | Teammates | `agents/teammates/create_agent.mbt` 内存 | 无真实 agent runtime |
@@ -80,25 +105,25 @@
 
 ### 2.3 关键缺口（AR = Agent Runtime）
 
-| ID | 缺口 | 影响 | 优先级 |
-|---|---|---|---|
-| AR-01 | 无模型驱动 tool loop | 不能多步完成任务，只能单轮回答/单次效果 | P1 |
-| AR-02 | ToolSpec 弱，`tool_calls` 被忽略 | 模型无法选工具；schema 恒 `{}` | P1 |
-| AR-03 | 工具结果不回注 | 模型看不到执行结果，无法纠错/继续 | P1 |
-| AR-04 | 无会话历史/上下文预算 | 多轮失忆；长 prompt 靠 argv 硬塞 | P1 |
-| AR-05 | memory 不注入 provider prompt | 记忆槽存在但模型用不上 | P2 |
-| AR-06 | 无规划/反思/任务分解 | 复杂任务无计划，失败不恢复 | P2 |
-| AR-07 | 群无共享上下文 | Bot 看不到彼此/历史，无法接话 | P1 |
-| AR-08 | 群路由语义不真实 | 无 @ 全员；`mentioned_names` 全量 | P1 |
-| AR-09 | handoff 不执行 | 交接单可见，目标 Bot 不行动 | P1 |
-| AR-10 | 无 orchestrator/synthesis | `final_report` 是拼接，不是团队答案 | P1 |
-| AR-11 | 无共享工作区/task board | 多 Agent 无法围绕同一组文件/任务协作 | P2 |
-| AR-12 | 无团队预算/取消/loop guard | 成本、死循环、超时不可控 | P1 |
-| AR-13 | 无真实 MCP client | 工具生态不可扩展 | P2 |
-| AR-14 | 无 trace/eval | 无法证明 agent 变好/没退化 | P2 |
-| AR-15 | 安全 P0 | 远程 RCE/审批绕过/密钥泄漏 | **P0** |
-| AR-16 | 打包/运维缺口 | 干净机器装不上/数据写 bundle | P3 |
-| AR-17 | Kernel/Host 双路径漂移 | 两套群逻辑，合同与产品不一致 | P1 |
+| ID | 缺口 | 当前状态 | 证据/口径 | 优先级 |
+|---|---|---|---|---|
+| AR-01 | 模型驱动 tool loop | **部分/门禁绿，未升裁** | `AgentLoop::run` 已跑 model→tool→observe→repeat；WP 49/0；PP live 未跑 | P1 |
+| AR-02 | ToolSpec 弱，`tool_calls` 被忽略 | **部分** | `tool_calls` 流式/非流式都保留；Read/Shell 有 JSON schema；通用 ToolRegistry 仍弱 | P1 |
+| AR-03 | 工具结果不回注 | **部分/已实现** | `agent_loop.mbt` 把结果 fence 后回注下一轮；不跨回合持久化 | P1 |
+| AR-04 | 无会话历史/上下文预算 | **未做** | AgentLoop 只从当前 user 文本起步；无 transcript/压缩 | P1 |
+| AR-05 | memory 不注入 provider prompt | **未做** | 记忆仍是 kernel seed，provider prompt 不可见 | P2 |
+| AR-06 | 无规划/反思/任务分解 | **未做** | 只有 ReAct 式 think/call/observe，无 plan/todo/reflection | P2 |
+| AR-07 | 群无共享上下文 | **部分/已接** | `buildRoomContext` 带最近 N 条转录；`prove_room_context` 15/0；同轮并行仍互不可见、无任务板 | P1 |
+| AR-08 | 群路由语义不真实 | **已实现** | `@` 真定向、`@everyone` 全员、无 @ 逐 Bot YES/NO 真选择；全员弃权落 `skipped`；selector 失败 fail-open 并标 `fail_open`，UI 明示 | P1 |
+| AR-09 | handoff 不执行 | **未做** | `handoffTask` 仍只写 transcript + inbox | P1 |
+| AR-10 | 无 orchestrator/synthesis | **未做** | `final_report` 仍是 section 拼接 | P1 |
+| AR-11 | 无共享工作区/task board | **未做** | 无团队任务板/产物状态 | P2 |
+| AR-12 | 无团队预算/取消/loop guard | **部分** | 单 loop 有 64 步/取消；群有 6 人/timeout；无 token/成本预算 | P1 |
+| AR-13 | 无真实 MCP client | **部分/未做** | 只有有限 stdio 测试 server | P2 |
+| AR-14 | 无 trace/eval | **部分** | 有 QA gates/`BITBOT_LOOP` trace；无 agent eval suite | P2 |
+| AR-15 | 安全 P0 | **部分/未关** | P0 入站/auth/sandbox/SK 绿；P0-3 仍 U；文档明确不关 AR-15 | **P0** |
+| AR-16 | 打包/运维缺口 | **未做** | 内核未进 bundle；数据目录/签名未收口 | P3 |
+| AR-17 | Kernel/Host 双路径漂移 | **部分** | Chat 已单一路径；群编排仍 Host 产品路径 | P1 |
 
 ## 3. 与主流对比
 
@@ -106,17 +131,17 @@
 
 | 维度 | 主流 agent | BitBot 现在 | 差距 |
 |---|---|---|---|
-| 自主性 | 计划→执行→观察→继续 | 单轮回答/单次效果 | 无 loop |
-| 工具选择 | 模型从 schema 选 | 预定义 intent/effect | 无 `tool_calls` |
-| 观察回注 | 工具结果进入下一轮 | 结果只给用户/审计 | 模型看不到 |
-| 上下文 | 会话历史 + 压缩 | 当前 user + 少量系统信息 | 无历史/压缩 |
-| 记忆 | 自动检索/写入 | 显式短语 + 分槽 | 不自动、不注入 |
+| 自主性 | 计划→执行→观察→继续 | 默认 Chat 已 think→call→observe→continue；非 Chat 仍单轮 | 无 plan/cross-turn 状态 |
+| 工具选择 | 模型从 schema 选 | 模型从 Read/Shell schema 选 | 工具目录窄，通用 ToolRegistry 未做 |
+| 观察回注 | 工具结果进入下一轮 | 结果 fence 后回注本回合下一轮 | 不持久化，不跨回合 |
+| 上下文 | 会话历史 + 压缩 | 当前 user + persona + 最近群转录（仅群） | 无 DM 历史/压缩 |
+| 记忆 | 自动检索/写入 | 显式短语 + 分槽 | 不自动、不注入 provider |
 | 规划 | plan/reflection/todo | 无 | 复杂任务弱 |
-| 多 Agent | 角色/委派/共享状态 | 并行 persona 应答 | 无协作 |
+| 多 Agent | 角色/委派/共享状态 | 并行 persona 应答；定向 @ 已真；最近转录已接 | 无拆解/共享任务板/综合 |
 | 交接 | 目标 agent 真执行 | 写 inbox | 不执行 |
-| 共享工作区 | 文件/任务板/产物 | 群 transcript 有，工作区无 | 无团队状态 |
-| 安全 | 认证/沙箱/审批 | 有审批但可绕过；LAN 暴露 | P0 |
-| 可观测 | trace/eval/回放 | 日志/验收脚本 | 无 agent eval |
+| 共享工作区 | 文件/任务板/产物 | 群 transcript/最近上下文有，工作区/任务板无 | 无团队状态 |
+| 安全 | 认证/沙箱/审批 | P0 入站/auth/sandbox 已硬化；P0-3 U | AR-15 未关 |
+| 可观测 | trace/eval/回放 | QA gates + `BITBOT_LOOP` trace | 无 agent eval suite |
 | 扩展 | 通用 MCP/插件 | 有限 stdio MCP | 生态弱 |
 | 发布 | 签名/自动更新 | 包内缺内核/硬编码路径 | 不可干净安装 |
 
@@ -132,22 +157,38 @@
 
 ### 4.2 优先级总表
 
-| 优先级 | 事项 | 为什么现在 | 规模 | 依赖 |
+| 优先级 | 事项 | 当前状态 | 规模 | 依赖 |
 |---|---|---|---|---|
-| **P0** | 远程 turn 认证、默认 loopback、去掉 fixed `approved:true`、shell 沙箱、webhook 签名、body limit、env 清洗 | 未认证 `/v1/turn` + `*:18765` + `/bin/bash -lc` = 远程 RCE | S | 无 |
-| **P1** | 群聊真实性：无 @ 语义、mention 名单、最近转录、handoff 真执行 | 当前产品文案与行为不一致；群聊“看起来像团队”但实际不是 | M | 无 |
-| **P1** | Agent Loop MVP：ToolSpec、`tool_calls`、host 执行、observation 回注、max steps、approval、trace | 没有它，所有 agent 能力都是单轮壳 | L | 安全 P0 建议先合 |
-| **P1** | 上下文与记忆：transcript、token budget、压缩、memory 注入、resume | 多轮/长任务的基础 | L | Agent Loop |
-| **P1** | 群编排：orchestrator、任务分解、分工、共享 room state、synthesis、预算/取消 | 从“并行多 Bot”变成“协作多 Agent” | L | Agent Loop + 上下文 |
-| **P2** | 共享工作区/task board | 团队围绕同一组产物协作 | M | 群编排 |
-| **P2** | 真实 MCP client + 工具权限 | 扩展生态；当前只是测试 server | L | Tool contract |
-| **P2** | Trace/Eval/回放 | 证明变好、防回归 | M | Loop + 群编排 |
-| **P2** | 规划/反思 | 复杂任务质量 | M | Loop + 上下文 |
-| **P3** | 打包/签名/更新/数据目录 | 干净机器可安装 | M | 安全/发布 |
+| **P0** | 远程 turn 认证、默认 loopback、去掉 fixed `approved:true`、shell 沙箱、webhook 签名、body limit、env 清洗 | **Host 面完成**；P0-3 仍内核 U，AR-15 未关 | S | 无 |
+| **P1** | 群聊真实性：无 @ 语义、mention 名单、最近转录、handoff 真执行 | **部分**：定向 @ 已真；无 @ 已真选择；最近转录已接；handoff 未做 | M | 无 |
+| **P1** | Agent Loop MVP：ToolSpec、`tool_calls`、host 执行、observation 回注、max steps、approval、trace | **默认 Chat 已接**；PP live、通用工具、AR 升裁未完成 | L | 安全 P0 建议先合 |
+| **P1** | 上下文与记忆：transcript、token budget、压缩、memory 注入、resume | **未开始**；AgentLoop 仍只带当前 user | L | Agent Loop |
+| **P1** | 群编排：orchestrator、任务分解、分工、共享 room state、synthesis、预算/取消 | **未开始**；当前是 Host 并行扇出 + 拼接 | L | Agent Loop + 上下文 |
+| **P2** | 共享工作区/task board | **未开始** | M | 群编排 |
+| **P2** | 真实 MCP client + 工具权限 | **部分/未做**；当前是有限 stdio 测试 server | L | Tool contract |
+| **P2** | Trace/Eval/回放 | **部分**：有 QA gates/loop trace，无 eval suite | M | Loop + 群编排 |
+| **P2** | 规划/反思 | **未开始** | M | Loop + 上下文 |
+| **P3** | 打包/签名/更新/数据目录 | **未开始**；内核未进 bundle | M | 安全/发布 |
 
 ## 5. 波次计划
 
+> 状态总览（2026-10-25）
+
+| Wave | 状态 | 证据/口径 |
+|---|---|---|
+| 0 安全止血 | **Host 面完成；AR-15 未关** | P0 8/0、host 11/0、SK 8/0；P0-3 仍 U |
+| 1 群聊真实性 | **部分** | 定向 @ 已真；无 @ 逐 Bot YES/NO 真选择；最近 N 条转录已进 responder prompt；handoff 未做 |
+| 2 Agent Loop MVP | **默认 Chat 已接；未升裁** | WP 49/0、EG 62/0、AU 69/0、A7/A8 23/0；PP `NEEDS_LIVE` |
+| 3 上下文与记忆 | **未开始** | 无 transcript/token budget/memory 注入 |
+| 4 真群编排 | **未开始** | 仍是 Host 并行扇出 + section 拼接 |
+| 5 工具/MCP | **部分** | Read/Shell 已接；通用 MCP 未做 |
+| 6 观测/评测 | **部分** | QA gates/loop trace；无 eval suite |
+| 7 发布/运维 | **未开始** | 内核未进 bundle |
+
 ### Wave 0 — 止血（P0）
+
+> 当前状态：Host 面已完成并有回归；P0-3 仍是内核 U，按现有口径不关 AR-15。
+
 
 **目标**：在继续做 agent 之前，先把远程攻击面关掉。
 
@@ -173,21 +214,23 @@
 **目标**：先让群聊“说真话”，再谈编排。
 
 **改动**
-- 无 @ 的策略二选一：明确“全员响应”或实现真正的 `bot_discretion`；不要标签一套、行为一套。
-- `mentioned_names` 只传真正被 @ 的人；`unknown_mentions` 保持可见。
-- `buildRoomContext` 增加最近 N 条转录摘要（有预算、脱敏、无密钥）。
+- **已接**：无 @ 的 `bot_discretion` 逐 Bot 跑 YES/NO，只扇出选中者；全员弃权落 `skipped`；失败 fail-open 且留 `fail_open` 标记。
+- `mentioned_names` 只传真正被 @ 的人；无 @ 时为 `[]`；`unknown_mentions` 保持可见。
+- **已接**：`buildRoomContext` 增加最近 N 条转录（有预算、脱敏、无密钥；失败只带状态）。
 - `handoffTask` 触发目标 Bot 一轮；失败要可见，不能只写 inbox。
 - 群 transcript 记录 handoff 请求 + 目标回复；部分失败继续诚实。
 - 清理旧 `gp-room-send` 与主 composer 的双路径，或明确 legacy 标记。
 
 **验收**
 - `@A` 只跑 A；`@everyone` 跑全员；无 @ 行为与 UI 文案一致。
-- Bot 能引用上一条群消息；handoff 后目标 Bot 真的产出。
+- Bot 能引用上一轮群消息（同一轮并行 responder 之间仍不保证）；handoff 后目标 Bot 真的产出。
 - 群内不出现“已交接但没人执行”。
 
 **非目标**：不在这一波做 lead agent / 任务分解。
 
 ### Wave 2 — Agent Loop MVP（P1）
+
+> 当前状态：默认 Desktop/cmd Chat 已接 `AgentLoop::run`，WP/EG/AU 门禁绿；生产 provider live 未跑，AR-01/02/03 未升裁，不宣称 MVP。
 
 **目标**：让模型真的能“选工具 → 执行 → 看结果 → 继续”。
 
@@ -299,42 +342,44 @@
 
 ## 6. 文档清单
 
-> 这是“文档清单 + 优先级”，不是要求一次写完全部。P0/P1 文档先落，P2/P3 随实现补。  
-> 新建文档先用 backtick 标记，避免未创建文件的死链。
+> 这是“文档清单 + 优先级”，不是要求一次写完全部。P0/P1 文档先落，P2/P3 随实现补。<br>
+> 新建文档先用 backtick 标记，避免未创建文件的死链。<br>
+> 状态按 2026-10-25 工作树核对；“部分”通常表示内容已有但分散，或代码已实现而文档未合并。
 
-| ID | 文档 | 类型 | 现状 | 优先级 | 动作 | 必须回答 |
+| ID | 文档 | 类型 | 状态 | 动作 | 优先级 | 必须回答 |
 |---|---|---|---|---|---|---|
-| D01 | `docs/agent-core/README.md` | explanation | 本文 | P0 | 已建 | 现状/缺口/优先级/波次/文档索引 |
-| D02 | `docs/agent-core/01-agent-loop.md` | reference | 未建 | P1 | 新建 | 状态机、tool loop、max steps、取消、错误、审批、trace |
-| D03 | `docs/agent-core/02-tool-calling.md` | reference | 未建 | P1 | 新建 | ToolSpec schema、`tool_calls`、observation、untrusted、错误模型 |
-| D04 | `docs/agent-core/03-context-and-memory.md` | reference | 未建 | P1 | 新建 | transcript、token budget、压缩、memory 注入、隐私、resume |
-| D05 | `docs/agent-core/04-multi-agent.md` | reference | 未建 | P1 | 新建 | 角色、路由、共享上下文、handoff、orchestrator、synthesis、预算 |
-| D06 | `docs/agent-core/05-security.md` | reference | 已建 | **P0** | 已建 | 威胁模型、认证、bind、沙箱、审批、secret、webhook、CSRF |
-| D07 | `docs/agent-core/06-observability-eval.md` | reference | 未建 | P2 | 新建 | trace、metrics、eval 场景、CI 门槛、回放 |
-| D08 | `docs/agent-core/07-release-ops.md` | reference | 未建 | P3 | 新建 | bundle、data dir、签名、更新、单实例、CSP、回滚 |
-| D09 | `docs/agent-core/08-acceptance.md` | reference | 未建 | P1 | 新建 | 每个 AR 的验收用例/命令/期望 |
-| D10 | `docs/04-interface-contracts.md` | reference | 已有 | P1 | 更新 | `ToolSpec`/`ToolCall`/`ToolResult`/`AgentStep`/`RoomPlan` |
-| D11 | `docs/05-runtime-turn-lifecycle.md` | explanation | 已有 | P1 | 更新 | 单轮 → loop；observation 回注；取消/审批边界 |
-| D12 | `docs/02-module-map.md` | reference | 已有 | P2 | 更新 | 新模块（agent loop/context/multiagent）边界 |
-| D13 | `docs/ROADMAP.md` | explanation | 已有 | P1 | 已更新 | 增加 M8 Agent Core / M9 Multi-Agent |
-| D14 | `docs/capability-matrix.md` | reference | 已有 | P1 | 更新 | 注明 `CM-* PASS ≠ AR-*`；不要混用口径 |
-| D15 | `docs/qa/acceptance-plan.md` | reference | 已有 | P1 | 更新 | agent-core 验收计划 |
-| D16 | `docs/qa/gaps.md` | reference | 已有 | P1 | 实现后更新 | AR residual / 证据 / 升裁 |
-| D17 | `docs/design/desktop-target/report.md` | explanation | 已有 | P1 | 更新 | §8 加本路线图链接；保持 Host 路径口径 |
-| D18 | `docs/host-integration-interface-gaps.md` | reference | 已有 | P2 | 更新 | 真实 MCP/FFI 的剩余缺口 |
-| D19 | `docs/grok-desktop-parity/gaps.md` | reference | 已有 | P2 | 更新 | 记忆自动抽取/上下文残留 |
-| D20 | `docs/adr/0006-agent-loop-and-tool-calling.md` | ADR | 未建 | P1 | 新建 | 为什么 loop 在 Kernel、执行在 Host |
-| D21 | `docs/adr/0007-group-orchestrator-and-handoff.md` | ADR | 未建 | P1 | 新建 | orchestrator 归属、handoff 执行语义、预算 |
-| D22 | `docs/adr/0008-remote-turn-auth-and-sandbox.md` | ADR | 已建 | **P0** | 已建 | `/v1/turn` 认证、bind、shell 沙箱、审批不可伪造 |
-| D23 | `docs/adr/0009-kernel-host-single-path.md` | ADR | 未建 | P1 | 新建 | 群 composer 单一路径；Kernel 合同 vs Host 产品路径 |
+| D01 | `docs/agent-core/README.md` | explanation | **已建/已更新** | 维护 | P0 | 现状/缺口/优先级/波次/文档索引 |
+| D02 | `docs/agent-core/01-agent-loop.md` | reference | **部分**：拆在 `01-agent-loop-product-path.md`、`...production-provider.md`、`...electron-midrun.md` | 合并/补状态机总览 | P1 | 状态机、tool loop、max steps、取消、错误、审批、trace |
+| D03 | `docs/agent-core/02-tool-calling.md` | reference | **部分**：schema 在代码，无契约文档 | 新建 | P1 | ToolSpec schema、`tool_calls`、observation、untrusted、错误模型 |
+| D04 | `docs/agent-core/03-context-and-memory.md` | reference | **未建** | 新建 | P1 | transcript、token budget、压缩、memory 注入、隐私、resume |
+| D05 | `docs/agent-core/04-multi-agent.md` | reference | **未建** | 新建 | P1 | 角色、路由、共享上下文、handoff、orchestrator、synthesis、预算 |
+| D06 | `docs/agent-core/05-security.md` | reference | **已建**（+2 子文档） | 随 P0-3 补 | **P0** | 威胁模型、认证、bind、沙箱、审批、secret、webhook、CSRF |
+| D07 | `docs/agent-core/06-observability-eval.md` | reference | **部分**：QA gates / `BITBOT_LOOP` trace | 新建汇总 | P2 | trace、metrics、eval 场景、CI 门槛、回放 |
+| D08 | `docs/agent-core/07-release-ops.md` | reference | **未建** | 新建 | P3 | bundle、data dir、签名、更新、单实例、CSP、回滚 |
+| D09 | `docs/agent-core/08-acceptance.md` | reference | **部分**：WP/EG/PP/AU/SK/P0 gates 已有 | 合并为统一 AR 验收 | P1 | 每个 AR 的验收用例/命令/期望 |
+| D10 | `docs/04-interface-contracts.md` | reference | **已有/需更新** | 补 AgentLoop 类型 | P1 | `ToolSpec`/`ToolCall`/`ToolResult`/`AgentStep`/`RoomPlan` |
+| D11 | `docs/05-runtime-turn-lifecycle.md` | explanation | **部分**：已补 AgentLoop 主路径 | 补取消/审批细节 | P1 | 单轮 → loop；observation 回注；取消/审批边界 |
+| D12 | `docs/02-module-map.md` | reference | **已有/需更新** | 补新模块边界 | P2 | 新模块（agent loop/context/multiagent）边界 |
+| D13 | `docs/ROADMAP.md` | explanation | **已更新** | 维护 | P1 | 增加 M8 Agent Core / M9 Multi-Agent |
+| D14 | `docs/capability-matrix.md` | reference | **已有/需更新** | 补 CM≠AR 口径（不改矩阵，AU 会校验） | P1 | 注明 `CM-* PASS ≠ AR-*`；不要混用口径 |
+| D15 | `docs/qa/acceptance-plan.md` | reference | **已有/需更新** | 补 agent-core 验收 | P1 | agent-core 验收计划 |
+| D16 | `docs/qa/gaps.md` | reference | **已有/需更新** | 补 AR residual | P1 | AR residual / 证据 / 升裁 |
+| D17 | `docs/design/desktop-target/report.md` | explanation | **部分**：§8.7 已加链接 | 维护 | P1 | §8 加本路线图链接；保持 Host 路径口径 |
+| D18 | `docs/host-integration-interface-gaps.md` | reference | **已有/需更新** | 补 MCP residual | P2 | 真实 MCP/FFI 的剩余缺口 |
+| D19 | `docs/grok-desktop-parity/gaps.md` | reference | **已有/需更新** | 补上下文/记忆 residual | P2 | 记忆自动抽取/上下文残留 |
+| D20 | `docs/adr/0006-agent-loop-and-tool-calling.md` | ADR | **未建**；边界暂由 D02 承担 | 新建/可选合并 | P1 | 为什么 loop 在 Kernel、执行在 Host |
+| D21 | `docs/adr/0007-group-orchestrator-and-handoff.md` | ADR | **未建** | 新建 | P1 | orchestrator 归属、handoff 执行语义、预算 |
+| D22 | `docs/adr/0008-remote-turn-auth-and-sandbox.md` | ADR | **已建** | 维护 | **P0** | `/v1/turn` 认证、bind、shell 沙箱、审批不可伪造 |
+| D23 | `docs/adr/0009-kernel-host-single-path.md` | ADR | **未建** | 新建 | P1 | 群 composer 单一路径；Kernel 合同 vs Host 产品路径 |
 
 ### 6.1 文档写作顺序
 
-1. **D06 + D22（P0 安全）**：先写威胁模型和不可伪造审批，再动代码。
-2. **D02 + D03 + D10 + D11（P1 Agent Loop）**：契约先定，再实现。
-3. **D05 + D21 + D09（P1 群编排）**：orchestrator/handoff 语义先定。
-4. **D04（P1 上下文）**、**D15/D16（验收）** 随实现补齐。
+1. **D06 + D22（P0 安全）已完成**；剩余是 P0-3 内核 U 与 AR-15 升裁，不在文档层假装关闭。
+2. **D02/D03/D10/D11（Agent Loop）**：代码已到 L2，下一步把分散证据合并成状态机/工具契约，并更新接口与生命周期文档。
+3. **D05 + D21 + D09（群编排）**：orchestrator/handoff/共享上下文语义先定，再动 Host 代码。
+4. **D04（上下文/记忆）**、**D15/D16（验收）** 随实现补齐。
 5. **D07/D08（P2/P3）** 在对应波次前写，不提前写空文档。
+6. **D20/D23** 可在群编排与单一路径落地时一起写，避免 ADR 先于决策。
 
 ## 7. 需要拍板的产品决策
 
@@ -351,7 +396,7 @@
 
 | 风险 | 触发 | 缓解 |
 |---|---|---|
-| 远程 RCE | `/v1/turn` 无认证 + LAN + shell | P0 认证/loopback/沙箱/审批 |
+| 远程 RCE | `/v1/turn` 无认证 + LAN + shell | Host 面已落认证/loopback/沙箱/审批；P0-3 仍内核 U，AR-15 未关 |
 | Host/Kernel 漂移 | 群 composer 走 Host，内核另有 `RoomTurn` | ADR 0009；一条路径；合同测试 |
 | 成本爆炸 | 群全员 + 多步 loop + 无预算 | max agents/rounds/tokens/time；取消传播 |
 | 上下文泄漏 | 群共享 transcript / memory 注入 | 脱敏、作用域、来源标注、最小注入 |
@@ -361,7 +406,7 @@
 ## 9. 非目标
 
 - 不在本路线图做 UI 像素对齐/主题细节。
-- 不在没有 Agent Loop 前继续加更多群 Bot。
+- 不在群共享上下文/路由真实性/handoff 执行落前，继续加更多群 Bot。
 - 不把 `CM-*` 234/234 当作 agent runtime 已对标。
 - 不扩展 Python LocalBrain。
 - 不让模型决定认证、审批、沙箱策略。
@@ -384,32 +429,41 @@
 
 | 证据 | 证明 |
 |---|---|
-| `runtime/types.mbt:41-59` | `AgentLoop` 是 skeleton，`max_steps` 未用 |
-| `bitbot.mbt:21` | `ToolRegistry` 仅在 boot 构造，未接线 |
-| `runtime/transcript.mbt` | `ToolCallTrace` 是审计，不是模型 tool call |
-| `hosts/shared/host_ffi.js:5286-5297` | 流式只读 `delta.content`，忽略 `tool_calls` |
-| `hosts/shared/host_ffi.js:5578-5610` | payload 只有 system + 可选引用/搜索 + user |
-| `hosts/shared/host_ffi.js:5630` | 固定 `temperature:0.3` |
-| `hosts/shared/run_moon_turn.js:121-140` | 每轮 spawn；`memorySeedArgs(botId)` |
-| `hosts/shared/run_moon_turn.js:363` | one guarded re-run, no loops |
-| `hosts/desktop/product_surface.js:1544-1614` | `roomTurn` 无 @ → members + `bot_discretion` |
-| `hosts/desktop/product_surface.js:1657-1794` | `orchestrateRoom` 并行扇出 + `final_report` 聚合 |
-| `hosts/desktop/product_surface.js:1745` | `mentioned_names = responders` |
-| `hosts/desktop/product_surface.js:1804` | `handoffTask` 只写转录/inbox |
-| `hosts/desktop/main.js:1340-1460` | `buildRoomContext` 无 transcript；`approved:false` |
-| `hosts/desktop/main.js:1501-1523` | `bitbot:rooms:orchestrate` 主路径 |
-| `hosts/desktop/index.html:6240-6247` | 群 composer 调 `rooms.orchestrate` |
-| `hosts/desktop/index.html:14589` | “kernel phrase is NOT sent here” |
-| `hosts/shared/host_ffi.js:19787-19810` | `executeMultiAgentEffect` fallback 写 inbox |
-| `hosts/shared/host_ffi.js:24260-24300` | `handoff_task` 写 inbox，不执行目标 |
-| `hosts/shared/host_ffi.js:18336` | `runWorkerMoonTurn` 一次性 worker |
-| `docs/design/desktop-target/report.md` §8 | 自认 Host 产品路径；内核 `Orchestrate`/`final_report` 未做 |
-| `docs/grok-desktop-parity/gaps.md:431` | 记忆自动抽取未做 |
-| `hosts/shared/cn_inbound_server.js` + `hosts/shared/p0_security.js` | ADR 0008：默认 `127.0.0.1`，无 Bearer 401，坏签名 401，body 413。不是 I，不关 AR-15 |
-| `hosts/shared/host_ffi.js` shell | 无审批不执行；cwd 允许列表；子进程最小 env。P0-3 仍是 U |
-| `docs/agent-core/05-security-sandbox-secrets.md` | SK1–SK8。不是 P0，不是 AU，不关 AR-15，不升 I |
-| `docs/agent-core/01-agent-loop-production-provider.md` | PP1–PP7。外部供应商 HTTP。不关 AR-01/02/03/15，不升 I，不宣称 Desktop Agent Loop MVP |
-| `docs/capability-matrix.md` | 234 CM / I-PASS；合同面 |
+| `runtime/agent_loop.mbt` `AgentLoop::run` | 内核拥有 model→tool→observe→repeat；64 步、取消、未知工具/坏参数、审批 allow/deny/cancel、untrusted fence |
+| `cmd/desktop_turn/agent_loop_product_native.mbt` | 默认 Desktop/cmd Chat：`open_turn` + `AgentLoop::run`；默认 Read/Shell registry；legacy `--legacy-chat-effect` 才退回旧路径 |
+| `hosts/shared/agent_loop_product_wire.js` | Host 四操作映射；`llm_chat` / `exec_tool` / `request_approval` / `deliver`；Read/Shell 参数与审批动作规范化 |
+| `hosts/shared/host_ffi.js` `agentLoopToolSchema` | provider 请求带 Read/Shell JSON schema；非空 schema 不是旧 `{}` |
+| `hosts/shared/host_ffi.js` `consumeSseDataLine` / `httpJsonStream` | 流式与非流式都保留 `delta.content` + `tool_calls`（A7/A8） |
+| `hosts/shared/run_moon_turn.js` `pumpMoonFfi` | 内核每行 FFI 请求只回一行 JSON；Node 不 own loop；`kernel_ops`/`node_ops` 可对账 |
+| `hosts/shared/run_moon_turn.js` `kernelLoopTrace` | `BITBOT_LOOP entry=AgentLoop::run` 与 op trace；仅证据，不是 eval |
+| `hosts/shared/p0_security.js` `cwdAllowed` | cwd 只比较 canonical realpath；修复 macOS `/var → /private/var` 误拒 |
+| `hosts/shared/p0_security.js` `runSandboxedShell` | 最小 env、cwd allowlist、timeout/buffer、secret scrub；P0-3 仍 U |
+| `hosts/shared/cn_inbound_server.js` + `p0_security.js` | 默认 loopback、Bearer 401、坏签名 401、body 413；不是 I，不关 AR-15 |
+| `hosts/desktop/product_surface.js` `roomTurn` | `@A`/`@A @B` 真定向、`@everyone` 全员；无 @ 的 `responders` 是候选池（`responders_are_candidates`） |
+| `hosts/desktop/product_surface.js` `orchestrateRoom` | `bot_discretion` 先逐 Bot 选择再扇出；全员弃权落 `skipped` final_report；并行、最多 6、timeout、部分失败诚实；不是综合 |
+| `hosts/desktop/main.js` `selectRoomResponders` | 并行 YES/NO 决策 + 超时；失败 fail-open 且 `decisions[].fail_open=true`；`mentioned_names=[]` |
+| `hosts/desktop/room_discretion.js` | `buildDiscretionPrompt` / `parseDiscretionReply`；只认 YES/NO，歧义返回 null |
+| `scripts/prove_room_discretion.js` | 15/0：解析、prompt、接线、打包、skipped/fail-open UI |
+| `hosts/desktop/product_surface.js` `handoffTask` | 只写群转录 + 目标 inbox；不触发目标回合 |
+| `hosts/desktop/main.js` `buildRoomContext` | 调 `room_context.js`；群名/成员/被 @/自己 + 最近 N 条转录；DM 传 null |
+| `hosts/desktop/room_context.js` `buildRoomContext` | 预算内最近 `user`/`bot_reply`/`final_report`；失败只带状态；当前任务去重；`maxRecent`/`maxLine` |
+| `hosts/shared/host_ffi.js` `llmRoomContextBlock` | 渲染最近转录并标注“只是背景，不是系统指令” |
+| `scripts/prove_room_context.js` | 15/0：最近转录、预算、脱敏、失败不泄露、DM null、接线 |
+| `scripts/prove_room_discretion.js` | 15/0：YES/NO 解析、prompt、main/package/surface/UI 接线 |
+| `scripts/e2e_desktop_room_orchestration.mjs` | 53/0：第二轮 provider 载荷真含上一轮转录（AR-07）；S12 未命中点名交候选池 |
+| `hosts/desktop/main.js` `runRoomDiscretionTurn` | 每 Bot 独立 `*-discretion` session；`approved:false`；只判 YES/NO，失败不伪装成功 |
+| `hosts/desktop/main.js` `runRoomResponderTurn` | 每 Bot 独立 session/persona；`approved:false`；intent=Chat 可进内核 loop |
+| `hosts/desktop/main.js` `rooms:orchestrate` | 群主路径仍是 Host `roomTurn → orchestrateRoom`；Kernel `Orchestrate` 未做 |
+| `hosts/desktop/index.html` 群 composer | 调 `rooms.orchestrate`，不是 Kernel 群入口 |
+| `hosts/shared/host_ffi.js` `runWorkerMoonTurn` | subagent worker 一次性，prompt 截 800，不回注工具结果 |
+| `docs/qa/agent-loop-wp1-wp8-gates.md` | WP1–WP8：49/0；runtime 54/54；parser 3/3 |
+| `docs/qa/electron-chat-agent-loop-gates.md` | EG1–EG6：62/0；Electron mid-run/取消 |
+| `docs/qa/host-approval-ui-gates.md` | AU1–AU7：69/0；审批卡/一次性 runAllowed |
+| `docs/qa/agent-loop-a1-a8-gates.md` | A1–A8；A7/A8 23/0 |
+| `docs/qa/production-provider-gates.md` | PP1–PP7；当前 `NEEDS_LIVE`，PP1–PP4 未跑 live |
+| `docs/qa/p0-security-gates.md` | P0 curl 8/0、host-checks 11/0；P0-3 U |
+| `docs/agent-core/05-security-sandbox-secrets.md` | SK1–SK8：8/0；不是 P0，不关 AR-15，不升 I |
+| `docs/capability-matrix.md` | 234 CM / I-PASS；合同面，不是 AR eval |
 | `docs/qa/gaps.md` | 验收与 residual 口径 |
 
 ## 12. 变更记录
@@ -419,3 +473,9 @@
 - 2026-10-24：SK1–SK8 沙箱与密钥立证（allowlist env、审批不放开密钥、cwd、超时/缓冲、scrub、手机不持模型密钥）。不是 P0，不是 AU。P0 host-checks 不算本 residual 已关。不关 AR-15，不升 I，不宣称 MVP。
 - 2026-10-24：`prove_sandbox_secrets` 的 `ok SK1`…`ok SK8` 改与 `05-security-sandbox-secrets.md` §4 逐字同构。SK3 是产物，SK4 是 cwd，SK5 是 scrub，SK6 是超时加缓冲，SK7 是 health/401/413 响应体不泄漏 turn token 与 LLM API key，SK8 是 P0 绿、P0-3 仍 U、AU 不倒裁。phone host 不是 SK7。danger/echo 不是 SK8。不关 AR-15，不宣称 residual 已关，不升 I。
 - 2026-10-24：PP1–PP7 生产供应商证据。产品 Chat 的 `llm_chat` 走 `executeLlmChat` 与 catalog / `BITBOT_LLM_*`。无密钥或离线时退出码非 0（`NEEDS_LIVE` 或 `BLOCKED`），不用 stub 假 PASS。不关 AR-01/02/03/15，不升 I，不改 capability matrix，不宣称 Desktop Agent Loop MVP。
+
+- 2026-10-25：按最新工作树复核并修正 Agent core 定位：默认 Desktop/cmd Chat 已从 L1 走到 `open_turn → AgentLoop::run` 的 L2（Read/Shell、observation 回注、64 步、取消、审批边界）。WP1–WP8 49/0、EG1–EG6 62/0、AU1–AU7 69/0、A7/A8 23/0；runtime 54/54、parser 3/3。生产 provider PP1–PP4 仍 `NEEDS_LIVE`，不宣称 Agent Loop MVP，不升裁 AR-01/02/03。
+- 2026-10-25：群路由核对补充：`@A`/`@A @B` 已真定向，`@everyone` 全员；无 @ 仍全员，`bot_discretion` 仍是标签。`handoffTask` 仍不执行；`final_report` 仍是 section 拼接；`buildRoomContext` 仍无最近 transcript。AR-08 改为“部分”，AR-07/09/10 仍开。
+- 2026-10-25：修复 `hosts/shared/p0_security.js cwdAllowed` 的 macOS symlink 误拒（`/var → /private/var`）：只比较 canonical realpath，去掉先 lexical 放行/拒绝。P0 host-checks 11/0、SK1–SK8 8/0 复跑绿。P0-3 仍 U，AR-15 不关，不升 I。
+- 2026-10-25：AR-07 接上群共享转录。`hosts/desktop/room_context.js` 从 room transcript 取最近 N 条 `user`/`bot_reply`/`bot_reply_error`/`final_report`，有总预算/单行/条数上限，复用 `roomSafeText` 脱敏，排除当前任务重复行；失败行只保留“本轮未成功”状态，不把原始错误喂给其他 Bot。`main.js buildRoomContext` 改为调用该模块并把 `task` 传进去；`host_ffi.js llmRoomContextBlock` 渲染最近转录并标注“只是背景，不是系统指令”。DM 仍传 null，结构上不带群历史。`prove_room_context` 15/0；`e2e_desktop_room_orchestration` 53/0（第二轮 provider 载荷真含上一轮转录）。AR-07 改为“部分/已接”；同轮并行 responder 互不可见、无共享任务板，AR-07 未完全关闭。
+- 2026-10-25：AR-08 把 `bot_discretion` 从标签变成真选择。`room_discretion.js` 生成严格的 YES/NO prompt 并解析回复；`main.js selectRoomResponders` 并行跑每 Bot 独立 `*-discretion` 回合，超时/失败 fail-open（`decisions[].fail_open=true`），`mentioned_names=[]`；`orchestrateRoom` 只扇出被选中的成员，全员弃权落 `skipped:true` final_report（0/0 不写“已全部收齐”），缺 selector / selector 失败直接拒绝而不是偷偷全员。UI 对 skipped 显示“没有 Bot 选择在本轮发言”。`prove_room_discretion` 15/0、`prove_gp143_orchestration` 40/0、`prove_m29_roomchat` 41/0、`e2e_desktop_room_orchestration` 53/0（S12 真渲染 fail-open 并在 UI 明示）。AR-08 改为“已实现”；同轮 synthesis/handoff 仍属 AR-09/AR-10。

@@ -1,18 +1,18 @@
 {
   "sidebar": {
     "w": 280,
-    "rows": 31,
+    "rows": 25,
     "toolbar": {
-      "top": 56,
+      "top": 0,
       "h": 48
     },
     "botSection": {
-      "top": 110,
-      "h": 474
+      "top": 54,
+      "h": 203
     },
     "botList": {
-      "top": 143,
-      "h": 441
+      "top": 87,
+      "h": 170
     },
     "roomList": {
       "top": 0,
@@ -29,12 +29,25 @@
     "sessionTitleTop": null,
     "sessionListTop": 0,
     "chatTitleY": 0,
-    "firstRowTop": 143,
-    "rowH": 58,
+    "firstRowTop": 87,
+    "rowH": 54,
+    "rowGap": 4,
+    "rowRadius": "10px",
+    "name": {
+      "size": "16px",
+      "weight": "420",
+      "lh": "20px"
+    },
+    "meta": {
+      "size": "13px",
+      "weight": "420",
+      "lh": "18px",
+      "color": "rgba(28, 28, 28, 0.68)"
+    },
+    "groupHead": null,
     "avW": 36,
     "avRadius": "46% 54% 48% 52% / 52% 46% 54% 48%",
     "labels": [
-      "k'k'k1",
       "今天",
       "昨天",
       "更早"
@@ -42,29 +55,35 @@
   },
   "sessPopup": {
     "shown": true,
-    "rows": 24,
+    "rows": 22,
     "inAccountBar": true,
     "leftStandaloneSection": false
   },
   "botGroup": {
     "before": "",
     "headShown": true,
+    "headH": 30,
     "cnt": "1",
     "rowsUnder": 1
   },
   "accent": {
-    "sendLight": "rgb(124, 58, 237)",
-    "sendDark": "rgb(168, 85, 247)"
+    "sendLight": "rgb(28, 28, 28)",
+    "sendDark": "rgb(245, 245, 245)"
   },
   "composer": {
     "rowDisplay": "flex",
     "rowWrap": "nowrap",
-    "rowRadius": 24,
-    "sendRadius": "50%",
-    "sendW": 34,
-    "sendH": 34,
-    "rowChips": 0,
-    "attachOrder": "-1"
+    "rowRadius": 22,
+    "rowW": 728,
+    "rowH": 44,
+    "sendRadius": "999px",
+    "sendW": 28,
+    "sendH": 28,
+    "voiceW": 28,
+    "attachW": 28,
+    "attachLeft": 13,
+    "sendRight": 9,
+    "rowChips": 0
   },
   "menu": {
     "hidden": true,
@@ -74,39 +93,52 @@
     "hasAttach": true
   },
   "head": {
-    "avatarW": 28,
-    "avatarH": 28,
+    "avatarW": 22,
+    "avatarH": 22,
     "avatarRadius": "50%",
-    "nameColor": "rgb(124, 58, 237)",
-    "nameWeight": "600",
+    "nameColor": "rgba(28, 28, 28, 0.68)",
+    "nameWeight": "420",
     "dir": "column",
     "stacked": true,
     "rects": {
       "msg": [
         496,
-        651,
+        681,
         728
       ],
       "head": [
         496,
-        651,
+        681,
         728,
-        28
+        22
       ],
       "body": [
         496,
-        685,
-        728,
-        52
+        709,
+        558,
+        34
       ]
     },
-    "bodyMargin": "0px / auto"
+    "bodyMargin": "0px / flex-start"
   },
   "bubble": {
-    "borderTopWidth": "0px",
-    "boxShadow": "none",
-    "radius": 16,
-    "bg": "rgb(244, 244, 245)",
-    "w": 728
+    "assistant": {
+      "borderTopWidth": "0px",
+      "boxShadow": "none",
+      "radius": 18,
+      "bg": "rgba(28, 28, 28, 0.06)",
+      "w": 558,
+      "size": "14px",
+      "weight": "420",
+      "lh": "20px"
+    },
+    "user": {
+      "radius": "18px",
+      "bg": "rgb(28, 28, 28)",
+      "color": "rgb(255, 255, 255)",
+      "shadow": "rgba(255, 255, 255, 0.16) 0px 0.5px 0px 0px inset, rgba(255, 255, 255, 0.16) 0px -0.5px 0px 0px inset, color(srgb 0.109804 0.109804 0.109804 / 0.06) 0px 0px 0px 0.5px inset",
+      "w": 62
+    },
+    "rowW": 728
   }
 }

@@ -395,11 +395,13 @@ html=Path('hosts/desktop/index.html').read_text()
 assert 'id=\"box-meta\"' in html
 assert 'id=\"box-doctor\"' in html and 'id=\"box-env\"' in html
 assert 'id=\"box-clock\"' in html and 'id=\"box-chrome\"' in html
-assert 'id=\"box-screenshot\"' in html and 'id=\"box-check-updates\"' in html
+assert 'id=\"box-screenshot\"' in html
+# 版本更新只保留「设置 → 更新」一处；盒子诊断组不再放第二个「检查更新」
+assert 'id=\"box-check-updates\"' not in html
 assert 'id=\"cloud-meta\"' in html and 'id=\"cloud-launch\"' in html
 assert 'id=\"cloud-deliver\"' in html
 assert 'box doctor' in html and 'box chrome probe' in html
-assert 'screenshot agent=executor' in html and 'check updates' in html
+assert 'screenshot agent=executor' in html and 'id=\"gp-check-updates\"' in html
 assert 'launch cloud agent' in html and 'deliver cloud artifact' in html
 assert 'id=\"routines-meta\"' in html
 assert 'id=\"rt-create\"' in html and 'id=\"rt-list\"' in html

@@ -370,7 +370,7 @@ async function setThemeLight(win) {
       const acctCircle = q("#account-avatar-circle");
       const email = q("#account-name-label");
       const abSess = q("#ab-sessions-btn");
-      const abSet = q("#ab-settings-btn");
+      const abUpdate = q("#ab-update-btn");
       const iconBtns = qa("#account-bar .ab-icon-btn");
       const accountBar = {
         selector: "#sidebar-footer / #account-bar",
@@ -392,9 +392,9 @@ async function setThemeLight(win) {
           const has = iconBtns.some((b) => /连接|应用|apps/i.test(b.getAttribute("title") || b.getAttribute("aria-label") || ""));
           return {
             absent: !has,
-            note: has ? null : "底部无独立 Connect apps 胶囊；该功能收进 #account-popup 的 ap-connect「连接应用」行。右侧是两个 .ab-icon-btn（会话 / 设置）。",
-            abSessionsBtn: abSess ? { selector: "#ab-sessions-btn", ...rect(abSess), ...style(abSess, ["width", "height", "borderRadius", "backgroundColor", "color"]) } : null,
-            abSettingsBtn: abSet ? { selector: "#ab-settings-btn", ...rect(abSet), ...style(abSet, ["width", "height", "borderRadius", "backgroundColor", "color"]) } : null,
+            note: has ? null : "底部无独立 Connect apps 胶囊；该功能收进 #account-popup 的 ap-connect「连接应用」行。右侧是两个 .ab-icon-btn（会话 / 更新）。",
+            abSessionsBtn: abSess ? { selector: "#ab-sessions-btn", ...rect(abSess), ...style(abSess, ["width", "height", "borderRadius", "backgroundColor", "borderTopWidth", "borderTopColor", "color"]) } : null,
+            abUpdateBtn: abUpdate ? { selector: "#ab-update-btn", ...rect(abUpdate), ...style(abUpdate, ["width", "height", "borderRadius", "backgroundColor", "borderTopWidth", "borderTopColor", "color"]), hasUpdate: abUpdate.classList.contains("has-update") } : null,
           };
         })(),
       };

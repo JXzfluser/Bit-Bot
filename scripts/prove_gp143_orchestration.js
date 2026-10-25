@@ -157,7 +157,7 @@ const count = (arr, k) => arr.filter(e => e && e.kind === k).length;
     const { surface } = mkSurface();
     const seen = [];
     const r = await surface.orchestrateRoom({
-      room: "room-t", task: "everyone works",
+      room: "room-t", task: "everyone works", policy: "all",
       deps: { runResponderTurn: async (botId) => { seen.push(botId); return { ok: true, text: "ok" }; } },
     });
     (r && r.ok && r.total === 2 && r.returned === 2 && r.partial === false && seen.length === 2)
@@ -167,6 +167,99 @@ const count = (arr, k) => arr.filter(e => e && e.kind === k).length;
     (fr && fr.partial === false && fr.returned === 2 && fr.total === 2)
       ? ok("H final_report 收齐时如实 2/2 partial=false（只有未收齐才写 partial）")
       : bad("H complete report", JSON.stringify(fr && { returned: fr.returned, total: fr.total, partial: fr.partial }));
+  }
+
+  /* ---------- R. bot_discretion：每个 Bot 真决定是否应答 ---------- */
+  {
+    const { surface } = mkSurface();
+    const seen = [];
+    const ctxs = [];
+    const fanouts = [];
+    let candidatesSeen = null;
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "only research", to: ["b1", "b2"], policy: "bot_discretion",
+      deps: {
+        selectResponders: async ({ candidates }) => {
+          candidatesSeen = candidates.map((c) => c.id);
+          return {
+            ok: true,
+            responders: ["b1"],
+            decisions: [
+              { bot_id: "b1", name: "Researcher", respond: true },
+              { bot_id: "b2", name: "Writer", respond: false },
+            ],
+          };
+        },
+        runResponderTurn: async (botId, task, ctx) => {
+          seen.push(botId);
+          ctxs.push(ctx);
+          return { ok: true, text: "b1 answer" };
+        },
+        onFanout: (ev) => fanouts.push(ev),
+      },
+    });
+    const fr = tx(surface).find((e) => e && e.kind === "final_report");
+    (r && r.ok && r.total === 1 && r.returned === 1 && seen.length === 1 && seen[0] === "b1" &&
+      JSON.stringify(candidatesSeen) === JSON.stringify(["b1", "b2"]) &&
+      fanouts.length === 1 && fanouts[0].responders.length === 1 && fanouts[0].responders[0].id === "b1" &&
+      ctxs[0] && Array.isArray(ctxs[0].mentioned_names) && ctxs[0].mentioned_names.length === 0 &&
+      fr && JSON.stringify(fr.responders) === JSON.stringify(["b1"]) &&
+      Array.isArray(fr.discretion) && fr.discretion.length === 2)
+      ? ok("R 无 @：候选池交给 selectResponders，只跑选中的 b1；onFanout/ctx/final_report 都以结果为真")
+      : bad("R discretion selection", JSON.stringify({ r: r && { total: r.total, returned: r.returned }, seen, candidatesSeen, fanouts: fanouts.map((f) => (f.responders || []).map((x) => x.id)), ctx: ctxs[0] && ctxs[0].mentioned_names, fr: fr && { responders: fr.responders, discretion: fr.discretion } }));
+  }
+
+  {
+    const { surface } = mkSurface();
+    let ran = 0;
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "nobody should answer", to: ["b1", "b2"], policy: "bot_discretion",
+      deps: {
+        selectResponders: async () => ({
+          ok: true,
+          responders: [],
+          decisions: [
+            { bot_id: "b1", name: "Researcher", respond: false },
+            { bot_id: "b2", name: "Writer", respond: false },
+          ],
+        }),
+        runResponderTurn: async () => { ran += 1; return { ok: true, text: "should not run" }; },
+      },
+    });
+    const t = tx(surface);
+    const fr = t.find((e) => e && e.kind === "final_report");
+    (r && r.ok && r.skipped === true && r.total === 0 && r.returned === 0 && r.partial === false &&
+      ran === 0 && count(t, "bot_reply") === 0 && count(t, "bot_reply_error") === 0 &&
+      fr && fr.skipped === true && Array.isArray(fr.sections) && fr.sections.length === 0 &&
+      Array.isArray(fr.discretion) && fr.discretion.length === 2)
+      ? ok("R 全员弃权：不跑 responder，落 skipped final_report（0/0 不写「已全部收齐」）")
+      : bad("R all decline", JSON.stringify({ r: r && { skipped: r.skipped, total: r.total, returned: r.returned }, ran, t: t.map((e) => e && e.kind), fr: fr && { skipped: fr.skipped, sections: fr.sections } }));
+  }
+
+  {
+    const { surface } = mkSurface();
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "no selector", to: ["b1"], policy: "bot_discretion",
+      deps: { runResponderTurn: async () => ({ ok: true, text: "x" }) },
+    });
+    (r && r.ok === false && r.error === "discretion_selector_required" && tx(surface).length === 0)
+      ? ok("R 缺 selector：discretion_selector_required，且不写任何 transcript（不偷偷退回全员）")
+      : bad("R missing selector", JSON.stringify({ r, tx: tx(surface).length }));
+  }
+
+  {
+    const { surface } = mkSurface();
+    let ran = 0;
+    const r = await surface.orchestrateRoom({
+      room: "room-t", task: "selector fails", to: ["b1"], policy: "bot_discretion",
+      deps: {
+        selectResponders: async () => { throw new Error("boom"); },
+        runResponderTurn: async () => { ran += 1; return { ok: true, text: "x" }; },
+      },
+    });
+    (r && r.ok === false && r.error === "discretion_failed" && ran === 0 && tx(surface).length === 0)
+      ? ok("R selector 失败：discretion_failed，且不跑 responder（不把失败演成全员应答）")
+      : bad("R selector failure", JSON.stringify({ r, ran, tx: tx(surface).length }));
   }
 
   /* ---------- I. 预算护栏：>6 个 responder 直接拒绝 ---------- */

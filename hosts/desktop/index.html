@@ -38,8 +38,10 @@
   body[data-panel="bot"],
   body[data-panel="conv"],
   body[data-panel="computer"],
-  body[data-panel="room"],
   body[data-panel="tools"] { --panel-w: var(--rail-w); }
+  /* G-28 #4：团队详情不再是第三列，而是 460 浮层 —— 打开它时主列不缩宽，
+     抽屉从 header 下沿贴右边滑出，盖住 stream 的右半边。 */
+  body[data-panel="room"] { --panel-w: 0px; }
   /* All four rail surfaces share grid-area "rail"; exactly one is displayed.
      #machines (tools) joins the same column — the old 280px 4th column is
      retired; --tools-w is no longer referenced by the shell. */
@@ -83,13 +85,34 @@
     overflow: auto;
   }
   body[data-panel="computer"] #computer-rail { display: block; }
-  /* GP-154「定时任务在群内部」: 群资料 rail 与其余 rail 共用同一列、同一状态源。 */
+  /* GP-154「定时任务在群内部」/ G-28 #4：群资料面板 = 460 浮层抽屉。
+     它不占网格列（--panel-w 归零），position:fixed 贴右，从 header 下沿到底部；
+     其余 rail（bot/conv/computer）仍走第三列，两者互斥由 data-panel 保证。 */
   #room-rail {
     display: none;
+    position: fixed;
+    top: var(--header-h);
+    right: 0;
+    bottom: 0;
+    width: 460px;
+    max-width: 92vw;
+    z-index: 60;
     padding: var(--space-6);
     overflow: auto;
+    background: var(--surface);
+    box-shadow: -20px 0 48px rgba(0, 0, 0, 0.12);
   }
-  body[data-panel="room"] #room-rail { display: block; }
+  body[data-panel="room"] #room-rail {
+    display: block;
+    animation: roomRailIn 0.18s ease-out;
+  }
+  @keyframes roomRailIn {
+    from { transform: translateX(18px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body[data-panel="room"] #room-rail { animation: none; }
+  }
   .ri-limit {
     color: var(--muted);
     font-size: var(--text-sm);
@@ -143,13 +166,49 @@
   .ri-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
   /* 群资料分段 tab（照团队详情抽屉设计稿：灰轨 + 白色 active 胶囊，radius 999）。
      轨道色不引入新字面量——--user-bubble 本就是 #f4f4f5，与稿子的灰轨同值。 */
-  .ri-tabs { display: flex; gap: 2px; padding: 3px; background: var(--user-bubble); border-radius: 999px; margin: 0 0 var(--space-4); }
+  .ri-tabs { display: flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 999px; margin: 0 0 var(--space-4); }
   .ri-tab { flex: 1; border: 0; background: transparent; border-radius: 999px; padding: 5px 8px; font: inherit; font-size: var(--text-sm); color: var(--muted); cursor: pointer; white-space: nowrap; }
   .ri-tab[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
-  .ri-member { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+  .ri-member { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-3); padding: 8px 0; border-bottom: 1px solid var(--line); }
   .ri-member:last-child { border-bottom: 0; }
   .ri-name { font-size: var(--text-sm); word-break: break-word; }
   .ri-job { color: var(--muted); font-size: var(--text-sm); text-align: right; word-break: break-word; }
+  /* G-28 #4：成员行 —— 头像 / 名字+职责 / 移除；底部「添加成员」展开 Bot 库。
+     行内不再用 justify-content:space-between 靠两端对齐，改成三段 flex，
+     否则头像和移除按钮会把中间的姓名挤成一条窄缝。 */
+  .ri-member .ri-av {
+    flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center;
+    color: var(--accent-ink); border-radius: 40% 60% 58% 42% / 52% 44% 56% 48%;
+  }
+  .ri-member .ri-av svg { width: 16px; height: 16px; }
+  .ri-member .ri-main { flex: 1 1 auto; min-width: 0; }
+  .ri-member .ri-main .ri-name { font-weight: 500; }
+  .ri-member .ri-main .ri-job { text-align: left; font-size: var(--text-xs); }
+  .ri-member-del {
+    flex: 0 0 auto; border: 0; background: transparent; color: var(--muted); cursor: pointer;
+    font: 400 15px/1 var(--font-ui, inherit); padding: 4px 6px; border-radius: 6px; opacity: 0.5;
+  }
+  .ri-member-del:hover:not([disabled]) { background: var(--fill); color: var(--danger); opacity: 1; }
+  .ri-member-del[disabled] { opacity: 0.18; cursor: not-allowed; }
+  .ri-add-member {
+    width: 100%; margin-top: var(--space-3); padding: 8px; border: 1px dashed var(--line);
+    border-radius: var(--radius-md, 10px); background: transparent; color: var(--muted);
+    font: inherit; font-size: var(--text-sm); cursor: pointer; text-align: center;
+  }
+  .ri-add-member:hover { border-color: var(--accent); color: var(--ink); background: var(--fill); }
+  .ri-add-member[disabled] { opacity: 0.45; cursor: not-allowed; border-style: solid; }
+  .ri-picker { margin-top: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-md, 10px); overflow: hidden; }
+  .ri-picker[hidden] { display: none; }
+  .ri-picker .ri-pick {
+    display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: 7px 8px;
+    border: 0; border-bottom: 1px solid var(--line); background: transparent;
+    font: inherit; font-size: var(--text-sm); color: var(--ink); text-align: left; cursor: pointer;
+  }
+  .ri-picker .ri-pick:last-child { border-bottom: 0; }
+  .ri-picker .ri-pick:hover { background: var(--fill); }
+  .ri-picker .ri-pick .ri-av { width: 24px; height: 24px; }
+  .ri-picker .ri-pick .ri-av svg { width: 13px; height: 13px; }
+  .ri-picker .ri-pick small { color: var(--muted); font-size: var(--text-xs); margin-left: auto; }
   .cv-title { font-weight: 700; font-size: var(--text-title); word-break: break-word; }
   .cv-kv {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
@@ -385,8 +444,8 @@
     background: var(--surface);
     color: var(--ink);
     border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    padding: 3px 8px;
+    border-radius: var(--radius-pill);
+    padding: 5px 11px;
     /* P2: obey the 13px sheet type scale so the legacy
        `body.grok-ui .bb-sheet button` override no longer needs !important. */
     font-size: 13px;
@@ -520,7 +579,9 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--accent) 0%, #4b4b4b 100%);
+    /* §4.5：渐变终点原来硬编码 #4b4b4b —— 暗色下 accent 变纸白、字变近黑，
+       中灰渐变会让对比度掉到不足。改用主题内的 accent/ink 混合，两端都跟主题。 */
+    background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, var(--ink)) 100%);
     color: var(--accent-ink);
     display: inline-flex;
     align-items: center;
@@ -541,25 +602,22 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  #account-avatar-btn .acct-chevron {
-    flex: 0 0 auto;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1;
-    transition: transform 0.15s ease;
-  }
-  #account-avatar-btn[aria-expanded="true"] .acct-chevron { transform: rotate(180deg); }
   #account-popup {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    max-width: 260px;
-    bottom: 68px;
+    /* §4.5 6b：Grok 弹层是 228 宽、锚在触发元素上方的 absolute 面板；
+       12 圆角 + 白底浮在侧栏灰面上，**没有描边、没有阴影**。 */
+    position: absolute;
+    left: 0;
+    right: auto;
+    top: auto;
+    width: 228px;
+    max-width: 228px;
+    /* 真源实测：弹层底边在 footer 顶边上方 2px（菜单 228 宽，左缘与胶囊齐平）。 */
+    bottom: calc(100% + 2px);
     background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
+    border: 0;
+    border-radius: var(--radius-xl);
     padding: 6px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+    box-shadow: none;
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -567,7 +625,9 @@
     opacity: 0;
     transform: translateY(6px) scale(0.98);
     pointer-events: none;
-    transition: opacity 0.16s ease, transform 0.16s ease;
+    transition:
+      opacity 0.1s cubic-bezier(0.165, 0.84, 0.44, 1),
+      transform 0.1s cubic-bezier(0.165, 0.84, 0.44, 1);
   }
   /* `hidden` 属性优先级：显式规则覆盖 display:flex，弹层默认收起，点击才展开。 */
   #account-popup[hidden] { display: none !important; opacity: 0; pointer-events: none; }
@@ -575,18 +635,23 @@
   #account-popup .ap-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 4px;
     width: 100%;
+    height: 30px;
     text-align: left;
     border: 0;
     background: transparent;
-    padding: 8px 10px;
-    border-radius: var(--radius-md);
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
     font-size: var(--text-md);
+    font-weight: 420;
+    line-height: 18px;
     color: var(--ink);
     cursor: pointer;
     transition: background 0.1s ease, color 0.1s ease;
   }
+  /* 图标槽 18×18、字形 14×14 居中、墨色 66%（真源实测）；SVG 走 currentColor。
+     槽宽 18 + 行内 gap 4 → 文案左缘落在行左 30px，与真源一致。 */
   #account-popup .ap-item .ap-ic {
     flex: 0 0 18px;
     width: 18px;
@@ -594,10 +659,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--muted);
-    font-size: 13px;
-    line-height: 1;
+    color: color-mix(in srgb, var(--ink) 66%, transparent);
   }
+  #account-popup .ap-item .ap-ic svg { width: 14px; height: 14px; }
   #account-popup .ap-item .ap-tx {
     flex: 1 1 auto;
     min-width: 0;
@@ -605,6 +669,40 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* 用量行右侧的实时小字（真源是「44% 已用」，我们是真实请求数）。 */
+  #account-popup .ap-sub {
+    flex: 0 0 auto;
+    color: color-mix(in srgb, var(--ink) 56%, transparent);
+    font-size: var(--text-md);
+    font-weight: 420;
+    line-height: 18px;
+  }
+  /* 子菜单右向 chevron：14×14 字形、墨色 52%（真源实测）。 */
+  #account-popup .ap-chev {
+    flex: 0 0 14px;
+    width: 14px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: color-mix(in srgb, var(--ink) 52%, transparent);
+  }
+  /* 账户弹层里原有「发现新版本 + 安装」块；版本更新已收敛到设置，块与样式一并下线。 */
+  #account-popup .ap-pill {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 26px;
+    padding: 4px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: var(--text-md);
+    font-weight: 420;
+    line-height: 18px;
+  }
+  #account-popup .ap-pill[hidden] { display: none; }
   #account-popup .ap-item:hover { background: var(--accent-soft); }
   #account-popup .ap-item:hover .ap-ic { color: var(--ink); }
   #account-popup .ap-danger { color: var(--danger); }
@@ -612,9 +710,9 @@
   #account-popup .ap-danger:hover { background: var(--danger-bg); color: var(--danger-ink); }
   #account-popup .ap-danger:hover .ap-ic { color: var(--danger-ink); }
   #account-popup .ap-sep {
-    height: 1px;
-    background: var(--line);
-    margin: 4px 6px;
+    height: 0.5px;
+    background: color-mix(in srgb, var(--ink) 12%, transparent);
+    margin: 4px 8px;
   }
   .panel-title {
     display: flex;
@@ -786,6 +884,116 @@
     height: 100%;
     object-fit: cover;
   }
+  /* ── 新建 / 编辑 Bot：分区表单 ───────────────────────────────────────────
+     原来是一列没有分组的输入框，头像列和字段混在一行里，描述框只有 5 行、
+     底部按钮跟着内容漂。现在：头部说明 + 可滚动的分区正文 + 固定底栏。 */
+  .bf-sheet {
+    display: flex;
+    flex-direction: column;
+    max-height: min(88vh, 760px);
+    width: min(680px, 94vw);
+  }
+  .bf-head { align-items: flex-start; }
+  .bf-head-text { min-width: 0; }
+  .bf-sub {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+  }
+  .bf-body {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    margin-top: 14px;
+    overflow: auto;
+    min-height: 0;
+    padding-right: 2px;
+  }
+  .bf-avatar-col {
+    flex: 0 0 104px;
+    text-align: center;
+    position: sticky;
+    top: 0;
+  }
+  .bf-avatar-cap {
+    color: var(--muted);
+    font-size: var(--text-2xs);
+    margin-top: 6px;
+  }
+  .bf-avatar-hint {
+    color: var(--muted);
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    margin-top: 6px;
+  }
+  .bf-fields { flex: 1 1 auto; min-width: 0; }
+  .bf-section + .bf-section {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .bf-section-title {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+  }
+  .bf-section-title-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .bf-count {
+    color: var(--muted);
+    font-size: var(--text-2xs);
+    font-variant-numeric: tabular-nums;
+  }
+  .bf-textarea { min-height: 132px; resize: vertical; }
+  .bf-hint {
+    color: var(--muted);
+    font-size: var(--text-2xs);
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+  .bf-tpl-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .bf-hint-tight { margin: -2px 0 8px; }
+  /* 底栏固定在 sheet 底部：正文再长也不把「创建」推走 */
+  .bf-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .bf-status {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    min-height: 16px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .bf-foot-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+  .bf-foot-actions .bb-btn { min-width: 76px; }
+  @media (max-width: 720px) {
+    .bf-body { flex-direction: column; gap: 12px; }
+    .bf-avatar-col {
+      position: static;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-align: left;
+      flex-wrap: wrap;
+    }
+    .bf-avatar { margin: 0; width: 56px; height: 56px; font-size: 22px; }
+    .bf-avatar-hint { flex: 1 1 100%; }
+  }
   /* GP-A2/A3 Grok-parity: plugin cards in a two-column grid */
   .ca-cats {
     display: flex;
@@ -803,7 +1011,7 @@
     flex: 0 0 36px;
     width: 36px;
     height: 36px;
-    border-radius: 10px;
+    border-radius: 11px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -893,9 +1101,7 @@
     border-radius: var(--radius-user);
     padding: 12px 18px;
     position: relative;
-    /* Wave M42: flatten the bottom-right corner into a subtle tail toward the
-       sender side, keeping the 18px radius contract for the other corners. */
-    border-bottom-right-radius: 6px;
+    /* §4.4: 真源用户气泡四角同值 18，没有朝向发送者的尾巴。 */
   }
   .msg-status {
     display: inline-flex;
@@ -1211,7 +1417,7 @@
   #composer input:focus, #composer textarea:focus { outline: none; }
   #composer #attach-btn, #composer #voice-btn {
     background: transparent; color: var(--muted); border: 0;
-    width: 36px; height: 36px; border-radius: 50%; font-size: var(--text-lg);
+    width: 28px; height: 28px; border-radius: var(--radius-pill); font-size: var(--text-lg);
     display: flex; align-items: center; justify-content: center;
   }
   #composer #attach-btn:hover, #composer #voice-btn:hover { background: var(--accent-soft); color: var(--ink); }
@@ -1235,10 +1441,10 @@
   .voice-memo-card .vm-transcript { margin-top: 6px; color: var(--muted); font-size: var(--text-sm); white-space: pre-wrap; }
   #composer #send {
     background: var(--accent); color: var(--accent-ink); border: 0;
-    width: 36px; height: 36px; border-radius: 50%; padding: 0;
-    font-weight: 700; font-size: 18px; line-height: 1; cursor: pointer;
+    width: 28px; height: 28px; border-radius: var(--radius-pill); padding: 0;
+    font-weight: 500; font-size: 16px; line-height: 1; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    box-shadow: none;
     transition: all 0.15s ease;
   }
   #composer #send:hover { background: #333; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
@@ -1273,6 +1479,63 @@
     padding: 8px 12px; border-radius: var(--radius-md); cursor: pointer; font: inherit; font-size: var(--text-md);
   }
   .composer-menu button:hover { background: var(--accent-soft); }
+  /* G-28：分组在菜单里就地展开，不再弹第二个浮层。层级靠缩进与字号表达，
+     不再用「三颗等宽按钮」把一次选择拆成三步。 */
+  .composer-menu .menu-group {
+    display: flex; flex-direction: column;
+    margin: 2px 0 2px;
+  }
+  /* 右键菜单：宽度跟着视口走（窄窗口不顶出右边缘），分区靠细线而不是间距猜。 */
+  .composer-menu.bot-menu {
+    min-width: 0;
+    width: min(240px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    padding: 6px;
+    gap: 1px;
+  }
+  .composer-menu .menu-sep {
+    height: 1px; margin: 5px 2px;
+    background: var(--line);
+  }
+  .composer-menu button.menu-danger { color: var(--danger); }
+  .composer-menu button.menu-danger:hover { background: var(--accent-soft); }
+  .composer-menu .menu-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .composer-menu .menu-group-head .menu-caret {
+    font-size: 12px; line-height: 1; opacity: 0.55;
+    transition: transform 0.14s ease;
+  }
+  .composer-menu .menu-group-head[aria-expanded="true"] .menu-caret { transform: rotate(90deg); }
+  .composer-menu .menu-sub {
+    display: flex; flex-direction: column; gap: 2px;
+    margin: 2px 0 2px 10px; padding-left: 6px; border-left: 1px solid var(--line);
+  }
+  .composer-menu .menu-sub[hidden] { display: none; }
+  .composer-menu .menu-sub button {
+    padding: 6px 10px; font-size: var(--text-sm); color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .composer-menu .menu-sub button:hover { color: var(--ink); }
+  .composer-menu .menu-sub button[aria-current="true"] { color: var(--ink); font-weight: 600; }
+  .composer-menu .menu-sub button[aria-current="true"]::before { content: "✓"; font-size: 11px; }
+  .composer-menu .menu-sub .menu-sub-off { color: var(--muted); }
+  .composer-menu .menu-sub input {
+    margin: 4px 0 2px; padding: 6px 8px; min-width: 0;
+    border: 1px solid var(--line); border-radius: var(--radius-md);
+    background: var(--surface); color: var(--ink); font: inherit; font-size: var(--text-sm);
+  }
+  .composer-menu .menu-sub input::placeholder { color: var(--muted); }
+  .composer-menu .menu-sub input:focus { outline: none; border-color: var(--accent); }
+  /* 没有弹框之后，唯一的反馈就是侧栏本身：目标分组和目标行各闪一下再落回常态，
+     否则「点了没反应」和「真的挪过去了」在视觉上分不出来。 */
+  .bot-group-head.just-moved,
+  #bot-list .agent-item.just-moved {
+    border-radius: var(--radius-md);
+    animation: groupFlash 0.9s ease-out;
+  }
+  @keyframes groupFlash {
+    0% { background: var(--accent-soft); }
+    100% { background: transparent; }
+  }
   #composer {
     position: relative;
   }
@@ -1682,8 +1945,10 @@
            summary 保留 details 语义但阻止折叠——Grok 的 workspace 名不可点。 -->
       <summary class="panel-head sb-adv-sum" onclick="event.preventDefault()">
         <span id="sb-ws-name">BitBot</span>
+        <button type="button" id="bot-collapse-btn" class="sb-caret-btn" aria-label="折叠或展开 Bot 列表" title="折叠/展开">▾</button>
       </summary>
       <div id="bot-list" aria-label="Bot 列表"></div>
+      <div class="bot-strip" id="bot-strip" aria-label="Bot 头像条"></div>
       <div class="panel-title panel-head spaced">
         <span data-i18n="rooms">群组</span>
       </div>
@@ -1748,37 +2013,32 @@
         <button type="button" id="account-avatar-btn" title="账户" aria-label="Account" data-i18n-aria="accountAria" aria-expanded="false" aria-controls="account-popup">
           <span id="account-avatar-circle">B</span>
           <span id="account-name-label">Bit Bot</span>
-          <span class="acct-chevron" aria-hidden="true">▲</span>
         </button>
-        <!-- G-28 · Grok 底部是「胶囊 + 两个图标」。会话与设置各占一个图标，
-             原来那行「会话 ▸」折叠和隐藏的设置按钮都不再需要。 -->
+        <!-- G-28 · 真源底部是「账户胶囊 + 两个 36px 圆钮」。第一颗保留我方的
+             会话入口（Grok 的会话属于 Bot、不占侧栏）；第二颗原来是「更新」，
+             但版本更新只保留「设置 → 更新」这一处入口，所以这里只剩一颗圆钮，
+             不再和设置里的更新重复。 -->
         <button type="button" id="ab-sessions-btn" class="ab-icon-btn" title="会话" aria-label="会话" aria-expanded="false" aria-controls="sessions-popup">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-8.5 8.5H8L3.5 23l1.3-4.6A8.5 8.5 0 1 1 20.5 12z"/></svg>
-        </button>
-        <button type="button" id="ab-settings-btn" class="ab-icon-btn" title="设置" aria-label="设置">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/></svg>
         </button>
         <div id="sessions-popup" hidden>
           <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
           <div id="session-list" aria-label="会话列表"></div>
         </div>
         <div id="account-popup" hidden role="menu">
-          <!-- Grok-parity round 5: 管理/设置 live behind the account click,
-               not as always-visible sidebar rows. -->
-          <button type="button" class="ap-item" id="ap-manage"><span class="ap-ic" aria-hidden="true">⚙</span><span class="ap-tx">管理 Bot / 应用</span></button>
-          <button type="button" class="ap-item" id="ap-settings"><span class="ap-ic" aria-hidden="true">▤</span><span class="ap-tx" data-i18n="settings">设置</span></button>
+          <!-- 行序与真源基本一致：每周用量 → 获取移动版 → 支持 → 设置 ── 0.5px 分隔 ──
+               添加账户 → 退出登录。连接应用 / 模板市场是我方增量功能，放在段一末尾。
+               原来首行是「发现新版本（安装）」，但版本更新只保留「设置 → 更新」
+               一处入口，弹层里这一行已经去掉。 -->
+          <button type="button" class="ap-item" id="ap-usage"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7.1 2.5a5.6 5.6 0 1 1-4.6 4.4"/><path d="M8 8.4 5.3 5.2"/></svg></span><span class="ap-tx" data-i18n="apUsage">每周用量</span><span class="ap-sub" id="ap-usage-sub" hidden></span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
+          <button type="button" class="ap-item" id="ap-mobile"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="4" y="1.5" width="8" height="13" rx="2"/><path d="M7 12.5h2"/></svg></span><span class="ap-tx" data-i18n="apMobile">获取移动版 Bit Bot</span></button>
+          <button type="button" class="ap-item" id="ap-support"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.6"/><path d="M6.2 2v12"/><path d="M3.6 10.9h9.4"/></svg></span><span class="ap-tx" data-i18n="apSupport">支持</span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
+          <button type="button" class="ap-item" id="ap-settings"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg></span><span class="ap-tx" data-i18n="settings">设置</span></button>
+          <button type="button" class="ap-item" id="ap-connect"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.6 9.4a2.8 2.8 0 0 0 4 0l2-2a2.8 2.8 0 1 0-4-4l-1 1"/><path d="M9.4 6.6a2.8 2.8 0 0 0-4 0l-2 2a2.8 2.8 0 1 0 4 4l1-1"/></svg></span><span class="ap-tx" data-i18n="connectApps">连接应用</span></button>
+          <button type="button" class="ap-item" id="ap-market"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg></span><span class="ap-tx" data-i18n="marketplace">模板市场</span></button>
           <div class="ap-sep"></div>
-          <button type="button" class="ap-item" id="ap-connect"><span class="ap-ic" aria-hidden="true">⧉</span><span class="ap-tx" data-i18n="connectApps">连接应用</span></button>
-          <button type="button" class="ap-item" id="ap-market"><span class="ap-ic" aria-hidden="true">▦</span><span class="ap-tx" data-i18n="marketplace">模板市场</span></button>
-          <div class="ap-sep"></div>
-          <button type="button" class="ap-item" id="ap-update" ><span class="ap-ic" aria-hidden="true">↻</span><span class="ap-tx" data-i18n="apUpdate">发现新版本</span></button>
-          <button type="button" class="ap-item" id="ap-usage" ><span class="ap-ic" aria-hidden="true">▤</span><span class="ap-tx" data-i18n="apUsage">每周用量</span></button>
-          <button type="button" class="ap-item" id="ap-mobile" ><span class="ap-ic" aria-hidden="true">◐</span><span class="ap-tx" data-i18n="apMobile">获取移动版 Bit Bot</span></button>
-          <div class="ap-sep"></div>
-          <button type="button" class="ap-item" id="ap-support" ><span class="ap-ic" aria-hidden="true">?</span><span class="ap-tx" data-i18n="apSupport">支持</span></button>
-          <div class="ap-sep"></div>
-          <button type="button" class="ap-item" id="ap-add-account" ><span class="ap-ic" aria-hidden="true">＋</span><span class="ap-tx" data-i18n="apAddAccount">添加账户</span></button>
-          <button type="button" class="ap-item ap-danger" id="ap-signout" ><span class="ap-ic" aria-hidden="true">⎋</span><span class="ap-tx" data-i18n="apSignOut">退出登录</span></button>
+          <button type="button" class="ap-item" id="ap-add-account"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="5" r="2.5"/><path d="M1.8 14v-.6A3.6 3.6 0 0 1 5.4 9.8h1.2a3.6 3.6 0 0 1 3.4 2.2"/><path d="M12.2 9.2v4M10.2 11.2h4"/></svg></span><span class="ap-tx" data-i18n="apAddAccount">添加账户</span></button>
+          <button type="button" class="ap-item ap-danger" id="ap-signout"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.5 14H3.2A1.2 1.2 0 0 1 2 12.8V3.2A1.2 1.2 0 0 1 3.2 2h3.3"/><path d="M10.5 11 14 8l-3.5-3"/><path d="M6 8h8"/></svg></span><span class="ap-tx" data-i18n="apSignOut">退出登录</span></button>
         </div>
       </div>
     </div>
@@ -1965,39 +2225,76 @@
       </div>
       <div id="st-updates" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="tabUpdates">更新</div>
-        <div class="gp-row">
-          <button type="button" class="bb-btn bb-btn-sm" id="gp-check-updates" data-i18n="checkUpdatesBtn">检查更新</button>
-          <button type="button" class="bb-btn bb-btn-sm" id="gp-restart-update" data-i18n="restartUpdateBtn" disabled>重启并安装</button>
+        <div class="st-note">版本信息、更新源与安装都在这一页；桌面外壳不再另设「更新」入口。</div>
+        <div class="st-card">
+          <div class="st-card-title">当前版本</div>
+          <div id="st-updates-state" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
+          <div class="gp-row" style="margin-top:10px">
+            <button type="button" class="bb-btn bb-btn-sm bb-btn-primary" id="gp-check-updates" data-i18n="checkUpdatesBtn">检查更新</button>
+            <button type="button" class="bb-btn bb-btn-sm" id="gp-restart-update" data-i18n="restartUpdateBtn" disabled>重启并安装</button>
+          </div>
         </div>
-        <div id="st-updates-state" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
+        <div class="st-card">
+          <div class="st-card-title">更新源</div>
+          <label class="st-field"><span class="st-field-name">更新源 URL</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="sec-ota" type="text" placeholder="目录下需 latest.yml" class="bb-field bb-field-grow" />
+              <button type="button" id="sec-ota-check" class="bb-btn bb-btn-sm" style="white-space:nowrap">查更新</button>
+            </div>
+          </label>
+          <div class="st-note">留空走默认更新源；企业内网/私有分发填自己的目录。</div>
+        </div>
       </div>
       <div id="secrets-panel" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="credentials">模型与密钥</div>
         <div class="st-note">Key 与凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
         <div class="st-card">
-          <div class="st-card-title">模型</div>
-          <!-- GP-148 §1-J4：产品态的模型/供应商面板入口。表头那颗芯片在精简外壳里
-               是隐藏的（shell_v2 S-HEADER 要求），所以这里给一个正经入口，和密钥表单
-               读同一个 Host 数据源（llmCatalog + secrets）。 -->
-          <div class="gp-row" style="margin-bottom:8px">
-            <button type="button" class="bb-btn bb-btn-sm" id="sec-model-open" data-i18n="secModelOpen">模型与供应商</button>
-          </div>
-          <label class="st-field"><span class="st-field-name">DeepSeek API Key <span id="sec-llm-mask"></span></span>
-            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
+          <div class="st-card-title">模型接入</div>
+          <!-- 不再把渠道写死成「DeepSeek / 通义 / Kimi 三个 key 框」。
+               本机大脑走 OpenAI 兼容协议，所以任何兼容端点都能接：官方渠道、
+               自建推理服务（vLLM / Ollama / LM Studio）、或企业网关。
+               接入方式只负责预填 base/model/provider，用户随时可以改。 -->
+          <div class="st-note">本机大脑走 OpenAI 兼容协议：官方渠道、自建推理服务、企业网关都能接。选一个接入方式会预填 Base URL 与模型，之后可以随意改。</div>
+          <label class="st-field"><span class="st-field-name">接入方式</span>
+            <select id="sec-llm-preset" class="bb-field">
+              <option value="deepseek">DeepSeek（官方）</option>
+              <option value="qwen">通义千问（DashScope 兼容模式）</option>
+              <option value="moonshot">Moonshot / Kimi</option>
+              <option value="openrouter">OpenRouter（聚合网关）</option>
+              <option value="custom">自定义 · OpenAI 兼容端点</option>
+              <option value="gateway">企业网关 / 代理转发</option>
+            </select>
           </label>
-          <label class="st-field"><span class="st-field-name">API Base URL</span>
+          <label class="st-field"><span class="st-field-name">提供商标签（provider_id）</span>
+            <input id="sec-llm-provider" type="text" autocomplete="off" placeholder="deepseek / my-gateway" class="bb-field" />
+          </label>
+          <label class="st-field"><span class="st-field-name">Base URL</span>
             <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" class="bb-field" />
           </label>
           <label class="st-field"><span class="st-field-name">模型 ID</span>
             <input id="sec-llm-model" type="text" placeholder="deepseek-chat" class="bb-field" />
           </label>
+          <label class="st-field"><span class="st-field-name">API Key <span id="sec-llm-mask"></span></span>
+            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
+          </label>
+          <div id="sec-llm-hint" class="st-note">…</div>
+          <!-- GP-148 §1-J4：产品态的模型/供应商面板入口。表头那颗芯片在精简外壳里
+               是隐藏的（shell_v2 S-HEADER 要求），所以这里给一个正经入口，和密钥表单
+               读同一个 Host 数据源（llmCatalog + secrets）。 -->
+          <div class="gp-row" style="margin-top:10px">
+            <button type="button" class="bb-btn bb-btn-sm" id="sec-model-open" data-i18n="secModelOpen">模型与供应商</button>
+          </div>
+        </div>
+        <details class="st-card" id="sec-alt-channels">
+          <summary class="st-card-title" style="cursor:pointer">备用渠道 Key（可选）</summary>
+          <div class="st-note">同一份 <code>.env.local</code>；切到对应渠道时不用再填一遍。</div>
           <label class="st-field"><span class="st-field-name">通义千问 API Key <span id="sec-qwen-mask"></span></span>
             <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
           </label>
           <label class="st-field"><span class="st-field-name">Moonshot / Kimi API Key <span id="sec-moon-mask"></span></span>
             <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
           </label>
-        </div>
+        </details>
         <div class="st-card">
           <div class="st-card-title">联网搜索</div>
           <!-- Replica C6：真实搜索 + 引用。key 走和大脑 key 同一条开放配置链路
@@ -2030,13 +2327,9 @@
           </label>
         </div>
         <div class="st-card">
-          <div class="st-card-title">更新</div>
-          <label class="st-field"><span class="st-field-name">更新源 URL</span>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input id="sec-ota" type="text" placeholder="目录下需 latest.yml" class="bb-field bb-field-grow" />
-              <button type="button" id="sec-ota-check" class="bb-btn bb-btn-sm" style="white-space:nowrap">查更新</button>
-            </div>
-          </label>
+          <div class="st-card-title">入站地址</div>
+          <!-- 更新源 URL 已搬到「设置 → 更新」，凭证页不再重复一份。
+               这里只留连接应用回调需要的入站公网地址。 -->
           <div id="sec-inbound-url" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -2059,19 +2352,40 @@
       </div>
       <div id="lb-body" style="max-width:94vw;max-height:88vh;display:flex;align-items:center;justify-content:center;overflow:auto"></div>
     </div>
-    <!-- GP-A2/A3: Connect apps panel (spec §2.5 · Cmd/Ctrl+Shift+M) -->
+    <!-- GP-A2/A3: Connect apps dialog (§2.5 · Cmd/Ctrl+Shift+M).
+         Content mirrors the measured Grok .ui-dialog (2026-10-25): title row
+         53/33, count right-aligned, close pinned 11/11, borderless search row
+         (14px input + Bot 模板 pill), 7 chips (更多 reveals the long tail),
+         then 14px/500 section headings over 2×375 compact rows. -->
     <div id="connect-apps-modal" class="bb-modal">
-      <div class="bb-sheet bb-sheet-lg">
-        <div class="bb-sheet-head">
-          <div class="bb-sheet-title" data-i18n="caTitle">连接应用</div>
-          <button type="button" id="ca-close" class="bb-btn bb-close" data-i18n="caClose">关闭</button>
+      <div class="bb-sheet bb-sheet-lg ca-dialog">
+        <button type="button" id="ca-close" class="bb-btn bb-close" data-i18n="caClose">关闭</button>
+        <div class="ca-scroll">
+        <div class="ca-top">
+        <div class="ca-head">
+          <div class="bb-sheet-title ca-title" data-i18n="caTitle">连接应用</div>
+          <button type="button" id="ca-connected" class="ca-connected" aria-pressed="false">
+            <span id="ca-stack" class="ca-stack" aria-hidden="true"></span>
+            <span id="ca-connected-txt" class="ca-connected-txt"></span>
+            <svg class="ca-chev" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="m4.5 2.5 3.5 3.5-3.5 3.5"/></svg>
+          </button>
         </div>
-        <div style="color:var(--muted);font-size:12px;margin-top:6px" data-i18n="caGlobal">插件对本机全局生效，安装后所有 Bot 都可使用。</div>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="搜索插件" class="bb-field bb-field-grow" />
-          <button type="button" id="ca-refresh" class="bb-btn bb-btn-sm" data-i18n="caRefresh">刷新</button>
+        <div class="ca-search-row">
+          <label class="ca-search">
+            <span class="ca-search-ic" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><path d="m10.4 10.4 3.1 3.1"/></svg>
+            </span>
+            <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="在应用和技能中搜索" class="ca-search-input" />
+          </label>
+          <button type="button" id="ca-template-btn" class="ca-template-btn">
+            <span class="ca-tpl-mark" aria-hidden="true">
+              <svg viewBox="0 0 18 18" width="18" height="18"><circle cx="9" cy="9" r="9" fill="currentColor"/><path d="M9 3.6l1.35 3.65L14 8.6l-3.65 1.35L9 13.6 7.65 9.95 4 8.6l3.65-1.35z" fill="var(--surface)"/></svg>
+            </span>
+            <span data-i18n="caBotTemplates">Bot 模板</span>
+            <svg class="ca-tpl-go" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M5.5 10.5 10.5 5.5M6.5 5.5h4v4"/></svg>
+          </button>
         </div>
-        <!-- Grok-parity: category chips filter the plugin grid -->
+        <!-- Grok-parity: category chips filter the plugin sections -->
         <div id="ca-cats" class="ca-cats">
           <button type="button" class="ca-chip active" data-cat="all" data-i18n="caCatAll">全部</button>
           <button type="button" class="ca-chip" data-cat="password" data-i18n="caCatPassword">密码管理器</button>
@@ -2079,43 +2393,52 @@
           <button type="button" class="ca-chip" data-cat="communication" data-i18n="caCatCommunication">通信</button>
           <button type="button" class="ca-chip" data-cat="design" data-i18n="caCatDesign">设计</button>
           <button type="button" class="ca-chip" data-cat="code" data-i18n="caCatCode">代码</button>
+          <button type="button" class="ca-chip ca-more" data-cat="more" id="ca-more-chip" data-i18n="caMore">更多</button>
+          <button type="button" class="ca-chip ca-extra" data-cat="data" data-i18n="caCatData" hidden>数据</button>
+          <button type="button" class="ca-chip ca-extra" data-cat="sales" data-i18n="caCatSales" hidden>销售</button>
+          <button type="button" class="ca-chip ca-extra" data-cat="marketing" data-i18n="caCatMarketing" hidden>营销</button>
+          <button type="button" class="ca-chip ca-extra" data-cat="finance" data-i18n="caCatFinance" hidden>财务</button>
+          <button type="button" class="ca-chip ca-extra" data-cat="research" data-i18n="caCatResearch" hidden>研究</button>
+          <button type="button" class="ca-chip ca-extra" data-cat="support" data-i18n="caCatSupport" hidden>支持</button>
         </div>
-        <!-- 国内渠道（钉钉/飞书/企微）凭证：归入「通信」分类，全部/通信 时可见 -->
-        <div id="ca-cn-channels" data-cat="communication" style="display:none;flex-direction:column;margin-top:12px;padding:14px 16px;border-radius:12px">
-          <div style="font-weight:600;font-size:15px;color:var(--g-ink);margin-bottom:12px">国内通信渠道 · 钉钉 / 飞书 / 企微</div>
-          <label class="st-field"><span class="st-field-name">钉钉 Webhook（勾选开启推送）</span>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input id="sec-ding-post" type="checkbox" />
-              <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
-            </div>
-          </label>
-          <label class="st-field"><span class="st-field-name">飞书 token + chat_id</span>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input id="sec-feishu-post" type="checkbox" />
-              <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
-              <input class="bb-control" id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%" />
-            </div>
-          </label>
-          <label class="st-field"><span class="st-field-name">企微 token + agent + touser</span>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input id="sec-wecom-post" type="checkbox" />
-              <input class="bb-control" id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px" />
-              <input class="bb-control" id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px" />
-              <input class="bb-control" id="sec-wecom-to" type="text" placeholder="touser" style="width:100px" />
-            </div>
-          </label>
+        </div><!-- /.ca-top -->
+        <div id="ca-sections"></div>
+          <!-- GP-135 (§6.3): skills grouped by origin; plugin skills come with
+               their Connect app, managed skills are always listable, user skills
+               are authored/learned on this machine. -->
+          <div class="ca-skills-block">
+            <div class="ca-section-head"><div class="ca-section-title" data-i18n="caSkillTitle">技能（按来源）</div></div>
+            <div id="ca-skills"></div>
+          </div>
+          <!-- 国内渠道（钉钉/飞书/企微）凭证：归入「通信」分类，全部/通信 时可见。
+               仅调整位置与视觉权重；字段 id 不变，渲染层从不读取这些 input 的值。 -->
+          <div id="ca-cn-channels" class="ca-cn" data-cat="communication" style="display:none;flex-direction:column">
+            <div class="ca-section-head"><div class="ca-section-title">国内通信渠道</div><span class="ca-cn-hint">钉钉 / 飞书 / 企微</span></div>
+            <label class="st-field"><span class="st-field-name">钉钉 Webhook（勾选开启推送）</span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-ding-post" type="checkbox" />
+                <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
+              </div>
+            </label>
+            <label class="st-field"><span class="st-field-name">飞书 token + chat_id</span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-feishu-post" type="checkbox" />
+                <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
+                <input class="bb-control" id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%" />
+              </div>
+            </label>
+            <label class="st-field"><span class="st-field-name">企微 token + agent + touser</span>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <input id="sec-wecom-post" type="checkbox" />
+                <input class="bb-control" id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px" />
+                <input class="bb-control" id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px" />
+                <input class="bb-control" id="sec-wecom-to" type="text" placeholder="touser" style="width:100px" />
+              </div>
+            </label>
+          </div>
+          <div class="ca-auth" data-i18n="caAuthNote">部分插件需先在浏览器完成 OAuth 登录才能调用其工具。</div>
         </div>
-        <div id="ca-meta" style="color:var(--muted);font:11px/1.4 ui-monospace,monospace;margin-top:8px"></div>
-        <div style="font-weight:700;font-size:13px;margin-top:12px" data-i18n="caYour">已安装的插件</div>
-        <div id="ca-installed" class="ca-grid"></div>
-        <div style="font-weight:700;font-size:13px;margin-top:14px" data-i18n="caBrowse">浏览插件</div>
-        <div id="ca-browse" class="ca-grid"></div>
-        <!-- GP-135 (§6.3): skills grouped by origin; plugin skills come with
-             their Connect app, managed skills are always listable, user skills
-             are authored/learned on this machine. -->
-        <div class="ca-section-title" style="margin-top:14px" data-i18n="caSkillTitle">技能（按来源）</div>
-        <div id="ca-skills" style="display:flex;flex-direction:column;gap:4px;margin-top:6px"></div>
-        <div style="color:var(--muted);font-size:11px;margin-top:12px" data-i18n="caAuthNote">部分插件需先在浏览器完成 OAuth 登录才能调用其工具。</div>
+        <div id="ca-meta" class="ca-meta"></div>
       </div>
     </div>
     <!-- GP-120/121 (§2.2/§2.3): Edit Profile / Create Bot dialog. Fields match
@@ -2123,31 +2446,66 @@
          renderer only collects text — the Host store is written by the kernel's
          `update bot` / `create bot` effect, never by the renderer directly. -->
     <div id="bot-edit-modal" class="bb-modal bb-raise">
-      <div class="bb-sheet bb-sheet-md">
-        <div class="bb-sheet-head">
-          <div id="bf-title" class="bb-sheet-title">编辑资料</div>
+      <div class="bb-sheet bb-sheet-md bf-sheet">
+        <div class="bb-sheet-head bf-head">
+          <div class="bf-head-text">
+            <div id="bf-title" class="bb-sheet-title">编辑资料</div>
+            <div id="bf-subtitle" class="bf-sub">写清它负责什么、按什么方式做事；创建后可在「编辑资料」补头像与标签。</div>
+          </div>
           <button type="button" id="bf-close" class="bb-btn bb-close" title="Close">×</button>
         </div>
-        <div style="display:flex;gap:16px;margin-top:14px;align-items:flex-start">
-          <div id="bf-avatar-col" style="flex:0 0 96px;text-align:center">
+
+        <div class="bf-body">
+          <div id="bf-avatar-col" class="bf-avatar-col">
             <div id="bf-avatar-preview" class="bf-avatar">B</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:6px" data-i18n="bfAvatar">头像</div>
+            <div class="bf-avatar-cap" data-i18n="bfAvatar">头像</div>
             <button type="button" id="bf-avatar-pick" class="bb-btn bb-btn-sm bb-btn-block" data-i18n="bfPickAvatar">选择图片</button>
             <button type="button" id="bf-avatar-clear" class="bb-btn bb-btn-sm bb-btn-block" data-i18n="bfClearAvatar">移除头像</button>
+            <div class="bf-avatar-hint" data-i18n="bfAvatarHint">留空则用首字生成</div>
           </div>
-          <div style="flex:1 1 auto;min-width:0">
-            <label class="bf-label"><span data-i18n="bfName">名称</span><input id="bc-name" class="bf-input" type="text" autocomplete="off" placeholder="Name（如 Piper）" data-i18n-ph="bfNamePh" /></label>
-            <label class="bf-label" id="bf-tags-row"><span data-i18n="bfTags">标签</span><input id="bc-tags" class="bf-input" type="text" autocomplete="off" placeholder="perf, research" data-i18n-ph="bfTagsPh" /></label>
-            <label class="bf-label"><span data-i18n="bfJob">职责</span><input id="bc-job" class="bf-input" type="text" autocomplete="off" placeholder="职责（如「产品性能」）" data-i18n-ph="bcJobPh" /></label>
-            <label class="bf-label"><span data-i18n="bfDesc">描述</span><textarea id="bc-desc" class="bf-input" rows="5" placeholder="描述（工作方式 / 工具 / 边界，例如「不得改动生产配置」）" data-i18n-ph="bcDescPh"></textarea></label>
-            <div style="color:var(--muted);font-size:11px;margin:-2px 0 8px" data-i18n="bfDescHint">描述支持多行：工作方式 / 工具 / 输出格式 / 安全边界 / 审批要求。</div>
-            <div id="bc-tpl-row" style="color:var(--muted);font-size:11px;margin-bottom:6px"><span data-i18n="bcTemplates">模板</span>：<span id="bc-tpl-btns" style="display:inline-flex;flex-wrap:wrap;gap:4px"></span></div>
-            <div id="bf-status" style="color:var(--muted);font-size:11px;min-height:14px"></div>
+          <div class="bf-fields">
+            <!-- 1) 身份：谁、负责什么 -->
+            <section class="bf-section">
+              <div class="bf-section-title" data-i18n="bfSecIdentity">身份</div>
+              <label class="bf-label">
+                <span data-i18n="bfName">名称</span>
+                <input id="bc-name" class="bf-input" type="text" autocomplete="off" maxlength="40" placeholder="Name（如 Piper）" data-i18n-ph="bfNamePh" />
+              </label>
+              <div class="bf-hint bf-hint-tight" data-i18n="bfNameHint">名称留空时会自动命名为「新 Bot」，之后也能改。</div>
+              <label class="bf-label">
+                <span data-i18n="bfJob">职责</span>
+                <input id="bc-job" class="bf-input" type="text" autocomplete="off" placeholder="职责（如「产品性能」）" data-i18n-ph="bcJobPh" />
+              </label>
+              <label class="bf-label" id="bf-tags-row">
+                <span data-i18n="bfTags">标签</span>
+                <input id="bc-tags" class="bf-input" type="text" autocomplete="off" placeholder="perf, research" data-i18n-ph="bfTagsPh" />
+              </label>
+            </section>
+
+            <!-- 2) 工作方式：描述是唯一能约束行为的地方，给它最多的空间 -->
+            <section class="bf-section">
+              <div class="bf-section-title bf-section-title-row">
+                <span data-i18n="bfDesc">描述</span>
+                <span id="bc-desc-count" class="bf-count">0</span>
+              </div>
+              <textarea id="bc-desc" class="bf-input bf-textarea" rows="7" placeholder="描述（工作方式 / 工具 / 边界，例如「不得改动生产配置」）" data-i18n-ph="bcDescPh"></textarea>
+              <div class="bf-hint" data-i18n="bfDescHint">描述支持多行：工作方式 / 工具 / 输出格式 / 安全边界 / 审批要求。</div>
+            </section>
+
+            <!-- 3) 起手式：新建时给几个真实模板，填的是同一批字段 -->
+            <section class="bf-section" id="bc-tpl-row">
+              <div class="bf-section-title" data-i18n="bcTemplates">模板</div>
+              <div id="bc-tpl-btns" class="bf-tpl-row"></div>
+            </section>
           </div>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
-          <button type="button" id="bc-cancel" class="bb-btn bb-btn-sm" data-i18n="bcCancel">取消</button>
-          <button type="button" id="bc-create" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="bcCreate">创建</button>
+
+        <div class="bf-foot">
+          <div id="bf-status" class="bf-status"></div>
+          <div class="bf-foot-actions">
+            <button type="button" id="bc-cancel" class="bb-btn bb-btn-sm" data-i18n="bcCancel">取消</button>
+            <button type="button" id="bc-create" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="bcCreate">创建</button>
+          </div>
         </div>
       </div>
     </div>
@@ -2236,7 +2594,7 @@
       <div id="welcome">
         <div class="w-brand">Bit Bot</div>
         <div class="w-line" data-i18n="welcomeLine">桌面 AI 助手 · MoonBit 内核 · DeepSeek 大脑</div>
-        <div class="w-hint" data-i18n="welcomeHint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板</div>
+        <div class="w-hint" data-i18n="welcomeHint">输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板 · 说「组建团队：选题、写作、排版」一次拉起一支队伍</div>
         <div id="welcome-cfg" style="margin-top:16px;display:none">
           <button type="button" id="welcome-cfg-btn" class="bb-btn bb-btn-primary" data-i18n="welcomeCfg">配置 DeepSeek / 渠道凭证</button>
           <div style="margin-top:8px;color:var(--muted);font-size:12px" data-i18n="welcomeCfgNote">密钥开放配置，不写死在安装包里</div>
@@ -2477,7 +2835,6 @@
         <button type="button" id="box-chrome" class="bb-btn bb-btn-sm">浏览器探测</button>
         <button type="button" id="box-bare-chrome" class="bb-btn bb-btn-sm bb-btn-danger-soft">启动裸 Chrome（拒绝）</button>
         <button type="button" id="box-screenshot" class="bb-btn bb-btn-sm">截屏</button>
-        <button type="button" id="box-check-updates" class="bb-btn bb-btn-sm">检查更新</button>
         <button type="button" id="box-copy-to" class="bb-btn bb-btn-sm">拷贝到盒子</button>
         <button type="button" id="box-copy-from" class="bb-btn bb-btn-sm">从盒子拷贝</button>
         <button type="button" id="box-shared-fs" class="bb-btn bb-btn-sm">共享盒子文件系统</button>
@@ -2601,12 +2958,17 @@
          「详情」的内容就是上面的 ri-head（群名 + 关闭），所以 tab 取这三段，
          顺序沿用稿子（资料库第三）也沿用现有 rail 的自上而下顺序。 -->
     <div class="ri-tabs" role="tablist" aria-label="群资料分区">
-      <button type="button" class="ri-tab" role="tab" data-tab="members" aria-controls="ri-panel-members" aria-selected="true" data-i18n="riMembers">成员</button>
-      <button type="button" class="ri-tab" role="tab" data-tab="routines" aria-controls="ri-panel-routines" aria-selected="false" data-i18n="riRoutines">定时任务</button>
-      <button type="button" class="ri-tab" role="tab" data-tab="library" aria-controls="ri-panel-library" aria-selected="false" data-i18n="riLibrary">资料库</button>
+      <button type="button" class="ri-tab" id="ri-tab-members" role="tab" data-tab="members" aria-controls="ri-panel-members" aria-selected="true" data-i18n="riMembers">成员</button>
+      <button type="button" class="ri-tab" id="ri-tab-routines" role="tab" data-tab="routines" aria-controls="ri-panel-routines" aria-selected="false" data-i18n="riRoutines">定时任务</button>
+      <button type="button" class="ri-tab" id="ri-tab-library" role="tab" data-tab="library" aria-controls="ri-panel-library" aria-selected="false" data-i18n="riLibrary">资料库</button>
     </div>
     <div class="ri-panel" id="ri-panel-members" data-panel="members" role="tabpanel" aria-labelledby="ri-tab-members">
       <div id="ri-member-list"></div>
+      <!-- G-28 #4：成员管理的反馈行常驻面板内（不塞进临时表单），
+           加人 / 移人的拒绝原因必须看得见。 -->
+      <div id="ri-member-msg" class="ri-err" role="status"></div>
+      <button type="button" id="ri-member-add" class="ri-add-member" data-i18n="riAddMember">＋ 添加成员</button>
+      <div class="ri-picker" id="ri-member-picker" hidden></div>
       <div class="ri-limit" id="ri-limit-note"></div>
     </div>
     <div class="ri-panel" id="ri-panel-routines" data-panel="routines" role="tabpanel" aria-labelledby="ri-tab-routines" hidden>
@@ -2691,7 +3053,7 @@
       <button type="button" id="attach-btn" title="更多：附件 / 联网搜索 / 模型 / 语音对话"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><path d="M12 18v4"/><path d="M8 22h8"/></svg></button>
       <button type="button" id="turn-cancel" class="bb-btn" hidden aria-label="取消">取消</button>
-      <button id="send" type="submit" title="发送 (Enter)" aria-label="Send" data-i18n-aria="send">↑</button>
+      <button id="send" type="submit" title="发送 (Enter)" aria-label="Send" data-i18n-aria="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 19.5V5"/><path d="M5.8 11.2 12 5l6.2 6.2"/></svg></button>
     </div>
     <!-- G-28: Grok 极简 composer —— 联网搜索 / 模型 / 语音对话收进左侧「＋」弹层，
          composer 表面只剩 [＋][输入][麦][↑]，对齐 replica/screens/grok-composer-controls.png。
@@ -2732,18 +3094,12 @@
     }
   </script>
   <script>
-    /* Grok-parity round 5: 管理/设置 collapsed into the account popup.
+    /* Grok-parity round 5: 设置/连接/模板 collapsed into the account popup.
        Forward clicks to the (visually hidden) sidebar controls so the engine
-       keeps a single binding source. */
+       keeps a single binding source.
+       §4.5 6a③：「管理 Bot / 应用」已退役（死控件，无真实落点）。 */
     (function () {
-      var apManage = document.getElementById("ap-manage");
       var apSettings = document.getElementById("ap-settings");
-      if (apManage) apManage.addEventListener("click", function () {
-        var t = document.getElementById("grok-adv-toggle");
-        if (!t) return;
-        t.checked = !t.checked;
-        t.dispatchEvent(new Event("change", { bubbles: true }));
-      });
       if (apSettings) apSettings.addEventListener("click", function () {
         var b = document.getElementById("sidebar-settings-btn");
         if (b) b.click();
@@ -2956,6 +3312,18 @@
     function refreshUpdatesTabState() {
       const el = document.getElementById("st-updates-state");
       if (!el) return;
+      // 更新源输入框现在长在这一页（原来在凭证页）。用户可能一进来就开「更新」，
+      // 没经过凭证页的 refreshSecretsForm，所以在这里自己回填一次。
+      const otaEl = document.getElementById("sec-ota");
+      if (otaEl && !otaEl.value && window.bitbot.secrets && window.bitbot.secrets.status) {
+        window.bitbot.secrets
+          .status()
+          .then((st) => {
+            const row = st && st.fields && st.fields.BITBOT_UPDATE_FEED_URL;
+            if (row && row.value && !otaEl.value) otaEl.value = row.value;
+          })
+          .catch(() => {});
+      }
       const paintIdle = () => {
         if (!el.textContent) el.textContent = wavegT("updatesIdle");
       };
@@ -3408,7 +3776,23 @@
       [/^Task handoff planned \(GP-52\): (.+) → (.+) in «(.+?)»\..*/i, "rHandoff"],
       [/^Attached (\d+) file\(s\) \(GP-11\)\..*/i, "rAttach"],
       [/^CopyToBox planned for machine=\S+ src=(\S+) → data\/workspace\/uploads\/.*\. Host FFI performs real copy \(CM-0703\)\./i, "rAttachOne"],
+      /* G-30：内核这条回执原来把内部 id 和 cron 原文一起吐出来 ——
+         「已建定时任务 routine-cn-518247（排程 @daily）；…可在群资料 → 定时任务里查看。」
+         用户看到的是一串编号和一个他自己从没输入过的表达式（而且 `@daily` 还会被
+         mention 渲染成 `@//daily/`），落点"群资料"在没建群时更是不存在的地方。 */
+      [/^已建定时任务\s+\S+\s*[（(]排程\s+([^）)]+)[）)]/i, "rRoutineCreated"],
     ];
+
+    /** cron 表达式 → 人话。自定义表达式原样给出（至少是用户自己设的那个）。 */
+    function wavegCronLabel(expr) {
+      const c = String(expr || "").trim();
+      if (c === "@hourly") return wavegT("cronHourly");
+      if (c === "@daily") return wavegT("cronDaily");
+      if (c === "@weekly") return wavegT("cronWeekly");
+      if (c === "@monthly") return wavegT("cronMonthly");
+      return c;
+    }
+
     function wavegLocalizeReply(text) {
       const raw = String(text || "");
       for (const [re, key] of WAVEG_REPLY_MAP) {
@@ -3426,6 +3810,7 @@
         if (key === "rAutoReview") return tpl.replace("{via}", m[1]);
         if (key === "rAttach") return tpl.replace("{n}", m[1]);
         if (key === "rAttachOne") return tpl.replace("{path}", m[1]);
+        if (key === "rRoutineCreated") return tpl.replace("{c}", wavegCronLabel(m[1]));
         if (key === "rVoiceStart" || key === "rVoiceEnd") return tpl.replace("{id}", m[1]);
         if (key === "rVoiceRelay") return tpl.replace("{n}", m[2]);
         if (key === "rPluginInstalled" || key === "rPluginUninstalled" || key === "rPluginGet")
@@ -3961,6 +4346,17 @@
       // 菱形
       '<path d="M12 3.4l8.6 8.6-8.6 8.6L3.4 12z"/>',
     ];
+    // G-28 #1: 逐 Bot 品牌图形（白色 fill=currentColor，由 --av 上色）。真实 Bot
+    // 用专属 logo；其余 Bot 走上面的几何字形兜底（按 id 稳定分配，每个 Bot 形状不同）。
+    // 这里只维护「已知 Bot → 品牌 SVG」的映射，新增 Bot 在此登记即可。
+    const BOT_BRAND_SVGS = {
+      // Bit Bot：四角火花（与「Bit Bot」火花主题一致）
+      "agent-bit":
+        '<path d="M12 2.2l2.1 6.4L20.6 11l-6.5 2.4L12 19.8 8.9 13.4 2.4 11l6.5-2.4z"/><circle cx="12" cy="11" r="2.1"/>',
+      // Ivy：叶片
+      "bot-c0e815":
+        '<path d="M5 19c0-7.2 5.2-13.2 14.2-14.2-1 9.2-6.2 14.4-14.2 14.4z"/><path d="M5.4 18.6C7.4 14.6 10.4 11.6 14.2 9.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
+    };
     function avatarGlyphFor(seed) {
       const s = String(seed || "");
       let h = 0;
@@ -3978,9 +4374,10 @@
     }
     // 把白色字形装进一个 span.sess-avatar（或同款头像位）
     function fillAvatarGlyph(el, seed) {
+      const brand = BOT_BRAND_SVGS[String(seed)];
       el.innerHTML =
         '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="currentColor">' +
-        avatarGlyphFor(seed) +
+        (brand || avatarGlyphFor(seed)) +
         "</svg>";
     }
 
@@ -3999,8 +4396,16 @@
         img.src = info.avatar;
         av.appendChild(img);
       } else {
-        av.textContent = name.trim().slice(0, 1);
         av.style.setProperty("--av", avatarColorFor(seed));
+        const brand = BOT_BRAND_SVGS[String(seed)];
+        if (brand) {
+          av.innerHTML =
+            '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false" fill="currentColor">' +
+            brand +
+            "</svg>";
+        } else {
+          av.textContent = name.trim().slice(0, 1);
+        }
       }
       return av;
     }
@@ -5388,8 +5793,8 @@
         );
       });
     }
-    /* G-28 · 账户胶囊右侧的两个图标（Grok 底部的图标对）。
-       会话图标向上弹出 #sessions-popup，设置图标走既有的设置入口。 */
+    /* G-28 · 账户胶囊右侧的两颗圆钮。会话图标向上弹出 #sessions-popup；
+       第二颗对齐真源的「更新」入口，落到设置里的 update-status。 */
     {
       const abSessions = document.getElementById("ab-sessions-btn");
       const sessPopup = document.getElementById("sessions-popup");
@@ -5419,13 +5824,9 @@
           if (ev.target.closest(".sess-row")) closePopup();
         });
       }
-      const abSettings = document.getElementById("ab-settings-btn");
-      if (abSettings) {
-        abSettings.addEventListener("click", () => {
-          const real = document.getElementById("sidebar-settings-btn");
-          if (real) real.click();
-        });
-      }
+      /* 版本更新入口已收敛到「设置 → 更新」：账户条原来那颗 #ab-update-btn
+         与它的 OTA 取数一起下线，不保留第二处「更新」。
+         会话按钮 #ab-sessions-btn 的接线在下方。 */
     }
     /* Wave M35: shared shortcut entry point — button + Cmd/Ctrl+K do the same thing. */
     function toggleSessionSearchFromShortcut() {
@@ -5724,7 +6125,8 @@
     function renderRoomFinalReport(e) {
       const el = document.createElement("div");
       const partial = Boolean(e.partial);
-      el.className = "msg assistant room-report" + (partial ? " room-partial" : "");
+      const skipped = Boolean(e.skipped);
+      el.className = "msg assistant room-report" + (partial ? " room-partial" : "") + (skipped ? " room-skipped" : "");
       const body = document.createElement("div");
       body.className = "body";
       el.appendChild(body);
@@ -5736,14 +6138,18 @@
       head.appendChild(title);
       const count = document.createElement("span");
       count.className = "rr-count";
-      count.textContent = wavegT("roomReportCount")
-        .replace("{r}", String(e.returned == null ? "?" : e.returned))
-        .replace("{t}", String(e.total == null ? "?" : e.total));
+      count.textContent = skipped
+        ? wavegT("roomReportNone")
+        : wavegT("roomReportCount")
+          .replace("{r}", String(e.returned == null ? "?" : e.returned))
+          .replace("{t}", String(e.total == null ? "?" : e.total));
       head.appendChild(count);
       const state = document.createElement("span");
       state.className = "rr-sec-text";
       // 未收齐永远显示 partial，不写「全部完成」（诚实性合同）。
-      state.textContent = partial ? wavegT("roomReportPartial") : wavegT("roomReportComplete");
+      state.textContent = skipped
+        ? wavegT("roomReportSkipped")
+        : partial ? wavegT("roomReportPartial") : wavegT("roomReportComplete");
       head.appendChild(state);
       if (e.at) {
         const tm = document.createElement("span");
@@ -5752,6 +6158,13 @@
         head.appendChild(tm);
       }
       body.appendChild(head);
+      const failOpen = Number(e.discretion_fail_open || 0);
+      if (failOpen > 0) {
+        const note = document.createElement("div");
+        note.className = "rr-task rr-fail-open";
+        note.textContent = wavegT("roomReportFailOpen").replace("{n}", String(failOpen));
+        body.appendChild(note);
+      }
       if (e.task_title || e.task) {
         const task = document.createElement("div");
         task.className = "rr-task";
@@ -5883,6 +6296,7 @@
          · 定时任务 = data/routines/host-routines.json 里 room_id 命中本群的行；
        读不到时明说读不到，绝不渲染空壳冒充「没有」。 */
     const ROOM_MEMBER_MAX = 6;
+    const ROOM_MEMBER_MIN = 2;
     let roomRailId = "";
     let roomRailRoutines = null; // null = 还没读到；[] = 真的没有
     function roomRailOpen() { return panelValue() === "room"; }
@@ -5957,10 +6371,38 @@
       await renderRoomRailRoutines();
       await renderRoomRailLibrary();
     }
+    /* G-28 #4「团队详情抽屉 · 成员管理」的渲染与写入口。
+       成员行 = 头像 + 名字/职责 + 移除；移除在只剩 2 人时置灰（2 人是群聊
+       下限，Host 也会拒）——点不动比点完再报错诚实。加人走「从 Bot 库添加」
+       展开的选人表，只列当前不在群里的可见 Bot。 */
+    function roomMemberAvatarEl(botId) {
+      const av = document.createElement("span");
+      av.className = "ri-av";
+      av.style.setProperty("--av", avatarColorFor(botId));
+      av.style.background = "var(--av)";
+      av.setAttribute("aria-hidden", "true");
+      fillAvatarGlyph(av, botId);
+      return av;
+    }
+    function memberFailCopy(res) {
+      const code = String((res && res.error) || "");
+      if (code.indexOf("members_2_to_6") >= 0) {
+        if (res && res.min) return t("riMemberErrMin", { n: res.min });
+        return t("riMemberErrMax", { n: (res && res.max) || ROOM_MEMBER_MAX });
+      }
+      if (code.indexOf("already_member") >= 0) return t("riMemberErrExists");
+      if (code.indexOf("not_member") >= 0) return t("riMemberErrNotMember");
+      if (code.indexOf("bot_not_found") >= 0) return t("riMemberErrBot");
+      if (code.indexOf("bots_store_unreadable") >= 0) return t("riMemberErrBots");
+      if (code.indexOf("rooms_store_unreadable") >= 0) return t("riMemberErrStore");
+      if (code.indexOf("room_not_found") >= 0) return wavegT("riNoRoom");
+      return devModeOn() ? t("riMemberErrGeneric") + " · " + code : t("riMemberErrGeneric");
+    }
     async function renderRoomRailMembers() {
       const host = document.getElementById("ri-member-list");
       const limit = document.getElementById("ri-limit-note");
       const title = document.getElementById("ri-title");
+      const addBtn = document.getElementById("ri-member-add");
       if (!host) return;
       let room = null;
       try {
@@ -5971,11 +6413,13 @@
       } catch (err) {
         host.textContent = wavegT("riMembersUnknown");
         if (limit) limit.textContent = "";
+        if (addBtn) addBtn.disabled = true;
         return;
       }
       if (!room) {
         host.textContent = wavegT("riMembersUnknown");
         if (limit) limit.textContent = "";
+        if (addBtn) addBtn.disabled = true;
         return;
       }
       if (title) title.textContent = room.title || room.id;
@@ -5984,14 +6428,31 @@
       for (const id of members) {
         const row = document.createElement("div");
         row.className = "ri-member";
+        row.dataset.botId = id;
+        row.appendChild(roomMemberAvatarEl(id));
+        const main = document.createElement("div");
+        main.className = "ri-main";
         const nm = document.createElement("div");
         nm.className = "ri-name";
         nm.textContent = roomBotNames[id] || id;
         const job = document.createElement("div");
         job.className = "ri-job";
-        job.textContent = "—";
-        row.appendChild(nm);
-        row.appendChild(job);
+        main.appendChild(nm);
+        main.appendChild(job);
+        row.appendChild(main);
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "ri-member-del";
+        del.dataset.botId = id;
+        del.dataset.act = "remove-member";
+        del.textContent = "×";
+        del.title = t("riMemberRemove");
+        del.setAttribute("aria-label", t("riMemberRemove") + " · " + nm.textContent);
+        if (members.length <= ROOM_MEMBER_MIN) {
+          del.disabled = true;
+          del.title = t("riMemberErrMin", { n: ROOM_MEMBER_MIN });
+        }
+        row.appendChild(del);
         host.appendChild(row);
         try {
           const d = await window.bitbot.bots.detail(id);
@@ -6002,6 +6463,91 @@
         }
       }
       if (limit) limit.textContent = t("riLimitNote", { n: ROOM_MEMBER_MAX });
+      if (addBtn) {
+        const full = members.length >= ROOM_MEMBER_MAX;
+        addBtn.disabled = full;
+        addBtn.textContent = full ? t("riMemberFull", { n: ROOM_MEMBER_MAX }) : t("riAddMember");
+      }
+      if (members.length >= ROOM_MEMBER_MAX) {
+        const picker = document.getElementById("ri-member-picker");
+        if (picker) { picker.hidden = true; picker.textContent = ""; }
+      }
+    }
+    /* 加人 / 移人的唯一出口：写 Host → 按 store 重渲染 → 正在看这个群就一起
+       刷新 transcript（成员变动会落一条 kind:"system" 行）。 */
+    async function updateRoomMembers(action, botId) {
+      const msg = document.getElementById("ri-member-msg");
+      if (msg) msg.textContent = "";
+      if (!roomRailId || !botId) return;
+      let res = null;
+      try {
+        const api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.members;
+        if (!api || typeof api.update !== "function") {
+          if (msg) msg.textContent = wavegT("riMemberUnsupported");
+          return;
+        }
+        res = await api.update({ room: roomRailId, bot_id: botId, action });
+      } catch (err) {
+        res = { ok: false, error: String(err && err.message ? err.message : err) };
+      }
+      if (!res || !res.ok) {
+        if (msg) msg.textContent = memberFailCopy(res);
+      } else if (action === "add") {
+        const picker = document.getElementById("ri-member-picker");
+        if (picker) { picker.hidden = true; picker.textContent = ""; }
+      }
+      // 重渲染失败也要说话：静默 catch 会让面板空着、用户以为「群没了」。
+      await renderRoomRailMembers().catch((err) => {
+        if (msg) msg.textContent = String((err && err.message) || err);
+      });
+      if (composerRoom && composerRoom.id === roomRailId) {
+        renderRoomTranscript(roomRailId).catch(() => {});
+      }
+    }
+    async function toggleMemberPicker() {
+      const picker = document.getElementById("ri-member-picker");
+      const msg = document.getElementById("ri-member-msg");
+      if (!picker) return;
+      if (!picker.hidden) { picker.hidden = true; picker.textContent = ""; return; }
+      if (msg) msg.textContent = "";
+      picker.textContent = "";
+      let view = null;
+      try { view = await window.bitbot.bots.list(); } catch (_) { view = null; }
+      if (!view) {
+        if (msg) msg.textContent = t("riMemberErrBots");
+        return;
+      }
+      // 只有看得见的 Bot 能被拉进群：隐藏 Bot 不该出现在人可见的选人表里。
+      const all = (view.bots || []).filter((b) => b && b.id);
+      const inRoom = new Set(
+        Array.from(document.querySelectorAll("#ri-member-list .ri-member")).map((r) => r.dataset.botId),
+      );
+      const avail = all.filter((b) => !inRoom.has(b.id));
+      if (!avail.length) {
+        const row = document.createElement("div");
+        row.className = "ri-meta";
+        row.style.padding = "9px 8px";
+        row.textContent = t("riMemberAddEmpty");
+        picker.appendChild(row);
+      } else {
+        for (const b of avail) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ri-pick";
+          btn.dataset.botId = b.id;
+          btn.dataset.act = "add-member";
+          btn.appendChild(roomMemberAvatarEl(b.id));
+          const nm = document.createElement("span");
+          nm.className = "ri-pick-name";
+          nm.textContent = b.name || b.id;
+          btn.appendChild(nm);
+          const small = document.createElement("small");
+          small.textContent = String(b.job || b.description || "");
+          btn.appendChild(small);
+          picker.appendChild(btn);
+        }
+      }
+      picker.hidden = false;
     }
     async function renderRoomRailRoutines() {
       const host = document.getElementById("ri-routine-list");
@@ -6527,6 +7073,16 @@
       if (!got || !got.ok || !got.session) return;
       activeSessionId = got.session.id;
       log.innerHTML = "";
+      // T35 · 加载/切换会话时清掉上一轮可能残留的流式 UI。打开「含失败回合」
+      // 的历史会话时，若上一次流式输出被打断，#turn-progress（底部 typing 气泡）
+      // 可能仍停在 running 态、streamEl 仍是脱离文档的悬空引用——这些会让
+      // "底部常挂 typing 气泡"的假象出现。#log 已被上面的 innerHTML="" 清空，
+      // 这里再把散落在 #log 外的指示条复位、并丢弃 streamEl / live 行引用。
+      streamEl = null;
+      const tpEl = document.getElementById("turn-progress");
+      if (tpEl) { tpEl.style.display = "none"; tpEl.dataset.state = "idle"; }
+      const liveEl = document.getElementById("agent-step-live");
+      if (liveEl && liveEl.parentNode) liveEl.parentNode.removeChild(liveEl);
       const msgs = got.session.messages || [];
       if (!msgs.length) {
         log.innerHTML = welcomeMarkup();
@@ -6617,6 +7173,20 @@
       if (model && f.BITBOT_LLM_MODEL && f.BITBOT_LLM_MODEL.value !== undefined) {
         model.value = f.BITBOT_LLM_MODEL.value || model.placeholder;
       }
+      /* 接入方式：用已保存的 provider / base 反推下拉框，避免「显示 DeepSeek、
+         实际连的却是自建网关」这种误导。反推不确定时退回自定义（字段仍可编辑）。 */
+      const provEl = document.getElementById("sec-llm-provider");
+      const baseEl2 = document.getElementById("sec-llm-base");
+      const savedProv = (f.BITBOT_LLM_PROVIDER && f.BITBOT_LLM_PROVIDER.value) || "";
+      const savedBase = (baseEl2 && baseEl2.value) || "";
+      if (provEl && savedProv) provEl.value = savedProv;
+      const presetEl = document.getElementById("sec-llm-preset");
+      if (presetEl) {
+        const key = inferLlmPreset(savedProv, savedBase);
+        presetEl.value = key;
+        const hintEl = document.getElementById("sec-llm-hint");
+        if (hintEl && LLM_PRESETS[key]) hintEl.textContent = LLM_PRESETS[key].hint;
+      }
       const dingPost = document.getElementById("sec-ding-post");
       if (dingPost) dingPost.checked = f.BITBOT_DINGTALK_POST && f.BITBOT_DINGTALK_POST.present && f.BITBOT_DINGTALK_POST.value === "1";
       // POST value may be in value field
@@ -6683,6 +7253,11 @@
       const modelEl = document.getElementById("sec-llm-model");
       const modelVal = modelEl && modelEl.value ? modelEl.value.trim() : "";
       if (modelVal) patch.BITBOT_LLM_MODEL = modelVal;
+      // provider_id 跟着一起写：换渠道时状态区要立刻显示新的来源，
+      // 而不是继续显示上一个渠道的 id。
+      const provEl = document.getElementById("sec-llm-provider");
+      const provVal = provEl && provEl.value ? provEl.value.trim() : "";
+      if (provVal) patch.BITBOT_LLM_PROVIDER = provVal;
       const qwenEl = document.getElementById("sec-qwen-key");
       const qwenVal = qwenEl && qwenEl.value ? qwenEl.value.trim() : "";
       if (qwenVal) patch.BITBOT_LLM_QWEN_API_KEY = qwenVal;
@@ -7091,7 +7666,7 @@
           use.addEventListener("click", async () => {
             use.disabled = true;
             try {
-              await runUserTurn("switch model " + p.id, { skipSession: true });
+              await silentKernel("switch model " + p.id);
               await refreshModelPicker();
               await modelSetStatus(p.id, wavegT("modelSetCurrentOk"), "ok");
             } finally { use.disabled = false; }
@@ -7106,7 +7681,7 @@
           test.disabled = true;
           await modelSetStatus(p.id, wavegT("modelTesting"), "info");
           try {
-            if (!p.active) await runUserTurn("switch model " + p.id, { skipSession: true });
+            if (!p.active) await silentKernel("switch model " + p.id);
             const r = await window.bitbot.secrets.probeLlm();
             if (r && r.ok) {
               await modelSetStatus(p.id, wavegT("modelTestOk"), "ok");
@@ -7155,6 +7730,343 @@
     function clearWelcome() {
       const w = document.getElementById("welcome");
       if (w && w.parentNode) w.parentNode.removeChild(w);
+    }
+
+    /* ==================================================================
+     * 命令分流：控制命令不进对话（G-28 #12）
+     *
+     * 症状（真机上真发生过）：在输入框打 `set appearance dark`，消息流里
+     * 会留下
+     *     [user] set appearance dark        ✓✓
+     *     [bot]  已完成。
+     * 这两条既不是用户想留档的内容，也不是 Bot 的工作成果——它只是一次
+     * 设置写入。连着试三次（system / dark / light），整个会话就变成一串
+     * 「已完成。」，真正的对话被埋在中间。
+     *
+     * 做法：
+     *   1) 命令走 Host 的**静默通道** `bitbot:bots:op`（内核同一条意图表
+     *      解析，`skipSession: true`，不写会话），本地再按命令族写入同一份
+     *      settings——设置页的控件本来也是这么写的（先 settings.set，再补
+     *      一句内核话术保持两边同值）；
+     *   2) 回执只给一行 toast（`#cmd-toast`），不占消息流；
+     *   3) 识别用**前缀白名单**，故意写窄。
+     *
+     * 为什么是白名单而不是问内核「这句是不是命令」：没有这样的 IPC，而
+     * `bots.op` 是**执行**不是**预判**——把一句聊天丢进去，内核认不出就会
+     * 走 LLM 回合（花钱、产生回答）然后把结果扔掉。所以宁可漏认：漏认最多
+     * 退回旧行为（命令进对话），误认却会吃掉一句正常对话。
+     * ================================================================== */
+    let cmdToastTimer = 0;
+
+    /** 设置类动作只需要内核「同值」，不需要一条气泡（G-28 #12）：走静默通道。 */
+    function silentKernel(phrase) {
+      if (!phrase || !window.bitbot || !window.bitbot.bots || !window.bitbot.bots.op) return Promise.resolve(null);
+      return window.bitbot.bots.op({ phrase: String(phrase) }).catch(() => null);
+    }
+
+    function cmdToast(msg, kind) {
+      const el = document.getElementById("cmd-toast");
+      if (!el) return;
+      el.textContent = String(msg || "");
+      el.classList.toggle("warn", kind === "warn");
+      el.hidden = false;
+      clearTimeout(cmdToastTimer);
+      cmdToastTimer = setTimeout(() => {
+        el.hidden = true;
+      }, kind === "warn" ? 4600 : 2600);
+    }
+
+    /* 命令族：怎么认（严格锚定整句）→ 怎么落地 → 内核话术 → 回执文案。 */
+    const CONTROL_COMMANDS = [
+      {
+        re: /^(?:set\s+appearance|appearance)\s+(system|light|dark)$/i,
+        val: (m) => m[1].toLowerCase(),
+        apply: async (mode) => {
+          const res = await window.bitbot.settings.set({ appearance: mode });
+          wavegApplyAppearanceClass(mode);
+          await refreshWaveGSettings().catch(() => {});
+          return !!(res && res.ok);
+        },
+        phrase: (mode) => "set appearance " + mode,
+        label: (mode) =>
+          ({ system: wavegT("appearanceFollow"), light: wavegT("light"), dark: wavegT("dark") }[mode] || mode),
+      },
+      {
+        re: /^(?:local\s+execution|local\s+exec)\s+(ask|always|never)$/i,
+        val: (m) => m[1].toLowerCase(),
+        apply: async (mode) => {
+          const res = await window.bitbot.settings.set({ local_execution: mode });
+          await refreshWaveGSettings().catch(() => {});
+          return !!(res && res.ok);
+        },
+        phrase: (mode) => "local execution " + mode,
+        label: (mode) =>
+          ({ ask: wavegT("askEveryTime"), always: wavegT("alwaysAllowBtn"), never: wavegT("neverAllow") }[mode] || mode),
+      },
+      {
+        re: /^set\s+language\s+([a-z]{2}(?:-[a-z]{2,4})?)$/i,
+        val: (m) => m[1],
+        apply: async (code) => {
+          const res = await window.bitbot.settings.set({ language: code });
+          if (res && res.ok) wavegLangApply(code);
+          return !!(res && res.ok);
+        },
+        phrase: (code) => "set language " + code,
+        label: (code) => code,
+      },
+      {
+        re: /^set\s+timezone\s+([A-Za-z][A-Za-z0-9_+\-/]{1,40})$/i,
+        val: (m) => m[1],
+        apply: async (tz) => {
+          const res = await window.bitbot.settings.set({ timezone: tz, timezone_explicit: true });
+          return !!(res && res.ok);
+        },
+        phrase: (tz) => "set timezone " + tz,
+        label: (tz) => tz,
+      },
+      {
+        re: /^switch\s+model\s+([A-Za-z0-9._\-/:]{1,64})$/i,
+        val: (m) => m[1],
+        // 换模型是「一次内核动作」，不是「本地写 + 内核补一句」，所以这里只发
+        // 一次静默通道；phrase 置空，避免 runControlCommand 再补一次。
+        apply: async (id) => {
+          const r = await silentKernel("switch model " + id);
+          return !!(r && r.ok);
+        },
+        phrase: null,
+        label: (id) => id,
+      },
+    ];
+
+    /* Bot 生命周期里**可逆**的那几条（置顶 / 隐藏 / 复制 / 设为 Primary）。
+       `delete bot` 故意不在里面：删除要确认，不能让一句聊天直接抹掉一个 Bot。 */
+    const BOT_LIFECYCLE_RE =
+      /^(?:pin|unpin|hide|unhide|duplicate)\s+bot\s+[A-Za-z0-9._-]{1,64}$|^set\s+primary\s+bot\s+[A-Za-z0-9._-]{1,64}$/i;
+
+    function isControlCommand(text) {
+      const src = String(text || "").trim();
+      if (!src || src.includes("\n")) return false;
+      if (BOT_LIFECYCLE_RE.test(src)) return true;
+      return CONTROL_COMMANDS.some((c) => c.re.test(src));
+    }
+
+    /** 执行一条控制命令。返回是否成功；不改消息流，只留一行 toast。 */
+    async function runControlCommand(text) {
+      const src = String(text || "").trim();
+      if (BOT_LIFECYCLE_RE.test(src)) {
+        const r = await window.bitbot.bots.op({ phrase: src }).catch(() => null);
+        const ok = !!(r && r.ok);
+        if (ok) await refreshBots().catch(() => {});
+        cmdToast(ok ? wavegT("cmdDone") : wavegT("cmdFailed") + " · " + ((r && r.error) || "?"), ok ? "" : "warn");
+        return ok;
+      }
+      for (const c of CONTROL_COMMANDS) {
+        const m = src.match(c.re);
+        if (!m) continue;
+        const v = c.val(m);
+        let ok = false;
+        try {
+          ok = await c.apply(v);
+        } catch (_) {
+          ok = false;
+        }
+        // 内核侧保持同值：设置页控件也是「settings.set + 一句话术」两条腿。
+        // phrase 为 null 的命令自己已经走过内核（如 switch model），不再补。
+        if (c.phrase) await silentKernel(c.phrase(v));
+        cmdToast(
+          ok ? wavegT("cmdSet").replace("{v}", c.label(v)) : wavegT("cmdFailed") + " · " + v,
+          ok ? "" : "warn",
+        );
+        return ok;
+      }
+      return false;
+    }
+
+    /* ==================================================================
+     * 一句话组队：`组建团队：选题、写作、排版`
+     *
+     * 目的不是「省几次点击」，而是**先把团队立起来再调**：新建 Bot 弹窗
+     * 一次只能问一个，组一支队伍要开六次弹窗——而团队的形状（谁负责什么）
+     * 本来是一句话就能说清的东西。
+     *
+     * 落地全走已有的静默通道，不新造「团队」实体：
+     *   - 每个角色 → `create bot <名字> job=<角色> description=<模板>`
+     *   - 团队名 → 写进每个 Bot 的 `group`（侧栏分组立刻成形，见 §8.9）
+     *   - ≥2 个成员 → `create group chat bots=<ids> title=<团队名>`
+     * ================================================================== */
+    /* G-30：头部除了「组建团队」，还要认「我要 / 我想 / 需要 / 打算 组建团队」。
+       实录里用户说的就是「我要组建团队来处理公众号从每天定时收集AI科技热点内容
+       发我邮箱」——旧正则只认「组建」开头，整句于是掉进对话，变成一条 prompt
+       就是整句话的定时任务（room_id 为空，群也没建）。用户看到的结果是
+       「Bot 有了、定时任务有了、群没有」，而他明明说了"组建团队"。 */
+    const TEAM_HEAD_RE = new RegExp(
+      "^(?:请|帮我|帮忙|麻烦)?\\s*" +
+        "(?:我要|我想|我想要|我需要|需要|打算|准备)?\\s*" +
+        "(?:组建|创建|新建|组|建|拉|create|build|set\\s+up)" +
+        "(?:\\s+(?:a|an|the))?\\s*(?:一个|一支|个)?\\s*" +
+        "(?:团队|小队|小组|队伍|team|squad)\\s*[:：,，]?\\s*",
+      "i",
+    );
+
+    /* 用户只说了"组个团队做某件事"、没报角色清单时用的常规分工。
+       这不叫"猜"：它有据可依（句子里的领域词），而且回执会明说「先按这套搭起来」。
+       命中不了任何领域就用通用三件套 —— 宁可给一份能改的骨架，也不要回一句
+       "请告诉我角色"，因为用户已经说了他不想自己拆分工。 */
+    const TEAM_ROLE_PRESETS = [
+      { re: /公众号|内容|文章|写作|文案|选题|排版|发文|推文|运营/, roles: ["选题", "写作", "排版"] },
+      { re: /代码|开发|修复|bug|测试|上线|工程/i, roles: ["需求", "开发", "测试"] },
+      { re: /数据|报表|分析|指标|采集|清洗|治理/, roles: ["采集", "清洗", "分析"] },
+      { re: /销售|客户|线索|商机|签约/, roles: ["线索", "跟进", "复盘"] },
+      { re: /招聘|面试|候选|简历/i, roles: ["寻访", "筛选", "面试"] },
+    ];
+    const TEAM_ROLES_FALLBACK = ["调研", "执行", "复核"];
+
+    /* 句子里出现这些词 → 用户要的不只是"一支队伍"，而是"每天自动干这件事"。
+       只组队不挂定时任务，等于把他这句话做了一半。 */
+    const TEAM_SCHEDULE_RE = /(每天|每日|每小时|每隔|每周|每月|定时|按天|工作日|早上|晚上)/;
+
+    function teamCronOf(text) {
+      if (/每小时|每隔/.test(text)) return "@hourly";
+      if (/每周/.test(text)) return "@weekly";
+      if (/每月/.test(text)) return "@monthly";
+      return "@daily";
+    }
+
+    /** 解析组队话术 → { title, roles[], task, cron? }；不像组队话术就返回 null。 */
+    function parseTeamBrief(raw) {
+      const src = String(raw || "").trim();
+      if (!src) return null;
+      const m = src.match(TEAM_HEAD_RE);
+      if (!m) return null;
+      let rest = src.slice(m[0].length).trim();
+      let title = "";
+      const named =
+        rest.match(/(?:团队名|团队|name)\s*[=＝]\s*([^\s，,、]{1,24})/i) || rest.match(/^(?:叫|名为)\s*([^\s，,、]{1,24})/);
+      if (named) {
+        title = named[1].trim();
+        rest = rest.replace(named[0], " ").trim();
+      }
+      /* 问句先判、再谈骨架。顺序反了的话「组建团队要怎么做？」会因为 rest 非空
+         而走进默认骨架，凭空建出三个和问题无关的 Bot。 */
+      const askish =
+        /[?？]/.test(rest) ||
+        /(?:怎么|如何|为什么|怎样|哪些|多少|是否|能不能|可不可以|要不要|吗|呢)\s*[?？。]?$/.test(rest) ||
+        /^(?:要)?(?:怎么|如何|为什么|怎样)/.test(rest);
+      if (askish) return null;
+
+      const rest2 = rest.replace(/^(?:来|去)?(?:负责|处理|做|搞|管理|运营|完成|用于|专门做)\s*/, "").trim();
+      let roles = rest2
+        .replace(/^(?:包含|包括|含|需要|主要有|有)\s*/, "")
+        .split(/[、,，;；/|｜\n]+/)
+        .map((s) => s.replace(/^(?:一个|一名|个|负责|做)\s*/, "").trim())
+        .filter((s) => s && s.length <= 12)
+        .filter((s) => !/[?？。！!~～]/.test(s))
+        .filter((s) => !/(?:怎么|如何|为什么|怎样|哪些|多少|是否|能不能|可不可以|吗|呢)/.test(s))
+        .filter((s, i, arr) => arr.indexOf(s) === i)
+        .slice(0, 6);
+      /* 没写分隔符 → 整句是一段任务描述，不是角色清单。此时不要硬把一个长句
+         当角色名（那会建出叫「来处理公众号从每天…」的 Bot）。 */
+      if (roles.length === 1 && rest2.length > 12) roles = [];
+
+      const fallbackTitle = title || wavegT("teamDefaultName");
+      if (!roles.length) {
+        if (!rest2) {
+          // 只说了「组建团队」，什么任务都没给：这一步没法替他决定，就地教句式。
+          return { title: fallbackTitle, roles: [], needRoles: true };
+        }
+        const preset = TEAM_ROLE_PRESETS.find((p) => p.re.test(rest2));
+        const picked = preset ? preset.roles.slice() : TEAM_ROLES_FALLBACK.slice();
+        return {
+          title: fallbackTitle,
+          roles: picked,
+          autoRoles: true,
+          task: rest2,
+          ...(TEAM_SCHEDULE_RE.test(rest2) ? { cron: teamCronOf(rest2) } : {}),
+        };
+      }
+      const brief = { title: fallbackTitle, roles };
+      if (rest) brief.task = rest;
+      if (TEAM_SCHEDULE_RE.test(rest)) brief.cron = teamCronOf(rest);
+      return brief;
+    }
+
+    /** 真的把队伍建出来。返回 true 表示侧栏已经有东西了。 */
+    async function runTeamBrief(brief) {
+      if (!brief || !brief.roles.length) {
+        cmdToast(wavegT("teamNeedRoles"), "warn");
+        return false;
+      }
+      const arg = (s) => String(s || "").replace(/ +/g, "+");
+      const title = brief.title;
+      const made = [];
+      for (const role of brief.roles) {
+        const desc = wavegT("teamRoleDesc").replace(/\{r\}/g, role);
+        const phrase = "create bot " + arg(role) + " job=" + arg(role) + " description=" + arg(desc);
+        const r = await window.bitbot.bots.op({ phrase }).catch(() => null);
+        const b = (r && r.ok && r.host_payload && r.host_payload.bot) || null;
+        if (!b) continue;
+        made.push(b);
+        // 分组复用 bots.json 的 group：不另造「团队」实体，侧栏直接就成形。
+        await window.bitbot.bots.setGroup(b.id, title).catch(() => {});
+      }
+      if (!made.length) {
+        cmdToast(wavegT("teamFailed"), "warn");
+        return false;
+      }
+      let roomId = "";
+      if (made.length >= 2) {
+        const phrase = "create group chat bots=" + made.map((b) => b.id).join(",") + " title=" + encodeURIComponentVal(title);
+        const rr = await window.bitbot.bots.op({ phrase }).catch(() => null);
+        if (rr && rr.ok) {
+          // 群 id 不在 bots.op 的返回里（它只挑 bot_create / bot_update），
+          // 所以落地后按团队名回查一次群列表。同名群理论上可能不止一个，
+          // 取最新的那个 —— 这次刚建的就是它。
+          const rooms = await window.bitbot.rooms.list().catch(() => null);
+          const all = (rooms && rooms.rooms && rooms.rooms.rooms) || [];
+          const hit = all.filter((x) => x && x.title === title).pop();
+          roomId = (hit && hit.id) || "";
+        }
+      }
+      /* 句子里带「每天 / 定时 / 每周」→ 这不是一支闲着的队伍，得把这件事排上。
+         群是定时任务的落点：没绑 room_id 的 routine 在群资料里看不到，
+         用户会以为"任务丢了"（实录：room_id:"" 就是这次的样子）。 */
+      let routineOk = false;
+      if (brief.cron && roomId) {
+        const task = String(brief.task || "")
+          // 等号是全角化：内核的 kv 提取遇到 ` id=` / ` cron=` 会截断 prompt。
+          .replace(/=/g, "＝")
+          .slice(0, 200);
+        const rid = "team-" + Date.now().toString(36);
+        const text = "create routine id=" + rid + " cron=" + brief.cron + " prompt=" + (task || title);
+        const ro = await window.bitbot.routines.op({ text, roomId, botId: made[0].id }).catch(() => null);
+        routineOk = !!(ro && ro.ok);
+      }
+      await refreshBots().catch(() => {});
+      await refreshSidebarRooms().catch(() => {});
+      flashMoved(made[0].id, title);
+      const cronLabel =
+        brief.cron === "@hourly" ? wavegT("cronHourly")
+          : brief.cron === "@weekly" ? wavegT("cronWeekly")
+            : brief.cron === "@monthly" ? wavegT("cronMonthly")
+              : wavegT("cronDaily");
+      let msg;
+      if (roomId && routineOk) {
+        msg = wavegT("teamCreatedScheduled")
+          .replace(/\{n\}/g, String(made.length))
+          .replace(/\{t\}/g, title)
+          .replace(/\{c\}/g, cronLabel);
+      } else if (roomId && brief.cron) {
+        msg = wavegT("teamCreatedNoRoutine").replace(/\{n\}/g, String(made.length)).replace(/\{t\}/g, title);
+      } else {
+        msg = (roomId ? wavegT("teamCreated") : wavegT("teamCreatedNoRoom"))
+          .replace(/\{n\}/g, String(made.length))
+          .replace(/\{t\}/g, title);
+      }
+      if (brief.autoRoles) {
+        msg += " · " + wavegT("teamAutoRoles").replace(/\{r\}/g, brief.roles.join("、"));
+      }
+      cmdToast(msg);
+      return true;
     }
 
     async function runUserTurn(text, opts) {
@@ -9705,6 +10617,33 @@
       if (open) popup.removeAttribute("hidden");
       else popup.setAttribute("hidden", "");
       if (acctBtn) acctBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) refreshAccountPopupFacts();
+    }
+    /* 弹层里两个「真状态」槽位，数据不在就不摆样子：
+       - 用量行右侧：本周真实请求数（llm-usage.json 有记录才显示）；
+       - 更新行右侧：只有 OTA 真检查到更新时才出现「安装」胶囊，并把行
+         切到真源的 46px 更新块形态。 */
+    async function refreshAccountPopupFacts() {
+      const api = window.bitbot || {};
+      const sub = document.getElementById("ap-usage-sub");
+      if (sub && api.usage) {
+        try {
+          const u = await api.usage.week();
+          const usage = (u && u.usage) || {};
+          const payload = usage.usage ? usage.usage : usage;
+          const rows = payload.rows || [];
+          const requests = rows.reduce((n, r) => n + (r.requests || 0), 0);
+          if (rows.length && requests > 0) {
+            sub.textContent = wavegT("apUsageReq").replace("{n}", String(requests));
+            sub.removeAttribute("hidden");
+          } else {
+            sub.textContent = "";
+            sub.setAttribute("hidden", "");
+          }
+        } catch (_) { /* keep the slot empty rather than invent a number */ }
+      }
+      /* 版本更新入口已收敛到「设置 → 更新」：账户弹层里原来那行
+         「发现新版本 / 安装」连同它的 OTA 取数一起删掉，不再两处并存。 */
     }
     if (acctBtn) {
       acctBtn.addEventListener("click", (ev) => {
@@ -9729,7 +10668,6 @@
     /* Wave M34: 账户弹层 6 项 → 真实落点（复用 open settings anchor / OTA 短语 /
        占位 callout），避免"看起来能用其实什么都不做"。 */
     const accountPopupTargets = [
-      ["ap-update", "open settings entry=account anchor=update-status", "usage"],
       ["ap-usage", "open settings entry=account anchor=usage", "usage"],
       ["ap-add-account", "open settings entry=account anchor=profile", "general"],
     ];
@@ -9783,6 +10721,86 @@
       secSave.addEventListener("click", () => {
         saveSecretsFromForm().catch(() => {});
       });
+    }
+
+    /* ── 模型接入：接入方式只做「预填」，不锁定任何字段 ─────────────────────
+       本机大脑走 OpenAI 兼容协议，所以渠道不是一个封闭枚举：这里给几个常见
+       预填（官方 / 聚合网关），再加两个空白预设（自建端点 / 企业网关），
+       Base URL、模型 ID、provider_id 全部可改并原样落进 .env.local。 */
+    const LLM_PRESETS = {
+      deepseek: {
+        provider: "deepseek",
+        base: "https://api.deepseek.com/v1",
+        model: "deepseek-chat",
+        hint: "DeepSeek 官方端点；deepseek-chat / deepseek-reasoner 都可用。",
+      },
+      qwen: {
+        provider: "qwen",
+        base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model: "qwen-plus",
+        hint: "DashScope 的 OpenAI 兼容模式；模型如 qwen-plus / qwen-max。",
+      },
+      moonshot: {
+        provider: "moonshot",
+        base: "https://api.moonshot.cn/v1",
+        model: "moonshot-v1-8k",
+        hint: "Moonshot 官方端点。",
+      },
+      openrouter: {
+        provider: "openrouter",
+        base: "https://openrouter.ai/api/v1",
+        model: "openai/gpt-4o-mini",
+        hint: "聚合网关：模型名带厂商前缀，如 openai/gpt-4o-mini、anthropic/claude-3.5-sonnet。",
+      },
+      custom: {
+        provider: "custom",
+        base: "",
+        model: "",
+        hint: "自建端点：vLLM / Ollama（http://127.0.0.1:11434/v1）/ LM Studio 等，Base 一般以 /v1 结尾。",
+      },
+      gateway: {
+        provider: "gateway",
+        base: "",
+        model: "",
+        hint: "企业网关 / 代理：Base 指向网关，模型名与 Key 由网关下发；协议不同就在网关侧转换。",
+      },
+    };
+
+    function applyLlmPreset(key) {
+      const p = LLM_PRESETS[key] || LLM_PRESETS.custom;
+      const provEl = document.getElementById("sec-llm-provider");
+      const baseEl = document.getElementById("sec-llm-base");
+      const modelEl = document.getElementById("sec-llm-model");
+      const hintEl = document.getElementById("sec-llm-hint");
+      if (provEl) provEl.value = p.provider;
+      // 空白预设只改占位提示，不清空用户已经填过的地址。
+      if (baseEl) {
+        if (p.base) baseEl.value = p.base;
+        baseEl.placeholder = p.base || "https://your-endpoint/v1";
+      }
+      if (modelEl) {
+        if (p.model) modelEl.value = p.model;
+        modelEl.placeholder = p.model || "model-id-on-that-endpoint";
+      }
+      if (hintEl) hintEl.textContent = p.hint;
+    }
+
+    /* 反向推断：从已保存的 provider / base 认出当前是哪个接入方式，
+       打开设置时下拉框不会停在「DeepSeek」而实际连的是别处。 */
+    function inferLlmPreset(provider, base) {
+      const p = String(provider || "").trim().toLowerCase();
+      if (p && LLM_PRESETS[p]) return p;
+      const b = String(base || "").toLowerCase();
+      if (b.includes("deepseek")) return "deepseek";
+      if (b.includes("dashscope") || b.includes("aliyuncs")) return "qwen";
+      if (b.includes("moonshot")) return "moonshot";
+      if (b.includes("openrouter")) return "openrouter";
+      return "custom";
+    }
+
+    const secLlmPreset = document.getElementById("sec-llm-preset");
+    if (secLlmPreset) {
+      secLlmPreset.addEventListener("change", () => applyLlmPreset(secLlmPreset.value));
     }
     async function refreshInboundUrlStrip() {
       const el = document.getElementById("sec-inbound-url");
@@ -9949,7 +10967,17 @@
     // GP-02: template catalog moved to the Host store (bot-templates.json);
     // chips render via wireWelcomeTemplates()/wtCatalog — no const here.
 
-    async function refreshBots() {
+    /* 串行化侧栏刷新。refreshBots 会被两条路同时叫起——`bitbot:bots-changed`
+       广播，以及调用方自己的主动刷（例如移动分组既写了 store 又刷新）——
+       而它内部是「先 innerHTML="" 再 await 若干次 IPC 再追加」。两个实例并发时
+       两边的清空都发生在追加之前，同一批 Bot 就被画了两遍：组头重复、行翻倍。
+       排队执行是这里唯一稳的写法（截图里「情报组」出现两次就是这么来的）。 */
+    let refreshBotsChain = Promise.resolve();
+    function refreshBots() {
+      refreshBotsChain = refreshBotsChain.then(() => refreshBotsNow()).catch(() => {});
+      return refreshBotsChain;
+    }
+    async function refreshBotsNow() {
       if (!window.bitbot || !window.bitbot.bots) return;
       let view = null;
       try {
@@ -10030,6 +11058,52 @@
       for (const b of hidden) {
         if (hiddenBox) hiddenBox.appendChild(botRow(b, view.primary_id, true, botLast[b.id]));
       }
+      // G-28 #2: 折叠成头像条。默认 collapsed（只显示头像条），点摘要里的折叠
+      // 按钮展开完整列表。头像条每个 Bot 一个圆 chip，点开即切到该 Bot 私聊。
+      const strip = document.getElementById("bot-strip");
+      if (strip) {
+        strip.innerHTML = "";
+        for (const b of bots.concat(hidden)) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "strip-av";
+          chip.dataset.agentId = b.id;
+          chip.title = b.name || b.id;
+          const av = document.createElement("span");
+          av.className = "sess-avatar";
+          const blobCls = avatarBlobClass(b.id || b.name);
+          if (blobCls) av.classList.add(blobCls);
+          if (b.avatar_data_url) {
+            const img = document.createElement("img");
+            img.alt = "";
+            img.src = b.avatar_data_url;
+            av.appendChild(img);
+          } else {
+            av.style.setProperty("--av", avatarColorFor(b.id || b.name));
+            fillAvatarGlyph(av, b.id || b.name);
+          }
+          chip.appendChild(av);
+          chip.addEventListener("click", () => {
+            if (typeof selectBotForChat === "function") selectBotForChat(b.id);
+          });
+          strip.appendChild(chip);
+        }
+      }
+      // 首次渲染默认折叠；之后保留用户通过折叠按钮切换的状态。
+      const sec = document.getElementById("sb-bots-rooms");
+      if (sec && !sec.dataset.collapseInit) {
+        sec.classList.add("collapsed");
+        sec.dataset.collapseInit = "1";
+      }
+      const caret = document.getElementById("bot-collapse-btn");
+      if (caret && !caret.dataset.wired) {
+        caret.dataset.wired = "1";
+        caret.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const s = document.getElementById("sb-bots-rooms");
+          if (s) s.classList.toggle("collapsed");
+        });
+      }
       // Grok-parity: title-bar pill reflects the primary Bot by default.
       const primary = bots.find((x) => x.id === (view && view.primary_id)) || bots[0];
       if (primary) updateBotPill(primary.name || primary.id, primary.id || primary.name, primary.avatar_data_url);
@@ -10108,9 +11182,10 @@
       }
       if (colorSeed) {
         const c = avatarColorFor(colorSeed);
-        av.style.background = c;
         // Assistant bubbles adopt the same identity color, so the whole
         // conversation visibly belongs to the Bot shown in the title bar.
+        // 只写在根上：胶囊的 `background: var(--bot-avatar, …)` 自己会继承，
+        // 颜色不进元素级字面量（见 e2e_desktop_token_parity 的运行时预算）。
         document.documentElement.style.setProperty("--bot-avatar", c);
       }
     }
@@ -10120,6 +11195,15 @@
       // 点开一个 Bot 就是回到私聊面：群 composer 必须先让位（同 sess-row 合同）。
       if (composerRoom) exitRoomChat();
       updateBotPill(b.name || b.id, b.id || b.name, b.avatar_data_url);
+      /* G-30：点开 Bot 是**导航**，不是一次对话回合。
+         这里原来调 runUserTurn("open agent info agent=…")，会在消息流里留下
+         [user] open agent info agent=bot-xxx  +  [bot] 已完成。   两条气泡，
+         再补一句「与 X 的私聊会话。职责：Y。」第三条。用户只是点了一下侧栏，
+         就凭空多出三行看不懂的东西 —— 实录："新建 bot 之后初始化的消息看到
+         一头雾水"。
+         `open agent info` 在内核里是 OpenAgentInfoPanel，纯 UI 动作（打开右侧
+         信息面板），没有数据副作用，所以走静默通道就够：面板照开，零气泡。 */
+      const openInfoPanel = () => void silentKernel("open agent info agent=" + b.id);
       const dmTitle = (b.name || b.id) + " · DM";
       (async () => {
         const list = await window.bitbot.sessions.list().catch(() => null);
@@ -10130,7 +11214,7 @@
         } else {
           const created = await window.bitbot.sessions.create(dmTitle).catch(() => null);
           if (!created || !created.ok) {
-            runUserTurn("open agent info agent=" + b.id, {});
+            openInfoPanel();
             return;
           }
           activeSessionId = created.session.id;
@@ -10142,11 +11226,9 @@
         const total = Object.values(unreadBySession).reduce((a, x) => a + x, 0);
         if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
         renderUnreadMarks();
-        runUserTurn("open agent info agent=" + b.id, { skipSession: true })
-          .then(() => addMsg("assistant", "与 " + (b.name || b.id) + " 的私聊会话。" + (b.job ? "职责：" + b.job + "。" : "")))
-          .catch(() => {});
+        openInfoPanel();
       })().catch(() => {
-        runUserTurn("open agent info agent=" + b.id, {});
+        openInfoPanel();
       });
     }
 
@@ -10316,6 +11398,15 @@
         await refreshBots();
         await refreshBotRail();
       });
+      // 「设为 Primary」原来挂在右键菜单里，但它要看清「当前谁是 primary」才好按，
+      // 所以在设置右栏给一颗按状态出现的按钮（已经是 primary 就不给这颗）。
+      if (!d.is_primary) {
+        addAction(wavegT("menuPrimary"), async () => {
+          await runUserTurn("set primary bot " + bot.id, { skipSession: true, silentUser: true });
+          await refreshBots();
+          await refreshBotRail();
+        });
+      }
       addAction(wavegT("menuDelete"), () => openBotDeleteDialog(bot));
     }
     (function wireBotRail() {
@@ -10435,114 +11526,251 @@
     })();
 
     let botMenuEl = null;
+    let botMenuEsc = null;
+    // 菜单项表里给「移动到分组」占的位子。它不是一颗按钮，而是一段就地展开的
+    // 子菜单（见 groupMenuSection），所以用 symbol 当哨兵，避免和普通文案键撞。
+    const GROUP_SLOT = Symbol("group-slot");
+
+    /* 右键菜单的定位全部按视口算，不留魔法数：
+       - 宽度：`min(280, 100vw - 16)`，窄窗口时跟着窗口收，不会顶出右边缘；
+       - 水平：默认贴光标左侧展开，放不下就整体左移；
+       - 垂直：默认向下展开，下方放不下就翻到光标上方（贴着屏幕底右键也不会被切掉）。 */
+    function placeFloatingMenu(el, anchorX, anchorY) {
+      const pad = 8;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const r = el.getBoundingClientRect();
+      const w = Math.min(r.width, vw - pad * 2);
+      const h = r.height;
+      let left = anchorX;
+      if (left + w + pad > vw) left = vw - w - pad; // 右边放不下 → 左移
+      if (left < pad) left = pad;
+      let top = anchorY;
+      if (top + h + pad > vh) top = anchorY - h; // 下面放不下 → 翻到上方
+      // 翻转后仍可能顶出下沿（光标就贴在窗口最底部时），再压回去。
+      const maxTop = Math.max(pad, vh - pad - h);
+      if (top > maxTop) top = maxTop;
+      if (top < pad) top = pad; // 菜单比视口还高 → 贴顶，靠内部滚动
+      el.style.left = Math.round(left) + "px";
+      el.style.top = Math.round(top) + "px";
+    }
+
     function showBotMenu(ev, bot) {
       hideBotMenu();
       botMenuEl = document.createElement("div");
-      botMenuEl.className = "composer-menu";
+      botMenuEl.className = "composer-menu bot-menu";
       botMenuEl.style.position = "fixed";
-      botMenuEl.style.left = Math.min(ev.clientX, window.innerWidth - 260) + "px";
-      botMenuEl.style.top = Math.min(ev.clientY, window.innerHeight - 260) + "px";
       botMenuEl.style.bottom = "auto";
+      /* 右键只放「点一下就要生效、且不需要看上下文」的动作。
+         创建副本 / 从侧栏隐藏 / 设为 Primary 原来也在这里，但它们要看清当前状态
+         （谁是 primary、隐藏了什么）才好按，已经全部收进 Bot 设置右栏的操作区，
+         菜单不再重复一遍。 */
       const items = [
-        [bot.pinned ? wavegT("menuUnpin") : wavegT("menuPin"), () => runUserTurn((bot.pinned ? "unpin bot " : "pin bot ") + bot.id, { skipSession: true, silentUser: true })],
-        [wavegT("menuDuplicate"), () => runUserTurn("duplicate bot " + bot.id, { skipSession: true, silentUser: true })],
-        [wavegT("menuPrimary"), () => runUserTurn("set primary bot " + bot.id, { skipSession: true, silentUser: true })],
-        [bot.hidden ? wavegT("menuUnhide") : wavegT("menuHide"), () => runUserTurn((bot.hidden ? "unhide bot " : "hide bot ") + bot.id, { skipSession: true, silentUser: true })],
-        [wavegT("menuEdit"), () => openBotEditForm(bot)],
-        // G-28 · 分组是展示偏好，走 Host 直写通道（不走 kernel 意图链）
-        ["移动到分组…", (ev) => openGroupPrompt(bot, ev)],
-        [wavegT("menuDelete"), () => openBotDeleteDialog(bot)],
-        [wavegT("menuBotSettings"), () => openBotRail(bot.id)],
+        [bot.pinned ? wavegT("menuUnpin") : wavegT("menuPin"), "pin", () => runUserTurn((bot.pinned ? "unpin bot " : "pin bot ") + bot.id, { skipSession: true, silentUser: true })],
+        [wavegT("menuEdit"), "edit", () => openBotEditForm(bot)],
+        [wavegT("menuBotSettings"), "settings", () => openBotRail(bot.id)],
       ];
-      for (const [label, fn] of items) {
+      const addItem = (label, menuId, fn, danger) => {
         const b = document.createElement("button");
         b.type = "button";
         b.textContent = label;
-        b.addEventListener("click", async (ev) => {
+        b.dataset.menu = menuId;
+        if (danger) b.classList.add("menu-danger");
+        b.addEventListener("click", async (e) => {
           hideBotMenu();
-          await fn(ev);
+          await fn(e);
           await refreshBots();
         });
         botMenuEl.appendChild(b);
-      }
+        return b;
+      };
+      for (const [label, menuId, fn] of items) addItem(label, menuId, fn);
+      botMenuEl.appendChild(menuDivider());
+      // G-28 · 分组是展示偏好，走 Host 直写通道（不走 kernel 意图链）。
+      botMenuEl.appendChild(groupMenuSection(bot));
+      botMenuEl.appendChild(menuDivider());
+      addItem(wavegT("menuDelete"), "delete", () => openBotDeleteDialog(bot), true);
+
       document.body.appendChild(botMenuEl);
+      placeFloatingMenu(botMenuEl, ev.clientX, ev.clientY);
       const kill = (e) => {
         if (botMenuEl && !botMenuEl.contains(e.target)) {
           hideBotMenu();
           document.removeEventListener("mousedown", kill);
         }
       };
+      // 菜单是一次性的：误开之后要能一键退出，不然只能靠点空白处。
+      botMenuEsc = (e) => {
+        if (e.key === "Escape") hideBotMenu();
+      };
+      document.addEventListener("keydown", botMenuEsc);
       setTimeout(() => document.addEventListener("mousedown", kill), 0);
+    }
+
+    function menuDivider() {
+      const d = document.createElement("div");
+      d.className = "menu-sep";
+      d.setAttribute("aria-hidden", "true");
+      return d;
     }
     function hideBotMenu() {
       if (botMenuEl && botMenuEl.parentNode) botMenuEl.parentNode.removeChild(botMenuEl);
       botMenuEl = null;
+      if (botMenuEsc) {
+        document.removeEventListener("keydown", botMenuEsc);
+        botMenuEsc = null;
+      }
     }
 
-    /* G-28 · 「移动到分组…」小输入弹层。分组名写入 bots.json 的 group 字段
-       （Host 直写），空值/清除 = 未分组。样式复用 .composer-menu。 */
-    function openGroupPrompt(bot, ev) {
-      const pop = document.createElement("div");
-      pop.className = "composer-menu";
-      pop.style.position = "fixed";
-      const px = ev && ev.clientX ? ev.clientX : window.innerWidth / 2 - 130;
-      const py = ev && ev.clientY ? ev.clientY : window.innerHeight / 2 - 60;
-      pop.style.left = Math.max(8, Math.min(px, window.innerWidth - 280)) + "px";
-      pop.style.top = Math.max(8, Math.min(py, window.innerHeight - 180)) + "px";
-      pop.style.bottom = "auto";
-      const tip = document.createElement("div");
-      tip.textContent = "移动到分组（" + (bot.name || bot.id) + "）";
-      tip.style.cssText = "font-size:12px;color:var(--muted);padding:2px 4px 8px;white-space:nowrap;";
-      const input = document.createElement("input");
-      input.type = "text";
-      input.value = typeof bot.group === "string" ? bot.group : "";
-      input.placeholder = "输入分组名，留空 = 未分组";
-      input.style.cssText = "width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;font-size:13px;margin-bottom:8px;";
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;gap:6px;";
-      const mkBtn = (label, cls, fn) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = label;
-        btn.className = cls;
-        btn.style.cssText = "flex:1;padding:7px 0;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink);";
-        if (cls === "primary") {
-          btn.style.background = "var(--accent)";
-          btn.style.color = "var(--accent-ink)";
-          btn.style.borderColor = "transparent";
-          btn.style.fontWeight = "600";
-        }
-        btn.addEventListener("click", fn);
-        return btn;
-      };
-      const done = async (group) => {
-        pop.remove();
-        document.removeEventListener("mousedown", outside, true);
+    /* G-28 · 「移动到分组」不再弹第二个浮层。
+       分组只有一个决策——「放进哪个组」——所以不该被拆成
+       「输入框 + 清除分组 + 取消 + 移动」四件东西：三颗等宽按钮把一次选择
+       写成了流程，输入框又把「选已有组」这件最常见的事逼成打字。
+       现在就在菜单里就地展开一层：已有分组一点即走（当前所在组带 ✓），
+       新分组在同一个输入框里回车即建，末项「未分组」负责清空。
+       分组名写入 bots.json 的 group 字段（Host 直写，不走 kernel 意图链）。 */
+    function groupMenuSection(bot) {
+      const cur = typeof bot.group === "string" ? bot.group.trim() : "";
+      const wrap = document.createElement("div");
+      wrap.className = "menu-group";
+
+      const head = document.createElement("button");
+      head.type = "button";
+      head.className = "menu-group-head";
+      head.setAttribute("aria-expanded", "false");
+      const headLabel = document.createElement("span");
+      headLabel.textContent = cur ? wavegT("menuGroup") + " · " + cur : wavegT("menuGroup");
+      const caret = document.createElement("span");
+      caret.className = "menu-caret";
+      caret.textContent = "›";
+      caret.setAttribute("aria-hidden", "true");
+      head.appendChild(headLabel);
+      head.appendChild(caret);
+
+      const sub = document.createElement("div");
+      sub.className = "menu-sub";
+      sub.hidden = true;
+
+      const commit = async (group) => {
+        hideBotMenu();
         try {
           await window.bitbot.bots.setGroup(bot.id, group);
-        } catch (_) { /* 存储失败时下次 refresh 可见未生效，不弹错打扰 */ }
-        await refreshBots();
-      };
-      row.appendChild(mkBtn("清除分组", "", () => done("-")));
-      row.appendChild(mkBtn("取消", "", () => { pop.remove(); document.removeEventListener("mousedown", outside, true); }));
-      row.appendChild(mkBtn("移动", "primary", () => done(input.value)));
-      pop.appendChild(tip);
-      pop.appendChild(input);
-      pop.appendChild(row);
-      const outside = (e) => {
-        if (!pop.contains(e.target)) {
-          pop.remove();
-          document.removeEventListener("mousedown", outside, true);
+        } catch (_) {
+          /* 写失败时 refreshBots 会把它画回原位——侧栏本身就是回执，不另弹错误 */
         }
+        await refreshBots();
+        flashMoved(bot.id, group);
       };
-      document.body.appendChild(pop);
-      input.focus();
-      input.select();
-      setTimeout(() => document.addEventListener("mousedown", outside, true), 0);
+
+      // 已有分组：直接读侧栏上真实渲染出来的组名，等于「所见即可选」，
+      // 不需要为了列组名再打一次 IPC。
+      for (const g of renderedGroupNames()) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = g;
+        if (g === cur) b.setAttribute("aria-current", "true");
+        b.addEventListener("click", () => commit(g));
+        sub.appendChild(b);
+      }
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = 24;
+      input.value = "";
+      input.placeholder = wavegT("menuGroupNew");
+      input.setAttribute("aria-label", wavegT("menuGroupNew"));
+      input.addEventListener("click", (e) => e.stopPropagation());
       input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") done(input.value);
-        if (e.key === "Escape") { pop.remove(); document.removeEventListener("mousedown", outside, true); }
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const v = input.value.trim();
+          if (v) commit(v);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          sub.hidden = true;
+          head.setAttribute("aria-expanded", "false");
+          head.focus();
+        }
       });
+      sub.appendChild(input);
+
+      const none = document.createElement("button");
+      none.type = "button";
+      none.className = "menu-sub-off";
+      none.textContent = wavegT("menuGroupNone");
+      if (!cur) none.setAttribute("aria-current", "true");
+      none.addEventListener("click", () => commit("-"));
+      sub.appendChild(none);
+
+      const fitMenu = () => {
+        if (!botMenuEl) return;
+        // 展开后菜单会变高。先放开高度上限，再把它整个塞回视口内——
+        // 否则新露出来的子项（输入框下面那行「未分组」）会落到屏幕外，
+        // 用户看到的就是「点了没反应」。
+        botMenuEl.style.maxHeight = sub.hidden ? "" : "min(72vh, 560px)";
+        const r = botMenuEl.getBoundingClientRect();
+        const top = Math.min(Math.max(8, r.top), Math.max(8, window.innerHeight - 8 - r.height));
+        botMenuEl.style.top = top + "px";
+        // 分组块在最末，展开后直接滚到底，省得用户还要自己往下拨。
+        if (!sub.hidden) botMenuEl.scrollTop = botMenuEl.scrollHeight;
+      };
+
+      head.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = sub.hidden;
+        sub.hidden = !open;
+        head.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) input.focus();
+        fitMenu();
+      });
+
+      wrap.appendChild(head);
+      wrap.appendChild(sub);
+      return wrap;
+    }
+
+    function renderedGroupNames() {
+      const out = [];
+      const heads = document.querySelectorAll("#bot-list .bot-group-head");
+      for (const h of heads) {
+        const lab = h.firstElementChild;
+        const name = lab && lab.textContent ? String(lab.textContent).trim() : "";
+        if (name && out.indexOf(name) < 0) out.push(name);
+      }
+      return out;
+    }
+
+    /* 没有第二个弹框之后，唯一的回执就是侧栏本身：目标分组和目标行各闪一下，
+       否则「挪过去了」和「点了没反应」在视觉上没有区别。
+       侧栏此时可能正折叠成头像条（列表被藏起来），先展开再闪，
+       否则反馈会打在用户看不见的地方。 */
+    function flashMoved(botId, group) {
+      const sec = document.getElementById("sb-bots-rooms");
+      if (sec) sec.classList.remove("collapsed");
+      const targets = [];
+      if (group && group !== "-") {
+        for (const h of document.querySelectorAll("#bot-list .bot-group-head")) {
+          const lab = h.firstElementChild;
+          if (lab && String(lab.textContent || "").trim() === group) targets.push(h);
+        }
+      }
+      let row = null;
+      for (const el of document.querySelectorAll("#bot-list [data-agent-id]")) {
+        if (el.dataset && el.dataset.agentId === botId) { row = el; break; }
+      }
+      if (row) {
+        targets.push(row);
+        if (row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+      }
+      for (const el of targets) {
+        el.classList.remove("just-moved");
+        void el.offsetWidth; // 强制回流，连续挪到同一处时动画能重放
+        el.classList.add("just-moved");
+        setTimeout(() => el.classList.remove("just-moved"), 1000);
+      }
     }
 
     // GP-07 delete dialog: hide-first advisory + irreversible cascade warning.
@@ -10611,6 +11839,9 @@
       bfAvatarDirty = false;
       bfOriginalTags = editing && Array.isArray(bot.tags) ? bot.tags.slice() : [];
       document.getElementById("bf-title").textContent = wavegT(editing ? "botEditTitle" : "botCreateTitle");
+      // 副标题随模式变：新建讲「怎么起手」，编辑讲「改哪里会立刻生效」。
+      const subEl = document.getElementById("bf-subtitle");
+      if (subEl) subEl.textContent = wavegT(editing ? "bfSubEdit" : "bfSubCreate");
       document.getElementById("bc-name").value = editing ? bot.name || "" : "";
       document.getElementById("bc-tags").value = bfOriginalTags.join(", ");
       document.getElementById("bc-job").value = editing ? bot.job || "" : "";
@@ -10624,6 +11855,7 @@
       if (tplRow) tplRow.style.display = editing ? "none" : "";
       document.getElementById("bc-create").textContent = wavegT(editing ? "commonSave" : "bcCreate");
       bfStatus("");
+      bfSyncDescCount();
       bfRenderAvatar(editing ? bot.name : "");
       modal.style.display = "flex";
       const inp = document.getElementById("bc-name");
@@ -10730,6 +11962,19 @@
       bfModalEl.addEventListener("mousedown", (ev) => {
         if (ev.target === bfModalEl) closeBotForm();
       });
+      /* 表单最常用的两个键盘动作：Esc 退出（不保存），Ctrl/Cmd+Enter 提交。
+         原来只能靠点按钮——手在描述框里时得来回挪。 */
+      bfModalEl.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          closeBotForm();
+          return;
+        }
+        if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+          ev.preventDefault();
+          saveBotForm().catch((e) => bfStatus(String(e && e.message ? e.message : e)));
+        }
+      });
     }
     const bfAvatarPick = document.getElementById("bf-avatar-pick");
     if (bfAvatarPick) bfAvatarPick.addEventListener("click", pickBotAvatar);
@@ -10762,6 +12007,17 @@
         }
       });
     }
+
+    /* 描述是唯一能约束 Bot 行为的地方，给它一个实时字数，写长写短心里有数。 */
+    function bfSyncDescCount() {
+      const ta = document.getElementById("bc-desc");
+      const out = document.getElementById("bc-desc-count");
+      if (!ta || !out) return;
+      // 光标旁边一个孤零零的「0」读不出是什么；带上单位（中文「字」/英文 “chars”）。
+      out.textContent = ta.value.length + wavegT("bfCountSuffix");
+    }
+    const bcDescEl = document.getElementById("bc-desc");
+    if (bcDescEl) bcDescEl.addEventListener("input", bfSyncDescCount);
     // ── GP-A2/A3 Connect apps panel (spec §2.5) ────────────────────────────
     // Reads/toggles go through window.bitbot.plugins.* → the same Host raw
     // handlers the kernel uses; Add/Uninstall write the durable catalogs.
@@ -10770,46 +12026,130 @@
       const el = document.getElementById("ca-meta");
       if (el) el.textContent = text || "";
     }
-    function caCard(plugin) {
-      const wrap = document.createElement("div");
-      wrap.dataset.pluginId = plugin.id || "";
-      // Grok-parity: compact grid card — round icon | name + one-line desc | action.
-      wrap.className = "ca-card";
+    // Grok-parity rows: compact app cells (icon | name + blurb | 添加 / 已添加)
+    // inside 2×375 grids under 14/500 section headings. Installed rows expand
+    // to the real per-tool switches + uninstall, so no function is lost.
+    function caToolRow(plugin, t) {
+      const row = document.createElement("div");
+      row.className = "ca-tool";
+      const label = document.createElement("span");
+      label.className = "ca-tool-name";
+      label.textContent = (plugin.mcp_namespace || "") + "." + t.name;
+      const desc = document.createElement("span");
+      desc.className = "ca-tool-desc";
+      if (t.description) {
+        const dk = "caToolDesc." + t.name;
+        const dt = wavegT(dk);
+        desc.textContent = dt === dk ? t.description : dt;
+      }
+      const tog = document.createElement("button");
+      tog.type = "button";
+      tog.className = "ca-tool-btn";
+      tog.dataset.toolKey = (plugin.mcp_namespace || "") + "." + t.name;
+      const on = t.enabled !== false;
+      tog.textContent = on ? wavegT("caToolOn") : wavegT("caToolOff");
+      tog.classList.toggle("on", on);
+      tog.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        tog.disabled = true;
+        const r = await window.bitbot.plugins.toolToggle({
+          namespace: plugin.mcp_namespace,
+          tool: t.name,
+          enabled: !on,
+        });
+        tog.disabled = false;
+        if (r && r.ok) {
+          caMsg(
+            wavegT("caToolToggled") +
+              " · " +
+              (r.namespace || plugin.mcp_namespace) +
+              "." +
+              (r.tool || t.name) +
+              " → " +
+              (r.enabled ? "on" : "off"),
+          );
+          await refreshConnectApps();
+        } else {
+          caMsg(wavegT("caOpFailed") + ": " + ((r && (r.error || r.refused)) || "unknown"));
+        }
+      });
+      row.append(label, desc, tog);
+      return row;
+    }
+
+    function caAppRow(plugin) {
+      const outer = document.createElement("div");
+      outer.className = "ca-app" + (plugin.installed ? " is-installed" : "");
+      outer.dataset.pluginId = plugin.id || "";
+      const row = document.createElement("div");
+      row.className = "ca-app-row";
+
       const icon = document.createElement("span");
       icon.className = "ca-icon";
       icon.textContent = String(plugin.display_name || plugin.id || "?").trim().slice(0, 1).toUpperCase();
       icon.style.background = avatarColorFor(plugin.id || plugin.display_name);
-      wrap.appendChild(icon);
-      const head = document.createElement("div");
-      head.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;flex:1 1 auto;min-width:0";
-      const title = document.createElement("div");
-      title.style.cssText = "min-width:0";
+      row.appendChild(icon);
+
+      const main = document.createElement("div");
+      main.className = "ca-app-main";
       const nameEl = document.createElement("div");
-      nameEl.style.fontWeight = "600";
-      nameEl.style.cssText = "font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+      nameEl.className = "ca-app-name";
       const nk = "caName." + (plugin.id || "");
       const nt = wavegT(nk);
       const shownName = nt === nk ? plugin.display_name || plugin.id : nt;
       nameEl.textContent = shownName;
-      title.appendChild(nameEl);
-      // One-line description, ellipsized — the reference shows name + short blurb.
       const sub = document.createElement("div");
-      sub.style.cssText = "color:var(--muted);font-size:11px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+      sub.className = "ca-app-sub";
       const ns = plugin.mcp_namespace ? plugin.mcp_namespace + " · " : "";
       sub.textContent =
         ns +
         (plugin.description ||
           wavegT("caSkills") + "×" + (plugin.skill_count != null ? plugin.skill_count : (plugin.skills || []).length));
-      title.appendChild(sub);
-      const actions = document.createElement("div");
-      actions.style.cssText = "display:flex;gap:6px;align-items:center";
+      main.append(nameEl, sub);
+      row.appendChild(main);
+
       if (plugin.installed) {
+        const added = document.createElement("span");
+        added.className = "ca-added";
+        added.textContent = wavegT("caAdded");
+        row.appendChild(added);
+      } else {
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "ca-add";
+        add.textContent = wavegT("caAdd");
+        add.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          add.disabled = true;
+          add.textContent = wavegT("caAdding");
+          const r = await window.bitbot.plugins.op({ action: "install", plugin_id: plugin.id });
+          if (r && r.ok) {
+            caMsg(wavegT("caInstalled").replace("{p}", shownName));
+            await refreshConnectApps();
+          } else {
+            add.disabled = false;
+            add.textContent = wavegT("caAdd");
+            caMsg(wavegT("caOpFailed") + ": " + ((r && (r.error || r.refused)) || "unknown"));
+          }
+        });
+        row.appendChild(add);
+      }
+      outer.appendChild(row);
+
+      if (plugin.installed) {
+        const tools = Array.isArray(plugin.tools) ? plugin.tools : [];
+        const panel = document.createElement("div");
+        panel.className = "ca-app-tools";
+        panel.hidden = true;
+        for (const t of tools) panel.appendChild(caToolRow(plugin, t));
+        const foot = document.createElement("div");
+        foot.className = "ca-app-foot";
         const uninstall = document.createElement("button");
         uninstall.type = "button";
+        uninstall.className = "ca-uninstall";
         uninstall.textContent = wavegT("caUninstall");
-        uninstall.style.cssText =
-          "background:var(--danger-bg);color:var(--danger-ink);border:1px solid var(--danger);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px";
-        uninstall.addEventListener("click", async () => {
+        uninstall.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
           uninstall.disabled = true;
           const r = await window.bitbot.plugins.op({ action: "uninstall", plugin_id: plugin.id });
           uninstall.disabled = false;
@@ -10820,99 +12160,15 @@
             caMsg(wavegT("caOpFailed") + ": " + ((r && (r.error || r.refused)) || "unknown"));
           }
         });
-        actions.appendChild(uninstall);
-      } else {
-        const add = document.createElement("button");
-        add.type = "button";
-        add.textContent = wavegT("caAdd");
-        add.style.cssText =
-          "background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:4px 12px;cursor:pointer;font-weight:700;font-size:12px";
-        add.addEventListener("click", async () => {
-          add.disabled = true;
-          const r = await window.bitbot.plugins.op({ action: "install", plugin_id: plugin.id });
-          add.disabled = false;
-          if (r && r.ok) {
-            caMsg(wavegT("caInstalled").replace("{p}", shownName));
-            await refreshConnectApps();
-          } else {
-            caMsg(wavegT("caOpFailed") + ": " + ((r && (r.error || r.refused)) || "unknown"));
-          }
+        foot.appendChild(uninstall);
+        panel.appendChild(foot);
+        outer.appendChild(panel);
+        row.addEventListener("click", () => {
+          panel.hidden = !panel.hidden;
+          outer.classList.toggle("is-open", !panel.hidden);
         });
-        actions.appendChild(add);
       }
-      head.appendChild(title);
-      head.appendChild(actions);
-      wrap.appendChild(head);
-      // GP-A3: per-tool enable/disable (only meaningful once installed).
-      const tools = Array.isArray(plugin.tools) ? plugin.tools : [];
-      if (tools.length) {
-        const toolsBox = document.createElement("div");
-        toolsBox.style.cssText =
-          "flex:1 0 100%;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);" +
-          "display:flex;flex-direction:column;gap:4px";
-        wrap.style.flexWrap = "wrap";
-        for (const t of tools) {
-          const row = document.createElement("div");
-          row.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px";
-          const lab = document.createElement("span");
-          const tn = document.createElement("code");
-          tn.textContent = (plugin.mcp_namespace || "") + "." + t.name;
-          tn.style.cssText = "font:11px/1.4 ui-monospace,monospace";
-          lab.appendChild(tn);
-          if (t.description) {
-            const d = document.createElement("span");
-            d.style.cssText = "color:var(--muted);margin-left:6px";
-            // Known tool descriptions are localized; unknown stay verbatim.
-            const dk = "caToolDesc." + t.name;
-            const dt = wavegT(dk);
-            d.textContent = "— " + (dt === dk ? t.description : dt);
-            lab.appendChild(d);
-          }
-          row.appendChild(lab);
-          const tog = document.createElement("button");
-          tog.type = "button";
-          tog.dataset.toolKey = (plugin.mcp_namespace || "") + "." + t.name;
-          const on = t.enabled !== false;
-          tog.textContent = on ? wavegT("caToolOn") : wavegT("caToolOff");
-          tog.style.cssText =
-            "border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;border:1px solid " +
-            (on ? "var(--line)" : "var(--danger)") +
-            ";background:" + (on ? "var(--accent-soft)" : "var(--danger-bg)") +
-            ";color:" + (on ? "var(--ink)" : "var(--danger-ink)");
-          if (!plugin.installed) {
-            tog.disabled = true;
-            tog.style.opacity = "0.45";
-            tog.title = wavegT("caToolNeedInstall");
-          }
-          tog.addEventListener("click", async () => {
-            tog.disabled = true;
-            const r = await window.bitbot.plugins.toolToggle({
-              namespace: plugin.mcp_namespace,
-              tool: t.name,
-              enabled: !on,
-            });
-            tog.disabled = false;
-            if (r && r.ok) {
-              caMsg(
-                wavegT("caToolToggled") +
-                  " · " +
-                  (r.namespace || plugin.mcp_namespace) +
-                  "." +
-                  (r.tool || t.name) +
-                  " → " +
-                  (r.enabled ? "on" : "off"),
-              );
-              await refreshConnectApps();
-            } else {
-              caMsg(wavegT("caOpFailed") + ": " + ((r && (r.error || r.refused)) || "unknown"));
-            }
-          });
-          row.appendChild(tog);
-          toolsBox.appendChild(row);
-        }
-        wrap.appendChild(toolsBox);
-      }
-      return wrap;
+      return outer;
     }
     // GP-A2/A3 Grok-parity: category chips. The Host catalog carries no
     // category field yet, so classify by id/namespace keywords — an unknown
@@ -10932,35 +12188,121 @@
       return "";
     }
     let caActiveCat = "all";
+    let caInstalledOnly = false;
+    const caExpandedSections = new Set();
+    const CA_SECTION_LIMIT = 6;
+
+    // Section order mirrors the reference (为你推荐 is reference curation; we
+    // group by real category and fall back to 其他 for unclassified plugins).
+    const CA_SECTIONS = [
+      ["password", "caCatPassword"],
+      ["productivity", "caCatProductivity"],
+      ["communication", "caCatCommunication"],
+      ["design", "caCatDesign"],
+      ["code", "caCatCode"],
+      ["data", "caCatData"],
+      ["sales", "caCatSales"],
+      ["marketing", "caCatMarketing"],
+      ["finance", "caCatFinance"],
+      ["research", "caCatResearch"],
+      ["support", "caCatSupport"],
+    ];
+
+    // Grok section: 34px heading row (14/500), optional 查看全部 on the right,
+    // then the 2-col grid 8px lower. Groups over the 6-cell preview cap get the
+    // action; it expands in place and remembers while the sheet stays open.
+    function caSectionEl(key, label, plugins) {
+      const sec = document.createElement("div");
+      sec.className = "ca-section";
+      const head = document.createElement("div");
+      head.className = "ca-section-head";
+      const title = document.createElement("div");
+      title.className = "ca-section-title";
+      title.textContent = label;
+      head.appendChild(title);
+      const expanded = caExpandedSections.has(key);
+      if (plugins.length > CA_SECTION_LIMIT) {
+        const action = document.createElement("button");
+        action.type = "button";
+        action.className = "ca-section-action";
+        action.textContent = expanded ? wavegT("caCollapse") : wavegT("caViewAll");
+        action.addEventListener("click", () => {
+          if (expanded) caExpandedSections.delete(key);
+          else caExpandedSections.add(key);
+          renderConnectApps();
+        });
+        head.appendChild(action);
+      }
+      sec.appendChild(head);
+      const grid = document.createElement("div");
+      grid.className = "ca-grid";
+      for (const p of (expanded ? plugins : plugins.slice(0, CA_SECTION_LIMIT))) {
+        grid.appendChild(caAppRow(p));
+      }
+      sec.appendChild(grid);
+      return sec;
+    }
+
+    // Installed cluster beside the title: up to 4 logo tiles, count, chevron.
+    // Clicking it filters the sections down to installed apps.
+    function caRenderConnected(installed) {
+      const txt = document.getElementById("ca-connected-txt");
+      if (txt) txt.textContent = wavegT("caConnected").replace("{n}", String(installed.length));
+      const stack = document.getElementById("ca-stack");
+      if (stack) {
+        stack.textContent = "";
+        for (const p of installed.slice(0, 4)) {
+          const ic = document.createElement("span");
+          ic.className = "ca-stack-ic";
+          ic.textContent = String(p.display_name || p.id || "?").trim().slice(0, 1).toUpperCase();
+          ic.style.background = avatarColorFor(p.id || p.display_name);
+          stack.appendChild(ic);
+        }
+        stack.hidden = installed.length === 0;
+      }
+      const btn = document.getElementById("ca-connected");
+      if (btn) {
+        btn.hidden = installed.length === 0;
+        btn.setAttribute("aria-pressed", caInstalledOnly ? "true" : "false");
+      }
+    }
 
     function renderConnectApps() {
-      const inst = document.getElementById("ca-installed");
-      const browse = document.getElementById("ca-browse");
-      if (inst) inst.textContent = "";
-      if (browse) browse.textContent = "";
+      const box = document.getElementById("ca-sections");
+      if (!box) return;
+      const scroller = document.querySelector("#connect-apps-modal .ca-scroll");
+      const keepY = scroller ? scroller.scrollTop : 0;
+      box.textContent = "";
+      const installed = caPlugins.filter((p) => p && p.installed);
+      caRenderConnected(installed);
       const inCat = (p) => caActiveCat === "all" || caCategoryOf(p) === caActiveCat;
-      const installed = caPlugins.filter((p) => p && p.installed && inCat(p));
-      const available = caPlugins.filter((p) => p && !p.installed && inCat(p));
-      if (inst) {
-        if (installed.length) {
-          for (const p of installed) inst.appendChild(caCard(p));
-        } else {
-          const empty = document.createElement("div");
-          empty.style.cssText = "color:var(--muted);font-size:12px";
-          empty.textContent = wavegT("caNoneInstalled");
-          inst.appendChild(empty);
-        }
+      let list = caPlugins.filter((p) => p && inCat(p));
+      if (caInstalledOnly) list = list.filter((p) => p.installed);
+      if (!list.length) {
+        const empty = document.createElement("div");
+        empty.className = "ca-empty";
+        empty.textContent = wavegT("caNoMatch");
+        box.appendChild(empty);
+        if (scroller) scroller.scrollTop = keepY;
+        return;
       }
-      if (browse) {
-        if (available.length) {
-          for (const p of available) browse.appendChild(caCard(p));
-        } else {
-          const empty = document.createElement("div");
-          empty.style.cssText = "color:var(--muted);font-size:12px";
-          empty.textContent = wavegT("caNoneBrowse");
-          browse.appendChild(empty);
-        }
+      if (caActiveCat === "all" && !caInstalledOnly) {
+        const rec = list.filter((p) => !p.installed).slice(0, CA_SECTION_LIMIT);
+        if (rec.length) box.appendChild(caSectionEl("__rec", wavegT("caRecommended"), rec));
       }
+      const groups = new Map();
+      for (const p of list) {
+        const cat = caCategoryOf(p) || "";
+        if (!groups.has(cat)) groups.set(cat, []);
+        groups.get(cat).push(p);
+      }
+      const order = CA_SECTIONS.map(([c]) => c).filter((c) => groups.has(c));
+      if (groups.has("")) order.push("");
+      for (const cat of order) {
+        const label = wavegT(cat === "" ? "caOther" : CA_SECTIONS.find(([c]) => c === cat)[1]);
+        box.appendChild(caSectionEl(cat || "__other", label, groups.get(cat)));
+      }
+      if (scroller) scroller.scrollTop = keepY;
     }
     // GP-135: Connect apps "skills by source" — the same Host list_skills
     // payload the kernel uses (managed / user / plugin), grouped so a missing
@@ -11024,12 +12366,7 @@
       const r = await window.bitbot.plugins.list({ query });
       if (r && r.ok) {
         caPlugins = Array.isArray(r.plugins) ? r.plugins : [];
-        caMsg(
-          wavegT("caCount") +
-            "×" +
-            (r.count != null ? r.count : caPlugins.length) +
-            (query ? " · q=" + query : ""),
-        );
+        caMsg("");
       } else {
         caPlugins = [];
         caMsg(wavegT("caOpFailed") + ": " + ((r && r.error) || "host_failed"));
@@ -11083,6 +12420,7 @@
       if (!m) return;
       m.style.display = "flex";
       bbSheetOpened("connect-apps-modal", triggerEl);
+      caInstalledOnly = false;
       refreshConnectApps();
       const cnCard0 = document.getElementById("ca-cn-channels");
       if (cnCard0) {
@@ -11130,8 +12468,20 @@
     if (modelCloseBtn) modelCloseBtn.addEventListener("click", closeModelSheet);
     bbBindSheetMask("model-modal");
     bbBindSheetMask("settings-panel");
-    const caRefreshBtn = document.getElementById("ca-refresh");
-    if (caRefreshBtn) caRefreshBtn.addEventListener("click", () => refreshConnectApps());
+    const caTemplateBtn = document.getElementById("ca-template-btn");
+    if (caTemplateBtn) {
+      caTemplateBtn.addEventListener("click", (ev) => {
+        closeConnectApps();
+        openMarketplace(ev.currentTarget);
+      });
+    }
+    const caConnectedBtn = document.getElementById("ca-connected");
+    if (caConnectedBtn) {
+      caConnectedBtn.addEventListener("click", () => {
+        caInstalledOnly = !caInstalledOnly;
+        renderConnectApps();
+      });
+    }
     const caSearchEl = document.getElementById("ca-search");
     if (caSearchEl) {
       let caSearchTimer = null;
@@ -11145,8 +12495,18 @@
       caCatsEl.addEventListener("click", (ev) => {
         const btn = ev.target && ev.target.closest ? ev.target.closest(".ca-chip") : null;
         if (!btn) return;
+        if (btn.dataset.cat === "more") {
+          const open = btn.classList.toggle("expanded");
+          btn.setAttribute("aria-expanded", open ? "true" : "false");
+          caCatsEl.querySelectorAll(".ca-chip.ca-extra").forEach((b) => {
+            b.hidden = !open;
+          });
+          return;
+        }
         caActiveCat = String(btn.dataset.cat || "all");
+        caInstalledOnly = false;
         caCatsEl.querySelectorAll(".ca-chip").forEach((b) => {
+          if (b.dataset.cat === "more") return;
           b.classList.toggle("active", b === btn);
         });
         const cnCard = document.getElementById("ca-cn-channels");
@@ -11830,13 +13190,16 @@
         roomFailEmpty: "先写出要让成员做的事，再发到群里。",
         roomFailBusy: "同样的任务正在执行中，本次没有重复发起。",
         roomTextClipped: "（内容较长，这里只保留开头，完整正文见上方该成员的回复）",
-        roomUnknownMention: "{n} 不在本群成员里，已按未点名处理（由成员自行判断是否应答）。",
+        roomUnknownMention: "{n} 不在本群成员里，已按未点名处理（本轮由各 Bot 自行决定是否应答）。",
         roomReportDeduped: "这件事已经汇报过了：同一任务不会重复执行成员回合。",
         roomTranscriptReadFail: "群聊记录暂时读不到（存储不可读）—— 这不代表群里没有消息，恢复后历史仍在。",
         roomReportHead: "群协作汇总",
         roomReportCount: "收齐 {r}/{t}",
         roomReportPartial: "未收齐（部分完成）",
         roomReportComplete: "已全部收齐",
+        roomReportNone: "无人应答",
+        roomReportSkipped: "没有 Bot 选择在本轮发言",
+        roomReportFailOpen: "{n} 个成员的选择失败，已按应答处理",
         roomReportTask: "任务：",
         roomArtifactsLabel: "产物",
         roomPolicyMentioned: "点名成员",
@@ -11859,6 +13222,12 @@
         commonDelete: "删除",
         botEditTitle: "编辑资料",
         botCreateTitle: "新建 Bot",
+        bfSubCreate: "写清它负责什么、按什么方式做事；创建后可在「编辑资料」补头像与标签。",
+        bfSubEdit: "改动会立即写入本机 store，侧栏与 Bot 设置同步生效。",
+        bfSecIdentity: "身份",
+        bfAvatarHint: "留空则用首字生成",
+        bfNameHint: "名称留空时会自动命名为「新 Bot」，之后也能改。",
+        bfCountSuffix: " 字",
         bfName: "名称",
         bfTags: "标签",
         bfJob: "职责",
@@ -11872,6 +13241,22 @@
         bfSaved: "资料已保存",
         bfFailed: "保存失败",
         defaultBotName: "新 Bot",
+        cmdDone: "已完成",
+        cmdFailed: "没成功",
+        cmdSet: "已设置：{v}",
+        teamDefaultName: "新团队",
+        teamRoleDesc: "你负责{r}。接到需求先明确交付物和截止时间，产出前自检；不确定就提问，不要猜。",
+        teamNeedRoles: "说说团队要哪些角色，例如：组建团队：选题、写作、排版",
+        teamCreated: "已建 {n} 个 Bot 并拉群「{t}」",
+        teamCreatedNoRoom: "已建 {n} 个 Bot，归到分组「{t}」（群里至少要有 2 个成员，这次只有 1 个）",
+        teamCreatedScheduled: "已建 {n} 个 Bot、拉群「{t}」，并在群里挂上{c}执行的任务",
+        teamCreatedNoRoutine: "已建 {n} 个 Bot、拉群「{t}」；定时任务这次没挂上，可以在群资料里补",
+        teamAutoRoles: "角色按常规分工先搭成了 {r}，随时可以改",
+        cronDaily: "每天",
+        cronWeekly: "每周",
+        cronMonthly: "每月",
+        cronHourly: "每小时",
+        teamFailed: "建 Bot 失败",
         avatarInvalid: "头像路径无效（已拒绝，未保存头像）",
         botCreatedOpen: "已创建「{n}」并打开对话",
         botCreateFailed: "创建失败",
@@ -12052,6 +13437,19 @@
         riIntervalShort: "间隔至少 5 分钟，未写入调度。",
         riNoRoom: "先打开一个群聊再管理定时任务。",
         riMembersUnknown: "成员名单读不到",
+        riAddMember: "＋ 添加成员",
+        riMemberFull: "群已满 {n} 人",
+        riMemberRemove: "移除成员",
+        riMemberAddEmpty: "Bot 库里没有可加入的 Bot。",
+        riMemberErrMin: "群聊至少要有 {n} 位成员，先加人再移人。",
+        riMemberErrMax: "群聊最多 {n} 位成员，先移出一位再加。",
+        riMemberErrExists: "这个 Bot 已经在群里了。",
+        riMemberErrNotMember: "这个 Bot 已经不在群里了。",
+        riMemberErrBot: "Bot 库里找不到这个 Bot。",
+        riMemberErrBots: "读不到 Bot 库，没有加人。",
+        riMemberErrStore: "读不到群数据（存储不可用），成员没有改动。",
+        riMemberErrGeneric: "成员改动没有生效。",
+        riMemberUnsupported: "当前版本不支持在群内改成员。",
         gpRoomPh: "群名（可留空自动命名）",
         gpRoomCreate: "创建群组",
         gpRoomMsg: "群内消息（@BotName / @everyone / 无 @ 自行决定）",
@@ -12080,7 +13478,7 @@
         usageTokensUnreported: "tokens 未上报",
         usageFail: "用量读取失败（Host 未就绪）",
         booting: "MoonBit 内核启动中…",
-        welcomeHint: "输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板",
+        welcomeHint: "输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板 · 说「组建团队：选题、写作、排版」一次拉起一支队伍",
         welcomeLine: "桌面 AI 助手 · MoonBit 内核 · DeepSeek 大脑",
         hintNoKey: "未配置 BITBOT_LLM_API_KEY — 点「凭证」填写（开放配置，热加载，不写死；默认",
         hintReady: "大脑就绪 · 输入消息开始",
@@ -12094,6 +13492,7 @@
         execDone: "已执行",
         turnDone: "已完成。",
         rBotCreate: "已创建 Bot（名称 / 职责 / 描述已持久化），打开对话即可交办任务。",
+        rRoutineCreated: "定时任务已建好：{c}执行，按 Bot 时区。",
         rBotPin: "已置顶 / 取消置顶，Bots 列表顺序已持久化。",
         rApproval: "需要审批（{cls}）：{why}",
         rShellWhy: "该操作需要你的确认。",
@@ -12110,6 +13509,10 @@
         devOn: "开",
         devOff: "关",
         apUpdate: "发现新版本",
+        apInstall: "安装",
+        apUsageReq: "{n} 次请求",
+        abUpdate: "更新",
+        abUpdateAvail: "更新：有新版本可用",
         apUsage: "每周用量",
         apMobile: "获取移动版 Bit Bot",
         apSupport: "支持",
@@ -12202,6 +13605,9 @@
         menuHide: "从侧栏隐藏",
         menuUnhide: "恢复到侧栏",
         menuEdit: "编辑资料…",
+        menuGroup: "移动到分组",
+        menuGroupNew: "新建分组，回车确认",
+        menuGroupNone: "未分组",
         menuDelete: "删除…",
         deleteAdvise: "建议改用隐藏：隐藏不删数据、随时可恢复。",
         deleteWarn: "删除不可撤销，将级联移除该 Bot 的会话与定时任务（共享 Computer 文件保留）。",
@@ -12225,7 +13631,7 @@
         crNoComputer: "未读取到云端电脑状态。",
         checkUpdatesBtn: "检查更新",
         restartUpdateBtn: "重启并安装",
-        updatesIdle: "尚未检查 — 点「检查更新」（沙箱未打包时诚实显示 residual）。",
+        updatesIdle: "尚未检查 — 点「检查更新」看看有没有新版本。",
         updatesVersion: "安装版本",
         updatesDevRun: "开发运行（未打包）",
         updatesReadyRestart: "更新已下载 — 可重启安装",
@@ -12243,13 +13649,29 @@
         caTitle: "连接应用",
         caClose: "关闭",
         caGlobal: "插件对这台电脑全局生效 — 安装后所有 Bot 都能使用。",
-        caSearchPh: "搜索插件",
+        caSearchPh: "在应用和技能中搜索",
         caCatAll: "全部",
         caCatPassword: "密码管理器",
         caCatProductivity: "效率",
         caCatCommunication: "通信",
         caCatDesign: "设计",
         caCatCode: "代码",
+        caCatData: "数据",
+        caCatSales: "销售",
+        caCatMarketing: "营销",
+        caCatFinance: "财务",
+        caCatResearch: "研究",
+        caCatSupport: "支持",
+        caMore: "更多",
+        caBotTemplates: "Bot 模板",
+        caConnected: "已连接 {n} 个",
+        caOther: "其他",
+        caNoMatch: "该分类暂无应用。",
+        caRecommended: "为你推荐",
+        caViewAll: "查看全部",
+        caCollapse: "收起",
+        caAdded: "已添加",
+        caAdding: "正在添加…",
         caRefresh: "刷新",
         caYour: "你的插件",
         caBrowse: "浏览插件",
@@ -12440,13 +13862,16 @@
         roomFailEmpty: "先寫出要讓成員做的事，再發到群裡。",
         roomFailBusy: "同樣的任務正在執行中，本次沒有重複發起。",
         roomTextClipped: "（內容較長，這裡只保留開頭，完整正文見上方該成員的回覆）",
-        roomUnknownMention: "{n} 不在本群成員裡，已按未點名處理（由成員自行判斷是否應答）。",
+        roomUnknownMention: "{n} 不在本群成員裡，已按未點名處理（本輪由各 Bot 自行決定是否應答）。",
         roomReportDeduped: "這件事已經匯報過了：同一任務不會重複執行成員回合。",
         roomTranscriptReadFail: "群聊記錄暫時讀不到（儲存不可讀）—— 這不代表群裡沒有訊息，恢復後歷史仍在。",
         roomReportHead: "群協作彙總",
         roomReportCount: "收齊 {r}/{t}",
         roomReportPartial: "未收齊（部分完成）",
         roomReportComplete: "已全部收齊",
+        roomReportNone: "無人應答",
+        roomReportSkipped: "沒有 Bot 選擇在本輪發言",
+        roomReportFailOpen: "{n} 個成員的選擇失敗，已按應答處理",
         roomReportTask: "任務：",
         roomArtifactsLabel: "產物",
         roomPolicyMentioned: "點名成員",
@@ -12469,6 +13894,12 @@
         commonDelete: "刪除",
         botEditTitle: "編輯資料",
         botCreateTitle: "新增 Bot",
+        bfSubCreate: "寫清它負責什麼、用什麼方式做事；建立後可在「編輯資料」補頭像與標籤。",
+        bfSubEdit: "改動會立即寫入本機 store，側欄與 Bot 設定同步生效。",
+        bfSecIdentity: "身份",
+        bfAvatarHint: "留空則用首字產生",
+        bfNameHint: "名稱留空時會自動命名為「新 Bot」，之後也能改。",
+        bfCountSuffix: " 字",
         bfName: "名稱",
         bfTags: "標籤",
         bfJob: "職責",
@@ -12482,6 +13913,22 @@
         bfSaved: "資料已儲存",
         bfFailed: "儲存失敗",
         defaultBotName: "New Bot",
+        cmdDone: "已完成",
+        cmdFailed: "沒有成功",
+        cmdSet: "已設定：{v}",
+        teamDefaultName: "新團隊",
+        teamRoleDesc: "你負責{r}。接到需求先明確交付物和截止時間，產出前自檢；不確定就提問，不要猜。",
+        teamNeedRoles: "說說團隊要哪些角色，例如：組建團隊：選題、寫作、排版",
+        teamCreated: "已建 {n} 個 Bot 並開群「{t}」",
+        teamCreatedNoRoom: "已建 {n} 個 Bot，歸到分組「{t}」（群裡至少要有 2 個成員，這次只有 1 個）",
+        teamCreatedScheduled: "已建 {n} 個 Bot、開群「{t}」，並在群裡掛上{c}執行的任務",
+        teamCreatedNoRoutine: "已建 {n} 個 Bot、開群「{t}」；定時任務這次沒掛上，可以在群資料裡補",
+        teamAutoRoles: "角色按常規分工先搭成了 {r}，隨時可以改",
+        cronDaily: "每天",
+        cronWeekly: "每週",
+        cronMonthly: "每月",
+        cronHourly: "每小時",
+        teamFailed: "建 Bot 失敗",
         avatarInvalid: "頭像路徑無效（Host 拒絕，未儲存頭像）",
         botCreatedOpen: "已建立「{n}」並開啟對話",
         botCreateFailed: "建立失敗",
@@ -12662,6 +14109,19 @@
         riIntervalShort: "間隔至少 5 分鐘，未寫入排程。",
         riNoRoom: "先打開一個群聊再管理定時任務。",
         riMembersUnknown: "成員名單讀不到",
+        riAddMember: "＋ 新增成員",
+        riMemberFull: "群已滿 {n} 人",
+        riMemberRemove: "移除成員",
+        riMemberAddEmpty: "Bot 庫裡沒有可加入的 Bot。",
+        riMemberErrMin: "群聊至少要有 {n} 位成員，先加人再移人。",
+        riMemberErrMax: "群聊最多 {n} 位成員，先移出一位再加。",
+        riMemberErrExists: "這個 Bot 已經在群裡了。",
+        riMemberErrNotMember: "這個 Bot 已經不在群裡了。",
+        riMemberErrBot: "Bot 庫裡找不到這個 Bot。",
+        riMemberErrBots: "讀不到 Bot 庫，沒有加人。",
+        riMemberErrStore: "讀不到群資料（儲存不可用），成員沒有改動。",
+        riMemberErrGeneric: "成員改動沒有生效。",
+        riMemberUnsupported: "目前版本不支援在群內改成員。",
         gpRoomPh: "群名（可留空自動命名）",
         gpRoomCreate: "建立群組",
         gpRoomMsg: "群內訊息（@BotName / @everyone / 無 @ 自行決定）",
@@ -12690,7 +14150,7 @@
         usageTokensUnreported: "tokens 未上報",
         usageFail: "用量讀取失敗（Host 未就緒）",
         booting: "MoonBit 核心啟動中…",
-        welcomeHint: "輸入訊息開始 · 左側管理工作 · 「能力」開啟渠道與機器面板",
+        welcomeHint: "輸入訊息開始 · 左側管理工作 · 「能力」開啟渠道與機器面板 · 說「組建團隊：選題、寫作、排版」一次拉起一支隊伍",
         welcomeLine: "桌面 AI 助手 · MoonBit 核心 · DeepSeek 大腦",
         hintNoKey: "尚未設定 BITBOT_LLM_API_KEY — 點「憑證」填寫（開放設定，熱載入，不寫死；預設",
         hintReady: "大腦就緒 · 輸入訊息開始",
@@ -12704,6 +14164,7 @@
         execDone: "已執行",
         turnDone: "已完成。",
         rBotCreate: "已建立 Bot（名稱 / 職責 / 描述已持久化），開啟對話即可交辦任務。",
+        rRoutineCreated: "定時任務已建好：{c}執行，按 Bot 時區。",
         rBotPin: "已釘選 / 取消釘選，Bots 清單順序已持久化。",
         rApproval: "需要審批（{cls}）：{why}",
         rShellWhy: "該操作需要你的確認。",
@@ -12720,6 +14181,10 @@
         devOn: "開",
         devOff: "關",
         apUpdate: "發現新版本",
+        apInstall: "安裝",
+        apUsageReq: "{n} 次請求",
+        abUpdate: "更新",
+        abUpdateAvail: "更新：有新版本可用",
         apUsage: "每週用量",
         apMobile: "取得行動版 Bit Bot",
         apSupport: "支援",
@@ -12812,6 +14277,9 @@
         menuHide: "從側欄隱藏",
         menuUnhide: "恢復到側欄",
         menuEdit: "編輯設定檔…",
+        menuGroup: "移至分組",
+        menuGroupNew: "新增分組，按 Enter 確認",
+        menuGroupNone: "未分組",
         menuDelete: "刪除…",
         deleteAdvise: "建議改用隱藏：隱藏不刪資料、隨時可恢復。",
         deleteWarn: "刪除不可撤銷，將級聯移除該 Bot 的對話與排程任務（共用電腦檔案保留）。",
@@ -12835,7 +14303,7 @@
         crNoComputer: "未讀取到電腦狀態。",
         checkUpdatesBtn: "檢查更新",
         restartUpdateBtn: "重新啟動並安裝",
-        updatesIdle: "尚未檢查 — 點「檢查更新」（沙箱未打包時誠實顯示 residual）。",
+        updatesIdle: "尚未檢查 — 點「檢查更新」看看有沒有新版本。",
         updatesVersion: "安裝版本",
         updatesDevRun: "開發執行（未打包）",
         updatesReadyRestart: "更新已下載 — 可重啟安裝",
@@ -12853,13 +14321,29 @@
         caTitle: "連接應用",
         caClose: "關閉",
         caGlobal: "外掛對這台電腦全域生效 — 安裝後所有 Bot 都能使用。",
-        caSearchPh: "搜尋外掛",
+        caSearchPh: "在應用與技能中搜尋",
         caCatAll: "全部",
         caCatPassword: "密碼管理器",
         caCatProductivity: "效率",
         caCatCommunication: "通訊",
         caCatDesign: "設計",
         caCatCode: "程式碼",
+        caCatData: "資料",
+        caCatSales: "銷售",
+        caCatMarketing: "行銷",
+        caCatFinance: "財務",
+        caCatResearch: "研究",
+        caCatSupport: "支援",
+        caMore: "更多",
+        caBotTemplates: "Bot 範本",
+        caConnected: "已連接 {n} 個",
+        caOther: "其他",
+        caNoMatch: "此分類暫無應用。",
+        caRecommended: "為你推薦",
+        caViewAll: "查看全部",
+        caCollapse: "收起",
+        caAdded: "已新增",
+        caAdding: "正在新增…",
         caRefresh: "重新整理",
         caYour: "你的外掛",
         caBrowse: "瀏覽外掛",
@@ -13050,13 +14534,16 @@
         roomFailEmpty: "Write what the members should do before sending it to the group.",
         roomFailBusy: "The same task is already running, so it was not started twice.",
         roomTextClipped: " (long content truncated here; the member's reply above keeps the full text)",
-        roomUnknownMention: "{n} is not a member of this group, so this was treated as unaddressed (members decide whether to reply).",
+        roomUnknownMention: "{n} is not a member of this group, so this was treated as unaddressed (each bot decides whether to reply this round).",
         roomReportDeduped: "Already reported: the same task does not run member turns twice.",
         roomTranscriptReadFail: "Room history is unreadable right now (store unavailable) — that does not mean the room is empty; the messages come back when it recovers.",
         roomReportHead: "Group report",
         roomReportCount: "collected {r}/{t}",
         roomReportPartial: "incomplete (partial)",
         roomReportComplete: "all collected",
+        roomReportNone: "no responders",
+        roomReportSkipped: "no bot chose to reply this round",
+        roomReportFailOpen: "{n} member(s) could not decide; treated as replying",
         roomReportTask: "Task: ",
         roomArtifactsLabel: "artifacts",
         roomPolicyMentioned: "named members",
@@ -13079,6 +14566,12 @@
         commonDelete: "Delete",
         botEditTitle: "Edit Profile",
         botCreateTitle: "Create new Bot",
+        bfSubCreate: "Say what it owns and how it should work; after creating, add an avatar and tags in Edit Profile.",
+        bfSubEdit: "Changes are written to the local store immediately and show up in the sidebar.",
+        bfSecIdentity: "Identity",
+        bfAvatarHint: "Blank uses the initial",
+        bfNameHint: "Leave it empty and the Bot is named \u201cNew Bot\u201d; you can rename it later.",
+        bfCountSuffix: " chars",
         bfName: "Name",
         bfTags: "Tags",
         bfJob: "Job",
@@ -13092,6 +14585,22 @@
         bfSaved: "Profile saved",
         bfFailed: "Save failed",
         defaultBotName: "New Bot",
+        cmdDone: "Done",
+        cmdFailed: "Failed",
+        cmdSet: "Set: {v}",
+        teamDefaultName: "New team",
+        teamRoleDesc: "You own {r}. Agree on the deliverable and deadline first, self-check before shipping, and ask instead of guessing.",
+        teamNeedRoles: "Name the roles you need, e.g. “create team: research, writing, design”",
+        teamCreated: "Created {n} bots and a group “{t}”",
+        teamCreatedNoRoom: "Created {n} bot and filed it under “{t}” (a group needs at least 2 members)",
+        teamCreatedScheduled: "Created {n} bots, a group “{t}”, and a {c} job inside it",
+        teamCreatedNoRoutine: "Created {n} bots and a group “{t}”; the scheduled job did not attach this time",
+        teamAutoRoles: "roles start as {r} — change them anytime",
+        cronDaily: "daily",
+        cronWeekly: "weekly",
+        cronMonthly: "monthly",
+        cronHourly: "hourly",
+        teamFailed: "Could not create the bot",
         avatarInvalid: "Invalid avatar path (Host refused it; nothing was saved)",
         botCreatedOpen: "Created \"{n}\" and opened its chat",
         botCreateFailed: "Create failed",
@@ -13272,6 +14781,19 @@
         riIntervalShort: "Intervals must be at least 5 minutes; nothing was stored.",
         riNoRoom: "Open a group chat first to manage its scheduled tasks.",
         riMembersUnknown: "Member list could not be read",
+        riAddMember: "+ Add member",
+        riMemberFull: "Group is full ({n})",
+        riMemberRemove: "Remove member",
+        riMemberAddEmpty: "No bots left to add.",
+        riMemberErrMin: "A group needs at least {n} members — add someone first.",
+        riMemberErrMax: "A group holds at most {n} members — remove one first.",
+        riMemberErrExists: "That bot is already in this group.",
+        riMemberErrNotMember: "That bot is no longer in this group.",
+        riMemberErrBot: "That bot is not in the bot library.",
+        riMemberErrBots: "Bot library could not be read; nothing was added.",
+        riMemberErrStore: "Group data could not be read (store unavailable); members unchanged.",
+        riMemberErrGeneric: "The member change did not take effect.",
+        riMemberUnsupported: "This build cannot change group members.",
         gpRoomPh: "Group name (blank = auto)",
         gpRoomCreate: "Create group",
         gpRoomMsg: "Group message (@BotName / @everyone / no @ = bots decide)",
@@ -13300,7 +14822,7 @@
         usageTokensUnreported: "tokens not reported",
         usageFail: "Usage read failed (Host not ready)",
         booting: "booting MoonBit…",
-        welcomeHint: "Type a message to start · chats on the left · 「Capabilities」 opens channels & machines",
+        welcomeHint: "Type a message to start · chats on the left · 「Capabilities」 opens channels & machines · say “create team: research, writing, design” to stand one up",
         welcomeLine: "Desktop AI assistant · MoonBit kernel · DeepSeek brain",
         hintNoKey: "BITBOT_LLM_API_KEY not set — open Credentials to configure (hot-reload, never baked in; default",
         hintReady: "Brain ready · type a message to start",
@@ -13314,6 +14836,7 @@
         execDone: "Executed",
         turnDone: "Done.",
         rBotCreate: "Bot created (name / job / description persisted) — open the conversation to assign work.",
+        rRoutineCreated: "Scheduled task created: runs {c}, in the Bot's timezone.",
         rBotPin: "Pinned / unpinned — the Bots order is persisted.",
         rApproval: "Approval required ({cls}): {why}",
         rShellWhy: "this action needs your confirmation.",
@@ -13330,6 +14853,10 @@
         devOn: "On",
         devOff: "Off",
         apUpdate: "New version available",
+        apInstall: "Install",
+        apUsageReq: "{n} requests",
+        abUpdate: "Update",
+        abUpdateAvail: "Update: new version available",
         apUsage: "Weekly usage",
         apMobile: "Get the mobile app",
         apSupport: "Support",
@@ -13422,6 +14949,9 @@
         menuHide: "Hide from sidebar",
         menuUnhide: "Unhide",
         menuEdit: "Edit Profile…",
+        menuGroup: "Move to group",
+        menuGroupNew: "New group, press Enter",
+        menuGroupNone: "Ungrouped",
         menuDelete: "Delete…",
         deleteAdvise: "Prefer Hide: it keeps your data and is reversible.",
         deleteWarn: "Delete is irreversible and cascades this Bot's sessions and routines (shared Computer files are kept).",
@@ -13445,7 +14975,7 @@
         crNoComputer: "Computer status unavailable.",
         checkUpdatesBtn: "Check for Updates",
         restartUpdateBtn: "Restart to Update",
-        updatesIdle: "Not checked yet — press Check for Updates (honest residual in unpackaged sandbox).",
+        updatesIdle: "Not checked yet — press Check for Updates to look for a new version.",
         updatesVersion: "installed",
         updatesDevRun: "dev run (unpackaged)",
         updatesReadyRestart: "update downloaded — ready to restart",
@@ -13463,13 +14993,29 @@
         caTitle: "Connect apps",
         caClose: "Close",
         caGlobal: "Plugins are global to this computer — every Bot can use them once installed.",
-        caSearchPh: "Search plugins",
+        caSearchPh: "Search apps and skills",
         caCatAll: "All",
         caCatPassword: "Password managers",
         caCatProductivity: "Productivity",
         caCatCommunication: "Communication",
         caCatDesign: "Design",
         caCatCode: "Code",
+        caCatData: "Data",
+        caCatSales: "Sales",
+        caCatMarketing: "Marketing",
+        caCatFinance: "Finance",
+        caCatResearch: "Research",
+        caCatSupport: "Support",
+        caMore: "More",
+        caBotTemplates: "Bot templates",
+        caConnected: "Connected {n}",
+        caOther: "Other",
+        caNoMatch: "No apps in this category.",
+        caRecommended: "Recommended for you",
+        caViewAll: "View all",
+        caCollapse: "Collapse",
+        caAdded: "Added",
+        caAdding: "Adding…",
         caRefresh: "Refresh",
         caYour: "Your plugins",
         caBrowse: "Browse plugins",
@@ -13608,7 +15154,13 @@
       const inp = $("text");
       if (inp) inp.placeholder = wavegT("placeholder");
       const sb = $("send");
-      if (sb) { sb.textContent = wavegT("send"); sb.title = wavegT("send"); }
+      // 发送按钮的图形是内联 SVG 箭头。这里**不能**写 textContent：那会把 svg
+      // 连同子节点一起抹掉，按钮退回成一个字符（旧版靠 ::before 拼 "↑" 就是在
+      // 绕这个问题）。文案只落在 title / aria-label 上。
+      if (sb) {
+        sb.title = wavegT("send");
+        sb.setAttribute("aria-label", wavegT("send"));
+      }
       const at = $("approval-title");
       if (at) at.textContent = wavegT("approvalTitle");
       const tk = $("gp-takeover-btn");
@@ -13657,7 +15209,7 @@
           const res = await window.bitbot.settings.set({ appearance: mode });
           if (res && res.ok) gpStatus("waveg-settings-status", t("statusAppearance", { v: (b.textContent || "").trim() }));
           refreshWaveGSettings();
-          runUserTurn("set appearance " + mode, { skipSession: true }).catch(() => {});
+          silentKernel("set appearance " + mode);
         });
       });
       document.querySelectorAll("#gp-devmode-row .gp-chip").forEach((b) => {
@@ -13674,7 +15226,7 @@
           const res = await window.bitbot.settings.set({ local_execution: mode });
           if (res && res.ok) gpStatus("waveg-settings-status", t("statusLocexec", { v: (b.textContent || "").trim() }));
           refreshWaveGSettings();
-          runUserTurn("local execution " + mode, { skipSession: true }).catch(() => {});
+          silentKernel("local execution " + mode);
         });
       });
       const langSel = document.getElementById("gp-language");
@@ -13686,7 +15238,7 @@
             wavegLangApply(code);
             gpStatus("waveg-settings-status", t("statusLanguage", { v: (langSel.selectedOptions && langSel.selectedOptions[0] ? langSel.selectedOptions[0].textContent : code).trim() }));
           }
-          runUserTurn("set language " + code, { skipSession: true }).catch(() => {});
+          silentKernel("set language " + code);
         });
       }
       const tzSel = document.getElementById("gp-timezone");
@@ -13695,7 +15247,7 @@
           const tz = tzSel.value;
           const res = await window.bitbot.settings.set({ timezone: tz, timezone_explicit: true });
           if (res && res.ok) gpStatus("waveg-settings-status", t("statusTimezone", { v: tz }));
-          runUserTurn("set timezone " + tz, { skipSession: true }).catch(() => {});
+          silentKernel("set timezone " + tz);
         });
       }
       const routeBtn = document.getElementById("gp-route-toggle");
@@ -13857,7 +15409,28 @@
           ev.preventDefault();
         });
       }
+      // G-28 #4：成员管理 —— 行内移除（事件委托，重渲染后不用重绑）、
+      // 「＋ 添加成员」展开 Bot 库选人表、选中即写 Host。
+      const riMemberList = document.getElementById("ri-member-list");
+      if (riMemberList) {
+        riMemberList.addEventListener("click", (ev) => {
+          const b = ev.target && ev.target.closest ? ev.target.closest(".ri-member-del") : null;
+          if (!b || b.disabled) return;
+          updateRoomMembers("remove", b.dataset.botId).catch(() => {});
+        });
+      }
+      const riMemberAddBtn = document.getElementById("ri-member-add");
+      if (riMemberAddBtn) riMemberAddBtn.addEventListener("click", () => { toggleMemberPicker().catch(() => {}); });
+      const riMemberPicker = document.getElementById("ri-member-picker");
+      if (riMemberPicker) {
+        riMemberPicker.addEventListener("click", (ev) => {
+          const b = ev.target && ev.target.closest ? ev.target.closest(".ri-pick") : null;
+          if (!b) return;
+          updateRoomMembers("add", b.dataset.botId).catch(() => {});
+        });
+      }
       const riAdd = document.getElementById("ri-routine-add");
+
       if (riAdd) riAdd.addEventListener("click", () => {
         setRoomFormOpen(true);
         const ta = document.getElementById("ri-text");
@@ -14277,10 +15850,21 @@
 
     // ----- GP-ATx accelerators + sidebar collapse -----
     let sidebarCollapsed = false;
-    function applySidebarCollapse(collapsed) {
+    // 自适应：窗口宽度 ≤ 断点时自动收起左侧；用户一旦手动切换(Cmd+B / 菜单)，
+    // 视为显式意图，之后 resize 不再自动覆盖（避免和用户的手动作反复对拉）。
+    let sidebarUserLocked = false;
+    const SIDEBAR_ADAPT_BP = 768; // px：窄于此宽度自动收起侧栏
+    function adaptSidebarToViewport() {
+      if (sidebarUserLocked) return;
+      const shouldCollapse = window.innerWidth <= SIDEBAR_ADAPT_BP;
+      if (shouldCollapse !== sidebarCollapsed) applySidebarCollapse(shouldCollapse, { persist: false });
+    }
+    function applySidebarCollapse(collapsed, opts) {
+      const persist = !opts || opts.persist !== false;
       sidebarCollapsed = collapsed;
       setSidebarCollapsed(collapsed);
-      window.bitbot.settings.set({ sidebar_collapsed: collapsed }).catch(() => {});
+      if (persist) window.bitbot.settings.set({ sidebar_collapsed: collapsed }).catch(() => {});
+      return collapsed;
     }
     function wireAccelerators() {
       document.addEventListener("keydown", (ev) => {
@@ -14288,6 +15872,7 @@
         if (!meta) return;
         if (ev.key === "b" || ev.key === "B") {
           ev.preventDefault();
+          sidebarUserLocked = true;
           applySidebarCollapse(!sidebarCollapsed);
         } else if (ev.key === "n" || ev.key === "N") {
           ev.preventDefault();
@@ -14313,7 +15898,10 @@
         }
       });
       if (window.bitbot.onMenuSidebarToggle) {
-        window.bitbot.onMenuSidebarToggle(() => applySidebarCollapse(!sidebarCollapsed));
+        window.bitbot.onMenuSidebarToggle(() => {
+          sidebarUserLocked = true;
+          applySidebarCollapse(!sidebarCollapsed);
+        });
       }
       if (window.bitbot.onMenuNewChat) {
         window.bitbot.onMenuNewChat(() => createNewChatFromUi());
@@ -14574,7 +16162,16 @@
           const stRes = await window.bitbot.settings.get();
           const st = (stRes && stRes.settings && stRes.settings.settings) || (stRes && stRes.settings) || {};
           applyDevMode(!!(st.dev_mode || (stRes && stRes.devmode_launch)));
-          if (st.sidebar_collapsed) applySidebarCollapse(true);
+          if (typeof st.sidebar_collapsed === "boolean") {
+            // 上次会话显式设过（手动切换过）→ 原样恢复，并锁定自动适配
+            sidebarUserLocked = true;
+            applySidebarCollapse(st.sidebar_collapsed);
+          } else {
+            // 首次启动：按当前窗口宽度自适应，不落盘
+            adaptSidebarToViewport();
+          }
+          // 之后窗口宽度变化才自动跟：窄到断点收起左侧，放宽再展开
+          window.addEventListener("resize", adaptSidebarToViewport);
           wavegApplyAppearanceClass(st.appearance || "system");
           wavegLangApply(st.language || "zh-CN");
         } catch (_) {
@@ -14685,6 +16282,20 @@
       if (!text && !pendingAttachments.length) return;
       // GP-99/101: credential-shaped text must not become a chat turn.
       if (blockSecretPaste(text)) return;
+      // G-28 #12：命令不进对话。先认「组队话术」，再认「控制命令」，
+      // 都不像才走正常回合（识别器故意写窄，见 isControlCommand 上方注释）。
+      // 带附件的回合一律当对话——用户的意图显然是「把这几个文件给它看」。
+      if (!pendingAttachments.length && text) {
+        const teamBrief = parseTeamBrief(text);
+        if (teamBrief || isControlCommand(text)) {
+          input.value = "";
+          autoGrow();
+          syncVoiceChatAvailability();
+          if (teamBrief) await runTeamBrief(teamBrief);
+          else await runControlCommand(text);
+          return;
+        }
+      }
       let finalText = text;
       // M29/GP-143: when the composer is aimed at a group, the message goes to
       // the Host room orchestration IPC — it runs the same real RoomTurn routing
@@ -15539,9 +17150,6 @@
     document.getElementById("box-screenshot").addEventListener("click", () => {
       runUserTurn("screenshot agent=executor", {});
     });
-    document.getElementById("box-check-updates").addEventListener("click", () => {
-      runUserTurn("check updates", {});
-    });
     document.getElementById("box-copy-to").addEventListener("click", () => {
       runUserTurn(
         "copy to box machine=desk-1 src=README.mbt.md dest=/workspace/uploads/README.mbt.md",
@@ -15838,5 +17446,8 @@
 
     boot();
   </script>
+  <!-- G-28 #12：命令回执。控制命令不进消息流，但「生效了」必须看得见 ——
+       回执落在这里，一行胶囊，2.6s 自己走（失败 4.6s）。 -->
+  <div id="cmd-toast" class="cmd-toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

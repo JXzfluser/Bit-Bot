@@ -10,15 +10,28 @@
  * 0b 单独跑：它**应当**有差异，脚本把差异量化成 RGB 通道偏移，供对照稿引用。
  *
  * 用法：node scripts/w0_prove_token_equiv.mjs [--with-0b]
+ *
+ * 基准固定：0a 的等价性只对「落地当时那份调色」成立。W1 起 token 已换值，
+ * 而 /tmp/w0a.css 里写的是旧色，直接读工作树会把手写值还原成旧色、必然报红。
+ * 因此本脚本默认读 W0 落地提交 f3a4fc7 的 ui_chrome.css；可用 W0_BASE 覆盖。
  */
 import fs from "fs";
 import path from "path";
+import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const CSS = path.join(REPO, "hosts/desktop/ui_chrome.css");
-const lines = fs.readFileSync(CSS, "utf8").split("\n");
+const BASE_REF = process.env.W0_BASE || "f3a4fc7";
+let cssText;
+try {
+  cssText = execSync(`git show ${BASE_REF}:hosts/desktop/ui_chrome.css`, { cwd: REPO, encoding: "utf8" });
+} catch {
+  console.warn(`无法读取 ${BASE_REF}，回退到工作树（W1 后 0a 必然不等价）`);
+  cssText = fs.readFileSync(CSS, "utf8");
+}
+const lines = cssText.split("\n");
 
 // 2026-10-24 0a 已落地（scripts/w0_palette_consolidate.mjs --land）：原语块并入 :root(16-70)，
 // 语义 :root 为 71-175。此后本脚本变成回归保护：落地源 + 注入表 必须 0 差异。

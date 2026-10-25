@@ -7,9 +7,9 @@
  *
  * Per surface (settings / model / marketplace / bot form / connect apps) it
  * asserts:
- *   - the close button is visible and is a ghost "×": transparent background,
- *     0 border, no shadow, 0 font-size, 6px padding, ::before content "×" at
- *     24px / line-height 1;
+ *   - the close button is visible as Grok's 28×28 round ghost "×": transparent
+ *     background, 0 border, no shadow, 0 font-size, 0 padding, pill radius,
+ *     ::before content "×" at 18px / line-height 1;
  *   - all five close buttons resolve to the SAME colour (one shared rule);
  *   - the surface itself is a real sheet: visible, width > 0, radius > 0;
  *   - settings head stays a right-aligned, borderless row.
@@ -48,6 +48,31 @@ const require = createRequire(path.join(REPO, "hosts/desktop/package.json"));
 
 const { _electron } = require("playwright-core");
 
+/* WCAG 相对亮度对比度。只用来断「文字压在实心底色上还看不看得见」，
+   不做视觉打分——选中行的底色来自 --g-pill（用户气泡色），曾经只换底色
+   不换文字色，浅色主题下黑底黑字，整条选中项看不见。 */
+function parseRgb(s) {
+  const m = String(s || "").match(/rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  const p = m[1].split(",").map((v) => parseFloat(v));
+  return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+}
+function relLum(c) {
+  const f = (v) => {
+    const x = v / 255;
+    return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+}
+function contrastRatio(fg, bg) {
+  const a = parseRgb(fg);
+  const b = parseRgb(bg);
+  if (!a || !b) return 0;
+  const l1 = relLum(a);
+  const l2 = relLum(b);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
 const SURFACES = [
   { name: "settings", open: "openProductCredentials('e2e')", mask: "#settings-panel", root: "#settings-panel .bb-sheet", close: "#settings-close", head: "#settings-sheet .bb-sheet-head" },
   { name: "model", open: "openModelSheet()", mask: "#model-modal", root: "#model-modal .bb-sheet", close: "#model-close" },
@@ -71,6 +96,7 @@ const CLOSE_PROBE = `(() => {
     fontSize: s.fontSize,
     color: s.color,
     padding: s.padding,
+    borderRadius: s.borderRadius,
     content: b.content,
     beforeFontSize: b.fontSize,
     beforeLineHeight: b.lineHeight,
@@ -199,6 +225,14 @@ async function shutdown(app) {
         act && act.background !== "rgba(0, 0, 0, 0)" && act.background !== tc.tabs.find((t) => !t.active).background
           ? ok(`settings: active tab keeps its pill background ${act.background}`)
           : bad("settings: active pill lost", JSON.stringify(act));
+        /* 底色换了，文字色必须跟着换。这里断的是"看得见"（≥4.5:1），
+           不是某个具体色值——换肤/换令牌只要还读得清就允许。 */
+        if (act) {
+          const ratio = contrastRatio(act.color, act.background);
+          ratio >= 4.5
+            ? ok(`settings: active tab label is readable on its pill (contrast ${ratio.toFixed(2)}:1)`)
+            : bad("settings: active tab label invisible on pill", JSON.stringify({ color: act.color, background: act.background, ratio }));
+        }
       }
 
       if (close.missing) bad(`${s.name}: close button ${s.close} missing`);
@@ -210,25 +244,27 @@ async function shutdown(app) {
           close.borderStyle === "none" &&
           close.boxShadow === "none" &&
           close.fontSize === "0px" &&
-          close.padding === "6px" &&
+          close.padding === "0px" &&
+          close.borderRadius === "999px" &&
           close.content === '"×"' &&
-          close.beforeFontSize === "24px" &&
-          close.beforeLineHeight === "24px" &&
-          close.w > 0 && close.h > 0;
-        ghost ? ok(`${s.name}: close is a ghost × (transparent/0 border/0 font/6px/24px glyph)`)
+          close.beforeFontSize === "18px" &&
+          close.beforeLineHeight === "18px" &&
+          close.w === 28 && close.h === 28;
+        ghost ? ok(`${s.name}: close is a 28×28 round ghost × (transparent/0 border/0 font/pill/18px glyph)`)
           : bad(`${s.name}: close style drifted`, JSON.stringify(close));
       }
       if (root.missing) bad(`${s.name}: root ${s.root} missing`);
       else {
-        const sheet = root.display !== "none" && root.w > 0 && root.h > 0 && parseFloat(root.borderRadius) > 0;
+        const sheet = root.display !== "none" && root.w > 0 && root.h > 0 &&
+          parseFloat(root.borderRadius) === 14 && root.boxShadow === "none";
         sheet ? ok(`${s.name}: sheet visible ${root.w}x${root.h}, radius ${root.borderRadius}, bg ${root.backgroundColor}`)
           : bad(`${s.name}: sheet geometry/radius lost`, JSON.stringify(root));
       }
       const ty = snapshot[s.name].type;
       if (ty.title && ty.title.visible) {
         const t = ty.title;
-        t.fontSize === "21px" && t.fontWeight === "600" && t.letterSpacing === "-0.21px"
-          ? ok(`${s.name}: sheet title is 21px/600 with tight tracking`)
+        t.fontSize === "17px" && t.fontWeight === "500" && t.letterSpacing === "normal"
+          ? ok(`${s.name}: sheet title is 17px/500`)
           : bad(`${s.name}: sheet title type drifted`, JSON.stringify(t));
       } else if (ty.title) {
         ok(`${s.name}: sheet title intentionally hidden (display-only chrome)`);

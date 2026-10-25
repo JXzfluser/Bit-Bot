@@ -27,6 +27,8 @@
       "vendor/**/*",
       "sessions.js",
       "product_surface.js",
+      "room_context.js",
+      "room_discretion.js",
       "progress_protocol.js",
       "secret_protocol.js",
       "secret_vault.js",

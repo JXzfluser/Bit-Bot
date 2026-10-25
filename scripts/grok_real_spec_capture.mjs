@@ -293,16 +293,21 @@ async function capture() {
 
       // ---- account bar ---------------------------------------------------
       const footer = q(".sand-agents-sidebar__footer");
+      const footerRow = footer.firstElementChild;
       const acctBtn = footer.querySelector("button");
       const acctImg = footer.querySelector("img");
       out.accountBar = {
         selector: ".sand-agents-sidebar__footer",
         ...GEOM(footer),
-        ...STYLE(footer, ["backgroundColor", "height", "gap"]),
-        accountButton: { ...RECT(acctBtn), ...STYLE(acctBtn, ["backgroundColor", "borderRadius", "fontSize", "color", "padding", "boxShadow", "borderTopWidth", "borderTopColor"]) },
+        ...STYLE(footer, ["backgroundColor", "height", "gap", "padding"]),
+        row: footerRow
+          ? { ...RECT(footerRow), ...STYLE(footerRow, ["gap", "backgroundColor", "padding"]) }
+          : null,
+        accountButton: { ...RECT(acctBtn), ...STYLE(acctBtn, ["backgroundColor", "borderRadius", "fontSize", "color", "padding", "boxShadow", "borderTopWidth", "borderTopColor", "gap"]) },
         accountAvatar: acctImg ? { ...RECT(acctImg), ...STYLE(acctImg, ["width", "height", "borderRadius"]) } : null,
-        emailText: (() => { const s = [...footer.querySelectorAll("span")].find((x) => (x.textContent || "").includes("@")); return s ? { ...RECT(s), ...STYLE(s, ["fontSize", "fontWeight", "color"]) } : null; })(),
-        connectAppsButton: (() => { const b = [...footer.querySelectorAll("button")].find((x) => (x.textContent || "").includes("连接")); return b ? { ...RECT(b), ...STYLE(b, ["backgroundColor", "borderRadius", "fontSize", "color", "gap"]) } : null; })(),
+        emailText: (() => { const s = [...footer.querySelectorAll("span")].find((x) => (x.textContent || "").includes("@")); return s ? { ...RECT(s), ...STYLE(s, ["fontSize", "fontWeight", "color", "lineHeight"]) } : null; })(),
+        connectAppsButton: (() => { const b = [...footer.querySelectorAll("button")].find((x) => /连接/.test((x.getAttribute("aria-label") || "") + (x.textContent || ""))); return b ? { ...RECT(b), ...STYLE(b, ["backgroundColor", "borderRadius", "fontSize", "color", "padding", "gap", "borderTopWidth", "borderTopColor", "boxShadow"]), aria: b.getAttribute("aria-label"), labelWidth: (() => { const t = [...b.querySelectorAll("span")].find((x) => (x.textContent || "").includes("连接")); return t ? +t.getBoundingClientRect().width.toFixed(1) : null; })() } : null; })(),
+        updateButton: (() => { const b = [...footer.querySelectorAll("button")].find((x) => /^更新/.test(x.getAttribute("aria-label") || "")); return b ? { ...RECT(b), ...STYLE(b, ["backgroundColor", "borderRadius", "fontSize", "color", "padding", "borderTopWidth", "borderTopColor", "boxShadow"]), aria: b.getAttribute("aria-label") } : null; })(),
       };
 
       // ---- header pill / toolbar ----------------------------------------

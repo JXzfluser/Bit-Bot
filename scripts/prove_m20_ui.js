@@ -55,11 +55,11 @@ function main() {
     : bad("bot-bubble transparency", transparentBot + " transparent declarations left");
 
   // User bubble keeps its own pill. 18px 不是字面量而是 --radius-user 令牌
-  // （唯一真源在 ui_chrome.css）；M42 只把右下角压成 6px 尾巴，其余三角不变。
+  // （唯一真源在 ui_chrome.css）；§4.4 真源四角同值、没有尾巴。
   /\.msg\.user \{[^}]*background:\s*var\(--user-bubble\)[^}]*border-radius:\s*var\(--radius-user\)/.test(html) &&
-    /\.msg\.user \{[^}]*border-bottom-right-radius:\s*6px/.test(html) &&
+    !/\.msg\.user \{[^}]*border-bottom-right-radius/.test(html) &&
     /--radius-user:\s*18px/.test(chrome)
-    ? ok("用户气泡保持右侧 18px 圆角胶囊（令牌 + M42 右下尾巴）")
+    ? ok("用户气泡四角 18px 胶囊（--radius-user，无尾巴）")
     : bad("user bubble", "user pill styling lost");
 
   /* ---- 2) Sidebar: avatar color, preview, unread dot ---- */
@@ -120,11 +120,11 @@ function main() {
 
   /* ---- 5) Connect apps: grid, icons, category chips ---- */
   /\.ca-grid \{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/.test(html) &&
-    /class="ca-grid"/.test(html)
+    /["']ca-grid["']/.test(html)
     ? ok("连接应用面板是两列卡片网格")
     : bad("ca-grid", "plugin containers are not a 2-col grid");
 
-  /\.ca-icon \{[^}]*border-radius:\s*10px/.test(html) && /icon\.className = "ca-icon"/.test(html)
+  /\.ca-icon \{[^}]*border-radius:\s*11px/.test(html) && /icon\.className = "ca-icon"/.test(html)
     ? ok("插件卡片带圆角图标（首字母 + 确定性配色）")
     : bad("ca-icon", "missing plugin icon");
 
@@ -164,8 +164,8 @@ function main() {
     /--radius-sm:\s*6px/.test(chrome) &&
     /--radius-user:\s*18px/.test(chrome) &&
     /--text-sm:\s*12px/.test(chrome) &&
-    /--p-dk-bot-bubble:\s*#212121/.test(chrome) &&
-    /--p-lt-bot-bubble:\s*#f4f4f5/.test(chrome) &&
+    /--p-dk-bot-bubble:\s*#f5f5f50f/.test(chrome) &&
+    /--p-lt-bot-bubble:\s*#1c1c1c0f/.test(chrome) &&
     /--bot-bubble:\s*var\(--p-lt-bot-bubble\)/.test(chrome) &&
     /--bot-bubble:\s*var\(--p-dk-bot-bubble\)/.test(chrome)
     ? ok("壳层宽度、间距、圆角、字号、气泡色只在 ui_chrome.css 定义")
@@ -175,8 +175,8 @@ function main() {
     /body\.force-light \{[\s\S]*?--text:\s*var\(--p-lt-text\)/.test(chrome) &&
     /@media \(prefers-color-scheme:\s*light\)[\s\S]*?--text:\s*var\(--p-lt-text\)/.test(chrome) &&
     /@media \(prefers-color-scheme:\s*dark\)[\s\S]*?--text:\s*var\(--p-dk-text\)/.test(chrome) &&
-    /--p-dk-text:\s*#ececec/.test(chrome) &&
-    /--p-lt-text:\s*#1a1a1a/.test(chrome)
+    /--p-dk-text:\s*#f5f5f5/.test(chrome) &&
+    /--p-lt-text:\s*#1c1c1c/.test(chrome)
     ? ok("暗色 / 浅色 / 强制态共用同一令牌表（--text 不再是未定义变量）")
     : bad("theme tokens", "light/dark/force channels drifted");
 

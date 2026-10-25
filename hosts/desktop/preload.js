@@ -102,6 +102,11 @@ contextBridge.exposeInMainWorld("bitbot", {
   },
   rooms: {
     list: () => ipcRenderer.invoke("bitbot:rooms:list"),
+    // G-28 #4：群成员增删。渲染层只递交「哪个群、哪个 Bot、加还是减」，
+    // 2–6 人与成员存在性由 Host engine 验，拒绝码原样回传。
+    members: {
+      update: (payload) => ipcRenderer.invoke("bitbot:rooms:members:update", payload || {}),
+    },
     // 群资料库：读 / 加条目。写侧只碰 rooms.json 的 room.library，
     // 并且只收 repo 内的路径 —— 渲染层不自己开文件、不自己改库。
     library: {

@@ -305,6 +305,12 @@ const forbiddenHit = (text) => {
 
   /** 私聊某个 Bot：点侧栏它的行（真实用户路径），并确认标题栏胶囊切到它。 */
   const openDm = async (botId, botName) => {
+    /* 侧栏 Bot 区块默认折叠成头像条（G-28 #2）：行还在 DOM 里，但被藏起来了，
+       直接点会等不到 visible。展开是同一区块上真实存在的控件，不是绕过 UI。 */
+    await win.evaluate(() => {
+      const sec = document.getElementById("sb-bots-rooms");
+      if (sec) sec.classList.remove("collapsed");
+    });
     await win.click('#bot-list .agent-item[data-agent-id="' + botId + '"]', { timeout: 20000 });
     const switched = await waitUntil(() => win.evaluate((nm) => {
       const pill = (document.querySelector("#bot-pill .bot-pill-name") || {}).textContent || "";

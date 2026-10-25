@@ -6,7 +6,8 @@
  *   S1 产品 IPC 建 3 个不同职责 Bot + 1 个 3 人群（和创建对话框同一条 bots.op）。
  *   S2 群里 @A @B 发任务 → ≥2 张「工作中」卡 → stub 只对 B 的人设请求返 500 →
  *      如实 1/2 partial（UI 卡与 rooms.json 都写「未收齐」，不写「已全部收齐」）。
- *   S3 @A @C 发任务 → 2/2 收齐；A 的回执只带 A 的人设、不含 C 的人设（上下文不串）。
+ *   S3 @A @C 发任务 → 2/2 收齐；A 的回执只带 A 的人设、不含 C 的人设（上下文不串）；
+ *      provider 载荷真含上一轮群转录（AR-07）。
  *   S4 @A 单独发任务 → 1/1 收齐、无 partial 样式（点名只跑被点的那个）。
  *   S5 退出群再点开 → DOM 卡片数必须与 rooms.json 逐类相等（状态不漂移）。
  *   S6 旧式无 kind 的历史行 → 照样渲染成用户行，不崩。
@@ -68,6 +69,7 @@ const require = createRequire(path.join(DESKTOP, "package.json"));
 const { _electron } = require("playwright-core");
 
 const STUB_PORT = Number(process.env.GP145_STUB_PORT || 8801);
+const STUB_RECORD = path.join(os.tmpdir(), "gp145-stub-" + process.pid + ".jsonl");
 const A = { name: "GP145Alpha", job: "GP145JOBALPHA 市场调研", desc: "GP145DESCA 只收集证据" };
 const B = { name: "GP145Fail", job: "GP145JOBFAIL 长文写作", desc: "GP145DESCB 草稿需审批" };
 const C = { name: "GP145Gamma", job: "GP145JOBGAMMA 数据核对", desc: "GP145DESCC 只做核对" };
@@ -83,6 +85,7 @@ function startStub() {
       env: {
         ...process.env,
         BITBOT_STUB_PORT: String(STUB_PORT),
+        BITBOT_STUB_RECORD: STUB_RECORD,
         // echo-all：provider 回执里带上整条 message stack，人设是否真进载荷可直接看
         BITBOT_STUB_ECHO_ALL: "1",
         BITBOT_STUB_ECHO_WIDTH: "1400",
@@ -150,6 +153,7 @@ const DOM_COUNTS = () => ({
     } catch { /* 首次运行没有 rooms.json */ }
     return swept;
   };
+  fs.rmSync(STUB_RECORD, { force: true });
   const swept = sweepFixtures();
   if (swept.bots || swept.rooms) console.log("  · 清掉上一轮遗留夹具：" + JSON.stringify(swept));
   const roomsBefore = fs.existsSync(ROOMS) ? fs.readFileSync(ROOMS) : null;
@@ -342,6 +346,20 @@ const DOM_COUNTS = () => ({
       s2C && String(s2C.summary).includes("简介：" + C.desc) && !String(s2C.summary).includes("简介：" + A.desc)
       ? ok("同群两个 responder 各自只带自己的人设 → 上下文严格隔离")
       : bad("persona isolation", JSON.stringify({ a: String(s2A && s2A.summary).slice(0, 160), c: String(s2C && s2C.summary).slice(0, 160) }));
+    const s3Reqs = fs.readFileSync(STUB_RECORD, "utf8").trim().split("\n").filter(Boolean).map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean);
+    const s3Req = s3Reqs.find((r) => {
+      const msgs = Array.isArray(r.messages) ? r.messages : [];
+      const sys = msgs.find((m) => m && m.role === "system");
+      const all = msgs.map((m) => String((m && m.content) || "")).join("\n");
+      return sys && String(sys.content || "").includes("名字：" + A.name) && all.includes(task2);
+    });
+    const s3Sys = String((s3Req && (s3Req.messages || []).find((m) => m && m.role === "system") || {}).content || "");
+    s3Sys.includes("最近群聊记录") && s3Sys.includes("一起给出本季竞品结论") &&
+      !s3Sys.includes("stub provider failure")
+      ? ok("第二轮 responder 真收到上一轮群转录 → AR-07 共享上下文进 provider 载荷")
+      : bad("recent room context in provider payload", s3Sys.slice(-700));
     const card2 = await win.evaluate(() => {
       const els = Array.from(document.querySelectorAll("#log .msg.room-report"));
       const last = els[els.length - 1];
@@ -586,12 +604,23 @@ const DOM_COUNTS = () => ({
         return els.length ? (els[els.length - 1].innerText || "") : "";
       });
       Array.isArray(last.unknown_mentions) && last.unknown_mentions[0] === "GhostNotInRoom" &&
-        last.responder_policy === "bot_discretion"
-        ? ok("Host 记下未命中的点名并按「未点名」处理（不伪造定向给谁）")
-        : bad("unknown mention durable", JSON.stringify({ u: last.unknown_mentions, p: last.responder_policy }));
-      /GhostNotInRoom/.test(note12) && /不在本群成员里/.test(note12)
-        ? ok("界面把「点名未命中」如实告诉用户（不静默改成全员应答）")
+        last.responder_policy === "bot_discretion" && last.responders_are_candidates === true
+        ? ok("Host 记下未命中的点名并按「未点名」处理（不伪造定向给谁，候选池交给 Bot 自行判断）")
+        : bad("unknown mention durable", JSON.stringify({ u: last.unknown_mentions, p: last.responder_policy, c: last.responders_are_candidates }));
+      /GhostNotInRoom/.test(note12) && /不在本群成员里/.test(note12) && /由各 Bot 自行决定/.test(note12)
+        ? ok("界面把「点名未命中」如实告诉用户（改由各 Bot 自行决定，不伪造定向）")
         : bad("unknown mention notice", JSON.stringify(note12).slice(0, 300));
+      const rep12 = lastReport(roomId);
+      const failOpenNote = await win.evaluate(() => {
+        const els = Array.from(document.querySelectorAll("#log .room-report .rr-fail-open"));
+        return els.length ? (els[els.length - 1].innerText || "") : "";
+      });
+      rep12 && rep12.responder_policy === "bot_discretion" &&
+        (rep12.responders || []).length === 3 && Array.isArray(rep12.discretion) &&
+        rep12.discretion.length === 3 && rep12.discretion.every((d) => d && d.fail_open === true) &&
+        rep12.discretion_fail_open === 3 && /选择失败/.test(failOpenNote)
+        ? ok("无 @ 决策失败 fail-open：三人仍应答，但 decisions/UI 都明示 fail_open（不伪装成真实选择）")
+        : bad("discretion fail-open evidence", JSON.stringify({ p: rep12 && rep12.responder_policy, r: rep12 && rep12.responders, d: rep12 && rep12.discretion, n: rep12 && rep12.discretion_fail_open, ui: failOpenNote }).slice(0, 400));
       await win.screenshot({ path: path.join(SHOT_DIR, "gp145-8-unknown-mention.png") });
     }
 
@@ -757,6 +786,7 @@ const DOM_COUNTS = () => ({
     try {
       fs.writeFileSync(path.join(SHOT_DIR, "gp145-rooms-evidence.json"), JSON.stringify(evidence, null, 2));
     } catch { /* ignore */ }
+    fs.rmSync(STUB_RECORD, { force: true });
     // 验收跑完恢复运行期文件，不把测试数据留在工作树里
     if (roomsBefore) fs.writeFileSync(ROOMS, roomsBefore); else fs.rmSync(ROOMS, { force: true });
     if (sessionsBefore) fs.writeFileSync(SESSIONS, sessionsBefore); else if (fs.existsSync(SESSIONS)) fs.rmSync(SESSIONS, { force: true });

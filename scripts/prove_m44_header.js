@@ -48,8 +48,29 @@ if (/#header-actions button:active \{[^}]*scale\(0\.96\)/.test(html)) {
 }
 
 /* ---------- 3) reduced-motion 归零 header 按压 ---------- */
-const rm = html.match(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n  \}/);
-if (rm && /#header-actions button:active[\s\S]{0,120}transform:\s*none/.test(rm[0])) {
+/* 页面里有多个 prefers-reduced-motion 块（组件就近写法 + M40 全局块），
+   所以按内容找「含 #header-actions button:active 的那一块」，不取第一个。 */
+function atRulesWith(src, needle) {
+  const out = [];
+  let i = src.indexOf(needle);
+  while (i >= 0) {
+    let depth = 0;
+    let j = src.indexOf("{", i);
+    for (; j < src.length; j++) {
+      if (src[j] === "{") depth++;
+      else if (src[j] === "}") {
+        depth--;
+        if (depth === 0) { j++; break; }
+      }
+    }
+    out.push(src.slice(i, j));
+    i = src.indexOf(needle, j);
+  }
+  return out;
+}
+const rmHit = atRulesWith(html, "@media (prefers-reduced-motion: reduce)")
+  .find((t) => /#header-actions button:active[\s\S]{0,160}transform:\s*none/.test(t));
+if (rmHit) {
   ok("reduced-motion 下 #header-actions button:active transform 归零");
 } else {
   bad("rm header", "header press not neutralized");
