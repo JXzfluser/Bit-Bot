@@ -1,6 +1,7 @@
 package com.bitbot.host
 
 import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
@@ -54,7 +55,7 @@ object TurnBridge {
             .getOrElse { localErr ->
               error(
                 "HTTP turn failed (${httpErr.message}); local fallback failed (${localErr.message}). " +
-                  "在「凭证」填写 BITBOT_HOST_URL（如 http://192.168.1.10:18765）",
+                  "在「凭证」填写 Desktop 配对地址与 BITBOT_TURN_TOKEN（桌面：设置 → 凭证 → 手机配对；同一 Wi-Fi 先点「允许手机连接」）",
               )
             }
         }
@@ -100,6 +101,33 @@ object TurnBridge {
       if (trimmed.isEmpty()) remove(KEY_TURN_TOKEN) else putString(KEY_TURN_TOKEN, trimmed)
       apply()
     }
+  }
+
+  /**
+   * 失败要看得见：把 Host / 内核真实报出的原因读出来，不写「大概是要配密钥」这种
+   * 既兜底又甩锅的话术。Host 报什么就显示什么，报不出来就明说「没有可见回复」。
+   */
+  fun failureText(raw: String): String? {
+    val trimmed = raw.trim()
+    if (trimmed.startsWith("!")) return trimmed.removePrefix("!").trim()
+    val line = trimmed.lineSequence().map { it.trim() }.firstOrNull { it.startsWith("{") } ?: return null
+    return runCatching {
+      val obj = JSONObject(line)
+      if (!obj.isNull("error") && obj.optString("error").isNotEmpty()) {
+        return@runCatching obj.getString("error")
+      }
+      if (obj.optBoolean("ok", true)) return@runCatching null
+      val failed = mutableListOf<String>()
+      val hrs = obj.optJSONArray("host_results") ?: JSONArray()
+      for (i in 0 until hrs.length()) {
+        val h = hrs.optJSONObject(i) ?: continue
+        if (h.has("ok") && !h.optBoolean("ok", true)) {
+          val why = h.optString("error").ifBlank { h.optString("stderr").ifBlank { "host 未给出原因" } }
+          failed += h.optString("kind", "host") + "=" + why
+        }
+      }
+      if (failed.isNotEmpty()) "Host 执行失败：" + failed.joinToString("; ") else "内核 ok=false 且未给出原因"
+    }.getOrNull()
   }
 
   private fun defaultHostUrl(): String? {

@@ -543,6 +543,18 @@ function createCnInboundServer(opts = {}) {
           return;
         }
         state.counts.other += 1;
+        // 过了鉴权的回合 = 这台设备真实存在的证据（内核的 seed 花名册不知道这事）。
+        // 401 走不到这里，所以扫端口的人点不亮花名册。
+        try {
+          const { seedMachineId } = require("./cn_inbound_product_on_turn");
+          require("./machine_presence").recordMachinePresence(repoRoot, {
+            machineId: seedMachineId(machineKind),
+            machineKind,
+            source: "v1_turn",
+          });
+        } catch {
+          /* 记账失败不改变这次回合的结果 */
+        }
         const enq = await enqueueTurn(machineKind, String(text), {
           session_id: sessionId,
           source: "v1_turn",

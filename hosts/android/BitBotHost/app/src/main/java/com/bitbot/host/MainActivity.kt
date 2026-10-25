@@ -83,6 +83,7 @@ class MainActivity : ComponentActivity() {
         var showCapabilities by remember { mutableStateOf(false) }
         var showCredentials by remember { mutableStateOf(false) }
         var hostUrlDraft by remember { mutableStateOf(TurnBridge.hostUrl().orEmpty()) }
+        var tokenDraft by remember { mutableStateOf(TurnBridge.turnToken().orEmpty()) }
         var delivery by remember { mutableStateOf(SendToUserSurface.Summary()) }
         val scope = rememberCoroutineScope()
         val listState = rememberLazyListState()
@@ -114,7 +115,10 @@ class MainActivity : ComponentActivity() {
             val assistant =
               TurnBridge.assistantText(body)
                 ?: if (body.startsWith("!")) body
-                else "(empty assistant — model credential stays on Desktop)"
+                else "! " + (
+                  TurnBridge.failureText(body)
+                    ?: "桌面大脑没有返回可见回复（HTTP 正常，但 assistant 文本为空）"
+                )
             lines.add(ChatLine("assistant", assistant))
             busy = false
           }
@@ -132,6 +136,7 @@ class MainActivity : ComponentActivity() {
             actions = {
               TextButton(onClick = {
                 hostUrlDraft = TurnBridge.hostUrl().orEmpty()
+                tokenDraft = TurnBridge.turnToken().orEmpty()
                 showCredentials = true
               }) { Text("凭证") }
               TextButton(onClick = { showCapabilities = true }) { Text("能力") }
@@ -158,13 +163,14 @@ class MainActivity : ComponentActivity() {
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                  "配对 Desktop 大脑 — 点「凭证」填写 BITBOT_HOST_URL（开放配置，不写死）",
+                  "配对 Desktop 大脑 — 点「凭证」填配对地址与配对令牌（桌面：设置 → 凭证 → 手机配对，可复制；开放配置，不写死）",
                   style = MaterialTheme.typography.labelMedium,
                   color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = {
                   hostUrlDraft = TurnBridge.hostUrl().orEmpty()
+                  tokenDraft = TurnBridge.turnToken().orEmpty()
                   showCredentials = true
                 }) {
                   Text("配置 Desktop 配对凭证")
@@ -261,7 +267,7 @@ class MainActivity : ComponentActivity() {
               modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
             Text(
-              "DeepSeek / 钉钉飞书企微 key 在 Desktop「凭证」配置；本机只配配对地址。",
+              "DeepSeek / 钉钉飞书企微 key 在 Desktop「凭证」配置；本机只配配对地址和配对令牌。",
               style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
               modifier = Modifier.padding(horizontal = 16.dp),
@@ -276,9 +282,22 @@ class MainActivity : ComponentActivity() {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
               singleLine = true,
             )
+            // ADR 0008：/v1/turn 没带 bearer 一律 401。这里不配令牌，用户在手机上
+            // 就没有任何自救入口 —— 只能看着「发送」永远转圈失败。
+            OutlinedTextField(
+              value = tokenDraft,
+              onValueChange = { tokenDraft = it },
+              label = { Text("BITBOT_TURN_TOKEN") },
+              placeholder = { Text("Desktop「凭证」里那台大脑的配对令牌") },
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+              singleLine = true,
+            )
             Button(
               onClick = {
                 TurnBridge.setHostUrl(hostUrlDraft)
+                TurnBridge.setTurnToken(tokenDraft)
                 showCredentials = false
               },
               modifier = Modifier

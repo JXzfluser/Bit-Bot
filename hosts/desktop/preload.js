@@ -332,6 +332,12 @@ contextBridge.exposeInMainWorld("bitbot", {
   llmCatalog: () => ipcRenderer.invoke("bitbot:llm:catalog"),
   cnStatus: () => ipcRenderer.invoke("bitbot:cn:status"),
   cnInboundStatus: () => ipcRenderer.invoke("bitbot:cn:inbound:status"),
+  pairing: {
+    state: () => ipcRenderer.invoke("bitbot:pairing:state"),
+    token: () => ipcRenderer.invoke("bitbot:pairing:token"),
+    copy: (what) => ipcRenderer.invoke("bitbot:pairing:copy", what),
+    setLan: (enabled) => ipcRenderer.invoke("bitbot:pairing:lan", enabled),
+  },
   productStatus: () => ipcRenderer.invoke("bitbot:product:status"),
   ota: {
     check: () => ipcRenderer.invoke("bitbot:ota:check"),

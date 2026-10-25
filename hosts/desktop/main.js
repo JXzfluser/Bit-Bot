@@ -12,9 +12,11 @@ const {
   dialog,
   nativeTheme,
   Notification,
+  clipboard,
 } = require("electron");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { spawn } = require("child_process");
 
 // 单实例锁：同一个 user-data-dir 只允许一个 Electron 进程常驻。
@@ -106,6 +108,26 @@ try {
   createCnInboundServer = require("./shared/cn_inbound_server").createCnInboundServer;
 } catch (_e) {
   createCnInboundServer = require("../shared/cn_inbound_server").createCnInboundServer;
+}
+
+// 内核注册表里的设备 id 只有一个真相来源：desk-1 / phone-ios / phone-android
+// （box_host 的 seed()）。这里内联的 onTurn 以前自己拼 `${machineKind}-1`，
+// 于是手机的回合挂在注册表里根本不存在的 `android-1` 上 —— HTTP 200、回复也
+// 有，但设备工具 0 个、花名册点不亮。共用同一个函数，防止两处再各写一套。
+let seedMachineId;
+try {
+  seedMachineId = require("./shared/cn_inbound_product_on_turn").seedMachineId;
+} catch (_e) {
+  seedMachineId = require("../shared/cn_inbound_product_on_turn").seedMachineId;
+}
+
+// ADR 0008 的配对令牌由共享模块解析（env → data/host/turn-token → 生成 0600）。
+// 界面上要把它交给用户，所以这里只读同一个真相来源，不另存一份。
+let p0;
+try {
+  p0 = require("./shared/p0_security");
+} catch (_e) {
+  p0 = require("../shared/p0_security");
 }
 
 let autoUpdater = null;
@@ -1584,6 +1606,45 @@ function buildRoomContext(roomId, botId, ctx, task) {
  * 确定回执：真建出来了就报名单，没建出来就点名是谁没找到，绝不粉饰。
  * 返回 "" 表示本轮没有建房效果。
  */
+/**
+ * 多端在线回执（对话里可见）。
+ *
+ * 「机器」面板挂在工具轨上，而工具轨是 dev-mode only —— 普通用户其实看不见花名册。
+ * 在线这件事又不该只在 dev 面板里成立：手机真的连上来回过话，用户问一句就该在
+ * 对话里看到是谁、什么时候的证据。证据来自 Host 记下的 presence（不是内核 seed
+ * 出来的固定三台），所以这里只念 Host 已经合并进 machines_list 回包的事实。
+ */
+function machinePresenceReceiptText(result) {
+  const host = (result && Array.isArray(result.host_results)) ? result.host_results : [];
+  const hit = host.find((h) => h && h.kind === "machines_list");
+  if (!hit || !hit.stdout) return "";
+  let payload = null;
+  try {
+    payload = JSON.parse(hit.stdout);
+  } catch (_) {
+    return "";
+  }
+  const rows = payload && Array.isArray(payload.machines) ? payload.machines : [];
+  const phones = rows.filter((m) => m && String(m.kind || "").toLowerCase() !== "desktop");
+  if (!phones.length) return "";
+  const now = Date.now();
+  const agoText = (iso) => {
+    const at = Date.parse(String(iso || ""));
+    if (!Number.isFinite(at)) return "";
+    const sec = Math.max(0, Math.round((now - at) / 1000));
+    return sec >= 90 ? `${Math.round(sec / 60)} 分钟前` : `${sec} 秒前`;
+  };
+  const parts = phones.map((m) => {
+    const name = String(m.label || m.id || "?") + (m.label && m.id ? `(${m.id})` : `(${m.id || "?"})`);
+    const ago = agoText(m.last_seen);
+    const online = String(m.status || "").toLowerCase() === "connected";
+    if (online && ago) return `${name} 在线（${ago}前有回合）`;
+    if (ago) return `${name} 离线（最后证据 ${ago}）`;
+    return `${name} 未配对（还没带凭证来说过话）`;
+  });
+  return "多端在线：" + parts.join("；") + "。";
+}
+
 function groupChatReceiptText(result) {
   const host = (result && Array.isArray(result.host_results)) ? result.host_results : [];
   const hit = host.find((h) => h && h.kind === "group_chat");
@@ -2186,7 +2247,9 @@ ipcMain.handle("bitbot:cn:status", async () => {
   return {
     ok: true,
     desktop_first: true,
-    mobile_deferred: true,
+    // 安卓版已经存在（hosts/android/BitBotHost），「移动暂缓」不再是事实。
+    mobile_deferred: false,
+    mobile_ready: true,
     channels,
     any_live_ready: anyLive,
     inbound: cnInbound ? cnInbound.status() : { listening: false, residual: "not_started" },
@@ -2542,7 +2605,8 @@ ipcMain.handle("bitbot:product:status", async () => {
   return {
     ok: true,
     desktop_first: true,
-    mobile_deferred: true,
+    mobile_deferred: false,
+    mobile_ready: true,
     llm: llm && llm.active ? llm.active : llm,
     filing: {
       icp: filingIcp,
@@ -2952,8 +3016,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
     if (roomReceipt) {
       if (result && Array.isArray(result.messages)) {
         result.messages.push({ role: "assistant", text: roomReceipt });
-      }
-      const touched = ((result && result.host_results) || [])
+      }      const touched = ((result && result.host_results) || [])
         .find((h) => h && h.kind === "group_chat");
       if (touched && touched.ok) {
         try {
@@ -2963,6 +3026,18 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
           broadcast("bitbot:rooms-changed", { ok: false, error: "rooms_unavailable" });
         }
       }
+    }
+    // 多端在线回执：花名册挂在 dev-only 的工具轨上，普通用户看不见；而且
+    // 「iOS/Android 到底连没连上」是用户问一句就该得到答案的事。这里只念 Host
+    // 已经合并进 machines_list 回包里的证据（last_seen / presence_evidence）。
+    let presenceReceipt = "";
+    try {
+      presenceReceipt = machinePresenceReceiptText(result);
+    } catch (_) {
+      presenceReceipt = "";
+    }
+    if (presenceReceipt && result && Array.isArray(result.messages)) {
+      result.messages.push({ role: "assistant", text: presenceReceipt });
     }
     const skipSession =
       !!(opts && opts.skipSession) ||
@@ -3316,6 +3391,10 @@ async function ensureCnInbound() {
     return { ok: false, skipped: true, reason: "BITBOT_CN_INBOUND=0" };
   }
   if (!cnInbound) {
+    // 上次用户打开过「允许手机连接」，重启之后还得算数（偏好只在这个文件里）。
+    if (!process.env.BITBOT_BIND_LAN && readPairingPrefs().lan_enabled) {
+      process.env.BITBOT_BIND_LAN = "1";
+    }
     cnInbound = createCnInboundServer({
       repoRoot: REPO_ROOT,
       onTurn: async (prompt, meta) => {
@@ -3334,7 +3413,7 @@ async function ensureCnInbound() {
         });
         const result = await runner.runTurn(String(prompt || ""), {
           sessionId,
-          machineId: machineKind === "desktop" ? "desk-1" : `${machineKind}-1`,
+          machineId: seedMachineId(machineKind),
           machineKind,
           channel: channel === "android" || channel === "ios" ? "" : channel,
           approved: false,
@@ -3350,6 +3429,153 @@ async function ensureCnInbound() {
   }
   return cnInbound.start();
 }
+
+/* ---------- 手机配对（移动版 · ADR 0008） -------------------------------- *
+ * 手机要连的就是这台桌面大脑，但 /v1/turn 默认只绑 127.0.0.1；放开局域网以前
+ * 只有翻 BITBOT_BIND_LAN 的人做得到 —— 界面上既看不见地址也拿不到令牌，于是
+ * 「手机连桌面大脑」停在 README 里，而不是产品里。开关偏好落在
+ * data/desktop/pairing.json：一个新增的本地文件，不动既有 store 契约。
+ * ------------------------------------------------------------------------ */
+function pairingPrefsFile() {
+  return path.join(REPO_ROOT, "data", "desktop", "pairing.json");
+}
+
+function readPairingPrefs() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(pairingPrefsFile(), "utf8"));
+    return { lan_enabled: Boolean(raw && raw.lan_enabled === true) };
+  } catch (_e) {
+    return { lan_enabled: false };
+  }
+}
+
+function writePairingPrefs(prefs) {
+  try {
+    const dir = path.dirname(pairingPrefsFile());
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      pairingPrefsFile(),
+      JSON.stringify(
+        {
+          lan_enabled: Boolean(prefs && prefs.lan_enabled),
+          at: new Date().toISOString(),
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
+/** 这台机器上网卡里的 IPv4 —— 手机真的能敲到的那些地址。 */
+function lanIPv4Addresses() {
+  const out = [];
+  try {
+    const ifaces = os.networkInterfaces() || {};
+    for (const name of Object.keys(ifaces)) {
+      for (const addr of ifaces[name] || []) {
+        const family = addr && (addr.family === "IPv4" || addr.family === 4);
+        if (family && addr && !addr.internal) out.push(String(addr.address));
+      }
+    }
+  } catch (_e) {
+    /* 读不到网卡就老实说没有，不编地址 */
+  }
+  return out;
+}
+
+function maskPairingToken(value) {
+  const s = String(value || "");
+  if (!s) return "";
+  if (s.length <= 8) return "••••";
+  return s.slice(0, 4) + "…" + s.slice(-4);
+}
+
+function turnTokenValue() {
+  try {
+    return String(p0.resolveTurnToken(REPO_ROOT, process.env, {}).token || "");
+  } catch (_e) {
+    return "";
+  }
+}
+
+function pairingState() {
+  const st = cnInbound
+    ? cnInbound.status()
+    : { listening: false, host: "", port: 0, lan: false };
+  const port = Number(st.port || 0);
+  const listening = Boolean(st.listening);
+  const lanOpen = listening && Boolean(st.lan || st.host === "0.0.0.0");
+  const ips = lanOpen ? lanIPv4Addresses() : [];
+  return {
+    ok: true,
+    listening,
+    port,
+    lan_enabled: readPairingPrefs().lan_enabled,
+    lan_open: lanOpen,
+    lan_ips: ips,
+    turn_urls: ips.map((ip) => `http://${ip}:${port}/v1/turn`),
+    loopback_url: port ? `http://127.0.0.1:${port}/v1/turn` : "",
+    token_masked: maskPairingToken(turnTokenValue()),
+    mobile_ready: true,
+    pretend_paired: false,
+  };
+}
+
+ipcMain.handle("bitbot:pairing:state", async () => pairingState());
+
+/** 令牌只在用户明确点「显示」时给出原文；默认状态里只有掩码。 */
+ipcMain.handle("bitbot:pairing:token", async () => {
+  const token = turnTokenValue();
+  if (!token) return { ok: false, error: "token_unavailable" };
+  return { ok: true, token, masked: maskPairingToken(token) };
+});
+
+/** 手机上手敲 64 位令牌不是「走通」，所以给一个复制入口。 */
+ipcMain.handle("bitbot:pairing:copy", async (_e, what) => {
+  const st = pairingState();
+  const text =
+    what === "token"
+      ? turnTokenValue()
+      : (st.turn_urls && st.turn_urls[0]) || st.loopback_url || "";
+  if (!text) return { ok: false, error: "nothing_to_copy" };
+  try {
+    clipboard.writeText(String(text));
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
+  return { ok: true, kind: String(what || "url"), length: String(text).length };
+});
+
+/**
+ * 允许 / 禁止局域网里的手机连进来。ADR 0008 默认 loopback；这里改的是同一个
+ * 开关（BITBOT_BIND_LAN），并把入站监听重建一次 —— 端口、鉴权、路由都不变。
+ */
+ipcMain.handle("bitbot:pairing:lan", async (_e, enabled) => {
+  const next = Boolean(enabled);
+  if (!writePairingPrefs({ lan_enabled: next })) {
+    return { ok: false, error: "pairing_prefs_write_failed", ...pairingState() };
+  }
+  if (next) process.env.BITBOT_BIND_LAN = "1";
+  else delete process.env.BITBOT_BIND_LAN;
+  try {
+    if (cnInbound) {
+      await cnInbound.stop();
+      cnInbound = null;
+    }
+    await ensureCnInbound();
+  } catch (err) {
+    return {
+      ok: false,
+      error: err && err.message ? err.message : String(err),
+      ...pairingState(),
+    };
+  }
+  return { ok: true, ...pairingState() };
+});
 
 app.whenReady().then(async () => {
   // GP-77: install state on disk for the shared Host `update_status` reader.

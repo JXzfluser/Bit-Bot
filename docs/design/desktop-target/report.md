@@ -1047,3 +1047,81 @@ runUserTurn("open agent info agent=" + b.id, { skipSession: true })
 
 `quit 8/0`、`command_channel 38/0`、`bot_group_menu 13/0`、`shell_v2 89/0` 全绿；
 新门禁 `single_instance 6/0`、`sidebar_adapt 5/0`。应用已换新代码运行（主 39350 / daemon 39355）。
+
+## 8.15 安卓移动版：把「手机连桌面大脑」从 README 变成走得到的路（2026-10-25）
+
+分支 `cursor/android-mobile-target-v1`（从 `cursor/desktop-layout-target-v2` 的 `a652416` 拉出）。
+这一轮的标准不是组件门禁变绿，而是「用户在真实 Electron + 真实内核里，手机能不能真的一路走到桌面记得它」。
+
+### 8.15.1 根因一：手机的回合挂在注册表里不存在的机器上（两处，各错各的）
+
+- `hosts/shared/cn_inbound_product_on_turn.js` 把远端回合落到 `android-inbound` / `ios-inbound`
+  这种自造 id；内核注册表里的真机器叫 `phone-android` / `phone-ios`（`box_host/machines.mbt` 的
+  `seed()`）。后果：HTTP 200、回复也有，但 `device tools` 返回 0 个工具，`run_on_machine` 报
+  unknown machine —— 用户只看见「手机上点什么都没反应」。
+- 修复：`seedMachineId(machineKind)` 单一真相来源（android→`phone-android`，ios→`phone-ios`，
+  其余→`desk-1`），复用内核 `resolve_device_machine_id` 已有的归一化语义，不新造 id。
+- **第二处更隐蔽**：`hosts/desktop/main.js` 的 `ensureCnInbound()` 用的是内联 `onTurn`，自己拼
+  `${machineKind}-1`（`android-1` / `ios-1`）。共享模块修好了，产品里那条线还是断的 —— 这就是
+  「共享模块绿 ≠ 产品绿」的实证。修复：内联 `onTurn` 调同一个 `seedMachineId()`。
+- 门禁证据（先红后绿）：
+  - `e2e_android_turn.mjs`（真 HTTP + 真内核）修复前 **PASS=3 FAIL=5** → 修复后 **PASS=11 FAIL=0**；
+    `NEG_CONTROL=1`（退回旧机器 id + 假装全在线）**PASS=7 FAIL=4**，AND-03/04/05/11 精确翻红。
+  - `e2e_android_roster.mjs`（真实 Electron/Xvfb 跑起来的桌面 app）AR-06 修复前红
+    `host_id=android-1`、AR-07 修复前红 `machine_id=android-1 · tools=0` → 修复后 AR-01..11 **PASS=14 FAIL=0**。
+
+### 8.15.2 根因二：「在不在线」一直是内核猜的，安卓版一上线「保守」就变成「假」
+
+- `seed()` 里三台机器永远 Disconnected，桌面面板文案还写着「iOS/Android 暂缓」。
+- 修复：过了 ADR 0008 鉴权的回合由 Host 记证据（新增 `hosts/shared/machine_presence.js` →
+  `data/machines/presence.json`），`host_ffi` 的 `machines_list` 只把 TTL 内有证据的设备标成
+  `connected`，过期标 `stale` 并带最后时间戳，无证据设备明说「未配对」；401 一律不记账。
+  渲染层如实交代：面板每行显示 在线 / 离线 + 证据时间，汇总行 `3 台注册 / 2 台在线`；
+  「机器」面板挂在 dev-only 的工具轨上，普通用户看不见，所以对话里加了一条「多端在线」回执。
+- 门禁证据：AND-09..12（证据写入、TTL 过期→离线、无证据不点亮、401 不记账）全绿；
+  AR-01..05 在真实渲染里绿。两个独立负向对照证明非恒真：把 `machineSeenAgo` 文案换成
+  `(负控)` → AR-02 红；把回执分支掐掉 → AR-05 红。
+
+### 8.15.3 根因三：手机要的两样东西，界面上给不出来
+
+配对需要一个「手机敲得到的地址」和一个「配对令牌」。地址在 `BITBOT_BIND_LAN=1` 背后（环境变量级），
+令牌躺在 `data/host/turn-token`，UI 里两者都没有 —— 于是「手机连桌面」只是文档里的句子。
+
+- 新增「设置 → 凭证 → 手机配对」：地址按运行时端口显示（不写死 18765）；令牌默认掩码，
+  点「显示配对令牌」才给原文，另有复制（手机上敲 64 位不算走通）；「允许手机连接」是真开关
+  （放开 → 重建监听并给出本机局域网 IPv4，收回 → 只回环），偏好落 `data/desktop/pairing.json`
+  （新增本地文件，不动既有 store / IPC 契约，新通道 `bitbot:pairing:state|token|copy|lan`）。
+- 顺手把两处假话改成真话：`mobile_deferred: true` → `false` + `mobile_ready: true`，状态行显示
+  「移动=可配对」；账户弹层「获取移动版」不再是「内测中」的占位 —— 说清 APK 已可用、商店链接仍是
+  后续波次，并直接落到这一屏（`anchor=security-keys`）。
+- 门禁证据：AR-09（地址如实 + 默认掩码 + 点「显示」拿得到磁盘上那份真令牌）、AR-10（不再宣称暂缓）、
+  AR-11（放开后用界面上那个局域网地址真打 `/v1/turn` 得 200 且挂对机器；收回后同地址连不上、桌面自己照常）。
+  两个负向对照：把开关改成只写偏好不重建监听 → AR-11 红（`lan_enabled=true` 但 `lan_open=false`，
+  正是「看起来修了」那种装饰）；把掩码改成直出原文 → AR-09 红。
+
+### 8.15.4 APK 侧的可验证面（能验的都验了）
+
+- `prove_android_build.mjs` **PASS=6 FAIL=0**：真 `gradle :app:assembleUniversalDebug` 出包（8 MB），
+  `aapt` 读回包里的事实 —— `com.bitbot.host.debug` / 应用名 `Bit Bot` / INTERNET+CAMERA+RECORD_AUDIO+
+  ACCESS_FINE_LOCATION / `minSdk 26 · targetSdk 34` / 六个渠道 flavor 齐；JVM 单测真跑 **13 用例 0 失败**
+  （`TurnBridgeTest` 线路解析：401 `invalid_token`、`host_results` 失败点名、空 assistant 不算回复；
+  `SendToUserSurfaceTest` 送件面：附件/残留 chip、OAuth `NeedsAuth` 仍可见、密钥请求不外泄）。
+- Kotlin 侧补了「凭证」里的 `BITBOT_TURN_TOKEN` 输入与失败原文显示（不再用写死的甩锅文案），
+  `gradle-wrapper.properties` 的 `networkTimeout` 10s → 120s（国内网络下 wrapper 下载必炸）。
+
+### 8.15.5 回归与继承下来的假红
+
+- 内核：`moon test cmd/desktop_turn` **33/33**，`moon test runtime` **54/54**。
+- 桌面静态契约：m33 8/0、m34 7/0（新增移动版落地 + 第二条负向对照）、m37 13/0、m41 7/0、m42 8/0、m43 8/0、m44 7/0。
+- 全量矩阵上一轮 `PASS=344 FAIL=4`，四条红全是**继承下来的尺子漂移**（Target v2 改了产品，门禁 grep 还按旧文案找）：
+  G-33「账户条 8 项」实为 7 项（版本更新已收进设置）、G-34「三项 anchor」实为两项 + 移动版改道、
+  G-37「position: fixed」实为锚在触发元素上的 absolute、G-42「user 尾角」已被 Target v2 去掉。
+  本轮把 grep 对齐到 probe 现在真实断言的句子（probe 自身仍全绿，且这些行一旦失去覆盖 grep 照样翻红），
+  并给 G-34/G-47 补上新增锚点 —— 不是把红改成绿，是让尺子重新量到今天的事实。
+
+### 8.15.6 诚实残留（没验的不自称验过）
+
+- 本环境无 KVM：emulator、真机 OS 权限弹窗、安装后 UI 表现未验证。
+- 商店签名未配置（`BITBOT_ANDROID_STORE_*`），release 仍回落 debug 签名。
+- iOS 沿用同一套线路（`machine_kind=ios`），未在 macOS 上归档验证。
+- 公网回调（钉钉/飞书/企微）仍需隧道；本轮只把「手机 ↔ 桌面大脑」这条局域网路径打通。

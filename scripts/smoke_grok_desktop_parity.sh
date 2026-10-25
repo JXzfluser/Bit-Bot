@@ -1284,8 +1284,8 @@ fi
 grep -q "侧栏顶部图标工具栏" /tmp/g33-probe.log 2>/dev/null \
   && ok "G-33 GP-M33：侧栏顶部图标工具栏（search + new-chat）" \
   || bad "G-33 sidebar toolbar missing"
-grep -q "账户条包含 8 项弹层" /tmp/g33-probe.log 2>/dev/null \
-  && ok "G-33 GP-M33：底部账户条 → 8 项 popup（含 Settings 复用 sidebar-settings-btn）" \
+grep -q "账户条包含 7 项弹层" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：底部账户条 → 7 项 popup（版本更新收进「设置 → 更新」，不重复两处）" \
   || bad "G-33 account popup missing"
 grep -q "送达状态：存储 → ✓、回合收尾 → ✓✓ 绿色" /tmp/g33-probe.log 2>/dev/null \
   && ok "G-33 GP-M33：用户气泡送达状态 ✓ → ✓✓ 绿色" \
@@ -1312,14 +1312,17 @@ if timeout 900 node scripts/prove_m34_account_actions.js > /tmp/g34-probe.log 2>
 else
   bad "G-34 账户弹层入口契约（见 /tmp/g34-probe.log）"
 fi
-grep -q "三项（更新 / 用量 / 添加账户）通过 open settings anchor" /tmp/g34-probe.log 2>/dev/null \
-  && ok "G-34 GP-M34：三项真实落点（更新→update-status / 用量→usage / 添加账户→profile）" \
+grep -q "两项（用量 / 添加账户）通过 open settings anchor" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：两项真实落点（用量→usage / 添加账户→profile）" \
   || bad "G-34 anchor wiring missing"
 grep -q "update-status / usage / profile 三个锚点在 SETTINGS_ANCHOR_TAB 已注册" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 GP-M34：锚点在 SETTINGS_ANCHOR_TAB 已注册" \
   || bad "G-34 anchor registry missing"
-grep -q "移动版 / 支持 / 退出登录 三项：中文占位文案" /tmp/g34-probe.log 2>/dev/null \
-  && ok "G-34 GP-M34：三项走本地化 callout（非静默 no-op）" \
+grep -q "移动版：不再只报「内测」" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：移动版入口落到「凭证 → 手机配对」（不是占位）" \
+  || bad "G-34 mobile landing missing"
+grep -q "支持 / 退出登录 两项：中文占位文案" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：两项走本地化 callout（非静默 no-op）" \
   || bad "G-34 placeholder missing"
 grep -q "handler 都收口：先关 popup 再走短语" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 GP-M34：handler 都关 popup，不挡设置页" \
@@ -1327,6 +1330,9 @@ grep -q "handler 都收口：先关 popup 再走短语" /tmp/g34-probe.log 2>/de
 grep -q "负向对照：抹掉 anchor=usage 短语" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 负向对照：抹掉 anchor 短语 → 断言翻假（非恒真）" \
   || bad "G-34 negative control missing"
+grep -q "负向对照：抹掉移动版 anchor=security-keys" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 负向对照：抹掉移动版锚点 → 落地断言翻假（非恒真）" \
+  || bad "G-34 mobile negative control missing"
 
 echo "== G-35 键盘快捷键面板（M35：Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键表）=="
 if timeout 900 node scripts/prove_m35_hotkeys.js > /tmp/g35-probe.log 2>&1; then
@@ -1378,8 +1384,8 @@ fi
 grep -q "全局 \[hidden\] { display: none !important" /tmp/g37-probe.log 2>/dev/null \
   && ok "G-37 GP-M37：全局 [hidden] !important，防 UA 语义被 display:flex 顶掉" \
   || bad "G-37 global hidden reset missing"
-grep -q "#account-popup 使用 position: fixed" /tmp/g37-probe.log 2>/dev/null \
-  && ok "G-37 GP-M37：账户弹层 position: fixed + z-index: 4x（不被 #agents 裁剪）" \
+grep -q "#account-popup 锚在触发元素上方（absolute）" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：账户弹层锚在触发元素上方 + z-index: 4x（不被 #agents overflow 裁剪）" \
   || bad "G-37 popup stacking missing"
 grep -q "setAccountPopup(open)：hidden 属性 + aria-expanded 同步" /tmp/g37-probe.log 2>/dev/null \
   && ok "G-37 GP-M37：setAccountPopup 单一真源（hidden 属性 + aria-expanded）" \
@@ -1511,8 +1517,8 @@ fi
 grep -q "#log 单列居中" /tmp/g42-probe.log 2>/dev/null \
   && ok "G-42 GP-M42：#log 单列居中，user/assistant 对齐同一列" \
   || bad "G-42 log center missing"
-grep -q "user 气泡：保留 18px 圆角" /tmp/g42-probe.log 2>/dev/null \
-  && ok "G-42 GP-M42：user 气泡 18px 圆角（M20）+ 右下尾角" \
+grep -q "user 气泡：四角同值 18px" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：user 气泡四角同值 18px（--radius-user，Target v2 已去掉尾角）" \
   || bad "G-42 user tail missing"
 grep -q "assistant 气泡：var(--bot-bubble)" /tmp/g42-probe.log 2>/dev/null \
   && ok "G-42 GP-M42：assistant 气泡 bot-bubble + 左上尾角" \
@@ -1674,6 +1680,73 @@ else
 fi
 echo "  · G-46 说明：六个门禁均为真实 Electron（Xvfb）渲染断言；串行执行并逐个清场，避免并发 profile 互撞"
 
+
+echo "== G-47 安卓移动端门禁（线路契约 / 机器身份 / 在线证据 / APK 真编译）=="
+# 移动端不能只靠读源码。三块：真 HTTP + 真内核的线路门禁、真实 Electron 的花名册
+# 渲染门禁、以及真编译 APK 再用 aapt 把包里的事实读回来的构建门禁。
+if command -v moon >/dev/null 2>&1; then
+  if timeout 900 node scripts/e2e_android_turn.mjs > /tmp/g47-turn.log 2>&1; then
+    ok "G-47 e2e_android_turn 全绿（$(grep -c '✓' /tmp/g47-turn.log) 项，$(tail -1 /tmp/g47-turn.log)）"
+  else
+    bad "G-47 e2e_android_turn（见 /tmp/g47-turn.log；$(tail -1 /tmp/g47-turn.log)）"
+  fi
+  grep -q "AND-03 安卓 ListMachines → 200 + assistant + phone-android" /tmp/g47-turn.log \
+    && grep -q "AND-05 安卓设备工具列到真机器上的" /tmp/g47-turn.log \
+    && grep -q "AND-09 手机说过话" /tmp/g47-turn.log \
+    && ok "G-47 线路契约：手机挂在自己那台机器上（phone-android）、设备工具非空、回合留下在线证据" \
+    || bad "G-47 android turn contract anchors missing"
+  if NEG_CONTROL=1 timeout 900 node scripts/e2e_android_turn.mjs > /tmp/g47-neg.log 2>&1; then
+    bad "G-47 负向对照失效：退回旧机器 id + 假装全在线之后门禁仍全绿（恒真断言）"
+  else
+    grep -q "AND-03 内核认下的机器是 phone-android" /tmp/g47-neg.log \
+      && grep -q "AND-11 过期证据不许显示在线" /tmp/g47-neg.log \
+      && ok "G-47 负向对照：旧机器 id / 假装全在线 → 门禁真的翻红（非恒真）" \
+      || bad "G-47 负向对照跑红了，但红的不是 AND-03/AND-11（见 /tmp/g47-neg.log）"
+  fi
+else
+  echo "  · skip：moon 不在 PATH，G-47 线路门禁未跑（SKIP ≠ PASS）"
+fi
+
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g47_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g47_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 "${g47_xvfb[@]}" node scripts/e2e_android_roster.mjs > /tmp/g47-roster.log 2>&1; then
+    ok "G-47 e2e_android_roster 全绿（$(grep -c '✓' /tmp/g47-roster.log) 项，$(tail -1 /tmp/g47-roster.log)）"
+  else
+    bad "G-47 e2e_android_roster（见 /tmp/g47-roster.log；$(tail -1 /tmp/g47-roster.log)）"
+  fi
+  grep -q "AR-02 有证据的手机" /tmp/g47-roster.log \
+    && grep -q "AR-03 没有证据的手机保持离线" /tmp/g47-roster.log \
+    && grep -q "AR-05 对话里看得见在线回执" /tmp/g47-roster.log \
+    && ok "G-47 花名册：在线只认 Host 证据，普通用户在对话里也看得见（工具轨是 dev-only）" \
+    || bad "G-47 roster anchors missing"
+  grep -q "AR-06 真 app 的内联 onTurn" /tmp/g47-roster.log \
+    && grep -q "AR-07 手机在真 app 里点设备工具" /tmp/g47-roster.log \
+    && ok "G-47 桌面 app 自己的 /v1/turn 也把手机挂到 phone-android（共享模块修好 ≠ 产品修好）" \
+    || bad "G-47 app-path anchors missing"
+  grep -q "AR-09 用户可以自己把令牌抄进手机" /tmp/g47-roster.log \
+    && grep -q "AR-11 开关是真的" /tmp/g47-roster.log \
+    && ok "G-47 手机配对：地址与令牌在「凭证」里拿得到，「允许手机连接」是真开关（放开能打通、收回打不通）" \
+    || bad "G-47 pairing anchors missing"
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+else
+  echo "  · skip：playwright-core / electron dist 缺失，G-47 花名册真实渲染门禁未跑（SKIP ≠ PASS）"
+fi
+
+if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; then
+  if grep -q "SKIP=1" /tmp/g47-build.log; then
+    echo "  · skip：$(grep -m1 'SKIP —' /tmp/g47-build.log)（SKIP ≠ PASS）"
+  else
+    ok "G-47 APK 真编译 + aapt 读回包里的事实（$(tail -1 /tmp/g47-build.log)）"
+  fi
+else
+  bad "G-47 prove_android_build（见 /tmp/g47-build.log；$(tail -1 /tmp/g47-build.log)）"
+fi
+echo "  · G-47 残留（诚实）：无 KVM → emulator、真机 OS 权限弹窗、厂商商店签名（BITBOT_ANDROID_STORE_*）均未验证"
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

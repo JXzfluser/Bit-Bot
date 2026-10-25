@@ -2332,6 +2332,20 @@
                这里只留连接应用回调需要的入站公网地址。 -->
           <div id="sec-inbound-url" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
         </div>
+        <div class="st-card">
+          <div class="st-card-title">手机配对</div>
+          <!-- 安卓 / iOS 端连的就是这台大脑。地址与令牌以前只在 README 里，
+               用户点不开这一屏就走不到「手机说话 → 桌面记得」。 -->
+          <div id="sec-pairing-line" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">配对状态：读取中…</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+            <button type="button" id="pairing-lan-btn" class="bb-btn bb-btn-sm">允许手机连接</button>
+            <button type="button" id="pairing-token-btn" class="bb-btn bb-btn-sm">显示配对令牌</button>
+            <button type="button" id="pairing-copy-url" class="bb-btn bb-btn-sm" disabled>复制地址</button>
+            <button type="button" id="pairing-copy-token" class="bb-btn bb-btn-sm" disabled>复制令牌</button>
+          </div>
+          <div id="sec-pairing-token" style="display:none;margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:12px/1.5 ui-monospace,monospace;word-break:break-all;background:var(--surface)"></div>
+          <div id="sec-pairing-status" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button type="button" id="sec-save" class="bb-btn bb-btn-primary">保存并热加载</button>
           <button type="button" id="sec-probe" class="bb-btn bb-btn-sm">试连大脑</button>
@@ -2612,7 +2626,7 @@
     <div class="panel-title" data-i18n="machines">机器</div>
     <div class="machine-item">
       <div class="name">多端花名册</div>
-      <div class="meta" id="machines-meta">桌面 · 本阶段，iOS/Android 暂缓</div>
+      <div class="meta" id="machines-meta">桌面 · 手机在「配对」里连上后显示在线</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="mach-list" class="bb-btn bb-btn-sm bb-btn-primary">列出机器</button>
       </div>
@@ -3240,6 +3254,7 @@
       if (key === "credentials") {
         refreshSecretsForm().catch(() => {});
         refreshInboundUrlStrip().catch(() => {});
+        refreshPairingStrip().catch(() => {});
       }
       if (key === "updates") refreshUpdatesTabState();
     }
@@ -3547,6 +3562,7 @@
       if (mClose) setTimeout(() => mClose.focus(), 40);
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
+      refreshPairingStrip().catch(() => {});
       // Honest product residuals (brain / CN channels / filing / OTA) — never pretend ready.
       // Dev-mode only: these carry internal enum tokens (live/draft/armed/residual).
       if (devModeOn()) (async () => {
@@ -3577,7 +3593,8 @@
             if (st && st.ota) {
               bits.push("OTA=" + (st.ota.residual ? "residual" : "feed"));
             }
-            if (st && st.mobile_deferred) bits.push("移动=暂缓");
+            if (st && st.mobile_ready) bits.push("移动=可配对");
+            else if (st && st.mobile_deferred) bits.push("移动=暂缓");
           }
           if (window.bitbot.cnStatus) {
             const cn = await window.bitbot.cnStatus();
@@ -10558,6 +10575,7 @@
       if (secStatus && hint) secStatus.textContent = hint;
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
+      refreshPairingStrip().catch(() => {});
     }
 
     async function refreshConfigGate() {
@@ -10680,15 +10698,31 @@
         runUserTurn(phrase, { skipSession: true, silentUser: true });
       });
     }
-    /* 移动版 / 支持 / 退出登录 —— 目前只有本地占位：用 callout 明确告诉用户"该入口
+    /* 支持 / 退出登录 —— 目前只有本地占位：用 callout 明确告诉用户"该入口
        已挂，具体能力在后续波次接入"，而不是静默 no-op。*/
     const accountPlaceholder = (msg) => {
       addMsg("assistant", msg, { debugOnly: false });
       setAccountPopup(false);
     };
+    /* 移动版不再是占位：APK 已经能构建（hosts/android/BitBotHost），用户点这一项
+       就该落到能真办事的地方 —— 「凭证 → 手机配对」给得出地址与令牌。
+       商店安装包链接仍是后续波次，这句话也照样如实说。 */
     const apMobile = document.getElementById("ap-mobile");
-    if (apMobile) apMobile.addEventListener("click", () =>
-      accountPlaceholder("Bit Bot 移动版目前处于内测，链接稍后会通过 OTA 推送。"));
+    if (apMobile) {
+      apMobile.addEventListener("click", () => {
+        addMsg(
+          "assistant",
+          "Bit Bot 安卓版已经可用：装好 APK 后在手机端「凭证」里填这台桌面的配对地址与配对令牌 —— 已为你打开「设置 → 凭证 → 手机配对」（同一 Wi-Fi 下先点「允许手机连接」）。应用商店安装包链接仍是后续波次。",
+          { debugOnly: false },
+        );
+        setAccountPopup(false);
+        window.__bbPendingSettingsTrigger = apMobile;
+        runUserTurn("open settings entry=account anchor=security-keys", {
+          skipSession: true,
+          silentUser: true,
+        });
+      });
+    }
     const apSupport = document.getElementById("ap-support");
     if (apSupport) apSupport.addEventListener("click", () =>
       accountPlaceholder("支持：在 GitHub 仓库 JXzfluser/Bit-Bot 提交 Issue，或在对话里直接说「诊断」。"));
@@ -10835,6 +10869,147 @@
       } catch (_) {
         el.textContent = wavegT("inboundReadFail");
       }
+    }
+
+    /* ---------- 手机配对（移动版 · ADR 0008） ------------------------------
+     * 手机连桌面大脑需要两样东西：一个它敲得到的地址，和那台的配对令牌。
+     * 以前这两样只在 README 里 —— 界面给不出来的话，「手机走通」就只是文档。
+     * 状态、开关、令牌、复制都只读 window.bitbot.pairing，端口与地址不写死。
+     * -------------------------------------------------------------------- */
+    let pairingSnapshot = null;
+
+    function pairingStatusEl() {
+      return document.getElementById("sec-pairing-status");
+    }
+
+    async function refreshPairingStrip() {
+      const line = document.getElementById("sec-pairing-line");
+      if (!line || !window.bitbot || !window.bitbot.pairing) return;
+      const lanBtn = document.getElementById("pairing-lan-btn");
+      const copyUrl = document.getElementById("pairing-copy-url");
+      try {
+        const st = await window.bitbot.pairing.state();
+        pairingSnapshot = st && st.ok ? st : null;
+        if (!pairingSnapshot) {
+          line.textContent = wavegT("pairingReadFail");
+          if (lanBtn) lanBtn.disabled = true;
+          if (copyUrl) copyUrl.disabled = true;
+          return;
+        }
+        if (!st.listening) {
+          line.textContent = wavegT("pairingNotListening");
+        } else if (st.lan_open && (st.turn_urls || []).length) {
+          line.textContent = t("pairingLanOn", { url: st.turn_urls[0] });
+        } else if (st.lan_open) {
+          line.textContent = wavegT("pairingLanOnNoIp");
+        } else {
+          line.textContent = t("pairingLocalOnly", { url: st.loopback_url || "" });
+        }
+        if (lanBtn) {
+          lanBtn.textContent = st.lan_enabled
+            ? wavegT("pairingBtnDisable")
+            : wavegT("pairingBtnEnable");
+          lanBtn.disabled = false;
+        }
+        if (copyUrl) copyUrl.disabled = false;
+        const status = pairingStatusEl();
+        if (status) {
+          status.textContent = st.token_masked
+            ? t("pairingTokenMasked", { code: st.token_masked })
+            : wavegT("pairingTokenMissing");
+        }
+      } catch (_) {
+        line.textContent = wavegT("pairingReadFail");
+        if (lanBtn) lanBtn.disabled = true;
+        if (copyUrl) copyUrl.disabled = true;
+      }
+    }
+
+    async function pairingCopy(what) {
+      const status = pairingStatusEl();
+      try {
+        const r = await window.bitbot.pairing.copy(what);
+        if (status) {
+          status.textContent =
+            r && r.ok ? wavegT("pairingCopied") : t("pairingCopyFail", { err: (r && r.error) || "unknown" });
+        }
+      } catch (e) {
+        if (status) {
+          status.textContent = t("pairingCopyFail", { err: String((e && e.message) || e) });
+        }
+      }
+    }
+
+    const pairingLanBtn = document.getElementById("pairing-lan-btn");
+    if (pairingLanBtn) {
+      pairingLanBtn.addEventListener("click", async () => {
+        const next = !(pairingSnapshot && pairingSnapshot.lan_enabled);
+        pairingLanBtn.disabled = true;
+        try {
+          const r = await window.bitbot.pairing.setLan(next);
+          if (r && r.ok) pairingSnapshot = r;
+          await refreshPairingStrip();
+          const status = pairingStatusEl();
+          if (status) {
+            status.textContent =
+              r && r.ok
+                ? next
+                  ? wavegT("pairingNowOpen")
+                  : wavegT("pairingNowClosed")
+                : t("pairingToggleFail", { err: (r && r.error) || "unknown" });
+          }
+        } catch (e) {
+          const status = pairingStatusEl();
+          if (status) {
+            status.textContent = t("pairingToggleFail", { err: String((e && e.message) || e) });
+          }
+        } finally {
+          pairingLanBtn.disabled = false;
+        }
+      });
+    }
+
+    const pairingTokenBtn = document.getElementById("pairing-token-btn");
+    if (pairingTokenBtn) {
+      pairingTokenBtn.addEventListener("click", async () => {
+        const box = document.getElementById("sec-pairing-token");
+        const copyToken = document.getElementById("pairing-copy-token");
+        if (!box) return;
+        const shown = box.dataset.shown === "1";
+        if (shown) {
+          box.textContent = "";
+          box.style.display = "none";
+          box.dataset.shown = "0";
+          copyToken.disabled = true;
+          pairingTokenBtn.textContent = wavegT("pairingBtnShowToken");
+          return;
+        }
+        try {
+          const r = await window.bitbot.pairing.token();
+          box.style.display = "block";
+          if (r && r.ok) {
+            box.textContent = r.token;
+            box.dataset.shown = "1";
+            copyToken.disabled = false;
+            pairingTokenBtn.textContent = wavegT("pairingBtnHideToken");
+          } else {
+            box.textContent = wavegT("pairingTokenMissing");
+            copyToken.disabled = true;
+          }
+        } catch (e) {
+          box.style.display = "block";
+          box.textContent = t("pairingCopyFail", { err: String((e && e.message) || e) });
+        }
+      });
+    }
+
+    const pairingCopyUrlBtn = document.getElementById("pairing-copy-url");
+    if (pairingCopyUrlBtn) {
+      pairingCopyUrlBtn.addEventListener("click", () => pairingCopy("url"));
+    }
+    const pairingCopyTokenBtn = document.getElementById("pairing-copy-token");
+    if (pairingCopyTokenBtn) {
+      pairingCopyTokenBtn.addEventListener("click", () => pairingCopy("token"));
     }
 
     const secProbe = document.getElementById("sec-probe");
@@ -12597,9 +12772,24 @@
           '<div class="name"></div><div class="meta"></div>';
         el.querySelector(".name").textContent = m.label || m.id || "?";
         el.querySelector(".meta").innerHTML =
-          '<span class="kind-pill"></span><span class="st"></span>';
+          '<span class="kind-pill"></span><span class="st"></span><span class="seen"></span>';
         el.querySelector(".kind-pill").textContent = m.kind || "?";
-        el.querySelector(".st").textContent = m.status || "";
+        // 在线不是内核 seed 的固定答案：Host 只在「这台机器真的带着鉴权说过话」
+        // 时才给 last_seen/presence_evidence。有证据就报在线并说清证据是什么时候的；
+        // 没证据就明说没配对过，不借用内核的 disconnected 蒙一下。
+        const st = String(m.status || "").toLowerCase();
+        el.querySelector(".st").textContent =
+          st === "connected" ? t("machineOnline") : t("machineOffline");
+        const seen = el.querySelector(".seen");
+        if (m.last_seen) {
+          const at = Date.parse(String(m.last_seen));
+          const ago = Number.isFinite(at) ? Math.max(0, Math.round((Date.now() - at) / 1000)) : null;
+          if (st === "connected" && ago != null) seen.textContent = " · " + t("machineSeenAgo", { n: ago });
+          else if (ago != null) seen.textContent = " · " + t("machineSeenStale", { n: ago });
+          else seen.textContent = "";
+        } else {
+          seen.textContent = st === "connected" ? "" : " · " + t("machineNeverPaired");
+        }
         machineList.appendChild(el);
       }
     }
@@ -13363,6 +13553,27 @@
         headerAccount: "账户",
         model: "模型",
         machines: "机器",
+        machineOnline: "在线",
+        machineOffline: "离线",
+        machineSeenAgo: "{n} 秒前有回合",
+        machineSeenStale: "最后证据 {n} 秒前",
+        machineNeverPaired: "未配对",
+        pairingReadFail: "配对状态读取失败（不猜）",
+        pairingNotListening: "入站没在听 — 手机没地方连",
+        pairingLanOn: "手机可以连进来了：{url}",
+        pairingLanOnNoIp: "已放开局域网，但没读到本机 IPv4 — 手机上要手填桌面的局域网地址",
+        pairingLocalOnly: "只在桌面自己这台机器上开着：{url}。手机要连，点「允许手机连接」",
+        pairingBtnEnable: "允许手机连接",
+        pairingBtnDisable: "只允许桌面自己",
+        pairingBtnShowToken: "显示配对令牌",
+        pairingBtnHideToken: "隐藏配对令牌",
+        pairingTokenMasked: "配对令牌：{code}（点「显示配对令牌」看原文）",
+        pairingTokenMissing: "没读到配对令牌 — 令牌文件不可用（不编一个）",
+        pairingNowOpen: "已放开局域网：同一 Wi-Fi 下的手机现在能连进来（令牌照旧必填）",
+        pairingNowClosed: "已收回局域网：现在只有桌面自己能连",
+        pairingToggleFail: "开关失败 · {err}（没放开，也没假装放开）",
+        pairingCopied: "已复制到剪贴板",
+        pairingCopyFail: "复制失败 · {err}",
         gpPanel: "对齐面板",
         gpComputer: "电脑",
         gpGroup: "群组",
@@ -14035,6 +14246,27 @@
         headerAccount: "帳戶",
         model: "模型",
         machines: "機器",
+        machineOnline: "線上",
+        machineOffline: "離線",
+        machineSeenAgo: "{n} 秒前有對話",
+        machineSeenStale: "最後證據 {n} 秒前",
+        machineNeverPaired: "未配對",
+        pairingReadFail: "配對狀態讀取失敗（不猜）",
+        pairingNotListening: "入站沒在聽 — 手機沒地方連",
+        pairingLanOn: "手機可以連進來了：{url}",
+        pairingLanOnNoIp: "已放開區域網路，但沒讀到本機 IPv4 — 手機上要手填桌面的區域網路位址",
+        pairingLocalOnly: "只在本機開著：{url}。手機要連，點「允許手機連接」",
+        pairingBtnEnable: "允許手機連接",
+        pairingBtnDisable: "只允許桌面本身",
+        pairingBtnShowToken: "顯示配對權杖",
+        pairingBtnHideToken: "隱藏配對權杖",
+        pairingTokenMasked: "配對權杖：{code}（點「顯示配對權杖」看原文）",
+        pairingTokenMissing: "沒讀到配對權杖 — 權杖檔不可用（不編一個）",
+        pairingNowOpen: "已放開區域網路：同一 Wi-Fi 下的手機現在能連進來（權杖照舊必填）",
+        pairingNowClosed: "已收回區域網路：現在只有桌面本身能連",
+        pairingToggleFail: "開關失敗 · {err}（沒放開，也沒假裝放開）",
+        pairingCopied: "已複製到剪貼簿",
+        pairingCopyFail: "複製失敗 · {err}",
         gpPanel: "Grok Parity 面板",
         gpComputer: "電腦",
         gpGroup: "群組",
@@ -14707,6 +14939,27 @@
         headerAccount: "Account",
         model: "Model",
         machines: "Machines",
+        machineOnline: "online",
+        machineOffline: "offline",
+        machineSeenAgo: "last turn {n}s ago",
+        machineSeenStale: "last seen {n}s ago",
+        machineNeverPaired: "not paired",
+        pairingReadFail: "pairing state unreadable (not guessing)",
+        pairingNotListening: "Inbound is not listening — nowhere for the phone to connect",
+        pairingLanOn: "Phones can connect now: {url}",
+        pairingLanOnNoIp: "LAN is open, but no local IPv4 found — type the desktop's LAN address on the phone",
+        pairingLocalOnly: "Loopback only: {url}. Tap “Allow phone access” to let the phone in",
+        pairingBtnEnable: "Allow phone access",
+        pairingBtnDisable: "Desktop only",
+        pairingBtnShowToken: "Show pairing token",
+        pairingBtnHideToken: "Hide pairing token",
+        pairingTokenMasked: "Pairing token: {code} (tap “Show pairing token” for the full value)",
+        pairingTokenMissing: "No pairing token readable — token file unavailable (not invented)",
+        pairingNowOpen: "LAN opened: phones on the same Wi-Fi can connect (token still required)",
+        pairingNowClosed: "LAN closed: only this desktop can connect now",
+        pairingToggleFail: "Toggle failed · {err} (not opened, and not pretended open)",
+        pairingCopied: "Copied to clipboard",
+        pairingCopyFail: "Copy failed · {err}",
         gpPanel: "Grok Parity Panel",
         gpComputer: "Computer",
         gpGroup: "Groups",

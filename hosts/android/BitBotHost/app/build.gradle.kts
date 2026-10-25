@@ -82,6 +82,11 @@ android {
   composeOptions {
     kotlinCompilerExtensionVersion = "1.5.14"
   }
+  // 线路解析（assistantText / failureText / SendToUser 投递条）是纯 JSON 逻辑，
+  // 放 JVM 单测里跑：不需要 emulator，也不需要真机就能红绿。
+  testOptions {
+    unitTests.isIncludeAndroidResources = false
+  }
 }
 
 dependencies {
@@ -92,4 +97,7 @@ dependencies {
   implementation("androidx.compose.ui:ui")
   implementation("androidx.compose.material3:material3")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+  testImplementation("junit:junit:4.13.2")
+  // android.jar 里的 org.json 在 JVM 单测中是「未 mock 即抛」的空壳，必须给真实现。
+  testImplementation("org.json:json:20240303")
 }

@@ -1,0 +1,214 @@
+/* prove_android_build.mjs — 安卓版「真的能装」的门禁（G-47）
+ *
+ * 移动端的交付标准不能靠读源码。这个门禁只做一件事：在跑得到 Android SDK 的机器上，
+ * 真编译一次 universalDebug APK，再用 aapt 把 APK 里的事实读回来 —— 装不上的包、
+ * 少了权限的包，在手机上就是走不通，源码写得再漂亮也不算数。
+ *
+ *   AB-01 APK 产出且非空（assemble 真的跑完了）
+ *   AB-02 包名 / 应用名（aapt badging 读回来，不是 gradle 说的）
+ *   AB-03 权限齐：INTERNET + CAMERA + RECORD_AUDIO + ACCESS_FINE_LOCATION
+ *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
+ *   AB-04 minSdk / targetSdk 与工程配置一致
+ *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 13（防止 test 任务空转假绿）
+ *
+ * 诚实边界（不假装做过）：
+ *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
+ *   - 没有 keystore 环境变量 → release 仍用 debug 签名（工程里有脚手架，不假装已上架）。
+ * 缺 SDK / 缺 gradle 时诚实 SKIP，不红也不绿。
+ */
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import { spawnSync } from "child_process";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(__dirname, "..");
+const HOST = path.join(REPO, "hosts/android/BitBotHost");
+const JDK =
+  process.env.JAVA_HOME ||
+  (fs.existsSync("/usr/lib/jvm/temurin-21") ? "/usr/lib/jvm/temurin-21" : "");
+
+let PASS = 0,
+  FAIL = 0,
+  SKIP = 0;
+const ok = (m) => {
+  PASS++;
+  console.log("  ✓ " + m);
+};
+const bad = (m, d) => {
+  FAIL++;
+  console.log("  ✗ " + m + (d ? " — " + String(d).slice(0, 260) : ""));
+};
+const done = () => {
+  console.log("prove_android_build: PASS=" + PASS + " FAIL=" + FAIL + " SKIP=" + SKIP);
+  process.exit(FAIL ? 1 : 0);
+};
+const honestSkip = (why) => {
+  console.log("prove_android_build: SKIP — " + why);
+  console.log("prove_android_build: PASS=0 FAIL=0 SKIP=1");
+  process.exit(0);
+};
+
+/* ---------- 工具链探测 ---------- */
+function findSdk() {
+  const fromEnv = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || "";
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+  try {
+    const lp = fs.readFileSync(path.join(HOST, "local.properties"), "utf8");
+    const m = lp.match(/^\s*sdk\.dir\s*=\s*(.+)$/m);
+    if (m && fs.existsSync(m[1].trim())) return m[1].trim();
+  } catch {
+    /* 没有 local.properties 就是没配 SDK */
+  }
+  return "";
+}
+
+function findAapt(sdk) {
+  const bt = path.join(sdk, "build-tools");
+  let versions = [];
+  try {
+    versions = fs.readdirSync(bt).sort();
+  } catch {
+    return "";
+  }
+  for (let i = versions.length - 1; i >= 0; i--) {
+    const p = path.join(bt, versions[i], "aapt");
+    if (fs.existsSync(p)) return p;
+  }
+  return "";
+}
+
+function findGradle() {
+  const override = process.env.BITBOT_ANDROID_GRADLE || "";
+  if (override && fs.existsSync(override)) return override;
+  const which = spawnSync("bash", ["-lc", "command -v gradle"], { encoding: "utf8" });
+  const sys = (which.stdout || "").trim();
+  if (which.status === 0 && sys) return sys;
+  const wrapper = path.join(HOST, "gradlew");
+  return fs.existsSync(wrapper) ? wrapper : "";
+}
+
+if (!fs.existsSync(path.join(HOST, "app/build.gradle.kts"))) {
+  honestSkip("Android 工程不在仓库里（hosts/android/BitBotHost）");
+}
+const SDK = findSdk();
+if (!SDK) honestSkip("没装 Android SDK（ANDROID_HOME / local.properties sdk.dir 都没有）");
+const AAPT = findAapt(SDK);
+if (!AAPT) honestSkip("SDK 里没有 build-tools/aapt");
+const GRADLE = findGradle();
+if (!GRADLE) honestSkip("没有 gradle（系统 gradle 和 ./gradlew 都找不到）");
+if (!JDK || !fs.existsSync(JDK)) honestSkip("没有 JDK（gradle 需要 Java 17+）");
+
+const env = { ...process.env, ANDROID_HOME: SDK, ANDROID_SDK_ROOT: SDK, JAVA_HOME: JDK };
+
+/* ---------- 真编译 + 真跑 JVM 单测 ---------- */
+console.log(
+  "prove_android_build: gradle=" + GRADLE + " sdk=" + SDK + " jdk=" + JDK,
+);
+const build = spawnSync(
+  GRADLE,
+  [":app:assembleUniversalDebug", ":app:testUniversalDebugUnitTest", "--no-daemon", "--console=plain"],
+  { cwd: HOST, env, encoding: "utf8", timeout: 25 * 60 * 1000 },
+);
+const buildOut = String(build.stdout || "") + String(build.stderr || "");
+if (build.status !== 0) {
+  bad("AB-01 assembleUniversalDebug + testUniversalDebugUnitTest 跑通", "exit=" + build.status + "\n" + buildOut.slice(-1200));
+  done();
+}
+
+const apkCandidates = [
+  path.join(HOST, "app/build/outputs/apk/universal/debug/app-universal-debug.apk"),
+];
+const apk = apkCandidates.find((p) => fs.existsSync(p)) || "";
+if (!apk) {
+  bad("AB-01 universalDebug APK 产出", JSON.stringify(apkCandidates));
+  done();
+}
+const size = fs.statSync(apk).size;
+if (size > 1024 * 1024) ok("AB-01 APK 产出且非空（" + Math.round(size / 1024 / 1024) + " MB）");
+else bad("AB-01 APK 太小，不像装得上的包", size + " bytes");
+
+const badge = spawnSync(AAPT, ["dump", "badging", apk], { encoding: "utf8" });
+const badgeOut = String(badge.stdout || "");
+if (badge.status !== 0 || !badgeOut) {
+  bad("AB-02 aapt 读不回 badging", badge.status + " " + String(badge.stderr || "").slice(0, 300));
+  done();
+}
+
+/* AB-02 包名 + 应用名 */
+{
+  const pkg = (badgeOut.match(/^package: name='([^']+)'/m) || [])[1] || "";
+  const label = (badgeOut.match(/^application-label:'([^']+)'/m) || [])[1] || "";
+  if (!/^com\.bitbot\.host/.test(pkg)) bad("AB-02 包名应为 com.bitbot.host*", "package=" + pkg);
+  else if (label !== "Bit Bot") bad("AB-02 应用名应为 Bit Bot", "label=" + label);
+  else ok("AB-02 包名/应用名如实：" + pkg + " · " + label);
+}
+
+/* AB-03 权限 */
+{
+  const wanted = [
+    "android.permission.INTERNET",
+    "android.permission.CAMERA",
+    "android.permission.RECORD_AUDIO",
+    "android.permission.ACCESS_FINE_LOCATION",
+  ];
+  const missing = wanted.filter((p) => !badgeOut.includes("name='" + p + "'"));
+  if (missing.length) bad("AB-03 权限缺失（手机上这些动作没有入口）", missing.join(", "));
+  else ok("AB-03 权限齐：网络 + 相机 + 麦克风 + 定位");
+}
+
+/* AB-04 minSdk / targetSdk */
+{
+  const min = (badgeOut.match(/^sdkVersion:'(\d+)'/m) || [])[1] || "";
+  const target = (badgeOut.match(/^targetSdkVersion:'(\d+)'/m) || [])[1] || "";
+  const gradleSrc = fs.readFileSync(path.join(HOST, "app/build.gradle.kts"), "utf8");
+  const wantMin = (gradleSrc.match(/minSdk\s*=\s*(\d+)/) || [])[1] || "";
+  const wantTarget = (gradleSrc.match(/targetSdk\s*=\s*(\d+)/) || [])[1] || "";
+  if (min !== wantMin || target !== wantTarget) {
+    bad("AB-04 APK 里的 SDK 与工程配置不一致", "apk=" + min + "/" + target + " gradle=" + wantMin + "/" + wantTarget);
+  } else {
+    ok("AB-04 minSdk/targetSdk 一致（" + min + " / " + target + "）");
+  }
+}
+
+/* AB-05 六个渠道 flavor */
+{
+  const gradleSrc = fs.readFileSync(path.join(HOST, "app/build.gradle.kts"), "utf8");
+  const flavors = ["universal", "huawei", "xiaomi", "honor", "oppo", "vivo"];
+  const missing = flavors.filter((f) => !new RegExp('create\\("' + f + '"\\)').test(gradleSrc));
+  if (missing.length) bad("AB-05 国内渠道 flavor 缺失", missing.join(","));
+  else ok("AB-05 六个渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）");
+}
+
+/* AB-06 JVM 单测真跑了 */
+{
+  const dir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+  let tests = 0,
+    failures = 0,
+    files = 0;
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+      files++;
+      const xml = fs.readFileSync(path.join(dir, f), "utf8");
+      const suite = xml.match(/<testsuite[^>]*>/);
+      if (!suite) continue;
+      tests += Number((suite[0].match(/tests="(\d+)"/) || [])[1] || 0);
+      failures += Number((suite[0].match(/failures="(\d+)"/) || [])[1] || 0);
+      failures += Number((suite[0].match(/errors="(\d+)"/) || [])[1] || 0);
+    }
+  } catch {
+    files = 0;
+  }
+  if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
+  else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
+  else if (tests < 13) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
+}
+
+console.log(
+  "prove_android_build: 残留（诚实）— 无 KVM 起不了 emulator：OS 权限弹窗、真机安装、" +
+    "厂商商店签名（BITBOT_ANDROID_STORE_*）未验证；本门禁不声称装过或跑过。",
+);
+done();
