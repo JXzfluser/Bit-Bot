@@ -3,7 +3,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { buildRoomContext } = require("../hosts/desktop/room_context");
+const { buildRoomContext } = require("../hosts/shared/room_context");
 
 let pass = 0;
 let fail = 0;
@@ -135,18 +135,33 @@ console.log("prove_room_context — AR-07 bounded shared room context");
 
 {
   const mainSrc = fs.readFileSync(path.join(__dirname, "..", "hosts", "desktop", "main.js"), "utf8");
-  (/require\("\.\/room_context"\)/.test(mainSrc) &&
-    /buildRoomContext\(\(ctx && ctx\.room\) \|\| "", id, ctx, task\)/.test(mainSrc))
-    ? ok("main.js wires the shared builder with the current task")
-    : bad("main.js room context wiring missing");
+  // 群上下文的组装搬到了共享层(hosts/shared/room_runtime.js):桌面和
+  // CLI/移动端必须用同一份,否则一个端带群名单另一个端不带。
+  const runtimeSrc = fs.readFileSync(
+    path.join(__dirname, "..", "hosts", "shared", "room_runtime.js"),
+    "utf8",
+  );
+  (/require\("\.\/room_context"\)/.test(runtimeSrc) &&
+    /currentTask: task/.test(runtimeSrc) &&
+    /buildRoomContext\(room, id, ctx, task\)/.test(runtimeSrc) &&
+    /createRoomRuntime\(/.test(mainSrc))
+    ? ok("共享 room runtime 用当前任务构建群上下文,桌面接入它")
+    : bad("shared room runtime room context wiring missing");
 }
 
 {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "hosts", "desktop", "package.json"), "utf8"));
   const files = (((pkg || {}).build || {}).files || []);
-  (Array.isArray(files) && files.includes("room_context.js"))
-    ? ok("electron-builder includes room_context.js in the packaged app")
-    : bad("room_context.js missing from electron-builder files");
+  // room_context.js 下沉到 hosts/shared/ ⇒ 打包走 shared 目录整体拷贝。
+  const sharedCopied = Array.isArray(files) && files.some(
+    (f) => f && typeof f === "object" && f.from === "../shared",
+  );
+  const sharedHasIt = fs.existsSync(
+    path.join(__dirname, "..", "hosts", "shared", "room_context.js"),
+  );
+  (sharedCopied && sharedHasIt)
+    ? ok("electron-builder ships room_context.js via the shared/ copy")
+    : bad("room_context.js would be missing from the packaged app");
 }
 
 {

@@ -1624,7 +1624,7 @@ function createProductSurface(repoRoot, opts = {}) {
     };
   }
 
-  function roomTurn(room_id, text, now) {
+  function roomTurn(room_id, text, now, message_id) {
     const rooms = requireWritableRooms();
     const room = rooms.rooms.find(r => r.id === room_id);
     if (!room) {
@@ -1691,6 +1691,10 @@ function createProductSurface(repoRoot, opts = {}) {
       responders: responders.map(r => r.id),
       responder_policy,
       unknown_mentions: unknownMentions.length ? unknownMentions : undefined,
+      // Q-5: 一条消息的身份。幂等要认「同一次投递」,不是「同样的文字」——
+      // 用户把同一句话再发一遍,那是两条消息、两个任务。
+      // 渠道侧(钉钉 msgId / 飞书 message_id)自带稳定 id;桌面/CLI 每次发送新生成。
+      message_id: String(message_id || "") || undefined,
       at: now || nowIso()
     };
     // AR-08：无 @ 时 responders 是候选池，不是已确定的发言者；真正的选择由
@@ -1802,7 +1806,10 @@ function createProductSurface(repoRoot, opts = {}) {
     if (responders.length > 6) return { ok: false, error: "too_many_responders", count: responders.length, max: 6, mode: "host_orchestrate_room" };
     const responderPolicy = String(opts.policy || (toList.length ? "mentioned_only" : "bot_discretion")).trim();
 
-    const taskSig = room.id + "|" + task.toLowerCase();
+    // Q-5: 幂等键 = 房间 + **投递 id**。
+    // 没有 id 时退回文字(向后兼容旧转录),但那时「同样的字」只能当同一次投递。
+    const sigKey = String(opts.message_id || "").trim() || task.toLowerCase();
+    const taskSig = room.id + "|" + sigKey;
     if (_orchInflight.has(taskSig)) {
       return { ok: false, error: "orchestrate_recursion", depth: 1, mode: "host_orchestrate_room" };
     }
@@ -1816,13 +1823,28 @@ function createProductSurface(repoRoot, opts = {}) {
         responder_policy: prior.responder_policy || opts.policy || "", final_report: prior,
       };
     }
-    if (typeof deps.runResponderTurn !== "function") {
+    // 依赖回落:调用方显式给的优先,否则用 surface 上注入的运行时依赖
+    // (setRoomRuntimeDeps)。CLI/移动端走的就是这条回落 —— 桌面和别的端
+    // 走同一条扇出路径,不会一个回一个不回。
+    const runResponderTurn =
+      typeof deps.runResponderTurn === "function"
+        ? deps.runResponderTurn
+        : roomRuntimeDeps && typeof roomRuntimeDeps.runResponderTurn === "function"
+          ? roomRuntimeDeps.runResponderTurn
+          : null;
+    const selectResponders =
+      typeof deps.selectResponders === "function"
+        ? deps.selectResponders
+        : roomRuntimeDeps && typeof roomRuntimeDeps.selectResponders === "function"
+          ? roomRuntimeDeps.selectResponders
+          : null;
+    if (typeof runResponderTurn !== "function") {
       return {
         ok: false, error: "responder_runner_required", mode: "host_orchestrate_room",
         note: "GP-143 responder turn is run by the MoonBit runner; inject deps.runResponderTurn",
       };
     }
-    if (responderPolicy === "bot_discretion" && typeof deps.selectResponders !== "function") {
+    if (responderPolicy === "bot_discretion" && typeof selectResponders !== "function") {
       return {
         ok: false, error: "discretion_selector_required", mode: "host_orchestrate_room",
         note: "bot_discretion must be a real per-member decision; inject deps.selectResponders",
@@ -1870,7 +1892,7 @@ function createProductSurface(repoRoot, opts = {}) {
       if (responderPolicy === "bot_discretion") {
         let picked = null;
         try {
-          picked = await withTimeout(deps.selectResponders({
+          picked = await withTimeout(selectResponders({
             room: room.id,
             task,
             candidates: candidates.map((r) => Object.assign({}, r)),
@@ -2066,7 +2088,7 @@ function createProductSurface(repoRoot, opts = {}) {
         budget.spend({ turns: 1, tokens: promptTokens });
         try {
           const out = await withTimeout(
-            deps.runResponderTurn(r.id, prompt, ctx),
+            runResponderTurn(r.id, prompt, ctx),
             ctx.timeoutMs,
             () => scope.cancel("timeout"),
           );
@@ -2149,7 +2171,7 @@ function createProductSurface(repoRoot, opts = {}) {
       const synthRunner = typeof deps.synthesize === "function"
         ? deps.synthesize
         : (deps.synthesize === true || opts.synthesis === true)
-          ? deps.runResponderTurn
+          ? runResponderTurn
           : null;
       if (!synthRunner) synthesis = { ok: false, skipped: true, reason: "synthesizer_not_configured", at };
       const wantSynthesis = !!synthRunner && selected.length >= 2 && okSections.length >= 1;
@@ -2405,6 +2427,11 @@ function createProductSurface(repoRoot, opts = {}) {
 
   // 目标 Bot 真跑一轮。成功/失败都如实落进群转录（交接闭环看得见）。
   async function executeHandoff(prep, runner) {
+    // 交接回合与群成员回合是两件事(会话不同)。优先用专门的交接 runner。
+    const handoffRunner =
+      runner && typeof runner.runHandoffTurn === "function"
+        ? { ...runner, runResponderTurn: runner.runHandoffTurn }
+        : runner;
     const timeoutMs = Number(
       (runner && runner.timeoutMs) || process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || 120000,
     );
@@ -2432,7 +2459,7 @@ function createProductSurface(repoRoot, opts = {}) {
     let error = "";
     try {
       out = await withCancelTimeout(
-        runner.runResponderTurn(prep.to_bot, prompt, ctx),
+        handoffRunner.runResponderTurn(prep.to_bot, prompt, ctx),
         timeoutMs,
         () => scope.cancel("timeout"),
       );

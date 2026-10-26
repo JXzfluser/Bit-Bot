@@ -68,8 +68,10 @@ async function schedule(id, cron, prompt, roomId) {
   const SENTENCE = "每天晚上10点把当天的热点汇总发到 news@example.com";
 
   /* T0 现状：群回合这条路径到底有没有把 room 交给效果执行（静态接线） */
-  const mainJs = fs.readFileSync(path.join(REPO, "hosts/desktop/main.js"), "utf8");
-  const responderBlock = (mainJs.match(/async function runRoomResponderTurn[\s\S]{0,2200}?\n    \}/) || [""])[0];
+  // 群回合的实现搬到了共享层(hosts/shared/room_runtime.js)—— 桌面和
+  // CLI/移动端必须用同一份,否则一个端把 room 交下去另一个端不交。
+  const runtimeJs = fs.readFileSync(path.join(REPO, "hosts/shared/room_runtime.js"), "utf8");
+  const responderBlock = (runtimeJs.match(/async function runResponderTurn[\s\S]{0,4000}?\n  \}/) || [""])[0];
   const threadsRoom = /\n\s*roomId\s*:/.test(responderBlock);
   threadsRoom
     ? ok("T0 群回合把本群 id 交给了效果执行（runTurn opts.roomId 在位）")

@@ -490,6 +490,9 @@ function createTurnRunner(repoRoot, opts = {}) {
         // GP-154「定时任务在群内部」：回合来自哪个群就归给哪个群（可选，
         // DM 不传 → 空串，效果与改之前完全一致）。
         roomId: String(ctx.roomId || ""),
+        // Q-5: 投递 id —— 同一次投递重试 ⇒ 同一个 id ⇒ 幂等;用户再发一遍 ⇒
+        // 新 id ⇒ 新的任务。没有它就现生成(每次进入 = 一条新消息)。
+        messageId: String(ctx.messageId || ""),
         replyTo: (replyQuote && replyQuote.message_id) || "",
         replyQuote:
           (replyQuote && replyQuote.resolved && replyQuote.text) || "",
@@ -663,6 +666,13 @@ function createTurnRunner(repoRoot, opts = {}) {
       target: MOON_TARGET,
       note: "Product brain is MoonBit. Multi-end Host FFI via hosts/shared.",
     };
+  }
+
+  // 把自己注册给 FFI:群回合的扇出需要一个「懂群上下文」的 runner
+  // (host_ffi 里的嵌套 worker 回合不懂)。依赖方向只能是这一条 ——
+  // host_ffi 不能反过来 require 这个模块。
+  if (ffi && typeof ffi.setTurnRunner === "function") {
+    ffi.setTurnRunner(runTurn);
   }
 
   return { runTurn, bootBanner, ffi, runMoon, lastJsonLine, MOON_TARGET };

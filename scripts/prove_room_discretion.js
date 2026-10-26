@@ -3,7 +3,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { buildDiscretionPrompt, parseDiscretionReply } = require("../hosts/desktop/room_discretion");
+const { buildDiscretionPrompt, parseDiscretionReply } = require("../hosts/shared/room_discretion");
 
 let pass = 0;
 let fail = 0;
@@ -46,20 +46,33 @@ for (const [raw, want] of [
 
 {
   const mainSrc = fs.readFileSync(path.join(__dirname, "..", "hosts", "desktop", "main.js"), "utf8");
-  (mainSrc.includes('require("./room_discretion")') &&
-    /async function runRoomDiscretionTurn\(/.test(mainSrc) &&
-    /async function selectRoomResponders\(/.test(mainSrc) &&
+  // 成员自决也搬到共享层(hosts/shared/room_runtime.js):没有 @ 的时候
+  // 「谁该回」是每个成员自己决定的 —— 这个决定不能只在桌面做。
+  const runtimeSrc = fs.readFileSync(
+    path.join(__dirname, "..", "hosts", "shared", "room_runtime.js"),
+    "utf8",
+  );
+  (runtimeSrc.includes('require("./room_discretion")') &&
+    /async function runDiscretionTurn\(/.test(runtimeSrc) &&
+    /async function selectResponders\(/.test(runtimeSrc) &&
+    /fail_open: true/.test(runtimeSrc) &&
     /selectResponders: selectRoomResponders/.test(mainSrc))
-    ? ok("main.js wires the per-bot decision into orchestrateRoom deps")
-    : bad("main.js discretion wiring missing");
+    ? ok("共享 room runtime 的成员自决接进了 orchestrateRoom deps")
+    : bad("shared room runtime discretion wiring missing");
 }
 
 {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "hosts", "desktop", "package.json"), "utf8"));
   const files = (((pkg || {}).build || {}).files || []);
-  (Array.isArray(files) && files.includes("room_discretion.js"))
-    ? ok("electron-builder includes room_discretion.js in the packaged app")
-    : bad("room_discretion.js missing from electron-builder files");
+  const sharedCopied = Array.isArray(files) && files.some(
+    (f) => f && typeof f === "object" && f.from === "../shared",
+  );
+  const sharedHasIt = fs.existsSync(
+    path.join(__dirname, "..", "hosts", "shared", "room_discretion.js"),
+  );
+  (sharedCopied && sharedHasIt)
+    ? ok("electron-builder ships room_discretion.js via the shared/ copy")
+    : bad("room_discretion.js would be missing from the packaged app");
 }
 
 {

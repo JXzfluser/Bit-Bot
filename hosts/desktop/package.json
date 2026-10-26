@@ -28,8 +28,6 @@
       "sessions.js",
       "paths.js",
       "product_surface.js",
-      "room_context.js",
-      "room_discretion.js",
       "room_orchestrator.js",
       "progress_protocol.js",
       "secret_protocol.js",

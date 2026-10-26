@@ -65,8 +65,10 @@ try {
   } = require("../shared/host_approval_gate"));
 }
 const { createSessionStore } = require("./sessions");
-const { buildRoomContext: buildRoomContextData } = require("./room_context");
-const { buildDiscretionPrompt, parseDiscretionReply } = require("./room_discretion");
+const { buildRoomContext: buildRoomContextData } = require("../shared/room_context");
+const { buildDiscretionPrompt, parseDiscretionReply } = require("../shared/room_discretion");
+const { createRoomRuntime, roomSafeText: sharedRoomSafeText } = require("../shared/room_runtime");
+const { dispatchRoomTurn } = require("../shared/room_dispatch");
 
 // GP-93/94/95 — Markdown/链接纪律 (official spec §5.6). Policy + open route in
 // one module pair used by both the main process and the smoke probe, so the
@@ -1570,20 +1572,9 @@ const ROOM_DEBUG_RE =
 const PRODUCT_DEBUG_RE =
   /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|token_refused|needs_host_ffi|__bb)|^已计划[^\n]*(Host |GP-|CM-|BITBOT_)/;
 
+// 脱敏规则住在共享层(桌面/CLI/移动端同一条),桌面只是传进 secretProtocol。
 function roomSafeText(raw) {
-  let s = String(raw == null ? "" : raw);
-  // token-shaped text never enters a shared transcript (same rule set the
-  // composer and the kernel use, so group rows cannot be more permissive).
-  if (secretProtocol && Array.isArray(secretProtocol.TOKEN_RULES)) {
-    for (const rule of secretProtocol.TOKEN_RULES) {
-      if (rule && rule.re) s = s.replace(new RegExp(rule.re.source, "g"), secretProtocol.REDACTED);
-    }
-  }
-  return s
-    .split("\n")
-    .filter((line) => !ROOM_DEBUG_RE.test(line))
-    .join("\n")
-    .trim();
+  return sharedRoomSafeText(raw, secretProtocol);
 }
 
 /**
@@ -1668,72 +1659,6 @@ function groupChatReceiptText(result) {
   return "这个群没有创建（Host 拒绝了这次建房请求），没有假装成功。";
 }
 
-async function runRoomResponderTurn(botId, task, ctx) {
-  const id = String(botId || "").trim();
-  if (!id) return { ok: false, error: "responder_missing" };
-  const bots = (surface.loadBots().bots) || [];
-  const bot = bots.find((b) => b && b.id === id);
-  if (!bot) return { ok: false, error: "bot_not_found" };
-  const sessionId = "room-" + String((ctx && ctx.room) || "room") + "-" + id;
-  const rows = [];
-  try {
-    const result = await runner.runTurn(String(task || ""), {
-      sessionId,
-      machineId: "desk-1",
-      machineKind: "desktop",
-      channel: "",
-      // 编排不改变审批语义：群回合同样必须过原审批门。
-      approved: false,
-      botId: id,
-      // GP-163「群里说出来的排程要归这个群管」：回合来自哪个群就交给效果执行，
-      // 否则群里一句话建出来的定时任务落得了盘却不属于任何群 —— 面板按 room_id
-      // 过滤列不到，暂停 / 删除又要求 roomId，等于一条谁都管不着的活任务在按时发信。
-      roomId: String((ctx && ctx.room) || ""),
-      // GP-148 §1-J3：群回合带群上下文进 provider；DM 路径不会走到这里，
-      // 所以「私聊不许出现群名单」是由调用点保证的，不是靠 prompt 里叮嘱。
-      roomContext: buildRoomContext((ctx && ctx.room) || "", id, ctx, task),
-      // 取消必须真的到达内核回合，否则编排层的 timeout 只是外层 reject，
-      // 被取消的模型调用仍会跑完并继续烧 token（run_moon_turn 支持 cancelPromise）。
-      cancelPromise: (ctx && ctx.cancelPromise) || undefined,
-      onProgress: (ev) => {
-        const row = Object.assign({}, ev, { bot_id: id, room_id: (ctx && ctx.room) || "" });
-        rows.push(row);
-        broadcast("bitbot:room-turn-progress", row);
-      },
-    });
-    const host = (result && Array.isArray(result.host_results)) ? result.host_results : [];
-    const failed = host.filter((h) => h && h.ok === false);
-    const assistants = ((result && result.messages) || [])
-      .filter((m) => m && m.role === "assistant" && m.text)
-      .map((m) => roomSafeText(m.text))
-      .filter(Boolean);
-    const artifacts = host
-      .filter((h) => h && h.ok !== false && h.artifact_path)
-      .map((h) => ({ name: path.basename(String(h.artifact_path)), path: String(h.artifact_path) }));
-    if (result && result.ok === false) {
-      return {
-        ok: false,
-        error: roomSafeText((result && result.error) || (failed[0] && failed[0].error) || "turn_failed"),
-        text: assistants.join("\n"),
-        artifacts,
-      };
-    }
-    if (failed.length) {
-      const f = failed.find((h) => h.kind === "llm_chat") || failed[0];
-      return { ok: false, error: roomSafeText(f.error || "host_effect_failed"), text: assistants.join("\n"), artifacts };
-    }
-    if (!assistants.length) return { ok: false, error: "no_reply", text: "", artifacts };
-    try {
-      surface.touchBotActivity(id);
-      broadcast("bitbot:bots-changed", surface.listViews());
-    } catch (_) {
-      /* activity stamp is best effort */
-    }
-    return { ok: true, text: assistants.join("\n"), artifacts, progress: rows.length };
-  } catch (err) {
-    return { ok: false, error: roomSafeText((err && err.message) || String(err)), text: "", artifacts: [] };
-  }
-}
 
 /**
  * Lead synthesis turn (L4/L5). Deliberately NOT `runRoomResponderTurn`:
@@ -1826,123 +1751,57 @@ async function runRoomDecompositionProposal(input) {
   }
 }
 
-async function runRoomDiscretionTurn(botId, task, ctx) {
-  const id = String(botId || "").trim();
-  if (!id) return { ok: false, error: "responder_missing" };
-  const bots = (surface.loadBots().bots) || [];
-  const bot = bots.find((b) => b && b.id === id);
-  if (!bot) return { ok: false, error: "bot_not_found" };
-  const roomId = String((ctx && ctx.room) || "room");
-  const decisionCtx = Object.assign({}, ctx, { mentioned_names: [] });
-  try {
-    const result = await runner.runTurn(buildDiscretionPrompt({ bot, task }), {
-      sessionId: "room-" + roomId + "-" + id + "-discretion",
-      machineId: "desk-1",
-      machineKind: "desktop",
-      channel: "",
-      approved: false,
-      botId: id,
-      roomId,
-      roomContext: buildRoomContext(roomId, id, decisionCtx, task),
-    });
-    if (!result || result.ok === false) {
-      return {
-        ok: false,
-        error: roomSafeText((result && result.error) || "discretion_turn_failed"),
-        text: "",
-      };
-    }
-    const text = ((result.messages || [])
-      .filter((m) => m && m.role === "assistant" && m.text)
-      .map((m) => String(m.text))
-      .join("\n"));
-    const respond = parseDiscretionReply(text);
-    if (respond === null) {
-      return { ok: false, error: "discretion_unclear", text: roomSafeText(text).slice(0, 200) };
-    }
-    return { ok: true, respond, text: roomSafeText(text).slice(0, 200) };
-  } catch (err) {
-    return { ok: false, error: roomSafeText((err && err.message) || String(err)), text: "" };
-  }
-}
-
-async function selectRoomResponders({ room, task, candidates }) {
-  const list = Array.isArray(candidates) ? candidates : [];
-  const timeoutMs = Number(process.env.BITBOT_ROOM_DISCRETION_TIMEOUT_MS || 30000);
-  const withTimeout = (promise, ms) => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("discretion_timeout")), ms);
-    Promise.resolve(promise).then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); },
-    );
-  });
-  const decisions = await Promise.all(list.map(async (candidate) => {
-    const ctx = {
-      room,
-      bot_id: candidate.id,
-      name: candidate.name,
-      job: candidate.job,
-      description: candidate.description,
-      mentioned_names: [],
-    };
+/**
+ * 群回合运行时(共享实现)。
+ * 桌面的 responder / discretion 回合与 CLI/移动端走的是**同一份代码** ——
+ * Q-6 的教训就是「扇出只在桌面做」会变成别的端发群消息没人回、还不报错。
+ */
+const roomRuntime = createRoomRuntime({
+  runTurn: (text, ctx) => runner.runTurn(text, ctx),
+  surface,
+  secretProtocol,
+  machineId: "desk-1",
+  machineKind: "desktop",
+  onProgress: (row) => broadcast("bitbot:room-turn-progress", row),
+  onBotActivity: () => {
     try {
-      const out = await withTimeout(runRoomDiscretionTurn(candidate.id, task, ctx), timeoutMs);
-      if (out && out.ok && typeof out.respond === "boolean") {
-        return { bot_id: candidate.id, name: candidate.name, respond: out.respond };
-      }
-      return {
-        bot_id: candidate.id,
-        name: candidate.name,
-        respond: true,
-        fail_open: true,
-        error: roomSafeText((out && out.error) || "discretion_failed"),
-      };
-    } catch (err) {
-      return {
-        bot_id: candidate.id,
-        name: candidate.name,
-        respond: true,
-        fail_open: true,
-        error: roomSafeText((err && err.message) || String(err)),
-      };
+      broadcast("bitbot:bots-changed", surface.listViews());
+    } catch (_) {
+      /* 广播失败不影响回合 */
     }
-  }));
-  return {
-    ok: true,
-    responders: decisions.filter((d) => d.respond).map((d) => d.bot_id),
-    decisions,
-  };
-}
+  },
+});
+
+const runRoomResponderTurn = roomRuntime.runResponderTurn;
+const runRoomDiscretionTurn = roomRuntime.runDiscretionTurn;
+const selectRoomResponders = roomRuntime.selectResponders;
+
 
 ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
   const roomId = String((payload && payload.room_id) || "").trim();
   const text = String((payload && payload.text) || "").trim();
   if (!roomId || !text) return { ok: false, error: "room_and_text_required" };
   try {
-    // 1) 真实路由 + 用户消息落 transcript（单一写入点：内核 room_turn 不再双写）
-    const routed = surface.roomTurn(roomId, text, new Date().toISOString());
-    if (!routed || !routed.ok) {
-      return { ok: false, error: (routed && routed.error) || "route_failed", room_id: roomId };
-    }
-    surface.appendRoomTranscript(roomId, routed.transcript_entry);
-    // 2) 扇出到点名的 responder，收齐后聚合 final_report（N/总 如实）。
-    //    预算护栏交给引擎（>6 → too_many_responders），这里不静默截断。
-    //    「工作中」态由 engine 在真正扇出时才回调发：幂等命中/护栏拒绝不得闪假态。
-    const to = routed.transcript_entry.responders || [];
+    // 1) 真实路由 + 落 transcript + 扇出,一条路径(shared/room_dispatch)。
+    //    桌面和 CLI/移动端走**同一个函数** —— Q-6 的教训就是「扇出只在桌面做」
+    //    会变成别的端发群消息没人回、还不报错。
+    //    扇出到点名的 responder,收齐后聚合 final_report(N/总 如实)。
+    //    预算护栏交给引擎(>6 → too_many_responders),这里不静默截断。
+    //    「工作中」态由 engine 在真正扇出时才回调发:幂等命中/护栏拒绝不得闪假态。
     const timeoutMs = Number(process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || 120000);
-    const res = await surface.orchestrateRoom({
-      room: roomId,
-      task: text,
-      to,
-      policy: routed.transcript_entry.responder_policy,
+    const res = await dispatchRoomTurn({
+      surface,
+      roomId,
+      text,
+      messageId: String((payload && payload.message_id) || ""),
       deps: {
         runResponderTurn: runRoomResponderTurn,
         selectResponders: selectRoomResponders,
-        // L4/L5：综合回合是独立依赖（不是成员回合），它吃同一份团队预算与取消通道。
+        // L4/L5:综合回合是独立依赖(不是成员回合),它吃同一份团队预算与取消通道。
         synthesize: runRoomSynthesisTurn,
-        // 拆解建议：模型只提建议，分工由宿主确定性执行（见 §7 决策 2）。
+        // 拆解建议:模型只提建议,分工由宿主确定性执行(见 §7 决策 2)。
         proposeDecomposition: runRoomDecompositionProposal,
-        // 团队预算（轮次 / 时间 / token 估算）——宿主唯一裁决者。
+        // 团队预算(轮次 / 时间 / token 估算)——宿主唯一裁决者。
         maxTurns: Number(process.env.BITBOT_ROOM_BUDGET_TURNS || 7),
         maxWallMs: Number(process.env.BITBOT_ROOM_BUDGET_WALL_MS || 600000),
         maxTokens: Number(process.env.BITBOT_ROOM_BUDGET_TOKENS || 200000),
@@ -1960,7 +1819,7 @@ ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
               name: (bots.find((b) => b && b.id === r.id) || {}).name || r.name || r.id,
             })),
             member_count: (ev && ev.member_count) || 0,
-            policy: (ev && ev.policy) || routed.transcript_entry.responder_policy,
+            policy: (ev && ev.policy) || "",
             at: new Date().toISOString(),
           });
         },

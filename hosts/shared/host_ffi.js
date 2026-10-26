@@ -15,6 +15,8 @@ const { promisify } = require("util");
 const agentLoopFfi = require("./agent_loop_stream_stub");
 const { createProductSession } = require("./agent_loop_product_wire");
 const p0 = require("./p0_security");
+const { createRoomRuntime } = require("./room_runtime");
+const { dispatchRoomTurn } = require("./room_dispatch");
 
 // GP-96/97/98 — §5.7 progress events are built by one module, shared with the
 // desktop transport and the CLI host (see hosts/shared/turn_progress.js).
@@ -98,6 +100,16 @@ function createHostFfi(repoRoot, opts = {}) {
      merging them would make managed and user skills indistinguishable. */
   const AGENT_TOOLS_ROOT = path.join(path.dirname(DATA_ROOT), "agent-tools");
 
+  // The full turn runner registers itself here: run_moon_turn.js requires
+  // this module, so the dependency can only point this way. The room runtime
+  // needs a runner that understands room context — the nested worker turn
+  // (runWorkerMoonTurn) does not.
+  let _turnRunner = null;
+  function setTurnRunner(fn) {
+    _turnRunner = typeof fn === "function" ? fn : null;
+    return { ok: true, mode: "host_turn_runner", has_runner: !!_turnRunner };
+  }
+
   // Wave G product surface instance (null if module unavailable)
   const surface = _ProductSurface && typeof _ProductSurface.createProductSurface === "function"
     ? _ProductSurface.createProductSurface(REPO_ROOT, { dataRoot: DATA_ROOT })
@@ -107,8 +119,37 @@ function createHostFfi(repoRoot, opts = {}) {
   // (AR-09). The room surface drives that; this side supplies the runner:
   // a real kernel turn for the target bot.
   if (surface && typeof surface.setRoomRuntimeDeps === "function") {
+    // Q-6: 群回合的扇出必须在这条路径上真的发生。桌面以前只有 Electron IPC
+    // handler 做这件事,CLI/移动端发的群消息落盘就没人回、也不报错。
+    const roomRuntime = createRoomRuntime({
+      surface,
+      runTurn: async (text, ctx) => {
+        if (typeof _turnRunner === "function") return _turnRunner(text, ctx || {});
+        // 没注册完整 runner(旧宿主)时的退化路径:仍然真的跑一个内核回合,
+        // 只是没有群上下文。比「不跑」好,也比「假装跑了」诚实。
+        const out = await runWorkerMoonTurn({
+          prompt: String(text || ""),
+          sessionId: String((ctx && ctx.sessionId) || "room-worker"),
+          botId: String((ctx && ctx.botId) || ""),
+          timeoutMs: Number((ctx && ctx.timeoutMs) || 120000),
+        });
+        return {
+          ok: !!(out && out.ok !== false) && !out.nested_skipped,
+          error: out && out.nested_skipped ? "nested_skipped" : undefined,
+          messages: (out && out.assistant)
+            ? [{ role: "assistant", text: String(out.assistant) }]
+            : [],
+          host_results: [],
+        };
+      },
+    });
     surface.setRoomRuntimeDeps({
-      runResponderTurn: async (botId, task, ctx) => {
+      // 群成员回合(扇出用):带群上下文。
+      runResponderTurn: roomRuntime.runResponderTurn,
+      // 成员自决(没有 @ 时「谁该回」是每个成员自己决定)。
+      selectResponders: roomRuntime.selectResponders,
+      // 交接是另一回事:目标 Bot 接手一个子任务,会话独立于群成员回合。
+      runHandoffTurn: async (botId, task, ctx) => {
         const room = String((ctx && ctx.room) || "room");
         const out = await runWorkerMoonTurn({
           prompt: String(task || ""),
@@ -24683,38 +24724,32 @@ function createHostFfi(repoRoot, opts = {}) {
             hitRoom = null;
           }
           if (hitRoom) {
-            let res = null;
-            try {
-              res = surface.roomTurn(hitRoom.id, body, new Date().toISOString());
-            } catch (e) {
-              res = { ok: false, error: "rooms_store_unreadable", detail: String((e && e.message) || e) };
-            }
-            if (res && res.ok) {
-              // Persist product transcript line (rooms.json entry keeps last 200).
-              try {
-                surface.appendRoomTranscript(hitRoom.id, res.transcript_entry);
-              } catch (e) {
-                res = { ok: false, error: "rooms_store_unreadable", detail: String((e && e.message) || e) };
-              }
-            }
-            if (res && res.ok) {
-              results.push({
-                kind,
-                ok: true,
-                command: cmd,
-                stdout: JSON.stringify({
-                  ...res,
-                  room: hitRoom.id,
-                  title: hitRoom.title,
-                  member_count: (res.transcript_entry.responders || []).length,
-                  total_members: (hitRoom.members || []).length,
-                  body,
-                }),
-                stderr: "",
-                mode: "host_room_turn",
-              });
-              continue;
-            }
+            // Q-6: 路由 → 落转录 → **扇出**。
+            // 以前这里只做前两步,于是 CLI / 移动端发的群消息落盘就没人回、
+            // 也不报错。扇出统一走共享的 dispatchRoomTurn(桌面 IPC 也走它)。
+            const dispatched = await dispatchRoomTurn({
+              surface,
+              roomId: hitRoom.id,
+              text: body,
+              messageId: (ffiOpts && ffiOpts.messageId) || "",
+            });
+            results.push({
+              kind,
+              ok: Boolean(dispatched && dispatched.ok),
+              command: cmd,
+              stdout: JSON.stringify({
+                ...(dispatched || {}),
+                room: hitRoom.id,
+                title: hitRoom.title,
+                member_count: ((dispatched && dispatched.responders) || []).length,
+                total_members: (hitRoom.members || []).length,
+                body,
+              }),
+              stderr: dispatched && dispatched.ok ? "" : (dispatched && dispatched.error) || "room_dispatch_failed",
+              error: dispatched && dispatched.ok ? "" : (dispatched && dispatched.error) || "room_dispatch_failed",
+              mode: "host_room_turn",
+            });
+            continue;
           }
         }
         results.push(
@@ -25541,6 +25576,7 @@ function createHostFfi(repoRoot, opts = {}) {
     connectorsStatusReport,
     appendHostDeliveryJournal,
     setLlmStreamHandler,
+    setTurnRunner,
     resolveLlmConfig,
     listLlmCatalog,
     webSearch,

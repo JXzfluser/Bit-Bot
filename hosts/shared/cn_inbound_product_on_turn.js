@@ -71,6 +71,9 @@ function createProductOnTurn(repoRoot) {
       // tools still work; anything that reaches outward or changes state has
       // to be approved by whoever IS at the machine.
       deviceTrust: "limited",
+      // Q-5: 渠道自带的投递 id(钉钉 msgId / 飞书 message_id)。
+      // 平台重投同一条消息 ⇒ 同一个 id ⇒ 不重复执行;用户另发一条 ⇒ 新 id。
+      messageId: String((meta && (meta.message_id || meta.msgId)) || ""),
     });
   };
 }
