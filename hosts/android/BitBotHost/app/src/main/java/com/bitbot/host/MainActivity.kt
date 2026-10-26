@@ -276,7 +276,7 @@ class MainActivity : ComponentActivity() {
               value = hostUrlDraft,
               onValueChange = { hostUrlDraft = it },
               label = { Text("BITBOT_HOST_URL") },
-              placeholder = { Text("http://10.0.2.2:18765") },
+              placeholder = { Text("例 http://192.168.1.10:18765（桌面「手机配对」里复制）") },
               modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -294,10 +294,26 @@ class MainActivity : ComponentActivity() {
                 .padding(horizontal = 16.dp),
               singleLine = true,
             )
+            // 归一后的结果当场显示出来：用户敲「192.168.1.10:18765」也要看得见
+            // 真正会打的端点，没配对就直说会失败，不用等「发送」转圈。
+            Text(
+              TurnBridge.turnEndpoint(hostUrlDraft)
+                ?.let { "实际调用：$it" }
+                ?: "未配对：填好配对地址与配对令牌前，发送一定会失败",
+              style = MaterialTheme.typography.labelSmall,
+              color =
+                if (TurnBridge.turnEndpoint(hostUrlDraft) == null) {
+                  MaterialTheme.colorScheme.error
+                } else {
+                  MaterialTheme.colorScheme.onSurfaceVariant
+                },
+              modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
             Button(
               onClick = {
                 TurnBridge.setHostUrl(hostUrlDraft)
                 TurnBridge.setTurnToken(tokenDraft)
+                hostUrlDraft = TurnBridge.hostUrl().orEmpty()
                 showCredentials = false
               },
               modifier = Modifier

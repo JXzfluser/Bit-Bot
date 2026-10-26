@@ -1732,6 +1732,12 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
     && grep -q "AR-11 开关是真的" /tmp/g47-roster.log \
     && ok "G-47 手机配对：地址与令牌在「凭证」里拿得到，「允许手机连接」是真开关（放开能打通、收回打不通）" \
     || bad "G-47 pairing anchors missing"
+  grep -q "AR-12 配对地址与完整端点分开了" /tmp/g47-roster.log \
+    && grep -q "AR-13 配对地址如实标注来源" /tmp/g47-roster.log \
+    && grep -q "AR-14 复制地址按钮" /tmp/g47-roster.log \
+    && grep -q "AR-15 配对新增两行都落在类型阶上" /tmp/g47-roster.log \
+    && ok "G-47 配对地址契约：那一行是手机要填的 base（不带 /v1/turn），网卡来源如实标注，复制按钮跟随真实内容，说明行字号走类型阶" \
+    || bad "G-47 pairing-address anchors missing"
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
 else
   echo "  · skip：playwright-core / electron dist 缺失，G-47 花名册真实渲染门禁未跑（SKIP ≠ PASS）"
@@ -1742,11 +1748,29 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     echo "  · skip：$(grep -m1 'SKIP —' /tmp/g47-build.log)（SKIP ≠ PASS）"
   else
     ok "G-47 APK 真编译 + aapt 读回包里的事实（$(tail -1 /tmp/g47-build.log)）"
+    grep -q "AB-07 配对地址归一化单测真跑" /tmp/g47-build.log \
+      && ok "G-47 手机端配对地址单测真在跑（未配对不回写死地址、少协议补 http://）" \
+      || bad "G-47 AB-07 anchor missing"
   fi
 else
   bad "G-47 prove_android_build（见 /tmp/g47-build.log；$(tail -1 /tmp/g47-build.log)）"
 fi
 echo "  · G-47 残留（诚实）：无 KVM → emulator、真机 OS 权限弹窗、厂商商店签名（BITBOT_ANDROID_STORE_*）均未验证"
+
+echo "== G-48 配对地址与在线证据的底层健壮性（纯 Node，不需要显示环境）=="
+if timeout 300 node scripts/prove_pairing_lan_rank.mjs > /tmp/g48-lanrank.log 2>&1; then
+  ok "G-48 配对地址挑哪个网卡：LR 全绿（$(tail -1 /tmp/g48-lanrank.log)）"
+else
+  bad "G-48 prove_pairing_lan_rank（见 /tmp/g48-lanrank.log；$(tail -1 /tmp/g48-lanrank.log)）"
+fi
+if timeout 300 node scripts/prove_presence_durability.mjs > /tmp/g48-presence.log 2>&1; then
+  ok "G-48 多端在线证据扛得住并发与崩溃：PD 全绿（$(tail -1 /tmp/g48-presence.log)）"
+else
+  bad "G-48 prove_presence_durability（见 /tmp/g48-presence.log；$(tail -1 /tmp/g48-presence.log)）"
+fi
+echo "  · G-48 锚点：docker0 顶第一位=修复前红（旧顺序实测 172.17.0.1 第一）；"
+echo "    并发丢证据=修复前红（12 并发只剩 10 行）；空窗读=修复前红（33 万次撞在截断窗口上）"
+echo "  · G-48 残留（诚实）：只验到同机多进程并发与崩溃窗口；跨机器时钟漂移、只读文件系统、Windows 文件锁语义未覆盖"
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

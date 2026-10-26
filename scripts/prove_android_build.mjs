@@ -10,7 +10,8 @@
  *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 13（防止 test 任务空转假绿）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 19（防止 test 任务空转假绿）
+ *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
@@ -203,8 +204,30 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 13) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 19) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
+  /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
+   * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
+  const names = [];
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+      // 注意要用 \s+ 卡住属性边界：`classname="…"` 里也含子串 `name="`，
+      // 宽一点的 [^>]* 会把捕获跑到 classname 上（第一次写就踩了这个坑）。
+      for (const m of fs.readFileSync(path.join(dir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+        names.push(m[1]);
+      }
+    }
+  } catch {
+    /* 上面的分支已经报过 */
+  }
+  const wantCase = [/未配对/, /协议/];
+  const missingCase = wantCase.filter((re) => !names.some((n) => re.test(n)));
+  if (missingCase.length) {
+    bad("AB-07 配对地址归一化的单测不在结果里（可能没编译进去）", missingCase.map(String).join(", "));
+  } else {
+    ok("AB-07 配对地址归一化单测真跑（未配对 / 少协议两条都在）");
+  }
 }
 
 console.log(

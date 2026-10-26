@@ -20,6 +20,13 @@
  *   AR-10 设置状态行不再宣称「移动=暂缓」
  *   AR-11 「允许手机连接」是真的开关：放开后局域网地址打得通，收回后打不通，
  *         桌面自己始终打得通
+ *   AR-12 那一行给的是手机要填的配对地址（http://ip:port，不带 /v1/turn）；
+ *         完整端点降到开发态单独一行 —— 让用户多抄路径不是细节，是让人填错
+ *   AR-13 配对地址如实标注来源网卡：只有公网 / 覆盖网 / 169.254 时必须说明
+ *         手机大概率连不通（docker0 那种地址顶在第一位 = 骗人）
+ *   AR-14 「复制地址」按钮跟随真实可复制内容，没地址时不许点得动
+ *   AR-15 配对那两行新说明文字真渲染出来落在类型阶上（class 没定义 / 被盖掉时
+ *         会退回继承字号，肉眼看不出来，这里当场量 computed 值）
  *
  * 跑法：ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_android_roster.mjs
  * 缺 electron / 缺显示环境时诚实 SKIP。
@@ -378,11 +385,25 @@ let app = null;
       const view = await win.evaluate(() => {
         const g = (id) => document.getElementById(id);
         const lan = g("pairing-lan-btn");
+        const copy = g("pairing-copy-url");
+        const note = g("sec-pairing-note");
+        const turn = g("sec-pairing-turn");
         return {
           line: g("sec-pairing-line") ? String(g("sec-pairing-line").textContent || "") : null,
           status: g("sec-pairing-status") ? String(g("sec-pairing-status").textContent || "") : null,
           lanBtn: lan ? { text: String(lan.textContent || ""), disabled: Boolean(lan.disabled) } : null,
           meta: g("settings-meta") ? String(g("settings-meta").textContent || "") : "",
+          copyBtn: copy ? { disabled: Boolean(copy.disabled) } : null,
+          note: note ? { text: String(note.textContent || ""), shown: getComputedStyle(note).display !== "none", size: getComputedStyle(note).fontSize } : null,
+          turn: turn ? { text: String(turn.textContent || ""), shown: getComputedStyle(turn).display !== "none", size: getComputedStyle(turn).fontSize } : null,
+          scale: (() => {
+            const probe = document.createElement("div");
+            probe.style.setProperty("font-size", "var(--text-sm)");
+            document.body.appendChild(probe);
+            const v = getComputedStyle(probe).fontSize;
+            probe.remove();
+            return v;
+          })(),
         };
       });
       const st0 = await win.evaluate(() => window.bitbot.pairing.state());
@@ -392,12 +413,50 @@ let app = null;
         !/读取中|失败/.test(view.line) &&
         st0 &&
         st0.port &&
-        view.line.indexOf(":" + st0.port + "/") > 0
+        view.line.indexOf("http://") >= 0 &&
+        view.line.indexOf(":" + st0.port) > 0
       ) {
         ok("AR-09 凭证页给得出真实配对地址（端口从运行时来，不写死）");
       } else {
         bad("AR-09 配对地址没如实显示", JSON.stringify({ line: view.line, port: st0 && st0.port }));
       }
+
+      /* AR-12 这一行给的是「手机要填的那个东西」：http://ip:port，不带 /v1/turn。
+       * 路径由手机端自己补（hosts/android TurnBridge.turnEndpoint，JVM 单测钉住），
+       * 让用户多抄一段路径不是细节，是让人填错。完整端点降到开发态那一行。 */
+      if (!st0 || typeof st0.pair_base !== "string" || !st0.pair_base) {
+        bad("AR-12 状态里没有可填的配对地址（pair_base）", JSON.stringify(st0 && { port: st0.port }));
+      } else if (st0.pair_base.indexOf("/v1/turn") >= 0) {
+        bad("AR-12 配对地址不该再带 /v1/turn", st0.pair_base);
+      } else if (view.line.indexOf("/v1/turn") >= 0) {
+        bad("AR-12 普通用户那一行不该出现 /v1/turn", view.line.slice(0, 120));
+      } else if (!view.turn || !view.turn.shown || view.turn.text.indexOf("/v1/turn") < 0) {
+        bad("AR-12 开发态要单独给得出完整端点", JSON.stringify(view.turn));
+      } else if (view.turn.text.indexOf(st0.pair_base) < 0) {
+        bad("AR-12 完整端点要和配对地址同一来源", JSON.stringify({ base: st0.pair_base, turn: view.turn.text }));
+      } else {
+        ok("AR-12 配对地址与完整端点分开了（用户填的没路径，开发态看得到）");
+      }
+
+      /* AR-15 那两行新增说明文字的字号必须落在类型阶上（和邻居同一档）。
+       * 为什么值得钉：token 门禁只拦「行内贴字面值」，行内写 font:var(...) 简写
+       * 仍会被计成一处字面字号（实测基线 34→36），所以改成 class；class 一旦没
+       * 定义或被人用 !important 盖掉，浏览器就退回继承值 —— 肉眼看只是字小了一档，
+       * 没人会当 bug 报。这里当场量出来。 */
+      if (!view.turn || !view.note) bad("AR-15 缺配对说明行（note / turn）");
+      else if (view.scale !== "12px") bad("AR-15 尺子本身不对：--text-sm 量出来不是 12px", view.scale);
+      else if (view.turn.size !== view.scale) {
+        bad("AR-15 开发态端点行没走类型阶（字号不是 var(--text-sm) 那一档）", JSON.stringify({ got: view.turn.size, want: view.scale }));
+      } else if (view.note.size !== view.scale) {
+        bad("AR-15 地址来源说明行没走类型阶（字号不是 var(--text-sm) 那一档）", JSON.stringify({ got: view.note.size, want: view.scale }));
+      } else {
+        ok("AR-15 配对新增两行都落在类型阶上（12px = var(--text-sm)，不是继承兜底）");
+      }
+
+      /* AR-14 有地址可复制时按钮才是可用的 */
+      if (!view.copyBtn) bad("AR-14 没有「复制地址」按钮");
+      else if (view.copyBtn.disabled) bad("AR-14 有配对地址时复制按钮不该禁用", JSON.stringify(view.copyBtn));
+      else ok("AR-14 复制地址按钮跟随真实可复制内容（当前有地址）");
 
       if (!realToken) bad("AR-09 磁盘上没有配对令牌，无法验掩码", tokenFile);
       else if (!view.status || view.status.indexOf(realToken) >= 0) {
@@ -450,6 +509,48 @@ let app = null;
         );
         if (line1.indexOf(lanUrl.host) < 0) {
           bad("AR-11 界面上的地址要和真放开的地址一致", JSON.stringify({ line: line1, url: st1.turn_urls[0] }));
+        }
+
+        /* AR-13 配对地址是从哪类网卡来的，界面必须如实交代。
+         * 这台机器上第一个候选地址未必是手机敲得到的：装过 Docker 的机器上它是
+         * 172.17.0.1，云机上是公网地址，没 DHCP 时是 169.254.*。光把「一个像地址的
+         * 东西」给用户，等于让他拿一定连不通的东西去试 —— 局域网地址不啰嗦，
+         * 其他三类必须有一句说明。 */
+        const view1 = await win.evaluate(() => {
+          const g = (id) => document.getElementById(id);
+          const note = g("sec-pairing-note");
+          const turn = g("sec-pairing-turn");
+          return {
+            line: String((g("sec-pairing-line") || {}).textContent || ""),
+            note: note ? { text: String(note.textContent || ""), shown: getComputedStyle(note).display !== "none" } : null,
+            turn: turn ? { text: String(turn.textContent || ""), shown: getComputedStyle(turn).display !== "none" } : null,
+            copyDisabled: Boolean((g("pairing-copy-url") || {}).disabled),
+          };
+        });
+        const scope = String(st1.pair_scope || "");
+        const expectNote = scope !== "private";
+        if (!st1.pair_base || st1.pair_base.indexOf("/v1/turn") >= 0) {
+          bad("AR-13 放开后配对地址该是不带路径的 base", JSON.stringify({ base: st1.pair_base }));
+        } else if (view1.line.indexOf(st1.pair_base) < 0) {
+          bad("AR-13 界面上那一行要用同一个配对地址", JSON.stringify({ line: view1.line.slice(0, 120), base: st1.pair_base }));
+        } else if (!/^(private|cgnat|public|link_local)$/.test(scope)) {
+          bad("AR-13 状态里没有如实的网卡范围标注", JSON.stringify({ pair_scope: st1.pair_scope, detail: st1.lan_detail }));
+        } else if (expectNote && (!view1.note || !view1.note.shown || !/手机|连|走不到|失败/.test(view1.note.text))) {
+          bad("AR-13 非局域网地址必须说明手机大概率连不通", JSON.stringify({ scope, note: view1.note }));
+        } else if (!expectNote && view1.note && view1.note.shown && view1.note.text) {
+          bad("AR-13 局域网地址不该啰嗦一句连不通", JSON.stringify({ scope, note: view1.note.text.slice(0, 80) }));
+        } else if (!view1.turn || !view1.turn.shown) {
+          bad("AR-13 开发态完整端点在放开后还要看得见", JSON.stringify(view1.turn));
+        } else if (view1.copyDisabled) {
+          bad("AR-13 有配对地址时复制按钮不该禁用", JSON.stringify({ base: st1.pair_base }));
+        } else {
+          ok(
+            "AR-13 配对地址如实标注来源（scope=" +
+              scope +
+              "，" +
+              (expectNote ? "已说明手机连不通的原因" : "局域网地址不啰嗦") +
+              "）",
+          );
         }
         const viaLan = await postTurnToApp(
           Number(lanUrl.port),

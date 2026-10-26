@@ -3470,21 +3470,32 @@ function writePairingPrefs(prefs) {
   }
 }
 
-/** 这台机器上网卡里的 IPv4 —— 手机真的能敲到的那些地址。 */
+// 配对地址该给哪一个：共享模块按网段 + 网卡命名排序（docker0 / 169.254 / 公网
+// 地址不能顶在第一位，手机敲那些一定失败）。只做排序，不编地址。
+let lanRank;
+try {
+  lanRank = require("./shared/lan_candidates");
+} catch (_e) {
+  lanRank = require("../shared/lan_candidates");
+}
+
+/** 这台机器上网卡里的 IPv4 —— 手机真的能敲到的排在最前。 */
 function lanIPv4Addresses() {
-  const out = [];
   try {
-    const ifaces = os.networkInterfaces() || {};
-    for (const name of Object.keys(ifaces)) {
-      for (const addr of ifaces[name] || []) {
-        const family = addr && (addr.family === "IPv4" || addr.family === 4);
-        if (family && addr && !addr.internal) out.push(String(addr.address));
-      }
-    }
+    return lanRank.lanIPv4List(os.networkInterfaces() || {});
   } catch (_e) {
     /* 读不到网卡就老实说没有，不编地址 */
+    return [];
   }
-  return out;
+}
+
+/** 带网卡名与范围的候选，界面用来如实标注「这个地址是从哪块网卡来的」。 */
+function lanIPv4Candidates() {
+  try {
+    return lanRank.rankLanIPv4(os.networkInterfaces() || {});
+  } catch (_e) {
+    return [];
+  }
 }
 
 function maskPairingToken(value) {
@@ -3510,6 +3521,11 @@ function pairingState() {
   const listening = Boolean(st.listening);
   const lanOpen = listening && Boolean(st.lan || st.host === "0.0.0.0");
   const ips = lanOpen ? lanIPv4Addresses() : [];
+  const detail = lanOpen ? lanIPv4Candidates() : [];
+  // 手机「凭证」里要填的是配对地址（http://ip:port），/v1/turn 由手机端自己补
+  // （hosts/android TurnBridge.turnEndpoint，有 JVM 单测钉住）。界面上把两者分开：
+  // 普通用户看到的这一行不再带路径，开发态才给完整端点。
+  const base = ips.length ? `http://${ips[0]}:${port}` : port ? `http://127.0.0.1:${port}` : "";
   return {
     ok: true,
     listening,
@@ -3517,8 +3533,12 @@ function pairingState() {
     lan_enabled: readPairingPrefs().lan_enabled,
     lan_open: lanOpen,
     lan_ips: ips,
+    lan_detail: detail,
+    pair_base: base,
+    pair_scope: detail.length ? String(detail[0].scope || "") : "",
     turn_urls: ips.map((ip) => `http://${ip}:${port}/v1/turn`),
     loopback_url: port ? `http://127.0.0.1:${port}/v1/turn` : "",
+    loopback_base: port ? `http://127.0.0.1:${port}` : "",
     token_masked: maskPairingToken(turnTokenValue()),
     mobile_ready: true,
     pretend_paired: false,
@@ -3537,10 +3557,10 @@ ipcMain.handle("bitbot:pairing:token", async () => {
 /** 手机上手敲 64 位令牌不是「走通」，所以给一个复制入口。 */
 ipcMain.handle("bitbot:pairing:copy", async (_e, what) => {
   const st = pairingState();
+  // 复制出去的就是「凭证」里那一栏要的东西：配对地址（http://ip:port）。
+  // 路径由手机端自己补，用户多抄一段 /v1/turn 反而容易出错。
   const text =
-    what === "token"
-      ? turnTokenValue()
-      : (st.turn_urls && st.turn_urls[0]) || st.loopback_url || "";
+    what === "token" ? turnTokenValue() : (st.pair_base || st.loopback_base || "");
   if (!text) return { ok: false, error: "nothing_to_copy" };
   try {
     clipboard.writeText(String(text));

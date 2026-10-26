@@ -2337,6 +2337,11 @@
           <!-- 安卓 / iOS 端连的就是这台大脑。地址与令牌以前只在 README 里，
                用户点不开这一屏就走不到「手机说话 → 桌面记得」。 -->
           <div id="sec-pairing-line" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">配对状态：读取中…</div>
+          <!-- 手机敲不到地址时，光给一个「像地址的东西」等于骗人：这一行如实说明
+               这个地址从哪类网卡来、大概率连不通的原因。 -->
+          <div id="sec-pairing-note" class="pairing-note" style="display:none;margin-top:6px"></div>
+          <!-- 完整 /v1/turn 端点只在开发态给；普通用户要填的是上面那行配对地址。 -->
+          <div id="sec-pairing-turn" class="pairing-endpoint" style="display:none;margin-top:6px"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
             <button type="button" id="pairing-lan-btn" class="bb-btn bb-btn-sm">允许手机连接</button>
             <button type="button" id="pairing-token-btn" class="bb-btn bb-btn-sm">显示配对令牌</button>
@@ -10843,7 +10848,7 @@
         const st = await window.bitbot.cnInboundStatus();
         if (!st || !st.listening) {
           el.textContent = devModeOn()
-            ? "入站未监听 — Desktop 启动会拉起 :18765；公网用 scripts/cn_inbound_tunnel.sh"
+            ? "入站未监听 — Desktop 启动会拉起默认 :18765（BITBOT_CN_INBOUND_PORT 可改）；公网用 scripts/cn_inbound_tunnel.sh"
             : wavegT("inboundNotListening");
           return;
         }
@@ -10863,8 +10868,8 @@
             (routes.feishu || "") +
             " · wecom=" +
             (routes.wecom || "")
-          : "入站本机 http://127.0.0.1:" +
-            (st.port || 18765) +
+          : "入站本机 " +
+            (st.port ? "http://127.0.0.1:" + st.port : "端口没读出来（不猜默认值）") +
             " — 尚无公网 URL（跑 cn_inbound_tunnel.sh）";
       } catch (_) {
         el.textContent = wavegT("inboundReadFail");
@@ -10887,6 +10892,8 @@
       if (!line || !window.bitbot || !window.bitbot.pairing) return;
       const lanBtn = document.getElementById("pairing-lan-btn");
       const copyUrl = document.getElementById("pairing-copy-url");
+      const note = document.getElementById("sec-pairing-note");
+      const turn = document.getElementById("sec-pairing-turn");
       try {
         const st = await window.bitbot.pairing.state();
         pairingSnapshot = st && st.ok ? st : null;
@@ -10894,16 +10901,36 @@
           line.textContent = wavegT("pairingReadFail");
           if (lanBtn) lanBtn.disabled = true;
           if (copyUrl) copyUrl.disabled = true;
+          if (note) {
+            note.textContent = "";
+            note.style.display = "none";
+          }
+          if (turn) {
+            turn.textContent = "";
+            turn.style.display = "none";
+          }
           return;
         }
         if (!st.listening) {
           line.textContent = wavegT("pairingNotListening");
         } else if (st.lan_open && (st.turn_urls || []).length) {
-          line.textContent = t("pairingLanOn", { url: st.turn_urls[0] });
+          line.textContent = t("pairingLanOn", { url: st.pair_base || st.turn_urls[0] });
         } else if (st.lan_open) {
           line.textContent = wavegT("pairingLanOnNoIp");
         } else {
-          line.textContent = t("pairingLocalOnly", { url: st.loopback_url || "" });
+          line.textContent = t("pairingLocalOnly", { url: st.loopback_base || st.loopback_url || "" });
+        }
+        // 地址是哪类网卡来的，就说什么话：只有公网 / 169.254 / 覆盖网时，
+        // 手机大概率连不通，不能让用户拿着一个「像地址的东西」去试。
+        const scopeNote = pairingScopeNote(st);
+        if (note) {
+          note.textContent = scopeNote;
+          note.style.display = scopeNote ? "block" : "none";
+        }
+        if (turn) {
+          const endpoint = (st.turn_urls && st.turn_urls[0]) || st.loopback_url || "";
+          turn.textContent = endpoint ? t("pairingTurnEndpoint", { url: endpoint }) : "";
+          turn.style.display = endpoint && devModeOn() ? "block" : "none";
         }
         if (lanBtn) {
           lanBtn.textContent = st.lan_enabled
@@ -10911,7 +10938,8 @@
             : wavegT("pairingBtnEnable");
           lanBtn.disabled = false;
         }
-        if (copyUrl) copyUrl.disabled = false;
+        // 没地址可复制时按钮保持禁用：点一下必失败的按钮不是「可用」。
+        if (copyUrl) copyUrl.disabled = !(st.pair_base || st.loopback_base || (st.turn_urls || []).length || st.loopback_url);
         const status = pairingStatusEl();
         if (status) {
           status.textContent = st.token_masked
@@ -10922,7 +10950,32 @@
         line.textContent = wavegT("pairingReadFail");
         if (lanBtn) lanBtn.disabled = true;
         if (copyUrl) copyUrl.disabled = true;
+        if (note) {
+          note.textContent = "";
+          note.style.display = "none";
+        }
+        if (turn) {
+          turn.textContent = "";
+          turn.style.display = "none";
+        }
       }
+    }
+
+    /**
+     * 配对地址来自哪类网卡 → 一句实话。局域网地址不啰嗦；只有覆盖网 / 公网 /
+     * 169.254 时手机大概率连不通，与其让用户拿「像地址的东西」去试，不如说清原因。
+     */
+    function pairingScopeNote(st) {
+      if (!st || !st.listening || !st.pair_base) return "";
+      const detail = Array.isArray(st.lan_detail) ? st.lan_detail : [];
+      const top = detail.length ? detail[0] : null;
+      const scope = String((top && top.scope) || st.pair_scope || "");
+      if (!st.lan_open) return "";
+      if (scope === "private") return "";
+      if (scope === "cgnat") return wavegT("pairingScopeCgnat");
+      if (scope === "link_local") return wavegT("pairingScopeLinkLocal");
+      if (scope === "public") return wavegT("pairingScopePublic");
+      return "";
     }
 
     async function pairingCopy(what) {
@@ -13563,6 +13616,10 @@
         pairingLanOn: "手机可以连进来了：{url}",
         pairingLanOnNoIp: "已放开局域网，但没读到本机 IPv4 — 手机上要手填桌面的局域网地址",
         pairingLocalOnly: "只在桌面自己这台机器上开着：{url}。手机要连，点「允许手机连接」",
+        pairingTurnEndpoint: "完整端点（手机会自己补，不用手抄）：{url}",
+        pairingScopeCgnat: "这个地址来自覆盖网（Tailscale 一类），不是同一个 Wi-Fi 的局域网地址 — 手机没连同一个覆盖网就连不上",
+        pairingScopeLinkLocal: "只读到 169.254 地址 = 这块网卡没配上 DHCP，手机敲它一定失败 — 先让桌面连上 Wi-Fi / 局域网",
+        pairingScopePublic: "这台机器只读到公网地址（云机常见），手机在 Wi-Fi 里通常走不到 — 需要同一局域网里的地址，或另配内网穿透",
         pairingBtnEnable: "允许手机连接",
         pairingBtnDisable: "只允许桌面自己",
         pairingBtnShowToken: "显示配对令牌",
@@ -14256,6 +14313,10 @@
         pairingLanOn: "手機可以連進來了：{url}",
         pairingLanOnNoIp: "已放開區域網路，但沒讀到本機 IPv4 — 手機上要手填桌面的區域網路位址",
         pairingLocalOnly: "只在本機開著：{url}。手機要連，點「允許手機連接」",
+        pairingTurnEndpoint: "完整端點（手機自己補，不用手抄）：{url}",
+        pairingScopeCgnat: "這個位址來自覆蓋網路（Tailscale 一類），不是同一 Wi-Fi 的區域網路位址 — 手機沒連同一個覆蓋網路就連不上",
+        pairingScopeLinkLocal: "只讀到 169.254 位址 = 這塊網路卡沒配上 DHCP，手機敲它一定失敗 — 先讓本機連上 Wi-Fi / 區域網路",
+        pairingScopePublic: "這台機器只讀到公開位址（雲機常見），手機在 Wi-Fi 裡通常走不到 — 需要同一區域網路裡的位址，或另設內網穿透",
         pairingBtnEnable: "允許手機連接",
         pairingBtnDisable: "只允許桌面本身",
         pairingBtnShowToken: "顯示配對權杖",
@@ -14949,6 +15010,10 @@
         pairingLanOn: "Phones can connect now: {url}",
         pairingLanOnNoIp: "LAN is open, but no local IPv4 found — type the desktop's LAN address on the phone",
         pairingLocalOnly: "Loopback only: {url}. Tap “Allow phone access” to let the phone in",
+        pairingTurnEndpoint: "Full endpoint (the phone appends it — no need to copy): {url}",
+        pairingScopeCgnat: "This address is from an overlay network (Tailscale-like), not a same-Wi-Fi LAN address — the phone can't reach it unless it's on the same overlay",
+        pairingScopeLinkLocal: "Only a 169.254 address found = this NIC has no DHCP lease, the phone will always fail — connect the desktop to Wi-Fi / LAN first",
+        pairingScopePublic: "Only a public address found (common on cloud VMs) — phones on Wi-Fi usually can't reach it; you need a same-LAN address or a tunnel",
         pairingBtnEnable: "Allow phone access",
         pairingBtnDisable: "Desktop only",
         pairingBtnShowToken: "Show pairing token",
