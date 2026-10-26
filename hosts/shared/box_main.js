@@ -21,6 +21,8 @@
 const path = require("path");
 const fs = require("fs");
 const { createCnInboundServer } = require("./cn_inbound_server");
+const { createTurnRunner } = require("./run_moon_turn");
+const { createRoutineScheduler } = require("./routine_scheduler");
 
 async function main() {
   const boxRoot = path.resolve(__dirname, "..");
@@ -45,6 +47,20 @@ async function main() {
   const server = createCnInboundServer({ repoRoot: boxRoot, port, devicesPath });
   const info = await server.start();
 
+  // 排程调度器:这台机器自己到点醒。
+  // 「机器常开」的第一半 —— 到点得有人醒。第二半是跨端审批(见 /v1/approvals)。
+  const sweepMs = Number(process.env.BITBOT_ROUTINE_SWEEP_MS || 60000);
+  let scheduler = null;
+  if (sweepMs > 0) {
+    const runner = createTurnRunner(boxRoot);
+    scheduler = createRoutineScheduler({
+      runTurn: (text, ctx) => runner.runTurn(text, ctx),
+      dataRoot: path.join(boxRoot, "data"),
+      intervalMs: sweepMs,
+    });
+    scheduler.start();
+  }
+
   const manifestPath = path.join(boxRoot, "manifest.json");
   let manifest = null;
   try {
@@ -60,6 +76,12 @@ async function main() {
   );
   console.log("[box] routes:", JSON.stringify(info && info.routes ? info.routes : {}, null, 0));
   console.log(
+    "[box] routine scheduler: " +
+      (scheduler
+        ? "on (every " + scheduler.intervalMs + "ms, 到点只备草稿;自动执行要用户的常驻授权)"
+        : "off (BITBOT_ROUTINE_SWEEP_MS=0)"),
+  );
+  console.log(
     "[box] turn auth: " +
       (fs.existsSync(devicesPath) && (JSON.parse(fs.readFileSync(devicesPath, "utf8")).devices || []).length
         ? "device keys (per-machine, revocable)"
@@ -67,6 +89,11 @@ async function main() {
   );
 
   const shutdown = async () => {
+    try {
+      if (scheduler) scheduler.stop();
+    } catch (_) {
+      /* 停不掉调度器也不能挂住进程 */
+    }
     try {
       await server.stop();
     } catch (_) {

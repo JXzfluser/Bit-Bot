@@ -14,6 +14,7 @@ const path = require("path");
 const { URL } = require("url");
 const p0 = require("./p0_security");
 const deviceKeys = require("./device_keys");
+const { createProductSurfaceRef } = require("./product_surface_ref");
 
 function defaultRepoRoot() {
   return path.resolve(__dirname, "../..");
@@ -261,6 +262,8 @@ function createCnInboundServer(opts = {}) {
     String(opts.devicesPath || process.env.BITBOT_DEVICES_PATH || "") ||
     path.join(repoRoot, "data", "host", "devices.json");
   const deviceStore = deviceKeys.loadDevices(devicesPath);
+  // 跨端审批的队列住在 surface 里(pending-approvals.jsonl)。
+  const surface = createProductSurfaceRef(repoRoot, path.join(repoRoot, "data"));
   const logDir = ensureDir(path.join(repoRoot, "data", "routines", "webhooks", "cn-inbound"));
   const pendingPath = path.join(
     repoRoot,
@@ -513,6 +516,103 @@ function createCnInboundServer(opts = {}) {
           turn_api: true,
           pretend_cloud: false,
         });
+        return;
+      }
+
+      // ===== 跨端审批(B-6)================================================
+      // 这台机器(常开的 Box)上待批准的请求,让**另一台已登记设备**来看和决定。
+      // 鉴权与 /v1/turn 同一套设备密钥(B-4a)—— 账号 = 设备密钥,没有别的身份。
+      //
+      // 语义要点:决定写进的是**这台机器**的队列和规则,所以在手机上点「总是允许」
+      // 等于授权这台机器以后做这类事。这是重决策,回执要说清楚。
+      if (p === "/v1/approvals" || p.startsWith("/v1/approvals/")) {
+        const auth = deviceKeys.verifyDeviceTurn(deviceStore, req, raw, { nonceStore });
+        if (!auth.ok) {
+          json(res, 401, { ok: false, error: auth.error || "unauthorized" });
+          return;
+        }
+        if (!surface) {
+          json(res, 503, { ok: false, error: "approval_queue_unavailable" });
+          return;
+        }
+        // GET /v1/approvals → 待批准的清单
+        if (p === "/v1/approvals" && req.method === "GET") {
+          let pending = [];
+          try {
+            pending = surface.pendingApprovals() || [];
+          } catch (e) {
+            json(res, 500, { ok: false, error: "approval_queue_unreadable" });
+            return;
+          }
+          const rows = pending.map((e) => ({
+            id: String(e.id || ""),
+            kind: String(e.kind || ""),
+            // 命令里可能带收件人/正文 —— 只给前 240 字,够人判断是什么。
+            command: String(e.command || "").slice(0, 240),
+            source: String(e.source || ""),
+            requested_at: String(e.requested_at || ""),
+            expires_at: String(e.expires_at || ""),
+            status: String(e.status || "pending"),
+          }));
+          json(res, 200, {
+            ok: true,
+            device_id: auth.device_id,
+            count: rows.length,
+            pending: rows,
+            note: "这些是这台机器上等着人批的操作。批准写进的是这台机器。",
+          });
+          return;
+        }
+        // POST /v1/approvals/<id>/decide → 决定
+        const decideMatch = p.match(/^\/v1\/approvals\/([^/]+)\/decide$/);
+        if (decideMatch && req.method === "POST") {
+          const id = decodeURIComponent(decideMatch[1] || "");
+          const decision = String(
+            (payload && (payload.decision || payload.decision_kind)) || "",
+          ).trim();
+          // 注意别把局部变量叫 res —— 那会盖掉 HTTP 响应对象。
+          let decisionResult = null;
+          try {
+            decisionResult = surface.approvalDecide(id, decision);
+          } catch (e) {
+            json(res, 500, { ok: false, error: "approval_decide_failed" });
+            return;
+          }
+          if (!decisionResult || decisionResult.ok !== true) {
+            json(res, 409, {
+              ok: false,
+              error: (decisionResult && decisionResult.error) || "approval_decide_failed",
+              id,
+              decision,
+            });
+            return;
+          }
+          appendJsonl(path.join(logDir, "events.jsonl"), {
+            channel: "v1_approvals",
+            device_id: auth.device_id,
+            approval_id: id,
+            decision,
+            kind: decisionResult.kind,
+            at: new Date().toISOString(),
+          });
+          json(res, 200, {
+            ok: true,
+            id,
+            decision,
+            kind: decisionResult.kind || "",
+            // "always" 会写一条 allow 规则 —— 这是**授权这台机器**以后做这类事。
+            persisted_pattern: decisionResult.persisted_pattern || "",
+            device_id: auth.device_id,
+            note:
+              decision === "always"
+                ? "已记下规则:这台机器以后做这类事不再逐次问你。"
+                : decision === "deny"
+                  ? "已拒绝。什么也没执行。"
+                  : "已批准这一次。",
+          });
+          return;
+        }
+        json(res, 404, { ok: false, error: "approval_route_not_found" });
         return;
       }
 
