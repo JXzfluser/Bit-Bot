@@ -9,11 +9,16 @@ extern "C" fn bitbot_ffi_exchange(request : String) -> String = "bitbot_ffi_exch
 ///|
 struct ProductFfiHost {
   marker : Int32
+  /// Product tools the kernel executed during this run. The kernel does the
+  /// MoonBit-side work; the Host mirrors these effects after the turn.
+  /// `Array` is a shared mutable reference, so pushes made inside `exec_tool`
+  /// are visible to the caller that owns the host.
+  effects : Array[DesktopEffect]
 }
 
 ///|
-fn ProductFfiHost::new() -> ProductFfiHost {
-  { marker: 1, }
+fn ProductFfiHost::new(sink : Array[DesktopEffect]) -> ProductFfiHost {
+  { marker: 1, effects: sink, }
 }
 
 ///|
@@ -61,67 +66,6 @@ fn want_product_agent_loop(args : Array[String], text : String) -> Bool {
 }
 
 ///|
-fn product_tool_registry() -> @runtime.ToolRegistry {
-  let reg = @runtime.ToolRegistry::empty()
-  // The schema below is the SINGLE source of truth: it is what the model
-  // sees (serialized into the llm_chat FFI request) AND what the kernel
-  // validates arguments against. The Host used to keep a second, hard-coded
-  // copy — adding a tool meant editing two places, and forgetting one made
-  // the model unable to call a tool the kernel could happily run.
-  reg.register({
-    id: "Read",
-    description: "Read a file",
-    builtin: Some(@tools.Read),
-    input_schema_json: "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}",
-    requires_approval: false,
-  })
-  reg.register({
-    id: "Shell",
-    description: "Run a shell command",
-    builtin: Some(@tools.Shell),
-    input_schema_json: "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}},\"required\":[\"command\"]}",
-    requires_approval: false,
-  })
-  // CM-0112: the model drives its own plan. The kernel keeps the checklist
-  // and shows it back on the next model call; the Host persists it.
-  reg.register({
-    id: "TodoWrite",
-    description: "Write the task checklist",
-    builtin: None,
-    input_schema_json: "{\"type\":\"object\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"}}}}},\"required\":[\"todos\"]}",
-    requires_approval: false,
-  })
-  reg
-}
-
-///|
-/// The tool catalog as the model sees it, serialized from the SAME registry
-/// the loop dispatches against. Sent to the Host with every llm_chat request
-/// so the provider payload cannot drift from what the kernel can execute.
-fn product_tool_schema_json() -> String {
-  let reg = product_tool_registry()
-  let buf = StringBuilder()
-  buf.write_string("[")
-  let mut i = 0
-  for sp in reg.specs {
-    if i > 0 {
-      buf.write_string(",")
-    }
-    buf.write_string("{\"type\":\"function\",\"function\":{\"name\":\"")
-    buf.write_string(escape_json_string(sp.id))
-    buf.write_string("\",\"description\":\"")
-    buf.write_string(escape_json_string(sp.description))
-    buf.write_string("\",\"parameters\":")
-    // input_schema_json is already a JSON document; embed it as-is.
-    buf.write_string(sp.input_schema_json)
-    buf.write_string("}}")
-    i = i + 1
-  }
-  buf.write_string("]")
-  buf.to_string()
-}
-
-///|
 /// Serialize the plan for the Host todo_write effect (CM-0112).
 fn todo_effect_command(todos : Array[@runtime.TodoItem]) -> String {
   let buf = StringBuilder()
@@ -163,6 +107,20 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn exec_tool(
   args,
 ) {
   self.touch()
+  // Product tools are executed BY THE KERNEL, not by the Host. The Host FFI
+  // only knows Read/Shell and would answer "exec refused: <name>" for anything
+  // else — so intercept before the FFI round-trip. The kernel does the
+  // MoonBit-side work, the effect is mirrored by the Host after the turn.
+  if is_product_tool(name) {
+    let result = match parse_product_tool_action(name, args) {
+      Ok(action) => exec_product_tool_action(action)
+      Err(e) => ProductToolResult::{ observation: "invalid_arguments: " + e, effects: [], }
+    }
+    for e in result.effects {
+      self.effects.push(e)
+    }
+    return encode_product_tool_output(result.observation)
+  }
   bitbot_ffi_trace("op=exec_tool")
   parse_product_output(
     bitbot_ffi_exchange(encode_product_tool("exec_tool", name, args)),
@@ -221,7 +179,12 @@ fn run_agent_loop_chat(
   }
   let opened = @runtime.open_turn(turn_id~, text~)
   bitbot_ffi_trace("entry=AgentLoop::run")
-  let host = ProductFfiHost::new()
+  // The effect sink is owned here, not by the host: the host is handed to
+  // `run` by value, the sink stays reachable so the caller can read what the
+  // kernel produced. `Array` is a shared mutable reference, so both see the
+  // same buffer.
+  let tool_effects : Array[DesktopEffect] = []
+  let host = ProductFfiHost::new(tool_effects)
   let run = @runtime.AgentLoop::new(product_tool_registry()).run(opened, host)
   let ok = run.stop is @runtime.Final || run.stop is @runtime.MaxSteps
   let err = if run.stop is @runtime.Cancelled {
@@ -237,16 +200,21 @@ fn run_agent_loop_chat(
   }
   // CM-0112: a plan the model wrote becomes one durable Host todo_write
   // effect. The kernel never claims an item is done on its own.
-  let effects : Array[DesktopEffect] = if run.todos.length() > 0 {
-    [
-      {
-        kind: "todo_write",
-        command: todo_effect_command(run.todos),
-        needs_host_ffi: true,
-      },
-    ]
-  } else {
-    []
+  //
+  // C-1: product tools the kernel executed during the run become effects too
+  // (teammate_create / routine_schedule). todo_write stays FIRST, so the
+  // effect order for every run that used no product tool is unchanged — the
+  // Host's ordering contract does not move.
+  let effects : Array[DesktopEffect] = []
+  if run.todos.length() > 0 {
+    effects.push({
+      kind: "todo_write",
+      command: todo_effect_command(run.todos),
+      needs_host_ffi: true,
+    })
+  }
+  for e in tool_effects {
+    effects.push(e)
   }
   // GP-93：产品可见的链接统一走同一套 linkify，AgentLoop 的交付也不例外。
   let delivered = @ui_protocol.linkify_bare_http_urls(run.delivered)

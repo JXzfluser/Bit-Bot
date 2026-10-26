@@ -409,6 +409,14 @@ fn resolve_spec(reg : ToolRegistry, name : String) -> @tools.ToolSpec? {
     canon = "Shell"
   } else if name == "todo_write" || name == "TodoWrite" {
     canon = "TodoWrite"
+  } else if name == "describeSchedule" || name == "DescribeSchedule" {
+    // C-1: models reach for camelCase as often as snake_case. A tool the
+    // model cannot name is a tool the model will never use.
+    canon = "describe_schedule"
+  } else if name == "createTeammate" || name == "CreateTeammate" {
+    canon = "create_teammate"
+  } else if name == "createRoutine" || name == "CreateRoutine" {
+    canon = "create_routine"
   }
   for s in reg.specs {
     if s.id == canon || s.id == name {
