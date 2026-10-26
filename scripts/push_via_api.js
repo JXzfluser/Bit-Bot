@@ -208,7 +208,9 @@ async function main() {
   let exists = true;
   try { await api("GET", `/git/ref/${refPath}`); } catch (e) { if (e.status === 404) exists = false; else throw e; }
   if (exists) {
-    await api("PATCH", `/git/ref/${refPath}`, { sha: parentSha, force: false });
+    // 注意:GitHub 这两个端点的路径不一样 —— 读是 /git/ref/{ref}(单数),
+    // 改是 /git/refs/{ref}(复数)。写成单数会 404。
+    await api("PATCH", `/git/refs/${refPath}`, { sha: parentSha, force: false });
     console.log(`↻ 更新远端分支 ${BRANCH}`);
   } else {
     await api("POST", "/git/refs", { ref: `refs/${refPath}`, sha: parentSha });
