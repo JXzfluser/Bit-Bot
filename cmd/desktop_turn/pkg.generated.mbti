@@ -12,6 +12,10 @@ import {
 // Values
 pub const DESKTOP_TURN_JSON_V : Int32 = 1
 
+pub fn agent_context_aligned(@runtime.AgentContext, String) -> @runtime.AgentContext
+
+pub fn agent_context_slot(String, String) -> String
+
 pub fn args_want_host_continue(Array[String]) -> Bool
 
 pub fn classify_intent(String) -> TurnIntent
@@ -26,6 +30,8 @@ pub fn decode_cn_routine(String) -> (String, String)?
 
 pub fn decode_cn_schedule(String) -> (String, String)?
 
+pub fn encode_context_request(String, String, String) -> String
+
 pub fn encode_product_tool_output(String) -> String
 
 pub fn exec_product_tool_action(ProductToolAction) -> ProductToolResult
@@ -35,6 +41,8 @@ pub fn gate_consequential(String, String, TurnIntent, DesktopTurnContext, @secur
 pub fn is_host_tool(String) -> Bool
 
 pub fn is_kernel_tool(String) -> Bool
+
+pub fn parse_context_reply(String) -> String
 
 pub fn parse_host_continue_args(Array[String]) -> (String, String, Array[DesktopHostResult])
 

@@ -16,6 +16,9 @@ import { fileURLToPath } from "url";
 import { createRequire } from "module";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
+import { createRequire as __createRequire } from "module";
+const __require = __createRequire(import.meta.url);
+const { currentTurn } = __require("./agent_turn_scene.js");
 import { electronLaunchEnv, electronUserDataDir, hasDisplay } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -78,9 +81,11 @@ function sseText(text) {
 }
 
 function classify(body) {
-  const blob = JSON.stringify(body.messages || []);
-  if (blob.includes("cursor_untrusted_data")) return { kind: "text", text: "saw file" };
-  if (blob.includes("EG-READ") || blob.includes("EG-CANCEL")) {
+  // Scene from THIS turn's user message, tool results from THIS turn's tail:
+  // the payload also carries earlier turns (ADR 0011).
+  const { last, tail } = currentTurn(body);
+  if (tail.includes("cursor_untrusted_data")) return { kind: "text", text: "saw file" };
+  if (last.includes("EG-READ") || last.includes("EG-CANCEL")) {
     return { kind: "tool", name: "Read", arguments: "{\"path\":\"a.txt\"}", id: "c-eg" };
   }
   return { kind: "text", text: "plain final" };

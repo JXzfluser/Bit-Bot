@@ -25,6 +25,9 @@ const http = require("http");
 const os = require("os");
 const path = require("path");
 
+// A per-run id: the agent context is keyed by (bot, session), so a
+// unique session keeps each run from inheriting the previous run's history.
+const RUN_ID = Date.now().toString(36) + "-" + process.pid;
 const ROOT = path.resolve(__dirname, "..");
 const { createTurnRunner } = require(path.join(ROOT, "hosts/shared/run_moon_turn"));
 
@@ -91,10 +94,47 @@ function sseText(text) {
  * again after the tool result) is detected by the observation already being
  * in the message stack — that is also how the negative cases are detected.
  */
+/**
+ * The scene is decided by the LAST user message, not by the whole payload.
+ * Since K-1/K-3 the context crosses the process boundary, so a later turn's
+ * payload also carries the EARLIER turns' user text — matching the whole blob
+ * would answer every scene with the oldest one.
+ */
+function lastUserText(body) {
+  const msgs = Array.isArray(body.messages) ? body.messages : [];
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    const m = msgs[i];
+    if (m && String(m.role || "") === "user") return String(m.content || "");
+  }
+  return "";
+}
+
+/**
+ * The messages AFTER the last user message — i.e. THIS turn's tool results.
+ * The "did the tool already run?" checks must look here, not at the whole
+ * payload: the payload now carries earlier turns, and an earlier turn's
+ * observation would make the check pass without the tool ever running.
+ */
+function turnTail(body) {
+  const msgs = Array.isArray(body.messages) ? body.messages : [];
+  let idx = -1;
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    const m = msgs[i];
+    if (m && String(m.role || "") === "user") {
+      idx = i;
+      break;
+    }
+  }
+  if (idx < 0) return "";
+  return JSON.stringify(msgs.slice(idx + 1));
+}
+
 function classify(body) {
   const blob = JSON.stringify(body.messages || []);
-  if (blob.includes("PT1-ROUTINE")) {
-    if (blob.includes("scheduled") || blob.includes("routine_error")) {
+  const last = lastUserText(body);
+  const tail = turnTail(body);
+  if (last.includes("PT1-ROUTINE")) {
+    if (tail.includes("scheduled") || tail.includes("routine_error")) {
       return { kind: "text", text: "routine done" };
     }
     return toolCall(
@@ -103,8 +143,8 @@ function classify(body) {
       "c-routine",
     );
   }
-  if (blob.includes("PT2-TEAMMATE")) {
-    if (blob.includes("teammate created") || blob.includes("teammate_error")) {
+  if (last.includes("PT2-TEAMMATE")) {
+    if (tail.includes("teammate created") || tail.includes("teammate_error")) {
       return { kind: "text", text: "teammate done" };
     }
     return toolCall(
@@ -113,8 +153,8 @@ function classify(body) {
       "c-teammate",
     );
   }
-  if (blob.includes("PT3-BADSCHEDULE")) {
-    if (blob.includes("routine_error") || blob.includes("scheduled")) {
+  if (last.includes("PT3-BADSCHEDULE")) {
+    if (tail.includes("routine_error") || tail.includes("scheduled")) {
       return { kind: "text", text: "bad schedule handled" };
     }
     return toolCall(
@@ -123,27 +163,27 @@ function classify(body) {
       "c-badsched",
     );
   }
-  if (blob.includes("PT4-NOROLE")) {
-    if (blob.includes("needs a role") || blob.includes("teammate_error")) {
+  if (last.includes("PT4-NOROLE")) {
+    if (tail.includes("needs a role") || tail.includes("teammate_error")) {
       return { kind: "text", text: "missing role handled" };
     }
     return toolCall("create_teammate", { name: "选题" }, "c-norole");
   }
   // --- C-2: B-class tools (the Host runs them) ---
-  if (blob.includes("PT7-SEARCH")) {
-    if (blob.includes("search_key_not_configured") || blob.includes("source_hub")) {
+  if (last.includes("PT7-SEARCH")) {
+    if (tail.includes("search_key_not_configured") || tail.includes("example.com")) {
       return { kind: "text", text: "search done" };
     }
     return toolCall("web_search", { query: "AI 科技热点", topN: 3 }, "c-search");
   }
-  if (blob.includes("PT8-SEARCHNOKEY")) {
-    if (blob.includes("search_key_not_configured")) {
+  if (last.includes("PT8-SEARCHNOKEY")) {
+    if (tail.includes("search_key_not_configured")) {
       return { kind: "text", text: "search refused" };
     }
     return toolCall("web_search", { query: "AI 科技热点" }, "c-nokey");
   }
-  if (blob.includes("PT9-FETCH")) {
-    if (blob.includes("body_prefix") || blob.includes("fetch_failed")) {
+  if (last.includes("PT9-FETCH")) {
+    if (tail.includes("body_prefix") || tail.includes("fetch_failed")) {
       return { kind: "text", text: "fetch done" };
     }
     return toolCall(
@@ -152,8 +192,8 @@ function classify(body) {
       "c-fetch",
     );
   }
-  if (blob.includes("PT10-MAILNOAPPROVAL")) {
-    if (blob.includes("no approval grant")) {
+  if (last.includes("PT10-MAILNOAPPROVAL")) {
+    if (tail.includes("no approval grant") || tail.includes("approval denied")) {
       return { kind: "text", text: "mail refused" };
     }
     return toolCall(
@@ -162,8 +202,8 @@ function classify(body) {
       "c-mailno",
     );
   }
-  if (blob.includes("PT11-MAILAPPROVED")) {
-    if (blob.includes("eml_path") || blob.includes("no approval grant")) {
+  if (last.includes("PT11-MAILAPPROVED")) {
+    if (tail.includes("eml_path") || tail.includes("no approval grant")) {
       return { kind: "text", text: "mail handled" };
     }
     return toolCall(
@@ -359,6 +399,7 @@ async function main() {
   // ---- PT1: the model is OFFERED the product tools -------------------
   const before = stub.posts.length;
   const routine = await runner.runTurn("PT1-ROUTINE", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt1",
     timeoutMs: 300000,
   });
@@ -409,6 +450,7 @@ async function main() {
 
   // ---- PT3: the kernel really dispatched create_teammate --------------
   const t = await runner.runTurn("PT2-TEAMMATE", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt2",
     timeoutMs: 300000,
   });
@@ -425,6 +467,7 @@ async function main() {
 
   // ---- PT4 (negative): an unparsable schedule leaves NO effect -------
   const b = await runner.runTurn("PT3-BADSCHEDULE", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt3",
     timeoutMs: 300000,
   });
@@ -445,6 +488,7 @@ async function main() {
 
   // ---- PT5 (negative): a missing required arg leaves NO effect -------
   const m = await runner.runTurn("PT4-NOROLE", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt4",
     timeoutMs: 300000,
   });
@@ -459,6 +503,7 @@ async function main() {
   process.env.BITBOT_SEARCH_API_KEY = "stub-search-key";
   process.env.BITBOT_SEARCH_API_BASE = `http://127.0.0.1:${stub.port}`;
   const s = await runner.runTurn("PT7-SEARCH", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt7",
     timeoutMs: 300000,
   });
@@ -480,6 +525,7 @@ async function main() {
   // ---- PT8: no search key -> honest failure, not a fake empty result -
   delete process.env.BITBOT_SEARCH_API_KEY;
   const nk = await runner.runTurn("PT8-SEARCHNOKEY", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt8",
     timeoutMs: 300000,
   });
@@ -500,6 +546,7 @@ async function main() {
 
   // ---- PT9: web_fetch really reads a page ---------------------------
   const f = await runner.runTurn("PT9-FETCH", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt9",
     timeoutMs: 300000,
   });
@@ -517,6 +564,7 @@ async function main() {
   // ---- PT10 (negative): send_mail WITHOUT approval must not send ----
   delete process.env.BITBOT_LOOP_APPROVAL;
   const m0 = await runner.runTurn("PT10-MAILNOAPPROVAL", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt10",
     timeoutMs: 300000,
   });
@@ -542,6 +590,7 @@ async function main() {
   // ---- PT11: send_mail WITH approval runs, and is honest about it ----
   process.env.BITBOT_LOOP_APPROVAL = "allow";
   const m1 = await runner.runTurn("PT11-MAILAPPROVED", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt11",
     timeoutMs: 300000,
   });
@@ -583,6 +632,7 @@ async function main() {
   // ---- PT6: the same path on the non-streaming transport -------------
   process.env.BITBOT_LLM_STREAM = "0";
   const ns = await runner.runTurn("PT1-ROUTINE", {
+    sessionId: "pt-" + RUN_ID,
     turnId: "pt6",
     timeoutMs: 300000,
   });

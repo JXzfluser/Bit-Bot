@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 "use strict";
 
+// A per-run id: the agent context is keyed by (bot, session), so a unique
+// session keeps each run from inheriting the previous run's history.
+const RUN_ID = Date.now().toString(36) + "-" + process.pid;
 /**
  * GP-96/97/98 §5.7 进度更新 proof — runs without Electron.
  *
@@ -98,7 +101,7 @@ async function main() {
     onProgress: (ev) => events.push(ev),
     total: 3,
     turnId: "gp96-test",
-    sessionId: "sess-gp96",
+    sessionId: "sess-gp96-" + RUN_ID,
     repoRoot: REPO,
   });
   emitter.start(1, { kind: "copy_to_box", command: "desk-1|src|dest" });
@@ -176,7 +179,7 @@ async function main() {
   const turnEvents = [];
   const t0 = Date.now();
   const res = await runner.runTurn("GP96 随便聊一句", {
-    sessionId: "sess-gp96probe",
+    sessionId: "sess-gp96probe-" + RUN_ID,
     machineId: "desk-1",
     machineKind: "desktop",
     onProgress: (ev) => turnEvents.push(Object.assign({ wall: Date.now() - t0 }, ev)),

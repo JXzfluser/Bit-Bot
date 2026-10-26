@@ -11,6 +11,14 @@ cd "$ROOT"
 export PATH="${HOME}/.moon/bin:${PATH}"
 export BITBOT_KERNEL_BUILD="${BITBOT_KERNEL_BUILD:-debug}"
 
+# A gate that is interrupted can leave its provider stub alive, holding the
+# port. The next gate then fails with "stub not ready in 8s" and looks like a
+# regression when it is not. Clean up whatever this run leaves behind.
+cleanup_stubs() {
+  pkill -f "dev_stubs/openai_compat_stub.js" >/dev/null 2>&1 || true
+}
+trap cleanup_stubs EXIT INT TERM
+
 OUT="${1:-/tmp/prove_out.txt}"
 touch "$OUT"
 

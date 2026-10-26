@@ -10,11 +10,15 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 
+// A per-run id: the agent context is keyed by (bot, session), so a
+// unique session keeps each run from inheriting the previous run's history.
+const RUN_ID = Date.now().toString(36) + "-" + process.pid;
 const ROOT = path.resolve(__dirname, "..");
 const { createTurnRunner } = require(path.join(ROOT, "hosts/shared/run_moon_turn"));
 const { createProductSession, legacyGuardedRerunEnabled } = require(
   path.join(ROOT, "hosts/shared/agent_loop_product_wire"),
 );
+const { currentTurn } = require(path.join(ROOT, "scripts/agent_turn_scene"));
 
 let pass = 0;
 let fail = 0;
@@ -60,15 +64,18 @@ function sseText(text) {
 }
 
 function classify(body) {
-  const blob = JSON.stringify(body.messages || []);
-  if (blob.includes("LEGACY-CHAT")) return { kind: "text", text: "legacy once" };
-  if (blob.includes("WP6-FINAL")) return { kind: "text", text: "plain final" };
-  if (blob.includes("WP5-LOOP")) {
+  // The scene comes from THIS turn's user message; the "did the tool already
+  // run" checks look at THIS turn's tool results. The payload also carries
+  // earlier turns (ADR 0011), and history must not decide the scene.
+  const { last, tail } = currentTurn(body);
+  if (last.includes("LEGACY-CHAT")) return { kind: "text", text: "legacy once" };
+  if (last.includes("WP6-FINAL")) return { kind: "text", text: "plain final" };
+  if (last.includes("WP5-LOOP")) {
     return { kind: "tool", name: "Read", arguments: "{\"path\":\"a.txt\"}", id: "c-loop" };
   }
-  if (blob.includes("WP4-SHELL") || blob.includes("WP4-ALLOW")) {
-    if (blob.includes("[product-shell]")) return { kind: "text", text: "shell ran" };
-    if (blob.includes("approval denied") || blob.includes("cursor_untrusted_data")) {
+  if (last.includes("WP4-SHELL") || last.includes("WP4-ALLOW")) {
+    if (tail.includes("[product-shell]")) return { kind: "text", text: "shell ran" };
+    if (tail.includes("approval denied") || tail.includes("cursor_untrusted_data")) {
       return { kind: "text", text: "shell stayed off" };
     }
     return {
@@ -78,8 +85,8 @@ function classify(body) {
       id: "c-sh",
     };
   }
-  if (blob.includes("cursor_untrusted_data")) return { kind: "text", text: "saw file" };
-  if (blob.includes("WP1-READ") || blob.includes("WP2-STREAM")) {
+  if (tail.includes("cursor_untrusted_data")) return { kind: "text", text: "saw file" };
+  if (last.includes("WP1-READ") || last.includes("WP2-STREAM")) {
     return { kind: "tool", name: "Read", arguments: "{\"path\":\"a.txt\"}", id: "c-read" };
   }
   return { kind: "text", text: "plain final" };
@@ -212,7 +219,8 @@ async function main() {
   runner.ffi.setLlmStreamHandler(() => {});
 
   const beforeList = stub.posts.length;
-  const listed = await runner.runTurn("ListMachines", { turnId: "wp-list", timeoutMs: 300000 });
+  const listed = await runner.runTurn("ListMachines", {
+    sessionId: "wp-" + RUN_ID, turnId: "wp-list", timeoutMs: 300000 });
   check(listed && listed.ok, "WP7 ListMachines ok", listed && listed.error);
   check(listed.intent === "list_machines", "WP7 ListMachines intent", listed.intent);
   check(listed.agent_loop !== true, "WP7 ListMachines stays off the agent loop");
@@ -221,7 +229,8 @@ async function main() {
   check(stub.posts.length === beforeList, "WP7 ListMachines did not call the provider");
 
   const beforeRead = stub.posts.length;
-  const readTurn = await runner.runTurn("WP1-READ", { turnId: "wp1", timeoutMs: 180000 });
+  const readTurn = await runner.runTurn("WP1-READ", {
+    sessionId: "wp-" + RUN_ID, turnId: "wp1", timeoutMs: 180000 });
   const readPosts = stub.posts.slice(beforeRead);
   const trace = readTurn.loop_trace || {};
   check(readTurn.ok, "WP1 turn ok", readTurn.error || readTurn.stderr);
@@ -249,25 +258,59 @@ async function main() {
   );
   check(assistantText(readTurn).includes("saw file"), "WP1 delivered final text", assistantText(readTurn));
   check(readTurn.agent_exec === 1, "WP1 one exec", String(readTurn.agent_exec));
-  check((trace.kernel_ops || [])[0] === "llm_chat", "WP1 kernel asked for llm_chat first", JSON.stringify(trace.kernel_ops));
+  // The kernel may ask the Host for the persisted context BEFORE the first
+  // model call — the model has to SEE the history, so the context must already
+  // be in the payload. What must still hold: the first MODEL op is llm_chat,
+  // and the only op allowed in front of it is load_context.
+  const kernelOps = trace.kernel_ops || [];
+  const firstModelIdx = kernelOps.findIndex(
+    (op) => op === "llm_chat" || op === "exec_tool" || op === "request_approval",
+  );
+  check(
+    firstModelIdx > 0 &&
+      kernelOps[0] === "load_context" &&
+      kernelOps.slice(0, firstModelIdx).every((op) => op === "load_context"),
+    "WP1 the first model op is llm_chat; only load_context may precede it",
+    JSON.stringify(trace.kernel_ops),
+  );
   check((trace.kernel_ops || []).includes("exec_tool"), "WP1 kernel asked exec_tool");
   check((trace.kernel_ops || []).includes("deliver"), "WP1 kernel asked deliver");
 
   const beforeFinal = stub.posts.length;
-  const finalTurn = await runner.runTurn("WP6-FINAL", { turnId: "wp6" });
+  const finalTurn = await runner.runTurn("WP6-FINAL", {
+    sessionId: "wp-" + RUN_ID, turnId: "wp6" });
   const finalPosts = stub.posts.slice(beforeFinal);
   check(finalTurn.agent_loop === true && finalTurn.loop_trace && finalTurn.loop_trace.entry, "WP6 entered AgentLoop");
   check(finalPosts.length === 1, "WP6 one provider call", String(finalPosts.length));
   check(finalTurn.agent_exec === 0, "WP6 no exec", String(finalTurn.agent_exec));
   check(assistantText(finalTurn).includes("plain final"), "WP6 delivered assistant text", assistantText(finalTurn));
+  // A turn with no tool call asks exactly: load_context → llm_chat → deliver
+  // → save_context. The model-facing ops must still be exactly think+deliver,
+  // and the context ops must bracket the turn (nothing may run outside them).
+  const finalOps = finalTurn.loop_trace.kernel_ops || [];
+  const modelOps = finalOps.filter(
+    (op) =>
+      op === "llm_chat" ||
+      op === "exec_tool" ||
+      op === "request_approval" ||
+      op === "deliver",
+  );
   check(
-    (finalTurn.loop_trace.kernel_ops || []).join(",") === "llm_chat,deliver",
-    "WP6 kernel ops",
+    modelOps.join(",") === "llm_chat,deliver",
+    "WP6 the model ops are exactly think+deliver",
+    JSON.stringify(finalTurn.loop_trace),
+  );
+  check(
+    finalOps.length === modelOps.length + 2 &&
+      finalOps[0] === "load_context" &&
+      finalOps[finalOps.length - 1] === "save_context",
+    "WP6 the context ops bracket the turn and nothing else runs",
     JSON.stringify(finalTurn.loop_trace),
   );
 
   const beforeDeny = stub.posts.length;
-  const denyTurn = await runner.runTurn("WP4-SHELL", { turnId: "wp4d" });
+  const denyTurn = await runner.runTurn("WP4-SHELL", {
+    sessionId: "wp-" + RUN_ID, turnId: "wp4d" });
   check(denyTurn.agent_exec === 0, "WP4 deny did not exec", String(denyTurn.agent_exec));
   check(denyTurn.agent_approval === 1, "WP4 deny requested approval", String(denyTurn.agent_approval));
   const denyOps = (denyTurn.loop_trace && denyTurn.loop_trace.kernel_ops) || [];
@@ -280,7 +323,8 @@ async function main() {
   check(stub.posts.length === beforeDeny + 2, "WP4 deny two provider calls", String(stub.posts.length - beforeDeny));
 
   process.env.BITBOT_LOOP_APPROVAL = "allow";
-  const allowTurn = await runner.runTurn("WP4-ALLOW", { turnId: "wp4a" });
+  const allowTurn = await runner.runTurn("WP4-ALLOW", {
+    sessionId: "wp-" + RUN_ID, turnId: "wp4a" });
   delete process.env.BITBOT_LOOP_APPROVAL;
   check(allowTurn.agent_exec === 1, "WP4 allow exec once", String(allowTurn.agent_exec));
   check(assistantText(allowTurn).includes("shell ran"), "WP4 allow final", assistantText(allowTurn));
@@ -290,7 +334,8 @@ async function main() {
   );
 
   const beforeLoop = stub.posts.length;
-  const loopTurn = await runner.runTurn("WP5-LOOP", { turnId: "wp5", timeoutMs: 180000 });
+  const loopTurn = await runner.runTurn("WP5-LOOP", {
+    sessionId: "wp-" + RUN_ID, turnId: "wp5", timeoutMs: 180000 });
   const loopPosts = stub.posts.length - beforeLoop;
   check(loopTurn.agent_stop === "MaxSteps", "WP5 stop MaxSteps", loopTurn.agent_stop);
   check(loopTurn.agent_exec === 64, "WP5 exec 64", String(loopTurn.agent_exec));
@@ -298,7 +343,8 @@ async function main() {
   check(loopPosts === 64, "WP5 provider calls stop at 64", String(loopPosts));
 
   process.env.BITBOT_LEGACY_CHAT_EFFECT = "1";
-  const legacy = await runner.runTurn("LEGACY-CHAT", { turnId: "legacy" });
+  const legacy = await runner.runTurn("LEGACY-CHAT", {
+    sessionId: "wp-" + RUN_ID, turnId: "legacy" });
   delete process.env.BITBOT_LEGACY_CHAT_EFFECT;
   check(!(legacy.loop_trace && legacy.loop_trace.entry), "legacy chat does not enter AgentLoop", JSON.stringify(legacy.loop_trace));
   check(legacy.agent_loop !== true, "legacy chat agent_loop false");

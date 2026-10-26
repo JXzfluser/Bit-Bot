@@ -14,6 +14,9 @@ import { fileURLToPath } from "url";
 import { createRequire } from "module";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
+import { createRequire as __createRequire } from "module";
+const __require = __createRequire(import.meta.url);
+const { currentTurn } = __require("./agent_turn_scene.js");
 import { electronLaunchEnv, electronUserDataDir, hasDisplay } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -95,10 +98,12 @@ function shellCommandFor(blob) {
 }
 
 function classify(body) {
-  const blob = JSON.stringify(body.messages || []);
-  if (blob.includes("[product-shell]")) return { kind: "text", text: "shell ran" };
-  if (blob.includes("approval denied")) return { kind: "text", text: "shell stayed off" };
-  const command = shellCommandFor(blob);
+  // Scene from THIS turn's user message, tool results from THIS turn's tail:
+  // the payload also carries earlier turns (ADR 0011).
+  const { last, tail } = currentTurn(body);
+  if (tail.includes("[product-shell]")) return { kind: "text", text: "shell ran" };
+  if (tail.includes("approval denied")) return { kind: "text", text: "shell stayed off" };
+  const command = shellCommandFor(last);
   if (command) {
     return {
       kind: "tool",

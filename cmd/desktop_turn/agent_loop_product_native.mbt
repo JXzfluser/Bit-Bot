@@ -101,6 +101,36 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn llm_chat(
 }
 
 ///|
+/// 跨回合上下文:向 Host 要一份编码后的上下文。
+///
+/// Host 不认识 `load_context` 时回 `unknown op` → 输出空串 → 当作没有历史继续。
+/// 这条路径必须**永不失败**:上下文没了只是少记点事,不能把回合搞崩。
+fn load_agent_context(slot : String, session_id : String) -> @runtime.AgentContext {
+  // Every FFI op the kernel asks for must be traced: the Host records the op
+  // list it was asked for, and the gate compares it with the kernel's own
+  // trace element by element. An untraced op makes the two disagree.
+  bitbot_ffi_trace("op=load_context")
+  let raw = bitbot_ffi_exchange(encode_context_request("load_context", slot, ""))
+  let text = parse_context_reply(raw)
+  if text == "" {
+    return @runtime.AgentContext::new(session_id=session_id)
+  }
+  agent_context_aligned(@runtime.AgentContext::decode(text), session_id)
+}
+
+///|
+/// 跨回合上下文:把更新后的上下文交回 Host 落盘。
+fn save_agent_context(
+  slot : String,
+  ctx : @runtime.AgentContext,
+) -> Unit {
+  bitbot_ffi_trace("op=save_context")
+  let _ = bitbot_ffi_exchange(
+    encode_context_request("save_context", slot, ctx.encode()),
+  )
+}
+
+///|
 pub impl @runtime.AgentLoopHost for ProductFfiHost with fn exec_tool(
   self,
   name,
@@ -189,7 +219,18 @@ fn run_agent_loop_chat(
   // same buffer.
   let tool_effects : Array[DesktopEffect] = []
   let host = ProductFfiHost::new(tool_effects)
-  let run = @runtime.AgentLoop::new(product_tool_registry()).run(opened, host)
+  // K-1/K-3: the agent's context has to survive the process, otherwise every
+  // turn starts blind and the user never sees "it remembers me". The kernel
+  // asks the Host for the encoded context, runs with it, and hands the
+  // updated one back.
+  let ctx_slot = agent_context_slot(ctx.bot_id, ctx.session_id)
+  let agent_ctx = load_agent_context(ctx_slot, opened.session_id.value)
+  let run = @runtime.AgentLoop::new(product_tool_registry()).run_with(
+    opened,
+    host,
+    agent_ctx,
+  )
+  save_agent_context(ctx_slot, run.context)
   let ok = run.stop is @runtime.Final || run.stop is @runtime.MaxSteps
   let err = if run.stop is @runtime.Cancelled {
     Some("cancelled")

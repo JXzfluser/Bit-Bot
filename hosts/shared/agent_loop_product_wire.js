@@ -39,6 +39,43 @@ function approvalMode() {
   return "deny";
 }
 
+/**
+ * K-1/K-3: where one Bot's agent context lives.
+ *
+ * The slot arrives from the kernel as a bot id, and it ends up in a FILE PATH.
+ * It must therefore never be able to escape the context directory: a bot id
+ * like "../../etc/passwd" must not become a path.
+ */
+function agentContextPath(ffi, slot) {
+  const raw = String(slot || "").trim();
+  let safe = raw.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64);
+  if (safe === "" || safe === "." || safe === "..") safe = "agent-bit";
+  const dir = path.join(String((ffi && ffi.DATA_ROOT) || "."), "agent-context");
+  return { dir, file: path.join(dir, safe + ".ctx") };
+}
+
+function readAgentContext(ffi, slot) {
+  const { file } = agentContextPath(ffi, slot);
+  try {
+    if (!fs.existsSync(file)) return "";
+    return fs.readFileSync(file, "utf8");
+  } catch (_) {
+    return "";
+  }
+}
+
+function writeAgentContext(ffi, slot, text) {
+  const { dir, file } = agentContextPath(ffi, slot);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, String(text || ""), "utf8");
+    return true;
+  } catch (_) {
+    /* a context that cannot be persisted must not fail the turn */
+    return false;
+  }
+}
+
 function canonProductTool(name) {
   const n = String(name || "");
   if (n === "webSearch" || n === "WebSearch" || n === "search_web" || n === "searchWeb") {
@@ -391,6 +428,19 @@ function createProductSession(ffi, llmOpts) {
       }
       if (op === "exec_tool") return execProductTool(req, state);
       if (op === "request_approval") return decideApproval(state, req, opts);
+      // K-1/K-3: the agent context crosses the process boundary here. The
+      // kernel owns the semantics (encode/decode); the Host only stores bytes.
+      if (op === "load_context") {
+        return { output: readAgentContext(state.ffi, req && req.slot) };
+      }
+      if (op === "save_context") {
+        const ok = writeAgentContext(
+          state.ffi,
+          req && req.slot,
+          req && req.text,
+        );
+        return { output: ok ? "ok" : "context_not_persisted" };
+      }
       if (op === "deliver") {
         state.delivered = String((req && req.text) || "");
         return { ok: true };
