@@ -32,7 +32,9 @@ pub fn exec_product_tool_action(ProductToolAction) -> ProductToolResult
 
 pub fn gate_consequential(String, String, TurnIntent, DesktopTurnContext, @security.ApprovalClass, String, irreversible? : Bool) -> DesktopTurnResult?
 
-pub fn is_product_tool(String) -> Bool
+pub fn is_host_tool(String) -> Bool
+
+pub fn is_kernel_tool(String) -> Bool
 
 pub fn parse_host_continue_args(Array[String]) -> (String, String, Array[DesktopHostResult])
 

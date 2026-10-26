@@ -30,6 +30,9 @@ const { createTurnRunner } = require(path.join(ROOT, "hosts/shared/run_moon_turn
 
 let pass = 0;
 let fail = 0;
+// The stub's port is only known after it starts; the classifier needs it to
+// hand the model a real URL to fetch.
+let stubPort = 0;
 
 function ok(name) {
   pass += 1;
@@ -126,6 +129,49 @@ function classify(body) {
     }
     return toolCall("create_teammate", { name: "选题" }, "c-norole");
   }
+  // --- C-2: B-class tools (the Host runs them) ---
+  if (blob.includes("PT7-SEARCH")) {
+    if (blob.includes("search_key_not_configured") || blob.includes("source_hub")) {
+      return { kind: "text", text: "search done" };
+    }
+    return toolCall("web_search", { query: "AI 科技热点", topN: 3 }, "c-search");
+  }
+  if (blob.includes("PT8-SEARCHNOKEY")) {
+    if (blob.includes("search_key_not_configured")) {
+      return { kind: "text", text: "search refused" };
+    }
+    return toolCall("web_search", { query: "AI 科技热点" }, "c-nokey");
+  }
+  if (blob.includes("PT9-FETCH")) {
+    if (blob.includes("body_prefix") || blob.includes("fetch_failed")) {
+      return { kind: "text", text: "fetch done" };
+    }
+    return toolCall(
+      "web_fetch",
+      { url: `http://127.0.0.1:${stubPort}/article` },
+      "c-fetch",
+    );
+  }
+  if (blob.includes("PT10-MAILNOAPPROVAL")) {
+    if (blob.includes("no approval grant")) {
+      return { kind: "text", text: "mail refused" };
+    }
+    return toolCall(
+      "send_mail",
+      { to: "me@example.com", subject: "AI 热点日报", body: "今天三条热点" },
+      "c-mailno",
+    );
+  }
+  if (blob.includes("PT11-MAILAPPROVED")) {
+    if (blob.includes("eml_path") || blob.includes("no approval grant")) {
+      return { kind: "text", text: "mail handled" };
+    }
+    return toolCall(
+      "send_mail",
+      { to: "me@example.com", subject: "AI 热点日报", body: "今天三条热点" },
+      "c-mailyes",
+    );
+  }
   return { kind: "text", text: "plain final" };
 }
 
@@ -137,6 +183,35 @@ function startStub() {
       body += c;
     });
     req.on("end", () => {
+      const url = String((req && req.url) || "");
+      // --- C-2: the search provider (tavily shape) ---
+      if (url.includes("/search")) {
+        posts.push({ url, body, kind: "search" });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            results: [
+              {
+                title: "推理模型的新进展",
+                url: "https://example.com/a",
+                content: "一条真实的检索结果摘要。",
+              },
+              {
+                title: "Agent 框架横评",
+                url: "https://example.com/b",
+                content: "另一条检索结果。",
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      // --- C-2: a page for web_fetch to read ---
+      if (url.includes("/article")) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end("<html><body><h1>source_hub_article</h1><p>正文内容在这里。</p></body></html>");
+        return;
+      }
       let parsed = {};
       try {
         parsed = JSON.parse(body || "{}");
@@ -260,8 +335,13 @@ async function main() {
   process.env.BITBOT_KERNEL_BIN = kernelBin;
 
   const stub = await startStub();
-  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-pt-"));
-  fs.mkdirSync(path.join(dataRoot, "data"), { recursive: true });
+  stubPort = stub.port;
+  // The Host writes to DATA_ROOT itself; the kernel writes to `data/`
+  // relative to its cwd, which is the PARENT of DATA_ROOT. So DATA_ROOT has
+  // to be <root>/data for both sides to land in the same place.
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-pt-"));
+  const dataRoot = path.join(tmpRoot, "data");
+  fs.mkdirSync(dataRoot, { recursive: true });
 
   process.env.BITBOT_LLM_BASE_URL = `http://127.0.0.1:${stub.port}/v1`;
   process.env.BITBOT_LLM_API_KEY = "stub-key";
@@ -374,6 +454,132 @@ async function main() {
     JSON.stringify(effectKinds(m)),
   );
 
+  // ---- PT7: web_search really searches (real provider path) ---------
+  process.env.BITBOT_SEARCH_PROVIDER = "tavily";
+  process.env.BITBOT_SEARCH_API_KEY = "stub-search-key";
+  process.env.BITBOT_SEARCH_API_BASE = `http://127.0.0.1:${stub.port}`;
+  const s = await runner.runTurn("PT7-SEARCH", {
+    turnId: "pt7",
+    timeoutMs: 300000,
+  });
+  const sPosts = stub.posts.slice(before);
+  const sawSources = sPosts.some((p) =>
+    JSON.stringify(p.messages || []).includes("example.com"),
+  );
+  check(
+    sawSources,
+    "PT7 web_search returned real sources to the model",
+    JSON.stringify(sPosts.map((p) => (p.messages || []).length)),
+  );
+  check(
+    !blobOf(s).includes("exec refused: web_search"),
+    "PT7 the Host ran web_search (not refused)",
+    blobOf(s).slice(0, 200),
+  );
+
+  // ---- PT8: no search key -> honest failure, not a fake empty result -
+  delete process.env.BITBOT_SEARCH_API_KEY;
+  const nk = await runner.runTurn("PT8-SEARCHNOKEY", {
+    turnId: "pt8",
+    timeoutMs: 300000,
+  });
+  const nkPosts = stub.posts.slice(before);
+  const sawNoKey = nkPosts.some((p) =>
+    JSON.stringify(p.messages || []).includes("search_key_not_configured"),
+  );
+  check(
+    sawNoKey,
+    "PT8 an unconfigured search key is reported honestly",
+    "",
+  );
+  check(
+    !blobOf(nk).includes("exec refused: web_search"),
+    "PT8 the Host answered, it did not refuse the tool",
+    blobOf(nk).slice(0, 200),
+  );
+
+  // ---- PT9: web_fetch really reads a page ---------------------------
+  const f = await runner.runTurn("PT9-FETCH", {
+    turnId: "pt9",
+    timeoutMs: 300000,
+  });
+  const fPosts = stub.posts.slice(before);
+  const sawBody = fPosts.some((p) =>
+    JSON.stringify(p.messages || []).includes("body_prefix"),
+  );
+  check(sawBody, "PT9 web_fetch returned the page body to the model", "");
+  check(
+    !blobOf(f).includes("exec refused: web_fetch"),
+    "PT9 the Host ran web_fetch (not refused)",
+    blobOf(f).slice(0, 200),
+  );
+
+  // ---- PT10 (negative): send_mail WITHOUT approval must not send ----
+  delete process.env.BITBOT_LOOP_APPROVAL;
+  const m0 = await runner.runTurn("PT10-MAILNOAPPROVAL", {
+    turnId: "pt10",
+    timeoutMs: 300000,
+  });
+  const m0Posts = stub.posts.slice(before);
+  // The kernel's approval gate fires FIRST (requires_approval: true), so the
+  // tool never runs at all. The Host's own grant check is the second line of
+  // defence — both must refuse.
+  const sawRefusal = m0Posts.some((p) => {
+    const blob = JSON.stringify(p.messages || []);
+    return blob.includes("approval denied") || blob.includes("no approval grant");
+  });
+  check(sawRefusal, "PT10 send_mail without approval is refused", "");
+  const sendsDir = path.join(dataRoot, "mail", "sends");
+  const sentFiles = fs.existsSync(sendsDir)
+    ? fs.readdirSync(sendsDir).filter((n) => n.endsWith(".json"))
+    : [];
+  check(
+    sentFiles.length === 0,
+    "PT10 nothing was written to the mail send ledger",
+    JSON.stringify(sentFiles),
+  );
+
+  // ---- PT11: send_mail WITH approval runs, and is honest about it ----
+  process.env.BITBOT_LOOP_APPROVAL = "allow";
+  const m1 = await runner.runTurn("PT11-MAILAPPROVED", {
+    turnId: "pt11",
+    timeoutMs: 300000,
+  });
+  delete process.env.BITBOT_LOOP_APPROVAL;
+  const m1Posts = stub.posts.slice(before);
+  const sawEml = m1Posts.some((p) =>
+    JSON.stringify(p.messages || []).includes("eml_path"),
+  );
+  check(sawEml, "PT11 an approved send_mail produced a real mail artifact", "");
+  const sendsDir2 = path.join(dataRoot, "mail", "sends");
+  const sentFiles2 = fs.existsSync(sendsDir2)
+    ? fs.readdirSync(sendsDir2).filter((n) => n.endsWith(".json"))
+    : [];
+  check(
+    sentFiles2.length > 0,
+    "PT11 the mail send ledger has the send",
+    JSON.stringify(sentFiles2),
+  );
+  // The snapshot must be honest: a sandbox eml is NOT a send.
+  let honest = false;
+  for (const f2 of sentFiles2) {
+    try {
+      const row = JSON.parse(
+        fs.readFileSync(path.join(sendsDir2, f2), "utf8"),
+      );
+      if (row && row.sent === true) honest = true;
+      if (row && row.pretend_sent === true) honest = true;
+      if (row && row.live_mail_residual === true) honest = true;
+    } catch (_) {
+      /* ignore an unreadable snapshot */
+    }
+  }
+  check(
+    honest,
+    "PT11 the send snapshot says plainly whether it was really sent",
+    "",
+  );
+
   // ---- PT6: the same path on the non-streaming transport -------------
   process.env.BITBOT_LLM_STREAM = "0";
   const ns = await runner.runTurn("PT1-ROUTINE", {
@@ -390,7 +596,7 @@ async function main() {
 
   // ---- cleanup --------------------------------------------------------
   try {
-    fs.rmSync(dataRoot, { recursive: true, force: true });
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
   } catch (_) {
     /* temp dir cleanup is best effort */
   }

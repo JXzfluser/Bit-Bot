@@ -62,11 +62,23 @@
 
 | 类别 | 内容 | 处理 |
 |---|---|---|
-| A · 内核自主完成 | `describe_schedule` `create_teammate` `create_routine` … | 直接暴露 |
-| B · 需 Host 能力 | 发邮件 / 抓网页 / 文件 | Host 先实现再暴露;没实现的**先不暴露**(暴露模型选到必然失败的工具,比不暴露更糟) |
+| A · 内核自主完成 | `describe_schedule` `create_teammate` `create_routine` | **已暴露**(C-1) |
+| B · 需 Host 能力 | `web_search` `web_fetch` `send_mail` | **已暴露**(C-2)—— Host **同步**执行,模型拿到的是真结果 |
+| B · 需 Host 能力(其余) | 发邮件以外的连接器、文件、MCP | Host 先实现再暴露;没实现的**先不暴露** |
 | C · 用户私有 | 公众号草稿箱 / 热点源 | 走 `skills/user/` + MCP,**不进产品合同**(CM-2118 / CM-2135) |
 
-**6. 失败不留半个状态。** 解析不了 → 报错、**不产生 effect**。一个半成功的工具比没有这个工具更糟,因为 Host 会继续相信它做成了。
+**B 类的关键约束:Host 必须同步执行。** A 类的状态在内核,内核做完就完了;
+B 类的状态在 Host(凭证、网络、投递),如果像 A 类那样"回合末再镜像",
+模型拿到的观测就是一句**承诺**而不是**结果** —— 搜索没搜到、抓取被墙、
+邮件没凭证,这些真失败会被藏起来。所以 B 类走 `host.exec_tool` 直通 Host,
+观测是 Host 的真实返回。
+
+**B 类的审批:** `send_mail` 是对外发送,`requires_approval: true`。
+内核的审批闸先拒(工具根本不跑),Host 自己的 `executeHostEffects` 闸是第二道。
+**批准只能来自 Host 自己的 `decideApproval`** —— 工具参数里的 `approved`
+字段永远不被读(ADR 0008:参数铸不出审批)。
+
+**6. 失败不留半个状态。** 解析不了 → 报错、**不产生 effect**。一个半成功的工具比没有这个工具更糟,因为 Host 会继续相信它做成了。B 类同理:搜索没配 key 就报 `search_key_not_configured`,**不返回空结果假装搜过了**;邮件没凭证就落成 sandbox eml 并如实标 `sent:false` / `live_mail_residual:true`,**不假装已发送**。
 
 ## 非目标
 
@@ -93,7 +105,17 @@ bash scripts/prove_product_tools.sh
 
 该门禁跑**真 native 二进制**(打包后随 App 分发的那份),provider 是本地 stub:
 
+**C-1(A 类,13 例)**
+
 - **证到**:模型真的被提供了这三个工具(schema 进了 provider 请求)、内核真的 dispatch 了(不是 Host 回 `exec refused`)、effect 真的带正确载荷出来了(中文排程 → 正确 cron)、负例真的不留残状态(解析不了 → 无 effect + 如实报错)。
 - **不证**:真实模型会不会选这些工具。provider 是 stub,它证明的是**工具通路**,不是模型的判断力。
 
-白盒测试:`cmd/desktop_turn/agent_loop_product_tools_wbtest.mbt`(13 例,含两条差分门禁)。
+**C-2(B 类,再 11 例)**
+
+- `web_search` 真搜了(provider 走本地 stub 的 tavily 形状),**真来源**进了模型上下文。
+- 没配搜索 key → 如实报 `search_key_not_configured`,**不返回空结果假装搜过了**。
+- `web_fetch` 真读了页面,`body_prefix` 进了模型上下文。
+- `send_mail` **没批准 → 被拒**,而且**邮件发送台账一个字没写**(内核的审批闸先拒,工具根本没跑)。
+- `send_mail` **批准 → 真执行**,台账里有这一条,而且快照**明说**到底是不是真发出去(`sent` / `pretend_sent` / `live_mail_residual`)。
+
+白盒测试:`cmd/desktop_turn/agent_loop_product_tools_wbtest.mbt`(14 例,含两条差分门禁)。

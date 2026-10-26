@@ -266,8 +266,42 @@ test "C-1 product tools are registered and reachable by camelCase too" {
   assert_true(schema.contains("create_teammate"))
   assert_true(schema.contains("create_routine"))
   // camelCase 也能被认出来。
-  assert_true(is_product_tool("describeSchedule"))
-  assert_true(is_product_tool("createTeammate"))
-  assert_true(is_product_tool("create_routine"))
-  assert_false(is_product_tool("Shell"))
+  assert_true(is_kernel_tool("describeSchedule"))
+  assert_true(is_kernel_tool("createTeammate"))
+  assert_true(is_kernel_tool("create_routine"))
+  assert_false(is_kernel_tool("Shell"))
+}
+
+///|
+test "C-2 host-class product tools are registered but not kernel-intercepted" {
+  let reg = product_tool_registry()
+  let ids : Array[String] = []
+  let approvals : Array[String] = []
+  for s in reg.specs {
+    ids.push(s.id)
+    if s.requires_approval {
+      approvals.push(s.id)
+    }
+  }
+  assert_true(ids.contains("web_search"))
+  assert_true(ids.contains("web_fetch"))
+  assert_true(ids.contains("send_mail"))
+  // B 类由 Host 执行,内核不能拦截 —— 拦截了就拿不到真结果。
+  assert_true(is_host_tool("web_search"))
+  assert_true(is_host_tool("web_fetch"))
+  assert_true(is_host_tool("sendMail"))
+  assert_false(is_kernel_tool("web_search"))
+  assert_false(is_kernel_tool("web_fetch"))
+  assert_false(is_kernel_tool("send_mail"))
+  // 对外发信要审批;读操作不要。
+  assert_true(approvals.contains("send_mail"))
+  assert_false(approvals.contains("web_search"))
+  assert_false(approvals.contains("web_fetch"))
+  // 老的三个工具的审批口径没变。
+  assert_false(approvals.contains("Read"))
+  assert_false(approvals.contains("TodoWrite"))
+  let schema = product_tool_schema_json()
+  assert_true(schema.contains("web_search"))
+  assert_true(schema.contains("web_fetch"))
+  assert_true(schema.contains("send_mail"))
 }

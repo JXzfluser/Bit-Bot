@@ -42,15 +42,28 @@ pub fn product_tool_name_canonical(name : String) -> String {
     "describeSchedule" | "DescribeSchedule" => "describe_schedule"
     "createTeammate" | "CreateTeammate" => "create_teammate"
     "createRoutine" | "CreateRoutine" => "create_routine"
+    "webSearch" | "WebSearch" | "search_web" | "searchWeb" => "web_search"
+    "webFetch" | "WebFetch" | "open_url" | "openUrl" => "web_fetch"
+    "sendMail" | "SendMail" | "send_mail" | "mail_send" => "send_mail"
     _ => name
   }
 }
 
 ///|
-/// 这个名字是不是产品工具(由内核执行,不经 Host)。
-pub fn is_product_tool(name : String) -> Bool {
+/// A 类:内核自己执行的产品工具(不经 Host)。
+/// 内核做 MoonBit 侧的事,产出的 effect 由 Host 在回合结束后镜像。
+pub fn is_kernel_tool(name : String) -> Bool {
   let c = product_tool_name_canonical(name)
   c == "describe_schedule" || c == "create_teammate" || c == "create_routine"
+}
+
+///|
+/// B 类:需要 Host 能力的工具。内核只负责**描述与校验**,
+/// 真正的执行在 Host 侧同步发生 —— 这样模型拿到的观测是**真结果**,
+/// 不是"我打算做"的承诺。
+pub fn is_host_tool(name : String) -> Bool {
+  let c = product_tool_name_canonical(name)
+  c == "web_search" || c == "web_fetch" || c == "send_mail"
 }
 
 ///|
@@ -78,6 +91,27 @@ pub fn product_tool_specs() -> Array[@tools.ToolSpec] {
       builtin: None,
       input_schema_json: "{\"type\":\"object\",\"properties\":{\"schedule\":{\"type\":\"string\"},\"prompt\":{\"type\":\"string\"},\"id\":{\"type\":\"string\"}},\"required\":[\"schedule\",\"prompt\"]}",
       requires_approval: false,
+    },
+    {
+      id: "web_search",
+      description: "搜索互联网,返回若干条 {title,url,snippet}。用来找热点、找资料、找官方文档。搜不到就如实说搜不到,不要编造结果。",
+      builtin: None,
+      input_schema_json: "{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"},\"topN\":{\"type\":\"integer\"}},\"required\":[\"query\"]}",
+      requires_approval: false,
+    },
+    {
+      id: "web_fetch",
+      description: "抓取一个网页的正文内容。用来读一篇具体的文章或文档。",
+      builtin: None,
+      input_schema_json: "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}},\"required\":[\"url\"]}",
+      requires_approval: false,
+    },
+    {
+      id: "send_mail",
+      description: "发一封邮件(to/subject/body)。这会真的对外发送,需要用户批准才能执行。",
+      builtin: None,
+      input_schema_json: "{\"type\":\"object\",\"properties\":{\"to\":{\"type\":\"string\"},\"subject\":{\"type\":\"string\"},\"body\":{\"type\":\"string\"}},\"required\":[\"to\",\"subject\",\"body\"]}",
+      requires_approval: true,
     },
   ]
 }

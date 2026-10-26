@@ -111,7 +111,11 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn exec_tool(
   // only knows Read/Shell and would answer "exec refused: <name>" for anything
   // else — so intercept before the FFI round-trip. The kernel does the
   // MoonBit-side work, the effect is mirrored by the Host after the turn.
-  if is_product_tool(name) {
+  //
+  // B-class tools (web_search / web_fetch / send_mail) are NOT intercepted:
+  // they need Host capabilities, and the Host must run them SYNCHRONOUSLY so
+  // the model observes the real result instead of a promise.
+  if is_kernel_tool(name) {
     let result = match parse_product_tool_action(name, args) {
       Ok(action) => exec_product_tool_action(action)
       Err(e) => ProductToolResult::{ observation: "invalid_arguments: " + e, effects: [], }

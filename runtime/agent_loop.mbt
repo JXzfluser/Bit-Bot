@@ -417,6 +417,13 @@ fn resolve_spec(reg : ToolRegistry, name : String) -> @tools.ToolSpec? {
     canon = "create_teammate"
   } else if name == "createRoutine" || name == "CreateRoutine" {
     canon = "create_routine"
+  } else if name == "webSearch" || name == "WebSearch" || name == "search_web" {
+    // C-2: B-class product tools (the Host runs them).
+    canon = "web_search"
+  } else if name == "webFetch" || name == "WebFetch" || name == "open_url" {
+    canon = "web_fetch"
+  } else if name == "sendMail" || name == "SendMail" || name == "mail_send" {
+    canon = "send_mail"
   }
   for s in reg.specs {
     if s.id == canon || s.id == name {
