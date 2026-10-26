@@ -69,6 +69,18 @@ Electron 里验）：
 回合经 `TurnBridge` → Desktop `/v1/turn`（同一颗 MoonBit 大脑），失败时显示 Host/内核
 报出的真实原因，不写「大概是要配密钥」这类甩锅兜底。
 
+## 打包 APK（GitHub Actions）
+
+`.github/workflows/android-apk.yml` 是这条移动端产包的路：真跑 gradle 出 universal（或选 `all`
+打六个国内渠道包）的 debug + release APK，再让 `scripts/prove_android_build.mjs` 用 aapt 从包里读回
+包名 / 应用名 / 权限 / minSdk-targetSdk / flavor，最后把 APK 传成可下载产物（30 天保留）。
+触发：push 到 `cursor/android-mobile-target-v1` 且改动落在 `hosts/android/**`，或手动 dispatch。
+
+它声称的东西到此为止：包能编译、元数据如实。**没声称**装到真机 / emulator（runner 无设备、无 KVM），
+也**没有**商店签名 —— workflow 不带 keystore，未配 `BITBOT_ANDROID_STORE_*` 时 release 回落 debug 证书
+（本地实测：`app-universal-release.apk` 包名 `com.bitbot.host`，签名者 `CN=Android Debug`），
+所以产物可以侧载自测，不等于能上架。
+
 ## 国内渠道 flavors（P4）
 
 `app/build.gradle.kts`：`universal` / `huawei` / `xiaomi` / `honor` / `oppo` / `vivo`（`applicationIdSuffix`）。  

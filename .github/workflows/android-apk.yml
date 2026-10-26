@@ -1,0 +1,145 @@
+name: Android APK
+
+# 移动端交付的最后一环：没有一条能产出可安装包的路，「安卓版」就只是源码。
+# 这条 workflow 只做能被验证的事：真编译 APK → 用 aapt 读回包里的事实 → 传成可下载的产物。
+# 它不声称装过、不声称跑过 emulator（本环境无设备）、release 没 keystore 时也只是
+# debug 签名 —— 产物名与摘要都会把这句话说清楚，不伪装成「已上架」。
+
+on:
+  workflow_dispatch:
+    inputs:
+      channels:
+        description: "打包范围"
+        required: false
+        default: "universal"
+        type: choice
+        options:
+          - universal
+          - all
+  push:
+    branches:
+      - cursor/android-mobile-target-v1
+    paths:
+      - "hosts/android/**"
+      - ".github/workflows/android-apk.yml"
+      - "scripts/prove_android_build.mjs"
+  pull_request:
+    paths:
+      - "hosts/android/**"
+      - "scripts/prove_android_build.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: 编译 APK + 读回包里的事实
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Node（跑门禁脚本用）
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Gradle 缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('hosts/android/BitBotHost/**/*.gradle.kts', 'hosts/android/BitBotHost/gradle/wrapper/gradle-wrapper.properties', 'hosts/android/BitBotHost/gradle.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: 看 runner 上的 SDK（没有就诚实报错，不猜路径）
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<unset>}"
+          ls -d "${ANDROID_HOME:-/opt/android-sdk}" 2>/dev/null || true
+          ls "${ANDROID_HOME:-/opt/android-sdk}/build-tools" 2>/dev/null || true
+
+      - name: 组装 gradle 任务（默认只 universal；选 all 打六个国内渠道包）
+        id: tasks
+        run: |
+          channels="${{ github.event.inputs.channels || 'universal' }}"
+          if [ "$channels" = "all" ]; then
+            echo "assemble=:app:assembleDebug :app:assembleRelease" >> "$GITHUB_OUTPUT"
+          else
+            echo "assemble=:app:assembleUniversalDebug :app:assembleUniversalRelease" >> "$GITHUB_OUTPUT"
+          fi
+          echo "channels=$channels" >> "$GITHUB_OUTPUT"
+
+      - name: 真编译 APK + JVM 单测（线路解析）
+        working-directory: hosts/android/BitBotHost
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --console=plain \
+            ${{ steps.tasks.outputs.assemble }} \
+            :app:testUniversalDebugUnitTest
+
+      - name: 门禁：aapt 读回包名 / 权限 / SDK / flavor，并确认真的跑了单测
+        # runner 预装的 gradle 版本不一定是本工程要的版本；这里强制门禁走 wrapper，
+        # 让「打包用的 gradle」和「验包用的 gradle」是同一把尺子。
+        env:
+          BITBOT_ANDROID_GRADLE: ${{ github.workspace }}/hosts/android/BitBotHost/gradlew
+        run: node scripts/prove_android_build.mjs
+
+      - name: 收集产物（含签名事实）
+        run: |
+          set -eu
+          out=dist/apk
+          mkdir -p "$out"
+          n=0
+          while IFS= read -r apk; do
+            [ -z "$apk" ] && continue
+            n=$((n+1))
+            cp "$apk" "$out/$(basename "$(dirname "$(dirname "$apk")")")-$(basename "$apk")"
+          done < <(find hosts/android/BitBotHost/app/build/outputs/apk -name "*.apk" -type f)
+          echo "collected=$n"
+          if [ "$n" = "0" ]; then
+            echo "::error::gradle 报成功但 outputs/apk 里一个 APK 都没有（不假装有产物）"
+            exit 1
+          fi
+          ls -la "$out"
+
+      - name: 上传 APK 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitbot-android-${{ steps.tasks.outputs.channels }}-${{ github.sha }}
+          path: dist/apk/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 产物与签名事实（写进 Summary，不写「已可上架」）
+        if: always()
+        run: |
+          {
+            echo "### Android APK"
+            echo ""
+            echo "- 打包范围：\`${{ steps.tasks.outputs.channels || 'universal' }}\`"
+            echo "- 提交：\`${GITHUB_SHA:0:7}\`"
+            find hosts/android/BitBotHost/app/build/outputs/apk -name "*.apk" -type f | while read -r a; do
+              echo "  - \`$(basename "$a")\`（$(stat -c %s "$a") bytes）"
+            done
+            echo ""
+            echo "**这条 workflow 证明了什么**：包真编译出来，且 aapt 从包里读回的"
+            echo "包名 / 应用名 / 权限 / minSdk-targetSdk / 六个渠道 flavor 与门禁一致（AB-01..06）。"
+            echo ""
+            echo "**没证明什么（诚实残留）**：没装到真机或 emulator（runner 无设备、无 KVM），"
+            "没验 OS 权限弹窗与安装后表现；本 workflow 不带 keystore，"
+            "**release 包也是 debug 签名**（工程按 BITBOT_ANDROID_STORE_* 走，未配置时回落 debug），"
+            "所以这些包可以侧载自测，不等于能上架。"
+          } >> "$GITHUB_STEP_SUMMARY"
