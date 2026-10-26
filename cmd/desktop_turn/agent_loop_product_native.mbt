@@ -101,6 +101,19 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn llm_chat(
 }
 
 ///|
+///|
+/// K-2/C-3: ask the Host for the tool policy for this turn.
+/// Host 不认识 `load_policy` 时回 `unknown op` → 默认策略 → 行为不变。
+fn load_tool_policy() -> @runtime.ToolPolicy {
+  bitbot_ffi_trace("op=load_policy")
+  let raw = bitbot_ffi_exchange(encode_context_request("load_policy", "", ""))
+  let text = parse_context_reply(raw)
+  if text == "" {
+    return @runtime.ToolPolicy::default()
+  }
+  @runtime.ToolPolicy::parse(text)
+}
+
 /// 跨回合上下文:向 Host 要一份编码后的上下文。
 ///
 /// Host 不认识 `load_context` 时回 `unknown op` → 输出空串 → 当作没有历史继续。
@@ -223,12 +236,14 @@ fn run_agent_loop_chat(
   // turn starts blind and the user never sees "it remembers me". The kernel
   // asks the Host for the encoded context, runs with it, and hands the
   // updated one back.
+  let tool_policy = load_tool_policy()
   let ctx_slot = agent_context_slot(ctx.bot_id, ctx.session_id)
   let agent_ctx = load_agent_context(ctx_slot, opened.session_id.value)
   let run = @runtime.AgentLoop::new(product_tool_registry()).run_with(
     opened,
     host,
     agent_ctx,
+    tool_policy=tool_policy,
   )
   save_agent_context(ctx_slot, run.context)
   let ok = run.stop is @runtime.Final || run.stop is @runtime.MaxSteps

@@ -266,11 +266,17 @@ async function main() {
   const firstModelIdx = kernelOps.findIndex(
     (op) => op === "llm_chat" || op === "exec_tool" || op === "request_approval",
   );
+  // The kernel may prepare the turn before talking to the model: ask the
+  // Host for the tool policy (load_policy) and for the persisted context
+  // (load_context) — the model has to SEE the history, so the context must
+  // already be in the payload. What must still hold: the first MODEL op is
+  // llm_chat, and only those two prepare ops may precede it.
+  const PREPARE_OPS = ["load_policy", "load_context"];
   check(
     firstModelIdx > 0 &&
-      kernelOps[0] === "load_context" &&
-      kernelOps.slice(0, firstModelIdx).every((op) => op === "load_context"),
-    "WP1 the first model op is llm_chat; only load_context may precede it",
+      PREPARE_OPS.includes(kernelOps[0]) &&
+      kernelOps.slice(0, firstModelIdx).every((op) => PREPARE_OPS.includes(op)),
+    "WP1 the first model op is llm_chat; only prepare ops may precede it",
     JSON.stringify(trace.kernel_ops),
   );
   check((trace.kernel_ops || []).includes("exec_tool"), "WP1 kernel asked exec_tool");
@@ -300,11 +306,14 @@ async function main() {
     "WP6 the model ops are exactly think+deliver",
     JSON.stringify(finalTurn.loop_trace),
   );
+  // The turn is bracketed by the Host round trips: load_policy, load_context
+  // … think/deliver … save_context. Nothing else may run outside them.
   check(
-    finalOps.length === modelOps.length + 2 &&
-      finalOps[0] === "load_context" &&
+    finalOps.length === modelOps.length + 3 &&
+      finalOps[0] === "load_policy" &&
+      finalOps[1] === "load_context" &&
       finalOps[finalOps.length - 1] === "save_context",
-    "WP6 the context ops bracket the turn and nothing else runs",
+    "WP6 the prepare/persist ops bracket the turn and nothing else runs",
     JSON.stringify(finalTurn.loop_trace),
   );
 

@@ -122,6 +122,8 @@ pub fn parse_todo_action(String) -> Result[TodoAction, String]
 
 pub fn parse_todo_items(String) -> Array[TodoItem]
 
+pub fn path_within_roots(String, Array[String]) -> Bool
+
 pub fn plan_first_turn(description~ : String) -> FirstTurnPlan
 
 pub fn plan_multi_delivery_step(turn_id~ : String, Array[String]) -> StepEffectBatch
@@ -157,6 +159,8 @@ pub fn strip_agent_cue(String) -> String
 pub fn strip_cue(String) -> String
 
 pub fn style_guide_rule_labels() -> Array[String]
+
+pub fn tool_scope(String) -> String
 
 pub fn transcript_includes_tool_calls(Array[TranscriptEntry]) -> Bool
 
@@ -220,8 +224,8 @@ pub fn AgentLoop::boot(Self, TurnContext) -> String
 pub fn AgentLoop::effective_max_steps(Self) -> Int32
 pub fn AgentLoop::new(ToolRegistry) -> Self
 pub fn[H : AgentLoopHost] AgentLoop::run(Self, TurnContext, H) -> AgentRun
-pub fn[H : AgentLoopHost] AgentLoop::run_with(Self, TurnContext, H, AgentContext, policy? : LoopRetryPolicy) -> AgentRun
-pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(Self, TurnContext, H, AgentContext, S, policy? : LoopRetryPolicy) -> AgentRun
+pub fn[H : AgentLoopHost] AgentLoop::run_with(Self, TurnContext, H, AgentContext, policy? : LoopRetryPolicy, tool_policy? : ToolPolicy) -> AgentRun
+pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(Self, TurnContext, H, AgentContext, S, policy? : LoopRetryPolicy, tool_policy? : ToolPolicy) -> AgentRun
 
 pub(all) enum AgentRole {
   User
@@ -651,6 +655,15 @@ pub fn ToolCallTrace::equal(Self, Self) -> Bool
 pub fn ToolCallTrace::not_equal(Self, Self) -> Bool
 pub fn ToolCallTrace::to_repr(Self) -> @debug.Repr
 
+pub(all) enum ToolDecision {
+  Allow
+  NeedApproval
+  Deny(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn ToolDecision::equal(Self, Self) -> Bool
+pub fn ToolDecision::not_equal(Self, Self) -> Bool
+pub fn ToolDecision::to_repr(Self) -> @debug.Repr
+
 pub(all) enum ToolMutability {
   ReadOnly
   Mutating
@@ -658,6 +671,22 @@ pub(all) enum ToolMutability {
 pub fn ToolMutability::equal(Self, Self) -> Bool
 pub fn ToolMutability::not_equal(Self, Self) -> Bool
 pub fn ToolMutability::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ToolPolicy {
+  subject : String
+  device_trust : String
+  deny_tools : Array[String]
+  need_approval : Array[String]
+  limited_needs_approval : Array[String]
+  path_roots : Array[String]
+} derive(Eq, @debug.Debug)
+pub fn ToolPolicy::decide(Self, String, String) -> ToolDecision
+pub fn ToolPolicy::default() -> Self
+pub fn ToolPolicy::equal(Self, Self) -> Bool
+pub fn ToolPolicy::is_limited(Self) -> Bool
+pub fn ToolPolicy::not_equal(Self, Self) -> Bool
+pub fn ToolPolicy::parse(String) -> Self
+pub fn ToolPolicy::to_repr(Self) -> @debug.Repr
 
 pub(all) struct ToolRegistry {
   specs : Array[@tools.ToolSpec]

@@ -716,8 +716,12 @@ fn[H : AgentLoopHost] run_approved_tool(
 }
 
 ///|
-/// Validate, ask for approval and run one host tool. Returns true when the
-/// user cancelled the turn.
+/// Validate, apply the tool policy, ask for approval and run one host tool.
+/// Returns true when the user cancelled the turn.
+///
+/// K-2: the kernel is the authority. A policy **deny** is final — the tool
+/// does not run, and the model is told why. A policy **NeedApproval** raises
+/// the bar: it asks the user even when the tool spec did not.
 fn[H : AgentLoopHost] handle_host_call(
   host : H,
   spec : @tools.ToolSpec,
@@ -725,6 +729,7 @@ fn[H : AgentLoopHost] handle_host_call(
   state : RunState,
   agent_ctx : AgentContext,
   turn_id : String,
+  policy : ToolPolicy,
 ) -> Bool {
   match
     @tools.validate_args_against_schema(
@@ -736,7 +741,33 @@ fn[H : AgentLoopHost] handle_host_call(
       false
     }
     Ok(_) => {
-      if spec_needs_approval(spec) {
+      let decision = policy.decide(call.name, tool_scope(call.arguments_json))
+      if decision is Deny(_) {
+        let reason = match decision {
+          Deny(reason~) => reason
+          _ => "denied"
+        }
+        let obs = "denied by policy: " + call.name + " — " + reason
+        state.observations.push(obs)
+        state.failures.push({
+          kind: LoopFailureKind::ApprovalDenied,
+          tool_name: call.name,
+          call_id: call.id,
+          message: obs,
+          step: state.steps,
+          attempt: 1,
+          blocked: true,
+        })
+        agent_ctx.append_observation(
+          call.name,
+          fence_untrusted(call.name, obs),
+          step=state.steps,
+        )
+        return false
+      }
+      let needs_approval = spec_needs_approval(spec) ||
+        decision is NeedApproval
+      if needs_approval {
         state.approval_count = state.approval_count + 1
         let verdict = host.request_approval(call.name, call.arguments_json)
         match verdict {
@@ -827,7 +858,12 @@ pub fn[H : AgentLoopHost] AgentLoop::run(
   ctx : TurnContext,
   host : H,
 ) -> AgentRun {
-  self.run_with(ctx, host, AgentContext::new(session_id=ctx.session_id.value))
+  self.run_with(
+    ctx,
+    host,
+    AgentContext::new(session_id=ctx.session_id.value),
+    tool_policy=ToolPolicy::default(),
+  )
 }
 
 ///|
@@ -840,6 +876,7 @@ pub fn[H : AgentLoopHost] AgentLoop::run_with(
   host : H,
   agent_ctx : AgentContext,
   policy~ : LoopRetryPolicy = default_retry_policy(),
+  tool_policy~ : ToolPolicy = ToolPolicy::default(),
 ) -> AgentRun {
   self.run_with_summarizer(
     ctx,
@@ -847,6 +884,7 @@ pub fn[H : AgentLoopHost] AgentLoop::run_with(
     agent_ctx,
     HeuristicSummarizer::new(),
     policy=policy,
+    tool_policy=tool_policy,
   )
 }
 
@@ -860,6 +898,7 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
   agent_ctx : AgentContext,
   summarizer : S,
   policy~ : LoopRetryPolicy = default_retry_policy(),
+  tool_policy~ : ToolPolicy = ToolPolicy::default(),
 ) -> AgentRun {
   let max_steps = self.effective_max_steps()
   let state = RunState::new()
@@ -979,6 +1018,7 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
                   state,
                   agent_ctx,
                   ctx.turn_id.value,
+                  tool_policy,
                 )
                 if cancelled {
                   return finish_run(

@@ -324,6 +324,11 @@ function createTurnRunner(repoRoot, opts = {}) {
     }
     const productWire = createProductSession(ffi, {
       botId: ctx.botId,
+      // K-2/C-3: the device this turn came from decides how much the model
+      // may do without asking. "limited" = a mobile client or a remote
+      // inbound turn — the person asking is not at the machine.
+      deviceTrust: String(ctx.deviceTrust || "trusted"),
+      subject: String(ctx.botId || ""),
       roomContext: ctx.roomContext || null,
       turnId: String(ctx.turnId || ""),
       cliApproved: ctx.cliApproved === true,

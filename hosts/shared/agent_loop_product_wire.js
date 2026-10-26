@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { canonicalAction } = require("./host_approval_gate");
+const { buildToolPolicy } = require("./tool_policy");
 
 /**
  * One Host FFI op for the kernel AgentLoop.
@@ -385,6 +386,9 @@ function createProductSession(ffi, llmOpts) {
     // ONLY by decideApproval — a field in the tool arguments cannot set it.
     mailAllowed: false,
     pendingMailAction: "",
+    // K-2/C-3: the device this turn came from, and who it belongs to.
+    deviceTrust: String((opts && opts.deviceTrust) || "trusted"),
+    subject: String((opts && opts.subject) || ""),
     delivered: "",
     // GP-165: first failing llm_chat reason for this turn ("" until one fails).
     llmError: "",
@@ -430,6 +434,14 @@ function createProductSession(ffi, llmOpts) {
       if (op === "request_approval") return decideApproval(state, req, opts);
       // K-1/K-3: the agent context crosses the process boundary here. The
       // kernel owns the semantics (encode/decode); the Host only stores bytes.
+      // K-2/C-3: the Host builds the policy; the kernel enforces it.
+      if (op === "load_policy") {
+        const policy = buildToolPolicy({
+          deviceTrust: state.deviceTrust,
+          subject: state.subject,
+        });
+        return { output: JSON.stringify(policy) };
+      }
       if (op === "load_context") {
         return { output: readAgentContext(state.ffi, req && req.slot) };
       }

@@ -66,6 +66,11 @@ function createProductOnTurn(repoRoot) {
       channel: useChannel,
       // ADR 0008: a remote/mobile turn is not a desktop Allow click.
       approved: false,
+      // K-2/C-3: a mobile or remote inbound turn comes from a LIMITED
+      // device — the person asking is not sitting at the machine. Read-only
+      // tools still work; anything that reaches outward or changes state has
+      // to be approved by whoever IS at the machine.
+      deviceTrust: "limited",
     });
   };
 }

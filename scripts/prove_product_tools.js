@@ -202,6 +202,16 @@ function classify(body) {
       "c-mailno",
     );
   }
+  if (last.includes("PT12-DENIED")) {
+    if (tail.includes("denied by policy")) return { kind: "text", text: "denied seen" };
+    return toolCall("web_fetch", { url: `http://127.0.0.1:${stubPort}/article` }, "c-denied");
+  }
+  if (last.includes("PT13-LIMITED")) {
+    if (tail.includes("approval denied") || tail.includes("body_prefix")) {
+      return { kind: "text", text: "limited handled" };
+    }
+    return toolCall("web_fetch", { url: `http://127.0.0.1:${stubPort}/article` }, "c-limited");
+  }
   if (last.includes("PT11-MAILAPPROVED")) {
     if (tail.includes("eml_path") || tail.includes("no approval grant")) {
       return { kind: "text", text: "mail handled" };
@@ -315,6 +325,29 @@ function effectKinds(turn) {
     }
   }
   return out;
+}
+
+/**
+ * The tool results of the LAST turn among `posts` (from `before`).
+ * Only the current turn counts: the payload also carries earlier turns, and
+ * an earlier turn's observation would make "did it run?" answer the wrong
+ * question.
+ */
+function turnObservations(posts, before) {
+  const slice = posts.slice(before);
+  if (!slice.length) return "";
+  const last = slice[slice.length - 1];
+  const msgs = Array.isArray(last && last.messages) ? last.messages : [];
+  let idx = -1;
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    const m = msgs[i];
+    if (m && String(m.role || "") === "user") {
+      idx = i;
+      break;
+    }
+  }
+  if (idx < 0) return "";
+  return JSON.stringify(msgs.slice(idx + 1));
 }
 
 function findEffect(turn, kind) {
@@ -627,6 +660,57 @@ async function main() {
     honest,
     "PT11 the send snapshot says plainly whether it was really sent",
     "",
+  );
+
+  // ---- PT12: a denied tool never runs, and the model is told why -----
+  process.env.BITBOT_TOOL_DENY = "web_fetch";
+  const dn = await runner.runTurn("PT12-DENIED", {
+    turnId: "pt12",
+    timeoutMs: 300000,
+  });
+  delete process.env.BITBOT_TOOL_DENY;
+  const dnObs = turnObservations(stub.posts, before);
+  check(
+    dnObs.includes("denied by policy"),
+    "PT12 a policy deny reached the model",
+    dnObs.slice(0, 200),
+  );
+  check(
+    !dnObs.includes("body_prefix"),
+    "PT12 the denied tool did NOT run",
+    dnObs.slice(0, 200),
+  );
+
+  // ---- PT13: a limited device needs approval for web_fetch ----------
+  delete process.env.BITBOT_LOOP_APPROVAL;
+  const lim = await runner.runTurn("PT13-LIMITED", {
+    turnId: "pt13",
+    deviceTrust: "limited",
+    timeoutMs: 300000,
+  });
+  const limObs = turnObservations(stub.posts, before);
+  check(
+    limObs.includes("approval denied"),
+    "PT13 a limited device had to ask before web_fetch",
+    limObs.slice(0, 200),
+  );
+  check(
+    !limObs.includes("body_prefix"),
+    "PT13 the limited device's web_fetch did not run unapproved",
+    limObs.slice(0, 200),
+  );
+
+  // ---- PT14: the same tool on a TRUSTED device runs without asking ---
+  const trust = await runner.runTurn("PT13-LIMITED", {
+    turnId: "pt14",
+    deviceTrust: "trusted",
+    timeoutMs: 300000,
+  });
+  const trustObs = turnObservations(stub.posts, before);
+  check(
+    trustObs.includes("body_prefix"),
+    "PT14 the same tool ran on a trusted device without asking",
+    trustObs.slice(0, 200),
   );
 
   // ---- PT6: the same path on the non-streaming transport -------------
