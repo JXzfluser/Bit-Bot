@@ -8,11 +8,15 @@ import {
 // Values
 pub fn archive_or_hide_is_not_delete(DeleteAgentPath) -> Bool
 
+pub fn assert_product_recommend_template(String) -> Result[Unit, String]
+
 pub fn collect_inbound_attachments(MockFS, Array[(String, String, String)]) -> Result[InboundAttachmentBag, String]
 
 pub fn deliverable_attachment(MockFS, String, String, String) -> Result[AttachmentRef, String]
 
 pub fn ensure_markdown_links(String) -> Result[Unit, String]
+
+pub fn format_product_recommend_list(Array[ProductRecommendItem]) -> Result[String, String]
 
 pub fn guide_missing_permission_to_settings(MissingPermissionKind, entry? : SettingsEntry) -> MissingPermissionGuide
 
@@ -30,6 +34,8 @@ pub fn is_thank_you_message(String) -> Bool
 
 pub fn issue_cursor_agent_card(String) -> Result[CursorAgentCard, String]
 
+pub fn linkify_bare_http_urls(String) -> String
+
 pub fn parse_markdown_math_and_mermaid(String) -> Result[MarkdownRichParse, String]
 
 pub fn parse_settings_anchor(String) -> Result[SettingsAnchor, String]
@@ -41,6 +47,8 @@ pub fn paste_token_into_chat(String) -> Result[String, String]
 pub fn plan_thank_you_react_end_turn(ReactToMessageHost, turn_id~ : String, user_message_id~ : String, user_text~ : String) -> Result[ReactOutboundTurn, String]
 
 pub fn prefer_update_over_reset(SettingsAnchor) -> Result[SettingsAnchor, String]
+
+pub fn product_recommend_line_count(String) -> Int32
 
 pub fn redact_secrets(String) -> String
 
@@ -453,6 +461,17 @@ pub fn PerAssistantNotifyStore::is_assistant_scoped(Self, String) -> Bool
 pub fn PerAssistantNotifyStore::new() -> Self
 pub fn PerAssistantNotifyStore::set_toggle(Self, String, AssistantNotifyToggle, Bool) -> AssistantNotifySettings
 
+pub(all) struct ProductRecommendItem {
+  name : String
+  link : String
+  price : String
+} derive(Eq, @debug.Debug)
+pub fn ProductRecommendItem::equal(Self, Self) -> Bool
+pub fn ProductRecommendItem::format_line(Self) -> String
+pub fn ProductRecommendItem::not_equal(Self, Self) -> Bool
+pub fn ProductRecommendItem::to_repr(Self) -> @debug.Repr
+pub fn ProductRecommendItem::validate(Self) -> Result[Unit, String]
+
 pub(all) struct ReactOutboundTurn {
   pill : MessageReactionPill
   body_omitted : Bool
@@ -491,7 +510,7 @@ pub fn SecretRequestCard::not_equal(Self, Self) -> Bool
 pub fn SecretRequestCard::to_repr(Self) -> @debug.Repr
 
 pub(all) struct SecretVault {
-  mut seq : Int
+  mut seq : Int32
   entries : Array[SecretVaultEntry]
   transcript : Array[String]
 }
@@ -512,7 +531,7 @@ pub(all) struct SendEnvelope {
 } derive(Eq, @debug.Debug)
 pub fn SendEnvelope::equal(Self, Self) -> Bool
 pub fn SendEnvelope::not_equal(Self, Self) -> Bool
-pub fn SendEnvelope::part_count(Self) -> Int
+pub fn SendEnvelope::part_count(Self) -> Int32
 pub fn SendEnvelope::to_repr(Self) -> @debug.Repr
 
 pub(all) struct SendToUserCursorAgent {

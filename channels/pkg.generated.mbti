@@ -19,6 +19,8 @@ pub fn deliver_for_channel(@ui_protocol.SendEnvelope, ChannelAddress) -> @ui_pro
 
 pub fn destination_kind_for_hint(String?) -> ChannelKind
 
+pub fn execute_live_meeting_chat_outbound(LiveMeetingChatContext) -> Result[LiveMeetingChatOutboundResult, String]
+
 pub fn handle_inbound_reaction(InboundReaction) -> ReactionWakeDisposition
 
 pub fn has_bare_widget(Array[@ui_protocol.MessageKind]) -> Bool
@@ -38,6 +40,8 @@ pub fn parse_teams_scope(String) -> Result[TeamsScope, String]
 pub fn plan_channel_reply(inbound_address~ : String?, outbound_channel~ : String?, body~ : String) -> Result[ChannelDelivery, String]
 
 pub fn plan_channel_speak_as_user(ChannelSpeakAsUser, body~ : String) -> ChannelIdentitySpeech
+
+pub fn plan_live_meeting_chat_outbound(LiveMeetingChatContext) -> Result[OutboundSendMode, String]
 
 pub fn plan_reaction_outbound(InboundReaction) -> ReactionOutboundPlan
 
@@ -101,6 +105,9 @@ pub(all) enum ChannelKind {
   Internal
   Voice
   Teams
+  DingTalk
+  Feishu
+  WeCom
 } derive(Eq, @debug.Debug)
 pub fn ChannelKind::equal(Self, Self) -> Bool
 pub fn ChannelKind::not_equal(Self, Self) -> Bool
@@ -138,6 +145,34 @@ pub fn InboundReaction::new(emoji~ : String, target_message_id~ : String, useful
 pub fn InboundReaction::not_equal(Self, Self) -> Bool
 pub fn InboundReaction::to_repr(Self) -> @debug.Repr
 
+pub(all) struct LiveMeetingChatContext {
+  is_live_meeting_chat : Bool
+  skill_allows_direct_send : Bool
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn LiveMeetingChatContext::equal(Self, Self) -> Bool
+pub fn LiveMeetingChatContext::not_equal(Self, Self) -> Bool
+pub fn LiveMeetingChatContext::to_repr(Self) -> @debug.Repr
+
+pub(all) enum LiveMeetingChatOutboundResult {
+  SentDirect(body~ : String)
+  PendingDraftCard(body~ : String)
+} derive(Eq, @debug.Debug)
+pub fn LiveMeetingChatOutboundResult::equal(Self, Self) -> Bool
+pub fn LiveMeetingChatOutboundResult::not_equal(Self, Self) -> Bool
+pub fn LiveMeetingChatOutboundResult::to_repr(Self) -> @debug.Repr
+pub fn LiveMeetingChatOutboundResult::used_draft_card(Self) -> Bool
+
+pub(all) enum OutboundSendMode {
+  DraftCard
+  DirectSend
+} derive(Eq, @debug.Debug)
+pub fn OutboundSendMode::equal(Self, Self) -> Bool
+pub fn OutboundSendMode::is_direct(Self) -> Bool
+pub fn OutboundSendMode::is_draft_card(Self) -> Bool
+pub fn OutboundSendMode::not_equal(Self, Self) -> Bool
+pub fn OutboundSendMode::to_repr(Self) -> @debug.Repr
+
 pub(all) struct PersonalSlackBot {
   owner_user_id : String
 }
@@ -160,7 +195,7 @@ pub fn PersonalSlackSendResult::to_repr(Self) -> @debug.Repr
 pub(all) struct ReactionOutboundPlan {
   disposition : ReactionWakeDisposition
   reply_forced : Bool
-  outbound_count : Int
+  outbound_count : Int32
 } derive(Eq, @debug.Debug)
 pub fn ReactionOutboundPlan::equal(Self, Self) -> Bool
 pub fn ReactionOutboundPlan::not_equal(Self, Self) -> Bool

@@ -30,7 +30,7 @@ pub fn PurchaseOutcome::to_repr(Self) -> @debug.Repr
 
 pub(all) struct PurchaseRequest {
   item : String
-  amount_cents : Int
+  amount_cents : Int32
   payment_credential : String
 } derive(Eq, @debug.Debug)
 pub fn PurchaseRequest::equal(Self, Self) -> Bool

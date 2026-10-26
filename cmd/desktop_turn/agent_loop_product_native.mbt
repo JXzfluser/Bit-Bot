@@ -29,6 +29,9 @@ fn agent_stop_name(stop : @runtime.LoopStop) -> String {
     @runtime.Final => "Final"
     @runtime.MaxSteps => "MaxSteps"
     @runtime.Cancelled => "Cancelled"
+    @runtime.TokenBudget => "TokenBudget"
+    @runtime.Failed => "Failed"
+    @runtime.ProviderFailed => "ProviderFailed"
   }
 }
 
@@ -60,21 +63,85 @@ fn want_product_agent_loop(args : Array[String], text : String) -> Bool {
 ///|
 fn product_tool_registry() -> @runtime.ToolRegistry {
   let reg = @runtime.ToolRegistry::empty()
+  // The schema below is the SINGLE source of truth: it is what the model
+  // sees (serialized into the llm_chat FFI request) AND what the kernel
+  // validates arguments against. The Host used to keep a second, hard-coded
+  // copy — adding a tool meant editing two places, and forgetting one made
+  // the model unable to call a tool the kernel could happily run.
   reg.register({
     id: "Read",
     description: "Read a file",
     builtin: Some(@tools.Read),
-    input_schema_json: "{\"required\":[\"path\"]}",
+    input_schema_json: "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}",
     requires_approval: false,
   })
   reg.register({
     id: "Shell",
     description: "Run a shell command",
     builtin: Some(@tools.Shell),
-    input_schema_json: "{\"required\":[\"command\"]}",
+    input_schema_json: "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}},\"required\":[\"command\"]}",
+    requires_approval: false,
+  })
+  // CM-0112: the model drives its own plan. The kernel keeps the checklist
+  // and shows it back on the next model call; the Host persists it.
+  reg.register({
+    id: "TodoWrite",
+    description: "Write the task checklist",
+    builtin: None,
+    input_schema_json: "{\"type\":\"object\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"}}}}},\"required\":[\"todos\"]}",
     requires_approval: false,
   })
   reg
+}
+
+///|
+/// The tool catalog as the model sees it, serialized from the SAME registry
+/// the loop dispatches against. Sent to the Host with every llm_chat request
+/// so the provider payload cannot drift from what the kernel can execute.
+fn product_tool_schema_json() -> String {
+  let reg = product_tool_registry()
+  let buf = StringBuilder()
+  buf.write_string("[")
+  let mut i = 0
+  for sp in reg.specs {
+    if i > 0 {
+      buf.write_string(",")
+    }
+    buf.write_string("{\"type\":\"function\",\"function\":{\"name\":\"")
+    buf.write_string(escape_json_string(sp.id))
+    buf.write_string("\",\"description\":\"")
+    buf.write_string(escape_json_string(sp.description))
+    buf.write_string("\",\"parameters\":")
+    // input_schema_json is already a JSON document; embed it as-is.
+    buf.write_string(sp.input_schema_json)
+    buf.write_string("}}")
+    i = i + 1
+  }
+  buf.write_string("]")
+  buf.to_string()
+}
+
+///|
+/// Serialize the plan for the Host todo_write effect (CM-0112).
+fn todo_effect_command(todos : Array[@runtime.TodoItem]) -> String {
+  let buf = StringBuilder()
+  buf.write_string("[")
+  let mut i = 0
+  for t in todos {
+    if i > 0 {
+      buf.write_string(",")
+    }
+    buf.write_string("{\"id\":\"")
+    buf.write_string(escape_json_string(t.id))
+    buf.write_string("\",\"title\":\"")
+    buf.write_string(escape_json_string(t.content))
+    buf.write_string("\",\"status\":\"")
+    buf.write_string(escape_json_string(t.status))
+    buf.write_string("\"}")
+    i = i + 1
+  }
+  buf.write_string("]")
+  buf.to_string()
 }
 
 ///|
@@ -85,7 +152,7 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn llm_chat(
   self.touch()
   bitbot_ffi_trace("op=llm_chat")
   parse_product_llm_reply(
-    bitbot_ffi_exchange(encode_product_messages(messages)),
+    bitbot_ffi_exchange(encode_product_messages(messages, product_tool_schema_json())),
   )
 }
 
@@ -159,8 +226,27 @@ fn run_agent_loop_chat(
   let ok = run.stop is @runtime.Final || run.stop is @runtime.MaxSteps
   let err = if run.stop is @runtime.Cancelled {
     Some("cancelled")
+  } else if run.stop is @runtime.TokenBudget {
+    Some("token budget exhausted")
+  } else if run.stop is @runtime.Failed {
+    Some("tool loop failed")
+  } else if run.stop is @runtime.ProviderFailed {
+    Some("provider failed")
   } else {
     None
+  }
+  // CM-0112: a plan the model wrote becomes one durable Host todo_write
+  // effect. The kernel never claims an item is done on its own.
+  let effects : Array[DesktopEffect] = if run.todos.length() > 0 {
+    [
+      {
+        kind: "todo_write",
+        command: todo_effect_command(run.todos),
+        needs_host_ffi: true,
+      },
+    ]
+  } else {
+    []
   }
   // GP-93：产品可见的链接统一走同一套 linkify，AgentLoop 的交付也不例外。
   let delivered = @ui_protocol.linkify_bare_http_urls(run.delivered)
@@ -176,7 +262,7 @@ fn run_agent_loop_chat(
     modules: @bitbot.registered_modules(),
     machines: [],
     memory: [],
-    effects: [],
+    effects,
     needs_host_ffi: false,
     host_continued: false,
     channel_delivery: "",

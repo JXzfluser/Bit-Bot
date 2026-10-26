@@ -145,6 +145,10 @@ function createProductSession(ffi, llmOpts) {
           ...chatOpts,
           messages: Array.isArray(req.messages) ? req.messages : [],
           agentLoopTools: true,
+          // The kernel owns the tool catalog: it sends the schema the model
+          // must see, so the provider payload can never drift from what the
+          // kernel can actually dispatch.
+          tools: Array.isArray(req.tools) ? req.tools : undefined,
         });
         const calls = Array.isArray(res.tool_calls) ? res.tool_calls : [];
         if (!res.ok) {

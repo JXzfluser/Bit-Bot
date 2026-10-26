@@ -1,0 +1,61 @@
+name: Kernel Binary
+
+# L6 gate: a packaged Bit Bot ships the COMPILED MoonBit kernel instead of
+# requiring a toolchain + source checkout on the target machine. That is only
+# safe if the binary is an exact drop-in for
+# `moon run cmd/desktop_turn --target native`.
+#
+# This workflow proves that equivalence on every push/PR. It is a build-level
+# gate, not an I promotion: it says nothing about signing, notarization, or
+# store submission, and it does not close AR-16 on its own.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  kernel-binary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: moon check
+        run: |
+          moon version --all
+          moon check
+
+      # Debug profile: the equivalence proof does not need an optimized
+      # kernel, and the release build is much slower on CI.
+      - name: Kernel binary equivalence gate
+        env:
+          BITBOT_KERNEL_BUILD: debug
+        run: bash scripts/prove_kernel_binary.sh
+
+      - name: Package smoke (kernel staged into app resources)
+        env:
+          BITBOT_KERNEL_BUILD: debug
+        run: |
+          # pack-desktop.sh also builds + smoke-runs the kernel and stages it
+          # into hosts/desktop/resources/kernel, which electron-builder ships
+          # via extraResources. The electron-builder step itself needs the
+          # Electron download, so we only assert the staging half here.
+          bash -c '
+            set -euo pipefail
+            export PATH="$HOME/.moon/bin:$PATH"
+            moon build --target native
+            mkdir -p hosts/desktop/resources/kernel/bin
+            cp _build/native/debug/build/cmd/desktop_turn/desktop_turn \
+               hosts/desktop/resources/kernel/bin/desktop_turn
+            test -x hosts/desktop/resources/kernel/bin/desktop_turn
+            echo "kernel staged into app resources"
+          '

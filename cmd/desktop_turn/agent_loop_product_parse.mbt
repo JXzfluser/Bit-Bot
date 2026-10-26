@@ -170,7 +170,10 @@ pub fn parse_product_verdict(raw : String) -> @runtime.ApprovalVerdict {
 }
 
 ///|
-fn encode_product_messages(messages : Array[@runtime.LoopMessage]) -> String {
+fn encode_product_messages(
+  messages : Array[@runtime.LoopMessage],
+  tools_json : String,
+) -> String {
   let buf = StringBuilder()
   buf.write_string("{\"op\":\"llm_chat\",\"messages\":[")
   let mut i = 0
@@ -185,7 +188,11 @@ fn encode_product_messages(messages : Array[@runtime.LoopMessage]) -> String {
     buf.write_string("\"}")
     i = i + 1
   }
-  buf.write_string("]}")
+  // The tool catalog travels with the request: the Host must not keep its
+  // own copy of the schema (see product_tool_registry).
+  buf.write_string("],\"tools\":")
+  buf.write_string(tools_json)
+  buf.write_string("}")
   buf.to_string()
 }
 

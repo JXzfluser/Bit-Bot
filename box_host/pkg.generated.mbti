@@ -2,11 +2,14 @@
 package "bitbot/bitbot/box_host"
 
 import {
+  "bitbot/bitbot/ui_protocol",
   "moonbitlang/core/debug",
 }
 
 // Values
 pub fn assert_box_clock_matches_user_tz(BoxDateOutput, String) -> Result[Unit, String]
+
+pub fn box_chrome_launch_guard(String) -> Result[String, String]
 
 pub fn box_chrome_launch_path() -> String
 
@@ -26,6 +29,30 @@ pub fn diagnose_box_env(EnvProbe) -> EnvDiagnostic
 
 pub fn documented_box_chrome_path() -> String
 
+pub fn h0_wave_i_unclaimed(Array[H0ProbeRecord]) -> Bool
+
+pub fn h1_live_frame_artifact_path() -> String
+
+pub fn h1_wave_i_unclaimed(Array[H1ProbeRecord]) -> Bool
+
+pub fn h2_b_rejection_markers() -> Array[String]
+
+pub fn h2_cprime_checklist_dims() -> Array[String]
+
+pub fn h2_surface_artifact_path(H2Intent) -> String
+
+pub fn h2_wave_i_unclaimed(Array[H2UiEvidence]) -> Bool
+
+pub fn h3_platform_subset_desktop_no_device_local_tools() -> String
+
+pub fn h3_wave_i_unclaimed(Array[H3FfiEvidence]) -> Bool
+
+pub fn h4_wave_i_unclaimed(Array[H4IoEvidence]) -> Bool
+
+pub fn h5_wave_i_unclaimed(Array[H5MediaEvidence]) -> Bool
+
+pub fn host_artifacts_dir() -> String
+
 pub fn install_box_package_via_shell(HostAbi, PackageManager, Array[String]) -> Result[ShellResult, String]
 
 pub fn package_install_shell_command(PackageManager, Array[String]) -> Result[String, String]
@@ -39,6 +66,18 @@ pub fn reject_non_shell_package_install(String) -> Result[Unit, String]
 // Errors
 
 // Types and methods
+pub(all) struct AuditSpan {
+  tool_name : String
+  duration_ms : Int32
+  artifact_path : String?
+  ok : Bool
+  detail : String
+} derive(Eq, @debug.Debug)
+pub fn AuditSpan::equal(Self, Self) -> Bool
+pub fn AuditSpan::make(String, duration_ms? : Int32, artifact_path? : String?, ok? : Bool, detail? : String) -> Self
+pub fn AuditSpan::not_equal(Self, Self) -> Bool
+pub fn AuditSpan::to_repr(Self) -> @debug.Repr
+
 pub(all) struct AwaitResult {
   job_id : String
   matched : Bool
@@ -218,50 +257,401 @@ pub fn EnvProbe::local_docker() -> Self
 pub fn EnvProbe::not_equal(Self, Self) -> Bool
 pub fn EnvProbe::to_repr(Self) -> @debug.Repr
 
+pub(all) enum FrameOrigin {
+  Placeholder
+  LiveDisplay
+} derive(Eq, @debug.Debug)
+pub fn FrameOrigin::equal(Self, Self) -> Bool
+pub fn FrameOrigin::not_equal(Self, Self) -> Bool
+pub fn FrameOrigin::to_repr(Self) -> @debug.Repr
+
+pub(all) enum H0Intent {
+  Cm0607BoxDoctor
+  Cm0608EnvDetect
+  Cm2175BoxClock
+} derive(Eq, @debug.Debug)
+pub fn H0Intent::artifact_subdir(Self) -> String
+pub fn H0Intent::cm_id(Self) -> String
+pub fn H0Intent::equal(Self, Self) -> Bool
+pub fn H0Intent::not_equal(Self, Self) -> Bool
+pub fn H0Intent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct H0ProbeRecord {
+  intent : H0Intent
+  backend_kind : String
+  i_claimed : Bool
+  artifact_dir : String
+  evidence_cmd_hint : String
+  note : String
+} derive(Eq, @debug.Debug)
+pub fn H0ProbeRecord::asserts_i_not_claimed(Self) -> Bool
+pub fn H0ProbeRecord::equal(Self, Self) -> Bool
+pub fn H0ProbeRecord::not_equal(Self, Self) -> Bool
+pub fn H0ProbeRecord::to_repr(Self) -> @debug.Repr
+
+pub(all) enum H1Intent {
+  Cm0605Screenshot
+  Cm0802BoxChrome
+  Cm2160Navigate
+  Cm0806SessionJar
+} derive(Eq, @debug.Debug)
+pub fn H1Intent::artifact_subdir(Self) -> String
+pub fn H1Intent::cm_id(Self) -> String
+pub fn H1Intent::equal(Self, Self) -> Bool
+pub fn H1Intent::not_equal(Self, Self) -> Bool
+pub fn H1Intent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct H1ProbeRecord {
+  intent : H1Intent
+  backend_kind : String
+  i_claimed : Bool
+  artifact_dir : String
+  evidence_cmd_hint : String
+  note : String
+} derive(Eq, @debug.Debug)
+pub fn H1ProbeRecord::asserts_i_not_claimed(Self) -> Bool
+pub fn H1ProbeRecord::equal(Self, Self) -> Bool
+pub fn H1ProbeRecord::not_equal(Self, Self) -> Bool
+pub fn H1ProbeRecord::to_repr(Self) -> @debug.Repr
+
+pub(all) enum H2Intent {
+  Cm1901SettingsEntry
+  Cm1902SettingsAnchor
+  Cm1903UpdateComputer
+  Cm1904ResetComputer
+  Cm1905LocalExecution
+  Cm1906UpdatesVsUpdateComputer
+  Cm1907DeleteAgent
+  Cm0204HiddenAgent
+  Cm0205InfoPanel
+  Cm0206NotifyToggles
+  Cm1401CreateAgentSidebar
+  Cm1405MembersPanel
+  Cm1507AutoReviewDeeplink
+  Cm2178PermissionGuideSettings
+} derive(Eq, @debug.Debug)
+pub fn H2Intent::artifact_subdir(Self) -> String
+pub fn H2Intent::cm_id(Self) -> String
+pub fn H2Intent::equal(Self, Self) -> Bool
+pub fn H2Intent::not_equal(Self, Self) -> Bool
+pub fn H2Intent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct H2UiEvidence {
+  cm_id : String
+  intent : H2Intent
+  entry : @ui_protocol.SettingsEntry?
+  anchor : @ui_protocol.SettingsAnchor?
+  delete_phase : @ui_protocol.DeleteAgentPhase?
+  update_computer_phase : String?
+  local_execution_enabled : Bool?
+  frame_origin : FrameOrigin
+  display_id : String
+  bytes_sha256 : String
+  artifact_dir : String
+  evidence_cmd_hint : String
+  audit_span_id : String
+  backend_kind : String
+  i_claimed : Bool
+  note : String
+} derive(Eq, @debug.Debug)
+pub fn H2UiEvidence::asserts_i_not_claimed(Self) -> Bool
+pub fn H2UiEvidence::equal(Self, Self) -> Bool
+pub fn H2UiEvidence::not_equal(Self, Self) -> Bool
+pub fn H2UiEvidence::to_repr(Self) -> @debug.Repr
+
+pub(all) struct H3FfiEvidence {
+  cm_id : String
+  intent : H3Intent
+  backend_kind : String
+  package_manager : String?
+  shell_pid : Int32?
+  shell_exit : Int32?
+  agent_a_id : String?
+  agent_b_id : String?
+  shared_path : String?
+  desktop_a_display : String?
+  desktop_b_display : String?
+  platform_subset : String?
+  permission_card_shown : Bool?
+  panel_copy_url_ok : Bool?
+  panel_copy_key_ok : Bool?
+  tool_read_key_rejected : Bool?
+  wake_has_webhook_event : Bool?
+  artifact_dir : String
+  evidence_cmd_hint : String
+  audit_span_id : String
+  i_claimed : Bool
+  note : String
+} derive(Eq, @debug.Debug)
+pub fn H3FfiEvidence::asserts_i_not_claimed(Self) -> Bool
+pub fn H3FfiEvidence::equal(Self, Self) -> Bool
+pub fn H3FfiEvidence::not_equal(Self, Self) -> Bool
+pub fn H3FfiEvidence::to_repr(Self) -> @debug.Repr
+
+pub(all) enum H3Intent {
+  Cm2158PackageInstall
+  Cm2174SharedBoxFs
+  Cm0705DeviceLocalTools
+  Cm0411WebhookKeyOpaque
+} derive(Eq, @debug.Debug)
+pub fn H3Intent::artifact_subdir(Self) -> String
+pub fn H3Intent::cm_id(Self) -> String
+pub fn H3Intent::equal(Self, Self) -> Bool
+pub fn H3Intent::not_equal(Self, Self) -> Bool
+pub fn H3Intent::to_repr(Self) -> @debug.Repr
+
+pub(all) enum H4Intent {
+  Cm2163McpFileExpand
+  Cm2164McpWriteToFile
+  Cm1105SlackConnect
+  Cm2109FinanceOauth
+  Cm2120OutlookOauth
+  Cm2146AppVsUserBrowser
+  Cm1703FetchPublicFallback
+} derive(Eq, @debug.Debug)
+pub fn H4Intent::artifact_subdir(Self) -> String
+pub fn H4Intent::cm_id(Self) -> String
+pub fn H4Intent::equal(Self, Self) -> Bool
+pub fn H4Intent::is_batch1_host_fs(Self) -> Bool
+pub fn H4Intent::not_equal(Self, Self) -> Bool
+pub fn H4Intent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct H4IoEvidence {
+  cm_id : String
+  intent : H4Intent
+  backend_kind : String
+  file_ref : String?
+  injected_bytes : Int32?
+  result_path : String?
+  path_sha256 : String?
+  chat_has_payload_marker : Bool?
+  oauth_provider : String?
+  namespace_before : String?
+  namespace_after : String?
+  oauth_callback_observed : Bool?
+  identity_mode : String?
+  browser_session_switched : Bool?
+  user_profile_dir : String?
+  primary_status : Int32?
+  fallback_kind : String?
+  credential_bypass : Bool?
+  artifact_dir : String
+  evidence_cmd_hint : String
+  audit_span_id : String
+  i_claimed : Bool
+  note : String
+} derive(Eq, @debug.Debug)
+pub fn H4IoEvidence::asserts_i_not_claimed(Self) -> Bool
+pub fn H4IoEvidence::equal(Self, Self) -> Bool
+pub fn H4IoEvidence::not_equal(Self, Self) -> Bool
+pub fn H4IoEvidence::to_repr(Self) -> @debug.Repr
+
+pub(all) enum H5Intent {
+  Cm1601GenerateImage
+  Cm1602GenerateVideo
+  Cm1603WatchVideo
+  Cm2157StructuredChart
+  Cm1807Pptx
+  Cm2131CursorAgentCard
+  Cm2101ReactToMessage
+  Cm2128OutboundReactEndTurn
+  Cm2103MathMermaid
+} derive(Eq, @debug.Debug)
+pub fn H5Intent::artifact_subdir(Self) -> String
+pub fn H5Intent::cm_id(Self) -> String
+pub fn H5Intent::equal(Self, Self) -> Bool
+pub fn H5Intent::is_media(Self) -> Bool
+pub fn H5Intent::is_ui(Self) -> Bool
+pub fn H5Intent::not_equal(Self, Self) -> Bool
+pub fn H5Intent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct H5MediaEvidence {
+  cm_id : String
+  intent : H5Intent
+  backend_kind : String
+  image_path : String?
+  png_magic_ok : Bool?
+  video_path : String?
+  video_complete_notified : Bool?
+  frame_path : String?
+  pptx_path : String?
+  pptx_pk_magic_ok : Bool?
+  cursor_agent_url : String?
+  cursor_agent_opened : Bool?
+  react_emoji : String?
+  pill_visible : Bool?
+  end_turn_left_pill : Bool?
+  math_rendered : Bool?
+  mermaid_rendered : Bool?
+  artifact_dir : String
+  evidence_cmd_hint : String
+  audit_span_id : String
+  i_claimed : Bool
+  note : String
+} derive(Eq, @debug.Debug)
+pub fn H5MediaEvidence::asserts_i_not_claimed(Self) -> Bool
+pub fn H5MediaEvidence::equal(Self, Self) -> Bool
+pub fn H5MediaEvidence::not_equal(Self, Self) -> Bool
+pub fn H5MediaEvidence::to_repr(Self) -> @debug.Repr
+
 pub(all) struct HostAbi {
   fs : Map[String, String]
   jobs : Map[String, ShellJob]
   desktops : Map[String, DesktopSession]
   box_fs : BoxFs
-  mut next_job : Int
+  mut next_job : Int32
   effects : Array[String]
   session_jar : Map[String, String]
   mut software_installed : Bool
+  backend : HostBackend
+  audit_spans : Array[AuditSpan]
+  mut live_frame_inject : String?
+  ui_events : Array[HostUiEvent]
 }
-pub fn HostAbi::await_shell(Self, String, pattern? : String?, block_until_ms? : Int) -> Result[AwaitResult, String]
+pub fn HostAbi::absorb_ui_events(Self, HostUiShell) -> Unit
+pub fn HostAbi::audit_span_count(Self) -> Int32
+pub fn HostAbi::await_shell(Self, String, pattern? : String?, block_until_ms? : Int32) -> Result[AwaitResult, String]
+pub fn HostAbi::backend_kind(Self) -> String
 pub fn HostAbi::check_cross_agent_shared_box_charter(Self) -> SharedBoxCharterCheck
 pub fn HostAbi::date_aligned_with_user_tz(Self, user_iana? : String, mock_stamp? : String) -> BoxDateOutput
 pub fn HostAbi::desktop_for(Self, String) -> DesktopSession
 pub fn HostAbi::diagnose_box_chrome_lockfile(Self) -> Result[String, String]
 pub fn HostAbi::diagnose_runtime(Self, EnvProbe) -> EnvDiagnostic
 pub fn HostAbi::fs_shared(Self) -> BoxFs
+pub fn HostAbi::guard_browser_launch(Self, String) -> Result[String, String]
 pub fn HostAbi::has_session_login(Self, domain~ : String) -> Bool
+pub fn HostAbi::host_ui_shell(Self) -> HostUiShell
+pub fn HostAbi::inject_live_frame(Self, String) -> Result[Unit, String]
+pub fn HostAbi::is_live(Self) -> Bool
 pub fn HostAbi::job_cwd(Self, String) -> String?
 pub fn HostAbi::launch_browser(Self, BrowserLauncher) -> Result[BrowserLaunchResult, String]
+pub fn HostAbi::live(LiveHostConfig) -> Self
 pub fn HostAbi::mark_software_installed(Self) -> Unit
 pub fn HostAbi::mock() -> Self
-pub fn HostAbi::read(Self, String, offset? : Int?, limit? : Int?) -> Result[ReadResult, String]
+pub fn HostAbi::read(Self, String, offset? : Int32?, limit? : Int32?) -> Result[ReadResult, String]
 pub fn HostAbi::read_box_doctor_log(Self) -> Result[String, String]
 pub fn HostAbi::read_image(Self, String) -> Result[ImageContent, String]
+pub fn HostAbi::record_audit(Self, AuditSpan) -> Unit
 pub fn HostAbi::run_box_doctor(Self, checks~ : Array[BoxDoctorCheck]) -> BoxDoctorReport
+pub fn HostAbi::run_h0_probe(Self, H0Intent) -> H0ProbeRecord
+pub fn HostAbi::run_h0_wave(Self) -> Array[H0ProbeRecord]
+pub fn HostAbi::run_h1_probe(Self, H1Intent) -> H1ProbeRecord
+pub fn HostAbi::run_h1_wave(Self) -> Array[H1ProbeRecord]
+pub fn HostAbi::run_h2_probe(Self, H2Intent) -> H2UiEvidence
+pub fn HostAbi::run_h2_wave(Self) -> Array[H2UiEvidence]
+pub fn HostAbi::run_h2_wave_batch2(Self) -> Array[H2UiEvidence]
+pub fn HostAbi::run_h2_wave_batch3(Self) -> Array[H2UiEvidence]
+pub fn HostAbi::run_h3_probe(Self, H3Intent) -> H3FfiEvidence
+pub fn HostAbi::run_h3_wave(Self) -> Array[H3FfiEvidence]
+pub fn HostAbi::run_h4_batch1(Self) -> Array[H4IoEvidence]
+pub fn HostAbi::run_h4_probe(Self, H4Intent) -> H4IoEvidence
+pub fn HostAbi::run_h4_wave(Self) -> Array[H4IoEvidence]
+pub fn HostAbi::run_h5_media(Self) -> Array[H5MediaEvidence]
+pub fn HostAbi::run_h5_probe(Self, H5Intent) -> H5MediaEvidence
+pub fn HostAbi::run_h5_ui(Self) -> Array[H5MediaEvidence]
+pub fn HostAbi::run_h5_wave(Self) -> Array[H5MediaEvidence]
 pub fn HostAbi::screenshot(Self, String) -> ScreenshotResult
+pub fn HostAbi::screenshot_live(Self, String) -> Result[ScreenshotResult, String]
 pub fn HostAbi::seed_session_login(Self, domain~ : String, cookie~ : String) -> Unit
 pub fn HostAbi::session_jar_intact(Self, domain~ : String, expected_cookie~ : String) -> Bool
 pub fn HostAbi::shell(Self, ShellRequest) -> ShellResult
+pub fn HostAbi::ui_event_count(Self) -> Int32
+pub fn HostAbi::ui_open_settings(Self, HostUiShell, @ui_protocol.OpenSettingsIntent) -> Result[Unit, String]
 pub fn HostAbi::update_computer(Self, flow~ : UpdateComputerFlow?) -> Result[UpdateComputerResult, String]
+pub fn HostAbi::with_backend(HostBackend) -> Self
 pub fn HostAbi::write(Self, String, String) -> Unit
+
+pub(all) enum HostBackend {
+  Mock
+  Live(LiveHostConfig)
+} derive(Eq, @debug.Debug)
+pub fn HostBackend::equal(Self, Self) -> Bool
+pub fn HostBackend::is_live(Self) -> Bool
+pub fn HostBackend::label(Self) -> String
+pub fn HostBackend::not_equal(Self, Self) -> Bool
+pub fn HostBackend::to_repr(Self) -> @debug.Repr
+
+pub(all) enum HostUiEvent {
+  SettingsOpened(entry~ : @ui_protocol.SettingsEntry, anchor~ : @ui_protocol.SettingsAnchor?)
+  SettingsAnchorVisible(anchor~ : @ui_protocol.SettingsAnchor)
+  DeleteAgentPhaseChanged(agent_id~ : String, phase~ : @ui_protocol.DeleteAgentPhase)
+  UpdateComputerPhaseChanged(phase~ : String)
+  LocalExecutionGateChanged(enabled~ : Bool)
+  SidebarListChanged(visible_ids~ : Array[String])
+  SidebarHiddenAgentAddressable(agent_id~ : String)
+  InfoPanelOpened(agent_id~ : String, sections~ : Array[String])
+  AgentNotifyToggleChanged(agent_id~ : String, toggle~ : String, value~ : Bool)
+  AgentCreated(agent_id~ : String)
+  MembersPanelVisible(group_id~ : String, member_ids~ : Array[String])
+  PermissionGuideShown(kind~ : String, anchor~ : @ui_protocol.SettingsAnchor, pretends_connected~ : Bool)
+} derive(Eq, @debug.Debug)
+pub fn HostUiEvent::equal(Self, Self) -> Bool
+pub fn HostUiEvent::label(Self) -> String
+pub fn HostUiEvent::not_equal(Self, Self) -> Bool
+pub fn HostUiEvent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct HostUiShell {
+  backend_kind : String
+  events : Array[HostUiEvent]
+  mut pending_delete : @ui_protocol.DeleteAgentIntent?
+  mut update_computer_phase : String
+  mut local_execution_enabled : Bool
+  agents : Array[String]
+  hidden_agents : Array[String]
+  notify : Map[String, Bool]
+  effects : Array[String]
+}
+pub fn HostUiShell::address_agent(Self, String) -> Result[Bool, String]
+pub fn HostUiShell::agent_notify(Self, String, @ui_protocol.AssistantNotifyToggle) -> Bool
+pub fn HostUiShell::cancel_delete_agent(Self, @ui_protocol.DeleteAgentIntent) -> Result[@ui_protocol.DeleteAgentIntent, String]
+pub fn HostUiShell::cancel_update_computer(Self) -> Result[String, String]
+pub fn HostUiShell::confirm_delete_agent(Self, @ui_protocol.DeleteAgentIntent) -> Result[@ui_protocol.DeleteAgentIntent, String]
+pub fn HostUiShell::confirm_update_computer_step(Self) -> Result[String, String]
+pub fn HostUiShell::create_agent(Self, String) -> Result[Unit, String]
+pub fn HostUiShell::event_count(Self) -> Int32
+pub fn HostUiShell::for_backend(HostBackend) -> Self
+pub fn HostUiShell::is_live(Self) -> Bool
+pub fn HostUiShell::live() -> Self
+pub fn HostUiShell::main_sidebar_ids(Self) -> Array[String]
+pub fn HostUiShell::mock() -> Self
+pub fn HostUiShell::notify_anchor_visible(Self, @ui_protocol.SettingsAnchor) -> Unit
+pub fn HostUiShell::open_info_panel(Self, String) -> Result[Array[String], String]
+pub fn HostUiShell::open_members_panel(Self, String, Array[String]) -> Result[Unit, String]
+pub fn HostUiShell::open_permission_guide(Self, @ui_protocol.MissingPermissionKind) -> Result[@ui_protocol.SettingsAnchor, String]
+pub fn HostUiShell::open_reset_computer(Self) -> Result[Unit, String]
+pub fn HostUiShell::open_settings(Self, @ui_protocol.OpenSettingsIntent) -> Result[Unit, String]
+pub fn HostUiShell::open_sidebar_context_menu(Self, @ui_protocol.HostAgentId) -> Result[Unit, String]
+pub fn HostUiShell::push_event(Self, HostUiEvent) -> Unit
+pub fn HostUiShell::request_delete_agent(Self, @ui_protocol.HostAgentId) -> Result[@ui_protocol.DeleteAgentIntent, String]
+pub fn HostUiShell::request_update_computer(Self) -> Result[String, String]
+pub fn HostUiShell::set_agent_hidden(Self, String, hidden~ : Bool) -> Result[Unit, String]
+pub fn HostUiShell::set_agent_notify(Self, String, @ui_protocol.AssistantNotifyToggle, Bool) -> Result[Unit, String]
+pub fn HostUiShell::set_local_execution(Self, enabled~ : Bool) -> Unit
+pub fn HostUiShell::try_machine_call(Self, String) -> Result[String, String]
 
 pub(all) struct ImageContent {
   path : String
   mime : String
   visible : Bool
-  byte_len : Int
+  byte_len : Int32
   description : String
 } derive(Eq, @debug.Debug)
 pub fn ImageContent::equal(Self, Self) -> Bool
 pub fn ImageContent::is_describable(Self) -> Bool
 pub fn ImageContent::not_equal(Self, Self) -> Bool
 pub fn ImageContent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct LiveHostConfig {
+  display : String?
+  workspace_root : String
+  mcp_transport : McpTransportConfig?
+  ui_automation : Bool
+} derive(Eq, @debug.Debug)
+pub fn LiveHostConfig::default_workspace(workspace_root? : String) -> Self
+pub fn LiveHostConfig::equal(Self, Self) -> Bool
+pub fn LiveHostConfig::not_equal(Self, Self) -> Bool
+pub fn LiveHostConfig::to_repr(Self) -> @debug.Repr
+pub fn LiveHostConfig::with_display(String, workspace_root? : String, ui_automation? : Bool) -> Self
 
 pub(all) struct MachineInfo {
   id : String
@@ -299,6 +689,7 @@ pub fn MachineRegistry::get_box_bytes(Self, String) -> String?
 pub fn MachineRegistry::get_machine_bytes(Self, String, String) -> String?
 pub fn MachineRegistry::list(Self) -> Array[MachineInfo]
 pub fn MachineRegistry::local_execution_on(Self) -> Bool
+pub fn MachineRegistry::mark_host_present(Self, machine_id~ : String, machine_kind~ : String) -> Unit
 pub fn MachineRegistry::put_box_file(Self, String, String) -> Unit
 pub fn MachineRegistry::put_machine_file(Self, String, String, String) -> Unit
 pub fn MachineRegistry::read_on_machine(Self, String, String, approved~ : Bool) -> Result[String, String]
@@ -315,6 +706,14 @@ pub fn MachineStatus::equal(Self, Self) -> Bool
 pub fn MachineStatus::name(Self) -> String
 pub fn MachineStatus::not_equal(Self, Self) -> Bool
 pub fn MachineStatus::to_repr(Self) -> @debug.Repr
+
+pub(all) struct McpTransportConfig {
+  kind : String
+  endpoint : String?
+} derive(Eq, @debug.Debug)
+pub fn McpTransportConfig::equal(Self, Self) -> Bool
+pub fn McpTransportConfig::not_equal(Self, Self) -> Bool
+pub fn McpTransportConfig::to_repr(Self) -> @debug.Repr
 
 pub(all) enum OverwritePolicy {
   Allow
@@ -338,7 +737,7 @@ pub fn PackageManager::to_repr(Self) -> @debug.Repr
 pub(all) struct ReadResult {
   path : String
   text : String
-  line_count : Int
+  line_count : Int32
 } derive(Eq, @debug.Debug)
 pub fn ReadResult::equal(Self, Self) -> Bool
 pub fn ReadResult::not_equal(Self, Self) -> Bool
@@ -350,7 +749,11 @@ pub(all) struct ScreenshotResult {
   read_only : Bool
   clicked : Bool
   has_frame : Bool
-  frame_bytes_len : Int
+  frame_bytes_len : Int32
+  display_id : String?
+  frame_origin : FrameOrigin
+  bytes_sha256 : String?
+  captured_at : String?
 } derive(Eq, @debug.Debug)
 pub fn ScreenshotResult::equal(Self, Self) -> Bool
 pub fn ScreenshotResult::not_equal(Self, Self) -> Bool
@@ -384,7 +787,7 @@ pub fn ShellJob::to_repr(Self) -> @debug.Repr
 pub(all) struct ShellRequest {
   command : String
   working_directory : String?
-  block_until_ms : Int
+  block_until_ms : Int32
   machine_id : String?
 } derive(Eq, @debug.Debug)
 pub fn ShellRequest::effective_cwd(Self, box_workspace? : String) -> String
@@ -413,11 +816,11 @@ pub fn ShellTarget::not_equal(Self, Self) -> Bool
 pub fn ShellTarget::to_repr(Self) -> @debug.Repr
 
 pub(all) struct UpdateComputerFlow {
-  mut confirm_steps : Int
+  mut confirm_steps : Int32
   prefer : ComputerLifecyclePrefer
   mut completed : Bool
 }
-pub fn UpdateComputerFlow::confirm_step(Self) -> Int
+pub fn UpdateComputerFlow::confirm_step(Self) -> Int32
 pub fn UpdateComputerFlow::guide_before_reset(Self) -> Bool
 pub fn UpdateComputerFlow::prefer_guide() -> Self
 pub fn UpdateComputerFlow::prefer_reset() -> Self

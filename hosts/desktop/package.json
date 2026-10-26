@@ -26,9 +26,11 @@
       "ui_chrome.css",
       "vendor/**/*",
       "sessions.js",
+      "paths.js",
       "product_surface.js",
       "room_context.js",
       "room_discretion.js",
+      "room_orchestrator.js",
       "progress_protocol.js",
       "secret_protocol.js",
       "secret_vault.js",
@@ -44,6 +46,15 @@
       }
     ],
     "asar": true,
+    "extraResources": [
+      {
+        "from": "resources/kernel",
+        "to": "kernel",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "afterSign": "build/notarize.js",
     "publish": [
       {

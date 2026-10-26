@@ -65,15 +65,27 @@ function defaultResolveReplyForRoot(repoRoot) {
 }
 
 function createTurnRunner(repoRoot, opts = {}) {
-  const ffi = createHostFfi(repoRoot);
+  const ffi = createHostFfi(repoRoot, { dataRoot: opts.dataRoot });
   const defaultResolveReply = defaultResolveReplyForRoot(repoRoot);
   const MOON_BIN = opts.moonBin || process.env.MOON_BIN || "moon";
   const MOON_TARGET = opts.moonTarget || process.env.BITBOT_MOON_TARGET || "native";
+  /* A packaged app ships the compiled kernel instead of a MoonBit
+     toolchain. The binary is a drop-in for `moon run cmd/desktop_turn
+     --target native -- <args>`: same argv tail, same stdout/stdin FFI
+     line protocol (BITBOT_FFI <json> out, one JSON line back in). */
+  const KERNEL_BIN = opts.kernelBin || process.env.BITBOT_KERNEL_BIN || null;
+  /* The kernel writes `data/workspace/uploads/...` relative to its cwd, so
+     the cwd must be the PARENT of the data root. Dev: <repo>. Packaged:
+     <userData>. */
+  const KERNEL_CWD = ffi.DATA_ROOT ? path.dirname(ffi.DATA_ROOT) : ffi.REPO_ROOT;
+  const kernelPrefix = () =>
+    KERNEL_BIN ? [] : ["run", "cmd/desktop_turn", "--target", MOON_TARGET, "--"];
+  const kernelExe = () => KERNEL_BIN || MOON_BIN;
 
   function runMoon(args, { timeoutMs = 120000 } = {}) {
     return new Promise((resolve, reject) => {
-      const child = spawn(MOON_BIN, args, {
-        cwd: ffi.REPO_ROOT,
+      const child = spawn(kernelExe(), args, {
+        cwd: KERNEL_CWD,
         env: moonProcessEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -128,8 +140,8 @@ function createTurnRunner(repoRoot, opts = {}) {
     const timeoutMs = opts.timeoutMs || 180000;
     const onLoop = typeof opts.onLoop === "function" ? opts.onLoop : null;
     return new Promise((resolve, reject) => {
-      const child = spawn(MOON_BIN, args, {
-        cwd: ffi.REPO_ROOT,
+      const child = spawn(kernelExe(), args, {
+        cwd: KERNEL_CWD,
         env: moonProcessEnv(),
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -256,11 +268,7 @@ function createTurnRunner(repoRoot, opts = {}) {
       return { ok: false, error: "empty text" };
     }
     const moonArgs = [
-      "run",
-      "cmd/desktop_turn",
-      "--target",
-      MOON_TARGET,
-      "--",
+      ...kernelPrefix(),
       // GP-112: seeds (and --bot-id) come from this Bot's slot only.
       ...ffi.memorySeedArgs(ctx.botId),
     ];
@@ -489,11 +497,7 @@ function createTurnRunner(repoRoot, opts = {}) {
       parsed.host_results = host_results;
       try {
         const contArgs = [
-          "run",
-          "cmd/desktop_turn",
-          "--target",
-          MOON_TARGET,
-          "--",
+          ...kernelPrefix(),
           "--apply-host-results",
           "--turn-id",
           String(parsed.turn_id || ctx.turnId || "host-cont"),

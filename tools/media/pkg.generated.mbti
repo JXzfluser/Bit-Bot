@@ -9,13 +9,34 @@ import {
 // Values
 pub fn answer_from_frames(question~ : String, Array[VideoFrame]) -> Result[String, String]
 
+pub fn deliver_generated_chart(MediaHost, GeneratedChartArtifact) -> Result[@ui_protocol.AttachmentRef, String]
+
 pub fn deliver_generated_image(MediaHost, GeneratedImageArtifact) -> Result[@ui_protocol.AttachmentRef, String]
 
-pub fn extract_video_frames(video_path~ : String, max_frames? : Int) -> Result[Array[VideoFrame], String]
+pub fn extract_video_frames(video_path~ : String, max_frames? : Int32) -> Result[Array[VideoFrame], String]
 
 // Errors
 
 // Types and methods
+pub(all) struct ChartSeries {
+  label : String
+  values : Array[Int32]
+} derive(Eq, @debug.Debug)
+pub fn ChartSeries::equal(Self, Self) -> Bool
+pub fn ChartSeries::not_equal(Self, Self) -> Bool
+pub fn ChartSeries::to_repr(Self) -> @debug.Repr
+
+pub(all) struct GeneratedChartArtifact {
+  path : String
+  title : String
+  mime : String
+  on_disk : Bool
+  structured_summary : String
+} derive(Eq, @debug.Debug)
+pub fn GeneratedChartArtifact::equal(Self, Self) -> Bool
+pub fn GeneratedChartArtifact::not_equal(Self, Self) -> Bool
+pub fn GeneratedChartArtifact::to_repr(Self) -> @debug.Repr
+
 pub(all) struct GeneratedImageArtifact {
   path : String
   prompt : String
@@ -26,22 +47,84 @@ pub fn GeneratedImageArtifact::equal(Self, Self) -> Bool
 pub fn GeneratedImageArtifact::not_equal(Self, Self) -> Bool
 pub fn GeneratedImageArtifact::to_repr(Self) -> @debug.Repr
 
+pub(all) struct GeneratedVideoArtifact {
+  path : String
+  prompt : String
+  mime : String
+  on_disk : Bool
+  task_id : String
+} derive(Eq, @debug.Debug)
+pub fn GeneratedVideoArtifact::equal(Self, Self) -> Bool
+pub fn GeneratedVideoArtifact::not_equal(Self, Self) -> Bool
+pub fn GeneratedVideoArtifact::to_repr(Self) -> @debug.Repr
+
 pub(all) struct MediaHost {
   artifacts : Array[String]
   files : Map[String, String]
 }
+pub fn MediaHost::complete_video_task(Self, VideoGenTask) -> Result[(VideoGenTask, VideoCompletionNotify), String]
+pub fn MediaHost::enqueue_generate_video(Self, prompt~ : String, name? : String, task_id? : String) -> Result[VideoGenTask, String]
 pub fn MediaHost::exists(Self, String) -> Bool
+pub fn MediaHost::generate_chart(Self, StructuredChart) -> Result[GeneratedChartArtifact, String]
 pub fn MediaHost::generate_image(Self, prompt~ : String, name? : String) -> Result[GeneratedImageArtifact, String]
+pub fn MediaHost::generate_video(Self, prompt~ : String, name? : String) -> Result[GeneratedVideoArtifact, String]
 pub fn MediaHost::mock() -> Self
+pub fn MediaHost::start_video_task(Self, VideoGenTask) -> Result[VideoGenTask, String]
+
+pub(all) struct StructuredChart {
+  title : String
+  categories : Array[String]
+  series : Array[ChartSeries]
+  filename : String
+} derive(Eq, @debug.Debug)
+pub fn StructuredChart::equal(Self, Self) -> Bool
+pub fn StructuredChart::not_equal(Self, Self) -> Bool
+pub fn StructuredChart::to_repr(Self) -> @debug.Repr
+pub fn StructuredChart::validate(Self) -> Result[Unit, String]
+
+pub(all) struct VideoCompletionNotify {
+  task_id : String
+  artifact_path : String
+  prompt : String
+  notifiable : Bool
+  message : String
+} derive(Eq, @debug.Debug)
+pub fn VideoCompletionNotify::can_notify(Self) -> Bool
+pub fn VideoCompletionNotify::equal(Self, Self) -> Bool
+pub fn VideoCompletionNotify::not_equal(Self, Self) -> Bool
+pub fn VideoCompletionNotify::to_repr(Self) -> @debug.Repr
 
 pub(all) struct VideoFrame {
-  index : Int
+  index : Int32
   caption : String
-  timestamp_ms : Int
+  timestamp_ms : Int32
 } derive(Eq, @debug.Debug)
 pub fn VideoFrame::equal(Self, Self) -> Bool
 pub fn VideoFrame::not_equal(Self, Self) -> Bool
 pub fn VideoFrame::to_repr(Self) -> @debug.Repr
+
+pub(all) struct VideoGenTask {
+  id : String
+  prompt : String
+  name : String
+  mut state : VideoTaskState
+  mut artifact_path : String?
+} derive(Eq, @debug.Debug)
+pub fn VideoGenTask::equal(Self, Self) -> Bool
+pub fn VideoGenTask::not_equal(Self, Self) -> Bool
+pub fn VideoGenTask::to_repr(Self) -> @debug.Repr
+
+pub(all) enum VideoTaskState {
+  Queued
+  Running
+  Completed
+  Failed(message~ : String)
+} derive(Eq, @debug.Debug)
+pub fn VideoTaskState::equal(Self, Self) -> Bool
+pub fn VideoTaskState::is_queued(Self) -> Bool
+pub fn VideoTaskState::is_terminal(Self) -> Bool
+pub fn VideoTaskState::not_equal(Self, Self) -> Bool
+pub fn VideoTaskState::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

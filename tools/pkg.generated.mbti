@@ -21,7 +21,7 @@ pub fn is_time_sensitive_query(String) -> Bool
 
 pub fn may_call_namespace(@connectors.ConnectorStatus) -> Bool
 
-pub fn normalize_search_query(String, year? : Int) -> String
+pub fn normalize_search_query(String, year? : Int32) -> String
 
 pub fn schema_required_keys(String) -> Array[String]
 
@@ -105,7 +105,7 @@ pub fn DynamicCatalog::has_namespace(Self, String) -> Bool
 pub fn DynamicCatalog::is_discovered(Self, String, String) -> Bool
 pub fn DynamicCatalog::list_namespaces(Self) -> Array[String]
 pub fn DynamicCatalog::register(Self, DynamicToolDesc, full_description~ : String) -> Unit
-pub fn DynamicCatalog::remove_namespace(Self, String) -> Int
+pub fn DynamicCatalog::remove_namespace(Self, String) -> Int32
 pub fn DynamicCatalog::seed_example() -> Self
 pub fn DynamicCatalog::validate_args(Self, String, String, String) -> Result[Unit, String]
 
@@ -143,7 +143,7 @@ pub fn FetchFallbackResult::to_repr(Self) -> @debug.Repr
 pub(all) struct FileArgExpandResult {
   injected : String
   source_path : String
-  injected_len : Int
+  injected_len : Int32
   chat_ref : String
 } derive(Eq, @debug.Debug)
 pub fn FileArgExpandResult::equal(Self, Self) -> Bool
@@ -171,18 +171,66 @@ pub fn GrantSession::current_step(Self) -> GrantFlowStep
 pub fn GrantSession::new(namespace_~ : String, status~ : @connectors.ConnectorStatus) -> Self
 pub fn GrantSession::user_grants(Self) -> GrantFlowStep
 
+pub(all) struct McpCallOptions {
+  expand_file_refs : Bool
+  write_to_file : Bool
+  max_inline_bytes : Int32
+} derive(Eq, @debug.Debug)
+pub fn McpCallOptions::default() -> Self
+pub fn McpCallOptions::equal(Self, Self) -> Bool
+pub fn McpCallOptions::not_equal(Self, Self) -> Bool
+pub fn McpCallOptions::to_repr(Self) -> @debug.Repr
+pub fn McpCallOptions::with_write_to_file() -> Self
+
+pub(all) enum McpFsKind {
+  Mock
+  Live
+} derive(Eq, @debug.Debug)
+pub fn McpFsKind::equal(Self, Self) -> Bool
+pub fn McpFsKind::label(Self) -> String
+pub fn McpFsKind::not_equal(Self, Self) -> Bool
+pub fn McpFsKind::to_repr(Self) -> @debug.Repr
+
 pub(all) struct McpHostFs {
   files : Map[String, String]
   chat_lines : Array[String]
 }
 pub fn McpHostFs::append_chat(Self, String) -> Unit
 pub fn McpHostFs::chat_contains(Self, String) -> Bool
-pub fn McpHostFs::chat_total_chars(Self) -> Int
+pub fn McpHostFs::chat_total_chars(Self) -> Int32
 pub fn McpHostFs::empty() -> Self
 pub fn McpHostFs::expand_file_arg(Self, String) -> Result[FileArgExpandResult, String]
 pub fn McpHostFs::get(Self, String) -> String?
 pub fn McpHostFs::put(Self, String, String) -> Unit
 pub fn McpHostFs::write_to_file_result(Self, String, String, String) -> WriteToFileResult
+
+pub(all) struct McpHostFsLive {
+  kind : McpFsKind
+  inner : McpHostFs
+  mut write_seq : Int32
+}
+pub fn McpHostFsLive::chat_contains(Self, String) -> Bool
+pub fn McpHostFsLive::expand_file_arg(Self, String) -> Result[FileArgExpandResult, String]
+pub fn McpHostFsLive::get(Self, String) -> String?
+pub fn McpHostFsLive::is_live(Self) -> Bool
+pub fn McpHostFsLive::live() -> Self
+pub fn McpHostFsLive::loopback_call_with_file_arg(Self, String, String, String) -> Result[McpLoopbackCallResult, String]
+pub fn McpHostFsLive::loopback_call_write_to_file(Self, String, String, String) -> McpLoopbackCallResult
+pub fn McpHostFsLive::mock() -> Self
+pub fn McpHostFsLive::put(Self, String, String) -> Unit
+pub fn McpHostFsLive::write_to_file_result(Self, String, String, String) -> WriteToFileResult
+
+pub(all) struct McpLoopbackCallResult {
+  namespace_ : String
+  tool_name : String
+  args_for_mcp : String
+  chat_line : String
+  result_path : String?
+  kind : McpFsKind
+} derive(Eq, @debug.Debug)
+pub fn McpLoopbackCallResult::equal(Self, Self) -> Bool
+pub fn McpLoopbackCallResult::not_equal(Self, Self) -> Bool
+pub fn McpLoopbackCallResult::to_repr(Self) -> @debug.Repr
 
 pub(all) enum OfficialConnectCard {
   Install(namespace_~ : String)
@@ -209,7 +257,7 @@ pub(all) struct Registry {
 pub fn Registry::empty() -> Self
 pub fn Registry::get(Self, String) -> ToolSpec?
 pub fn Registry::invoke(Self, String, String) -> ToolResult
-pub fn Registry::len(Self) -> Int
+pub fn Registry::len(Self) -> Int32
 pub fn Registry::register(Self, ToolSpec) -> Unit
 pub fn Registry::register_dynamic(Self, DynamicToolDesc) -> Unit
 pub fn Registry::with_echo() -> Self
@@ -249,7 +297,7 @@ pub fn ToolSpec::to_repr(Self) -> @debug.Repr
 
 pub(all) struct WebFetchRequest {
   url : String
-  max_bytes : Int
+  max_bytes : Int32
 } derive(Eq, @debug.Debug)
 pub fn WebFetchRequest::equal(Self, Self) -> Bool
 pub fn WebFetchRequest::not_equal(Self, Self) -> Bool
@@ -258,12 +306,12 @@ pub fn WebFetchRequest::to_repr(Self) -> @debug.Repr
 pub(all) struct WebHost {
   search_index : Array[WebSearchHit]
   pages : Map[String, String]
-  pages_status : Map[String, Int]
+  pages_status : Map[String, Int32]
 }
 pub fn WebHost::fetch(Self, WebFetchRequest) -> Result[String, String]
 pub fn WebHost::fetch_with_public_fallback(Self, WebFetchRequest, prefer? : PublicFetchFallback) -> Result[FetchFallbackResult, String]
 pub fn WebHost::mock() -> Self
-pub fn WebHost::search(Self, WebSearchRequest, current_year? : Int) -> Result[Array[WebSearchHit], String]
+pub fn WebHost::search(Self, WebSearchRequest, current_year? : Int32) -> Result[Array[WebSearchHit], String]
 pub fn WebHost::seed_blocked_public(Self, String, String) -> Unit
 
 pub(all) struct WebSearchHit {
@@ -277,7 +325,7 @@ pub fn WebSearchHit::to_repr(Self) -> @debug.Repr
 
 pub(all) struct WebSearchRequest {
   query : String
-  limit : Int
+  limit : Int32
 } derive(Eq, @debug.Debug)
 pub fn WebSearchRequest::equal(Self, Self) -> Bool
 pub fn WebSearchRequest::not_equal(Self, Self) -> Bool
@@ -285,7 +333,7 @@ pub fn WebSearchRequest::to_repr(Self) -> @debug.Repr
 
 pub(all) struct WriteToFileResult {
   path : String
-  bytes_written : Int
+  bytes_written : Int32
   returned_to_caller : String
 } derive(Eq, @debug.Debug)
 pub fn WriteToFileResult::equal(Self, Self) -> Bool

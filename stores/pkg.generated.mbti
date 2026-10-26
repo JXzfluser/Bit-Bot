@@ -8,9 +8,42 @@ import {
 // Values
 pub fn agent_store_mount_path(String) -> String
 
+pub fn disk_chat_path(String) -> String
+
+pub fn disk_connector_path(String) -> String
+
+pub fn disk_memory_path(String) -> String
+
+pub fn host_audit_dir() -> String
+
+pub fn host_chats_dir() -> String
+
+pub fn host_connectors_dir() -> String
+
+pub fn host_data_root() -> String
+
+pub fn host_journal_dir() -> String
+
+pub fn host_memory_dir() -> String
+
+pub fn host_routines_dir() -> String
+
+pub fn is_host_data_path(String) -> Bool
+
 // Errors
 
 // Types and methods
+pub(all) struct DiskStoreContract {
+  data_root : String
+  chats_dir : String
+  memory_dir : String
+} derive(Eq, @debug.Debug)
+pub fn DiskStoreContract::accepts_path(Self, String) -> Bool
+pub fn DiskStoreContract::equal(Self, Self) -> Bool
+pub fn DiskStoreContract::not_equal(Self, Self) -> Bool
+pub fn DiskStoreContract::product_default() -> Self
+pub fn DiskStoreContract::to_repr(Self) -> @debug.Repr
+
 pub(all) enum OrdinaryFileTool {
   Read
   Write

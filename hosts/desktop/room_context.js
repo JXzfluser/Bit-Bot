@@ -122,6 +122,16 @@ function buildRoomContext(input) {
     out.members.push(member);
     used += cost;
   }
+  // 共享任务板（群编排的共享工作区）：可选注入一条有界的上下文行 ——
+  // 这是「板子写完能读回 prompt」的第二条路径（第一条是成员 prompt 里的板子块）。
+  const boardRaw = String(opts.sharedBoard || "").trim();
+  if (boardRaw) {
+    const boardText = clipField(boardRaw, maxLine);
+    if (boardText) {
+      out.recent.push({ kind: "board", speaker: "共享任务板", text: boardText });
+      used += boardText.length + 12;
+    }
+  }
   const recent = recentFromTranscript(room.transcript, {
     maxRecent,
     maxLine,

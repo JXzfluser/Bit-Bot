@@ -14,6 +14,8 @@ pub fn classify_scope(String) -> Result[MemoryScope, String]
 
 pub fn memory_grants_send(MemoryEntry) -> Bool
 
+pub fn user_attribute_job_key() -> String
+
 // Errors
 
 // Types and methods
@@ -81,10 +83,13 @@ pub(all) struct ProfileMemoryStore {
   store : InMemoryStore
   mut current_session : SessionId?
 }
+pub fn ProfileMemoryStore::get_user_attribute(Self, key~ : String) -> Result[String, String]
 pub fn ProfileMemoryStore::new() -> Self
 pub fn ProfileMemoryStore::open_session(Self, SessionId) -> Unit
-pub fn ProfileMemoryStore::recall_profile(Self, key_prefix? : String?, limit? : Int) -> Array[MemoryEntry]
+pub fn ProfileMemoryStore::recall_profile(Self, key_prefix? : String?, limit? : Int32) -> Array[MemoryEntry]
 pub fn ProfileMemoryStore::session_id(Self) -> SessionId?
+pub fn ProfileMemoryStore::set_user_attribute(Self, key~ : String, value~ : String) -> Result[Unit, String]
+pub fn ProfileMemoryStore::set_user_job(Self, job~ : String) -> Result[String, String]
 pub fn ProfileMemoryStore::update_profile(Self, key~ : String, value~ : String) -> Unit
 pub fn ProfileMemoryStore::write_profile_authoritative(Self, ProfileWriteSource, key~ : String, value~ : String) -> Result[AuthoritativeProfileWrite, String]
 
@@ -100,7 +105,7 @@ pub fn ProfileWriteSource::to_repr(Self) -> @debug.Repr
 pub(all) struct RecallQuery {
   scope : MemoryScope
   key_prefix : String?
-  limit : Int
+  limit : Int32
 } derive(Eq, @debug.Debug)
 pub fn RecallQuery::equal(Self, Self) -> Bool
 pub fn RecallQuery::not_equal(Self, Self) -> Bool
