@@ -20,6 +20,7 @@
 const path = require("path");
 const { buildRoomContext: buildRoomContextData } = require("./room_context");
 const { buildDiscretionPrompt, parseDiscretionReply } = require("./room_discretion");
+const { resolveMachineId } = require("./machine_identity");
 
 /** 调试/协议行不进共享转录。与桌面同一条规则。 */
 const ROOM_DEBUG_RE =
@@ -56,7 +57,8 @@ function createRoomRuntime(o) {
   const surface = opts.surface;
   const secretProtocol = opts.secretProtocol || null;
   const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : null;
-  const machineId = String(opts.machineId || "desk-1");
+  // B-2: 机器身份不再写死(默认仍是 desk-1,单机行为不变)。
+  const machineId = resolveMachineId({ kind: opts.machineKind, explicit: opts.machineId });
   const machineKind = String(opts.machineKind || "desktop");
   const discretionTimeoutMs = Number(
     opts.discretionTimeoutMs || process.env.BITBOT_ROOM_DISCRETION_TIMEOUT_MS || 30000,

@@ -662,6 +662,8 @@ function createCnInboundServer(opts = {}) {
           session_id: sessionId,
           source: "v1_turn",
           machine_kind: machineKind,
+          // B-2 + B-4a: 机器身份来自凭证(设备 id),不是 payload。
+          device_id: (auth && auth.device_id) || "",
         });
         const turn = enq.turnResult || { ok: false, error: "no onTurn handler" };
         appendJsonl(path.join(logDir, "events.jsonl"), {

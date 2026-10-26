@@ -69,6 +69,7 @@ const { buildRoomContext: buildRoomContextData } = require("../shared/room_conte
 const { buildDiscretionPrompt, parseDiscretionReply } = require("../shared/room_discretion");
 const { createRoomRuntime, roomSafeText: sharedRoomSafeText } = require("../shared/room_runtime");
 const { dispatchRoomTurn } = require("../shared/room_dispatch");
+const { resolveMachineId } = require("../shared/machine_identity");
 
 // GP-93/94/95 — Markdown/链接纪律 (official spec §5.6). Policy + open route in
 // one module pair used by both the main process and the smoke probe, so the
@@ -663,7 +664,7 @@ async function runSmokeTurnAndExit() {
   try {
     const result = await runner.runTurn(text || "ListMachines", {
       sessionId: "desktop-electron-smoke",
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       approved: process.env.BITBOT_DESKTOP_SMOKE_APPROVED === "1",
@@ -973,7 +974,7 @@ ipcMain.handle("bitbot:bots:op", async (_e, payload) => {
   try {
     const result = await runner.runTurn(phrase, {
       sessionId: "bot-ops",
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       approved: p.approved === true,
@@ -1226,7 +1227,7 @@ ipcMain.handle("bitbot:skills:list", async () => {
     // Reuse Host product path (no LocalBrain): a real kernel turn plans list_skills.
     const result = await runner.runTurn("list skills", {
       sessionId: "skills-pick",
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       skipSession: true,
@@ -1676,7 +1677,7 @@ async function runRoomSynthesisTurn(botId, prompt, ctx) {
   try {
     const result = await runner.runTurn(String(prompt || ""), {
       sessionId: "room-" + roomId + "-" + id + "-synthesis",
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       // A summary is a read-only act; it must not be able to trigger effects.
@@ -1728,7 +1729,7 @@ async function runRoomDecompositionProposal(input) {
   try {
     const result = await runner.runTurn(prompt, {
       sessionId: "room-" + roomId + "-decompose",
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       approved: false,
@@ -1760,7 +1761,7 @@ const roomRuntime = createRoomRuntime({
   runTurn: (text, ctx) => runner.runTurn(text, ctx),
   surface,
   secretProtocol,
-  machineId: "desk-1",
+  machineId: resolveMachineId({ kind: "desktop" }),
   machineKind: "desktop",
   onProgress: (row) => broadcast("bitbot:room-turn-progress", row),
   onBotActivity: () => {
@@ -2879,7 +2880,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
     const hostTurnId = "desktop-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
     const result = await runner.runTurn(String(text || ""), {
       sessionId,
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       turnId: hostTurnId,
@@ -3084,7 +3085,7 @@ ipcMain.handle("bitbot:msg:regenerate", async (_e, payload) => {
   if (rm && rm.ok === false) return { ok: false, error: rm.error || "remove_failed" };
   const result = await runner.runTurn(prompt, {
     sessionId,
-    machineId: "desk-1",
+    machineId: resolveMachineId({ kind: "desktop" }),
     machineKind: "desktop",
     channel: "",
     approved: false,
@@ -3344,7 +3345,7 @@ async function ensureCnInbound() {
         });
         const result = await runner.runTurn(String(prompt || ""), {
           sessionId,
-          machineId: machineKind === "desktop" ? "desk-1" : `${machineKind}-1`,
+          machineId: resolveMachineId({ kind: machineKind }),
           machineKind,
           channel: channel === "android" || channel === "ios" ? "" : channel,
           approved: false,
