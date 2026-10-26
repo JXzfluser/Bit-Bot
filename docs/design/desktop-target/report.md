@@ -370,3 +370,69 @@ LR-07 第一次跑仍是红的（`x1:172.17.0.1` 与 `x2:192.168.1.9` 接口名�
   但「配内网穿透」这条路产品侧还没做。
 - presence 锁是 best-effort 文件锁：跨机器时钟漂移、NFS/只读文件系统、Windows 语义未覆盖。
 - iOS 端仍是「未实现」，本轮只把安卓路径的细节收紧。
+
+## 8.17 手机端把桌面的失败码翻成人话（同一轮评审里的第二段）
+
+场景是用户最容易犯、也最容易卡死的一个：配对地址抄对了，配对令牌少粘一个字符。
+桌面按 ADR 0008 回 `401 {"ok":false,"error":"invalid_token"}`，手机以前把这句话
+原样塞进「连不上 Desktop 大脑。桌面那边报：…」的模板里 —— 结果用户看到一段
+既像网络故障、又是英文机器码的话，正确动作（去桌面点「显示配对令牌」重抄）反而没出现。
+
+### 8.17.1 先写复现测试，结果第一版测试自己是假的
+
+第一版 `TurnBridgeHttpErrorTest` 断言的是「消息里有没有『配对令牌』」，
+`gradle :app:testUniversalDebugUnitTest` 跑出来 **23 条只红 1 条**：
+`pairingHint` 的固定尾巴本来就有「在「凭证」核对配对地址与配对令牌」，
+所以「提到令牌」这种断言在未修的软件上直接绿 —— 那是假门禁，不是我的实现对了。
+改成断言**只有翻译层才会产出的那几处措辞**（重抄 / 显示配对令牌 / 还没生成 /
+未识别 / 没人监听）之后，把 `TurnBridge.kt` 临时换回 HEAD 版本再跑，
+五条全红（`24 tests completed, 5 failed`）：
+
+```
+TurnBridgeHttpErrorTest > 令牌不对时要说要重抄整串而不是只给机器码 FAILED
+TurnBridgeHttpErrorTest > 页面四零四不许把HTML贴进聊天框 FAILED
+TurnBridgeHttpErrorTest > 桌面没生成令牌要说问题在桌面侧不在手机 FAILED
+TurnBridgeHttpErrorTest > 没见过的状态码要如实说未识别不许瞎猜 FAILED
+TurnBridgeHttpErrorTest > 端口没人监听要说端口而不是贴Java异常 FAILED
+```
+
+### 8.17.2 翻译层的取舍
+
+- 认得的码（`invalid_token` / `unauthorized` / `turn_token_unconfigured` / 签名那四个 /
+  404 / 405）翻成一句点名下一步的中文，**不再附原文**：原文要么是刚解析过的 JSON，
+  要么是一整页 HTML，贴在聊天框里没有信息量 —— 404 那条测试就是专门钉这一点的。
+- 认不得的状态码如实写「未识别的状态码，不猜原因」并保留截断原文（去掉 `<tag>`、
+  最多 160 字）；这是唯一允许出现原文的分支。
+- 机器码本身在任何分支都保留（`invalid_token` 这种串仍在句子里），报障时它是
+  唯一能和桌面日志对上的东西。
+- 没走到 HTTP 层的三种情况分开说：地址解析不到（要说填局域网 IP 而不是机器名）、
+  端口没人监听（要说默认 18765）、超时（要说同一 Wi-Fi / 防火墙）。以前这三条
+  都是 `java.net.ConnectException: …` 原文。
+
+### 8.17.3 地址填了、令牌空着：不发包就先说
+
+`tokenPrecheck` 在打网络之前判掉「有地址、无令牌」（ADR 0008 无 bearer 必 401），
+`runTurn` 仍会照旧试一次本机 dev runner，两边都不行时报的是「缺令牌」，
+不再报「连不上」。凭证页那一行也分开了：只缺一栏 → `缺配对令牌` / `缺配对地址`；
+两栏都有 → 显示实际端点；两栏都空 → 归「未配对」管。
+
+这两条的红是**编译期**的（`unresolved reference: tokenPrecheck`，函数当时不存在），
+没有对应的旧运行时路径可对照，不假装成运行时红。
+
+### 8.17.4 门禁与回归
+
+- JVM 单测 19 → **26 用例 0 失败**（新增 `TurnBridgeHttpErrorTest` 7 条）。
+- `prove_android_build.mjs`：AB-06 下限 19 → 26，新增 **AB-08** 从结果 XML 里确认
+  「HTML」「端口没人监听」「重抄/显示配对令牌」三条真在跑 → 本地 `PASS=8 FAIL=0`。
+  （第一次写 AB-08 时顺手把 AB-07 的 `filter` 回调变量名改坏了 —— `re2.test(n)`，
+  跑之前读代码发现，改回来了；这也说明门禁自己也需要被读一遍。）
+- workflow Summary 文案与 `smoke_grok_desktop_parity.sh` 的 G-47 锚点同步到 AB-06/07/08。
+
+### 8.17.5 残留（诚实）
+
+- `runTurn` 里那条接线（先 precheck、再 runner、再决定报哪句话）没有 JVM 单测：
+  它要 SharedPreferences，本工程没有 Robolectric。钉住的是 `tokenPrecheck` 本身
+  与纯函数输出，接线只由代码路径证明。
+- 凭证页那两行新文案只做了编译与代码路径确认，没有真机 / emulator 截图。
+- 签名鉴权（`missing_signature` 等）桌面侧代码里有、手机侧不会发出去，那句提示
+  属于「万一走到」的兜底，本轮没有构造出它的真实触发路径。

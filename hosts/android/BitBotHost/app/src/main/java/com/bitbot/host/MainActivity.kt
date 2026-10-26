@@ -296,13 +296,24 @@ class MainActivity : ComponentActivity() {
             )
             // 归一后的结果当场显示出来：用户敲「192.168.1.10:18765」也要看得见
             // 真正会打的端点，没配对就直说会失败，不用等「发送」转圈。
+            // 只缺一栏时要说清缺的是哪一栏 —— 「填了地址忘填令牌」和「没配对」
+            // 是两个不同的动作，混成一句话用户会去检查 Wi-Fi。
+            val missing =
+              TurnBridge.pairingMissingHint(
+                hostSet = hostUrlDraft.isNotBlank(),
+                tokenSet = tokenDraft.isNotBlank(),
+              )
             Text(
-              TurnBridge.turnEndpoint(hostUrlDraft)
-                ?.let { "实际调用：$it" }
-                ?: "未配对：填好配对地址与配对令牌前，发送一定会失败",
+              when {
+                missing != null -> "发送一定会失败：$missing（另一栏已经填了）"
+                else ->
+                  TurnBridge.turnEndpoint(hostUrlDraft)
+                    ?.let { "实际调用：$it" }
+                    ?: "未配对：填好配对地址与配对令牌前，发送一定会失败"
+              },
               style = MaterialTheme.typography.labelSmall,
               color =
-                if (TurnBridge.turnEndpoint(hostUrlDraft) == null) {
+                if (missing != null || TurnBridge.turnEndpoint(hostUrlDraft) == null) {
                   MaterialTheme.colorScheme.error
                 } else {
                   MaterialTheme.colorScheme.onSurfaceVariant

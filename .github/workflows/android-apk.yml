@@ -135,7 +135,7 @@ jobs:
               echo "  - \`$(basename "$a")\`（$(stat -c %s "$a") bytes）"
             done
             echo ""
-            echo "**这条 workflow 证明了什么**：包真编译出来，且 aapt 从包里读回的包名 / 应用名 / 权限 / minSdk-targetSdk / 六个渠道 flavor 与门禁一致（AB-01..05），JVM 单测真跑且包含配对地址归一化那两条红线（AB-06/07）。"
+            echo "**这条 workflow 证明了什么**：包真编译出来，且 aapt 从包里读回的包名 / 应用名 / 权限 / minSdk-targetSdk / 六个渠道 flavor 与门禁一致（AB-01..05），JVM 单测真跑且包含配对地址归一化与失败原因翻译那几条红线（AB-06/07/08）。"
             echo ""
             echo "**没证明什么（诚实残留）**：没装到真机或 emulator（runner 无设备、无 KVM），没验 OS 权限弹窗与安装后表现。"
             echo "本 workflow 不带 keystore：**release 包也是 debug 签名**（工程按 BITBOT_ANDROID_STORE_* 走，未配置时回落 debug），所以这些包可以侧载自测，不等于能上架。"

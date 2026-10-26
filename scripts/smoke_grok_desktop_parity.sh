@@ -1749,8 +1749,9 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
   else
     ok "G-47 APK 真编译 + aapt 读回包里的事实（$(tail -1 /tmp/g47-build.log)）"
     grep -q "AB-07 配对地址归一化单测真跑" /tmp/g47-build.log \
-      && ok "G-47 手机端配对地址单测真在跑（未配对不回写死地址、少协议补 http://）" \
-      || bad "G-47 AB-07 anchor missing"
+      && grep -q "AB-08 失败原因翻译层单测真跑" /tmp/g47-build.log \
+      && ok "G-47 手机端配对单测真在跑（未配对不回写死地址、少协议补 http://、桌面失败码翻成人话）" \
+      || bad "G-47 AB-07/AB-08 anchor missing"
   fi
 else
   bad "G-47 prove_android_build（见 /tmp/g47-build.log；$(tail -1 /tmp/g47-build.log)）"

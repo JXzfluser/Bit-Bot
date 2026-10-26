@@ -10,8 +10,10 @@
  *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 19（防止 test 任务空转假绿）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 26（防止 test 任务空转假绿）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
+ *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
+ *         Connection refused 要说端口没人监听）
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
@@ -204,7 +206,7 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 19) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 26) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -227,6 +229,15 @@ if (badge.status !== 0 || !badgeOut) {
     bad("AB-07 配对地址归一化的单测不在结果里（可能没编译进去）", missingCase.map(String).join(", "));
   } else {
     ok("AB-07 配对地址归一化单测真跑（未配对 / 少协议两条都在）");
+  }
+  /* AB-08 桌面失败原因翻译层真的在跑：401 要点名重抄令牌、404 不许贴 HTML、
+   * 端口没人监听要说端口。这三条是「用户看得懂自己错在哪」的最后一段路。 */
+  const wantExplain = [/HTML/, /端口没人监听/, /重抄|显示配对令牌/];
+  const missingExplain = wantExplain.filter((re) => !names.some((n) => re.test(n)));
+  if (missingExplain.length) {
+    bad("AB-08 失败原因翻译层的单测不在结果里", missingExplain.map(String).join(", "));
+  } else {
+    ok("AB-08 失败原因翻译层单测真跑（401 点名令牌 / 404 不贴 HTML / refused 说端口）");
   }
 }
 
