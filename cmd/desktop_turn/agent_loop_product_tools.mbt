@@ -233,6 +233,7 @@ fn resolve_schedule_cron(schedule : String) -> Result[String, String] {
 /// 且**不产生 effect** —— 失败不能留下半个状态。
 pub fn exec_product_tool_action(
   action : ProductToolAction,
+  auto_execute~ : Bool = false,
 ) -> ProductToolResult {
   match action {
     DescribeSchedule(description~) =>
@@ -290,8 +291,16 @@ pub fn exec_product_tool_action(
                 command: id + "|" + cron + "|" + prompt,
                 needs_host_ffi: true,
               }
+              // 如实告诉用户这台机器到底会不会自己跑。
+              // `auto_execute` 来自 Host 给的策略(用户在这台机器上的常驻授权),
+              // **模型自己没有任何路径能把它打开** —— 它只是读到这个事实。
+              let tail = if auto_execute {
+                "；这台机器开了自动执行，到点会自己跑。"
+              } else {
+                "；到点会备好草稿等你批准（这台机器没开自动执行）。"
+              }
               ProductToolResult::{
-                observation: "routine " + id + " scheduled (" + cron + ")",
+                observation: "routine " + id + " scheduled (" + cron + ")" + tail,
                 effects: [effect],
               }
             }

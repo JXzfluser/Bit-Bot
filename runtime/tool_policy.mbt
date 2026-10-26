@@ -43,6 +43,13 @@ pub(all) struct ToolPolicy {
   limited_needs_approval : Array[String]
   /// 允许的路径根。**空 = 不限制路径**（保持既有行为）。
   path_roots : Array[String]
+  /// 这台机器的**常驻授权**：到点的定时任务自己执行，不必每次问人。
+  /// 来自 Host 的 `BITBOT_ROUTINE_AUTO_EXECUTE`。
+  ///
+  /// 为什么放在策略里：模型必须能**如实告诉用户**「这台机器开了自动执行」
+  /// 还是「到点会备好草稿等你批准」。而**模型自己没有任何路径能把它打开** ——
+  /// 它只是读到这个事实。真正写进行的是 Host,读的是同一个 env。
+  routine_auto_execute : Bool
 } derive(Eq, Debug)
 
 ///|
@@ -63,6 +70,7 @@ pub fn ToolPolicy::default() -> ToolPolicy {
     need_approval: [],
     limited_needs_approval: [],
     path_roots: [],
+    routine_auto_execute: false,
   }
 }
 
@@ -160,6 +168,43 @@ pub fn ToolPolicy::decide(
 /// Read the array that belongs to one key. `find_json_array` finds the FIRST
 /// array in the text, which is wrong for a policy object with several array
 /// fields — so the key is located first and the array is read from there.
+///|
+/// 读一个 JSON 布尔字段。**认得裸 true/false**(不是字符串 "true")——
+/// 策略是从 Host 的 JSON 来的,那边写的就是裸布尔。
+fn json_bool_for_key(text : String, key : String, dflt : Bool) -> Bool {
+  let marker = "\"" + key + "\""
+  let at = match text.find(marker) {
+    None => return dflt
+    Some(a) => a
+  }
+  let mut i = at + marker.length()
+  while i < text.length() {
+    let c = text[i:i + 1].to_owned()
+    if c != " " && c != "\n" && c != "\r" && c != "\t" {
+      break
+    }
+    i = i + 1
+  }
+  if i >= text.length() || text[i:i + 1].to_owned() != ":" {
+    return dflt
+  }
+  i = i + 1
+  while i < text.length() {
+    let c = text[i:i + 1].to_owned()
+    if c != " " && c != "\n" && c != "\r" && c != "\t" {
+      break
+    }
+    i = i + 1
+  }
+  if i + 4 <= text.length() && text[i:i + 4].to_owned() == "true" {
+    return true
+  }
+  if i + 5 <= text.length() && text[i:i + 5].to_owned() == "false" {
+    return false
+  }
+  dflt
+}
+
 fn json_array_for_key(text : String, key : String) -> Array[String] {
   let out : Array[String] = []
   let marker = "\"" + key + "\""
@@ -213,5 +258,10 @@ pub fn ToolPolicy::parse(text : String) -> ToolPolicy {
     need_approval: json_array_for_key(text, "need_approval"),
     limited_needs_approval: json_array_for_key(text, "limited_needs_approval"),
     path_roots: json_array_for_key(text, "path_roots"),
+    routine_auto_execute: json_bool_for_key(
+      text,
+      "routine_auto_execute",
+      base.routine_auto_execute,
+    ),
   }
 }

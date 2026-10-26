@@ -34,7 +34,7 @@ pub fn encode_context_request(String, String, String) -> String
 
 pub fn encode_product_tool_output(String) -> String
 
-pub fn exec_product_tool_action(ProductToolAction) -> ProductToolResult
+pub fn exec_product_tool_action(ProductToolAction, auto_execute? : Bool) -> ProductToolResult
 
 pub fn gate_consequential(String, String, TurnIntent, DesktopTurnContext, @security.ApprovalClass, String, irreversible? : Bool) -> DesktopTurnResult?
 

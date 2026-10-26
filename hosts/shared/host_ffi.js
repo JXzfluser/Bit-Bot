@@ -8795,6 +8795,10 @@ function createHostFfi(repoRoot, opts = {}) {
     if (partial.last_fired_at != null) {
       next.last_fired_at = String(partial.last_fired_at);
     }
+    // 自动执行是**行上的事实**,要看得见、能审计。
+    if (partial.auto_execute != null) {
+      next.auto_execute = partial.auto_execute === true;
+    }
     if (idx >= 0) rows[idx] = { ...rows[idx], ...next };
     else rows.push(next);
     saveRoutines(rows);
@@ -15422,6 +15426,10 @@ function createHostFfi(repoRoot, opts = {}) {
           stderr: "routine already owned by another room: " + priorRoom,
         };
       }
+      // 「这台机器会不会自己到点跑」= 用户的**常驻授权**,读的是同一个 env
+      // (策略那边读的是同一个值,所以模型如实告诉用户的话和这里一致)。
+      // **模型没有任何路径能打开它** —— 它只影响这条行,不构成绕过。
+      const routineAutoExecute = process.env.BITBOT_ROUTINE_AUTO_EXECUTE === "1";
       const row = upsertRoutine({
         id: stripEnvQuotes(parts[0]) || "routine-1",
         cron,
@@ -15430,6 +15438,7 @@ function createHostFfi(repoRoot, opts = {}) {
         lifecycle: "active",
         next_due: nextDue,
         room_id: roomId,
+        auto_execute: routineAutoExecute,
       });
       const atSched = new Date().toISOString();
       const dir = path.join(DATA_ROOT, "routines");
@@ -15492,6 +15501,11 @@ function createHostFfi(repoRoot, opts = {}) {
         routines_path: ROUTINES_PATH,
         mode: "host_routine_schedule",
         pretend_scheduled: false,
+        // 这条到点会不会自己跑。界面上要照实说,不能让人以为「排上了=会自动跑」。
+        auto_execute: routineAutoExecute,
+        auto_execute_note: routineAutoExecute
+          ? "这台机器开了自动执行,到点会自己跑。"
+          : "到点会备好草稿等你批准(这台机器没开自动执行)。",
         systemd_unit_installed: systemdUnitInstalled,
         systemd_unit_active: systemdUnitActive,
         long_lived_cron_residual: !dueNow && !longLivedCronClosed,

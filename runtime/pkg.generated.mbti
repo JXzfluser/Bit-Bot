@@ -679,6 +679,7 @@ pub(all) struct ToolPolicy {
   need_approval : Array[String]
   limited_needs_approval : Array[String]
   path_roots : Array[String]
+  routine_auto_execute : Bool
 } derive(Eq, @debug.Debug)
 pub fn ToolPolicy::decide(Self, String, String) -> ToolDecision
 pub fn ToolPolicy::default() -> Self

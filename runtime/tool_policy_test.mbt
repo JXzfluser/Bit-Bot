@@ -24,6 +24,7 @@ test "K-2 a denied tool is denied, and no approval can bring it back" {
     need_approval: ["web_fetch"],
     limited_needs_approval: [],
     path_roots: [],
+    routine_auto_execute: false,
   }
   // 硬禁用优先于「需要审批」—— deny 是最终的。
   match p.decide("web_fetch", "") {
@@ -42,6 +43,7 @@ test "K-2 a limited device needs approval for more tools" {
     need_approval: [],
     limited_needs_approval: ["web_fetch", "send_mail", "Shell"],
     path_roots: [],
+    routine_auto_execute: false,
   }
   assert_true(p.is_limited())
   assert_true(p.decide("web_fetch", "") is NeedApproval)
@@ -63,6 +65,7 @@ test "K-2 a path outside the allowed roots is denied" {
     need_approval: [],
     limited_needs_approval: [],
     path_roots: ["/workspace", "/data"],
+    routine_auto_execute: false,
   }
   assert_true(p.decide("Read", "/workspace/docs/a.md") is Allow)
   assert_true(p.decide("Read", "/workspace") is Allow)
@@ -115,6 +118,18 @@ test "K-2 a policy parses from the Host's JSON" {
   assert_eq(p.path_roots[1], "/data")
   assert_true(p.decide("web_fetch", "") is @runtime.Deny(_))
   assert_true(p.decide("send_mail", "") is NeedApproval)
+}
+
+///|
+test "K-2 the machine's standing auto-execute grant is read from the policy" {
+  let raw = "{\"routine_auto_execute\":true}"
+  let p = @runtime.ToolPolicy::parse(raw)
+  assert_true(p.routine_auto_execute)
+  // 没有这个字段 / 读不出来 ⇒ 保持默认(关)。
+  let off = @runtime.ToolPolicy::parse("{}")
+  assert_false(off.routine_auto_execute)
+  let garbage = @runtime.ToolPolicy::parse("not json")
+  assert_false(garbage.routine_auto_execute)
 }
 
 ///|

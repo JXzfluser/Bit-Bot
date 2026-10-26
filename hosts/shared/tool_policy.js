@@ -78,6 +78,9 @@ function buildToolPolicy(opts) {
     need_approval: toolApprovalList(),
     limited_needs_approval: limited,
     path_roots: toolPathRoots(),
+    // 这台机器的常驻授权:到点的定时任务自己执行。
+    // **模型读到这个事实,如实告诉用户** —— 但模型自己没有任何路径能打开它。
+    routine_auto_execute: process.env.BITBOT_ROUTINE_AUTO_EXECUTE === "1",
   };
 }
 

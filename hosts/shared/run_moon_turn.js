@@ -454,9 +454,17 @@ function createTurnRunner(repoRoot, opts = {}) {
     }
     if (replyQuote && parsed) parsed.reply_quote = replyQuote;
 
+    // 「有 effect」和「要回灌内核」是**两件事**。
+    //
+    // 之前这两件事共用一个门(`parsed.needs_host_ffi`),而产品 AgentLoop 路径
+    // 把它设成了 false —— 于是 **A 类 effect 从来没被 Host 执行过**。
+    // 内核自己能做的(create_teammate)看着正常;但只有 Host 能做的
+    // (routine_schedule —— 持久化在 Host 的文件里)就是**静默失效**:
+    // 模型说「已排上」,排程根本没建。
+    //
+    // 现在:effect 一律执行;**只有内核明确要求时**才回灌结果给它。
     if (
       parsed &&
-      parsed.needs_host_ffi &&
       Array.isArray(parsed.effects) &&
       parsed.effects.length
     ) {
@@ -503,6 +511,9 @@ function createTurnRunner(repoRoot, opts = {}) {
             : null,
       });
       parsed.host_results = host_results;
+      // 回灌内核只在内核**要求**时做(legacy 意图路径)。
+      // AgentLoop 路径的最终答复已经交付了,再回灌一次只会多跑一轮模型。
+      if (parsed.needs_host_ffi) {
       try {
         const contArgs = [
           ...kernelPrefix(),
@@ -593,6 +604,7 @@ function createTurnRunner(repoRoot, opts = {}) {
             });
           }
         }
+      }
       }
     }
 

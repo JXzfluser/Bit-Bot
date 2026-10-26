@@ -14,11 +14,17 @@ struct ProductFfiHost {
   /// `Array` is a shared mutable reference, so pushes made inside `exec_tool`
   /// are visible to the caller that owns the host.
   effects : Array[DesktopEffect]
+  /// 这台机器的常驻授权:到点的定时任务自己执行(K-2 策略里的
+  /// `routine_auto_execute`)。**只是事实**,不是模型能改的东西。
+  auto_execute : Bool
 }
 
 ///|
-fn ProductFfiHost::new(sink : Array[DesktopEffect]) -> ProductFfiHost {
-  { marker: 1, effects: sink, }
+fn ProductFfiHost::new(
+  sink : Array[DesktopEffect],
+  auto_execute~ : Bool = false,
+) -> ProductFfiHost {
+  { marker: 1, effects: sink, auto_execute, }
 }
 
 ///|
@@ -160,7 +166,7 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn exec_tool(
   // the model observes the real result instead of a promise.
   if is_kernel_tool(name) {
     let result = match parse_product_tool_action(name, args) {
-      Ok(action) => exec_product_tool_action(action)
+      Ok(action) => exec_product_tool_action(action, auto_execute=self.auto_execute)
       Err(e) => ProductToolResult::{ observation: "invalid_arguments: " + e, effects: [], }
     }
     for e in result.effects {
@@ -231,12 +237,17 @@ fn run_agent_loop_chat(
   // kernel produced. `Array` is a shared mutable reference, so both see the
   // same buffer.
   let tool_effects : Array[DesktopEffect] = []
-  let host = ProductFfiHost::new(tool_effects)
+  // K-2:策略由 Host 提供。`routine_auto_execute` 是这台机器的常驻授权 ——
+  // 模型据此**如实**告诉用户到点会不会自己跑。
+  let tool_policy = load_tool_policy()
+  let host = ProductFfiHost::new(
+    tool_effects,
+    auto_execute=tool_policy.routine_auto_execute,
+  )
   // K-1/K-3: the agent's context has to survive the process, otherwise every
   // turn starts blind and the user never sees "it remembers me". The kernel
   // asks the Host for the encoded context, runs with it, and hands the
   // updated one back.
-  let tool_policy = load_tool_policy()
   let ctx_slot = agent_context_slot(ctx.bot_id, ctx.session_id)
   let agent_ctx = load_agent_context(ctx_slot, opened.session_id.value)
   let run = @runtime.AgentLoop::new(product_tool_registry()).run_with(

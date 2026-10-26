@@ -212,6 +212,21 @@ function classify(body) {
     }
     return toolCall("web_fetch", { url: `http://127.0.0.1:${stubPort}/article` }, "c-limited");
   }
+  if (last.includes("PT18-AUTOEXEC") || last.includes("PT19-NOAUTO")) {
+    if (tail.includes("routine ") && (tail.includes("自动执行") || tail.includes("等你批准"))) {
+      return { kind: "text", text: "routine handled" };
+    }
+    // 两个场景用**不同的 prompt** —— prompt 决定排程 id,同一个 prompt 会
+    // 落到同一行上,后一个场景把前一个覆盖掉。
+    const prompt = last.includes("PT18-AUTOEXEC")
+      ? "每天采集一次 AI 科技热点并发给我"
+      : "每天早上九点采集一次财经热点";
+    return toolCall(
+      "create_routine",
+      { schedule: last.includes("PT18-AUTOEXEC") ? "每天早上8点" : "每天早上9点", prompt },
+      "c-routine-auto",
+    );
+  }
   if (last.includes("PT15-CREATEROOM")) {
     if (tail.includes("room_id") || tail.includes("names_not_found") || tail.includes("members_2_to_6")) {
       return { kind: "text", text: "room handled" };
@@ -528,6 +543,28 @@ async function main() {
     blobOf(routine).slice(0, 200),
   );
 
+  // ---- PT2b: 排程**真的落盘了** ----------------------------------------
+  // 光断言「内核产出了 effect」是不够的 —— 那只证明内核做了它那半。
+  // 曾经有个真 bug:产品路径的 needs_host_ffi=false ⇒ effect 从没被执行 ⇒
+  // 模型说「已排上」,排程根本没建(Q-6 同级别的静默失效)。
+  const routinesPath2 = path.join(dataRoot, "routines", "host-routines.json");
+  let routineRows = [];
+  try { routineRows = JSON.parse(fs.readFileSync(routinesPath2, "utf8")); } catch (_) {}
+  const persisted = (Array.isArray(routineRows) ? routineRows : []).find(
+    (r) => r && String(r.prompt || "").includes("热点"),
+  );
+  check(!!persisted, "PT2b 排程真的落进 Host 的持久化存储(不是只在 effect 里)", JSON.stringify(routineRows).slice(0, 220));
+  check(
+    !!persisted && String(persisted.cron || "") === "0 8 * * *",
+    "PT2b 落盘的是解析好的 cron",
+    String((persisted || {}).cron),
+  );
+  check(
+    !!persisted && persisted.next_due,
+    "PT2b 落盘时算出了下次触发时间",
+    JSON.stringify(persisted || {}).slice(0, 220),
+  );
+
   // ---- PT3: the kernel really dispatched create_teammate --------------
   const t = await runner.runTurn("PT2-TEAMMATE", {
     sessionId: "pt-" + RUN_ID,
@@ -823,6 +860,54 @@ async function main() {
   check(
     (readRooms().rooms || []).length === roomsBeforeOne,
     "PT17 no room was created for the refused case",
+  );
+
+  // ---- PT18: 这台机器开了自动执行 ⇒ 模型如实说,并写进排程行 -----------
+  const routinesPath = path.join(dataRoot, "routines", "host-routines.json");
+  const readRoutines = () => {
+    try { return JSON.parse(fs.readFileSync(routinesPath, "utf8")); } catch (_) { return []; }
+  };
+  process.env.BITBOT_ROUTINE_AUTO_EXECUTE = "1";
+  const beforeAuto = stub.posts.length;
+  await runner.runTurn("PT18-AUTOEXEC 每天早上8点采集热点", {
+    sessionId: "pt-" + RUN_ID,
+    turnId: "pt18",
+    timeoutMs: 300000,
+  });
+  const autoObs = turnObservations(stub.posts, beforeAuto);
+  check(
+    autoObs.includes("自动执行"),
+    "PT18 模型如实告诉用户:这台机器开了自动执行",
+    autoObs.slice(0, 250),
+  );
+  const autoRows = readRoutines();
+  const autoRow = autoRows.find((r) => r && r.prompt && r.prompt.includes("AI 科技热点"));
+  check(
+    !!autoRow && autoRow.auto_execute === true,
+    "PT18 排程行上真的记着 auto_execute=true(看得见、能审计)",
+    JSON.stringify(autoRow || {}).slice(0, 220),
+  );
+
+  // ---- PT19 负例: 没开自动执行 ⇒ 如实说要批,行上也是 false -------------
+  delete process.env.BITBOT_ROUTINE_AUTO_EXECUTE;
+  const beforeNoAuto = stub.posts.length;
+  await runner.runTurn("PT19-NOAUTO 每天早上9点采集热点", {
+    sessionId: "pt-" + RUN_ID,
+    turnId: "pt19",
+    timeoutMs: 300000,
+  });
+  const noAutoObs = turnObservations(stub.posts, beforeNoAuto);
+  check(
+    noAutoObs.includes("等你批准"),
+    "PT19 模型如实说:到点会备好草稿等你批准(没骗人)",
+    noAutoObs.slice(0, 250),
+  );
+  const noAutoRows = readRoutines();
+  const noAutoRow = noAutoRows.find((r) => r && r.prompt && r.prompt.includes("财经热点"));
+  check(
+    !!noAutoRow && noAutoRow.auto_execute !== true,
+    "PT19 排程行上没有自动执行(默认关)",
+    JSON.stringify(noAutoRow || {}).slice(0, 220),
   );
 
   // ---- PT6: the same path on the non-streaming transport -------------
