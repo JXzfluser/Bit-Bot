@@ -13,6 +13,7 @@ const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
 const p0 = require("./p0_security");
+const deviceKeys = require("./device_keys");
 
 function defaultRepoRoot() {
   return path.resolve(__dirname, "../..");
@@ -253,6 +254,13 @@ function createCnInboundServer(opts = {}) {
     opts.maxBodyBytes || process.env.BITBOT_INBOUND_MAX_BODY || p0.DEFAULT_MAX_BODY_BYTES,
   );
   const nonceStore = p0.createNonceStore();
+  // B-4a:设备登记表。**只有公钥**。登记了设备 ⇒ 入站回合必须出示设备凭证
+  // (ADR 0008 的共享 turn token 不再授予设备身份);没登记 ⇒ 沿用既有
+  // turn token 合同,现有部署不受影响。
+  const devicesPath =
+    String(opts.devicesPath || process.env.BITBOT_DEVICES_PATH || "") ||
+    path.join(repoRoot, "data", "host", "devices.json");
+  const deviceStore = deviceKeys.loadDevices(devicesPath);
   const logDir = ensureDir(path.join(repoRoot, "data", "routines", "webhooks", "cn-inbound"));
   const pendingPath = path.join(
     repoRoot,
@@ -516,7 +524,11 @@ function createCnInboundServer(opts = {}) {
           return;
         }
         // ADR 0008: no Authorization and no valid signature → 401, no wake.
-        const auth = p0.verifyTurnAuth(req, raw, turnToken, nonceStore);
+        // B-4a:登记了设备就走设备凭证(带机器身份);没登记才回落共享 turn token。
+        const hasDevices = (deviceStore.devices || []).length > 0;
+        const auth = hasDevices
+          ? deviceKeys.verifyDeviceTurn(deviceStore, req, raw, { nonceStore })
+          : p0.verifyTurnAuth(req, raw, turnToken, nonceStore);
         if (!auth.ok) {
           const error =
             auth.error === "invalid_token" ||
@@ -533,8 +545,11 @@ function createCnInboundServer(opts = {}) {
         const text =
           (payload && (payload.text || payload.message || payload.prompt)) ||
           raw.toString("utf8").trim();
+        // 机器身份来自**凭证**,不是 payload —— payload 说自己是桌面也没用。
         const machineKind =
-          (payload && (payload.machine_kind || payload.machineKind)) || "mobile";
+          (auth && auth.kind) ||
+          (payload && (payload.machine_kind || payload.machineKind)) ||
+          "mobile";
         const sessionId =
           (payload && (payload.session_id || payload.sessionId)) ||
           `mobile-${machineKind}`;
@@ -559,6 +574,8 @@ function createCnInboundServer(opts = {}) {
         json(res, 200, {
           ok: Boolean(turn && turn.ok),
           machine_kind: machineKind,
+          // B-4a:回执带上设备身份(来自凭证)。
+          device_id: (auth && auth.device_id) || "",
           session_id: sessionId,
           messages: (turn && turn.messages) || [],
           host_results: (turn && turn.host_results) || [],
