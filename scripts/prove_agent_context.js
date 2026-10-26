@@ -42,6 +42,11 @@ function check(cond, name, detail) {
 }
 
 const FACT = "4271";
+/* B-5: 上下文按机器分槽。机器 A 的对话不该在机器 B 上续着。 */
+const SESSION = "ac-sess";
+const MACHINE_A = "desk-1";
+const MACHINE_B = "box-1";
+const MEM_FACT = "喜欢简洁";
 
 function sseText(text) {
   const payload = { choices: [{ delta: { content: text } }] };
@@ -196,23 +201,31 @@ async function main() {
   const t1 = await runner.runTurn(`AC-SEED 请记住这个数字 ${FACT}`, {
     turnId: "ac1",
     botId: "bot-A",
+    sessionId: SESSION,
+    machineId: MACHINE_A,
     timeoutMs: 300000,
   });
   check(t1 && t1.ok, "AC1 the seeding turn ran", t1 && t1.error);
 
-  // ---- AC2: the context file really landed on disk -------------------
+  // ---- AC2: the context file really landed on disk, under THIS machine --
   const ctxDir = path.join(dataRoot, "agent-context");
-  const ctxFiles = fs.existsSync(ctxDir) ? fs.readdirSync(ctxDir) : [];
+  const machineDir = path.join(ctxDir, MACHINE_A);
+  const ctxFiles = fs.existsSync(machineDir) ? fs.readdirSync(machineDir) : [];
   check(
     ctxFiles.some((n) => n.endsWith(".ctx")),
     "AC2 the agent context was persisted to disk",
     JSON.stringify(ctxFiles),
   );
+  check(
+    fs.existsSync(machineDir),
+    "AC2 the context lives under THIS machine's namespace (B-5)",
+    "expected dir: " + machineDir,
+  );
   const ctxFile = ctxFiles.find((n) => n.endsWith(".ctx"));
   let ctxText = "";
   if (ctxFile) {
     try {
-      ctxText = fs.readFileSync(path.join(ctxDir, ctxFile), "utf8");
+      ctxText = fs.readFileSync(path.join(machineDir, ctxFile), "utf8");
     } catch (_) {
       ctxText = "";
     }
@@ -228,6 +241,8 @@ async function main() {
   const t2 = await runner.runTurn("AC-ASK 我刚才让你记的数字是多少", {
     turnId: "ac2",
     botId: "bot-A",
+    sessionId: SESSION,
+    machineId: MACHINE_A,
     timeoutMs: 300000,
   });
   const askPosts = stub.posts.slice(before);
@@ -246,6 +261,8 @@ async function main() {
   const t3 = await runner.runTurn("AC-ASK-OTHER 另一个 Bot 看得见吗", {
     turnId: "ac3",
     botId: "bot-B",
+    sessionId: SESSION,
+    machineId: MACHINE_A,
     timeoutMs: 300000,
   });
   const otherPosts = stub.posts.slice(before2);
@@ -257,6 +274,100 @@ async function main() {
     messagesOf(t3).includes("ISOLATED"),
     "AC4 the other Bot answered ISOLATED, not LEAKED",
     messagesOf(t3).slice(0, 200),
+  );
+
+  // ---- AC5: 另一台机器读不到这段对话(负例) ---------------------------
+  const before5 = stub.posts.length;
+  const t5 = await runner.runTurn("AC-ASK 另一台机器看得见吗", {
+    turnId: "ac5",
+    botId: "bot-A",
+    sessionId: SESSION,
+    machineId: MACHINE_B,
+    timeoutMs: 300000,
+  });
+  const machineBPosts = stub.posts.slice(before5);
+  const leakedToB = machineBPosts.some((p) =>
+    JSON.stringify(p.messages || []).includes(FACT),
+  );
+  check(
+    !leakedToB,
+    "AC5 another MACHINE's slot did NOT carry the fact",
+    JSON.stringify(machineBPosts.map((p) => (p.messages || []).length)),
+  );
+  check(
+    messagesOf(t5).includes("FORGOT"),
+    "AC5 the other machine answered FORGOT, not REMEMBERED",
+    messagesOf(t5).slice(0, 200),
+  );
+
+  // ---- AC6: 分机器之前的老槽位会被迁移(且只被继承一次) ---------------
+  const legacySlot = `bot-A__${SESSION}`;
+  const legacyFile = path.join(ctxDir, `${legacySlot}.ctx`);
+  const newFile = path.join(machineDir, `${legacySlot}.ctx`);
+  try {
+    // 模拟「这台机器在分机器之前写的」:把文件挪回老位置
+    if (fs.existsSync(newFile)) {
+      fs.writeFileSync(legacyFile, fs.readFileSync(newFile, "utf8"), "utf8");
+      fs.rmSync(machineDir, { recursive: true, force: true });
+    }
+  } catch (_) {
+    /* best effort */
+  }
+  check(
+    fs.existsSync(legacyFile),
+    "AC6 the pre-split legacy slot is in place",
+    legacyFile,
+  );
+  const before6 = stub.posts.length;
+  await runner.runTurn("AC-ASK 迁移后还读得到吗", {
+    turnId: "ac6",
+    botId: "bot-A",
+    sessionId: SESSION,
+    machineId: MACHINE_A,
+    timeoutMs: 300000,
+  });
+  const migratePosts = stub.posts.slice(before6);
+  check(
+    migratePosts.some((p) => JSON.stringify(p.messages || []).includes(FACT)),
+    "AC6 the legacy slot was still readable (no history lost)",
+    "",
+  );
+  check(
+    !fs.existsSync(legacyFile),
+    "AC6 the legacy slot was MOVED, not copied (so no second machine inherits it)",
+    "legacy still exists: " + legacyFile,
+  );
+  check(
+    fs.existsSync(newFile),
+    "AC6 the context now lives in this machine's namespace",
+    newFile,
+  );
+
+  // ---- AC7: 记忆跨机器共享(选 A:同一个人,连续的助手) -----------------
+  runner.ffi.saveSessionMemory("bot-A", [{ key: "偏好", value: MEM_FACT }]);
+  const before7 = stub.posts.length;
+  await runner.runTurn("AC-MEM 另一台机器记得我的偏好吗", {
+    turnId: "ac7",
+    botId: "bot-A",
+    sessionId: "ac-mem",
+    machineId: MACHINE_B,
+    timeoutMs: 300000,
+  });
+  const memPosts = stub.posts.slice(before7);
+  const memCarried = memPosts.some((p) => {
+    const msgs = Array.isArray(p.messages) ? p.messages : [];
+    const sys = msgs.filter((m) => String(m.role || "") === "system");
+    return sys.some((m) => String(m.content || "").includes(MEM_FACT));
+  });
+  check(
+    memCarried,
+    "AC7 memory IS shared across machines (product choice A)",
+    "memory fact not found in the system prompt of the other machine",
+  );
+  check(
+    !fs.existsSync(path.join(dataRoot, "memory", MACHINE_B)),
+    "AC7 the memory store is NOT per-machine",
+    "found a per-machine memory dir",
   );
 
   try {

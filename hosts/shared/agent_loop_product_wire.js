@@ -47,28 +47,66 @@ function approvalMode() {
  * It must therefore never be able to escape the context directory: a bot id
  * like "../../etc/passwd" must not become a path.
  */
-function agentContextPath(ffi, slot) {
+const DEFAULT_CONTEXT_MACHINE = "desk-1";
+
+/**
+ * B-5:这台机器叫什么。
+ *
+ * 上下文槽位从 per-(Bot, 会话) 扩成 per-(机器, Bot, 会话) ——
+ * 同一段对话不该在两台机器上续着(那是串味,不是记得我)。
+ *
+ * **机器维度归 Host,不给内核**:内核是机器无关的(同一个二进制在每台机器上跑),
+ * 而且 Host 侧能同时算出新路径和老路径,迁移才好做。
+ */
+function agentContextMachine(machineId) {
+  const raw = String(machineId || "").trim();
+  let safe = raw.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64);
+  if (safe === "" || safe === "." || safe === "..") safe = DEFAULT_CONTEXT_MACHINE;
+  return safe;
+}
+
+function agentContextPath(ffi, slot, machineId) {
   const raw = String(slot || "").trim();
   let safe = raw.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64);
   if (safe === "" || safe === "." || safe === "..") safe = "agent-bit";
   const dir = path.join(String((ffi && ffi.DATA_ROOT) || "."), "agent-context");
-  return { dir, file: path.join(dir, safe + ".ctx") };
+  const machine = agentContextMachine(machineId);
+  return {
+    dir,
+    file: path.join(dir, machine, safe + ".ctx"),
+    // 分机器之前,上下文是平铺在 agent-context/ 下的 —— 这条是迁移源。
+    legacyFile: path.join(dir, safe + ".ctx"),
+  };
 }
 
-function readAgentContext(ffi, slot) {
-  const { file } = agentContextPath(ffi, slot);
+function readAgentContext(ffi, slot, machineId) {
+  const { file, legacyFile } = agentContextPath(ffi, slot, machineId);
   try {
-    if (!fs.existsSync(file)) return "";
-    return fs.readFileSync(file, "utf8");
+    if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
+    // 迁移:老槽位**没有机器归属**(那时候根本没记是谁写的),所以规则是
+    // 「谁先读谁继承」—— 读完就搬走,第二台机器就看不到了。
+    // 这才是「各机独立」该有的样子;复制的话两台机器会共享同一段对话。
+    if (fs.existsSync(legacyFile)) {
+      const text = fs.readFileSync(legacyFile, "utf8");
+      try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, text, "utf8");
+        fs.unlinkSync(legacyFile);
+      } catch (_) {
+        /* 搬不动就还是读老的 —— 宁可继续用旧槽位,也不能把历史弄丢 */
+      }
+      return text;
+    }
+    return "";
   } catch (_) {
     return "";
   }
 }
 
-function writeAgentContext(ffi, slot, text) {
-  const { dir, file } = agentContextPath(ffi, slot);
+function writeAgentContext(ffi, slot, text, machineId) {
+  const { file } = agentContextPath(ffi, slot, machineId);
   try {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, String(text || ""), "utf8");
     return true;
   } catch (_) {
@@ -455,6 +493,9 @@ function createProductSession(ffi, llmOpts) {
     llmError: "",
     ffi,
     turnId: String(opts.turnId || ""),
+    // B-5: 上下文按机器分槽。机器身份由 Host 提供(见 hosts/shared/machine_identity.js),
+    // 内核不需要知道「机器」这件事。
+    machineId: String((opts && opts.machineId) || ""),
   };
   return {
     state,
@@ -504,13 +545,14 @@ function createProductSession(ffi, llmOpts) {
         return { output: JSON.stringify(policy) };
       }
       if (op === "load_context") {
-        return { output: readAgentContext(state.ffi, req && req.slot) };
+        return { output: readAgentContext(state.ffi, req && req.slot, state.machineId) };
       }
       if (op === "save_context") {
         const ok = writeAgentContext(
           state.ffi,
           req && req.slot,
           req && req.text,
+          state.machineId,
         );
         return { output: ok ? "ok" : "context_not_persisted" };
       }

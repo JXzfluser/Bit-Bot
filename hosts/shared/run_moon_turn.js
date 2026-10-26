@@ -324,6 +324,8 @@ function createTurnRunner(repoRoot, opts = {}) {
     }
     const productWire = createProductSession(ffi, {
       botId: ctx.botId,
+      // B-5: 上下文按机器分槽 —— 机器身份由 Host 提供,内核不参与。
+      machineId: String(ctx.machineId || ""),
       // K-2/C-3: the device this turn came from decides how much the model
       // may do without asking. "limited" = a mobile client or a remote
       // inbound turn — the person asking is not at the machine.
