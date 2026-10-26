@@ -30,6 +30,7 @@ agent-tools/
 /data/host/turn-token
 # K-1/K-3: the agent context is conversation state, not source.
 /data/agent-context/
+/data/traces/
 /data/desktop/frames/
 !/data/**/.gitkeep
 /data/journal/computer-use/

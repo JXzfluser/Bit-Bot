@@ -114,6 +114,16 @@ pub(all) struct DesktopMessage {
   text : String
 } derive(Eq, @debug.Debug)
 
+pub(all) struct DesktopToolTraceRow {
+  tool_name : String
+  args_json : String
+  result_snippet : String
+  duration_ms : Int32
+  exit_code : Int32
+  error : Bool
+  timestamp : String
+} derive(Eq, @debug.Debug)
+
 pub(all) struct DesktopTurnContext {
   session_id : String
   machine_id : String
@@ -152,6 +162,7 @@ pub(all) struct DesktopTurnResult {
   agent_llm : Int32
   agent_exec : Int32
   agent_approval : Int32
+  agent_traces : Array[DesktopToolTraceRow]
 } derive(Eq, @debug.Debug)
 pub fn DesktopTurnResult::to_json_line(Self) -> String
 

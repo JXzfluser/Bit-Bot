@@ -650,7 +650,105 @@ function createTurnRunner(repoRoot, opts = {}) {
       });
     }
 
+    // K-6: 落一条可回放的回合记录。
+    // 失败不能影响这一回合的结果 —— 记录是诊断材料,不是业务数据。
+    try {
+      writeTurnTrace(parsed, text, ctx);
+    } catch (_) {
+      /* 记录写不下去也不能让回合失败 */
+    }
+
     return parsed;
+  }
+
+  /**
+   * K-6:每回合一条 trace(可回放)。
+   *
+   * 记什么:这回合的输入、工具序列(名字/参数/结果摘要/耗时)、最终交付、
+   * 停止原因。**模型的决定被记录,但不可重放**(provider 不确定)——
+   * 可重放的是**工具序列**:拿这条记录驱动一个新回合,工具序列必须一样。
+   *
+   * 脱敏:整条记录过一遍(模式级 token 形状 + 环境值级)。仓库铁律是
+   * 「私钥/密钥不进日志/artifact」—— trace 就是 artifact。
+   */
+  function writeTurnTrace(parsed, userText, ctx) {
+    const rows = Array.isArray(parsed && parsed.agent_traces) ? parsed.agent_traces : [];
+    if (!rows.length) return null;
+    const dataRoot = ffi.DATA_ROOT;
+    if (!dataRoot) return null;
+    const dir = path.join(dataRoot, "traces");
+    fs.mkdirSync(dir, { recursive: true });
+    const turnId = String((parsed && parsed.turn_id) || (ctx && ctx.turnId) || "turn");
+    const file = path.join(dir, turnId.replace(/[^A-Za-z0-9._-]/g, "_") + ".json");
+    const trace = {
+      version: 1,
+      turn_id: turnId,
+      session_id: String((parsed && parsed.session_id) || (ctx && ctx.sessionId) || ""),
+      bot_id: String((ctx && ctx.botId) || ""),
+      machine_id: String((parsed && parsed.machine_id) || (ctx && ctx.machineId) || ""),
+      machine_kind: String((parsed && parsed.machine_kind) || (ctx && ctx.machineKind) || ""),
+      channel: String((parsed && parsed.channel) || (ctx && ctx.channel) || ""),
+      at: new Date().toISOString(),
+      ok: Boolean(parsed && parsed.ok !== false),
+      intent: String((parsed && parsed.intent) || ""),
+      agent_stop: String((parsed && parsed.agent_stop) || ""),
+      agent_steps: Number((parsed && parsed.agent_steps) || 0),
+      agent_llm: Number((parsed && parsed.agent_llm) || 0),
+      agent_exec: Number((parsed && parsed.agent_exec) || 0),
+      agent_approval: Number((parsed && parsed.agent_approval) || 0),
+      user_text: String(userText || ""),
+      assistant_text: ((parsed && parsed.messages) || [])
+        .filter((m) => m && m.role === "assistant" && m.text)
+        .map((m) => String(m.text))
+        .join("\n"),
+      tools: rows.map((t) => ({
+        tool_name: String((t && t.tool_name) || ""),
+        args_json: String((t && t.args_json) || ""),
+        result_snippet: String((t && t.result_snippet) || ""),
+        duration_ms: Number((t && t.duration_ms) || 0),
+        exit_code: Number((t && t.exit_code) || 0),
+        error: Boolean(t && t.error),
+        timestamp: String((t && t.timestamp) || ""),
+      })),
+    };
+    fs.writeFileSync(file, JSON.stringify(scrubTrace(trace), null, 2));
+    return file;
+  }
+
+  /** trace 是 artifact —— 密钥不许进来。 */
+  function scrubTrace(value) {
+    const p0 = require("./p0_security");
+    let secretProtocol = null;
+    try { secretProtocol = require("../desktop/secret_protocol"); }
+    catch {
+      try { secretProtocol = require("../../hosts/desktop/secret_protocol"); }
+      catch {
+        try { secretProtocol = require("../secret_protocol"); }
+        catch { secretProtocol = null; }
+      }
+    }
+    const walk = (v) => {
+      if (v == null) return v;
+      if (typeof v === "string") {
+        let out = v;
+        if (secretProtocol && Array.isArray(secretProtocol.TOKEN_RULES)) {
+          for (const rule of secretProtocol.TOKEN_RULES) {
+            if (rule && rule.re) {
+              out = out.replace(new RegExp(rule.re.source, "g"), secretProtocol.REDACTED || "[REDACTED]");
+            }
+          }
+        }
+        return p0.scrubSecrets(out);
+      }
+      if (Array.isArray(v)) return v.map(walk);
+      if (typeof v === "object") {
+        const out = {};
+        for (const k of Object.keys(v)) out[k] = walk(v[k]);
+        return out;
+      }
+      return v;
+    };
+    return walk(value);
   }
 
   async function bootBanner() {

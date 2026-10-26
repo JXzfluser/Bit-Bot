@@ -308,7 +308,27 @@ fn run_agent_loop_chat(
     agent_llm: run.llm_count,
     agent_exec: run.exec_count,
     agent_approval: run.approval_count,
+    // K-6: 把内核记下的工具序列带出回合结果,Host 才能落盘成可回放的记录。
+    agent_traces: tool_trace_rows(run.traces),
   }
+}
+
+///|
+/// K-6:内核的工具 trace → 回合结果里的行。
+fn tool_trace_rows(traces : Array[@runtime.AgentToolTrace]) -> Array[DesktopToolTraceRow] {
+  let out : Array[DesktopToolTraceRow] = []
+  for tr in traces {
+    out.push({
+      tool_name: tr.tool_name,
+      args_json: tr.args_json,
+      result_snippet: tr.result_snippet,
+      duration_ms: tr.duration_ms,
+      exit_code: tr.exit_code,
+      error: tr.error,
+      timestamp: tr.timestamp,
+    })
+  }
+  out
 }
 
 ///|
