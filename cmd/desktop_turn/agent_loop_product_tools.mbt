@@ -45,6 +45,7 @@ pub fn product_tool_name_canonical(name : String) -> String {
     "webSearch" | "WebSearch" | "search_web" | "searchWeb" => "web_search"
     "webFetch" | "WebFetch" | "open_url" | "openUrl" => "web_fetch"
     "sendMail" | "SendMail" | "send_mail" | "mail_send" => "send_mail"
+    "createRoom" | "CreateRoom" | "create_group" | "createGroup" => "create_room"
     _ => name
   }
 }
@@ -63,7 +64,7 @@ pub fn is_kernel_tool(name : String) -> Bool {
 /// 不是"我打算做"的承诺。
 pub fn is_host_tool(name : String) -> Bool {
   let c = product_tool_name_canonical(name)
-  c == "web_search" || c == "web_fetch" || c == "send_mail"
+  c == "web_search" || c == "web_fetch" || c == "send_mail" || c == "create_room"
 }
 
 ///|
@@ -104,6 +105,13 @@ pub fn product_tool_specs() -> Array[@tools.ToolSpec] {
       description: "抓取一个网页的正文内容。用来读一篇具体的文章或文档。",
       builtin: None,
       input_schema_json: "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}},\"required\":[\"url\"]}",
+      requires_approval: false,
+    },
+    {
+      id: "create_room",
+      description: "创建一个群聊(团队)。title 是群名;members 是成员(可以是 Bot 的名字或 id)的数组,2 到 6 人。成员必须已经存在 —— 不认识的人会被如实拒绝,不会建出残缺的群。",
+      builtin: None,
+      input_schema_json: "{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"},\"members\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"required\":[\"title\",\"members\"]}",
       requires_approval: false,
     },
     {

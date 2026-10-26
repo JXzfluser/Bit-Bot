@@ -88,6 +88,9 @@ function canonProductTool(name) {
   if (n === "sendMail" || n === "SendMail" || n === "send_mail" || n === "mail_send") {
     return "send_mail";
   }
+  if (n === "createRoom" || n === "CreateRoom" || n === "create_group" || n === "createGroup") {
+    return "create_room";
+  }
   return n;
 }
 
@@ -185,6 +188,58 @@ async function execHostProductTool(name, args, argsJson, state) {
         http_status: Number(detail.http_status || 0) || 0,
         body_prefix: String(detail.body_prefix || ""),
         body_bytes: Number(detail.body_bytes || 0) || 0,
+      }),
+    };
+  }
+  if (tool === "create_room") {
+    // C-5:建群。成员可以是名字或 id;不认识的人会被如实拒绝 —— 绝不建残群。
+    const title = String(args.title || args.name || "").trim();
+    const rawMembers = Array.isArray(args.members)
+      ? args.members
+      : Array.isArray(args.bots)
+        ? args.bots
+        : String(args.members || args.bots || "").split(",");
+    const members = rawMembers.map((m) => String(m == null ? "" : m).trim()).filter(Boolean);
+    if (!title) {
+      return { output: JSON.stringify({ ok: false, error: "create_room needs a title" }) };
+    }
+    if (!members.length) {
+      return { output: JSON.stringify({ ok: false, error: "create_room needs members" }) };
+    }
+    let res = null;
+    try {
+      res = await state.ffi.createRoom(members.join(","), title);
+    } catch (err) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          error: String((err && err.message) || err).slice(0, 200),
+          members,
+        }),
+      };
+    }
+    if (!res || res.ok === false) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          error: (res && res.error) || "room_create_failed",
+          names_not_found: (res && res.names_not_found) || [],
+          resolved_names: (res && res.resolved_names) || [],
+          resolved_count: Number((res && res.resolved_count) || 0),
+          members,
+        }),
+      };
+    }
+    const room = res.room || {};
+    return {
+      output: JSON.stringify({
+        ok: true,
+        room_id: String(room.id || ""),
+        title: String(room.title || title),
+        members: Array.isArray(room.members) ? room.members : members,
+        member_count: Array.isArray(room.members) ? room.members.length : members.length,
+        // 短窗内的同成员同群名 → 返回既有群,不新建第二个。
+        existing: Boolean(res.existing),
       }),
     };
   }
@@ -307,7 +362,13 @@ async function execProductTool(req, state) {
     if (typeof fixture === "string") return { output: fixture };
     return { output: readBounded(state.ffi, rel) };
   }
-  if (canonProductTool(name) !== name || name === "web_search" || name === "web_fetch" || name === "send_mail") {
+  if (
+    canonProductTool(name) !== name ||
+    name === "web_search" ||
+    name === "web_fetch" ||
+    name === "send_mail" ||
+    name === "create_room"
+  ) {
     return await execHostProductTool(name, args, argsJson, state);
   }
   return { output: "exec refused: " + name };

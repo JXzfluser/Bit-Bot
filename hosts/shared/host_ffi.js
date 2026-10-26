@@ -25651,6 +25651,15 @@ function createHostFfi(repoRoot, opts = {}) {
     resolveLlmConfig,
     listLlmCatalog,
     webSearch,
+    // C-5:建群。rooms.json 是 Host 的文件,所以建群是 Host 侧的动作。
+    // 内核只给模型下发 schema,真正的建群在这里同步发生 ——
+    // 模型拿到的观测必须是「真建出来了」或「如实没建成」。
+    createRoom: (membersCsv, title) => {
+      if (!surface || typeof surface.roomCreate !== "function") {
+        return { ok: false, error: "room_surface_unavailable", mode: "host_group_chat" };
+      }
+      return surface.roomCreate(String(membersCsv || ""), String(title || ""));
+    },
   };
 }
 

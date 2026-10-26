@@ -212,6 +212,32 @@ function classify(body) {
     }
     return toolCall("web_fetch", { url: `http://127.0.0.1:${stubPort}/article` }, "c-limited");
   }
+  if (last.includes("PT15-CREATEROOM")) {
+    if (tail.includes("room_id") || tail.includes("names_not_found") || tail.includes("members_2_to_6")) {
+      return { kind: "text", text: "room handled" };
+    }
+    return toolCall(
+      "create_room",
+      { title: "AI 热点日报组", members: ["Alice", "Bob"] },
+      "c-room",
+    );
+  }
+  if (last.includes("PT16-ROOMBADMEMBER")) {
+    if (tail.includes("names_not_found") || tail.includes("room_id")) {
+      return { kind: "text", text: "room handled" };
+    }
+    return toolCall(
+      "create_room",
+      { title: "缺人组", members: ["Alice", "查无此人"] },
+      "c-roombad",
+    );
+  }
+  if (last.includes("PT17-ROOMONEMEMBER")) {
+    if (tail.includes("members_2_to_6") || tail.includes("room_id")) {
+      return { kind: "text", text: "room handled" };
+    }
+    return toolCall("create_room", { title: "一个人组", members: ["Alice"] }, "c-roomone");
+  }
   if (last.includes("PT11-MAILAPPROVED")) {
     if (tail.includes("eml_path") || tail.includes("no approval grant")) {
       return { kind: "text", text: "mail handled" };
@@ -415,6 +441,27 @@ async function main() {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-pt-"));
   const dataRoot = path.join(tmpRoot, "data");
   fs.mkdirSync(dataRoot, { recursive: true });
+  // C-5:建群要有真实的 Bot 与房间存储(rooms.json / bots.json 是 Host 的文件)。
+  const deskDir = path.join(dataRoot, "desktop");
+  fs.mkdirSync(deskDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(deskDir, "bots.json"),
+    JSON.stringify({
+      version: 1,
+      primary_id: "b1",
+      bots: [
+        { id: "b1", name: "Alice", job: "research", description: "collect", hidden: false, pinned: false },
+        { id: "b2", name: "Bob", job: "writing", description: "draft", hidden: false, pinned: false },
+        { id: "b3", name: "Carol", job: "review", description: "check", hidden: false, pinned: false },
+      ],
+    }, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(deskDir, "rooms.json"),
+    JSON.stringify({ version: 1, rooms: [] }, null, 2),
+  );
+  const roomsPath = path.join(deskDir, "rooms.json");
+  const readRooms = () => JSON.parse(fs.readFileSync(roomsPath, "utf8"));
 
   process.env.BITBOT_LLM_BASE_URL = `http://127.0.0.1:${stub.port}/v1`;
   process.env.BITBOT_LLM_API_KEY = "stub-key";
@@ -711,6 +758,71 @@ async function main() {
     trustObs.includes("body_prefix"),
     "PT14 the same tool ran on a trusted device without asking",
     trustObs.slice(0, 200),
+  );
+
+  // ---- PT15: create_room really creates a room ------------------------
+  const beforeRoom = stub.posts.length;
+  await runner.runTurn("PT15-CREATEROOM", {
+    sessionId: "pt-" + RUN_ID,
+    turnId: "pt15",
+    timeoutMs: 300000,
+  });
+  const roomObs = turnObservations(stub.posts, beforeRoom);
+  check(
+    roomObs.includes("room_id"),
+    "PT15 the model was told the room id (real result, not a promise)",
+    roomObs.slice(0, 200),
+  );
+  const roomsAfter = readRooms().rooms || [];
+  const made = roomsAfter.find((r) => r && r.title === "AI 热点日报组");
+  check(!!made, "PT15 the room really landed in rooms.json", JSON.stringify(roomsAfter.map((r) => r.title)));
+  check(
+    !!made && (made.members || []).length === 2,
+    "PT15 the room has the two members that were asked for",
+    JSON.stringify((made || {}).members),
+  );
+  check(
+    !!made && Array.isArray(made.transcript) && made.transcript.some((e) => e && e.kind === "system"),
+    "PT15 the room has a visible system receipt line",
+  );
+
+  // ---- PT16: an unknown member is refused, NO partial room -------------
+  const roomsBeforeBad = (readRooms().rooms || []).length;
+  const beforeBad = stub.posts.length;
+  await runner.runTurn("PT16-ROOMBADMEMBER", {
+    sessionId: "pt-" + RUN_ID,
+    turnId: "pt16",
+    timeoutMs: 300000,
+  });
+  const badObs = turnObservations(stub.posts, beforeBad);
+  check(
+    badObs.includes("names_not_found"),
+    "PT16 an unknown member is refused as such",
+    badObs.slice(0, 200),
+  );
+  check(
+    (readRooms().rooms || []).length === roomsBeforeBad,
+    "PT16 NO partial room was created (a team missing a member is not a team)",
+    JSON.stringify((readRooms().rooms || []).map((r) => r.title)),
+  );
+
+  // ---- PT17: one member is refused (the 2..6 boundary) -----------------
+  const roomsBeforeOne = (readRooms().rooms || []).length;
+  const beforeOne = stub.posts.length;
+  await runner.runTurn("PT17-ROOMONEMEMBER", {
+    sessionId: "pt-" + RUN_ID,
+    turnId: "pt17",
+    timeoutMs: 300000,
+  });
+  const oneObs = turnObservations(stub.posts, beforeOne);
+  check(
+    oneObs.includes("members_2_to_6"),
+    "PT17 a one-person room is refused by the 2..6 boundary",
+    oneObs.slice(0, 200),
+  );
+  check(
+    (readRooms().rooms || []).length === roomsBeforeOne,
+    "PT17 no room was created for the refused case",
   );
 
   // ---- PT6: the same path on the non-streaming transport -------------
