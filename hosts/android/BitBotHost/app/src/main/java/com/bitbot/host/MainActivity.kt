@@ -20,6 +20,7 @@ import com.bitbot.host.ui.CapabilitiesSheet
 import com.bitbot.host.ui.ChatLine
 import com.bitbot.host.ui.CredentialsSheet
 import com.bitbot.host.ui.HomeScreen
+import com.bitbot.host.ui.HostReply
 import com.bitbot.host.ui.MenuSheet
 import com.bitbot.host.ui.PairingDesktop
 import com.bitbot.host.ui.PairingRedeemState
@@ -121,14 +122,16 @@ class MainActivity : ComponentActivity() {
           permissionLauncher.launch(need)
         }
         delivery = SendToUserSurface.extract(body)
+        // 内核回的是给机器看的事实（围栏 JSON、绝对路径、变量名）。手机上默认读人话，
+        // 原文留一处展开 —— 呈现层做翻译，不改 /v1/turn 的形状。
+        val shown = HostReply.display(body)
         val assistant =
-          TurnBridge.assistantText(body)
-            ?: if (body.startsWith("!")) body
-            else "! " + (
-              TurnBridge.failureText(body)
-                ?: "桌面大脑没有返回可见回复（HTTP 正常，但 assistant 文本为空）"
-            )
-        lines.add(ChatLine("assistant", assistant))
+          if (shown.text.isNotBlank()) shown.text
+          else "! " + (
+            TurnBridge.failureText(body)
+              ?: "桌面大脑没有返回可见回复（HTTP 正常，但 assistant 文本为空）"
+          )
+        lines.add(ChatLine("assistant", assistant, shown.raw))
         busy = false
       }
     }

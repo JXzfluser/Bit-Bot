@@ -17,7 +17,7 @@ import androidx.compose.ui.Modifier
  * 首屏（唯一一屏）。状态全部由 MainActivity 灌进来，所以这一屏可以在 JVM 上被真渲染、
  * 真断言 —— 旧版把状态埋在 setContent 的 lambda 里，UI 因此无法验证。
  */
-data class ChatLine(val role: String, val text: String)
+data class ChatLine(val role: String, val text: String, val raw: String? = null)
 
 /** 已配对却没有对话时给的提示键：把「不知道说什么」这一步替用户迈出去。 */
 val BitBotSuggestions =

@@ -724,3 +724,70 @@ Compose 层和窗口层不许各写各的颜色然后慢慢漂移。负向对照
 残留（诚实）：Robolectric 跑的是默认浅色配置，`values-night` 在 JVM 上换不了 config，
 只能对齐字面量，深色观感没在这里验过；状态栏/导航栏图标在厂商 ROM（刘海屏、三键与手势
 混布）上的实际表现仍必须真机看。
+
+## 8.23 手机上「看不懂」的最后一块：内核回执被原样贴进聊天
+
+**① 先纠正 §8.22 的一条误判。** 我在 ⑥ 残留里写「能力面板那十条里仍有 5 条是占位动作，
+功能本身还没接上」。这句不成立。本轮把九个动作逐条真打进内核（`node hosts/cli_host/run_turn.js`）：
+
+```
+ListMachines → machines_list:ok      list models → llm_list_models:ok
+device tools → device_tools_list:ok   take photo → device_permission:ok
+list routines→ routine_list:ok        tick routines → routine_tick:ok
+check updates→ check_updates:ok       钉钉/飞书/企微 → approval_card:ok
+```
+
+九个全部有真 host kind、真回执。所以问题不在「功能没接」，在**呈现**：`/v1/turn` 最后一条
+assistant 消息是给机器看的 —— `Host FFI results applied (MoonBit kernel / ADR 0002):` 加一行
+`- ok kind=… cmd=…`，再加一坨围栏 JSON，里面是 `/data/Bit-Bot/data/routines/list-xxxx.json`
+这种绝对路径、`BITBOT_LLM_QWEN_API_KEY` 这种变量名、`pretend_granted` 这种内核字段。
+旧 `MainActivity` 走 `TurnBridge.assistantText(body)`，取的就是最后一条 —— 于是手机上那一条
+「助手回复」就是这坨转储。主流 AI app 不会把数据库转储读给用户。
+
+**② 修复前红（真跑，不是补叙）。** 先写规格 `HostReplySummaryTest`（12 条），把实现临时换成
+**当天 App 的真实行为**（原样返回最后一条 assistant），结果 `12 tests completed, 11 failed`：
+
+- `[machines_list] 还在往聊天里贴代码围栏：Host FFI results applied … - ok kind=machines_list …`
+- `unavailable 就是不可用：… - ok kind=device_permission cmd=` + 反引号 `desk-1|camera|unavailable` + 反引号
+- `feed 还没接上、备案还是空的 —— 这两条残留必须看得见：… - ok kind=check_updates …`
+- `展开必须还能看到内核原文：null`
+- `认不得的 kind 必须原样给出来，不猜 expected:<[unknown]> but was:<[normal]>`
+
+八个 fixture 是真抓的：`app/src/test/resources/hostfix/*.json`，由上面的命令在本机跑出来，
+不是手写样例。门禁 AB-13 会逐个校验 fixture 里确实含 `Host FFI results applied` 且 kind 对得上
+—— 防止以后有人把 fixture 改成配合实现的漂亮样本。
+
+**③ 加了什么。** 只有呈现层：`ui/HostReply.kt` 把认得的内核 kind 翻成人，并保留原文。
+
+| 内核回包字段 | 手机上现在这一行 |
+| --- | --- |
+| `machines_list.count` + `machines[].status` | 「已注册 3 台设备：· 桌面 desk-1 在线 · iPhone phone-ios 不在线 …」 |
+| `llm_list_models` 文本块 `LLM providers (3)` / `key=missing` ×3 / `active=` | 「模型服务商 3 家，已配密钥 0 家。还有 3 家没配密钥…当前指向 deepseek/deepseek-chat」 |
+| `device_tools_list.count=0` | 「· desk-1 上没有可用工具（0 个）：内核没有把工具权限记成已授予。」 |
+| `routine_list.count=0` | 「定时任务 0 条：现在还没有到点会自动发的东西。」 |
+| `routine_tick.due_count/fired_count` | 「这一轮到点的任务 0 条，实际触发 0 条…」 |
+| `check_updates.feed_url=null` + `filing.icp/algorithm=null` | 「更新通道 stable…更新源还没接上（feed 未配置）…ICP / 算法备案信息还没填，上线前是硬门槛」 |
+| `device_permission.permission=unavailable` + `true_device_os_dialog_residual` | 「相机：标记为不可用（desk-1）。桌面已经生成授权卡片；真机系统弹窗这一层还没验过」 |
+| `approval_card` 的 `external:dingtalk:cid-android` + `status=pending` | 「这一步要人工确认…没有自动执行。目标通道：钉钉 · cid-android」 |
+
+三条边界写死在测试里：**内核、store、IPC、`/v1/turn` 的 JSON 形状一个字没改**；摘要里不许出现
+围栏、绝对路径、`BITBOT_*` 变量名；**认不得的 kind 一律原样给出去，不许编**（`kind=some_new_kernel_thing`
+这条测试就是钉这个的）。另外「好看」不能靠藏事实换：`ChatLine` 新增可选 `raw` 字段，助手行下面
+一个「看原始回执」，点开是真原文 —— `UiHostReplyRowTest` 用真 fixture 一路渲染到 Compose 语义树，
+断「默认看不见原文、点一下看得见」。
+
+**④ 修的过程中自己踩的两个坑。** 一、`approval_card` 那条 dump 里有**两行** `- ok kind=…`
+（`approval_card` 和 `delivery`），第一版实现遇到认不得的 kind 就整坨退回原样贴，于是审批这条
+在屏幕上还是转储。改成「认得的逐条翻译，认不得的单独点名说没接进摘要」，既不给 `delivery` 编意思，
+也不让用户继续看围栏。二、抽取逻辑一开始在 `HostReply` 里重写了一份 `lastAssistant`，与
+`TurnBridge.assistantText` 重复 —— 两处解析同一个协议迟早漂移，改回只留一份。
+
+**⑤ 门禁与数字。** JVM 单测 **109 用例 0 失败（12 个类）**；`prove_android_build` **AB-01…AB-13 全绿**
+（APK 8 MB）。新 AB-13 带负向对照：把 MainActivity 里 `HostReply.display(` 换成老写法，门必须判红。
+AB-06 下限 91 → 106。矩阵里 G-47 加了 AB-13 anchor 与这段修复前红。`smoke_grok_desktop_parity.sh`
+的边界说明同步：JVM 仍然验不到像素，也验不到 `values-night` 配置。
+
+**⑥ 残留（诚实）。** 摘要用的是**内核已经说出来的事实**，不是模型写的自然语言 —— 所以它读起来像
+表格而不像聊天；要更像主流 app，得让桌面大脑自己在 `/v1/turn` 里回人话（那要改契约，不在本轮范围）。
+`delivery` 这类还没接进摘要的 kind 现在只在屏幕上点名说「没接进摘要」，没有真解释。
+真机上一屏能显示多少行、展开原文的手势好不好用，仍然没验（无 KVM）。

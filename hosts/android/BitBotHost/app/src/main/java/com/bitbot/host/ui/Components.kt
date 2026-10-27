@@ -36,6 +36,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -335,12 +339,37 @@ private fun ChatRow(line: ChatLine) {
       )
     }
   } else {
-    Text(
-      line.text,
-      style = MaterialTheme.typography.bodyLarge,
-      color = scheme.onSurface,
-      modifier = Modifier.widthIn(max = 640.dp),
-    )
+    Column(Modifier.widthIn(max = 640.dp)) {
+      Text(
+        line.text,
+        style = MaterialTheme.typography.bodyLarge,
+        color = scheme.onSurface,
+      )
+      // 内核的原始回执照旧给得出来：默认读人话，愿意看事实的人一处展开。
+      if (line.raw != null) {
+        var open by remember { mutableStateOf(false) }
+        TextButton(onClick = { open = !open }) {
+          Text(
+            if (open) "收起原始回执" else "看原始回执",
+            style = MaterialTheme.typography.labelLarge,
+            color = scheme.onSurfaceVariant,
+          )
+        }
+        if (open) {
+          Text(
+            line.raw,
+            style = BitBotMonoStyle,
+            color = scheme.onSurfaceVariant,
+            modifier =
+              Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(BitBotRadius.card))
+                .background(scheme.surfaceVariant)
+                .padding(BitBotSpace.md),
+          )
+        }
+      }
+    }
   }
 }
 

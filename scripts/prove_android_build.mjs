@@ -10,7 +10,7 @@
  *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 91（防止 test 任务空转假绿）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 106（防止 test 任务空转假绿）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -21,6 +21,9 @@
  *   AB-12 窗口层主题跟设计系统同色：manifest 挂 @style/Theme.BitBot + adjustResize（键盘
  *         避让只做一次）、values/ 与 values-night/ 三个窗口色等于 Theme.kt 画布字面量、
  *         APK 资源表里真有 style/Theme.BitBot、4 条窗口用例真在结果里
+ *   AB-13 内核回放在手机上说人话：MainActivity 把 /v1/turn 回包交给 HostReply.display、
+ *         8 个 fixture 必须是真内核回包、6 条摘要/屏幕用例真在结果里（含「认不得的 kind
+ *         不许编摘要」）
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
@@ -218,7 +221,7 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 91) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 106) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -630,6 +633,103 @@ if (badge.status !== 0 || !badgeOut) {
   else
     ok(
       "AB-12 窗口层落地：manifest 挂 Theme.BitBot + adjustResize（无双重补偿）+ 浅色/深色窗口色与 Theme.kt 画布一致 + APK 资源表有 style + 4 条窗口用例真跑（负向对照通过）",
+    );
+}
+
+/* AB-13 内核回放在手机上必须说人话（且不许为了好看藏事实）。
+ *
+ * 这轮的来由：画布/顶栏/输入框重构完之后，手机上「看不懂」还剩一条真凶 ——
+ * 能力面板九个动作打出去，`/v1/turn` 最后一条 assistant 消息是
+ * `Host FFI results applied … - ok kind=… ```{绝对路径、BITBOT_* 变量名、pretend_*}``` `，
+ * 旧代码把它原样贴进聊天。主流 AI app 不会把内核转储当回复读给用户。
+ *
+ * 修复前红（HostReplySummaryTest 12 条里 11 条红，实现换成当天 App 的真实行为后真跑）：
+ *   [machines_list] 还在往聊天里贴代码围栏：Host FFI results applied (MoonBit kernel / ADR 0002):…
+ *   unavailable 就是不可用：Host FFI results applied … - ok kind=device_permission cmd=`desk-1|camera|u…
+ *   feed 还没接上、备案还是空的 —— 这两条残留必须看得见：Host FFI results applied … - ok kind=check_updates…
+ *   展开必须还能看到内核原文：null
+ *   认不得的 kind 必须原样给出来，不猜 expected:<[unknown]> but was:<[normal]>
+ *   …（共 12 tests completed, 11 failed）
+ *
+ * 这条门盯四件事：
+ *   1. ui/HostReply.kt 在，MainActivity 真调 HostReply.display（不是又一个没人接的模块）；
+ *   2. 八个 fixture 是真抓的内核回包（每个都含 Host FFI results applied），不是手写的漂亮样例；
+ *   3. 摘要用例 + 屏幕用例真在结果里；
+ *   4. 「认不得的 kind 不许编摘要」这条测试在 —— 呈现层只能翻译能确认的，不能猜。
+ * 负向对照：把 MainActivity 换成当天的旧路径（直接贴 assistantText），门必须判红。
+ */
+{
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(HOST, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const main = read("app/src/main/java/com/bitbot/host/MainActivity.kt");
+  const hostReply = read("app/src/main/java/com/bitbot/host/ui/HostReply.kt");
+  const fixtureDir = path.join(HOST, "app/src/test/resources/hostfix");
+  const wantFixtures = [
+    "machines_list",
+    "llm_list_models",
+    "device_tools_list",
+    "routine_list",
+    "routine_tick",
+    "check_updates",
+    "device_permission",
+    "approval_card",
+  ];
+  const fixtureProblems = [];
+  for (const k of wantFixtures) {
+    const p = path.join(fixtureDir, k + ".json");
+    if (!fs.existsSync(p)) {
+      fixtureProblems.push("缺 fixture: " + k);
+      continue;
+    }
+    const body = fs.readFileSync(p, "utf8");
+    if (!body.includes("Host FFI results applied")) fixtureProblems.push("fixture 不是真内核回包: " + k);
+    if (!new RegExp('kind=' + k).test(body)) fixtureProblems.push("fixture 里的 kind 对不上: " + k);
+  }
+
+  const rpNames = [];
+  {
+    const resDir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+    try {
+      for (const f of fs.readdirSync(resDir)) {
+        if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+        for (const m of fs.readFileSync(path.join(resDir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+          rpNames.push(m[1]);
+        }
+      }
+    } catch {
+      /* 下面按「不在结果里」判红 */
+    }
+  }
+  const wantRpCases = [
+    /九个能力回执没有一个还在贴原始倾倒/,
+    /认不得的 kind 不许编摘要/,
+    /原始回执仍然给得出来/,
+    /屏幕上读得出人话 默认看不到内核原文/,
+    /点一下看原始回执/,
+    /相机这条不许在屏幕上说成已授权/,
+  ];
+  const missingRp = wantRpCases.filter((re) => !rpNames.some((n) => re.test(n)));
+
+  const usesSummary = /HostReply\.display\(/.test(main) && hostReply.includes("object HostReply");
+  // 负向对照：同一把尺子过一遍「当天真实的老路径」
+  const oldPath = main.replace(/HostReply\.display\(/, "TurnBridge.legacyAssistant(");
+  const negOk = !/HostReply\.display\(/.test(oldPath);
+  if (!negOk) bad("AB-13 负向对照失败：尺子抓不到退回原样贴回落的写法", "");
+
+  const problems = [];
+  if (!hostReply) problems.push("缺 ui/HostReply.kt");
+  if (!usesSummary) problems.push("MainActivity 没把回包交给 HostReply.display（还是在贴内核原文）");
+  if (fixtureProblems.length) problems.push(fixtureProblems.join(", "));
+  if (missingRp.length) problems.push("摘要/屏幕用例不在结果里: " + missingRp.map(String).join(","));
+  if (problems.length) bad("AB-13 内核回执在手机上还没说人话", problems.slice(0, 5).join(" | "));
+  else
+    ok(
+      "AB-13 回执呈现落地：HostReply.display 接在 MainActivity 上 + 8 个真抓 fixture 校验 + 6 条摘要/屏幕用例真跑（含「认不得的 kind 不许编摘要」，负向对照通过）",
     );
 }
 

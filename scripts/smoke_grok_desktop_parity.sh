@@ -1760,6 +1760,9 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     grep -q "AB-12 窗口层落地" /tmp/g47-build.log \
       && ok "G-47 窗口层主题真落地：manifest 挂 @style/Theme.BitBot + adjustResize、values/ 与 values-night/ 三个窗口色与 Theme.kt 画布字面量一致、APK 资源表里有 style/Theme.BitBot、4 条窗口用例在结果里、AB-12 带负向对照" \
       || bad "G-47 AB-12 anchor missing"
+    grep -q "AB-13 回执呈现落地" /tmp/g47-build.log \
+      && ok "G-47 内核回放在手机上说人话：MainActivity 把 /v1/turn 回包交给 HostReply.display、8 个 fixture 校验为真内核回包、6 条摘要/屏幕用例在结果里（含「认不得的 kind 不许编摘要」）、AB-13 带负向对照" \
+      || bad "G-47 AB-13 anchor missing"
   fi
 else
   bad "G-47 prove_android_build（见 /tmp/g47-build.log；$(tail -1 /tmp/g47-build.log)）"
@@ -1779,6 +1782,12 @@ echo "      windowBackground expected:<-1> but was:<-328966>（#FFFAFAFA 框架�
 echo "      statusBarColor   expected:<-1> but was:<-9079435>（#FF757575）"
 echo "      navigationBarColor expected:<-1> but was:<8421504>（#FF808080）"
 echo "      windowLightStatusBar 主题里解析不到 attr=16844000（framework 浅色主题没这个 attr）"
+echo "  · G-47 修复前红（内核回执，HostReplySummaryTest 12 条里 11 条红，实现换成当天 App 真实行为后真跑）："
+echo "      [machines_list] 还在往聊天里贴代码围栏：Host FFI results applied … - ok kind=machines_list …"
+echo "      unavailable 就是不可用：Host FFI results applied … - ok kind=device_permission cmd=\`desk-1|camera|unavailable\`"
+echo "      feed 还没接上、备案还是空的 —— 这两条残留必须看得见：… - ok kind=check_updates …"
+echo "      展开必须还能看到内核原文：null；认不得的 kind 必须原样给出来 expected:<[unknown]> but was:<[normal]>"
+echo "      （12 tests completed, 11 failed —— 手机上以前的助手行就是这坨内核转储）"
 echo "  · G-47 UI 验证的边界（诚实）：JVM 验到的是 Compose 语义树 + 送进渲染器的颜色数值两层；"
 echo "    captureToImage 在 Robolectric NATIVE 模式下 2000ms 超时，拿不到真像素 —— "
 echo "    圆角/字距/阴影/动效观感与厂商 ROM 表现仍未验证，必须真机看；"
