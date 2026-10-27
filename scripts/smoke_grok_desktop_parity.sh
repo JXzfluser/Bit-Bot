@@ -1977,6 +1977,41 @@ else
   echo "  · skip：缺 playwright-core 或 electron，G-53 未跑（SKIP ≠ PASS）"
 fi
 
+echo "== G-54 模型密钥粘错了当场说清楚（Bearer 头写法 / 界面自己的掩码 / 断行 / 没粘全）=="
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g54_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g54_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 "${g54_xvfb[@]}" node scripts/e2e_desktop_llm_key_paste_guard.mjs > /tmp/g54-lkkey.log 2>&1; then
+    ok "G-54 e2e_desktop_llm_key_paste_guard 全绿（$(grep -c '✓' /tmp/g54-lkkey.log) 项，$(tail -1 /tmp/g54-lkkey.log)）"
+  else
+    bad "G-54 e2e_desktop_llm_key_paste_guard（见 /tmp/g54-lkkey.log；$(tail -1 /tmp/g54-lkkey.log)）"
+  fi
+  grep -q "LK-01 粘进 HTTP 头写法自动收成纯 key" /tmp/g54-lkkey.log \
+    && grep -q "LK-02 粘到界面自己的掩码会当场点名并挡住保存" /tmp/g54-lkkey.log \
+    && ok "G-54 归一化与拦错都在：Bearer 头写法收成纯 key（并写明清了什么）、粘到掩码当场拦住" \
+    || bad "G-54 normalize / masked-paste anchors missing"
+  grep -q "LK-04 正常的 sk-… 密钥 0 条红字" /tmp/g54-lkkey.log \
+    && grep -q "LK-05 留空不报错" /tmp/g54-lkkey.log \
+    && grep -q "LK-06 通义 / Kimi / 搜索 key 与主密钥同规则" /tmp/g54-lkkey.log \
+    && ok "G-54 不变成新门槛：正常 key 不拦、留空＝不改动讲得明白、四把密钥同规则" \
+    || bad "G-54 not-a-new-barrier anchors missing"
+  echo "  · G-54 修复前红（同一轮实测）：PASS=2 FAIL=5 —— Bearer 头写法原样收下、"
+  echo "    界面自己的掩码 ****3k7q 被当密钥、断行/中文/没粘全三条全无红字；"
+  echo "    当时唯一两条绿（LK-04/LK-07）是空断言（根本没有校验，当然不报红）"
+  echo "  · G-54 负向对照（两个方向都试）：摘掉校验（任何值都放行）→ LK-02/03/06 翻红 PASS=4 FAIL=3；"
+  echo "    反过来让任何值都报错 → LK-04/05/07 翻红 PASS=2 FAIL=5（LK-02/03 也红，因为它们要的是说对原因）"
+  echo "  · G-54 残留（诚实）：本门不点真保存（.env.local 是固定路径，门禁不许碰用户真文件），"
+  echo "    所以「归一化后的 key 真的写进去了」这一跳不在这里断；校验只拦本 app 说得清的形状"
+  echo "    （掩码 / 内部空白 / 中文 / 过短），厂商格式与「这把 key 能不能用」仍要靠试连那一步；"
+  echo "    其它包裹写法（尖括号 <sk-…>、引号）暂未归一，遇到再加，不加没测过的代码"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-54 未跑（SKIP ≠ PASS）"
+fi
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

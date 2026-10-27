@@ -2276,6 +2276,9 @@
           </label>
           <label class="st-field"><span class="st-field-name">API Key <span id="sec-llm-mask"></span></span>
             <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
+            <!-- 粘错了要在这一栏下面当场说清楚，而不是等模型 401 之后再让人猜 -->
+            <span id="sec-llm-key-err" class="st-field-error" hidden></span>
+            <div id="sec-llm-key-note" class="st-note" hidden></div>
           </label>
           <div id="sec-llm-hint" class="st-note">…</div>
           <!-- GP-148 §1-J4：产品态的模型/供应商面板入口。表头那颗芯片在精简外壳里
@@ -2290,9 +2293,13 @@
           <div class="st-note">同一份 <code>.env.local</code>；切到对应渠道时不用再填一遍。</div>
           <label class="st-field"><span class="st-field-name">通义千问 API Key <span id="sec-qwen-mask"></span></span>
             <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+            <span id="sec-qwen-key-err" class="st-field-error" hidden></span>
+            <div id="sec-qwen-key-note" class="st-note" hidden></div>
           </label>
           <label class="st-field"><span class="st-field-name">Moonshot / Kimi API Key <span id="sec-moon-mask"></span></span>
             <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+            <span id="sec-moon-key-err" class="st-field-error" hidden></span>
+            <div id="sec-moon-key-note" class="st-note" hidden></div>
           </label>
         </details>
         <div class="st-card">
@@ -2307,6 +2314,8 @@
           </label>
           <label class="st-field"><span class="st-field-name">搜索 API Key <span id="sec-search-mask"></span></span>
             <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field" />
+            <span id="sec-search-key-err" class="st-field-error" hidden></span>
+            <div id="sec-search-key-note" class="st-note" hidden></div>
           </label>
           <label class="st-field"><span class="st-field-name">API Base（可选）</span>
             <input id="sec-search-base" type="text" placeholder="自建或代理地址；留空走官方" class="bb-field" />
@@ -7206,44 +7215,118 @@
       if (convRailId) refreshConvRail().catch(() => {});
     }
 
+    /* ── 密钥栏的粘贴卫生（LK）────────────────────────────────────────
+     * key 是从聊天窗口 / 厂商控制台里**粘**进来的，粘出来的经常不是纯 key：
+     * 连着 HTTP 头的写法（文档里就写 `Authorization: Bearer <key>`）、复制了我们
+     * 界面自己的掩码（状态行就摆在那儿，手快就选中 `****3k7q`）、中间夹了换行、
+     * 或者只粘了个 `sk-`。这些以前一个都不拦，一路写进 .env.local 再热加载，
+     * 最后表现为「模型连不上 / 大脑仍缺 key」——真实原因在几周前粘错的那一行上，
+     * 谁也不会往那儿想。
+     * 规则只做本 app 说得清的事：能安全归一的（HTTP 头写法、首尾空白）就归一，
+     * 并且**把归一了什么写在栏下面**（悄悄改用户粘的东西最招骂）；归一不了又必然
+     * 错的（掩码、内部空白、中文、空壳）当场点名。厂商格式我们说了不算，所以
+     * 「长得像不像真 key」一律不判 —— 正常密钥绝不该被自己的界面拦。 */
+    const SECRET_KEY_ROWS = [
+      { input: "sec-llm-key", key: "BITBOT_LLM_API_KEY", mask: "sec-llm-mask" },
+      { input: "sec-qwen-key", key: "BITBOT_LLM_QWEN_API_KEY", mask: "sec-qwen-mask" },
+      { input: "sec-moon-key", key: "BITBOT_LLM_MOONSHOT_API_KEY", mask: "sec-moon-mask" },
+      { input: "sec-search-key", key: "BITBOT_SEARCH_API_KEY", mask: "sec-search-mask" },
+    ];
+
+    /** 就地归一化，返回「替他清掉了什么」；清不出来的不动它。 */
+    function secretKeyNormalize(el) {
+      const raw = el.value;
+      let v = raw.trim();
+      let note = "";
+      const stripped = v.replace(/^(authorization\s*:)?\s*(bearer\s+)+/i, "");
+      if (stripped !== v) {
+        v = stripped.trim();
+        note = "已去掉开头的「Bearer」——那是 HTTP 头的写法，不是密钥的一部分";
+      } else if (raw !== v) {
+        note = "已去掉首尾的空白 / 换行";
+      }
+      if (raw !== v) el.value = v;
+      return note;
+    }
+
+    /** 只读值、不写 DOM：给「保存」按钮的可用性用（同一套规则，不两边各写一遍）。 */
+    function secretKeyProblem(v) {
+      if (!v) return ""; // 留空 = 不改动已配置的密钥，这不是错误
+      if (/\*{2,}/.test(v)) return "这是界面上显示的掩码（**** + 尾号），不是密钥本身——请粘原始那一串";
+      if (/[\u3400-\u9fff\uff00-\uffef]/.test(v)) return "密钥里有中文字符，多半把旁边的说明一起粘进来了";
+      if (/\s/.test(v)) return "密钥中间有空白或换行（原始密钥是一整串，中间不带空格）";
+      if (v.length < 8) return "这一串太短，像是没粘全（正常密钥至少几十个字符）";
+      return "";
+    }
+
+    function secretKeysProblems() {
+      return SECRET_KEY_ROWS.reduce(function (n, r) {
+        const el = document.getElementById(r.input);
+        return n + (el && secretKeyProblem(el.value.trim()) ? 1 : 0);
+      }, 0);
+    }
+
+    /** 用户真的动了一栏：归一化 + 把结论写在该栏下面（错误位 / 说明位）。
+     *  SEEN 记的是「上一轮归一化之后留在框里的值」：真实一次粘贴会连着触发
+     *  paste / input / change 三个事件，同一个值被第二个事件再刷一遍时，
+     *  归一化已经无事可做（note 为空）——那不能把刚写明的「替他清掉了什么」擦掉。 */
+    const SECRET_KEY_SEEN = {};
+    function secretKeyPaint(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const sameValue = SECRET_KEY_SEEN[id] === el.value;
+      const note = secretKeyNormalize(el);
+      const msg = secretKeyProblem(el.value.trim());
+      const errEl = document.getElementById(id + "-err");
+      const noteEl = document.getElementById(id + "-note");
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.hidden = !msg;
+      }
+      if (noteEl) {
+        const keep = !note && sameValue ? String(noteEl.textContent || "") : note;
+        noteEl.textContent = keep;
+        noteEl.hidden = !keep;
+      }
+      SECRET_KEY_SEEN[id] = el.value;
+    }
+
+    SECRET_KEY_ROWS.forEach(function (r) {
+      const el = document.getElementById(r.input);
+      if (!el) return;
+      const recheck = function () {
+        secretKeyPaint(r.input);
+        cnValidateAndPaint(true);
+      };
+      el.addEventListener("input", recheck);
+      el.addEventListener("change", recheck);
+      // paste 事件里 value 还是旧值，归一化要等一等再做
+      el.addEventListener("paste", function () { setTimeout(recheck, 0); });
+    });
+
     async function refreshSecretsForm() {
       if (!window.bitbot.secrets) return;
       const st = await window.bitbot.secrets.status();
       if (!st || !st.ok) return;
       const f = st.fields || {};
-      const mask = document.getElementById("sec-llm-mask");
-      if (mask) {
-        mask.textContent = f.BITBOT_LLM_API_KEY && f.BITBOT_LLM_API_KEY.present
-          ? "（已配置 " + f.BITBOT_LLM_API_KEY.masked + "）"
-          : "（未配置）";
-      }
-      const qwenMask = document.getElementById("sec-qwen-mask");
-      if (qwenMask) {
-        qwenMask.textContent =
-          f.BITBOT_LLM_QWEN_API_KEY && f.BITBOT_LLM_QWEN_API_KEY.present
-            ? "（已配置 " + f.BITBOT_LLM_QWEN_API_KEY.masked + "）"
-            : "（未配置）";
-      }
-      const moonMask = document.getElementById("sec-moon-mask");
-      if (moonMask) {
-        moonMask.textContent =
-          f.BITBOT_LLM_MOONSHOT_API_KEY && f.BITBOT_LLM_MOONSHOT_API_KEY.present
-            ? "（已配置 " + f.BITBOT_LLM_MOONSHOT_API_KEY.masked + "）"
-            : "（未配置）";
-      }
+      /* 四把密钥的状态文案同源，所以按表循环写；「留空＝不改动」必须说出来：
+         输入框是空的、盘上却有 key，用户很容易以为留空会把已配的密钥清掉，
+         或者反过来以为留空点保存就等于删掉它。 */
+      SECRET_KEY_ROWS.forEach(function (r) {
+        const el = document.getElementById(r.mask);
+        if (!el) return;
+        const fv = f[r.key];
+        el.textContent = fv && fv.present
+          ? "（已配置 " + (fv.masked || "****") + "；留空＝不改动，要换就粘新的）"
+          : "（未配置，填了才生效）";
+      });
       const base = document.getElementById("sec-llm-base");
       if (base && f.BITBOT_LLM_BASE_URL && f.BITBOT_LLM_BASE_URL.value !== undefined) {
         base.value = f.BITBOT_LLM_BASE_URL.value || base.placeholder;
       }
       // Replica C6: search credential mirrors the brain credential (masked key,
       // plain provider/base). Absent key just means "no web search".
-      const searchMask = document.getElementById("sec-search-mask");
-      if (searchMask) {
-        searchMask.textContent =
-          f.BITBOT_SEARCH_API_KEY && f.BITBOT_SEARCH_API_KEY.present
-            ? "（已配置 " + f.BITBOT_SEARCH_API_KEY.masked + "）"
-            : "（未配置）";
-      }
+      // 搜索 key 的掩码状态已并入上面 SECRET_KEY_ROWS 那一圈，这里只管 provider / base。
       const searchProv = document.getElementById("sec-search-provider");
       if (searchProv && f.BITBOT_SEARCH_PROVIDER && f.BITBOT_SEARCH_PROVIDER.value !== undefined) {
         const pv = String(f.BITBOT_SEARCH_PROVIDER.value || "").trim().toLowerCase();
@@ -7451,8 +7534,11 @@
       });
       const state = document.getElementById("cn-card-state");
       if (state) state.textContent = cnChannelStateText();
+      /* 「保存并热加载」是这一页唯一的写盘口子，所以所有会写坏它的字段都归这里管：
+         国内渠道缺字段 + 密钥栏粘错了，任何一个都得把按钮按下去之前挡住。 */
+      const keyProblems = secretKeysProblems();
       const save = document.getElementById("sec-save");
-      if (save) save.disabled = problems > 0;
+      if (save) save.disabled = problems + keyProblems > 0;
       return problems;
     }
 
@@ -7506,9 +7592,15 @@
     async function saveSecretsFromForm() {
       if (!window.bitbot.secrets) return;
       /* 挡在写盘之前：带着红字保存出去，后面只会出现「为什么发不出去」这种工单。 */
-      if (cnValidateAndPaint(true) > 0) {
+      const cnProblems = cnValidateAndPaint(true);
+      const keyProblems = secretKeysProblems();
+      if (cnProblems + keyProblems > 0) {
         const secStatus = document.getElementById("sec-status");
-        if (secStatus) secStatus.textContent = "国内渠道有字段要改（该栏下方红字），没有写入";
+        if (secStatus) {
+          secStatus.textContent = cnProblems > 0
+            ? "国内渠道有字段要改（该栏下方红字），没有写入"
+            : "密钥栏有 " + keyProblems + " 处像是粘错了（该栏下方红字），没有写入";
+        }
         return;
       }
       const patch = {};
@@ -7605,6 +7697,13 @@
       if (qwenEl) qwenEl.value = "";
       if (moonEl) moonEl.value = "";
       if (searchKeyEl) searchKeyEl.value = "";
+      /* 写入成功后把四栏的错误位与「已替他清掉了什么」一起收回：
+         留着不动，下一次进来就是一条谁都不信的旧红字。 */
+      SECRET_KEY_ROWS.forEach(function (r) {
+        const el = document.getElementById(r.input);
+        if (el) el.value = "";
+        secretKeyPaint(r.input);
+      });
       if (ft) ft.value = "";
       if (wt) wt.value = "";
       await refreshSecretsForm();
