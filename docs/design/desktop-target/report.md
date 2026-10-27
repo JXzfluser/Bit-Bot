@@ -587,3 +587,140 @@ G-50 那轮全量矩阵跑出来 `PASS=360 FAIL=1`，红的是上一轮我自己
   - 钉钉加签密钥、飞书 `encrypt_key` / `verification_token`、企微 `callback_token`
     仍然没有输入框（只能手改 `.env.local`）—— 这是审计清单里的 P1/P3，本轮没做。
   - 「渠道配置」那张表里 6 个按钮有 5 个还是 disabled 占位（审计 P0-2），本轮没动。
+
+## 8.22 用户说「完全没法看」之后：先让 UI 能被真渲染，再谈重构
+
+用户这一轮的原话是「ui布局跟样式完全没法看，重构一版。必须跟主流ai相关的app对齐哦」。
+上一轮手机装完 APK 的第一句反馈是「完全不知道如何使用」，那次的结论是不该让人手抄凭证；
+这次的「没法看」是另一件事：版面和样式本身没有设计系统。
+
+按老规矩，先把「能不能验证」解决掉，再动手改。
+
+**① 先让 UI 在 JVM 上真的渲染出来。** 本环境没有 KVM，emulator 起不来。这条路上如果
+只能靠肉眼读代码，「重构完了」这句话和「看起来修了」没有区别。所以补了
+Robolectric 4.12.2 + `androidx.compose.ui:ui-test-junit4` + `ui-test-manifest`，
+`unitTests.isIncludeAndroidResources = true`，`robolectric.properties` 钉 sdk=34，
+先写一条工具链自证 `RobolectricComposeSmokeTest`：它把 `MaterialTheme.colorScheme.primary`
+真读出来 —— 实测 `Color(0.40392157, 0.3137255, 0.6431373)`，也就是 **#6750A4，
+Material 3 的框架默认紫**。这个数字本身就是这轮问题的体检报告：我们一直在发框架默认主题。
+
+**② 复现测试先跑红。** `UiDesignSystemTest` 六条直接渲染真 MainActivity，在旧屏上全红，
+红的原因是它真的找到了那些节点（不是我猜的）：
+
+```
+T1 [红] Expected exactly '1' node but could not find any node that satisfies:
+        (Text + EditableText contains '未配对' as substring)
+T2 [红] could not find any node that satisfies: (ContentDescription = '发送')
+T3 [红] found '1' node: Node #216 at (l=200.0, t=6.0, r=258.0, b=58.0)px
+        Role='Button' Text='[凭证]'
+T4 [红] found '1' node: Node #187 Text='[对标 Grok 的国产助手 · Android Host]'
+T5 [红] found '1' node: Node #53 Text='[BITBOT_HOST_URL]'
+T6 [红] found '1' node: Node #122 at (l=294.0, t=82.0, r=296.0, b=118.0)px Text='[你]'
+```
+
+把旧屏的「没法看」拆成可指认的六件事：顶栏是「凭证」「能力」两个裸文字按钮；每句话上面
+挂「你」/「Bit Bot」角色标签；输入框是 OutlinedTextField 配一个写着「发送」的方形文字键；
+连接状态在界面上完全不存在；凭证面板把 `BITBOT_HOST_URL` / `BITBOT_TURN_TOKEN` 这种环境
+变量名直接当标签；首屏 tagline 是一句对标别家产品的自我定位。
+
+**③ 重构做了什么。** 新增 `app/src/main/java/com/bitbot/host/ui/` 五个文件：
+`Theme.kt`（中性画布 + 唯一强调色 #1D6FE0 / 深色 #7FB2FF、排版/圆角/间距 token、
+`BitBotExtras` 把气泡色从 `primaryContainer` 上解绑 —— 旧屏整股紫调就是从那里来的）、
+`Components.kt`（品牌标、字标、连接状态胶囊、空屏 hero、无角色标签的消息行、投递条、
+胶囊输入区 + 圆形发送键、面板头部/行）、`HomeScreen.kt`（状态从外面灌进来的首屏）、
+`Sheets.kt`（更多 / 凭证 / 能力 / 配对四个面板共用一套头部与输入框）、
+`PairingState.kt`（`PairingScanState` / `PairingRedeemState` / `PairingDesktop` 纯数据）。
+`MainActivity` 从 753 行降到 ~370 行，只剩状态与真流程：发 turn、跑配对、申请权限。
+
+一条都没改的东西也要说清楚：`TurnBridge` / `DesktopPairing` / `SendToUserSurface` 的函数
+与契约、pairing-v1 的协议与文案语义、`productActions` 那十条、`getLocalWifiIp` 的取址逻辑、
+store / IPC / kernel JSON —— 全部原样。这轮只动「怎么画」，不许顺手改「怎么算」。
+
+另外记一条决策：首屏那句「对标 Grok 的国产助手 · Android Host」删了，源码注释里
+「Grok-style Android product shell」也一并清掉。理由两层：这句文案本来就难看，
+而我们对任何外部产品都没有做像素对齐，不该留这种声称。AB-11 从此盯着整个 main 目录。
+
+**④ 修复后绿。** `:app:testUniversalDebugUnitTest` 现在 89 个用例 0 失败：
+6 条行为红转绿，`UiTokensAndSheetsTest` 新增 16 条（浅色/深色主题不许顶着框架默认紫、
+单强调色、WCAG 对比度、无角色标签、各状态空屏、配对面板五步、凭证/更多/能力面板）。
+`prove_android_build.mjs` 加 AB-11（ui 五个文件在 + MainActivity 走 BitBotTheme +
+全 main 无对标文案 + 8 条 UI 用例真在结果里 + 负向对照），AB-06 的用例数地板从 62 提到 84。
+
+**⑤ 这轮自己踩的坑，都记下来。**
+
+- **顺序差点反了。** 如果把新 UI 写完再补测试，就没有「修复前红」。所以先把新 `ui/` 包写进去
+  （旧 MainActivity 还没引用它，能编译），拿旧屏跑出真红，再换 `MainActivity.kt`。
+- **Compose 测试规则里 `setContent` 每个用例只能调一次**（`IllegalStateException: Cannot
+  call setContent twice per test!`）。第一版把「浅色 + 深色」「配对五种状态」写在一个用例里
+  连着 setContent，直接红给我看。拆成独立用例，不是想办法绕过。
+- **断言要改程序不是改断言。** 「配对令牌」被判成 2 个节点 —— 因为 FieldLabel 和输入框
+  placeholder 用了同一串字。改 placeholder 为「从桌面复制的那一串」，而不是把断言放宽成 count==2。
+- **自己的规则第一轮判红了自己。** 我写「中性色 = 三通道最大差 ≤6」，然后深色
+  `surfaceVariant=#1A1D23`（差 9）、`outline=#39404B`（差 18）被抓出来；浅色 `outline=#D5DAE2`
+  （差 13）同样不过。改 token（`#1D1F22` / `#46484A` / `#D9DADC`），不放宽规则。
+- **对比度不是感觉出来的。** 白字压在 `#2F7DF6` 上实测只有 3.90，不到 4.5 —— 强调色加深到
+  `#1D6FE0`（4.77）。这条现在是断言，以后谁改色都会被拦。
+- **JVM 拿不到真像素。** `captureToImage()` 在 Robolectric NATIVE 图形模式下 2000ms 超时
+  （`ComposeTimeoutException`），探针用例 `UiPixelProbeTest` 因此删掉，没有留着当「恒红的已知问题」。
+  结果就是：颜色的**数值**这层能真验（真读 `MaterialTheme.colorScheme` + 算对比度），
+  颜色的**观感**这层验不了。
+
+**⑥ 残留（诚实）。**
+
+- 圆角实际效果、字距、阴影、滚动阻尼、深浅色在厂商 ROM 上的表现 —— 全部没验，必须真机看。
+  本环境无 KVM，`assembleUniversalDebug` 出的 APK 我能打包、不能替用户点开。
+- Compose 语义测试不覆盖 `ModalBottomSheet` 的拖拽与手势关闭，只覆盖里面画了什么。
+- 能力面板那十条里仍有 5 条是占位动作（本轮只是把「点了会发什么」写进行下方），
+  功能本身还没接上，不能因为排版变好就算它完成了。
+- 凭证面板现在把令牌打码 + 可显示，但 `BITBOT_HOST_URL` 这类环境变量名从界面上彻底消失了：
+  对开发者是少了一条自助线索，我在报告里记这笔交换，不当成纯收益吹。
+
+**⑦ 追加这段之前，工作区里又冒出了同一类事故。** 准备往报告里拼 §8.22 时发现：
+`docs/design/desktop-target/report.md` 在工作区里只剩 182 行（HEAD 是 589 行），
+`docs/grok-desktop-parity/parity-gaps-next.md` 只剩 95 行（HEAD 是 168 行，
+「〇、核心叙事：多 Bot 协作编排回路」整段带八步映射表没了）。这不是本轮编辑造成的 ——
+是一份陈旧快照把已提交内容盖掉了，形状和 §8.19 记录的 227e4ed 事故一模一样。
+处理方式：两份文件都 `git checkout` 回 HEAD，再用「读全文 + 追加」拼 §8.22，
+最终 diff = **87 增 / 0 删**（`git diff --numstat` 当场核对）。
+
+区别在于这次不再靠自觉：RH-06 只盯 report.md，抓不到第二份文档，所以新加 **RH-07**
+把「HEAD 已提交标题不许消失」这条规则推广到一份清单（验收报告 + parity 清单）。
+负向对照真实跑过：临时删掉「〇、核心叙事」整段 2445 字符 →
+`✗ RH-07 … 消失的标题：## 〇、核心叙事：多 Bot 协作编排回路（本次梳理的正主） /
+### 主线八步 × 内核原语映射 / …`，`PASS=6 FAIL=1`，随后还原 → `PASS=7 FAIL=0`。
+教训补一句：凡是往长文档里写东西，**先看工作区和 HEAD 是不是一致**，不一致就先把
+被盖掉的补回来再追加；`git status` 要用完整输出，别 `| head -30` 把自己要看的那行截掉
+（这次就是这么漏过去的）。
+
+**⑧ 追加：画布之外的半屏 —— 窗口层主题。** Compose 的 token 换完之后，manifest 还挂着
+`@android:style/Theme.Material.Light.NoActionBar`。这一层不归 Compose 管：深色模式下
+Compose 画 `#0C0D10`、状态栏却还是系统的 `#FF757575`，半屏深半屏浅正是「完全没法看」里
+最直观的一条。于是新增 `res/values/themes.xml` + `res/values-night/themes.xml`
+（`windowBackground` / `statusBarColor` / `navigationBarColor` 都定成画布色，浅色
+`windowLightStatusBar=true`、深色 false），manifest 改挂 `@style/Theme.BitBot`。
+键盘避让同时收到一处：manifest `windowSoftInputMode="adjustResize"`，HomeScreen 撤掉
+`.imePadding()` —— 两边都做是双重补偿，键盘弹起时输入框会被顶出一段空白。
+
+修复前红（`UiWindowThemeTest` 四条，跑在**还没换 manifest theme 的同一棵树**上，真实输出）：
+
+- `窗口底色…` `expected:<-1> but was:<-328966>` ← 框架自带的 `#FFFAFAFA` 灰白
+- `状态栏底色…` `expected:<-1> but was:<-9079435>` ← `#FF757575`
+- `导航栏底色…` `expected:<-1> but was:<8421504>` ← `#FF808080`
+- `状态栏图标…` `主题里解析不到 attr=16844000` ← framework 浅色主题根本没这个 attr
+
+修复后绿：四条全过，从 activity 的 theme 真解析出 `#FFFFFFFF`，`windowLightStatusBar`
+为 `type=18 data=-1`（TYPE_INT_BOOLEAN 的 true）。JVM 单测 **93 用例 0 失败（10 个类）**，
+`prove_android_build` AB-01…AB-12 全绿（APK 8 MB）。AB-12 不只读源码：用
+`aapt dump resources` 确认 `style/Theme.BitBot` 真被链进了 APK，并把 values/ 与
+values-night/ 的三个窗口色与 `Theme.kt` 里 `CanvasLight` / `CanvasDark` 的字面量对齐 ——
+Compose 层和窗口层不许各写各的颜色然后慢慢漂移。负向对照（只在内存里造坏样本，不落 `res/`
+免得脏了正在跑的构建）：framework 主题、夜色写成浅色画布、`.imePadding()` 回潮三种形态
+都被这把尺子抓到。
+
+自我纠正一条：AB-12 **第一次跑是红的，红的不是树，是尺子** —— 我按大写 `0X` 去正则匹配
+`Theme.kt` 里的字面量，而源码写的是小写 `0x`，`canvasOf()` 返回空串于是每条比对都判不等。
+改成 `0[xX]` 才拿到真判定。门禁变红先分清是树红还是尺子红，这次记下来。
+
+残留（诚实）：Robolectric 跑的是默认浅色配置，`values-night` 在 JVM 上换不了 config，
+只能对齐字面量，深色观感没在这里验过；状态栏/导航栏图标在厂商 ROM（刘海屏、三键与手势
+混布）上的实际表现仍必须真机看。

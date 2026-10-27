@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+  <!-- 窗口级主题：Compose 里有设计系统，但状态栏和窗口底色归 framework theme 管。
+       旧版直接挂 @android:style/Theme.Material.Light.NoActionBar，深色模式下
+       Compose 画近黑画布、状态栏却还是白的 —— 一半深一半浅，正是「没做完」的观感。
+       这里让窗口底色与状态栏跟着设计系统的中性色走（night 版在 values-night）。 -->
+  <style name="Theme.BitBot" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <item name="android:windowBackground">#FFFFFFFF</item>
+    <item name="android:statusBarColor">#FFFFFFFF</item>
+    <item name="android:navigationBarColor">#FFFFFFFF</item>
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
+  </style>
+</resources>

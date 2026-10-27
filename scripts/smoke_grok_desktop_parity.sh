@@ -1754,10 +1754,36 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
       && grep -q "AB-10 无写死默认局域网地址" /tmp/g47-build.log \
       && ok "G-47 手机端配对单测真在跑（未配对不回写死地址、失败码翻人话、发现/换码逻辑、AB-10 无写死 IP 且带负向对照）" \
       || bad "G-47 AB-07/08/09/10 anchor missing"
+    grep -q "AB-11 设计系统落地" /tmp/g47-build.log \
+      && ok "G-47 UI 设计系统真落地：ui/ 五个文件在、MainActivity 走 BitBotTheme（不是框架默认紫）、全 main 无「对标 Grok」文案、8 条 UI 用例在结果里、AB-11 带负向对照" \
+      || bad "G-47 AB-11 anchor missing"
+    grep -q "AB-12 窗口层落地" /tmp/g47-build.log \
+      && ok "G-47 窗口层主题真落地：manifest 挂 @style/Theme.BitBot + adjustResize、values/ 与 values-night/ 三个窗口色与 Theme.kt 画布字面量一致、APK 资源表里有 style/Theme.BitBot、4 条窗口用例在结果里、AB-12 带负向对照" \
+      || bad "G-47 AB-12 anchor missing"
   fi
 else
   bad "G-47 prove_android_build（见 /tmp/g47-build.log；$(tail -1 /tmp/g47-build.log)）"
 fi
+echo "  · G-47 修复前红（本轮真实输出）：旧屏没有设计系统 —— setContent { MaterialTheme {"
+echo "    顶着框架默认紫 #6750A4；UiDesignSystemTest 六条在旧 MainActivity 上真渲染跑红："
+echo "      T1 找不到含「未配对」的节点（界面上根本没有连接状态）"
+echo "      T2 找不到 ContentDescription='发送'（发送是写着「发送」的方形文字键）"
+echo "      T3 找到 Role=Button Text=[凭证]（顶栏两个裸文字按钮）"
+echo "      T4 找到 Text=[对标 Grok 的国产助手 · Android Host]"
+echo "      T5 找到 Text=[BITBOT_HOST_URL]（环境变量名当标签）"
+echo "      T6 找到 Text=[你]（每条消息挂角色标签）"
+echo "    另：RobolectricComposeSmokeTest 读出 MaterialTheme.colorScheme.primary=#6750A4，"
+echo "        「框架默认主题被原样发布」这件事本身钉成一条可读数字"
+echo "  · G-47 修复前红（窗口层，同一批用例跑在还没换 manifest theme 的树上，4 条全红）："
+echo "      windowBackground expected:<-1> but was:<-328966>（#FFFAFAFA 框架灰白）"
+echo "      statusBarColor   expected:<-1> but was:<-9079435>（#FF757575）"
+echo "      navigationBarColor expected:<-1> but was:<8421504>（#FF808080）"
+echo "      windowLightStatusBar 主题里解析不到 attr=16844000（framework 浅色主题没这个 attr）"
+echo "  · G-47 UI 验证的边界（诚实）：JVM 验到的是 Compose 语义树 + 送进渲染器的颜色数值两层；"
+echo "    captureToImage 在 Robolectric NATIVE 模式下 2000ms 超时，拿不到真像素 —— "
+echo "    圆角/字距/阴影/动效观感与厂商 ROM 表现仍未验证，必须真机看；"
+echo "    Robolectric 跑的是默认浅色配置，values-night 只能靠 AB-12 读资源文本并与 Theme.kt"
+echo "    的 CanvasDark 字面量对齐，深色观感同样没在 JVM 上验过"
 echo "  · G-47 残留（诚实）：无 KVM → emulator、真机 OS 权限弹窗、厂商商店签名（BITBOT_ANDROID_STORE_*）均未验证"
 
 echo "== G-48 配对地址与在线证据的底层健壮性（纯 Node，不需要显示环境）=="
@@ -1812,6 +1838,9 @@ grep -q "RH-06" /tmp/g50-report.log \
   && grep -q "RH-01" /tmp/g50-neg.log \
   && ok "G-50 锚点在：RH-06 专门盯「HEAD 里已提交的标题在当前文件消失」，这正是 227e4ed 事故的形状" \
   || bad "G-50 report-history anchors missing"
+  grep -q "RH-07 两份过程文档" /tmp/g50-report.log \
+    && ok "G-50 RH-07 在：范围从验收报告扩到 parity 清单 —— 这轮工作区又冒出一份陈旧快照，把 parity-gaps-next.md 从 168 行盖到 95 行（「〇、核心叙事」整段没了），只盯 report.md 抓不到第二份文档；负向对照真实跑红（PASS=6 FAIL=1）后才还原" \
+    || bad "G-50 RH-07 anchor missing"
 echo "  · G-50 修复前红（真实输出，跑在 227e4ed 那份被吃掉段落的 report.md 上）："
 echo "    RH-01 缺 16 个标题、RH-05 实际 251 行，PASS=4 FAIL=2（exit=1）；恢复后 PASS=6 FAIL=0"
 echo "  · G-50 残留（诚实）：门只核标题/编号/围栏/行数下限，标题不动而正文被逐段改写抓不到；"

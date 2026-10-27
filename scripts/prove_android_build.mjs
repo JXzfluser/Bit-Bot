@@ -10,15 +10,25 @@
  *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 49（防止 test 任务空转假绿）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 91（防止 test 任务空转假绿）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
  *   AB-09 配对 v1 纯逻辑单测真的在跑（/24 枚举、discover 应答解析、码校验、错误映射）
  *   AB-10 防 placeholder IP 回潮：源码里不许出现写死的局域网默认地址
+ *   AB-11 UI 设计系统真落地：ui/ token 文件都在、MainActivity 走 BitBotTheme（不是裸
+ *         MaterialTheme 框架默认紫）、全 main 无「对标 Grok」文案、8 条 UI 用例真在结果里
+ *   AB-12 窗口层主题跟设计系统同色：manifest 挂 @style/Theme.BitBot + adjustResize（键盘
+ *         避让只做一次）、values/ 与 values-night/ 三个窗口色等于 Theme.kt 画布字面量、
+ *         APK 资源表里真有 style/Theme.BitBot、4 条窗口用例真在结果里
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
+ *   - values-night 在 JVM 上验不到（Robolectric 跑的是默认浅色配置）：AB-12 只能把夜色
+ *     窗口色与 Theme.kt 的 CanvasDark 字面量对齐，深色观感仍然只能真机验收；
+ *   - UI 验到的是「Compose 语义树 + 送进渲染器的颜色数值」两层：Robolectric NATIVE 模式下
+ *     captureToImage 2000ms 超时，JVM 拿不到真像素，所以像素级观感（圆角实际效果、字距、
+ *     阴影）仍然只能真机验收；
  *   - 没有 keystore 环境变量 → release 仍用 debug 签名（工程里有脚手架，不假装已上架）。
  * 缺 SDK / 缺 gradle 时诚实 SKIP，不红也不绿。
  */
@@ -208,7 +218,7 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 62) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 91) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -370,6 +380,257 @@ if (badge.status !== 0 || !badgeOut) {
       }
     }
   }
+}
+
+/* AB-11 UI 设计系统真的被用上了（不是又写了一个没人调的 Theme.kt）。
+ *
+ * 这轮的来由：用户原话「ui布局跟样式完全没法看，重构一版。必须跟主流ai相关的app对齐哦」。
+ * 旧版的实情是 setContent { MaterialTheme { ... } } —— 一个 token 都没有，直接顶着
+ * Material 3 框架默认紫上线；每句话还挂「你」「Bit Bot」两个角色标签。
+ *
+ * 修复前红（本轮真实输出，跑在旧 MainActivity 上，6 条全红）：
+ *   T1 Expected exactly '1' node but could not find any node that satisfies:
+ *      (Text + EditableText contains '未配对' as substring)
+ *   T2 could not find any node that satisfies: (ContentDescription = '发送')
+ *   T3 found '1' node: Role='Button' Text='[凭证]'
+ *   T4 found '1' node: Text='[对标 Grok 的国产助手 · Android Host]'
+ *   T5 found '1' node: Text='[BITBOT_HOST_URL]'
+ *   T6 found '1' node: Text='[你]'
+ *
+ * 这条门盯四件事，缺一判红：
+ *   1. ui/ 那五个文件都在（设计系统不是空口号）；
+ *   2. MainActivity 的 content 根是 BitBotTheme，不是裸 MaterialTheme；
+ *   3. 安卓源码里不许留「对标 Grok / Grok-style」这种对标文案；
+ *   4. UI 那批用例真在结果里（写了不执行 = 假绿）。
+ * 负向对照：临时副本塞裸 MaterialTheme 根 + 对标 Grok 文案，确认这条门真的会红。
+ */
+{
+  const main = fs.readFileSync(
+    path.join(HOST, "app/src/main/java/com/bitbot/host/MainActivity.kt"),
+    "utf8",
+  );
+  const uiFiles = ["Theme.kt", "Components.kt", "HomeScreen.kt", "Sheets.kt", "PairingState.kt"];
+  const missingUi = uiFiles.filter(
+    (f) => !fs.existsSync(path.join(HOST, "app/src/main/java/com/bitbot/host/ui", f)),
+  );
+  const bareRoot = /setContent\s*\{\s*MaterialTheme\s*\{/.test(main);
+  const usesTheme = /setContent\s*\{\s*BitBotTheme/.test(main);
+
+  // 对标文案扫全 main 目录：别处再写一句同样判红，不只盯 MainActivity
+  const parityFiles = [];
+  const walkUiDir = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walkUiDir(full);
+      else if (/\.(kt|java|xml)$/.test(e.name)) {
+        const src = fs.readFileSync(full, "utf8");
+        if (/对标\s*Grok|Grok-style|Grok 的国产/i.test(src)) parityFiles.push(path.relative(REPO, full));
+      }
+    }
+  };
+  walkUiDir(path.join(HOST, "app/src/main"));
+
+  // names 是 AB-06 块里的局部变量，这里自己再收一次（用例名从 JUnit XML 读，
+  // 属性边界必须用 \s+ 卡住：classname="…" 里也含子串 name="）。
+  const uiNames = [];
+  {
+    const resDir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+    try {
+      for (const f of fs.readdirSync(resDir)) {
+        if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+        for (const m of fs.readFileSync(path.join(resDir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+          uiNames.push(m[1]);
+        }
+      }
+    } catch {
+      /* 下面按「不在结果里」判红 */
+    }
+  }
+
+  const wantUiCases = [
+    /T1_未配对/,
+    /T2_发送是图标/,
+    /T3_顶栏不把凭证和能力/,
+    /T5_凭证面板/,
+    /T6_聊天行/,
+    /浅色主题不许顶着框架默认紫/,
+    /深色主题不许顶着框架默认紫/,
+    /有对话时不再出现角色标签/,
+  ];
+  const missingUiCases = wantUiCases.filter((re) => !uiNames.some((n) => re.test(n)));
+
+  // 负向对照：同一把尺子必须能抓到「裸 MaterialTheme 根」和「对标 Grok 文案」
+  const tmpDir = path.join(HOST, "app/src/main/.ab11_negative_control_tmp");
+  let negOk = false;
+  try {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const badSrc = [
+      "package com.bitbot.host.tmp",
+      "class NegativeControl {",
+      "  fun content() = setContent { MaterialTheme { } }",
+      '  val tagline = "对标 Grok 的国产助手"',
+      "}",
+    ].join("\n");
+    const tmpFile = path.join(tmpDir, "NegativeControl.kt");
+    fs.writeFileSync(tmpFile, badSrc, "utf8");
+    const probe = fs.readFileSync(tmpFile, "utf8");
+    negOk =
+      /setContent\s*\{\s*MaterialTheme\s*\{/.test(probe) &&
+      /对标\s*Grok|Grok-style|Grok 的国产/i.test(probe);
+  } catch (e) {
+    bad("AB-11 负向对照跑异常", String(e).slice(0, 200));
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* best effort */
+    }
+  }
+  if (!negOk) bad("AB-11 负向对照失败：尺子抓不到裸 MaterialTheme 根或对标文案", "");
+
+  const uiProblems = [];
+  if (missingUi.length) uiProblems.push("设计系统文件缺失: " + missingUi.join(","));
+  if (bareRoot) uiProblems.push("MainActivity 仍顶着裸 MaterialTheme 根（框架默认紫）");
+  if (!bareRoot && !usesTheme) uiProblems.push("MainActivity 的 content 根不是 BitBotTheme");
+  if (parityFiles.length) uiProblems.push("源码里还有对标 Grok 文案: " + parityFiles.join(","));
+  if (missingUiCases.length)
+    uiProblems.push("UI 用例不在结果里: " + missingUiCases.map(String).join(","));
+  if (uiProblems.length) bad("AB-11 UI 设计系统没真正落地", uiProblems.join(" | "));
+  else
+    ok(
+      "AB-11 设计系统落地：ui/ 五个文件 + BitBotTheme 根 + 全 main 无对标文案 + 8 条 UI 用例真跑（负向对照通过）",
+    );
+}
+
+/* AB-12 窗口层主题必须跟设计系统同色（重构不许只做半屏）。
+ *
+ * 这轮的来由：Compose 画布换成中性 + 单一点缀色之后，manifest 还挂着
+ * @android:style/Theme.Material.Light.NoActionBar —— 深色模式下 Compose 画近黑、
+ * 状态栏却还是系统灰白，半屏深半屏浅是「没做完」最直观的 tell。键盘避让也从
+ * Compose 的 .imePadding() 挪到 manifest 的 adjustResize，两边都做会把输入框
+ * 顶出一段空白。
+ *
+ * 修复前红（同一批用例，跑在还没换 manifest theme 的树上的真实输出，4 条全红）：
+ *   窗口底色…       expected:<-1> but was:<-328966>        ← #FFFAFAFA 框架灰白
+ *   状态栏底色…     expected:<-1> but was:<-9079435>       ← #FF757575
+ *   导航栏底色…     expected:<-1> but was:<8421504>        ← #FF808080
+ *   状态栏图标…     主题里解析不到 attr=16844000            ← framework 浅色主题根本没这个 attr
+ *
+ * 这条门盯六件事，缺一判红：
+ *   1. manifest 挂 @style/Theme.BitBot，不再挂 framework 主题；
+ *   2. activity 有 windowSoftInputMode="adjustResize"，HomeScreen 不再叠 .imePadding()；
+ *   3. values/themes.xml 三个窗口色都定成浅色画布，且 windowLightStatusBar=true；
+ *   4. values-night/themes.xml 三个窗口色等于 Theme.kt 里的 CanvasDark 字面量，
+ *      windowLightStatusBar=false —— 两层颜色从同一处取值，不许各写各的然后漂移；
+ *   5. APK 资源表里真有 style/Theme.BitBot（aapt 读回来，不是源码说了算）；
+ *   6. 四条窗口用例真在结果里（写了不执行 = 假绿）。
+ * 负向对照：同一把尺子过一遍坏样本（framework 主题 / 夜色写成浅色画布 / imePadding 回潮），
+ * 确认它真的会红；坏样本只在内存里，不落到 res/ 免得把正在跑的构建搞脏。
+ */
+{
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(HOST, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const manifest = read("app/src/main/AndroidManifest.xml");
+  const lightXml = read("app/src/main/res/values/themes.xml");
+  const nightXml = read("app/src/main/res/values-night/themes.xml");
+  const themeKt = read("app/src/main/java/com/bitbot/host/ui/Theme.kt");
+  const homeKt = read("app/src/main/java/com/bitbot/host/ui/HomeScreen.kt");
+
+  const canvasOf = (name) => {
+    // Theme.kt 里写的是 Color(0xFF0C0D10) —— 前缀是小写 x，别按大写去找
+    const m = themeKt.match(new RegExp(name + "\\s*=\\s*Color\\(0[xX]([0-9A-Fa-f]{8})\\)"));
+    return m ? "#" + m[1].toUpperCase() : "";
+  };
+  const WIN_COLORS = ["android:windowBackground", "android:statusBarColor", "android:navigationBarColor"];
+  const colorItem = (xml, attr) => {
+    const m = xml.match(new RegExp('name="' + attr + '"[^>]*>(#[0-9A-Fa-f]{8})<'));
+    return m ? m[1].toUpperCase() : "";
+  };
+  const boolItem = (xml, attr) => {
+    const m = xml.match(new RegExp('name="' + attr + '"[^>]*>(true|false)<'));
+    return m ? m[1] : "";
+  };
+  const usesCustomTheme = (m) => /android:theme="@style\/Theme\.BitBot"/.test(m);
+  const stillFramework = (m) => /@android:style\/Theme\./.test(m);
+  const imeDouble = (src) => /\n\s*\.imePadding\(\)/.test(src) || /import androidx\.compose\.foundation\.layout\.imePadding/.test(src);
+
+  // 负向对照：尺子必须能抓到这三种回潮形态
+  const badManifest = manifest.replace('android:theme="@style/Theme.BitBot"', 'android:theme="@android:style/Theme.Material.Light.NoActionBar"');
+  const badNight = nightXml.replace(/(android:windowBackground">#)([0-9A-Fa-f]{8})</, "$1FFFFFFFF<");
+  const badIme = homeKt + "\n  .imePadding()\n";
+  const negOk =
+    !usesCustomTheme(badManifest) &&
+    stillFramework(badManifest) &&
+    colorItem(badNight, "android:windowBackground") !== canvasOf("CanvasDark") &&
+    imeDouble(badIme);
+  if (!negOk) bad("AB-12 负向对照失败：尺子抓不到窗口层回潮", "");
+
+  const canvasLight = canvasOf("CanvasLight");
+  const canvasDark = canvasOf("CanvasDark");
+  const problems = [];
+  if (!manifest) problems.push("读不到 AndroidManifest.xml");
+  if (!usesCustomTheme(manifest)) problems.push('manifest 没挂 @style/Theme.BitBot');
+  if (stillFramework(manifest)) problems.push("manifest 还挂着 framework 主题（半屏深半屏浅的根）");
+  if (!/android:windowSoftInputMode="adjustResize"/.test(manifest)) problems.push('activity 缺 windowSoftInputMode="adjustResize"');
+  if (imeDouble(homeKt)) problems.push("HomeScreen 还叠着 .imePadding()：与 adjustResize 双重补偿，键盘弹起时输入框被顶出空白");
+  if (!lightXml) problems.push("缺 app/src/main/res/values/themes.xml");
+  if (!nightXml) problems.push("缺 app/src/main/res/values-night/themes.xml（深色下窗口层还是浅色）");
+  for (const xml of [lightXml, nightXml]) {
+    if (xml && !/<style name="Theme\.BitBot"/.test(xml)) problems.push("theme xml 里没有 <style name=\"Theme.BitBot\">");
+  }
+  for (const attr of WIN_COLORS) {
+    const l = colorItem(lightXml, attr);
+    const n = colorItem(nightXml, attr);
+    if (l !== canvasLight) problems.push("values/ " + attr + " = " + (l || "缺") + " 应等于 CanvasLight " + canvasLight);
+    if (n !== canvasDark) problems.push("values-night/ " + attr + " = " + (n || "缺") + " 应等于 CanvasDark " + canvasDark);
+  }
+  if (boolItem(lightXml, "android:windowLightStatusBar") !== "true") problems.push("浅色画布上 windowLightStatusBar 不是 true（状态栏图标看不见）");
+  if (boolItem(nightXml, "android:windowLightStatusBar") !== "false") problems.push("深色画布上 windowLightStatusBar 不是 false");
+
+  // APK 资源表里真有这个 style：源码写了没链进包，手机上照样是 framework 主题
+  const resDump = spawnSync(AAPT, ["dump", "resources", apk], { encoding: "utf8" });
+  const resOut = String(resDump.stdout || "");
+  if (!/style\/Theme\.BitBot/.test(resOut)) problems.push("APK 资源表里找不到 style/Theme.BitBot");
+
+  const winNames = [];
+  {
+    const resDir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+    try {
+      for (const f of fs.readdirSync(resDir)) {
+        if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+        for (const m of fs.readFileSync(path.join(resDir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+          winNames.push(m[1]);
+        }
+      }
+    } catch {
+      /* 下面按「不在结果里」判红 */
+    }
+  }
+  const wantWindowCases = [
+    /窗口底色必须是设计系统的画布/,
+    /状态栏底色与画布同色/,
+    /导航栏底色也与画布同色/,
+    /浅色画布上状态栏图标必须是深色/,
+  ];
+  const missingWindow = wantWindowCases.filter((re) => !winNames.some((n) => re.test(n)));
+  if (missingWindow.length) problems.push("窗口用例不在结果里: " + missingWindow.map(String).join(","));
+
+  if (problems.length) bad("AB-12 窗口层主题没跟设计系统同色", problems.slice(0, 6).join(" | "));
+  else
+    ok(
+      "AB-12 窗口层落地：manifest 挂 Theme.BitBot + adjustResize（无双重补偿）+ 浅色/深色窗口色与 Theme.kt 画布一致 + APK 资源表有 style + 4 条窗口用例真跑（负向对照通过）",
+    );
 }
 
 console.log(

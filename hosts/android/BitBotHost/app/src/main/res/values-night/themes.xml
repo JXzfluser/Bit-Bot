@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+  <!-- 深色下窗口层必须和 Compose 的 CanvasDark（#0C0D10）同色，
+       否则状态栏还是系统那层浅色，等于重构只做了一半。 -->
+  <style name="Theme.BitBot" parent="@android:style/Theme.Material.NoActionBar">
+    <item name="android:windowBackground">#FF0C0D10</item>
+    <item name="android:statusBarColor">#FF0C0D10</item>
+    <item name="android:navigationBarColor">#FF0C0D10</item>
+    <item name="android:windowLightStatusBar">false</item>
+    <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
+  </style>
+</resources>

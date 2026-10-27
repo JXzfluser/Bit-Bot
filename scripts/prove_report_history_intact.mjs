@@ -152,4 +152,50 @@ const hs = headings(text);
   }
 }
 
+/* RH-07：不止 report.md —— 任何已提交的过程文档都不许被吃掉。
+ * 这轮又撞上同一种事故：working tree 里的 parity-gaps-next.md 从 168 行掉到 95 行，
+ * 「〇、核心叙事」整段（主线八步 × 内核原语映射表）被静默删除，而且不是这次的编辑造成的，
+ * 是工作区里一份陈旧快照把提交过的内容盖掉了。RH-06 只盯 report.md，抓不到第二份文档。
+ *
+ * 修复前红（负向对照的真实输出：临时删掉「〇、核心叙事」整段 2445 字符后）：
+ *   ✗ RH-07 已提交的过程文档不许丢段落 — docs/grok-desktop-parity/parity-gaps-next.md
+ *     消失的标题：## 〇、核心叙事：多 Bot 协作编排回路（本次梳理的正主） /
+ *     ### 主线八步 × 内核原语映射 / ### 关键纪律（回应"别搬调试台"） /
+ *     ### 由此确定的本波核心工作包（取代按"暴露能力"排期）
+ *   prove_report_history_intact: PASS=6 FAIL=1   (exit=1)
+ * 修复后绿（对照跑完即 git checkout 还原）：
+ *   ✓ RH-07 两份过程文档（验收报告 + parity 清单）相对 HEAD 一节没少
+ *   prove_report_history_intact: PASS=7 FAIL=0
+ *   本轮对 report.md 的实际 diff = 87 增 / 0 删。
+ */
+{
+  const TRACKED = [
+    "docs/design/desktop-target/report.md",
+    "docs/grok-desktop-parity/parity-gaps-next.md",
+  ];
+  const problems = [];
+  for (const rel of TRACKED) {
+    let headText = null;
+    try {
+      headText = execFileSync("git", ["show", "HEAD:" + rel], {
+        cwd: REPO,
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      });
+    } catch (e) {
+      problems.push(rel + "：读 HEAD 失败 " + String(e.message || e).slice(0, 80));
+      continue;
+    }
+    if (!fs.existsSync(path.join(REPO, rel))) {
+      problems.push(rel + "：工作区里这个文件已经不存在");
+      continue;
+    }
+    const cur = new Set(headings(fs.readFileSync(path.join(REPO, rel), "utf8")));
+    const gone = headings(headText).filter((h) => !cur.has(h));
+    if (gone.length) problems.push(rel + " 消失的标题：" + gone.slice(0, 8).join(" / "));
+  }
+  if (problems.length) bad("RH-07 已提交的过程文档不许丢段落", problems.join(" | "));
+  else ok("RH-07 两份过程文档（验收报告 + parity 清单）相对 HEAD 一节没少");
+}
+
 done();
