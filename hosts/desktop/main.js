@@ -110,6 +110,15 @@ try {
   createCnInboundServer = require("../shared/cn_inbound_server").createCnInboundServer;
 }
 
+// Pairing-v1: shared code manager (IPC + HTTP routes see the same instance).
+let createPairingCodeManager;
+try {
+  createPairingCodeManager = require("./shared/desktop_pairing").createPairingCodeManager;
+} catch (_e) {
+  createPairingCodeManager = require("../shared/desktop_pairing").createPairingCodeManager;
+}
+const pairingCodeManager = createPairingCodeManager();
+
 // 内核注册表里的设备 id 只有一个真相来源：desk-1 / phone-ios / phone-android
 // （box_host 的 seed()）。这里内联的 onTurn 以前自己拼 `${machineKind}-1`，
 // 于是手机的回合挂在注册表里根本不存在的 `android-1` 上 —— HTTP 200、回复也
@@ -3397,6 +3406,7 @@ async function ensureCnInbound() {
     }
     cnInbound = createCnInboundServer({
       repoRoot: REPO_ROOT,
+      pairingManager: pairingCodeManager,
       onTurn: async (prompt, meta) => {
         const channel = (meta && meta.channel) || "in";
         const machineKind =
@@ -3526,7 +3536,9 @@ function pairingState() {
   // （hosts/android TurnBridge.turnEndpoint，有 JVM 单测钉住）。界面上把两者分开：
   // 普通用户看到的这一行不再带路径，开发态才给完整端点。
   const base = ips.length ? `http://${ips[0]}:${port}` : port ? `http://127.0.0.1:${port}` : "";
-  return {
+  // Pairing-v1: optional code fields (only present when a code is active).
+  const codeStatus = pairingCodeManager.status();
+  const result = {
     ok: true,
     listening,
     port,
@@ -3543,9 +3555,35 @@ function pairingState() {
     mobile_ready: true,
     pretend_paired: false,
   };
+  // Only add code fields when active (spec: optional new fields).
+  if (codeStatus.code_active) {
+    result.pair_code = codeStatus.code;
+    result.pair_code_expires_in_ms = codeStatus.expires_in_ms;
+    result.pair_code_attempts_left = codeStatus.attempts_left;
+  }
+  return result;
 }
 
 ipcMain.handle("bitbot:pairing:state", async () => pairingState());
+
+// Pairing-v1: issue or revoke a 6-digit pairing code (IPC, local only).
+ipcMain.handle("bitbot:pairing:code", async (_e, payload) => {
+  const action = String((payload && payload.action) || "").trim();
+  if (action === "issue") {
+    const r = pairingCodeManager.issue();
+    return {
+      ok: true,
+      code: r.code,
+      expires_in_ms: r.expires_in_ms,
+      attempts_left: r.attempts_left,
+    };
+  }
+  if (action === "revoke") {
+    pairingCodeManager.revoke();
+    return { ok: true, code: "" };
+  }
+  return { ok: false, error: "unknown_action" };
+});
 
 /** 令牌只在用户明确点「显示」时给出原文；默认状态里只有掩码。 */
 ipcMain.handle("bitbot:pairing:token", async () => {

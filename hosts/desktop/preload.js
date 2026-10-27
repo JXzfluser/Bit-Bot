@@ -337,6 +337,7 @@ contextBridge.exposeInMainWorld("bitbot", {
     token: () => ipcRenderer.invoke("bitbot:pairing:token"),
     copy: (what) => ipcRenderer.invoke("bitbot:pairing:copy", what),
     setLan: (enabled) => ipcRenderer.invoke("bitbot:pairing:lan", enabled),
+    code: (payload) => ipcRenderer.invoke("bitbot:pairing:code", payload),
   },
   productStatus: () => ipcRenderer.invoke("bitbot:product:status"),
   ota: {

@@ -22,6 +22,8 @@ object TurnBridge {
   private const val PREFS = "bitbot_host"
   private const val KEY_HOST_URL = "BITBOT_HOST_URL"
   private const val KEY_TURN_TOKEN = "BITBOT_TURN_TOKEN"
+  private const val KEY_DESKTOP_PORT = "BITBOT_DESKTOP_PORT"
+  private const val DEFAULT_DESKTOP_PORT = 18765
 
   @Volatile private var appContext: Context? = null
 
@@ -237,6 +239,21 @@ object TurnBridge {
     val trimmed = token?.trim().orEmpty()
     prefs.edit().apply {
       if (trimmed.isEmpty()) remove(KEY_TURN_TOKEN) else putString(KEY_TURN_TOKEN, trimmed)
+      apply()
+    }
+  }
+
+  /** Desktop port for pairing scan. Returns stored value or default 18765. */
+  fun desktopPort(): Int {
+    val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return DEFAULT_DESKTOP_PORT
+    return prefs.getInt(KEY_DESKTOP_PORT, DEFAULT_DESKTOP_PORT)
+  }
+
+  /** Store desktop port for pairing scan. */
+  fun setDesktopPort(port: Int) {
+    val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return
+    prefs.edit().apply {
+      putInt(KEY_DESKTOP_PORT, port)
       apply()
     }
   }

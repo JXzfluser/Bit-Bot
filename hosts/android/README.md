@@ -84,6 +84,36 @@ Electron 里验）：
 回合经 `TurnBridge` → Desktop `/v1/turn`（同一颗 MoonBit 大脑），失败时显示 Host/内核
 报出的真实原因，不写「大概是要配密钥」这类甩锅兜底。
 
+### 配对 v1：零抄写自动发现 + 6 位配对码
+
+未配对时首屏不再摆三段说明要求用户手抄 IP 和 64 位令牌，而是中间一个「连接 Desktop」按钮。
+点下去进配对流程：
+
+1. **扫描**：手机取自己的 Wi-Fi IPv4，枚举同 /24 的 1..254（排除 .0/.255，不猜别的网段），
+   并发 32、单点超时 350ms 打 `GET /v1/pair/discover`，列出应答的桌面（名字 + IP）。
+2. **选择**：点一台桌面。
+3. **输码**：输入桌面生成的 6 位数字配对码（`crypto.randomInt` 生成，默认 TTL 5 分钟，
+   一次性，最多 5 次尝试）。
+4. **换令牌**：`POST /v1/pair/redeem` 成功后把 `base_url` 与 `turn_token` 落到现有 prefs
+   （复用 `TurnBridge.setHostUrl` / `setTurnToken`，不新存一份凭证），直接回到对话可以说话。
+
+失败按四种原因分别说人话（彼此能区分）：
+- `invalid_code`：「配对码不对，还剩 N 次机会」
+- `attempts_exceeded`：「配对码已失效，回桌面重新生成一个」
+- `bad_request`：「请求格式不对，请重试」
+- `pairing_not_open`：「桌面那边还没点「允许手机连接」」
+
+线协议规格：`docs/design/desktop-target/pairing-v1.md`。纯逻辑（/24 枚举、应答解析、码校验、
+错误映射）由 `PairingDiscoveryTest`（23 条）在 JVM 层钉住，AB-09 门禁确认这些测试真在跑。
+
+「凭证」里手填地址 + 令牌那条路**保留**作为高级兜底（不删功能、不改现有 prefs key 语义），
+但不再是唯一入口。
+
+诚实边界：
+- 网络扫描（`scanForDesktops` / `probeDesktop`）需要真机 Wi-Fi，JVM 单测不覆盖；
+- `redeemCode` / `completePairing` 需要真桌面服务在跑，JVM 单测不覆盖；
+- 桌面侧 `/v1/pair/*` 端点可能还没上（另一个 agent 正在改桌面侧），集成部分留残留。
+
 ## 打包 APK（GitHub Actions）
 
 `.github/workflows/android-apk.yml` 是这条移动端产包的路：真跑 gradle 出 universal（或选 `all`

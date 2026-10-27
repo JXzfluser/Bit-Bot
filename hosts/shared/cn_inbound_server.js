@@ -11,8 +11,11 @@ const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { URL } = require("url");
 const p0 = require("./p0_security");
+const { createPairingCodeManager } = require("./desktop_pairing");
+const { rankLanIPv4, classifyScope } = require("./lan_candidates");
 
 function defaultRepoRoot() {
   return path.resolve(__dirname, "../..");
@@ -262,6 +265,11 @@ function createCnInboundServer(opts = {}) {
     "pending-turns.jsonl",
   );
 
+  // Pairing code manager (pairing-v1 spec). If caller provides one, use it;
+  // otherwise create a default one. The desktop main.js creates a shared
+  // instance so IPC and HTTP routes see the same codes.
+  const pairingManager = opts.pairingManager || createPairingCodeManager();
+
   const state = {
     listening: false,
     port,
@@ -508,6 +516,77 @@ function createCnInboundServer(opts = {}) {
         return;
       }
 
+      // Pairing-v1: discover (no auth, no token leakage).
+      if (p === "/v1/pair/discover" && req.method === "GET") {
+        const ps = pairingManager.status();
+        json(res, 200, {
+          ok: true,
+          service: "bitbot-desktop",
+          name: os.hostname(),
+          version: 1,
+          port: state.port || port,
+          pairing: {
+            code_active: Boolean(ps.code_active),
+            expires_in_ms: ps.code_active ? Number(ps.expires_in_ms) || 0 : 0,
+          },
+        });
+        return;
+      }
+
+      // Pairing-v1: redeem (no bearer, but requires valid 6-digit code).
+      if (p === "/v1/pair/redeem" && req.method === "POST") {
+        // LAN must be open for redeem to succeed (409 if not).
+        const isLanOpen = bind.lan === true || host === "0.0.0.0";
+        if (!isLanOpen) {
+          json(res, 409, { ok: false, error: "pairing_not_open" });
+          return;
+        }
+        // Parse body.
+        if (!payload || typeof payload !== "object") {
+          json(res, 400, { ok: false, error: "bad_request" });
+          return;
+        }
+        const code = String(payload.code || "").trim();
+        const deviceName = String(payload.device_name || "").trim();
+        const machineKind = String(payload.machine_kind || "").trim();
+        if (!code) {
+          json(res, 400, { ok: false, error: "bad_request" });
+          return;
+        }
+        if (machineKind !== "android" && machineKind !== "ios") {
+          json(res, 400, { ok: false, error: "bad_request" });
+          return;
+        }
+        const redeemResult = pairingManager.redeem(code);
+        if (!redeemResult.ok) {
+          json(res, 400, { ok: false, error: redeemResult.error });
+          return;
+        }
+        // Success: return the existing 64-char turn token + base_url.
+        // Use lan_candidates ranking (192.168 > 10/8 > 172.16/12, docker0/virtual last,
+        // 169.254 bottom) instead of raw os.networkInterfaces() enumeration order.
+        const actualPort = state.port || port;
+        const localHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+        let baseUrl = `http://${localHost}:${actualPort}`;
+        let baseScope = "loopback";
+        try {
+          const ifacesFn = typeof opts.networkInterfaces === "function" ? opts.networkInterfaces : () => os.networkInterfaces() || {};
+          const ranked = rankLanIPv4(ifacesFn());
+          if (ranked.length) {
+            baseUrl = `http://${ranked[0].ip}:${actualPort}`;
+            baseScope = ranked[0].scope || classifyScope(ranked[0].ip);
+          }
+        } catch (_) { /* fallback to loopback */ }
+        json(res, 200, {
+          ok: true,
+          turn_token: turnToken,
+          base_url: baseUrl,
+          base_url_scope: baseScope,
+          expires_in_ms: 0,
+        });
+        return;
+      }
+
       // Shared-brain turn API for iOS/Android product shells (LAN pair to Desktop).
       // POST /v1/turn { "text": "...", "machine_kind": "android"|"ios", "session_id": "..." }
       if (p === "/v1/turn" || p === "/turn") {
@@ -699,7 +778,7 @@ function createCnInboundServer(opts = {}) {
     };
   }
 
-  return { start, stop, status, server };
+  return { start, stop, status, server, pairingManager };
 }
 
 module.exports = { createCnInboundServer };

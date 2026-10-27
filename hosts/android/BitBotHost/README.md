@@ -34,6 +34,54 @@ pass ADR 0008, so the app says so instead of making a request that is rejected f
 Pinned by `TurnBridgeHttpErrorTest` (AB-08). What is *not* covered: the wiring inside
 `runTurn` (needs SharedPreferences, so no JVM-only unit test), and real device screens.
 
+### Pairing v1: zero-typing auto-discovery + 6-digit code
+
+The unpaired first screen no longer shows three paragraphs of instructions asking the user
+to hand-copy the desktop IP and 64-character token. Instead, there's a single "连接 Desktop"
+button in the middle. Tapping it enters the pairing flow:
+
+1. **Scan**: the phone takes its own Wi-Fi IPv4, enumerates the same /24 subnet (1..254,
+   excluding .0/.255, no guessing other subnets), probes with concurrency 32 and per-host
+   timeout 350ms via `GET /v1/pair/discover`, and lists responding desktops (name + IP).
+2. **Select**: tap one desktop.
+3. **Enter code**: input the 6-digit pairing code generated on the desktop
+   (`crypto.randomInt`, default TTL 5 minutes, one-time use, max 5 attempts).
+4. **Redeem**: `POST /v1/pair/redeem` success writes `base_url` and `turn_token` to existing
+   prefs (reusing `TurnBridge.setHostUrl` / `setTurnToken`, no separate credential store),
+   then returns to the chat ready to talk.
+
+Failures map to distinct human-readable messages per `docs/design/desktop-target/pairing-v1.md`:
+- `invalid_code`: "配对码不对，还剩 N 次机会"
+- `attempts_exceeded`: "配对码已失效，回桌面重新生成一个"
+- `bad_request`: "请求格式不对，请重试"
+- `pairing_not_open`: "桌面那边还没点「允许手机连接」"
+
+Pure logic (/24 enumeration, discover response parsing, code validation, error mapping) is
+pinned by `PairingDiscoveryTest` (23 cases) at the JVM layer; AB-09 gate confirms these tests
+actually run. The manual "凭证" path (hand-typing address + token) is **preserved** as an
+advanced fallback — no feature deletion, no existing prefs key semantics changed.
+
+Honest boundaries:
+- Network scanning (`scanForDesktops` / `probeDesktop`) requires real device Wi-Fi, not covered by JVM tests;
+- `redeemCode` / `completePairing` require a real desktop service running, not covered by JVM tests;
+- Desktop-side `/v1/pair/*` endpoints may not be up yet (another agent is working on the desktop side); integration is left as residual.
+
+### Why 6-digit code instead of QR / hand-copy
+
+User feedback on the old flow: "装完 APK 第一屏就是三段说明文字，要求他手抄桌面 IP 和 64 位配对令牌，
+抄错一个字符就 401" — the user had to hand-copy two long strings, and one wrong character meant failure.
+
+Trade-offs considered:
+- **QR code**: zero typing, but requires camera permission + scanning UI; adds complexity and a permission
+  prompt that confuses users who just want to pair. Not implemented in v1.
+- **6-digit code**: minimal typing (6 digits vs 64 hex chars + IP), discoverable via LAN scan, code is
+  short-lived (5 min TTL) and one-time use. Security: 1e6 space × 5 attempts ≈ 5e-6 guess probability,
+  constant-time comparison prevents timing attacks. Chosen for v1.
+- **Hand-copy IP + 64-char token**: preserved as advanced fallback in "凭证" sheet for edge cases
+  (different subnet, firewall blocking discovery, etc.), but no longer the primary path.
+
+The goal: pairing should feel like AirDrop / screen casting — tap to discover, enter a short code, done.
+
 ## Build & test (verified in CI here)
 
 ```bash

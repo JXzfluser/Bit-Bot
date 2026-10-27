@@ -10,10 +10,12 @@
  *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 26（防止 test 任务空转假绿）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 49（防止 test 任务空转假绿）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
+ *   AB-09 配对 v1 纯逻辑单测真的在跑（/24 枚举、discover 应答解析、码校验、错误映射）
+ *   AB-10 防 placeholder IP 回潮：源码里不许出现写死的局域网默认地址
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
@@ -206,7 +208,7 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 26) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 62) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -238,6 +240,135 @@ if (badge.status !== 0 || !badgeOut) {
     bad("AB-08 失败原因翻译层的单测不在结果里", missingExplain.map(String).join(", "));
   } else {
     ok("AB-08 失败原因翻译层单测真跑（401 点名令牌 / 404 不贴 HTML / refused 说端口）");
+  }
+  /* AB-09 配对 v1 纯逻辑单测真的在跑：/24 枚举、应答解析、码校验、错误映射。
+   * 这些是零抄写配对流程的核心逻辑，必须在 JVM 层钉住。 */
+  const wantPairing = [/枚举同.*子网/, /解析.*discover/, /invalid_code.*映射/, /四种失败.*区分/];
+  const missingPairing = wantPairing.filter((re) => !names.some((n) => re.test(n)));
+  if (missingPairing.length) {
+    bad("AB-09 配对 v1 纯逻辑单测不在结果里", missingPairing.map(String).join(", "));
+  } else {
+    ok("AB-09 配对 v1 纯逻辑单测真跑（/24 枚举 / discover 解析 / 码校验 / 错误映射）");
+  }
+  /* AB-10 防 placeholder IP 回潮：扫 hosts/android/BitBotHost/app/src/main 的源码，
+   * 出现任何写死的局域网默认值作为变量赋值（不是注释或示例）直接判红。
+   * 这条要能防同类回潮 —— 上次 MainActivity.kt:440 写死 192.168.1.1 就是这类。
+   *
+   * 修复前红（模式过窄）：
+   *   旧模式只抓 val/var xxx = "literal"，漏掉：
+   *   - 带类型注解的赋值：val ip: String = "192.168.1.1"
+   *   - 默认参数值：fun f(ip: String = "10.0.2.2")
+   *   - 127.0.0.1 只在变量名为 localIp 时才抓，其它名字漏掉
+   *   代码干净所以恒绿，这条门禁没有牙。
+   *
+   * 修复后绿：
+   *   模式放宽到带类型注解、默认参数值、所有变量名。
+   *   注释行（// 开头、* 开头）和测试目录排除在外。
+   *   加负向对照：临时副本里塞几种写死形态，确认 AB-10 真的会红，跑完清干净。
+   *   红/绿原文留在门禁注释里。
+   */
+  {
+    const srcDir = path.join(HOST, "app/src/main");
+    const testDir = path.join(HOST, "app/src/test");
+    const ipLiterals = ["192\\.168\\.1\\.1", "10\\.0\\.2\\.2", "127\\.0\\.0\\.1"];
+    const hardcodedPatterns = [];
+    for (const ip of ipLiterals) {
+      // 变量赋值（含类型注解）：val/var name[: Type] = "ip"
+      hardcodedPatterns.push({
+        re: new RegExp(`(?:val|var)\\s+\\w+(?:\\s*:\\s*\\w+)?\\s*=\\s*["']${ip}["']`),
+        desc: `${ip.replace(/\\./g, ".")} 写死作为默认地址（变量赋值，含类型注解）`
+      });
+      // 默认参数值：fun f(name: Type = "ip")
+      hardcodedPatterns.push({
+        re: new RegExp(`\\w+\\s*:\\s*\\w+\\s*=\\s*["']${ip}["']`),
+        desc: `${ip.replace(/\\./g, ".")} 写死作为默认参数值`
+      });
+    }
+    const violations = [];
+    function isCommentLine(line) {
+      const trimmed = line.trim();
+      return trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*");
+    }
+    function scanDir(dir, isTest) {
+      let entries;
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) scanDir(full, isTest || entry.name === "test" || entry.name === "androidTest");
+        else if (entry.isFile() && /\.(kt|java)$/.test(entry.name)) {
+          if (isTest) continue; // 测试目录不扫
+          const src = fs.readFileSync(full, "utf8");
+          const lines = src.split("\n");
+          // 过滤掉注释行后再匹配
+          const nonCommentSrc = lines.filter(l => !isCommentLine(l)).join("\n");
+          for (const { re, desc } of hardcodedPatterns) {
+            if (re.test(nonCommentSrc)) {
+              const relPath = path.relative(REPO, full);
+              violations.push(relPath + ": " + desc);
+            }
+          }
+        }
+      }
+    }
+    scanDir(srcDir, false);
+
+    /* 负向对照：临时副本里塞几种写死形态，确认 AB-10 真的会红。
+     * 像 scripts/prove_pairing_lan_rank.mjs 的 LR-02 那样把「尺子能失败」钉成断言。
+     * 对照跑完必须清干净、不许污染源码。 */
+    const tmpDir = path.join(HOST, "app/src/main/.ab10_negative_control_tmp");
+    let negativeControlPassed = false;
+    try {
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const tmpFile = path.join(tmpDir, "NegativeControl.kt");
+      // 塞几种写死形态：变量赋值、类型注解赋值、默认参数值
+      const injectedSrc = [
+        'package com.bitbot.host.tmp',
+        '',
+        'class NegativeControl {',
+        '  val ip1 = "192.168.1.1"',
+        '  val ip2: String = "10.0.2.2"',
+        '  fun connect(host: String = "127.0.0.1") {}',
+        '}',
+      ].join("\n");
+      fs.writeFileSync(tmpFile, injectedSrc, "utf8");
+
+      // 对临时副本跑同样的扫描逻辑
+      const tmpViolations = [];
+      const tmpEntries = fs.readdirSync(tmpDir, { withFileTypes: true });
+      for (const entry of tmpEntries) {
+        const full = path.join(tmpDir, entry.name);
+        if (entry.isFile() && /\.(kt|java)$/.test(entry.name)) {
+          const src = fs.readFileSync(full, "utf8");
+          const lines = src.split("\n");
+          const nonCommentSrc = lines.filter(l => !isCommentLine(l)).join("\n");
+          for (const { re, desc } of hardcodedPatterns) {
+            if (re.test(nonCommentSrc)) {
+              tmpViolations.push(desc);
+            }
+          }
+        }
+      }
+      // 负向对照必须抓到至少 3 种违规（三种写死形态各一条）
+      negativeControlPassed = tmpViolations.length >= 3;
+      if (!negativeControlPassed) {
+        bad("AB-10 负向对照失败：尺子抓不到写死的 IP", "expected >=3 violations, got " + tmpViolations.length + ": " + tmpViolations.join("; "));
+      }
+    } catch (e) {
+      bad("AB-10 负向对照跑异常", String(e).slice(0, 200));
+    } finally {
+      // 清干净临时副本
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch { /* best effort */ }
+    }
+
+    if (negativeControlPassed) {
+      if (violations.length) {
+        bad("AB-10 源码中出现写死的局域网默认地址（防 placeholder 回潮）", violations.join("; "));
+      } else {
+        ok("AB-10 无写死默认局域网地址（192.168.1.1 / 10.0.2.2 / 127.0.0.1 作为默认扫描地址，含类型注解与默认参数值；负向对照通过）");
+      }
+    }
   }
 }
 

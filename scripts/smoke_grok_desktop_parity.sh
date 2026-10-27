@@ -1750,8 +1750,10 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     ok "G-47 APK 真编译 + aapt 读回包里的事实（$(tail -1 /tmp/g47-build.log)）"
     grep -q "AB-07 配对地址归一化单测真跑" /tmp/g47-build.log \
       && grep -q "AB-08 失败原因翻译层单测真跑" /tmp/g47-build.log \
-      && ok "G-47 手机端配对单测真在跑（未配对不回写死地址、少协议补 http://、桌面失败码翻成人话）" \
-      || bad "G-47 AB-07/AB-08 anchor missing"
+      && grep -q "AB-09 配对 v1 纯逻辑单测真跑" /tmp/g47-build.log \
+      && grep -q "AB-10 无写死默认局域网地址" /tmp/g47-build.log \
+      && ok "G-47 手机端配对单测真在跑（未配对不回写死地址、失败码翻人话、发现/换码逻辑、AB-10 无写死 IP 且带负向对照）" \
+      || bad "G-47 AB-07/08/09/10 anchor missing"
   fi
 else
   bad "G-47 prove_android_build（见 /tmp/g47-build.log；$(tail -1 /tmp/g47-build.log)）"
@@ -1772,6 +1774,22 @@ fi
 echo "  · G-48 锚点：docker0 顶第一位=修复前红（旧顺序实测 172.17.0.1 第一）；"
 echo "    并发丢证据=修复前红（12 并发只剩 10 行）；空窗读=修复前红（33 万次撞在截断窗口上）"
 echo "  · G-48 残留（诚实）：只验到同机多进程并发与崩溃窗口；跨机器时钟漂移、只读文件系统、Windows 文件锁语义未覆盖"
+
+echo "== G-49 一键配对（局域网发现 + 6 位配对码，pairing-v1）=="
+if timeout 300 node scripts/prove_pairing_code.mjs > /tmp/g49-paircode.log 2>&1; then
+  ok "G-49 配对码生命周期与真 HTTP 换令牌全绿（$(tail -1 /tmp/g49-paircode.log)）"
+else
+  bad "G-49 prove_pairing_code（见 /tmp/g49-paircode.log；$(tail -1 /tmp/g49-paircode.log)）"
+fi
+grep -q "PC-13" /tmp/g49-paircode.log \
+  && grep -q "PC-18" /tmp/g49-paircode.log \
+  && grep -q "PC-19" /tmp/g49-paircode.log \
+  && ok "G-49 三条关键证据在：换到的令牌真能打通 /v1/turn（PC-13）、base_url 走网卡排序不给 docker0（PC-18）、LAN 未放开如实 409（PC-19）" \
+  || bad "G-49 pairing-code anchors missing"
+echo "  · G-49 锚点：discover/redeem 未实现时 404=修复前红；base_url 用枚举顺序第一个地址"
+echo "    （装 Docker 的机器上就是 172.17.0.1，等于自动给用户抄错地址）=修复前红（PC-18）"
+echo "  · G-49 残留（诚实）：手机端扫描/换令牌只到 JVM 集成测试（进程内真 HTTP 服务），没有真机 Wi-Fi 验证；"
+echo "    多网卡机器上手机可能扫到另一台同名 Desktop；未配内网穿透，公网机器仍配不上"
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

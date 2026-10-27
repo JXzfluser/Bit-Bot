@@ -181,258 +181,70 @@ G-16 / G-24 / G-25 / G-26 / G-27 / G-28 这些“grep e2e 成功串”的段在 
   稳定基线后再补。
 - 不做像素级 Grok 对比；所有资产 Bit Bot 自有（NG-001）。
 
-### 8.15.7 产包这条路：`.github/workflows/android-apk.yml`
+## 8.18 用户真机反馈推翻了一屏：配对改成「自动发现 + 6 位码」
 
-「安卓版完成了」如果只能由开发机上的 gradle 证明，用户对拿到可安装包的预期就落空了。
-本轮补一条 CI 产包路径：真跑 gradle 出 universal 的 debug + release APK（可选手动 dispatch 的
-`channels=all` 打六个国内渠道包）→ `prove_android_build.mjs` 用 aapt 读回包里的事实 →
-APK 作为可下载产物上传（30 天）。门禁在 CI 里强制走 wrapper，避免「runner 预装的 gradle」
-和「工程用的 gradle」不是同一把尺子。
+用户装了 APK 后发来截图与原话：「安装之后就这样啊，完全不知道如何使用哦，而且各种连接
+不应该最好走授权的方式，各种都要输入。用户要疯吧」。截图里第一屏就是三段说明书式文案 +
+一个「配置 Desktop 配对凭证」按钮，要点开填两个字段（IP:端口、64 位令牌）。
 
-本地已按 workflow 的同一条任务链验过：`:app:assembleUniversalDebug`（7.7 MB，包名
-`com.bitbot.host.debug`）、`:app:assembleUniversalRelease`（5.7 MB，包名 `com.bitbot.host`，
-`sdkVersion 26 / targetSdk 34`），`:app:assembleDebug` / `:app:assembleRelease` 的任务图
-`--dry-run` 通过（六个 flavor 都在）。
+这条反馈把前面几轮的优先级暴露成一个方向性错误：我一直在打磨「抄错之后报错写得好不好看」，
+而正确的问题是**根本不该让人抄**。所以本轮直接换流程，规格落在
+`docs/design/desktop-target/pairing-v1.md`：桌面点「生成配对码」出 6 位数字（TTL 5 分钟、
+一次性、每码最多 5 次尝试、`crypto.randomInt` 生成、`timingSafeEqual` 比较），手机自己
+扫局域网 `/v1/pair/discover` 找到桌面、输这 6 位码换回令牌，首屏改成「能直接说话 + 一个
+连接按钮」。手填地址与令牌保留为高级兜底，不删。
 
-诚实边界写进了 Summary：**没有**装到真机 / emulator（runner 无设备、无 KVM）；**没有**商店签名 ——
-workflow 不带 keystore，未配 `BITBOT_ANDROID_STORE_*` 时 release 回落 debug 证书
-（实测签名者 DN `CN=Android Debug`），所以这些包可以侧载自测，不等于能上架。
+安全口径写进规格并且自洽：LAN 内 `/v1/turn` 的 bearer 本来就是明文 HTTP，能嗅探的人今天
+就能看到令牌，所以短码引导不是新增泄露面；但短码必须一次性 + 过期 + 限次 + 常量时间比较，
+且 `discover` 绝不返回令牌或可推导物。401 不记在线证据这条不变。
 
-真实 run 记录（这条路的红与绿都不靠本地嘴说）：
+### 8.18.1 复核时抓到的三个「看起来修了」
 
-- 第一次 `70fbc81` → run 40356434710：**打包七步全绿、两个 APK 已上传**（`collected=2`，
-  universalDebug 7.98 MB + universalRelease 5.90 MB，产物 zip 13.1 MB），但整个 job 判红 ——
-  红在最后那条「写 Summary」的步骤：我把一条 `echo` 断成多行，续行被 bash 当成命令
-  （`command not found` / exit 127）。包是好的，坏在尺子的文案步。
-- 修复 `e6f27bd`：本地把同一段脚本原样跑一遍（exit 0，Summary 里如实列出两个包与字节数），
-  再推 → run 40357426323：**12/12 步全绿**，产物 `bitbot-android-universal-e6f27bd…`（12.52 MB zip）。
-- runner 上门禁读回的事实：`AB-01 APK 8 MB`、`AB-02 包名 com.bitbot.host.debug · 应用名 Bit Bot`、
-  `AB-03 网络+相机+麦克风+定位`、`AB-04 minSdk/targetSdk 一致`、`AB-05 六个渠道 flavor 都在`、
-  `AB-06 JVM 单测 13 用例 0 失败`；gradle `BUILD SUCCESSFUL in 3m`。
+三个都不是实现者报告的错误结论，而是我读代码读出来的，全部要求先补红再修：
 
-## 8.16 打磨第二轮：配对地址、错误话术、在线证据落盘
+1. **redeem 把手机指向 docker0**：`cn_inbound_server.js` 用「枚举顺序第一个非 internal
+   IPv4」拼 `base_url` —— 装过 Docker 的机器上就是 `172.17.0.1`，等于把「用户抄错地址」
+   升级成「产品自动给错地址」，一键配对在最常见开发机上直接失效。仓库里本轮刚做的
+   `hosts/shared/lan_candidates.js` 就是为杀这个坑存在的。修复：接 `rankLanIPv4()`，
+   并新增可选字段 `base_url_scope` 让手机有机会说人话。红：`PC-18: FAIL — base_url must
+   NOT be docker0 (172.17.0.1) — got http://172.17.0.1:PORT`；绿：`PC-18 base_url uses
+   lan_candidates ranking: 192.168.1.23 (not 172.17.0.1), scope=private`。
+2. **手机本机地址是占位符**：`MainActivity.kt:440` 写着 `val localIp = "192.168.1.1" //
+   Placeholder`。真机连 10.x 网段时扫的是无关网段，用户永远看到「没找到 Desktop」。
+   修复：`ConnectivityManager` 取 site-local IPv4，取不到返回 null 并如实说「确认手机连着
+   Wi-Fi」，不猜地址。
+3. **手机端把端口写死成 18765**：`probeDesktop` 里 `URL("http://$ip:18765/...")`，导致集成
+   测试只能绑 18765、端口被占用就 `return`（skip）。用户改过 `BITBOT_CN_INBOUND_PORT`
+   就永远配不上对，而一条会 skip 的测试不算证据。修复：扫描接受候选端口，UI 可改端口存
+   prefs，以 discover 应答里的 `port` 为权威；测试改绑 ephemeral 端口并删掉 skip 路径。
 
-用户这轮的要求是「继续评审，找出能优化的任务打磨更多细节」。这一轮不加新功能，专挑
-**已经能用、但在真实机器上会翻车**的地方，每条都先拿红再拿绿，红绿都来自真跑。
+另外把新加的 AB-10（禁止写死局域网默认地址）打回补了**负向对照**：原实现只抓
+`val x = "192.168.1.1"`，漏类型注解与默认参数值，而且代码干净时恒绿 —— 门禁没有牙。
+现在门禁自己往临时副本塞三种写死形态，断言至少抓到 3 条违规，跑完 `finally` 清干净
+（已确认无残留文件）。
 
-### 8.16.1 手机端配对地址归一（`hosts/android/.../TurnBridge.kt`）
+### 8.18.2 顺手的两处产品态度修正
 
-评审时发现两个真机必踩的缺陷（原来怀疑的「用户粘完整 URL 会拼成双 `/v1/turn`」经代码
-核对不成立，`runTurnHttp` 早就只补一次 —— 记在这里是为了别把它当成果）：
+- 桌面「手机配对」面板把「让手机自己找 / 生成配对码」提到「显示配对令牌 / 复制地址 /
+  复制令牌」之前，手填降级为「同一 Wi-Fi 连不上时才用」。先给用户看的就是希望他用的。
+  改完真渲染复跑：`e2e_android_roster` 20/0、`e2e_desktop_token_parity` 5/0，
+  行内字面字号基线仍是 34（新文案一律走 class + token）。
+- 规格补一条纪律：端口/地址不许写死，任何「默认值」都要能追溯到运行时真值。
 
-1. 什么都没配时 `hostUrl()` 回一个写死的 `http://10.0.2.2:18765`。真机上的表现不是
-   「提示去配对」，而是「发出去必失败」：用户看到转圈 + 一句网络错误；写死端口本身
-   也违反「开放配置，不写死」。
-2. 手敲 `192.168.1.10:18765`（人最常这么填）时 `java.net.URL` 抛
-   `MalformedURLException: no protocol`，旧实现把这次失败咽掉、退到本机 node runner
-   （真机上根本没有），最后一句都说不清是地址写错了。
+### 8.18.3 证据
 
-修复前红（都是真跑，不是推演）：
+`prove_pairing_code` PC-01..19 **PASS=19 FAIL=0**（其中 PC-13 是端到端那一条：用 redeem
+换到的令牌真打 `/v1/turn` 并跑通回合，证明「配对完真的能说话」而不是只测函数）；
+`prove_android_build` **PASS=10 FAIL=0**（AB-06 下限提到 62，实际 66 用例 0 失败）；
+`e2e_android_roster` **20/0**；token 门禁 **5/0**；`moon test ./cmd/desktop_turn` **33/33**、
+`moon test runtime` **54/54**。
 
-- `jshell` 直接复现第 2 条：`PRE-FIX RED: java.net.MalformedURLException: no protocol: 192.168.1.10:18765/v1/turn`
-- gradle JVM 单测（先只提交用现有 API 的两条断言）：
-  `未配对时不许回一个写死的地址 FAILED … expected null, but was:<http://10.0.2.2:18765>`
-  `手填地址少了协议要补全 FAILED … expected:<[http://]192.168.1.10:18765> but was:<[]192.168.1.10:18765>`
+### 8.18.4 残留（诚实）
 
-修后：`normalizeHostUrl`（少协议补 `http://`、https 不降级）+ `turnEndpoint`（`/v1/turn`
-只拼一次）两个纯函数；优先级 凭证 > env > `-Dbitbot.host.url` > **未配对(null)**，写死的
-emulator 地址删掉；`unpairedText` / `pairingHint` 把「去凭证填什么」说在人话前面、原始
-HTTP 与 runner 原因保留；凭证页当场显示「实际调用：…/v1/turn」或「未配对：发送一定会失败」，
-placeholder 也不再写死 `10.0.2.2:18765`。绿：`:app:testUniversalDebugUnitTest` 19 用例
-0 失败（原 13 + 新 6）。
-
-### 8.16.2 桌面那一行给的是「手机要填的东西」
-
-原来「手机配对」那一行（以及复制按钮）给的是完整端点 `http://ip:port/v1/turn`，而手机
-「凭证」要填的是配对地址 base，路径由手机端补（8.16.1）。让用户多抄一段路径不是细节，
-是制造填错的机会。改法：普通用户那一行 = `http://<ip>:<port>`；完整端点降到开发态单独一行
-`#sec-pairing-turn`；复制也复制 base。
-
-修复前红 —— 新断言先写进 `e2e_android_roster.mjs`，再把产品改动 `git stash` 起来跑旧代码：
-
-- `✗ AR-12 状态里没有可填的配对地址（pair_base） — {"port":18765}`
-- `✗ AR-13 放开后配对地址该是不带路径的 base — {}`
-
-修后绿：`e2e_android_roster: PASS=17 FAIL=0`（原 14 项 + AR-12/13/14）。
-
-### 8.16.3 配对地址该挑哪块网卡（新增 `hosts/shared/lan_candidates.js`）
-
-旧实现把 `os.networkInterfaces()` 里非 internal 的 IPv4 按枚举顺序原样拿出来，第一个
-既显示在界面上也是复制出去的内容 —— 而这个顺序不由我们决定：装过 Docker 的机器第一个是
-`172.17.0.1`（docker0），云机上是公网地址，没 DHCP 时是 `169.254.*`。用同一份 fixture 跑
-旧枚举逻辑复现出来的红（已固化成 LR-02 负向对照，防止这条门禁变成没牙）：
-
-```
-旧顺序 = 172.17.0.1, 172.18.0.1, 172.19.0.1, 192.168.1.23, 169.254.5.6
-→ 界面显示并复制的是 docker0；真能用的 192.168.1.23 排第 4
-```
-
-新模块只做排序与标注（网段 192.168 > 10/8 > 172.16/12 容器段，虚拟接口 docker/br-/veth/
-virbr/kube/cni/flannel/tunl/tap 罚分，en/eth/wlan/wi/ath/ap 加分），读不到就返回空、
-不编地址、不把 127.0.0.1 糊上去。界面据此如实标注来源：只有公网 / 覆盖网 / 链路本地地址时
-必须说明「手机大概率连不通」，是局域网地址就不啰嗦。
-
-LR-07 第一次跑仍是红的（`x1:172.17.0.1` 与 `x2:192.168.1.9` 接口名认不出来时并列），
-补出 `privateTier` 才绿 —— 说明只看接口名不够，网段必须兜底。
-绿：`prove_pairing_lan_rank: PASS=9 FAIL=0`（LR-01..10）。
-真环境佐证：这台沙箱只有公网 `eth0`，AR-13 走的就是「必须说明连不通」那条分支
-（`scope=public`），不是只在 fixture 里成立。
-
-### 8.16.4 在线证据的落盘健壮性（`hosts/shared/machine_presence.js`）
-
-`data/machines/presence.json` 是「谁真的在线」的唯一证据来源，而每次记账都是
-「读文件 → 改 → 写文件」：读-改-写不原子会互相覆盖；`fs.writeFileSync` 先截断再写，
-中间有一段「空文件 / 半截 JSON」的窗口，崩溃正好落在里面就让 `readPresence` 走 catch
-返回 `{}`，所有设备一起变离线。
-
-修复前红（真并发，不是推演）：
-
-- `✗ PD-01 并发回合把证据覆盖掉了 … 剩 10/12 条，丢：phone-test-08,phone-test-10`
-- `✗ PD-02 并发写期间读到过空文件 … empty=334766/362098 · storm 最多到 7783 回合`
-
-修后：`mkdir` 跨进程锁 + 5 秒卡死锁夺回 + tmp/fsync/rename 原子落盘（Windows rename
-撞 EPERM/EEXIST 时退回「删了再换」）。绿：`prove_presence_durability: PASS=5 FAIL=0`，
-修后 storm 期间 117,969 次读 0 空窗 0 半截；PD-04 仍确认合并只标注有证据的行、不新增
-机器不动 id/kind（既有契约没动）。
-
-顺带纠一个自己写的假绿：PD-01 最初用 `spawnSync` 循环 = 串行执行，12/12 全在也测不出
-覆盖，改成一次性 `spawn` 全部子进程才是真并发。
-
-### 8.16.5 其他如实化
-
-- 开发态入站文案不再把默认端口写成事实（`Desktop 启动会拉起默认 :18765（BITBOT_CN_INBOUND_PORT 可改）`），
-  并且端口读不到时不再拼 `st.port || 18765` 造一个出来。
-- 「复制地址」按钮改为跟随真实可复制内容（AR-14）。**如实交代**：「没有地址 → 按钮禁用」
-  这一分支在本机不可达（入站总会随 app 起来），门禁只钉住了「有地址时可点」，另一半是
-  代码层修 + 残留，没假装验过。
-
-### 8.16.6 门禁接入与回归
-
-- `scripts/prove_pairing_lan_rank.mjs`（LR）、`scripts/prove_presence_durability.mjs`（PD）
-  进 `smoke_grok_desktop_parity.sh` 新增的 **G-48** 段（纯 Node，不需要显示环境），
-  锚点里写清了各自「修复前红」是哪条。
-- `prove_android_build.mjs`：AB-06 用例数下限 13 → 19，新增 **AB-07** 从结果 XML 的
-  `testcase name` 里确认「未配对 / 少协议」两条真在跑（写第一版时踩了个自己的坑：
-  `classname="…"` 里含子串 `name="`，`[^>]*` 会捕错，改成 `<testcase\s+name="`）。
-  本地 `AB-01..07 PASS=7 FAIL=0`。
-- workflow 的 Summary 文案同步改成 AB-01..05 + AB-06/07，并按上次的教训把整段脚本
-  抽出来在本地跑一遍（exit 0，Summary 如实列出两个 APK 的字节数）。
-- 回归：`e2e_android_roster` 18/0、`e2e_android_turn` 11/0、`moon test ./cmd/desktop_turn`
-  33/33、`moon test runtime` 54/54、APK 门禁 7/0。全量矩阵见 8.16.7。
-
-### 8.16.7 全量矩阵抓出来的两处：本轮自己新欠的视觉债
-
-跑 `bash scripts/smoke_grok_desktop_parity.sh`（moon 在 PATH 上）结果是
-**PASS=355 FAIL=1**，唯一的红是 G-46 里的 `e2e_desktop_token_parity`。两条断言的原文：
-
-```
-✗ TP-03 运行时出现 1 处字面色直接上色（基线 0） — 颜色必须走 var(--token)
-    → ["sec-pairing-note color=var(--warn,#b45309)"]
-✗ TP-04 运行时出现 36 处字面字号（基线 34）
-    → ["gp-computer-status=11px","DIV=11px","gp-group-status=11px",
-       "permission-detail=12px","settings-meta=12px"]
-```
-
-两条都是我这几轮加的 `sec-pairing-note` / `sec-pairing-turn` 造成的，而且第二条
-一开始把我骗了：
-
-- TP-03 的 `var(--warn,#b45309)` 里 `--warn` **本来就存在**（`.ri-err`、`#approval .title`
-  都在用），那个兜底色是我自己加的防御，加完反而成了运行时字面色。删掉兜底。
-- TP-04 我先按「行内改成 `font:var(--text-sm)/1.5 var(--font-mono)` 就该归零」改了，
-  再跑**还是 36**。这时候没有去动基线，而是把 HEAD 版本的 `index.html`/`main.js`
-  临时换回去单独量了一次：HEAD 是 `hardFont=34`，我的版本是 `36` —— 确认是我加的，
-  不是我之前怀疑的「别的轮次欠的账」。根因在尺子本身：TP-04 遍历 `el.style` 的
-  属性名，行内 `font:` 简写会展开成 `font-size` 这个**长写名**，命中就计数，
-  完全不看它的值是不是 `var()`。也就是说「行内用令牌」在这个尺子下仍然算债。
-  门禁的提示语写的就是「字号走类型阶 class / 令牌」，正解是走 class。
-- 于是把两行的字体/颜色搬进 `hosts/desktop/ui_chrome.css`（`.pairing-note` /
-  `.pairing-endpoint`，`font: var(--text-sm)/1.5 var(--font-mono)`）。搬进 CSS 之后
-  多了一个尺子看不见的风险：class 没定义或者被 `!important` 盖掉，浏览器退回继承值，
-  肉眼只是「小了一档」，谁也不会当 bug 报。所以补了 **AR-15**（真渲染量 computed
-  字号，并与 `--text-sm` 的实测值对齐），先写断言后写 CSS，修复前红是
-  `AR-15 开发态端点行没走类型阶 — {"got":"14px","want":"12px"}`（继承来的 14px），
-  补 CSS 后 `AR-15` 绿，`e2e_android_roster` 17/0 → **18/0**，
-  `e2e_desktop_token_parity` 5/0 且 `hardFont` 回到基线 34（只降不升，没有改基线数字）。
-- 顺手删掉 `pairingState()` 里没有任何消费方的 `turn_urls_base`：加可选字段是为了
-  有人读，不是为了让状态对象看着更全（grep 确认只有 main.js 自己写、没人读）。
-
-教训记一条：**尺子的计数口径要当成契约读**。TP-04 报「36 处字面字号」时我默认它数的是
-「字面值」，实际它数的是「行内声明过 font-size 这个属性名」；差一个字，改法就完全不同
-（前者换 `var()` 就行，后者必须换 class）。遇到「我明明按提示改了却没变」时，先证明
-是不是自己造成的（换回 HEAD 量一次），再决定改代码还是改尺子。
-
-### 8.16.8 残留（诚实）
-
-- 真机 / emulator 仍不可用：以上手机端改动全部由 JVM 单测与代码路径证明，**没有**声称
-  在真机上点过；release 包仍是 debug 签名。
-- `lan_candidates` 的接口名白名单不可能穷举所有自定义命名，靠网段分层兜底（LR-07 钉住）；
-  只有公网地址的机器（云机/容器）仍给不出手机能敲到的地址，界面如实说明原因，
-  但「配内网穿透」这条路产品侧还没做。
-- presence 锁是 best-effort 文件锁：跨机器时钟漂移、NFS/只读文件系统、Windows 语义未覆盖。
-- iOS 端仍是「未实现」，本轮只把安卓路径的细节收紧。
-
-## 8.17 手机端把桌面的失败码翻成人话（同一轮评审里的第二段）
-
-场景是用户最容易犯、也最容易卡死的一个：配对地址抄对了，配对令牌少粘一个字符。
-桌面按 ADR 0008 回 `401 {"ok":false,"error":"invalid_token"}`，手机以前把这句话
-原样塞进「连不上 Desktop 大脑。桌面那边报：…」的模板里 —— 结果用户看到一段
-既像网络故障、又是英文机器码的话，正确动作（去桌面点「显示配对令牌」重抄）反而没出现。
-
-### 8.17.1 先写复现测试，结果第一版测试自己是假的
-
-第一版 `TurnBridgeHttpErrorTest` 断言的是「消息里有没有『配对令牌』」，
-`gradle :app:testUniversalDebugUnitTest` 跑出来 **23 条只红 1 条**：
-`pairingHint` 的固定尾巴本来就有「在「凭证」核对配对地址与配对令牌」，
-所以「提到令牌」这种断言在未修的软件上直接绿 —— 那是假门禁，不是我的实现对了。
-改成断言**只有翻译层才会产出的那几处措辞**（重抄 / 显示配对令牌 / 还没生成 /
-未识别 / 没人监听）之后，把 `TurnBridge.kt` 临时换回 HEAD 版本再跑，
-五条全红（`24 tests completed, 5 failed`）：
-
-```
-TurnBridgeHttpErrorTest > 令牌不对时要说要重抄整串而不是只给机器码 FAILED
-TurnBridgeHttpErrorTest > 页面四零四不许把HTML贴进聊天框 FAILED
-TurnBridgeHttpErrorTest > 桌面没生成令牌要说问题在桌面侧不在手机 FAILED
-TurnBridgeHttpErrorTest > 没见过的状态码要如实说未识别不许瞎猜 FAILED
-TurnBridgeHttpErrorTest > 端口没人监听要说端口而不是贴Java异常 FAILED
-```
-
-### 8.17.2 翻译层的取舍
-
-- 认得的码（`invalid_token` / `unauthorized` / `turn_token_unconfigured` / 签名那四个 /
-  404 / 405）翻成一句点名下一步的中文，**不再附原文**：原文要么是刚解析过的 JSON，
-  要么是一整页 HTML，贴在聊天框里没有信息量 —— 404 那条测试就是专门钉这一点的。
-- 认不得的状态码如实写「未识别的状态码，不猜原因」并保留截断原文（去掉 `<tag>`、
-  最多 160 字）；这是唯一允许出现原文的分支。
-- 机器码本身在任何分支都保留（`invalid_token` 这种串仍在句子里），报障时它是
-  唯一能和桌面日志对上的东西。
-- 没走到 HTTP 层的三种情况分开说：地址解析不到（要说填局域网 IP 而不是机器名）、
-  端口没人监听（要说默认 18765）、超时（要说同一 Wi-Fi / 防火墙）。以前这三条
-  都是 `java.net.ConnectException: …` 原文。
-
-### 8.17.3 地址填了、令牌空着：不发包就先说
-
-`tokenPrecheck` 在打网络之前判掉「有地址、无令牌」（ADR 0008 无 bearer 必 401），
-`runTurn` 仍会照旧试一次本机 dev runner，两边都不行时报的是「缺令牌」，
-不再报「连不上」。凭证页那一行也分开了：只缺一栏 → `缺配对令牌` / `缺配对地址`；
-两栏都有 → 显示实际端点；两栏都空 → 归「未配对」管。
-
-这两条的红是**编译期**的（`unresolved reference: tokenPrecheck`，函数当时不存在），
-没有对应的旧运行时路径可对照，不假装成运行时红。
-
-### 8.17.4 门禁与回归
-
-- JVM 单测 19 → **26 用例 0 失败**（新增 `TurnBridgeHttpErrorTest` 7 条）。
-- `prove_android_build.mjs`：AB-06 下限 19 → 26，新增 **AB-08** 从结果 XML 里确认
-  「HTML」「端口没人监听」「重抄/显示配对令牌」三条真在跑 → 本地 `PASS=8 FAIL=0`。
-  （第一次写 AB-08 时顺手把 AB-07 的 `filter` 回调变量名改坏了 —— `re2.test(n)`，
-  跑之前读代码发现，改回来了；这也说明门禁自己也需要被读一遍。）
-- workflow Summary 文案与 `smoke_grok_desktop_parity.sh` 的 G-47 锚点同步到 AB-06/07/08。
-
-### 8.17.5 残留（诚实）
-
-- `runTurn` 里那条接线（先 precheck、再 runner、再决定报哪句话）没有 JVM 单测：
-  它要 SharedPreferences，本工程没有 Robolectric。钉住的是 `tokenPrecheck` 本身
-  与纯函数输出，接线只由代码路径证明。
-- 凭证页那两行新文案只做了编译与代码路径确认，没有真机 / emulator 截图。
-- 签名鉴权（`missing_signature` 等）桌面侧代码里有、手机侧不会发出去，那句提示
-  属于「万一走到」的兜底，本轮没有构造出它的真实触发路径。
+- 手机端扫描与换令牌只到 JVM 进程内真 HTTP 集成，**没有真机 Wi-Fi 验证**（无 KVM，
+  emulator 起不来），`ConnectivityManager` 路径未在真机跑过 —— 用户手上那个 APK 需要
+  重新下载才能试新流程，这一步我没法替他验。
+- 多 Desktop / 多网卡局域网里可能列出别人的机器，v1 没有指纹确认。
+- 桌面改端口后手机要手动同步一次（未做端口广播）。
+- 公网 / 跨网段仍配不上（内网穿透没有产品路径）。
+- 二维码方案（桌面渲染 QR + 手机 CameraX 解码）未做，v1 先做到零抄写。

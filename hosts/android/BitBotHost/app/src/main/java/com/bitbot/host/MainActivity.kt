@@ -1,10 +1,15 @@
 package com.bitbot.host
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -82,6 +88,7 @@ class MainActivity : ComponentActivity() {
         var busy by remember { mutableStateOf(false) }
         var showCapabilities by remember { mutableStateOf(false) }
         var showCredentials by remember { mutableStateOf(false) }
+        var showPairingFlow by remember { mutableStateOf(false) }
         var hostUrlDraft by remember { mutableStateOf(TurnBridge.hostUrl().orEmpty()) }
         var tokenDraft by remember { mutableStateOf(TurnBridge.turnToken().orEmpty()) }
         var delivery by remember { mutableStateOf(SendToUserSurface.Summary()) }
@@ -89,6 +96,7 @@ class MainActivity : ComponentActivity() {
         val listState = rememberLazyListState()
         val sheetState = rememberModalBottomSheetState()
         val credSheetState = rememberModalBottomSheetState()
+        val pairingSheetState = rememberModalBottomSheetState()
 
         fun runProductTurn(text: String) {
           val trimmed = text.trim()
@@ -150,6 +158,7 @@ class MainActivity : ComponentActivity() {
               .padding(horizontal = 12.dp),
           ) {
             if (lines.isEmpty()) {
+              val isPaired = TurnBridge.hostUrl() != null && TurnBridge.turnToken() != null
               Column(
                 Modifier.align(Alignment.Center).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -161,19 +170,23 @@ class MainActivity : ComponentActivity() {
                   style = MaterialTheme.typography.bodyMedium,
                   color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                  "配对 Desktop 大脑 — 点「凭证」填配对地址与配对令牌（桌面：设置 → 凭证 → 手机配对，可复制；开放配置，不写死）",
-                  style = MaterialTheme.typography.labelMedium,
-                  color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = {
-                  hostUrlDraft = TurnBridge.hostUrl().orEmpty()
-                  tokenDraft = TurnBridge.turnToken().orEmpty()
-                  showCredentials = true
-                }) {
-                  Text("配置 Desktop 配对凭证")
+                Spacer(Modifier.height(16.dp))
+                if (!isPaired) {
+                  Button(onClick = { showPairingFlow = true }) {
+                    Text("连接 Desktop")
+                  }
+                  Spacer(Modifier.height(8.dp))
+                  Text(
+                    "自动发现局域网内的桌面，输入 6 位配对码即可连接",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                } else {
+                  Text(
+                    "已配对 Desktop，可以开始对话",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                  )
                 }
               }
             } else {
@@ -362,6 +375,378 @@ class MainActivity : ComponentActivity() {
             Spacer(Modifier.height(24.dp))
           }
         }
+
+        if (showPairingFlow) {
+          PairingFlowSheet(
+            sheetState = pairingSheetState,
+            onDismiss = { showPairingFlow = false },
+            onPairingComplete = {
+              showPairingFlow = false
+            },
+            onOpenCredentials = {
+              showPairingFlow = false
+              hostUrlDraft = TurnBridge.hostUrl().orEmpty()
+              tokenDraft = TurnBridge.turnToken().orEmpty()
+              showCredentials = true
+            },
+            context = this@MainActivity,
+          )
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Pairing flow sheet: scan → list → code input → redeem.
+ * Implements the zero-typing pairing experience per pairing-v1.md.
+ */
+
+private sealed class ScanState {
+  object Idle : ScanState()
+  object Scanning : ScanState()
+  data class Done(val count: Int) : ScanState()
+  data class Error(val message: String) : ScanState()
+}
+
+private sealed class RedeemState {
+  object Idle : RedeemState()
+  object Redeeming : RedeemState()
+  data class Success(val message: String, val scopeWarning: String? = null) : RedeemState()
+  data class Error(val failure: DesktopPairing.RedeemFailure) : RedeemState()
+}
+
+/**
+ * Get the phone's own site-local IPv4 address from the current active network.
+ * Wi-Fi is preferred; falls back to cellular/ethernet link addresses.
+ * Returns null if no suitable address can be found — caller must NOT guess a default.
+ *
+ * 修复前红（行为级）：
+ *   - 旧代码在 startScan() 里写死 localIp 为某个 192.168.x.x 的 placeholder
+ *   - 真机连 10.x 或别的网段时，扫的是完全无关的段，用户永远看到「没找到 Desktop」
+ *
+ * 修复后绿：
+ *   - 从 ConnectivityManager 拿真本机 IPv4（Wi-Fi 优先，其次 cellular/ethernet 的 linkaddresses）
+ *   - 拿不到就如实返回 null，界面说「读不到手机自己的局域网地址」
+ *   - 保留「凭证」里手填地址那条兜底路
+ */
+private fun getLocalWifiIp(context: Context): String? {
+  val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    ?: return null
+
+  // Try active network first (Wi-Fi typically)
+  val activeNetwork: Network = cm.activeNetwork ?: return null
+  val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return null
+
+  // Prefer Wi-fi, but accept ethernet/cellular as fallback
+  val isWifi = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+  val isEthernet = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+  val isCellular = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+
+  if (!isWifi && !isEthernet && !isCellular) return null
+
+  val linkProperties = cm.getLinkProperties(activeNetwork) ?: return null
+
+  // Look for site-local IPv4 (10.x, 172.16-31.x, 192.168.x)
+  for (linkAddress in linkProperties.linkAddresses) {
+    val addr = linkAddress.address
+    if (addr is java.net.Inet4Address && addr.isSiteLocalAddress) {
+      return addr.hostAddress
+    }
+  }
+
+  // If no site-local found, return any IPv4 from link addresses
+  for (linkAddress in linkProperties.linkAddresses) {
+    val addr = linkAddress.address
+    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+      return addr.hostAddress
+    }
+  }
+
+  return null
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PairingFlowSheet(
+  sheetState: androidx.compose.material3.SheetState,
+  onDismiss: () -> Unit,
+  onPairingComplete: () -> Unit,
+  onOpenCredentials: () -> Unit,
+  context: Context,
+) {
+  var scanState by remember { mutableStateOf<ScanState>(ScanState.Idle) }
+  val discoveredDesktops = remember { mutableStateListOf<DesktopPairing.DiscoveredDesktop>() }
+  var selectedDesktop by remember { mutableStateOf<DesktopPairing.DiscoveredDesktop?>(null) }
+  var codeInput by remember { mutableStateOf("") }
+  var redeemState by remember { mutableStateOf<RedeemState>(RedeemState.Idle) }
+  var desktopPortInput by remember { mutableStateOf(TurnBridge.desktopPort().toString()) }
+  val scope = rememberCoroutineScope()
+
+  fun startScan() {
+    scope.launch {
+      scanState = ScanState.Scanning
+      discoveredDesktops.clear()
+      selectedDesktop = null
+      codeInput = ""
+      redeemState = RedeemState.Idle
+
+      // 修复前红（行为级）：
+      //   旧代码写死 localIp 为某个 192.168.x.x 的 placeholder
+      //   真机连 10.x 或别的网段时，扫的是完全无关的段，用户永远看到「没找到 Desktop」
+      //
+      // 修复后绿：
+      //   从 ConnectivityManager 拿真本机 IPv4（Wi-Fi 优先，其次 cellular/ethernet）
+      //   拿不到就如实返回 null，界面说「读不到手机自己的局域网地址」
+      //   保留「凭证」里手填地址那条兜底路
+      val localIp = getLocalWifiIp(context)
+
+      if (localIp == null) {
+        scanState = ScanState.Error("读不到手机自己的局域网地址：确认手机连着 Wi-Fi（不是仅移动数据）。也可以用下方「高级」手动填写桌面地址。")
+        return@launch
+      }
+
+      val result = withContext(Dispatchers.IO) {
+        // Build candidate ports: user-specified port + default 18765 (deduplicated)
+        val userPort = desktopPortInput.toIntOrNull()
+        val candidatePorts = buildList {
+          if (userPort != null && userPort in 1..65535) add(userPort)
+          if (!contains(18765)) add(18765)
+        }
+        // Persist the user-specified port
+        if (userPort != null && userPort in 1..65535) {
+          TurnBridge.setDesktopPort(userPort)
+        }
+        runCatching { DesktopPairing.scanForDesktops(localIp, ports = candidatePorts) }
+      }
+
+      result.fold(
+        onSuccess = { desktops ->
+          discoveredDesktops.addAll(desktops)
+          scanState = ScanState.Done(desktops.size)
+        },
+        onFailure = { error ->
+          scanState = ScanState.Error(error.message ?: "扫描失败")
+        }
+      )
+    }
+  }
+
+  fun redeemCode() {
+    val desktop = selectedDesktop ?: return
+    if (!DesktopPairing.isValidPairingCode(codeInput)) {
+      redeemState = RedeemState.Error(DesktopPairing.RedeemFailure.BadRequest)
+      return
+    }
+
+    scope.launch {
+      redeemState = RedeemState.Redeeming
+      val deviceName = android.os.Build.MODEL ?: "Android Device"
+
+      val result = withContext(Dispatchers.IO) {
+        DesktopPairing.completePairing(desktop, codeInput, deviceName)
+      }
+
+      result.fold(
+        onSuccess = { redeemSuccess ->
+          val scopeWarning = redeemSuccess.scopeWarning
+          val message = if (scopeWarning != null) {
+            "配对成功，但注意：$scopeWarning"
+          } else {
+            "配对成功！现在可以开始对话了"
+          }
+          redeemState = RedeemState.Success(message, scopeWarning)
+          // Delay briefly to show success message, then close
+          kotlinx.coroutines.delay(1500)
+          onPairingComplete()
+        },
+        onFailure = { error ->
+          if (error is DesktopPairing.RedeemFailure) {
+            redeemState = RedeemState.Error(error)
+          } else {
+            redeemState = RedeemState.Error(
+              DesktopPairing.RedeemFailure.NetworkError(error.message ?: "unknown")
+            )
+          }
+        }
+      )
+    }
+  }
+
+  ModalBottomSheet(
+    onDismissRequest = onDismiss,
+    sheetState = sheetState,
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      Text(
+        "连接 Desktop",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+      )
+
+      when (scanState) {
+        is ScanState.Idle -> {
+          Text(
+            "点击下方按钮扫描局域网内的桌面",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          OutlinedTextField(
+            value = desktopPortInput,
+            onValueChange = { desktopPortInput = it.filter { c -> c.isDigit() }.take(5) },
+            label = { Text("桌面端口") },
+            placeholder = { Text("18765") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+          )
+          Button(
+            onClick = { startScan() },
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Text("开始扫描")
+          }
+        }
+
+        is ScanState.Scanning -> {
+          Text(
+            "正在扫描局域网…",
+            style = MaterialTheme.typography.bodyMedium,
+          )
+          androidx.compose.material3.CircularProgressIndicator(
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+          )
+        }
+
+        is ScanState.Done -> {
+          if (discoveredDesktops.isEmpty()) {
+            Text(
+              "同一 Wi-Fi 里没找到 Desktop，桌面上点一下「生成配对码」",
+              style = MaterialTheme.typography.bodyMedium,
+              color = MaterialTheme.colorScheme.error,
+            )
+            Button(
+              onClick = { startScan() },
+              modifier = Modifier.fillMaxWidth(),
+            ) {
+              Text("重新扫描")
+            }
+          } else {
+            Text(
+              "找到 ${discoveredDesktops.size} 台桌面，选择一台：",
+              style = MaterialTheme.typography.bodyMedium,
+            )
+            discoveredDesktops.forEach { desktop ->
+              Surface(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clickable {
+                    selectedDesktop = desktop
+                    codeInput = ""
+                    redeemState = RedeemState.Idle
+                  },
+                shape = RoundedCornerShape(8.dp),
+                tonalElevation = if (selectedDesktop == desktop) 4.dp else 1.dp,
+              ) {
+                Column(
+                  modifier = Modifier.padding(12.dp),
+                ) {
+                  Text(
+                    desktop.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                  )
+                  Text(
+                    "${desktop.ip}:${desktop.port}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                  if (!desktop.codeActive) {
+                    Text(
+                      "桌面还没生成配对码",
+                      style = MaterialTheme.typography.labelSmall,
+                      color = MaterialTheme.colorScheme.error,
+                    )
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        is ScanState.Error -> {
+          Text(
+            "扫描失败：${(scanState as ScanState.Error).message}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+          )
+          Button(
+            onClick = { startScan() },
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Text("重试")
+          }
+        }
+      }
+
+      if (selectedDesktop != null && scanState is ScanState.Done) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+          "输入桌面上的 6 位配对码：",
+          style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(
+          value = codeInput,
+          onValueChange = { codeInput = it.filter { c -> c.isDigit() }.take(6) },
+          label = { Text("配对码") },
+          placeholder = { Text("6 位数字") },
+          modifier = Modifier.fillMaxWidth(),
+          singleLine = true,
+          enabled = redeemState !is RedeemState.Redeeming,
+        )
+
+        when (val state = redeemState) {
+          is RedeemState.Error -> {
+            Text(
+              state.failure.userMessage,
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.error,
+            )
+          }
+          is RedeemState.Success -> {
+            Text(
+              state.message,
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.primary,
+            )
+          }
+          else -> {}
+        }
+
+        Button(
+          onClick = { redeemCode() },
+          modifier = Modifier.fillMaxWidth(),
+          enabled = codeInput.length == 6 && redeemState !is RedeemState.Redeeming,
+        ) {
+          Text(
+            when (redeemState) {
+              is RedeemState.Redeeming -> "配对中…"
+              else -> "配对"
+            }
+          )
+        }
+      }
+
+      Spacer(Modifier.height(8.dp))
+      TextButton(
+        onClick = onOpenCredentials,
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        Text("高级：手动填写配对地址和令牌")
       }
     }
   }

@@ -2342,6 +2342,24 @@
           <div id="sec-pairing-note" class="pairing-note" style="display:none;margin-top:6px"></div>
           <!-- 完整 /v1/turn 端点只在开发态给；普通用户要填的是上面那行配对地址。 -->
           <div id="sec-pairing-turn" class="pairing-endpoint" style="display:none;margin-top:6px"></div>
+          <!-- Pairing-v1: 6-digit code block (让手机自己找).
+               放在手动按钮之前：一键配对是主路，抄 64 位令牌是兜底。
+               顺序本身就是产品态度 —— 先给用户看的东西就是希望他用的东西。 -->
+          <div id="pairing-code-block" class="pc-block">
+            <div class="pc-head">
+              <span class="pc-head-title">让手机自己找</span>
+              <button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button>
+            </div>
+            <div id="pairing-code-display" class="pc-display" hidden>
+              <span id="pairing-code-digits" class="pc-digits"></span>
+              <span id="pairing-code-countdown" class="pc-countdown"></span>
+            </div>
+            <div id="pairing-code-actions" class="pc-actions" hidden>
+              <button type="button" id="pairing-revoke-btn" class="bb-btn bb-btn-sm">立即作废</button>
+            </div>
+            <p id="pairing-code-hint" class="pc-hint">手机只需点「连接 Desktop」并输入这 6 位数字</p>
+          </div>
+          <p id="pairing-manual-label" class="pc-hint">手动填写（同一 Wi-Fi 连不上时才用）</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
             <button type="button" id="pairing-lan-btn" class="bb-btn bb-btn-sm">允许手机连接</button>
             <button type="button" id="pairing-token-btn" class="bb-btn bb-btn-sm">显示配对令牌</button>
@@ -10946,6 +10964,8 @@
             ? t("pairingTokenMasked", { code: st.token_masked })
             : wavegT("pairingTokenMissing");
         }
+        // Pairing-v1: update the 6-digit code UI.
+        updatePairingCodeUI(st);
       } catch (_) {
         line.textContent = wavegT("pairingReadFail");
         if (lanBtn) lanBtn.disabled = true;
@@ -11063,6 +11083,73 @@
     const pairingCopyTokenBtn = document.getElementById("pairing-copy-token");
     if (pairingCopyTokenBtn) {
       pairingCopyTokenBtn.addEventListener("click", () => pairingCopy("token"));
+    }
+
+    /* ---------- Pairing-v1: 6-digit code UI ---------------------------- */
+    let pairingCodeTimer = null;
+    const pairingGenBtn = document.getElementById("pairing-gen-btn");
+    const pairingRevokeBtn = document.getElementById("pairing-revoke-btn");
+    const pairingCodeDigits = document.getElementById("pairing-code-digits");
+    const pairingCodeCountdown = document.getElementById("pairing-code-countdown");
+    const pairingCodeDisplay = document.getElementById("pairing-code-display");
+    const pairingCodeActions = document.getElementById("pairing-code-actions");
+
+    function updatePairingCodeUI(st) {
+      if (!pairingCodeDisplay || !pairingCodeActions) return;
+      if (st && st.pair_code) {
+        pairingCodeDigits.textContent = st.pair_code;
+        pairingCodeDisplay.hidden = false;
+        pairingCodeActions.hidden = false;
+        startPairingCountdown(st.pair_code_expires_in_ms || 0);
+      } else {
+        pairingCodeDigits.textContent = "";
+        pairingCodeCountdown.textContent = "";
+        pairingCodeDisplay.hidden = true;
+        pairingCodeActions.hidden = true;
+        if (pairingCodeTimer) { clearInterval(pairingCodeTimer); pairingCodeTimer = null; }
+      }
+    }
+
+    function startPairingCountdown(ms) {
+      if (pairingCodeTimer) clearInterval(pairingCodeTimer);
+      let remaining = Math.max(0, Math.round(ms / 1000));
+      function tick() {
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
+        pairingCodeCountdown.textContent = m + ":" + String(s).padStart(2, "0");
+        if (remaining <= 0) {
+          clearInterval(pairingCodeTimer);
+          pairingCodeTimer = null;
+          // Refresh state to clear the code.
+          refreshPairingStrip();
+        }
+        remaining--;
+      }
+      tick();
+      pairingCodeTimer = setInterval(tick, 1000);
+    }
+
+    if (pairingGenBtn) {
+      pairingGenBtn.addEventListener("click", async () => {
+        pairingGenBtn.disabled = true;
+        try {
+          const r = await window.bitbot.pairing.code({ action: "issue" });
+          if (r && r.ok) {
+            await refreshPairingStrip();
+          }
+        } catch (_) { /* ignore */ }
+        pairingGenBtn.disabled = false;
+      });
+    }
+    if (pairingRevokeBtn) {
+      pairingRevokeBtn.addEventListener("click", async () => {
+        pairingRevokeBtn.disabled = true;
+        try {
+          await window.bitbot.pairing.code({ action: "revoke" });
+          await refreshPairingStrip();
+        } catch (_) { /* ignore */ }
+        pairingRevokeBtn.disabled = false;
+      });
     }
 
     const secProbe = document.getElementById("sec-probe");

@@ -602,6 +602,85 @@ let app = null;
       }
     }
 
+    /* ---------- AR-16/17 Pairing-v1: 6-digit code UI ---------------------- *
+     * 桌面面板上「生成配对码」按钮 → 6 位数字 + 倒计时出现；pairingState 的
+     * pair_code 与界面显示一致。作废后界面不再显示码、pair_code 为空。
+     */
+    {
+      // We should already be on the credentials tab from AR-09..11.
+      // If not, navigate there.
+      const settingsVisible = await win.evaluate(() => {
+        const panel = document.getElementById("settings-panel");
+        return panel && getComputedStyle(panel).display !== "none";
+      });
+      if (!settingsVisible) {
+        await win.click("#account-avatar-btn");
+        await win.waitForSelector("#ap-settings", { state: "visible", timeout: 8000 });
+        await win.click("#ap-settings");
+        await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
+        await win.click('.settings-tab-btn[data-stab="credentials"]');
+        await win.waitForTimeout(600);
+      }
+
+      // AR-16: click "生成配对码" → 6 digits + countdown appear, pairingState.pair_code matches.
+      const genBtn = await win.waitForSelector("#pairing-gen-btn", { state: "visible", timeout: 8000 });
+      await genBtn.click();
+      await win.waitForTimeout(800);
+
+      const codeView = await win.evaluate(() => {
+        const digits = document.getElementById("pairing-code-digits");
+        const countdown = document.getElementById("pairing-code-countdown");
+        const display = document.getElementById("pairing-code-display");
+        return {
+          digits: digits ? String(digits.textContent || "").trim() : "",
+          countdown: countdown ? String(countdown.textContent || "").trim() : "",
+          displayHidden: display ? display.hidden : true,
+        };
+      });
+      const stCode = await win.evaluate(() => window.bitbot.pairing.state());
+
+      if (!codeView.digits || !/^\d{6}$/.test(codeView.digits)) {
+        bad("AR-16 点生成配对码后应出现 6 位数字", JSON.stringify(codeView));
+      } else if (codeView.displayHidden) {
+        bad("AR-16 配对码展示区应该可见", JSON.stringify(codeView));
+      } else if (!codeView.countdown || !/\d+:\d{2}/.test(codeView.countdown)) {
+        bad("AR-16 应有倒计时（m:ss 格式）", JSON.stringify(codeView));
+      } else if (!stCode || !stCode.pair_code) {
+        bad("AR-16 pairingState 应有 pair_code", JSON.stringify(stCode));
+      } else if (stCode.pair_code !== codeView.digits) {
+        bad("AR-16 pairingState.pair_code 应与界面显示一致", JSON.stringify({ state: stCode.pair_code, ui: codeView.digits }));
+      } else {
+        ok("AR-16 生成配对码：6 位数字 + 倒计时可见，pairingState.pair_code 与界面一致");
+      }
+
+      // AR-17: click "立即作废" → code disappears, pairingState.pair_code is empty.
+      const revokeBtn = await win.waitForSelector("#pairing-revoke-btn", { state: "visible", timeout: 5000 });
+      await revokeBtn.click();
+      await win.waitForTimeout(800);
+
+      const afterRevoke = await win.evaluate(() => {
+        const digits = document.getElementById("pairing-code-digits");
+        const display = document.getElementById("pairing-code-display");
+        const actions = document.getElementById("pairing-code-actions");
+        return {
+          digits: digits ? String(digits.textContent || "").trim() : "",
+          displayHidden: display ? display.hidden : true,
+          actionsHidden: actions ? actions.hidden : true,
+        };
+      });
+      const stAfter = await win.evaluate(() => window.bitbot.pairing.state());
+
+      if (!afterRevoke.displayHidden) {
+        bad("AR-17 作废后配对码展示区应隐藏", JSON.stringify(afterRevoke));
+      } else if (afterRevoke.digits) {
+        bad("AR-17 作废后数字应清空", JSON.stringify(afterRevoke));
+      } else if (stAfter && stAfter.pair_code) {
+        bad("AR-17 作废后 pairingState.pair_code 应为空", JSON.stringify(stAfter));
+      } else {
+        ok("AR-17 作废配对码：界面不再显示码，pairingState.pair_code 为空");
+      }
+    }
+
     done("e2e_android_roster");
   } catch (err) {
     bad("unexpected error", err && err.message);
