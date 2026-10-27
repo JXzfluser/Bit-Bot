@@ -10,7 +10,7 @@
  *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 118（防止 test 任务空转假绿）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 121（防止 test 任务空转假绿）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -28,6 +28,9 @@
  *         onCreate 读回来、两条消息都过 addLine、「清空对话」在菜单里并接到 clearChat、
  *         manifest 不许用 configChanges 遮掉 recreate、9 条用例（CP-01..05 + HS-01..04）
  *         真在结果里
+ *   AB-15 没发出去的半稿也不许被转屏吃掉：chat-draft.txt 单独一个文件（空即删）、在 filesDir、
+ *         onCreate 读回、ON_PAUSE 存、输入同步到 draftNow、发送立刻清；DF-01..03 真在结果里；
+ *         四组负向对照逐个摘都要被抓到
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
@@ -37,6 +40,9 @@
  *     captureToImage 2000ms 超时，JVM 拿不到真像素，所以像素级观感（圆角实际效果、字距、
  *     阴影）仍然只能真机验收；
  *   - 没有 keystore 环境变量 → release 仍用 debug 签名（工程里有脚手架，不假装已上架）。
+ *   - Robolectric 的 recreate() 复用同一个 Activity 实例：AB-15 里「屏幕上的草稿是从盘上读的
+ *     还是从实例字段留下的」这一跳在语义树里分不出来，只能由源码锚点 + 负向对照承担，
+ *     真机旋转（新建实例）仍要在设备上验一次。
  * 缺 SDK / 缺 gradle 时诚实 SKIP，不红也不绿。
  */
 import path from "path";
@@ -225,7 +231,7 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 118) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 121) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -843,6 +849,100 @@ if (badge.status !== 0 || !badgeOut) {
   else
     ok(
       "AB-14 对话落盘落地：filesDir 有界 JSON + onCreate 读回 + 两条消息都过 addLine + 「清空对话」接上 clearChat + manifest 没用 configChanges 遮 + 9 条用例真跑（负向对照通过）",
+    );
+}
+
+/* AB-15 没发出去的那半稿也不许被转屏吃掉。
+ *
+ * 来由：AB-14 把对话历史接住了，剩下同一种病的另一半在输入框 —— `var input by remember {
+ * mutableStateOf("") }`。这个 app 的场景就是用户在手机上写稿：打了三分钟的一段话，
+ * 屏幕一旋全没了。
+ *
+ * 修复前红（ChatDraftPersistenceTest 在 HEAD 产品代码上真渲染，最终这版断言跑出来的原文）：
+ *   DF01 AssertionError: 转个身，打了半篇的稿子从输入框里消失了（读到「」）
+ *   DF02 AssertionError: filesDir 下找不到含这半稿的文件 —— 转屏靠的是实例复用，
+ *        真机旋转（新建实例）照样丢（filesDir 条目数 0）
+ *   3 tests completed, 2 failed
+ *   （DF03 断的是本轮新加的「发送即清草稿」那条链，修复前没有草稿落盘，不参与红；
+ *     它的牙齿在下面的负向对照 3。第一轮 DF01/DF03 用 assertTextEquals 写，输入框空时它会连
+ *     placeholder 一起比，DF03 在未实现代码上「红」了 —— 原因不对，改成读 EditableText 后重测）
+ *
+ * 一条必须写明白的诚实边界：Robolectric 的 recreate() **复用同一个 Activity 实例**，
+ * 所以「屏幕上的草稿是从盘上读的还是从实例字段留下的」这一跳，在语义树里分不出来 ——
+ * 只把草稿挂在字段上，DF01 与 DF02 也可能绿（字段活着，而 DF02 只需要写盘发生过）。
+ * 真机旋转是新建实例，那种写法照样丢。因此这一跳由本条门的源码锚点承担
+ * （onCreate 必须真的调 loadDraft），并用下面的负向对照 1 证伪；真机旋转仍是残留。
+ */
+{
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(HOST, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const storeSrc = read("app/src/main/java/com/bitbot/host/ChatHistoryStore.kt");
+  const mainSrc = read("app/src/main/java/com/bitbot/host/MainActivity.kt");
+
+  const draftProblems = (store, main) => {
+    const p = [];
+    if (!store.includes("chat-draft.txt")) p.push("草稿没有单独的文件（跟历史混在一个文件里必然互相误伤）");
+    if (!/File\(appContext\.filesDir, "chat-draft\.txt"\)/.test(store)) p.push("草稿不在 filesDir 里");
+    if (/getExternalFilesDir/.test(store)) p.push("草稿写到外部存储");
+    if (!store.includes("fun saveDraft")) p.push("store 没有 saveDraft");
+    if (!store.includes("fun loadDraft")) p.push("store 没有 loadDraft");
+    if (!store.includes("draftFile.delete()")) p.push("空草稿没有把文件清掉（留下零长度文件让读侧分情况）");
+    if (!/chatStore\.loadDraft\(\)/.test(main)) p.push("onCreate 没从盘上读回草稿（只靠实例字段 = 真机旋转照样丢）");
+    if (!/ON_PAUSE\) chatStore\.saveDraft\(draftNow\)/.test(main)) p.push("离开前台没存草稿（旋转/切后台/被回收前那一刻会丢）");
+    if (!/draftNow = it/.test(main)) p.push("输入没同步到 draftNow（存的是旧值）");
+    if (!/chatStore\.saveDraft\(""\)/.test(main)) p.push("发送后没立刻清草稿（已发出去的那句会当草稿摆回来，用户再按一次）");
+    if (!/var input by remember \{ mutableStateOf\(draftNow\) \}/.test(main)) p.push("输入框初始值没接草稿");
+    return p;
+  };
+
+  const problems = draftProblems(storeSrc, mainSrc);
+
+  const names = [];
+  {
+    const resDir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+    try {
+      for (const f of fs.readdirSync(resDir)) {
+        if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+        for (const m of fs.readFileSync(path.join(resDir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+          names.push(m[1]);
+        }
+      }
+    } catch {
+      /* 下面按「不在结果里」判红 */
+    }
+  }
+  const wantCases = [
+    /DF01_转屏后输入框里还是那半稿/,
+    /DF02_那半稿落在filesDir的文件里/,
+    /DF03_发出去之后转屏输入框仍然是空的/,
+  ];
+  const missingCases = wantCases.filter((re) => !names.some((n) => re.test(n)));
+  if (missingCases.length) problems.push("用例不在结果里: " + missingCases.map(String).join(","));
+
+  // 负向对照：四个方向逐个摘，同一把尺子必须每个都抓到
+  const muts = [
+    ["1 去掉 onCreate 的 loadDraft", mainSrc.replace("draftNow = runCatching { chatStore.loadDraft() }.getOrDefault(\"\")", "")],
+    ["2 去掉 ON_PAUSE 的存盘", mainSrc.replace("if (event == Lifecycle.Event.ON_PAUSE) chatStore.saveDraft(draftNow)", "")],
+    ["3 去掉发送后的清草稿", mainSrc.replace("chatStore.saveDraft(\"\")", "")],
+    ["4 草稿改放外部存储", storeSrc.replace('File(appContext.filesDir, "chat-draft.txt")', 'File(appContext.getExternalFilesDir(null), "chat-draft.txt")')],
+  ];
+  const undetected = [];
+  for (const [label, mutated] of muts) {
+    const isStore = label.startsWith("4");
+    const got = draftProblems(isStore ? mutated : storeSrc, isStore ? mainSrc : mutated);
+    if (!got.length) undetected.push(label);
+  }
+  if (undetected.length) bad("AB-15 负向对照失败：这些走偏尺子抓不到", undetected.join("；"));
+
+  if (problems.length) bad("AB-15 没发出去的草稿还会被转屏吃掉", problems.slice(0, 6).join(" | "));
+  else
+    ok(
+      "AB-15 草稿落地：chat-draft.txt 在 filesDir（空即删文件）+ onCreate 读回 + ON_PAUSE 存 + 输入同步 + 发送即清，3 条用例真跑（四组负向对照全抓到；「读文件还是读字段」这一跳由源码锚点承担，真机旋转仍是残留）",
     );
 }
 

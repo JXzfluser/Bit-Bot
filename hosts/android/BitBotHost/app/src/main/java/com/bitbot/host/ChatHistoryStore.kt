@@ -75,6 +75,30 @@ class ChatHistoryStore(
     }.getOrDefault(false)
   }
 
+  /**
+   * 没发出去的那半稿：另一条链上的「转个身就没了」。
+   *
+   * 单独一个文件而不是塞进历史 JSON —— 草稿是「还没交出去的东西」，历史是「已经发生的事实」，
+   * 两者生命周期不同（发送要清草稿、清空对话要留草稿），混在一个文件里必然互相误伤。
+   * 也不走 SharedPreferences：那边会把整段中文塞成一个 XML 属性，语义还是这个文件的事。
+   */
+  private val draftFile: File = File(appContext.filesDir, "chat-draft.txt")
+
+  fun saveDraft(text: String): Boolean =
+    runCatching {
+      if (text.isEmpty()) {
+        // 空草稿就不留文件：留着零长度文件不算「有草稿」，读侧要额外分情况
+        if (draftFile.isFile) draftFile.delete()
+        return@runCatching true
+      }
+      draftFile.parentFile?.mkdirs()
+      draftFile.writeText(text)
+      true
+    }.getOrDefault(false)
+
+  fun loadDraft(): String =
+    runCatching { if (draftFile.isFile) draftFile.readText() else "" }.getOrDefault("")
+
   companion object {
     /** 有界：只留最近这么多条。不界的写法早晚会把这台机器上的对话全留在盘上。 */
     const val DEFAULT_MAX_LINES = 300

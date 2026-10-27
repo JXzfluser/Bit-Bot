@@ -1766,8 +1766,11 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     grep -q "AB-14 对话落盘落地" /tmp/g47-build.log \
       && ok "G-47 聊天记录活过转屏与重开：ChatHistoryStore 落在 filesDir（不是外部存储）且有界、onCreate 读回来、两条消息都过 addLine、「清空对话」在菜单里并接到 clearChat、manifest 没用 configChanges 遮 recreate、9 条用例（CP-01..05 真渲染 + HS-01..04 那一层的边界）在结果里、AB-14 带负向对照" \
       || bad "G-47 AB-14 anchor missing"
-    grep -q "AB-06 JVM 单测真跑：118 用例 0 失败" /tmp/g47-build.log \
-      && ok "G-47 用例数如实涨到 118（本轮 +9：真渲染 5 条 + 落盘层 4 条），且 0 失败不是空跑" \
+    grep -q "AB-15 草稿落地" /tmp/g47-build.log \
+      && ok "G-47 没发出去的半稿也不许被转屏吃掉：chat-draft.txt 单独一个文件在 filesDir（空即删）、onCreate 读回、ON_PAUSE 存、输入同步、发送立刻清，3 条用例（DF-01..03）在结果里、AB-15 带四组负向对照" \
+      || bad "G-47 AB-15 anchor missing"
+    grep -q "AB-06 JVM 单测真跑：121 用例 0 失败" /tmp/g47-build.log \
+      && ok "G-47 用例数如实涨到 121（对话落盘 +9、草稿 +3），且 0 失败不是空跑" \
       || bad "G-47 AB-06 用例数与本轮不符（见 /tmp/g47-build.log）"
   fi
 else
@@ -1804,6 +1807,20 @@ echo "      CP05 菜单里根本没有「清空对话」这一行"
 echo "  · G-47 负向对照（本轮新写那一层自己也得能被证伪，四组逐个摘，一次只动一行）："
 echo "      摘掉上盘侧 takeLast → HS02 红；坏 JSON 直接往外抛 → HS03 红；save 恒回 true → HS04 红；"
 echo "      落盘顺手带上配对令牌 → CP04 红；四组各自 1 条翻红、其余仍绿，全部还原后两批全绿"
+echo "  · G-47 修复前红（输入草稿，ChatDraftPersistenceTest 在 HEAD 产品代码上真渲染，最终这版断言）："
+echo "      DF01 AssertionError: 转个身，打了半篇的稿子从输入框里消失了（读到「」）"
+echo "      DF02 AssertionError: filesDir 下找不到含这半稿的文件 —— 转屏靠的是实例复用，"
+echo "           真机旋转（新建实例）照样丢（filesDir 条目数 0）；3 tests completed, 2 failed"
+echo "      （DF03 断的是本轮新增的「发送即清草稿」，修复前没有草稿落盘，不参与红，见对照 3。"
+echo "       第一轮 DF01/DF03 用 assertTextEquals 写，输入框空时它会连 placeholder 一起比，"
+echo "       DF03 在未实现代码上「红」了 —— 原因不对；改成读 EditableText 语义属性后重测才是这条）"
+echo "  · G-47 AB-15 的四组负向对照（都在源码层面真换一遍，同一把尺子必须每个都抓到）："
+echo "      去掉 onCreate 的 loadDraft / 去掉 ON_PAUSE 的存盘 / 去掉发送后的清草稿 /"
+echo "      草稿改放 getExternalFilesDir —— 四种走偏各被点名，抓不到即 AB-15 判红"
+echo "  · G-47 一条写明白的取证边界：Robolectric 的 recreate() 复用同一个 Activity 实例，"
+echo "    「屏幕上的草稿是从盘上读的还是从实例字段留下的」在语义树里分不出来 —— 只挂字段也能"
+echo "    让 DF01/DF02 绿，而真机旋转是新建实例、那种写法照样丢。所以这一跳由 AB-15 的源码锚点"
+echo "    （onCreate 必须真调 loadDraft）+ 对照 1 承担，真机旋转仍是残留"
 echo "  · G-47 UI 验证的边界（诚实）：JVM 验到的是 Compose 语义树 + 送进渲染器的颜色数值两层；"
 echo "    captureToImage 在 Robolectric NATIVE 模式下 2000ms 超时，拿不到真像素 —— "
 echo "    圆角/字距/阴影/动效观感与厂商 ROM 表现仍未验证，必须真机看；"
@@ -1815,6 +1832,8 @@ echo "    Compose 组合是新的），真机旋转 + 厂商 ROM 杀后台仍未
 echo "    「进程被杀后重开」是全新实例，Robolectric 的语义树够不到第二个实例，那半边由"
 echo "    CP-03（那句话确实在 filesDir 的文件里）承担，不是由屏幕上的节点承担；"
 echo "    历史很长时 LazyColumn 只组合可见项，屏幕上的条数断言只覆盖首屏那一窗"
+echo "    同一套边界也适用于本轮的草稿（DF-01..03）：ON_PAUSE 存盘在真机切后台/被回收那一刻"
+echo "    是否真走到，只有设备上能验"
 
 echo "== G-48 配对地址与在线证据的底层健壮性（纯 Node，不需要显示环境）=="
 if timeout 300 node scripts/prove_pairing_lan_rank.mjs > /tmp/g48-lanrank.log 2>&1; then

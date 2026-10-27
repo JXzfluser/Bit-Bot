@@ -8,6 +8,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -56,6 +58,12 @@ class MainActivity : ComponentActivity() {
   /** onCreate 一次性读回来的历史；不放进 Composable 里现读文件。 */
   private var startupLines: List<ChatLine> = emptyList()
 
+  /**
+   * 没发出去的那半稿：真机旋转是**新建实例**，所以它必须走盘（chat-draft.txt），
+   * 不能只挂在实例字段上 —— 挂字段在 Robolectric 的 recreate() 下也会「过」，那是假绿。
+   */
+  private var draftNow = ""
+
   private val productActions =
     listOf(
       "ListMachines" to "ListMachines",
@@ -76,6 +84,15 @@ class MainActivity : ComponentActivity() {
     // 转屏 / 进程被杀重开之前打过的那句话得回到屏幕上。读不出就是没有历史，
     // 不抛也不猜（ChatHistoryStore 的失败语义）。
     startupLines = runCatching { chatStore.load() }.getOrDefault(emptyList())
+    // 没发出去的那半稿同理从盘上读回来（不是从实例字段）。
+    draftNow = runCatching { chatStore.loadDraft() }.getOrDefault("")
+    // 交出去之前不许丢：每次离开前台存一次（旋转、切后台、被系统回收前都会走到这里）。
+    // 不在每次按键时写盘 —— 那是在主线程上按字符次数放大 IO。
+    lifecycle.addObserver(
+      LifecycleEventObserver { _, event ->
+        if (event == Lifecycle.Event.ON_PAUSE) chatStore.saveDraft(draftNow)
+      }
+    )
     setContent { BitBotTheme { HomeShell() } }
   }
 
@@ -90,7 +107,7 @@ class MainActivity : ComponentActivity() {
 
   @Composable
   private fun HomeShell() {
-    var input by remember { mutableStateOf("") }
+    var input by remember { mutableStateOf(draftNow) }
     // 上一次留下的对话要回到这一屏：remember 只活过一次组合，转屏就没了，
     // 所以初始值来自 onCreate 读回来的文件（见 ChatHistoryStore）。
     val lines = remember { mutableStateListOf<ChatLine>().also { it.addAll(startupLines) } }
@@ -147,6 +164,10 @@ class MainActivity : ComponentActivity() {
       scope.launch {
         busy = true
         input = ""
+        // 交出去了就不再是草稿：立刻清盘（等 ON_PAUSE 再清的话，中途被系统回收会把
+        // 已发送的这句又摆回输入框，用户会再按一次发送）。
+        draftNow = ""
+        chatStore.saveDraft("")
         addLine(ChatLine("user", trimmed))
         val result =
           withContext(Dispatchers.IO) {
@@ -187,7 +208,10 @@ class MainActivity : ComponentActivity() {
       lines = lines.toList(),
       busy = busy,
       input = input,
-      onInputChange = { input = it },
+      onInputChange = {
+        input = it
+        draftNow = it
+      },
       onSend = { runProductTurn(input) },
       onSendSuggestion = { runProductTurn(it) },
       deliveryLabels = deliveryLabels,
