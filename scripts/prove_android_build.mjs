@@ -10,7 +10,7 @@
  *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 106（防止 test 任务空转假绿）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 118（防止 test 任务空转假绿）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -24,6 +24,10 @@
  *   AB-13 内核回放在手机上说人话：MainActivity 把 /v1/turn 回包交给 HostReply.display、
  *         8 个 fixture 必须是真内核回包、6 条摘要/屏幕用例真在结果里（含「认不得的 kind
  *         不许编摘要」）
+ *   AB-14 聊天记录活过转屏与重开：ChatHistoryStore 落在 filesDir（不是外部存储）且有界、
+ *         onCreate 读回来、两条消息都过 addLine、「清空对话」在菜单里并接到 clearChat、
+ *         manifest 不许用 configChanges 遮掉 recreate、9 条用例（CP-01..05 + HS-01..04）
+ *         真在结果里
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
@@ -221,7 +225,7 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 106) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 118) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -730,6 +734,115 @@ if (badge.status !== 0 || !badgeOut) {
   else
     ok(
       "AB-13 回执呈现落地：HostReply.display 接在 MainActivity 上 + 8 个真抓 fixture 校验 + 6 条摘要/屏幕用例真跑（含「认不得的 kind 不许编摘要」，负向对照通过）",
+    );
+}
+
+/* AB-14 聊天记录得活过「转个身」和「重新打开」（且清得掉）。
+ *
+ * 来由：HomeShell 的 lines 是 remember { mutableStateListOf() } —— 组合一散就没。
+ * 用户实际踩到的是：打一句话、屏幕一旋（或系统把后台杀掉重开），刚才那轮对话全没了，
+ * 首屏回到空态。主流 AI app 没有把这个行为留给用户的。
+ *
+ * 修复前红（ChatThreadPersistenceTest 在 HEAD 产品代码上真跑，Robolectric 真渲染）：
+ *   CP01 转屏后那句话还在屏幕上 -> 红：assertExists 找不到节点（屏幕上 0 个）
+ *   CP02 转屏后两条都还在且首屏不是空态 -> 红：同一条消息节点找不到
+ *   CP03 对话落在 filesDir 下的一个文件里 -> 红：filesDir 里 0 个条目，历史只在内存
+ *   CP04 存下来的对话不含凭证 -> 红：连「有没有文件」都过不去，断不了任何内容
+ *   CP05 清空对话后屏幕与盘都干净且转屏不回来 -> 红：菜单里根本没有「清空对话」这一行
+ *
+ * 这条门盯五件事：
+ *   1. ChatHistoryStore 在，写的是 filesDir（不是外部存储 —— 聊天记录不该让别的 app 读到），
+ *      而且有界；
+ *   2. MainActivity 真的接上了：onCreate 读回来、两条消息都过 addLine、落盘串行化；
+ *   3. 「清空对话」在菜单里，而且真接到 clearChat（只加持久化不给出口 = 把这台机器上的
+ *      聊天变成删不掉的东西）；
+ *   4. 不许用 android:configChanges="orientation|…" 把 recreate 遮掉 —— 那是 display:none
+ *      式的掩盖：转屏确实不重建了，进程被杀重开照样全没；
+ *   5. 9 条用例（CP-01..05 真渲染 + HS-01..04 那一层的边界）真在结果里。
+ * 负向对照：把 MainActivity 换成 HEAD 那份旧写法（不读历史、lines.add 直接上屏）后，
+ * 同一把尺子必须判红。
+ */
+{
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(HOST, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const store = read("app/src/main/java/com/bitbot/host/ChatHistoryStore.kt");
+  const main = read("app/src/main/java/com/bitbot/host/MainActivity.kt");
+  const sheets = read("app/src/main/java/com/bitbot/host/ui/Sheets.kt");
+  const manifest = read("app/src/main/AndroidManifest.xml");
+
+  const names = [];
+  {
+    const resDir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+    try {
+      for (const f of fs.readdirSync(resDir)) {
+        if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+        for (const m of fs.readFileSync(path.join(resDir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+          names.push(m[1]);
+        }
+      }
+    } catch {
+      /* 下面按「不在结果里」判红 */
+    }
+  }
+  const wantCases = [
+    /CP01_转屏后那句话还在屏幕上/,
+    /CP02_转屏后两条都还在且首屏不是空态/,
+    /CP03_对话落在filesDir下的一个文件里/,
+    /CP04_存下来的对话不含凭证/,
+    /CP05_清空对话后屏幕与盘都干净且转屏不回来/,
+    /HS01_存进去的按原顺序读得回来/,
+    /HS02_只留最近这么多条/,
+    /HS03_半截文件当没有历史而不是把首屏炸掉/,
+    /HS04_写不进去就老实回false不许抛也不许说成功/,
+  ];
+  const missingCases = wantCases.filter((re) => !names.some((n) => re.test(n)));
+
+  const problems = [];
+  if (!store) problems.push("缺 ChatHistoryStore.kt");
+  if (store && !/File\(appContext\.filesDir,/.test(store)) {
+    problems.push("对话没写在 filesDir 里（外部存储上的文件别的 app 也读得到）");
+  }
+  if (store && /getExternalFilesDir|EXTERNAL_STORAGE/.test(store)) {
+    problems.push("对话写到了外部存储");
+  }
+  if (store && !/maxLines/.test(store)) problems.push("落盘没有上界（这台机器上的对话会被无限留着）");
+  if (main && !/chatStore\.load\(\)/.test(main)) problems.push("MainActivity 没在 onCreate 读回历史（转屏仍会空态）");
+  if (main && (main.match(/addLine\(/g) || []).length < 3) {
+    problems.push("消息没有全部过 addLine（上屏与落盘会分叉）");
+  }
+  if (main && !/clearChat\(\)/.test(main)) problems.push("clearChat 没接上（盘上的历史清不掉）");
+  if (sheets && !sheets.includes("清空对话")) problems.push("菜单里没有「清空对话」这一行");
+  if (main && !/onClearChat\s*=/.test(main)) problems.push("菜单那行没接到 clearChat");
+  if (/android:configChanges="[^"]*orientation/.test(manifest)) {
+    problems.push("manifest 用 configChanges 遮掉了 recreate（掩盖问题，不是解决）");
+  }
+  if (missingCases.length) problems.push("用例不在结果里: " + missingCases.map(String).join(","));
+
+  // 负向对照：同一把尺子过一遍 HEAD 那份旧写法
+  const oldMain = main
+    .replace("startupLines = runCatching { chatStore.load() }.getOrDefault(emptyList())", "/* 旧版：没有这一步 */")
+    .replace("addLine(ChatLine(\"user\", trimmed))", "lines.add(ChatLine(\"user\", trimmed))")
+    .replace("addLine(ChatLine(\"assistant\", assistant, shown.raw))", "lines.add(ChatLine(\"assistant\", assistant, shown.raw))")
+    .replace("onClearChat = { showMenu = false; clearChat() },", "");
+  const negProblems = [
+    /chatStore\.load\(\)/.test(oldMain) ? "load" : "",
+    /addLine\(ChatLine\("user"/.test(oldMain) ? "user-addLine" : "",
+    /addLine\(ChatLine\("assistant"/.test(oldMain) ? "assistant-addLine" : "",
+    /onClearChat\s*=/.test(oldMain) ? "clear-wiring" : "",
+  ].filter(Boolean);
+  if (negProblems.length) {
+    bad("AB-14 负向对照失败：尺子抓不到退回旧写法的版本", negProblems.join(","));
+  }
+
+  if (problems.length) bad("AB-14 聊天记录还没活过转屏/重开", problems.slice(0, 6).join(" | "));
+  else
+    ok(
+      "AB-14 对话落盘落地：filesDir 有界 JSON + onCreate 读回 + 两条消息都过 addLine + 「清空对话」接上 clearChat + manifest 没用 configChanges 遮 + 9 条用例真跑（负向对照通过）",
     );
 }
 

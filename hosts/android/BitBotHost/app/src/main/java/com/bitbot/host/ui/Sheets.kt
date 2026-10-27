@@ -81,6 +81,7 @@ fun MenuSheet(
   onCredentials: () -> Unit,
   onCapabilities: () -> Unit,
   onPairing: () -> Unit,
+  onClearChat: () -> Unit,
   onDismiss: () -> Unit,
 ) {
   val state = rememberModalBottomSheetState()
@@ -94,6 +95,9 @@ fun MenuSheet(
       detail = "局域网自动发现，输 6 位配对码",
       onClick = onPairing,
     )
+    // 对话现在会留在本机（转屏、重开都还在），所以「清掉」也得留在界面上：
+    // 只加持久化不给出口，等于把这台机器上的聊天变成删不掉的东西。
+    SheetActionRow(title = "清空对话", detail = "本机这段记录，不碰配对与凭证", onClick = onClearChat)
   }
 }
 

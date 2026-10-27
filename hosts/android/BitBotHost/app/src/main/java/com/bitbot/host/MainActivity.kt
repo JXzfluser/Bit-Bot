@@ -29,19 +29,32 @@ import com.bitbot.host.ui.PairingSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
  * AI 助手式产品外壳 —— 聊天为主屏。
  *
- * 这一版只做「版面重构 + 设计系统」，逻辑一条没改：
- * MoonBit (`cmd/desktop_turn`) → Host `llm_chat` (ADR 0005)，配对走 pairing-v1，
- * turn 走 ADR 0008 的 bearer。状态和真流程留在这个文件里，画的东西全在 ui/ 包，
- * 于是 UI 第一次变成可以在 JVM 上被真渲染、真断言的东西（见 UiDesignSystemTest）。
+ * 这一版做的是「版面重构 + 设计系统」，配对走 pairing-v1，
+ * turn 走 ADR 0008 的 bearer，MoonBit (`cmd/desktop_turn`) → Host `llm_chat` (ADR 0005)；
+ * 状态与真流程留在这个文件里，画的东西全在 ui/ 包，
+ * 于是 UI 第一次可以在 JVM 上被真渲染、真断言（见 UiDesignSystemTest）。
+ * 后来补的只有两类：回执呈现层交给 HostReply（见 §8.23），对话历史落到本机 filesDir
+ * 并且能在菜单里清掉（见 ChatHistoryStore 与 §8.27）——协议与 store 形状都没动。
  */
 class MainActivity : ComponentActivity() {
   private val permissionLauncher =
     registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* Host only */ }
+
+  /** 聊天历史的本机落盘（filesDir 下一个有界 JSON，见 ChatHistoryStore）。 */
+  private val chatStore by lazy { ChatHistoryStore(this) }
+
+  /** 落盘要串起来：一条 turn 会写两次快照，清空是另一条协程，两处各写各的会互相盖掉。 */
+  private val chatSaveLock = Mutex()
+
+  /** onCreate 一次性读回来的历史；不放进 Composable 里现读文件。 */
+  private var startupLines: List<ChatLine> = emptyList()
 
   private val productActions =
     listOf(
@@ -60,6 +73,9 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     TurnBridge.bind(this)
+    // 转屏 / 进程被杀重开之前打过的那句话得回到屏幕上。读不出就是没有历史，
+    // 不抛也不猜（ChatHistoryStore 的失败语义）。
+    startupLines = runCatching { chatStore.load() }.getOrDefault(emptyList())
     setContent { BitBotTheme { HomeShell() } }
   }
 
@@ -75,7 +91,9 @@ class MainActivity : ComponentActivity() {
   @Composable
   private fun HomeShell() {
     var input by remember { mutableStateOf("") }
-    val lines = remember { mutableStateListOf<ChatLine>() }
+    // 上一次留下的对话要回到这一屏：remember 只活过一次组合，转屏就没了，
+    // 所以初始值来自 onCreate 读回来的文件（见 ChatHistoryStore）。
+    val lines = remember { mutableStateListOf<ChatLine>().also { it.addAll(startupLines) } }
     var busy by remember { mutableStateOf(false) }
     var delivery by remember { mutableStateOf(SendToUserSurface.Summary()) }
     var paired by remember { mutableStateOf(pairedNow()) }
@@ -93,6 +111,29 @@ class MainActivity : ComponentActivity() {
       hostLabel = hostLabelNow()
     }
 
+    /**
+     * 上屏 + 落盘，一次一条。落盘走 IO 线程，写失败不改屏幕上的事实：
+     * 用户那句话已经发出去了，不能因为一个文件写不进去就当它没发生。
+     */
+    suspend fun addLine(line: ChatLine) {
+      lines.add(line)
+      val snapshot = lines.toList()
+      withContext(Dispatchers.IO) {
+        chatSaveLock.withLock { chatStore.save(snapshot) }
+      }
+    }
+
+    /** 「清空对话」：屏幕与盘一起清，只清一个的话转个身旧话又回来了。 */
+    fun clearChat() {
+      scope.launch {
+        withContext(Dispatchers.IO) {
+          chatSaveLock.withLock { chatStore.save(emptyList()) }
+        }
+        lines.clear()
+        delivery = SendToUserSurface.Summary()
+      }
+    }
+
     fun openCredentials() {
       hostDraft = TurnBridge.hostUrl().orEmpty()
       tokenDraft = TurnBridge.turnToken().orEmpty()
@@ -106,7 +147,7 @@ class MainActivity : ComponentActivity() {
       scope.launch {
         busy = true
         input = ""
-        lines.add(ChatLine("user", trimmed))
+        addLine(ChatLine("user", trimmed))
         val result =
           withContext(Dispatchers.IO) {
             runCatching { TurnBridge.runTurn(trimmed, machineKind = "android") }
@@ -131,7 +172,7 @@ class MainActivity : ComponentActivity() {
             TurnBridge.failureText(body)
               ?: "桌面大脑没有返回可见回复（HTTP 正常，但 assistant 文本为空）"
           )
-        lines.add(ChatLine("assistant", assistant, shown.raw))
+        addLine(ChatLine("assistant", assistant, shown.raw))
         busy = false
       }
     }
@@ -164,6 +205,7 @@ class MainActivity : ComponentActivity() {
         onCredentials = { openCredentials() },
         onCapabilities = { showMenu = false; showCapabilities = true },
         onPairing = { showMenu = false; showPairing = true },
+        onClearChat = { showMenu = false; clearChat() },
         onDismiss = { showMenu = false },
       )
     }

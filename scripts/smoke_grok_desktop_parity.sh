@@ -1763,6 +1763,12 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     grep -q "AB-13 回执呈现落地" /tmp/g47-build.log \
       && ok "G-47 内核回放在手机上说人话：MainActivity 把 /v1/turn 回包交给 HostReply.display、8 个 fixture 校验为真内核回包、6 条摘要/屏幕用例在结果里（含「认不得的 kind 不许编摘要」）、AB-13 带负向对照" \
       || bad "G-47 AB-13 anchor missing"
+    grep -q "AB-14 对话落盘落地" /tmp/g47-build.log \
+      && ok "G-47 聊天记录活过转屏与重开：ChatHistoryStore 落在 filesDir（不是外部存储）且有界、onCreate 读回来、两条消息都过 addLine、「清空对话」在菜单里并接到 clearChat、manifest 没用 configChanges 遮 recreate、9 条用例（CP-01..05 真渲染 + HS-01..04 那一层的边界）在结果里、AB-14 带负向对照" \
+      || bad "G-47 AB-14 anchor missing"
+    grep -q "AB-06 JVM 单测真跑：118 用例 0 失败" /tmp/g47-build.log \
+      && ok "G-47 用例数如实涨到 118（本轮 +9：真渲染 5 条 + 落盘层 4 条），且 0 失败不是空跑" \
+      || bad "G-47 AB-06 用例数与本轮不符（见 /tmp/g47-build.log）"
   fi
 else
   bad "G-47 prove_android_build（见 /tmp/g47-build.log；$(tail -1 /tmp/g47-build.log)）"
@@ -1788,12 +1794,27 @@ echo "      unavailable 就是不可用：Host FFI results applied … - ok kind
 echo "      feed 还没接上、备案还是空的 —— 这两条残留必须看得见：… - ok kind=check_updates …"
 echo "      展开必须还能看到内核原文：null；认不得的 kind 必须原样给出来 expected:<[unknown]> but was:<[normal]>"
 echo "      （12 tests completed, 11 failed —— 手机上以前的助手行就是这坨内核转储）"
+echo "  · G-47 修复前红（聊天记录，ChatThreadPersistenceTest 5 条在 HEAD 产品代码上真渲染跑红）："
+echo "      CP01 Failed: assertExists. Reason: Expected exactly '1' node but could not find any"
+echo "        node that satisfies: (Text + EditableText contains '转个身就该还在的一句话')（转个身，屏幕上 0 个）"
+echo "      CP02 同一条消息节点找不到；首屏同时退回空态（三个建议键还在）"
+echo "      CP03 filesDir 下 0 个条目 —— 那句话只活在内存里，重开必丢"
+echo "      CP04 「还没有对话文件可查（CP-03 已红），这条不得当绿用」（不许拿没有文件当「没泄漏」）"
+echo "      CP05 菜单里根本没有「清空对话」这一行"
+echo "  · G-47 负向对照（本轮新写那一层自己也得能被证伪，四组逐个摘，一次只动一行）："
+echo "      摘掉上盘侧 takeLast → HS02 红；坏 JSON 直接往外抛 → HS03 红；save 恒回 true → HS04 红；"
+echo "      落盘顺手带上配对令牌 → CP04 红；四组各自 1 条翻红、其余仍绿，全部还原后两批全绿"
 echo "  · G-47 UI 验证的边界（诚实）：JVM 验到的是 Compose 语义树 + 送进渲染器的颜色数值两层；"
 echo "    captureToImage 在 Robolectric NATIVE 模式下 2000ms 超时，拿不到真像素 —— "
 echo "    圆角/字距/阴影/动效观感与厂商 ROM 表现仍未验证，必须真机看；"
 echo "    Robolectric 跑的是默认浅色配置，values-night 只能靠 AB-12 读资源文本并与 Theme.kt"
 echo "    的 CanvasDark 字面量对齐，深色观感同样没在 JVM 上验过"
 echo "  · G-47 残留（诚实）：无 KVM → emulator、真机 OS 权限弹窗、厂商商店签名（BITBOT_ANDROID_STORE_*）均未验证"
+echo "  · G-47 残留（聊天记录这一层，诚实）：「转屏」在 JVM 上走 Activity.recreate()（同实例重走 onCreate，"
+echo "    Compose 组合是新的），真机旋转 + 厂商 ROM 杀后台仍未在设备上验过；"
+echo "    「进程被杀后重开」是全新实例，Robolectric 的语义树够不到第二个实例，那半边由"
+echo "    CP-03（那句话确实在 filesDir 的文件里）承担，不是由屏幕上的节点承担；"
+echo "    历史很长时 LazyColumn 只组合可见项，屏幕上的条数断言只覆盖首屏那一窗"
 
 echo "== G-48 配对地址与在线证据的底层健壮性（纯 Node，不需要显示环境）=="
 if timeout 300 node scripts/prove_pairing_lan_rank.mjs > /tmp/g48-lanrank.log 2>&1; then

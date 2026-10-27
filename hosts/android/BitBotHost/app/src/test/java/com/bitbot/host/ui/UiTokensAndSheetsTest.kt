@@ -302,6 +302,7 @@ class UiTokensAndSheetsTest {
           onCredentials = {},
           onCapabilities = {},
           onPairing = {},
+          onClearChat = {},
           onDismiss = {},
         )
       }

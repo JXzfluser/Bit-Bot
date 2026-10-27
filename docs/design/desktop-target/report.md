@@ -1045,3 +1045,82 @@ e2e_desktop_user_journeys: PASS=63 FAIL=0 SKIP=0
 结论：新增的说明行（`sec-*-key-note`，`class="st-note"`，字号走 class 不走行内）没有把输入框挤出
 合同——它加在输入框**下方**，不参与输入框自身的高度。矩阵比上一轮多出的正是 G-54 的 3 条 ✓
 （375→378，§8.25④ 记录的上一轮总数是 375），没有新增 SKIP，也没有任何一条被这次改动碰红。
+
+## 8.27 手机上「转个身就没了」：聊天记录落到本机，并且清得掉
+
+**① 这一条是「完全不知道如何使用」里最难看的形态。** 用户在手机上打了一句话、屏幕一旋，
+或者系统把后台的 app 杀掉再点开——刚才那轮对话全没了，首屏回到空态（三个建议键重新摆出来）。
+根因不在逻辑，在那一行状态：`MainActivity.kt` 的 `HomeShell` 用
+`remember { mutableStateListOf<ChatLine>() }` 存对话。`remember` 只活过一次组合，
+组合一散就没；进程没了更没。主流 AI app 没有把这个行为留给用户的。
+
+**② 修复前红（`ChatThreadPersistenceTest` 在 HEAD 产品代码上真渲染，Robolectric 无 KVM）。**
+
+```
+CP01 转屏后那句话还在屏幕上       FAILED
+  Failed: assertExists. Reason: Expected exactly '1' node but could not find any node
+  that satisfies: (Text + EditableText contains '转个身就该还在的一句话')
+CP02 转屏后两条都还在且首屏不是空态  FAILED（红在同一条消息节点的 assertExists 上，
+  即「转屏后第一句就回不来」；后面那两条断言当时还没走到）
+CP03 对话落在filesDir下的一个文件里  FAILED
+  filesDir 下找不到含那句话的文件——历史只活在内存里，重开必丢（发现 0 个条目）
+CP04 存下来的对话不含凭证           FAILED
+  还没有对话文件可查（CP-03 已红），这条不得当绿用
+4 tests completed, 4 failed
+```
+
+CP-04 那条红值得单独记：它**不许**把「盘上没有凭证」判成绿，因为此时盘上根本没有文件。
+一条断言在「东西不存在」和「东西是干净的」之间必须能分辨，否则修好之后它会永远绿着。
+CP-05（清空对话）是随修复一起写的，所以它的红不假装是修复前测出来的，用 ④ 的负向对照给牙齿。
+
+**③ 改了什么（三层，一次只做一条链上的事）。**
+
+| 层 | 改动 | 为什么这样切 |
+| --- | --- | --- |
+| `ChatHistoryStore.kt`（新） | `filesDir` 下一个有界 JSON（`DEFAULT_MAX_LINES = 300`）；`load()` 读不出就当没历史，`save()` 写不进只回 `false` | 失败语义定死在「落盘是附赠的」：磁盘满、半个文件、路径被占，都不许反过来把发送拦住或让首屏黑掉 |
+| `MainActivity.kt` | `onCreate` 一次性读回历史作为初始值；两条消息都改走 `addLine`（上屏 + 落盘），落盘走 IO 线程并用 `Mutex` 串行 | 不在 Composable 里现读文件；上屏与落盘不分叉 |
+| `ui/Sheets.kt` + 接线 | 「更多」里加一行「清空对话」，接到 `clearChat()`：先把盘清掉再清屏幕，顺带清掉证据条 | 只加持久化不给出口，等于把这台机器上的聊天变成删不掉的东西 |
+
+位置选 `filesDir` 而不是外部存储：外部目录里的文件别的 app（以及不拔 USB 线的人）读得到，
+聊天记录不该在那儿。这一点由 CP-03 同时断两头（filesDir 里必须有、外部目录里必须没有）。
+
+**没有**用 `android:configChanges="orientation|…"` 把 recreate 遮掉——那是 `display:none` 式的
+掩盖：转屏确实不重建了，进程被杀重开照样全没。AB-14 里专门有一条断 manifest 不许出现这个写法，
+防止以后有人为了「让门变绿」再把它加回来。
+
+**④ 五组负向对照（本轮新写的那一层自己也得能被证伪，一次只动一行）。**
+
+```
+摘掉上盘侧的 takeLast（有界不生效）        → HS02 红（4 tests completed, 1 failed）
+坏 JSON 直接往外抛（去掉 runCatching）      → HS03 红（4 tests completed, 1 failed）
+save 恒回 true（写不进也说成功）            → HS04 红（4 tests completed, 1 failed）
+落盘时顺手带上配对令牌                       → CP04 红（5 tests completed, 1 failed）
+把菜单里「清空对话」那一行删掉               → CP05 红（5 tests completed, 1 failed）
+全部还原                                   → ChatHistoryStoreTest 4/4 + ChatThreadPersistenceTest 5/5 全绿
+```
+
+每组都只翻对应那一条、其余仍绿——这五条不是恒真断言，也不是「实现存在所以当然过」。
+
+**⑤ 门禁与数字。** 安卓门禁 `prove_android_build` 新增 **AB-14**（对话落盘落地），并给 AB-06
+的用例数下限从 106 提到 **118**（本轮 +9：真渲染 5 条 + 落盘层 4 条），整条：
+
+```
+prove_android_build: PASS=14 FAIL=0 SKIP=0
+  ✓ AB-06 JVM 单测真跑：118 用例 0 失败（14 个类）
+  ✓ AB-14 对话落盘落地：filesDir 有界 JSON + onCreate 读回 + 两条消息都过 addLine
+        + 「清空对话」接上 clearChat + manifest 没用 configChanges 遮 + 9 条用例真跑（负向对照通过）
+```
+
+矩阵侧在 G-47 的 APK 段加了两条锚点（AB-14 在结果里、用例数确实涨到 118）与一段修复前红/负向对照
+的如实记录，另加一条本轮残留说明。全量矩阵复跑的数字见 ⑦（不口头担保）。
+
+**⑥ 残留（诚实）。**
+- 「转屏」在 JVM 上走 `Activity.recreate()`：同一实例重走 `onCreate`、Compose 组合是新的，这符合
+  旋转时实际发生的事；但真机旋转、以及各家 ROM 的杀后台策略仍未在设备上验过（无 KVM，起不了 emulator）。
+- 「进程被杀后重开」是全新实例，Robolectric 的语义树够不到第二个实例，所以那一半由 CP-03
+  （那句话确实在 filesDir 的文件里）承担，不是由屏幕上的节点承担。
+- 历史很长时 `LazyColumn` 只组合可见项，屏幕上的条数断言只覆盖首屏那一窗；有界那条（HS-02）在落盘层验。
+- 每轮 turn 之后是整段覆盖写（先写临时文件再改名）。300 条上限内这个代价可以忽略，但**没有**按条
+  追加日志；如果以后要做多会话，这一层要重写成 per-thread 文件，不在本轮里预先做。
+- 单条 `raw`（展开看的内核原文）随条数一起限界，不按字节限界：一条超大的原文仍可能把文件撑大。
+  这是已知边界，本轮不加没测过的字节裁剪。
