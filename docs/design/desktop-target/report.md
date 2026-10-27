@@ -1124,3 +1124,25 @@ prove_android_build: PASS=14 FAIL=0 SKIP=0
   追加日志；如果以后要做多会话，这一层要重写成 per-thread 文件，不在本轮里预先做。
 - 单条 `raw`（展开看的内核原文）随条数一起限界，不按字节限界：一条超大的原文仍可能把文件撑大。
   这是已知边界，本轮不加没测过的字节裁剪。
+
+**⑦ 全量复跑与打包（本轮改完之后真跑出来的）。**
+
+```
+smoke_grok_desktop_parity: PASS=380 FAIL=0     （上一轮 378，本轮 +2：G-47 的 AB-14 锚点与用例数锚点）
+prove_android_build:        PASS=14 FAIL=0 SKIP=0
+JVM 单测：                  118 用例 0 失败（14 个类，0 skip）
+```
+
+380 条里没有一条 skip；跑完 `git status` 里 `data/` 没有多出内容（G-53 那两道门自己回收本轮行，
+历史行不动）。
+
+GitHub Actions 那边这次改动**确实触发**了 APK 工作流（`hosts/android/**` 在路径过滤里）：
+
+```
+Android APK  run 40572075691  head_sha=87dd35d66a817e01fe432d61dd6b64dcd661c394  completed / success
+artifact: bitbot-android-universal-87dd35d66a817e01fe432d61dd6b64dcd661c394  13,302,810 bytes
+```
+
+也就是说「带对话落盘的这版手机 app」在 CI 上真打出了一个装得上的包（13 MB 的产物，不是
+本地 gradle 自说自话）。但**这个包没有真机装过**：无 KVM，起不了 emulator，落盘文件在真机上
+的实际位置、旋转与厂商杀后台的真实行为仍是残留。
