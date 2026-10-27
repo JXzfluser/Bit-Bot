@@ -1880,10 +1880,48 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
   echo "  · G-51 修复前红（HEAD 产品代码真实输出）：PASS=0 FAIL=8 —— 8 条全红，"
   echo "    其中 CN-05 红在「有校验错误时保存并热加载照样能点」，CN-08 红在卡里根本没有状态行"
   echo "  · G-51 残留（诚实）：只验到「缺字段/明显不是地址」这一层，没验厂商格式细则；"
-  echo "    「试连国内渠道」会真的发消息，门禁不敢碰，仍需在真群里人工验一次；"
-  echo "    钉钉加签密钥、飞书 encrypt_key/verification_token、企微 callback_token 仍无输入框（要手改 .env.local）"
+  echo "    「试连国内渠道」会真的发消息，门禁不敢碰，仍需在真群里人工验一次"
+  echo "  · G-51 更正（§8.24）：这里原来还写着「钉钉加签密钥、飞书 encrypt_key/verification_token、"
+  echo "    企微 callback_token 仍无输入框（要手改 .env.local）」—— 本轮已补上，见 G-52"
 else
   echo "  · skip：缺 playwright-core 或 electron，G-51 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-52 国内渠道加签 / 事件回调密钥能在界面上配（不再逼用户改 .env.local）=="
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g52_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g52_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 "${g52_xvfb[@]}" node scripts/e2e_desktop_cn_secret_inputs.mjs > /tmp/g52-cnsec.log 2>&1; then
+    ok "G-52 e2e_desktop_cn_secret_inputs 全绿（$(grep -c '✓' /tmp/g52-cnsec.log) 项，$(tail -1 /tmp/g52-cnsec.log)）"
+  else
+    bad "G-52 e2e_desktop_cn_secret_inputs（见 /tmp/g52-cnsec.log；$(tail -1 /tmp/g52-cnsec.log)）"
+  fi
+  grep -q "CN-SEC-01 钉钉加签 / 飞书 Encrypt Key / 飞书 Verification Token / 企微 Callback Token 四个输入框都在" /tmp/g52-cnsec.log \
+    && grep -q "CN-SEC-02 status 回读四个键" /tmp/g52-cnsec.log \
+    && ok "G-52 读写两头接上：四个密钥栏在界面上建出来了，secrets:status 也真的回读它们（只给掩码）" \
+    || bad "G-52 input/status anchors missing"
+  grep -q "CN-SEC-03 已配置的密钥在卡里如实标出" /tmp/g52-cnsec.log \
+    && grep -q "CN-SEC-04 四个密钥栏留空不报红" /tmp/g52-cnsec.log \
+    && grep -q "CN-SEC-06 四个栏都带 data-secret-key" /tmp/g52-cnsec.log \
+    && ok "G-52 三条边界在：已配置说得出尾号、可选字段不挡保存、值接得到写盘" \
+    || bad "G-52 masked-state / optional / write-path anchors missing"
+  echo "  · G-52 修复前红（同一轮实测）：PASS=1 FAIL=5 —— 四个 input 全部不存在、"
+  echo "    secrets:status 不回读这四个键、密钥已在进程里卡里仍不说「已配置」；"
+  echo "    当时唯一绿的 CN-SEC-04 是空断言（栏不存在→循环没跑），已补「栏必须存在否则判不过」"
+  echo "  · G-52 顺带抓到的真问题：掩码必填栏（钉钉 Webhook）在磁盘已配置时被读成「空的」，"
+  echo "    卡里报一句谎话还把「保存并热加载」按死 —— 现在空栏 + status present = 满足，"
+  echo "    状态行写明「****尾号 已配置，无需重填」"
+  echo "  · G-52 负向对照（断言非恒真）：把收集器选择器改成不存在的属性名、其余不动，"
+  echo "    同一道门立刻 CN-SEC-06 翻红（PASS=5 FAIL=1），前五条仍绿 —— 它断的只有「值接不接得到写盘」"
+  echo "  · G-52 残留（诚实）：本门不点真保存（.env.local 是固定路径，BITBOT_REPO_ROOT 隔离不到它），"
+  echo "    所以「填进去的值真的落盘」只验到 data-secret-key + 页内收集器这一层，"
+  echo "    最后一跳要在真机上人工验一次；四栏是否真能解掉厂商的验签，门禁不假设"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-52 未跑（SKIP ≠ PASS）"
 fi
 
 echo

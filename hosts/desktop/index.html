@@ -2478,6 +2478,40 @@
               </div>
               <span id="sec-wecom-err" class="st-field-error" hidden></span>
             </label>
+            <!-- 加签 / 事件回调密钥：内核与发送路径早就支持（cn_inbound_server 真在读），
+                 之前界面上一个框都没有，用户只能去终端手改 .env.local —— 装完 app 还要改文件
+                 不等于能走通。这四栏一律**可选**：钉钉关键词/IP 白名单型机器人不该被自己的
+                 界面挡住，所以它们不进 CN_CHANNEL_ROWS 的必填校验。
+                 已配的密钥不回填进 input（那是把明文塞进 DOM），只在后面如实说「已配置 ****尾4」。 -->
+            <div class="ca-section-head" style="margin-top:var(--space-4)"><div class="ca-section-title">加签 / 事件回调密钥</div><span class="ca-cn-hint">可选</span></div>
+            <label class="st-field"><span class="st-field-name">钉钉 加签密钥<span>（机器人安全设置里 SEC 开头那串）</span></span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-ding-secret" data-secret-key="BITBOT_DINGTALK_APP_SECRET" type="password" autocomplete="off" placeholder="SEC…" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-ding-secret-reveal" class="bb-btn bb-btn-sm">显示</button>
+                <span id="sec-ding-secret-state" class="cn-hint">未配置</span>
+              </div>
+            </label>
+            <label class="st-field"><span class="st-field-name">飞书 Encrypt Key<span>（事件订阅「加密」用）</span></span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-feishu-encrypt" data-secret-key="BITBOT_FEISHU_ENCRYPT_KEY" type="password" autocomplete="off" placeholder="事件订阅请求加密密钥" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-feishu-encrypt-reveal" class="bb-btn bb-btn-sm">显示</button>
+                <span id="sec-feishu-encrypt-state" class="cn-hint">未配置</span>
+              </div>
+            </label>
+            <label class="st-field"><span class="st-field-name">飞书 Verification Token<span>（事件订阅「验签」用）</span></span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-feishu-verify" data-secret-key="BITBOT_FEISHU_VERIFICATION_TOKEN" type="password" autocomplete="off" placeholder="事件订阅校验令牌" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-feishu-verify-reveal" class="bb-btn bb-btn-sm">显示</button>
+                <span id="sec-feishu-verify-state" class="cn-hint">未配置</span>
+              </div>
+            </label>
+            <label class="st-field"><span class="st-field-name">企微 回调 Token<span>（接收事件服务器用）</span></span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-wecom-callback" data-secret-key="BITBOT_WECOM_CALLBACK_TOKEN" type="password" autocomplete="off" placeholder="回调令牌" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-wecom-callback-reveal" class="bb-btn bb-btn-sm">显示</button>
+                <span id="sec-wecom-callback-state" class="cn-hint">未配置</span>
+              </div>
+            </label>
             <!-- 状态行：未开启也要写出来。空白一片等于让用户自己猜「我到底配没配上」。 -->
             <div id="cn-card-state" class="cn-hint">钉钉 未开启 · 飞书 未开启 · 企微 未开启</div>
             <p id="cn-next-hint" class="cn-hint">凭证在这张卡改；下一步的「保存并热加载」和「试连国内渠道」在同一排，点下面直接过去。</p>
@@ -7263,6 +7297,22 @@
       if (wecomTo && f.BITBOT_WECOM_TOUSER && f.BITBOT_WECOM_TOUSER.value !== undefined) {
         wecomTo.value = f.BITBOT_WECOM_TOUSER.value || "";
       }
+      /* 掩码必填栏的「在不在」：明文不回填，但 present + 尾号必须记住，
+         给必填校验和状态行用（见 CN_MASKED_PRESENT）。 */
+      ["BITBOT_DINGTALK_WEBHOOK", "BITBOT_FEISHU_TOKEN", "BITBOT_WECOM_TOKEN"].forEach(function (k) {
+        const fv = f[k];
+        CN_MASKED_PRESENT[k] = fv && fv.present ? fv.masked : "";
+      });
+      /* 加签 / 回调密钥：输入框永远留空（把已存的明文回填进 DOM 等于多一处泄露面），
+       * 但「配过没有、尾 4 位是什么」必须说清楚 —— 不然用户只能靠自己记得。 */
+      CN_OPTIONAL_SECRETS.forEach(function (s) {
+        const st = document.getElementById(s.state);
+        if (!st) return;
+        const fv = f[s.key];
+        st.textContent = fv && fv.present ? "已配置 " + (fv.masked || "****") : "未配置";
+        const el = document.getElementById(s.input);
+        if (el) el.value = "";
+      });
       const icp = document.getElementById("sec-icp");
       if (icp && f.BITBOT_ICP_FILING && f.BITBOT_ICP_FILING.value !== undefined) {
         icp.value = f.BITBOT_ICP_FILING.value || "";
@@ -7294,9 +7344,25 @@
       cnValidateAndPaint(true);
     }
 
+    /* 加签 / 事件回调密钥的键位表：input 上的 data-secret-key 就是这个 key，
+       写盘收集器按属性遍历，不再往 saveSecretsFromForm 里手抄第四遍。
+       这四个不进下面的必填校验 —— 它们是可选路径，不是门槛。 */
+    const CN_OPTIONAL_SECRETS = [
+      { key: "BITBOT_DINGTALK_APP_SECRET", input: "sec-ding-secret", state: "sec-ding-secret-state", reveal: "cn-ding-secret-reveal" },
+      { key: "BITBOT_FEISHU_ENCRYPT_KEY", input: "sec-feishu-encrypt", state: "sec-feishu-encrypt-state", reveal: "cn-feishu-encrypt-reveal" },
+      { key: "BITBOT_FEISHU_VERIFICATION_TOKEN", input: "sec-feishu-verify", state: "sec-feishu-verify-state", reveal: "cn-feishu-verify-reveal" },
+      { key: "BITBOT_WECOM_CALLBACK_TOKEN", input: "sec-wecom-callback", state: "sec-wecom-callback-state", reveal: "cn-wecom-callback-reveal" },
+    ];
+
     /* 国内渠道凭证：勾了「开启推送」就等于用户已经决定要发 —— 这时候缺什么、
      * 粘错了什么，必须当场在那一栏下面说清楚，而不是「保存成功」之后再让他猜。
      * 规则只按本 app 自己的语义判（勾了→必填→必填项得像个地址），不去断言厂商格式。 */
+    /* 掩码栏「看不见」不等于「没配」：这三栏的明文按安全规则不回填进 DOM，
+       所以必填校验必须问 status 的 present，否则磁盘上配好了、界面照样报红并禁保存
+       —— 实测就是这样把「保存并热加载」按死的（本轮 CN-SEC-04 抓到）。
+       key 为空的栏（chat_id / agentid / touser）走 value 回显，不需要这个表。 */
+    const CN_MASKED_PRESENT = {};
+
     const CN_CHANNEL_ROWS = [
       {
         post: "sec-ding-post",
@@ -7305,6 +7371,7 @@
           {
             id: "sec-ding-hook",
             label: "Webhook 地址",
+            key: "BITBOT_DINGTALK_WEBHOOK",
             check: function (v) {
               if (!/^https?:\/\//i.test(v)) return "要以 http:// 或 https:// 开头（在钉钉机器人设置里整段复制）";
               if (!/access_token=/.test(v)) return "这段地址里没有 access_token，粘的可能是机器人主页而不是 Webhook";
@@ -7317,7 +7384,7 @@
         post: "sec-feishu-post",
         err: "sec-feishu-err",
         fields: [
-          { id: "sec-feishu-token", label: "tenant token" },
+          { id: "sec-feishu-token", label: "tenant token", key: "BITBOT_FEISHU_TOKEN" },
           { id: "sec-feishu-chat", label: "chat_id" },
         ],
       },
@@ -7325,7 +7392,7 @@
         post: "sec-wecom-post",
         err: "sec-wecom-err",
         fields: [
-          { id: "sec-wecom-token", label: "access_token" },
+          { id: "sec-wecom-token", label: "access_token", key: "BITBOT_WECOM_TOKEN" },
           { id: "sec-wecom-agent", label: "agentid" },
           { id: "sec-wecom-to", label: "touser" },
         ],
@@ -7336,7 +7403,17 @@
       return CN_CHANNEL_ROWS.map(function (row) {
         const box = document.getElementById(row.post);
         const name = row.post === "sec-ding-post" ? "钉钉" : row.post === "sec-feishu-post" ? "飞书" : "企微";
-        return name + " " + (box && box.checked ? "已开启" : "未开启");
+        let tail = "";
+        if (box && box.checked) {
+          /* 已配但看不见 = 最容易误判成「没配」的一种；把掩码尾号写进状态行，
+             用户就不用为了「它到底在不在」再粘一次。只在「该渠道所有掩码栏都在盘上」
+             时才这么说，说一半比不说更糟。 */
+          const masked = row.fields.filter(function (f) { return f.key; });
+          const held = masked.filter(function (f) { return CN_MASKED_PRESENT[f.key]; });
+          if (masked.length && held.length === masked.length)
+            tail = "（" + held.map(function (f) { return CN_MASKED_PRESENT[f.key]; }).join(" / ") + " 已配置，无需重填）";
+        }
+        return name + " " + (box && box.checked ? "已开启" : "未开启") + tail;
       }).join(" · ") + "。未开启的渠道不会真的发出去。";
     }
 
@@ -7351,8 +7428,12 @@
           row.fields.forEach(function (f) {
             const el = document.getElementById(f.id);
             const v = el ? String(el.value || "").trim() : "";
-            if (!v) msgs.push("勾选了开启推送，" + f.label + "还是空的");
-            else if (f.check) {
+            if (!v) {
+              /* 空栏 + 盘上已配置 ≠ 没配：这时报「还是空的」是谎话，还会把保存按死。
+                 用户真想换地址就直接粘新的，粘了走下面的 check。 */
+              if (f.key && CN_MASKED_PRESENT[f.key]) return;
+              msgs.push("勾选了开启推送，" + f.label + "还是空的");
+            } else if (f.check) {
               const m = f.check(v);
               if (m) msgs.push(f.label + "：" + m);
             }
@@ -7384,7 +7465,8 @@
       });
     });
 
-    /* 掩码不是「看不见就只能猜」：卡内就地显隐，核对完再收回。 */
+    /* 掩码不是「看不见就只能猜」：卡内就地显隐，核对完再收回。
+       新加的四个密钥栏走同一套规则，按表循环，不再复制第四遍同样的 if。 */
     const cnDingReveal = document.getElementById("cn-ding-reveal");
     if (cnDingReveal) {
       cnDingReveal.addEventListener("click", function () {
@@ -7395,6 +7477,17 @@
         cnDingReveal.textContent = show ? "隐藏" : "显示";
       });
     }
+    CN_OPTIONAL_SECRETS.forEach(function (s) {
+      const btn = document.getElementById(s.reveal);
+      if (!btn) return;
+      btn.addEventListener("click", function () {
+        const el = document.getElementById(s.input);
+        if (!el) return;
+        const show = el.type !== "text";
+        el.type = show ? "text" : "password";
+        btn.textContent = show ? "隐藏" : "显示";
+      });
+    });
 
     /* 填凭证的地方就该指出下一步：写入和试连都在凭证页那一排，一键落过去。 */
     const cnGotoCreds = document.getElementById("cn-goto-credentials");
@@ -7488,6 +7581,14 @@
           : "0";
       const otaEl = document.getElementById("sec-ota");
       if (otaEl) patch.BITBOT_UPDATE_FEED_URL = otaEl.value.trim();
+      /* 加签 / 回调密钥：只收「填了东西」的栏，留空就不提交 —— 否则一次保存会把
+         用户已经配好的密钥覆盖成空。键名取自 data-secret-key（和主进程白名单同名），
+         所以界面上补一栏不用再改这里。 */
+      document.querySelectorAll("[data-secret-key]").forEach(function (el) {
+        const key = String(el.getAttribute("data-secret-key") || "").trim();
+        const v = String(el.value || "").trim();
+        if (key && v) patch[key] = v;
+      });
       const r = await window.bitbot.secrets.set(patch);
       const secStatus = document.getElementById("sec-status");
       if (secStatus) {
@@ -12875,7 +12976,11 @@
       const cnCard0 = document.getElementById("ca-cn-channels");
       if (cnCard0) {
         cnCard0.style.display = (caActiveCat === "all" || caActiveCat === "communication") ? "flex" : "none";
-        /* 打开这张卡就把它自己的状态说实话：勾没勾、缺什么，别等用户点了保存才知道 */
+        /* 打开这张卡就把它自己的状态说实话：勾没勾、缺什么、密钥配过没有。
+         * 状态以前只靠别的页面顺手刷过一次 —— 从侧栏直接进来就会停在旧文案上，
+         * 用户看到的「未配置」其实可能早就配好了。这里自己刷一遍。 */
+        refreshSecretsForm().catch(() => {});
+        /* 未开启/缺字段的即时反馈不异步等：先按当前 DOM 画一次，status 回来再覆盖。 */
         cnValidateAndPaint(true);
       }
       const q = document.getElementById("ca-search");

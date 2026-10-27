@@ -2291,11 +2291,20 @@ ipcMain.handle("bitbot:secrets:status", async () => {
     "BITBOT_DINGTALK_POST",
     "BITBOT_DINGTALK_WEBHOOK",
     "BITBOT_DINGTALK_TOKEN",
+    // 群机器人「加签」密钥：写路径早就在白名单里，但 status 不回读，
+    // 于是卡里永远显示「未配置」，用户只能去终端手改 .env.local。
+    "BITBOT_DINGTALK_APP_SECRET",
     "BITBOT_FEISHU_POST",
     "BITBOT_FEISHU_TOKEN",
     "BITBOT_FEISHU_CHAT_ID",
+    // 飞书事件订阅的两把回调密钥（Encrypt Key / Verification Token）同上：
+    // 内网穿透 / 事件订阅要用，写路径可用，读路径漏了。
+    "BITBOT_FEISHU_ENCRYPT_KEY",
+    "BITBOT_FEISHU_VERIFICATION_TOKEN",
     "BITBOT_WECOM_POST",
     "BITBOT_WECOM_TOKEN",
+    // 企微「接收事件服务器」的回调 Token，同上。
+    "BITBOT_WECOM_CALLBACK_TOKEN",
     "BITBOT_WECOM_AGENT_ID",
     "BITBOT_WECOM_TOUSER",
     "BITBOT_ICP_FILING",

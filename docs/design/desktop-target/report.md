@@ -791,3 +791,89 @@ AB-06 下限 91 → 106。矩阵里 G-47 加了 AB-13 anchor 与这段修复前�
 表格而不像聊天；要更像主流 app，得让桌面大脑自己在 `/v1/turn` 里回人话（那要改契约，不在本轮范围）。
 `delivery` 这类还没接进摘要的 kind 现在只在屏幕上点名说「没接进摘要」，没有真解释。
 真机上一屏能显示多少行、展开原文的手势好不好用，仍然没验（无 KVM）。
+
+## 8.24 国内渠道最后那道「还得去终端改文件」：加签 / 事件回调密钥进界面
+
+**① 为什么这条算旅程阻断，而不是「少个输入框」。** 博主场景里「定时推到群里」这一步走的是
+钉钉 / 飞书 / 企微机器人。钉钉自定义机器人的安全设置要么开**加签**，要么开关键词 / IP 白名单；
+飞书事件订阅要 **Encrypt Key + Verification Token**；企微接收事件服务器要 **Callback Token**。
+这四件事在代码里**早就支持了一半**：`main.js:319` 的 `ALLOWED_SECRET_KEYS` 里有
+`BITBOT_DINGTALK_APP_SECRET` / `BITBOT_FEISHU_ENCRYPT_KEY` / `BITBOT_FEISHU_VERIFICATION_TOKEN` /
+`BITBOT_WECOM_CALLBACK_TOKEN`，`secrets:set` 能把它们写进 `.env.local`，`cn_inbound_server.js`
+真的在拿它们验签。缺的是另一半：渲染层**一个输入框都没有**，`secrets:status` 的键表里也**没有**
+这四把 —— 于是界面既填不进去，也说不出「配过没有」。用户唯一的出路是开终端改
+`hosts/desktop/.env.local`。「装完 app 还得去改文件」不等于能走通，这正是 §8.20 那条判断标准
+（用户能不能真的走通）还没关掉的一个口子。
+
+**② 修复前红（同一轮真实输出，`e2e_desktop_cn_secret_inputs.mjs`）。**
+
+```
+✗ CN-SEC-01 密钥输入框不存在（用户只能去手改 .env.local） — ["sec-ding-secret","sec-feishu-encrypt","sec-feishu-verify","sec-wecom-callback"]
+✗ CN-SEC-02 secrets:status 不回读这四个键（界面上连「配过没有」都说不了） — ["BITBOT_DINGTALK_APP_SECRET","BITBOT_FEISHU_ENCRYPT_KEY","BITBOT_FEISHU_VERIFICATION_TOKEN","BITBOT_WECOM_CALLBACK_TOKEN"]
+✗ CN-SEC-03 密钥已经在了，卡里却不说「已配置 ****xxxx」
+✓ CN-SEC-04 四个密钥栏留空不报红、不禁保存            ← 这条当时是白的
+✗ CN-SEC-05 有的密钥栏没有就地显隐按钮 — hasBtn:false,hasField:false ×4
+✗ CN-SEC-06 门禁本身跑挂 — Cannot redefine property: set
+e2e_desktop_cn_secret_inputs: PASS=1 FAIL=5 SKIP=0
+```
+
+那一轮唯一绿的 CN-SEC-04 是**空断言**：栏不存在 → 遍历没执行 →「没报红」白送。门禁写到这里
+如果就收工，等于给自己发了个 PASS。现在 CN-SEC-04 先要求四个栏**存在**，不存在直接判不过。
+
+CN-SEC-06 第一版想在页面里桩截 `window.bitbot.secrets.set` 再点保存，实测被
+`contextBridge.exposeInMainWorld` 挂上来的属性挡住（不可重定义）。退回去**既不打穿 IPC、也不点真
+保存**，理由不是懒：`upsertDesktopEnvLocal` 写的是 `hosts/desktop/.env.local` 这个**固定路径**，
+不在 `BITBOT_REPO_ROOT` 隔离范围内，门禁一点就把假密钥落进用户的真文件（`BITBOT_NO_SECRET_SYNC=1`
+只挡启动同步，不挡显式保存）。改断「栏带 `data-secret-key`（真键名）+ 页内写盘收集器真的遍历
+`[data-secret-key]`」，把最后一跳明写在残留里。
+
+**③ 改了什么。** 两头都要接上，只补 UI 是不够的。
+
+| 位置 | 改动 |
+| --- | --- |
+| `main.js` `secrets:status` 键表 | 追加四把密钥，让渲染层读得到 `present` + `masked`；`value` 仍由原正则挡在门外（`_TOKEN$` / `_KEY$` 一律不发明文） |
+| `index.html` 国内通信渠道卡 | 新增「加签 / 事件回调密钥」四栏：`type=password` + `data-secret-key` + 就地显隐按钮 + 状态位（`已配置 ****尾4` / `未配置`） |
+| 同上 `openConnectApps()` | 打开这张卡时自己刷一次 `secrets:status`；以前状态只靠别的页面顺手刷过，从侧栏直接进来会停在旧文案上 |
+| 同上 `refreshSecretsForm()` | 已配密钥**不回填进 DOM**（那是多一处明文），只写掩码尾号；输入框保持空，用户想换就粘新的 |
+| 同上 `saveSecretsFromForm()` | 写盘收集器改成遍历 `[data-secret-key]`、**非空才提交**（留空不提交，否则一次保存把已配的密钥覆盖成空） |
+| 同上 `CN_CHANNEL_ROWS` | 这四栏**不进必填校验** —— 关键词 / IP 白名单型机器人不该被自己的界面挡住 |
+
+契约没动：`secrets:set` / `secrets:status` 的形状仍是 `{present, masked, value?}`，只是键表多四项；
+`.env.local` 的写路径、`ALLOWED_SECRET_KEYS` 白名单、IPC 通道一律没碰；渲染层从没读过任何密钥明文。
+
+**④ 顺带抓到的真问题（这条比四栏本身更疼）。** 补完输入框再跑，第二轮还剩两条红。
+CN-SEC-04 仍然红：`errs:["勾选了开启推送，Webhook 地址还是空的"]`、`saveDisabled:true` ——
+可钉钉 Webhook 磁盘上明明配着（`present:true`、`****gate`）。原因是掩码栏按安全规则**不回填明文**，
+而必填校验只看 `input.value`，于是把「看不见」读成「没配」：卡里当着用户写一句谎话，
+顺手把「保存并热加载」按死。这不是新功能的毛病，是 G-51 那套校验一直带着的缺陷，本轮被新的
+env 注入条件照出来了。修法是把 `status` 的 `present` 引进校验：空栏 + 已配置 = 满足，并在状态行
+写明「`****尾号 已配置，无需重填」——只在**该渠道所有掩码栏都在盘上**时这么说，说一半比不说更糟。
+
+另一条 CN-SEC-05 红的是尺子自己：成功分支返回的对象里没带 `hasBtn` / `hasField`，而判定用
+`!x.hasBtn`，对成功项同样成立。产品的四个按钮一开始就是好的 —— 这条红的不是树，是尺子。
+
+**⑤ 门禁与数字。** `e2e_desktop_cn_secret_inputs` **PASS=6 FAIL=0**；既有
+`e2e_desktop_cn_channel_guard` 仍然 **PASS=8 FAIL=0**（CN-03 的「地址空着当场点名」没被④的修复
+削掉：那条门不注入 webhook，`present` 为空 → 照旧报红）。新 G-52 进 `smoke_grok_desktop_parity.sh`：
+两个 anchor 组（四栏 + status 回读；掩码状态 + 可选 + 写盘接法）、上面这段修复前红、④ 那条真问题，
+以及残留说明。G-51 里「四把密钥仍无输入框（要手改 .env.local）」的旧残留句已就地更正 ——
+写在下面的段落里而不是删掉，免得下次复核以为我在移动球门。
+
+**⑥ 残留（诚实）。**
+最后一跳没验：门禁不点真保存，所以「填进去的值真的落到 `.env.local` 并被 `cn_inbound_server`
+读去验签」仍未自动化，要在真机 / 真群里人工验一次。
+四栏能不能真的过厂商验签，取决于厂商侧配置（回调地址、事件版本），门不假设。
+`secrets:status` 的键表是手维护的清单，本轮把四把补进去了；「白名单里有、清单里没有」这类
+读写不对称以后仍可能出现 —— 更彻底的做法是让 status 直接遍历 `ALLOWED_SECRET_KEYS`，但那会
+把 `_TURN_TOKEN` 之类没打算在界面露出的键也带出来，需要单独判一次可见性，不在本轮顺手改。
+
+**⑦ 负向对照（这条门不是恒真的）。** 把写盘收集器那行的选择器从 `[data-secret-key]` 改成一个
+不存在的属性名，其余一个字没动，同一道门立刻翻红：
+
+```
+✗ CN-SEC-06 写盘收集器没有遍历 [data-secret-key]：新栏只是摆设
+e2e_desktop_cn_secret_inputs: PASS=5 FAIL=1 SKIP=0
+```
+
+前五条仍然绿 —— 说明 CN-SEC-06 断的确实是「值能不能接到写盘」这一件事，不是被别处顺带撞红的。
+改回原样后 `PASS=6 FAIL=0`，`grep -c '\[data-secret-key\]'` 在页面里回到 1 处（就是那个收集器）。
