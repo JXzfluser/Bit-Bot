@@ -10,7 +10,7 @@
  *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 121（防止 test 任务空转假绿）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 126（防止 test 任务空转假绿）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -25,12 +25,16 @@
  *         8 个 fixture 必须是真内核回包、6 条摘要/屏幕用例真在结果里（含「认不得的 kind
  *         不许编摘要」）
  *   AB-14 聊天记录活过转屏与重开：ChatHistoryStore 落在 filesDir（不是外部存储）且有界、
- *         onCreate 读回来、两条消息都过 addLine、「清空对话」在菜单里并接到 clearChat、
+ *         onCreate 读回来、用户那句与助手那句都过落盘、「清空对话」在菜单里并接到 clearChat、
  *         manifest 不许用 configChanges 遮掉 recreate、9 条用例（CP-01..05 + HS-01..04）
  *         真在结果里
  *   AB-15 没发出去的半稿也不许被转屏吃掉：chat-draft.txt 单独一个文件（空即删）、在 filesDir、
  *         onCreate 读回、ON_PAUSE 存、输入同步到 draftNow、发送立刻清；DF-01..03 真在结果里；
  *         四组负向对照逐个摘都要被抓到
+ *   AB-16 已经发出去的那一句，回信不许跟着上一屏一起死：回合跑在进程级 TurnCoordinator 的
+ *         scope 上（不是 rememberCoroutineScope）、「还在等」由 inFlight 计并能在 finally 里
+ *         收回来、落盘后 revision++ 通知屏幕重读、busy/delivery 不再由 composition 持有、
+ *         转屏回来补问权限；TF-01..05 真在结果里；七组负向对照逐个摘都要被抓到
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
@@ -231,7 +235,7 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 121) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 126) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -759,14 +763,15 @@ if (badge.status !== 0 || !badgeOut) {
  * 这条门盯五件事：
  *   1. ChatHistoryStore 在，写的是 filesDir（不是外部存储 —— 聊天记录不该让别的 app 读到），
  *      而且有界；
- *   2. MainActivity 真的接上了：onCreate 读回来、两条消息都过 addLine、落盘串行化；
+ *   2. 两条消息都真的过落盘那一步：§8.29 之后用户那句写在 TurnCoordinator（回合不再属于
+ *      某一屏），助手那句仍由 MainActivity 交回来 —— 两边都要盯，少一边就是「上屏与落盘分叉」；
  *   3. 「清空对话」在菜单里，而且真接到 clearChat（只加持久化不给出口 = 把这台机器上的
  *      聊天变成删不掉的东西）；
  *   4. 不许用 android:configChanges="orientation|…" 把 recreate 遮掉 —— 那是 display:none
  *      式的掩盖：转屏确实不重建了，进程被杀重开照样全没；
  *   5. 9 条用例（CP-01..05 真渲染 + HS-01..04 那一层的边界）真在结果里。
- * 负向对照：把 MainActivity 换成 HEAD 那份旧写法（不读历史、lines.add 直接上屏）后，
- * 同一把尺子必须判红。
+ * 负向对照：五个方向逐个摘（不读历史 / 用户那句只进内存 / 助手那句只进内存 /
+ * 菜单那行没接出去 / 落盘那一步整个删掉），同一把尺子必须每个都抓到。
  */
 {
   const read = (rel) => {
@@ -778,6 +783,7 @@ if (badge.status !== 0 || !badgeOut) {
   };
   const store = read("app/src/main/java/com/bitbot/host/ChatHistoryStore.kt");
   const main = read("app/src/main/java/com/bitbot/host/MainActivity.kt");
+  const coord = read("app/src/main/java/com/bitbot/host/TurnCoordinator.kt");
   const sheets = read("app/src/main/java/com/bitbot/host/ui/Sheets.kt");
   const manifest = read("app/src/main/AndroidManifest.xml");
 
@@ -808,47 +814,78 @@ if (badge.status !== 0 || !badgeOut) {
   ];
   const missingCases = wantCases.filter((re) => !names.some((n) => re.test(n)));
 
-  const problems = [];
-  if (!store) problems.push("缺 ChatHistoryStore.kt");
-  if (store && !/File\(appContext\.filesDir,/.test(store)) {
-    problems.push("对话没写在 filesDir 里（外部存储上的文件别的 app 也读得到）");
-  }
-  if (store && /getExternalFilesDir|EXTERNAL_STORAGE/.test(store)) {
-    problems.push("对话写到了外部存储");
-  }
-  if (store && !/maxLines/.test(store)) problems.push("落盘没有上界（这台机器上的对话会被无限留着）");
-  if (main && !/chatStore\.load\(\)/.test(main)) problems.push("MainActivity 没在 onCreate 读回历史（转屏仍会空态）");
-  if (main && (main.match(/addLine\(/g) || []).length < 3) {
-    problems.push("消息没有全部过 addLine（上屏与落盘会分叉）");
-  }
-  if (main && !/clearChat\(\)/.test(main)) problems.push("clearChat 没接上（盘上的历史清不掉）");
-  if (sheets && !sheets.includes("清空对话")) problems.push("菜单里没有「清空对话」这一行");
-  if (main && !/onClearChat\s*=/.test(main)) problems.push("菜单那行没接到 clearChat");
-  if (/android:configChanges="[^"]*orientation/.test(manifest)) {
-    problems.push("manifest 用 configChanges 遮掉了 recreate（掩盖问题，不是解决）");
-  }
-  if (missingCases.length) problems.push("用例不在结果里: " + missingCases.map(String).join(","));
+  const historyProblems = (s, m, c, sh, mf, miss) => {
+    const p = [];
+    if (!s) p.push("缺 ChatHistoryStore.kt");
+    if (!c) p.push("缺 TurnCoordinator.kt（用户那句现在由它落盘）");
+    if (s && !/File\(appContext\.filesDir,/.test(s)) {
+      p.push("对话没写在 filesDir 里（外部存储上的文件别的 app 也读得到）");
+    }
+    if (s && /getExternalFilesDir|EXTERNAL_STORAGE/.test(s)) p.push("对话写到了外部存储");
+    if (s && !/maxLines/.test(s)) p.push("落盘没有上界（这台机器上的对话会被无限留着）");
+    if (m && !/startupLines = runCatching \{ chatStore\.load\(\) \}/.test(m)) {
+      p.push("没在 onCreate 读回历史（转屏仍会空态）");
+    }
+    if (m && !/addAll\(startupLines\)/.test(m)) p.push("onCreate 读回来的历史没喂进首屏（读了又丢掉）");
+    if (c && !/appendLine\(ChatLine\("user", text\)\)/.test(c)) {
+      p.push("用户那句没有过落盘（回合搬到进程级之后这句写在 TurnCoordinator 里）");
+    }
+    if (m && !/TurnCoordinator\.appendLine\(ChatLine\("assistant"/.test(m)) {
+      p.push("助手那句没有过落盘（上屏与落盘会分叉）");
+    }
+    if (c && !/s\.save\(s\.load\(\) \+ line\)/.test(c)) p.push("落盘那一步被摘掉了（只改内存里的列表）");
+    if (m && !/clearChat\(\)/.test(m)) p.push("clearChat 没接上（盘上的历史清不掉）");
+    if (sh && !sh.includes("清空对话")) p.push("菜单里没有「清空对话」这一行");
+    if (m && !/onClearChat\s*=/.test(m)) p.push("菜单那行没接到 clearChat");
+    if (/android:configChanges="[^"]*orientation/.test(mf)) {
+      p.push("manifest 用 configChanges 遮掉了 recreate（掩盖问题，不是解决）");
+    }
+    if (miss.length) p.push("用例不在结果里: " + miss.map(String).join(","));
+    return p;
+  };
 
-  // 负向对照：同一把尺子过一遍 HEAD 那份旧写法
-  const oldMain = main
-    .replace("startupLines = runCatching { chatStore.load() }.getOrDefault(emptyList())", "/* 旧版：没有这一步 */")
-    .replace("addLine(ChatLine(\"user\", trimmed))", "lines.add(ChatLine(\"user\", trimmed))")
-    .replace("addLine(ChatLine(\"assistant\", assistant, shown.raw))", "lines.add(ChatLine(\"assistant\", assistant, shown.raw))")
-    .replace("onClearChat = { showMenu = false; clearChat() },", "");
-  const negProblems = [
-    /chatStore\.load\(\)/.test(oldMain) ? "load" : "",
-    /addLine\(ChatLine\("user"/.test(oldMain) ? "user-addLine" : "",
-    /addLine\(ChatLine\("assistant"/.test(oldMain) ? "assistant-addLine" : "",
-    /onClearChat\s*=/.test(oldMain) ? "clear-wiring" : "",
-  ].filter(Boolean);
-  if (negProblems.length) {
-    bad("AB-14 负向对照失败：尺子抓不到退回旧写法的版本", negProblems.join(","));
+  const problems = historyProblems(store, main, coord, sheets, manifest, missingCases);
+
+  // 负向对照：五个方向各摘一刀，同一把尺子必须每个都抓到
+  const muts = [
+    [
+      "1 onCreate 不读回历史",
+      (s, m, c, sh, mf, miss) => historyProblems(s, m.replace('startupLines = runCatching { chatStore.load() }.getOrDefault(emptyList())', "/* 旧版：没有这一步 */"), c, sh, mf, miss),
+    ],
+    [
+      "2 用户那句只进内存",
+      (s, m, c, sh, mf, miss) => historyProblems(s, m, c.replace('appendLine(ChatLine("user", text))', "lines.add(ChatLine(\"user\", text))"), sh, mf, miss),
+    ],
+    [
+      "3 助手那句只进内存",
+      (s, m, c, sh, mf, miss) => historyProblems(s, m.replace('TurnCoordinator.appendLine(ChatLine("assistant", assistant, shown.raw))', "lines.add(ChatLine(\"assistant\", assistant, shown.raw))"), c, sh, mf, miss),
+    ],
+    [
+      "4 「清空对话」那行没接出去",
+      (s, m, c, sh, mf, miss) => historyProblems(s, m.replace("onClearChat = { showMenu = false; clearChat() },", ""), c, sh, mf, miss),
+    ],
+    [
+      "5 落盘那一步整个删掉",
+      (s, m, c, sh, mf, miss) => historyProblems(s, m, c.replace("s.save(s.load() + line)", "Unit"), sh, mf, miss),
+    ],
+    [
+      "6 manifest 用 configChanges 遮 recreate",
+      (s, m, c, sh, mf, miss) => historyProblems(s, m, c, sh, mf.replace("<activity", '<activity android:configChanges="orientation|screenSize"'), miss),
+    ],
+  ];
+  const undetected = [];
+  for (const [label, mutate] of muts) {
+    const got = mutate(store, main, coord, sheets, manifest, missingCases);
+    if (!got.length) undetected.push(label);
+  }
+  if (undetected.length) {
+    bad("AB-14 负向对照失败：这些走偏尺子抓不到", undetected.join("；"));
   }
 
   if (problems.length) bad("AB-14 聊天记录还没活过转屏/重开", problems.slice(0, 6).join(" | "));
   else
     ok(
-      "AB-14 对话落盘落地：filesDir 有界 JSON + onCreate 读回 + 两条消息都过 addLine + 「清空对话」接上 clearChat + manifest 没用 configChanges 遮 + 9 条用例真跑（负向对照通过）",
+      "AB-14 对话落盘落地：filesDir 有界 JSON + onCreate 读回 + 用户那句（TurnCoordinator）与助手那句（MainActivity）都过落盘 + 「清空对话」接上 clearChat + manifest 没用 configChanges 遮 + 9 条用例真跑（六组负向对照全抓到）",
     );
 }
 
@@ -943,6 +980,160 @@ if (badge.status !== 0 || !badgeOut) {
   else
     ok(
       "AB-15 草稿落地：chat-draft.txt 在 filesDir（空即删文件）+ onCreate 读回 + ON_PAUSE 存 + 输入同步 + 发送即清，3 条用例真跑（四组负向对照全抓到；「读文件还是读字段」这一跳由源码锚点承担，真机旋转仍是残留）",
+    );
+}
+
+/* AB-16 已经发出去的那一句，回信不许跟着上一屏一起死。
+ *
+ * 来由：AB-14/AB-15 修的都是「屏幕上已有的东西」，剩下最难看的一条在**回合还在路上**的时候：
+ * 整段协程跑在 `rememberCoroutineScope()` 上，那是 composition 的 scope，转屏（recreate）
+ * 取消组合就取消它 —— 请求已经发给桌面大脑了，回信却永远回不来；连「正在等」这个状态都
+ * 跟着死了，发送键重新亮起，用户再按一次，对「发文 / 推群」这类有副作用的动作就是办两遍。
+ *
+ * 修复前红（TurnInFlightRecreationTest 在 HEAD 产品代码上真渲染 + 真 socket 假桌面，
+ * 与终版同一份断言；下面是**摘句**，每条后面的取证串 `假桌面=…` / `屏幕=…` / `盘上=…`
+ * 按位置省掉了，JUnit XML 原文逐字见 docs/design/desktop-target/report.md §8.29②）：
+ *   转个身正在等回信这件事还得看得见：转个身之后屏幕上没有「正在想」（忙状态跟着上一屏死了）
+ *   转个身之后那封回信仍然要上屏：假桌面 收到=1 已放信=是，屏幕上四个取证点只剩用户那句
+ *   转个身之后那封回信还要留在盘上：盘上只有 [{"role":"user",…}] 那一条
+ *   等回信的时候转个身再按发送不许把同一件事发两遍：假桌面收到 2 封（只该收到 1 封）
+ *   消息留住了证据条也得不跟着丢：转个身之后回信要上屏这一条先红，证据条根本等不到
+ *   5 tests completed, 5 failed（复测时只把 MainActivity 换成 HEAD 那一版，TurnCoordinator
+ *   留在原地不调用 —— 连着它一起删，测试类编译不过，那种红不算产品行为的红）
+ *
+ * 三个门禁自己也要防的坑（都写进这条门了）：
+ *   - 假桌面的请求体必须按**字节**读满：句子是中文时 Content-Length（字节）≠ 字符数，
+ *     按字符读会把假桌面自己卡死，四条全红看起来像「产品没修好」。所以每条断言都带
+ *     `server.describe()`，把「假桌面没放信」和「产品没接住」分开。
+ *   - `compose.waitUntil` 用的是虚拟时钟，跨真 socket + 真文件这一跳它看不见（30s 不绿，
+ *     当场 dump 两行都在）；等待换成墙钟轮询 + `compose.waitForIdle()` 才量得到。
+ *   - 第一版「再按发送不许把同一件事发两遍」写的是 `发送键 assertIsNotEnabled`，在 HEAD 上是
+ *     **绿的**（那个键还兼着「输入框空就关着」这条规则）；换成「数假桌面收到几封」才量到红。
+ *     恒真断言宁可不写。
+ *
+ * 诚实边界：Robolectric 的 recreate() 复用同一个 Activity 实例，但这条门盯的是**协程归属**
+ * —— HEAD 在同一个 JVM 里也会被取消，所以那五条红不是靠实例复用蒙出来的。真机旋转是
+ * 新建实例，「回合归进程管、屏幕只是文件的一个视图」这条归属仍要在设备上验一次；
+ * 进程被系统杀掉时没回完的回合就是没回完（本轮不假装能续上），投递证据条也只活在进程里。
+ */
+{
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(HOST, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const coord = read("app/src/main/java/com/bitbot/host/TurnCoordinator.kt");
+  const main = read("app/src/main/java/com/bitbot/host/MainActivity.kt");
+  const manifest = read("app/src/main/AndroidManifest.xml");
+
+  const names = [];
+  {
+    const resDir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+    try {
+      for (const f of fs.readdirSync(resDir)) {
+        if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+        for (const m of fs.readFileSync(path.join(resDir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+          names.push(m[1]);
+        }
+      }
+    } catch {
+      /* 下面按「不在结果里」判红 */
+    }
+  }
+  const wantCases = [
+    /转个身正在等回信这件事还得看得见/,
+    /转个身之后那封回信仍然要上屏/,
+    /转个身之后那封回信还要留在盘上/,
+    /等回信的时候转个身再按发送不许把同一件事发两遍/,
+    /消息留住了证据条也得不跟着丢/,
+  ];
+  const missingCases = wantCases.filter((re) => !names.some((n) => re.test(n)));
+
+  const turnProblems = (c, m, mf, miss) => {
+    const p = [];
+    if (!c) p.push("缺 TurnCoordinator.kt（回合已经不归某一屏管了）");
+    if (!/CoroutineScope\(SupervisorJob\(\) \+ Dispatchers\.Main\.immediate\)/.test(c)) {
+      p.push("回合没有跑在进程级 scope 上（composition 一取消，回信就永远回不来）");
+    }
+    // 注释里引用旧写法是允许的（这一层的来由就得写在文件里），所以只剥掉注释再查代码。
+    const coordCode = c.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    if (/rememberCoroutineScope/.test(coordCode)) p.push("进程级那一层又去拿 composition 的 scope");
+    if (!/inFlight\+\+/.test(c) || !/finally \{\s*inFlight--/.test(c)) {
+      p.push("「还在等回信」不是由那一层管的（异常或提前返回就永久卡在等）");
+    }
+    if (!/save\(s\.load\(\) \+ line\)[\s\S]{0,120}revision\+\+/.test(c)) {
+      p.push("落盘之后没有通知屏幕重读（屏幕与盘会分叉）");
+    }
+    if (m && !/TurnCoordinator\.bind\(this\)/.test(m)) p.push("onCreate 没把落盘那一层接上");
+    if (m && !/TurnCoordinator\.submitTurn\(/.test(m)) p.push("发送还是走 composition 的 scope.launch");
+    if (m && /var busy by remember \{ mutableStateOf\(false\) \}/.test(m)) {
+      p.push("busy 又回到 composition 里（转屏后「正在等」消失，用户会再按一次）");
+    }
+    if (m && !/val busy = TurnCoordinator\.busy/.test(m)) p.push("屏幕读的忙状态不是进程级那一份");
+    if (m && /var delivery by remember \{ mutableStateOf\(SendToUserSurface\.Summary\(\)\) \}/.test(m)) {
+      p.push("证据条又回到 composition 里（消息留着、证据条没了是自相矛盾）");
+    }
+    if (m && !/val delivery = TurnCoordinator\.delivery/.test(m)) p.push("屏幕读的证据不是进程级那一份");
+    if (m && !/LaunchedEffect\(revision\)/.test(m)) p.push("屏幕不再按版本号从文件重读");
+    if (m && !/TurnCoordinator\.askPermissions\(/.test(m)) p.push("桌面要问的权限没有在回合里收下");
+    if (m && !/takePendingPermissions\(\)/.test(m)) p.push("转屏回来没人补问权限（等于静默吞掉）");
+    if (m && !/TurnCoordinator\.clearAll\(\)/.test(m)) p.push("「清空对话」没接到那一层（只清这一屏的列表）");
+    if (/android:configChanges="[^"]*orientation/.test(mf)) {
+      p.push("manifest 用 configChanges 遮掉了 recreate（掩盖问题，不是解决）");
+    }
+    if (miss.length) p.push("用例不在结果里: " + miss.map(String).join(","));
+    return p;
+  };
+
+  const problems = turnProblems(coord, main, manifest, missingCases);
+
+  // 负向对照：七个方向逐个摘，同一把尺子必须每个都抓到
+  const muts = [
+    [
+      "1 回合换回 composition 的 scope",
+      (c, m, mf, miss) =>
+        turnProblems(c.replace("CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)", "rememberCoroutineScope()"), m, mf, miss),
+    ],
+    [
+      "2 落盘后不通知屏幕重读",
+      (c, m, mf, miss) => turnProblems(c.replace("    revision++", "    // 不通知"), m, mf, miss),
+    ],
+    [
+      "3 busy 退回 composition",
+      (c, m, mf, miss) => turnProblems(c, m.replace("val busy = TurnCoordinator.busy", "var busy by remember { mutableStateOf(false) }"), mf, miss),
+    ],
+    [
+      "4 证据条退回 composition",
+      (c, m, mf, miss) =>
+        turnProblems(c, m.replace("val delivery = TurnCoordinator.delivery", "var delivery by remember { mutableStateOf(SendToUserSurface.Summary()) }"), mf, miss),
+    ],
+    [
+      "5 屏幕不再按 revision 重读",
+      (c, m, mf, miss) => turnProblems(c, m.replace("LaunchedEffect(revision)", "LaunchedEffect(Unit /* 只看一次 */)"), mf, miss),
+    ],
+    [
+      "6 发送换回 scope.launch",
+      (c, m, mf, miss) =>
+        turnProblems(c, m.replace('TurnCoordinator.submitTurn(machineKind = "android", text = trimmed) { body ->', "scope.launch { { body ->"), mf, miss),
+    ],
+    [
+      "7 权限不补问（静默吞掉）",
+      (c, m, mf, miss) => turnProblems(c, m.replace("val need = TurnCoordinator.takePendingPermissions()", "val need = emptyList<String>()"), mf, miss),
+    ],
+  ];
+  const undetected = [];
+  for (const [label, mutate] of muts) {
+    const got = mutate(coord, main, manifest, missingCases);
+    if (!got.length) undetected.push(label);
+  }
+  if (undetected.length) bad("AB-16 负向对照失败：这些走偏尺子抓不到", undetected.join("；"));
+
+  if (problems.length) bad("AB-16 还在路上的回信仍然会被转屏吃掉", problems.slice(0, 8).join(" | "));
+  else
+    ok(
+      "AB-16 回合不再归某一屏管：进程级 scope + inFlight/delivery 存在那一层 + 落盘后按 revision 重读 + 转屏回来补问权限 + 5 条用例真跑（七组负向对照全抓到；真机旋转与进程被杀仍是残留）",
     );
 }
 

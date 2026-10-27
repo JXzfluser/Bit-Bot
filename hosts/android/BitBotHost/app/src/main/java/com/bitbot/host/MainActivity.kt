@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,8 +32,6 @@ import com.bitbot.host.ui.PairingSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -42,8 +41,10 @@ import kotlinx.coroutines.withContext
  * turn 走 ADR 0008 的 bearer，MoonBit (`cmd/desktop_turn`) → Host `llm_chat` (ADR 0005)；
  * 状态与真流程留在这个文件里，画的东西全在 ui/ 包，
  * 于是 UI 第一次可以在 JVM 上被真渲染、真断言（见 UiDesignSystemTest）。
- * 后来补的只有两类：回执呈现层交给 HostReply（见 §8.23），对话历史落到本机 filesDir
- * 并且能在菜单里清掉（见 ChatHistoryStore 与 §8.27）——协议与 store 形状都没动。
+ * 后来补的只有三类：回执呈现层交给 HostReply（见 §8.23），对话历史落到本机 filesDir
+ * 并且能在菜单里清掉（见 ChatHistoryStore 与 §8.27），没发出去的半稿走同一份盘（§8.28）；
+ * 而「发出去之后正在等回信」这件事本身不再属于某一屏，交给 TurnCoordinator（§8.29）——
+ * 协议、store 形状与 /v1/turn 的 JSON 都没动。
  */
 class MainActivity : ComponentActivity() {
   private val permissionLauncher =
@@ -51,9 +52,6 @@ class MainActivity : ComponentActivity() {
 
   /** 聊天历史的本机落盘（filesDir 下一个有界 JSON，见 ChatHistoryStore）。 */
   private val chatStore by lazy { ChatHistoryStore(this) }
-
-  /** 落盘要串起来：一条 turn 会写两次快照，清空是另一条协程，两处各写各的会互相盖掉。 */
-  private val chatSaveLock = Mutex()
 
   /** onCreate 一次性读回来的历史；不放进 Composable 里现读文件。 */
   private var startupLines: List<ChatLine> = emptyList()
@@ -81,6 +79,8 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     TurnBridge.bind(this)
+    // 回合本身活在进程级的那一层（转屏取消 composition 不该取消已经在路上的这一回合）。
+    TurnCoordinator.bind(this)
     // 转屏 / 进程被杀重开之前打过的那句话得回到屏幕上。读不出就是没有历史，
     // 不抛也不猜（ChatHistoryStore 的失败语义）。
     startupLines = runCatching { chatStore.load() }.getOrDefault(emptyList())
@@ -111,8 +111,10 @@ class MainActivity : ComponentActivity() {
     // 上一次留下的对话要回到这一屏：remember 只活过一次组合，转屏就没了，
     // 所以初始值来自 onCreate 读回来的文件（见 ChatHistoryStore）。
     val lines = remember { mutableStateListOf<ChatLine>().also { it.addAll(startupLines) } }
-    var busy by remember { mutableStateOf(false) }
-    var delivery by remember { mutableStateOf(SendToUserSurface.Summary()) }
+    // 「正在等回信」与「这句真的发到哪儿了」都存在进程级那一层：转屏取消了这一屏，
+    // 不该把这两件事一起取消（旧代码里它们是 remember 的，recreate 之后回不来）。
+    val busy = TurnCoordinator.busy
+    val delivery = TurnCoordinator.delivery
     var paired by remember { mutableStateOf(pairedNow()) }
     var hostLabel by remember { mutableStateOf(hostLabelNow()) }
     var showMenu by remember { mutableStateOf(false) }
@@ -121,7 +123,6 @@ class MainActivity : ComponentActivity() {
     var showPairing by remember { mutableStateOf(false) }
     var hostDraft by remember { mutableStateOf(TurnBridge.hostUrl().orEmpty()) }
     var tokenDraft by remember { mutableStateOf(TurnBridge.turnToken().orEmpty()) }
-    val scope = rememberCoroutineScope()
 
     fun refreshPairing() {
       paired = pairedNow()
@@ -129,26 +130,31 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 上屏 + 落盘，一次一条。落盘走 IO 线程，写失败不改屏幕上的事实：
-     * 用户那句话已经发出去了，不能因为一个文件写不进去就当它没发生。
+     * 屏幕上的对话是文件的一个视图：回合每落一批（revision 变了）就重读一次，
+     * 而不是由某一屏自己攒一份 —— 攒的那份会随 composition 死掉，而落盘的那份不会。
+     * 读放在 IO 线程，不在组合里现读文件。
      */
-    suspend fun addLine(line: ChatLine) {
-      lines.add(line)
-      val snapshot = lines.toList()
-      withContext(Dispatchers.IO) {
-        chatSaveLock.withLock { chatStore.save(snapshot) }
-      }
+    val revision = TurnCoordinator.revision
+    LaunchedEffect(revision) {
+      val snapshot =
+        withContext(Dispatchers.IO) { runCatching { chatStore.load() }.getOrDefault(emptyList()) }
+      lines.clear()
+      lines.addAll(snapshot)
+    }
+
+    /**
+     * 桌面中途要问的权限：转屏的时候人不一定在屏幕上，旧代码那一句 launch 会连着
+     * composition 一起被取消，等于静默吞掉这次请求。攒到进程级那一层，新组合起来再问。
+     */
+    val permissionGeneration = TurnCoordinator.permissionGeneration
+    LaunchedEffect(permissionGeneration) {
+      val need = TurnCoordinator.takePendingPermissions()
+      if (need.isNotEmpty()) permissionLauncher.launch(need.toTypedArray())
     }
 
     /** 「清空对话」：屏幕与盘一起清，只清一个的话转个身旧话又回来了。 */
     fun clearChat() {
-      scope.launch {
-        withContext(Dispatchers.IO) {
-          chatSaveLock.withLock { chatStore.save(emptyList()) }
-        }
-        lines.clear()
-        delivery = SendToUserSurface.Summary()
-      }
+      TurnCoordinator.clearAll()
     }
 
     fun openCredentials() {
@@ -161,29 +167,16 @@ class MainActivity : ComponentActivity() {
     fun runProductTurn(text: String) {
       val trimmed = text.trim()
       if (trimmed.isEmpty()) return
-      scope.launch {
-        busy = true
-        input = ""
-        // 交出去了就不再是草稿：立刻清盘（等 ON_PAUSE 再清的话，中途被系统回收会把
-        // 已发送的这句又摆回输入框，用户会再按一次发送）。
-        draftNow = ""
-        chatStore.saveDraft("")
-        addLine(ChatLine("user", trimmed))
-        val result =
-          withContext(Dispatchers.IO) {
-            runCatching { TurnBridge.runTurn(trimmed, machineKind = "android") }
-          }
-        val body =
-          result.fold(
-            onSuccess = { it },
-            onFailure = { "! ${it.message}" },
-          )
+      input = ""
+      // 交出去了就不再是草稿：立刻清盘（等 ON_PAUSE 再清的话，中途被系统回收会把
+      // 已发送的这句又摆回输入框，用户会再按一次发送）。
+      draftNow = ""
+      chatStore.saveDraft("")
+      // 回合交出去之后就不再属于这一屏了：谁在不在屏幕上，都不该决定这封回信回不回得来。
+      TurnCoordinator.submitTurn(machineKind = "android", text = trimmed) { body ->
         val cards = DevicePermissionHost.cardsFromTurnJson(this@MainActivity, body)
-        val need = cards.mapNotNull { it.androidPermission }.distinct().toTypedArray()
-        if (need.isNotEmpty()) {
-          permissionLauncher.launch(need)
-        }
-        delivery = SendToUserSurface.extract(body)
+        TurnCoordinator.askPermissions(cards.mapNotNull { it.androidPermission }.distinct())
+        TurnCoordinator.recordDelivery(SendToUserSurface.extract(body))
         // 内核回的是给机器看的事实（围栏 JSON、绝对路径、变量名）。手机上默认读人话，
         // 原文留一处展开 —— 呈现层做翻译，不改 /v1/turn 的形状。
         val shown = HostReply.display(body)
@@ -193,8 +186,7 @@ class MainActivity : ComponentActivity() {
             TurnBridge.failureText(body)
               ?: "桌面大脑没有返回可见回复（HTTP 正常，但 assistant 文本为空）"
           )
-        addLine(ChatLine("assistant", assistant, shown.raw))
-        busy = false
+        TurnCoordinator.appendLine(ChatLine("assistant", assistant, shown.raw))
       }
     }
 

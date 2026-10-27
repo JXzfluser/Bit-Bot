@@ -1764,13 +1764,16 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
       && ok "G-47 内核回放在手机上说人话：MainActivity 把 /v1/turn 回包交给 HostReply.display、8 个 fixture 校验为真内核回包、6 条摘要/屏幕用例在结果里（含「认不得的 kind 不许编摘要」）、AB-13 带负向对照" \
       || bad "G-47 AB-13 anchor missing"
     grep -q "AB-14 对话落盘落地" /tmp/g47-build.log \
-      && ok "G-47 聊天记录活过转屏与重开：ChatHistoryStore 落在 filesDir（不是外部存储）且有界、onCreate 读回来、两条消息都过 addLine、「清空对话」在菜单里并接到 clearChat、manifest 没用 configChanges 遮 recreate、9 条用例（CP-01..05 真渲染 + HS-01..04 那一层的边界）在结果里、AB-14 带负向对照" \
+      && ok "G-47 聊天记录活过转屏与重开：ChatHistoryStore 落在 filesDir（不是外部存储）且有界、onCreate 读回来并喂进首屏、用户那句（TurnCoordinator）与助手那句（MainActivity）都过落盘、「清空对话」在菜单里并接到 clearChat、manifest 没用 configChanges 遮 recreate、9 条用例（CP-01..05 真渲染 + HS-01..04 那一层的边界）在结果里、AB-14 带负向对照" \
       || bad "G-47 AB-14 anchor missing"
     grep -q "AB-15 草稿落地" /tmp/g47-build.log \
       && ok "G-47 没发出去的半稿也不许被转屏吃掉：chat-draft.txt 单独一个文件在 filesDir（空即删）、onCreate 读回、ON_PAUSE 存、输入同步、发送立刻清，3 条用例（DF-01..03）在结果里、AB-15 带四组负向对照" \
       || bad "G-47 AB-15 anchor missing"
-    grep -q "AB-06 JVM 单测真跑：121 用例 0 失败" /tmp/g47-build.log \
-      && ok "G-47 用例数如实涨到 121（对话落盘 +9、草稿 +3），且 0 失败不是空跑" \
+    grep -q "AB-16 回合不再归某一屏管" /tmp/g47-build.log \
+      && ok "G-47 还在路上的回信不跟着上一屏死：协程挪到进程级 TurnCoordinator（SupervisorJob + Main.immediate）、busy/delivery 由那一层管、落盘后 revision++ 让屏幕重读文件、转屏回来补问权限、发送走 submitTurn，5 条用例（TF-01..05）在结果里、AB-16 带七组负向对照" \
+      || bad "G-47 AB-16 anchor missing"
+    grep -q "AB-06 JVM 单测真跑：126 用例 0 失败" /tmp/g47-build.log \
+      && ok "G-47 用例数如实涨到 126（对话落盘 +9、草稿 +3、在路上的回合 +5），且 0 失败不是空跑" \
       || bad "G-47 AB-06 用例数与本轮不符（见 /tmp/g47-build.log）"
   fi
 else
@@ -1817,6 +1820,38 @@ echo "       DF03 在未实现代码上「红」了 —— 原因不对；改成
 echo "  · G-47 AB-15 的四组负向对照（都在源码层面真换一遍，同一把尺子必须每个都抓到）："
 echo "      去掉 onCreate 的 loadDraft / 去掉 ON_PAUSE 的存盘 / 去掉发送后的清草稿 /"
 echo "      草稿改放 getExternalFilesDir —— 四种走偏各被点名，抓不到即 AB-15 判红"
+echo "  · G-47 修复前红（还在路上的回合，TurnInFlightRecreationTest 在 HEAD 产品代码上真渲染 +"
+echo "    真 socket 假桌面，与终版同一份断言，5 tests completed, 5 failed；JUnit XML 逐字原文见"
+echo "    report.md §8.29②，下面五条按用例名给摘句）："
+echo "      「转个身正在等回信这件事还得看得见」→ 屏幕上没有「正在想」（忙状态跟着上一屏死了）"
+echo "      「转个身之后那封回信仍然要上屏」→ 假桌面=收到=1 已放信=是，屏幕上只剩用户那句"
+echo "      「转个身之后那封回信还要留在盘上」→ 盘上只有 [{\"role\":\"user\",…}] 那一条"
+echo "      「等回信的时候转个身再按发送不许把同一件事发两遍」→ 假桌面收到 2 封（只该 1 封）"
+echo "      「消息留住了证据条也得不跟着丢」→ 回信这一条先红，证据条根本等不到"
+echo "  · G-47 这一轮门禁自己差点骗过人的三个地方（都记进 AB-16 的注释了）："
+echo "      假桌面按字符读 Content-Length —— 中文句子字节数≠字符数，假桌面自己卡死，"
+echo "      四条红看起来像「产品没修好」；改成按字节读满 + 每条断言带 server.describe() 之后，"
+echo "      「假桌面没放信」与「产品没接住」才分得开"
+echo "      compose.waitUntil 走的是虚拟时钟，跨真 socket + 真文件的这一跳它看不见（30s 不绿、"
+echo "      当场 dump 却两行都在）；改成墙钟轮询 + waitForIdle() 才是这条断言真正在等的东西"
+echo "      「…再按发送不许把同一件事发两遍」第一版断「再按发送时键是关着的」，在 HEAD 上居然绿了"
+echo "      （按下那一刻请求还没落地）；换成「数假桌面收到几封」才量到红 —— 恒真断言宁可不写"
+echo "  · G-47 AB-16 的七组负向对照（源码层面真换一遍，同一把尺子必须每个都抓到）："
+echo "      回合换回 rememberCoroutineScope / 落盘后不 revision++ / busy 退回 composition /"
+echo "      证据条退回 composition / 屏幕不按 revision 重读 / 发送换回 scope.launch /"
+echo "      权限不补问（静默吞掉）—— 七种走偏各被点名，抓不到即 AB-16 判红"
+echo "  · G-47 本轮的取证边界（诚实）：Robolectric 的 recreate() 复用同一个 Activity 实例，"
+echo "    所以这条门盯的不是「实例有没有换」而是「协程归谁管」—— HEAD 在同一个 JVM 里也会被"
+echo "    取消组合拖死，那五条红不是靠实例复用蒙出来的；真机旋转是新建实例，「回合归进程管、"
+echo "    屏幕只是文件的一个视图」这条归属仍要在设备上验一次；进程被系统杀掉时没回完的回合"
+echo "    就是没回完（本轮不假装能续上），投递证据条（SendToUser:*）也只活在进程里"
+echo "  · G-47 AB-14 的尺子这一轮也被收紧过一次（第一次跑门跑出来的红，不是事后修饰）："
+echo "      负向对照 1「onCreate 不读回历史」原本抓不到 —— 断言写的是 chatStore.load()，"
+echo "      而本轮 MainActivity 里它出现两次（onCreate 读回 + revision 重读），摘掉一处另一处"
+echo "      仍把它喂饱；改成钉死 startupLines = runCatching { chatStore.load() } 并补一条"
+echo "      「读回来还得喂进首屏」（addAll(startupLines)）才真量到 —— 能被两处喂饱的尺子不算尺子"
+echo "  · G-47 AB-16 第一次跑门把**正确代码**判红了：整文件正则撞上 TurnCoordinator 的 KDoc，"
+echo "    注释里引用 rememberCoroutineScope() 是这一层的来由，不该算走偏；改成剥掉注释再查代码"
 echo "  · G-47 一条写明白的取证边界：Robolectric 的 recreate() 复用同一个 Activity 实例，"
 echo "    「屏幕上的草稿是从盘上读的还是从实例字段留下的」在语义树里分不出来 —— 只挂字段也能"
 echo "    让 DF01/DF02 绿，而真机旋转是新建实例、那种写法照样丢。所以这一跳由 AB-15 的源码锚点"
