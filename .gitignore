@@ -22,6 +22,10 @@ agent-tools/
 /data/**/*.jsonl
 /data/**/*.ics
 /data/**/*.eml
+# data/routines/bitbot-routine-daemon.service 是 scripts/host_routine_daemon.sh 用 sed
+# 从 scripts/*.example 生成的本机路径产物（WorkingDirectory/ExecStart 里是绝对路径）。
+# 跟踪它 = 每台跑过守护的机器都会把别人的绝对路径带进 diff，所以按生成物处理。
+/data/routines/*.service
 /data/**/*.html
 *.bitbot-plan.md
 *.bitbot-applied.json

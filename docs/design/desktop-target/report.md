@@ -877,3 +877,72 @@ e2e_desktop_cn_secret_inputs: PASS=5 FAIL=1 SKIP=0
 
 前五条仍然绿 —— 说明 CN-SEC-06 断的确实是「值能不能接到写盘」这一件事，不是被别处顺带撞红的。
 改回原样后 `PASS=6 FAIL=0`，`grep -c '\[data-secret-key\]'` 在页面里回到 1 处（就是那个收集器）。
+
+## 8.25 两道「验收标准本身」的门，此前没有任何聚合门跑过它们
+
+**① 这一条不是产品缺陷，是门禁的缺陷——但它直接决定产品结论可不可信。** 本项目立的验收标准
+只有一句话：「用户在真实 Electron / 真机里能否走通」。把它写成断言的有两道门：
+
+- `scripts/e2e_desktop_user_journeys.mjs`（J1–J4：两个 Bot 私聊各按各的职责、自然语言一句话
+  真建群、群里 @ 两个 Bot 各说各的且答得出全成员名单、两个都成功才 2/2 一个失败就如实 1/2、
+  繁简语言与 provider 切换真的打对应密钥）——**63 项断言**；
+- `scripts/e2e_desktop_creator_pipeline.mjs`（P1–P12：博主那条日更真链——搜集 / 编辑 / 审核三个岗
+  真跑完出成稿、群里一句「每天早上9点发到 news@example.com」落成 `0 9 * * *` 且墙钟 09:00、
+  过密排程如实拒绝、到期只备草稿不自动发、进待批准队列、未批准 `no_grant`、批准之后才真的出信、
+  面板暂停/继续/两下删除都管得住、群里说出来的排程归属本群）——**30 项断言**。
+
+登记之前，全仓库对这两道门的引用是 0 处：
+
+```
+$ grep -rn "e2e_desktop_user_journeys\|e2e_desktop_creator_pipeline" --include=*.sh .
+（无输出）
+$ grep -rln "e2e_desktop_user_journeys" . | grep -v node_modules
+./scripts/e2e_desktop_user_journeys.mjs        ← 只有它自己
+```
+
+它们既不在 `smoke_grok_desktop_parity.sh` 里，也不在任何 workflow 里。也就是说：J1–J4、P1–P12
+任何一条被后续改动打坏，矩阵与 CI 都会**照样全绿**——「有门禁」和「门禁被跑」是两件事，
+这正是 G-46 那条已经写过的道理（不在矩阵里的门禁等于没有门禁），只是这次漏掉的恰好是最要命的两条。
+换句话说，本轮之前我拿来说「日更场景跑通了」的证据，靠的是手动跑一次；这个结论没有守护。
+
+**② 修了什么。** 把它们接进矩阵，成为 **G-53**：串行跑两道门（各自 `pkill` 清场、
+`timeout 900 / 1200`），并且给两侧各钉一组 anchor——不是钉「exit 0」，而是钉**红线确实在输出里**：
+
+| 侧 | anchor（必须出现在门自己的输出里） |
+| --- | --- |
+| J | 「J1 私聊可见区无调试行」「同群也不共享人设」「如实 partial 1/2」「重启后仍是繁体」 |
+| P | 「P2 一次布置、三个 Bot 分工跑完」「cron=0 9 \* \* \*」「P6 到期只备好草稿」「P7 批准后真的发出」 |
+
+`g53_run` 的判定顺序特意先查 `PASS=0 FAIL=0 SKIP=1` 再谈绿：门自报环境不足（缺 moon / 缺显示）时
+只打印 skip，**不计入 ok**。这条如果写反了，一台没装 moon 的机器就能给出「旅程全绿」的假结论。
+
+**③ 尺子自证（新逻辑自己也得能被证伪）。** 用两个假门跑同一段判定代码：一个 `exit 1`
+（`PASS=1 FAIL=1`），一个打印 `PASS=0 FAIL=0 SKIP=1` 后 `exit 0`。结果
+`BAD | G-53 fake_red（… PASS=1 FAIL=1 …）`、`skip| fake_green_skip 自报环境不足（…）— SKIP ≠ PASS`，
+且 `PASS=0` —— 红真的判红、skip 真的没算成绿。这属于矩阵接线的新负向对照：它验的是 G-53 会不会说谎，
+不是产品会不会错。
+
+**④ 数字（本轮真实跑出来的）。** `e2e_desktop_user_journeys` **PASS=63 FAIL=0**、
+`e2e_desktop_creator_pipeline` **PASS=30 FAIL=0**，两道门各跑约 2 分钟 / 5 分钟。
+加进矩阵后，`smoke_grok_desktop_parity` **PASS=371 → 375、FAIL=0**（G-53 贡献 4 项：两道门各一条
+全绿 + 两侧 anchor 各一条），全程 **0 条 skip**；G-52（加签 / 回调密钥进界面）与 G-53 一起进来；
+`prove_report_history_intact` 7/7。
+跑完 `git status` 里 `data/` 只剩那条早已存在的 `bitbot-routine-daemon.service` 本机路径改动——
+两道门的快照-还原没把别的行留在盘上（这条脏状态本身见 ⑥）。
+
+**⑤ 这两道门各自仍然验不到的（诚实）。** 「定时推邮箱」验到的是 app 真的生成一封带收件人与稿件正文的
+信（`host_mail_send` 落 `data/mail/sends/send-*.json`），**不是**投进真实邮箱——真 SMTP / 真实
+钉钉群 / 真实飞书机器人的投递仍未验；这也是 G-51/G-52 同一层残留。J 侧的「串味」判定靠本地 stub
+provider 回显，不等于真实模型不会串。G-53 自己没有再套一层负向对照（门内部 P5 拒绝过密排程、
+P7 未批准 `no_grant` 这类「产品变宽松就会红」的断言承担了这个角色）。
+
+**⑥ 顺带修掉一条一直在脏工作区的仓库卫生问题。** `data/routines/bitbot-routine-daemon.service`
+在工作区里一直带着一条「本机路径改动」：它是 `scripts/host_routine_daemon.sh:52-58` 用
+`sed "s|/workspace|$ROOT|g"` 从**已跟踪的模板** `scripts/bitbot-routine-daemon.service.example`
+生成的产物（`WorkingDirectory=` / `ExecStart=` 里是绝对路径），却被当作源文件跟踪着——
+仓库里那份写着另一台机器的 `/Users/zfl/Downloads/bitbot`，任何跑过守护的机器都会让它变脏，
+而顺手 `git add -A` 就等于把一台机器的绝对路径提交进仓库。本轮按生成物处理：
+`.gitignore` 加 `/data/routines/*.service`（与既有的 `/data/**/*.json` 同一类），
+`git rm --cached` 取消跟踪，**文件仍在盘上**（`os.path.isfile` 与 `daemon-status.json` 的
+`systemd_unit_path` 两条既有断言照旧成立，已实测）。模板与生成逻辑一个字没动，
+新克隆的人跑一次守护脚本就会拿到自己机器上的那一份。

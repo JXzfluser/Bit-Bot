@@ -1924,6 +1924,59 @@ else
   echo "  · skip：缺 playwright-core 或 electron，G-52 未跑（SKIP ≠ PASS）"
 fi
 
+echo "== G-53 用户旅程验收门真的被跑（J1–J4 多 Bot 各岗 / P1–P12 自媒体日更真链）=="
+# 这两道门写的是本项目的**验收标准本身**（「真实 Electron 里走不走得通」），可它们此前不在任何
+# 聚合门里：`grep -rn "e2e_desktop_user_journeys\|e2e_desktop_creator_pipeline" scripts/*.sh`
+# 在登记前是 0 命中 —— 门禁存在但没人跑，等于没有门禁；J/P 任何一条被改坏，矩阵照样全绿。
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g53_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g53_xvfb=(xvfb-run -a)
+  fi
+  g53_run() {
+    local name="$1" log="$2" tmo="$3"
+    pkill -9 -f "dist/[e]lectron" 2>/dev/null
+    sleep 1
+    if timeout "$tmo" "${g53_xvfb[@]}" node "scripts/${name}.mjs" >"$log" 2>&1; then
+      if grep -q "PASS=0 FAIL=0 SKIP=1" "$log"; then
+        echo "  · skip：${name} 自报环境不足（$(grep -m1 'SKIP —' "$log" || echo '未给出原因')）— SKIP ≠ PASS"
+        return 0
+      fi
+      ok "G-53 ${name} 全绿（$(grep -c '✓' "$log") 项，$(grep -m1 'PASS=' "$log")）"
+    else
+      bad "G-53 ${name}（见 ${log}；$(grep -m1 'PASS=' "$log" || tail -1 "$log")）"
+    fi
+  }
+  g53_run e2e_desktop_user_journeys /tmp/g53-journeys.log 900
+  g53_run e2e_desktop_creator_pipeline /tmp/g53-creator.log 1200
+
+  if [ -s /tmp/g53-journeys.log ]; then
+    grep -q "J1 私聊可见区无调试行" /tmp/g53-journeys.log \
+      && grep -q "同群也不共享人设" /tmp/g53-journeys.log \
+      && grep -q "如实 partial 1/2" /tmp/g53-journeys.log \
+      && grep -q "重启后仍是繁体" /tmp/g53-journeys.log \
+      && ok "G-53 J 侧锚点在：私聊不串人设 / 同群各用各的职责 / 一个失败就如实 partial / 语言与 provider 切换都真生效" \
+      || bad "G-53 journeys anchors missing（门跑了但关键红线没出现在输出里）"
+  fi
+  if [ -s /tmp/g53-creator.log ]; then
+    grep -q "P2 一次布置、三个 Bot 分工跑完" /tmp/g53-creator.log \
+      && grep -q "cron=0 9 \* \* \*" /tmp/g53-creator.log \
+      && grep -q "P6 到期只备好草稿" /tmp/g53-creator.log \
+      && grep -q "P7 批准后真的发出" /tmp/g53-creator.log \
+      && ok "G-53 P 侧锚点在：三个岗真跑完 / 中文排程落成 09:00 墙钟 / 未批准不外发 / 批准后才真出信" \
+      || bad "G-53 creator anchors missing（门跑了但日更链路的关键红线没出现在输出里）"
+  fi
+  echo "  · G-53 修复前红（结构性，不是产品数字）：这两道门在登记前 0 处被引用——"
+  echo "    本轮把它们接进矩阵，并把 J 侧 63 项、P 侧 30 项的真实全绿第一次变成矩阵的一部分"
+  echo "  · G-53 说明：这两道门跑在仓库真实的 data/ 上，靠自己的快照-还原只回收本轮 GP155/UJ 前缀的行；"
+  echo "    历史行、用户数据不动（矩阵跑完 git status 里 data/ 不该多出内容）"
+  echo "  · G-53 残留（诚实）：G-53 自己不带负向对照（P5 拒绝过密排程、P7 未批准 no_grant 那类"
+  echo "    「产品变宽松就会红」的断言算在门内部）；「定时推邮箱」验到的是 app 真生成一封带收件人"
+  echo "    与稿件正文的信（host_mail_send 落 data/mail/sends），不是投递进真实邮箱 —— 真 SMTP 投递仍未验"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-53 未跑（SKIP ≠ PASS）"
+fi
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
