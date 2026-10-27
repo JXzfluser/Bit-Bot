@@ -2866,3 +2866,22 @@ body.grok-ui .ca-meta:empty { display: none; }
   margin: var(--space-2) 0 0;
   line-height: 1.5;
 }
+
+/* 国内渠道凭证卡：字段级红字 + 状态/下一步说明。
+   为什么不写行内：视觉契约门（e2e_desktop_token_parity TP-04）按 el.style 的
+   **属性名**计数，行内 font 简写哪怕值是 var() 也算一处字面字号 —— 只有 class 真的收敛。
+   配套断言：e2e_desktop_cn_channel_guard CN-07（computed 字号必须等于 --text-sm）。 */
+body.grok-ui .st-field-error {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--danger);
+}
+body.grok-ui .st-field-error[hidden] { display: none; }
+body.grok-ui .cn-hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--muted);
+}

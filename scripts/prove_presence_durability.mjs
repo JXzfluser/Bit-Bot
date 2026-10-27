@@ -16,6 +16,11 @@
  *   PD-02 并发写期间，读者每一次读都要拿到可 parse 的完整 JSON（不许空窗、不许半截）
  *   PD-03 文件已经被写坏时，下一次记录要能重建，而不是继续叠加坏数据
  *   PD-04 记证据不许改内核花名册：不新增机器、不动 id/kind（回归护栏）
+ *   PD-05 拿锁进程被杀掉后，下一次回合要能把锁夺回来（否则设备永久钉在离线）
+ *   PD-06 「慢但还活着」的持锁者不许被抢锁 —— 只看时间年龄会在高负载下偷走
+ *          正在写的进程的锁，两个进程同时读-改-写 = 丢证据，而且两边都以为自己成功
+ *   PD-07 释放锁只能释放自己的锁 —— 被判定为死的进程醒来时，不许把新主人的
+ *          锁删掉（那等于把第三个进程放进同一个临界区）
  *
  * 跑法：node scripts/prove_presence_durability.mjs（纯 Node，不需要 Electron / moon）
  */
@@ -213,6 +218,122 @@ if (stuck.status !== 0) {
   bad("PD-05 跑完之后目录里留着锁/临时文件（下一次回合要先扫一遍才能写）", leftovers.join(","));
 } else {
   ok("PD-05 拿锁进程被杀掉后，下一次回合能把锁夺回来继续记账，且不留临时文件");
+}
+
+/* ---------- PD-06 「慢但还活着」的持锁者不许被抢锁 ---------- *
+ * 旧实现只看锁目录的年龄（>5s 就当作死锁抢过来）。高负载下（整条矩阵在跑的时候）
+ * 一个正在读-改-写的进程完全可能超过 5 秒还没写完，于是第二个进程抢锁进临界区，
+ * 两边同时读同一份旧内容再各自整行写回 —— 证据丢了，而两个进程都以为成功。
+ * 227e4ed 那轮矩阵里 PD-01 就是这样偶发丢 2/12 条、且子进程零报错。
+ */
+const root6 = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-presence-live-"));
+const file6 = presence.presenceFile(root6);
+const HOLD_MS = 6000; // 必须大于 LOCK_STALE_MS(5000)，才能证明「只看年龄」会误判
+const HOLDER_CODE =
+  "const p=require(process.argv[1]);const fs=require('fs');const path=require('path');" +
+  "const f=p.presenceFile(process.argv[2]);" +
+  "fs.mkdirSync(path.dirname(f),{recursive:true});" +
+  "let ac=0,rel=0;" +
+  "p.withPresenceLock(f,function(){ac=Date.now();" +
+  "require('child_process').spawnSync('sleep',[String(Number(process.argv[3])/1000)]);});" +
+  "rel=Date.now();" +
+  "process.stdout.write(JSON.stringify({acquired_at:ac,released_at:rel}));";
+const WAITER_CODE =
+  "const p=require(process.argv[1]);const fs=require('fs');const path=require('path');" +
+  "const f=p.presenceFile(process.argv[2]);" +
+  "fs.mkdirSync(path.dirname(f),{recursive:true});" +
+  "const st=Date.now();let ac=0;" +
+  "p.withPresenceLock(f,function(){ac=Date.now();});" +
+  "process.stdout.write(JSON.stringify({started_at:st,acquired_at:ac}));";
+
+const holder = (() => {
+  const h = spawn(process.execPath, ["-e", HOLDER_CODE, MODULE, root6, String(HOLD_MS)], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  h.stdout.on("data", (b) => (out += String(b)));
+  h.stderr.on("data", (b) => (out += "[err]" + String(b)));
+  return new Promise((res) => h.on("exit", (code) => res({ code, out })));
+})();
+await new Promise((r) => setTimeout(r, 400));
+const waiter = await new Promise((res) => {
+  const w = spawn(process.execPath, ["-e", WAITER_CODE, MODULE, root6], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, BITBOT_PRESENCE_LOCK_MS: "20000" },
+  });
+  let out = "";
+  w.stdout.on("data", (b) => (out += String(b)));
+  w.stderr.on("data", (b) => (out += "[err]" + String(b)));
+  w.on("exit", (code) => res({ code, out }));
+});
+const h6 = await holder;
+const ho = (() => { try { return JSON.parse(h6.out); } catch { return null; } })();
+const wo = (() => { try { return JSON.parse(waiter.out); } catch { return null; } })();
+const leftover6 = (() => {
+  try { return fs.readdirSync(path.dirname(file6)).filter((f) => /\.lock$|\.tmp$/.test(f)); } catch (_e) { return ["readdir 失败"]; }
+})();
+if (!ho || !wo) {
+  bad("PD-06 夹具没跑出可比的时间戳（这条不算验过）", JSON.stringify({ holder: h6.out.slice(0, 160), waiter: waiter.out.slice(0, 160) }));
+} else if (h6.code !== 0 || waiter.code !== 0) {
+  bad("PD-06 持锁/等锁的进程非零退出（等锁的那个大概是超时放弃了记账）", JSON.stringify({ holderExit: h6.code, waiterExit: waiter.code, waiter: waiter.out.slice(0, 160) }));
+} else if (ho.released_at - ho.acquired_at < HOLD_MS - 500) {
+  bad("PD-06 夹具本身没锁住那么久（这条不算验过）", JSON.stringify(ho));
+} else if (wo.acquired_at < ho.released_at) {
+  bad(
+    "PD-06 活着的持锁者被抢走了锁：两个进程同时进临界区 = 高负载下丢证据",
+    "等待方 " + wo.acquired_at + " 就进来了，持有方 " + ho.released_at + " 才出来（早了 " + (ho.released_at - wo.acquired_at) + "ms）",
+  );
+} else if (leftover6.length) {
+  bad("PD-06 跑完还留着锁/临时文件", leftover6.join(","));
+} else {
+  ok("PD-06 活着的持锁者没被抢锁：等待方 " + (wo.acquired_at - ho.released_at) + "ms 之后才进临界区（互斥成立）");
+}
+
+/* ---------- PD-07 释放锁只能释放自己的锁 ---------- *
+ * 被误判为死锁的那个进程醒来时，锁目录已经是新主人的了。这时候无条件 rmdir
+ * 等于把第三个进程放进同一个临界区 —— 抢锁事故会连锁。所以锁里必须有身份，
+ * 释放时必须能分辨「这把锁还是不是我的」。
+ */
+const root7 = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-presence-own-"));
+const file7 = presence.presenceFile(root7);
+const lock7 = file7 + ".lock";
+const OWNER_CODE =
+  "const p=require(process.argv[1]);const fs=require('fs');const path=require('path');" +
+  "const f=p.presenceFile(process.argv[2]);const lock=f+'.lock';" +
+  "fs.mkdirSync(path.dirname(f),{recursive:true});" +
+  "let sawOwner=false;" +
+  "p.withPresenceLock(f,function(){const op=path.join(lock,'owner.json');" +
+  "if(fs.existsSync(op)){sawOwner=true;" +
+  "fs.writeFileSync(op,JSON.stringify({pid:process.pid+1000000,host:require('os').hostname()," +
+  "token:'someone-else',started_at:new Date().toISOString()}));}});" +
+  "process.stdout.write(JSON.stringify({owner_file:sawOwner}));";
+const own = spawnSync(process.execPath, ["-e", OWNER_CODE, MODULE, root7], {
+  encoding: "utf8",
+  timeout: 30000,
+});
+const oo = (() => { try { return JSON.parse(own.stdout || ""); } catch { return null; } })();
+const lockStillThere = (() => { try { return fs.statSync(lock7).isDirectory(); } catch (_e) { return false; } })();
+if (own.status !== 0) {
+  bad("PD-07 夹具进程非零退出（这条不算验过）", "exit=" + own.status + " " + String(own.stderr || "").slice(0, 160));
+} else if (!oo) {
+  bad("PD-07 夹具没给出 owner 信息（这条不算验过）", String(own.stdout || "").slice(0, 160));
+} else if (!oo.owner_file) {
+  bad("PD-07 锁里没有持有者身份文件，释放时无法分辨是不是自己的锁", "预期 <lock>/owner.json 存在");
+} else if (lockStillThere) {
+  ok("PD-07 别人的锁没被删：身份不匹配时释放只撤销自己的临界区，不动新主人的锁");
+} else {
+  bad("PD-07 醒来把新主人的锁 rmdir 了（连锁抢锁：第三个进程能同时进临界区）", "owner.json 已被改成别人，锁目录却没了");
+}
+try {
+  fs.rmSync(lock7, { recursive: true, force: true });
+} catch (_e) {
+  /* 本来就没有 */
+}
+try {
+  fs.rmSync(root6, { recursive: true, force: true });
+  fs.rmSync(root7, { recursive: true, force: true });
+} catch (_e) {
+  /* 临时目录清不掉不影响红绿 */
 }
 
 console.log(

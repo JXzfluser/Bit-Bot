@@ -1773,6 +1773,9 @@ else
 fi
 echo "  · G-48 锚点：docker0 顶第一位=修复前红（旧顺序实测 172.17.0.1 第一）；"
 echo "    并发丢证据=修复前红（12 并发只剩 10 行）；空窗读=修复前红（33 万次撞在截断窗口上）"
+echo "  · G-48 新增两条红线（这轮矩阵偶发丢 2/12 条、子进程零报错，根因在这里）："
+echo "    PD-06 活着的持锁者被按年龄抢锁=修复前红（等待方比持有方早 1002ms 进临界区）；"
+echo "    PD-07 锁里没有持有者身份、释放时无法分辨是不是自己的锁=修复前红"
 echo "  · G-48 残留（诚实）：只验到同机多进程并发与崩溃窗口；跨机器时钟漂移、只读文件系统、Windows 文件锁语义未覆盖"
 
 echo "== G-49 一键配对（局域网发现 + 6 位配对码，pairing-v1）=="
@@ -1790,6 +1793,60 @@ echo "  · G-49 锚点：discover/redeem 未实现时 404=修复前红；base_ur
 echo "    （装 Docker 的机器上就是 172.17.0.1，等于自动给用户抄错地址）=修复前红（PC-18）"
 echo "  · G-49 残留（诚实）：手机端扫描/换令牌只到 JVM 集成测试（进程内真 HTTP 服务），没有真机 Wi-Fi 验证；"
 echo "    多网卡机器上手机可能扫到另一台同名 Desktop；未配内网穿透，公网机器仍配不上"
+
+echo "== G-50 交付报告的历史段落不能被吃掉 =="
+if timeout 120 node scripts/prove_report_history_intact.mjs > /tmp/g50-report.log 2>&1; then
+  ok "G-50 报告段落一节没少（$(tail -1 /tmp/g50-report.log)）"
+else
+  bad "G-50 prove_report_history_intact（见 /tmp/g50-report.log；$(tail -1 /tmp/g50-report.log)）"
+fi
+# 负向对照：复刻 227e4ed 事故（尾部整段被替换掉），这道门必须变红，否则它没有牙
+head -n 250 docs/design/desktop-target/report.md > /tmp/g50-negative-report.md
+if timeout 120 node scripts/prove_report_history_intact.mjs /tmp/g50-negative-report.md > /tmp/g50-neg.log 2>&1; then
+  bad "G-50 负向对照没红：截断到 250 行的报告照样过门，说明这道门是假门"
+else
+  ok "G-50 负向对照真红：截断版被抓住（$(tail -1 /tmp/g50-neg.log)）"
+fi
+rm -f /tmp/g50-negative-report.md
+grep -q "RH-06" /tmp/g50-report.log \
+  && grep -q "RH-01" /tmp/g50-neg.log \
+  && ok "G-50 锚点在：RH-06 专门盯「HEAD 里已提交的标题在当前文件消失」，这正是 227e4ed 事故的形状" \
+  || bad "G-50 report-history anchors missing"
+echo "  · G-50 修复前红（真实输出，跑在 227e4ed 那份被吃掉段落的 report.md 上）："
+echo "    RH-01 缺 16 个标题、RH-05 实际 251 行，PASS=4 FAIL=2（exit=1）；恢复后 PASS=6 FAIL=0"
+echo "  · G-50 残留（诚实）：门只核标题/编号/围栏/行数下限，标题不动而正文被逐段改写抓不到；"
+echo "    pairing-v1.md 与 parity-gaps-next.md 暂未纳入同一道门"
+
+echo "== G-51 国内渠道凭证不裸奔（掩码 + 字段级校验 + 同一屏下一步）=="
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g51_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g51_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 "${g51_xvfb[@]}" node scripts/e2e_desktop_cn_channel_guard.mjs > /tmp/g51-cnchan.log 2>&1; then
+    ok "G-51 e2e_desktop_cn_channel_guard 全绿（$(grep -c '✓' /tmp/g51-cnchan.log) 项，$(tail -1 /tmp/g51-cnchan.log)）"
+  else
+    bad "G-51 e2e_desktop_cn_channel_guard（见 /tmp/g51-cnchan.log；$(tail -1 /tmp/g51-cnchan.log)）"
+  fi
+  grep -q "CN-01 钉钉 Webhook 默认掩码" /tmp/g51-cnchan.log \
+    && grep -q "CN-03 勾了开启推送但没填 Webhook" /tmp/g51-cnchan.log \
+    && grep -q "CN-05 有错时保存不可点" /tmp/g51-cnchan.log \
+    && ok "G-51 三条红线在：带 access_token 的 URL 不再明文躺着、勾了开启缺字段当场点名、错误挡在写盘之前" \
+    || bad "G-51 cn-channel anchors missing"
+  grep -q "CN-06 卡内" /tmp/g51-cnchan.log \
+    && grep -q "CN-08 未开启也写明" /tmp/g51-cnchan.log \
+    && ok "G-51 手顺接上：填凭证的卡直接给出「去保存并试连」，未开启的渠道也如实交代" \
+    || bad "G-51 next-step / state anchors missing"
+  echo "  · G-51 修复前红（HEAD 产品代码真实输出）：PASS=0 FAIL=8 —— 8 条全红，"
+  echo "    其中 CN-05 红在「有校验错误时保存并热加载照样能点」，CN-08 红在卡里根本没有状态行"
+  echo "  · G-51 残留（诚实）：只验到「缺字段/明显不是地址」这一层，没验厂商格式细则；"
+  echo "    「试连国内渠道」会真的发消息，门禁不敢碰，仍需在真群里人工验一次；"
+  echo "    钉钉加签密钥、飞书 encrypt_key/verification_token、企微 callback_token 仍无输入框（要手改 .env.local）"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-51 未跑（SKIP ≠ PASS）"
+fi
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

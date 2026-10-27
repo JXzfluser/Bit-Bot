@@ -14,6 +14,7 @@
  */
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const DEFAULT_TTL_MS = 15 * 60 * 1000;
@@ -23,11 +24,34 @@ const DEFAULT_TTL_MS = 15 * 60 * 1000;
  *   - fs.writeFileSync 先截断再写，中间那段读者读到的是空文件 / 半截 JSON
  *     （实测 36 万次读里 33 万次撞在空窗上）。
  * 所以：先拿跨进程锁（mkdir 原子）再做读-改-写，落盘用 tmp + rename 换原子性。
- * 卡死的锁要能夺回来 —— 进程被杀不能把这台机器永久钉在离线。 */
+ * 卡死的锁要能夺回来 —— 进程被杀不能把这台机器永久钉在离线。
+ *
+ * 夺锁的判据不能只看时间年龄：矩阵全量跑的时候（Electron + 内核编译抢 4 核），
+ * 一个正在读-改-写的进程持有锁超过 5 秒是常态，此时按年龄抢锁 = 两个进程同时
+ * 进临界区，后写的整行盖掉先写的，而两边都以为自己写成功了 —— PD-01 那次偶发
+ * 丢 2/12 条、子进程零报错就是这么来的（PD-06 把它变成必现红）。
+ * 所以：锁目录里写清持有者身份（pid / host / token），只有**证明持有者已经死了**
+ * 才抢；释放时也只认自己的 token，别人的锁不碰（PD-07）。 */
 const LOCK_TIMEOUT_MS = Number(process.env.BITBOT_PRESENCE_LOCK_MS || 3000);
 const LOCK_STALE_MS = 5000;
+/* 跨机持有者（共享盘 / NAS）验不了 pid，只能给一个远大于正常临界区的兜底窗口；
+ * 兜底之前宁可等超时、宁可这一条证据不记，也不能两个人同时写。 */
+const LOCK_CROSS_HOST_MS = LOCK_STALE_MS * 6;
 const LOCK_RETRY_MS = 2;
 let tmpSeq = 0;
+
+/** pid 是否还活着（只用来判断同一台机器上的锁持有者是不是已经没了）。
+ * EPERM = 进程存在但不归我，按「活着」处理 —— 宁可等，也不能抢活人的锁。 */
+function pidAlive(pid) {
+  const n = Number(pid);
+  if (!Number.isInteger(n) || n <= 0) return false;
+  try {
+    process.kill(n, 0);
+    return true;
+  } catch (err) {
+    return err && err.code === "EPERM";
+  }
+}
 
 function sleepSync(ms) {
   try {
@@ -42,38 +66,98 @@ function sleepSync(ms) {
 
 function withPresenceLock(file, fn) {
   const lock = file + ".lock";
+  const ownerFile = path.join(lock, "owner.json");
+  const token = process.pid + "-" + Math.random().toString(36).slice(2, 10);
+  const me = {
+    pid: process.pid,
+    host: os.hostname(),
+    token,
+    started_at: new Date().toISOString(),
+  };
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   for (;;) {
     try {
       fs.mkdirSync(lock);
-      break;
-    } catch (err) {
-      if (err && err.code !== "EEXIST") throw err;
-      let age = LOCK_STALE_MS + 1;
+      /* 锁拿到手第一件事是署名：没有署名的锁，释放时就无法证明还是我的。
+       * 署名失败（只读盘之类）宁可放弃锁也不能无凭证地进临界区。 */
       try {
-        age = Date.now() - fs.statSync(lock).mtimeMs;
-      } catch (_e) {
-        age = LOCK_STALE_MS + 1;
-      }
-      if (age > LOCK_STALE_MS) {
+        fs.writeFileSync(ownerFile, JSON.stringify(me), { flag: "wx" });
+        break;
+      } catch (signErr) {
         try {
           fs.rmdirSync(lock);
         } catch (_e) {
-          /* 别人刚夺走，下一轮再试 */
+          /* 已经没了 */
         }
-        continue;
+        throw signErr;
       }
+    } catch (err) {
+      if (err && err.code !== "EEXIST") throw err;
+    }
+    /* 抢不到：先看清里面是谁，再决定等、还是证明他已经死了 */
+    let owner = null;
+    try {
+      owner = JSON.parse(fs.readFileSync(ownerFile, "utf8"));
+    } catch (_e) {
+      owner = null;
+    }
+    let age = -1;
+    try {
+      age = Date.now() - fs.statSync(lock).mtimeMs;
+    } catch (_e) {
+      /* 锁刚被释放，下一轮 mkdir 就能拿到 */
       if (Date.now() > deadline) throw new Error("presence_lock_timeout");
       sleepSync(LOCK_RETRY_MS);
+      continue;
     }
+    let reclaim = false;
+    if (age > LOCK_STALE_MS) {
+      if (!owner) {
+        /* 老版本留下的锁 / 署名前就被 kill：没有任何身份可验，只能按年龄兜底 */
+        reclaim = true;
+      } else if (owner.host === os.hostname()) {
+        /* 同一台机器：pid 可以直接验活。活着就不许抢，哪怕它慢 —— 抢了就是两个进程
+         * 同时读-改-写，证据会静默丢失（PD-06 的红色就是这个）。 */
+        reclaim = !pidAlive(Number(owner.pid));
+      } else if (age > LOCK_CROSS_HOST_MS) {
+        /* 别的机器：验不了 pid，给一个远大于临界区的兜底窗口，宁可超时也不并发写 */
+        reclaim = true;
+      }
+    }
+    if (reclaim) {
+      try {
+        fs.rmSync(ownerFile, { force: true });
+        fs.rmdirSync(lock);
+      } catch (_e) {
+        /* 有人抢先夺走了，下一轮重新看 */
+      }
+    }
+    if (Date.now() > deadline) throw new Error("presence_lock_timeout");
+    sleepSync(LOCK_RETRY_MS);
   }
   try {
     return fn();
   } finally {
+    /* 只释放自己的锁：如果我持有的这段时间里被别人判定为死锁抢走了，
+     * 这时候 rmdir 删的是新主人的锁 —— 会把第三个进程放进同一个临界区。 */
+    let mine = false;
     try {
-      fs.rmdirSync(lock);
+      const cur = JSON.parse(fs.readFileSync(ownerFile, "utf8"));
+      mine = cur && cur.token === token && cur.pid === process.pid;
     } catch (_e) {
-      /* 锁目录已经不在了 */
+      mine = false;
+    }
+    if (mine) {
+      try {
+        fs.rmSync(ownerFile, { force: true });
+      } catch (_e) {
+        /* 已经没了 */
+      }
+      try {
+        fs.rmdirSync(lock);
+      } catch (_e) {
+        /* 锁目录已经不在了 */
+      }
     }
   }
 }

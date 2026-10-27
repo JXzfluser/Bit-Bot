@@ -2454,8 +2454,12 @@
             <label class="st-field"><span class="st-field-name">钉钉 Webhook（勾选开启推送）</span>
               <div style="display:flex;gap:8px;align-items:center">
                 <input id="sec-ding-post" type="checkbox" />
-                <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
+                <!-- 这条 URL 本身就带着 access_token：明文摊在屏幕上等于把凭证给路过的人看。
+                     默认掩码，卡内点「显示」就地核对，不用去别处找。 -->
+                <input id="sec-ding-hook" type="password" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-ding-reveal" class="bb-btn bb-btn-sm">显示</button>
               </div>
+              <span id="sec-ding-hook-err" class="st-field-error" hidden></span>
             </label>
             <label class="st-field"><span class="st-field-name">飞书 token + chat_id</span>
               <div style="display:flex;gap:8px;align-items:center">
@@ -2463,6 +2467,7 @@
                 <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
                 <input class="bb-control" id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%" />
               </div>
+              <span id="sec-feishu-err" class="st-field-error" hidden></span>
             </label>
             <label class="st-field"><span class="st-field-name">企微 token + agent + touser</span>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2471,7 +2476,12 @@
                 <input class="bb-control" id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px" />
                 <input class="bb-control" id="sec-wecom-to" type="text" placeholder="touser" style="width:100px" />
               </div>
+              <span id="sec-wecom-err" class="st-field-error" hidden></span>
             </label>
+            <!-- 状态行：未开启也要写出来。空白一片等于让用户自己猜「我到底配没配上」。 -->
+            <div id="cn-card-state" class="cn-hint">钉钉 未开启 · 飞书 未开启 · 企微 未开启</div>
+            <p id="cn-next-hint" class="cn-hint">凭证在这张卡改；下一步的「保存并热加载」和「试连国内渠道」在同一排，点下面直接过去。</p>
+            <button type="button" id="cn-goto-credentials" class="bb-btn bb-btn-sm">去保存并试连</button>
           </div>
           <div class="ca-auth" data-i18n="caAuthNote">部分插件需先在浏览器完成 OAuth 登录才能调用其工具。</div>
         </div>
@@ -7279,10 +7289,135 @@
           : wavegT("secStatusModel") + "：" + (st.llm.provider_id || "?") + "/" + (st.llm.model || "?") +
             " · " + (st.llm.key_configured ? wavegT("modelConnected") : wavegT("modelUnconfigured"));
       }
+      /* 回填之后重算一次：勾选状态可能来自磁盘上的旧配置，
+       * 状态行与「保存」的可用性要跟着实话实说，不能停在初始文案上。 */
+      cnValidateAndPaint(true);
+    }
+
+    /* 国内渠道凭证：勾了「开启推送」就等于用户已经决定要发 —— 这时候缺什么、
+     * 粘错了什么，必须当场在那一栏下面说清楚，而不是「保存成功」之后再让他猜。
+     * 规则只按本 app 自己的语义判（勾了→必填→必填项得像个地址），不去断言厂商格式。 */
+    const CN_CHANNEL_ROWS = [
+      {
+        post: "sec-ding-post",
+        err: "sec-ding-hook-err",
+        fields: [
+          {
+            id: "sec-ding-hook",
+            label: "Webhook 地址",
+            check: function (v) {
+              if (!/^https?:\/\//i.test(v)) return "要以 http:// 或 https:// 开头（在钉钉机器人设置里整段复制）";
+              if (!/access_token=/.test(v)) return "这段地址里没有 access_token，粘的可能是机器人主页而不是 Webhook";
+              return "";
+            },
+          },
+        ],
+      },
+      {
+        post: "sec-feishu-post",
+        err: "sec-feishu-err",
+        fields: [
+          { id: "sec-feishu-token", label: "tenant token" },
+          { id: "sec-feishu-chat", label: "chat_id" },
+        ],
+      },
+      {
+        post: "sec-wecom-post",
+        err: "sec-wecom-err",
+        fields: [
+          { id: "sec-wecom-token", label: "access_token" },
+          { id: "sec-wecom-agent", label: "agentid" },
+          { id: "sec-wecom-to", label: "touser" },
+        ],
+      },
+    ];
+
+    function cnChannelStateText() {
+      return CN_CHANNEL_ROWS.map(function (row) {
+        const box = document.getElementById(row.post);
+        const name = row.post === "sec-ding-post" ? "钉钉" : row.post === "sec-feishu-post" ? "飞书" : "企微";
+        return name + " " + (box && box.checked ? "已开启" : "未开启");
+      }).join(" · ") + "。未开启的渠道不会真的发出去。";
+    }
+
+    /** 校验 + 回显；返回错误条数。save 按钮的可用性由这里统一管，别两边各写一套。 */
+    function cnValidateAndPaint(report) {
+      let problems = 0;
+      CN_CHANNEL_ROWS.forEach(function (row) {
+        const box = document.getElementById(row.post);
+        const errEl = document.getElementById(row.err);
+        const msgs = [];
+        if (box && box.checked) {
+          row.fields.forEach(function (f) {
+            const el = document.getElementById(f.id);
+            const v = el ? String(el.value || "").trim() : "";
+            if (!v) msgs.push("勾选了开启推送，" + f.label + "还是空的");
+            else if (f.check) {
+              const m = f.check(v);
+              if (m) msgs.push(f.label + "：" + m);
+            }
+          });
+        }
+        problems += msgs.length;
+        if (!report || !errEl) return;
+        if (msgs.length) {
+          errEl.textContent = msgs.join("；");
+          errEl.hidden = false;
+        } else {
+          errEl.textContent = "";
+          errEl.hidden = true;
+        }
+      });
+      const state = document.getElementById("cn-card-state");
+      if (state) state.textContent = cnChannelStateText();
+      const save = document.getElementById("sec-save");
+      if (save) save.disabled = problems > 0;
+      return problems;
+    }
+
+    CN_CHANNEL_ROWS.forEach(function (row) {
+      [row.post].concat(row.fields.map(function (f) { return f.id; })).forEach(function (id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("input", function () { cnValidateAndPaint(true); });
+        el.addEventListener("change", function () { cnValidateAndPaint(true); });
+      });
+    });
+
+    /* 掩码不是「看不见就只能猜」：卡内就地显隐，核对完再收回。 */
+    const cnDingReveal = document.getElementById("cn-ding-reveal");
+    if (cnDingReveal) {
+      cnDingReveal.addEventListener("click", function () {
+        const el = document.getElementById("sec-ding-hook");
+        if (!el) return;
+        const show = el.type !== "text";
+        el.type = show ? "text" : "password";
+        cnDingReveal.textContent = show ? "隐藏" : "显示";
+      });
+    }
+
+    /* 填凭证的地方就该指出下一步：写入和试连都在凭证页那一排，一键落过去。 */
+    const cnGotoCreds = document.getElementById("cn-goto-credentials");
+    if (cnGotoCreds) {
+      cnGotoCreds.addEventListener("click", function () {
+        const n = cnValidateAndPaint(true);
+        closeConnectApps();
+        openProductCredentials(
+          n > 0
+            ? "国内渠道还有 " + n + " 处要改（已经在对应栏目标红），改完再保存"
+            : "点「保存并热加载」写入，再点「试连国内渠道」验证真的发得出去",
+        );
+      });
     }
 
     async function saveSecretsFromForm() {
       if (!window.bitbot.secrets) return;
+      /* 挡在写盘之前：带着红字保存出去，后面只会出现「为什么发不出去」这种工单。 */
+      if (cnValidateAndPaint(true) > 0) {
+        const secStatus = document.getElementById("sec-status");
+        if (secStatus) secStatus.textContent = "国内渠道有字段要改（该栏下方红字），没有写入";
+        return;
+      }
       const patch = {};
       const keyEl = document.getElementById("sec-llm-key");
       const keyVal = keyEl && keyEl.value ? keyEl.value.trim() : "";
@@ -12740,6 +12875,8 @@
       const cnCard0 = document.getElementById("ca-cn-channels");
       if (cnCard0) {
         cnCard0.style.display = (caActiveCat === "all" || caActiveCat === "communication") ? "flex" : "none";
+        /* 打开这张卡就把它自己的状态说实话：勾没勾、缺什么，别等用户点了保存才知道 */
+        cnValidateAndPaint(true);
       }
       const q = document.getElementById("ca-search");
       if (q) setTimeout(() => q.focus(), 50);
