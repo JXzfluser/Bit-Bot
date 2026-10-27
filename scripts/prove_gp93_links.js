@@ -33,6 +33,10 @@ const { spawn } = require("child_process");
 const REPO = path.resolve(__dirname, "..");
 const STUB_PORT = Number(process.env.BITBOT_G19_STUB_PORT || 8796);
 const AUDIT = path.join(REPO, "data/desktop/gp19-probe-links.jsonl");
+// A per-run id: the agent context is keyed by (bot, session), so a unique
+// session keeps each run from inheriting the previous run's history.
+const RUN_ID = Date.now().toString(36) + "-" + process.pid;
+const PROBE_SESSION = "sess-gp19probe-" + RUN_ID;
 const BARE_URL = "https://example.com/docs?g=19#x";
 const MD_URL = "https://status.example.org/a/b";
 const PROVIDER_REPLY =
@@ -202,7 +206,7 @@ async function main() {
         return { ok: true };
       },
     });
-    const goodRes = await route.open(BARE_URL, { source: "probe", sessionId: "sess-gp19probe" });
+    const goodRes = await route.open(BARE_URL, { source: "probe", sessionId: PROBE_SESSION });
     goodRes.ok === true && goodRes.decision === "open_external" && goodRes.url === BARE_URL &&
       goodRes.hostname === "example.com" && opened.length === 1
       ? ok("GP-94 放行路径：校验通过 → 真实调用 openExternal（spy 收到逐字 URL）")
@@ -222,7 +226,7 @@ async function main() {
     rows.length === 4 &&
       rows.filter((r) => r.decision === "refused").length === 3 &&
       rows.every((r) => r.at && r.href !== undefined) &&
-      rows[0].session_id === "sess-gp19probe"
+      rows[0].session_id === PROBE_SESSION
       ? ok("GP-94 审计留痕 4 行（1 放行 + 3 拦截），含 scheme/host/session/原因——检查目标有凭据")
       : bad("GP-94 audit rows", JSON.stringify(rows.map((r) => [r.decision, r.error])).slice(0, 260));
     rows.every((r) => r.opened === (r.decision === "open_external"))
@@ -262,7 +266,7 @@ async function main() {
     const { createTurnRunner } = require(path.join(REPO, "hosts/shared/run_moon_turn.js"));
     const runner = createTurnRunner(REPO);
     const r = await runner.runTurn("GP19-PROBE 给我文档链接", {
-      sessionId: "sess-gp19probe",
+      sessionId: PROBE_SESSION,
       machineId: "desk-1",
       machineKind: "desktop",
     });

@@ -10,6 +10,7 @@
 
 const path = require("path");
 const { createTurnRunner } = require("../shared/run_moon_turn");
+const { resolveMachineId } = require("../shared/machine_identity");
 
 async function main() {
   const repoRoot = path.resolve(__dirname, "../..");
@@ -63,11 +64,9 @@ async function main() {
     textParts.push(a);
   }
 
-  if (!machineId) {
-    if (machineKind === "ios") machineId = "phone-ios";
-    else if (machineKind === "android") machineId = "phone-android";
-    else machineId = "desk-1";
-  }
+  // B-2: 机器身份不再写死。默认仍是 desk-1(单机行为不变),
+  // 多机时用 BITBOT_MACHINE_ID 区分。
+  machineId = resolveMachineId({ kind: machineKind, explicit: machineId });
 
   const userText = textParts.join(" ").trim();
   if (!userText) {

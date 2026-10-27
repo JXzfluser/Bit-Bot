@@ -4,11 +4,15 @@ package "bitbot/bitbot"
 // Values
 pub fn boot_banner() -> String
 
-pub fn module_count() -> Int
+pub fn matrix_cm_count() -> Int32
+
+pub fn matrix_i_pass_count() -> Int32
+
+pub fn module_count() -> Int32
 
 pub fn registered_modules() -> Array[String]
 
-pub fn scaffold_ping() -> Int
+pub fn scaffold_ping() -> Int32
 
 // Errors
 

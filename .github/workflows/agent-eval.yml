@@ -1,0 +1,53 @@
+name: Agent Eval
+
+# AE gate: agent BEHAVIOUR, not wiring.
+#
+# The repo already has ~155 prove_*/e2e_* gates, but they assert wiring
+# invariants (e.g. prove_agent_loop_product_wire.js matches the provider on
+# prompt strings like "WP1-READ"). "WP 49/0" therefore does NOT mean the model
+# picks the right tool. This workflow runs the AE suite, whose assertions are
+# about behaviour: which tool was chosen, whether the observation was fed
+# back, whether a failure converges, whether the team stayed inside budget.
+#
+# Scope discipline: AE green is a behaviour gate only. It does not close
+# AR-01/02/03 (production provider live + P0-3 kernel U are still open), it is
+# not an I promotion, and it does not claim an Agent Loop MVP.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  agent-eval:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: moon check
+        run: |
+          moon version --all
+          moon check
+
+      # The AE suite drives the real kernel loop and the real group
+      # orchestrator, so the MoonBit toolchain has to be present.
+      - name: Agent behaviour eval (AE suite)
+        run: node scripts/eval/run.js
+
+      # Live scenarios need a real provider key. Without one they must skip
+      # cleanly and exit non-zero (NEEDS_LIVE) — never a stub PASS. Run them
+      # separately with a secret when one is available.
+      - name: Agent eval — live scenarios (needs a provider key)
+        if: ${{ secrets.BITBOT_LLM_API_KEY != '' }}
+        env:
+          BITBOT_LLM_API_KEY: ${{ secrets.BITBOT_LLM_API_KEY }}
+        run: node scripts/eval/run.js --live

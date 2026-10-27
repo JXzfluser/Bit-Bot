@@ -1,6 +1,6 @@
 ///|
 fn touch_product_codecs() -> Unit {
-  let _ = encode_product_messages([])
+  let _ = encode_product_messages([], "[]")
   let _ = encode_product_tool("exec_tool", "Read", "{}")
   let _ = encode_product_deliver("")
 }

@@ -1,15 +1,16 @@
 # Agent Core & 多智能体路线图
 
-> 状态：draft · 2026-10-25（按最新工作树复核）<br>
+> 状态：draft · 2026-10-25（按最新工作树复核 + 本次纠错）<br>
 > 范围：Kernel agent runtime + Host 群 Bot 多智能体；不含 UI 像素对齐、垂直 skills、商店上架。<br>
-> 证据口径：以当前工作树代码为准；`file:line` 会漂移，引用时以函数名/文件为主。<br>
-> 一句话：`CM-*` 234/234 与 385 tests 证明“能力合同/产品面”很完整；Agent Loop 已接到产品 Chat，但生产 provider live 与 AR 升裁未完成；群 Bot 仍是“并行多 Bot 应答”。
+> 证据口径：以当前工作树代码为准；本文件内的 `file:line` 以**基线 commit `244515b`** 为准（并行改动会让行号漂移，引用时以函数名/文件为主）。<br>
+> 一句话：`CM-*` 234/234 与 385 tests 证明“能力合同/产品面”很完整；Agent Loop 已接到产品 Chat，但生产 provider live 与 AR 升裁未完成；群 Bot 仍是“并行多 Bot 应答”。发布面的单实例锁与自动更新本提交已落地，但更新源/签名/升级回滚仍未做。
 
 ## 0. TL;DR
 
-- **已经有的**：Turn 生命周期、Host FFI、审批门、per-bot persona/session、群 Bot 并行扇出、部分聚合、会话隔离、记忆分槽、Routines、Skills、有限 stdio MCP、桌面打包。
+- **已经有的**：Turn 生命周期、Host FFI、审批门、per-bot persona/session、群 Bot 并行扇出、部分聚合、会话隔离、记忆分槽、Routines、Skills、桌面打包、单实例锁、electron-updater 自动更新（更新源仍是占位地址）、MCP stdio 客户端（Host 侧是符合 2024-11-05 的真 client，但服务端硬编码）。
 - **新接上的**：默认 Desktop/cmd Chat 走 Kernel `AgentLoop::run`；Host 只做 `llm_chat` / `exec_tool` / `request_approval` / `deliver`；Read/Shell 由模型选，工具观察回注，64 步上限，GUI 可取消。
-- **仍未关闭**：通用 ToolSpec/工具目录、会话上下文与压缩、memory 注入、规划/反思、群共享任务板/跨成员中间状态、群路由真实性、handoff 执行、orchestrator/汇总、团队预算、真实 MCP client、agent eval。
+- **仍未关闭**：通用 ToolSpec/工具目录（21 个内置工具只有 3 个到模型）、memory 注入 provider prompt、反思（reflection）、MCP 通用化（可插拔 server / discovery / auth / 工具权限）、群消息幂等去重（同一句永不重跑）、内核 `room_turn` 那条静默失效路径。
+- **本轮新接上的**：会话上下文 + token 预算 + 压缩（`runtime/agent_context.mbt`）、TodoWrite 进 loop、失败分类 + 重试上限、群编排（拆解/分工/综合/任务板/团队预算/取消传播）、handoff 真执行、工具 schema 单一源（内核当真源）、内核编译进 bundle + 数据目录迁 userData、AE 行为评测套件（26 门禁全绿）。
 - **安全**：P0 入站认证、默认 loopback、审批不可伪造、shell 沙箱、webhook 签名、body limit 已落；P0-3 仍是内核 U，按现有升裁口径 **AR-15 未关**。
 - **当前定位**：Agent core 在默认 Chat 路径上到 **L2**（模型选工具 + 观察回注）；没有规划/长任务，未到 L3。Group bot 仍是 **并行多 Bot 应答**，不是协作多智能体。
 - **优先级**：`P0 安全收口` → `P1 群聊真实性 + Agent Loop 产品级验收` → `P1 上下文/记忆` → `P1 群编排` → `P2 工具/MCP/评测` → `P3 发布/运维`。
@@ -19,8 +20,8 @@
 
 | 门 | 最新结果 | 结论 |
 |---|---|---|
-| `bash scripts/prove_agent_loop_product_wire.sh` | `pass=49 fail=0`；`moon test -p runtime` 54/54；parser 3/3 | 默认 Desktop/cmd Chat 进 Kernel AgentLoop；Read/Shell、观察回注、max steps、取消、审批边界已立 |
-| `bash scripts/prove_agent_loop_electron_midrun.sh` | `pass=62 fail=0` | 真实 Electron composer mid-run 投影 `AgentLoop::run`；取消停在内核 `Cancelled` |
+| `bash scripts/prove_agent_loop_product_wire.sh` | `pass=49 fail=0`；`moon test -p runtime` 54/54；parser 3/3 | 默认 Desktop/cmd Chat 进 Kernel AgentLoop；Read/Shell、观察回注、max steps、取消、审批边界已立。**provider 是 prompt 匹配桩**（`scripts/prove_agent_loop_product_wire.js:62-86` `classify()` 按 `blob.includes("WP1-READ")` 之类匹配），只证接线不变量，**不证模型会不会选工具** |
+| `bash scripts/prove_agent_loop_electron_midrun.sh` | `pass=62 fail=0` | 真实 Electron composer mid-run 投影 `AgentLoop::run`；取消停在内核 `Cancelled`。**provider 同为 stub**（`scripts/prove_agent_loop_electron_midrun.mjs:80` `classify()`），同样不证模型行为 |
 | `bash scripts/prove_host_approval_ui.sh` | `pass=69 fail=0` | 审批卡 Allow/Deny、runAllowed 一次性、`args.approved` 不可伪造 |
 | `bash scripts/prove_p0_inbound_security.sh` | `pass=8 fail=0`；host-checks 11/0 | 401/401/413、默认 loopback、入站不固定 `approved:true`、shell 最小 env |
 | `bash scripts/prove_sandbox_secrets.sh` | `pass=8 fail=0` | SK1–SK8；cwd、env、artifact、scrub、timeout/buffer |
@@ -29,6 +30,7 @@
 | `node scripts/prove_room_context.js` | `pass=15 fail=0` | AR-07：最近转录、预算、脱敏、失败只带状态、DM null |
 | `node scripts/prove_room_discretion.js` | `pass=15 fail=0` | AR-08：YES/NO 解析、prompt、接线、打包、skipped/fail-open UI |
 | `node scripts/e2e_desktop_room_orchestration.mjs` | `PASS=53 FAIL=0 SKIP=0` | 真 Electron + 真内核；第二轮 provider 载荷含上一轮群转录 |
+| `node scripts/e2e_desktop_single_instance.mjs` | `PASS=6 FAIL=0` | 单实例锁已落：S-01 不同 UD 各起一个；S-02 同 UD 第二个实例主动退出；S-03 `second-instance` 把已有窗口唤到前台 |
 
 > 本轮审计发现一个 macOS 真实路径问题：`/var` 是 `/private/var` 的符号链接，旧 `cwdAllowed` 先做词法前缀检查，导致临时根下的合法 cwd 被误拒。已改为只比较 canonical path；P0 host-checks 从 9/2 恢复到 11/0，SK 从 2/7 恢复到 8/0。产品仓库在 `/Users` 下不受影响，但这是跨平台正确性修复。
 
@@ -51,18 +53,24 @@
 | L2 | 模型选工具，工具结果回注，可多步 | **默认 Chat 已到**；只 Read/Shell，64 步，无规划 |
 | L3 | 多步循环 + 规划 + 失败恢复 | 目标 V1 |
 | L4 | 长任务 + 记忆 + 多 Agent + 评测 | 目标 V2 |
+| L5 | 团队运行时：任务分解 → 编排者 → 交接真执行 → 共享工作区 → 预算/取消治理 → 记忆闭环 → 工具生态（MCP/插件） | 未到。判定标志：**一个团队完成一件事**，且有可复现的群协作评测 |
+| L6 | 自治团队：常驻/事件驱动运行 → 跨会话长程任务 → 跨 Agent/跨端（Desktop·iOS·Android）共享状态 → 成本与时延可治理 → 可回放 → 干净机器可装可升级 | 未到。判定标志：**无人值守可交付** |
 
-> 结论：默认 Chat 的 agent runtime 已从 L1 走到 **L2**，但只覆盖 `Read`/`Shell`、没有会话历史/规划；`CM-*` PASS 仍不能当作 agent 能力评测。WP/EG 绿也不等于 AR-01/02/03 已升裁：生产 provider live 未跑，AR-15 仍开。
+> 阶梯口径：仓库原有阶梯到 **L4**；**L5/L6 是本次新增定义（2026-10-25）**。这两个定义按仓库自身词汇推得——§1.1 的三层多 Agent（并行多 Bot / 协作多 Agent / 多 Agent Runtime）、§5 的 Wave 0–7、以及 §3 的主流对比——**不是外部标准**，也不与任何公开的 agent 分级体系对齐。
+
+> 结论（2026-10-25 更新）：默认 Chat 的 agent runtime 已从 L1 走到 **L3**——会话上下文 + token 预算 + 压缩、TodoWrite 规划、失败分类与重试上限都已接上（`runtime/agent_context.mbt` + `runtime/agent_loop.mbt`），到模型的工具是 Read/Shell/TodoWrite 三个。**群侧已从「并行广播」走到「真编排」**（拆解 / 确定性分工 / lead 综合 / 共享任务板 / 团队预算 / 取消传播 / handoff 真执行），对应 L4 的大部分。`CM-*` PASS 仍不能当作 agent 能力评测；**AE 行为评测 26/26 全绿**（`docs/qa/agent-eval.md`）是新增的行为证据，但它和 WP/EG 的接线证据**不能互相替代**。仍未升裁 AR-01/02/03：生产 provider live 未跑、AR-15 仍开。
 
 ### 1.3 为什么群 Bot 现在还不算“协作多智能体”
 
-1. **同一任务广播**：`orchestrateRoom` 给每个 responder 的 `task` 是同一个，没有拆解/分工。
-2. **只能看见已落盘的历史**：`buildRoomContext` 已带最近 N 条 `user` / `bot_reply` / `final_report`，失败只带“本轮未成功”状态；但同一轮并行 responder 互相看不到本轮刚生成的回复，也没有共享任务板/中间状态。
-3. **没有汇总者**：`final_report` 是把每个 section 拼起来，不是 lead agent 综合判断后的答案。
-4. **无 @ 的选择是独立判断，不是团队协商**：`roomTurn` 支持 `@A` / `@A @B` 定向；无 @ 时 `responder_policy="bot_discretion"` 现在由每个候选 Bot 独立跑 YES/NO 回合，只扇出选中者（`mentioned_names=[]`），全员弃权落 `skipped`。但每个 Bot 只看任务+已有转录，没有互相提名/分工；selector 失败还走 fail-open。
-5. **handoff 不执行**：`handoffTask` 只写群转录 + 目标 inbox，不触发目标 Bot 回合。
-6. **responder 可走 AgentLoop，但群编排仍是 Host 单轮扇出**：单 Bot 若 intent=Chat 会进内核 `AgentLoop::run`，但群回合没有共享任务板/团队预算/本轮实时跨成员观察（只有上一轮及更早的转录）；`approved:false` 也意味着群内 Shell 不能绕过审批。
-7. **群 composer 绕过内核**：主路径是 `rooms.orchestrate`；内核 `Orchestrate` / `final_report` 没有做。文档自己已承认这是 Host 产品路径。
+> 2026-10-25 更新：下面 1/2/3/5/6 已由 `hosts/desktop/room_orchestrator.js` 落地（拆解 + 确定性分工 + lead 综合 + 共享任务板 + 团队预算 + 取消传播 + handoff 真执行，`prove_room_orchestrator` 69/0）。**仍然成立**的是 4 与 7，以及「同轮并行成员之间看不到彼此本轮输出」。
+
+1. ~~**同一任务广播**~~ **已修**：`orchestrateRoom` 现在先拆解再分工（模型只**建议**拆解，**分配由宿主确定性轮转**——安全与预算不交给模型决定）。
+2. ~~**只能看见已落盘的历史**~~ **已修（部分）**：`buildRoomContext` 带最近 N 条转录；**共享任务板已接**（`data/agents/sections/<room>.json`，选择回合与成员回合都能读到）。**但同轮并行成员之间仍看不到本轮刚生成的回复**（bot_reply 在 `Promise.allSettled` 之后才落盘）。
+3. ~~**没有汇总者**~~ **已修**：`final_report` 分成「成员结果」与「lead 综合」两层；部分失败仍出综合并标 `gaps`。
+4. **无 @ 的选择仍是独立判断，不是团队协商**：`bot_discretion` 逐 Bot 跑 YES/NO，**只扇出选中者**，全员弃权落 `skipped`。每个 Bot 只看任务 + 已有转录 + 共享板，**没有互相提名**。**本轮修掉的是成本面**：selector 整体失败现在**不扇出**（如实失败，零模型调用），单个失败按 `maxFailOpen` 有界降级且被跳过者记为「失败」而不是「参与」。
+5. ~~**handoff 不执行**~~ **已修**：`handoffTaskAsync` 让目标 Bot 真的跑一轮，回复落进群转录；生产 effect 路径也接上了。
+6. **responder 可走 AgentLoop，但群编排仍是 Host 单轮扇出**：群回合**已有**共享任务板与团队预算，也**已有**取消传播到内核；**仍缺**本轮实时跨成员观察（同轮并行互不可见）。`approved:false` 仍意味着群内 Shell 不能绕过审批——这是**故意**的。
+7. **群 composer 绕过内核**：主路径仍是 `rooms.orchestrate`（Host 产品路径）；内核 `Orchestrate` / `final_report` 没有做（AR-17）。这条**没变**。
 
 ## 2. 现有能力清单
 
@@ -83,10 +91,12 @@
 | 记忆分槽 | `host_ffi.js memorySeedArgs(botId)` | kernel seed；provider prompt 不带 memory |
 | Routines | `agents/routines` + Host durable store | 非长驻 daemon |
 | Skills | `skills/` catalog + load | 模型不能自主选 |
-| 有限 MCP | `mcp_discover` / `mcp_call` + `host_h4_mcp_stdio.py` | 测试 server，不是通用 client |
-| Subagent worker | `host_ffi.js runWorkerMoonTurn` | 一次性，prompt 截 800，不回注工具结果 |
+| MCP（stdio） | `mcp_discover` / `mcp_call`；`scripts/host_h4_mcp_client.py:45` `mcp_session` | **Host 侧是符合 MCP 协议 2024-11-05 的真 client**（initialize + notifications/initialized 握手、Content-Length 分帧：`:17` `_encode` / `:22` `_read_one`；`host_ffi.js:9040` `tools/list`、`:14424-14428` `tools/call`）。缺的是**服务端通用化**：server 硬编码（`host_ffi.js:292` 固定指向 `host_h4_mcp_stdio.py`）+ 只有 5 个工具（`host_h4_mcp_stdio.py:38` TOOLS） |
+| Subagent worker | `host_ffi.js:18667` `runWorkerMoonTurn` → `:18680-18690` 起真内核回合 `cmd/desktop_turn` | 一次性，prompt 截 800。**工具观察在 worker 回合内部是回注的**（Chat 意图走 `cmd/desktop_turn/agent_loop_product_native.mbt:215-216` → `:158` `AgentLoop::run`）；没回注的是**父会话**——父侧只拿 `assistant` + `effects`（`host_ffi.js:18709-18719`） |
 | 桌面打包 | `scripts/pack-desktop.sh` / electron-builder | 内核未进 bundle，见发布项 |
-| 模型工具调用 | `host_ffi.js` SSE/非 SSE 保留 `tool_calls`；A7/A8 23/0 | 仅 Read/Shell；通用工具目录未做 |
+| 发布面（单实例 + 自动更新） | `hosts/desktop/main.js:25` `requestSingleInstanceLock()`；`:113`/`:2568`/`:2603`/`:2607` electron-updater | 单实例锁**已落**（`scripts/e2e_desktop_single_instance.mjs` 6/0）；自动更新**已落**真实 electron-updater（不是假桩），但更新源是 env/占位地址，签名/公证/升级回滚 smoke 未做 |
+| 模型工具调用 | `host_ffi.js` SSE/非 SSE 保留 `tool_calls`；A7/A8 23/0 | 仅 Read/Shell；`tools/types.mbt:63` `BuiltinTool::all()` 有 **21** 个内置工具，但模型只够得着 **2** 个（Read/Shell）；通用工具目录未做 |
+| 真实 web 检索 | `hosts/shared/host_ffi.js:5522` `webSearch`（Tavily/Brave） | 真实检索在 Host JS；`tools/web.mbt:49` `WebHost::mock()` 只是内存假实现，**不能把整条 web 能力归为“全是 mock”** |
 | observation 回注 | `runtime/agent_loop.mbt`：tool 结果 fence 后进下一次 `llm_chat` | 只在本回合内；不持久化 |
 | 群 responder 的 AgentLoop | `runRoomResponderTurn → runner.runTurn` | intent=Chat 时可走内核 loop；最近转录已进 prompt；群预算/任务板仍不共享 |
 
@@ -95,35 +105,62 @@
 | 能力 | 现状 | 缺什么 |
 |---|---|---|
 | `AgentLoop` | 产品默认 Chat 已走 `runtime/agent_loop.mbt`；Read/Shell、observation、64 步、取消、审批边界已通 | 无会话历史/压缩、无规划/反思、通用 ToolRegistry 弱 |
-| `ToolRegistry` | `product_tool_registry` 注册 Read/Shell；boot registry 仍把 schema 写成 `{}` | 注册、发现、权限、通用 schema、执行接线 |
-| `ToolCallTrace` | `runtime/transcript.mbt` 审计记录 | 持久化 `AgentStep` trace：model/tool/args/result/duration/error |
-| `RoomOrchestrator` | Host `orchestrateRoom` 可扇出/聚合 | 无拆解/共享任务板/lead 综合（最近转录已接）；Kernel `Orchestrate` 未做 |
+| `ToolRegistry` | `product_tool_registry`（`cmd/desktop_turn/agent_loop_product_native.mbt:61-76`）注册 Read/Shell。**产品路径上不存在 `{}` schema**——`{}` 只在 `runtime/types.mbt:20` `ToolRegistry::seed_builtins()`，而该函数只被 `runtime/pipeline_test.mbt:28`、`runtime/types_test.mbt:3` 引用；真实 boot 走 `cmd/main/main.mbt:3-5` → `bitbot.mbt:21` `ToolRegistry::empty()` | **schema 单一源已做**（2026-10-25）：内核 registry 的 `input_schema_json` 现在是完整 JSON Schema，并由 `product_tool_schema_json()` 随每次 `llm_chat` FFI 请求发给 Host（`cmd/desktop_turn/agent_loop_product_native.mbt`）；Host 优先用内核那份（`hosts/shared/host_ffi.js` 流式/非流式两处），`agentLoopToolSchema()` 降级为兜底。**仍缺**：注册/发现/权限/通用 schema；21 个内置工具里只有 Read/Shell/TodoWrite 到模型——其余的 Host 侧根本执行不了（`hosts/shared/agent_loop_product_wire.js:42-69` 只实现了 Shell/Read），暴露它们只会让模型选到必然失败的工具 |
+| `ToolCallTrace` | `runtime/transcript.mbt:28`，只有 `tool_name`/`args_json`/`result_snippet` 三个字段；承载它的 `TranscriptStore`（`:78`）**是死代码**——全仓无外部引用，只被 `runtime/acceptance_cm2150_test.mbt` 调用 | 持久化 `AgentStep` trace：model/tool/args/result/**duration/error/时间戳**。**新 `AgentContext` 已经能记这些**（`runtime/agent_context.mbt` `AgentToolTrace` + `record_trace`，含 duration/error/时间戳，L3-9 有测试），但**旧的 `TranscriptStore` 仍是死代码**——两套 trace 并存，落地时要合并 |
+| `RoomOrchestrator` | **已接**（2026-10-25）：`hosts/desktop/room_orchestrator.js` 落地拆解（`decomposeTask` / `normalizeSubtaskProposal`）、确定性分工（`assignSubtasks`，轮转分配、模型无权指定）、lead 综合（`buildSynthesisPrompt`）、共享任务板（`createRoomBoard`，**有读回 prompt 的路径**）、团队预算（`createTeamBudget`：轮次/时间/token）、取消作用域（`createCancelScope`）、重复劳动率（`duplicateWorkRate`）。`prove_room_orchestrator` 69/0 | 编排仍全在 Host 侧，Kernel `Orchestrate` 未做（AR-17）；模型拆解建议默认关闭（`BITBOT_ROOM_DECOMPOSE=1` 才开，因为它是**预算外**的额外模型调用） |
 | `spawn_parallel_executors` | `agents/task/parallel_spawn.mbt` 内存 handle | 无真实调度/隔离 |
 | Cloud lifecycle | `agents/cloud/lifecycle.mbt` fake bc | 无真实远端生命周期 |
 | Teammates | `agents/teammates/create_agent.mbt` 内存 | 无真实 agent runtime |
-| MCP | `tools/mcp_host_file.mbt` 自述 mock | 无通用 MCP client |
+| MCP（内核侧） | `tools/mcp_host_file.mbt:3` 自述 "mocks the host-side contract only" | 内核侧只有 mock；Host 侧已是真 client（§2.1），缺的是可插拔 server / discovery / auth / 工具权限，以及服务端硬编码 + 5 个工具 |
+
+### 2.2.1 已存在但未接线的原语
+
+> 下面这些模块**有 CM 合同、有测试、产品 Chat 路径零调用**（下表「接线状态」已逐个 grep 复核）。结论：**到 L3/L4 的主要工作量是接线，不是从零造**——规划、并行工具、自主性判定、诚实门、任务恢复、动态工具目录都已经在仓里躺着。
+
+| 原语 | 位置 | 做什么 | 接线状态 |
+|---|---|---|---|
+| 规划/待办 | `runtime/todo_write.mbt:18-60` `TurnContext::todo_write` / `visible_todos` / `mark_todo_done` / `done_todo_count` | 回合内结构化 todo 清单（≥1 项、标 done） | 内核**只有** `runtime/acceptance_cm0112_test.mbt` 调用；产品侧另有 intent `todo_write`（`cmd/desktop_turn/turn_json.mbt:188,4921`）走 Host durable store，**不是** AgentLoop 的 todo，模型选不到 |
+| 并行工具发射规划 | `runtime/parallel_tools.mbt:56,66,104,113` | 只读工具同轮并行发射规划 + mutability 分类 | 全仓无外部引用（只有自身定义） |
+| 自主性判定 | `runtime/autonomy.mbt:52` `decide_autonomy` | 可逆 / 不可逆 / 越界 → 要不要问人 | 只有 `runtime/acceptance_cm2138_2140_test.mbt` 调用 |
+| 审批重试指纹 | `runtime/smart_mode.mbt:17,22,38` | 同一动作重试时复用上次的审批结论 | 只有 `runtime/acceptance_cm1502_1503_test.mbt`、`runtime/smart_mode_test.mbt` 调用 |
+| 诚实门 | `runtime/honesty.mbt:36,73` | 缺数据时不编造、拒绝编造答案 | 只有 `runtime/acceptance_cm2138_2140_test.mbt` 调用 |
+| 工具 trace | `runtime/transcript.mbt:78` `TranscriptStore` | 记录工具调用供回读 | 死代码（见 §2.2 `ToolCallTrace` 行） |
+| 任务恢复 | `agents/task/handle.mbt:519` `TaskResumeRegistry` | 任务结束后按 id 恢复、保留上下文 | 只有 `agents/task/acceptance_cm2136_test.mbt` 调用；模块内自用，产品路径无入口 |
+| 动态工具目录 | `tools/dynamic.mbt:19` `DynamicCatalog` | MCP 动态工具目录 / 发现 | `cmd/desktop_turn/turn_json.mbt:2740,2778` 只用 `seed_example()`（写死示例目录），**没有**接进 `AgentLoop` 的 registry |
 
 ### 2.3 关键缺口（AR = Agent Runtime）
 
 | ID | 缺口 | 当前状态 | 证据/口径 | 优先级 |
 |---|---|---|---|---|
-| AR-01 | 模型驱动 tool loop | **部分/门禁绿，未升裁** | `AgentLoop::run` 已跑 model→tool→observe→repeat；WP 49/0；PP live 未跑 | P1 |
-| AR-02 | ToolSpec 弱，`tool_calls` 被忽略 | **部分** | `tool_calls` 流式/非流式都保留；Read/Shell 有 JSON schema；通用 ToolRegistry 仍弱 | P1 |
-| AR-03 | 工具结果不回注 | **部分/已实现** | `agent_loop.mbt` 把结果 fence 后回注下一轮；不跨回合持久化 | P1 |
-| AR-04 | 无会话历史/上下文预算 | **未做** | AgentLoop 只从当前 user 文本起步；无 transcript/压缩 | P1 |
+| AR-01 | 模型驱动 tool loop | **部分/门禁绿，未升裁** | `AgentLoop::run` 已跑 model→tool→observe→repeat；WP 49/0；PP live 未跑。**WP 的 provider 是 prompt 匹配桩**（§0.1、AR-14），所以“模型会不会自己选对工具”这件事目前**没有任何证据** | P1 |
+| AR-02 | ToolSpec 弱，`tool_calls` 被忽略 | **部分/本轮改善** | `tool_calls` 流式/非流式都保留；**工具 schema 已单一源**（内核当真源，随 `llm_chat` 请求下发，Host 两处分支都用它；§2.2）。**C-1/C-2 能力层已落地**：A 类（`describe_schedule` / `create_teammate` / `create_routine`，内核执行）+ B 类（`web_search` / `web_fetch` / `send_mail`，Host **同步**执行，模型拿到真结果）共 6 个产品工具到模型（PT 门禁 24/24 证明 provider 真收到 schema、内核/Host 真 dispatch、负例真不留残状态、无 key/未批准都如实报）。**权限已接(ADR 0012)**：策略由 Host 提供(`load_policy` FFI op)、**由内核裁决** —— 四个维度(主体 × 设备信任 × 工具 × 作用域);受限设备(手机/远程入站)多一批需审批的工具;硬禁用优先于审批;路径作用域是词法判断,Host 侧还有 canonical 那道闸。仍缺：通用注册/发现；**策略的 UI 与 per-connector/per-room 细粒度**(v1 策略来自环境变量);到模型的工具仍只有 9 个（Read/Shell/TodoWrite + 6 个产品工具），内核 70 个 `TurnIntent` 里的其余能力未暴露 | P1 |
+| AR-03 | 工具结果不回注 | **已实现（回合内 + 跨回合）** | `agent_loop.mbt` 把结果 fence 后回注下一轮——回合内已实现。**跨回合本轮接上了(ADR 0011)**：内核通过新增的 FFI op `load_context` / `save_context` 向 Host 要/交**编码后**的上下文（内核不碰文件，ADR 0002 边界），产品路径改用 `AgentLoop::run_with` 而非 `.run`。跨**进程**也活着 —— AC 门禁 7/0 证明：一个回合种下的事实出现在**下一个回合**的 provider 请求体里，且**另一个 Bot 的槽位看不到它**。槽位是 **(Bot, 会话)** —— 换对话也不串味（桌面端一个会话一份上下文；房间回合的 `room-<roomId>-<botId>` 天然对齐）。⚠️ 遗留：**没有「清空记忆」的显式路径**；落盘是对话明文（与 `data/sessions/` 同口径） | P1 |
+| AR-04 | 无会话历史/上下文预算 | **部分/本轮接线** | `runtime/agent_context.mbt`：`AgentContext`（历史 + `estimate_tokens` 估算预算 + 压缩 + `plan_block` / `lead_block` + `wire_messages` 投影成 provider 消息）。token 数是**估算**（字符数/4），不是真 tokenizer。停止条件有两个：步数 + 预算（L3-2）。**持久化本轮接上(ADR 0011)**：`load_context` / `save_context` 两个 FFI op 把编码后的上下文跨进程搬进搬出，**用户能感觉到「多轮不失忆」了**。仍缺：**真 tokenizer**（token 仍是估算）；**显式的清空记忆路径**；上下文是**明文**落盘（与 `data/sessions/` 同口径）；压缩策略仍是启发式（`HeuristicSummarizer`），没有模型摘要 | P1 |
 | AR-05 | memory 不注入 provider prompt | **未做** | 记忆仍是 kernel seed，provider prompt 不可见 | P2 |
-| AR-06 | 无规划/反思/任务分解 | **未做** | 只有 ReAct 式 think/call/observe，无 plan/todo/reflection | P2 |
-| AR-07 | 群无共享上下文 | **部分/已接** | `buildRoomContext` 带最近 N 条转录；`prove_room_context` 15/0；同轮并行仍互不可见、无任务板 | P1 |
+| AR-06 | 无规划/反思/任务分解 | **部分/本轮改善** | **规划已接**：`TodoWrite` 进 `product_tool_registry`（`agent_loop_product_native.mbt`），内核自己处理该工具（不发给 Host 执行），todo 清单进下一轮上下文，模型看得见自己的计划与进度（L3-6/L3-7）。**反思（reflection）仍未做**；任务分解在**群编排层**已做（`room_orchestrator.decomposeTask`），**单 Bot loop 内仍无分解** | P2 |
+| AR-07 | 群无共享上下文 | **部分/本轮改善** | `buildRoomContext` 带最近 N 条转录（`prove_room_context` 15/0）；**共享任务板已接**（`room_orchestrator.createRoomBoard` → `data/agents/sections/<room>.json`，有读回 prompt 的路径，选择回合与成员回合都能看到）。同轮并行成员之间**仍看不到彼此本轮输出**（bot_reply 在 `Promise.allSettled` 之后才落盘） | P1 |
 | AR-08 | 群路由语义不真实 | **已实现** | `@` 真定向、`@everyone` 全员、无 @ 逐 Bot YES/NO 真选择；全员弃权落 `skipped`；selector 失败 fail-open 并标 `fail_open`，UI 明示 | P1 |
-| AR-09 | handoff 不执行 | **未做** | `handoffTask` 仍只写 transcript + inbox | P1 |
-| AR-10 | 无 orchestrator/synthesis | **未做** | `final_report` 仍是 section 拼接 | P1 |
-| AR-11 | 无共享工作区/task board | **未做** | 无团队任务板/产物状态 | P2 |
-| AR-12 | 无团队预算/取消/loop guard | **部分** | 单 loop 有 64 步/取消；群有 6 人/timeout；无 token/成本预算 | P1 |
-| AR-13 | 无真实 MCP client | **部分/未做** | 只有有限 stdio 测试 server | P2 |
-| AR-14 | 无 trace/eval | **部分** | 有 QA gates/`BITBOT_LOOP` trace；无 agent eval suite | P2 |
+| AR-09 | handoff 不执行 | **已实现** | `product_surface.js` 新增 `handoffTaskAsync`：目标 Bot **真的跑一轮**（`executeHandoff` → `runResponderTurn`），回复落进群转录，失败如实标。生产 effect 路径也接上了（`host_ffi.js` 的 `handoff_task` effect 优先调 `handoffTaskAsync`）。`pretend_transferred` 的诚实语义保留。AE-21 门禁守着这条 | P1 |
+| AR-10 | 无 orchestrator/synthesis | **已实现** | `room_orchestrator.js` 落地：模型只**建议**拆解、**分工由宿主确定性轮转**（安全/预算不交给模型）；`final_report` 分成「成员结果 sections」+「lead 综合 synthesis」两层，不混为一谈；部分失败仍出综合并标 `gaps`。`prove_room_orchestrator` 69/0 | P1 |
+| AR-11 | 无共享工作区/task board | **已实现** | `room_orchestrator.createRoomBoard` → `data/agents/sections/<room>.json`（**key 用 room id**，不是 kernel group_id），有 `section_add` / `section_post` / 快照读回。产物（artifacts）仍只在 `final_report` 里，没有独立的共享产物库 | P2 |
+| AR-12 | 无团队预算/取消/loop guard | **已实现** | 团队预算（`createTeamBudget`：轮次/时间/token 估算）由宿主裁决，超了停并如实说明；**取消已真正到达内核**（`main.js` 群 responder turn 现在传 `cancelPromise`，`run_moon_turn.js` 支持它）；`AgentLoop` 侧步数上限可下调但硬顶 64 不可破（`effective_max_steps`）。仍缺**真成本**口径（token 是估算） | P1 |
+| AR-13 | MCP 未通用化 | **部分** | Host 侧已是符合 MCP 2024-11-05 的真 client（`scripts/host_h4_mcp_client.py:45` 标准握手 + Content-Length 分帧；`hosts/shared/host_ffi.js:9040` `tools/list`、`:14424-14428` `tools/call`）。真缺口是**服务端硬编码**（`host_ffi.js:292` 固定 `host_h4_mcp_stdio.py`）+ **只有 5 个工具**（`host_h4_mcp_stdio.py:38` TOOLS）+ 无 discovery/auth/工具权限；内核侧 `tools/mcp_host_file.mbt:3` 仍自述 mock | P2 |
+| AR-14 | 无 trace/eval | **部分/本轮改善** | **已建 AE 行为评测**（`scripts/eval/`，29 场景：26 门禁全绿 + 3 live 待密钥；见 `docs/qa/agent-eval.md`），断言对象是**行为**（选对工具/观察回注/失败收敛/预算内停下），不是接线。**WP/EG 的 provider 仍是 prompt 匹配桩**（`prove_agent_loop_product_wire.js:62-86`），两者不能互相替代；内核 `TranscriptStore` 仍是死代码；**无回放能力** | P2 |
 | AR-15 | 安全 P0 | **部分/未关** | P0 入站/auth/sandbox/SK 绿；P0-3 仍 U；文档明确不关 AR-15 | **P0** |
-| AR-16 | 打包/运维缺口 | **未做** | 内核未进 bundle；数据目录/签名未收口 | P3 |
+| AR-16 | 打包/运维缺口 | **部分/本轮改善** | **内核已进 bundle**：`moon build --target native` 出独立可执行文件，`scripts/pack-desktop.sh` 打包前构建 + 冒烟 + 落到 `hosts/desktop/resources/kernel/bin/`，`package.json` `extraResources` 随包分发，Host 直接跑它（不再需要目标机器装 MoonBit 工具链或源码树）。**等价性有门禁**：`scripts/prove_kernel_binary.sh`（KB）证明二进制与 `moon run` 输出逐字段一致，KB1 证明它不依赖源码树。**数据目录已迁 userData**（`hosts/desktop/paths.js`：packaged → `<userData>/data`，dev 仍是 `<repo>/data`）。**顺带修了一个真 bug**：原 `resolveRepoRoot()` 探的是 `moon.mod.json`，而真实模块文件是 `moon.mod` ⇒ 打包后必然找不到内核；现已改为探 `moon.mod` 并删掉硬编码的 `/Users/zfl/Downloads/bitbot`。自动更新已实现，公证钩子已接。仍缺：签名/公证**真跑**、更新源**真地址**、升级/回滚 smoke | P3 |
 | AR-17 | Kernel/Host 双路径漂移 | **部分** | Chat 已单一路径；群编排仍 Host 产品路径 | P1 |
+
+### 2.3.1 文档未记录但影响 L4+ 的行为
+
+> 这四条原文完全没有提，但它们直接卡住 L4/L5/L6：前两条让“可续跑 / 可重试”类评估根本测不到 agent，第三、四条让成本与故障面比账面看起来大得多。
+
+1. ~~**timeout ≠ 取消**~~ **本轮已修**：`main.js` 的群 responder turn 现在把编排层的取消作用域（`cancelPromise` / `isCancelled`）传进内核回合（`run_moon_turn.js` 支持 `ctx.cancelPromise`），编排层超时/取消会真的让内核回合停下。**注意**：这是「取消信号到达执行层」，不是「已跑的 provider 请求被撤回」——上游 HTTP 请求本身无法撤销。
+
+2. **同一句话重复问永不重跑**：`product_surface.js:1773` 用 `taskSig = room.id + "|" + task.toLowerCase()`，命中历史 `final_report` 就直接返回旧报告（`:1778-1786`，`deduped:true`），而 `main.js:1796` 的 `orchestrateRoom` 调用**从不传 `force`**。UI 有对应提示卡（`hosts/desktop/index.html:6885-6887`）。任何“可续跑 / 可重试 / 幂等恢复”类评估都必须先处理这条，否则测的是缓存不是 agent。
+
+3. ~~**fail-open 同时是成本放大器**~~ **本轮已修（有界降级）**：selector 整体失败时**不扇出**（如实失败，一个模型调用都不发生）；单个候选失败时按 `maxFailOpen`（默认 2）有界降级，被跳过的人在 `sections` 里记为**失败**而不是「参与」，降级原因写进群转录。`prove_room_orchestrator` 里对应门禁全绿。
+
+4. **群路径有一条静默失效的分支**：只有 Desktop IPC `bitbot:rooms:orchestrate`（`main.js:1780`）会真起 LLM 回合；内核 `room_turn` effect（`hosts/shared/host_ffi.js:24673-24717`）只做路由 + 写 transcript，**不驱动任何 responder 回合** ⇒ CLI / 移动端 / MCP 发的 `room <id> :: <text>` 在群里“没人回”且**不报错**。
 
 ## 3. 与主流对比
 
@@ -132,7 +169,7 @@
 | 维度 | 主流 agent | BitBot 现在 | 差距 |
 |---|---|---|---|
 | 自主性 | 计划→执行→观察→继续 | 默认 Chat 已 think→call→observe→continue；非 Chat 仍单轮 | 无 plan/cross-turn 状态 |
-| 工具选择 | 模型从 schema 选 | 模型从 Read/Shell schema 选 | 工具目录窄，通用 ToolRegistry 未做 |
+| 工具选择 | 模型从 schema 选 | 模型从 Read/Shell schema 选（`tools/types.mbt:63` 的 21 个内置工具里只有 2 个到得了模型） | 工具目录窄，通用 ToolRegistry 未做 |
 | 观察回注 | 工具结果进入下一轮 | 结果 fence 后回注本回合下一轮 | 不持久化，不跨回合 |
 | 上下文 | 会话历史 + 压缩 | 当前 user + persona + 最近群转录（仅群） | 无 DM 历史/压缩 |
 | 记忆 | 自动检索/写入 | 显式短语 + 分槽 | 不自动、不注入 provider |
@@ -142,8 +179,8 @@
 | 共享工作区 | 文件/任务板/产物 | 群 transcript/最近上下文有，工作区/任务板无 | 无团队状态 |
 | 安全 | 认证/沙箱/审批 | P0 入站/auth/sandbox 已硬化；P0-3 U | AR-15 未关 |
 | 可观测 | trace/eval/回放 | QA gates + `BITBOT_LOOP` trace | 无 agent eval suite |
-| 扩展 | 通用 MCP/插件 | 有限 stdio MCP | 生态弱 |
-| 发布 | 签名/自动更新 | 包内缺内核/硬编码路径 | 不可干净安装 |
+| 扩展 | 通用 MCP/插件 | Host 侧已是真 MCP client，但服务端硬编码 + 只有 5 个工具 | 生态弱 |
+| 发布 | 签名/公证 + 自动更新 | 单实例锁 + electron-updater 自动更新已落；公证钩子已接 | 签名/公证未真跑、更新源是占位地址、升级/回滚 smoke 未做；内核未进 bundle、数据目录仍写 repo |
 
 ## 4. 优先级
 
@@ -165,10 +202,10 @@
 | **P1** | 上下文与记忆：transcript、token budget、压缩、memory 注入、resume | **未开始**；AgentLoop 仍只带当前 user | L | Agent Loop |
 | **P1** | 群编排：orchestrator、任务分解、分工、共享 room state、synthesis、预算/取消 | **未开始**；当前是 Host 并行扇出 + 拼接 | L | Agent Loop + 上下文 |
 | **P2** | 共享工作区/task board | **未开始** | M | 群编排 |
-| **P2** | 真实 MCP client + 工具权限 | **部分/未做**；当前是有限 stdio 测试 server | L | Tool contract |
+| **P2** | MCP 通用化 + 工具权限 | **部分**：Host 侧已是真 client；缺服务端可插拔、discovery/auth、工具权限、通用 schema 映射 | L | Tool contract |
 | **P2** | Trace/Eval/回放 | **部分**：有 QA gates/loop trace，无 eval suite | M | Loop + 群编排 |
 | **P2** | 规划/反思 | **未开始** | M | Loop + 上下文 |
-| **P3** | 打包/签名/更新/数据目录 | **未开始**；内核未进 bundle | M | 安全/发布 |
+| **P3** | 打包/签名/更新/数据目录 | **部分**：单实例锁 + electron-updater 自动更新已落；内核未进 bundle、数据目录仍写 repo、签名/公证未真跑、更新源是占位地址、升级/回滚 smoke 未做 | M | 安全/发布 |
 
 ## 5. 波次计划
 
@@ -177,13 +214,13 @@
 | Wave | 状态 | 证据/口径 |
 |---|---|---|
 | 0 安全止血 | **Host 面完成；AR-15 未关** | P0 8/0、host 11/0、SK 8/0；P0-3 仍 U |
-| 1 群聊真实性 | **部分** | 定向 @ 已真；无 @ 逐 Bot YES/NO 真选择；最近 N 条转录已进 responder prompt；handoff 未做 |
-| 2 Agent Loop MVP | **默认 Chat 已接；未升裁** | WP 49/0、EG 62/0、AU 69/0、A7/A8 23/0；PP `NEEDS_LIVE` |
-| 3 上下文与记忆 | **未开始** | 无 transcript/token budget/memory 注入 |
-| 4 真群编排 | **未开始** | 仍是 Host 并行扇出 + section 拼接 |
-| 5 工具/MCP | **部分** | Read/Shell 已接；通用 MCP 未做 |
-| 6 观测/评测 | **部分** | QA gates/loop trace；无 eval suite |
-| 7 发布/运维 | **未开始** | 内核未进 bundle |
+| 1 群聊真实性 | **已做** | 定向 @ 已真；无 @ 逐 Bot YES/NO 真选择；最近 N 条转录已进 responder prompt；**handoff 已真执行**（AE-21 门禁） |
+| 2 Agent Loop MVP | **默认 Chat 已接；未升裁** | WP 49/0、EG 62/0、AU 69/0、A7/A8 23/0；PP `NEEDS_LIVE`；**AE 26/26**（行为门禁）。**WP/EG 的 provider 是 prompt 匹配桩**，只证接线不证模型行为（§0.1、AR-14） |
+| 3 上下文与记忆 | **部分** | **会话历史 + token 预算 + 压缩已做**（`runtime/agent_context.mbt`，L3-2/L3-5）。**memory 注入 provider prompt 仍未做** |
+| 4 真群编排 | **已做** | `room_orchestrator.js`：拆解 / 确定性分工 / lead 综合 / 共享任务板 / 团队预算 / 取消传播 / 重复劳动率；`prove_room_orchestrator` 69/0；AE-17~AE-21 |
+| 5 工具/MCP | **部分** | Read/Shell 已接；Host 侧 MCP client 已是真协议（2024-11-05）；服务端硬编码 + 5 工具、通用 MCP 未做 |
+| 6 观测/评测 | **部分** | **AE 行为评测已建**（`scripts/eval/`，26 门禁全绿 + 3 live 待密钥，见 `docs/qa/agent-eval.md`）；QA gates/loop trace 仍在。**无回放**，trace 未落盘 |
+| 7 发布/运维 | **部分/本轮改善** | 单实例锁已落（e2e 6/0）；electron-updater 自动更新已落；公证钩子已接但缺凭据会跳过。**内核已进 bundle**（编译成独立二进制 + `extraResources` + KB 等价性门禁），**数据目录已迁 userData**，**`resolveRepoRoot` 探错文件名导致打包必然失效的 bug 已修**。仍缺：**更新源仍是 env/占位地址**、签名/公证未真跑、升级/回滚 smoke 未做 |
 
 ### Wave 0 — 止血（P0）
 
@@ -231,6 +268,8 @@
 ### Wave 2 — Agent Loop MVP（P1）
 
 > 当前状态：默认 Desktop/cmd Chat 已接 `AgentLoop::run`，WP/EG/AU 门禁绿；生产 provider live 未跑，AR-01/02/03 未升裁，不宣称 MVP。
+>
+> ⚠️ WP/EG 的 provider 是 **prompt 匹配桩**（`scripts/prove_agent_loop_product_wire.js:62-86` `classify()`、`scripts/prove_agent_loop_electron_midrun.mjs:80` `classify()`），按 prompt 字符串决定这轮返回什么工具；断言的是接线不变量（`:233` `trace.kernel_ops === trace.node_ops`），**不是“模型会不会正确选工具”**。这两条门禁不能当模型行为证据用。
 
 **目标**：让模型真的能“选工具 → 执行 → 看结果 → 继续”。
 
@@ -326,13 +365,18 @@
 
 ### Wave 7 — 发布/运维（P3）
 
+> ⚠️ **本节的残项正在被并行修**：工作树里已经出现 `hosts/desktop/paths.js`（新模块，替换内联 `resolveRepoRoot()`）、`hosts/desktop/main.js` 的路径解析改动，以及 `scripts/pack-desktop.sh` 的「内核编译进 bundle」改动。下文“内核未进 bundle / `resolveRepoRoot()` 硬编码 / `moon.mod.json` 探测”是按**基线 `244515b`** 记的；那批改动落地后，本节与 §2.3 AR-16、§3 发布行都要重新核对，不能直接把本节当现状读。
+
 **目标**：干净机器能装、能升级、数据不丢。
 
 **改动**
-- 内核二进制/`cmd/` 进入 bundle；去掉 `resolveRepoRoot()` 硬编码。
-- 数据目录移到 `app.getPath("userData")`；不写 app bundle。
-- 单实例锁、CSP、日志轮转、崩溃恢复。
-- 签名/公证/更新源；vault key 接 OS Keychain。
+- 内核二进制/`cmd/` 进入 bundle；去掉 `resolveRepoRoot()` 硬编码（`hosts/desktop/main.js:137-161` 仍探 `/Users/zfl/Downloads/bitbot`；`:126,146` 探的是 `moon.mod.json`，而 MoonBit 的模块文件是 `moon.mod`）。
+- 数据目录移到 `app.getPath("userData")`；不写 app bundle（当前仍写 `<REPO_ROOT>/data`，`main.js:180,199`）。
+- **已接（不再是待做）**：单实例锁——`main.js:25` `app.requestSingleInstanceLock()`，`:23-24` `BITBOT_DISABLE_SINGLE_INSTANCE` 负向对照，`:29-35` `second-instance` 把已有窗口唤到前台；门禁 `scripts/e2e_desktop_single_instance.mjs` 6/0。
+- **已接（不再是待做）**：自动更新——`main.js:113` 载入 electron-updater，`:2568` 注释 "P4 auto-update — real electron-updater"，`:2603` `setFeedURL`，`:2607` `checkForUpdates()`，`:2640` `downloadUpdate()`，`:2650` `quitAndInstall(false,true)`；`hosts/desktop/package.json:98` 依赖 `electron-updater ^6.3.9`，`:48` publish generic provider。公证钩子也已接：`package.json:47` `afterSign: build/notarize.js` → `hosts/desktop/build/notarize.js:28-34` 调 `@electron/notarize`，缺 `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID` 时诚实跳过（不假装已公证）。
+- **仍未做**：签名/公证**真跑**一次；更新源换成**真地址**（当前是 `BITBOT_UPDATE_FEED_URL` 环境变量 + `package.json:51` 占位 `https://updates.bitbot.local/desktop`）；升级/回滚 smoke。
+- CSP、日志轮转、崩溃恢复。
+- vault key 接 OS Keychain。
 - 安装/升级/回滚 smoke。
 
 **验收**
@@ -402,6 +446,8 @@
 | 上下文泄漏 | 群共享 transcript / memory 注入 | 脱敏、作用域、来源标注、最小注入 |
 | 评测盲区 | 只有 smoke，没有 agent eval | 20 场景 + CI 门槛 |
 | 装不上 | bundle 缺内核/硬编码路径 | Wave 7；干净机器 smoke |
+| 群扇出不可取消 | `withTimeout` 只 reject 外层 promise + 群 responder turn 不传 `cancelPromise` | 把 timeout 升级成真取消；先立 token/时间预算（§2.3.1） |
+| 同一句群消息永不重跑 | `taskSig` 幂等命中即返回旧 `final_report`，调用点从不传 `force` | 显式 `force`/续跑语义；评测脚本必须绕开缓存（§2.3.1） |
 
 ## 9. 非目标
 
@@ -424,6 +470,8 @@
 | handoff 完成率 | 请求→执行→回复闭环 | 不把写 inbox 算完成 |
 | 安全用例 | 100% 通过 | 未认证/坏签名/无审批/超限 |
 | 成本/时延 | 每任务可见，有预算 | 群/长任务重点 |
+| 取消/超时传播 | 超时后模型调用真的停止 | 现在 timeout≠取消，超时后仍烧 token（§2.3.1） |
+| 重跑/续跑 | 同一任务能显式重跑并出新报告 | 现在被 `taskSig` 幂等去重挡住（§2.3.1） |
 
 ## 11. 证据索引
 
@@ -432,7 +480,19 @@
 | `runtime/agent_loop.mbt` `AgentLoop::run` | 内核拥有 model→tool→observe→repeat；64 步、取消、未知工具/坏参数、审批 allow/deny/cancel、untrusted fence |
 | `cmd/desktop_turn/agent_loop_product_native.mbt` | 默认 Desktop/cmd Chat：`open_turn` + `AgentLoop::run`；默认 Read/Shell registry；legacy `--legacy-chat-effect` 才退回旧路径 |
 | `hosts/shared/agent_loop_product_wire.js` | Host 四操作映射；`llm_chat` / `exec_tool` / `request_approval` / `deliver`；Read/Shell 参数与审批动作规范化 |
-| `hosts/shared/host_ffi.js` `agentLoopToolSchema` | provider 请求带 Read/Shell JSON schema；非空 schema 不是旧 `{}` |
+| `hosts/shared/host_ffi.js` `agentLoopToolSchema` | provider 请求带 Read/Shell 完整 JSON Schema（`:5576-5603`）；**非空 schema 不是旧 `{}`**——但它与内核侧那份是分离的（见下两行） |
+| `cmd/desktop_turn/agent_loop_product_native.mbt` `product_tool_registry` | 内核侧工具 schema 只有 `{"required":["path"]}` / `{"required":["command"]}`（`:67,74`，无 type/properties）——**加工具要同时改内核 + Host 两处** |
+| `runtime/types.mbt` `ToolRegistry::seed_builtins` | `{}` schema 只出现在这里（`:20`），且只被 `runtime/pipeline_test.mbt:28`、`runtime/types_test.mbt:3` 引用；产品路径走 `bitbot.mbt:21` `ToolRegistry::empty()`（`cmd/main/main.mbt:3-5` 启动） |
+| `runtime/transcript.mbt` `TranscriptStore` / `ToolCallTrace` | `TranscriptStore`（`:78`）无外部引用，是死代码；`ToolCallTrace`（`:28`）只有 `tool_name`/`args_json`/`result_snippet`，无 duration/error/时间戳 |
+| `scripts/host_h4_mcp_client.py` `mcp_session` | Host 侧真 MCP client：initialize + notifications/initialized 握手、Content-Length 分帧（`:17` `_encode` / `:22` `_read_one`） |
+| `scripts/host_h4_mcp_stdio.py` `TOOLS` | 服务端硬编码 + 只有 5 个工具（`:38`）；`hosts/shared/host_ffi.js:292` 固定指向它——真缺口在服务端不在 client |
+| `hosts/desktop/main.js` `requestSingleInstanceLock` | 单实例锁已落（`:25`；负向对照 `:23-24`；`second-instance` 聚焦 `:29-35`）；门禁 `scripts/e2e_desktop_single_instance.mjs` 6/0 |
+| `hosts/desktop/main.js` electron-updater / `hosts/desktop/package.json` | 自动更新已落（`:113,2568,2603,2607,2640,2650`；`package.json:98` 依赖、`:48` publish generic）；公证钩子 `package.json:47` → `hosts/desktop/build/notarize.js:28-34`（缺凭据诚实跳过） |
+| `hosts/desktop/product_surface.js` `orchestrateRoom` | 幂等去重 `taskSig`（`:1773`、`:1778-1786`）+ `withTimeout` 不终止正在跑的回合（`:1803-1809`） |
+| `hosts/desktop/main.js` `selectRoomResponders` | fail-open：失败/超时 ⇒ `respond:true, fail_open:true`（`:1756-1770`）；群 responder turn 不传 `cancelPromise`（`:1637`），DM 路径才传（`:2921`） |
+| `hosts/shared/host_ffi.js` `room_turn` effect | 只路由 + 写 transcript，不驱动 responder 回合（`:24673-24717`）；只有 Desktop IPC `main.js:1780` 会真起 LLM 回合 |
+| `hosts/shared/host_ffi.js` `webSearch` | 真实 web 检索在 Host JS（Tavily/Brave，`:5522`）；`tools/web.mbt:49` `WebHost::mock()` 只是内存假实现 |
+| `tools/types.mbt` `BuiltinTool::all()` | 21 个内置工具（`:63`），但模型只够得着 Read/Shell 两个 |
 | `hosts/shared/host_ffi.js` `consumeSseDataLine` / `httpJsonStream` | 流式与非流式都保留 `delta.content` + `tool_calls`（A7/A8） |
 | `hosts/shared/run_moon_turn.js` `pumpMoonFfi` | 内核每行 FFI 请求只回一行 JSON；Node 不 own loop；`kernel_ops`/`node_ops` 可对账 |
 | `hosts/shared/run_moon_turn.js` `kernelLoopTrace` | `BITBOT_LOOP entry=AgentLoop::run` 与 op trace；仅证据，不是 eval |
@@ -455,9 +515,9 @@
 | `hosts/desktop/main.js` `runRoomResponderTurn` | 每 Bot 独立 session/persona；`approved:false`；intent=Chat 可进内核 loop |
 | `hosts/desktop/main.js` `rooms:orchestrate` | 群主路径仍是 Host `roomTurn → orchestrateRoom`；Kernel `Orchestrate` 未做 |
 | `hosts/desktop/index.html` 群 composer | 调 `rooms.orchestrate`，不是 Kernel 群入口 |
-| `hosts/shared/host_ffi.js` `runWorkerMoonTurn` | subagent worker 一次性，prompt 截 800，不回注工具结果 |
-| `docs/qa/agent-loop-wp1-wp8-gates.md` | WP1–WP8：49/0；runtime 54/54；parser 3/3 |
-| `docs/qa/electron-chat-agent-loop-gates.md` | EG1–EG6：62/0；Electron mid-run/取消 |
+| `hosts/shared/host_ffi.js` `runWorkerMoonTurn` | subagent worker 一次性，prompt 截 800（`:18680-18690`）；**worker 回合内部工具观察是回注的**（`cmd/desktop_turn/agent_loop_product_native.mbt:215-216` → `:158` `AgentLoop::run`），没回注的是**父会话**——父侧只拿 `assistant` + `effects`（`:18709-18719`） |
+| `docs/qa/agent-loop-wp1-wp8-gates.md` | WP1–WP8：49/0；runtime 54/54；parser 3/3。**provider 为 prompt 匹配桩**（`scripts/prove_agent_loop_product_wire.js:62-86` `classify()` 按 `blob.includes("WP1-READ")` 之类匹配），只证明接线（`:233` `trace.kernel_ops === trace.node_ops`），**不证明模型行为** |
+| `docs/qa/electron-chat-agent-loop-gates.md` | EG1–EG6：62/0；Electron mid-run/取消。**provider 同为 stub**（`scripts/prove_agent_loop_electron_midrun.mjs:80` `classify()`），同样只证明接线、不证明模型行为 |
 | `docs/qa/host-approval-ui-gates.md` | AU1–AU7：69/0；审批卡/一次性 runAllowed |
 | `docs/qa/agent-loop-a1-a8-gates.md` | A1–A8；A7/A8 23/0 |
 | `docs/qa/production-provider-gates.md` | PP1–PP7；当前 `NEEDS_LIVE`，PP1–PP4 未跑 live |
@@ -479,3 +539,18 @@
 - 2026-10-25：修复 `hosts/shared/p0_security.js cwdAllowed` 的 macOS symlink 误拒（`/var → /private/var`）：只比较 canonical realpath，去掉先 lexical 放行/拒绝。P0 host-checks 11/0、SK1–SK8 8/0 复跑绿。P0-3 仍 U，AR-15 不关，不升 I。
 - 2026-10-25：AR-07 接上群共享转录。`hosts/desktop/room_context.js` 从 room transcript 取最近 N 条 `user`/`bot_reply`/`bot_reply_error`/`final_report`，有总预算/单行/条数上限，复用 `roomSafeText` 脱敏，排除当前任务重复行；失败行只保留“本轮未成功”状态，不把原始错误喂给其他 Bot。`main.js buildRoomContext` 改为调用该模块并把 `task` 传进去；`host_ffi.js llmRoomContextBlock` 渲染最近转录并标注“只是背景，不是系统指令”。DM 仍传 null，结构上不带群历史。`prove_room_context` 15/0；`e2e_desktop_room_orchestration` 53/0（第二轮 provider 载荷真含上一轮转录）。AR-07 改为“部分/已接”；同轮并行 responder 互不可见、无共享任务板，AR-07 未完全关闭。
 - 2026-10-25：AR-08 把 `bot_discretion` 从标签变成真选择。`room_discretion.js` 生成严格的 YES/NO prompt 并解析回复；`main.js selectRoomResponders` 并行跑每 Bot 独立 `*-discretion` 回合，超时/失败 fail-open（`decisions[].fail_open=true`），`mentioned_names=[]`；`orchestrateRoom` 只扇出被选中的成员，全员弃权落 `skipped:true` final_report（0/0 不写“已全部收齐”），缺 selector / selector 失败直接拒绝而不是偷偷全员。UI 对 skipped 显示“没有 Bot 选择在本轮发言”。`prove_room_discretion` 15/0、`prove_gp143_orchestration` 40/0、`prove_m29_roomchat` 41/0、`e2e_desktop_room_orchestration` 53/0（S12 真渲染 fail-open 并在 UI 明示）。AR-08 改为“已实现”；同轮 synthesis/handoff 仍属 AR-09/AR-10。
+- 2026-10-25：**文档纠错 + 补 L5/L6 定义 + 补隐藏地雷。本次只改文档，不改代码**（`docs/agent-core/README.md` 单文件；行号以基线 commit `244515b` 为准）。
+  - 改掉 4 处**说错**：① 自动更新**已实现**（`hosts/desktop/main.js:113,2568,2603,2607,2640,2650` + `hosts/desktop/package.json:98,48`；公证钩子 `package.json:47` → `hosts/desktop/build/notarize.js:28-34`），§3 发布行 / §4.2 P3 / §5 Wave 7 改为“已落自动更新 + 单实例锁，剩签名/公证真跑、更新源真地址、升级/回滚 smoke”；② 单实例锁**已落**（`main.js:25`、`:23-24`、`:29-35`；`scripts/e2e_desktop_single_instance.mjs` 6/0），从 Wave 7 待做清单删除；③ “boot registry 仍把 schema 写成 `{}`”打偏了——`{}` 只在 `runtime/types.mbt:20` `seed_builtins()`（只被两个测试引用），真实 boot 走 `bitbot.mbt:21` `ToolRegistry::empty()`；改为新增真问题“**两份 schema 分离**”（内核 `agent_loop_product_native.mbt:67,74` vs Host `host_ffi.js:5576-5603`）；④ MCP 现状描述不准——Host 侧是符合 2024-11-05 的**真 client**（`scripts/host_h4_mcp_client.py:45`），真缺口是服务端硬编码 + 5 个工具（`host_ffi.js:292`、`host_h4_mcp_stdio.py:38`）。
+  - 改掉 2 处**说得太乐观**：⑤ `TranscriptStore`（`runtime/transcript.mbt:78`）是死代码，`ToolCallTrace`（`:28`）只有 3 个字段、无 duration/error/时间戳；⑥ WP 49/0 / EG 62/0 的 provider 是 **prompt 匹配桩**（`scripts/prove_agent_loop_product_wire.js:62-86`、`scripts/prove_agent_loop_electron_midrun.mjs:80`），只证接线不证模型行为——这是 AR-01/02/03 迟迟不升裁的根子，已在 §0.1 / §2.3 AR-01/AR-14 / §5 Wave 2 / §11 逐处标注。
+  - 新增：§1.2 的 **L5（团队运行时）/ L6（自治团队）** 两级定义（仓库原有阶梯到 L4，L5/L6 按仓库自身词汇推得，不是外部标准）；§2.2.1「已存在但未接线的原语」（todo_write / 并行工具 / 自主性判定 / 审批重试指纹 / 诚实门 / 工具 trace / 任务恢复 / 动态工具目录，**到 L3/L4 的主要工作量是接线不是从零造**）；§2.3.1「文档未记录但影响 L4+ 的行为」四条地雷（timeout≠取消且群扇出不可取消、同一句群消息永不重跑、fail-open 同时是成本放大器、群路径的静默失效分支）。
+  - 补两条正面事实：Host 侧工具 schema 其实是完整的、内核侧才是极简的，且 21 个内置工具里只有 2 个到得了模型；真实 web 检索在 Host JS（`host_ffi.js:5522`），`tools/web.mbt:49` `WebHost::mock()` 只是内存假实现。
+  - 修正一条不准确表述：Subagent worker **不是**“不回注工具结果”——worker 起的是真内核回合（`host_ffi.js:18680-18690`），工具观察在 worker 回合内部是回注的（`agent_loop_product_native.mbt:215-216` → `:158`）；没回注的是父会话（父侧只拿 `assistant` + `effects`，`host_ffi.js:18709-18719`）。
+
+- 2026-10-26：**L3→L6 第一轮落地**（代码 + 文档同步）。基线 `244515b`，本轮改 `runtime/`、`cmd/desktop_turn/`、`hosts/`、`scripts/`、`docs/`。
+  - **L3（内核）**：`runtime/agent_context.mbt` 新增 `AgentContext`——会话历史、token 预算（**估算**，字符数/4）、压缩、`plan_block` / `lead_block`、`wire_messages` 投影成 provider 消息；`runtime/agent_loop.mbt` 重写状态机：失败分类（`LoopFailureKind`）、重试上限、两个停止条件（步数 + 预算）、步数上限可下调但**硬顶 64 不可破**（`effective_max_steps`）。`TodoWrite` 进 registry，内核自己处理，todo 清单进下一轮上下文。`runtime` 71/71、全仓 `moon test` 418/418。
+  - **L4（群编排）**：`hosts/desktop/room_orchestrator.js` 新增——`decomposeTask` / `normalizeSubtaskProposal`（模型只建议）/ `assignSubtasks`（宿主确定性轮转）/ `buildSynthesisPrompt`（lead 综合）/ `createRoomBoard`（共享任务板，**有读回 prompt 的路径**）/ `createTeamBudget`（轮次+时间+token）/ `createCancelScope` / `duplicateWorkRate`（重复劳动率）。`product_surface.js` 新增 `handoffTaskAsync`（handoff 真执行）、`setRoomRuntimeDeps`、综合/拆解/预算 deps。`hosts/shared/host_ffi.js` 的 `handoff_task` effect 优先走执行路径。`scripts/prove_room_orchestrator.js` 69/0。
+  - **L5（工具生态）**：**工具 schema 单一源**——内核 registry 的 `input_schema_json` 升级为完整 JSON Schema，由 `product_tool_schema_json()` 随 `llm_chat` FFI 请求下发，Host 流式/非流式两处都优先用内核那份。**没有**把 21 个内置工具全暴露给模型：Host 侧 `execProductTool` 只实现 Shell/Read，暴露其余只会让模型选到必然失败的工具——这是有意留下的诚实边界。
+  - **L6（可交付）**：**内核编译进 bundle**（`moon build --target native` → 独立可执行文件 → `hosts/desktop/resources/kernel/bin/` → electron-builder `extraResources`），目标机器不再需要 MoonBit 工具链或源码树；**数据目录迁 `app.getPath("userData")`**（`hosts/desktop/paths.js`，dev 仍是 `<repo>/data`）；**修掉一个真 bug**——原 `resolveRepoRoot()` 探 `moon.mod.json`（真实模块文件是 `moon.mod`）导致打包后必然找不到内核，还硬编码了 `/Users/zfl/Downloads/bitbot`；`scripts/prove_kernel_binary.sh`（KB 门禁）证明二进制与 `moon run` 逐字段一致、且不依赖源码树。
+  - **评测**：新增 `scripts/eval/`（AE 行为评测，29 场景：26 门禁全绿 + 3 live 待密钥）、`docs/qa/agent-eval.md`、`.github/workflows/agent-eval.yml`。**口径纪律**：AE 绿 = 行为达标，WP/EG 绿 = 接线达标，两者不能互相替代；AE 绿**也不关** AR-01/02/03（生产 provider live + P0-3 内核 U 仍开）。
+  - **契约变更（明示）**：`AgentLoop.max_steps` 由「强制 64、caller 不可改」改为「caller 可下调，硬顶 64 不可破」。原 A1 / HABI-6 两条测试断言的是旧语义，已改为新契约并补上「抬不高」的验证（L3-1 覆盖 raise→64）。理由：不可下调的预算等于没有预算；真正兜住成本的是那个硬顶。
+  - **本轮没关的**：AR-15 / P0-3 内核 U；生产 provider live（PP1–PP4 `NEEDS_LIVE`）；群消息幂等去重（同一句永不重跑）；内核 `room_turn` 那条静默失效路径；同轮并行成员互不可见；MCP 服务端通用化；真成本口径（token 仍是估算）。

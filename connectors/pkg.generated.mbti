@@ -6,13 +6,15 @@ import {
 }
 
 // Values
+pub const USER_FINANCE_NAMESPACE : String = "user-Finance"
+
 pub const USER_X_NAMESPACE : String = "user-X"
 
 pub const X_PUBLIC_NAMESPACE : String = "x"
 
-pub const X_RATE_LIMIT_PER_DAY : Int = 1000
+pub const X_RATE_LIMIT_PER_DAY : Int32 = 1000
 
-pub const X_RATE_LIMIT_PER_MINUTE : Int = 30
+pub const X_RATE_LIMIT_PER_MINUTE : Int32 = 30
 
 pub fn resolve_connector_identity(ConnectorIdentityKind, IdentityRequirement) -> IdentityResolution
 
@@ -57,6 +59,32 @@ pub fn ConnectorStatus::is_usable(Self) -> Bool
 pub fn ConnectorStatus::not_equal(Self, Self) -> Bool
 pub fn ConnectorStatus::to_repr(Self) -> @debug.Repr
 
+pub(all) struct FinanceConnector {
+  namespace_ : String
+  mut status : ConnectorStatus
+  tools : Array[FinanceToolSpec]
+  balances : Map[String, String]
+}
+pub fn FinanceConnector::auth_status(Self) -> ConnectorStatus
+pub fn FinanceConnector::authenticate(Self) -> Result[Unit, String]
+pub fn FinanceConnector::call_tool(Self, name~ : String, account_id? : String) -> Result[String, String]
+pub fn FinanceConnector::has_tool(Self, String) -> Bool
+pub fn FinanceConnector::is_needs_auth(Self) -> Bool
+pub fn FinanceConnector::is_usable(Self) -> Bool
+pub fn FinanceConnector::list_tool_names(Self) -> Array[String]
+pub fn FinanceConnector::new() -> Self
+pub fn FinanceConnector::seed_balance(Self, account_id~ : String, balance~ : String) -> Unit
+pub fn FinanceConnector::seed_stub_tools(Self) -> Unit
+
+pub(all) struct FinanceToolSpec {
+  name : String
+  description : String
+  readonly_ : Bool
+} derive(Eq, @debug.Debug)
+pub fn FinanceToolSpec::equal(Self, Self) -> Bool
+pub fn FinanceToolSpec::not_equal(Self, Self) -> Bool
+pub fn FinanceToolSpec::to_repr(Self) -> @debug.Repr
+
 pub(all) enum IdentityRequirement {
   AppSufficient
   UserIdentityRequired
@@ -77,7 +105,7 @@ pub fn IdentityResolution::to_repr(Self) -> @debug.Repr
 pub(all) struct McpNamespace {
   id : String
   display_name : String
-  tool_count : Int
+  tool_count : Int32
 } derive(Eq, @debug.Debug)
 pub fn McpNamespace::equal(Self, Self) -> Bool
 pub fn McpNamespace::not_equal(Self, Self) -> Bool
@@ -88,6 +116,7 @@ pub(all) struct PluginBundle {
   display_name : String
   skills : Array[PluginSkillSpec]
   mcp_namespace : String
+  mcp_tools : Array[PluginToolSpec]
 } derive(Eq, @debug.Debug)
 pub fn PluginBundle::equal(Self, Self) -> Bool
 pub fn PluginBundle::not_equal(Self, Self) -> Bool
@@ -98,11 +127,13 @@ pub(all) struct PluginMetadata {
   display_name : String
   skills : Array[PluginSkillSpec]
   mcp_namespace : String
+  mcp_tools : Array[PluginToolSpec]
 } derive(Eq, @debug.Debug)
 pub fn PluginMetadata::equal(Self, Self) -> Bool
 pub fn PluginMetadata::not_equal(Self, Self) -> Bool
 pub fn PluginMetadata::skill_names(Self) -> Array[String]
 pub fn PluginMetadata::to_repr(Self) -> @debug.Repr
+pub fn PluginMetadata::tool_names(Self) -> Array[String]
 
 pub(all) struct PluginRegistry {
   available : Array[PluginBundle]
@@ -129,6 +160,14 @@ pub(all) struct PluginSkillSpec {
 pub fn PluginSkillSpec::equal(Self, Self) -> Bool
 pub fn PluginSkillSpec::not_equal(Self, Self) -> Bool
 pub fn PluginSkillSpec::to_repr(Self) -> @debug.Repr
+
+pub(all) struct PluginToolSpec {
+  name : String
+  description : String
+} derive(Eq, @debug.Debug)
+pub fn PluginToolSpec::equal(Self, Self) -> Bool
+pub fn PluginToolSpec::not_equal(Self, Self) -> Bool
+pub fn PluginToolSpec::to_repr(Self) -> @debug.Repr
 
 pub(all) struct UtcRateWindow {
   minute_key : String
@@ -162,15 +201,15 @@ pub fn XMcpToolSpec::to_repr(Self) -> @debug.Repr
 pub(all) struct XPublicRateLimiter {
   mut minute_key : String
   mut day_key : String
-  mut minute_count : Int
-  mut day_count : Int
+  mut minute_count : Int32
+  mut day_count : Int32
   namespace_ : String
 }
 pub fn XPublicRateLimiter::call(Self, window~ : UtcRateWindow) -> XRateLimitOutcome
 pub fn XPublicRateLimiter::namespace_id(Self) -> String
 pub fn XPublicRateLimiter::new() -> Self
 pub fn XPublicRateLimiter::remaining(Self) -> XRateRemaining
-pub fn XPublicRateLimiter::set_counts(Self, minute~ : Int, day~ : Int, window~ : UtcRateWindow) -> Unit
+pub fn XPublicRateLimiter::set_counts(Self, minute~ : Int32, day~ : Int32, window~ : UtcRateWindow) -> Unit
 
 pub(all) struct XPublicSearchNamespace {
   namespace_ : String
@@ -205,8 +244,8 @@ pub fn XRateLimitOutcome::not_equal(Self, Self) -> Bool
 pub fn XRateLimitOutcome::to_repr(Self) -> @debug.Repr
 
 pub(all) struct XRateRemaining {
-  per_minute : Int
-  per_day : Int
+  per_minute : Int32
+  per_day : Int32
 } derive(Eq, @debug.Debug)
 pub fn XRateRemaining::equal(Self, Self) -> Bool
 pub fn XRateRemaining::not_equal(Self, Self) -> Bool

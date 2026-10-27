@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { canonicalAction } = require("./host_approval_gate");
+const { buildToolPolicy } = require("./tool_policy");
 
 /**
  * One Host FFI op for the kernel AgentLoop.
@@ -39,7 +40,340 @@ function approvalMode() {
   return "deny";
 }
 
-function execProductTool(req, state) {
+/**
+ * K-1/K-3: where one Bot's agent context lives.
+ *
+ * The slot arrives from the kernel as a bot id, and it ends up in a FILE PATH.
+ * It must therefore never be able to escape the context directory: a bot id
+ * like "../../etc/passwd" must not become a path.
+ */
+const DEFAULT_CONTEXT_MACHINE = "desk-1";
+
+/**
+ * B-5:这台机器叫什么。
+ *
+ * 上下文槽位从 per-(Bot, 会话) 扩成 per-(机器, Bot, 会话) ——
+ * 同一段对话不该在两台机器上续着(那是串味,不是记得我)。
+ *
+ * **机器维度归 Host,不给内核**:内核是机器无关的(同一个二进制在每台机器上跑),
+ * 而且 Host 侧能同时算出新路径和老路径,迁移才好做。
+ */
+function agentContextMachine(machineId) {
+  const raw = String(machineId || "").trim();
+  let safe = raw.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64);
+  if (safe === "" || safe === "." || safe === "..") safe = DEFAULT_CONTEXT_MACHINE;
+  return safe;
+}
+
+function agentContextPath(ffi, slot, machineId) {
+  const raw = String(slot || "").trim();
+  let safe = raw.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64);
+  if (safe === "" || safe === "." || safe === "..") safe = "agent-bit";
+  const dir = path.join(String((ffi && ffi.DATA_ROOT) || "."), "agent-context");
+  const machine = agentContextMachine(machineId);
+  return {
+    dir,
+    file: path.join(dir, machine, safe + ".ctx"),
+    // 分机器之前,上下文是平铺在 agent-context/ 下的 —— 这条是迁移源。
+    legacyFile: path.join(dir, safe + ".ctx"),
+  };
+}
+
+function readAgentContext(ffi, slot, machineId) {
+  const { file, legacyFile } = agentContextPath(ffi, slot, machineId);
+  try {
+    if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
+    // 迁移:老槽位**没有机器归属**(那时候根本没记是谁写的),所以规则是
+    // 「谁先读谁继承」—— 读完就搬走,第二台机器就看不到了。
+    // 这才是「各机独立」该有的样子;复制的话两台机器会共享同一段对话。
+    if (fs.existsSync(legacyFile)) {
+      const text = fs.readFileSync(legacyFile, "utf8");
+      try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, text, "utf8");
+        fs.unlinkSync(legacyFile);
+      } catch (_) {
+        /* 搬不动就还是读老的 —— 宁可继续用旧槽位,也不能把历史弄丢 */
+      }
+      return text;
+    }
+    return "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function writeAgentContext(ffi, slot, text, machineId) {
+  const { file } = agentContextPath(ffi, slot, machineId);
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, String(text || ""), "utf8");
+    return true;
+  } catch (_) {
+    /* a context that cannot be persisted must not fail the turn */
+    return false;
+  }
+}
+
+function canonProductTool(name) {
+  const n = String(name || "");
+  if (n === "webSearch" || n === "WebSearch" || n === "search_web" || n === "searchWeb") {
+    return "web_search";
+  }
+  if (n === "webFetch" || n === "WebFetch" || n === "open_url" || n === "openUrl") {
+    return "web_fetch";
+  }
+  if (n === "sendMail" || n === "SendMail" || n === "send_mail" || n === "mail_send") {
+    return "send_mail";
+  }
+  if (n === "createRoom" || n === "CreateRoom" || n === "create_group" || n === "createGroup") {
+    return "create_room";
+  }
+  return n;
+}
+
+/**
+ * C-2 B-class product tools. The Host runs these SYNCHRONOUSLY, so the model
+ * observes the REAL result — a search that found nothing, a fetch that was
+ * blocked, a mail that had no credential — instead of a promise the Host may
+ * later fail to keep.
+ *
+ * Nothing here invents success. Every failure path reports the real reason.
+ */
+async function execHostProductTool(name, args, argsJson, state) {
+  const tool = canonProductTool(name);
+  if (tool === "web_search") {
+    const query = String(args.query || args.q || "").trim();
+    if (!query) {
+      return { output: JSON.stringify({ ok: false, error: "empty_query", sources: [] }) };
+    }
+    const topN = Math.min(5, Math.max(1, Number(args.topN || args.top_n) || 5));
+    let res = null;
+    try {
+      res = await state.ffi.webSearch(query, { topN });
+    } catch (err) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          error: String((err && err.message) || err).slice(0, 200),
+          sources: [],
+        }),
+      };
+    }
+    if (!res || !res.ok) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          provider: (res && res.provider) || "",
+          error: (res && res.error) || "search_failed",
+          sources: [],
+        }),
+      };
+    }
+    const sources = (Array.isArray(res.sources) ? res.sources : []).map((s) => ({
+      title: String((s && s.title) || ""),
+      url: String((s && s.url) || ""),
+      snippet: String((s && s.snippet) || "").slice(0, 400),
+    }));
+    return {
+      output: JSON.stringify({ ok: true, provider: String(res.provider || ""), sources }),
+    };
+  }
+  if (tool === "web_fetch") {
+    const url = String(args.url || "").trim();
+    if (!url) {
+      return { output: JSON.stringify({ ok: false, error: "empty_url" }) };
+    }
+    let results = [];
+    try {
+      results = await state.ffi.executeHostEffects(
+        [{ kind: "webfetch", command: url, needs_host_ffi: true }],
+        {},
+      );
+    } catch (err) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          url,
+          error: String((err && err.message) || err).slice(0, 200),
+        }),
+      };
+    }
+    const row = Array.isArray(results) ? results[0] : null;
+    if (!row) {
+      return { output: JSON.stringify({ ok: false, url, error: "no_result_recorded" }) };
+    }
+    let detail = {};
+    try {
+      detail = JSON.parse(String(row.stdout || "{}")) || {};
+    } catch (_) {
+      detail = {};
+    }
+    if (!row.ok) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          url,
+          error: String(row.error || detail.error || "fetch_failed"),
+          http_status: Number(detail.http_status || 0) || 0,
+        }),
+      };
+    }
+    return {
+      output: JSON.stringify({
+        ok: true,
+        url,
+        http_status: Number(detail.http_status || 0) || 0,
+        body_prefix: String(detail.body_prefix || ""),
+        body_bytes: Number(detail.body_bytes || 0) || 0,
+      }),
+    };
+  }
+  if (tool === "create_room") {
+    // C-5:建群。成员可以是名字或 id;不认识的人会被如实拒绝 —— 绝不建残群。
+    const title = String(args.title || args.name || "").trim();
+    const rawMembers = Array.isArray(args.members)
+      ? args.members
+      : Array.isArray(args.bots)
+        ? args.bots
+        : String(args.members || args.bots || "").split(",");
+    const members = rawMembers.map((m) => String(m == null ? "" : m).trim()).filter(Boolean);
+    if (!title) {
+      return { output: JSON.stringify({ ok: false, error: "create_room needs a title" }) };
+    }
+    if (!members.length) {
+      return { output: JSON.stringify({ ok: false, error: "create_room needs members" }) };
+    }
+    let res = null;
+    try {
+      res = await state.ffi.createRoom(members.join(","), title);
+    } catch (err) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          error: String((err && err.message) || err).slice(0, 200),
+          members,
+        }),
+      };
+    }
+    if (!res || res.ok === false) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          error: (res && res.error) || "room_create_failed",
+          names_not_found: (res && res.names_not_found) || [],
+          resolved_names: (res && res.resolved_names) || [],
+          resolved_count: Number((res && res.resolved_count) || 0),
+          members,
+        }),
+      };
+    }
+    const room = res.room || {};
+    return {
+      output: JSON.stringify({
+        ok: true,
+        room_id: String(room.id || ""),
+        title: String(room.title || title),
+        members: Array.isArray(room.members) ? room.members : members,
+        member_count: Array.isArray(room.members) ? room.members.length : members.length,
+        // 短窗内的同成员同群名 → 返回既有群,不新建第二个。
+        existing: Boolean(res.existing),
+      }),
+    };
+  }
+  if (tool === "send_mail") {
+    const to = String(args.to || "").trim();
+    const subject = String(args.subject || "").trim();
+    const body = String(args.body || args.text || "");
+    if (!to || !subject || !body) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          error: "send_mail needs to, subject and body",
+        }),
+      };
+    }
+    // The effect command is `provider|to|subject|body`; `|` is the separator,
+    // so a subject containing one would silently corrupt the recipient.
+    if (subject.includes("|")) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          error: "subject must not contain '|' (it separates the effect fields)",
+        }),
+      };
+    }
+    // The approval grant comes from THIS Host's own decideApproval — never
+    // from a field in the arguments. ADR 0008: args.approved cannot mint
+    // approval, so `approved` is never read here.
+    const action = canonicalAction("send_mail", argsJson);
+    const granted =
+      state.mailAllowed &&
+      (state.pendingMailAction === "*" || state.pendingMailAction === action);
+    if (!granted) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          error: "send_mail refused: no approval grant",
+          needs_approval: true,
+          sent: false,
+        }),
+      };
+    }
+    let results = [];
+    try {
+      results = await state.ffi.executeHostEffects(
+        [
+          {
+            kind: "mail_send",
+            command: "gmail|" + to + "|" + subject + "|" + body,
+            needs_host_ffi: true,
+          },
+        ],
+        { approved: true },
+      );
+    } catch (err) {
+      return {
+        output: JSON.stringify({
+          ok: false,
+          error: String((err && err.message) || err).slice(0, 200),
+          sent: false,
+        }),
+      };
+    }
+    const row = Array.isArray(results) ? results[0] : null;
+    if (!row) {
+      return {
+        output: JSON.stringify({ ok: false, error: "no_result_recorded", sent: false }),
+      };
+    }
+    let detail = {};
+    try {
+      detail = JSON.parse(String(row.stdout || "{}")) || {};
+    } catch (_) {
+      detail = {};
+    }
+    // `sent` and `pretend_sent` come from the Host's own ledger. A sandbox
+    // eml is NOT a send, and the model must be told which one happened.
+    const sent = detail.sent === true;
+    return {
+      output: JSON.stringify({
+        ok: row.ok !== false,
+        to,
+        subject,
+        sent,
+        pretend_sent: detail.pretend_sent === true,
+        live_mail_residual: detail.live_mail_residual === true,
+        mode: String(detail.mode || ""),
+        eml_path: String(detail.eml_path || ""),
+        error: row.ok === false ? String(row.error || detail.reason || "send_failed") : "",
+      }),
+    };
+  }
+  return { output: "exec refused: " + name };
+}
+
+async function execProductTool(req, state) {
   const name = String((req && req.name) || "");
   const argsJson = String((req && req.arguments) || "");
   let args = {};
@@ -66,6 +400,15 @@ function execProductTool(req, state) {
     if (typeof fixture === "string") return { output: fixture };
     return { output: readBounded(state.ffi, rel) };
   }
+  if (
+    canonProductTool(name) !== name ||
+    name === "web_search" ||
+    name === "web_fetch" ||
+    name === "send_mail" ||
+    name === "create_room"
+  ) {
+    return await execHostProductTool(name, args, argsJson, state);
+  }
   return { output: "exec refused: " + name };
 }
 
@@ -73,6 +416,17 @@ async function decideApproval(state, req, opts) {
   const options = opts || {};
   const name = String((req && req.name) || "");
   const argsJson = String((req && req.arguments) || "");
+  // A grant the Host itself decided. B-class product tools get their own
+  // grant: the Host's own effect gate (executeHostEffects) would otherwise
+  // refuse `mail_send` a second time, with no way to say "already approved".
+  const grant = () => {
+    state.shellAllowed = true;
+    state.pendingShellAction = canonicalAction(name, argsJson);
+    if (canonProductTool(name) === "send_mail") {
+      state.mailAllowed = true;
+      state.pendingMailAction = canonicalAction("send_mail", argsJson);
+    }
+  };
   if (typeof options.requestApproval === "function") {
     let verdict = "deny";
     try {
@@ -87,14 +441,12 @@ async function decideApproval(state, req, opts) {
       verdict = "deny";
     }
     if (verdict === "allow") {
-      state.shellAllowed = true;
-      state.pendingShellAction = canonicalAction(name, argsJson);
+      grant();
     }
     return { verdict };
   }
   if (options.cliApproved === true) {
-    state.shellAllowed = true;
-    state.pendingShellAction = canonicalAction(name, argsJson);
+    grant();
     if (options.approvalGate && state.turnId) {
       options.approvalGate.record({
         turnId: state.turnId,
@@ -108,6 +460,8 @@ async function decideApproval(state, req, opts) {
   if (verdict === "allow") {
     state.shellAllowed = true;
     state.pendingShellAction = "*";
+    state.mailAllowed = true;
+    state.pendingMailAction = "*";
   }
   return { verdict };
 }
@@ -127,11 +481,21 @@ function createProductSession(ffi, llmOpts) {
   const state = {
     shellAllowed: false,
     pendingShellAction: "",
+    // C-2: the Host's own grant for the send_mail product tool. It is set
+    // ONLY by decideApproval — a field in the tool arguments cannot set it.
+    mailAllowed: false,
+    pendingMailAction: "",
+    // K-2/C-3: the device this turn came from, and who it belongs to.
+    deviceTrust: String((opts && opts.deviceTrust) || "trusted"),
+    subject: String((opts && opts.subject) || ""),
     delivered: "",
     // GP-165: first failing llm_chat reason for this turn ("" until one fails).
     llmError: "",
     ffi,
     turnId: String(opts.turnId || ""),
+    // B-5: 上下文按机器分槽。机器身份由 Host 提供(见 hosts/shared/machine_identity.js),
+    // 内核不需要知道「机器」这件事。
+    machineId: String((opts && opts.machineId) || ""),
   };
   return {
     state,
@@ -145,6 +509,10 @@ function createProductSession(ffi, llmOpts) {
           ...chatOpts,
           messages: Array.isArray(req.messages) ? req.messages : [],
           agentLoopTools: true,
+          // The kernel owns the tool catalog: it sends the schema the model
+          // must see, so the provider payload can never drift from what the
+          // kernel can actually dispatch.
+          tools: Array.isArray(req.tools) ? req.tools : undefined,
         });
         const calls = Array.isArray(res.tool_calls) ? res.tool_calls : [];
         if (!res.ok) {
@@ -166,6 +534,28 @@ function createProductSession(ffi, llmOpts) {
       }
       if (op === "exec_tool") return execProductTool(req, state);
       if (op === "request_approval") return decideApproval(state, req, opts);
+      // K-1/K-3: the agent context crosses the process boundary here. The
+      // kernel owns the semantics (encode/decode); the Host only stores bytes.
+      // K-2/C-3: the Host builds the policy; the kernel enforces it.
+      if (op === "load_policy") {
+        const policy = buildToolPolicy({
+          deviceTrust: state.deviceTrust,
+          subject: state.subject,
+        });
+        return { output: JSON.stringify(policy) };
+      }
+      if (op === "load_context") {
+        return { output: readAgentContext(state.ffi, req && req.slot, state.machineId) };
+      }
+      if (op === "save_context") {
+        const ok = writeAgentContext(
+          state.ffi,
+          req && req.slot,
+          req && req.text,
+          state.machineId,
+        );
+        return { output: ok ? "ok" : "context_not_persisted" };
+      }
       if (op === "deliver") {
         state.delivered = String((req && req.text) || "");
         return { ok: true };

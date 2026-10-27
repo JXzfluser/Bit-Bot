@@ -10,9 +10,21 @@ import {
 }
 
 // Values
+pub const AGENT_CONTEXT_DEFAULT_KEEP_TURNS : Int32 = 4
+
+pub const AGENT_CONTEXT_DEFAULT_TOKEN_BUDGET : Int32 = 24000
+
 pub const AGENT_LOOP_MAX_STEPS : Int32 = 64
 
+pub const LOOP_PROVIDER_ERROR_MARKER : String = "provider_error:"
+
+pub const LOOP_TOOL_DURATION_MARKER : String = "tool_duration_ms:"
+
+pub const LOOP_TOOL_ERROR_MARKER : String = "tool_error:"
+
 pub const STYLE_GUIDE_MAX_ACK_CHARS : Int32 = 120
+
+pub fn agent_context_key_tools() -> Array[String]
 
 pub fn answer_missing_data(available~ : String?, question~ : String, real_path~ : String) -> HonestyAnswer
 
@@ -26,13 +38,19 @@ pub fn audit_bypass_attempt(String) -> @tools.ToolResult
 
 pub fn build_routines_status_reminder(Array[RoutineStatusEntry]) -> String
 
+pub fn call_signature(ToolCallReq) -> String
+
 pub fn capture_need_user(@security.ApprovalGate, @security.ApprovalRequest) -> SmartModePending?
 
 pub fn classify_tool_mutability(String) -> ToolMutability
 
 pub fn classify_tool_output(String, String) -> InstructionPolicy
 
+pub fn clip_text(String, Int32) -> String
+
 pub fn decide_autonomy(AutonomyAction, in_delegated_scope~ : Bool) -> AutonomyDecision
+
+pub fn default_retry_policy() -> LoopRetryPolicy
 
 pub fn demo_ack_envelope(String, String) -> @ui_protocol.SendEnvelope
 
@@ -45,6 +63,14 @@ pub fn detect_ask_language(String) -> AskLanguage
 pub fn emit_two_readonly_same_turn(a_name~ : String, a_args~ : String, b_name~ : String, b_args~ : String) -> Result[ParallelToolPlan, String]
 
 pub fn envelope_text_body(@ui_protocol.SendEnvelope) -> String?
+
+pub fn escape_field(String) -> String
+
+pub fn estimate_tokens(String) -> Int32
+
+pub fn extract_exit_code(String) -> Int32
+
+pub fn find_json_array(String) -> String?
 
 pub fn follow_language_answer(String, zh_answer~ : String, en_answer~ : String) -> String
 
@@ -64,6 +90,8 @@ pub fn is_confirm_or_clarify(String) -> Bool
 
 pub fn is_fluff_phrase(String) -> Bool
 
+pub fn is_key_tool(String) -> Bool
+
 pub fn is_parroted_z(String) -> Bool
 
 pub fn is_short_ack(String) -> Bool
@@ -72,17 +100,29 @@ pub fn is_short_enough(String) -> Bool
 
 pub fn is_spoken_sentence_style(String) -> Bool
 
+pub fn json_field_string(String, String) -> String?
+
 pub fn language_follow_ok(String, String) -> Bool
 
 pub fn looks_concrete(String) -> Bool
 
 pub fn looks_like_secret(String) -> Bool
 
+pub fn normalize_todo_status(String) -> String
+
 pub fn open_turn(turn_id~ : String, text~ : String, kind? : InboundKind) -> TurnContext
 
 pub fn open_turn_from_inbound(turn_id~ : String, text~ : String, kind? : InboundKind) -> (TurnContext, InboundHandleResult)
 
 pub fn open_turn_stripping_cue(turn_id~ : String, text~ : String, kind? : InboundKind) -> (TurnContext, String)
+
+pub fn parse_int_or(String, Int32) -> Int32
+
+pub fn parse_todo_action(String) -> Result[TodoAction, String]
+
+pub fn parse_todo_items(String) -> Array[TodoItem]
+
+pub fn path_within_roots(String, Array[String]) -> Bool
 
 pub fn plan_first_turn(description~ : String) -> FirstTurnPlan
 
@@ -112,26 +152,93 @@ pub fn should_start_work_immediately(description~ : String) -> Bool
 
 pub fn smart_mode_resume(SmartModePending, String, String, Bool) -> @security.ApprovalDecision
 
+pub fn split_json_objects(String) -> Array[String]
+
 pub fn strip_agent_cue(String) -> String
 
 pub fn strip_cue(String) -> String
 
 pub fn style_guide_rule_labels() -> Array[String]
 
+pub fn tool_scope(String) -> String
+
 pub fn transcript_includes_tool_calls(Array[TranscriptEntry]) -> Bool
+
+pub fn unescape_field(String) -> String
 
 pub fn user_timezone() -> @core.TimeZone
 
 // Errors
 
 // Types and methods
+pub(all) struct AgentContext {
+  mut session_id : String
+  mut history : Array[AgentHistoryEntry]
+  mut summary : String
+  mut todos : Array[TodoItem]
+  mut traces : Array[AgentToolTrace]
+  mut budget_tokens : Int32
+  mut keep_recent_turns : Int32
+  mut compacted : Bool
+} derive(Eq, @debug.Debug)
+pub fn AgentContext::append(Self, AgentRole, String, tool_name? : String, step? : Int32, key? : Bool) -> Unit
+pub fn AgentContext::append_assistant(Self, String, step? : Int32) -> Unit
+pub fn AgentContext::append_observation(Self, String, String, step? : Int32) -> Unit
+pub fn AgentContext::append_tool(Self, String, String, step? : Int32) -> Unit
+pub fn AgentContext::append_user(Self, String) -> Unit
+pub fn[S : AgentSummarizer] AgentContext::compact(Self, S) -> Bool
+pub fn AgentContext::decode(String) -> Self
+pub fn AgentContext::done_todo_count(Self) -> Int32
+pub fn AgentContext::encode(Self) -> String
+pub fn AgentContext::equal(Self, Self) -> Bool
+pub fn AgentContext::estimated_tokens(Self) -> Int32
+pub fn AgentContext::lead_block(Self) -> String
+pub fn AgentContext::new(session_id~ : String) -> Self
+pub fn AgentContext::not_equal(Self, Self) -> Bool
+pub fn AgentContext::over_budget(Self) -> Bool
+pub fn AgentContext::plan_block(Self) -> String
+pub fn AgentContext::record_trace(Self, AgentToolTrace) -> Unit
+pub fn AgentContext::session(Self) -> String
+pub fn AgentContext::set_todos(Self, Array[TodoItem]) -> Unit
+pub fn AgentContext::to_repr(Self) -> @debug.Repr
+pub fn AgentContext::turn_count(Self) -> Int32
+pub fn AgentContext::wire_messages(Self) -> Array[LoopMessage]
+pub fn AgentContext::with_budget(session_id~ : String, budget_tokens~ : Int32, keep_recent_turns? : Int32) -> Self
+
+pub(all) struct AgentHistoryEntry {
+  role : AgentRole
+  content : String
+  tool_name : String
+  step : Int32
+  key : Bool
+} derive(Eq, @debug.Debug)
+pub fn AgentHistoryEntry::equal(Self, Self) -> Bool
+pub fn AgentHistoryEntry::not_equal(Self, Self) -> Bool
+pub fn AgentHistoryEntry::to_repr(Self) -> @debug.Repr
+
 pub(all) struct AgentLoop {
   registry : ToolRegistry
   max_steps : Int32
 }
 pub fn AgentLoop::boot(Self, TurnContext) -> String
+pub fn AgentLoop::effective_max_steps(Self) -> Int32
 pub fn AgentLoop::new(ToolRegistry) -> Self
 pub fn[H : AgentLoopHost] AgentLoop::run(Self, TurnContext, H) -> AgentRun
+pub fn[H : AgentLoopHost] AgentLoop::run_with(Self, TurnContext, H, AgentContext, policy? : LoopRetryPolicy, tool_policy? : ToolPolicy) -> AgentRun
+pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(Self, TurnContext, H, AgentContext, S, policy? : LoopRetryPolicy, tool_policy? : ToolPolicy) -> AgentRun
+
+pub(all) enum AgentRole {
+  User
+  Assistant
+  Tool
+  Observation
+} derive(Eq, @debug.Debug)
+pub fn AgentRole::code(Self) -> String
+pub fn AgentRole::equal(Self, Self) -> Bool
+pub fn AgentRole::from_code(String) -> Self
+pub fn AgentRole::not_equal(Self, Self) -> Bool
+pub fn AgentRole::to_repr(Self) -> @debug.Repr
+pub fn AgentRole::wire(Self) -> String
 
 pub(all) struct AgentRun {
   turn_id : String
@@ -143,10 +250,27 @@ pub(all) struct AgentRun {
   approval_count : Int32
   delivered : String
   observations : Array[String]
+  failures : Array[LoopFailure]
+  traces : Array[AgentToolTrace]
+  todos : Array[TodoItem]
+  context : AgentContext
 } derive(Eq, @debug.Debug)
 pub fn AgentRun::equal(Self, Self) -> Bool
 pub fn AgentRun::not_equal(Self, Self) -> Bool
 pub fn AgentRun::to_repr(Self) -> @debug.Repr
+
+pub(all) struct AgentToolTrace {
+  tool_name : String
+  args_json : String
+  result_snippet : String
+  duration_ms : Int32
+  exit_code : Int32
+  error : Bool
+  timestamp : String
+} derive(Eq, @debug.Debug)
+pub fn AgentToolTrace::equal(Self, Self) -> Bool
+pub fn AgentToolTrace::not_equal(Self, Self) -> Bool
+pub fn AgentToolTrace::to_repr(Self) -> @debug.Repr
 
 pub(all) enum ApprovalVerdict {
   ApprovalAllow
@@ -235,6 +359,14 @@ pub fn FirstTurnPlan::not_equal(Self, Self) -> Bool
 pub fn FirstTurnPlan::skips_getting_started(Self) -> Bool
 pub fn FirstTurnPlan::to_repr(Self) -> @debug.Repr
 
+pub(all) struct HeuristicSummarizer {
+  max_chars : Int32
+  per_entry_chars : Int32
+}
+pub fn HeuristicSummarizer::new() -> Self
+pub fn HeuristicSummarizer::summarize(Self, Array[AgentHistoryEntry]) -> String
+pub impl AgentSummarizer for HeuristicSummarizer
+
 pub(all) struct HonestyAnswer {
   text : String
   admits_gap : Bool
@@ -294,6 +426,30 @@ pub fn LlmChatReply::equal(Self, Self) -> Bool
 pub fn LlmChatReply::not_equal(Self, Self) -> Bool
 pub fn LlmChatReply::to_repr(Self) -> @debug.Repr
 
+pub(all) struct LoopFailure {
+  kind : LoopFailureKind
+  tool_name : String
+  call_id : String
+  message : String
+  step : Int32
+  attempt : Int32
+  blocked : Bool
+} derive(Eq, @debug.Debug)
+pub fn LoopFailure::equal(Self, Self) -> Bool
+pub fn LoopFailure::not_equal(Self, Self) -> Bool
+pub fn LoopFailure::to_repr(Self) -> @debug.Repr
+
+pub(all) enum LoopFailureKind {
+  UnknownTool
+  InvalidArguments
+  ToolExecutionFailed
+  ApprovalDenied
+  ProviderFailed
+} derive(Eq, @debug.Debug)
+pub fn LoopFailureKind::equal(Self, Self) -> Bool
+pub fn LoopFailureKind::not_equal(Self, Self) -> Bool
+pub fn LoopFailureKind::to_repr(Self) -> @debug.Repr
+
 pub(all) struct LoopHostAbi {
   replies : Array[LlmChatReply]
   mut reply_i : Int32
@@ -321,10 +477,22 @@ pub fn LoopMessage::equal(Self, Self) -> Bool
 pub fn LoopMessage::not_equal(Self, Self) -> Bool
 pub fn LoopMessage::to_repr(Self) -> @debug.Repr
 
+pub(all) struct LoopRetryPolicy {
+  max_attempts_per_tool : Int32
+  max_consecutive_failures : Int32
+  backoff_steps : Int32
+} derive(Eq, @debug.Debug)
+pub fn LoopRetryPolicy::equal(Self, Self) -> Bool
+pub fn LoopRetryPolicy::not_equal(Self, Self) -> Bool
+pub fn LoopRetryPolicy::to_repr(Self) -> @debug.Repr
+
 pub(all) enum LoopStop {
   Final
   MaxSteps
   Cancelled
+  TokenBudget
+  Failed
+  ProviderFailed
 } derive(Eq, @debug.Debug)
 pub fn LoopStop::equal(Self, Self) -> Bool
 pub fn LoopStop::not_equal(Self, Self) -> Bool
@@ -344,6 +512,7 @@ pub(all) struct MockAgentHost {
   repeat_last : Bool
   exec_results : Array[String]
   mut exec_i : Int32
+  exec_repeat : Bool
   execs : Array[String]
   approvals : Array[String]
   deliveries : Array[String]
@@ -397,6 +566,29 @@ pub fn RoutineStatusEntry::new(routine_id~ : String, folder_id~ : String) -> Sel
 pub fn RoutineStatusEntry::not_equal(Self, Self) -> Bool
 pub fn RoutineStatusEntry::to_repr(Self) -> @debug.Repr
 
+pub(all) struct RunState {
+  mut steps : Int32
+  mut exec_count : Int32
+  mut llm_count : Int32
+  mut approval_count : Int32
+  mut consecutive_failures : Int32
+  mut observations : Array[String]
+  mut failures : Array[LoopFailure]
+  mut attempts : Map[String, Int32]
+  mut last_failed_step : Map[String, Int32]
+  mut last_kind : Map[String, LoopFailureKind]
+  mut tool_attempts : Map[String, Int32]
+} derive(Eq, @debug.Debug)
+pub fn RunState::attempt_count(Self, String) -> Int32
+pub fn RunState::count_failure(Self, String, String, LoopFailureKind, Int32) -> Unit
+pub fn RunState::equal(Self, Self) -> Bool
+pub fn RunState::last_failure_kind(Self, String) -> LoopFailureKind
+pub fn RunState::last_failure_message(Self) -> String
+pub fn RunState::new() -> Self
+pub fn RunState::not_equal(Self, Self) -> Bool
+pub fn RunState::to_repr(Self) -> @debug.Repr
+pub fn RunState::tool_attempt_count(Self, String) -> Int32
+
 pub(all) struct SmartModePending {
   request_id : String
   class_ : @security.ApprovalClass
@@ -424,6 +616,15 @@ pub(all) struct StyleGuideSample {
 pub fn StyleGuideSample::equal(Self, Self) -> Bool
 pub fn StyleGuideSample::not_equal(Self, Self) -> Bool
 pub fn StyleGuideSample::to_repr(Self) -> @debug.Repr
+
+pub(all) enum TodoAction {
+  Replace(Array[TodoItem])
+  MarkDone(String)
+  SetStatus(String, String)
+} derive(Eq, @debug.Debug)
+pub fn TodoAction::equal(Self, Self) -> Bool
+pub fn TodoAction::not_equal(Self, Self) -> Bool
+pub fn TodoAction::to_repr(Self) -> @debug.Repr
 
 pub(all) struct TodoItem {
   id : String
@@ -454,6 +655,15 @@ pub fn ToolCallTrace::equal(Self, Self) -> Bool
 pub fn ToolCallTrace::not_equal(Self, Self) -> Bool
 pub fn ToolCallTrace::to_repr(Self) -> @debug.Repr
 
+pub(all) enum ToolDecision {
+  Allow
+  NeedApproval
+  Deny(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn ToolDecision::equal(Self, Self) -> Bool
+pub fn ToolDecision::not_equal(Self, Self) -> Bool
+pub fn ToolDecision::to_repr(Self) -> @debug.Repr
+
 pub(all) enum ToolMutability {
   ReadOnly
   Mutating
@@ -461,6 +671,23 @@ pub(all) enum ToolMutability {
 pub fn ToolMutability::equal(Self, Self) -> Bool
 pub fn ToolMutability::not_equal(Self, Self) -> Bool
 pub fn ToolMutability::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ToolPolicy {
+  subject : String
+  device_trust : String
+  deny_tools : Array[String]
+  need_approval : Array[String]
+  limited_needs_approval : Array[String]
+  path_roots : Array[String]
+  routine_auto_execute : Bool
+} derive(Eq, @debug.Debug)
+pub fn ToolPolicy::decide(Self, String, String) -> ToolDecision
+pub fn ToolPolicy::default() -> Self
+pub fn ToolPolicy::equal(Self, Self) -> Bool
+pub fn ToolPolicy::is_limited(Self) -> Bool
+pub fn ToolPolicy::not_equal(Self, Self) -> Bool
+pub fn ToolPolicy::parse(String) -> Self
+pub fn ToolPolicy::to_repr(Self) -> @debug.Repr
 
 pub(all) struct ToolRegistry {
   specs : Array[@tools.ToolSpec]
@@ -575,4 +802,8 @@ pub(open) trait AgentLoopHost {
   fn exec_tool(Self, String, String) -> String
   fn request_approval(Self, String, String) -> ApprovalVerdict
   fn deliver(Self, String) -> Unit
+}
+
+pub(open) trait AgentSummarizer {
+  fn summarize(Self, Array[AgentHistoryEntry]) -> String
 }

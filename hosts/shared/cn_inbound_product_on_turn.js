@@ -8,6 +8,7 @@
 const path = require("path");
 const fs = require("fs");
 const { createTurnRunner } = require("./run_moon_turn");
+const { machineIdForInbound } = require("./machine_identity");
 
 function loadEnvLocal(repoRoot) {
   const candidates = [
@@ -60,12 +61,25 @@ function createProductOnTurn(repoRoot) {
         : channel;
     return runner.runTurn(String(prompt || ""), {
       sessionId,
-      machineId:
-        machineKind === "desktop" ? "desk-1" : `${machineKind}-inbound`,
+      // B-2 + B-4a:入站回合的机器身份是**那台设备的 id**。
+      // 入站本来就必须出示设备凭证,所以「谁发来的」是确定的 ——
+      // 不该再去信 payload 里自称的 machine_kind。
+      machineId: machineIdForInbound({
+        kind: machineKind,
+        deviceId: (meta && meta.device_id) || "",
+      }),
       machineKind,
       channel: useChannel,
       // ADR 0008: a remote/mobile turn is not a desktop Allow click.
       approved: false,
+      // K-2/C-3: a mobile or remote inbound turn comes from a LIMITED
+      // device — the person asking is not sitting at the machine. Read-only
+      // tools still work; anything that reaches outward or changes state has
+      // to be approved by whoever IS at the machine.
+      deviceTrust: "limited",
+      // Q-5: 渠道自带的投递 id(钉钉 msgId / 飞书 message_id)。
+      // 平台重投同一条消息 ⇒ 同一个 id ⇒ 不重复执行;用户另发一条 ⇒ 新 id。
+      messageId: String((meta && (meta.message_id || meta.msgId)) || ""),
     });
   };
 }

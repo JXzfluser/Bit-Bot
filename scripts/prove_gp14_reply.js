@@ -32,7 +32,10 @@ const TURNS_DIR = path.join(REPO, "data/llm/turns");
 const STUB_PORT = Number(process.env.BITBOT_G14_STUB_PORT || 8795);
 const QUOTE_TEXT = "GP14-PROBE 被引用的原始回答";
 const REPLY_TEXT = "GP14-PROBE 针对引用作答";
-const SESSION_ID = "sess-gp14probe";
+// A per-run id: the agent context is keyed by (bot, session), so a unique
+// session keeps each run from inheriting the previous run's history.
+const RUN_ID = Date.now().toString(36) + "-" + process.pid;
+const SESSION_ID = "sess-gp14probe-" + RUN_ID;
 const QUOTE_ID = "msg-gp14probe-q1";
 
 let PASS = 0;

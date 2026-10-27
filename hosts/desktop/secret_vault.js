@@ -29,7 +29,9 @@ const secretProtocol = require("./secret_protocol");
 
 function createSecretVault(repoRoot, opts = {}) {
   const root = path.resolve(repoRoot);
-  const vaultPath = path.join(root, "data", "secrets", "vault.json");
+  /* The vault holds user secrets -> OS user-data dir when packaged. */
+  const dataRoot = opts.dataRoot ? path.resolve(opts.dataRoot) : path.join(root, "data");
+  const vaultPath = path.join(dataRoot, "secrets", "vault.json");
   // Test/probe hook: redirect the whole store so a probe never touches real data.
   const file = (opts && opts.vaultPath) || vaultPath;
   // Key lives beside the vault (same directory, same 0600 discipline), so a

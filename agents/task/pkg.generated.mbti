@@ -9,11 +9,11 @@ import {
 // Values
 pub fn assert_parallel_multi_running(Array[SubagentHandle]) -> Result[Unit, String]
 
-pub fn count_running_handles(Array[SubagentHandle]) -> Int
+pub fn count_running_handles(Array[SubagentHandle]) -> Int32
 
 pub fn run_knowledge_work_task(task_id~ : String, parent_turn_id~ : String, material_prompt~ : String) -> Result[(SubagentHandle, KnowledgeWorkReport), String]
 
-pub fn run_watch_video_answer_from_frames(task_id~ : String, parent_turn_id~ : String, video_path~ : String, question~ : String, max_frames? : Int) -> Result[(SubagentHandle, WatchVideoFrameAnswer), String]
+pub fn run_watch_video_answer_from_frames(task_id~ : String, parent_turn_id~ : String, video_path~ : String, question~ : String, max_frames? : Int32) -> Result[(SubagentHandle, WatchVideoFrameAnswer), String]
 
 pub fn run_watch_video_task(task_id~ : String, parent_turn_id~ : String, video_path~ : String, question? : String) -> Result[(SubagentHandle, WatchVideoConclusion), String]
 
@@ -51,7 +51,7 @@ pub fn ParentWaitMode::not_equal(Self, Self) -> Bool
 pub fn ParentWaitMode::to_repr(Self) -> @debug.Repr
 
 pub(all) struct ParentWaitSession {
-  mut check_count : Int
+  mut check_count : Int32
   mut mode : ParentWaitMode
   mut woke : Bool
 }

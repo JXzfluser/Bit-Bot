@@ -5,11 +5,16 @@ import {
   "bitbot/bitbot/memory",
   "bitbot/bitbot/runtime",
   "bitbot/bitbot/security",
+  "bitbot/bitbot/tools",
   "moonbitlang/core/debug",
 }
 
 // Values
 pub const DESKTOP_TURN_JSON_V : Int32 = 1
+
+pub fn agent_context_aligned(@runtime.AgentContext, String) -> @runtime.AgentContext
+
+pub fn agent_context_slot(String, String) -> String
 
 pub fn args_want_host_continue(Array[String]) -> Bool
 
@@ -23,7 +28,21 @@ pub fn decode_cn_group_chat(String) -> (String, String)?
 
 pub fn decode_cn_routine(String) -> (String, String)?
 
+pub fn decode_cn_schedule(String) -> (String, String)?
+
+pub fn encode_context_request(String, String, String) -> String
+
+pub fn encode_product_tool_output(String) -> String
+
+pub fn exec_product_tool_action(ProductToolAction, auto_execute? : Bool) -> ProductToolResult
+
 pub fn gate_consequential(String, String, TurnIntent, DesktopTurnContext, @security.ApprovalClass, String, irreversible? : Bool) -> DesktopTurnResult?
+
+pub fn is_host_tool(String) -> Bool
+
+pub fn is_kernel_tool(String) -> Bool
+
+pub fn parse_context_reply(String) -> String
 
 pub fn parse_host_continue_args(Array[String]) -> (String, String, Array[DesktopHostResult])
 
@@ -33,11 +52,21 @@ pub fn parse_product_llm_reply(String) -> @runtime.LlmChatReply
 
 pub fn parse_product_output(String) -> String
 
+pub fn parse_product_tool_action(String, String) -> Result[ProductToolAction, String]
+
 pub fn parse_product_verdict(String) -> @runtime.ApprovalVerdict
 
 pub fn parse_turn_context(Array[String]) -> DesktopTurnContext
 
 pub fn parse_turn_id_flag(Array[String], default~ : String) -> String
+
+pub fn product_tool_name_canonical(String) -> String
+
+pub fn product_tool_registry() -> @runtime.ToolRegistry
+
+pub fn product_tool_schema_json() -> String
+
+pub fn product_tool_specs() -> Array[@tools.ToolSpec]
 
 pub fn run_desktop_turn(String, turn_id? : String, memory_seeds? : Array[(String, String)], ctx? : DesktopTurnContext) -> DesktopTurnResult
 
@@ -85,6 +114,16 @@ pub(all) struct DesktopMessage {
   text : String
 } derive(Eq, @debug.Debug)
 
+pub(all) struct DesktopToolTraceRow {
+  tool_name : String
+  args_json : String
+  result_snippet : String
+  duration_ms : Int32
+  exit_code : Int32
+  error : Bool
+  timestamp : String
+} derive(Eq, @debug.Debug)
+
 pub(all) struct DesktopTurnContext {
   session_id : String
   machine_id : String
@@ -123,8 +162,20 @@ pub(all) struct DesktopTurnResult {
   agent_llm : Int32
   agent_exec : Int32
   agent_approval : Int32
+  agent_traces : Array[DesktopToolTraceRow]
 } derive(Eq, @debug.Debug)
 pub fn DesktopTurnResult::to_json_line(Self) -> String
+
+pub(all) enum ProductToolAction {
+  DescribeSchedule(description~ : String)
+  CreateTeammate(id~ : String, name~ : String, role~ : String)
+  CreateRoutine(id~ : String, schedule~ : String, prompt~ : String)
+}
+
+pub(all) struct ProductToolResult {
+  observation : String
+  effects : Array[DesktopEffect]
+}
 
 pub(all) enum TurnIntent {
   Chat

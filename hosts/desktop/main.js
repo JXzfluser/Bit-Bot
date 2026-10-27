@@ -65,8 +65,11 @@ try {
   } = require("../shared/host_approval_gate"));
 }
 const { createSessionStore } = require("./sessions");
-const { buildRoomContext: buildRoomContextData } = require("./room_context");
-const { buildDiscretionPrompt, parseDiscretionReply } = require("./room_discretion");
+const { buildRoomContext: buildRoomContextData } = require("../shared/room_context");
+const { buildDiscretionPrompt, parseDiscretionReply } = require("../shared/room_discretion");
+const { createRoomRuntime, roomSafeText: sharedRoomSafeText } = require("../shared/room_runtime");
+const { dispatchRoomTurn } = require("../shared/room_dispatch");
+const { resolveMachineId } = require("../shared/machine_identity");
 
 // GP-93/94/95 — Markdown/链接纪律 (official spec §5.6). Policy + open route in
 // one module pair used by both the main process and the smoke probe, so the
@@ -124,42 +127,84 @@ let cnInbound = null;
 const DEV_MODE_LAUNCH = process.argv.includes("--bitbot-devmode") || process.env.BITBOT_DEVMODE === "1";
 
 /**
- * Resolve the Bit Bot repo root — the directory that owns moon.mod.json and
- * cmd/desktop_turn. In dev, hosts/desktop/main.js sits two levels under the
- * repo. When packaged (asar:false) into Bit Bot.app, __dirname is
- * <app>/Contents/Resources/app, whose ../.. is the .app bundle, which has NO
- * moon project. LSEnvironment is NOT injected for ad-hoc/unsigned builds, so
- * BITBOT_REPO_ROOT is normally absent at runtime; we fall back to well-known
- * local paths and an upward walk so `moon run cmd/desktop_turn` always
- * resolves. (Fixes the "failed to resolve path cmd/desktop_turn / moon exited
- * 255" the desktop showed on first real message turn.)
+ * Path roots — see hosts/desktop/paths.js for the full contract.
+ *
+ *   REPO_ROOT : the MoonBit code tree (`moon run cmd/desktop_turn` runs here)
+ *   DATA_ROOT : user data (sessions / rooms / memory / routines / secrets)
+ *
+ * The previous inline resolver probed for `moon.mod.json`, but MoonBit's
+ * module file is `moon.mod`, so that probe could never match and the only
+ * working fallback was a hard-coded developer path
+ * (`/Users/zfl/Downloads/bitbot`). A packaged build therefore had no way to
+ * find its kernel. We now:
+ *   - probe the real module file name,
+ *   - probe the kernel staged into the app resources (packaged builds),
+ *   - and return null instead of guessing, so a missing kernel is reported
+ *     honestly instead of surfacing as "moon exited 255".
  */
-function resolveRepoRoot() {
-  const probes = [];
-  if (process.env.BITBOT_REPO_ROOT) probes.push(process.env.BITBOT_REPO_ROOT);
-  probes.push(path.resolve(__dirname, "../..")); // dev layout: hosts/desktop -> repo
-  if (process.env.HOME) probes.push(path.join(process.env.HOME, "Downloads", "bitbot"));
-  probes.push("/Users/zfl/Downloads/bitbot"); // local deploy path
-  for (const c of probes) {
-    const p = path.resolve(c);
-    if (
-      fs.existsSync(path.join(p, "moon.mod.json")) ||
-      fs.existsSync(path.join(p, "cmd", "desktop_turn", "main.mbt"))
-    ) {
-      return p;
-    }
+const { resolveRepoRoot, resolveDataRoot, resolveMoonBin, resolveKernelBin, describeMissingKernel } = require("./paths");
+
+/** Resources dir of a packaged app (undefined in dev). */
+const RESOURCES_PATH = (() => {
+  try {
+    return app.isPackaged && process.resourcesPath ? process.resourcesPath : null;
+  } catch (_) {
+    return null;
   }
-  // last resort: walk up from __dirname looking for the moon project
-  let dir = __dirname;
-  for (let i = 0; i < 10; i++) {
-    if (fs.existsSync(path.join(dir, "moon.mod.json"))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+})();
+
+/** Where the kernel lives when it is shipped inside the app bundle. */
+const BUNDLED_KERNEL_ROOT = RESOURCES_PATH ? path.join(RESOURCES_PATH, "kernel") : null;
+
+const REPO_ROOT = resolveRepoRoot({
+  dirname: __dirname,
+  kernelRoot: BUNDLED_KERNEL_ROOT,
+  resourcesPath: RESOURCES_PATH,
+});
+
+/** The compiled kernel binary shipped in the app bundle (packaged builds).
+ *  When present the host runs it directly instead of `moon run ...`, so the
+ *  end user needs neither a MoonBit toolchain nor the kernel source tree. */
+const KERNEL_BIN = resolveKernelBin({
+  env: process.env,
+  resourcesPath: RESOURCES_PATH,
+  kernelRoot: BUNDLED_KERNEL_ROOT,
+});
+
+/** The `moon` executable: bundled copy first, then $MOON_BIN, then PATH. */
+const MOON_BIN = resolveMoonBin({
+  env: process.env,
+  resourcesPath: RESOURCES_PATH,
+  kernelRoot: BUNDLED_KERNEL_ROOT,
+});
+if (MOON_BIN && !process.env.MOON_BIN) process.env.MOON_BIN = MOON_BIN;
+
+/** OS-managed user-data dir. Packaged builds keep user data here. */
+const USER_DATA_DIR = (() => {
+  try {
+    return app.getPath ? app.getPath("userData") : null;
+  } catch (_) {
+    return null;
   }
-  return path.resolve(__dirname, "../..");
+})();
+
+/** User data root. Dev keeps the historical <repo>/data layout. */
+const DATA_ROOT = resolveDataRoot({
+  repoRoot: REPO_ROOT,
+  userDataDir: USER_DATA_DIR,
+  packaged: Boolean(app.isPackaged),
+});
+
+if (!REPO_ROOT) {
+  // Honest failure: no guessed path, and a reason the user can act on.
+  const why = describeMissingKernel({ env: process.env });
+  console.error("[bitbot] FATAL: " + why);
+  try {
+    app.whenReady().then(() => {
+      dialog.showErrorBox("Bit Bot — 内核未找到", why + "\n\n当前安装无法启动月之核心(Product Brain)。");
+    });
+  } catch (_) { /* headless */ }
 }
-const REPO_ROOT = resolveRepoRoot();
 
 /** Last OTA check result — honest residual until feed + packaged app. */
 const otaState = {
@@ -177,7 +222,7 @@ const otaState = {
  */
 function persistAppInstallState() {
   try {
-    const dir = path.join(REPO_ROOT, "data", "desktop");
+    const dir = path.join(DATA_ROOT, "desktop");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
       path.join(dir, "app-install.json"),
@@ -196,7 +241,7 @@ function persistAppInstallState() {
 }
 function persistOtaState() {
   try {
-    const dir = path.join(REPO_ROOT, "data", "desktop");
+    const dir = path.join(DATA_ROOT, "desktop");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
       path.join(dir, "ota-state.json"),
@@ -254,6 +299,7 @@ function parseEnvFile(file) {
 function loadEnvLocalFiles(opts = {}) {
   const overwrite = Boolean(opts && opts.overwrite);
   const candidates = [DESKTOP_ENV_LOCAL, path.join(REPO_ROOT, ".env.local")];
+  if (USER_DATA_DIR) candidates.push(path.join(USER_DATA_DIR, ".env.local"));
   for (const file of candidates) {
     if (!fs.existsSync(file)) continue;
     try {
@@ -403,16 +449,16 @@ function upsertDesktopEnvLocal(patch) {
 
 syncInjectedSecretsToEnvLocal();
 
-const runner = createTurnRunner(REPO_ROOT);
+const runner = createTurnRunner(REPO_ROOT, { dataRoot: DATA_ROOT, moonBin: MOON_BIN, kernelBin: KERNEL_BIN });
 let releaseActiveTurnCancel = null;
 const approvalGate = createApprovalGate();
 let liveLoopApproval = null;
-const sessions = createSessionStore(REPO_ROOT);
-const ffi = createHostFfi(REPO_ROOT);
+const sessions = createSessionStore(REPO_ROOT, { dataRoot: DATA_ROOT });
+const ffi = createHostFfi(REPO_ROOT, { dataRoot: DATA_ROOT, kernelBin: KERNEL_BIN });
 /** Wave G stores: bots / settings / approvals / computer / rooms / usage (docs/grok-desktop-parity/ipc-contract.md §2). */
-const surface = createProductSurface(REPO_ROOT);
+const surface = createProductSurface(REPO_ROOT, { dataRoot: DATA_ROOT });
 /** GP-99/100/101/102 — Host-owned secret vault (§8.3). */
-const secretVault = createSecretVault(REPO_ROOT);
+const secretVault = createSecretVault(REPO_ROOT, { dataRoot: DATA_ROOT });
 const secretProtocol = require("./secret_protocol");
 const { computePrivacyStatus } = require(path.join(
   fs.existsSync(path.join(__dirname, "shared", "privacy_status.js"))
@@ -500,7 +546,7 @@ function applyLoginItem(enabled) {
 }
 
 function readDaemonStatus() {
-  const p = path.join(REPO_ROOT, "data", "routines", "daemon-status.json");
+  const p = path.join(DATA_ROOT, "routines", "daemon-status.json");
   try {
     if (fs.existsSync(p)) {
       return { ok: true, path: p, status: JSON.parse(fs.readFileSync(p, "utf8")) };
@@ -611,14 +657,14 @@ ffi.setLlmStreamHandler((chunk) => {
 /** One-shot product-path smoke: Electron Host runs a MoonBit turn then exits. */
 async function runSmokeTurnAndExit() {
   const text = String(process.env.BITBOT_DESKTOP_SMOKE_TURN || "").trim();
-  const outDir = path.join(REPO_ROOT, "data", "tmp");
+  const outDir = path.join(DATA_ROOT, "tmp");
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "desktop-electron-turn.json");
   const at = new Date().toISOString();
   try {
     const result = await runner.runTurn(text || "ListMachines", {
       sessionId: "desktop-electron-smoke",
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       approved: process.env.BITBOT_DESKTOP_SMOKE_APPROVED === "1",
@@ -928,7 +974,7 @@ ipcMain.handle("bitbot:bots:op", async (_e, payload) => {
   try {
     const result = await runner.runTurn(phrase, {
       sessionId: "bot-ops",
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       approved: p.approved === true,
@@ -1181,7 +1227,7 @@ ipcMain.handle("bitbot:skills:list", async () => {
     // Reuse Host product path (no LocalBrain): a real kernel turn plans list_skills.
     const result = await runner.runTurn("list skills", {
       sessionId: "skills-pick",
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       skipSession: true,
@@ -1527,20 +1573,9 @@ const ROOM_DEBUG_RE =
 const PRODUCT_DEBUG_RE =
   /(收到，正在用 MoonBit 内核处理|\[host\] ADR 0002|booting MoonBit|moon run cmd\/|Host effect planned|已计划 Host 效果|已计划群聊（GP-\d+|非 LocalBrain|BITBOT_LLM_[A-Z0-9_]*|token_refused|needs_host_ffi|__bb)|^已计划[^\n]*(Host |GP-|CM-|BITBOT_)/;
 
+// 脱敏规则住在共享层(桌面/CLI/移动端同一条),桌面只是传进 secretProtocol。
 function roomSafeText(raw) {
-  let s = String(raw == null ? "" : raw);
-  // token-shaped text never enters a shared transcript (same rule set the
-  // composer and the kernel use, so group rows cannot be more permissive).
-  if (secretProtocol && Array.isArray(secretProtocol.TOKEN_RULES)) {
-    for (const rule of secretProtocol.TOKEN_RULES) {
-      if (rule && rule.re) s = s.replace(new RegExp(rule.re.source, "g"), secretProtocol.REDACTED);
-    }
-  }
-  return s
-    .split("\n")
-    .filter((line) => !ROOM_DEBUG_RE.test(line))
-    .join("\n")
-    .trim();
+  return sharedRoomSafeText(raw, secretProtocol);
 }
 
 /**
@@ -1625,182 +1660,155 @@ function groupChatReceiptText(result) {
   return "这个群没有创建（Host 拒绝了这次建房请求），没有假装成功。";
 }
 
-async function runRoomResponderTurn(botId, task, ctx) {
-  const id = String(botId || "").trim();
-  if (!id) return { ok: false, error: "responder_missing" };
-  const bots = (surface.loadBots().bots) || [];
-  const bot = bots.find((b) => b && b.id === id);
-  if (!bot) return { ok: false, error: "bot_not_found" };
-  const sessionId = "room-" + String((ctx && ctx.room) || "room") + "-" + id;
-  const rows = [];
-  try {
-    const result = await runner.runTurn(String(task || ""), {
-      sessionId,
-      machineId: "desk-1",
-      machineKind: "desktop",
-      channel: "",
-      // 编排不改变审批语义：群回合同样必须过原审批门。
-      approved: false,
-      botId: id,
-      // GP-163「群里说出来的排程要归这个群管」：回合来自哪个群就交给效果执行，
-      // 否则群里一句话建出来的定时任务落得了盘却不属于任何群 —— 面板按 room_id
-      // 过滤列不到，暂停 / 删除又要求 roomId，等于一条谁都管不着的活任务在按时发信。
-      roomId: String((ctx && ctx.room) || ""),
-      // GP-148 §1-J3：群回合带群上下文进 provider；DM 路径不会走到这里，
-      // 所以「私聊不许出现群名单」是由调用点保证的，不是靠 prompt 里叮嘱。
-      roomContext: buildRoomContext((ctx && ctx.room) || "", id, ctx, task),
-      onProgress: (ev) => {
-        const row = Object.assign({}, ev, { bot_id: id, room_id: (ctx && ctx.room) || "" });
-        rows.push(row);
-        broadcast("bitbot:room-turn-progress", row);
-      },
-    });
-    const host = (result && Array.isArray(result.host_results)) ? result.host_results : [];
-    const failed = host.filter((h) => h && h.ok === false);
-    const assistants = ((result && result.messages) || [])
-      .filter((m) => m && m.role === "assistant" && m.text)
-      .map((m) => roomSafeText(m.text))
-      .filter(Boolean);
-    const artifacts = host
-      .filter((h) => h && h.ok !== false && h.artifact_path)
-      .map((h) => ({ name: path.basename(String(h.artifact_path)), path: String(h.artifact_path) }));
-    if (result && result.ok === false) {
-      return {
-        ok: false,
-        error: roomSafeText((result && result.error) || (failed[0] && failed[0].error) || "turn_failed"),
-        text: assistants.join("\n"),
-        artifacts,
-      };
-    }
-    if (failed.length) {
-      const f = failed.find((h) => h.kind === "llm_chat") || failed[0];
-      return { ok: false, error: roomSafeText(f.error || "host_effect_failed"), text: assistants.join("\n"), artifacts };
-    }
-    if (!assistants.length) return { ok: false, error: "no_reply", text: "", artifacts };
-    try {
-      surface.touchBotActivity(id);
-      broadcast("bitbot:bots-changed", surface.listViews());
-    } catch (_) {
-      /* activity stamp is best effort */
-    }
-    return { ok: true, text: assistants.join("\n"), artifacts, progress: rows.length };
-  } catch (err) {
-    return { ok: false, error: roomSafeText((err && err.message) || String(err)), text: "", artifacts: [] };
-  }
-}
 
-async function runRoomDiscretionTurn(botId, task, ctx) {
+/**
+ * Lead synthesis turn (L4/L5). Deliberately NOT `runRoomResponderTurn`:
+ * a synthesis round is not a member round — it must not stamp the lead's
+ * "working" state, and it must not be counted as a member answer.
+ * One model call, inside the same team budget and cancel scope.
+ */
+async function runRoomSynthesisTurn(botId, prompt, ctx) {
   const id = String(botId || "").trim();
-  if (!id) return { ok: false, error: "responder_missing" };
+  if (!id) return { ok: false, error: "synthesis_lead_missing", text: "" };
   const bots = (surface.loadBots().bots) || [];
   const bot = bots.find((b) => b && b.id === id);
-  if (!bot) return { ok: false, error: "bot_not_found" };
+  if (!bot) return { ok: false, error: "synthesis_lead_not_found", text: "" };
   const roomId = String((ctx && ctx.room) || "room");
-  const decisionCtx = Object.assign({}, ctx, { mentioned_names: [] });
   try {
-    const result = await runner.runTurn(buildDiscretionPrompt({ bot, task }), {
-      sessionId: "room-" + roomId + "-" + id + "-discretion",
-      machineId: "desk-1",
+    const result = await runner.runTurn(String(prompt || ""), {
+      sessionId: "room-" + roomId + "-" + id + "-synthesis",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
+      // A summary is a read-only act; it must not be able to trigger effects.
       approved: false,
       botId: id,
       roomId,
-      roomContext: buildRoomContext(roomId, id, decisionCtx, task),
+      roomContext: buildRoomContext(roomId, id, ctx, String(prompt || "")),
+      cancelPromise: (ctx && ctx.cancelPromise) || undefined,
     });
     if (!result || result.ok === false) {
-      return {
-        ok: false,
-        error: roomSafeText((result && result.error) || "discretion_turn_failed"),
-        text: "",
-      };
+      return { ok: false, error: roomSafeText((result && result.error) || "synthesis_turn_failed"), text: "" };
     }
     const text = ((result.messages || [])
       .filter((m) => m && m.role === "assistant" && m.text)
       .map((m) => String(m.text))
       .join("\n"));
-    const respond = parseDiscretionReply(text);
-    if (respond === null) {
-      return { ok: false, error: "discretion_unclear", text: roomSafeText(text).slice(0, 200) };
-    }
-    return { ok: true, respond, text: roomSafeText(text).slice(0, 200) };
+    if (!text.trim()) return { ok: false, error: "synthesis_no_reply", text: "" };
+    return { ok: true, text, artifacts: [] };
   } catch (err) {
     return { ok: false, error: roomSafeText((err && err.message) || String(err)), text: "" };
   }
 }
 
-async function selectRoomResponders({ room, task, candidates }) {
-  const list = Array.isArray(candidates) ? candidates : [];
-  const timeoutMs = Number(process.env.BITBOT_ROOM_DISCRETION_TIMEOUT_MS || 30000);
-  const withTimeout = (promise, ms) => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("discretion_timeout")), ms);
-    Promise.resolve(promise).then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); },
-    );
-  });
-  const decisions = await Promise.all(list.map(async (candidate) => {
-    const ctx = {
-      room,
-      bot_id: candidate.id,
-      name: candidate.name,
-      job: candidate.job,
-      description: candidate.description,
-      mentioned_names: [],
-    };
-    try {
-      const out = await withTimeout(runRoomDiscretionTurn(candidate.id, task, ctx), timeoutMs);
-      if (out && out.ok && typeof out.respond === "boolean") {
-        return { bot_id: candidate.id, name: candidate.name, respond: out.respond };
-      }
-      return {
-        bot_id: candidate.id,
-        name: candidate.name,
-        respond: true,
-        fail_open: true,
-        error: roomSafeText((out && out.error) || "discretion_failed"),
-      };
-    } catch (err) {
-      return {
-        bot_id: candidate.id,
-        name: candidate.name,
-        respond: true,
-        fail_open: true,
-        error: roomSafeText((err && err.message) || String(err)),
-      };
-    }
-  }));
-  return {
-    ok: true,
-    responders: decisions.filter((d) => d.respond).map((d) => d.bot_id),
-    decisions,
-  };
+/**
+ * Model-proposed task decomposition (L4).
+ *
+ * OFF by default on purpose: this is an EXTRA model call per group message
+ * and it is not covered by the team budget (the budget starts at fan-out).
+ * The host-side heuristic decomposition is free and runs by default; this
+ * only upgrades the quality when the operator opts in.
+ * Set BITBOT_ROOM_DECOMPOSE=1 to enable.
+ */
+async function runRoomDecompositionProposal(input) {
+  const opts = input || {};
+  if (process.env.BITBOT_ROOM_DECOMPOSE !== "1") {
+    return { subtasks: [] };
+  }
+  const candidates = Array.isArray(opts.candidates) ? opts.candidates : [];
+  const roster = candidates
+    .map((c) => "- " + String(c.name || c.id || "") + "：" + String(c.job || c.description || ""))
+    .join("\n");
+  const prompt = [
+    "把下面的任务拆成 2 到 " + Math.min(candidates.length || 2, 4) + " 个互不重叠的子任务。",
+    "只输出 JSON，形如 {\"subtasks\":[\"子任务1\",\"子任务2\"]}。不要输出其它文字。",
+    "任务：" + String(opts.task || ""),
+    "可用成员：\n" + roster,
+  ].join("\n");
+  const roomId = String(opts.room || "room");
+  try {
+    const result = await runner.runTurn(prompt, {
+      sessionId: "room-" + roomId + "-decompose",
+      machineId: resolveMachineId({ kind: "desktop" }),
+      machineKind: "desktop",
+      channel: "",
+      approved: false,
+      botId: String((candidates[0] && candidates[0].id) || ""),
+      roomId,
+    });
+    const text = ((result && result.messages) || [])
+      .filter((m) => m && m.role === "assistant" && m.text)
+      .map((m) => String(m.text))
+      .join("\n");
+    const match = String(text || "").match(/\{[\s\S]*\}/);
+    if (!match) return { subtasks: [] };
+    const parsed = JSON.parse(match[0]);
+    const list = Array.isArray(parsed) ? parsed : (parsed && parsed.subtasks);
+    if (!Array.isArray(list)) return { subtasks: [] };
+    return { subtasks: list.map((t) => String(t && t.title ? t.title : t)).filter(Boolean) };
+  } catch (_) {
+    // 拆解建议失败不是错误：编排层会退回宿主启发式。
+    return { subtasks: [] };
+  }
 }
+
+/**
+ * 群回合运行时(共享实现)。
+ * 桌面的 responder / discretion 回合与 CLI/移动端走的是**同一份代码** ——
+ * Q-6 的教训就是「扇出只在桌面做」会变成别的端发群消息没人回、还不报错。
+ */
+const roomRuntime = createRoomRuntime({
+  runTurn: (text, ctx) => runner.runTurn(text, ctx),
+  surface,
+  secretProtocol,
+  machineId: resolveMachineId({ kind: "desktop" }),
+  machineKind: "desktop",
+  onProgress: (row) => broadcast("bitbot:room-turn-progress", row),
+  onBotActivity: () => {
+    try {
+      broadcast("bitbot:bots-changed", surface.listViews());
+    } catch (_) {
+      /* 广播失败不影响回合 */
+    }
+  },
+});
+
+const runRoomResponderTurn = roomRuntime.runResponderTurn;
+const runRoomDiscretionTurn = roomRuntime.runDiscretionTurn;
+const selectRoomResponders = roomRuntime.selectResponders;
+
 
 ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
   const roomId = String((payload && payload.room_id) || "").trim();
   const text = String((payload && payload.text) || "").trim();
   if (!roomId || !text) return { ok: false, error: "room_and_text_required" };
   try {
-    // 1) 真实路由 + 用户消息落 transcript（单一写入点：内核 room_turn 不再双写）
-    const routed = surface.roomTurn(roomId, text, new Date().toISOString());
-    if (!routed || !routed.ok) {
-      return { ok: false, error: (routed && routed.error) || "route_failed", room_id: roomId };
-    }
-    surface.appendRoomTranscript(roomId, routed.transcript_entry);
-    // 2) 扇出到点名的 responder，收齐后聚合 final_report（N/总 如实）。
-    //    预算护栏交给引擎（>6 → too_many_responders），这里不静默截断。
-    //    「工作中」态由 engine 在真正扇出时才回调发：幂等命中/护栏拒绝不得闪假态。
-    const to = routed.transcript_entry.responders || [];
+    // 1) 真实路由 + 落 transcript + 扇出,一条路径(shared/room_dispatch)。
+    //    桌面和 CLI/移动端走**同一个函数** —— Q-6 的教训就是「扇出只在桌面做」
+    //    会变成别的端发群消息没人回、还不报错。
+    //    扇出到点名的 responder,收齐后聚合 final_report(N/总 如实)。
+    //    预算护栏交给引擎(>6 → too_many_responders),这里不静默截断。
+    //    「工作中」态由 engine 在真正扇出时才回调发:幂等命中/护栏拒绝不得闪假态。
     const timeoutMs = Number(process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || 120000);
-    const res = await surface.orchestrateRoom({
-      room: roomId,
-      task: text,
-      to,
-      policy: routed.transcript_entry.responder_policy,
+    const res = await dispatchRoomTurn({
+      surface,
+      roomId,
+      text,
+      messageId: String((payload && payload.message_id) || ""),
       deps: {
         runResponderTurn: runRoomResponderTurn,
         selectResponders: selectRoomResponders,
+        // L4/L5:综合回合是独立依赖(不是成员回合),它吃同一份团队预算与取消通道。
+        synthesize: runRoomSynthesisTurn,
+        // 拆解建议:模型只提建议,分工由宿主确定性执行(见 §7 决策 2)。
+        proposeDecomposition: runRoomDecompositionProposal,
+        // 团队预算(轮次 / 时间 / token 估算)——宿主唯一裁决者。
+        maxTurns: Number(process.env.BITBOT_ROOM_BUDGET_TURNS || 7),
+        maxWallMs: Number(process.env.BITBOT_ROOM_BUDGET_WALL_MS || 600000),
+        maxTokens: Number(process.env.BITBOT_ROOM_BUDGET_TOKENS || 200000),
+        maxFailOpen: Number(process.env.BITBOT_ROOM_MAX_FAIL_OPEN || 2),
+        duplicateThreshold: Number(process.env.BITBOT_ROOM_DUPLICATE_THRESHOLD || 0.82),
+        leadBotId: process.env.BITBOT_ROOM_LEAD_BOT || "",
         timeoutMs,
         onFanout: (ev) => {
           const bots = (surface.loadBots().bots) || [];
@@ -1812,7 +1820,7 @@ ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
               name: (bots.find((b) => b && b.id === r.id) || {}).name || r.name || r.id,
             })),
             member_count: (ev && ev.member_count) || 0,
-            policy: (ev && ev.policy) || routed.transcript_entry.responder_policy,
+            policy: (ev && ev.policy) || "",
             at: new Date().toISOString(),
           });
         },
@@ -1913,7 +1921,7 @@ ipcMain.handle("bitbot:routines:op", async (_e, payload) => {
   let refuseError = "";
   if (!stored && !failed) {
     try {
-      const dir = path.join(REPO_ROOT, "data", "routines");
+      const dir = path.join(DATA_ROOT, "routines");
       const recent = fs
         .readdirSync(dir)
         .filter((f) => /^refuse-.*\.json$/.test(f))
@@ -2009,7 +2017,7 @@ ipcMain.handle("bitbot:voice:ingest", async (_e, payload) => {
   try {
     const b64 = String((payload && payload.wav_b64) || "");
     if (!b64) return { ok: false, error: "empty wav", residual: "empty_recording" };
-    const dir = path.join(REPO_ROOT, "data", "desktop", "voice");
+    const dir = path.join(DATA_ROOT, "desktop", "voice");
     fs.mkdirSync(dir, { recursive: true });
     const wavPath = path.join(dir, "voice-" + Date.now().toString(36) + ".wav");
     fs.writeFileSync(wavPath, Buffer.from(b64, "base64"));
@@ -2872,7 +2880,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
     const hostTurnId = "desktop-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
     const result = await runner.runTurn(String(text || ""), {
       sessionId,
-      machineId: "desk-1",
+      machineId: resolveMachineId({ kind: "desktop" }),
       machineKind: "desktop",
       channel: "",
       turnId: hostTurnId,
@@ -3077,7 +3085,7 @@ ipcMain.handle("bitbot:msg:regenerate", async (_e, payload) => {
   if (rm && rm.ok === false) return { ok: false, error: rm.error || "remove_failed" };
   const result = await runner.runTurn(prompt, {
     sessionId,
-    machineId: "desk-1",
+    machineId: resolveMachineId({ kind: "desktop" }),
     machineKind: "desktop",
     channel: "",
     approved: false,
@@ -3115,8 +3123,9 @@ ipcMain.handle("bitbot:readArtifact", async (_event, artifactPath) => {
   } catch {
     return { ok: false, error: "invalid path" };
   }
-  const root = path.resolve(REPO_ROOT);
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+  const roots = [path.resolve(REPO_ROOT), path.resolve(DATA_ROOT)].filter(Boolean);
+  const inside = roots.some((r) => resolved === r || resolved.startsWith(r + path.sep));
+  if (!inside) {
     return { ok: false, error: "path outside repo", pretend_read: false };
   }
   if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
@@ -3228,8 +3237,9 @@ ipcMain.handle("bitbot:saveArtifact", async (_event, artifactPath) => {
   } catch {
     return { ok: false, error: "invalid path" };
   }
-  const root = path.resolve(REPO_ROOT);
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+  const roots = [path.resolve(REPO_ROOT), path.resolve(DATA_ROOT)].filter(Boolean);
+  const inside = roots.some((r) => resolved === r || resolved.startsWith(r + path.sep));
+  if (!inside) {
     return { ok: false, error: "path outside repo", pretend_saved: false };
   }
   if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
@@ -3287,8 +3297,9 @@ ipcMain.handle("bitbot:openArtifact", async (_event, artifactPath) => {
   } catch {
     return { ok: false, error: "invalid path", pretend_open: false };
   }
-  const root = path.resolve(REPO_ROOT);
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+  const roots = [path.resolve(REPO_ROOT), path.resolve(DATA_ROOT)].filter(Boolean);
+  const inside = roots.some((r) => resolved === r || resolved.startsWith(r + path.sep));
+  if (!inside) {
     return { ok: false, error: "path outside repo", pretend_open: false };
   }
   if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
@@ -3334,7 +3345,7 @@ async function ensureCnInbound() {
         });
         const result = await runner.runTurn(String(prompt || ""), {
           sessionId,
-          machineId: machineKind === "desktop" ? "desk-1" : `${machineKind}-1`,
+          machineId: resolveMachineId({ kind: machineKind }),
           machineKind,
           channel: channel === "android" || channel === "ios" ? "" : channel,
           approved: false,

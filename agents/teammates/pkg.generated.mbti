@@ -21,6 +21,8 @@ pub fn open_room_turn(room_name~ : String, speaker_id~ : String, body~ : String)
 
 pub fn open_room_turn_from_cue(cue_and_body~ : String, speaker_id~ : String) -> Result[RoomTurn, String]
 
+pub fn paraphrase_complaint_for_agent(String) -> Result[DiplomaticParaphrase, String]
+
 pub fn parse_room_cue(String) -> Result[String, String]
 
 pub fn plan_send_to_agent_fanout(Array[String], user_explicitly_asked_fanout~ : Bool) -> FanoutPlan
@@ -61,6 +63,16 @@ pub(all) struct CreatedAgent {
 pub fn CreatedAgent::equal(Self, Self) -> Bool
 pub fn CreatedAgent::not_equal(Self, Self) -> Bool
 pub fn CreatedAgent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct DiplomaticParaphrase {
+  original : String
+  actionable_body : String
+  was_complaint : Bool
+} derive(Eq, @debug.Debug)
+pub fn DiplomaticParaphrase::equal(Self, Self) -> Bool
+pub fn DiplomaticParaphrase::is_diplomatic(Self) -> Bool
+pub fn DiplomaticParaphrase::not_equal(Self, Self) -> Bool
+pub fn DiplomaticParaphrase::to_repr(Self) -> @debug.Repr
 
 pub(all) enum FanoutPlan {
   Single(to_id~ : String)
@@ -167,6 +179,7 @@ pub fn SendToAgentBus::fanout(Self, from_id~ : String, to_ids~ : Array[String], 
 pub fn SendToAgentBus::has_loop(Self) -> Bool
 pub fn SendToAgentBus::new() -> Self
 pub fn SendToAgentBus::send(Self, from_id~ : String, to_id~ : String, body~ : String, user_visible? : Bool) -> Result[AgentMessage, String]
+pub fn SendToAgentBus::send_diplomatic(Self, from_id~ : String, to_id~ : String, user_complaint~ : String) -> Result[(AgentMessage, DiplomaticParaphrase), String]
 
 pub(all) struct TeammateDirectory {
   members : Array[CreatedAgent]

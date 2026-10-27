@@ -20,6 +20,10 @@ pub fn evaluate_policy(String) -> PolicyVerdict
 
 pub fn executor_report_draft_to_parent(AgentInboxDraft) -> ExecutorParentDraftMessage
 
+pub fn fence_body(String, String) -> String
+
+pub fn is_external_source(String) -> Bool
+
 pub fn is_legitimate_safer_path(original_action~ : String, adapted_action~ : String, lowers_privilege~ : Bool, uses_sanctioned_tool? : Bool) -> Bool
 
 pub fn is_short_refuse_no_poc(PolicyVerdict) -> Bool
@@ -64,7 +68,7 @@ pub fn AgentInboxDraft::to_repr(Self) -> @debug.Repr
 
 pub(all) struct AgentInboxGuard {
   may_send_from_inbox : Bool
-  mut unauthorized_send_attempts : Int
+  mut unauthorized_send_attempts : Int32
   mut last_report : AgentInboxDraft?
 }
 pub fn AgentInboxGuard::executor() -> Self
@@ -258,7 +262,7 @@ pub fn DraftOutbound::not_equal(Self, Self) -> Bool
 pub fn DraftOutbound::to_repr(Self) -> @debug.Repr
 
 pub(all) struct EffectPlanner {
-  _tag : Int
+  _tag : Int32
 }
 pub fn EffectPlanner::new() -> Self
 pub fn EffectPlanner::plan_from_slice(Self, ContentSlice) -> Array[PlannedEffect]

@@ -182,9 +182,33 @@ fn cn_daily_time(text : String) -> (Int, Int)? {
 /// 定时任务根本不会被创建 —— 日更场景在第一步就断。
 /// 覆盖：每N分钟 / 每隔N分钟 / 每半小时 / 每小时 / 每天|每日|每晚[+钟点] /
 /// 每个工作日+钟点。不覆盖（如实落回普通聊天）：中文数字钟点、每周、每月。
+///
+/// 这里**要求句子里有排程动词**（提醒/收集/发到/发送…）：普通聊天里出现
+/// 「每天」不能就建定时任务,正则路径必须过这道闸。
 pub fn decode_cn_routine(raw : String) -> (String, String)? {
+  decode_cn_schedule_with(raw, require_verb=true)
+}
+
+///|
+/// 中文排程说法 → (cron, 原话)，**不要求动词**。
+///
+/// 显式工具调用（`describe_schedule` / `create_routine`）走这条:
+/// 模型点名要排程,false positive 风险为零,不该被动词闸拦住。
+/// 「每天早上8点」这种纯时间说法在正则路径会被动词闸挡下,在工具路径必须能解析。
+pub fn decode_cn_schedule(raw : String) -> (String, String)? {
+  decode_cn_schedule_with(raw, require_verb=false)
+}
+
+///|
+fn decode_cn_schedule_with(
+  raw : String,
+  require_verb~ : Bool,
+) -> (String, String)? {
   let t = raw.trim().to_owned()
-  if t == "" || !cn_routine_verb(t) {
+  if t == "" {
+    return None
+  }
+  if require_verb && !cn_routine_verb(t) {
     return None
   }
   let cs = t.to_array()

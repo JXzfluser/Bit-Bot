@@ -65,15 +65,27 @@ function defaultResolveReplyForRoot(repoRoot) {
 }
 
 function createTurnRunner(repoRoot, opts = {}) {
-  const ffi = createHostFfi(repoRoot);
+  const ffi = createHostFfi(repoRoot, { dataRoot: opts.dataRoot });
   const defaultResolveReply = defaultResolveReplyForRoot(repoRoot);
   const MOON_BIN = opts.moonBin || process.env.MOON_BIN || "moon";
   const MOON_TARGET = opts.moonTarget || process.env.BITBOT_MOON_TARGET || "native";
+  /* A packaged app ships the compiled kernel instead of a MoonBit
+     toolchain. The binary is a drop-in for `moon run cmd/desktop_turn
+     --target native -- <args>`: same argv tail, same stdout/stdin FFI
+     line protocol (BITBOT_FFI <json> out, one JSON line back in). */
+  const KERNEL_BIN = opts.kernelBin || process.env.BITBOT_KERNEL_BIN || null;
+  /* The kernel writes `data/workspace/uploads/...` relative to its cwd, so
+     the cwd must be the PARENT of the data root. Dev: <repo>. Packaged:
+     <userData>. */
+  const KERNEL_CWD = ffi.DATA_ROOT ? path.dirname(ffi.DATA_ROOT) : ffi.REPO_ROOT;
+  const kernelPrefix = () =>
+    KERNEL_BIN ? [] : ["run", "cmd/desktop_turn", "--target", MOON_TARGET, "--"];
+  const kernelExe = () => KERNEL_BIN || MOON_BIN;
 
   function runMoon(args, { timeoutMs = 120000 } = {}) {
     return new Promise((resolve, reject) => {
-      const child = spawn(MOON_BIN, args, {
-        cwd: ffi.REPO_ROOT,
+      const child = spawn(kernelExe(), args, {
+        cwd: KERNEL_CWD,
         env: moonProcessEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -128,8 +140,8 @@ function createTurnRunner(repoRoot, opts = {}) {
     const timeoutMs = opts.timeoutMs || 180000;
     const onLoop = typeof opts.onLoop === "function" ? opts.onLoop : null;
     return new Promise((resolve, reject) => {
-      const child = spawn(MOON_BIN, args, {
-        cwd: ffi.REPO_ROOT,
+      const child = spawn(kernelExe(), args, {
+        cwd: KERNEL_CWD,
         env: moonProcessEnv(),
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -256,11 +268,7 @@ function createTurnRunner(repoRoot, opts = {}) {
       return { ok: false, error: "empty text" };
     }
     const moonArgs = [
-      "run",
-      "cmd/desktop_turn",
-      "--target",
-      MOON_TARGET,
-      "--",
+      ...kernelPrefix(),
       // GP-112: seeds (and --bot-id) come from this Bot's slot only.
       ...ffi.memorySeedArgs(ctx.botId),
     ];
@@ -316,6 +324,13 @@ function createTurnRunner(repoRoot, opts = {}) {
     }
     const productWire = createProductSession(ffi, {
       botId: ctx.botId,
+      // B-5: 上下文按机器分槽 —— 机器身份由 Host 提供,内核不参与。
+      machineId: String(ctx.machineId || ""),
+      // K-2/C-3: the device this turn came from decides how much the model
+      // may do without asking. "limited" = a mobile client or a remote
+      // inbound turn — the person asking is not at the machine.
+      deviceTrust: String(ctx.deviceTrust || "trusted"),
+      subject: String(ctx.botId || ""),
       roomContext: ctx.roomContext || null,
       turnId: String(ctx.turnId || ""),
       cliApproved: ctx.cliApproved === true,
@@ -441,9 +456,17 @@ function createTurnRunner(repoRoot, opts = {}) {
     }
     if (replyQuote && parsed) parsed.reply_quote = replyQuote;
 
+    // 「有 effect」和「要回灌内核」是**两件事**。
+    //
+    // 之前这两件事共用一个门(`parsed.needs_host_ffi`),而产品 AgentLoop 路径
+    // 把它设成了 false —— 于是 **A 类 effect 从来没被 Host 执行过**。
+    // 内核自己能做的(create_teammate)看着正常;但只有 Host 能做的
+    // (routine_schedule —— 持久化在 Host 的文件里)就是**静默失效**:
+    // 模型说「已排上」,排程根本没建。
+    //
+    // 现在:effect 一律执行;**只有内核明确要求时**才回灌结果给它。
     if (
       parsed &&
-      parsed.needs_host_ffi &&
       Array.isArray(parsed.effects) &&
       parsed.effects.length
     ) {
@@ -477,6 +500,9 @@ function createTurnRunner(repoRoot, opts = {}) {
         // GP-154「定时任务在群内部」：回合来自哪个群就归给哪个群（可选，
         // DM 不传 → 空串，效果与改之前完全一致）。
         roomId: String(ctx.roomId || ""),
+        // Q-5: 投递 id —— 同一次投递重试 ⇒ 同一个 id ⇒ 幂等;用户再发一遍 ⇒
+        // 新 id ⇒ 新的任务。没有它就现生成(每次进入 = 一条新消息)。
+        messageId: String(ctx.messageId || ""),
         replyTo: (replyQuote && replyQuote.message_id) || "",
         replyQuote:
           (replyQuote && replyQuote.resolved && replyQuote.text) || "",
@@ -487,13 +513,12 @@ function createTurnRunner(repoRoot, opts = {}) {
             : null,
       });
       parsed.host_results = host_results;
+      // 回灌内核只在内核**要求**时做(legacy 意图路径)。
+      // AgentLoop 路径的最终答复已经交付了,再回灌一次只会多跑一轮模型。
+      if (parsed.needs_host_ffi) {
       try {
         const contArgs = [
-          "run",
-          "cmd/desktop_turn",
-          "--target",
-          MOON_TARGET,
-          "--",
+          ...kernelPrefix(),
           "--apply-host-results",
           "--turn-id",
           String(parsed.turn_id || ctx.turnId || "host-cont"),
@@ -582,6 +607,7 @@ function createTurnRunner(repoRoot, opts = {}) {
           }
         }
       }
+      }
     }
 
     // GP-21/GP-36：只有 legacy 单效果计划需要这一次「守卫式重跑」——always-allow
@@ -638,7 +664,105 @@ function createTurnRunner(repoRoot, opts = {}) {
       });
     }
 
+    // K-6: 落一条可回放的回合记录。
+    // 失败不能影响这一回合的结果 —— 记录是诊断材料,不是业务数据。
+    try {
+      writeTurnTrace(parsed, text, ctx);
+    } catch (_) {
+      /* 记录写不下去也不能让回合失败 */
+    }
+
     return parsed;
+  }
+
+  /**
+   * K-6:每回合一条 trace(可回放)。
+   *
+   * 记什么:这回合的输入、工具序列(名字/参数/结果摘要/耗时)、最终交付、
+   * 停止原因。**模型的决定被记录,但不可重放**(provider 不确定)——
+   * 可重放的是**工具序列**:拿这条记录驱动一个新回合,工具序列必须一样。
+   *
+   * 脱敏:整条记录过一遍(模式级 token 形状 + 环境值级)。仓库铁律是
+   * 「私钥/密钥不进日志/artifact」—— trace 就是 artifact。
+   */
+  function writeTurnTrace(parsed, userText, ctx) {
+    const rows = Array.isArray(parsed && parsed.agent_traces) ? parsed.agent_traces : [];
+    if (!rows.length) return null;
+    const dataRoot = ffi.DATA_ROOT;
+    if (!dataRoot) return null;
+    const dir = path.join(dataRoot, "traces");
+    fs.mkdirSync(dir, { recursive: true });
+    const turnId = String((parsed && parsed.turn_id) || (ctx && ctx.turnId) || "turn");
+    const file = path.join(dir, turnId.replace(/[^A-Za-z0-9._-]/g, "_") + ".json");
+    const trace = {
+      version: 1,
+      turn_id: turnId,
+      session_id: String((parsed && parsed.session_id) || (ctx && ctx.sessionId) || ""),
+      bot_id: String((ctx && ctx.botId) || ""),
+      machine_id: String((parsed && parsed.machine_id) || (ctx && ctx.machineId) || ""),
+      machine_kind: String((parsed && parsed.machine_kind) || (ctx && ctx.machineKind) || ""),
+      channel: String((parsed && parsed.channel) || (ctx && ctx.channel) || ""),
+      at: new Date().toISOString(),
+      ok: Boolean(parsed && parsed.ok !== false),
+      intent: String((parsed && parsed.intent) || ""),
+      agent_stop: String((parsed && parsed.agent_stop) || ""),
+      agent_steps: Number((parsed && parsed.agent_steps) || 0),
+      agent_llm: Number((parsed && parsed.agent_llm) || 0),
+      agent_exec: Number((parsed && parsed.agent_exec) || 0),
+      agent_approval: Number((parsed && parsed.agent_approval) || 0),
+      user_text: String(userText || ""),
+      assistant_text: ((parsed && parsed.messages) || [])
+        .filter((m) => m && m.role === "assistant" && m.text)
+        .map((m) => String(m.text))
+        .join("\n"),
+      tools: rows.map((t) => ({
+        tool_name: String((t && t.tool_name) || ""),
+        args_json: String((t && t.args_json) || ""),
+        result_snippet: String((t && t.result_snippet) || ""),
+        duration_ms: Number((t && t.duration_ms) || 0),
+        exit_code: Number((t && t.exit_code) || 0),
+        error: Boolean(t && t.error),
+        timestamp: String((t && t.timestamp) || ""),
+      })),
+    };
+    fs.writeFileSync(file, JSON.stringify(scrubTrace(trace), null, 2));
+    return file;
+  }
+
+  /** trace 是 artifact —— 密钥不许进来。 */
+  function scrubTrace(value) {
+    const p0 = require("./p0_security");
+    let secretProtocol = null;
+    try { secretProtocol = require("../desktop/secret_protocol"); }
+    catch {
+      try { secretProtocol = require("../../hosts/desktop/secret_protocol"); }
+      catch {
+        try { secretProtocol = require("../secret_protocol"); }
+        catch { secretProtocol = null; }
+      }
+    }
+    const walk = (v) => {
+      if (v == null) return v;
+      if (typeof v === "string") {
+        let out = v;
+        if (secretProtocol && Array.isArray(secretProtocol.TOKEN_RULES)) {
+          for (const rule of secretProtocol.TOKEN_RULES) {
+            if (rule && rule.re) {
+              out = out.replace(new RegExp(rule.re.source, "g"), secretProtocol.REDACTED || "[REDACTED]");
+            }
+          }
+        }
+        return p0.scrubSecrets(out);
+      }
+      if (Array.isArray(v)) return v.map(walk);
+      if (typeof v === "object") {
+        const out = {};
+        for (const k of Object.keys(v)) out[k] = walk(v[k]);
+        return out;
+      }
+      return v;
+    };
+    return walk(value);
   }
 
   async function bootBanner() {
@@ -654,6 +778,13 @@ function createTurnRunner(repoRoot, opts = {}) {
       target: MOON_TARGET,
       note: "Product brain is MoonBit. Multi-end Host FFI via hosts/shared.",
     };
+  }
+
+  // 把自己注册给 FFI:群回合的扇出需要一个「懂群上下文」的 runner
+  // (host_ffi 里的嵌套 worker 回合不懂)。依赖方向只能是这一条 ——
+  // host_ffi 不能反过来 require 这个模块。
+  if (ffi && typeof ffi.setTurnRunner === "function") {
+    ffi.setTurnRunner(runTurn);
   }
 
   return { runTurn, bootBanner, ffi, runMoon, lastJsonLine, MOON_TARGET };

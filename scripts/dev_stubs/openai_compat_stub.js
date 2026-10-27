@@ -4,7 +4,35 @@ const http = require("http");
 const fs = require("fs");
 const crypto = require("crypto");
 const port = Number(process.env.BITBOT_STUB_PORT || 8787);
-const mode = process.env.BITBOT_STUB_MODE || "ok"; // ok | block | authfail
+const mode = process.env.BITBOT_STUB_MODE || "ok"; // ok | block | authfail | toolcall
+
+/* C-1 proof hook: a scripted tool-call sequence.
+   BITBOT_STUB_TOOL_SCRIPT is a JSON array of steps, one per llm_chat request:
+     [{"tool_calls":[{"id":"c1","name":"create_routine","arguments":{...}}]},
+      {"content":"done"}]
+   The kernel asks again after each tool result, so the script is consumed in
+   order; once it runs out the stub falls back to a plain reply. This is what
+   lets a gate prove the whole chain — model asks for a tool, the kernel
+   dispatches it, the product tool runs, the effect comes out — without a
+   real provider. It proves the TOOL PATH, not the model. */
+const TOOL_SCRIPT = (() => {
+  const raw = String(process.env.BITBOT_STUB_TOOL_SCRIPT || "").trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+})();
+let toolScriptIdx = 0;
+
+function nextToolStep() {
+  if (toolScriptIdx >= TOOL_SCRIPT.length) return null;
+  const step = TOOL_SCRIPT[toolScriptIdx];
+  toolScriptIdx += 1;
+  return step && typeof step === "object" ? step : null;
+}
 
 /* 用户旅程验收（J1–J4）需要的证据面：把 provider 真收到的请求如实记下来。
    BITBOT_STUB_RECORD=<jsonl 路径> 时开启，默认关闭（不影响任何现有门禁）。
@@ -45,6 +73,19 @@ function recordRequest(req, body, auth) {
         }))
       : [],
     raw_chars: String(body || "").length,
+    // C-1: the tool catalog the kernel sent. If the product tools are not in
+    // here, the model was never offered them — the model cannot call a tool
+    // it was never shown. This is the evidence that closes that loop.
+    tool_names:
+      parsed && Array.isArray(parsed.tools)
+        ? parsed.tools.map((t) =>
+            String(
+              (t && t.function && t.function.name) ||
+                (t && t.name) ||
+                "",
+            ),
+          )
+        : [],
   });
 }
 
@@ -176,6 +217,41 @@ const server = http.createServer((req, res) => {
     }
 
     res.writeHead(200, { "Content-Type": "application/json" });
+    // C-1: a scripted tool call wins over the plain reply — the kernel then
+    // dispatches it and asks again, which is exactly the chain we want to
+    // prove. Only the non-streaming path carries tool calls (the kernel's
+    // tool loop is non-streaming by construction).
+    const toolStep = mode === "toolcall" ? nextToolStep() : null;
+    if (toolStep && Array.isArray(toolStep.tool_calls)) {
+      res.end(
+        JSON.stringify({
+          id: "stub-tool",
+          object: "chat.completion",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: String(toolStep.content || ""),
+                tool_calls: toolStep.tool_calls.map((c, idx) => ({
+                  id: String((c && c.id) || "call-" + idx),
+                  type: "function",
+                  function: {
+                    name: String((c && c.name) || ""),
+                    arguments: JSON.stringify(
+                      (c && c.arguments) !== undefined ? c.arguments : {},
+                    ),
+                  },
+                })),
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 11, completion_tokens: 7 },
+        }),
+      );
+      return;
+    }
     res.end(
       JSON.stringify({
         id: "stub-1",

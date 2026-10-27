@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub const MICROSOFT_TEAMS_TRIGGER : String = "microsoftTeams"
+
 pub fn allowed_origin_trigger_events() -> Array[String]
 
 pub fn assert_min_interval_5m(String) -> Result[Unit, String]
@@ -24,15 +26,17 @@ pub fn mail_wake_payload(MailWakeHeaders) -> String
 
 pub fn mail_wake_payload_leaks_body(String, String) -> Bool
 
+pub fn microsoft_teams_trigger_label() -> String
+
 pub fn parse_cron_tz_prefix(String) -> (String?, String)
 
 pub fn parse_destination_line(String) -> Result[DestinationLine, String]
 
 pub fn plan_batch_delivery(String, Array[String]) -> Result[Array[String], String]
 
-pub fn plan_daily_at_hour(hour~ : Int, timezone? : String, flexible? : Bool) -> Result[CronPlan, String]
+pub fn plan_daily_at_hour(hour~ : Int32, timezone? : String, flexible? : Bool) -> Result[CronPlan, String]
 
-pub fn plan_flexible_with_window(expr~ : String, timezone? : String, early_minutes~ : Int, late_minutes~ : Int) -> Result[CronPlan, String]
+pub fn plan_flexible_with_window(expr~ : String, timezone? : String, early_minutes~ : Int32, late_minutes~ : Int32) -> Result[CronPlan, String]
 
 pub fn plan_loose_daily(timezone? : String, kind? : LooseDailyKind, explicit_exception? : Bool) -> Result[CronPlan, String]
 
@@ -67,6 +71,8 @@ pub fn validate_origin_trigger_event(String) -> Result[Unit, String]
 pub fn validate_slack_channel_selector(String) -> Result[Unit, String]
 
 pub fn validate_slack_listener(SlackListenerShape) -> Result[Unit, String]
+
+pub fn wake_routine_on_microsoft_teams_event(MicrosoftTeamsRoutineBinding, MicrosoftTeamsEvent) -> TeamsRoutineWake
 
 pub fn webhook_wake_has_event_tag(String) -> Bool
 
@@ -104,12 +110,12 @@ pub(all) struct CronPlan {
   expr : String
   timezone : String
   summary : String
-  early_minutes : Int
-  late_minutes : Int
+  early_minutes : Int32
+  late_minutes : Int32
 } derive(Eq, @debug.Debug)
 pub fn CronPlan::equal(Self, Self) -> Bool
 pub fn CronPlan::not_equal(Self, Self) -> Bool
-pub fn CronPlan::start_falls_in_window(Self, offset_minutes~ : Int) -> Bool
+pub fn CronPlan::start_falls_in_window(Self, offset_minutes~ : Int32) -> Bool
 pub fn CronPlan::to_repr(Self) -> @debug.Repr
 
 pub(all) struct DestinationLine {
@@ -129,6 +135,7 @@ pub(all) enum ExternalEventConnector {
   PagerDuty
 } derive(Eq, @debug.Debug)
 pub fn ExternalEventConnector::equal(Self, Self) -> Bool
+pub fn ExternalEventConnector::is_microsoft_teams(Self) -> Bool
 pub fn ExternalEventConnector::label(Self) -> String
 pub fn ExternalEventConnector::namespace_hint(Self) -> String
 pub fn ExternalEventConnector::not_equal(Self, Self) -> Bool
@@ -200,7 +207,7 @@ pub fn GroupListenerPath::to_repr(Self) -> @debug.Repr
 pub(all) struct Lifecycle {
   mut state : LifecycleState
   last_run_ms : Int64?
-  run_count : Int
+  run_count : Int32
 } derive(Eq, @debug.Debug)
 pub fn Lifecycle::activate(Self) -> Unit
 pub fn Lifecycle::equal(Self, Self) -> Bool
@@ -245,6 +252,42 @@ pub(all) struct MailWakeHeaders {
 pub fn MailWakeHeaders::equal(Self, Self) -> Bool
 pub fn MailWakeHeaders::not_equal(Self, Self) -> Bool
 pub fn MailWakeHeaders::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MicrosoftTeamsEvent {
+  tenant_id : String
+  team_id : String
+  event_kind : String
+  message_id : String
+  body : String
+} derive(Eq, @debug.Debug)
+pub fn MicrosoftTeamsEvent::equal(Self, Self) -> Bool
+pub fn MicrosoftTeamsEvent::not_equal(Self, Self) -> Bool
+pub fn MicrosoftTeamsEvent::of(tenant_id~ : String, team_id~ : String, event_kind~ : String, message_id? : String, body? : String) -> Self
+pub fn MicrosoftTeamsEvent::to_repr(Self) -> @debug.Repr
+
+pub(all) struct MicrosoftTeamsRoutineBinding {
+  routine_id : String
+  tenant_id : String
+  team_id : String
+  event_kind : String
+  mut armed : Bool
+} derive(Eq, @debug.Debug)
+pub fn MicrosoftTeamsRoutineBinding::as_trigger(Self) -> Trigger
+pub fn MicrosoftTeamsRoutineBinding::equal(Self, Self) -> Bool
+pub fn MicrosoftTeamsRoutineBinding::matches_event(Self, MicrosoftTeamsEvent) -> Bool
+pub fn MicrosoftTeamsRoutineBinding::new(routine_id~ : String, tenant_id~ : String, team_id~ : String, event_kind? : String) -> Result[Self, String]
+pub fn MicrosoftTeamsRoutineBinding::not_equal(Self, Self) -> Bool
+pub fn MicrosoftTeamsRoutineBinding::to_repr(Self) -> @debug.Repr
+pub fn MicrosoftTeamsRoutineBinding::trigger_name(Self) -> String
+
+pub(all) struct MicrosoftTeamsTriggerRegistry {
+  bindings : Array[MicrosoftTeamsRoutineBinding]
+  wake_log : Array[String]
+}
+pub fn MicrosoftTeamsTriggerRegistry::deliver(Self, MicrosoftTeamsEvent) -> Array[TeamsRoutineWake]
+pub fn MicrosoftTeamsTriggerRegistry::empty() -> Self
+pub fn MicrosoftTeamsTriggerRegistry::register(Self, MicrosoftTeamsRoutineBinding) -> Unit
+pub fn MicrosoftTeamsTriggerRegistry::wake_count(Self) -> Int32
 
 pub(all) struct MissingConnectorAutoCard {
   connector : ExternalEventConnector
@@ -334,8 +377,8 @@ pub(all) struct RoutinePatch {
   trigger : Trigger?
   timing : Timing?
   enabled : Bool?
-  early_minutes : Int?
-  late_minutes : Int?
+  early_minutes : Int32?
+  late_minutes : Int32?
 } derive(Eq, @debug.Debug)
 pub fn RoutinePatch::empty() -> Self
 pub fn RoutinePatch::equal(Self, Self) -> Bool
@@ -362,8 +405,8 @@ pub(all) struct RoutineSpec {
   trigger : Trigger
   timing : Timing
   enabled : Bool
-  early_minutes : Int
-  late_minutes : Int
+  early_minutes : Int32
+  late_minutes : Int32
 } derive(Eq, @debug.Debug)
 pub fn RoutineSpec::equal(Self, Self) -> Bool
 pub fn RoutineSpec::not_equal(Self, Self) -> Bool
@@ -438,6 +481,15 @@ pub fn SlackListenerShape::equal(Self, Self) -> Bool
 pub fn SlackListenerShape::not_equal(Self, Self) -> Bool
 pub fn SlackListenerShape::to_repr(Self) -> @debug.Repr
 
+pub(all) enum TeamsRoutineWake {
+  Woke(routine_id~ : String, event_kind~ : String, trigger~ : String)
+  Ignored(reason~ : String)
+} derive(Eq, @debug.Debug)
+pub fn TeamsRoutineWake::did_wake(Self) -> Bool
+pub fn TeamsRoutineWake::equal(Self, Self) -> Bool
+pub fn TeamsRoutineWake::not_equal(Self, Self) -> Bool
+pub fn TeamsRoutineWake::to_repr(Self) -> @debug.Repr
+
 pub(all) enum TerminalWakeReason {
   PrMerged
   PrClosed
@@ -469,7 +521,7 @@ pub(all) enum Trigger {
   Cron(expr~ : String)
   Event(name~ : String)
   Manual
-  Interval(seconds~ : Int)
+  Interval(seconds~ : Int32)
 } derive(Eq, @debug.Debug)
 pub fn Trigger::equal(Self, Self) -> Bool
 pub fn Trigger::not_equal(Self, Self) -> Bool

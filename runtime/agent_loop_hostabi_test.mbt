@@ -118,7 +118,10 @@ test "HABI-5 allowed shell records the command" {
 }
 
 ///|
-test "HABI-6 LoopHostAbi still stops at 64" {
+/// CONTRACT CHANGE (L3, 2026-10-25): see the note on
+/// "A1 open_turn AgentLoop::run honours the caller step cap". The cap is
+/// configurable downwards; the hard ceiling stays 64.
+test "HABI-6 LoopHostAbi honours the caller step cap" {
   let ctx = @runtime.open_turn(turn_id="h6", text="loop")
   let reg = @runtime.ToolRegistry::empty()
   reg.register(habi_read())
@@ -130,9 +133,21 @@ test "HABI-6 LoopHostAbi still stops at 64" {
   host.files.set("a.txt", "x")
   let run = agent.run(ctx, host)
   assert_eq(agent.max_steps, 2)
-  assert_eq(run.max_steps, 64)
-  assert_eq(run.steps, 64)
-  assert_eq(run.exec_count, 64)
+  assert_eq(run.max_steps, 2)
+  assert_eq(run.steps, 2)
+  assert_eq(run.exec_count, 2)
   assert_eq(run.stop, @runtime.MaxSteps)
-  assert_eq(host.execs.length(), 64)
+  assert_eq(host.execs.length(), 2)
+  // The ceiling itself is unchanged: asking for more than 64 still stops at 64.
+  assert_eq(@runtime.AGENT_LOOP_MAX_STEPS, 64)
+  let greedy : @runtime.AgentLoop = { registry: reg, max_steps: 999, }
+  let greedy_host = {
+    ..@runtime.LoopHostAbi::scripted([habi_call("Read", "{\"path\":\"a.txt\"}")]),
+    repeat_last: true,
+  }
+  greedy_host.files.set("a.txt", "x")
+  let greedy_run = greedy.run(ctx, greedy_host)
+  assert_eq(greedy_run.max_steps, 64)
+  assert_eq(greedy_run.steps, 64)
+  assert_eq(greedy_run.stop, @runtime.MaxSteps)
 }

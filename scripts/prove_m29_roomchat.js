@@ -49,30 +49,35 @@ const html = fs.readFileSync(htmlPath, "utf8");
 
 const mainSrc = fs.readFileSync(path.join(REPO, "hosts/desktop/main.js"), "utf8");
 const preloadSrc = fs.readFileSync(path.join(REPO, "hosts/desktop/preload.js"), "utf8");
+// 群回合的实现搬到共享层:桌面与 CLI/移动端必须用同一份(否则一个端回、
+// 另一个端不回 —— Q-6)。断言随之指向新位置,严格程度不变。
+const runtimeSrc = fs.readFileSync(path.join(REPO, "hosts/shared/room_runtime.js"), "utf8");
+const dispatchSrc = fs.readFileSync(path.join(REPO, "hosts/shared/room_dispatch.js"), "utf8");
 /ipcMain\.handle\("bitbot:rooms:orchestrate"/.test(mainSrc) &&
-  /surface\.roomTurn\(roomId, text/.test(mainSrc) &&
-  /surface\.appendRoomTranscript\(roomId, routed\.transcript_entry\)/.test(mainSrc) &&
-  /surface\.orchestrateRoom\(\{/.test(mainSrc) &&
+  /dispatchRoomTurn\(\{/.test(mainSrc) &&
+  /surface\.roomTurn\(roomId, text, now, messageId\)/.test(dispatchSrc) &&
+  /surface\.appendRoomTranscript\(roomId, entry\)/.test(dispatchSrc) &&
+  /surface\.orchestrateRoom\(\{/.test(dispatchSrc) &&
   /deps: \{\s*runResponderTurn: runRoomResponderTurn/.test(mainSrc)
-  ? ok("Host IPC 真接线：roomTurn → appendRoomTranscript → orchestrateRoom(runResponderTurn)")
+  ? ok("Host IPC 真接线：dispatchRoomTurn(roomTurn → appendRoomTranscript → orchestrateRoom(runResponderTurn))")
   : bad("Host orchestrate IPC wiring missing");
-/function runRoomResponderTurn\(botId, task, ctx\)[\s\S]{0,1600}runner\.runTurn\(String\(task \|\| ""\), \{[\s\S]{0,400}botId: id/.test(mainSrc) &&
-  /const sessionId = "room-" \+ String\(\(ctx && ctx\.room\) \|\| "room"\) \+ "-" \+ id/.test(mainSrc)
+/async function runResponderTurn\(botId, task, ctx\)[\s\S]{0,1600}await runTurn\(String\(task \|\| ""\), \{[\s\S]{0,400}botId: id/.test(runtimeSrc) &&
+  /sessionId: "room-" \+ room \+ "-" \+ id/.test(runtimeSrc)
   ? ok("responder 回合用自己的 botId（记忆/persona/审批作用域）与独立 room sessionId（不污染 DM）")
   : bad("responder turn is not per-Bot or shares the DM session");
 
 /* GP-143 安全合同：编排不得成为自动放行通道（审批门与 DM 完全同源）。 */
-const roomFnStart = mainSrc.indexOf("async function runRoomResponderTurn");
-const roomFn = roomFnStart < 0 ? "" : mainSrc.slice(roomFnStart, mainSrc.indexOf("\n}", roomFnStart) + 2);
+const roomFnStart = runtimeSrc.indexOf("async function runResponderTurn");
+const roomFn = roomFnStart < 0 ? "" : runtimeSrc.slice(roomFnStart, runtimeSrc.indexOf("\n  }", roomFnStart) + 4);
 /approved: false/.test(roomFn) && !/approved: true/.test(roomFn)
   ? ok("responder 回合固定 approved:false —— 群回合不因「在编排」而自动放行敏感动作")
   : bad("room responder does not pin approved:false");
 !/approvals\.decide|auto_approved|approveAll/.test(roomFn)
   ? ok("群回合路径不写审批决定（审批仍由用户在原审批面上做）")
   : bad("room path touches approval decisions");
-/secretProtocol\.TOKEN_RULES/.test(mainSrc) && /secretProtocol\.REDACTED/.test(mainSrc) &&
-  /function roomSafeText\(raw\)/.test(mainSrc) && /ROOM_DEBUG_RE/.test(mainSrc) &&
-  /text: assistants\.join\("\\n"\)/.test(mainSrc)
+/secretProtocol\.TOKEN_RULES/.test(runtimeSrc) && /secretProtocol\.REDACTED/.test(runtimeSrc) &&
+  /function roomSafeText\(raw, secretProtocol\)/.test(runtimeSrc) && /ROOM_DEBUG_RE/.test(runtimeSrc) &&
+  /text: assistants\.join\("\\n"\)/.test(runtimeSrc)
   ? ok("回执入转录前过密钥脱敏 + 内核/Host 调试行过滤（转录卫生在 Host 侧收口）")
   : bad("transcript sanitization missing");
 
@@ -134,9 +139,10 @@ const surfSrc = fs.readFileSync(path.join(REPO, "hosts/desktop/product_surface.j
   ? ok("渲染层区分「空群」与「读不到」：转录与侧栏都不把存储故障演成历史消失")
   : bad("renderer conflates empty room with unreadable store");
 const ffiSrc = fs.readFileSync(path.join(REPO, "hosts/shared/host_ffi.js"), "utf8");
-/res = surface\.roomTurn\(hitRoom\.id/.test(ffiSrc) &&
-  /surface\.appendRoomTranscript\(hitRoom\.id, res\.transcript_entry\)/.test(ffiSrc) &&
-  (ffiSrc.match(/rooms_store_unreadable/g) || []).length >= 3
+/dispatchRoomTurn\(\{/.test(ffiSrc) &&
+  /try \{[\s\S]{0,200}surface\.roomTurn\(/.test(dispatchSrc) &&
+  /try \{[\s\S]{0,300}surface\.appendRoomTranscript\(/.test(dispatchSrc) &&
+  (dispatchSrc.match(/rooms_store_unreadable/g) || []).length >= 2
   ? ok("内核 effect 循环同样 fail closed：坏存储报错跳过，不让异常炸掉整批回合")
   : bad("host_ffi room effects not guarded against unreadable rooms store");
 /window\.bitbot\.rooms\.onRoomsChanged/.test(html) &&

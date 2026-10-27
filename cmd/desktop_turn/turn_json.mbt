@@ -435,6 +435,20 @@ pub fn DesktopTurnContext::default() -> DesktopTurnContext {
 
 ///|
 /// Result of one MoonBit desktop turn (product brain path).
+///|
+/// K-6: 一条工具调用的可回放记录。内核已经记了同样的东西
+/// (`runtime.AgentToolTrace`),这里只是把它带出回合结果,让 Host 能落盘。
+pub(all) struct DesktopToolTraceRow {
+  tool_name : String
+  args_json : String
+  result_snippet : String
+  duration_ms : Int32
+  exit_code : Int32
+  error : Bool
+  timestamp : String
+} derive(Eq, Debug)
+
+///|
 pub(all) struct DesktopTurnResult {
   v : Int32
   ok : Bool
@@ -472,6 +486,8 @@ pub(all) struct DesktopTurnResult {
   agent_llm : Int32
   agent_exec : Int32
   agent_approval : Int32
+  /// K-6: 本回合的工具调用序列(可回放)。
+  agent_traces : Array[DesktopToolTraceRow]
 } derive(Eq, Debug)
 
 ///|
@@ -1289,6 +1305,7 @@ fn fail_turn(
     agent_llm: 0,
     agent_exec: 0,
     agent_approval: 0,
+    agent_traces: [],
   }
 }
 
@@ -1384,6 +1401,7 @@ fn deliver_ok(
         agent_llm: 0,
         agent_exec: 0,
         agent_approval: 0,
+        agent_traces: [],
       }
     }
   }
@@ -5630,6 +5648,30 @@ pub fn DesktopTurnResult::to_json_line(self : DesktopTurnResult) -> String {
   buf.write_string(self.agent_exec.to_string())
   buf.write_string(",\"agent_approval\":")
   buf.write_string(self.agent_approval.to_string())
+  buf.write_string(",\"agent_traces\":[")
+  let mut ti = 0
+  for tr in self.agent_traces {
+    if ti > 0 {
+      buf.write_string(",")
+    }
+    ti += 1
+    buf.write_string("{\"tool_name\":\"")
+    buf.write_string(escape_json_string(tr.tool_name))
+    buf.write_string("\",\"args_json\":\"")
+    buf.write_string(escape_json_string(tr.args_json))
+    buf.write_string("\",\"result_snippet\":\"")
+    buf.write_string(escape_json_string(tr.result_snippet))
+    buf.write_string("\",\"duration_ms\":")
+    buf.write_string(tr.duration_ms.to_string())
+    buf.write_string(",\"exit_code\":")
+    buf.write_string(tr.exit_code.to_string())
+    buf.write_string(",\"error\":")
+    buf.write_string(if tr.error { "true" } else { "false" })
+    buf.write_string(",\"timestamp\":\"")
+    buf.write_string(escape_json_string(tr.timestamp))
+    buf.write_string("\"}")
+  }
+  buf.write_string("]")
   buf.write_string("}")
   buf.to_string()
 }

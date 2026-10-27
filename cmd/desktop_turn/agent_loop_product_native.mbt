@@ -9,11 +9,22 @@ extern "C" fn bitbot_ffi_exchange(request : String) -> String = "bitbot_ffi_exch
 ///|
 struct ProductFfiHost {
   marker : Int32
+  /// Product tools the kernel executed during this run. The kernel does the
+  /// MoonBit-side work; the Host mirrors these effects after the turn.
+  /// `Array` is a shared mutable reference, so pushes made inside `exec_tool`
+  /// are visible to the caller that owns the host.
+  effects : Array[DesktopEffect]
+  /// 这台机器的常驻授权:到点的定时任务自己执行(K-2 策略里的
+  /// `routine_auto_execute`)。**只是事实**,不是模型能改的东西。
+  auto_execute : Bool
 }
 
 ///|
-fn ProductFfiHost::new() -> ProductFfiHost {
-  { marker: 1, }
+fn ProductFfiHost::new(
+  sink : Array[DesktopEffect],
+  auto_execute~ : Bool = false,
+) -> ProductFfiHost {
+  { marker: 1, effects: sink, auto_execute, }
 }
 
 ///|
@@ -29,6 +40,9 @@ fn agent_stop_name(stop : @runtime.LoopStop) -> String {
     @runtime.Final => "Final"
     @runtime.MaxSteps => "MaxSteps"
     @runtime.Cancelled => "Cancelled"
+    @runtime.TokenBudget => "TokenBudget"
+    @runtime.Failed => "Failed"
+    @runtime.ProviderFailed => "ProviderFailed"
   }
 }
 
@@ -58,23 +72,26 @@ fn want_product_agent_loop(args : Array[String], text : String) -> Bool {
 }
 
 ///|
-fn product_tool_registry() -> @runtime.ToolRegistry {
-  let reg = @runtime.ToolRegistry::empty()
-  reg.register({
-    id: "Read",
-    description: "Read a file",
-    builtin: Some(@tools.Read),
-    input_schema_json: "{\"required\":[\"path\"]}",
-    requires_approval: false,
-  })
-  reg.register({
-    id: "Shell",
-    description: "Run a shell command",
-    builtin: Some(@tools.Shell),
-    input_schema_json: "{\"required\":[\"command\"]}",
-    requires_approval: false,
-  })
-  reg
+/// Serialize the plan for the Host todo_write effect (CM-0112).
+fn todo_effect_command(todos : Array[@runtime.TodoItem]) -> String {
+  let buf = StringBuilder()
+  buf.write_string("[")
+  let mut i = 0
+  for t in todos {
+    if i > 0 {
+      buf.write_string(",")
+    }
+    buf.write_string("{\"id\":\"")
+    buf.write_string(escape_json_string(t.id))
+    buf.write_string("\",\"title\":\"")
+    buf.write_string(escape_json_string(t.content))
+    buf.write_string("\",\"status\":\"")
+    buf.write_string(escape_json_string(t.status))
+    buf.write_string("\"}")
+    i = i + 1
+  }
+  buf.write_string("]")
+  buf.to_string()
 }
 
 ///|
@@ -85,7 +102,50 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn llm_chat(
   self.touch()
   bitbot_ffi_trace("op=llm_chat")
   parse_product_llm_reply(
-    bitbot_ffi_exchange(encode_product_messages(messages)),
+    bitbot_ffi_exchange(encode_product_messages(messages, product_tool_schema_json())),
+  )
+}
+
+///|
+///|
+/// K-2/C-3: ask the Host for the tool policy for this turn.
+/// Host 不认识 `load_policy` 时回 `unknown op` → 默认策略 → 行为不变。
+fn load_tool_policy() -> @runtime.ToolPolicy {
+  bitbot_ffi_trace("op=load_policy")
+  let raw = bitbot_ffi_exchange(encode_context_request("load_policy", "", ""))
+  let text = parse_context_reply(raw)
+  if text == "" {
+    return @runtime.ToolPolicy::default()
+  }
+  @runtime.ToolPolicy::parse(text)
+}
+
+/// 跨回合上下文:向 Host 要一份编码后的上下文。
+///
+/// Host 不认识 `load_context` 时回 `unknown op` → 输出空串 → 当作没有历史继续。
+/// 这条路径必须**永不失败**:上下文没了只是少记点事,不能把回合搞崩。
+fn load_agent_context(slot : String, session_id : String) -> @runtime.AgentContext {
+  // Every FFI op the kernel asks for must be traced: the Host records the op
+  // list it was asked for, and the gate compares it with the kernel's own
+  // trace element by element. An untraced op makes the two disagree.
+  bitbot_ffi_trace("op=load_context")
+  let raw = bitbot_ffi_exchange(encode_context_request("load_context", slot, ""))
+  let text = parse_context_reply(raw)
+  if text == "" {
+    return @runtime.AgentContext::new(session_id=session_id)
+  }
+  agent_context_aligned(@runtime.AgentContext::decode(text), session_id)
+}
+
+///|
+/// 跨回合上下文:把更新后的上下文交回 Host 落盘。
+fn save_agent_context(
+  slot : String,
+  ctx : @runtime.AgentContext,
+) -> Unit {
+  bitbot_ffi_trace("op=save_context")
+  let _ = bitbot_ffi_exchange(
+    encode_context_request("save_context", slot, ctx.encode()),
   )
 }
 
@@ -96,6 +156,24 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn exec_tool(
   args,
 ) {
   self.touch()
+  // Product tools are executed BY THE KERNEL, not by the Host. The Host FFI
+  // only knows Read/Shell and would answer "exec refused: <name>" for anything
+  // else — so intercept before the FFI round-trip. The kernel does the
+  // MoonBit-side work, the effect is mirrored by the Host after the turn.
+  //
+  // B-class tools (web_search / web_fetch / send_mail) are NOT intercepted:
+  // they need Host capabilities, and the Host must run them SYNCHRONOUSLY so
+  // the model observes the real result instead of a promise.
+  if is_kernel_tool(name) {
+    let result = match parse_product_tool_action(name, args) {
+      Ok(action) => exec_product_tool_action(action, auto_execute=self.auto_execute)
+      Err(e) => ProductToolResult::{ observation: "invalid_arguments: " + e, effects: [], }
+    }
+    for e in result.effects {
+      self.effects.push(e)
+    }
+    return encode_product_tool_output(result.observation)
+  }
   bitbot_ffi_trace("op=exec_tool")
   parse_product_output(
     bitbot_ffi_exchange(encode_product_tool("exec_tool", name, args)),
@@ -154,13 +232,60 @@ fn run_agent_loop_chat(
   }
   let opened = @runtime.open_turn(turn_id~, text~)
   bitbot_ffi_trace("entry=AgentLoop::run")
-  let host = ProductFfiHost::new()
-  let run = @runtime.AgentLoop::new(product_tool_registry()).run(opened, host)
+  // The effect sink is owned here, not by the host: the host is handed to
+  // `run` by value, the sink stays reachable so the caller can read what the
+  // kernel produced. `Array` is a shared mutable reference, so both see the
+  // same buffer.
+  let tool_effects : Array[DesktopEffect] = []
+  // K-2:策略由 Host 提供。`routine_auto_execute` 是这台机器的常驻授权 ——
+  // 模型据此**如实**告诉用户到点会不会自己跑。
+  let tool_policy = load_tool_policy()
+  let host = ProductFfiHost::new(
+    tool_effects,
+    auto_execute=tool_policy.routine_auto_execute,
+  )
+  // K-1/K-3: the agent's context has to survive the process, otherwise every
+  // turn starts blind and the user never sees "it remembers me". The kernel
+  // asks the Host for the encoded context, runs with it, and hands the
+  // updated one back.
+  let ctx_slot = agent_context_slot(ctx.bot_id, ctx.session_id)
+  let agent_ctx = load_agent_context(ctx_slot, opened.session_id.value)
+  let run = @runtime.AgentLoop::new(product_tool_registry()).run_with(
+    opened,
+    host,
+    agent_ctx,
+    tool_policy=tool_policy,
+  )
+  save_agent_context(ctx_slot, run.context)
   let ok = run.stop is @runtime.Final || run.stop is @runtime.MaxSteps
   let err = if run.stop is @runtime.Cancelled {
     Some("cancelled")
+  } else if run.stop is @runtime.TokenBudget {
+    Some("token budget exhausted")
+  } else if run.stop is @runtime.Failed {
+    Some("tool loop failed")
+  } else if run.stop is @runtime.ProviderFailed {
+    Some("provider failed")
   } else {
     None
+  }
+  // CM-0112: a plan the model wrote becomes one durable Host todo_write
+  // effect. The kernel never claims an item is done on its own.
+  //
+  // C-1: product tools the kernel executed during the run become effects too
+  // (teammate_create / routine_schedule). todo_write stays FIRST, so the
+  // effect order for every run that used no product tool is unchanged — the
+  // Host's ordering contract does not move.
+  let effects : Array[DesktopEffect] = []
+  if run.todos.length() > 0 {
+    effects.push({
+      kind: "todo_write",
+      command: todo_effect_command(run.todos),
+      needs_host_ffi: true,
+    })
+  }
+  for e in tool_effects {
+    effects.push(e)
   }
   // GP-93：产品可见的链接统一走同一套 linkify，AgentLoop 的交付也不例外。
   let delivered = @ui_protocol.linkify_bare_http_urls(run.delivered)
@@ -176,7 +301,7 @@ fn run_agent_loop_chat(
     modules: @bitbot.registered_modules(),
     machines: [],
     memory: [],
-    effects: [],
+    effects,
     needs_host_ffi: false,
     host_continued: false,
     channel_delivery: "",
@@ -194,7 +319,27 @@ fn run_agent_loop_chat(
     agent_llm: run.llm_count,
     agent_exec: run.exec_count,
     agent_approval: run.approval_count,
+    // K-6: 把内核记下的工具序列带出回合结果,Host 才能落盘成可回放的记录。
+    agent_traces: tool_trace_rows(run.traces),
   }
+}
+
+///|
+/// K-6:内核的工具 trace → 回合结果里的行。
+fn tool_trace_rows(traces : Array[@runtime.AgentToolTrace]) -> Array[DesktopToolTraceRow] {
+  let out : Array[DesktopToolTraceRow] = []
+  for tr in traces {
+    out.push({
+      tool_name: tr.tool_name,
+      args_json: tr.args_json,
+      result_snippet: tr.result_snippet,
+      duration_ms: tr.duration_ms,
+      exit_code: tr.exit_code,
+      error: tr.error,
+      timestamp: tr.timestamp,
+    })
+  }
+  out
 }
 
 ///|

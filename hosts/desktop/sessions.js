@@ -9,9 +9,12 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-function createSessionStore(repoRoot) {
+function createSessionStore(repoRoot, opts = {}) {
   const root = path.resolve(repoRoot);
-  const dir = path.join(root, "data", "desktop");
+  /* Sessions are user data: packaged builds keep them in the OS user-data
+     dir, not inside the (read-only, replace-on-upgrade) app bundle. */
+  const dataRoot = opts.dataRoot ? path.resolve(opts.dataRoot) : path.join(root, "data");
+  const dir = path.join(dataRoot, "desktop");
   const storePath = path.join(dir, "sessions.json");
 
   function empty() {

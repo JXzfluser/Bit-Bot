@@ -9,10 +9,15 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const roomOrchestrator = require("./room_orchestrator");
 
-function createProductSurface(repoRoot) {
+function createProductSurface(repoRoot, opts = {}) {
   const REPO_ROOT = path.resolve(repoRoot);
-  const DESKTOP_DIR = path.join(REPO_ROOT, "data", "desktop");
+  /* User data (rooms / bots / sessions / memory / routines) lives outside the
+     code tree: a packaged app's tree is a read-only bundle that gets replaced
+     on upgrade. Dev keeps the historical <repo>/data layout. */
+  const DATA_ROOT = opts.dataRoot ? path.resolve(opts.dataRoot) : path.join(REPO_ROOT, "data");
+  const DESKTOP_DIR = path.join(DATA_ROOT, "desktop");
   const BOTS_PATH = path.join(DESKTOP_DIR, "bots.json");
   const APPROVAL_RULES_PATH = path.join(DESKTOP_DIR, "approval-rules.json");
   const PENDING_APPROVALS_PATH = path.join(DESKTOP_DIR, "pending-approvals.jsonl");
@@ -22,14 +27,17 @@ function createProductSurface(repoRoot) {
   const LLM_USAGE_PATH = path.join(DESKTOP_DIR, "llm-usage.json");
   const ROOMS_PATH = path.join(DESKTOP_DIR, "rooms.json");
   const SESSIONS_PATH = path.join(DESKTOP_DIR, "sessions.json");
-  const MEMORY_DIR = path.join(REPO_ROOT, "data", "memory");
+  const MEMORY_DIR = path.join(DATA_ROOT, "memory");
   const MEMORY_STORE_PATH = path.join(MEMORY_DIR, "desktop-host.json");
   const PROFILE_VAULT_PATH = path.join(MEMORY_DIR, "profile-vault.json");
   const ACCOUNT_PROFILE_PATH = path.join(DESKTOP_DIR, "account-profile.json");
-  const ROUTINES_DIR = path.join(REPO_ROOT, "data", "routines");
-  const WORKSPACE_UPLOADS_DIR = path.join(REPO_ROOT, "data", "workspace", "uploads");
+  const ROUTINES_DIR = path.join(DATA_ROOT, "routines");
+  const WORKSPACE_UPLOADS_DIR = path.join(DATA_ROOT, "workspace", "uploads");
   const VOICE_DIR = path.join(DESKTOP_DIR, "voice");
   const FRAMES_DIR = path.join(DESKTOP_DIR, "frames");
+  // 共享任务板（群编排的共享工作区）：与内核 section store 同一目录/同一格式，
+  // key 统一成 room id —— 内核写的 section_post，成员下一轮能在 prompt 里读到。
+  const roomBoard = roomOrchestrator.createRoomBoard(REPO_ROOT, { dataRoot: DATA_ROOT });
 
   // Atomic write helper: tmp + rename
   function atomicWrite(filePath, data) {
@@ -499,7 +507,7 @@ function createProductSurface(repoRoot) {
     // Count workspace files kept
     let workspace_files_kept = 0;
     try {
-      const workspaceDir = path.join(REPO_ROOT, "data", "workspace");
+      const workspaceDir = path.join(DATA_ROOT, "workspace");
       if (fs.existsSync(workspaceDir)) {
         const countFiles = (dir) => {
           let count = 0;
@@ -1000,7 +1008,7 @@ function createProductSurface(repoRoot) {
   // real file so separate Host processes (CLI smoke, Electron main) contend on
   // the same state; a hold is only trusted while fresh (< TTL) — a crashed
   // process's lock expires instead of blocking the Bot forever.
-  const CU_LOCK_DIR = path.join(REPO_ROOT, "data", "desktop", "cu-locks");
+  const CU_LOCK_DIR = path.join(DATA_ROOT, "desktop", "cu-locks");
   const CU_LOCK_TTL_MS = Number(process.env.BITBOT_CU_LOCK_TTL_MS || 120000);
 
   function cuLockPath(bot_id) {
@@ -1102,12 +1110,11 @@ function createProductSurface(repoRoot) {
         ? data.shared_browser
         : {};
     const profileDir = path.join(
-      REPO_ROOT,
-      "data",
-      "connectors",
-      "identity",
-      "chrome-user-data",
-    );
+    DATA_ROOT,
+    "connectors",
+    "identity",
+    "chrome-user-data"
+  );
     return {
       data,
       shared_browser: {
@@ -1269,7 +1276,7 @@ function createProductSurface(repoRoot) {
     // Count workspace files
     let workspace_files_kept = 0;
     try {
-      const workspaceDir = path.join(REPO_ROOT, "data", "workspace");
+      const workspaceDir = path.join(DATA_ROOT, "workspace");
       if (fs.existsSync(workspaceDir)) {
         const countFiles = (dir) => {
           let count = 0;
@@ -1617,7 +1624,7 @@ function createProductSurface(repoRoot) {
     };
   }
 
-  function roomTurn(room_id, text, now) {
+  function roomTurn(room_id, text, now, message_id) {
     const rooms = requireWritableRooms();
     const room = rooms.rooms.find(r => r.id === room_id);
     if (!room) {
@@ -1684,6 +1691,10 @@ function createProductSurface(repoRoot) {
       responders: responders.map(r => r.id),
       responder_policy,
       unknown_mentions: unknownMentions.length ? unknownMentions : undefined,
+      // Q-5: 一条消息的身份。幂等要认「同一次投递」,不是「同样的文字」——
+      // 用户把同一句话再发一遍,那是两条消息、两个任务。
+      // 渠道侧(钉钉 msgId / 飞书 message_id)自带稳定 id;桌面/CLI 每次发送新生成。
+      message_id: String(message_id || "") || undefined,
       at: now || nowIso()
     };
     // AR-08：无 @ 时 responders 是候选池，不是已确定的发言者；真正的选择由
@@ -1733,6 +1744,31 @@ function createProductSurface(repoRoot) {
     if (s.length <= limit) return { text: s, truncated: false };
     return { text: s.slice(0, limit) + "…", truncated: true };
   }
+  // 超时必须**真的取消**：把取消信号传给执行层（ctx.cancelPromise / ctx.isCancelled），
+  // 而不是只 reject 外层 promise —— 那样内核回合会继续跑、继续烧 token。
+  function withCancelTimeout(promise, ms, onTimeout) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        try {
+          if (typeof onTimeout === "function") onTimeout();
+        } catch (_) {
+          /* 取消通道本身不能抛 */
+        }
+        reject(new Error("responder_timeout"));
+      }, ms);
+      Promise.resolve(promise).then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
+  }
+
   function orchestrateRoom(input) {
     const opts = input || {};
     const deps = opts.deps || {};
@@ -1770,7 +1806,10 @@ function createProductSurface(repoRoot) {
     if (responders.length > 6) return { ok: false, error: "too_many_responders", count: responders.length, max: 6, mode: "host_orchestrate_room" };
     const responderPolicy = String(opts.policy || (toList.length ? "mentioned_only" : "bot_discretion")).trim();
 
-    const taskSig = room.id + "|" + task.toLowerCase();
+    // Q-5: 幂等键 = 房间 + **投递 id**。
+    // 没有 id 时退回文字(向后兼容旧转录),但那时「同样的字」只能当同一次投递。
+    const sigKey = String(opts.message_id || "").trim() || task.toLowerCase();
+    const taskSig = room.id + "|" + sigKey;
     if (_orchInflight.has(taskSig)) {
       return { ok: false, error: "orchestrate_recursion", depth: 1, mode: "host_orchestrate_room" };
     }
@@ -1784,13 +1823,28 @@ function createProductSurface(repoRoot) {
         responder_policy: prior.responder_policy || opts.policy || "", final_report: prior,
       };
     }
-    if (typeof deps.runResponderTurn !== "function") {
+    // 依赖回落:调用方显式给的优先,否则用 surface 上注入的运行时依赖
+    // (setRoomRuntimeDeps)。CLI/移动端走的就是这条回落 —— 桌面和别的端
+    // 走同一条扇出路径,不会一个回一个不回。
+    const runResponderTurn =
+      typeof deps.runResponderTurn === "function"
+        ? deps.runResponderTurn
+        : roomRuntimeDeps && typeof roomRuntimeDeps.runResponderTurn === "function"
+          ? roomRuntimeDeps.runResponderTurn
+          : null;
+    const selectResponders =
+      typeof deps.selectResponders === "function"
+        ? deps.selectResponders
+        : roomRuntimeDeps && typeof roomRuntimeDeps.selectResponders === "function"
+          ? roomRuntimeDeps.selectResponders
+          : null;
+    if (typeof runResponderTurn !== "function") {
       return {
         ok: false, error: "responder_runner_required", mode: "host_orchestrate_room",
         note: "GP-143 responder turn is run by the MoonBit runner; inject deps.runResponderTurn",
       };
     }
-    if (responderPolicy === "bot_discretion" && typeof deps.selectResponders !== "function") {
+    if (responderPolicy === "bot_discretion" && typeof selectResponders !== "function") {
       return {
         ok: false, error: "discretion_selector_required", mode: "host_orchestrate_room",
         note: "bot_discretion must be a real per-member decision; inject deps.selectResponders",
@@ -1800,13 +1854,7 @@ function createProductSurface(repoRoot) {
     const timeoutMs = Number(deps.timeoutMs || 120000);
     const decisionTimeoutMs = Number(deps.discretionTimeoutMs || Math.min(timeoutMs, 30000));
     const at = nowIso();
-    const withTimeout = (promise, ms) => new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("responder_timeout")), ms);
-      Promise.resolve(promise).then(
-        (value) => { clearTimeout(timer); resolve(value); },
-        (err) => { clearTimeout(timer); reject(err); },
-      );
-    });
+    const withTimeout = withCancelTimeout;
     const candidates = responders.slice();
     const cleanDecisions = (list) => {
       if (!Array.isArray(list)) return undefined;
@@ -1824,20 +1872,37 @@ function createProductSurface(repoRoot) {
       }).filter(Boolean);
     };
 
+    // 团队预算（轮次 / 时间 / token 估算）：宿主唯一裁决者，超了就停并如实说明。
+    const budget = roomOrchestrator.createTeamBudget({
+      maxTurns: Number(deps.maxTurns || process.env.BITBOT_ROOM_BUDGET_TURNS || 7),
+      maxWallMs: Number(deps.maxWallMs || process.env.BITBOT_ROOM_BUDGET_WALL_MS || 600000),
+      maxTokens: Number(deps.maxTokens || process.env.BITBOT_ROOM_BUDGET_TOKENS || 200000),
+      maxMembers: 6,
+    });
+
     _orchInflight.add(taskSig);
     return (async () => {
       let selected = candidates;
-      let discretion;
+      let discretion = [];
+      let degraded = false;
+      let degradedReason = "";
+      let failOpenIncluded = [];
+      let failOpenExcluded = [];
+      let failOpenTotal = 0;
       if (responderPolicy === "bot_discretion") {
-        let picked;
+        let picked = null;
         try {
-          picked = await withTimeout(deps.selectResponders({
+          picked = await withTimeout(selectResponders({
             room: room.id,
             task,
             candidates: candidates.map((r) => Object.assign({}, r)),
             member_count: memberIds.length,
+            // 共享任务板回读：选择回合也能看到别人上一轮干了什么。
+            board: roomBoard.snapshot(room.id).text,
           }), decisionTimeoutMs);
         } catch (e) {
+          // 整个 selector 挂了 = 没人能决定谁应答。此时**不扇出**（那会把失败
+          // 演成全员应答、还放大成本），如实失败，让上层知道这一轮没结论。
           return {
             ok: false, error: "discretion_failed",
             detail: String((e && e.message) || e), mode: "host_orchestrate_room",
@@ -1852,13 +1917,46 @@ function createProductSurface(repoRoot) {
         if (!Array.isArray(picked.responders)) {
           return { ok: false, error: "discretion_result_invalid", mode: "host_orchestrate_room" };
         }
-        const ids = new Set(picked.responders.map((id) => String(id)));
-        selected = candidates.filter((r) => ids.has(r.id));
-        discretion = cleanDecisions(picked.decisions);
+        const decisions = cleanDecisions(picked.decisions);
+        const pickedIds = new Set(picked.responders.map((id) => String(id)));
+        const decidedYes = decisions.filter(d => d.respond && !d.fail_open).map(d => d.bot_id);
+        const undecided = decisions.filter(d => d.fail_open).map(d => d.bot_id);
+        failOpenTotal = undecided.length;
+        // fail-open 有界降级：选择失败的成员**不再全员扇出**（那是成本 ×N），
+        // 最多带 maxFailOpen 个进本轮，其余如实标为「已跳过」。
+        const allowance = Math.max(0, Math.min(
+          Number(deps.maxFailOpen != null ? deps.maxFailOpen : (process.env.BITBOT_ROOM_MAX_FAIL_OPEN || 2)),
+          candidates.length,
+        ));
+        const allowed = new Set(decidedYes.filter((id) => pickedIds.has(id)));
+        let used = 0;
+        for (const id of undecided) {
+          if (!pickedIds.has(id)) continue;
+          if (used >= allowance) {
+            failOpenExcluded.push(id);
+            continue;
+          }
+          allowed.add(id);
+          used++;
+        }
+        failOpenIncluded = undecided.filter((id) => allowed.has(id));
+        for (const d of decisions) {
+          if (!d.fail_open) continue;
+          d.included = allowed.has(d.bot_id);
+          d.degraded = true;
+          if (!d.included) d.skipped_reason = "degraded_budget";
+        }
+        discretion = decisions;
+        if (failOpenTotal) {
+          degraded = true;
+          if (!degradedReason) degradedReason = "discretion_fail_open";
+        }
+        selected = candidates.filter(r => allowed.has(r.id));
       }
-      const discretionFailOpen = Array.isArray(discretion)
-        ? discretion.filter((d) => d && d.fail_open).length
-        : 0;
+      const nameOf = (id) => {
+        const hit = selected.find(r => r.id === id) || candidates.find(r => r.id === id);
+        return hit ? hit.name : id;
+      };
       if (!selected.length) {
         const final_report = {
           kind: "final_report", room_id: room.id, responder_policy: responderPolicy,
@@ -1867,7 +1965,13 @@ function createProductSurface(repoRoot) {
           task_title: clipRoomText(String(opts.report || task).trim() || task, ROOM_TASK_MAX).text,
           responders: [], total: 0, returned: 0, partial: false, skipped: true,
           sections: [], artifacts: [], discretion,
-          discretion_fail_open: discretionFailOpen || undefined, at,
+          discretion_fail_open: failOpenIncluded.length || undefined,
+          discretion_failed_total: failOpenTotal || undefined,
+          discretion_excluded: failOpenExcluded.length ? failOpenExcluded : undefined,
+          degraded: degraded || undefined,
+          degraded_reason: degradedReason || undefined,
+          budget: budget.snapshot(),
+          at,
         };
         appendRoomTranscript(room.id, final_report);
         return {
@@ -1886,9 +1990,71 @@ function createProductSurface(repoRoot) {
           /* 进度提示是 best effort，不能拖垮编排 */
         }
       }
-      const settled = await Promise.allSettled(selected.map(async (r) => {
-        // GP-148 §1-J3：除身份之外，把「本轮被 @ 的是谁」也带给 Host —— 这是
-        // provider 群上下文里唯一无法从 rooms.json 反推的事实（路由已经算好了）。
+
+      // ===== 任务拆解：模型可以*建议*，分工由宿主确定性执行 =====
+      let subtasks = [];
+      let decompositionSource = "none";
+      if (selected.length > 1 && typeof deps.proposeDecomposition === "function") {
+        try {
+          const proposal = await withTimeout(deps.proposeDecomposition({
+            room: room.id,
+            task,
+            candidates: selected.map((r) => Object.assign({}, r)),
+            member_count: memberIds.length,
+          }), decisionTimeoutMs);
+          const normalized = roomOrchestrator.normalizeSubtaskProposal(proposal, {
+            maxCount: Math.min(selected.length, roomOrchestrator.SUBTASK_MAX_COUNT),
+          });
+          if (normalized.length >= 2) {
+            subtasks = normalized;
+            decompositionSource = "model";
+          }
+        } catch (_) {
+          /* 拆解建议失败 → 退回宿主启发式（不猜、不编） */
+        }
+      }
+      if (!subtasks.length && selected.length > 1) {
+        const heuristic = roomOrchestrator.decomposeTask(task, { maxCount: selected.length });
+        if (heuristic.length >= 2) {
+          subtasks = heuristic;
+          decompositionSource = "host_heuristic";
+        }
+      }
+      const assignments = roomOrchestrator.assignSubtasks(subtasks, selected.map(r => r.id));
+      const ownerOf = (subId) => {
+        for (const r of selected) {
+          const subs = assignments.get(r.id) || [];
+          if (subs.some(s => s.id === subId)) return r;
+        }
+        return null;
+      };
+      // 共享任务板：写（认领/分工）。key 统一成 room id。
+      for (const sub of subtasks) {
+        const owner = ownerOf(sub.id);
+        roomBoard.addTask(room.id, {
+          id: sub.id,
+          title: sub.title,
+          owner: owner ? owner.id : "",
+          owner_name: owner ? owner.name : "",
+          status: "assigned",
+        });
+      }
+
+      // ===== 扇出：真并行 + 真取消 + 预算闸门 =====
+      const concurrency = Math.max(1, Math.min(
+        Number(opts.concurrency || deps.concurrency || selected.length) || selected.length,
+        selected.length,
+      ));
+      const results = new Array(selected.length);
+      let cursor = 0;
+      const runMember = async (r) => {
+        const scope = roomOrchestrator.createCancelScope();
+        const subs = assignments.get(r.id) || [];
+        const subtask = subs.length ? subs[0] : null;
+        // 回读路径：板子在**每次调用前**现读一次 —— 先跑完的成员，进度会出现在
+        // 后面才被派到的成员的 prompt 里（同轮协作，不是各说各话）。
+        const boardText = roomBoard.snapshot(room.id).text;
+        const prompt = roomOrchestrator.buildResponderPrompt({ task, subtask, boardText });
         const ctx = {
           room: room.id,
           bot_id: r.id,
@@ -1898,15 +2064,81 @@ function createProductSurface(repoRoot) {
           mentioned_names: responderPolicy === "bot_discretion"
             ? []
             : selected.map((x) => String((x && x.name) || "")).filter(Boolean),
+          // ---- 真编排需要的执行面 ----
+          role: "member",
+          subtask: subtask ? { id: subtask.id, title: subtask.title } : null,
+          subtasks: subs.map(s => ({ id: s.id, title: s.title })),
+          shared_board: boardText,
+          board_group_id: room.id,
+          cancelPromise: scope.promise,
+          isCancelled: () => scope.isCancelled(),
+          // 注意：不要给 per-responder timeout 设下限 —— 下限会把「超时即失败」
+          // 的语义改掉（原本 400ms 就该判失败，抬到 1000ms 会让悬挂成员被算成成功）。
+          timeoutMs: Math.max(1, Math.min(timeoutMs, budget.remainingMs() || timeoutMs)),
         };
-        try {
-          const out = await withTimeout(deps.runResponderTurn(r.id, task, ctx), timeoutMs);
-          return { bot_id: r.id, name: r.name, ok: !!(out && out.ok !== false), text: String((out && out.text) || ""), artifacts: (out && out.artifacts) || [], error: (out && out.error) || null };
-        } catch (e) {
-          return { bot_id: r.id, name: r.name, ok: false, text: "", artifacts: [], error: String((e && e.message) || e) };
+        const promptTokens = roomOrchestrator.estimateTokens(prompt);
+        const gate = budget.canStart({ tokens: promptTokens });
+        if (!gate.ok) {
+          budget.mark(gate.reason);
+          return {
+            bot_id: r.id, name: r.name, ok: false, skipped: true,
+            error: "budget_" + gate.reason, text: "", artifacts: [],
+          };
         }
+        budget.spend({ turns: 1, tokens: promptTokens });
+        try {
+          const out = await withTimeout(
+            runResponderTurn(r.id, prompt, ctx),
+            ctx.timeoutMs,
+            () => scope.cancel("timeout"),
+          );
+          const text = String((out && out.text) || "");
+          budget.spend({ turns: 0, tokens: roomOrchestrator.estimateTokens(text) });
+          return {
+            bot_id: r.id, name: r.name, ok: !!(out && out.ok !== false),
+            text, artifacts: (out && out.artifacts) || [], error: (out && out.error) || null,
+          };
+        } catch (e) {
+          // 超时/取消：取消信号已经传给执行层，内核回合会真的停下来。
+          scope.cancel("timeout_or_error");
+          return {
+            bot_id: r.id, name: r.name, ok: false, text: "", artifacts: [],
+            error: String((e && e.message) || e), cancelled: true,
+          };
+        }
+      };
+      const worker = async () => {
+        while (true) {
+          const idx = cursor++;
+          if (idx >= selected.length) return;
+          const r = selected[idx];
+          const res = await runMember(r);
+          results[idx] = res;
+          const subs = assignments.get(r.id) || [];
+          const status = res.ok ? "done" : (res.skipped ? "skipped" : "failed");
+          for (const s of subs) {
+            roomBoard.updateTask(room.id, s.id, { status, owner: r.id, owner_name: r.name });
+          }
+          roomBoard.post(
+            room.id,
+            subs.length ? subs[0].id : "shared",
+            r.id,
+            res.ok ? (res.text || "") : "（本轮未成功）",
+            subs.length ? subs[0].title : "共享任务（未拆分）",
+          );
+        }
+      };
+      const workers = [];
+      for (let i = 0; i < Math.min(concurrency, selected.length); i++) workers.push(worker());
+      await Promise.all(workers);
+      const settled = results.map((res, i) => res || {
+        bot_id: selected[i].id, name: selected[i].name, ok: false, text: "", artifacts: [],
+        error: String((res && res.error) || "not_started"),
+      });
+      const sections = settled.map((res) => ({
+        bot_id: res.bot_id, name: res.name, ok: res.ok, text: res.text,
+        artifacts: res.artifacts || [], error: res.error || null, skipped: res.skipped || false,
       }));
-      const sections = settled.map((res, i) => res.status === "fulfilled" ? res.value : { bot_id: selected[i].id, name: selected[i].name, ok: false, text: "", artifacts: [], error: String(res.reason || "unknown") });
       for (const s of sections) {
         // 共享转录的每一行都有界：正文由 bot_reply 行承载，汇报里只留摘要；
         // 失败原因截断后再落盘，不把整段 provider 负载抄进 rooms.json。
@@ -1926,6 +2158,103 @@ function createProductSurface(repoRoot) {
       }
       const returned = sections.filter(s => s.ok).length;
       const total = sections.length;
+
+      // ===== 综合（lead）回合：与成员原话**分层**，不混为一谈 =====
+      const okSections = sections.filter(s => s.ok);
+      let synthesis = { ok: false, skipped: true, reason: "not_enough_members", at };
+      // 综合回合走**独立依赖** deps.synthesize：
+      //   - 仓库既有门禁 scripts/prove_gp143_orchestration.js 断言 runResponderTurn
+      //     恰好被调用「成员数」次（多一次模型调用就会打破它），所以综合不能默认
+      //     挂在 runResponderTurn 上；
+      //   - main.js 传 `synthesize: runRoomResponderTurn` 即生效（一次模型调用，
+      //     同样吃团队预算与取消通道）。
+      const synthRunner = typeof deps.synthesize === "function"
+        ? deps.synthesize
+        : (deps.synthesize === true || opts.synthesis === true)
+          ? runResponderTurn
+          : null;
+      if (!synthRunner) synthesis = { ok: false, skipped: true, reason: "synthesizer_not_configured", at };
+      const wantSynthesis = !!synthRunner && selected.length >= 2 && okSections.length >= 1;
+      if (wantSynthesis) {
+        const gaps = [];
+        for (const s of sections) {
+          if (s.ok) continue;
+          gaps.push(((s.name || "?") + "(" + s.bot_id + ")") + " 本轮未成功");
+        }
+        for (const id of failOpenExcluded) gaps.push(((nameOf(id) || id) + "(" + id + ")") + " 选择失败已跳过（降级）");
+        for (const s of sections) {
+          if (!s.skipped) continue;
+          gaps.push(((s.name || "?") + "(" + s.bot_id + ")") + " 未执行（预算用尽）");
+        }
+        const leadId = String(opts.lead_bot || deps.leadBotId || (okSections[0] && okSections[0].bot_id) || "");
+        const lead = selected.find(r => r.id === leadId) || null;
+        if (!lead) {
+          synthesis = { ok: false, skipped: true, reason: "no_lead", gaps, at };
+        } else {
+          const boardText = roomBoard.snapshot(room.id).text;
+          const prompt = roomOrchestrator.buildSynthesisPrompt({
+            task,
+            members: sections.map(s => ({ bot_id: s.bot_id, name: s.name, ok: s.ok, text: s.text })),
+            gaps,
+            boardText,
+          });
+          const scope = roomOrchestrator.createCancelScope();
+          const synthTimeout = Math.max(1, Math.min(timeoutMs, budget.remainingMs() || timeoutMs));
+          const ctx = {
+            room: room.id, bot_id: lead.id, name: lead.name, job: lead.job, description: lead.description,
+            mentioned_names: [], role: "synthesis", lead: true,
+            shared_board: boardText, board_group_id: room.id,
+            cancelPromise: scope.promise,
+            isCancelled: () => scope.isCancelled(),
+            timeoutMs: synthTimeout,
+          };
+          const promptTokens = roomOrchestrator.estimateTokens(prompt);
+          const gate = budget.canStart({ tokens: promptTokens });
+          if (!gate.ok) {
+            budget.mark(gate.reason);
+            synthesis = { ok: false, skipped: true, reason: "budget_" + gate.reason, gaps, at };
+          } else {
+            budget.spend({ turns: 1, tokens: promptTokens });
+            try {
+              const out = await withTimeout(
+                synthRunner(lead.id, prompt, ctx),
+                synthTimeout,
+                () => scope.cancel("timeout"),
+              );
+              const raw = String((out && out.text) || "");
+              const ok = !!(out && out.ok !== false) && raw.trim().length > 0;
+              budget.spend({ turns: 0, tokens: roomOrchestrator.estimateTokens(raw) });
+              const sum = clipRoomText(raw, ROOM_SUMMARY_MAX);
+              const body = clipRoomText(raw, ROOM_TEXT_MAX);
+              synthesis = {
+                ok,
+                lead_bot_id: lead.id,
+                lead_name: lead.name,
+                // 完整正文留在转录里（final_report.synthesis.text），摘要仍受 240 约束。
+                text: body.text,
+                summary: sum.text,
+                summary_truncated: sum.truncated || undefined,
+                gaps,
+                degraded: degraded || undefined,
+                error: ok ? null : ((out && out.error) || "no_reply"),
+                at: nowIso(),
+              };
+            } catch (e) {
+              scope.cancel("timeout_or_error");
+              synthesis = {
+                ok: false, lead_bot_id: lead.id, lead_name: lead.name,
+                error: String((e && e.message) || e), gaps, degraded: degraded || undefined, at: nowIso(),
+              };
+            }
+          }
+        }
+      }
+
+      // ===== 重复劳动率（可测指标）=====
+      const duplication = roomOrchestrator.duplicateWorkRate(
+        sections.map(s => ({ bot_id: s.bot_id, name: s.name, ok: s.ok, text: s.text })),
+        { threshold: Number(deps.duplicateThreshold || roomOrchestrator.DUPLICATE_THRESHOLD) },
+      );
       const final_report = {
         kind: "final_report", room_id: room.id, responder_policy: responderPolicy,
         task: clipRoomText(task, ROOM_TASK_MAX).text,
@@ -1943,11 +2272,55 @@ function createProductSurface(repoRoot) {
         }),
         artifacts: sections.flatMap(s => s.artifacts || []),
         discretion,
-        discretion_fail_open: discretionFailOpen || undefined,
+        // UI 文案「n 个成员的选择失败，已按应答处理」——n 只数**真被带进本轮**的那些。
+        discretion_fail_open: failOpenIncluded.length || undefined,
+        discretion_failed_total: failOpenTotal || undefined,
+        discretion_excluded: failOpenExcluded.length ? failOpenExcluded : undefined,
+        degraded: degraded || undefined,
+        degraded_reason: degradedReason || undefined,
+        decomposition: { source: decompositionSource, count: subtasks.length },
+        subtasks: subtasks.length
+          ? subtasks.map(s => {
+            const owner = ownerOf(s.id);
+            return {
+              id: s.id, title: s.title,
+              owner: owner ? owner.id : "",
+              owner_name: owner ? owner.name : "",
+            };
+          })
+          : undefined,
+        board: { group_id: room.id, tasks: subtasks.length },
+        synthesis,
+        budget: budget.snapshot(),
+        duplication,
         at,
       };
       appendRoomTranscript(room.id, final_report);
-      return { ok: true, mode: "host_orchestrate_room", returned, total, partial: final_report.partial, final_report };
+      // 系统行：综合答案与降级说明要**看得见**（渲染层不认新字段，用系统行承载）。
+      const notice = [];
+      if (synthesis && synthesis.ok && synthesis.summary) {
+        notice.push("群综合（lead：" + (synthesis.lead_name || synthesis.lead_bot_id) + "）：" + synthesis.summary);
+      } else if (synthesis && !synthesis.ok && !synthesis.skipped) {
+        notice.push("群综合未成功：" + String(synthesis.error || "unknown"));
+      }
+      if (failOpenTotal) {
+        notice.push(
+          "成员选择失败 " + failOpenTotal + " 人：其中 " + failOpenIncluded.length +
+            " 人按有界降级参与本轮" + (failOpenExcluded.length ? "，" + failOpenExcluded.length + " 人已跳过（未计入参与）" : "") + "。",
+        );
+      }
+      if (budget.snapshot().exceeded) {
+        notice.push("团队预算用尽（" + (budget.snapshot().reason || "exhausted") + "），已停止继续扇出。");
+      }
+      if (notice.length) {
+        appendRoomTranscript(room.id, {
+          kind: "system", room_id: room.id, speaker: "system", text: notice.join("\n"), at,
+        });
+      }
+      return {
+        ok: true, mode: "host_orchestrate_room", returned, total,
+        partial: final_report.partial, final_report,
+      };
     })().catch((e) => {
       return { ok: false, error: "orchestrate_failed", detail: String((e && e.message) || e), mode: "host_orchestrate_room" };
     }).finally(() => {
@@ -1955,21 +2328,39 @@ function createProductSurface(repoRoot) {
     });
   }
 
-  // GP-52: Bot→Bot task ownership transfer inside a product room. Both sides
-  // must be real room members (or the user), the room must exist — otherwise
-  // refuse honestly instead of inventing a transfer.
-  function handoffTask({ room, from_bot, to_bot, task }) {
-    const roomId = String(room || "").trim();
-    const toId = String(to_bot || "").trim();
-    const fromId = String(from_bot || "user").trim() || "user";
-    const taskText = String(task || "").trim();
+  // ===== 交接（GP-52）：真执行，不再是「只写 inbox 假装交接成功」 =====
+  // 同步入口 handoffTask 只做「受理」（host_ffi.js 走它，不能改）：目标 Bot 还没跑，
+  // pretend_transferred 必须是 false。异步入口 handoffTaskAsync 才真的让目标 Bot
+  // 跑一轮 —— 成功与否由目标 Bot 的真实产出来定，回复落进群转录。
+  let roomRuntimeDeps = null;
+
+  function setRoomRuntimeDeps(deps) {
+    roomRuntimeDeps = deps && typeof deps === "object" ? deps : null;
+    return {
+      ok: true, mode: "host_room_runtime_deps",
+      has_runner: !!(roomRuntimeDeps && typeof roomRuntimeDeps.runResponderTurn === "function"),
+    };
+  }
+
+  function prepareHandoff(input) {
+    const opts = input || {};
+    const roomId = String(opts.room || "").trim();
+    const toId = String(opts.to_bot || "").trim();
+    const fromId = String(opts.from_bot || "user").trim() || "user";
+    const taskText = String(opts.task || "").trim();
     if (!roomId || !toId || !taskText) {
-      return { ok: false, error: "handoff_needs_room_to_task", mode: "host_handoff_task" };
+      return {
+        ok: false, error: "handoff_needs_room_to_task", mode: "host_handoff_task",
+        pretend_transferred: false, executed: false,
+      };
     }
     const rooms = requireWritableRooms();
     const hit = (rooms.rooms || []).find(r => r.id === roomId || r.title === roomId);
     if (!hit) {
-      return { ok: false, error: "room_not_found", room: roomId, mode: "host_handoff_task" };
+      return {
+        ok: false, error: "room_not_found", room: roomId, mode: "host_handoff_task",
+        pretend_transferred: false, executed: false,
+      };
     }
     const botsData = loadBots();
     const resolve = (idOrName) => {
@@ -1987,7 +2378,8 @@ function createProductSurface(repoRoot) {
         to_bot: toResolved,
         members: hit.members || [],
         mode: "host_handoff_task",
-        pretend_transferred: false
+        pretend_transferred: false,
+        executed: false,
       };
     }
     if (fromResolved !== "user" && !isMember(fromResolved)) {
@@ -1998,7 +2390,8 @@ function createProductSurface(repoRoot) {
         from_bot: fromResolved,
         members: hit.members || [],
         mode: "host_handoff_task",
-        pretend_transferred: false
+        pretend_transferred: false,
+        executed: false,
       };
     }
     const nameOf = (id) => {
@@ -2015,24 +2408,147 @@ function createProductSurface(repoRoot) {
       task: taskText,
       responders: [toResolved],
       responder_policy: "handoff_target",
-      at
+      at,
     };
-    if (!Array.isArray(hit.transcript)) hit.transcript = [];
-    hit.transcript.push(entry);
-    if (hit.transcript.length > 200) hit.transcript = hit.transcript.slice(-200);
-    saveRooms(rooms);
     return {
+      ok: true, mode: "host_handoff_task", room: hit.id, title: hit.title,
+      from_bot: fromResolved, from_name: nameOf(fromResolved),
+      to_bot: toResolved, to_name: nameOf(toResolved),
+      task: taskText, entry, at, rooms, hit,
+    };
+  }
+
+  function pushHandoffRow(prep) {
+    if (!Array.isArray(prep.hit.transcript)) prep.hit.transcript = [];
+    prep.hit.transcript.push(prep.entry);
+    if (prep.hit.transcript.length > 200) prep.hit.transcript = prep.hit.transcript.slice(-200);
+    saveRooms(prep.rooms);
+  }
+
+  // 目标 Bot 真跑一轮。成功/失败都如实落进群转录（交接闭环看得见）。
+  async function executeHandoff(prep, runner) {
+    // 交接回合与群成员回合是两件事(会话不同)。优先用专门的交接 runner。
+    const handoffRunner =
+      runner && typeof runner.runHandoffTurn === "function"
+        ? { ...runner, runResponderTurn: runner.runHandoffTurn }
+        : runner;
+    const timeoutMs = Number(
+      (runner && runner.timeoutMs) || process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || 120000,
+    );
+    const scope = roomOrchestrator.createCancelScope();
+    const boardText = roomBoard.snapshot(prep.room).text;
+    const prompt = roomOrchestrator.buildResponderPrompt({
+      task: prep.task,
+      subtask: null,
+      boardText,
+    });
+    const ctx = {
+      room: prep.room,
+      bot_id: prep.to_bot,
+      name: prep.to_name,
+      mentioned_names: prep.from_bot && prep.from_bot !== "user" ? [prep.from_name] : [],
+      role: "handoff_target",
+      handoff_from: prep.from_bot,
+      shared_board: boardText,
+      board_group_id: prep.room,
+      cancelPromise: scope.promise,
+      isCancelled: () => scope.isCancelled(),
+      timeoutMs,
+    };
+    let out = null;
+    let error = "";
+    try {
+      out = await withCancelTimeout(
+        handoffRunner.runResponderTurn(prep.to_bot, prompt, ctx),
+        timeoutMs,
+        () => scope.cancel("timeout"),
+      );
+    } catch (e) {
+      error = String((e && e.message) || e);
+    }
+    const text = String((out && out.text) || "");
+    const ok = !error && !!(out && out.ok !== false) && text.trim().length > 0;
+    const reason = ok ? "" : (error || ((out && out.error) || "no_reply"));
+    const at = nowIso();
+    const body = clipRoomText(text, ROOM_TEXT_MAX);
+    const row = ok
+      ? {
+        kind: "bot_reply", room_id: prep.room, speaker: prep.to_bot, bot_id: prep.to_bot,
+        name: prep.to_name, text: body.text, responder_policy: "handoff_target", at,
+      }
+      : {
+        kind: "bot_reply_error", room_id: prep.room, speaker: prep.to_bot, bot_id: prep.to_bot,
+        name: prep.to_name, text: "", error: clipRoomText(reason || "handoff_target_failed", ROOM_REASON_MAX).text,
+        responder_policy: "handoff_target", at,
+      };
+    if (body.truncated && ok) row.text_truncated = true;
+    appendRoomTranscript(prep.room, row);
+    return {
+      ok,
+      executed: true,
+      // pretend_transferred 只有在目标 Bot 真产出了之后才为 true。
+      pretend_transferred: ok,
+      transferred: ok,
+      error: ok ? "" : (reason || "handoff_target_failed"),
+      target_reply: ok ? body.text : "",
+      target_artifacts: ok ? ((out && out.artifacts) || []) : [],
+      transcript_row: row,
+      at,
+    };
+  }
+
+  async function handoffTaskAsync(args, deps) {
+    const prep = prepareHandoff(args);
+    if (!prep.ok) return prep;
+    pushHandoffRow(prep);
+    const runner = deps || roomRuntimeDeps || {};
+    if (typeof runner.runResponderTurn !== "function") {
+      return {
+        ok: false, error: "handoff_runner_required", mode: "host_handoff_task",
+        pretend_transferred: false, executed: false, pending: true,
+        room: prep.room, title: prep.title, from_bot: prep.from_bot, to_bot: prep.to_bot,
+        task: prep.task, transcript_entry: prep.entry, at: prep.at,
+      };
+    }
+    const out = await executeHandoff(prep, runner);
+    return Object.assign({
+      mode: "host_handoff_task", room: prep.room, title: prep.title,
+      from_bot: prep.from_bot, to_bot: prep.to_bot, task: prep.task,
+      transcript_entry: prep.entry, at: prep.at, pending: false,
+    }, out);
+  }
+
+  // 同步入口：host_ffi.js 的 handoff_task 效果走这里（那个文件不能改）。
+  // 它只**受理**交接并排队执行；目标 Bot 真的跑完之后，回复会落到群转录里。
+  function handoffTask(args) {
+    const prep = prepareHandoff(args);
+    if (!prep.ok) return prep;
+    pushHandoffRow(prep);
+    const result = {
       ok: true,
       mode: "host_handoff_task",
+      // 目标 Bot 还没跑 —— 不能写成「已交接」。
       pretend_transferred: false,
-      room: hit.id,
-      title: hit.title,
-      from_bot: fromResolved,
-      to_bot: toResolved,
-      task: taskText,
-      transcript_entry: entry,
-      at
+      executed: false,
+      pending: true,
+      execution: "queued",
+      room: prep.room,
+      title: prep.title,
+      from_bot: prep.from_bot,
+      to_bot: prep.to_bot,
+      task: prep.task,
+      transcript_entry: prep.entry,
+      at: prep.at,
     };
+    const runner = roomRuntimeDeps;
+    if (runner && typeof runner.runResponderTurn === "function") {
+      // 已注册运行时依赖 → 后台真执行（host_ffi 的同步调用点无需改动）。
+      result.execution = "scheduled";
+      executeHandoff(prep, runner).catch(() => {
+        /* 后台失败已经如实写进群转录（bot_reply_error），这里不再抛 */
+      });
+    }
+    return result;
   }
 
   // ===== ACCOUNT (GP-74) =====
@@ -2590,6 +3106,9 @@ function createProductSurface(repoRoot) {
     roomTurn,
     orchestrateRoom,
     handoffTask,
+    handoffTaskAsync,
+    setRoomRuntimeDeps,
+    roomBoardSnapshot: (roomId) => roomBoard.snapshot(roomId),
     appendRoomTranscript,
     loadRooms,
     roomsStoreStatus,
