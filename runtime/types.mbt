@@ -17,7 +17,12 @@ pub fn ToolRegistry::seed_builtins() -> ToolRegistry {
       id: t.name(),
       description: t.name(),
       builtin: Some(t),
-      input_schema_json: "{}",
+      // GP-<kernel tool schema>: every tool the model can call must be a valid
+      // JSON Schema with type:"object", or OpenAI-compatible providers (DeepSeek)
+      // reject the whole tools array with 422 ("got 'type: null'"). The desktop
+      // agent loop uses product_tool_registry() (proper schemas); this guards the
+      // builtin fallback path so no tool is ever shipped as an empty "{}".
+      input_schema_json: "{\"type\":\"object\"}",
       requires_approval: false,
     })
   }
