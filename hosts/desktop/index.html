@@ -8069,6 +8069,88 @@
       return true;
     }
 
+    /* ===== G-31: build-team-from-URL =====
+       抓不到的 URL → 提示贴正文（showPasteBox）；抓得到的 URL → 拉正文 →
+       live LLM 反推团队结构 → 按教程要求建 Bot+群，并把共享目录落在应用数据目录
+       （data/workspace/<team>，不碰真实 /workspace，契合 local_execution=never）。 */
+    async function runBuildTeamFromUrl(text, url) {
+      cmdToast("正在抓取链接内容…", "info");
+      const wf = await window.bitbot.webfetch(url).catch(() => null);
+      if (!wf || !wf.ok) {
+        const why = (wf && (wf.residual || wf.reason)) || "fetch_failed";
+        cmdToast("无法获取该链接（" + String(why) + "），请直接粘贴教程正文", "warn");
+        showPasteBox((pasted) => {
+          if (pasted && pasted.trim()) runBuildTeamFromText(pasted.trim());
+        });
+        return;
+      }
+      await runBuildTeamFromText(wf.text);
+    }
+
+    async function runBuildTeamFromText(text) {
+      cmdToast("正在从正文反推团队结构…", "info");
+      const ex = await window.bitbot.llmExtractTeam(text).catch(() => null);
+      if (!ex || !ex.ok) {
+        if (ex && ex.needs_key) {
+          cmdToast("需先在「设置」里配置可用的 LLM 密钥，才能从正文反推团队结构", "warn");
+        } else {
+          cmdToast("无法从正文识别团队结构（" + String((ex && ex.reason) || "unknown") + "），请换个链接或贴正文", "warn");
+        }
+        return;
+      }
+      // 预览识别结果，再按教程要求直接搭建（用户指令：抓内容 → 按要求搭建团队）。
+      addMsg(
+        "assistant",
+        "按教程识别到团队：《" + ex.title + "》\n角色：" + ex.roles.join("、") +
+          "\n目标：" + (ex.task || "（未识别）"),
+        { speaker: undefined },
+      );
+      await buildTeamFromBrief(ex);
+    }
+
+    async function buildTeamFromBrief(ex) {
+      // 1) 共享目录（落应用数据目录；协作规则一并写入 00-profile/COLLAB-RULES.md）
+      const ws = await window.bitbot.teamCreateWorkspace(ex.title, ex.rules).catch(() => null);
+      // 2) Bot + 协作群（复用既有 runTeamBrief，单条命令链完成建团）
+      const ok = await runTeamBrief({ title: ex.title, roles: ex.roles, task: ex.task });
+      if (ok) {
+        const tail = ex.rules ? "，协作规则已写入共享目录 00-profile/COLLAB-RULES.md" : "";
+        cmdToast(
+          "已按教程搭好团队《" + ex.title + "》：" + ex.roles.length + " 个岗位 Bot + 协作群" +
+            (ws && ws.ok ? "，共享目录在 " + ws.path : "") + tail,
+          "ok",
+        );
+      }
+    }
+
+    /* 轻量粘贴框：抓不到 URL 时让用户贴教程正文。自包含模态，不复用其它弹窗。 */
+    function showPasteBox(onSubmit) {
+      const overlay = document.createElement("div");
+      overlay.style.cssText =
+        "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;";
+      const box = document.createElement("div");
+      box.style.cssText =
+        "background:var(--panel,#1c1d22);color:var(--ink,#eee);border:1px solid var(--line,#333);border-radius:12px;padding:16px;width:min(560px,92vw);";
+      box.innerHTML =
+        '<div style="font-weight:600;margin-bottom:8px;">粘贴教程正文</div>' +
+        '<textarea id="pb-text" rows="10" style="width:100%;resize:vertical;background:var(--input-bg,#111);color:var(--ink,#eee);border:1px solid var(--line,#333);border-radius:8px;padding:8px;font:13px/1.5 inherit;"></textarea>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">' +
+        '<button id="pb-cancel" style="padding:6px 14px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--ink,#eee);cursor:pointer;">取消</button>' +
+        '<button id="pb-ok" style="padding:6px 14px;border-radius:8px;border:1px solid var(--accent,#4a8);background:var(--accent,#4a8);color:#fff;cursor:pointer;">开始搭建</button>' +
+        "</div>";
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      const ta = box.querySelector("#pb-text");
+      const close = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+      box.querySelector("#pb-cancel").addEventListener("click", close);
+      box.querySelector("#pb-ok").addEventListener("click", () => {
+        const v = ta.value.trim();
+        close();
+        if (v) onSubmit(v);
+      });
+      setTimeout(() => ta.focus(), 30);
+    }
+
     async function runUserTurn(text, opts) {
       clearWelcome();
       // Menu-driven protocol phrases (pin/hide/delete…) stay out of the
@@ -16286,6 +16368,19 @@
       // 都不像才走正常回合（识别器故意写窄，见 isControlCommand 上方注释）。
       // 带附件的回合一律当对话——用户的意图显然是「把这几个文件给它看」。
       if (!pendingAttachments.length && text) {
+        // G-31: build-team-from-URL. 一条消息里带 URL，且「消息基本就是这条链接」
+        // 或带组队关键词（按这篇/从链接/搭建/团队/教程…）→ 走「抓取 + LLM 反推
+        // 结构 + 搭建团队」流程；普通「看看这个 https://…」对话不会被劫持。
+        const urlHit = text.match(/https?:\/\/[^\s]+|file:\/\/[^\s]+/i);
+        const teamKw = /(组建|搭建|团队|建群|按这篇|从链接|教程|team|squad|set\s+up)/i.test(text);
+        const stripped = text.replace(/\s+/g, "");
+        if (urlHit && (teamKw || urlHit[0].length >= stripped.length * 0.6)) {
+          input.value = "";
+          autoGrow();
+          syncVoiceChatAvailability();
+          await runBuildTeamFromUrl(text, urlHit[0]);
+          return;
+        }
         const teamBrief = parseTeamBrief(text);
         if (teamBrief || isControlCommand(text)) {
           input.value = "";

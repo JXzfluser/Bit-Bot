@@ -1136,6 +1136,153 @@ ipcMain.handle("bitbot:templates:create", async (_e, opts) => {
   }
 });
 
+/** Light HTML→text for local article files fed to the team extractor. */
+function stripHtmlToText(html) {
+  if (!html) return "";
+  let s = String(html);
+  s = s.replace(/<script[\s\S]*?<\/script>/gi, " ");
+  s = s.replace(/<style[\s\S]*?<\/style>/gi, " ");
+  s = s.replace(/<!--[\s\S]*?-->/g, " ");
+  s = s.replace(/<[^>]+>/g, " ");
+  s = s.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&#39;/gi, "'");
+  s = s.replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n").replace(/ +/g, " ").trim();
+  return s;
+}
+
+/** G-31: build-team-from-URL — fetch a public page body (renderer → Host webfetch),
+    or read a local file:// / absolute path the user explicitly referenced.
+    Login-walled / blocked URLs return ok:false so the UI can ask the user to
+    paste the article text instead. No local execution happens here. */
+ipcMain.handle("bitbot:webfetch", async (_e, opts) => {
+  const url = String((opts && opts.url) || "").trim();
+  if (!url) return { ok: false, reason: "empty_url" };
+  // Local file the user named explicitly: read from disk (not execution), strip
+  // HTML → text so the extractor sees prose, not markup/CSS.
+  if (/^file:\/\//i.test(url) || /^(?:\/|[A-Za-z]:\\)/.test(url)) {
+    const fpath = url.replace(/^file:\/\//i, "");
+    try {
+      const raw = fs.readFileSync(fpath, "utf8");
+      const text = stripHtmlToText(raw);
+      if (!text) return { ok: false, reason: "empty_body", source: "file" };
+      return { ok: true, text: text.slice(0, 60000), url, source: "file", http_status: 200 };
+    } catch (err) {
+      return { ok: false, reason: "read_failed", error: String(err && err.message ? err.message : err), source: "file" };
+    }
+  }
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind: "webfetch", command: url }],
+      { sessionId: "webfetch-panel" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === "webfetch") || null;
+    if (!hit || !hit.ok) {
+      const wf = (hit && hit.webfetch) || {};
+      return {
+        ok: false,
+        reason: "fetch_failed",
+        http_status: hit && hit.http_status,
+        residual: wf.public_fallback_residual || (hit && hit.error) || "host_failed",
+      };
+    }
+    const wf = hit.webfetch || {};
+    let text = "";
+    if (wf.path) {
+      try { text = fs.readFileSync(wf.path, "utf8"); } catch (_) { text = ""; }
+    }
+    if (!text && hit.stdout) {
+      try { const p = JSON.parse(hit.stdout); text = p.text || p.content || ""; } catch { text = hit.stdout; }
+    }
+    text = String(text || "").trim();
+    if (!text) return { ok: false, reason: "empty_body", http_status: wf.http_status };
+    return { ok: true, text: text.slice(0, 60000), url: wf.url || url, http_status: wf.http_status };
+  } catch (err) {
+    return { ok: false, reason: "exception", error: String(err && err.message ? err.message : err) };
+  }
+});
+
+/** G-31: build-team-from-URL — one-shot structured extraction of a team structure
+    from article text via the live LLM. Returns {title, roles[], task?, rules?}.
+    With no configured live LLM key this is an honest residual (needs_key:true). */
+ipcMain.handle("bitbot:llm:extractTeam", async (_e, opts) => {
+  const text = String((opts && opts.text) || "").trim();
+  if (!text) return { ok: false, reason: "empty_text" };
+  const sys =
+    "你是团队架构师。读下面这篇教程/正文，反推出它描述的团队结构。\n" +
+    '只输出一个 JSON 对象（不要解释、不要 markdown 代码块），结构：\n' +
+    '{ "title": string, "roles": string[], "task": string, "rules": string }\n' +
+    "title 是团队名；roles 是 2-6 个简短岗位名（中文优先）；\n" +
+    "task 是一句话团队目标；rules 是统一协作规则（可空字符串）。";
+  const prompt = sys + "\n\n—— 正文开始 ——\n" + text.slice(0, 24000) + "\n—— 正文结束 ——\n输出 JSON：";
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind: "llm_chat", command: prompt }],
+      { sessionId: "team-extract" },
+    );
+    const hit = (results || []).find((r) => r && r.kind === "llm_chat") || null;
+    if (!hit || !hit.ok) {
+      return { ok: false, needs_key: true, reason: "llm_unavailable", error: (hit && hit.error) || "no llm_chat result" };
+    }
+    const raw = String(hit.stdout || "").trim();
+    let json = "";
+    const a = raw.indexOf("{");
+    const b = raw.lastIndexOf("}");
+    if (a >= 0 && b > a) json = raw.slice(a, b + 1);
+    let parsed = null;
+    if (json) { try { parsed = JSON.parse(json); } catch { parsed = null; } }
+    if (!parsed) { try { parsed = JSON.parse(raw); } catch { return { ok: false, reason: "bad_json", raw }; } }
+    const roles = Array.isArray(parsed.roles) ? parsed.roles.map(String).filter(Boolean).slice(0, 6) : [];
+    if (!roles.length) return { ok: false, reason: "no_roles", parsed };
+    return {
+      ok: true,
+      title: String(parsed.title || "").trim() || "新建团队",
+      roles,
+      task: parsed.task ? String(parsed.task) : "",
+      rules: parsed.rules ? String(parsed.rules) : "",
+    };
+  } catch (err) {
+    return { ok: false, reason: "exception", error: String(err && err.message ? err.message : err) };
+  }
+});
+
+/** G-31: build-team-from-URL — scaffold the shared workspace dir under
+    data/workspace/<team> (app data root — never a real /workspace on disk,
+    per local_execution=never). Skeleton: 00-profile..06-analysis + voice.md
+    empty template + optional COLLAB-RULES.md from the extracted rules. */
+ipcMain.handle("bitbot:team:workspace", async (_e, opts) => {
+  const title = String((opts && opts.title) || "").trim();
+  if (!title) return { ok: false, error: "empty_title" };
+  const safe = (title.replace(/[\\/:*?"<>|]+/g, "_").trim() || "team").slice(0, 48);
+  const root = path.join(DATA_ROOT, "workspace", safe);
+  try {
+    fs.mkdirSync(root, { recursive: true });
+    const sub = ["00-profile", "01-brief", "02-plan", "03-draft", "04-review", "05-publish", "06-analysis"];
+    sub.forEach((d) => fs.mkdirSync(path.join(root, d), { recursive: true }));
+    const voice = [
+      "# 账号声音 / Voice",
+      "",
+      "> 由教程反推生成。把账号定位、语气、受众填进来，各角色据此交付。",
+      "",
+      "- 定位：",
+      "- 受众：",
+      "- 语气：",
+      "- 禁忌：",
+      "",
+    ].join("\n");
+    fs.writeFileSync(path.join(root, "00-profile", "voice.md"), voice, "utf8");
+    if (opts && opts.rules) {
+      fs.writeFileSync(
+        path.join(root, "00-profile", "COLLAB-RULES.md"),
+        "# 统一协作规则\n\n" + String(opts.rules).trim() + "\n",
+        "utf8",
+      );
+    }
+    return { ok: true, path: root, title: safe, dirs: sub };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
 function applyAppearance(mode) {
   // Real Electron theme switch — GP-70 (nativeTheme.themeSource is the source of truth).
   if (mode === "light" || mode === "dark" || mode === "system") {

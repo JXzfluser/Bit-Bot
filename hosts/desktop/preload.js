@@ -330,6 +330,10 @@ contextBridge.exposeInMainWorld("bitbot", {
   },
   llmStatus: () => ipcRenderer.invoke("bitbot:llm:status"),
   llmCatalog: () => ipcRenderer.invoke("bitbot:llm:catalog"),
+  // G-31: build-team-from-URL — fetch a page, extract a team via live LLM, scaffold workspace.
+  webfetch: (url) => ipcRenderer.invoke("bitbot:webfetch", { url }),
+  llmExtractTeam: (text) => ipcRenderer.invoke("bitbot:llm:extractTeam", { text }),
+  teamCreateWorkspace: (title, rules) => ipcRenderer.invoke("bitbot:team:workspace", { title, rules }),
   cnStatus: () => ipcRenderer.invoke("bitbot:cn:status"),
   cnInboundStatus: () => ipcRenderer.invoke("bitbot:cn:inbound:status"),
   productStatus: () => ipcRenderer.invoke("bitbot:product:status"),
