@@ -62,6 +62,10 @@ BITBOT_PACK_TARGET=dist BITBOT_PACK_ARCH=arm64 BITBOT_PACK_PLATFORM=mac \
 
 `scripts/pack-desktop.sh` 的三个开关：`BITBOT_PACK_TARGET=dir|dist`（默认 `dir`，只够冒烟）、`BITBOT_PACK_ARCH`、`BITBOT_PACK_PLATFORM`。
 
+**已知坑（踩过，已修）**：把 secret 直接写进 `env:`（`CSC_LINK: ${{ secrets.MAC_CSC_LINK }}`）时，secret 不存在 → 变量仍然**被定义为空串**。electron-builder 判的是 `cscLink != null`，空串算「已设置」，于是 `importCertificate("")` → `path.resolve(dir, "")` 得到工程目录 → 抛
+`InvalidConfigurationError: <repo>/hosts/desktop not a file`。
+报错指向「工程目录不是文件」，跟真正的因（没配证书）毫无关系。`pack-desktop.sh` 现在会先把空的 `CSC_LINK` / `CSC_KEY_PASSWORD` / `APPLE_*` unset，让它走「无身份 → 跳过签名」的正常分支。
+
 ## 自动更新（OTA）
 
 - Host `check_updates` 在设置 `BITBOT_UPDATE_FEED_URL`（目录下提供 `latest.yml`）时**真 HTTP 探测**

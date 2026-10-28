@@ -45,6 +45,31 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 0. 抹掉「已定义但为空」的签名 / 公证变量
+#
+# CI 里写 `CSC_LINK: ${{ secrets.MAC_CSC_LINK }}`，secret 不存在时这个变量仍然
+# **被定义了**，值是空字符串。electron-builder 判的是 `cscLink != null`（真值判断
+# 在它这里是失效的），于是拿 "" 进 importCertificate()：`path.resolve(currentDir,"")`
+# 得到工程目录本身，stat 出来是个 directory，直接抛
+#     InvalidConfigurationError: <repo>/hosts/desktop not a file
+# —— 报错指向「工程目录不是文件」，和真正的因（没配证书）毫无关系，很容易被误读
+# 成 extraResources 路径写错了。空值一律 unset，让它走「无身份 ⇒ 跳过签名」的
+# 正常分支（本机手滑 `CSC_LINK=` 也一样受益）。
+# ---------------------------------------------------------------------------
+for _v in CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK CSC_NAME \
+          APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+  _val="${!_v:-}"
+  # 先 trim 再判空：空串和「只有空格/换行」都会触发上面那个假报错。
+  if [[ -z "$(printf '%s' "$_val" | tr -d '[:space:]')" ]]; then
+    if [[ -n "$_val" ]]; then
+      echo "[pack-desktop] $_v is blank — treating as unset"
+    fi
+    unset "$_v"
+  fi
+done
+unset _v _val
+
+# ---------------------------------------------------------------------------
 # 1. Build the kernel
 # ---------------------------------------------------------------------------
 BUILD_PROFILE="${BITBOT_KERNEL_BUILD:-release}"
