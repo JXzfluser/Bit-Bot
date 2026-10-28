@@ -118,10 +118,16 @@ echo "[pack-desktop] staged as bin/$KERNEL_NAME"
 # the parent of the data root. Nothing else from the source tree is needed at
 # runtime, so we deliberately do NOT ship moon.mod / cmd/ / the package dirs:
 # shipping them would imply a toolchain is present, and it is not.
-cat > "$RESOURCES/kernel/README.txt" <<'TXT'
+#
+# 这里用「不加引号的 heredoc」直接展开变量，不再 `cat` 出一份占位符再 sed 替换。
+# 原写法 `sed -i "s/…/" file` 在 BSD sed（GitHub macOS runner 就是）上会失败：
+# BSD 把 s/…/ 当成 -i 的备份后缀，于是 file 被当作脚本、没有文件操作数，
+# 报 "sed: -I or -i may not be used with stdin"。本机 sed 是 toybox，恰好接受
+# GNU 写法，所以这个错只会在 CI 上现形 —— 干脆不用 sed。
+cat > "$RESOURCES/kernel/README.txt" <<TXT
 Bit Bot — bundled MoonBit kernel
 ===============================
-bin/__KERNEL_NAME__ is the compiled product brain.
+bin/${KERNEL_NAME} is the compiled product brain.
 
 It is a drop-in replacement for:
     moon run cmd/desktop_turn --target native -- <args>
@@ -131,10 +137,9 @@ Same argv tail, same stdout/stdin FFI line protocol:
   host answers   one JSON line      on stdin
 
 No MoonBit toolchain and no source tree are required at runtime.
-Built on: __BUILD_HOST__
-Profile: __BUILD_PROFILE__
+Built on: $(uname -srm)
+Profile: ${BUILD_PROFILE}
 TXT
-sed -i "s/__BUILD_HOST__/$(uname -srm)/; s/__BUILD_PROFILE__/$BUILD_PROFILE/; s/__KERNEL_NAME__/$KERNEL_NAME/" "$RESOURCES/kernel/README.txt"
 
 echo "[pack-desktop] staged kernel resources:"
 ls -la "$RESOURCES/kernel/bin/"
