@@ -82,6 +82,14 @@ android {
   composeOptions {
     kotlinCompilerExtensionVersion = "1.5.14"
   }
+  // 线路解析（assistantText / failureText / SendToUser 投递条）是纯 JSON 逻辑，
+  // 放 JVM 单测里跑：不需要 emulator，也不需要真机就能红绿。
+  // UI 重构同样要能被验证 —— 本环境无 KVM，起不了 emulator，所以用 Robolectric
+  // 在 JVM 上真渲染 Compose 语义树：结构、状态、空屏文案能在提交前被跑红/跑绿。
+  // 它不截图、不验像素，因此不能替代真机视觉验收（残留里如实写着）。
+  testOptions {
+    unitTests.isIncludeAndroidResources = true
+  }
 }
 
 dependencies {
@@ -92,4 +100,11 @@ dependencies {
   implementation("androidx.compose.ui:ui")
   implementation("androidx.compose.material3:material3")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+  testImplementation("junit:junit:4.13.2")
+  // android.jar 里的 org.json 在 JVM 单测中是「未 mock 即抛」的空壳，必须给真实现。
+  testImplementation("org.json:json:20240303")
+  testImplementation("org.robolectric:robolectric:4.12.2")
+  testImplementation("androidx.compose.ui:ui-test-junit4")
+  testImplementation("androidx.test:core:1.5.0")
+  debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

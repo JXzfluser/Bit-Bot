@@ -336,6 +336,13 @@ contextBridge.exposeInMainWorld("bitbot", {
   teamCreateWorkspace: (title, rules) => ipcRenderer.invoke("bitbot:team:workspace", { title, rules }),
   cnStatus: () => ipcRenderer.invoke("bitbot:cn:status"),
   cnInboundStatus: () => ipcRenderer.invoke("bitbot:cn:inbound:status"),
+  pairing: {
+    state: () => ipcRenderer.invoke("bitbot:pairing:state"),
+    token: () => ipcRenderer.invoke("bitbot:pairing:token"),
+    copy: (what) => ipcRenderer.invoke("bitbot:pairing:copy", what),
+    setLan: (enabled) => ipcRenderer.invoke("bitbot:pairing:lan", enabled),
+    code: (payload) => ipcRenderer.invoke("bitbot:pairing:code", payload),
+  },
   productStatus: () => ipcRenderer.invoke("bitbot:product:status"),
   ota: {
     check: () => ipcRenderer.invoke("bitbot:ota:check"),

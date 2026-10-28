@@ -40,6 +40,18 @@ function loadEnvLocal(repoRoot) {
 }
 
 /**
+ * 内核注册表里只有三台机器：desk-1 / phone-ios / phone-android
+ * （box_host/machines.mbt:87 seed()）。远端机器 id 必须是这三个之一，
+ * 否则内核会把这次回合挂到一台**不存在**的设备上：device tools 返回 0 个工具、
+ * run_on_machine 报 unknown machine，手机上「拍照 / 麦克风」全都没有落点。
+ */
+function seedMachineId(machineKind) {
+  if (machineKind === "android") return "phone-android";
+  if (machineKind === "ios") return "phone-ios";
+  return "desk-1";
+}
+
+/**
  * @param {string} repoRoot
  * @returns {(prompt: string, meta?: object) => Promise<object>}
  */
@@ -84,4 +96,4 @@ function createProductOnTurn(repoRoot) {
   };
 }
 
-module.exports = { createProductOnTurn, loadEnvLocal };
+module.exports = { createProductOnTurn, loadEnvLocal, seedMachineId };

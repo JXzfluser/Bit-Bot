@@ -12,9 +12,11 @@ const {
   dialog,
   nativeTheme,
   Notification,
+  clipboard,
 } = require("electron");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { spawn } = require("child_process");
 
 // 单实例锁：同一个 user-data-dir 只允许一个 Electron 进程常驻。
@@ -109,6 +111,28 @@ try {
   createCnInboundServer = require("./shared/cn_inbound_server").createCnInboundServer;
 } catch (_e) {
   createCnInboundServer = require("../shared/cn_inbound_server").createCnInboundServer;
+}
+
+// Pairing-v1: shared code manager (IPC + HTTP routes see the same instance).
+let createPairingCodeManager;
+try {
+  createPairingCodeManager = require("./shared/desktop_pairing").createPairingCodeManager;
+} catch (_e) {
+  createPairingCodeManager = require("../shared/desktop_pairing").createPairingCodeManager;
+}
+const pairingCodeManager = createPairingCodeManager();
+
+// 内核注册表里的设备 id 只有一个真相来源：desk-1 / phone-ios / phone-android
+// （box_host 的 seed()）。这里内联的 onTurn 以前自己拼 `${machineKind}-1`，
+// 于是手机的回合挂在注册表里根本不存在的 `android-1` 上 —— HTTP 200、回复也
+// 有，但设备工具 0 个、花名册点不亮。共用同一个函数，防止两处再各写一套。
+// ADR 0008 的配对令牌由共享模块解析（env → data/host/turn-token → 生成 0600）。
+// 界面上要把它交给用户，所以这里只读同一个真相来源，不另存一份。
+let p0;
+try {
+  p0 = require("./shared/p0_security");
+} catch (_e) {
+  p0 = require("../shared/p0_security");
 }
 
 let autoUpdater = null;
@@ -1766,6 +1790,45 @@ function buildRoomContext(roomId, botId, ctx, task) {
  * 确定回执：真建出来了就报名单，没建出来就点名是谁没找到，绝不粉饰。
  * 返回 "" 表示本轮没有建房效果。
  */
+/**
+ * 多端在线回执（对话里可见）。
+ *
+ * 「机器」面板挂在工具轨上，而工具轨是 dev-mode only —— 普通用户其实看不见花名册。
+ * 在线这件事又不该只在 dev 面板里成立：手机真的连上来回过话，用户问一句就该在
+ * 对话里看到是谁、什么时候的证据。证据来自 Host 记下的 presence（不是内核 seed
+ * 出来的固定三台），所以这里只念 Host 已经合并进 machines_list 回包的事实。
+ */
+function machinePresenceReceiptText(result) {
+  const host = (result && Array.isArray(result.host_results)) ? result.host_results : [];
+  const hit = host.find((h) => h && h.kind === "machines_list");
+  if (!hit || !hit.stdout) return "";
+  let payload = null;
+  try {
+    payload = JSON.parse(hit.stdout);
+  } catch (_) {
+    return "";
+  }
+  const rows = payload && Array.isArray(payload.machines) ? payload.machines : [];
+  const phones = rows.filter((m) => m && String(m.kind || "").toLowerCase() !== "desktop");
+  if (!phones.length) return "";
+  const now = Date.now();
+  const agoText = (iso) => {
+    const at = Date.parse(String(iso || ""));
+    if (!Number.isFinite(at)) return "";
+    const sec = Math.max(0, Math.round((now - at) / 1000));
+    return sec >= 90 ? `${Math.round(sec / 60)} 分钟前` : `${sec} 秒前`;
+  };
+  const parts = phones.map((m) => {
+    const name = String(m.label || m.id || "?") + (m.label && m.id ? `(${m.id})` : `(${m.id || "?"})`);
+    const ago = agoText(m.last_seen);
+    const online = String(m.status || "").toLowerCase() === "connected";
+    if (online && ago) return `${name} 在线（${ago}前有回合）`;
+    if (ago) return `${name} 离线（最后证据 ${ago}）`;
+    return `${name} 未配对（还没带凭证来说过话）`;
+  });
+  return "多端在线：" + parts.join("；") + "。";
+}
+
 function groupChatReceiptText(result) {
   const host = (result && Array.isArray(result.host_results)) ? result.host_results : [];
   const hit = host.find((h) => h && h.kind === "group_chat");
@@ -2341,7 +2404,9 @@ ipcMain.handle("bitbot:cn:status", async () => {
   return {
     ok: true,
     desktop_first: true,
-    mobile_deferred: true,
+    // 安卓版已经存在（hosts/android/BitBotHost），「移动暂缓」不再是事实。
+    mobile_deferred: false,
+    mobile_ready: true,
     channels,
     any_live_ready: anyLive,
     inbound: cnInbound ? cnInbound.status() : { listening: false, residual: "not_started" },
@@ -2374,11 +2439,20 @@ ipcMain.handle("bitbot:secrets:status", async () => {
     "BITBOT_DINGTALK_POST",
     "BITBOT_DINGTALK_WEBHOOK",
     "BITBOT_DINGTALK_TOKEN",
+    // 群机器人「加签」密钥：写路径早就在白名单里，但 status 不回读，
+    // 于是卡里永远显示「未配置」，用户只能去终端手改 .env.local。
+    "BITBOT_DINGTALK_APP_SECRET",
     "BITBOT_FEISHU_POST",
     "BITBOT_FEISHU_TOKEN",
     "BITBOT_FEISHU_CHAT_ID",
+    // 飞书事件订阅的两把回调密钥（Encrypt Key / Verification Token）同上：
+    // 内网穿透 / 事件订阅要用，写路径可用，读路径漏了。
+    "BITBOT_FEISHU_ENCRYPT_KEY",
+    "BITBOT_FEISHU_VERIFICATION_TOKEN",
     "BITBOT_WECOM_POST",
     "BITBOT_WECOM_TOKEN",
+    // 企微「接收事件服务器」的回调 Token，同上。
+    "BITBOT_WECOM_CALLBACK_TOKEN",
     "BITBOT_WECOM_AGENT_ID",
     "BITBOT_WECOM_TOUSER",
     "BITBOT_ICP_FILING",
@@ -2697,7 +2771,8 @@ ipcMain.handle("bitbot:product:status", async () => {
   return {
     ok: true,
     desktop_first: true,
-    mobile_deferred: true,
+    mobile_deferred: false,
+    mobile_ready: true,
     llm: llm && llm.active ? llm.active : llm,
     filing: {
       icp: filingIcp,
@@ -3107,8 +3182,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
     if (roomReceipt) {
       if (result && Array.isArray(result.messages)) {
         result.messages.push({ role: "assistant", text: roomReceipt });
-      }
-      const touched = ((result && result.host_results) || [])
+      }      const touched = ((result && result.host_results) || [])
         .find((h) => h && h.kind === "group_chat");
       if (touched && touched.ok) {
         try {
@@ -3118,6 +3192,18 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
           broadcast("bitbot:rooms-changed", { ok: false, error: "rooms_unavailable" });
         }
       }
+    }
+    // 多端在线回执：花名册挂在 dev-only 的工具轨上，普通用户看不见；而且
+    // 「iOS/Android 到底连没连上」是用户问一句就该得到答案的事。这里只念 Host
+    // 已经合并进 machines_list 回包里的证据（last_seen / presence_evidence）。
+    let presenceReceipt = "";
+    try {
+      presenceReceipt = machinePresenceReceiptText(result);
+    } catch (_) {
+      presenceReceipt = "";
+    }
+    if (presenceReceipt && result && Array.isArray(result.messages)) {
+      result.messages.push({ role: "assistant", text: presenceReceipt });
     }
     const skipSession =
       !!(opts && opts.skipSession) ||
@@ -3474,8 +3560,13 @@ async function ensureCnInbound() {
     return { ok: false, skipped: true, reason: "BITBOT_CN_INBOUND=0" };
   }
   if (!cnInbound) {
+    // 上次用户打开过「允许手机连接」，重启之后还得算数（偏好只在这个文件里）。
+    if (!process.env.BITBOT_BIND_LAN && readPairingPrefs().lan_enabled) {
+      process.env.BITBOT_BIND_LAN = "1";
+    }
     cnInbound = createCnInboundServer({
       repoRoot: REPO_ROOT,
+      pairingManager: pairingCodeManager,
       onTurn: async (prompt, meta) => {
         const channel = (meta && meta.channel) || "in";
         const machineKind =
@@ -3508,6 +3599,201 @@ async function ensureCnInbound() {
   }
   return cnInbound.start();
 }
+
+/* ---------- 手机配对（移动版 · ADR 0008） -------------------------------- *
+ * 手机要连的就是这台桌面大脑，但 /v1/turn 默认只绑 127.0.0.1；放开局域网以前
+ * 只有翻 BITBOT_BIND_LAN 的人做得到 —— 界面上既看不见地址也拿不到令牌，于是
+ * 「手机连桌面大脑」停在 README 里，而不是产品里。开关偏好落在
+ * data/desktop/pairing.json：一个新增的本地文件，不动既有 store 契约。
+ * ------------------------------------------------------------------------ */
+function pairingPrefsFile() {
+  return path.join(REPO_ROOT, "data", "desktop", "pairing.json");
+}
+
+function readPairingPrefs() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(pairingPrefsFile(), "utf8"));
+    return { lan_enabled: Boolean(raw && raw.lan_enabled === true) };
+  } catch (_e) {
+    return { lan_enabled: false };
+  }
+}
+
+function writePairingPrefs(prefs) {
+  try {
+    const dir = path.dirname(pairingPrefsFile());
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      pairingPrefsFile(),
+      JSON.stringify(
+        {
+          lan_enabled: Boolean(prefs && prefs.lan_enabled),
+          at: new Date().toISOString(),
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
+// 配对地址该给哪一个：共享模块按网段 + 网卡命名排序（docker0 / 169.254 / 公网
+// 地址不能顶在第一位，手机敲那些一定失败）。只做排序，不编地址。
+let lanRank;
+try {
+  lanRank = require("./shared/lan_candidates");
+} catch (_e) {
+  lanRank = require("../shared/lan_candidates");
+}
+
+/** 这台机器上网卡里的 IPv4 —— 手机真的能敲到的排在最前。 */
+function lanIPv4Addresses() {
+  try {
+    return lanRank.lanIPv4List(os.networkInterfaces() || {});
+  } catch (_e) {
+    /* 读不到网卡就老实说没有，不编地址 */
+    return [];
+  }
+}
+
+/** 带网卡名与范围的候选，界面用来如实标注「这个地址是从哪块网卡来的」。 */
+function lanIPv4Candidates() {
+  try {
+    return lanRank.rankLanIPv4(os.networkInterfaces() || {});
+  } catch (_e) {
+    return [];
+  }
+}
+
+function maskPairingToken(value) {
+  const s = String(value || "");
+  if (!s) return "";
+  if (s.length <= 8) return "••••";
+  return s.slice(0, 4) + "…" + s.slice(-4);
+}
+
+function turnTokenValue() {
+  try {
+    return String(p0.resolveTurnToken(REPO_ROOT, process.env, {}).token || "");
+  } catch (_e) {
+    return "";
+  }
+}
+
+function pairingState() {
+  const st = cnInbound
+    ? cnInbound.status()
+    : { listening: false, host: "", port: 0, lan: false };
+  const port = Number(st.port || 0);
+  const listening = Boolean(st.listening);
+  const lanOpen = listening && Boolean(st.lan || st.host === "0.0.0.0");
+  const ips = lanOpen ? lanIPv4Addresses() : [];
+  const detail = lanOpen ? lanIPv4Candidates() : [];
+  // 手机「凭证」里要填的是配对地址（http://ip:port），/v1/turn 由手机端自己补
+  // （hosts/android TurnBridge.turnEndpoint，有 JVM 单测钉住）。界面上把两者分开：
+  // 普通用户看到的这一行不再带路径，开发态才给完整端点。
+  const base = ips.length ? `http://${ips[0]}:${port}` : port ? `http://127.0.0.1:${port}` : "";
+  // Pairing-v1: optional code fields (only present when a code is active).
+  const codeStatus = pairingCodeManager.status();
+  const result = {
+    ok: true,
+    listening,
+    port,
+    lan_enabled: readPairingPrefs().lan_enabled,
+    lan_open: lanOpen,
+    lan_ips: ips,
+    lan_detail: detail,
+    pair_base: base,
+    pair_scope: detail.length ? String(detail[0].scope || "") : "",
+    turn_urls: ips.map((ip) => `http://${ip}:${port}/v1/turn`),
+    loopback_url: port ? `http://127.0.0.1:${port}/v1/turn` : "",
+    loopback_base: port ? `http://127.0.0.1:${port}` : "",
+    token_masked: maskPairingToken(turnTokenValue()),
+    mobile_ready: true,
+    pretend_paired: false,
+  };
+  // Only add code fields when active (spec: optional new fields).
+  if (codeStatus.code_active) {
+    result.pair_code = codeStatus.code;
+    result.pair_code_expires_in_ms = codeStatus.expires_in_ms;
+    result.pair_code_attempts_left = codeStatus.attempts_left;
+  }
+  return result;
+}
+
+ipcMain.handle("bitbot:pairing:state", async () => pairingState());
+
+// Pairing-v1: issue or revoke a 6-digit pairing code (IPC, local only).
+ipcMain.handle("bitbot:pairing:code", async (_e, payload) => {
+  const action = String((payload && payload.action) || "").trim();
+  if (action === "issue") {
+    const r = pairingCodeManager.issue();
+    return {
+      ok: true,
+      code: r.code,
+      expires_in_ms: r.expires_in_ms,
+      attempts_left: r.attempts_left,
+    };
+  }
+  if (action === "revoke") {
+    pairingCodeManager.revoke();
+    return { ok: true, code: "" };
+  }
+  return { ok: false, error: "unknown_action" };
+});
+
+/** 令牌只在用户明确点「显示」时给出原文；默认状态里只有掩码。 */
+ipcMain.handle("bitbot:pairing:token", async () => {
+  const token = turnTokenValue();
+  if (!token) return { ok: false, error: "token_unavailable" };
+  return { ok: true, token, masked: maskPairingToken(token) };
+});
+
+/** 手机上手敲 64 位令牌不是「走通」，所以给一个复制入口。 */
+ipcMain.handle("bitbot:pairing:copy", async (_e, what) => {
+  const st = pairingState();
+  // 复制出去的就是「凭证」里那一栏要的东西：配对地址（http://ip:port）。
+  // 路径由手机端自己补，用户多抄一段 /v1/turn 反而容易出错。
+  const text =
+    what === "token" ? turnTokenValue() : (st.pair_base || st.loopback_base || "");
+  if (!text) return { ok: false, error: "nothing_to_copy" };
+  try {
+    clipboard.writeText(String(text));
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
+  return { ok: true, kind: String(what || "url"), length: String(text).length };
+});
+
+/**
+ * 允许 / 禁止局域网里的手机连进来。ADR 0008 默认 loopback；这里改的是同一个
+ * 开关（BITBOT_BIND_LAN），并把入站监听重建一次 —— 端口、鉴权、路由都不变。
+ */
+ipcMain.handle("bitbot:pairing:lan", async (_e, enabled) => {
+  const next = Boolean(enabled);
+  if (!writePairingPrefs({ lan_enabled: next })) {
+    return { ok: false, error: "pairing_prefs_write_failed", ...pairingState() };
+  }
+  if (next) process.env.BITBOT_BIND_LAN = "1";
+  else delete process.env.BITBOT_BIND_LAN;
+  try {
+    if (cnInbound) {
+      await cnInbound.stop();
+      cnInbound = null;
+    }
+    await ensureCnInbound();
+  } catch (err) {
+    return {
+      ok: false,
+      error: err && err.message ? err.message : String(err),
+      ...pairingState(),
+    };
+  }
+  return { ok: true, ...pairingState() };
+});
 
 app.whenReady().then(async () => {
   // GP-77: install state on disk for the shared Host `update_status` reader.

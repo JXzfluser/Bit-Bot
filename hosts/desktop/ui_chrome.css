@@ -1602,6 +1602,18 @@ body.grok-ui .st-card-title {
   margin: 0 0 12px !important;
 }
 body.grok-ui .st-field { display: block !important; margin: 0 0 14px !important; }
+
+/* 手机配对：地址来源说明行（.pairing-note）与开发态完整端点行（.pairing-endpoint）。
+   字号/颜色必须走令牌。为什么不写行内：token 门禁（e2e_desktop_token_parity TP-04）
+   把行内 font 简写也算一处字面字号，哪怕里面是 var()；写成 class 才真的收敛。
+   配套断言 e2e_android_roster AR-15：这两行 computed 字号必须等于 --text-sm。 */
+.pairing-note,
+.pairing-endpoint {
+  font: var(--text-sm)/1.5 var(--font-mono);
+  word-break: break-all;
+}
+.pairing-note { color: var(--warn); }
+.pairing-endpoint { color: var(--muted); }
 body.grok-ui .st-field:last-child { margin-bottom: 0 !important; }
 body.grok-ui .st-field-name {
   display: block !important;
@@ -2804,4 +2816,72 @@ body.grok-ui .ca-meta:empty { display: none; }
 @keyframes cmdToastIn {
   from { opacity: 0; transform: translate(-50%, 6px); }
   to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ── Pairing-v1: 6-digit code block ─────────────────────────────────── */
+.pc-block {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.pc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.pc-head-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.pc-display {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.pc-display[hidden] { display: none; }
+.pc-digits {
+  font-size: var(--text-display);
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+.pc-countdown {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pc-actions {
+  margin-top: var(--space-2);
+}
+.pc-actions[hidden] { display: none; }
+.pc-hint {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  margin: var(--space-2) 0 0;
+  line-height: 1.5;
+}
+
+/* 国内渠道凭证卡：字段级红字 + 状态/下一步说明。
+   为什么不写行内：视觉契约门（e2e_desktop_token_parity TP-04）按 el.style 的
+   **属性名**计数，行内 font 简写哪怕值是 var() 也算一处字面字号 —— 只有 class 真的收敛。
+   配套断言：e2e_desktop_cn_channel_guard CN-07（computed 字号必须等于 --text-sm）。 */
+body.grok-ui .st-field-error {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--danger);
+}
+body.grok-ui .st-field-error[hidden] { display: none; }
+body.grok-ui .cn-hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--muted);
 }

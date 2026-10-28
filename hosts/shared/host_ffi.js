@@ -20673,11 +20673,27 @@ function createHostFfi(repoRoot, opts = {}) {
         dir,
         `list-${Date.now().toString(36)}.json`,
       );
+      // 花名册的在线状态来自 Host 记下的真实证据（过了鉴权的 /v1/turn），
+      // 不是内核 seed() 的固定答案：没证据的手机保持离线，过期证据要点名时间。
+      let presenceOnline = [];
+      try {
+        const merged = require("./machine_presence").mergePresenceIntoMachines(
+          REPO_ROOT,
+          machines,
+        );
+        for (let k = 0; k < merged.machines.length; k++) {
+          machines[k] = merged.machines[k];
+        }
+        presenceOnline = merged.online;
+      } catch {
+        /* 证据读不到就保持内核给的答案，不猜 */
+      }
       const artifact = {
         host_kind: hostKind,
         host_id: hostId,
         machines,
         count: machines.length,
+        online: presenceOnline,
         mode: "host_machines_list",
         pretend_all_connected: false,
         at,

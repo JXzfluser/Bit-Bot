@@ -2276,6 +2276,9 @@
           </label>
           <label class="st-field"><span class="st-field-name">API Key <span id="sec-llm-mask"></span></span>
             <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
+            <!-- 粘错了要在这一栏下面当场说清楚，而不是等模型 401 之后再让人猜 -->
+            <span id="sec-llm-key-err" class="st-field-error" hidden></span>
+            <div id="sec-llm-key-note" class="st-note" hidden></div>
           </label>
           <div id="sec-llm-hint" class="st-note">…</div>
           <!-- GP-148 §1-J4：产品态的模型/供应商面板入口。表头那颗芯片在精简外壳里
@@ -2290,9 +2293,13 @@
           <div class="st-note">同一份 <code>.env.local</code>；切到对应渠道时不用再填一遍。</div>
           <label class="st-field"><span class="st-field-name">通义千问 API Key <span id="sec-qwen-mask"></span></span>
             <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+            <span id="sec-qwen-key-err" class="st-field-error" hidden></span>
+            <div id="sec-qwen-key-note" class="st-note" hidden></div>
           </label>
           <label class="st-field"><span class="st-field-name">Moonshot / Kimi API Key <span id="sec-moon-mask"></span></span>
             <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+            <span id="sec-moon-key-err" class="st-field-error" hidden></span>
+            <div id="sec-moon-key-note" class="st-note" hidden></div>
           </label>
         </details>
         <div class="st-card">
@@ -2307,6 +2314,8 @@
           </label>
           <label class="st-field"><span class="st-field-name">搜索 API Key <span id="sec-search-mask"></span></span>
             <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field" />
+            <span id="sec-search-key-err" class="st-field-error" hidden></span>
+            <div id="sec-search-key-note" class="st-note" hidden></div>
           </label>
           <label class="st-field"><span class="st-field-name">API Base（可选）</span>
             <input id="sec-search-base" type="text" placeholder="自建或代理地址；留空走官方" class="bb-field" />
@@ -2331,6 +2340,43 @@
           <!-- 更新源 URL 已搬到「设置 → 更新」，凭证页不再重复一份。
                这里只留连接应用回调需要的入站公网地址。 -->
           <div id="sec-inbound-url" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
+        </div>
+        <div class="st-card">
+          <div class="st-card-title">手机配对</div>
+          <!-- 安卓 / iOS 端连的就是这台大脑。地址与令牌以前只在 README 里，
+               用户点不开这一屏就走不到「手机说话 → 桌面记得」。 -->
+          <div id="sec-pairing-line" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">配对状态：读取中…</div>
+          <!-- 手机敲不到地址时，光给一个「像地址的东西」等于骗人：这一行如实说明
+               这个地址从哪类网卡来、大概率连不通的原因。 -->
+          <div id="sec-pairing-note" class="pairing-note" style="display:none;margin-top:6px"></div>
+          <!-- 完整 /v1/turn 端点只在开发态给；普通用户要填的是上面那行配对地址。 -->
+          <div id="sec-pairing-turn" class="pairing-endpoint" style="display:none;margin-top:6px"></div>
+          <!-- Pairing-v1: 6-digit code block (让手机自己找).
+               放在手动按钮之前：一键配对是主路，抄 64 位令牌是兜底。
+               顺序本身就是产品态度 —— 先给用户看的东西就是希望他用的东西。 -->
+          <div id="pairing-code-block" class="pc-block">
+            <div class="pc-head">
+              <span class="pc-head-title">让手机自己找</span>
+              <button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button>
+            </div>
+            <div id="pairing-code-display" class="pc-display" hidden>
+              <span id="pairing-code-digits" class="pc-digits"></span>
+              <span id="pairing-code-countdown" class="pc-countdown"></span>
+            </div>
+            <div id="pairing-code-actions" class="pc-actions" hidden>
+              <button type="button" id="pairing-revoke-btn" class="bb-btn bb-btn-sm">立即作废</button>
+            </div>
+            <p id="pairing-code-hint" class="pc-hint">手机只需点「连接 Desktop」并输入这 6 位数字</p>
+          </div>
+          <p id="pairing-manual-label" class="pc-hint">手动填写（同一 Wi-Fi 连不上时才用）</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+            <button type="button" id="pairing-lan-btn" class="bb-btn bb-btn-sm">允许手机连接</button>
+            <button type="button" id="pairing-token-btn" class="bb-btn bb-btn-sm">显示配对令牌</button>
+            <button type="button" id="pairing-copy-url" class="bb-btn bb-btn-sm" disabled>复制地址</button>
+            <button type="button" id="pairing-copy-token" class="bb-btn bb-btn-sm" disabled>复制令牌</button>
+          </div>
+          <div id="sec-pairing-token" style="display:none;margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:12px/1.5 ui-monospace,monospace;word-break:break-all;background:var(--surface)"></div>
+          <div id="sec-pairing-status" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button type="button" id="sec-save" class="bb-btn bb-btn-primary">保存并热加载</button>
@@ -2417,8 +2463,12 @@
             <label class="st-field"><span class="st-field-name">钉钉 Webhook（勾选开启推送）</span>
               <div style="display:flex;gap:8px;align-items:center">
                 <input id="sec-ding-post" type="checkbox" />
-                <input id="sec-ding-hook" type="text" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
+                <!-- 这条 URL 本身就带着 access_token：明文摊在屏幕上等于把凭证给路过的人看。
+                     默认掩码，卡内点「显示」就地核对，不用去别处找。 -->
+                <input id="sec-ding-hook" type="password" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-ding-reveal" class="bb-btn bb-btn-sm">显示</button>
               </div>
+              <span id="sec-ding-hook-err" class="st-field-error" hidden></span>
             </label>
             <label class="st-field"><span class="st-field-name">飞书 token + chat_id</span>
               <div style="display:flex;gap:8px;align-items:center">
@@ -2426,6 +2476,7 @@
                 <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
                 <input class="bb-control" id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%" />
               </div>
+              <span id="sec-feishu-err" class="st-field-error" hidden></span>
             </label>
             <label class="st-field"><span class="st-field-name">企微 token + agent + touser</span>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2434,7 +2485,46 @@
                 <input class="bb-control" id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px" />
                 <input class="bb-control" id="sec-wecom-to" type="text" placeholder="touser" style="width:100px" />
               </div>
+              <span id="sec-wecom-err" class="st-field-error" hidden></span>
             </label>
+            <!-- 加签 / 事件回调密钥：内核与发送路径早就支持（cn_inbound_server 真在读），
+                 之前界面上一个框都没有，用户只能去终端手改 .env.local —— 装完 app 还要改文件
+                 不等于能走通。这四栏一律**可选**：钉钉关键词/IP 白名单型机器人不该被自己的
+                 界面挡住，所以它们不进 CN_CHANNEL_ROWS 的必填校验。
+                 已配的密钥不回填进 input（那是把明文塞进 DOM），只在后面如实说「已配置 ****尾4」。 -->
+            <div class="ca-section-head" style="margin-top:var(--space-4)"><div class="ca-section-title">加签 / 事件回调密钥</div><span class="ca-cn-hint">可选</span></div>
+            <label class="st-field"><span class="st-field-name">钉钉 加签密钥<span>（机器人安全设置里 SEC 开头那串）</span></span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-ding-secret" data-secret-key="BITBOT_DINGTALK_APP_SECRET" type="password" autocomplete="off" placeholder="SEC…" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-ding-secret-reveal" class="bb-btn bb-btn-sm">显示</button>
+                <span id="sec-ding-secret-state" class="cn-hint">未配置</span>
+              </div>
+            </label>
+            <label class="st-field"><span class="st-field-name">飞书 Encrypt Key<span>（事件订阅「加密」用）</span></span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-feishu-encrypt" data-secret-key="BITBOT_FEISHU_ENCRYPT_KEY" type="password" autocomplete="off" placeholder="事件订阅请求加密密钥" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-feishu-encrypt-reveal" class="bb-btn bb-btn-sm">显示</button>
+                <span id="sec-feishu-encrypt-state" class="cn-hint">未配置</span>
+              </div>
+            </label>
+            <label class="st-field"><span class="st-field-name">飞书 Verification Token<span>（事件订阅「验签」用）</span></span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-feishu-verify" data-secret-key="BITBOT_FEISHU_VERIFICATION_TOKEN" type="password" autocomplete="off" placeholder="事件订阅校验令牌" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-feishu-verify-reveal" class="bb-btn bb-btn-sm">显示</button>
+                <span id="sec-feishu-verify-state" class="cn-hint">未配置</span>
+              </div>
+            </label>
+            <label class="st-field"><span class="st-field-name">企微 回调 Token<span>（接收事件服务器用）</span></span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sec-wecom-callback" data-secret-key="BITBOT_WECOM_CALLBACK_TOKEN" type="password" autocomplete="off" placeholder="回调令牌" class="bb-field bb-field-grow" />
+                <button type="button" id="cn-wecom-callback-reveal" class="bb-btn bb-btn-sm">显示</button>
+                <span id="sec-wecom-callback-state" class="cn-hint">未配置</span>
+              </div>
+            </label>
+            <!-- 状态行：未开启也要写出来。空白一片等于让用户自己猜「我到底配没配上」。 -->
+            <div id="cn-card-state" class="cn-hint">钉钉 未开启 · 飞书 未开启 · 企微 未开启</div>
+            <p id="cn-next-hint" class="cn-hint">凭证在这张卡改；下一步的「保存并热加载」和「试连国内渠道」在同一排，点下面直接过去。</p>
+            <button type="button" id="cn-goto-credentials" class="bb-btn bb-btn-sm">去保存并试连</button>
           </div>
           <div class="ca-auth" data-i18n="caAuthNote">部分插件需先在浏览器完成 OAuth 登录才能调用其工具。</div>
         </div>
@@ -2612,7 +2702,7 @@
     <div class="panel-title" data-i18n="machines">机器</div>
     <div class="machine-item">
       <div class="name">多端花名册</div>
-      <div class="meta" id="machines-meta">桌面 · 本阶段，iOS/Android 暂缓</div>
+      <div class="meta" id="machines-meta">桌面 · 手机在「配对」里连上后显示在线</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="mach-list" class="bb-btn bb-btn-sm bb-btn-primary">列出机器</button>
       </div>
@@ -3240,6 +3330,7 @@
       if (key === "credentials") {
         refreshSecretsForm().catch(() => {});
         refreshInboundUrlStrip().catch(() => {});
+        refreshPairingStrip().catch(() => {});
       }
       if (key === "updates") refreshUpdatesTabState();
     }
@@ -3547,6 +3638,7 @@
       if (mClose) setTimeout(() => mClose.focus(), 40);
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
+      refreshPairingStrip().catch(() => {});
       // Honest product residuals (brain / CN channels / filing / OTA) — never pretend ready.
       // Dev-mode only: these carry internal enum tokens (live/draft/armed/residual).
       if (devModeOn()) (async () => {
@@ -3577,7 +3669,8 @@
             if (st && st.ota) {
               bits.push("OTA=" + (st.ota.residual ? "residual" : "feed"));
             }
-            if (st && st.mobile_deferred) bits.push("移动=暂缓");
+            if (st && st.mobile_ready) bits.push("移动=可配对");
+            else if (st && st.mobile_deferred) bits.push("移动=暂缓");
           }
           if (window.bitbot.cnStatus) {
             const cn = await window.bitbot.cnStatus();
@@ -7122,44 +7215,118 @@
       if (convRailId) refreshConvRail().catch(() => {});
     }
 
+    /* ── 密钥栏的粘贴卫生（LK）────────────────────────────────────────
+     * key 是从聊天窗口 / 厂商控制台里**粘**进来的，粘出来的经常不是纯 key：
+     * 连着 HTTP 头的写法（文档里就写 `Authorization: Bearer <key>`）、复制了我们
+     * 界面自己的掩码（状态行就摆在那儿，手快就选中 `****3k7q`）、中间夹了换行、
+     * 或者只粘了个 `sk-`。这些以前一个都不拦，一路写进 .env.local 再热加载，
+     * 最后表现为「模型连不上 / 大脑仍缺 key」——真实原因在几周前粘错的那一行上，
+     * 谁也不会往那儿想。
+     * 规则只做本 app 说得清的事：能安全归一的（HTTP 头写法、首尾空白）就归一，
+     * 并且**把归一了什么写在栏下面**（悄悄改用户粘的东西最招骂）；归一不了又必然
+     * 错的（掩码、内部空白、中文、空壳）当场点名。厂商格式我们说了不算，所以
+     * 「长得像不像真 key」一律不判 —— 正常密钥绝不该被自己的界面拦。 */
+    const SECRET_KEY_ROWS = [
+      { input: "sec-llm-key", key: "BITBOT_LLM_API_KEY", mask: "sec-llm-mask" },
+      { input: "sec-qwen-key", key: "BITBOT_LLM_QWEN_API_KEY", mask: "sec-qwen-mask" },
+      { input: "sec-moon-key", key: "BITBOT_LLM_MOONSHOT_API_KEY", mask: "sec-moon-mask" },
+      { input: "sec-search-key", key: "BITBOT_SEARCH_API_KEY", mask: "sec-search-mask" },
+    ];
+
+    /** 就地归一化，返回「替他清掉了什么」；清不出来的不动它。 */
+    function secretKeyNormalize(el) {
+      const raw = el.value;
+      let v = raw.trim();
+      let note = "";
+      const stripped = v.replace(/^(authorization\s*:)?\s*(bearer\s+)+/i, "");
+      if (stripped !== v) {
+        v = stripped.trim();
+        note = "已去掉开头的「Bearer」——那是 HTTP 头的写法，不是密钥的一部分";
+      } else if (raw !== v) {
+        note = "已去掉首尾的空白 / 换行";
+      }
+      if (raw !== v) el.value = v;
+      return note;
+    }
+
+    /** 只读值、不写 DOM：给「保存」按钮的可用性用（同一套规则，不两边各写一遍）。 */
+    function secretKeyProblem(v) {
+      if (!v) return ""; // 留空 = 不改动已配置的密钥，这不是错误
+      if (/\*{2,}/.test(v)) return "这是界面上显示的掩码（**** + 尾号），不是密钥本身——请粘原始那一串";
+      if (/[\u3400-\u9fff\uff00-\uffef]/.test(v)) return "密钥里有中文字符，多半把旁边的说明一起粘进来了";
+      if (/\s/.test(v)) return "密钥中间有空白或换行（原始密钥是一整串，中间不带空格）";
+      if (v.length < 8) return "这一串太短，像是没粘全（正常密钥至少几十个字符）";
+      return "";
+    }
+
+    function secretKeysProblems() {
+      return SECRET_KEY_ROWS.reduce(function (n, r) {
+        const el = document.getElementById(r.input);
+        return n + (el && secretKeyProblem(el.value.trim()) ? 1 : 0);
+      }, 0);
+    }
+
+    /** 用户真的动了一栏：归一化 + 把结论写在该栏下面（错误位 / 说明位）。
+     *  SEEN 记的是「上一轮归一化之后留在框里的值」：真实一次粘贴会连着触发
+     *  paste / input / change 三个事件，同一个值被第二个事件再刷一遍时，
+     *  归一化已经无事可做（note 为空）——那不能把刚写明的「替他清掉了什么」擦掉。 */
+    const SECRET_KEY_SEEN = {};
+    function secretKeyPaint(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const sameValue = SECRET_KEY_SEEN[id] === el.value;
+      const note = secretKeyNormalize(el);
+      const msg = secretKeyProblem(el.value.trim());
+      const errEl = document.getElementById(id + "-err");
+      const noteEl = document.getElementById(id + "-note");
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.hidden = !msg;
+      }
+      if (noteEl) {
+        const keep = !note && sameValue ? String(noteEl.textContent || "") : note;
+        noteEl.textContent = keep;
+        noteEl.hidden = !keep;
+      }
+      SECRET_KEY_SEEN[id] = el.value;
+    }
+
+    SECRET_KEY_ROWS.forEach(function (r) {
+      const el = document.getElementById(r.input);
+      if (!el) return;
+      const recheck = function () {
+        secretKeyPaint(r.input);
+        cnValidateAndPaint(true);
+      };
+      el.addEventListener("input", recheck);
+      el.addEventListener("change", recheck);
+      // paste 事件里 value 还是旧值，归一化要等一等再做
+      el.addEventListener("paste", function () { setTimeout(recheck, 0); });
+    });
+
     async function refreshSecretsForm() {
       if (!window.bitbot.secrets) return;
       const st = await window.bitbot.secrets.status();
       if (!st || !st.ok) return;
       const f = st.fields || {};
-      const mask = document.getElementById("sec-llm-mask");
-      if (mask) {
-        mask.textContent = f.BITBOT_LLM_API_KEY && f.BITBOT_LLM_API_KEY.present
-          ? "（已配置 " + f.BITBOT_LLM_API_KEY.masked + "）"
-          : "（未配置）";
-      }
-      const qwenMask = document.getElementById("sec-qwen-mask");
-      if (qwenMask) {
-        qwenMask.textContent =
-          f.BITBOT_LLM_QWEN_API_KEY && f.BITBOT_LLM_QWEN_API_KEY.present
-            ? "（已配置 " + f.BITBOT_LLM_QWEN_API_KEY.masked + "）"
-            : "（未配置）";
-      }
-      const moonMask = document.getElementById("sec-moon-mask");
-      if (moonMask) {
-        moonMask.textContent =
-          f.BITBOT_LLM_MOONSHOT_API_KEY && f.BITBOT_LLM_MOONSHOT_API_KEY.present
-            ? "（已配置 " + f.BITBOT_LLM_MOONSHOT_API_KEY.masked + "）"
-            : "（未配置）";
-      }
+      /* 四把密钥的状态文案同源，所以按表循环写；「留空＝不改动」必须说出来：
+         输入框是空的、盘上却有 key，用户很容易以为留空会把已配的密钥清掉，
+         或者反过来以为留空点保存就等于删掉它。 */
+      SECRET_KEY_ROWS.forEach(function (r) {
+        const el = document.getElementById(r.mask);
+        if (!el) return;
+        const fv = f[r.key];
+        el.textContent = fv && fv.present
+          ? "（已配置 " + (fv.masked || "****") + "；留空＝不改动，要换就粘新的）"
+          : "（未配置，填了才生效）";
+      });
       const base = document.getElementById("sec-llm-base");
       if (base && f.BITBOT_LLM_BASE_URL && f.BITBOT_LLM_BASE_URL.value !== undefined) {
         base.value = f.BITBOT_LLM_BASE_URL.value || base.placeholder;
       }
       // Replica C6: search credential mirrors the brain credential (masked key,
       // plain provider/base). Absent key just means "no web search".
-      const searchMask = document.getElementById("sec-search-mask");
-      if (searchMask) {
-        searchMask.textContent =
-          f.BITBOT_SEARCH_API_KEY && f.BITBOT_SEARCH_API_KEY.present
-            ? "（已配置 " + f.BITBOT_SEARCH_API_KEY.masked + "）"
-            : "（未配置）";
-      }
+      // 搜索 key 的掩码状态已并入上面 SECRET_KEY_ROWS 那一圈，这里只管 provider / base。
       const searchProv = document.getElementById("sec-search-provider");
       if (searchProv && f.BITBOT_SEARCH_PROVIDER && f.BITBOT_SEARCH_PROVIDER.value !== undefined) {
         const pv = String(f.BITBOT_SEARCH_PROVIDER.value || "").trim().toLowerCase();
@@ -7213,6 +7380,22 @@
       if (wecomTo && f.BITBOT_WECOM_TOUSER && f.BITBOT_WECOM_TOUSER.value !== undefined) {
         wecomTo.value = f.BITBOT_WECOM_TOUSER.value || "";
       }
+      /* 掩码必填栏的「在不在」：明文不回填，但 present + 尾号必须记住，
+         给必填校验和状态行用（见 CN_MASKED_PRESENT）。 */
+      ["BITBOT_DINGTALK_WEBHOOK", "BITBOT_FEISHU_TOKEN", "BITBOT_WECOM_TOKEN"].forEach(function (k) {
+        const fv = f[k];
+        CN_MASKED_PRESENT[k] = fv && fv.present ? fv.masked : "";
+      });
+      /* 加签 / 回调密钥：输入框永远留空（把已存的明文回填进 DOM 等于多一处泄露面），
+       * 但「配过没有、尾 4 位是什么」必须说清楚 —— 不然用户只能靠自己记得。 */
+      CN_OPTIONAL_SECRETS.forEach(function (s) {
+        const st = document.getElementById(s.state);
+        if (!st) return;
+        const fv = f[s.key];
+        st.textContent = fv && fv.present ? "已配置 " + (fv.masked || "****") : "未配置";
+        const el = document.getElementById(s.input);
+        if (el) el.value = "";
+      });
       const icp = document.getElementById("sec-icp");
       if (icp && f.BITBOT_ICP_FILING && f.BITBOT_ICP_FILING.value !== undefined) {
         icp.value = f.BITBOT_ICP_FILING.value || "";
@@ -7239,10 +7422,187 @@
           : wavegT("secStatusModel") + "：" + (st.llm.provider_id || "?") + "/" + (st.llm.model || "?") +
             " · " + (st.llm.key_configured ? wavegT("modelConnected") : wavegT("modelUnconfigured"));
       }
+      /* 回填之后重算一次：勾选状态可能来自磁盘上的旧配置，
+       * 状态行与「保存」的可用性要跟着实话实说，不能停在初始文案上。 */
+      cnValidateAndPaint(true);
+    }
+
+    /* 加签 / 事件回调密钥的键位表：input 上的 data-secret-key 就是这个 key，
+       写盘收集器按属性遍历，不再往 saveSecretsFromForm 里手抄第四遍。
+       这四个不进下面的必填校验 —— 它们是可选路径，不是门槛。 */
+    const CN_OPTIONAL_SECRETS = [
+      { key: "BITBOT_DINGTALK_APP_SECRET", input: "sec-ding-secret", state: "sec-ding-secret-state", reveal: "cn-ding-secret-reveal" },
+      { key: "BITBOT_FEISHU_ENCRYPT_KEY", input: "sec-feishu-encrypt", state: "sec-feishu-encrypt-state", reveal: "cn-feishu-encrypt-reveal" },
+      { key: "BITBOT_FEISHU_VERIFICATION_TOKEN", input: "sec-feishu-verify", state: "sec-feishu-verify-state", reveal: "cn-feishu-verify-reveal" },
+      { key: "BITBOT_WECOM_CALLBACK_TOKEN", input: "sec-wecom-callback", state: "sec-wecom-callback-state", reveal: "cn-wecom-callback-reveal" },
+    ];
+
+    /* 国内渠道凭证：勾了「开启推送」就等于用户已经决定要发 —— 这时候缺什么、
+     * 粘错了什么，必须当场在那一栏下面说清楚，而不是「保存成功」之后再让他猜。
+     * 规则只按本 app 自己的语义判（勾了→必填→必填项得像个地址），不去断言厂商格式。 */
+    /* 掩码栏「看不见」不等于「没配」：这三栏的明文按安全规则不回填进 DOM，
+       所以必填校验必须问 status 的 present，否则磁盘上配好了、界面照样报红并禁保存
+       —— 实测就是这样把「保存并热加载」按死的（本轮 CN-SEC-04 抓到）。
+       key 为空的栏（chat_id / agentid / touser）走 value 回显，不需要这个表。 */
+    const CN_MASKED_PRESENT = {};
+
+    const CN_CHANNEL_ROWS = [
+      {
+        post: "sec-ding-post",
+        err: "sec-ding-hook-err",
+        fields: [
+          {
+            id: "sec-ding-hook",
+            label: "Webhook 地址",
+            key: "BITBOT_DINGTALK_WEBHOOK",
+            check: function (v) {
+              if (!/^https?:\/\//i.test(v)) return "要以 http:// 或 https:// 开头（在钉钉机器人设置里整段复制）";
+              if (!/access_token=/.test(v)) return "这段地址里没有 access_token，粘的可能是机器人主页而不是 Webhook";
+              return "";
+            },
+          },
+        ],
+      },
+      {
+        post: "sec-feishu-post",
+        err: "sec-feishu-err",
+        fields: [
+          { id: "sec-feishu-token", label: "tenant token", key: "BITBOT_FEISHU_TOKEN" },
+          { id: "sec-feishu-chat", label: "chat_id" },
+        ],
+      },
+      {
+        post: "sec-wecom-post",
+        err: "sec-wecom-err",
+        fields: [
+          { id: "sec-wecom-token", label: "access_token", key: "BITBOT_WECOM_TOKEN" },
+          { id: "sec-wecom-agent", label: "agentid" },
+          { id: "sec-wecom-to", label: "touser" },
+        ],
+      },
+    ];
+
+    function cnChannelStateText() {
+      return CN_CHANNEL_ROWS.map(function (row) {
+        const box = document.getElementById(row.post);
+        const name = row.post === "sec-ding-post" ? "钉钉" : row.post === "sec-feishu-post" ? "飞书" : "企微";
+        let tail = "";
+        if (box && box.checked) {
+          /* 已配但看不见 = 最容易误判成「没配」的一种；把掩码尾号写进状态行，
+             用户就不用为了「它到底在不在」再粘一次。只在「该渠道所有掩码栏都在盘上」
+             时才这么说，说一半比不说更糟。 */
+          const masked = row.fields.filter(function (f) { return f.key; });
+          const held = masked.filter(function (f) { return CN_MASKED_PRESENT[f.key]; });
+          if (masked.length && held.length === masked.length)
+            tail = "（" + held.map(function (f) { return CN_MASKED_PRESENT[f.key]; }).join(" / ") + " 已配置，无需重填）";
+        }
+        return name + " " + (box && box.checked ? "已开启" : "未开启") + tail;
+      }).join(" · ") + "。未开启的渠道不会真的发出去。";
+    }
+
+    /** 校验 + 回显；返回错误条数。save 按钮的可用性由这里统一管，别两边各写一套。 */
+    function cnValidateAndPaint(report) {
+      let problems = 0;
+      CN_CHANNEL_ROWS.forEach(function (row) {
+        const box = document.getElementById(row.post);
+        const errEl = document.getElementById(row.err);
+        const msgs = [];
+        if (box && box.checked) {
+          row.fields.forEach(function (f) {
+            const el = document.getElementById(f.id);
+            const v = el ? String(el.value || "").trim() : "";
+            if (!v) {
+              /* 空栏 + 盘上已配置 ≠ 没配：这时报「还是空的」是谎话，还会把保存按死。
+                 用户真想换地址就直接粘新的，粘了走下面的 check。 */
+              if (f.key && CN_MASKED_PRESENT[f.key]) return;
+              msgs.push("勾选了开启推送，" + f.label + "还是空的");
+            } else if (f.check) {
+              const m = f.check(v);
+              if (m) msgs.push(f.label + "：" + m);
+            }
+          });
+        }
+        problems += msgs.length;
+        if (!report || !errEl) return;
+        if (msgs.length) {
+          errEl.textContent = msgs.join("；");
+          errEl.hidden = false;
+        } else {
+          errEl.textContent = "";
+          errEl.hidden = true;
+        }
+      });
+      const state = document.getElementById("cn-card-state");
+      if (state) state.textContent = cnChannelStateText();
+      /* 「保存并热加载」是这一页唯一的写盘口子，所以所有会写坏它的字段都归这里管：
+         国内渠道缺字段 + 密钥栏粘错了，任何一个都得把按钮按下去之前挡住。 */
+      const keyProblems = secretKeysProblems();
+      const save = document.getElementById("sec-save");
+      if (save) save.disabled = problems + keyProblems > 0;
+      return problems;
+    }
+
+    CN_CHANNEL_ROWS.forEach(function (row) {
+      [row.post].concat(row.fields.map(function (f) { return f.id; })).forEach(function (id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("input", function () { cnValidateAndPaint(true); });
+        el.addEventListener("change", function () { cnValidateAndPaint(true); });
+      });
+    });
+
+    /* 掩码不是「看不见就只能猜」：卡内就地显隐，核对完再收回。
+       新加的四个密钥栏走同一套规则，按表循环，不再复制第四遍同样的 if。 */
+    const cnDingReveal = document.getElementById("cn-ding-reveal");
+    if (cnDingReveal) {
+      cnDingReveal.addEventListener("click", function () {
+        const el = document.getElementById("sec-ding-hook");
+        if (!el) return;
+        const show = el.type !== "text";
+        el.type = show ? "text" : "password";
+        cnDingReveal.textContent = show ? "隐藏" : "显示";
+      });
+    }
+    CN_OPTIONAL_SECRETS.forEach(function (s) {
+      const btn = document.getElementById(s.reveal);
+      if (!btn) return;
+      btn.addEventListener("click", function () {
+        const el = document.getElementById(s.input);
+        if (!el) return;
+        const show = el.type !== "text";
+        el.type = show ? "text" : "password";
+        btn.textContent = show ? "隐藏" : "显示";
+      });
+    });
+
+    /* 填凭证的地方就该指出下一步：写入和试连都在凭证页那一排，一键落过去。 */
+    const cnGotoCreds = document.getElementById("cn-goto-credentials");
+    if (cnGotoCreds) {
+      cnGotoCreds.addEventListener("click", function () {
+        const n = cnValidateAndPaint(true);
+        closeConnectApps();
+        openProductCredentials(
+          n > 0
+            ? "国内渠道还有 " + n + " 处要改（已经在对应栏目标红），改完再保存"
+            : "点「保存并热加载」写入，再点「试连国内渠道」验证真的发得出去",
+        );
+      });
     }
 
     async function saveSecretsFromForm() {
       if (!window.bitbot.secrets) return;
+      /* 挡在写盘之前：带着红字保存出去，后面只会出现「为什么发不出去」这种工单。 */
+      const cnProblems = cnValidateAndPaint(true);
+      const keyProblems = secretKeysProblems();
+      if (cnProblems + keyProblems > 0) {
+        const secStatus = document.getElementById("sec-status");
+        if (secStatus) {
+          secStatus.textContent = cnProblems > 0
+            ? "国内渠道有字段要改（该栏下方红字），没有写入"
+            : "密钥栏有 " + keyProblems + " 处像是粘错了（该栏下方红字），没有写入";
+        }
+        return;
+      }
       const patch = {};
       const keyEl = document.getElementById("sec-llm-key");
       const keyVal = keyEl && keyEl.value ? keyEl.value.trim() : "";
@@ -7313,6 +7673,14 @@
           : "0";
       const otaEl = document.getElementById("sec-ota");
       if (otaEl) patch.BITBOT_UPDATE_FEED_URL = otaEl.value.trim();
+      /* 加签 / 回调密钥：只收「填了东西」的栏，留空就不提交 —— 否则一次保存会把
+         用户已经配好的密钥覆盖成空。键名取自 data-secret-key（和主进程白名单同名），
+         所以界面上补一栏不用再改这里。 */
+      document.querySelectorAll("[data-secret-key]").forEach(function (el) {
+        const key = String(el.getAttribute("data-secret-key") || "").trim();
+        const v = String(el.value || "").trim();
+        if (key && v) patch[key] = v;
+      });
       const r = await window.bitbot.secrets.set(patch);
       const secStatus = document.getElementById("sec-status");
       if (secStatus) {
@@ -7329,6 +7697,13 @@
       if (qwenEl) qwenEl.value = "";
       if (moonEl) moonEl.value = "";
       if (searchKeyEl) searchKeyEl.value = "";
+      /* 写入成功后把四栏的错误位与「已替他清掉了什么」一起收回：
+         留着不动，下一次进来就是一条谁都不信的旧红字。 */
+      SECRET_KEY_ROWS.forEach(function (r) {
+        const el = document.getElementById(r.input);
+        if (el) el.value = "";
+        secretKeyPaint(r.input);
+      });
       if (ft) ft.value = "";
       if (wt) wt.value = "";
       await refreshSecretsForm();
@@ -10640,6 +11015,7 @@
       if (secStatus && hint) secStatus.textContent = hint;
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
+      refreshPairingStrip().catch(() => {});
     }
 
     async function refreshConfigGate() {
@@ -10762,15 +11138,31 @@
         runUserTurn(phrase, { skipSession: true, silentUser: true });
       });
     }
-    /* 移动版 / 支持 / 退出登录 —— 目前只有本地占位：用 callout 明确告诉用户"该入口
+    /* 支持 / 退出登录 —— 目前只有本地占位：用 callout 明确告诉用户"该入口
        已挂，具体能力在后续波次接入"，而不是静默 no-op。*/
     const accountPlaceholder = (msg) => {
       addMsg("assistant", msg, { debugOnly: false });
       setAccountPopup(false);
     };
+    /* 移动版不再是占位：APK 已经能构建（hosts/android/BitBotHost），用户点这一项
+       就该落到能真办事的地方 —— 「凭证 → 手机配对」给得出地址与令牌。
+       商店安装包链接仍是后续波次，这句话也照样如实说。 */
     const apMobile = document.getElementById("ap-mobile");
-    if (apMobile) apMobile.addEventListener("click", () =>
-      accountPlaceholder("Bit Bot 移动版目前处于内测，链接稍后会通过 OTA 推送。"));
+    if (apMobile) {
+      apMobile.addEventListener("click", () => {
+        addMsg(
+          "assistant",
+          "Bit Bot 安卓版已经可用：装好 APK 后在手机端「凭证」里填这台桌面的配对地址与配对令牌 —— 已为你打开「设置 → 凭证 → 手机配对」（同一 Wi-Fi 下先点「允许手机连接」）。应用商店安装包链接仍是后续波次。",
+          { debugOnly: false },
+        );
+        setAccountPopup(false);
+        window.__bbPendingSettingsTrigger = apMobile;
+        runUserTurn("open settings entry=account anchor=security-keys", {
+          skipSession: true,
+          silentUser: true,
+        });
+      });
+    }
     const apSupport = document.getElementById("ap-support");
     if (apSupport) apSupport.addEventListener("click", () =>
       accountPlaceholder("支持：在 GitHub 仓库 JXzfluser/Bit-Bot 提交 Issue，或在对话里直接说「诊断」。"));
@@ -10891,7 +11283,7 @@
         const st = await window.bitbot.cnInboundStatus();
         if (!st || !st.listening) {
           el.textContent = devModeOn()
-            ? "入站未监听 — Desktop 启动会拉起 :18765；公网用 scripts/cn_inbound_tunnel.sh"
+            ? "入站未监听 — Desktop 启动会拉起默认 :18765（BITBOT_CN_INBOUND_PORT 可改）；公网用 scripts/cn_inbound_tunnel.sh"
             : wavegT("inboundNotListening");
           return;
         }
@@ -10911,12 +11303,270 @@
             (routes.feishu || "") +
             " · wecom=" +
             (routes.wecom || "")
-          : "入站本机 http://127.0.0.1:" +
-            (st.port || 18765) +
+          : "入站本机 " +
+            (st.port ? "http://127.0.0.1:" + st.port : "端口没读出来（不猜默认值）") +
             " — 尚无公网 URL（跑 cn_inbound_tunnel.sh）";
       } catch (_) {
         el.textContent = wavegT("inboundReadFail");
       }
+    }
+
+    /* ---------- 手机配对（移动版 · ADR 0008） ------------------------------
+     * 手机连桌面大脑需要两样东西：一个它敲得到的地址，和那台的配对令牌。
+     * 以前这两样只在 README 里 —— 界面给不出来的话，「手机走通」就只是文档。
+     * 状态、开关、令牌、复制都只读 window.bitbot.pairing，端口与地址不写死。
+     * -------------------------------------------------------------------- */
+    let pairingSnapshot = null;
+
+    function pairingStatusEl() {
+      return document.getElementById("sec-pairing-status");
+    }
+
+    async function refreshPairingStrip() {
+      const line = document.getElementById("sec-pairing-line");
+      if (!line || !window.bitbot || !window.bitbot.pairing) return;
+      const lanBtn = document.getElementById("pairing-lan-btn");
+      const copyUrl = document.getElementById("pairing-copy-url");
+      const note = document.getElementById("sec-pairing-note");
+      const turn = document.getElementById("sec-pairing-turn");
+      try {
+        const st = await window.bitbot.pairing.state();
+        pairingSnapshot = st && st.ok ? st : null;
+        if (!pairingSnapshot) {
+          line.textContent = wavegT("pairingReadFail");
+          if (lanBtn) lanBtn.disabled = true;
+          if (copyUrl) copyUrl.disabled = true;
+          if (note) {
+            note.textContent = "";
+            note.style.display = "none";
+          }
+          if (turn) {
+            turn.textContent = "";
+            turn.style.display = "none";
+          }
+          return;
+        }
+        if (!st.listening) {
+          line.textContent = wavegT("pairingNotListening");
+        } else if (st.lan_open && (st.turn_urls || []).length) {
+          line.textContent = t("pairingLanOn", { url: st.pair_base || st.turn_urls[0] });
+        } else if (st.lan_open) {
+          line.textContent = wavegT("pairingLanOnNoIp");
+        } else {
+          line.textContent = t("pairingLocalOnly", { url: st.loopback_base || st.loopback_url || "" });
+        }
+        // 地址是哪类网卡来的，就说什么话：只有公网 / 169.254 / 覆盖网时，
+        // 手机大概率连不通，不能让用户拿着一个「像地址的东西」去试。
+        const scopeNote = pairingScopeNote(st);
+        if (note) {
+          note.textContent = scopeNote;
+          note.style.display = scopeNote ? "block" : "none";
+        }
+        if (turn) {
+          const endpoint = (st.turn_urls && st.turn_urls[0]) || st.loopback_url || "";
+          turn.textContent = endpoint ? t("pairingTurnEndpoint", { url: endpoint }) : "";
+          turn.style.display = endpoint && devModeOn() ? "block" : "none";
+        }
+        if (lanBtn) {
+          lanBtn.textContent = st.lan_enabled
+            ? wavegT("pairingBtnDisable")
+            : wavegT("pairingBtnEnable");
+          lanBtn.disabled = false;
+        }
+        // 没地址可复制时按钮保持禁用：点一下必失败的按钮不是「可用」。
+        if (copyUrl) copyUrl.disabled = !(st.pair_base || st.loopback_base || (st.turn_urls || []).length || st.loopback_url);
+        const status = pairingStatusEl();
+        if (status) {
+          status.textContent = st.token_masked
+            ? t("pairingTokenMasked", { code: st.token_masked })
+            : wavegT("pairingTokenMissing");
+        }
+        // Pairing-v1: update the 6-digit code UI.
+        updatePairingCodeUI(st);
+      } catch (_) {
+        line.textContent = wavegT("pairingReadFail");
+        if (lanBtn) lanBtn.disabled = true;
+        if (copyUrl) copyUrl.disabled = true;
+        if (note) {
+          note.textContent = "";
+          note.style.display = "none";
+        }
+        if (turn) {
+          turn.textContent = "";
+          turn.style.display = "none";
+        }
+      }
+    }
+
+    /**
+     * 配对地址来自哪类网卡 → 一句实话。局域网地址不啰嗦；只有覆盖网 / 公网 /
+     * 169.254 时手机大概率连不通，与其让用户拿「像地址的东西」去试，不如说清原因。
+     */
+    function pairingScopeNote(st) {
+      if (!st || !st.listening || !st.pair_base) return "";
+      const detail = Array.isArray(st.lan_detail) ? st.lan_detail : [];
+      const top = detail.length ? detail[0] : null;
+      const scope = String((top && top.scope) || st.pair_scope || "");
+      if (!st.lan_open) return "";
+      if (scope === "private") return "";
+      if (scope === "cgnat") return wavegT("pairingScopeCgnat");
+      if (scope === "link_local") return wavegT("pairingScopeLinkLocal");
+      if (scope === "public") return wavegT("pairingScopePublic");
+      return "";
+    }
+
+    async function pairingCopy(what) {
+      const status = pairingStatusEl();
+      try {
+        const r = await window.bitbot.pairing.copy(what);
+        if (status) {
+          status.textContent =
+            r && r.ok ? wavegT("pairingCopied") : t("pairingCopyFail", { err: (r && r.error) || "unknown" });
+        }
+      } catch (e) {
+        if (status) {
+          status.textContent = t("pairingCopyFail", { err: String((e && e.message) || e) });
+        }
+      }
+    }
+
+    const pairingLanBtn = document.getElementById("pairing-lan-btn");
+    if (pairingLanBtn) {
+      pairingLanBtn.addEventListener("click", async () => {
+        const next = !(pairingSnapshot && pairingSnapshot.lan_enabled);
+        pairingLanBtn.disabled = true;
+        try {
+          const r = await window.bitbot.pairing.setLan(next);
+          if (r && r.ok) pairingSnapshot = r;
+          await refreshPairingStrip();
+          const status = pairingStatusEl();
+          if (status) {
+            status.textContent =
+              r && r.ok
+                ? next
+                  ? wavegT("pairingNowOpen")
+                  : wavegT("pairingNowClosed")
+                : t("pairingToggleFail", { err: (r && r.error) || "unknown" });
+          }
+        } catch (e) {
+          const status = pairingStatusEl();
+          if (status) {
+            status.textContent = t("pairingToggleFail", { err: String((e && e.message) || e) });
+          }
+        } finally {
+          pairingLanBtn.disabled = false;
+        }
+      });
+    }
+
+    const pairingTokenBtn = document.getElementById("pairing-token-btn");
+    if (pairingTokenBtn) {
+      pairingTokenBtn.addEventListener("click", async () => {
+        const box = document.getElementById("sec-pairing-token");
+        const copyToken = document.getElementById("pairing-copy-token");
+        if (!box) return;
+        const shown = box.dataset.shown === "1";
+        if (shown) {
+          box.textContent = "";
+          box.style.display = "none";
+          box.dataset.shown = "0";
+          copyToken.disabled = true;
+          pairingTokenBtn.textContent = wavegT("pairingBtnShowToken");
+          return;
+        }
+        try {
+          const r = await window.bitbot.pairing.token();
+          box.style.display = "block";
+          if (r && r.ok) {
+            box.textContent = r.token;
+            box.dataset.shown = "1";
+            copyToken.disabled = false;
+            pairingTokenBtn.textContent = wavegT("pairingBtnHideToken");
+          } else {
+            box.textContent = wavegT("pairingTokenMissing");
+            copyToken.disabled = true;
+          }
+        } catch (e) {
+          box.style.display = "block";
+          box.textContent = t("pairingCopyFail", { err: String((e && e.message) || e) });
+        }
+      });
+    }
+
+    const pairingCopyUrlBtn = document.getElementById("pairing-copy-url");
+    if (pairingCopyUrlBtn) {
+      pairingCopyUrlBtn.addEventListener("click", () => pairingCopy("url"));
+    }
+    const pairingCopyTokenBtn = document.getElementById("pairing-copy-token");
+    if (pairingCopyTokenBtn) {
+      pairingCopyTokenBtn.addEventListener("click", () => pairingCopy("token"));
+    }
+
+    /* ---------- Pairing-v1: 6-digit code UI ---------------------------- */
+    let pairingCodeTimer = null;
+    const pairingGenBtn = document.getElementById("pairing-gen-btn");
+    const pairingRevokeBtn = document.getElementById("pairing-revoke-btn");
+    const pairingCodeDigits = document.getElementById("pairing-code-digits");
+    const pairingCodeCountdown = document.getElementById("pairing-code-countdown");
+    const pairingCodeDisplay = document.getElementById("pairing-code-display");
+    const pairingCodeActions = document.getElementById("pairing-code-actions");
+
+    function updatePairingCodeUI(st) {
+      if (!pairingCodeDisplay || !pairingCodeActions) return;
+      if (st && st.pair_code) {
+        pairingCodeDigits.textContent = st.pair_code;
+        pairingCodeDisplay.hidden = false;
+        pairingCodeActions.hidden = false;
+        startPairingCountdown(st.pair_code_expires_in_ms || 0);
+      } else {
+        pairingCodeDigits.textContent = "";
+        pairingCodeCountdown.textContent = "";
+        pairingCodeDisplay.hidden = true;
+        pairingCodeActions.hidden = true;
+        if (pairingCodeTimer) { clearInterval(pairingCodeTimer); pairingCodeTimer = null; }
+      }
+    }
+
+    function startPairingCountdown(ms) {
+      if (pairingCodeTimer) clearInterval(pairingCodeTimer);
+      let remaining = Math.max(0, Math.round(ms / 1000));
+      function tick() {
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
+        pairingCodeCountdown.textContent = m + ":" + String(s).padStart(2, "0");
+        if (remaining <= 0) {
+          clearInterval(pairingCodeTimer);
+          pairingCodeTimer = null;
+          // Refresh state to clear the code.
+          refreshPairingStrip();
+        }
+        remaining--;
+      }
+      tick();
+      pairingCodeTimer = setInterval(tick, 1000);
+    }
+
+    if (pairingGenBtn) {
+      pairingGenBtn.addEventListener("click", async () => {
+        pairingGenBtn.disabled = true;
+        try {
+          const r = await window.bitbot.pairing.code({ action: "issue" });
+          if (r && r.ok) {
+            await refreshPairingStrip();
+          }
+        } catch (_) { /* ignore */ }
+        pairingGenBtn.disabled = false;
+      });
+    }
+    if (pairingRevokeBtn) {
+      pairingRevokeBtn.addEventListener("click", async () => {
+        pairingRevokeBtn.disabled = true;
+        try {
+          await window.bitbot.pairing.code({ action: "revoke" });
+          await refreshPairingStrip();
+        } catch (_) { /* ignore */ }
+        pairingRevokeBtn.disabled = false;
+      });
     }
 
     const secProbe = document.getElementById("sec-probe");
@@ -12507,6 +13157,12 @@
       const cnCard0 = document.getElementById("ca-cn-channels");
       if (cnCard0) {
         cnCard0.style.display = (caActiveCat === "all" || caActiveCat === "communication") ? "flex" : "none";
+        /* 打开这张卡就把它自己的状态说实话：勾没勾、缺什么、密钥配过没有。
+         * 状态以前只靠别的页面顺手刷过一次 —— 从侧栏直接进来就会停在旧文案上，
+         * 用户看到的「未配置」其实可能早就配好了。这里自己刷一遍。 */
+        refreshSecretsForm().catch(() => {});
+        /* 未开启/缺字段的即时反馈不异步等：先按当前 DOM 画一次，status 回来再覆盖。 */
+        cnValidateAndPaint(true);
       }
       const q = document.getElementById("ca-search");
       if (q) setTimeout(() => q.focus(), 50);
@@ -12679,9 +13335,24 @@
           '<div class="name"></div><div class="meta"></div>';
         el.querySelector(".name").textContent = m.label || m.id || "?";
         el.querySelector(".meta").innerHTML =
-          '<span class="kind-pill"></span><span class="st"></span>';
+          '<span class="kind-pill"></span><span class="st"></span><span class="seen"></span>';
         el.querySelector(".kind-pill").textContent = m.kind || "?";
-        el.querySelector(".st").textContent = m.status || "";
+        // 在线不是内核 seed 的固定答案：Host 只在「这台机器真的带着鉴权说过话」
+        // 时才给 last_seen/presence_evidence。有证据就报在线并说清证据是什么时候的；
+        // 没证据就明说没配对过，不借用内核的 disconnected 蒙一下。
+        const st = String(m.status || "").toLowerCase();
+        el.querySelector(".st").textContent =
+          st === "connected" ? t("machineOnline") : t("machineOffline");
+        const seen = el.querySelector(".seen");
+        if (m.last_seen) {
+          const at = Date.parse(String(m.last_seen));
+          const ago = Number.isFinite(at) ? Math.max(0, Math.round((Date.now() - at) / 1000)) : null;
+          if (st === "connected" && ago != null) seen.textContent = " · " + t("machineSeenAgo", { n: ago });
+          else if (ago != null) seen.textContent = " · " + t("machineSeenStale", { n: ago });
+          else seen.textContent = "";
+        } else {
+          seen.textContent = st === "connected" ? "" : " · " + t("machineNeverPaired");
+        }
         machineList.appendChild(el);
       }
     }
@@ -13445,6 +14116,31 @@
         headerAccount: "账户",
         model: "模型",
         machines: "机器",
+        machineOnline: "在线",
+        machineOffline: "离线",
+        machineSeenAgo: "{n} 秒前有回合",
+        machineSeenStale: "最后证据 {n} 秒前",
+        machineNeverPaired: "未配对",
+        pairingReadFail: "配对状态读取失败（不猜）",
+        pairingNotListening: "入站没在听 — 手机没地方连",
+        pairingLanOn: "手机可以连进来了：{url}",
+        pairingLanOnNoIp: "已放开局域网，但没读到本机 IPv4 — 手机上要手填桌面的局域网地址",
+        pairingLocalOnly: "只在桌面自己这台机器上开着：{url}。手机要连，点「允许手机连接」",
+        pairingTurnEndpoint: "完整端点（手机会自己补，不用手抄）：{url}",
+        pairingScopeCgnat: "这个地址来自覆盖网（Tailscale 一类），不是同一个 Wi-Fi 的局域网地址 — 手机没连同一个覆盖网就连不上",
+        pairingScopeLinkLocal: "只读到 169.254 地址 = 这块网卡没配上 DHCP，手机敲它一定失败 — 先让桌面连上 Wi-Fi / 局域网",
+        pairingScopePublic: "这台机器只读到公网地址（云机常见），手机在 Wi-Fi 里通常走不到 — 需要同一局域网里的地址，或另配内网穿透",
+        pairingBtnEnable: "允许手机连接",
+        pairingBtnDisable: "只允许桌面自己",
+        pairingBtnShowToken: "显示配对令牌",
+        pairingBtnHideToken: "隐藏配对令牌",
+        pairingTokenMasked: "配对令牌：{code}（点「显示配对令牌」看原文）",
+        pairingTokenMissing: "没读到配对令牌 — 令牌文件不可用（不编一个）",
+        pairingNowOpen: "已放开局域网：同一 Wi-Fi 下的手机现在能连进来（令牌照旧必填）",
+        pairingNowClosed: "已收回局域网：现在只有桌面自己能连",
+        pairingToggleFail: "开关失败 · {err}（没放开，也没假装放开）",
+        pairingCopied: "已复制到剪贴板",
+        pairingCopyFail: "复制失败 · {err}",
         gpPanel: "对齐面板",
         gpComputer: "电脑",
         gpGroup: "群组",
@@ -14117,6 +14813,31 @@
         headerAccount: "帳戶",
         model: "模型",
         machines: "機器",
+        machineOnline: "線上",
+        machineOffline: "離線",
+        machineSeenAgo: "{n} 秒前有對話",
+        machineSeenStale: "最後證據 {n} 秒前",
+        machineNeverPaired: "未配對",
+        pairingReadFail: "配對狀態讀取失敗（不猜）",
+        pairingNotListening: "入站沒在聽 — 手機沒地方連",
+        pairingLanOn: "手機可以連進來了：{url}",
+        pairingLanOnNoIp: "已放開區域網路，但沒讀到本機 IPv4 — 手機上要手填桌面的區域網路位址",
+        pairingLocalOnly: "只在本機開著：{url}。手機要連，點「允許手機連接」",
+        pairingTurnEndpoint: "完整端點（手機自己補，不用手抄）：{url}",
+        pairingScopeCgnat: "這個位址來自覆蓋網路（Tailscale 一類），不是同一 Wi-Fi 的區域網路位址 — 手機沒連同一個覆蓋網路就連不上",
+        pairingScopeLinkLocal: "只讀到 169.254 位址 = 這塊網路卡沒配上 DHCP，手機敲它一定失敗 — 先讓本機連上 Wi-Fi / 區域網路",
+        pairingScopePublic: "這台機器只讀到公開位址（雲機常見），手機在 Wi-Fi 裡通常走不到 — 需要同一區域網路裡的位址，或另設內網穿透",
+        pairingBtnEnable: "允許手機連接",
+        pairingBtnDisable: "只允許桌面本身",
+        pairingBtnShowToken: "顯示配對權杖",
+        pairingBtnHideToken: "隱藏配對權杖",
+        pairingTokenMasked: "配對權杖：{code}（點「顯示配對權杖」看原文）",
+        pairingTokenMissing: "沒讀到配對權杖 — 權杖檔不可用（不編一個）",
+        pairingNowOpen: "已放開區域網路：同一 Wi-Fi 下的手機現在能連進來（權杖照舊必填）",
+        pairingNowClosed: "已收回區域網路：現在只有桌面本身能連",
+        pairingToggleFail: "開關失敗 · {err}（沒放開，也沒假裝放開）",
+        pairingCopied: "已複製到剪貼簿",
+        pairingCopyFail: "複製失敗 · {err}",
         gpPanel: "Grok Parity 面板",
         gpComputer: "電腦",
         gpGroup: "群組",
@@ -14789,6 +15510,31 @@
         headerAccount: "Account",
         model: "Model",
         machines: "Machines",
+        machineOnline: "online",
+        machineOffline: "offline",
+        machineSeenAgo: "last turn {n}s ago",
+        machineSeenStale: "last seen {n}s ago",
+        machineNeverPaired: "not paired",
+        pairingReadFail: "pairing state unreadable (not guessing)",
+        pairingNotListening: "Inbound is not listening — nowhere for the phone to connect",
+        pairingLanOn: "Phones can connect now: {url}",
+        pairingLanOnNoIp: "LAN is open, but no local IPv4 found — type the desktop's LAN address on the phone",
+        pairingLocalOnly: "Loopback only: {url}. Tap “Allow phone access” to let the phone in",
+        pairingTurnEndpoint: "Full endpoint (the phone appends it — no need to copy): {url}",
+        pairingScopeCgnat: "This address is from an overlay network (Tailscale-like), not a same-Wi-Fi LAN address — the phone can't reach it unless it's on the same overlay",
+        pairingScopeLinkLocal: "Only a 169.254 address found = this NIC has no DHCP lease, the phone will always fail — connect the desktop to Wi-Fi / LAN first",
+        pairingScopePublic: "Only a public address found (common on cloud VMs) — phones on Wi-Fi usually can't reach it; you need a same-LAN address or a tunnel",
+        pairingBtnEnable: "Allow phone access",
+        pairingBtnDisable: "Desktop only",
+        pairingBtnShowToken: "Show pairing token",
+        pairingBtnHideToken: "Hide pairing token",
+        pairingTokenMasked: "Pairing token: {code} (tap “Show pairing token” for the full value)",
+        pairingTokenMissing: "No pairing token readable — token file unavailable (not invented)",
+        pairingNowOpen: "LAN opened: phones on the same Wi-Fi can connect (token still required)",
+        pairingNowClosed: "LAN closed: only this desktop can connect now",
+        pairingToggleFail: "Toggle failed · {err} (not opened, and not pretended open)",
+        pairingCopied: "Copied to clipboard",
+        pairingCopyFail: "Copy failed · {err}",
         gpPanel: "Grok Parity Panel",
         gpComputer: "Computer",
         gpGroup: "Groups",

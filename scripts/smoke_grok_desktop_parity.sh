@@ -1284,8 +1284,8 @@ fi
 grep -q "侧栏顶部图标工具栏" /tmp/g33-probe.log 2>/dev/null \
   && ok "G-33 GP-M33：侧栏顶部图标工具栏（search + new-chat）" \
   || bad "G-33 sidebar toolbar missing"
-grep -q "账户条包含 8 项弹层" /tmp/g33-probe.log 2>/dev/null \
-  && ok "G-33 GP-M33：底部账户条 → 8 项 popup（含 Settings 复用 sidebar-settings-btn）" \
+grep -q "账户条包含 7 项弹层" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：底部账户条 → 7 项 popup（版本更新收进「设置 → 更新」，不重复两处）" \
   || bad "G-33 account popup missing"
 grep -q "送达状态：存储 → ✓、回合收尾 → ✓✓ 绿色" /tmp/g33-probe.log 2>/dev/null \
   && ok "G-33 GP-M33：用户气泡送达状态 ✓ → ✓✓ 绿色" \
@@ -1312,14 +1312,17 @@ if timeout 900 node scripts/prove_m34_account_actions.js > /tmp/g34-probe.log 2>
 else
   bad "G-34 账户弹层入口契约（见 /tmp/g34-probe.log）"
 fi
-grep -q "三项（更新 / 用量 / 添加账户）通过 open settings anchor" /tmp/g34-probe.log 2>/dev/null \
-  && ok "G-34 GP-M34：三项真实落点（更新→update-status / 用量→usage / 添加账户→profile）" \
+grep -q "两项（用量 / 添加账户）通过 open settings anchor" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：两项真实落点（用量→usage / 添加账户→profile）" \
   || bad "G-34 anchor wiring missing"
 grep -q "update-status / usage / profile 三个锚点在 SETTINGS_ANCHOR_TAB 已注册" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 GP-M34：锚点在 SETTINGS_ANCHOR_TAB 已注册" \
   || bad "G-34 anchor registry missing"
-grep -q "移动版 / 支持 / 退出登录 三项：中文占位文案" /tmp/g34-probe.log 2>/dev/null \
-  && ok "G-34 GP-M34：三项走本地化 callout（非静默 no-op）" \
+grep -q "移动版：不再只报「内测」" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：移动版入口落到「凭证 → 手机配对」（不是占位）" \
+  || bad "G-34 mobile landing missing"
+grep -q "支持 / 退出登录 两项：中文占位文案" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：两项走本地化 callout（非静默 no-op）" \
   || bad "G-34 placeholder missing"
 grep -q "handler 都收口：先关 popup 再走短语" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 GP-M34：handler 都关 popup，不挡设置页" \
@@ -1327,6 +1330,9 @@ grep -q "handler 都收口：先关 popup 再走短语" /tmp/g34-probe.log 2>/de
 grep -q "负向对照：抹掉 anchor=usage 短语" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 负向对照：抹掉 anchor 短语 → 断言翻假（非恒真）" \
   || bad "G-34 negative control missing"
+grep -q "负向对照：抹掉移动版 anchor=security-keys" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 负向对照：抹掉移动版锚点 → 落地断言翻假（非恒真）" \
+  || bad "G-34 mobile negative control missing"
 
 echo "== G-35 键盘快捷键面板（M35：Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键表）=="
 if timeout 900 node scripts/prove_m35_hotkeys.js > /tmp/g35-probe.log 2>&1; then
@@ -1378,8 +1384,8 @@ fi
 grep -q "全局 \[hidden\] { display: none !important" /tmp/g37-probe.log 2>/dev/null \
   && ok "G-37 GP-M37：全局 [hidden] !important，防 UA 语义被 display:flex 顶掉" \
   || bad "G-37 global hidden reset missing"
-grep -q "#account-popup 使用 position: fixed" /tmp/g37-probe.log 2>/dev/null \
-  && ok "G-37 GP-M37：账户弹层 position: fixed + z-index: 4x（不被 #agents 裁剪）" \
+grep -q "#account-popup 锚在触发元素上方（absolute）" /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：账户弹层锚在触发元素上方 + z-index: 4x（不被 #agents overflow 裁剪）" \
   || bad "G-37 popup stacking missing"
 grep -q "setAccountPopup(open)：hidden 属性 + aria-expanded 同步" /tmp/g37-probe.log 2>/dev/null \
   && ok "G-37 GP-M37：setAccountPopup 单一真源（hidden 属性 + aria-expanded）" \
@@ -1511,8 +1517,8 @@ fi
 grep -q "#log 单列居中" /tmp/g42-probe.log 2>/dev/null \
   && ok "G-42 GP-M42：#log 单列居中，user/assistant 对齐同一列" \
   || bad "G-42 log center missing"
-grep -q "user 气泡：保留 18px 圆角" /tmp/g42-probe.log 2>/dev/null \
-  && ok "G-42 GP-M42：user 气泡 18px 圆角（M20）+ 右下尾角" \
+grep -q "user 气泡：四角同值 18px" /tmp/g42-probe.log 2>/dev/null \
+  && ok "G-42 GP-M42：user 气泡四角同值 18px（--radius-user，Target v2 已去掉尾角）" \
   || bad "G-42 user tail missing"
 grep -q "assistant 气泡：var(--bot-bubble)" /tmp/g42-probe.log 2>/dev/null \
   && ok "G-42 GP-M42：assistant 气泡 bot-bubble + 左上尾角" \
@@ -1610,6 +1616,476 @@ grep -q "负向对照：now+24h 兜底落在" /tmp/g45-probe.log \
   && ok "G-45 负向对照：now+24h 兜底会被 09:00 断言判假（断言非恒真）" \
   || bad "G-45 negative control missing"
 
+
+echo "== G-46 Target v2 桌面行为门禁（单实例 / 干净退出 / 侧栏自适应 / 命令通道 / 群菜单 / token 对齐）=="
+# 这一组是 a652416 带进来的六个真实 Electron 门禁。它们此前只被 report.md 提到、
+# 不在任何聚合门禁里 —— 不在矩阵里的门禁等于没有门禁（下一轮改动没人会再跑它）。
+# 先自证尺子（秒级，无 Electron），再逐个串行跑真实渲染，最后带一次负向对照。
+if timeout 120 node scripts/prove_gate_proc_count.mjs > /tmp/g46-ruler.log 2>&1; then
+  ok "G-46 尺子自证：实例/残留计数不被 pgrep 的 sh -c 污染（$(tail -1 /tmp/g46-ruler.log)）"
+else
+  bad "G-46 尺子自证（见 /tmp/g46-ruler.log）"
+fi
+grep -q "旧 execSync(pgrep -f UD) 数到" /tmp/g46-ruler.log \
+  && ok "G-46 尺子负向对照：旧写法确实多算（修复前红，证明断言非恒真）" \
+  || bad "G-46 ruler negative control missing"
+
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g46_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g46_xvfb=(xvfb-run -a)
+  fi
+  for g in single_instance sidebar_adapt quit command_channel bot_group_menu token_parity; do
+    log=/tmp/g46-$g.log
+    pkill -9 -f "dist/[e]lectron" 2>/dev/null
+    sleep 1
+    if timeout 900 "${g46_xvfb[@]}" node "scripts/e2e_desktop_$g.mjs" >"$log" 2>&1; then
+      ok "G-46 e2e_desktop_$g 全绿（$(grep -c '✓' "$log") 项，$(tail -1 "$log")）"
+    else
+      bad "G-46 e2e_desktop_$g（见 $log；$(tail -1 "$log")）"
+    fi
+  done
+  grep -q "S-02 同 UD 只活着一个主进程" /tmp/g46-single_instance.log 2>/dev/null \
+    && grep -q "S-03 第一个实例窗口仍在前台" /tmp/g46-single_instance.log 2>/dev/null \
+    && ok "G-46 单实例：同 UD 第二实例被锁挡住并唤起已有窗口（用户双击两次只开一个）" \
+    || bad "G-46 single-instance contract missing"
+  grep -q "Q-01 进程仍在运行" /tmp/g46-quit.log 2>/dev/null \
+    && grep -q "Q-02 app.quit() 后进程真的退出" /tmp/g46-quit.log 2>/dev/null \
+    && grep -q "Q-04 同一 user-data-dir 能再次启动" /tmp/g46-quit.log 2>/dev/null \
+    && ok "G-46 退出：红叉仍收进托盘（产品意图），quit 真退出且锁释放可再启动" \
+    || bad "G-46 quit contract missing"
+  grep -q "C-09" /tmp/g46-command_channel.log 2>/dev/null \
+    && grep -q "C-10" /tmp/g46-command_channel.log 2>/dev/null \
+    && grep -q "C-11" /tmp/g46-command_channel.log 2>/dev/null \
+    && ok "G-46 命令通道：静默操作不进气泡 / 一句话组队建群 / 回执说人话" \
+    || bad "G-46 command-channel contract missing"
+  grep -q "R-02 窄窗" /tmp/g46-sidebar_adapt.log 2>/dev/null \
+    && grep -q "R-04 手动收起后" /tmp/g46-sidebar_adapt.log 2>/dev/null \
+    && ok "G-46 侧栏自适应：≤768 自动收起、放宽自动展开、手动收起后尊重用户意图" \
+    || bad "G-46 sidebar adaptation missing"
+  # 负向对照：关掉单实例锁，门禁必须翻红（否则这一组是恒真的装饰品）
+  log=/tmp/g46-neg-single.log
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if NEG_CONTROL=1 timeout 900 "${g46_xvfb[@]}" node scripts/e2e_desktop_single_instance.mjs >"$log" 2>&1; then
+    bad "G-46 负向对照失效：关掉单实例锁后门禁仍全绿（恒真断言）"
+  else
+    grep -q "S-02 同 UD 出现多个主进程" "$log" \
+      && ok "G-46 负向对照：BITBOT_DISABLE_SINGLE_INSTANCE=1 → 门禁真的翻红（非恒真）" \
+      || bad "G-46 负向对照跑红了，但红的不是 S-02（见 $log）"
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+else
+  echo "  · skip：playwright-core / electron dist 缺失，G-46 的六个真实门禁未跑（SKIP ≠ PASS）"
+fi
+echo "  · G-46 说明：六个门禁均为真实 Electron（Xvfb）渲染断言；串行执行并逐个清场，避免并发 profile 互撞"
+
+
+echo "== G-47 安卓移动端门禁（线路契约 / 机器身份 / 在线证据 / APK 真编译）=="
+# 移动端不能只靠读源码。三块：真 HTTP + 真内核的线路门禁、真实 Electron 的花名册
+# 渲染门禁、以及真编译 APK 再用 aapt 把包里的事实读回来的构建门禁。
+if command -v moon >/dev/null 2>&1; then
+  if timeout 900 node scripts/e2e_android_turn.mjs > /tmp/g47-turn.log 2>&1; then
+    ok "G-47 e2e_android_turn 全绿（$(grep -c '✓' /tmp/g47-turn.log) 项，$(tail -1 /tmp/g47-turn.log)）"
+  else
+    bad "G-47 e2e_android_turn（见 /tmp/g47-turn.log；$(tail -1 /tmp/g47-turn.log)）"
+  fi
+  grep -q "AND-03 安卓 ListMachines → 200 + assistant + phone-android" /tmp/g47-turn.log \
+    && grep -q "AND-05 安卓设备工具列到真机器上的" /tmp/g47-turn.log \
+    && grep -q "AND-09 手机说过话" /tmp/g47-turn.log \
+    && ok "G-47 线路契约：手机挂在自己那台机器上（phone-android）、设备工具非空、回合留下在线证据" \
+    || bad "G-47 android turn contract anchors missing"
+  if NEG_CONTROL=1 timeout 900 node scripts/e2e_android_turn.mjs > /tmp/g47-neg.log 2>&1; then
+    bad "G-47 负向对照失效：退回旧机器 id + 假装全在线之后门禁仍全绿（恒真断言）"
+  else
+    grep -q "AND-03 内核认下的机器是 phone-android" /tmp/g47-neg.log \
+      && grep -q "AND-11 过期证据不许显示在线" /tmp/g47-neg.log \
+      && ok "G-47 负向对照：旧机器 id / 假装全在线 → 门禁真的翻红（非恒真）" \
+      || bad "G-47 负向对照跑红了，但红的不是 AND-03/AND-11（见 /tmp/g47-neg.log）"
+  fi
+else
+  echo "  · skip：moon 不在 PATH，G-47 线路门禁未跑（SKIP ≠ PASS）"
+fi
+
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g47_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g47_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 "${g47_xvfb[@]}" node scripts/e2e_android_roster.mjs > /tmp/g47-roster.log 2>&1; then
+    ok "G-47 e2e_android_roster 全绿（$(grep -c '✓' /tmp/g47-roster.log) 项，$(tail -1 /tmp/g47-roster.log)）"
+  else
+    bad "G-47 e2e_android_roster（见 /tmp/g47-roster.log；$(tail -1 /tmp/g47-roster.log)）"
+  fi
+  grep -q "AR-02 有证据的手机" /tmp/g47-roster.log \
+    && grep -q "AR-03 没有证据的手机保持离线" /tmp/g47-roster.log \
+    && grep -q "AR-05 对话里看得见在线回执" /tmp/g47-roster.log \
+    && ok "G-47 花名册：在线只认 Host 证据，普通用户在对话里也看得见（工具轨是 dev-only）" \
+    || bad "G-47 roster anchors missing"
+  grep -q "AR-06 真 app 的内联 onTurn" /tmp/g47-roster.log \
+    && grep -q "AR-07 手机在真 app 里点设备工具" /tmp/g47-roster.log \
+    && ok "G-47 桌面 app 自己的 /v1/turn 也把手机挂到 phone-android（共享模块修好 ≠ 产品修好）" \
+    || bad "G-47 app-path anchors missing"
+  grep -q "AR-09 用户可以自己把令牌抄进手机" /tmp/g47-roster.log \
+    && grep -q "AR-11 开关是真的" /tmp/g47-roster.log \
+    && ok "G-47 手机配对：地址与令牌在「凭证」里拿得到，「允许手机连接」是真开关（放开能打通、收回打不通）" \
+    || bad "G-47 pairing anchors missing"
+  grep -q "AR-12 配对地址与完整端点分开了" /tmp/g47-roster.log \
+    && grep -q "AR-13 配对地址如实标注来源" /tmp/g47-roster.log \
+    && grep -q "AR-14 复制地址按钮" /tmp/g47-roster.log \
+    && grep -q "AR-15 配对新增两行都落在类型阶上" /tmp/g47-roster.log \
+    && ok "G-47 配对地址契约：那一行是手机要填的 base（不带 /v1/turn），网卡来源如实标注，复制按钮跟随真实内容，说明行字号走类型阶" \
+    || bad "G-47 pairing-address anchors missing"
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+else
+  echo "  · skip：playwright-core / electron dist 缺失，G-47 花名册真实渲染门禁未跑（SKIP ≠ PASS）"
+fi
+
+if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; then
+  if grep -q "SKIP=1" /tmp/g47-build.log; then
+    echo "  · skip：$(grep -m1 'SKIP —' /tmp/g47-build.log)（SKIP ≠ PASS）"
+  else
+    ok "G-47 APK 真编译 + aapt 读回包里的事实（$(tail -1 /tmp/g47-build.log)）"
+    grep -q "AB-07 配对地址归一化单测真跑" /tmp/g47-build.log \
+      && grep -q "AB-08 失败原因翻译层单测真跑" /tmp/g47-build.log \
+      && grep -q "AB-09 配对 v1 纯逻辑单测真跑" /tmp/g47-build.log \
+      && grep -q "AB-10 无写死默认局域网地址" /tmp/g47-build.log \
+      && ok "G-47 手机端配对单测真在跑（未配对不回写死地址、失败码翻人话、发现/换码逻辑、AB-10 无写死 IP 且带负向对照）" \
+      || bad "G-47 AB-07/08/09/10 anchor missing"
+    grep -q "AB-11 设计系统落地" /tmp/g47-build.log \
+      && ok "G-47 UI 设计系统真落地：ui/ 五个文件在、MainActivity 走 BitBotTheme（不是框架默认紫）、全 main 无「对标 Grok」文案、8 条 UI 用例在结果里、AB-11 带负向对照" \
+      || bad "G-47 AB-11 anchor missing"
+    grep -q "AB-12 窗口层落地" /tmp/g47-build.log \
+      && ok "G-47 窗口层主题真落地：manifest 挂 @style/Theme.BitBot + adjustResize、values/ 与 values-night/ 三个窗口色与 Theme.kt 画布字面量一致、APK 资源表里有 style/Theme.BitBot、4 条窗口用例在结果里、AB-12 带负向对照" \
+      || bad "G-47 AB-12 anchor missing"
+    grep -q "AB-13 回执呈现落地" /tmp/g47-build.log \
+      && ok "G-47 内核回放在手机上说人话：MainActivity 把 /v1/turn 回包交给 HostReply.display、8 个 fixture 校验为真内核回包、6 条摘要/屏幕用例在结果里（含「认不得的 kind 不许编摘要」）、AB-13 带负向对照" \
+      || bad "G-47 AB-13 anchor missing"
+    grep -q "AB-14 对话落盘落地" /tmp/g47-build.log \
+      && ok "G-47 聊天记录活过转屏与重开：ChatHistoryStore 落在 filesDir（不是外部存储）且有界、onCreate 读回来并喂进首屏、用户那句（TurnCoordinator）与助手那句（MainActivity）都过落盘、「清空对话」在菜单里并接到 clearChat、manifest 没用 configChanges 遮 recreate、9 条用例（CP-01..05 真渲染 + HS-01..04 那一层的边界）在结果里、AB-14 带负向对照" \
+      || bad "G-47 AB-14 anchor missing"
+    grep -q "AB-15 草稿落地" /tmp/g47-build.log \
+      && ok "G-47 没发出去的半稿也不许被转屏吃掉：chat-draft.txt 单独一个文件在 filesDir（空即删）、onCreate 读回、ON_PAUSE 存、输入同步、发送立刻清，3 条用例（DF-01..03）在结果里、AB-15 带四组负向对照" \
+      || bad "G-47 AB-15 anchor missing"
+    grep -q "AB-16 回合不再归某一屏管" /tmp/g47-build.log \
+      && ok "G-47 还在路上的回信不跟着上一屏死：协程挪到进程级 TurnCoordinator（SupervisorJob + Main.immediate）、busy/delivery 由那一层管、落盘后 revision++ 让屏幕重读文件、转屏回来补问权限、发送走 submitTurn，5 条用例（TF-01..05）在结果里、AB-16 带七组负向对照" \
+      || bad "G-47 AB-16 anchor missing"
+    grep -q "AB-06 JVM 单测真跑：126 用例 0 失败" /tmp/g47-build.log \
+      && ok "G-47 用例数如实涨到 126（对话落盘 +9、草稿 +3、在路上的回合 +5），且 0 失败不是空跑" \
+      || bad "G-47 AB-06 用例数与本轮不符（见 /tmp/g47-build.log）"
+  fi
+else
+  bad "G-47 prove_android_build（见 /tmp/g47-build.log；$(tail -1 /tmp/g47-build.log)）"
+fi
+echo "  · G-47 修复前红（本轮真实输出）：旧屏没有设计系统 —— setContent { MaterialTheme {"
+echo "    顶着框架默认紫 #6750A4；UiDesignSystemTest 六条在旧 MainActivity 上真渲染跑红："
+echo "      T1 找不到含「未配对」的节点（界面上根本没有连接状态）"
+echo "      T2 找不到 ContentDescription='发送'（发送是写着「发送」的方形文字键）"
+echo "      T3 找到 Role=Button Text=[凭证]（顶栏两个裸文字按钮）"
+echo "      T4 找到 Text=[对标 Grok 的国产助手 · Android Host]"
+echo "      T5 找到 Text=[BITBOT_HOST_URL]（环境变量名当标签）"
+echo "      T6 找到 Text=[你]（每条消息挂角色标签）"
+echo "    另：RobolectricComposeSmokeTest 读出 MaterialTheme.colorScheme.primary=#6750A4，"
+echo "        「框架默认主题被原样发布」这件事本身钉成一条可读数字"
+echo "  · G-47 修复前红（窗口层，同一批用例跑在还没换 manifest theme 的树上，4 条全红）："
+echo "      windowBackground expected:<-1> but was:<-328966>（#FFFAFAFA 框架灰白）"
+echo "      statusBarColor   expected:<-1> but was:<-9079435>（#FF757575）"
+echo "      navigationBarColor expected:<-1> but was:<8421504>（#FF808080）"
+echo "      windowLightStatusBar 主题里解析不到 attr=16844000（framework 浅色主题没这个 attr）"
+echo "  · G-47 修复前红（内核回执，HostReplySummaryTest 12 条里 11 条红，实现换成当天 App 真实行为后真跑）："
+echo "      [machines_list] 还在往聊天里贴代码围栏：Host FFI results applied … - ok kind=machines_list …"
+echo "      unavailable 就是不可用：Host FFI results applied … - ok kind=device_permission cmd=\`desk-1|camera|unavailable\`"
+echo "      feed 还没接上、备案还是空的 —— 这两条残留必须看得见：… - ok kind=check_updates …"
+echo "      展开必须还能看到内核原文：null；认不得的 kind 必须原样给出来 expected:<[unknown]> but was:<[normal]>"
+echo "      （12 tests completed, 11 failed —— 手机上以前的助手行就是这坨内核转储）"
+echo "  · G-47 修复前红（聊天记录，ChatThreadPersistenceTest 5 条在 HEAD 产品代码上真渲染跑红）："
+echo "      CP01 Failed: assertExists. Reason: Expected exactly '1' node but could not find any"
+echo "        node that satisfies: (Text + EditableText contains '转个身就该还在的一句话')（转个身，屏幕上 0 个）"
+echo "      CP02 同一条消息节点找不到；首屏同时退回空态（三个建议键还在）"
+echo "      CP03 filesDir 下 0 个条目 —— 那句话只活在内存里，重开必丢"
+echo "      CP04 「还没有对话文件可查（CP-03 已红），这条不得当绿用」（不许拿没有文件当「没泄漏」）"
+echo "      CP05 菜单里根本没有「清空对话」这一行"
+echo "  · G-47 负向对照（本轮新写那一层自己也得能被证伪，四组逐个摘，一次只动一行）："
+echo "      摘掉上盘侧 takeLast → HS02 红；坏 JSON 直接往外抛 → HS03 红；save 恒回 true → HS04 红；"
+echo "      落盘顺手带上配对令牌 → CP04 红；四组各自 1 条翻红、其余仍绿，全部还原后两批全绿"
+echo "  · G-47 修复前红（输入草稿，ChatDraftPersistenceTest 在 HEAD 产品代码上真渲染，最终这版断言）："
+echo "      DF01 AssertionError: 转个身，打了半篇的稿子从输入框里消失了（读到「」）"
+echo "      DF02 AssertionError: filesDir 下找不到含这半稿的文件 —— 转屏靠的是实例复用，"
+echo "           真机旋转（新建实例）照样丢（filesDir 条目数 0）；3 tests completed, 2 failed"
+echo "      （DF03 断的是本轮新增的「发送即清草稿」，修复前没有草稿落盘，不参与红，见对照 3。"
+echo "       第一轮 DF01/DF03 用 assertTextEquals 写，输入框空时它会连 placeholder 一起比，"
+echo "       DF03 在未实现代码上「红」了 —— 原因不对；改成读 EditableText 语义属性后重测才是这条）"
+echo "  · G-47 AB-15 的四组负向对照（都在源码层面真换一遍，同一把尺子必须每个都抓到）："
+echo "      去掉 onCreate 的 loadDraft / 去掉 ON_PAUSE 的存盘 / 去掉发送后的清草稿 /"
+echo "      草稿改放 getExternalFilesDir —— 四种走偏各被点名，抓不到即 AB-15 判红"
+echo "  · G-47 修复前红（还在路上的回合，TurnInFlightRecreationTest 在 HEAD 产品代码上真渲染 +"
+echo "    真 socket 假桌面，与终版同一份断言，5 tests completed, 5 failed；JUnit XML 逐字原文见"
+echo "    report.md §8.29②，下面五条按用例名给摘句）："
+echo "      「转个身正在等回信这件事还得看得见」→ 屏幕上没有「正在想」（忙状态跟着上一屏死了）"
+echo "      「转个身之后那封回信仍然要上屏」→ 假桌面=收到=1 已放信=是，屏幕上只剩用户那句"
+echo "      「转个身之后那封回信还要留在盘上」→ 盘上只有 [{\"role\":\"user\",…}] 那一条"
+echo "      「等回信的时候转个身再按发送不许把同一件事发两遍」→ 假桌面收到 2 封（只该 1 封）"
+echo "      「消息留住了证据条也得不跟着丢」→ 回信这一条先红，证据条根本等不到"
+echo "  · G-47 这一轮门禁自己差点骗过人的三个地方（都记进 AB-16 的注释了）："
+echo "      假桌面按字符读 Content-Length —— 中文句子字节数≠字符数，假桌面自己卡死，"
+echo "      四条红看起来像「产品没修好」；改成按字节读满 + 每条断言带 server.describe() 之后，"
+echo "      「假桌面没放信」与「产品没接住」才分得开"
+echo "      compose.waitUntil 走的是虚拟时钟，跨真 socket + 真文件的这一跳它看不见（30s 不绿、"
+echo "      当场 dump 却两行都在）；改成墙钟轮询 + waitForIdle() 才是这条断言真正在等的东西"
+echo "      「…再按发送不许把同一件事发两遍」第一版断「再按发送时键是关着的」，在 HEAD 上居然绿了"
+echo "      （按下那一刻请求还没落地）；换成「数假桌面收到几封」才量到红 —— 恒真断言宁可不写"
+echo "  · G-47 AB-16 的七组负向对照（源码层面真换一遍，同一把尺子必须每个都抓到）："
+echo "      回合换回 rememberCoroutineScope / 落盘后不 revision++ / busy 退回 composition /"
+echo "      证据条退回 composition / 屏幕不按 revision 重读 / 发送换回 scope.launch /"
+echo "      权限不补问（静默吞掉）—— 七种走偏各被点名，抓不到即 AB-16 判红"
+echo "  · G-47 本轮的取证边界（诚实）：Robolectric 的 recreate() 复用同一个 Activity 实例，"
+echo "    所以这条门盯的不是「实例有没有换」而是「协程归谁管」—— HEAD 在同一个 JVM 里也会被"
+echo "    取消组合拖死，那五条红不是靠实例复用蒙出来的；真机旋转是新建实例，「回合归进程管、"
+echo "    屏幕只是文件的一个视图」这条归属仍要在设备上验一次；进程被系统杀掉时没回完的回合"
+echo "    就是没回完（本轮不假装能续上），投递证据条（SendToUser:*）也只活在进程里"
+echo "  · G-47 AB-14 的尺子这一轮也被收紧过一次（第一次跑门跑出来的红，不是事后修饰）："
+echo "      负向对照 1「onCreate 不读回历史」原本抓不到 —— 断言写的是 chatStore.load()，"
+echo "      而本轮 MainActivity 里它出现两次（onCreate 读回 + revision 重读），摘掉一处另一处"
+echo "      仍把它喂饱；改成钉死 startupLines = runCatching { chatStore.load() } 并补一条"
+echo "      「读回来还得喂进首屏」（addAll(startupLines)）才真量到 —— 能被两处喂饱的尺子不算尺子"
+echo "  · G-47 AB-16 第一次跑门把**正确代码**判红了：整文件正则撞上 TurnCoordinator 的 KDoc，"
+echo "    注释里引用 rememberCoroutineScope() 是这一层的来由，不该算走偏；改成剥掉注释再查代码"
+echo "  · G-47 一条写明白的取证边界：Robolectric 的 recreate() 复用同一个 Activity 实例，"
+echo "    「屏幕上的草稿是从盘上读的还是从实例字段留下的」在语义树里分不出来 —— 只挂字段也能"
+echo "    让 DF01/DF02 绿，而真机旋转是新建实例、那种写法照样丢。所以这一跳由 AB-15 的源码锚点"
+echo "    （onCreate 必须真调 loadDraft）+ 对照 1 承担，真机旋转仍是残留"
+echo "  · G-47 UI 验证的边界（诚实）：JVM 验到的是 Compose 语义树 + 送进渲染器的颜色数值两层；"
+echo "    captureToImage 在 Robolectric NATIVE 模式下 2000ms 超时，拿不到真像素 —— "
+echo "    圆角/字距/阴影/动效观感与厂商 ROM 表现仍未验证，必须真机看；"
+echo "    Robolectric 跑的是默认浅色配置，values-night 只能靠 AB-12 读资源文本并与 Theme.kt"
+echo "    的 CanvasDark 字面量对齐，深色观感同样没在 JVM 上验过"
+echo "  · G-47 残留（诚实）：无 KVM → emulator、真机 OS 权限弹窗、厂商商店签名（BITBOT_ANDROID_STORE_*）均未验证"
+echo "  · G-47 残留（聊天记录这一层，诚实）：「转屏」在 JVM 上走 Activity.recreate()（同实例重走 onCreate，"
+echo "    Compose 组合是新的），真机旋转 + 厂商 ROM 杀后台仍未在设备上验过；"
+echo "    「进程被杀后重开」是全新实例，Robolectric 的语义树够不到第二个实例，那半边由"
+echo "    CP-03（那句话确实在 filesDir 的文件里）承担，不是由屏幕上的节点承担；"
+echo "    历史很长时 LazyColumn 只组合可见项，屏幕上的条数断言只覆盖首屏那一窗"
+echo "    同一套边界也适用于本轮的草稿（DF-01..03）：ON_PAUSE 存盘在真机切后台/被回收那一刻"
+echo "    是否真走到，只有设备上能验"
+
+echo "== G-48 配对地址与在线证据的底层健壮性（纯 Node，不需要显示环境）=="
+if timeout 300 node scripts/prove_pairing_lan_rank.mjs > /tmp/g48-lanrank.log 2>&1; then
+  ok "G-48 配对地址挑哪个网卡：LR 全绿（$(tail -1 /tmp/g48-lanrank.log)）"
+else
+  bad "G-48 prove_pairing_lan_rank（见 /tmp/g48-lanrank.log；$(tail -1 /tmp/g48-lanrank.log)）"
+fi
+if timeout 300 node scripts/prove_presence_durability.mjs > /tmp/g48-presence.log 2>&1; then
+  ok "G-48 多端在线证据扛得住并发与崩溃：PD 全绿（$(tail -1 /tmp/g48-presence.log)）"
+else
+  bad "G-48 prove_presence_durability（见 /tmp/g48-presence.log；$(tail -1 /tmp/g48-presence.log)）"
+fi
+echo "  · G-48 锚点：docker0 顶第一位=修复前红（旧顺序实测 172.17.0.1 第一）；"
+echo "    并发丢证据=修复前红（12 并发只剩 10 行）；空窗读=修复前红（33 万次撞在截断窗口上）"
+echo "  · G-48 新增两条红线（这轮矩阵偶发丢 2/12 条、子进程零报错，根因在这里）："
+echo "    PD-06 活着的持锁者被按年龄抢锁=修复前红（等待方比持有方早 1002ms 进临界区）；"
+echo "    PD-07 锁里没有持有者身份、释放时无法分辨是不是自己的锁=修复前红"
+echo "  · G-48 残留（诚实）：只验到同机多进程并发与崩溃窗口；跨机器时钟漂移、只读文件系统、Windows 文件锁语义未覆盖"
+
+echo "== G-49 一键配对（局域网发现 + 6 位配对码，pairing-v1）=="
+if timeout 300 node scripts/prove_pairing_code.mjs > /tmp/g49-paircode.log 2>&1; then
+  ok "G-49 配对码生命周期与真 HTTP 换令牌全绿（$(tail -1 /tmp/g49-paircode.log)）"
+else
+  bad "G-49 prove_pairing_code（见 /tmp/g49-paircode.log；$(tail -1 /tmp/g49-paircode.log)）"
+fi
+grep -q "PC-13" /tmp/g49-paircode.log \
+  && grep -q "PC-18" /tmp/g49-paircode.log \
+  && grep -q "PC-19" /tmp/g49-paircode.log \
+  && ok "G-49 三条关键证据在：换到的令牌真能打通 /v1/turn（PC-13）、base_url 走网卡排序不给 docker0（PC-18）、LAN 未放开如实 409（PC-19）" \
+  || bad "G-49 pairing-code anchors missing"
+echo "  · G-49 锚点：discover/redeem 未实现时 404=修复前红；base_url 用枚举顺序第一个地址"
+echo "    （装 Docker 的机器上就是 172.17.0.1，等于自动给用户抄错地址）=修复前红（PC-18）"
+echo "  · G-49 残留（诚实）：手机端扫描/换令牌只到 JVM 集成测试（进程内真 HTTP 服务），没有真机 Wi-Fi 验证；"
+echo "    多网卡机器上手机可能扫到另一台同名 Desktop；未配内网穿透，公网机器仍配不上"
+
+echo "== G-50 交付报告的历史段落不能被吃掉 =="
+if timeout 120 node scripts/prove_report_history_intact.mjs > /tmp/g50-report.log 2>&1; then
+  ok "G-50 报告段落一节没少（$(tail -1 /tmp/g50-report.log)）"
+else
+  bad "G-50 prove_report_history_intact（见 /tmp/g50-report.log；$(tail -1 /tmp/g50-report.log)）"
+fi
+# 负向对照：复刻 227e4ed 事故（尾部整段被替换掉），这道门必须变红，否则它没有牙
+head -n 250 docs/design/desktop-target/report.md > /tmp/g50-negative-report.md
+if timeout 120 node scripts/prove_report_history_intact.mjs /tmp/g50-negative-report.md > /tmp/g50-neg.log 2>&1; then
+  bad "G-50 负向对照没红：截断到 250 行的报告照样过门，说明这道门是假门"
+else
+  ok "G-50 负向对照真红：截断版被抓住（$(tail -1 /tmp/g50-neg.log)）"
+fi
+rm -f /tmp/g50-negative-report.md
+grep -q "RH-06" /tmp/g50-report.log \
+  && grep -q "RH-01" /tmp/g50-neg.log \
+  && ok "G-50 锚点在：RH-06 专门盯「HEAD 里已提交的标题在当前文件消失」，这正是 227e4ed 事故的形状" \
+  || bad "G-50 report-history anchors missing"
+  grep -q "RH-07 两份过程文档" /tmp/g50-report.log \
+    && ok "G-50 RH-07 在：范围从验收报告扩到 parity 清单 —— 这轮工作区又冒出一份陈旧快照，把 parity-gaps-next.md 从 168 行盖到 95 行（「〇、核心叙事」整段没了），只盯 report.md 抓不到第二份文档；负向对照真实跑红（PASS=6 FAIL=1）后才还原" \
+    || bad "G-50 RH-07 anchor missing"
+echo "  · G-50 修复前红（真实输出，跑在 227e4ed 那份被吃掉段落的 report.md 上）："
+echo "    RH-01 缺 16 个标题、RH-05 实际 251 行，PASS=4 FAIL=2（exit=1）；恢复后 PASS=6 FAIL=0"
+echo "  · G-50 残留（诚实）：门只核标题/编号/围栏/行数下限，标题不动而正文被逐段改写抓不到；"
+echo "    pairing-v1.md 与 parity-gaps-next.md 暂未纳入同一道门"
+
+echo "== G-51 国内渠道凭证不裸奔（掩码 + 字段级校验 + 同一屏下一步）=="
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g51_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g51_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 "${g51_xvfb[@]}" node scripts/e2e_desktop_cn_channel_guard.mjs > /tmp/g51-cnchan.log 2>&1; then
+    ok "G-51 e2e_desktop_cn_channel_guard 全绿（$(grep -c '✓' /tmp/g51-cnchan.log) 项，$(tail -1 /tmp/g51-cnchan.log)）"
+  else
+    bad "G-51 e2e_desktop_cn_channel_guard（见 /tmp/g51-cnchan.log；$(tail -1 /tmp/g51-cnchan.log)）"
+  fi
+  grep -q "CN-01 钉钉 Webhook 默认掩码" /tmp/g51-cnchan.log \
+    && grep -q "CN-03 勾了开启推送但没填 Webhook" /tmp/g51-cnchan.log \
+    && grep -q "CN-05 有错时保存不可点" /tmp/g51-cnchan.log \
+    && ok "G-51 三条红线在：带 access_token 的 URL 不再明文躺着、勾了开启缺字段当场点名、错误挡在写盘之前" \
+    || bad "G-51 cn-channel anchors missing"
+  grep -q "CN-06 卡内" /tmp/g51-cnchan.log \
+    && grep -q "CN-08 未开启也写明" /tmp/g51-cnchan.log \
+    && ok "G-51 手顺接上：填凭证的卡直接给出「去保存并试连」，未开启的渠道也如实交代" \
+    || bad "G-51 next-step / state anchors missing"
+  echo "  · G-51 修复前红（HEAD 产品代码真实输出）：PASS=0 FAIL=8 —— 8 条全红，"
+  echo "    其中 CN-05 红在「有校验错误时保存并热加载照样能点」，CN-08 红在卡里根本没有状态行"
+  echo "  · G-51 残留（诚实）：只验到「缺字段/明显不是地址」这一层，没验厂商格式细则；"
+  echo "    「试连国内渠道」会真的发消息，门禁不敢碰，仍需在真群里人工验一次"
+  echo "  · G-51 更正（§8.24）：这里原来还写着「钉钉加签密钥、飞书 encrypt_key/verification_token、"
+  echo "    企微 callback_token 仍无输入框（要手改 .env.local）」—— 本轮已补上，见 G-52"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-51 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-52 国内渠道加签 / 事件回调密钥能在界面上配（不再逼用户改 .env.local）=="
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g52_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g52_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 "${g52_xvfb[@]}" node scripts/e2e_desktop_cn_secret_inputs.mjs > /tmp/g52-cnsec.log 2>&1; then
+    ok "G-52 e2e_desktop_cn_secret_inputs 全绿（$(grep -c '✓' /tmp/g52-cnsec.log) 项，$(tail -1 /tmp/g52-cnsec.log)）"
+  else
+    bad "G-52 e2e_desktop_cn_secret_inputs（见 /tmp/g52-cnsec.log；$(tail -1 /tmp/g52-cnsec.log)）"
+  fi
+  grep -q "CN-SEC-01 钉钉加签 / 飞书 Encrypt Key / 飞书 Verification Token / 企微 Callback Token 四个输入框都在" /tmp/g52-cnsec.log \
+    && grep -q "CN-SEC-02 status 回读四个键" /tmp/g52-cnsec.log \
+    && ok "G-52 读写两头接上：四个密钥栏在界面上建出来了，secrets:status 也真的回读它们（只给掩码）" \
+    || bad "G-52 input/status anchors missing"
+  grep -q "CN-SEC-03 已配置的密钥在卡里如实标出" /tmp/g52-cnsec.log \
+    && grep -q "CN-SEC-04 四个密钥栏留空不报红" /tmp/g52-cnsec.log \
+    && grep -q "CN-SEC-06 四个栏都带 data-secret-key" /tmp/g52-cnsec.log \
+    && ok "G-52 三条边界在：已配置说得出尾号、可选字段不挡保存、值接得到写盘" \
+    || bad "G-52 masked-state / optional / write-path anchors missing"
+  echo "  · G-52 修复前红（同一轮实测）：PASS=1 FAIL=5 —— 四个 input 全部不存在、"
+  echo "    secrets:status 不回读这四个键、密钥已在进程里卡里仍不说「已配置」；"
+  echo "    当时唯一绿的 CN-SEC-04 是空断言（栏不存在→循环没跑），已补「栏必须存在否则判不过」"
+  echo "  · G-52 顺带抓到的真问题：掩码必填栏（钉钉 Webhook）在磁盘已配置时被读成「空的」，"
+  echo "    卡里报一句谎话还把「保存并热加载」按死 —— 现在空栏 + status present = 满足，"
+  echo "    状态行写明「****尾号 已配置，无需重填」"
+  echo "  · G-52 负向对照（断言非恒真）：把收集器选择器改成不存在的属性名、其余不动，"
+  echo "    同一道门立刻 CN-SEC-06 翻红（PASS=5 FAIL=1），前五条仍绿 —— 它断的只有「值接不接得到写盘」"
+  echo "  · G-52 残留（诚实）：本门不点真保存（.env.local 是固定路径，BITBOT_REPO_ROOT 隔离不到它），"
+  echo "    所以「填进去的值真的落盘」只验到 data-secret-key + 页内收集器这一层，"
+  echo "    最后一跳要在真机上人工验一次；四栏是否真能解掉厂商的验签，门禁不假设"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-52 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-53 用户旅程验收门真的被跑（J1–J4 多 Bot 各岗 / P1–P12 自媒体日更真链）=="
+# 这两道门写的是本项目的**验收标准本身**（「真实 Electron 里走不走得通」），可它们此前不在任何
+# 聚合门里：`grep -rn "e2e_desktop_user_journeys\|e2e_desktop_creator_pipeline" scripts/*.sh`
+# 在登记前是 0 命中 —— 门禁存在但没人跑，等于没有门禁；J/P 任何一条被改坏，矩阵照样全绿。
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g53_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g53_xvfb=(xvfb-run -a)
+  fi
+  g53_run() {
+    local name="$1" log="$2" tmo="$3"
+    pkill -9 -f "dist/[e]lectron" 2>/dev/null
+    sleep 1
+    if timeout "$tmo" "${g53_xvfb[@]}" node "scripts/${name}.mjs" >"$log" 2>&1; then
+      if grep -q "PASS=0 FAIL=0 SKIP=1" "$log"; then
+        echo "  · skip：${name} 自报环境不足（$(grep -m1 'SKIP —' "$log" || echo '未给出原因')）— SKIP ≠ PASS"
+        return 0
+      fi
+      ok "G-53 ${name} 全绿（$(grep -c '✓' "$log") 项，$(grep -m1 'PASS=' "$log")）"
+    else
+      bad "G-53 ${name}（见 ${log}；$(grep -m1 'PASS=' "$log" || tail -1 "$log")）"
+    fi
+  }
+  g53_run e2e_desktop_user_journeys /tmp/g53-journeys.log 900
+  g53_run e2e_desktop_creator_pipeline /tmp/g53-creator.log 1200
+
+  if [ -s /tmp/g53-journeys.log ]; then
+    grep -q "J1 私聊可见区无调试行" /tmp/g53-journeys.log \
+      && grep -q "同群也不共享人设" /tmp/g53-journeys.log \
+      && grep -q "如实 partial 1/2" /tmp/g53-journeys.log \
+      && grep -q "重启后仍是繁体" /tmp/g53-journeys.log \
+      && ok "G-53 J 侧锚点在：私聊不串人设 / 同群各用各的职责 / 一个失败就如实 partial / 语言与 provider 切换都真生效" \
+      || bad "G-53 journeys anchors missing（门跑了但关键红线没出现在输出里）"
+  fi
+  if [ -s /tmp/g53-creator.log ]; then
+    grep -q "P2 一次布置、三个 Bot 分工跑完" /tmp/g53-creator.log \
+      && grep -q "cron=0 9 \* \* \*" /tmp/g53-creator.log \
+      && grep -q "P6 到期只备好草稿" /tmp/g53-creator.log \
+      && grep -q "P7 批准后真的发出" /tmp/g53-creator.log \
+      && ok "G-53 P 侧锚点在：三个岗真跑完 / 中文排程落成 09:00 墙钟 / 未批准不外发 / 批准后才真出信" \
+      || bad "G-53 creator anchors missing（门跑了但日更链路的关键红线没出现在输出里）"
+  fi
+  echo "  · G-53 修复前红（结构性，不是产品数字）：这两道门在登记前 0 处被引用——"
+  echo "    本轮把它们接进矩阵，并把 J 侧 63 项、P 侧 30 项的真实全绿第一次变成矩阵的一部分"
+  echo "  · G-53 说明：这两道门跑在仓库真实的 data/ 上，靠自己的快照-还原只回收本轮 GP155/UJ 前缀的行；"
+  echo "    历史行、用户数据不动（矩阵跑完 git status 里 data/ 不该多出内容）"
+  echo "  · G-53 残留（诚实）：G-53 自己不带负向对照（P5 拒绝过密排程、P7 未批准 no_grant 那类"
+  echo "    「产品变宽松就会红」的断言算在门内部）；「定时推邮箱」验到的是 app 真生成一封带收件人"
+  echo "    与稿件正文的信（host_mail_send 落 data/mail/sends），不是投递进真实邮箱 —— 真 SMTP 投递仍未验"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-53 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-54 模型密钥粘错了当场说清楚（Bearer 头写法 / 界面自己的掩码 / 断行 / 没粘全）=="
+if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+  g54_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g54_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 "${g54_xvfb[@]}" node scripts/e2e_desktop_llm_key_paste_guard.mjs > /tmp/g54-lkkey.log 2>&1; then
+    ok "G-54 e2e_desktop_llm_key_paste_guard 全绿（$(grep -c '✓' /tmp/g54-lkkey.log) 项，$(tail -1 /tmp/g54-lkkey.log)）"
+  else
+    bad "G-54 e2e_desktop_llm_key_paste_guard（见 /tmp/g54-lkkey.log；$(tail -1 /tmp/g54-lkkey.log)）"
+  fi
+  grep -q "LK-01 粘进 HTTP 头写法自动收成纯 key" /tmp/g54-lkkey.log \
+    && grep -q "LK-02 粘到界面自己的掩码会当场点名并挡住保存" /tmp/g54-lkkey.log \
+    && ok "G-54 归一化与拦错都在：Bearer 头写法收成纯 key（并写明清了什么）、粘到掩码当场拦住" \
+    || bad "G-54 normalize / masked-paste anchors missing"
+  grep -q "LK-04 正常的 sk-… 密钥 0 条红字" /tmp/g54-lkkey.log \
+    && grep -q "LK-05 留空不报错" /tmp/g54-lkkey.log \
+    && grep -q "LK-06 通义 / Kimi / 搜索 key 与主密钥同规则" /tmp/g54-lkkey.log \
+    && ok "G-54 不变成新门槛：正常 key 不拦、留空＝不改动讲得明白、四把密钥同规则" \
+    || bad "G-54 not-a-new-barrier anchors missing"
+  echo "  · G-54 修复前红（同一轮实测）：PASS=2 FAIL=5 —— Bearer 头写法原样收下、"
+  echo "    界面自己的掩码 ****3k7q 被当密钥、断行/中文/没粘全三条全无红字；"
+  echo "    当时唯一两条绿（LK-04/LK-07）是空断言（根本没有校验，当然不报红）"
+  echo "  · G-54 负向对照（两个方向都试）：摘掉校验（任何值都放行）→ LK-02/03/06 翻红 PASS=4 FAIL=3；"
+  echo "    反过来让任何值都报错 → LK-04/05/07 翻红 PASS=2 FAIL=5（LK-02/03 也红，因为它们要的是说对原因）"
+  echo "  · G-54 残留（诚实）：本门不点真保存（.env.local 是固定路径，门禁不许碰用户真文件），"
+  echo "    所以「归一化后的 key 真的写进去了」这一跳不在这里断；校验只拦本 app 说得清的形状"
+  echo "    （掩码 / 内部空白 / 中文 / 过短），厂商格式与「这把 key 能不能用」仍要靠试连那一步；"
+  echo "    其它包裹写法（尖括号 <sk-…>、引号）暂未归一，遇到再加，不加没测过的代码"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-54 未跑（SKIP ≠ PASS）"
+fi
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
