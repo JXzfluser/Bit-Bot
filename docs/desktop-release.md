@@ -26,6 +26,42 @@ npm run dist          # 按当前 OS 打安装包
 BITBOT_REQUIRE_NOTARIZE=1 APPLE_ID=… APPLE_APP_SPECIFIC_PASSWORD=… APPLE_TEAM_ID=… npm run dist
 ```
 
+## CI 打包（GitHub Actions · macOS）
+
+`.github/workflows/desktop-macos.yml`：Actions → **Desktop macOS** → Run workflow。
+push tag `desktop-v*` 也会触发（默认 arm64 + release）。
+
+它做四件事，顺序不能换：
+
+1. 装 MoonBit 工具链、`moon check`；
+2. 编译内核（默认 release）并冒烟；
+3. stage 到 `hosts/desktop/resources/kernel/bin/desktop_turn`；
+4. `electron-builder --mac` 出 `dmg` + `zip` + `latest-mac.yml`，上传 artifact。
+
+第 3、4 步都在 `scripts/pack-desktop.sh` 里，CI 不另写一遍 —— 「包里有大脑」靠的就是这个顺序。
+
+**产物**：`bitbot-desktop-macos-<arch>-<profile>`，含 dmg / zip / `latest-mac.yml` / `desktop-pack-evidence.json`。保留 14 天。
+
+**默认只打 arm64**；勾 `intel` 才多跑一行 `macos-15-intel` 出 x64。这样不会因为某个 Intel runner 标签变动把整条 workflow 带红。
+
+**签名/公证**（可选，缺了不假装）：
+
+| Secret | 作用 | 缺少时 |
+|---|---|---|
+| `MAC_CSC_LINK` / `MAC_CSC_KEY_PASSWORD` | Developer ID 证书（base64 .p12） | 不签名，显式设 `CSC_IDENTITY_AUTO_DISCOVERY=false`；Gatekeeper 会拦 |
+| `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID` | 公证 | `build/notarize.js` 打印 skipped 并继续 |
+
+**这条 workflow 不做**：发布（不上 Release）、OTA feed 更新、商店提交。这三件仍是发布面残留。
+
+打本地同款可分发物：
+
+```bash
+BITBOT_PACK_TARGET=dist BITBOT_PACK_ARCH=arm64 BITBOT_PACK_PLATFORM=mac \
+  CSC_IDENTITY_AUTO_DISCOVERY=false bash scripts/pack-desktop.sh
+```
+
+`scripts/pack-desktop.sh` 的三个开关：`BITBOT_PACK_TARGET=dir|dist`（默认 `dir`，只够冒烟）、`BITBOT_PACK_ARCH`、`BITBOT_PACK_PLATFORM`。
+
 ## 自动更新（OTA）
 
 - Host `check_updates` 在设置 `BITBOT_UPDATE_FEED_URL`（目录下提供 `latest.yml`）时**真 HTTP 探测**

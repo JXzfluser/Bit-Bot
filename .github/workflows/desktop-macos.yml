@@ -1,0 +1,190 @@
+name: Desktop macOS
+
+# 把 macOS 桌面端打成**可分发物**（dmg + zip + latest-mac.yml），并且把 MoonBit
+# 内核编译成原生二进制一起塞进 app 里 —— 用户机器上不需要工具链、也不需要源码。
+#
+# 这一条 workflow 只做「打包」，不做「发布」：
+#   - 没有 `MAC_CSC_LINK` → 不签名（Gatekeeper 会拦，这是已知残留，不假装已签）；
+#   - 没有 `APPLE_*`     → 不公证（`hosts/desktop/build/notarize.js` 会如实跳过）；
+#   - tag 触发也只上传 artifact，不自己去发 Release（发布链路仍未做）。
+#
+# 触发方式：
+#   - 手动：Actions → Desktop macOS → Run workflow（可选 debug/release、可选 Intel）
+#   - push tag `desktop-v*`：默认 arm64 + release
+#
+# 为什么不在这里重写一遍 electron-builder 的调用：`scripts/pack-desktop.sh` 里
+# 「先编译内核 → 冒烟 → stage 进 resources/kernel → 再打包」的顺序就是「包里必须
+# 有大脑」的保证。复制一份到 CI 迟早漂移，那时打出来的包看着成功、却是空脑子。
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "MoonBit kernel build profile"
+        type: choice
+        options:
+          - release
+          - debug
+        default: release
+      intel:
+        description: "同时打 Intel (x64) 包（macos-15-intel）"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 先算矩阵：默认只打 arm64，勾了 Intel 才多一行。这样默认运行不会因为
+  # 一个跑不起来的 Intel runner 而整体变红。
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+      profile: ${{ steps.set.outputs.profile }}
+    steps:
+      - id: set
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE="${{ inputs.profile }}"
+          if [ -z "$PROFILE" ]; then PROFILE=release; fi
+          if [ "${{ inputs.intel }}" = "true" ]; then
+            MATRIX='{"include":[{"runner":"macos-latest","arch":"arm64"},{"runner":"macos-15-intel","arch":"x64"}]}'
+          else
+            MATRIX='{"include":[{"runner":"macos-latest","arch":"arm64"}]}'
+          fi
+          echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "will build: $MATRIX (profile=$PROFILE)"
+
+  package:
+    needs: plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Host info
+        shell: bash
+        run: |
+          sw_vers
+          echo "runner arch: $(uname -m)"
+          echo "target arch: ${{ matrix.arch }}"
+          echo "profile: ${{ needs.plan.outputs.profile }}"
+          node -v
+          npm -v
+
+      - name: Install MoonBit
+        shell: bash
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: moon check
+        shell: bash
+        run: |
+          export PATH="$HOME/.moon/bin:$PATH"
+          moon version --all
+          moon check
+
+      - name: Install app deps (locked)
+        shell: bash
+        run: npm ci --prefix hosts/desktop
+
+      # 有证书就签名，没有就显式关掉「自动找身份」。后者必须显式关：
+      # runner 上装着一堆无关钥匙串身份时，electron-builder 会挑错甚至报错，
+      # 让人误以为是代码问题。
+      - name: Decide signing mode
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+        run: |
+          if [ -n "${CSC_LINK:-}" ]; then
+            echo "[ci] code signing: ON (MAC_CSC_LINK present)"
+          else
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "[ci] code signing: OFF — no MAC_CSC_LINK; the dmg will be unsigned"
+          fi
+
+      - name: Build kernel + package app
+        shell: bash
+        env:
+          BITBOT_KERNEL_BUILD: ${{ needs.plan.outputs.profile }}
+          BITBOT_PACK_TARGET: dist
+          BITBOT_PACK_ARCH: ${{ matrix.arch }}
+          BITBOT_PACK_PLATFORM: mac
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bash scripts/pack-desktop.sh
+
+      # 「包里有大脑」要在产物上验，不是在源码树上验：挂载 dmg，取 app 里的
+      # kernel，确认架构对得上、并且它真的能跑一轮 ListMachines。
+      - name: Verify the packaged app carries a working kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          DMG="$(ls hosts/desktop/dist/*.dmg | head -1)"
+          echo "dmg: $DMG ($(du -h "$DMG" | cut -f1))"
+          MNT="$RUNNER_TEMP/mnt"
+          mkdir -p "$MNT"
+          hdiutil attach "$DMG" -nobrowse -mountpoint "$MNT" > /dev/null
+          trap 'hdiutil detach "$MNT" > /dev/null 2>&1 || true' EXIT
+
+          APP="$(ls -d "$MNT"/*.app | head -1)"
+          KERNEL="$APP/Contents/Resources/kernel/bin/desktop_turn"
+          test -x "$KERNEL" || { echo "::error::app has no executable kernel"; exit 1; }
+
+          file "$KERNEL"
+          case "${{ matrix.arch }}" in
+            arm64) file "$KERNEL" | grep -q arm64 ;;
+            x64)   file "$KERNEL" | grep -q x86_64 ;;
+            *)     echo "::error::unexpected target arch ${{ matrix.arch }}"; exit 1 ;;
+          esac
+
+          # 产物刚生成，本来不该带隔离属性；显式清一次，避免把「能不能跑」
+          # 这件事搞成看运气。
+          xattr -d com.apple.quarantine "$KERNEL" 2>/dev/null || true
+          OUT="$("$KERNEL" ListMachines | head -1)"
+          echo "kernel smoke: $OUT"
+          case "$OUT" in
+            *'"v":1'*) ;;
+            *) echo "::error::bundled kernel did not answer v:1"; exit 1 ;;
+          esac
+
+          echo "resources in app:"
+          ls -la "$APP/Contents/Resources/kernel/bin/"
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp hosts/desktop/dist/*.dmg out/ 2>/dev/null || true
+          cp hosts/desktop/dist/*.zip out/ 2>/dev/null || true
+          cp hosts/desktop/dist/latest-mac.yml out/ 2>/dev/null || true
+          cp data/tmp/desktop-pack-evidence.json out/ 2>/dev/null || true
+          ls -la out
+          test -n "$(ls out/*.dmg 2>/dev/null)" || { echo "::error::no dmg produced"; exit 1; }
+
+      - name: Upload dmg + zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitbot-desktop-macos-${{ matrix.arch }}-${{ needs.plan.outputs.profile }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14

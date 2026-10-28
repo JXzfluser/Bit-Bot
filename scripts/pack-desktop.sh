@@ -54,7 +54,14 @@ if [[ "$BUILD_PROFILE" == "release" ]]; then
 fi
 
 echo "[pack-desktop] building MoonBit kernel (profile=$BUILD_PROFILE)…"
-(cd "$ROOT" && moon build --target native "${BUILD_FLAGS[@]}")
+# 展开空数组要加长度判断：macOS 自带 /bin/bash 是 3.2，在 `set -u` 下
+# `"${ARR[@]}"` 对空数组会直接 "unbound variable" 退出（bash 4.4+ 才修掉）。
+# CI 的 macos runner 上 `shell: bash` 同样是 3.2，所以这个判断两边都要。
+if [[ ${#BUILD_FLAGS[@]} -gt 0 ]]; then
+  (cd "$ROOT" && moon build --target native "${BUILD_FLAGS[@]}")
+else
+  (cd "$ROOT" && moon build --target native)
+fi
 
 KERNEL_BIN_DIR="$ROOT/_build/native/$BUILD_PROFILE/build/cmd/desktop_turn"
 KERNEL_BIN=""
@@ -89,11 +96,23 @@ esac
 
 # ---------------------------------------------------------------------------
 # 3. Stage into the app resources
+#
+# 文件名必须是 `desktop_turn`（Windows 上 `desktop_turn.exe`）：hosts/desktop/
+# paths.js 的 resolveKernelBin 只认这两个 rel 路径。以前这里写的是
+# `desktop_turn${KERNEL_BIN##*.}` —— moon 在 macOS 上产出的可执行文件叫
+# `desktop_turn.exe`（后缀不是"Windows 专属"，moon 一律加），于是
+# `${X##*.}` 取出 "exe"、拼成 `desktop_turnexe`，两个 rel 都不匹配：包里有内核，
+# 但 app 找不到它，最后回退到 `moon run` —— 用户机器上根本没有 moon。
 # ---------------------------------------------------------------------------
 rm -rf "$RESOURCES/kernel"
 mkdir -p "$RESOURCES/kernel/bin"
-cp "$KERNEL_BIN" "$RESOURCES/kernel/bin/desktop_turn${KERNEL_BIN##*.}"
-chmod +x "$RESOURCES/kernel/bin/"desktop_turn*
+KERNEL_NAME="desktop_turn"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) KERNEL_NAME="desktop_turn.exe" ;;
+esac
+cp "$KERNEL_BIN" "$RESOURCES/kernel/bin/$KERNEL_NAME"
+chmod +x "$RESOURCES/kernel/bin/$KERNEL_NAME"
+echo "[pack-desktop] staged as bin/$KERNEL_NAME"
 
 # The kernel resolves `data/...` relative to its cwd, which the host sets to
 # the parent of the data root. Nothing else from the source tree is needed at
@@ -102,7 +121,7 @@ chmod +x "$RESOURCES/kernel/bin/"desktop_turn*
 cat > "$RESOURCES/kernel/README.txt" <<'TXT'
 Bit Bot — bundled MoonBit kernel
 ===============================
-bin/desktop_turn is the compiled product brain.
+bin/__KERNEL_NAME__ is the compiled product brain.
 
 It is a drop-in replacement for:
     moon run cmd/desktop_turn --target native -- <args>
@@ -115,13 +134,23 @@ No MoonBit toolchain and no source tree are required at runtime.
 Built on: __BUILD_HOST__
 Profile: __BUILD_PROFILE__
 TXT
-sed -i "s/__BUILD_HOST__/$(uname -srm)/; s/__BUILD_PROFILE__/$BUILD_PROFILE/" "$RESOURCES/kernel/README.txt"
+sed -i "s/__BUILD_HOST__/$(uname -srm)/; s/__BUILD_PROFILE__/$BUILD_PROFILE/; s/__KERNEL_NAME__/$KERNEL_NAME/" "$RESOURCES/kernel/README.txt"
 
 echo "[pack-desktop] staged kernel resources:"
 ls -la "$RESOURCES/kernel/bin/"
 
 # ---------------------------------------------------------------------------
 # 4. Package the app
+#
+#   BITBOT_PACK_TARGET=dir   (默认) electron-builder --dir → dist/mac-*/…app
+#                            只够本机冒烟，不能分发。
+#   BITBOT_PACK_TARGET=dist  按 package.json 的 mac/win/linux target 出可分发物
+#                            (mac: dmg + zip + latest-mac.yml)。CI 走这条。
+#   BITBOT_PACK_ARCH          arm64 | x64 | 空(宿主架构)。CI 的 mac matrix 用它。
+#   BITBOT_PACK_PLATFORM      mac | win | linux | 空(宿主平台)
+#
+# 为什么不在 CI 里另写一遍 electron-builder 调用：这一段的顺序（先 stage 内核再
+# 打包）就是「包里必须有大脑」的保证，复制一份迟早漂移 —— 内核全白打就白打。
 # ---------------------------------------------------------------------------
 cd "$DESKTOP"
 if [[ ! -d node_modules/electron ]]; then
@@ -131,14 +160,37 @@ if [[ ! -d node_modules/electron-builder ]]; then
   npm install --save-dev electron-builder@^25.1.8
 fi
 
-echo "[pack-desktop] building unpackaged dir via electron-builder…"
-npm run pack
-echo "[pack-desktop] output under hosts/desktop/dist/"
+PACK_TARGET="${BITBOT_PACK_TARGET:-dir}"
+EB_ARGS=()
+if [[ -n "${BITBOT_PACK_PLATFORM:-}" ]]; then
+  EB_ARGS+=("--${BITBOT_PACK_PLATFORM}")
+fi
+if [[ -n "${BITBOT_PACK_ARCH:-}" ]]; then
+  EB_ARGS+=("--${BITBOT_PACK_ARCH}")
+fi
+
+if [[ "$PACK_TARGET" == "dist" ]]; then
+  # --publish never: publish.url 是个占位域名，CI 不该去连它。
+  echo "[pack-desktop] building distributable (target=dist, args: ${EB_ARGS[*]:-host defaults})…"
+  if [[ ${#EB_ARGS[@]} -gt 0 ]]; then
+    npx electron-builder "${EB_ARGS[@]}" --publish never
+  else
+    npx electron-builder --publish never
+  fi
+  echo "[pack-desktop] distributables under hosts/desktop/dist/"
+  ls -la "$DESKTOP/dist" || true
+else
+  echo "[pack-desktop] building unpackaged dir via electron-builder…"
+  npm run pack
+  echo "[pack-desktop] output under hosts/desktop/dist/"
+fi
 
 # ---------------------------------------------------------------------------
 # 5. Evidence (no secrets)
 # ---------------------------------------------------------------------------
 mkdir -p "$ROOT/data/tmp"
+export BITBOT_PACK_TARGET_USED="$PACK_TARGET"
+export BITBOT_PACK_ARCH_USED="${BITBOT_PACK_ARCH:-$(uname -m)}"
 python3 - <<PY
 import json, os, pathlib
 root = pathlib.Path("$ROOT")
@@ -162,6 +214,13 @@ out = {
     "kernel_bundled": bool(kernel),
     "kernel_files": kernel,
     "kernel_profile": "$BUILD_PROFILE",
+    "pack_target": os.environ.get("BITBOT_PACK_TARGET_USED", "dir"),
+    "pack_arch": os.environ.get("BITBOT_PACK_ARCH_USED", ""),
+    # dist 里出现 dmg/zip 才算「可分发物」，--dir 只有 app 目录。
+    "distributables": [
+        e["path"] for e in entries
+        if e["path"].endswith((".dmg", ".zip", ".exe", ".AppImage"))
+    ],
     "note": "kernel shipped as a compiled native binary; no toolchain needed at runtime. "
             "store signing residual until CSC_LINK / Apple notarize creds present",
 }
