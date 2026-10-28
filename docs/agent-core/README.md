@@ -1,9 +1,9 @@
 # Agent Core & 多智能体路线图
 
-> 状态：draft · 2026-10-25（按最新工作树复核 + 本次纠错）<br>
+> 状态：draft · 2026-10-28（按最新工作树复核 + 10-28 门禁重跑校正）<br>
 > 范围：Kernel agent runtime + Host 群 Bot 多智能体；不含 UI 像素对齐、垂直 skills、商店上架。<br>
 > 证据口径：以当前工作树代码为准；本文件内的 `file:line` 以**基线 commit `244515b`** 为准（并行改动会让行号漂移，引用时以函数名/文件为主）。<br>
-> 一句话：`CM-*` 234/234 与 385 tests 证明“能力合同/产品面”很完整；Agent Loop 已接到产品 Chat，但生产 provider live 与 AR 升裁未完成；群 Bot 仍是“并行多 Bot 应答”。发布面的单实例锁与自动更新本提交已落地，但更新源/签名/升级回滚仍未做。
+> 一句话：`CM-*` 234/234 与 385 tests 证明“能力合同/产品面”很完整；Agent Loop 已接到产品 Chat，但**生产 provider live 已于 2026-10-28 跑通（PP pass=7/0）**，剩 AR 升裁（AR-02/15 等）与用户侧外部条件未完成；群侧已到真编排。发布面的单实例锁与自动更新本提交已落地，但更新源/签名/升级回滚仍未做。
 
 ## 0. TL;DR
 
@@ -12,7 +12,7 @@
 - **仍未关闭**：通用 ToolSpec/工具目录（21 个内置工具只有 3 个到模型）、memory 注入 provider prompt、反思（reflection）、MCP 通用化（可插拔 server / discovery / auth / 工具权限）、群消息幂等去重（同一句永不重跑）、内核 `room_turn` 那条静默失效路径。
 - **本轮新接上的**：会话上下文 + token 预算 + 压缩（`runtime/agent_context.mbt`）、TodoWrite 进 loop、失败分类 + 重试上限、群编排（拆解/分工/综合/任务板/团队预算/取消传播）、handoff 真执行、工具 schema 单一源（内核当真源）、内核编译进 bundle + 数据目录迁 userData、AE 行为评测套件（26 门禁全绿）。
 - **安全**：P0 入站认证、默认 loopback、审批不可伪造、shell 沙箱、webhook 签名、body limit 已落；P0-3 仍是内核 U，按现有升裁口径 **AR-15 未关**。
-- **当前定位**：Agent core 在默认 Chat 路径上到 **L2**（模型选工具 + 观察回注）；没有规划/长任务，未到 L3。Group bot 仍是 **并行多 Bot 应答**，不是协作多智能体。
+- **当前定位**：Agent core 在默认 Chat 路径上已到 **L3**（模型选工具 + 观察回注 + 规划/TodoWrite + 失败分类重试 + 会话上下文/预算）；**群侧已到真编排**（拆解/分工/综合/任务板/预算/取消）。与 §1.2、§“群编排”一致（旧「L2 / 并行多 Bot」口径作废）。
 - **优先级**：`P0 安全收口` → `P1 群聊真实性 + Agent Loop 产品级验收` → `P1 上下文/记忆` → `P1 群编排` → `P2 工具/MCP/评测` → `P3 发布/运维`。
 - **两条主线并行**：Kernel 负责 loop/tool/context；Host 负责 group/orchestrator/security。不要合成一个巨型 PR。
 
@@ -33,6 +33,27 @@
 | `node scripts/e2e_desktop_single_instance.mjs` | `PASS=6 FAIL=0` | 单实例锁已落：S-01 不同 UD 各起一个；S-02 同 UD 第二个实例主动退出；S-03 `second-instance` 把已有窗口唤到前台 |
 
 > 本轮审计发现一个 macOS 真实路径问题：`/var` 是 `/private/var` 的符号链接，旧 `cwdAllowed` 先做词法前缀检查，导致临时根下的合法 cwd 被误拒。已改为只比较 canonical path；P0 host-checks 从 9/2 恢复到 11/0，SK 从 2/7 恢复到 8/0。产品仓库在 `/Users` 下不受影响，但这是跨平台正确性修复。
+
+## 0.2 2026-10-28 复核（门禁重跑真值）
+
+> 本节为 2026-10-28 实跑结果，用来校正上文 10-25/26 的过时断言；**以本节为准**。
+
+| 族 | 实跑结果 | 性质 |
+|---|---|---|
+| P0 入站安全 | `pass=8 fail=0` + host-checks 11/0 | 真机可跑 |
+| A1–A8 | `pass=23 fail=0`；`moon test -p runtime` 80/80 | 内核正确性 |
+| WP1–WP8 | `pass=50 fail=0`；moon 80/80；parser 3/3 | 接线（provider 为 prompt 桩） |
+| EG1–EG6 | `pass=62 fail=0`（live Electron） | 接线（provider 为桩） |
+| PP1–PP7 | **`pass=7 fail=0`（live 真 provider）** | **唯一 live 证据** |
+| SK1–SK8 | `pass=7 fail=1`（仅 SK6 `ps EPERM`，本机沙箱禁 `ps`，真机不成立） | 沙箱/密钥边界 |
+| AU1–AU7 | 本会话未能重跑（残留 Electron 实例持全局单实例锁，安全考虑不强杀）；上次记录 69/0（10-24） | 审批 UI |
+
+本轮修正的过时断言：
+- 上文「生产 provider live 未跑」**作废**：PP 已 live PASS（见上）。
+- 上文「当前定位到 L2」**作废**：已到 L3（与 §1.2 / §2.3 / 群编排一致）。
+- 修了 SK 两处真问题：`ensureCnInbound` 固定 1200 字符窗口过短（改 slice 到 `app.whenReady`）；安卓 fixture `llm_list_models.json` 在 phone 树里写了 `BITBOT_LLM_API_KEY`（已擦成 `BITBOT_LLM_*_API_KEY`，不破坏 `HostReplySummaryTest` 的正则断言）。
+
+**尚未在本轮逐行复核的 AR 行**（AR-02/04/05/06/07/13/14/16/17）保持原文现状口径，**未做结论性改判**——需要时再逐行对代码核，避免又写出一份新误判。
 
 ## 1. 口径先钉住
 
@@ -58,7 +79,7 @@
 
 > 阶梯口径：仓库原有阶梯到 **L4**；**L5/L6 是本次新增定义（2026-10-25）**。这两个定义按仓库自身词汇推得——§1.1 的三层多 Agent（并行多 Bot / 协作多 Agent / 多 Agent Runtime）、§5 的 Wave 0–7、以及 §3 的主流对比——**不是外部标准**，也不与任何公开的 agent 分级体系对齐。
 
-> 结论（2026-10-25 更新）：默认 Chat 的 agent runtime 已从 L1 走到 **L3**——会话上下文 + token 预算 + 压缩、TodoWrite 规划、失败分类与重试上限都已接上（`runtime/agent_context.mbt` + `runtime/agent_loop.mbt`），到模型的工具是 Read/Shell/TodoWrite 三个。**群侧已从「并行广播」走到「真编排」**（拆解 / 确定性分工 / lead 综合 / 共享任务板 / 团队预算 / 取消传播 / handoff 真执行），对应 L4 的大部分。`CM-*` PASS 仍不能当作 agent 能力评测；**AE 行为评测 26/26 全绿**（`docs/qa/agent-eval.md`）是新增的行为证据，但它和 WP/EG 的接线证据**不能互相替代**。仍未升裁 AR-01/02/03：生产 provider live 未跑、AR-15 仍开。
+> 结论（2026-10-25 更新）：默认 Chat 的 agent runtime 已从 L1 走到 **L3**——会话上下文 + token 预算 + 压缩、TodoWrite 规划、失败分类与重试上限都已接上（`runtime/agent_context.mbt` + `runtime/agent_loop.mbt`），到模型的工具是 Read/Shell/TodoWrite 三个。**群侧已从「并行广播」走到「真编排」**（拆解 / 确定性分工 / lead 综合 / 共享任务板 / 团队预算 / 取消传播 / handoff 真执行），对应 L4 的大部分。`CM-*` PASS 仍不能当作 agent 能力评测；**AE 行为评测 26/26 全绿**（`docs/qa/agent-eval.md`）是新增的行为证据，但它和 WP/EG 的接线证据**不能互相替代**。仍未升裁 AR-01/02/03：**生产 provider live 已于 2026-10-28 跑通（PP pass=7/0，模型真发出 Read tool_calls）**，AR-01 的“无模型选工具证据”已消；AR-03 代码已实现。仍差 AR-02（策略 UI / 工具目录 / 工具曝光等**功能缺口**，非门禁能补）与 AR-15（**P0-3 仍 U**）。
 
 ### 1.3 为什么群 Bot 现在还不算“协作多智能体”
 
@@ -132,9 +153,9 @@
 
 | ID | 缺口 | 当前状态 | 证据/口径 | 优先级 |
 |---|---|---|---|---|
-| AR-01 | 模型驱动 tool loop | **部分/门禁绿，未升裁** | `AgentLoop::run` 已跑 model→tool→observe→repeat；WP 49/0；PP live 未跑。**WP 的 provider 是 prompt 匹配桩**（§0.1、AR-14），所以“模型会不会自己选对工具”这件事目前**没有任何证据** | P1 |
+| AR-01 | 模型驱动 tool loop | **部分/证据已齐，升裁候选** | `AgentLoop::run` 已跑 model→tool→observe→repeat；WP 50/0；**PP live PASS 2026-10-28（pass=7/0）**：真 provider 上模型真发出 `Read` tool_calls，“会不会自己选对工具”现有 live 证据（不再只有 prompt 桩）。EG 62/0 证 GUI 投影。**升裁待正式裁定**（不再被“PP live 未跑”卡住） | P1 |
 | AR-02 | ToolSpec 弱，`tool_calls` 被忽略 | **部分/本轮改善** | `tool_calls` 流式/非流式都保留；**工具 schema 已单一源**（内核当真源，随 `llm_chat` 请求下发，Host 两处分支都用它；§2.2）。**C-1/C-2 能力层已落地**：A 类（`describe_schedule` / `create_teammate` / `create_routine`，内核执行）+ B 类（`web_search` / `web_fetch` / `send_mail`，Host **同步**执行，模型拿到真结果）共 6 个产品工具到模型（PT 门禁 24/24 证明 provider 真收到 schema、内核/Host 真 dispatch、负例真不留残状态、无 key/未批准都如实报）。**权限已接(ADR 0012)**：策略由 Host 提供(`load_policy` FFI op)、**由内核裁决** —— 四个维度(主体 × 设备信任 × 工具 × 作用域);受限设备(手机/远程入站)多一批需审批的工具;硬禁用优先于审批;路径作用域是词法判断,Host 侧还有 canonical 那道闸。仍缺：通用注册/发现；**策略的 UI 与 per-connector/per-room 细粒度**(v1 策略来自环境变量);到模型的工具仍只有 9 个（Read/Shell/TodoWrite + 6 个产品工具），内核 70 个 `TurnIntent` 里的其余能力未暴露 | P1 |
-| AR-03 | 工具结果不回注 | **已实现（回合内 + 跨回合）** | `agent_loop.mbt` 把结果 fence 后回注下一轮——回合内已实现。**跨回合本轮接上了(ADR 0011)**：内核通过新增的 FFI op `load_context` / `save_context` 向 Host 要/交**编码后**的上下文（内核不碰文件，ADR 0002 边界），产品路径改用 `AgentLoop::run_with` 而非 `.run`。跨**进程**也活着 —— AC 门禁 7/0 证明：一个回合种下的事实出现在**下一个回合**的 provider 请求体里，且**另一个 Bot 的槽位看不到它**。槽位是 **(Bot, 会话)** —— 换对话也不串味（桌面端一个会话一份上下文；房间回合的 `room-<roomId>-<botId>` 天然对齐）。⚠️ 遗留：**没有「清空记忆」的显式路径**；落盘是对话明文（与 `data/sessions/` 同口径） | P1 |
+| AR-03 | 工具结果不回注 | **已实现（回合内 + 跨回合），升裁候选** | `agent_loop.mbt` 把结果 fence 后回注下一轮——回合内已实现。**跨回合本轮接上了(ADR 0011)**：内核通过新增的 FFI op `load_context` / `save_context` 向 Host 要/交**编码后**的上下文（内核不碰文件，ADR 0002 边界），产品路径改用 `AgentLoop::run_with` 而非 `.run`。跨**进程**也活着 —— AC 门禁 7/0 证明：一个回合种下的事实出现在**下一个回合**的 provider 请求体里，且**另一个 Bot 的槽位看不到它**。槽位是 **(Bot, 会话)** —— 换对话也不串味（桌面端一个会话一份上下文；房间回合的 `room-<roomId>-<botId>` 天然对齐）。⚠️ 遗留：**没有「清空记忆」的显式路径**；落盘是对话明文（与 `data/sessions/` 同口径） | P1 |
 | AR-04 | 无会话历史/上下文预算 | **部分/本轮接线** | `runtime/agent_context.mbt`：`AgentContext`（历史 + `estimate_tokens` 估算预算 + 压缩 + `plan_block` / `lead_block` + `wire_messages` 投影成 provider 消息）。token 数是**估算**（字符数/4），不是真 tokenizer。停止条件有两个：步数 + 预算（L3-2）。**持久化本轮接上(ADR 0011)**：`load_context` / `save_context` 两个 FFI op 把编码后的上下文跨进程搬进搬出，**用户能感觉到「多轮不失忆」了**。仍缺：**真 tokenizer**（token 仍是估算）；**显式的清空记忆路径**；上下文是**明文**落盘（与 `data/sessions/` 同口径）；压缩策略仍是启发式（`HeuristicSummarizer`），没有模型摘要 | P1 |
 | AR-05 | memory 不注入 provider prompt | **未做** | 记忆仍是 kernel seed，provider prompt 不可见 | P2 |
 | AR-06 | 无规划/反思/任务分解 | **部分/本轮改善** | **规划已接**：`TodoWrite` 进 `product_tool_registry`（`agent_loop_product_native.mbt`），内核自己处理该工具（不发给 Host 执行），todo 清单进下一轮上下文，模型看得见自己的计划与进度（L3-6/L3-7）。**反思（reflection）仍未做**；任务分解在**群编排层**已做（`room_orchestrator.decomposeTask`），**单 Bot loop 内仍无分解** | P2 |
