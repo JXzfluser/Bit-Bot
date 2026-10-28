@@ -1364,3 +1364,196 @@ smoke_grok_desktop_parity: PASS=382 FAIL=0
 - §8.28 那条边界继续沿用：`ON_PAUSE` 存草稿在真机切后台 / 被回收那一刻是否真走到，只有设备上能验。
 - 无 KVM → 起不了 emulator：真机安装、厂商 ROM 杀后台、OS 权限弹窗、厂商商店签名
   （`BITBOT_ANDROID_STORE_*`）仍未验证；本门禁不声称装过或跑过。
+
+## 8.30 屏幕写着「已转交」，收件箱里却什么都没有：转交不能只是一句话
+
+切到 `cursor/next-target-v1`（桌面 + 安卓整合分支）后按用户旅程重读群聊那条线，抓到的不是样式
+问题，而是一个会直接骗人的功能断点：**自媒体博主在群里说「这篇稿子交给审核 Bot」，屏幕上出现
+「已转交」，但那个 Bot 的收件箱里根本没有这笔任务。**
+
+**① 断点在哪（用户视角）。**
+
+转交这条链上有两种「当场没结果」是完全不同的事：
+
+- **被拒**：承接方不是群成员 / 群不存在 → 这笔转交压根不成立，什么都不该留下；
+- **受理了但对方这轮没答上**（没配密钥、provider 挂了、超时、没有 runner）：所有权已经转移、
+  任务已经挂在它名下，只是**还没跑完**。
+
+`hosts/desktop/product_surface.js` 的 `executeHandoff` 把这两件事用同一个字段（`ok`）说，于是第二种
+情况也回 `ok:false`。而 Host 侧（`hosts/shared/host_ffi.js`）正是拿 `res.ok` 决定要不要落凭据：
+`if (res && res.ok)` 才写 `data/agents/inbox/<bot>.jsonl` 那一笔和
+`data/agents/handoffs/handoff-<bot>-<ts>.json` 存根。结果就是——群转录已经写下了交接行
+（`appendRoomTranscript` 在此之前就执行了），收件箱与存根却整笔跳过。用户看到的是一句已经完成的
+话，实际什么都没有交出去。
+
+**② 复现与修复前红（实测，非预估）。**
+
+先把尺子改成能量出这件事的形状，再拿旧代码去撞（只换单个文件，不删依赖文件，否则红的是编译错误
+而不是产品行为）。
+
+`scripts/prove_room_orchestrator.js` 新判据 vs HEAD 的 `product_surface.js`：
+
+```
+prove_room_orchestrator pass=66 fail=10
+  ✗ handoff：目标 Bot 跑成功 → 受理成立（ok）
+  ✗ handoff：真答上了就不该挂着 pending
+  ✗ handoff：目标没答上，转交这笔仍然成立（凭据不得整笔跳过）
+  ✗ handoff：没答上就不能说已交接完成
+  ✗ handoff：没答上必须标 pending（这件事还挂着，不是终态）
+  ✗ handoff：没答上的原因可见（reply_error）
+  ✗ handoff：受理成立时不得再带 error（那是拒绝位）
+  ✗ handoff：受理成立的两种当场结果都满足「可落凭据」判据
+  ✗ handoff：没有 runner 时 = 受理 + 排队，而不是整笔消失
+  ✗ handoff 同步入口与异步入口同一套词汇（受理 / 答上）
+```
+
+前两条红的是「旧回包里根本没有 `accepted` / `replied` 这套词汇」——这不是苛刻，而是根因：一个 `ok`
+同时被用来表达「拒绝」和「受理但未完成」，下游就只能猜，而 Host 猜错了。
+
+切分支当时那轮全量矩阵（`/tmp/next-matrix-1.log`，HEAD 树）在产品路径上撞到的也是同一处：
+
+```
+smoke_grok_desktop_parity: PASS=377 FAIL=5
+  ✗ GP-52 chain
+  ✗ GP-52 inbox delivery
+  ✗ GP-52 handoff artifact
+```
+
+三条分别红在：整条 handoff 命令的回包、`inbox/<承接方>.jsonl` 里那一笔、`handoffs/` 里的存根。
+同一段里「群 transcript 落入 handoff 行」反而是绿的——正是这个组合说明了问题：**唯一被写下来的
+地方是那句漂亮话。** §8.29 收口时矩阵是 382 绿，这条分支把它带到 377/5，少的就是这五条。
+
+**③ 修的是什么。**
+
+| 文件 | 改动 | 为什么改在这里 |
+| --- | --- | --- |
+| `hosts/desktop/product_surface.js` | `executeHandoff` 返回拆成两层：`ok:true` + `accepted:true` 表示受理成立（凭据该落），`replied` / `pending` / `transferred` / `reply_error` 表示这轮有没有答上；`error` 只在真拒绝时非空 | `ok` 是 Host 落凭据的唯一判据，必须只表达「这笔转交成立」；只加可选字段，既有字段语义不动（`pretend_transferred` / `transferred` 仍按原规则，`transcript_row` 照旧） |
+| 同上 | 没有 runner 的分支从 `ok:false` 改为 `ok:true` + `pending:true` + `execution:"queued"` + `reply_error:"handoff_runner_required"` | 「这轮没人替它跑」是排队，不是消失 |
+| 同上 | 同步入口 `handoffTask` 补 `accepted:true` + `replied:false` | 同步 / 异步两套入口必须说同一套词汇，否则 UI 只能靠字段猜 |
+| `hosts/desktop/index.html` | 新增三语 `rHandoffPending` 与 pending 气泡：`host_results` 里 `handoff_task` 且 `ok` 且（`pending===true` 或 `replied===false`）时，如实补一句「{to} 这轮没答上（{reason}），任务仍挂在它名下，没有当成完成」 | 「已转交」这句本身没撒谎（所有权确实转了），但只说这一句不够——用户会把「转交了」读成「有人在做了」 |
+| `scripts/prove_room_orchestrator.js` | handoff 块重写 + 因果判据 `queueable(r) = r.ok===true && (r.replied===false ? r.pending===true : true)` | 尺子从「有没有 error」改成「受理与答上是两件事」 |
+| `scripts/smoke_grok_desktop_parity.sh` | GP-52 加因果锚点与负向对照；GP-53 改成量行为 + 三向自证；GP-143 锚点重钉；G-53 钉住屏幕上那句话 | 见④⑤⑥ |
+| `scripts/e2e_desktop_user_journeys.mjs` | 新增 GP-52 三条渲染取证（真 Electron DOM） | 文案在源码里 ≠ 用户看得见 |
+
+改完之后（同一棵树）：`prove_room_orchestrator pass=76 fail=0`（66+10 → 76/0，多的 10 条正是②里
+那 10 条红转绿，没有靠删断言换绿）。
+
+**④ 三条单独能绿、却挡不住半态：把尺子改成量因果。**
+
+GP-52 原有三条锚点（chain / inbox / handoff artifact）各自 grep 一次，但这次翻车的形状恰好能让它们
+其中两条**偶然**绿：只要用户那句换个 provider 恰好答上了，inbox 与存根就有了，锚点全绿，而半态
+（写了交接行却没排队）仍然没人管。所以新增一条因果锚点 `ho_causal`：
+
+```
+交接行存在 ⇒ inbox 那一笔存在（且 is_room / forbids_private_assumptions 都对）⇒ 存根存在
+```
+
+它签名是 `ho_causal <root> <room> <to_bot>` 三个参数。第一版把 room 和 to 写死在函数体里，负向对照
+喂 fixture 时因为 id 对不上而「偶然翻红」——看着像尺子有效，实际测的是参数不匹配。改成三参数后，
+对照只在「缺排队」这一个维度上失败：
+
+```
+✓ GP-52 因果一致：写了交接行就必然有收件箱那一笔与存根（三者同生，不许只剩转录那句漂亮话）
+✓ GP-52 因果尺子的负向对照：只有交接行、没有排队的半态被抓住（非恒真）
+```
+
+**⑤ 尺子跟着字段一起失效的那条：GP-53 改成量行为。**
+
+原来这条是 `grep -q "dm-only"`，拿的是回包里 `escalations:"dm-only"` 这个字面量。群路径被重写进
+`hosts/shared/room_*` 之后，这个字段整条链都不再产生（全仓只剩 `product_surface.js` 一处产出、零处
+消费），于是锚点在 HEAD 上直接翻红——**红的是尺子，不是产品**。
+
+改成量两件看得见的事：这条群回合的 `host_results[].kind` 里不许出现审批卡，这份群的持久转录里也不
+许出现审批行（`room_approval_leak`）。解析失败一律算红（`process.exit(1)`），不 fail-open；再补三向
+自证与注入对照：
+
+```
+✓ GP-53 审批不进群（按行为取证）：这条无点名群回合的 Host 结果与群转录里都没有审批卡
+✓ GP-53 尺子自证：有审批卡被抓、纯 delivery 被放、坏 JSON 不 fail-open
+✓ GP-53 尺子的负向对照：注入 approval_card 行后立刻翻红（非恒真）
+```
+
+过程里自己翻了一次车：谓词初版把 `c=>d+=c` 写成 `c=>d+=d`，stdin 永远读不到内容 → 解析失败 → 恒红，
+在矩阵里表现为「产品破了」。这条门要是没有三向对照，就会以产品缺陷的名义长期挂着；「有 / 没有 /
+坏输入」三个方向都试，才敢说这把尺子在量东西。
+
+**⑥ 屏幕上那句话不能只有源码锚点。**
+
+`GP-52 renderer` 原来靠 grep `index.html` 里有没有对应文案（本轮先把 `rHandoffPending` 加进这条静态
+锚点）。但「文案在源码里」和「用户看得见这句话」是两件事，所以把它接进真 Electron 门
+`scripts/e2e_desktop_user_journeys.mjs`：喂三笔 `host_results` 给页面里的 `postProcessWaveGResults`，
+看屏幕上真出现什么。
+
+修复前红（HEAD 的 `index.html`，只换这一个文件，`product_surface.js` 保持修复后）：
+
+```
+e2e_desktop_user_journeys: PASS=63 FAIL=3
+  ✗ GP-52 受理未答的 pending 气泡没渲染
+  ✗ GP-52 pending 气泡在答成功时也刷 — {"before":0,"after":0}
+  ✗ GP-52 被拒与受理未答在屏幕上没分开
+```
+
+第二条那行的失败文案是错的：`before/after` 都是 0，根本不是「也刷」，而是「从没刷过」。本轮把这条
+文案改成直说「期望渲染 1 条、答成功后仍是 1 条」并带上两个计数——留着这行原文，是因为失败信息写错
+和断言写错一样会骗人，红测的尾巴必须自己也能被读对。
+
+第三条的取证尾巴里能看到 HEAD 只渲染了「任务转交被拒：…（未写入群 transcript…）」这一种，受理未答
+那笔整条气泡都没有：旧界面要么说「被拒」，要么什么都不补。
+
+修复后绿（同一棵树）：
+
+```
+✓ GP-52 受理未答：屏幕上真写了「转交已受理并排队 + 没当成完成」（承接方与原因都点名）
+✓ GP-52 答上了的那笔不再刷「排队」这句话（受理未答才说，不滥报）
+✓ GP-52 被拒的那笔走「被拒」气泡，不混进「受理并排队」（三种当场结果各有其话）
+```
+
+三条一起才算数：只有第一条等于把 pending 当万能提示；第二条盯「不该说时别说」，第三条盯「拒绝和
+受理未答不许混」。矩阵侧再把这三行输出钉成一条锚点（门内部绿、但屏幕上没这句话就整条翻红）：
+
+```
+✓ G-53 GP-52 那句话真在 Electron 屏幕上说得出来：受理未答才说排队、答上了不刷、被拒不混
+```
+
+截图：`artifacts/uj-gp52-handoff-pending.png`。
+
+另外顺手重钉了一条**只是文案漂移**的锚点（不放松）：GP-143 原来 grep
+`"Host IPC 真接线：roomTurn → appendRoomTranscript → orchestrateRoom"`，群路径重写后探针里那句变成
+`dispatchRoomTurn(roomTurn → appendRoomTranscript → orchestrateRoom(runResponderTurn))`。改的是锚点里
+被引用的那句话，要求它逐字等于探针现在真实打印的那行；配套仍然要求
+`responder 回合用自己的 botId` 与 `preload 暴露 rooms.orchestrate` 两条同时成立。
+
+**⑦ 门禁与实测数字。**
+
+全量矩阵（修复后，`pkill -9 -f "dist/[e]lectron"` 后单跑，全程无并发门）：
+
+```
+smoke_grok_desktop_parity: PASS=387 FAIL=0
+```
+
+377（分支当时）→ 387：五条红全部转绿，新增五条锚点 = GP-52 因果一致、其负向对照、GP-53 尺子三向
+自证、GP-53 注入对照、G-53 屏幕渲染锚点。相对 §8.29 的 382 基线，净增 5 条，没有靠删断言或放宽
+判据换绿（`GP-52 renderer` 那条只把锚点文本改长，条数不变）。
+
+同一轮核验：`✗` 行数为 0；带自计数的 14 道门全部 `SKIP=0`（没有一条靠 skip 换绿）；跑完
+`git status --porcelain data/` 为 0 行（探针 Bot / 群行 / inbox 那一笔 / 存根都被级联清掉，用户历史
+行不动）。取证的两次单文件替换都回到原位并核过 md5：`product_surface.js`
+`9b62cb49657f79b74115ae2a78b10a59`、`index.html` `33a86b059a31684e4f1de2dea421182c`。
+`prove_room_orchestrator pass=76 fail=0`、`e2e_desktop_user_journeys: PASS=66 FAIL=0 SKIP=0`。
+
+**⑧ 残留（诚实）。**
+
+- **`data/agents/inbox/*.jsonl` 全仓没有消费者**（`AGENT_INBOX_DIR` 只有三处写、零处读）。本轮把
+  凭据诚实地落下来，但**没做「下一轮自动捡起」**：承接方这轮没答上，这笔任务就永远挂在 inbox 里，
+  不重跑、不提醒。对「定时发文 / 定时推邮箱」这条主线这是真断点——记为 GP-166（见
+  `docs/grok-desktop-parity/parity-gaps-next.md`），下一轮做捡起 + 幂等键。
+- `escalations:"dm-only"` 这个字段在群路径重写后整条链都不再产生、也没有消费者。本轮只把尺子改成量
+  「审批不进群」这个行为，**没有实现「群里触发的动作 → 审批走私聊」这条完整链路**：新路径
+  （`hosts/shared/room_*`）目前压根不产生审批卡，所以这条行为取证是靠「没有东西可漏」成立的，一旦
+  群路径接上需要审批的动作，它才第一次真正被压测。记为 GP-167。
+- pending 气泡是渲染层取证（真 Electron、真 DOM），但它喂的是构造的 `host_results`；「真实 provider
+  挂掉 → 屏幕上出现这句话」这一跳分别由 `prove_room_orchestrator`（回包形状）与因果锚点（凭据落盘）
+  各自成立，串起来端到端跑一次（真 UI 上点一次转交、真把 stub 打挂）还没做。
+- 本轮没改安卓侧：安卓 `TurnCoordinator` 走 `/v1/turn` 信封，`host_results` 的 `kind:"delivery"` 提取
+  路径与桌面这段不同，inbox 凭据只在桌面 / Host 侧产生。
+- 无 KVM、无真机：安卓侧仍只有构建与 Robolectric 级证据。

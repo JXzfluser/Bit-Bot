@@ -181,7 +181,58 @@ console.log((mine[mine.length-1]||rs[rs.length-1]||{}).id||'')")
 j=$(turn_json "room $roomid :: @SmokeRenamed ping"); echo "$j" | grep -q mentioned_only && ok "@BotName → mentioned_only 路由" || bad "mention routing"
 j=$(turn_json "room $roomid :: @everyone ping"); echo "$j" | grep -q '"responder_policy": "all"\|all' >/dev/null && echo "$j" | grep -q everyone && ok "@everyone 路由输出存在" || bad "everyone"
 j=$(turn_json "room $roomid :: 无人点名"); echo "$j" | grep -q bot_discretion && ok "无 @ → bot_discretion" || bad "discretion"
-echo "$j" | grep -q "dm-only" && ok "GP-53 escalations=dm-only（审批不进群）" || bad "dm-only flag"
+# GP-53「审批不进群」：原来靠回包里一个 escalations:"dm-only" 字面量取证，但群路径被
+# 重写进 hosts/shared/room_* 之后这个字段整条链路都不产生了（也没人消费它）。
+# 尺子不能跟着字段一起失效，也不能只会 grep 一个漂亮字符串 —— 改成量行为：
+# 这条群回合的回包与这份群的持久转录里都不许出现审批卡。
+room_approval_leak() { # $1=data root, $2=room id —— 返回 0=没有审批行混进群转录
+  ROOT="$1" ROOM="$2" node -e '
+const fs=require("fs");
+const root=process.env.ROOT, id=process.env.ROOM;
+const hit=(JSON.parse(fs.readFileSync(root+"/desktop/rooms.json","utf8")).rooms||[]).find(r=>r.id===id)||{};
+const bad=(hit.transcript||[]).filter(x=>x&&/approval/i.test(String(x.kind||""))||x&&/approval/i.test(String(x.text||"")));
+if(bad.length)console.error("群转录里出现审批行 "+bad.length+" 条");
+process.exit(bad.length?1:0)'
+}
+host_result_has_approval() { # stdin = 回包 JSON —— 退出 1=Host 结果里有审批卡（或解析不出来，不 fail-open）
+  node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+let j=null;
+try{j=JSON.parse(d.trim().split("\n").filter(l=>l.startsWith("{")).pop())}catch(e){console.error("回包解析失败：尺子不 fail-open");process.exit(1)}
+const hit=!!(j&&Array.isArray(j.host_results)&&j.host_results.some((h)=>h&&/approval/i.test(String(h.kind||""))));
+if(hit)console.error("Host 结果里出现审批卡 kind");
+process.exit(hit?1:0)})'
+}
+if printf '%s\n' "$j" | host_result_has_approval; then
+  if room_approval_leak data "$roomid"; then
+    ok "GP-53 审批不进群（按行为取证）：这条无点名群回合的 Host 结果与群转录里都没有审批卡"
+  else
+    bad "GP-53 审批行出现在群转录里（dm-only 承诺破了）"
+  fi
+else
+  bad "GP-53 审批卡混进了群回合的 Host 结果（承诺是只走私聊）"
+fi
+# 这把尺子自己也要被验一遍：能抓住有的、放过没有的、解析失败不许当没事
+d_ha=0
+printf '%s\n' '{"host_results":[{"kind":"approval_card"}]}' | host_result_has_approval 2>/dev/null || d_ha=$((d_ha+1))
+printf '%s\n' '{"host_results":[{"kind":"delivery"}]}' | host_result_has_approval 2>/dev/null && d_ha=$((d_ha+2))
+printf '%s\n' 'not a json' | host_result_has_approval 2>/dev/null || d_ha=$((d_ha+3))
+[ "$d_ha" = "6" ] && ok "GP-53 尺子自证：有审批卡被抓、纯 delivery 被放、坏 JSON 不 fail-open" \
+  || bad "GP-53 尺子失效：三向对照结果码 $d_ha（期望 6=1+2+3）"
+tmpa=$(mktemp -d); mkdir -p "$tmpa/desktop"
+node -e '
+const fs=require("fs");const root=process.argv[1];
+fs.writeFileSync(root+"/desktop/rooms.json",JSON.stringify({rooms:[{id:"r9",title:"x",transcript:[{kind:"approval_card",text:"请批准这封外发"}]}]}));
+' "$tmpa"
+if room_approval_leak "$tmpa" r9 2>/dev/null; then
+  bad "GP-53 尺子失效：注入一条审批行也没抓住（恒真断言）"
+else
+  ok "GP-53 尺子的负向对照：注入 approval_card 行后立刻翻红（非恒真）"
+fi
+rm -rf "$tmpa"
+echo "  · G-53/GP-53 残留（诚实）：escalations:\"dm-only\" 这个字段在群路径重写后整条链都不再产生，"
+echo "    也没有任何消费者（grep 全仓只有 product_surface.js 一处产出）。本轮把尺子改成量行为，"
+echo "    但「群里触发的动作 → 审批走私聊」这条完整链路在 shared 新路径上还没有实现与用例，"
+echo "    只在旧 roomTurn 里留了一句漂亮话。记在 parity-gaps-next 继续追。"
 
 echo "== G-7 语音（GP-15/60/61）=="
 VOICE_MOCK="$PWD/scripts/host_espeak_mock.sh"
@@ -476,6 +527,41 @@ const fs=require('fs');
 const d='data/agents/handoffs';
 const files=fs.existsSync(d)?fs.readdirSync(d).filter(f=>f.startsWith('handoff-$hid_b-')):[];
 process.exit(files.length>=1 ? 0:1)" && ok "GP-52 转交存根落盘 data/agents/handoffs/" || bad "GP-52 handoff artifact"
+# 因果一致（§8.30 新增）：交接行写进群转录 ⇒ 承接方 inbox 必有这一笔 ⇒ 存根必在。
+# 三条单独锚点各自能绿，却挡不住「只写行不排队」这种半态 —— 本轮翻车正是这个形状：
+# 承接方没答上时 Host 整笔跳过 inbox 与存根，屏幕上却写着「已转交」。
+ho_causal() {
+  HO_DATA_DIR="$1" node -e '
+const fs=require("fs");const root=process.env.HO_DATA_DIR||"data";
+const room=process.argv[1], to=process.argv[2];
+const hit=(JSON.parse(fs.readFileSync(root+"/desktop/rooms.json","utf8")).rooms||[]).find(r=>r.id===room)||{};
+const row=(hit.transcript||[]).filter(x=>x&&x.kind==="handoff"&&x.to_bot===to).pop()||{};
+const p=root+"/agents/inbox/"+to+".jsonl";
+const rows=fs.existsSync(p)?fs.readFileSync(p,"utf8").trim().split("\n").filter(Boolean).map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean):[];
+const q=rows.filter(r=>r&&r.is_handoff===true&&r.to_id===to&&r.room===room).pop()||{};
+const d=root+"/agents/handoffs";
+const stubs=fs.existsSync(d)?fs.readdirSync(d).filter(f=>f.startsWith("handoff-"+to+"-")):[];
+const ok=!!row.to_bot && q.to_id===to && q.room===room && q.is_room===true && q.forbids_private_assumptions===true && stubs.length>=1;
+console.error("交接行="+(row.to_bot?"有":"无")+" inbox="+(q.to_id||"无")+" 存根="+stubs.length+" 个");
+process.exit(ok?0:1)' "$2" "$3"
+}
+if ho_causal data "$hoid" "$hid_b"; then
+  ok "GP-52 因果一致：写了交接行就必然有收件箱那一笔与存根（三者同生，不许只剩转录那句漂亮话）"
+else
+  bad "GP-52 因果断裂：群转录写着已转交，收件箱/存根却没有（本轮修复前就是这个形状）"
+fi
+# 同一把尺子的负向对照：造一个「只有交接行、没有排队」的半态，必须翻红
+ho_neg=0
+tmpc=$(mktemp -d)
+mkdir -p "$tmpc/desktop" "$tmpc/agents/inbox" "$tmpc/agents/handoffs"
+node -e '
+const fs=require("fs");const root=process.argv[1];
+fs.writeFileSync(root+"/desktop/rooms.json",JSON.stringify({rooms:[{id:"r1",title="x",members:["a","b"],transcript:[{kind:"handoff",room_id:"r1",from_bot:"a",to_bot:"b",task:"t",responders:["b"],responder_policy:"handoff_target"}]}]}));
+' "$tmpc"
+if ho_causal "$tmpc" r1 b 2>/dev/null; then ho_neg=1; fi
+rm -rf "$tmpc"
+[ "$ho_neg" = "0" ] && ok "GP-52 因果尺子的负向对照：只有交接行、没有排队的半态被抓住（非恒真）" \
+  || bad "GP-52 因果尺子失效：半态也判绿（恒真断言）"
 # 非成员承接 → 诚实拒绝，transcript 不增行
 ho_lines=$(node -e "
 const hit=require('./$DATA/rooms.json').rooms.find(r=>r.id==='$hoid')||{};
@@ -494,7 +580,8 @@ const keys=(html.match(/rHandoff:/g)||[]).length;
 const map=html.includes("Task handoff planned") && html.includes("GP-52") && html.includes(String.raw`"rHandoff"`);
 const fill=html.includes(String.raw`key === "rHandoff"`) && html.includes("{from}") && html.includes("{to}") && html.includes("{room}");
 const failBubble=(html.match(/rHandoffFail:/g)||[]).length>=3 && html.includes(String.raw`h.kind === "handoff_task" && !h.ok`);
-process.exit(keys>=3 && map && fill && failBubble ? 0:1)' && ok "GP-52 renderer：三语 rHandoff + GP-52 回执映射与占位填充" || bad "GP-52 renderer wiring"
+const pendBubble=(html.match(/rHandoffPending:/g)||[]).length>=3 && html.includes(String.raw`hp.pending === true || hp.replied === false`);
+process.exit(keys>=3 && map && fill && failBubble && pendBubble ? 0:1)' && ok "GP-52 renderer：三语 rHandoff + 回执映射与占位填充 + 三语 rHandoffPending（受理但没答上如实说一句，不装作完成）" || bad "GP-52 renderer wiring"
 # 清理：确认删除三个探针 Bot（<2 成员的群行被级联移除）+ 探针 inbox/存根
 for id in "$hid_a" "$hid_b" "$hid_c"; do
   turn_json "confirm delete bot $id" >/dev/null
@@ -1168,7 +1255,7 @@ fi
 grep -q "composer 群聊提交走 Host rooms.orchestrate IPC" /tmp/g29-probe.log 2>/dev/null \
   && ok "G-29 GP-119/143：群组行 → composer 对准群聊，提交走 Host rooms.orchestrate（roomTurn 单一写入点）" \
   || bad "G-29 GP-119 composer orchestrate missing"
-grep -q "Host IPC 真接线：roomTurn → appendRoomTranscript → orchestrateRoom" /tmp/g29-probe.log 2>/dev/null \
+grep -q "Host IPC 真接线：dispatchRoomTurn(roomTurn → appendRoomTranscript → orchestrateRoom(runResponderTurn))" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "responder 回合用自己的 botId" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "preload 暴露 rooms.orchestrate" /tmp/g29-probe.log 2>/dev/null \
   && ok "G-29 GP-143：真回合接线落地（每 responder 自己的 botId/记忆/persona，独立 room session）" \
@@ -2041,8 +2128,16 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
       && ok "G-53 P 侧锚点在：三个岗真跑完 / 中文排程落成 09:00 墙钟 / 未批准不外发 / 批准后才真出信" \
       || bad "G-53 creator anchors missing（门跑了但日更链路的关键红线没出现在输出里）"
   fi
+  if [ -s /tmp/g53-journeys.log ]; then
+    grep -q "GP-52 受理未答：屏幕上真写了" /tmp/g53-journeys.log \
+      && grep -q "GP-52 答上了的那笔不再刷" /tmp/g53-journeys.log \
+      && grep -q "GP-52 被拒的那笔走「被拒」气泡" /tmp/g53-journeys.log \
+      && ok "G-53 GP-52 那句话真在 Electron 屏幕上说得出来：受理未答才说排队、答上了不刷、被拒不混（§8.30 从源码锚点升级为渲染取证）" \
+      || bad "G-53 GP-52 pending 渲染锚点缺失（门跑了但屏幕上那句话没出现）"
+  fi
   echo "  · G-53 修复前红（结构性，不是产品数字）：这两道门在登记前 0 处被引用——"
-  echo "    本轮把它们接进矩阵，并把 J 侧 63 项、P 侧 30 项的真实全绿第一次变成矩阵的一部分"
+  echo "    本轮把它们接进矩阵，并把 J 侧、P 侧的真实全绿第一次变成矩阵的一部分"
+  echo "    （J 侧登记时 63 项，§8.30 加了 GP-52 三条渲染取证后实测 $(grep -m1 -o 'PASS=[0-9]*' /tmp/g53-journeys.log 2>/dev/null | sed 's/PASS=//' || echo '未跑') 项）"
   echo "  · G-53 说明：这两道门跑在仓库真实的 data/ 上，靠自己的快照-还原只回收本轮 GP155/UJ 前缀的行；"
   echo "    历史行、用户数据不动（矩阵跑完 git status 里 data/ 不该多出内容）"
   echo "  · G-53 残留（诚实）：G-53 自己不带负向对照（P5 拒绝过密排程、P7 未批准 no_grant 那类"

@@ -995,6 +995,47 @@ const forbiddenHit = (text) => {
       await win.click("#settings-close", { timeout: 10000 }).catch(() => {});
     } catch (e) { bad("重启后语言检查崩溃", String((e && e.message) || e)); }
 
+    /* §8.30 GP-52：「转交受理了但承接方这轮没答上」这句话必须在真屏幕上说得出，
+     * 而且只在真该说的时候说 —— 源码里那三行文案本身不算证据。 */
+    try {
+      const ho = (payload) => ({ kind: "handoff_task", ok: payload.ok === true, stdout: JSON.stringify(payload) });
+      const pendRes = ho({ ok: true, accepted: true, replied: false, pending: true, reply_error: "no_reply", to_bot: "uj-to", to_name: "UJ承接探针", room: "uj-room", task: "uj 探针转交" });
+      const doneRes = ho({ ok: true, accepted: true, replied: true, pending: false, reply_error: "", to_bot: "uj-to", to_name: "UJ承接探针", room: "uj-room", task: "uj 探针转交" });
+      const refuseRes = ho({ ok: false, error: "to_bot_not_member", to_bot: "uj-none", room: "uj-room", task: "uj 探针转交" });
+      const reach = await win.evaluate(() => ({
+        post: typeof postProcessWaveGResults === "function",
+        add: typeof addMsg === "function",
+      }));
+      if (!reach || !reach.post || !reach.add) {
+        bad("GP-52 pending 气泡没能在真 Electron 里验：渲染入口不在页面作用域", JSON.stringify(reach));
+      } else {
+        const feed = (h) => win.evaluate((x) => {
+          addMsg("user", "【门禁探针】把这件事转交给 UJ 承接探针");
+          postProcessWaveGResults({ host_results: [x] }, {});
+        }, h);
+        const pendCount = () => win.evaluate(() => ((document.getElementById("log") || {}).textContent || "").split("转交已受理并排队").length - 1);
+        await feed(pendRes);
+        const vis1 = await logVisible();
+        (vis1.includes("转交已受理并排队") && vis1.includes("UJ承接探针") && vis1.includes("没有当成完成"))
+          ? ok("GP-52 受理未答：屏幕上真写了「转交已受理并排队 + 没当成完成」（承接方与原因都点名）")
+          : bad("GP-52 受理未答的 pending 气泡没渲染", vis1.slice(-320));
+        const n1 = await pendCount();
+        await feed(doneRes);
+        const n2 = await pendCount();
+        (n1 === 1 && n2 === 1)
+          ? ok("GP-52 答上了的那笔不再刷「排队」这句话（受理未答才说，不滥报）")
+          : bad("GP-52「排队」这句话的屏幕条数不对（期望渲染 1 条、答成功后仍是 1 条）", JSON.stringify({ after_pending: n1, after_answered: n2 }));
+        await feed(refuseRes);
+        const n3 = await pendCount();
+        const vis3 = await logVisible();
+        (n3 === 1 && vis3.includes("任务转交被拒") && vis3.includes("to_bot_not_member"))
+          ? ok("GP-52 被拒的那笔走「被拒」气泡，不混进「受理并排队」（三种当场结果各有其话）")
+          : bad("GP-52 被拒与受理未答在屏幕上没分开", JSON.stringify({ count: n3, tail: vis3.slice(-200) }));
+        await win.screenshot({ path: path.join(ART, "uj-gp52-handoff-pending.png") });
+        evidence.gp52_pending_bubble = { reach, pend_count_after_three: n3 };
+      }
+    } catch (e) { bad("GP-52 pending 气泡检查崩溃", String((e && e.message) || e)); }
+
     evidence.finished_at = new Date().toISOString();
   } catch (e) {
     bad("门禁整体崩溃", String((e && e.stack) || e).slice(0, 500));

@@ -2484,12 +2484,22 @@ function createProductSurface(repoRoot, opts = {}) {
     if (body.truncated && ok) row.text_truncated = true;
     appendRoomTranscript(prep.room, row);
     return {
-      ok,
+      // 「这笔转交成立」与「承接方当场答上了」是两件事：
+      // 成员校验过了、交接行写进群转录了 = 所有权真的转移了 → ok=true，
+      // Host 侧据此把凭据（inbox 行 + 存根）落盘；承接方这轮没答上只是**还没跑完**，
+      // 用 pending / transferred=false / reply_error 如实说出来。
+      // 旧写法在这里回 ok=false，于是 transcript 已经写着「↪ task handed off」，
+      // 收件箱与存根却整笔跳过 —— 用户看到「已转交」，实际上没有任何东西被交出去。
+      ok: true,
+      accepted: true,
+      replied: ok,
       executed: true,
       // pretend_transferred 只有在目标 Bot 真产出了之后才为 true。
       pretend_transferred: ok,
       transferred: ok,
-      error: ok ? "" : (reason || "handoff_target_failed"),
+      pending: !ok,
+      error: "",
+      reply_error: ok ? "" : (reason || "handoff_target_failed"),
       target_reply: ok ? body.text : "",
       target_artifacts: ok ? ((out && out.artifacts) || []) : [],
       transcript_row: row,
@@ -2503,9 +2513,14 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const runner = deps || roomRuntimeDeps || {};
     if (typeof runner.runResponderTurn !== "function") {
+      // 没有 runner = 这一轮没人替它跑，但**转交本身已经成立**（行已写、所有权已转），
+      // 所以这里必须回 ok + pending，让 Host 把凭据落进收件箱与存根。
+      // 旧写法回 ok:false，于是「转交了」这句话连证据都不留。
       return {
-        ok: false, error: "handoff_runner_required", mode: "host_handoff_task",
-        pretend_transferred: false, executed: false, pending: true,
+        ok: true, accepted: true, error: "", reply_error: "handoff_runner_required",
+        mode: "host_handoff_task",
+        pretend_transferred: false, transferred: false, replied: false,
+        executed: false, pending: true, execution: "queued",
         room: prep.room, title: prep.title, from_bot: prep.from_bot, to_bot: prep.to_bot,
         task: prep.task, transcript_entry: prep.entry, at: prep.at,
       };
@@ -2514,7 +2529,7 @@ function createProductSurface(repoRoot, opts = {}) {
     return Object.assign({
       mode: "host_handoff_task", room: prep.room, title: prep.title,
       from_bot: prep.from_bot, to_bot: prep.to_bot, task: prep.task,
-      transcript_entry: prep.entry, at: prep.at, pending: false,
+      transcript_entry: prep.entry, at: prep.at,
     }, out);
   }
 
@@ -2526,6 +2541,8 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const result = {
       ok: true,
+      accepted: true,
+      replied: false,
       mode: "host_handoff_task",
       // 目标 Bot 还没跑 —— 不能写成「已交接」。
       pretend_transferred: false,

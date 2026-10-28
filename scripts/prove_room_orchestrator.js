@@ -117,7 +117,8 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
     { room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "把草稿写完" },
     { runResponderTurn: runner.runResponderTurn },
   );
-  check(res.ok === true, "handoff：目标 Bot 跑成功 → ok=true");
+  check(res.ok === true && res.accepted === true, "handoff：目标 Bot 跑成功 → 受理成立（ok）");
+  check(res.replied === true && res.pending === false, "handoff：真答上了就不该挂着 pending");
   check(res.pretend_transferred === true, "handoff：真执行成功后 pretend_transferred 才为 true");
   check(String(res.target_reply || "").includes("目标 Bot 的真实产出"), "handoff：目标 Bot 真的产出了回复");
   check(runner.calls.length === 1 && runner.calls[0].bot_id === "b2", "handoff：真的触发了目标 Bot 的回合");
@@ -125,23 +126,44 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
   check(tx.some((e) => e && e.kind === "handoff" && e.to_bot === "b2"), "handoff：交接行落进群转录");
   check(tx.some((e) => e && e.kind === "bot_reply" && e.bot_id === "b2"), "handoff：目标回复落进群转录（闭环可见）");
 
+  // 承接方答不上（没配密钥 / 超时 / provider 挂了）时：所有权与凭据必须留下，
+  // 「当场答上」这一项必须如实为 false。旧写法把整笔 ok 判 false，Host 就跳过
+  // inbox 行与存根 —— 群转录写着「已转交」，收件箱里什么都没有。
   const failRunner = makeRunner(async () => ({ ok: false, error: "provider down" }));
   const bad = await surface.handoffTaskAsync(
     { room: ROOM_ID, from_bot: "b1", to_bot: "b3", task: "做一份核对" },
     { runResponderTurn: failRunner.runResponderTurn },
   );
-  check(bad.ok === false, "handoff：目标没跑成功 → 如实失败");
+  check(bad.ok === true && bad.accepted === true, "handoff：目标没答上，转交这笔仍然成立（凭据不得整笔跳过）");
+  check(bad.transferred === false && bad.replied === false, "handoff：没答上就不能说已交接完成");
   check(bad.pretend_transferred === false, "handoff：失败时 pretend_transferred 仍是 false（不假装成功）");
-  check(String(bad.error || "").length > 0, "handoff：失败原因可见");
+  check(bad.pending === true, "handoff：没答上必须标 pending（这件事还挂着，不是终态）");
+  check(String(bad.reply_error || "") === "provider down", "handoff：没答上的原因可见（reply_error）");
+  check(bad.error === "" || bad.error === undefined, "handoff：受理成立时不得再带 error（那是拒绝位）");
   check(
     transcript().some((e) => e && e.kind === "bot_reply_error" && e.bot_id === "b3"),
     "handoff：目标失败在群转录里如实可见",
+  );
+
+  // 因果一致：受理成立 ⇒ 必须能落凭据。这里按 Host 侧同一个判据（res.ok）验一遍，
+  // 并把「写行却不排队」这种半态钉死。
+  const queueable = (r) => r.ok === true && (r.replied === false ? r.pending === true : true);
+  check(queueable(res) && queueable(bad), "handoff：受理成立的两种当场结果都满足「可落凭据」判据");
+
+  const noRunner = await surface.handoffTaskAsync(
+    { room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "没有 runner 的一句转交" },
+    {},
+  );
+  check(
+    noRunner.ok === true && noRunner.pending === true && noRunner.reply_error === "handoff_runner_required",
+    "handoff：没有 runner 时 = 受理 + 排队，而不是整笔消失",
   );
 
   // 同步入口（host_ffi.js 走它）：只受理，不假装已交接。
   const sync = surface.handoffTask({ room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "同步入口" });
   check(sync.ok === true && sync.pending === true, "handoff 同步入口：受理并标 pending");
   check(sync.pretend_transferred === false && sync.executed === false, "handoff 同步入口：没有执行就不能说已交接");
+  check(sync.accepted === true && sync.replied === false, "handoff 同步入口与异步入口同一套词汇（受理 / 答上）");
 
   const refuse = await surface.handoffTaskAsync(
     { room: ROOM_ID, from_bot: "b1", to_bot: "nobody", task: "x" },

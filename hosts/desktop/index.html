@@ -13403,6 +13403,22 @@
             wavegT("rHandoffFail").replace("{reason}", reason),
           );
         }
+        // GP-52 / §8.30: 受理成立但承接方这轮没答上 —— 不能说「被拒」，也不能只说「已转交」。
+        // 旧写法把这种情况整笔判成失败（Host 连收件箱与存根都不写），界面只留一句「已转交」
+        // 的规划文案；现在如实说出来：这件事还挂着，没做完。
+        const hoAccepted = hosts.find((h) => h && h.kind === "handoff_task" && h.ok);
+        if (hoAccepted) {
+          let hp = {};
+          try { hp = JSON.parse(hoAccepted.stdout || "{}"); } catch (_) { hp = {}; }
+          if (hp.pending === true || hp.replied === false) {
+            const who = String(hp.to_name || hp.to_bot || "？");
+            const why = String(hp.reply_error || "handoff_target_pending");
+            addMsg(
+              "assistant",
+              wavegT("rHandoffPending").replace("{to}", who).replace("{reason}", why),
+            );
+          }
+        }
         // GP-74: the account answer must come from the Host payload (real local
         // profile + credential truth), never from the kernel's planning prose.
         const acctHost = hosts.find((h) => h && h.kind === "account_status" && h.ok);
@@ -14278,6 +14294,7 @@
         rRoomTurn: "群聊 {room}：已投递本条消息，等待 Bot 回应。",
         rHandoff: "{from} 已将任务转交给 {to}（群「{room}」，转交已写入群 transcript）。",
         rHandoffFail: "任务转交被拒：{reason}（未写入群 transcript，Bot 不会假装接手）。",
+        rHandoffPending: "转交已受理并排队：{to} 这轮没答上（{reason}），任务仍挂在它名下，没有当成完成。",
         attachTooMany: "附件被拒绝：一次最多 6 个（GP-11）。",
         replyAction: "回复",
         reactAction: "反应",
@@ -14975,6 +14992,7 @@
         rRoomTurn: "群聊 {room}：已投遞本則訊息，等待 Bot 回應。",
         rHandoff: "{from} 已將任務轉交給 {to}（群「{room}」，轉交已寫入群 transcript）。",
         rHandoffFail: "任務轉交被拒：{reason}（未寫入群 transcript，Bot 不會假裝接手）。",
+        rHandoffPending: "轉交已受理並排隊：{to} 這輪沒答上（{reason}），任務仍掛在它名下，沒有當成完成。",
         attachTooMany: "附件被拒絕：一次最多 6 個（GP-11）。",
         replyAction: "回覆",
         reactAction: "反應",
@@ -15672,6 +15690,7 @@
         rRoomTurn: "Room {room}: message delivered, waiting for bots.",
         rHandoff: "{from} handed the task off to {to} (room «{room}», transfer written to the room transcript).",
         rHandoffFail: "Task handoff refused: {reason} (nothing written to the room transcript; no bot pretends to have taken it).",
+        rHandoffPending: "Handoff accepted and queued: {to} did not answer this round ({reason}); the task stays assigned and is not treated as done.",
         attachTooMany: "Attachment refused: max 6 files per send (GP-11).",
         replyAction: "Reply",
         reactAction: "React",
