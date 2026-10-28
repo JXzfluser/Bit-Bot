@@ -158,7 +158,25 @@ async function dispatchRoomTurn(o) {
     };
   }
 
-  // 4) 如实汇总:N/总,不是「成功」。
+  // 4) 顺手捡起「受理成立但这轮没答上」的转交凭据（GP-166）。
+  //    放在用户那句话已经落盘、本轮扇出已经跑完之后：捡起是搭同一班车，不是插队。
+  //    它失败不能把用户这轮的答案判成「没回」—— 但捡了几笔、有没有又卡住，
+  //    必须原样带在回包里（新增**可选**字段 handoff_retry，既有契约字段一个不动）。
+  let handoffRetry = null;
+  if (typeof surface.retryPendingHandoffs === "function") {
+    try {
+      handoffRetry = await surface.retryPendingHandoffs({ room: roomId, deps: opts.deps || {} });
+    } catch (e) {
+      handoffRetry = {
+        ok: false,
+        mode: "host_handoff_retry",
+        error: "handoff_retry_failed",
+        detail: String((e && e.message) || e),
+      };
+    }
+  }
+
+  // 5) 如实汇总:N/总,不是「成功」。
   const total = Number(res.total || 0);
   const returned = Number(res.returned || 0);
   return {
@@ -174,6 +192,7 @@ async function dispatchRoomTurn(o) {
     deduped: Boolean(res.deduped),
     skipped: Boolean(res.skipped),
     final_report: res.final_report || null,
+    handoff_retry: handoffRetry,
   };
 }
 

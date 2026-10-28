@@ -2182,6 +2182,48 @@ else
   echo "  · skip：缺 playwright-core 或 electron，G-54 未跑（SKIP ≠ PASS）"
 fi
 
+echo "== G-55 GP-166：pending 转交的下游真的有人接（捡起 / 幂等 / 有界重试）=="
+# 根因和 G-53 同一类：prove_room_orchestrator.js 里那条 handoff 合同链此前**不在任何聚合门里**
+# （登记前 grep -rn "prove_room_orchestrator" scripts/*.sh = 0 命中）——门禁存在但没人跑，
+# R-01…R-10 随便改坏，矩阵照样全绿。这里把它接进来，并把「捡起」的接线锚在产品入口上。
+node scripts/prove_room_orchestrator.js >/tmp/gp166-orch.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp166-orch.log; then
+  ok "G-55 群编排真团队合同全绿（$(grep -c '✓' /tmp/gp166-orch.log) 项，$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp166-orch.log)）"
+else
+  bad "G-55 prove_room_orchestrator 未通过（见 /tmp/gp166-orch.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp166-orch.log || tail -1 /tmp/gp166-orch.log)）"
+fi
+for gp166_a in "R-01 新一条群消息真的把 pending 的转交捡起重跑" \
+               "R-02 同一笔凭据不重跑" \
+               "R-03b 到上限就如实标 stuck" \
+               "R-03c stuck 这件事在群转录里看得见" \
+               "R-05 承接方已不在群里" \
+               "R-06 坏凭据被如实跳过并计数" \
+               "R-08 主群的回合不碰另一间的" \
+               "R-09 新鲜 claim" \
+               "R-10 claim 过期"; do
+  if grep -q "✓ $gp166_a" /tmp/gp166-orch.log; then ok "G-55 锚点：$gp166_a"; else bad "G-55 锚点没跑绿：$gp166_a"; fi
+done
+# 接线锚 + 注入对照（一条尺子跑两次：真文件必须过、把入口摘掉的副本必须翻红 —— 恒真尺子不算尺子）
+# 这里踩过一次坑：用 String.replace 只换得掉第一处引用，而入口在这个文件里有两处，
+# 副本仍被判成「接着的」→ 第一次跑矩阵就是 397/1。摘东西要用 split/join 全量摘。
+node -e '
+const fs=require("fs");
+const rd=fs.readFileSync("hosts/shared/room_dispatch.js","utf8");
+const ps=fs.readFileSync("hosts/desktop/product_surface.js","utf8");
+const html=fs.readFileSync("hosts/desktop/index.html","utf8");
+const wired=(s)=>s.includes("surface.retryPendingHandoffs") && /handoff_retry:/.test(s);
+const store=ps.includes("    retryPendingHandoffs,")
+  && /HANDOFF_MAX_ATTEMPTS = 3/.test(ps)
+  && ps.includes(String.raw`state === "answered" || state === "stuck"`)
+  && ps.includes("handoff_stuck:");
+const i18n=(html.match(/roomFailStuck:/g)||[]).length>=3 && html.includes(String.raw`key = "roomFailStuck"`);
+const cut=rd.split("surface.retryPendingHandoffs").join("surface.handoffRetryEntryDisabled");
+const real=wired(rd), mut=wired(cut);
+if(!real||mut)console.error("注入对照：真文件接线="+real+" 摘掉入口的副本="+mut);
+if(!store)console.error("store 侧终态/上限/卡住串锚点缺失");
+if(!i18n)console.error("卡住那句话的三语 i18n 不齐");
+process.exit(real&&!mut&&store&&i18n?0:1)' && ok "G-55 接线：唯一群回合入口挂着捡起（回包带 handoff_retry，摘掉就翻红）+ store 侧终态/上限/卡住串 + 那句话三语齐" || bad "G-55 wiring / 注入对照"
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

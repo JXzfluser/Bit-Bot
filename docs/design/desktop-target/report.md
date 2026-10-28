@@ -1662,3 +1662,167 @@ smoke_grok_desktop_parity: PASS=387 FAIL=0
 - 那个 `universal-release` 包在没配 `BITBOT_ANDROID_STORE_*` keystore 时**仍然是 debug 签名**
   （工程未配置时回落 debug，workflow 头部就把这句话说在前面了）：它是一块能侧载的包，
   不是一块能上架的包，Summary 也不写「已可上架」。
+
+## 8.32 群里说了「已转交」之后再没人接：把 pending 凭据的下游补上（GP-166）
+
+**① 断点在哪（不是文案问题，是没人上班）。**
+
+§8.30 把转交的状态诚实性修完之后，parity G-F 记下的是另一件事：
+`data/agents/inbox/<bot>.jsonl` 全仓 3 处写、0 处读；`data/agents/handoffs/handoff-<bot>-<ts>.json`
+存根只有落盘代码，没有任何消费者。所以用户在群里看到的「转交已受理并排队」确实是真的，
+但**这个队没人接手**——承接方这轮没答上（没配 key / provider 挂 / 超时 / 没 runner），
+这笔任务就永远挂着。对「热点搜集 → 内容编辑 → 稿件审核 → 定时发文」这条主线，
+后果是：稿子停在审核 Bot 名下，博主以为有人在做了，实际上一次都没重跑。
+
+**② 修复前红：Host 层合同（先写红测，再动产品代码）。**
+
+`scripts/prove_room_orchestrator.js` 新增 1b 节（R-01…R-10，17 条判据），跑在既有 handoff
+合同链后面，全部走产品入口而不是内部函数。插入后第一件事是跑红：
+
+```
+prove_room_orchestrator pass=82 fail=11
+  ✗ R-01 新一条群消息真的把 pending 的转交捡起重跑（产品入口在 dispatchRoomTurn，不是只留一个内部函数） — 回包里根本没有 handoff_retry
+  ✗ R-01b 捡起的答案真落进群转录（恰好多一条）
+  ✗ R-01c 凭据写下终态与次数（answered / attempts=1） — {}
+  ✗ R-03a 捡起策略给得出重试上限（不是一句「会重试」） — {"__missing":true,"attempted":0,"answered":0,"scanned":0}
+  ✗ R-03b 到上限就如实标 stuck（attempts 等于上限，不是悄悄挂到永远） — {}
+  ✗ R-05 承接方已不在群里 → 如实卡住（不产出任何「它答了」的行，原因点名 to_bot_not_member） — {"attempted":0}
+  ✗ R-06 坏凭据被如实跳过并计数，同目录其它凭据照常处理（不因为一个坏文件整批放弃） — {}
+  ✗ R-10 claim 过期（宿主中途没了）才允许接手，并把次数累加上去（不是从零开始） — {"state":"running","attempts":1}
+```
+
+红的都是「捡起没有发生」，不是崩溃、不是缺符号。11 条红之外，R 块另有 6 条在修复前就绿
+（R-01d / R-02 / R-03d / R-06b / R-07 / R-08）——它们是「不该发生的事没发生」型负向护栏，
+修复前它们恒绿是必然的（那时什么都不做），**它们单独不构成尺子**，靠的是与 R-01 / R-03b
+这些正向判据成对：先证明真的会捡，再证明只捡一次。这条口径在下面第 ⑥ 项的变异对照里逐条验。
+
+**③ 修复前红：真 Electron 渲染层（屏幕上那句话到底说不说得出）。**
+
+`scripts/e2e_desktop_user_journeys.mjs` 加三条取证，走真 IPC（`rooms.json` →
+`bitbot:rooms:list` → `renderRoomTranscript`），不是把拼好的 HTML 塞给探针。
+把渲染层的 `handoff_stuck` 映射摘掉（＝修复前状态）复跑：
+
+```
+  ✓ [18:37:30] GP-166 捡起后的答案在屏幕上真能看见（点名承接方，且不会被误报成「已停下」）
+  ✗ [18:37:30] GP-166 卡住提醒没落地，或把原始码摊给了用户 — {"n":0, … "UJ承接探针\n回复失败\n2026-10-28 18:37\n模型或服务返回失败，未取得该成员的产出。"}
+  ✓ [18:37:30] GP-166 负向对照：单次超时仍走超时那句话，没被并成「已停下」（提醒不是万能兜底串）
+
+e2e_desktop_user_journeys: PASS=68 FAIL=1 SKIP=0
+```
+
+`n:0` 是「这句话根本没出现过」，而屏幕上落的是通用兜底句「模型或服务返回失败」。
+这句对卡住的转交是**不完整的真话**：用户看不出这件事已经不再自动重试了、需要有人来看。
+补上三语 `roomFailStuck` 之后同一条门：`PASS=69 FAIL=0 SKIP=0`（截图 `artifacts/uj-gp166-handoff-retry.png`）。
+
+**④ 改了什么。**
+
+| 文件 | 改动 | 为什么是这里 |
+|------|------|--------------|
+| `hosts/desktop/product_surface.js:2582–2762` | 新增 `HANDOFF_DIR` / `readHandoffStub` / `patchHandoffStub` / `noteHandoffStuck` / `retryPendingHandoffs(opts)`，导出位 `:3336` | 凭据的读写与终态属于 store 层；与既有 `prepareHandoff` / `executeHandoff` 同一套成员校验与转录写入，不另造一套 |
+| `hosts/shared/room_dispatch.js:161–195` | 群回合跑完之后调 `surface.retryPendingHandoffs({room, deps})`，结果作为**可选字段** `handoff_retry` 带在回包里 | 这是桌面 IPC（`main.js:2003`）与 CLI / 移动端（`host_ffi.js:24866`）唯一的共同入口；挂在入口上才不会出现「一个端会捡、另一个端永远挂着」 |
+| `hosts/desktop/index.html:6100 / 13957 / 14656 / 15355` | `roomFailReason` 先认 `handoff_stuck`；三语 `roomFailStuck` | 卡住必须在群里说人话，且不许把 `provider down` 这类上游原文摊到产品面（沿用 GP-147 的 dev-mode 才露协议码纪律） |
+| `scripts/prove_room_orchestrator.js:175–424` | 1b 节 R-01…R-10 | 先把合同钉死（红），再实现 |
+| `scripts/e2e_desktop_user_journeys.mjs:1039–1091` | 三条真 Electron 渲染取证 | 「用户看得见」不能只靠 Host 层绿 |
+| `scripts/smoke_grok_desktop_parity.sh:2185–2226` | 新增 G-55：把 `prove_room_orchestrator.js` 接进聚合门 + 9 条锚点 + 接线注入对照 | 见第 ⑦ 项：这条门此前根本没被任何聚合门跑过 |
+
+**⑤ 契约口径（只加不改）。**
+
+- 幂等键 = 存根文件名（`handoff-<to>-<ts>` 是 host_ffi 写入时天然唯一的凭据 id）。
+  `state` 为 `answered` / `stuck` 的凭据一律不再调模型（`skipped_terminal`）。
+- `attempts` 只在**真跑了一轮**时 +1；被移出群、群被删、任务文字丢了这类不烧模型的终态
+  只写 `last_error` + `state:"stuck"`，不把次数虚增。
+- 有界重试：上限 3（`HANDOFF_MAX_ATTEMPTS`），第 3 次仍答不上 → `stuck` 并落一条
+  `bot_reply_error`（`error: "handoff_stuck:<原因>（第 3/3 次）"`）。**不新增转录 kind**，
+  渲染层已有的 `bot_reply_error` 通路就是它的显示面。
+- 每轮最多捡 5 笔（`HANDOFF_SCAN_LIMIT`）：用户发一句话不该换来五次模型调用，剩下的下一轮再来。
+- claim：跑之前先写 `state:"running" + claimed_at`；新鲜 claim 跳过（`skipped_running`），
+  超过 10 分钟才允许下一个回合接手，且次数累加不从零开始（R-10）。
+- 捡起的一轮与被拒前那轮同一套上下文：`role:"handoff_target"`、取消通道在、
+  `approved` 不带（R-04）——**审批不因为重跑而绕过**。
+- 不删用户数据：读不懂的存根原样留在原地（R-06b 断言字节不变）；inbox JSONL 仍是只进不出的账本。
+- `rooms.json` 读不动时**不把凭据演成「都卡住了」**：整轮返回 `ok:false,error:"rooms_store_unreadable"`，
+  存根保持 pending 等下一轮 —— 那是 store 的故障，不是这笔任务的终态。
+- 没有 runner（桌面没开机、`roomRuntimeDeps` 未注册）时返回 `handoff_retry_runner_required`，
+  而不是假装捡起了。
+- 既有回包字段一个都没动，`dispatchRoomTurn` 只多了 `handoff_retry` 这个可选字段。
+
+**⑥ 尺子的牙：变异对照（实现之后逐条拆掉再跑），以及尺子自己两次翻车。**
+
+实现写完、93/0 之后，把产品代码逐条改坏（每轮只改一处，改完立刻还原，
+`md5sum -c` 核验两个文件都回到实现态），看红是不是真的红在对应那条判据上：
+
+| 变异 | 拆掉的东西 | 立刻翻红的判据 | 计数 |
+|------|------------|----------------|------|
+| M1 | 终态不再跳过（`answered`/`stuck` 也重跑） | R-02 / R-03d / R-09 | 90 / 3 |
+| M2 | 群隔离（`stub.room !== roomId` 也照跑） | R-08 | 92 / 1 |
+| M3+M4 | 重试上限 + 新鲜 claim 一起摘 | R-03b / R-03c / R-03d / R-09 | 89 / 4 |
+| M6 | `attempts` 每次归零 | R-03b / R-03c / R-03d / R-10 | 89 / 4 |
+| M5 | `dispatchRoomTurn` 里不接捡起（产品入口摘掉） | R-01 / R-01b / R-01c | 90 / 3 |
+
+没有一条是「改了坏代码还全绿」，这才是第 ② 项里那 6 条负向护栏的意义：它们在实现之后
+分别被 M1 / M2 / M5 抓红过。
+
+尺子自己翻过的两次车（都不算产品红，但必须记）：
+
+1. 1b 节刚写出来时复用了上文 1 节的局部变量 `bad` 当夹具。但 1 节的 `const bad` 在那一节
+   `})();` 时就出了作用域，1b 里能取到的 `bad` 是模块级的**失败登记函数**——
+   `Object.assign({}, bad, …)` 会得到一份只有 `inbox_path` / `path` 的空凭据，
+   红就红在「夹具坏了」，而不是「产品没捡起」。改法：1b 自己造一笔「受理但没答上」的凭据
+   `pend`，并加一条 R-00 前置判据（凭据形状不对就直接判不过，不许让后面的判据拿空对象凑数）。
+2. G-55 的注入对照用 `String.replace` 摘入口。`room_dispatch.js` 里
+   `surface.retryPendingHandoffs` 有两处（`typeof` 判断 + 实际调用），`replace` 只换第一处，
+   副本仍然「看起来接着的」→ 第一次跑矩阵判 `PASS=397 FAIL=1`。
+   门是有牙的，坏的是尺子：改成 `split/join` 全量摘掉，同一条尺子的三向输出写进 stderr
+   （`real=true mut=false store=true i18n=true`）。这条坑与 §8.30 的「参数写死的因果锚点」
+   是同一类：**注入对照摘不干净，比没对照更危险**，因为它会一直绿。
+
+**⑦ 顺手抓到的一条真缺口：群编排合同链此前根本没被聚合门跑过。**
+
+`grep -rn "prove_room_orchestrator" scripts/*.sh` 在本轮登记前是 0 命中，
+`e2e_desktop_room_orchestration.mjs` 同样不在矩阵里。也就是说 §8.30 之后那 76 条 handoff
+合同、以及本轮 R-01…R-10 全都不在任何聚合门的覆盖范围内——改坏了矩阵照样全绿。
+这与 §8.25（G-53「验收标准本身的门没人跑」）是同一个病。本轮先把
+`prove_room_orchestrator.js` 接进 G-55（它跑在 mkdtemp 里，秒级、不碰 Electron），
+`e2e_desktop_room_orchestration.mjs` 需要真 `moon` + 本地 provider（分钟级），
+仍留在残留里（第 ⑩ 项）。
+
+**⑧ 打开工作树时读到的异常（不属于本轮改动，但必须记账）。**
+
+本轮开始时工作树里 `report.md` 相对 HEAD 是 `0 增 / 1482 删`、`parity-gaps-next.md` 是
+`5 增 / 85 删`——两份只许追加的文档被截断了（不是改写，是纯丢）。处理方式：
+先把残本备份到 `/tmp/truncated-*.bak`，再 `git checkout HEAD --` 还原，
+还原后行数回到 1664 / 175，本轮结束时 numstat 删除数为 0。
+`docs/design/desktop-target/reference/*` 那批截图与证据 json 也是脏的（历史门跑的输出），
+同样还原到 HEAD，不提交。
+
+**⑨ 全量矩阵与核验（只写实测数字）。**
+
+| 门 | 修复前 | 修复后 |
+|----|--------|--------|
+| `prove_room_orchestrator.js` | 82 / 11（R 块插入后） | **pass=93 fail=0** |
+| `e2e_desktop_user_journeys.mjs` | 68 / 1（渲染映射摘掉态） | **PASS=69 FAIL=0 SKIP=0** |
+| `prove_room_dispatch.js` | 29 / 0（既有） | 29 / 0 |
+| `prove_gp143_orchestration.js` | 40 / 0 | 40 / 0 |
+| `prove_m29_roomchat.js` | 41 / 0 | 41 / 0 |
+| `smoke_grok_desktop_parity.sh`（全量矩阵） | — | **PASS=398 FAIL=0**，`✗` 计数 0，14 道自计数门 `SKIP=0` 全在 |
+| `prove_report_history_intact`（矩阵内） | — | PASS=7 FAIL=0（负向对照 4/3 仍如实红） |
+| `git status --porcelain data/` | 空 | 空（门跑不污染用户数据） |
+
+矩阵第一次跑是 **397/1**，红在 G-55 自己的注入对照上（第 ⑥.2 项）；改尺子之后复跑 398/0。
+本轮没有为了让数字好看而跳过那一次 397/1。
+
+**⑩ 残留（诚实，不伪造）。**
+
+- **捡起仍然只搭「下一次群回合」这班车**：群里的消息停下来，挂着的那笔也就停着。
+  定时唤醒 / routines 那条路（`data/routines/fires.jsonl`）不走 `dispatchRoomTurn`，
+  所以还没接 `retryPendingHandoffs`；接上去是 GP-166 的下一跳，不是本轮已完成的事。
+- **端到端那一跳用的是注入 runner**：R 块与渲染取证都靠注入 / 真 store 行，
+  真 provider 挂掉 → 下一轮自动捡起 → 屏幕上出现答案，这条整链仍要在装了真 key 的机器上验一次。
+- 上限 3、每轮 5 笔、claim 10 分钟写死在代码里，没有用户可配项，也没做设备侧验证；
+  这三个数字是「说得清的默认值」，不是测出来的最优值。
+- inbox JSONL 依然只是账本：捡起后的终态只回写在存根上，两边靠 `path` / 文件名关联，
+  没有统一的「还挂着 N 笔」查询面（用户想知道总量只能在群里等它被捡）。
+- dm-only 审批链路（GP-167）没动，那条的验收仍靠「新路径压根不产生审批卡」成立。
+- `e2e_desktop_room_orchestration.mjs` 没接进聚合门（见第 ⑦ 项），
+  安卓真机上「下一轮把转交捡起来」也没有设备证据。
+

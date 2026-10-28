@@ -6099,7 +6099,8 @@
     function roomFailReason(raw) {
       const s = String(raw == null ? "" : raw).trim();
       let key = "roomFailProvider";
-      if (/timeout/i.test(s)) key = "roomFailTimeout";
+      if (/handoff_stuck/i.test(s)) key = "roomFailStuck";
+      else if (/timeout/i.test(s)) key = "roomFailTimeout";
       else if (/runner_required/i.test(s)) key = "roomFailRunner";
       else if (/no_reply|no reply/i.test(s)) key = "roomFailNoReply";
       else if (/not_found/i.test(s)) key = "roomFailNotFound";
@@ -13953,6 +13954,7 @@
         roomFailRunner: "成员执行器未就绪，本轮未产出。",
         roomFailNotFound: "找不到对应的 Bot（可能已被删除或改名）。",
         roomFailProvider: "模型或服务返回失败，未取得该成员的产出。",
+        roomFailStuck: "这件事已停下（不再自动重试），需要有人来看。",
         roomFailTooMany: "应答成员超过 6 个上限，本次没有执行。",
         roomFailNotMember: "被点名的 Bot 不是本群成员，本次没有执行。",
         roomFailRoomGone: "这个群聊已不存在（可能随成员删除被一起清理）。",
@@ -14651,6 +14653,7 @@
         roomFailRunner: "成員執行器未就緒，本輪未產出。",
         roomFailNotFound: "找不到對應的 Bot（可能已被刪除或改名）。",
         roomFailProvider: "模型或服務返回失敗，未取得該成員的產出。",
+        roomFailStuck: "這件事已停下（不再自動重試），需要有人來看。",
         roomFailTooMany: "應答成員超過 6 個上限，本次沒有執行。",
         roomFailNotMember: "被點名的 Bot 不是本群成員，本次沒有執行。",
         roomFailRoomGone: "這個群聊已不存在（可能隨成員刪除被一起清理）。",
@@ -15349,6 +15352,7 @@
         roomFailRunner: "The member runner is not ready; nothing was produced.",
         roomFailNotFound: "That Bot cannot be found (it may have been deleted or renamed).",
         roomFailProvider: "The model or service failed, so this member produced nothing.",
+        roomFailStuck: "This handoff has stopped (no further automatic retries) and needs someone to look at it.",
         roomFailTooMany: "More than 6 members were addressed, so nothing ran this time.",
         roomFailNotMember: "The addressed Bot is not in this group, so nothing ran.",
         roomFailRoomGone: "This group chat no longer exists (it may have been removed with its members).",

@@ -1036,6 +1036,58 @@ const forbiddenHit = (text) => {
       }
     } catch (e) { bad("GP-52 pending 气泡检查崩溃", String((e && e.message) || e)); }
 
+    /* GP-166：下一轮把 pending 的转交捡起来之后，用户在群里要看得见两件事 ——
+     * 捡起后真答上了的那条，和重试到上限时「这件事停在它名下」的人话提醒。
+     * 这里走真 IPC（rooms.json → bitbot:rooms:list → renderRoomTranscript），
+     * 不是把拼好的 HTML 塞给探针；并当场做正/负向对照，防止「任何失败都喊卡住」。 */
+    try {
+      const reach166 = await win.evaluate(() => ({ render: typeof renderRoomTranscript === "function" }));
+      if (!reach166 || !reach166.render) {
+        bad("GP-166 捡起取证没能在真 Electron 里验：渲染入口不在页面作用域", JSON.stringify(reach166));
+      } else {
+        const R166 = "uj-gp166";
+        const writeRoom166 = (rows) => {
+          const rs = readJson(ROOMS, { rooms: [] });
+          rs.rooms = (rs.rooms || []).filter((x) => x && x.id !== R166);
+          rs.rooms.push({ id: R166, title: "UJ GP166 捡起探针", members: ["uj-to"], transcript: rows });
+          fs.writeFileSync(ROOMS, JSON.stringify(rs, null, 2));
+        };
+        const at166 = new Date().toISOString();
+        const render166 = async (rows) => {
+          writeRoom166(rows);
+          await win.evaluate((id) => renderRoomTranscript(id), R166);
+          return logVisible();
+        };
+        const stuck = (s) => String(s).split("这件事已停下").length - 1;
+        const visA = await render166([{
+          kind: "bot_reply", room_id: R166, speaker: "uj-to", bot_id: "uj-to", name: "UJ承接探针",
+          text: "【GP166 探针】捡起之后真的答上了", responder_policy: "handoff_target", at: at166,
+        }]);
+        (visA.includes("【GP166 探针】捡起之后真的答上了") && visA.includes("UJ承接探针") && stuck(visA) === 0)
+          ? ok("GP-166 捡起后的答案在屏幕上真能看见（点名承接方，且不会被误报成「已停下」）")
+          : bad("GP-166 捡起后的答案没渲染成可见的一行", visA.slice(-320));
+        const visB = await render166([{
+          kind: "bot_reply_error", room_id: R166, speaker: "uj-to", bot_id: "uj-to", name: "UJ承接探针",
+          text: "", error: "handoff_stuck:provider down（第 3/3 次）", responder_policy: "handoff_target", at: at166,
+        }]);
+        (stuck(visB) === 1 && !visB.includes("handoff_stuck") && !visB.includes("provider down"))
+          ? ok("GP-166 卡住的提醒在群里说人话（已停下、需要有人来看），协议码与上游原文不摊到产品面")
+          : bad("GP-166 卡住提醒没落地，或把原始码摊给了用户", JSON.stringify({ n: stuck(visB), tail: visB.slice(-260) }));
+        const visC = await render166([{
+          kind: "bot_reply_error", room_id: R166, speaker: "uj-to", bot_id: "uj-to", name: "UJ承接探针",
+          text: "", error: "responder_timeout", responder_policy: "handoff_target", at: at166,
+        }]);
+        (stuck(visC) === 0 && visC.includes("成员回合超时"))
+          ? ok("GP-166 负向对照：单次超时仍走超时那句话，没被并成「已停下」（提醒不是万能兜底串）")
+          : bad("GP-166 负向对照翻车：超时被演成卡住，或文案串了", JSON.stringify({ n: stuck(visC), tail: visC.slice(-220) }));
+        await win.screenshot({ path: path.join(ART, "uj-gp166-handoff-retry.png") });
+        evidence.gp166_retry_bubble = { stuck: [stuck(visA), stuck(visB), stuck(visC)] };
+        const rsEnd = readJson(ROOMS, { rooms: [] });
+        rsEnd.rooms = (rsEnd.rooms || []).filter((x) => x && x.id !== R166);
+        fs.writeFileSync(ROOMS, JSON.stringify(rsEnd, null, 2));
+      }
+    } catch (e) { bad("GP-166 捡起取证检查崩溃", String((e && e.message) || e)); }
+
     evidence.finished_at = new Date().toISOString();
   } catch (e) {
     bad("门禁整体崩溃", String((e && e.stack) || e).slice(0, 500));

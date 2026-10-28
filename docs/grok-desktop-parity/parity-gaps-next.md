@@ -152,6 +152,31 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 | GP-166 | 承接方这轮没答上（没密钥 / provider 挂 / 超时 / 无 runner）时，转交凭据已在 `data/agents/inbox/<bot>.jsonl` 与 `data/agents/handoffs/handoff-<bot>-<ts>.json` 落盘（§8.30 已做到，因果锚点钉死「写行 ⇒ 排队 ⇒ 存根」）。**缺口：没有任何东西把它捡起来** —— 下一轮 / 定时唤醒时不读 inbox、不重跑、不提醒，博主会以为「已转交」等于「有人在做了」 | **残留（半闭环）**：`AGENT_INBOX_DIR` 全仓 3 处写、0 处读；回包形状已有 `pending:true` / `execution:"queued"` / `reply_error`，但没有消费者 | 建群转交给一个 provider 会失败的 Bot → 屏幕上出「受理并排队」（已绿）→ **再发一句无关群消息，该 pending 任务必须被自动捡起并产出 `bot_reply`**，或至少产出一条可见提醒（「还挂着 N 笔没跑」）；跑完 inbox 那笔要么被消费要么带 `attempts` 计数；`prove_room_orchestrator` + smoke G-14 各加一条「捡起后不重复执行」的断言 | **(a) 幂等键**：捡起必须带去重键（`handoff-<to>-<ts>` 即凭据 id），重跑不得让同一任务产出两条 `bot_reply` 或两次外发动作——对「发文 / 推邮箱」这类后果性动作，没幂等键就不许自动跑；**(b) 审批不因为重跑而绕过**：捡起的一轮仍走第 6 步门（`approved:false`）；**(c) 有界重试**：`attempts` 上限 + 到上限如实标 `handoff_stuck` 并点名原因，不许无限自激 |
 | GP-167 | 群里触发的敏感动作（外发 / 购买 / 删除）产生的审批请求只进归属 Bot 的私聊，不进群转录 | **残留（承诺悬空）**：旧 `roomTurn` 里那句 `escalations:"dm-only"` 字段在群路径重写进 `hosts/shared/room_*` 后整条链都不再产生、也不再被消费；smoke GP-53 已从「grep 那个字面量」改为**量行为**（Host 结果与群转录里都不许出现审批卡），但这条取证目前是靠「新路径压根不产生审批卡」成立的 | 群回合里让某 Bot 执行一个 consequential 动作 → 断言：① 群转录 / `host_results` 里 `kind` 无 approval；② 审批请求出现在该 Bot 的私聊 DM 且带 room 溯源；③ 批准后动作真执行并回写群 `bot_reply`；任一环节缺失都必须红，不许用「没有东西可漏」蒙过 | 不实现 ② 之前，验收只能证「没漏进群」，**不能声称 dm-only 已交付**；接通后立刻把这条从「残留」升级为硬门，并复用 §8.30 的 `room_approval_leak` 与注入对照（防恒真） |
 
+### G-F.1 GP-166 状态更新（本轮：从「残留（半闭环）」升级为「已实现（Host + 渲染双证）」）
+
+上表的现状列写的还是「没有任何东西把它捡起来」——那句在本轮之后不再成立，但**不删原行**，
+在这里改口径，历史可读。
+
+| 项 | 现在的实现 | 取证（实测数字，不是设计意图） |
+|----|------------|--------------------------------|
+| 捡起入口 | `hosts/shared/room_dispatch.js` 在群回合扇出之后调 `surface.retryPendingHandoffs({room, deps})`，结果带在回包的**可选字段** `handoff_retry` 上；桌面 IPC 与 CLI / 移动端共用这一个入口 | `prove_room_orchestrator` R-01 / R-01b / R-01c 绿（M5 把入口摘掉立刻红 90/3）；矩阵 G-55 接线锚 + 注入对照 |
+| 幂等键 | 存根文件名 `handoff-<to>-<ts>` 即凭据 id；`answered` / `stuck` 一律不再调模型 | R-02（答案不出现第二条、本轮只多新消息那一次调用）；R-03d（stuck 不自激）；M1（摘掉终态跳过）→ R-02 / R-03d / R-09 翻红 |
+| 审批不绕过 | 捡起的一轮复用 `executeHandoff`：`ctx.role="handoff_target"`、取消通道在、**不带 `approved`** | R-04 绿 |
+| 有界重试 | 上限 3（`HANDOFF_MAX_ATTEMPTS`），`attempts` 只在真跑一轮时 +1；到上限写 `state:"stuck"` + 一条 `bot_reply_error`（`handoff_stuck:<原因>（第 3/3 次）`），每轮最多捡 5 笔 | R-03a/b/c/d 绿；M3+M4 / M6 → R-03 链翻红；渲染层真 Electron 三语「这件事已停下（不再自动重试），需要有人来看」，且 `handoff_stuck` / `provider down` 不摊到产品面 |
+| 并发与崩溃回收 | 跑之前写 `state:"running" + claimed_at`；新鲜 claim 跳过，超 10 分钟才允许接手且次数累加 | R-09 / R-10 绿 |
+| 不删用户数据 | 坏 JSON 存根原样留在原地只计数；`rooms.json` 读不动时整轮返回 `rooms_store_unreadable` 而不把凭据演成终态 | R-06 / R-06b 绿（断言字节不变） |
+| 群之间不串 | 只处理 `stub.room === 本群` 的凭据 | R-08 绿；M2 → 立刻翻红 |
+
+**GP-166 的新残留（原「残留（半闭环）」里那条 0 处读已闭合，换这几条顶上）**：
+
+- 捡起只搭「下一次群回合」这班车；routines / 定时唤醒那条路不走 `dispatchRoomTurn`，因此还没接
+  `retryPendingHandoffs`——「定时发文失败了，等到有人再发一句话才醒」这件事仍然存在。
+- 端到端用注入 runner 取证；真 provider 挂掉 → 下一轮自动捡起 → 屏幕出现答案这一整链
+  要在装了真 key 的机器 / 真机上再验一次。
+- 上限 3 / 每轮 5 笔 / claim 10 分钟是写死的默认值，没有可配项，也没做设备侧验证。
+- inbox JSONL 仍只是账本：捡起终态只回写在存根上，没有「还挂着 N 笔」的统一查询面。
+- `e2e_desktop_room_orchestration.mjs` 仍未接进聚合门（本轮只把 `prove_room_orchestrator.js` 接进 G-55）。
+
 ---
 
 ## 三、门禁与交付要求（沿用现有纪律）
