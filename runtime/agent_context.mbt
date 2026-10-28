@@ -85,12 +85,20 @@ pub fn AgentRole::from_code(code : String) -> AgentRole {
 ///|
 /// One persisted history entry. `key` marks a result that must not be lost
 /// when the history is compacted (Read output, Shell exit code).
+///
+/// `call_id` / `call_args` keep the tool-call identity across turns. An
+/// assistant entry that emitted a tool call carries the id it invented; the
+/// tool (or observation) entry that answers it carries the same id back. The
+/// provider needs both halves to accept the replayed conversation — see
+/// `LoopMessage`.
 pub(all) struct AgentHistoryEntry {
   role : AgentRole
   content : String
   tool_name : String
   step : Int32
   key : Bool
+  call_id : String
+  call_args : String
 } derive(Eq, Debug)
 
 ///|
@@ -185,8 +193,10 @@ pub fn AgentContext::append(
   tool_name~ : String = "",
   step~ : Int32 = 0,
   key~ : Bool = false,
+  call_id~ : String = "",
+  call_args~ : String = "",
 ) -> Unit {
-  self.history.push({ role, content, tool_name, step, key, })
+  self.history.push({ role, content, tool_name, step, key, call_id, call_args, })
 }
 
 ///|
@@ -206,6 +216,27 @@ pub fn AgentContext::append_assistant(
 }
 
 ///|
+/// Append a model turn that asked for a tool. The readable text stays the same
+/// (`<name> <args>`) so summaries and traces keep working; the call identity
+/// travels beside it and is what `wire_messages` turns into `tool_calls`.
+pub fn AgentContext::append_tool_call(
+  self : AgentContext,
+  name : String,
+  args_json : String,
+  call_id : String,
+  step~ : Int32 = 0,
+) -> Unit {
+  self.append(
+    AgentRole::Assistant,
+    name + " " + args_json,
+    tool_name=name,
+    step=step,
+    call_id=call_id,
+    call_args=args_json,
+  )
+}
+
+///|
 /// Append a tool result. Key tools (Read / Shell) are pinned so compaction
 /// never drops them.
 pub fn AgentContext::append_tool(
@@ -213,6 +244,7 @@ pub fn AgentContext::append_tool(
   tool_name : String,
   content : String,
   step~ : Int32 = 0,
+  call_id~ : String = "",
 ) -> Unit {
   self.append(
     AgentRole::Tool,
@@ -220,6 +252,7 @@ pub fn AgentContext::append_tool(
     tool_name=tool_name,
     step=step,
     key=is_key_tool(tool_name),
+    call_id=call_id,
   )
 }
 
@@ -230,8 +263,15 @@ pub fn AgentContext::append_observation(
   tool_name : String,
   content : String,
   step~ : Int32 = 0,
+  call_id~ : String = "",
 ) -> Unit {
-  self.append(AgentRole::Observation, content, tool_name=tool_name, step=step)
+  self.append(
+    AgentRole::Observation,
+    content,
+    tool_name=tool_name,
+    step=step,
+    call_id=call_id,
+  )
 }
 
 ///|
@@ -337,15 +377,109 @@ pub fn AgentContext::lead_block(self : AgentContext) -> String {
 }
 
 ///|
+/// Does `entry` answer the tool call `call_id`?
+fn answers_call(entry : AgentHistoryEntry, call_id : String) -> Bool {
+  if call_id == "" {
+    return false
+  }
+  match entry.role {
+    AgentRole::Tool => entry.call_id == call_id
+    AgentRole::Observation => entry.call_id == call_id
+    _ => false
+  }
+}
+
+///|
 /// Messages handed to `llm_chat`: the context block first, then the history.
+///
+/// Every assistant tool call travels with the `tool_call_id` of the entry that
+/// answers it, because an OpenAI-compatible provider rejects an unpaired
+/// `role:"tool"` message with 422 — and a rejected request used to be persisted
+/// as history, which then poisoned every later turn on the same slot. Two
+/// corrections keep older sessions replayable:
+/// - a tool call whose result never arrived (cancelled turn) is emitted as
+///   plain assistant text, so no call is left dangling;
+/// - a tool / observation entry persisted before this shape existed carries no
+///   call id, and is replayed as a user note instead of a `tool` message that
+///   nothing answers.
 pub fn AgentContext::wire_messages(self : AgentContext) -> Array[LoopMessage] {
   let out : Array[LoopMessage] = []
   let lead = self.lead_block()
   if lead != "" {
-    out.push({ role: "system", content: lead, })
+    out.push(LoopMessage::new(role="system", content=lead))
   }
-  for e in self.history {
-    out.push({ role: e.role.wire(), content: e.content, })
+  let history = self.history
+  let total = history.length()
+  // The id of the call emitted by the assistant entry right before this one.
+  let mut pending = ""
+  let mut i = 0
+  while i < total {
+    let e = history[i]
+    match e.role {
+      AgentRole::Assistant =>
+        if e.call_id != "" &&
+          i + 1 < total &&
+          answers_call(history[i + 1], e.call_id) {
+          pending = e.call_id
+          out.push(
+            LoopMessage::new(
+              role="assistant",
+              content=e.content,
+              tool_calls=[
+                {
+                  id: e.call_id,
+                  name: e.tool_name,
+                  arguments_json: e.call_args,
+                },
+              ],
+            ),
+          )
+        } else {
+          pending = ""
+          out.push(LoopMessage::new(role="assistant", content=e.content))
+        }
+      AgentRole::Tool =>
+        if pending != "" && e.call_id == pending {
+          pending = ""
+          out.push(
+            LoopMessage::new(
+              role="tool",
+              content=e.content,
+              tool_call_id=e.call_id,
+            ),
+          )
+        } else {
+          out.push(
+            LoopMessage::new(
+              role="user",
+              content="[tool result " + e.tool_name + "] " + e.content,
+            ),
+          )
+        }
+      AgentRole::Observation =>
+        if pending != "" && e.call_id == pending {
+          pending = ""
+          out.push(
+            LoopMessage::new(
+              role="tool",
+              content=e.content,
+              tool_call_id=e.call_id,
+            ),
+          )
+        } else {
+          out.push(
+            LoopMessage::new(
+              role="user",
+              content="[tool error " + e.tool_name + "] " + e.content,
+            ),
+          )
+        }
+      AgentRole::User => {
+        pending = ""
+        out.push(LoopMessage::new(role="user", content=e.content))
+      }
+    }
+    i = i + 1
   }
   out
 }
@@ -594,6 +728,10 @@ pub fn AgentContext::encode(self : AgentContext) -> String {
     buf.write_string(escape_field(e.tool_name))
     buf.write_string("\t")
     buf.write_string(escape_field(e.content))
+    buf.write_string("\t")
+    buf.write_string(escape_field(e.call_id))
+    buf.write_string("\t")
+    buf.write_string(escape_field(e.call_args))
     buf.write_string("\n")
   }
   for t in self.todos {
@@ -656,12 +794,16 @@ pub fn AgentContext::decode(text : String) -> AgentContext {
     } else if tag == "s" && parts.length() >= 2 {
       ctx.summary = unescape_field(parts[1])
     } else if tag == "e" && parts.length() >= 6 {
+      // A record written before `call_id` existed stops at the content field;
+      // the missing tail decodes to empty, which `wire_messages` heals.
       ctx.history.push({
         role: AgentRole::from_code(parts[1]),
         content: unescape_field(parts[5]),
         tool_name: unescape_field(parts[4]),
         step: parse_int_or(parts[2], 0),
         key: parts[3] == "1",
+        call_id: if parts.length() >= 7 { unescape_field(parts[6]) } else { "" },
+        call_args: if parts.length() >= 8 { unescape_field(parts[7]) } else { "" },
       })
     } else if tag == "d" && parts.length() >= 4 {
       ctx.todos.push({

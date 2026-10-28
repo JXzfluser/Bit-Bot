@@ -41,11 +41,11 @@ AR-01/02/03/15 状态列不关。P0-3 仍是 U。capability matrix 未改。不�
 
 ## 实测 2026-10-28（live）
 
-2026-10-28，本工作区已配置生产密钥（`hosts/desktop/.env.local` 指向外部 `https://api.deepseek.com/v1`，非 loopback），实跑：
+本工作区已配置生产密钥（`hosts/desktop/.env.local` 指向外部 `https://api.deepseek.com/v1`，非 loopback）：
 
 ```bash
 set -a && source hosts/desktop/.env.local && set +a
-bash scripts/prove_production_provider.sh
+node scripts/prove_production_provider.js
 ```
 
 退出码 0。`prove_production_provider pass=7 fail=0`。PP1–PP7 全部 ok：
@@ -57,4 +57,27 @@ bash scripts/prove_production_provider.sh
 - PP6 无密钥退出码 2、强制离线退出码 3（负向子进程仍按预期 fail-closed）；
 - PP7 A/WP/EG/P0/AU/SK 未改判，P0-3 仍是 U only，无 MVP 声明。
 
+三次连跑，都是 `pass=7 fail=0`：干净会话槽首跑、在上一轮写下的会话槽上交叉重放、以及把一份**畸形历史**（14 条，assistant 纯文本 + 无 `tool_call_id` 的 `tool` 条目）塞回槽位后再跑。
+
+## 事故与根因（2026-10-28，同日先失败后修复）
+
+**先说结论**：同一天首跑 `pass=7 fail=0` 之后立刻变成 `pass=4 fail=3`（PP1/PP3/PP4 红）。这不是环境抖动，也不是此前怀疑的「工具 schema 空对象」，而是**跨回合重放了一段 provider 不接受的 tool 历史**：
+
+1. 内核 `LoopMessage` 只有 `{role, content}`；`AgentLoop::run` 把模型发出的工具调用压成一行纯文本（`Read {"path": …}`）写进 assistant 历史，`append_tool` 又保留 `role:"tool"`。
+2. `AgentContext::wire_messages` 原样把这两条发出去 —— assistant 没有 `tool_calls`，tool 没有 `tool_call_id`。
+3. Host 侧 `executeLlmChat` 的 `overrideMessages` 重建又把消息拍成 `{role, content}`，即使内核带上了字段也会被抹掉。
+4. 于是第二轮起 provider 返回 **HTTP 422**：`missing field tool_call_id at messages[2]`。失败的回合被写回会话槽，形成「上下文自中毒」——之后每一轮都 422。群侧此前那条 422 的红，真根因就是这个。
+
+**修法（协议层正规修，不是止血）**：
+
+| 层 | 改动 |
+|---|---|
+| `runtime/agent_loop.mbt` | `LoopMessage` 增 `tool_calls` / `tool_call_id`；新增 `append_tool_call` |
+| `runtime/agent_context.mbt` | 历史条目记 `call_id` / `call_args`；`wire_messages` 按 call id 配对，并自愈两种非法形态（悬空调用降级为纯文本、旧会话里无 id 的 tool 条目降级为用户侧备注）；`encode`/`decode` 兼容旧的 6 字段记录 |
+| `cmd/desktop_turn/agent_loop_product_parse.mbt` | `encode_product_messages` 输出 `tool_calls` / `tool_call_id` |
+| `hosts/shared/host_ffi.js` | 重建 provider payload 时透传这两个字段；无 id 的 `tool` 条目降级为 user，绝不发出 |
+
+**回归守卫**：`scripts/prove_agent_loop_product_wire.js` 新增 WP2b —— 第二次 provider 请求必须同时带「有 id 的 assistant `tool_calls`」和「回应该 id 的 `role:"tool"`」。这条不需要密钥、不需要外网，是上面那次 live 422 的离线镜像。负向对照已验证：把 Host 透传关掉，WP2b 立刻变红（WP 从 52/0 掉到 44/8）。
+
 **纪律不变**：PP live PASS 只把「未跑 live」变 PASS。**不关** AR-01/02/03/15 状态列；**不改** capability matrix（仍 234/234，I-GAP 0）；**不升** I；**不宣称** Agent Loop MVP 或 Desktop Agent Loop MVP。
+

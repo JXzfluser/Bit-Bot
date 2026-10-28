@@ -256,6 +256,36 @@ async function main() {
       JSON.stringify(readPosts[1].messages).includes("cursor_untrusted_data"),
     "WP2 second provider call contains the tool observation",
   );
+  // WP2b: the second request has to be a LEGAL tool conversation — an assistant
+  // `tool_calls` entry and the `role:"tool"` answer carrying its `tool_call_id`.
+  // OpenAI-compatible providers reject an unpaired tool message with HTTP 422,
+  // and then the observation never reaches the model at all. This check is the
+  // offline mirror of that live failure: it needs no key and no network.
+  const secondMsgs = Array.isArray(readPosts[1] && readPosts[1].messages)
+    ? readPosts[1].messages
+    : [];
+  const callMsg = secondMsgs.find(
+    (m) =>
+      m &&
+      m.role === "assistant" &&
+      Array.isArray(m.tool_calls) &&
+      m.tool_calls.length > 0,
+  );
+  const toolMsg = secondMsgs.find((m) => m && m.role === "tool");
+  const callId =
+    (callMsg && String((callMsg.tool_calls[0] || {}).id || "")) || "";
+  check(
+    Boolean(callMsg) && callId !== "",
+    "WP2b second provider call carries the model tool_call with an id",
+    JSON.stringify(callMsg && callMsg.tool_calls),
+  );
+  check(
+    Boolean(toolMsg) && String(toolMsg.tool_call_id || "") === callId,
+    "WP2b the tool result answers that call id",
+    JSON.stringify(
+      toolMsg && { role: toolMsg.role, tool_call_id: toolMsg.tool_call_id },
+    ),
+  );
   check(assistantText(readTurn).includes("saw file"), "WP1 delivered final text", assistantText(readTurn));
   check(readTurn.agent_exec === 1, "WP1 one exec", String(readTurn.agent_exec));
   // The kernel may ask the Host for the persisted context BEFORE the first

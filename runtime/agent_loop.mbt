@@ -29,10 +29,30 @@ pub const LOOP_TOOL_DURATION_MARKER : String = "tool_duration_ms:"
 pub const LOOP_PROVIDER_ERROR_MARKER : String = "provider_error:"
 
 ///|
+/// One message on the wire to `llm_chat`.
+///
+/// `tool_calls` and `tool_call_id` are not decoration. An OpenAI-compatible
+/// provider rejects a `role:"tool"` message that does not answer the `id` of a
+/// preceding assistant `tool_calls` entry (DeepSeek answers 422), so a session
+/// that replays a tool loop without them poisons every later turn on that slot.
 pub(all) struct LoopMessage {
   role : String
   content : String
+  tool_calls : Array[ToolCallReq]
+  tool_call_id : String
 } derive(Eq, Debug)
+
+///|
+/// Build one wire message. Kept as a constructor so adding the call fields did
+/// not have to be repeated at every literal.
+pub fn LoopMessage::new(
+  role~ : String,
+  content~ : String,
+  tool_calls~ : Array[ToolCallReq] = [],
+  tool_call_id~ : String = "",
+) -> LoopMessage {
+  { role, content, tool_calls, tool_call_id, }
+}
 
 ///|
 pub extend LoopMessage with Eq::{equal, not_equal}
@@ -610,6 +630,7 @@ fn record_invalid_args(
     call.name,
     fence_untrusted(call.name, message),
     step=state.steps,
+    call_id=call.id,
   )
 }
 
@@ -646,6 +667,7 @@ fn handle_todo_call(
             call.name,
             fence_untrusted(call.name, obs),
             step=state.steps,
+            call_id=call.id,
           )
           agent_ctx.record_trace({
             tool_name: call.name,
@@ -682,6 +704,7 @@ fn[H : AgentLoopHost] run_approved_tool(
     call.name,
     fence_untrusted(call.name, output),
     step=step,
+    call_id=call.id,
   )
   agent_ctx.record_trace({
     tool_name: call.name,
@@ -762,6 +785,7 @@ fn[H : AgentLoopHost] handle_host_call(
           call.name,
           fence_untrusted(call.name, obs),
           step=state.steps,
+          call_id=call.id,
         )
         return false
       }
@@ -794,6 +818,7 @@ fn[H : AgentLoopHost] handle_host_call(
               call.name,
               fence_untrusted(call.name, obs),
               step=state.steps,
+              call_id=call.id,
             )
             false
           }
@@ -949,8 +974,10 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
       return finish_run(ctx, LoopStop::Final, state, reply.content, agent_ctx, max_steps)
     }
     for call in reply.tool_calls {
-      agent_ctx.append_assistant(
-        call.name + " " + call.arguments_json,
+      agent_ctx.append_tool_call(
+        call.name,
+        call.arguments_json,
+        call.id,
         step=state.steps,
       )
       // 1) retry gate — a tripped or cooling-down tool is never executed.
@@ -970,6 +997,7 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
             call.name,
             fence_untrusted(call.name, refusal),
             step=state.steps,
+            call_id=call.id,
           )
           state.consecutive_failures = state.consecutive_failures + 1
         }
@@ -998,6 +1026,7 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
                 call.name,
                 fence_untrusted(call.name, obs),
                 step=state.steps,
+                call_id=call.id,
               )
             }
             Some(spec) =>

@@ -2,16 +2,31 @@
 test "CTX-1 history keeps user, assistant, tool and observation entries" {
   let ctx = @runtime.AgentContext::new(session_id="s1")
   ctx.append_user("hello")
-  ctx.append_assistant("thinking")
-  ctx.append_tool("Read", "file body")
-  ctx.append_observation("Nope", "unknown tool: Nope")
+  ctx.append_tool_call("Read", "{\"path\":\"a.txt\"}", "call-1")
+  ctx.append_tool("Read", "file body", call_id="call-1")
+  ctx.append_observation("Nope", "unknown tool: Nope", call_id="call-2")
   let msgs = ctx.wire_messages()
   assert_eq(msgs.length(), 4)
   assert_eq(msgs[0].role, "user")
   assert_eq(msgs[0].content, "hello")
   assert_eq(msgs[1].role, "assistant")
+  // The call the model made rides along with its id — the provider needs both.
+  assert_eq(msgs[1].tool_calls.length(), 1)
+  assert_eq(msgs[1].tool_calls[0].id, "call-1")
+  assert_eq(msgs[1].tool_calls[0].name, "Read")
+  assert_eq(msgs[1].tool_calls[0].arguments_json, "{\"path\":\"a.txt\"}")
+  // Its result answers that id.
   assert_eq(msgs[2].role, "tool")
-  assert_eq(msgs[3].role, "tool")
+  assert_eq(msgs[2].tool_call_id, "call-1")
+  // The observation answers a call no assistant turn emitted, so it is replayed
+  // as a note: an unpaired `role:"tool"` is an illegal conversation.
+  assert_eq(msgs[3].role, "user")
+  assert_true(msgs[3].content.contains("unknown tool: Nope"))
+  // The history itself still keeps the real roles.
+  assert_eq(ctx.history[0].role, @runtime.AgentRole::User)
+  assert_eq(ctx.history[1].role, @runtime.AgentRole::Assistant)
+  assert_eq(ctx.history[2].role, @runtime.AgentRole::Tool)
+  assert_eq(ctx.history[3].role, @runtime.AgentRole::Observation)
   assert_eq(ctx.turn_count(), 1)
 }
 
@@ -130,4 +145,56 @@ test "CTX-7 exit codes and tool results are read out of the output" {
   assert_eq(@runtime.extract_exit_code("boom, exit code: 3"), 3)
   assert_eq(@runtime.extract_exit_code("exit_code=7"), 7)
   assert_eq(@runtime.extract_exit_code("no code here"), -1)
+}
+
+///|
+test "CTX-8 a tool call pair survives encode and decode" {
+  // Regression: the session used to persist the model's call as plain assistant
+  // text, so the next turn replayed `role:"tool"` with no `tool_call_id`. A real
+  // provider answers that with HTTP 422 and the session never recovers.
+  let ctx = @runtime.AgentContext::new(session_id="s9")
+  ctx.append_user("read the file")
+  ctx.append_tool_call("Read", "{\"path\":\"b.txt\"}", "call-9")
+  ctx.append_tool("Read", "body of b", call_id="call-9")
+  let back = @runtime.AgentContext::decode(ctx.encode())
+  assert_eq(back.history[1].call_id, "call-9")
+  assert_eq(back.history[1].call_args, "{\"path\":\"b.txt\"}")
+  assert_eq(back.history[2].call_id, "call-9")
+  let msgs = back.wire_messages()
+  assert_eq(msgs.length(), 3)
+  assert_eq(msgs[1].tool_calls.length(), 1)
+  assert_eq(msgs[1].tool_calls[0].id, "call-9")
+  assert_eq(msgs[2].role, "tool")
+  assert_eq(msgs[2].tool_call_id, "call-9")
+  assert_eq(msgs[2].content, "body of b")
+}
+
+///|
+test "CTX-9 a call with no result is not replayed as a dangling call" {
+  // A cancelled turn records the model's call but never its result. Replaying
+  // that call would ask the provider to answer a tool result that does not
+  // exist, so the call degrades to plain assistant text.
+  let ctx = @runtime.AgentContext::new(session_id="s10")
+  ctx.append_user("do it")
+  ctx.append_tool_call("Shell", "{\"command\":\"ls\"}", "call-10")
+  let msgs = ctx.wire_messages()
+  assert_eq(msgs.length(), 2)
+  assert_eq(msgs[1].role, "assistant")
+  assert_eq(msgs[1].tool_calls.length(), 0)
+  assert_true(msgs[1].content.contains("Shell"))
+}
+
+///|
+test "CTX-10 an old six-field history record still decodes" {
+  // Records written before `call_id` existed keep working: the tail is empty
+  // and `wire_messages` replays the result as a note instead of a `tool` turn.
+  let old =
+    "v1\ts11\t24000\t4\t0\ns\t\ne\tu\t1\t0\t\tolder question\ne\tt\t1\t1\tRead\told body\n"
+  let ctx = @runtime.AgentContext::decode(old)
+  assert_eq(ctx.session(), "s11")
+  assert_eq(ctx.history.length(), 2)
+  assert_eq(ctx.history[1].call_id, "")
+  let msgs = ctx.wire_messages()
+  assert_eq(msgs[1].role, "user")
+  assert_true(msgs[1].content.contains("old body"))
 }

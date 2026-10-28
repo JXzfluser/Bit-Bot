@@ -109,9 +109,13 @@ const DROP = [
  * @param {Record<string,string>} [extra] 需要额外注入的变量（如 BITBOT_* 开关）
  */
 export function electronLaunchEnv(extra) {
-  const env = { ...process.env };
+  const env = Object.assign({ ...process.env }, extra || {});
+  // 剔除必须放在合并**之后**。调用方常把 process.env 展开进 `extra`（
+  // prove_host_approval_ui 的 llmEnv 就是），先剔后并会把 ELECTRON_RUN_AS_NODE
+  // 原样加回来：electron 退化成 node，"bad option: --remote-debugging-port=0"
+  // → playwright 报 "Process failed to launch!"，看起来像单实例锁或残留进程。
   for (const k of DROP) delete env[k];
-  return Object.assign(env, extra || {});
+  return env;
 }
 
 /**

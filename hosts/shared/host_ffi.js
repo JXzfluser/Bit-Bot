@@ -5937,10 +5937,45 @@ function createHostFfi(repoRoot, opts = {}) {
       }
       for (const m of overrideMessages) {
         if (!m || typeof m !== "object") continue;
-        rebuilt.push({
-          role: String(m.role || "user"),
+        const role = String(m.role || "user");
+        const row = {
+          role,
           content: String(m.content == null ? "" : m.content),
-        });
+        };
+        // A model tool call and the tool result that answers it both have to
+        // reach the provider. Flattening to {role, content} here made every
+        // replayed tool loop an illegal conversation: OpenAI-compatible APIs
+        // answer `role:"tool"` without `tool_call_id` with HTTP 422 (the tool
+        // result then never gets back to the model). Copy the pair through,
+        // and never emit the two fields on a role that cannot carry them.
+        if (role === "tool") {
+          const callId = String(m.tool_call_id || "");
+          if (callId) {
+            row.tool_call_id = callId;
+          } else {
+            // Unpaired tool output: keep the text, drop the illegal role.
+            row.role = "user";
+            row.content = "[tool result] " + row.content;
+          }
+        } else if (Array.isArray(m.tool_calls) && m.tool_calls.length) {
+          const calls = [];
+          for (const c of m.tool_calls) {
+            if (!c || typeof c !== "object") continue;
+            const fn = (c.function && typeof c.function === "object") ? c.function : {};
+            const id = String(c.id || "");
+            if (!id) continue;
+            calls.push({
+              id,
+              type: "function",
+              function: {
+                name: String(fn.name || ""),
+                arguments: String(fn.arguments == null ? "" : fn.arguments),
+              },
+            });
+          }
+          if (calls.length) row.tool_calls = calls;
+        }
+        rebuilt.push(row);
       }
       messages = rebuilt;
     }

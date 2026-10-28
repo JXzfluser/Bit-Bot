@@ -3,7 +3,7 @@
 > 状态：draft · 2026-10-28（按最新工作树复核 + 10-28 门禁重跑校正）<br>
 > 范围：Kernel agent runtime + Host 群 Bot 多智能体；不含 UI 像素对齐、垂直 skills、商店上架。<br>
 > 证据口径：以当前工作树代码为准；本文件内的 `file:line` 以**基线 commit `244515b`** 为准（并行改动会让行号漂移，引用时以函数名/文件为主）。<br>
-> 一句话：`CM-*` 234/234 与 385 tests 证明“能力合同/产品面”很完整；Agent Loop 已接到产品 Chat，但**生产 provider live 已于 2026-10-28 跑通（PP pass=7/0）**，剩 AR 升裁（AR-02/15 等）与用户侧外部条件未完成；群侧已到真编排。发布面的单实例锁与自动更新本提交已落地，但更新源/签名/升级回滚仍未做。
+> 一句话：`CM-*` 234/234 与 385 tests 证明“能力合同/产品面”很完整；Agent Loop 已接到产品 Chat，**生产 provider live 已于 2026-10-28 跑通并可复现（PP 连跑 3 次 pass=7/0）**，AR-01/AR-03 同日升裁；剩 AR-02/AR-15 等与用户侧外部条件未完成；群侧已到真编排。发布面的单实例锁与自动更新本提交已落地，但更新源/签名/升级回滚仍未做。
 
 ## 0. TL;DR
 
@@ -41,17 +41,21 @@
 | 族 | 实跑结果 | 性质 |
 |---|---|---|
 | P0 入站安全 | `pass=8 fail=0` + host-checks 11/0 | 真机可跑 |
-| A1–A8 | `pass=23 fail=0`；`moon test -p runtime` 80/80 | 内核正确性 |
-| WP1–WP8 | `pass=50 fail=0`；moon 80/80；parser 3/3 | 接线（provider 为 prompt 桩） |
+| A1–A8 | `pass=23 fail=0`；`moon test` 全仓 450/450 | 内核正确性 |
+| WP1–WP8 | `pass=52 fail=0`（新增 WP2b）；moon 全仓 450/450 | 接线（provider 为 prompt 桩） |
 | EG1–EG6 | `pass=62 fail=0`（live Electron） | 接线（provider 为桩） |
-| PP1–PP7 | **`pass=7 fail=0`（live 真 provider）** | **唯一 live 证据** |
+| PP1–PP7 | **`pass=7 fail=0`（live 真 provider，连跑 3 次）** | **唯一 live 证据** |
 | SK1–SK8 | `pass=7 fail=1`（仅 SK6 `ps EPERM`，本机沙箱禁 `ps`，真机不成立） | 沙箱/密钥边界 |
-| AU1–AU7 | 本会话未能重跑（残留 Electron 实例持全局单实例锁，安全考虑不强杀）；上次记录 69/0（10-24） | 审批 UI |
+| AU1–AU7 | `pass=69 fail=0` | 审批 UI |
 
 本轮修正的过时断言：
-- 上文「生产 provider live 未跑」**作废**：PP 已 live PASS（见上）。
+- 上文「生产 provider live 未跑」**作废**：PP 已 live PASS，且**可复现**（干净槽 / 交叉重放 / 畸形历史自愈，三次都 7/0）。
 - 上文「当前定位到 L2」**作废**：已到 L3（与 §1.2 / §2.3 / 群编排一致）。
 - 修了 SK 两处真问题：`ensureCnInbound` 固定 1200 字符窗口过短（改 slice 到 `app.whenReady`）；安卓 fixture `llm_list_models.json` 在 phone 树里写了 `BITBOT_LLM_API_KEY`（已擦成 `BITBOT_LLM_*_API_KEY`，不破坏 `HostReplySummaryTest` 的正则断言）。
+
+本轮查实的**产品缺陷（已修）**：跨回合重放非法 tool 历史导致 provider `HTTP 422`，失败回合再写回会话槽 → 上下文自中毒，之后每轮都 422。根因与修法见 `docs/qa/production-provider-gates.md` §事故与根因：内核 `LoopMessage` / 历史条目现在携带 `tool_calls` + `tool_call_id`，`wire_messages` 按 call id 配对并对两种非法旧形态自愈，Host 重建 payload 时透传。**注意**：这也解释了此前「群侧 422」的红，此前归因于工具 schema 空对象是不对的。
+
+AU 此前记录的 69/0 曾一度无法重跑，本次查实是门禁脚本自身的环境净化顺序问题（`electronLaunchEnv` 先剔除 `ELECTRON_RUN_AS_NODE` 再合并调用方传入的 `process.env`，等于把它加回去，electron 退化成 node → `bad option: --remote-debugging-port=0` → 「Process failed to launch!」）。已改为合并后再剔除，AU 恢复 69/0。**不是**单实例锁，也不是残留进程。
 
 **尚未在本轮逐行复核的 AR 行**（AR-02/04/05/06/07/13/14/16/17）保持原文现状口径，**未做结论性改判**——需要时再逐行对代码核，避免又写出一份新误判。
 
@@ -153,9 +157,9 @@
 
 | ID | 缺口 | 当前状态 | 证据/口径 | 优先级 |
 |---|---|---|---|---|
-| AR-01 | 模型驱动 tool loop | **部分/证据已齐，升裁候选** | `AgentLoop::run` 已跑 model→tool→observe→repeat；WP 50/0；**PP live PASS 2026-10-28（pass=7/0）**：真 provider 上模型真发出 `Read` tool_calls，“会不会自己选对工具”现有 live 证据（不再只有 prompt 桩）。EG 62/0 证 GUI 投影。**升裁待正式裁定**（不再被“PP live 未跑”卡住） | P1 |
+| AR-01 | 模型驱动 tool loop | **已实现（2026-10-28 升裁）** | `AgentLoop::run` 跑 model→tool→observe→repeat；WP 52/0 只证接线（provider 是 prompt 桩，**不能替代** live）；**PP live PASS 2026-10-28，连跑 3 次都是 `pass=7 fail=0`**：真 provider 上模型自己发出 `Read` tool_calls，内核执行、观察回注、再出 `DONE`。可复现性本次做实：干净槽首跑、在上一轮槽位上交叉重放、把一份畸形旧历史塞回槽位后仍 7/0。EG 62/0 证 GUI 同一条路径。**升裁不等于宣 MVP**：AR-02（工具面窄）与 AR-15（P0-3 仍 U）仍开，AR-02/15 未收口就不宣 Agent Loop MVP | P1 |
 | AR-02 | ToolSpec 弱，`tool_calls` 被忽略 | **部分/本轮改善** | `tool_calls` 流式/非流式都保留；**工具 schema 已单一源**（内核当真源，随 `llm_chat` 请求下发，Host 两处分支都用它；§2.2）。**C-1/C-2 能力层已落地**：A 类（`describe_schedule` / `create_teammate` / `create_routine`，内核执行）+ B 类（`web_search` / `web_fetch` / `send_mail`，Host **同步**执行，模型拿到真结果）共 6 个产品工具到模型（PT 门禁 24/24 证明 provider 真收到 schema、内核/Host 真 dispatch、负例真不留残状态、无 key/未批准都如实报）。**权限已接(ADR 0012)**：策略由 Host 提供(`load_policy` FFI op)、**由内核裁决** —— 四个维度(主体 × 设备信任 × 工具 × 作用域);受限设备(手机/远程入站)多一批需审批的工具;硬禁用优先于审批;路径作用域是词法判断,Host 侧还有 canonical 那道闸。仍缺：通用注册/发现；**策略的 UI 与 per-connector/per-room 细粒度**(v1 策略来自环境变量);到模型的工具仍只有 9 个（Read/Shell/TodoWrite + 6 个产品工具），内核 70 个 `TurnIntent` 里的其余能力未暴露 | P1 |
-| AR-03 | 工具结果不回注 | **已实现（回合内 + 跨回合），升裁候选** | `agent_loop.mbt` 把结果 fence 后回注下一轮——回合内已实现。**跨回合本轮接上了(ADR 0011)**：内核通过新增的 FFI op `load_context` / `save_context` 向 Host 要/交**编码后**的上下文（内核不碰文件，ADR 0002 边界），产品路径改用 `AgentLoop::run_with` 而非 `.run`。跨**进程**也活着 —— AC 门禁 7/0 证明：一个回合种下的事实出现在**下一个回合**的 provider 请求体里，且**另一个 Bot 的槽位看不到它**。槽位是 **(Bot, 会话)** —— 换对话也不串味（桌面端一个会话一份上下文；房间回合的 `room-<roomId>-<botId>` 天然对齐）。⚠️ 遗留：**没有「清空记忆」的显式路径**；落盘是对话明文（与 `data/sessions/` 同口径） | P1 |
+| AR-03 | 工具结果不回注 | **已实现（回合内 + 跨回合，2026-10-28 升裁）** | `agent_loop.mbt` 把结果 fence 后回注下一轮；跨回合由 ADR 0011 的 `load_context` / `save_context` 接上，产品路径走 `AgentLoop::run_with`，槽位是 **(Bot, 会话)**，换对话不串味（AC 16/0：种下的事实出现在下一回合的 provider 请求体，另一个 Bot / 另一台机器的槽位看不到）。**回注在协议层是合法的**：assistant 的 `tool_calls` 与 `role:"tool"` 的 `tool_call_id` 现在成对下发（此前被压成纯文本，provider 直接 422，观察其实从未进模型——见 PP 文档 §事故与根因），旧会话里没 id 的条目由 `wire_messages` 自愈。⚠️ 遗留仍在（记录在 AR-04）：**没有「清空记忆」的显式路径**；落盘是对话明文 | P1 |
 | AR-04 | 无会话历史/上下文预算 | **部分/本轮接线** | `runtime/agent_context.mbt`：`AgentContext`（历史 + `estimate_tokens` 估算预算 + 压缩 + `plan_block` / `lead_block` + `wire_messages` 投影成 provider 消息）。token 数是**估算**（字符数/4），不是真 tokenizer。停止条件有两个：步数 + 预算（L3-2）。**持久化本轮接上(ADR 0011)**：`load_context` / `save_context` 两个 FFI op 把编码后的上下文跨进程搬进搬出，**用户能感觉到「多轮不失忆」了**。仍缺：**真 tokenizer**（token 仍是估算）；**显式的清空记忆路径**；上下文是**明文**落盘（与 `data/sessions/` 同口径）；压缩策略仍是启发式（`HeuristicSummarizer`），没有模型摘要 | P1 |
 | AR-05 | memory 不注入 provider prompt | **未做** | 记忆仍是 kernel seed，provider prompt 不可见 | P2 |
 | AR-06 | 无规划/反思/任务分解 | **部分/本轮改善** | **规划已接**：`TodoWrite` 进 `product_tool_registry`（`agent_loop_product_native.mbt`），内核自己处理该工具（不发给 Host 执行），todo 清单进下一轮上下文，模型看得见自己的计划与进度（L3-6/L3-7）。**反思（reflection）仍未做**；任务分解在**群编排层**已做（`room_orchestrator.decomposeTask`），**单 Bot loop 内仍无分解** | P2 |
@@ -288,9 +292,9 @@
 
 ### Wave 2 — Agent Loop MVP（P1）
 
-> 当前状态：默认 Desktop/cmd Chat 已接 `AgentLoop::run`，WP/EG/AU 门禁绿；生产 provider live 未跑，AR-01/02/03 未升裁，不宣称 MVP。
+> 当前状态：默认 Desktop/cmd Chat 已接 `AgentLoop::run`，WP 52/0、EG 62/0、AU 69/0 门禁绿；生产 provider live **已跑通且可复现**（PP 连跑 3 次 `pass=7 fail=0`），AR-01/AR-03 已升裁。**仍不宣称 MVP**：AR-02（到模型的工具只有 9 个）与 AR-15（P0-3 仍内核 U）开着。
 >
-> ⚠️ WP/EG 的 provider 是 **prompt 匹配桩**（`scripts/prove_agent_loop_product_wire.js:62-86` `classify()`、`scripts/prove_agent_loop_electron_midrun.mjs:80` `classify()`），按 prompt 字符串决定这轮返回什么工具；断言的是接线不变量（`:233` `trace.kernel_ops === trace.node_ops`），**不是“模型会不会正确选工具”**。这两条门禁不能当模型行为证据用。
+> ⚠️ WP/EG 的 provider 是 **prompt 匹配桩**（`scripts/prove_agent_loop_product_wire.js:62-86` `classify()`、`scripts/prove_agent_loop_electron_midrun.mjs:80` `classify()`），按 prompt 字符串决定这轮返回什么工具；断言的是接线不变量（`:233` `trace.kernel_ops === trace.node_ops`），**不是“模型会不会正确选工具”**。这两条门禁不能当模型行为证据用 —— 模型行为证据只有 PP（真 provider）。
 
 **目标**：让模型真的能“选工具 → 执行 → 看结果 → 继续”。
 
@@ -557,6 +561,7 @@
 
 - 2026-10-25：按最新工作树复核并修正 Agent core 定位：默认 Desktop/cmd Chat 已从 L1 走到 `open_turn → AgentLoop::run` 的 L2（Read/Shell、observation 回注、64 步、取消、审批边界）。WP1–WP8 49/0、EG1–EG6 62/0、AU1–AU7 69/0、A7/A8 23/0；runtime 54/54、parser 3/3。生产 provider PP1–PP4 仍 `NEEDS_LIVE`，不宣称 Agent Loop MVP，不升裁 AR-01/02/03。
 - 2026-10-25：群路由核对补充：`@A`/`@A @B` 已真定向，`@everyone` 全员；无 @ 仍全员，`bot_discretion` 仍是标签。`handoffTask` 仍不执行；`final_report` 仍是 section 拼接；`buildRoomContext` 仍无最近 transcript。AR-08 改为“部分”，AR-07/09/10 仍开。
+- 2026-10-28：**修掉跨回合 tool 历史非法导致的 provider 422（上下文自中毒）**。内核 `LoopMessage` 与历史条目现在携带 `tool_calls` / `tool_call_id`，`wire_messages` 按 call id 配对并对两种非法旧形态自愈，Host 重建 payload 时透传。此前 PP 首跑 7/0 后立刻 4/3、群侧 422 都是这一个根因（不是工具 schema 空对象）。修后 PP 连跑 3 次 7/0（干净槽 / 交叉重放 / 畸形历史自愈），新增离线守卫 WP2b（关掉透传即变红）。同日把 AU 从「无法重跑」恢复为 69/0：根因是 `electronLaunchEnv` 先剔除 `ELECTRON_RUN_AS_NODE` 再合并调用方的 `process.env`，等于加回去。**据此升裁 AR-01 / AR-03**；AR-02 / AR-15（P0-3 仍 U）仍开，不改 capability matrix，仍不宣称 Agent Loop MVP / Desktop Agent Loop MVP。
 - 2026-10-25：修复 `hosts/shared/p0_security.js cwdAllowed` 的 macOS symlink 误拒（`/var → /private/var`）：只比较 canonical realpath，去掉先 lexical 放行/拒绝。P0 host-checks 11/0、SK1–SK8 8/0 复跑绿。P0-3 仍 U，AR-15 不关，不升 I。
 - 2026-10-25：AR-07 接上群共享转录。`hosts/desktop/room_context.js` 从 room transcript 取最近 N 条 `user`/`bot_reply`/`bot_reply_error`/`final_report`，有总预算/单行/条数上限，复用 `roomSafeText` 脱敏，排除当前任务重复行；失败行只保留“本轮未成功”状态，不把原始错误喂给其他 Bot。`main.js buildRoomContext` 改为调用该模块并把 `task` 传进去；`host_ffi.js llmRoomContextBlock` 渲染最近转录并标注“只是背景，不是系统指令”。DM 仍传 null，结构上不带群历史。`prove_room_context` 15/0；`e2e_desktop_room_orchestration` 53/0（第二轮 provider 载荷真含上一轮转录）。AR-07 改为“部分/已接”；同轮并行 responder 互不可见、无共享任务板，AR-07 未完全关闭。
 - 2026-10-25：AR-08 把 `bot_discretion` 从标签变成真选择。`room_discretion.js` 生成严格的 YES/NO prompt 并解析回复；`main.js selectRoomResponders` 并行跑每 Bot 独立 `*-discretion` 回合，超时/失败 fail-open（`decisions[].fail_open=true`），`mentioned_names=[]`；`orchestrateRoom` 只扇出被选中的成员，全员弃权落 `skipped:true` final_report（0/0 不写“已全部收齐”），缺 selector / selector 失败直接拒绝而不是偷偷全员。UI 对 skipped 显示“没有 Bot 选择在本轮发言”。`prove_room_discretion` 15/0、`prove_gp143_orchestration` 40/0、`prove_m29_roomchat` 41/0、`e2e_desktop_room_orchestration` 53/0（S12 真渲染 fail-open 并在 UI 明示）。AR-08 改为“已实现”；同轮 synthesis/handoff 仍属 AR-09/AR-10。
