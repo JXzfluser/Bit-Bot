@@ -46,8 +46,26 @@ jobs:
       # Live scenarios need a real provider key. Without one they must skip
       # cleanly and exit non-zero (NEEDS_LIVE) — never a stub PASS. Run them
       # separately with a secret when one is available.
+      #
+      # 为什么这里要一个中间步骤：Actions 在 step 级 `if:` 里**拿不到 `secrets` 上下文**
+      # （unrecognized named-value），写 `secrets.X != ''` 会让整个 workflow 文件解析失败 ——
+      # 症状是每次 push 都生成一条「名字叫文件路径、0 个 job、直接红」的运行，
+      # 于是这条本该管「行为达标」的门从建好起一次都没真跑过。密钥先进 `env:`（那里可以
+      # 读 secrets），再由步骤自己写进 `GITHUB_OUTPUT`，`if:` 只看 outputs。
+      - name: Decide whether live eval can run
+        id: live
+        env:
+          BITBOT_LLM_API_KEY: ${{ secrets.BITBOT_LLM_API_KEY }}
+        run: |
+          if [ -n "${BITBOT_LLM_API_KEY:-}" ]; then
+            echo "can=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "can=0" >> "$GITHUB_OUTPUT"
+            echo "没有 BITBOT_LLM_API_KEY：真模型场景整步不跑（不拿 stub 冒充行为达标）"
+          fi
+
       - name: Agent eval — live scenarios (needs a provider key)
-        if: ${{ secrets.BITBOT_LLM_API_KEY != '' }}
+        if: steps.live.outputs.can == '1'
         env:
           BITBOT_LLM_API_KEY: ${{ secrets.BITBOT_LLM_API_KEY }}
         run: node scripts/eval/run.js --live
