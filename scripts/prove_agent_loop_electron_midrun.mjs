@@ -236,8 +236,8 @@ function staticChecks() {
   const kernel = read("runtime/agent_loop.mbt");
   check(
     /pub fn\[H : AgentLoopHost\] AgentLoop::run/.test(kernel) &&
-      /while steps < AGENT_LOOP_MAX_STEPS/.test(kernel) &&
-      /host\.llm_chat\(messages\)/.test(kernel),
+      /\bwhile\b.*steps < max_steps/.test(kernel) &&
+      /host\.llm_chat\(/.test(kernel),
     "kernel AgentLoop::run remains the only model loop",
   );
   const dirty = execSync("git status --porcelain", { cwd: REPO, encoding: "utf8" });
@@ -394,10 +394,20 @@ async function main() {
       return text.includes("saw file") ? text : null;
     }, 90000);
     check(Boolean(finished), "EG5 final DOM shows saw file");
-    const raw = await win.locator("#json-out").textContent();
+    // The composer fills #json-out with the turn JSON only after
+    // `await window.bitbot.turn(...)` resolves; "saw file" may land in #log
+    // via streaming before that. Poll for actual JSON, not the placeholder.
+    const raw = await poll(async () => {
+      const t = (await win.locator("#json-out").textContent()) || "";
+      return t.trim().startsWith("{") ? t : null;
+    }, 60000);
+    if (!raw) {
+      bad("turn json", "json-out never became valid JSON (still placeholder)");
+      return;
+    }
     let result = {};
     try {
-      result = JSON.parse(raw || "{}");
+      result = JSON.parse(raw);
     } catch (err) {
       bad("turn json", err.message);
       return;

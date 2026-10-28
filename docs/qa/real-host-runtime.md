@@ -28,6 +28,18 @@ Smoke: `bash scripts/smoke_real_chat.sh` (Shell, ListDir, memory set/get, WebFet
 | Email connectors | If OAuth JSON in `data/connectors/gmail.json` or `outlook.json`: Connected |
 | Box copy | `copy_to_box` / `copy_from_box` → FS under repo + durable `data/box-copy/*.json` + SendToUser attachment |
 
+## 2026-10-28 alignment
+
+本清单是「Real Host runtime」（legacy / demoted `127.0.0.1:8765` 路径 + connector / 凭据门禁）的 residual。以下 2026-10-28 进展落在**产品 Agent Loop / Desktop 路径**，与下方用户侧 residual 正交，不改变其状态：
+
+- Agent Loop（Desktop + MoonBit）生产 Provider 已 live：`scripts/prove_production_provider.sh` → `pass=7 fail=0`（PP1–PP7），见 `docs/qa/production-provider-gates.md`。
+- Electron/Chat GUI residual 已收口：`scripts/prove_agent_loop_electron_midrun.sh` → `pass=62 fail=0`（EG1–EG6 live），见 `docs/qa/electron-chat-agent-loop-gates.md`。
+- capability matrix 234/234 PASS、I-GAP 0（文档口径约滞后代码 ~10 天，以代码为准）。
+- 群 422 根因已闭环：陈旧内核发空 tool schema 触发 DeepSeek 422；已重编内核 + 防御性改 `runtime/types.mbt`（提交 `6c2db52`，已 push）。
+- 分支整理：桌面端 `cursor/desktop-layout-target-v2` 与安卓端 `cursor/android-mobile-target-v1` 已合入 `main`（merge `30f844e`）；新需求在 `cursor/next-target-v1` 上推进。
+
+下方 residual 仍为**用户侧外部条件**（真机 OS 权限、生产 IdP 凭据、商店签名证书等），不受上述代码进展影响，保持 Deferred / gated。
+
 ## Residual (honest gaps)
 
 Product Host path is Desktop/CLI + MoonBit + `hosts/shared/host_ffi.js` (ADR 0005). Below are deferred product residuals (not matrix I blockers):
