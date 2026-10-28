@@ -1557,3 +1557,108 @@ smoke_grok_desktop_parity: PASS=387 FAIL=0
 - 本轮没改安卓侧：安卓 `TurnCoordinator` 走 `/v1/turn` 信封，`host_results` 的 `kind:"delivery"` 提取
   路径与桌面这段不同，inbox 凭据只在桌面 / Host 侧产生。
 - 无 KVM、无真机：安卓侧仍只有构建与 Robolectric 级证据。
+
+## 8.31 每次 push 都红、一个 job 都没有：AE 那条门从没真跑过
+
+**① 现象（不是「产品红了」，是「门不存在」）。**
+
+推 §8.30 那次提交后去 Actions 看状态，读到的是这样三条：
+
+```
+40733472246 | .github/workflows/agent-eval.yml | cursor/next-target-v1 | push | completed | failure | 32efb447
+40714772671 | .github/workflows/agent-eval.yml | cursor/next-target-v1 | push | completed | failure | 6db5e608
+40714764350 | .github/workflows/agent-eval.yml | cursor/next-target-v1 | push | completed | failure | 6db5e608
+```
+
+三条里只有第一条来自本轮（`32efb447` = §8.30 那次提交），另两条在切分支之前就挂在那儿了。
+三个细节叠在一起才是结论：名字显示的是**文件路径而不是 `Agent Eval`**；
+`GET /actions/runs/<id>/jobs` 回 `total_count=0`（一个 job 都没建过）；而且这个 workflow 的
+触发条件写的是 `push: branches: [main]`，**它本该在这个分支上一次都不触发**。
+
+**② 根因。**
+
+最后一步写成 `if: ${{ secrets.BITBOT_LLM_API_KEY != '' }}`。官方 Contexts 参考里
+`jobs.<job_id>.steps.if` 这一行给的可用上下文是
+`github, needs, strategy, matrix, job, runner, env, vars, steps, inputs` —— **没有 `secrets`**；
+`secrets` 在步骤级只能出现在 `steps.env` / `steps.with` / `steps.run` 这类位置。
+
+这个引用让文件在 Actions 侧无效。为什么连 `on:` 的过滤都没生效是**推断**（文件解析不了，过滤器
+自然无从判断）；本轮能直接证的只有前后对照：改之前每次 push 都会出现这种「名字叫文件路径、
+0 job、立即 failure」的空运行，改之后（`50a4d9f`）同样的 push **不再产生任何运行** —— 说明这份
+文件现在能被 Actions 接受，`on: branches: [main]` 也重新开始起作用。
+
+这件事的代价不是「CI 难看」：**AE 是仓库里唯一一条断言「行为达标」（选对工具、失败收敛、
+不越审批、群内不重复劳动）的门**，其余上百条 `prove_*` / `e2e_*` 断的是接线。它从建好那天起
+没跑过一次，等于这段时间里所有「行为」层面的承诺都没有 CI 背书。
+
+**③ 改法（意图一字不动）。**
+
+密钥先进该步的 `env:`（那里允许 `secrets`），由这一步自己把结论写进 `GITHUB_OUTPUT`，真正跑
+`--live` 的那一步只看 `steps.live.outputs.can == '1'`。没有真 provider key 时整步不跑，
+**不拿 stub 冒充行为达标** —— 这条原则和原注释一致，只是现在它真的能被执行到了。
+
+**④ 本地先把 AE 真跑一遍（moon 在 PATH 上，全离线场景）：**
+
+```
+AE eval: pass=26 fail=0 skip=3  (gate 26/26 pass, observed 0, live 3)
+task_success_rate=1 tool_selection_accuracy=1 tool_call_success_rate=0.5205
+steps/task avg=9.06 p50=2 max=1  tokens(est)=4280  latency avg=43.65ms max=98ms
+skip AE-27/28/29 live：needs_live
+```
+
+其中 `AE-21 群协作：handoff 真执行（目标 bot 真的产出）` 在 §8.30 改完回包形状之后仍然绿，
+`AE-22/23`（无审批的 shell 不执行、参数里 `approved:true` 不能伪造审批）也照旧绿。
+`tool_call_success_rate=0.5205` 这个数本轮只记录、不当门用（分母含 provider 故意失败的场景），
+拿它当 KPI 之前得先说清口径。
+
+**⑤ 顺着这条线还抓到一处「整合分支打不出包」。**
+
+`android-apk.yml` 的 push 触发只写了旧分支 `cursor/android-mobile-target-v1`（外加 PR 改
+`hosts/android/**` 才跑）。桌面与安卓整合到 `cursor/next-target-v1` 之后，在这条最新分支上改安卓
+**Actions 一次都不会跑**，「能在 Action 里打出可安装包」这句话只对旧分支成立。修复只加分支、
+不动 paths 过滤（不碰安卓的提交不会白跑一次 45 分钟构建）。
+
+推上去之后实测真的被触发了，并且跑绿（这就是「加分支」是否生效的唯一证据）：
+
+```
+40734948337 | Android APK | cursor/next-target-v1 | completed | success
+job「编译 APK + 读回包里的事实」17 步全绿，其中三条是关键：
+  ✓ 真编译 APK + JVM 单测（线路解析）
+  ✓ 门禁：aapt 读回包名 / 权限 / SDK / flavor，并确认真的跑了单测
+  ✓ 产物与签名事实（写进 Summary，不写「已可上架」）
+产物：bitbot-android-universal-112271fa4d1211a6c944429af1081f1290121e60，13,310,179 B
+zip 里两个 APK（本轮真下载并 sha256 算过）：
+  universal-app-universal-debug.apk   8,034,166 B  d0ddf55b…41d3573
+  universal-app-universal-release.apk 5,964,777 B  6fce5124…9db6db
+```
+
+产物名里那串 sha 就是 `github.sha`，和本轮推的 HEAD（`112271f`）逐字一致 —— 「装到手机上那个包
+确实是这条分支现在的代码打出来的」这一点有凭据，不是拿旧包冒充。Actions REST 侧不返回 artifact
+的 sha256（`sha256_digest` 在两个端点都是 undefined），所以上面那两个和是本轮自己下载后算的。
+
+**⑥ 门禁与实测数字（本轮最后一次全量，跑在已推送的树 `112271f` 上）。**
+
+```
+smoke_grok_desktop_parity: PASS=387 FAIL=0
+```
+
+与 §8.30 收口时同一数字：本轮只动 `.github/workflows/*` 与文档，锚点条数不变（全仓 grep 确认
+没有任何门读 CI 文件，`scripts/` 里唯一提到 `android-apk.yml` 的地方是 RH 门引用报告里的一节标题）。
+同一轮核验：`✗` 行数 0；带自计数的 14 道门全部 `SKIP=0`；跑完 `git status --porcelain data/` 为 0 行；
+这一轮里 `prove_report_history_intact: PASS=7 FAIL=0` 与它的负向对照（截断版被抓住，4/3）同时成立。
+
+**⑦ 残留（诚实）。**
+
+- AE 在 **GitHub 上仍然没有成功跑过一次**：修复后可证的是「不再有名字叫文件路径、0 job 的空运行」
+  ——因为 `on:` 只允许 `main` 与 `pull_request`，这个分支的 push 现在正确地不触发它。要真正确认
+  CI 侧绿，得开一条到 `main` 的 PR（这是会影响他人可见状态的动作，本轮没做，等用户点头）。
+  本地 26/0/3 是行为门目前唯一的实测。
+- `--live` 三个场景（真模型自己选工具 / 自己决定下一步 / 失败后不重试）依旧整步不跑：仓库里没有
+  `BITBOT_LLM_API_KEY`，这个门的设计就是没 key 就不跑，不用假 PASS 凑数。
+- `desktop-macos.yml` 与 `kernel-binary.yml` 本轮没逐条查是否有同类「解析失败」症状，只确认它们
+  在这条分支的 push 上没有产生空运行（运行列表里只有 `Desktop macOS` 在 `desktop-v0.1.0` 上的成功记录）。
+- 无 KVM、无真机：AE 与 APK 都只到「行为断言 + 包内事实读回」这一层，装上手机后能不能走完
+  §8.30 那条转交流程，仍要设备验证。
+- 那个 `universal-release` 包在没配 `BITBOT_ANDROID_STORE_*` keystore 时**仍然是 debug 签名**
+  （工程未配置时回落 debug，workflow 头部就把这句话说在前面了）：它是一块能侧载的包，
+  不是一块能上架的包，Summary 也不写「已可上架」。
