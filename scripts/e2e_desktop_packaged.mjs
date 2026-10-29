@@ -33,9 +33,13 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import os from "os";
-import { spawn } from "child_process";
+import net from "net";
+import { spawn, spawnSync, execFileSync } from "child_process";
 import { fileURLToPath } from "url";
-import { hasDisplay } from "./electron_env.mjs";
+import { createRequire } from "module";
+
+const require = createRequire(path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), "hosts/desktop/package.json"));
+const { chromium } = require("playwright-core");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -75,13 +79,56 @@ const done = () => {
   process.exit(FAIL ? 1 : 0);
 };
 
+/**
+ * DISPLAY 设了不等于能用。容器/CI 里常见 `DISPLAY=:1`，但 :1 的 Xvfb 早就
+ * 退了（只剩 /tmp/.X11-unix/X10x 之类僵尸 socket）。此时直接信 DISPLAY，会看到
+ * Chromium 的 "Missing X server or $DISPLAY" 然后 SIGSEGV —— 看起来像「产品启动
+ * 就崩」，实际是尺子环境坏了（2026-10-29 在 pack-desktop.sh 里踩到：宿主有
+ * DISPLAY=:1，脚本于是跳过 xvfb-run，门就假红）。
+ */
+function displayUsable() {
+  if (process.platform !== "linux") return true;
+  if (!process.env.DISPLAY) return false;
+  try {
+    execFileSync("xdpyinfo", ["-display", process.env.DISPLAY], { stdio: "ignore", timeout: 3000 });
+    return true;
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      /* 没装 xdpyinfo：退化成「socket 在不在」。 */
+      const n = /^:(\d+)/.exec(process.env.DISPLAY);
+      return Boolean(n) && fs.existsSync("/tmp/.X11-unix/X" + n[1]);
+    }
+    return false;
+  }
+}
+
 if (!fs.existsSync(BIN)) {
   /* 不假装 SKIP：没有打包产物就没验过「装好的 App」，这是缺证据，不是通过。 */
   bad("P-00 打包产物存在", BIN + " 不存在；先跑 BITBOT_PACK_TARGET=dir bash scripts/pack-desktop.sh");
   done();
 }
-if (!hasDisplay()) {
-  console.log("e2e_desktop_packaged: SKIP — no DISPLAY and no xvfb-run");
+if (!displayUsable()) {
+  if (process.env.BITBOT_XVFB_WRAPPED) {
+    /* 已经在 xvfb-run 里还是连不上：这是尺子坏了，不能悄悄 SKIP。 */
+    bad("P-00 xvfb-run 里的 DISPLAY 不可用", "DISPLAY=" + (process.env.DISPLAY || "(unset)"));
+    done();
+  }
+  /* 有 xvfb-run 就在虚拟显示里重跑自己，别让「宿主 DISPLAY 是死的」变成假红。 */
+  const hasXvfb =
+    process.platform === "linux" &&
+    spawnSync("sh", ["-c", "command -v xvfb-run"], { stdio: "ignore" }).status === 0;
+  if (hasXvfb && !process.env.BITBOT_XVFB_WRAPPED) {
+    console.log(
+      "e2e_desktop_packaged: DISPLAY=" + (process.env.DISPLAY || "(unset)") + " 连不上，改用 xvfb-run 重跑",
+    );
+    const r = spawnSync(
+      "xvfb-run",
+      ["-a", process.execPath, fileURLToPath(import.meta.url), ...process.argv.slice(2)],
+      { stdio: "inherit", env: { ...process.env, BITBOT_XVFB_WRAPPED: "1" } },
+    );
+    process.exit(r.status === null ? 1 : r.status);
+  }
+  console.log("e2e_desktop_packaged: SKIP — 没有可用的 DISPLAY（也没有 xvfb-run）");
   console.log("e2e_desktop_packaged: PASS=0 FAIL=0 SKIP=1");
   process.exit(0);
 }
@@ -113,6 +160,34 @@ async function waitFor(fn, ms) {
     const v = fn();
     if (v) return v;
     await sleep(120);
+  }
+  return null;
+}
+
+/** 找一个空闲端口给 CDP 用（固定端口会被上一次崩溃的运行占住）。 */
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const s = net.createServer();
+    s.unref();
+    s.on("error", reject);
+    s.listen(0, "127.0.0.1", () => {
+      const p = s.address().port;
+      s.close(() => resolve(p));
+    });
+  });
+}
+
+/** 等 DevTools HTTP 端点真的应答（/json/version 返回 200），不是只看端口。 */
+async function waitForCdp(port, ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    try {
+      const r = await fetch("http://127.0.0.1:" + port + "/json/version");
+      if (r.ok) return await r.json();
+    } catch (_) {
+      /* 还没起来 */
+    }
+    await sleep(150);
   }
   return null;
 }
@@ -174,7 +249,13 @@ let out = "";
       fs.mkdirSync(d, { recursive: true });
     }
 
-    child = spawn(BIN, ["--no-sandbox", "--disable-gpu", "--user-data-dir=" + UD], {
+    const CDP = await freePort();
+    child = spawn(BIN, [
+      "--no-sandbox",
+      "--disable-gpu",
+      "--user-data-dir=" + UD,
+      "--remote-debugging-port=" + CDP,
+    ], {
       cwd: UNPACKED,
       env: loopEnv,
       stdio: ["ignore", "pipe", "pipe"],
@@ -194,7 +275,17 @@ let out = "";
       const first = out.split("\n").find((l) => /Uncaught Exception|A JavaScript error|FATAL:/.test(l));
       bad("P-01 主进程没有未捕获异常", first || out.slice(0, 300));
     } else if (!alive) {
-      bad("P-01 主进程仍在运行", "exitCode=" + child.exitCode + " signal=" + child.signalCode);
+      /* 光说 signal=SIGSEGV 没法定位：把进程自己吐的最后几行带出来。 */
+      const tail = out
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(-8)
+        .join(" | ");
+      bad(
+        "P-01 主进程仍在运行",
+        "exitCode=" + child.exitCode + " signal=" + child.signalCode + (tail ? " 输出尾部：" + tail : " 输出为空"),
+      );
     } else {
       ok("P-01 主进程活着，启动日志里没有 Uncaught Exception / FATAL");
     }
@@ -272,6 +363,76 @@ let out = "";
       bad("P-04 app.asar 在运行前后字节一致", asarBefore.slice(0, 12) + " → " + sha256(ASAR).slice(0, 12));
     } else {
       ok("P-04 app.asar 运行前后字节一致（没往安装目录写）");
+    }
+
+    /* ---------- P-06 真实 UI 首次配置：保存 key 不能顺手关掉审核门 ----------
+       用户路径：账户胶囊 → 设置 → 凭证 → 填 key → 「保存并热加载」。
+       2026-10-29 实测（装机包）：这一步会把 `.env.local` 写成
+       BITBOT_CONTENT_MODERATION=0 —— 因为 `secrets.status()` 只对
+       `_POST/_MODEL/_BASE_URL/...` 回读 value，漏了 `_MODERATION`，复选框
+       永远从「未勾选」开始，而保存又强制提交 0。默认开启的审核门就这样被
+       一次「填个 key」静默关掉了。 */
+    {
+      let pw = null;
+      try {
+        /* 等 CDP 端点真的应答，而不是「端口进程起来了」；P-01 已经睡了 5s，
+           这里再给 20s 兜底。连不上就是门失败，不静默跳过。 */
+        const version = await waitForCdp(CDP, 20000);
+        if (!version) throw new Error("CDP 未就绪：127.0.0.1:" + CDP);
+        pw = await chromium.connectOverCDP("http://127.0.0.1:" + CDP, { timeout: 15000 });
+        const page = pw.contexts()[0].pages()[0];
+        await page.waitForSelector("#composer #text", { timeout: 30000 });
+        await page.click("#account-avatar-btn");
+        await page.click("#ap-settings");
+        await page.click('.settings-tab-btn[data-stab="credentials"]');
+        await page.waitForSelector("#sec-save", { state: "visible", timeout: 10000 });
+        const modBefore = await page.isChecked("#sec-moderation");
+        await page.fill("#sec-llm-key", "sk-ui-saved-2468");
+        await page.click("#sec-save");
+        await waitFor(() => {
+          try {
+            return fs.readFileSync(ENV_LOCAL, "utf8").includes("sk-ui-saved-2468");
+          } catch (_) {
+            return false;
+          }
+        }, 15000);
+        await sleep(500);
+        const modAfter = await page.isChecked("#sec-moderation");
+        const statusPath = await page.evaluate(async () => {
+          try {
+            const st = await window.bitbot.secrets.status();
+            return st && st.path ? String(st.path) : "";
+          } catch (_) {
+            return "";
+          }
+        });
+        const text = (() => {
+          try {
+            return fs.readFileSync(ENV_LOCAL, "utf8");
+          } catch (_) {
+            return "";
+          }
+        })();
+        const problems = [];
+        if (!/^BITBOT_CONTENT_MODERATION=1$/m.test(text)) {
+          problems.push("保存后审核门不是 1（实际 " + (/^BITBOT_CONTENT_MODERATION=(.*)$/m.exec(text) || [, "缺失"])[1] + "）");
+        }
+        if (!modAfter) problems.push("保存后复选框未勾选（勾选前=" + modBefore + "）");
+        if (statusPath !== ENV_LOCAL) problems.push("status.path 不是 userData：" + statusPath);
+        if (problems.length) {
+          bad("P-06 真实 UI 配置 key 不会静默关掉内容审核门", problems.join("; "));
+        } else {
+          ok("P-06 账户胶囊→设置→凭证→保存：key 落盘，审核门仍为 1，status.path 指向 userData");
+        }
+      } catch (err) {
+        bad("P-06 真实 UI 首次配置", (err && err.message ? err.message : String(err)).slice(0, 300));
+      } finally {
+        try {
+          if (pw) await pw.close();
+        } catch (_) {
+          /* ignore */
+        }
+      }
     }
 
     /* ---------- P-05 退出后不再 tick ---------- */

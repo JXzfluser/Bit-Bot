@@ -2736,9 +2736,11 @@ ipcMain.handle("bitbot:secrets:status", async () => {
     fields[k] = {
       present: m.present,
       masked: m.masked,
-      // Non-secret toggles / urls may show value when short and non-key-like
+      // Non-secret toggles / urls may show value when short and non-key-like.
+      // `_MODERATION` 必须回读：凭证页的复选框靠它回填；漏了就会从「未勾选」
+      // 开始，用户只是填个 key 保存，就会把默认开启的审核门写成 0（GP-173）。
       value:
-        /_POST$|_MODEL$|_BASE_URL$|_CHAT_ID$|_AGENT_ID$|_TOUSER$|_FILING$|_FEED_URL$|_PROVIDER$|_API_BASE$/.test(
+        /_POST$|_MODEL$|_BASE_URL$|_CHAT_ID$|_AGENT_ID$|_TOUSER$|_FILING$|_FEED_URL$|_PROVIDER$|_API_BASE$|_MODERATION$/.test(
           k,
         ) && !/_TOKEN$|_KEY$|_WEBHOOK$/.test(k)
           ? String(process.env[k] || "")
@@ -2753,7 +2755,9 @@ ipcMain.handle("bitbot:secrets:status", async () => {
   }
   return {
     ok: true,
-    path: "hosts/desktop/.env.local",
+    /* 装机后 .env.local 在 userData 下（GP-172）；这里曾经硬编码 dev 相对路径，
+       导致界面上「配置文件位置」指向一个用户机器上根本不存在的路径（GP-173）。 */
+    path: DESKTOP_ENV_LOCAL,
     fields,
     llm: llm
       ? {

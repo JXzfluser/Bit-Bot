@@ -246,6 +246,21 @@ G-27 三条 grep 锚点），单跑与最终矩阵均 128/0 / 441/0。结论只�
 
 ---
 
+### G-F.6 GP-173（本轮：填个 key 就静默关掉内容审核门）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-173 | 博主在凭证页填 LLM key 并「保存并热加载」后，默认开启的内容审核门必须还是开的 | **事故 + 修复**：`bitbot:secrets:status` 的 `value` 正则漏了 `_MODERATION$` → 渲染层不回填复选框 → 复选框从「未勾选」开始 → 保存无条件提交 `0`。一次普通保存静默关掉安全默认值；同 handler 的 `path` 还硬编码 dev 路径 | 装机包 P-06 走真实 UI（账户胶囊→设置→凭证→填 key→保存）：修复前 **7/1**（`实际 0`、`勾选前=false`、`status.path=hosts/desktop/.env.local`），修复后 **8/0**（审核门=1、复选框勾选、path=userData）；`pack-desktop.sh` 端到端 8/0 | 只验 Linux+xvfb；dev 树无对应锚点（保存会写用户真 `.env.local`）；CI 不跑打包门 |
+
+记下的一条尺子事故：`DISPLAY=:1` 设着但 Xvfb 早退，`pack-desktop.sh` 于是跳过
+`xvfb-run`，Chromium 报 `Missing X server or $DISPLAY` 后 SIGSEGV，门 4/4 红，
+看起来像「刚修好的产物又崩」。修法是先探活再决定是否自套 `xvfb-run`
+（`displayUsable()` + `BITBOT_XVFB_WRAPPED`），并且崩溃时把进程输出尾部带进断言。
+另一条环境教训：手工复现留下的 packaged app 占着 `127.0.0.1:18765`，让 `G-47`
+判了 5 红（AR-06/AR-11）；杀掉后单跑 20/0 —— 固定端口的门禁不会自己发现上个实例。
+
+---
+
 ## 三、门禁与交付要求（沿用现有纪律）
 
 1. **每新增 GP 必须打真链**：验收落到 `smoke_grok_desktop_parity.sh` 新场景 + 真 Electron/Playwright 门（`e2e_grok_desktop_*.mjs` 同族），renderer 不伪造状态；`moon test` 覆盖内核意图分类。

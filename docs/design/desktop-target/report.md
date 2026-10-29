@@ -2284,3 +2284,96 @@ PATH 里没有 moon、数据落在临时 `--user-data-dir`。
    当前结论是「墙钟等待 + 固定端口 stub 在长矩阵里偶发超时」，不是产品行为回退；
    但**没有找到根因之前不算修好**。下一步该把这几处从固定 30s 等待改成事件驱动
    （store 落盘即返回），并给 stub 端口做占用探测。
+
+## 8.37 用户只是填了个 key，内容审核门被静默关掉（GP-173）
+
+**① 用户路径与现象（装机包，CDP 真点，不是读源码猜的）。**
+
+```
+账户胶囊 → 设置 → 凭证 → 填 sk-ui-saved-2468 → 保存并热加载
+<userData>/.env.local 里出现：BITBOT_CONTENT_MODERATION=0
+```
+
+填 key 之前，这个复选框在页面上就是**未勾选**的（`勾选前=false`）——而产品的默认值
+是开（`main.js`：`BITBOT_CONTENT_MODERATION === undefined` 时填 `"1"`）。也就是说：
+**一次再普通不过的「保存并热加载」，把默认开启的内容审核门关掉了，用户全程没有看到任何提示。**
+对「自媒体博主 → 多 Bot 产稿 → 定时发群/推邮箱」这条主线，这是把安全默认值当成了可选项。
+
+**② 根因：三处各差一点，叠起来才发生。**
+
+1. `bitbot:secrets:status` 只对 `_POST$|_MODEL$|_BASE_URL$|_CHAT_ID$|_AGENT_ID$|
+   _TOUSER$|_FILING$|_FEED_URL$|_PROVIDER$|_API_BASE$` 回读 `value`；
+   `BITBOT_CONTENT_MODERATION` 不在里面 → 返回 `value: undefined`。
+2. 渲染层 `refreshSecretsForm()` 只在 `value !== undefined` 时回填复选框
+   （`index.html` 的 `if (mod && f.BITBOT_CONTENT_MODERATION && …value !== undefined)`），
+   所以它保持 HTML 里的初始「未勾选」，看起来就是「用户自己关的」。
+3. `saveSecretsFromForm()` **无条件**提交
+   `BITBOT_CONTENT_MODERATION = checked ? "1" : "0"`；写盘成功后热加载立刻生效。
+
+附带一条同类断点：`secrets:status` 的 `path` 硬编码 `"hosts/desktop/.env.local"`。
+GP-172 已经把装机后的真实文件挪到 `<userData>/.env.local`，但这条没跟上 ——
+界面上「配置文件位置」指着一个用户机器上根本不存在的路径。
+
+**③ 修复（一处读、一处显示）。**
+
+- `value` 的正则加 `_MODERATION$` → 复选框按进程里的真实值回填（默认就是勾选）。
+- `path: DESKTOP_ENV_LOCAL` → 开发时是 `hosts/desktop/.env.local`，装机后是
+  `<userData>/.env.local`，和 GP-172 的写盘路径同一个来源。
+
+**④ 新门 P-06：在装机包里走一遍真实 UI（不是直接调 IPC）。**
+
+在 `scripts/e2e_desktop_packaged.mjs` 里、P-05 之前，用 CDP 真点：
+账户胶囊 → 设置 → 凭证 → 填 key → 保存，然后断言三层：
+
+| 断言 | 为什么是这三层 |
+| --- | --- |
+| `<userData>/.env.local` 里 `BITBOT_CONTENT_MODERATION=1` | 最终事实：保存没有改掉默认值 |
+| `#sec-moderation` 保存后仍勾选 | 用户看到的状态与磁盘一致，不是「磁盘对、界面错」 |
+| `secrets.status().path === <userData>/.env.local` | 界面指向的路径真的存在 |
+
+红 → 绿（同一份装机产物，同一把尺子）：
+
+| 版本 | P-06 | 整门 |
+| --- | --- | --- |
+| 修复前（GP-172 产物） | ✗ `保存后审核门不是 1（实际 0）; 保存后复选框未勾选（勾选前=false）; status.path 不是 userData：hosts/desktop/.env.local` | **7 / 1** |
+| 修复后（重新 `pack-desktop.sh --dir`） | ✓ | **8 / 0** |
+
+**⑤ 尺子第三次翻车：`DISPLAY` 设了不等于能用。**
+
+把 P-06 接进 `pack-desktop.sh` 后，整门连续两次 4/4 红，P-01 只写
+`signal=SIGSEGV` —— 看起来像「刚修好的产物又崩了」。先补「崩溃时打印输出尾部」，
+下一轮立刻拿到真因：
+
+```
+[desktop] synced injected secrets → .env.local: BITBOT_LLM_API_KEY,...
+ERROR:ozone_platform_x11.cc(245)] Missing X server or $DISPLAY
+```
+
+本沙箱宿主有 `DISPLAY=:1`，但 `:1` 的 Xvfb 早就退了。`pack-desktop.sh` 的判断是
+「`DISPLAY` 为空才套 `xvfb-run`」，于是直接跑了 Electron；门的 `hasDisplay()` 也
+只认「变量非空 / 有 xvfb-run」，于是既不 SKIP 也起不来。
+
+修法：新增 `displayUsable()`（`xdpyinfo -display $DISPLAY` 探活；没装 `xdpyinfo`
+就退化为 `/tmp/.X11-unix/X<n>` 是否存在）。不可用且还没包装过 →
+用 `xvfb-run -a` **重新执行自己**（`BITBOT_XVFB_WRAPPED=1` 防递归）；
+已经在 xvfb 里仍不可用 → 判红 `P-00`，**不 SKIP**（那是尺子坏了，不是缺证据）。
+
+证据：修前 `node scripts/e2e_desktop_packaged.mjs`（宿主 `DISPLAY=:1`）→ 4/4 红；
+修后同一条命令打印「`DISPLAY=:1` 连不上，改用 xvfb-run 重跑」→ **8/0**；
+`BITBOT_PACK_TARGET=dir bash scripts/pack-desktop.sh` 端到端 → **8/0**。
+
+**⑥ 残留（诚实）。**
+
+1. P-06 只在 **Linux + xvfb** 的 `--dir` 产物上走过；macOS / Windows 的安装包与
+   真机安装同 §8.36 仍是未验。
+2. 只钉了「内容审核」这一个开关。其余开关（`_POST` 系列、`_FEED_URL`）本来就在
+   status 回读白名单里；P-06 是这类「保存会顺手改开关」缺陷的模板，但不是全量矩阵。
+3. dev 树里没有对应锚点：凭证页的「保存」会写用户真 `.env.local`（固定路径，
+   `BITBOT_REPO_ROOT` 隔离不到），所以 `e2e_desktop_llm_key_paste_guard` 只验到
+   「不点击保存」的那一层。要回归只能跑打包门；CI 仍不跑打包门。
+4. 本轮矩阵第一遍出现 **437/4**，全部集中在 `G-47 e2e_android_roster`（AR-06 401 /
+   AR-11 拿不到局域网地址）。根因不是产品：上一轮手工复现留了一个 packaged app
+   （`--user-data-dir=/tmp/pk-shot/ud`）占着 `127.0.0.1:18765`，门里的入站
+   `EADDRINUSE`，请求打到了那个旧实例上。杀掉后单跑 **20/0**，矩阵复跑
+   **441/0**。记一条：**固定端口的门禁不会自己发现环境里还有上个实例**；
+   下一步该让门禁用临时端口（`BITBOT_CN_INBOUND_PORT=0` 已是合法请求）或在启动前探测占用。
