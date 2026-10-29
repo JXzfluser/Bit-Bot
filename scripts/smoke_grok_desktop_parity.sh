@@ -14,8 +14,55 @@ DATA=data/desktop
 turn_json() { # $1 = user phrase, optional env BITBOT_APPROVED=1
   local extra=()
   [ "${BITBOT_APPROVED:-0}" = "1" ] && extra=(--approved)
-  node hosts/cli_host/run_turn.js "${extra[@]}" "$1" 2>/dev/null | tail -1
+  # ${extra[@]+"${extra[@]}"} — bash 3.2（macOS 自带 /bin/bash）在 `set -u`
+  # 下展开空数组会报 "extra[@]: unbound variable"，整条命令根本不执行。
+  # 后果不是难看：这条函数是全部 kind 断言的入口，它一失败，门禁在 macOS 上
+  # 永远是「✗ create bot chain」这样的连锁红（实测 296 项红），红的却不是产品。
+  node hosts/cli_host/run_turn.js ${extra[@]+"${extra[@]}"} "$1" 2>/dev/null | tail -1
 }
+
+# ---- 这两件「Linux 自带」的东西，macOS 上没有；缺一件就会把门禁整片判红 -----
+#
+# timeout(1) 属于 GNU coreutils，macOS 不自带。脚本里 44 处
+# `timeout <秒> node …` 于是全部变成 "timeout: command not found"，子门禁的
+# 日志里只剩这一行 shell 错误，上层再报「chain assertions missing」——
+# 2026-10-29 实测：这台机器上跑出来的 210 项红里，绝大多数是这只手，不是产品。
+# 这里用后台进程 + 轮询补一个语义相同的实现（超时返回 124，和 coreutils 一致）。
+if ! command -v timeout >/dev/null 2>&1; then
+  timeout() {
+    local secs=$1
+    shift
+    "$@" &
+    local pid=$!
+    local st=0
+    while kill -0 "$pid" 2>/dev/null; do
+      if [ "$st" -ge "$secs" ]; then
+        kill -TERM "$pid" 2>/dev/null
+        sleep 2
+        kill -KILL "$pid" 2>/dev/null
+        return 124
+      fi
+      sleep 1
+      st=$((st + 1))
+    done
+    wait "$pid"
+    return $?
+  }
+fi
+
+# 另一处平台假设：`node_modules/electron/dist/electron` 是 Linux/Windows 的布局，
+# macOS 是 `dist/Electron.app/Contents/MacOS/Electron`。7 个真渲染门禁的入口判断
+# 写死了前者，于是在开发机上永远 SKIP（SKIP ≠ PASS，也永远拦不住回归）。
+# 跨平台的解析已经有单一真源（scripts/electron_bin.mjs），这里复用它，只判存在性。
+HAVE_ELECTRON_UI=0
+if [ -d hosts/desktop/node_modules/playwright-core ] && node -e "
+const fs=require('fs');
+import('./scripts/electron_bin.mjs')
+  .then((m) => process.exit(fs.existsSync(m.resolveElectronBinary('hosts/desktop')) ? 0 : 1))
+  .catch(() => process.exit(1));
+"; then
+  HAVE_ELECTRON_UI=1
+fi
 
 field() { node -e "
 const fs=require('fs');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
@@ -181,7 +228,7 @@ console.log((mine[mine.length-1]||rs[rs.length-1]||{}).id||'')")
 j=$(turn_json "room $roomid :: @SmokeRenamed ping"); echo "$j" | grep -q mentioned_only && ok "@BotName → mentioned_only 路由" || bad "mention routing"
 j=$(turn_json "room $roomid :: @everyone ping"); echo "$j" | grep -q '"responder_policy": "all"\|all' >/dev/null && echo "$j" | grep -q everyone && ok "@everyone 路由输出存在" || bad "everyone"
 j=$(turn_json "room $roomid :: 无人点名"); echo "$j" | grep -q bot_discretion && ok "无 @ → bot_discretion" || bad "discretion"
-echo "$j" | grep -q "dm-only" && ok "GP-53 escalations=dm-only（审批不进群）" || bad "dm-only flag"
+echo "$j" | grep -q "dm-only" && ok "GP-53 escalations=dm-only（审批不进群）" || bad "dm-only flag" "room_turn 结果里没有 escalations=dm-only，片段：$(echo "$j" | head -c 160)"
 
 echo "== G-7 语音（GP-15/60/61）=="
 VOICE_MOCK="$PWD/scripts/host_espeak_mock.sh"
@@ -450,7 +497,14 @@ const mine=rs.filter(r=>(r.members||[]).includes('$hid_b')&&(r.members||[]).incl
 console.log((mine[mine.length-1]||{}).id||'')")
 [ -n "$hoid" ] && ok "G-14 前置：群建立（2 成员）" || bad "G-14 room create"
 j=$(turn_json "handoff room $hoid from=$hid_a to=$hid_b task=collect deploy logs")
-echo "$j" | field intent | grep -q handoff_task && echo "$j" | field hostKinds | grep -q handoff_task:ok && ok "GP-52 短语 → handoff_task 意图 + host ok" || bad "GP-52 chain"
+# 这一条断的是「话术被认成转交、宿主真的受理并投递」，不是「承接 Bot 立刻跑完了」：
+# 本门禁这一段没有 LLM 端点，承接者的回合必然产不出回复，把 ok（=真的答上了）
+# 写进断言只会得到与产品无关的红（2026-10-29 实测三条红就在这里）。
+# 受理=accepted，投递=inbox/存根（下面两条分别断）。
+echo "$j" | field intent | grep -q handoff_task \
+  && echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='handoff_task')||{};const p=JSON.parse(h.stdout||'{}');process.exit(h.accepted===true&&p.accepted===true&&p.pretend_transferred===false?0:1)})" <<<"$j" \
+  && ok "GP-52 短语 → handoff_task 意图 + 宿主受理并排队（不假装已交接）" \
+  || bad "GP-52 chain" "intent=[$(echo "$j" | field intent)] kinds=[$(echo "$j" | field hostKinds)]"
 node -e "
 const fs=require('fs');
 const hit=require('./$DATA/rooms.json').rooms.find(r=>r.id==='$hoid')||{};
@@ -577,7 +631,7 @@ echo "== G-16 自动化冷启动 + GP-70 像素断言（Playwright-E2E · 规格
 # 本波把「手工启动 Electron + 肉眼看截图」换成 scripts/e2e_grok_desktop_boot.mjs：
 # Playwright _electron.launch 拉起真实 main/preload，settings.set 走真实用户链，
 # 截图用零依赖 PNG 解码（scripts/lib_png_pixel.mjs）算 viewport 亮度做可证伪断言。
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   e2e_log=/tmp/e2e-g16.log
   # M21 起 E2E 含六次真实 boot（GP-70 ×2 + GP-14 + GP-99 + GP-108/109 + GP-111/112
   # + GP-116..119 + GP-93/94/95），单个 boot 冷启一次约 20–40s，故给足 1500s。
@@ -587,7 +641,7 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     e2e_xvfb=(xvfb-run -a)
   fi
-  if timeout 1500 "${e2e_xvfb[@]}" node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
+  if timeout 1500 ${e2e_xvfb[@]+"${e2e_xvfb[@]}"} node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
     ok "G-16 E2E 冷启动+像素断言全绿（$(grep -c '✓' "$e2e_log") 项，$(tail -1 "$e2e_log"))"
   else
     bad "G-16 E2E 冷启动+像素断言（见 $e2e_log）"
@@ -1168,7 +1222,10 @@ fi
 grep -q "composer 群聊提交走 Host rooms.orchestrate IPC" /tmp/g29-probe.log 2>/dev/null \
   && ok "G-29 GP-119/143：群组行 → composer 对准群聊，提交走 Host rooms.orchestrate（roomTurn 单一写入点）" \
   || bad "G-29 GP-119 composer orchestrate missing"
-grep -q "Host IPC 真接线：roomTurn → appendRoomTranscript → orchestrateRoom" /tmp/g29-probe.log 2>/dev/null \
+# 这里的 grep 是对「子门.printed 断言名」的字符串合同——子门把这条改名了，聚合门
+# 就会假红（2026-10-29 实测：断言名已改成 dispatchRoomTurn(...) 形状，聚合一味
+# 找旧串导致 G-29 红）。用 -E 只锚定这条断言的实质三段，别再把函数签名写死。
+grep -E -q "Host IPC 真接线：.*roomTurn → appendRoomTranscript → orchestrateRoom" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "responder 回合用自己的 botId" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "preload 暴露 rooms.orchestrate" /tmp/g29-probe.log 2>/dev/null \
   && ok "G-29 GP-143：真回合接线落地（每 responder 自己的 botId/记忆/persona，独立 room session）" \
@@ -1630,7 +1687,7 @@ grep -q "旧 execSync(pgrep -f UD) 数到" /tmp/g46-ruler.log \
   && ok "G-46 尺子负向对照：旧写法确实多算（修复前红，证明断言非恒真）" \
   || bad "G-46 ruler negative control missing"
 
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g46_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g46_xvfb=(xvfb-run -a)
@@ -1639,7 +1696,7 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
     log=/tmp/g46-$g.log
     pkill -9 -f "dist/[e]lectron" 2>/dev/null
     sleep 1
-    if timeout 900 "${g46_xvfb[@]}" node "scripts/e2e_desktop_$g.mjs" >"$log" 2>&1; then
+    if timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node "scripts/e2e_desktop_$g.mjs" >"$log" 2>&1; then
       ok "G-46 e2e_desktop_$g 全绿（$(grep -c '✓' "$log") 项，$(tail -1 "$log")）"
     else
       bad "G-46 e2e_desktop_$g（见 $log；$(tail -1 "$log")）"
@@ -1667,7 +1724,7 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
   log=/tmp/g46-neg-single.log
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if NEG_CONTROL=1 timeout 900 "${g46_xvfb[@]}" node scripts/e2e_desktop_single_instance.mjs >"$log" 2>&1; then
+  if NEG_CONTROL=1 timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node scripts/e2e_desktop_single_instance.mjs >"$log" 2>&1; then
     bad "G-46 负向对照失效：关掉单实例锁后门禁仍全绿（恒真断言）"
   else
     grep -q "S-02 同 UD 出现多个主进程" "$log" \
@@ -1707,14 +1764,14 @@ else
   echo "  · skip：moon 不在 PATH，G-47 线路门禁未跑（SKIP ≠ PASS）"
 fi
 
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g47_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g47_xvfb=(xvfb-run -a)
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if timeout 900 "${g47_xvfb[@]}" node scripts/e2e_android_roster.mjs > /tmp/g47-roster.log 2>&1; then
+  if timeout 900 ${g47_xvfb[@]+"${g47_xvfb[@]}"} node scripts/e2e_android_roster.mjs > /tmp/g47-roster.log 2>&1; then
     ok "G-47 e2e_android_roster 全绿（$(grep -c '✓' /tmp/g47-roster.log) 项，$(tail -1 /tmp/g47-roster.log)）"
   else
     bad "G-47 e2e_android_roster（见 /tmp/g47-roster.log；$(tail -1 /tmp/g47-roster.log)）"
@@ -1931,14 +1988,14 @@ echo "  · G-50 残留（诚实）：门只核标题/编号/围栏/行数下限�
 echo "    pairing-v1.md 与 parity-gaps-next.md 暂未纳入同一道门"
 
 echo "== G-51 国内渠道凭证不裸奔（掩码 + 字段级校验 + 同一屏下一步）=="
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g51_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g51_xvfb=(xvfb-run -a)
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if timeout 900 "${g51_xvfb[@]}" node scripts/e2e_desktop_cn_channel_guard.mjs > /tmp/g51-cnchan.log 2>&1; then
+  if timeout 900 ${g51_xvfb[@]+"${g51_xvfb[@]}"} node scripts/e2e_desktop_cn_channel_guard.mjs > /tmp/g51-cnchan.log 2>&1; then
     ok "G-51 e2e_desktop_cn_channel_guard 全绿（$(grep -c '✓' /tmp/g51-cnchan.log) 项，$(tail -1 /tmp/g51-cnchan.log)）"
   else
     bad "G-51 e2e_desktop_cn_channel_guard（见 /tmp/g51-cnchan.log；$(tail -1 /tmp/g51-cnchan.log)）"
@@ -1963,14 +2020,14 @@ else
 fi
 
 echo "== G-52 国内渠道加签 / 事件回调密钥能在界面上配（不再逼用户改 .env.local）=="
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g52_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g52_xvfb=(xvfb-run -a)
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if timeout 900 "${g52_xvfb[@]}" node scripts/e2e_desktop_cn_secret_inputs.mjs > /tmp/g52-cnsec.log 2>&1; then
+  if timeout 900 ${g52_xvfb[@]+"${g52_xvfb[@]}"} node scripts/e2e_desktop_cn_secret_inputs.mjs > /tmp/g52-cnsec.log 2>&1; then
     ok "G-52 e2e_desktop_cn_secret_inputs 全绿（$(grep -c '✓' /tmp/g52-cnsec.log) 项，$(tail -1 /tmp/g52-cnsec.log)）"
   else
     bad "G-52 e2e_desktop_cn_secret_inputs（见 /tmp/g52-cnsec.log；$(tail -1 /tmp/g52-cnsec.log)）"
@@ -2003,7 +2060,7 @@ echo "== G-53 用户旅程验收门真的被跑（J1–J4 多 Bot 各岗 / P1–
 # 这两道门写的是本项目的**验收标准本身**（「真实 Electron 里走不走得通」），可它们此前不在任何
 # 聚合门里：`grep -rn "e2e_desktop_user_journeys\|e2e_desktop_creator_pipeline" scripts/*.sh`
 # 在登记前是 0 命中 —— 门禁存在但没人跑，等于没有门禁；J/P 任何一条被改坏，矩阵照样全绿。
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g53_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g53_xvfb=(xvfb-run -a)
@@ -2012,7 +2069,7 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
     local name="$1" log="$2" tmo="$3"
     pkill -9 -f "dist/[e]lectron" 2>/dev/null
     sleep 1
-    if timeout "$tmo" "${g53_xvfb[@]}" node "scripts/${name}.mjs" >"$log" 2>&1; then
+    if timeout "$tmo" ${g53_xvfb[@]+"${g53_xvfb[@]}"} node "scripts/${name}.mjs" >"$log" 2>&1; then
       if grep -q "PASS=0 FAIL=0 SKIP=1" "$log"; then
         echo "  · skip：${name} 自报环境不足（$(grep -m1 'SKIP —' "$log" || echo '未给出原因')）— SKIP ≠ PASS"
         return 0
@@ -2053,14 +2110,14 @@ else
 fi
 
 echo "== G-54 模型密钥粘错了当场说清楚（Bearer 头写法 / 界面自己的掩码 / 断行 / 没粘全）=="
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g54_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g54_xvfb=(xvfb-run -a)
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if timeout 900 "${g54_xvfb[@]}" node scripts/e2e_desktop_llm_key_paste_guard.mjs > /tmp/g54-lkkey.log 2>&1; then
+  if timeout 900 ${g54_xvfb[@]+"${g54_xvfb[@]}"} node scripts/e2e_desktop_llm_key_paste_guard.mjs > /tmp/g54-lkkey.log 2>&1; then
     ok "G-54 e2e_desktop_llm_key_paste_guard 全绿（$(grep -c '✓' /tmp/g54-lkkey.log) 项，$(tail -1 /tmp/g54-lkkey.log)）"
   else
     bad "G-54 e2e_desktop_llm_key_paste_guard（见 /tmp/g54-lkkey.log；$(tail -1 /tmp/g54-lkkey.log)）"
@@ -2085,6 +2142,75 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
   echo "    其它包裹写法（尖括号 <sk-…>、引号）暂未归一，遇到再加，不加没测过的代码"
 else
   echo "  · skip：缺 playwright-core 或 electron，G-54 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-55 事件日志底座（T1-01/T1-02 · docs/events.md）=="
+# 状态从 JSON 快照迁到「可续订的日志」的前提是：seq 由存储层分配、幂等键去重、
+# 崩溃不丢、delta 永不落库。这些是纯 Node（node:sqlite）的断言，不需要显示环境。
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 300 node scripts/prove_event_log.mjs > /tmp/g55-eventlog.log 2>&1; then
+    ok "G-55 事件日志契约全绿（$(grep -c '^ok EL' /tmp/g55-eventlog.log) 项，$(tail -2 /tmp/g55-eventlog.log | head -1)）"
+  else
+    bad "G-55 事件日志契约（见 /tmp/g55-eventlog.log；$(tail -2 /tmp/g55-eventlog.log | head -1)）"
+  fi
+  grep -q '^ok EL-04' /tmp/g55-eventlog.log \
+    && grep -q '^ok EL-07' /tmp/g55-eventlog.log \
+    && ok "G-55 幂等与崩溃两头的锚点在：重复投递读回原 seq、kill -9 之后已提交事件仍可读" \
+    || bad "G-55 idempotence / crash anchors missing"
+  grep -q '^ok EL-05' /tmp/g55-eventlog.log \
+    && grep -q '^ok EL-09' /tmp/g55-eventlog.log \
+    && ok "G-55 两条「拒绝」都在：delta 不进事件表、比读侧新的库拒绝打开" \
+    || bad "G-55 delta / version anchors missing"
+  echo "  · G-55 负向对照（本轮实测，断言非恒真）：把 NEVER_PERSISTED 清空后同一道门"
+  echo "    立刻 EL-05「本该抛错，却没有」翻红，汇总从 pass 10/fail 0 变 pass 7/fail 3；"
+  echo "    还原后回到 10/0 —— delta 能落库就意味着状态不再只由 fold(events) 得到"
+  echo "  · G-55 残留（诚实）：T1-03 双写、T1-04 读切换、T1-06 单写者还没接上——"
+  echo "    本门只证明「日志本身立得住」，不证明 product_surface 已经改读它"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-55 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-56 常驻内核进程（T1-07 · 一行请求换一回合，替代每轮 spawn）=="
+# 需求的 AC 是可数的：「群聊 3 Bot 进程创建 = 0；崩溃自动重启并标记在途回合」。
+# 子门同时量常驻侧和「把常驻关掉」的对照侧，所以这里的锚点是两个方向都有数 ——
+# 只有常驻侧的数，无法区分「省掉了 spawn」和「没数到 spawn」。
+KR_LOG=/tmp/g56-kernel-resident.log
+KR_BIN=_build/native/release/build/cmd/desktop_turn/desktop_turn.exe
+if [ -x "$KR_BIN" ] || [ -x "${KR_BIN%.exe}" ]; then
+  if timeout 480 node scripts/prove_kernel_resident.mjs >"$KR_LOG" 2>&1; then
+    ok "G-56 常驻内核契约全绿（$(grep -c '^ok KR' "$KR_LOG") 项，$(tail -2 "$KR_LOG" | head -1)）"
+  else
+    bad "G-56 常驻内核契约（见 $KR_LOG；$(tail -2 "$KR_LOG" | head -1)）"
+  fi
+  # 摘数用 grep -o 抓「key=数字」，不用 cut -c：CJK 按字节切会切成半个字。
+  grep -q '^ok KR-04' "$KR_LOG" \
+    && ok "G-56 AC 原句在：群聊 3 Bot 稳态一轮 $(grep -o '进程创建=[0-9]*、Host spawn=[0-9]*、请求=[0-9]* 条' "$KR_LOG" | head -1)（$(grep -o 'returned=[0-9]*/[0-9]*' "$KR_LOG" | head -1)，回话内容另见下方残留说明）" \
+    || bad "G-56 KR-04 anchor missing（群聊 3 Bot 稳态零进程创建没被断言）"
+  grep -q '^ok KR-05' "$KR_LOG" \
+    && ok "G-56 崩溃侧锚点在：$(grep -o 'reason=[a-z_]*, turn=[A-Za-z0-9-]*' "$KR_LOG" | head -1)，$(grep -o '重启计数=[0-9]*' "$KR_LOG" | head -1)" \
+    || bad "G-56 KR-05 anchor missing（崩溃重启 + 在途回合点名没被断言）"
+  grep -q '^ok KR-03' "$KR_LOG" \
+    && grep -q '^ok KR-07' "$KR_LOG" \
+    && ok "G-56 反向对照 + 语义不变都在：关常驻 $(grep -o '[0-9]* 次 spawn' "$KR_LOG" | head -1)，常驻侧 $(grep -o 'Host 侧 spawn=[0-9]*' "$KR_LOG" | head -1)；同一批 argv 两条路结果逐条相同" \
+    || bad "G-56 对照锚点缺失（KR-03 反向对照 / KR-07 语义不变）"
+  grep -q '^ok KR-06' "$KR_LOG" \
+    && ok "G-56 旧内核兼容锚点在：不认 --serve 的二进制被如实判成 not_serving，不是 crashed，也不挂死" \
+    || bad "G-56 KR-06 anchor missing（旧内核识别没被断言）"
+  echo "  · G-56 实测（本轮日志，不是设计意图）：常驻 $(grep -o '池侧进程创建=[0-9]*' "$KR_LOG" | head -1)，同一个 pid 做完 $(grep -o '请求=[0-9]*' "$KR_LOG" | head -1) 条请求；对照关常驻 $(grep -o '[0-9]* 次 spawn' "$KR_LOG" | head -1)"
+  grep -q '^ok KR-10' "$KR_LOG" \
+    && ok "G-56 桌面默认锚点在：$(grep -o '默认值写在 createTurnRunner 之前' "$KR_LOG" | head -1)且退出钩子与回退口都在" \
+    || bad "G-56 KR-10 anchor missing（桌面宿主的默认值/关停钩子/回退口没被断言）"
+  echo "  · G-56 残留（诚实）：桌面宿主现在**默认**走常驻（BITBOT_KERNEL_RESIDENT=0 可退回每轮 spawn），"
+  echo "    但本门没有启动真 Electron 去数进程 —— KR-10 是结构锚点（默认值写在 runner 创建之前、"
+  echo "    before-quit/will-quit 钩子都在），不是开机实测。「打包出去的 app 已经不每轮 spawn」"
+  echo "    这一句改由真开机盖章：PA-08（node scripts/prove_pack_artifacts.mjs 起包里的 .app 跑完一轮，"
+  echo "    读包内证据的 loop_trace.resident，并确认宿主退出后包内内核 0 残留）。"
+  echo "    关掉常驻时旧路径一个字节都没变（旧客户端仍能连）。"
+  echo "    另外回话内容不在本门断言范围内：本机没配供应商密钥时 responder 回合会如实失败，"
+  echo "    门量的是「三条回合都落在同一批常驻进程上」这一件可数的事。"
+else
+  echo "  · skip：没有 release 内核二进制（$KR_BIN），G-56 未跑（SKIP ≠ PASS）"
+  echo "    先跑：moon build --target native --release"
 fi
 
 echo

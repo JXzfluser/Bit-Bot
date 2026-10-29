@@ -2503,15 +2503,22 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const runner = deps || roomRuntimeDeps || {};
     if (typeof runner.runResponderTurn !== "function") {
+      // 没有运行时依赖 ≠ 转交失败。这一支和同步入口同义：**受理并排队**——
+      // 转录已落、任务进承接 Bot 的 inbox（host_ffi 靠 accepted 决定投递），
+      // 只是「目标 Bot 立刻跑一轮」这件事没人执行。把它报成 ok:false 会让
+      // 宿主连 inbox 都不写，任务就此消失（2026-10-29 GP-52 三项红的真因）。
       return {
-        ok: false, error: "handoff_runner_required", mode: "host_handoff_task",
+        ok: true, accepted: true, error: "", mode: "host_handoff_task",
         pretend_transferred: false, executed: false, pending: true,
+        execution: "queued",
+        queue_reason: "handoff_runner_required",
         room: prep.room, title: prep.title, from_bot: prep.from_bot, to_bot: prep.to_bot,
         task: prep.task, transcript_entry: prep.entry, at: prep.at,
       };
     }
     const out = await executeHandoff(prep, runner);
     return Object.assign({
+      accepted: true,
       mode: "host_handoff_task", room: prep.room, title: prep.title,
       from_bot: prep.from_bot, to_bot: prep.to_bot, task: prep.task,
       transcript_entry: prep.entry, at: prep.at, pending: false,
@@ -2526,6 +2533,8 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const result = {
       ok: true,
+      // 与异步入口同一把尺子：accepted 只说「受理 + 投递」，执行与否看 executed。
+      accepted: true,
       mode: "host_handoff_task",
       // 目标 Bot 还没跑 —— 不能写成「已交接」。
       pretend_transferred: false,

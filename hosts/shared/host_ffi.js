@@ -24789,7 +24789,10 @@ function createHostFfi(repoRoot, opts = {}) {
           // 覆盖用户历史）。内核侧要如实报错，不能让异常把整批 effect 炸掉。
           res = { ok: false, error: "rooms_store_unreadable", detail: String((e && e.message) || e), mode: "host_handoff_task" };
         }
-        if (res && res.ok) {
+        if (res && res.accepted === true) {
+          // 投递看「受理」，不看「目标 Bot 这一轮跑成功了」：
+          // 承接者暂时答不出来，任务也必须留在它的 inbox 里等它接，
+          // 否则转录上写着转交、实际没人收到——GP-52 的契约就是这么破的。
           let inboxPath = "";
           try {
             inboxPath = path.join(
@@ -24829,15 +24832,20 @@ function createHostFfi(repoRoot, opts = {}) {
             at: res.at,
           });
         }
+        const handoffAccepted = res && res.accepted === true;
         results.push({
           kind,
           ok: res.ok === true,
           command: cmd,
           stdout: JSON.stringify(res),
-          stderr: res && res.ok ? "" : (res && res.error) || "handoff_refused",
-          error: res && res.ok ? "" : (res && res.error) || "handoff_refused",
+          // 「被拒绝」和「受理了但目标 Bot 没答上来」是两件事：前者没投递、
+          // 后者任务已经进承接者 inbox（见上面的 accepted 投递分支）。
+          // 混成一个 handoff_refused，审计就答不出「这活到底有没有人接手」。
+          stderr: res && res.ok ? "" : (res && res.error) || (handoffAccepted ? "handoff_target_unanswered" : "handoff_refused"),
+          error: res && res.ok ? "" : (res && res.error) || (handoffAccepted ? "handoff_target_unanswered" : "handoff_refused"),
           mode: res.mode || "host_handoff_task",
-          refused: !(res && res.ok),
+          accepted: handoffAccepted,
+          refused: !handoffAccepted,
         });
         continue;
       }

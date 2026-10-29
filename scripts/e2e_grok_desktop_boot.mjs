@@ -1230,14 +1230,36 @@ async function main() {
       const bootG23 = await launch({ BITBOT_LLM_STREAM: "0" });
       await bootG23.win.waitForSelector("#bot-list [data-agent-id]", { timeout: 30000 });
 
+      /* openBot 以前是「点一下 + 死等 900ms」。侧栏正在重绘的那一瞬间，那一下可能
+         点到已经被换掉的节点（querySelector 拿到 null 就什么都不做），于是这次
+         recall 整个落在上一个 Bot 名下——实测两种表现都出现过：该 Bot 的 recall
+         文件根本不出现（null），或 count 归错人。改成点完必须等**标题 pill 真变成
+         这个 Bot**（selectBotForChat 里 pill 与 activeBotId 同一同步块，pill 对了
+         发送目标就对了），没变就再点一次。断言一个字没放松。 */
+      const nameOf = (id) => {
+        const b = (botsNow || []).find((x) => x && x.id === id) || {};
+        return String(b.name || id).trim();
+      };
       const openBot = async (id) => {
-        await bootG23.win.evaluate((bid) => {
-          const row = document.querySelector(
-            '#bot-list [data-agent-id="' + bid + '"]',
-          );
-          if (row) row.click();
-        }, id);
-        await bootG23.win.waitForTimeout(900);
+        const want = nameOf(id);
+        const t0 = Date.now();
+        while (Date.now() - t0 < 20000) {
+          await bootG23.win.evaluate((bid) => {
+            const row = document.querySelector('#bot-list [data-agent-id="' + bid + '"]');
+            if (row) row.click();
+          }, id);
+          const landed = await bootG23.win
+            .waitForFunction(
+              (n) => String((document.querySelector("#bot-pill .bot-pill-name") || {}).textContent || "").trim() === n,
+              want,
+              { timeout: 4000 },
+            )
+            .then(() => true)
+            .catch(() => false);
+          if (landed) return true;
+          await bootG23.win.waitForTimeout(250);
+        }
+        return false;
       };
       const send = async (text) => {
         await bootG23.win.fill("#composer #text", text);
@@ -1747,12 +1769,24 @@ async function main() {
         edited && Array.isArray(edited.tags) && edited.tags.join(",") === "perf,research"
           ? ok("E2E GP-120：改名 + 标签真写进 bots.json（标签不是只显示在表单里）")
           : bad("E2E GP-120 persist", JSON.stringify(edited && { name: edited.name, tags: edited.tags }));
-        const rowView = await win.evaluate((bid) => {
-          const row = document.querySelector('#bot-list [data-agent-id="' + bid + '"]');
-          return row
-            ? { name: (row.querySelector(".name") || {}).textContent || "", meta: (row.querySelector(".meta") || {}).textContent || "" }
-            : null;
-        }, createdId);
+        // 侧栏行是异步重绘的：改名落盘那一瞬 DOM 可能正被重建，单次 evaluate 会
+        // 读到 null（实测：紧跟着的 GP-122 查同一行又查得到）。轮询到「行里就是
+        // 新名字 + 新标签」为止；断言本身一个字没放松，只是不再抽查一次就当失败。
+        let rowView = null;
+        {
+          const t0 = Date.now();
+          while (Date.now() - t0 < 10000) {
+            rowView = await win.evaluate((bid) => {
+              const row = document.querySelector('#bot-list [data-agent-id="' + bid + '"]');
+              return row
+                ? { name: (row.querySelector(".name") || {}).textContent || "", meta: (row.querySelector(".meta") || {}).textContent || "" }
+                : null;
+            }, createdId);
+            if (rowView && rowView.name.includes("Piper UI")
+              && rowView.meta.includes("#perf") && rowView.meta.includes("#research")) break;
+            await new Promise((r) => setTimeout(r, 200));
+          }
+        }
         rowView && rowView.name.includes("Piper UI") && rowView.meta.includes("#perf") && rowView.meta.includes("#research")
           ? ok("E2E GP-120：侧栏行立即同步新名称与标签（无需重启）")
           : bad("E2E GP-120 sidebar", JSON.stringify(rowView));

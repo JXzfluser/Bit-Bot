@@ -12,7 +12,8 @@
  * 退出后 0 残留被读成 1（判「退不掉」）。**红的是尺子，不是产品。**
  *
  * 本脚本用假进程（argv 里刻意带上 main.js / UD）钉三件事：
- *   PC-1 修复前红：旧写法把承载自己的 shell 也算进去（比真实值多 1）
+ *   PC-1 修复前红：旧写法把不是主进程的东西也算成实例（只带 UD 的辅助进程
+ *        一定被算进来；某些平台上连承载 pgrep 的那个 sh -c 也算）
  *   PC-2 修复后绿：countAppMains 只数「带 main.js + UD 的主进程」，
  *        Chromium 辅助进程（只带 UD）不计入
  *   PC-3 清场真有效：killGateProcs 之后两个计数都回 0
@@ -65,12 +66,16 @@ async function main() {
   const helperProc = fakeMain(UD, false); // 辅助进程：只有 UD
   await sleep(600);
 
-  /* PC-1 修复前红：真实只有 1 个主进程 + 1 个辅助进程 = 2，
-     旧写法数到的却是「匹配 UD 的所有进程」，里面还包含承载 pgrep 的 shell。 */
+  /* PC-1 修复前红：真实只有 1 个主进程（+1 个只带 UD 的辅助进程），
+     旧写法数的是「命令行里出现 UD 的所有进程」——辅助进程必然被算成实例，
+     在 pgrep 不自我排除的平台上（Linux CI 就是这么红的）连承载它自己的
+     `/bin/sh -c pgrep -f <UD>` 也一起算进去。所以这条断言写成跨平台都成立的
+     形式：legacy 严格大于真实主进程数，而不是「恰好比 2 多 1」。 */
   const legacy = legacyCount(UD);
-  legacy > 2
-    ? ok("PC-1 修复前红：旧 execSync(pgrep -f UD) 数到 " + legacy + "（比真实的 2 多算，含它自己的 sh -c）")
-    : bad("PC-1 修复前红没有翻红", "legacy=" + legacy + "，没有多算 → 本证明的前提不成立");
+  const realMains = countAppMains(UD);
+  legacy > realMains
+    ? ok("PC-1 修复前红：旧 execSync(pgrep -f UD) 数到 " + legacy + "，真实主进程只有 " + realMains + "（只带 UD 的辅助进程被当成实例；本机 pgrep 是否连 sh -c 一起数见平台差异）")
+    : bad("PC-1 修复前红没有翻红", "legacy=" + legacy + "，realMains=" + realMains + " → 本证明的前提不成立");
 
   /* PC-2 修复后绿：主进程计数=1，辅助进程不计入实例数 */
   const mains = countAppMains(UD);

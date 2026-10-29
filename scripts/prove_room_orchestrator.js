@@ -48,6 +48,7 @@ const path = require("path");
 const assert = require("assert");
 const { createProductSurface } = require("../hosts/desktop/product_surface");
 const roomOrchestrator = require("../hosts/desktop/room_orchestrator");
+const { asarPathOf } = require("./lib_pack_manifest.js");
 
 let pass = 0;
 let fail = 0;
@@ -133,6 +134,7 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
   check(bad.ok === false, "handoff：目标没跑成功 → 如实失败");
   check(bad.pretend_transferred === false, "handoff：失败时 pretend_transferred 仍是 false（不假装成功）");
   check(String(bad.error || "").length > 0, "handoff：失败原因可见");
+  check(bad.accepted === true, "handoff：目标答不上来仍算已受理（宿主照常投递，任务不丢）");
   check(
     transcript().some((e) => e && e.kind === "bot_reply_error" && e.bot_id === "b3"),
     "handoff：目标失败在群转录里如实可见",
@@ -148,6 +150,23 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
     { runResponderTurn: runner.runResponderTurn },
   );
   check(refuse.ok === false && refuse.error === "to_bot_not_member", "handoff：非成员仍然拒绝（不发明转移）");
+  check(refuse.accepted !== true, "handoff：被拒绝的转交标成未受理（宿主据此不会投递任务）");
+
+  // 没有运行时依赖（CLI / 移动端 host 就是这种局面）：受理并排队，不是失败。
+  // 2026-10-29 之前这一支返回 ok:false，于是 host_ffi 连 inbox 都不写，
+  // 「转交」只剩一行转录——GP-52 的三项门禁红在这里，红的是产品不是脚本。
+  const noRunner = await surface.handoffTaskAsync(
+    { room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "没人接手也要留住任务" },
+    {},
+  );
+  check(
+    noRunner.ok === true && noRunner.accepted === true && noRunner.pending === true && noRunner.executed === false,
+    "handoff：无 runner = 受理并排队（ok/accepted 为真，executed 仍为假）",
+  );
+  check(noRunner.pretend_transferred === false, "handoff：排队不假装已交接");
+  check(noRunner.execution === "queued", "handoff：回执写明执行状态是 queued");
+  const queuedSync = surface.handoffTask({ room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "同步入口的受理标记" });
+  check(queuedSync.accepted === true, "handoff 同步入口：与异步入口共用 accepted 语义");
 })();
 
 /* ───────────────── 2. lead 综合 + 成员原话可分辨 ───────────────── */
@@ -469,8 +488,8 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
   );
   const files = (((pkg || {}).build || {}).files || []);
   check(
-    Array.isArray(files) && files.includes("room_orchestrator.js"),
-    "打包：electron-builder 带上 room_orchestrator.js",
+    asarPathOf(files, "room_orchestrator.js") === "desktop/room_orchestrator.js",
+    "打包：electron-builder 带上 room_orchestrator.js（落在 desktop/）",
   );
   const surfSrc = fs.readFileSync(
     path.join(__dirname, "..", "hosts", "desktop", "product_surface.js"), "utf8",

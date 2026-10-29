@@ -82,10 +82,31 @@ echo "[pack-desktop] building MoonBit kernel (profile=$BUILD_PROFILE)…"
 # 展开空数组要加长度判断：macOS 自带 /bin/bash 是 3.2，在 `set -u` 下
 # `"${ARR[@]}"` 对空数组会直接 "unbound variable" 退出（bash 4.4+ 才修掉）。
 # CI 的 macos runner 上 `shell: bash` 同样是 3.2，所以这个判断两边都要。
-if [[ ${#BUILD_FLAGS[@]} -gt 0 ]]; then
-  (cd "$ROOT" && moon build --target native "${BUILD_FLAGS[@]}")
-else
-  (cd "$ROOT" && moon build --target native)
+build_kernel() {
+  if [[ ${#BUILD_FLAGS[@]} -gt 0 ]]; then
+    (cd "$ROOT" && moon build --target native "${BUILD_FLAGS[@]}")
+  else
+    (cd "$ROOT" && moon build --target native)
+  fi
+}
+
+# AC-T0-3：缺原生工具链时必须「失败并说明原因」，不能只吐一行 error，
+# 更不能继续往下产出半成品包。
+if ! build_kernel; then
+  echo "error: 内核编译失败（profile=$BUILD_PROFILE）—— 不产出半成品包。" >&2
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      echo "  Windows 需要 MSVC 生成工具（cl.exe / link.exe）：" >&2
+      echo "    1) 装 Visual Studio Build Tools 2022 → 勾选「使用 C++ 的桌面开发」" >&2
+      echo "    2) 从「Developer Command Prompt for VS 2022」里重跑本脚本" >&2
+      echo "    3) 验证：\`where cl\` 和 \`where link\` 都要有输出" >&2
+      echo "  绕行方案（CI 想绕开原生工具链时再评估）：--target wasm 的内核分支" >&2 ;;
+    Darwin)
+      echo "  macOS 需要 Xcode 命令行工具：\`xcode-select --install\`，然后 \`clang --version\` 自检" >&2 ;;
+    Linux)
+      echo "  Linux 需要 cc 链接器：\`sudo apt install build-essential\`（或对应发行版包）" >&2 ;;
+  esac
+  exit 1
 fi
 
 KERNEL_BIN_DIR="$ROOT/_build/native/$BUILD_PROFILE/build/cmd/desktop_turn"
@@ -94,7 +115,11 @@ for cand in "$KERNEL_BIN_DIR/desktop_turn" "$KERNEL_BIN_DIR/desktop_turn.exe"; d
   if [[ -x "$cand" ]]; then KERNEL_BIN="$cand"; break; fi
 done
 if [[ -z "$KERNEL_BIN" ]]; then
-  echo "error: kernel binary not found under $KERNEL_BIN_DIR" >&2
+  echo "error: 内核编译没报错，但 $KERNEL_BIN_DIR 下没有 desktop_turn(.exe) —— 不产出半成品包。" >&2
+  echo "  先确认 profile：BITBOT_KERNEL_BUILD=$BUILD_PROFILE（另一档是 debug），" >&2
+  echo "  再确认产物目录：ls _build/native/$BUILD_PROFILE/build/cmd/desktop_turn" >&2
+  echo "  若目录整体不存在，说明 moon 没为 native 目标产出可执行件（工具链/版本问题），" >&2
+  echo "  用 \`moon build --target native --info\` 看真实报错。" >&2
   exit 1
 fi
 echo "[pack-desktop] kernel binary: $KERNEL_BIN"
@@ -209,6 +234,10 @@ if [[ "$PACK_TARGET" == "dist" ]]; then
   fi
   echo "[pack-desktop] distributables under hosts/desktop/dist/"
   ls -la "$DESKTOP/dist" || true
+  # T0-03 门禁：体积棘轮 + 内核真在包内 + 包内内核真能跑 + 语言包真被裁过。
+  # 放在证据之前——门禁红的这一轮不该留下一份「看起来成功」的 evidence。
+  echo "[pack-desktop] artifact gate…"
+  node "$ROOT/scripts/prove_pack_artifacts.mjs"
 else
   echo "[pack-desktop] building unpackaged dir via electron-builder…"
   npm run pack

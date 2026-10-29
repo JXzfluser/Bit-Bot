@@ -37,6 +37,15 @@ if (!GOT_INSTANCE_LOCK) {
   });
 }
 
+/* T1-07 —— 桌面宿主默认使用常驻内核：一次进程创建做完所有回合，群聊一轮 3 个 Bot
+   不再起 3 个进程（这不是「更快」，是「不再按回合数 spawn」）。要回到每轮直起的
+   老行为，启动前设 BITBOT_KERNEL_RESIDENT=0 即可 —— 两条路共用同一个内核二进制、
+   同一套 argv 语义，scripts/prove_kernel_resident.mjs 的 KR-07 逐条比对过两侧产出，
+   KR-03 就是把本段默认关掉之后量出来的对照数。 */
+if (!process.env.BITBOT_KERNEL_RESIDENT) {
+  process.env.BITBOT_KERNEL_RESIDENT = "1";
+}
+
 // Dev: hosts/shared; packaged: hosts/desktop/shared (copied by electron-builder).
 let createTurnRunner;
 let createHostFfi;
@@ -153,7 +162,10 @@ const DEV_MODE_LAUNCH = process.argv.includes("--bitbot-devmode") || process.env
 /**
  * Path roots — see hosts/desktop/paths.js for the full contract.
  *
- *   REPO_ROOT : the MoonBit code tree (`moon run cmd/desktop_turn` runs here)
+ *   SRC_ROOT  : the MoonBit code tree (`moon run cmd/desktop_turn` runs
+ *               there); null in a packaged install
+ *   REPO_ROOT : the root the host modules work from (= SRC_ROOT in dev,
+ *               = the user-data parent when there is no source tree)
  *   DATA_ROOT : user data (sessions / rooms / memory / routines / secrets)
  *
  * The previous inline resolver probed for `moon.mod.json`, but MoonBit's
@@ -180,7 +192,9 @@ const RESOURCES_PATH = (() => {
 /** Where the kernel lives when it is shipped inside the app bundle. */
 const BUNDLED_KERNEL_ROOT = RESOURCES_PATH ? path.join(RESOURCES_PATH, "kernel") : null;
 
-const REPO_ROOT = resolveRepoRoot({
+/** The MoonBit *source* tree, or null in a packaged install (which ships the
+ *  compiled kernel instead). Nothing below may guess this one. */
+const SRC_ROOT = resolveRepoRoot({
   dirname: __dirname,
   kernelRoot: BUNDLED_KERNEL_ROOT,
   resourcesPath: RESOURCES_PATH,
@@ -214,13 +228,23 @@ const USER_DATA_DIR = (() => {
 
 /** User data root. Dev keeps the historical <repo>/data layout. */
 const DATA_ROOT = resolveDataRoot({
-  repoRoot: REPO_ROOT,
+  repoRoot: SRC_ROOT,
   userDataDir: USER_DATA_DIR,
   packaged: Boolean(app.isPackaged),
 });
 
-if (!REPO_ROOT) {
-  // Honest failure: no guessed path, and a reason the user can act on.
+/** The root the host modules work from. In dev it IS the source tree.
+ *  A packaged install has no source tree, but those modules read `repoRoot` as
+ *  "the directory whose `data/` holds the user data" — for a packaged app that
+ *  is the user-data dir (DATA_ROOT is `<userData>/data`). Deriving it from
+ *  DATA_ROOT keeps every `<repoRoot>/data/...` write landing in the right place
+ *  instead of throwing on a null path; source-only helpers (`scripts/*.sh`)
+ *  then report "missing" on their own instead of crashing the host. */
+const REPO_ROOT = SRC_ROOT || (DATA_ROOT ? path.dirname(DATA_ROOT) : null);
+
+if (!SRC_ROOT && !KERNEL_BIN) {
+  // Honest failure: neither a checkout to run `moon` from nor a bundled
+  // kernel binary, so there is no Product Brain in this install.
   const why = describeMissingKernel({ env: process.env });
   console.error("[bitbot] FATAL: " + why);
   try {
@@ -746,6 +770,34 @@ function stopRoutineDaemon(signal) {
     child.kill(signal || "SIGTERM");
   } catch (_) {
     /* ignore */
+  }
+}
+
+/** 关掉常驻内核池（T1-07）。`stop()` 的语义是「关上 stdin，让内核见 EOF 自己收摊」，
+ *  不需要信号；但 before-quit 里不能 await，所以真正的兜底是 will-quit 那一记 SIGKILL。
+ *  即使两记都没落地也不会留孤儿：主进程一退，管道写端就关闭，内核读到 EOF 必然退出。 */
+function stopResidentKernel() {
+  try {
+    if (runner && typeof runner.stopKernel === "function") runner.stopKernel();
+  } catch (_) {
+    /* 退出路径上的异常不许挡住关闭 */
+  }
+}
+
+function killResidentKernel() {
+  let pids = [];
+  try {
+    const st = runner && typeof runner.kernelStats === "function" ? runner.kernelStats() : null;
+    pids = (st && st.pids) || [];
+  } catch (_) {
+    pids = [];
+  }
+  for (const pid of pids) {
+    try {
+      process.kill(Number(pid), "SIGKILL");
+    } catch (_) {
+      /* 已经退了 */
+    }
   }
 }
 
@@ -3886,6 +3938,8 @@ app.on("before-quit", () => {
   quitRequested = true;
   // 早点发 SIGTERM，给 daemon 收尾的时间；will-quit 里再兜底 SIGKILL。
   stopRoutineDaemon("SIGTERM");
+  // 常驻内核同理：先请它自己收摊（关 stdin），will-quit 再兜底。
+  stopResidentKernel();
 });
 
 app.on("will-quit", () => {
@@ -3898,6 +3952,7 @@ app.on("will-quit", () => {
   // 这里补一记 SIGKILL —— 否则主进程一退，daemon 就成了孤儿进程，
   // 下一次启动时还会撞上「旧实例没清干净」。
   stopRoutineDaemon("SIGKILL");
+  killResidentKernel();
   if (tray) {
     try {
       tray.destroy();

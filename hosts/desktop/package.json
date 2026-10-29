@@ -20,30 +20,49 @@
       "output": "dist"
     },
     "files": [
-      "main.js",
-      "preload.js",
-      "index.html",
-      "ui_chrome.css",
-      "vendor/**/*",
-      "sessions.js",
-      "paths.js",
-      "product_surface.js",
-      "room_orchestrator.js",
-      "progress_protocol.js",
-      "secret_protocol.js",
-      "secret_vault.js",
-      "link_open.js",
-      "link_discipline.js",
-      "build/icon.png",
+      "package.json",
+      {
+        "from": ".",
+        "to": "desktop",
+        "filter": [
+          "main.js",
+          "preload.js",
+          "index.html",
+          "ui_chrome.css",
+          "vendor/**/*",
+          "sessions.js",
+          "paths.js",
+          "product_surface.js",
+          "room_orchestrator.js",
+          "progress_protocol.js",
+          "secret_protocol.js",
+          "secret_vault.js",
+          "link_open.js",
+          "link_discipline.js",
+          "build/icon.png",
+          "!**/*.map",
+          "!**/LICENSES.chromium.html"
+        ]
+      },
       {
         "from": "../shared",
         "to": "shared",
         "filter": [
-          "**/*"
+          "**/*",
+          "!**/*.map"
         ]
       }
     ],
+    "extraMetadata": {
+      "main": "desktop/main.js"
+    },
     "asar": true,
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "compression": "maximum",
+    "afterPack": "build/afterPack.js",
     "extraResources": [
       {
         "from": "resources/kernel",

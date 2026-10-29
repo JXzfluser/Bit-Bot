@@ -167,6 +167,10 @@ async function dispatchRoomTurn(o) {
     room_id: roomId,
     message_id: messageId,
     responder_policy: entry.responder_policy || "",
+    // GP-53 契约：审批/Secret 卡不进群 transcript，只进对应 Bot 私聊。
+    // roomTurn 把这个决定写在 escalations 上，扇出结果必须原样带出去——
+    // 否则桌面/CLI/移动端读到的路由信息里，唯独「升级去哪」没了，契约成了空话。
+    escalations: routed.escalations || "",
     responders: entry.responders || [],
     total,
     returned,
