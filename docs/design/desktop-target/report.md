@@ -2032,13 +2032,14 @@ e2e_desktop_sweep_timer: PASS=0 FAIL=5 SKIP=0
 | `scripts/prove_gp168_handoff_wake.js`（回归） | — | PASS=18 FAIL=0（tick 可选字段未影响旧判据） |
 | `scripts/prove_box_pack_closure.js`（回归） | — | PASS=5 FAIL=0 |
 | `scripts/e2e_desktop_quit.mjs`（回归：退出仍是干净退出） | — | PASS=8 FAIL=0 SKIP=0 |
-| `smoke_grok_desktop_parity.sh` 全量矩阵 | 417/0 | **PASS=426 FAIL=0**，`✗` 计数 0，15 道自计数门 `SKIP=0` |
+| `smoke_grok_desktop_parity.sh` 全量矩阵 | 417/0 | **PASS=435 FAIL=0**，`✗` 计数 0，15 道自计数门 `SKIP=0` |
 
-矩阵 +9 条全部来自 G-58：断点自证 1 + 真 Electron 门 1 + S 锚点 6 + 四路注入对照 1。
+矩阵 +9 条全部来自 G-59：断点自证 1 + 真 Electron 门 1 + S 锚点 6 + 四路注入对照 1。
+（435 = 417 旧基线 + G-59 的 9 条 + G-60 的 6 条 + 远端两个提交带进来的 3 条。）
 
 **⑧ 门禁接线。**
 
-G-58 = 断点自证（`package.json` 不带 `scripts/` 且 `main.js` 仍需要它）+ 真 Electron 门 + 6 条 S 锚点
+G-59 = 断点自证（`package.json` 不带 `scripts/` 且 `main.js` 仍需要它）+ 真 Electron 门 + 6 条 S 锚点
 + 四路注入对照。断点自证会在「以后有人把 scripts/ 打进包」或「main.js 不再依赖 shell 脚本」时翻红，
 提醒先复核断点是否还存在，而不是让门禁变成永远绿的装饰。
 
@@ -2055,4 +2056,122 @@ G-58 = 断点自证（`package.json` 不带 `scripts/` 且 `main.js` 仍需要�
 5. 打包后的 App 仍**没有**被真机安装验证过；本门禁证明的是「同一个 main.js 在 daemon 不可用时自己会扫」，
    `electron-builder` 打出来的包能不能找到 `hosts/shared`、能不能启动，属于打包门禁的范畴，未在本轮验证。
 6. 新增 9 条同样只进本地聚合矩阵；CI 仍不含它 —— 与 §8.32 / §8.33.⑦ 同一条残留。
+
+## 8.35 远端最新提交里躺着未解完的冲突标记：桌面 App 连 require 都过不去（GP-171）
+
+**① 事故事实（不是猜的，是对远端提交本身跑出来的）。**
+
+拉最新代码时 `cursor/next-target-v1` 已经推到 `a0ec929`。这个提交里有两份源码是
+**未解完冲突的工作树**直接提交的：
+
+```
+$ git show a0ec929:hosts/desktop/product_surface.js > /tmp/a.js && node --check /tmp/a.js
+/tmp/a.js:2516
+<<<<<<< HEAD
+^^
+SyntaxError: Unexpected token '<<'
+
+$ git show a0ec929:scripts/prove_room_orchestrator.js > /tmp/b.js && node --check /tmp/b.js
+/tmp/b.js:141
+<<<<<<< HEAD
+^^
+SyntaxError: Unexpected token '<<'
+```
+
+编排门里还多了一份重复夹具（`const noRunner` 出现两次，第 159 与 184 行）。也就是说：
+
+- 桌面 App 一 `require("./product_surface")` 就 SyntaxError —— **整个应用起不来**；
+- `prove_room_orchestrator.js` 即使在解掉标记之后也会因为重复 `const` 解析失败；
+- 而当时没有任何门禁/CI 报告这件事：所有门都跑在「源码已经解析成功」之后，
+  源码本身坏掉时它们连第一行都到不了，矩阵仍然是绿的。
+
+这正是本项目反复记的同一类根因：**「门存在但没人跑」之外，还有「门跑在坏源码的下游」**。
+
+**② 解决冲突的口径（按 §8.30 合同，不按哪边行数多）。**
+
+两侧其实在争同一件事的措辞：`accepted/ok` 是「受理」，`replied/transferred/pending/reply_error`
+是「答没答上」。采用的合并结果：
+
+- `handoffTaskAsync` 没有 runner：`ok/accepted=true`、`error=""`、`pending=true`、
+  `replied/transferred=false`、`reply_error="handoff_runner_required"`、`execution="queued"`，
+  保留 `queue_reason`（旧读者只认它也不受影响）；
+- `handoffTask` 同步入口：`accepted=true` + `replied=false`，注释保留「accepted 只说受理」；
+- `prove_room_orchestrator.js`：删掉重复夹具，合并两侧断言。**丢弃**了旧的
+  `bad.error.length > 0` —— 它和本轮实现（受理成立时 `error` 必须为空）自相矛盾，
+  而「原因可见」由 `reply_error === "provider down"` 覆盖。这一条如果照抄，门会永远红。
+
+**③ 新门：`scripts/prove_repo_integrity.mjs`（只问源码本身）。**
+
+- I-00 `git ls-files` 可用；
+- I-01 全部被跟踪文件里没有 `<<<<<<< ` / `>>>>>>> ` 行；**`.md` 代码围栏内的行算引用**
+  （本报告 §8.35 必须逐字贴 node 的报错原文），围栏外、以及所有非文档文件照罚；
+- I-02 全部被跟踪 `.js/.mjs` 通过 `node --check`（排除 `node_modules/vendor/_build/artifacts/dist`）；
+- I-03 尺子自身三向对照：代码里的标记必抓、文档围栏内的引用**不误报**、围栏外的标记照抓、
+  干净文件不误报且可解析。
+
+**④ 尺子翻车一次（记下来）。**
+
+注入对照最初把标记追加到「门禁脚本自己」身上：脚本直接解析失败退出，日志里根本没有
+`I-01` 那一行，于是判定条件「必须看到 I-01 变红」永远不成立 —— 尺子红对了，判据却读不到。
+改成往一份被跟踪、本门不执行的普通源码（`hosts/desktop/paths.js`）追加标记后，
+`✗ I-01` 如预期出现，恢复后 `cmp` 一致。
+
+**④b 尺子第二次翻车（全量矩阵抓到，比第一次更值得记）。**
+
+把 GP-170/171 的改动丢进全量矩阵后，G-60 反而红了 —— 不是源码坏了，是**门把报告自己判成了事故**：
+
+```
+✗ I-01 被跟踪文件里没有冲突标记 — docs/design/desktop-target/report.md
+prove_repo_integrity: pass=3 fail=1 skip=0
+```
+
+§8.35 ② 为了「逐字留证」，把 node 的报错连同 `<<<<<<< HEAD` 那几行原文贴进了代码围栏。
+旧 I-01 是「全仓任意文件行首出现标记即红」，于是**验收报告写了证据，就被自己的门判红**。
+这把尺子的问题不是误报本身，而是它逼着人「为了门绿而删掉证据」—— 那正是本项目明令禁止的
+「看起来修了」。修法不是给报告漂白，而是把口径收窄到危害面：
+
+- 代码/配置里的标记 → 红（危害：`node --check` 失败、应用起不来）；
+- `.md` **围栏内**的标记 → 引用，不报（本次事故的证据必须留）；
+- `.md` **围栏外**的标记 → 照红（README 里留一组没解完的冲突仍是事故）。
+
+I-03 也随之从两向变成三向。两次变异确认这条豁免既不松也不紧：
+
+| 变异 | I-01 | I-03 | 说明 |
+| --- | --- | --- | --- |
+| 删掉「围栏内豁免」（`if (fence) continue` → `false`） | ✗ report.md | ✗ `quoteExempt:false` | 证据又被误判 |
+| 把豁免放宽成「`.md` 整份不扫」 | ✓ | ✗ `bareCaught:false` | 围栏外的真冲突被放过 |
+
+恢复后 `cmp` 一致，`pass=4 fail=0`。**「能被两处喂饱的尺子不算尺子」之后，还要加一条：
+「会把证据判成事故的尺子，会训练人删证据」。**
+
+**⑤ 修复后绿（实测）。**
+
+| 门 | 修复前 | 修复后 |
+| --- | --- | --- |
+| `node --check`（全部被跟踪 .js/.mjs） | `product_surface.js` / `prove_room_orchestrator.js` 解析失败 | **174/174 通过**（本门自身提交后为 175/175） |
+| `scripts/prove_repo_integrity.mjs` | 0/3（若当时存在，会红在两份文件） | **pass=4 fail=0** |
+| `scripts/prove_room_orchestrator.js` | SyntaxError（重复 `const noRunner`） | **pass=97 fail=0** |
+| `scripts/prove_gp168_handoff_wake.js` | — | pass=18 fail=0 |
+| `scripts/e2e_desktop_sweep_timer.mjs` | 应用起不来，无从跑 | PASS=6 FAIL=0 |
+
+同一批还暴露了第二处断点：常驻内核提交把 `kernel_server.js` / `event_log.js` 变成新的
+`require`，但 `pack-box.sh` 的手写清单没跟着加 —— 闭包门立刻 **P-01 红（缺
+`shared/kernel_server.js`）**，`prove_box_pack_closure` 4/1。补进清单后 shared 23 → 25，
+闭包门 **5/0**，真 Box 取证 `prove_box_routine_sweep` 仍 **18/0**。这条不是 GP-171 修的，
+是 GP-169 的闭包门自己抓出来的 —— 正好证明「清单不能靠人记」。
+
+**⑥ 门禁接线：G-60。**
+
+G-60 = 完整性门 + 4 条 I 锚点 + 「真塞一行标记就翻红、恢复后仍绿」的注入对照
+（目标选 `paths.js`，不选门禁脚本本身）。
+
+**⑦ 残留（诚实）。**
+
+1. 完整性门只管「语法/标记」这一层。它能抓到这次的重复 `const`，但**抓不到**语义层面的重复：
+   同名 `function` / `var` 重复定义在 JS 里合法，I-02 不会红。合并后仍需人看 diff。
+2. I-02 只覆盖 `.js/.mjs/.cjs`；`index.html` 里的内联脚本、JSON 夹具、`.mbt` 不在内。
+3. I-01 只认行首的 `<<<<<<< ` / `>>>>>>> `；行内出现这些字符（文档讲解）不会触发；
+   `.md` 围栏内的引用按「证据」放行 —— 这是有意的口径，不是漏扫，双向由 I-03 钉住。
+4. 该门与 G-60 同样只进本地聚合矩阵；CI 仍不跑它 —— 与 §8.32 / §8.33.⑦ / §8.34.⑨.6 同一条残留。
+   这次事故恰好说明：**CI 不跑的验收，等于把分支质量交给运气**。
 

@@ -2513,26 +2513,18 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const runner = deps || roomRuntimeDeps || {};
     if (typeof runner.runResponderTurn !== "function") {
-<<<<<<< HEAD
       // 没有运行时依赖 ≠ 转交失败。这一支和同步入口同义：**受理并排队**——
       // 转录已落、任务进承接 Bot 的 inbox（host_ffi 靠 accepted 决定投递），
       // 只是「目标 Bot 立刻跑一轮」这件事没人执行。把它报成 ok:false 会让
       // 宿主连 inbox 都不写，任务就此消失（2026-10-29 GP-52 三项红的真因）。
-      return {
-        ok: true, accepted: true, error: "", mode: "host_handoff_task",
-        pretend_transferred: false, executed: false, pending: true,
-        execution: "queued",
-        queue_reason: "handoff_runner_required",
-=======
-      // 没有 runner = 这一轮没人替它跑，但**转交本身已经成立**（行已写、所有权已转），
-      // 所以这里必须回 ok + pending，让 Host 把凭据落进收件箱与存根。
-      // 旧写法回 ok:false，于是「转交了」这句话连证据都不留。
+      // 同时按 §8.30 的口径把「受理」与「答没答上」分开：accepted/ok 只说受理，
+      // replied/transferred/pending/reply_error 说这一轮执行的结果。
       return {
         ok: true, accepted: true, error: "", reply_error: "handoff_runner_required",
         mode: "host_handoff_task",
         pretend_transferred: false, transferred: false, replied: false,
         executed: false, pending: true, execution: "queued",
->>>>>>> e6091f685cc50ab4ab63b18dced6cbdeb9dfcf60
+        queue_reason: "handoff_runner_required",
         room: prep.room, title: prep.title, from_bot: prep.from_bot, to_bot: prep.to_bot,
         task: prep.task, transcript_entry: prep.entry, at: prep.at,
       };
@@ -2554,13 +2546,9 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const result = {
       ok: true,
-<<<<<<< HEAD
       // 与异步入口同一把尺子：accepted 只说「受理 + 投递」，执行与否看 executed。
       accepted: true,
-=======
-      accepted: true,
       replied: false,
->>>>>>> e6091f685cc50ab4ab63b18dced6cbdeb9dfcf60
       mode: "host_handoff_task",
       // 目标 Bot 还没跑 —— 不能写成「已交接」。
       pretend_transferred: false,

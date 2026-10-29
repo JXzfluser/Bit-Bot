@@ -138,14 +138,10 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
   check(bad.ok === true && bad.accepted === true, "handoff：目标没答上，转交这笔仍然成立（凭据不得整笔跳过）");
   check(bad.transferred === false && bad.replied === false, "handoff：没答上就不能说已交接完成");
   check(bad.pretend_transferred === false, "handoff：失败时 pretend_transferred 仍是 false（不假装成功）");
-<<<<<<< HEAD
-  check(String(bad.error || "").length > 0, "handoff：失败原因可见");
   check(bad.accepted === true, "handoff：目标答不上来仍算已受理（宿主照常投递，任务不丢）");
-=======
   check(bad.pending === true, "handoff：没答上必须标 pending（这件事还挂着，不是终态）");
   check(String(bad.reply_error || "") === "provider down", "handoff：没答上的原因可见（reply_error）");
   check(bad.error === "" || bad.error === undefined, "handoff：受理成立时不得再带 error（那是拒绝位）");
->>>>>>> e6091f685cc50ab4ab63b18dced6cbdeb9dfcf60
   check(
     transcript().some((e) => e && e.kind === "bot_reply_error" && e.bot_id === "b3"),
     "handoff：目标失败在群转录里如实可见",
@@ -161,15 +157,21 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
     {},
   );
   check(
-    noRunner.ok === true && noRunner.pending === true && noRunner.reply_error === "handoff_runner_required",
+    noRunner.ok === true && noRunner.accepted === true && noRunner.pending === true &&
+      noRunner.reply_error === "handoff_runner_required",
     "handoff：没有 runner 时 = 受理 + 排队，而不是整笔消失",
+  );
+  check(noRunner.pretend_transferred === false, "handoff：排队不假装已交接");
+  check(
+    noRunner.execution === "queued" && noRunner.executed === false,
+    "handoff：回执写明执行状态是 queued",
   );
 
   // 同步入口（host_ffi.js 走它）：只受理，不假装已交接。
   const sync = surface.handoffTask({ room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "同步入口" });
-  check(sync.ok === true && sync.pending === true, "handoff 同步入口：受理并标 pending");
+  check(sync.ok === true && sync.pending === true && sync.accepted === true, "handoff 同步入口：受理并标 pending");
   check(sync.pretend_transferred === false && sync.executed === false, "handoff 同步入口：没有执行就不能说已交接");
-  check(sync.accepted === true && sync.replied === false, "handoff 同步入口与异步入口同一套词汇（受理 / 答上）");
+  check(sync.replied === false, "handoff 同步入口与异步入口同一套词汇（受理 / 答上）");
 
   const refuse = await surface.handoffTaskAsync(
     { room: ROOM_ID, from_bot: "b1", to_bot: "nobody", task: "x" },
@@ -177,22 +179,6 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
   );
   check(refuse.ok === false && refuse.error === "to_bot_not_member", "handoff：非成员仍然拒绝（不发明转移）");
   check(refuse.accepted !== true, "handoff：被拒绝的转交标成未受理（宿主据此不会投递任务）");
-
-  // 没有运行时依赖（CLI / 移动端 host 就是这种局面）：受理并排队，不是失败。
-  // 2026-10-29 之前这一支返回 ok:false，于是 host_ffi 连 inbox 都不写，
-  // 「转交」只剩一行转录——GP-52 的三项门禁红在这里，红的是产品不是脚本。
-  const noRunner = await surface.handoffTaskAsync(
-    { room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "没人接手也要留住任务" },
-    {},
-  );
-  check(
-    noRunner.ok === true && noRunner.accepted === true && noRunner.pending === true && noRunner.executed === false,
-    "handoff：无 runner = 受理并排队（ok/accepted 为真，executed 仍为假）",
-  );
-  check(noRunner.pretend_transferred === false, "handoff：排队不假装已交接");
-  check(noRunner.execution === "queued", "handoff：回执写明执行状态是 queued");
-  const queuedSync = surface.handoffTask({ room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "同步入口的受理标记" });
-  check(queuedSync.accepted === true, "handoff 同步入口：与异步入口共用 accepted 语义");
 })();
 
 /* ─────── 1b. pending 凭据的下游：捡起 / 幂等 / 有界重试（GP-166） ───────

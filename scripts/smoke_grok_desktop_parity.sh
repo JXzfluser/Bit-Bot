@@ -2440,6 +2440,7 @@ if timeout 900 node scripts/prove_box_routine_sweep.js >/tmp/gp169-sweep.log 2>&
   ok "G-57 真 Box 取证：打包→起进程→到点扫→手机拉待批→批准留痕→重复批准被拒（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-sweep.log)）"
 else
   bad "G-57 真 Box 取证未通过（见 /tmp/gp169-sweep.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-sweep.log || tail -3 /tmp/gp169-sweep.log | tr '\n' ' ')）"
+fi
 
 echo "== G-57 事件日志底座（T1-01/T1-02 · docs/events.md）=="
 # 状态从 JSON 快照迁到「可续订的日志」的前提是：seq 由存储层分配、幂等键去重、
@@ -2510,7 +2511,7 @@ else
   echo "    先跑：moon build --target native --release"
 fi
 
-echo "== G-58 GP-170：装好的 App 自己就是唤醒源（不靠仓库里的 bash daemon）=="
+echo "== G-59 GP-170：装好的 App 自己就是唤醒源（不靠仓库里的 bash daemon）=="
 # 断点自证：唤醒此前 100% 外包给 scripts/host_routine_daemon.sh（bash），
 # 而 electron-builder 的 files 清单根本没有 scripts/ —— 装到用户机器上的 App
 # 找不到它；Windows 也没有 /bin/bash。既有 Electron 门禁又都设
@@ -2523,8 +2524,8 @@ const shipsScripts=files.some(f=>typeof f==="string"&&/^scripts\//.test(f));
 const main=fs.readFileSync("hosts/desktop/main.js","utf8");
 const wantsShellScript=main.includes("scripts\", \"host_routine_daemon.sh");
 process.exit(!shipsScripts&&wantsShellScript?0:1)' \
-  && ok "G-58 断点自证：装机包不含 scripts/，而 daemon 唤醒路径正需要它（所以必须有进程内定时器）" \
-  || bad "G-58 断点自证失败：package.json 已随包带 scripts/，或 main.js 不再依赖那份 shell 脚本 —— 先复核断点是否还存在"
+  && ok "G-59 断点自证：装机包不含 scripts/，而 daemon 唤醒路径正需要它（所以必须有进程内定时器）" \
+  || bad "G-59 断点自证失败：package.json 已随包带 scripts/，或 main.js 不再依赖那份 shell 脚本 —— 先复核断点是否还存在"
 
 gp170_xvfb=()
 if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
@@ -2533,9 +2534,9 @@ fi
 gp170_run() { timeout 240 "${gp170_xvfb[@]}" node scripts/e2e_desktop_sweep_timer.mjs >"$1" 2>&1; }
 
 if gp170_run /tmp/gp170-sweep.log && grep -q "FAIL=0" /tmp/gp170-sweep.log; then
-  ok "G-58 真 Electron：daemon 关闭时 App 自己扫 routine_tick（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/gp170-sweep.log)）"
+  ok "G-59 真 Electron：daemon 关闭时 App 自己扫 routine_tick（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/gp170-sweep.log)）"
 else
-  bad "G-58 e2e_desktop_sweep_timer 未通过（见 /tmp/gp170-sweep.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/gp170-sweep.log || tail -3 /tmp/gp170-sweep.log | tr '\n' ' ')）"
+  bad "G-59 e2e_desktop_sweep_timer 未通过（见 /tmp/gp170-sweep.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/gp170-sweep.log || tail -3 /tmp/gp170-sweep.log | tr '\n' ' ')）"
 fi
 for gp170_a in "S-01 daemon 关闭时，App 自己会跑 routine_tick" \
                 "S-02 payload: desktop_sweep=true" \
@@ -2543,7 +2544,7 @@ for gp170_a in "S-01 daemon 关闭时，App 自己会跑 routine_tick" \
                 "S-04 每轮都带 handoff_retry" \
                 "S-05 single-flight：每轮 started_at/ended_at 成对且不重叠" \
                 "S-06 退出后不再产生新 tick"; do
-  if grep -q "✓ $gp170_a" /tmp/gp170-sweep.log; then ok "G-58 锚点：$gp170_a"; else bad "G-58 锚点没跑绿：$gp170_a"; fi
+  if grep -q "✓ $gp170_a" /tmp/gp170-sweep.log; then ok "G-59 锚点：$gp170_a"; else bad "G-59 锚点没跑绿：$gp170_a"; fi
 done
 
 # 注入对照（全量摘，不用 String.replace 的单次语义）：
@@ -2608,8 +2609,38 @@ grep -q "FAIL=1" /tmp/gp170-mut-d.log && ! grep -q "✓ S-04" /tmp/gp170-mut-d.l
   || { gp170_ok=0; cp -f /tmp/gp170-mut-d.log /tmp/gp170-mut-d.kept; }
 gp170_restore || gp170_ok=0
 
-[ "$gp170_ok" = "1" ] && ok "G-58 注入对照：摘启动点/S-01-05 红、摘字段/S-02 红、摘 ended_at/S-05 红、摘转述/S-04 红（四处各摘各的都翻红）" \
-  || bad "G-58 注入对照没成立（保留件见 /tmp/gp170-mut-*.kept）"
+[ "$gp170_ok" = "1" ] && ok "G-59 注入对照：摘启动点/S-01-05 红、摘字段/S-02 红、摘 ended_at/S-05 红、摘转述/S-04 红（四处各摘各的都翻红）" \
+  || bad "G-59 注入对照没成立（保留件见 /tmp/gp170-mut-*.kept）"
+
+echo "== G-60 GP-171：被提交的源码必须先是能解析的源码（冲突标记事故的回归门）=="
+# 事实：远端 a0ec929 把未解完冲突的工作树提交了上去 ——
+#   hosts/desktop/product_surface.js 里 2 组 <<<<<<< / ======= / >>>>>>>
+#   scripts/prove_room_orchestrator.js 里 1 组，还有一份重复的 noRunner
+# 结果桌面 App 一 require 就 SyntaxError，编排门连启动都到不了；
+# 而当时的矩阵全在「解析之后」执行，没有任何一条会看源码本身。
+node scripts/prove_repo_integrity.mjs >/tmp/gp171-integrity.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp171-integrity.log; then
+  ok "G-60 仓库完整性门全绿（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp171-integrity.log)；$(grep -o '列出 [0-9]* 个被跟踪文件' /tmp/gp171-integrity.log | head -1)；$(grep -o '[0-9]* 个文件）' /tmp/gp171-integrity.log | tail -1)）"
+else
+  bad "G-60 prove_repo_integrity 未通过（见 /tmp/gp171-integrity.log；$(tail -2 /tmp/gp171-integrity.log | tr '\n' ' ')）"
+fi
+for gp171_a in "I-00 git ls-files" "I-01 被跟踪文件里没有冲突标记" "I-02 被跟踪的 .js/.mjs 全部通过 node --check" "I-03 负向/正向对照"; do
+  if grep -q "✓ $gp171_a" /tmp/gp171-integrity.log; then ok "G-60 锚点：$gp171_a"; else bad "G-60 锚点没跑绿：$gp171_a"; fi
+done
+# 注入对照：往一份真的被跟踪的源文件末尾塞一行冲突标记，同一把尺子必须翻红；
+# 恢复后必须绿。用 cmp 核对，工作树不留变异态。
+# 目标选一份被跟踪、但本门不执行的普通源码（别拿门禁脚本自己：塞标记会让它
+# 连解析都过不了，日志里根本没有 I-01 那行，会把「尺子真的红」误判成「尺子没动」）。
+cp -f hosts/desktop/paths.js /tmp/gp171-target.bak
+printf '\n<<<<<<< HEAD\n' >> hosts/desktop/paths.js
+node scripts/prove_repo_integrity.mjs >/tmp/gp171-mut.log 2>&1
+mut_caught=0
+grep -q "✗ I-01" /tmp/gp171-mut.log && mut_caught=1
+cp -f /tmp/gp171-target.bak hosts/desktop/paths.js
+node scripts/prove_repo_integrity.mjs >/tmp/gp171-clean.log 2>&1 && grep -q "fail=0" /tmp/gp171-clean.log || mut_caught=0
+cmp -s /tmp/gp171-target.bak hosts/desktop/paths.js || mut_caught=0
+[ "$mut_caught" = "1" ] && ok "G-60 注入对照：真塞一行冲突标记就翻红（I-01），恢复后仍绿" \
+  || bad "G-60 注入对照没成立（见 /tmp/gp171-mut.log /tmp/gp171-clean.log）"
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

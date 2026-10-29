@@ -199,18 +199,35 @@ G-F.1 的新残留里第一条「捡起只搭『下一次群回合』这班车�
 
 | ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
 |----|----------|------|--------------------------|---------|
-| GP-170 | 自媒体博主装好桌面端、电脑一直开着、群里没人说话：08:00 定时发文 / 交稿转审核 / 晚上推邮箱必须照常发生 | **已实现**：`hosts/desktop/main.js` 在主进程里跑 `routine_tick`（默认 60s，`BITBOT_DESKTOP_SWEEP_MS` 可调），single-flight，`data/routines/desktop-sweep.jsonl` 记每轮与 `handoff_retry`；`syncWakeSource()` 保证 shell daemon 真在跑时让位；quit 停表 | 新门 `e2e_desktop_sweep_timer.mjs` 在 daemon 关闭（= 装机布局）下真 Electron **0/5 → 6/0**；矩阵 **G-58** 9 条（断点自证 + 门 + 6 锚点 + 四路注入对照）；tick payload 只加可选 `desktop_sweep` / `note` / `at` | 见下两条纪律事实与 `report.md` §8.34 ⑨ |
+| GP-170 | 自媒体博主装好桌面端、电脑一直开着、群里没人说话：08:00 定时发文 / 交稿转审核 / 晚上推邮箱必须照常发生 | **已实现**：`hosts/desktop/main.js` 在主进程里跑 `routine_tick`（默认 60s，`BITBOT_DESKTOP_SWEEP_MS` 可调），single-flight，`data/routines/desktop-sweep.jsonl` 记每轮与 `handoff_retry`；`syncWakeSource()` 保证 shell daemon 真在跑时让位；quit 停表 | 新门 `e2e_desktop_sweep_timer.mjs` 在 daemon 关闭（= 装机布局）下真 Electron **0/5 → 6/0**；矩阵 **G-59** 9 条（断点自证 + 门 + 6 锚点 + 四路注入对照）；tick payload 只加可选 `desktop_sweep` / `note` / `at` | 见下两条纪律事实与 `report.md` §8.34 ⑨ |
 
 本轮另外记下的三条事实：
 
 - 唤醒的断点不是「没有定时器」，而是「唯一会醒的进程不在包里」：`package.json` 的 `build.files`
   不含 `scripts/`，`ensureRoutineDaemon()` 却依赖 `scripts/host_routine_daemon.sh`；Windows 也没有
-  `/bin/bash`。所有 Electron 门禁又统一关掉 daemon，所以这条路从来没被跑过。G-58 用「断点自证」+
+  `/bin/bash`。所有 Electron 门禁又统一关掉 daemon，所以这条路从来没被跑过。G-59 用「断点自证」+
   「daemon 关闭下 App 自己扫」两段把它钉住。
 - 又一次「能被两处喂饱的尺子不算尺子」：只摘 `whenReady` 里的 `syncWakeSource()`，门仍 6/0 全绿
   （`bitbot:daemon:ensure` 的 IPC 里还有一处）。必须两处全摘才 5 红。
 - S-06 是粗尺：进程退出本身就会让定时器消失，所以「退出后不再有新 tick」即使漏掉 `clearInterval`
   也会绿。已在 §8.34 ⑨.1 如实记为残留，不把它当「停表已验」。
+
+### G-F.4 GP-171（本轮：远端提交里未解完的冲突标记）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-171 | 拉最新代码后，桌面端与门禁必须真的能跑：提交进分支的源码先得是能解析的源码 | **事故 + 修复**：远端 `a0ec929` 在 `hosts/desktop/product_surface.js`（2 组标记）与 `scripts/prove_room_orchestrator.js`（1 组标记 + 重复 `noRunner` 夹具）里提交了未解完的冲突；桌面 App 一 require 就 SyntaxError | `git show a0ec929:<file> \| node --check` 逐字报 `SyntaxError: Unexpected token '<<'`；新门 `prove_repo_integrity.mjs` **pass=4 fail=0**（174 个源文件全部可解析）；编排门 SyntaxError → **pass=97 fail=0**；矩阵 **G-60** 6 条（门 + 4 锚点 + 注入对照） | 完整性门只到语法层：同名 `function`/`var` 的语义重复抓不到；`index.html` 内联脚本/JSON/`.mbt` 不在 I-02 内；CI 仍不跑这份矩阵 |
+
+本轮记下的一条根因：
+
+- 以前的盲区写作「门存在但没人跑」；这次是**门跑在坏源码的下游** —— 所有门都要先解析源码，
+  源码坏了它们连第一行都到不了，于是矩阵照样全绿。G-60 把「先能解析」变成一条独立的门，
+  并放在矩阵末尾，任何一次提交把标记带上来都会被点名。
+- 这道门自己也翻车一次：全量矩阵里 I-01 把 §8.35 为留证而**逐字引用**在代码围栏里的
+  `<<<<<<< HEAD` 判成了未解冲突（`pass=3 fail=1`）。修法是收窄口径而不是删证据：
+  代码/配置必抓，`.md` 围栏内的引用放行，围栏外照抓；I-03 从两向扩成三向
+  （`markerCaught/quoteExempt/bareCaught`），两向变异分别把「证据误判」和「整份 .md 放行」
+  各打红一次。记一条：**会把证据判成事故的尺子，会训练人删证据**。
 
 ---
 
