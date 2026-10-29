@@ -30,7 +30,7 @@ import os from "os";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
-import { execSync, spawn } from "child_process";
+import { execSync, execFileSync, spawn } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
 import { electronLaunchEnv, hasDisplay } from "./electron_env.mjs";
@@ -1087,6 +1087,83 @@ const forbiddenHit = (text) => {
         fs.writeFileSync(ROOMS, JSON.stringify(rsEnd, null, 2));
       }
     } catch (e) { bad("GP-166 捡起取证检查崩溃", String((e && e.message) || e)); }
+
+    /* GP-168：挂账不能只等「下一次有人在群里说话」。这一条走真唤醒 ——
+     * 生产入口 CLI 的「tick routines」（= scripts/host_routine_daemon.sh 每轮真的跑的命令行）
+     * 把探针挂账捡起重跑，然后在真 Electron 里看这间群渲染出了什么。
+     * 三件事必须同时成立：捡起真的跑了（attempts 递增）、内核被嵌套深度跳过时不许演成
+     * 「它答上了」、到上限之后群里说得出那句人话。BITBOT_NEST_DEPTH=1 让内核侧确定性短路，
+     * 取证因此不依赖模型是否配了 key，也不在用户的真实挂账上做（数据根里有别人的挂账就 SKIP）。 */
+    try {
+      const reach168 = await win.evaluate(() => ({ render: typeof renderRoomTranscript === "function" }));
+      if (!reach168 || !reach168.render) {
+        bad("GP-168 真唤醒取证没能在真 Electron 里验：渲染入口不在页面作用域", JSON.stringify(reach168));
+      } else {
+        const R168 = "uj-gp168";
+        const STUB_DIR = path.join(REPO, "data", "agents", "handoffs");
+        const others168 = (() => {
+          try { return fs.readdirSync(STUB_DIR).filter((f) => /^handoff-.+\.json$/.test(f)); } catch (_) { return []; }
+        })();
+        const ids168 = ((readJson(BOTS, { bots: [] }).bots) || []).filter((b) => b && b.hidden !== true && b.id).map((b) => b.id);
+        if (others168.length > 0) {
+          console.log("  · skip：数据根里已有非探针的转交挂账，GP-168 真唤醒取证不在用户任务上跑（SKIP ≠ PASS）");
+          evidence.gp168_wake = { skipped: "foreign_handoffs_present", count: others168.length };
+        } else if (ids168.length < 2) {
+          console.log("  · skip：可见 Bot 不足两个，GP-168 真唤醒取证未跑（SKIP ≠ PASS）");
+          evidence.gp168_wake = { skipped: "need_two_visible_bots" };
+        } else {
+          const from168 = ids168[0];
+          const to168 = ids168[1];
+          const rs168 = readJson(ROOMS, { rooms: [] });
+          rs168.rooms = (rs168.rooms || []).filter((x) => x && x.id !== R168);
+          rs168.rooms.push({ id: R168, title: "UJ GP168 唤醒探针", members: [from168, to168], transcript: [] });
+          fs.writeFileSync(ROOMS, JSON.stringify(rs168, null, 2));
+          const { createProductSurface } = require(path.join(DESKTOP, "product_surface.js"));
+          const surface168 = createProductSurface(REPO, { dataRoot: path.join(REPO, "data") });
+          const pend168 = await surface168.handoffTaskAsync(
+            { room: R168, from_bot: from168, to_bot: to168, task: "【GP168 探针】昨晚定时发文挂了的稿子" },
+            { runResponderTurn: async () => ({ ok: false, error: "provider down", text: "", artifacts: [] }) },
+          );
+          if (!(pend168 && pend168.ok === true && pend168.pending === true)) {
+            bad("GP-168 探针挂账造不出来（产品入口没回「受理但没答上」）", JSON.stringify({ ok: pend168 && pend168.ok, pending: pend168 && pend168.pending, error: pend168 && pend168.error }));
+          } else {
+            fs.mkdirSync(STUB_DIR, { recursive: true });
+            const stubFile = path.join(STUB_DIR, "handoff-" + to168 + "-" + Date.now().toString(36) + "-uj168.json");
+            fs.writeFileSync(stubFile, JSON.stringify(Object.assign({}, pend168, { inbox_path: "", path: stubFile }), null, 2));
+            const stubNow = () => { try { return JSON.parse(fs.readFileSync(stubFile, "utf8")); } catch (_) { return {}; } };
+            const sweep = () => execFileSync("node", ["hosts/cli_host/run_turn.js", "tick routines"], {
+              cwd: REPO, encoding: "utf8", timeout: 240000, stdio: ["ignore", "pipe", "ignore"],
+              env: { ...process.env, BITBOT_NEST_DEPTH: "1" },
+            });
+            const render168 = async () => {
+              await win.evaluate((id) => renderRoomTranscript(id), R168);
+              return logVisible();
+            };
+            const stuckN = (s) => String(s).split("这件事已停下").length - 1;
+            sweep();
+            const v1 = await render168();
+            const s1 = stubNow();
+            const noLeak168 = !/nested_skipped|worker nest skipped|provider down|handoff_stuck/.test(v1);
+            (Number(s1.attempts) >= 1 && String(s1.state || "pending") !== "answered" && stuckN(v1) === 0 && noLeak168)
+              ? ok("GP-168 定时唤醒真的把挂账捡起重跑了（attempts 递增、内核被跳过时没演成答上、还没到上限就不喊「已停下」）")
+              : bad("GP-168 第一轮唤醒的取证不成立", JSON.stringify({ attempts: s1.attempts, state: s1.state, stuck: stuckN(v1), leak: !noLeak168, tail: v1.slice(-260) }));
+            sweep();
+            sweep();
+            const v3 = await render168();
+            const s3 = stubNow();
+            (String(s3.state) === "stuck" && Number(s3.attempts) >= 3 && stuckN(v3) === 1 && !/已答上/.test(v3))
+              ? ok("GP-168 到上限后群里看得见那句人话（「这件事已停下」恰好一次，且没有被伪造成答复）")
+              : bad("GP-168 卡住提醒在真 Electron 里没落地", JSON.stringify({ state: s3.state, attempts: s3.attempts, stuck: stuckN(v3), tail: v3.slice(-260) }));
+            await win.screenshot({ path: path.join(ART, "uj-gp168-wake-retry.png") });
+            evidence.gp168_wake = { attempts: [Number(s1.attempts) || 0, Number(s3.attempts) || 0], state: String(s3.state || ""), stuck_lines: [stuckN(v1), stuckN(v3)] };
+            const rsEnd168 = readJson(ROOMS, { rooms: [] });
+            rsEnd168.rooms = (rsEnd168.rooms || []).filter((x) => x && x.id !== R168);
+            fs.writeFileSync(ROOMS, JSON.stringify(rsEnd168, null, 2));
+            try { fs.unlinkSync(stubFile); } catch (_) { /* 探针凭据删不掉就留在原地，下轮门会因别人的挂账而 SKIP，不硬来 */ }
+          }
+        }
+      }
+    } catch (e) { bad("GP-168 真唤醒取证检查崩溃", String((e && e.message) || e)); }
 
     evidence.finished_at = new Date().toISOString();
   } catch (e) {

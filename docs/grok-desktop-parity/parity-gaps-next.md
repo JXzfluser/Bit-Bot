@@ -177,6 +177,24 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 - inbox JSONL 仍只是账本：捡起终态只回写在存根上，没有「还挂着 N 笔」的统一查询面。
 - `e2e_desktop_room_orchestration.mjs` 仍未接进聚合门（本轮只把 `prove_room_orchestrator.js` 接进 G-55）。
 
+### G-F.2 GP-168 / GP-169（本轮：捡起搭上定时唤醒那班车；顺手发现 Box 打包清单缺一块）
+
+G-F.1 的新残留里第一条「捡起只搭『下一次群回合』这班车」在本轮闭合。**不删原行，历史可读**，
+口径改在这里。
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-168 | 定时发文内部转交给审核 Bot、provider 挂了 → 凭据落盘；一整天群里没人再发消息，第二天定时 sweep 必须把它叫醒并重跑 | **已实现（Host + CLI 生产入口 + 真 Electron 三证）**：`retryPendingHandoffs` 开可选入参 `all_rooms`，回包加可选字段 `scope`；`routine_tick` / `routine_wake` 在 `executeHostEffects` 收口处顺路捡一轮，效果行与 stdout 都带 `handoff_retry` | 新门 `prove_gp168_handoff_wake.js` 8/10 红 → **18/0**；矩阵 **G-56** 11 条（合同门 + 8 条 W 锚点 + 真生产入口探针 + 三处各摘各的都翻红的注入对照）；`e2e_desktop_user_journeys` 里两条真 Electron 取证（摘掉班车 69/2 → **71/0**）；七组变异 M1…M7 全部有归属 | 桌面 App 自己不起定时器（只有 daemon / Box 的 sweep 会捡）；单轮上限 5 笔、上限 3 次都写死且界面上没有「还剩几笔」 |
+| GP-169 | 手机连上我这台电脑：Box 打包出来要能起来，到点扫、待批清单、批准留痕、同一笔不能再批第二次 | **已实现（HEAD 上是断的）**：`pack-box.sh` 的 shared 清单漏了 `desktop_pairing.js` / `lan_candidates.js` / `machine_presence.js` 三个 require，Box 一启动就 `MODULE_NOT_FOUND`；补齐 20 → 23 | `prove_box_routine_sweep.js` 在 HEAD 树复跑 **0/2**（SW-1 stderr `MODULE_NOT_FOUND`，其余 16 条没机会执行）→ 修复后 **18/0**；新门 `prove_box_pack_closure.js` **3/2 → 5/0**；矩阵 **G-57** 7 条（闭包门 + 4 条 P 锚点 + 清单副本注入对照 + 真 Box 取证） | 只验到同一台机器的 loopback；真手机跨机器连接与配对码流程仍未验。闭包门只覆盖三个入口的相对 `require("./x")`，动态拼路径抓不到 |
+
+本轮另外记下的两条事实（不属于功能，但属于同一套纪律）：
+
+- `runHandoffTurn` 在 `nested_skipped` 时把「内核被跳过」演成「目标 Bot 答上了」，捡起路径正好走它。
+  已按 responder 闭包的同一口径改成失败。变异对照显示这一处宽松会连带把 W-02 / W-03 / W-03b / W-05 /
+  W-07b 五条一起演绿 —— 「一处假交付」不是本地问题。
+- 「门存在但没人跑」第二次撞上：`prove_box_routine_sweep.js` 从来没被任何聚合门引用，
+  所以 Box 断在启动第一步而矩阵照旧全绿。G-57 把它接进矩阵（同 G-55 对 `prove_room_orchestrator.js` 的做法）。
+
 ---
 
 ## 三、门禁与交付要求（沿用现有纪律）

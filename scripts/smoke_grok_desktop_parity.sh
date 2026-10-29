@@ -2135,6 +2135,16 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
       && ok "G-53 GP-52 那句话真在 Electron 屏幕上说得出来：受理未答才说排队、答上了不刷、被拒不混（§8.30 从源码锚点升级为渲染取证）" \
       || bad "G-53 GP-52 pending 渲染锚点缺失（门跑了但屏幕上那句话没出现）"
   fi
+  if [ -s /tmp/g53-journeys.log ]; then
+    if grep -q "GP-168 定时唤醒真的把挂账捡起重跑了" /tmp/g53-journeys.log \
+       && grep -q "GP-168 到上限后群里看得见那句人话" /tmp/g53-journeys.log; then
+      ok "G-53 GP-168 真 Electron 取证在：生产入口的定时唤醒把挂账捡起重跑、到上限那句人话落在群里（捡起不再只等下一次有人说话）"
+    elif grep -q "GP-168 真唤醒取证" /tmp/g53-journeys.log; then
+      echo "  · skip：GP-168 真 Electron 探针按边界条件没跑（数据根里有别人的挂账 / 可见 Bot 不足），SKIP ≠ PASS"
+    else
+      bad "G-53 journeys 里根本没有 GP-168 这条取证（门跑了却没测它）"
+    fi
+  fi
   echo "  · G-53 修复前红（结构性，不是产品数字）：这两道门在登记前 0 处被引用——"
   echo "    本轮把它们接进矩阵，并把 J 侧、P 侧的真实全绿第一次变成矩阵的一部分"
   echo "    （J 侧登记时 63 项，§8.30 加了 GP-52 三条渲染取证后实测 $(grep -m1 -o 'PASS=[0-9]*' /tmp/g53-journeys.log 2>/dev/null | sed 's/PASS=//' || echo '未跑') 项）"
@@ -2223,6 +2233,157 @@ if(!real||mut)console.error("注入对照：真文件接线="+real+" 摘掉入�
 if(!store)console.error("store 侧终态/上限/卡住串锚点缺失");
 if(!i18n)console.error("卡住那句话的三语 i18n 不齐");
 process.exit(real&&!mut&&store&&i18n?0:1)' && ok "G-55 接线：唯一群回合入口挂着捡起（回包带 handoff_retry，摘掉就翻红）+ store 侧终态/上限/卡住串 + 那句话三语齐" || bad "G-55 wiring / 注入对照"
+
+echo "== G-56 GP-168：定时唤醒那一班车也来捡挂账的转交（捡起不再只等下一次群回合）=="
+# 和 G-55 同一个纪律：门写在 scripts/ 里但不接进聚合矩阵 = 没有门。
+node scripts/prove_gp168_handoff_wake.js >/tmp/gp168-wake.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp168-wake.log; then
+  ok "G-56 定时唤醒捡起合同全绿（$(grep -c '✓' /tmp/gp168-wake.log) 项，$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp168-wake.log)）"
+else
+  bad "G-56 prove_gp168_handoff_wake 未通过（见 /tmp/gp168-wake.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp168-wake.log || tail -1 /tmp/gp168-wake.log)）"
+fi
+for gp168_a in "W-01 routine_tick 之后效果行带得出 handoff_retry（定时唤醒真的扫了挂账）" \
+               "W-02 内核 nested_skipped 不算答上：挂账不得变 answered，群里不得出现「它答了」的行" \
+               "W-03b stuck 在群转录里看得见（复用 bot_reply_error，不新增转录 kind）" \
+               "W-04 stuck 是终态：再唤醒不再重跑、不再往群里刷行" \
+               "W-06 单次唤醒最多捡 5 笔，剩下的如实报 pending（不是一次唤醒换来十次模型调用）" \
+               "W-07b 交付的答案各归各群的转录（不写错房间）" \
+               "W-09 {room} 模式仍只处理那间群：B 间的调用捡不走 A 间的挂账（新增 all_rooms 没改老语义）" \
+               "W-10 没指定群也没开 all_rooms → 如实拒绝，不自作主张扫全部"; do
+  if grep -q "✓ $gp168_a" /tmp/gp168-wake.log; then ok "G-56 锚点：$gp168_a"; else bad "G-56 锚点没跑绿：$gp168_a"; fi
+done
+# 真生产入口取证：CLI「tick routines」（= scripts/host_routine_daemon.sh 每一轮真的跑的命令行）。
+# 只在这台机器的数据根里没有别人的挂账时才跑：捡起会写 attempts，绝不在用户真实任务上做取证。
+gp56probe=""
+rm -f /tmp/gp56-proof.json
+if [ "$(ls data/agents/handoffs/*.json 2>/dev/null | wc -l)" -eq 0 ]; then
+  node -e '
+const fs=require("fs"),path=require("path");
+const {createProductSurface}=require("./hosts/desktop/product_surface");
+const ROOT=path.resolve("."),DATA=path.join(ROOT,"data"),out=process.argv[1];
+const roomsP=path.join(DATA,"desktop","rooms.json");
+const rooms=JSON.parse(fs.readFileSync(roomsP,"utf8"));
+const ids=((JSON.parse(fs.readFileSync(path.join(DATA,"desktop","bots.json"),"utf8")).bots)||[]).filter((b)=>b&&b.hidden!==true&&b.id).map((b)=>b.id);
+if(ids.length<2){console.error("数据根里不足两个可见 Bot");process.exit(3);}
+const rid="gp56-probe-"+Date.now().toString(36);
+rooms.rooms=rooms.rooms||[];
+rooms.rooms.push({id:rid,title:"GP-168 探针群",members:[ids[0],ids[1]],transcript:[]});
+fs.writeFileSync(roomsP,JSON.stringify(rooms,null,2));
+const surface=createProductSurface(ROOT,{dataRoot:DATA});
+(async()=>{
+  const res=await surface.handoffTaskAsync({room:rid,from_bot:ids[0],to_bot:ids[1],task:"GP-168 探针：定时发文挂了的稿子"},{runResponderTurn:async()=>({ok:false,error:"provider down",text:"",artifacts:[]})});
+  if(!(res&&res.ok===true&&res.pending===true)){console.error("探针挂账造不出来 "+JSON.stringify({ok:res&&res.ok,pending:res&&res.pending,error:res&&res.error}));process.exit(4);}
+  const dir=path.join(DATA,"agents","handoffs");
+  fs.mkdirSync(dir,{recursive:true});
+  const file=path.join(dir,"handoff-"+ids[1]+"-"+Date.now().toString(36)+"-gp56.json");
+  fs.writeFileSync(file,JSON.stringify(Object.assign({},res,{inbox_path:"",path:file}),null,2));
+  fs.writeFileSync(out,JSON.stringify({room:rid,file:file,bot:ids[1]})+"\n");
+})().catch((e)=>{console.error("探针异常 "+String((e&&e.message)||e));process.exit(5);});
+' /tmp/gp56-proof.json >/tmp/gp56-setup.log 2>&1 && gp56probe=1
+  if [ "$gp56probe" = "1" ]; then
+    BITBOT_NEST_DEPTH=1 timeout 180 node hosts/cli_host/run_turn.js "tick routines" >/tmp/gp56-tick.json 2>/dev/null
+    node -e '
+const fs=require("fs");
+const info=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+const lines=fs.readFileSync(process.argv[2],"utf8").trim().split("\n").filter((l)=>l.startsWith("{"));
+const j=JSON.parse(lines[lines.length-1]);
+const hr=(j.host_results||[]).find((h)=>h&&h.kind==="routine_tick")||{};
+let payload={};try{payload=JSON.parse(hr.stdout||"{}");}catch(_){payload={};}
+const retry=payload.handoff_retry||hr.handoff_retry||null;
+const stub=JSON.parse(fs.readFileSync(info.file,"utf8"));
+const f=[];
+if(hr.ok!==true)f.push("routine_tick 这一轮没跑成");
+if(!retry||retry.scope!=="all_rooms")f.push("唤醒回包不带 handoff_retry(all_rooms)");
+if(!(Number(retry&&retry.scanned)>=1))f.push("scanned<1（没扫到探针挂账）");
+if(!(Number(retry&&retry.attempted)>=1))f.push("attempted<1（挂账没被捡）");
+if(stub.state==="answered")f.push("nested_skipped 被演成答上了");
+if(!(Number(stub.attempts)>=1))f.push("attempts 没递增");
+if(!/nested_skipped/.test(String(stub.last_error||"")))f.push("last_error 不是 nested_skipped："+stub.last_error);
+if(f.length){console.error(f.join(" | "));process.exit(1);}
+' /tmp/gp56-proof.json /tmp/gp56-tick.json >/tmp/gp56-assert.log 2>&1 \
+      && ok "G-56 真生产入口：CLI「tick routines」把探针挂账捡起重跑（attempts 递增、last_error=nested_skipped、没演成答上）" \
+      || bad "G-56 真生产入口取证未通过（见 /tmp/gp56-assert.log：$(tail -1 /tmp/gp56-assert.log)）"
+  else
+    echo "  · skip：探针挂账造不出来，G-56 真生产入口未跑（SKIP ≠ PASS，见 /tmp/gp56-setup.log）"
+  fi
+else
+  echo "  · skip：数据根里已有非探针的转交挂账，不在用户的真实任务上做取证（SKIP ≠ PASS）"
+fi
+# 探针只清自己造的那间群和那份凭据，别人的房间与转录一行都不动
+node -e '
+const fs=require("fs"),path=require("path");
+let info=null;try{info=JSON.parse(fs.readFileSync("/tmp/gp56-proof.json","utf8"));}catch(_){info=null;}
+if(!info)process.exit(0);
+const roomsP=path.resolve("data/desktop/rooms.json");
+try{
+  const rooms=JSON.parse(fs.readFileSync(roomsP,"utf8"));
+  const before=(rooms.rooms||[]).length;
+  rooms.rooms=(rooms.rooms||[]).filter((r)=>r&&r.id!==info.room);
+  fs.writeFileSync(roomsP,JSON.stringify(rooms,null,2));
+  if((rooms.rooms||[]).length!==before-1)console.error("探针房间删除数不为 1");
+}catch(e){console.error("探针房间清理失败 "+String((e&&e.message)||e));}
+try{fs.unlinkSync(info.file);}catch(_){}
+' >/tmp/gp56-clean.log 2>&1 || bad "G-56 探针清理失败（见 /tmp/gp56-clean.log）"
+# 接线锚 + 注入对照：真文件必须过、把班车挂载和 all_rooms 口径分别摘掉的副本必须翻红
+node -e '
+const fs=require("fs");
+const ffi=fs.readFileSync("hosts/shared/host_ffi.js","utf8");
+const cutBus=ffi.split("surface.retryPendingHandoffs").join("surface.handoffRetryEntryDisabled");
+const bus=(s)=>s.includes("surface.retryPendingHandoffs")&&s.includes("routineRes.handoff_retry = hr")&&/kind === "routine_tick" \|\| kind === "routine_wake"/.test(s);
+const cutDepth=ffi.split("ok: !!(out && out.ok !== false) && !out.nested_skipped,").join("ok: !!(out && out.ok !== false),");
+const depth=(s)=>(s.match(/&& !out\.nested_skipped/g)||[]).length>=2;
+const scope=fs.readFileSync("hosts/desktop/product_surface.js","utf8");
+const cutScope=scope.split(String.raw`scope: roomId ? "single_room" : allRooms ? "all_rooms" : ""`).join(String.raw`scope: ""`);
+const sc=(s)=>s.includes(String.raw`scope: roomId ? "single_room" : allRooms ? "all_rooms" : ""`)&&s.includes(String.raw`o.all_rooms === true`);
+const real=bus(ffi)&&depth(ffi)&&sc(scope), mut=!bus(cutBus)&&!depth(cutDepth)&&!sc(cutScope);
+if(!real)console.error("接线锚缺失：班车="+bus(ffi)+" 两处 nested_skipped 同口径="+depth(ffi)+" scope 口径="+sc(scope));
+if(!mut)console.error("注入对照没翻红：班车="+bus(cutBus)+" 深度口径="+depth(cutDepth)+" scope="+sc(cutScope));
+process.exit(real&&mut?0:1)' && ok "G-56 接线：唤醒班车挂着捡起 + 交接与群回合同一套 nested_skipped 口径 + scope 口径（三处各摘各的都翻红）" || bad "G-56 wiring / 注入对照"
+
+echo "== G-57 GP-169：Box 打包清单的传递闭包（手机连电脑那条链此前在真机上是断的）=="
+# HEAD 上的事实：prove_box_routine_sweep.js = pass=0 fail=2，Box 一起来就 MODULE_NOT_FOUND，
+# 而聚合矩阵里没有任何一行跑过它（grep -rn "prove_box_routine_sweep" scripts/*.sh 只命中它自己的 .sh 壳）。
+# 根因不是逻辑错，是 pack-box.sh 那份手写文件名清单没跟着 cn_inbound_server / host_ffi 的新 require 更新。
+node scripts/prove_box_pack_closure.js >/tmp/gp169-closure.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp169-closure.log; then
+  ok "G-57 打包清单闭包全绿（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-closure.log)，shared 清单 $(grep -m1 -o 'shared=[0-9]*' /tmp/gp169-closure.log)）"
+else
+  bad "G-57 prove_box_pack_closure 未通过（见 /tmp/gp169-closure.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-closure.log || tail -1 /tmp/gp169-closure.log)）"
+fi
+for gp169_a in "P-01 真入口的 require 闭包全在打包清单里" \
+               "P-02 闭包里的每个相对依赖在仓库里真的存在" \
+               "P-03 清单里没有仓库里不存在的幽灵条目" \
+               "P-04 这次补上的三个模块在清单里（回归锚）"; do
+  if grep -q "✓ $gp169_a" /tmp/gp169-closure.log; then ok "G-57 锚点：$gp169_a"; else bad "G-57 锚点没跑绿：$gp169_a"; fi
+done
+# 注入对照：把三个名字从清单里全量摘掉，在同一把尺子的副本上重跑 —— 必须翻红；
+# 同一副本不改时也必须是绿，否则红是尺子坏而不是清单坏。
+rm -rf /tmp/g57mut && mkdir -p /tmp/g57mut/scripts /tmp/g57mut/hosts
+ln -s "$(pwd)/hosts/shared" /tmp/g57mut/hosts/shared
+ln -s "$(pwd)/hosts/desktop" /tmp/g57mut/hosts/desktop
+# 用 cp 而不是 ln：node 会把主模块的 symlink 解析成 realpath，
+# 挂成软链时门里的 ROOT 会退回仓库本身 —— 第一次跑这条注入对照就是这么「假绿」的。
+cp -f scripts/prove_box_pack_closure.js /tmp/g57mut/scripts/prove_box_pack_closure.js
+node -e '
+const fs=require("fs");
+const src=fs.readFileSync("scripts/pack-box.sh","utf8");
+let cut=src;
+for(const n of ["desktop_pairing.js","lan_candidates.js","machine_presence.js"])cut=cut.split(" "+n).join("");
+if(cut===src){console.error("清单里摘不出这三个名字（尺子的输入不对）");process.exit(3);}
+fs.writeFileSync("/tmp/g57mut/scripts/pack-box.sh",cut);
+fs.writeFileSync("/tmp/g57mut/scripts/pack-box.clean.sh",src);
+' && node /tmp/g57mut/scripts/prove_box_pack_closure.js >/tmp/g57-mut.log 2>&1
+mut_red=1
+grep -q "fail=0" /tmp/g57-mut.log && mut_red=0
+cp -f /tmp/g57mut/scripts/pack-box.clean.sh /tmp/g57mut/scripts/pack-box.sh
+node /tmp/g57mut/scripts/prove_box_pack_closure.js >/tmp/g57-clean.log 2>&1 || mut_red=0
+if [ "$mut_red" = "1" ]; then ok "G-57 注入对照：摘掉三个名字的清单副本翻红、原样副本仍绿"; else bad "G-57 注入对照没成立（见 /tmp/g57-mut.log /tmp/g57-clean.log）"; fi
+# 真机取证：真的 pack 出一个 Box、真的把 Host 进程起来、真的用设备密钥走一遍手机审批链
+if timeout 900 node scripts/prove_box_routine_sweep.js >/tmp/gp169-sweep.log 2>&1 && grep -q "fail=0" /tmp/gp169-sweep.log; then
+  ok "G-57 真 Box 取证：打包→起进程→到点扫→手机拉待批→批准留痕→重复批准被拒（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-sweep.log)）"
+else
+  bad "G-57 真 Box 取证未通过（见 /tmp/gp169-sweep.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-sweep.log || tail -3 /tmp/gp169-sweep.log | tr '\n' ' ')）"
+fi
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

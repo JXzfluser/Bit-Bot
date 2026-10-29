@@ -2573,7 +2573,8 @@ function createProductSurface(repoRoot, opts = {}) {
   // （data/agents/inbox/<bot>.jsonl）+ 一笔凭据存根（data/agents/handoffs/handoff-*.json）。
   // 只有写入、没有消费者 = 这笔任务永远挂着，群里那句「已转交」就成了假话。
   // 这里补上消费侧：下一次群回合（dispatchRoomTurn，桌面 IPC / CLI / 移动端共用那个入口）
-  // 自动把它捡起重跑，并且
+  // 自动把它捡起重跑；GP-168 起，定时唤醒（routine_tick / routine_wake）那一班车也以
+  // all_rooms 模式来捡一次 —— 群里一整天没人说话时，挂账仍然会被叫醒。并且
   //   · 幂等 —— 幂等键 = 存根文件名（host_ffi 写入时就是唯一的一次转交），终态不再跑第二遍，
   //     因为「定时发文 / 推邮箱」这类动作跑两遍就是事故；
   //   · 有界重试 —— 跑一次算一次 attempts，到上限如实标 stuck 并在群里点名，不自激循环；
@@ -2642,11 +2643,17 @@ function createProductSurface(repoRoot, opts = {}) {
   async function retryPendingHandoffs(opts) {
     const o = opts || {};
     const roomId = String(o.room || "").trim();
+    // GP-168：定时唤醒（routine_tick / routine_wake）那一班车没有「某间群」这个语境，
+    // 但它每天必然发生，是唯一能把睡着的挂账叫醒的人。所以再开一种模式：
+    // all_rooms = 按凭据自己记的 room 逐间捡，仍然受同一套幂等键 / 上限 / claim 约束。
+    // 单群语义一个字都没改：给了 room 就只处理那间。
+    const allRooms = roomId ? false : o.all_rooms === true;
     const runner = o.deps && typeof o.deps === "object" ? o.deps : (roomRuntimeDeps || {});
     const out = {
       ok: true,
       mode: "host_handoff_retry",
       room: roomId,
+      scope: roomId ? "single_room" : allRooms ? "all_rooms" : "",
       scanned: 0,
       attempted: 0,
       answered: 0,
@@ -2656,6 +2663,7 @@ function createProductSurface(repoRoot, opts = {}) {
       skipped_malformed: 0,
       skipped_running: 0,
       skipped_other_room: 0,
+      skipped_no_room: 0,
       pending: 0,
       notified: 0,
       notice_failed: false,
@@ -2666,7 +2674,7 @@ function createProductSurface(repoRoot, opts = {}) {
     const noteErr = (p, e) => {
       if (out.errors.length < 3) out.errors.push(`${path.basename(String(p))}: ${String((e && e.message) || e)}`);
     };
-    if (!roomId) return Object.assign({}, out, { ok: false, error: "handoff_retry_needs_room" });
+    if (!roomId && !allRooms) return Object.assign({}, out, { ok: false, error: "handoff_retry_needs_room" });
     if (typeof runner.runResponderTurn !== "function") {
       return Object.assign({}, out, { ok: false, error: "handoff_retry_runner_required" });
     }
@@ -2692,10 +2700,18 @@ function createProductSurface(repoRoot, opts = {}) {
       }
       if (r.missing) continue;
       const stub = r.stub;
-      if (String(stub.room || "") !== roomId) {
+      const stubRoom = String(stub.room || "").trim();
+      if (roomId && stubRoom !== roomId) {
         out.skipped_other_room++; // 群之间不串：这轮的捡起只处理这间的凭据
         continue;
       }
+      if (!stubRoom) {
+        // all_rooms 模式下没有 room 的老凭据：不知道交回哪间群，就不许自己编一间。
+        out.skipped_no_room++;
+        continue;
+      }
+      // 单群模式 = 那间群；all_rooms = 以凭据自己记的那间为准。
+      const target = roomId || stubRoom;
       const state = String(stub.state || "pending");
       const attempts = Math.max(0, Number(stub.attempts) || 0);
       if (state === "answered" || state === "stuck") {
@@ -2717,7 +2733,7 @@ function createProductSurface(repoRoot, opts = {}) {
       const why0 = String(stub.task || "").trim() ? "" : "handoff_task_missing";
       if (why0) {
         patchHandoffStub(p, { state: "stuck", last_error: why0, stuck_at: nowIso() });
-        if (!noteHandoffStuck(roomId, stub, why0, p)) out.notice_failed = true;
+        if (!noteHandoffStuck(target, stub, why0, p)) out.notice_failed = true;
         else out.notified++;
         out.stuck++;
         continue;
@@ -2725,7 +2741,7 @@ function createProductSurface(repoRoot, opts = {}) {
       let prep = null;
       try {
         prep = prepareHandoff({
-          room: roomId,
+          room: target,
           from_bot: stub.from_bot,
           to_bot: stub.to_bot,
           task: stub.task,
@@ -2737,7 +2753,7 @@ function createProductSurface(repoRoot, opts = {}) {
       if (!prep || prep.ok !== true) {
         const why = String((prep && prep.error) || "handoff_retry_prep_failed");
         patchHandoffStub(p, { state: "stuck", last_error: why, stuck_at: nowIso() });
-        if (!noteHandoffStuck(roomId, stub, why, p)) out.notice_failed = true;
+        if (!noteHandoffStuck(target, stub, why, p)) out.notice_failed = true;
         else out.notified++;
         out.stuck++;
         continue;
@@ -2768,7 +2784,7 @@ function createProductSurface(repoRoot, opts = {}) {
         out.failed++;
         if (isStuck) {
           out.stuck++;
-          if (!noteHandoffStuck(roomId, stub, `${why}（第 ${na}/${HANDOFF_MAX_ATTEMPTS} 次）`, p)) out.notice_failed = true;
+          if (!noteHandoffStuck(target, stub, `${why}（第 ${na}/${HANDOFF_MAX_ATTEMPTS} 次）`, p)) out.notice_failed = true;
           else out.notified++;
         }
       }

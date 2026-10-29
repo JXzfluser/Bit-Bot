@@ -1826,3 +1826,124 @@ e2e_desktop_user_journeys: PASS=68 FAIL=1 SKIP=0
 - `e2e_desktop_room_orchestration.mjs` 没接进聚合门（见第 ⑦ 项），
   安卓真机上「下一轮把转交捡起来」也没有设备证据。
 
+## 8.33 挂账不能只等「下一次有人说话」；Box 的清单缺三块，手机那条链在真机上是断的（GP-168 / GP-169）
+
+**① 断点（两条，都是本轮跑门时撞出来的，不是设计的延伸）。**
+
+第一条直接承接 §8.32 自己写下的那条残留：GP-166 的捡起只搭「下一次群回合」这班车。自媒体的真实形状是
+08:00 定时发文内部转交给审核 Bot、provider 挂了 → 凭据落盘、标 `pending`；之后一整天群里没人再发消息，
+这笔任务就永远睡着。而定时 sweep（`routine_tick`）是唯一必然每天发生的唤醒 —— 它不捡，就没人捡。
+
+第二条更硬：本轮为了复核既有门跑 `scripts/prove_box_routine_sweep.js`，在 HEAD 树上是 `pass=0 fail=2`：
+Box 进程一起来就 `MODULE_NOT_FOUND`，后面 16 条（到点扫、手机拉待批、批准留痕、同一笔不能再批第二次）
+全都没机会执行。也就是「手机连上我这台电脑」这条链在真机上根本走不通，而当时全量矩阵是 398/0 ——
+因为聚合门里没有任何一行跑过它（登记前 `grep -rn "prove_box_routine_sweep" scripts/*.sh` 只命中它自己的
+`.sh` 壳）。根因不在逻辑，在 `scripts/pack-box.sh` 那份手写文件名清单：`cn_inbound_server.js` /
+`host_ffi.js` 后来新增的 `desktop_pairing` / `lan_candidates` / `machine_presence` 三个 require
+没回头补清单。单测跑的是仓库里的 `hosts/shared/`，永远发现不了「打包少带一块」。
+
+**② 修复前红（逐字，都在本轮留下日志）。**
+
+- 唤醒班车：`scripts/prove_gp168_handoff_wake.js` 首跑 `pass=8 fail=10`（`/tmp/gp168-red.log`），
+  红项 W-01「唤醒回包里没有 handoff_retry（班车没接）」、W-02b、W-03、W-03b、W-06、W-07、W-07b、
+  W-07c、W-08c、W-09；判据改写后复跑仍 `8/10`（`/tmp/gp168-red2.log`），红在同一个位置。
+- 真 Electron：把挂载摘掉后跑 `e2e_desktop_user_journeys.mjs` → `PASS=69 FAIL=2 SKIP=0`，红的正好是
+  GP-168 那两条，屏幕上只有「↪ task handed off …」和一句「模型或服务返回失败」，`stuck:0` ——
+  挂账躺着，谁也不来叫它（`/tmp/gp168-e2e-red.log`）。
+- Box：`prove_box_routine_sweep.js` HEAD 树复跑 `pass=0 fail=2`（`/tmp/sw-head.log`），SW-1 的 stderr
+  尾行 `code: 'MODULE_NOT_FOUND'`，requireStack 指到 `box/shared/cn_inbound_server.js`。
+- 清单闭包：新建 `scripts/prove_box_pack_closure.js` 首跑 `pass=3 fail=2`，P-01 报
+  「缺：shared/desktop_pairing.js, shared/lan_candidates.js, shared/machine_presence.js」。
+
+**③ 这把尺子先量错过自己三次，都记下来。**
+
+1. W-09 原写「`{room:"roomB"}` 时 `attempted === 0`」。判据本身是错的：那一刻 roomB 自己也挂着合法
+   待办，捡起当然去捡。红测详情里的 `{"attempted":4}` 不是产品破了，是我在要求「B 间不许有事可做」。
+   改成量真正不该发生的事：A 间那笔凭据 `attempts` 必须仍是 0、A 间转录不多一行、
+   `skipped_other_room>=1`、`scope==="single_room"`。
+2. W-03 带过一条 `max_attempts >= 1`：`max_attempts` 是回包里恒在的常量字段，这条子断言永真 = 没测。
+   换成 `retr3.stuck >= 1 && retr3.notified >= 1`（这一轮真数得出卡住、真往群里点了名）。
+3. G-57 的注入对照第一次是**假绿**：临时树里 `prove_box_pack_closure.js` 用 `ln -s` 挂进去，而 node 会把
+   主模块的 symlink 解析成 realpath —— 门里的 `ROOT` 退回仓库本身，「摘掉三个名字」的副本读的还是仓库
+   那份清单，照样 5/0 绿。改成 `cp -f`，并同时要求「原样副本仍绿」，红才归给清单而不是归给一把读错
+   输入的尺子。
+
+**④ 改动（四处，只加可选入参 / 可选字段，既有契约一字不动）。**
+
+| 文件 | 改动 |
+| --- | --- |
+| `hosts/desktop/product_surface.js` | `retryPendingHandoffs` 新增可选入参 `all_rooms:true`；回包新增可选字段 `scope`（`single_room` / `all_rooms`）与 `skipped_no_room`；循环内落点由写死的 `roomId` 改为 `target = roomId \|\| stub.room`（凭据自己记的那间群）。给了 `room` 时单群语义一字未改。 |
+| `hosts/shared/host_ffi.js` | async `executeHostEffects` 在 `routine_tick` / `routine_wake` 的效果行返回后 `await surface.retryPendingHandoffs({all_rooms:true})`，把 `handoff_retry` 同时挂到效果行与 stdout JSON；stdout 不可解析时只挂效果行（不伪造 stdout）。tick 原有 payload 一个字段没动。`executeRoutineEffect` 是同步的，捡起要 await 内核回合，所以只能挂在这个 async 收口处。 |
+| `hosts/shared/host_ffi.js` | `runHandoffTurn` 的 `ok` 加上 `&& !out.nested_skipped`（见第 ⑤ 项）。 |
+| `scripts/pack-box.sh` | shared 清单补 `desktop_pairing.js` / `lan_candidates.js` / `machine_presence.js`（20 → 23）。 |
+
+**⑤ `runHandoffTurn` 那个造假洞（本轮最该记的一条）。**
+
+`runWorkerMoonTurn` 在 nest depth≥1 时返回 `{ok:true, nested_skipped:true, assistant:"(worker nest skipped at depth N)"}`。
+responder 闭包按 `!out.nested_skipped` 判失败，唯独 `runHandoffTurn` 只看 `out.ok !== false` —— 而它正是
+捡起路径要用的 runner。后果：定时唤醒捡起挂账 → 内核被跳过 → 那句 `(worker nest skipped at depth 1)`
+被当成目标 Bot 的答复写进群转录、凭据标成 `answered`，用户看到「它答上了」，实际上一个字都没跑。
+变异对照 M2（把 `ok` 退回旧写法）实测把 W-02、W-03、W-03b、W-05、W-07b 五条一起演绿：一处宽松判定
+会把「假交付」传播到跨群隔离与有界重试上。现在两处同一口径 —— skipped = 失败，`last_error=nested_skipped`，
+群里渲染成兜底的人话，原始协议码只在 dev 模式露出。
+
+**⑥ 变异对照（七条，每条都有归属；全量摘用 `split/join`，`String.replace` 只摘第一处的坑在 §8.32 记过）。**
+
+| 变异 | 门结果 | 翻红的判据 |
+| --- | --- | --- |
+| M1 摘掉唤醒班车上的挂载 | 12/6 | W-01、W-02b、W-03、W-03b、W-06、W-08c |
+| M2 放回 `runHandoffTurn` 的 nested_skipped 造假 | 13/5 | W-02、W-03、W-03b、W-05、W-07b |
+| M3 `all_rooms` 把落点写死成第一间群 | 17/1 | W-07b |
+| M4 摘掉单次捡取上限 | 17/1 | W-06 |
+| M5 摘掉终态跳过（幂等键失效） | 17/1 | W-04 |
+| M6 没给 room 就自作主张扫全部 | 17/1 | W-10 |
+| M7 摘掉单群过滤 | 16/2 | W-09、W-09b |
+
+七条全有归属、`mutations_bad=0`；跑完立刻还原，`git diff --stat` 与变异前逐字一致
+（product_surface +23/-7、host_ffi +37/-1）。摘掉的行仍留在文件里（`typeof` 那行没删），
+所以 M1 是「假装有入口但不接」的形态，不是删函数式的作弊。
+
+**⑦ 修复后绿（实测数字，不口头担保）。**
+
+| 门 | 修复前 | 修复后 |
+| --- | --- | --- |
+| `scripts/prove_gp168_handoff_wake.js` | 8/10 | **PASS=18 FAIL=0** |
+| `scripts/prove_box_pack_closure.js` | 3/2 | **PASS=5 FAIL=0** |
+| `scripts/prove_box_routine_sweep.js`（HEAD 也红） | 0/2 | **PASS=18 FAIL=0** |
+| `scripts/prove_room_orchestrator.js`（GP-166 回归） | 93/0 | PASS=93 FAIL=0 |
+| gp157 / gp158 / gp161 / m22 | PASS | 全 PASS（routine 与 read-first 链无回归） |
+| 真生产入口 CLI `tick routines`（矩阵 G-56 内） | — | 唤醒回包带 `handoff_retry(scope=all_rooms)`，探针挂账 attempts 递增、`last_error=nested_skipped`、没被演成答上 |
+| `e2e_desktop_user_journeys.mjs`（真 Electron） | 摘掉班车 69/2 | **PASS=71 FAIL=0 SKIP=0**（新两条都在屏幕上落地） |
+| `smoke_grok_desktop_parity.sh` 全量矩阵 | 398/0 | **PASS=417 FAIL=0**，`✗` 计数 0，14 道自计数门 `SKIP=0` 全在，`git status --porcelain data/` 为 0 行 |
+| `prove_report_history_intact.mjs` | 7/0 | PASS=7 FAIL=0 |
+
+矩阵 +19 条逐笔对账：G-56 11 条（合同门 1 + W 锚点 8 + 真生产入口探针 1 + 接线/注入对照 1）、
+G-57 7 条（闭包门 1 + P 锚点 4 + 清单副本注入对照 1 + 真 Box 取证 1）、G-53 新增 GP-168 渲染锚点 1 条。
+探针只清自己造的那间群与那份凭据（跑完 `data/agents/handoffs/` 回到 0 个文件、rooms 数量回到原值）。
+
+**⑧ 门禁接线（继续堵「门存在但没人跑」这一类根因）。**
+
+G-56 = 唤醒合同门 + 8 条 W 锚点 + 真生产入口探针 + 三处各摘各的都翻红的注入对照；
+G-57 = 清单闭包门 + 4 条 P 锚点 + 清单副本注入对照 + 真 Box 取证（打包 → 起进程 → 到点扫 →
+手机拉待批 → 批准留痕 → 重复批准被拒）。G-53 另加一条 GP-168 渲染锚点：真 Electron 里这两行取证
+不出现就整条翻红；只有当数据根里存在别人的挂账、或可见 Bot 不足两个时才打 `· skip`
+（SKIP ≠ PASS —— 环境不足既不许记成产品缺陷，也不许记成绿）。
+
+**⑨ 残留（诚实）。**
+
+1. 唤醒班车只覆盖 `routine_tick` / `routine_wake` 这两个效果。Box 侧 `routine_scheduler.js` 经由同一条
+   `executeHostEffects`，已顺带覆盖；但**桌面 App 自己没有定时器** —— 用户开着桌面端、群里没人说话、
+   也没跑 daemon 时，挂账还是不动。要么在主进程里挂 sweep，要么把 daemon 装成服务，两条都还没做。
+2. `all_rooms` 单轮最多捡 5 笔（`HANDOFF_SCAN_LIMIT`）。挂账多时要靠连续几轮排空；回包里有 `pending`，
+   界面上还没有「今天还剩几笔」这个数。
+3. 单轮 sweep 内 `attempts` 只 +1，卡住要等三轮唤醒（daemon 间隔内是三次，日历上是三天）。
+   上限与间隔都没有产品化解释，也不可配。
+4. 取证用 `BITBOT_NEST_DEPTH=1` 让内核侧确定性短路，因此**没有**验到「真 provider 挂掉 → 真模型答复」
+   这一整段；那需要装了真 key 的机器。
+5. GP-169 修的是「清单缺文件」。Box 在真机（用户自己的机器）上能不能被手机连上、配对码走不走得通，
+   仍只有 SW 系列在同一台机器上的 loopback 取证；跨机器、真手机未验。
+6. 闭包门只覆盖 `box_main.js` / `host_ffi.js` / `product_surface.js` 三个入口的相对 `require("./x")`，
+   动态拼路径的 require 抓不到；以后再新增入口需要把 roots 一起加长。
+7. 新增 19 条只进 `smoke_grok_desktop_parity.sh` 这一份本地聚合门；CI 仍只跑 `scripts/eval/run.js` 与
+   `prove_android_build.mjs`（`android-apk.yml` 的 paths 只匹配安卓）—— 与 §8.32 记的同一条残留，未闭合。
+

@@ -185,7 +185,11 @@ function createHostFfi(repoRoot, opts = {}) {
           timeoutMs: Number((ctx && ctx.timeoutMs) || 120000),
         });
         return {
-          ok: !!(out && out.ok !== false),
+          // GP-168：内核被嵌套深度短路时（nested_skipped）这轮**没有真的跑**。
+          // 以前这里只看 out.ok !== false，于是「worker nest skipped at depth 1」
+          // 这句话会被当成目标 Bot 的答复写进群转录、挂账被标成 answered —— 假交付。
+          // 与上面 runTurn（responder 闭包）同一口径：skipped = 失败，如实报 error。
+          ok: !!(out && out.ok !== false) && !out.nested_skipped,
           text: (out && out.assistant) || "",
           artifacts: [],
           error: (out && out.nested_skipped) ? "nested_skipped" : undefined,
@@ -24701,6 +24705,37 @@ function createHostFfi(repoRoot, opts = {}) {
         roomId: (ffiOpts && ffiOpts.roomId) || "",
       });
       if (routineRes) {
+        // GP-168：定时唤醒这一班车顺路把「受理了但没答上」的转交挂账捡起来。
+        // 为什么挂在这里：自媒体用户的真实形状是 08:00 定时发文内部转交给审核 Bot、
+        // provider 挂了 → 凭据落盘；之后一整天群里没人再发消息，只搭「下一次群回合」
+        // 那班车（GP-166）它就永远睡着。sweep 是唯一必然每天发生的唤醒。
+        // executeRoutineEffect 是同步的，捡起要 await 内核回合，所以只能在 async 的
+        // 这里挂；效果行与 stdout 都带 handoff_retry，stdout 不可解析时只挂效果行。
+        // 只加可选字段，tick 既有 payload 一个不动。
+        if (
+          (kind === "routine_tick" || kind === "routine_wake") &&
+          surface && typeof surface.retryPendingHandoffs === "function"
+        ) {
+          let hr = null;
+          try {
+            hr = await surface.retryPendingHandoffs({ all_rooms: true });
+          } catch (e) {
+            hr = {
+              ok: false,
+              mode: "host_handoff_retry",
+              scope: "all_rooms",
+              error: "handoff_retry_failed",
+              detail: String((e && e.message) || e),
+            };
+          }
+          routineRes.handoff_retry = hr;
+          try {
+            const tickPayload = JSON.parse(routineRes.stdout || "{}");
+            if (tickPayload && typeof tickPayload === "object" && !Array.isArray(tickPayload)) {
+              routineRes.stdout = JSON.stringify(Object.assign({}, tickPayload, { handoff_retry: hr }), null, 2);
+            }
+          } catch (_) { /* stdout 不是 JSON：效果行已经带上如实回报，不伪造 stdout */ }
+        }
         results.push(routineRes);
         continue;
       }
