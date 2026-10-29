@@ -245,6 +245,29 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 4b. 产物行为门：装出来的 App 在「没有源码树」的机器上能不能起、能不能扫
+#
+#     以前所有 Electron 门禁都直接 `electron hosts/desktop/main.js`，跑在源码
+#     树里；打包产物（app.asar 只读、没有 moon、没有 scripts/）从来没被启动过。
+#     2026-10-29 第一次真跑 linux-unpacked：主进程在 require 阶段就因为往 asar
+#     里的 .env.local 写而 ENOENT 崩溃 —— 用户双击图标只会看到报错框。
+#     GP-172 起，只要能在本机启动打包产物，就把它真跑一遍（P-00…P-05）。
+# ---------------------------------------------------------------------------
+echo "[pack-desktop] packaged app gate…"
+case "$(uname -s)" in
+  Linux)
+    if [[ -z "${DISPLAY:-}" ]] && command -v xvfb-run >/dev/null 2>&1; then
+      xvfb-run -a node "$ROOT/scripts/e2e_desktop_packaged.mjs"
+    else
+      node "$ROOT/scripts/e2e_desktop_packaged.mjs"
+    fi
+    ;;
+  *)
+    echo "[pack-desktop] 打包产物行为门只在 Linux 跑（本机 $(uname -s) 未验；mac/win 真机安装仍是残留）"
+    ;;
+esac
+
+# ---------------------------------------------------------------------------
 # 5. Evidence (no secrets)
 # ---------------------------------------------------------------------------
 mkdir -p "$ROOT/data/tmp"

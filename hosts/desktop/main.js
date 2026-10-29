@@ -315,7 +315,13 @@ if (autoUpdater) {
   });
 }
 
-const DESKTOP_ENV_LOCAL = path.join(__dirname, ".env.local");
+/* 密钥文件的位置：开发时就在 hosts/desktop/.env.local（历史布局），装机后
+ * 必须是 userData —— app.asar 是只读的，__dirname 在包里指向 asar 内部，
+ * 往那儿写会 ENOENT 并在 require 阶段抛未捕获异常（2026-10-29 真打包实测：
+ * 主进程直接炸，窗口都没出来）。路径必须跟着 DATA_ROOT 一起搬。 */
+const DESKTOP_ENV_LOCAL = app.isPackaged && USER_DATA_DIR
+  ? path.join(USER_DATA_DIR, ".env.local")
+  : path.join(__dirname, ".env.local");
 
 /** Parse KEY=VALUE lines from an env file. */
 function parseEnvFile(file) {
@@ -373,10 +379,6 @@ if (!String(process.env.BITBOT_TZ || "").trim()) {
     sysTz = Intl.DateTimeFormat().resolvedOptions().timeZone || process.env.TZ || "UTC";
   } catch (_) { /* ignore */ }
   process.env.BITBOT_TZ = sysTz;
-}
-// Product default: content moderation armed unless explicitly disabled.
-if (process.env.BITBOT_CONTENT_MODERATION === undefined) {
-  process.env.BITBOT_CONTENT_MODERATION = "1";
 }
 
 const ALLOWED_SECRET_KEYS = new Set([
@@ -482,20 +484,47 @@ function upsertDesktopEnvLocal(patch) {
     .sort()
     .map((k) => `${k}=${current[k]}`)
     .join("\n");
-  fs.writeFileSync(
-    DESKTOP_ENV_LOCAL,
-    header + (body ? body + "\n" : ""),
-    { mode: 0o600 },
-  );
+  try {
+    fs.writeFileSync(
+      DESKTOP_ENV_LOCAL,
+      header + (body ? body + "\n" : ""),
+      { mode: 0o600 },
+    );
+  } catch (err) {
+    /* 写不进去必须回一句人话，而不是把主进程炸掉。装机后只读/权限异常时
+       Settings 会拿到 ok:false + env_local_unwritable，用户知道该去哪儿看；
+       热加载部分（process.env）仍已生效，本次会话可用。 */
+    return {
+      ok: false,
+      error: "env_local_unwritable",
+      path: DESKTOP_ENV_LOCAL,
+      applied,
+      pretend_saved: false,
+      detail: err && err.message ? err.message : String(err),
+    };
+  }
   return {
     ok: true,
-    path: "hosts/desktop/.env.local",
+    path: DESKTOP_ENV_LOCAL,
     applied,
     pretend_saved: false,
   };
 }
 
-syncInjectedSecretsToEnvLocal();
+/* 同步注入的密钥是「顺手帮忙」，不能成为启动的单点。写不进去（装机后的
+   只读位置、权限异常）要带着原因继续跑，交给 IPC 层如实回话。 */
+try {
+  syncInjectedSecretsToEnvLocal();
+} catch (err) {
+  process.stderr.write(
+    "[desktop] secret sync skipped: " + (err && err.message ? err.message : String(err)) + "\n",
+  );
+}
+
+// 产品默认：内容审核默认开启，除非用户显式关掉。现在才填，见上面的注释。
+if (process.env.BITBOT_CONTENT_MODERATION === undefined) {
+  process.env.BITBOT_CONTENT_MODERATION = "1";
+}
 
 const runner = createTurnRunner(REPO_ROOT, { dataRoot: DATA_ROOT, moonBin: MOON_BIN, kernelBin: KERNEL_BIN });
 let releaseActiveTurnCancel = null;
@@ -573,9 +602,14 @@ function applyLinuxXdgAutostart(enabled) {
     return { ok: true, openAtLogin: false, path: desk, removed: true };
   }
   fs.mkdirSync(dir, { recursive: true });
+  /* 装机后不能把 __dirname 当 app 路径传：它在 asar 里，桌面环境的 Exec
+     既不认 `app.asar`（没有可执行位）也不会帮你加参数。装好的应用就是
+     execPath 本身；开发态才需要把 main.js 目录交给 electron。 */
   const execLine = process.env.BITBOT_DESKTOP_AUTOSTART_EXEC
     ? String(process.env.BITBOT_DESKTOP_AUTOSTART_EXEC)
-    : `"${process.execPath}" "${path.join(__dirname)}"`;
+    : app.isPackaged
+      ? `"${process.execPath}"`
+      : `"${process.execPath}" "${path.join(__dirname)}"`;
   const body =
     "[Desktop Entry]\n" +
     "Type=Application\n" +
@@ -2556,7 +2590,7 @@ ipcMain.handle("bitbot:llm:status", async () => {
       base_url: cfg.base_url,
       key_configured: Boolean(cfg.key_configured),
       key_source: cfg.key_source,
-      env_local_hint: "hosts/desktop/.env.local",
+      env_local_hint: app.isPackaged ? DESKTOP_ENV_LOCAL : "hosts/desktop/.env.local",
       pretend_ready: false,
     };
   } catch (err) {

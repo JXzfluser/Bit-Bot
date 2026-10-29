@@ -2032,10 +2032,12 @@ e2e_desktop_sweep_timer: PASS=0 FAIL=5 SKIP=0
 | `scripts/prove_gp168_handoff_wake.js`（回归） | — | PASS=18 FAIL=0（tick 可选字段未影响旧判据） |
 | `scripts/prove_box_pack_closure.js`（回归） | — | PASS=5 FAIL=0 |
 | `scripts/e2e_desktop_quit.mjs`（回归：退出仍是干净退出） | — | PASS=8 FAIL=0 SKIP=0 |
-| `smoke_grok_desktop_parity.sh` 全量矩阵 | 417/0 | **PASS=435 FAIL=0**，`✗` 计数 0，15 道自计数门 `SKIP=0` |
+| `smoke_grok_desktop_parity.sh` 全量矩阵 | 417/0 | **PASS=441 FAIL=0**，`✗` 计数 0，15 道自计数门 `SKIP=0` |
 
 矩阵 +9 条全部来自 G-59：断点自证 1 + 真 Electron 门 1 + S 锚点 6 + 四路注入对照 1。
-（435 = 417 旧基线 + G-59 的 9 条 + G-60 的 6 条 + 远端两个提交带进来的 3 条。）
+（441 = 417 旧基线 + G-59 的 9 条 + G-60 的 6 条 + 远端提交带进来的 3 条 + 常驻内核 G-57 的
+6 条。最后这 6 条只在 `_build` 里有原生内核时才跑 —— 本轮 `pack-desktop.sh` 编了一次内核，
+它们才第一次进入矩阵。）
 
 **⑧ 门禁接线。**
 
@@ -2175,3 +2177,110 @@ G-60 = 完整性门 + 4 条 I 锚点 + 「真塞一行标记就翻红、恢复�
 4. 该门与 G-60 同样只进本地聚合矩阵；CI 仍不跑它 —— 与 §8.32 / §8.33.⑦ / §8.34.⑨.6 同一条残留。
    这次事故恰好说明：**CI 不跑的验收，等于把分支质量交给运气**。
 
+
+## 8.36 装好的 App 第一次启动就崩：门禁一直跑在源码树里（GP-172）
+
+**① 这一步不是「再加一道门」，是把最外一层补上。**
+
+从 GP-170 起，「电脑开着就有人敲钟」已经成立 —— 但那条证据全部来自
+`electron hosts/desktop/main.js`：真 Electron、真内核，**却跑在源码树里**。
+`__dirname` 可写、`moon` 在 PATH、`scripts/` 就在旁边。用户拿到的不是这个，
+而是 electron-builder 打出来的 `app.asar`：只读、没有 moon、没有 scripts。
+
+2026-10-29 第一次真跑 `dist/linux-unpacked/bitbot-desktop`（本仓 `pack-desktop.sh`
+的 `--dir` 产物，Linux + xvfb），主进程在 **require 阶段**就炸了：
+
+```
+A JavaScript error occurred in the main process
+Uncaught Exception:
+Error: ENOENT, desktop/.env.local not found in
+  .../resources/app.asar
+    at upsertDesktopEnvLocal (…/app.asar/desktop/main.js:485)
+    at syncInjectedSecretsToEnvLocal (…/app.asar/desktop/main.js:440)
+```
+
+用户视角就是：双击图标 → 一个报错框 → 没有窗口。**所有开发机上的绿灯都没覆盖这条路径。**
+
+**② 两条缺陷叠加，缺一条都不会崩。**
+
+1. `DESKTOP_ENV_LOCAL = path.join(__dirname, ".env.local")`。开发时它是
+   `hosts/desktop/.env.local`（历史布局，可写）；装机后 `__dirname` 指向 asar
+   内部，**只读**。写就在这里 ENOENT。
+2. 触发写的不是用户注入的密钥，是 App 自己的默认值：`BITBOT_CONTENT_MODERATION`
+   在 `ALLOWED_SECRET_KEYS` 里，而 main.js 在同步之前先把它填成 `"1"`，
+   于是「云端注入了密钥，顺手落盘」这条逻辑把**产品默认值**当成了用户密钥。
+   开发机上表现为悄悄多一行 `.env.local`，没人注意；装机后就是崩溃。
+
+**③ 修复（每一条都对应上面的断点）。**
+
+- `DESKTOP_ENV_LOCAL`：`app.isPackaged && USER_DATA_DIR` → `<userData>/.env.local`，
+  否则保持 `hosts/desktop/.env.local`。密钥跟着用户数据走，不跟着安装目录走。
+- `upsertDesktopEnvLocal` 的写盘包 `try/catch`：写不进去返回
+  `{ok:false, error:"env_local_unwritable", detail}`（`pretend_saved:false`），
+  IPC 层原样回给 Settings，`process.env` 的热加载仍然生效 —— 一次会话可用，
+  下次启动要重新填，这个边界说清楚，不假装保存成功。
+- `syncInjectedSecretsToEnvLocal()` 在模块加载处包 `try/catch`：它是「顺手帮忙」，
+  不能成为启动的单点。
+- `BITBOT_CONTENT_MODERATION` 的默认值挪到同步**之后**：默认值是产品行为，不是注入。
+- 顺带修掉同一类装机断点：Linux 自启的 `Exec=` 之前是
+  `"<execPath>" "<__dirname>"`，装机后 `<__dirname>` 在 asar 里，桌面环境拉不起来；
+  现在 `app.isPackaged` 时只写 `"<execPath>"`。
+
+**④ 新门：`scripts/e2e_desktop_packaged.mjs`（只认打包产物）。**
+
+不启动源码树，直接 spawn `dist/<platform>-unpacked/...`，环境按「用户机器」构造：
+不继承任何 `BITBOT_*`（尤其 `BITBOT_REPO_ROOT` / `BITBOT_NO_SECRET_SYNC`）、
+PATH 里没有 moon、数据落在临时 `--user-data-dir`。
+
+| 门 | 判据 |
+| --- | --- |
+| P-00 | `app.asar` 在、`resources/kernel/bin/desktop_turn` 在；`moon.mod` / `cmd` / `scripts` 都**不在**包里 |
+| P-01 | 进程活着，日志里没有 `Uncaught Exception` / `FATAL` |
+| P-02 | `<userData>/data/routines/desktop-sweep.jsonl` 至少 2 轮 `tick_ok:true`，每轮带 `handoff_retry.ok:true`；`last-tick` 是 `desktop_sweep` 写的（daemon=false long_lived=false） |
+| P-03 | 注入的 `BITBOT_LLM_API_KEY` 落进 `<userData>/.env.local`（0600），安装目录里没有任何 `.env.local` |
+| P-04 | 运行前后 `app.asar` 的 sha256 不变（App 没往自己安装目录写） |
+| P-05 | SIGTERM 后退出，且退出后不再产生新 tick |
+
+**⑤ 红 → 绿（同一份产物，同一把尺子）。**
+
+| 版本 | P-00 | P-01 | P-02 | P-03 | P-04 | P-05 | 合计 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 修复前（`a0ec929` + GP-170 的源码打出来的包） | ✓ | ✗ 未捕获异常 | ✗ 0 行 | ✗ 没写 | ✓（什么都没写） | ✓（空跑） | **3 / 4** |
+| 修复后 | ✓ | ✓ | ✓ 19 轮 | ✓ 0600 | ✓ | ✓ | **7 / 0** |
+
+**⑥ 尺子自身对照（不是只看它绿）。**
+
+- 假产物对照：`BITBOT_PACKAGED_BIN=/tmp/fake-pack/bin/bitbot-desktop`（一个只会
+  `sleep 60` 的脚本）→ P-00 / P-02×2 / P-03 / P-04 **全部翻红**（2/5）。
+  这证明 P-02/P-03 不是「进程活着」就能喂饱的。
+- 尺子自己踩过一次坑：第一版用白名单环境（只给 `DISPLAY`），漏了 `XAUTHORITY`，
+  Electron 连不上 X 直接 **SIGSEGV**，看起来像产品崩了。改成「继承宿主环境 +
+  剔掉 `BITBOT_*`」后同一条命令稳定复现产品行为 —— 布局隔离和显示环境不是一回事。
+
+**⑦ 接线：不再靠人记得跑。**
+
+`scripts/pack-desktop.sh` 在打包之后直接跑本门（Linux；有 `DISPLAY` 就直接跑，
+没有就 `xvfb-run -a`）。也就是说以后每一次 `BITBOT_PACK_TARGET=dir|dist` 的本机
+打包都会真的启动一次产物。macOS/Windows 分支打印「本机未验」并跳过，**不假装跑过**。
+
+**⑧ 残留（诚实）。**
+
+1. 只在 **Linux + xvfb** 下验过。macOS / Windows 的安装包、真机双击安装、
+   首次启动向导，仍是未验状态（CI 的 mac 打包产物目前只验「包里有能跑的内核」，
+   不启动窗口）。
+2. 本门不点窗口、不验首启引导页是否出现；它证明的是「主进程能起、能扫、能写对地方」。
+   窗口渲染由 `e2e_grok_desktop_boot` / `shell_v2` 在源码树里覆盖，两者合起来才算完整。
+3. 自启 `Exec=` 的修复没有门禁：需要真桌面环境写 `~/.config/autostart` 再登录，
+   本沙箱做不到。现在只有代码路径与打包后 `app.isPackaged` 分支。
+4. P-02 的 19 轮来自 250ms 测试间隔；产品默认 60s 的节奏在 `e2e_desktop_sweep_timer`
+   与 GP-170 里论证，本门不重复。
+5. 打包本身依赖 `pack-desktop.sh` 先编内核；本门不负责「包里有没有内核」的构建正确性
+   （那是 `prove_pack_artifacts.mjs`），只负责「有内核的包能不能真的跑」。
+6. **全量矩阵在这一轮暴露了一个既有的不稳定点（不是 GP-172 引入的，但必须记）**：
+   三次全量矩阵里，两次在 `e2e_grok_desktop_boot` 的「回合落盘」型断言上偶发红
+   —— 一次是 `GP-112 isolation`（Bot B 的 recall 30s 内没有行），一次是
+   `GP-128 session`（M27 探针会话没进 store），且都会连带让后面 grep 该日志的
+   G-27 三条锚点一起红。同一个脚本单独连跑三次都是 **128/0**，最终矩阵 **441/0**。
+   当前结论是「墙钟等待 + 固定端口 stub 在长矩阵里偶发超时」，不是产品行为回退；
+   但**没有找到根因之前不算修好**。下一步该把这几处从固定 30s 等待改成事件驱动
+   （store 落盘即返回），并给 stub 端口做占用探测。
