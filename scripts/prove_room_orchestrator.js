@@ -118,7 +118,8 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
     { room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "把草稿写完" },
     { runResponderTurn: runner.runResponderTurn },
   );
-  check(res.ok === true, "handoff：目标 Bot 跑成功 → ok=true");
+  check(res.ok === true && res.accepted === true, "handoff：目标 Bot 跑成功 → 受理成立（ok）");
+  check(res.replied === true && res.pending === false, "handoff：真答上了就不该挂着 pending");
   check(res.pretend_transferred === true, "handoff：真执行成功后 pretend_transferred 才为 true");
   check(String(res.target_reply || "").includes("目标 Bot 的真实产出"), "handoff：目标 Bot 真的产出了回复");
   check(runner.calls.length === 1 && runner.calls[0].bot_id === "b2", "handoff：真的触发了目标 Bot 的回合");
@@ -126,24 +127,49 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
   check(tx.some((e) => e && e.kind === "handoff" && e.to_bot === "b2"), "handoff：交接行落进群转录");
   check(tx.some((e) => e && e.kind === "bot_reply" && e.bot_id === "b2"), "handoff：目标回复落进群转录（闭环可见）");
 
+  // 承接方答不上（没配密钥 / 超时 / provider 挂了）时：所有权与凭据必须留下，
+  // 「当场答上」这一项必须如实为 false。旧写法把整笔 ok 判 false，Host 就跳过
+  // inbox 行与存根 —— 群转录写着「已转交」，收件箱里什么都没有。
   const failRunner = makeRunner(async () => ({ ok: false, error: "provider down" }));
   const bad = await surface.handoffTaskAsync(
     { room: ROOM_ID, from_bot: "b1", to_bot: "b3", task: "做一份核对" },
     { runResponderTurn: failRunner.runResponderTurn },
   );
-  check(bad.ok === false, "handoff：目标没跑成功 → 如实失败");
+  check(bad.ok === true && bad.accepted === true, "handoff：目标没答上，转交这笔仍然成立（凭据不得整笔跳过）");
+  check(bad.transferred === false && bad.replied === false, "handoff：没答上就不能说已交接完成");
   check(bad.pretend_transferred === false, "handoff：失败时 pretend_transferred 仍是 false（不假装成功）");
+<<<<<<< HEAD
   check(String(bad.error || "").length > 0, "handoff：失败原因可见");
   check(bad.accepted === true, "handoff：目标答不上来仍算已受理（宿主照常投递，任务不丢）");
+=======
+  check(bad.pending === true, "handoff：没答上必须标 pending（这件事还挂着，不是终态）");
+  check(String(bad.reply_error || "") === "provider down", "handoff：没答上的原因可见（reply_error）");
+  check(bad.error === "" || bad.error === undefined, "handoff：受理成立时不得再带 error（那是拒绝位）");
+>>>>>>> e6091f685cc50ab4ab63b18dced6cbdeb9dfcf60
   check(
     transcript().some((e) => e && e.kind === "bot_reply_error" && e.bot_id === "b3"),
     "handoff：目标失败在群转录里如实可见",
+  );
+
+  // 因果一致：受理成立 ⇒ 必须能落凭据。这里按 Host 侧同一个判据（res.ok）验一遍，
+  // 并把「写行却不排队」这种半态钉死。
+  const queueable = (r) => r.ok === true && (r.replied === false ? r.pending === true : true);
+  check(queueable(res) && queueable(bad), "handoff：受理成立的两种当场结果都满足「可落凭据」判据");
+
+  const noRunner = await surface.handoffTaskAsync(
+    { room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "没有 runner 的一句转交" },
+    {},
+  );
+  check(
+    noRunner.ok === true && noRunner.pending === true && noRunner.reply_error === "handoff_runner_required",
+    "handoff：没有 runner 时 = 受理 + 排队，而不是整笔消失",
   );
 
   // 同步入口（host_ffi.js 走它）：只受理，不假装已交接。
   const sync = surface.handoffTask({ room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "同步入口" });
   check(sync.ok === true && sync.pending === true, "handoff 同步入口：受理并标 pending");
   check(sync.pretend_transferred === false && sync.executed === false, "handoff 同步入口：没有执行就不能说已交接");
+  check(sync.accepted === true && sync.replied === false, "handoff 同步入口与异步入口同一套词汇（受理 / 答上）");
 
   const refuse = await surface.handoffTaskAsync(
     { room: ROOM_ID, from_bot: "b1", to_bot: "nobody", task: "x" },
@@ -167,6 +193,218 @@ console.log("prove_room_orchestrator — 群编排真团队合同");
   check(noRunner.execution === "queued", "handoff：回执写明执行状态是 queued");
   const queuedSync = surface.handoffTask({ room: ROOM_ID, from_bot: "b1", to_bot: "b2", task: "同步入口的受理标记" });
   check(queuedSync.accepted === true, "handoff 同步入口：与异步入口共用 accepted 语义");
+})();
+
+/* ─────── 1b. pending 凭据的下游：捡起 / 幂等 / 有界重试（GP-166） ───────
+   §8.30 之后凭据（inbox 行 + 存根）会诚实落盘，但全仓没有任何消费者 ——
+   承接方这轮没答上，这笔任务就永远挂着。这一节把「下一轮必须真捡起重跑，
+   而且只跑一次、跑不完要如实卡住」钉成合同。凭据形状照 host_ffi.js 的落盘
+   段（{...res, inbox_path, path}），不另造一套。 */
+  await (async () => {
+  const HO_DIR = path.join(ROOT, "data", "agents", "handoffs");
+  const stubPath = (id) => path.join(HO_DIR, id + ".json");
+  const putStub = (id, res, extra) => {
+    fs.mkdirSync(HO_DIR, { recursive: true });
+    const body = Object.assign({}, res, { inbox_path: "", path: stubPath(id) }, extra || {});
+    fs.writeFileSync(stubPath(id), JSON.stringify(body, null, 2));
+    return body;
+  };
+  const getStub = (id) => {
+    try { return JSON.parse(fs.readFileSync(stubPath(id), "utf8")); } catch (_) { return null; }
+  };
+  const rowsIn = (room, kind, botId) => {
+    const r = (readRooms().rooms || []).find((x) => x && x.id === room) || {};
+    return ((r.transcript || []).filter((e) => e && e.kind === kind && (!botId || e.bot_id === botId)));
+  };
+  const retry = async (o) => {
+    if (typeof surface.retryPendingHandoffs !== "function") {
+      return { __missing: true, attempted: 0, answered: 0, scanned: 0 };
+    }
+    try { return await surface.retryPendingHandoffs(o || {}); } catch (e) {
+      return { __error: String((e && e.message) || e), attempted: 0, answered: 0, scanned: 0 };
+    }
+  };
+  // 另开一间群，避免动主群的成员名单影响后面各节的计数
+  const ROOM2 = "room-orch-2";
+  // 自己造一笔「受理成立但当场没答上」的凭据（形状 = host_ffi 落盘的那份），
+  // 不复用上文的夹具：那一节的局部变量在这一节的作用域里根本不存在。
+  const pendSrc = makeRunner(async () => ({ ok: false, error: "provider down" }));
+  const pend = await surface.handoffTaskAsync(
+    { room: ROOM_ID, from_bot: "b1", to_bot: "b3", task: "做一份核对" },
+    { runResponderTurn: pendSrc.runResponderTurn },
+  );
+  if (!(pend && pend.ok === true && pend.pending === true)) {
+    check(false, "R-00 捡起这一节的前置夹具：先要有一笔「受理但没答上」的转交凭据", JSON.stringify({ ok: pend && pend.ok, pending: pend && pend.pending }));
+  }
+  const rr0 = readRooms();
+  if (!(rr0.rooms || []).some((r) => r && r.id === ROOM2)) {
+    rr0.rooms.push({ id: ROOM2, title: "Retry Room", members: ["b1", "b2"], transcript: [] });
+    fs.writeFileSync(path.join(DATA, "rooms.json"), JSON.stringify(rr0, null, 2));
+  }
+
+  /* R-01 用户旅程那一跳：博主在群里再发一句话，挂着的那笔必须被捡起来重跑。
+     走 dispatchRoomTurn（CLI / 移动端 / 桌面 IPC 共用的唯一入口），不是只调内部函数。 */
+  const id1 = "handoff-b3-gp166a";
+  putStub(id1, pend);
+  const pickRunner = makeRunner(async (botId) => ({ ok: true, text: botId + " 捡起之后的真回答" }));
+  const answeredBefore = rowsIn(ROOM_ID, "bot_reply", "b3").length;
+  const dispatched = await require("../hosts/shared/room_dispatch").dispatchRoomTurn({
+    surface,
+    roomId: ROOM_ID,
+    text: "@Bob 继续",
+    deps: { runResponderTurn: pickRunner.runResponderTurn },
+  });
+  const retr = (dispatched && dispatched.handoff_retry) || null;
+  check(
+    Boolean(dispatched && dispatched.ok) && retr && Number(retr.attempted) >= 1,
+    "R-01 新一条群消息真的把 pending 的转交捡起重跑（产品入口在 dispatchRoomTurn，不是只留一个内部函数）",
+    retr ? JSON.stringify(retr) : (dispatched && dispatched.error) || "回包里根本没有 handoff_retry",
+  );
+  check(rowsIn(ROOM_ID, "bot_reply", "b3").length === answeredBefore + 1, "R-01b 捡起的答案真落进群转录（恰好多一条）");
+  const s1 = getStub(id1) || {};
+  check(s1.state === "answered" && Number(s1.attempts) === 1, "R-01c 凭据写下终态与次数（answered / attempts=1）", JSON.stringify({ state: s1.state, attempts: s1.attempts }));
+  check(s1.to_bot === "b3" && s1.task === "做一份核对" && s1.room === ROOM_ID, "R-01d 回写不吞掉原凭据（谁、哪个群、哪件事还在）");
+
+  /* R-02 幂等：已经终态的凭据不许再跑第二遍 —— 「定时发文 / 推邮箱」这类动作跑两遍就是事故 */
+  const callsA = pickRunner.calls.length;
+  const answeredNow = rowsIn(ROOM_ID, "bot_reply", "b3").length;
+  const d2 = await require("../hosts/shared/room_dispatch").dispatchRoomTurn({
+    surface,
+    roomId: ROOM_ID,
+    text: "@Bob 再说一句",
+    deps: { runResponderTurn: pickRunner.runResponderTurn },
+  });
+  const retr2 = (d2 && d2.handoff_retry) || {};
+  check(
+    rowsIn(ROOM_ID, "bot_reply", "b3").length === answeredNow &&
+      Number(retr2.attempted || 0) === 0 &&
+      pickRunner.calls.length === callsA + 1,
+    "R-02 同一笔凭据不重跑：答案不出现第二条，模型调用不多花一次（本轮只算新消息那一次）",
+    JSON.stringify({ retr2, delta_calls: pickRunner.calls.length - callsA }),
+  );
+
+  /* R-03 有界重试：一直答不上 → attempts 递增到上限后如实卡住，并且不再自激 */
+  const id3 = "handoff-b3-gp166c";
+  putStub(id3, Object.assign({}, pend, { task: "核对数字（一直失败）" }));
+  const flaky = makeRunner(async () => ({ ok: false, error: "provider down" }));
+  const capProbe = await retry({ room: ROOM_ID, deps: flaky });
+  const cap = Number((capProbe && capProbe.max_attempts) || 0);
+  check(cap >= 1, "R-03a 捡起策略给得出重试上限（不是一句「会重试」）", JSON.stringify(capProbe));
+  let seen = [capProbe];
+  for (let i = 1; i < cap; i++) seen.push(await retry({ room: ROOM_ID, deps: flaky }));
+  const s3 = getStub(id3) || {};
+  check(
+    s3.state === "stuck" && Number(s3.attempts) === cap,
+    "R-03b 到上限就如实标 stuck（attempts 等于上限，不是悄悄挂到永远）",
+    JSON.stringify({ state: s3.state, attempts: s3.attempts }),
+  );
+  check(
+    rowsIn(ROOM_ID, "bot_reply_error", "b3").some((e) => /handoff_stuck/.test(String(e.error || e.text || ""))),
+    "R-03c stuck 这件事在群转录里看得见，并点名承接方与原因",
+  );
+  const callsB = flaky.calls.length;
+  const capAfter = await retry({ room: ROOM_ID, deps: flaky });
+  check(
+    Number(capAfter.attempted || 0) === 0 && flaky.calls.length === callsB,
+    "R-03d 已经 stuck 的凭据不再烧模型（终态就是终态，不自激循环）",
+    JSON.stringify({ attempted: capAfter.attempted, calls: flaky.calls.length - callsB }),
+  );
+
+  /* R-04 捡起的那一轮上下文与正常交接一致：交接目标身份 + 取消通道在 + 没有任何审批放行 */
+  const id4 = "handoff-b3-gp166d";
+  putStub(id4, Object.assign({}, pend, { task: "带上下文重跑" }));
+  const ctxRunner = makeRunner(async () => ({ ok: true, text: "带上下文的答案" }));
+  await retry({ room: ROOM_ID, deps: ctxRunner });
+  const ctxRow = ctxRunner.calls[ctxRunner.calls.length - 1] || {};
+  const ctx = ctxRow.ctx || {};
+  check(
+    ctxRow.bot_id === "b3" && ctx.role === "handoff_target" && typeof ctx.isCancelled === "function" &&
+      (ctx.approved === undefined || ctx.approved === false),
+    "R-04 捡起的一轮与被拒前那轮同一套上下文（role=handoff_target / 取消通道在 / 没有偷偷带审批放行）",
+    JSON.stringify({ bot: ctxRow.bot_id, role: ctx.role, approved: ctx.approved }),
+  );
+
+  /* R-05 承接方已经被移出群：不能假装它答了，也不能把行写进那间群 */
+  const id5 = "handoff-b2-gp166e";
+  const handoffInRoom2 = await surface.handoffTaskAsync(
+    { room: ROOM2, from_bot: "b1", to_bot: "b2", task: "被移出去之前的转交" },
+    { runResponderTurn: makeRunner(async () => ({ ok: false, error: "provider down" })).runResponderTurn },
+  );
+  putStub(id5, handoffInRoom2);
+  const rr2 = readRooms();
+  const room2 = (rr2.rooms || []).find((r) => r && r.id === ROOM2);
+  room2.members = ["b1"];
+  fs.writeFileSync(path.join(DATA, "rooms.json"), JSON.stringify(rr2, null, 2));
+  const repliesBefore = rowsIn(ROOM2, "bot_reply", "b2").length;
+  const r5 = await retry({ room: ROOM2, deps: makeRunner(async () => ({ ok: true, text: "不该出现的回答" })) });
+  const s5 = getStub(id5) || {};
+  check(
+    rowsIn(ROOM2, "bot_reply", "b2").length === repliesBefore &&
+      s5.state === "stuck" && /not_member/.test(String(s5.last_error || "")),
+    "R-05 承接方已不在群里 → 如实卡住（不产出任何「它答了」的行，原因点名 to_bot_not_member）",
+    JSON.stringify({ attempted: r5.attempted, state: s5.state, last_error: s5.last_error }),
+  );
+
+  /* R-06 凭据文件坏掉：跳过它、不动它，别的凭据照常捡（不删用户数据） */
+  fs.mkdirSync(HO_DIR, { recursive: true });
+  const broken = path.join(HO_DIR, "handoff-b3-gp166f.json");
+  const brokenRaw = "{ this is not json at all ]";
+  fs.writeFileSync(broken, brokenRaw);
+  const id6 = "handoff-b3-gp166g";
+  putStub(id6, Object.assign({}, pend, { task: "坏文件旁边那笔正常的" }));
+  const goodRunner = makeRunner(async () => ({ ok: true, text: "坏文件不影响我这笔" }));
+  const r6 = await retry({ room: ROOM_ID, deps: goodRunner });
+  check(
+    !r6.__missing && !r6.__error && Number(r6.skipped_malformed) >= 1 && getStub(id6) && getStub(id6).state === "answered",
+    "R-06 坏凭据被如实跳过并计数，同目录其它凭据照常处理（不因为一个坏文件整批放弃）",
+    JSON.stringify({ skipped_malformed: r6.skipped_malformed, state: (getStub(id6) || {}).state }),
+  );
+  check(fs.readFileSync(broken, "utf8") === brokenRaw, "R-06b 坏文件原样留在原地（门禁不许覆盖或删除用户数据）");
+
+  /* R-07 没有 pending 的群：一次零成本扫描（不能多花一次模型调用） */
+  const idleRunner = makeRunner(async () => ({ ok: true, text: "idle" }));
+  const r7 = await retry({ room: "room-does-not-exist", deps: idleRunner });
+  check(
+    Number(r7.attempted || 0) === 0 && idleRunner.calls.length === 0,
+    "R-07 没有待捡的凭据时一次模型调用都不多发（扫描不是新的成本）",
+    JSON.stringify(r7),
+  );
+
+  /* R-08 群之间不串：这轮的捡起只处理这间的凭据 */
+  const id8 = "handoff-b1-gp166h";
+  const room2Again = await surface.handoffTaskAsync(
+    { room: ROOM2, from_bot: "b1", to_bot: "b1", task: "留给另一间的凭据" },
+    { runResponderTurn: makeRunner(async () => ({ ok: false, error: "provider down" })).runResponderTurn },
+  );
+  putStub(id8, room2Again);
+  const s8before = (getStub(id8) || {}).state;
+  await retry({ room: ROOM_ID, deps: makeRunner(async () => ({ ok: true, text: "不该被别的群捡走" })) });
+  check((getStub(id8) || {}).state === s8before, "R-08 主群的回合不碰另一间的 pending 凭据（隔离）", JSON.stringify({ state: (getStub(id8) || {}).state }));
+
+  /* R-09 正在被别人跑的凭据（新鲜 claim）不重复跑；R-10 只有过期 claim 才允许接手 */
+  const id9 = "handoff-b3-gp166i";
+  putStub(id9, Object.assign({}, pend, { task: "正在跑的那笔" }), { state: "running", claimed_at: new Date().toISOString() });
+  const claimRunner = makeRunner(async () => ({ ok: true, text: "重复跑会出现两条答案" }));
+  const r9 = await retry({ room: ROOM_ID, deps: claimRunner });
+  check(
+    claimRunner.calls.filter((c) => c.bot_id === "b3").length === 0 && Number(r9.skipped_running || 0) >= 1,
+    "R-09 新鲜 claim（另一个回合正在跑它）不会被第二次捡起 —— 两条答案就是重复劳动",
+    JSON.stringify({ skipped_running: r9.skipped_running }),
+  );
+  const id10 = "handoff-b3-gp166j";
+  putStub(id10, Object.assign({}, pend, { task: "跑一半宿主没了的那笔" }), {
+    state: "running",
+    claimed_at: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
+    attempts: 1,
+  });
+  const staleRunner = makeRunner(async () => ({ ok: true, text: "过期 claim 由下一个回合接手" }));
+  await retry({ room: ROOM_ID, deps: staleRunner });
+  const s10 = getStub(id10) || {};
+  check(
+    staleRunner.calls.some((c) => c.bot_id === "b3") && s10.state === "answered" && Number(s10.attempts) === 2,
+    "R-10 claim 过期（宿主中途没了）才允许接手，并把次数累加上去（不是从零开始）",
+    JSON.stringify({ state: s10.state, attempts: s10.attempts }),
+  );
 })();
 
 /* ───────────────── 2. lead 综合 + 成员原话可分辨 ───────────────── */

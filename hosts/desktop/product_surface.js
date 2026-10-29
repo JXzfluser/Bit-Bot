@@ -2484,12 +2484,22 @@ function createProductSurface(repoRoot, opts = {}) {
     if (body.truncated && ok) row.text_truncated = true;
     appendRoomTranscript(prep.room, row);
     return {
-      ok,
+      // 「这笔转交成立」与「承接方当场答上了」是两件事：
+      // 成员校验过了、交接行写进群转录了 = 所有权真的转移了 → ok=true，
+      // Host 侧据此把凭据（inbox 行 + 存根）落盘；承接方这轮没答上只是**还没跑完**，
+      // 用 pending / transferred=false / reply_error 如实说出来。
+      // 旧写法在这里回 ok=false，于是 transcript 已经写着「↪ task handed off」，
+      // 收件箱与存根却整笔跳过 —— 用户看到「已转交」，实际上没有任何东西被交出去。
+      ok: true,
+      accepted: true,
+      replied: ok,
       executed: true,
       // pretend_transferred 只有在目标 Bot 真产出了之后才为 true。
       pretend_transferred: ok,
       transferred: ok,
-      error: ok ? "" : (reason || "handoff_target_failed"),
+      pending: !ok,
+      error: "",
+      reply_error: ok ? "" : (reason || "handoff_target_failed"),
       target_reply: ok ? body.text : "",
       target_artifacts: ok ? ((out && out.artifacts) || []) : [],
       transcript_row: row,
@@ -2503,6 +2513,7 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const runner = deps || roomRuntimeDeps || {};
     if (typeof runner.runResponderTurn !== "function") {
+<<<<<<< HEAD
       // 没有运行时依赖 ≠ 转交失败。这一支和同步入口同义：**受理并排队**——
       // 转录已落、任务进承接 Bot 的 inbox（host_ffi 靠 accepted 决定投递），
       // 只是「目标 Bot 立刻跑一轮」这件事没人执行。把它报成 ok:false 会让
@@ -2512,6 +2523,16 @@ function createProductSurface(repoRoot, opts = {}) {
         pretend_transferred: false, executed: false, pending: true,
         execution: "queued",
         queue_reason: "handoff_runner_required",
+=======
+      // 没有 runner = 这一轮没人替它跑，但**转交本身已经成立**（行已写、所有权已转），
+      // 所以这里必须回 ok + pending，让 Host 把凭据落进收件箱与存根。
+      // 旧写法回 ok:false，于是「转交了」这句话连证据都不留。
+      return {
+        ok: true, accepted: true, error: "", reply_error: "handoff_runner_required",
+        mode: "host_handoff_task",
+        pretend_transferred: false, transferred: false, replied: false,
+        executed: false, pending: true, execution: "queued",
+>>>>>>> e6091f685cc50ab4ab63b18dced6cbdeb9dfcf60
         room: prep.room, title: prep.title, from_bot: prep.from_bot, to_bot: prep.to_bot,
         task: prep.task, transcript_entry: prep.entry, at: prep.at,
       };
@@ -2521,7 +2542,7 @@ function createProductSurface(repoRoot, opts = {}) {
       accepted: true,
       mode: "host_handoff_task", room: prep.room, title: prep.title,
       from_bot: prep.from_bot, to_bot: prep.to_bot, task: prep.task,
-      transcript_entry: prep.entry, at: prep.at, pending: false,
+      transcript_entry: prep.entry, at: prep.at,
     }, out);
   }
 
@@ -2533,8 +2554,13 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const result = {
       ok: true,
+<<<<<<< HEAD
       // 与异步入口同一把尺子：accepted 只说「受理 + 投递」，执行与否看 executed。
       accepted: true,
+=======
+      accepted: true,
+      replied: false,
+>>>>>>> e6091f685cc50ab4ab63b18dced6cbdeb9dfcf60
       mode: "host_handoff_task",
       // 目标 Bot 还没跑 —— 不能写成「已交接」。
       pretend_transferred: false,
@@ -2558,6 +2584,231 @@ function createProductSurface(repoRoot, opts = {}) {
       });
     }
     return result;
+  }
+
+  // ===== pending 转交凭据的下游（GP-166）=====
+  // host_ffi 把「受理成立、但这轮没答上」的转交落成两份东西：目标 Bot 的 inbox 行
+  // （data/agents/inbox/<bot>.jsonl）+ 一笔凭据存根（data/agents/handoffs/handoff-*.json）。
+  // 只有写入、没有消费者 = 这笔任务永远挂着，群里那句「已转交」就成了假话。
+  // 这里补上消费侧：下一次群回合（dispatchRoomTurn，桌面 IPC / CLI / 移动端共用那个入口）
+  // 自动把它捡起重跑；GP-168 起，定时唤醒（routine_tick / routine_wake）那一班车也以
+  // all_rooms 模式来捡一次 —— 群里一整天没人说话时，挂账仍然会被叫醒。并且
+  //   · 幂等 —— 幂等键 = 存根文件名（host_ffi 写入时就是唯一的一次转交），终态不再跑第二遍，
+  //     因为「定时发文 / 推邮箱」这类动作跑两遍就是事故；
+  //   · 有界重试 —— 跑一次算一次 attempts，到上限如实标 stuck 并在群里点名，不自激循环；
+  //   · 不删用户数据 —— 读不懂的存根原样留在原地，只跳过、只计数。
+  // 存根回写只加新字段（state/attempts/last_error/…），原有凭据内容一个字都不丢。
+  const HANDOFF_DIR = path.join(DATA_ROOT, "agents", "handoffs");
+  // 上限与每轮捡取件数写死在这里：多到 3 次还答不上，就是该让人来看的情况，
+  // 不是继续后台烧 token 的情况；一轮最多捡 5 笔，避免用户发一句话换来五次模型调用。
+  const HANDOFF_MAX_ATTEMPTS = 3;
+  const HANDOFF_SCAN_LIMIT = 5;
+  // claim 超过 10 分钟没更新 = 上一轮宿主中途没了，允许下一个回合接手。
+  const HANDOFF_CLAIM_STALE_MS = 10 * 60 * 1000;
+
+  function readHandoffStub(p) {
+    let raw = "";
+    try {
+      raw = fs.readFileSync(p, "utf8");
+    } catch (e) {
+      return { missing: true, error: String((e && e.code) || (e && e.message) || "unreadable") };
+    }
+    let stub = null;
+    try {
+      stub = JSON.parse(raw);
+    } catch (_) {
+      return { malformed: true, raw };
+    }
+    if (!stub || typeof stub !== "object" || Array.isArray(stub)) return { malformed: true, raw };
+    return { stub, raw };
+  }
+
+  // 读出当前字节再合并写回，避免与 host_ffi 的写入互相吃掉。
+  function patchHandoffStub(p, patch) {
+    const cur = readHandoffStub(p);
+    const base = cur.stub && typeof cur.stub === "object" ? cur.stub : {};
+    const next = Object.assign({}, base, patch, {
+      path: p,
+      updated_at: nowIso(),
+    });
+    atomicWrite(p, JSON.stringify(next, null, 2));
+    return next;
+  }
+
+  // stuck 必须在群里看得见：复用既有的 bot_reply_error 行，不新增转录 kind（契约不变）。
+  function noteHandoffStuck(roomId, stub, reason, p) {
+    const toBot = String((stub && stub.to_bot) || "");
+    const row = {
+      kind: "bot_reply_error",
+      room_id: roomId,
+      speaker: toBot,
+      bot_id: toBot,
+      name: String((stub && stub.to_name) || toBot || ""),
+      text: "",
+      error: clipRoomText(`handoff_stuck:${reason}`, ROOM_REASON_MAX).text,
+      responder_policy: "handoff_target",
+      handoff_file: path.basename(String(p || "")),
+      at: nowIso(),
+    };
+    try {
+      const app = appendRoomTranscript(roomId, row);
+      return !(app && app.ok === false);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function retryPendingHandoffs(opts) {
+    const o = opts || {};
+    const roomId = String(o.room || "").trim();
+    // GP-168：定时唤醒（routine_tick / routine_wake）那一班车没有「某间群」这个语境，
+    // 但它每天必然发生，是唯一能把睡着的挂账叫醒的人。所以再开一种模式：
+    // all_rooms = 按凭据自己记的 room 逐间捡，仍然受同一套幂等键 / 上限 / claim 约束。
+    // 单群语义一个字都没改：给了 room 就只处理那间。
+    const allRooms = roomId ? false : o.all_rooms === true;
+    const runner = o.deps && typeof o.deps === "object" ? o.deps : (roomRuntimeDeps || {});
+    const out = {
+      ok: true,
+      mode: "host_handoff_retry",
+      room: roomId,
+      scope: roomId ? "single_room" : allRooms ? "all_rooms" : "",
+      scanned: 0,
+      attempted: 0,
+      answered: 0,
+      failed: 0,
+      stuck: 0,
+      skipped_terminal: 0,
+      skipped_malformed: 0,
+      skipped_running: 0,
+      skipped_other_room: 0,
+      skipped_no_room: 0,
+      pending: 0,
+      notified: 0,
+      notice_failed: false,
+      max_attempts: HANDOFF_MAX_ATTEMPTS,
+      ids: [],
+      errors: [],
+    };
+    const noteErr = (p, e) => {
+      if (out.errors.length < 3) out.errors.push(`${path.basename(String(p))}: ${String((e && e.message) || e)}`);
+    };
+    if (!roomId && !allRooms) return Object.assign({}, out, { ok: false, error: "handoff_retry_needs_room" });
+    if (typeof runner.runResponderTurn !== "function") {
+      return Object.assign({}, out, { ok: false, error: "handoff_retry_runner_required" });
+    }
+    let files = [];
+    try {
+      files = fs.readdirSync(HANDOFF_DIR).filter((f) => /^handoff-.+\.json$/.test(f)).sort();
+    } catch (_) {
+      return out; // 目录都还没有 = 没有待办，零成本返回
+    }
+    // 转录面读不动时不能把凭据演成「都卡住了」—— 那是 store 的故障，不是这笔任务的终态。
+    try {
+      requireWritableRooms();
+    } catch (e) {
+      return Object.assign({}, out, { ok: false, error: "rooms_store_unreadable", detail: String((e && e.message) || e) });
+    }
+    for (const f of files) {
+      const p = path.join(HANDOFF_DIR, f);
+      out.scanned++;
+      const r = readHandoffStub(p);
+      if (r.malformed) {
+        out.skipped_malformed++; // 不覆盖、不删除，只如实计数
+        continue;
+      }
+      if (r.missing) continue;
+      const stub = r.stub;
+      const stubRoom = String(stub.room || "").trim();
+      if (roomId && stubRoom !== roomId) {
+        out.skipped_other_room++; // 群之间不串：这轮的捡起只处理这间的凭据
+        continue;
+      }
+      if (!stubRoom) {
+        // all_rooms 模式下没有 room 的老凭据：不知道交回哪间群，就不许自己编一间。
+        out.skipped_no_room++;
+        continue;
+      }
+      // 单群模式 = 那间群；all_rooms = 以凭据自己记的那间为准。
+      const target = roomId || stubRoom;
+      const state = String(stub.state || "pending");
+      const attempts = Math.max(0, Number(stub.attempts) || 0);
+      if (state === "answered" || state === "stuck") {
+        out.skipped_terminal++;
+        continue;
+      }
+      if (state === "running") {
+        const claimedAt = Date.parse(String(stub.claimed_at || ""));
+        const fresh = Number.isFinite(claimedAt) && (Date.now() - claimedAt) < HANDOFF_CLAIM_STALE_MS;
+        if (fresh) {
+          out.skipped_running++; // 另一个回合正在跑它，再来一次就是两条答案
+          continue;
+        }
+      }
+      if (out.attempted >= HANDOFF_SCAN_LIMIT) {
+        out.pending++; // 这一轮先捡这么多，剩下的下一轮再来
+        continue;
+      }
+      const why0 = String(stub.task || "").trim() ? "" : "handoff_task_missing";
+      if (why0) {
+        patchHandoffStub(p, { state: "stuck", last_error: why0, stuck_at: nowIso() });
+        if (!noteHandoffStuck(target, stub, why0, p)) out.notice_failed = true;
+        else out.notified++;
+        out.stuck++;
+        continue;
+      }
+      let prep = null;
+      try {
+        prep = prepareHandoff({
+          room: target,
+          from_bot: stub.from_bot,
+          to_bot: stub.to_bot,
+          task: stub.task,
+        });
+      } catch (e) {
+        noteErr(p, e); // store 读不动：不标终态，下一轮再试
+        continue;
+      }
+      if (!prep || prep.ok !== true) {
+        const why = String((prep && prep.error) || "handoff_retry_prep_failed");
+        patchHandoffStub(p, { state: "stuck", last_error: why, stuck_at: nowIso() });
+        if (!noteHandoffStuck(target, stub, why, p)) out.notice_failed = true;
+        else out.notified++;
+        out.stuck++;
+        continue;
+      }
+      // 先 claim 再跑：并发进来的另一个回合会看到新鲜 claim 而跳过它。
+      patchHandoffStub(p, { state: "running", claimed_at: nowIso(), picked_up_at: nowIso(), retry_of: f });
+      out.attempted++;
+      let res = null;
+      try {
+        res = await executeHandoff(prep, runner);
+      } catch (e) {
+        noteErr(p, e);
+        patchHandoffStub(p, { state: "pending", last_error: `handoff_retry_threw:${String((e && e.message) || e)}` });
+        continue;
+      }
+      const na = attempts + 1;
+      const replied = res && res.replied === true;
+      if (replied) {
+        patchHandoffStub(p, { state: "answered", attempts: na, last_error: "", answered_at: nowIso() });
+        out.answered++;
+      } else {
+        const why = String((res && (res.reply_error || res.error)) || "handoff_target_failed");
+        const isStuck = na >= HANDOFF_MAX_ATTEMPTS;
+        patchHandoffStub(p, Object.assign(
+          { state: isStuck ? "stuck" : "pending", attempts: na, last_error: why },
+          isStuck ? { stuck_at: nowIso() } : {},
+        ));
+        out.failed++;
+        if (isStuck) {
+          out.stuck++;
+          if (!noteHandoffStuck(target, stub, `${why}（第 ${na}/${HANDOFF_MAX_ATTEMPTS} 次）`, p)) out.notice_failed = true;
+          else out.notified++;
+        }
+      }
+      out.ids.push(f);
+    }
+    return out;
   }
 
   // ===== ACCOUNT (GP-74) =====
@@ -3116,6 +3367,7 @@ function createProductSurface(repoRoot, opts = {}) {
     orchestrateRoom,
     handoffTask,
     handoffTaskAsync,
+    retryPendingHandoffs,
     setRoomRuntimeDeps,
     roomBoardSnapshot: (roomId) => roomBoard.snapshot(roomId),
     appendRoomTranscript,
