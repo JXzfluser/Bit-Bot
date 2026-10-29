@@ -517,6 +517,10 @@ const { computePrivacyStatus } = require(path.join(
 let mainWindow = null;
 let tray = null;
 let routineDaemonChild = null;
+/* GP-170: in-process routine sweep. Exactly one wake source at a time: the
+ * shell daemon when it is actually running, otherwise this timer. */
+let desktopSweepTimer = null;
+let desktopSweepInFlight = false;
 /* 「用户真的要退出」这一件事必须有一个明确来源。窗口的 close 事件无法区分
  * 「用户点了红叉」和「退出流程正在关窗」—— 两者都是 close。没有这个标志，
  * 下面 close 里的 preventDefault 就会把 Cmd+Q / 菜单退出一起取消掉，
@@ -533,6 +537,26 @@ const DAEMON_AUTOSTART =
   process.env.BITBOT_ROUTINE_DAEMON_AUTOSTART === undefined
     ? true
     : process.env.BITBOT_ROUTINE_DAEMON_AUTOSTART === "1";
+
+/* GP-170 — the app itself must be a wake source.
+ *
+ * History: wakes were 100% delegated to scripts/host_routine_daemon.sh (bash).
+ * That script is not in hosts/desktop/package.json build.files, and Windows has
+ * no /bin/bash, so an installed app never swept anything. Every Electron gate
+ * also sets BITBOT_ROUTINE_DAEMON_AUTOSTART=0, so nothing ever noticed.
+ *
+ * Now the main process runs routine_tick itself whenever the shell daemon is
+ * not running. Default cadence matches the daemon (60s); 0 disables it
+ * (deterministic-quiet gates), and BITBOT_DESKTOP_SWEEP_MS shortens it in
+ * gates. Only an optional field (desktop_sweep:true) is added to the tick
+ * payload — the existing routine payload contract is untouched.
+ */
+const DESKTOP_SWEEP_MS = (() => {
+  const raw = process.env.BITBOT_DESKTOP_SWEEP_MS;
+  if (raw === undefined || raw === "") return 60000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 60000;
+})();
 
 /** Linux XDG autostart .desktop (Electron setLoginItemSettings is weak on Linux). */
 function applyLinuxXdgAutostart(enabled) {
@@ -624,6 +648,26 @@ function ensureRoutineDaemon() {
       pid: routineDaemonChild.pid,
     };
   }
+  /* GP-170: the shell daemon only exists in a source checkout. In an installed
+   * app REPO_ROOT is null (or lacks scripts/) and Windows has no /bin/bash.
+   * Report that honestly instead of throwing inside whenReady — the in-process
+   * sweep below is what keeps the machine awake in those layouts. */
+  if (!REPO_ROOT) {
+    return {
+      ok: false,
+      error: "repo_root_unavailable",
+      note: "installed layout: no scripts/ to run; desktop in-process sweep takes over",
+      fallback: "desktop_sweep",
+    };
+  }
+  if (process.platform === "win32") {
+    return {
+      ok: false,
+      error: "daemon_script_needs_bash",
+      note: "no /bin/bash on Windows; desktop in-process sweep takes over",
+      fallback: "desktop_sweep",
+    };
+  }
   const script = path.join(REPO_ROOT, "scripts", "host_routine_daemon.sh");
   if (!fs.existsSync(script)) {
     return { ok: false, error: "missing scripts/host_routine_daemon.sh" };
@@ -656,6 +700,17 @@ function ensureRoutineDaemon() {
         `[routine-daemon] exited code=${code}\n`,
       );
       routineDaemonChild = null;
+      // GP-170: daemon 走了，桌面定时器接手 —— 不能让「开着电脑」空转。
+      syncWakeSource();
+    });
+    /* spawn /bin/bash 失败（例如被裁剪的镜像）会 emit 'error'；没有监听器时
+       Node 会把它升级成未捕获异常，整个主进程崩掉。这里落一笔并交给 sweep。 */
+    routineDaemonChild.on("error", (err) => {
+      process.stderr.write(
+        `[routine-daemon] spawn failed: ${err && err.message ? err.message : err}\n`,
+      );
+      routineDaemonChild = null;
+      syncWakeSource();
     });
     return {
       ok: true,
@@ -799,6 +854,130 @@ function killResidentKernel() {
       /* 已经退了 */
     }
   }
+}
+
+/** daemon 现在还活着吗？（child.killed 只表示信号发过，退出码才是真相） */
+function routineDaemonAlive() {
+  const child = routineDaemonChild;
+  return !!child && !child.killed && child.exitCode === null && child.signalCode === null;
+}
+
+/** 把一轮 sweep 如实写进 data/routines/desktop-sweep.jsonl（失败也写）。
+ *  这是 App 自己的运行日志，不是用户数据：超过 1MB 只保留最近 500 行，
+ *  否则一个常年开着的桌面端会把磁盘写成无止境。 */
+function appendDesktopSweepRow(row) {
+  try {
+    const dir = path.join(DATA_ROOT, "routines");
+    fs.mkdirSync(dir, { recursive: true });
+    const p = path.join(dir, "desktop-sweep.jsonl");
+    try {
+      if (fs.statSync(p).size > 1000000) {
+        const kept = fs
+          .readFileSync(p, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .slice(-500);
+        fs.writeFileSync(p, kept.join("\n") + "\n");
+      }
+    } catch (_) {
+      /* 文件还不存在 */
+    }
+    fs.appendFileSync(p, JSON.stringify(row) + "\n");
+  } catch (_) {
+    /* 记账失败不能把定时器带崩 */
+  }
+}
+
+/** 走一遍 routine_tick —— 和 shell daemon 每轮跑的是同一个 Host 效果。
+ *  single-flight：上一轮还在等内核 / 转交重试时，这一轮如实记
+ *  skipped_in_flight，不并发、也不谎报跑过。 */
+async function runDesktopSweep(reason) {
+  const startedAt = new Date().toISOString();
+  if (quitRequested) return null;
+  if (desktopSweepInFlight) {
+    appendDesktopSweepRow({
+      mode: "desktop_sweep",
+      started_at: startedAt,
+      ended_at: new Date().toISOString(),
+      reason: String(reason || "interval"),
+      skipped_in_flight: true,
+      tick_ok: false,
+    });
+    return null;
+  }
+  desktopSweepInFlight = true;
+  const row = {
+    mode: "desktop_sweep",
+    started_at: startedAt,
+    reason: String(reason || "interval"),
+    tick_ok: false,
+  };
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind: "routine_tick", command: "desktop-sweep" }],
+      { sessionId: "desktop-sweep", desktopSweep: true },
+    );
+    const hit = (results || []).find(
+      (r) => r && (r.kind === "routine_tick" || r.kind === "routine_wake"),
+    );
+    let payload = {};
+    try {
+      payload = JSON.parse((hit && hit.stdout) || "{}");
+    } catch (_) {
+      payload = {};
+    }
+    row.tick_ok = Boolean(hit && hit.ok);
+    row.tick_at = payload.at || null;
+    row.due_count = payload.due_count != null ? payload.due_count : null;
+    row.fired_count = payload.fired_count != null ? payload.fired_count : null;
+    // 挂账转交搭同一班车（GP-168）；这里如实转述，不做第二次判断。
+    row.handoff_retry = (hit && hit.handoff_retry) || payload.handoff_retry || null;
+    if (!row.tick_ok) row.error = (hit && (hit.error || hit.stderr)) || "routine_tick_failed";
+  } catch (err) {
+    row.error = String((err && err.message) || err);
+  } finally {
+    desktopSweepInFlight = false;
+    row.ended_at = new Date().toISOString();
+    appendDesktopSweepRow(row);
+  }
+  return row;
+}
+
+function startDesktopSweep() {
+  if (quitRequested) return { ok: false, skipped: true, reason: "quitting" };
+  if (desktopSweepTimer) {
+    return { ok: true, already_running: true, interval_ms: DESKTOP_SWEEP_MS };
+  }
+  if (!(DESKTOP_SWEEP_MS > 0)) {
+    return { ok: false, skipped: true, reason: "BITBOT_DESKTOP_SWEEP_MS=0" };
+  }
+  // 开机先扫一轮：已经到点的任务不必等满一个周期。
+  void runDesktopSweep("startup");
+  desktopSweepTimer = setInterval(() => {
+    void runDesktopSweep("interval");
+  }, DESKTOP_SWEEP_MS);
+  return { ok: true, interval_ms: DESKTOP_SWEEP_MS, desktop_sweep: true };
+}
+
+function stopDesktopSweep() {
+  if (!desktopSweepTimer) return;
+  try {
+    clearInterval(desktopSweepTimer);
+  } catch (_) {
+    /* ignore */
+  }
+  desktopSweepTimer = null;
+}
+
+/** 只留一个唤醒源：daemon 在跑就用 daemon，否则 App 自己扫。
+ *  两个同时扫会争同一批到期任务（可能重复触发发文/发邮件）。 */
+function syncWakeSource() {
+  if (quitRequested) return null;
+  if (routineDaemonAlive()) {
+    stopDesktopSweep();
+    return { wake_source: "routine_daemon" };
+  }
+  return Object.assign({ wake_source: "desktop_sweep" }, startDesktopSweep());
 }
 
 /** 唯一的退出入口：托盘菜单、应用菜单的 role:"quit" 最终都落到 before-quit，
@@ -2359,7 +2538,12 @@ ipcMain.handle("bitbot:daemon:status", async () => {
   };
 });
 
-ipcMain.handle("bitbot:daemon:ensure", async () => ensureRoutineDaemon());
+ipcMain.handle("bitbot:daemon:ensure", async () => {
+  const res = ensureRoutineDaemon();
+  // 手动拉起 daemon 之后重新分工：daemon 在跑就不再让主进程定时器抢。
+  syncWakeSource();
+  return res;
+});
 
 ipcMain.handle("bitbot:llm:status", async () => {
   try {
@@ -3911,6 +4095,13 @@ app.whenReady().then(async () => {
   process.stdout.write(
     `[desktop] routine-daemon ok=${daemon.ok} pid=${daemon.pid || "n/a"} long_lived=${daemon.long_lived || false}\n`,
   );
+  /* GP-170: 装了 App 的机器上没有 scripts/host_routine_daemon.sh（Windows 连
+     /bin/bash 都没有）。daemon 起不来时由主进程自己扫，保证「开着电脑」本身就是
+     唤醒源；daemon 真的在跑时让位，避免两个唤醒源争同一批到期任务。 */
+  const wake = syncWakeSource();
+  process.stdout.write(
+    `[desktop] wake-source ${wake && wake.wake_source} interval_ms=${(wake && wake.interval_ms) || 0}\n`,
+  );
   try {
     const inbound = await ensureCnInbound();
     process.stdout.write(
@@ -3936,6 +4127,8 @@ app.whenReady().then(async () => {
  * createWindow 里面。 */
 app.on("before-quit", () => {
   quitRequested = true;
+  // GP-170: 定时器先停，免得退出过程中还在起新回合。
+  stopDesktopSweep();
   // 早点发 SIGTERM，给 daemon 收尾的时间；will-quit 里再兜底 SIGKILL。
   stopRoutineDaemon("SIGTERM");
   // 常驻内核同理：先请它自己收摊（关 stdin），will-quit 再兜底。
@@ -3943,6 +4136,8 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", () => {
+  // 兜底：即使 before-quit 没走到，退出时也不留下定时器。
+  stopDesktopSweep();
   try {
     globalShortcut.unregisterAll();
   } catch (_) {

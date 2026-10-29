@@ -15905,6 +15905,8 @@ function createHostFfi(repoRoot, opts = {}) {
       // Honor BITBOT_ROUTINE_LONG_LIVED the same way the daemon script exports it —
       // one-shot sweeps leave this unset so long_lived stays false (honest residual).
       const longLived = process.env.BITBOT_ROUTINE_LONG_LIVED === "1";
+      // GP-170：这是桌面主进程里的定时器，不是 shell daemon，也不冒充 long_lived。
+      const desktopSweep = Boolean(effectOpts && effectOpts.desktopSweep === true);
       const wakeEntry = {
         due_count: due.length,
         fired_count: fired.length,
@@ -15912,12 +15914,16 @@ function createHostFfi(repoRoot, opts = {}) {
         at: tickAt,
         daemon: daemonSweep,
         long_lived: longLived,
-        note: longLived
-          ? "Host long-lived routine sweep (BITBOT_ROUTINE_LONG_LIVED=1)"
-          : daemonSweep
-            ? "Host daemon one-shot sweep (scripts/host_routine_daemon.sh)"
-            : "on-demand Host tick (long-lived cron residual)",
+        note: desktopSweep
+          ? "desktop in-process sweep (hosts/desktop/main.js timer)"
+          : longLived
+            ? "Host long-lived routine sweep (BITBOT_ROUTINE_LONG_LIVED=1)"
+            : daemonSweep
+              ? "Host daemon one-shot sweep (scripts/host_routine_daemon.sh)"
+              : "on-demand Host tick (long-lived cron residual)",
       };
+      // 可选字段：老读者读不到它也不受影响；新界面/门禁靠它区分唤醒源。
+      if (desktopSweep) wakeEntry.desktop_sweep = true;
       appendJsonl(wakesPath, wakeEntry);
       const lastTickPath = path.join(
     DATA_ROOT,
@@ -15967,6 +15973,8 @@ function createHostFfi(repoRoot, opts = {}) {
             due_count: due.length,
             fired_count: fired.length,
             fired,
+            // 可选字段（GP-170）：桌面 sweep 日志要写「这一轮跑在什么时候」。
+            at: tickAt,
             wakes: true,
             wakes_path: wakesPath,
             last_tick_path: lastTickPath,
@@ -24703,6 +24711,9 @@ function createHostFfi(repoRoot, opts = {}) {
       // 不传（DM / 无群）时行为与原来完全一致。
       const routineRes = executeRoutineEffect(kind, cmd, {
         roomId: (ffiOpts && ffiOpts.roomId) || "",
+        // GP-170：桌面主进程自己的定时器在扫。这个标记只影响 tick 的可选字段
+        // （desktop_sweep/note），不改变任何既有 payload 的形状与含义。
+        desktopSweep: Boolean(ffiOpts && ffiOpts.desktopSweep),
       });
       if (routineRes) {
         // GP-168：定时唤醒这一班车顺路把「受理了但没答上」的转交挂账捡起来。

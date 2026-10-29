@@ -1947,3 +1947,112 @@ G-57 = 清单闭包门 + 4 条 P 锚点 + 清单副本注入对照 + 真 Box 取
 7. 新增 19 条只进 `smoke_grok_desktop_parity.sh` 这一份本地聚合门；CI 仍只跑 `scripts/eval/run.js` 与
    `prove_android_build.mjs`（`android-apk.yml` 的 paths 只匹配安卓）—— 与 §8.32 记的同一条残留，未闭合。
 
+## 8.34 装好的 App 不会自己醒：唤醒被外包给了一份装不进包的 bash 脚本（GP-170）
+
+**① 断点：不是「没有定时器」这么简单，是「装机后唯一会醒的进程不在包里」。**
+
+§8.33 的残留 1 写的是「桌面 App 自己没有定时器」。继续查下去发现比这更糟：
+`hosts/desktop/main.js` 只在启动时 `spawn("/bin/bash", ["scripts/host_routine_daemon.sh", "--long-lived", ...])`
+（`ensureRoutineDaemon`，默认 60s 一轮），而 `hosts/desktop/package.json` 的 `build.files` 里**没有
+`scripts/`**。也就是说：
+
+- 源码 checkout 里跑 `npm start`：daemon 能起，唤醒正常 —— 开发时看不出问题；
+- 装好的 macOS / Linux App：`REPO_ROOT` 解析不到（或没有 `scripts/`），`ensureRoutineDaemon` 返回失败；
+- Windows：根本没有 `/bin/bash`；
+- 既有的 Electron 门禁**全部**设 `BITBOT_ROUTINE_DAEMON_AUTOSTART=0`（为了不污染用户仓库），
+  所以这条「唤醒到底有没有发生」的路径，从来没有一篇门禁真的跑过。
+
+用户的真实形状（自媒体博主）：08:00 定时发文、发完把稿子转交审核 Bot、晚上定时推邮箱。
+装机后电脑一直开着、群里没人说话 —— 这些都不会发生；GP-166/168 的「挂账要等下一次群回合或下一轮
+sweep」也就永远等不到。
+
+**② 修复前红（逐字）。**
+
+先写门 `scripts/e2e_desktop_sweep_timer.mjs`：故意在 `BITBOT_ROUTINE_DAEMON_AUTOSTART=0`
+（= 装机后的真实布局）下启动真 Electron，设 `BITBOT_DESKTOP_SWEEP_MS=250`，只认
+`data/routines/last-tick.json` 与 `desktop-sweep.jsonl`：
+
+```
+  ✗ S-01 daemon 关闭时，App 自己也会跑 routine_tick（last-tick.json 出现） — 8s 内没有 …/data/routines/last-tick.json
+  ✗ S-02 tick payload 标 desktop_sweep:true — 没有 tick
+  ✗ S-03 连续两轮 tick — t2=null
+  ✗ S-04 desktop-sweep.jsonl 至少两行 — rows=0
+  ✗ S-05 sweep 行有起止时间且不嵌套 — 行数不足
+e2e_desktop_sweep_timer: PASS=0 FAIL=5 SKIP=0
+```
+
+**③ 尺子先翻车两次（都记下来，免得下一轮重复）。**
+
+1. 首跑报 `Process failed to launch!`：`DISPLAY=:1` 指向一个不存在的 X socket。Electron 在 ozone 里
+   SIGSEGV，看起来像产品崩。按矩阵里既有写法用 `xvfb-run -a` 包住才成立。
+2. S-06 轮询写成每轮 `app.process()`：app 退出后 playwright 会把连接 dispose，再取 process 直接抛
+   `Cannot read properties of undefined (reading '_object')`。判据本身没问题，是尺子自己的 bug ——
+   改成在 quit 之前抓一次 child process，之后只读它的 `exitCode/signalCode`。
+
+**④ 改动（只加可选字段，不动既有契约）。**
+
+- `hosts/desktop/main.js`
+  - `DESKTOP_SWEEP_MS`：默认 60000（与 daemon 同节奏），`BITBOT_DESKTOP_SWEEP_MS` 可调，`0` = 关；
+  - `runDesktopSweep(reason)`：走 `ffi.executeHostEffects([{kind:"routine_tick",...}], {desktopSweep:true})`，
+    正是 daemon 每轮跑的同一个 Host 效果；**single-flight**（`desktopSweepInFlight`），上一轮没结束时
+    这一轮如实记 `skipped_in_flight`；失败不吞，行里带 `error`；
+  - `desktop-sweep.jsonl`：每轮的 `started_at/ended_at/tick_ok/due_count/fired_count/handoff_retry`；
+    这是 App 自己的运行日志（不是用户数据），超过 1MB 只留最近 500 行；
+  - `syncWakeSource()`：**只留一个唤醒源** —— shell daemon 真在跑就让位，否则主进程自己扫；daemon
+    `exit`/`error` 时自动接手（`error` 还顺手补了监听器：以前 spawn 失败会升级成主进程未捕获异常）；
+  - `before-quit` / `will-quit` 停表；`ensureRoutineDaemon` 对 `REPO_ROOT` 为空与 Windows 如实返回
+    `fallback:"desktop_sweep"`，不再在 `whenReady` 里 `path.join(null, …)` 抛错。
+- `hosts/shared/host_ffi.js`：tick 分支读 `effectOpts.desktopSweep`，只在为真时加
+  `wakeEntry.desktop_sweep = true` 并把 `note` 写成 `desktop in-process sweep (...)`；`daemon`/`long_lived`
+  仍如实为 `false`（不冒充 daemon）。tick 的 stdout 只加一个可选 `at`，给 sweep 日志对时间。
+
+**⑤ 一个容易「看起来修好了」的坑。**
+
+第一次注入对照只摘了 `whenReady` 里的 `syncWakeSource()`，门照样 6/0 全绿 —— 因为
+`ipcMain.handle("bitbot:daemon:ensure")` 里也调了一次（渲染进程启动时会问 daemon 状态），
+两条启动点互相兜底。把两处都摘掉才变成 5 红。教训同 GP-169：**能被两处喂饱的尺子不算尺子**，
+注入对照必须全量摘。
+
+**⑥ 注入对照（四次，各自只红该红的那几条）。**
+
+| 摘掉什么（全量 `split/join` / `str.replace`） | 结果 |
+| --- | --- |
+| 两处 `syncWakeSource()` 启动点 | `PASS=1 FAIL=5`，S-01…S-05 红；S-06 仍绿（见 ⑨.1） |
+| `host_ffi` 的 `wakeEntry.desktop_sweep = true` | `PASS=5 FAIL=1`，只有 S-02 红 |
+| sweep 行的 `ended_at` | `PASS=5 FAIL=1`，只有 S-05 红 |
+| `row.handoff_retry` 转述改成 `null` | `PASS=5 FAIL=1`，只有 S-04 红 |
+
+每次摘完都从 `/tmp/gp170-*.bak` 恢复并 `cmp` 核对，矩阵跑完工作树不留变异态。
+
+**⑦ 修复后绿（实测）。**
+
+| 门 | 修复前 | 修复后 |
+| --- | --- | --- |
+| `scripts/e2e_desktop_sweep_timer.mjs`（真 Electron） | 0/5 | **PASS=6 FAIL=0 SKIP=0** |
+| `scripts/prove_gp168_handoff_wake.js`（回归） | — | PASS=18 FAIL=0（tick 可选字段未影响旧判据） |
+| `scripts/prove_box_pack_closure.js`（回归） | — | PASS=5 FAIL=0 |
+| `scripts/e2e_desktop_quit.mjs`（回归：退出仍是干净退出） | — | PASS=8 FAIL=0 SKIP=0 |
+| `smoke_grok_desktop_parity.sh` 全量矩阵 | 417/0 | **PASS=426 FAIL=0**，`✗` 计数 0，15 道自计数门 `SKIP=0` |
+
+矩阵 +9 条全部来自 G-58：断点自证 1 + 真 Electron 门 1 + S 锚点 6 + 四路注入对照 1。
+
+**⑧ 门禁接线。**
+
+G-58 = 断点自证（`package.json` 不带 `scripts/` 且 `main.js` 仍需要它）+ 真 Electron 门 + 6 条 S 锚点
++ 四路注入对照。断点自证会在「以后有人把 scripts/ 打进包」或「main.js 不再依赖 shell 脚本」时翻红，
+提醒先复核断点是否还存在，而不是让门禁变成永远绿的装饰。
+
+**⑨ 残留（诚实）。**
+
+1. S-06「退出后不再产生新 tick」是**粗尺**：进程退出本身也会让定时器消失，所以即使 before-quit 里
+   忘了 `stopDesktopSweep()`，它也照样绿。它证明的是「没有退出后仍在写的幽灵进程」，不证明
+   `clearInterval` 那一行真的跑了；`stopDesktopSweep` 的接线靠代码审阅与 QUIT 门（进程真的退出）兜底。
+2. 「daemon 在跑时让位」这条分工没有门禁覆盖：门禁全部把 daemon 关掉，因为真 daemon 是长驻进程，
+   会在门禁跑完后继续写用户仓库。目前的证据是代码路径 + 启动日志 `[desktop] wake-source ...`。
+3. 默认 60s 是照 daemon 的节奏定的，没有按「定时发文最多晚多久」做过产品化论证；间隔也不可配给
+   最终用户（只有环境变量）。
+4. `desktop-sweep.jsonl` 1MB 轮转只保留 500 行，极端情况下历史会被截断（这是运行日志，不是用户数据）。
+5. 打包后的 App 仍**没有**被真机安装验证过；本门禁证明的是「同一个 main.js 在 daemon 不可用时自己会扫」，
+   `electron-builder` 打出来的包能不能找到 `hosts/shared`、能不能启动，属于打包门禁的范畴，未在本轮验证。
+6. 新增 9 条同样只进本地聚合矩阵；CI 仍不含它 —— 与 §8.32 / §8.33.⑦ 同一条残留。
+

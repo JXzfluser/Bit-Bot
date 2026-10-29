@@ -2510,6 +2510,107 @@ else
   echo "    先跑：moon build --target native --release"
 fi
 
+echo "== G-58 GP-170：装好的 App 自己就是唤醒源（不靠仓库里的 bash daemon）=="
+# 断点自证：唤醒此前 100% 外包给 scripts/host_routine_daemon.sh（bash），
+# 而 electron-builder 的 files 清单根本没有 scripts/ —— 装到用户机器上的 App
+# 找不到它；Windows 也没有 /bin/bash。既有 Electron 门禁又都设
+# BITBOT_ROUTINE_DAEMON_AUTOSTART=0，于是这条路径从来没被跑过。
+node -e '
+const fs=require("fs");
+const pkg=require("./hosts/desktop/package.json");
+const files=(pkg.build&&pkg.build.files)||[];
+const shipsScripts=files.some(f=>typeof f==="string"&&/^scripts\//.test(f));
+const main=fs.readFileSync("hosts/desktop/main.js","utf8");
+const wantsShellScript=main.includes("scripts\", \"host_routine_daemon.sh");
+process.exit(!shipsScripts&&wantsShellScript?0:1)' \
+  && ok "G-58 断点自证：装机包不含 scripts/，而 daemon 唤醒路径正需要它（所以必须有进程内定时器）" \
+  || bad "G-58 断点自证失败：package.json 已随包带 scripts/，或 main.js 不再依赖那份 shell 脚本 —— 先复核断点是否还存在"
+
+gp170_xvfb=()
+if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+  gp170_xvfb=(xvfb-run -a)
+fi
+gp170_run() { timeout 240 "${gp170_xvfb[@]}" node scripts/e2e_desktop_sweep_timer.mjs >"$1" 2>&1; }
+
+if gp170_run /tmp/gp170-sweep.log && grep -q "FAIL=0" /tmp/gp170-sweep.log; then
+  ok "G-58 真 Electron：daemon 关闭时 App 自己扫 routine_tick（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/gp170-sweep.log)）"
+else
+  bad "G-58 e2e_desktop_sweep_timer 未通过（见 /tmp/gp170-sweep.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/gp170-sweep.log || tail -3 /tmp/gp170-sweep.log | tr '\n' ' ')）"
+fi
+for gp170_a in "S-01 daemon 关闭时，App 自己会跑 routine_tick" \
+                "S-02 payload: desktop_sweep=true" \
+                "S-03 连续两轮 tick" \
+                "S-04 每轮都带 handoff_retry" \
+                "S-05 single-flight：每轮 started_at/ended_at 成对且不重叠" \
+                "S-06 退出后不再产生新 tick"; do
+  if grep -q "✓ $gp170_a" /tmp/gp170-sweep.log; then ok "G-58 锚点：$gp170_a"; else bad "G-58 锚点没跑绿：$gp170_a"; fi
+done
+
+# 注入对照（全量摘，不用 String.replace 的单次语义）：
+#   A 摘掉两个 syncWakeSource 启动点 → S-01..S-05 必须红
+#   B 摘掉 host_ffi 的 desktop_sweep 可选字段 → S-02 必须红
+#   C 摘掉 sweep 行的 ended_at → S-05 必须红
+#   D 把 handoff_retry 转述改成 null → S-04 必须红
+# 每次摘完都从备份恢复并用 cmp 核对，避免把仓库留在变异态。
+cp -f hosts/desktop/main.js /tmp/gp170-main.bak
+cp -f hosts/shared/host_ffi.js /tmp/gp170-ffi.bak
+gp170_restore() {
+  cp -f /tmp/gp170-main.bak hosts/desktop/main.js
+  cp -f /tmp/gp170-ffi.bak hosts/shared/host_ffi.js
+  cmp -s /tmp/gp170-main.bak hosts/desktop/main.js \
+    && cmp -s /tmp/gp170-ffi.bak hosts/shared/host_ffi.js
+}
+
+gp170_ok=1
+# A
+python3 - <<'PY' || gp170_ok=0
+p="hosts/desktop/main.js"; s=open(p).read()
+a=s.replace('  const wake = syncWakeSource();','  const wake = { wake_source: "mutated-off", interval_ms: 0 };')
+b=a.replace('  syncWakeSource();','  /* mutated off */')
+assert b!=s and "mutated-off" in b and b.count("/* mutated off */")>=2
+open(p,"w").write(b)
+PY
+gp170_run /tmp/gp170-mut-a.log || true
+grep -q "FAIL=5" /tmp/gp170-mut-a.log && ! grep -q "✓ S-01" /tmp/gp170-mut-a.log \
+  || { gp170_ok=0; cp -f /tmp/gp170-mut-a.log /tmp/gp170-mut-a.kept; }
+gp170_restore || gp170_ok=0
+# B
+python3 - <<'PY' || gp170_ok=0
+p="hosts/shared/host_ffi.js"; s=open(p).read()
+b=s.replace('      if (desktopSweep) wakeEntry.desktop_sweep = true;','      /* mutation: field removed */')
+assert b!=s
+open(p,"w").write(b)
+PY
+gp170_run /tmp/gp170-mut-b.log || true
+grep -q "FAIL=1" /tmp/gp170-mut-b.log && ! grep -q "✓ S-02" /tmp/gp170-mut-b.log && grep -q "✓ S-01" /tmp/gp170-mut-b.log \
+  || { gp170_ok=0; cp -f /tmp/gp170-mut-b.log /tmp/gp170-mut-b.kept; }
+gp170_restore || gp170_ok=0
+# C
+python3 - <<'PY' || gp170_ok=0
+p="hosts/desktop/main.js"; s=open(p).read()
+b=s.replace('    row.ended_at = new Date().toISOString();','    /* mutation: no ended_at */')
+assert b!=s
+open(p,"w").write(b)
+PY
+gp170_run /tmp/gp170-mut-c.log || true
+grep -q "FAIL=1" /tmp/gp170-mut-c.log && ! grep -q "✓ S-05" /tmp/gp170-mut-c.log && grep -q "✓ S-01" /tmp/gp170-mut-c.log \
+  || { gp170_ok=0; cp -f /tmp/gp170-mut-c.log /tmp/gp170-mut-c.kept; }
+gp170_restore || gp170_ok=0
+# D
+python3 - <<'PY' || gp170_ok=0
+p="hosts/desktop/main.js"; s=open(p).read()
+b=s.replace('    row.handoff_retry = (hit && hit.handoff_retry) || payload.handoff_retry || null;','    row.handoff_retry = null; /* mutation */')
+assert b!=s
+open(p,"w").write(b)
+PY
+gp170_run /tmp/gp170-mut-d.log || true
+grep -q "FAIL=1" /tmp/gp170-mut-d.log && ! grep -q "✓ S-04" /tmp/gp170-mut-d.log && grep -q "✓ S-01" /tmp/gp170-mut-d.log \
+  || { gp170_ok=0; cp -f /tmp/gp170-mut-d.log /tmp/gp170-mut-d.kept; }
+gp170_restore || gp170_ok=0
+
+[ "$gp170_ok" = "1" ] && ok "G-58 注入对照：摘启动点/S-01-05 红、摘字段/S-02 红、摘 ended_at/S-05 红、摘转述/S-04 红（四处各摘各的都翻红）" \
+  || bad "G-58 注入对照没成立（保留件见 /tmp/gp170-mut-*.kept）"
+
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

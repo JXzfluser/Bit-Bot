@@ -195,6 +195,23 @@ G-F.1 的新残留里第一条「捡起只搭『下一次群回合』这班车�
 - 「门存在但没人跑」第二次撞上：`prove_box_routine_sweep.js` 从来没被任何聚合门引用，
   所以 Box 断在启动第一步而矩阵照旧全绿。G-57 把它接进矩阵（同 G-55 对 `prove_room_orchestrator.js` 的做法）。
 
+### G-F.3 GP-170（本轮：装好的 App 自己就是唤醒源）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-170 | 自媒体博主装好桌面端、电脑一直开着、群里没人说话：08:00 定时发文 / 交稿转审核 / 晚上推邮箱必须照常发生 | **已实现**：`hosts/desktop/main.js` 在主进程里跑 `routine_tick`（默认 60s，`BITBOT_DESKTOP_SWEEP_MS` 可调），single-flight，`data/routines/desktop-sweep.jsonl` 记每轮与 `handoff_retry`；`syncWakeSource()` 保证 shell daemon 真在跑时让位；quit 停表 | 新门 `e2e_desktop_sweep_timer.mjs` 在 daemon 关闭（= 装机布局）下真 Electron **0/5 → 6/0**；矩阵 **G-58** 9 条（断点自证 + 门 + 6 锚点 + 四路注入对照）；tick payload 只加可选 `desktop_sweep` / `note` / `at` | 见下两条纪律事实与 `report.md` §8.34 ⑨ |
+
+本轮另外记下的三条事实：
+
+- 唤醒的断点不是「没有定时器」，而是「唯一会醒的进程不在包里」：`package.json` 的 `build.files`
+  不含 `scripts/`，`ensureRoutineDaemon()` 却依赖 `scripts/host_routine_daemon.sh`；Windows 也没有
+  `/bin/bash`。所有 Electron 门禁又统一关掉 daemon，所以这条路从来没被跑过。G-58 用「断点自证」+
+  「daemon 关闭下 App 自己扫」两段把它钉住。
+- 又一次「能被两处喂饱的尺子不算尺子」：只摘 `whenReady` 里的 `syncWakeSource()`，门仍 6/0 全绿
+  （`bitbot:daemon:ensure` 的 IPC 里还有一处）。必须两处全摘才 5 红。
+- S-06 是粗尺：进程退出本身就会让定时器消失，所以「退出后不再有新 tick」即使漏掉 `clearInterval`
+  也会绿。已在 §8.34 ⑨.1 如实记为残留，不把它当「停表已验」。
+
 ---
 
 ## 三、门禁与交付要求（沿用现有纪律）
