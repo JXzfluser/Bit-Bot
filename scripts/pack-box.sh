@@ -78,7 +78,7 @@ for f in agent_loop_ffi.js agent_loop_product_wire.js agent_loop_stream_stub.js 
          host_approval_gate.js host_ffi.js p0_security.js room_context.js \
          room_dispatch.js room_discretion.js room_runtime.js run_moon_turn.js \
          tool_policy.js turn_progress.js box_main.js routine_scheduler.js product_surface_ref.js machine_identity.js \
-         desktop_pairing.js lan_candidates.js machine_presence.js kernel_server.js event_log.js event_mirror.js; do
+         desktop_pairing.js lan_candidates.js machine_presence.js kernel_server.js event_log.js event_mirror.js host_env.js; do
   [[ -f "$ROOT/hosts/shared/$f" ]] || { echo "missing shared file: $f" >&2; exit 1; }
   cp -f "$ROOT/hosts/shared/$f" "$OUT/shared/$f"
 done

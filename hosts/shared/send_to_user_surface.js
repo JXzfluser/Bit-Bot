@@ -1,5 +1,9 @@
 "use strict";
 
+// GP-185: the *_residual vocabulary lives in ONE place (delivery_mirror.js).
+// Mobile mirrors and SendToUser chips must agree on what counts as a residual.
+const { RESIDUAL_KEYS } = require("./delivery_mirror");
+
 /**
  * CHARTER Delivery — shared SendToUser surface helper for Desktop/iOS/Android Hosts.
  * Summarizes Host turn JSON into delivery type chips + concrete attachment paths
@@ -51,50 +55,7 @@ function pickAttachmentPath(kind, p, h) {
 /** Honesty residual chip suffix from Host payload (never invents residuals). */
 function residualSuffix(p) {
   if (!p || typeof p !== "object") return "";
-  const keys = [
-    "live_mail_residual",
-    "live_x_residual",
-    "live_x_post_residual",
-    "live_job_residual",
-    "live_finance_residual",
-    "live_paid_residual",
-    "live_calendar_residual",
-    "live_slack_residual",
-    "live_teams_residual",
-    "live_meeting_residual",
-    "live_channel_residual",
-    "box_doctor_bin_residual",
-    "box_chrome_bin_residual",
-    "long_lived_cron_residual",
-    "remote_cloud_residual",
-    "remote_cloud_artifact_residual",
-    "code_apply_residual",
-    "git_commit_residual",
-    "git_push_residual",
-    "screenshot_residual",
-    "remote_pr_residual",
-    "gh_pr_create_residual",
-    "public_fallback_residual",
-    "ocr_residual",
-    "os_window_automation_residual",
-    "interactive_oauth_residual",
-    "true_device_os_dialog_residual",
-    "credential_browser_fill_residual",
-    "inbound_turn_residual",
-    "device_capture_residual",
-    "device_tool_residual",
-    "product_tool_residual",
-    "voice_stt_residual",
-    "voice_tts_residual",
-    "voice_end_match_residual",
-    "cross_machine_copy_residual",
-    "live_sms_residual",
-    "live_webhook_residual",
-    "live_voice_residual",
-    "live_mail_claim_residual",
-    "inbound_push_residual",
-    "signin_fill_residual",
-  ];
+  const keys = RESIDUAL_KEYS;
   const parts = [];
   for (const k of keys) {
     if (p[k] === true) parts.push("/" + k);

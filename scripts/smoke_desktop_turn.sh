@@ -440,9 +440,13 @@ mainjs=Path('hosts/desktop/main.js').read_text()
 assert 'envPatch' in mainjs
 assert 'BITBOT_SLACK_CLAIM' in html
 mobile=Path('hosts/mobile_host/run.js').read_text()
-assert 'finance_call' in mobile and 'job_search' in mobile
-assert 'workflow_list' in mobile and 'inbound_reaction' in mobile
-assert 'receipt_path' in mobile and 'skill_path' in mobile
+dm=Path('hosts/shared/delivery_mirror.js').read_text()
+# GP-185: the delivery-kind vocabulary lives in shared/delivery_mirror.js; the
+# mobile host must consume it (not keep a second copy).
+assert 'DELIVERY_HOST_KINDS' in mobile and 'buildDeliveryMirror' in mobile
+assert 'finance_call' in dm and 'job_search' in dm
+assert 'workflow_list' in dm and 'inbound_reaction' in dm
+assert 'receipt_path' in dm and 'skill_path' in dm
 assert 'id=\"mem-remember\"' in html and 'id=\"tools-meta\"' in html
 assert 'id=\"tool-shell\"' in html and 'id=\"tool-listdir\"' in html
 assert 'id=\"tool-read\"' in html and 'id=\"tool-webfetch\"' in html
@@ -453,8 +457,8 @@ assert 'shell echo desktop-tools-panel' in html
 assert 'listdir docs' in html and 'webfetch https://example.com' in html
 assert 'BITBOT_CU_NATIVE_ACT' in html and 'BITBOT_CU_OCR' in html
 assert 'code changes README.mbt.md' in html
-assert 'fs_list' in mobile and 'webfetch' in mobile and 'computer_use' in mobile
-assert 'shared_memory_put' in mobile and 'code_changes' in mobile
+assert 'fs_list' in dm and 'webfetch' in dm and 'computer_use' in dm
+assert 'shared_memory_put' in dm and 'code_changes' in dm
 assert 'id=\"mach-list\"' in html and 'id=\"machines-meta\"' in html
 assert 'id=\"mail-cold\"' in html and 'id=\"mail-onbehalf\"' in html
 assert 'id=\"mail-claim\"' in html
@@ -462,7 +466,7 @@ assert 'list machines' in html
 assert 'cold mail to=prospect@example.com' in html
 assert 'send on behalf to=boss@example.com' in html
 assert 'claim inbox alpha' in html
-assert 'machines_list' in mobile and 'mail_claim_inbox' in mobile
+assert 'machines_list' in dm and 'mail_claim_inbox' in dm
 assert 'id=\"del-slides\"' in html and 'id=\"del-skill\"' in html
 assert 'id=\"del-export\"' in html and 'id=\"del-load-skill\"' in html
 assert 'id=\"del-list-skills\"' in html
@@ -476,8 +480,8 @@ assert 'export bot template id=bot-smoke' in html
 assert 'load skill slides presentation' in html
 assert 'device tools' in html and 'journal query hello' in html
 assert 'copy to box machine=desk-1' in html and 'copy from box machine=desk-1' in html
-assert 'device_tools_list' in mobile and 'journal_query' in mobile
-assert 'skill_load' in mobile and 'copy_to_box' in mobile
+assert 'device_tools_list' in dm and 'journal_query' in dm
+assert 'skill_load' in dm and 'copy_to_box' in dm
 assert 'id=\"plugin-mcp-discover\"' in html and 'id=\"plugin-mcp-call\"' in html
 assert 'id=\"tm-subagent\"' in html
 assert 'id=\"cu-travel\"' in html and 'id=\"cu-food\"' in html
@@ -487,7 +491,7 @@ assert 'mcp call user-Gmail.search_threads' in html
 assert 'spawn subagent summarize inbox' in html
 assert 'travel expedia.com' in html and 'order food doordash.com' in html
 assert 'package install cowsay' in html
-assert 'subagent_run' in mobile
+assert 'subagent_run' in dm
 assert 'id=\"ag-list\"' in html and 'id=\"ag-hide\"' in html
 assert 'id=\"pref-notify\"' in html and 'id=\"pref-guide\"' in html
 assert 'id=\"pref-update\"' in html and 'id=\"pref-local\"' in html
@@ -500,12 +504,12 @@ assert 'shared box fs' in html
 assert 'section post group=g1' in html
 assert 'learn from demo title=Checkout' in html
 assert 'meeting chat body=stand-up' in html
-assert 'room_turn' in mobile and 'send_to_agent' in mobile
+assert 'room_turn' in dm and 'send_to_agent' in dm
 assert 'id=\"ch-cred-fill\"' in html and 'id=\"cu-paywall\"' in html
 assert 'fill credential domain=login.example.test' in html
 assert 'BITBOT_CU_ALLOW_LOCAL' in html
 assert 'shop cart checkout buy' in html
-assert 'credential_fill' in mobile
+assert 'credential_fill' in dm
 assert 'id=\"connect-finance\"' in html and 'id=\"connect-identity\"' in html
 assert 'id=\"ch-teams-send\"' in html
 assert 'id=\"del-section-add\"' in html
@@ -521,7 +525,7 @@ assert 'pause routine smoke-r' in html and 'resume routine smoke-r' in html
 assert 'read mail t-invoice-1' in html
 assert 'draft outlook mail' in html
 assert 'journal date=2026-10-17' in html
-assert 'routine_pause' in mobile and 'journal_append' in mobile
+assert 'routine_pause' in dm and 'journal_append' in dm
 assert 'id=\"ch-slack-dm\"' in html and 'id=\"del-channel-plan\"' in html
 assert 'id=\"box-bare-chrome\"' in html
 assert 'id=\"tool-pkg-npm\"' in html and 'id=\"tool-journal-range\"' in html
@@ -558,6 +562,7 @@ assert 'buf.toString("utf8")' in main
 assert 'readArtifact' in preload and 'openArtifact' in preload
 assert 'path outside repo' in main
 shared=Path('hosts/shared/send_to_user_surface.js').read_text()
+dm=Path('hosts/shared/delivery_mirror.js').read_text()
 assert 'skill_path' in shared and 'export_path' in shared
 assert 'SendToUser attachments' in shared
 assert 'oauthNeedsAuth' in shared or 'NeedsAuth' in shared
@@ -570,7 +575,7 @@ assert 'h.kind === "device_permission"' in shared
 assert 'h.kind === "credential_fill"' in shared
 assert 'secret-request' in shared
 assert 'function residualSuffix' in shared
-assert 'live_x_residual' in shared
+assert 'live_x_residual' in Path('hosts/shared/delivery_mirror.js').read_text()
 assert 'h.kind === "react_message"' in html
 assert 'types.push("reaction")' in html
 assert 'secret-request' in html
@@ -691,27 +696,29 @@ for short in (
   '? "/cron_residual"',
 ):
   assert short not in html, short
-assert 'true_device_os_dialog_residual' in shared
+assert 'true_device_os_dialog_residual' in dm
 assert 'refused_cross_scope' in shared
-assert 'gh_pr_create_residual' in shared
-assert 'remote_pr_residual' in shared
-assert 'remote_cloud_artifact_residual' in shared
-assert 'git_commit_residual' in shared
-assert 'git_push_residual' in shared
-assert 'live_voice_residual' in shared
-assert 'live_mail_claim_residual' in shared
-assert 'live_sms_residual' in shared
-assert 'live_webhook_residual' in shared
+assert 'gh_pr_create_residual' in dm
+assert 'remote_pr_residual' in dm
+assert 'remote_cloud_artifact_residual' in dm
+assert 'git_commit_residual' in dm
+assert 'git_push_residual' in dm
+assert 'live_voice_residual' in dm
+assert 'live_mail_claim_residual' in dm
+assert 'live_sms_residual' in dm
+assert 'live_webhook_residual' in dm
 assert 'personal-dm:' in html
 assert 'p.live_post === true' in html or "p.live_post === true" in html
 assert 'widget_degraded' in html
 assert 'widget_degraded' in shared
 mobile=Path('hosts/mobile_host/run.js').read_text()
-assert 'media_path' in mobile and 'html_path' in mobile and 'frame_path' in mobile
-assert 'payload.media_path' in mobile
-assert 'memory_update' in mobile and 'memory_recall' in mobile
+dm=Path('hosts/shared/delivery_mirror.js').read_text()
+assert 'DELIVERY_HOST_KINDS' in mobile and 'pickMirrorPath' in mobile
+assert 'media_path' in dm and 'html_path' in dm and 'frame_path' in dm
+assert 'p.media_path' in dm
+assert 'memory_update' in dm and 'memory_recall' in dm
 assert '"todo_write"' in shared
-assert '"device_tool"' in mobile and '"delivery"' in mobile
+assert '"device_tool"' in dm and '"delivery"' in dm
 for needle in (
   'live_mail_residual',
   'live_mail_claim_residual',
@@ -756,7 +763,7 @@ for needle in (
   'device_tool_residual',
   'product_tool_residual',
 ):
-  assert needle in mobile, needle
+  assert needle in dm, needle
 ios=Path('hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift').read_text()
 android=Path('hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt').read_text()
 assert 'widget:device_permission:' in ios and 'widget:device_permission:' in android

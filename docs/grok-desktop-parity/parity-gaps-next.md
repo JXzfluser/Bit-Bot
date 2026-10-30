@@ -289,6 +289,16 @@ GP-176 用「放大到 400ms 必红」锁住同一形态，再把快照移到进
 GP-177 用「占住四个旧端口」做 A/B，绿跑时占位服务一次都没被点到；
 GP-179 先改现场、再等真红，不拿「看起来像」当结论；GP-180 的红是新断言打在旧 handler 上的 1/1。
 
+### G-F.10 GP-185（本轮：多端通用逻辑收口 —— .env 解析 / 残差词表 / 机器 id）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-185 | 同一件事只写一份：`.env.local` 解析、42 个 `*_residual` 词表、机器 id 默认值 | **已实现**：新增 `hosts/shared/host_env.js` 与 `hosts/shared/delivery_mirror.js`；桌面 / mobile_host / 入站 onTurn 共用解析器；SendToUser chip 与手机镜像共用词表；`seedMachineId` 与 agent context 改读 `machine_identity.DEFAULTS`；`pack-box.sh` 清单补 `host_env.js` | 改前 `prove_multihost_common` **pass=3 fail=5**（MC-00/01/02/03/04 逐条指名重复文件）；改后 **9/0**；注入对照两条（塞回 `.env` 解析 → MC-01 红；写回 `phone-android` → MC-04 红，恢复后 `cmp` 仍绿）；MC-08 用 fixture 钉住 .env 语义、镜像 58 字段顺序、chip 同源；真链 CLI/mobile `ListMachines` 200/ok 并落 58 字段镜像；全量矩阵 **PASS=467 FAIL=0** | 展示层仍各写（chip/iOS/Android STU/HTML）；无 Android/iOS 真机样本；`pack-box.sh` 清单仍人工维护（`check_box_requires` 只能查「打进去的指不到」，查不出「该打忘打」） |
+
+这一条不是产品新功能，是把「改一端、另一端静默没改」变成门禁能抓住的事实。
+它和 GP-184 的教训互补：那次是「一条 require 打死整个桌面端」，这次是「三份相同逻辑
+各自演化」；前者靠打包自检，后者靠词表唯一来源 + 行为等价 fixture。
+
 ---
 
 ## 三、门禁与交付要求（沿用现有纪律）

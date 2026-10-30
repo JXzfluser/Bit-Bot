@@ -3121,4 +3121,60 @@ prove_box_routine_sweep crashed — TypeError: Cannot read properties of undefin
   变成「有 MODULE_NOT_FOUND 的名字」。这条改动没有被哪道门断言（只作为可读性），
   如果哪天有人把它改回 `catch (_)`，G-57 仍然会红，但要重新靠 503 猜一次。
 
+## 8.48 同一件事写三遍：多端通用逻辑收口（GP-185）
+
+Desktop、CLI Host、iOS/Android 壳、`mobile_host` 用的是同一颗 MoonBit 大脑和同一套
+Host FFI。但 Host 侧还有三件事各写一份：
+
+1. **`.env.local` 解析**：桌面主进程 `parseEnvFile` / `loadEnvLocalFiles`、`mobile_host`
+   的 `loadEnvLocalFiles`、入站 onTurn 的 `loadEnvLocal` —— 三份，切分/引号/注释相同，
+   差别只在「跳过哪些键、打不打日志」。任一端学会 `export KEY=…` 或行尾注释时，另外两端
+   不会跟着变。
+2. **42 个 `*_residual` 词表**：`mobile_host/run.js` 的镜像里手写一遍，
+   `send_to_user_surface.js` 的 chip 里又手写一遍（集合相同、顺序不同）。漂移的表现是
+   手机侧说「已投递」而桌面侧说「仍有残差」，单端门禁看不见。
+3. **机器 id 默认值**：`machine_identity.DEFAULTS` 一份，入站 `seedMachineId` 又写死
+   `phone-ios` / `phone-android`，`agent_loop_product_wire` 还写死一个 `desk-1`。
+
+改法（不改任何 store / IPC / 内核 JSON 契约）：
+
+- 新增 `hosts/shared/host_env.js`：只做纯解析 + 可配置装载（`skip` / `overwrite` /
+  `onFile` / `onError`）。桌面、`mobile_host`、入站都改为调用；各端的密钥策略仍留在各端
+  （SK-D7 / `BITBOT_NO_SECRET_SYNC` 一行未动）。
+- 新增 `hosts/shared/delivery_mirror.js`：`DELIVERY_HOST_KINDS`（98 项）+
+  `RESIDUAL_KEYS`（42 项）+ `collectResidualFlags` + `pickMirrorPath` +
+  `buildDeliveryMirror`。镜像字段顺序与旧落盘文件逐字一致；`send_to_user_surface`
+  只从它取词表，chip 的嵌套规则仍是展示层自己的事。
+- `seedMachineId()` 改为 `DEFAULTS[normalizeKind(kind)]`；`agent_loop_product_wire`
+  的默认上下文槽位改用 `DEFAULTS.desktop`。三处字面量只剩 `machine_identity.js` 一份。
+- `scripts/pack-box.sh` 的 shared 清单补 `host_env.js` —— 入站 onTurn 在 Box 里 require
+  它，漏拷的后果和 GP-184 那次「一条 require 打死整个桌面端」同型。
+
+尺子 `scripts/prove_multihost_common.mjs`（MC-00..MC-08，矩阵 G-63）：
+
+- **改前红**：`pass=3 fail=5`。MC-00 指出 mobile 没接 `delivery_mirror`；MC-01 列出
+  三份 `.env` 解析；MC-02 列出两份残差词表；MC-03 指出 mobile 内联 98 项 kind；
+  MC-04 列出 `agent_loop_product_wire` / 入站 / `machine_identity` 三处字面量。
+- **改后绿**：`pass=9 fail=0`。
+- **注入对照**：把一份 `.env` 解析塞回 `mobile_host/run.js` → MC-01 翻红并指名该文件；
+  把 `phone-android` 写回 `seedMachineId` → MC-04 翻红并指名入站文件；恢复后 `cmp`
+  核对仍绿。两条都在 G-63 里每轮重跑。
+- **MC-08 行为等价**：`.env` 的注释 / 引号 / 空值 / 坏行 / 值里带 `=`；装载的
+  「默认不覆盖 / overwrite / skip」；镜像 58 个字段的名称、值与顺序；SendToUser chip
+  与镜像同源 —— 都用 fixture 钉住，不靠「看起来一样」。
+- **真链**：`node hosts/cli_host/run_turn.js --machine-kind ios "ListMachines"` 与
+  `node hosts/mobile_host/run.js --machine-kind ios …` 都返回 200/ok，手机侧落出
+  58 字段镜像（`data/device/mobile-delivery-mirrors/machines_list-*.json`）。
+- **全量矩阵**：`xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh` →
+  **PASS=467 FAIL=0**（G-63 的 9 个锚点 + 2 条注入对照全绿）。
+
+诚实边界：
+
+- 共享的是**词表与布尔收集**，不是像素。SendToUser chip、iOS/Android 的
+  `SendToUserSurface`、桌面 `index.html` 仍各自决定怎么展示；这些是展示层，不强行合并。
+- Android / iOS 仍是薄壳，本轮没有真机样本；`pack-mobile.sh` 只暂存 shell 树。
+- `pack-box.sh` 的 shared 清单仍是人工维护。`check_box_requires.js` 只能发现「打进去的
+  require 指不到」，发现不了「该打进去但忘了」—— 本轮 `host_env.js` 就是靠人看出来的，
+  所以清单旁边仍然需要 G-57 的传递闭包做第二道。
+
 

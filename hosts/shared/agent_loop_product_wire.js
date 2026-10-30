@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { canonicalAction } = require("./host_approval_gate");
 const { buildToolPolicy } = require("./tool_policy");
+const { DEFAULTS } = require("./machine_identity");
 
 /**
  * One Host FFI op for the kernel AgentLoop.
@@ -47,7 +48,8 @@ function approvalMode() {
  * It must therefore never be able to escape the context directory: a bot id
  * like "../../etc/passwd" must not become a path.
  */
-const DEFAULT_CONTEXT_MACHINE = "desk-1";
+// GP-185: 默认机器 id 不在这里再写一次（machine_identity 是唯一来源）。
+const DEFAULT_CONTEXT_MACHINE = DEFAULTS.desktop;
 
 /**
  * B-5:这台机器叫什么。

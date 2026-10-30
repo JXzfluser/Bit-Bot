@@ -319,55 +319,42 @@ if (autoUpdater) {
  * 必须是 userData —— app.asar 是只读的，__dirname 在包里指向 asar 内部，
  * 往那儿写会 ENOENT 并在 require 阶段抛未捕获异常（2026-10-29 真打包实测：
  * 主进程直接炸，窗口都没出来）。路径必须跟着 DATA_ROOT 一起搬。 */
+// GP-185: `.env.local` 的切分/引号/注释只有 hosts/shared/host_env.js 一份。
+// 打包态是平铺布局（shared/ 与 desktop/ 同级），开发态在 ../shared —— 两种都试。
+let hostEnv;
+try {
+  hostEnv = require("./shared/host_env");
+} catch (_e) {
+  hostEnv = require("../shared/host_env");
+}
+const { parseEnvFile } = hostEnv;
+
 const DESKTOP_ENV_LOCAL = app.isPackaged && USER_DATA_DIR
   ? path.join(USER_DATA_DIR, ".env.local")
   : path.join(__dirname, ".env.local");
 
-/** Parse KEY=VALUE lines from an env file. */
-function parseEnvFile(file) {
-  const out = {};
-  if (!fs.existsSync(file)) return out;
-  const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
-  for (const line of lines) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq <= 0) continue;
-    const k = t.slice(0, eq).trim();
-    let v = t.slice(eq + 1).trim();
-    if (
-      (v.startsWith('"') && v.endsWith('"')) ||
-      (v.startsWith("'") && v.endsWith("'"))
-    ) {
-      v = v.slice(1, -1);
-    }
-    if (k) out[k] = v;
-  }
-  return out;
-}
+/** GP-185: parsing lives in hosts/shared/host_env.js (one copy for every host). */
+
 
 /**
  * Load hosts/desktop/.env.local then repo .env.local (never commit secrets).
+ * GP-185: one implementation (shared/host_env.js); Desktop only decides order,
+ * overwrite policy and where the logs go.
  * @param {{overwrite?: boolean}} opts — overwrite=true applies file values over process.env
  */
 function loadEnvLocalFiles(opts = {}) {
   const overwrite = Boolean(opts && opts.overwrite);
   const candidates = [DESKTOP_ENV_LOCAL, path.join(REPO_ROOT, ".env.local")];
   if (USER_DATA_DIR) candidates.push(path.join(USER_DATA_DIR, ".env.local"));
-  for (const file of candidates) {
-    if (!fs.existsSync(file)) continue;
-    try {
-      const map = parseEnvFile(file);
-      for (const [k, v] of Object.entries(map)) {
-        if (overwrite || process.env[k] === undefined) process.env[k] = v;
-      }
-      process.stdout.write(`[desktop] loaded env file ${file}\n`);
-    } catch (err) {
+  hostEnv.loadEnvFiles(candidates, {
+    overwrite,
+    onFile: (file) =>
+      process.stdout.write(`[desktop] loaded env file ${file}\n`),
+    onError: (err, file) =>
       process.stderr.write(
         `[desktop] env load failed ${file}: ${err && err.message ? err.message : err}\n`,
-      );
-    }
-  }
+      ),
+  });
 }
 loadEnvLocalFiles();
 // Bot timezone default = system timezone (never hardcoded UTC). Seed BITBOT_TZ

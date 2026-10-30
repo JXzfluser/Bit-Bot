@@ -2779,6 +2779,49 @@ cmp -s /tmp/gp174-target.bak scripts/pack-box.sh || g174_caught=0
 [ "$g174_caught" = "1" ] && ok "G-60 注入对照（I-04）：把 BUILD_FLAGS 那条 + 惯用法改回裸展开就翻红、且指到 pack-box.sh 行号，恢复后仍绿" \
   || bad "G-60 I-04 注入对照没成立（见 /tmp/gp174-mut.log /tmp/gp174-clean.log）"
 
+echo "== G-63 GP-185：多端通用逻辑只有一份（环境解析 / 递送词表 / 机器 id）=="
+node scripts/prove_multihost_common.mjs >/tmp/gp185-mh.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp185-mh.log; then
+  ok "G-63 多端通用逻辑门全绿（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp185-mh.log)）"
+else
+  bad "G-63 prove_multihost_common 未通过（见 /tmp/gp185-mh.log；$(tail -2 /tmp/gp185-mh.log | tr '\n' ' ')）"
+fi
+for gp185_a in "MC-00 三个回合入口都经由共享模块" "MC-01 .env.local 解析只有一份" "MC-02 残差词表只有一份" "MC-03 可递送 Host kind 清单" "MC-04 机器 id 默认值只有一份" "MC-05 桌面 / CLI / 手机端都走 run_moon_turn" "MC-06 进度分类只有 progress_protocol" "MC-07 尺子自检" "MC-08 行为等价"; do
+  if grep -q "✓ $gp185_a" /tmp/gp185-mh.log; then ok "G-63 锚点：$gp185_a"; else bad "G-63 锚点没跑绿：$gp185_a"; fi
+done
+# 注入对照 A：把一份重复的 .env 解析塞回 mobile_host —— MC-01 必须指名翻红。
+cp -f hosts/mobile_host/run.js /tmp/gp185-mobile.bak
+python3 - <<'PY'
+p = "hosts/mobile_host/run.js"
+s = open(p).read()
+s += '\n/* mutation: duplicate env parser */\n' + r'function legacyEnv(file) { for (const line of require("fs").readFileSync(file, "utf8").split(/\r?\n/)) { const t = line.trim(); if (!t || t.startsWith("#")) continue; const eq = t.indexOf("="); if (eq > 0) process.env[t.slice(0, eq)] = t.slice(eq + 1); } }' + '\n'
+open(p, "w").write(s)
+PY
+node scripts/prove_multihost_common.mjs >/tmp/gp185-mut-env.log 2>&1 || true
+g185a=0
+grep -q "✗ MC-01" /tmp/gp185-mut-env.log && grep -q "mobile_host/run.js" /tmp/gp185-mut-env.log && g185a=1
+cp -f /tmp/gp185-mobile.bak hosts/mobile_host/run.js
+node scripts/prove_multihost_common.mjs >/tmp/gp185-clean-a.log 2>&1 && grep -q "fail=0" /tmp/gp185-clean-a.log || g185a=0
+cmp -s /tmp/gp185-mobile.bak hosts/mobile_host/run.js || g185a=0
+[ "$g185a" = "1" ] && ok "G-63 注入对照（MC-01）：塞回一份 .env 解析就翻红、指到 mobile_host/run.js，恢复后仍绿" \
+  || bad "G-63 MC-01 注入对照没成立（见 /tmp/gp185-mut-env.log /tmp/gp185-clean-a.log）"
+# 注入对照 B：把 phone-android 写回 seedMachineId —— MC-04 必须翻红。
+cp -f hosts/shared/cn_inbound_product_on_turn.js /tmp/gp185-inbound.bak
+python3 - <<'PY'
+p = "hosts/shared/cn_inbound_product_on_turn.js"
+s = open(p).read()
+s = s.replace('function seedMachineId(machineKind) {', 'function seedMachineId(machineKind) {\n  if (machineKind === "android") return "phone-android"; /* mutation */')
+open(p, "w").write(s)
+PY
+node scripts/prove_multihost_common.mjs >/tmp/gp185-mut-id.log 2>&1 || true
+g185b=0
+grep -q "✗ MC-04" /tmp/gp185-mut-id.log && grep -q "cn_inbound_product_on_turn.js" /tmp/gp185-mut-id.log && g185b=1
+cp -f /tmp/gp185-inbound.bak hosts/shared/cn_inbound_product_on_turn.js
+node scripts/prove_multihost_common.mjs >/tmp/gp185-clean-b.log 2>&1 && grep -q "fail=0" /tmp/gp185-clean-b.log || g185b=0
+cmp -s /tmp/gp185-inbound.bak hosts/shared/cn_inbound_product_on_turn.js || g185b=0
+[ "$g185b" = "1" ] && ok "G-63 注入对照（MC-04）：把 phone-android 写回入站映射就翻红、指到 cn_inbound_product_on_turn.js，恢复后仍绿" \
+  || bad "G-63 MC-04 注入对照没成立（见 /tmp/gp185-mut-id.log /tmp/gp185-clean-b.log）"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

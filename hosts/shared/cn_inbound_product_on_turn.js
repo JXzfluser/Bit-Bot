@@ -6,37 +6,18 @@
  */
 
 const path = require("path");
-const fs = require("fs");
 const { createTurnRunner } = require("./run_moon_turn");
-const { machineIdForInbound } = require("./machine_identity");
+const {
+  machineIdForInbound,
+  normalizeKind,
+  DEFAULTS,
+} = require("./machine_identity");
+const { loadEnvLocalFiles } = require("./host_env");
 
 function loadEnvLocal(repoRoot) {
-  const candidates = [
-    path.join(repoRoot, "hosts/desktop/.env.local"),
-    path.join(repoRoot, ".env.local"),
-  ];
-  for (const file of candidates) {
-    if (!fs.existsSync(file)) continue;
-    try {
-      for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
-        const t = line.trim();
-        if (!t || t.startsWith("#")) continue;
-        const eq = t.indexOf("=");
-        if (eq <= 0) continue;
-        const k = t.slice(0, eq).trim();
-        let v = t.slice(eq + 1).trim();
-        if (
-          (v.startsWith('"') && v.endsWith('"')) ||
-          (v.startsWith("'") && v.endsWith("'"))
-        ) {
-          v = v.slice(1, -1);
-        }
-        if (k && process.env[k] === undefined) process.env[k] = v;
-      }
-    } catch (_) {
-      /* ignore */
-    }
-  }
+  // GP-185: one parser for every host (shared/host_env.js); inbound keeps the
+  // historical "fill only when unset" behavior.
+  loadEnvLocalFiles({ repoRoot });
 }
 
 /**
@@ -46,9 +27,9 @@ function loadEnvLocal(repoRoot) {
  * run_on_machine 报 unknown machine，手机上「拍照 / 麦克风」全都没有落点。
  */
 function seedMachineId(machineKind) {
-  if (machineKind === "android") return "phone-android";
-  if (machineKind === "ios") return "phone-ios";
-  return "desk-1";
+  // GP-185: the kernel registry ids live in machine_identity.DEFAULTS. Keep
+  // this wrapper (callers import it by name) but never re-type the literals.
+  return DEFAULTS[normalizeKind(machineKind)] || DEFAULTS.desktop;
 }
 
 /**
