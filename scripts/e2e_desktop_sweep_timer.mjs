@@ -259,8 +259,6 @@ let app = null;
     }
 
     /* ---------- S-06 退出后定时器真的停了 ---------- */
-    const beforeQuit = readJson(TICK);
-    const beforeRows = readLines(SWEEP_LOG).length;
     const proc = app.process();
     /* 与 e2e_desktop_quit 同一条路径：app.quit() 会 emit before-quit。
        evaluate 的 Promise 在进程断开时必然 reject，不能 await（会把门禁打断），
@@ -274,16 +272,23 @@ let app = null;
     if (!exit) {
       bad("S-06 退出应用", "15s 内没退出");
     } else {
+      /* 快照必须在**进程真的退出之后**取。以前是在发 quit 之前取，于是退出过程中
+         正好到点的那一轮（quitRequested 还没置上）被判成「退出后还在 tick」——
+         矩阵里偶发过一次，`before=…27.375 after=…27.625 rows 6→7`，差的正好是
+         一个 250ms 周期。这不是定时器没停，是尺子把「退出中」算成了「退出后」。
+         进程没了之后还有写入，才说明有残留的写手。 */
+      const atExit = readJson(TICK);
+      const rowsAtExit = readLines(SWEEP_LOG).length;
       await sleep(SWEEP_MS * 6);
       const after = readJson(TICK);
       const afterRows = readLines(SWEEP_LOG).length;
       const moved =
-        (beforeQuit && after && beforeQuit.at && after.at && after.at !== beforeQuit.at) ||
-        afterRows !== beforeRows;
+        (atExit && after && atExit.at && after.at && after.at !== atExit.at) ||
+        afterRows !== rowsAtExit;
       if (moved) {
         bad(
           "S-06 退出后不再产生新 tick",
-          "before=" + (beforeQuit && beforeQuit.at) + " after=" + (after && after.at) + " rows " + beforeRows + "→" + afterRows,
+          "at_exit=" + (atExit && atExit.at) + " after=" + (after && after.at) + " rows " + rowsAtExit + "→" + afterRows,
         );
       } else {
         ok("S-06 退出后不再产生新 tick（rows=" + afterRows + "）");
