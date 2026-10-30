@@ -32,7 +32,7 @@ else
 fi
 
 # shellcheck disable=SC2016
-python3 - "$LOG_DIR" "$kind" "${args[@]}" <<'PY'
+python3 - "$LOG_DIR" "$kind" ${args[@]+"${args[@]}"} <<'PY'
 import json, os, sys
 log_dir, kind = sys.argv[1], sys.argv[2]
 payload = {"ok": True, "mock": True, "kind": kind, "args": sys.argv[3:]}

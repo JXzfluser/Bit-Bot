@@ -21,4 +21,5 @@ if [[ "${H6_FAST:-}" == "1" || "${H6_SKIP_MOON_TEST:-}" == "1" ]]; then
 fi
 
 cd "${ROOT}"
-exec python3 "${ROOT}/scripts/host_matrix_i_sweep.py" "${TARGET}" "${EXTRA[@]}"
+# 没开 H6_FAST 时 EXTRA 为空，set -u 下会 unbound（bash 3.2）。
+exec python3 "${ROOT}/scripts/host_matrix_i_sweep.py" "${TARGET}" ${EXTRA[@]+"${EXTRA[@]}"}

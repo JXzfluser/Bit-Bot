@@ -54,7 +54,9 @@ BUILD_FLAGS=()
 [[ "$PROFILE" == "release" ]] && BUILD_FLAGS+=(--release)
 
 echo "[pack-box] building the MoonBit kernel (profile=$PROFILE)…"
-(cd "$ROOT" && moon build --target native "${BUILD_FLAGS[@]}")
+# 空数组在 set -u + bash 3.2（macOS 自带 / CI mac runner）下会直接 unbound：
+# debug profile 时 BUILD_FLAGS 就是空的。与 pack-desktop.sh 同一把尺子。
+(cd "$ROOT" && moon build --target native ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"})
 
 KERNEL_SRC="$ROOT/_build/native/$PROFILE/build/cmd/desktop_turn/desktop_turn"
 [[ -x "$KERNEL_SRC" ]] || KERNEL_SRC="$ROOT/_build/native/$PROFILE/build/cmd/desktop_turn/desktop_turn.exe"

@@ -2798,3 +2798,100 @@ if (primary) updateBotPill(primary.name, primary.id, primary.avatar_data_url);
 同一条命令在本机是 **441/0**，与 §8.42 的第一次 CI 绿一致。上一版 `cc26876` 的
 CI 失败（run `40996522403`）与本机复现到的 439/2 是同一形状：G-16 里的 GP-112
 与 G-20 的静态签名。日志仍然只有 admin 能下，**逐项 `PASS=` 计数没有读到**。
+
+## 8.46 红的是尺子：`set -u` 下的空数组，和不听开关的进程内唤醒（GP-181 / GP-182）
+
+**① 一天之内三个红，没有一个是产品坏的。** 整合上游 14 个提交后跑全量矩阵：
+
+```
+scripts/smoke_grok_desktop_parity.sh: line 2534: gp170_xvfb[@]: unbound variable
+✗ G-16 E2E 冷启动+像素断言（见 /tmp/e2e-g16.log）
+✗ G-57 真 Box 取证未通过（见 /tmp/gp169-sweep.log；pass=0 fail=1）
+```
+
+第一条最贵：矩阵在 2534 行**直接断掉**，G-59 之后十几道门根本没跑（报的是
+430/2，其实分母也不完整）。这一条连同「G-1/G-2 每跑一次往用户侧栏留一批
+Smoke 夹具」一起在 `48ef31d` 里落了 —— 夹具现在按前缀自清（开跑前摘一次、
+跑完摘一次、EXIT trap 兜底），实测把 25 个 Bot 里的 16 个门禁造的清掉。
+
+**② 空数组这一类的形状。** macOS 自带 `/bin/bash` 是 3.2，`set -u` 下
+`"${ARR[@]}"` 摊到空数组不是「摊成 0 个词」，而是报 unbound 并让整条命令不执行
+（bash 4.4 才修）。命中的都是「按条件才 push 元素」的数组：
+
+| 位置 | 什么时候是空的 | 后果 |
+| --- | --- | --- |
+| 矩阵 G-59 `gp170_xvfb` | macOS 没有 `xvfb-run` | 整轮矩阵从 2534 行断掉 |
+| `scripts/pack-box.sh:59` `BUILD_FLAGS` | `--profile debug`（只有 release 才 `+=--release`） | 死在 `moon build` 之前，Box 打不出来 → G-57 真机取证 `0/1` |
+| `prove_agent_context.sh` / `prove_kernel_binary.sh` / `prove_product_tools.sh` 的 `FLAGS` | 非 release profile | 同型，一旦 CI 换 profile 就连环假红 |
+| `host_matrix_i_sweep.sh` 的 `EXTRA`、`host_xdotool_mock.sh` 的 `args` | 无附加参数 | 同型 |
+
+**这类破损 `bash -n` 全绿**，§8.35 之后新增的完整性门（冲突标记 + `node --check`）
+也全绿 —— 它们看的是「是不是一份源码」，不是「在这台机器的 shell 上跑不跑得动」。
+Linux（CI）既有 `xvfb-run` 又是 bash 4+，所以这道坑只在 mac 上开。
+
+**③ G-16 的红是另一个开关没关。** GP-170 把「唤醒源」从 bash daemon 搬进主进程后，
+`BITBOT_ROUTINE_DAEMON_AUTOSTART=0` 只关得掉 shell daemon，管不住进程内那个
+`DESKTOP_SWEEP_MS`（默认 60s，且 `startDesktopSweep()` 在 startup 就先扫一次）。
+boot 门的 GP-108 断言是「点 Fire **之后**新增几份草稿」，启动那一下多落 3 份，
+于是读出 `{"n":4,"d":{"routine_id":"desk-r",…}}` —— 数错了，不是草稿机制坏了。
+
+**④ 修法。** shell 侧统一换成仓库里其余八道门已经在用的
+`${ARR[@]+"${ARR[@]}"}`（`pack-desktop.sh` 那种「先 `${#ARR[@]}` 判长度」的写法也认可）。
+门禁侧把唤醒开关收进唯一入口：`scripts/electron_env.mjs` 的 `electronLaunchEnv()`
+在未显式指定时默认 `BITBOT_DESKTOP_SWEEP_MS=0`，测唤醒节律的两道门
+（`e2e_desktop_sweep_timer.mjs`、`e2e_desktop_packaged.mjs`）本来就自己显式设值，
+不受影响；boot 门另外把 `BITBOT_ROUTINE_DAEMON_AUTOSTART=0` 与新的 `…SWEEP_MS=0`
+成对写明。产品侧「应用本身就是唤醒源」没有改 —— 装机的 App 仍然会在启动时扫一次。
+
+**⑤ 补一把尺子（GP-181 的回归门）。** `scripts/prove_repo_integrity.mjs` 加两条：
+
+- **I-04** 扫全部被跟踪 `.sh`（实测 56 个）。四个条件同时成立才算红：文件里有
+  `set -u`、某数组出现过 `NAME=()`（含 `local/declare/typeset/export` 前缀）、
+  该数组有裸展开（先把 `${ARR[@]+…}` 与 `${ARR[@]:-…}` 剥掉再判，所以惯用法的
+  内层 `"${ARR[@]}"` 不会误报，同一行里另留一处裸展开照样抓）、且全文件找不到
+  对该数组的 `${#ARR[@]}` 长度守卫。
+- **I-05** 尺子自己的对照：9 份探针（裸 / 带引号 / 惯用法与裸展开混在同一行 /
+  `local` 起空 必抓；纯注释引用、`+` 惯用法、长度守卫、无 `set -u`、非空字面量 不报），
+  外加**行为对照** —— 用 `/bin/bash` 真跑一份 `set -u; FLAGS=(); printf '%s\n' "${FLAGS[@]}"`，
+  在 3.2.57 上必须非 0 退出（实测 `rc=1`），惯用法那份必须 0；bash 4.4+ 上
+  反过来要求两边都 0，版本号打在 ok 文案里，读的人知道走的是哪半边。
+  违规探针自己也带一行同名注释，用来证明「注释豁免」只豁免那一行、不会整份放过。
+- 矩阵 G-60 挂上真文件注入对照：把 `pack-box.sh:59` 的惯用法改回裸展开 →
+  `✗ I-04 … scripts/pack-box.sh:59 BUILD_FLAGS`，恢复后 `fail=0`、`cmp` 一致。
+  另一处手工实测（不落进矩阵）：把 `gp170_xvfb` 改回裸展开，尺子同样指到
+  `scripts/smoke_grok_desktop_parity.sh:2568 gp170_xvfb`。
+
+**⑥ 红 → 绿（同一台机器）。**
+
+| 跑法 | 结果 |
+| --- | --- |
+| `node scripts/prove_box_routine_sweep.js`（修前） | **0 / 1**（pack-box 死在 `BUILD_FLAGS[@]: unbound variable`） |
+| 同上（修后） | **18 / 0**，`bash scripts/pack-box.sh --out /tmp/boxprobe --profile debug` 打出 `[pack-box] done → /tmp/boxprobe` |
+| `node scripts/e2e_grok_desktop_boot.mjs`（修前） | G-16 红：GP-108 `n=4` |
+| 同上（修后） | **130 / 0**（GP-108 四条 + GP-109 两条都在） |
+| `node scripts/prove_repo_integrity.mjs` | **7 / 0**（I-00…I-05，含 56 个脚本全扫） |
+| 全量矩阵（修后） | **436 / 0**，exit=0，日志里无 `✗`；`· 收尾自清：夹具 Bot 2 条、夹具群 1 条` |
+
+矩阵里对应那四条（`/tmp/matrix-final.log`，逐字）：
+
+```
+✓ G-16 E2E 冷启动+像素断言全绿（130 项，e2e_grok_desktop_boot: PASS=130 FAIL=0)
+✓ G-57 真 Box 取证：打包→起进程→到点扫→手机拉待批→批准留痕→重复批准被拒（pass=18 fail=0）
+✓ G-60 锚点：I-04 被跟踪的 .sh 没有 / I-05 空数组尺子对照 / I-05 行为对照
+✓ G-60 注入对照（I-04）：把 BUILD_FLAGS 那条 + 惯用法改回裸展开就翻红、且指到 pack-box.sh 行号，恢复后仍绿
+```
+
+**⑦ 诚实边界。**
+
+- I-04 是**文本规则**，不是 shell 解析器：靠 `eval` 拼出来的命令名、`printf -v`
+  间接起的数组、以及把 `=()` 写进注释/字符串又恰好同名的展开，都看不见。它只保证
+  「这四种真炸过的形状」不再复发，不保证 shell 端口性无债。
+- 整行注释被豁免（门禁的注释天天引用 `"${ARR[@]}"` 讲这个坑），行中出现 `#` 的
+  不豁免；所以「注释里写了解释、代码里仍然裸用」这一行照样会被抓 —— I-05 的
+  违规探针就故意长这样。
+- `${#ARR[@]} -gt 0` 这条豁免是**文件级**的，不是控制流级的：同一个数组若既在守卫
+  分支里裸用、又在守卫外裸用，本规则会放过。选它是因为 `pack-desktop.sh` 已是这种
+  写法，宁可少报也不把存量全改一遍；新增的门禁请直接用 `+` 惯用法。
+- G-16 修的是**门禁环境**。GP-170「App 自己是唤醒源」这个产品行为没动，装机版启动
+  仍会扫一次；如果哪天需求变成「启动扫描也要出现在草稿计数里」，这把尺子得跟着改。
+

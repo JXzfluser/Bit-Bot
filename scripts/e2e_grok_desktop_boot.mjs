@@ -279,6 +279,9 @@ async function launchOnce(extraEnv) {
       BITBOT_ESPEAK_BIN: process.env.BITBOT_ESPEAK_BIN || "/usr/bin/espeak-ng",
       BITBOT_REPO_ROOT: GATE_ROOT,
       BITBOT_ROUTINE_DAEMON_AUTOSTART: "0",
+      // GP-108 数的是「点 Fire 之后新增几份草稿」，所以本门必须自己把进程内唤醒
+      // 关掉（DAEMON=0 关不住它，见 scripts/electron_env.mjs 的同名默认值）。
+      BITBOT_DESKTOP_SWEEP_MS: "0",
       BITBOT_DESKTOP_AUTOSTART: "0",
       BITBOT_NO_SECRET_SYNC: "1",
       ...(extraEnv || {}),

@@ -2646,19 +2646,22 @@ gp170_restore || gp170_ok=0
 [ "$gp170_ok" = "1" ] && ok "G-59 注入对照：摘启动点/S-01-05 红、摘字段/S-02 红、摘 ended_at/S-05 红、摘转述/S-04 红（四处各摘各的都翻红）" \
   || bad "G-59 注入对照没成立（保留件见 /tmp/gp170-mut-*.kept）"
 
-echo "== G-60 GP-171：被提交的源码必须先是能解析的源码（冲突标记事故的回归门）=="
+echo "== G-60 GP-171：被提交的源码必须先是跑得动、能解析的源码（冲突标记事故 + bash 3.2 空数组的回归门）=="
 # 事实：远端 a0ec929 把未解完冲突的工作树提交了上去 ——
 #   hosts/desktop/product_surface.js 里 2 组 <<<<<<< / ======= / >>>>>>>
 #   scripts/prove_room_orchestrator.js 里 1 组，还有一份重复的 noRunner
 # 结果桌面 App 一 require 就 SyntaxError，编排门连启动都到不了；
 # 而当时的矩阵全在「解析之后」执行，没有任何一条会看源码本身。
+# 2026-10-30 又补了 I-04：同一类「门禁看不见」的破损是 shell 本身跑不动 ——
+#   矩阵 G-59 的 gp170_xvfb、pack-box.sh 的 BUILD_FLAGS、三个 prove_*.sh 的 FLAGS
+# 都在 `set -u` + bash 3.2 下炸空数组裸展开；`bash -n` 全绿，只有真走到那条分支才死。
 node scripts/prove_repo_integrity.mjs >/tmp/gp171-integrity.log 2>&1
 if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp171-integrity.log; then
-  ok "G-60 仓库完整性门全绿（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp171-integrity.log)；$(grep -o '列出 [0-9]* 个被跟踪文件' /tmp/gp171-integrity.log | head -1)；$(grep -o '[0-9]* 个文件）' /tmp/gp171-integrity.log | tail -1)）"
+  ok "G-60 仓库完整性门全绿（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp171-integrity.log)；$(grep -o '列出 [0-9]* 个被跟踪文件' /tmp/gp171-integrity.log | head -1)；$(grep -o '[0-9]* 个文件' /tmp/gp171-integrity.log | tail -1)）"
 else
   bad "G-60 prove_repo_integrity 未通过（见 /tmp/gp171-integrity.log；$(tail -2 /tmp/gp171-integrity.log | tr '\n' ' ')）"
 fi
-for gp171_a in "I-00 git ls-files" "I-01 被跟踪文件里没有冲突标记" "I-02 被跟踪的 .js/.mjs 全部通过 node --check" "I-03 负向/正向对照"; do
+for gp171_a in "I-00 git ls-files" "I-01 被跟踪文件里没有冲突标记" "I-02 被跟踪的 .js/.mjs 全部通过 node --check" "I-03 负向/正向对照" "I-04 被跟踪的 .sh 没有" "I-05 空数组尺子对照" "I-05 行为对照"; do
   if grep -q "✓ $gp171_a" /tmp/gp171-integrity.log; then ok "G-60 锚点：$gp171_a"; else bad "G-60 锚点没跑绿：$gp171_a"; fi
 done
 # 注入对照：往一份真的被跟踪的源文件末尾塞一行冲突标记，同一把尺子必须翻红；
@@ -2675,6 +2678,25 @@ node scripts/prove_repo_integrity.mjs >/tmp/gp171-clean.log 2>&1 && grep -q "fai
 cmp -s /tmp/gp171-target.bak hosts/desktop/paths.js || mut_caught=0
 [ "$mut_caught" = "1" ] && ok "G-60 注入对照：真塞一行冲突标记就翻红（I-01），恢复后仍绿" \
   || bad "G-60 注入对照没成立（见 /tmp/gp171-mut.log /tmp/gp171-clean.log）"
+# I-04 的注入对照：把 pack-box.sh 里那条 `+` 惯用法还原成今天真实炸过的裸展开
+# （`"${BUILD_FLAGS[@]}"`，debug profile 下数组为空），尺子必须指名道姓翻红。
+rm -f /tmp/gp174-mut.log /tmp/gp174-clean.log
+cp -f scripts/pack-box.sh /tmp/gp174-target.bak
+node -e '
+const fs=require("fs");
+const p="scripts/pack-box.sh";
+const src=fs.readFileSync(p,"utf8");
+const cut=src.split("${BUILD_FLAGS[@]+\"${BUILD_FLAGS[@]}\"}").join("\"${BUILD_FLAGS[@]}\"");
+if(cut===src){console.error("pack-box.sh 里找不到那条惯用法（尺子的输入不对）");process.exit(3);}
+fs.writeFileSync(p,cut);
+' && node scripts/prove_repo_integrity.mjs >/tmp/gp174-mut.log 2>&1
+g174_caught=0
+grep -q "✗ I-04" /tmp/gp174-mut.log && grep -q "pack-box.sh.*BUILD_FLAGS" /tmp/gp174-mut.log && g174_caught=1
+cp -f /tmp/gp174-target.bak scripts/pack-box.sh
+node scripts/prove_repo_integrity.mjs >/tmp/gp174-clean.log 2>&1 && grep -q "fail=0" /tmp/gp174-clean.log || g174_caught=0
+cmp -s /tmp/gp174-target.bak scripts/pack-box.sh || g174_caught=0
+[ "$g174_caught" = "1" ] && ok "G-60 注入对照（I-04）：把 BUILD_FLAGS 那条 + 惯用法改回裸展开就翻红、且指到 pack-box.sh 行号，恢复后仍绿" \
+  || bad "G-60 I-04 注入对照没成立（见 /tmp/gp174-mut.log /tmp/gp174-clean.log）"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
