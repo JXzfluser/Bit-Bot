@@ -86,7 +86,39 @@ if(!rows.some(b=>b&&b.id==='agent-bit')){console.error('agent-bit missing after 
 "
 }
 
+# 夹具自清（矩阵开跑第一件事）。G-1/G-2 每跑一次就留下一批 Smoke 夹具：重名时
+# Host 给副本自动加序号（Smoke copy 2…8），改名落成 SmokeRenamed，群留 Smoke room。
+# 实测 8 次跑之后 data/desktop/bots.json 里 16/25 行是门禁造的 —— 而 dev 模式下
+# 应用的数据根就是仓库 data/（hosts/desktop/paths.js 非 packaged 分支），于是这些
+# 夹具直接长在用户自己的侧栏里。开机门早就改成临时副本（GATE_ROOT），这条链只剩
+# 本脚本。这里按**前缀**摘，与 journeys 门清 UJ 夹具同一把尺子：只认夹具名，
+# 用户 Bot（Bit Bot / Ivy / 情报侦察员…）一行不动。
+purge_gate_fixtures() {
+  node -e '
+const fs=require("fs");
+const [bp,rp]=process.argv.slice(1);
+const FIXTURE_BOT=/^(Smoke|Smoke copy[ 0-9]*|SmokeRenamed)$/;
+const FIXTURE_ROOM=/^Smoke room$/;
+const drop=(p,kind,pick)=>{
+  if(!fs.existsSync(p))return "无文件";
+  let j;try{j=JSON.parse(fs.readFileSync(p,"utf8"));}catch(e){return "解析失败("+e.code+")，本次不碰";}
+  const rows=Array.isArray(j[kind])?j[kind]:[];
+  const kept=rows.filter((x)=>!(x&&pick(String(x.name||x.title||""))));
+  const n=rows.length-kept.length;
+  j[kind]=kept;
+  if(kind==="bots"&&j.primary_id&&!kept.some((x)=>x&&x.id===j.primary_id))j.primary_id="";
+  if(n>0)fs.writeFileSync(p,JSON.stringify(j,null,2));
+  return n+" 条";
+};
+console.log("夹具 Bot "+drop(bp,"bots",(s)=>FIXTURE_BOT.test(s))+"、夹具群 "+drop(rp,"rooms",(s)=>FIXTURE_ROOM.test(s)));
+' "$DATA/bots.json" "$DATA/rooms.json"
+}
+# 不只靠末尾那一次调用：矩阵被 set -u 或 timeout 打断时（本轮整合前就死在 G-59 的
+# 空数组上）收尾根本不会执行，夹具照样留在用户侧栏里。挂 EXIT trap 兜住异常退出。
+trap 'purge_gate_fixtures >/dev/null 2>&1' EXIT
+
 echo "== G-1/G-2 Bot lifecycle =="
+echo "  · 前置自清：$(purge_gate_fixtures)（只认 Smoke 前缀，用户 Bot 不动）"
 ensure_agent_bit
 before=$(cat $DATA/bots.json 2>/dev/null | md5sum)
 j=$(turn_json "create bot Smoke job=verify description=Wave+G+smoke+bot")
@@ -2531,7 +2563,9 @@ gp170_xvfb=()
 if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
   gp170_xvfb=(xvfb-run -a)
 fi
-gp170_run() { timeout 240 "${gp170_xvfb[@]}" node scripts/e2e_desktop_sweep_timer.mjs >"$1" 2>&1; }
+# 空数组在 set -u 下 `"${arr[@]}"` 会直接 unbound 把整个矩阵带崩（macOS 没有
+# xvfb-run 时必踩）；和上面几道门一样用 ${arr[@]+"${arr[@]}"} 展开。
+gp170_run() { timeout 240 ${gp170_xvfb[@]+"${gp170_xvfb[@]}"} node scripts/e2e_desktop_sweep_timer.mjs >"$1" 2>&1; }
 
 if gp170_run /tmp/gp170-sweep.log && grep -q "FAIL=0" /tmp/gp170-sweep.log; then
   ok "G-59 真 Electron：daemon 关闭时 App 自己扫 routine_tick（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/gp170-sweep.log)）"
@@ -2641,6 +2675,8 @@ node scripts/prove_repo_integrity.mjs >/tmp/gp171-clean.log 2>&1 && grep -q "fai
 cmp -s /tmp/gp171-target.bak hosts/desktop/paths.js || mut_caught=0
 [ "$mut_caught" = "1" ] && ok "G-60 注入对照：真塞一行冲突标记就翻红（I-01），恢复后仍绿" \
   || bad "G-60 注入对照没成立（见 /tmp/gp171-mut.log /tmp/gp171-clean.log）"
+
+echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
