@@ -1,0 +1,109 @@
+name: Desktop Parity Matrix
+
+# 全量矩阵（scripts/smoke_grok_desktop_parity.sh）此前只在开发机上跑：
+# 「最后一个跑的人」看到的 441/0 就是全部证据，别人合进去之前没人复核。
+# 这条 workflow 把它搬进 CI，让同一份代码在干净机器上重复得到同一个数字。
+#
+# 为什么是整套而不是挑几条：
+#   - 这套矩阵里 90% 的项是「真 Electron + 真内核 + 真文件」的端到端断言，
+#     挑着跑等于把「哪几条算数」变成一个每次都要重新吵的问题；
+#   - 它会自己打印 PASS=/FAIL=，并且 FAIL≠0 时退出码非 0，CI 不需要再解释。
+#
+# 诚实边界（不在门里声明成功，只在日志里说清楚）：
+#   - Android APK 真编译需要 SDK/gradle/JDK。ubuntu-latest 自带 Android SDK，
+#     但 gradle 与 JDK 版本由 runner 决定；缺任一件时 prove_android_build 会
+#     打印 SKIP（SKIP ≠ PASS），矩阵会把它当 skip 记，不当绿。
+#   - 这里**不**做 macOS / Windows 的真机安装验证：那是另一个平台的事，
+#     desktop-macos.yml 只负责打包，不代表「装上了、跑通了」。
+#   - workflow 是否真的在 GitHub 上跑绿，只有在 Actions 页面上看见才算数；
+#     提交这条 workflow 本身不是「CI 已绿」的证据。
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/next-target-v1
+      - main
+  pull_request:
+    branches:
+      - main
+
+# 矩阵要 15 分钟上下；新推一次就取消旧的那次，别让两条抢同一个 Xvfb/端口。
+concurrency:
+  group: desktop-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Host info
+        run: |
+          uname -a
+          node -v
+          npm -v
+          java -version || echo "[ci] no java on PATH"
+          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Build kernel (native)
+        run: |
+          export PATH="$HOME/.moon/bin:$PATH"
+          moon version --all
+          moon check
+          moon build --target native
+
+      - name: Install app deps (locked)
+        run: npm ci --prefix hosts/desktop
+
+      - name: Install Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb
+
+      # 矩阵自己会在没有 DISPLAY 时用 xvfb-run 包一层；这里再包一层是给
+      # 「外层没有 DISPLAY」的 CI 一个确定的环境，不依赖门禁的自愈逻辑。
+      - name: Run full parity matrix
+        shell: bash
+        run: |
+          set -o pipefail
+          export PATH="$HOME/.moon/bin:$PATH"
+          xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh 2>&1 | tee /tmp/parity-matrix.log
+
+      - name: Show red lines (if any)
+        if: failure()
+        shell: bash
+        run: |
+          echo "== ✗ lines =="
+          grep -n "✗" /tmp/parity-matrix.log || echo "(none)"
+          echo "== tail =="
+          tail -80 /tmp/parity-matrix.log || true
+          echo "== sub-gate logs =="
+          ls -la /tmp/*.log 2>/dev/null | head -50 || true
+
+      - name: Upload matrix log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-matrix-log
+          path: |
+            /tmp/parity-matrix.log
+            /tmp/g4*.log
+            /tmp/gp1*.log
+          if-no-files-found: ignore
+          retention-days: 14

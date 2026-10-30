@@ -2584,3 +2584,39 @@ base_url 跟着走。改完门里不再有任何写死的 stub 端口。
 - 「写死端口」这类问题只按门逐个清，没有做全仓库静态扫描（比如直接把
   `BITBOT_STUB_PORT: "87xx"` 列为 lint 规则）—— 现在四个门里已经没有固定端口，
   但新写的门仍可能再犯。
+
+---
+
+## 8.42 全量矩阵搬进 CI（GP-178）
+
+**① 问题不是「有没有门」，是「门只在一个人机器上开」。** 441/0 这个数字此前
+只有最后一个跑矩阵的人见过；别人把改动合进去之前，没有任何独立环境复核过。
+本轮的几处偶发红（GP-174/175/176/177）全都只在「同一份代码、另一台机器/另一次
+运行」里露头。
+
+**② 加了什么。** `.github/workflows/desktop-parity.yml`：
+
+- 触发：`workflow_dispatch`、push 到 `cursor/next-target-v1` / `main`、PR 到 `main`；
+- `concurrency` 按 ref 取消旧跑（矩阵十几分钟，两条并行会抢 Xvfb 和端口）；
+- 步骤：装 MoonBit → `moon check` + `moon build --target native` → `npm ci
+  --prefix hosts/desktop` → 装 Xvfb → `xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh`；
+- 失败时打印 `✗` 行与日志尾部，无论成败都把矩阵日志上传成 artifact。
+
+**③ 本地能证的（不是「CI 已绿」）。**
+
+- YAML 能解析，10 个 step；
+- workflow 里那条外层 `xvfb-run` 的调用形式和本机一致：拿 S-06 那道门按同一形式
+  跑了一遍 **6/0**（门自己再包一层不会打架：DISPLAY 活着时它就不包）；
+- 矩阵本体在本机 **441/0**（§8.41 复跑）。
+
+**④ 不能证的（写在最前面，别让 workflow 文件冒充证据）。**
+
+- GitHub Actions 上到底绿不绿，沙箱里看不到 Actions 页面 —— 我没有观测到任何一次
+  CI 运行。**提交这条 workflow ≠ CI 已绿。**
+- Android APK 段依赖 runner 上的 SDK / gradle / JDK；缺任一件时
+  `prove_android_build` 打 SKIP，矩阵按 skip 记（SKIP ≠ PASS）。
+- macOS / Windows 的「装上、双击、能用」仍然没验；`desktop-macos.yml` 只打包。
+
+**⑤ 下一步（需要 Actions 权限的人）。** 在 Actions 里手动 dispatch 一次，
+贴回来的 `PASS=/FAIL=` 才是这条 workflow 的第一份真证据；若红，按日志里的
+`✗` 行定位，别再改 workflow 去凑绿。
