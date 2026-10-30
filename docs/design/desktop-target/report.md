@@ -2535,3 +2535,49 @@ await waitForAppExit(proc, 15000);
   还在跑」—— 那本来就不是缺陷（`quitRequested` 之前的一轮属于正常收尾）。
 - 同一个「先拍快照再触发异步动作」的模式在别的门里是否还有，没有全量排查；
   目前只修了 S-06 这一处有证据的。
+
+---
+
+## 8.41 boot 门里四个写死的 stub 端口（GP-177）
+
+**① 症状（同一类，只是没赶上）。** `scripts/e2e_grok_desktop_boot.mjs` 里还有
+四处 stub 端口写死：GP-14 用 8793、G19 用 8794、M28 用 8795、M29 用 8799。
+stub 自己 `listen(port)`，端口被别人占着就 bind 失败、不打 `[stub-llm]`，
+门的就绪等待 8s 超时，整段异常——产品代码一行没错，红却是真的。
+
+这不是「理论上可能」：G-47 那次 5 红就是残留实例占着 18765 造成的；M27 已经
+改成空闲端口，这四个是漏网的。
+
+**② 复现（确定性）。** 起一个 500 回包的 HTTP 服务占住这四口（冒充旧 stub 残留），
+再跑 boot 门：
+
+```
+✗ E2E GP-14 块异常 — stub boot timeout
+✗ E2E GP-130/131 块异常 — m28 stub boot timeout
+✗ E2E GP-143 real turns — {"returned":0,"total":2,"partial":true,
+     "sections":[{"id":"agent-bit","ok":false,"err":"(occupied by stale stub 8799)"}, …]}
+✗ E2E GP-146 reply cards — []
+✗ E2E GP-146 report card — …模型或服务返回失败，未取得该成员的产出…
+✗ E2E GP-93/94/95 块异常 — g19 stub boot timeout
+e2e_grok_desktop_boot: PASS=99 FAIL=6   （exit=1）
+```
+
+注意 GP-143 的残留是真打到 500 上的：占位服务自己的命中计数停在 4，
+说明这几段确实把回合发给了陌生进程，而不是单纯的 bind 冲突。
+
+**③ 修复。** 四处改成 `await pickFreePort()`，和 M27 同一条路：每次运行挑空闲端口，
+base_url 跟着走。改完门里不再有任何写死的 stub 端口。
+
+**④ 红 → 绿（同一批占位进程不撤）。**
+
+| 跑法 | 结果 |
+| --- | --- |
+| 四口被占 + 旧代码 | **99 / 6**（exit=1，六条红如上） |
+| 四口被占 + 新代码 | **128 / 0**（exit=0；占位服务命中数仍停在 4，绿跑一次没碰旧端口） |
+
+**⑤ 残留。**
+
+- 这是门禁的环境自愈，不是产品行为变化：用户不会因为 8793 被占而看到 bug。
+- 「写死端口」这类问题只按门逐个清，没有做全仓库静态扫描（比如直接把
+  `BITBOT_STUB_PORT: "87xx"` 列为 lint 规则）—— 现在四个门里已经没有固定端口，
+  但新写的门仍可能再犯。

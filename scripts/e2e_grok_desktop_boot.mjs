@@ -731,7 +731,10 @@ async function main() {
        发第二条。断言三层：kernel 回显 reply_to；Host 把该 id 解析成原文并塞进
        provider 请求（用 echo-all stub 在 HTTP body 层自证）；store 行带 reply_to
        且重载后 DOM 有引用条。伪 id 场景必须 resolved:false（不假装引用成功）。*/
-    const stubPort = 8793;
+    /* 端口不能写死：长矩阵里一次被打断的重跑留下的 stub（或别的进程）占着
+       8793，stub 就 bind 不上，本段直接超时变红，而产品代码完全无辜。
+       和 M27 一样每次挑空闲端口（GP-177）。 */
+    const stubPort = await pickFreePort();
     const g14Env = {
       BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + stubPort + "/v1",
       BITBOT_LLM_API_KEY: "e2e-stub-key",
@@ -2459,7 +2462,7 @@ async function main() {
        Usage & Billing tab，面板 per-row 行显示同一 provider/model。*/
     const USAGE_M28 = dd("llm-usage.json");
     const usageM28Before = fs.existsSync(USAGE_M28) ? fs.readFileSync(USAGE_M28) : null;
-    const m28Port = 8795;
+    const m28Port = await pickFreePort();
     let m28Stub = null;
     try {
       const { spawn: spawnChild } = require("node:child_process");
@@ -2577,7 +2580,7 @@ async function main() {
         seedRooms.rooms = (seedRooms.rooms || []).filter((r) => r && r.id !== "room-m29e2e");
         seedRooms.rooms.push(m29Room);
         fs.writeFileSync(ROOMS_M29, JSON.stringify(seedRooms, null, 2));
-        const stubM29Port = 8799;
+        const stubM29Port = await pickFreePort();
         const { spawn: spawnM29 } = require("node:child_process");
         stubM29 = spawnM29(
           process.execPath,
@@ -2748,7 +2751,7 @@ async function main() {
        （审计行 + record-only 落点）、页面自身绝不导航、window.open 被 deny。
        诚实边界：record-only 模式抑制真实浏览器启动（Xvfb 下起不来是真环境限制），
        审计行因此 opened:false + error 说明原因，不谎称"已打开浏览器"。*/
-    const g19Port = 8794;
+    const g19Port = await pickFreePort();
     const g19Audit = "/tmp/g19-links-audit.jsonl";
     const g19Record = "/tmp/g19-links-record.jsonl";
     const g19Url = "https://example.com/docs?g=19";
