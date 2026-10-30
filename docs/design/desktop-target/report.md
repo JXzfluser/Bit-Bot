@@ -2735,3 +2735,53 @@ JSON 放在前面，实测红行在 `"at` 处就断了，switch_landed 根本没
 - 头像条只修了「点击传什么」；头像条本身没有键盘可达性（button 有了，但没有
   aria-label / focus 样式），这块属于无障碍打磨，未做。
 
+
+---
+
+## 8.45 「胶囊说的是 B，消息发给了 A」：重绘把标题拉回主 Bot（GP-179 收尾）
+
+**① 按 id 判定之后，同一形态又红了一次。** 在 cc26876 上跑全量矩阵：
+
+```
+✗ G-16 E2E 冷启动+像素断言
+✗ G-20 界面契约
+  ✗ E2E GP-112 isolation — switch_landed=true pill=agent-bit/«Bit Bot»
+    rows=[{"bot":"bot-cd3806","count":1}]
+```
+
+`switch_landed=true` 意味着**点击那一刻**胶囊上的 id 就是 B，但回合仍落在 A 上。
+所以「按 id 判定」只解决了「假落地」，没有解决「胶囊先对、随后被改掉」。
+
+**② 根因：Bot 列表每次重绘都把胶囊拉回主 Bot。** `refreshBotsNow()` 末尾原来写死：
+
+```js
+const primary = bots.find(x => x.id === (view && view.primary_id)) || bots[0];
+if (primary) updateBotPill(primary.name, primary.id, primary.avatar_data_url);
+```
+
+侧栏会被 `bitbot:bots-changed` 广播频繁重绘。用户点开 A（胶囊 A、activeBotId=A），
+任何一次重绘就把胶囊改成主 Bot B —— 之后门禁/bot 切换逻辑看到的「当前 Bot」
+与真正接消息的 `activeBotId` 不再一致。这也是用户能看到的：跟 A 聊天时标题栏
+写着 B。
+
+**③ 修法。** 重绘时先看胶囊上已有的 `data-bot-id`：它在、且这个 Bot 还在列表里，
+就继续显示它；只有「还没选过」或那个 Bot 已经没了，才回落到主 Bot。id 由新增的
+`markPillBot(id)` 写在胶囊上（`updateBotPill` 签名保持三个参数，G-20 的静态契约
+不动 —— 第一版加第四个参数直接让 G-20 翻红，见 ⑤）。
+
+**④ 红 → 绿（同一台机器，同一份数据）。**
+
+| 跑法 | 结果 |
+| --- | --- |
+| 全量矩阵（修前，cc26876） | **439 / 2**：G-16（内含 GP-112 isolation 那条）+ G-20（`updateBotPill` 签名多了一个参数） |
+| 单跑 G-20 静态门 | 修前 `23 passed, 1 failed`（bot pill）→ 修后 **24 / 0** |
+| 单跑 boot 门 | **130 / 0** |
+| 全量矩阵（修后） | **441 / 0**（exit=0，无 `✗`，`data/` 干净） |
+
+**⑤ 诚实边界。**
+
+- 同一提交在 GitHub Actions 上也红过一次（run `40996522403`），但 job 日志要仓库
+  admin 才能下载（403），**我没有读到那次 CI 的 `✗` 行**。上面两个红是本地在
+  `cc26876` 上复现出来的，不冒充「CI 的失败原因已确认」。
+- 胶囊现在只保证「点开谁就显示谁，重绘不再抢」，没有做「多窗口/多会话各自
+  独立标题」；那是另一个形状的需求，没在本轮范围。

@@ -11841,8 +11841,16 @@
         });
       }
       // Grok-parity: title-bar pill reflects the primary Bot by default.
-      const primary = bots.find((x) => x.id === (view && view.primary_id)) || bots[0];
-      if (primary) updateBotPill(primary.name || primary.id, primary.id || primary.name, primary.avatar_data_url, primary.id);
+      // 但「默认」只在还没有选中任何 Bot 时成立：以前每次重绘都把胶囊拉回主
+      // Bot，于是「点开 A 正在聊天、侧栏一刷新标题就变回 B」——胶囊说的是 B，
+      // 真正接消息的是 A（§8.44 的 GP-112 真红就死在这上面）。
+      const pillEl = document.getElementById("bot-pill");
+      const shownId = (pillEl && pillEl.dataset && pillEl.dataset.botId) || "";
+      const primary = bots.find((x) => x.id === shownId) || bots.find((x) => x.id === (view && view.primary_id)) || bots[0];
+      if (primary) {
+        updateBotPill(primary.name || primary.id, primary.id || primary.name, primary.avatar_data_url);
+        markPillBot(primary.id);
+      }
     }
 
     function botRow(b, primaryId, isHidden, lastText) {
@@ -11898,13 +11906,16 @@
 
     // Grok-style: clicking a Bot opens its DM session (session id bot-<id>),
     // sets activeBotId for notifications, and shows the agent info in side panel.
-    function updateBotPill(name, colorSeed, avatarDataUrl, botId) {
+    /* 名字不是身份：Bot 可以被改重名（门禁数据里就有一串 SmokeRenamed）。
+       胶囊上记下当前 Bot 的 id，界面与门禁都能分清「现在到底切到谁」，
+       而不是靠「标题看起来对」——那正是 GP-112 偶发红分不清的一层。 */
+    function markPillBot(id) {
+      const pill = document.getElementById("bot-pill");
+      if (pill && id) pill.dataset.botId = String(id);
+    }
+    function updateBotPill(name, colorSeed, avatarDataUrl) {
       const pill = document.getElementById("bot-pill");
       if (!pill) return;
-      /* 名字不是身份：Bot 可以被改重名（门禁数据里就有一串 SmokeRenamed）。
-         把当前 Bot 的 id 写在胶囊上，门禁与用户都能分清「现在到底切到谁」，
-         而不是靠「标题看起来对」——那正是 GP-112 偶发红分不清的一层。 */
-      if (botId) pill.dataset.botId = String(botId);
       const label = pill.querySelector(".bot-pill-name");
       const av = pill.querySelector(".bot-pill-avatar");
       if (label) label.textContent = String(name || "Bit Bot");
@@ -11934,7 +11945,8 @@
       activeBotId = b.id;
       // 点开一个 Bot 就是回到私聊面：群 composer 必须先让位（同 sess-row 合同）。
       if (composerRoom) exitRoomChat();
-      updateBotPill(b.name || b.id, b.id || b.name, b.avatar_data_url, b.id);
+      updateBotPill(b.name || b.id, b.id || b.name, b.avatar_data_url);
+      markPillBot(b.id);
       /* G-30：点开 Bot 是**导航**，不是一次对话回合。
          这里原来调 runUserTurn("open agent info agent=…")，会在消息流里留下
          [user] open agent info agent=bot-xxx  +  [bot] 已完成。   两条气泡，
