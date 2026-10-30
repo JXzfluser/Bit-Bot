@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { decodePng, avgLuma, pixelAt, encodeRgbPng } from "./lib_png_pixel.mjs";
@@ -46,6 +47,19 @@ let GATE_ROOT = REPO;
 const dd = (n) => path.join(GATE_ROOT, "data/desktop", n);
 const rd = (n) => path.join(GATE_ROOT, "data/routines", n);
 const sd = (n) => path.join(GATE_ROOT, "data/secrets", n);
+
+/** 取一个空闲端口给 stub 用：固定端口撞上残留 stub 时，回合会打到旧进程上。 */
+function pickFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const p = srv.address().port;
+      srv.close(() => resolve(p));
+    });
+  });
+}
 
 /* 这些路径**必须**是可重定向的 let：dd() 是函数、按调用时的 GATE_ROOT 求值，
    但模块级 const 在 main() 换根之前就已经算成 REPO 了 —— 那样门禁一边说「跑在
@@ -271,13 +285,37 @@ async function launchOnce(extraEnv) {
     }),
     timeout: 60000,
   });
+  /* 进程输出留一个环形缓冲：断言失败时把最后几行带出来。以前主进程崩了/内核
+     吐错，门禁只报 "session never reached the store"，看不出是产品还是尺子。
+     必须在 firstWindow() 之前挂：启动阶段的日志（路径解析、内核拉起）就在那里。 */
+  const logRing = [];
+  try {
+    const proc = app.process();
+    const push = (d) => {
+      for (const line of String(d).split("\n")) {
+        if (line.trim()) logRing.push(line.trim());
+      }
+      if (logRing.length > 300) logRing.splice(0, logRing.length - 300);
+    };
+    if (proc && proc.stdout) proc.stdout.on("data", push);
+    if (proc && proc.stderr) proc.stderr.on("data", push);
+  } catch (_) {
+    /* 拿不到进程句柄不影响断言 */
+  }
   const win = await app.firstWindow({ timeout: 60000 });
   await win.waitForSelector("#composer #text", { timeout: 30000 });
   /* G-28 #2：Bot 区块默认折叠成「头像条」。门禁要操作 Bot 行，就得先走一次真实
      用户路径把它展开（点折叠按钮）—— 否则 #bot-list 里的行是 display:none，
      waitForSelector(visible) 只会一路等到 30s 超时。 */
   await expandBotList(win);
-  return { app, win };
+  return { app, win, logRing };
+}
+
+/** Playwright 的 electron.launch 解析时启动日志已经输出完了，环形缓冲可能为空；
+    空的时候要说明「是没有」，而不是看起来像采集坏了。 */
+function appTailNote(ring) {
+  const rows = (ring || []).slice(-5);
+  return rows.length ? rows : ["(空：启动日志早于 launch 解析)"];
 }
 
 async function launch(extraEnv) {
@@ -1226,6 +1264,24 @@ async function main() {
         }
         return null;
       };
+      /* 偶发红时最缺的是现场：本轮新出现的 recall 文件长什么样、主进程最后说了什么。
+         断言本身不放松，只是把「看不见」变成「看得见」。 */
+      const recallDiag = () => {
+        const files = (fs.existsSync(MEM_DIR) ? fs.readdirSync(MEM_DIR) : [])
+          .filter((f) => f.startsWith("recall-") && f.endsWith(".json") && !memFilesBefore.includes(f))
+          .slice(-5)
+          .map((f) => {
+            try {
+              const j = JSON.parse(fs.readFileSync(path.join(MEM_DIR, f), "utf8"));
+              return { f, prefix: j.prefix, bot: j.bot_id, count: j.count };
+            } catch (_) {
+              return { f, unreadable: true };
+            }
+          });
+        return JSON.stringify({
+          files,
+          app_tail: appTailNote(bootG23.logRing),
+        }).slice(0, 300);      };
 
       const bootG23 = await launch({ BITBOT_LLM_STREAM: "0" });
       await bootG23.win.waitForSelector("#bot-list [data-agent-id]", { timeout: 30000 });
@@ -1306,7 +1362,7 @@ async function main() {
       }, 30000);
       recallB && recallB.count === 0
         ? ok("E2E GP-112：切到 Bot B 后 recall 命中 0 条（另一个 Bot 的上下文不可见）")
-        : bad("E2E GP-112 isolation", JSON.stringify(recallB).slice(0, 200));
+        : bad("E2E GP-112 isolation", JSON.stringify(recallB).slice(0, 200) + " 现场：" + recallDiag());
 
       await openBot(botA);
       await send(`recall ${memKey}`);
@@ -1317,7 +1373,7 @@ async function main() {
       recallA && recallA.count >= 1 &&
         (recallA.entries || []).some((e) => e.key === memKey && e.value === "blue")
         ? ok("E2E GP-111：切回 Bot A 仍 recall 到同一条偏好（跨会话一致）")
-        : bad("E2E GP-111 cross-session recall", JSON.stringify(recallA).slice(0, 200));
+        : bad("E2E GP-111 cross-session recall", JSON.stringify(recallA).slice(0, 200) + " 现场：" + recallDiag());
 
       const storeAfter = (() => {
         try {
@@ -2144,19 +2200,33 @@ async function main() {
     // M27 原来裸跑真 LLM：无外网/无 key 时回合静默失败 → "probe session never
     // reached the store"。照 GP-14 的模式自带 echo stub，门禁不再依赖环境。
     let m27Stub = null;
+    let m27StubTail = "";
+    let m27Diag = {};
     try {
       const { spawn: spawnChild } = require("node:child_process");
+      /* 固定端口（以前是 8796）在长矩阵/被打断的重跑里会撞上残留 stub：
+         新 stub 绑不上，回合打到了旧进程上，症状是「store 里没有这条会话」。
+         改成每轮取空闲端口，端口号写进 base_url。 */
+      const m27Port = await pickFreePort();
       m27Stub = spawnChild(
         process.execPath,
         [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")],
         {
           cwd: REPO,
           stdio: ["ignore", "pipe", "pipe"],
-          env: { ...process.env, BITBOT_STUB_PORT: "8796", BITBOT_STUB_ECHO_ALL: "1" },
+          env: { ...process.env, BITBOT_STUB_PORT: String(m27Port), BITBOT_STUB_ECHO_ALL: "1" },
         },
       );
+      const keepStubLog = (d) => {
+        m27StubTail = (m27StubTail + String(d)).slice(-2000);
+      };
+      m27Stub.stdout.on("data", keepStubLog);
+      m27Stub.stderr.on("data", keepStubLog);
       await new Promise((res, rej) => {
-        const t = setTimeout(() => rej(new Error("stub boot timeout")), 8000);
+        const t = setTimeout(
+          () => rej(new Error("stub boot timeout（port=" + m27Port + "；输出：" + m27StubTail.slice(-160) + "）")),
+          8000,
+        );
         m27Stub.stdout.on("data", (d) => {
           if (String(d).includes("[stub-llm]")) { clearTimeout(t); res(); }
         });
@@ -2164,7 +2234,7 @@ async function main() {
       });
       const bootM27 = await launch({
         BITBOT_LLM_STREAM: "0",
-        BITBOT_LLM_BASE_URL: "http://127.0.0.1:8796/v1",
+        BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + m27Port + "/v1",
         BITBOT_LLM_API_KEY: "e2e-stub-key",
         BITBOT_LLM_MODEL: "e2e-stub",
       });
@@ -2181,14 +2251,39 @@ async function main() {
         null,
         { timeout: 30000 },
       ).catch(() => {});
-      await win.waitForTimeout(800);
+      /* 以前这里是「死等 800ms，然后读一次 sessions.json」。机器一忙（矩阵里同时
+         编译/跑别的门），store 落盘晚于 800ms，这条就红成 "never reached the
+         store" —— 红的是尺子，不是产品。改成轮询到出现为止（20s 兜底），并把
+         超时时的现场（store 条数 / 最近标题 / stub 尾部 / 主进程尾部）带进断言。 */
       const m27SessionId = await (async () => {
-        try {
-          const st = JSON.parse(fs.readFileSync(SESS_M27, "utf8"));
-          const hit = (st.sessions || []).find((x) => (x.messages || []).some((m) =>
-            m && m.role === "user" && String(m.text || "").includes("M27 详情探针")));
-          return hit ? hit.id : "";
-        } catch (_) { return ""; }
+        const t0 = Date.now();
+        let last = { count: 0, titles: [] };
+        while (Date.now() - t0 < 20000) {
+          try {
+            const st = JSON.parse(fs.readFileSync(SESS_M27, "utf8"));
+            const rows = st.sessions || [];
+            last = {
+              count: rows.length,
+              titles: rows.slice(-3).map((x) => String((x && x.title) || "").slice(0, 24)),
+            };
+            const hit = rows.find((x) =>
+              (x.messages || []).some((m) =>
+                m && m.role === "user" && String(m.text || "").includes("M27 详情探针"),
+              ),
+            );
+            if (hit) return hit.id;
+          } catch (_) {
+            /* store 还没写出来 */
+          }
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        m27Diag = {
+          store_sessions: last.count,
+          last_titles: last.titles,
+          stub_tail: m27StubTail.slice(-200),
+          app_tail: appTailNote(bootM27.logRing),
+        };
+        return "";
       })();
       if (m27SessionId) {
         const rowSel = '#session-list [data-session-id="' + m27SessionId + '"]';
@@ -2341,7 +2436,11 @@ async function main() {
           ? ok("E2E GP-129：删除会话后详情面板自动关闭且会话从 store 消失")
           : bad("E2E GP-129 delete close", "rail still open or session not removed");
       } else {
-        bad("E2E GP-128 session", "M27 probe session never reached the store");
+        bad(
+          "E2E GP-128 session",
+          "M27 probe session never reached the store（20s 轮询）" +
+            (Object.keys(m27Diag).length ? " 现场：" + JSON.stringify(m27Diag).slice(0, 400) : ""),
+        );
       }
 
       await shutdown(bootM27.app);
