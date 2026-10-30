@@ -11817,7 +11817,10 @@
           }
           chip.appendChild(av);
           chip.addEventListener("click", () => {
-            if (typeof selectBotForChat === "function") selectBotForChat(b.id);
+            /* 这里以前传的是 b.id（字符串）。selectBotForChat 读 b.id / b.name，
+               传字符串等于把 activeBotId 写成 undefined：胶囊退回默认文案、
+               会话标题变成「undefined · DM」。传对象（GP-180）。 */
+            if (typeof selectBotForChat === "function") selectBotForChat(b);
           });
           strip.appendChild(chip);
         }
@@ -11839,7 +11842,7 @@
       }
       // Grok-parity: title-bar pill reflects the primary Bot by default.
       const primary = bots.find((x) => x.id === (view && view.primary_id)) || bots[0];
-      if (primary) updateBotPill(primary.name || primary.id, primary.id || primary.name, primary.avatar_data_url);
+      if (primary) updateBotPill(primary.name || primary.id, primary.id || primary.name, primary.avatar_data_url, primary.id);
     }
 
     function botRow(b, primaryId, isHidden, lastText) {
@@ -11895,9 +11898,13 @@
 
     // Grok-style: clicking a Bot opens its DM session (session id bot-<id>),
     // sets activeBotId for notifications, and shows the agent info in side panel.
-    function updateBotPill(name, colorSeed, avatarDataUrl) {
+    function updateBotPill(name, colorSeed, avatarDataUrl, botId) {
       const pill = document.getElementById("bot-pill");
       if (!pill) return;
+      /* 名字不是身份：Bot 可以被改重名（门禁数据里就有一串 SmokeRenamed）。
+         把当前 Bot 的 id 写在胶囊上，门禁与用户都能分清「现在到底切到谁」，
+         而不是靠「标题看起来对」——那正是 GP-112 偶发红分不清的一层。 */
+      if (botId) pill.dataset.botId = String(botId);
       const label = pill.querySelector(".bot-pill-name");
       const av = pill.querySelector(".bot-pill-avatar");
       if (label) label.textContent = String(name || "Bit Bot");
@@ -11927,7 +11934,7 @@
       activeBotId = b.id;
       // 点开一个 Bot 就是回到私聊面：群 composer 必须先让位（同 sess-row 合同）。
       if (composerRoom) exitRoomChat();
-      updateBotPill(b.name || b.id, b.id || b.name, b.avatar_data_url);
+      updateBotPill(b.name || b.id, b.id || b.name, b.avatar_data_url, b.id);
       /* G-30：点开 Bot 是**导航**，不是一次对话回合。
          这里原来调 runUserTurn("open agent info agent=…")，会在消息流里留下
          [user] open agent info agent=bot-xxx  +  [bot] 已完成。   两条气泡，

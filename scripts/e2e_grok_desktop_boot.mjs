@@ -1284,23 +1284,80 @@ async function main() {
         return JSON.stringify({
           files,
           app_tail: appTailNote(bootG23.logRing),
-        }).slice(0, 300);      };
+        }).slice(0, 300);
+      };
+
+      /* 切 Bot 没落地的后果不是「切不动」这么一句话：后面那条 recall 会打到上一个
+         Bot 身上，于是红的是「GP-112 隔离」，看起来像产品串了上下文。上一轮那句
+         偶发红（30s 内没有该 Bot 的 recall 行）就分不清是这两种。
+         这里**不**把「没落地」直接判红：实测存在「pill 名字没对上、但这一下点击
+         其实已经切过去了」的情形（把判定条件注入成永远不等，旧代码照样 128/0），
+         判红会造出假红。只把落地结果和当前 pill 带进失败信息（GP-179）。 */
+      const pillName = async () => {
+        try {
+          return await bootG23.win.evaluate(() => {
+            const pill = document.getElementById("bot-pill");
+            const id = (pill && pill.dataset && pill.dataset.botId) || "?";
+            const label = String((pill && pill.querySelector(".bot-pill-name") || {}).textContent || "").trim();
+            return id + "/«" + label + "»";
+          });
+        } catch (_) {
+          return "?";
+        }
+      };
+      /* bad() 只留 200 字，现场必须写在前面：先说「切换落没落地、pill 是谁、
+         这个 key 的 recall 行都归了谁」，再放原始 JSON。 */
+      const switchNote = async (landed) => "switch_landed=" + landed + " pill=" + (await pillName());
+      const recallRowsNote = (key) =>
+        "rows=" + JSON.stringify(recallsOf(key).map((r) => ({ bot: r.bot_id, count: r.count })));
+
 
       const bootG23 = await launch({ BITBOT_LLM_STREAM: "0" });
       await bootG23.win.waitForSelector("#bot-list [data-agent-id]", { timeout: 30000 });
 
+      /* GP-180：侧栏默认是折叠的头像条，点一个头像就是「切到这个 Bot」。
+         以前这里传的是 b.id（字符串），而 selectBotForChat 读的是 b.id / b.name —
+         于是 activeBotId 变成 undefined、胶囊退成默认文案，会话还多出一条
+         「undefined · DM」。走真实点击，断言胶囊上的 data-bot-id 真的跟着变。 */
+      const clickStripAvatar = async (id) => {
+        const found = await bootG23.win
+          .evaluate((bid) => {
+            const chip = document.querySelector('#bot-strip .strip-av[data-agent-id="' + bid + '"]');
+            if (!chip) return false;
+            chip.click();
+            return true;
+          }, id)
+          .catch(() => false);
+        if (!found) return "no-chip";
+        return await bootG23.win
+          .waitForFunction(
+            (bid) => {
+              const pill = document.getElementById("bot-pill");
+              return !!(pill && pill.dataset && pill.dataset.botId === bid);
+            },
+            id,
+            { timeout: 4000 },
+          )
+          .then(() => "ok")
+          .catch(() => "stale");
+      };
+      for (const id of [botA, botB]) {
+        const r = await clickStripAvatar(id);
+        r === "ok"
+          ? ok("E2E GP-180：点头像条里的 " + id + " 真的切过去了（胶囊 data-bot-id 跟着变）")
+          : bad("E2E GP-180 strip avatar " + id, r + " pill=" + (await pillName()));
+      }
+
       /* openBot 以前是「点一下 + 死等 900ms」。侧栏正在重绘的那一瞬间，那一下可能
          点到已经被换掉的节点（querySelector 拿到 null 就什么都不做），于是这次
          recall 整个落在上一个 Bot 名下——实测两种表现都出现过：该 Bot 的 recall
-         文件根本不出现（null），或 count 归错人。改成点完必须等**标题 pill 真变成
-         这个 Bot**（selectBotForChat 里 pill 与 activeBotId 同一同步块，pill 对了
-         发送目标就对了），没变就再点一次。断言一个字没放松。 */
-      const nameOf = (id) => {
-        const b = (botsNow || []).find((x) => x && x.id === id) || {};
-        return String(b.name || id).trim();
-      };
+         文件根本不出现（null），或 count 归错人。
+
+         判定从「标题文字」改成「胶囊上的 data-bot-id」：Bot 可以重名（门禁数据里
+         就有一串 SmokeRenamed），按名字比会「看起来切过去了、实际没有」——§8.44
+         那次真红就是 switch_landed=true / pill=«Bit Bot»、recall 却落在另一个
+         Bot 上。名字不是身份，id 才是。没落地就再点一次（最多 20s）。 */
       const openBot = async (id) => {
-        const want = nameOf(id);
         const t0 = Date.now();
         while (Date.now() - t0 < 20000) {
           await bootG23.win.evaluate((bid) => {
@@ -1309,8 +1366,11 @@ async function main() {
           }, id);
           const landed = await bootG23.win
             .waitForFunction(
-              (n) => String((document.querySelector("#bot-pill .bot-pill-name") || {}).textContent || "").trim() === n,
-              want,
+              (bid) => {
+                const pill = document.getElementById("bot-pill");
+                return !!(pill && pill.dataset && pill.dataset.botId === bid);
+              },
+              id,
               { timeout: 4000 },
             )
             .then(() => true)
@@ -1330,7 +1390,7 @@ async function main() {
         ).catch(() => {});
       };
 
-      await openBot(botA);
+      const switchA1 = await openBot(botA);
       await send(`remember ${memKey}=blue`);
       const wrote = await waitFor(() => {
         try {
@@ -1343,7 +1403,10 @@ async function main() {
       }, 30000);
       wrote
         ? ok("E2E GP-111：在 Bot A 的私聊 remember 后，desktop-host.json 的 A 槽真实落盘")
-        : bad("E2E GP-111 remember", "slot " + botA + " never got the key");
+        : bad(
+            "E2E GP-111 remember",
+            "slot " + botA + " never got the key" + (await switchNote(switchA1)),
+          );
 
       const vaultA = (() => {
         try {
@@ -1357,7 +1420,7 @@ async function main() {
         ? ok("E2E GP-111：profile-vault.json 同步记在 A 的槽里（两条路径同一归属）")
         : bad("E2E GP-112 vault slot", JSON.stringify(vaultA && vaultA.bots && Object.keys(vaultA.bots || {})).slice(0, 160));
 
-      await openBot(botB);
+      const switchB = await openBot(botB);
       await send(`recall ${memKey}`);
       const recallB = await waitFor(() => {
         const rows = recallsOf(memKey).filter((r) => r.bot_id === botB);
@@ -1365,9 +1428,15 @@ async function main() {
       }, 30000);
       recallB && recallB.count === 0
         ? ok("E2E GP-112：切到 Bot B 后 recall 命中 0 条（另一个 Bot 的上下文不可见）")
-        : bad("E2E GP-112 isolation", JSON.stringify(recallB).slice(0, 200) + " 现场：" + recallDiag());
+        : bad(
+            "E2E GP-112 isolation",
+            (await switchNote(switchB)) +
+              " " + recallRowsNote(memKey) +
+              " got=" + JSON.stringify(recallB).slice(0, 60) +
+              " tail=" + recallDiag().slice(0, 40),
+          );
 
-      await openBot(botA);
+      const switchA2 = await openBot(botA);
       await send(`recall ${memKey}`);
       const recallA = await waitFor(() => {
         const rows = recallsOf(memKey).filter((r) => r.bot_id === botA);
@@ -1376,7 +1445,13 @@ async function main() {
       recallA && recallA.count >= 1 &&
         (recallA.entries || []).some((e) => e.key === memKey && e.value === "blue")
         ? ok("E2E GP-111：切回 Bot A 仍 recall 到同一条偏好（跨会话一致）")
-        : bad("E2E GP-111 cross-session recall", JSON.stringify(recallA).slice(0, 200) + " 现场：" + recallDiag());
+        : bad(
+            "E2E GP-111 cross-session recall",
+            (await switchNote(switchA2)) +
+              " " + recallRowsNote(memKey) +
+              " got=" + JSON.stringify(recallA).slice(0, 60) +
+              " tail=" + recallDiag().slice(0, 40),
+          );
 
       const storeAfter = (() => {
         try {
