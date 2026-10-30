@@ -2785,3 +2785,15 @@ if (primary) updateBotPill(primary.name, primary.id, primary.avatar_data_url);
   `cc26876` 上复现出来的，不冒充「CI 的失败原因已确认」。
 - 胶囊现在只保证「点开谁就显示谁，重绘不再抢」，没有做「多窗口/多会话各自
   独立标题」；那是另一个形状的需求，没在本轮范围。
+
+**⑥ 修完这一版在 CI 上也绿了。** 推上 `86134ea` 后 Actions 自动跑：
+
+| 项 | 值 |
+| --- | --- |
+| run id | `41001215575`（head=`86134ea`） |
+| 结果 | **completed / success** |
+| 「Run full parity matrix」 | **success**（`Show red lines` skipped —— 只有失败才跑） |
+
+同一条命令在本机是 **441/0**，与 §8.42 的第一次 CI 绿一致。上一版 `cc26876` 的
+CI 失败（run `40996522403`）与本机复现到的 439/2 是同一形状：G-16 里的 GP-112
+与 G-20 的静态签名。日志仍然只有 admin 能下，**逐项 `PASS=` 计数没有读到**。
