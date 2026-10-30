@@ -78,13 +78,13 @@ for f in agent_loop_ffi.js agent_loop_product_wire.js agent_loop_stream_stub.js 
          host_approval_gate.js host_ffi.js p0_security.js room_context.js \
          room_dispatch.js room_discretion.js room_runtime.js run_moon_turn.js \
          tool_policy.js turn_progress.js box_main.js routine_scheduler.js product_surface_ref.js machine_identity.js \
-         desktop_pairing.js lan_candidates.js machine_presence.js kernel_server.js event_log.js; do
+         desktop_pairing.js lan_candidates.js machine_presence.js kernel_server.js event_log.js event_mirror.js; do
   [[ -f "$ROOT/hosts/shared/$f" ]] || { echo "missing shared file: $f" >&2; exit 1; }
   cp -f "$ROOT/hosts/shared/$f" "$OUT/shared/$f"
 done
 
 # --- root/ : what the Host looks up one level up (flat bundle) ------------
-for f in product_surface.js room_orchestrator.js secret_protocol.js progress_protocol.js; do
+for f in product_surface.js room_orchestrator.js secret_protocol.js progress_protocol.js event_mirror_ref.js; do
   [[ -f "$ROOT/hosts/desktop/$f" ]] || { echo "missing desktop file: $f" >&2; exit 1; }
   cp -f "$ROOT/hosts/desktop/$f" "$OUT/$f"
 done
@@ -102,6 +102,14 @@ cd "$BOX"
 exec node "$BOX/shared/box_main.js"
 SH
 chmod +x "$OUT/start.sh"
+
+# --- 包内 require 自检 ----------------------------------------------------
+# 上面那张允许清单是「人工同步」的：product_surface.js 加了一个
+# require("../shared/event_mirror")，清单没跟着加，包照样打完，但 Box 一开机
+# 构造 product surface 就抛 Cannot find module —— 手机拉待批只能拿到 503
+# approval_queue_unavailable（GP-184 就是这么撞上的）。所以打包收尾把包内每个
+# .js 的相对 require 逐个解析一遍：缺文件当场红，别让半台 Box 出厂。
+node "$ROOT/scripts/check_box_requires.js" "$OUT"
 
 # --- manifest -------------------------------------------------------------
 cat >"$OUT/manifest.json" <<EOF

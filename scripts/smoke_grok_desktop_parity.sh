@@ -2445,6 +2445,18 @@ for gp169_a in "P-01 真入口的 require 闭包全在打包清单里" \
                "P-04 这次补上的三个模块在清单里（回归锚）"; do
   if grep -q "✓ $gp169_a" /tmp/gp169-closure.log; then ok "G-57 锚点：$gp169_a"; else bad "G-57 锚点没跑绿：$gp169_a"; fi
 done
+# GP-184 的两条新锚：尺子的视力（P-05）与这条链的三个名字（P-06）。
+# 文案里带本轮实测的边数，所以按前缀锚，不逐字比数字。
+if grep -q "✓ P-05 闭包真的走跨目录边" /tmp/gp169-closure.log; then
+  ok "G-57 锚点：P-05 尺子确实走通了 \`../…\` 的边（$(grep -m1 -o '`\.\./…` 拼法走通 [0-9]* 条' /tmp/gp169-closure.log)）——老视力只认 ./x，T1-03 那次漏拷就是从它眼皮底下过去的"
+else
+  bad "G-57 锚点没跑绿：P-05（闭包退回只看 ./x，../shared/… 的漏拷看不见）"
+fi
+if grep -q "✓ P-06 GP-184 回归锚" /tmp/gp169-closure.log; then
+  ok "G-57 锚点：P-06 event_mirror / event_mirror_ref 三个名字各在其位"
+else
+  bad "G-57 锚点没跑绿：P-06（event_mirror 这条链的名字缺位）"
+fi
 # 注入对照：把三个名字从清单里全量摘掉，在同一把尺子的副本上重跑 —— 必须翻红；
 # 同一副本不改时也必须是绿，否则红是尺子坏而不是清单坏。
 rm -rf /tmp/g57mut && mkdir -p /tmp/g57mut/scripts /tmp/g57mut/hosts
@@ -2473,6 +2485,15 @@ if timeout 900 node scripts/prove_box_routine_sweep.js >/tmp/gp169-sweep.log 2>&
 else
   bad "G-57 真 Box 取证未通过（见 /tmp/gp169-sweep.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-sweep.log || tail -3 /tmp/gp169-sweep.log | tr '\n' ' ')）"
 fi
+# 打包那步的 require 自检要在取证日志里点名（pack-box.sh 收尾跑的
+# scripts/check_box_requires.js）：它判的是「打出来的包里，每个 require 簇至少
+# 一条候选指得到文件」——清单漏拷与「平铺包里写了 dev 专用的 ../shared/…」都在这
+# 里现形，而闭包尺子（P-01/P-05）看的是源。缺这一行 = 尺子没跑，不算绿。
+if grep -q "require 自检通过" /tmp/gp169-sweep.log; then
+  ok "G-57 打包 require 自检真跑了：$(grep -m1 -o '[0-9]* 个 .js、[0-9]* 个 require 簇' /tmp/gp169-sweep.log)，每簇至少一条指得到文件"
+else
+  bad "G-57 打包 require 自检没在取证日志里出现（pack-box.sh 里那步被摘掉了？SKIP ≠ PASS）"
+fi
 
 echo "== G-61 事件日志底座（T1-01/T1-02 · docs/events.md）=="
 # 状态从 JSON 快照迁到「可续订的日志」的前提是：seq 由存储层分配、幂等键去重、
@@ -2494,10 +2515,70 @@ if node -e "require('node:sqlite')" 2>/dev/null; then
   echo "  · G-61 负向对照（本轮实测，断言非恒真）：把 NEVER_PERSISTED 清空后同一道门"
   echo "    立刻 EL-05「本该抛错，却没有」翻红，汇总从 pass 10/fail 0 变 pass 7/fail 3；"
   echo "    还原后回到 10/0 —— delta 能落库就意味着状态不再只由 fold(events) 得到"
-  echo "  · G-61 残留（诚实）：T1-03 双写、T1-04 读切换、T1-06 单写者还没接上——"
+  echo "  · G-61 残留（诚实）：T1-04 读切换、T1-06 单写者还没接上（T1-03 双写由 G-62 盯）——"
   echo "    本门只证明「日志本身立得住」，不证明 product_surface 已经改读它"
 else
   echo "  · skip：本机 node 没有 node:sqlite，G-61 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-62 双写旁路（T1-03 · fold(events) 与 JSON 快照逐字段相等，docs/events.md §5.4）=="
+# AC-T1-3 的原句是「逐字段相等」，所以这把尺子不比事件总数：20 个真实写入点每走一步
+# 就把日志从头折一次、和磁盘上的三张面比；库里出现的每一类事件都要被真删并重放全部
+# 步骤（缺一类就有一步跟不上），无法认领的变化当场红。开关关掉时必须一个文件都不多。
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 600 node scripts/prove_event_dual_write.mjs > /tmp/g62-dualwrite.log 2>&1; then
+    ok "G-62 双写契约全绿（$(grep -c '^ok DW' /tmp/g62-dualwrite.log) 项，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g62-dualwrite.log)）"
+  else
+    bad "G-62 双写契约（见 /tmp/g62-dualwrite.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g62-dualwrite.log || tail -2 /tmp/g62-dualwrite.log | tr '\n' ' ')）"
+  fi
+  grep -q '^ok DW-02' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-03d' /tmp/g62-dualwrite.log \
+    && ok "G-62 逐步对拍与「零漏账」都在：$(grep -m1 -o '清单上 [0-9]* 步' /tmp/g62-dualwrite.log)每步都真改了快照，0 处变化没人认领" \
+    || bad "G-62 DW-02 / DW-03d 锚点缺失（逐步对拍或漏账断言没跑绿）"
+  grep -q '^ok DW-04z' /tmp/g62-dualwrite.log \
+    && ok "G-62 反向对照逐类真删在：$(grep -m1 -o '库里的 [0-9]* 类事件' /tmp/g62-dualwrite.log)删掉任何一类都有某一步 fold 跟不上（没有死词）" \
+    || bad "G-62 DW-04 锚点缺失（逐类反向对照没跑绿，DW-02 可能恒真）"
+  grep -q '^ok DW-05b' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-05c' /tmp/g62-dualwrite.log \
+    && ok "G-62 幂等的两条决定都在：同一处转换真发生两次库里就两行（不发 idem_key），内容没变的重复写一条不派" \
+    || bad "G-62 DW-05 锚点缺失（幂等口径没被断言）"
+  grep -q '^ok DW-06' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-01a' /tmp/g62-dualwrite.log \
+    && ok "G-62 两条「不改行为」都在：开关关掉一个 .sqlite 都不留；镜像开库失败时快照照常落盘且失败被说人话" \
+    || bad "G-62 DW-01a / DW-06 锚点缺失（旁路的隔离性没被断言）"
+  # DW-10：本门跑在有 node:sqlite 的 Node 上，看不见 Electron 里那颗 Node 20 的事实；
+  # 接线第一天正是这件事把主进程打死（G-16 往后所有 Electron 门一起红）。
+  grep -q '^ok DW-10a' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-10b' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-10z' /tmp/g62-dualwrite.log \
+    && ok "G-62 老运行时三条都在：伪装成没有 node:sqlite 后，开关关着零加载零输出照常落盘、开着说一句「已降级为不写」，且对照证明伪装真生效" \
+    || bad "G-62 DW-10 锚点缺失（没有 node:sqlite 的运行时能不能启动没被断言）"
+  echo "  · G-62 与 Electron 的分工：DW-10 用 Module._load 伪装老运行时（机制），真开机由 G-16/G-46 的 Electron 门盯（产物）"
+  echo "  · G-62 实测（本轮日志，不是设计意图）：$(grep -m1 -o '[0-9]* 条事件、seq 严格递增[^（]*' /tmp/g62-dualwrite.log)；kind 账 $(grep -m1 -o 'approval_decided=[0-9]*.*session_created=[0-9]*' /tmp/g62-dualwrite.log)"
+  # 注入对照：把 diffStore 里那条 entity_order_changed 的派出摘掉（sessions.create 是
+  # unshift，顺序没人记 = fold 必然和快照分道），同一道门必须指名 DW 翻红。
+  rm -f /tmp/g62-mut.log /tmp/g62-clean.log
+  cp -f hosts/shared/event_mirror.js /tmp/g62-target.bak
+  node -e '
+const fs=require("fs");
+const p="hosts/shared/event_mirror.js";
+const src=fs.readFileSync(p,"utf8");
+const hit="events.push({ kind: \"entity_order_changed\", sessionId: \"system\", payload: { surface, ids: actualOrder } });";
+if(!src.includes(hit)){console.error("event_mirror.js 里找不到 entity_order_changed 那条派出（注入的输入不对）");process.exit(3);}
+fs.writeFileSync(p,src.split(hit).join("void actualOrder; /* G-62 注入：顺序没人认领 */"));
+' && timeout 600 node scripts/prove_event_dual_write.mjs >/tmp/g62-mut.log 2>&1
+  g62_caught=0
+  grep -q '^FAIL DW-' /tmp/g62-mut.log && g62_caught=1
+  cp -f /tmp/g62-target.bak hosts/shared/event_mirror.js
+  timeout 600 node scripts/prove_event_dual_write.mjs >/tmp/g62-clean.log 2>&1 && grep -q 'FAIL=0' /tmp/g62-clean.log || g62_caught=0
+  cmp -s /tmp/g62-target.bak hosts/shared/event_mirror.js || g62_caught=0
+  [ "$g62_caught" = "1" ] && ok "G-62 注入对照：摘掉 entity_order_changed 的派出就翻红（顺序没人认领），恢复后仍绿且文件逐字还原" \
+    || bad "G-62 注入对照没成立（见 /tmp/g62-mut.log /tmp/g62-clean.log）"
+  echo "  · G-62 残留（诚实）：双写证明的是「日志记得下今天的 JSON」，不证明产品已改读它"
+  echo "    （T1-04）、不再写 JSON（T1-05）、或同会话单写者（T1-06）；approvals.log.jsonl"
+  echo "    与 bots/settings/routines 都不在这三张面里（docs/events.md §7）。"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-62 未跑（SKIP ≠ PASS）"
 fi
 
 echo "== G-58 常驻内核进程（T1-07 · 一行请求换一回合，替代每轮 spawn）=="

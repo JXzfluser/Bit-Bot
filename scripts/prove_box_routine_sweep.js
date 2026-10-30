@@ -110,11 +110,22 @@ async function waitFor(fn, ms, step) {
 
   console.log("[gate] packing the box…");
   try {
-    execFileSync("bash", [path.join(ROOT, "scripts", "pack-box.sh"), "--out", boxDir, "--profile", "debug"], {
-      cwd: ROOT,
-      stdio: "pipe",
-      env: { ...process.env, PATH: `${process.env.HOME || ""}/.moon/bin:${process.env.PATH || ""}` },
-    });
+    const packOut = String(
+      execFileSync("bash", [path.join(ROOT, "scripts", "pack-box.sh"), "--out", boxDir, "--profile", "debug"], {
+        cwd: ROOT,
+        stdio: "pipe",
+        env: { ...process.env, PATH: `${process.env.HOME || ""}/.moon/bin:${process.env.PATH || ""}` },
+      }),
+    );
+    // 打包那步的 require 自检要在这里点名：GP-184 之后它挡的是「清单漏拷 /
+    // 平铺布局里写了 dev 专用路径」这一类「包打得出来但开机缺一块」的破损。
+    const reqLine = packOut.split("\n").find((l) => l.includes("require 自检"));
+    if (!reqLine) {
+      console.error("[gate] pack-box.sh 的输出里没有 require 自检那行（尺子没跑，不算绿）");
+      fail += 1;
+    } else {
+      console.log("[gate] " + reqLine.replace(/^\[pack-box\]\s*/, ""));
+    }
   } catch (e) {
     console.error("[gate] pack-box.sh failed: " + String((e && e.stdout) || e));
     console.log("prove_box_routine_sweep pass=" + pass + " fail=" + (fail + 1));

@@ -103,7 +103,8 @@ command 不是独立的表——它被受理时表现为一条对应的 event（
 
 ### 5.2 event（14）
 
-`kind` 全集如下；除 `session_created` / `presence_changed` 外都必须带 `turn_id`。
+`kind` 全集如下；除 `session_created` / `presence_changed` 外都必须带 `turn_id`
+（这句只约束**回合事件**：§5.4 的镜像 kind 不是回合产物，一律不带 `turn_id`）。
 
 | # | kind | 必带 payload | 说明 |
 |---|---|---|---|
@@ -131,6 +132,66 @@ token 增量既大又无长期价值（评审 §8-5「不持久化 token 增量�
 **内存的 in-flight 缓冲**，随 `message_committed` 一起被替换掉；缓冲有容量上限，
 超限即截断为「已回退到完整消息」，客户端此时靠 `message_committed` 纠正显示。
 
+### 5.4 镜像 kind（T1-03 双写旁路，新增 8 个 / 复用 4 个）
+
+§5.2 是**回合流**词表，回答「刚刚发生了什么」；AC-T1-3 要的是另一件事——
+`fold(events)` 必须等于磁盘上的 JSON 快照，也就是**快照里每一处状态都得有人认领**。
+两边有交集但不够：快照里有 `active_id`、有列表顺序、有无 `id` 的 transcript 行、
+有 `rename` 改掉的标题，这些在 14 个 kind 里都没有归宿。本节把缺口补齐，
+并规定它们的写法——**这份表是唯一真源，`hosts/shared/event_mirror.js` 只是它的实现，
+任何调用点不得再自造 kind**。
+
+四条共同规则：
+
+1. `surface` 只允许 `sessions` / `rooms` / `approvals` 三个字面量（§7 的三类，不多不少）。
+2. `session_id` 归属：**实体级**事件（讲某个会话/某条审批自己）用该实体的 id；
+   **store 级**事件（激活项、列表顺序、顶层字段）用保留值 `"system"`。
+   把 `active_id == ""` 这种值直接当 `session_id` 送进日志是要命的——适配器按
+   「需要 sessionId」拒收，异常一被咽下，同批剩下的事件会一起丢，日志与快照从此
+   分道还一声不吭（`product_surface.js:486` 那条绕过 store 的级联就造得出这个形状）。
+3. **镜像事件不发 `idem_key`**。§4 的幂等是给 command 侧（重复投递）用的；镜像是
+   「这次落盘让快照怎么变了」的记录，同一处状态转换真发生两次（激活 A→B→A）
+   就必须落两行。按内容哈希发键会把第二、三次当成重复吞掉，`fold` 折回来的
+   `active_id` 因此停在旧值上——那是**假的去重、真的丢信息**。镜像的幂等落在
+   diff 上：`prev` 每次从盘上重读，内容没变的重复写自然得出空 delta。
+4. **旁路不得进主进程的启动路径**。「默认关」的严格版本是：开关没开时连
+   `event_log` 都不许被 require——它在没有 `node:sqlite` 的运行时里**加载即抛**，
+   而 Electron 33 里那颗 Node 是 20.18.3（接线第一天就是被这一次 require 打死整个
+   桌面端启动的）。运行时撑不起来时 `getSharedMirror()` 返回一个接口相同、
+   一个字都不写的替身：开关关着完全静默，开着打印一行「已降级为不写」。
+   机制由 `DW-10a/b/z` 盯（含「伪装确实生效」的对照），真开机由 G-16/G-46 的
+   Electron 门盯。
+
+| kind | 必带 payload | `session_id` | 认领的快照变化 |
+|---|---|---|---|
+| `session_created`（复用 §5.2 #1） | `surface, session{}` | 实体 id | 新实体诞生，`session{}` 带**当时**的整条列表 |
+| `message_committed`（复用 #5） | `message{}` | 实体 id | 列表尾部新增一行 |
+| `approval_requested`（复用 #6） | `approval{}` | 审批 id | `pending-approvals.jsonl` 新增一条 |
+| `approval_decided`（复用 #7） | `approval_id, decision` | 审批 id | 那条审批的 `decision` 字段出现（`scope`/`by` 属回合侧，镜像不造） |
+| `message_updated` | `message_id, fields, removed[]` | 实体 id | **有 id** 的行被就地改（`react` 改 `reactions`、字段消失） |
+| `message_removed` | `message_id` | 实体 id | **有 id** 的行被删除（非队首） |
+| `history_pruned` | `count` | 实体 id | 队首连续丢弃 `count` 行——`rooms.transcript` 的 200 上限就是它 |
+| `entity_state_changed` | `surface, entity_id, fields, removed[]` | 实体 id | 实体的非列表字段变了（标题、成员、`library`…） |
+| `entity_removed` | `surface, entity_id` | 实体 id | 实体消失（`sessions.remove`、级联删） |
+| `entity_activated` | `surface, active_id` | `"system"` | `sessions.active_id` 换了人或归零 |
+| `entity_order_changed` | `surface, ids[]` | `"system"` | 列表**顺序**变了（`sessions.create` 是 `unshift`，新会话排最前，而 fold 只会往尾上加） |
+| `store_state_changed` | `surface, fields, removed[]` | `"system"` | store 顶层冒出/消失一个字段（今天的写入点碰不到它，它是明天新增字段的兜底网，由 DW-09 单独证明它真的能用） |
+
+两个形状约定，是这把尺子最硬的地方：
+
+- **列表按 id 有无分两条路**。`sessions.messages` 每行有 `id`，所以逐行点名
+  （新增 / 改 / 删 / 队首裁剪）；`rooms.transcript` 的行**没有** `id`，只认
+  「队首丢弃 k 行 + 队尾追加」这一个形状——那正是 `appendRoomTranscript` 的 200
+  上限做的事。其它形状（中间删一行、就地改写某行）镜像**不猜**，记成
+  「没人认领」并当场红。
+- **不认领 = 红，不是静默跳过**。折叠器遇到不认识的 kind 必须产出 anomaly
+  （DW-07），镜像遇到无法点名的变化必须计数并打印（DW-03d）。「当没看见」
+  在这套词表里是不存在的选项。
+
+这 12 类 kind 与三张面的对拍由 `scripts/prove_event_dual_write.mjs` 逐条盯着：
+每个写入点走完就把日志从头折一遍和磁盘比（DW-02），且**库里出现的每一类**
+事件都被真删后重放全部步骤（DW-04）——删了没反应的那类就是死词，门会红。
+
 ## 6. 单写者（T1-FR2）
 
 每个 `session_id` 同一时刻只有一个 actor 能追加。actor 身份 = `machine_id`（由
@@ -145,6 +206,11 @@ actor 串行化，因此「seq 会话内稠密」不需要额外锁——**串�
 「每会话单写者」只会造出一个假的 system 会话。相应地，今天的
 `bitbot:bots-changed` / `settings-changed` / `routines-changed` 三个广播在
 本轮保持为广播，等 T3 的 core schema 落地后再决定是否需要全局流。
+
+T1-03 的双写旁路同样有边界，别把它读大：它只证明**日志记得下当前的 JSON 快照**
+（fold 与快照逐字段相等），不证明产品已经改读日志（T1-04）、不再写 JSON（T1-05）、
+也不证明同一会话只有一个写者（T1-06）。开关默认关，开着时快照的字节也和关掉时
+一样——这是「不改行为」的定义，由 DW-01 逐字段比结构盯着。
 
 ## 8. 现状 → 词表映射（供 T1-03 双写、T1-05 导入）
 
@@ -162,6 +228,25 @@ actor 串行化，因此「seq 会话内稠密」不需要额外锁——**串�
 | `machine_presence.js:261` 写 `data/machines/presence.json` | `presence_changed` |
 | `run_moon_turn.js:728` 写 `data/traces/<turn_id>.json` | 不迁入日志；trace 保持独立文件（体积与调试用途） |
 | `routine_scheduler.js` 到点触发 | 走 `user_message` 命令（`actor=scheduler`），不新增 kind |
+
+T1-03 的双写旁路（已落地）挂在三个收敛点上，kind 全部取 §5.4：
+
+| 写入点 | 镜像认领 |
+|---|---|
+| `sessions.js:65-70` `writeStore`（`load` 播种与 `save` 落盘都走它） | `sessions` 面：`session_created` / `message_committed` / `message_updated` / `message_removed` / `history_pruned` / `entity_state_changed` / `entity_removed` / `entity_activated` / `entity_order_changed` / `store_state_changed` |
+| `product_surface.js:49-57` `atomicWrite`（`rooms.json`、`pending-approvals.jsonl` 的唯一落盘口：tmp + rename） | `rooms` 面同上（transcript 走行无 id 的那条路）；`approvals` 面用 `approval_requested` / `approval_decided` / `entity_state_changed` / `entity_removed` |
+| `product_surface.js:68-74` `appendJsonl` | 同上——按「追加前后整份文件 diffs」认领，不按行猜 |
+
+`approvals.log.jsonl`（`product_surface.js:24,59-62`）**不在镜像范围**：它是审计流水，
+不是 §7 点名的三张面之一；`fold(approvals)` 的真源是 `pending-approvals.jsonl`。
+
+两个 host 文件取镜像都经 `hosts/desktop/event_mirror_ref.js`（先试 `../shared/event_mirror`，
+再试平铺包里的 `./shared/event_mirror`）。裸写 `../shared/…` 在仓库里对、在 **Box 的平铺包**里
+指到包外面去，于是开机构造 product surface 当场抛 MODULE_NOT_FOUND、被
+`product_surface_ref.js` 的 catch 咽成 `null`——用户侧只剩一句 503 `approval_queue_unavailable`
+（GP-184 撞的就是这条）。两头各有一把尺子：`prove_box_pack_closure.js` 的 P-01/P-05/P-06
+看源码到清单的闭包（含 `../…` 的边），`pack-box.sh` 收尾的 `scripts/check_box_requires.js`
+扫**打出来的包**里每个 require 簇是否至少有一条候选指得到文件。
 
 `bitbot:sessions-changed` / `rooms-changed` / `focus-session` 三个广播在新模型里
 **由 fold 派生**，不再是事件来源：客户端收到自己订阅的会话事件后自行重绘。
@@ -278,6 +363,6 @@ actor 串行化，因此「seq 会话内稠密」不需要额外锁——**串�
 |---|---|
 | AC-T1-1 群聊 3 Bot 进程创建=0 | T1-07 常驻进程；本文只保证 `send_room_message` 扇出成逐 bot 事件 |
 | AC-T1-2 重启后重复投递=0 | §4 `events_idem` 唯一索引 +「先落盘再 ack」 |
-| AC-T1-3 fold 与 JSON 快照逐字段相等 | §8 映射表就是导入与对拍的清单 |
+| AC-T1-3 fold 与 JSON 快照逐字段相等 | §8 映射表就是导入与对拍的清单；T1-03 的双写由 `scripts/prove_event_dual_write.mjs`（矩阵 G-62）逐字段盯着：20 个写入点每走一步就折一次比一次（DW-02），库里每一类事件都被真删并重放全部步骤（DW-04），没人认领的变化当场红（DW-03d） |
 | AC-T1-4 并发写无覆盖 | §6 单写者 |
 | AC-T1-6 A 令牌读不到 B 会话 | §6 actor 身份 + T1-10 令牌（令牌→session 绑定在 T1-10 定义） |

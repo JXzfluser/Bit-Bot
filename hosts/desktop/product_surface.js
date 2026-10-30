@@ -10,6 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const roomOrchestrator = require("./room_orchestrator");
+const eventMirror = require("./event_mirror_ref").loadEventMirror();
 
 function createProductSurface(repoRoot, opts = {}) {
   const REPO_ROOT = path.resolve(repoRoot);
@@ -40,11 +41,19 @@ function createProductSurface(repoRoot, opts = {}) {
   const roomBoard = roomOrchestrator.createRoomBoard(REPO_ROOT, { dataRoot: DATA_ROOT });
 
   // Atomic write helper: tmp + rename
+  /* T1-03 双写旁路：只有 sessions.json / rooms.json / pending-approvals.jsonl
+     这三个面会派事件，其它路径在 capture() 里就被过滤掉。默认关；开着时镜像
+     失败也只是少几条事件，rename 的结果一个字节都不变。 */
+  const mirror = () => eventMirror.getSharedMirror(DATA_ROOT);
+
   function atomicWrite(filePath, data) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const tmp = filePath + ".tmp." + Date.now();
+    const m = mirror();
+    const token = m.capture(filePath);
     fs.writeFileSync(tmp, data);
     fs.renameSync(tmp, filePath);
+    m.commit(filePath, token, data);
   }
 
   function readJson(filePath, fallback) {
@@ -58,7 +67,10 @@ function createProductSurface(repoRoot, opts = {}) {
 
   function appendJsonl(filePath, entry) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const m = mirror();
+    const token = m.capture(filePath);
     fs.appendFileSync(filePath, JSON.stringify(entry) + "\n");
+    m.commit(filePath, token, null);
   }
 
   function generateBotId() {

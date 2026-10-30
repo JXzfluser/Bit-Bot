@@ -2954,3 +2954,171 @@ G-58 那一段在 CI 日志里的逐字（`gh run download --name parity-matrix-
   几秒后又与 HEAD 一致 —— 我没有复现出是谁写的（两份内容现在都和 HEAD 相同，
   没有丢段落）。写下以免下次再看到时被当成我改的。
 
+## 8.47 双写旁路上线：一条 require 打死整个桌面端，和 Box 里那块没拷进去的文件（GP-184）
+
+**① 起点是上一节自己写下的那句「残留」。** G-61 的诚实行说「T1-04 读切换、T1-06 单写者
+还没接上」，而它前面那格（`docs/next-target-requirements.md:259`）是 T1-03：
+
+```
+| T1-03 | 双写旁路：现有写入点同时写 events（不改行为） | T1-02 | 1d | `fold(events)` 与 JSON 快照逐字段相等（sessions/rooms/approvals） |
+```
+
+于是这一轮做的是**旁路本身**：`hosts/shared/event_mirror.js`（镜像 + `foldEvents`）挂进
+三个收敛点（`sessions.js:65-70` 的 `writeStore`、`product_surface.js:49-57` 的 `atomicWrite`、
+`product_surface.js:68-74` 的 `appendJsonl`），词表写进 `docs/events.md` §5.4（新增 8 个 kind、
+复用 4 个），门是 `scripts/prove_event_dual_write.mjs`。**本机门 28 项全绿之后我跑了全量矩阵。**
+
+**② 矩阵从 G-16 起一起翻红：318 绿 / 25 红。** 逐字（`/tmp/matrix-t103.log`，我在 G-46 中段掐掉的）：
+
+```
+  ✗ G-16 E2E 冷启动+像素断言（见 /tmp/e2e-g16.log）
+  ✗ E2E 冷启动 — electron.launch: Target page, context or browser has been closed
+  ✗ G-46 e2e_desktop_quit（见 /tmp/g46-quit.log；e2e_desktop_quit: PASS=0 FAIL=1 SKIP=0）
+✗ fatal — electronApplication.firstWindow: Timeout 30000ms exceeded while waiting for event "window"
+    at /Users/zfl/Downloads/bitbot/scripts/e2e_desktop_quit.mjs:129:25
+```
+
+红的 7 个块（G-16 / G-24 / G-25 / G-26 / G-27 / G-28 / G-46）**全是会启动 Electron 的门**，
+G-47 之后还有四处也启动 Electron（矩阵的第 2117 / 2149 / 2257 / 2628 行），它们只是没跑到。
+
+**③ 根因是一条 require 链，而开关是关着的。**
+
+| 位置 | 干了什么 |
+| --- | --- |
+| `hosts/desktop/sessions.js:11`、`product_surface.js:13` | 顶层 `require("../shared/event_mirror")`（每个 host 进程加载时执行） |
+| `hosts/shared/event_mirror.js`（原第 26 行） | 顶层 `require("./event_log")` |
+| `hosts/shared/event_log.js:22-33` | 顶层 `require("node:sqlite")`，失败就 `throw new Error("event_log 需要内置 SQLite…")` —— **加载即抛** |
+
+Electron 里那颗 Node 没有这个内置模块，实测：
+
+```
+node 20.18.3
+sqlite MISSING
+```
+
+（`electron` 33.4.11，`hosts/desktop/package.json:121` 钉的是 `^33.2.0`。）
+也就是说：**`BITBOT_EVENT_DUAL_WRITE` 还没被读到，主进程已经在 require 阶段死了。**
+「默认关就不改行为」这条设计在语义上守住了，在**加载路径**上完全没守住。
+
+**④ 为什么 28 项门的绿是假的（对我的问题而言）。** `prove_event_dual_write.mjs` 跑在宿主
+Node v22.23.1 上，G-62 整块的 skip 条件也是 `node -e "require('node:sqlite')"` —— 它问的是
+**门禁自己的运行时**，不是**产品的运行时**。这两件事此前从没在同一道门上对齐过，
+所以本轮之前没人说过「产品在 Electron 里跑」。补上的正是这一格（DW-10，见 ⑥）。
+
+**⑤ 修法分两层，都不动产品行为。**
+
+- `event_mirror.js` 把库依赖压到真要开库的那一刻（`openEventLogLazy`，
+  `hosts/shared/event_mirror.js:29-35`），失败由 `handle()` 的 try/catch 咽下并降级；
+- `getSharedMirror()` 先探一次可用性（`isAvailable()`），运行时撑不起来就返回一个
+  **接口相同、一个字都不写**的替身（`createDisabledMirror`，同文件 `:706-733`）：
+  开关关着完全静默，开着打印一行「已降级为不写」。入口只有 `getSharedMirror` 一处，
+  两个 host 文件里各只有一行 `mirror()` 调用，没有第二份判断。
+
+真 Electron 里的实测（不是设计意图）：
+
+```
+available false | enabled false | stub true | capture null | commit false | eventsDir false
+[event-mirror] 已降级为不写：当前运行时没有内置 SQLite（node:sqlite，Node v20.18.3），而双写开关是开着的…
+```
+
+`node scripts/e2e_desktop_quit.mjs` 从 `PASS=0 FAIL=1` 回到 **8 / 0**。
+
+**⑥ 但这不等于能上线：矩阵继续跑到 G-57，真 Box 取证翻红。** `pass=8 fail=3`，逐字：
+
+```
+FAIL SW-6 手机拉得到待批项 503 {"ok":false,"error":"approval_queue_unavailable"}
+FAIL SW-6 清单里有那一条 {"ok":false,"error":"approval_queue_unavailable"}
+prove_box_routine_sweep crashed — TypeError: Cannot read properties of undefined (reading 'every')
+    at main (/Users/zfl/Downloads/bitbot/scripts/prove_box_routine_sweep.js:284:38)
+```
+
+三层各有一个洞，缺一不可见血：
+
+| 洞 | 事实 | 后果 |
+| --- | --- | --- |
+| 清单级 | `scripts/pack-box.sh:81` 那张手写 `shared/` 允许清单里没有 `event_mirror.js` | 包里少一个文件 |
+| **布局级** | Box 的包是**平铺**的（`hosts/desktop/product_surface.js` → `<包>/product_surface.js`），那句 `require("../shared/event_mirror")` 在包里指向 `<包>/../shared/…`，**在包外面** | 就算拷了文件也照样 MODULE_NOT_FOUND |
+| 说话级 | `hosts/shared/product_surface_ref.js` 原来是 `catch (_) { _cached = null; }` | surface 没起来，日志一个字没有，症状只剩 503 |
+
+修法：新增 `hosts/desktop/event_mirror_ref.js`（两条候选：`../shared/event_mirror` →
+`./shared/event_mirror`，与 `hosts/shared/host_ffi.js:26-30`、`product_surface_ref.js:23-33` 同一个手法），
+两个 host 文件都改走它；`pack-box.sh` 补 `event_mirror.js` 进 `shared/`、补
+`event_mirror_ref.js` 进包根清单；`product_surface_ref.js` 把咽掉的错误写成一行 stderr。
+
+**⑦ 给这三层各补一把尺子，并且都做了注入对照。**
+
+- `scripts/check_box_requires.js`（新）：扫**打出来的包**，把每个 `.js` 的相对 require
+  按 basename 聚成簇，判「簇内至少一条候选指得到文件」——只要求每条都指得到会误报
+  try-chain（实测 10 条里 9 条是合法候选），所以按簇判。`pack-box.sh` 收尾调用它，
+  红就 abort 打包。
+- `prove_box_pack_closure.js` 的 walker 从「只认 `./x`」升级成认 `../shared/x`、
+  `../desktop/x`、`../../hosts/…`、平铺的 `../x` 与 `./shared/x`（try-chain 的多条拼法
+  归一到同一个 `(kind,name)`，靠 `seen` 去重，所以不会把「三选一」误当成「三都得在」）。
+  加 P-05（尺子自己的视力：必须有来自 `../…` 的边走通）和 P-06（GP-184 三个名字各在其位）。
+
+| 注入对照 | 实测 |
+| --- | --- |
+| 把顶层 `require("./event_log")` 塞回 `event_mirror.js` | `FAIL DW-10a — 开关关着、运行时没有 node:sqlite，主进程链却起不来：event_log 需要内置 SQLite（node:sqlite）…` + `FAIL DW-10b` → `PASS=29 FAIL=2`，恢复后 **31 / 0** |
+| 从 `pack-box.sh` 清单里摘掉 `event_mirror.js` | `✗ P-01 … 缺：shared/event_mirror.js`、`✗ P-06 …` → `pass=5 fail=2` |
+| 把 `REQUIRES` 退回只看 `./x`（老视力） | `✓ P-01`（**照样绿**）、`✗ P-05 …（来自 \`../…\` 的 0 条）` → 这条正是 ⑥ 那天「闭包尺子绿着、包却是坏的」的形状 |
+| 在打好的包里删 `shared/event_mirror.js` | `[pack-box] 1 个 require 簇在包内指不到文件：event_mirror_ref.js → event_mirror（试了 ../shared/event_mirror / ../shared/event_mirror / ./shared/event_mirror）` |
+| 在打好的包里把 `event_mirror_ref` 换回裸 `../shared/event_mirror` | `· product_surface.js → event_mirror（试了 ../shared/event_mirror，包内都指不到）` rc=1 —— 布局级破损单独可抓 |
+
+`prove_box_routine_sweep.js` 现在还会点名打印打包那步的自检行，G-57 块加了对应锚
+（缺这一行 = 尺子没跑，不算绿）。
+
+**⑧ 回到 T1-03 本体：棘轮抓到的四个真 bug。** DW-02 那条「每步写入后 fold 必须等于快照」
+不是摆设，每一条都是先红过一次才知道的：
+
+| 现象 | 机制 | 落点 |
+| --- | --- | --- |
+| 激活 A→B→A 只落一行 | 镜像曾按 payload 内容哈希发 `idem_key`，第二次、第三次 A→A 的转换被当成重复吞掉，`fold` 折回来的 `active_id` 停在旧值 | 决定改成**镜像不发 `idem_key`**（§5.4 规则 3），幂等落在 diff 上；DW-05b/c 双向钉住 |
+| 一次 no-op 重写被报成「有行被改写」 | `diffList` 无 id 分支里 `tail === nh.length` 那条 problem 只在两份完全相同的列表上触发（`deleteBot` 级联会无条件 `saveRooms`） | 删掉那条分支，新增 `describeIdlessMismatch`（`event_mirror.js:189-199`）把「对不上在哪」说清楚；DW-03d 从红转绿 |
+| 一批事件静默消失 | `entity_activated` 曾把 `active_id`（删到空时是 `""`）当 `session_id` 送进适配器，被「需要 sessionId」拒收，异常咽下后**同批剩下的事件一起丢** | store 级事件一律用保留 id `"system"`（`event_mirror.js:335,339`），DW-09b 专门造这个形状 |
+| 顶层字段少了却不报错 | `changedScalars` 只看 `next` 的键，`removed` 那半边没人记，fold 把旧值留在原地 | `store_state_changed` 带 `removed[]`（`event_mirror.js:324-326,337-340`），DW-09 一冒一消都断言 |
+
+**⑨ 两条「假覆盖」也是同一把尺子逼出来的。** `rooms.roomLibraryAdd` 那一步原本传的参数
+根本写不进快照（`added:0`），清单上多算一步、DW-02 少考一步 → 新增 **DW-03e**：清单里每一步
+都必须真的改到快照，空步直接红。`DW-04` 原来只比最终态，于是「一个后来被删掉的会话」
+的当年事件对最终态毫无贡献，被误判成三个死词 → 改成**逐类真删 + 对全部 20 步按 seq 前缀
+整轮重放**（DW-04z），库里 11 类每类都能指到「第几步跟不上」。
+
+**⑩ 数字。**
+
+| 项 | 值 |
+| --- | --- |
+| `prove_event_dual_write.mjs` | 28 → **31 / 0**（DW-10a/b/z 三条是本轮加的） |
+| `prove_box_pack_closure.js` | 5 → **7 / 0**（P-05 视力 / P-06 名字；跨目录边实测 17 条） |
+| `prove_box_routine_sweep.js` | `pass=8 fail=3` → **18 / 0** |
+| G-57 块 | 8 项 → **10 项**（P-05 / P-06 / 打包 require 自检三个锚） |
+| G-62 块 | **PASS=31 / 0**，263 条事件、11 类 kind 逐个承重（矩阵逐字行见 `/tmp/matrix-t103c.log`） |
+| `e2e_desktop_quit.mjs` | `PASS=0 FAIL=1` → **8 / 0** |
+| 全量矩阵（本机 mac） | 中断那轮 318/**25** → 修 Electron 后 442/**1**（只剩 G-57）→ 修 Box 后 **446 / 0** |
+
+**⑪ 诚实边界。**
+
+- **DW-10 是伪装，不是真机**：它用 `Module._load` 把 `node:sqlite` 拦成 MODULE_NOT_FOUND，
+  跑在宿主 Node 22 上。真老运行时的开机证明在 G-16 / G-46 / G-59 那几道 Electron 门里，
+  两边缺一不可 —— ④ 说的正是只有前者会绿、只有后者会红的错配。
+  伪装生效由 DW-10z 自己断言（同一份 hook 下直接 `require("event_log")` 必须抛）。
+- **今天装机版跑不起双写**：产物里是 Electron 33（Node 20.18.3），没有 `node:sqlite`。
+  开关在装机版里开着也只会走 ⑤ 那行「已降级为不写」。要它真写库，得先让宿主运行时升到
+  内置 SQLite 的版本（`hosts/desktop/package.json:121` 现在钉 `^33.2.0`），或者换一个后端。
+  本轮刻意不为此改打包策略。
+- **可用性探测只看 `node:sqlite` 在不在**：如果哪天 `event_log` 因为**别的原因**加载即抛，
+  这条探测会一并判成「撑不起来」→ 静默降级（开关开着还有一行说明）。目前可接受，
+  但 T1-04 把读路径接上去之前要重新看这个口径。
+- **替身只装在 `getSharedMirror()` 这一个入口**：门里的夹具直接调 `createMirror()`，
+  在老运行时仍会走到 `handle()` 的「开库失败」那条。这是显式请求，刻意不改成替身。
+- `check_box_requires.js` 只判 require 簇，不判动态 `require(变量)`、不判 `import()`；
+  闭包尺子（P-01）的入口是写死的三个（`box_main.js` / `host_ffi.js` / `product_surface.js`），
+  入口选漏了照样看不见。两条都只覆盖 Box；桌面安装包（G-59）是整棵 `hosts/` 进 asar，
+  没有这张清单，因此也没有这类漂移。
+- **双写 ≠ 上线**：T1-03 证明的是「日志记得下今天的 JSON」，不证明产品已改读它（T1-04）、
+  不再写 JSON（T1-05）、或同会话单写者（T1-06）；`approvals.log.jsonl` 与
+  bots/settings/routines 不在这三张面里（`docs/events.md` §7）。
+- 本轮把 `product_surface_ref.js` 的静默 catch 改成一行 stderr：它让 ⑥ 从「只有 503」
+  变成「有 MODULE_NOT_FOUND 的名字」。这条改动没有被哪道门断言（只作为可读性），
+  如果哪天有人把它改回 `catch (_)`，G-57 仍然会红，但要重新靠 503 猜一次。
+
+
