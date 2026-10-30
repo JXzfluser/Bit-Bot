@@ -2905,11 +2905,32 @@ admin 的外部 run 不同），所以下面的 `·` 行是逐字摘录，不是
 workflow 里那步 `moon build --target native` 出的是 **debug** profile 的产物，
 而 G-58 只认 `_build/native/release/…`，于是两边各自绿着、合起来才是全覆盖 ——
 单看任何一份日志都会以为另一块也跑了。门禁本身是诚实的（`SKIP ≠ PASS` 写在文案里），
-断的是**覆盖面**，不是判定。补法是一行：把那步改成**同时**产 release
-（`moon build --target native` 之后再 `moon build --target native --release`），G-58
-就会在 CI 上落到 11 项。这条已经写进 `.github/workflows/desktop-parity.yml` 的「Build kernel (native)」步骤；本机可证的部分是「release 产物在 → G-58 跑并且
-11 项全绿」（今天这台 mac 就是这个状态），CI 那半边要等下一次 push 的 run 自证 ——
-在那之前，本报告不把「T1-07 在 CI 上绿」当成已成立。
+断的是**覆盖面**，不是判定。补法就是那两条命令（`moon build --target native --release`
+产 release 产物，紧跟一条 `ls _build/native/release/build/cmd/desktop_turn/desktop_turn*`
+当存在性断言）—— 产物不在就当场红，而不是让矩阵记一句 `·` 之后整体绿。
+
+**GP-183 的 CI 半边已自证（推上 `6e93e6b` 后自动跑的那轮）。**
+
+| 项 | 值 |
+| --- | --- |
+| run id | `41069037431`（head=`6e93e6b`，workflow `Desktop Parity Matrix`） |
+| 结果 | **completed / success**，`Run full parity matrix` 步骤 ✓，日志里 `✗` 计数 **0** |
+| 矩阵计数 | **`smoke_grok_desktop_parity: PASS=445 FAIL=0`** |
+| 与 ⑦ 那轮 439 的差 | 正好 **6 条** —— G-58 跑起来时走的是 2511/2517/2520/2524/2527/2531 这六个 `ok`，skip 分支只打一行 `·`（不计入）。439 + 6 = 445，差值能被门代码解释，不是我挑出来的数 |
+| 本机侧 | 同一份矩阵在 mac 上是 **436 / 0**（那边 G-47 的 APK 块仍是 skip），两平台合起来才是全绿 |
+
+G-58 那一段在 CI 日志里的逐字（`gh run download --name parity-matrix-log` 取到的
+`parity-matrix.log`，不是 `gh run view` 的步骤摘要）：
+
+```
+== G-58 常驻内核进程（T1-07 · 一行请求换一回合，替代每轮 spawn）==
+  ✓ G-58 常驻内核契约全绿（11 项，pass=11 fail=0）
+  ✓ G-58 反向对照 + 语义不变都在：关常驻 6 次 spawn，常驻侧 Host 侧 spawn=0；同一批 argv 两条路结果逐条相同
+  ✓ G-58 旧内核兼容锚点在：不认 --serve 的二进制被如实判成 not_serving，不是 crashed，也不挂死
+```
+
+原来那行 `· skip：没有 release 内核二进制…G-58 未跑（SKIP ≠ PASS）` 在这一轮里
+**已经不在日志里了**（全文 `grep -n "G-58 未跑"` 无命中），换成了上面的 11 项全绿。
 
 **⑨ 诚实边界。**
 

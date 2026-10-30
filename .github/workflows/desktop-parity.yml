@@ -69,7 +69,7 @@ jobs:
           moon build --target native
           # 矩阵 G-58（T1-07 常驻内核契约）只认 release 产物；只有 debug 时它会打
           # 「SKIP ≠ PASS」然后整块跳过 —— 也就是这条链在 CI 上从没被验证过
-          # （详见 docs/design/desktop-target/report.md §8.46 ⑨ 的逐字 skip 行）。
+          # （详见 docs/design/desktop-target/report.md §8.46 ⑧ 的逐字 skip 行）。
           moon build --target native --release
           # 这一步本身就是断言：产物不在就当场红，而不是让矩阵把 G-58 记成
           # 「SKIP ≠ PASS」后仍然整体绿 —— 覆盖面断了但状态是绿的，是最难发现的一种红。
