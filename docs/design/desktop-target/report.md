@@ -2602,21 +2602,36 @@ base_url 跟着走。改完门里不再有任何写死的 stub 端口。
   --prefix hosts/desktop` → 装 Xvfb → `xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh`；
 - 失败时打印 `✗` 行与日志尾部，无论成败都把矩阵日志上传成 artifact。
 
-**③ 本地能证的（不是「CI 已绿」）。**
+**③ 本地能证的（和 CI 互相不替代）。**
 
 - YAML 能解析，10 个 step；
 - workflow 里那条外层 `xvfb-run` 的调用形式和本机一致：拿 S-06 那道门按同一形式
   跑了一遍 **6/0**（门自己再包一层不会打架：DISPLAY 活着时它就不包）；
 - 矩阵本体在本机 **441/0**（§8.41 复跑）。
 
-**④ 不能证的（写在最前面，别让 workflow 文件冒充证据）。**
+**④ 第一次真跑（已观测，不是「应该会绿」）。**
 
-- GitHub Actions 上到底绿不绿，沙箱里看不到 Actions 页面 —— 我没有观测到任何一次
-  CI 运行。**提交这条 workflow ≠ CI 已绿。**
-- Android APK 段依赖 runner 上的 SDK / gradle / JDK；缺任一件时
-  `prove_android_build` 打 SKIP，矩阵按 skip 记（SKIP ≠ PASS）。
+推上 `a04adaf` 之后 Actions 自己跑了一次，用公开 API 轮询到的现场：
+
+| 项 | 值 |
+| --- | --- |
+| run id | `40989489921`（event=push，head=`a04adaf`） |
+| 结果 | **completed / success** |
+| 步骤 1–8 | Checkout、Host info、Setup Node、Install MoonBit、**Build kernel (native)**、npm ci、Install Xvfb 全 success |
+| 步骤 9 | **Run full parity matrix — success** |
+| 步骤 10 | `Show red lines (if any)` — skipped（只有失败才跑，跳过本身说明它没红） |
+| 步骤 11 | Upload matrix log — success |
+
+矩阵脚本 `[ "$FAIL" -eq 0 ]` 才退 0，所以「步骤 9 success」等价于 runner 上
+`FAIL=0` 且无 `✗`；同一条命令在本机是 441/0。两份环境、同一个数字。
+
+**⑤ 仍然不能证的。**
+
+- **具体 PASS 计数没读到**：job 日志的下载接口要仓库 admin 权限（403），
+  我拿到的是步骤级结论，不是日志里的 `PASS=441`。若要看逐项清单，得有人
+  在 Actions 页面下载 artifact `parity-matrix-log`。
+- Android APK 段依赖 runner 的 SDK / gradle / JDK；缺任一件时
+  `prove_android_build` 打 SKIP，矩阵按 skip 记（SKIP ≠ PASS）。这一段的实际
+  状态在日志里，我读不到，所以**不声称 APK 在 CI 上真编译过**。
 - macOS / Windows 的「装上、双击、能用」仍然没验；`desktop-macos.yml` 只打包。
-
-**⑤ 下一步（需要 Actions 权限的人）。** 在 Actions 里手动 dispatch 一次，
-贴回来的 `PASS=/FAIL=` 才是这条 workflow 的第一份真证据；若红，按日志里的
-`✗` 行定位，别再改 workflow 去凑绿。
+- 这次成功只覆盖 `a04adaf` 这一个提交；回退或后续改动是否仍绿，要看它自己那次 run。
