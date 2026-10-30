@@ -2870,7 +2870,7 @@ boot 门的 GP-108 断言是「点 Fire **之后**新增几份草稿」，启动
 | `node scripts/e2e_grok_desktop_boot.mjs`（修前） | G-16 红：GP-108 `n=4` |
 | 同上（修后） | **130 / 0**（GP-108 四条 + GP-109 两条都在） |
 | `node scripts/prove_repo_integrity.mjs` | **7 / 0**（I-00…I-05，含 56 个脚本全扫） |
-| 全量矩阵（修后） | **436 / 0**，exit=0，日志里无 `✗`；`· 收尾自清：夹具 Bot 2 条、夹具群 1 条` |
+| 全量矩阵（修后） | **436 / 0**，exit=0，日志里无 `✗`；`· 收尾自清：夹具 Bot 2 条、夹具群 1 条`（最终树重跑 `/tmp/matrix-gp183b.log`；中途一次 436/**2** 是我把 §8.46 标题改字触发的 RH-06/07，见 ⑨ 倒数第二条） |
 
 矩阵里对应那四条（`/tmp/matrix-final.log`，逐字）：
 
@@ -2881,7 +2881,37 @@ boot 门的 GP-108 断言是「点 Fire **之后**新增几份草稿」，启动
 ✓ G-60 注入对照（I-04）：把 BUILD_FLAGS 那条 + 惯用法改回裸展开就翻红、且指到 pack-box.sh 行号，恢复后仍绿
 ```
 
-**⑦ 诚实边界。**
+**⑦ 这一版在 CI（ubuntu runner）上也绿。** 推上 `59204d6` 后 Actions 自动跑同一份矩阵：
+
+| 项 | 值 |
+| --- | --- |
+| run id | `41062832802`（head=`59204d6`，workflow `Desktop Parity Matrix`） |
+| 结果 | **completed / success** |
+| 矩阵计数（CI 日志里摘到的汇总行） | **`smoke_grok_desktop_parity: PASS=439 FAIL=0`**，无 `✗` |
+| I-05 行为对照那半边 | 锚点在 CI 上同样绿：`✓ G-60 锚点：I-05 行为对照` —— runner 的 bash 是 5.x，走的是「4.4+ 要求两边都 0」那条分支，本机 3.2.57 走「裸展开必须 rc=1」那条，两平台各证一次 |
+
+这次的 CI 日志用 `gh run view --log` 读得到（本仓的 run，与 §8.45 里那个需要
+admin 的外部 run 不同），所以下面的 `·` 行是逐字摘录，不是推断。
+
+**⑧ GP-183：把两份日志逐条对差，抓到一条 CI 层的断点（与 §8.31 的 AE 门同型）。**
+本机 436 与 CI 439 差的不是「几条小项」，而是**两整块**：
+
+| 块 | 本机（mac） | CI（ubuntu） | 逐字的 skip 行 |
+| --- | --- | --- | --- |
+| G-47 APK 真编译 | **skip** | 跑（16 项全绿） | `· skip：prove_android_build: SKIP — 没装 Android SDK（ANDROID_HOME / local.properties sdk.dir 都没有）（SKIP ≠ PASS）` |
+| G-58 常驻内核（T1-07） | 跑（11 项全绿） | **skip** | `· skip：没有 release 内核二进制（_build/native/release/build/cmd/desktop_turn/desktop_turn.exe），G-58 未跑（SKIP ≠ PASS）` |
+
+也就是说：**T1-07 那条常驻内核契约（KR-01..KR-10）在 CI 上从来没跑过。**
+workflow 里那步 `moon build --target native` 出的是 **debug** profile 的产物，
+而 G-58 只认 `_build/native/release/…`，于是两边各自绿着、合起来才是全覆盖 ——
+单看任何一份日志都会以为另一块也跑了。门禁本身是诚实的（`SKIP ≠ PASS` 写在文案里），
+断的是**覆盖面**，不是判定。补法是一行：把那步改成**同时**产 release
+（`moon build --target native` 之后再 `moon build --target native --release`），G-58
+就会在 CI 上落到 11 项。这条已经写进 `.github/workflows/desktop-parity.yml` 的「Build kernel (native)」步骤；本机可证的部分是「release 产物在 → G-58 跑并且
+11 项全绿」（今天这台 mac 就是这个状态），CI 那半边要等下一次 push 的 run 自证 ——
+在那之前，本报告不把「T1-07 在 CI 上绿」当成已成立。
+
+**⑨ 诚实边界。**
 
 - I-04 是**文本规则**，不是 shell 解析器：靠 `eval` 拼出来的命令名、`printf -v`
   间接起的数组、以及把 `=()` 写进注释/字符串又恰好同名的展开，都看不见。它只保证
@@ -2894,4 +2924,12 @@ boot 门的 GP-108 断言是「点 Fire **之后**新增几份草稿」，启动
   写法，宁可少报也不把存量全改一遍；新增的门禁请直接用 `+` 惯用法。
 - G-16 修的是**门禁环境**。GP-170「App 自己是唤醒源」这个产品行为没动，装机版启动
   仍会扫一次；如果哪天需求变成「启动扫描也要出现在草稿计数里」，这把尺子得跟着改。
+- 本轮自己踩了一次 RH-06/07：把 §8.46 的**标题**改字（想把 GP-183 也写进标题）后，
+  这两条立刻翻红 —— 它们拿 HEAD 的标题逐字比，「改标题」和「段落被吃掉」在这把尺子
+  里同形。已还原标题、GP-183 只在正文里标；代价是**已提交段落的标题从此不能改字**，
+  要改就得连门一起改。这一条是记录，不是绕过它的理由。
+- ⑦/⑧ 的 CI 数字来自 `gh run view --log`（本仓 run 可读）。矩阵跑动期间工作区里
+  短暂出现过 `docs/next-target-requirements.md`、`parity-gaps-next.md` 的 `M` 状态、
+  几秒后又与 HEAD 一致 —— 我没有复现出是谁写的（两份内容现在都和 HEAD 相同，
+  没有丢段落）。写下以免下次再看到时被当成我改的。
 
