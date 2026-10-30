@@ -2442,30 +2442,30 @@ else
   bad "G-57 真 Box 取证未通过（见 /tmp/gp169-sweep.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-sweep.log || tail -3 /tmp/gp169-sweep.log | tr '\n' ' ')）"
 fi
 
-echo "== G-57 事件日志底座（T1-01/T1-02 · docs/events.md）=="
+echo "== G-61 事件日志底座（T1-01/T1-02 · docs/events.md）=="
 # 状态从 JSON 快照迁到「可续订的日志」的前提是：seq 由存储层分配、幂等键去重、
 # 崩溃不丢、delta 永不落库。这些是纯 Node（node:sqlite）的断言，不需要显示环境。
 if node -e "require('node:sqlite')" 2>/dev/null; then
-  if timeout 300 node scripts/prove_event_log.mjs > /tmp/g57-eventlog.log 2>&1; then
-    ok "G-57 事件日志契约全绿（$(grep -c '^ok EL' /tmp/g57-eventlog.log) 项，$(tail -2 /tmp/g57-eventlog.log | head -1)）"
+  if timeout 300 node scripts/prove_event_log.mjs > /tmp/g61-eventlog.log 2>&1; then
+    ok "G-61 事件日志契约全绿（$(grep -c '^ok EL' /tmp/g61-eventlog.log) 项，$(grep -m1 -o 'pass [0-9]* / fail [0-9]*' /tmp/g61-eventlog.log || tail -2 /tmp/g61-eventlog.log | head -1)）"
   else
-    bad "G-57 事件日志契约（见 /tmp/g57-eventlog.log；$(tail -2 /tmp/g57-eventlog.log | head -1)）"
+    bad "G-61 事件日志契约（见 /tmp/g61-eventlog.log；$(grep -m1 -o 'pass [0-9]* / fail [0-9]*' /tmp/g61-eventlog.log || tail -2 /tmp/g61-eventlog.log | head -1)）"
   fi
-  grep -q '^ok EL-04' /tmp/g57-eventlog.log \
-    && grep -q '^ok EL-07' /tmp/g57-eventlog.log \
-    && ok "G-57 幂等与崩溃两头的锚点在：重复投递读回原 seq、kill -9 之后已提交事件仍可读" \
-    || bad "G-57 idempotence / crash anchors missing"
-  grep -q '^ok EL-05' /tmp/g57-eventlog.log \
-    && grep -q '^ok EL-09' /tmp/g57-eventlog.log \
-    && ok "G-57 两条「拒绝」都在：delta 不进事件表、比读侧新的库拒绝打开" \
-    || bad "G-57 delta / version anchors missing"
-  echo "  · G-57 负向对照（本轮实测，断言非恒真）：把 NEVER_PERSISTED 清空后同一道门"
+  grep -q '^ok EL-04' /tmp/g61-eventlog.log \
+    && grep -q '^ok EL-07' /tmp/g61-eventlog.log \
+    && ok "G-61 幂等与崩溃两头的锚点在：重复投递读回原 seq、kill -9 之后已提交事件仍可读" \
+    || bad "G-61 idempotence / crash anchors missing"
+  grep -q '^ok EL-05' /tmp/g61-eventlog.log \
+    && grep -q '^ok EL-09' /tmp/g61-eventlog.log \
+    && ok "G-61 两条「拒绝」都在：delta 不进事件表、比读侧新的库拒绝打开" \
+    || bad "G-61 delta / version anchors missing"
+  echo "  · G-61 负向对照（本轮实测，断言非恒真）：把 NEVER_PERSISTED 清空后同一道门"
   echo "    立刻 EL-05「本该抛错，却没有」翻红，汇总从 pass 10/fail 0 变 pass 7/fail 3；"
   echo "    还原后回到 10/0 —— delta 能落库就意味着状态不再只由 fold(events) 得到"
-  echo "  · G-57 残留（诚实）：T1-03 双写、T1-04 读切换、T1-06 单写者还没接上——"
+  echo "  · G-61 残留（诚实）：T1-03 双写、T1-04 读切换、T1-06 单写者还没接上——"
   echo "    本门只证明「日志本身立得住」，不证明 product_surface 已经改读它"
 else
-  echo "  · skip：本机 node 没有 node:sqlite，G-57 未跑（SKIP ≠ PASS）"
+  echo "  · skip：本机 node 没有 node:sqlite，G-61 未跑（SKIP ≠ PASS）"
 fi
 
 echo "== G-58 常驻内核进程（T1-07 · 一行请求换一回合，替代每轮 spawn）=="
@@ -2476,9 +2476,9 @@ KR_LOG=/tmp/g58-kernel-resident.log
 KR_BIN=_build/native/release/build/cmd/desktop_turn/desktop_turn.exe
 if [ -x "$KR_BIN" ] || [ -x "${KR_BIN%.exe}" ]; then
   if timeout 480 node scripts/prove_kernel_resident.mjs >"$KR_LOG" 2>&1; then
-    ok "G-58 常驻内核契约全绿（$(grep -c '^ok KR' "$KR_LOG") 项，$(tail -2 "$KR_LOG" | head -1)）"
+    ok "G-58 常驻内核契约全绿（$(grep -c '^ok KR' "$KR_LOG") 项，$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' "$KR_LOG" || tail -2 "$KR_LOG" | head -1)）"
   else
-    bad "G-58 常驻内核契约（见 $KR_LOG；$(tail -2 "$KR_LOG" | head -1)）"
+    bad "G-58 常驻内核契约（见 $KR_LOG；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' "$KR_LOG" || tail -2 "$KR_LOG" | head -1)）"
   fi
   # 摘数用 grep -o 抓「key=数字」，不用 cut -c：CJK 按字节切会切成半个字。
   grep -q '^ok KR-04' "$KR_LOG" \
