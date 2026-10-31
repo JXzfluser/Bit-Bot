@@ -211,11 +211,16 @@ Cloud Agent 结果闭环、共享 Computer 跨 Bot 可见 + 关窗不中断、Au
 
 ---
 
-## 6. 需要你点头的一件事（它挡住第二批全部）
+## 6. 需要你点头的一件事（它挡住第二批全部）—— **已拍板：走路 A（2026-10-31）**
 
 `T1-04` 的完成定义要求「关闭双写后 smoke 全绿」，也就是产品改读事件日志。但今天装机运行时是
 **Electron 33 = Node 20.18.3，没有 `node:sqlite`**（本机实测 `sqlite MISSING`，`report.md` §8.47 ③/⑪）。
 把读切过去，等于让发布出去的产物从一份**它自己开不出来的库**里读数据。三条路：
+
+> **决议（2026-10-31，用户拍板）**：走路 A。`hosts/desktop/package.json` 已升
+> **Electron `^37.10.3`（内置 Node 22.21.1，`node:sqlite` 可用）**；boot 门 130/0，
+> sidebar_adapt / unread_summary / single_instance / room_orchestration 双版本对照
+> 无升级引入的回归（后两套在 33 上失败完全相同，属既有问题）。T1-04/T1-05 解锁。
 
 | 路 | 做法 | 代价 |
 |---|---|---|
