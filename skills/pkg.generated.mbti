@@ -220,7 +220,7 @@ pub(all) struct JobSearchReadonlyResult {
   query : String
   playbook_name : String
   readonly_ : Bool
-  hit_count : Int
+  hit_count : Int32
   snippets : Array[String]
 } derive(Eq, @debug.Debug)
 pub fn JobSearchReadonlyResult::equal(Self, Self) -> Bool
@@ -232,7 +232,7 @@ pub(all) struct ManagedCatalog {
 }
 pub fn ManagedCatalog::empty() -> Self
 pub fn ManagedCatalog::find(Self, String) -> ManagedSkill?
-pub fn ManagedCatalog::len(Self) -> Int
+pub fn ManagedCatalog::len(Self) -> Int32
 pub fn ManagedCatalog::list_names(Self) -> Array[String]
 pub fn ManagedCatalog::read_skill_md(Self, String) -> Result[String, String]
 pub fn ManagedCatalog::seed() -> Self
@@ -425,7 +425,7 @@ pub(all) struct SkillCatalog {
 pub fn SkillCatalog::empty() -> Self
 pub fn SkillCatalog::equal(Self, Self) -> Bool
 pub fn SkillCatalog::find(Self, SkillId) -> SkillMeta?
-pub fn SkillCatalog::len(Self) -> Int
+pub fn SkillCatalog::len(Self) -> Int32
 pub fn SkillCatalog::not_equal(Self, Self) -> Bool
 pub fn SkillCatalog::register(Self, SkillMeta) -> Unit
 pub fn SkillCatalog::to_repr(Self) -> @debug.Repr
@@ -436,7 +436,7 @@ pub(all) struct SkillContext {
 }
 pub fn SkillContext::contains(Self, String) -> Bool
 pub fn SkillContext::empty() -> Self
-pub fn SkillContext::loaded_count(Self) -> Int
+pub fn SkillContext::loaded_count(Self) -> Int32
 
 pub(all) struct SkillId {
   ns : String
@@ -493,7 +493,7 @@ pub(all) enum SkillSource {
 pub fn SkillSource::beats(Self, Self) -> Bool
 pub fn SkillSource::equal(Self, Self) -> Bool
 pub fn SkillSource::not_equal(Self, Self) -> Bool
-pub fn SkillSource::priority_rank(Self) -> Int
+pub fn SkillSource::priority_rank(Self) -> Int32
 pub fn SkillSource::to_repr(Self) -> @debug.Repr
 
 pub(all) struct SlidesExecutorContext {

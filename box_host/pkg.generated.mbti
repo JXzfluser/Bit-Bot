@@ -54,13 +54,13 @@ pub fn reject_non_shell_package_install(String) -> Result[Unit, String]
 // Types and methods
 pub(all) struct AuditSpan {
   tool_name : String
-  duration_ms : Int
+  duration_ms : Int32
   artifact_path : String?
   ok : Bool
   detail : String
 } derive(Eq, @debug.Debug)
 pub fn AuditSpan::equal(Self, Self) -> Bool
-pub fn AuditSpan::make(String, duration_ms? : Int, artifact_path? : String?, ok? : Bool, detail? : String) -> Self
+pub fn AuditSpan::make(String, duration_ms? : Int32, artifact_path? : String?, ok? : Bool, detail? : String) -> Self
 pub fn AuditSpan::not_equal(Self, Self) -> Bool
 pub fn AuditSpan::to_repr(Self) -> @debug.Repr
 
@@ -301,7 +301,7 @@ pub(all) struct HostAbi {
   jobs : Map[String, ShellJob]
   desktops : Map[String, DesktopSession]
   box_fs : BoxFs
-  mut next_job : Int
+  mut next_job : Int32
   effects : Array[String]
   session_jar : Map[String, String]
   mut software_installed : Bool
@@ -311,8 +311,8 @@ pub(all) struct HostAbi {
   ui_events : Array[HostUiEvent]
 }
 pub fn HostAbi::absorb_ui_events(Self, HostUiShell) -> Unit
-pub fn HostAbi::audit_span_count(Self) -> Int
-pub fn HostAbi::await_shell(Self, String, pattern? : String?, block_until_ms? : Int) -> Result[AwaitResult, String]
+pub fn HostAbi::audit_span_count(Self) -> Int32
+pub fn HostAbi::await_shell(Self, String, pattern? : String?, block_until_ms? : Int32) -> Result[AwaitResult, String]
 pub fn HostAbi::backend_kind(Self) -> String
 pub fn HostAbi::check_cross_agent_shared_box_charter(Self) -> SharedBoxCharterCheck
 pub fn HostAbi::date_aligned_with_user_tz(Self, user_iana? : String, mock_stamp? : String) -> BoxDateOutput
@@ -330,7 +330,7 @@ pub fn HostAbi::launch_browser(Self, BrowserLauncher) -> Result[BrowserLaunchRes
 pub fn HostAbi::live(LiveHostConfig) -> Self
 pub fn HostAbi::mark_software_installed(Self) -> Unit
 pub fn HostAbi::mock() -> Self
-pub fn HostAbi::read(Self, String, offset? : Int?, limit? : Int?) -> Result[ReadResult, String]
+pub fn HostAbi::read(Self, String, offset? : Int32?, limit? : Int32?) -> Result[ReadResult, String]
 pub fn HostAbi::read_box_doctor_log(Self) -> Result[String, String]
 pub fn HostAbi::read_image(Self, String) -> Result[ImageContent, String]
 pub fn HostAbi::record_audit(Self, AuditSpan) -> Unit
@@ -344,7 +344,7 @@ pub fn HostAbi::screenshot_live(Self, String) -> Result[ScreenshotResult, String
 pub fn HostAbi::seed_session_login(Self, domain~ : String, cookie~ : String) -> Unit
 pub fn HostAbi::session_jar_intact(Self, domain~ : String, expected_cookie~ : String) -> Bool
 pub fn HostAbi::shell(Self, ShellRequest) -> ShellResult
-pub fn HostAbi::ui_event_count(Self) -> Int
+pub fn HostAbi::ui_event_count(Self) -> Int32
 pub fn HostAbi::ui_open_settings(Self, HostUiShell, @ui_protocol.OpenSettingsIntent) -> Result[Unit, String]
 pub fn HostAbi::update_computer(Self, flow~ : UpdateComputerFlow?) -> Result[UpdateComputerResult, String]
 pub fn HostAbi::with_backend(HostBackend) -> Self
@@ -397,7 +397,7 @@ pub fn HostUiShell::cancel_update_computer(Self) -> Result[String, String]
 pub fn HostUiShell::confirm_delete_agent(Self, @ui_protocol.DeleteAgentIntent) -> Result[@ui_protocol.DeleteAgentIntent, String]
 pub fn HostUiShell::confirm_update_computer_step(Self) -> Result[String, String]
 pub fn HostUiShell::create_agent(Self, String) -> Result[Unit, String]
-pub fn HostUiShell::event_count(Self) -> Int
+pub fn HostUiShell::event_count(Self) -> Int32
 pub fn HostUiShell::for_backend(HostBackend) -> Self
 pub fn HostUiShell::is_live(Self) -> Bool
 pub fn HostUiShell::live() -> Self
@@ -422,7 +422,7 @@ pub(all) struct ImageContent {
   path : String
   mime : String
   visible : Bool
-  byte_len : Int
+  byte_len : Int32
   description : String
 } derive(Eq, @debug.Debug)
 pub fn ImageContent::equal(Self, Self) -> Bool
@@ -526,7 +526,7 @@ pub fn PackageManager::to_repr(Self) -> @debug.Repr
 pub(all) struct ReadResult {
   path : String
   text : String
-  line_count : Int
+  line_count : Int32
 } derive(Eq, @debug.Debug)
 pub fn ReadResult::equal(Self, Self) -> Bool
 pub fn ReadResult::not_equal(Self, Self) -> Bool
@@ -538,7 +538,7 @@ pub(all) struct ScreenshotResult {
   read_only : Bool
   clicked : Bool
   has_frame : Bool
-  frame_bytes_len : Int
+  frame_bytes_len : Int32
   display_id : String?
   frame_origin : FrameOrigin
   bytes_sha256 : String?
@@ -576,7 +576,7 @@ pub fn ShellJob::to_repr(Self) -> @debug.Repr
 pub(all) struct ShellRequest {
   command : String
   working_directory : String?
-  block_until_ms : Int
+  block_until_ms : Int32
   machine_id : String?
 } derive(Eq, @debug.Debug)
 pub fn ShellRequest::effective_cwd(Self, box_workspace? : String) -> String
@@ -605,11 +605,11 @@ pub fn ShellTarget::not_equal(Self, Self) -> Bool
 pub fn ShellTarget::to_repr(Self) -> @debug.Repr
 
 pub(all) struct UpdateComputerFlow {
-  mut confirm_steps : Int
+  mut confirm_steps : Int32
   prefer : ComputerLifecyclePrefer
   mut completed : Bool
 }
-pub fn UpdateComputerFlow::confirm_step(Self) -> Int
+pub fn UpdateComputerFlow::confirm_step(Self) -> Int32
 pub fn UpdateComputerFlow::guide_before_reset(Self) -> Bool
 pub fn UpdateComputerFlow::prefer_guide() -> Self
 pub fn UpdateComputerFlow::prefer_reset() -> Self

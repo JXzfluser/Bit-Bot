@@ -13,14 +13,14 @@ pub fn deliver_generated_chart(MediaHost, GeneratedChartArtifact) -> Result[@ui_
 
 pub fn deliver_generated_image(MediaHost, GeneratedImageArtifact) -> Result[@ui_protocol.AttachmentRef, String]
 
-pub fn extract_video_frames(video_path~ : String, max_frames? : Int) -> Result[Array[VideoFrame], String]
+pub fn extract_video_frames(video_path~ : String, max_frames? : Int32) -> Result[Array[VideoFrame], String]
 
 // Errors
 
 // Types and methods
 pub(all) struct ChartSeries {
   label : String
-  values : Array[Int]
+  values : Array[Int32]
 } derive(Eq, @debug.Debug)
 pub fn ChartSeries::equal(Self, Self) -> Bool
 pub fn ChartSeries::not_equal(Self, Self) -> Bool
@@ -95,9 +95,9 @@ pub fn VideoCompletionNotify::not_equal(Self, Self) -> Bool
 pub fn VideoCompletionNotify::to_repr(Self) -> @debug.Repr
 
 pub(all) struct VideoFrame {
-  index : Int
+  index : Int32
   caption : String
-  timestamp_ms : Int
+  timestamp_ms : Int32
 } derive(Eq, @debug.Debug)
 pub fn VideoFrame::equal(Self, Self) -> Bool
 pub fn VideoFrame::not_equal(Self, Self) -> Bool

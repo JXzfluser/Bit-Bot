@@ -35,8 +35,14 @@ jobs:
       # the source, downstream users read a contract that no longer exists.
       - name: moon info + interface drift gate
         run: |
+          moon version --all
           moon info
-          git diff --exit-code -- '*.mbti'
+          if ! git diff --exit-code -- '*.mbti'; then
+            echo "::error title=mbti-drift::.mbti 与源码不一致 —— 本地跑 moon info 并提交生成结果"
+            echo "若 diff 全部是 Int↔Int32：这是 moonc 版本的接口打印差异（0.10.16 起打印 Int32），"
+            echo "不是契约变更：moon info 后确认只有这两类行，再 moon test --target native，一起提交。"
+            exit 1
+          fi
 
       # The shipped kernel is the NATIVE build (cmd/desktop_turn/moon.pkg puts
       # the live agent loop in the native-only file, and the Host defaults to

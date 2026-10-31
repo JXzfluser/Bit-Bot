@@ -200,7 +200,11 @@ const AE04 = {
     ],
   },
   judge: ({ trace }) => [
-    chkEq("alias reached the host", execNames(trace)[0], "read"),
+    // 归一化发生在内核、发生在 exec 之前：宿主收到的是 canonical `Read`，
+    // 这样 `prove_tool_names` 要求的「注册表/审批清单/deny 清单/Host 路由都按
+    // 精确串匹配」才成立 —— 让 alias `read` 原样穿过宿主，等于给 camelCase/
+    // 小写拼写留一条绕过审批的路（moon-ci.yml「Tool name alias contract」）。
+    chkEq("alias normalized before host", execNames(trace)[0], "Read"),
     chkEq("tool executed once", execs(trace).length, 1),
     chkNotIncludes("not an unknown tool", allObservationText(trace), "unknown tool"),
     chkIncludes("real file body came back", allObservationText(trace), "alpha says hello"),

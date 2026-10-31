@@ -14,11 +14,11 @@ pub fn display_instant(String, TimeZone) -> String
 
 pub fn is_known_zone(String) -> Bool
 
-pub fn last_weekday_of_month(Int, Int, Int) -> Int
+pub fn last_weekday_of_month(Int32, Int32, Int32) -> Int32
 
 pub fn looks_like_secret(String) -> Bool
 
-pub fn nth_weekday_of_month(Int, Int, Int, Int) -> Int
+pub fn nth_weekday_of_month(Int32, Int32, Int32, Int32) -> Int32
 
 pub fn secret_shape_rows() -> Array[String]
 
@@ -26,25 +26,25 @@ pub fn tool_alias_rows() -> Array[String]
 
 pub fn tool_alias_table() -> Array[ToolAlias]
 
-pub fn zone_offset_minutes(String, CivilDate, Int) -> Int?
+pub fn zone_offset_minutes(String, CivilDate, Int32) -> Int32?
 
-pub fn zone_rule(String) -> (Int, DstRule)?
+pub fn zone_rule(String) -> (Int32, DstRule)?
 
 // Errors
 
 // Types and methods
 pub(all) struct CivilDate {
-  year : Int
-  month : Int
-  day : Int
+  year : Int32
+  month : Int32
+  day : Int32
 } derive(Eq, @debug.Debug)
-pub fn CivilDate::add_days(Self, Int) -> Self
-pub fn CivilDate::day_of_week(Self) -> Int
-pub fn CivilDate::days_in_month(Self) -> Int
+pub fn CivilDate::add_days(Self, Int32) -> Self
+pub fn CivilDate::day_of_week(Self) -> Int32
+pub fn CivilDate::days_in_month(Self) -> Int32
 pub fn CivilDate::equal(Self, Self) -> Bool
 pub fn CivilDate::from_epoch_days(Int64) -> Self
 pub fn CivilDate::is_leap_year(Self) -> Bool
-pub fn CivilDate::new(Int, Int, Int) -> Self
+pub fn CivilDate::new(Int32, Int32, Int32) -> Self
 pub fn CivilDate::not_equal(Self, Self) -> Bool
 pub fn CivilDate::to_epoch_days(Self) -> Int64
 pub fn CivilDate::to_repr(Self) -> @debug.Repr

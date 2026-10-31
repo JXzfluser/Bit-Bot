@@ -10,7 +10,7 @@ import {
 }
 
 // Values
-pub const DESKTOP_TURN_JSON_V : Int = 1
+pub const DESKTOP_TURN_JSON_V : Int32 = 1
 
 pub fn agent_context_aligned(@runtime.AgentContext, String) -> @runtime.AgentContext
 
@@ -118,8 +118,8 @@ pub(all) struct DesktopToolTraceRow {
   tool_name : String
   args_json : String
   result_snippet : String
-  duration_ms : Int
-  exit_code : Int
+  duration_ms : Int32
+  exit_code : Int32
   error : Bool
   timestamp : String
 } derive(Eq, @debug.Debug)
@@ -136,7 +136,7 @@ pub(all) struct DesktopTurnContext {
 pub fn DesktopTurnContext::default() -> Self
 
 pub(all) struct DesktopTurnResult {
-  v : Int
+  v : Int32
   ok : Bool
   turn_id : String
   intent : String
@@ -158,10 +158,10 @@ pub(all) struct DesktopTurnResult {
   agent_loop : Bool
   agent_entry : String
   agent_stop : String
-  agent_steps : Int
-  agent_llm : Int
-  agent_exec : Int
-  agent_approval : Int
+  agent_steps : Int32
+  agent_llm : Int32
+  agent_exec : Int32
+  agent_approval : Int32
   agent_traces : Array[DesktopToolTraceRow]
 } derive(Eq, @debug.Debug)
 pub fn DesktopTurnResult::to_json_line(Self) -> String
@@ -237,7 +237,7 @@ pub(all) enum TurnIntent {
   DeliverCloudArtifact(artifact~ : String, dest~ : String)
   ScheduleMeeting(title~ : String, when_desc~ : String)
   ShopRetail(url_or_host~ : String)
-  PurchaseItem(item~ : String, amount_cents~ : Int)
+  PurchaseItem(item~ : String, amount_cents~ : Int32)
   TravelBook(url_or_host~ : String)
   OrderFood(url_or_host~ : String)
   MeetingChat(body~ : String, direct~ : Bool)
@@ -271,7 +271,7 @@ pub(all) enum TurnIntent {
   MembersPanel(group_id~ : String)
   NotifySettings(assistant_id~ : String)
   SetNotify(assistant_id~ : String, toggle~ : String, enabled~ : Bool)
-  UpdateComputer(confirm_step~ : Int)
+  UpdateComputer(confirm_step~ : Int32)
   ResetComputer
   LocalExecution(enabled~ : Bool)
   GuidePermission(kind~ : String, detail~ : String)

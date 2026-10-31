@@ -10,11 +10,11 @@ import {
 }
 
 // Values
-pub const AGENT_CONTEXT_DEFAULT_KEEP_TURNS : Int = 4
+pub const AGENT_CONTEXT_DEFAULT_KEEP_TURNS : Int32 = 4
 
-pub const AGENT_CONTEXT_DEFAULT_TOKEN_BUDGET : Int = 24000
+pub const AGENT_CONTEXT_DEFAULT_TOKEN_BUDGET : Int32 = 24000
 
-pub const AGENT_LOOP_MAX_STEPS : Int = 64
+pub const AGENT_LOOP_MAX_STEPS : Int32 = 64
 
 pub const LOOP_PROVIDER_ERROR_MARKER : String = "provider_error:"
 
@@ -22,7 +22,7 @@ pub const LOOP_TOOL_DURATION_MARKER : String = "tool_duration_ms:"
 
 pub const LOOP_TOOL_ERROR_MARKER : String = "tool_error:"
 
-pub const STYLE_GUIDE_MAX_ACK_CHARS : Int = 120
+pub const STYLE_GUIDE_MAX_ACK_CHARS : Int32 = 120
 
 pub fn agent_context_key_tools() -> Array[String]
 
@@ -46,7 +46,7 @@ pub fn classify_tool_mutability(String) -> ToolMutability
 
 pub fn classify_tool_output(String, String) -> InstructionPolicy
 
-pub fn clip_text(String, Int) -> String
+pub fn clip_text(String, Int32) -> String
 
 pub fn decide_autonomy(AutonomyAction, in_delegated_scope~ : Bool) -> AutonomyDecision
 
@@ -60,9 +60,9 @@ pub fn envelope_text_body(@ui_protocol.SendEnvelope) -> String?
 
 pub fn escape_field(String) -> String
 
-pub fn estimate_tokens(String) -> Int
+pub fn estimate_tokens(String) -> Int32
 
-pub fn extract_exit_code(String) -> Int
+pub fn extract_exit_code(String) -> Int32
 
 pub fn find_json_array(String) -> String?
 
@@ -110,7 +110,7 @@ pub fn open_turn_from_inbound(turn_id~ : String, text~ : String, kind? : Inbound
 
 pub fn open_turn_stripping_cue(turn_id~ : String, text~ : String, kind? : InboundKind) -> (TurnContext, String)
 
-pub fn parse_int_or(String, Int) -> Int
+pub fn parse_int_or(String, Int32) -> Int32
 
 pub fn parse_todo_action(String) -> Result[TodoAction, String]
 
@@ -171,22 +171,22 @@ pub(all) struct AgentContext {
   mut summary : String
   mut todos : Array[TodoItem]
   mut traces : Array[AgentToolTrace]
-  mut budget_tokens : Int
-  mut keep_recent_turns : Int
+  mut budget_tokens : Int32
+  mut keep_recent_turns : Int32
   mut compacted : Bool
 } derive(Eq, @debug.Debug)
-pub fn AgentContext::append(Self, AgentRole, String, tool_name? : String, step? : Int, key? : Bool, call_id? : String, call_args? : String) -> Unit
-pub fn AgentContext::append_assistant(Self, String, step? : Int) -> Unit
-pub fn AgentContext::append_observation(Self, String, String, step? : Int, call_id? : String) -> Unit
-pub fn AgentContext::append_tool(Self, String, String, step? : Int, call_id? : String) -> Unit
-pub fn AgentContext::append_tool_call(Self, String, String, String, step? : Int) -> Unit
+pub fn AgentContext::append(Self, AgentRole, String, tool_name? : String, step? : Int32, key? : Bool, call_id? : String, call_args? : String) -> Unit
+pub fn AgentContext::append_assistant(Self, String, step? : Int32) -> Unit
+pub fn AgentContext::append_observation(Self, String, String, step? : Int32, call_id? : String) -> Unit
+pub fn AgentContext::append_tool(Self, String, String, step? : Int32, call_id? : String) -> Unit
+pub fn AgentContext::append_tool_call(Self, String, String, String, step? : Int32) -> Unit
 pub fn AgentContext::append_user(Self, String) -> Unit
 pub fn[S : AgentSummarizer] AgentContext::compact(Self, S) -> Bool
 pub fn AgentContext::decode(String) -> Self
-pub fn AgentContext::done_todo_count(Self) -> Int
+pub fn AgentContext::done_todo_count(Self) -> Int32
 pub fn AgentContext::encode(Self) -> String
 pub fn AgentContext::equal(Self, Self) -> Bool
-pub fn AgentContext::estimated_tokens(Self) -> Int
+pub fn AgentContext::estimated_tokens(Self) -> Int32
 pub fn AgentContext::lead_block(Self) -> String
 pub fn AgentContext::new(session_id~ : String) -> Self
 pub fn AgentContext::not_equal(Self, Self) -> Bool
@@ -196,15 +196,15 @@ pub fn AgentContext::record_trace(Self, AgentToolTrace) -> Unit
 pub fn AgentContext::session(Self) -> String
 pub fn AgentContext::set_todos(Self, Array[TodoItem]) -> Unit
 pub fn AgentContext::to_repr(Self) -> @debug.Repr
-pub fn AgentContext::turn_count(Self) -> Int
+pub fn AgentContext::turn_count(Self) -> Int32
 pub fn AgentContext::wire_messages(Self) -> Array[LoopMessage]
-pub fn AgentContext::with_budget(session_id~ : String, budget_tokens~ : Int, keep_recent_turns? : Int) -> Self
+pub fn AgentContext::with_budget(session_id~ : String, budget_tokens~ : Int32, keep_recent_turns? : Int32) -> Self
 
 pub(all) struct AgentHistoryEntry {
   role : AgentRole
   content : String
   tool_name : String
-  step : Int
+  step : Int32
   key : Bool
   call_id : String
   call_args : String
@@ -215,10 +215,10 @@ pub fn AgentHistoryEntry::to_repr(Self) -> @debug.Repr
 
 pub(all) struct AgentLoop {
   registry : ToolRegistry
-  max_steps : Int
+  max_steps : Int32
 }
 pub fn AgentLoop::boot(Self, TurnContext) -> String
-pub fn AgentLoop::effective_max_steps(Self) -> Int
+pub fn AgentLoop::effective_max_steps(Self) -> Int32
 pub fn AgentLoop::new(ToolRegistry) -> Self
 pub fn[H : AgentLoopHost] AgentLoop::run(Self, TurnContext, H) -> AgentRun
 pub fn[H : AgentLoopHost] AgentLoop::run_with(Self, TurnContext, H, AgentContext, policy? : LoopRetryPolicy, tool_policy? : ToolPolicy) -> AgentRun
@@ -240,11 +240,11 @@ pub fn AgentRole::wire(Self) -> String
 pub(all) struct AgentRun {
   turn_id : String
   stop : LoopStop
-  steps : Int
-  max_steps : Int
-  exec_count : Int
-  llm_count : Int
-  approval_count : Int
+  steps : Int32
+  max_steps : Int32
+  exec_count : Int32
+  llm_count : Int32
+  approval_count : Int32
   delivered : String
   observations : Array[String]
   failures : Array[LoopFailure]
@@ -260,8 +260,8 @@ pub(all) struct AgentToolTrace {
   tool_name : String
   args_json : String
   result_snippet : String
-  duration_ms : Int
-  exit_code : Int
+  duration_ms : Int32
+  exit_code : Int32
   error : Bool
   timestamp : String
 } derive(Eq, @debug.Debug)
@@ -357,8 +357,8 @@ pub fn FirstTurnPlan::skips_getting_started(Self) -> Bool
 pub fn FirstTurnPlan::to_repr(Self) -> @debug.Repr
 
 pub(all) struct HeuristicSummarizer {
-  max_chars : Int
-  per_entry_chars : Int
+  max_chars : Int32
+  per_entry_chars : Int32
 }
 pub fn HeuristicSummarizer::new() -> Self
 pub fn HeuristicSummarizer::summarize(Self, Array[AgentHistoryEntry]) -> String
@@ -428,8 +428,8 @@ pub(all) struct LoopFailure {
   tool_name : String
   call_id : String
   message : String
-  step : Int
-  attempt : Int
+  step : Int32
+  attempt : Int32
   blocked : Bool
 } derive(Eq, @debug.Debug)
 pub fn LoopFailure::equal(Self, Self) -> Bool
@@ -449,7 +449,7 @@ pub fn LoopFailureKind::to_repr(Self) -> @debug.Repr
 
 pub(all) struct LoopHostAbi {
   replies : Array[LlmChatReply]
-  mut reply_i : Int
+  mut reply_i : Int32
   repeat_last : Bool
   files : Map[String, String]
   execs : Array[String]
@@ -478,9 +478,9 @@ pub fn LoopMessage::not_equal(Self, Self) -> Bool
 pub fn LoopMessage::to_repr(Self) -> @debug.Repr
 
 pub(all) struct LoopRetryPolicy {
-  max_attempts_per_tool : Int
-  max_consecutive_failures : Int
-  backoff_steps : Int
+  max_attempts_per_tool : Int32
+  max_consecutive_failures : Int32
+  backoff_steps : Int32
 } derive(Eq, @debug.Debug)
 pub fn LoopRetryPolicy::equal(Self, Self) -> Bool
 pub fn LoopRetryPolicy::not_equal(Self, Self) -> Bool
@@ -508,10 +508,10 @@ pub fn MachineDefaultSession::resolve_machine_id(Self, String?) -> String?
 
 pub(all) struct MockAgentHost {
   replies : Array[LlmChatReply]
-  mut reply_i : Int
+  mut reply_i : Int32
   repeat_last : Bool
   exec_results : Array[String]
-  mut exec_i : Int
+  mut exec_i : Int32
   exec_repeat : Bool
   execs : Array[String]
   approvals : Array[String]
@@ -567,27 +567,27 @@ pub fn RoutineStatusEntry::not_equal(Self, Self) -> Bool
 pub fn RoutineStatusEntry::to_repr(Self) -> @debug.Repr
 
 pub(all) struct RunState {
-  mut steps : Int
-  mut exec_count : Int
-  mut llm_count : Int
-  mut approval_count : Int
-  mut consecutive_failures : Int
+  mut steps : Int32
+  mut exec_count : Int32
+  mut llm_count : Int32
+  mut approval_count : Int32
+  mut consecutive_failures : Int32
   mut observations : Array[String]
   mut failures : Array[LoopFailure]
-  mut attempts : Map[String, Int]
-  mut last_failed_step : Map[String, Int]
+  mut attempts : Map[String, Int32]
+  mut last_failed_step : Map[String, Int32]
   mut last_kind : Map[String, LoopFailureKind]
-  mut tool_attempts : Map[String, Int]
+  mut tool_attempts : Map[String, Int32]
 } derive(Eq, @debug.Debug)
-pub fn RunState::attempt_count(Self, String) -> Int
-pub fn RunState::count_failure(Self, String, String, LoopFailureKind, Int) -> Unit
+pub fn RunState::attempt_count(Self, String) -> Int32
+pub fn RunState::count_failure(Self, String, String, LoopFailureKind, Int32) -> Unit
 pub fn RunState::equal(Self, Self) -> Bool
 pub fn RunState::last_failure_kind(Self, String) -> LoopFailureKind
 pub fn RunState::last_failure_message(Self) -> String
 pub fn RunState::new() -> Self
 pub fn RunState::not_equal(Self, Self) -> Bool
 pub fn RunState::to_repr(Self) -> @debug.Repr
-pub fn RunState::tool_attempt_count(Self, String) -> Int
+pub fn RunState::tool_attempt_count(Self, String) -> Int32
 
 pub(all) struct SmartModePending {
   request_id : String
@@ -604,7 +604,7 @@ pub(all) struct StepEffectBatch {
   effects : Array[@tools.Effect]
 } derive(Eq, @debug.Debug)
 pub fn StepEffectBatch::equal(Self, Self) -> Bool
-pub fn StepEffectBatch::len(Self) -> Int
+pub fn StepEffectBatch::len(Self) -> Int32
 pub fn StepEffectBatch::not_equal(Self, Self) -> Bool
 pub fn StepEffectBatch::to_repr(Self) -> @debug.Repr
 
@@ -693,7 +693,7 @@ pub(all) struct ToolRegistry {
   specs : Array[@tools.ToolSpec]
 }
 pub fn ToolRegistry::empty() -> Self
-pub fn ToolRegistry::len(Self) -> Int
+pub fn ToolRegistry::len(Self) -> Int32
 pub fn ToolRegistry::register(Self, @tools.ToolSpec) -> Unit
 pub fn ToolRegistry::seed_builtins() -> Self
 
@@ -754,7 +754,7 @@ pub fn TurnContext::deliver_confirm_then(Self, confirm~ : String, follow_up~ : S
 pub fn TurnContext::deliver_text(Self, body~ : String, channel_hint? : String?) -> Result[Self, String]
 pub fn TurnContext::deliver_voice_memo(Self, spoken_text~ : String, audio_path? : String) -> Result[(Self, VoiceMemoDelivery), String]
 pub fn TurnContext::deliver_widget(Self, widget_id~ : String, spec~ : @ui_protocol.WidgetSpec) -> Result[Self, String]
-pub fn TurnContext::done_todo_count(Self) -> Int
+pub fn TurnContext::done_todo_count(Self) -> Int32
 pub fn TurnContext::end_turn(Self) -> Self
 pub fn TurnContext::equal(Self, Self) -> Bool
 pub fn TurnContext::finalize_text(Self, body~ : String) -> Result[Self, String]
@@ -769,7 +769,7 @@ pub fn TurnContext::should_ack_user(Self) -> Bool
 pub fn TurnContext::to_repr(Self) -> @debug.Repr
 pub fn TurnContext::todo_write(Self, Array[TodoItem]) -> Result[Self, String]
 pub fn TurnContext::visible_todos(Self) -> Array[TodoItem]
-pub fn TurnContext::voice_memo_count(Self) -> Int
+pub fn TurnContext::voice_memo_count(Self) -> Int32
 
 pub(all) enum TurnPhase {
   Opened

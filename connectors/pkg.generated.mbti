@@ -12,9 +12,9 @@ pub const USER_X_NAMESPACE : String = "user-X"
 
 pub const X_PUBLIC_NAMESPACE : String = "x"
 
-pub const X_RATE_LIMIT_PER_DAY : Int = 1000
+pub const X_RATE_LIMIT_PER_DAY : Int32 = 1000
 
-pub const X_RATE_LIMIT_PER_MINUTE : Int = 30
+pub const X_RATE_LIMIT_PER_MINUTE : Int32 = 30
 
 pub fn resolve_connector_identity(ConnectorIdentityKind, IdentityRequirement) -> IdentityResolution
 
@@ -105,7 +105,7 @@ pub fn IdentityResolution::to_repr(Self) -> @debug.Repr
 pub(all) struct McpNamespace {
   id : String
   display_name : String
-  tool_count : Int
+  tool_count : Int32
 } derive(Eq, @debug.Debug)
 pub fn McpNamespace::equal(Self, Self) -> Bool
 pub fn McpNamespace::not_equal(Self, Self) -> Bool
@@ -201,15 +201,15 @@ pub fn XMcpToolSpec::to_repr(Self) -> @debug.Repr
 pub(all) struct XPublicRateLimiter {
   mut minute_key : String
   mut day_key : String
-  mut minute_count : Int
-  mut day_count : Int
+  mut minute_count : Int32
+  mut day_count : Int32
   namespace_ : String
 }
 pub fn XPublicRateLimiter::call(Self, window~ : UtcRateWindow) -> XRateLimitOutcome
 pub fn XPublicRateLimiter::namespace_id(Self) -> String
 pub fn XPublicRateLimiter::new() -> Self
 pub fn XPublicRateLimiter::remaining(Self) -> XRateRemaining
-pub fn XPublicRateLimiter::set_counts(Self, minute~ : Int, day~ : Int, window~ : UtcRateWindow) -> Unit
+pub fn XPublicRateLimiter::set_counts(Self, minute~ : Int32, day~ : Int32, window~ : UtcRateWindow) -> Unit
 
 pub(all) struct XPublicSearchNamespace {
   namespace_ : String
@@ -244,8 +244,8 @@ pub fn XRateLimitOutcome::not_equal(Self, Self) -> Bool
 pub fn XRateLimitOutcome::to_repr(Self) -> @debug.Repr
 
 pub(all) struct XRateRemaining {
-  per_minute : Int
-  per_day : Int
+  per_minute : Int32
+  per_day : Int32
 } derive(Eq, @debug.Debug)
 pub fn XRateRemaining::equal(Self, Self) -> Bool
 pub fn XRateRemaining::not_equal(Self, Self) -> Bool

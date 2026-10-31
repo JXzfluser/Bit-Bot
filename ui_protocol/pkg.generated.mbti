@@ -48,7 +48,7 @@ pub fn plan_thank_you_react_end_turn(ReactToMessageHost, turn_id~ : String, user
 
 pub fn prefer_update_over_reset(SettingsAnchor) -> Result[SettingsAnchor, String]
 
-pub fn product_recommend_line_count(String) -> Int
+pub fn product_recommend_line_count(String) -> Int32
 
 pub fn redact_secrets(String) -> String
 
@@ -500,7 +500,7 @@ pub(all) struct SendEnvelope {
 } derive(Eq, @debug.Debug)
 pub fn SendEnvelope::equal(Self, Self) -> Bool
 pub fn SendEnvelope::not_equal(Self, Self) -> Bool
-pub fn SendEnvelope::part_count(Self) -> Int
+pub fn SendEnvelope::part_count(Self) -> Int32
 pub fn SendEnvelope::to_repr(Self) -> @debug.Repr
 
 pub(all) struct SendToUserCursorAgent {

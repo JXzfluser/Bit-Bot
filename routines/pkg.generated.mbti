@@ -34,9 +34,9 @@ pub fn parse_destination_line(String) -> Result[DestinationLine, String]
 
 pub fn plan_batch_delivery(String, Array[String]) -> Result[Array[String], String]
 
-pub fn plan_daily_at_hour(hour~ : Int, timezone? : String, flexible? : Bool) -> Result[CronPlan, String]
+pub fn plan_daily_at_hour(hour~ : Int32, timezone? : String, flexible? : Bool) -> Result[CronPlan, String]
 
-pub fn plan_flexible_with_window(expr~ : String, timezone? : String, early_minutes~ : Int, late_minutes~ : Int) -> Result[CronPlan, String]
+pub fn plan_flexible_with_window(expr~ : String, timezone? : String, early_minutes~ : Int32, late_minutes~ : Int32) -> Result[CronPlan, String]
 
 pub fn plan_loose_daily(timezone? : String, kind? : LooseDailyKind, explicit_exception? : Bool) -> Result[CronPlan, String]
 
@@ -110,12 +110,12 @@ pub(all) struct CronPlan {
   expr : String
   timezone : String
   summary : String
-  early_minutes : Int
-  late_minutes : Int
+  early_minutes : Int32
+  late_minutes : Int32
 } derive(Eq, @debug.Debug)
 pub fn CronPlan::equal(Self, Self) -> Bool
 pub fn CronPlan::not_equal(Self, Self) -> Bool
-pub fn CronPlan::start_falls_in_window(Self, offset_minutes~ : Int) -> Bool
+pub fn CronPlan::start_falls_in_window(Self, offset_minutes~ : Int32) -> Bool
 pub fn CronPlan::to_repr(Self) -> @debug.Repr
 
 pub(all) struct DestinationLine {
@@ -207,7 +207,7 @@ pub fn GroupListenerPath::to_repr(Self) -> @debug.Repr
 pub(all) struct Lifecycle {
   mut state : LifecycleState
   last_run_ms : Int64?
-  run_count : Int
+  run_count : Int32
 } derive(Eq, @debug.Debug)
 pub fn Lifecycle::activate(Self) -> Unit
 pub fn Lifecycle::equal(Self, Self) -> Bool
@@ -287,7 +287,7 @@ pub(all) struct MicrosoftTeamsTriggerRegistry {
 pub fn MicrosoftTeamsTriggerRegistry::deliver(Self, MicrosoftTeamsEvent) -> Array[TeamsRoutineWake]
 pub fn MicrosoftTeamsTriggerRegistry::empty() -> Self
 pub fn MicrosoftTeamsTriggerRegistry::register(Self, MicrosoftTeamsRoutineBinding) -> Unit
-pub fn MicrosoftTeamsTriggerRegistry::wake_count(Self) -> Int
+pub fn MicrosoftTeamsTriggerRegistry::wake_count(Self) -> Int32
 
 pub(all) struct MissingConnectorAutoCard {
   connector : ExternalEventConnector
@@ -377,8 +377,8 @@ pub(all) struct RoutinePatch {
   trigger : Trigger?
   timing : Timing?
   enabled : Bool?
-  early_minutes : Int?
-  late_minutes : Int?
+  early_minutes : Int32?
+  late_minutes : Int32?
 } derive(Eq, @debug.Debug)
 pub fn RoutinePatch::empty() -> Self
 pub fn RoutinePatch::equal(Self, Self) -> Bool
@@ -405,8 +405,8 @@ pub(all) struct RoutineSpec {
   trigger : Trigger
   timing : Timing
   enabled : Bool
-  early_minutes : Int
-  late_minutes : Int
+  early_minutes : Int32
+  late_minutes : Int32
 } derive(Eq, @debug.Debug)
 pub fn RoutineSpec::equal(Self, Self) -> Bool
 pub fn RoutineSpec::not_equal(Self, Self) -> Bool
@@ -521,7 +521,7 @@ pub(all) enum Trigger {
   Cron(expr~ : String)
   Event(name~ : String)
   Manual
-  Interval(seconds~ : Int)
+  Interval(seconds~ : Int32)
 } derive(Eq, @debug.Debug)
 pub fn Trigger::equal(Self, Self) -> Bool
 pub fn Trigger::not_equal(Self, Self) -> Bool
