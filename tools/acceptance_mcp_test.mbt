@@ -1,6 +1,6 @@
 ///|
 /// CM-0905 / CM-0903: needsAuth shows connect card; loading/error blocked; Ready proceeds.
-test "acceptance_CM-0905_namespace_status_blocks_unusable" {
+test "acceptance_CM-0903_0905_namespace_status_blocks_unusable" {
   let cat = @tools.DynamicCatalog::seed_example()
   let _ = cat.discover(ns=Some("user-Gmail"))
   let call = @tools.DynamicCall::{
