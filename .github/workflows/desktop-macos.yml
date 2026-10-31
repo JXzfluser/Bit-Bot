@@ -133,6 +133,10 @@ jobs:
           # 仅在 v<appVersion> tag 上发布到 GitHub Releases；其余构建只产出不发布。
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BITBOT_PUBLISH: ${{ startsWith(github.ref_name, 'v') && '1' || '' }}
+          # 发布路径强制签名 + 公证：凭据缺失则打包脚本拒产未签名/未公证包
+          #（详见 docs/desktop-signing.md）。非发布构建保持宽松（诚实跳过）。
+          BITBOT_REQUIRE_SIGN: ${{ startsWith(github.ref_name, 'v') && '1' || '' }}
+          BITBOT_REQUIRE_NOTARIZE: ${{ startsWith(github.ref_name, 'v') && '1' || '' }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
