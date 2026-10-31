@@ -72,6 +72,19 @@ jobs:
       - name: Contract layer inventory
         run: node scripts/prove_contract_layer.mjs
 
+      # The matrix's PASS means "implemented and tested", not "a user can reach
+      # it". This ledger classifies every CM into user / partial / test-only /
+      # wired, and pins the numbers in docs/qa/product-readiness.md so the
+      # distinction cannot quietly drift back into one big "234 PASS".
+      - name: Product readiness ledger
+        run: node scripts/prove_readiness_ledger.mjs
+
+      # UI debt ratchet. It is LINT ONLY (the real proof is e2e_desktop_*), but
+      # it is the only thing stopping `!important` / literal hex / inline
+      # font-size from creeping back after each redesign. Baselines only go down.
+      - name: UI token / debt ratchet
+        run: node scripts/prove_ui_tokens.js
+
       # The tool-name alias table is a load-bearing contract: the registry
       # lookup, the policy approval list, the deny list and the Host's
       # router all match on exact strings. When the kernel's copy and the

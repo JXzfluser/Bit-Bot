@@ -47,6 +47,9 @@ ADR（决策记录，各自独立成立，不互相引用）：
 > 由 `scripts/prove_capability_matrix.mjs` 校验（证据文件与测试名必须真实存在）。
 > 另有 [qa/contract-layer.md](qa/contract-layer.md) 记录**已实现且有证据、但未接入生产路径**
 > 的契约层能力，由 `scripts/prove_contract_layer.mjs` 保持同步——别把「状态=PASS」读成「用户能用」。
+> 逐条「能不能用」的分类（用户可达 / 部分可达 / 仅测试可达 / 内核接线未点名）见
+> [qa/product-readiness.md](qa/product-readiness.md)，由 `scripts/prove_readiness_ledger.mjs` 校验；
+> 该账本同时写明 Android 只验到名单与单回合，不得套用桌面数字。
 >
 > 群协作的**失败必须出声**：Host 侧有总时限（`BITBOT_ROOM_TURN_DEADLINE_MS`），
 > 渲染层另有一道客户端兜底闸，超时会如实报超时并往群里落一条汇报；删 Bot
