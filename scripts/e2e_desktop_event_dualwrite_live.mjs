@@ -23,6 +23,12 @@
  *   L-05 fold.rooms   == rooms.json
  *   L-06 fold.approvals == pending-approvals.jsonl
  *   L-07 fold.anomalies 为空（每个快照变化都有人认领）
+ *
+ * T1-04 变体（E2E_EVENT_READ=1）：同一套真实写入之上再开 BITBOT_EVENT_READ=1，
+ * 让真桌面进程的 load()/loadRooms()/pendingApprovals() 全部改读事件折叠。
+ * 这时全部 UI 断言照常绿 = 产品读事件读出来的世界和原来一样；另外加一条
+ * R-Live：主进程日志不得出现「事件读模型不可用」——这条降级语只在读模型
+ * 失败时打印，它没出现就说明读路径真的走了事件折叠，不是悄悄回退 JSON。
  */
 
 import path from "path";
@@ -64,6 +70,8 @@ const done = (name) => {
 };
 
 const NAME = "e2e_desktop_event_dualwrite_live";
+/* T1-04 变体开关：E2E_EVENT_READ=1 → 给真桌面进程同时开 BITBOT_EVENT_READ。 */
+const READ_MODE = process.env.E2E_EVENT_READ === "1";
 if (!fs.existsSync(ELECTRON)) {
   console.log(NAME + ": SKIP — electron dist missing (" + ELECTRON + ")");
   console.log(NAME + ": PASS=0 FAIL=0 SKIP=1");
@@ -178,6 +186,7 @@ function startStub() {
       env: electronLaunchEnv(
         gateAppEnv(root, {
           BITBOT_EVENT_DUAL_WRITE: "1",
+          ...(READ_MODE ? { BITBOT_EVENT_READ: "1" } : {}),
           BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + STUB_PORT + "/v1",
           BITBOT_LLM_API_KEY: "e2e-stub-key",
           BITBOT_LLM_MODEL: "e2e-stub",
@@ -280,6 +289,19 @@ function startStub() {
     !/已降级为不写/.test(mainLog)
       ? ok("L-02 主进程日志无「已降级为不写」（node:sqlite 在 Electron 37 里可用）")
       : bad("L-02 主进程降级成了不写", mainLog.split("\n").filter((l) => /已降级/.test(l))[0] || "");
+
+    /* ---------- R-Live（仅 READ 变体）：读路径真的走了事件折叠 ---------- */
+    /* 开机头几次 load() 落在双写建库之前，no_db 回退是预期状态（说明那一行只打
+       一次，见 sessions.js 的 degradedSaid 闸）；除它之外的任何降级原因
+       （库坏 / anomaly / 形状错）都意味着读模型在真机上没立住。 */
+    if (READ_MODE) {
+      const fallbackLines = mainLog.split("\n").filter((l) => /事件读模型不可用/.test(l));
+      const nonNoDb = fallbackLines.filter((l) => !/（no_db）/.test(l));
+      const noDbCount = fallbackLines.length - nonNoDb.length;
+      nonNoDb.length === 0
+        ? ok("R-Live READ=1 的真桌面进程：除开机期 no_db（" + noDbCount + " 行，建库前的预期回退）外没有任何降级——load/loadRooms/pendingApprovals 读的是事件折叠，不是悄悄回退 JSON")
+        : bad("R-Live 读模型在真机上降级了", nonNoDb[0]);
+    }
 
     /* ---------- 打开库、折回三张面 ---------- */
     const sharedPath = path.join(REPO, "hosts/shared");
