@@ -308,10 +308,15 @@ async function main() {
       : bad("GP-115 host purchase ran", "purchase executed without approval");
 
     const wbtest = readText(path.join(REPO, "cmd/desktop_turn/desktop_turn_wbtest.mbt"));
-    const guardSrc = readText(path.join(REPO, "memory/guard.mbt"));
-    /memory_grants_send/.test(guardSrc) && /false/.test(guardSrc)
-      ? ok("GP-115 内核 memory_grants_send 仍恒为 false（记忆只做上下文）")
-      : bad("GP-115 kernel guard", "memory_grants_send missing");
+    // 记忆不授权的判定是安全策略，已从 memory/ 挪到 security/（模块职责归位）：
+    // memory_cue_grants_send 恒 false + memory_cue_refusal_reason 给出人话拒绝理由。
+    const guardSrc = readText(path.join(REPO, "security/guard.mbt"));
+    /memory_cue_grants_send/.test(guardSrc) && /\bfalse\b/.test(guardSrc)
+      ? ok("GP-115 内核 memory_cue_grants_send 仍恒为 false（记忆只做上下文，security/guard.mbt）")
+      : bad("GP-115 kernel guard", "memory_cue_grants_send missing in security/guard.mbt");
+    /memory_cue_refusal_reason/.test(guardSrc)
+      ? ok("GP-115 拒绝理由可读（memory_cue_refusal_reason 区分有/无授权线索）")
+      : bad("GP-115 refusal reason", "memory_cue_refusal_reason missing");
     /--bot-id/.test(wbtest)
       ? ok("GP-111 内核白盒覆盖 --bot-id 进入 DesktopTurnContext")
       : bad("GP-111 kernel test", "no whitebox coverage for --bot-id");
