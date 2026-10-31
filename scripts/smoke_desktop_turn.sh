@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # Product-path smoke: MoonBit desktop_turn Grok-parity intents (not LocalBrain).
-set -euo pipefail
+set -eEuo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 MOON_TARGET="${BITBOT_MOON_TARGET:-native}"
+
+# 失败时补一条证据：这条断言读的是哪个 /tmp/bitbot-*.json、里面到底写了什么。
+# CI 子日志里只有裸 AssertionError 时，这一行是唯一能指出「哪个字段不对」的东西；
+# 只在异常路径输出，不影响正常跑的日志。set -E 让 ERR 也进函数（run/断言都包在里面），
+# 只打一次，避免父子层重复刷屏。
+ERR_ONCE=0
+trap 'st=$?; if [ "$ERR_ONCE" = 0 ]; then ERR_ONCE=1; echo "---- ERR(exit=$st) at smoke_desktop_turn.sh:$LINENO"; f=$(ls -t /tmp/bitbot-*.json 2>/dev/null | head -1 || true); if [ -n "$f" ]; then echo "---- newest $f"; head -c 1500 "$f"; echo; fi; fi' ERR
 
 # GP-186: 本脚本大半段要求「真 turn」——webhook / Slack / Teams / SMS / mail 入站
 # 都要 Host 调 cli_host/run_turn 再进 llm_chat。机器上没有真 provider 时，第一条
