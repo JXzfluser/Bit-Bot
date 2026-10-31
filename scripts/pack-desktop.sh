@@ -70,6 +70,34 @@ done
 unset _v _val
 
 # ---------------------------------------------------------------------------
+# 0b. 诚实门禁：发布构建（v<appVersion> tag）必须签名 + 公证，否则拒绝产出。
+#
+# 没配凭据时静默发出「未签名 / 未公证」包是自欺：Gatekeeper 会拦、electron-updater
+# 在 macOS 上会因 delta 签名校验失败拒绝安装 —— OTA 等于没闭环。所以 release 路径
+# 显式要求凭据；缺一项就在这里 fail（在内核编译之前，不浪费 7 分钟），绝不假装签过。
+# CI 仅在 v* tag 上置 BITBOT_REQUIRE_SIGN / BITBOT_REQUIRE_NOTARIZE。
+# ---------------------------------------------------------------------------
+if [[ "${BITBOT_REQUIRE_SIGN:-0}" == "1" ]]; then
+  if [[ -z "${CSC_LINK:-}" ]]; then
+    echo "[pack-desktop] ERROR: BITBOT_REQUIRE_SIGN=1 但 CSC_LINK 缺失 —— 拒绝产出未签名包" >&2
+    exit 1
+  fi
+  echo "[pack-desktop] BITBOT_REQUIRE_SIGN=1 — 代码签名凭据已就位"
+fi
+if [[ "${BITBOT_REQUIRE_NOTARIZE:-0}" == "1" ]]; then
+  _missing=""
+  for _k in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+    if [[ -z "${!_k:-}" ]]; then _missing="$_missing $_k"; fi
+  done
+  if [[ -n "$_missing" ]]; then
+    echo "[pack-desktop] ERROR: BITBOT_REQUIRE_NOTARIZE=1 但缺$_missing —— 拒绝产出未公证包" >&2
+    exit 1
+  fi
+  echo "[pack-desktop] BITBOT_REQUIRE_NOTARIZE=1 — 公证凭据已就位"
+fi
+unset _missing _k
+
+# ---------------------------------------------------------------------------
 # 1. Build the kernel
 # ---------------------------------------------------------------------------
 BUILD_PROFILE="${BITBOT_KERNEL_BUILD:-release}"
