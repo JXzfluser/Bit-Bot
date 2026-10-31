@@ -184,6 +184,9 @@ node hosts/cli_host/run_turn.js --approved 'mcp call user-Gmail.write_result {"b
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-write.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mcp_call');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');wtf=p.get('write_to_file') or {};assert wtf.get('write_to_file') is True;assert wtf.get('pretend_inline_payload') is False;assert wtf.get('path') and os.path.isfile(wtf['path']);assert 'agent-tools' in wtf['path'];body=open(wtf['path']).read();assert 'PAYLOAD_MARKER_' in body;assert 'PAYLOAD_MARKER_' not in json.dumps(wtf);assert p.get('path') and os.path.isfile(p['path']) and p['path']!=wtf['path'];print('mcp_call write_to_file ok', wtf.get('path'), 'bytes', wtf.get('bytes'), 'snap', p.get('path'))"
 
 echo "==> Host product media (CM-1601/1602/1603)"
+# 媒体真产物依赖 Pillow（generate_image / structured_chart 的 PNG 由它画）。
+# 缺了它这道门必红；先把原因写清楚，别让读者对着裸 AssertionError 猜。
+python3 -c "import PIL" >/dev/null 2>&1 || echo "NEED: 本机 python3 没有 Pillow —— generate_image / structured_chart 无法出真 PNG（pip install pillow）"
 node hosts/cli_host/run_turn.js --approved "generate image smoke aurora desk" >/tmp/bitbot-gen-image.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-gen-image.json'));assert d.get('ok') and d.get('intent')=='generate_image';h=next(x for x in d['host_results'] if x.get('kind')=='generate_image');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_media') is False;assert p.get('png_magic_ok') is True;assert p.get('media_path') and os.path.isfile(p['media_path']);assert open(p['media_path'],'rb').read(8)==b'\\x89PNG\\r\\n\\x1a\\n';assert p.get('path') and os.path.isfile(p['path']);print('generate_image host ok', p.get('media_path'), p.get('path'))"
 # GP-185 残留收尾：视频两跳需要本机 ffmpeg。没有它时不许把「Host 如实说没产出」
@@ -1188,6 +1191,8 @@ node hosts/cli_host/run_turn.js "meeting chat body=followup notes" >/tmp/bitbot-
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-meeting-draft.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='mail_draft');p=json.loads(h.get('stdout') or '{}');assert p.get('meeting_chat') is True;assert p.get('mode')=='meeting_chat_draft_card';assert p.get('eml_ok') is True;assert os.path.isfile(p.get('eml_path') or '');assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_sent') is False;print('meeting_chat DraftCard eml ok', p.get('eml_path'), p.get('path'))"
 
 echo "==> Host skill_write / slides_pptx / export_pack (real artifacts)"
+# slides_pptx 真 PPTX 依赖 python-pptx；缺了同样先说明原因再让断言红。
+python3 -c "import pptx" >/dev/null 2>&1 || echo "NEED: 本机 python3 没有 python-pptx —— slides_pptx 无法出真 PPTX（pip install python-pptx）"
 node hosts/cli_host/run_turn.js "author skill name=smoke-skill description=demo body=Do the thing." >/tmp/bitbot-skill-write.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-skill-write.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='skill_write');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('path') and os.path.isfile(p['path']);assert 'SKILL.md' in p['path'];assert p.get('meta_path') and os.path.isfile(p['meta_path']);assert p.get('persisted') is True;assert p.get('pretend_shared') is False;print('skill_write host ok', p.get('meta_path'))"
 node hosts/cli_host/run_turn.js "make slides Smoke Deck" >/tmp/bitbot-slides.json

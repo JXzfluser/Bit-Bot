@@ -85,8 +85,16 @@ jobs:
           # ffmpeg 管视频与截图，espeak-ng 管 TTS 真样本，tesseract 管 OCR，
           # xdotool/wmctrl 供 computer_use 的原生窗口路径。缺哪件，脚本会逐行打
           # SKIP（不算 PASS）；这里装上是为了让 CI 覆盖面真实而不是靠跳过。
+          # Pillow / python-pptx 是 Host 媒体真产物的运行期依赖（generate_image、
+          # structured_chart、slides_pptx）：runner 镜像默认没有，缺了 G-64 会在
+          # 第一个媒体断言处红（2026-10-31 #10/#11 就是这样红的）。
           sudo apt-get install -y --no-install-recommends \
             xvfb ffmpeg espeak-ng tesseract-ocr xdotool wmctrl
+          python3 -m pip install --quiet --user --break-system-packages pillow python-pptx \
+            || python3 -m pip install --quiet --user pillow python-pptx
+          # 这一步本身是断言：依赖不在就当场红，而不是让 G-64 红在一个看不懂的
+          # AssertionError 上，也不是让矩阵把它当「环境没有 → SKIP」混过去。
+          python3 -c "import PIL, pptx; print('media py deps ok', PIL.__version__, pptx.__version__)"
 
       # 矩阵自己会在没有 DISPLAY 时用 xvfb-run 包一层；这里再包一层是给
       # 「外层没有 DISPLAY」的 CI 一个确定的环境，不依赖门禁的自愈逻辑。

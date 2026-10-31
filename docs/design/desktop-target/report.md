@@ -3299,3 +3299,35 @@ env -u DISPLAY xvfb-run -a bash scripts/smoke_desktop_turn.sh
 env -u DISPLAY xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh
                                                  # PASS=474 FAIL=0（G-63 MC-09、G-64 旧 smoke）
 ```
+
+### 8.49.7 CI 上的 G-64 红：不是产品 bug，是 runner 缺 Pillow/python-pptx
+
+第一次把旧 smoke 接进 GitHub Actions（#10 `ef4aa38`、#11 `d6853fe`），两次都在
+G-64 的 **29 秒**处红，本机（root 与非 root 干净副本）复跑却都是 `PASS=465 FAIL=0`。
+差别只有 runner 的 Python 环境：
+
+- `scripts/host_h5_media.py` 的 `generate_image` / `structured_chart` 用 **Pillow** 画真 PNG，
+  `slides_pptx` 用 **python-pptx** 写真 PPTX；ubuntu-latest 镜像两样都没有，本机有。
+- 缺依赖时 Host 的表现是诚实的（`ok:false`、`pretend_media:false`、不落假文件），
+  所以这不是产品 bug；红的是「环境缺运行期依赖」。
+- 子日志那次没被上传（workflow 只收了 `/tmp/g4*.log`，而文件名是 `g64-turn-smoke.log`），
+  只能看到裸 `AssertionError`。先把可观测性补齐：上传 `/tmp/g6*.log`、失败时把
+  「最近一节 + 尾部 25 行」写进矩阵日志和 `::error` 注解（匿名读者在 run 页面可见）。
+
+修法（workflow 侧，不动产品契约）：
+
+```yaml
+python3 -m pip install --quiet --user --break-system-packages pillow python-pptx \
+  || python3 -m pip install --quiet --user pillow python-pptx
+python3 -c "import PIL, pptx; print('media py deps ok', PIL.__version__, pptx.__version__)"
+```
+
+最后一行是断言：依赖装不上就直接红在这一步，而不是让 G-64 红在一个看不懂的
+`AssertionError` 上，也不把「环境没有 → SKIP」当绿。脚本侧只加了两行 `NEED:`
+提示（缺 Pillow / python-pptx 时说清原因），断言仍然是硬的 —— 媒体真产物是
+验收项，不接受 SKIP。
+
+诚实残留：Pillow/python-pptx 是 Host 的运行期依赖，仓库里没有 `requirements.txt`
+声明，用户机器缺它们时 `generate_image` / `slides_pptx` 会如实失败。把这两件写进
+盒子安装清单、并在 `box doctor` 里暴露，是下一轮该做的事（本轮只保证 CI 与开发机
+一致，且缺依赖时原因可读）。
