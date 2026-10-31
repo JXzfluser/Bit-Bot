@@ -6,6 +6,7 @@
 <title>Bit Bot 桌面版</title>
 <link rel="icon" type="image/png" href="./build/icon.png"/>
 <link rel="stylesheet" href="./ui_chrome.css"/>
+<link rel="stylesheet" href="./vendor/highlight-theme.css"/>
 <style>
   /* Color, space, radius, type, and shell widths live in ui_chrome.css.
      This block is component layout only. Do not add new hex values here. */
@@ -3194,6 +3195,7 @@
   <!-- Replica C1/C2: markdown rendering + XSS sanitizer (vendored, UMD globals) -->
   <script src="./vendor/marked.umd.js"></script>
   <script src="./vendor/dompurify.umd.js"></script>
+  <script src="./vendor/highlight.min.js"></script>
   <script>
     if (!window.__bitbotUntrusted) {
       document.write('<script src="./shared/untrusted_fence.js"><\/script>');
@@ -4670,6 +4672,11 @@
       pre.classList.add("bb-codeblock");
       const m = (code.className || "").match(/language-([\w-]+)/);
       const lang = m ? m[1] : "";
+      // P1-1: syntax highlight (best-effort). Runs after DOMPurify already
+      // sanitized the markdown; hljs only wraps text in <span class="hljs-*">.
+      if (window.hljs && typeof window.hljs.highlightElement === "function" && !code.dataset.highlighted) {
+        try { window.hljs.highlightElement(code); } catch (_) { /* highlighting is non-critical */ }
+      }
       if (lang) {
         const lab = document.createElement("span");
         lab.className = "bb-codeblock-lang";
