@@ -46,7 +46,7 @@
 | `acceptance_CM-0901_discover_then_full_description` | CM-0901 |
 | `acceptance_cm0901_discover_before_call` | CM-0901 |
 | `acceptance_cm0902_call_write_and_file_placeholder` | CM-0902 |
-| `acceptance_CM-0905_namespace_status_blocks_unusable` | CM-0903/0905 |
+| `acceptance_CM-0903_0905_namespace_status_blocks_unusable` | CM-0903/0905 |
 | `acceptance_CM-1201_executor_dispatch_no_user_send` | CM-1201 |
 | `acceptance_CM-1206_check_status` | CM-1206 |
 | `acceptance_CM-1207_stop_no_side_effects` | CM-1207 |
