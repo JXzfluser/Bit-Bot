@@ -851,8 +851,9 @@ PY
 python3 - <<'PY'
 from pathlib import Path
 import base64
-root = Path('/workspace')
-sample = root / 'agent-tools'
+# 用仓库内的 agent-tools（脚本已 cd 到仓库根），不要写死 /workspace：
+# 真实桌面 / CI runner 上没有这个目录，mkdir 会直接失败（见 report §8.49.8）。
+sample = Path('agent-tools')
 sample.mkdir(parents=True, exist_ok=True)
 pngs = list(sample.glob('*.png'))
 if not pngs:

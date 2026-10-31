@@ -3372,6 +3372,11 @@ mkdir 直接抛异常 —— **这是产品在真机上会红的 bug，不是 CI
 Pillow / python-pptx 的安装仍然保留：它们是真依赖，缺了媒体段会红（只是不是本次
 29 秒红的原因）；workflow 里用 `import` 断言，避免「装没装上」变成谜。
 
+同一类问题在 smoke 自身还有一处：内联媒体样例直接 `Path('/workspace')` 建目录，
+runner 上同样在 mkdir 处崩（#15 的红，行 854）。已改成仓库内的 `agent-tools/`
+（脚本本来就 `cd "$ROOT"`），并用「非 root + `/workspace` 不可访问」的干净副本把
+整段跑通，作为本地模拟 CI 的复核手段。
+
 诚实残留：`host_h5_media.py` 的产物落在 Host 给的 `data/…` 路径
 （`resolveAgentToolsPath` 把出仓的 `/workspace/…` 收进 `DATA_ROOT`），而规格写的是
 「PNG 落在 `/workspace/agent-tools/`」。这是路径收敛策略与规格文字的差异，本轮没改
