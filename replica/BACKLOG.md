@@ -68,6 +68,7 @@
 | P2-4 | `index.html` 单文件约 1.2 万行 | 样式 / 脚本 / 三语词典混在一起，这正是"轮次覆盖"能累积的土壤 | 拆成 `styles.css` / `i18n.js` / `app.js`（含 index.html 只留结构），拆完门禁正则同步改 |
 | P2-5 | `--nav-*` 只挂在 `body.grok-ui` | 当前安全（`<body class="grok-ui">` 是静态的） | 若将来加第二套皮肤，把这三个变量提到 `:root` 的分主题块里 |
 | P2-6 | 侧栏行没有 hover 上下文菜单 | 只能右键（`showSessionMenu`） | hover 出现 `…`，与右键同一份菜单；键盘可达 |
+| P2-8 | 桌面 DM 回合上 `delete bot <id>` 没走确认门直接执行 | `product_surface.js:397 botsDelete` 有 `confirm !== "yes" → needs_confirm` 合同，但内核效果路由（Host FFI results applied）没经过它——实测 `delete bot b1` 直接执行 bot_delete（幸而失败于 host 调用）；CLI smoke（GP-07）的 needs_confirm 流程在桌面回合路径上缺位 | 桌面回合对 consequential 效果先出 needs_confirm 卡 → `#approval` 亮起 → confirm 后才放行；GP-07 的 needs_confirm/advise_hide_first 在桌面路径复验（2026-10-31 双写对账 e2e 探出） |
 
 ## 五、建议的下一步顺序
 
