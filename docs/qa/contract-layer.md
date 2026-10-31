@@ -30,7 +30,7 @@
 1. **接入生产路径**（首选）：让矩阵的 PASS 行名副其实。这是行为变更，需要单独排期。
 2. **显式标注**：在矩阵里把这类行标出来，别让读者误读。
 
-## 当前清单（56 个文件 / 5816 行）
+## 当前清单（58 个文件 / 6092 行）
 
 | 文件 | 行数 | 关联 CM |
 |------|------|---------|
@@ -78,7 +78,9 @@
 | `runtime/step_effects.mbt` | 45 | CM-2138 CM-2139 CM-2140 |
 | `runtime/style_guide.mbt` | 130 | CM-2156 |
 | `runtime/timezone_report.mbt` | 26 | CM-2001 CM-2007 CM-2008 |
+| `runtime/transcript.mbt` | 169 | CM-2150 |
 | `runtime/voice_memo.mbt` | 116 | CM-0107 |
+| `security/approval_bubble.mbt` | 107 | CM-2162 CM-2169 CM-2170 |
 | `security/effect_planner.mbt` | 87 | CM-0306 CM-1501 CM-1504 |
 | `security/executor_draft_parent.mbt` | 53 | CM-2176 CM-2177 |
 | `security/permission_source.mbt` | 108 | CM-2176 CM-2177 |

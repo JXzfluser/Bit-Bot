@@ -85,11 +85,44 @@ for (const [bare, o] of methodNameOwner) if (!symToFile.has(bare)) symToFile.set
 
 // ---- reference scan ----
 const isTest = (p) => p.endsWith('_test.mbt') || p.endsWith('_wbtest.mbt');
+
+// A prose mention is not a consumer: a comment like "aligned with AskLanguage"
+// must not make an unwired capability look wired to production. Strip comments
+// (but not string bodies) before scanning for references.
+function stripComments(src, ext) {
+  const quotes = ext === '.mbt' ? new Set(['"']) : new Set(['"', "'", '`']);
+  let out = '', i = 0, quote = null;
+  while (i < src.length) {
+    const c = src[i], d = src[i + 1];
+    if (quote) {
+      out += c;
+      if (c === '\\') { out += d ?? ''; i += 2; continue; }
+      if (c === quote) quote = null;
+      i += 1;
+      continue;
+    }
+    if (quotes.has(c)) { quote = c; out += c; i += 1; continue; }
+    if (c === '/' && d === '/') {
+      while (i < src.length && src[i] !== '\n') i += 1;
+      continue;
+    }
+    if (c === '/' && d === '*' && ext !== '.mbt') {
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i += 1;
+      i += 2;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
 const IDENT = /\b[A-Za-z_][A-Za-z0-9_]*(?:::[a-z_][A-Za-z0-9_]*)?\b/g;
 const consumers = new Map();
 for (const f of mbtFiles) consumers.set(rel(f), new Set());
 for (const cf of allFiles.filter((f) => /\.(mbt|mjs|js)$/.test(f))) {
-  const src = readFileSync(cf, 'utf8');
+  const src = stripComments(readFileSync(cf, 'utf8'), cf.slice(cf.lastIndexOf('.')));
   const cr = rel(cf);
   for (const mm of src.matchAll(IDENT)) {
     const target = symToFile.get(mm[0]);
