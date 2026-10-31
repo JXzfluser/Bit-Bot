@@ -32,7 +32,9 @@ const path = require("path");
 const READ_FLAG = "BITBOT_EVENT_READ";
 
 function eventReadEnabled(env) {
-  return (env || process.env)[READ_FLAG] === "1";
+  const e = env || process.env;
+  // EVENT_ONLY 隐含「读事件」：事件库是唯一真源，读必然走折叠。
+  return e[READ_FLAG] === "1" || e.BITBOT_EVENT_ONLY === "1";
 }
 
 function dbFilePath(dataRoot) {
