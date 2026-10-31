@@ -6,8 +6,10 @@
  *
  *   AB-01 APK 产出且非空（assemble 真的跑完了）
  *   AB-02 包名 / 应用名（aapt badging 读回来，不是 gradle 说的）
- *   AB-03 权限齐：INTERNET + CAMERA + RECORD_AUDIO + ACCESS_FINE_LOCATION
- *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位）
+ *   AB-03 权限齐：INTERNET + ACCESS_NETWORK_STATE + CAMERA + RECORD_AUDIO + ACCESS_FINE_LOCATION
+ *          —— 少一条，手机上对应的产品动作就没有入口（拍照、语音、定位、读本机局域网地址）
+ *   AB-03b 局域网扫描前置：清单声明了网络状态 + 取本机地址那步兜住异常
+ *          —— 缺声明时框架抛 SecurityException，点「扫描」是崩而不是「没找到桌面」
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
  *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 126（防止 test 任务空转假绿）
@@ -184,10 +186,34 @@ if (badge.status !== 0 || !badgeOut) {
     "android.permission.CAMERA",
     "android.permission.RECORD_AUDIO",
     "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.ACCESS_NETWORK_STATE",
   ];
   const missing = wanted.filter((p) => !badgeOut.includes("name='" + p + "'"));
   if (missing.length) bad("AB-03 权限缺失（手机上这些动作没有入口）", missing.join(", "));
-  else ok("AB-03 权限齐：网络 + 相机 + 麦克风 + 定位");
+  else ok("AB-03 权限齐：网络 + 网络状态 + 相机 + 麦克风 + 定位");
+}
+
+/* AB-03b 局域网扫描的前置条件真的成立（aapt 读回包里的声明 + 源码里取地址那步兜住异常）。
+   修复前红：ACCESS_NETWORK_STATE 没声明时，ConnectivityManager.activeNetwork /
+   getNetworkCapabilities / getLinkProperties 会被 ConnectivityService 抛
+   SecurityException，而调用点在协程里没兜 —— 点「扫描」不是「没找到桌面」，是崩，
+   连错误文案里那句「可以用高级手动填写桌面地址」都看不到。 */
+{
+  const mf = fs.readFileSync(path.join(HOST, "app/src/main/AndroidManifest.xml"), "utf8");
+  const ma = fs.readFileSync(
+    path.join(HOST, "app/src/main/java/com/bitbot/host/MainActivity.kt"),
+    "utf8",
+  );
+  const declared = /android\.permission\.ACCESS_NETWORK_STATE/.test(mf);
+  const guarded = /runCatching\s*\{\s*getLocalWifiIp\(/.test(ma);
+  const readsIp = /getNetworkCapabilities|getLinkProperties/.test(ma);
+  if (declared && guarded && readsIp)
+    ok("AB-03b 扫描前置齐：清单声明了网络状态，取本机地址那步有兜异常");
+  else
+    bad(
+      "AB-03b 扫描前置不齐（真机上点「扫描」会崩或扫不出桌面）",
+      JSON.stringify({ declared, guarded, readsIp }),
+    );
 }
 
 /* AB-04 minSdk / targetSdk */
