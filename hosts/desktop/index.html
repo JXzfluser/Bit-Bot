@@ -1031,6 +1031,28 @@
     align-self: center;
     margin-left: 4px;
   }
+  /* P1-6：会话列表顶部（G-28 之后 = #sessions-popup 顶部）的未读汇总条。
+     只有文字 + 复用 .unread-dot，颜色全部走 token，这里不引入新字面色值。 */
+  .unread-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 10px;
+    margin: 0 0 4px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+  }
+  .unread-summary:hover { background: var(--accent-soft); color: var(--ink); }
+  .unread-summary .unread-summary-tx { flex: 1 1 auto; }
+  .unread-summary .unread-dot { margin-left: 0; }
   .agent-item .name, .machine-item .name {
     font-weight: 600;
     font-size: var(--text-md);
@@ -2023,6 +2045,9 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-8.5 8.5H8L3.5 23l1.3-4.6A8.5 8.5 0 1 1 20.5 12z"/></svg>
         </button>
         <div id="sessions-popup" hidden>
+          <!-- P1-6：未读汇总。列表本身收在弹层里（G-28），所以「列表顶部」就是
+               弹层顶部；只有存在未读时才出现，点一下跳到最早那条未读会话。 -->
+          <button type="button" id="unread-summary" class="unread-summary" hidden></button>
           <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
           <div id="session-list" aria-label="会话列表"></div>
         </div>
@@ -14061,6 +14086,7 @@
         sessYesterday: "昨天",
         sessEarlier: "更早",
         sessNoMatch: "没有匹配的会话",
+        sessUnreadMore: "更多未读消息 · {n}",
         sessRename: "重命名",
         sessDelete: "删除",
         sessRenameTitle: "重命名会话",
@@ -14774,6 +14800,7 @@
         sessYesterday: "昨天",
         sessEarlier: "更早",
         sessNoMatch: "沒有符合的會話",
+        sessUnreadMore: "更多未讀訊息 · {n}",
         sessRename: "重新命名",
         sessDelete: "刪除",
         sessRenameTitle: "重新命名會話",
@@ -15487,6 +15514,7 @@
         sessYesterday: "Yesterday",
         sessEarlier: "Earlier",
         sessNoMatch: "No matching chats",
+        sessUnreadMore: "More unread · {n}",
         sessRename: "Rename",
         sessDelete: "Delete",
         sessRenameTitle: "Rename chat",
@@ -16816,7 +16844,87 @@
           dot.remove();
         }
       });
+      renderUnreadSummary();
     }
+
+    /* P1-6 · 未读汇总。会话列表收在 #sessions-popup 里（G-28），所以「侧栏顶部」
+       落成弹层顶部这一条。没有未读就整条隐藏；有未读时显示总数。 */
+    function renderUnreadSummary() {
+      const btn = document.getElementById("unread-summary");
+      if (!btn) return;
+      const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
+      if (total <= 0) {
+        btn.hidden = true;
+        btn.textContent = "";
+        return;
+      }
+      btn.hidden = false;
+      btn.textContent = "";
+      const tx = document.createElement("span");
+      tx.className = "unread-summary-tx";
+      tx.textContent = t("sessUnreadMore", { n: total });
+      const dot = document.createElement("span");
+      dot.className = "unread-dot";
+      btn.appendChild(tx);
+      btn.appendChild(dot);
+    }
+
+    /* P1-6 · 切会话的共用路径。行点击各有一份内联闭包，汇总条这里复用同一套
+       动作：退群聊独占态 → 切活跃 → 清该会话未读 → 重渲染列表与未读标记。 */
+    async function activateSessionById(sid) {
+      if (!sid) return;
+      if (composerRoom) exitRoomChat();
+      const r = await window.bitbot.sessions.setActive(sid);
+      if (!r || !r.ok) return;
+      activeSessionId = sid;
+      delete unreadBySession[sid];
+      const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
+      if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
+      await loadActiveSessionTranscript();
+      const list = await window.bitbot.sessions.list();
+      renderSessionList(list);
+      renderUnreadMarks();
+    }
+
+    /* 「最早未读」：列表按 今天 → 昨天 → 更早 排列（新 → 旧），所以 DOM 里
+       最后一条带未读的行就是最老的未读会话。弹层从没打开过、列表还没渲染时
+       退化成按 unreadBySession 的键序取第一个。 */
+    function jumpToOldestUnread() {
+      const items = Array.from(document.querySelectorAll("#session-list .agent-item"));
+      for (let i = items.length - 1; i >= 0; i--) {
+        const sid = items[i].dataset.sessionId;
+        if (sid && (unreadBySession[sid] || 0) > 0) return activateSessionById(sid);
+      }
+      const sid = Object.keys(unreadBySession).find((k) => (unreadBySession[k] || 0) > 0);
+      return sid ? activateSessionById(sid) : Promise.resolve();
+    }
+
+    {
+      // 汇总条自己的点击：跳完把弹层收起来，用户直接看到那条会话。
+      // 它不是 .sess-row，所以弹层里那条「点行即收起」的监听管不到它，
+      // 这里显式收一次，行为和点行一致。
+      const unreadBtn = document.getElementById("unread-summary");
+      if (unreadBtn) {
+        unreadBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          jumpToOldestUnread()
+            .then(() => {
+              const pop = document.getElementById("sessions-popup");
+              const ab = document.getElementById("ab-sessions-btn");
+              if (pop) pop.hidden = true;
+              if (ab) ab.setAttribute("aria-expanded", "false");
+            })
+            .catch(() => {});
+        });
+      }
+    }
+
+    /* 测试钩子（与 window.__bbSetSessionSearchOpen 同款）：返回未读表本体 +
+       重绘入口，让 e2e 能构造未读态并断言汇总条，不必走真实回合完成路径。 */
+    window.__bbUnread = {
+      state: () => unreadBySession,
+      render: () => renderUnreadMarks(),
+    };
 
     // ----- GP-ATx accelerators + sidebar collapse -----
     let sidebarCollapsed = false;
