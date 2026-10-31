@@ -2177,6 +2177,14 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
       ok "G-53 ${name} 全绿（$(grep -c '✓' "$log") 项，$(grep -m1 'PASS=' "$log")）"
     else
       bad "G-53 ${name}（见 ${log}；$(grep -m1 'PASS=' "$log" || tail -1 "$log")）"
+      # 子日志不上传时，矩阵里只剩「PASS=29 FAIL=1」这种计数——等于知道红了却不知道红在哪。
+      # 把失败断言原文和尾部现场直接搬进矩阵日志；artifact 也一并收这个文件。
+      grep -n "✗" "$log" 2>/dev/null | head -10 | while IFS= read -r line; do
+        echo "    ${line}"
+      done
+      tail -8 "$log" 2>/dev/null | while IFS= read -r line; do
+        echo "    | ${line}"
+      done
     fi
   }
   g53_run e2e_desktop_user_journeys /tmp/g53-journeys.log 900

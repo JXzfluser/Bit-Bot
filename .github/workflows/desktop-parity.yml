@@ -148,6 +148,7 @@ jobs:
           path: |
             /tmp/parity-matrix.log
             /tmp/g4*.log
+            /tmp/g5*.log
             /tmp/g6*.log
             /tmp/gp1*.log
           if-no-files-found: ignore
