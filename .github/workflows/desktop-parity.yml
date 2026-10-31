@@ -83,14 +83,15 @@ jobs:
           sudo apt-get update
           # G-64（旧 smoke_desktop_turn）会真跑媒体/截图/OCR/OS 输入：
           # ffmpeg 管视频与截图，espeak-ng 管 TTS 真样本，tesseract 管 OCR，
-          # xdotool/wmctrl 供 computer_use 的原生窗口路径。缺哪件，脚本会逐行打
+          # xdotool/wmctrl 供 computer_use 的原生窗口路径，openbox 是窗口管理器
+          # （没有 WM 时窗口清单是空的，原生 act 只能 SKIP）。缺哪件，脚本会逐行打
           # SKIP（不算 PASS）；这里装上是为了让 CI 覆盖面真实而不是靠跳过。
           # Pillow / python-pptx 是 Host 媒体真产物的运行期依赖（generate_image、
           # structured_chart、slides_pptx）：runner 镜像默认没有，缺了 G-64 会在
           # 媒体段红。（#10/#11 的 29 秒红真因是 host_h5_media.py 硬编码
           # /workspace，见 report §8.49.8；这里补的是第二个坑，别让下一个红是它。）
           sudo apt-get install -y --no-install-recommends \
-            xvfb ffmpeg espeak-ng tesseract-ocr xdotool wmctrl
+            xvfb openbox ffmpeg espeak-ng tesseract-ocr xdotool wmctrl
           python3 -m pip install --quiet --user --break-system-packages pillow python-pptx \
             || python3 -m pip install --quiet --user pillow python-pptx
           # 这一步本身是断言：依赖不在就当场红，而不是让 G-64 红在一个看不懂的
@@ -99,8 +100,14 @@ jobs:
 
       # 矩阵自己会在没有 DISPLAY 时用 xvfb-run 包一层；这里再包一层是给
       # 「外层没有 DISPLAY」的 CI 一个确定的环境，不依赖门禁的自愈逻辑。
+      # BITBOT_START_WM=1：G-64 会在 Xvfb 里起 openbox，让 computer_use 的
+      # 原生 OS act 真跑（真窗口清单 + xdotool 点击、residual 真关），而不是
+      # 因为「没有窗口管理器」永远 SKIP。没有 openbox 时脚本仍会退回 SKIP，
+      # 不会假绿。
       - name: Run full parity matrix
         shell: bash
+        env:
+          BITBOT_START_WM: "1"
         run: |
           set -o pipefail
           export PATH="$HOME/.moon/bin:$PATH"

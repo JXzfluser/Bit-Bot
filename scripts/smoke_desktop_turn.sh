@@ -5,6 +5,17 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 MOON_TARGET="${BITBOT_MOON_TARGET:-native}"
 
+# computer_use 的原生 OS act 只有在「有窗口管理器、窗口能被枚举」时才谈得上真驱动；
+# headless / 无 WM 的运行只能 SKIP（Host 如实保留 residual，不假装已关）。
+# CI 上装 openbox 并设 BITBOT_START_WM=1，让「真窗口 + xdotool 点击」这条路径被真跑；
+# 真实桌面本来就有 WM，不要设这个变量（会和用户的 WM 抢窗口）。
+WM_PID=""
+if [ "${BITBOT_START_WM:-0}" = "1" ] && [ -n "${DISPLAY:-}" ] && command -v openbox >/dev/null 2>&1; then
+  openbox >/tmp/bitbot-openbox.log 2>&1 &
+  WM_PID=$!
+  echo "==> started openbox (pid $WM_PID) on $DISPLAY so native OS act is exercised, not skipped"
+fi
+
 # 失败时补一条证据：这条断言读的是哪个 /tmp/bitbot-*.json、里面到底写了什么。
 # CI 子日志里只有裸 AssertionError 时，这一行是唯一能指出「哪个字段不对」的东西；
 # 只在异常路径输出，不影响正常跑的日志。set -E 让 ERR 也进函数（run/断言都包在里面），
@@ -21,7 +32,7 @@ trap 'st=$?; if [ "$ERR_ONCE" = 0 ]; then ERR_ONCE=1; echo "---- ERR(exit=$st) a
 LLM_STUB_PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
 BITBOT_STUB_PORT="$LLM_STUB_PORT" node "$ROOT/scripts/dev_stubs/openai_compat_stub.js" >/tmp/bitbot-smoke-llm-stub.log 2>&1 &
 LLM_STUB_PID=$!
-trap 'kill "$LLM_STUB_PID" >/dev/null 2>&1 || true' EXIT
+trap 'kill "$LLM_STUB_PID" ${WM_PID:+"$WM_PID"} >/dev/null 2>&1 || true' EXIT
 for _ in $(seq 1 50); do
   if (exec 3<>"/dev/tcp/127.0.0.1/$LLM_STUB_PORT") 2>/dev/null; then exec 3>&-; break; fi
   sleep 0.1
