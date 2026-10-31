@@ -75,8 +75,9 @@
     "afterSign": "build/notarize.js",
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://updates.bitbot.local/desktop"
+        "provider": "github",
+        "owner": "JXzfluser",
+        "repo": "Bit-Bot"
       }
     ],
     "linux": {

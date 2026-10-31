@@ -225,12 +225,18 @@ if [[ -n "${BITBOT_PACK_ARCH:-}" ]]; then
 fi
 
 if [[ "$PACK_TARGET" == "dist" ]]; then
-  # --publish never: publish.url 是个占位域名，CI 不该去连它。
-  echo "[pack-desktop] building distributable (target=dist, args: ${EB_ARGS[*]:-host defaults})…"
+  # 发布是 opt-in：仅当 BITBOT_PUBLISH=1（CI 在 v<appVersion> tag 上）才把产物推到
+  # GitHub Releases（feed）。其余情况只构建、绝不连任何 feed——之前的占位域名已废，
+  # 现在 feed 就是 GitHub Releases，由 build.publish 的 github provider 决定。
+  PUBLISH_FLAG="never"
+  if [[ "${BITBOT_PUBLISH:-}" == "1" ]]; then
+    PUBLISH_FLAG="always"
+  fi
+  echo "[pack-desktop] building distributable (target=dist, args: ${EB_ARGS[*]:-host defaults}, publish=$PUBLISH_FLAG)…"
   if [[ ${#EB_ARGS[@]} -gt 0 ]]; then
-    npx electron-builder "${EB_ARGS[@]}" --publish never
+    npx electron-builder "${EB_ARGS[@]}" --publish "$PUBLISH_FLAG"
   else
-    npx electron-builder --publish never
+    npx electron-builder --publish "$PUBLISH_FLAG"
   fi
   echo "[pack-desktop] distributables under hosts/desktop/dist/"
   ls -la "$DESKTOP/dist" || true

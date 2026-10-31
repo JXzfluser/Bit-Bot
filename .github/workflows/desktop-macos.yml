@@ -33,6 +33,7 @@ on:
   push:
     tags:
       - "desktop-v*"
+      - "v*"
 
 permissions:
   contents: read
@@ -69,6 +70,10 @@ jobs:
     needs: plan
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    # Publishing to GitHub Releases needs write on contents; the workflow-level
+    # `contents: read` is overridden here for this job only.
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -125,6 +130,9 @@ jobs:
           BITBOT_PACK_TARGET: dist
           BITBOT_PACK_ARCH: ${{ matrix.arch }}
           BITBOT_PACK_PLATFORM: mac
+          # 仅在 v<appVersion> tag 上发布到 GitHub Releases；其余构建只产出不发布。
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BITBOT_PUBLISH: ${{ startsWith(github.ref_name, 'v') && '1' || '' }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
