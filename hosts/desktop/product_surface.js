@@ -47,7 +47,73 @@ function createProductSurface(repoRoot, opts = {}) {
      失败也只是少几条事件，rename 的结果一个字节都不变。 */
   const mirror = () => eventMirror.getSharedMirror(DATA_ROOT);
 
+  /* ===== T1-05 EVENT_ONLY（BITBOT_EVENT_ONLY=1）=====
+     三张面（sessions/rooms/approvals）的 JSON 不再被写：diff 的左半边从
+     「盘上文件」换成「内存里最后一次读到的状态文本」（lastTextBySurface，
+     读点负责刷新）。非三张面的文件（bots/settings/rules/approvals.log）
+     照常落盘——它们不在事件日志的范围里（docs/events.md §7）。
+     写失败不吞：EVENT_ONLY 下事件库是唯一真源，吞掉就是静默丢数据。 */
+  const eventOnlyMode = () => process.env.BITBOT_EVENT_ONLY === "1";
+  const lastTextBySurface = new Map();
+  const setLastTextFor = (p, t) => lastTextBySurface.set(path.resolve(p), t);
+  const eventOnlySaid = new Set();
+  function sayOnce(key, line) {
+    if (eventOnlySaid.has(key)) return;
+    eventOnlySaid.add(key);
+    process.stderr.write(line);
+  }
+
+  /** 面状态的规范文本（读模型 / 文件两个来源都要落到同一种形状）。 */
+  function canonicalTextFor(surface, hit) {
+    if (surface === "approvals") {
+      const lines = (hit.approvals || []).map((e) => JSON.stringify(e));
+      return lines.length ? lines.join("\n") + "\n" : "";
+    }
+    const obj = surface === "rooms" ? hit.rooms : hit.sessions;
+    return JSON.stringify(obj, null, 2);
+  }
+
+  /** 内存缓存没有时的兜底：从读模型现算规范文本（防「没读先写」）；库没账则 null。 */
+  function prevTextFor(filePath, def) {
+    const hit = eventReadModel.readSurfaces(DATA_ROOT);
+    if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+      const canonical = canonicalTextFor(def.surface, hit);
+      setLastTextFor(filePath, canonical);
+      return canonical;
+    }
+    return null;
+  }
+
+  /** 这张面在事件库里是不是还没有账（fold == BASELINE）。
+      delta diff 只记增量——基底从没进过库时直接落 delta 会让顺序事件指向
+      幽灵实体，所以「面空 + 手上有遗留文本」的首次写必须先导基底。 */
+  function surfaceEmptyInDb(hit, surface) {
+    if (!hit.ok || hit.anomalies.length) return true; // 库不可用/折不动：按没账处理
+    if (surface === "approvals") return (hit.approvals || []).length === 0;
+    const baseline = surface === "rooms"
+      ? { version: 1, rooms: [] }
+      : { version: 1, active_id: "", sessions: [] };
+    return JSON.stringify(hit[surface]) === JSON.stringify(baseline);
+  }
+
+  /** EVENT_ONLY 的统一落库口：基底（需要时从 BASELINE 导入）+ delta，全程不碰文件。 */
+  function eventOnlyWrite(filePath, def, nextText) {
+    const m = mirror();
+    let prev = lastTextBySurface.get(path.resolve(filePath));
+    if (prev == null) prev = prevTextFor(filePath, def);
+    if (prev != null && surfaceEmptyInDb(eventReadModel.readSurfaces(DATA_ROOT), def.surface)) {
+      m.commitText(def, null, prev); // 基底导入（与导入脚本同一语义）
+    }
+    m.commitText(def, prev, nextText);
+    setLastTextFor(filePath, nextText);
+  }
+
   function atomicWrite(filePath, data) {
+    const def = eventOnlyMode() ? eventMirror.surfaceOf(filePath) : null;
+    if (def) {
+      eventOnlyWrite(filePath, def, data);
+      return;
+    }
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const tmp = filePath + ".tmp." + Date.now();
     const m = mirror();
@@ -67,6 +133,18 @@ function createProductSurface(repoRoot, opts = {}) {
   }
 
   function appendJsonl(filePath, entry) {
+    const def = eventOnlyMode() ? eventMirror.surfaceOf(filePath) : null;
+    if (def) {
+      // approvals 面：追加 = 旧文本 + 一行。prev 与落库语义同 atomicWrite。
+      let prev = lastTextBySurface.get(path.resolve(filePath));
+      if (prev == null) {
+        const hit = eventReadModel.readSurfaces(DATA_ROOT);
+        prev = hit.ok && !hit.anomalies.length && hit.count > 0 ? canonicalTextFor("approvals", hit) : "";
+      }
+      const next = (prev || "") + JSON.stringify(entry) + "\n";
+      eventOnlyWrite(filePath, def, next);
+      return;
+    }
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const m = mirror();
     const token = m.capture(filePath);
@@ -812,7 +890,50 @@ function createProductSurface(repoRoot, opts = {}) {
   const roomsDegradedSaid = new Set();
   const approvalsDegradedSaid = new Set();
 
+  /** jsonl 原始行的读取（不做过期标注）：EVENT_ONLY 的遗留路与 approvalDecide 共用。 */
+  function readApprovalsFileRaw() {
+    try {
+      if (!fs.existsSync(PENDING_APPROVALS_PATH)) return [];
+      return fs
+        .readFileSync(PENDING_APPROVALS_PATH, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          try { return JSON.parse(line); } catch { return null; }
+        })
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
   function pendingApprovals(nowIsoParam) {
+    // T1-05 EVENT_ONLY：读模型为主，遗留文件走自导入路径（同 loadRooms 的分层）。
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      let raw;
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        raw = hit.approvals || [];
+      } else {
+        raw = readApprovalsFileRaw();
+        if (raw.length) {
+          sayOnce(
+            "legacy-approvals",
+            "[approvals] BITBOT_EVENT_ONLY：事件库为空但存在遗留 pending-approvals.jsonl（未导入）——暂以 JSON 为读真源，" +
+              "首次写入会把它增量带进事件库；建议先跑 scripts/import_json_to_events.mjs。\n",
+          );
+        }
+      }
+      setLastTextFor(PENDING_APPROVALS_PATH, canonicalTextFor("approvals", { approvals: raw }));
+      const now = nowIsoParam ? new Date(nowIsoParam).getTime() : Date.now();
+      return raw.map((entry) => {
+        const e = JSON.parse(JSON.stringify(entry));
+        if (e.status === "pending" && new Date(e.expires_at).getTime() < now) {
+          e.status = "expired";
+        }
+        return e;
+      });
+    }
     // T1-04 读切换：事件读模型里的 approvals 面保存的是 jsonl 的原始行
     // （status 落库时是什么就是什么），「过期」是读时语义，两条路都要现算。
     if (eventReadModel.eventReadEnabled()) {
@@ -865,16 +986,28 @@ function createProductSurface(repoRoot, opts = {}) {
     }
 
     // Load all pending approvals
+    // EVENT_ONLY：读模型为主（fold 保存的是原始行），库空时遗留文件即真源。
     let entries = [];
-    try {
-      if (fs.existsSync(PENDING_APPROVALS_PATH)) {
-        const lines = fs.readFileSync(PENDING_APPROVALS_PATH, "utf8").split("\n").filter(Boolean);
-        entries = lines.map(line => {
-          try { return JSON.parse(line); } catch { return null; }
-        }).filter(Boolean);
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        entries = JSON.parse(JSON.stringify(hit.approvals || []));
+      } else {
+        entries = readApprovalsFileRaw();
       }
-    } catch {
-      return { ok: false, error: "read_failed", mode: "host_approval_decide" };
+      // prev 缓存以这次读到的为准（随后的 atomicWrite diff 左半边必须精确）
+      setLastTextFor(PENDING_APPROVALS_PATH, canonicalTextFor("approvals", { approvals: entries }));
+    } else {
+      try {
+        if (fs.existsSync(PENDING_APPROVALS_PATH)) {
+          const lines = fs.readFileSync(PENDING_APPROVALS_PATH, "utf8").split("\n").filter(Boolean);
+          entries = lines.map(line => {
+            try { return JSON.parse(line); } catch { return null; }
+          }).filter(Boolean);
+        }
+      } catch {
+        return { ok: false, error: "read_failed", mode: "host_approval_decide" };
+      }
     }
 
     const entry = entries.find(e => e.id === id);
@@ -1453,6 +1586,33 @@ function createProductSurface(repoRoot, opts = {}) {
   }
 
   function loadRooms() {
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        const text = canonicalTextFor("rooms", hit);
+        setLastTextFor(ROOMS_PATH, text);
+        return JSON.parse(text);
+      }
+      // 库空或不可用：遗留文件即真源（自导入路径），否则空目录
+      if (fs.existsSync(ROOMS_PATH)) {
+        sayOnce(
+          "legacy-rooms",
+          "[rooms] BITBOT_EVENT_ONLY：事件库为空但存在遗留 rooms.json（未导入）——暂以 JSON 为读真源，" +
+            "首次写入会把它增量带进事件库；建议先跑 scripts/import_json_to_events.mjs。\n",
+        );
+        const text = fs.readFileSync(ROOMS_PATH, "utf8");
+        setLastTextFor(ROOMS_PATH, text);
+        const parsed = JSON.parse(text);
+        return parsed && Array.isArray(parsed.rooms) ? parsed : { version: 1, rooms: [] };
+      }
+      if (hit.ok && hit.anomalies.length) {
+        sayOnce("ano-rooms", `[rooms] BITBOT_EVENT_ONLY：事件折叠有异常（${hit.anomalies[0]}）——按空目录处理，写入继续\n`);
+      } else if (!hit.ok && hit.reason !== "no_db" && hit.reason !== "read_disabled") {
+        sayOnce(`rm-rooms-${hit.reason}`, `[rooms] BITBOT_EVENT_ONLY：事件读模型不可用（${hit.reason}${hit.error ? ": " + hit.error : ""}）——按空目录处理，写入继续\n`);
+      }
+      setLastTextFor(ROOMS_PATH, JSON.stringify({ version: 1, rooms: [] }, null, 2));
+      return { version: 1, rooms: [] };
+    }
     if (eventReadModel.eventReadEnabled()) {
       const hit = readRoomsFromEvents();
       if (hit.data) return hit.data;
@@ -1484,16 +1644,32 @@ function createProductSurface(repoRoot, opts = {}) {
     return { data, unreadable: false, reason: "" };
   }
   function roomsStoreStatus() {
+    // EVENT_ONLY：JSON 文件不再是真源（可能是遗留物），健康度以事件折叠为准。
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length) return { ok: true, rooms: hit.rooms };
+      return { ok: false, error: ROOMS_UNREADABLE + ":events_" + (hit.ok ? "anomalies" : hit.reason) };
+    }
     if (!fs.existsSync(ROOMS_PATH)) return { ok: true, rooms: { version: 1, rooms: [] } };
     const hit = parseRoomsRaw();
     if (hit.unreadable) return { ok: false, error: ROOMS_UNREADABLE + ":" + hit.reason };
     return { ok: true, rooms: hit.data };
   }
   // 只给「要落盘」的路径用：文件不存在可以当空目录开（还没有群），坏文件不行。
+  // EVENT_ONLY 下写侧的基底必须是事件折叠（遗留文件走自导入路径）。
   function requireWritableRooms() {
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        const text = canonicalTextFor("rooms", hit);
+        setLastTextFor(ROOMS_PATH, text);
+        return JSON.parse(text);
+      }
+    }
     if (!fs.existsSync(ROOMS_PATH)) return { version: 1, rooms: [] };
     const hit = parseRoomsRaw();
     if (hit.unreadable) { const err = new Error(ROOMS_UNREADABLE + ":" + hit.reason); err.code = ROOMS_UNREADABLE; throw err; }
+    if (eventOnlyMode()) setLastTextFor(ROOMS_PATH, JSON.stringify(hit.data, null, 2));
     return hit.data;
   }
 

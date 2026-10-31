@@ -2893,6 +2893,34 @@ else
   echo "  · skip：本机 node 没有 node:sqlite，G-65 未跑（SKIP ≠ PASS）"
 fi
 
+echo "== G-66 停写 JSON（T1-05 · BITBOT_EVENT_ONLY=1 时事件库是三张面唯一真源）=="
+# AC-T1-5 的原话是「停写 JSON」：EVENT_ONLY 下三张面 JSON 一个字节都不再被写，
+# 事件库是唯一写路径与读真源。写失败必须喊出来——JSON 不再是备份，吞错 = 丢数据。
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 600 node scripts/prove_event_only.mjs > /tmp/g66-eventonly.log 2>&1; then
+    ok "G-66 停写契约全绿（$(grep -c '^ok EO' /tmp/g66-eventonly.log) 项，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g66-eventonly.log)）"
+  else
+    bad "G-66 停写契约（见 /tmp/g66-eventonly.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g66-eventonly.log || tail -2 /tmp/g66-eventonly.log | tr '\n' ' ')）"
+  fi
+  grep -q '^ok EO-01' /tmp/g66-eventonly.log \
+    && grep -q '^ok EO-02' /tmp/g66-eventonly.log \
+    && ok "G-66 停写与对照都在：三张面零落盘（bots.json/审计流水照常），同一串操作两个世界折叠同形" \
+    || bad "G-66 EO-01 / EO-02 锚点缺失（停写或行为对照没被断言）"
+  grep -q '^ok EO-03' /tmp/g66-eventonly.log \
+    && grep -q '^ok EO-04' /tmp/g66-eventonly.log \
+    && grep -q '^ok EO-05' /tmp/g66-eventonly.log \
+    && ok "G-66 数据迁移三条都在：导入幂等（第二遍 0 新增）、遗留纯读不建库、首次写入自导入（基底+delta，无幽灵实体）" \
+    || bad "G-66 EO-03/04/05 锚点缺失（导入幂等或遗留接管没被断言）"
+  grep -q '^ok EO-06' /tmp/g66-eventonly.log \
+    && grep -q '^ok EO-07' /tmp/g66-eventonly.log \
+    && ok "G-66 两条 fail-loud 都在：库坏写入当场抛（对照双写吞错），老运行时 EVENT_ONLY 无可静默降级" \
+    || bad "G-66 EO-06 / EO-07 锚点缺失（fail-loud 没被断言）"
+  echo "  · G-66 与导入脚本的分工：scripts/import_json_to_events.mjs 是登机梯"
+  echo "    （先导入再开 EVENT_ONLY）；EO-05 的自导入是没跑梯子的兜底，不是替代。"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-66 未跑（SKIP ≠ PASS）"
+fi
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

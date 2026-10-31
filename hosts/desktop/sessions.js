@@ -70,6 +70,62 @@ function createSessionStore(repoRoot, opts = {}) {
     m.commit(storePath, token, text);
   }
 
+  /* ===== T1-05 EVENT_ONLY（BITBOT_EVENT_ONLY=1）=====
+     事件库成为唯一写路径与读真源；sessions.json 一个字节都不再写。
+     diff 的左半边不再是「盘上文件」，而是内存里最后一次读到的状态文本
+     （lastLoadedText，load() 的每条路都负责刷新它）——这就是「prev 从盘上
+     搬进内存」。读模型的降级路在这里只用于「读」，写侧一律 fail loud：
+     JSON 不再是备份，写失败吞掉就是静默丢数据（commitText 会往外抛）。 */
+  const eventOnly = () => process.env.BITBOT_EVENT_ONLY === "1";
+  let lastLoadedText = null;
+  /* 遗留基底标记：load() 从遗留 JSON 读来且库还没有这张面的账时置位。
+     delta diff 只记增量——基底（旧会话们）从没进过库，直接落 delta 会让
+     顺序事件指向幽灵实体（EO-05 抓出来的）。所以首次写必须先从 BASELINE
+     把基底导进去（与导入脚本同一语义），再落 delta。 */
+  let legacyBasePending = false;
+  const eventOnlySaid = new Set();
+  function sayOnce(key, line) {
+    if (eventOnlySaid.has(key)) return;
+    eventOnlySaid.add(key);
+    process.stderr.write(line);
+  }
+
+  function saveEventOnly(state) {
+    const nextText = JSON.stringify(state, null, 2);
+    const def = eventMirror.surfaceOf(storePath);
+    const m = mirror();
+    if (legacyBasePending) {
+      m.commitText(def, null, lastLoadedText); // 基底导入（从 BASELINE，prevText=null）
+      legacyBasePending = false;
+    }
+    m.commitText(def, lastLoadedText, nextText);
+    lastLoadedText = nextText;
+  }
+
+  /** EVENT_ONLY 的「从 BASELINE 播种」：与导入脚本共用同一语义（prevText=null）。 */
+  function seedEventOnly() {
+    const seed = empty();
+    mirror().commitText(eventMirror.surfaceOf(storePath), null, JSON.stringify(seed, null, 2));
+    lastLoadedText = JSON.stringify(seed, null, 2);
+    return seed;
+  }
+
+  /** 从 JSON 文本恢复 store（EVENT_ONLY 的遗留数据 / 降级路共用），并刷新 prev。 */
+  function stateFromJsonText(text) {
+    let raw;
+    try {
+      raw = JSON.parse(text);
+    } catch {
+      return empty();
+    }
+    if (!raw || !Array.isArray(raw.sessions) || !raw.sessions.length) {
+      return empty();
+    }
+    if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+    lastLoadedText = text;
+    return ensureMessageIds(raw);
+  }
+
   // T1-04 读切换：BITBOT_EVENT_READ=1 时优先从事件日志折叠出 sessions 面。
   // 读模型不可用（没开双写→没有库 / 日志坏 / 折叠有 anomaly）就老实回退 JSON
   // 读，并打一行说明——绝不静默，也绝不把读失败当成「没有会话」。
@@ -94,6 +150,44 @@ function createSessionStore(repoRoot, opts = {}) {
 
   function load() {
     fs.mkdirSync(dir, { recursive: true });
+    if (eventOnly()) {
+      const hit = eventReadModel.readSurfaces(dataRoot);
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        const raw = hit.sessions;
+        if (!Array.isArray(raw.sessions) || !raw.sessions.length) {
+          return seedEventOnly(); // 库里有事件但还没有会话：从 BASELINE 播种
+        }
+        if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+        lastLoadedText = JSON.stringify(raw);
+        return ensureMessageIds(raw);
+      }
+      /* 库空（count===0）或读模型不可用：看有没有遗留 JSON。
+         有 → 读它并说一句话（首次写入会把它增量带进事件库，即「自导入」；
+         更稳妥是先跑导入脚本）；没有 → 正常播种。 */
+      const legacyText = (() => {
+        try {
+          const j = JSON.parse(fs.readFileSync(storePath, "utf8"));
+          return j && Array.isArray(j.sessions) && j.sessions.length ? fs.readFileSync(storePath, "utf8") : null;
+        } catch {
+          return null;
+        }
+      })();
+      if (legacyText) {
+        sayOnce(
+          "legacy-sessions",
+          "[sessions] BITBOT_EVENT_ONLY：事件库为空但存在遗留 sessions.json（未导入）——暂以 JSON 为读真源，" +
+            "首次写入会把它增量带进事件库；建议先跑 scripts/import_json_to_events.mjs。\n",
+        );
+        legacyBasePending = true;
+        return stateFromJsonText(legacyText);
+      }
+      if (hit.ok && hit.anomalies.length) {
+        sayOnce("ano-sessions", `[sessions] BITBOT_EVENT_ONLY：事件折叠有异常（${hit.anomalies[0]}）——按空库处理，写入继续\n`);
+      } else if (!hit.ok && hit.reason !== "no_db" && hit.reason !== "read_disabled") {
+        sayOnce(`rm-sessions-${hit.reason}`, `[sessions] BITBOT_EVENT_ONLY：事件读模型不可用（${hit.reason}${hit.error ? ": " + hit.error : ""}）——按空库处理，写入继续\n`);
+      }
+      return seedEventOnly();
+    }
     if (!fs.existsSync(storePath)) {
       const seed = empty();
       writeStore(JSON.stringify(seed, null, 2));
@@ -107,6 +201,7 @@ function createSessionStore(repoRoot, opts = {}) {
           return empty();
         }
         if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+        lastLoadedText = JSON.stringify(raw);
         return ensureMessageIds(raw);
       }
       if (!degradedSaid.has(hit.source)) {
@@ -118,11 +213,14 @@ function createSessionStore(repoRoot, opts = {}) {
       }
     }
     try {
-      const raw = JSON.parse(fs.readFileSync(storePath, "utf8"));
+      const text = fs.readFileSync(storePath, "utf8");
+      const raw = JSON.parse(text);
       if (!raw || !Array.isArray(raw.sessions) || !raw.sessions.length) {
+        lastLoadedText = text;
         return empty();
       }
       if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+      lastLoadedText = text;
       return ensureMessageIds(raw);
     } catch {
       return empty();
@@ -130,6 +228,10 @@ function createSessionStore(repoRoot, opts = {}) {
   }
 
   function save(state) {
+    if (eventOnly()) {
+      saveEventOnly(state);
+      return;
+    }
     fs.mkdirSync(dir, { recursive: true });
     writeStore(JSON.stringify(state, null, 2));
   }

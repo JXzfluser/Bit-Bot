@@ -587,7 +587,12 @@ function createMirror(opts = {}) {
   if (!dataRoot) throw new Error("createMirror: 需要 dataRoot");
   const file = opts.file ? path.resolve(opts.file) : path.join(dataRoot, "events", "desktop-events.sqlite");
   const actor = String(opts.actor || env.BITBOT_ACTOR || "desktop-" + process.pid);
-  const enabled = opts.enabled !== undefined ? !!opts.enabled : String(env.BITBOT_EVENT_DUAL_WRITE || "") === "1";
+  /* enabled 的两条路：双写（T1-03）与 EVENT_ONLY（T1-05）。后者不开 DUAL_WRITE
+     也要落库——它就是唯一的写路径。capture/commit 的文件读只在双写路径被调用，
+     EVENT_ONLY 走 commitText，不碰文件。 */
+  const dualWriteOn = String(env.BITBOT_EVENT_DUAL_WRITE || "") === "1";
+  const eventOnlyOn = String(env.BITBOT_EVENT_ONLY || "") === "1";
+  const enabled = opts.enabled !== undefined ? !!opts.enabled : (dualWriteOn || eventOnlyOn);
   const log = opts.log || ((msg) => process.stderr.write(msg + "\n"));
 
   let logHandle = null;
@@ -650,6 +655,47 @@ function createMirror(opts = {}) {
     }
   }
 
+  /**
+   * T1-05 EVENT_ONLY 的落库口：diff 两段**内存文本**直接派事件，全程不碰文件。
+   * 与 commit() 的两点不同，都是刻意的：
+   *   1. prev 由调用方给（内存里最后一次读到的状态），不是从盘上读——JSON 已经
+   *      不再是被写的真源，盘上那份只是遗留物；
+   *   2. 异常**往外抛**，不咽。双写吞异常的理由是「行为不变」——JSON 照常落盘，
+   *      镜像失败只是少了旁路账；EVENT_ONLY 下事件库是唯一真源，写失败还吞掉
+   *      就是静默丢数据。调用方（sessions.save / atomicWrite）让错误一路上抛。
+   * prevText 传 null = 从 BASELINE 起算（与导入脚本共用同一语义，docs/events.md §8）。
+   */
+  function commitText(def, prevText, nextText) {
+    if (!enabled || !def) {
+      const err = new Error("commitText: EVENT_ONLY 需要开着的镜像与明确的 surface def");
+      err.code = "EVENT_MIRROR_DISABLED";
+      throw err;
+    }
+    stats.writes++;
+    const { events, problems } = diffSurface(def, prevText, nextText);
+    if (problems.length) {
+      for (const p of problems) stats.unattributed.push(p);
+      log(`[event-mirror] ${def.surface}: ${problems.length} 处变化没人认领（EVENT_ONLY 下这是丢数据，见 unattributed）`);
+      const err = new Error(`commitText: ${def.surface} 有 ${problems.length} 处变化没人认领：${problems[0]}`);
+      err.code = "EVENT_UNATTRIBUTED";
+      throw err;
+    }
+    const h = handle();
+    if (!h) {
+      const err = openError || new Error("commitText: 事件库打不开");
+      err.code = "EVENT_DB_UNAVAILABLE";
+      throw err;
+    }
+    for (const e of events) {
+      // 与 commit() 同一条决定：不发 idem_key，幂等在 diff 里（见上面 commit 的注释）。
+      const res = h.append({ sessionId: e.sessionId, kind: e.kind, payload: e.payload });
+      if (res.duplicated) stats.duplicated++;
+      stats.emitted++;
+      stats.kinds[e.kind] = (stats.kinds[e.kind] || 0) + 1;
+    }
+    return events.length;
+  }
+
   function noteFailure(where, err) {
     stats.failures++;
     const first = stats.failures === 1;
@@ -662,6 +708,7 @@ function createMirror(opts = {}) {
     stats,
     capture,
     commit,
+    commitText,
     close() {
       if (logHandle) {
         try {
@@ -710,12 +757,17 @@ function isAvailable() {
    是最贵的一种「改了行为」（Electron 33 = Node 20.18.3 时代踩到的；现桌面已升
    Electron 37 / Node 22.21，这条防御保留给旧运行时与老 CLI host）。 */
 function createDisabledMirror(dataRoot, env) {
-  const enabled = String((env || process.env).BITBOT_EVENT_DUAL_WRITE || "") === "1";
+  const e = env || process.env;
+  const enabled =
+    String(e.BITBOT_EVENT_DUAL_WRITE || "") === "1" || String(e.BITBOT_EVENT_ONLY || "") === "1";
   if (enabled) {
+    const which = String(e.BITBOT_EVENT_ONLY || "") === "1" ? "BITBOT_EVENT_ONLY" : "BITBOT_EVENT_DUAL_WRITE";
     process.stderr.write(
       `[event-mirror] 已降级为不写：当前运行时没有内置 SQLite（node:sqlite，Node ${process.version}），` +
-        `而双写开关是开着的（${path.join(dataRoot, "events", "desktop-events.sqlite")} 不会出现）。` +
-        "快照写入不受影响。\n",
+        `而 ${which} 是开着的（${path.join(dataRoot, "events", "desktop-events.sqlite")} 不会出现）。` +
+        (String(e.BITBOT_EVENT_ONLY || "") === "1"
+          ? "EVENT_ONLY 下事件库是唯一写路径，写入会当场报错——这不是可静默的降级。\n"
+          : "快照写入不受影响。\n"),
     );
   }
   const stats = { emitted: 0, duplicated: 0, kinds: {}, unattributed: [], failures: 0, writes: 0 };
@@ -729,6 +781,11 @@ function createDisabledMirror(dataRoot, env) {
     },
     commit() {
       return false;
+    },
+    commitText() {
+      const err = new Error("commitText: 运行时没有 node:sqlite，EVENT_ONLY 无法落库");
+      err.code = "EVENT_DB_UNAVAILABLE";
+      throw err;
     },
     close() {},
   };

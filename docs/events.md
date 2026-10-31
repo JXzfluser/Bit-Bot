@@ -224,6 +224,21 @@ T1-04 的读切换（已落地，flag 控制）把「读」也接上了，边界
 由 `scripts/prove_event_read_model.mjs`（矩阵 G-65）盯着：读等价逐字段、
 读世界里继续写不漂移、三条降级路都要说话、老运行时起得来。
 
+T1-05 的停写（已落地，flag 控制）把「写」也接上了：`BITBOT_EVENT_ONLY=1`
+时三张面 JSON 一个字节都不再被写，事件库是唯一写路径与读真源（隐含读切换）。
+diff 的左半边从「盘上文件」换成「内存里最后一次读到的状态」，经镜像新增的
+`commitText(def, prevText, nextText)` 直接落库；它与双写 `commit()` 最大的不同是
+**异常往外抛**——双写吞错的理由是 JSON 照常落盘（行为不变），EVENT_ONLY 下
+JSON 不再是备份，吞错就是静默丢数据。遗留数据的登机梯是
+`scripts/import_json_to_events.mjs`（`diffSurface(def, null, 文本)` 从 BASELINE
+起算，`idem_key` 按文件内容哈希生成，重跑 0 新增）；没跑梯子也兜得住——库空 +
+JSON 有内容时先读 JSON 并打一行横幅，首次写入把基底（从 BASELINE）与 delta
+一起带进事件库（自导入）。bots.json / settings.json / approvals.log.jsonl 等
+非三张面文件照常落盘（§7 的边界不变）。写失败在 EVENT_ONLY 下没有静默降级：
+库坏 / 运行时没有 node:sqlite 都当场抛错。
+由 `scripts/prove_event_only.mjs`（矩阵 G-66）盯着：三张面零落盘、与双写世界
+折叠同形、导入幂等、遗留接管、两条 fail-loud。
+
 ## 8. 现状 → 词表映射（供 T1-03 双写、T1-05 导入）
 
 | 今天的载体 | 落到的 kind |
