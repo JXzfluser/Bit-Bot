@@ -3331,3 +3331,49 @@ python3 -c "import PIL, pptx; print('media py deps ok', PIL.__version__, pptx.__
 声明，用户机器缺它们时 `generate_image` / `slides_pptx` 会如实失败。把这两件写进
 盒子安装清单、并在 `box doctor` 里暴露，是下一轮该做的事（本轮只保证 CI 与开发机
 一致，且缺依赖时原因可读）。
+
+### 8.49.8 更正 §8.49.7：真因是 Host 媒体脚本硬编码 `/workspace`（Pillow 只是第二个坑）
+
+§8.49.7 的结论（「不是产品 bug，是 runner 缺 Pillow/python-pptx」）**只对了一半**，
+按 RH-07「已提交段落不许删」保留原文，在这里更正：
+
+装上 Pillow + python-pptx 并当场 `import` 断言（`media py deps ok 13.0.0 1.0.2`）之后，
+G-64 仍然红在同一处。补上证据链（上传 `/tmp/g6*.log`、矩阵日志贴子日志尾部、
+`set -E` + ERR trap 在失败时打印最近一次 `/tmp/bitbot-*.json`）后，#14 `dfc0c94`
+把 payload 原样打了出来：
+
+```
+cmd=`/workspace/agent-tools/gen-image-desktop-1.png|smoke aurora desk`
+--out /home/runner/work/Bit-Bot/Bit-Bot/data/gen-image-desktop-1.png
+FileNotFoundError: [Errno 2] No such file or directory: '/workspace/agent-tools'
+```
+
+`scripts/host_h5_media.py` 的 `_ensure_agent_tools()` 无条件
+`mkdir /workspace/agent-tools`。开发容器里 `/workspace` 恰好存在（box 虚拟路径），
+所以本机 root / 非 root 怎么跑都是绿的；真实桌面与 CI runner 上没有这个目录，
+mkdir 直接抛异常 —— **这是产品在真机上会红的 bug，不是 CI 环境缺件**。
+
+修法（产品代码，`host_h5_media.py`）：
+
+- `_ensure_agent_tools(out)` 只建**调用方 `--out` 的父目录**；Host 本来就会先
+  `mkdirSync(dirname(outPath))`，脚本不承担「造 /workspace」的职责。
+- `AGENT_TOOLS` 默认值改为 `BITBOT_AGENT_TOOLS` 或相对 `agent-tools`（只影响
+  手工裸跑；Host 永远显式传 `--out`）。
+- 五个子命令全部改传真实输出路径（image / video / watch 的 frame / chart / pptx）。
+
+红→绿证据（本地，非 root + `/workspace` 不可访问，模拟 runner）：
+
+| 状态 | 命令 | 结果 |
+| --- | --- | --- |
+| 修复前 | `chmod 000 /workspace` + `python3 host_h5_media.py generate-image --out /tmp/…` | `PermissionError: '/workspace/agent-tools'`，rc=1 |
+| 修复后 | 同上 | rc=0，写出 7 KB PNG |
+| 修复后 | 五个子命令全跑（image/video/frame/chart/pptx） | 全部 rc=0，产物 6–28 KB |
+
+Pillow / python-pptx 的安装仍然保留：它们是真依赖，缺了媒体段会红（只是不是本次
+29 秒红的原因）；workflow 里用 `import` 断言，避免「装没装上」变成谜。
+
+诚实残留：`host_h5_media.py` 的产物落在 Host 给的 `data/…` 路径
+（`resolveAgentToolsPath` 把出仓的 `/workspace/…` 收进 `DATA_ROOT`），而规格写的是
+「PNG 落在 `/workspace/agent-tools/`」。这是路径收敛策略与规格文字的差异，本轮没改
+（会动 Host 写盘契约）；真机上用户拿到的是 `media_path`，能打开，但「文件在
+agent-tools 下」这句话目前只在 box 内成立。

@@ -87,7 +87,8 @@ jobs:
           # SKIP（不算 PASS）；这里装上是为了让 CI 覆盖面真实而不是靠跳过。
           # Pillow / python-pptx 是 Host 媒体真产物的运行期依赖（generate_image、
           # structured_chart、slides_pptx）：runner 镜像默认没有，缺了 G-64 会在
-          # 第一个媒体断言处红（2026-10-31 #10/#11 就是这样红的）。
+          # 媒体段红。（#10/#11 的 29 秒红真因是 host_h5_media.py 硬编码
+          # /workspace，见 report §8.49.8；这里补的是第二个坑，别让下一个红是它。）
           sudo apt-get install -y --no-install-recommends \
             xvfb ffmpeg espeak-ng tesseract-ocr xdotool wmctrl
           python3 -m pip install --quiet --user --break-system-packages pillow python-pptx \
