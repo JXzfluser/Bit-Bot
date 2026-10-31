@@ -1,15 +1,17 @@
-/* e2e_desktop_unread_summary.mjs — P1-6 未读汇总的回归门禁
+/* e2e_desktop_unread_summary.mjs — P1-6 未读汇总 + P2-7 未读落盘 的回归门禁
  *
- * 断言的是「未读汇总条」这一条链路，不是像素：
+ * 前半段断汇总条这一条链路，后半段断「重启还在」：
  *   U-01 没有未读 → #unread-summary 隐藏（不占位、不空转）
  *   U-02 打开会话弹层 → 两个种子会话都在列表里
  *   U-03 注入未读（今天 2 条 + 更早 1 条）→ 汇总条可见，文案带总数 3
  *   U-04 点汇总条 → 跳到「最早未读」（更早分组那条），该会话未读清零，
  *        汇总条降为 2，弹层自动收起（和点行同一行为）
  *   U-05 全部读完 → 汇总条重新隐藏
+ *   U-06 未读落 settings.unread → 关掉重开仍在（P2-7）
+ *   U-07 清空后落盘不留幽灵行 → 重开是干净的（P2-7）
  *
  * 未读表的注入走 window.__bbUnread（测试钩子，和生产同一份数据 + 同一个
- * renderUnreadMarks），因此 U-03/U-04/U-05 断的是真实渲染路径。
+ * renderUnreadMarks / persistUnread），因此断的是真实渲染 + 真实落盘路径。
  */
 
 import path from "path";
@@ -96,6 +98,27 @@ const UD = electronUserDataDir("unread");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function launch() {
+  return _electron.launch({
+    executablePath: ELECTRON,
+    args: [
+      path.join(DESKTOP, "main.js"),
+      "--no-sandbox",
+      "--disable-gpu",
+      "--user-data-dir=" + UD,
+    ],
+    cwd: REPO,
+    env: electronLaunchEnv(
+      gateAppEnv(root, {
+        BITBOT_LLM_BASE_URL: "http://127.0.0.1:9/v1",
+        BITBOT_LLM_API_KEY: "gate-no-call",
+        BITBOT_LLM_MODEL: "gate-no-call",
+        BITBOT_LLM_STREAM: "0",
+      }),
+    ),
+  });
+}
+
 const summary = (win) =>
   win.evaluate(() => {
     const el = document.getElementById("unread-summary");
@@ -114,30 +137,36 @@ const activeId = async (win) => {
   return list && list.active_id;
 };
 
-(async () => {
-  let app = null;
+/* 读 settings.unread（getSettings 会包一层，两种形状都认） */
+const storedUnread = (win) =>
+  win.evaluate(async () => {
+    const res = await window.bitbot.settings.get();
+    const st = (res && res.settings && res.settings.settings) || (res && res.settings) || {};
+    return (st && st.unread) || {};
+  });
+
+let app = null;
+const open = async () => {
+  app = await launch();
+  const win = await app.firstWindow();
+  await win.waitForSelector("#composer #text", { timeout: 30000 });
+  await win.waitForTimeout(700);
+  return win;
+};
+const close = async () => {
+  if (!app) return;
   try {
-    app = await _electron.launch({
-      executablePath: ELECTRON,
-      args: [
-        path.join(DESKTOP, "main.js"),
-        "--no-sandbox",
-        "--disable-gpu",
-        "--user-data-dir=" + UD,
-      ],
-      cwd: REPO,
-      env: electronLaunchEnv(
-        gateAppEnv(root, {
-          BITBOT_LLM_BASE_URL: "http://127.0.0.1:9/v1",
-          BITBOT_LLM_API_KEY: "gate-no-call",
-          BITBOT_LLM_MODEL: "gate-no-call",
-          BITBOT_LLM_STREAM: "0",
-        }),
-      ),
-    });
-    const win = await app.firstWindow();
-    await win.waitForSelector("#composer #text", { timeout: 30000 });
-    await win.waitForTimeout(700);
+    await app.close();
+  } catch (_) {
+    /* ignore */
+  }
+  app = null;
+  await sleep(400);
+};
+
+(async () => {
+  try {
+    let win = await open();
 
     /* ---------- U-01 没有未读 → 汇总条隐藏 ---------- */
     const s1 = await summary(win);
@@ -188,26 +217,73 @@ const activeId = async (win) => {
     else if (popHidden !== true) bad("U-04 跳转后弹层没收起", String(popHidden));
     else ok("U-04 点汇总条跳到最早未读，未读降为 2，弹层收起");
 
-    /* ---------- U-05 全部读完 → 汇总条隐藏 ---------- */
-    await win.evaluate(() => {
-      const st = window.__bbUnread.state();
-      for (const k of Object.keys(st)) delete st[k];
-      window.__bbUnread.render();
-    });
-    await win.waitForTimeout(200);
+    /* ---------- U-05 点会话行本身也要清未读（不能再靠重画糊掉） ---------- */
+    await win.click("#ab-sessions-btn");
+    await win.waitForTimeout(400);
+    await win.click('#session-list .agent-item[data-session-id="sess-today"]');
+    await win.waitForTimeout(900);
+    const afterRow = await win.evaluate(() => Object.assign({}, window.__bbUnread.state()));
     const s5 = await summary(win);
+    Object.keys(afterRow).length === 0
+      ? ok("U-05 点会话行后未读表清空（行点击走同一条 activateSessionById）")
+      : bad("U-05 点会话行没有清未读", JSON.stringify(afterRow));
     s5.hidden && s5.display === "none"
       ? ok("U-05 全部已读后汇总条重新隐藏")
       : bad("U-05 全部已读后汇总条仍可见", JSON.stringify(s5));
+
+    /* ---------- U-06 未读落盘 → 重开还在（P2-7） ---------- */
+    await win.evaluate(() => {
+      const st = window.__bbUnread.state();
+      st["sess-today"] = 3;
+      window.__bbUnread.commit();
+    });
+    let disk = {};
+    for (let i = 0; i < 20; i++) {
+      disk = await storedUnread(win);
+      if (disk["sess-today"] === 3) break;
+      await sleep(150);
+    }
+    disk["sess-today"] === 3
+      ? ok("U-06 settings.unread 已写入（{sess-today:3}）")
+      : bad("U-06 settings.unread 没落盘", JSON.stringify(disk));
+
+    await close();
+    win = await open();
+    const s6 = await summary(win);
+    const rowDot6 = await win.evaluate(() => {
+      const el = document.querySelector('#session-list .agent-item[data-session-id="sess-today"]');
+      return el ? !!el.querySelector(".unread-dot") : null;
+    });
+    if (s6.hidden) bad("U-06 重开后汇总条没回填");
+    else if (!/(^|\D)3(\D|$)/.test(s6.text)) bad("U-06 重开后总数不对", s6.text);
+    else if (rowDot6 !== true) bad("U-06 重开后行内未读点没回填", String(rowDot6));
+    else ok("U-06 重开后未读回填（汇总条 3 + 行点）——P2-7 生效");
+
+    /* ---------- U-07 清空后不留幽灵行（P2-7） ---------- */
+    await win.evaluate(() => {
+      const st = window.__bbUnread.state();
+      for (const k of Object.keys(st)) delete st[k];
+      window.__bbUnread.commit();
+    });
+    for (let i = 0; i < 20; i++) {
+      disk = await storedUnread(win);
+      if (Object.keys(disk).length === 0) break;
+      await sleep(150);
+    }
+    Object.keys(disk).length === 0
+      ? ok("U-07 清空后 settings.unread = {}（不落 sid:0 幽灵行）")
+      : bad("U-07 清空后仍残留未读键", JSON.stringify(disk));
+
+    await close();
+    win = await open();
+    const s7 = await summary(win);
+    s7.hidden && s7.display === "none"
+      ? ok("U-07 重开后是干净的（无未读、无汇总条）")
+      : bad("U-07 重开后仍有未读", JSON.stringify(s7));
   } catch (e) {
     bad("执行异常", (e && e.message) || e);
   } finally {
-    try {
-      if (app) await app.close();
-    } catch (_) {
-      /* ignore */
-    }
-    await sleep(150);
+    await close();
     done(NAME);
   }
 })();

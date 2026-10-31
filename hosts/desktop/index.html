@@ -5728,14 +5728,10 @@
           el.addEventListener("click", async () => {
             // 群聊 composer 是独占态：点开任何私聊会话都要先退出群模式，
             // 否则用户以为在跟这个人说话，实际又发进了群。
-            if (composerRoom) exitRoomChat();
-            const r = await window.bitbot.sessions.setActive(s.id);
-            if (r && r.ok) {
-              activeSessionId = s.id;
-              await loadActiveSessionTranscript();
-              const list = await window.bitbot.sessions.list();
-              renderSessionList(list);
-            }
+            // P2-7：走 activateSessionById 而不是就地重写一遍 —— 就地版本
+            // 只重画列表，未读计数留在内存里，行点看着消失了但汇总条和
+            // 系统 badge 还在数（P1-6 之后这条会直接露馅）。
+            await activateSessionById(s.id);
           });
           // GP-123: rename / delete on the real Host IPC (right-click menu).
           el.addEventListener("contextmenu", (ev) => {
@@ -12061,6 +12057,7 @@
         const total = Object.values(unreadBySession).reduce((a, x) => a + x, 0);
         if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
         renderUnreadMarks();
+        persistUnread();
         openInfoPanel();
       })().catch(() => {
         openInfoPanel();
@@ -16803,6 +16800,40 @@
 
     // ----- GP-80/81/82 notifications + unread + badge -----
     let unreadBySession = {};
+    let unreadRestored = false;
+
+    /* P2-7 · 未读落盘。settings.unread 的 allowlist 早就放行了，但渲染层以前从不
+       读也不写，重启即失忆（行内蓝点 / 汇总条 / 系统 badge 一起归零）。
+       落盘用「整键替换」（Host settingsPatch 就是整键覆盖），空表就落 {}，
+       不留 `sid: 0` 这种幽灵行。 */
+    function persistUnread() {
+      if (!window.bitbot.settings) return;
+      const snap = {};
+      for (const sid of Object.keys(unreadBySession)) {
+        const n = unreadBySession[sid] || 0;
+        if (n > 0) snap[sid] = n;
+      }
+      try {
+        window.bitbot.settings.set({ unread: snap }).catch(() => {});
+      } catch (_) {
+        /* 落盘失败不影响本轮未读显示 */
+      }
+    }
+
+    /* 启动回填：只认第一次。之后 onSettingsChanged 还会再读设置，如果每次都
+       用磁盘快照覆盖内存，刚累加的计数会被旧值盖回去。 */
+    function restoreUnread(raw) {
+      if (unreadRestored) return;
+      unreadRestored = true;
+      if (!raw || typeof raw !== "object") return;
+      for (const sid of Object.keys(raw)) {
+        const n = Number(raw[sid]);
+        if (sid && isFinite(n) && n > 0) unreadBySession[sid] = Math.floor(n);
+      }
+      renderUnreadMarks();
+      const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
+      if (window.bitbot.badge && total > 0) window.bitbot.badge.set(total).catch(() => {});
+    }
     async function notifyTurnIfNeeded(r, opts) {
       if (!window.bitbot.notify) return;
       if (opts && opts.skipSession) return;
@@ -16816,6 +16847,7 @@
         const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
         if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
         renderUnreadMarks();
+        persistUnread();
       }
       await window.bitbot.notify
         .turn({
@@ -16880,6 +16912,7 @@
       delete unreadBySession[sid];
       const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
       if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
+      persistUnread();
       await loadActiveSessionTranscript();
       const list = await window.bitbot.sessions.list();
       renderSessionList(list);
@@ -16924,6 +16957,10 @@
     window.__bbUnread = {
       state: () => unreadBySession,
       render: () => renderUnreadMarks(),
+      commit: () => {
+        renderUnreadMarks();
+        persistUnread();
+      },
     };
 
     // ----- GP-ATx accelerators + sidebar collapse -----
@@ -17075,6 +17112,7 @@
           delete unreadBySession[sid];
           const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
           if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
+          persistUnread();
           await loadActiveSessionTranscript();
           const list = await window.bitbot.sessions.list();
           renderSessionList(list);
@@ -17262,6 +17300,9 @@
           window.addEventListener("resize", adaptSidebarToViewport);
           wavegApplyAppearanceClass(st.appearance || "system");
           wavegLangApply(st.language || "zh-CN");
+          // P2-7：未读回填放在 refreshSessions() 之后，行已经在 DOM 里，
+          // 一次 renderUnreadMarks() 就能把行点 + 汇总条一起点亮。
+          restoreUnread(st.unread);
         } catch (_) {
           /* ignore */
         }
