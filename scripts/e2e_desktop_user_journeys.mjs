@@ -876,6 +876,39 @@ const forbiddenHit = (text) => {
       tw.follow === 1
         ? ok("「跟隨系統」文案只出现 1 次（没有重复标签）")
         : bad("「跟隨系統」重复/缺失", JSON.stringify({ tw: tw.follow, cn: tw.followCn }));
+      /* GP-185：隐藏页签不在 innerText 里，所以「设置页无简体残留」以前只量到当前页签。
+         凭证页刚重排完（四张分区卡 + 折叠 + 三语文案），切过去单独扫一遍。
+         口径：只判「由字典驱动的元素」（带 data-i18n 的那些）—— 这一屏的字段标签
+         （模型 ID / 提供商标签 / 通义千问 API Key…）本轮之前就是硬编码简体，
+         不属本轮改动，改成如实计数报出来，不混进红。 */
+      await win.click('.settings-tab-btn[data-stab="credentials"]', { timeout: 10000 });
+      await new Promise((r) => setTimeout(r, 500));
+      const twCred = await win.evaluate(() => {
+        const p = document.getElementById("secrets-panel");
+        const CN = /设置|语言|时区|隐私|群组|外观|审批|执行命令|发送消息|发起购买|调用工具|操作电脑|委派任务|大脑|网关|连接应用|标签|选填|手机|公网|能力扩展|备用渠道|合规|模型与密钥|同一份/;
+        const i18n = [...p.querySelectorAll("[data-i18n]")].map((el) => ({
+          k: el.dataset.i18n,
+          t: (el.textContent || "").trim(),
+        }));
+        const hard = [...p.querySelectorAll(".st-field-name, .st-note, .pc-head-title, .pc-hint")]
+          .filter((el) => !el.closest("[data-i18n]") && !el.hasAttribute("data-i18n"))
+          .map((el) => (el.textContent || "").trim())
+          .filter((t) => t && CN.test(t));
+        return {
+          keys: i18n.length,
+          bad: i18n.filter((x) => CN.test(x.t)).map((x) => x.k + "=" + x.t.slice(0, 18)),
+          hardCn: hard.length,
+          hardSample: hard.slice(0, 3),
+        };
+      });
+      twCred.bad.length === 0 && twCred.keys >= 14
+        ? ok("zh-TW 凭证页字典驱动文案无简体残留（" + twCred.keys + " 条 data-i18n 全过）")
+        : bad("zh-TW 凭证页字典文案残留简体", JSON.stringify(twCred).slice(0, 260));
+      console.log(
+        "  · 凭证页硬编码简体标签 " + twCred.hardCn + " 处（本轮之前就存在，未 i18n）：" + twCred.hardSample.join(" / ") + " …"
+      );
+      await win.screenshot({ path: path.join(ART, "uj-j4-zhtw-credentials.png") });
+      await win.click('#settings-tabs .settings-tab-btn[data-stab="general"]', { timeout: 10000 }).catch(() => {});
       await win.screenshot({ path: path.join(ART, "uj-j4-zhtw-settings.png") });
       await win.click("#settings-close", { timeout: 10000 }).catch(() => {});
 

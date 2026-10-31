@@ -2247,14 +2247,17 @@
       </div>
       <div id="secrets-panel" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="credentials">模型与密钥</div>
-        <div class="st-note">Key 与凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
-        <div class="st-card">
-          <div class="st-card-title">模型接入</div>
+        <div class="st-note" data-i18n="credLead">只有第一张卡是必须的：接上本机大脑就能用，其余都能先跳过。</div>
+        <!-- 分区不按「有什么字段」排，按「非做不可 → 可选 → 一次性」排：
+             大脑（必填）/ 能力（选填）/ 手机与入站 / 合规。
+             Key 与凭证写入本机 gitignored .env.local 并热加载；仓库与安装包不含真实密钥。 -->
+        <div class="st-card" id="sec-zone-brain">
+          <div class="st-card-title"><span data-i18n="credZoneBrain">本机大脑</span> <span class="st-tag st-tag-req" data-i18n="credTagRequired">必填</span></div>
           <!-- 不再把渠道写死成「DeepSeek / 通义 / Kimi 三个 key 框」。
                本机大脑走 OpenAI 兼容协议，所以任何兼容端点都能接：官方渠道、
                自建推理服务（vLLM / Ollama / LM Studio）、或企业网关。
                接入方式只负责预填 base/model/provider，用户随时可以改。 -->
-          <div class="st-note">本机大脑走 OpenAI 兼容协议：官方渠道、自建推理服务、企业网关都能接。选一个接入方式会预填 Base URL 与模型，之后可以随意改。</div>
+          <div class="st-note" data-i18n="credBrainNote">走 OpenAI 兼容协议：官方渠道、自建推理服务、企业网关都能接。选一个接入方式会预填下面几栏，之后可以随意改。</div>
           <label class="st-field"><span class="st-field-name">接入方式</span>
             <select id="sec-llm-preset" class="bb-field">
               <option value="deepseek">DeepSeek（官方）</option>
@@ -2264,88 +2267,78 @@
               <option value="custom">自定义 · OpenAI 兼容端点</option>
               <option value="gateway">企业网关 / 代理转发</option>
             </select>
+            <!-- 预填了什么要在选完那一行说清，否则用户不知道下面三栏被改了没有 -->
+            <div id="sec-llm-hint" class="st-note">…</div>
           </label>
-          <label class="st-field"><span class="st-field-name">提供商标签（provider_id）</span>
-            <input id="sec-llm-provider" type="text" autocomplete="off" placeholder="deepseek / my-gateway" class="bb-field" />
-          </label>
-          <label class="st-field"><span class="st-field-name">Base URL</span>
-            <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" class="bb-field" />
-          </label>
-          <label class="st-field"><span class="st-field-name">模型 ID</span>
-            <input id="sec-llm-model" type="text" placeholder="deepseek-chat" class="bb-field" />
-          </label>
+          <div class="st-grid">
+            <label class="st-field"><span class="st-field-name">模型 ID</span>
+              <input id="sec-llm-model" type="text" placeholder="deepseek-chat" class="bb-field" />
+            </label>
+            <label class="st-field"><span class="st-field-name">Base URL</span>
+              <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" class="bb-field" />
+            </label>
+          </div>
           <label class="st-field"><span class="st-field-name">API Key <span id="sec-llm-mask"></span></span>
             <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
             <!-- 粘错了要在这一栏下面当场说清楚，而不是等模型 401 之后再让人猜 -->
             <span id="sec-llm-key-err" class="st-field-error" hidden></span>
             <div id="sec-llm-key-note" class="st-note" hidden></div>
           </label>
-          <div id="sec-llm-hint" class="st-note">…</div>
           <!-- GP-148 §1-J4：产品态的模型/供应商面板入口。表头那颗芯片在精简外壳里
                是隐藏的（shell_v2 S-HEADER 要求），所以这里给一个正经入口，和密钥表单
-               读同一个 Host 数据源（llmCatalog + secrets）。 -->
+               读同一个 Host 数据源（llmCatalog + secrets）。
+               放在折叠之前：它属于「本机大脑」这一步，压在折叠下面会被读成
+               「备用渠道的按钮」（GP-185 真开机截图抓到的歧义）。 -->
           <div class="gp-row" style="margin-top:10px">
             <button type="button" class="bb-btn bb-btn-sm" id="sec-model-open" data-i18n="secModelOpen">模型与供应商</button>
           </div>
+          <!-- provider_id 和备用渠道 key 都是「切渠道时才要」的东西，收到同一个折叠里：
+               主流程只剩接入方式 / 模型 / Base URL / Key 四栏。 -->
+          <details class="st-adv" id="sec-alt-channels">
+            <summary class="st-adv-sum"><span data-i18n="credAdvTitle">备用渠道与 provider 标签</span> <span class="st-tag" data-i18n="credTagOptional">选填</span><span class="st-adv-mark" aria-hidden="true"></span></summary>
+            <div class="st-note">同一份 <code>.env.local</code>；切到对应渠道时不用再填一遍。</div>
+            <label class="st-field"><span class="st-field-name">提供商标签（provider_id）</span>
+              <input id="sec-llm-provider" type="text" autocomplete="off" placeholder="deepseek / my-gateway" class="bb-field" />
+            </label>
+            <label class="st-field"><span class="st-field-name">通义千问 API Key <span id="sec-qwen-mask"></span></span>
+              <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+              <span id="sec-qwen-key-err" class="st-field-error" hidden></span>
+              <div id="sec-qwen-key-note" class="st-note" hidden></div>
+            </label>
+            <label class="st-field"><span class="st-field-name">Moonshot / Kimi API Key <span id="sec-moon-mask"></span></span>
+              <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+              <span id="sec-moon-key-err" class="st-field-error" hidden></span>
+              <div id="sec-moon-key-note" class="st-note" hidden></div>
+            </label>
+          </details>
         </div>
-        <details class="st-card" id="sec-alt-channels">
-          <summary class="st-card-title" style="cursor:pointer">备用渠道 Key（可选）</summary>
-          <div class="st-note">同一份 <code>.env.local</code>；切到对应渠道时不用再填一遍。</div>
-          <label class="st-field"><span class="st-field-name">通义千问 API Key <span id="sec-qwen-mask"></span></span>
-            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
-            <span id="sec-qwen-key-err" class="st-field-error" hidden></span>
-            <div id="sec-qwen-key-note" class="st-note" hidden></div>
-          </label>
-          <label class="st-field"><span class="st-field-name">Moonshot / Kimi API Key <span id="sec-moon-mask"></span></span>
-            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
-            <span id="sec-moon-key-err" class="st-field-error" hidden></span>
-            <div id="sec-moon-key-note" class="st-note" hidden></div>
-          </label>
-        </details>
-        <div class="st-card">
-          <div class="st-card-title">联网搜索</div>
+        <div class="st-card" id="sec-zone-capability">
+          <div class="st-card-title"><span data-i18n="credZoneCapability">能力扩展</span> <span class="st-tag" data-i18n="credTagOptional">选填</span></div>
           <!-- Replica C6：真实搜索 + 引用。key 走和大脑 key 同一条开放配置链路
                （写进 gitignored .env.local 并热加载），不内置、不写死。 -->
-          <label class="st-field"><span class="st-field-name">搜索服务</span>
+          <label class="st-field"><span class="st-field-name">联网搜索</span>
             <select id="sec-search-provider" class="bb-field">
               <option value="tavily">Tavily（有免费额度）</option>
               <option value="brave">Brave Search</option>
             </select>
           </label>
-          <label class="st-field"><span class="st-field-name">搜索 API Key <span id="sec-search-mask"></span></span>
-            <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field" />
-            <span id="sec-search-key-err" class="st-field-error" hidden></span>
-            <div id="sec-search-key-note" class="st-note" hidden></div>
-          </label>
-          <label class="st-field"><span class="st-field-name">API Base（可选）</span>
-            <input id="sec-search-base" type="text" placeholder="自建或代理地址；留空走官方" class="bb-field" />
-          </label>
-          <div class="st-note">不填也能用，只是不会联网：回答里不会出现编造的来源。</div>
+          <div class="st-grid">
+            <label class="st-field"><span class="st-field-name">搜索 API Key <span id="sec-search-mask"></span></span>
+              <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field" />
+              <span id="sec-search-key-err" class="st-field-error" hidden></span>
+              <div id="sec-search-key-note" class="st-note" hidden></div>
+            </label>
+            <label class="st-field"><span class="st-field-name">API Base（自建或代理）</span>
+              <input id="sec-search-base" type="text" placeholder="留空走官方" class="bb-field" />
+            </label>
+          </div>
+          <div class="st-note" data-i18n="credCapNote">不填也能用，只是不会联网：回答里不会出现编造的来源。</div>
         </div>
-        <div class="st-card">
-          <div class="st-card-title">合规与安全</div>
-          <label class="st-field"><span class="st-field-name">AI 备案号</span>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <input class="bb-control" id="sec-icp" type="text" placeholder="ICP 备案号" style="flex:1;min-width:140px" />
-              <input class="bb-control" id="sec-algo" type="text" placeholder="算法备案号" style="flex:1;min-width:140px" />
-            </div>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;margin:0">
-            <input id="sec-moderation" type="checkbox" />
-            <span style="font-size:13px;font-weight:500;color:var(--g-ink)">内容审核门（拦截违禁词输出）</span>
-          </label>
-        </div>
-        <div class="st-card">
-          <div class="st-card-title">入站地址</div>
-          <!-- 更新源 URL 已搬到「设置 → 更新」，凭证页不再重复一份。
-               这里只留连接应用回调需要的入站公网地址。 -->
-          <div id="sec-inbound-url" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
-        </div>
-        <div class="st-card">
-          <div class="st-card-title">手机配对</div>
+        <div class="st-card" id="sec-zone-devices">
+          <div class="st-card-title"><span data-i18n="credZoneDevices">手机与入站</span></div>
           <!-- 安卓 / iOS 端连的就是这台大脑。地址与令牌以前只在 README 里，
                用户点不开这一屏就走不到「手机说话 → 桌面记得」。 -->
-          <div id="sec-pairing-line" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">配对状态：读取中…</div>
+          <div id="sec-pairing-line" class="st-readout">配对状态：读取中…</div>
           <!-- 手机敲不到地址时，光给一个「像地址的东西」等于骗人：这一行如实说明
                这个地址从哪类网卡来、大概率连不通的原因。 -->
           <div id="sec-pairing-note" class="pairing-note" style="display:none;margin-top:6px"></div>
@@ -2369,23 +2362,46 @@
             <p id="pairing-code-hint" class="pc-hint">手机只需点「连接 Desktop」并输入这 6 位数字</p>
           </div>
           <p id="pairing-manual-label" class="pc-hint">手动填写（同一 Wi-Fi 连不上时才用）</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+          <div class="gp-row">
             <button type="button" id="pairing-lan-btn" class="bb-btn bb-btn-sm">允许手机连接</button>
             <button type="button" id="pairing-token-btn" class="bb-btn bb-btn-sm">显示配对令牌</button>
             <button type="button" id="pairing-copy-url" class="bb-btn bb-btn-sm" disabled>复制地址</button>
             <button type="button" id="pairing-copy-token" class="bb-btn bb-btn-sm" disabled>复制令牌</button>
           </div>
-          <div id="sec-pairing-token" style="display:none;margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:12px/1.5 ui-monospace,monospace;word-break:break-all;background:var(--surface)"></div>
-          <div id="sec-pairing-status" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
+          <div id="sec-pairing-token" class="st-readout" style="display:none;margin-top:8px"></div>
+          <div id="sec-pairing-status" class="st-readout" style="margin-top:8px"></div>
+          <!-- 入站公网地址：连接应用（钉钉/飞书/企微）回调要填的地方。
+               以前自己占一张卡，其实只是这一屏的第二条只读地址，收到同一张卡里。 -->
+          <div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">入站公网地址（连接应用回调要用）</span>
+            <div id="sec-inbound-url" class="st-readout">入站公网 URL：读取中…</div>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <div class="st-card" id="sec-zone-compliance">
+          <div class="st-card-title"><span data-i18n="credZoneCompliance">合规</span></div>
+          <div class="st-grid">
+            <label class="st-field"><span class="st-field-name">AI 备案号</span>
+              <input class="bb-control" id="sec-icp" type="text" placeholder="ICP 备案号" />
+            </label>
+            <label class="st-field"><span class="st-field-name">算法备案号</span>
+              <input class="bb-control" id="sec-algo" type="text" placeholder="算法备案号" />
+            </label>
+          </div>
+          <label class="st-check">
+            <input id="sec-moderation" type="checkbox" />
+            <span>内容审核门（拦截违禁词输出）</span>
+          </label>
+        </div>
+        <!-- 保存条：状态就在按钮左边，点完不用滚到页尾去找「存上了没有」。
+             跑验收门禁是开发动作，跟着 data-lab 收起，产品态不占这颗按钮位。 -->
+        <div class="st-foot" id="sec-foot">
+          <div id="sec-status" class="st-foot-status">…</div>
           <button type="button" id="sec-save" class="bb-btn bb-btn-primary">保存并热加载</button>
           <button type="button" id="sec-probe" class="bb-btn bb-btn-sm">试连大脑</button>
           <button type="button" id="sec-probe-cn" class="bb-btn bb-btn-sm">试连国内渠道</button>
-          <button type="button" id="sec-gate" class="bb-btn bb-btn-sm">跑验收门禁</button>
+          <button type="button" id="sec-gate" class="bb-btn bb-btn-sm" data-lab>跑验收门禁</button>
         </div>
-        <div id="sec-status" style="margin-top:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
-        <pre id="sec-gate-out" class="bb-meta bb-control" style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
+        <pre id="sec-gate-out" class="bb-meta bb-control" data-lab style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
+        <div class="st-note"><span data-i18n="credApplyLead">申请 DeepSeek</span>：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link">platform.deepseek.com/api_keys</a></div>
       </div>
       </div>
     </div>
@@ -3317,9 +3333,13 @@
         if (el) el.style.display = k === key ? "block" : "none";
       }
       const metaEl = document.getElementById("settings-meta");
-      if (metaEl) {
+      // #settings-meta 是开发诊断行：产品态必须留空，否则「tab=凭证」这种内部
+      // 字串会直接印在用户看得见的屏幕上（GP-185 真开机截图抓到的）。
+      if (metaEl && typeof devModeOn === "function" && devModeOn()) {
         const label = { general: "常规", computer: "电脑", credentials: "凭证", usage: "用量与账单", updates: "更新" }[key];
         metaEl.textContent = metaEl.textContent.replace(/tab=[^·]*(·|$)/, "tab=" + label + " $1").trim() || "tab=" + label;
+      } else if (metaEl) {
+        metaEl.textContent = "";
       }
       document.querySelectorAll("#settings-tabs .settings-tab-btn").forEach((b) => {
         b.classList.toggle("active", b.dataset.stab === key);
@@ -14153,6 +14173,18 @@
         usageBilling: "用量与账单（本周真实 LLM 用量；无数据即空态，不造假）",
         credentials: "模型与密钥",
         secModelOpen: "模型与供应商",
+        credLead: "只有第一张卡是必须的：接上本机大脑就能用，其余都能先跳过。",
+        credZoneBrain: "本机大脑",
+        credTagRequired: "必填",
+        credTagOptional: "选填",
+        credBrainNote: "走 OpenAI 兼容协议：官方渠道、自建推理服务、企业网关都能接。选一个接入方式会预填下面几栏，之后可以随意改。",
+        credAdvTitle: "备用渠道与 provider 标签",
+        credZoneCapability: "能力扩展",
+        credCapNote: "不填也能用，只是不会联网：回答里不会出现编造的来源。",
+        credZoneDevices: "手机与入站",
+        credInboundLabel: "入站公网地址（连接应用回调要用）",
+        credZoneCompliance: "合规",
+        credApplyLead: "申请 DeepSeek",
         takeover: "接管",
         takeoverTitle: "接管 — 你正在直接操作本机屏幕",
         takeoverHint: "密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。",
@@ -14854,6 +14886,18 @@
         usageBilling: "用量與帳單（本週真實 LLM 用量；無資料即空態，不造假）",
         credentials: "產品憑證 · 開放設定（不寫死）",
         secModelOpen: "模型與供應商",
+        credLead: "只有第一張卡是必須的：接上本機大腦就能用，其餘都能先跳過。",
+        credZoneBrain: "本機大腦",
+        credTagRequired: "必填",
+        credTagOptional: "選填",
+        credBrainNote: "走 OpenAI 相容協定：官方渠道、自建推理服務、企業閘道都能接。選一個接入方式會預填下面幾欄，之後可以隨意改。",
+        credAdvTitle: "備用渠道與 provider 標籤",
+        credZoneCapability: "能力擴充",
+        credCapNote: "不填也能用，只是不會聯網：回答裡不會出現編造的來源。",
+        credZoneDevices: "手機與入站",
+        credInboundLabel: "入站公網地址（連接應用回調要用）",
+        credZoneCompliance: "合規",
+        credApplyLead: "申請 DeepSeek",
         takeover: "接管",
         takeoverTitle: "接管 — 你正在直接操作本機螢幕",
         takeoverHint: "密碼 / 驗證碼 / 2FA 請在本機輸入，不要貼進對話。",
@@ -15555,6 +15599,18 @@
         usageBilling: "Usage & Billing (real weekly LLM usage; empty state, never faked)",
         credentials: "Product credentials · open config (never baked in)",
         secModelOpen: "Model & provider",
+        credLead: "Only the first card is required: connect the local brain and the rest can wait.",
+        credZoneBrain: "Local brain",
+        credTagRequired: "Required",
+        credTagOptional: "Optional",
+        credBrainNote: "OpenAI-compatible: official channels, self-hosted inference (vLLM / Ollama / LM Studio) or an enterprise gateway. Picking one prefills the fields below; you can edit them after.",
+        credAdvTitle: "Backup keys & provider tag",
+        credZoneCapability: "Capabilities",
+        credCapNote: "Works without this: no web search, and no invented sources in answers.",
+        credZoneDevices: "Phone & inbound",
+        credInboundLabel: "Public inbound URL (needed by app callbacks)",
+        credZoneCompliance: "Compliance",
+        credApplyLead: "Get a DeepSeek key",
         takeover: "Take over",
         takeoverTitle: "Take over — you are controlling this screen directly",
         takeoverHint: "Type passwords / codes / 2FA on the machine — never paste them into chat.",

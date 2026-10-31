@@ -1624,6 +1624,98 @@ body.grok-ui .st-field-name {
 }
 body.grok-ui .st-field-name span { font-weight: 400 !important; color: var(--g-sub) !important; }
 
+/* -- 凭证页分区（GP-185）--------------------------------------------------
+   同一屏的东西按「必填 → 选填 → 一次性」排，卡片等大不再等于同权重。
+   这里只补结构原语：全部走已有令牌，不新增色值（M-1 棘轮）。 */
+body.grok-ui .st-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+@media (max-width: 720px) {
+  body.grok-ui .st-grid { grid-template-columns: 1fr; }
+}
+body.grok-ui .st-tag {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 16px;
+  padding: 0 8px;
+  border: 1px solid var(--g-line);
+  border-radius: 999px;
+  color: var(--g-sub);
+  vertical-align: 2px;
+}
+body.grok-ui .st-tag-req { color: var(--g-ink); border-color: var(--g-ink); }
+/* 高级区：折叠起来的不是「次要功能」，是「切渠道才要」的字段 */
+body.grok-ui .st-adv { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--g-line); }
+body.grok-ui .st-adv > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-ink);
+  list-style: none;
+}
+body.grok-ui .st-adv > summary::-webkit-details-marker { display: none; }
+/* 默认标记被抹掉后，折叠必须自己长出可点的样子：否则这一行读起来就是普通文本，
+   用户不知道下面还有三栏（GP-185 真开机截图抓到的）。 */
+body.grok-ui .st-adv-mark {
+  flex: 0 0 auto;
+  margin-left: auto;
+  margin-right: 2px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--g-sub);
+  border-bottom: 1.5px solid var(--g-sub);
+  transform: rotate(45deg) translateY(-2px);
+}
+body.grok-ui .st-adv[open] > summary .st-adv-mark { transform: rotate(-135deg) translateY(-2px); }
+body.grok-ui .st-adv > summary:hover .st-adv-mark { border-color: var(--g-ink); }
+body.grok-ui .st-adv[open] > summary { margin-bottom: 12px; }
+/* 只读回显（配对地址 / 入站地址 / 令牌）：以前各写一份行内 font+color，
+   现在同一类，顺带把 TP-03/TP-04 的行内字面量计数往下压。 */
+body.grok-ui .st-readout {
+  padding: 10px 12px;
+  border: 1px dashed var(--g-line);
+  border-radius: 10px;
+  color: var(--g-sub);
+  font: var(--text-sm)/1.5 var(--font-mono);
+  word-break: break-all;
+}
+body.grok-ui .st-subline { margin-top: 14px; }
+body.grok-ui .st-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--g-ink);
+}
+/* 保存条贴在滚动区底边：点「保存」的结果就在按钮左边，不用滚到页尾找。
+   左右负 margin 抵掉 .settings-tab 的内边距（4px 36px 32px 6px），让这条横跨整列。 */
+body.grok-ui .st-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 14px -36px -32px -6px;
+  padding: 10px 36px 14px 12px;
+  background: var(--g-card);
+  border-top: 1px solid var(--g-line);
+}
+body.grok-ui .st-foot-status {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--g-sub);
+  font: var(--text-sm)/1.5 var(--font-mono);
+}
+
 /* 国内渠道 block inside connect-apps sheet: quiet section, not a hero card */
 body.grok-ui #ca-cn-channels { background: transparent; border: 0; }
 body.grok-ui #ca-cn-channels > label { margin: 0 !important; }
