@@ -3567,4 +3567,41 @@ CL-10（负向对照），缺任一即红。
   近 1/5 高度。真要做成左滑抽屉是产品交互变更，需要单独裁决；本轮只保证“不破、不挤”。
 - **rail 抽屉会盖住 composer 右半**（包括发送键）。抽屉是显式打开的，自带“关闭”，
   但打开时无法一边看主列一边发消息 —— 这是覆盖层的固有代价，未加遮罩/侧滑手势。
+  → **已在 §8.52 修掉发送键被盖住**；抽屉仍会盖住 composer 之外的右半主列，这是覆盖层本意。
 - **只验了 100% 缩放**：Electron 内容缩放不等于 1 时的 CSS px 换算未覆盖。
+
+## 8.52 面板打开时发送键点不到：composer 在抽屉下面，没人量过命中（D-L-13 补命中测试）
+
+**症状。** §8.51 把窄屏 rail 改成覆盖抽屉后，只断言了 composer 的矩形“在视口内”，
+没断言它**没被更高层盖住**。补上真实命中测试（`document.elementFromPoint(发送键中心)`）后，
+在未改产品代码的 HEAD 上，900/700/480 三档 × {bot, conv, computer, tools} 12 个组合全红：
+
+```
+✗ narrow/bot@480: send button is covered (hit=bot-rail)
+✗ narrow/tools@480: send button is covered (hit=lab)
+...
+e2e_desktop_layout_target: PASS=13 FAIL=13 SKIP=0   (exit 1)
+```
+
+**根因。** 四条 rail 在窄屏是 `position:fixed; top:56; bottom:0; z-index:60`，composer 是普通
+grid item（`z-index:auto`）。抽屉一路铺到窗口底部，480 宽时正好盖住 composer 右侧的发送键：
+面板看得见、消息发不出，而旧断言只看矩形，量不到“被谁压住”。
+同一个根因也存在于桌面宽的群资料抽屉（`#room-rail`，460px 覆盖层），只是此前没有命中测试。
+
+**修复。**
+1. `#composer` 抬到 `z-index:61` 并铺 `--page-bg`：抽屉从 composer 下方穿过，发送键永远可点；
+2. 抽屉加 `padding-bottom:96px`，最后一条内容仍能滚到可视区，而不是永远停在 composer 背后；
+3. **D-L-13 新增命中断言**：每个窄视口/面板态都要求发送键中心命中的是发送键本身
+   （`hit === send || send.contains(hit)`），不是只比矩形。G-46 里自动跑。
+
+**红→绿证据（同一命令 `xvfb-run -a node scripts/e2e_desktop_layout_target.mjs`）：**
+
+| 状态 | 结果 |
+|------|------|
+| 修复前（只加命中测试，产品 CSS 不动） | `PASS=13 FAIL=13 SKIP=0`，exit 1；12 条逐档红 + 1 条汇总红 |
+| 修复后 | `PASS=14 FAIL=0 SKIP=0`，exit 0 |
+
+**诚实残留。**
+- 抽屉底部只给 composer **单行**留了 96px；输入框长到多行时，抽屉最后几条内容会被
+  更高的 composer 挡住，需要滚一下或先收起面板。发送键本身不再受影响。
+- 窄屏侧栏仍是 140px 顶部横带、非 100% 缩放未覆盖，见 §8.51。

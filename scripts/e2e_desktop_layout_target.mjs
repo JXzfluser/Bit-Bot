@@ -123,6 +123,18 @@ const GEOMETRY_PROBE = `(() => {
   const vis = (el) => { const s = getComputedStyle(el); return el.offsetWidth > 0 && s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity) > 0; };
   const q = (s) => document.querySelector(s);
   const rails = ['#bot-rail','#conv-rail','#computer-rail','#machines'].map(q).filter(Boolean);
+  const send = q('#composer #send');
+  let sendHit = null;
+  if (send) {
+    const b = send.getBoundingClientRect();
+    const hit = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+    sendHit = hit ? {
+      id: hit.id || '',
+      cls: typeof hit.className === 'string' ? hit.className : '',
+      inSend: hit === send || send.contains(hit),
+      inComposer: !!(hit.closest && hit.closest('#composer')),
+    } : null;
+  }
   return {
     panel: document.body.dataset.panel || 'none',
     sidebar: document.body.dataset.sidebar || 'expanded',
@@ -130,6 +142,8 @@ const GEOMETRY_PROBE = `(() => {
     agents: q('#agents') && rect(q('#agents')),
     main: rect(q('#main')),
     composer: rect(q('#composer')),
+    send: send && rect(send),
+    sendHit,
     log: rect(q('#log')),
     railEls: rails.map(el => { const b = el.getBoundingClientRect(); return { id: el.id, w: b.width, x: b.x, y: b.y, right: b.right, visible: vis(el) }; }),
     msgMax: Math.max(0, ...Array.from(document.querySelectorAll('#log .msg')).map(e => e.getBoundingClientRect().width)),
@@ -177,6 +191,14 @@ function checkNarrowState(g, vpW, state) {
   else {
     if (g.composer.x < -0.5 || g.composer.x + g.composer.w > vpW + 0.5) bad(`${tag}: composer x=${g.composer.x}..${g.composer.x + g.composer.w} outside 0..${vpW}`);
     if (g.composer.y + g.composer.h > g.viewport.h + 0.5) bad(`${tag}: composer bottom ${g.composer.y + g.composer.h} > viewport h ${g.viewport.h}`);
+  }
+  /* 抽屉打开时，发送键必须仍然点得到。旧实现把 rail 从 header 一直铺到
+     bottom:0，480 宽时正好盖住 composer 右侧的发送键——面板看得见、消息发不出。
+     用真实命中测试（elementFromPoint）而不是只量矩形：矩形在视口内也可能被
+     更高 z-index 的兄弟元素压住。 */
+  if (!g.send || g.send.w <= 0 || g.send.h <= 0) bad(`${tag}: send button missing/zero`);
+  else if (!g.sendHit || !g.sendHit.inSend) {
+    bad(`${tag}: send button is covered (hit=${g.sendHit && (g.sendHit.id || g.sendHit.cls || "?")})`, JSON.stringify(g.sendHit));
   }
   if (rectsOverlap(g.header, g.agents) || rectsOverlap(g.header, g.main) ||
       rectsOverlap(g.agents, g.main) || rectsOverlap(g.main, g.composer))
