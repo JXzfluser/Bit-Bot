@@ -1905,6 +1905,9 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     echo "  · skip：$(grep -m1 'SKIP —' /tmp/g47-build.log)（SKIP ≠ PASS）"
   else
     ok "G-47 APK 真编译 + aapt 读回包里的事实（$(tail -1 /tmp/g47-build.log)）"
+    grep -q "AB-03b 扫描前置齐" /tmp/g47-build.log \
+      && ok "G-47 局域网扫描前置成立：清单声明了 ACCESS_NETWORK_STATE（aapt 从包里读回）+ 取本机地址那步兜住异常，摘任一条都翻红" \
+      || bad "G-47 AB-03b anchor missing（扫描前置没被断言：真机上点「扫描」可能是崩，不是「没找到桌面」）"
     grep -q "AB-07 配对地址归一化单测真跑" /tmp/g47-build.log \
       && grep -q "AB-08 失败原因翻译层单测真跑" /tmp/g47-build.log \
       && grep -q "AB-09 配对 v1 纯逻辑单测真跑" /tmp/g47-build.log \

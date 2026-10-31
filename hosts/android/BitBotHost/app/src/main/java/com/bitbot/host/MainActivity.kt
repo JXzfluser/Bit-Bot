@@ -475,7 +475,9 @@ class MainActivity : ComponentActivity() {
         //   旧代码写死 localIp 为某个 192.168.x.x 的 placeholder，
         //   真机连 10.x 或别的网段时扫的是完全无关的段，用户永远看到「没找到 Desktop」。
         // 现在：从 ConnectivityManager 拿真本机 IPv4，拿不到就如实说，不猜默认值。
-        val localIp = getLocalWifiIp(this@MainActivity)
+        // 兜异常是因为这一步会被框架打回（缺 ACCESS_NETWORK_STATE 时 ConnectivityService
+        // 直接抛 SecurityException）—— 那样点「扫描」就是崩，用户连下面的手动填地址都够不着。
+        val localIp = runCatching { getLocalWifiIp(this@MainActivity) }.getOrNull()
         if (localIp == null) {
           scanState =
             PairingScanState.Error(
