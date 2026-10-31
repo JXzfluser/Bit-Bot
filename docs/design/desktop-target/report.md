@@ -3382,3 +3382,68 @@ runner 上同样在 mkdir 处崩（#15 的红，行 854）。已改成仓库内�
 「PNG 落在 `/workspace/agent-tools/`」。这是路径收敛策略与规格文字的差异，本轮没改
 （会动 Host 写盘契约）；真机上用户拿到的是 `media_path`，能打开，但「文件在
 agent-tools 下」这句话目前只在 box 内成立。
+
+## 8.50 「安卓现在能连吗」：协议层早就通，卡在包里少声明一条权限（GP-187）
+
+问的是能不能连，答的是两件事：**桌面这边的协议是不是真的走得通**，和**手机上那一端有没有入口**。
+第一轮答案是硬的，第二轮答案是坏的。
+
+### 8.50.1 桌面侧：配对 v1 有真 HTTP 往返，不是契约文档
+
+`node scripts/prove_pairing_code.mjs` 本轮重跑 **PASS=19 FAIL=0**（PC-01..19）。它不是读文件：
+自己起 `cn_inbound_server`（bind 0.0.0.0 的临时端口）再用 `http.request` 打真请求。关键的三条：
+
+- **PC-12/13**：`/v1/pair/discover` 拿到形状正确的应答（不漏令牌）→ `/v1/pair/redeem` 换到
+  `turn_token` + `base_url` → 拿这个 token 调 `/v1/turn` **真的跑完一个回合**并返回 200。
+- **PC-14/15/16**：一次性（第二次换码 400）、5 次错码后连对码也拒（`attempts_exceeded`）、
+  TTL 过期前 200 后 400。
+- **PC-18/19**：`base_url` 按 `lan_candidates` 排序选 `192.168.x.x` 而不是容器网卡 `172.17.x.x`；
+  没点「允许手机连接」（回环绑定）时换码返回 409 `pairing_not_open`，发现接口照旧可答。
+
+### 8.50.2 手机侧：`扫描` 这一步在真机上大概率是崩，不是「没找到桌面」
+
+`MainActivity` 的配对扫描先要手机自己的局域网 IPv4：`cm.activeNetwork` →
+`getNetworkCapabilities` → `getLinkProperties`。这三条 API 的文档都标了
+`@RequiresPermission(ACCESS_NETWORK_STATE)`，缺声明时 `ConnectivityService` 抛
+`SecurityException`（经典日志：`Neither user N nor current process has
+android.permission.ACCESS_NETWORK_STATE`）。而 `hosts/android/BitBotHost/app/src/main/AndroidManifest.xml`
+只声明了 `INTERNET / CAMERA / RECORD_AUDIO / ACCESS_FINE_LOCATION`，全仓 `grep ACCESS_NETWORK_STATE` 零命中。
+
+更要紧的是调用点（远端头 `MainActivity.kt:478`）：
+
+```kotlin
+val localIp = getLocalWifiIp(this@MainActivity)   // 外面没有 runCatching
+```
+
+异常从协程里逃出去就是崩。后果是**连那条本该兜底的文案都看不到**——「读不到手机自己的局域网地址……
+也可以用下方「高级」手动填写桌面地址」，用户连手动填的入口都够不着。
+
+这条是静态取证：本机没有 Android SDK（矩阵里 G-47 的 APK 段在 mac 上一直是 `SKIP ≠ PASS`），
+runner 无 KVM 起不了 emulator，所以「真机必崩」是推断，不是实测。但修法是文档要求的、且不修就没有退路。
+
+### 8.50.3 修了什么，门禁怎么钉住
+
+- 清单补 `<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />`（normal 权限，装上即授予，不弹框）。
+- 取地址那步改成 `runCatching { getLocalWifiIp(...) }.getOrNull()`，失败就落回既有那句人话 + 手动填地址。
+- `prove_android_build.mjs`：**AB-03** 的 `wanted` 加上这条权限，断言来源仍是 `aapt dump badging` 从**包里**读回，
+  不是 gradle 自述；新增 **AB-03b** 同时要求「包里有声明」与「源码里取地址那步有兜异常」，两者缺一都红。
+- 矩阵 **G-47** 补 `AB-03b` 锚点，摘掉锚点会红而不是静默少一项。
+- 负向对照 3/3 逐个翻红（实测脚本 `/tmp/ab03b_neg.cjs`）：删清单声明 → 红；把 `runCatching` 摘回裸调用 → 红；
+  把扫描改回写死 IP（不再读 `getNetworkCapabilities/getLinkProperties`）→ 红；逐条恢复后重跑仍绿。
+
+### 8.50.4 打包事实（本轮 Actions 真产出）
+
+`android-apk.yml` 手动派发在 `cursor/next-target-v1` 头（`86bbd82`）：run **41181452467** 全绿，
+`prove_android_build: PASS=16 FAIL=0 SKIP=0`，产物 **`bitbot-android-universal-86bbd82da75d…`／12.7 MB**（保留 30 天）。
+包名 `com.bitbot.host.debug`，`minSdk 26 / targetSdk 34`，六个国内渠道 flavor 都在，JVM 单测 **126 用例 0 失败（16 个类）**。
+
+**这个包是修复前编出来的**，里面没有 8.50.3 那三行改动 —— 它证明了「打得出包」，不证明「手机上点得动扫描」。
+8.50.3 的改动要在推上去之后重新派发一次才算进包。
+
+### 8.50.5 诚实残留
+
+- **AB-03b 是源码锚点 + 包内声明**，不是设备行为：Robolectric 不校验权限，这条在 JVM 上验不到
+  「装了声明就不抛 SecurityException」。真机点击仍是残留，与 §8.49 那句「iOS/Android 仍无真机样本」是同一笔账。
+- release 包仍是 debug 签名（没配 `BITBOT_ANDROID_STORE_*`），能侧载自测，不等于能上架。
+- 自动发现之外的那条路（手动填桌面地址 + 配对令牌）在 UI 里存在，但本轮没有真机走通，
+  不能因为它存在就把扫描的崩溃说成「只是不便」。
