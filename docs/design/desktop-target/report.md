@@ -3382,3 +3382,43 @@ runner 上同样在 mkdir 处崩（#15 的红，行 854）。已改成仓库内�
 「PNG 落在 `/workspace/agent-tools/`」。这是路径收敛策略与规格文字的差异，本轮没改
 （会动 Host 写盘契约）；真机上用户拿到的是 `media_path`，能打开，但「文件在
 agent-tools 下」这句话目前只在 box 内成立。
+
+### 8.49.9 关掉「native OS act 只能 SKIP」：CI 里起真窗口管理器（openbox）
+
+§8.49.5 的残留「native OS act：本机 headless、无窗口管理器」在 CI 上一样成立：
+G-64 起来了、绿了，但那一条是 **SKIP** 而不是 PASS —— `xdotool` 装了，却没有 WM
+把窗口管起来，`xdotool search` / `wmctrl` 枚举到 0 个窗口，Host 的 `probe_ready`
+为 false，于是只断言「residual 如实保留」就跳过。#16（`96ce01a`）的日志原文：
+
+```
+✓ G-64 旧 smoke_desktop_turn 跑完且零断言失败（2 行环境 SKIP，逐行可查）
+  · SKIP: 本机没有可枚举的真实桌面窗口（headless / 无 WM）……
+  · SKIP: 本机 gh 未登录……
+```
+
+这不是 Host 逻辑错（`probe_ready=false` 时保留 residual 正是诚实行为），缺的是
+**窗口管理器**这一环境件。所以用一个开关把它补上，而不是改断言：
+
+- `scripts/smoke_desktop_turn.sh`：`BITBOT_START_WM=1` 且 `DISPLAY` 存在且装了
+  `openbox` 时，脚本自己在当前 display 起 openbox，退出时收掉。不设该变量时行为
+  完全不变（真实桌面本来就有 WM，不能去抢窗口）。
+- `.github/workflows/desktop-parity.yml`：apt 里加 `openbox`，矩阵步设
+  `BITBOT_START_WM=1`。**没有 openbox 时脚本仍退回 SKIP**，不会假绿；有 WM 时才会
+  走「真窗口清单 + xdotool 点击 + residual 真关」的强断言分支。
+
+红→绿证据（同一条断言的两个分支，不是改小断言）：
+
+| 状态 | 环境 | `native_os_input` / `native_os_act` | 结论 |
+| --- | --- | --- | --- |
+| 修复前（#16 `96ce01a`） | CI：Xvfb，无 WM | `windows.count=0`、`probe_ready=false` | SKIP（residual 保留） |
+| 本地对照（`sim-ci4`） | 非 root + `/workspace` 不可访问 + Xvfb，无 WM | 同上 | 全脚本 OK，2 条 SKIP |
+| 本地（`sim-wm.log`） | 同上 + openbox | `probe_ready=true`、wmctrl 看到 `Example Domain - Google Chrome for Testing`、`actions=1`、`os_window_automation_residual=false` | `computer_use native OS act ok`；整脚本 OK，1 条 SKIP |
+| 修复后（#17 `86bbd82`） | CI：Xvfb + openbox | 同上（artifact `g64-turn-smoke.log` 第 273 行） | G-64 ✓，`PASS=474 FAIL=0`，只剩 gh 1 条 SKIP |
+
+顺带被这层 WM 影响的两条也仍然是真跑：`screenshot live frame ok ffmpeg-x11grab
+… 2749 bytes`（有窗口后 x11grab 抓得到真帧），以及原有 media 段
+`generate_image / structured_chart / slides_pptx` 仍落 `data/…`（见 §8.49.8 的路径残留）。
+
+诚实残留：Xvfb + openbox 仍不是用户的真桌面 —— 没有 GPU/多显示器/真实输入设备，
+`os_window` 只能证明 Host 的窗口枚举与 xdotool 点击链路通了；真机 UI 仍需人工点。
+gh 未登录（第 2 条 SKIP）与 §8.49.5 的其余三条残留不变。
