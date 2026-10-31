@@ -151,6 +151,24 @@ try {
   autoUpdater = null;
 }
 
+/**
+ * Whether this packaged app carries a baked github publish config (resources/
+ * app-update.yml). If so, electron-updater already knows its feed (GitHub
+ * Releases) with no env override. This lets us report OTA "feed_configured"
+ * honestly instead of conflating it with the optional BITBOT_UPDATE_FEED_URL
+ * self-host override.
+ */
+function hasBakedGithubFeed() {
+  try {
+    if (!RESOURCES_PATH) return false;
+    const p = path.join(RESOURCES_PATH, "app-update.yml");
+    if (!fs.existsSync(p)) return false;
+    return /provider:\s*['"]?github/i.test(fs.readFileSync(p, "utf8"));
+  } catch (_) {
+    return false;
+  }
+}
+
 /** CN inbound HTTP server (钉钉/飞书/企微 callbacks). */
 let cnInbound = null;
 
@@ -3026,9 +3044,9 @@ ipcMain.handle("bitbot:product:status", async () => {
     String(process.env.BITBOT_ALGORITHM_FILING || "").trim(),
   );
   const moderation = process.env.BITBOT_CONTENT_MODERATION === "1";
-  const otaFeed = Boolean(
-    String(process.env.BITBOT_UPDATE_FEED_URL || "").trim(),
-  );
+  const otaFeed =
+    Boolean(String(process.env.BITBOT_UPDATE_FEED_URL || "").trim()) ||
+    (app.isPackaged && hasBakedGithubFeed());
   return {
     ok: true,
     desktop_first: true,
@@ -3069,16 +3087,6 @@ ipcMain.handle("bitbot:ota:check", async () => {
       pretend_update: false,
     };
   }
-  if (!feed) {
-    otaState.error = "BITBOT_UPDATE_FEED_URL not set";
-    persistOtaState();
-    return {
-      ok: false,
-      residual: true,
-      error: otaState.error,
-      pretend_update: false,
-    };
-  }
   if (!app.isPackaged) {
     otaState.error = "OTA check only in packaged app (npm run dist)";
     persistOtaState();
@@ -3091,7 +3099,9 @@ ipcMain.handle("bitbot:ota:check", async () => {
     };
   }
   try {
-    autoUpdater.setFeedURL({ provider: "generic", url: feed });
+    // Self-hosted override: explicit generic feed. Otherwise rely on the baked
+    // github provider (GitHub Releases) — no env needed.
+    if (feed) autoUpdater.setFeedURL({ provider: "generic", url: feed });
     autoUpdater.autoDownload = false;
     otaState.update_downloaded = false;
     otaState.last_check = new Date().toISOString();
