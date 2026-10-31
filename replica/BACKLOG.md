@@ -16,7 +16,8 @@
 | 侧栏列表形状 | 按 `replica/screens/grok-composer.png` 像素测量重做（行高 58、内缩 12px 圆角色带、32px 图标、15/13 字号） |
 | 样式单一真源 | 每个面一处声明，`!important` 346 → 189，门禁棘轮只降不升（现 180） |
 | 代码块语法高亮（P1-1） | `vendor/highlight.min.js` 11.9（js/ts/py/java/go/sql/json/bash）+ `vendor/highlight-theme.css` 独立浅/深主题；`decorateCodeblock` 在 DOMPurify 之后 best-effort 上色；主题色不进 `ui_chrome.css`，避开 hex 棘轮 |
-| 会话未读汇总（P1-6） | `#sessions-popup` 顶部 `#unread-summary`（文案 `sessUnreadMore`，三语）；`renderUnreadMarks` 联动；点击走 `jumpToOldestUnread` → `activateSessionById`；门禁 `scripts/e2e_desktop_unread_summary.mjs` U-01..U-05 |
+| 会话未读汇总（P1-6） | `#sessions-popup` 顶部 `#unread-summary`（文案 `sessUnreadMore`，三语）；`renderUnreadMarks` 联动；点击走 `jumpToOldestUnread` → `activateSessionById` |
+| 未读落盘 + 行点击清未读（P2-7） | `persistUnread()` 整键覆盖 `settings.unread`（空表落 `{}`，不留 `sid:0`）；`restoreUnread()` 在 `refreshSessions()` 之后回填一次（`unreadRestored` 闸，防 settings-changed 覆盖内存）；行点击改走 `activateSessionById()`，不再"重画糊掉计数"；门禁 U-06/U-07 真关重开验证 |
 
 ## 二、[P0] 两个决定性问题（需要产品拍板，代码层面 1 小时内可落）
 
@@ -67,7 +68,6 @@
 | P2-4 | `index.html` 单文件约 1.2 万行 | 样式 / 脚本 / 三语词典混在一起，这正是"轮次覆盖"能累积的土壤 | 拆成 `styles.css` / `i18n.js` / `app.js`（含 index.html 只留结构），拆完门禁正则同步改 |
 | P2-5 | `--nav-*` 只挂在 `body.grok-ui` | 当前安全（`<body class="grok-ui">` 是静态的） | 若将来加第二套皮肤，把这三个变量提到 `:root` 的分主题块里 |
 | P2-6 | 侧栏行没有 hover 上下文菜单 | 只能右键（`showSessionMenu`） | hover 出现 `…`，与右键同一份菜单；键盘可达 |
-| P2-7 | 未读计数只在内存里，重启即失忆 | `product_surface.js:988` 的 settings allowlist 放行了 `unread` 键，但渲染层 `unreadBySession` 从不读也不写它——`settings.json` 里那个 `unread: {}` 是死字段 | 未读落 `settings.unread`（`{sid: n}`），启动时回填 `unreadBySession` 并重绘行点 + 汇总条 + 系统 badge；清空即删键 |
 
 ## 五、建议的下一步顺序
 
@@ -75,5 +75,5 @@
 2. **P1-8 侧栏 IA**（1 天）：结构定了，样式才不会反复改。
 3. ~~**P1-1 代码高亮 + P1-6 未读汇总**~~ → **已完成**（详见 §一）。
 4. **P2-2 CI**（0.5 天）：趁门禁还是全绿，把闸门先装上，后面才有人兜底。
-5. **P2-7 未读持久化**（0.5 天）：P1-6 的表面已铺好，补落盘才算闭环。
+5. ~~**P2-7 未读持久化**~~ → **已完成**（P1-6 落地的同一批，详见 §一）。
 6. 其余按 P1 → P2 排。
