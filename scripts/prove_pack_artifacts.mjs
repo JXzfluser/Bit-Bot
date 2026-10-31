@@ -265,9 +265,33 @@ function findLaunchable(dirs) {
   return found;
 }
 
+// 当前环境能不能起真窗口（Electron 需要显示器 / Xvfb）：
+//  - Windows 自带显示 → 能
+//  - macOS 真机有屏幕能起，但 CI runner（GitHub macOS）没有显示器也没有 Xvfb，
+//    electron.launch 必 60s 超时假 FAIL；项目 replica/BACKLOG P2-1 也定 macOS 上
+//    这类 e2e 恒 SKIP。这里只在 CI 环境跳过，真机开发仍可本地验。
+//  - Linux 有 DISPLAY 且该 socket 真存在，或能找到 xvfb-run → 能；否则诚实 SKIP。
+function hasUsableDisplay() {
+  if (process.platform === "win32") return true;
+  if (process.platform === "darwin") return !process.env.CI;
+  const disp = process.env.DISPLAY || "";
+  if (disp && (disp.startsWith(":") ? fs.existsSync(`/tmp/.X11-unix/X${disp.slice(1)}`) : fs.existsSync(disp))) {
+    return true;
+  }
+  try { execFileSync("sh", ["-c", "command -v xvfb-run"], { stdio: "ignore" }); return true; } catch { return false; }
+}
+
 const launchable = findLaunchable(trees);
 if (launchable.length === 0) {
   bad("PA-06", `产物目录里没找到可启动的 bundle（查过 ${trees.map((t) => path.basename(t)).join(", ") || DIST}）—— macOS 需要 *.app/Contents/Resources/app.asar，win/linux 需要 resources/app.asar + 同名可执行文件`);
+} else if (!hasUsableDisplay()) {
+  // AC-T0-2 真实断言需要显示器；当前 runner 没有（macOS CI 无显示器 / Linux 无
+  // DISPLAY 且无 xvfb-run），老老实实 SKIP（SKIP≠PASS），不谎报红。真实冷启动
+  // 断言留给有显示器的环境（项目 BACKLOG P2-1：macOS 恒 SKIP，Linux 全绿）。
+  console.log(`SKIP PA-06/PA-07/PA-08 — 当前环境没有可用显示器（${process.platform}${process.env.CI ? "/CI" : ""}），无源码树启动 / 跑一轮 / 常驻内核门跳过；真实冷启动断言需在有显示器的环境执行`);
+  console.log(`\n== 汇总 == pass ${pass} / fail ${fail} / skip 3`);
+  if (fail > 0) { console.log("门禁不过：分发物体积、内核存在性或可执行位有不合格项。"); process.exit(1); }
+  process.exit(0);
 } else {
   let playwright = null;
   try {
