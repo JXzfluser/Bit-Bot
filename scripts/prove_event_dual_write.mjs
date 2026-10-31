@@ -32,7 +32,8 @@
  *   DW-09 兜底网：store 顶层冒出/消失一个陌生字段、以及 active_id 归零
  *          （product_surface.js:486 那条绕过 store 的级联会造出这个形状）
  *          都要被认领、能折回来、且不许记失败
- *   DW-10 起得来：运行时没有 node:sqlite（Electron 33 = Node 20.18.3）时，
+ *   DW-10 起得来：运行时没有 node:sqlite（如 Electron ≤34 = Node 20.x；桌面现
+ *          为 Electron 37 / Node 22.21，此防御给旧运行时与老 CLI host）时，
  *          开关关着必须完全静默地照常启动与落盘，开着要说人话一句「已降级为不写」
  *          ——接线第一天就是在这条上把主进程打死的（见 DW-10z 的对照）
  *
@@ -705,8 +706,8 @@ function walk(dir) {
 
 /* ===== DW-10：运行时撑不起来时，主进程必须照样起得来 =====
    T1-03 的接线（sessions.js / product_surface.js 顶层 require event_mirror）
-   曾经把 event_log 的「加载即抛」一起带进了 require 链：Electron 33 里那颗
-   Node 是 20.18.3，没有 node:sqlite —— 于是双写开关明明关着，桌面端却连窗口都
+   曾经把 event_log 的「加载即抛」一起带进了 require 链：当年的 Electron 33
+   内置 Node 20.18.3，没有 node:sqlite —— 于是双写开关明明关着，桌面端却连窗口都
    开不出来，G-16 往后所有 Electron 门一起红。本门跑在 Node 22 上看不见这件事，
    所以这里把 node:sqlite 伪装成「不存在」，跑真实的两个模块：
 

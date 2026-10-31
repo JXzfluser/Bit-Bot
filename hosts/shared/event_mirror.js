@@ -27,8 +27,9 @@ const fs = require("fs");
 const path = require("path");
 
 /* event_log 刻意**不在顶层 require**：它在没有 node:sqlite 的运行时里是「加载即抛」
-   （event_log.js:22 起），而 Electron 33 里那颗 Node 是 20.18.3。这份镜像默认关，
-   顶层 require 会让主进程连启动都到不了——开关还没读到就崩，「不改任何调用点的行为」
+   （event_log.js:22 起）。桌面端已升到 Electron 37（Node 22.21，node:sqlite 可用），
+   但这条防御不撤：打包产物可能被丢回旧运行时、CLI host 可能在系统老 Node 上跑——
+   顶层 require 会让主进程连启动都到不了，开关还没读到就崩，「不改任何调用点的行为」
    当场作废。所以把它压到真正要开库的那一刻，失败由 handle() 咽下并降级。 */
 function openEventLogLazy(opts) {
   return require("./event_log").openEventLog(opts);
@@ -706,7 +707,8 @@ function isAvailable() {
 /** 撑不起来时的替身：接口一模一样，但一个字都不写。
    必须在 event_log 之外判断——它在老运行时里是「加载即抛」的，
    而这份镜像默认关：开关没开却被一次 require 打死主进程启动，
-   是最贵的一种「改了行为」（Electron 33 = Node 20.18.3 就踩到了）。 */
+   是最贵的一种「改了行为」（Electron 33 = Node 20.18.3 时代踩到的；现桌面已升
+   Electron 37 / Node 22.21，这条防御保留给旧运行时与老 CLI host）。 */
 function createDisabledMirror(dataRoot, env) {
   const enabled = String((env || process.env).BITBOT_EVENT_DUAL_WRITE || "") === "1";
   if (enabled) {
