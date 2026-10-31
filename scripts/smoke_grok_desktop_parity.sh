@@ -1792,7 +1792,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g46_xvfb=(xvfb-run -a)
   fi
-  for g in single_instance sidebar_adapt quit command_channel bot_group_menu token_parity; do
+  for g in single_instance sidebar_adapt layout_target quit command_channel bot_group_menu token_parity; do
     log=/tmp/g46-$g.log
     pkill -9 -f "dist/[e]lectron" 2>/dev/null
     sleep 1

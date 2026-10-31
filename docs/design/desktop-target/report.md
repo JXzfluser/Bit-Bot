@@ -3522,3 +3522,49 @@ CL-10（负向对照），缺任一即红。
 - **CL 系列只断形状，不断观感**：`artifacts/gp185-credentials-{before,after}{,-dark,-fold}.png`
   是这次唯一的人眼验收凭据；吸底条在滚动中会盖住下一张卡的标题（sticky 的固有代价），
   如果这点不可接受，改法是给 `.settings-tab` 加底部 padding 而不是撤掉 sticky。
+
+## 8.51 窄窗口从来没有单列过：`body.grok-ui` 把 `<900px` 规则整条压掉（D-L-13）
+
+**症状。** 窄视口只有一句 `@media (max-width:900px)`，从未被渲染门覆盖（`e2e_desktop_layout_target.mjs`
+只跑 1440×900 与 1280×800）。补上 480/700/900 三档后，在**未改任何产品代码**的 HEAD 上量到：
+
+| 视口 | header 宽 | main 宽 | agents 宽 | rail 宽 |
+|------|-----------|---------|-----------|---------|
+| 480×720 none | 452 | 452 | 28 | — |
+| 700×700 bot | 675 | 452 | 25 | 223 |
+| 900×700 computer | 791.5 | 452 | 108.5 | 339.5 |
+
+**根因。** `ui_chrome.css` 的 `body.grok-ui { grid-template-areas: "agents header header" … }`
+选择器（0,1,1）比媒体查询里的 `body`（0,0,1）更具体，所以窄屏规则里的 areas 被压掉，
+但 `grid-template-columns: 1fr` 生效了：网格只剩 1 个显式列，areas 却仍指名 3 列，
+浏览器于是生成隐式 auto 列 —— 三块内容按内容宽度抢位置，composer 被挤到主列右侧 452px 处。
+单列从来不是“没写好”，是**写好了但被具体度更高的规则整条覆盖**。
+
+**修复。**
+1. 媒体查询同时写 `body, body.grok-ui`，显式声明 4 行
+   `header 56 / agents auto / main minmax(0,1fr) / composer auto`；
+2. ≤900px 时 rail 不再占列：`position:fixed; top:56; right:0; width:min(340px,100vw)` 覆盖抽屉。
+   480px 下若仍占 340px 列，聊天列只剩 140px；改成抽屉后打开面板不再挤窄主列，
+   且三条 rail 本来就都有“关闭”按钮，不会打开后关不掉。
+3. 渲染门新增 **D-L-13**：900/700/480 × 6 面板态，断言
+   `header/main/agents 宽 = viewport`、composer 完整在视口内（右/下不越界）、
+   区域两两不重叠、`scrollWidth ≤ clientWidth`、rail 开启时 main 宽度不变且右缘贴 viewport。
+4. D-L-13 接进 `smoke_grok_desktop_parity.sh` 的 **G-46** 聚合 —— 此前这道门不在 CI 的任何
+   列表里，只有人记得手动跑；现在每次推送都真跑。
+
+**红→绿证据（同一台机器、同一命令 `xvfb-run -a node scripts/e2e_desktop_layout_target.mjs`）：**
+
+| 状态 | 结果 |
+|------|------|
+| 修复前（`git checkout -- hosts/desktop/index.html`） | `PASS=13 FAIL=63 SKIP=0`，exit 1；62 条 D-L-13 断言红 |
+| 修复后 | `PASS=14 FAIL=0 SKIP=0`，exit 0；`D-L-13: 900x700, 700x700, 480x720` 绿 |
+
+窄屏截图：`reference/live-{900x700,700x700,480x720}-none.png`（480 图里侧栏是 140px 横带，
+主列 480 满宽，输入框完整可见）。
+
+**诚实残留。**
+- **侧栏在窄屏是 140px 顶部横带，不是抽屉**：能用（可滚动、折叠后 0 高），但占掉 480×720
+  近 1/5 高度。真要做成左滑抽屉是产品交互变更，需要单独裁决；本轮只保证“不破、不挤”。
+- **rail 抽屉会盖住 composer 右半**（包括发送键）。抽屉是显式打开的，自带“关闭”，
+  但打开时无法一边看主列一边发消息 —— 这是覆盖层的固有代价，未加遮罩/侧滑手势。
+- **只验了 100% 缩放**：Electron 内容缩放不等于 1 时的 CSS px 换算未覆盖。

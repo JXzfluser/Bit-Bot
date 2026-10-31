@@ -1872,17 +1872,44 @@
     font-size: var(--text-md);
   }
   @media (max-width: 900px) {
-    body {
-      grid-template-columns: 1fr;
+    /* The app window can be as narrow as 480px (main.js minWidth). Below 900
+       the shell must stop being a 3-column grid.
+       `body.grok-ui` (ui_chrome.css) sets its own grid-template-areas with
+       higher specificity than a bare `body` selector, so it silently defeated
+       the single-column layout: the grid kept only 1 explicit column while the
+       areas still named 3, producing implicit auto columns (measured at 480:
+       rail squeezed to 74px, main to 380px, header to 455px). Both selectors
+       are restated here so the narrow layout actually applies. */
+    body,
+    body.grok-ui {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: var(--header-h) auto minmax(0, 1fr) auto;
       grid-template-areas:
         "header"
         "agents"
         "main"
-        "composer"
-        "rail";
+        "composer";
     }
-    body[data-sidebar="collapsed"] { grid-template-columns: 1fr; }
-    #agents { max-height: 140px; border: 0; border-bottom: 1px solid var(--line); }
+    body[data-sidebar="collapsed"],
+    body.grok-ui[data-sidebar="collapsed"] { grid-template-columns: minmax(0, 1fr); }
+    #agents { max-height: 140px; border-right: 0; border-bottom: 1px solid var(--line); }
+    /* Rails stop being a grid column and become overlay drawers under the
+       header. A 340px third column at 480px would leave a 140px chat column;
+       as an overlay the open panel never squeezes or displaces the composer,
+       and every rail already ships a visible close button. */
+    #bot-rail,
+    #conv-rail,
+    #computer-rail,
+    #machines {
+      position: fixed;
+      top: var(--header-h);
+      right: 0;
+      bottom: 0;
+      width: min(var(--rail-w), 100vw);
+      max-width: 100vw;
+      z-index: 60;
+      box-shadow: -20px 0 48px rgba(0, 0, 0, 0.12);
+    }
   }
   /* Layout contract v1 §6 — debug-surface governance.
      [data-lab] surfaces are absent from the product UI by default and only
