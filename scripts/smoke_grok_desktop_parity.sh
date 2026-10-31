@@ -2864,6 +2864,35 @@ else
   tail -25 /tmp/g64-turn-smoke.log 2>/dev/null | sed 's/^/    | /' || true
 fi
 
+echo "== G-65 读切换（T1-04 · BITBOT_EVENT_READ=1 时产品读事件日志，读不到诚实降级）=="
+# AC-T1-4 的原话是「产品读路径改读事件」：T1-03 只证明 fold(events) == JSON，
+# 这一门证明的是「产品读的时候读的就是 fold 结果」，且读模型坏了会说话、
+# 会回退 JSON，绝不把半折叠状态或空态当真。
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 600 node scripts/prove_event_read_model.mjs > /tmp/g65-readmodel.log 2>&1; then
+    ok "G-65 读切换契约全绿（$(grep -c '^ok RM' /tmp/g65-readmodel.log) 项，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g65-readmodel.log)）"
+  else
+    bad "G-65 读切换契约（见 /tmp/g65-readmodel.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g65-readmodel.log || tail -2 /tmp/g65-readmodel.log | tr '\n' ' ')）"
+  fi
+  grep -q '^ok RM-03' /tmp/g65-readmodel.log \
+    && grep -q '^ok RM-04' /tmp/g65-readmodel.log \
+    && ok "G-65 读等价与棘轮都在：READ=1 时 list/get/loadRooms/pendingApprovals 与 JSON 逐字段相等，且在读世界里继续写不漂移" \
+    || bad "G-65 RM-03 / RM-04 锚点缺失（读等价或读写闭环没被断言）"
+  grep -q '^ok RM-02' /tmp/g65-readmodel.log \
+    && grep -q '^ok RM-06a' /tmp/g65-readmodel.log \
+    && grep -q '^ok RM-06b' /tmp/g65-readmodel.log \
+    && ok "G-65 三条降级路都在且都说话：没库（no_db）、库坏（垃圾字节）、fold 有 anomaly 都回退 JSON 并打一行说明" \
+    || bad "G-65 降级锚点缺失（no_db / 坏库 / anomaly 三条路没被断言）"
+  grep -q '^ok RM-05' /tmp/g65-readmodel.log \
+    && grep -q '^ok RM-08' /tmp/g65-readmodel.log \
+    && ok "G-65 缓存与老运行时都在：lastSeq 失效 + 深拷贝不污染；没有 node:sqlite 时 READ=1 也不炸" \
+    || bad "G-65 RM-05 / RM-08 锚点缺失（缓存语义或老运行时启动没被断言）"
+  echo "  · G-65 边界（诚实）：写侧照旧走 JSON+双写镜像，本门只换「读」；"
+  echo "    T1-05 停写 JSON 之后，approvalDecide 的整文件重写与「首播种」路径才是下一道门。"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-65 未跑（SKIP ≠ PASS）"
+fi
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

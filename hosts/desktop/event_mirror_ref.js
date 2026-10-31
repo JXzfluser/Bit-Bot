@@ -19,4 +19,15 @@ function loadEventMirror() {
   }
 }
 
-module.exports = { loadEventMirror };
+/* T1-04 读切换的加载走同一个手法：event_read_model 也在 shared/，直接相对
+   require 会在打包态打到包外。它内部对 event_log/event_mirror 的 require
+   不需要这条防御——它们和它一起待在 shared/ 里，相对关系在两种布局下都成立。 */
+function loadEventReadModel() {
+  try {
+    return require("../shared/event_read_model");
+  } catch (_devMiss) {
+    return require("./shared/event_read_model");
+  }
+}
+
+module.exports = { loadEventMirror, loadEventReadModel };

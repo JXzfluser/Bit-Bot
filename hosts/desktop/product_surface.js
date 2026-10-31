@@ -11,6 +11,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const roomOrchestrator = require("./room_orchestrator");
 const eventMirror = require("./event_mirror_ref").loadEventMirror();
+const eventReadModel = require("./event_mirror_ref").loadEventReadModel();
 
 function createProductSurface(repoRoot, opts = {}) {
   const REPO_ROOT = path.resolve(repoRoot);
@@ -807,7 +808,34 @@ function createProductSurface(repoRoot, opts = {}) {
     return { ok: true, id: entry.id, mode: "host_pending_approval" };
   }
 
+  // 与 sessions.js 同一条「只说一次」闸（rooms / approvals 各自一份）。
+  const roomsDegradedSaid = new Set();
+  const approvalsDegradedSaid = new Set();
+
   function pendingApprovals(nowIsoParam) {
+    // T1-04 读切换：事件读模型里的 approvals 面保存的是 jsonl 的原始行
+    // （status 落库时是什么就是什么），「过期」是读时语义，两条路都要现算。
+    if (eventReadModel.eventReadEnabled()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length) {
+        const now = nowIsoParam ? new Date(nowIsoParam).getTime() : Date.now();
+        return (hit.approvals || []).map(entry => {
+          const e = JSON.parse(JSON.stringify(entry));
+          if (e.status === "pending" && new Date(e.expires_at).getTime() < now) {
+            e.status = "expired";
+          }
+          return e;
+        });
+      }
+      const src = hit.ok ? "events_anomalies" : hit.reason;
+      if (!approvalsDegradedSaid.has(src)) {
+        approvalsDegradedSaid.add(src);
+        process.stderr.write(
+          `[approvals] BITBOT_EVENT_READ 已开但事件读模型不可用（${src}` +
+            (hit.ok ? "" : hit.error ? `: ${hit.error}` : "") + "），本次回退 JSON 读。\n",
+        );
+      }
+    }
     try {
       if (!fs.existsSync(PENDING_APPROVALS_PATH)) {
         return [];
@@ -1407,7 +1435,35 @@ function createProductSurface(repoRoot, opts = {}) {
     return { ok: true, added: added.length, items: roomLibraryItems(room) };
   }
 
+  // T1-04 读切换：与 sessions.load() 同一条路——BITBOT_EVENT_READ=1 时优先
+  // 从事件日志折叠 rooms 面，读模型不可用就回退 JSON 读并打一行说明。
+  // 注意：这只换「读」，parseRoomsRaw 的诚实报错语义保持原样（它诊断的是
+  // JSON 文件本身的健康度，在双写还开着的阶段仍是有效信号）。
+  function readRoomsFromEvents() {
+    const hit = eventReadModel.readSurfaces(DATA_ROOT);
+    if (hit.ok && !hit.anomalies.length) {
+      const rooms = hit.rooms;
+      if (rooms && typeof rooms === "object" && Array.isArray(rooms.rooms)) {
+        return { data: rooms, source: "events" };
+      }
+      return { data: null, source: "events_shape_invalid" };
+    }
+    if (hit.ok) return { data: null, source: "events_anomalies" };
+    return { data: null, source: hit.reason, detail: hit.error || "" };
+  }
+
   function loadRooms() {
+    if (eventReadModel.eventReadEnabled()) {
+      const hit = readRoomsFromEvents();
+      if (hit.data) return hit.data;
+      if (!roomsDegradedSaid.has(hit.source)) {
+        roomsDegradedSaid.add(hit.source);
+        process.stderr.write(
+          `[rooms] BITBOT_EVENT_READ 已开但事件读模型不可用（${hit.source}` +
+            (hit.detail ? `: ${hit.detail}` : "") + "），本次回退 JSON 读。\n",
+        );
+      }
+    }
     return readJson(ROOMS_PATH, { version: 1, rooms: [] });
   }
 

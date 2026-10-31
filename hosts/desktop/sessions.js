@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const eventMirror = require("./event_mirror_ref").loadEventMirror();
+const eventReadModel = require("./event_mirror_ref").loadEventReadModel();
 
 function createSessionStore(repoRoot, opts = {}) {
   const root = path.resolve(repoRoot);
@@ -69,12 +70,52 @@ function createSessionStore(repoRoot, opts = {}) {
     m.commit(storePath, token, text);
   }
 
+  // T1-04 读切换：BITBOT_EVENT_READ=1 时优先从事件日志折叠出 sessions 面。
+  // 读模型不可用（没开双写→没有库 / 日志坏 / 折叠有 anomaly）就老实回退 JSON
+  // 读，并打一行说明——绝不静默，也绝不把读失败当成「没有会话」。
+  // 写侧照旧（JSON + 双写镜像），这条路只换「读」，这就是 T1-04 的边界。
+  // 降级说明的「只说一次」闸：READ=1 时开机的头几次 load() 落在双写建库之前，
+  // no_db 是预期状态，不能每次读都刷一行；但换一种失败原因（库坏 / anomaly）
+  // 必须重新开口。RM-02/RM-06 断言的就是这第一行。
+  const degradedSaid = new Set();
+
+  function readFromEvents() {
+    const hit = eventReadModel.readSurfaces(dataRoot);
+    if (hit.ok && !hit.anomalies.length) {
+      return { state: hit.sessions, source: "events", count: hit.count };
+    }
+    if (hit.ok) {
+      // fold 有 anomaly 但 ok —— readSurfaces 已把这种情况降级为 ok:false，
+      // 这里理论上到不了；到了就当作不可用处理。
+      return { state: null, source: "events_anomalies", detail: hit.anomalies.join("; ") };
+    }
+    return { state: null, source: hit.reason, detail: hit.error || "" };
+  }
+
   function load() {
     fs.mkdirSync(dir, { recursive: true });
     if (!fs.existsSync(storePath)) {
       const seed = empty();
       writeStore(JSON.stringify(seed, null, 2));
       return seed;
+    }
+    if (eventReadModel.eventReadEnabled()) {
+      const hit = readFromEvents();
+      if (hit.state) {
+        const raw = hit.state;
+        if (!Array.isArray(raw.sessions) || !raw.sessions.length) {
+          return empty();
+        }
+        if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+        return ensureMessageIds(raw);
+      }
+      if (!degradedSaid.has(hit.source)) {
+        degradedSaid.add(hit.source);
+        process.stderr.write(
+          `[sessions] BITBOT_EVENT_READ 已开但事件读模型不可用（${hit.source}` +
+            (hit.detail ? `: ${hit.detail}` : "") + "），本次回退 JSON 读。\n",
+        );
+      }
     }
     try {
       const raw = JSON.parse(fs.readFileSync(storePath, "utf8"));
