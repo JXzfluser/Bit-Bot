@@ -3589,10 +3589,16 @@ grid item（`z-index:auto`）。抽屉一路铺到窗口底部，480 宽时正�
 同一个根因也存在于桌面宽的群资料抽屉（`#room-rail`，460px 覆盖层），只是此前没有命中测试。
 
 **修复。**
-1. `#composer` 抬到 `z-index:61` 并铺 `--page-bg`：抽屉从 composer 下方穿过，发送键永远可点；
+1. 抽屉降到 `z-index:57`、`#composer` 抬到 `58` 并铺 `--page-bg`：57 < composer 58 < modal 60，
+   抽屉从 composer 下方穿过，composer 又不会盖住任何弹层；
 2. 抽屉加 `padding-bottom:96px`，最后一条内容仍能滚到可视区，而不是永远停在 composer 背后；
 3. **D-L-13 新增命中断言**：每个窄视口/面板态都要求发送键中心命中的是发送键本身
    （`hit === send || send.contains(hit)`），不是只比矩形。G-46 里自动跑。
+
+第一版把 composer 直接抬到 `z-index:61`，结果压过了 `--z-modal:60` 的弹层：CI 的
+G-51 在点「去保存并试连」时 `page.click` 超时（按钮被 composer 盖住），
+`PASS=5 FAIL=1`。这说明“抬高发送键”必须分层，而不是比抽屉高就行：
+**抽屉 57 < composer 58 < modal 60**，用 G-51 复跑验证弹层底部仍可点。
 
 **红→绿证据（同一命令 `xvfb-run -a node scripts/e2e_desktop_layout_target.mjs`）：**
 

@@ -62,7 +62,7 @@ grid-template-areas:
 | 行 | `header 56 / agents auto（≤140）/ main minmax(0,1fr) / composer auto` | composer 完整落在视口内（右/下都不越界） |
 | sidebar | 展开时占满整行；折叠时 0 宽（`#agents` display:none） | 两态都断言 |
 | rail | 不再占列：`position:fixed`，`top:56`、`right:0`、宽 `min(340px,100vw)` 的覆盖抽屉 | 打开面板时 main 宽度不变；抽屉右缘贴 viewport |
-| composer | 抽屉打开时仍要发得出：composer 在 rail 之上（`z-index:61`），发送键命中的是按钮本身 | `elementFromPoint(发送键中心)` 属于发送键 |
+| composer | 抽屉打开时仍要发得出：composer 在 rail 之上、modal 之下（57 < composer 58 < modal 60），发送键命中的是按钮本身 | `elementFromPoint(发送键中心)` 属于发送键 |
 | 滚动 | 无横向滚动 | `scrollWidth ≤ clientWidth` |
 | 重叠 | header / agents / main / composer 两两不重叠（rail 是覆盖层，允许压在 main 上） | 矩形交集 |
 

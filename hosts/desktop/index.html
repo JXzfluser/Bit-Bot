@@ -97,10 +97,12 @@
     bottom: 0;
     width: 460px;
     max-width: 92vw;
-    z-index: 60;
+    /* 57 < composer 58 < modal 60：抽屉可以在 composer 下面穿过，
+       但不能压过任何弹层（--z-modal 就是 60）。 */
+    z-index: 57;
     padding: var(--space-6);
     /* 抽屉从 header 铺到窗口底部，收起前会压住 composer 右侧的发送键。
-       composer 本身抬到 61 层（见 #composer），这里留出它的单行高度，
+       composer 本身抬到 58 层（见 #composer），这里留出它的单行高度，
        让最后一条内容仍能滚到抽屉可视区里，而不是永远藏在 composer 后面。 */
     padding-bottom: 96px;
     overflow: auto;
@@ -1565,10 +1567,11 @@
   }
   #composer {
     position: relative;
-    /* 群资料 / 窄屏右栏都是 position:fixed 的抽屉（z-index 60），一路铺到
+    /* 群资料 / 窄屏右栏都是 position:fixed 的抽屉（z-index 57），一路铺到
        窗口底部。composer 不抬高就会被盖住发送键——面板打开时消息发不出去。
-       抬到 61 层并铺同色底，抽屉从 composer 下方穿过。 */
-    z-index: 61;
+       抬到 58 层并铺同色底，抽屉从 composer 下方穿过；modal 在 60 层，
+       所以不能抬到 61（会反过来盖住弹层底部的按钮，G-51 在 CI 抓到过）。 */
+    z-index: 58;
     background: var(--page-bg);
   }
   #composer #send:disabled { cursor: wait; }
@@ -1916,8 +1919,8 @@
       bottom: 0;
       width: min(var(--rail-w), 100vw);
       max-width: 100vw;
-      z-index: 60;
-      /* composer 抬到 61 层后仍要从抽屉前面穿过；给它留出单行高度，
+      z-index: 57;
+      /* composer 抬到 58 层后仍要从抽屉前面穿过；给它留出单行高度，
          抽屉最后一条内容才滚得到，而不是停在 composer 背后。 */
       padding-bottom: 96px;
       box-shadow: -20px 0 48px rgba(0, 0, 0, 0.12);
