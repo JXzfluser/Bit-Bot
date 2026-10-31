@@ -3094,6 +3094,7 @@ prove_box_routine_sweep crashed — TypeError: Cannot read properties of undefin
 | G-62 块 | **PASS=31 / 0**，263 条事件、11 类 kind 逐个承重（矩阵逐字行见 `/tmp/matrix-t103c.log`） |
 | `e2e_desktop_quit.mjs` | `PASS=0 FAIL=1` → **8 / 0** |
 | 全量矩阵（本机 mac） | 中断那轮 318/**25** → 修 Electron 后 442/**1**（只剩 G-57）→ 修 Box 后 **446 / 0** |
+| 全量矩阵（CI ubuntu，run `41091196664`） | **PASS=455 FAIL=0**，两平台都是 61 个块；差的 9 项逐块比过，**全部在 G-47**：本机没装 Android SDK，`prove_android_build` 在 mac 打成 skip 说明行（SKIP ≠ PASS），CI 上该门 `PASS=16 FAIL=0`。其余 60 个块两侧逐项等量 |
 
 **⑪ 诚实边界。**
 
