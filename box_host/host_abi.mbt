@@ -192,9 +192,13 @@ pub fn HostAbi::audit_span_count(self : HostAbi) -> Int32 {
 
 ///|
 /// Inject successful Live capture bytes for unit tests (does NOT claim I-PASS).
-pub fn HostAbi::inject_live_frame(self : HostAbi, frame_bytes : String) -> Result[Unit, String] {
+pub fn HostAbi::inject_live_frame(
+  self : HostAbi,
+  frame_bytes : String,
+) -> Result[Unit, String] {
   match self.backend {
-    Mock => Err("inject_live_frame: backend is Mock; refuse (no silent Live on Mock)")
+    Mock =>
+      Err("inject_live_frame: backend is Mock; refuse (no silent Live on Mock)")
     Live(_) => {
       self.live_frame_inject = Some(frame_bytes)
       Ok(())

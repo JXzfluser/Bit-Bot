@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { decodePng, avgLuma, pixelAt, encodeRgbPng } from "./lib_png_pixel.mjs";
@@ -46,6 +47,19 @@ let GATE_ROOT = REPO;
 const dd = (n) => path.join(GATE_ROOT, "data/desktop", n);
 const rd = (n) => path.join(GATE_ROOT, "data/routines", n);
 const sd = (n) => path.join(GATE_ROOT, "data/secrets", n);
+
+/** 取一个空闲端口给 stub 用：固定端口撞上残留 stub 时，回合会打到旧进程上。 */
+function pickFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const p = srv.address().port;
+      srv.close(() => resolve(p));
+    });
+  });
+}
 
 /* 这些路径**必须**是可重定向的 let：dd() 是函数、按调用时的 GATE_ROOT 求值，
    但模块级 const 在 main() 换根之前就已经算成 REPO 了 —— 那样门禁一边说「跑在
@@ -265,19 +279,46 @@ async function launchOnce(extraEnv) {
       BITBOT_ESPEAK_BIN: process.env.BITBOT_ESPEAK_BIN || "/usr/bin/espeak-ng",
       BITBOT_REPO_ROOT: GATE_ROOT,
       BITBOT_ROUTINE_DAEMON_AUTOSTART: "0",
+      // GP-108 数的是「点 Fire 之后新增几份草稿」，所以本门必须自己把进程内唤醒
+      // 关掉（DAEMON=0 关不住它，见 scripts/electron_env.mjs 的同名默认值）。
+      BITBOT_DESKTOP_SWEEP_MS: "0",
       BITBOT_DESKTOP_AUTOSTART: "0",
       BITBOT_NO_SECRET_SYNC: "1",
       ...(extraEnv || {}),
     }),
     timeout: 60000,
   });
+  /* 进程输出留一个环形缓冲：断言失败时把最后几行带出来。以前主进程崩了/内核
+     吐错，门禁只报 "session never reached the store"，看不出是产品还是尺子。
+     必须在 firstWindow() 之前挂：启动阶段的日志（路径解析、内核拉起）就在那里。 */
+  const logRing = [];
+  try {
+    const proc = app.process();
+    const push = (d) => {
+      for (const line of String(d).split("\n")) {
+        if (line.trim()) logRing.push(line.trim());
+      }
+      if (logRing.length > 300) logRing.splice(0, logRing.length - 300);
+    };
+    if (proc && proc.stdout) proc.stdout.on("data", push);
+    if (proc && proc.stderr) proc.stderr.on("data", push);
+  } catch (_) {
+    /* 拿不到进程句柄不影响断言 */
+  }
   const win = await app.firstWindow({ timeout: 60000 });
   await win.waitForSelector("#composer #text", { timeout: 30000 });
   /* G-28 #2：Bot 区块默认折叠成「头像条」。门禁要操作 Bot 行，就得先走一次真实
      用户路径把它展开（点折叠按钮）—— 否则 #bot-list 里的行是 display:none，
      waitForSelector(visible) 只会一路等到 30s 超时。 */
   await expandBotList(win);
-  return { app, win };
+  return { app, win, logRing };
+}
+
+/** Playwright 的 electron.launch 解析时启动日志已经输出完了，环形缓冲可能为空；
+    空的时候要说明「是没有」，而不是看起来像采集坏了。 */
+function appTailNote(ring) {
+  const rows = (ring || []).slice(-5);
+  return rows.length ? rows : ["(空：启动日志早于 launch 解析)"];
 }
 
 async function launch(extraEnv) {
@@ -693,7 +734,10 @@ async function main() {
        发第二条。断言三层：kernel 回显 reply_to；Host 把该 id 解析成原文并塞进
        provider 请求（用 echo-all stub 在 HTTP body 层自证）；store 行带 reply_to
        且重载后 DOM 有引用条。伪 id 场景必须 resolved:false（不假装引用成功）。*/
-    const stubPort = 8793;
+    /* 端口不能写死：长矩阵里一次被打断的重跑留下的 stub（或别的进程）占着
+       8793，stub 就 bind 不上，本段直接超时变红，而产品代码完全无辜。
+       和 M27 一样每次挑空闲端口（GP-177）。 */
+    const stubPort = await pickFreePort();
     const g14Env = {
       BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + stubPort + "/v1",
       BITBOT_LLM_API_KEY: "e2e-stub-key",
@@ -1226,18 +1270,118 @@ async function main() {
         }
         return null;
       };
+      /* 偶发红时最缺的是现场：本轮新出现的 recall 文件长什么样、主进程最后说了什么。
+         断言本身不放松，只是把「看不见」变成「看得见」。 */
+      const recallDiag = () => {
+        const files = (fs.existsSync(MEM_DIR) ? fs.readdirSync(MEM_DIR) : [])
+          .filter((f) => f.startsWith("recall-") && f.endsWith(".json") && !memFilesBefore.includes(f))
+          .slice(-5)
+          .map((f) => {
+            try {
+              const j = JSON.parse(fs.readFileSync(path.join(MEM_DIR, f), "utf8"));
+              return { f, prefix: j.prefix, bot: j.bot_id, count: j.count };
+            } catch (_) {
+              return { f, unreadable: true };
+            }
+          });
+        return JSON.stringify({
+          files,
+          app_tail: appTailNote(bootG23.logRing),
+        }).slice(0, 300);
+      };
+
+      /* 切 Bot 没落地的后果不是「切不动」这么一句话：后面那条 recall 会打到上一个
+         Bot 身上，于是红的是「GP-112 隔离」，看起来像产品串了上下文。上一轮那句
+         偶发红（30s 内没有该 Bot 的 recall 行）就分不清是这两种。
+         这里**不**把「没落地」直接判红：实测存在「pill 名字没对上、但这一下点击
+         其实已经切过去了」的情形（把判定条件注入成永远不等，旧代码照样 128/0），
+         判红会造出假红。只把落地结果和当前 pill 带进失败信息（GP-179）。 */
+      const pillName = async () => {
+        try {
+          return await bootG23.win.evaluate(() => {
+            const pill = document.getElementById("bot-pill");
+            const id = (pill && pill.dataset && pill.dataset.botId) || "?";
+            const label = String((pill && pill.querySelector(".bot-pill-name") || {}).textContent || "").trim();
+            return id + "/«" + label + "»";
+          });
+        } catch (_) {
+          return "?";
+        }
+      };
+      /* bad() 只留 200 字，现场必须写在前面：先说「切换落没落地、pill 是谁、
+         这个 key 的 recall 行都归了谁」，再放原始 JSON。 */
+      const switchNote = async (landed) => "switch_landed=" + landed + " pill=" + (await pillName());
+      const recallRowsNote = (key) =>
+        "rows=" + JSON.stringify(recallsOf(key).map((r) => ({ bot: r.bot_id, count: r.count })));
+
 
       const bootG23 = await launch({ BITBOT_LLM_STREAM: "0" });
       await bootG23.win.waitForSelector("#bot-list [data-agent-id]", { timeout: 30000 });
 
+      /* GP-180：侧栏默认是折叠的头像条，点一个头像就是「切到这个 Bot」。
+         以前这里传的是 b.id（字符串），而 selectBotForChat 读的是 b.id / b.name —
+         于是 activeBotId 变成 undefined、胶囊退成默认文案，会话还多出一条
+         「undefined · DM」。走真实点击，断言胶囊上的 data-bot-id 真的跟着变。 */
+      const clickStripAvatar = async (id) => {
+        const found = await bootG23.win
+          .evaluate((bid) => {
+            const chip = document.querySelector('#bot-strip .strip-av[data-agent-id="' + bid + '"]');
+            if (!chip) return false;
+            chip.click();
+            return true;
+          }, id)
+          .catch(() => false);
+        if (!found) return "no-chip";
+        return await bootG23.win
+          .waitForFunction(
+            (bid) => {
+              const pill = document.getElementById("bot-pill");
+              return !!(pill && pill.dataset && pill.dataset.botId === bid);
+            },
+            id,
+            { timeout: 4000 },
+          )
+          .then(() => "ok")
+          .catch(() => "stale");
+      };
+      for (const id of [botA, botB]) {
+        const r = await clickStripAvatar(id);
+        r === "ok"
+          ? ok("E2E GP-180：点头像条里的 " + id + " 真的切过去了（胶囊 data-bot-id 跟着变）")
+          : bad("E2E GP-180 strip avatar " + id, r + " pill=" + (await pillName()));
+      }
+
+      /* openBot 以前是「点一下 + 死等 900ms」。侧栏正在重绘的那一瞬间，那一下可能
+         点到已经被换掉的节点（querySelector 拿到 null 就什么都不做），于是这次
+         recall 整个落在上一个 Bot 名下——实测两种表现都出现过：该 Bot 的 recall
+         文件根本不出现（null），或 count 归错人。
+
+         判定从「标题文字」改成「胶囊上的 data-bot-id」：Bot 可以重名（门禁数据里
+         就有一串 SmokeRenamed），按名字比会「看起来切过去了、实际没有」——§8.44
+         那次真红就是 switch_landed=true / pill=«Bit Bot»、recall 却落在另一个
+         Bot 上。名字不是身份，id 才是。没落地就再点一次（最多 20s）。 */
       const openBot = async (id) => {
-        await bootG23.win.evaluate((bid) => {
-          const row = document.querySelector(
-            '#bot-list [data-agent-id="' + bid + '"]',
-          );
-          if (row) row.click();
-        }, id);
-        await bootG23.win.waitForTimeout(900);
+        const t0 = Date.now();
+        while (Date.now() - t0 < 20000) {
+          await bootG23.win.evaluate((bid) => {
+            const row = document.querySelector('#bot-list [data-agent-id="' + bid + '"]');
+            if (row) row.click();
+          }, id);
+          const landed = await bootG23.win
+            .waitForFunction(
+              (bid) => {
+                const pill = document.getElementById("bot-pill");
+                return !!(pill && pill.dataset && pill.dataset.botId === bid);
+              },
+              id,
+              { timeout: 4000 },
+            )
+            .then(() => true)
+            .catch(() => false);
+          if (landed) return true;
+          await bootG23.win.waitForTimeout(250);
+        }
+        return false;
       };
       const send = async (text) => {
         await bootG23.win.fill("#composer #text", text);
@@ -1249,7 +1393,7 @@ async function main() {
         ).catch(() => {});
       };
 
-      await openBot(botA);
+      const switchA1 = await openBot(botA);
       await send(`remember ${memKey}=blue`);
       const wrote = await waitFor(() => {
         try {
@@ -1262,7 +1406,10 @@ async function main() {
       }, 30000);
       wrote
         ? ok("E2E GP-111：在 Bot A 的私聊 remember 后，desktop-host.json 的 A 槽真实落盘")
-        : bad("E2E GP-111 remember", "slot " + botA + " never got the key");
+        : bad(
+            "E2E GP-111 remember",
+            "slot " + botA + " never got the key" + (await switchNote(switchA1)),
+          );
 
       const vaultA = (() => {
         try {
@@ -1276,7 +1423,7 @@ async function main() {
         ? ok("E2E GP-111：profile-vault.json 同步记在 A 的槽里（两条路径同一归属）")
         : bad("E2E GP-112 vault slot", JSON.stringify(vaultA && vaultA.bots && Object.keys(vaultA.bots || {})).slice(0, 160));
 
-      await openBot(botB);
+      const switchB = await openBot(botB);
       await send(`recall ${memKey}`);
       const recallB = await waitFor(() => {
         const rows = recallsOf(memKey).filter((r) => r.bot_id === botB);
@@ -1284,9 +1431,15 @@ async function main() {
       }, 30000);
       recallB && recallB.count === 0
         ? ok("E2E GP-112：切到 Bot B 后 recall 命中 0 条（另一个 Bot 的上下文不可见）")
-        : bad("E2E GP-112 isolation", JSON.stringify(recallB).slice(0, 200));
+        : bad(
+            "E2E GP-112 isolation",
+            (await switchNote(switchB)) +
+              " " + recallRowsNote(memKey) +
+              " got=" + JSON.stringify(recallB).slice(0, 60) +
+              " tail=" + recallDiag().slice(0, 40),
+          );
 
-      await openBot(botA);
+      const switchA2 = await openBot(botA);
       await send(`recall ${memKey}`);
       const recallA = await waitFor(() => {
         const rows = recallsOf(memKey).filter((r) => r.bot_id === botA);
@@ -1295,7 +1448,13 @@ async function main() {
       recallA && recallA.count >= 1 &&
         (recallA.entries || []).some((e) => e.key === memKey && e.value === "blue")
         ? ok("E2E GP-111：切回 Bot A 仍 recall 到同一条偏好（跨会话一致）")
-        : bad("E2E GP-111 cross-session recall", JSON.stringify(recallA).slice(0, 200));
+        : bad(
+            "E2E GP-111 cross-session recall",
+            (await switchNote(switchA2)) +
+              " " + recallRowsNote(memKey) +
+              " got=" + JSON.stringify(recallA).slice(0, 60) +
+              " tail=" + recallDiag().slice(0, 40),
+          );
 
       const storeAfter = (() => {
         try {
@@ -1747,12 +1906,24 @@ async function main() {
         edited && Array.isArray(edited.tags) && edited.tags.join(",") === "perf,research"
           ? ok("E2E GP-120：改名 + 标签真写进 bots.json（标签不是只显示在表单里）")
           : bad("E2E GP-120 persist", JSON.stringify(edited && { name: edited.name, tags: edited.tags }));
-        const rowView = await win.evaluate((bid) => {
-          const row = document.querySelector('#bot-list [data-agent-id="' + bid + '"]');
-          return row
-            ? { name: (row.querySelector(".name") || {}).textContent || "", meta: (row.querySelector(".meta") || {}).textContent || "" }
-            : null;
-        }, createdId);
+        // 侧栏行是异步重绘的：改名落盘那一瞬 DOM 可能正被重建，单次 evaluate 会
+        // 读到 null（实测：紧跟着的 GP-122 查同一行又查得到）。轮询到「行里就是
+        // 新名字 + 新标签」为止；断言本身一个字没放松，只是不再抽查一次就当失败。
+        let rowView = null;
+        {
+          const t0 = Date.now();
+          while (Date.now() - t0 < 10000) {
+            rowView = await win.evaluate((bid) => {
+              const row = document.querySelector('#bot-list [data-agent-id="' + bid + '"]');
+              return row
+                ? { name: (row.querySelector(".name") || {}).textContent || "", meta: (row.querySelector(".meta") || {}).textContent || "" }
+                : null;
+            }, createdId);
+            if (rowView && rowView.name.includes("Piper UI")
+              && rowView.meta.includes("#perf") && rowView.meta.includes("#research")) break;
+            await new Promise((r) => setTimeout(r, 200));
+          }
+        }
         rowView && rowView.name.includes("Piper UI") && rowView.meta.includes("#perf") && rowView.meta.includes("#research")
           ? ok("E2E GP-120：侧栏行立即同步新名称与标签（无需重启）")
           : bad("E2E GP-120 sidebar", JSON.stringify(rowView));
@@ -2110,19 +2281,33 @@ async function main() {
     // M27 原来裸跑真 LLM：无外网/无 key 时回合静默失败 → "probe session never
     // reached the store"。照 GP-14 的模式自带 echo stub，门禁不再依赖环境。
     let m27Stub = null;
+    let m27StubTail = "";
+    let m27Diag = {};
     try {
       const { spawn: spawnChild } = require("node:child_process");
+      /* 固定端口（以前是 8796）在长矩阵/被打断的重跑里会撞上残留 stub：
+         新 stub 绑不上，回合打到了旧进程上，症状是「store 里没有这条会话」。
+         改成每轮取空闲端口，端口号写进 base_url。 */
+      const m27Port = await pickFreePort();
       m27Stub = spawnChild(
         process.execPath,
         [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")],
         {
           cwd: REPO,
           stdio: ["ignore", "pipe", "pipe"],
-          env: { ...process.env, BITBOT_STUB_PORT: "8796", BITBOT_STUB_ECHO_ALL: "1" },
+          env: { ...process.env, BITBOT_STUB_PORT: String(m27Port), BITBOT_STUB_ECHO_ALL: "1" },
         },
       );
+      const keepStubLog = (d) => {
+        m27StubTail = (m27StubTail + String(d)).slice(-2000);
+      };
+      m27Stub.stdout.on("data", keepStubLog);
+      m27Stub.stderr.on("data", keepStubLog);
       await new Promise((res, rej) => {
-        const t = setTimeout(() => rej(new Error("stub boot timeout")), 8000);
+        const t = setTimeout(
+          () => rej(new Error("stub boot timeout（port=" + m27Port + "；输出：" + m27StubTail.slice(-160) + "）")),
+          8000,
+        );
         m27Stub.stdout.on("data", (d) => {
           if (String(d).includes("[stub-llm]")) { clearTimeout(t); res(); }
         });
@@ -2130,7 +2315,7 @@ async function main() {
       });
       const bootM27 = await launch({
         BITBOT_LLM_STREAM: "0",
-        BITBOT_LLM_BASE_URL: "http://127.0.0.1:8796/v1",
+        BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + m27Port + "/v1",
         BITBOT_LLM_API_KEY: "e2e-stub-key",
         BITBOT_LLM_MODEL: "e2e-stub",
       });
@@ -2147,14 +2332,39 @@ async function main() {
         null,
         { timeout: 30000 },
       ).catch(() => {});
-      await win.waitForTimeout(800);
+      /* 以前这里是「死等 800ms，然后读一次 sessions.json」。机器一忙（矩阵里同时
+         编译/跑别的门），store 落盘晚于 800ms，这条就红成 "never reached the
+         store" —— 红的是尺子，不是产品。改成轮询到出现为止（20s 兜底），并把
+         超时时的现场（store 条数 / 最近标题 / stub 尾部 / 主进程尾部）带进断言。 */
       const m27SessionId = await (async () => {
-        try {
-          const st = JSON.parse(fs.readFileSync(SESS_M27, "utf8"));
-          const hit = (st.sessions || []).find((x) => (x.messages || []).some((m) =>
-            m && m.role === "user" && String(m.text || "").includes("M27 详情探针")));
-          return hit ? hit.id : "";
-        } catch (_) { return ""; }
+        const t0 = Date.now();
+        let last = { count: 0, titles: [] };
+        while (Date.now() - t0 < 20000) {
+          try {
+            const st = JSON.parse(fs.readFileSync(SESS_M27, "utf8"));
+            const rows = st.sessions || [];
+            last = {
+              count: rows.length,
+              titles: rows.slice(-3).map((x) => String((x && x.title) || "").slice(0, 24)),
+            };
+            const hit = rows.find((x) =>
+              (x.messages || []).some((m) =>
+                m && m.role === "user" && String(m.text || "").includes("M27 详情探针"),
+              ),
+            );
+            if (hit) return hit.id;
+          } catch (_) {
+            /* store 还没写出来 */
+          }
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        m27Diag = {
+          store_sessions: last.count,
+          last_titles: last.titles,
+          stub_tail: m27StubTail.slice(-200),
+          app_tail: appTailNote(bootM27.logRing),
+        };
+        return "";
       })();
       if (m27SessionId) {
         const rowSel = '#session-list [data-session-id="' + m27SessionId + '"]';
@@ -2307,7 +2517,11 @@ async function main() {
           ? ok("E2E GP-129：删除会话后详情面板自动关闭且会话从 store 消失")
           : bad("E2E GP-129 delete close", "rail still open or session not removed");
       } else {
-        bad("E2E GP-128 session", "M27 probe session never reached the store");
+        bad(
+          "E2E GP-128 session",
+          "M27 probe session never reached the store（20s 轮询）" +
+            (Object.keys(m27Diag).length ? " 现场：" + JSON.stringify(m27Diag).slice(0, 400) : ""),
+        );
       }
 
       await shutdown(bootM27.app);
@@ -2326,7 +2540,7 @@ async function main() {
        Usage & Billing tab，面板 per-row 行显示同一 provider/model。*/
     const USAGE_M28 = dd("llm-usage.json");
     const usageM28Before = fs.existsSync(USAGE_M28) ? fs.readFileSync(USAGE_M28) : null;
-    const m28Port = 8795;
+    const m28Port = await pickFreePort();
     let m28Stub = null;
     try {
       const { spawn: spawnChild } = require("node:child_process");
@@ -2444,7 +2658,7 @@ async function main() {
         seedRooms.rooms = (seedRooms.rooms || []).filter((r) => r && r.id !== "room-m29e2e");
         seedRooms.rooms.push(m29Room);
         fs.writeFileSync(ROOMS_M29, JSON.stringify(seedRooms, null, 2));
-        const stubM29Port = 8799;
+        const stubM29Port = await pickFreePort();
         const { spawn: spawnM29 } = require("node:child_process");
         stubM29 = spawnM29(
           process.execPath,
@@ -2615,7 +2829,7 @@ async function main() {
        （审计行 + record-only 落点）、页面自身绝不导航、window.open 被 deny。
        诚实边界：record-only 模式抑制真实浏览器启动（Xvfb 下起不来是真环境限制），
        审计行因此 opened:false + error 说明原因，不谎称"已打开浏览器"。*/
-    const g19Port = 8794;
+    const g19Port = await pickFreePort();
     const g19Audit = "/tmp/g19-links-audit.jsonl";
     const g19Record = "/tmp/g19-links-record.jsonl";
     const g19Url = "https://example.com/docs?g=19";

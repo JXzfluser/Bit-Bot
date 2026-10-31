@@ -40,9 +40,13 @@ const html = fs.readFileSync(htmlPath, "utf8");
 
 /* GP-143/146: the group composer no longer builds a kernel phrase (that would
    double-write the transcript). It calls the Host orchestration IPC, which runs
-   the same real RoomTurn routing and then the responder fan-out. */
+   the same real RoomTurn routing and then the responder fan-out.
+   锚实质不锚字面：orchestrate 现在经 roomOrchestrateWithDeadline 包了一层客户端
+   总时限，参数是 payload 对象；只要「composer 群聊分支 → sendRoomTurn(finalText)」
+   与「sendRoomTurn 里以 { room_id, text } 调 orchestrate」两段都在即可。 */
 /if \(composerRoom\) \{[\s\S]{0,700}await sendRoomTurn\(finalText\)/.test(html) &&
-  /window\.bitbot\.rooms\.orchestrate\(\{ room_id: roomId, text \}\)/.test(html) &&
+  /roomOrchestrateWithDeadline\(\{ room_id: roomId, text \}\)/.test(html) &&
+  /window\.bitbot\.rooms\.orchestrate\(payload\)/.test(html) &&
   !/finalText = "room " \+ composerRoom\.id/.test(html)
   ? ok("composer 群聊提交走 Host rooms.orchestrate IPC（roomTurn 单一写入点，不再拼 kernel 短语）")
   : bad("composer room orchestrate path missing");
@@ -81,9 +85,14 @@ const roomFn = roomFnStart < 0 ? "" : runtimeSrc.slice(roomFnStart, runtimeSrc.i
   ? ok("回执入转录前过密钥脱敏 + 内核/Host 调试行过滤（转录卫生在 Host 侧收口）")
   : bad("transcript sanitization missing");
 
-/* GP-145：群 composer 是独占态，点开 Bot / 会话必须让位回私聊。 */
+/* GP-145：群 composer 是独占态，点开 Bot / 会话必须让位回私聊。
+   会话行点击已统一走 activateSessionById()（P2-7：行点击要清未读，不能只重画），
+   退出群聊的动作在那条共用路径里。所以这里认两种等价形状：内联 exitRoomChat，
+   或委托 activateSessionById。 */
 /function selectBotForChat\(b\)[\s\S]{0,400}if \(composerRoom\) exitRoomChat\(\);/.test(html) &&
-  /el\.addEventListener\("click", async \(\) => \{\s*\n\s*\/\/ 群聊 composer 是独占态[\s\S]{0,200}if \(composerRoom\) exitRoomChat\(\);/.test(html)
+  (/el\.addEventListener\("click", async \(\) => \{\s*\n\s*\/\/ 群聊 composer 是独占态[\s\S]{0,200}if \(composerRoom\) exitRoomChat\(\);/.test(html) ||
+    /el\.addEventListener\("click", async \(\) => \{\s*\n\s*\/\/ 群聊 composer 是独占态[\s\S]{0,400}await activateSessionById\(s\.id\)/.test(html) &&
+      /async function activateSessionById\(sid\)[\s\S]{0,200}if \(composerRoom\) exitRoomChat\(\);/.test(html))
   ? ok("点开 Bot 私聊或切会话时退出群 composer（消息不会误发进群）")
   : bad("room composer does not yield to DM surfaces");
 /orchestrate: \(payload\) => ipcRenderer\.invoke\("bitbot:rooms:orchestrate"/.test(preloadSrc) &&
@@ -160,11 +169,13 @@ const ffiSrc = fs.readFileSync(path.join(REPO, "hosts/shared/host_ffi.js"), "utf
   : bad("renderer does not surface unknown mentions");
 
 /* GP-146 产品态文案：失败原因说人话，协议码只在 dev-mode 追加；结果说明卡
- * 必须在整表重绘之后落位（重绘会清空 .room-thread，先画就等于「一闪就没」）。 */
+ * 必须在整表重绘之后落位（重绘会清空 .room-thread，先画就等于「一闪就没」）。
+ * 重绘外面已包 try/catch（转录读不动时结果卡仍是唯一真相），门禁只锚
+ * 「重绘调用在 outcome 落卡之前」，允许中间有守卫。 */
 /function roomFailReason\(raw\)/.test(html) && /function roomOpFailReason\(raw\)/.test(html) &&
   /return devModeOn\(\) \? label \+ " · " \+ s : label;/.test(html) &&
   /outcome = \{ kind: "error", reason: roomOpFailReason\(res && res\.error\) \}/.test(html) &&
-  /await renderRoomTranscript\(roomId\);\s*\n\s*if \(outcome\) roomAppend\(roomOutcomeCard\(outcome\)\);/.test(html) &&
+  /await renderRoomTranscript\(roomId\);[\s\S]{0,200}if \(outcome\) roomAppend\(roomOutcomeCard\(outcome\)\);/.test(html) &&
   !/why\.textContent = devModeOn\(\)/.test(html)
   ? ok("群聊失败卡走本地化语义，原始码仅 dev-mode 可见，且说明卡在重绘后落位")
   : bad("room failure copy not localized / outcome card not persisted");

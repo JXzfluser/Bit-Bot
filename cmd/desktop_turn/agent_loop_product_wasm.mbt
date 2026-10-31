@@ -22,3 +22,10 @@ fn dispatch_desktop_main(args : Array[String]) -> DesktopTurnResult {
     run_desktop_turn(text, turn_id~, memory_seeds=seeds, ctx~)
   }
 }
+
+///|
+/// 常驻模式只在 native/llvm 后端可用：wasm 里没有阻塞读 stdin 这回事，硬撑成
+/// 循环会把测试挂住。这里如实回一行错误，让 Host 立刻知道「这个后端不能服务」。
+fn run_desktop_serve() -> Unit {
+  println(serve_handle_request(""))
+}

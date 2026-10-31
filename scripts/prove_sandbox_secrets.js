@@ -447,7 +447,14 @@ async function main() {
     assert(au7 && au7.includes("approved: false"), "AU7 inbound approval was overturned");
     const mainJs = fs.readFileSync(path.join(ROOT, "hosts/desktop/main.js"), "utf8");
     const ensureAt = mainJs.indexOf("async function ensureCnInbound");
-    const ensureSlice = mainJs.slice(ensureAt, ensureAt + 1200);
+    // Slice to the next top-level boundary (app.whenReady), not a fixed char
+    // window: ensureCnInbound grew past 1200 chars and pushed `approved: false`
+    // out of a hardcoded window. Semantic bound stays correct as code grows.
+    const ensureEndAt = mainJs.indexOf("app.whenReady", ensureAt);
+    const ensureSlice = mainJs.slice(
+      ensureAt,
+      ensureEndAt > ensureAt ? ensureEndAt : ensureAt + 4000,
+    );
     assert(ensureSlice.includes("approved: false"), "ensureCnInbound lost approved: false");
     assert(!ensureSlice.includes("approved: true"), "ensureCnInbound gained approved: true");
     const product = fs.readFileSync(path.join(ROOT, "hosts/shared/cn_inbound_product_on_turn.js"), "utf8");

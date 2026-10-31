@@ -102,9 +102,8 @@ pub fn ContentSlice::must_not_execute(self : ContentSlice) -> Bool {
 /// One list, mirrored by `hosts/shared/untrusted_fence.js` (probe asserts both).
 pub fn is_external_source(kind : String) -> Bool {
   let kinds = [
-    "webfetch", "mcp_call", "mcp_discover", "shell", "computer_use",
-    "browser_open", "web_search", "read_mail_thread", "search_mail", "x_search",
-    "watch_video",
+    "webfetch", "mcp_call", "mcp_discover", "shell", "computer_use", "browser_open",
+    "web_search", "read_mail_thread", "search_mail", "x_search", "watch_video",
   ]
   for k in kinds {
     if kind == k {
@@ -125,5 +124,10 @@ pub fn fence_body(source : String, body : String) -> String {
   let safe = body
     .replace(old=close_tag, new="<\\/cursor_untrusted_data_1337>")
     .replace(old=open_tag, new="<\\cursor_untrusted_data_1337")
-  open_tag + " source=\"" + source.replace(old="\"", new="") + "\">" + safe + close_tag
+  open_tag +
+  " source=\"" +
+  source.replace(old="\"", new="") +
+  "\">" +
+  safe +
+  close_tag
 }

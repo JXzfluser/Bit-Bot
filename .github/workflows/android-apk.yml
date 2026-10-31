@@ -19,6 +19,11 @@ on:
   push:
     branches:
       - cursor/android-mobile-target-v1
+      # `cursor/next-target-v1` 是桌面 + 安卓整合后的最新工作分支（§8.29 的安卓改动、
+      # §8.30 的桌面改动都落在这里）。移动端行情的最后一环是「有没有能装的包」，
+      # 而这条 workflow 只在旧分支与 PR 上触发 —— 整合分支上改安卓就永远不会有新包，
+      # 「Action 打得出 APK」这句话只在旧分支成立。paths 过滤照旧，不碰安卓文件不会白跑。
+      - cursor/next-target-v1
     paths:
       - "hosts/android/**"
       - ".github/workflows/android-apk.yml"

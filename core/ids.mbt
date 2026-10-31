@@ -1,4 +1,20 @@
 ///|
+/// The identifiers the kernel hands across its own boundaries.
+///
+/// These used to be seven types (`TurnId`, `SessionId`, `UserId`,
+/// `MachineId`, `RoutineId`, `SkillId`, `SubagentId`). Four of them had no
+/// user at all: `MachineId`, `RoutineId`, `SkillId` and `SubagentId` were
+/// declared, exported in the package interface, and never referenced
+/// anywhere in the tree — the packages that own those concepts
+/// (`routines`, `skills`, `agents`) each define their own. `SkillId` was
+/// worse than dead: `core::SkillId` and `skills::SkillId` were two
+/// different types with the same name, and `core::SessionId` and
+/// `memory::SessionId` likewise — a trap for anyone reaching for "the" id
+/// type.
+///
+/// A shared vocabulary only stays shared if it is actually the one people
+/// use. Three types, all in use, is a vocabulary; seven with four decoys is
+/// a naming collision.
 pub(all) struct TurnId {
   value : String
 } derive(Eq, Debug)
@@ -30,50 +46,6 @@ pub extend UserId with Eq::{equal, not_equal}
 
 ///|
 pub extend UserId with Debug::{to_repr}
-
-///|
-pub(all) struct MachineId {
-  value : String
-} derive(Eq, Debug)
-
-///|
-pub extend MachineId with Eq::{equal, not_equal}
-
-///|
-pub extend MachineId with Debug::{to_repr}
-
-///|
-pub(all) struct RoutineId {
-  value : String
-} derive(Eq, Debug)
-
-///|
-pub extend RoutineId with Eq::{equal, not_equal}
-
-///|
-pub extend RoutineId with Debug::{to_repr}
-
-///|
-pub(all) struct SkillId {
-  value : String
-} derive(Eq, Debug)
-
-///|
-pub extend SkillId with Eq::{equal, not_equal}
-
-///|
-pub extend SkillId with Debug::{to_repr}
-
-///|
-pub(all) struct SubagentId {
-  value : String
-} derive(Eq, Debug)
-
-///|
-pub extend SubagentId with Eq::{equal, not_equal}
-
-///|
-pub extend SubagentId with Debug::{to_repr}
 
 ///|
 pub fn TurnId::new(value : String) -> TurnId {

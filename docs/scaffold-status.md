@@ -1,5 +1,15 @@
 # Scaffold / M1 status — 2026-10-17 Asia/Shanghai
 
+> **这是历史快照，不是当前状态。** 本文记录 2026-10-17 的脚手架搭建过程，
+> 其中的数字（例如 `moon test` 168 passed）早已过时，**不要**当成现状引用。
+> 当前状态看：
+> - 能力矩阵与证据：`docs/capability-matrix.md`（由 `scripts/prove_capability_matrix.mjs` 机检）
+> - 模块边界与依赖图：`docs/02-module-map.md`
+> - 内核/Host 边界：`docs/adr/0002-wasm-host-boundary.md`
+> - 契约层能力（已实现但未接入生产路径）：`docs/qa/contract-layer.md`
+>
+> 本文中"待办/未做"的条目若已完成，以代码与上述文档为准。
+
 ## Build smoke (≠ PASS)
 - `moon check` ✅ · `moon test` **168** passed
 - **PASS 仅 Bit验证**；矩阵只标 `in_progress`（CONTRACT.md）
@@ -46,7 +56,7 @@
 | `acceptance_CM-0901_discover_then_full_description` | CM-0901 |
 | `acceptance_cm0901_discover_before_call` | CM-0901 |
 | `acceptance_cm0902_call_write_and_file_placeholder` | CM-0902 |
-| `acceptance_CM-0905_namespace_status_blocks_unusable` | CM-0903/0905 |
+| `acceptance_CM-0903_0905_namespace_status_blocks_unusable` | CM-0903/0905 |
 | `acceptance_CM-1201_executor_dispatch_no_user_send` | CM-1201 |
 | `acceptance_CM-1206_check_status` | CM-1206 |
 | `acceptance_CM-1207_stop_no_side_effects` | CM-1207 |

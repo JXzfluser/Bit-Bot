@@ -1,0 +1,101 @@
+/* Vendor syntax theme for highlight.js (P1-1 code highlighting).
+ *
+ * Intentionally a SEPARATE file from ui_chrome.css: prove_ui_tokens.js enforces a
+ * hex-literal ratchet on ui_chrome.css (T-2/T-2b), and a syntax theme needs real
+ * hues (red/green/blue/purple) that cannot be mixed from the monochrome token set.
+ * Base text + comments still reuse app tokens; only syntax hues are literal here.
+ * Scoped to body.grok-ui .bb-codeblock so nothing else is affected. */
+
+body.grok-ui .bb-codeblock code.hljs {
+  background: transparent;
+  color: var(--ink);
+  display: block;
+}
+
+body.grok-ui .bb-codeblock .hljs-comment,
+body.grok-ui .bb-codeblock .hljs-quote {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* keywords / built-ins */
+body.grok-ui .bb-codeblock .hljs-keyword,
+body.grok-ui .bb-codeblock .hljs-selector-tag,
+body.grok-ui .bb-codeblock .hljs-literal,
+body.grok-ui .bb-codeblock .hljs-type,
+body.grok-ui .bb-codeblock .hljs-doctag,
+body.grok-ui .bb-codeblock .hljs-built_in {
+  color: #cf222e;
+}
+
+/* strings / regex / symbols */
+body.grok-ui .bb-codeblock .hljs-string,
+body.grok-ui .bb-codeblock .hljs-regexp,
+body.grok-ui .bb-codeblock .hljs-addition,
+body.grok-ui .bb-codeblock .hljs-symbol,
+body.grok-ui .bb-codeblock .hljs-bullet {
+  color: #0a7d33;
+}
+
+/* numbers */
+body.grok-ui .bb-codeblock .hljs-number {
+  color: #0550ae;
+}
+
+/* titles / sections / names */
+body.grok-ui .bb-codeblock .hljs-title,
+body.grok-ui .bb-codeblock .hljs-section,
+body.grok-ui .bb-codeblock .hljs-name,
+body.grok-ui .bb-codeblock .hljs-selector-id,
+body.grok-ui .bb-codeblock .hljs-selector-class {
+  color: #8250df;
+}
+
+/* attributes / variables / meta */
+body.grok-ui .bb-codeblock .hljs-attr,
+body.grok-ui .bb-codeblock .hljs-attribute,
+body.grok-ui .bb-codeblock .hljs-variable,
+body.grok-ui .bb-codeblock .hljs-template-variable,
+body.grok-ui .bb-codeblock .hljs-meta,
+body.grok-ui .bb-codeblock .hljs-selector-attr {
+  color: #953800;
+}
+
+body.grok-ui .bb-codeblock .hljs-emphasis { font-style: italic; }
+body.grok-ui .bb-codeblock .hljs-strong { font-weight: 700; }
+
+@media (prefers-color-scheme: dark) {
+  body.grok-ui .bb-codeblock .hljs-keyword,
+  body.grok-ui .bb-codeblock .hljs-selector-tag,
+  body.grok-ui .bb-codeblock .hljs-literal,
+  body.grok-ui .bb-codeblock .hljs-type,
+  body.grok-ui .bb-codeblock .hljs-doctag,
+  body.grok-ui .bb-codeblock .hljs-built_in {
+    color: #ff7b72;
+  }
+  body.grok-ui .bb-codeblock .hljs-string,
+  body.grok-ui .bb-codeblock .hljs-regexp,
+  body.grok-ui .bb-codeblock .hljs-addition,
+  body.grok-ui .bb-codeblock .hljs-symbol,
+  body.grok-ui .bb-codeblock .hljs-bullet {
+    color: #7ee787;
+  }
+  body.grok-ui .bb-codeblock .hljs-number {
+    color: #79c0ff;
+  }
+  body.grok-ui .bb-codeblock .hljs-title,
+  body.grok-ui .bb-codeblock .hljs-section,
+  body.grok-ui .bb-codeblock .hljs-name,
+  body.grok-ui .bb-codeblock .hljs-selector-id,
+  body.grok-ui .bb-codeblock .hljs-selector-class {
+    color: #d2a8ff;
+  }
+  body.grok-ui .bb-codeblock .hljs-attr,
+  body.grok-ui .bb-codeblock .hljs-attribute,
+  body.grok-ui .bb-codeblock .hljs-variable,
+  body.grok-ui .bb-codeblock .hljs-template-variable,
+  body.grok-ui .bb-codeblock .hljs-meta,
+  body.grok-ui .bb-codeblock .hljs-selector-attr {
+    color: #ffa657;
+  }
+}

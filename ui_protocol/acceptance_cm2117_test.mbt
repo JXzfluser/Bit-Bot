@@ -7,16 +7,8 @@ test "acceptance_CM-2117_product_recommend_line_format_with_link_price" {
       link: "https://shop.example/mouse",
       price: "$29.99",
     },
-    {
-      name: "USB-C Hub",
-      link: "https://shop.example/hub",
-      price: "$49.00",
-    },
-    {
-      name: "Desk Lamp",
-      link: "https://shop.example/lamp",
-      price: "¥199",
-    },
+    { name: "USB-C Hub", link: "https://shop.example/hub", price: "$49.00", },
+    { name: "Desk Lamp", link: "https://shop.example/lamp", price: "¥199", },
   ]
   match @ui_protocol.format_product_recommend_list(items) {
     Err(e) => fail(e)
@@ -27,7 +19,9 @@ test "acceptance_CM-2117_product_recommend_line_format_with_link_price" {
         Err(e) => fail(e)
       }
       // Each product one line with link and price.
-      assert_true(rendered.contains("[Wireless Mouse](https://shop.example/mouse)"))
+      assert_true(
+        rendered.contains("[Wireless Mouse](https://shop.example/mouse)"),
+      )
       assert_true(rendered.contains("$29.99"))
       assert_true(rendered.contains("[USB-C Hub](https://shop.example/hub)"))
       assert_true(rendered.contains("$49.00"))
@@ -38,7 +32,9 @@ test "acceptance_CM-2117_product_recommend_line_format_with_link_price" {
       assert_true(rendered.has_prefix("- ["))
       // Single item still uses template.
       let one = items[0].format_line()
-      assert_eq(one, "- [Wireless Mouse](https://shop.example/mouse) — $29.99")
+      assert_eq(
+        one, "- [Wireless Mouse](https://shop.example/mouse) — $29.99",
+      )
     }
   }
   match @ui_protocol.format_product_recommend_list([]) {

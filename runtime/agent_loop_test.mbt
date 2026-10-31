@@ -262,7 +262,10 @@ test "L3-1 a caller may lower max_steps but never raise it" {
     ]),
     repeat_last: true,
   }
-  let run_high = high.run(@runtime.open_turn(turn_id="l3b", text="go"), host_high)
+  let run_high = high.run(
+    @runtime.open_turn(turn_id="l3b", text="go"),
+    host_high,
+  )
   assert_eq(run_high.max_steps, 64)
   assert_eq(run_high.steps, 64)
   assert_eq(run_high.stop, @runtime.MaxSteps)
@@ -333,7 +336,7 @@ test "L3-4 a failing call is retried under a cap and the loop stops" {
     @runtime.open_turn(turn_id="l3e", text="read"),
     host,
     @runtime.AgentContext::new(session_id="l3e"),
-    policy=policy,
+    policy~,
   )
   assert_eq(run.stop, @runtime.Failed)
   assert_eq(run.exec_count, 2)
@@ -376,8 +379,7 @@ test "L3-6 TodoWrite drives the plan and the model sees it" {
   reg.register(read_spec())
   let host = @runtime.MockAgentHost::scripts([
     tool_reply(
-      "TodoWrite",
-      "{\"todos\":[{\"id\":\"1\",\"content\":\"read the file\",\"status\":\"pending\"},{\"id\":\"2\",\"content\":\"summarize\",\"status\":\"pending\"}]}",
+      "TodoWrite", "{\"todos\":[{\"id\":\"1\",\"content\":\"read the file\",\"status\":\"pending\"},{\"id\":\"2\",\"content\":\"summarize\",\"status\":\"pending\"}]}",
     ),
     tool_reply("Read", "{\"path\":\"a.txt\"}"),
     { content: "done", tool_calls: [], cancelled: false, },
@@ -403,8 +405,7 @@ test "L3-7 TodoWrite can mark one plan item done" {
   reg.register(todo_spec())
   let host = @runtime.MockAgentHost::scripts([
     tool_reply(
-      "TodoWrite",
-      "{\"todos\":[{\"id\":\"1\",\"content\":\"first\",\"status\":\"pending\"},{\"id\":\"2\",\"content\":\"second\",\"status\":\"pending\"}]}",
+      "TodoWrite", "{\"todos\":[{\"id\":\"1\",\"content\":\"first\",\"status\":\"pending\"},{\"id\":\"2\",\"content\":\"second\",\"status\":\"pending\"}]}",
     ),
     tool_reply("TodoWrite", "{\"id\":\"1\",\"status\":\"done\"}"),
     { content: "done", tool_calls: [], cancelled: false, },
@@ -424,7 +425,11 @@ test "L3-7 TodoWrite can mark one plan item done" {
 test "L3-8 a provider failure stops the loop instead of delivering it" {
   let reg = read_registry()
   let host = @runtime.MockAgentHost::scripts([
-    { content: "provider_error: upstream 500", tool_calls: [], cancelled: false, },
+    {
+      content: "provider_error: upstream 500",
+      tool_calls: [],
+      cancelled: false,
+    },
   ])
   let run = @runtime.AgentLoop::new(reg).run(
     @runtime.open_turn(turn_id="l3j", text="hello"),
@@ -479,4 +484,146 @@ test "L3-10 an approval denial is its own failure kind" {
   assert_eq(run.failures[0].kind, @runtime.LoopFailureKind::ApprovalDenied)
   assert_eq(run.approval_count, 1)
   assert_eq(run.exec_count, 0)
+}
+
+///|
+fn send_mail_spec() -> @tools.ToolSpec {
+  {
+    id: "send_mail",
+    description: "send a mail",
+    builtin: None,
+    input_schema_json: "{\"required\":[\"to\"]}",
+    requires_approval: false,
+  }
+}
+
+///|
+/// REGRESSION: the policy matched on the RAW model name, so a camelCase
+/// spelling (`sendMail`) missed the approval rule written for `send_mail`.
+/// A tool could skip its approval just by being spelled differently — the
+/// deny list had the same hole. The kernel now canonicalizes the name once,
+/// at the model boundary, so every downstream check sees one spelling.
+test "TN-1 a camelCase tool name still hits the policy approval list" {
+  let reg = @runtime.ToolRegistry::empty()
+  reg.register(send_mail_spec())
+  let policy : @runtime.ToolPolicy = {
+    subject: "bot",
+    device_trust: "trusted",
+    deny_tools: [],
+    need_approval: ["send_mail"],
+    limited_needs_approval: [],
+    path_roots: [],
+    routine_auto_execute: false,
+  }
+  let host = {
+    ..@runtime.MockAgentHost::scripts([
+      tool_reply("sendMail", "{\"to\":\"a@b.c\"}"),
+      { content: "stopped", tool_calls: [], cancelled: false, },
+    ]),
+    deny_all: true,
+  }
+  let run = @runtime.AgentLoop::new(reg).run_with(
+    @runtime.open_turn(turn_id="tn1", text="mail"),
+    host,
+    @runtime.AgentContext::new(session_id="tn1"),
+    tool_policy=policy,
+  )
+  // The approval was requested, and it was requested under the CANONICAL
+  // name — that is the whole point: the policy rule for `send_mail` is what
+  // the `sendMail` spelling has to hit.
+  assert_eq(run.approval_count, 1)
+  assert_eq(host.approvals[0], "send_mail")
+  assert_eq(run.exec_count, 0)
+  assert_true(run.observations[0].contains("approval denied: send_mail"))
+}
+
+///|
+/// The same call, with the approval granted: canonicalization must not stop
+/// the tool from running.
+test "TN-1b an approved camelCase tool call still runs" {
+  let reg = @runtime.ToolRegistry::empty()
+  reg.register(send_mail_spec())
+  let policy : @runtime.ToolPolicy = {
+    subject: "bot",
+    device_trust: "trusted",
+    deny_tools: [],
+    need_approval: ["send_mail"],
+    limited_needs_approval: [],
+    path_roots: [],
+    routine_auto_execute: false,
+  }
+  let host = @runtime.MockAgentHost::scripts([
+    tool_reply("sendMail", "{\"to\":\"a@b.c\"}"),
+    { content: "stopped", tool_calls: [], cancelled: false, },
+  ])
+  let run = @runtime.AgentLoop::new(reg).run_with(
+    @runtime.open_turn(turn_id="tn1b", text="mail"),
+    host,
+    @runtime.AgentContext::new(session_id="tn1b"),
+    tool_policy=policy,
+  )
+  assert_eq(run.approval_count, 1)
+  assert_eq(run.exec_count, 1)
+  assert_true(host.execs[0].contains("send_mail"))
+}
+
+///|
+/// REGRESSION: the same hole in the DENY list — a denied tool must not
+/// become allowed by spelling it differently.
+test "TN-2 a camelCase tool name still hits the policy deny list" {
+  let reg = @runtime.ToolRegistry::empty()
+  reg.register(send_mail_spec())
+  let policy : @runtime.ToolPolicy = {
+    subject: "bot",
+    device_trust: "trusted",
+    deny_tools: ["send_mail"],
+    need_approval: [],
+    limited_needs_approval: [],
+    path_roots: [],
+    routine_auto_execute: false,
+  }
+  let host = @runtime.MockAgentHost::scripts([
+    tool_reply("sendMail", "{\"to\":\"a@b.c\"}"),
+    { content: "stopped", tool_calls: [], cancelled: false, },
+  ])
+  let run = @runtime.AgentLoop::new(reg).run_with(
+    @runtime.open_turn(turn_id="tn2", text="mail"),
+    host,
+    @runtime.AgentContext::new(session_id="tn2"),
+    tool_policy=policy,
+  )
+  assert_eq(run.exec_count, 0)
+  assert_true(run.observations[0].contains("denied by policy"))
+}
+
+///|
+/// REGRESSION: `createRoom` was missing from the kernel's alias table, so a
+/// registered tool became "unknown tool" and the call never ran.
+test "TN-3 a registered tool is reachable under every alias" {
+  let reg = @runtime.ToolRegistry::empty()
+  reg.register({
+    id: "create_room",
+    description: "create a room",
+    builtin: None,
+    input_schema_json: "{\"required\":[\"title\"]}",
+    requires_approval: false,
+  })
+  for
+    spelling in [
+      "create_room", "createRoom", "CreateRoom", "create_group", "createGroup",
+    ] {
+    let host = @runtime.MockAgentHost::scripts([
+      tool_reply(spelling, "{\"title\":\"t\"}"),
+      { content: "stopped", tool_calls: [], cancelled: false, },
+    ])
+    let run = @runtime.AgentLoop::new(reg).run(
+      @runtime.open_turn(turn_id="tn3", text="room"),
+      host,
+    )
+    assert_eq(run.exec_count, 1)
+    assert_true(
+      run.observations.length() > 0 &&
+      !run.observations[0].contains("unknown tool"),
+    )
+  }
 }

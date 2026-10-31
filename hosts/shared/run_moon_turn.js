@@ -10,6 +10,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const { createHostFfi } = require("./host_ffi");
 const { createProductSession } = require("./agent_loop_product_wire");
+const { createKernelServer } = require("./kernel_server");
 
 /** Kernel child does not need the model key. HTTP stays in the Node host. */
 function moonProcessEnv(source) {
@@ -82,8 +83,31 @@ function createTurnRunner(repoRoot, opts = {}) {
     KERNEL_BIN ? [] : ["run", "cmd/desktop_turn", "--target", MOON_TARGET, "--"];
   const kernelExe = () => KERNEL_BIN || MOON_BIN;
 
+  /* ---- T1-07 常驻内核（默认关闭，BITBOT_KERNEL_RESIDENT=1 打开） -----------
+     开了就走「一个进程做所有回合」；不开就还是每轮 spawn —— 旧客户端、旧门禁
+     的路径一个字节都不变。两条路共用同一个内核二进制、同一套 argv 语义，
+     区别只在「argv 交给 spawn」还是「argv 写成一行交给常驻进程」。 */
+  const RESIDENT = String(process.env.BITBOT_KERNEL_RESIDENT || "") === "1";
+  /* 每轮直起那条路的 spawn 计数 —— 门禁要拿「常驻 = 0 次进程创建」和
+     「不常驻 = N 次」对照着量，光有常驻侧的数没法证明门是活的。 */
+  let localSpawns = 0;
+  let kernelCrashes = [];
+  const kernelServer = RESIDENT
+    ? createKernelServer({
+        kernelExe: kernelExe(),
+        prefix: kernelPrefix(),
+        cwd: KERNEL_CWD,
+        env: () => moonProcessEnv(),
+        onCrash: (info) => {
+          kernelCrashes.push(info);
+          if (kernelCrashes.length > 20) kernelCrashes.shift();
+        },
+      })
+    : null;
+
   function runMoon(args, { timeoutMs = 120000 } = {}) {
     return new Promise((resolve, reject) => {
+      localSpawns += 1;
       const child = spawn(kernelExe(), args, {
         cwd: KERNEL_CWD,
         env: moonProcessEnv(),
@@ -140,6 +164,7 @@ function createTurnRunner(repoRoot, opts = {}) {
     const timeoutMs = opts.timeoutMs || 180000;
     const onLoop = typeof opts.onLoop === "function" ? opts.onLoop : null;
     return new Promise((resolve, reject) => {
+      localSpawns += 1;
       const child = spawn(kernelExe(), args, {
         cwd: KERNEL_CWD,
         env: moonProcessEnv(),
@@ -225,13 +250,28 @@ function createTurnRunner(repoRoot, opts = {}) {
             );
             return;
           }
-          resolve({ stdout, stderr, ...kernelLoopTrace(stderr) });
+          resolve({ stdout, stderr, pid: child.pid, ...kernelLoopTrace(stderr) });
         }).catch((err) => {
           clearTimeout(timer);
           reject(err);
         });
       });
     });
+  }
+
+  /**
+   * 一个回合的内核调用。常驻模式把 argv 写成一行交给复用的进程；不开就还是
+   * 每轮 spawn。两条路返回同一个形状（stdout/stderr/entry/kernelOps），
+   * 所以下面的解析代码不用知道自己走的是哪条。
+   */
+  async function runKernel(kernelArgs, hooks = {}) {
+    if (!kernelServer) {
+      return pumpMoonFfi(kernelPrefix().concat(kernelArgs), hooks.onFfi, {
+        timeoutMs: hooks.timeoutMs,
+        onLoop: hooks.onLoop,
+      });
+    }
+    return kernelServer.request(kernelArgs, hooks);
   }
 
   function lastJsonLine(text) {
@@ -267,34 +307,31 @@ function createTurnRunner(repoRoot, opts = {}) {
     if (!text) {
       return { ok: false, error: "empty text" };
     }
-    const moonArgs = [
-      ...kernelPrefix(),
-      // GP-112: seeds (and --bot-id) come from this Bot's slot only.
-      ...ffi.memorySeedArgs(ctx.botId),
-    ];
+    // GP-112: seeds (and --bot-id) come from this Bot's slot only.
+    const kernelArgs = [...ffi.memorySeedArgs(ctx.botId)];
     if (ctx.sessionId) {
-      moonArgs.push("--session-id", String(ctx.sessionId));
+      kernelArgs.push("--session-id", String(ctx.sessionId));
     }
     if (ctx.machineId) {
-      moonArgs.push("--machine-id", String(ctx.machineId));
+      kernelArgs.push("--machine-id", String(ctx.machineId));
     }
     if (ctx.machineKind) {
-      moonArgs.push("--machine-kind", String(ctx.machineKind));
+      kernelArgs.push("--machine-kind", String(ctx.machineKind));
     }
     if (ctx.channel) {
-      moonArgs.push("--channel", String(ctx.channel));
+      kernelArgs.push("--channel", String(ctx.channel));
     }
     if (ctx.turnId) {
-      moonArgs.push("--turn-id", String(ctx.turnId));
+      kernelArgs.push("--turn-id", String(ctx.turnId));
     }
     if (ctx.approved) {
-      moonArgs.push("--approved");
+      kernelArgs.push("--approved");
     }
     // GP-14: the replied-to message id travels into the kernel context.
     if (ctx.replyTo) {
-      moonArgs.push("--reply-to", String(ctx.replyTo));
+      kernelArgs.push("--reply-to", String(ctx.replyTo));
     }
-    moonArgs.push(text);
+    kernelArgs.push(text);
 
     const nodeOps = [];
     // GP-14：AgentLoop 在回合内（第一跳）就要把被引用的原文带给模型，所以回复
@@ -340,9 +377,11 @@ function createTurnRunner(repoRoot, opts = {}) {
       replyQuote: (preReplyQuote && preReplyQuote.resolved && preReplyQuote.text) || "",
       replyRole: (preReplyQuote && preReplyQuote.role) || "assistant",
     });
-    const session = await pumpMoonFfi(
-      moonArgs,
-      async (req) => {
+    const session = await runKernel(kernelArgs, {
+      timeoutMs: ctx.timeoutMs || 180000,
+      onLoop: ctx.onLoop,
+      turnId: String(ctx.turnId || ""),
+      onFfi: async (req) => {
         const op = String((req && req.op) || "");
         nodeOps.push(op);
         if (typeof ctx.isCancelled === "function" && ctx.isCancelled()) {
@@ -367,11 +406,7 @@ function createTurnRunner(repoRoot, opts = {}) {
           })),
         ]);
       },
-      {
-        timeoutMs: ctx.timeoutMs || 180000,
-        onLoop: ctx.onLoop,
-      },
-    );
+    });
     const { stdout, stderr } = session;
     const raw = lastJsonLine(stdout || stderr);
     let parsed;
@@ -389,6 +424,8 @@ function createTurnRunner(repoRoot, opts = {}) {
       entry: Boolean(session.entry),
       kernel_ops: session.kernelOps || [],
       node_ops: nodeOps,
+      resident: Boolean(session.resident),
+      kernel_pid: session.pid || null,
     };
     // GP-165：AgentLoop 的出口诚实化。内核的 stop 只有 Final / MaxSteps /
     // Cancelled，没有「Host 模型调用失败」这一档；失败时它只是 Final 地把空
@@ -518,7 +555,6 @@ function createTurnRunner(repoRoot, opts = {}) {
       if (parsed.needs_host_ffi) {
       try {
         const contArgs = [
-          ...kernelPrefix(),
           "--apply-host-results",
           "--turn-id",
           String(parsed.turn_id || ctx.turnId || "host-cont"),
@@ -558,7 +594,15 @@ function createTurnRunner(repoRoot, opts = {}) {
             ffi.encodeHostArg(hr.error || ""),
           );
         }
-        const cont = await runMoon(contArgs);
+        /* 回灌也是「一个回合」：常驻模式下它必须复用同一个进程，否则「每轮 spawn
+           一次」只是变成了「每轮 spawn 两次」。legacy 路径不做回合内 FFI，
+           所以 onFfi 给个空应答就够了（它也不会发 BITBOT_FFI 行）。 */
+        const cont = kernelServer
+          ? await kernelServer.request(contArgs, {
+              turnId: String(parsed.turn_id || ctx.turnId || "host-cont"),
+              onFfi: async () => ({}),
+            })
+          : await runMoon(kernelPrefix().concat(contArgs));
         const contRaw = lastJsonLine(cont.stdout || cont.stderr);
         const continued = JSON.parse(contRaw);
         if (continued && continued.ok) {
@@ -787,7 +831,20 @@ function createTurnRunner(repoRoot, opts = {}) {
     ffi.setTurnRunner(runTurn);
   }
 
-  return { runTurn, bootBanner, ffi, runMoon, lastJsonLine, MOON_TARGET };
+  return {
+    runTurn,
+    bootBanner,
+    ffi,
+    runMoon,
+    lastJsonLine,
+    MOON_TARGET,
+    // T1-07 的证明要能同时读两侧：不常驻 = 每回合 spawn 计数，常驻 = 池的状态。
+    localSpawns: () => localSpawns,
+    resident: () => RESIDENT,
+    kernelStats: () => (kernelServer ? kernelServer.stats() : null),
+    kernelCrashes: () => kernelCrashes.slice(),
+    stopKernel: () => (kernelServer ? kernelServer.stop() : Promise.resolve(null)),
+  };
 }
 
 module.exports = { createTurnRunner, moonProcessEnv };

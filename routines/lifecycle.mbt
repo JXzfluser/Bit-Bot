@@ -291,10 +291,10 @@ fn validate_cron_body(expr : String) -> Result[Unit, String] {
     return Err("cron expression must not be empty")
   }
   if expr == "@hourly" ||
-      expr == "@daily" ||
-      expr == "@weekly" ||
-      expr == "@now" ||
-      expr == "@once" {
+    expr == "@daily" ||
+    expr == "@weekly" ||
+    expr == "@now" ||
+    expr == "@once" {
     return Ok(())
   }
   if expr.has_prefix("@every ") {

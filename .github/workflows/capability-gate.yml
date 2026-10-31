@@ -1,0 +1,32 @@
+name: Capability Matrix Gate
+
+# Keeps docs/capability-matrix.md honest: it is the project's contract ledger,
+# and nothing in CI used to stop a row's evidence file/test from being renamed
+# or deleted. This gate runs prove_capability_matrix.mjs (CM1..CM5) so a
+# drifting matrix fails CI instead of quietly shipping a false ledger.
+on:
+  push:
+    paths:
+      - 'docs/capability-matrix.md'
+      - 'scripts/prove_capability_matrix.mjs'
+      - '**.mbt'
+  pull_request:
+    paths:
+      - 'docs/capability-matrix.md'
+      - 'scripts/prove_capability_matrix.mjs'
+      - '**.mbt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Prove capability matrix against evidence
+        run: node scripts/prove_capability_matrix.mjs

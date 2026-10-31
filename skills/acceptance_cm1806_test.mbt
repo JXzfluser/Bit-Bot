@@ -13,7 +13,10 @@ test "acceptance_CM-1806_job_search_linkedin_readonly_flow" {
       assert_eq(res.query, "engineer")
       assert_true(res.hit_count >= 1)
       assert_true(res.snippets.length() >= 1)
-      assert_true(res.snippets[0].contains("LinkedIn") || res.snippets[0].contains("engineer"))
+      assert_true(
+        res.snippets[0].contains("LinkedIn") ||
+        res.snippets[0].contains("engineer"),
+      )
     }
   }
   // Readonly: apply/message rejected.

@@ -7,9 +7,7 @@ test "acceptance_CM-2110_slides_executor_skill_distinct_from_slides" {
   assert_true(
     @skills.slides_executor_skill_path() != @skills.slides_skill_path(),
   )
-  assert_true(
-    @skills.slides_executor_skill_path().contains("slides-executor"),
-  )
+  assert_true(@skills.slides_executor_skill_path().contains("slides-executor"))
   assert_true(@skills.slides_skill_path().contains("/slides/"))
   // Catalog lists both; names not confused.
   let cat = @skills.ManagedCatalog::empty()

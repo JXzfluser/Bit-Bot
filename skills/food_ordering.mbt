@@ -21,9 +21,25 @@ pub fn food_ordering_site_ids() -> Array[SitePlaybookId] {
 pub fn SitePlaybookId::is_food_ordering(self : SitePlaybookId) -> Bool {
   match self {
     Resy | Opentable | Doordash => true
-    Airbnb | Bestbuy | Costco | Craigslist | Ebay | Etsy | Expedia |
-    FacebookMarketplace | Fedex | GoogleFlights | Instacart | Linkedin | Luma |
-    Realtor | Southwest | Target | United | Ups | Usps => false
+    Airbnb
+    | Bestbuy
+    | Costco
+    | Craigslist
+    | Ebay
+    | Etsy
+    | Expedia
+    | FacebookMarketplace
+    | Fedex
+    | GoogleFlights
+    | Instacart
+    | Linkedin
+    | Luma
+    | Realtor
+    | Southwest
+    | Target
+    | United
+    | Ups
+    | Usps => false
   }
 }
 

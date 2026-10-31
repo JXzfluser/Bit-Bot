@@ -250,7 +250,10 @@ pub fn McpHostFsLive::expand_file_arg(
 }
 
 ///|
-pub fn McpHostFsLive::chat_contains(self : McpHostFsLive, needle : String) -> Bool {
+pub fn McpHostFsLive::chat_contains(
+  self : McpHostFsLive,
+  needle : String,
+) -> Bool {
   self.inner.chat_contains(needle)
 }
 
@@ -337,7 +340,11 @@ pub fn McpHostFsLive::loopback_call_with_file_arg(
     Err(e) => Err(e)
     Ok(exp) => {
       // MCP call body gets injected payload; chat already has ref only.
-      let args_for_mcp = "{\"body\":" + "\"[injected len=" + exp.injected_len.to_string() + "]\"" + "}"
+      let args_for_mcp = "{\"body\":" +
+        "\"[injected len=" +
+        exp.injected_len.to_string() +
+        "]\"" +
+        "}"
       // Keep full injected available via get; args_for_mcp for tests that check body:
       // Prefer embedding a marker that proves inject without duplicating huge chat risk.
       // Full injected is in exp.injected — rebuild args with content for MCP side:

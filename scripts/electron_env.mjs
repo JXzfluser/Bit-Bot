@@ -109,9 +109,21 @@ const DROP = [
  * @param {Record<string,string>} [extra] 需要额外注入的变量（如 BITBOT_* 开关）
  */
 export function electronLaunchEnv(extra) {
-  const env = { ...process.env };
+  const env = Object.assign({ ...process.env }, extra || {});
+  // 剔除必须放在合并**之后**。调用方常把 process.env 展开进 `extra`（
+  // prove_host_approval_ui 的 llmEnv 就是），先剔后并会把 ELECTRON_RUN_AS_NODE
+  // 原样加回来：electron 退化成 node，"bad option: --remote-debugging-port=0"
+  // → playwright 报 "Process failed to launch!"，看起来像单实例锁或残留进程。
   for (const k of DROP) delete env[k];
-  return Object.assign(env, extra || {});
+  /* GP-170 之后新增的一条门禁假设：主进程在 shell daemon 不在时会**自己**扫
+   * routine_tick（默认 60s，开机还先扫一轮），把到点任务的草稿预备出来。
+   * BITBOT_ROUTINE_DAEMON_AUTOSTART=0 只关得住那个 bash daemon，关不住它 ——
+   * 实测 G-16 的 GP-108「点 Fire 只新增一份草稿」被开机那轮 sweep 打成 n=4。
+   * 门禁要的「库是安静的」这件事在这里一次给足：默认关掉进程内唤醒。
+   * 真要测这条链的门（e2e_desktop_sweep_timer / e2e_desktop_packaged）自己显式
+   * 设 BITBOT_DESKTOP_SWEEP_MS，不受这里影响。 */
+  if (env.BITBOT_DESKTOP_SWEEP_MS === undefined) env.BITBOT_DESKTOP_SWEEP_MS = "0";
+  return env;
 }
 
 /**

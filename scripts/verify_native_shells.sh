@@ -265,6 +265,14 @@ for needle in (
     assert needle in ios_cv, needle
     assert needle in and_main, needle
 mobile = Path("hosts/mobile_host/run.js").read_text()
+# GP-185: mobile_host delegates turn execution to the shared Host FFI, and the
+# mirror key list moved into hosts/shared/delivery_mirror.js. Asserting the
+# literals on mobile_host itself would now be a stale red; assert the single
+# source of truth, and that mobile_host still wires it in.
+shared_kinds_src = (
+    Path("hosts/shared/delivery_mirror.js").read_text()
+    + Path("hosts/shared/host_ffi.js").read_text()
+)
 for kind in (
     "finance_call",
     "job_search",
@@ -298,8 +306,9 @@ for kind in (
     "routine_resume",
     "journal_append",
 ):
-    assert kind in mobile, kind
-assert "receipt_path" in mobile and "skill_path" in mobile
+    assert kind in shared_kinds_src, kind
+assert "DELIVERY_HOST_KINDS" in mobile and "buildDeliveryMirror" in mobile
+assert "pickMirrorPath" in Path("hosts/shared/delivery_mirror.js").read_text()
 print("native device_permission + SendToUser Host scaffolds ok")
 print("native product quick actions (plugins/media/voice/box/mail/channels/cloud/routines/tools) ok")
 PY
@@ -420,11 +429,20 @@ import json,os
 d=json.load(open('/tmp/bitbot-android-models.json'))
 assert d.get('ok') and d.get('machine_kind')=='android'
 assert d.get('intent')=='open_settings'
-h=next(x for x in d.get('host_results')or[] if x.get('kind')=='settings_open')
-p=json.loads(h.get('stdout') or '{}')
-assert p.get('pretend_opened') is not True
-assert 'models' in str(p.get('anchor') or p.get('command') or p.get('entry') or h.get('command') or '')
-print('android list models Host path ok', p.get('mode') or p.get('anchor') or p.get('entry'))
+# 'list models' may answer with the real provider list (llm_list_models) or open
+# the settings anchor on hosts without an LLM registry. Both are product paths;
+# neither may pretend.
+h=next((x for x in d.get('host_results')or[] if x.get('kind') in ('settings_open','llm_list_models')), None)
+assert h is not None, [x.get('kind') for x in d.get('host_results')or[]]
+if h.get('kind')=='llm_list_models':
+    text=str(h.get('stdout') or '')
+    assert h.get('ok') is True and 'LLM providers' in text
+    print('android list models Host path ok', 'llm_list_models')
+else:
+    p=json.loads(h.get('stdout') or '{}')
+    assert p.get('pretend_opened') is not True
+    assert 'models' in str(p.get('anchor') or p.get('command') or p.get('entry') or h.get('command') or '')
+    print('android list models Host path ok', p.get('mode') or p.get('anchor') or p.get('entry'))
 "
 
 # Product phrasing todo write → durable todo_write Host on iOS.

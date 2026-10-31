@@ -28,8 +28,8 @@ pub fn validate_unsolicited_mail(UnsolicitedMailPlan) -> UnsolicitedMailVerdict
 pub(all) struct AttachmentBytes {
   name : String
   path : String
-  size_bytes : Int32
-  content_len : Int32
+  size_bytes : Int
+  content_len : Int
 } derive(Eq, @debug.Debug)
 pub fn AttachmentBytes::equal(Self, Self) -> Bool
 pub fn AttachmentBytes::not_equal(Self, Self) -> Bool
@@ -40,8 +40,8 @@ pub(all) struct AttachmentStore {
   files : Array[AttachmentBytes]
 }
 pub fn AttachmentStore::new() -> Self
-pub fn AttachmentStore::read_email_attachment(Self, attachment_id~ : String, path~ : String, size_bytes~ : Int32) -> Result[AttachmentBytes, String]
-pub fn AttachmentStore::upload_file(Self, source_path~ : String, dest_path~ : String, size_bytes~ : Int32) -> Result[AttachmentBytes, String]
+pub fn AttachmentStore::read_email_attachment(Self, attachment_id~ : String, path~ : String, size_bytes~ : Int) -> Result[AttachmentBytes, String]
+pub fn AttachmentStore::upload_file(Self, source_path~ : String, dest_path~ : String, size_bytes~ : Int) -> Result[AttachmentBytes, String]
 
 pub(all) enum ClaimGuidePhase {
   AskLocalPart
@@ -102,7 +102,7 @@ pub(all) struct GmailMcpSurface {
   drafts : Array[DraftEmailCard]
 }
 pub fn GmailMcpSurface::create_draft(Self, to_~ : String, subject~ : String, body~ : String) -> DraftEmailCard
-pub fn GmailMcpSurface::draft_count(Self) -> Int32
+pub fn GmailMcpSurface::draft_count(Self) -> Int
 pub fn GmailMcpSurface::new() -> Self
 pub fn GmailMcpSurface::read_thread(Self, thread_id~ : String) -> Result[MailThread, String]
 pub fn GmailMcpSurface::search_threads(Self, query~ : String) -> Array[MailThread]
@@ -206,13 +206,13 @@ pub fn MailboxDraft::to_repr(Self) -> @debug.Repr
 
 pub(all) struct MailboxDraftStore {
   drafts : Array[MailboxDraft]
-  mut next_id : Int32
+  mut next_id : Int
   uploads : AttachmentStore
 }
 pub fn MailboxDraftStore::any_sent(Self) -> Bool
-pub fn MailboxDraftStore::attach_via_upload(Self, draft_id~ : String, source_path~ : String, dest_path~ : String, size_bytes~ : Int32) -> Result[MailboxDraft, String]
+pub fn MailboxDraftStore::attach_via_upload(Self, draft_id~ : String, source_path~ : String, dest_path~ : String, size_bytes~ : Int) -> Result[MailboxDraft, String]
 pub fn MailboxDraftStore::create_draft(Self, to_~ : String, subject~ : String, body~ : String) -> MailboxDraft
-pub fn MailboxDraftStore::draft_count(Self) -> Int32
+pub fn MailboxDraftStore::draft_count(Self) -> Int
 pub fn MailboxDraftStore::find(Self, id~ : String) -> Result[MailboxDraft, String]
 pub fn MailboxDraftStore::new() -> Self
 pub fn MailboxDraftStore::try_send(Self, draft_id~ : String, user_pressed_send~ : Bool) -> Result[String, String]
@@ -221,18 +221,18 @@ pub(all) struct OutlookConnector {
   namespace_ : String
   mut status : @connectors.ConnectorStatus
   drafts : Array[OutlookDraft]
-  mut next_id : Int32
+  mut next_id : Int
   sent_ids : Array[String]
 }
 pub fn OutlookConnector::auth_status(Self) -> @connectors.ConnectorStatus
 pub fn OutlookConnector::authenticate(Self) -> Result[Unit, String]
 pub fn OutlookConnector::create_draft(Self, to_~ : String, subject~ : String, body~ : String) -> Result[OutlookDraft, String]
 pub fn OutlookConnector::crud_available(Self) -> Bool
-pub fn OutlookConnector::draft_count(Self) -> Int32
+pub fn OutlookConnector::draft_count(Self) -> Int
 pub fn OutlookConnector::is_needs_auth(Self) -> Bool
 pub fn OutlookConnector::new() -> Self
 pub fn OutlookConnector::send_draft(Self, draft_id~ : String) -> Result[String, String]
-pub fn OutlookConnector::sent_count(Self) -> Int32
+pub fn OutlookConnector::sent_count(Self) -> Int
 
 pub(all) struct OutlookDraft {
   id : String
@@ -296,7 +296,7 @@ pub(all) struct VerbatimSendReceipt {
   to_ : String
   subject : String
   body : String
-  send_count : Int32
+  send_count : Int
 } derive(Eq, @debug.Debug)
 pub fn VerbatimSendReceipt::equal(Self, Self) -> Bool
 pub fn VerbatimSendReceipt::matches_frozen(Self, FrozenDraft) -> Bool
@@ -306,7 +306,7 @@ pub fn VerbatimSendReceipt::to_repr(Self) -> @debug.Repr
 pub(all) struct VerbatimSendSession {
   frozen : FrozenDraft
   mut card_shown : Bool
-  mut send_count : Int32
+  mut send_count : Int
   mut last_receipt : VerbatimSendReceipt?
 }
 pub fn VerbatimSendSession::agent_try_edit(Self, body~ : String) -> Result[Unit, String]

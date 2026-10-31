@@ -2625,6 +2625,9 @@ function stripHostAppliedMarker(file) {
   process.env.BITBOT_TESSERACT_MOCK_LOG_DIR = "/tmp/bitbot-mcp-tesseract-close";
   process.env.BITBOT_CU_NATIVE_ACT = "1";
   process.env.BITBOT_XDOTOOL_BIN = path.join(process.cwd(), "scripts/host_xdotool_mock.sh");
+  // 真实 wmctrl 存在时会优先走它（无 WM 的 Xvfb 里窗口清单为 0），residual 就关不掉。
+  // 这里和 XDOTOOL_BIN 一样注入 mock，才是「同一件工具链」的完整替身。
+  process.env.BITBOT_WMCTRL_BIN = path.join(process.cwd(), "scripts/host_xdotool_mock.sh");
   process.env.BITBOT_XDOTOOL_MOCK_LOG_DIR = "/tmp/bitbot-mcp-xdotool-close";
   const cuOcrActCloseRuns = await ffi.executeHostEffects([{ kind: "mcp_call", command: "user-Gmail.computer_use|{\"command\":\"computer use open https://example.com click:40,40\"}" }]);
   const cuOcrActCloseH = cuOcrActCloseRuns.find((r) => r && r.kind === "mcp_call");
@@ -2661,6 +2664,7 @@ function stripHostAppliedMarker(file) {
   delete process.env.BITBOT_TESSERACT_MOCK_LOG_DIR;
   delete process.env.BITBOT_CU_NATIVE_ACT;
   delete process.env.BITBOT_XDOTOOL_BIN;
+  delete process.env.BITBOT_WMCTRL_BIN;
   delete process.env.BITBOT_XDOTOOL_MOCK_LOG_DIR;
   // 14) device_tool camera/mic: data/device fixtures → device_capture_residual + device_tool_residual false
   fs.mkdirSync("data/device", { recursive: true });

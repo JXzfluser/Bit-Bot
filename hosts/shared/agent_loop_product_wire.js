@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { canonicalAction } = require("./host_approval_gate");
 const { buildToolPolicy } = require("./tool_policy");
+const { DEFAULTS } = require("./machine_identity");
 
 /**
  * One Host FFI op for the kernel AgentLoop.
@@ -47,7 +48,8 @@ function approvalMode() {
  * It must therefore never be able to escape the context directory: a bot id
  * like "../../etc/passwd" must not become a path.
  */
-const DEFAULT_CONTEXT_MACHINE = "desk-1";
+// GP-185: 默认机器 id 不在这里再写一次（machine_identity 是唯一来源）。
+const DEFAULT_CONTEXT_MACHINE = DEFAULTS.desktop;
 
 /**
  * B-5:这台机器叫什么。
@@ -115,19 +117,41 @@ function writeAgentContext(ffi, slot, text, machineId) {
   }
 }
 
+/**
+ * Tool name aliases — the Host-side copy of `core/tool_names.mbt`.
+ *
+ * The kernel canonicalizes tool names ONCE at the model boundary, so by the
+ * time a name reaches this file it is normally already canonical. This table
+ * is the fallback for names that arrive from somewhere else (an older host,
+ * a hand-written request), and it MUST stay identical to the kernel's table:
+ *
+ *   - `createRoom` used to be missing here but present in the kernel copy
+ *     (the reverse was also true for other aliases), so the two drifted;
+ *   - `scripts/prove_tool_names.mjs` compares the two tables row by row and
+ *     fails CI when they differ.
+ *
+ * Rows are `canonical|alias|alias`. A canonical id never appears in its own
+ * alias list.
+ */
+const TOOL_NAME_ALIAS_ROWS = [
+  "Read|fs_read|read",
+  "Shell|shell",
+  "TodoWrite|todo_write",
+  "describe_schedule|describeSchedule|DescribeSchedule",
+  "create_teammate|createTeammate|CreateTeammate",
+  "create_routine|createRoutine|CreateRoutine",
+  "web_search|webSearch|WebSearch|search_web",
+  "web_fetch|webFetch|WebFetch|open_url|openUrl",
+  "send_mail|sendMail|SendMail|mail_send",
+  "create_room|createRoom|CreateRoom|create_group|createGroup",
+];
+
 function canonProductTool(name) {
   const n = String(name || "");
-  if (n === "webSearch" || n === "WebSearch" || n === "search_web" || n === "searchWeb") {
-    return "web_search";
-  }
-  if (n === "webFetch" || n === "WebFetch" || n === "open_url" || n === "openUrl") {
-    return "web_fetch";
-  }
-  if (n === "sendMail" || n === "SendMail" || n === "send_mail" || n === "mail_send") {
-    return "send_mail";
-  }
-  if (n === "createRoom" || n === "CreateRoom" || n === "create_group" || n === "createGroup") {
-    return "create_room";
+  for (let i = 0; i < TOOL_NAME_ALIAS_ROWS.length; i++) {
+    const parts = TOOL_NAME_ALIAS_ROWS[i].split("|");
+    if (parts[0] === n) return n;
+    if (parts.indexOf(n) > 0) return parts[0];
   }
   return n;
 }

@@ -27,6 +27,7 @@ const RUN_ID = Date.now().toString(36) + "-" + process.pid;
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
+const { asarPathOf } = require("./lib_pack_manifest.js");
 
 const REPO = path.resolve(__dirname, "..");
 const STUB_PORT = Number(process.env.BITBOT_G96_STUB_PORT || 8796);
@@ -240,8 +241,8 @@ async function main() {
     ? ok("GP-96 CLI: BITBOT_CLI_PROGRESS=1 → stderr progress")
     : bad("GP-96 CLI wiring", "missing progress hook");
 
-  pkg.build && pkg.build.files && pkg.build.files.includes("progress_protocol.js")
-    ? ok("GP-96 package.json build.files 包含 progress_protocol.js")
+  asarPathOf((pkg.build && pkg.build.files) || [], "progress_protocol.js") === "desktop/progress_protocol.js"
+    ? ok("GP-96 progress_protocol.js 打进包（落在 desktop/）")
     : bad("GP-96 package files", pkg.build && pkg.build.files);
 
   /* ---- 5) Renderer: i18n keys + lifecycle ---- */

@@ -1,8 +1,7 @@
 ///|
 /// CM-2149: Cross-assistant no verbatim complaint relay — diplomatic paraphrase only.
 test "acceptance_CM-2149_cross_agent_complaint_diplomatic_paraphrase" {
-  let complaint =
-    "That other assistant is awful and stupid — always wrong and never works!"
+  let complaint = "That other assistant is awful and stupid — always wrong and never works!"
   match @teammates.paraphrase_complaint_for_agent(complaint) {
     Err(e) => fail(e)
     Ok(para) => {

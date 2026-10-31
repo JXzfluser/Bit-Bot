@@ -20,30 +20,49 @@
       "output": "dist"
     },
     "files": [
-      "main.js",
-      "preload.js",
-      "index.html",
-      "ui_chrome.css",
-      "vendor/**/*",
-      "sessions.js",
-      "paths.js",
-      "product_surface.js",
-      "room_orchestrator.js",
-      "progress_protocol.js",
-      "secret_protocol.js",
-      "secret_vault.js",
-      "link_open.js",
-      "link_discipline.js",
-      "build/icon.png",
+      "package.json",
+      {
+        "from": ".",
+        "to": "desktop",
+        "filter": [
+          "main.js",
+          "preload.js",
+          "index.html",
+          "ui_chrome.css",
+          "vendor/**/*",
+          "sessions.js",
+          "paths.js",
+          "product_surface.js",
+          "room_orchestrator.js",
+          "progress_protocol.js",
+          "secret_protocol.js",
+          "secret_vault.js",
+          "link_open.js",
+          "link_discipline.js",
+          "build/icon.png",
+          "!**/*.map",
+          "!**/LICENSES.chromium.html"
+        ]
+      },
       {
         "from": "../shared",
         "to": "shared",
         "filter": [
-          "**/*"
+          "**/*",
+          "!**/*.map"
         ]
       }
     ],
+    "extraMetadata": {
+      "main": "desktop/main.js"
+    },
     "asar": true,
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "compression": "maximum",
+    "afterPack": "build/afterPack.js",
     "extraResources": [
       {
         "from": "resources/kernel",
@@ -56,8 +75,9 @@
     "afterSign": "build/notarize.js",
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://updates.bitbot.local/desktop"
+        "provider": "github",
+        "owner": "JXzfluser",
+        "repo": "Bit-Bot"
       }
     ],
     "linux": {
@@ -99,6 +119,7 @@
     }
   },
   "devDependencies": {
+    "@electron/notarize": "^2.3.0",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "playwright-core": "^1.49.1"

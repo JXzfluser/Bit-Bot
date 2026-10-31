@@ -16,6 +16,12 @@ const {
   extractDeliveryTypes,
   formatDeliveryStrip,
 } = require("../shared/send_to_user_surface");
+const {
+  DELIVERY_HOST_KINDS,
+  buildDeliveryMirror,
+  pickMirrorPath,
+} = require("../shared/delivery_mirror");
+const { loadEnvLocalFiles: loadSharedEnv } = require("../shared/host_env");
 const p0 = require("../shared/p0_security");
 
 const root = path.resolve(__dirname, "../..");
@@ -23,35 +29,13 @@ const root = path.resolve(__dirname, "../..");
 /**
  * Load Desktop/repo .env.local for non-model host env (channel flags, host URL).
  * SK-D7: never copy the Desktop model key into the mobile host process.
+ * GP-185: parsing lives in hosts/shared/host_env.js — this is policy only.
  */
 function loadEnvLocalFiles() {
-  const candidates = [
-    path.join(root, "hosts/desktop/.env.local"),
-    path.join(root, ".env.local"),
-  ];
-  for (const file of candidates) {
-    if (!fs.existsSync(file)) continue;
-    try {
-      for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
-        const t = line.trim();
-        if (!t || t.startsWith("#")) continue;
-        const eq = t.indexOf("=");
-        if (eq <= 0) continue;
-        const k = t.slice(0, eq).trim();
-        let v = t.slice(eq + 1).trim();
-        if (
-          (v.startsWith('"') && v.endsWith('"')) ||
-          (v.startsWith("'") && v.endsWith("'"))
-        ) {
-          v = v.slice(1, -1);
-        }
-        if (k && p0.isMobileLlmKey(k)) continue;
-        if (k && process.env[k] === undefined) process.env[k] = v;
-      }
-    } catch (_) {
-      /* ignore */
-    }
-  }
+  loadSharedEnv({
+    repoRoot: root,
+    skip: (k) => p0.isMobileLlmKey(k),
+  });
 }
 loadEnvLocalFiles();
 p0.dropMobileLlmKeys(process.env);
@@ -160,106 +144,7 @@ try {
       "device",
       "mobile-delivery-mirrors",
     );
-    for (const kind of [
-      "channel_send",
-      "mail_send",
-      "mail_draft",
-      "section_add",
-      "section_post",
-      "credential_fill",
-      "purchase",
-      "oauth",
-      "mcp_call",
-      "mcp_discover",
-      "voice_relay",
-      "voice_session",
-      "voice_end_write",
-      "credential_list",
-      "x_search",
-      "x_post",
-      "approval_card",
-      "connectors_probe",
-      "generate_image",
-      "generate_video",
-      "watch_video",
-      "structured_chart",
-      "box_doctor",
-      "box_env",
-      "box_clock",
-      "webhook_panel",
-      "webhook_copy",
-      "webhook_tool_read_key",
-      "webhook_wake",
-      "settings_open",
-      "agent_info_panel",
-      "delete_agent",
-      "package_install",
-      "shared_box_fs",
-      "hide_agent",
-      "list_agents_sidebar",
-      "members_panel",
-      "notify_settings",
-      "set_notify",
-      "update_computer",
-      "reset_computer",
-      "local_execution",
-      "guide_permission",
-      "render_markdown",
-      "react_message",
-      "screenshot",
-      "check_updates",
-      "auto_review_settings",
-      "box_chrome_probe",
-      "mcp_namespace",
-      "mcp_uninstall",
-      "mcp_get_plugin",
-      "mcp_list_plugins",
-      "teammate_create",
-      "schedule_meeting",
-      "mail_search",
-      "mail_read",
-      "finance_call",
-      "job_search",
-      "workflow_list",
-      "slides_pptx",
-      "skill_write",
-      "export_pack",
-      "inbound_reaction",
-      "cloud_agent_launch",
-      "cloud_artifact_deliver",
-      "routine_schedule",
-      "routine_list",
-      "routine_fire",
-      "routine_tick",
-      "auto_review_settings",
-      "shell",
-      "fs_list",
-      "fs_read",
-      "webfetch",
-      "computer_use",
-      "shared_memory_put",
-      "shared_memory_read",
-      "memory_update",
-      "memory_recall",
-      "code_changes",
-      "source_control",
-      "machines_list",
-      "mail_claim_inbox",
-      "device_tools_list",
-      "device_tool",
-      "delivery",
-      "journal_query",
-      "skill_load",
-      "list_skills",
-      "copy_to_box",
-      "copy_from_box",
-      "subagent_run",
-      "room_turn",
-      "send_to_agent",
-      "routine_pause",
-      "routine_resume",
-      "journal_append",
-    ]) {
+    for (const kind of DELIVERY_HOST_KINDS) {
       const hit = hrs.find((h) => {
         if (!h || h.kind !== kind) return false;
         if (h.ok !== false) return true;
@@ -284,109 +169,22 @@ try {
       } catch {
         payload = {};
       }
-      // Prefer durable snap path; fall back to media/frame/html for SendToUser attachments.
-      const hostPath =
-        payload.artifact_path ||
-        payload.path ||
-        payload.media_path ||
-        payload.frame_path ||
-        payload.html_path ||
-        payload.receipt_path ||
-        payload.pptx_path ||
-        payload.ics_path ||
-        payload.eml_path ||
-        payload.skill_path ||
-        payload.export_path ||
-        payload.reply_media_path ||
-        null;
+      // GP-185: path preference + mirror fields live in hosts/shared/delivery_mirror.js
+      // so Desktop, iOS and Android cannot drift key by key.
+      const hostPath = pickMirrorPath(payload);
       if (!hostPath) continue;
       fs.mkdirSync(deliveryMirrorDir, { recursive: true });
       const mirrorPath = path.join(
         deliveryMirrorDir,
         `${kind}-${Date.now().toString(36)}.json`,
       );
-      const oc = payload.outcome || {};
-      const vp = (payload.gui && payload.gui.vision_plan) || {};
-      const gui = payload.gui || {};
-      const mirror = {
-        kind: kind + "_mobile_mirror",
-        machine_kind: machineKind,
-        host_kind: kind,
-        host_path: hostPath,
-        media_path: payload.media_path || null,
-        frame_path: payload.frame_path || null,
-        html_path: payload.html_path || null,
-        eml_path: payload.eml_path || null,
-        mode: payload.mode || null,
-        pretend_live: payload.pretend_live === true,
-        pretend_sent: payload.pretend_sent === true,
-        pretend_connected: payload.pretend_connected === true,
-        live_mail_residual: payload.live_mail_residual === true,
-        live_mail_claim_residual: payload.live_mail_claim_residual === true,
-        live_channel_residual: payload.live_channel_residual === true,
-        widget_degraded: payload.widget_degraded === true,
-        inbound_push_residual: payload.inbound_push_residual === true,
-        live_slack_residual: payload.live_slack_residual === true,
-        live_teams_residual: payload.live_teams_residual === true,
-        live_meeting_residual: payload.live_meeting_residual === true,
-        live_sms_residual: payload.live_sms_residual === true,
-        live_webhook_residual: payload.live_webhook_residual === true,
-        live_voice_residual: payload.live_voice_residual === true,
-        live_x_residual: payload.live_x_residual === true,
-        live_x_post_residual: payload.live_x_post_residual === true,
-        live_job_residual: payload.live_job_residual === true,
-        live_finance_residual: payload.live_finance_residual === true,
-        live_calendar_residual: payload.live_calendar_residual === true,
-        voice_stt_residual: payload.voice_stt_residual === true,
-        voice_tts_residual: payload.voice_tts_residual === true,
-        voice_end_match_residual: payload.voice_end_match_residual === true,
-        inbound_turn_residual: payload.inbound_turn_residual === true,
-        credential_browser_fill_residual:
-          payload.credential_browser_fill_residual === true,
-        signin_fill_residual: payload.signin_fill_residual === true,
-        cross_machine_copy_residual:
-          payload.cross_machine_copy_residual === true,
-        device_capture_residual: payload.device_capture_residual === true,
-        device_tool_residual: payload.device_tool_residual === true,
-        product_tool_residual: payload.product_tool_residual === true,
-        live_paid_residual:
-          payload.live_paid_residual === true ||
-          oc.live_paid_residual === true,
-        box_doctor_bin_residual: payload.box_doctor_bin_residual === true,
-        box_chrome_bin_residual: payload.box_chrome_bin_residual === true,
-        long_lived_cron_residual: payload.long_lived_cron_residual === true,
-        remote_cloud_residual: payload.remote_cloud_residual === true,
-        remote_cloud_artifact_residual:
-          payload.remote_cloud_artifact_residual === true,
-        code_apply_residual: payload.code_apply_residual === true,
-        git_commit_residual: payload.git_commit_residual === true,
-        git_push_residual: payload.git_push_residual === true,
-        screenshot_residual: payload.screenshot_residual === true,
-        remote_pr_residual: payload.remote_pr_residual === true,
-        public_fallback_residual: payload.public_fallback_residual === true,
-        interactive_oauth_residual:
-          payload.interactive_oauth_residual === true,
-        true_device_os_dialog_residual:
-          payload.true_device_os_dialog_residual === true,
-        gh_pr_create_residual:
-          payload.gh_pr_create_residual === true ||
-          String(
-            (payload.remote_pr && payload.remote_pr.mode) ||
-              payload.mode ||
-              "",
-          ).includes("gh_pr_create_residual"),
-        ocr_residual:
-          payload.ocr_residual === true ||
-          oc.ocr_residual === true ||
-          vp.ocr_residual === true,
-        os_window_automation_residual:
-          payload.os_window_automation_residual === true ||
-          oc.os_window_automation_residual === true ||
-          gui.os_window_automation_residual === true,
-        host_ok: hit.ok !== false,
-        at: new Date().toISOString(),
-        note: "Mobile Host mirrors Desktop Host delivery snap path — no invent",
-      };
+      const mirror = buildDeliveryMirror({
+        kind,
+        machineKind,
+        payload,
+        hostPath,
+        hostOk: hit.ok !== false,
+      });
       fs.writeFileSync(mirrorPath, JSON.stringify(mirror, null, 2));
       fs.appendFileSync(
         journal,

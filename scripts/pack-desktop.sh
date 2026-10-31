@@ -45,6 +45,59 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 0. 抹掉「已定义但为空」的签名 / 公证变量
+#
+# CI 里写 `CSC_LINK: ${{ secrets.MAC_CSC_LINK }}`，secret 不存在时这个变量仍然
+# **被定义了**，值是空字符串。electron-builder 判的是 `cscLink != null`（真值判断
+# 在它这里是失效的），于是拿 "" 进 importCertificate()：`path.resolve(currentDir,"")`
+# 得到工程目录本身，stat 出来是个 directory，直接抛
+#     InvalidConfigurationError: <repo>/hosts/desktop not a file
+# —— 报错指向「工程目录不是文件」，和真正的因（没配证书）毫无关系，很容易被误读
+# 成 extraResources 路径写错了。空值一律 unset，让它走「无身份 ⇒ 跳过签名」的
+# 正常分支（本机手滑 `CSC_LINK=` 也一样受益）。
+# ---------------------------------------------------------------------------
+for _v in CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK CSC_NAME \
+          APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+  _val="${!_v:-}"
+  # 先 trim 再判空：空串和「只有空格/换行」都会触发上面那个假报错。
+  if [[ -z "$(printf '%s' "$_val" | tr -d '[:space:]')" ]]; then
+    if [[ -n "$_val" ]]; then
+      echo "[pack-desktop] $_v is blank — treating as unset"
+    fi
+    unset "$_v"
+  fi
+done
+unset _v _val
+
+# ---------------------------------------------------------------------------
+# 0b. 诚实门禁：发布构建（v<appVersion> tag）必须签名 + 公证，否则拒绝产出。
+#
+# 没配凭据时静默发出「未签名 / 未公证」包是自欺：Gatekeeper 会拦、electron-updater
+# 在 macOS 上会因 delta 签名校验失败拒绝安装 —— OTA 等于没闭环。所以 release 路径
+# 显式要求凭据；缺一项就在这里 fail（在内核编译之前，不浪费 7 分钟），绝不假装签过。
+# CI 仅在 v* tag 上置 BITBOT_REQUIRE_SIGN / BITBOT_REQUIRE_NOTARIZE。
+# ---------------------------------------------------------------------------
+if [[ "${BITBOT_REQUIRE_SIGN:-0}" == "1" ]]; then
+  if [[ -z "${CSC_LINK:-}" ]]; then
+    echo "[pack-desktop] ERROR: BITBOT_REQUIRE_SIGN=1 但 CSC_LINK 缺失 —— 拒绝产出未签名包" >&2
+    exit 1
+  fi
+  echo "[pack-desktop] BITBOT_REQUIRE_SIGN=1 — 代码签名凭据已就位"
+fi
+if [[ "${BITBOT_REQUIRE_NOTARIZE:-0}" == "1" ]]; then
+  _missing=""
+  for _k in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+    if [[ -z "${!_k:-}" ]]; then _missing="$_missing $_k"; fi
+  done
+  if [[ -n "$_missing" ]]; then
+    echo "[pack-desktop] ERROR: BITBOT_REQUIRE_NOTARIZE=1 但缺$_missing —— 拒绝产出未公证包" >&2
+    exit 1
+  fi
+  echo "[pack-desktop] BITBOT_REQUIRE_NOTARIZE=1 — 公证凭据已就位"
+fi
+unset _missing _k
+
+# ---------------------------------------------------------------------------
 # 1. Build the kernel
 # ---------------------------------------------------------------------------
 BUILD_PROFILE="${BITBOT_KERNEL_BUILD:-release}"
@@ -54,7 +107,35 @@ if [[ "$BUILD_PROFILE" == "release" ]]; then
 fi
 
 echo "[pack-desktop] building MoonBit kernel (profile=$BUILD_PROFILE)…"
-(cd "$ROOT" && moon build --target native "${BUILD_FLAGS[@]}")
+# 展开空数组要加长度判断：macOS 自带 /bin/bash 是 3.2，在 `set -u` 下
+# `"${ARR[@]}"` 对空数组会直接 "unbound variable" 退出（bash 4.4+ 才修掉）。
+# CI 的 macos runner 上 `shell: bash` 同样是 3.2，所以这个判断两边都要。
+build_kernel() {
+  if [[ ${#BUILD_FLAGS[@]} -gt 0 ]]; then
+    (cd "$ROOT" && moon build --target native "${BUILD_FLAGS[@]}")
+  else
+    (cd "$ROOT" && moon build --target native)
+  fi
+}
+
+# AC-T0-3：缺原生工具链时必须「失败并说明原因」，不能只吐一行 error，
+# 更不能继续往下产出半成品包。
+if ! build_kernel; then
+  echo "error: 内核编译失败（profile=$BUILD_PROFILE）—— 不产出半成品包。" >&2
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      echo "  Windows 需要 MSVC 生成工具（cl.exe / link.exe）：" >&2
+      echo "    1) 装 Visual Studio Build Tools 2022 → 勾选「使用 C++ 的桌面开发」" >&2
+      echo "    2) 从「Developer Command Prompt for VS 2022」里重跑本脚本" >&2
+      echo "    3) 验证：\`where cl\` 和 \`where link\` 都要有输出" >&2
+      echo "  绕行方案（CI 想绕开原生工具链时再评估）：--target wasm 的内核分支" >&2 ;;
+    Darwin)
+      echo "  macOS 需要 Xcode 命令行工具：\`xcode-select --install\`，然后 \`clang --version\` 自检" >&2 ;;
+    Linux)
+      echo "  Linux 需要 cc 链接器：\`sudo apt install build-essential\`（或对应发行版包）" >&2 ;;
+  esac
+  exit 1
+fi
 
 KERNEL_BIN_DIR="$ROOT/_build/native/$BUILD_PROFILE/build/cmd/desktop_turn"
 KERNEL_BIN=""
@@ -62,7 +143,11 @@ for cand in "$KERNEL_BIN_DIR/desktop_turn" "$KERNEL_BIN_DIR/desktop_turn.exe"; d
   if [[ -x "$cand" ]]; then KERNEL_BIN="$cand"; break; fi
 done
 if [[ -z "$KERNEL_BIN" ]]; then
-  echo "error: kernel binary not found under $KERNEL_BIN_DIR" >&2
+  echo "error: 内核编译没报错，但 $KERNEL_BIN_DIR 下没有 desktop_turn(.exe) —— 不产出半成品包。" >&2
+  echo "  先确认 profile：BITBOT_KERNEL_BUILD=$BUILD_PROFILE（另一档是 debug），" >&2
+  echo "  再确认产物目录：ls _build/native/$BUILD_PROFILE/build/cmd/desktop_turn" >&2
+  echo "  若目录整体不存在，说明 moon 没为 native 目标产出可执行件（工具链/版本问题），" >&2
+  echo "  用 \`moon build --target native --info\` 看真实报错。" >&2
   exit 1
 fi
 echo "[pack-desktop] kernel binary: $KERNEL_BIN"
@@ -89,20 +174,38 @@ esac
 
 # ---------------------------------------------------------------------------
 # 3. Stage into the app resources
+#
+# 文件名必须是 `desktop_turn`（Windows 上 `desktop_turn.exe`）：hosts/desktop/
+# paths.js 的 resolveKernelBin 只认这两个 rel 路径。以前这里写的是
+# `desktop_turn${KERNEL_BIN##*.}` —— moon 在 macOS 上产出的可执行文件叫
+# `desktop_turn.exe`（后缀不是"Windows 专属"，moon 一律加），于是
+# `${X##*.}` 取出 "exe"、拼成 `desktop_turnexe`，两个 rel 都不匹配：包里有内核，
+# 但 app 找不到它，最后回退到 `moon run` —— 用户机器上根本没有 moon。
 # ---------------------------------------------------------------------------
 rm -rf "$RESOURCES/kernel"
 mkdir -p "$RESOURCES/kernel/bin"
-cp "$KERNEL_BIN" "$RESOURCES/kernel/bin/desktop_turn${KERNEL_BIN##*.}"
-chmod +x "$RESOURCES/kernel/bin/"desktop_turn*
+KERNEL_NAME="desktop_turn"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) KERNEL_NAME="desktop_turn.exe" ;;
+esac
+cp "$KERNEL_BIN" "$RESOURCES/kernel/bin/$KERNEL_NAME"
+chmod +x "$RESOURCES/kernel/bin/$KERNEL_NAME"
+echo "[pack-desktop] staged as bin/$KERNEL_NAME"
 
 # The kernel resolves `data/...` relative to its cwd, which the host sets to
 # the parent of the data root. Nothing else from the source tree is needed at
 # runtime, so we deliberately do NOT ship moon.mod / cmd/ / the package dirs:
 # shipping them would imply a toolchain is present, and it is not.
-cat > "$RESOURCES/kernel/README.txt" <<'TXT'
+#
+# 这里用「不加引号的 heredoc」直接展开变量，不再 `cat` 出一份占位符再 sed 替换。
+# 原写法 `sed -i "s/…/" file` 在 BSD sed（GitHub macOS runner 就是）上会失败：
+# BSD 把 s/…/ 当成 -i 的备份后缀，于是 file 被当作脚本、没有文件操作数，
+# 报 "sed: -I or -i may not be used with stdin"。本机 sed 是 toybox，恰好接受
+# GNU 写法，所以这个错只会在 CI 上现形 —— 干脆不用 sed。
+cat > "$RESOURCES/kernel/README.txt" <<TXT
 Bit Bot — bundled MoonBit kernel
 ===============================
-bin/desktop_turn is the compiled product brain.
+bin/${KERNEL_NAME} is the compiled product brain.
 
 It is a drop-in replacement for:
     moon run cmd/desktop_turn --target native -- <args>
@@ -112,16 +215,25 @@ Same argv tail, same stdout/stdin FFI line protocol:
   host answers   one JSON line      on stdin
 
 No MoonBit toolchain and no source tree are required at runtime.
-Built on: __BUILD_HOST__
-Profile: __BUILD_PROFILE__
+Built on: $(uname -srm)
+Profile: ${BUILD_PROFILE}
 TXT
-sed -i "s/__BUILD_HOST__/$(uname -srm)/; s/__BUILD_PROFILE__/$BUILD_PROFILE/" "$RESOURCES/kernel/README.txt"
 
 echo "[pack-desktop] staged kernel resources:"
 ls -la "$RESOURCES/kernel/bin/"
 
 # ---------------------------------------------------------------------------
 # 4. Package the app
+#
+#   BITBOT_PACK_TARGET=dir   (默认) electron-builder --dir → dist/mac-*/…app
+#                            只够本机冒烟，不能分发。
+#   BITBOT_PACK_TARGET=dist  按 package.json 的 mac/win/linux target 出可分发物
+#                            (mac: dmg + zip + latest-mac.yml)。CI 走这条。
+#   BITBOT_PACK_ARCH          arm64 | x64 | 空(宿主架构)。CI 的 mac matrix 用它。
+#   BITBOT_PACK_PLATFORM      mac | win | linux | 空(宿主平台)
+#
+# 为什么不在 CI 里另写一遍 electron-builder 调用：这一段的顺序（先 stage 内核再
+# 打包）就是「包里必须有大脑」的保证，复制一份迟早漂移 —— 内核全白打就白打。
 # ---------------------------------------------------------------------------
 cd "$DESKTOP"
 if [[ ! -d node_modules/electron ]]; then
@@ -131,14 +243,70 @@ if [[ ! -d node_modules/electron-builder ]]; then
   npm install --save-dev electron-builder@^25.1.8
 fi
 
-echo "[pack-desktop] building unpackaged dir via electron-builder…"
-npm run pack
-echo "[pack-desktop] output under hosts/desktop/dist/"
+PACK_TARGET="${BITBOT_PACK_TARGET:-dir}"
+EB_ARGS=()
+if [[ -n "${BITBOT_PACK_PLATFORM:-}" ]]; then
+  EB_ARGS+=("--${BITBOT_PACK_PLATFORM}")
+fi
+if [[ -n "${BITBOT_PACK_ARCH:-}" ]]; then
+  EB_ARGS+=("--${BITBOT_PACK_ARCH}")
+fi
+
+if [[ "$PACK_TARGET" == "dist" ]]; then
+  # 发布是 opt-in：仅当 BITBOT_PUBLISH=1（CI 在 v<appVersion> tag 上）才把产物推到
+  # GitHub Releases（feed）。其余情况只构建、绝不连任何 feed——之前的占位域名已废，
+  # 现在 feed 就是 GitHub Releases，由 build.publish 的 github provider 决定。
+  PUBLISH_FLAG="never"
+  if [[ "${BITBOT_PUBLISH:-}" == "1" ]]; then
+    PUBLISH_FLAG="always"
+  fi
+  echo "[pack-desktop] building distributable (target=dist, args: ${EB_ARGS[*]:-host defaults}, publish=$PUBLISH_FLAG)…"
+  if [[ ${#EB_ARGS[@]} -gt 0 ]]; then
+    npx electron-builder "${EB_ARGS[@]}" --publish "$PUBLISH_FLAG"
+  else
+    npx electron-builder --publish "$PUBLISH_FLAG"
+  fi
+  echo "[pack-desktop] distributables under hosts/desktop/dist/"
+  ls -la "$DESKTOP/dist" || true
+  # T0-03 门禁：体积棘轮 + 内核真在包内 + 包内内核真能跑 + 语言包真被裁过。
+  # 放在证据之前——门禁红的这一轮不该留下一份「看起来成功」的 evidence。
+  echo "[pack-desktop] artifact gate…"
+  node "$ROOT/scripts/prove_pack_artifacts.mjs"
+else
+  echo "[pack-desktop] building unpackaged dir via electron-builder…"
+  npm run pack
+  echo "[pack-desktop] output under hosts/desktop/dist/"
+fi
+
+# ---------------------------------------------------------------------------
+# 4b. 产物行为门：装出来的 App 在「没有源码树」的机器上能不能起、能不能扫
+#
+#     以前所有 Electron 门禁都直接 `electron hosts/desktop/main.js`，跑在源码
+#     树里；打包产物（app.asar 只读、没有 moon、没有 scripts/）从来没被启动过。
+#     2026-10-29 第一次真跑 linux-unpacked：主进程在 require 阶段就因为往 asar
+#     里的 .env.local 写而 ENOENT 崩溃 —— 用户双击图标只会看到报错框。
+#     GP-172 起，只要能在本机启动打包产物，就把它真跑一遍（P-00…P-05）。
+# ---------------------------------------------------------------------------
+echo "[pack-desktop] packaged app gate…"
+case "$(uname -s)" in
+  Linux)
+    if [[ -z "${DISPLAY:-}" ]] && command -v xvfb-run >/dev/null 2>&1; then
+      xvfb-run -a node "$ROOT/scripts/e2e_desktop_packaged.mjs"
+    else
+      node "$ROOT/scripts/e2e_desktop_packaged.mjs"
+    fi
+    ;;
+  *)
+    echo "[pack-desktop] 打包产物行为门只在 Linux 跑（本机 $(uname -s) 未验；mac/win 真机安装仍是残留）"
+    ;;
+esac
 
 # ---------------------------------------------------------------------------
 # 5. Evidence (no secrets)
 # ---------------------------------------------------------------------------
 mkdir -p "$ROOT/data/tmp"
+export BITBOT_PACK_TARGET_USED="$PACK_TARGET"
+export BITBOT_PACK_ARCH_USED="${BITBOT_PACK_ARCH:-$(uname -m)}"
 python3 - <<PY
 import json, os, pathlib
 root = pathlib.Path("$ROOT")
@@ -162,6 +330,13 @@ out = {
     "kernel_bundled": bool(kernel),
     "kernel_files": kernel,
     "kernel_profile": "$BUILD_PROFILE",
+    "pack_target": os.environ.get("BITBOT_PACK_TARGET_USED", "dir"),
+    "pack_arch": os.environ.get("BITBOT_PACK_ARCH_USED", ""),
+    # dist 里出现 dmg/zip 才算「可分发物」，--dir 只有 app 目录。
+    "distributables": [
+        e["path"] for e in entries
+        if e["path"].endswith((".dmg", ".zip", ".exe", ".AppImage"))
+    ],
     "note": "kernel shipped as a compiled native binary; no toolchain needed at runtime. "
             "store signing residual until CSC_LINK / Apple notarize creds present",
 }

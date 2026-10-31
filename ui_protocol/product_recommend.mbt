@@ -75,7 +75,9 @@ pub fn format_product_recommend_list(
 
 ///|
 /// Assert rendered list follows fixed template (one line per product, link+price).
-pub fn assert_product_recommend_template(rendered : String) -> Result[Unit, String] {
+pub fn assert_product_recommend_template(
+  rendered : String,
+) -> Result[Unit, String] {
   if rendered.length() == 0 {
     return Err("empty product recommend render")
   }
@@ -85,7 +87,9 @@ pub fn assert_product_recommend_template(rendered : String) -> Result[Unit, Stri
   }
   for line in lines {
     if !line.has_prefix("- [") {
-      return Err("line must use fixed '- [name](url) — price' template: " + line)
+      return Err(
+        "line must use fixed '- [name](url) — price' template: " + line,
+      )
     }
     if !line.contains("](http") {
       return Err("line must include markdown link: " + line)

@@ -18,9 +18,21 @@ pub fn SitePlaybookId::is_shopping_retail(self : SitePlaybookId) -> Bool {
   match self {
     Target | Bestbuy | Costco | Ebay | Etsy | Instacart | FacebookMarketplace =>
       true
-    Airbnb | Craigslist | Doordash | Expedia | Fedex | GoogleFlights |
-    Linkedin | Luma | Opentable | Realtor | Resy | Southwest | United | Ups |
-    Usps => false
+    Airbnb
+    | Craigslist
+    | Doordash
+    | Expedia
+    | Fedex
+    | GoogleFlights
+    | Linkedin
+    | Luma
+    | Opentable
+    | Realtor
+    | Resy
+    | Southwest
+    | United
+    | Ups
+    | Usps => false
   }
 }
 

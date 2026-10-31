@@ -102,11 +102,14 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn llm_chat(
   self.touch()
   bitbot_ffi_trace("op=llm_chat")
   parse_product_llm_reply(
-    bitbot_ffi_exchange(encode_product_messages(messages, product_tool_schema_json())),
+    bitbot_ffi_exchange(
+      encode_product_messages(messages, product_tool_schema_json()),
+    ),
   )
 }
 
 ///|
+
 ///|
 /// K-2/C-3: ask the Host for the tool policy for this turn.
 /// Host 不认识 `load_policy` 时回 `unknown op` → 默认策略 → 行为不变。
@@ -120,29 +123,32 @@ fn load_tool_policy() -> @runtime.ToolPolicy {
   @runtime.ToolPolicy::parse(text)
 }
 
+///|
 /// 跨回合上下文:向 Host 要一份编码后的上下文。
 ///
 /// Host 不认识 `load_context` 时回 `unknown op` → 输出空串 → 当作没有历史继续。
 /// 这条路径必须**永不失败**:上下文没了只是少记点事,不能把回合搞崩。
-fn load_agent_context(slot : String, session_id : String) -> @runtime.AgentContext {
+fn load_agent_context(
+  slot : String,
+  session_id : String,
+) -> @runtime.AgentContext {
   // Every FFI op the kernel asks for must be traced: the Host records the op
   // list it was asked for, and the gate compares it with the kernel's own
   // trace element by element. An untraced op makes the two disagree.
   bitbot_ffi_trace("op=load_context")
-  let raw = bitbot_ffi_exchange(encode_context_request("load_context", slot, ""))
+  let raw = bitbot_ffi_exchange(
+    encode_context_request("load_context", slot, ""),
+  )
   let text = parse_context_reply(raw)
   if text == "" {
-    return @runtime.AgentContext::new(session_id=session_id)
+    return @runtime.AgentContext::new(session_id~)
   }
   agent_context_aligned(@runtime.AgentContext::decode(text), session_id)
 }
 
 ///|
 /// 跨回合上下文:把更新后的上下文交回 Host 落盘。
-fn save_agent_context(
-  slot : String,
-  ctx : @runtime.AgentContext,
-) -> Unit {
+fn save_agent_context(slot : String, ctx : @runtime.AgentContext) -> Unit {
   bitbot_ffi_trace("op=save_context")
   let _ = bitbot_ffi_exchange(
     encode_context_request("save_context", slot, ctx.encode()),
@@ -166,8 +172,13 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn exec_tool(
   // the model observes the real result instead of a promise.
   if is_kernel_tool(name) {
     let result = match parse_product_tool_action(name, args) {
-      Ok(action) => exec_product_tool_action(action, auto_execute=self.auto_execute)
-      Err(e) => ProductToolResult::{ observation: "invalid_arguments: " + e, effects: [], }
+      Ok(action) =>
+        exec_product_tool_action(action, auto_execute=self.auto_execute)
+      Err(e) =>
+        ProductToolResult::{
+          observation: "invalid_arguments: " + e,
+          effects: [],
+        }
     }
     for e in result.effects {
       self.effects.push(e)
@@ -254,7 +265,7 @@ fn run_agent_loop_chat(
     opened,
     host,
     agent_ctx,
-    tool_policy=tool_policy,
+    tool_policy~,
   )
   save_agent_context(ctx_slot, run.context)
   let ok = run.stop is @runtime.Final || run.stop is @runtime.MaxSteps
@@ -294,10 +305,7 @@ fn run_agent_loop_chat(
     ok,
     turn_id: run.turn_id,
     intent: "chat",
-    messages: [
-      { role: "user", text, },
-      { role: "assistant", text: delivered, },
-    ],
+    messages: [{ role: "user", text, }, { role: "assistant", text: delivered, }],
     modules: @bitbot.registered_modules(),
     machines: [],
     memory: [],
@@ -326,7 +334,9 @@ fn run_agent_loop_chat(
 
 ///|
 /// K-6:内核的工具 trace → 回合结果里的行。
-fn tool_trace_rows(traces : Array[@runtime.AgentToolTrace]) -> Array[DesktopToolTraceRow] {
+fn tool_trace_rows(
+  traces : Array[@runtime.AgentToolTrace],
+) -> Array[DesktopToolTraceRow] {
   let out : Array[DesktopToolTraceRow] = []
   for tr in traces {
     out.push({
@@ -361,5 +371,38 @@ fn dispatch_desktop_main(args : Array[String]) -> DesktopTurnResult {
     run_agent_loop_chat(text, turn_id, ctx)
   } else {
     run_desktop_turn(text, turn_id~, memory_seeds=seeds, ctx~)
+  }
+}
+
+///|
+extern "C" fn bitbot_ffi_serve_read() -> String = "bitbot_ffi_serve_read"
+
+///|
+extern "C" fn bitbot_ffi_stdin_eof() -> Int32 = "bitbot_ffi_stdin_eof"
+
+///|
+extern "C" fn bitbot_ffi_flush_stdout() -> Unit = "bitbot_ffi_flush_stdout"
+
+///|
+/// T1-07 —— 常驻内核主循环：一条请求行进来，一条响应行出去，直到 Host 关掉 stdin。
+///
+/// 这一条循环取代的是「每个回合 spawn 一次内核」：群聊里 3 个 Bot 一轮就要起 3 个
+/// 进程（外加回合内回灌的第 4 个），而内核本身没有跨回合的可变状态 —— 回合上下文
+/// 全部由 argv 带进来，所以复用进程不会把上一回合的记忆漏给下一回合。
+///
+/// 退出只有一种：stdin 关闭（EOF）。没有「shutdown 命令」—— Host 关掉管道就是
+/// 唯一的关停动作，内核不必再维护第二种生命周期。
+fn run_desktop_serve() -> Unit {
+  bitbot_ffi_trace("serve=ready")
+  while true {
+    let line = bitbot_ffi_serve_read()
+    if line == "" {
+      if bitbot_ffi_stdin_eof() == 1 {
+        return
+      }
+      continue
+    }
+    println(serve_handle_request(line))
+    bitbot_ffi_flush_stdout()
   }
 }

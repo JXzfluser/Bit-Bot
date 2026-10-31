@@ -29,10 +29,30 @@ pub const LOOP_TOOL_DURATION_MARKER : String = "tool_duration_ms:"
 pub const LOOP_PROVIDER_ERROR_MARKER : String = "provider_error:"
 
 ///|
+/// One message on the wire to `llm_chat`.
+///
+/// `tool_calls` and `tool_call_id` are not decoration. An OpenAI-compatible
+/// provider rejects a `role:"tool"` message that does not answer the `id` of a
+/// preceding assistant `tool_calls` entry (DeepSeek answers 422), so a session
+/// that replays a tool loop without them poisons every later turn on that slot.
 pub(all) struct LoopMessage {
   role : String
   content : String
+  tool_calls : Array[ToolCallReq]
+  tool_call_id : String
 } derive(Eq, Debug)
+
+///|
+/// Build one wire message. Kept as a constructor so adding the call fields did
+/// not have to be repeated at every literal.
+pub fn LoopMessage::new(
+  role~ : String,
+  content~ : String,
+  tool_calls~ : Array[ToolCallReq] = [],
+  tool_call_id~ : String = "",
+) -> LoopMessage {
+  { role, content, tool_calls, tool_call_id, }
+}
 
 ///|
 pub extend LoopMessage with Eq::{equal, not_equal}
@@ -268,7 +288,10 @@ pub fn RunState::tool_attempt_count(self : RunState, tool : String) -> Int32 {
 
 ///|
 /// The failure kind this call last failed with.
-pub fn RunState::last_failure_kind(self : RunState, signature : String) -> LoopFailureKind {
+pub fn RunState::last_failure_kind(
+  self : RunState,
+  signature : String,
+) -> LoopFailureKind {
   match self.last_kind.get(signature) {
     Some(k) => k
     None => LoopFailureKind::UnknownTool
@@ -401,36 +424,46 @@ fn fence_untrusted(name : String, body : String) -> String {
 }
 
 ///|
+/// Resolve a tool by whatever name the model used.
+///
+/// The name is canonicalized first (`core/tool_names.mbt` is the single
+/// source of truth), so `webSearch` / `WebSearch` / `search_web` all land on
+/// the same registered spec.
+///
+/// A registry may register a tool under ANY of its spellings — the built-in
+/// registry uses `Read` / `Shell` / `TodoWrite`, but a caller may register
+/// `fs_read`. So a spec matches when its own id is equivalent to the
+/// canonical id of the call, not only when the strings are equal.
 fn resolve_spec(reg : ToolRegistry, name : String) -> @tools.ToolSpec? {
-  let mut canon = name
-  if name == "fs_read" || name == "read" || name == "Read" {
-    canon = "Read"
-  } else if name == "shell" || name == "Shell" {
-    canon = "Shell"
-  } else if name == "todo_write" || name == "TodoWrite" {
-    canon = "TodoWrite"
-  } else if name == "describeSchedule" || name == "DescribeSchedule" {
-    // C-1: models reach for camelCase as often as snake_case. A tool the
-    // model cannot name is a tool the model will never use.
-    canon = "describe_schedule"
-  } else if name == "createTeammate" || name == "CreateTeammate" {
-    canon = "create_teammate"
-  } else if name == "createRoutine" || name == "CreateRoutine" {
-    canon = "create_routine"
-  } else if name == "webSearch" || name == "WebSearch" || name == "search_web" {
-    // C-2: B-class product tools (the Host runs them).
-    canon = "web_search"
-  } else if name == "webFetch" || name == "WebFetch" || name == "open_url" {
-    canon = "web_fetch"
-  } else if name == "sendMail" || name == "SendMail" || name == "mail_send" {
-    canon = "send_mail"
-  }
+  let canon = @core.canonical_tool_id(name)
   for s in reg.specs {
-    if s.id == canon || s.id == name {
+    if s.id == canon || s.id == name || @core.canonical_tool_id(s.id) == canon {
       return Some(s)
     }
   }
   None
+}
+
+///|
+/// Canonicalize the tool names the model produced, ONCE, at the boundary
+/// where the call enters the kernel.
+///
+/// Why here and not deeper: every check downstream matches on an exact
+/// string — the registry lookup, the policy's approval list, the deny list,
+/// the Host's router. If the raw model spelling reaches them, a camelCase
+/// alias (`sendMail`) silently misses a rule written for its canonical form
+/// (`send_mail`). That is not cosmetic: it means a tool can skip the
+/// approval it needs just by being spelled differently.
+fn canonical_tool_calls(calls : Array[ToolCallReq]) -> Array[ToolCallReq] {
+  let out : Array[ToolCallReq] = []
+  for c in calls {
+    out.push({
+      id: c.id,
+      name: @core.canonical_tool_id(c.name),
+      arguments_json: c.arguments_json,
+    })
+  }
+  out
 }
 
 ///|
@@ -527,7 +560,7 @@ fn retry_gate(
     )
   }
   match state.last_failed_step.get(signature) {
-    Some(last) => {
+    Some(last) =>
       if state.steps - last <= policy.backoff_steps {
         return Some(
           "backoff: " +
@@ -537,7 +570,6 @@ fn retry_gate(
           " (retry later)",
         )
       }
-    }
     None => ()
   }
   None
@@ -558,25 +590,24 @@ fn apply_todo_action(
 ) -> Result[TurnContext, String] {
   match action {
     TodoAction::Replace(items) => turn_ctx.todo_write(items)
-    TodoAction::MarkDone(id) => turn_ctx.mark_todo_done(id=id)
+    TodoAction::MarkDone(id) => turn_ctx.mark_todo_done(id~)
     TodoAction::SetStatus(id, status) =>
-      match turn_ctx.mark_todo_done(id=id) {
+      match turn_ctx.mark_todo_done(id~) {
         Err(e) => Err(e)
-        Ok(next) => {
+        Ok(next) =>
           if status == "done" || status == "completed" {
             Ok(next)
           } else {
             let items : Array[TodoItem] = []
             for t in next.todos {
               if t.id == id {
-                items.push({ id: t.id, content: t.content, status: status, })
+                items.push({ id: t.id, content: t.content, status, })
               } else {
                 items.push(t)
               }
             }
             next.todo_write(items)
           }
-        }
       }
   }
 }
@@ -610,6 +641,7 @@ fn record_invalid_args(
     call.name,
     fence_untrusted(call.name, message),
     step=state.steps,
+    call_id=call.id,
   )
 }
 
@@ -635,8 +667,7 @@ fn handle_todo_call(
         }
         Ok(next_ctx) => {
           agent_ctx.set_todos(next_ctx.visible_todos())
-          let obs =
-            "plan updated: " +
+          let obs = "plan updated: " +
             next_ctx.visible_todos().length().to_string() +
             " items, " +
             next_ctx.done_todo_count().to_string() +
@@ -646,6 +677,7 @@ fn handle_todo_call(
             call.name,
             fence_untrusted(call.name, obs),
             step=state.steps,
+            call_id=call.id,
           )
           agent_ctx.record_trace({
             tool_name: call.name,
@@ -681,7 +713,8 @@ fn[H : AgentLoopHost] run_approved_tool(
   agent_ctx.append_tool(
     call.name,
     fence_untrusted(call.name, output),
-    step=step,
+    step~,
+    call_id=call.id,
   )
   agent_ctx.record_trace({
     tool_name: call.name,
@@ -762,11 +795,11 @@ fn[H : AgentLoopHost] handle_host_call(
           call.name,
           fence_untrusted(call.name, obs),
           step=state.steps,
+          call_id=call.id,
         )
         return false
       }
-      let needs_approval = spec_needs_approval(spec) ||
-        decision is NeedApproval
+      let needs_approval = spec_needs_approval(spec) || decision is NeedApproval
       if needs_approval {
         state.approval_count = state.approval_count + 1
         let verdict = host.request_approval(call.name, call.arguments_json)
@@ -794,6 +827,7 @@ fn[H : AgentLoopHost] handle_host_call(
               call.name,
               fence_untrusted(call.name, obs),
               step=state.steps,
+              call_id=call.id,
             )
             false
           }
@@ -883,8 +917,8 @@ pub fn[H : AgentLoopHost] AgentLoop::run_with(
     host,
     agent_ctx,
     HeuristicSummarizer::new(),
-    policy=policy,
-    tool_policy=tool_policy,
+    policy~,
+    tool_policy~,
   )
 }
 
@@ -912,13 +946,27 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
       if agent_ctx.over_budget() {
         let msg = "agent loop stopped: token budget exhausted"
         host.deliver(msg)
-        return finish_run(ctx, LoopStop::TokenBudget, state, msg, agent_ctx, max_steps)
+        return finish_run(
+          ctx,
+          LoopStop::TokenBudget,
+          state,
+          msg,
+          agent_ctx,
+          max_steps,
+        )
       }
     }
     state.steps = state.steps + 1
     let reply = host.llm_chat(agent_ctx.wire_messages())
     if reply.cancelled {
-      return finish_run(ctx, LoopStop::Cancelled, state, "", agent_ctx, max_steps)
+      return finish_run(
+        ctx,
+        LoopStop::Cancelled,
+        state,
+        "",
+        agent_ctx,
+        max_steps,
+      )
     }
     state.llm_count = state.llm_count + 1
     if reply.content.has_prefix(LOOP_PROVIDER_ERROR_MARKER) {
@@ -946,11 +994,20 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
     if reply.tool_calls.length() == 0 {
       agent_ctx.append_assistant(reply.content, step=state.steps)
       host.deliver(reply.content)
-      return finish_run(ctx, LoopStop::Final, state, reply.content, agent_ctx, max_steps)
+      return finish_run(
+        ctx,
+        LoopStop::Final,
+        state,
+        reply.content,
+        agent_ctx,
+        max_steps,
+      )
     }
-    for call in reply.tool_calls {
-      agent_ctx.append_assistant(
-        call.name + " " + call.arguments_json,
+    for call in canonical_tool_calls(reply.tool_calls) {
+      agent_ctx.append_tool_call(
+        call.name,
+        call.arguments_json,
+        call.id,
         step=state.steps,
       )
       // 1) retry gate — a tripped or cooling-down tool is never executed.
@@ -970,6 +1027,7 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
             call.name,
             fence_untrusted(call.name, refusal),
             step=state.steps,
+            call_id=call.id,
           )
           state.consecutive_failures = state.consecutive_failures + 1
         }
@@ -998,17 +1056,13 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
                 call.name,
                 fence_untrusted(call.name, obs),
                 step=state.steps,
+                call_id=call.id,
               )
             }
             Some(spec) =>
               // 3) the kernel owns the planning tool; the Host never runs it.
               if is_todo_tool(spec.id) {
-                turn_ctx = handle_todo_call(
-                  call,
-                  state,
-                  agent_ctx,
-                  turn_ctx,
-                )
+                turn_ctx = handle_todo_call(call, state, agent_ctx, turn_ctx)
               } else {
                 // 4) validate, approve, run.
                 let cancelled = handle_host_call(
@@ -1036,8 +1090,7 @@ pub fn[H : AgentLoopHost, S : AgentSummarizer] AgentLoop::run_with_summarizer(
     }
     // Stop-loss: repeated failures end the loop instead of grinding on.
     if state.consecutive_failures >= policy.max_consecutive_failures {
-      let msg =
-        "agent loop stopped after " +
+      let msg = "agent loop stopped after " +
         state.consecutive_failures.to_string() +
         " consecutive tool failures (last: " +
         state.last_failure_message() +

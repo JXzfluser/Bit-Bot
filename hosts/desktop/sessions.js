@@ -8,6 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const eventMirror = require("./event_mirror_ref").loadEventMirror();
 
 function createSessionStore(repoRoot, opts = {}) {
   const root = path.resolve(repoRoot);
@@ -57,11 +58,22 @@ function createSessionStore(repoRoot, opts = {}) {
     return state;
   }
 
+  // T1-03 双写旁路：默认关（BITBOT_EVENT_DUAL_WRITE=1 才开），开也只是在同一
+  // 次落盘后多追加几条事件；镜像失败不改这次写入的结果。
+  const mirror = () => eventMirror.getSharedMirror(dataRoot);
+
+  function writeStore(text) {
+    const m = mirror();
+    const token = m.capture(storePath);
+    fs.writeFileSync(storePath, text);
+    m.commit(storePath, token, text);
+  }
+
   function load() {
     fs.mkdirSync(dir, { recursive: true });
     if (!fs.existsSync(storePath)) {
       const seed = empty();
-      fs.writeFileSync(storePath, JSON.stringify(seed, null, 2));
+      writeStore(JSON.stringify(seed, null, 2));
       return seed;
     }
     try {
@@ -78,7 +90,7 @@ function createSessionStore(repoRoot, opts = {}) {
 
   function save(state) {
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(storePath, JSON.stringify(state, null, 2));
+    writeStore(JSON.stringify(state, null, 2));
   }
 
   function list() {

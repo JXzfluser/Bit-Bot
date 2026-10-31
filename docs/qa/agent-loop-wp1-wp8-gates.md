@@ -50,6 +50,23 @@ Shell 执行是审批后的记录标记 `[product-shell]`，不在这条路径�
 
 未升 I。未改 capability matrix。未关 AR-15。本页不把结果写成 Desktop Agent Loop MVP 完成声明：WP1–WP3 的 live 证据已过，产品级 MVP 仍留给 Bit 验证裁决。
 
+## 2026-10-28 复跑：52/0（新增 WP2b）
+
+```bash
+node scripts/prove_agent_loop_product_wire.js
+```
+
+`prove_agent_loop_product_wire pass=52 fail=0`。比 10-25 多出的两条是 **WP2b**，起因是一次真事故：
+
+第二次 provider 请求此前并不保证是**合法的工具对话** —— 内核把模型发出的工具调用压成一行纯文本，`role:"tool"` 那条又没有 `tool_call_id`，Host 重建 payload 时还会把字段抹平。真 provider（DeepSeek）对这种历史直接回 `HTTP 422 missing field tool_call_id`，而失败回合又被写回会话槽，于是之后每一轮都 422。修法见 `docs/qa/production-provider-gates.md` §事故与根因。
+
+WP2b 把这件事钉成离线断言（不需要密钥、不需要外网）：
+
+- 第二次请求里必须有 `role:"assistant"` 且带非空 `tool_calls[].id` 的消息；
+- 必须有 `role:"tool"` 且 `tool_call_id` 等于那个 id 的消息。
+
+负向对照已验证：把 Host 侧的透传关掉，WP2b 立刻变红，整条门禁掉到 `pass=44 fail=8`。所以它不是装饰。
+
 ## Electron / Chat GUI residual
 
 上表是 `createTurnRunner.runTurn` 的 live 证据，不是 Desktop Electron composer。composer mid-run 的边界与证据另记，WP1–WP8 裁决不变：

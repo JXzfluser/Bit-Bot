@@ -63,7 +63,11 @@ pub fn boot_banner() -> String {
     lines.push("  - " + mods[i])
     i = i + 1
   }
-  let inv = "capability matrix: CM=" + matrix_cm_count().to_string() + " I-PASS=" + matrix_i_pass_count().to_string() + " (H6; 0705 platform-subset)"
+  let inv = "capability matrix: CM=" +
+    matrix_cm_count().to_string() +
+    " I-PASS=" +
+    matrix_i_pass_count().to_string() +
+    " (H6; 0705 platform-subset)"
   lines.push(inv)
   lines.join("\n")
 }

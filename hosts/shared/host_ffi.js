@@ -18,10 +18,11 @@ const p0 = require("./p0_security");
 const { createRoomRuntime } = require("./room_runtime");
 const { dispatchRoomTurn } = require("./room_dispatch");
 
-/* 「什么形状算密钥」是一份合同:内核(ui_protocol/secret_request.mbt)、
+/* 「什么形状算密钥」是一份合同:内核(core/secret_shapes.mbt)、
    渲染层(secret_protocol.js)、Host 都得对得上。Host 这边按同样的
    三路查找拿到那份规则表 —— 开发态在 hosts/desktop/,打包态在应用根目录。
-   找不到就退化成只有环境值脱敏(仍然不泄露真密钥,只是漏了模式)。 */
+   找不到就退化成只有环境值脱敏(仍然不泄露真密钥,只是漏了模式)——
+   但那是一次静默的削弱,所以这里要出声,不能悄悄降级。 */
 let _secretProtocol = null;
 try { _secretProtocol = require("../desktop/secret_protocol"); }
 catch {
@@ -31,6 +32,12 @@ catch {
     catch { _secretProtocol = null; }
   }
 }
+if (!_secretProtocol) {
+  // 静默降级会让「规则表找不到」看起来跟「没有密钥」一样。这里说一次,
+  // 让它是一行日志,而不是一个只有出事才看得见的事实。
+  try { process.stderr.write("BITBOT_WARN secret shape rules unavailable — only env-value scrubbing is active\n"); }
+  catch { /* 诊断通道本身坏了就算了,不能因此拦住主流程 */ }
+}
 
 /** 模式级 + 环境值级双重脱敏。 */
 function scrubTokenShapes(text) {
@@ -38,7 +45,15 @@ function scrubTokenShapes(text) {
   if (_secretProtocol && Array.isArray(_secretProtocol.TOKEN_RULES)) {
     for (const rule of _secretProtocol.TOKEN_RULES) {
       if (rule && rule.re) {
-        out = out.replace(new RegExp(rule.re.source, "g"), _secretProtocol.REDACTED || "[REDACTED]");
+        // 保留原正则的标志:规则表里的大小写不敏感项(api_key= / cookie=)
+        // 少了 "i" 就会按大小写敏感执行,于是 API_KEY= 逃过脱敏。
+        const flags = rule.re.flags.includes("g") ? rule.re.flags : rule.re.flags + "g";
+        out = out.replace(new RegExp(rule.re.source, flags), _secretProtocol.REDACTED || "[REDACTED]");
+      } else if (rule && Array.isArray(rule.needs)) {
+        // phrase 规则没有正则:两个片段都出现就算命中。
+        if (rule.needs.every((part) => out.indexOf(part) >= 0)) {
+          out = _secretProtocol.REDACTED || "[REDACTED]";
+        }
       }
     }
   }
@@ -185,7 +200,11 @@ function createHostFfi(repoRoot, opts = {}) {
           timeoutMs: Number((ctx && ctx.timeoutMs) || 120000),
         });
         return {
-          ok: !!(out && out.ok !== false),
+          // GP-168：内核被嵌套深度短路时（nested_skipped）这轮**没有真的跑**。
+          // 以前这里只看 out.ok !== false，于是「worker nest skipped at depth 1」
+          // 这句话会被当成目标 Bot 的答复写进群转录、挂账被标成 answered —— 假交付。
+          // 与上面 runTurn（responder 闭包）同一口径：skipped = 失败，如实报 error。
+          ok: !!(out && out.ok !== false) && !out.nested_skipped,
           text: (out && out.assistant) || "",
           artifacts: [],
           error: (out && out.nested_skipped) ? "nested_skipped" : undefined,
@@ -5937,10 +5956,45 @@ function createHostFfi(repoRoot, opts = {}) {
       }
       for (const m of overrideMessages) {
         if (!m || typeof m !== "object") continue;
-        rebuilt.push({
-          role: String(m.role || "user"),
+        const role = String(m.role || "user");
+        const row = {
+          role,
           content: String(m.content == null ? "" : m.content),
-        });
+        };
+        // A model tool call and the tool result that answers it both have to
+        // reach the provider. Flattening to {role, content} here made every
+        // replayed tool loop an illegal conversation: OpenAI-compatible APIs
+        // answer `role:"tool"` without `tool_call_id` with HTTP 422 (the tool
+        // result then never gets back to the model). Copy the pair through,
+        // and never emit the two fields on a role that cannot carry them.
+        if (role === "tool") {
+          const callId = String(m.tool_call_id || "");
+          if (callId) {
+            row.tool_call_id = callId;
+          } else {
+            // Unpaired tool output: keep the text, drop the illegal role.
+            row.role = "user";
+            row.content = "[tool result] " + row.content;
+          }
+        } else if (Array.isArray(m.tool_calls) && m.tool_calls.length) {
+          const calls = [];
+          for (const c of m.tool_calls) {
+            if (!c || typeof c !== "object") continue;
+            const fn = (c.function && typeof c.function === "object") ? c.function : {};
+            const id = String(c.id || "");
+            if (!id) continue;
+            calls.push({
+              id,
+              type: "function",
+              function: {
+                name: String(fn.name || ""),
+                arguments: String(fn.arguments == null ? "" : fn.arguments),
+              },
+            });
+          }
+          if (calls.length) row.tool_calls = calls;
+        }
+        rebuilt.push(row);
       }
       messages = rebuilt;
     }
@@ -15866,6 +15920,8 @@ function createHostFfi(repoRoot, opts = {}) {
       // Honor BITBOT_ROUTINE_LONG_LIVED the same way the daemon script exports it —
       // one-shot sweeps leave this unset so long_lived stays false (honest residual).
       const longLived = process.env.BITBOT_ROUTINE_LONG_LIVED === "1";
+      // GP-170：这是桌面主进程里的定时器，不是 shell daemon，也不冒充 long_lived。
+      const desktopSweep = Boolean(effectOpts && effectOpts.desktopSweep === true);
       const wakeEntry = {
         due_count: due.length,
         fired_count: fired.length,
@@ -15873,12 +15929,16 @@ function createHostFfi(repoRoot, opts = {}) {
         at: tickAt,
         daemon: daemonSweep,
         long_lived: longLived,
-        note: longLived
-          ? "Host long-lived routine sweep (BITBOT_ROUTINE_LONG_LIVED=1)"
-          : daemonSweep
-            ? "Host daemon one-shot sweep (scripts/host_routine_daemon.sh)"
-            : "on-demand Host tick (long-lived cron residual)",
+        note: desktopSweep
+          ? "desktop in-process sweep (hosts/desktop/main.js timer)"
+          : longLived
+            ? "Host long-lived routine sweep (BITBOT_ROUTINE_LONG_LIVED=1)"
+            : daemonSweep
+              ? "Host daemon one-shot sweep (scripts/host_routine_daemon.sh)"
+              : "on-demand Host tick (long-lived cron residual)",
       };
+      // 可选字段：老读者读不到它也不受影响；新界面/门禁靠它区分唤醒源。
+      if (desktopSweep) wakeEntry.desktop_sweep = true;
       appendJsonl(wakesPath, wakeEntry);
       const lastTickPath = path.join(
     DATA_ROOT,
@@ -15928,6 +15988,8 @@ function createHostFfi(repoRoot, opts = {}) {
             due_count: due.length,
             fired_count: fired.length,
             fired,
+            // 可选字段（GP-170）：桌面 sweep 日志要写「这一轮跑在什么时候」。
+            at: tickAt,
             wakes: true,
             wakes_path: wakesPath,
             last_tick_path: lastTickPath,
@@ -17135,17 +17197,29 @@ function createHostFfi(repoRoot, opts = {}) {
         const profile = path.join(artifactDir, "oauth-browser-profile");
         fs.mkdirSync(profile, { recursive: true });
         const { spawn } = require("child_process");
+        const chromeArgs = [
+          "--disable-gpu",
+          "--no-first-run",
+          "--no-default-browser-check",
+          `--user-data-dir=${profile}`,
+          "--new-window",
+          "--window-size=1100,800",
+          authorizeUrl,
+        ];
+        // 容器/CI 以 root 跑时 Chrome 会直接退出；只在显式开启时放宽，
+        // 不改真实用户桌面（非 root）的默认安全姿态。
+        if (
+          ["1", "true", "yes"].includes(
+            String(process.env.BITBOT_OAUTH_CHROME_NO_SANDBOX || "")
+              .trim()
+              .toLowerCase(),
+          )
+        ) {
+          chromeArgs.splice(1, 0, "--no-sandbox");
+        }
         const child = spawn(
           chrome,
-          [
-            "--disable-gpu",
-            "--no-first-run",
-            "--no-default-browser-check",
-            `--user-data-dir=${profile}`,
-            "--new-window",
-            "--window-size=1100,800",
-            authorizeUrl,
-          ],
+          chromeArgs,
           {
             cwd: artifactDir,
             env: process.env,
@@ -19467,12 +19541,20 @@ function createHostFfi(repoRoot, opts = {}) {
 
     if (kind === "code_changes") {
       // command: mcp_namespace|/workspace/path
+      // The kernel always addresses the box workspace as /workspace/<rel>
+      // (and allows /home/box/<rel>). Those prefixes are virtual: on a desktop
+      // host the repo may live anywhere, so map them onto REPO_ROOT. Other
+      // absolute paths stay literal and are refused as out-of-repo (honest).
       const sep = cmd.indexOf("|");
       const ns = sep >= 0 ? cmd.slice(0, sep) : "user-github";
       const target = sep >= 0 ? cmd.slice(sep + 1) : cmd;
-      const abs = path.isAbsolute(target)
-        ? target
-        : path.join(REPO_ROOT, target.replace(/^\/workspace\//, ""));
+      const boxRel = target.replace(/^\/(?:workspace|home\/box)\//, "");
+      const abs =
+        boxRel !== target
+          ? path.join(REPO_ROOT, boxRel)
+          : path.isAbsolute(target)
+            ? target
+            : path.join(REPO_ROOT, target);
       const underRepo =
         abs === REPO_ROOT || abs.startsWith(REPO_ROOT + path.sep);
       const exists = underRepo && fs.existsSync(abs);
@@ -21311,30 +21393,40 @@ function createHostFfi(repoRoot, opts = {}) {
           capturePath = path.join(mediaDir, `mic-${stampId}.wav`);
           const micFixture = path.join(DATA_ROOT, "device", "mic.wav");
           if (fs.existsSync("/usr/bin/ffmpeg") && fs.existsSync("/dev/snd")) {
-            await execFileAsync(
-              "/usr/bin/ffmpeg",
-              [
-                "-y",
-                "-f",
-                "alsa",
-                "-i",
-                "default",
-                "-t",
-                "1",
-                capturePath,
-              ],
-              { timeout: 8000 },
-            );
-            captureOk =
-              fs.existsSync(capturePath) && fs.statSync(capturePath).size > 44;
-            mode = "host_device_alsa_wav";
-          } else if (fs.existsSync(micFixture)) {
+            try {
+              await execFileAsync(
+                "/usr/bin/ffmpeg",
+                [
+                  "-y",
+                  "-f",
+                  "alsa",
+                  "-i",
+                  "default",
+                  "-t",
+                  "1",
+                  capturePath,
+                ],
+                { timeout: 8000 },
+              );
+              captureOk =
+                fs.existsSync(capturePath) &&
+                fs.statSync(capturePath).size > 44;
+              if (captureOk) mode = "host_device_alsa_wav";
+            } catch (e) {
+              // /dev/snd 存在不等于有可用采集设备（容器里常只有 seq/timer）。
+              // 真采集失败就如实落到 fixture / residual，不冒充 ALSA 成功。
+              captureError = String((e && e.message) || e).slice(0, 200);
+            }
+          }
+          if (!captureOk && fs.existsSync(micFixture)) {
             fs.copyFileSync(micFixture, capturePath);
             captureOk =
               fs.existsSync(capturePath) && fs.statSync(capturePath).size > 44;
             mode = "host_device_mic_fixture";
-          } else {
+          }
+          if (!captureOk) {
             captureError =
+              captureError ||
               "no ALSA default capture or data/device/mic.wav — device_capture_residual";
             mode = "host_device_capture_residual";
           }
@@ -24664,8 +24756,42 @@ function createHostFfi(repoRoot, opts = {}) {
       // 不传（DM / 无群）时行为与原来完全一致。
       const routineRes = executeRoutineEffect(kind, cmd, {
         roomId: (ffiOpts && ffiOpts.roomId) || "",
+        // GP-170：桌面主进程自己的定时器在扫。这个标记只影响 tick 的可选字段
+        // （desktop_sweep/note），不改变任何既有 payload 的形状与含义。
+        desktopSweep: Boolean(ffiOpts && ffiOpts.desktopSweep),
       });
       if (routineRes) {
+        // GP-168：定时唤醒这一班车顺路把「受理了但没答上」的转交挂账捡起来。
+        // 为什么挂在这里：自媒体用户的真实形状是 08:00 定时发文内部转交给审核 Bot、
+        // provider 挂了 → 凭据落盘；之后一整天群里没人再发消息，只搭「下一次群回合」
+        // 那班车（GP-166）它就永远睡着。sweep 是唯一必然每天发生的唤醒。
+        // executeRoutineEffect 是同步的，捡起要 await 内核回合，所以只能在 async 的
+        // 这里挂；效果行与 stdout 都带 handoff_retry，stdout 不可解析时只挂效果行。
+        // 只加可选字段，tick 既有 payload 一个不动。
+        if (
+          (kind === "routine_tick" || kind === "routine_wake") &&
+          surface && typeof surface.retryPendingHandoffs === "function"
+        ) {
+          let hr = null;
+          try {
+            hr = await surface.retryPendingHandoffs({ all_rooms: true });
+          } catch (e) {
+            hr = {
+              ok: false,
+              mode: "host_handoff_retry",
+              scope: "all_rooms",
+              error: "handoff_retry_failed",
+              detail: String((e && e.message) || e),
+            };
+          }
+          routineRes.handoff_retry = hr;
+          try {
+            const tickPayload = JSON.parse(routineRes.stdout || "{}");
+            if (tickPayload && typeof tickPayload === "object" && !Array.isArray(tickPayload)) {
+              routineRes.stdout = JSON.stringify(Object.assign({}, tickPayload, { handoff_retry: hr }), null, 2);
+            }
+          } catch (_) { /* stdout 不是 JSON：效果行已经带上如实回报，不伪造 stdout */ }
+        }
         results.push(routineRes);
         continue;
       }
@@ -24754,7 +24880,10 @@ function createHostFfi(repoRoot, opts = {}) {
           // 覆盖用户历史）。内核侧要如实报错，不能让异常把整批 effect 炸掉。
           res = { ok: false, error: "rooms_store_unreadable", detail: String((e && e.message) || e), mode: "host_handoff_task" };
         }
-        if (res && res.ok) {
+        if (res && res.accepted === true) {
+          // 投递看「受理」，不看「目标 Bot 这一轮跑成功了」：
+          // 承接者暂时答不出来，任务也必须留在它的 inbox 里等它接，
+          // 否则转录上写着转交、实际没人收到——GP-52 的契约就是这么破的。
           let inboxPath = "";
           try {
             inboxPath = path.join(
@@ -24794,15 +24923,20 @@ function createHostFfi(repoRoot, opts = {}) {
             at: res.at,
           });
         }
+        const handoffAccepted = res && res.accepted === true;
         results.push({
           kind,
           ok: res.ok === true,
           command: cmd,
           stdout: JSON.stringify(res),
-          stderr: res && res.ok ? "" : (res && res.error) || "handoff_refused",
-          error: res && res.ok ? "" : (res && res.error) || "handoff_refused",
+          // 「被拒绝」和「受理了但目标 Bot 没答上来」是两件事：前者没投递、
+          // 后者任务已经进承接者 inbox（见上面的 accepted 投递分支）。
+          // 混成一个 handoff_refused，审计就答不出「这活到底有没有人接手」。
+          stderr: res && res.ok ? "" : (res && res.error) || (handoffAccepted ? "handoff_target_unanswered" : "handoff_refused"),
+          error: res && res.ok ? "" : (res && res.error) || (handoffAccepted ? "handoff_target_unanswered" : "handoff_refused"),
           mode: res.mode || "host_handoff_task",
-          refused: !(res && res.ok),
+          accepted: handoffAccepted,
+          refused: !handoffAccepted,
         });
         continue;
       }
