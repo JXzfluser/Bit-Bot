@@ -3423,3 +3423,102 @@ G-64 起来了、绿了，但那一条是 **SKIP** 而不是 PASS —— `xdotoo
 诚实残留：Xvfb + openbox 仍不是用户的真桌面 —— 没有 GPU/多显示器/真实输入设备，
 `os_window` 只能证明 Host 的窗口枚举与 xdotool 点击链路通了；真机 UI 仍需人工点。
 gh 未登录（第 2 条 SKIP）与 §8.49.5 的其余三条残留不变。
+
+
+## 8.50 设置 → 凭证：门只问「id 在不在」，所以烂布局能全绿（GP-185）
+
+**① 这一屏的门是假门的证据，不是观感，是计数。** 「设置 → 凭证」在改动前有 **6 张等大的卡、
+4 颗粒色完全相同的动作按钮、6 处行内 `font:`/色字面值**，而盯它的门（`prove_m43_settings` 8 项、
+`prove_m37_layout` 13 项、G-51/G-52/G-54 三条真机门）加起来只问两件事：**某个 id 在不在**、
+**某个计算字号等不等于 `--text-sm`**。没有任何一条问「它在第几层」「折叠了没有」「和谁同屏」。
+所以布局可以一路烂下去而矩阵常绿 —— 这不是推测，是把 `#sec-llm-key` 手动收进 `<details>`
+再跑那三条真机门，它们**照样全绿**（Playwright 对闭合 `<details>` 里的 input 仍判可见，
+见 ⑤ 的机制），当场就证明了尺子量不到形状。
+
+**② 重排按「非做不可 → 选填 → 一次性」排，不按「有哪些字段」排。** 四张分区卡 + 一个折叠 + 一条吸底保存条：
+
+| 分区 | 权重标记 | 里面是什么 |
+| --- | --- | --- |
+| `sec-zone-brain` 本机大脑 | **必填** | 接入方式 / 模型 ID / Base URL / API Key 四栏（后两栏并成两列网格），下面一个折叠「备用渠道与 provider 标签」收 `provider_id` + 通义 + Kimi 三栏 |
+| `sec-zone-capability` 能力扩展 | 选填 | 联网搜索 provider + Key + Base 一行两列 |
+| `sec-zone-devices` 手机与入站 | — | 配对码 / 手动地址 / 入站公网 URL（原来自己占一张卡，其实只是这一屏第二条只读地址） |
+| `sec-zone-compliance` 合规 | — | 两颗备案号并排 + 内容审核门 checkbox |
+
+`#sec-status` 从页尾搬进 `.st-foot`（`position: sticky; bottom: 0`），点保存后结果就在按钮左边；
+「跑验收门禁」和它的输出框一起挂 `data-lab`，产品态不占按钮位。**所有 id 一个没动**（31 个
+被门按 id 引用的控件全在原位），改的只有层级与顺序。
+
+**③ 真开机量到的前后差（`scripts/shot_settings_credentials.mjs`，同一份临时 user-data-dir、
+同一视口 1440×900、主题显式钉成浅色，走「头像 → 设置 → 凭证」的用户路径）。**
+
+| 口径 | 改动前 | 改动后 |
+| --- | --- | --- |
+| 首屏 680px 内出现的栏位 | `sec-llm-preset, sec-llm-provider, sec-llm-base, sec-llm-model` —— **必填的 API Key 不在首屏**，被 provider_id 挤到下面 | `sec-llm-preset, sec-llm-model, sec-llm-base, sec-llm-key` —— 主流程四栏齐在一屏内 |
+| 整屏滚动高 `#secrets-panel.scrollHeight` | 1791px | **1441px（-350px / -19.5%）** |
+| 备用渠道三栏占位 | 摊平，292px | 折叠一行 33px（点开才 292px） |
+| 这一屏行内字面字号/色 | 6 处 | **0 处**（收进 `.st-readout` / `.st-check` / `.st-tag`） |
+| 保存条 | `position: static`、首屏不可见 | `sticky` + 在视口内 |
+
+**④ 截图顺手逼出来的两个真缺陷（都不是本轮引入的，都在图里看得见）。**
+
+- **产品态把内部诊断行印在屏幕上**：`showSettingsTab()` 无条件往 `#settings-meta` 写
+  `tab=凭证`，而 `renderSettingsPanel()` 是 `devModeOn()` 才写 —— 两个入口口径不一致，
+  于是左下角永远躺着一条 `tab=凭证`。改成只在开发态写、产品态清空。AR-10 那条要读
+  `#settings-meta` 里的「移动=可配对」，它本来就跑在 `BITBOT_DEVMODE=1` 下，口径不受影响。
+- **折叠看不出可以点**：`.st-adv > summary` 为了对齐抹掉了 `list-style` 与
+  `::-webkit-details-marker`，结果「备用渠道与 provider 标签」读起来就是一行普通文本。
+  补一个 `.st-adv-mark`（CSS 画的箭头，`[open]` 时翻转），并让运行时探针断言它有非零尺寸。
+  同时把「模型与供应商」按钮从折叠**后面**挪到**前面** —— 它属于大脑那一步，压在折叠下面
+  会被读成「备用渠道的按钮」。
+
+**⑤ 一个 Chromium 事实，值得记下来免得下次再猜**：本机 Electron 33 = Chromium 130，闭合的
+`<details>` 用 `content-visibility` 隐藏子树，所以 `offsetParent` 仍非 null、
+`getBoundingClientRect()` 仍报 39px 高、computed `display` 仍是 `block` —— 只有
+`checkVisibility({contentVisibilityAutoStateProperty:true})` 说实话。这解释了两件事：
+G-54 的 LK-06 为什么一直能填通义/Kimi 的 key（折叠不破坏真机门），以及为什么「隐藏了几个控件」
+这种断言必须用 `checkVisibility` 而不是 `offsetParent`（用后者量到的是 0，会把「折叠生效」判成没生效）。
+
+**⑥ 新门 `scripts/prove_settings_credentials_zones.js`（CL-01…13，PASS=15 / FAIL=0）。**
+每条断言写成纯函数，反向对照把同一个函数跑在**真实改坏**的文本上（不是构造的假输入）：
+14/14 条全部翻红 —— 包括「把能力卡改名成第五张区」「把 `#sec-save` 塞进折叠」「把
+`data-i18n` 挂回含 `<a>` 的说明行」「繁体字典删掉分区标题」「给入站地址写回行内字体」
+「保存条的 sticky 换成 static」。矩阵侧新增 **G-63** 块，锚点取 CL-04（可见性底线）与
+CL-10（负向对照），缺任一即红。
+
+| 断言 | 钉住什么 |
+| --- | --- |
+| CL-01/01b | 恰好 4 张分区卡、顺序、四个 `sec-zone-*` id |
+| CL-02/03 | 折叠外输入 10 个（主流程四栏 + 搜索三 + 备案二 + 审核 checkbox）；`provider_id`/通义/Kimi 三栏在折叠内，且**只有一个折叠**（防套娃） |
+| CL-04 | 真机门按 visible 点的 8 个控件不得被折叠吃掉 |
+| CL-05/05b | `#sec-status` 与 `#sec-save` 同一条，且 `.st-foot` 是 `sticky; bottom:0` |
+| CL-06/07 | `data-i18n` 不挂在含元素子节点的标签上（applier 是 `textContent` 覆盖）；12 条新文案在 zh-CN/zh-TW/en 三本字典都齐 |
+| CL-08/09 | 这一屏行内字面量 0 处（只许降）；开发动作带 `data-lab` |
+| CL-11/12/13 | 产品态不写诊断行；折叠自带指示器；模型入口在折叠之前 |
+
+**⑦ 回归面（本机 mac，全部真跑）。** 静态：`prove_settings_credentials_zones` 15/0、
+`prove_m43_settings` 8/0、`prove_m37_layout` 13/0、`prove_m33_grokchrome` 8/0、
+`prove_m34_account_actions` 7/0。真机：`e2e_desktop_llm_key_paste_guard` 7/0、
+`e2e_desktop_cn_channel_guard` 8/0、`e2e_desktop_cn_secret_inputs` 6/0、
+`e2e_android_roster` 20/0、`e2e_modal_computed` 28/0、`e2e_desktop_shell_v2` 89/0、
+`e2e_desktop_token_parity` 5/0、`e2e_desktop_user_journeys` 71/0。**SKIP 一律 0。**
+
+**⑧ 诚实边界。**
+
+- **`prove_ui_tokens` T-2 是红的，且本轮之前就已经红**：`hosts/desktop/index.html` 的字面 hex
+  实测 **39 处 > 基线 28**，而 `git show HEAD:…` 同样是 39 —— 也就是上一轮把它推上去的时候
+  没有重锚、也没有进矩阵（`prove_ui_tokens` 不在 `smoke_grok_desktop_parity.sh` 里，只被
+  `grok_acceptance_expectations.mjs` 的文档字段引用）。本轮没让它更差（行内 `font-size`
+  14 → 13、这一屏字面量 6 → 0），也**没有**擅自把基线从 28 抬到 39 —— 抬基线是「只许降」
+  棘轮的例外动作，要点头。
+- **只重排了「凭证」一屏**：另外四张页签（通用/电脑/用量与账单/更新）保持原样，五页签骨架、
+  导航与 sheet 几何一行没动（那三处被门钉死）。
+- **两个已知缺陷刻意留着，因为裁决没回**：① `#sec-ota`（更新通道）的保存责任仍落在另一张
+  页签的按钮上，全仓 0 条门引用；② 内核 `SettingsAnchor::tab()` 把 `SecurityKeys`/`AutoReview`
+  归到 **General**，而渲染层把它们放**凭证/通用**，`ui_protocol/permission_guide.mbt:76-85`
+  会把这句矛盾直接念给用户听（「打开 设置 → 常规 (security-keys)」）。
+- **截图脚本会改用户看得见的数据**：切主题写进 `data/desktop/settings.json`（dev 数据根 = 仓库
+  `data/`）。脚本现在开跑前备份、`process.on("exit")` 还原；本轮另有一次还原前遗留
+  （`appearance` 被留在 `dark`），已改回 `light`（首张真开机图量到的就是浅色）。
+- **CL 系列只断形状，不断观感**：`artifacts/gp185-credentials-{before,after}{,-dark,-fold}.png`
+  是这次唯一的人眼验收凭据；吸底条在滚动中会盖住下一张卡的标题（sticky 的固有代价），
+  如果这点不可接受，改法是给 `.settings-tab` 加底部 padding 而不是撤掉 sticky。

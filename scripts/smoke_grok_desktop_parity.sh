@@ -2581,6 +2581,22 @@ else
   echo "  · skip：本机 node 没有 node:sqlite，G-62 未跑（SKIP ≠ PASS）"
 fi
 
+echo "== G-63 设置 → 凭证按「必填 / 选填」分区（GP-185）=="
+# 这一屏以前的门只问「id 在不在」，从不管「在第几层、折叠没有」，所以烂布局能全绿。
+# 本门把形状钉成契约，同时钉住真机门依赖的可见性底线（折叠不能吃掉 Playwright 要点的控件）。
+if timeout 900 node scripts/prove_settings_credentials_zones.js > /tmp/g63-credzones.log 2>&1; then
+  ok "G-63 凭证分区契约全绿（$(grep -c '✓ CL' /tmp/g63-credzones.log) 项，$(tail -1 /tmp/g63-credzones.log)）"
+else
+  bad "G-63 凭证分区契约（见 /tmp/g63-credzones.log；$(tail -1 /tmp/g63-credzones.log)）"
+fi
+grep -q 'CL-04 真机门按 visible 点的' /tmp/g63-credzones.log \
+  && grep -q 'CL-10 负向对照' /tmp/g63-credzones.log \
+  && ok "G-63 两条命门都在：可见性底线（明面上的控件数 $(grep -o 'CL-04 真机门按 visible 点的 [0-9]*' /tmp/g63-credzones.log | grep -o '[0-9]*$')）+ 每条断言都能被真实改动打翻（$(grep -o 'CL-10 负向对照 [0-9]*/[0-9]*' /tmp/g63-credzones.log)）" \
+  || bad "G-63 CL-04 / CL-10 锚点缺失（可见性底线或反向对照没被断言）"
+echo "  · G-63 实测（本轮日志）：分区卡 $(grep -o 'CL-01 恰好 [0-9]* 张' /tmp/g63-credzones.log | grep -o '[0-9]*') 张、折叠外输入 $(grep -o 'CL-02 折叠外输入 = [0-9]*' /tmp/g63-credzones.log | grep -o '[0-9]*$') 栏、这一屏行内字面字号/色 $(grep -o 'CL-08 这一屏 [0-9]* 处' /tmp/g63-credzones.log | grep -o '[0-9]*') 处（原来 6 处）"
+echo "  · G-63 残留（诚实）：只断形状，不断观感；「保存并热加载」在真机上是否真把 Key 写进"
+  echo "    .env.local 并热加载，仍由 G-51/G-52 与 e2e_desktop_llm_key_paste_guard 盯。"
+
 echo "== G-58 常驻内核进程（T1-07 · 一行请求换一回合，替代每轮 spawn）=="
 # 需求的 AC 是可数的：「群聊 3 Bot 进程创建 = 0；崩溃自动重启并标记在途回合」。
 # 子门同时量常驻侧和「把常驻关掉」的对照侧，所以这里的锚点是两个方向都有数 ——
