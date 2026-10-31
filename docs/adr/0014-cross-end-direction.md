@@ -1,6 +1,6 @@
 # ADR 0014 — 跨端定调：一个客户端核心，内核自持 loop，云只转发
 
-- 状态：**Proposed**（2 处需产品/合规签，见 §6）
+- 状态：**Accepted**（2026-10-31 已签：fork A = 只出自托管镜像；fork B = PWA 与原生壳并行）
 - 日期：2026-10-31
 - 关联：`docs/next-target-requirements.md`（T0–T5 需求与任务）、ADR 0008（远端回合鉴权）、`docs/design/desktop-target/pairing-v1.md`、`docs/agent-core/README.md`（L6 目标）
 - 实现（规划中）：`client-core/`、`hosts/shared/{session_log,transport}.js`、`hosts/shared/device_keys.js`（已有）、`hosts/shared/cn_inbound_server.js`
@@ -64,8 +64,8 @@ L6 目标（`agent-core/README.md`）：**跨 Agent/跨端（Desktop·iOS·Andro
 | # | 开放问题 | 本轮结论 | 状态 |
 |---|---|---|---|
 | Q1 | QUIC 绑定形态（Node 原生插件 vs Rust sidecar） | **本轮不做 QUIC**。T4b 立项时先跑 T4-04 spike；倾向 **Rust sidecar**（native addon 崩溃会拖垮主进程，隔离性优先于集成简单） | 延后（倾向已记） |
-| Q2 | 中转部署位置（国内自建/备案 vs 自托管镜像） | **只提供自托管镜像 + 企业自建，不给开箱即用公网中转**，规避备案与合规成本；「开箱即用」列为后续可选项 | **待合规签（§6 fork A）** |
-| Q3 | 手机端形态（PWA vs 原生壳） | **先 PWA 复用 client-core 做可行性验证**（最便宜的第二端），原生壳后置；PWA 拿不到的（后台常驻/推送）诚实标注为限制 | **待产品签（§6 fork B）**，附明确推荐 |
+| Q2 | 中转部署位置（国内自建/备案 vs 自托管镜像） | **只提供自托管镜像 + 企业自建，不给开箱即用公网中转**，规避备案与合规成本；「开箱即用」列为后续可选项 | ✅ 已签（只出自托管镜像） |
+| Q3 | 手机端形态（PWA vs 原生壳） | **PWA 与原生壳并行推进**；两端都**必须消费同一 `client-core`**（并行的前提，否则第二端漂移）。PWA 先拿浏览器可行性，原生壳（已有 `hosts/{ios,android}` 骨架）拿后台常驻/推送 | ✅ 已签（并行） |
 | Q4 | 多机协作（机器间任务转交） | **本轮不做**，保持 `next-target-requirements.md` §9.4 结论 | 不做 |
 | Q5 | 桌面内置 station（`--with-parent` 内嵌） | **本轮不做内嵌 station**：桌面既是 station 也是客户端；多客户端连同一 station 走 T4a。与 T1-06 一并定，倾向「单一 station 进程，内嵌只是启动方式」 | 随 T1-06 定 |
 | Q6 | 无 MSVC 环境（wasm 内核分支） | **T0-02 保持原生构建**；wasm 仅作 CI 兜底 spike，不阻塞主链路 | T0-02 决策点 |
@@ -85,19 +85,19 @@ L6 目标（`agent-core/README.md`）：**跨 Agent/跨端（Desktop·iOS·Andro
 - **外包 agent loop 给第三方 CLI**：kernel 自持 loop 是与对标产品的不可交换差异。
 - **过度抽象**（CRDT / 消息中间件 / 持久化 token 增量 / 按域拆库）：一个会话只有一个写权，不需要 CRDT；effect bus 是同进程函数表，不需要中间件。
 
-## 待签事项（需你/产品/合规拍板）
+## 决议记录（2026-10-31 已签）
 
-- **fork A（合规）**：公网中转是否给「开箱即用」托管？本 ADR 主张**只出自托管镜像**，规避备案；若你要开箱即用，需先答合规与备案成本。
-- **fork B（产品）**：手机端先 PWA 还是直接原生壳？本 ADR 主张**PWA 先行验证**，原生壳（已有 `hosts/{ios,android}` 骨架）长期仍需拿后台常驻与推送。
+- **fork A（合规）= 只出自托管镜像**：公网中转不提供「开箱即用」托管，企业/用户自建，规避备案与合规成本；「开箱即用」保留为后续可选项。
+- **fork B（产品）= PWA 与原生壳并行**：两端同时推进，但**强制共用同一 `client-core`**——并行的前提是「一份 schema、一份 reducer」，否则第二端必然漂移。T3 的 client-core 因此更关键，必须先把 core 立住再并行铺两端。
 
-两处签了，本 ADR 转 Accepted，T0–T4a 即可按 `next-target-requirements.md` 的任务清单开工。
+两处已签，本 ADR 转 Accepted，T0–T4a 可按 `next-target-requirements.md` 的任务清单开工。
 
 ## 后果
 
 - **正面**：方向单一，后续每个需求（重连、多端、云端、崩溃恢复）都是不变量的推论，而非新增特例。
 - **正面**：桌面/手机/网页共用一份 schema 与 reducer，第二端不会漂移。
 - **代价**：T1 事件日志是前置，短期看不到「多端惊喜」；这是正确的顺序代价。
-- **代价**：PWA 先行意味着后台常驻/推送在早期是缺口，必须诚实标注而非假装可用。
+- **代价**：PWA 与原生壳并行 = 两条端同时维护，成本更高；靠「共用 client-core」把漂移风险压到最低，但两条端的真机验证（尤其 PWA 的后台常驻/推送）早期仍是缺口，必须诚实标注而非假装可用。
 - **风险**：迁移期双写（JSON + events）要保证 `fold(events)` 与快照逐字段相等（AC-T1-3），否则切读会引入静默不一致。
 
 ## 验收 / 度量
