@@ -3,11 +3,7 @@
 test "acceptance_CM-1101_omit_channel_not_external" {
   let inbound = Some("slack:C0123ABCDEF:1710000.000100")
   match
-    @channels.plan_channel_reply(
-      inbound_address=inbound,
-      outbound_channel=None,
-      body="hello",
-    ) {
+    @channels.plan_channel_reply(inbound_address=inbound, outbound_channel=None) {
     Ok(d) => {
       assert_false(d.is_external())
       assert_eq(d, @channels.InAppOnly)
@@ -19,7 +15,6 @@ test "acceptance_CM-1101_omit_channel_not_external" {
     @channels.plan_channel_reply(
       inbound_address=inbound,
       outbound_channel=Some("slack:C0123ABCDEF:1710000.000100"),
-      body="hello",
     ) {
     Ok(d) => assert_true(d.is_external())
     Err(e) => fail(e)
@@ -34,38 +29,26 @@ test "acceptance_CM-1101_omit_channel_not_external" {
 
 ///|
 /// CM-1102: slack:C:ts / slack:U / slack:D — thread / DM / top-level.
+/// 这里直接用 `parse_channel_address` + `slack_target` 判定语义：`parse_slack_address`
+/// 那层只是重复校验 "slack:" 前缀和 DM id 形状，没人调用，已作为死代码删除。
 test "acceptance_CM-1102_slack_address_thread_dm_top" {
-  match @channels.parse_slack_address("slack:C0123ABCDEF:1710000.000100") {
-    Ok(a) => {
-      assert_eq(a.slack_target(), Some(@channels.Thread))
-      assert_true(a.is_thread())
-      assert_eq(a.channel_id, "C0123ABCDEF")
-      assert_eq(a.thread_ts, Some("1710000.000100"))
-    }
-    Err(e) => fail(e)
-  }
-  match @channels.parse_slack_address("slack:U0ABCDEF") {
-    Ok(a) => {
-      assert_eq(a.slack_target(), Some(@channels.Dm))
-      assert_true(a.is_dm())
-      assert_eq(a.channel_id, "U0ABCDEF")
-    }
-    Err(e) => fail(e)
-  }
-  match @channels.parse_slack_address("slack:D0XYZ123") {
-    Ok(a) => {
-      assert_eq(a.slack_target(), Some(@channels.Dm))
-      assert_true(a.is_dm())
-    }
-    Err(e) => fail(e)
-  }
-  match @channels.parse_slack_address("slack:C999TOP") {
-    Ok(a) => {
-      assert_eq(a.slack_target(), Some(@channels.TopLevel))
-      assert_true(a.is_toplevel())
-    }
-    Err(e) => fail(e)
-  }
+  let thread = @channels.parse_channel_address(
+    "slack:C0123ABCDEF:1710000.000100",
+  )
+  assert_eq(thread.slack_target(), Some(@channels.Thread))
+  assert_true(thread.is_thread())
+  assert_eq(thread.channel_id, "C0123ABCDEF")
+  assert_eq(thread.thread_ts, Some("1710000.000100"))
+  let dm_u = @channels.parse_channel_address("slack:U0ABCDEF")
+  assert_eq(dm_u.slack_target(), Some(@channels.Dm))
+  assert_true(dm_u.is_dm())
+  assert_eq(dm_u.channel_id, "U0ABCDEF")
+  let dm_d = @channels.parse_channel_address("slack:D0XYZ123")
+  assert_eq(dm_d.slack_target(), Some(@channels.Dm))
+  assert_true(dm_d.is_dm())
+  let top = @channels.parse_channel_address("slack:C999TOP")
+  assert_eq(top.slack_target(), Some(@channels.TopLevel))
+  assert_true(top.is_toplevel())
 }
 
 ///|

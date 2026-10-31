@@ -1,3 +1,3 @@
 import {
-  "bitbot/bitbot/memory",
+  "bitbot/bitbot/core",
 }

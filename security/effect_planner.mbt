@@ -70,20 +70,17 @@ pub fn EffectPlanner::propose_external_send(
 
 ///|
 /// CM-0306: memory text「可发」(or any cue) through a real ExternalSend path stays blocked.
+/// 这里直接判记忆**文本**，不再伪造一条 `MemoryEntry` 再丢给 memory 包去问——上一版
+/// 那样做既是层次倒置（security 反向依赖 memory 存储层），也让伪造出来的条目
+/// （key/scope/时间戳全是编的）看起来像是真的读过记忆。
 pub fn try_external_send_with_memory_cue(
   memory_value : String,
   to~ : String,
   body~ : String,
 ) -> Result[PlannedEffect, String] {
-  let entry = @memory.MemoryEntry::{
-    key: "send_perm",
-    value: memory_value,
-    scope: @memory.Profile,
-    updated_at_ms: 0L,
-  }
-  if @memory.memory_grants_send(entry) {
+  if memory_cue_grants_send(memory_value) {
     Ok(ExternalSend(to~, body~))
   } else {
-    Err("memory does not authorize ExternalSend")
+    Err(memory_cue_refusal_reason(memory_value))
   }
 }

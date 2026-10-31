@@ -154,11 +154,7 @@ test "desktop_turn_bot_id_scopes_memory" {
   let appro = parse_turn_context(["--bot-id", "writer", "--approved"])
   assert_eq(appro.bot_id, "writer")
   assert_true(appro.approved)
-  let u = run_desktop_turn(
-    "remember tone=concise",
-    turn_id="bot-mem-u",
-    ctx=ctx,
-  )
+  let u = run_desktop_turn("remember tone=concise", turn_id="bot-mem-u", ctx~)
   assert_true(u.ok)
   assert_eq(u.effects[0].kind, "memory_update")
   assert_eq(u.effects[0].command, "tone|concise")
@@ -523,7 +519,10 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(ho.ok)
   assert_eq(ho.intent, "handoff_task")
   assert_eq(ho.effects[0].kind, "handoff_task")
-  assert_eq(ho.effects[0].command, "room-abc|agent-bit|bot-xyz|collect+deploy+logs")
+  assert_eq(
+    ho.effects[0].command,
+    "room-abc|agent-bit|bot-xyz|collect+deploy+logs",
+  )
   assert_true(ho.needs_host_ffi)
   // "hand off room" alias; from defaults to user; task text containing the
   // word "room" must not hijack classification back to room_turn.
@@ -535,10 +534,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_eq(ho2.intent, "handoff_task")
   assert_eq(ho2.effects[0].command, "eng|user|bot-x|check+room+status")
   // Incomplete handoff (no task) must not become a bogus transfer.
-  let ho_bad = run_desktop_turn(
-    "handoff room x to=bot-9",
-    turn_id="ho-bad-1",
-  )
+  let ho_bad = run_desktop_turn("handoff room x to=bot-9", turn_id="ho-bad-1")
   assert_true(ho_bad.ok)
   assert_true(ho_bad.intent != "handoff_task")
   // Precedence: the generic room branches still win for plain room phrases.
@@ -561,10 +557,7 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(ac_in.ok)
   assert_eq(ac_in.intent, "account_sign_in")
   assert_eq(ac_in.effects[0].command, "Work")
-  let ac_sw = run_desktop_turn(
-    "switch account my work",
-    turn_id="ac-4",
-  )
+  let ac_sw = run_desktop_turn("switch account my work", turn_id="ac-4")
   assert_true(ac_sw.ok)
   assert_eq(ac_sw.intent, "account_switch")
   assert_eq(ac_sw.effects[0].command, "my+work")
@@ -1257,7 +1250,10 @@ test "desktop_turn_install_plugin_and_setup_slack" {
     }
     _ => fail("expected TogglePluginTool (natural enable)")
   }
-  let tt = run_desktop_turn("enable tool user-Slides:make_deck off", turn_id="tt-1")
+  let tt = run_desktop_turn(
+    "enable tool user-Slides:make_deck off",
+    turn_id="tt-1",
+  )
   assert_true(tt.ok)
   assert_eq(tt.intent, "toggle_plugin_tool")
   assert_eq(tt.effects[0].kind, "mcp_tool_toggle")
@@ -1275,7 +1271,10 @@ test "desktop_turn_install_plugin_and_setup_slack" {
     _ => fail("expected CreateBotFromTemplate")
   }
   // Must NOT fall into the plain "create bot " matcher.
-  let cbt = run_desktop_turn("create bot from template bug-reproduction", turn_id="cbt-1")
+  let cbt = run_desktop_turn(
+    "create bot from template bug-reproduction",
+    turn_id="cbt-1",
+  )
   assert_true(cbt.ok)
   assert_eq(cbt.intent, "create_bot_from_template")
   assert_eq(cbt.effects[0].kind, "bot_create_from_template")
@@ -1484,12 +1483,18 @@ test "desktop_turn_cn_group_chat_phrasings" {
   assert_eq(r2.effects[0].command, "bots=UJXxx,UJYyy,UJZkkk title=UJAbc2")
 
   // 两人也算建群
-  let r3 = run_desktop_turn("把 UJXxx 和 UJYyy 拉到 UJAbc3 群", turn_id="cn-g3")
+  let r3 = run_desktop_turn(
+    "把 UJXxx 和 UJYyy 拉到 UJAbc3 群",
+    turn_id="cn-g3",
+  )
   assert_eq(r3.intent, "group_chat")
   assert_eq(r3.effects[0].command, "bots=UJXxx,UJYyy title=UJAbc3")
 
   // 名字不存在也要原样交给 Host，内核不许自己吞掉或改写名字
-  let r4 = run_desktop_turn("把 UJXxx、UJGhostone 拉到 UJAbc4 群", turn_id="cn-g4")
+  let r4 = run_desktop_turn(
+    "把 UJXxx、UJGhostone 拉到 UJAbc4 群",
+    turn_id="cn-g4",
+  )
   assert_eq(r4.intent, "group_chat")
   assert_eq(r4.effects[0].command, "bots=UJXxx,UJGhostone title=UJAbc4")
 
@@ -1502,12 +1507,18 @@ test "desktop_turn_cn_group_chat_phrasings" {
   assert_eq(r5.effects[0].command, "bots=UJXxx,UJYyy title=双十一+复盘")
 
   // 繁体说法同样要认
-  let r6 = run_desktop_turn("把 UJXxx、UJYyy 拉進 UJAbc5 群", turn_id="cn-g6")
+  let r6 = run_desktop_turn(
+    "把 UJXxx、UJYyy 拉進 UJAbc5 群",
+    turn_id="cn-g6",
+  )
   assert_eq(r6.intent, "group_chat")
   assert_eq(r6.effects[0].command, "bots=UJXxx,UJYyy title=UJAbc5")
 
   // 重复名字只算一次（同成员同群名交给 Host 做幂等，内核先不送重复项）
-  let r7 = run_desktop_turn("把 UJXxx、UJXxx 拉到 UJAbc6 群", turn_id="cn-g7")
+  let r7 = run_desktop_turn(
+    "把 UJXxx、UJXxx 拉到 UJAbc6 群",
+    turn_id="cn-g7",
+  )
   assert_eq(r7.effects[0].command, "bots=UJXxx title=UJAbc6")
 }
 
@@ -1516,11 +1527,17 @@ test "desktop_turn_cn_group_chat_phrasings" {
 test "desktop_turn_cn_group_chat_non_triggers" {
   let n1 = run_desktop_turn("把这份周报发给客户", turn_id="cn-n1")
   assert_eq(n1.intent, "chat")
-  let n2 = run_desktop_turn("这个群的会议纪要帮我整理一下", turn_id="cn-n2")
+  let n2 = run_desktop_turn(
+    "这个群的会议纪要帮我整理一下",
+    turn_id="cn-n2",
+  )
   assert_eq(n2.intent, "chat")
   let n3 = run_desktop_turn("帮我把灯光调暗一点", turn_id="cn-n3")
   assert_eq(n3.intent, "chat")
-  let n4 = run_desktop_turn("加入群讨论的议程先发我看看", turn_id="cn-n4")
+  let n4 = run_desktop_turn(
+    "加入群讨论的议程先发我看看",
+    turn_id="cn-n4",
+  )
   assert_eq(n4.intent, "chat")
   // 只有「群」字、没有名单也没有群名 → 不是建房
   let n5 = run_desktop_turn("把 UJXxx 拉到群里再说", turn_id="cn-n5")
@@ -1570,8 +1587,14 @@ test "desktop_turn_attach_files_gp11" {
   assert_true(m2.ok)
   assert_eq(m2.intent, "attach_files")
   assert_eq(m2.effects.length(), 2)
-  assert_eq(m2.effects[0].command, "desk-1|/u/a.txt|data/workspace/uploads/a.txt")
-  assert_eq(m2.effects[1].command, "desk-1|/u/b.txt|data/workspace/uploads/b.txt")
+  assert_eq(
+    m2.effects[0].command,
+    "desk-1|/u/a.txt|data/workspace/uploads/a.txt",
+  )
+  assert_eq(
+    m2.effects[1].command,
+    "desk-1|/u/b.txt|data/workspace/uploads/b.txt",
+  )
   // newline-per-attach (paste/drop format)
   let m3 = run_desktop_turn(
     "attach file /u/x.png\nattach file /u/y.png",
@@ -1600,7 +1623,10 @@ test "desktop_turn_attach_files_gp11" {
     turn_id="gp11-kv",
   )
   assert_eq(kv.intent, "copy_to_box")
-  assert_eq(kv.effects[0].command, "desk-1|README.mbt.md|/workspace/uploads/README.mbt.md")
+  assert_eq(
+    kv.effects[0].command,
+    "desk-1|README.mbt.md|/workspace/uploads/README.mbt.md",
+  )
 }
 
 ///|
@@ -1608,8 +1634,12 @@ test "desktop_turn_reply_to_context_gp14" {
   // GP-14「Reply 回复特定消息」验收：被回复消息 id 必须进 kernel 上下文，
   // 且不得污染用户文本（否则 Host llm_chat 会拿到拼接了 id 的假原文）。
   // argv[0] is the executable slot (mirrors how Host spawns moon run).
-  let args = ["exe", "--session-id", "s-g14", "--reply-to", "msg-77", "针对这条回复"]
-  let gctx = parse_turn_context(["--session-id", "s-g14", "--reply-to", "msg-77", "针对这条回复"])
+  let args = [
+    "exe", "--session-id", "s-g14", "--reply-to", "msg-77", "针对这条回复",
+  ]
+  let gctx = parse_turn_context([
+    "--session-id", "s-g14", "--reply-to", "msg-77", "针对这条回复",
+  ])
   assert_eq(gctx.session_id, "s-g14")
   assert_eq(gctx.reply_to, "msg-77")
   assert_eq(user_text_from_args_skipping_flags(args), "针对这条回复")
@@ -1717,7 +1747,9 @@ fn construction_note_leak(r : DesktopTurnResult) -> String {
   let mut leaked = ""
   for m in r.messages {
     if m.role == "assistant" && m.text.has_prefix("已计划") {
-      if leaked == "" { leaked = m.text }
+      if leaked == "" {
+        leaked = m.text
+      }
     }
   }
   leaked
@@ -1736,7 +1768,9 @@ test "desktop_turn_construction_notes_never_in_messages" {
   ]
   for (text, tid) in cases {
     let r = run_desktop_turn(text, turn_id=tid)
-    if !r.ok { continue }
+    if !r.ok {
+      continue
+    }
     assert_eq(construction_note_leak(r), "")
     // 施工说明仍然可以从 plan 字段读到（CLI/调试不丢信息）。
     if r.plan.has_prefix("已计划") {
@@ -1784,7 +1818,10 @@ test "desktop_turn_cn_routine_phrasings" {
   assert_true(plain.ok)
   assert_true(plain.intent != "create_routine")
   // 负向：没有时间词的「把稿子发到邮箱」是一次性动作，不是排程。
-  let once = run_desktop_turn("把这篇稿子发到我的邮箱", turn_id="cnrt-5")
+  let once = run_desktop_turn(
+    "把这篇稿子发到我的邮箱",
+    turn_id="cnrt-5",
+  )
   assert_true(once.ok)
   assert_true(once.intent != "create_routine")
 }

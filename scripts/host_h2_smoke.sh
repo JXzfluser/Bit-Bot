@@ -8,6 +8,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "${ROOT}/scripts/lib/timeout_polyfill.sh"
 ART_ROOT="${ROOT}/docs/qa/artifacts"
 SURFACE_DIR="${ROOT}/scripts/host_ui_surface"
 HOST_SERVER="${SURFACE_DIR}/host_server.py"

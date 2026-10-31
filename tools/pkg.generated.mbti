@@ -21,7 +21,7 @@ pub fn is_time_sensitive_query(String) -> Bool
 
 pub fn may_call_namespace(@connectors.ConnectorStatus) -> Bool
 
-pub fn normalize_search_query(String, year? : Int32) -> String
+pub fn normalize_search_query(String, year? : Int) -> String
 
 pub fn schema_required_keys(String) -> Array[String]
 
@@ -105,7 +105,7 @@ pub fn DynamicCatalog::has_namespace(Self, String) -> Bool
 pub fn DynamicCatalog::is_discovered(Self, String, String) -> Bool
 pub fn DynamicCatalog::list_namespaces(Self) -> Array[String]
 pub fn DynamicCatalog::register(Self, DynamicToolDesc, full_description~ : String) -> Unit
-pub fn DynamicCatalog::remove_namespace(Self, String) -> Int32
+pub fn DynamicCatalog::remove_namespace(Self, String) -> Int
 pub fn DynamicCatalog::seed_example() -> Self
 pub fn DynamicCatalog::validate_args(Self, String, String, String) -> Result[Unit, String]
 
@@ -143,7 +143,7 @@ pub fn FetchFallbackResult::to_repr(Self) -> @debug.Repr
 pub(all) struct FileArgExpandResult {
   injected : String
   source_path : String
-  injected_len : Int32
+  injected_len : Int
   chat_ref : String
 } derive(Eq, @debug.Debug)
 pub fn FileArgExpandResult::equal(Self, Self) -> Bool
@@ -174,7 +174,7 @@ pub fn GrantSession::user_grants(Self) -> GrantFlowStep
 pub(all) struct McpCallOptions {
   expand_file_refs : Bool
   write_to_file : Bool
-  max_inline_bytes : Int32
+  max_inline_bytes : Int
 } derive(Eq, @debug.Debug)
 pub fn McpCallOptions::default() -> Self
 pub fn McpCallOptions::equal(Self, Self) -> Bool
@@ -197,7 +197,7 @@ pub(all) struct McpHostFs {
 }
 pub fn McpHostFs::append_chat(Self, String) -> Unit
 pub fn McpHostFs::chat_contains(Self, String) -> Bool
-pub fn McpHostFs::chat_total_chars(Self) -> Int32
+pub fn McpHostFs::chat_total_chars(Self) -> Int
 pub fn McpHostFs::empty() -> Self
 pub fn McpHostFs::expand_file_arg(Self, String) -> Result[FileArgExpandResult, String]
 pub fn McpHostFs::get(Self, String) -> String?
@@ -207,7 +207,7 @@ pub fn McpHostFs::write_to_file_result(Self, String, String, String) -> WriteToF
 pub(all) struct McpHostFsLive {
   kind : McpFsKind
   inner : McpHostFs
-  mut write_seq : Int32
+  mut write_seq : Int
 }
 pub fn McpHostFsLive::chat_contains(Self, String) -> Bool
 pub fn McpHostFsLive::expand_file_arg(Self, String) -> Result[FileArgExpandResult, String]
@@ -257,7 +257,7 @@ pub(all) struct Registry {
 pub fn Registry::empty() -> Self
 pub fn Registry::get(Self, String) -> ToolSpec?
 pub fn Registry::invoke(Self, String, String) -> ToolResult
-pub fn Registry::len(Self) -> Int32
+pub fn Registry::len(Self) -> Int
 pub fn Registry::register(Self, ToolSpec) -> Unit
 pub fn Registry::register_dynamic(Self, DynamicToolDesc) -> Unit
 pub fn Registry::with_echo() -> Self
@@ -297,7 +297,7 @@ pub fn ToolSpec::to_repr(Self) -> @debug.Repr
 
 pub(all) struct WebFetchRequest {
   url : String
-  max_bytes : Int32
+  max_bytes : Int
 } derive(Eq, @debug.Debug)
 pub fn WebFetchRequest::equal(Self, Self) -> Bool
 pub fn WebFetchRequest::not_equal(Self, Self) -> Bool
@@ -306,12 +306,12 @@ pub fn WebFetchRequest::to_repr(Self) -> @debug.Repr
 pub(all) struct WebHost {
   search_index : Array[WebSearchHit]
   pages : Map[String, String]
-  pages_status : Map[String, Int32]
+  pages_status : Map[String, Int]
 }
 pub fn WebHost::fetch(Self, WebFetchRequest) -> Result[String, String]
 pub fn WebHost::fetch_with_public_fallback(Self, WebFetchRequest, prefer? : PublicFetchFallback) -> Result[FetchFallbackResult, String]
 pub fn WebHost::mock() -> Self
-pub fn WebHost::search(Self, WebSearchRequest, current_year? : Int32) -> Result[Array[WebSearchHit], String]
+pub fn WebHost::search(Self, WebSearchRequest, current_year? : Int) -> Result[Array[WebSearchHit], String]
 pub fn WebHost::seed_blocked_public(Self, String, String) -> Unit
 
 pub(all) struct WebSearchHit {
@@ -325,7 +325,7 @@ pub fn WebSearchHit::to_repr(Self) -> @debug.Repr
 
 pub(all) struct WebSearchRequest {
   query : String
-  limit : Int32
+  limit : Int
 } derive(Eq, @debug.Debug)
 pub fn WebSearchRequest::equal(Self, Self) -> Bool
 pub fn WebSearchRequest::not_equal(Self, Self) -> Bool
@@ -333,7 +333,7 @@ pub fn WebSearchRequest::to_repr(Self) -> @debug.Repr
 
 pub(all) struct WriteToFileResult {
   path : String
-  bytes_written : Int32
+  bytes_written : Int
   returned_to_caller : String
 } derive(Eq, @debug.Debug)
 pub fn WriteToFileResult::equal(Self, Self) -> Bool

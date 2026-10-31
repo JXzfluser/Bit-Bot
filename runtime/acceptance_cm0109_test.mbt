@@ -8,8 +8,9 @@ test "acceptance_CM-0109_thread_reply_stays_in_thread" {
   assert_eq(addr.channel_id, "C99THREAD")
   assert_eq(addr.thread_ts, Some("1712345.000100"))
   let t0 = @runtime.open_turn(turn_id="acc-0109", text="thread msg")
+  // 回帖必须带线程 ts，不能塌成顶层频道。
   let t1 = match
-    t0.deliver_text_to_inbound(body="回同线程", inbound_address=inbound) {
+    t0.deliver_text(body="回同线程", channel_hint=Some(addr.reply_hint())) {
     Ok(t) => t
     Err(e) => fail(e)
   }

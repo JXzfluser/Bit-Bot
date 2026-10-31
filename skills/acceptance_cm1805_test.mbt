@@ -11,9 +11,7 @@ test "acceptance_CM-1805_food_ordering_restaurant_playbooks" {
   assert_false(@skills.Target.is_food_ordering())
   for
     url in [
-      "https://resy.com/cities/ny/venue",
-      "https://www.opentable.com/r/demo",
-      "https://www.doordash.com/store/1",
+      "https://resy.com/cities/ny/venue", "https://www.opentable.com/r/demo", "https://www.doordash.com/store/1",
     ] {
     match @skills.dispatch_food_ordering_playbook(url) {
       Err(e) => fail(e)
@@ -29,7 +27,9 @@ test "acceptance_CM-1805_food_ordering_restaurant_playbooks" {
     }
   }
   assert_true(@skills.food_ordering_skill_trigger_hit("order food on DoorDash"))
-  assert_true(@skills.food_ordering_skill_trigger_hit("reserve a table on Resy"))
+  assert_true(
+    @skills.food_ordering_skill_trigger_hit("reserve a table on Resy"),
+  )
   match @skills.dispatch_food_ordering_playbook("https://www.target.com/") {
     Err(m) =>
       assert_true(

@@ -28,6 +28,10 @@ pub fn is_legitimate_safer_path(original_action~ : String, adapted_action~ : Str
 
 pub fn is_short_refuse_no_poc(PolicyVerdict) -> Bool
 
+pub fn memory_cue_grants_send(String) -> Bool
+
+pub fn memory_cue_refusal_reason(String) -> String
+
 pub fn parse_fenced_output(String, String) -> Array[ContentSlice]
 
 pub fn plan_irreversible_from_claim(PermissionClaimSource, ApprovalClass, summary~ : String, draft_body~ : String) -> ConsequentialOutcome
@@ -68,7 +72,7 @@ pub fn AgentInboxDraft::to_repr(Self) -> @debug.Repr
 
 pub(all) struct AgentInboxGuard {
   may_send_from_inbox : Bool
-  mut unauthorized_send_attempts : Int32
+  mut unauthorized_send_attempts : Int
   mut last_report : AgentInboxDraft?
 }
 pub fn AgentInboxGuard::executor() -> Self
@@ -262,7 +266,7 @@ pub fn DraftOutbound::not_equal(Self, Self) -> Bool
 pub fn DraftOutbound::to_repr(Self) -> @debug.Repr
 
 pub(all) struct EffectPlanner {
-  _tag : Int32
+  _tag : Int
 }
 pub fn EffectPlanner::new() -> Self
 pub fn EffectPlanner::plan_from_slice(Self, ContentSlice) -> Array[PlannedEffect]

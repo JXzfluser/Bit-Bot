@@ -85,8 +85,7 @@ pub fn MediaHost::enqueue_generate_video(
     return Err("GenerateVideo requires a prompt")
   }
   let lower = prompt.to_lower()
-  if lower.contains("real person video") ||
-    lower.contains("deepfake of a real") {
+  if lower.contains("real person video") || lower.contains("deepfake of a real") {
     return Err("GenerateVideo must not forge real-person videos")
   }
   let id = if task_id.length() > 0 {
@@ -99,13 +98,7 @@ pub fn MediaHost::enqueue_generate_video(
   } else {
     name + ".mp4"
   }
-  Ok({
-    id,
-    prompt,
-    name: fname,
-    state: Queued,
-    artifact_path: None,
-  })
+  Ok({ id, prompt, name: fname, state: Queued, artifact_path: None, })
 }
 
 ///|
@@ -137,16 +130,18 @@ pub fn MediaHost::complete_video_task(
     Completed =>
       match task.artifact_path {
         Some(p) =>
-          Ok((
-            task,
-            {
-              task_id: task.id,
-              artifact_path: p,
-              prompt: task.prompt,
-              notifiable: true,
-              message: "GenerateVideo completed: " + p,
-            },
-          ))
+          Ok(
+            (
+              task,
+              {
+                task_id: task.id,
+                artifact_path: p,
+                prompt: task.prompt,
+                notifiable: true,
+                message: "GenerateVideo completed: " + p,
+              },
+            ),
+          )
         None => Err("GenerateVideo completed without artifact path")
       }
     Queued | Running => {

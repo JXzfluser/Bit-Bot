@@ -10,10 +10,10 @@
 
 ///|
 test "C-1 describe_schedule resolves a bare Chinese time phrase" {
-  let action = match parse_product_tool_action(
-    "describe_schedule",
-    "{\"description\":\"每天早上8点\"}",
-  ) {
+  let action = match
+    parse_product_tool_action(
+      "describe_schedule", "{\"description\":\"每天早上8点\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -27,10 +27,10 @@ test "C-1 describe_schedule resolves a bare Chinese time phrase" {
 
 ///|
 test "C-1 describe_schedule resolves weekday and hourly phrases" {
-  let workday = match parse_product_tool_action(
-    "describe_schedule",
-    "{\"description\":\"每工作日9点\"}",
-  ) {
+  let workday = match
+    parse_product_tool_action(
+      "describe_schedule", "{\"description\":\"每工作日9点\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -41,10 +41,10 @@ test "C-1 describe_schedule resolves weekday and hourly phrases" {
     exec_product_tool_action(workday).observation,
     "{\"cron\":\"0 9 * * 1-5\"}",
   )
-  let hourly = match parse_product_tool_action(
-    "describe_schedule",
-    "{\"description\":\"每小时\"}",
-  ) {
+  let hourly = match
+    parse_product_tool_action(
+      "describe_schedule", "{\"description\":\"每小时\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -55,10 +55,10 @@ test "C-1 describe_schedule resolves weekday and hourly phrases" {
     exec_product_tool_action(hourly).observation,
     "{\"cron\":\"0 * * * *\"}",
   )
-  let half = match parse_product_tool_action(
-    "describe_schedule",
-    "{\"description\":\"每30分钟\"}",
-  ) {
+  let half = match
+    parse_product_tool_action(
+      "describe_schedule", "{\"description\":\"每30分钟\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -73,10 +73,10 @@ test "C-1 describe_schedule resolves weekday and hourly phrases" {
 
 ///|
 test "C-1 describe_schedule keeps an already valid cron as is" {
-  let action = match parse_product_tool_action(
-    "describe_schedule",
-    "{\"description\":\"0 8 * * *\"}",
-  ) {
+  let action = match
+    parse_product_tool_action(
+      "describe_schedule", "{\"description\":\"0 8 * * *\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -91,10 +91,10 @@ test "C-1 describe_schedule keeps an already valid cron as is" {
 
 ///|
 test "C-1 describe_schedule refuses to invent a schedule it cannot parse" {
-  let action = match parse_product_tool_action(
-    "describe_schedule",
-    "{\"description\":\"下个月的某个时候吧\"}",
-  ) {
+  let action = match
+    parse_product_tool_action(
+      "describe_schedule", "{\"description\":\"下个月的某个时候吧\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -109,10 +109,10 @@ test "C-1 describe_schedule refuses to invent a schedule it cannot parse" {
 
 ///|
 test "C-1 create_teammate emits one teammate_create effect" {
-  let action = match parse_product_tool_action(
-    "create_teammate",
-    "{\"name\":\"选题\",\"role\":\"热点选题\"}",
-  ) {
+  let action = match
+    parse_product_tool_action(
+      "create_teammate", "{\"name\":\"选题\",\"role\":\"热点选题\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -133,20 +133,20 @@ test "C-1 create_teammate emits one teammate_create effect" {
 
 ///|
 test "C-1 create_teammate is idempotent for the same name and role" {
-  let a = match parse_product_tool_action(
-    "create_teammate",
-    "{\"name\":\"采集\",\"role\":\"信息采集\"}",
-  ) {
+  let a = match
+    parse_product_tool_action(
+      "create_teammate", "{\"name\":\"采集\",\"role\":\"信息采集\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
     }
     Ok(a) => a
   }
-  let b = match parse_product_tool_action(
-    "create_teammate",
-    "{\"name\":\"采集\",\"role\":\"信息采集\"}",
-  ) {
+  let b = match
+    parse_product_tool_action(
+      "create_teammate", "{\"name\":\"采集\",\"role\":\"信息采集\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -169,10 +169,10 @@ test "C-1 create_teammate rejects a missing role without producing an effect" {
 
 ///|
 test "C-1 create_routine turns a Chinese schedule into a cron effect" {
-  let action = match parse_product_tool_action(
-    "create_routine",
-    "{\"schedule\":\"每天早上8点\",\"prompt\":\"采集AI科技热点并发我邮箱\"}",
-  ) {
+  let action = match
+    parse_product_tool_action(
+      "create_routine", "{\"schedule\":\"每天早上8点\",\"prompt\":\"采集AI科技热点并发我邮箱\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -192,10 +192,10 @@ test "C-1 create_routine turns a Chinese schedule into a cron effect" {
 
 ///|
 test "C-1 create_routine refuses an unparsable schedule and leaves no effect" {
-  let action = match parse_product_tool_action(
-    "create_routine",
-    "{\"schedule\":\"随便哪天\",\"prompt\":\"干活\"}",
-  ) {
+  let action = match
+    parse_product_tool_action(
+      "create_routine", "{\"schedule\":\"随便哪天\",\"prompt\":\"干活\"}",
+    ) {
     Err(_) => {
       assert_true(false)
       return
@@ -209,10 +209,10 @@ test "C-1 create_routine refuses an unparsable schedule and leaves no effect" {
 
 ///|
 test "C-1 create_routine rejects a missing prompt" {
-  match parse_product_tool_action(
-    "create_routine",
-    "{\"schedule\":\"每天早上8点\"}",
-  ) {
+  match
+    parse_product_tool_action(
+      "create_routine", "{\"schedule\":\"每天早上8点\"}",
+    ) {
     Ok(_) => assert_true(false)
     Err(e) => assert_true(e.contains("needs a prompt"))
   }

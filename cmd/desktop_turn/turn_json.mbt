@@ -435,6 +435,7 @@ pub fn DesktopTurnContext::default() -> DesktopTurnContext {
 
 ///|
 /// Result of one MoonBit desktop turn (product brain path).
+
 ///|
 /// K-6: 一条工具调用的可回放记录。内核已经记了同样的东西
 /// (`runtime.AgentToolTrace`),这里只是把它带出回合结果,让 Host 能落盘。
@@ -1952,7 +1953,6 @@ pub fn run_desktop_turn(
         @channels.plan_channel_reply(
           inbound_address=inbound,
           outbound_channel=outbound,
-          body~,
         ) {
         Err(e) =>
           fail_turn(

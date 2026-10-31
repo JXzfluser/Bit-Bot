@@ -6,22 +6,57 @@ import {
 }
 
 // Values
+pub const SECRET_REDACTION : String = "[REDACTED]"
+
+pub fn canonical_tool_id(String) -> String
+
 pub fn display_instant(String, TimeZone) -> String
+
+pub fn is_known_zone(String) -> Bool
+
+pub fn last_weekday_of_month(Int, Int, Int) -> Int
+
+pub fn looks_like_secret(String) -> Bool
+
+pub fn nth_weekday_of_month(Int, Int, Int, Int) -> Int
+
+pub fn secret_shape_rows() -> Array[String]
+
+pub fn tool_alias_rows() -> Array[String]
+
+pub fn tool_alias_table() -> Array[ToolAlias]
+
+pub fn zone_offset_minutes(String, CivilDate, Int) -> Int?
+
+pub fn zone_rule(String) -> (Int, DstRule)?
 
 // Errors
 
 // Types and methods
-pub(all) enum BitError {
-  InvalidArgument(message~ : String)
-  NotFound(message~ : String)
-  Denied(message~ : String)
-  HostFailure(message~ : String)
-  Internal(message~ : String)
+pub(all) struct CivilDate {
+  year : Int
+  month : Int
+  day : Int
 } derive(Eq, @debug.Debug)
-pub fn BitError::equal(Self, Self) -> Bool
-pub fn BitError::message(Self) -> String
-pub fn BitError::not_equal(Self, Self) -> Bool
-pub fn BitError::to_repr(Self) -> @debug.Repr
+pub fn CivilDate::add_days(Self, Int) -> Self
+pub fn CivilDate::day_of_week(Self) -> Int
+pub fn CivilDate::days_in_month(Self) -> Int
+pub fn CivilDate::equal(Self, Self) -> Bool
+pub fn CivilDate::from_epoch_days(Int64) -> Self
+pub fn CivilDate::is_leap_year(Self) -> Bool
+pub fn CivilDate::new(Int, Int, Int) -> Self
+pub fn CivilDate::not_equal(Self, Self) -> Bool
+pub fn CivilDate::to_epoch_days(Self) -> Int64
+pub fn CivilDate::to_repr(Self) -> @debug.Repr
+
+pub(all) enum DstRule {
+  NoDst
+  UsDst
+  EuDst
+} derive(Eq, @debug.Debug)
+pub fn DstRule::equal(Self, Self) -> Bool
+pub fn DstRule::not_equal(Self, Self) -> Bool
+pub fn DstRule::to_repr(Self) -> @debug.Repr
 
 pub(all) struct Instant {
   rfc3339 : String
@@ -32,20 +67,6 @@ pub fn Instant::format_with_zone(Self, TimeZone) -> String
 pub fn Instant::not_equal(Self, Self) -> Bool
 pub fn Instant::to_repr(Self) -> @debug.Repr
 
-pub(all) struct MachineId {
-  value : String
-} derive(Eq, @debug.Debug)
-pub fn MachineId::equal(Self, Self) -> Bool
-pub fn MachineId::not_equal(Self, Self) -> Bool
-pub fn MachineId::to_repr(Self) -> @debug.Repr
-
-pub(all) struct RoutineId {
-  value : String
-} derive(Eq, @debug.Debug)
-pub fn RoutineId::equal(Self, Self) -> Bool
-pub fn RoutineId::not_equal(Self, Self) -> Bool
-pub fn RoutineId::to_repr(Self) -> @debug.Repr
-
 pub(all) struct SessionId {
   value : String
 } derive(Eq, @debug.Debug)
@@ -54,20 +75,6 @@ pub fn SessionId::new(String) -> Self
 pub fn SessionId::not_equal(Self, Self) -> Bool
 pub fn SessionId::to_repr(Self) -> @debug.Repr
 
-pub(all) struct SkillId {
-  value : String
-} derive(Eq, @debug.Debug)
-pub fn SkillId::equal(Self, Self) -> Bool
-pub fn SkillId::not_equal(Self, Self) -> Bool
-pub fn SkillId::to_repr(Self) -> @debug.Repr
-
-pub(all) struct SubagentId {
-  value : String
-} derive(Eq, @debug.Debug)
-pub fn SubagentId::equal(Self, Self) -> Bool
-pub fn SubagentId::not_equal(Self, Self) -> Bool
-pub fn SubagentId::to_repr(Self) -> @debug.Repr
-
 pub(all) struct TimeZone {
   label : String
 } derive(Eq, @debug.Debug)
@@ -75,6 +82,14 @@ pub fn TimeZone::asia_shanghai() -> Self
 pub fn TimeZone::equal(Self, Self) -> Bool
 pub fn TimeZone::not_equal(Self, Self) -> Bool
 pub fn TimeZone::to_repr(Self) -> @debug.Repr
+
+pub(all) struct ToolAlias {
+  canonical : String
+  aliases : Array[String]
+} derive(Eq, @debug.Debug)
+pub fn ToolAlias::equal(Self, Self) -> Bool
+pub fn ToolAlias::not_equal(Self, Self) -> Bool
+pub fn ToolAlias::to_repr(Self) -> @debug.Repr
 
 pub(all) struct TurnId {
   value : String

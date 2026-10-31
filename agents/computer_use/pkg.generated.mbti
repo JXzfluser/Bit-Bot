@@ -26,8 +26,6 @@ pub fn evaluate_gui_automation(String, GuiAutomationPath) -> Result[Unit, String
 
 pub fn navigate_public(String) -> Result[NavigateResult, String]
 
-pub fn public_page_fallback(url~ : String, kind? : CuPublicFallbackKind, use_cookies_or_tokens? : Bool) -> Result[CuPublicFallbackResult, String]
-
 pub fn record_signin_attempt(SignInChannel, String, Array[String]) -> Result[SignInAttemptRecord, String]
 
 pub fn run_computer_use_task(task_id~ : String, parent_turn_id~ : String, ComputerUseSpec) -> Result[TaskComputerUseReport, String]
@@ -62,25 +60,6 @@ pub(all) struct ComputerUseSpec {
   allow_shell_escape : Bool
 }
 pub fn ComputerUseSpec::validate(Self) -> Result[Unit, String]
-
-pub(all) enum CuPublicFallbackKind {
-  BrowserNavigate
-  CurlEgress
-} derive(Eq, @debug.Debug)
-pub fn CuPublicFallbackKind::equal(Self, Self) -> Bool
-pub fn CuPublicFallbackKind::not_equal(Self, Self) -> Bool
-pub fn CuPublicFallbackKind::to_repr(Self) -> @debug.Repr
-
-pub(all) struct CuPublicFallbackResult {
-  url : String
-  kind : CuPublicFallbackKind
-  navigate_reachable : Bool
-  body : String
-  used_credentials : Bool
-} derive(Eq, @debug.Debug)
-pub fn CuPublicFallbackResult::equal(Self, Self) -> Bool
-pub fn CuPublicFallbackResult::not_equal(Self, Self) -> Bool
-pub fn CuPublicFallbackResult::to_repr(Self) -> @debug.Repr
 
 pub(all) enum GuiAutomationPath {
   ViaComputerUse

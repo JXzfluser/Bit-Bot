@@ -25,8 +25,71 @@ jobs:
           moon version --all
           moon check
 
-      - name: moon test
-        run: moon test
+      # Formatting is a gate, not a suggestion. `moon fmt` is the documented
+      # last step (AGENTS.md), so an unformatted tree must fail here rather
+      # than accumulate as a silent diff on someone's branch.
+      - name: moon fmt --check
+        run: moon fmt --check
+
+      # `.mbti` is the published interface of every package. If it drifts from
+      # the source, downstream users read a contract that no longer exists.
+      - name: moon info + interface drift gate
+        run: |
+          moon info
+          git diff --exit-code -- '*.mbti'
+
+      # The shipped kernel is the NATIVE build (cmd/desktop_turn/moon.pkg puts
+      # the live agent loop in the native-only file, and the Host defaults to
+      # `--target native`). The wasm target compiles a *different* dispatcher —
+      # the legacy planner — so testing wasm alone never exercises the code that
+      # ships. Both targets are required: wasm keeps the legacy-planner path
+      # covered, native covers the real ProductFfiHost loop.
+      # `moon.mod`'s preferred_target is now `native`, so a bare `moon test`
+      # already runs the shipped path.
+      - name: moon test (wasm — legacy planner path)
+        run: moon test --target wasm
+
+      - name: moon test (native — the target production ships)
+        run: moon test --target native
+
+      # The capability matrix is the project's contract: every row names an
+      # evidence file and a test name. Nothing stopped a row's evidence from
+      # being renamed or deleted, so the matrix could quietly become a false
+      # ledger. This gate makes every row machine-checkable.
+      - name: Capability matrix evidence
+        run: node scripts/prove_capability_matrix.mjs
+
+      # Capabilities that are implemented and evidenced but have NO production
+      # consumer are not delivered — the matrix says PASS, the product cannot
+      # reach them. They are tracked (not deleted) so the claim stays honest,
+      # and this gate keeps the tracking list from drifting.
+      - name: Contract layer inventory
+        run: node scripts/prove_contract_layer.mjs
+
+      # The tool-name alias table is a load-bearing contract: the registry
+      # lookup, the policy approval list, the deny list and the Host's
+      # router all match on exact strings. When the kernel's copy and the
+      # Host's copy drifted, a camelCase spelling could skip a tool's
+      # approval. This gate keeps the two tables identical.
+      - name: Tool name alias contract
+        run: node scripts/prove_tool_names.mjs
+
+      # "What does a credential look like?" must be answered the same way by
+      # the kernel and the Host. The kernel's rule table used to be narrower,
+      # so `API_KEY=…` passed the backstop that keeps plaintext out of the
+      # transcript for CLI and API callers. This gate compares the two rule
+      # tables AND asks the real kernel binary for a verdict on a corpus.
+      - name: Secret shape contract
+        run: node scripts/prove_secret_shapes.mjs
+
+      # A group turn that fails must SAY so. The user-visible symptom of a
+      # stuck room turn was "message sent, nobody replied, no error at all" —
+      # indistinguishable from the bot ignoring them. This gate pins the
+      # failure surfaces: the Host-side deadline, the renderer's backstop, the
+      # honest "these groups were dissolved" cascade report, and a send button
+      # whose disabled state is actually visible.
+      - name: Room failure surfaces
+        run: node scripts/prove_room_failure_surfaces.mjs
 
       # Best-effort only: Live Host / Chrome / display may be absent on ubuntu-latest.
       - name: Optional host_h4_smoke batch1

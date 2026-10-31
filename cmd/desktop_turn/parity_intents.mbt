@@ -93,7 +93,7 @@ pub fn decode_cn_group_chat(raw : String) -> (String, String)? {
 
 ///|
 /// 从 start 起读一段 ASCII 数字，返回 (值, 结束下标)；没有数字返回 None。
-fn cn_read_int(cs : Array[Char], start : Int) -> (Int, Int)? {
+fn cn_read_int(cs : Array[Char], start : Int32) -> (Int32, Int32)? {
   let n = cs.length()
   let mut i = start
   let mut v = 0
@@ -121,9 +121,9 @@ fn cn_read_int(cs : Array[Char], start : Int) -> (Int, Int)? {
 fn cn_routine_verb(text : String) -> Bool {
   for
     v in [
-      "提醒", "通知", "推送", "发到", "送到", "发送", "发布", "播报", "汇报",
-      "搜集", "收集", "汇总", "整理", "检查", "审核", "生成", "同步", "执行",
-      "跑一次", "推给",
+      "提醒", "通知", "推送", "发到", "送到", "发送", "发布", "播报",
+      "汇报", "搜集", "收集", "汇总", "整理", "检查", "审核", "生成",
+      "同步", "执行", "跑一次", "推给",
     ] {
     if text.contains(v) {
       return true
@@ -136,7 +136,7 @@ fn cn_routine_verb(text : String) -> Bool {
 /// 「N点[半|M分]」+ 时段词 → (minute, hour) 24 小时制。
 /// 只认阿拉伯数字：「九点」这类中文数字今天不解析，解析不了就落回普通聊天，
 /// 不猜一个时间糊弄用户（宁可不建，也不建错）。
-fn cn_daily_time(text : String) -> (Int, Int)? {
+fn cn_daily_time(text : String) -> (Int32, Int32)? {
   let cs = text.to_array()
   let n = cs.length()
   let mut i = 0
@@ -145,10 +145,15 @@ fn cn_daily_time(text : String) -> (Int, Int)? {
       None => i = i + 1
       Some((num, after)) => {
         let unit = if after < n { cs[after] } else { ' ' }
-        if (unit == '点' || unit == '时' || unit == '時') && num >= 0 && num <= 23 {
-          let pm =
-            text.contains("下午") || text.contains("晚上") || text.contains("傍晚") ||
-              text.contains("夜里") || text.contains("夜晚") || text.contains("晚")
+        if (unit == '点' || unit == '时' || unit == '時') &&
+          num >= 0 &&
+          num <= 23 {
+          let pm = text.contains("下午") ||
+            text.contains("晚上") ||
+            text.contains("傍晚") ||
+            text.contains("夜里") ||
+            text.contains("夜晚") ||
+            text.contains("晚")
           let mut hour = num
           if num >= 1 && num <= 11 && pm {
             hour = num + 12
@@ -237,8 +242,10 @@ fn decode_cn_schedule_with(
     i = i + 1
   }
   let weekday = t.contains("每个工作日") || t.contains("工作日")
-  let daily =
-    t.contains("每天") || t.contains("每日") || t.contains("每晚") || t.contains("天天")
+  let daily = t.contains("每天") ||
+    t.contains("每日") ||
+    t.contains("每晚") ||
+    t.contains("天天")
   if !daily && !weekday {
     return None
   }

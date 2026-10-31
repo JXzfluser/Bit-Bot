@@ -444,14 +444,20 @@ test "h2_batch3_ids_subdirs_and_wave_unclaimed" {
     (@box_host.Cm0205InfoPanel, "CM-0205", "cm-0205-info-panel"),
     (@box_host.Cm0206NotifyToggles, "CM-0206", "cm-0206-notify-toggles"),
     (
-      @box_host.Cm1401CreateAgentSidebar, "CM-1401", "cm-1401-create-agent-sidebar",
+      @box_host.Cm1401CreateAgentSidebar,
+      "CM-1401",
+      "cm-1401-create-agent-sidebar",
     ),
     (@box_host.Cm1405MembersPanel, "CM-1405", "cm-1405-members-panel"),
     (
-      @box_host.Cm1507AutoReviewDeeplink, "CM-1507", "cm-1507-auto-review-deeplink",
+      @box_host.Cm1507AutoReviewDeeplink,
+      "CM-1507",
+      "cm-1507-auto-review-deeplink",
     ),
     (
-      @box_host.Cm2178PermissionGuideSettings, "CM-2178", "cm-2178-permission-guide-settings",
+      @box_host.Cm2178PermissionGuideSettings,
+      "CM-2178",
+      "cm-2178-permission-guide-settings",
     ),
   ]
   for p in pairs {
@@ -539,7 +545,8 @@ test "h2_cm0205_info_panel_five_sections_not_settings" {
 ///|
 test "h2_cm0206_notify_toggles_isolated_per_agent" {
   let shell = @box_host.HostUiShell::live()
-  match shell.set_agent_notify("h2-throwaway-agent", @ui_protocol.Sound, false) {
+  match
+    shell.set_agent_notify("h2-throwaway-agent", @ui_protocol.Sound, false) {
     Ok(_) => ()
     Err(e) => fail(e)
   }
