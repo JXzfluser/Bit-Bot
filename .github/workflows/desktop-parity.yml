@@ -97,6 +97,9 @@ jobs:
           export PATH="$HOME/.moon/bin:$PATH"
           xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh 2>&1 | tee /tmp/parity-matrix.log
 
+      # 为什么要把 ✗ 行写成注解：Actions 的运行日志对未登录读者是「Sign in to
+      # view logs」，而注解（::error）在 run 页面对所有人可见。矩阵在干净机器上
+      # 红了、本地却复现不出来时，这几行就是唯一能拿到的事实 —— 没有它只能盲重跑。
       - name: Show red lines (if any)
         if: failure()
         shell: bash
@@ -107,6 +110,19 @@ jobs:
           tail -80 /tmp/parity-matrix.log || true
           echo "== sub-gate logs =="
           ls -la /tmp/*.log 2>/dev/null | head -50 || true
+          {
+            echo "### matrix ✗ lines"
+            echo '```'
+            grep -n "✗" /tmp/parity-matrix.log | head -10 || echo "(none)"
+            echo '```'
+            echo "### tail 25"
+            echo '```'
+            tail -25 /tmp/parity-matrix.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY" || true
+          grep "✗" /tmp/parity-matrix.log | head -10 | while IFS= read -r line; do
+            printf '::error title=parity-red::%s\n' "$line"
+          done || true
 
       - name: Upload matrix log
         if: always()
