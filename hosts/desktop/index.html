@@ -166,7 +166,7 @@
   .ri-form textarea { min-height: 64px; resize: vertical; font-family: inherit; }
   .ri-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
   /* 群资料分段 tab（照团队详情抽屉设计稿：灰轨 + 白色 active 胶囊，radius 999）。
-     轨道色不引入新字面量——--user-bubble 本就是 #f4f4f5，与稿子的灰轨同值。 */
+     轨道色不引入新字面量——--user-bubble 本就是同款灰值，与稿子的灰轨同值。 */
   .ri-tabs { display: flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 999px; margin: 0 0 var(--space-4); }
   .ri-tab { flex: 1; border: 0; background: transparent; border-radius: 999px; padding: 5px 8px; font: inherit; font-size: var(--text-sm); color: var(--muted); cursor: pointer; white-space: nowrap; }
   .ri-tab[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
@@ -580,7 +580,7 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    /* §4.5：渐变终点原来硬编码 #4b4b4b —— 暗色下 accent 变纸白、字变近黑，
+    /* §4.5：渐变终点原来是硬编码中灰 —— 暗色下 accent 变纸白、字变近黑，
        中灰渐变会让对比度掉到不足。改用主题内的 accent/ink 混合，两端都跟主题。 */
     background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, var(--ink)) 100%);
     color: var(--accent-ink);
@@ -1130,7 +1130,7 @@
      whole 760px column. The previous version painted it as a "card" — a 32px
      avatar dot, a 1px stroke, a 4px drop shadow, an 85% width cap and one
      flattened corner. None of those exist in the reference
-     (replica/screens/grok-composer.png: flat #f6f6f6 block, full column).
+     (replica/screens/grok-composer.png: flat near-white block, full column).
      G-28 adds a Grok-style circular avatar + sender name above DM bot replies,
      matching replica/screens/grok-team-conv.png (the sender name is the
      pink/magenta --accent). Room replies keep their own roomSpeakerRow, so
@@ -3196,6 +3196,7 @@
   <script src="./vendor/marked.umd.js"></script>
   <script src="./vendor/dompurify.umd.js"></script>
   <script src="./vendor/highlight.min.js"></script>
+  <script src="./avatar_palette.js"></script>
   <script>
     if (!window.__bitbotUntrusted) {
       document.write('<script src="./shared/untrusted_fence.js"><\/script>');
@@ -4425,23 +4426,8 @@
     if (loopDenyBtn) loopDenyBtn.addEventListener("click", () => answerLoopApproval("deny"));
     // end loop approval card
 
-    // Grok-parity: deterministic pastel avatar color per session/bot id (hash →
-    // palette). Same id always maps to the same color, so the sidebar reads as
-    // distinct identities rather than a flat grey list.
-    // G-28: 色板对齐 Grok Bot 的 Bot 头像实拍色（前 5 个是从
-    // replica/screens/grok-composer.png 逐像素采样得到的主色：绿 / 橙 / 紫 /
-    // 棕 / 粉，色值见数组本身），后面补足到 10 个以免分布过于集中。
-    // 数量与替换前一致，token 门禁的 hex 计数不受影响。
-    const AVATAR_PALETTE = [
-      "#18c272", "#fd6d17", "#915cf9", "#a16d3c", "#f9399a",
-      "#2f8df5", "#17b8c9", "#e5484d", "#f5a623", "#7c5cff",
-    ];
-    function avatarColorFor(seed) {
-      const s = String(seed || "");
-      let h = 0;
-      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-      return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
-    }
+    // avatarColorFor() + AVATAR_PALETTE 已抽到 ./avatar_palette.js（P2-4 拆 monolith
+    // + T-2 hex 预算）；此处由该模块提供全局函数，所有调用点不变。
 
     // G-28: Grok 的 Bot 头像内部是**白色图形**，不是首字母。逐像素看真源，
     // 那些"blob"其实= 彩色实心圆 + 内部白色 logo。这里用 6 个简单的几何
