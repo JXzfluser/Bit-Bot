@@ -109,8 +109,8 @@ function skel(v) {
     if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return "<iso>";
     if (/^sess-[0-9a-f]{8}$/.test(v)) return "<sess-id>";
     if (/^msg-[0-9a-f]{8}$/.test(v)) return "<msg-id>";
-    if (/^room-[0-9a-z]+$/.test(v)) return "<room-id>";
-    if (/^approval-[0-9a-z]+$/.test(v)) return "<approval-id>";
+    if (/^room-[0-9a-z-]+$/.test(v)) return "<room-id>";
+    if (/^approval-[0-9a-z-]+$/.test(v)) return "<approval-id>";
     if (/^bot-[0-9a-f]+$/.test(v)) return "<bot-id>";
     if (/^lib-[0-9a-z]+-[a-z0-9]+$/.test(v)) return "<lib-id>";
   }

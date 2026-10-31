@@ -874,7 +874,10 @@ function createProductSurface(repoRoot, opts = {}) {
   // ===== PENDING APPROVALS =====
   function appendPendingApproval({ source, kind, command, expires_at }) {
     const entry = {
-      id: "approval-" + Date.now().toString(36),
+      // 同毫秒两条审批会撞 id（CI 上真撞过：EO-03 折叠报「审批被创建了两次」，
+      // fold 的 find/drop 全按 id 认，撞了就是把两条当一条）。加随机后缀，
+      // 与 roomLibraryAdd 的 lib- id 同一款生成法。
+      id: "approval-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
       source: source || "chat",
       kind,
       command,
@@ -1074,7 +1077,7 @@ function createProductSurface(repoRoot, opts = {}) {
   // GP-21: chat-sourced Deny receipt — append-only audit line, nothing executed.
   function logApprovalDeny({ source, kind, command }) {
     const entry = {
-      id: "deny-" + Date.now().toString(36),
+      id: "deny-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
       source: source || "chat",
       decision: "deny",
       kind,
@@ -1850,7 +1853,7 @@ function createProductSurface(repoRoot, opts = {}) {
 
     const at = nowIso();
     const names = resolved.map(nameOf);
-    const roomId = "room-" + Date.now().toString(36);
+    const roomId = "room-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
     const room = {
       id: roomId,
       title: finalTitle,
