@@ -939,8 +939,15 @@ const forbiddenHit = (text) => {
       qRec && String(qRec.url || "").includes("/chat/completions") && /qwen/.test(String(qRec.model || ""))
         ? ok("qwen 请求路径与 model 来自当前 provider 配置（" + (qRec.model || "") + "）")
         : bad("qwen 请求 model/url 不符", JSON.stringify(qRec && { url: qRec.url, model: qRec.model }));
+      // The stub record lands before the renderer paints the assistant bubble.
+      // Wait for the text (bounded) instead of sampling the DOM in the same tick,
+      // which made this assertion flaky under load (observed FAIL=1 / retry green).
+      const visQSeen = await waitUntil(
+        async () => (await lastAssistantVisible()).includes("UJQWEN-PROVIDER-REPLY"),
+        30000,
+      );
       const visQ = await lastAssistantVisible();
-      visQ.includes("UJQWEN-PROVIDER-REPLY")
+      visQSeen && visQ.includes("UJQWEN-PROVIDER-REPLY")
         ? ok("界面回复文本来自 qwen stub（回执真来自当前 provider）")
         : bad("界面回执不来自 qwen stub", visQ.slice(0, 200));
 

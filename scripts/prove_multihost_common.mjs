@@ -21,6 +21,7 @@
  *   MC-06 进度分类只有 progress_protocol 一份（Host 与 UI 同源）
  *   MC-07 尺子自检：重复解析器/重复词表必须在合成样本里被判红，干净样本不误报
  *   MC-08 行为等价：共享后的解析/镜像逐字段等于收敛前的实现（fixture 对照）
+ *   MC-09 原生壳（iOS/Android）残差键必须与 RESIDUAL_KEYS 逐个同序（chip 文字顺序一致）
  *
  * 退出码：任何一条红即 1。
  */
@@ -389,6 +390,48 @@ try {
     );
 } catch (err) {
   bad("MC-08 执行异常", err && err.stack ? err.stack : err);
+}
+
+/* MC-09 原生壳残差键与共享词表同序 */
+try {
+  const dm = require("../hosts/shared/delivery_mirror.js");
+  const natives = [
+    ["iOS", path.join(HOSTS, "ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift")],
+    ["Android", path.join(HOSTS, "android/BitBotHost/app/src/main/java/com/bitbot/host/SendToUserSurface.kt")],
+  ];
+  const rows = [];
+  const wrong = [];
+  for (const [name, file] of natives) {
+    if (!fs.existsSync(file)) {
+      wrong.push(`${name}: missing ${REL(file)}`);
+      continue;
+    }
+    const src = fs.readFileSync(file, "utf8");
+    const fn = src.search(/(func residualSuffix|fun residualSuffix)/);
+    const scope = fn < 0 ? "" : src.slice(fn);
+    const rel = scope.search(/(let keys = \[|val keys = listOf\()/);
+    const body = rel < 0 ? "" : scope.slice(rel);
+    const end = body.search(/\n\s*[)\]]/);
+    const block = end < 0 ? body : body.slice(0, end);
+    const keys = [...block.matchAll(/"([A-Za-z0-9_]+_residual)"/g)].map((m) => m[1]);
+    const same =
+      keys.length === dm.RESIDUAL_KEYS.length &&
+      keys.every((k, i) => k === dm.RESIDUAL_KEYS[i]);
+    rows.push(`${name}=${keys.length}`);
+    if (!same) {
+      const firstDiff = keys.findIndex((k, i) => k !== dm.RESIDUAL_KEYS[i]);
+      wrong.push(
+        firstDiff < 0
+          ? `${name} 键数 ${keys.length}/${dm.RESIDUAL_KEYS.length}（共同前缀之外缺项）`
+          : `${name} 第 ${firstDiff + 1} 项起不同（native=${keys[firstDiff]} canonical=${dm.RESIDUAL_KEYS[firstDiff]}，${keys.length}/${dm.RESIDUAL_KEYS.length} 项）`,
+      );
+    }
+  }
+  if (!wrong.length && rows.length)
+    ok(`MC-09 iOS/Android 残差键与 RESIDUAL_KEYS 同序（${rows.join(" ")} / ${dm.RESIDUAL_KEYS.length}）`);
+  else bad("MC-09 原生壳残差键顺序/集合与共享词表不一致", wrong.join("；") || "no native files");
+} catch (err) {
+  bad("MC-09 执行异常", err && err.stack ? err.stack : err);
 }
 
 console.log(`prove_multihost_common: pass=${PASS} fail=${FAIL}`);

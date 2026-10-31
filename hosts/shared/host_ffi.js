@@ -17182,17 +17182,29 @@ function createHostFfi(repoRoot, opts = {}) {
         const profile = path.join(artifactDir, "oauth-browser-profile");
         fs.mkdirSync(profile, { recursive: true });
         const { spawn } = require("child_process");
+        const chromeArgs = [
+          "--disable-gpu",
+          "--no-first-run",
+          "--no-default-browser-check",
+          `--user-data-dir=${profile}`,
+          "--new-window",
+          "--window-size=1100,800",
+          authorizeUrl,
+        ];
+        // 容器/CI 以 root 跑时 Chrome 会直接退出；只在显式开启时放宽，
+        // 不改真实用户桌面（非 root）的默认安全姿态。
+        if (
+          ["1", "true", "yes"].includes(
+            String(process.env.BITBOT_OAUTH_CHROME_NO_SANDBOX || "")
+              .trim()
+              .toLowerCase(),
+          )
+        ) {
+          chromeArgs.splice(1, 0, "--no-sandbox");
+        }
         const child = spawn(
           chrome,
-          [
-            "--disable-gpu",
-            "--no-first-run",
-            "--no-default-browser-check",
-            `--user-data-dir=${profile}`,
-            "--new-window",
-            "--window-size=1100,800",
-            authorizeUrl,
-          ],
+          chromeArgs,
           {
             cwd: artifactDir,
             env: process.env,
@@ -19514,12 +19526,20 @@ function createHostFfi(repoRoot, opts = {}) {
 
     if (kind === "code_changes") {
       // command: mcp_namespace|/workspace/path
+      // The kernel always addresses the box workspace as /workspace/<rel>
+      // (and allows /home/box/<rel>). Those prefixes are virtual: on a desktop
+      // host the repo may live anywhere, so map them onto REPO_ROOT. Other
+      // absolute paths stay literal and are refused as out-of-repo (honest).
       const sep = cmd.indexOf("|");
       const ns = sep >= 0 ? cmd.slice(0, sep) : "user-github";
       const target = sep >= 0 ? cmd.slice(sep + 1) : cmd;
-      const abs = path.isAbsolute(target)
-        ? target
-        : path.join(REPO_ROOT, target.replace(/^\/workspace\//, ""));
+      const boxRel = target.replace(/^\/(?:workspace|home\/box)\//, "");
+      const abs =
+        boxRel !== target
+          ? path.join(REPO_ROOT, boxRel)
+          : path.isAbsolute(target)
+            ? target
+            : path.join(REPO_ROOT, target);
       const underRepo =
         abs === REPO_ROOT || abs.startsWith(REPO_ROOT + path.sep);
       const exists = underRepo && fs.existsSync(abs);
@@ -21358,30 +21378,40 @@ function createHostFfi(repoRoot, opts = {}) {
           capturePath = path.join(mediaDir, `mic-${stampId}.wav`);
           const micFixture = path.join(DATA_ROOT, "device", "mic.wav");
           if (fs.existsSync("/usr/bin/ffmpeg") && fs.existsSync("/dev/snd")) {
-            await execFileAsync(
-              "/usr/bin/ffmpeg",
-              [
-                "-y",
-                "-f",
-                "alsa",
-                "-i",
-                "default",
-                "-t",
-                "1",
-                capturePath,
-              ],
-              { timeout: 8000 },
-            );
-            captureOk =
-              fs.existsSync(capturePath) && fs.statSync(capturePath).size > 44;
-            mode = "host_device_alsa_wav";
-          } else if (fs.existsSync(micFixture)) {
+            try {
+              await execFileAsync(
+                "/usr/bin/ffmpeg",
+                [
+                  "-y",
+                  "-f",
+                  "alsa",
+                  "-i",
+                  "default",
+                  "-t",
+                  "1",
+                  capturePath,
+                ],
+                { timeout: 8000 },
+              );
+              captureOk =
+                fs.existsSync(capturePath) &&
+                fs.statSync(capturePath).size > 44;
+              if (captureOk) mode = "host_device_alsa_wav";
+            } catch (e) {
+              // /dev/snd 存在不等于有可用采集设备（容器里常只有 seq/timer）。
+              // 真采集失败就如实落到 fixture / residual，不冒充 ALSA 成功。
+              captureError = String((e && e.message) || e).slice(0, 200);
+            }
+          }
+          if (!captureOk && fs.existsSync(micFixture)) {
             fs.copyFileSync(micFixture, capturePath);
             captureOk =
               fs.existsSync(capturePath) && fs.statSync(capturePath).size > 44;
             mode = "host_device_mic_fixture";
-          } else {
+          }
+          if (!captureOk) {
             captureError =
+              captureError ||
               "no ALSA default capture or data/device/mic.wav — device_capture_residual";
             mode = "host_device_capture_residual";
           }

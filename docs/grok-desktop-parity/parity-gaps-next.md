@@ -299,6 +299,29 @@ GP-179 先改现场、再等真红，不拿「看起来像」当结论；GP-180 
 它和 GP-184 的教训互补：那次是「一条 require 打死整个桌面端」，这次是「三份相同逻辑
 各自演化」；前者靠打包自检，后者靠词表唯一来源 + 行为等价 fixture。
 
+
+### G-F.11 GP-186（本轮：把 GP-185 的四条残留处理掉 —— 原生壳 / 旧 smoke / 打包闭包）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-186 | GP-185 留的四条：展示层各写、原生壳薄、`pack-box.sh` 清单人工、旧 smoke 不在矩阵 | **已处理**：①两个原生壳的 42 个残差键按 `RESIDUAL_KEYS` 同序，新增 MC-09 钉住；②两个壳各补 154 条 `commandTemplates`（点击只填输入框，不直接发半句话），并把 gate 的 mobile kind 检查改到共享事实源；③`pack-box` P-01 实测能抓漏拷，文档更正；④旧 `smoke_desktop_turn.sh` 接入矩阵 G-64 | MC-09 改后 **10/0**；注入对照删 iOS 一枚键 → MC-09 翻红指到 iOS，恢复 `cmp` 仍绿；`verify_native_shells.sh` 从 HEAD 的 stale red 修到 **OK**（163 needle）；Android **126/0**（STU 7/0）；legacy smoke **0 断言失败 / 2 条显式 SKIP**（headless 无 WM、gh 未登录）；全量矩阵 **PASS=474 FAIL=0**（G-63 MC-09、G-64 在矩阵内） | iOS/Android 仍无真机样本（iOS 无编译器，模板 UI 未真机点过）；headless 下 native OS act 只能 SKIP；gh 未登录时 remote PR live view 不可达；`pack-box.sh` 清单仍人工维护 |
+
+这一轮的三个「假红」值得单独记住，因为它们都在 HEAD 上就红：
+
+1. `verify_native_shells.sh` 仍要求两个聊天壳逐字包含 163 条桌面快捷指令，但 `7789966`
+   重写壳时已把矩阵删掉；本轮用**可编辑模板**把词表补回产品面，而不是删 gate。
+2. GP-185 把 mobile Host kind 与 `receipt_path` / `skill_path` 收进
+   `hosts/shared/delivery_mirror.js`，gate 却继续去 `mobile_host/run.js` 找；
+   本轮改断言唯一事实源，并要求 mobile_host 仍 wire 共享模块。
+3. `list models` 的真实 Host 路径已是 `llm_list_models`，gate 只认 `settings_open`；
+   本轮两路都认且都不许 pretend。
+
+产品 bug 一条（非断言问题）：kernel 给 Host 的 `code_changes` 目标是 box 虚拟路径
+`/workspace/README.mbt.md`，Host 用 `path.isAbsolute` 当宿主绝对路径，导致
+`exists=false / applied=false`，`code_apply_residual` 永远关不上。改为把
+`/workspace/`、`/home/box/` 映射到 `REPO_ROOT` 后，apply / commit mock / push mock
+三段全绿，且 commit SHA 来自 mock，不伪造。
+
 ---
 
 ## 三、门禁与交付要求（沿用现有纪律）

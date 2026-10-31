@@ -3173,8 +3173,129 @@ Host FFI。但 Host 侧还有三件事各写一份：
 - 共享的是**词表与布尔收集**，不是像素。SendToUser chip、iOS/Android 的
   `SendToUserSurface`、桌面 `index.html` 仍各自决定怎么展示；这些是展示层，不强行合并。
 - Android / iOS 仍是薄壳，本轮没有真机样本；`pack-mobile.sh` 只暂存 shell 树。
-- `pack-box.sh` 的 shared 清单仍是人工维护。`check_box_requires.js` 只能发现「打进去的
-  require 指不到」，发现不了「该打进去但忘了」—— 本轮 `host_env.js` 就是靠人看出来的，
-  所以清单旁边仍然需要 G-57 的传递闭包做第二道。
+- `pack-box.sh` 的 shared 清单仍是人工维护。但「该打忘打」并非只能靠人看：
+  从**真入口**算 require 闭包的 `scripts/prove_box_pack_closure.js` P-01 能抓住
+  （GP-186 复核：从清单删掉 `host_env.js` → `✗ P-01 … 缺：shared/host_env.js`，
+  恢复后 7/0）。`check_box_requires.js` 是打包后自检的另一把尺子，只查「已经打进去的
+  require 指不指得到」，不负责清单完整性；两者职责不同，不能互相替代。
+  （原文「P-01 也发现不了」是过度表述，GP-186 实测更正。）
 
 
+
+## 8.49 把残留真正关上：原生壳指令矩阵、旧 smoke 回矩阵、打包闭包更正（GP-186）
+
+GP-185 诚实留了四条：展示层各写、原生壳薄且无真机样本、`pack-box.sh` 清单人工维护、
+旧 `smoke_desktop_turn.sh` 不在矩阵。这一轮逐条处理；过程中又抓出三处「门禁自己过期」
+的假红（HEAD 上就红，不是本轮改坏），一并修正并留下红→绿证据。
+
+### 8.49.1 原生壳的 42 个残差键与 canonical 同序（MC-09）
+
+iOS `SendToUserSurface.swift` 与 Android `SendToUserSurface.kt` 的 `residualSuffix`
+词表此前是「集合一样、顺序不同」。顺序不同就会让镜像/展示按不同次序裁切，
+单端门禁看不出来。现在两份都按 `hosts/shared/delivery_mirror.js` 的 `RESIDUAL_KEYS`
+逐项同序排列（各 42 项），并由 `prove_multihost_common.mjs` 新增的 **MC-09** 钉住：
+先定位 `residualSuffix`，再解析其后的 keys 块，与 canonical 做有序全等比较；
+失败信息能指出「第 N 项起不同」或「共同前缀之外缺哪项」。
+
+- 改前：MC-09 不存在（词表顺序无人管）。
+- 改后：`prove_multihost_common: pass=10 fail=0`。
+- 注入对照（G-63 每轮重跑）：从 iOS 壳删掉 `"signin_fill_residual",` → MC-09 翻红并
+  指名 iOS；恢复后 `cmp` 核对仍绿。
+
+### 8.49.2 原生壳从「薄壳」到有完整指令矩阵（154 条模板）
+
+`scripts/verify_native_shells.sh` 在 HEAD 上本身就是红的，根因不是本轮改动：
+
+1. `7789966` 重写 Grok 风格聊天壳时删掉了 ContentView / MainActivity 里的
+   quick-action 矩阵，但 gate 的 163 条 needle 一直留着；
+2. GP-185 把 `mobile_host` 里的 Host kind 字面量与 `receipt_path` / `skill_path`
+   选择逻辑收进 `hosts/shared/delivery_mirror.js`，gate 仍去 `mobile_host/run.js` 找；
+3. `list models` 的真实 Host 路径已经是 `llm_list_models`（真列提供方），gate 只认
+   `settings_open`。
+
+处理（都不是把门放宽）：
+
+- 两个壳各新增 **154 条 `commandTemplates`**，词表与桌面快捷指令同源。点一条只
+  **填入输入框**，不直接发送——`room `、`cold mail to=`、`todo write ` 这类模板还缺
+  参数，直接发会变成半句话；注释写明这一点。iOS 在「能力」里加「全部指令模板」入口，
+  Android 在 `CapabilitiesSheet` 里加同一段模板列表，点击即填回草稿并落盘。
+- gate 的 mobile_host 部分改为断言**唯一事实源** `delivery_mirror.js + host_ffi.js`，
+  同时要求 `mobile_host` 仍 wire `DELIVERY_HOST_KINDS` / `buildDeliveryMirror` /
+  `pickMirrorPath`（防止「有源没接线」）。
+- `list models` 改为两路都认：`llm_list_models` 必须 ok 且输出 `LLM providers`，
+  `settings_open` 必须不 pretend 且 anchor 含 models。
+
+证据：`bash scripts/verify_native_shells.sh` → `OK`（163 条 needle 全过）；
+Android `:app:testUniversalDebugUnitTest` **126 tests / 0 failures**（其中
+`SendToUserSurfaceTest` 7/0）。iOS 仍无 Xcode/真机，模板 UI 只在源码与 gate 层验证，
+这一条按残留记，不冒充「真机点过」。
+
+### 8.49.3 旧 smoke 回矩阵（G-64）
+
+`smoke_desktop_turn.sh` 是产品路径最全的老脚本，但长期不在矩阵里。本轮的修法不是
+「让它少跑」，而是把它跑通：
+
+- **模型**：沙箱没有真 provider，第一条入站 turn 就红。脚本顶部起仓库自带的
+  `scripts/dev_stubs/openai_compat_stub.js`，只替模型应答；`run_turn → Host FFI →
+  llm_chat HTTP → deliver` 仍是真链。
+- **root 容器 Chrome**：显式 `BITBOT_CU_CHROME_NO_SANDBOX=1` /
+  `BITBOT_OAUTH_CHROME_NO_SANDBOX=1` 才加 `--no-sandbox`，默认安全姿态不变。
+- **媒体 / OCR / 语音**：CI 安装 `ffmpeg espeak-ng tesseract-ocr xdotool wmctrl`；
+  本机缺工具时保留显式 `SKIP:` 并只断言 Host 如实记 residual，不假 PASS。
+- **mic**：`/dev/snd` 只有 seq/timer 时先试真 ALSA，失败后回退
+  `data/device/mic.wav` fixture，mode=`host_device_mic_fixture`；仍失败才 residual。
+- **产品 bug（code_changes 路径）**：kernel 输出的是 box 虚拟路径
+  `/workspace/README.mbt.md`，Host 用 `path.isAbsolute` 直接当宿主绝对路径
+  → `exists=false`、`applied=false`，`code_apply_residual` 永远关不上。现在
+  `/workspace/`、`/home/box/` 前缀统一映射到 `REPO_ROOT`，其余绝对路径仍按原样
+  且拒绝出仓。红证据：`target=/workspace/README.mbt.md, applied=false`；绿证据：
+  apply / commit mock / push mock 三段全过（commit_sha 来自 mock，不伪造）。
+- **gh 未登录**：live PR view/dry-run 不可达时走诚实分支（`remote_pr_residual=True`、
+  `mode=gh_pr_create_failed`、打印 `SKIP:`），gated mock 的 dry-run / real create 照跑。
+- **过期断言**：travel 只存在 `pretend_purchased`，`pretend_booked` 是旧字段名；
+  改为两者都不得为真。另把 G-53 的 qwen 回执从「stub 收到请求后立刻读 DOM」改为
+  有界等待文本出现——原写法在负载下会先读到上一条气泡（实测 FAIL=1，重跑即绿；
+  改后 `PASS=71 FAIL=0`）。
+- **矩阵**：新增 **G-64**，跑完旧脚本并校验四条锚点（webhook 入站、Electron 回合、
+  payment_wall fixture、live charge），`SKIP:` 逐行打印。
+
+证据：完整 legacy smoke 日志 915 行，0 处 `Traceback` / `AssertionError`，
+2 条显式 SKIP（headless 无 WM 的 native OS act、gh 未登录）；全量矩阵
+`smoke_grok_desktop_parity: PASS=474 FAIL=0`（G-63 含 MC-09 锚点，G-64 在矩阵内）。
+
+### 8.49.4 `pack-box.sh` 闭包：P-01 能抓「该打忘打」
+
+GP-185 的原文说「`check_box_requires.js` 查不出该打忘打」是过度表述。实测：
+从清单里删掉 `host_env.js`，`prove_box_pack_closure.js` P-01 立刻报
+`✗ P-01 … 缺：shared/host_env.js`；恢复后 **7/0**。P-01 从**真入口**算 require
+闭包，能抓漏拷；`check_box_requires.js` 是打包后自检的另一把尺子，只查「已经打进去的
+require 指不指得到」。两者职责不同，不能互相替代，也不能拿后者去否定前者。
+（§8.48 末条已按此更正。）
+
+### 8.49.5 诚实残留（本轮没关掉的）
+
+- **真机样本**：Android 有 JVM/Robolectric 126/0，iOS 连编译器都没有；两个壳的
+  模板 UI 没有在真机上点过。`pack-mobile.sh` 仍只暂存 shell 树。
+- **native OS act**：本机 headless、无窗口管理器，`xdotool` 能装但枚举不到真实窗口；
+  G-64 只断言 `os_window_automation_residual=true` 并打印 SKIP。
+- **gh 未登录**：remote PR 的 live view 不可达，只有 mock 的 gated create 证据。
+- **`pack-box.sh` 清单**：仍人工维护；P-01 能在打包前抓住漏拷，但不会自动生成清单。
+- **文档事故（已恢复）**：本轮早期一次工具回写把 report/parity 文档覆盖成陈旧快照
+  （3180→182 行 / 322→95 行），已从 HEAD 恢复后只做增量；本轮末
+  `prove_report_history_intact: PASS=7 FAIL=0`（RH-05/06/07）证明段落只增不减。
+
+### 8.49.6 复跑命令与结果
+
+```
+node scripts/prove_multihost_common.mjs          # pass=10 fail=0（MC-00..MC-09）
+node scripts/prove_box_pack_closure.js           # pass=7 fail=0（P-01..P-06）
+node scripts/prove_repo_integrity.mjs            # pass=7 fail=0 skip=0
+node scripts/prove_report_history_intact.mjs     # PASS=7 FAIL=0
+bash scripts/verify_native_shells.sh             # OK（含 154 条模板 + 移动端 kind 事实源）
+cd hosts/android/BitBotHost && ./gradlew --offline :app:testUniversalDebugUnitTest
+                                                 # 126 tests / 0 failures（STU 7/0）
+env -u DISPLAY xvfb-run -a bash scripts/smoke_desktop_turn.sh
+                                                 # OK；2 条显式 SKIP；0 断言失败
+env -u DISPLAY xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh
+                                                 # PASS=474 FAIL=0（G-63 MC-09、G-64 旧 smoke）
+```

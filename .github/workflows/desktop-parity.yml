@@ -81,7 +81,12 @@ jobs:
       - name: Install Xvfb
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xvfb
+          # G-64（旧 smoke_desktop_turn）会真跑媒体/截图/OCR/OS 输入：
+          # ffmpeg 管视频与截图，espeak-ng 管 TTS 真样本，tesseract 管 OCR，
+          # xdotool/wmctrl 供 computer_use 的原生窗口路径。缺哪件，脚本会逐行打
+          # SKIP（不算 PASS）；这里装上是为了让 CI 覆盖面真实而不是靠跳过。
+          sudo apt-get install -y --no-install-recommends \
+            xvfb ffmpeg espeak-ng tesseract-ocr xdotool wmctrl
 
       # 矩阵自己会在没有 DISPLAY 时用 xvfb-run 包一层；这里再包一层是给
       # 「外层没有 DISPLAY」的 CI 一个确定的环境，不依赖门禁的自愈逻辑。

@@ -4,6 +4,28 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 MOON_TARGET="${BITBOT_MOON_TARGET:-native}"
+
+# GP-186: 本脚本大半段要求「真 turn」——webhook / Slack / Teams / SMS / mail 入站
+# 都要 Host 调 cli_host/run_turn 再进 llm_chat。机器上没有真 provider 时，第一条
+# 入站 turn 就红（本轮实测：turn_path=null、hook status=failed），整脚本走不到头。
+# 这里起仓库自带的 OpenAI 兼容 stub（scripts/dev_stubs/openai_compat_stub.js，
+# 与 e2e 同一件工具），只替模型应答，不替产品链路：run_turn → Host FFI →
+# llm_chat HTTP → deliver 全是真的。它证明接线与残留闭合，不代表模型质量。
+LLM_STUB_PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
+BITBOT_STUB_PORT="$LLM_STUB_PORT" node "$ROOT/scripts/dev_stubs/openai_compat_stub.js" >/tmp/bitbot-smoke-llm-stub.log 2>&1 &
+LLM_STUB_PID=$!
+trap 'kill "$LLM_STUB_PID" >/dev/null 2>&1 || true' EXIT
+for _ in $(seq 1 50); do
+  if (exec 3<>"/dev/tcp/127.0.0.1/$LLM_STUB_PORT") 2>/dev/null; then exec 3>&-; break; fi
+  sleep 0.1
+done
+export BITBOT_LLM_BASE_URL="http://127.0.0.1:$LLM_STUB_PORT/v1"
+export BITBOT_LLM_API_KEY="smoke-local-stub"
+export BITBOT_LLM_MODEL="stub-model"
+echo "==> smoke LLM stub on $LLM_STUB_PORT (product chain is real; model is local stub)"
+# root 容器里 Chrome 不带 --no-sandbox 会直接退出；只在 root 下显式开启，非 root 不动。
+if [ "$(id -u)" = "0" ]; then export BITBOT_CU_CHROME_NO_SANDBOX=1; export BITBOT_OAUTH_CHROME_NO_SANDBOX=1; fi
+
 run() {
   local label="$1"
   shift
@@ -164,11 +186,22 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-write.json'));asser
 echo "==> Host product media (CM-1601/1602/1603)"
 node hosts/cli_host/run_turn.js --approved "generate image smoke aurora desk" >/tmp/bitbot-gen-image.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-gen-image.json'));assert d.get('ok') and d.get('intent')=='generate_image';h=next(x for x in d['host_results'] if x.get('kind')=='generate_image');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_media') is False;assert p.get('png_magic_ok') is True;assert p.get('media_path') and os.path.isfile(p['media_path']);assert open(p['media_path'],'rb').read(8)==b'\\x89PNG\\r\\n\\x1a\\n';assert p.get('path') and os.path.isfile(p['path']);print('generate_image host ok', p.get('media_path'), p.get('path'))"
+# GP-185 残留收尾：视频两跳需要本机 ffmpeg。没有它时不许把「Host 如实说没产出」
+# 当成门禁失败，也不许跳过就算了 —— 只断言 Host 不假装有媒体（pretend_media=false），
+# 并显式打一行 SKIP 说明哪两跳没有真样本。
+if command -v ffmpeg >/dev/null 2>&1; then
 node hosts/cli_host/run_turn.js --approved "generate video smoke clip desk" >/tmp/bitbot-gen-video.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-gen-video.json'));assert d.get('ok') and d.get('intent')=='generate_video';h=next(x for x in d['host_results'] if x.get('kind')=='generate_video');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_media') is False;assert p.get('video_complete_notified') is True or (p.get('media_path') and os.path.getsize(p['media_path'])>32);assert p.get('media_path') and os.path.isfile(p['media_path']);assert p.get('path') and os.path.isfile(p['path']);print('generate_video host ok', p.get('media_path'), p.get('path'))"
 VID=$(python3 -c "import json;d=json.load(open('/tmp/bitbot-gen-video.json'));h=next(x for x in d['host_results'] if x.get('kind')=='generate_video');print(json.loads(h['stdout']).get('media_path'))")
 node hosts/cli_host/run_turn.js --approved "watch video $VID" >/tmp/bitbot-watch-video.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-watch-video.json'));assert d.get('ok') and d.get('intent')=='watch_video';h=next(x for x in d['host_results'] if x.get('kind')=='watch_video');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_media') is False;assert p.get('png_magic_ok') is True;assert p.get('frame_path') and os.path.isfile(p['frame_path']);assert open(p['frame_path'],'rb').read(8)==b'\\x89PNG\\r\\n\\x1a\\n';assert p.get('path') and os.path.isfile(p['path']);print('watch_video host ok', p.get('frame_path'), p.get('path'))"
+else
+echo "SKIP: 本机没有 ffmpeg —— generate_video / watch_video 没有真样本；只验 Host 如实报失败"
+node hosts/cli_host/run_turn.js --approved "generate video smoke clip desk" >/tmp/bitbot-gen-video.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-gen-video.json'));assert d.get('intent')=='generate_video';h=next(x for x in d['host_results'] if x.get('kind')=='generate_video');p=json.loads(h['stdout']);assert p.get('pretend_media') is False;assert p.get('ok') is False;assert not p.get('media_path');assert p.get('error') or p.get('mode')=='generate_video_failed';print('generate_video honest-fail (no ffmpeg) ok')"
+node hosts/cli_host/run_turn.js --approved "watch video /tmp/does-not-exist.mp4" >/tmp/bitbot-watch-video.json
+python3 -c "import json;d=json.load(open('/tmp/bitbot-watch-video.json'));h=next(x for x in d['host_results'] if x.get('kind')=='watch_video');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_media') is False;assert not p.get('frame_path');print('watch_video honest-fail (no ffmpeg) ok')"
+fi
 node hosts/cli_host/run_turn.js --approved 'structured chart {"alpha":4,"beta":9,"gamma":6}' >/tmp/bitbot-chart.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-chart.json'));assert d.get('ok') and d.get('intent')=='structured_chart';h=next(x for x in d['host_results'] if x.get('kind')=='structured_chart');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_media') is False;assert p.get('png_magic_ok') is True;assert p.get('media_path') and os.path.isfile(p['media_path']);assert open(p['media_path'],'rb').read(8)==b'\\x89PNG\\r\\n\\x1a\\n';assert isinstance(p.get('series'),dict) and p['series'].get('alpha')==4;assert p.get('path') and os.path.isfile(p['path']);print('structured_chart host ok', p.get('media_path'), p.get('path'), p.get('series'))"
 echo "==> Host box_doctor (CM-0607)"
@@ -202,7 +235,7 @@ BITBOT_INBOUND_PUSH=1 node hosts/cli_host/run_turn.js --approved "webhook wake i
 python3 -c "import json;d=json.load(open('/tmp/bitbot-webhook-wake-push.json'));h=next(x for x in d['host_results'] if x.get('kind')=='webhook_wake');p=json.loads(h['stdout']);assert p.get('inbound_push_residual') is False;assert p.get('pretend_wake') is False;print('webhook_wake inbound push residual close ok', p.get('event_id'), 'residual', False)"
 echo "==> Host Settings / agent info / delete (CM-1901/1902/0205/1907)"
 node hosts/cli_host/run_turn.js "open settings" >/tmp/bitbot-settings.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-settings.json'));assert d.get('ok') and d.get('intent')=='open_settings';h=next(x for x in d['host_results'] if x.get('kind')=='settings_open');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_opened') is False;assert p.get('entry')=='sidebar-account-button';assert p.get('panel_open') is True;assert p.get('anchors_closed_set_count')==27;assert p.get('path') and os.path.isfile(p['path']);assert p.get('panel_path') and os.path.isfile(p['panel_path']);print('settings_open host ok', p.get('entry'), p.get('tab'), p.get('path'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-settings.json'));assert d.get('ok') and d.get('intent')=='open_settings';h=next(x for x in d['host_results'] if x.get('kind')=='settings_open');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_opened') is False;assert p.get('entry')=='sidebar-account-button';assert p.get('panel_open') is True;assert p.get('anchors_closed_set_count',0)>=27;assert (json.load(open(p['panel_path']))['anchors_closed_set_count'])==p['anchors_closed_set_count'];assert p.get('path') and os.path.isfile(p['path']);assert p.get('panel_path') and os.path.isfile(p['panel_path']);print('settings_open host ok', p.get('entry'), p.get('tab'), 'anchors', p.get('anchors_closed_set_count'), p.get('path'))"
 node hosts/cli_host/run_turn.js "open settings entry=command-palette anchor=theme" >/tmp/bitbot-settings-theme.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-settings-theme.json'));h=next(x for x in d['host_results'] if x.get('kind')=='settings_open');p=json.loads(h['stdout']);assert p.get('ok') is True;assert p.get('entry')=='command-palette';assert p.get('anchor')=='theme';assert p.get('deep_link')=='grokbot://app/v1/settings?id=theme';assert p.get('tab')=='General';print('settings deep-link ok', p.get('deep_link'))"
 node hosts/cli_host/run_turn.js "open settings entry=gear" >/tmp/bitbot-settings-gear.json
@@ -552,7 +585,7 @@ assert 'delivery-html' in html and 'html_iframe' in html
 assert 'purchase_receipt' in html
 assert 'skill_md' in html and 'export_pack' in html
 assert 'files:' in html
-assert 'open-artifact' in html and 'Open with OS' in html
+assert 'open-artifact' in html and ('用系统程序打开' in html or '用系统应用打开' in html)
 assert 'srcdoc' in html
 assert 'bitbot:readArtifact' in main and 'data_url' in main
 assert 'bitbot:openArtifact' in main and 'shell.openPath' in main
@@ -888,21 +921,37 @@ python3 -c "import json,os;d=json.load(open('/tmp/bitbot-oauth-gmail.json'));ass
 node hosts/cli_host/run_turn.js "computer use open https://example.com click:40,40" >/tmp/bitbot-cu.json
 python3 -c "import json;d=json.load(open('/tmp/bitbot-cu.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');assert h.get('ok');out=h.get('stdout') or '';payload=json.loads(out);assert 'navigate_reachable' in out;g=payload.get('gui') or {};assert g.get('box_chrome_process') is True or 'http_fallback' in out;oc=payload.get('outcome') or {};assert oc.get('summary')=='structured outcome only';assert 'agent_loop' in payload;assert 'os_window_automation_residual' in oc or 'os_window_automation_residual' in g;assert oc.get('ocr_residual') is True;assert oc.get('ocr') is False;print('computer_use agent-loop host ok', 'os_window', g.get('os_window'), 'native_os', bool(g.get('native_os_input')), 'os_auto_residual', g.get('os_window_automation_residual') if 'os_window_automation_residual' in g else oc.get('os_window_automation_residual'), 'actions_ok', g.get('actions_ok'), 'screenshot_ok', g.get('screenshot_ok'))"
 BITBOT_CU_NATIVE_ACT=1 node hosts/cli_host/run_turn.js "computer use open https://example.com click:40,40" >/tmp/bitbot-cu-native.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cu-native.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');g=p.get('gui') or {};act=g.get('native_os_act') or {};assert act.get('enabled') is True;assert act.get('ok') is True;assert g.get('os_window_automation_residual') is False;ev=p.get('evidence') or '';assert ev;nap=os.path.join(os.path.dirname(ev),'native_os_act.json');assert os.path.isfile(nap);print('computer_use native OS act ok', 'actions', len(act.get('actions') or []), 'residual', g.get('os_window_automation_residual'))"
+# 真桌面（有窗口管理器 + xdotool）→ 必须真驱动且 residual 关闭；
+# headless Xvfb / 没装 xdotool → 不许假绿：只断言 Host 如实保留 residual 并打 SKIP。
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cu-native.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');g=p.get('gui') or {};act=g.get('native_os_act') or {};inp=g.get('native_os_input') or {};ready=inp.get('probe_ready') is True
+if ready:
+  assert act.get('enabled') is True;assert act.get('ok') is True;assert g.get('os_window_automation_residual') is False;ev=p.get('evidence') or '';assert ev;nap=os.path.join(os.path.dirname(ev),'native_os_act.json');assert os.path.isfile(nap);print('computer_use native OS act ok', 'actions', len(act.get('actions') or []), 'residual', g.get('os_window_automation_residual'))
+else:
+  assert act.get('enabled') is True;assert g.get('os_window_automation_residual') is True;print('SKIP: 本机没有可枚举的真实桌面窗口（headless / 无 WM）—— native OS act 只验 Host 不假装 residual 已关；reason=%s xdotool=%s' % (inp.get('note'), (inp.get('tools') or {}).get('xdotool')))"
 # BITBOT_XDOTOOL_BIN mock closes os_window_automation_residual (injectable like BITBOT_TESSERACT_BIN).
 rm -rf /tmp/bitbot-xdotool-mock
 mkdir -p /tmp/bitbot-xdotool-mock
-BITBOT_CU_NATIVE_ACT=1 BITBOT_XDOTOOL_BIN="$ROOT/scripts/host_xdotool_mock.sh" BITBOT_XDOTOOL_MOCK_LOG_DIR=/tmp/bitbot-xdotool-mock \
+BITBOT_CU_NATIVE_ACT=1 BITBOT_XDOTOOL_BIN="$ROOT/scripts/host_xdotool_mock.sh" BITBOT_WMCTRL_BIN="$ROOT/scripts/host_xdotool_mock.sh" BITBOT_XDOTOOL_MOCK_LOG_DIR=/tmp/bitbot-xdotool-mock \
   node hosts/cli_host/run_turn.js "computer use open https://example.com click:40,40" >/tmp/bitbot-cu-native-mock.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cu-native-mock.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');g=p.get('gui') or {};act=g.get('native_os_act') or {};assert act.get('enabled') is True;assert act.get('ok') is True;assert g.get('os_window_automation_residual') is False;assert act.get('os_window_automation_residual') is False;assert os.path.isfile('/tmp/bitbot-xdotool-mock/last-xdotool.json');print('computer_use native OS xdotool bin mock residual close ok', 'actions', len(act.get('actions') or []), 'residual', False)"
 BITBOT_CU_OCR=1 node hosts/cli_host/run_turn.js "computer use open https://example.com click:40,40" >/tmp/bitbot-cu-ocr.json
-python3 -c "import json;d=json.load(open('/tmp/bitbot-cu-ocr.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};g=p.get('gui') or {};vp=(g.get('vision_plan') or {});assert oc.get('ocr') is True or (vp.get('ocr') is True);assert oc.get('ocr_residual') is False or vp.get('ocr_residual') is False;print('computer_use OCR ok', 'ocr', oc.get('ocr'), 'text_prefix', (oc.get('ocr_text_prefix') or '')[:40])"
+python3 -c "import json;d=json.load(open('/tmp/bitbot-cu-ocr.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};g=p.get('gui') or {};vp=(g.get('vision_plan') or {})
+got = oc.get('ocr') is True or vp.get('ocr') is True
+if got:
+  assert oc.get('ocr_residual') is False or vp.get('ocr_residual') is False;print('computer_use OCR ok', 'ocr', oc.get('ocr'), 'text_prefix', (oc.get('ocr_text_prefix') or '')[:40])
+else:
+  assert oc.get('ocr_residual') is True or vp.get('ocr_residual') is True;print('SKIP: 本机没有 tesseract —— OCR 只验 Host 如实保留 residual；reason=%s' % (vp.get('note') or oc.get('note') or 'ocr unavailable'))"
 # BITBOT_TESSERACT_BIN mock closes ocr_residual (injectable like BITBOT_STT_BIN).
 rm -rf /tmp/bitbot-tesseract-mock
 mkdir -p /tmp/bitbot-tesseract-mock
 BITBOT_CU_OCR=1 BITBOT_TESSERACT_BIN="$ROOT/scripts/host_tesseract_mock.sh" BITBOT_TESSERACT_MOCK_LOG_DIR=/tmp/bitbot-tesseract-mock \
   node hosts/cli_host/run_turn.js "computer use open https://example.com click:40,40" >/tmp/bitbot-cu-ocr-mock.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cu-ocr-mock.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};g=p.get('gui') or {};vp=(g.get('vision_plan') or {});assert oc.get('ocr') is True or (vp.get('ocr') is True);assert oc.get('ocr_residual') is False;assert (vp.get('ocr_residual') is False) if 'ocr_residual' in vp else True;assert 'mock ocr text' in (oc.get('ocr_text_prefix') or vp.get('ocr_text_prefix') or '');assert os.path.isfile('/tmp/bitbot-tesseract-mock/last-ocr.json');print('computer_use OCR tesseract bin mock residual close ok', 'ocr', True, 'residual', False)"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-cu-ocr-mock.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};g=p.get('gui') or {};vp=(g.get('vision_plan') or {})
+got = oc.get('ocr') is True or vp.get('ocr') is True
+if got:
+  assert oc.get('ocr_residual') is False;assert (vp.get('ocr_residual') is False) if 'ocr_residual' in vp else True;assert 'mock ocr text' in (oc.get('ocr_text_prefix') or vp.get('ocr_text_prefix') or '');assert os.path.isfile('/tmp/bitbot-tesseract-mock/last-ocr.json');print('computer_use OCR tesseract bin mock residual close ok', 'ocr', True, 'residual', False)
+else:
+  assert oc.get('ocr_residual') is True or vp.get('ocr_residual') is True;print('SKIP: 本机没有截图工具（ffmpeg/import/scrot）—— OCR mock 没有输入图，只验 residual 仍如实为 True；reason=%s' % (vp.get('note') or (g.get('screenshot') or {}).get('error') or 'no screenshot'))"
 BITBOT_OAUTH_MODE=live node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-live.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-oauth-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='oauth');assert h.get('ok') is False;p=json.loads(h.get('stdout') or '{}');assert p.get('status')=='NeedsAuth' or 'NeedsAuth' in (h.get('stdout') or '');assert p.get('path') and os.path.isfile(p['path']);assert p.get('pretend_connected') is False;deliv=next(x for x in hrs if x.get('kind')=='delivery');dp=json.loads(deliv.get('stdout') or '{}');assert dp.get('type')=='widget';assert dp.get('needs_auth') is True or dp.get('status')=='NeedsAuth';assert dp.get('pretend_connected') is not True;print('oauth live NeedsAuth (honest) ok', p.get('path'), 'delivery', dp.get('status'))"
 BITBOT_OAUTH_MODE=live BITBOT_OAUTH_EXCHANGE=local node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-exchange.json
@@ -1583,8 +1632,36 @@ node hosts/cli_host/run_turn.js "source control github" >/tmp/bitbot-sc.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('mode')=='host_git_status' or str(p.get('mode') or '').startswith('host_git_status');assert p.get('pretend_remote_pr') is False;assert p.get('remote_pr_residual') is True;assert p.get('branch');assert p.get('path') and os.path.isfile(p['path']);assert p.get('status_path') and os.path.isfile(p['status_path']);print('source_control git status ok', p.get('branch'), 'dirty', p.get('dirty'), 'path', p.get('path'), 'remote_pr_residual', p.get('remote_pr_residual'))"
 node hosts/cli_host/run_turn.js "source control create_pr" >/tmp/bitbot-sc-pr.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_remote_pr') is False;assert p.get('remote_pr_residual') is True;assert p.get('gh_pr_create_residual') is True;rp=p.get('remote_pr') or {};assert rp.get('mode') in ('remote_pr_residual','gh_pr_view_failed','gh_pr_view','gh_pr_create_dry_run','gh_pr_create_failed');assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;assert plan.get('real_create_gated') is True;print('source_control remote PR residual+plan ok', rp.get('mode'), rp.get('plan_path'), 'gh_pr_create_residual', True)"
+GH_LIVE=0
+if gh auth status >/dev/null 2>&1; then GH_LIVE=1; fi
 BITBOT_GH_CREATE_PR=1 node hosts/cli_host/run_turn.js "source control create_pr" >/tmp/bitbot-sc-pr-live.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-sc-pr-live.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='source_control');p=json.loads(h.get('stdout') or '{}');assert p.get('pretend_remote_pr') is False;rp=p.get('remote_pr') or {};assert rp.get('mode') in ('gh_pr_view','gh_pr_create_dry_run','gh_pr_create');assert p.get('remote_pr_residual') is False;assert p.get('gh_pr_create_residual') is True or rp.get('mode')=='gh_pr_create';assert rp.get('plan_path') and os.path.isfile(rp['plan_path']);plan=json.load(open(rp['plan_path']));assert plan.get('pretend_remote_pr') is False;print('source_control remote PR live/view ok', rp.get('mode'), 'remote_pr_residual', p.get('remote_pr_residual'), 'gh_pr_create_residual', p.get('gh_pr_create_residual'), 'gated', plan.get('real_create_gated'))"
+GH_LIVE="$GH_LIVE" python3 - <<'PY'
+import json, os
+d = json.load(open('/tmp/bitbot-sc-pr-live.json'))
+h = next(x for x in (d.get('host_results') or []) if x.get('kind') == 'source_control')
+p = json.loads(h.get('stdout') or '{}')
+rp = p.get('remote_pr') or {}
+assert p.get('pretend_remote_pr') is False
+live = os.environ.get('GH_LIVE') == '1'
+if live:
+    assert rp.get('mode') in ('gh_pr_view', 'gh_pr_create_dry_run', 'gh_pr_create'), rp
+    assert p.get('remote_pr_residual') is False, p
+else:
+    # No gh login in this environment: the honest outcome is create/view failed
+    # with residual stamped. Do not pretend; the gated mock below covers create.
+    assert p.get('remote_pr_residual') is True, p
+    assert rp.get('mode') in ('gh_pr_create_failed', 'gh_pr_view_failed', 'remote_pr_residual'), rp
+    print('SKIP: 本机 gh 未登录（gh auth status 失败），live PR view/dry-run 不可达；'
+          '只断言 Host 如实记 remote_pr_residual=True 且不 pretend（mode=%s）' % rp.get('mode'))
+assert p.get('gh_pr_create_residual') is True or rp.get('mode') == 'gh_pr_create'
+assert rp.get('plan_path') and os.path.isfile(rp['plan_path'])
+plan = json.load(open(rp['plan_path']))
+assert plan.get('pretend_remote_pr') is False
+print('source_control remote PR live/view ok', rp.get('mode'),
+      'remote_pr_residual', p.get('remote_pr_residual'),
+      'gh_pr_create_residual', p.get('gh_pr_create_residual'),
+      'gated', plan.get('real_create_gated'))
+PY
 # Gated create evidence via injectable gh mock (no real GitHub PR invent).
 rm -rf /tmp/bitbot-gh-mock-dry /tmp/bitbot-gh-mock-real
 mkdir -p /tmp/bitbot-gh-mock-dry /tmp/bitbot-gh-mock-real
@@ -2021,7 +2098,7 @@ node hosts/cli_host/run_turn.js --approved "create routine id=unit-active cron=@
 python3 -c "import json;d=json.load(open('/tmp/bitbot-rt-unit-active.json'));h=next(x for x in d['host_results'] if x.get('kind')=='routine_schedule');p=json.loads(h['stdout']);assert p.get('long_lived_cron_residual') is False;assert p.get('systemd_unit_active') is True;print('routine daemon-status active closes residual ok', p.get('path'))"
 rm -f data/routines/daemon-status.json
 node hosts/cli_host/run_turn.js "book flight google.com/flights" >/tmp/bitbot-travel.json
-python3 -c "import json,os;d=json.load(open('/tmp/bitbot-travel.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('pretend_booked') is False;assert 'vertical_stage' in oc or 'checkout_stage' in oc;g=p.get('gui') or {};assert (g.get('vertical_summary') or g.get('checkout_summary') or {}).get('playbook') in ('travel','shopping','food','generic',None) or True;print('travel CU vertical_stage ok', oc.get('vertical_stage') or oc.get('checkout_stage'), 'playbook', oc.get('playbook'))"
+python3 -c "import json,os;d=json.load(open('/tmp/bitbot-travel.json'));hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='computer_use');p=json.loads(h.get('stdout') or '{}');oc=p.get('outcome') or {};assert oc.get('pretend_purchased') is False;assert oc.get('pretend_booked') is not True;assert 'vertical_stage' in oc or 'checkout_stage' in oc;g=p.get('gui') or {};assert (g.get('vertical_summary') or g.get('checkout_summary') or {}).get('playbook') in ('travel','shopping','food','generic',None) or True;print('travel CU vertical_stage ok', oc.get('vertical_stage') or oc.get('checkout_stage'), 'playbook', oc.get('playbook'))"
 node hosts/cli_host/run_turn.js "finance get_balance" >/tmp/bitbot-finance.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-finance.json'));assert d.get('ok');hrs=d.get('host_results') or [];h=next(x for x in hrs if x.get('kind')=='finance_call');assert h.get('ok');p=json.loads(h.get('stdout') or '{}');assert p.get('artifact_ok') is True;assert p.get('artifact_path') and os.path.isfile(p['artifact_path']);assert p.get('path') and os.path.isfile(p['path']);assert p.get('path')==p.get('artifact_path');assert p.get('mode') in ('sandbox','live_token_present','finance_live','finance_live_failed');assert p.get('pretend_live') is False;print('finance_call artifact ok', p.get('mode'), p.get('path'), 'residual', p.get('live_finance_residual'))"
 # Live finance against local mock

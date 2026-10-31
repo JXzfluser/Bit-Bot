@@ -2786,7 +2786,7 @@ if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp185-mh.log; then
 else
   bad "G-63 prove_multihost_common 未通过（见 /tmp/gp185-mh.log；$(tail -2 /tmp/gp185-mh.log | tr '\n' ' ')）"
 fi
-for gp185_a in "MC-00 三个回合入口都经由共享模块" "MC-01 .env.local 解析只有一份" "MC-02 残差词表只有一份" "MC-03 可递送 Host kind 清单" "MC-04 机器 id 默认值只有一份" "MC-05 桌面 / CLI / 手机端都走 run_moon_turn" "MC-06 进度分类只有 progress_protocol" "MC-07 尺子自检" "MC-08 行为等价"; do
+for gp185_a in "MC-00 三个回合入口都经由共享模块" "MC-01 .env.local 解析只有一份" "MC-02 残差词表只有一份" "MC-03 可递送 Host kind 清单" "MC-04 机器 id 默认值只有一份" "MC-05 桌面 / CLI / 手机端都走 run_moon_turn" "MC-06 进度分类只有 progress_protocol" "MC-07 尺子自检" "MC-08 行为等价" "MC-09 iOS/Android 残差键与 RESIDUAL_KEYS 同序"; do
   if grep -q "✓ $gp185_a" /tmp/gp185-mh.log; then ok "G-63 锚点：$gp185_a"; else bad "G-63 锚点没跑绿：$gp185_a"; fi
 done
 # 注入对照 A：把一份重复的 .env 解析塞回 mobile_host —— MC-01 必须指名翻红。
@@ -2821,6 +2821,41 @@ node scripts/prove_multihost_common.mjs >/tmp/gp185-clean-b.log 2>&1 && grep -q 
 cmp -s /tmp/gp185-inbound.bak hosts/shared/cn_inbound_product_on_turn.js || g185b=0
 [ "$g185b" = "1" ] && ok "G-63 注入对照（MC-04）：把 phone-android 写回入站映射就翻红、指到 cn_inbound_product_on_turn.js，恢复后仍绿" \
   || bad "G-63 MC-04 注入对照没成立（见 /tmp/gp185-mut-id.log /tmp/gp185-clean-b.log）"
+# 注入对照 C：从 iOS 壳删掉一个残差键 —— MC-09 必须翻红（chip 会少一枚、顺序也会漂）。
+cp -f hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift /tmp/gp185-ios.bak
+python3 - <<'PY'
+p = "hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift"
+s = open(p).read()
+s = s.replace('      "signin_fill_residual",\n    ]', '      \n    ]', 1)
+open(p, "w").write(s)
+PY
+node scripts/prove_multihost_common.mjs >/tmp/gp185-mut-native.log 2>&1 || true
+g185c=0
+grep -q "✗ MC-09" /tmp/gp185-mut-native.log && grep -q "iOS" /tmp/gp185-mut-native.log && g185c=1
+cp -f /tmp/gp185-ios.bak hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift
+node scripts/prove_multihost_common.mjs >/tmp/gp185-clean-c.log 2>&1 && grep -q "fail=0" /tmp/gp185-clean-c.log || g185c=0
+cmp -s /tmp/gp185-ios.bak hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift || g185c=0
+[ "$g185c" = "1" ] && ok "G-63 注入对照（MC-09）：从 iOS 壳删掉一枚残差键就翻红、指到 iOS，恢复后仍绿" \
+  || bad "G-63 MC-09 注入对照没成立（见 /tmp/gp185-mut-native.log /tmp/gp185-clean-c.log）"
+
+# G-64 GP-186：旧 smoke_desktop_turn.sh 重新接进矩阵。
+# 它此前不在矩阵里，本机又因缺 ffmpeg / 文案过期 / 没有 provider 提前停 —— 停在哪
+# 就没人知道后面还剩多少没验。现在：本地 LLM stub 替模型应答（产品链仍是真的），
+# 环境没有的能力（ffmpeg/tesseract/真实窗口清单）逐行打 SKIP，绝不假绿。
+echo "== G-64 GP-186：旧 smoke_desktop_turn.sh 重新接入矩阵 =="
+g64_xvfb=()
+if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+  g64_xvfb=(xvfb-run -a)
+fi
+if timeout 2400 ${g64_xvfb[@]+"${g64_xvfb[@]}"} bash scripts/smoke_desktop_turn.sh >/tmp/g64-turn-smoke.log 2>&1; then
+  ok "G-64 旧 smoke_desktop_turn 跑完且零断言失败（$(grep -c '^SKIP:' /tmp/g64-turn-smoke.log) 行环境 SKIP，逐行可查）"
+  for g64_a in "webhook_wake inbound turn ok" "desktop electron smoke turn ok" "computer_use payment_wall fixture ok" "computer_use payment_wall live charge ok"; do
+    grep -q "$g64_a" /tmp/g64-turn-smoke.log && ok "G-64 锚点：$g64_a" || bad "G-64 锚点没出现：$g64_a"
+  done
+  grep '^SKIP:' /tmp/g64-turn-smoke.log | sed 's/^/    · /' || true
+else
+  bad "G-64 旧 smoke_desktop_turn 未通过（见 /tmp/g64-turn-smoke.log；$(tail -2 /tmp/g64-turn-smoke.log | tr '\n' ' ')）"
+fi
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
