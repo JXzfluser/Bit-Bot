@@ -495,7 +495,10 @@ function createProductSurface(repoRoot, opts = {}) {
     }
 
     // GP-07: remove the bot from rooms; drop rooms that fall below 2 members.
+    // 被解散的群要**点名**带回去：群一没，用户回头发消息只会得到「群不存在」，
+    // 根本不知道是自己刚才删人把群解散了。只回一个数字是不够的。
     let rooms_removed = 0;
+    let rooms_dropped = [];
     try {
       const rooms = requireWritableRooms();
       if (Array.isArray(rooms.rooms)) {
@@ -504,12 +507,16 @@ function createProductSurface(repoRoot, opts = {}) {
           if (Array.isArray(r.members)) r.members = r.members.filter((x) => x !== bot_id);
           if (Array.isArray(r.bots)) r.bots = r.bots.filter((x) => x !== bot_id);
         }
-        const before = rooms.rooms.length;
+        const before = rooms.rooms.slice();
         rooms.rooms = rooms.rooms.filter((r) => {
           const n = (r.bot_ids && r.bot_ids.length) || (r.members && r.members.length) || (r.bots && r.bots.length) || 0;
           return n >= 2;
         });
-        rooms_removed = before - rooms.rooms.length;
+        const kept = new Set(rooms.rooms.map((r) => r.id));
+        rooms_dropped = before
+          .filter((r) => r && !kept.has(r.id))
+          .map((r) => ({ id: r.id, title: r.title || r.id }));
+        rooms_removed = rooms_dropped.length;
         saveRooms(rooms);
       }
     } catch {
@@ -553,6 +560,7 @@ function createProductSurface(repoRoot, opts = {}) {
       memory_dropped,
       routines_deleted,
       rooms_removed,
+      rooms_dropped,
       primary_reassigned: primaryReassigned,
       workspace_files_kept
     };

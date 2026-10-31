@@ -9,12 +9,12 @@
 pub(all) enum HostUiEvent {
   SettingsOpened(
     entry~ : @ui_protocol.SettingsEntry,
-    anchor~ : @ui_protocol.SettingsAnchor?,
+    anchor~ : @ui_protocol.SettingsAnchor?
   )
   SettingsAnchorVisible(anchor~ : @ui_protocol.SettingsAnchor)
   DeleteAgentPhaseChanged(
     agent_id~ : String,
-    phase~ : @ui_protocol.DeleteAgentPhase,
+    phase~ : @ui_protocol.DeleteAgentPhase
   )
   /// CM-1903: idle | prompted | awaiting-second-confirm | cancelled | completed
   UpdateComputerPhaseChanged(phase~ : String)
@@ -36,7 +36,7 @@ pub(all) enum HostUiEvent {
   PermissionGuideShown(
     kind~ : String,
     anchor~ : @ui_protocol.SettingsAnchor,
-    pretends_connected~ : Bool,
+    pretends_connected~ : Bool
   )
 } derive(Eq, Debug)
 
@@ -62,8 +62,7 @@ pub fn HostUiEvent::label(self : HostUiEvent) -> String {
     UpdateComputerPhaseChanged(phase~) => "update_computer_phase:" + phase
     LocalExecutionGateChanged(enabled~) =>
       "local_execution_gate:" + (if enabled { "on" } else { "off" })
-    SidebarListChanged(visible_ids~) =>
-      "sidebar_list:" + visible_ids.join(",")
+    SidebarListChanged(visible_ids~) => "sidebar_list:" + visible_ids.join(",")
     SidebarHiddenAgentAddressable(agent_id~) =>
       "sidebar_hidden_agent_addressable:" + agent_id
     InfoPanelOpened(agent_id~, sections~) =>
@@ -74,7 +73,10 @@ pub fn HostUiEvent::label(self : HostUiEvent) -> String {
     MembersPanelVisible(group_id~, member_ids~) =>
       "members_panel:" + group_id + ":" + member_ids.join(",")
     PermissionGuideShown(kind~, anchor~, pretends_connected~) =>
-      "permission_guide:" + kind + ":" + anchor.id() +
+      "permission_guide:" +
+      kind +
+      ":" +
+      anchor.id() +
       (if pretends_connected { ":PRETEND" } else { ":not_connected" })
   }
 }
@@ -161,9 +163,7 @@ pub fn HostUiShell::open_settings(
   match intent.validate() {
     Err(e) => Err(e)
     Ok(_) => {
-      self.push_event(
-        SettingsOpened(entry=intent.entry, anchor=intent.anchor),
-      )
+      self.push_event(SettingsOpened(entry=intent.entry, anchor=intent.anchor))
       match intent.anchor {
         None => ()
         Some(a) => self.push_event(SettingsAnchorVisible(anchor=a))
@@ -181,7 +181,6 @@ pub fn HostUiShell::notify_anchor_visible(
 ) -> Unit {
   self.push_event(SettingsAnchorVisible(anchor~))
 }
-
 
 ///|
 /// CM-1907: show sidebar context menu before Delete confirm (Host face step).
@@ -208,7 +207,10 @@ pub fn HostUiShell::request_delete_agent(
     return Err("agent_id must be non-empty")
   }
   self.push_event(
-    DeleteAgentPhaseChanged(agent_id=agent_id.value, phase=@ui_protocol.Requested),
+    DeleteAgentPhaseChanged(
+      agent_id=agent_id.value,
+      phase=@ui_protocol.Requested,
+    ),
   )
   let awaiting : @ui_protocol.DeleteAgentIntent = {
     agent_id,
@@ -366,8 +368,7 @@ pub fn HostUiShell::cancel_update_computer(
       self.effects.push("cancel_update_computer:cancelled")
       Ok("cancelled")
     }
-    other =>
-      Err("cancel_update_computer: bad phase " + other)
+    other => Err("cancel_update_computer: bad phase " + other)
   }
 }
 
@@ -637,11 +638,8 @@ pub fn HostAbi::ui_event_count(self : HostAbi) -> Int32 {
 /// §3.0 C′ acceptance dimensions (documentation + test hook). Not an I claim.
 pub fn h2_cprime_checklist_dims() -> Array[String] {
   [
-    "ui_drive:HostUiShell_Live_methods",
-    "smoke_entry:HostAbi_run_h2_probe",
-    "audit:Live_audit_span",
-    "events:HostUiEvent_feedback",
-    "artifacts:regular_dir_LiveDisplay_not_fixture_only",
+    "ui_drive:HostUiShell_Live_methods", "smoke_entry:HostAbi_run_h2_probe", "audit:Live_audit_span",
+    "events:HostUiEvent_feedback", "artifacts:regular_dir_LiveDisplay_not_fixture_only",
   ]
 }
 
@@ -649,10 +647,7 @@ pub fn h2_cprime_checklist_dims() -> Array[String] {
 /// §3.0 B rejection markers (must NOT appear on I path).
 pub fn h2_b_rejection_markers() -> Array[String] {
   [
-    "cdp_page_js_bypass",
-    "fixture-only/",
-    "memory_only_events_no_host_face",
-    "synthetic_png",
+    "cdp_page_js_bypass", "fixture-only/", "memory_only_events_no_host_face", "synthetic_png",
   ]
 }
 
@@ -681,11 +676,7 @@ pub fn HostAbi::ui_open_settings(
       match self.backend {
         Live(_) =>
           self.record_audit(
-            AuditSpan::make(
-              "host_ui:open_settings",
-              ok=false,
-              detail=e,
-            ),
+            AuditSpan::make("host_ui:open_settings", ok=false, detail=e),
           )
         Mock => ()
       }

@@ -40,7 +40,7 @@ test "product wire carries the tool call and its answer" {
       role="assistant",
       content="Read {\"path\":\"a.txt\"}",
       tool_calls=[
-        { id: "c1", name: "Read", arguments_json: "{\"path\":\"a.txt\"}" },
+        { id: "c1", name: "Read", arguments_json: "{\"path\":\"a.txt\"}", },
       ],
     ),
     @runtime.LoopMessage::new(role="tool", content="body", tool_call_id="c1"),

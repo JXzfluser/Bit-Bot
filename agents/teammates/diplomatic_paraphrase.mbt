@@ -41,7 +41,9 @@ fn looks_like_complaint(text : String) -> Bool {
 fn extract_actionable_hint(text : String) -> String {
   let lower = text.to_lower()
   // Prefer concrete asks if present; otherwise a neutral actionable summary.
-  if lower.contains("late") || lower.contains("迟到") || lower.contains("slow") {
+  if lower.contains("late") ||
+    lower.contains("迟到") ||
+    lower.contains("slow") {
     "Please prioritize timely responses on the pending items."
   } else if lower.contains("wrong") ||
     lower.contains("error") ||
@@ -119,12 +121,13 @@ pub fn SendToAgentBus::send_diplomatic(
       if para.was_complaint && para.actionable_body == user_complaint {
         return Err("verbatim complaint relay forbidden")
       }
-      match self.send(
-        from_id~,
-        to_id~,
-        body=para.actionable_body,
-        user_visible=false,
-      ) {
+      match
+        self.send(
+          from_id~,
+          to_id~,
+          body=para.actionable_body,
+          user_visible=false,
+        ) {
         Err(e) => Err(e)
         Ok(msg) => Ok((msg, para))
       }

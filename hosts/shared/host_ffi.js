@@ -18,10 +18,11 @@ const p0 = require("./p0_security");
 const { createRoomRuntime } = require("./room_runtime");
 const { dispatchRoomTurn } = require("./room_dispatch");
 
-/* 「什么形状算密钥」是一份合同:内核(ui_protocol/secret_request.mbt)、
+/* 「什么形状算密钥」是一份合同:内核(core/secret_shapes.mbt)、
    渲染层(secret_protocol.js)、Host 都得对得上。Host 这边按同样的
    三路查找拿到那份规则表 —— 开发态在 hosts/desktop/,打包态在应用根目录。
-   找不到就退化成只有环境值脱敏(仍然不泄露真密钥,只是漏了模式)。 */
+   找不到就退化成只有环境值脱敏(仍然不泄露真密钥,只是漏了模式)——
+   但那是一次静默的削弱,所以这里要出声,不能悄悄降级。 */
 let _secretProtocol = null;
 try { _secretProtocol = require("../desktop/secret_protocol"); }
 catch {
@@ -31,6 +32,12 @@ catch {
     catch { _secretProtocol = null; }
   }
 }
+if (!_secretProtocol) {
+  // 静默降级会让「规则表找不到」看起来跟「没有密钥」一样。这里说一次,
+  // 让它是一行日志,而不是一个只有出事才看得见的事实。
+  try { process.stderr.write("BITBOT_WARN secret shape rules unavailable — only env-value scrubbing is active\n"); }
+  catch { /* 诊断通道本身坏了就算了,不能因此拦住主流程 */ }
+}
 
 /** 模式级 + 环境值级双重脱敏。 */
 function scrubTokenShapes(text) {
@@ -38,7 +45,15 @@ function scrubTokenShapes(text) {
   if (_secretProtocol && Array.isArray(_secretProtocol.TOKEN_RULES)) {
     for (const rule of _secretProtocol.TOKEN_RULES) {
       if (rule && rule.re) {
-        out = out.replace(new RegExp(rule.re.source, "g"), _secretProtocol.REDACTED || "[REDACTED]");
+        // 保留原正则的标志:规则表里的大小写不敏感项(api_key= / cookie=)
+        // 少了 "i" 就会按大小写敏感执行,于是 API_KEY= 逃过脱敏。
+        const flags = rule.re.flags.includes("g") ? rule.re.flags : rule.re.flags + "g";
+        out = out.replace(new RegExp(rule.re.source, flags), _secretProtocol.REDACTED || "[REDACTED]");
+      } else if (rule && Array.isArray(rule.needs)) {
+        // phrase 规则没有正则:两个片段都出现就算命中。
+        if (rule.needs.every((part) => out.indexOf(part) >= 0)) {
+          out = _secretProtocol.REDACTED || "[REDACTED]";
+        }
       }
     }
   }

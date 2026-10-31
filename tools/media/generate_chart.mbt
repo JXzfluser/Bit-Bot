@@ -7,7 +7,7 @@
 /// One numeric series for a structured chart.
 pub(all) struct ChartSeries {
   label : String
-  values : Array[Int]
+  values : Array[Int32]
 } derive(Eq, Debug)
 
 ///|
@@ -34,7 +34,9 @@ pub extend StructuredChart with Eq::{equal, not_equal}
 pub extend StructuredChart with Debug::{to_repr}
 
 ///|
-pub fn StructuredChart::validate(self : StructuredChart) -> Result[Unit, String] {
+pub fn StructuredChart::validate(
+  self : StructuredChart,
+) -> Result[Unit, String] {
   if self.title.length() == 0 {
     return Err("structured chart requires title")
   }
@@ -75,7 +77,9 @@ pub extend GeneratedChartArtifact with Debug::{to_repr}
 ///|
 fn chart_svg_placeholder(title : String) -> String {
   let sb = StringBuilder()
-  sb.write_string("<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\">")
+  sb.write_string(
+    "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\">",
+  )
   sb.write_string("BITBOT-GEN-CHART:")
   sb.write_string(title)
   sb.write_string("</svg>")

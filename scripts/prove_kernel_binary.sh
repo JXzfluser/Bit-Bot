@@ -15,6 +15,7 @@
 #   BITBOT_KERNEL_BUILD=debug bash scripts/prove_kernel_binary.sh   # faster
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "${ROOT}/scripts/lib/timeout_polyfill.sh"
 cd "$ROOT"
 export PATH="${HOME}/.moon/bin:${PATH}"
 

@@ -41,7 +41,9 @@ pub fn FinanceConnector::new() -> FinanceConnector {
 }
 
 ///|
-pub fn FinanceConnector::auth_status(self : FinanceConnector) -> ConnectorStatus {
+pub fn FinanceConnector::auth_status(
+  self : FinanceConnector,
+) -> ConnectorStatus {
   self.status
 }
 
@@ -76,7 +78,9 @@ pub fn FinanceConnector::seed_stub_tools(self : FinanceConnector) -> Unit {
 }
 
 ///|
-pub fn FinanceConnector::list_tool_names(self : FinanceConnector) -> Array[String] {
+pub fn FinanceConnector::list_tool_names(
+  self : FinanceConnector,
+) -> Array[String] {
   let out : Array[String] = []
   for t in self.tools {
     out.push(t.name)
@@ -85,7 +89,10 @@ pub fn FinanceConnector::list_tool_names(self : FinanceConnector) -> Array[Strin
 }
 
 ///|
-pub fn FinanceConnector::has_tool(self : FinanceConnector, name : String) -> Bool {
+pub fn FinanceConnector::has_tool(
+  self : FinanceConnector,
+  name : String,
+) -> Bool {
   for t in self.tools {
     if t.name == name {
       return true

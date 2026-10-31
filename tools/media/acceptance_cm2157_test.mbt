@@ -5,9 +5,7 @@ test "acceptance_CM-2157_structured_chart_file_deliverable" {
   let chart = @media.StructuredChart::{
     title: "Weekly Active Users",
     categories: ["Mon", "Tue", "Wed"],
-    series: [
-      { label: "WAU", values: [10, 13, 11], },
-    ],
+    series: [{ label: "WAU", values: [10, 13, 11], }],
     filename: "wau-chart.svg",
   }
   match chart.validate() {
@@ -40,26 +38,22 @@ test "acceptance_CM-2157_structured_chart_file_deliverable" {
     }
   }
   match
-    host.generate_chart(
-      {
-        title: "",
-        categories: ["a"],
-        series: [{ label: "s", values: [1], }],
-        filename: "x.svg",
-      },
-    ) {
+    host.generate_chart({
+      title: "",
+      categories: ["a"],
+      series: [{ label: "s", values: [1], }],
+      filename: "x.svg",
+    }) {
     Err(m) => assert_true(m.contains("title"))
     Ok(_) => fail("empty title must Err")
   }
   match
-    host.generate_chart(
-      {
-        title: "bad",
-        categories: ["a", "b"],
-        series: [{ label: "s", values: [1], }],
-        filename: "bad.svg",
-      },
-    ) {
+    host.generate_chart({
+      title: "bad",
+      categories: ["a", "b"],
+      series: [{ label: "s", values: [1], }],
+      filename: "bad.svg",
+    }) {
     Err(m) => assert_true(m.contains("length") || m.contains("categories"))
     Ok(_) => fail("mismatched series length must Err")
   }

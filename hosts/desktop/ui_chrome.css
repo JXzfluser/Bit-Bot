@@ -2057,8 +2057,17 @@ body.grok-ui #composer #send {
 }
 body.grok-ui #composer #send:hover { background: var(--accent); opacity: 0.9; }
 body.grok-ui #composer #send:active { transform: scale(0.94); opacity: 1; }
-/* 真源空态也是实心深色圆（没有「变浅」的禁用态），只把光标降成等待/默认。 */
-body.grok-ui #composer #send:disabled { opacity: 1; cursor: default; }
+/* 禁用态必须**看得出来**。
+ *
+ * 原来这里写的是 `opacity: 1`（照抄真源空态的实心深色圆），于是「这一轮已经
+ * 卡住、按钮已经废了」和「按钮可用」在屏幕上完全一样 —— 用户只能盯着一个
+ * 永远不动的深色圆，误以为是自己没发出去。禁用就明着禁用。 */
+body.grok-ui #composer #send:disabled {
+  opacity: 0.45;
+  filter: grayscale(1);
+  cursor: default;
+  box-shadow: none;
+}
 /* 回合进行中「取消」顶替麦克风的位置，而不是再挤一枚到输入区。 */
 body.grok-ui #composer .row:has(#turn-cancel:not([hidden])) #voice-btn { display: none; }
 body.grok-ui #composer #turn-cancel {

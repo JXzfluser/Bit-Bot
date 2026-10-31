@@ -168,6 +168,7 @@ pub fn ToolPolicy::decide(
 /// Read the array that belongs to one key. `find_json_array` finds the FIRST
 /// array in the text, which is wrong for a policy object with several array
 /// fields — so the key is located first and the array is read from there.
+
 ///|
 /// 读一个 JSON 布尔字段。**认得裸 true/false**(不是字符串 "true")——
 /// 策略是从 Host 的 JSON 来的,那边写的就是裸布尔。
@@ -205,6 +206,7 @@ fn json_bool_for_key(text : String, key : String, dflt : Bool) -> Bool {
   dflt
 }
 
+///|
 fn json_array_for_key(text : String, key : String) -> Array[String] {
   let out : Array[String] = []
   let marker = "\"" + key + "\""
@@ -247,7 +249,11 @@ pub fn ToolPolicy::parse(text : String) -> ToolPolicy {
   let trust = match json_field_string(text, "device_trust") {
     Some(s) => {
       let t = s.trim().to_owned()
-      if t == "limited" { "limited" } else { "trusted" }
+      if t == "limited" {
+        "limited"
+      } else {
+        "trusted"
+      }
     }
     None => base.device_trust
   }

@@ -12,7 +12,10 @@ test "acceptance_CM-1804_flight_accommodation_rideshare_skill_hit" {
     ),
   )
   assert_true(
-    @skills.travel_skill_trigger_hit(@skills.Flight, "book a flight on southwest"),
+    @skills.travel_skill_trigger_hit(
+      @skills.Flight,
+      "book a flight on southwest",
+    ),
   )
   assert_true(
     @skills.travel_skill_trigger_hit(
@@ -35,19 +38,27 @@ test "acceptance_CM-1804_flight_accommodation_rideshare_skill_hit" {
   )
   // Rideshare trigger conditions hit.
   assert_true(
-    @skills.travel_skill_trigger_hit(@skills.Rideshare, "call an uber rideshare"),
+    @skills.travel_skill_trigger_hit(
+      @skills.Rideshare,
+      "call an uber rideshare",
+    ),
   )
   assert_true(
-    @skills.travel_skill_trigger_hit(@skills.Rideshare, "need a lyft to the airport"),
+    @skills.travel_skill_trigger_hit(
+      @skills.Rideshare,
+      "need a lyft to the airport",
+    ),
   )
   // Dispatch vertical playbooks.
-  match
-    @skills.dispatch_travel_playbook("https://www.google.com/flights") {
+  match @skills.dispatch_travel_playbook("https://www.google.com/flights") {
     Err(e) => fail(e)
     Ok((v, snip)) => {
       assert_eq(v, @skills.Flight)
       assert_true(snip.read_first)
-      assert_true(snip.playbook_name.contains("google-flights") || snip.playbook_name.contains("flights"))
+      assert_true(
+        snip.playbook_name.contains("google-flights") ||
+        snip.playbook_name.contains("flights"),
+      )
     }
   }
   match @skills.dispatch_travel_playbook("uber to SFO") {

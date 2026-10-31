@@ -34,7 +34,10 @@ test "CTX-1 history keeps user, assistant, tool and observation entries" {
 test "CTX-2 the token budget is an estimate, not a real token count" {
   // 40 ASCII characters are about ten tokens with the char/4 estimate.
   assert_eq(@runtime.estimate_tokens("0123456789"), 3)
-  assert_eq(@runtime.estimate_tokens("0123456789012345678901234567890123456789"), 10)
+  assert_eq(
+    @runtime.estimate_tokens("0123456789012345678901234567890123456789"),
+    10,
+  )
   // CJK text is counted one token per character.
   assert_eq(@runtime.estimate_tokens("计划"), 2)
   let ctx = @runtime.AgentContext::with_budget(
@@ -80,7 +83,7 @@ test "CTX-4 a session survives encode and decode" {
   let ctx = @runtime.AgentContext::new(session_id="s7")
   ctx.append_user("line one\nline two")
   ctx.append_tool("Shell", "exit code: 3")
-  ctx.set_todos([{ id: "1", content: "step", status: "done" }])
+  ctx.set_todos([{ id: "1", content: "step", status: "done", }])
   let back = @runtime.AgentContext::decode(ctx.encode())
   assert_eq(back.session(), "s7")
   assert_eq(back.turn_count(), 1)
@@ -100,8 +103,8 @@ test "CTX-5 the plan block shows what the model wrote" {
   let ctx = @runtime.AgentContext::new(session_id="s8")
   assert_eq(ctx.plan_block(), "")
   ctx.set_todos([
-    { id: "1", content: "read the file", status: "done" },
-    { id: "2", content: "summarize", status: "pending" },
+    { id: "1", content: "read the file", status: "done", },
+    { id: "2", content: "summarize", status: "pending", },
   ])
   let plan = ctx.plan_block()
   assert_true(plan.contains("[plan]"))
@@ -188,8 +191,7 @@ test "CTX-9 a call with no result is not replayed as a dangling call" {
 test "CTX-10 an old six-field history record still decodes" {
   // Records written before `call_id` existed keep working: the tail is empty
   // and `wire_messages` replays the result as a note instead of a `tool` turn.
-  let old =
-    "v1\ts11\t24000\t4\t0\ns\t\ne\tu\t1\t0\t\tolder question\ne\tt\t1\t1\tRead\told body\n"
+  let old = "v1\ts11\t24000\t4\t0\ns\t\ne\tu\t1\t0\t\tolder question\ne\tt\t1\t1\tRead\told body\n"
   let ctx = @runtime.AgentContext::decode(old)
   assert_eq(ctx.session(), "s11")
   assert_eq(ctx.history.length(), 2)

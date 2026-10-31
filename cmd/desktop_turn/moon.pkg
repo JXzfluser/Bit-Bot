@@ -9,6 +9,7 @@ import {
   "bitbot/bitbot/connectors",
   "bitbot/bitbot/connectors/commerce",
   "bitbot/bitbot/connectors/mail",
+  "bitbot/bitbot/core",
   "bitbot/bitbot/memory",
   "bitbot/bitbot/routines",
   "bitbot/bitbot/runtime",

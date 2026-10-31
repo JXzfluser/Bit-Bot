@@ -34,11 +34,20 @@ agent-tools/
 /data/host/turn-token
 # K-1/K-3: the agent context is conversation state, not source.
 /data/agent-context/
+# The same context lands in ./agent-context/ whenever DATA_ROOT is unset
+# (dev mode from the repo root) — same rule, both locations.
+/agent-context/
 /data/traces/
 /data/desktop/frames/
 !/data/**/.gitkeep
 /data/journal/computer-use/
 /tmp/bitbot-sandbox/
+
+# Editor / tool scratch files: never source, never evidence.
+*.bak-*
+*.bak
+*.orig
+*.rej
 
 # Desktop (Electron)
 /hosts/desktop/node_modules/

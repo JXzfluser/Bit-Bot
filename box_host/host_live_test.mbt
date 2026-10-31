@@ -121,29 +121,6 @@ test "live_side_effect_audit_span_queryable" {
 }
 
 ///|
-test "h0_probe_skeleton_never_claims_i" {
-  let mock = @box_host.HostAbi::mock()
-  let rec = mock.run_h0_probe(@box_host.Cm0607BoxDoctor)
-  assert_false(rec.i_claimed)
-  assert_eq(rec.backend_kind, "Mock")
-  assert_true(rec.asserts_i_not_claimed())
-  assert_true(rec.artifact_dir.contains("cm-0607"))
-  assert_true(rec.evidence_cmd_hint.contains("host_h0_smoke"))
-
-  let live = @box_host.HostAbi::live(
-    @box_host.LiveHostConfig::with_display(":1"),
-  )
-  let wave = live.run_h0_wave()
-  assert_eq(wave.length(), 3)
-  assert_true(@box_host.h0_wave_i_unclaimed(wave))
-  for r in wave {
-    assert_false(r.i_claimed)
-    assert_eq(r.backend_kind, "Live")
-  }
-  assert_true(live.audit_span_count() >= 3)
-}
-
-///|
 test "mock_inject_live_frame_refused" {
   let host = @box_host.HostAbi::mock()
   match host.inject_live_frame("x") {

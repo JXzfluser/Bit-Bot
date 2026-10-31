@@ -27,28 +27,9 @@ turn_json() { # $1 = user phrase, optional env BITBOT_APPROVED=1
 # `timeout <秒> node …` 于是全部变成 "timeout: command not found"，子门禁的
 # 日志里只剩这一行 shell 错误，上层再报「chain assertions missing」——
 # 2026-10-29 实测：这台机器上跑出来的 210 项红里，绝大多数是这只手，不是产品。
-# 这里用后台进程 + 轮询补一个语义相同的实现（超时返回 124，和 coreutils 一致）。
-if ! command -v timeout >/dev/null 2>&1; then
-  timeout() {
-    local secs=$1
-    shift
-    "$@" &
-    local pid=$!
-    local st=0
-    while kill -0 "$pid" 2>/dev/null; do
-      if [ "$st" -ge "$secs" ]; then
-        kill -TERM "$pid" 2>/dev/null
-        sleep 2
-        kill -KILL "$pid" 2>/dev/null
-        return 124
-      fi
-      sleep 1
-      st=$((st + 1))
-    done
-    wait "$pid"
-    return $?
-  }
-fi
+# polyfill 已抽到 scripts/lib/timeout_polyfill.sh 共享（macOS 上没有 coreutils
+# timeout 的脚本不止这一个，其余 7 个调用方一并接上）。
+source "$(dirname "$0")/lib/timeout_polyfill.sh"
 
 # 另一处平台假设：`node_modules/electron/dist/electron` 是 Linux/Windows 的布局，
 # macOS 是 `dist/Electron.app/Contents/MacOS/Electron`。7 个真渲染门禁的入口判断

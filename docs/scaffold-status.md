@@ -1,5 +1,15 @@
 # Scaffold / M1 status — 2026-10-17 Asia/Shanghai
 
+> **这是历史快照，不是当前状态。** 本文记录 2026-10-17 的脚手架搭建过程，
+> 其中的数字（例如 `moon test` 168 passed）早已过时，**不要**当成现状引用。
+> 当前状态看：
+> - 能力矩阵与证据：`docs/capability-matrix.md`（由 `scripts/prove_capability_matrix.mjs` 机检）
+> - 模块边界与依赖图：`docs/02-module-map.md`
+> - 内核/Host 边界：`docs/adr/0002-wasm-host-boundary.md`
+> - 契约层能力（已实现但未接入生产路径）：`docs/qa/contract-layer.md`
+>
+> 本文中"待办/未做"的条目若已完成，以代码与上述文档为准。
+
 ## Build smoke (≠ PASS)
 - `moon check` ✅ · `moon test` **168** passed
 - **PASS 仅 Bit验证**；矩阵只标 `in_progress`（CONTRACT.md）

@@ -33,11 +33,9 @@ pub fn is_third_person_about_user(String, ChannelSpeakAsUser) -> Bool
 
 pub fn parse_channel_address(String) -> ChannelAddress
 
-pub fn parse_slack_address(String) -> Result[ChannelAddress, String]
-
 pub fn parse_teams_scope(String) -> Result[TeamsScope, String]
 
-pub fn plan_channel_reply(inbound_address~ : String?, outbound_channel~ : String?, body~ : String) -> Result[ChannelDelivery, String]
+pub fn plan_channel_reply(inbound_address~ : String?, outbound_channel~ : String?) -> Result[ChannelDelivery, String]
 
 pub fn plan_channel_speak_as_user(ChannelSpeakAsUser, body~ : String) -> ChannelIdentitySpeech
 
@@ -195,7 +193,7 @@ pub fn PersonalSlackSendResult::to_repr(Self) -> @debug.Repr
 pub(all) struct ReactionOutboundPlan {
   disposition : ReactionWakeDisposition
   reply_forced : Bool
-  outbound_count : Int32
+  outbound_count : Int
 } derive(Eq, @debug.Debug)
 pub fn ReactionOutboundPlan::equal(Self, Self) -> Bool
 pub fn ReactionOutboundPlan::not_equal(Self, Self) -> Bool
