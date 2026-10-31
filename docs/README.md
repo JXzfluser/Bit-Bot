@@ -1,5 +1,11 @@
 # Bit Bot 文档索引
 
+**用户文档**（装好、配 key、第一个任务、常见故障）：
+
+- [user/quickstart.md](user/quickstart.md) — 快速上手
+- [user/faq.md](user/faq.md) — 常见问题
+- [user/troubleshooting.md](user/troubleshooting.md) — 故障排查
+
 阅读顺序（新成员 / MoonBit核）：
 
 1. [CHARTER.md](CHARTER.md) — 使命与硬性约束  
