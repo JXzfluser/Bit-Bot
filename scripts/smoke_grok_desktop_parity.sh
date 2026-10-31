@@ -2900,7 +2900,12 @@ if node -e "require('node:sqlite')" 2>/dev/null; then
   if timeout 600 node scripts/prove_event_only.mjs > /tmp/g66-eventonly.log 2>&1; then
     ok "G-66 停写契约全绿（$(grep -c '^ok EO' /tmp/g66-eventonly.log) 项，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g66-eventonly.log)）"
   else
-    bad "G-66 停写契约（见 /tmp/g66-eventonly.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g66-eventonly.log || tail -2 /tmp/g66-eventonly.log | tr '\n' ' ')）"
+    # 红的时候把 FAIL 行与尾部 25 行贴进矩阵输出——子日志在 runner 的 /tmp 里，
+    # 不贴出来红因就只能靠猜（上一轮就是吃的这个亏）。
+    bad "G-66 停写契约（FAIL 行：$(grep '^FAIL' /tmp/g66-eventonly.log | tr '\n' ' | ' | head -c 400)）"
+    echo "  · /tmp/g66-eventonly.log 尾部 25 行："
+    tail -25 /tmp/g66-eventonly.log 2>/dev/null | sed 's/^/    | /' || true
+    printf '::error title=g66-tail::%s\n' "$(tail -8 /tmp/g66-eventonly.log 2>/dev/null | tr '\n' ' ')"
   fi
   grep -q '^ok EO-01' /tmp/g66-eventonly.log \
     && grep -q '^ok EO-02' /tmp/g66-eventonly.log \
