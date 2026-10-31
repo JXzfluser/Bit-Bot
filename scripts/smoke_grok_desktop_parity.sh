@@ -2855,6 +2855,16 @@ if timeout 2400 ${g64_xvfb[@]+"${g64_xvfb[@]}"} bash scripts/smoke_desktop_turn.
   grep '^SKIP:' /tmp/g64-turn-smoke.log | sed 's/^/    · /' || true
 else
   bad "G-64 旧 smoke_desktop_turn 未通过（见 /tmp/g64-turn-smoke.log；$(tail -2 /tmp/g64-turn-smoke.log | tr '\n' ' ')）"
+  # Actions 的运行日志对匿名读者不可读；把子日志的「最近一节 + 尾部 8 行」写成
+  # 注解（::error），红在哪一步就能在 run 页面直接看到，不必再猜一次。
+  g64_sec="$(grep -n '^==> ' /tmp/g64-turn-smoke.log | tail -1 || true)"
+  [ -n "$g64_sec" ] && printf '::error title=g64-last-section::%s\n' "$g64_sec"
+  while IFS= read -r g64_l; do
+    printf '::error title=g64-turn-tail::%s\n' "$g64_l"
+  done < <(tail -8 /tmp/g64-turn-smoke.log 2>/dev/null)
+  # 矩阵日志本身在 Actions 里可下载；把子日志尾部 25 行贴进来，红在哪一步不用再猜。
+  echo "  · /tmp/g64-turn-smoke.log 尾部 25 行："
+  tail -25 /tmp/g64-turn-smoke.log 2>/dev/null | sed 's/^/    | /' || true
 fi
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
