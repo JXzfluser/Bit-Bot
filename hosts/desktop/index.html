@@ -6116,6 +6116,7 @@
       else if (/room_not_found/i.test(s)) key = "roomFailRoomGone";
       else if (/room_and_text_required/i.test(s)) key = "roomFailEmpty";
       else if (/orchestrate_recursion/i.test(s)) key = "roomFailBusy";
+      else if (/room_turn_timeout|room_turn_deadline/i.test(s)) key = "roomTurnTimeout";
       return devModeOn() && s ? wavegT(key) + " · " + s : wavegT(key);
     }
     // 失败分区落盘形如 "(原因)"：展示时去壳再本地化，不留英文括号协议味。
@@ -6966,6 +6967,33 @@
       el.appendChild(body);
       return el;
     }
+    /* 渲染层的兜底闸。
+     *
+     * Host 侧自己有总时限（BITBOT_ROOM_TURN_DEADLINE_MS，共享的 dispatchRoomTurn），
+     * 但如果 Host 那边也卡住（IPC 根本不返回），用户看到的就会是「消息发出去了、
+     * 没人回、连报错都没有」—— 和 Bot 故意不理他完全一样，**没法区分**。
+     * 这道闸保证：无论如何都有一句实话，而且发送键一定恢复可用。
+     * 比 Host 的闸略长，好让 Host 先如实收口。 */
+    const ROOM_CLIENT_DEADLINE_MS = 330000;
+    function roomOrchestrateWithDeadline(payload) {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          const err = new Error("room_turn_timeout");
+          err.code = "room_turn_deadline";
+          reject(err);
+        }, ROOM_CLIENT_DEADLINE_MS);
+        Promise.resolve(window.bitbot.rooms.orchestrate(payload)).then(
+          (value) => {
+            clearTimeout(timer);
+            resolve(value);
+          },
+          (err) => {
+            clearTimeout(timer);
+            reject(err);
+          },
+        );
+      });
+    }
     async function sendRoomTurn(text) {
       const roomId = composerRoom ? composerRoom.id : "";
       if (!roomId) return;
@@ -6973,7 +7001,7 @@
       let outcome = null;
       try {
         renderRoomUser({ kind: "user", text, at: new Date().toISOString() });
-        const res = await window.bitbot.rooms.orchestrate({ room_id: roomId, text });
+        const res = await roomOrchestrateWithDeadline({ room_id: roomId, text });
         if (!res || !res.ok) {
           outcome = { kind: "error", reason: roomOpFailReason(res && res.error) };
         } else if (res.deduped) {
@@ -6985,7 +7013,10 @@
       } finally {
         clearRoomWorking();
         sendBtn.disabled = false;
-        await renderRoomTranscript(roomId);
+        // 重绘转录不能吃掉结果卡：转录读不动时，这张卡仍是这一轮唯一的真相。
+        try {
+          await renderRoomTranscript(roomId);
+        } catch (_) { /* 读不到就留着结果卡 */ }
         if (outcome) roomAppend(roomOutcomeCard(outcome));
       }
     }
@@ -8888,6 +8919,20 @@
                     .replace("{routines}", String(p.routines_deleted || 0))
                     .replace("{kept}", String(p.workspace_files_kept || 0)),
                 );
+                // 群被连带解散了要说出来：否则用户回头发消息只会得到「群不存在」，
+                // 根本不知道群是自己刚才删人删掉的。
+                const dropped = Array.isArray(p.rooms_dropped) ? p.rooms_dropped : [];
+                if (dropped.length) {
+                  addMsg(
+                    "assistant",
+                    wavegT("rBotDeleteRoomsDropped")
+                      .replace("{n}", String(dropped.length))
+                      .replace(
+                        "{titles}",
+                        dropped.map((x) => String((x && x.title) || "?")).join("、"),
+                      ),
+                  );
+                }
               } else if (p.error === "cannot_delete_builtin") {
                 addMsg("assistant", wavegT("rBotDeleteBuiltin"));
               } else if (p.needs_confirm === true && p.advise_hide_first === true) {
@@ -13979,6 +14024,7 @@
         roomFailRoomGone: "这个群聊已不存在（可能随成员删除被一起清理）。",
         roomFailEmpty: "先写出要让成员做的事，再发到群里。",
         roomFailBusy: "同样的任务正在执行中，本次没有重复发起。",
+        roomTurnTimeout: "群协作这一轮超过时限没有收尾，成员可能还在路上。请重发一次或缩短任务。",
         roomTextClipped: "（内容较长，这里只保留开头，完整正文见上方该成员的回复）",
         roomUnknownMention: "{n} 不在本群成员里，已按未点名处理（本轮由各 Bot 自行决定是否应答）。",
         roomReportDeduped: "这件事已经汇报过了：同一任务不会重复执行成员回合。",
@@ -14414,6 +14460,7 @@
         rBotDeleteGo: "正在删除：配置、会话与定时任务已级联清理（共享 Computer 文件保留）。",
         rBotDeleteDone: "已删除 Bot：会话 {sess} 个、定时任务 {routines} 个已级联清理；共享 Computer 文件保留 {kept} 个。",
         rBotDeleteBuiltin: "内置 Bit Bot（agent-bit）不可删除。",
+        rBotDeleteRoomsDropped: "连带解散了 {n} 个群聊（成员不足 2 人）：{titles}。以后在这些群里发消息会得到「群不存在」。",
         menuPin: "置顶",
         menuUnpin: "取消置顶",
         menuDuplicate: "创建副本",
@@ -14678,6 +14725,7 @@
         roomFailRoomGone: "這個群聊已不存在（可能隨成員刪除被一起清理）。",
         roomFailEmpty: "先寫出要讓成員做的事，再發到群裡。",
         roomFailBusy: "同樣的任務正在執行中，本次沒有重複發起。",
+        roomTurnTimeout: "群協作這一輪超過時限沒有收尾，成員可能還在路上。請重發一次或縮短任務。",
         roomTextClipped: "（內容較長，這裡只保留開頭，完整正文見上方該成員的回覆）",
         roomUnknownMention: "{n} 不在本群成員裡，已按未點名處理（本輪由各 Bot 自行決定是否應答）。",
         roomReportDeduped: "這件事已經匯報過了：同一任務不會重複執行成員回合。",
@@ -15113,6 +15161,7 @@
         rBotDeleteGo: "正在刪除：設定、對話與排程任務已級聯清理（共用電腦檔案保留）。",
         rBotDeleteDone: "已刪除 Bot：對話 {sess} 個、排程任務 {routines} 個已級聯清理；共用電腦檔案保留 {kept} 個。",
         rBotDeleteBuiltin: "內建 Bit Bot（agent-bit）不可刪除。",
+        rBotDeleteRoomsDropped: "連帶解散了 {n} 個群聊（成員不足 2 人）：{titles}。以後在這些群裡發訊息會得到「群不存在」。",
         menuPin: "釘選",
         menuUnpin: "取消釘選",
         menuDuplicate: "建立副本",
@@ -15377,6 +15426,7 @@
         roomFailRoomGone: "This group chat no longer exists (it may have been removed with its members).",
         roomFailEmpty: "Write what the members should do before sending it to the group.",
         roomFailBusy: "The same task is already running, so it was not started twice.",
+        roomTurnTimeout: "This group round did not finish within the time limit; members may still be working. Send it again or shorten the task.",
         roomTextClipped: " (long content truncated here; the member's reply above keeps the full text)",
         roomUnknownMention: "{n} is not a member of this group, so this was treated as unaddressed (each bot decides whether to reply this round).",
         roomReportDeduped: "Already reported: the same task does not run member turns twice.",
@@ -15812,6 +15862,7 @@
         rBotDeleteGo: "Deleting: config, sessions and routines cascaded (shared Computer files kept).",
         rBotDeleteDone: "Bot deleted: {sess} session(s) and {routines} routine(s) cascaded; {kept} shared Computer file(s) kept.",
         rBotDeleteBuiltin: "Built-in Bit Bot (agent-bit) cannot be deleted.",
+        rBotDeleteRoomsDropped: "{n} group chat(s) were dissolved with it (fewer than 2 members left): {titles}. Sending in those groups will now say the group no longer exists.",
         menuPin: "Pin",
         menuUnpin: "Unpin",
         menuDuplicate: "Duplicate",
@@ -16874,7 +16925,17 @@
         }
       });
       if (window.bitbot.onSettingsChanged) {
-        window.bitbot.onSettingsChanged(() => refreshWaveGSettings());
+        window.bitbot.onSettingsChanged(async () => {
+          await refreshWaveGSettings();
+          // 语言变化 → 通知主进程重建原生菜单（菜单标签按 language 取 zh/en）。
+          try {
+            const st = window.bitbot.settings && window.bitbot.settings.get
+              ? await window.bitbot.settings.get()
+              : null;
+            const lang = st && st.settings && st.settings.language ? st.settings.language : null;
+            if (lang && window.bitbot.relocalizeMenu) window.bitbot.relocalizeMenu(lang);
+          } catch (_) { /* ignore */ }
+        });
       }
       if (window.bitbot.onApprovalAlwaysAllow) {
         window.bitbot.onApprovalAlwaysAllow((payload) => {

@@ -4082,41 +4082,154 @@ app.whenReady().then(async () => {
     const stBoot = surface.settingsGet();
     if (stBoot && stBoot.appearance) applyAppearance(String(stBoot.appearance));
   } catch (_) { /* keep OS default */ }
-  // GP-A1: app menu with accelerators (Cmd/Ctrl+B sidebar, Cmd/Ctrl+N new chat).
-  const appMenu = Menu.buildFromTemplate([
-    {
-      label: "Bit Bot",
-      submenu: [
-        {
-          label: "新对话",
-          accelerator: "CmdOrCtrl+N",
-          click: () => {
-            sessions.create("新对话");
-            broadcast("bitbot:sessions-changed", sessions.list());
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.show();
-              mainWindow.focus();
-              mainWindow.webContents.send("bitbot:menu-new-chat", {});
-            }
-          },
-        },
-        {
-          label: "折叠/展开侧边栏",
-          accelerator: "CmdOrCtrl+B",
-          click: () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send("bitbot:menu-sidebar-toggle", {});
-            }
-          },
-        },
-        { type: "separator" },
-        { role: "quit", label: "退出" },
-      ],
+  // GP-A1 (revised): 完整产品菜单。应用名统一为 "Bit Bot"（避免 macOS 菜单栏
+  // 显示默认的 "Electron"），并补齐 关于 / 外观 / 设置 / 检查更新 / 窗口 / 帮助。
+  try { app.setName("Bit Bot"); } catch (_) { /* no-op */ }
+  try {
+    app.setAboutPanelOptions({
+      applicationName: "Bit Bot",
+      applicationVersion: app.getVersion(),
+      version: app.getVersion(),
+      copyright: "Bit Bot",
+    });
+  } catch (_) { /* no-op */ }
+
+  const openMain = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  };
+  const newChat = () => {
+    sessions.create("新对话");
+    broadcast("bitbot:sessions-changed", sessions.list());
+    openMain();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("bitbot:menu-new-chat", {});
+    }
+  };
+  const toggleSidebar = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("bitbot:menu-sidebar-toggle", {});
+    }
+  };
+  // 外观：写入持久化设置并立即切换原生主题（nativeTheme.themeSource 是唯一真相）。
+  const setAppearance = (mode) => {
+    try { surface.patchSettings({ appearance: mode }); } catch (_) { /* ignore */ }
+    applyAppearance(mode);
+    try {
+      broadcast("bitbot:settings-changed", { ok: true, settings: surface.getSettings() });
+    } catch (_) { /* ignore */ }
+  };
+  // 设置面板由渲染端承载：主进程只发事件，渲染端订阅 "bitbot:menu-open-settings"。
+  const openSettings = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("bitbot:menu-open-settings", {});
+    }
+  };
+  const checkForUpdates = () => {
+    try { autoUpdater.checkForUpdates(); }
+    catch (err) {
+      process.stderr.write(`[desktop] ota check failed: ${err && err.message ? err.message : err}\n`);
+    }
+  };
+
+  // 菜单标签不写死：按 language 取（zh / en，对齐内核 AskLanguage 的 Zh/En）。
+  // 语言变化时由渲染端经 "bitbot:menu-relocalize" 通知主进程重建。
+  const MENU_I18N = {
+    zh: {
+      appName: "Bit Bot",
+      about: "关于 Bit Bot",
+      newChat: "新对话",
+      toggleSidebar: "折叠/展开侧边栏",
+      appearance: "外观",
+      light: "浅色", dark: "深色", system: "跟随系统",
+      settings: "设置…", checkUpdates: "检查更新…", quit: "退出 Bit Bot",
+      edit: "编辑", view: "视图", reload: "重新加载", devTools: "开发者工具",
+      resetZoom: "重置缩放", zoomIn: "放大", zoomOut: "缩小", fullscreen: "进入/退出全屏",
+      window: "窗口", help: "帮助", openDataDir: "打开用户数据目录",
     },
-    { role: "editMenu", label: "编辑" },
-    { role: "viewMenu", label: "视图" },
-  ]);
-  Menu.setApplicationMenu(appMenu);
+    en: {
+      appName: "Bit Bot",
+      about: "About Bit Bot",
+      newChat: "New Chat",
+      toggleSidebar: "Toggle Sidebar",
+      appearance: "Appearance",
+      light: "Light", dark: "Dark", system: "System",
+      settings: "Settings…", checkUpdates: "Check for Updates…", quit: "Quit Bit Bot",
+      edit: "Edit", view: "View", reload: "Reload", devTools: "Developer Tools",
+      resetZoom: "Reset Zoom", zoomIn: "Zoom In", zoomOut: "Zoom Out", fullscreen: "Toggle Full Screen",
+      window: "Window", help: "Help", openDataDir: "Open User Data Folder",
+    },
+  };
+  const menuLangOf = (lang) => (lang && /zh/i.test(String(lang)) ? "zh" : "en");
+
+  const buildAppMenu = (lang) => {
+    const t = MENU_I18N[menuLangOf(lang)] || MENU_I18N.zh;
+    return Menu.buildFromTemplate([
+      {
+        label: t.appName,
+        submenu: [
+          { label: t.about, role: "about" },
+          { type: "separator" },
+          { label: t.newChat, accelerator: "CmdOrCtrl+N", click: newChat },
+          { label: t.toggleSidebar, accelerator: "CmdOrCtrl+B", click: toggleSidebar },
+          { type: "separator" },
+          {
+            label: t.appearance,
+            submenu: [
+              { label: t.light, click: () => setAppearance("light") },
+              { label: t.dark, click: () => setAppearance("dark") },
+              { label: t.system, click: () => setAppearance("system") },
+            ],
+          },
+          { type: "separator" },
+          { label: t.settings, accelerator: "CmdOrCtrl+,", click: openSettings },
+          { label: t.checkUpdates, click: checkForUpdates },
+          { type: "separator" },
+          { role: "quit", label: t.quit },
+        ],
+      },
+      { role: "editMenu", label: t.edit },
+      {
+        label: t.view,
+        submenu: [
+          { role: "reload", label: t.reload },
+          { role: "toggleDevTools", label: t.devTools },
+          { type: "separator" },
+          { role: "resetZoom", label: t.resetZoom },
+          { role: "zoomIn", label: t.zoomIn },
+          { role: "zoomOut", label: t.zoomOut },
+          { type: "separator" },
+          { role: "togglefullscreen", label: t.fullscreen },
+        ],
+      },
+      { role: "windowMenu", label: t.window },
+      {
+        label: t.help,
+        submenu: [
+          {
+            label: t.openDataDir,
+            click: () => { try { shell.openPath(app.getPath("userData")); } catch (_) { /* ignore */ } },
+          },
+          { type: "separator" },
+          { label: t.about, role: "about" },
+        ],
+      },
+    ]);
+  };
+
+  let currentMenuLang = menuLangOf((() => {
+    try { return (surface.getSettings() || {}).language; } catch (_) { return null; }
+  })());
+  Menu.setApplicationMenu(buildAppMenu(currentMenuLang));
+  // 渲染端侦测到语言变化后发来；lang 不变则跳过重建（避免每次设置改动都重排菜单）。
+  ipcMain.on("bitbot:menu-relocalize", (_e, lang) => {
+    const next = menuLangOf(lang);
+    if (next === currentMenuLang) return;
+    currentMenuLang = next;
+    Menu.setApplicationMenu(buildAppMenu(next));
+  });
   if (AUTOSTART_ENABLED) {
     const login = applyLoginItem(true);
     process.stdout.write(
