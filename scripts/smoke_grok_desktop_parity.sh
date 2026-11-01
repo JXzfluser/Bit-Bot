@@ -1487,7 +1487,7 @@ grep -q "handler 都收口：先关 popup 再走短语" /tmp/g34-probe.log 2>/de
 grep -q "负向对照：抹掉 anchor=usage 短语" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 负向对照：抹掉 anchor 短语 → 断言翻假（非恒真）" \
   || bad "G-34 negative control missing"
-grep -q "负向对照：抹掉移动版 anchor=security-keys" /tmp/g34-probe.log 2>/dev/null \
+grep -q "负向对照：抹掉移动版 anchor=pairing" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 负向对照：抹掉移动版锚点 → 落地断言翻假（非恒真）" \
   || bad "G-34 mobile negative control missing"
 
@@ -1887,7 +1887,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     || bad "G-47 app-path anchors missing"
   grep -q "AR-09 用户可以自己把令牌抄进手机" /tmp/g47-roster.log \
     && grep -q "AR-11 开关是真的" /tmp/g47-roster.log \
-    && ok "G-47 手机配对：地址与令牌在「凭证」里拿得到，「允许手机连接」是真开关（放开能打通、收回打不通）" \
+    && ok "G-47 手机配对：地址与令牌在「手机」页签拿得到，「允许手机连接」是真开关（放开能打通、收回打不通）" \
     || bad "G-47 pairing anchors missing"
   grep -q "AR-12 配对地址与完整端点分开了" /tmp/g47-roster.log \
     && grep -q "AR-13 配对地址如实标注来源" /tmp/g47-roster.log \
