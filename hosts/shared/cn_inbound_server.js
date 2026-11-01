@@ -44,6 +44,121 @@ function json(res, code, obj) {
   res.end(body);
 }
 
+/* ---------- 配对落地页（只读）----------
+ * 桌面弹窗里那颗按钮叫「复制配对链接」。既然叫链接，点开就必须是一页纸 ——
+ * 以前它回的是 unknown_cn_inbound_route 的 JSON 404，用户粘到微信里就是一条
+ * 打不开的死链接（半真）。这一页只讲三件事：这是哪台桌面、手机下一步该干什么、
+ * 现在到底能不能连。
+ *
+ * 三条不许越过的线：
+ *   1. 不含任何凭证：64 位令牌、配对码原文都不在这里（页面未鉴权，局域网里谁都敲得开）。
+ *   2. 不是第二个 redeem 面：没有表单、不 fetch /v1/pair/redeem —— 谁在浏览器里
+ *      输 6 位码，bearer 就落到那个浏览器里，那不是配对的客户端，是白送一个令牌。
+ *   3. 不引外部资源：主机名和内网地址不许顺带发给第三方；走 cloudflared 公网隧道时
+ *      也不被索引、不被缓存（noindex / no-store）。
+ */
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[c]);
+}
+
+/* 网卡范围 → 人话。口径与桌面弹窗同一份真源（hosts/shared/lan_candidates.js），
+   两处不许各说各话。 */
+const PAIR_SCOPE_NOTE = {
+  private: "同一 Wi-Fi / 局域网里的地址，手机能走到。",
+  cgnat: "覆盖网地址（Tailscale 一类），不是同一个 Wi-Fi 的局域网地址 —— 手机没加入同一个覆盖网走不到。",
+  public: "公网地址（云主机常见）—— 手机在 Wi-Fi 里通常走不到，需要同一局域网里的地址或内网穿透。",
+  link_local: "169.254 地址 = 这块网卡没配上 DHCP，手机敲它一定失败 —— 先让桌面真正连上 Wi-Fi。",
+  loopback: "只有桌面自己这台机器能连。",
+};
+
+function pairPageHtml(info) {
+  const name = escHtml(info.name || "Desktop");
+  const port = escHtml(info.port || "");
+  const rows = info.lanOpen
+    ? (info.lan || []).map((it) => {
+        const ip = escHtml(it.ip || "");
+        const note = PAIR_SCOPE_NOTE[it.scope] || PAIR_SCOPE_NOTE.loopback;
+        return (
+          '<li><span class="ip">' + ip + "</span><span class=\"scope\">" +
+          escHtml(it.name || it.scope || "") + "</span><p>" + escHtml(note) + "</p></li>"
+        );
+      }).join("")
+    : "";
+  const stateLine = info.lanOpen
+    ? rows
+      ? "局域网已放开。手机要能连上，得和这台机器在同一个 Wi-Fi / 局域网里："
+      : "局域网已放开，但没读到本机 IPv4 —— 手机上要手填桌面的局域网地址。"
+    : "局域网没放开：只在桌面自己这台机器上开着（127.0.0.1:" +
+      info.port +
+      "）。要手机连，在桌面点「账户 → 移动端远程控制 → 允许手机连接」。";
+  const codeLine = info.codeActive
+    ? "配对码：现在有一个有效的 6 位码（不在这一页显示，只在桌面上显示，5 分钟内有效、用过一次即作废）。"
+    : "配对码：桌面上还没生成。生成后再回来看这一页不会有变化 —— 码只显示在桌面上。";
+  return (
+    "<!doctype html>\n" +
+    '<html lang="zh-CN"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    "<title>Bit Bot Desktop · " + name + "</title>" +
+    "<style>" +
+    ":root{color-scheme:light dark}" +
+    "body{margin:0;padding:32px 20px;background:#f6f6f4;color:#1c1c1a;" +
+    "font:15px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}" +
+    "main{max-width:620px;margin:0 auto}" +
+    "h1{font-size:20px;margin:0 0 4px}" +
+    ".sub{margin:0 0 24px;color:#6b6b66}" +
+    "section{background:#fff;border:1px solid #e2e2dd;border-radius:12px;padding:16px 18px;margin-bottom:14px}" +
+    "h2{font-size:15px;margin:0 0 10px}" +
+    "ol{margin:0;padding-left:20px}li{margin:4px 0}" +
+    "ul{list-style:none;margin:0;padding:0}" +
+    "ul li{padding:10px 0;border-top:1px solid #eeece8}" +
+    "ul li:first-child{border-top:0}" +
+    ".ip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-right:8px}" +
+    ".scope{color:#6b6b66;font-size:13px}" +
+    "ul p{margin:2px 0 0;font-size:13px;color:#6b6b66}" +
+    ".note{margin:12px 0 0;font-size:13px;color:#6b6b66}" +
+    ".en{color:#6b6b66;font-size:13px;margin:18px 0 0}" +
+    "@media (prefers-color-scheme:dark){body{background:#141412;color:#eceae6}" +
+    "section{background:#1d1d1b;border-color:#2c2c29}.sub,.scope,ul p,.note,.en{color:#9a978f}}" +
+    "</style></head><body><main>" +
+    "<h1>Bit Bot Desktop</h1>" +
+    '<p class="sub">这台是 <strong>' + name + "</strong> · 端口 " + port + "</p>" +
+    "<section><h2>手机下一步做什么</h2><ol>" +
+    "<li>在手机上打开 Bit Bot App</li>" +
+    "<li>点「连接 Desktop」</li>" +
+    "<li>输入桌面上「移动端远程控制」里那 6 位配对码</li>" +
+    "</ol>" +
+    '<p class="note">这一页不需要你填任何东西：配对码只在 App 里输，' +
+    "令牌由手机端自己换到，不经过浏览器。</p></section>" +
+    "<section><h2>现在能不能连</h2>" +
+    "<p>" + escHtml(stateLine) + "</p>" +
+    (info.lanOpen && rows ? "<ul>" + rows + "</ul>" : "") +
+    "<p>" + escHtml(codeLine) + "</p></section>" +
+    '<p class="en">Read-only landing page. Nothing here is a credential, and this page ' +
+    "never asks you for one. / 只读说明页，不含凭证。</p>" +
+    "</main></body></html>"
+  );
+}
+
+function html(res, code, body) {
+  const buf = Buffer.from(body, "utf8");
+  res.writeHead(code, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": buf.length,
+    /* 走 cloudflared 公网隧道时这一页是全网可见的：不缓存、不嗅探、不被索引。 */
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "X-Robots-Tag": "noindex, nofollow",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+  });
+  res.end(buf);
+}
+
 function extractDingTalkText(payload) {
   if (!payload || typeof payload !== "object") return "";
   if (payload.text && payload.text.content != null) {
@@ -622,6 +737,40 @@ function createCnInboundServer(opts = {}) {
         }
         json(res, 404, { ok: false, error: "approval_route_not_found" });
       }
+      // 配对落地页（只读）：桌面「复制配对链接」复制出去的就是这一页。
+      // GET / 与 GET /pair 同页 —— 用户常常只粘得到裸地址，别让他撞 404。
+      if (
+        (p === "/pair" || p === "/pair/" || p === "/") &&
+        (req.method === "GET" || req.method === "HEAD")
+      ) {
+        const ps = pairingManager.status();
+        const isLanOpen = bind.lan === true || host === "0.0.0.0";
+        const actualPort = state.port || port;
+        let lanRows = [];
+        if (isLanOpen) {
+          try {
+            const ifacesFn =
+              typeof opts.networkInterfaces === "function" ? opts.networkInterfaces : () => os.networkInterfaces() || {};
+            lanRows = rankLanIPv4(ifacesFn());
+          } catch (_) {
+            /* 读不到网卡 ≠ 没有网卡：页面照出，列表留空，由 stateLine 说「没读到本机 IPv4」。 */
+            lanRows = [];
+          }
+        }
+        html(
+          res,
+          200,
+          pairPageHtml({
+            name: os.hostname(),
+            port: actualPort,
+            lanOpen: isLanOpen,
+            lan: lanRows,
+            codeActive: Boolean(ps.code_active),
+          }),
+        );
+        return;
+      }
+
       // Pairing-v1: discover (no auth, no token leakage).
       if (p === "/v1/pair/discover" && req.method === "GET") {
         const ps = pairingManager.status();
@@ -794,10 +943,13 @@ function createCnInboundServer(opts = {}) {
         ok: false,
         error: "unknown_cn_inbound_route",
         routes: [
+          "GET /pair（配对说明页）",
           "POST /dingtalk/callback",
           "POST /feishu/event",
           "GET|POST /wecom/callback",
           "POST /v1/turn",
+          "GET /v1/pair/discover",
+          "POST /v1/pair/redeem",
           "GET /health",
         ],
       });

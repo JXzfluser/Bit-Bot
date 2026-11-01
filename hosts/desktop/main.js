@@ -3978,6 +3978,9 @@ function pairingState() {
     lan_ips: ips,
     lan_detail: detail,
     pair_base: base,
+    // 「复制配对链接」复制出去的东西必须真是一页能打开的纸（G-68）：
+    // 裸 base_url 点开是 JSON 404，那不叫链接。可选字段，老客户端忽略即可。
+    pair_page_url: base ? base + "/pair" : "",
     pair_scope: detail.length ? String(detail[0].scope || "") : "",
     turn_urls: ips.map((ip) => `http://${ip}:${port}/v1/turn`),
     loopback_url: port ? `http://127.0.0.1:${port}/v1/turn` : "",
@@ -4026,17 +4029,23 @@ ipcMain.handle("bitbot:pairing:token", async () => {
 /** 手机上手敲 64 位令牌不是「走通」，所以给一个复制入口。 */
 ipcMain.handle("bitbot:pairing:copy", async (_e, what) => {
   const st = pairingState();
+  const kind = String(what || "url");
   // 复制出去的就是「凭证」里那一栏要的东西：配对地址（http://ip:port）。
   // 路径由手机端自己补，用户多抄一段 /v1/turn 反而容易出错。
-  const text =
-    what === "token" ? turnTokenValue() : (st.pair_base || st.loopback_base || "");
+  // kind=page 是「移动端远程控制」弹窗那条主路：复制**配对链接**（点开是说明页），
+  // 不是裸地址 —— 名字叫链接的东西点开必须是页面。
+  let text;
+  if (kind === "token") text = turnTokenValue();
+  else if (kind === "page")
+    text = st.pair_page_url || (st.pair_base || st.loopback_base || "") + (st.pair_base || st.loopback_base ? "/pair" : "");
+  else text = st.pair_base || st.loopback_base || "";
   if (!text) return { ok: false, error: "nothing_to_copy" };
   try {
     clipboard.writeText(String(text));
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : String(err) };
   }
-  return { ok: true, kind: String(what || "url"), length: String(text).length };
+  return { ok: true, kind, length: String(text).length };
 });
 
 /**

@@ -876,6 +876,11 @@ const forbiddenHit = (text) => {
       tw.follow === 1
         ? ok("「跟隨系統」文案只出现 1 次（没有重复标签）")
         : bad("「跟隨系統」重复/缺失", JSON.stringify({ tw: tw.follow, cn: tw.followCn }));
+      /* 口径修正（G-67 之后被真跑出来）：列表里原本有「同一份」，但 同一份 简繁同形，
+         不是简体证据 —— 繁体的「讀的是同一份配對狀態」会被它误判成残留简体。
+         换成简体专属的「对应」（繁体 對應），既不再误伤合法繁体，仍然抓到那条
+         硬编码简体的 .st-note（同一份 .env.local；切到对应渠道…）。
+         和上面 委派任務 那条是同一条教训：拿同形词当简繁证据，迟早误报。 */
       /* GP-185：隐藏页签不在 innerText 里，所以「设置页无简体残留」以前只量到当前页签。
          凭证页刚重排完（四张分区卡 + 折叠 + 三语文案），切过去单独扫一遍。
          口径：只判「由字典驱动的元素」（带 data-i18n 的那些）—— 这一屏的字段标签
@@ -885,7 +890,7 @@ const forbiddenHit = (text) => {
       await new Promise((r) => setTimeout(r, 500));
       const twCred = await win.evaluate(() => {
         const p = document.getElementById("secrets-panel");
-        const CN = /设置|语言|时区|隐私|群组|外观|审批|执行命令|发送消息|发起购买|调用工具|操作电脑|委派任务|大脑|网关|连接应用|标签|选填|手机|公网|能力扩展|备用渠道|合规|模型与密钥|同一份/;
+        const CN = /设置|语言|时区|隐私|群组|外观|审批|执行命令|发送消息|发起购买|调用工具|操作电脑|委派任务|大脑|网关|连接应用|标签|选填|手机|公网|能力扩展|备用渠道|合规|模型与密钥|对应/;
         const i18n = [...p.querySelectorAll("[data-i18n]")].map((el) => ({
           k: el.dataset.i18n,
           t: (el.textContent || "").trim(),

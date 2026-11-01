@@ -3670,3 +3670,69 @@ layout-contract.md §3.1 的窄视口表。
   pairing-v1 既有门与 Android 门盯着，真机同 Wi-Fi 的人工验收仍未做过（§8.15.7 已记）。
 - 渠道侧只列了三条国内渠道；Telegram / Lark 国际版没有适配器，微信个人号建议不做，
   这一屏不给点了没反应的入口。
+
+## 8.54 「复制配对链接」点开是 JSON 404：名字叫链接，就得是链接
+
+上一波把配对搬进「账户 → 移动端远程控制」之后，自己复核这一屏，抓到一条半真：
+那颗按钮写着**复制配对链接**，复制出去的却是裸地址 —— 真 HTTP 量到的现场是
+
+```text
+GET /pair → 404 {"ok":false,"error":"unknown_cn_inbound_route","routes":[...]}
+剪贴板     http://25.4.80.50:41795        （端口 41795，弹窗里那颗按钮复制的就是它）
+```
+
+用户把这条「链接」粘到微信 / 手机浏览器里，得到的是一页机器读的 JSON。
+更糟的是那份 404 里的 `routes` 清单本身过期了：连 `/v1/pair/discover`、
+`/v1/pair/redeem` 都没列，等于在最该指路的地方指错路。
+
+**做了什么。** 入站服务加一页**只读**说明页（`GET /pair`，`GET /` 同页 —— 用户常常
+只粘得到裸地址），只讲三件事：这是哪台桌面（主机名 + 实际端口）、手机下一步做什么
+（打开 App → 点「连接 Desktop」→ 输 6 位码）、现在到底能不能连。最后一条不许粉饰：
+局域网没放开时写「只在桌面自己这台机器上开着（127.0.0.1:端口）」；放开时按
+`hosts/shared/lan_candidates.js` 的排名逐条列地址，并标出它是 private / cgnat /
+public / link_local —— 与桌面弹窗同一份真源，两处不许各说各话。弹窗那颗按钮改
+`copy("page")`，`pairingState()` 加可选字段 `pair_page_url`；设置里那一栏仍复制
+裸地址（那是给 App 手填用的，语义没动，既有 `url` / `token` 两种 kind 也不变）。
+
+**三条线钉死在门禁里**（`scripts/e2e_desktop_pair_page.mjs` PP-01..10，真 Electron + 真 socket）：
+
+1. 页面不含 64 位令牌，也不含刚生成的配对码 —— 它未鉴权，局域网里谁都敲得开。
+2. 页面不是第二个 redeem 面：没有 `<form>`、不碰 `/v1/pair/redeem`。谁在浏览器里
+   输 6 位码，bearer 就落到那个浏览器里；那不是配对的客户端，是白送一个令牌。
+3. 不引外部资源，并带 `noindex` / `no-store` / `nosniff` / `default-src 'none'` ——
+   走 `scripts/cn_inbound_tunnel.sh` 的公网隧道时这一页全网可见。
+
+**红 → 绿。** 断言先写、产品未动：**PASS=1 FAIL=10**（唯一那条绿是收尾自清）；
+加页面 + 改复制目标之后：**PASS=11 FAIL=0**。邻居回归同步跑过：
+`e2e_desktop_mobile_control` 11/0、`e2e_desktop_layout_target` 14/0、
+`prove_ui_tokens` 9/0、`prove_pairing_code` 19/0、`prove_pairing_lan_rank` 9/0、
+`prove_p0_inbound_security` 8/0（host-checks 11/0）。已接进
+`smoke_grok_desktop_parity.sh` **G-68**。
+
+**顺带挖出的一条门禁口径错。** 全量矩阵里 `e2e_desktop_user_journeys` 报
+「zh-TW 凭证页字典文案残留简体」，指向我上一波写的 `pairingModalHint`
+（「…讀的是同一份配對狀態」）。查下来不是文案的错：那条简体检测的正则里有
+`同一份`，而**同一份简繁同形**，拿它当简体证据迟早误伤合法繁体。换成简体专属的
+`对应`（繁体 對應）之后，同一句繁体过了，而原本想抓的那条硬编码简体
+`.st-note`（「同一份 .env.local；切到对应渠道…」）仍然被抓到 —— 计数没松。
+这和该文件里 `委派任務` 那条注释是同一条教训。
+
+**诚实残留。**
+- 这一页**故意不能**在浏览器里完成配对：它只是说明页。想把它做成 web 客户端是另一件事
+  （要新的鉴权与会话语义），本轮不假装已经具备。
+- 页面显示主机名与端口，泄露面与既有的 `/v1/pair/discover` 同级 —— 没有更高，但也没更低；
+  走公网隧道时全网可读，这一点在门禁 echo 里写明，不靠 noindex 假装安全。
+- **二维码仍不做**，且卡点已经查清不在桌面侧：Android 的 `build.gradle.kts` 里没有任何
+  摄像头 / 扫码依赖（CameraX、ML Kit 都没有），`AndroidManifest.xml` 只有 LAUNCHER
+  一个 intent-filter —— 系统相机扫出来的 URL 手机 App 接不住。桌面这时候画一张 QR
+  只是装饰图。要落地得三件一起：桌面 vendored 编码器、手机端扫码或 deep-link、
+  真机验收（本机无 KVM 起不了 emulator）。缺任何一件都不做，短码继续作为主路。
+- 真机同 Wi-Fi 的人工验收仍未做过（§8.15.7 已记）；本轮全部证据是沙箱内真 Electron
+  + 真 socket，不含手机侧。
+- **配对这件事至今不在能力矩阵里**：`docs/capability-matrix.md` 234 行合同里搜不到
+  任何 pairing / 配对 行，所以 `docs/qa/product-readiness.md` 那本「能不能用」的账
+  也没法给它归类 —— 用户手册已经写了这条路径，账本上却是空白。补它不是改文档：
+  `prove_capability_matrix.mjs` 的 CM1/CM2 要求每行指向一个 `.mbt` 里的具名测试，
+  而配对住在 Host 侧（Node + Electron），没有对应的内核合同。要么先写一条内核侧
+  的配对合同（`cmd/desktop_turn` 或新的 `pairing` 包），要么给矩阵加一种 Host 级证据格式
+  —— 两条都是单独的活，本轮只把缺口记下来，不用「文档里提一句」冒充已入账。

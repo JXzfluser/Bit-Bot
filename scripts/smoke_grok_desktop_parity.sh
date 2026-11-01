@@ -2974,6 +2974,45 @@ else
   echo "  · skip：缺 playwright-core 或 electron，G-67 未跑（SKIP ≠ PASS）"
 fi
 
+echo "== G-68 配对落地页 /pair（「复制配对链接」点开必须是一页纸）=="
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g68_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g68_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 ${g68_xvfb[@]+"${g68_xvfb[@]}"} node scripts/e2e_desktop_pair_page.mjs > /tmp/g68-pairpage.log 2>&1; then
+    ok "G-68 e2e_desktop_pair_page 全绿（$(grep -c '✓' /tmp/g68-pairpage.log) 项，$(tail -1 /tmp/g68-pairpage.log)）"
+  else
+    bad "G-68 e2e_desktop_pair_page（见 /tmp/g68-pairpage.log；$(tail -1 /tmp/g68-pairpage.log)）"
+    grep -n "✗" /tmp/g68-pairpage.log 2>/dev/null | head -10 | while IFS= read -r line; do echo "    ${line}"; done
+    tail -6 /tmp/g68-pairpage.log 2>/dev/null | while IFS= read -r line; do echo "    | ${line}"; done
+  fi
+  grep -q "PP-01 GET /pair → 200 text/html" /tmp/g68-pairpage.log \
+    && grep -q "PP-08 弹窗「复制配对链接」复制的是 /pair 页面" /tmp/g68-pairpage.log \
+    && ok "G-68 主路两条在：/pair 真回页面（不是 JSON 404）、弹窗复制的确实是这一页" \
+    || bad "G-68 主路锚点缺失（/pair 或复制链接没被断言到）"
+  grep -q "PP-03 页面不含 64 位令牌" /tmp/g68-pairpage.log \
+    && grep -q "PP-04 页面无表单、不碰 /v1/pair/redeem" /tmp/g68-pairpage.log \
+    && grep -q "PP-10 页面带 noindex" /tmp/g68-pairpage.log \
+    && ok "G-68 安全三条在：不含凭证、不是第二个 redeem 面、公网隧道下不缓存不索引" \
+    || bad "G-68 安全锚点缺失（凭证 / redeem / 安全头没被断言到）"
+  echo "  · G-68 修复前红（HEAD 0556e7a 产品代码真实输出）：PASS=1 FAIL=10 ——"
+  echo "    GET /pair 与 GET / 都回 unknown_cn_inbound_route 的 JSON 404，"
+  echo "    弹窗里那颗「复制配对链接」复制出来的是 http://25.4.80.50:41795（裸地址）"
+  echo "  · G-68 顺带修的：未知路由 404 的 routes 清单过期（连 /v1/pair/* 都没列）——"
+  echo "    现在列出 /pair、/v1/pair/discover、/v1/pair/redeem，不再教用户走错路"
+  echo "  · G-68 残留（诚实）：这一页只是说明页，不能在浏览器里完成配对（故意不做 —— "
+  echo "    谁在浏览器里输 6 位码，bearer 就落到那个浏览器里）；仍未做二维码（GP-192），"
+  echo "    二维码要等手机端能扫码：Android 现在没有摄像头/扫码依赖，也没有 deep-link "
+  echo "    intent-filter，系统相机扫出来的 URL 手机 App 接不住"
+  echo "  · G-68 已知边界：页面显示主机名与端口，泄露面与既有的 /v1/pair/discover 同级；"
+  echo "    走 cloudflared 公网隧道时全网可读（discover 今天已经是这样），故带 noindex/no-store"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-68 未跑（SKIP ≠ PASS）"
+fi
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

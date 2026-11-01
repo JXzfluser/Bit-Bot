@@ -2783,6 +2783,7 @@
               <button type="button" id="mc-copy-url-btn" class="bb-btn bb-btn-sm" disabled data-i18n="mcCopyUrl">复制配对链接</button>
             </div>
             <div id="mc-pair-note" class="mc-note" hidden></div>
+            <p class="mc-note" data-i18n="mcLinkNote">「复制配对链接」复制的是这台桌面的说明页：粘到手机浏览器里打开，会写明下一步该干什么；配对码仍然只在 App 里输。</p>
             <div class="pc-block" id="mc-code-block">
               <div class="pc-head">
                 <span class="pc-head-title" id="mc-code-title" data-i18n="mcCodeTitle">让手机自己找</span>
@@ -11910,7 +11911,9 @@
       mcEls.copyUrl.addEventListener("click", async () => {
         mcEls.copyUrl.disabled = true;
         try {
-          const r = await window.bitbot.pairing.copy("url");
+          /* page = 配对链接（点开是 /pair 说明页）。裸 base_url 点开是 JSON 404，
+             那不该叫「链接」。设置里那一栏仍复制裸地址（那是给 App 手填用的）。 */
+          const r = await window.bitbot.pairing.copy("page");
           mcNote(r && r.ok ? wavegT("pairingCopied") : t("pairingCopyFail", { err: (r && r.error) || "unknown" }));
         } catch (e) {
           mcNote(t("pairingCopyFail", { err: String((e && e.message) || e) }));
@@ -14619,6 +14622,7 @@
         mcReading: "配对状态：读取中…",
         mcHint: "手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。",
         mcCopyUrl: "复制配对链接",
+        mcLinkNote: "「复制配对链接」复制的是这台桌面的说明页：粘到手机浏览器里打开，会写明下一步该干什么；配对码仍然只在 App 里输。",
         mcCodeTitle: "让手机自己找",
         mcCodeGen: "生成配对码",
         mcCodeRefresh: "刷新配对码",
@@ -15355,6 +15359,7 @@
         mcReading: "配對狀態：讀取中…",
         mcHint: "手機和桌面在同一個 Wi-Fi 下，輸入 6 位配對碼就能連上這台大腦，不需要手填長權杖。",
         mcCopyUrl: "複製配對連結",
+        mcLinkNote: "「複製配對連結」複製的是這台桌面的說明頁：貼到手機瀏覽器裡打開，會寫明下一步該做什麼；配對碼仍然只在 App 裡輸入。",
         mcCodeTitle: "讓手機自己找",
         mcCodeGen: "產生配對碼",
         mcCodeRefresh: "重新產生配對碼",
@@ -16091,6 +16096,7 @@
         mcReading: "Pairing state: loading…",
         mcHint: "On the same Wi-Fi, the phone just types a 6-digit pairing code to reach this brain — no long token to paste.",
         mcCopyUrl: "Copy pairing link",
+        mcLinkNote: "This copies the desktop's read-only page: open it in the phone's browser and it says what to do next. The pairing code is still typed in the app only.",
         mcCodeTitle: "Let the phone find it",
         mcCodeGen: "Generate pairing code",
         mcCodeRefresh: "Refresh pairing code",
