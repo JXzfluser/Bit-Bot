@@ -489,6 +489,13 @@ let app = null;
         ok("AR-09 令牌默认只给掩码（原文要点「显示」）");
       }
 
+      // GP-189：令牌兜底收进 <details id="phone-adv"> 折叠区；点「显示配对令牌」前先展开，
+      // 否则按钮在折叠态零尺寸，Playwright 点不动（getElementById 读得到、click 却超时）。
+      await win.evaluate(() => {
+        const adv = document.getElementById("phone-adv");
+        if (adv && !adv.open) adv.open = true;
+      });
+      await win.waitForTimeout(150);
       await win.click("#pairing-token-btn");
       await win.waitForTimeout(400);
       const revealed = await win.evaluate(() => {
