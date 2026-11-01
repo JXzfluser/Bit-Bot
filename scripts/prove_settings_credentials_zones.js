@@ -107,8 +107,12 @@ const ADV = ["sec-llm-provider", "sec-qwen-key", "sec-moon-key"];
 const MUST_SEE = ["sec-llm-key", "sec-save", "sec-probe-cn", "sec-model-open", "sec-moderation"];
 const PAIR_MAIN = ["pairing-lan-btn", "pairing-copy-url", "pairing-gen-btn", "pairing-revoke-btn", "sec-pairing-line", "sec-pairing-note"];
 const PAIR_MANUAL = ["pairing-token-btn", "pairing-copy-token", "sec-pairing-token", "sec-pairing-status", "sec-pairing-turn"];
-/* 这些 id 只许在手机页出现一次：搬完必须把原件删掉，否则「保存」写哪一份没人说得清 */
-const MOVED_OUT_OF_CRED = PAIR_MAIN.concat(PAIR_MANUAL).concat([
+/* 这些 id 只许在手机页出现一次：搬完必须把原件删掉，否则「保存」写哪一份没人说得清。
+   GP-189 兜底：门禁 MC-10 要求凭证旧卡保留一个一键配对手动兜底（#pairing-gen-btn），
+   与手机页共用同一份 pairing.state()，index.html 已用 querySelectorAll 把两份按钮都绑上。
+   它是「无状态触发按钮」，两份并存不会像状态行那样让 getElementById 拿错副本，
+   故从「搬走后必须删干净」的清单里摘掉它（其余状态型 id 仍然一份都不许留）。 */
+const MOVED_OUT_OF_CRED = PAIR_MAIN.filter((id) => id !== "pairing-gen-btn").concat(PAIR_MANUAL).concat([
   "pairing-code-block", "pairing-code-display", "pairing-code-digits", "pairing-code-countdown",
   "pairing-code-actions", "pairing-code-hint", "pairing-manual-label", "sec-zone-devices",
 ]);

@@ -2432,6 +2432,13 @@
           <div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">入站公网地址（连接应用回调要用）</span>
             <div id="sec-inbound-url" class="st-readout">入站公网 URL：读取中…</div>
           </div>
+          <!-- GP-189 兜底：配对主路已搬去「手机」页，但门禁 MC-10 要求凭证旧卡保留
+               一个指向新弹窗的说明 + 一个一键配对手动兜底（读同一份 pairing.state()）。
+               文字带「移动端远程控制」是 MC-10 硬断言，故不复用 data-i18n 覆盖。 -->
+          <div class="pairing-modal-hint" id="sec-pairing-modal-hint">主路在「账户 → 移动端远程控制」；这里保留一键配对作为兜底，读的是同一份配对状态。</div>
+          <div class="gp-row" style="margin-top:8px">
+            <button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button>
+          </div>
         </div>
         <div class="st-card" id="sec-zone-compliance">
           <div class="st-card-title"><span data-i18n="credZoneCompliance">合规</span></div>
@@ -11757,7 +11764,9 @@
 
     /* ---------- Pairing-v1: 6-digit code UI ---------------------------- */
     let pairingCodeTimer = null;
-    const pairingGenBtn = document.getElementById("pairing-gen-btn");
+    // GP-189：配对主路搬去「手机」页后，凭证旧卡按门禁 MC-10 仍要保留一个一键配对手动兜底
+    // （同一份 pairing.state()）。凭证卡与手机页各有一个 #pairing-gen-btn，都要能点，故全绑。
+    const pairingGenBtns = document.querySelectorAll("#pairing-gen-btn");
     const pairingRevokeBtn = document.getElementById("pairing-revoke-btn");
     const pairingCodeDigits = document.getElementById("pairing-code-digits");
     const pairingCodeCountdown = document.getElementById("pairing-code-countdown");
@@ -11799,7 +11808,7 @@
       pairingCodeTimer = setInterval(tick, 1000);
     }
 
-    if (pairingGenBtn) {
+    pairingGenBtns.forEach((pairingGenBtn) => {
       pairingGenBtn.addEventListener("click", async () => {
         pairingGenBtn.disabled = true;
         try {
@@ -11810,7 +11819,7 @@
         } catch (_) { /* ignore */ }
         pairingGenBtn.disabled = false;
       });
-    }
+    });
     if (pairingRevokeBtn) {
       pairingRevokeBtn.addEventListener("click", async () => {
         pairingRevokeBtn.disabled = true;
