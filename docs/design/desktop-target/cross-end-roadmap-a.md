@@ -40,7 +40,7 @@ Bit Bot 现在的活儿跑在**用户自己的机器**上（Electron 桌面，�
 ### W1 止血与诚实（**已交付 2026-11-01**，不动任何契约；红绿见 `report.md` §8.56 / §8.57 / §8.58，差距行见 `parity-gaps-next.md` GP-196..203）
 
 这一波不新增能力，只把「看起来绿、其实看不见」与「看起来红，其实是尺子坏了」两类假象拆掉。
-口径要说清：**A0-1..A0-4 与 A0-6..A0-8 已交付**；**A0-5 只登记、不销账** —— 它要的是产品改动
+口径要说清：**A0-1..A0-4 与 A0-6..A0-9 已交付**；**A0-5 只登记、不销账** —— 它要的是产品改动
 （真审批能双写），属于 T1-03 未完成部分，不能靠门禁补。
 
 | 片 | 内容 | 复现测试（先红） | 结果 |
@@ -53,6 +53,7 @@ Bit Bot 现在的活儿跑在**用户自己的机器**上（Electron 桌面，�
 | A0-6 | 新发现：门禁**跨轮留状态**，下一轮红得像产品坏了 | 复现 = 放一份 `provider_id=qwen`、`api_key` 空的 `data/llm/active.json`，脚本退回未钉桩版本（`git stash push` → 跑 → `pop` → `diff -q` 确认还原） | **已交付**：矩阵开局快照 / trap 还原 / 末尾 **G-72**（含两个负向对照真跑）；`boot`+`gp14`+`gp93`+`m28` 显式钉 `BITBOT_LLM_PROVIDER=deepseek`。同一份污染文件下 `prove_gp14_reply` **11/5 → 16/0**、`prove_gp93_links` **20/1 → 21/0**、`prove_m28_usage` 钉桩侧 **14/0**。刻意**不做**统一钉子（会把 env 顶到 `active.json` 之前，毁掉 journeys 的 provider 切换门 ⇒ 假绿），理由写在 `scripts/electron_env.mjs` 的 GP-201 段 |
 | A0-7 | 新发现：**门禁自己把用户文件写脏**了（G-71 本轮真抓到） | `smoke_desktop_turn.sh` 里 code_changes 的产品测把 `README.mbt.md` 尾部留了 4 行空行 → G-71 ✗。复现 = 跑完矩阵看 `git status`；现场用 `git checkout -- README.mbt.md` 清掉 | **已交付**：门自己收尾复原 —— stub 起来前快照 `README.mbt.md`，EXIT trap 里 `cmp -s` 不一致就还原（开局没有则把产物挪进 `/tmp` 再删）。**没有**走「把 `README.mbt.md` 加进 G-71 白名单」那条路，白名单继续为空：任何已跟踪文件被门禁改了都仍要点名 |
 | A0-8 | 新发现：矩阵剩下的 7 条红全是**坏尺子**（上游删了 UI/函数，产品没坏） | 逐条对着代码与提交核实：`9d89d17` 删「按宽度自动收起」（`index.html:18788-18791`）、`29e1725` 删「设置 → 手机」页签、`8349-8371` 把「留空＝不改动」移进 placeholder | **已交付**：四把尺子重接（`e2e_desktop_sidebar_adapt` 重写并**新增 R-05/D-L-14 收起态重开条**、`e2e_desktop_layout_target` 换真实点击 + 窄窗期望按 §3.2 重算、新增 `e2e_android_roster.v2` 接 `#mc-*`、`e2e_desktop_llm_key_paste_guard` LK-05 兼读占位符）；`layout-contract.md` §3.2 + D-L-14 更正；矩阵 G-46/G-47/G-54 锚点与文案同步。单门实测 sidebar **6/0**、layout **14/0**、roster v2 **18/0**、lk **7/0**。**不删断言、不放宽、不改产品换绿**；被有意移除的能力登记 **GP-203**，不当绿也不当红 |
+| A0-9 | 新发现（GP-204 的下一轮）：**门禁每轮漏 3 个进程**，真因是 CLI 在桌面常驻默认下不收尾 —— **桌面自己拉起的 routine daemon 卡死在第一轮 sweep** | 先写红：新断言 `KR-11`（一次性 CLI 开常驻跑完一轮必须自己退出、且不留内核；带「故意不关池」的**同型反向对照**）→ `FAIL KR-11 — … 跑到 45026ms 上限被 SIGKILL（常驻池没关）。那一轮其实已经打完 —— stdout 3683 字节、回合 ok=true，卡的是退出 …`；再把 `run_turn.js` 临时换回修复前版本、按 G-64 那面门新加的那行原样跑 → `exit=124 耗时=180003ms`、日志停在 `==> routine daemon long-lived sweep 1`（第二轮永远没开始） | **已交付**：`hosts/cli_host/run_turn.js` 收尾 `releaseKernel()`（`stopKernel()` 关 stdin 让内核见 EOF 自收 + 8s 上限后按 **stop() 之前**取到的 pid 强杀；异常路径同样收尾）—— 回合 JSON 形状、stdout/stderr 分工、exit code 语义一字未改。绿：`ok KR-11 — … 91ms 自己退出 … serve 进程 0→0 零残留 …`（`KR summary: pass=12 fail=0`）；`smoke_desktop_turn.sh:968` 新增「带桌面的常驻默认再跑一遍 long-lived daemon」（修复后 801ms、`sweeps 2 ok 2 fail 0`）；矩阵 G-58 加 `grep -q '^ok KR-11'` 锚点 + 6 行 echo；§8.58.4 的归因已在 §8.59.6 更正（来源是**门禁起的 Electron 桌面**所拉 daemon 的孙进程，不是 turn smoke）；9 个孤儿已清（`run_turn 9→0`、`desktop_turn --serve 18→0`）。**未盖章**：没起真 Electron 量「sweeps 连续 >1」；8s 兜底强杀那条分支未被实测触发；`host_routine_daemon.sh` 有意**不加** EXIT trap（真因已修，trap 属于掩盖）|
 
 W1 不做的事：不打开任何事件开关进默认路径（那要等 W3 的单写者，见 §3）。
 

@@ -957,6 +957,16 @@ bash "$ROOT/scripts/host_routine_daemon.sh" --install-user-unit
 python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('systemd_unit_installed') is True;assert d.get('systemd_scope') in ('user','system');assert d.get('systemd_user_unit_path') and os.path.isfile(d['systemd_user_unit_path']);print('host_routine_daemon user unit install ok', d.get('systemd_scope'), d.get('systemd_user_unit_path'))"
 BITBOT_ROUTINE_MAX_SWEEPS=2 bash "$ROOT/scripts/host_routine_daemon.sh" --long-lived --interval-ms 100
 python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is True;assert d.get('sweeps')==2;assert d.get('ok')==2;assert d.get('systemd_unit_path') and os.path.isfile(d['systemd_unit_path']);assert d.get('systemd_unit_installed') is True;print('host_routine_daemon long-lived ok', 'sweeps', d.get('sweeps'), 'systemd_installed', d.get('systemd_unit_installed'), 'scope', d.get('systemd_scope'))"
+# 上面那几遍都不带 BITBOT_KERNEL_RESIDENT —— 而**桌面宿主自己把常驻设成默认**
+# （hosts/desktop/main.js:55-56），它拉起来的 long-lived daemon 继承的正是那份环境
+# （main.js:726-740 `env: {...process.env, BITBOT_ROUTINE_LONG_LIVED:"1"}`）。
+# 「不带常驻跑通」不等于「真实宿主环境里 daemon 走得动」：修复前实测 daemon 卡在
+# 第一轮 sweep 永不进第二轮（9 个孤儿的 fd/1 全指向 data/routines/daemon-sweep-1.json），
+# 而本门一直是绿的 —— 因为这里从没按桌面那份环境跑过。补第二遍，用 timeout 兜住，
+# 再出现同类挂死就是红，不再只在进程数上留痕。
+echo "==> Host routine daemon long-lived 也在**桌面的常驻默认环境**里跑一遍（GP-204 / KR-11）"
+timeout 180 env BITBOT_KERNEL_RESIDENT=1 BITBOT_ROUTINE_MAX_SWEEPS=2 bash "$ROOT/scripts/host_routine_daemon.sh" --long-lived --interval-ms 100
+python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is True;assert d.get('sweeps')==2;assert d.get('ok')==2;print('host_routine_daemon long-lived under desktop resident default ok', 'sweeps', d.get('sweeps'), 'ok', d.get('ok'))"
 
 echo "==> Host sandbox OAuth (Slack + Gmail) + computer_use navigate"
 node hosts/cli_host/run_turn.js "setup slack" >/tmp/bitbot-oauth-slack.json

@@ -20,11 +20,15 @@
  *   KR-09 关停干净：stop() 之后**本门禁起过的**内核一个都不留（别人家的进程另行报告）
  *   KR-10 桌面宿主确实默认打开这条路径（结构锚点：默认值写在 runner 创建之前，
  *          退出两级钩子都在，且有 BITBOT_KERNEL_RESIDENT=0 的回退口）
+ *   KR-11 常驻模式下 CLI 宿主一轮之后要把终端还回来：`node hosts/cli_host/run_turn.js`
+ *          打完那一行 JSON 必须自己退出、且不留常驻内核 —— 桌面已把常驻设成默认，
+ *          任何继承这份环境的一次性 CLI（含 routines daemon 每轮真的敲的那行）
+ *          不关池就永远不退。反向对照：现做一个「故意不关池」的同型进程，必须卡住
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -462,6 +466,106 @@ async function main() {
       bad("KR-10", JSON.stringify({
         real: order(mainSrc), synthetic: order(syntheticLate), quitHooks, optOut,
       }));
+    }
+  }
+
+  /* ---- KR-11 一次性 CLI 在常驻模式下必须把终端还回来 ----
+     W1 收口数出来的进程泄漏（report.md §8.58.4 / GP-204）真因在这里：桌面把常驻
+     设成默认（hosts/desktop/main.js:55），凡是继承这份环境的一次性 CLI
+     —— 包括 scripts/host_routine_daemon.sh 每一轮真的敲的那行
+     `node hosts/cli_host/run_turn.js "tick routines"` —— 打完 JSON 之后不关池，
+     进程就永远不退：外层（daemon 循环 / 门禁 timeout）一被杀，就留下
+     「node run_turn.js + moon --serve」两级孤儿。
+     这条断的是用户看得见的一件事：敲下去，终端要回来，且不留看不见的内核。 */
+  {
+    const CLI = path.join(ROOT, "hosts/cli_host/run_turn.js");
+    async function spawnWait(cmd, cmdArgs, { killAfterMs, env }) {
+      const t0 = Date.now();
+      const p = spawn(cmd, cmdArgs, { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] });
+      let out = "";
+      let err = "";
+      p.stdout.on("data", (c) => { out += c.toString(); });
+      p.stderr.on("data", (c) => { err += c.toString(); });
+      let killed = false;
+      const timer = setTimeout(() => {
+        killed = true;
+        try { p.kill("SIGKILL"); } catch (_) {}
+      }, killAfterMs);
+      const st = await new Promise((resolve) => {
+        p.once("exit", (code, signal) => resolve({ code, signal }));
+      });
+      clearTimeout(timer);
+      return { ms: Date.now() - t0, killed, code: st.code, signal: st.signal, out, err, pid: p.pid };
+    }
+    const cliEnv = Object.assign({}, process.env, {
+      BITBOT_KERNEL_RESIDENT: "1",
+      BITBOT_KERNEL_BIN: BIN,
+      BITBOT_NO_SECRET_SYNC: "1",
+    });
+    const serveBefore = countServeProcs();
+    /* 起的是真 CLI 进程，它按自己的默认解析数据根（仓库 data/）—— 用的是
+       ListMachines 这种只读意图，历史行只多不删，和门禁平时跑 CLI 的做法一致。 */
+    const cli = await spawnWait(process.execPath, [CLI, "ListMachines"], {
+      killAfterMs: 45000,
+      env: cliEnv,
+    });
+    await sleep(600);
+    const serveAfter = countServeProcs();
+    let cliJson = null;
+    try {
+      cliJson = JSON.parse(String(cli.out).trim().split("\n").pop());
+    } catch (_) {}
+
+    /* 反向对照：同一段代码、同一个池，只把「关池」那一步删掉 —— 它必须卡住。
+       没有这一半，上面的绿无法区分「CLI 真的会收尾」和「这里压根等不到挂死」。 */
+    const noStop = path.join(DATA, "kr11-no-stop.js");
+    fs.writeFileSync(noStop, [
+      '"use strict";',
+      "process.env.BITBOT_KERNEL_RESIDENT = \"1\";",
+      "const { createTurnRunner } = require(" + JSON.stringify(path.join(ROOT, "hosts/shared/run_moon_turn.js")) + ");",
+      "const runner = createTurnRunner(" + JSON.stringify(ROOT) + ", {",
+      "  dataRoot: " + JSON.stringify(path.join(DATA, "ws-kr11")) + ",",
+      "  kernelBin: " + JSON.stringify(BIN) + ",",
+      "});",
+      "runner.runTurn(\"ListMachines\", { sessionId: \"kr11-control\", turnId: \"kr11-control\", timeoutMs: 30000 })",
+      "  .then((r) => { process.stdout.write(\"CONTROL_TURN_DONE ok=\" + (r.ok !== false) + \"\\n\"); })",
+      "  .catch((e) => { process.stdout.write(\"CONTROL_TURN_DONE err=\" + String((e && e.message) || e) + \"\\n\"); });",
+      "",
+    ].join("\n"));
+    const ctl = await spawnWait(process.execPath, [noStop], { killAfterMs: 12000, env: cliEnv });
+    await sleep(300);
+    const ctlLeft = countServeProcs();
+    const ctlPrintedDone = ctl.out.indexOf("CONTROL_TURN_DONE") >= 0;
+
+    if (cli.killed) {
+      bad("KR-11", "CLI 宿主开常驻后没退出：跑到 " + cli.ms + "ms 上限被 SIGKILL（常驻池没关）。" +
+        "那一轮其实已经打完 —— stdout " + cli.out.length + " 字节、回合 " +
+        (cliJson && cliJson.ok === true ? "ok=true" : "没 ok") + "，卡的是退出。" +
+        "用户看到的就是一条不返回的命令行，daemon 每轮 sweep 也卡在这里" +
+        "（同型反向对照本次也照出：不关池的进程 " + ctl.ms + "ms 仍活着、" +
+        "回合已完成=" + ctlPrintedDone + "）");
+    } else if (cli.code !== 0 || !cliJson || cliJson.ok !== true) {
+      bad("KR-11", "CLI 自己退了（" + cli.ms + "ms，exit=" + cli.code + " signal=" + cli.signal +
+        "）但这一轮没成：" + JSON.stringify({
+          out: String(cli.out).slice(0, 200), err: String(cli.err).slice(0, 200),
+        }));
+    } else if (serveAfter.count > serveBefore.count) {
+      bad("KR-11", "CLI 退了（" + cli.ms + "ms）但把常驻内核留下来了：serve 进程 " +
+        serveBefore.count + "→" + serveAfter.count + "（" + serveAfter.pids.join(",") + "）");
+    } else if (!ctl.killed || !ctlPrintedDone) {
+      bad("KR-11", "反向对照没立住：那个故意不关池的同型进程 " + ctl.ms + "ms 就退了（回合完成=" +
+        ctlPrintedDone + "）—— 说明「不关池就永远不退」这个前提在这台机器上不成立，" +
+        "上面那条 CLI 退出因此也证明不了什么，不能算绿");
+    } else {
+      ok("KR-11", "CLI 宿主开常驻跑完一轮：" + cli.ms + "ms 自己退出（exit 0、回合 ok=true、" +
+        "stdout " + cli.out.length + " 字节一行 JSON），serve 进程 " + serveBefore.count + "→" +
+        serveAfter.count + " 零残留；反向对照（同型进程删掉关池那一步）" + ctl.ms +
+        "ms 时回合已打完仍不退，被本门禁 SIGKILL —— 绿色是量出来的");
+    }
+    if (ctlLeft.count > serveBefore.count) {
+      console.log("  · 注：SIGKILL 反向对照后仍有 " + ctlLeft.count + " 个 serve 进程（" +
+        ctlLeft.pids.join(",") + "）—— 对照进程是被强杀的，内核靠管道 EOF 收摊需要一点时间；" +
+        "不计在 CLI 账上，KR-09 已单独量过关停干净");
     }
   }
 }

@@ -2713,6 +2713,16 @@ if [ -x "$KR_BIN" ] || [ -x "${KR_BIN%.exe}" ]; then
   grep -q '^ok KR-10' "$KR_LOG" \
     && ok "G-58 桌面默认锚点在：$(grep -o '默认值写在 createTurnRunner 之前' "$KR_LOG" | head -1)且退出钩子与回退口都在" \
     || bad "G-58 KR-10 anchor missing（桌面宿主的默认值/关停钩子/回退口没被断言）"
+  grep -q '^ok KR-11' "$KR_LOG" \
+    && ok "G-58 CLI 收尾锚点在：$(grep -o 'CLI 宿主开常驻跑完一轮：[0-9]*ms 自己退出' "$KR_LOG" | head -1)，$(grep -o 'serve 进程 [0-9]*→[0-9]*' "$KR_LOG" | head -1)；反向对照（同型进程删掉关池那一步）仍被量到不退" \
+    || bad "G-58 KR-11 anchor missing（一次性 CLI 在常驻默认下必须自己退出、不留内核，这条没被断言）"
+  echo "  · G-58 本轮补上的一条真账（GP-204 → KR-11）：矩阵此前每轮跑完都留下 3 个"
+  echo "    「node hosts/cli_host/run_turn.js tick routines」+ 3 对 moon/desktop_turn --serve 内核（本机累计 9 + 18）。"
+  echo "    根因不在门禁脚本：桌面把常驻设成默认（hosts/desktop/main.js:55），一次性 CLI 没有桌面那两级"
+  echo "    before-quit/will-quit 钩子，打完那一行 JSON 不收池 → 进程永远不退（修复前实测：stdout 3683 字节、"
+  echo "    回合 ok=true，跑到 45026ms 上限被 SIGKILL；daemon 因此卡死在第一轮 sweep）。"
+  echo "    修在 hosts/cli_host/run_turn.js（收尾 + 8s 兜底强杀），修复后同一轮 91ms 自己退出、serve 残留 0→0；"
+  echo "    long-lived 两轮 sweep 从「卡到 timeout」变成 380ms 跑完。不常驻那条路一个字节没动（94ms、resident=false）。"
   echo "  · G-58 残留（诚实）：桌面宿主现在**默认**走常驻（BITBOT_KERNEL_RESIDENT=0 可退回每轮 spawn），"
   echo "    但本门没有启动真 Electron 去数进程 —— KR-10 是结构锚点（默认值写在 runner 创建之前、"
   echo "    before-quit/will-quit 钩子都在），不是开机实测。「打包出去的 app 已经不每轮 spawn」"

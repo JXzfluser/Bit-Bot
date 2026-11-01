@@ -4124,3 +4124,151 @@ GP-203），原文用删除线保留可读，不改写成「看起来一直如�
   处理方式不是加白名单（白名单仍为空），而是**冻结改动后再提交**，让被测内容与提交内容完全一致；
   真正的修法（把「谁改的」变成可证据，比如门前后各留一份 `git status` 快照 + 记录 mtime 区间）
   留到 W2 一起做，写在这里是为了下次不再用「红就是红」糊过去。
+
+## 8.59 那 9 个孤儿进程的真因：一次性 CLI 在「常驻」默认下不收尾 —— 桌面自己的 routine daemon 会卡死在第一轮（A0-9 / KR-11 红→绿）
+
+先把结论摆正：**§8.58.4 那笔账指错了人**（见 8.59.6 的更正）。漏进程的不是 `smoke_desktop_turn.sh`，
+而是 **CLI 宿主在常驻内核模式下打完结果不关池**；被它咬到的第一条真实用户路径，
+是**桌面宿主自己拉起来的那个 long-lived routine daemon**。
+
+### 8.59.1 定位过程：三条现场证据，不是猜
+
+1. 9 个孤儿的 `/proc/<pid>/fd/1` **全部**指向同一个文件 `data/routines/daemon-sweep-1.json`
+   → 卡住的都是 `scripts/host_routine_daemon.sh` long-lived 分支的**第一轮** sweep
+   （`:161` 那行 `node hosts/cli_host/run_turn.js "tick routines" >"$STATUS_DIR/daemon-sweep-$i.json"`，
+   `i=1` 从来没走到 `i=2`）。
+2. `/proc/<pid>/environ` 每一个都带 `BITBOT_KERNEL_RESIDENT=1`、`BITBOT_ROUTINE_DAEMON=1`、
+   `BITBOT_ROUTINE_LONG_LIVED=1`，还带 `BITBOT_DESKTOP_AUTOSTART=0`、`BITBOT_NO_SECRET_SYNC=1`、
+   `BITBOT_LLM_MODEL=uj-deepseek`。后三个 bash 门自己不会设 —— 它们是**门禁起的 Electron**
+   （`gateAppEnv` + journeys 那类 mock provider）的标记。也就是说这些 CLI 是
+   **桌面宿主拉起来的 daemon 的孙进程**（`hosts/desktop/main.js:726-740`：
+   `env: {...process.env, BITBOT_ROUTINE_LONG_LIVED: "1"}`，继承了 `main.js:55-56` 设的常驻默认）。
+3. 每个孤儿底下挂着一对活着的内核：`moon run cmd/desktop_turn --target native -- --serve`
+   → `desktop_turn.exe --serve`；孤儿本身 `State: S`、`wchan=0` —— 睡着，不在算，
+   是在等一个永远不会空的 event loop。
+
+最小复现（修复前，一条命令）：
+
+```
+$ BITBOT_KERNEL_RESIDENT=1 timeout 60 node hosts/cli_host/run_turn.js "list routines"
+exit=124          # 被 timeout 杀的
+stdout=10641 字节  # 那一行 JSON 是完整的，ok:true
+```
+
+「结果早就打完了，卡的是退出」—— 这一句是整件事的钥匙。
+
+### 8.59.2 为什么这是产品缺陷，不只是门禁卫生
+
+`hosts/desktop/main.js:55-56` 把内核常驻设成桌面**默认**，桌面退出时有两级钩子
+（`before-quit` → `stopResidentKernel()`、`will-quit` → `killResidentKernel()`，`:884` 附近）；
+一次性 CLI **一条钩子都没有**。`run_moon_turn.js:152` 建的池持有子进程句柄，
+事件循环永不空 → 进程永不退出。落到真实用户身上是三条：
+
+- **桌面自己拉起的 long-lived daemon，第一轮 sweep 永远不回**，`while true` 停在 `:161`，
+  第二轮永远不开始 —— 也就是「开着电脑，到点的 routine 不再醒」。
+  而 `daemon-status.json` 上还是 `long_lived: true`，不报错，所以此前没人看见。
+- 命令行用户敲 `node hosts/cli_host/run_turn.js …` 不返回。
+- `hosts/mobile_host/run.js:50` 用 `spawnSync` 等这条 CLI —— 继承到常驻环境时同样被拖住。
+
+### 8.59.3 先写红：KR-11（带同型反向对照）
+
+`scripts/prove_kernel_resident.mjs` 加 **KR-11**，断的是用户看得见的一件事：
+「开着常驻敲一次性 CLI，终端要回来，而且不留看不见的内核」。
+它带一条**反向对照**：现场做一个「同一段代码、只把关池那一步删掉」的进程，必须卡住 ——
+没有这一半，绿色无法区分「CLI 真会收尾」和「这里压根等不到挂死」。
+
+修复前的红原文：
+
+```
+FAIL KR-11 — CLI 宿主开常驻后没退出：跑到 45026ms 上限被 SIGKILL（常驻池没关）。那一轮其实已经打完 —— stdout 3683 字节、回合 ok=true，卡的是退出。用户看到的就是一条不返回的命令行，daemon 每轮 sweep 也卡在这里（同型反向对照本次也照出：不关池的进程 12013ms 仍活着、回合已完成=true）
+```
+
+### 8.59.4 修法：产品侧最小一处，契约不动
+
+`hosts/cli_host/run_turn.js`：打完那一行 JSON 之后 `await releaseKernel()`，异常路径同样收尾。
+`releaseKernel()` 的语义 —— 先按池自己的方式 `stopKernel()`（关 stdin，让内核见 EOF 自己收摊，
+KR-01 已证），8 秒等不到就按 pid 逐个 SIGKILL 兜底。**取 pid 必须在 `stop()` 之前**：
+`kernel_server.stop()` 头一步就 `slots.length = 0`，等它卡住再问「有哪些进程」已经问不出来，
+兜底那一记会落空（这一条是写的时候差点写错、想了一遍才发现的）。
+回合 JSON 的形状、stdout/stderr 分工、exit code 语义（`!ok → 1`）一个字没改。
+
+修复后的绿原文：
+
+```
+ok KR-11 — CLI 宿主开常驻跑完一轮：91ms 自己退出（exit 0、回合 ok=true、stdout 3683 字节一行 JSON），serve 进程 0→0 零残留；反向对照（同型进程删掉关池那一步）12009ms 时回合已打完仍不退，被本门禁 SIGKILL —— 绿色是量出来的
+== KR summary: pass=12 fail=0 ==
+```
+
+旧行为对照（不常驻，那条路必须一个字节没变）：`94ms` 退出、`loop_trace.resident=false`。
+
+### 8.59.5 把这条卡死接进 G-64 那面门（否则它只在进程数上留痕）
+
+`scripts/smoke_desktop_turn.sh` 原本跑过 5 次 `tick routines`、也断过 `sweeps==2`，
+**但没有一遍带着桌面的常驻默认跑** —— 所以 daemon 在真实宿主环境里卡死时，这面门是绿的。
+补第二遍（`timeout 180` 兜住，再出现同类挂死直接判红）。
+
+按门里那一行的原样、把 `run_turn.js` 临时换回修复前版本（`9f52ac2`）跑出来的红：
+
+```
+已临时换回修复前的 CLI（9f52ac2 版本）
+exit=124 耗时=180003ms
+==> routine daemon long-lived sweep 1      # 日志只有这一行，第二轮永远没开始
+daemon-status: long_lived True sweeps None ok None fail None
+残留 run_turn=0 serve=0 moon=0
+```
+
+换回修复后版本的绿：
+
+```
+再跑一遍 exit=0
+daemon-status: sweeps 2 ok 2 fail 0
+残留=0/serve=0
+```
+
+（第一次跑用时 `801ms`。红那次「残留 0」和矩阵里那 9 个不一样：`timeout` 直接杀的是 bash，
+整组当场散掉；而真实路径是 Electron 被门禁杀掉、daemon 与它的 CLI 被 reparent 到 ppid=1，
+就一直挂着。这个差别写清楚，不拿「这次没漏」反过来否认上一轮的现场。）
+
+矩阵侧接线：`smoke_grok_desktop_parity.sh` G-58 加 `grep -q '^ok KR-11'` 锚点，
+另加 6 行 echo 把「修复前 45026ms 被杀 / 修复后 91ms 自退 / daemon 两轮 380ms」记进门禁日志。
+
+### 8.59.6 更正 §8.58.4 的归因（我自己写错的那一句）
+
+§8.58.4 写「新增三个落在本轮 G-64 `smoke_desktop_turn.sh` 的运行区间内」—— 那是**时间相关，不是因果**。
+本轮 `/proc/*/environ` 里那三个 bash 门自己不会设的标记把来源指实了：**门禁起的 Electron 桌面**
+拉起的 daemon，不是 turn smoke 本身。G-64 里那几次 `bash host_routine_daemon.sh` 不带
+`BITBOT_KERNEL_RESIDENT`（全仓 grep：本轮之前**设**它的只有 `hosts/desktop/main.js:56`（桌面默认）与
+`scripts/prove_kernel_resident.mjs`（门禁自己），`mobile_host` 与所有 bash 门都不设），
+所以它一直正常退出 —— 这正好解释「G-64 是绿的、却每轮漏 3 个」。
+也正因为这样，本轮新加的那行（`smoke_desktop_turn.sh:968`）是**除桌面之外第一处**主动把
+常驻环境喂给 daemon 的门 —— 它不是放宽，是把「桌面的真实环境」搬进门里。
+
+### 8.59.7 清理掉那 9 个孤儿（并改掉「要不要点头」这条）
+
+`19:41` 起对 9 个逐个 `kill -TERM`：`run_turn 9→0`、`moon … --serve 9→0`、
+`desktop_turn --serve 18→0`。为什么现在敢动：它们的回合早就打完（`fd/1` 内容已落盘）、
+没有任何父循环在消费输出、这个沙箱里 systemd 根本没跑
+（`System has not been booted with systemd as init system`），不是「正在服务的 daemon」；
+而修好之后它们不可能再产生。**先只杀一个（`11194`）验证级联** —— 内核随之退出、
+node 3 秒内自退 —— 确认不会把 `data/routines/*.json` 写坏，才动其余 8 个。
+
+### 8.59.8 残留（诚实）
+
+- **修复前的「桌面 daemon 卡死」没有用真 Electron 复现过**。用的是：9 个孤儿的 fd/env 现场 +
+  KR-11 的红 + 8.59.5 那次「把 CLI 换回修复前版本」的同命令对照。要拿真开机盖章，
+  需要起宿主、等第二轮 sweep，成本另算（G-59 那面「装好的 App 自己就是唤醒源」仍按它自己的判据走）。
+- **8 秒兜底强杀那条分支本轮没被实测触发** —— 正常路径 `stop()` 就走完了。它是照着桌面
+  `will-quit` 那记 SIGKILL 同型写的，**未单独取证**，不当成已验证。
+- 矩阵里此前**没有任何一条断言看 daemon 的 sweeps**（`grep -n "sweeps" scripts/smoke_grok_desktop_parity.sh` 为空），
+  这也是这个卡死能长期隐身的原因；现在接在 G-64 那面（`smoke_desktop_turn.sh`）而不是矩阵的 grep 层。
+- `host_routine_daemon.sh` **没有**加 A0-7 式 EXIT trap：真因已修，加 trap 属于掩盖；
+  若将来再出现某轮 sweep 卡住，KR-11 与 G-64 的新增段会先红，不再靠 trap 悄悄收。
+- KR-11 起的是**真** CLI 进程，它按自己的默认解析数据根（仓库 `data/`），用的是 `ListMachines`
+  这种只读意图 —— 历史行只增不删，和门禁平时跑 CLI 的做法一致；池与内核都数在临时目录。
+- 本机现在挂着 **427 个 `[electron] <defunct>` 僵尸**（ppid=1，0 RSS）：沙箱的 PID 1 是
+  `sandbox-runtime`，它不收割孩子。这不是本轮改动引入的，KR-11 也管不到它，
+  但它会让任何「按 pgrep 数进程」的判据读数虚高 —— 矩阵里凡用计数做断言的门都要记住这条底噪。
+- 跑红那次留下过一次 `data/routines/daemon-status.json` 的部分写（`sweeps` 键缺失，
+  只剩 `{"daemon": true, "long_lived": true}`）：那是 FFI 侧 `routine_tick` 的写与 daemon 侧
+  python 写之间的正常先后关系被强杀打断的结果，下一轮 sweep 已把它写回完整（绿那次 `sweeps 2 ok 2`）。
+  这个文件不是用户历史（`data/desktop/*.json` 一条没动）。
